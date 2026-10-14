@@ -13,10 +13,12 @@ namespace CodeCoverage.GitWriter.Jobs;
 /// always set, the commit the prepared one is built on.</param>
 public sealed record PrepareJob(
     string Repo, Uri CloneUrl, GitCredential Credential, string BaseBranch, string? BaseSha, string HeadRef, string HeadSha,
-    IReadOnlyList<AutoResolveRule> Rules, GitIdentity Author, GitIdentity Committer, string Message, bool AllowWorkflowChanges = false);
+    IReadOnlyList<AutoResolveRule> Rules, GitIdentity Author, GitIdentity Committer, string Message);
 
 /// <summary>A validated queue-branch push: the prepared commit, rebuilt, onto <paramref name="QueueBranch"/>.</summary>
-public sealed record QueueBranchJob(PrepareJob Prepare, string PreparedSha, string QueueBranch, string? ExpectedQueueSha);
+/// <param name="HeadFromFork">The pull request's head lives in a fork: a commit whose <c>.github</c> differs from its base's
+/// is refused (O25, §0 D67).</param>
+public sealed record QueueBranchJob(PrepareJob Prepare, string PreparedSha, string QueueBranch, string? ExpectedQueueSha, bool HeadFromFork);
 
 /// <summary>A validated publish request; <see cref="Patch"/> is empty when the regenerate step changed nothing.</summary>
 public sealed record PublishJob(PrepareJob Prepare, Uri PushUrl, string PreparedSha, string PrBranch, byte[] Patch, IReadOnlyList<PathGlob> RegeneratedPaths);
@@ -32,11 +34,20 @@ public sealed record DeleteQueueBranchJob(string Repo, Uri CloneUrl, GitCredenti
 /// a <c>--force-with-lease</c> push, a compare-and-swap on the forge.
 /// </summary>
 /// <remarks>
+/// <para>
 /// <b>Only a dispatch writes to the queue branch (§0 D65).</b> A push to a branch of the base repository starts that
 /// repository's <c>push</c> workflows on the pushed code, with its secrets (D14, D19), and for a fork's pull request that
 /// code is the fork's. So the prepare pushes nothing: it builds the commit from its request alone and answers its id. The
 /// queue-branch push (only before a dispatch) and the publish rebuild the same commit from the same fields, check that it
 /// is the one the saga holds, and only then push it.
+/// </para>
+/// <para>
+/// <b>A fork's <c>.github</c> never reaches the base repository (O25, §0 D67).</b> The prepare and the publish report a
+/// change under <c>.github/</c> and refuse none: the prepare pushes nothing, and the publish pushes to the pull request's
+/// own branch (a fork's to the fork), whose CI runs it as it would without the queue. The queue-branch push is the one
+/// write of a pull request's code to a branch of the base repository, and it refuses a fork's commit whose <c>.github</c>
+/// differs from the base's itself (<c>fork-touches-workflows</c>), behind the saga's own rule.
+/// </para>
 /// </remarks>
 public sealed class WriterService(GitRunner git, JobRunner jobs, IOptions<GitWriterOptions> options)
 {
@@ -74,7 +85,14 @@ public sealed class WriterService(GitRunner git, JobRunner jobs, IOptions<GitWri
         var build = await BuildAsync(context, prepare, baseMustBeTip: false);
         if (build is Build.Stopped stopped)
             return Answer(stopped.Outcome, stopped.Reason, paths: stopped.Paths, detail: stopped.Detail);
-        var commit = ((Build.Built)build).Commit;
+        var built = (Build.Built)build;
+        // O25, §0 D67: whatever else the request says, a fork's .github never goes to a branch of the base repository, where
+        // a push runs the pushed commit's workflow files with the repository's secrets. The saga never asks for it.
+        if (job.HeadFromFork && built.Workflows.Count > 0)
+            return Answer(JobOutcomes.ForkTouchesWorkflows, paths: built.Workflows,
+                detail: $"The pull request's head is a fork's, and the prepared commit changes .github/ against its base: pushing it to {job.QueueBranch}, a "
+                        + "branch of the base repository, would run the fork's workflow files with that repository's secrets (O25). Nothing was pushed.");
+        var commit = built.Commit;
         if (commit != job.PreparedSha)
             return Answer(JobOutcomes.PreparedDiffers, detail: Differs(commit, job.PreparedSha));
 
@@ -228,10 +246,6 @@ public sealed class WriterService(GitRunner git, JobRunner jobs, IOptions<GitWri
         if (headSha != job.HeadSha)
             return new Build.Stopped(JobOutcomes.HeadMismatch, null, baseSha, headSha, [], $"{job.HeadRef} is at {headSha}, not the pinned {job.HeadSha} (T3).");
 
-        // §0 D59: a fork that has only the head lacks the base's newer workflow files; publishing to it needs the
-        // forge's workflow permission then, and only then.
-        var baseChangedWorkflows = await WorkflowsTreeAsync(context, baseSha) != await WorkflowsTreeAsync(context, headSha);
-
         var resolver = new MergeQueueResolver(git) { Timeout = context.Remaining, ScratchDirectory = context.Scratch, Config = JobContext.WriterConfig };
         var merged = await resolver.MergeAsync(context.GitDirectory, baseSha, headSha, job.Rules, context.Deadline, job.Credential);
         context.EnsureWithinDisk();
@@ -244,15 +258,16 @@ public sealed class WriterService(GitRunner git, JobRunner jobs, IOptions<GitWri
             _ => throw new InvalidOperationException("Unknown merge outcome."),
         };
 
-        // D12, §0 D63, D65: what the commit would change under .github/ against its base, read from the merged tree. The
-        // pull request's net change does not tell it whole: a base that renamed a file into .github/ after the pull
-        // request branched carries the pull request's edits of that file there, though the net change names no .github/
-        // path (PrepareTests.A_change_a_base_rename_carries_into_github_touches_the_workflows).
+        // D12, §0 D63, D65: what the commit changes under .github/ against its base, read from the merged tree. The pull
+        // request's net change does not tell it whole: a base that renamed a file into .github/ after the pull request
+        // branched carries the pull request's edits of that file there, though the net change names no .github/ path
+        // (PrepareTests.A_change_a_base_rename_carries_into_github_touches_the_workflows). Reported, never refused here
+        // (O25): the saga decides, and the queue-branch push refuses a fork's itself (§0 D67).
         var workflows = await GithubChangesAsync(context, baseSha, tree);
-        if (workflows.Count > 0 && !job.AllowWorkflowChanges)
-            return new Build.Stopped(JobOutcomes.Evicted, JobReasons.TouchesWorkflows, baseSha, headSha, workflows,
-                "The pull request changes .github/**, and the queue may not push that to a branch of this repository: the push would start the "
-                + "repository's push workflows from the pull request's own workflow files, with its secrets (D12, §0 D63).");
+
+        // §0 D59, D67: what the base changed under .github/workflows since the head, which a fork's branch (holding the head)
+        // lacks, so publishing there needs the forge's workflow permission. The pull request's own change is `workflows`.
+        var baseChangedWorkflows = await WorkflowsTreeAsync(context, tree) != await WorkflowsTreeAsync(context, headSha);
 
         var commit = await resolver.CommitAsync(context.GitDirectory, tree, baseSha, job.Author, job.Committer, job.Message, context.Deadline);
         return new Build.Built(baseSha, headSha, commit, resolvedPaths, workflows, baseChangedWorkflows);

@@ -25,11 +25,17 @@ public sealed record ForkGuardFinding(string Path, string Ref, int? Line, string
 /// <list type="number">
 /// <item>No workflow of the pushed commit runs on a push that creates the queue branch: a <c>push</c> trigger whose branch
 /// filter leaves the branch out, or one for tags only; no <c>create</c> trigger. The pushed commit's <c>.github/</c> is
-/// the base commit's (the writer refuses a fork's commit that changes it, D63/D65), so these are read at the base commit:
-/// GitHub reads a push run's workflow from the pushed commit, not from the default branch.</item>
+/// the base commit's (a fork's commit that changes it never reaches the queue branch: the plan evicts it, O25, and the
+/// writer refuses it, §0 D67), so these are read at the base commit: GitHub reads a push run's workflow from the pushed
+/// commit, not from the default branch.</item>
 /// <item>The regenerate workflow (the default branch's, which D12 holds the queue branch's copy to) gives every job
 /// <c>contents: read</c> at most, references no secret, asks for no OIDC token and runs on GitHub-hosted runners only.</item>
 /// <item>No default-branch workflow runs on the regenerate workflow's runs on the queue branch (<c>workflow_run</c>).</item>
+/// <item>No workflow, at the base commit or on the default branch, runs on <c>check_run</c>, <c>check_suite</c>,
+/// <c>status</c>, <c>deployment</c> or <c>deployment_status</c>, whatever its activity types (O25). A check, a commit
+/// status or a deployment of the queue commit fires them with the repository's secrets, and such a workflow often checks
+/// out the commit the event names, which is the fork's. Whether a job does cannot be read with certainty, so every such
+/// trigger counts.</item>
 /// </list>
 /// </summary>
 /// <remarks>
@@ -41,10 +47,8 @@ public sealed record ForkGuardFinding(string Path, string Ref, int? Line, string
 /// only, <c>.</c> literally). <c>paths</c> filters never make a push trigger safe: the fork chooses the pushed paths.
 /// </para>
 /// <para>
-/// <b>Not evaluated:</b> triggers that run the default branch's own code with the queue commit only as event data
-/// (<c>check_run</c>, <c>check_suite</c>, <c>status</c>). They run fork code only if their steps check it out
-/// explicitly, which no filter could rule out. A self-hosted runner registered under a GitHub-hosted label's name cannot
-/// be seen from the repository either.
+/// <b>Not seen:</b> a self-hosted runner registered under a GitHub-hosted label's name, and a service outside GitHub
+/// Actions that builds every pushed branch with secrets of its own. Neither shows in the repository's workflows.
 /// </para>
 /// </remarks>
 public static partial class MergeQueueForkGuard
@@ -54,7 +58,21 @@ public static partial class MergeQueueForkGuard
 
     private const string BranchFix = "Add `branches-ignore: ['mq/**']` under its `{0}:` trigger (or, with a `branches:` list, a last entry `'!mq/**'`).";
 
-    /// <summary>Every finding of the three checks; empty means the queue may push the fork's commit and dispatch.</summary>
+    /// <summary>(4) O25: the events a commit on the queue branch fires without any push trigger, and what fires them.</summary>
+    private static readonly Dictionary<string, string> CommitEvents = new(StringComparer.Ordinal)
+    {
+        ["check_run"] = "every check run on",
+        ["check_suite"] = "every check suite on",
+        ["status"] = "every commit status on",
+        ["deployment"] = "every deployment of",
+        ["deployment_status"] = "every deployment status of",
+    };
+
+    private const string CommitEventFix = "Skip queue branches in its jobs (an `if:` that leaves out branches starting with `mq/`) and never check out the "
+                                          + "commit the event names. The queue cannot verify either, so while the trigger is there it does not push a fork's "
+                                          + "commit: remove it, or regenerate this pull request by hand.";
+
+    /// <summary>Every finding of the four checks, each once; empty means the queue may push the fork's commit and dispatch.</summary>
     /// <param name="pushed">The workflows of the commit the queue would push, read at the base commit.</param>
     /// <param name="baseBranch">The pull request's base branch, to name where <paramref name="pushed"/> were read.</param>
     /// <param name="atDefault">The default branch's workflows.</param>
@@ -66,7 +84,7 @@ public static partial class MergeQueueForkGuard
     {
         var findings = new List<ForkGuardFinding>();
         foreach (var file in pushed)
-            PushTriggers(file, baseBranch, queueBranch, findings);
+            PushedCommitTriggers(file, baseBranch, queueBranch, findings);
 
         var regeneratePath = $".github/workflows/{regenerateFile}";
         var regenerate = atDefault.FirstOrDefault(f => string.Equals(f.Path, regeneratePath, StringComparison.Ordinal));
@@ -81,13 +99,14 @@ public static partial class MergeQueueForkGuard
         }
 
         foreach (var file in atDefault)
-            ChainedRuns(file, defaultBranch, regenerateName, regeneratePath, queueBranch, findings);
-        return findings;
+            DefaultBranchTriggers(file, defaultBranch, regenerateName, regeneratePath, queueBranch, findings);
+        // A base branch that is the default branch reads the same files twice: one finding each.
+        return [.. findings.Distinct()];
     }
 
-    // ═══ (1) Push triggers ═══════════════════════════════════════════════════════════════════════════
+    // ═══ (1) Push triggers, and (4) at the base commit ════════════════════════════════════════════════
 
-    private static void PushTriggers(ForgeWorkflowFile file, string where, string queueBranch, List<ForkGuardFinding> findings)
+    private static void PushedCommitTriggers(ForgeWorkflowFile file, string where, string queueBranch, List<ForkGuardFinding> findings)
     {
         if (Load(file, where, findings) is not { } root || Triggers(file, where, root, findings) is not { } triggers)
             return;
@@ -99,6 +118,8 @@ public static partial class MergeQueueForkGuard
             else if (name == "push" && PushRuns(node, queueBranch) is { } runs)
                 findings.Add(new(file.Path, where, Line(key), $"`on: push` {runs}, so a push of `{queueBranch}` starts it on the pushed commit, with this repository's secrets.",
                     string.Format(System.Globalization.CultureInfo.InvariantCulture, BranchFix, "push")));
+            else
+                CommitEventTrigger(file, where, name, key, queueBranch, findings);
         }
     }
 
@@ -257,9 +278,9 @@ public static partial class MergeQueueForkGuard
             yield return match.Groups[1].Value;
     }
 
-    // ═══ (3) Runs chained to the regenerate workflow ═════════════════════════════════════════════════
+    // ═══ (3) Runs chained to the regenerate workflow, and (4) on the default branch ═══════════════════════
 
-    private static void ChainedRuns(ForgeWorkflowFile file, string where, string? regenerateName, string regeneratePath, string queueBranch,
+    private static void DefaultBranchTriggers(ForgeWorkflowFile file, string where, string? regenerateName, string regeneratePath, string queueBranch,
         List<ForkGuardFinding> findings)
     {
         if (Load(file, where, findings) is not { } root || Triggers(file, where, root, findings) is not { } triggers)
@@ -267,11 +288,27 @@ public static partial class MergeQueueForkGuard
         foreach (var (name, node, key) in triggers)
         {
             if (name != "workflow_run")
-                continue;
-            if (WorkflowRunRuns(node, regenerateName, regeneratePath, queueBranch) is { } runs)
+                CommitEventTrigger(file, where, name, key, queueBranch, findings);
+            else if (WorkflowRunRuns(node, regenerateName, regeneratePath, queueBranch) is { } runs)
                 findings.Add(new(file.Path, where, Line(key), $"`on: workflow_run` {runs}: it would start, with this repository's secrets, after the regenerate workflow ran the pull request's code on `{queueBranch}`.",
                     string.Format(System.Globalization.CultureInfo.InvariantCulture, BranchFix, "workflow_run")));
         }
+    }
+
+    // ═══ (4) The queue commit's checks, statuses and deployments ════════════════════════════════════════
+
+    /// <summary>
+    /// O25: a <c>check_run</c>, <c>check_suite</c>, <c>status</c>, <c>deployment</c> or <c>deployment_status</c> trigger,
+    /// whatever its activity types. The queue commit's own checks fire the first two (its push's workflows, the regenerate
+    /// run, another App's checks), a status or a deployment of it the others, and each runs with the repository's
+    /// secrets. Whether a job then checks out the commit the event names, the fork's, cannot be read with certainty.
+    /// </summary>
+    private static void CommitEventTrigger(ForgeWorkflowFile file, string where, string name, YamlNode key, string queueBranch, List<ForkGuardFinding> findings)
+    {
+        if (CommitEvents.TryGetValue(name, out var fires))
+            findings.Add(new(file.Path, where, Line(key),
+                $"`on: {name}` starts, with this repository's secrets, for {fires} the `{queueBranch}` commit too, and a job that checks that commit out runs the fork's code.",
+                CommitEventFix));
     }
 
     /// <summary>Why a <c>workflow_run</c> trigger runs after the regenerate workflow's run on <paramref name="branch"/>, or

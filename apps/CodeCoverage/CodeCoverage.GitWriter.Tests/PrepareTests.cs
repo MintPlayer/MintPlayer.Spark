@@ -108,92 +108,50 @@ public class PrepareTests : WriterTestBase
     }
 
     /// <summary>
-    /// D12, §0 D63: unless the saga allows it (a same-repository pull request), a change under <c>.github/**</c> is refused.
-    /// A fork's prepared commit is the one the queue would push to <c>mq/</c> for a dispatch, and that push alone would
-    /// start the base repository's <c>push</c> workflows from the pushed commit's own workflow files, with its secrets.
-    /// </summary>
-    [Theory]
-    [InlineData(".github/workflows/regenerate.yml")]
-    [InlineData(".GitHub/actions/x/action.yml")]
-    public async Task A_change_under_github_is_refused_unless_the_saga_allows_it(string path)
-    {
-        var origin = Seed();
-        origin.Write(path, "on: push\n");
-        var head = origin.Commit("pr: touch workflows");
-        origin.Push("feature").PullRequest(1, "feature");
-
-        var response = await Writer.PrepareAsync(PrepareRequest(origin, head));
-
-        response.Outcome.Should().Be("evicted");
-        response.Reason.Should().Be("touches-workflows");
-        response.Paths.Should().Equal([path]);
-        origin.Ref($"refs/heads/{QueueBranch}").Should().BeNull();
-    }
-
-    /// <summary>
-    /// §0 D63 (O21 A): for a same-repository pull request the writer prepares the commit and reports the paths; whether
-    /// the entry may go on is the saga's call, because only it knows whether it will dispatch the regenerate workflow.
+    /// O25, §0 D67: the prepare pushes nothing (§0 D65), so it refuses no change under <c>.github/**</c>. It prepares the
+    /// commit and reports the paths, a fork's included, and the saga decides: such a change stops the entry only when the
+    /// regenerate workflow is to be dispatched (<c>MergeQueueWorkflowGuard</c>), and the queue-branch push refuses a
+    /// fork's itself (<see cref="QueueBranchTests"/>). Before, a request without <c>allowWorkflowChanges</c>, which the
+    /// saga sent for every fork, was evicted <c>touches-workflows</c> here.
     /// </summary>
     [Theory]
     [InlineData(".github/workflows/ci.yml")]
+    [InlineData(".github/workflows/regenerate.yml")]
+    [InlineData(".GitHub/actions/x/action.yml")]
     [InlineData(".GitHub/dependabot.yml")]
-    public async Task A_change_under_github_is_prepared_and_reported_when_the_saga_allows_it(string path)
+    public async Task A_change_under_github_is_prepared_and_reported_a_forks_too(string path)
     {
         var origin = Seed();
+        // A fork's pull request: the head exists only as refs/pull/1/head.
         origin.Write(path, "on: push\n");
         var head = origin.Commit("pr: touch workflows");
-        origin.Push("feature").PullRequest(1, "feature");
+        origin.PullRequest(1, "feature");
+        var refs = origin.InBare("for-each-ref", "--format=%(refname) %(objectname)");
 
-        var response = await Writer.PrepareAsync(PrepareRequest(origin, head, allowWorkflowChanges: true));
+        var response = await Writer.PrepareAsync(PrepareRequest(origin, head));
 
         response.Outcome.Should().Be("prepared", response.Detail);
         response.TouchesWorkflows.Should().BeTrue();
         response.Paths.Should().Equal([path]);
-        origin.Ref($"refs/heads/{QueueBranch}").Should().BeNull("§0 D65: only the queue-branch push writes there");
+        origin.InBare("for-each-ref", "--format=%(refname) %(objectname)").Should().Be(refs, "§0 D65: only the queue-branch push writes to the base repository");
     }
 
     /// <summary>
-    /// §0 D65: the guard reads the merged tree, not the pull request's net change. The base renamed a template into
+    /// §0 D65: the report reads the merged tree, not the pull request's net change. The base renamed a template into
     /// <c>.github/workflows/</c> after the pull request branched, and the pull request edited the template where it used
     /// to be: rename detection carries the edit into the workflow file, although the net change names no
-    /// <c>.github/</c> path. Before, the writer looked at the net change only and prepared this fork's commit as not
-    /// touching workflows, so the fork's <c>on: push</c> workflow would have run on the queue branch.
+    /// <c>.github/</c> path. Before D65, the writer looked at the net change only and reported nothing.
     /// </summary>
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task A_change_a_base_rename_carries_into_github_touches_the_workflows(bool allowWorkflowChanges)
+    [Fact]
+    public async Task A_change_a_base_rename_carries_into_github_touches_the_workflows()
     {
-        const string template = "docs/ci-template.yml";
         var origin = Seed();
-        origin.Checkout("main").Write(template, "name: ci\non: workflow_dispatch\njobs:\n  a:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo template\n");
-        origin.Commit("main: a workflow template");
-        origin.Push("main");
-        FixtureGit.Run(origin.Work, "checkout", "--quiet", "-B", "feature", "main");
-        origin.Write(template, "name: ci\non: push\njobs:\n  a:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo pull-request-code\n");
-        var head = origin.Commit("pr: edit the template");
-        origin.Push("feature").PullRequest(1, "feature");
-        origin.Checkout("main");
-        var content = File.ReadAllText(Path.Combine(origin.Work, template));
-        File.Delete(Path.Combine(origin.Work, template));
-        origin.Write(".github/workflows/ci.yml", content);
-        origin.Commit("main: the template becomes a workflow");
-        origin.Push("main");
-        FixtureGit.Run(origin.Bare, "diff-tree", "-r", "--no-renames", "--name-only", "main~1", head).Trim()
-            .Should().Be("docs/ci-template.yml", "the pull request's own change is outside .github/");
+        var head = BaseRenameCarriesIntoGithub(origin);
 
-        var response = await Writer.PrepareAsync(PrepareRequest(origin, head, allowWorkflowChanges: allowWorkflowChanges));
+        var response = await Writer.PrepareAsync(PrepareRequest(origin, head));
 
-        if (allowWorkflowChanges)
-        {
-            response.Outcome.Should().Be("prepared", response.Detail);
-            response.TouchesWorkflows.Should().BeTrue();
-        }
-        else
-        {
-            response.Outcome.Should().Be("evicted", response.Detail);
-            response.Reason.Should().Be("touches-workflows");
-        }
+        response.Outcome.Should().Be("prepared", response.Detail);
+        response.TouchesWorkflows.Should().BeTrue();
         response.Paths.Should().Equal([".github/workflows/ci.yml"]);
     }
 
@@ -226,6 +184,36 @@ public class PrepareTests : WriterTestBase
         changed.Outcome.Should().Be("prepared", changed.Detail);
         changed.BaseChangedWorkflows.Should().BeTrue();
         changed.TouchesWorkflows.Should().BeFalse("the commit holds the base's .github/ unchanged");
+    }
+
+    /// <summary>
+    /// §0 D59, O25, D67: the two reports split what a fork's publish brings into the fork's branch, which holds the pinned
+    /// head. <c>baseChangedWorkflows</c> is the prepared tree's <c>.github/workflows</c> against the head's: what the base
+    /// changed. <c>touchesWorkflows</c> is the prepared tree's <c>.github/</c> against the base's: the pull request's own
+    /// change, which O25 lets a fork's publish carry. Before, <c>baseChangedWorkflows</c> compared the base with the head,
+    /// so a change of the head alone set it too.
+    /// </summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_workflow_change_of_the_head_is_the_pull_requests_and_one_of_the_base_is_the_bases(bool baseChanges)
+    {
+        var origin = Seed();
+        origin.Write(".github/workflows/ci.yml", "on: push\n");
+        var head = origin.Commit("pr: a workflow");
+        origin.PullRequest(1, "feature");
+        origin.Checkout("main").Write("README.md", "seed\nmain moved\n");
+        if (baseChanges)
+            origin.Write(".github/workflows/release.yml", "on: workflow_dispatch\n");
+        origin.Commit("main: moved");
+        origin.Push("main");
+
+        var response = await Writer.PrepareAsync(PrepareRequest(origin, head));
+
+        response.Outcome.Should().Be("prepared", response.Detail);
+        response.TouchesWorkflows.Should().BeTrue();
+        response.Paths.Should().Equal([".github/workflows/ci.yml"]);
+        response.BaseChangedWorkflows.Should().Be(baseChanges, "the prepared tree holds the head's own workflow change, which a fork's branch has already");
     }
 
     [Fact]

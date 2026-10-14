@@ -253,6 +253,54 @@ public class MergeQueueForkGuardTests
         findings.Should().ContainSingle().Which.Path.Should().Be(".github/workflows/b.yml");
     }
 
+    // ── (4) What the queue commit's checks, statuses and deployments start (O25) ──────────────────────────
+
+    /// <summary>
+    /// O25: a check run, a check suite, a commit status or a deployment of the <c>mq/</c> commit starts these workflows
+    /// with this repository's secrets, and a job that checks out the commit the event names runs the fork's code. The
+    /// guard cannot tell whether a job does, so it counts every such trigger as unsafe, whatever its activity types, in
+    /// both reads: the base commit's workflows and the default branch's.
+    /// </summary>
+    [Theory]
+    [InlineData("on: check_run", 1)]
+    [InlineData("on: [pull_request, check_suite]", 1)]
+    [InlineData("on:\n  check_run:\n    types: [completed]", 2)]
+    [InlineData("on:\n  check_suite:\n    types: [completed, requested, rerequested]", 2)]
+    [InlineData("on:\n  status:", 2)]
+    [InlineData("on:\n  deployment_status:", 2)]
+    [InlineData("on:\n  deployment:", 2)]
+    [InlineData("on:\n  Status:", 2)]
+    public void A_workflow_the_queue_commits_checks_statuses_or_deployments_start_is_unsafe_in_both_reads(string on, int line)
+    {
+        var trigger = on.Split([' ', '\n', '[', ']', ','], StringSplitOptions.RemoveEmptyEntries)
+            .Select(t => t.TrimEnd(':').ToLowerInvariant())
+            .First(t => t is "check_run" or "check_suite" or "status" or "deployment_status" or "deployment");
+        var file = new ForgeWorkflowFile(".github/workflows/notify.yml", $"{on}\njobs:\n  a:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo\n");
+
+        foreach (var findings in new[] { Evaluate(pushed: [file]), Evaluate(alsoAtDefault: [file]) })
+        {
+            var finding = findings.Should().ContainSingle().Which;
+            finding.Path.Should().Be(".github/workflows/notify.yml");
+            finding.Line.Should().Be(line, "the finding points at the trigger");
+            finding.Problem.Should().StartWith($"`on: {trigger}`");
+            finding.Problem.Should().Contain(QueueBranch);
+            finding.Fix.Should().Contain("check out");
+        }
+    }
+
+    /// <summary>A workflow read at both refs is one finding when the base branch is the default branch and the file is the
+    /// same, and one per ref otherwise.</summary>
+    [Fact]
+    public void A_trigger_found_in_both_reads_is_listed_once_per_ref()
+    {
+        var file = new ForgeWorkflowFile(".github/workflows/notify.yml", "on: status\n");
+
+        MergeQueueForkGuard.Evaluate([file], "master", [new(RegeneratePath, SafeRegenerate), file], "master", "regenerate.yml", QueueBranch)
+            .Should().ContainSingle();
+        MergeQueueForkGuard.Evaluate([file], "release", [new(RegeneratePath, SafeRegenerate), file], "master", "regenerate.yml", "mq/release/pr-7")
+            .Select(f => f.Ref).Should().Equal(["release", "master"]);
+    }
+
     // ── The filter patterns themselves ───────────────────────────────────────────────────────────────
 
     [Theory]

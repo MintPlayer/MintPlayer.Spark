@@ -90,6 +90,32 @@ public abstract class WriterTestBase : IAsyncLifetime
         return head;
     }
 
+    /// <summary>
+    /// §0 D65's rename case: the base renamed a template into <c>.github/workflows/</c> after the pull request branched,
+    /// and the pull request edited the template where it used to be. merge-tree's rename detection carries the edit into
+    /// the workflow file, although the pull request's own change names no <c>.github/</c> path. Returns the PR head.
+    /// </summary>
+    internal static string BaseRenameCarriesIntoGithub(Origin origin)
+    {
+        const string template = "docs/ci-template.yml";
+        origin.Checkout("main").Write(template, "name: ci\non: workflow_dispatch\njobs:\n  a:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo template\n");
+        origin.Commit("main: a workflow template");
+        origin.Push("main");
+        FixtureGit.Run(origin.Work, "checkout", "--quiet", "-B", "feature", "main");
+        origin.Write(template, "name: ci\non: push\njobs:\n  a:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo pull-request-code\n");
+        var head = origin.Commit("pr: edit the template");
+        origin.Push("feature").PullRequest(1, "feature");
+        origin.Checkout("main");
+        var content = File.ReadAllText(Path.Combine(origin.Work, template));
+        File.Delete(Path.Combine(origin.Work, template));
+        origin.Write(".github/workflows/ci.yml", content);
+        origin.Commit("main: the template becomes a workflow");
+        origin.Push("main");
+        FixtureGit.Run(origin.Bare, "diff-tree", "-r", "--no-renames", "--name-only", "main~1", head).Trim()
+            .Should().Be(template, "the pull request's own change is outside .github/");
+        return head;
+    }
+
     protected static object Credential(string password) => new { username = "x-access-token", password };
 
     /// <summary>
@@ -97,7 +123,7 @@ public abstract class WriterTestBase : IAsyncLifetime
     /// A dictionary, so a test can replace or drop any of them.
     /// </summary>
     internal static Dictionary<string, object?> PrepareRequest(Origin origin, string headSha, string? baseSha = null,
-        object? autoResolve = null, string? password = null, bool allowWorkflowChanges = false)
+        object? autoResolve = null, string? password = null)
         => new()
         {
             ["provider"] = "github",
@@ -112,16 +138,17 @@ public abstract class WriterTestBase : IAsyncLifetime
             ["author"] = new { name = "Pull Request Author", email = "author@example.invalid", date = AuthorDate },
             ["committer"] = new { name = "coverage-bot", email = "bot@example.invalid", date = CommitterDate },
             ["message"] = "Add Order (#1)\n\nCo-authored-by: Someone <someone@example.invalid>\n",
-            ["allowWorkflowChanges"] = allowWorkflowChanges,
         };
 
-    /// <summary><c>POST /jobs/queue-branch</c> for <paramref name="prepared"/>: the prepare's fields, its answer, the lease.</summary>
-    internal static Dictionary<string, object?> QueueBranchRequest(Origin origin, Prepared prepared, string? expectedQueueSha = null, bool allowWorkflowChanges = false)
-        => With(PrepareRequest(origin, prepared.Head, prepared.Base, allowWorkflowChanges: allowWorkflowChanges), new()
+    /// <summary><c>POST /jobs/queue-branch</c> for <paramref name="prepared"/>: the prepare's fields, its answer, the lease,
+    /// and whether the pull request's head is a fork's (O25, §0 D67).</summary>
+    internal static Dictionary<string, object?> QueueBranchRequest(Origin origin, Prepared prepared, string? expectedQueueSha = null, bool headFromFork = false)
+        => With(PrepareRequest(origin, prepared.Head, prepared.Base), new()
         {
             ["preparedSha"] = prepared.Sha,
             ["queueBranch"] = QueueBranch,
             ["expectedQueueSha"] = expectedQueueSha,
+            ["headFromFork"] = headFromFork,
         });
 
     /// <summary><c>POST /jobs/publish</c> for <paramref name="prepared"/>: the prepare's fields, its answer, the patch.</summary>

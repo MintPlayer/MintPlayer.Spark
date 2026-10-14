@@ -57,6 +57,8 @@ public class HardeningTests : WriterTestBase
         { "a queue-branch push without the base", "queue-branch", new { baseSha = (string?)null }, "baseSha" },
         { "a publish without the base", "publish", new { baseSha = (string?)null }, "baseSha" },
         { "a publish without the prepared commit", "publish", new { preparedSha = (string?)null }, "preparedSha" },
+        // O25, §0 D67: the queue-branch push refuses a fork's .github change itself, so it must be told, never assume.
+        { "a queue-branch push that does not say whether the head is a fork's", "queue-branch", new { headFromFork = (bool?)null }, "headFromFork" },
     };
 
     /// <summary>

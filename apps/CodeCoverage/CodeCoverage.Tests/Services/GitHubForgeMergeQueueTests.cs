@@ -1048,16 +1048,25 @@ public class GitHubForgeMergeQueueTests
         (await Queue(refused).RevokeWriterAccessAsync(Target(), access)).Should().BeFalse();
     }
 
-    [Fact]
-    public async Task A_fork_that_allows_maintainer_edits_pushes_to_the_fork_with_a_token_scoped_to_the_base()
+    /// <summary>
+    /// §0 D59, O25: a fork's publish gets a token scoped to the base repository, the access "Allow edits by maintainers"
+    /// honours, with <c>workflows: write</c> exactly when the saga says its commit brings workflow files the fork's branch
+    /// may lack (the base's newer ones, or since O25 the fork's own change). The request names nothing else.
+    /// </summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_fork_that_allows_maintainer_edits_pushes_to_the_fork_with_a_token_scoped_to_the_base(bool pushesWorkflowChanges)
     {
         var minted = new List<string?>();
-        var push = await Queue(Minting(minted)).GetWriterAccessAsync(Target(), Pull(777, "contributor/widget", true), pushesWorkflowChanges: false);
+        var push = await Queue(Minting(minted)).GetWriterAccessAsync(Target(), Pull(777, "contributor/widget", true), pushesWorkflowChanges);
 
         push.Access!.CloneUrl.Should().Be("https://github.com/acme/widget.git");
         push.Access.PushUrl.Should().Be("https://github.com/contributor/widget.git");
         using var request = JsonDocument.Parse(minted.Single()!);
+        request.RootElement.EnumerateObject().Select(p => p.Name).Should().Equal(["repository_ids", "permissions"]);
         request.RootElement.GetProperty("repository_ids").EnumerateArray().Select(id => id.GetInt64()).Should().Equal([910040L], "S6: the base repository's write access is what the box honours");
+        Permissions(minted.Single()).Should().Equal(pushesWorkflowChanges ? ["contents=write", "workflows=write"] : ["contents=write"]);
         push.Access.ToString().Should().NotContain("ghs_job1");
     }
 

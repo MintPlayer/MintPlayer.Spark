@@ -119,11 +119,11 @@ public class MergeQueueEngineTests : CoverageRavenTest
             rebuild.BaseBranch.Should().Be(prepare.BaseBranch);
             rebuild.BaseSha.Should().Be(BaseSha);
             rebuild.AutoResolve.Should().Equal(prepare.AutoResolve);
-            rebuild.AllowWorkflowChanges.Should().Be(prepare.AllowWorkflowChanges);
         }
         prepare.Author.Date.Should().Be(date);
         prepare.Committer.Date.Should().Be(date);
         push.PreparedSha.Should().Be(Prepared);
+        push.HeadFromFork.Should().BeFalse("O25, §0 D67: the writer is told where the head lives");
         publish.PreparedSha.Should().Be(Prepared);
     }
 
@@ -1155,7 +1155,6 @@ public class MergeQueueEngineTests : CoverageRavenTest
         await h.DrainAsync();
 
         (await h.EntryAsync()).State.Should().Be(EMergeQueueEntryState.Merged);
-        h.Writer.Prepares.Single().AllowWorkflowChanges.Should().BeTrue("a same-repository branch's push runs nothing its author could not run");
         h.Queue.Dispatches.Should().BeEmpty();
         // §0 D59: the change touches .github/workflows/**, so the publish needs GitHub's workflow permission. The prepare
         // pushes nothing (§0 D65) and needs none, and without a dispatch there is no queue branch to delete.
@@ -1182,23 +1181,60 @@ public class MergeQueueEngineTests : CoverageRavenTest
         h.Writer.Publishes.Should().BeEmpty();
     }
 
-    /// <summary>§0 D63: a fork's change under .github/** is refused by the writer before any push, because the push to the
-    /// queue branch of the base repository would already start its push workflows from the fork's files.</summary>
+    /// <summary>
+    /// O25: without a dispatch, a fork's change under .github/** goes through like a same-repository one (O21 A). Since §0
+    /// D65 nothing of the pull request reaches this repository before the merge: the rebased commit goes to the fork's own
+    /// branch, where this repository's pull_request workflows run it without secrets, as they would without the queue.
+    /// The publish's token asks for the workflow permission (§0 D59): its commit changes a workflow file against its
+    /// parent, the base. Before O25 the entry was evicted touches-workflows.
+    /// </summary>
     [Fact]
-    public async Task A_forks_change_under_github_is_refused_before_anything_is_pushed()
+    public async Task A_forks_change_under_github_that_needs_no_regeneration_is_published_to_the_fork_and_merged()
     {
         var h = await HarnessAsync();
         h.Forge.PullRequests[Number] = PullRequest(fork: true, maintainerCanModify: true);
-        h.Writer.PrepareResults.Enqueue(new GitWriterPrepareResult(GitWriterOutcomes.Evicted, "touches-workflows", BaseSha, Head, null, [],
-            [".github/workflows/ci.yml"], "The pull request changes .github/**.", 10));
+        h.Writer.PrepareResults.Enqueue(TouchesWorkflows(FakeGitWriter.Prepared(BaseSha, Head, Prepared), ".github/workflows/ci.yml"));
+        h.Writer.PublishResults.Enqueue(FakeGitWriter.Published(Final));
 
         await h.EnqueueAsync();
         await h.DrainAsync();
 
-        h.Writer.Prepares.Single().AllowWorkflowChanges.Should().BeFalse();
         var entry = await h.EntryAsync();
-        entry.EvictionReason.Should().Be("touches-workflows");
+        entry.State.Should().Be(EMergeQueueEntryState.Merged);
+        entry.History.Should().Contain(e => e.Text.Contains("no workflow will be dispatched (O25)", StringComparison.Ordinal));
+        h.Writer.Publishes.Single().PushUrl.Should().Be("https://github.com/contributor/widget.git", "O3: the fork's branch");
+        h.Writer.QueueBranchPushes.Should().BeEmpty("nothing of the fork reaches a branch of this repository");
+        h.Queue.Dispatches.Should().BeEmpty();
+        h.Queue.WorkflowFileReads.Should().BeEmpty("without a dispatch there is no fork precondition to read");
+        h.Queue.WriterAccesses.Select(a => (a.Number, a.Workflows)).ToList().Should().Equal([((int?)null, false), (Number, true)]);
+    }
+
+    /// <summary>
+    /// O25: a fork's change under .github/** that needs the regenerate workflow ends before anything is pushed. The
+    /// queue-branch push would put the fork's workflow files on a branch of this repository, where its push workflows
+    /// run them with its secrets. Its own reason, so the check run and the guide can say no role bypasses it.
+    /// </summary>
+    [Fact]
+    public async Task A_forks_change_under_github_that_needs_regeneration_is_evicted_before_anything_is_pushed()
+    {
+        var h = await HarnessAsync();
+        h.Forge.PullRequests[Number] = PullRequest(fork: true, maintainerCanModify: true);
+        h.Writer.PrepareResults.Enqueue(TouchesWorkflows(FakeGitWriter.Prepared(BaseSha, Head, Prepared, "apps/A/App_Data/modelHashes.json"), ".github/workflows/ci.yml"));
+
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+
+        var entry = await h.EntryAsync();
+        entry.State.Should().Be(EMergeQueueEntryState.Evicted);
+        entry.EvictionReason.Should().Be("fork-touches-workflows");
+        entry.EvictionPaths.Should().Equal([".github/workflows/ci.yml"]);
         entry.EvictionMessage.Should().Contain("fork");
+        entry.EvictionMessage.Should().Contain("mq/master/pr-7");
+        entry.EvictionMessage.Should().Contain("no role");
+        h.Writer.QueueBranchPushes.Should().BeEmpty();
+        h.Queue.Dispatches.Should().BeEmpty();
+        h.Writer.Publishes.Should().BeEmpty();
+        h.Queue.WorkflowFileReads.Should().BeEmpty("the plan ends it before the fork precondition is read");
     }
 
     // ── O22: the bypass role (§0 D64) ───────────────────────────────────────────────────────────────────
@@ -1274,6 +1310,8 @@ public class MergeQueueEngineTests : CoverageRavenTest
         h.Queue.Dispatches.Should().BeEmpty();
     }
 
+    /// <summary>O25, O22: a fork's .github/** change that needs the regenerate workflow is evicted whoever queued it; the
+    /// bypass role lets only a same-repository one through.</summary>
     [Fact]
     public async Task The_bypass_role_never_lets_a_forks_github_change_through()
     {
@@ -1281,14 +1319,14 @@ public class MergeQueueEngineTests : CoverageRavenTest
         await SetBypassRoleAsync(h, EMergeQueueBypassRole.Maintain);
         h.Queue.Roles["owner"] = EForgeRepositoryRole.Admin;
         h.Forge.PullRequests[Number] = PullRequest(fork: true, maintainerCanModify: true);
-        h.Writer.PrepareResults.Enqueue(new GitWriterPrepareResult(GitWriterOutcomes.Evicted, "touches-workflows", BaseSha, Head, null, [],
-            [".github/workflows/ci.yml"], "The pull request changes .github/**.", 10));
+        RegeneratedGitHubChange(h);
 
         await h.EnqueueAsync("owner");
         await h.DrainAsync();
 
-        h.Writer.Prepares.Single().AllowWorkflowChanges.Should().BeFalse("T5: a fork's change is refused before any push, whoever queued it");
-        (await h.EntryAsync()).EvictionReason.Should().Be("touches-workflows");
+        (await h.EntryAsync()).EvictionReason.Should().Be("fork-touches-workflows", "T5: a fork's workflow files never reach mq/, whoever queued them");
+        h.Writer.QueueBranchPushes.Should().BeEmpty();
+        h.Queue.Dispatches.Should().BeEmpty();
     }
 
     [Fact]
@@ -1469,20 +1507,33 @@ public class MergeQueueEngineTests : CoverageRavenTest
         h.Handled.Should().Contain(s => s.Step == EMergeQueueStep.Cleanup);
     }
 
+    /// <summary>
+    /// §0 D59, O25: a publish's token asks for the workflow permission exactly when its commit brings workflow files the
+    /// target branch may lack. A same-repository publish: its own <c>.github/workflows/**</c> change (the base's workflow
+    /// files are on the base branch already). A fork's, whose branch holds the pinned head: what the base changed since
+    /// the head, or the fork's own change against the base, which O25 lets through when nothing is dispatched. A file
+    /// under <c>.github/</c> but outside <c>workflows/</c> needs nothing.
+    /// </summary>
     [Theory]
-    [InlineData(true, true, true)]
-    [InlineData(true, false, false)]
-    [InlineData(false, true, false)]
-    public async Task Only_a_forks_publish_after_the_base_changed_its_workflows_asks_for_the_workflow_permission(bool fork, bool baseChangedWorkflows, bool workflows)
+    [InlineData(true, true, null, true)]
+    [InlineData(true, false, ".github/workflows/ci.yml", true)]
+    [InlineData(true, false, ".github/dependabot.yml", false)]
+    [InlineData(true, false, null, false)]
+    [InlineData(false, true, null, false)]
+    [InlineData(false, false, ".github/workflows/ci.yml", true)]
+    public async Task A_publish_asks_for_the_workflow_permission_exactly_when_its_commit_brings_workflow_files_its_branch_may_lack(
+        bool fork, bool baseChangedWorkflows, string? ownChange, bool workflows)
     {
         var h = await HarnessAsync();
         h.Forge.PullRequests[Number] = PullRequest(fork: fork, maintainerCanModify: true);
-        h.Writer.PrepareResults.Enqueue(FakeGitWriter.Prepared(BaseSha, Head, Prepared) with { BaseChangedWorkflows = baseChangedWorkflows });
+        var prepared = FakeGitWriter.Prepared(BaseSha, Head, Prepared) with { BaseChangedWorkflows = baseChangedWorkflows };
+        h.Writer.PrepareResults.Enqueue(ownChange is null ? prepared : TouchesWorkflows(prepared, ownChange));
         h.Writer.PublishResults.Enqueue(FakeGitWriter.Published(Final));
 
         await h.EnqueueAsync();
         await h.DrainAsync();
 
+        (await h.EntryAsync()).State.Should().Be(EMergeQueueEntryState.Merged);
         h.Queue.WriterAccesses.Select(a => (a.Number, a.Workflows)).ToList().Should().Equal([((int?)null, false), (Number, workflows)]);
         h.Writer.Publishes.Single().PushUrl.Should().Be(fork ? "https://github.com/contributor/widget.git" : null);
     }
@@ -1540,7 +1591,9 @@ public class MergeQueueEngineTests : CoverageRavenTest
         var entry = await h.EntryAsync();
         entry.State.Should().Be(EMergeQueueEntryState.Regenerating);
         entry.History.Should().Contain(e => e.Text.StartsWith("the fork precondition holds", StringComparison.Ordinal));
-        h.Writer.QueueBranchPushes.Should().ContainSingle().Which.PreparedSha.Should().Be(Prepared);
+        var push = h.Writer.QueueBranchPushes.Should().ContainSingle().Which;
+        push.PreparedSha.Should().Be(Prepared);
+        push.HeadFromFork.Should().BeTrue("O25, §0 D67: the writer refuses a fork's .github change on its own");
         h.Queue.Dispatches.Should().ContainSingle();
         entry.QueueBranchSha.Should().Be(Prepared);
     }
@@ -1590,6 +1643,60 @@ public class MergeQueueEngineTests : CoverageRavenTest
         h.Writer.QueueBranchPushes.Should().BeEmpty();
         h.Queue.WorkflowFileReads.Should().BeEmpty("nothing is pushed to this repository, so no workflow here can run the fork's code");
         h.Writer.Deletes.Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// O25: a check, a commit status or a deployment of the queue branch's commit starts these workflows with this
+    /// repository's secrets, and such a workflow often checks out the commit the event names: the fork's code. The fork
+    /// precondition reads them at the base commit and on the default branch, whatever their activity types.
+    /// </summary>
+    [Theory]
+    [InlineData("check_run", true)]
+    [InlineData("check_suite", false)]
+    [InlineData("status", true)]
+    [InlineData("deployment_status", false)]
+    public async Task A_forks_dispatch_is_refused_while_a_workflow_runs_on_the_queue_commits_checks_statuses_or_deployments(string trigger, bool atTheBaseCommit)
+    {
+        var h = await ForkNeedingRegenerationAsync();
+        h.Queue.WorkflowFiles[atTheBaseCommit ? BaseSha : "master"].Add(new(".github/workflows/notify.yml",
+            $"name: notify\non:\n  {trigger}:\n    types: [completed]\njobs:\n  a:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo\n"));
+
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+
+        var entry = await h.EntryAsync();
+        entry.State.Should().Be(EMergeQueueEntryState.Evicted);
+        entry.EvictionReason.Should().Be("fork-unsafe-workflows");
+        entry.EvictionPaths.Should().Equal([".github/workflows/notify.yml"]);
+        entry.EvictionMessage.Should().Contain($"`.github/workflows/notify.yml` on `master`, line 3: `on: {trigger}`");
+        entry.EvictionMessage.Should().Contain("check out");
+        h.Writer.QueueBranchPushes.Should().BeEmpty();
+        h.Queue.Dispatches.Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// O25, §0 D67: the git writer refuses to push a fork's .github/** change to the queue branch on its own, whatever the
+    /// saga asked. Its refusal ends the entry with the plan's reason; nothing is dispatched.
+    /// </summary>
+    [Fact]
+    public async Task A_queue_branch_push_the_writer_refuses_for_a_forks_github_change_evicts_without_dispatching()
+    {
+        var h = await ForkNeedingRegenerationAsync();
+        h.Writer.QueueBranchResults.Enqueue(new GitWriterQueueBranchResult(GitWriterOutcomes.ForkTouchesWorkflows, null, null, [".github/workflows/ci.yml"],
+            "The pull request's head is a fork's, and the commit changes .github/ against its base: mq/master/pr-7 is a branch of this repository.", 10));
+
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+
+        h.Writer.QueueBranchPushes.Should().ContainSingle().Which.HeadFromFork.Should().BeTrue();
+        var entry = await h.EntryAsync();
+        entry.State.Should().Be(EMergeQueueEntryState.Evicted);
+        entry.EvictionReason.Should().Be("fork-touches-workflows");
+        entry.EvictionPaths.Should().Equal([".github/workflows/ci.yml"]);
+        entry.EvictionMessage.Should().Contain("git writer");
+        h.Queue.Dispatches.Should().BeEmpty();
+        entry.QueueBranchSha.Should().BeNull();
+        h.Writer.Deletes.Should().BeEmpty("nothing was pushed, so nothing is deleted");
     }
 
     /// <summary>§0 D65: the queue-branch push carries the commit the saga holds or nothing; a rebuild that differs would

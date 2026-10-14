@@ -103,9 +103,9 @@
               With the App exempt, <em>Squash and merge</em> is blocked for everyone else, maintainers included; their
               <code>write</code> role still lets them queue. Repository admins can still merge by hand, through the pull
               request only and never by a direct push, for what the queue refuses by design: a pull request from an
-              organization-owned fork, a fork push GitHub refused (<code>fork-push-rejected</code>), a change under
-              <code>.github/</code> from a fork, and one from the repository itself that also needs regenerating and
-              was queued without the merge queue bypass role (step 8). Ruleset 2 still holds them to its reviews and
+              organization-owned fork, a fork push GitHub refused (<code>fork-push-rejected</code>), and a change under
+              <code>.github/</code> that also needs regenerating, from a fork whoever queued it, or from the repository
+              itself queued without the merge queue bypass role (step 8). Ruleset 2 still holds them to its reviews and
               checks, unless you list them as its bypass actors (step 4).
             </p>
             <ng-container *ngTemplateOutlet="shot; context: { $implicit: shots.ruleset1Bypass }" />
@@ -225,10 +225,11 @@
             <p>
               Before every dispatch, the queue checks that the <code>mq/</code> branch's copy of the workflow equals the
               default branch's; nothing bypasses that. A pull request that changes anything under <code>.github/</code>
-              leaves the queue (<code>touches-workflows</code>): from a fork always, before anything is pushed, and from
-              the repository itself when it would need this workflow, unless whoever queued it holds the
-              <strong>Merge queue bypass role</strong> (step 8). Keep <code>timeout-minutes</code> at or below
-              <code>postRebaseTimeout</code>.
+              and would need this workflow leaves the queue before anything is pushed: from a fork always
+              (<code>fork-touches-workflows</code>), and from the repository itself (<code>touches-workflows</code>)
+              unless whoever queued it holds the <strong>Merge queue bypass role</strong> (step 8). One that needs no
+              regeneration goes through, a fork's too: nothing of it reaches your repository before the merge. Keep
+              <code>timeout-minutes</code> at or below <code>postRebaseTimeout</code>.
             </p>
             <h3 class="h6 mt-4">Your other workflows</h3>
             <p class="mb-1">
@@ -246,9 +247,11 @@
               pushes there, the queue reads your workflows and removes the pull request
               (<code>fork-unsafe-workflows</code>, naming the file, the line and the fix) while a <code>push:</code> or
               <code>create:</code> trigger would start on that branch (<code>paths:</code> filters do not count), this
-              workflow grants more than <code>contents: read</code>, reads a secret or may run on a self-hosted runner, or
-              a <code>workflow_run:</code> trigger follows this workflow there. Anything the queue cannot read counts
-              against it.
+              workflow grants more than <code>contents: read</code>, reads a secret or may run on a self-hosted runner,
+              a <code>workflow_run:</code> trigger follows this workflow there, or any workflow runs on
+              <code>check_run</code>, <code>check_suite</code>, <code>status</code>, <code>deployment</code> or
+              <code>deployment_status</code>: a check, a status or a deployment of the <code>mq/</code> commit starts it
+              with your secrets, and it may check that commit out. Anything the queue cannot read counts against it.
             </bs-alert>
           }
           @case ('forks') {

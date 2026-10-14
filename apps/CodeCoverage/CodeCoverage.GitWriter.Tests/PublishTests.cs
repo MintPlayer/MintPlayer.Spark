@@ -91,6 +91,62 @@ public class PublishTests : WriterTestBase
     }
 
     /// <summary>
+    /// O25, §0 D67: a fork's change under <c>.github/</c> that needs no regeneration is published to the fork's branch,
+    /// and nothing of it reaches the base repository: the base's <c>pull_request</c> workflows then run on it without
+    /// secrets, as they would without the queue. Before, the rebuild refused it (<c>evicted</c>, <c>touches-workflows</c>),
+    /// as the prepare did.
+    /// </summary>
+    [Fact]
+    public async Task A_forks_change_under_github_is_published_to_the_fork_and_never_to_the_base_repository()
+    {
+        var origin = Seed();
+        // A fork's pull request: the head exists only as refs/pull/1/head, and in the fork.
+        origin.Write(".github/workflows/ci.yml", "on: push\njobs:\n  a:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo pull-request-code\n");
+        var head = origin.Commit("pr: a workflow");
+        origin.PullRequest(1, "feature");
+        origin.Checkout("main").Write("README.md", "seed\nmain moved\n");
+        var baseSha = origin.Commit("main: readme");
+        origin.Push("main");
+        var fork = Fork(origin, "feature");
+        var refs = origin.InBare("for-each-ref", "--format=%(refname) %(objectname)");
+
+        var prepare = await Writer.PrepareAsync(PrepareRequest(origin, head, baseSha: baseSha));
+        prepare.Outcome.Should().Be("prepared", prepare.Detail);
+        prepare.TouchesWorkflows.Should().BeTrue();
+        var publish = await Writer.PublishAsync(PublishRequest(origin, new Prepared(prepare.PreparedSha!, head, prepare.BaseSha!), pushUrl: fork.Url));
+
+        publish.Outcome.Should().Be("published", publish.Detail);
+        fork.Ref("refs/heads/feature").Should().Be(prepare.PreparedSha, "O3: the fork's branch is the one rewritten");
+        fork.InBare("cat-file", "blob", $"{prepare.PreparedSha}:.github/workflows/ci.yml").Should().Contain("pull-request-code");
+        origin.InBare("for-each-ref", "--format=%(refname) %(objectname)").Should().Be(refs, "no ref of the base repository moved or appeared");
+        fork.InBare("fsck", "--no-dangling", "--strict");
+    }
+
+    /// <summary>
+    /// O25, §0 D67: the publish needs no fork rule of its own. Sent without the fork's push URL (a defect in the saga), it
+    /// would push to the base repository, and its lease on the pinned head refuses that: a fork's head is on no branch
+    /// there, so no branch is created and none moves.
+    /// </summary>
+    [Fact]
+    public async Task A_forks_publish_sent_to_the_base_repository_creates_nothing_there()
+    {
+        var origin = Seed();
+        // A fork's pull request: the head exists only as refs/pull/1/head.
+        origin.Write(".github/workflows/ci.yml", "on: push\njobs:\n  a:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo pull-request-code\n");
+        var head = origin.Commit("pr: a workflow");
+        origin.PullRequest(1, "feature");
+        var refs = origin.InBare("for-each-ref", "--format=%(refname) %(objectname)");
+        var prepare = await Writer.PrepareAsync(PrepareRequest(origin, head));
+        prepare.Outcome.Should().Be("prepared", prepare.Detail);
+
+        var publish = await Writer.PublishAsync(PublishRequest(origin, new Prepared(prepare.PreparedSha!, head, prepare.BaseSha!)));
+
+        publish.Outcome.Should().Be("branch-moved", publish.Detail);
+        origin.Ref("refs/heads/feature").Should().BeNull();
+        origin.InBare("for-each-ref", "--format=%(refname) %(objectname)").Should().Be(refs, "no ref of the base repository moved or appeared");
+    }
+
+    /// <summary>
     /// §0 D57: a repository without a regenerate step has no <c>regeneratedPaths</c>, and its publishes carry no patch. The
     /// writer refused such a request with a 400, so every case-2 pull request of such a repository ended as <c>error</c>.
     /// </summary>

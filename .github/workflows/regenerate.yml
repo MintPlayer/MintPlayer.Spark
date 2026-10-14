@@ -7,8 +7,9 @@ name: regenerate
 # pushes it with the App token.
 #
 # SECURITY: this workflow builds and runs untrusted pull-request code. No secrets, no environment, no
-# `id-token`, no self-hosted runner, and `persist-credentials: false` on the checkout. The queue evicts a
-# PR that touches .github/** and checks this file's blob on the mq/ branch against master's before it
+# `id-token`, no self-hosted runner, and `persist-credentials: false` on the checkout. The queue never
+# dispatches it for a PR that touches .github/** (unless the bypass role lets a same-repository one
+# through; a fork's never, O25), and checks this file's blob on the mq/ branch against master's before it
 # dispatches (D12), because a dispatched run uses the workflow file from the dispatched branch.
 #
 # The app list is the verify steps' list in pull-request.yml; keep the two equal.
@@ -26,7 +27,7 @@ on:
         description: The merge queue's id for this attempt (shown in the run name only).
         required: true
 
-run-name: regenerate PR #${{ inputs.pr_number }} (${{ inputs.queue_run_id }})
+run-name: 'regenerate PR #${{ inputs.pr_number }} (${{ inputs.queue_run_id }})'
 
 permissions:
   contents: read

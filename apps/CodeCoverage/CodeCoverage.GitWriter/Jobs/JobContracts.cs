@@ -59,13 +59,6 @@ public class PrepareRequestWire
     public IdentityWire? Author { get; set; }
     public IdentityWire? Committer { get; set; }
     public string? Message { get; set; }
-
-    /// <summary>
-    /// Whether the commit may change <c>.github/**</c> against its base (§0 D63, D65). False (the default, and a fork's
-    /// pull request): such a change is evicted <c>touches-workflows</c>. True: it is prepared and reported
-    /// (<see cref="PrepareResponse.TouchesWorkflows"/>), and the saga decides.
-    /// </summary>
-    public bool AllowWorkflowChanges { get; set; }
 }
 
 /// <summary>
@@ -82,6 +75,14 @@ public sealed class QueueBranchPushWire : PrepareRequestWire
     public string? QueueBranch { get; set; }
     /// <summary>The lease on the queue branch: the commit it must still be at, or null for "must not exist".</summary>
     public string? ExpectedQueueSha { get; set; }
+
+    /// <summary>
+    /// Required: whether the pull request's head lives in a fork (O3). A fork's commit whose <c>.github</c> differs from
+    /// its base's is then refused (<c>fork-touches-workflows</c>) and nothing is pushed, whatever else the request says:
+    /// the push would run the fork's workflow files with the base repository's secrets (O25, §0 D67). The saga never asks
+    /// for that push; this holds if it did.
+    /// </summary>
+    public bool? HeadFromFork { get; set; }
 }
 
 /// <summary>
@@ -121,19 +122,21 @@ public sealed record PrepareResponse(
     string Outcome, string? Reason, string? BaseSha, string? HeadSha, string? PreparedSha,
     IReadOnlyList<string> ResolvedPaths, IReadOnlyList<string> Paths, string? Detail, long DurationMs)
 {
-    /// <summary>The prepared commit changes <c>.github/**</c> against its base (D12, §0 D65): the saga decides what that
-    /// stops (§0 D63).</summary>
+    /// <summary>The prepared commit changes <c>.github/**</c> against its base (D12, §0 D65): the pull request's own change,
+    /// or one a rename on the base carries there. Never refused here, a fork's included, since the prepare pushes nothing:
+    /// the saga decides what it stops (O21 A, O25), and the queue-branch push refuses a fork's itself (§0 D67).</summary>
     public bool TouchesWorkflows { get; init; }
 
     /// <summary>
-    /// The base's <c>.github/workflows</c> differs from the pinned head's (§0 D59). A fork that holds only the head lacks
-    /// the base's workflow files, so publishing to it needs the forge's workflow permission.
+    /// The prepared commit's <c>.github/workflows</c> differs from the pinned head's (§0 D59, D67): the base changed workflow
+    /// files since. A fork's branch, which holds the head, lacks them, so publishing to it needs the forge's workflow
+    /// permission. The pull request's own workflow change is <see cref="TouchesWorkflows"/> instead.
     /// </summary>
     public bool BaseChangedWorkflows { get; init; }
 }
 
 /// <param name="PreparedSha">For <c>pushed</c>: the commit the queue branch holds now.</param>
-/// <param name="Paths">Why, for <c>evicted</c>.</param>
+/// <param name="Paths">Why, for <c>evicted</c> and <c>fork-touches-workflows</c>.</param>
 public sealed record QueueBranchPushResponse(string Outcome, string? Reason, string? PreparedSha, IReadOnlyList<string> Paths, string? Detail, long DurationMs);
 
 public sealed record PublishResponse(string Outcome, string? Reason, string? FinalSha, IReadOnlyList<string> Paths, string? Detail, long DurationMs);
@@ -157,6 +160,11 @@ public static class JobOutcomes
     public const string BaseMoved = "base-moved";
     /// <summary>The queue-branch push: the queue branch holds the prepared commit (<c>preparedSha</c>).</summary>
     public const string Pushed = "pushed";
+    /// <summary>
+    /// The queue-branch push: the request's head is a fork's and the prepared commit's <c>.github</c> differs from its
+    /// base's (<c>paths</c>), so nothing was pushed, whatever else the request said (O25, §0 D67). The saga ends the entry.
+    /// </summary>
+    public const string ForkTouchesWorkflows = "fork-touches-workflows";
     /// <summary>
     /// The queue-branch push and the publish: the prepared commit rebuilt from the request is not <c>preparedSha</c>
     /// (§0 D65). Sending the same request again builds the same commit, so the saga does not retry it.
@@ -193,9 +201,6 @@ public static class JobReasons
     public const string Auth = "auth";
     public const string NotFound = "not-found";
     public const string Error = "error";
-    /// <summary>D12, §0 D63, D65: the commit changes <c>.github/**</c> against its base and the request did not allow it
-    /// (<see cref="PrepareRequestWire.AllowWorkflowChanges"/>); nothing was pushed.</summary>
-    public const string TouchesWorkflows = "touches-workflows";
     /// <summary>
     /// Not a failure: <c>pushed</c> or <c>published</c> with the commit an earlier attempt of the same job already pushed,
     /// whose answer never reached the saga (merge-queue PRD D51 (1), D52). The branch was left as it was.

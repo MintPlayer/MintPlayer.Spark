@@ -180,16 +180,17 @@ public sealed record GitWriterAutoResolve(string Path, IReadOnlyList<string>? Ke
 /// the same commit (§0 D65). <paramref name="BaseSha"/>: for the prepare, the base branch must still be there; for the
 /// others, the base the prepared commit was built on. <paramref name="HeadSha"/> is the publish's lease too.
 /// </summary>
-/// <param name="AllowWorkflowChanges">Whether the commit may change <c>.github/**</c> against its base (§0 D63): false makes
-/// the writer refuse it (<c>touches-workflows</c>).</param>
 public sealed record GitWriterPrepareRequest(
     string Provider, string RepoId, string CloneUrl, SidecarCredential Credential, string BaseBranch, string? BaseSha,
     string HeadRef, string HeadSha, IReadOnlyList<GitWriterAutoResolve> AutoResolve,
-    GitWriterIdentity Author, GitWriterIdentity Committer, string Message, bool AllowWorkflowChanges = false);
+    GitWriterIdentity Author, GitWriterIdentity Committer, string Message);
 
 /// <summary>The body of <c>POST /jobs/queue-branch</c> (§0 D65): the prepare's fields (sent at the top level), the commit
 /// the prepare answered, and the lease; <paramref name="ExpectedQueueSha"/> null means the queue branch must not exist.</summary>
-public sealed record GitWriterQueueBranchRequest(GitWriterPrepareRequest Prepare, string PreparedSha, string QueueBranch, string? ExpectedQueueSha);
+/// <param name="HeadFromFork">The pull request's head lives in a fork. The writer then refuses a commit whose
+/// <c>.github</c> differs from its base's (<c>fork-touches-workflows</c>), whatever else the request says (O25, §0 D67).
+/// Required on the wire.</param>
+public sealed record GitWriterQueueBranchRequest(GitWriterPrepareRequest Prepare, string PreparedSha, string QueueBranch, string? ExpectedQueueSha, bool HeadFromFork);
 
 /// <summary>The body of <c>POST /jobs/publish</c>: the prepare's fields (sent at the top level) and the commit it
 /// answered. <paramref name="Patch"/> is the regenerate artifact's bytes, base64, or null when nothing was regenerated;
@@ -206,15 +207,17 @@ public sealed record GitWriterPrepareResult(
     string Outcome, string? Reason, string? BaseSha, string? HeadSha, string? PreparedSha,
     IReadOnlyList<string> ResolvedPaths, IReadOnlyList<string> Paths, string? Detail, long DurationMs)
 {
-    /// <summary>The commit changes <c>.github/**</c> against its base (D12, §0 D65); the saga decides what that stops (§0 D63).</summary>
+    /// <summary>The commit changes <c>.github/**</c> against its base (D12, §0 D65); the saga decides what that stops
+    /// (<see cref="MergeQueueWorkflowGuard"/>).</summary>
     public bool TouchesWorkflows { get; init; }
 
-    /// <summary>The base's <c>.github/workflows</c> differs from the pinned head's (§0 D59): a fork's publish needs the
-    /// forge's workflow permission.</summary>
+    /// <summary>The commit's <c>.github/workflows</c> differs from the pinned head's (§0 D59, D67): the base changed
+    /// workflow files since, which a fork's branch lacks.</summary>
     public bool BaseChangedWorkflows { get; init; }
 }
 
 /// <param name="PreparedSha">For <c>pushed</c>: the commit the queue branch holds now.</param>
+/// <param name="Paths">Why, for <c>evicted</c> and <c>fork-touches-workflows</c>.</param>
 public sealed record GitWriterQueueBranchResult(string Outcome, string? Reason, string? PreparedSha, IReadOnlyList<string> Paths, string? Detail, long DurationMs);
 
 public sealed record GitWriterPublishResult(string Outcome, string? Reason, string? FinalSha, IReadOnlyList<string> Paths, string? Detail, long DurationMs);
@@ -229,6 +232,11 @@ public static class GitWriterOutcomes
     public const string HeadMismatch = "head-mismatch";
     public const string BaseMoved = "base-moved";
     public const string Pushed = "pushed";
+
+    /// <summary>The queue-branch push: the head is a fork's and the commit changes <c>.github</c> against its base, so
+    /// nothing was pushed (O25, §0 D67).</summary>
+    public const string ForkTouchesWorkflows = "fork-touches-workflows";
+
     public const string PreparedDiffers = "prepared-differs";
     public const string QueueBranchMoved = "queue-branch-moved";
     public const string PatchRejected = "patch-rejected";

@@ -14,23 +14,27 @@ public class GitWriterSidecarClientTests
         [new GitWriterAutoResolve("**/App_Data/modelHashes.json", AnyLine: true)],
         new GitWriterIdentity("author", "author@users.noreply.github.com", new DateTimeOffset(2026, 10, 14, 9, 30, 0, TimeSpan.Zero)),
         new GitWriterIdentity("CodeCoverage merge queue", "merge-queue@noreply.coverage.mintplayer.com", new DateTimeOffset(2026, 10, 14, 9, 30, 0, TimeSpan.Zero)),
-        "Add widgets (#7)", AllowWorkflowChanges: true);
+        "Add widgets (#7)");
 
-    [Fact]
-    public void A_queue_branch_push_is_one_flat_object_with_the_prepares_fields()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_queue_branch_push_is_one_flat_object_with_the_prepares_fields(bool headFromFork)
     {
-        var body = GitWriterSidecarClient.Body(new GitWriterQueueBranchRequest(Prepare, "4444444444444444444444444444444444444444", "mq/master/pr-7", null));
+        var body = GitWriterSidecarClient.Body(new GitWriterQueueBranchRequest(Prepare, "4444444444444444444444444444444444444444", "mq/master/pr-7", null, headFromFork));
 
         body.ContainsKey("prepare").Should().BeFalse();
         body["baseSha"]!.GetValue<string>().Should().Be("1111111111111111111111111111111111111111");
         body["headSha"]!.GetValue<string>().Should().Be("3333333333333333333333333333333333333333");
         body["author"]!["date"]!.GetValue<DateTimeOffset>().Should().Be(new DateTimeOffset(2026, 10, 14, 9, 30, 0, TimeSpan.Zero));
         body["committer"]!["date"].Should().NotBeNull();
-        body["allowWorkflowChanges"]!.GetValue<bool>().Should().BeTrue();
         body["credential"]!["password"]!.GetValue<string>().Should().Be("job-token");
         body["preparedSha"]!.GetValue<string>().Should().Be("4444444444444444444444444444444444444444");
         body["queueBranch"]!.GetValue<string>().Should().Be("mq/master/pr-7");
         body.ContainsKey("expectedQueueSha").Should().BeTrue("null means the branch must not exist, so it is sent");
+        // O25, §0 D67: the writer requires it, and refuses a fork's .github change itself; nothing on the wire allows one.
+        body["headFromFork"]!.GetValue<bool>().Should().Be(headFromFork);
+        body.ContainsKey("allowWorkflowChanges").Should().BeFalse();
     }
 
     [Fact]

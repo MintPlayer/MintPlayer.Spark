@@ -536,10 +536,10 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                 entry.WorkflowPaths = result.TouchesWorkflows ? [.. result.Paths] : [];
                 Remember(entry, prepared);
                 // O22: the bypass role matters here only for a same-repository change under .github/** (a fork's never
-                // gets this far, §0 D63); the enqueuer's role is read now, when it decides.
+                // bypasses, O25); the enqueuer's role is read now, when it decides.
                 var bypass = result.TouchesWorkflows && !entry.IsFork
                     && Bypasses(await context.Queue.GetActorRoleAsync(repository, entry.EnqueuedBy, ct), entry.Config.BypassRole);
-                // §0 D63: whether to dispatch is decided in one place, together with what a .github/** change may do.
+                // §0 D63, D67: whether to dispatch is decided in one place, together with what a .github/** change may do.
                 var plan = MergeQueueWorkflowGuard.AfterPrepare(entry.Config, entry.ResolvedPaths.Count, result.TouchesWorkflows, entry.IsFork, bypass);
                 entry.WorkflowGuardBypassed = plan == EMergeQueuePlan.Dispatch && result.TouchesWorkflows;
                 switch (plan)
@@ -552,9 +552,12 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                     case EMergeQueuePlan.Publish:
                         // §0 D65: nothing is dispatched, so the queue branch is never created.
                         Transition(entry, EMergeQueueEntryState.Publishing, $"prepared {Short(prepared)} on {Short(entry.BaseSha)}; nothing to regenerate"
-                            + (result.TouchesWorkflows ? "; its .github/** change goes through, as no workflow will be dispatched (O21 A)" : string.Empty));
+                            + (result.TouchesWorkflows ? $"; its .github/** change goes through, as no workflow will be dispatched ({(entry.IsFork ? "O25" : "O21 A")})" : string.Empty));
                         await ScheduleAsync(entry, EMergeQueueStep.Publish, null, ct);
                         break;
+                    case EMergeQueuePlan.EvictForkTouchesWorkflows:
+                        await EvictAsync(context, entry, ForkTouchesWorkflows, ForkTouchesWorkflowsMessage(entry, "Nothing was pushed"), result.Paths, ct: ct);
+                        return;
                     default:
                         await EvictAsync(context, entry, "touches-workflows",
                             "The pull request changes files under `.github/` and needs the regenerate workflow, whose run would execute the queue branch's "
@@ -582,19 +585,22 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         }
     }
 
-    /// <summary>The writer's <c>evicted</c>: a conflict it may not resolve, or a <c>.github/**</c> change it may not
-    /// prepare (D12, §0 D63, D65), from a prepare or from a rebuild.</summary>
+    /// <summary>The writer's <c>evicted</c>: a conflict it may not resolve (O1, O2), from a prepare or from a rebuild.</summary>
     private Task EvictWriterAsync(Context context, MergeQueueEntry entry, string? reason, string? detail, IReadOnlyList<string> paths, CancellationToken ct)
         => EvictAsync(context, entry, reason ?? "conflict",
-            reason == "touches-workflows"
-                ? (entry.IsFork
-                    ? "The pull request comes from a fork and changes files under `.github/` (its own change, or one a rename on the base carries there). The queue "
-                      + "never prepares such a commit: pushing it to a branch of this repository would start this repository's push workflows from the fork's "
-                      + "own workflow files (D12, §0 D63, D65). Merge it by hand."
-                    : "The pull request changes files under `.github/`, which the git writer would not push (D12). Merge it by hand.")
-                : $"Rebasing onto `{entry.BaseBranch}` conflicts in files the queue may not resolve ({reason}). Only generated files are resolved automatically (O1); rebase by hand and queue it again."
-                  + (detail is { Length: > 0 } text ? $"\n\n{text}" : string.Empty),
+            $"Rebasing onto `{entry.BaseBranch}` conflicts in files the queue may not resolve ({reason}). Only generated files are resolved automatically (O1); rebase by hand and queue it again."
+            + (detail is { Length: > 0 } text ? $"\n\n{text}" : string.Empty),
             paths, ct: ct);
+
+    /// <summary>O25: a fork's change under <c>.github/**</c> that needs the regenerate workflow. Never bypassed.</summary>
+    internal const string ForkTouchesWorkflows = "fork-touches-workflows";
+
+    /// <summary>Why a fork's <c>.github/**</c> change ends the entry before the dispatch (O25), and what to do instead.</summary>
+    private static string ForkTouchesWorkflowsMessage(MergeQueueEntry entry, string what)
+        => "The pull request comes from a fork, changes files under `.github/` (its own change, or one a rename on the base carries there), and needs "
+           + $"the regenerate workflow. That workflow runs on `{entry.QueueBranch}`, a branch of this repository, and pushing the fork's workflow files there "
+           + $"would run them with this repository's secrets (O25). {what}, and no role bypasses this. Rebase it onto `{entry.BaseBranch}` and regenerate the "
+           + "files by hand (a head that already contains the latest base is merged as it is, O20 case 1), or have an admin merge it (O21 B).";
 
     /// <summary>
     /// The fields of the prepare, which the queue-branch push and the publish repeat so the writer rebuilds the same commit
@@ -620,8 +626,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                 : new GitWriterAutoResolve(r.Path, r.Keys))],
             Author: new GitWriterIdentity(login, options.Value.AuthorEmailFormat.Replace("{login}", login, StringComparison.Ordinal), date),
             Committer: new GitWriterIdentity(options.Value.CommitterName, options.Value.CommitterEmail, date),
-            Message: CommitMessage(entry),
-            AllowWorkflowChanges: MergeQueueWorkflowGuard.MayPushWorkflowChanges(entry.IsFork));
+            Message: CommitMessage(entry));
     }
 
     /// <summary>The run's commit date (§0 D65): when it was queued, to the whole second, in UTC.</summary>
@@ -775,8 +780,9 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         var workflowFiles = entry.WorkflowPaths.Any(MergeQueueWorkflowGuard.IsWorkflowFile);
         if (await WriterAccessAsync(context, entry, pullRequest: null, workflowFiles, ct) is not { } access) return false;
 
+        // O25, §0 D67: the writer is told where the head lives, and refuses a fork's .github change on its own.
         var result = await WithAccessAsync(context, access, credential => writer.PushQueueBranchAsync(new GitWriterQueueBranchRequest(
-            PrepareRequest(context, entry, access, credential, entry.BaseSha), entry.PreparedSha!, entry.QueueBranch, entry.QueueBranchSha), ct));
+            PrepareRequest(context, entry, access, credential, entry.BaseSha), entry.PreparedSha!, entry.QueueBranch, entry.QueueBranchSha, entry.IsFork), ct));
         switch (result.Outcome)
         {
             case GitWriterOutcomes.Pushed:
@@ -784,6 +790,15 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                 if (result.Reason == GitWriterReasons.AlreadyPushed)
                     entry.Note(Now, $"{entry.QueueBranch} already held {Short(entry.PreparedSha)}: an earlier attempt's push (§0 D52)");
                 return true;
+            case GitWriterOutcomes.ForkTouchesWorkflows:
+                // The plan never dispatches this (MergeQueueWorkflowGuard); the writer's own line held where it did.
+                logger.LogError("Merge queue: the git writer refused to push a fork's .github change to {Branch} in {Repository}; the plan let it through",
+                    entry.QueueBranch, context.Repository.FullName);
+                await EvictAsync(context, entry, ForkTouchesWorkflows,
+                    ForkTouchesWorkflowsMessage(entry, "The git writer refused the push, so nothing was pushed")
+                    + (result.Detail is { Length: > 0 } detail ? $"\n\n{detail}" : string.Empty),
+                    result.Paths, ct: ct);
+                return false;
             case GitWriterOutcomes.QueueBranchMoved:
                 Transition(entry, EMergeQueueEntryState.Preparing, $"{entry.QueueBranch} is out of step; resetting it");
                 await ScheduleAsync(entry, EMergeQueueStep.ResetQueueBranch, null, ct);
@@ -1394,18 +1409,26 @@ public partial class MergeQueueEngine : IMergeQueueEngine
     }
 
     /// <summary>
-    /// §0 D59: whether a publish may carry workflow files its target lacks. A fork that holds only the pinned head lacks
-    /// the base's when the base changed them since. A same-repository publish needs the permission when the pull
-    /// request's own change touches <c>.github/workflows/**</c> (O21 A lets it through when nothing is dispatched).
+    /// §0 D59, O25: whether a publish may carry workflow files its target branch lacks, so its token asks for the
+    /// workflow permission. The published commit is the prepared one (a patch never touches <c>.github</c>, T4).
+    /// A same-repository publish: when the pull request's own change touches <c>.github/workflows/**</c>, against the
+    /// base (O21 A lets it through when nothing is dispatched); the base's workflow files are on the base branch already.
+    /// A fork's publish replaces the fork's branch, which holds the pinned head: when the published commit's
+    /// <c>.github/workflows</c> differs from the head's (<see cref="MergeQueueEntry.BaseChangedWorkflows"/>, what the base
+    /// changed since) or from the base's (the fork's own change, which O25 lets through when nothing is dispatched).
     /// </summary>
     private static bool PublishPushesWorkflowChanges(MergeQueueEntry entry)
-        => entry.IsFork ? entry.BaseChangedWorkflows : entry.WorkflowPaths.Any(MergeQueueWorkflowGuard.IsWorkflowFile);
+    {
+        var ownChange = entry.WorkflowPaths.Any(MergeQueueWorkflowGuard.IsWorkflowFile);
+        return entry.IsFork ? entry.BaseChangedWorkflows || ownChange : ownChange;
+    }
 
     /// <summary>
     /// O22: whether <paramref name="role"/>, the enqueuer's as the forge reports it now, reaches the bypass role. Asked at
     /// enqueue (the approval floor), when a prepare decides the dispatch (a same-repository <c>.github/**</c> change) and
     /// right before the merge, like O9's role. The check gate, D12's workflow identity, T4's patch validation, T3's lease
-    /// and pinning, O9's own <c>write</c> minimum and a fork's <c>.github/**</c> change are never bypassed.
+    /// and pinning, O9's own <c>write</c> minimum and a fork's <c>.github/**</c> change that needs the dispatch (O25) are
+    /// never bypassed.
     /// </summary>
     private static bool Bypasses(EForgeRepositoryRole role, EMergeQueueBypassRole bypassRole) => bypassRole switch
     {

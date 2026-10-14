@@ -92,14 +92,16 @@ public class MergeQueueEntry
     public List<string> ResolvedPaths { get; set; } = [];
 
     /// <summary>
-    /// The base's <c>.github/workflows</c> differs from the pinned head's, as the prepare saw it (§0 D59): publishing to a
-    /// fork then needs the forge's workflow permission, because the fork lacks the base's newer workflow files.
+    /// The prepared commit's <c>.github/workflows</c> differs from the pinned head's, as the prepare saw it (§0 D59, D67):
+    /// the base changed workflow files since the head. Publishing to a fork then needs the forge's workflow permission,
+    /// because the fork's branch holds the head and lacks the base's newer workflow files.
     /// </summary>
     public bool BaseChangedWorkflows { get; set; }
 
     /// <summary>
-    /// The <c>.github/**</c> paths the pull request's net change touches, as the prepare reported them. Allowed only when
-    /// nothing is dispatched, or through O22's bypass role (§0 D63).
+    /// The <c>.github/**</c> paths where the prepared commit differs from its base (the pull request's own change, or one
+    /// a rename on the base carries there), as the prepare reported them. Allowed only when nothing is dispatched, or
+    /// through O22's bypass role for a same-repository pull request (§0 D63, O25).
     /// </summary>
     public List<string> WorkflowPaths { get; set; } = [];
 

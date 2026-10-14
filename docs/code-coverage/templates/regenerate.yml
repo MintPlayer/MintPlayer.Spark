@@ -17,8 +17,9 @@
 # │ the repository's bypass role lets a same-repository PR through (a fork's never). Before every      │
 # │ dispatch it checks that the mq/ branch's copy of this file equals the default branch's, because a  │
 # │ dispatched run uses the workflow file from the dispatched branch. That check is never bypassed.    │
-# │ For a fork's PR it pushes to mq/ only while this file keeps the rules above and no workflow runs   │
-# │ on a push to mq/: give every `on: push` a `branches-ignore: ['mq/**']`.                            │
+# │ For a fork's PR it pushes to mq/ only while this file keeps the rules above, no workflow runs on   │
+# │ a push to mq/ (give every `on: push` a `branches-ignore: ['mq/**']`), and none is triggered by     │
+# │ `check_run`, `check_suite`, `status`, `deployment` or `deployment_status`.                         │
 # └────────────────────────────────────────────────────────────────────────────────────────────────────┘
 
 name: regenerate
@@ -36,7 +37,7 @@ on:
         description: The merge queue's id for this attempt (shown in the run name only).
         required: true
 
-run-name: regenerate PR #${{ inputs.pr_number }} (${{ inputs.queue_run_id }})
+run-name: 'regenerate PR #${{ inputs.pr_number }} (${{ inputs.queue_run_id }})'
 
 permissions:
   contents: read

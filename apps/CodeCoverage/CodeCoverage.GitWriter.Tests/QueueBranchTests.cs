@@ -41,6 +41,70 @@ public class QueueBranchTests : WriterTestBase
         Directory.GetFileSystemEntries(Writer.Root).Should().BeEmpty("the job directory is deleted when the job ends");
     }
 
+    /// <summary>
+    /// O25, §0 D67: the writer's own line, behind the saga's. A fork's commit whose <c>.github</c> differs from its base's
+    /// never reaches a branch of the base repository, whatever else the request says: the push would run the fork's
+    /// workflow files with the base repository's secrets (D12, D14). The saga never asks for it
+    /// (<c>MergeQueueWorkflowGuard</c>); this holds if it did. The rename case of §0 D65 counts, since the writer reads the
+    /// prepared tree, not the pull request's net change. <c>allowWorkflowChanges</c> is what decided before (true pushed
+    /// it), and is sent here to show that no field unlocks it now.
+    /// </summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_forks_change_under_github_is_never_pushed_to_the_queue_branch(bool carriedByABaseRename)
+    {
+        var origin = Seed();
+        string head;
+        if (carriedByABaseRename)
+            head = BaseRenameCarriesIntoGithub(origin);
+        else
+        {
+            // A fork's pull request: the head exists only as refs/pull/1/head.
+            origin.Write(".github/workflows/ci.yml", "on: push\njobs:\n  a:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo pull-request-code\n");
+            head = origin.Commit("pr: a workflow");
+            origin.PullRequest(1, "feature");
+        }
+        var prepared = await Writer.PrepareAsync(PrepareRequest(origin, head));
+        prepared.Outcome.Should().Be("prepared", prepared.Detail);
+        var refs = origin.InBare("for-each-ref", "--format=%(refname) %(objectname)");
+        var pushesBefore = Writer.Started.Count(p => p.ArgumentList.Contains("push"));
+
+        var response = await Writer.PushQueueBranchAsync(With(
+            QueueBranchRequest(origin, new Prepared(prepared.PreparedSha!, head, prepared.BaseSha!), headFromFork: true),
+            new() { ["allowWorkflowChanges"] = true }));
+
+        response.Outcome.Should().Be("fork-touches-workflows", response.Detail);
+        response.Paths.Should().Equal([".github/workflows/ci.yml"]);
+        response.Detail.Should().Contain(QueueBranch);
+        origin.Ref($"refs/heads/{QueueBranch}").Should().BeNull();
+        origin.InBare("for-each-ref", "--format=%(refname) %(objectname)").Should().Be(refs, "no ref of the base repository moved or appeared");
+        Writer.Started.Count(p => p.ArgumentList.Contains("push")).Should().Be(pushesBefore, "git push never started");
+    }
+
+    /// <summary>
+    /// The control: a same-repository change under <c>.github/</c> goes to the queue branch when the saga asks, which it
+    /// does only through O22's bypass role (§0 D64). Its author has write access, and their own push already ran those
+    /// workflows.
+    /// </summary>
+    [Fact]
+    public async Task A_same_repository_change_under_github_is_pushed_when_the_saga_asks()
+    {
+        var origin = Seed();
+        AddEntity(origin, "Order", "with-order");
+        origin.Write(".github/workflows/ci.yml", "on: push\n");
+        var head = origin.Commit("pr: Order and a workflow");
+        origin.Push("feature").PullRequest(1, "feature");
+        var prepared = await Writer.PrepareAsync(PrepareRequest(origin, head));
+        prepared.Outcome.Should().Be("prepared", prepared.Detail);
+
+        var response = await Writer.PushQueueBranchAsync(QueueBranchRequest(origin, new Prepared(prepared.PreparedSha!, head, prepared.BaseSha!)));
+
+        response.Outcome.Should().Be("pushed", response.Detail);
+        origin.Ref($"refs/heads/{QueueBranch}").Should().Be(prepared.PreparedSha);
+        origin.InBare("cat-file", "blob", $"{prepared.PreparedSha}:.github/workflows/ci.yml").Should().Be("on: push\n");
+    }
+
     [Fact]
     public async Task A_resolved_conflict_is_pushed_with_the_base_side_of_the_path()
     {

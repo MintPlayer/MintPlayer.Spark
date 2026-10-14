@@ -63,9 +63,12 @@ internal sealed partial class GitWriterQueueBranchPushEndpoint : IPostEndpoint<Q
         if (PrepareFields.Validate(refusal, request, options.Value.AllowInsecureHttp, baseShaRequired: true) is not { } prepare
             || refusal.Check(WireValidation.ObjectId(request.PreparedSha), "preparedSha", WireValidation.ShaRule) is not { } preparedSha
             || refusal.Check(WireValidation.QueueBranch(request.QueueBranch), "queueBranch", WireValidation.QueueBranchRule) is not { } queueBranch
-            || !refusal.Check(request.ExpectedQueueSha is null || WireValidation.ObjectId(request.ExpectedQueueSha) is not null, "expectedQueueSha", WireValidation.ShaRule))
+            || !refusal.Check(request.ExpectedQueueSha is null || WireValidation.ObjectId(request.ExpectedQueueSha) is not null, "expectedQueueSha", WireValidation.ShaRule)
+            // O25, §0 D67: whether a fork's .github change may go is never assumed.
+            || !refusal.Check(request.HeadFromFork is not null, "headFromFork", "true or false"))
             return refusal.Result();
-        return Results.Json(await writer.PushQueueBranchAsync(new QueueBranchJob(prepare, preparedSha, queueBranch, request.ExpectedQueueSha)), GitWriterHost.Json);
+        return Results.Json(await writer.PushQueueBranchAsync(new QueueBranchJob(prepare, preparedSha, queueBranch, request.ExpectedQueueSha, request.HeadFromFork!.Value)),
+            GitWriterHost.Json);
     }
 }
 
@@ -165,7 +168,7 @@ internal static class PrepareFields
             || refusal.Check(WireValidation.Message(request.Message), "message", MergeQueueWireRules.MessageRule) is not { } message)
             return null;
         return new PrepareJob($"{request.Provider}/{request.RepoId}", cloneUrl, credential, baseBranch, request.BaseSha, headRef, headSha,
-            rules, author, committer, message, request.AllowWorkflowChanges);
+            rules, author, committer, message);
     }
 }
 
