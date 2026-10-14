@@ -392,6 +392,17 @@ public abstract class SparkAppTestHost : IAsyncLifetime
     }
 
     /// <summary>
+    /// Seeds the app database from RavenDB query-result-format JSON files through
+    /// <see cref="MintPlayer.Spark.Testing.JsonFixtureImporter"/>, and waits for indexing so the next query sees them.
+    /// Re-importing overwrites the same ids, so a test can reseed to reset the rows it changes.
+    /// </summary>
+    public async Task ImportFixturesAsync(params string[] filePaths)
+    {
+        using var appStore = OpenAppStore();
+        await MintPlayer.Spark.Testing.JsonFixtureImporter.ImportAsync(appStore, filePaths);
+    }
+
+    /// <summary>
     /// The stored version's change vector: the etag a raw <c>/po/delete</c> or <c>/po/purge</c> must name
     /// (#467, D14). Read from the database, so it also works for a soft-deleted row.
     /// </summary>
