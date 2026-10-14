@@ -82,15 +82,26 @@ public class SparkMapScannerTests
         }
     }
 
-    public class SmConditionalAndHandWritten : SparkMultiMapIndexCreationTask<SmEntry>
+    // Every map of one index returns the same fields: RavenIndexHelperSmokeTests deploys every index in this
+    // assembly, and RavenDB refuses to compile a multi-map whose maps differ ("must return identical types").
+    public class SmConditional : SparkMultiMapIndexCreationTask<SmEntry>
     {
-        public SmConditionalAndHandWritten()
+        public SmConditional()
         {
             AddMap<SmCar>(cars => from c in cars
                                   select c.Active
                                       ? new { Name = c.Name, Owner = c.Owner }
                                       : new { Name = "", Owner = "" });
+            AddMap<SmBike>(bikes => from b in bikes select new { b.Name, b.Owner });
+        }
+    }
+
+    public class SmHandWritten : SparkMultiMapIndexCreationTask<SmEntry>
+    {
+        public SmHandWritten()
+        {
             // The author emits the discriminator (PRD D4's fallback A shape): left alone.
+            AddMap<SmCar>(cars => from c in cars select new { c.Name, SparkCollection = "SmCars" });
             AddMap<SmBike>(bikes => from b in bikes select new { b.Name, SparkCollection = "SmBikes" });
         }
     }
@@ -190,7 +201,7 @@ public class SparkMapScannerTests
     [Fact]
     public void A_map_that_already_emits_the_field_is_left_alone()
     {
-        var map = MapOver(new SmConditionalAndHandWritten(), "SmBikes");
+        var map = MapOver(new SmHandWritten(), "SmBikes");
 
         SparkMapScanner.EmitsCollectionField(map).Should().BeTrue();
         SparkMapScanner.InjectCollectionField(map).Should().Be(map);
@@ -199,7 +210,7 @@ public class SparkMapScannerTests
     [Fact]
     public void A_conditional_result_body_is_refused_with_the_manual_fix()
     {
-        var map = MapOver(new SmConditionalAndHandWritten(), "SmCars");
+        var map = MapOver(new SmConditional(), "SmCars");
 
         var act = () => SparkMapScanner.InjectCollectionField(map);
 
