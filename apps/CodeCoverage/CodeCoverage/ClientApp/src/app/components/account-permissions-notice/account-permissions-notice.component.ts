@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
 import { BrowseService, PendingInstallationPermissions } from '../../services/browse.service';
@@ -9,19 +10,24 @@ import { BrowseService, PendingInstallationPermissions } from '../../services/br
  * When the app asks for more than an installation accepted (the merge queue adds Actions and Workflows),
  * nothing works until someone on the account accepts the upgrade on GitHub. The link is the installation's
  * own `html_url` from the server, never built here: user and organization installations live under
- * different paths.
+ * different paths. A second link opens the merge queue's setup guide (O13) at its permissions step, for this
+ * account, so the guide shows this same notice there; the guide turns that link off (`showGuideLink`).
  *
  * Hidden when nothing is pending, and when the endpoint refuses (401/404: the viewer does not manage the
  * account) or cannot answer, so the notice never stands between a reader and the page.
  */
 @Component({
   selector: 'app-account-permissions-notice',
-  imports: [BsAlertComponent],
+  imports: [RouterLink, BsAlertComponent],
   template: `
     @if (notice(); as n) {
       <bs-alert [type]="warningColor" class="d-block mt-3" data-testid="pending-permissions">
         GitHub is waiting for you to accept new permissions: {{ n.summary }}.
         <a class="alert-link ms-1" [href]="n.htmlUrl" target="_blank" rel="noopener">Review and accept on GitHub</a>
+        @if (showGuideLink()) {
+          <a class="alert-link ms-2" routerLink="/merge-queue/setup" [queryParams]="{ provider: provider(), account: login() }"
+             fragment="permissions" data-testid="merge-queue-setup-link">Merge queue setup guide</a>
+        }
       </bs-alert>
     }
   `,
@@ -32,6 +38,8 @@ export class AccountPermissionsNoticeComponent {
 
   readonly provider = input.required<string>();
   readonly login = input.required<string>();
+  /** Off on the setup guide itself, where the link would point at the page it is on. */
+  readonly showGuideLink = input(true);
 
   readonly warningColor = Color.warning;
 

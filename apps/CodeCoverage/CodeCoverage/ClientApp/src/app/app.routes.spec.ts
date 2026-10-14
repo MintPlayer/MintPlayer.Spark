@@ -186,6 +186,16 @@ describe('app routes: navigation', () => {
     expect(router.url).toBe('/po/commit/c1');
   });
 
+  it('routes the merge queue setup guide as a page of its own, with no lookup', async () => {
+    const { harness, router, browse } = await setup();
+
+    await harness.navigateByUrl('/merge-queue/setup?provider=github&account=acme#ruleset-2');
+
+    expect(leaf(router).routeConfig?.path).toBe('merge-queue/setup');
+    expect(router.url).toBe('/merge-queue/setup?provider=github&account=acme#ruleset-2');
+    expect(lookups(browse)).toBe(0);
+  });
+
   it('keeps the file viewer a page of its own, with no lookup', async () => {
     const { harness, router, browse } = await setup();
 

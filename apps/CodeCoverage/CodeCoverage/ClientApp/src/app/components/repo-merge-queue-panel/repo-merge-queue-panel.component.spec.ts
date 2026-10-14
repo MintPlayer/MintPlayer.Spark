@@ -2,6 +2,7 @@ import { provideZonelessChangeDetection } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
+import { provideRouter } from '@angular/router';
 import { describe, expect, it } from 'vitest';
 import { MergeQueueEntry, MergeQueueView, MergeQueueViewer } from '../../services/browse.service';
 import { BrowseServiceStub, createBrowseStub, provideBrowseStub, settle } from '../../../testing/test-utils';
@@ -44,14 +45,14 @@ describe('RepoMergeQueuePanelComponent', () => {
   let fixture: ComponentFixture<RepoMergeQueuePanelComponent>;
   let browse: BrowseServiceStub;
 
-  async function create(getMergeQueue: () => Promise<MergeQueueView>, overrides: Partial<Record<keyof BrowseServiceStub, (...args: any[]) => any>> = {}) {
+  async function create(getMergeQueue: () => Promise<MergeQueueView>, overrides: Partial<Record<keyof BrowseServiceStub, (...args: any[]) => any>> = {}, provider = 'github') {
     browse = createBrowseStub({ getMergeQueue, ...overrides });
     TestBed.configureTestingModule({
       imports: [RepoMergeQueuePanelComponent],
-      providers: [provideZonelessChangeDetection(), provideNoopAnimations(), provideBrowseStub(browse)],
+      providers: [provideZonelessChangeDetection(), provideNoopAnimations(), provideRouter([]), provideBrowseStub(browse)],
     });
     fixture = TestBed.createComponent(RepoMergeQueuePanelComponent);
-    fixture.componentRef.setInput('provider', 'github');
+    fixture.componentRef.setInput('provider', provider);
     fixture.componentRef.setInput('owner', 'acme');
     fixture.componentRef.setInput('name', 'widget');
     await settle(fixture);
@@ -89,6 +90,17 @@ describe('RepoMergeQueuePanelComponent', () => {
     expect(q('[data-testid="mq-enqueue"]')).toBeNull();
     expect(buttons('Dequeue')).toHaveLength(0);
     expect(q('[data-testid="mq-hint"]')).toBeNull();
+  });
+
+  // For the repository's account, so the guide can show that account's pending-permissions notice.
+  it('links the GitHub setup guide for the repository\'s account, and only on GitHub', async () => {
+    await create(() => Promise.resolve(busy(anonymous)));
+    expect(q('[data-testid="mq-setup-link"]')?.getAttribute('href')).toBe('/merge-queue/setup?provider=github&account=acme');
+
+    TestBed.resetTestingModule();
+    await create(() => Promise.resolve(busy(anonymous)), {}, 'gitlab');
+    expect(q('[data-testid="merge-queue"]')).not.toBeNull();
+    expect(q('[data-testid="mq-setup-link"]')).toBeNull();
   });
 
   it('is hidden for a forge without a queue, when the server refuses, and for an anonymous visitor of an unused queue', async () => {

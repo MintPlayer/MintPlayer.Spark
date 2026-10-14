@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, effect, inject, input, signal } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
 import { BsCardBodyComponent, BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
@@ -38,13 +39,15 @@ export const RELOAD_AFTER_COMMAND_MS = 2500;
  * - **The button** (a number and "Queue"; "Dequeue" on an entry) raises the same command a `merge-queue` label or a
  *   `/queue` comment raises, as the signed-in user's own GitHub login. The queue checks the role itself (O9), so the role
  *   the server reports here only decides which buttons make sense; an unknown role offers them and lets the queue decide.
+ * - **The setup guide** (/merge-queue/setup, O13) is linked from the header for a GitHub repository, for its account, so
+ *   the guide can show that account's pending-permissions notice.
  *
  * Hidden when the forge has no queue, when the server refuses (the repository is not this viewer's to see), and for an
  * anonymous visitor when nothing has gone through the queue.
  */
 @Component({
   selector: 'app-repo-merge-queue-panel',
-  imports: [FormsModule, BsAlertComponent, BsCardComponent, BsCardHeaderComponent, BsCardBodyComponent, BsFormComponent, BsFormControlDirective, BsTableComponent],
+  imports: [FormsModule, RouterLink, BsAlertComponent, BsCardComponent, BsCardHeaderComponent, BsCardBodyComponent, BsFormComponent, BsFormControlDirective, BsTableComponent],
   template: `
     @if (visible()) {
       @let v = view()!;
@@ -52,9 +55,16 @@ export const RELOAD_AFTER_COMMAND_MS = 2500;
         <bs-card-header>
           <div class="d-flex align-items-center">
             <span><i class="bi bi-signpost-split"></i> Merge queue</span>
-            <button type="button" class="btn btn-sm btn-link ms-auto p-0" (click)="load()" aria-label="Refresh the merge queue">
-              <i class="bi bi-arrow-clockwise"></i>
-            </button>
+            <span class="ms-auto d-flex align-items-center gap-3">
+              @if (setupGuide(); as guide) {
+                <a class="small" routerLink="/merge-queue/setup" [queryParams]="guide" data-testid="mq-setup-link">
+                  <i class="bi bi-book"></i> Setup guide
+                </a>
+              }
+              <button type="button" class="btn btn-sm btn-link p-0" (click)="load()" aria-label="Refresh the merge queue">
+                <i class="bi bi-arrow-clockwise"></i>
+              </button>
+            </span>
           </div>
         </bs-card-header>
         <bs-card-body>
@@ -217,6 +227,9 @@ export class RepoMergeQueuePanelComponent {
     const v = this.view();
     return !!v && v.supported && (v.lanes.length > 0 || v.viewer.signedIn);
   });
+
+  /** The setup guide's query for this repository's account. The guide is GitHub's, so other forges get no link. */
+  readonly setupGuide = computed(() => this.provider() === 'github' ? { provider: this.provider(), account: this.owner() } : null);
 
   private reload: ReturnType<typeof setTimeout> | undefined;
 

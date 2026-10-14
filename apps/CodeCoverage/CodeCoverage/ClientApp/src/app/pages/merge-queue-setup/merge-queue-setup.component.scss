@@ -1,0 +1,24 @@
+.mq-setup {
+  max-width: 60rem;
+}
+
+// A step a link jumped to lands clear of the shell's top bar.
+bs-card[id] {
+  scroll-margin-top: 4rem;
+}
+
+// Stand-in for a screenshot that is not there (yet): the image's box (the template's width="1280" height="720"), in
+// theme colours, so light and dark both keep their contrast and nothing shifts when the file arrives.
+.shot-pending {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  width: 100%;
+  max-width: 1280px;
+  aspect-ratio: 1280 / 720;
+  border: 2px dashed var(--bs-border-color);
+  background-color: var(--bs-tertiary-bg);
+  color: var(--bs-secondary-color);
+}

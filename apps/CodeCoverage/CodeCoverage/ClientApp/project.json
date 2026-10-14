@@ -19,7 +19,8 @@
         "assets": [
           {
             "glob": "**/*",
-            "input": "apps/CodeCoverage/CodeCoverage/ClientApp/public"
+            "input": "apps/CodeCoverage/CodeCoverage/ClientApp/public",
+            "ignore": ["**/README.md"]
           },
           {
             "glob": "bs-theme-preboot.js",
