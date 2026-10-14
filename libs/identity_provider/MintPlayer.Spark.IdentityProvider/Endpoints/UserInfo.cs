@@ -67,6 +67,16 @@ internal sealed partial class OidcUserInfo<TUser> : IGetEndpoint
             return Results.Json(new { error = "invalid_token" }, statusCode: 401);
         }
 
+        // N2 / parity PRD A1: only a token addressed to this endpoint. AccessTokens leaves audience to each
+        // consumer (introspection and revocation answer for tokens meant for anyone), so a token narrowed to
+        // some API used to be good here too, and that API could read the user's profile with it. The
+        // audience is minted only on an openid token, so it also stands for OIDC Core §5.3's openid scope.
+        if (!resolved.Audiences.Contains(OidcTokenGenerator.UserInfoAudience(issuer), StringComparer.Ordinal))
+        {
+            context.Response.Headers["WWW-Authenticate"] = $"{scheme} error=\"invalid_token\"";
+            return Results.Json(new { error = "invalid_token", error_description = "The token is not for the userinfo endpoint." }, statusCode: 401);
+        }
+
         // D8: a sender-constrained token is only good with its proof.
         if (resolved.ConfirmationJkt is { } jkt)
         {

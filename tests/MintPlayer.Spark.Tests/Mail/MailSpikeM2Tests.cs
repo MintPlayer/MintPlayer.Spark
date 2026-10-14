@@ -21,6 +21,7 @@ public class MailSpikeM2Tests(ITestOutputHelper output)
     [
         ("SparkAuth/ConfirmEmail", new { link = "https://app.example/confirm-email?userId=u1&code=abc", app_name = "Demo", changed_email = (string?)null, valid_for_hours = 24 }),
         ("SparkAuth/PasswordReset", new { link = "https://app.example/reset-password?email=a%40b.example&code=xyz", app_name = "Demo", valid_for_hours = 24 }),
+        ("SparkAuth/AccountExists", new { link = "https://app.example/reset-password?email=a%40b.example&code=xyz", app_name = "Demo", user_name = "owner", valid_for_hours = 24 }),
         ("SparkAuth/LinkConfirmation", new { link = "https://app.example/link?t=abc", app_name = "Demo", provider = "GitHub", provider_identity = "octo", valid_for_minutes = 60, valid_for_hours = 1.0 }),
     ];
 

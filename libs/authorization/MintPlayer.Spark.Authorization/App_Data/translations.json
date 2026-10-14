@@ -125,6 +125,11 @@
       "fr": "Les mots de passe ne correspondent pas.",
       "nl": "Wachtwoorden komen niet overeen."
     },
+    "registrationCheckEmail": {
+      "en": "Check your mailbox: we sent a message to the address you registered with. Follow it before you sign in.",
+      "fr": "Consultez votre boîte mail : nous avons envoyé un message à l'adresse avec laquelle vous vous êtes inscrit. Suivez-le avant de vous connecter.",
+      "nl": "Kijk in je mailbox: we stuurden een bericht naar het adres waarmee je je registreerde. Volg het voor je je aanmeldt."
+    },
     "registrationFailed": {
       "en": "Registration failed. Please try again.",
       "fr": "L'inscription a échoué. Veuillez réessayer.",

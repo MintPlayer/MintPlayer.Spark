@@ -32,10 +32,12 @@ internal sealed partial class ResendConfirmationEmail<TUser> : IPostEndpoint<Res
 
     public override async Task<IResult> HandleAsync(ResendConfirmationEmailRequest request, CancellationToken cancellationToken)
     {
-        if (await userManager.FindByEmailAsync(request.Email) is { EmailConfirmed: false } user)
-            await accountMail.SendConfirmationAsync(httpContextAccessor.HttpContext!, user, request.Email);
+        var user = await userManager.FindByEmailAsync(request.Email) is { EmailConfirmed: false } unconfirmed ? unconfirmed : null;
 
-        // Same answer whether or not the address belongs to anyone.
+        // Same answer whether or not the address belongs to anyone, and (A11) the same time: the token
+        // work is done for an unknown address too, and the mail is queued, not awaited.
+        await accountMail.QueueConfirmationAsync(httpContextAccessor.HttpContext!, user, request.Email);
+
         return TypedResults.Ok();
     }
 }

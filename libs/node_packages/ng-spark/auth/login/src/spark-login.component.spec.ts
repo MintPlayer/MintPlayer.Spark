@@ -71,6 +71,23 @@ describe('SparkLoginComponent', () => {
     expect(component.form.invalid).toBe(true);
   });
 
+  it('after registering (?registered=true) says to check the mailbox (A13)', async () => {
+    // The server answers a free and a taken address alike; the page can only point at the mailbox.
+    const { harness } = await setup();
+    await harness.navigateByUrl('/login?registered=true', SparkLoginComponent);
+    await harness.fixture.whenStable();
+    harness.detectChanges();
+    expect(harness.routeNativeElement!.textContent).toContain('auth.registrationCheckEmail');
+  });
+
+  it('without ?registered shows no mailbox message', async () => {
+    const { harness } = await setup();
+    await harness.navigateByUrl('/login', SparkLoginComponent);
+    await harness.fixture.whenStable();
+    harness.detectChanges();
+    expect(harness.routeNativeElement!.textContent).not.toContain('auth.registrationCheckEmail');
+  });
+
   it('does not call auth.login when the form is invalid', async () => {
     const { harness, auth } = await setup();
     const component = await harness.navigateByUrl('/login', SparkLoginComponent);

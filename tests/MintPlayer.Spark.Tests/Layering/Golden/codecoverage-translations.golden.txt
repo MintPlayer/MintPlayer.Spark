@@ -189,6 +189,7 @@ auth.recoveryCode	en="Recovery Code"	fr="Code de récupération"	nl="Herstelcode
 auth.recoveryCodesLeft	en="Recovery codes left"	fr="Codes de récupération restants"	nl="Resterende herstelcodes"
 auth.recoveryCodesShownOnce	en="Save these recovery codes somewhere safe. They are shown only once."	fr="Conservez ces codes de récupération en lieu sûr. Ils ne sont affichés qu'une fois."	nl="Bewaar deze herstelcodes op een veilige plek. Ze worden maar één keer getoond."
 auth.register	en="Register"	fr="S'inscrire"	nl="Registreren"
+auth.registrationCheckEmail	en="Check your mailbox: we sent a message to the address you registered with. Follow it before you sign in."	fr="Consultez votre boîte mail : nous avons envoyé un message à l'adresse avec laquelle vous vous êtes inscrit. Suivez-le avant de vous connecter."	nl="Kijk in je mailbox: we stuurden een bericht naar het adres waarmee je je registreerde. Volg het voor je je aanmeldt."
 auth.registrationFailed	en="Registration failed. Please try again."	fr="L'inscription a échoué. Veuillez réessayer."	nl="Registratie mislukt. Probeer het opnieuw."
 auth.rememberMe	en="Remember me"	fr="Se souvenir de moi"	nl="Onthoud mij"
 auth.removeLogin	en="Remove"	fr="Supprimer"	nl="Verwijderen"

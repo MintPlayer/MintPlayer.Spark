@@ -159,6 +159,90 @@ public class SignInIdentifierTests : SparkTestDriver
         refused.Headers.Location!.OriginalString.Should().Contain("error=invalid_credentials");
     }
 
+    /// <summary>Counts password verifications; hashing itself is the real PBKDF2 hasher's.</summary>
+    private sealed class CountingPasswordHasher : IPasswordHasher<SparkUser>
+    {
+        private readonly PasswordHasher<SparkUser> inner = new();
+        private int verifications;
+
+        public int Verifications => Volatile.Read(ref verifications);
+
+        public string HashPassword(SparkUser user, string password) => inner.HashPassword(user, password);
+
+        public PasswordVerificationResult VerifyHashedPassword(SparkUser user, string hashedPassword, string providedPassword)
+        {
+            Interlocked.Increment(ref verifications);
+            return inner.VerifyHashedPassword(user, hashedPassword, providedPassword);
+        }
+    }
+
+    /// <summary>
+    /// Matrix L-L5 / O27, asserted on the work done rather than on wall-clock time (which over HTTP is too noisy to
+    /// gate on): an identifier that names nobody, and an account without a password, each cost the same one password
+    /// verification as a wrong password does — and all three answer alike. Identity's stock overload returns before
+    /// hashing for the first two, which made them measurably faster than the third.
+    /// </summary>
+    [Fact]
+    public async Task Login_unknown_email_runs_the_same_password_verification_as_a_wrong_password()
+    {
+        var hasher = new CountingPasswordHasher();
+        await using var factory = new SparkEndpointFactory<OidcTestContext>(
+            Store,
+            models: [],
+            configureServices: services => services.AddSingleton<IPasswordHasher<SparkUser>>(hasher),
+            configureSpark: spark =>
+            {
+                spark.AddAuthentication<SparkUser>(configure: auth =>
+                {
+                    auth.LocalCredentials = SparkLocalCredentials.Full;
+                    auth.AllowUnconfirmedRegistration = true;
+                });
+                spark.AddIdentityProvider(options =>
+                {
+                    options.Issuer = "https://idp.test";
+                    options.SigningKeyPath = Path.Combine(
+                        Path.GetTempPath(), "spark-oidc-test-" + Guid.NewGuid().ToString("N") + ".json");
+                });
+            },
+            environment: "Development");
+
+        using (var scope = factory.GetService<IServiceScopeFactory>().CreateScope())
+        {
+            var users = scope.ServiceProvider.GetRequiredService<UserManager<SparkUser>>();
+            var withPassword = await users.CreateAsync(new SparkUser { UserName = "timing", Email = "timing@example.com", EmailConfirmed = true }, AccountTestHost.Password);
+            withPassword.Succeeded.Should().BeTrue(string.Join("; ", withPassword.Errors.Select(e => e.Code)));
+            var withoutPassword = await users.CreateAsync(new SparkUser { UserName = "timing-nopw", Email = "timing-nopw@example.com", EmailConfirmed = true });
+            withoutPassword.Succeeded.Should().BeTrue(string.Join("; ", withoutPassword.Errors.Select(e => e.Code)));
+        }
+        await WaitForIndexesAsync();
+
+        async Task<(int Verifications, HttpResponseMessage Response)> AttemptAsync(string identifier)
+        {
+            var browser = new OidcTestHost.Browser(factory.CreateClient());
+            var page = await (await browser.GetAsync("/connect/login?returnUrl=%2F")).Content.ReadAsStringAsync();
+            var before = hasher.Verifications;
+            var response = await browser.PostFormAsync("/connect/login", new Dictionary<string, string>
+            {
+                ["identifier"] = identifier, ["password"] = "Wrong-horse-1", ["returnUrl"] = "/",
+                ["__RequestVerificationToken"] = OidcTestHost.AntiforgeryTokenFrom(page),
+            });
+            return (hasher.Verifications - before, response);
+        }
+
+        var wrongPassword = await AttemptAsync("timing@example.com");
+        var unknown = await AttemptAsync("nobody-timing@example.com");
+        var passwordless = await AttemptAsync("timing-nopw@example.com");
+
+        wrongPassword.Verifications.Should().Be(1);
+        unknown.Verifications.Should().Be(1, "an unknown identifier verifies against a dummy hash, as a known one does against its own");
+        passwordless.Verifications.Should().Be(1, "an account without a password must not become the fast answer instead");
+        foreach (var (_, response) in new[] { wrongPassword, unknown, passwordless })
+        {
+            response.StatusCode.Should().Be(HttpStatusCode.Redirect);
+            response.Headers.Location!.OriginalString.Should().Contain("error=invalid_credentials");
+        }
+    }
+
     [Fact]
     public async Task An_unmatched_email_no_longer_falls_back_to_a_user_name()
     {

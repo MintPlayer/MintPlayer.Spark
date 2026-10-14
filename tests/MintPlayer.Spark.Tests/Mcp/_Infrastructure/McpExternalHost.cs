@@ -1,6 +1,5 @@
 using System.Net;
 using System.Net.Http.Headers;
-using System.Reflection;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
@@ -10,7 +9,6 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.JsonWebTokens;
-using Microsoft.IdentityModel.Protocols;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Microsoft.IdentityModel.Tokens;
 using MintPlayer.Spark.Abstractions;
@@ -56,7 +54,7 @@ internal static class McpExternalHost
                 // The issuer's keys in place of its discovery document (JWT validation).
                 services.Configure<JwtBearerOptions>(ExternalAgentServer.TokenScheme, o => o.Configuration = issuer.Configuration);
                 if (introspection is not null)
-                    services.AddHttpClient(nameof(SparkIntrospectionHandler)).ConfigurePrimaryHttpMessageHandler(() => introspection);
+                    services.AddHttpClient(SparkResourceServerOptions.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => introspection);
 
                 foreach (var provider in new[] { Provider, OtherProvider })
                 {
@@ -185,8 +183,8 @@ internal sealed class TestIssuer(string issuer = TestIssuer.DefaultIssuer)
 
 /// <summary>
 /// An external server that hands out opaque tokens and answers RFC 7662 introspection for them, with its discovery
-/// document. <see cref="SparkIntrospectionHandler"/> reads discovery through a process-wide, authority-keyed manager, so
-/// <see cref="Install"/> seeds it for <see cref="Issuer"/>, an issuer no other test uses.
+/// document. Installed as the primary handler of <see cref="SparkResourceServerOptions.HttpClientName"/>, which serves
+/// both the discovery fetch and the introspection call.
 /// </summary>
 internal sealed class IntrospectionStub : HttpMessageHandler
 {
@@ -210,20 +208,6 @@ internal sealed class IntrospectionStub : HttpMessageHandler
             ["exp"] = DateTimeOffset.UtcNow.AddMinutes(30).ToUnixTimeSeconds(),
         };
         return token;
-    }
-
-    public void Install()
-    {
-        var field = typeof(SparkIntrospectionHandler).GetField("Discovery", BindingFlags.NonPublic | BindingFlags.Static)
-            ?? throw new InvalidOperationException("SparkIntrospectionHandler.Discovery is gone; update this seam.");
-        var discovery = (Dictionary<string, ConfigurationManager<OpenIdConnectConfiguration>>)field.GetValue(null)!;
-        lock (discovery)
-        {
-            discovery[Issuer] = new ConfigurationManager<OpenIdConnectConfiguration>(
-                Issuer + "/.well-known/openid-configuration",
-                new OpenIdConnectConfigurationRetriever(),
-                new HttpDocumentRetriever(new HttpClient(this)) { RequireHttps = true });
-        }
     }
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)

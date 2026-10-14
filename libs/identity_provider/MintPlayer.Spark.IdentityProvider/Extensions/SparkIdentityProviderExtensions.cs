@@ -91,7 +91,7 @@ public static class SparkIdentityProviderExtensions
         // bound developers group derived from it per request, and the audit trail (D9).
         builder.Services.AddSingleton<OidcDevelopers>();
         var moduleRegistry = builder.Registry;
-        builder.Services.AddSingleton(sp => new OidcUserDocuments(moduleRegistry, sp.GetRequiredService<IDocumentStore>()));
+        builder.Services.AddSingleton(sp => new OidcUserDocuments(moduleRegistry, sp.GetRequiredService<IDocumentStore>(), sp.GetRequiredService<IServiceScopeFactory>()));
         builder.Services.AddSingleton<OidcAudit>();
         builder.Services.AddSingleton<OidcPortalMail>();
         // The portal mails' default templates (Mail/SparkIdentityProvider/*.mjml, embedded as SparkMail/…);

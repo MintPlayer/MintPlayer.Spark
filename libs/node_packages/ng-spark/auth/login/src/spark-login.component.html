@@ -4,6 +4,9 @@
       <h3 class="mb-0 text-center">{{ 'auth.login' | t }}</h3>
     </bs-card-header>
     <div class="p-4">
+      @if (registered && !errorMessage()) {
+        <bs-alert [type]="colors.info" class="mb-3">{{ 'auth.registrationCheckEmail' | t }}</bs-alert>
+      }
       @if (errorMessage()) {
         <bs-alert [type]="colors.danger" class="mb-3">{{ errorMessage() }}</bs-alert>
       }
