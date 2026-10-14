@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text;
 using System.Text.Json;
 using CodeCoverage.Entities;
 using CodeCoverage.Forge;
@@ -7,9 +8,11 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using MintPlayer.Spark.Webhooks.GitHub.Services;
 using Octokit;
+using Octokit.Internal;
 using Account = CodeCoverage.Entities.Account;
 using Xunit;
 using GraphQLConnection = Octokit.GraphQL.Connection;
@@ -173,7 +176,69 @@ public class GitHubInstallationPermissionsTests
         installations.Calls.Should().Be(1);
     }
 
-    private static GitHubInstallationPermissions CreateService(IGitHubInstallationService installations, bool configured = true)
+    /// <summary>
+    /// §0 D70: the two GitHub reads through Octokit's own transport, a <see cref="GitHubClient"/> over
+    /// <see cref="HttpClientAdapter"/> with only the network replaced. For a JSON reply the adapter keeps the body as text
+    /// in <c>HttpResponse.Body</c>, and <c>GetRaw</c>'s typed <c>byte[]</c> body stays empty. Reading only the latter threw
+    /// "The input does not contain any JSON tokens" on every call, which was logged as a warning and cached as "nothing
+    /// pending", so the notice never showed (found live, 2026-10-14). The stubs above never went through the transport.
+    /// </summary>
+    [Fact]
+    public async Task The_pending_permissions_are_read_through_octokits_own_transport()
+    {
+        var github = new GitHubApi();
+        github.Replies["/app"] = (HttpStatusCode.OK, """
+            { "id": 1, "slug": "coverage", "html_url": "https://github.com/apps/coverage",
+              "permissions": { "metadata": "read", "contents": "write", "actions": "write", "workflows": "write" } }
+            """);
+        github.Replies["/app/installations/42"] = (HttpStatusCode.OK, """
+            { "id": 42, "app_id": 1, "target_type": "Organization",
+              "html_url": "https://github.com/organizations/acme/settings/installations/42",
+              "permissions": { "metadata": "read", "contents": "write" } }
+            """);
+        var logger = new RecordingLogger();
+
+        var result = await CreateService(new StubInstallations(() => OctokitClient(github)), logger: logger)
+            .GetPendingAsync(new Account { Login = "acme", InstallationId = 42 });
+
+        logger.Entries.Should().BeEmpty();
+        result.Should().NotBeNull();
+        result!.HtmlUrl.Should().Be("https://github.com/organizations/acme/settings/installations/42");
+        result.Pending.Should().Equal([
+            new PendingPermission("actions", "Actions", "write", null),
+            new PendingPermission("workflows", "Workflows", "write", null),
+        ]);
+        github.Paths.Should().Equal(["/app", "/app/installations/42"]);
+    }
+
+    /// <summary>
+    /// §0 D70: a reply GitHub did give that this code cannot read fails the same way on every view, so it is logged as an
+    /// error, where the empty-body defect hid as one warning a minute. An outage (here a 503 through the same transport)
+    /// stays a warning. The page shows no notice either way.
+    /// </summary>
+    [Theory]
+    [InlineData("not json")]
+    [InlineData("")]
+    public async Task A_reply_that_cannot_be_read_is_an_error_and_an_outage_a_warning(string body)
+    {
+        var unreadable = new GitHubApi();
+        unreadable.Replies["/app"] = (HttpStatusCode.OK, body);
+        var unreadableLog = new RecordingLogger();
+        var outage = new GitHubApi();
+        outage.Replies["/app"] = (HttpStatusCode.ServiceUnavailable, """{ "message": "Service Unavailable" }""");
+        var outageLog = new RecordingLogger();
+        var account = new Account { Login = "acme", InstallationId = 42 };
+
+        (await CreateService(new StubInstallations(() => OctokitClient(unreadable)), logger: unreadableLog).GetPendingAsync(account))
+            .Should().BeNull();
+        (await CreateService(new StubInstallations(() => OctokitClient(outage)), logger: outageLog).GetPendingAsync(account))
+            .Should().BeNull();
+
+        unreadableLog.Entries.Should().ContainSingle().Which.Level.Should().Be(LogLevel.Error);
+        outageLog.Entries.Should().ContainSingle().Which.Level.Should().Be(LogLevel.Warning);
+    }
+
+    private static GitHubInstallationPermissions CreateService(IGitHubInstallationService installations, bool configured = true, ILogger<GitHubInstallationPermissions>? logger = null)
     {
         var config = new ConfigurationBuilder().AddInMemoryCollection(configured
             ? new Dictionary<string, string?>
@@ -184,7 +249,45 @@ public class GitHubInstallationPermissionsTests
             : []).Build();
         return new GitHubInstallationPermissions(
             installations, new MemoryCache(new MemoryCacheOptions()), config, new StubEnvironment(),
-            NullLogger<GitHubInstallationPermissions>.Instance);
+            logger ?? NullLogger<GitHubInstallationPermissions>.Instance);
+    }
+
+    /// <summary>The App client the way production builds one, with only the network replaced.</summary>
+    private static IGitHubClient OctokitClient(HttpMessageHandler network)
+        => new GitHubClient(new Connection(
+            new ProductHeaderValue("CodeCoverage.Tests"), GitHubClient.GitHubApiUrl,
+            new InMemoryCredentialStore(new Credentials("app-jwt", AuthenticationType.Bearer)),
+            new HttpClientAdapter(() => network), new SimpleJsonSerializer()));
+
+    /// <summary>GitHub's REST API as far as this class reads it: a reply per path, with GitHub's content type.</summary>
+    private sealed class GitHubApi : HttpMessageHandler
+    {
+        public Dictionary<string, (HttpStatusCode Status, string Body)> Replies { get; } = new(StringComparer.Ordinal);
+        public List<string> Paths { get; } = [];
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            Paths.Add(path);
+            var (status, body) = Replies.TryGetValue(path, out var reply) ? reply : (HttpStatusCode.NotFound, """{ "message": "Not Found" }""");
+            return Task.FromResult(new HttpResponseMessage(status)
+            {
+                RequestMessage = request,
+                // application/json; charset=utf-8, as api.github.com sends it.
+                Content = new StringContent(body, Encoding.UTF8, "application/json"),
+            });
+        }
+    }
+
+    private sealed class RecordingLogger : ILogger<GitHubInstallationPermissions>
+    {
+        public List<(LogLevel Level, string Message, Exception? Exception)> Entries { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            => Entries.Add((logLevel, formatter(state, exception), exception));
     }
 
     private sealed class StubInstallations(Func<IGitHubClient> createAppClient) : IGitHubInstallationService

@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using CodeCoverage.Entities;
 using CodeCoverage.Forge;
@@ -24,7 +25,14 @@ namespace CodeCoverage.Services;
 /// </para>
 /// <para>
 /// Cached for a minute per installation, failures included: the notice sits on a page that is reloaded
-/// freely, and an outage must cost one logged warning a minute rather than two GitHub calls per view.
+/// freely, and a failure must cost one log line a minute rather than two GitHub calls per view.
+/// </para>
+/// <para>
+/// ⚠️ Two kinds of failure, two levels (§0 D70). A refusal or an outage (<see cref="ApiException"/>,
+/// <see cref="HttpRequestException"/>) is GitHub's and passes: a warning. Anything else means this code
+/// misread a reply GitHub did give, or could not build the App client, and fails the same way on every
+/// view: an error. The page shows no notice either way. The first live run hid exactly such a defect,
+/// an empty-body parse failure, as one warning a minute, and the notice never showed.
 /// </para>
 /// </remarks>
 [Register(typeof(IForgeInstallationPermissions), ServiceLifetime.Scoped)]
@@ -75,9 +83,14 @@ public partial class GitHubInstallationPermissions : IForgeInstallationPermissio
             // The installation is gone (uninstalled, and the webhook not processed yet): nothing to accept.
             result = null;
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
         {
             logger.LogWarning(ex, "Could not read the pending permissions of GitHub installation {InstallationId}", installationId);
+            result = null;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "Could not read the pending permissions of GitHub installation {InstallationId}. This is no GitHub outage, so it repeats on every view until it is fixed", installationId);
             result = null;
         }
 
@@ -88,8 +101,26 @@ public partial class GitHubInstallationPermissions : IForgeInstallationPermissio
     private static async Task<JsonDocument> GetJsonAsync(IGitHubClient client, string path)
     {
         var response = await client.Connection.GetRaw(new Uri(path, UriKind.Relative), null);
-        return JsonDocument.Parse(response.Body ?? []);
+        var body = BodyOf(response);
+        if (body.IsEmpty)
+            throw new InvalidDataException(
+                $"GitHub answered GET /{path} with {(int)response.HttpResponse.StatusCode} and no body to read (content type {response.HttpResponse.ContentType ?? "none"}).");
+        return JsonDocument.Parse(body);
     }
+
+    /// <summary>
+    /// The bytes of a <see cref="IConnection.GetRaw(Uri, IDictionary{string, string})"/> reply, wherever Octokit's transport
+    /// put them (§0 D70). ⚠️ <c>HttpClientAdapter</c> reads a JSON content type as text into <c>HttpResponse.Body</c>, a
+    /// <see cref="string"/>, and <c>GetRaw</c>'s typed body is then <c>response.Body as byte[]</c>: null, for every JSON
+    /// reply. Only a binary content type (GitHub's raw media type, octet-stream, an image) fills the typed body, from a
+    /// stream. Reading the typed body alone parsed nothing, every time.
+    /// </summary>
+    internal static ReadOnlyMemory<byte> BodyOf(IApiResponse<byte[]> response) => response.HttpResponse?.Body switch
+    {
+        string text => Encoding.UTF8.GetBytes(text),
+        byte[] bytes => bytes,
+        _ => response.Body ?? [],
+    };
 
     /// <summary>The <c>permissions</c> object of an App or installation payload, as name → level.</summary>
     public static IReadOnlyDictionary<string, string> ReadPermissions(JsonElement payload)
