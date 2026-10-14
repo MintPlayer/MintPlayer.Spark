@@ -150,6 +150,17 @@ describe('SparkConnectedAgentsComponent', () => {
 
     expect(element(fixture).querySelector('.spark-agents-error')?.textContent).toContain('auth.accountUnavailable');
   });
+
+  it('styles the token inputs as form controls', async () => {
+    // ng-bootstrap adds .form-control through BsFormControlDirective, which only matches inputs
+    // in templates that import it; <bs-form> alone leaves them unstyled.
+    const fixture = await render({ agentGrants: vi.fn().mockResolvedValue({ success: true, value: overview() }) });
+    fixture.componentInstance.startToken();
+    fixture.detectChanges();
+
+    expect(element(fixture).querySelector('#sparkAgentTokenName')?.classList).toContain('form-control');
+    expect(element(fixture).querySelector('#sparkAgentTokenDays')?.classList).toContain('form-control');
+  });
 });
 
 describe('withConnectedAgents', () => {

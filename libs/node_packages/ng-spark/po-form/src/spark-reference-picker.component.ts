@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, output, signal, viewChild } from '@angular/core';
 import { Color } from '@mintplayer/ng-bootstrap';
+import { BsFormControlDirective } from '@mintplayer/ng-bootstrap/form';
 import { BsInputGroupComponent } from '@mintplayer/ng-bootstrap/input-group';
 import { BsButtonTypeDirective } from '@mintplayer/ng-bootstrap/button-type';
 import { BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective } from '@mintplayer/ng-bootstrap/modal';
@@ -38,7 +39,7 @@ export interface ReferenceQueryParent {
  */
 @Component({
   selector: 'spark-reference-picker',
-  imports: [BsInputGroupComponent, BsButtonTypeDirective, BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsSpinnerComponent, TranslateKeyPipe, ResolveTranslationPipe, ReferenceAttrValuePipe, SparkAttributeDescriptionComponent, SparkSearchBoxComponent],
+  imports: [BsFormControlDirective, BsInputGroupComponent, BsButtonTypeDirective, BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsSpinnerComponent, TranslateKeyPipe, ResolveTranslationPipe, ReferenceAttrValuePipe, SparkAttributeDescriptionComponent, SparkSearchBoxComponent],
   templateUrl: './spark-reference-picker.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })

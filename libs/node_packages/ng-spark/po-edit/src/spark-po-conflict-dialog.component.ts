@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import { Color } from '@mintplayer/ng-bootstrap';
+import { BsFormComponent } from '@mintplayer/ng-bootstrap/form';
 import { BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective } from '@mintplayer/ng-bootstrap/modal';
 import { BsButtonTypeDirective } from '@mintplayer/ng-bootstrap/button-type';
 import { SparkGridCellComponent, SparkGridRenderers } from '@mintplayer/ng-spark/grid';
@@ -64,7 +65,7 @@ const chipsPipe = new QueryReferenceChipsPipe();
  */
 @Component({
   selector: 'spark-po-conflict-dialog',
-  imports: [NgTemplateOutlet, BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective, BsButtonTypeDirective, SparkGridCellComponent, ResolveTranslationPipe, TranslateKeyPipe],
+  imports: [NgTemplateOutlet, BsFormComponent, BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective, BsButtonTypeDirective, SparkGridCellComponent, ResolveTranslationPipe, TranslateKeyPipe],
   template: `
     <bs-modal [isOpen]="conflicts().length > 0" (isOpenChange)="!$event && cancelled.emit()">
       <div *bsModal>
@@ -72,6 +73,9 @@ const chipsPipe = new QueryReferenceChipsPipe();
           <h5 class="modal-title">{{ 'common.conflictTitle' | t }}</h5>
         </div>
         <div bsModalBody class="spark-conflict-dialog">
+          <!-- Its own bs-form loads the form stylesheet (.form-check-input) instead of relying on
+               the edit page's spark-po-form being on the page. -->
+          <bs-form class="d-block">
           <p>{{ 'common.conflictIntro' | t }}</p>
           @if (audit()) {
             <p class="text-muted spark-conflict-audit">{{ audit() }}</p>
@@ -127,6 +131,7 @@ const chipsPipe = new QueryReferenceChipsPipe();
               </table>
             </div>
           }
+          </bs-form>
         </div>
         <div bsModalFooter>
           <button type="button" class="spark-conflict-all-mine" [color]="colors.secondary" (click)="chooseAll('mine')">{{ 'common.conflictKeepAllMine' | t }}</button>

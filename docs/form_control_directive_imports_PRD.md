@@ -1,6 +1,6 @@
 # Inputs that lost `.form-control`: missing `BsFormControlDirective` imports
 
-**Status:** planned (2026-10-14). Fixes go in one PR.
+**Status:** implemented on `fix/form-control-directive-imports` (2026-10-14). Fixes go in one PR.
 **Trigger:** after PR #512 (commit `78e86a1e`), the "Organization" picker on SeoTester's Edit-Site page
 (`/po/site/<id>/edit`) renders an unstyled `<input>`: browser-default inset border, `1px 2px` padding, no radius.
 
@@ -92,7 +92,7 @@ The sweep covered `libs/node_packages/ng-spark/**` and every `apps/*/ClientApp`.
 | F1 | Put `BsFormControlDirective` back into `imports` (`@mintplayer/ng-bootstrap/form`). Keep the trigger input's markup as is, so the `.no-form-control` opt-out convention still works. | `spark-reference-picker.component.ts` |
 | F2 | Add `BsFormControlDirective` to `imports` | `spark-connected-agents.component.ts` |
 | F3 | Give the conflict dialog its own `<bs-form>` | `spark-po-conflict-dialog.component.ts` |
-| F4 | Verify the checkbox in the browser; switch to `bs-checkbox` if the native look is unintended | `check-results.component.html` |
+| F4 | **Decided: no change.** It is a compact show/hide toggle in the results filter bar, outside any form, and #512 did not touch it. A native checkbox is a reasonable choice there. | `check-results.component.html` |
 | T1 | Spec: render the picker inside a `<bs-form>` host and assert the trigger input has `form-control`, and gets `is-invalid` when `isInvalid` is true. Must fail before F1. | `spark-reference-picker.component.spec.ts` |
 | T2 | Spec: the connected-agents inputs have `form-control`. Must fail before F2. | connected-agents spec (new, or the existing account spec) |
 | G1 | **Guard against the next cleanup** (see below) | new spec under `libs/node_packages/ng-spark` |
@@ -102,17 +102,23 @@ plain `<input>` selector always looks unused. G1 is a vitest spec that does the 
 - Scan every `*.component.ts`, plus its `templateUrl` html, under `libs/node_packages/ng-spark` and `apps/*/ClientApp/src`.
 - For every template containing `<input` or `<textarea`:
   - Require `BsFormControlDirective` in that component's `imports`, unless the element has
-    `class="… no-form-control …"`, is `type="checkbox|radio|hidden"`, or the file is on an explicit
-    allow-list with a one-line reason (column-filter panel, grid cell, po-detail).
+    `class="… no-form-control …"` (or `form-control` itself), is `type="checkbox|radio|hidden|file|range|color"`,
+    or the file is on an explicit allow-list with a one-line reason.
+  - As built (`libs/node_packages/ng-spark/src/form-control-directive-imports.spec.ts`), the allow-list
+    has one entry, the column-filter panel. The grid-cell and po-detail inputs are checkboxes, so the
+    type rule already exempts them.
 - The spec must fail on today's tree (it would list F1 and F2) before the fixes go in.
 
-**Verification:**
-- Red→green for T1, T2 and G1.
-- In the browser (playwright MCP, local SeoTester `dotnet run`):
-  - Edit-Site Organization field: computed styles match the Website field, both on a hard load and on detail → Edit.
-  - Account → Connected agents: the token inputs are styled.
-  - A Fleet or HR edit page with a single reference picker is styled.
-- Production check after deploy: same Edit-Site URL.
+**Verification (2026-10-14):**
+- Red before the fix: `vitest run` of the three specs gave 3 failed.
+  - G1 listed exactly `spark-connected-agents.component.ts` and `spark-reference-picker.component.ts`.
+  - T1 and T2 failed on the missing `form-control`.
+- Green after F1–F3: the full ng-spark suite passed, 96 files and 1612 tests.
+- Local SeoTester (`dotnet run --launch-profile https`, fresh host): the owner confirmed that the
+  Edit-Site Organization input renders correctly.
+- Still to do:
+  - check the Connected agents page and a Fleet or HR single-reference picker in the browser
+  - production check after deploy: same Edit-Site URL
 
 ## 4. Out of scope
 - None.

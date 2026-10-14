@@ -1,4 +1,6 @@
+import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { BsFormComponent } from '@mintplayer/ng-bootstrap/form';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -221,5 +223,33 @@ describe('SparkReferencePickerComponent', () => {
 
     expect(emitted).toHaveBeenCalledWith('companies/1');
     expect(component.showModal()).toBe(false);
+  });
+
+  it('styles its trigger input as a form control inside a bs-form, red when invalid', () => {
+    // ng-bootstrap adds .form-control through BsFormControlDirective, which only matches inputs in
+    // templates that import it: the parent form's <bs-form> does not cover the picker's own input.
+    @Component({
+      template: `<bs-form><spark-reference-picker inputId="Org" [isInvalid]="invalid()" /></bs-form>`,
+      imports: [BsFormComponent, SparkReferencePickerComponent],
+    })
+    class HostComponent {
+      readonly invalid = signal(false);
+    }
+    TestBed.configureTestingModule({
+      providers: [
+        provideNoopAnimations(),
+        { provide: SparkService, useValue: { getEntityTypes: vi.fn().mockResolvedValue([companyType]) } },
+        { provide: SparkLanguageService, useValue: { t: (k: string) => k } },
+      ],
+    });
+    const fixture = TestBed.createComponent(HostComponent);
+    fixture.detectChanges();
+    const trigger = (fixture.nativeElement as HTMLElement).querySelector('#Org')!;
+    expect(trigger.classList).toContain('form-control');
+    expect(trigger.classList).not.toContain('is-invalid');
+
+    fixture.componentInstance.invalid.set(true);
+    fixture.detectChanges();
+    expect(trigger.classList).toContain('is-invalid');
   });
 });
