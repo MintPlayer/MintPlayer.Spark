@@ -76,7 +76,8 @@ public partial class MergeQueueEngine : IMergeQueueEngine
 
     public async Task HandleSignalAsync(MergeQueueSignalMessage signal, CancellationToken cancellationToken = default)
     {
-        session.Advanced.UseOptimisticConcurrency = true;
+        // Writes: what the obsolete UseOptimisticConcurrency = true maps to (RavenDB 7.2, §0 D74).
+        session.Advanced.OptimisticConcurrencyMode = OptimisticConcurrencyMode.Writes;
         var ct = cancellationToken;
 
         if (signal.Kind == EMergeQueueSignal.Command)
@@ -162,7 +163,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
 
     public async Task HandleStepAsync(MergeQueueStepMessage step, CancellationToken cancellationToken = default)
     {
-        session.Advanced.UseOptimisticConcurrency = true;
+        session.Advanced.OptimisticConcurrencyMode = OptimisticConcurrencyMode.Writes;
         var ct = cancellationToken;
 
         var entry = await session.LoadAsync<MergeQueueEntry>(step.EntryId, ct);

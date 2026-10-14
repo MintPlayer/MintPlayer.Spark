@@ -1885,6 +1885,55 @@ public class MergeQueueEngineTests : CoverageRavenTest
         h.Queue.MergeRequests.Should().BeEmpty();
     }
 
+    /// <summary>
+    /// The engine's remark (D11): its session runs with optimistic concurrency, so a handler whose entry another writer
+    /// changed meanwhile, such as a second host, fails its save instead of overwriting that change. §0 D74 replaced the
+    /// obsolete <c>UseOptimisticConcurrency = true</c> with <c>OptimisticConcurrencyMode.Writes</c>, which RavenDB 7.2
+    /// documents as the same setting; this holds it, and was green before and after.
+    /// </summary>
+    [Fact]
+    public async Task A_step_whose_entry_another_writer_changed_fails_its_save_instead_of_overwriting_the_change()
+    {
+        var h = await HarnessAsync();
+        h.Writer.PrepareResults.Enqueue(FakeGitWriter.Prepared(BaseSha, Head, Prepared));
+        h.Writer.PublishResults.Enqueue(FakeGitWriter.Published(Final));
+        h.WriterOverride = new RacingWriter(h.Writer, h.Store, MergeQueueEntry.DocumentId(RepositoryId, Number));
+        await h.EnqueueAsync();
+
+        var step = async () => await h.DrainAsync();
+
+        await step.Should().ThrowAsync<Raven.Client.Exceptions.ConcurrencyException>();
+        var entry = await h.EntryAsync();
+        entry.Title.Should().Be("Changed by another writer");
+        entry.State.Should().Be(EMergeQueueEntryState.Preparing, "the step's own changes were not saved");
+    }
+
+    /// <summary>The scripted writer, with another writer of the entry while the prepare runs.</summary>
+    private sealed class RacingWriter(FakeGitWriter inner, Raven.Client.Documents.IDocumentStore store, string entryId) : IGitWriterSidecar
+    {
+        public bool IsConfigured => inner.IsConfigured;
+
+        public async Task<GitWriterPrepareResult> PrepareAsync(GitWriterPrepareRequest request, CancellationToken cancellationToken = default)
+        {
+            using (var session = store.OpenAsyncSession())
+            {
+                var entry = await session.LoadAsync<MergeQueueEntry>(entryId, cancellationToken);
+                entry!.Title = "Changed by another writer";
+                await session.SaveChangesAsync(cancellationToken);
+            }
+            return await inner.PrepareAsync(request, cancellationToken);
+        }
+
+        public Task<GitWriterQueueBranchResult> PushQueueBranchAsync(GitWriterQueueBranchRequest request, CancellationToken cancellationToken = default)
+            => inner.PushQueueBranchAsync(request, cancellationToken);
+
+        public Task<GitWriterPublishResult> PublishAsync(GitWriterPublishRequest request, CancellationToken cancellationToken = default)
+            => inner.PublishAsync(request, cancellationToken);
+
+        public Task<GitWriterDeleteResult> DeleteQueueBranchAsync(GitWriterDeleteQueueBranchRequest request, CancellationToken cancellationToken = default)
+            => inner.DeleteQueueBranchAsync(request, cancellationToken);
+    }
+
     private sealed class FixedPermissions(string url) : IForgeInstallationPermissions
     {
         public EForgeProvider Provider => EForgeProvider.GitHub;
