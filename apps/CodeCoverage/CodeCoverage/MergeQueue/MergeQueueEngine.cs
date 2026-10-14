@@ -420,6 +420,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         entry.EvictionReason = code;
         entry.EvictionMessage = message;
         entry.FinishedAtUtc = Now;
+        context.Document.Record(Outcome(entry));
         if (permissions) entry.PermissionsUrl = await PermissionsUrlAsync(context, ct);
         await PublishCheckAsync(context, entry, ct);
 
@@ -967,6 +968,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         await AbandonRunAsync(entry, ct);
         Transition(entry, state, message ?? state.ToString());
         entry.FinishedAtUtc = Now;
+        context.Document.Record(Outcome(entry));
 
         var lane = context.Document.LaneFor(entry.BaseBranch);
         if (lane.Current == entry.Id) lane.Current = null;
@@ -1155,6 +1157,23 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         => $"{(string.IsNullOrWhiteSpace(entry.Title) ? $"Pull request {entry.Number.ToString(CultureInfo.InvariantCulture)}" : entry.Title.Trim())} (#{entry.Number.ToString(CultureInfo.InvariantCulture)})";
 
     private GitWriterIdentity Committer() => new(options.Value.CommitterName, options.Value.CommitterEmail);
+
+    /// <summary>The ended run as the repository page lists it (M6, §0 D55).</summary>
+    private static MergeQueueOutcome Outcome(MergeQueueEntry entry) => new()
+    {
+        Number = entry.Number,
+        Title = entry.Title,
+        BaseBranch = entry.BaseBranch,
+        Run = entry.Run,
+        State = entry.State,
+        Reason = entry.State == EMergeQueueEntryState.Merged ? null : entry.EvictionReason,
+        Message = entry.EvictionMessage is { Length: > MergeQueueOutcome.MaxMessageLength } text
+            ? text[..(MergeQueueOutcome.MaxMessageLength - 1)] + "…"
+            : entry.EvictionMessage,
+        EnqueuedBy = entry.EnqueuedBy,
+        MergeCommitSha = entry.MergeCommitSha,
+        FinishedAtUtc = entry.FinishedAtUtc ?? entry.StateChangedAtUtc,
+    };
 
     private static void Remember(MergeQueueEntry entry, string sha)
     {

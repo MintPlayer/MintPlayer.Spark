@@ -1,0 +1,307 @@
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, effect, inject, input, signal } from '@angular/core';
+import { HttpErrorResponse } from '@angular/common/http';
+import { FormsModule } from '@angular/forms';
+import { Color } from '@mintplayer/ng-bootstrap';
+import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
+import { BsCardBodyComponent, BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
+import { BsFormComponent, BsFormControlDirective } from '@mintplayer/ng-bootstrap/form';
+import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
+import { BrowseService, MergeQueueCommandAccepted, MergeQueueEntry, MergeQueueView } from '../../services/browse.service';
+
+/** GitHub's repository roles, weakest first; queueing needs `write` (merge-queue PRD O9). */
+const ROLES = ['none', 'read', 'triage', 'write', 'maintain', 'admin'];
+
+/** The saga's states as a reader would say them, with a badge colour. */
+const STATES: Record<string, { label: string; badge: string }> = {
+  Queued: { label: 'waiting', badge: 'text-bg-secondary' },
+  Preparing: { label: 'rebasing', badge: 'text-bg-info' },
+  Regenerating: { label: 'regenerating', badge: 'text-bg-info' },
+  Publishing: { label: 'publishing', badge: 'text-bg-info' },
+  AwaitingChecks: { label: 'waiting for checks', badge: 'text-bg-primary' },
+  Merging: { label: 'merging', badge: 'text-bg-primary' },
+  Merged: { label: 'merged', badge: 'text-bg-success' },
+  Evicted: { label: 'evicted', badge: 'text-bg-danger' },
+  Dequeued: { label: 'dequeued', badge: 'text-bg-secondary' },
+  Refused: { label: 'not queued', badge: 'text-bg-warning' },
+};
+
+const DATE_TIME = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+
+/** The queue answers a command asynchronously; the panel looks again after this long. */
+export const RELOAD_AFTER_COMMAND_MS = 2500;
+
+/**
+ * The merge queue on the generic /po Repository detail page (merge-queue PRD M6, O8, O15).
+ *
+ * - **Read-only for everyone who may browse the repository:** per base branch, the pull request being worked on, the
+ *   ones waiting in order, and how the latest runs ended; plus the configuration a run used, each value with its source.
+ * - **The button** (a number and "Queue"; "Dequeue" on an entry) raises the same command a `merge-queue` label or a
+ *   `/queue` comment raises, as the signed-in user's own GitHub login. The queue checks the role itself (O9), so the role
+ *   the server reports here only decides which buttons make sense; an unknown role offers them and lets the queue decide.
+ *
+ * Hidden when the forge has no queue, when the server refuses (the repository is not this viewer's to see), and for an
+ * anonymous visitor when nothing has gone through the queue.
+ */
+@Component({
+  selector: 'app-repo-merge-queue-panel',
+  imports: [FormsModule, BsAlertComponent, BsCardComponent, BsCardHeaderComponent, BsCardBodyComponent, BsFormComponent, BsFormControlDirective, BsTableComponent],
+  template: `
+    @if (visible()) {
+      @let v = view()!;
+      <bs-card class="mt-3 d-block" data-testid="merge-queue">
+        <bs-card-header>
+          <div class="d-flex align-items-center">
+            <span><i class="bi bi-signpost-split"></i> Merge queue</span>
+            <button type="button" class="btn btn-sm btn-link ms-auto p-0" (click)="load()" aria-label="Refresh the merge queue">
+              <i class="bi bi-arrow-clockwise"></i>
+            </button>
+          </div>
+        </bs-card-header>
+        <bs-card-body>
+          @if (notice(); as n) {
+            <bs-alert [type]="n.color" class="d-block mb-3" data-testid="mq-notice">{{ n.text }}</bs-alert>
+          }
+
+          @for (lane of v.lanes; track lane.baseBranch) {
+            <section class="mb-3" [attr.data-lane]="lane.baseBranch">
+              <h6 class="mb-2">
+                <i class="bi bi-arrow-right-short"></i> {{ lane.baseBranch }}
+                @if (lane.paused) { <span class="badge text-bg-secondary ms-1">paused</span> }
+              </h6>
+
+              @if (lane.current; as c) {
+                <div class="d-flex flex-wrap align-items-center gap-2" data-testid="mq-current">
+                  <strong>#{{ c.number }}</strong>
+                  <span>{{ c.title }}</span>
+                  <span class="badge" [class]="badge(c.state)">{{ label(c.state) }}</span>
+                  <span class="small text-muted">since {{ time(c.sinceUtc) }}</span>
+                  @if (c.runUrl) {
+                    <a class="small" [href]="c.runUrl" target="_blank" rel="noopener">regenerate run</a>
+                  }
+                  @if (canDequeue(c)) {
+                    <button type="button" class="btn btn-sm btn-outline-danger ms-auto" [disabled]="busy()" (click)="dequeue(c)">Dequeue</button>
+                  }
+                </div>
+                @if (c.step) {
+                  <div class="small text-muted mb-2">{{ c.step }}</div>
+                }
+              } @else {
+                <p class="small text-muted mb-2">Nothing is running on {{ lane.baseBranch }}.</p>
+              }
+
+              @if (lane.waiting.length > 0) {
+                <ol class="list-unstyled mb-2" data-testid="mq-waiting">
+                  @for (w of lane.waiting; track w.number) {
+                    <li class="d-flex flex-wrap align-items-center gap-2 py-1">
+                      <span class="small text-muted">{{ w.position }}.</span>
+                      <strong>#{{ w.number }}</strong>
+                      <span>{{ w.title }}</span>
+                      <span class="small text-muted">queued by &#64;{{ w.enqueuedBy }}, {{ time(w.enqueuedAtUtc) }}</span>
+                      @if (canDequeue(w)) {
+                        <button type="button" class="btn btn-sm btn-outline-danger ms-auto" [disabled]="busy()" (click)="dequeue(w)">Dequeue</button>
+                      }
+                    </li>
+                  }
+                </ol>
+              }
+
+              @if (lane.recent.length > 0) {
+                <bs-table [isResponsive]="true" data-testid="mq-recent">
+                  <thead>
+                    <tr><th>Pull request</th><th>Outcome</th><th>Why</th><th class="text-end">When</th></tr>
+                  </thead>
+                  <tbody>
+                    @for (o of lane.recent; track o.number + '/' + o.run) {
+                      <tr>
+                        <td><strong>#{{ o.number }}</strong> {{ o.title }}</td>
+                        <td><span class="badge" [class]="badge(o.state)">{{ label(o.state) }}</span></td>
+                        <td class="small">
+                          @if (o.reason) { <code>{{ o.reason }}</code> }
+                          @if (o.message) { <div class="text-muted">{{ o.message }}</div> }
+                        </td>
+                        <td class="small text-muted text-end">{{ time(o.finishedAtUtc) }}</td>
+                      </tr>
+                    }
+                  </tbody>
+                </bs-table>
+              }
+            </section>
+          } @empty {
+            <p class="text-muted">
+              Nothing has gone through the queue yet. It takes pull requests once <code>coverage.yml</code> on the default
+              branch says <code>mergeQueue: enabled: true</code>.
+            </p>
+          }
+
+          @if (v.config; as config) {
+            <details class="mt-2" data-testid="mq-config">
+              <summary class="small">
+                Effective configuration, as the run of #{{ config.number }} read it
+                @if (config.configRef) { (<code>coverage.yml</code> on {{ config.configRef }}) }
+              </summary>
+              <bs-table [isResponsive]="true">
+                <thead>
+                  <tr><th>Setting</th><th>Value</th><th>Source</th></tr>
+                </thead>
+                <tbody>
+                  @for (value of config.values; track value.key) {
+                    <tr>
+                      <td><code>{{ value.key }}</code></td>
+                      <td>{{ value.value }}</td>
+                      <td class="small text-muted">{{ value.source }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </bs-table>
+            </details>
+          }
+
+          @if (canQueue()) {
+            <div class="d-flex flex-wrap align-items-center gap-2 mt-3" data-testid="mq-enqueue">
+              <bs-form class="mq-number" (submitted)="queue($event)">
+                <input type="number" min="1" step="1" name="mq-number" placeholder="PR number" aria-label="Pull request number"
+                       [ngModel]="number()" (ngModelChange)="number.set($event)">
+              </bs-form>
+              <button type="button" class="btn btn-sm btn-primary" [disabled]="busy()" (click)="queue()">
+                <i class="bi bi-signpost-split"></i> Queue as &#64;{{ viewer()?.login }}
+              </button>
+            </div>
+          } @else if (hint(); as h) {
+            <p class="small text-muted mt-3 mb-0" data-testid="mq-hint">{{ h }}</p>
+          }
+        </bs-card-body>
+      </bs-card>
+    }
+  `,
+  styles: [`.mq-number { width: 9rem; }`],
+  changeDetection: ChangeDetectionStrategy.OnPush
+})
+export class RepoMergeQueuePanelComponent {
+  private readonly browse = inject(BrowseService);
+  private readonly destroyRef = inject(DestroyRef);
+
+  /** Canonical forge spelling, e.g. "github". Sourced from the PO's document id (`forgeOf`). */
+  readonly provider = input.required<string>();
+  readonly owner = input.required<string>();
+  readonly name = input.required<string>();
+
+  readonly view = signal<MergeQueueView | null>(null);
+  readonly number = signal<number | null>(null);
+  readonly busy = signal(false);
+  readonly notice = signal<{ color: Color; text: string } | null>(null);
+
+  readonly viewer = computed(() => this.view()?.viewer ?? null);
+
+  /** Whether the viewer's role allows queueing; an unknown role does, and the queue decides (O9). */
+  private readonly mayWrite = computed(() => {
+    const role = this.viewer()?.role;
+    return role == null || ROLES.indexOf(role) >= ROLES.indexOf('write');
+  });
+
+  readonly canQueue = computed(() => !!this.viewer()?.login && this.mayWrite());
+
+  /** Why a signed-in viewer has no button. Nothing for an anonymous visitor, who reads the queue only. */
+  readonly hint = computed(() => {
+    const viewer = this.viewer();
+    if (!viewer?.signedIn) return null;
+    if (!viewer.linked)
+      return 'Your account has no linked GitHub sign-in. The queue acts as your GitHub login, so sign in with GitHub to queue pull requests from here.';
+    if (!viewer.login)
+      return viewer.credential === 'Unavailable'
+        ? 'GitHub could not confirm who you are right now; try again in a minute.'
+        : 'Your GitHub sign-in has expired. Sign in with GitHub again to queue pull requests from here.';
+    return `Queueing needs write access to ${this.owner()}/${this.name()} on GitHub, and you have ${viewer.role} access. The author of a queued pull request can still take it out.`;
+  });
+
+  readonly visible = computed(() => {
+    const v = this.view();
+    return !!v && v.supported && (v.lanes.length > 0 || v.viewer.signedIn);
+  });
+
+  private reload: ReturnType<typeof setTimeout> | undefined;
+
+  constructor() {
+    effect(async () => {
+      const provider = this.provider();
+      const owner = this.owner();
+      const name = this.name();
+      this.notice.set(null);
+      await this.load(provider, owner, name);
+    });
+    this.destroyRef.onDestroy(() => clearTimeout(this.reload));
+  }
+
+  async load(provider = this.provider(), owner = this.owner(), name = this.name()): Promise<void> {
+    try {
+      this.view.set(await this.browse.getMergeQueue(provider, owner, name));
+    } catch {
+      // 401/404: not this viewer's repository to see; anything else: no panel rather than a broken one.
+      this.view.set(null);
+    }
+  }
+
+  canDequeue(entry: MergeQueueEntry): boolean {
+    const login = this.viewer()?.login;
+    return !!login && (this.mayWrite() || login.toLowerCase() === entry.authorLogin?.toLowerCase());
+  }
+
+  async queue(event?: Event): Promise<void> {
+    // bs-form wraps a real <form>: Enter in the number field must not submit the page.
+    event?.preventDefault();
+    const number = this.number();
+    if (!number || !Number.isInteger(number) || number < 1) {
+      this.notice.set({ color: Color.warning, text: 'Enter the number of an open pull request.' });
+      return;
+    }
+    if (await this.send(() => this.browse.enqueuePullRequest(this.provider(), this.owner(), this.name(), number),
+      accepted => `Asked the queue to take #${accepted.number} as @${accepted.actor}. It answers on the pull request as well; a refusal shows up here.`))
+      this.number.set(null);
+  }
+
+  async dequeue(entry: MergeQueueEntry): Promise<void> {
+    await this.send(() => this.browse.dequeuePullRequest(this.provider(), this.owner(), this.name(), entry.number),
+      accepted => `Asked the queue to let #${accepted.number} go, as @${accepted.actor}.`);
+  }
+
+  label(state: string): string {
+    return STATES[state]?.label ?? state;
+  }
+
+  badge(state: string): string {
+    return `badge ${STATES[state]?.badge ?? 'text-bg-light'}`;
+  }
+
+  /** The server's times are UTC; one without a zone designator is read as UTC rather than as local time. */
+  time(utc: string): string {
+    const date = new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(utc) ? utc : `${utc}Z`);
+    return Number.isNaN(date.getTime()) ? utc : DATE_TIME.format(date);
+  }
+
+  private async send(call: () => Promise<MergeQueueCommandAccepted>, success: (accepted: MergeQueueCommandAccepted) => string): Promise<boolean> {
+    this.busy.set(true);
+    try {
+      const accepted = await call();
+      this.notice.set({ color: Color.success, text: success(accepted) });
+      await this.load();
+      // The queue takes the command on its own lane; look again once it has.
+      clearTimeout(this.reload);
+      this.reload = setTimeout(() => void this.load(), RELOAD_AFTER_COMMAND_MS);
+      return true;
+    } catch (error) {
+      this.notice.set({ color: Color.danger, text: refusal(error) });
+      return false;
+    } finally {
+      this.busy.set(false);
+    }
+  }
+}
+
+/** The server's own words for a refused command (`{ error }`), else a plain fallback. */
+function refusal(error: unknown): string {
+  if (error instanceof HttpErrorResponse) {
+    const body = error.error as { error?: unknown } | null;
+    if (body && typeof body.error === 'string') return body.error;
+    if (error.status === 401) return 'Sign in to use the merge queue from here.';
+  }
+  return 'The queue could not be asked right now; try again in a minute.';
+}

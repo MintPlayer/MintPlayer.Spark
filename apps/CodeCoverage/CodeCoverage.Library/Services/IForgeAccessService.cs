@@ -64,4 +64,20 @@ public interface IForgeAccessService
     /// (the manual resync). Must not disturb any other provider's cache entry.
     /// </summary>
     Task InvalidateAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The signed-in viewer's own account on <see cref="Provider"/>, as the forge returned it for the viewer's own
+    /// credential, never a name the viewer can edit. Whatever the app does on the forge in the viewer's name acts as this
+    /// login: the merge queue's button raises its command as it (merge-queue PRD O8, T1).
+    /// </summary>
+    Task<ForgeViewerAccount> GetViewerAccountAsync(CancellationToken cancellationToken = default);
 }
+
+/// <summary>The signed-in viewer's own account on one forge.</summary>
+/// <param name="Login">The login the forge returned for the viewer's credential; null when there is none to give.</param>
+/// <param name="Linked">The viewer's account has a sign-in with this forge at all; false for an anonymous viewer too.</param>
+/// <param name="State">
+/// Why a linked viewer has no login: <see cref="EForgeCredentialState.ReauthRequired"/> (sign in with the forge again) or
+/// <see cref="EForgeCredentialState.Unavailable"/> (the forge could not be asked; try again).
+/// </param>
+public sealed record ForgeViewerAccount(string? Login, bool Linked, EForgeCredentialState State);

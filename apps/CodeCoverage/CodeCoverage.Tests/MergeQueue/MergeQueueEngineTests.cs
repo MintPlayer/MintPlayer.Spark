@@ -859,6 +859,54 @@ public class MergeQueueEngineTests : CoverageRavenTest
         entry.EvictionReason.Should().Be("branch");
     }
 
+    // ── M6: what the repository page lists (§0 D55) ──────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Every_ended_run_and_every_refusal_is_recorded_for_the_repository_page()
+    {
+        const string head9 = "9999999999999999999999999999999999999999";
+        var h = await HarnessAsync();
+        h.Forge.PullRequests[8] = PullRequest(8, "8888888888888888888888888888888888888888");
+        h.Forge.PullRequests[9] = PullRequest(9, head9);
+        h.Queue.Roles["triager"] = EForgeRepositoryRole.Triage;
+        h.Writer.PrepareResults.Enqueue(new GitWriterPrepareResult(GitWriterOutcomes.Evicted, "conflict-outside-allow-list", BaseSha, Head, null, [],
+            ["apps/A/App_Data/translations.json"], "translations.json conflicts " + new string('x', 600), 10));
+        h.Writer.PrepareResults.Enqueue(FakeGitWriter.Prepared(BaseSha, head9, Prepared));
+        h.Writer.PublishResults.Enqueue(FakeGitWriter.Published(Final));
+
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+        await h.EnqueueAsync("triager", number: 8);
+        await h.EnqueueAsync(number: 9);
+        await h.DrainAsync();
+
+        var recent = (await h.QueueDocumentAsync())!.Recent;
+        recent.Select(r => (r.Number, r.State, r.Reason, r.BaseBranch)).Should().Equal([
+            (7, EMergeQueueEntryState.Evicted, "conflict-outside-allow-list", "master"),
+            (8, EMergeQueueEntryState.Refused, "role", "master"),
+            (9, EMergeQueueEntryState.Merged, (string?)null, "master"),
+        ]);
+        recent[0].Message!.Length.Should().Be(MergeQueueOutcome.MaxMessageLength, "the panel lists outcomes; the full message stays on the entry");
+        recent[0].Message!.Should().EndWith("…");
+        recent[1].Message.Should().Contain("needs at least write access");
+        recent[2].MergeCommitSha.Should().Be(MergeCommit);
+        recent.Should().OnlyContain(r => r.Title == "Add widgets" && r.Run == 1 && r.FinishedAtUtc > DateTime.MinValue);
+
+        // A replayed close of the merged entry records nothing twice.
+        await h.SignalAsync(EMergeQueueSignal.Closed, 9);
+        (await h.QueueDocumentAsync())!.Recent.Should().HaveCount(3);
+    }
+
+    [Fact]
+    public void The_outcome_log_keeps_the_last_thirty()
+    {
+        var queue = new Entities.MergeQueue();
+        for (var number = 1; number <= Entities.MergeQueue.MaxRecent + 5; number++)
+            queue.Record(new MergeQueueOutcome { Number = number });
+
+        queue.Recent.Select(r => r.Number).Should().Equal(Enumerable.Range(6, Entities.MergeQueue.MaxRecent));
+    }
+
     // ── Dequeue, close, replay ───────────────────────────────────────────────────────────────────────
 
     [Fact]

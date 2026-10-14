@@ -11,8 +11,8 @@ namespace CodeCoverage.Entities;
 /// without an index (§0 D43).
 /// </para>
 /// <para>
-/// A plain document, not a Spark persistent object: nothing in the model, no rights. The queue's view on the
-/// repository page is M6's.
+/// A plain document, not a Spark persistent object: nothing in the model, no rights. The repository page reads it
+/// through <c>MergeQueueController</c> (M6), under the browse API's visibility rules.
 /// </para>
 /// </remarks>
 public class MergeQueue
@@ -25,8 +25,23 @@ public class MergeQueue
     /// <summary>One lane per base branch that has ever had an entry.</summary>
     public List<MergeQueueLane> Lanes { get; set; } = [];
 
+    /// <summary>
+    /// How the last <see cref="MaxRecent"/> runs ended, across every lane, oldest first (merge-queue PRD M6, §0 D55). The
+    /// repository page shows them, and this way it reads one document instead of every entry the repository ever had.
+    /// </summary>
+    public List<MergeQueueOutcome> Recent { get; set; } = [];
+
+    public const int MaxRecent = 30;
+
     /// <summary>Whether any lane holds a running or waiting entry: the webhook filter.</summary>
     public bool IsBusy() => Lanes.Any(lane => lane.Current is not null || lane.Waiting.Count > 0);
+
+    /// <summary>Keeps <paramref name="outcome"/>, dropping the oldest beyond <see cref="MaxRecent"/>.</summary>
+    public void Record(MergeQueueOutcome outcome)
+    {
+        Recent.Add(outcome);
+        if (Recent.Count > MaxRecent) Recent.RemoveRange(0, Recent.Count - MaxRecent);
+    }
 
     /// <summary>The lane of <paramref name="baseBranch"/>, created when absent.</summary>
     public MergeQueueLane LaneFor(string baseBranch)
@@ -52,6 +67,35 @@ public class MergeQueue
             throw new ArgumentException($"'{repositoryId}' is not a repository document id.", nameof(repositoryId));
         return repositoryId[prefix.Length..];
     }
+}
+
+/// <summary>How one run of one pull request ended: merged, evicted, dequeued, or refused at enqueue.</summary>
+public sealed class MergeQueueOutcome
+{
+    public int Number { get; set; }
+
+    public string? Title { get; set; }
+
+    /// <summary>The lane, or for a refusal the base the pull request targeted (which may be no queue branch at all).</summary>
+    public string BaseBranch { get; set; } = string.Empty;
+
+    public int Run { get; set; }
+
+    public EMergeQueueEntryState State { get; set; }
+
+    /// <summary>The entry's stable code (<c>author-push</c>, <c>checks-failed</c>, <c>role</c>, …); null for a merge.</summary>
+    public string? Reason { get; set; }
+
+    /// <summary>What the check run said, cut to <see cref="MaxMessageLength"/>.</summary>
+    public string? Message { get; set; }
+
+    public string? EnqueuedBy { get; set; }
+
+    public string? MergeCommitSha { get; set; }
+
+    public DateTime FinishedAtUtc { get; set; }
+
+    public const int MaxMessageLength = 500;
 }
 
 /// <summary>One base branch's serial queue (D11): at most one entry runs, the others wait in order.</summary>

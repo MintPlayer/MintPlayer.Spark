@@ -9,6 +9,7 @@ import { RepoBadgePanelComponent } from '../components/repo-badge-panel/repo-bad
 import { RepoTrendPanelComponent } from '../components/repo-trend-panel/repo-trend-panel.component';
 import { RepoSetupPanelComponent } from '../components/repo-setup-panel/repo-setup-panel.component';
 import { RepoCommitGraphPanelComponent } from '../components/repo-commit-graph-panel/repo-commit-graph-panel.component';
+import { RepoMergeQueuePanelComponent } from '../components/repo-merge-queue-panel/repo-merge-queue-panel.component';
 import { AccountDependencyGraphPanelComponent } from '../components/account-dependency-graph-panel/account-dependency-graph-panel.component';
 import { AccountPermissionsNoticeComponent } from '../components/account-permissions-notice/account-permissions-notice.component';
 import { CommitFilesExtrasComponent } from './commit-files-extras.component';
@@ -57,6 +58,13 @@ class StubCommitGraphPanel {
   readonly name = input<string>();
 }
 
+@Component({ selector: 'app-repo-merge-queue-panel', template: '' })
+class StubMergeQueuePanel {
+  readonly provider = input<string>();
+  readonly owner = input<string>();
+  readonly name = input<string>();
+}
+
 @Component({ selector: 'app-repo-setup-panel', template: '' })
 class StubSetupPanel {}
 
@@ -85,10 +93,13 @@ describe('PoDetailPageComponent', () => {
     TestBed.configureTestingModule({ providers: [provideZonelessChangeDetection()] });
     TestBed.overrideComponent(PoDetailPageComponent, {
       remove: {
-        imports: [SparkPoDetailComponent, RepoBadgePanelComponent, RepoTrendPanelComponent, RepoCommitGraphPanelComponent, RepoSetupPanelComponent,
-          CommitFilesExtrasComponent, HomeExtrasComponent, AccountDependencyGraphPanelComponent, AccountPermissionsNoticeComponent],
+        imports: [SparkPoDetailComponent, RepoBadgePanelComponent, RepoTrendPanelComponent, RepoCommitGraphPanelComponent, RepoMergeQueuePanelComponent,
+          RepoSetupPanelComponent, CommitFilesExtrasComponent, HomeExtrasComponent, AccountDependencyGraphPanelComponent, AccountPermissionsNoticeComponent],
       },
-      add: { imports: [StubPoDetail, StubBadgePanel, StubTrendPanel, StubCommitGraphPanel, StubSetupPanel, StubCommitFilesExtras, StubHomeExtras, StubDependencyGraphPanel, StubPermissionsNotice] },
+      add: {
+        imports: [StubPoDetail, StubBadgePanel, StubTrendPanel, StubCommitGraphPanel, StubMergeQueuePanel, StubSetupPanel, StubCommitFilesExtras,
+          StubHomeExtras, StubDependencyGraphPanel, StubPermissionsNotice],
+      },
     });
   });
 
@@ -103,10 +114,10 @@ describe('PoDetailPageComponent', () => {
     return fixture.debugElement.query(By.directive(type as never)) !== null;
   }
 
-  it('mounts the badge, trend, commit-graph and setup panels on a Repository, scoped to its forge', () => {
+  it('mounts the badge, trend, commit-graph, merge-queue and setup panels on a Repository, scoped to its forge', () => {
     const fixture = render('Repository', po({ FullName: 'acme/widgets' }, 'Repositories/gitlab/1'));
 
-    for (const type of [StubBadgePanel, StubTrendPanel, StubCommitGraphPanel]) {
+    for (const type of [StubBadgePanel, StubTrendPanel, StubCommitGraphPanel, StubMergeQueuePanel]) {
       const panel = fixture.debugElement.query(By.directive(type)).componentInstance as StubBadgePanel;
       expect([panel.provider(), panel.owner(), panel.name()]).toEqual(['gitlab', 'acme', 'widgets']);
     }
@@ -136,7 +147,7 @@ describe('PoDetailPageComponent', () => {
     expect(has(render('Home', po({})), StubHomeExtras)).toBe(true);
 
     const account = render('Account', po({ FullName: 'acme/widgets' }, 'Accounts/github/1'));
-    for (const type of [StubBadgePanel, StubTrendPanel, StubCommitGraphPanel, StubSetupPanel, StubCommitFilesExtras, StubHomeExtras]) {
+    for (const type of [StubBadgePanel, StubTrendPanel, StubCommitGraphPanel, StubMergeQueuePanel, StubSetupPanel, StubCommitFilesExtras, StubHomeExtras]) {
       expect(has(account, type)).toBe(false);
     }
   });

@@ -178,13 +178,16 @@ internal sealed class ScriptedTokenService(Func<bool, GitHubUserToken> script) :
 }
 
 /// <summary>Scripted <see cref="IGitHubAccessService"/> for controller tests.</summary>
-internal sealed class ScriptedAccessService(GitHubVisibility visibility) : IGitHubAccessService
+/// <param name="verified">The caller's verified login; null models a caller with no linked GitHub sign-in.</param>
+internal sealed class ScriptedAccessService(GitHubVisibility visibility, GitHubVerifiedLogin? verified = null) : IGitHubAccessService
 {
     public Task<GitHubVisibility> GetVisibilityAsync(CancellationToken ct = default) => Task.FromResult(visibility);
     public async Task<string[]> GetAllowedOwnersAsync(CancellationToken ct = default) => (await GetVisibilityAsync(ct)).Owners;
     public async Task<bool> IsOwnerAllowedAsync(string ownerLogin, CancellationToken ct = default)
         => (await GetVisibilityAsync(ct)).Owners.Contains(ownerLogin, StringComparer.OrdinalIgnoreCase);
     public Task InvalidateAsync(CancellationToken ct = default) => Task.CompletedTask;
+    public Task<GitHubVerifiedLogin> GetVerifiedLoginAsync(CancellationToken ct = default)
+        => Task.FromResult(verified ?? new GitHubVerifiedLogin(null, false, GitHubTokenState.Ok));
 }
 
 /// <summary>

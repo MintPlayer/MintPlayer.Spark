@@ -298,4 +298,77 @@ public class GitHubAccessServiceRefreshTests : CoverageRavenTest
         (await check.LoadAsync<Account>(Account.DocumentId(EForgeProvider.GitHub, OwnGitHubId))).InstallationId.HasValue.Should().BeFalse();
         (await check.LoadAsync<Account>(Account.DocumentId(EForgeProvider.GitHub, 777))).InstallationId.Should().Be(2);
     }
+
+    // ── The login the merge queue's button acts as (merge-queue PRD M6, O8, T1) ───────────────────────
+
+    /// <summary>A user who signed in with GitHub once: a linked external login, keyed by the numeric GitHub id.</summary>
+    private static SparkUser LinkedUser()
+    {
+        var user = NewUser();
+        user.Logins = [new SparkUserLogin { LoginProvider = "GitHub", ProviderKey = "9629574" }];
+        return user;
+    }
+
+    [Fact]
+    public async Task The_verified_login_is_what_GitHub_returns_for_the_users_token_never_the_editable_user_name()
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        var harness = CreateService(session, LinkedUser(),
+            tokenScript: _ => new("ghu_test_ok", GitHubTokenState.Ok),
+            responder: (request, _) => GitHub(request));
+
+        var verified = await harness.Access.GetVerifiedLoginAsync();
+
+        verified.Should().Be(new GitHubVerifiedLogin(OwnLogin, true, GitHubTokenState.Ok));
+        harness.Handler.Requests.Should().HaveCount(2, "the visibility query asks /user and /user/installations once");
+        (await harness.Access.GetVerifiedLoginAsync()).Login.Should().Be(OwnLogin);
+        harness.Handler.Requests.Should().HaveCount(2, "the verified login is remembered with the owner set");
+    }
+
+    [Fact]
+    public async Task A_user_without_a_GitHub_sign_in_has_no_login_and_GitHub_is_not_asked()
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        var harness = CreateService(session, NewUser(),
+            tokenScript: _ => new("ghu_test_ok", GitHubTokenState.Ok),
+            responder: (request, _) => GitHub(request));
+
+        (await harness.Access.GetVerifiedLoginAsync()).Should().Be(new GitHubVerifiedLogin(null, false, GitHubTokenState.Ok));
+        harness.Handler.Requests.Should().BeEmpty();
+        harness.Tokens.Calls.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task A_linked_user_whose_token_is_dead_has_no_login_and_is_told_why()
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        var harness = CreateService(session, LinkedUser(),
+            tokenScript: _ => new(null, GitHubTokenState.ReauthRequired),
+            responder: (request, _) => GitHub(request));
+
+        (await harness.Access.GetVerifiedLoginAsync()).Should().Be(new GitHubVerifiedLogin(null, true, GitHubTokenState.ReauthRequired));
+    }
+
+    /// <summary>
+    /// The owner set is cached for 5 minutes and the verified login for an hour, both by the same query; should the cache drop
+    /// only the login (memory pressure), a cached owner set must not stand in for asking GitHub again.
+    /// </summary>
+    [Fact]
+    public async Task A_cached_owner_set_without_its_verified_login_is_asked_again()
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        var user = LinkedUser();
+        var harness = CreateService(session, user,
+            tokenScript: _ => new("ghu_test_ok", GitHubTokenState.Ok),
+            responder: (request, _) => GitHub(request));
+        await harness.Access.GetVisibilityAsync();
+        harness.Cache.Remove($"github-identity/{user.Id}");
+
+        (await harness.Access.GetVerifiedLoginAsync()).Login.Should().Be(OwnLogin);
+        harness.Handler.Requests.Should().HaveCount(4);
+    }
 }
