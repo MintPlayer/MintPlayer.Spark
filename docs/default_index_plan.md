@@ -142,7 +142,7 @@ B or fallback A; SP3 settles D6's ambiguity rule.
 
 ## M8 — Apps and docs
 
-**Status: done except the browser checks** (2026-10-13): loose ends, SeoTester root, demos, end-to-end tests, resync of all seven apps (each `--spark-verify-model` exits 0), docs and release notes ([release-notes-preview-106.md](release-notes-preview-106.md)). Pending: the browser checks of M7 and M8.
+**Status: done** (2026-10-13/14): loose ends, SeoTester root, demos, end-to-end tests, resync of all seven apps (each `--spark-verify-model` exits 0), docs and release notes ([release-notes-preview-106.md](release-notes-preview-106.md)). Browser checks of M7 and M8 passed (see M9); they also surfaced and fixed DemoApp's missing row rules and a `DateOnly` write bug that is on master too.
 
 - SeoTester: add the `Organizations` root to the context (`Site.cs` stays plain).
 - Every app: run `--spark-synchronize-model`; revert unrelated `$schema` bumps; commit model JSON and
@@ -171,7 +171,10 @@ B or fallback A; SP3 settles D6's ambiguity rule.
 
 ## M9 — Test sweep
 
-**Status: not started.**
+**Status: done** (2026-10-14). Every suite green after one fix: `RavenIndexHelperSmokeTests` deploys every index in
+the test assembly, and a scanner fixture with two differently shaped maps failed to compile (`0dc1b920`). The browser
+checks pass on SeoTester, DemoApp, HR and Fleet; the one gap is a reference value beyond the first 50 picker options,
+which the picker cannot select (D10) and was not seeded by hand.
 
 Run `RAVENDB_LICENSE='C:\Repos\MintPlayer.Spark\.secrets\raven-license.log' npm run test:affected` once, after
 M1–M8. Fix failures by re-running only the failing class.
