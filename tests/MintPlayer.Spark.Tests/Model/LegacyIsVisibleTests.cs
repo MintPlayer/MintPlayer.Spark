@@ -33,7 +33,7 @@ public sealed class LegacyIsVisibleTests : IDisposable
         Directory.CreateDirectory(_modelPath);
         _hostEnv.ContentRootPath.Returns(_tempDir);
         _indexCatalog.GetAllEntries().Returns([]);
-        _indexCatalog.GetDefaultForCollectionType(Arg.Any<Type>()).Returns((IndexCatalogEntry?)null);
+        _indexCatalog.GetDefaultFor(Arg.Any<Type>()).Returns((IndexCatalogEntry?)null);
         _indexCatalog.GetByIndexName(Arg.Any<string>()).Returns((IndexCatalogEntry?)null);
     }
 

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { AS_DETAIL_ROW_KEY } from '@mintplayer/ng-spark/models';
 import { ArrayValuePipe } from './array-value.pipe';
 import { AsDetailCellValuePipe } from './as-detail-cell-value.pipe';
 import { AsDetailColumnsPipe } from './as-detail-columns.pipe';
@@ -80,6 +81,31 @@ describe('AsDetailCellValuePipe', () => {
 
   it('returns empty string for null cell value', () => {
     expect(pipe.transform({ City: null }, { name: 'addr' } as any, { name: 'City', dataType: 'string' } as any, {})).toBe('');
+  });
+
+  describe('a Reference cell on the edit form (D10)', () => {
+    // The form's rows carry no breadcrumbs; the loaded labels sit beside them, keyed by row key.
+    const refCol = { name: 'CompanyId', dataType: 'Reference', query: 'CompanyQuery' } as any;
+    const rowsAttr = { name: 'Rows' } as any;
+    const options = { Rows: { CompanyId: [{ id: 'companies/1', breadcrumb: 'Acme', values: [] }] } } as any;
+    const loadedRows = { 'rows/a': { CompanyId: { value: 'companies/500', breadcrumb: 'Umbrella' } } };
+    const row = (value: string, key: string) => ({ CompanyId: value, [AS_DETAIL_ROW_KEY]: key });
+
+    it('shows the server label for a loaded value outside the options', () => {
+      expect(pipe.transform(row('companies/500', 'rows/a'), rowsAttr, refCol, options, loadedRows)).toBe('Umbrella');
+    });
+
+    it('shows the option label once the cell is edited, and the server label after changing back', () => {
+      expect(pipe.transform(row('companies/1', 'rows/a'), rowsAttr, refCol, options, loadedRows)).toBe('Acme');
+      expect(pipe.transform(row('companies/500', 'rows/a'), rowsAttr, refCol, options, loadedRows)).toBe('Umbrella');
+    });
+
+    it('gives a new row option labels only, and the id when there is none', () => {
+      expect(pipe.transform(row('companies/1', 'rows/new'), rowsAttr, refCol, options, loadedRows)).toBe('Acme');
+      expect(pipe.transform(row('companies/500', 'rows/new'), rowsAttr, refCol, options, loadedRows)).toBe('companies/500');
+      // A keyless row (its type has no value key) cannot be matched either.
+      expect(pipe.transform({ CompanyId: 'companies/500' }, rowsAttr, refCol, options, loadedRows)).toBe('companies/500');
+    });
   });
 
   /**

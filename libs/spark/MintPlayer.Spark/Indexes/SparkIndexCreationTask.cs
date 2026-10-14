@@ -1,3 +1,5 @@
+using System.Reflection;
+using MintPlayer.Spark.Abstractions;
 using Raven.Client.Documents.Indexes;
 
 namespace MintPlayer.Spark;
@@ -76,18 +78,46 @@ public abstract class SparkIndexCreationTask<TDocument> : AbstractIndexCreationT
 /// The multi-map counterpart of <see cref="SparkIndexCreationTask{TDocument}"/>.
 /// </summary>
 /// <remarks>
+/// <para>
 /// ⚠️ <typeparamref name="TReduceResult"/> is the <b>reduce result</b>, not a mapped collection — a
-/// multi-map index maps several collections and names none of them. Spark's catalog therefore records
-/// such an index with no collection type, which means it can be resolved by an explicit
-/// <c>indexName</c> binding but never becomes a collection's default index.
+/// multi-map index maps several collections and names none of them in its type arguments. Spark's
+/// catalog therefore records such an index with no collection type. It is reachable by an explicit
+/// <c>indexName</c> binding, and it becomes the default index of exactly the entity types its
+/// <c>[DefaultIndex(typeof(X), …)]</c> marker lists (<c>docs/default_index_PRD.md</c>, D1/D4).
+/// </para>
+/// <para>
+/// A marked multi-map gets the collection discriminator: <see cref="CreateIndexDefinition"/> adds
+/// <c>SparkCollection = "&lt;Collection&gt;"</c> to every map (<see cref="SparkMapScanner.InjectCollectionField"/>),
+/// and the query executor narrows the default to the queried type's collection on that field
+/// (<see cref="SparkCollectionRow"/>). Without it a <c>Bike</c> would come back as a <c>Car</c>, outside
+/// <c>Bike</c>'s row policy. An unmarked multi-map is deployed exactly as declared.
+/// </para>
 /// </remarks>
 public abstract class SparkMultiMapIndexCreationTask<TReduceResult> : AbstractMultiMapIndexCreationTask<TReduceResult>
 {
     /// <inheritdoc cref="SparkIndexCreationTask{TDocument}.CreateIndexDefinition" />
+    /// <remarks>
+    /// <para>
+    /// On a class marked <c>[DefaultIndex(typeof(X), …)]</c> every map is rewritten — not only the maps of
+    /// the listed types — so the field exists on each entry and an unlisted collection can never match a
+    /// listed type's filter by its absence. The rewrite is idempotent, and a map that already emits the
+    /// field is left alone; one whose shape the scanner cannot read (a conditional result body) fails here,
+    /// at deployment, with a message saying to emit the field by hand.
+    /// </para>
+    /// <para>
+    /// A bare <c>[DefaultIndex]</c> lists no type and so claims nothing; the catalog refuses it at startup
+    /// (a multi-map has no single mapped type to imply), so it is not rewritten either.
+    /// </para>
+    /// </remarks>
     public override IndexDefinition CreateIndexDefinition()
     {
         ConfigureSparkFields();
-        return base.CreateIndexDefinition();
+        var definition = base.CreateIndexDefinition();
+
+        if (GetType().GetCustomAttribute<DefaultIndexAttribute>(inherit: true) is { EntityTypes.Count: > 0 })
+            definition.Maps = [.. definition.Maps.Select(SparkMapScanner.InjectCollectionField)];
+
+        return definition;
     }
 
     /// <inheritdoc cref="SparkIndexCreationTask{TDocument}.ConfigureSparkFields" />

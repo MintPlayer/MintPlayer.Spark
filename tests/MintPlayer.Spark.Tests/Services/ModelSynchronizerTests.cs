@@ -14,6 +14,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// on the SparkContext and writes <c>App_Data/Model/{EntityName}.json</c> files. A regression
 /// breaks the dev workflow where edits to the C# entity classes auto-propagate to model files.
 /// </summary>
+[Collection(MintPlayer.Spark.Tests.Builder.ProcessExitCodeCollection.Name)]
 public sealed class ModelSynchronizerTests : IDisposable
 {
     private readonly string _tempDir;
@@ -28,7 +29,7 @@ public sealed class ModelSynchronizerTests : IDisposable
         _modelPath = Path.Combine(_tempDir, "App_Data", "Model");
         _hostEnv.ContentRootPath.Returns(_tempDir);
         _indexCatalog.GetAllEntries().Returns([]);
-        _indexCatalog.GetDefaultForCollectionType(Arg.Any<Type>()).Returns((IndexCatalogEntry?)null);
+        _indexCatalog.GetDefaultFor(Arg.Any<Type>()).Returns((IndexCatalogEntry?)null);
         _indexCatalog.GetByIndexName(Arg.Any<string>()).Returns((IndexCatalogEntry?)null);
     }
 
@@ -409,7 +410,7 @@ public sealed class ModelSynchronizerTests : IDisposable
             CollectionType = typeof(MS_BreadcrumbPerson),
             ProjectionType = typeof(MS_TestVehicle),
         };
-        _indexCatalog.GetDefaultForCollectionType(typeof(MS_BreadcrumbPerson)).Returns(entry);
+        _indexCatalog.GetDefaultFor(typeof(MS_BreadcrumbPerson)).Returns(entry);
 
         var ctx = typeof(BreadcrumbContext);
         var sync = CreateSynchronizer();
@@ -432,7 +433,7 @@ public sealed class ModelSynchronizerTests : IDisposable
             CollectionType = typeof(MS_BreadcrumbPerson),
             ProjectionType = typeof(MS_BreadcrumbPersonProjection),
         };
-        _indexCatalog.GetDefaultForCollectionType(typeof(MS_BreadcrumbPerson)).Returns(entry);
+        _indexCatalog.GetDefaultFor(typeof(MS_BreadcrumbPerson)).Returns(entry);
 
         var ctx = typeof(BreadcrumbContext);
         var sync = CreateSynchronizer();
@@ -758,7 +759,7 @@ public sealed class ModelSynchronizerTests : IDisposable
             CollectionType = typeof(MS_IgnoredPerson),
             ProjectionType = typeof(MS_IgnoredPersonProjection),
         };
-        _indexCatalog.GetDefaultForCollectionType(typeof(MS_IgnoredPerson)).Returns(entry);
+        _indexCatalog.GetDefaultFor(typeof(MS_IgnoredPerson)).Returns(entry);
 
         var sync = CreateSynchronizer();
         sync.SynchronizeModels(typeof(IgnoredContext));
@@ -778,7 +779,7 @@ public sealed class ModelSynchronizerTests : IDisposable
             CollectionType = typeof(MS_ProjectedBook),
             ProjectionType = projectionType,
         };
-        _indexCatalog.GetDefaultForCollectionType(typeof(MS_ProjectedBook)).Returns(entry);
+        _indexCatalog.GetDefaultFor(typeof(MS_ProjectedBook)).Returns(entry);
         _indexCatalog.GetByIndexName("Books_Index").Returns(entry);
     }
 
@@ -1110,7 +1111,7 @@ public sealed class ModelSynchronizerTests : IDisposable
             CollectionType = typeof(MS_TestPerson),
             ProjectionType = typeof(MS_BreadcrumbPersonProjection),
         };
-        _indexCatalog.GetDefaultForCollectionType(typeof(MS_TestPerson)).Returns(entry);
+        _indexCatalog.GetDefaultFor(typeof(MS_TestPerson)).Returns(entry);
         _indexCatalog.GetByIndexName("People_Overview").Returns(entry);
 
         var sync = CreateSynchronizer();
@@ -1135,7 +1136,7 @@ public sealed class ModelSynchronizerTests : IDisposable
             CollectionType = typeof(MS_TestPerson),
             ProjectionType = typeof(MS_BreadcrumbPersonProjection),
         };
-        _indexCatalog.GetDefaultForCollectionType(typeof(MS_TestPerson)).Returns(entry);
+        _indexCatalog.GetDefaultFor(typeof(MS_TestPerson)).Returns(entry);
         _indexCatalog.GetByIndexName("People_Overview").Returns(entry);
 
         sync.SynchronizeModels(typeof(SinglePersonContext));
@@ -1162,7 +1163,7 @@ public sealed class ModelSynchronizerTests : IDisposable
             IndexType = typeof(MS_TestPerson),
             CollectionType = typeof(MS_TestPerson),
         };
-        _indexCatalog.GetDefaultForCollectionType(typeof(MS_TestPerson)).Returns(defaultEntry);
+        _indexCatalog.GetDefaultFor(typeof(MS_TestPerson)).Returns(defaultEntry);
         _indexCatalog.GetByIndexName("People_Overview").Returns(defaultEntry);
         _indexCatalog.GetByIndexName("People_Search").Returns(searchEntry);
 
@@ -1188,7 +1189,7 @@ public sealed class ModelSynchronizerTests : IDisposable
             CollectionType = typeof(MS_TestPerson),
             ProjectionType = typeof(MS_BreadcrumbPersonProjection),
         };
-        _indexCatalog.GetDefaultForCollectionType(typeof(MS_TestPerson)).Returns(entry);
+        _indexCatalog.GetDefaultFor(typeof(MS_TestPerson)).Returns(entry);
         _indexCatalog.GetByIndexName("People_Overview").Returns(entry);
 
         var sync = CreateSynchronizer();
@@ -1524,6 +1525,8 @@ public class ProjectionOnlyContext : SparkContext
     public IRavenQueryable<MS_TestVehicle> Vehicles => Session.Query<MS_TestVehicle>();
 }
 
+// The marker the generator emits for a plain root (docs/default_index_PRD.md, D6); this project does not run it.
+[SparkPlainRoot(typeof(MS_TestTag), nameof(Tags))]
 public class TaggedContext : SparkContext
 {
     public IRavenQueryable<MS_TestTagged> Tagged => Session.Query<MS_TestTagged>();

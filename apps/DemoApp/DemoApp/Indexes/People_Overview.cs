@@ -22,6 +22,7 @@ public partial class People_Overview : SparkIndexCreationTask<Person> // , VPers
                             EmailSearch = person.Email,
                             IsActive = person.IsActive,
                             Company = person.Company,
+                            Bicycle = person.Bicycle,
                         };
 
         // Enable full-text search on common fields

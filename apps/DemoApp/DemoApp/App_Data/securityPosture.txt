@@ -7,26 +7,36 @@
 
 ## Reachable without signing in (expanded)
 CopyCarsToCompany/Car
+Delete/Bicycle
 Delete/Car
 Delete/Company
+Delete/Motorcycle
 Delete/Person
+Edit/Bicycle
 Edit/Car
 Edit/Company
 Edit/LookupReferences
+Edit/Motorcycle
 Edit/Person
+New/Bicycle
 New/Car
 New/Company
+New/Motorcycle
 New/Person
 Query/Address
+Query/Bicycle
 Query/Car
 Query/Company
 Query/LookupReferences
+Query/Motorcycle
 Query/Person
 Query/StartPage
 Query/Stock
+Read/Bicycle
 Read/Car
 Read/Company
 Read/LookupReferences
+Read/Motorcycle
 Read/Person
 Read/StartPage
 
@@ -34,8 +44,10 @@ Read/StartPage
 Anonymous visitors | grant | CopyCarsToCompany/Car | d0000001-0000-0000-0000-000000000008 | app
 Anonymous visitors | grant | Query/Address | d0000001-0000-0000-0000-000000000005 | app
 Anonymous visitors | grant | Query/Stock | d0000001-0000-0000-0000-000000000004 | app
+Anonymous visitors | grant | QueryReadEditNewDelete/Bicycle | d0000001-0000-0000-0000-000000000009 | app
 Anonymous visitors | grant | QueryReadEditNewDelete/Car | d0000001-0000-0000-0000-000000000003 | app
 Anonymous visitors | grant | QueryReadEditNewDelete/Company | d0000001-0000-0000-0000-000000000002 | app
+Anonymous visitors | grant | QueryReadEditNewDelete/Motorcycle | d0000001-0000-0000-0000-00000000000a | app
 Anonymous visitors | grant | QueryReadEditNewDelete/Person | d0000001-0000-0000-0000-000000000001 | app
 Anonymous visitors | grant | Read/StartPage | d0000001-0000-0000-0000-000000000007 | app
 Anonymous visitors | grant | ReadEdit/LookupReferences | d0000001-0000-0000-0000-000000000006 | app
@@ -44,8 +56,10 @@ Anonymous visitors | grant | ReadEdit/LookupReferences | d0000001-0000-0000-0000
 Signed-in users | grant | CopyCarsToCompany/Car | d000000f-0000-0000-0000-000000000008 | app
 Signed-in users | grant | Query/Address | d000000f-0000-0000-0000-000000000005 | app
 Signed-in users | grant | Query/Stock | d000000f-0000-0000-0000-000000000004 | app
+Signed-in users | grant | QueryReadEditNewDelete/Bicycle | d000000f-0000-0000-0000-000000000009 | app
 Signed-in users | grant | QueryReadEditNewDelete/Car | d000000f-0000-0000-0000-000000000003 | app
 Signed-in users | grant | QueryReadEditNewDelete/Company | d000000f-0000-0000-0000-000000000002 | app
+Signed-in users | grant | QueryReadEditNewDelete/Motorcycle | d000000f-0000-0000-0000-00000000000a | app
 Signed-in users | grant | QueryReadEditNewDelete/Person | d000000f-0000-0000-0000-000000000001 | app
 Signed-in users | grant | Read/StartPage | d000000f-0000-0000-0000-000000000007 | app
 Signed-in users | grant | ReadEdit/LookupReferences | d000000f-0000-0000-0000-000000000006 | app

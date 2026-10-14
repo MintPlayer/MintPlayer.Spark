@@ -99,10 +99,14 @@
             <spark-reference-picker
               [value]="formData()[attr.name]"
               [options]="referenceOptions()[attr.name] || []"
+              [query]="referencePickerQuery(attr)"
+              [queryParent]="optionQueryParent()"
+              [loaded]="loadedReferences()[attr.name]"
               [referenceType]="attr.referenceType"
               [inputId]="attr.name"
               [title]="attr.label | resolveTranslation:attr.name"
               [isInvalid]="hasError(attr.name)"
+              (rowPicked)="rememberPickedReference(attr, $event)"
               (valueChange)="onReferenceValueChange(attr, $event)">
             </spark-reference-picker>
           } @else if (attr.dataType === 'AsDetail' && attr.isArray && attr.editMode === 'inline') {
@@ -115,14 +119,14 @@
                      read-only column: still fully readable, just not editable. Hiding it would
                      hide the data, and the save path would silently restore any edit anyway. -->
                 @if (col.isReadOnly || !(attr | canEditDetailRow:asDetailPermissions())) {
-                  <span class="text-muted">{{ row | asDetailCellValue:attr:col:asDetailReferenceOptions() }}</span>
+                  <span class="text-muted">{{ row | asDetailCellValue:attr:col:asDetailReferenceOptions():loadedRowReferences()[attr.name] }}</span>
                 } @else if (getAsDetailCellEditRenderer(col); as editRenderer) {
                   <ng-container *ngComponentOutlet="editRenderer; inputs: getAsDetailCellEditRendererInputs(editRenderer, row, col)"></ng-container>
                 } @else if (col.dataType === 'AsDetail') {
                   <!-- Nested AsDetail can't flatten into a row: escalate to the row modal,
                        where the recursive spark-po-form renders the nested structure. -->
                   <div class="d-flex align-items-center gap-1">
-                    <span class="text-truncate flex-grow-1">{{ row | asDetailCellValue:attr:col:asDetailReferenceOptions() }}</span>
+                    <span class="text-truncate flex-grow-1">{{ row | asDetailCellValue:attr:col:asDetailReferenceOptions():loadedRowReferences()[attr.name] }}</span>
                     <button type="button" class="btn btn-sm btn-outline-secondary" (click)="editArrayItem(attr, rowIndex)">
                       <spark-icon name="pencil" />
                     </button>
@@ -135,13 +139,18 @@
                     (ngModelChange)="onInlineCellChange(attr, rowIndex, col)">
                   </bs-checkbox>
                 } @else if (col.dataType === 'Reference' && col.query) {
-                  @if (col.referenceDisplayType === EReferenceDisplayType.Modal) {
+                  <!-- The picker also when the query has more rows than the select could list (one page). -->
+                  @if (inlineRefUsesPicker(attr, col)) {
                     <spark-reference-picker
                       [value]="row[col.name]"
                       [options]="(attr | inlineRefOptions:col:asDetailReferenceOptions())"
+                      [query]="col.query"
+                      [queryParent]="optionQueryParent()"
+                      [loaded]="loadedRowReferenceOf(attr, row, col)"
                       [referenceType]="col.referenceType"
                       [title]="col.label | resolveTranslation:col.name"
                       [isInvalid]="hasInlineError(attr, rowIndex, col)"
+                      (rowPicked)="rememberPickedRowReference(attr.name, col.name, $event)"
                       (valueChange)="row[col.name] = $event; onInlineCellChange(attr, rowIndex, col)">
                     </spark-reference-picker>
                   } @else {
@@ -151,7 +160,7 @@
                       (ngModelChange)="onInlineCellChange(attr, rowIndex, col)"
                       [class.is-invalid]="hasInlineError(attr, rowIndex, col)">
                       <option [ngValue]="null">{{ 'common.selectPlaceholder' | t }}</option>
-                      @for (option of (attr | inlineRefOptions:col:asDetailReferenceOptions()); track option.id) {
+                      @for (option of inlineRefSelectOptions(attr, row, col); track option.id) {
                         <option [ngValue]="option.id">
                           {{ option.breadcrumb || option.id }}
                         </option>
@@ -307,7 +316,7 @@
                         @if (getAsDetailCellRendererComponent(col); as cellRenderer) {
                           <ng-container *ngComponentOutlet="cellRenderer; inputs: getAsDetailCellRendererInputs(cellRenderer, row, col)"></ng-container>
                         } @else {
-                          {{ row | asDetailCellValue:attr:col:asDetailReferenceOptions() }}
+                          {{ row | asDetailCellValue:attr:col:asDetailReferenceOptions():loadedRowReferences()[attr.name] }}
                         }
                         @if (firstCol && modalRowRenderer) {
                           <div class="spark-row-renderer">
@@ -424,13 +433,15 @@
         <spark-po-form
           [entityType]="attr | asDetailType:asDetailTypes()"
           [(formData)]="asDetailFormData"
+          [loadedObject]="editingAsDetailLoadedObject()"
           [parentId]="parentId()"
           [parentType]="parentType()"
           [referenceParentId]="referenceParentId()"
           [referenceParentType]="referenceParentType()"
           [triggerPathPrefix]="attr.isArray ? null : attr.name"
           (nestedTriggerRequested)="onEmbeddedTrigger(attr.name, $event)"
-          (nestedTriggerBlurred)="onEmbeddedTriggerBlur($event)">
+          (nestedTriggerBlurred)="onEmbeddedTriggerBlur($event)"
+          (referencePicked)="rememberPickedRowReference(attr.name, $event.attribute, $event.item)">
         </spark-po-form>
       </div>
     }

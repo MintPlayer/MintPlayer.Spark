@@ -60,6 +60,24 @@
           "queryId": "a20e8400-e29b-41d4-a716-446655440012",
           "alias": "registrations",
           "order": 6
+        },
+        {
+          "id": "a10e8400-e29b-41d4-a716-446655440007",
+          "name": "programUnits.peopleWithEmail",
+          "icon": "bi-envelope",
+          "type": "query",
+          "queryId": "4359c218-27ed-4ad1-953a-d7cc7e849c7c",
+          "alias": "peoplewithemail",
+          "order": 7
+        },
+        {
+          "id": "a10e8400-e29b-41d4-a716-446655440008",
+          "name": "programUnits.mailDeliveries",
+          "icon": "bi-send-check",
+          "type": "query",
+          "queryId": "bd26ea00-a979-4653-b211-b67dc564d167",
+          "alias": "maildeliveries",
+          "order": 8
         }
       ]
     }

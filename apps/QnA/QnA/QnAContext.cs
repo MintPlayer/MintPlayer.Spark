@@ -9,7 +9,7 @@ namespace QnA;
 /// review queue — is Moderation's own documents behind <c>/spark/moderation/*</c> (T6), not
 /// persistent objects this context declares.
 /// </summary>
-public class QnAContext : SparkContext
+public partial class QnAContext : SparkContext
 {
     public IRavenQueryable<Question> Questions => Session.Query<Question>();
     public IRavenQueryable<Answer> Answers => Session.Query<Answer>();

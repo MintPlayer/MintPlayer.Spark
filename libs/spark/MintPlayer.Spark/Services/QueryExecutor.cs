@@ -953,10 +953,19 @@ internal sealed record DatabasePage(int TotalItems);
                 resultType = entry.ProjectionType;
             }
 
+            // A multi-map default holds every mapped collection's entries; narrow it to this type's
+            // collection here, at the one place every Database.* query acquires its index, so row
+            // security, column filters, search, sort and the projection below all compose on top
+            // (docs/default_index_PRD.md, D4/SP1). Unnarrowed, a Bike would come back as a Car and
+            // outside Bike's row policy.
+            var indexQuery = entry.FiltersByCollection(entityType)
+                ? ApplyCollectionNarrowedIndex(session, entityType, indexType)
+                : ApplyIndexWithType(session, entityType, indexType);
+
             // Re-root rather than replace: a context property may have composed a predicate onto its
             // query (a user-scoped grid), and building the index query from scratch silently dropped
             // it. A bare property short-circuits to exactly the query built here.
-            queryable = RerootOntoIndexQuery(queryable, ApplyIndexWithType(session, entityType, indexType));
+            queryable = RerootOntoIndexQuery(queryable, indexQuery);
             if (resultType != entityType)
             {
                 queryable = ApplyProjection(queryable, resultType);
@@ -1749,6 +1758,35 @@ internal sealed record DatabasePage(int TotalItems);
             });
         return genericMethod.Invoke(session, [])!;
     }
+
+    /// <summary>
+    /// <c>session.Query&lt;SparkCollectionRow, TIndex&gt;().Where(r =&gt; r.SparkCollection == collection).OfType&lt;T&gt;()</c>:
+    /// a multi-map default narrowed to <paramref name="entityType"/>'s collection, typed as
+    /// <c>IRavenQueryable&lt;T&gt;</c> exactly like <see cref="ApplyIndexWithType"/>'s result, so everything
+    /// downstream composes on it unchanged (SP1: correct rows, paging, totals and view projection, with and
+    /// without a row policy).
+    /// </summary>
+    /// <remarks>
+    /// The collection is a query parameter, never spliced RQL, and it is the store's own name for the type —
+    /// the same convention that rendered <c>docs.&lt;Collection&gt;</c> in the map the discriminator was
+    /// injected into (<see cref="SparkMultiMapIndexCreationTask{TReduceResult}.CreateIndexDefinition"/>).
+    /// </remarks>
+    private object ApplyCollectionNarrowedIndex(IAsyncDocumentSession session, Type entityType, Type indexType)
+    {
+        var collection = session.Advanced.DocumentStore.Conventions.GetCollectionName(entityType);
+        var method = ReflectionCache.GetOrAdd<(string Op, Type Entity, Type Index), MethodInfo>(
+            ("QueryExecutor.CollectionNarrowedIndexQuery", entityType, indexType),
+            static k => typeof(QueryExecutor)
+                .GetMethod(nameof(CollectionNarrowedIndexQuery), BindingFlags.NonPublic | BindingFlags.Static)!
+                .MakeGenericMethod(k.Entity, k.Index));
+        return method.Invoke(null, [session, collection])!;
+    }
+
+    private static IRavenQueryable<T> CollectionNarrowedIndexQuery<T, TIndex>(IAsyncDocumentSession session, string collection)
+        where TIndex : Raven.Client.Documents.Indexes.AbstractCommonApiForIndexes, new()
+        => (IRavenQueryable<T>)session.Query<SparkCollectionRow, TIndex>()
+            .Where(row => row.SparkCollection == collection)
+            .OfType<T>();
 
     /// <summary>
     /// Replays whatever the context property composed onto its query — a <c>Where</c>, an

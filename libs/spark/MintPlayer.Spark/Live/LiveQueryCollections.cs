@@ -17,6 +17,12 @@ namespace MintPlayer.Spark.Live;
 /// and the evaluation waits for the indexes over the changed collection anyway (<see cref="SparkIndexWait"/>),
 /// so one write costs one evaluation per viewer instead of two (the write, then the index batch).
 /// </para>
+/// <para>
+/// A multi-map <em>default</em> needs nothing extra: the executor narrows it to the query type's own collection
+/// (<see cref="IndexCatalogEntry.FiltersByCollection"/>), which is already in the set, so a write to another
+/// mapped collection cannot change the result. A viewless default likewise adds only the type's own collection
+/// (SP4).
+/// </para>
 /// </remarks>
 internal static class LiveQueryCollections
 {

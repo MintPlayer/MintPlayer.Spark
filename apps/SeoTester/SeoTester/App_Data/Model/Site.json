@@ -204,6 +204,7 @@
         "isRequired": false,
         "isReadOnly": false,
         "order": 5,
+        "query": "GetOrganizations",
         "referenceType": "MintPlayer.Spark.Organizations.Models.Organization",
         "isArray": false,
         "showedOn": "Query, PersistentObject",

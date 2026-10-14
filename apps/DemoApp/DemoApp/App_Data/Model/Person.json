@@ -26,6 +26,19 @@
         "renderer": "address-card"
       },
       {
+        "id": "d9153df4-5ff6-4a5c-93bf-1077d67ad6b9",
+        "name": "Bicycle",
+        "dataType": "Reference",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 9,
+        "query": "GetBicycles",
+        "referenceType": "DemoApp.Library.Entities.Bicycle",
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
         "id": "550e8400-e29b-41d4-a716-446655440005",
         "name": "Company",
         "dataType": "Reference",

@@ -5,6 +5,7 @@ export * from './parsed-date.pipe';
 export * from './attribute-value.pipe';
 export * from './or-dash.pipe';
 export * from './raw-attribute-value.pipe';
+export * from './reference-label';
 export * from './reference-display-value.pipe';
 export * from './reference-attr-value.pipe';
 export * from './reference-link-route.pipe';

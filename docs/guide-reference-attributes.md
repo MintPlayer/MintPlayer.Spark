@@ -83,17 +83,45 @@ On the **create/edit form**, a Reference attribute renders as an input with a se
 
 ### Auto-Resolved Query Names
 
-If you omit the `query` parameter from `[Reference]`, Spark resolves it automatically by matching the target type to a SparkContext property:
+If you omit the `query` parameter from `[Reference]`, the synchronizer gives the attribute the query of the target
+type's **plain entity root**: the SparkContext property whose body is exactly `Session.Query<T>()`
+([default_index_PRD.md](default_index_PRD.md), D6).
 
 ```csharp
-// SparkContext has: IRavenQueryable<Company> Companies
-// Auto-resolves to query name: "GetCompanies"
-
+// SparkContext has: public IRavenQueryable<Company> Companies => Session.Query<Company>();
 [Reference(typeof(Company))]  // query auto-resolved to "GetCompanies"
 public string? Owner { get; set; }
 ```
 
-This works because the synchronizer maps each SparkContext property to a query name using the pattern `Get{PropertyName}`.
+Each context root mints a `Database.{Property}` query named `Get{Property}`, and that query runs on the target type's
+default index (see [the default index](guide-queries-and-sorting.md#the-default-index-of-an-entity-type)). What decides
+which root a reference uses:
+
+- **Several roots of one type.** Only the plain one counts. A filtered or customized root (`ActiveCompanies =>
+  Session.Query<Company>().Where(c => c.IsActive)`), one bound to an index, or one returned by a helper method is never
+  a reference's lookup by default, whatever its declaration order. To use one of those, name its query:
+  `[Reference(typeof(Company), "GetActiveCompanies")]`. The Spark generator finds the plain root (it can read the
+  getter's body, which reflection cannot) and records it as `[SparkPlainRoot(typeof(T), nameof(Prop))]` on the
+  context's generated partial, so **the context must be `partial`**.
+- **A view root is not a lookup.** `VCompanies => Session.Query<VCompany, Companies_Overview>()` mints no query. The
+  generator writes such a root for every public `[FromIndex]` view, as a typed C# shortcut.
+- **A type from a package needs a root too.** A reference to a package's type, such as `Organization` from
+  `MintPlayer.Spark.Organizations`, resolves only when your context has
+  `public IRavenQueryable<Organization> Organizations => Session.Query<Organization>();`. The root's attributes are
+  derived from the CLR type, through the `spark.ModelAttributes(...)` hook (see
+  [Hand-editing the model](#hand-editing-the-model-what-survives-synchronization)).
+- **No root at all** leaves the attribute without a query, and the edit page's picker without options. A writable
+  reference then gets build warning **SPARK056**, with a code fix that adds the root, and synchronize prints the same
+  warning. Read-only references open no picker and are not reported: no setter or `[ReadOnly(true)]` for both, and
+  for synchronize also `isReadOnly` or `showedOn: None` in the model file, which the analyzer cannot see. `SparkUser` has no root on purpose: a root would derive its password hash and
+  security stamp as attributes.
+- **A name or alias that is already taken.** When `Get{Property}` or its derived alias already belongs to another query
+  (a package's `Custom.Organizations` uses the alias `organizations`), the minted query takes the first free one
+  (`GetOrganizations2`, `organizations-2`). The model file records it, and synchronize prints it (D11). Existing queries
+  are never renamed.
+
+Whatever query serves the picker, the label of the current value is the target's breadcrumb, loaded by id, on the
+list, the detail page and the edit form alike (D10).
 
 ### Scoping a reference's options to the parent object
 
@@ -216,6 +244,24 @@ C# types, so anything it derives is overwritten:
 | `lookupReferenceType` | **No — stripped** | Derived from `[LookupReference(typeof(...))]` |
 | `query`, `referenceType` | **No — stripped** | Derived from `[Reference(typeof(...), "...")]` |
 | An inline `queries` entry on an embedded type | **Yes** | Explicitly preserved by the synchronizer |
+| A minted query's `name`, `alias`, `sortColumns` | **Yes** | Minted once; the file owns them afterwards. A stepped-aside `GetX2` stays the root's query (D11) |
+| The seed of a new attribute (`Hidden`, `Exclude`) | **Yes** | `spark.ModelAttributes(...)` runs only when an attribute is first created (D9) |
+
+What a context root's properties become **when synchronize first creates them** is decided by
+`spark.ModelAttributes((type, property) => …)`, returning `Default`, `Hidden` (`showedOn: None`, read-only, not
+required) or `Exclude` (no attribute). Spark's default hides the audit names `CreatedBy`, `CreatedAt*`, `ModifiedBy`
+and `ModifiedAt*`; wrap `ModelAttributeConventions.AuditMembersHidden` to keep that. It matters most for a root over
+a package's type, whose class you cannot annotate. Fleet treats the mail package's `UpdatedAt*` as an audit stamp too:
+
+```csharp
+spark.ModelAttributes((type, property) =>
+    property.Name.StartsWith("UpdatedAt", StringComparison.Ordinal)
+        ? ModelAttributeSeed.Hidden
+        : ModelAttributeConventions.AuditMembersHidden(type, property));
+```
+
+The hook never changes or deletes an existing attribute (#253), and `[IgnoreProperty]` always excludes. `Hidden` is
+layout only: the value still reaches the client, so a secret needs `Exclude`.
 
 So a lookup or reference must be declared in C#. Adding `lookupReferenceType` to the JSON by hand
 appears to work until the next synchronization silently reverts the attribute to a free-text box.

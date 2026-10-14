@@ -52,6 +52,11 @@
     <AdditionalFiles Include="..\..\apps\Fleet\Fleet\App_Data\Model\*.json" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Seed files imported with JsonFixtureImporter (RavenDB query-result format). -->
+    <Content Include="ReferencePicker\Data\*.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <!--
     Imported explicitly because this repo consumes the package by ProjectReference, where NuGet's
     automatic build/ import does not apply. A downstream consumer using a PackageReference gets

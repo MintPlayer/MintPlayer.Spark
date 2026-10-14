@@ -86,6 +86,19 @@
       ],
       "renderMode": "Pagination",
       "entityType": "Person"
+    },
+    {
+      "id": "4359c218-27ed-4ad1-953a-d7cc7e849c7c",
+      "name": "GetPeopleWithEmail",
+      "source": "Database.PeopleWithEmail",
+      "sortColumns": [
+        {
+          "property": "LastName",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "Person"
     }
   ]
 }

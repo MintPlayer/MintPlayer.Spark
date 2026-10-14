@@ -1,5 +1,9 @@
 # Plan — issue #279: query-declared index bindings replace IndexRegistry's ambient resolution
 
+> ⚠️ **Partly superseded (2026-10-13)** by [default_index_PRD.md](default_index_PRD.md): `GenerateIndexAttribute.IsDefault`
+> and `GetDefaultForCollectionType` below no longer exist (now `[DefaultIndex(params Type[])]` per entity type and
+> `GetDefaultFor(Type)`). Kept as the record of #279.
+
 PRD: `docs/issue_279_PRD.md`. Branch: `feat/issue-279-query-declared-index-bindings`. One commit per
 milestone; each milestone builds clean; the full test suite + E2E runs once in M6 (intermediate milestones
 are verified by build + targeted reasoning, per working convention).

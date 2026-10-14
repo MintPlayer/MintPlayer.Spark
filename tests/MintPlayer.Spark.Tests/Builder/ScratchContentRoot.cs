@@ -77,6 +77,11 @@ internal sealed class ScratchContentRoot : IDisposable
 /// Every class that sets <see cref="Environment.ExitCode"/> or swaps <see cref="Console.Error"/>
 /// runs in this collection: both are process-global, so two such classes running in parallel read
 /// each other's exit codes.
+/// The same holds for <see cref="Console.Out"/> (<c>ModelSynchronizerTests</c>,
+/// <c>SynchronizeReferenceRootTests</c>): when two classes swap it in parallel, one saves the other's
+/// writer as its "original", restores it after the other disposed it, and every later
+/// <c>Console.WriteLine</c> in the process throws <see cref="ObjectDisposedException"/>
+/// (65 failures in one filtered run, 2026-10-14).
 /// </summary>
 [CollectionDefinition(Name, DisableParallelization = true)]
 public sealed class ProcessExitCodeCollection

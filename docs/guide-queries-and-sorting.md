@@ -619,14 +619,40 @@ unmapped companion so the convention does not have to be remembered, and both of
 A `DateTimeOffset` never needs a sort companion, whatever its indexing: RavenDB indexes it as one UTC instant and
 orders by that (measured on Corax and Lucene, 2026-10).
 
-### Several indexes over one entity
+### The default index of an entity type
 
-Multiple indexes mapping the same collection type — a `[GenerateIndex]` beside a hand-written index with
-computed fields, say — coexist. The registry retains every registration; the **generic query path uses one
-deterministic default** (the smallest index name under ordinal comparison — name order, not registration
-order, so reordering declarations can never silently move the model hash), and warns at startup when a
-collection has more than one. The others stay fully usable by hand via `session.Query<TProjection, TIndex>()`,
-which never consults the registry.
+Each entity type has at most one **default index** ([default_index_PRD.md](default_index_PRD.md)). It does two things:
+its view shapes the type's model file (`queryType`, `indexName`), and the type's `Database.*` queries run on it,
+including the query a query-less `[Reference(typeof(T))]` resolves to. Synchronize stamps it as `indexName` on every
+`Database.*` query of the type; a query that names another existing index keeps it, and `Custom.*` queries are never
+stamped.
+
+Which index it is (D3):
+
+- **The claim.** `[DefaultIndex]` on an index claims the type. On a single-map the type argument is optional and must
+  be the mapped `T` (`SPARK051`); `[DefaultIndex(typeof(Car))]` and a bare `[DefaultIndex]` mean the same.
+- **Otherwise the sole index of T with a view** (a `[FromIndex]` class) is the default implicitly. An index without a
+  view becomes a default only when claimed; its queries then return entity documents, and only the fields its maps emit
+  can be sorted or filtered (synchronize mints the other attributes as not sortable and not filterable).
+- **Two claims for one type**, or **several viewed indexes and no claim**, are `SPARK009` at build time and a startup
+  error. There is no tie-breaker: an earlier version took the smallest index name, which moved silently when an index
+  was renamed.
+
+`[GenerateIndex]` emits its index with the `[DefaultIndex]` marker unless a hand-written index already claims the
+entity, in the same project or a referenced assembly. Then the generated index is emitted without it and stays
+deployed and queryable by hand (D5). HR's `Professions_Lookup` beside the `[GenerateIndex]` entity `Profession` is the
+demo. (`[GenerateIndex(IsDefault = false)]` no longer exists.)
+
+**A multi-map can be the default of several types.** It must list them, `[DefaultIndex(typeof(Bicycle),
+typeof(Motorcycle))]` (`SPARK052` for a bare marker), each must have an `AddMap<T>` in the index (`SPARK053`), and the
+index must derive from `SparkMultiMapIndexCreationTask<TReduceResult>` (`SPARK055`). That base writes a collection field
+into every map, and the executor narrows T's queries on it before row security, paging and totals. Without the
+narrowing a motorcycle would come back as a bicycle, outside the bicycle's row policy. A JavaScript index cannot be a
+default (`SPARK054`). DemoApp's `TwoWheelers_Overview` is the demo.
+
+At runtime, `IIndexCatalog.GetDefaultFor(Type)` answers the election (it replaces `GetDefaultForCollectionType`).
+Every other index of the type stays usable by hand through `session.Query<TView, TIndex>()`, or for a reference
+through a named query: `[Reference(typeof(T), "QueryOnAnotherIndex")]` (D2).
 
 ### Complex fields and the breadcrumb sort companion
 

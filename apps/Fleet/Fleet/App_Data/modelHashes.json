@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "modelHash": "72cf82adbf3723ed1aff1854f9d45a1e2f3a7e39286602c558625c08c57d1661",
-  "contextRoots": "413ca4da55c2ba97081d85e13fd185f321b34ef2c0e2a098116947221739e1ff",
-  "modelFiles": "c7e6b103e37b6f6a342652d6e37e40f3c167caeac833b595c8905e18c5aa4d47",
+  "modelHash": "1f6c07784bf6c65edc7db2509aab6ba5a90fb9149f20d471ef34635102a8cee1",
+  "contextRoots": "b37568abea714cc6f37f5adcd41857bbda9a66e0f96b82f0cc1eb49e6c747eab",
+  "modelFiles": "c1c2c848c0bdec4122480757111ca030b4756707e7962bfebe796f73dd7d7885",
   "files": {
     "Car.json": "b912da2b08d437e12b81a9b5e919369a373468fbc59047ec2fa3a67c182f3927",
     "ClientClaim.json": "94bb0ad62af0b10712bbf1f88d98534addafb037ea693b691b2ca893fb8f437d",
@@ -26,15 +26,17 @@
     "PasskeyRename.json": "efd6a49e2c20d8420f48f546557fe7605a0553d3f4ce50ec8ae62876ce86714e",
     "PasskeyRow.json": "902d6e7e53ac01ab224b90bdd486b9ba3f4ee27273fe667c907312aac3541b33",
     "Passkeys.json": "738742f13217adeeb4724f72f968923099f7d7210cee1133dfd6707eb55856ce",
-    "Person.json": "534193d04820f3bc26ec07bda57e8d17c2bed2664662ce9965f7639f5bb2e17a",
+    "Person.json": "b8fdfaa94a823f380044ebf30bd6b32d5b074753d2afb5de620a9a4b8f0c0622",
     "ServiceEntry.json": "b225fdb65bc53d04caa70c111ad4b079f3894362020ea996f129ef0fa91869b2",
+    "SparkMailDelivery.json": "6d3aad682961f6b749c361acc41e9b4198e565a4499ac1a726428eead3a15e23",
     "SparkUser.json": "81d5e4fe403e329fc20404f35c3b9944aa11c17374981df5a4073ddf08fcdb69"
   },
   "entities": {
     "Car": "5e4bae4ffdcbf5af251b229dd43e5beb65b42a346c372de83ccfd80bfbdf576d",
     "Company": "68f249d29fdef62f762a405d7abb8bd582d1e6663a21f817dfc4dff523c3acf4",
     "Person": "51995840cd8a350e60c009a6b3ef90477b366b3ebcbbc27e2c848837cad2a174",
-    "ServiceEntry": "6f6fbfa9c50714132bbee3379a2be82c963c8f87d3362af54838300236a2d4d8"
+    "ServiceEntry": "6f6fbfa9c50714132bbee3379a2be82c963c8f87d3362af54838300236a2d4d8",
+    "SparkMailDelivery": "6bcdba1248a4f344f4b0001a4c3cb8c34504c63e5cc1bd2ebd5f36409a228e36"
   },
   "configFiles": {
     "actions.json": "d44f60577c1ac5eb1d609f89a5f0ee9fed29b1aa99164938d7bee2e4f58f4ed5",

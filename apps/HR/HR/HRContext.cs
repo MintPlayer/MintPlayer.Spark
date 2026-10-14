@@ -6,7 +6,7 @@ using Raven.Client.Documents.Linq;
 
 namespace HR;
 
-public class HRContext : SparkContext
+public partial class HRContext : SparkContext
 {
     public IRavenQueryable<Person> People => Session.Query<Person>();
     public IRavenQueryable<VPerson> VPeople => Session.Query<VPerson, People_Overview>();

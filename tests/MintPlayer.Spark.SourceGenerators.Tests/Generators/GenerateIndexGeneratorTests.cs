@@ -57,7 +57,7 @@ public class GenerateIndexGeneratorTests
 
     /// <summary>
     /// The generated index is the entity's generic-surface index, so it elects itself the model-shaping
-    /// default unless the entity opts out (issue #279).
+    /// default unless a hand-written index claims the entity (docs/default_index_PRD.md, D5).
     /// </summary>
     [Fact]
     public void Generated_index_carries_DefaultIndex_by_default()
@@ -67,24 +67,131 @@ public class GenerateIndexGeneratorTests
         generated.Should().Contain("[global::MintPlayer.Spark.Abstractions.DefaultIndexAttribute]");
     }
 
-    [Fact]
-    public void IsDefault_false_omits_the_DefaultIndex_marker()
+    /// <summary>
+    /// D5: a hand-written index claiming the entity in the same project wins, and the generated index yields: it is
+    /// still emitted (its view and companions are useful), only without the marker.
+    /// </summary>
+    [Theory]
+    [InlineData("[DefaultIndex]")]
+    [InlineData("[DefaultIndex(typeof(Car))]")]
+    public void A_same_project_claim_suppresses_the_generated_marker(string marker)
     {
-        var generated = Run("""
-            using MintPlayer.Spark.Abstractions;
+        var result = GeneratorHarness.Run(
+            GeneratorName,
+            [PlainCar, $$"""
+                using MintPlayer.Spark.Abstractions;
+                using TestApp.Entities;
 
-            namespace TestApp.Entities;
+                namespace TestApp.Indexes.HandWritten;
 
-            [GenerateIndex(IsDefault = false)]
-            public class Car
-            {
-                public string? Id { get; set; }
-                public string LicensePlate { get; set; } = string.Empty;
-            }
-            """).GeneratedSources[0].Source;
+                {{marker}}
+                public class Cars_ByPlate : Raven.Client.Documents.Indexes.AbstractIndexCreationTask<Car> { }
+                """],
+            referenceTypes: [typeof(GenerateIndexAttribute), typeof(Raven.Client.Documents.Indexes.AbstractIndexCreationTask)],
+            rootNamespace: "TestApp", outputKind: Microsoft.CodeAnalysis.OutputKind.ConsoleApplication);
 
+        var generated = result.GeneratedSources.Single(s => s.HintName == "SparkGeneratedIndexes.g.cs").Source;
         generated.Should().Contain("public partial class Cars_Overview");
         generated.Should().NotContain("DefaultIndexAttribute");
+    }
+
+    /// <summary>
+    /// A multi-map claims the types it lists: the listed entity's generated index yields, an unlisted one keeps its
+    /// marker.
+    /// </summary>
+    [Fact]
+    public void A_multi_map_claim_suppresses_only_the_listed_entities()
+    {
+        var result = GeneratorHarness.Run(
+            GeneratorName,
+            [PlainCar, """
+                using MintPlayer.Spark.Abstractions;
+
+                namespace TestApp.Entities
+                {
+                    [GenerateIndex]
+                    public class Bike { public string? Id { get; set; } public string Name { get; set; } = string.Empty; }
+
+                    public class VehicleEntry { public string? Name { get; set; } }
+
+                    [DefaultIndex(typeof(Car))]
+                    public class Vehicles : MintPlayer.Spark.SparkMultiMapIndexCreationTask<VehicleEntry> { }
+                }
+                """],
+            referenceTypes: [typeof(GenerateIndexAttribute), typeof(Raven.Client.Documents.Indexes.AbstractIndexCreationTask), typeof(MintPlayer.Spark.SparkMultiMapIndexCreationTask<>)],
+            rootNamespace: "TestApp", outputKind: Microsoft.CodeAnalysis.OutputKind.ConsoleApplication);
+
+        var generated = result.GeneratedSources.Single(s => s.HintName == "SparkGeneratedIndexes.g.cs").Source;
+        CountOccurrences(generated, "DefaultIndexAttribute").Should().Be(1, "only Bike, which Vehicles does not list, keeps its marker");
+        System.Text.RegularExpressions.Regex.IsMatch(generated, @"DefaultIndexAttribute\]\s+public partial class Bikes_Overview")
+            .Should().BeTrue("the remaining marker is Bike's");
+    }
+
+    /// <summary>
+    /// D5: claims are also read from referenced assemblies, from the attribute's metadata. A bare single-map marker
+    /// resolves to its mapped type there too, because the base type is in metadata.
+    /// </summary>
+    [Theory]
+    [InlineData("[DefaultIndex]")]
+    [InlineData("[DefaultIndex(typeof(Car))]")]
+    public void A_referenced_claim_suppresses_the_generated_marker(string marker)
+    {
+        var library = GeneratorHarness.CompileToMetadataReference(
+            "TestLibrary",
+            [$$"""
+                using MintPlayer.Spark.Abstractions;
+                using TestApp.Entities;
+
+                namespace TestLibrary.Indexes;
+
+                {{marker}}
+                public class Cars_ByPlate : Raven.Client.Documents.Indexes.AbstractIndexCreationTask<Car> { }
+                """, PlainCar],
+            referenceTypes: [typeof(GenerateIndexAttribute), typeof(Raven.Client.Documents.Indexes.AbstractIndexCreationTask)]);
+
+        var result = GeneratorHarness.Run(
+            GeneratorName,
+            ["// the entity and its claim both come from the library"],
+            referenceTypes: [typeof(GenerateIndexAttribute), typeof(Raven.Client.Documents.Indexes.AbstractIndexCreationTask)],
+            rootNamespace: "TestApp",
+            outputKind: Microsoft.CodeAnalysis.OutputKind.ConsoleApplication,
+            additionalReferences: [library]);
+
+        var generated = result.GeneratedSources.Single(s => s.HintName == "SparkGeneratedIndexes.g.cs").Source;
+        generated.Should().Contain("public partial class Cars_Overview");
+        generated.Should().NotContain("DefaultIndexAttribute");
+    }
+
+    /// <summary>
+    /// A claim on an index named like one this generator emits is another application's generated index reached
+    /// through a reference; counting it would make every generated index yield to its own twin.
+    /// </summary>
+    [Fact]
+    public void A_referenced_claim_by_an_index_of_the_generated_name_is_ignored()
+    {
+        var library = GeneratorHarness.CompileToMetadataReference(
+            "OtherApp",
+            ["""
+                using MintPlayer.Spark.Abstractions;
+                using TestApp.Entities;
+
+                namespace OtherApp.Indexes;
+
+                [DefaultIndex]
+                public class Cars_Overview : Raven.Client.Documents.Indexes.AbstractIndexCreationTask<Car> { }
+                """, PlainCar],
+            referenceTypes: [typeof(GenerateIndexAttribute), typeof(Raven.Client.Documents.Indexes.AbstractIndexCreationTask)]);
+
+        var result = GeneratorHarness.Run(
+            GeneratorName,
+            ["// the entity comes from the library"],
+            referenceTypes: [typeof(GenerateIndexAttribute), typeof(Raven.Client.Documents.Indexes.AbstractIndexCreationTask)],
+            rootNamespace: "TestApp",
+            outputKind: Microsoft.CodeAnalysis.OutputKind.ConsoleApplication,
+            additionalReferences: [library]);
+
+        var generated = result.GeneratedSources.Single(s => s.HintName == "SparkGeneratedIndexes.g.cs").Source;
+        generated.Should().Contain("[global::MintPlayer.Spark.Abstractions.DefaultIndexAttribute]");
     }
 
     /// <summary>

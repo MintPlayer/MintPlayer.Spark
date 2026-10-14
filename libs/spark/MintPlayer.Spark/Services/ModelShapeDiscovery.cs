@@ -38,12 +38,13 @@ public static class ModelShapeDiscovery
             if (entityType.IsSparkProjection())
                 continue;
 
-            // The catalog's default exists only when a projection-bearing index maps the entity,
-            // which preserves the invariant the old registry code enforced by hand: an index
-            // WITHOUT a projection contributes no indexName to the model file, so hashing one
-            // would make the hash describe something the model does not record — deleting such an
-            // index would move the hash with no accompanying model diff.
-            var defaultEntry = indexCatalog.GetDefaultForCollectionType(entityType);
+            // The invariant: the hash records an index exactly when the model file records it as the
+            // entity's indexName, so deleting or swapping the default always moves the hash WITH a
+            // model diff. The catalog's default is that index: the sole viewed index, or the one that
+            // claims the type with [DefaultIndex] — which may have no view (docs/default_index_PRD.md,
+            // D3/SP4). A viewless default contributes its indexName and no queryType, and the
+            // synchronizer writes the same. An index that is not the default contributes nothing.
+            var defaultEntry = indexCatalog.GetDefaultFor(entityType);
             discovered[entityType] = new SparkModelType(
                 entityType,
                 defaultEntry?.ProjectionType?.FullName,

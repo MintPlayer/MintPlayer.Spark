@@ -1,0 +1,78 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "persistentObject": {
+    "id": "86fa2120-c5c2-44e0-8b93-0493896aad6c",
+    "name": "Bicycle",
+    "clrType": "DemoApp.Library.Entities.Bicycle",
+    "queryType": "DemoApp.Indexes.VTwoWheeler",
+    "indexName": "TwoWheelers_Overview",
+    "breadcrumb": "{Brand} {Model}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "b28a3585-f29f-4cd2-8771-5b10ccdffff4",
+        "name": "Brand",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "34b7719f-9bb7-438d-b085-2d69c01360ff",
+        "name": "Details",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 4,
+        "isArray": false,
+        "inCollectionType": false,
+        "showedOn": "Query",
+        "rules": []
+      },
+      {
+        "id": "41802a16-093b-471c-9a75-922504c395c5",
+        "name": "FrameSize",
+        "dataType": "number",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "6c4d0ec7-74d4-4433-b89d-b2e7a08b7332",
+        "name": "Model",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": [
+    {
+      "id": "515532bd-6524-4e89-a39a-aaaffa62aab6",
+      "name": "GetBicycles",
+      "source": "Database.Bicycles",
+      "sortColumns": [
+        {
+          "property": "Brand",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "indexName": "TwoWheelers_Overview",
+      "entityType": "Bicycle"
+    }
+  ]
+}

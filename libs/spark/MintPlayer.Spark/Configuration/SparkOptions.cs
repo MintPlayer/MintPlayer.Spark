@@ -1,9 +1,29 @@
+using System.Reflection;
+
 namespace MintPlayer.Spark.Configuration;
 
 public class SparkOptions
 {
     public RavenDbOptions RavenDb { get; set; } = new();
     public BreadcrumbOptions Breadcrumb { get; set; } = new();
+
+    /// <summary>
+    /// Decides what each property of a context-root type becomes when the synchronizer first creates its
+    /// model attribute (<c>docs/default_index_PRD.md</c>, D9): <see cref="ModelAttributeSeed.Default"/>,
+    /// <see cref="ModelAttributeSeed.Hidden"/> or <see cref="ModelAttributeSeed.Exclude"/>. It matters most
+    /// for library types (an <c>Organizations</c> root over <c>Organization</c>), whose properties the app
+    /// cannot annotate.
+    /// <para>
+    /// Defaults to <see cref="ModelAttributeConventions.AuditMembersHidden"/>. Replace or wrap it with
+    /// <c>spark.ModelAttributes(...)</c>. <c>[IgnoreProperty]</c> always excludes, whatever this returns.
+    /// </para>
+    /// </summary>
+    /// <remarks>
+    /// Runs only during synchronize, and only when an attribute is first created: it never changes or
+    /// deletes an existing attribute (#253). It must be pure — the same answer for the same property on
+    /// every run — or the model file churns.
+    /// </remarks>
+    public Func<Type, PropertyInfo, ModelAttributeSeed> ModelAttribute { get; set; } = ModelAttributeConventions.AuditMembersHidden;
 }
 
 public class BreadcrumbOptions

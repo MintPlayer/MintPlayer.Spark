@@ -1,6 +1,7 @@
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Builder;
 using MintPlayer.Spark.Abstractions.Model;
+using MintPlayer.Spark.Configuration;
 using MintPlayer.Spark.Services;
 using System.Reflection;
 
@@ -529,10 +530,19 @@ public static class SparkDevelopmentExtensions
     /// Not a substitute for checking the Map itself — a projection can still declare a property the Map
     /// never assigns. It removes the case where Spark has no description of the index at all.
     /// </para>
+    /// <para>
+    /// One exception: the entity type's own <b>viewless default</b>, an index the author marked
+    /// <c>[DefaultIndex]</c> without a view (<c>docs/default_index_PRD.md</c>, D3/SP4). Its description is
+    /// the fields its maps emit, so instead of refusing it the gate checks the model against that surface:
+    /// no declared sort on a field the maps do not emit, and every attribute outside it marked
+    /// <c>canSort</c>/<c>canFilter</c> false, so the executor refuses such a sort or filter silently instead
+    /// of RavenDB answering it with a 500.
+    /// </para>
     /// </remarks>
     private static void VerifyBoundIndexHasAProjection(IIndexCatalog indexCatalog, string contentRootPath)
     {
         var offenders = new List<string>();
+        var reportedSurfaces = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var file in SparkModelFiles.Compose(contentRootPath))
         {
@@ -564,6 +574,26 @@ public static class SparkDevelopmentExtensions
                 // A name that resolves to nothing is the synchronizer's business — it retargets a dead
                 // binding rather than failing, so reporting it here would duplicate that.
                 if (entry is null || entry.ProjectionType is not null) continue;
+
+                // A viewless index the author marked as this type's default (docs/default_index_PRD.md,
+                // D3/SP4) is described after all: by the fields its maps emit. The row shape is still the
+                // entity, so hold the model to that surface instead — the sort columns the query declares,
+                // and every attribute outside the surface marked canSort/canFilter false (the synchronizer
+                // mints new attributes that way; older ones need it by hand).
+                if (entry.DefaultFor.Any(t => string.Equals(t.FullName, definition.ClrType, StringComparison.Ordinal)))
+                {
+                    if (ModelSynchronizer.ViewlessQuerySurface(entry) is not { } surface) continue;
+
+                    foreach (var sort in query.SortColumns.Where(s => !surface.Contains(s.Property)))
+                        offenders.Add($"{definition.Name}.{query.Name}: sorts on '{sort.Property}', which viewless default index '{indexName}' does not emit");
+
+                    if (reportedSurfaces.Add(definition.Name))
+                    {
+                        foreach (var attribute in definition.Attributes.Where(a => !surface.Contains(a.Name) && (a.CanSort != false || a.CanFilter != false)))
+                            offenders.Add($"{definition.Name}.{attribute.Name}: not emitted by viewless default index '{indexName}', so it needs \"canSort\": false and \"canFilter\": false");
+                    }
+                    continue;
+                }
 
                 offenders.Add($"{definition.Name}.{query.Name}: bound to '{indexName}', which has no [FromIndex] projection");
             }
@@ -1309,7 +1339,13 @@ public static class SparkDevelopmentExtensions
         if (!TryBuildIndexCatalog(builder.Services, out var indexCatalog))
             return;
 
-        var synchronizer = new ModelSynchronizer(builder.Environment, indexCatalog);
+        // The application's ModelAttribute hook (docs/default_index_PRD.md, D9), read off the SparkOptions instance
+        // AddSpark registers, as the module registry is below (PRD §7, SP5). No AddSpark: Spark's default.
+        var options = builder.Services.LastOrDefault(d => d.ServiceType == typeof(SparkOptions))?.ImplementationInstance as SparkOptions;
+        var synchronizer = new ModelSynchronizer(builder.Environment, indexCatalog)
+        {
+            ModelAttribute = options?.ModelAttribute ?? ModelAttributeConventions.AuditMembersHidden,
+        };
         synchronizer.SynchronizeModels(contextType);
 
         Console.WriteLine("Model synchronization completed.");

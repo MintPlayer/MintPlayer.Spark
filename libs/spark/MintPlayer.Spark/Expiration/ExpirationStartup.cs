@@ -72,9 +72,12 @@ internal static class ExpirationStartup
 
         if (expiring.Count > 0 && services.GetService<IIndexCatalog>() is { } catalog)
         {
+            // EntityTypes, so a multi-map default — no collection of its own, but the default of each type its
+            // [DefaultIndex(...)] lists — is checked for each of those types (docs/default_index_PRD.md, SP1).
             foreach (var entry in catalog.GetAllEntries())
+            foreach (var collection in entry.EntityTypes)
             {
-                if (entry.CollectionType is { } collection && typeof(IExpiring).IsAssignableFrom(collection)
+                if (typeof(IExpiring).IsAssignableFrom(collection)
                     && entry.ProjectionType is { } projection && projection.GetProperty(nameof(IExpiring.ExpiresAtUtc)) is null)
                     logger.LogWarning(
                         "Projection {Projection} of index {Index} has no ExpiresAtUtc, so expired {EntityType} rows are dropped " +

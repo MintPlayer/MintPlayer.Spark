@@ -31,7 +31,7 @@ the diagnostic guarding the generated row key — reached no external consumer a
 | SPARK006 | Warning | Index companion (`{Name}Search`, `{Name}Sort`, `{Name}Raw`) is never assigned in the index map — reported on the base field | `SortCompanionAnalyzer` | ✅ Map the companion in the index (refused for map/reduce, helper projections and other shapes it cannot edit safely) |
 | SPARK007 | Warning | `[Breadcrumb]` inside a `[FromIndex]` projection has no effect | `BreadcrumbPlacementAnalyzer` | — |
 | SPARK008 | Warning | `[Breadcrumb]` on a property kind that cannot carry it | `BreadcrumbPlacementAnalyzer` | — |
-| SPARK009 | Error | Multiple `[DefaultIndex]` markers over one collection type | `DefaultIndexAnalyzer` | — |
+| SPARK009 | Error | Two `[DefaultIndex]` claims for one entity type: a single-map claims its mapped type, a multi-map the types it lists. A `[GenerateIndex]` entity is no claim of its own: its generated index yields to a hand-written claim and is emitted without the marker ([PRD](default_index_PRD.md), D5). Also: several same-project single-map indexes of one type with a `[FromIndex]` view and no claim for it, where only the sole viewed index is an implicit default (D3); a `[GenerateIndex]` entity counts as claimed, as at runtime. Both are startup errors too | `DefaultIndexAnalyzer` | — |
 | SPARK010 | Warning | `MapControllers()` mounts controllers outside Spark's pipeline | `MapControllersAnalyzer` | — |
 | SPARK011 | Warning | Security right names an action Spark never asks for | `SecurityConfigurationAnalyzer` | — |
 | SPARK012 | Warning | Security right names a type no model file declares | `SecurityConfigurationAnalyzer` | — |
@@ -73,6 +73,12 @@ the diagnostic guarding the generated row key — reached no external consumer a
 | SPARK048 | Error | A group token or slot does not resolve: `@anonymous`/`@authenticated` without its `wellKnown` entry, an unknown `@token`, a slot no `bindings` entry binds, or a binding to an undeclared group. A right that resolves to nothing would grant to no one while reading as granted, so the run time refuses it too (composition D4) | `SecurityConfigurationAnalyzer` | — |
 | SPARK049 | Error | The application states something about library rights that cannot mean what it says: a library key stated other than to remove it, a `$remove` of a key no library ships, or a key prefix, binding or `libraries` opt-out naming no referenced library (composition D4) | `SecurityConfigurationAnalyzer` | — |
 | SPARK050 | Warning | An MCP tool class (`[McpServerToolType]`) holds or calls a raw RavenDB session or store, or an `IDatabaseAccess.…UncheckedAsync` method: none enforces the user's rights, row security or the agent's permissions. Use `IDatabaseAccess`'s checked methods, `IQueryExecutor` or `IPermissionService` ([guide](guide-mcp.md#write-your-own-tools)) | `McpToolDataAccessAnalyzer` | — |
+| SPARK051 | Error | `[DefaultIndex(typeof(X))]` on a single-map index names a type other than the one it maps; a bare marker claims the mapped type. Also refused at startup ([PRD](default_index_PRD.md), D1) | `DefaultIndexAnalyzer` | — |
+| SPARK052 | Error | A bare `[DefaultIndex]` on a multi-map index: a multi-map must list the entity types it is the default of. Also refused at startup (D1) | `DefaultIndexAnalyzer` | — |
+| SPARK053 | Error | A multi-map's `[DefaultIndex]` lists a type that none of its same-project `AddMap<X>(…)` calls maps (explicit or inferred form; `AddMapForAll<TBase>` covers subtypes). **Compile time only**: a referenced assembly's metadata holds no constructor bodies, so startup cannot check it (D1) | `DefaultIndexAnalyzer` | — |
+| SPARK054 | Error | `[DefaultIndex]` on a JavaScript index, which can neither name its entity type nor carry the collection discriminator. Also refused at startup (PRD §7, SP1) | `DefaultIndexAnalyzer` | — |
+| SPARK055 | Error | A multi-map default index does not derive from `SparkMultiMapIndexCreationTask`, so Spark cannot narrow its rows to the queried type's collection. Also refused at startup (D4) | `DefaultIndexAnalyzer` | — |
+| SPARK056 | Warning | A writable `[Reference(typeof(T))]` names no query, and no `SparkContext` in the project has a **plain** entity root of `T`: an `IRavenQueryable<T>` property, own or inherited from a base in the project, whose body is `Session.Query<T>()` (the generator's own classifier), or a `[SparkPlainRoot]` marker. A filtered or customized root does not count, because a query-less reference resolves to the plain root only (D6), and neither does a view root, which mints no query. The synchronizer then gives the reference no query and the edit page's picker no options. Skips `[ReadOnly(true)]` and setter-less properties, generated members and views. Runs on the compilation after generation; a project without a context is not checked (D8) | `MissingReferenceRootAnalyzer` | ✅ Add the root `public IRavenQueryable<T> {Plural} => Session.Query<T>();` to the context |
 | SPARKLIB001 | Error | A project marked `<SparkEntityLibrary>true</SparkEntityLibrary>` depends on the ASP.NET Core shared framework (`Microsoft.AspNetCore.App`), directly or through a reference to a Web-SDK project such as `MintPlayer.Spark.Abstractions` or `MintPlayer.Spark.Authorization`. Reference `MintPlayer.Spark.Attributes`, `MintPlayer.Spark.Model` and the plain `*.Abstractions` packages instead (#388) | MSBuild target `SparkEntityLibraryGuard` (repository `Directory.Build.targets`) | — |
 
 SPARK030 is an **MSBuild** warning, not a Roslyn diagnostic: it is raised before `Build` in a project
@@ -89,9 +95,13 @@ the root `Directory.Build.targets`, which is not shipped in any package. It runs
 `ResolvePackageAssets` and checks both `FrameworkReference` and `TransitiveFrameworkReference`,
 because a framework reference inherited through a `ProjectReference` arrives as the latter.
 
-Two further id namespaces are generator-only and not analyzer diagnostics: `SPARK_INDEX_001…012`
+Two further id namespaces are generator-only and not analyzer diagnostics: `SPARK_INDEX_001…013`
 (`GenerateIndexDiagnostics.cs`, note `004` is absent) and `SPARK_TRANS_001…006`
-(`TranslationsDiagnostics.cs`). The exception is `SPARK_TRANS_005` (two unrelated libraries translate
+(`TranslationsDiagnostics.cs`). Two of the index ids concern the app's `SparkContext`
+([PRD](default_index_PRD.md), D6, D7): `SPARK_INDEX_008` (Warning) fires when the context, or a type containing
+it, is not `partial` while the generator has anything to add to it, a view root or a `[SparkPlainRoot]` marker;
+`SPARK_INDEX_013` (Info, new) says a generated view root took the first free name (`VCars2`, …) because its own
+name is a member of the context or of a base type. The exception is `SPARK_TRANS_005` (two unrelated libraries translate
 a key into a language differently), which `LibraryTranslationsConflictAnalyzer` reports since
 composition M5, when the host aggregator generator was removed. `SPARK_TRANS_006` (one key stated
 twice, dotted and nested, error) is new in M5; the run time refuses such a file. `LibraryLayersGenerator`

@@ -349,7 +349,7 @@ public class SynchronizeIdempotencyTests : IDisposable
         // subsequent run — the wipe is invisible to the fixed-point invariant alone because the
         // stomp is stable (the value is lost on the first re-run and never comes back), so this
         // test asserts the trimmed value itself as well.
-        _indexCatalog.GetDefaultForCollectionType(typeof(IdemProbe)).Returns(new IndexCatalogEntry
+        _indexCatalog.GetDefaultFor(typeof(IdemProbe)).Returns(new IndexCatalogEntry
         {
             IndexName = "Probes/Overview",
             IndexType = typeof(IdemProbe),
@@ -452,7 +452,7 @@ public class SynchronizeCorrectnessTests : IDisposable
         // Both fields feed the structural hash, so a stale value does not merely linger — the
         // verifier confirms a reference to a type that no longer exists.
         var withProjection = Substitute.For<IIndexCatalog>();
-        withProjection.GetDefaultForCollectionType(typeof(IdemProbe)).Returns(new IndexCatalogEntry
+        withProjection.GetDefaultFor(typeof(IdemProbe)).Returns(new IndexCatalogEntry
         {
             IndexName = "Probes/Overview",
             IndexType = typeof(IdemProbe),

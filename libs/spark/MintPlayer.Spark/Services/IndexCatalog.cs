@@ -10,10 +10,10 @@ namespace MintPlayer.Spark.Services;
 /// <para>
 /// Runtime resolution is declared, never ambient: a Spark query names its index (<c>indexName</c>),
 /// the entity's model file names the default binding, and this catalog turns either name into the
-/// CLR index and projection types. The only per-collection question left is the synchronizer's —
-/// "which projection shapes this entity's model file" — answered by <c>[DefaultIndex]</c> via
-/// <see cref="GetDefaultForCollectionType"/>, and validated at <see cref="Freeze"/> so runtime
-/// startup and the offline model commands reject an ambiguous default identically.
+/// CLR index and projection types. The only per-type question left is the synchronizer's —
+/// "which index is this entity type's default" — answered by <c>[DefaultIndex]</c> via
+/// <see cref="GetDefaultFor"/>, and validated at <see cref="Freeze"/> so runtime startup and the
+/// offline model commands reject an ambiguous default identically.
 /// </para>
 /// </summary>
 public interface IIndexCatalog
@@ -29,10 +29,13 @@ public interface IIndexCatalog
     void RegisterProjection(Type projectionType, Type indexType);
 
     /// <summary>
-    /// Seals the catalog and validates the <c>[DefaultIndex]</c> rules per collection type: zero
-    /// projection-bearing indexes ⇒ no default; exactly one ⇒ implicit default; several ⇒ exactly one
-    /// marked, anything else is an error naming the candidates. A marker on a projection-less index is
-    /// an error too — it cannot shape a model file, so it can only be a misconfiguration.
+    /// Seals the catalog and elects each entity type's default index (<c>docs/default_index_PRD.md</c>,
+    /// D3/D4): a type claimed by exactly one <c>[DefaultIndex]</c> has that index, with or without a view;
+    /// an unclaimed type has its sole mapping index that has a view, if there is exactly one. Two claims,
+    /// or several viewed indexes and no claim, are errors naming the candidates. So is a marker the
+    /// catalog cannot honour: types on a single-map that are not its mapped type, a multi-map that lists
+    /// none or does not derive from <c>SparkMultiMapIndexCreationTask</c>, an index whose collection
+    /// Spark cannot read.
     /// </summary>
     void Freeze();
 
@@ -40,17 +43,18 @@ public interface IIndexCatalog
     IndexCatalogEntry? GetByIndexName(string indexName);
 
     /// <summary>
-    /// The entry whose projection shapes the collection type's model file, or <c>null</c> when no
-    /// projection-bearing index maps it. Synchronizer/model-shape concern only — runtime query paths
-    /// resolve by name.
+    /// The default index of <paramref name="entityType"/>, or <c>null</c> when it has none. It shapes the
+    /// type's model file (through its view, when it has one) and is stamped on the type's minted
+    /// <c>Database.*</c> queries. Synchronizer/model-shape concern only — runtime query paths resolve by
+    /// name.
     /// </summary>
-    IndexCatalogEntry? GetDefaultForCollectionType(Type collectionType);
+    IndexCatalogEntry? GetDefaultFor(Type entityType);
 
     /// <summary>Every entry, unordered.</summary>
     IEnumerable<IndexCatalogEntry> GetAllEntries();
 }
 
-/// <summary>One deployed index: its name, CLR type, mapped collection, and optional projection.</summary>
+/// <summary>One deployed index: its name, CLR type, mapped collection, optional projection, and default claims.</summary>
 public sealed class IndexCatalogEntry
 {
     public required string IndexName { get; init; }
@@ -63,22 +67,47 @@ public sealed class IndexCatalogEntry
     /// <remarks>
     /// ⚠️ Nullable on purpose. While this was <c>required Type</c>, an index with no derivable
     /// collection could not be entered in the catalog at all and was dropped, so an explicit
-    /// <c>indexName</c> binding to it could never resolve. It is now registered and reachable by name;
-    /// only <see cref="IIndexCatalog.GetDefaultForCollectionType"/> — a question that genuinely has no
-    /// answer for a multi-map — skips it.
+    /// <c>indexName</c> binding to it could never resolve. It is now registered and reachable by name,
+    /// and a multi-map becomes a default only for the types its marker lists (<see cref="ClaimedTypes"/>).
     /// </remarks>
     public required Type? CollectionType { get; init; }
     public Type? ProjectionType { get; internal set; }
 
-    /// <summary>Whether this entry's projection shapes its collection type's model file. Computed at freeze.</summary>
-    public bool IsDefault { get; internal set; }
+    /// <summary>
+    /// The entity types this index's <c>[DefaultIndex]</c> marker claims: the mapped type for a bare marker
+    /// on a single-map, the listed types for a multi-map, empty without a marker. Resolved and validated at
+    /// freeze.
+    /// </summary>
+    public IReadOnlyList<Type> ClaimedTypes { get; internal set; } = [];
+
+    /// <summary>The entity types this index was elected the default of. Computed at freeze.</summary>
+    public IReadOnlyList<Type> DefaultFor { get; internal set; } = [];
+
+    /// <summary>Whether this entry is the default index of at least one entity type. Computed at freeze.</summary>
+    public bool IsDefault => DefaultFor.Count > 0;
+
+    /// <summary>
+    /// The entity types whose rows this index serves: its mapped collection type, plus every type its marker
+    /// claims (a multi-map's). Startup checks that inspect "indexes over type X" iterate this, so a multi-map
+    /// default is not skipped for having no single collection.
+    /// </summary>
+    public IEnumerable<Type> EntityTypes
+        => CollectionType is null ? ClaimedTypes : ClaimedTypes.Contains(CollectionType) ? ClaimedTypes : [CollectionType, .. ClaimedTypes];
+
+    /// <summary>
+    /// Whether a query for <paramref name="entityType"/> on this index must be narrowed to that type's
+    /// collection: the index is a multi-map default of the type, so its entries also hold the other mapped
+    /// collections' rows. The narrowing reads the injected <see cref="SparkCollectionRow.FieldName"/> field.
+    /// </summary>
+    public bool FiltersByCollection(Type entityType)
+        => CollectionType is null && DefaultFor.Contains(entityType);
 }
 
 [Register(typeof(IIndexCatalog), ServiceLifetime.Singleton)]
 internal partial class IndexCatalog : IIndexCatalog
 {
     private readonly Dictionary<string, IndexCatalogEntry> _byIndexName = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<Type, IndexCatalogEntry?> _defaultByCollectionType = new();
+    private readonly Dictionary<Type, IndexCatalogEntry> _defaultByEntityType = new();
     private readonly object _lock = new();
     private bool _frozen;
 
@@ -138,17 +167,31 @@ internal partial class IndexCatalog : IIndexCatalog
         {
             if (_frozen) return;
 
-            // Entries with no collection are skipped rather than grouped: a null key would throw on
-            // _defaultByCollectionType, and "which index shapes this collection's model file" is not a
-            // question a multi-map can answer. They stay reachable through GetByIndexName.
-            foreach (var group in _byIndexName.Values
-                         .Where(e => e.CollectionType is not null)
-                         .GroupBy(e => e.CollectionType!))
+            var entries = _byIndexName.Values.OrderBy(e => e.IndexName, StringComparer.Ordinal).ToList();
+            foreach (var entry in entries)
+                entry.ClaimedTypes = ResolveClaims(entry);
+
+            // Every type that could have a default: each single-map's mapped type, and each claimed type
+            // (which is how a multi-map enters the election — it names no collection of its own).
+            var entityTypes = entries
+                .Select(e => e.CollectionType)
+                .OfType<Type>()
+                .Concat(entries.SelectMany(e => e.ClaimedTypes))
+                .Distinct();
+
+            var defaultFor = new Dictionary<IndexCatalogEntry, List<Type>>();
+            foreach (var entityType in entityTypes)
             {
-                var @default = ResolveDefault(group.Key, [.. group]);
-                if (@default is not null) @default.IsDefault = true;
-                _defaultByCollectionType[group.Key] = @default;
+                var @default = Elect(entityType, entries);
+                if (@default is null) continue;
+
+                _defaultByEntityType[entityType] = @default;
+                if (!defaultFor.TryGetValue(@default, out var types)) defaultFor[@default] = types = [];
+                types.Add(entityType);
             }
+
+            foreach (var (entry, types) in defaultFor)
+                entry.DefaultFor = types;
 
             _frozen = true;
         }
@@ -162,14 +205,14 @@ internal partial class IndexCatalog : IIndexCatalog
         }
     }
 
-    public IndexCatalogEntry? GetDefaultForCollectionType(Type collectionType)
+    public IndexCatalogEntry? GetDefaultFor(Type entityType)
     {
         lock (_lock)
         {
             if (!_frozen)
                 throw new InvalidOperationException(
                     "The index catalog has not been frozen yet; default resolution runs on a validated catalog only.");
-            return _defaultByCollectionType.TryGetValue(collectionType, out var entry) ? entry : null;
+            return _defaultByEntityType.TryGetValue(entityType, out var entry) ? entry : null;
         }
     }
 
@@ -182,43 +225,87 @@ internal partial class IndexCatalog : IIndexCatalog
     }
 
     /// <summary>
-    /// The <c>[DefaultIndex]</c> rules (issue #279). Only a projection-bearing index can be the
-    /// default — an index without a <c>[FromIndex]</c> companion contributes nothing to the model
-    /// file, and that invariant is hash-relevant (no projection ⇒ no <c>indexName</c> in the model).
+    /// The election for one entity type (D3). A claim wins, view or not — a viewless default shapes nothing,
+    /// and its queries return entity documents (SP4). Without a claim, only an index <em>with a view</em> is a
+    /// default implicitly, and only when it is the sole one: an index without a view contributes nothing to the
+    /// model file, so electing one silently would stamp an <c>indexName</c> nobody chose.
     /// </summary>
-    private static IndexCatalogEntry? ResolveDefault(Type collectionType, IReadOnlyList<IndexCatalogEntry> entries)
+    private static IndexCatalogEntry? Elect(Type entityType, IReadOnlyList<IndexCatalogEntry> entries)
     {
-        var marked = entries.Where(HasDefaultIndexMarker).ToList();
-
-        var markedWithoutProjection = marked.FirstOrDefault(e => e.ProjectionType is null);
-        if (markedWithoutProjection is not null)
+        var claims = entries.Where(e => e.ClaimedTypes.Contains(entityType)).ToList();
+        if (claims.Count == 1) return claims[0];
+        if (claims.Count > 1)
         {
             throw new InvalidOperationException(
-                $"[DefaultIndex] on {markedWithoutProjection.IndexType.FullName} has no effect: the index has no " +
-                $"[FromIndex] projection, so it cannot shape the model file for {collectionType.Name}. " +
-                $"Remove the marker or add a projection.");
+                $"{claims.Count} indexes claim [DefaultIndex] for entity type {entityType.Name} " +
+                $"({string.Join(", ", claims.Select(c => c.IndexName))}). An entity type has exactly one default " +
+                $"index: remove the marker from all but one of them, or drop {entityType.Name} from a multi-map's " +
+                $"[DefaultIndex(...)] list.");
         }
 
-        var candidates = entries.Where(e => e.ProjectionType is not null).ToList();
-        if (candidates.Count <= 1) return candidates.FirstOrDefault();
+        var viewed = entries.Where(e => e.CollectionType == entityType && e.ProjectionType is not null).ToList();
+        if (viewed.Count <= 1) return viewed.FirstOrDefault();
 
-        if (marked.Count != 1)
-        {
-            var candidateNames = string.Join(", ", candidates.Select(c => c.IndexName).OrderBy(n => n, StringComparer.Ordinal));
-            var problem = marked.Count == 0
-                ? "none carries [DefaultIndex]"
-                : $"{marked.Count} carry [DefaultIndex] ({string.Join(", ", marked.Select(m => m.IndexName))})";
-            throw new InvalidOperationException(
-                $"{candidates.Count} projection-bearing indexes map collection {collectionType.Name} " +
-                $"({candidateNames}) and {problem}. Exactly one index shapes the entity's model file: mark it " +
-                $"with [DefaultIndex], or opt a generated index out via [GenerateIndex(IsDefault = false)].");
-        }
-
-        return marked[0];
+        throw new InvalidOperationException(
+            $"{viewed.Count} indexes with a [FromIndex] view map entity type {entityType.Name} " +
+            $"({string.Join(", ", viewed.Select(c => c.IndexName))}) and none claims it with [DefaultIndex]. " +
+            $"Exactly one index is an entity type's default: mark it with [DefaultIndex].");
     }
 
-    private static bool HasDefaultIndexMarker(IndexCatalogEntry entry)
-        => entry.IndexType.GetCachedCustomAttribute<DefaultIndexAttribute>() is not null;
+    /// <summary>
+    /// The entity types an entry's <c>[DefaultIndex]</c> marker claims (D1), or an error for a marker the
+    /// catalog cannot honour. The analyzers report the same mistakes at compile time for same-project
+    /// indexes; this is the check that also sees indexes from other assemblies and cannot be switched off.
+    /// </summary>
+    private static IReadOnlyList<Type> ResolveClaims(IndexCatalogEntry entry)
+    {
+        var marker = entry.IndexType.GetCachedCustomAttribute<DefaultIndexAttribute>();
+        if (marker is null) return [];
+
+        var listed = marker.EntityTypes.Distinct().ToList();
+        var kind = RavenIndexHierarchy.Classify(entry.IndexType, out var mapped);
+        switch (kind)
+        {
+            case RavenIndexKind.Map:
+                if (listed.Count == 0 || (listed.Count == 1 && listed[0] == mapped)) return [mapped!];
+                throw new InvalidOperationException(
+                    $"[DefaultIndex({string.Join(", ", listed.Select(t => $"typeof({t.Name})"))})] on " +
+                    $"{entry.IndexType.FullName}: a single-map index is the default of the type it maps, " +
+                    $"{mapped!.Name}, and nothing else. Write a bare [DefaultIndex] (or [DefaultIndex(typeof({mapped.Name}))]).");
+
+            case RavenIndexKind.MultiMap when listed.Count == 0:
+                throw new InvalidOperationException(
+                    $"[DefaultIndex] on multi-map index {entry.IndexType.FullName} lists no entity type. A multi-map " +
+                    $"maps several collections, so its marker names the types it is the default of: " +
+                    $"[DefaultIndex(typeof(A), typeof(B))].");
+
+            case RavenIndexKind.MultiMap when !DerivesFromSparkMultiMap(entry.IndexType):
+                throw new InvalidOperationException(
+                    $"Multi-map index {entry.IndexType.FullName} claims [DefaultIndex] but does not derive from " +
+                    $"SparkMultiMapIndexCreationTask<T>. Only that base adds the collection discriminator a multi-map " +
+                    $"default needs; without it a query for one mapped type returns the other types' rows as that " +
+                    $"type, outside their row policies. Change the base class.");
+
+            case RavenIndexKind.MultiMap:
+                return listed;
+
+            default:
+                throw new InvalidOperationException(
+                    $"[DefaultIndex] on {entry.IndexType.FullName}: Spark cannot tell which collections this index " +
+                    $"maps, so it cannot be a default. A JavaScript index is never a default index; derive from " +
+                    $"SparkIndexCreationTask<T> (one type) or SparkMultiMapIndexCreationTask<T> (several types) instead.");
+        }
+    }
+
+    private static bool DerivesFromSparkMultiMap(Type indexType)
+    {
+        for (var current = indexType; current is not null && current != typeof(object); current = current.BaseType)
+        {
+            if (current.IsGenericType && current.GetGenericTypeDefinition() == typeof(SparkMultiMapIndexCreationTask<>))
+                return true;
+        }
+        return false;
+    }
 
     private void ThrowIfFrozen()
     {

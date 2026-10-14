@@ -3,7 +3,9 @@ import { TestBed } from '@angular/core/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { describe, expect, it, vi } from 'vitest';
 
+import { By } from '@angular/platform-browser';
 import { SparkPoFormComponent } from './spark-po-form.component';
+import { SparkReferencePickerComponent } from './spark-reference-picker.component';
 import { SparkService, SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { SPARK_ATTRIBUTE_RENDERERS } from '@mintplayer/ng-spark/renderers';
 import {
@@ -14,7 +16,9 @@ import {
   LookupReferenceValue,
   PersistentObject,
   ShowedOn,
+  AS_DETAIL_ROW_KEY,
 } from '@mintplayer/ng-spark/models';
+import { AsDetailCellValuePipe } from '@mintplayer/ng-spark/pipes';
 
 function attr(partial: Partial<EntityAttributeDefinition>): EntityAttributeDefinition {
   return {
@@ -211,6 +215,32 @@ describe('SparkPoFormComponent', () => {
       expect(component.formData()['Company']).toBeNull();
     });
 
+    it('the picker shows the loaded value by its server label, a picked one by its option row (D10)', async () => {
+      const { fixture, component } = createComponent({
+        executeQueryByName: vi.fn().mockResolvedValue({ columns: [], items: [{ id: 'companies/1', breadcrumb: 'Acme', values: [] }], totalItems: 1 }),
+      } as any);
+      const companyAttr = personType.attributes.find(a => a.name === 'Company')!;
+      // companies/500 is not among the loaded options (a page of the reference query).
+      fixture.componentRef.setInput('loadedObject', {
+        id: 'people/1', name: 'Person', objectTypeId: 't-person',
+        attributes: [{ ...companyAttr, value: 'companies/500', breadcrumb: 'Umbrella' }],
+      } as any);
+      component.formData.set({ Company: 'companies/500' });
+      await setEntityType(fixture, personType);
+      const picker = () => fixture.debugElement.query(By.directive(SparkReferencePickerComponent))
+        .componentInstance as SparkReferencePickerComponent;
+
+      expect(picker().displayValue()).toBe('Umbrella');
+
+      component.onReferenceValueChange(companyAttr, 'companies/1');
+      fixture.detectChanges();
+      expect(picker().displayValue()).toBe('Acme');
+
+      component.onReferenceValueChange(companyAttr, 'companies/500');
+      fixture.detectChanges();
+      expect(picker().displayValue()).toBe('Umbrella');
+    });
+
     it('onLookupValueChange writes the emitted key into formData', async () => {
       const { fixture, component } = createComponent();
       await setEntityType(fixture, personType);
@@ -233,6 +263,26 @@ describe('SparkPoFormComponent', () => {
       expect(component.showAsDetailModal()).toBe(true);
       expect(component.asDetailFormData()).toEqual({ Street: 'Main' });
       expect(component.editingArrayIndex()).toBeNull();
+    });
+
+    it('hands a single embedded object as loaded to the modal form, and nothing for a keyless row', async () => {
+      const { fixture, component } = createComponent();
+      await setEntityType(fixture, personType);
+      const nested = attr({ id: 'a-addr', name: 'Address', dataType: 'AsDetail' });
+      const rows = attr({ id: 'a-jobs', name: 'Jobs', dataType: 'AsDetail', isArray: true });
+      const address = { id: null, name: 'Address', objectTypeId: 't-address', attributes: [] };
+      fixture.componentRef.setInput('loadedObject', {
+        id: 'people/1', name: 'Person', objectTypeId: 't-person',
+        attributes: [{ ...nested, object: address }, { ...rows, objects: [address] }],
+      } as any);
+
+      component.openAsDetailEditor(nested);
+      expect((component as any).editingAsDetailLoadedObject()).toBe(address);
+
+      component.closeAsDetailModal();
+      component.formData.set({ Jobs: [{}] });
+      component.editArrayItem(rows, 0);
+      expect((component as any).editingAsDetailLoadedObject()).toBeNull();
     });
 
     it('saveAsDetailObject writes single-object value back into formData and closes the modal', async () => {
@@ -506,6 +556,142 @@ describe('SparkPoFormComponent', () => {
       expect(fixture.nativeElement.querySelector('tbody bs-select')).toBeTruthy();
     });
 
+    describe('a reference query with more than one page renders the server-paged picker', () => {
+      // A <select> lists only the rows loaded (the query's first page, 50 by default), so a candidate
+      // past that page could not be chosen. When the query says it has more rows than were loaded,
+      // the column renders the picker instead, which pages and searches on the server.
+      async function mountInline(totalItems: number) {
+        const refChild: EntityType = {
+          id: 't-pagedchild', name: 'PagedChild', clrType: 'Test.PagedChild',
+          attributes: [attr({ id: 'c-co', name: 'CompanyId', dataType: 'Reference', order: 1, query: 'CompanyQuery', referenceType: 'Test.Company' })],
+        };
+        const refParent: EntityType = {
+          id: 't-pagedparent', name: 'PagedParent', clrType: 'Test.PagedParent',
+          attributes: [attr({ id: 'a-rows', name: 'Rows', dataType: 'AsDetail', isArray: true, editMode: 'inline', asDetailType: 'Test.PagedChild', order: 1 })],
+        };
+        const { fixture, component } = createComponent({
+          getEntityTypes: vi.fn().mockResolvedValue([refParent, refChild]),
+          executeQueryByName: vi.fn().mockResolvedValue({ columns: [], items: [{ id: 'companies/1', breadcrumb: 'Acme', values: [] }], totalItems }),
+        } as any);
+        component.formData.set({ Rows: [{ CompanyId: null }, { CompanyId: 'companies/1' }] });
+        await setEntityType(fixture, refParent);
+        fixture.detectChanges();
+        return fixture;
+      }
+
+      it('an inline row column renders the picker, not a <bs-select>, when totalItems exceeds the rows loaded', async () => {
+        const fixture = await mountInline(120);
+
+        expect(fixture.nativeElement.querySelectorAll('tbody spark-reference-picker').length).toBe(2);
+        expect(fixture.nativeElement.querySelector('tbody bs-select')).toBeFalsy();
+        const picker = fixture.debugElement.query(By.directive(SparkReferencePickerComponent)).componentInstance as SparkReferencePickerComponent;
+        expect(picker.query()).toBe('CompanyQuery');
+      });
+
+      it('an inline row column keeps its <bs-select> when every row was loaded', async () => {
+        const fixture = await mountInline(1);
+
+        expect(fixture.nativeElement.querySelector('tbody spark-reference-picker')).toBeFalsy();
+        expect(fixture.nativeElement.querySelectorAll('tbody bs-select').length).toBe(2);
+      });
+
+      it('a main-form Reference renders the picker whatever the page count', async () => {
+        for (const totalItems of [1, 120]) {
+          TestBed.resetTestingModule();
+          const { fixture } = createComponent({
+            executeQueryByName: vi.fn().mockResolvedValue({ columns: [], items: allCompanies, totalItems }),
+          } as any);
+          await setEntityType(fixture, personType);
+          fixture.detectChanges();
+
+          const picker = fixture.debugElement.query(By.directive(SparkReferencePickerComponent));
+          expect(picker).toBeTruthy();
+          expect((picker.componentInstance as SparkReferencePickerComponent).query()).toBe('CompanyQuery');
+        }
+      });
+    });
+
+    describe('reference labels in collection rows (D10)', () => {
+      // Two rows were loaded, both pointing at companies/500, which lies outside the options page.
+      // Rows are matched to their loaded copy by row key, never by position.
+      const loadedRow = (key: string) => ({
+        id: key, name: 'RowChild', objectTypeId: 't-rowchild',
+        attributes: [{ name: 'CompanyId', dataType: 'Reference', value: 'companies/500', breadcrumb: 'Umbrella' }],
+      });
+      const loadedObject = {
+        id: 'parents/1', name: 'RowParent', objectTypeId: 't-rowparent',
+        attributes: [{ name: 'Rows', dataType: 'AsDetail', isArray: true, objects: [loadedRow('rows/a'), loadedRow('rows/b')] }],
+      } as any;
+      const formRows = () => [
+        { CompanyId: 'companies/500', [AS_DETAIL_ROW_KEY]: 'rows/a' },  // untouched
+        { CompanyId: 'companies/1', [AS_DETAIL_ROW_KEY]: 'rows/b' },    // edited
+        { CompanyId: 'companies/1', [AS_DETAIL_ROW_KEY]: 'rows/new' },  // added in this session
+        { CompanyId: 'companies/500', [AS_DETAIL_ROW_KEY]: 'rows/new2' }, // added, value outside the options
+      ];
+
+      async function mountRows(displayType?: EReferenceDisplayType) {
+        const rowChild: EntityType = {
+          id: 't-rowchild', name: 'RowChild', clrType: 'Test.RowChild',
+          attributes: [attr({ id: 'c-co', name: 'CompanyId', dataType: 'Reference', order: 1, query: 'CompanyQuery', referenceType: 'Test.Company', referenceDisplayType: displayType })],
+        };
+        const rowParent: EntityType = {
+          id: 't-rowparent', name: 'RowParent', clrType: 'Test.RowParent',
+          attributes: [attr({ id: 'a-rows', name: 'Rows', dataType: 'AsDetail', isArray: true, editMode: 'inline', asDetailType: 'Test.RowChild', order: 1 })],
+        };
+        const result = createComponent({
+          getEntityTypes: vi.fn().mockResolvedValue([rowParent, rowChild]),
+          executeQueryByName: vi.fn().mockResolvedValue({ columns: [], items: [{ id: 'companies/1', breadcrumb: 'Acme', values: [] }], totalItems: 1 }),
+        } as any);
+        result.fixture.componentRef.setInput('loadedObject', loadedObject);
+        result.component.formData.set({ Rows: formRows() });
+        await setEntityType(result.fixture, rowParent);
+        result.fixture.detectChanges();
+        return { ...result, rows: rowParent.attributes[0], col: rowChild.attributes[0] };
+      }
+
+      it('an in-row picker shows the server label for its loaded value, the option label once edited or new', async () => {
+        const { fixture } = await mountRows(EReferenceDisplayType.Modal);
+
+        const labels = fixture.debugElement.queryAll(By.directive(SparkReferencePickerComponent))
+          .map(d => (d.componentInstance as SparkReferencePickerComponent).displayValue());
+        expect(labels).toEqual(['Umbrella', 'Acme', 'Acme', 'companies/500']);
+      });
+
+      it('a read-only inline cell resolves the same way, from the labels kept beside the rows', async () => {
+        const { component, rows, col } = await mountRows();
+        const pipe = new AsDetailCellValuePipe();
+        const loadedRows = (component as any).loadedRowReferences()['Rows'];
+
+        expect(component.formData()['Rows'].map((row: any) =>
+          pipe.transform(row, rows, col, component.asDetailReferenceOptions(), loadedRows)))
+          .toEqual(['Umbrella', 'Acme', 'Acme', 'companies/500']);
+        // The labels stay out of the rows, which are the save payload.
+        expect(component.formData()['Rows']).toEqual(formRows());
+      });
+
+      it('an inline <select> offers the loaded value, labelled by the server, only to the row it was loaded with', async () => {
+        const { component, rows, col } = await mountRows();
+        const [untouched, edited, added] = component.formData()['Rows'];
+
+        expect(component.inlineRefSelectOptions(rows, untouched, col).map(o => [o.id, o.breadcrumb]))
+          .toEqual([['companies/500', 'Umbrella'], ['companies/1', 'Acme']]);
+        // Still offered after an edit, so the loaded value can be picked back.
+        expect(component.inlineRefSelectOptions(rows, edited, col).map(o => o.id)).toEqual(['companies/500', 'companies/1']);
+        expect(component.inlineRefSelectOptions(rows, added, col).map(o => o.id)).toEqual(['companies/1']);
+      });
+
+      it('the row modal gets the loaded row matched by key, and nothing for a new row', async () => {
+        const { component, rows } = await mountRows();
+
+        component.editArrayItem(rows, 1);
+        expect((component as any).editingAsDetailLoadedObject()?.id).toBe('rows/b');
+        component.closeAsDetailModal();
+
+        component.editArrayItem(rows, 2);
+        expect((component as any).editingAsDetailLoadedObject()).toBeNull();
+      });
+    });
+
     it('B7: an inline lookup column with a Modal-display lookup renders the lookup picker', async () => {
       const modalLookup = { ...rolesLookup, displayType: 1 } as LookupReference;
       const lkChild: EntityType = {
@@ -609,6 +795,32 @@ describe('SparkPoFormComponent', () => {
       expect(Object.keys(component.referenceTreeValues())).toEqual(['Tags']);
     });
 
+    it('labels a loaded id by its server breadcrumb, a picked one by its option, and the rest by id (D10)', async () => {
+      const { fixture, component } = await mounted();
+      // tags/77 lies outside the loaded options page; only the object as read knows its label.
+      fixture.componentRef.setInput('loadedObject', {
+        id: 'tagged/1', name: 'Tagged', objectTypeId: 't-tagged',
+        attributes: [{ ...tagsAttr, value: ['tags/77', 'tags/88'], breadcrumbs: { 'tags/77': 'Teal', 'tags/88': null } }],
+      } as any);
+
+      component.formData.set({ Tags: ['tags/77', 'tags/1', 'tags/88'] });
+      expect(component.referenceTreeValues()['Tags']).toEqual([
+        { id: 'tags/77', label: 'Teal' },
+        { id: 'tags/1', label: 'Red' },
+        // Loaded, but the server resolved no label and no option has it: the id is all there is.
+        { id: 'tags/88', label: 'tags/88' },
+      ]);
+
+      // Removed and picked again: still the loaded id, so still the server's label.
+      component.onReferenceTreeChange(tagsAttr, [{ id: 'tags/1', label: 'Red' }] as any);
+      expect(component.referenceTreeValues()['Tags']).toEqual([{ id: 'tags/1', label: 'Red' }]);
+      component.onReferenceTreeChange(tagsAttr, [{ id: 'tags/1', label: 'Red' }, { id: 'tags/77', label: 'tags/77' }] as any);
+      expect(component.referenceTreeValues()['Tags']).toEqual([
+        { id: 'tags/1', label: 'Red' },
+        { id: 'tags/77', label: 'Teal' },
+      ]);
+    });
+
     it('onReferenceTreeChange writes ids back for a list, a single node and a cleared value', async () => {
       const { component } = await mounted();
 
@@ -620,6 +832,64 @@ describe('SparkPoFormComponent', () => {
 
       component.onReferenceTreeChange(tagsAttr, null);
       expect(component.formData()['Tags']).toEqual([]);
+    });
+
+    it('the provider pages and searches the query on the server, under the form parent', async () => {
+      const { fixture, component, service } = await mounted();
+      fixture.componentRef.setInput('parentId', 'tagged/1');
+      fixture.componentRef.setInput('parentType', 'Test.Tagged');
+      const signal = new AbortController().signal;
+      service.executeQueryByName.mockResolvedValueOnce({ columns: [], items: [{ id: 'tags/51', breadcrumb: 'Tag 51', values: [] }], totalItems: 120 });
+
+      const page = await component.getReferenceProvider(tagsAttr)!.search('tag 51', { offset: 50, signal });
+
+      expect(service.executeQueryByName).toHaveBeenLastCalledWith('TagQuery', expect.objectContaining({
+        skip: 50, take: 50, search: 'tag 51', parentId: 'tagged/1', parentType: 'Test.Tagged',
+      }));
+      expect(page).toEqual({ nodes: [{ id: 'tags/51', label: 'Tag 51' }], hasMore: true });
+    });
+
+    it('keeps the label of a node picked from a later page', async () => {
+      const { component } = await mounted();
+
+      component.onReferenceTreeChange(tagsAttr, [{ id: 'tags/117', label: 'Tag 117' }] as any);
+
+      expect(component.referenceTreeValues()['Tags']).toEqual([{ id: 'tags/117', label: 'Tag 117' }]);
+    });
+  });
+
+  describe('a row picked past the first options page', () => {
+    const picked = { id: 'companies/77', breadcrumb: 'Umbrella', values: [] } as any;
+
+    it('joins the attribute options and is reported to an embedding host', async () => {
+      const { fixture, component } = createComponent();
+      await setEntityType(fixture, personType);
+      const company = personType.attributes.find(a => a.name === 'Company')!;
+      const reported = vi.fn();
+      component.referencePicked.subscribe(reported);
+
+      component.rememberPickedReference(company, picked);
+      component.rememberPickedReference(company, picked);
+
+      expect(component.referenceOptions()['Company']).toEqual([...allCompanies, picked]);
+      expect(reported).toHaveBeenCalledWith({ attribute: 'Company', item: picked });
+    });
+
+    it('joins an AsDetail column options, which label the table cells', async () => {
+      const { component } = createComponent();
+      component.asDetailReferenceOptions.set({ Jobs: { ProfessionId: [] } });
+
+      component.rememberPickedRowReference('Jobs', 'ProfessionId', picked);
+
+      expect(component.asDetailReferenceOptions()['Jobs']['ProfessionId']).toEqual([picked]);
+    });
+
+    it('a picker queries the server unless a refresh hook replaced the options', async () => {
+      const { fixture, component } = createComponent();
+      await setEntityType(fixture, personType);
+      const company = personType.attributes.find(a => a.name === 'Company')!;
+
+      expect(component.referencePickerQuery(company)).toBe('CompanyQuery');
     });
   });
 
@@ -757,6 +1027,8 @@ describe('SparkPoFormComponent', () => {
         { id: 'companies/8', breadcrumb: 'companies/8', values: [] },
       ]);
       expect(component.lookupReferenceOptions()['Roles']).toBe(rolesLookup);
+      // The hook's list is the whole set now: the picker searches it in memory, not the query.
+      expect(component.referencePickerQuery(company)).toBeNull();
     });
   });
 

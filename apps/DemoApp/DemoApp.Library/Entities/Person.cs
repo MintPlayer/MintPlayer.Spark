@@ -28,4 +28,11 @@ public class Person
 
     [Description("Whether this person can sign in and appears in the default people lists.")]
     public bool IsActive { get; set; }
+
+    // The reference names no query: it resolves to the query of the context's plain Bicycles root
+    // (docs/default_index_PRD.md, D6), which runs on Bicycle's default index, the multi-map TwoWheelers_Overview,
+    // narrowed to bicycles. So the picker never offers a motorcycle.
+    /// <summary>The fleet bicycle this person commutes on.</summary>
+    [Reference(typeof(Bicycle))]
+    public string? Bicycle { get; set; }
 }

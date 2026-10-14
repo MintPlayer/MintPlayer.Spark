@@ -23,6 +23,7 @@ public class McpReferenceRedactionTests(SparkSharedDatabase database)
     private static readonly Guid CarTypeId = Guid.Parse("4c9d0000-00a1-4000-8000-0000000000a1");
     private static readonly Guid DriverTypeId = Guid.Parse("4c9d0000-00a2-4000-8000-0000000000a2");
     private static readonly Guid CarsQueryId = Guid.Parse("4c9d0000-00a3-4000-8000-0000000000a3");
+    private static readonly Guid DriversQueryId = Guid.Parse("4c9d0000-00a4-4000-8000-0000000000a4");
     private const string CarId = "rtcars/mcp-1";
     private static readonly string[] References = ["Driver", "Passengers", "Owner"];
 
@@ -40,7 +41,7 @@ public class McpReferenceRedactionTests(SparkSharedDatabase database)
                 Attributes =
                 [
                     new() { Id = Guid.NewGuid(), Name = "Name", DataType = "string", Order = 1 },
-                    new() { Id = Guid.NewGuid(), Name = "Driver", DataType = "Reference", ReferenceType = typeof(RtDriver).FullName, Order = 2 },
+                    new() { Id = Guid.NewGuid(), Name = "Driver", DataType = "Reference", ReferenceType = typeof(RtDriver).FullName, Query = "GetDrivers", Order = 2 },
                     new() { Id = Guid.NewGuid(), Name = "Passengers", DataType = "Reference", IsArray = true, ReferenceType = typeof(RtDriver).FullName, Order = 3 },
                     new() { Id = Guid.NewGuid(), Name = "Owner", DataType = "Reference", ReferenceType = typeof(RtDriver).FullName, Order = 4 },
                 ],
@@ -65,6 +66,10 @@ public class McpReferenceRedactionTests(SparkSharedDatabase database)
                 AgentPermissions = EAgentPermission.Read,
                 Attributes = [new() { Id = Guid.NewGuid(), Name = "Name", DataType = "string" }],
             },
+            Queries =
+            [
+                new SparkQuery { Id = DriversQueryId, Name = "GetDrivers", Source = "Database.Drivers", EntityType = "RtDriver" },
+            ],
         },
     ];
 
@@ -129,6 +134,28 @@ public class McpReferenceRedactionTests(SparkSharedDatabase database)
         page["columns"]!.AsArray().Select(c => c!["name"]!.GetValue<string>()).Should().NotContain("Driver");
         page["rows"]!.AsArray().SelectMany(r => r!["values"]!.AsObject().Select(v => v.Key)).Should().NotContain("Driver");
         query.ToolText.Should().NotContain("rtdrivers/mcp-1", "the hidden reference's target id must not leak either");
+    }
+
+    /// <summary>
+    /// <c>describe</c> states the query a reference's values come from (<c>docs/default_index_PRD.md</c>, D6), under the
+    /// name <c>discover</c> and <c>query</c> take, and only a query the caller may list (the catalogue's list). A
+    /// reference is only shown to a caller who may read its target (D19), which also lets it list the target's queries.
+    /// </summary>
+    [Fact]
+    public async Task Describe_states_each_references_query()
+    {
+        await using var factory = await StartAsync("QueryRead/RtCar", "QueryRead/RtDriver");
+        var client = factory.CreateClient();
+
+        var describe = await CallAsync(client, "acme_describe", new { type = "RtCar" });
+
+        describe.IsToolError.Should().BeFalse(describe.ToolText);
+        var attributes = Unfence(describe.ToolText)["attributes"]!.AsArray();
+        Attribute("Driver")["query"]!.GetValue<string>().Should().Be("drivers", "the alias discover lists and query takes");
+        Attribute("Owner")["query"].Should().BeNull("a reference naming no query has none to state");
+        Attribute("Name")["query"].Should().BeNull("not a reference");
+
+        JsonNode Attribute(string name) => attributes.Single(a => a!["name"]!.GetValue<string>() == name)!;
     }
 
     /// <summary>

@@ -1,21 +1,25 @@
 {
   "version": 2,
-  "modelHash": "28b5f3d4c1801733b0acb2c778cbbaeb0ec7469bcba4d3c9a91d0ec5728d9e2a",
-  "contextRoots": "69a7d18ccbd2883346e610e284c3bf485547edd95d1a02fb5583a30b938faa6b",
-  "modelFiles": "7772a254b92e199f7cfe4854c2a0b5805f12fa2b1f1773c9fcb1580ee61257b0",
+  "modelHash": "4d674dacba08442acd9ea970ad217bb0d8e9101300cb8cd3d6a00f9fe6ca5950",
+  "contextRoots": "e59c6a38891ab1348ef4111462369f2cc50bb9794e735a7fdee9fef631df5ada",
+  "modelFiles": "07722b26f4ee2d057848d994855ae3a362b1be23b5298be962a387c3bd5d2917",
   "files": {
     "Address.json": "25904c5d92f82631fc0cb9ed4cffa0996d9bb0f3093db0f58ac55b3040810362",
+    "Bicycle.json": "5f3a57466b2fd4a37dbe689a35881b8e1e0b61770cd03a49369aa0b616ed7548",
     "Car.json": "385af6cef63318a915c0abcd8ca8cc60d3fd8bc1d9c254a0b78007b954565fea",
     "Company.json": "34235e2562d18d54e8a56ebddc68b1d9cfaf118a5fe7a394cab28a7b68daeaa7",
-    "Person.json": "46a16bcca119e910937cb8e18d8fd55fd3e8f157dcae967916b92b76e45187f3",
+    "Motorcycle.json": "594f94a7b1682c8d1696e34d495ebde8c419425881eddf8214be63193e1fb129",
+    "Person.json": "9451a7632a7e9a6a657faa4432e2080c7db4af9ce75364c1d4807e4be75fa318",
     "StartPage.json": "6661794e79ceb340c2a4e2aaf8f3937c424ea46fe783693517f607f6daafd54a",
     "Stock.json": "a8a6b542422ce36caa2a365430a631a4eaca39c26a9e3fd7690930f7341e86fc"
   },
   "entities": {
     "Address": "fa6c807a8a3847779f231a5215898374e6f38cc01ba53dbe33904793583ce700",
+    "Bicycle": "b29ecc87c27f0a26dd687c0cbade97c8b01d15795c0092ac65f4d9ec12dede60",
     "Car": "a01c26da9dcdd9f6531bae1a0260587e5ec098284e9230e6edf196f1c9f7a6f4",
     "Company": "ee8a8ed4717071cdfa6044f3f870e3aa8aed4f3bfae66109a56757106224998e",
-    "Person": "0942933788fb43291ac12001b7a00a5eb51184d704c7c406b7d2f42edfa03592",
+    "Motorcycle": "65b2243c2821213149f55abbe10f4e9d21001bc51d82bc84efed5ca154bb773b",
+    "Person": "0a7dd9074ba298c866b32a12468ecbe2d1ca6e94fd4e2446e2d49200cc515845",
     "Stock": "369d139553e205b0712e3046c60efd672e5a0067c67e8cb73f5b064268ae0a08"
   },
   "configFiles": {
