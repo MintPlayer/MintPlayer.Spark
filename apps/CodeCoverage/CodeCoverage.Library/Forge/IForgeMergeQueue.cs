@@ -9,8 +9,8 @@ namespace CodeCoverage.Forge;
 /// <remarks>
 /// <para>
 /// <b>A narrow interface of its own</b>, beside <see cref="IForgeIntegration"/> rather than inside it, the
-/// same way <see cref="IForgeInstallationPermissions"/> is: the queue is one feature, and its fifteen
-/// members would double the width of the seam every other caller has to read. A forge supports it when its
+/// same way <see cref="IForgeInstallationPermissions"/> is: the queue is one feature, and its twenty-odd
+/// members would more than double the width of the seam every other caller has to read. A forge supports it when its
 /// <see cref="IForgeIntegration.Capabilities"/> lists <see cref="EForgeCapability.MergeQueue"/>, and then it
 /// must also register exactly one implementation of this interface for its <see cref="Provider"/>; the
 /// conformance test holds both directions. GitHub only in this PR (O7); GitLab and Bitbucket follow under #422.
@@ -49,7 +49,7 @@ public interface IForgeMergeQueue
 
     /// <summary>
     /// The commit <paramref name="branch"/> points at now, or null when there is no such branch (M5: O20's "contains the
-    /// latest base", and the base commit whose checks are the expected minimum, O12).
+    /// latest base", and the moved-base check right before the merge).
     /// </summary>
     Task<string?> GetBranchHeadAsync(Repository repository, string branch, CancellationToken cancellationToken = default);
 
@@ -63,8 +63,9 @@ public interface IForgeMergeQueue
     Task<bool> RerunCheckAsync(Repository repository, ForgeCheckRun checkRun, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// The names of every check run and commit status on <paramref name="sha"/>, ordinal-sorted and distinct:
-    /// the default expected-minimum set when <paramref name="sha"/> is the base branch's latest commit (O12).
+    /// The names of every check run and commit status on <paramref name="sha"/>, ordinal-sorted and distinct, the
+    /// queue's own check left out: O12's expected-minimum set when <paramref name="sha"/> is the head pinned at enqueue
+    /// (D45; not the base branch's latest commit, whose push-only workflows never run on a pull request's commit).
     /// </summary>
     Task<IReadOnlyList<string>> GetCheckNamesOnCommitAsync(Repository repository, string sha, CancellationToken cancellationToken = default);
 

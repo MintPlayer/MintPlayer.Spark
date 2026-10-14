@@ -13,9 +13,11 @@
 # │  - Never widen `permissions:`; never add `id-token: write`.                                        │
 # │  - Never run it on a self-hosted runner: the PR's build code would run on your machine.            │
 # │  - Keep `persist-credentials: false`, so the job token is not left in .git/config for the build.  │
-# │ The queue evicts any PR that changes this file or anything under .github/, and checks that the     │
-# │ mq/ branch's copy equals the default branch's before it dispatches, because a dispatched run uses  │
-# │ the workflow file from the dispatched branch.                                                      │
+# │ The queue never dispatches this workflow for a PR that changes anything under .github/, unless     │
+# │ the repository's bypass role lets a same-repository PR through (a fork's never: it is refused      │
+# │ before anything is pushed). Before every dispatch it also checks that the mq/ branch's copy of     │
+# │ this file equals the default branch's, because a dispatched run uses the workflow file from        │
+# │ the dispatched branch. That check is never bypassed.                                               │
 # └────────────────────────────────────────────────────────────────────────────────────────────────────┘
 
 name: regenerate

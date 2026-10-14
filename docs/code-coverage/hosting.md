@@ -208,7 +208,7 @@ Keys the CodeCoverage assemblies read themselves. Environment-variable form repl
 | `Coverage:Administrators` | `[ "github:9629574" ]` (`appsettings.json`, the owner's GitHub user id) | No | `Services/CoverageAdministrators.cs` | Who is in the `Administrators` group: `{provider}:{forge user id}`, never a login. See "Administrators and the host metrics dashboard" below. Not mapped in compose; override with `Coverage__Administrators__0`, `__1`, …. |
 | `CommitGraph:*` | `SidecarUrl` unset (compose sets it); `BudgetBytes` 20 GB, `InstallationShare` 0.25, `EvictAfterDays` 60, `StaleAfterMinutes` 10, `RetryAfterMinutes` 60, `Installed` 2 GB / 50k refs / 600 s, `Anonymous` 500 MB / 10k refs / 180 s, `AvatarKeySecret` unset, `AvatarMaxBytes` 256 KB (`CommitGraph/CommitGraphOptions.cs`) | No | the commit graph (#504) | Mirror budget, quotas, eviction and avatars; full table in [commit-graph.md](commit-graph.md) §8. Only `SidecarUrl` is mapped in compose. `AvatarKeySecret` unset falls back to a key derived from `Coverage:BadgeSigningKey`; neither set means initials instead of avatars. |
 | `GitMirror:*` *(sidecar)* | `Root` `/data/git`, `MinFreeBytes` 15 GiB, `SnapshotCacheBytes` 256 MB, `ReaderIdleSeconds` 60, `HooksPath` `/opt/git-hooks-empty` (`CodeCoverage.GitMirror/appsettings.json`, `GitMirrorOptions.cs`, `Dockerfile`) | No | `coverage-git` | The sidecar's own configuration; quotas are not here, the app sends them with every fetch. [commit-graph.md](commit-graph.md) §8. |
-| `MergeQueue:*` | `GitWriterUrl` unset (compose sets it), `JobRequestTimeoutSeconds` 240 (`MergeQueue/GitWriterSidecarClient.cs`) | No | the merge queue | The writer's URL and the bound on one job request (the writer's 180 s job timeout plus its 30 s slot wait and a margin). M5 adds the saga's settings. |
+| `MergeQueue:*` | `GitWriterUrl` unset (compose sets it), `JobRequestTimeoutSeconds` 240, `CommitterName` `CodeCoverage merge queue`, `CommitterEmail` `merge-queue@noreply.coverage.mintplayer.com`, `AuthorEmailFormat` `{login}@users.noreply.github.com`, `PatchArtifactName` `merge-queue-patch`, `MaxPatchBytes` 2 MiB (`MergeQueue/GitWriterSidecarClient.cs`, `MergeQueueOptions`) | No | the merge queue | The writer's URL (unset turns the git steps off) and the bound on one job request (the writer's 180 s job timeout plus its 30 s slot wait and a margin); the committer of every commit the queue writes; the rebased commit's author email; the regenerate artifact's name and size cap (keep it equal to `GitWriter:MaxPatchBytes`). Only `GitWriterUrl` is mapped in compose. Details: [merge-queue.md](merge-queue.md) §7.3. |
 | `GitWriter:*` *(writer)* | `Root` `/data/jobs`, `MinFreeBytes` 2 GiB, `MaxJobBytes` 1 GiB, `JobTimeoutSeconds` 180, `MaxConcurrentJobs` 1, `SlotWaitSeconds` 30, `MaxPatchBytes` 2 MiB, `HooksPath` `/opt/git-hooks-empty` (`CodeCoverage.GitWriter/appsettings.json`, `GitWriterOptions.cs`, `Dockerfile`) | No | `coverage-git-writer` | The writer's job caps (S8) and limits. A request that waits `SlotWaitSeconds` for a slot is answered `busy`. |
 | `Coverage:Retention:ReportAttachmentDays` | `7` (`appsettings.json`; `DefaultRetentionDays = 7` in `Ingestion/ReapReportAttachmentsCronJob.cs`) | No | the reaper cron job | Days an uploaded raw report attachment is kept after parsing. Not mapped in compose. |
 | `GitHub:WebhookSecret` | `""` (`appsettings.json`) | Yes | `Program.cs` → Spark GitHub webhooks | Webhook signature secret. |
@@ -402,23 +402,27 @@ environment.
 | Repository | Checks | **Read & write** | The `coverage/project` and `coverage/patch` check-runs; `check_run` events. |
 | Repository | Issues | Read-only | `issues` and `issue_comment` events — board automation, and the merge queue's `/queue` and `/dequeue` comments. |
 | Repository | Actions | **Read & write** | Merge queue: dispatching the regenerate workflow (write), reading its run and downloading its `merge-queue-patch` artifact (read). `GitHubForgeMergeQueue`. |
-| Repository | Workflows | **Read & write** | Merge queue: GitHub refuses any App push that brings in commits touching `.github/workflows/**`, and a rebased branch can carry the base's own workflow changes (to a fork in particular, which does not have them yet). The queue still evicts every PR whose own change touches `.github/**` (PRD D12). |
+| Repository | Workflows | **Read & write** | Merge queue: GitHub refuses an App push that brings workflow files (`.github/workflows/**`) the target repository has on no branch. The queue's per-job token asks for it only then (PRD D59): a same-repository pull request whose own change touches `.github/workflows/**` and goes through because nothing is dispatched (O21 A, D63), and a fork's publish after the base changed its workflows (the fork lacks them). |
 | Repository | Commit statuses | Read-only | Merge queue: the gate waits for every commit status as well as every check run (PRD O12; GitGuardian reports as one). |
+| Organization | Projects | Read & write | Moving cards on Projects V2 boards (GraphQL, `GitHubProjectCards.cs`) — board automation only. |
+| Organization | Members | Read-only | Required by GitHub to subscribe to the `organization` event (organization renames). |
+| Account | Email addresses | Read-only | First sign-in reads `GET /user/emails` for a verified primary address; without it sign-in fails with `email_not_verified`. |
 
 **What the merge queue uses the other permissions for** (`GitHubForgeMergeQueue`, PRD M4): **Metadata** reads a
 login's repository role (`collaborators/{login}/permission`, O9) and the branch's rulesets with each one's
 `current_user_can_bypass` (D16 measured `metadata=read` for both). **Contents: write** is what `merge-async` asks
 for (`X-Accepted-GitHub-Permissions: contents=write`, live 2026-10-14) and what the writer's pushes need; read
-gives the workflow file's blob for D12's identity check. **Pull requests: write** adds and removes the
-`merge-queue` label and posts the queue's comments; read gives the reviews (O11). **Checks: write** publishes the
-"Merge queue" check run; read lists check runs and suites. **Administration is not requested**: classic branch
-protection's required checks are readable without it (`GET /branches/{b}`), its review settings are not, and the
-queue reports that as `ChecksOnly` rather than guessing. On the production App, the Actions, Workflows and
-Commit statuses rows are new: each installation has to accept them (see the notice below, PRD O17) before the
-queue can run there; until then a refused call carries the permission GitHub named, for the queue check run to link.
-| Organization | Projects | Read & write | Moving cards on Projects V2 boards (GraphQL, `GitHubProjectCards.cs`) — board automation only. |
-| Organization | Members | Read-only | Required by GitHub to subscribe to the `organization` event (organization renames). |
-| Account | Email addresses | Read-only | First sign-in reads `GET /user/emails` for a verified primary address; without it sign-in fails with `email_not_verified`. |
+gives the workflow file's blob for D12's identity check. The writer never gets the installation's own token: each
+job gets one minted for it (`POST /app/installations/{id}/access_tokens` with this repository alone and
+`contents: write`, plus `workflows: write` when the push needs it), revoked when the job ends (PRD D59).
+**Pull requests: write** adds and removes the `merge-queue` label and posts the queue's comments; read gives the
+reviews (O11) and the pull request's commits, whose authors the squash credits as co-authors (D60). **Checks:
+write** publishes the "Merge queue" check run; read lists check runs and suites. **Administration is not
+requested**: classic branch protection's required checks are readable without it (`GET /branches/{b}`), its review
+settings are not, and the queue reports that as `ChecksOnly` rather than guessing. On the production App, the
+Actions, Workflows and Commit statuses rows are new: each installation has to accept them (see the notice below,
+PRD O17) before the queue can run there; until then a refused call carries the permission GitHub named, for the
+queue check run to link.
 
 The Issues and Projects rows are derived from the project-automation code and
 [`docs/coverage_project_automation_PRD.md`](../coverage_project_automation_PRD.md); GitHub's UI is the
@@ -448,10 +452,10 @@ no notice. Nothing shows in development unless a GitHub App is configured.
 | Organization | `GitHubEventsRecipient` | organization renames (action `renamed`) |
 | Issues, Issue comment, Pull request review, Check run | `ProjectAutomationRouter`; `GitHubEventsRecipient` for the merge queue | board automation; Issue comment (`/queue`, `/dequeue`), Pull request review (approvals, dismissals) and Check run also feed the merge queue (PRD M5) |
 | Workflow run, Check suite, Status | `GitHubEventsRecipient` → merge queue (PRD M5) | **New for the merge queue.** The regenerate run's completion (`workflow_run`), "every suite on the final commit has completed" (`check_suite`, O12) and commit statuses, which O12 counts too (`status`; needs Commit statuses: read, D40). Delivery to an App was measured live for the first two (PRD D19). Raised onward only while the repository has something queued. |
+| `installation` (incl. action `new_permissions_accepted`), `installation_repositories` | `GitHubEventsRecipient` | always delivered to Apps; no subscription needed |
 
 The merge queue's label (`merge-queue`) arrives as `pull_request` with action `labeled` / `unlabeled`; there is no
 separate label subscription to add.
-| `installation` (incl. action `new_permissions_accepted`), `installation_repositories` | `GitHubEventsRecipient` | always delivered to Apps; no subscription needed |
 
 ⚠️ `installation_target` is also handled but **not relied on**: it is not among the subscribed events,
 and an App receives only what it subscribes to — which is why `organization` is subscribed. The

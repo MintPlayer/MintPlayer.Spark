@@ -34,7 +34,9 @@ public static class CheckGate
     /// <summary>Evaluates <paramref name="state"/>.</summary>
     /// <param name="exclusions">Names the owner excluded (O12). Ignored for names in <paramref name="required"/>.</param>
     /// <param name="required">Names the branch rules require (<see cref="ForgeBranchRules.RequiredChecks"/>).</param>
-    /// <param name="expectedMinimum">Names that must report before the commit can pass, by default those on the base branch's latest commit.</param>
+    /// <param name="expectedMinimum">Names that must report before the commit can pass: the checks that reported on the
+    /// head pinned at enqueue (merge-queue PRD D45, not the base branch's latest commit, whose push-only workflows never run
+    /// on a pull request's commit).</param>
     public static CheckGateResult Evaluate(
         ForgeCheckState state,
         IReadOnlyCollection<string> exclusions,

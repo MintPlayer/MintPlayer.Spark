@@ -125,7 +125,7 @@ public class MergeQueueEntry
     /// <summary>Checks a ruleset requires on the base branch (never excluded, O12).</summary>
     public List<string> RequiredChecks { get; set; } = [];
 
-    /// <summary>O12's expected minimum: the checks that reported on the base branch's latest commit.</summary>
+    /// <summary>O12's expected minimum: the checks that reported on the head pinned at enqueue (D45).</summary>
     public List<string> ExpectedChecks { get; set; } = [];
 
     /// <summary>Failed checks re-run so far (D9).</summary>

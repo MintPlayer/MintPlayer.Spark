@@ -415,8 +415,8 @@ the app actually uses:
 | Pull requests | Read-only; **Read & write** for the PR comment | Required to subscribe to `pull_request` events |
 | Checks | Read & write | The `coverage/project` and `coverage/patch` check-runs (see below) |
 | Issues | Read-only | Project-board automation and the merge queue's `/queue` comments: the `issues` and `issue_comment` events |
-| Actions | Read & write | Merge queue only: dispatching the regenerate workflow, reading its run and artifact |
-| Workflows | Read & write | Merge queue only: pushing a rebased branch that brings in workflow changes |
+| Actions | Read & write | Merge queue only: dispatching the regenerate workflow, reading its run and artifact, cancelling a run it no longer waits for |
+| Workflows | Read & write | Merge queue only: a push that brings workflow files the target repository lacks. Each writer job's own token asks for it only then (merge-queue PRD D59) |
 | Commit statuses | Read-only | Merge queue only: its gate waits for commit statuses as well as check runs |
 
 **Account permissions**

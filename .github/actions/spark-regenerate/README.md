@@ -57,8 +57,10 @@ This action **builds and runs the pull request's code**. The calling workflow mu
 - run on a GitHub-hosted runner, never a self-hosted one.
 
 A dispatched run uses the workflow file **from the dispatched `mq/` branch**, not from the default branch
-(D12). The queue therefore evicts any PR that changes `.github/**`, and checks the workflow's blob on the
-`mq/` commit against the default branch's before dispatching. Restore uses public feeds only; a repository
+(D12). The queue therefore never dispatches it for a PR that changes `.github/**` (unless the repository's
+bypass role lets a same-repository PR through; a fork's such change is refused before anything is pushed, O21 A,
+O22), and checks the workflow's blob on the `mq/` commit against the default branch's before every dispatch,
+which nothing bypasses. Restore uses public feeds only; a repository
 that needs a private feed cannot use this action without giving untrusted code a credential, and should
 not.
 

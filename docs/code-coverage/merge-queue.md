@@ -1,11 +1,12 @@
 # CodeCoverage — the merge queue
 
 A merge queue for GitHub repositories, run by CodeCoverage itself. The design and its decision log are in
-[`../coverage_merge_queue_PRD.md`](../coverage_merge_queue_PRD.md), whose §0 table (O1–O20, D12–D51) supersedes its
+[`../coverage_merge_queue_PRD.md`](../coverage_merge_queue_PRD.md), whose §0 table (O1–O22, D12–D64) supersedes its
 body. This page describes what is built; where it and the PRD's body disagree, this page and §0 win.
 
-**Status (2026-10-14):** built and tested piece by piece (PRD M2–M5, M7), not yet deployed. No end-to-end run against a
-live repository yet (M10). The repository-page button (M6) and the in-app setup guide (O13) are still being built.
+**Status (2026-10-14):** built and tested piece by piece (PRD M2–M8), not yet deployed. No end-to-end run against a
+live repository yet (M10). The repository page carries the queue's panel with its Queue and Dequeue buttons (M6, §4.1),
+and `/merge-queue/setup` is the in-app setup guide (O13), which walks through §2 and §3 with screenshots.
 
 Paths below are relative to `apps/CodeCoverage/` unless they start with `.github/` or `docs/`.
 
@@ -26,14 +27,18 @@ QUEUED       one pull request at a time per base branch (D11)
   ▼
 START        the head already contains the latest base? ── yes ─► case 1: CHECKS on the head itself, nothing pushed
   ▼ no
-PREPARE      git writer: bare blob-less clone, fetch refs/pull/N/head, assert head == the SHA pinned at enqueue (T3)
-             net change touches .github/** ─► EVICT touches-workflows (D12)
+PREPARE      git writer, with a token minted for this job alone (T9, D59): bare blob-less clone, fetch
+             refs/pull/N/head, assert head == the SHA pinned at enqueue (T3)
+             a fork's net change touches .github/** ─► EVICT touches-workflows before anything is pushed (D63)
              merge-tree base ⟵ head; a conflict only in autoResolve files ─► take the base side (O1, O19)
-             any other conflict ─► EVICT; commit-tree ONE commit on the base; lease-push to mq/<base>/pr-<n>
+             any other conflict ─► EVICT; commit-tree ONE commit on the base, crediting the other authors as
+             Co-authored-by (D60); lease-push to mq/<base>/pr-<n>
   ▼          nothing resolved, and postRebaseWhen is not always ─► case 2: PUBLISH without a patch
-REGENERATE   case 3: the workflow's blob on mq/ must equal the default branch's (D12); dispatch postRebaseActionName
-             on mq/<base>/pr-<n>; the run must build the prepared SHA (D14), succeed, and upload merge-queue-patch.
-             It never pushes (D4).
+             (a same-repository .github/** change goes through here: nothing is dispatched, O21 A)
+REGENERATE   case 3: a .github/** change ─► EVICT touches-workflows, unless the bypass role (O22) lets a
+             same-repository one through; the workflow's blob on mq/ must equal the default branch's (D12);
+             dispatch postRebaseActionName on mq/<base>/pr-<n>; a run of any other commit than the prepared one
+             evicts (regenerate-wrong-commit, D14); it must succeed and upload merge-queue-patch. It never pushes (D4).
   ▼
 PUBLISH      git writer: validate the patch (T4); prepared tree + patch = ONE squashed commit;
              lease-push to the pull request's branch (a fork's through "Allow edits by maintainers", O3)
@@ -41,12 +46,15 @@ PUBLISH      git writer: validate the patch (T4); prepared tree + patch = ONE sq
 CHECKS       every check run, commit status and check suite on that commit, minus exclusions (O12);
              a failed check run is re-run retryFlaky times (D9); the base moved ─► back to START
   ▼
-MERGE        the person who queued it still has write (O9); the base is unchanged, else back to START;
-             merge-async squash, sha = the final commit, merge_action = direct_merge (D13); poll until merged (D17)
+MERGE        the person who queued it still has write (O9), the approval floor still holds unless their role
+             still reaches the bypass role (D61, O22); the base is unchanged, else back to START; merge-async
+             squash, sha = the final commit, merge_action = direct_merge, the co-authors as its message (D13, D60);
+             poll until merged (D17)
   ▼
 MERGED       label removed, mq/ branch deleted under a lease, the lane's next pull request starts
 
-Any step ─► EVICTED <reason> (§5): check run + comment, label removed, mq/ branch deleted, the next one starts.
+Any step ─► EVICTED <reason> (§5): check run + comment, label removed, mq/ branch deleted, a regenerate run it
+             stopped waiting for cancelled (D53), the next one starts.
 A push to the pull request that the queue did not make ─► EVICTED author-push, at any step (T3).
 ```
 
@@ -70,17 +78,25 @@ The full App reference is [`hosting.md`](hosting.md) §6, "GitHub App". What the
 
 | Permission | Level | The queue uses it for |
 |---|---|---|
-| Actions | **Read & write** (new) | Dispatching the regenerate workflow, reading its run, downloading `merge-queue-patch`, re-running a failed Actions job (D9). |
-| Workflows | **Read & write** (new) | GitHub refuses an App push that brings in commits touching `.github/workflows/**`. A rebased branch can carry the base's own workflow changes. |
+| Actions | **Read & write** (new) | Dispatching the regenerate workflow, reading its run, downloading `merge-queue-patch`, re-running a failed Actions job (D9), cancelling a run the queue stopped waiting for (D53). |
+| Workflows | **Read & write** (new) | GitHub refuses an App push that brings workflow files the target repository has on no branch. Only the writer jobs that may do that ask for it (D59): a same-repository change to `.github/workflows/**` that goes through (O21 A), and a fork's publish after the base changed its workflows. |
 | Commit statuses | Read-only (new) | The gate counts commit statuses as well as check runs (O12). Not yet measured with the App (D40). |
 | Contents | Read & write | The writer's pushes, `merge-async`, `coverage.yml`, the workflow blob check (D12). |
-| Pull requests | Read & write | The pull request itself, reviews (O11), the label, the queue's comments. |
+| Pull requests | Read & write | The pull request itself, reviews (O11), its commits for the co-author trailers (D60), the label, the queue's comments. |
 | Checks | Read & write | The "Merge queue" check run; reading check runs and suites; re-requesting another App's check. |
 | Metadata | Read-only | Roles (`collaborators/{login}/permission`, O9) and rulesets with `current_user_can_bypass` (D16). |
 | Issues | Read-only | The `issue_comment` event (`/queue`, `/dequeue`). |
 
 **Administration is not requested.** Classic branch protection's required checks are readable without it; its review
 settings are not. The queue then reports the branch as `ChecksOnly` and gives no O18 warnings from classic protection.
+
+**The git writer never holds the installation's token (T9, D59).** Each writer job (prepare, publish, the queue
+branch's reset and its deletion) gets a token minted for it alone: `POST /app/installations/{id}/access_tokens` with
+this repository's id and `contents: write`, plus `workflows: write` only when that job's push may carry workflow files.
+It is never cached and is revoked (`DELETE /installation/token`) when the job answers or fails. A fork's publish uses a
+token scoped to the base repository too: that is the write access "Allow edits by maintainers" honours (S6, §8). A
+mint GitHub refuses, typically a `workflows` permission the installation has not accepted, ends the entry `permission`
+with the acceptance link.
 
 | Webhook event | The queue uses it for |
 |---|---|
@@ -127,16 +143,16 @@ mergeQueue:
 | Key | Type | Default | Rules |
 |---|---|---|---|
 | `enabled` | bool | `false` | The only on/off switch; there is none in the UI (D49). |
-| `branches` | list of branch names | `[<default branch>]` | Not empty, no empty name. A pull request into any other branch is refused (`branch`). |
+| `branches` | list of branch names | `[<default branch>]` | Not empty, no empty name, each one the git writer accepts (below). A pull request into any other branch is refused (`branch`). |
 | `mergeMethod` | string | `squash` | `squash` only in v1. |
 | `enqueue.label` | string | `merge-queue` | 1–50 characters. The queue does not create the label (`gh label create merge-queue`). |
 | `postRebaseActionName` | file name | none | A workflow file name under `.github/workflows`, without a path: `^[A-Za-z0-9][A-Za-z0-9._-]{0,99}\.ya?ml$`. |
 | `postRebaseTimeout` | duration | `20m` | `90s`, `20m`, `1h`; a bare number is minutes and seconds round up; 1–360 minutes. |
 | `postRebaseWhen` | `auto-resolved` · `always` · `never` | `auto-resolved` | Dispatch only after a resolved conflict, after every rebase, or never. |
-| `regeneratedPaths` | list of globs | none | The only paths a regenerate patch may touch (T4). No empty pattern. |
-| `autoResolve[].path` | glob | — | Required. |
+| `regeneratedPaths` | list of globs | none | The only paths a regenerate patch may touch (T4). At most 64, no empty pattern. None is fine without a regenerate step. |
+| `autoResolve[].path` | glob | — | Required. At most 64 entries. |
 | `autoResolve[].strategy` | `take-base` | `take-base` | Anything else is an error: `json-union` was dropped (O1). |
-| `autoResolve[].keys` | list of top-level JSON member names | none | None: a conflict on any line of the file resolves (O19). Given: only lines that hold one of these members do (O2), and every side must be a JSON object. |
+| `autoResolve[].keys` | list of top-level JSON member names | none | None: a conflict on any line of the file resolves (O19). Given: only lines that hold one of these members do (O2), and every side must be a JSON object. At most 64 keys of 1–256 characters, no control character. |
 | `checks.retryFlaky` | int | `1` | 0–3. Re-runs of a failed check run before evicting (D9). |
 | `checks.timeout` | duration | `60m` | 5–720 minutes, from the moment the queue starts waiting for checks. |
 
@@ -154,21 +170,27 @@ Unknown keys are ignored, so a newer file does not break an older server. Errors
 the button gets a `configuration` refusal that lists them, and so does the configured label on a broken section. A
 label on a repository whose queue is not enabled, or any other label, is ignored without a word.
 
-**Known gap: always list at least one `regeneratedPaths` entry**, even without a regenerate step. The parser accepts
-an empty list then, but the git writer refuses a publish request whose `regeneratedPaths` is empty. It answers a bare
-400 (`WireValidation.Globs` needs 1–64 globs), which the queue treats as transient, so every case-2 entry is retried six
-times and evicted as `error`. The same happens with more than 64 `regeneratedPaths` or `autoResolve` entries, a glob over
-256 characters or with a backslash or a leading `/`, and a branch name outside `[A-Za-z0-9._/-]`. This is inferred from
-the code; no test covers it.
+**What parses, the git writer accepts (D57).** The parser holds every value that reaches the writer to the writer's own
+rules (`MergeQueueWireRules`, `CodeCoverage.Git/MergeQueue/`): a glob is 1–256 characters, with no control character
+or backslash, and does not start with `/`. A branch name holds only letters, digits, `.`, `_`, `/` and `-`. It does
+not start with `-`, `/` or `.`, does not end with `/` or `.`, has no `..` or `//`, and no part starts with `.` or ends
+in `.lock`. It must also be short enough for its queue branch `mq/<branch>/pr-<n>` to stay within 200 characters.
+Anything else is a `configuration` error at enqueue. A pull request whose own branch name breaks the branch rule (GitHub
+allows a `+`, for one) is evicted `branch-name` once it needs a rebase, because the writer could not publish to it. Case
+1 still merges it.
 
 ### 2.3 The regenerate workflow (`postRebaseActionName`)
 
 It runs only when `postRebaseActionName` is set, and either a conflict was resolved (`auto-resolved`) or always.
+`MergeQueueWorkflowGuard.AfterPrepare` makes that decision, and only it, together with the `.github/**` guard (D63): a
+pull request whose change touches `.github/**` is never dispatched, unless the bypass role (§2.4) lets a
+same-repository one through.
 
 **The contract the queue holds the workflow to:**
 
 - It exists at `.github/workflows/<postRebaseActionName>` on the **default branch**: a workflow GitHub has not
-  registered there cannot be dispatched (D12). Its blob on the `mq/` commit must equal the default branch's.
+  registered there cannot be dispatched (D12). Its blob on the `mq/` commit must equal the default branch's, and no
+  setting bypasses that.
 - It declares `workflow_dispatch` with the inputs `expected_sha`, `pr_number` and `queue_run_id`. GitHub refuses a
   dispatch carrying an input the workflow does not declare.
 - The run builds the prepared commit, concludes `success`, and uploads an artifact named `merge-queue-patch` holding
@@ -176,6 +198,12 @@ It runs only when `postRebaseActionName` is set, and either a conflict was resol
   **An empty patch is uploaded too**: green + empty means "nothing to regenerate", while a failed run or a missing
   artifact evicts.
 - It never commits or pushes (D4): a `GITHUB_TOKEN` push starts no CI, so no check would ever appear on the result.
+
+**Runs the queue stops waiting for are cancelled (D53).** When the entry leaves the regenerate step other than by the
+run's own completion (the base moved, an author push, a dequeue, a close, a merge elsewhere, the timeout, a refused
+permission, or too many transient failures), the run is cancelled through the outbox, so it does not keep spending CI
+minutes. Before each dispatch, any run of the workflow still going on the entry's own queue branch is cancelled too,
+in case an earlier dispatch's answer was lost. A run that finished by itself is never cancelled.
 
 **For a Spark repository**, copy [`templates/regenerate.yml`](templates/regenerate.yml) to
 `.github/workflows/regenerate.yml` on the default branch, list the apps, and pin the action. The action is
@@ -204,13 +232,13 @@ repository dogfoods it with the local path in [`.github/workflows/regenerate.yml
 
 ### 2.4 Organization and repository settings (trust policy, in the database)
 
-The approval floor and the check exclusions are set on CodeCoverage, not in the repository, so a pull request cannot
-change them (O15). They are set on the **Account page** (group "Merge queue"), and a repository's detail page can
-override them. Only the account's owner may change them, through the live forge ownership check. They are readable like
-`DeleteBranchOnPrClose` (D49).
+The approval floor, the check exclusions and the bypass role are set on CodeCoverage, not in the repository, so a pull
+request cannot change them (O15). They are set on the **Account page** (group "Merge queue"), and a repository's detail
+page can override them. Only the account's owner may change them, through the live forge ownership check. They are
+readable like `DeleteBranchOnPrClose` (D49, D64).
 
-**Approval floor (O11, tightened by D47).** It is checked at enqueue; GitHub's ruleset 2 still enforces its own reviews
-at the merge.
+**Approval floor (O11, tightened by D47 and D61).** It is checked at enqueue and again right before the merge, like
+O9's role. GitHub's ruleset 2 still enforces its own reviews at the merge.
 
 | Value | Label | Needs before queueing |
 |---|---|---|
@@ -219,8 +247,29 @@ at the merge.
 | `Always` | Always require an approval | An approval for every pull request. |
 
 A repository's floor is "Use account setting" (`Inherit`) or one of the three. **An approval counts only** when it is
-an `APPROVED` review of the pinned commit, by a `write` user other than the author, and still that reviewer's latest
-word. A later "changes requested" or a dismissal withdraws it; a comment does not (D47).
+an `APPROVED` review of the pinned commit (or of the commit the queue published from it), by a `write` user other than
+the author, and still that reviewer's latest word. A later "changes requested" or a dismissal withdraws it; a comment
+does not (D47). **A writer's request for changes vetoes** under both floors, approvals or not: while a `write` user's
+latest review is "changes requested", the queue refuses (`approval`) at enqueue, and evicts (`approval-withdrawn`)
+right before the merge (D61).
+
+**Bypass role (O22, D64).** "Merge queue bypass role" names the lowest GitHub repository role whose holders bypass the
+queue's own rules when they queue a pull request. It is the enqueuer's role, read from GitHub at enqueue, when a prepare
+decides the dispatch, and right before the merge, like O9's role.
+
+| Value | Label | Who bypasses |
+|---|---|---|
+| `None` | Nobody **(default)** | Nobody. |
+| `Maintain` | Maintain or admin role | Whoever queues with the maintain or admin role. |
+| `Admin` | Admin role only | Whoever queues with the admin role. |
+
+A repository's value is "Use account setting" (`Inherit`) or one of the three, so a repository can also turn its
+account's bypass off. Holding the role skips **the approval floor** (D61's veto included). It also lets **a
+same-repository `.github/**` change through the regenerate dispatch**; a fork's never (§6, T5). If the role no longer
+reaches it right before the merge, the floor applies again, and a `.github/**` change it let through the dispatch is
+evicted `bypass-revoked`. **Never bypassed:** the check gate (O12), the regenerate workflow's blob identity (D12), the
+patch validation (T4), the lease and SHA pinning (T3), and the enqueuer's own `write` minimum (O9). CodeCoverage's own
+groups play no part: they are platform-wide, so they would cross tenants.
 
 **Checks the merge queue ignores (O12).** These are names of check runs or commit-status contexts, matched exactly and
 case-sensitively. A repository has "Ignored checks from" set to `Inherit` (the account's list) or `Override` (its own
@@ -241,8 +290,11 @@ queued forever.
 The aim: every merge goes through the queue, and the queue is held to exactly the reviews and checks everyone else is.
 One ruleset cannot do both, because the App would need a bypass that also skips the reviews and checks. So there are
 **two rulesets** (O9), measured live with an App on a public scratch repository (D16). **Ruleset 1** restricts updates
-of the queue's branches, with the App as its only bypass actor (mode `exempt`), so *Squash and merge* is blocked for
-everyone, maintainers and admins included. **Ruleset 2** holds the reviews and required checks, with **no** bypass actors.
+of the queue's branches. Its bypass actors are the App (mode `exempt`) and repository admins (mode `pull_request`, O21
+B), so *Squash and merge* is blocked for everyone else, maintainers included, and admins can only merge through a pull
+request, never push. **Ruleset 2** holds the reviews and required checks. **The App must not be a bypass actor of
+ruleset 2** (O22). People may be, as your policy wants: a repository role, a team or a user. The recommended setup
+below lists none, so admins too are held to the reviews and checks.
 
 The role check of §4.2 is independent of ruleset 1, so maintainers keep `write` and can still queue. An App exempt from
 ruleset 1 is still held to ruleset 2, even with `bypass_rules: true`; a direct push to the branch is rejected (GH013), and
@@ -257,9 +309,19 @@ so is a merge while reviews or checks are unmet (D16).
   "enforcement": "active",
   "conditions": { "ref_name": { "include": ["~DEFAULT_BRANCH"], "exclude": [] } },
   "rules": [{ "type": "update", "parameters": { "update_allows_fetch_and_merge": false } }],
-  "bypass_actors": [{ "actor_id": <APP_ID>, "actor_type": "Integration", "bypass_mode": "exempt" }]
+  "bypass_actors": [
+    { "actor_id": <APP_ID>, "actor_type": "Integration", "bypass_mode": "exempt" },
+    { "actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "pull_request" }
+  ]
 }
 ```
+
+The second actor is the **Repository admin** role (O21 B). GitHub's REST reference for rulesets documents
+`actor_type: RepositoryRole` and `bypass_mode: pull_request` ("an actor can only bypass rules on pull requests"), but
+not the role ids. The ids `maintain` 2, `write` 4 and `admin` 5 are from the GitHub Terraform provider's ruleset
+documentation (`integrations/terraform-provider-github`, `docs/resources/repository_ruleset.md`, checked 2026-10-14).
+After creating the ruleset, check that `gh api repos/<owner>/<repo>/rulesets/<id> --jq .bypass_actors` lists the admin
+role. Picking "Repository admin" in the UI's bypass list writes the same entry.
 
 **Ruleset 2** (`ruleset-2.json`; one entry per required check):
 
@@ -297,22 +359,27 @@ Notes on the two rulesets:
   Never target `~ALL`, and never cover `refs/heads/mq/**`. The queue creates, force-updates and deletes
   `mq/<base>/pr-<n>`, and force-pushes contributors' pull-request branches, so a rule that blocks either one
   (`pull_request`, `non_fast_forward`, `update`) ends those entries with `push-rejected`.
-- **Approvals.** `required_approving_review_count` is what your team requires. A single-maintainer repository sets
-  `0`, because GitHub does not let authors approve their own pull requests. The approval floor (§2.4) still holds
-  outside authors to an approval.
+- **Approvals.** `required_approving_review_count` is what your team requires. **A solo maintainer must set it to
+  `0`**, because GitHub never lets you approve your own pull request, so with 1 no merge of theirs could ever happen.
+  Pair that with the `RepositoryRules` approval floor (§2.4), which adds no approval of the queue's own. The default
+  `ExternalAuthors` floor also works: the maintainer's own pull requests pass it, and outside authors and bots (such
+  as Dependabot) need the maintainer's approval. `Always` would refuse every pull request of the maintainer's own.
 - **Required checks.** Require the job that runs `--spark-verify-model` and `--spark-verify-security`: it is what proves
   the regenerate step did its job (T4, O19). The queue waits for every check anyway (O12); requiring it makes GitHub
   enforce it too, and a required check can never be excluded. **Never require the "Merge queue" check itself**: it is
-  still in progress while the queue merges, so GitHub would refuse every merge the queue requests. (Inferred from the
-  check run's states, not measured.)
+  still in progress while the queue merges, so GitHub would refuse every merge the queue requests. The queue refuses
+  such a branch at enqueue (`self-required`, D62).
 - `strict_required_status_checks_policy: true` costs nothing: the queue only merges a commit built on the base as it is
   at merge time, and goes back to PREPARE when the base moves.
 - GitHub adds defaults on creation, among them `allowed_merge_methods` (keep `squash` in it) and
-  `require_extra_approval_for_unattributed_changes: true`. The spikes ran with that default, but never together with
-  O18's settings and a regenerate commit: unmeasured until M10.
-- **The queue checks the bypass itself** at every enqueue, with its own token. It refuses (`bypass`) when a ruleset
+  `require_extra_approval_for_unattributed_changes: true` on ruleset 2. The spikes ran with that default, but never
+  together with O18's settings and a regenerate push: **untested with the regenerate commit**, so whether it asks for a
+  fresh approval after PUBLISH is open until the live end-to-end run (M10) settles it. If it does, the merge ends
+  `merge-refused` with GitHub's message, and turning it off on ruleset 2 is the remedy.
+- **The queue checks the App's bypass itself** at every enqueue, with its own token. It refuses (`bypass`) when a ruleset
   holding a `pull_request` or `required_status_checks` rule shows `current_user_can_bypass` other than `never`, or
-  cannot be read (T7).
+  cannot be read (T7). That field is the App's own. People listed as bypass actors on ruleset 2 do not change it, so
+  they never make the queue refuse (O22, D64).
 
 ### 3.1 Why "dismiss stale approvals" and "require approval of the most recent push" are off (O18)
 
@@ -332,20 +399,30 @@ pins the head at enqueue and evicts on any push it did not make (T3), its own ch
 - **`branches-ignore: ['mq/**']`** on every `push:` trigger that would otherwise match the queue's branches (D14).
   Pushes to `mq/` fire `push` workflows, never `pull_request`. Their check runs land on the prepared commit, which *is*
   the final commit when nothing was regenerated (D31), so a push-only workflow there would gate the merge. A `push:`
-  limited to `branches: [master]` needs nothing; this repository's workflows are all like that (D37).
+  limited to `branches: [master]` needs nothing; this repository's workflows are all like that (D37). Such a run uses
+  the pushed commit's own workflow files, which is why a fork's `.github/**` change never reaches `mq/` (D63): it could
+  delete that very filter.
 - **Fork pull requests need "Allow edits by maintainers" ticked (O3).** The queue pushes the rebased commit to the
   fork's branch; there is no bot-made fork. GitHub offers the box only on forks owned by a user, not by an organization.
-  Whether GitHub accepts an App's push through it is still unverified (S6, §8).
+  The push uses a token scoped to the base repository (D59), whose write access is what the box honours. Whether GitHub
+  accepts an App's push through it is still unverified (S6, §8).
 - **Private repositories on GitHub Free have no rulesets.** GitHub answers 403 "Upgrade to GitHub Pro…", which the
   queue reads as "no rules" (D15). The queue still waits for every check (O12), but nothing forces merges through it.
 
 ### 3.3 Merging what the queue will not
 
-Ruleset 1 blocks hand merges for everyone, so a pull request the queue refuses by design needs an admin. That covers
-three cases: a change under `.github/**` (`touches-workflows`, D12, which includes Dependabot's GitHub Actions updates),
-a pull request from an organization-owned fork, and a fork push GitHub refused (`fork-push-rejected`). The admin sets
-ruleset 1's enforcement to *Disabled* (Settings → Rules → Rulesets), merges once ruleset 2 is satisfied, and sets it
-back to *Active*.
+Ruleset 1 blocks hand merges for everyone but admins, who bypass it through a pull request (O21 B). A pull request the
+queue refuses by design is merged by an admin clicking **Merge** on it; nobody disables a ruleset. Ruleset 2 still
+holds the admin to its reviews and checks, unless your policy listed them as its bypass actors (O22). The cases:
+
+- a change under `.github/**` that needs the regenerate workflow (`touches-workflows`), queued without the bypass role
+  (§2.4). A workflow-only change, such as Dependabot's GitHub Actions updates, needs no regeneration and goes through the
+  queue (O21 A);
+- a fork's change under `.github/**`, which the queue never pushes anywhere (D63), whatever the role;
+- a pull request from an organization-owned fork (`fork`), and a fork push GitHub refused (`fork-push-rejected`).
+
+The admin's merge is GitHub's own: nothing is rebased or regenerated, and the queue's own checks (the approval floor,
+the check gate) do not run.
 
 ## 4. Using it
 
@@ -355,7 +432,7 @@ back to *Active*.
 |---|---|---|
 | Label | Add the `enqueue.label` label (`merge-queue`). | Remove it. |
 | Comment | `/queue` as the first word of a new comment on the pull request. | `/dequeue`, the same way. |
-| Button | On the CodeCoverage repository page (O8, M6): the user's linked GitHub login acts; without one, refused. | — |
+| Button | **Queue** in the merge-queue panel of the CodeCoverage repository page (O8, M6; `POST /api/repos/{provider}/{owner}/{name}/merge-queue/{number}`): the user's linked GitHub login acts; without one, refused. | **Dequeue** in the same panel (`DELETE` on the same route), offered to the author and to `write`. |
 
 - The actor is always the signed webhook's sender, or the signed-in user's linked login (T1). Text after the command is
   ignored ("/queue as @maintainer" is the commenter's command), and edited comments do not count. Every path then runs
@@ -369,7 +446,9 @@ back to *Active*.
 
 - **Queue:** a GitHub login with at least the `write` role on the repository (O9). The role is checked at enqueue and
   again right before the merge; a lost role evicts (`role-revoked`). The pull request must also be open, not a draft,
-  into a branch listed in `mergeQueue.branches`, and meet the approval floor (§2.4).
+  into a branch listed in `mergeQueue.branches`, and meet the approval floor (§2.4), which is checked again right
+  before the merge too (`approval-withdrawn`, D61). A login whose role reaches the bypass role skips the floor (O22);
+  so does that check before the merge, as long as the role still reaches it.
 - **Dequeue:** the pull request's author (withdrawing is not a privilege), or anyone with `write`. Anyone else is
   ignored; the attempt is noted in the entry's history.
 
@@ -378,14 +457,23 @@ back to *Active*.
 - **The queue rewrites the branch.** In cases 2 and 3 the pull request's branch is replaced, under a lease on the queued
   head, by **one** commit on the latest base. That commit carries the net change plus the regenerated files. Its author is
   the pull request author's login with `{login}@users.noreply.github.com`, its committer is `CodeCoverage merge queue`,
-  and its message is `<title> (#<n>)` (D50). Other commit authors are not carried over as `Co-authored-by:` trailers.
-  After an eviction past PUBLISH, the branch holds that commit: reset to it before pushing more.
+  and its message is `<title> (#<n>)` (D50) followed by the co-author trailers below. After an eviction past PUBLISH,
+  the branch holds that commit: reset to it before pushing more.
+- **Co-authors are credited (D60).** Every other author of the pull request's commits, and everyone a commit credits in
+  a `Co-authored-by: Name <email>` line of its message, becomes a `Co-authored-by:` trailer: once per email, in commit
+  order, at most 100. Not credited: the pull request's author (by account, by their commits' emails, and by GitHub's
+  noreply forms of the login), bots (`[bot]`), the queue itself, and identities git would refuse. The trailers are read
+  once when the run starts, from GitHub's list of the pull request's commits (at most 250 commits), and go both into
+  the rebased commit and into the merge's `commit_message`, from which GitHub builds the merged commit. Because the
+  rebased commit carries them, a pull request queued again after an eviction past PUBLISH keeps its credits. A pull
+  request with one author gets the title alone.
 - **Pushing while queued evicts** (`author-push`). The queue merges only the commit that was queued; queue it again to
   merge the new head.
-- **The merge** is GitHub's squash merge with the title `<title> (#<n>)`, performed by the App.
-- **At the end**, whatever the outcome: the label is removed, the `mq/` branch is deleted under a lease, and the next
-  pull request in the lane starts. An eviction posts a comment with the reason and how to queue again; a merge posts
-  nothing.
+- **The merge** is GitHub's squash merge with the title `<title> (#<n>)` and the co-author trailers as its message,
+  performed by the App.
+- **At the end**, whatever the outcome: the label is removed, the `mq/` branch is deleted under a lease, a regenerate
+  run the entry no longer waits for is cancelled (D53), and the next pull request in the lane starts. An eviction posts
+  a comment with the reason and how to queue again; a merge posts nothing.
 
 ### 4.4 The "Merge queue" check run
 
@@ -400,8 +488,8 @@ files*, *Publishing the rebased commit*, *Waiting for checks*, *Merging* (in pro
 The summary holds the reason's message and the paths behind it (up to 50), the permission-acceptance link (O17), and a
 table of the state, position, who queued it and how, the pinned head, the final commit, the regenerate run and the
 merge commit. Then come the **Warnings** (O18's review settings) and the **Checks not waited for** (O12). Last is the
-**Effective configuration** (O15): every `mergeQueue:` value plus `approvalFloor` and `checkExclusions`, each with its
-source (`coverage.yml @ <default branch>`, `default`, `organization` or `repository`).
+**Effective configuration** (O15): every `mergeQueue:` value plus `approvalFloor`, `checkExclusions` and `bypassRole`,
+each with its source (`coverage.yml @ <default branch>`, `default`, `organization` or `repository`).
 
 A run keeps the configuration it was queued with, so changing `coverage.yml` or a setting does not affect entries
 already running. Re-running the check on GitHub does nothing; queue again with `/queue`.
@@ -423,9 +511,10 @@ kebab-cased by the writer.
 | `branch` | Its base is not in `mergeQueue.branches` (O16). | Retarget it, or add the branch on the default branch. |
 | `role` | The actor has less than `write` (O9). | Ask someone with `write`. |
 | `fork` | The fork is gone, or "Allow edits by maintainers" is not ticked (O3). | Tick the box. For an organization-owned fork, see §3.3. |
-| `approval` | The approval floor is not met on the queued commit (O11, D47). | A writer other than the author approves the current head; queue again. |
+| `approval` | The approval floor is not met on the queued commit (O11, D47), or a writer's latest review requests changes (D61). | A writer other than the author approves the current head, or the one who asked for changes approves; queue again. |
 | `native-queue` | The base requires GitHub's own merge queue (D8). | Remove that rule. |
-| `bypass` | The App can bypass a ruleset with reviews or checks, or its bypass could not be read (T7). | Remove the App from that ruleset's bypass list (§3). |
+| `self-required` | The base requires the queue's own "Merge queue" check, which is still in progress while the queue merges (D62). | Remove it from the required checks (§3). |
+| `bypass` | The App can bypass a ruleset with reviews or checks, or its bypass could not be read (T7). People listed as bypass actors never cause this (O22). | Remove the App from that ruleset's bypass list (§3). |
 | `permission` | GitHub refused a call for a permission. | Accept the new permissions (linked, O17). |
 
 **Evicted during a run** (state Evicted, "Removed from the queue: *code*", with a comment):
@@ -436,7 +525,8 @@ kebab-cased by the writer.
 | `retargeted` | The pull request's base was changed. | Queue it again. |
 | `base-missing` | The base branch no longer exists. | — |
 | `base-churn` | The base moved more than 5 times during one run. | Queue it again when the base is quieter. |
-| `touches-workflows` | The pull request's own change touches `.github/**` (D12). | Merge it by hand (§3.3). |
+| `touches-workflows` | The pull request's own change touches `.github/**` and either comes from a fork (refused before any push, D63) or needs the regenerate workflow without the bypass role (O21 A, O22). | An admin merges it (§3.3). |
+| `branch-name` | It needs a rebase, and its branch name is one the git writer does not push to (D57). | Rename the branch, or rebase by hand. |
 | `conflict-outside-allow-list` | A conflict in a file no `autoResolve` rule covers (O1). | Rebase by hand, then queue again. |
 | `hunk-outside-allowed-keys` | A `keys:` rule met a conflict on another line (O2). | Rebase by hand; drop `keys:` for a wholly generated file (O19). |
 | `unsupported-conflict-type` | A modify/delete, rename, directory/file, binary, mode or submodule conflict. | Rebase by hand. |
@@ -451,18 +541,21 @@ kebab-cased by the writer.
 | `regenerate-timeout` | It did not finish within `postRebaseTimeout`. | Raise the timeout, or speed the workflow up. |
 | `regenerate-artifact` | `merge-queue-patch` is missing, expired, over 2 MiB, or not exactly one file. | Fix the upload step. |
 | `patch-rejected` | The patch broke a T4 rule; the sub-reason and paths are shown (below). | Fix the generator, or `regeneratedPaths`. |
-| `push-rejected` | GitHub refused a push to `mq/…` or to the pull request's branch, or the deletion of `mq/…`; GitHub's message is shown. | Usually a rule covering `mq/**` or the pull request's branch (§3), or Workflows not accepted. |
+| `push-rejected` | GitHub refused a push to `mq/…` or to the pull request's branch, or the deletion of `mq/…`; GitHub's message is shown. | Usually a rule covering `mq/**` or the pull request's branch (§3). |
 | `push-refused` | No credential to push with: the fork is gone or its box was unticked since enqueue, or there is no installation. | As the message says. |
-| `fork-push-rejected` | GitHub refused the push to the fork's branch (S6). | Merge by hand (§3.3). |
+| `fork-push-rejected` | GitHub refused the push to the fork's branch (S6). | An admin merges it (§3.3). |
 | `writer-unavailable` | This server has no git writer (`MergeQueue:GitWriterUrl` unset); only case 1 can merge. | Operator: §7. |
+| `writer-refused` | The git writer refused the queue's own request: the field and the rule it broke are shown (D57). The parser and the enqueue checks hold everything to the same rules, so this points at a defect. | Report it with the message. |
 | `checks-failed` | A counted check failed, after `retryFlaky` re-runs of the failed check runs. A commit status cannot be re-run. | Fix and queue again, or exclude a check that must not gate (§2.4). |
 | `checks-timeout` | A counted check was still pending after `checks.timeout`, even after a last look. | Raise the timeout, or exclude a check that never finishes. |
 | `role-revoked` | The person who queued it lost `write` before the merge (O9). | Someone with `write` queues it again. |
+| `approval-withdrawn` | Right before the merge, the approval floor no longer held: an approval was dismissed or withdrawn, or a writer requested changes (D61). | Get the approval back; queue again. |
+| `bypass-revoked` | The bypass role let a `.github/**` change through the regenerate workflow, and the person who queued it no longer has that role (O22). | Queue it again; it is evicted `touches-workflows` unless the queuer has the role. |
 | `head-modified` | GitHub says the head is no longer the final commit, after one retry (D17). | Queue it again. |
 | `merge-refused` | GitHub refused the merge; its message is shown. | Usually ruleset 2's review settings (§3.1). |
 | `merge-timeout` | The merge request stayed pending for 40 polls (about 75 minutes). | Look at the pull request on GitHub; queue again. |
 | `permission` | A call was refused for a permission; the check run and the comment link the acceptance page (O17). | Accept the new permissions. |
-| `error` | The seventh transient failure since the entry last changed state: GitHub 5xx or rate limit, or the writer busy, failed or unreachable. | Operator: §7.4. |
+| `error` | The seventh transient failure in a row since the entry last changed state (the first and 6 retries, D58): GitHub 5xx or rate limit, or the writer busy, failed or unreachable. | Operator: §7.4. |
 
 **`patch-rejected` sub-reasons** (`CodeCoverage.GitWriter/Jobs/PatchValidator.cs`). These are checked before anything
 is cloned: `too-large` (over 2 MiB or 500 files); `malformed` (not UTF-8, a NUL byte, text outside a file section, an
@@ -482,15 +575,15 @@ power, or forged. It must never merge more than was approved or authorised (O10)
 
 | # | Threat | What stops it |
 |---|---|---|
-| T1 | A forged actor | The actor is the HMAC-verified webhook's `sender`, or the signed-in session's linked login. It is never comment text or a request body. The button is an antiforgery-guarded POST. Bots never command (D46). |
-| T2 | Too little role | `write` at enqueue and again before the merge. Dequeue needs the author or `write`. |
-| T3 | A swap after approval | The head SHA is pinned at enqueue, and PREPARE fetches exactly it. Any push whose SHA the queue did not write evicts. Every push is a lease, and the merge carries `sha`. The approval floor counts only approvals of the pinned commit. |
+| T1 | A forged actor | The actor is the HMAC-verified webhook's `sender`, or the signed-in session's linked login. It is never comment text or a request body. The buttons are an antiforgery-guarded POST (queue) and DELETE (dequeue). Bots never command (D46). |
+| T2 | Too little role | `write` at enqueue and again before the merge. Dequeue needs the author or `write`. The bypass role (O22) is likewise read when it decides and again before the merge. |
+| T3 | A swap after approval | The head SHA is pinned at enqueue, and PREPARE fetches exactly it. Any push whose SHA the queue did not write evicts. Every push is a lease, and the merge carries `sha`. The approval floor counts only approvals of the pinned commit (or the queue's own commit from it), and is checked again right before the merge, where a writer's request for changes vetoes (D61). |
 | T4 | Content smuggled in the patch | Strict parser before any clone (D30): only `regeneratedPaths`, 100644 text, no mode change, symlink, submodule, binary, copy, `.github`, `.gitattributes` or `.gitmodules`; ≤ 500 files, ≤ 2 MiB. The trees are compared after applying. The verify checks run on the final commit. |
-| T5 | Secrets stolen through the dispatched workflow | **D12:** a dispatched run uses the workflow file of the dispatched `mq/` ref, not the default branch's (T5(a) was refuted live). So the queue evicts every pull request that touches `.github/**`, and asserts the workflow's blob on `mq/` equals the default branch's before dispatching. The main defence is §2.3: `contents: read`, no secrets, no `id-token`, GitHub-hosted runners, because the pull request's build code runs either way. A dispatch happens only after an authorised enqueue. |
+| T5 | Secrets stolen through a workflow the pull request changed | **D12:** a dispatched run uses the workflow file of the dispatched `mq/` ref, not the default branch's (T5(a) was refuted live), and a push to `mq/` starts `push` workflows from the pushed commit's own files. So a fork's change under `.github/**` is refused before anything is pushed (D63). A same-repository one, whose author's own push already ran those workflows, goes through only when nothing is dispatched, or through the bypass role (O21 A, O22). Before every dispatch the workflow's blob on `mq/` must equal the default branch's, and nothing bypasses that. The main defence is §2.3: `contents: read`, no secrets, no `id-token`, GitHub-hosted runners, because the pull request's build code runs either way. A dispatch happens only after an authorised enqueue. |
 | T6 | A pull request widening the configuration | `mergeQueue:` comes from the default branch only (O16); trust settings are in the database (O15). |
-| T7 | The bot skipping the repository's rules | The App is exempt only from ruleset 1. Enqueue refuses any ruleset holding reviews or checks that the App can bypass (`current_user_can_bypass`, D16). |
+| T7 | The bot skipping the repository's rules | The App is exempt only from ruleset 1. Enqueue refuses any ruleset holding reviews or checks that the App itself can bypass (`current_user_can_bypass` read with its own token, D16). People may bypass ruleset 2 (O22); that is the repository's policy, not the bot's. |
 | T8 | Hostile git content | Its own sidecar (D2), a bare blob-less clone, no checkout, worktree or hooks (an empty, read-only `core.hooksPath` and `--template=`). `attr.tree` is the empty tree, so no in-repo `.gitattributes` picks a merge driver (D21). `transfer.fsckObjects`, file/ext transports off, https only, the git floor (D29), job caps (D32). |
-| T9 | A leaked token | The App's installation token, from the shared cache with at least 15 minutes left, is sent in the request body per job. git gets it only through `GIT_CONFIG_*` environment pairs and stderr is scrubbed. The writer holds no App key and nothing at rest. |
+| T9 | A leaked token | Each writer job gets a token minted for it alone (D59): this one repository, `contents: write`, plus `workflows: write` only when its push needs it. It is never cached, and is revoked when the job ends. It travels in the request body; git gets it only through `GIT_CONFIG_*` environment pairs, and stderr is scrubbed. The writer holds no App key and nothing at rest. |
 
 ## 7. Operations
 
@@ -501,7 +594,8 @@ container that writes git; the commit-graph mirror stays read-only (D2). Its API
 is the boundary. `POST /jobs/prepare` is PREPARE. `POST /jobs/publish` is PUBLISH: it applies the patch with
 `git apply --cached` on a throwaway index. `DELETE /jobs/queue-branch` removes `mq/…` under a lease, and `GET /healthz`
 answers `ok`. Every job starts from an empty directory, deleted when the job ends. Every answer is 200 with an outcome;
-only a request that fails validation is a bare 400. The limits (`CodeCoverage.GitWriter/GitWriterOptions.cs`, compose):
+only a request that fails validation is a 400, whose body `{ "outcome": "refused", "field", "detail" }` names the
+first field and the rule it broke, never a value (D57). The limits (`CodeCoverage.GitWriter/GitWriterOptions.cs`, compose):
 
 | Limit | Value |
 |---|---|
@@ -515,7 +609,8 @@ only a request that fails validation is a bare 400. The limits (`CodeCoverage.Gi
 Networks: `coverage-git-writer` is internal and holds exactly `coverage-app` and the writer. `coverage-git-writer-egress`
 is the writer's way out, shared with nothing. The writer is never on the database's network, and
 `tools/verify-backend-networks.test.mjs` asserts all of it. **Adding any container to `coverage-git-writer` lets it
-have the writer push with the token the app hands over.** The image's Dockerfile fails the build when its git lacks the
+have the writer push with the token the app hands over** (one job's token, for one repository, D59). The image's
+Dockerfile fails the build when its git lacks the
 July 2025 fixes (D29). Details: [`hosting.md`](hosting.md) §1, "Compose services".
 
 ### 7.2 Timeouts, polls and retries
@@ -529,11 +624,13 @@ July 2025 fixes (D29). Details: [`hosting.md`](hosting.md) §1, "Compose service
 | The merge request | Polls after 15 s, 30 s and 60 s, then every 2 min; after 40 polls `merge-timeout` | `MergeQueueEngine.MaxMergePolls` |
 | "Head branch was modified" | One retry after 15 s: GitHub may not have registered the queue's own push yet (D17) | `HeadModifiedRetryDelay` |
 | Base moves in one run | 5 restarts, then `base-churn` | `MaxPrepareAttempts` |
-| A transient failure | The same step again after 15 s, 30 s, 1, 2, 4 and 8 min, then `error` | `MaxTransientFailures` (6) |
+| A transient failure | The same step again after 15 s, 30 s, 1, 2, 4 and 8 min; the seventh failure in a row is `error` | `MaxTransientRetries` (6) |
+| A writer job's token | Minted for the job, revoked when it answers or fails; a revocation waits at most 10 s | `GitHubForgeMergeQueue` (D59) |
 
 **Transient** means GitHub 5xx and rate limits (`ForgeRequestException`), a writer `busy` or `failed` outcome, transport
-errors (including a writer 400) and timeouts. A refused permission (401/403) is never retried: it ends the entry with
-`permission` and the O17 link. Anything else escapes to Spark Messaging's own retry: 5 attempts, 5 s to 1 h, then the
+errors and timeouts. A refused permission (401/403) is never retried: it ends the entry with `permission` and the O17
+link. Neither is a request the writer refuses (a 400): the same request would be refused again, so it ends the entry
+with `writer-refused` and the writer's reason (D57). Anything else escapes to Spark Messaging's own retry: 5 attempts, 5 s to 1 h, then the
 message is dead-lettered. That also applies to a transient failure while a command is being enqueued. A step meant for
 another run or state is a no-op, so a redelivered message or a late poll changes nothing (D44).
 
@@ -558,8 +655,8 @@ The writer's `GitWriter:*` keys are in [`hosting.md`](hosting.md) §4, "Applicat
 
 - **App log** (`docker compose logs coverage-app`), lines starting `Merge queue:`. Entries end with
   `evicted #<n> in <repo>: <reason>` or `refused #<n> in <repo>: <code>`, and transient failures log
-  `<Step> of <entry> failed (<n>/6); retrying in <delay>`. A failed check-run publish, a label removal or a comment is
-  logged as a warning and does not stop the run.
+  `<Step> of <entry> failed (<n>/7); retrying in <delay>`. A failed check-run publish, a label removal, a comment or a
+  token revocation is logged as a warning and does not stop the run.
 - **Writer log** (`docker compose logs coverage-git-writer`): `<prepare|publish|…> for <repo>: busy`,
   `… finished after <ms> ms`, and `… failed (<reason>) after <ms> ms`.
 - **RavenDB:** `MergeQueues/github/<repoId>` holds the lanes (per base, the current entry and the waiting ones).
@@ -587,12 +684,17 @@ Design choices, recorded so they can be revisited (D51):
 
 Not verified, or not supported:
 
-- **Fork pull requests are unverified (S6).** Whether GitHub counts an App installation token as a maintainer for
-  "Allow edits by maintainers" was never measured. If not, every fork's PUBLISH ends with `fork-push-rejected`.
+- **Fork pull requests are unverified (S6).** Whether GitHub counts an App installation token, scoped to the base
+  repository (D59), as a maintainer for "Allow edits by maintainers" was never measured. If not, every fork's PUBLISH
+  ends with `fork-push-rejected`.
 - **GitHub only (O7).** `IForgeMergeQueue` is forge-neutral; GitLab and Bitbucket follow under #422.
 - **Squash only**, and no signed commits. The queue pushes unsigned bot commits with git (O14), and a branch that
   requires signatures is untested.
-- **`.github/**` changes never go through the queue** (D12): they need the admin path of §3.3.
+- **A `.github/**` change goes through only when nothing is dispatched**, or with the bypass role for a same-repository
+  pull request (O21 A, O22). A fork's never does (D63). The rest needs the admin path of §3.3.
+- **Co-authors beyond GitHub's 250-commit listing** of a pull request are not credited (D60).
 - Unmeasured with the production App so far: Commit statuses: read (D40); that an Actions check run's id is its job's id
-  for re-runs (D48); the regenerate run's duration on CI (S4); the prepare step on the largest installed repository
-  against the 180 s job clock (S8).
+  for re-runs (D48); that the App's `workflows` permission follows the OAuth scope's "same file on another branch" rule
+  (D59); `require_extra_approval_for_unattributed_changes` on ruleset 2 together with the regenerate push (§3); the
+  regenerate run's duration on CI (S4); the prepare step on the largest installed repository against the 180 s job
+  clock (S8).
