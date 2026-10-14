@@ -27,9 +27,9 @@ public partial class AccountPermissionsController : ControllerBase
     [Inject] private readonly IEnumerable<IForgeInstallationPermissions> permissionSources;
 
     /// <returns>
-    /// 200 with the installation's page and the pending permissions (possibly none); 204 when nothing can
-    /// be said (no installation, a forge without the concept, the forge unreachable); 404 for an account
-    /// the viewer does not manage, exactly as for one that does not exist.
+    /// 200 with the installation's page and the pending permissions; 204 when none are pending, or when
+    /// nothing can be said (no installation, a forge without the concept, the forge unreachable); 404 for an
+    /// account the viewer does not manage, exactly as for one that does not exist.
     /// </returns>
     [HttpGet]
     public async Task<ActionResult<PendingInstallationPermissions>> Get(string provider, string login, CancellationToken cancellationToken)
@@ -51,6 +51,6 @@ public partial class AccountPermissionsController : ControllerBase
 
         var source = permissionSources.FirstOrDefault(s => s.Provider == forge);
         var pending = source is null ? null : await source.GetPendingAsync(account, cancellationToken);
-        return pending is null ? NoContent() : Ok(pending);
+        return pending is { Pending.Count: > 0 } ? Ok(pending) : NoContent();
     }
 }

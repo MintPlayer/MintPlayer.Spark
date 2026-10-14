@@ -408,7 +408,8 @@ export class BrowseService {
 
   /**
    * The permissions the app asks for that the account's installation has not accepted yet (merge-queue PRD O17).
-   * Null (204) when nothing can be said; rejects with 401/404 for a viewer who does not manage the account.
+   * Null (204) when nothing is pending or nothing can be said; rejects with 401/404 for a viewer who does not
+   * manage the account.
    */
   getPendingPermissions(provider: string, login: string): Promise<PendingInstallationPermissions | null> {
     return firstValueFrom(this.http.get<PendingInstallationPermissions | null>(

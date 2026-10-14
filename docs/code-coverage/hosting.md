@@ -447,8 +447,8 @@ plus organization permissions (Projects, Members) when the installation's `targe
 Account permissions (Email addresses) are granted per user when someone signs in, never to an installation,
 so they never show. The server side is `GitHubInstallationPermissions` (CodeCoverage.GithubIntegration)
 behind `GET api/accounts/{provider}/{login}/pending-permissions` (`AccountPermissionsController`, right
-`Manage/RepoSettings` plus the owner check; 404 for an account the viewer does not manage, 204 when there
-is nothing to say). Answers are cached for a minute per installation, and a failure shows no notice. A
+`Manage/RepoSettings` plus the owner check; 404 for an account the viewer does not manage, 204 when nothing
+is pending or there is nothing to say). Answers are cached for a minute per installation, and a failure shows no notice. A
 refusal or an outage on GitHub's side is logged as a warning; anything else (a reply the app could not
 read, an App client it could not build) fails the same way on every view, so it is logged as an **error**
 (PRD D70). Look for "Could not read the pending permissions of GitHub installation" when the notice should
