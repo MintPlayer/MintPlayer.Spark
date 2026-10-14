@@ -23,6 +23,10 @@ internal static partial class WireValidation
     public const string HeadRefRule = "refs/pull/<n>/head or refs/heads/<branch>";
     public const string QueueBranchRule = "a branch under mq/: " + MergeQueueWireRules.BranchRule;
 
+    /// <summary>§0 D65: an author or committer of a commit the writer builds, which the same request must build again bit
+    /// for bit.</summary>
+    public const string DatedIdentityRule = MergeQueueWireRules.IdentityRule + ", with a date from 1970 on";
+
     public static readonly string AutoResolveEntriesRule =
         $"at most {MaxGlobs} entries, each a path ({MergeQueueWireRules.GlobRule}) with 1 to {MaxGlobs} keys ({MergeQueueWireRules.KeyRule}), or anyLine and no keys";
 
@@ -82,13 +86,17 @@ internal static partial class WireValidation
         return new GitCredential(wire.Username!, wire.Password!);
     }
 
-    public static GitIdentity? Identity(IdentityWire? wire)
+    /// <summary>
+    /// An identity with its date (§0 D65). Every commit the writer builds is a function of its request: a date git
+    /// stamped itself would make a retried or repeated job build another commit than the one the saga holds.
+    /// </summary>
+    public static GitIdentity? DatedIdentity(IdentityWire? wire)
     {
-        if (wire is null || !MergeQueueWireRules.IsIdentity(wire.Name, wire.Email))
+        if (wire is null || !MergeQueueWireRules.IsIdentity(wire.Name, wire.Email) || wire.Date is not { } date || date < DateTimeOffset.UnixEpoch)
             return null;
         try
         {
-            return new GitIdentity(wire.Name!, wire.Email!, wire.Date);
+            return new GitIdentity(wire.Name!, wire.Email!, date);
         }
         catch (ArgumentException)
         {

@@ -14,6 +14,9 @@ public abstract class WriterTestBase : IAsyncLifetime
     protected const string QueueBranch = "mq/main/pr-1";
     protected static readonly DateTimeOffset AuthorDate = new(2026, 10, 14, 12, 0, 0, TimeSpan.FromHours(2));
 
+    /// <summary>The committer's date the saga pins for a run (§0 D65): every commit of the run carries it.</summary>
+    protected static readonly DateTimeOffset CommitterDate = new(2026, 10, 14, 10, 30, 0, TimeSpan.Zero);
+
     private readonly TempDir origins = new("origins");
     private readonly List<Origin> created = [];
 
@@ -89,52 +92,78 @@ public abstract class WriterTestBase : IAsyncLifetime
 
     protected static object Credential(string password) => new { username = "x-access-token", password };
 
-    internal static object PrepareRequest(Origin origin, string headSha, string? expectedQueueSha = null, string? baseSha = null,
+    /// <summary>
+    /// The fields of a prepare, which the queue-branch push and the publish repeat to rebuild the same commit (§0 D65).
+    /// A dictionary, so a test can replace or drop any of them.
+    /// </summary>
+    internal static Dictionary<string, object?> PrepareRequest(Origin origin, string headSha, string? baseSha = null,
         object? autoResolve = null, string? password = null, bool allowWorkflowChanges = false)
-        => new
+        => new()
         {
-            provider = "github",
-            repoId = "1001",
-            cloneUrl = origin.Url.AbsoluteUri,
-            credential = Credential(password ?? Token),
-            baseBranch = "main",
-            baseSha,
-            headRef = "refs/pull/1/head",
-            headSha,
-            queueBranch = QueueBranch,
-            expectedQueueSha,
-            autoResolve = autoResolve ?? new object[] { new { path = "**/App_Data/modelHashes.json", keys = new[] { "modelHash", "contextRoots", "modelFiles" } } },
-            author = new { name = "Pull Request Author", email = "author@example.invalid", date = AuthorDate },
-            committer = new { name = "coverage-bot", email = "bot@example.invalid" },
-            message = "Add Order (#1)\n\nCo-authored-by: Someone <someone@example.invalid>\n",
-            allowWorkflowChanges,
+            ["provider"] = "github",
+            ["repoId"] = "1001",
+            ["cloneUrl"] = origin.Url.AbsoluteUri,
+            ["credential"] = Credential(password ?? Token),
+            ["baseBranch"] = "main",
+            ["baseSha"] = baseSha,
+            ["headRef"] = "refs/pull/1/head",
+            ["headSha"] = headSha,
+            ["autoResolve"] = autoResolve ?? new object[] { new { path = "**/App_Data/modelHashes.json", keys = new[] { "modelHash", "contextRoots", "modelFiles" } } },
+            ["author"] = new { name = "Pull Request Author", email = "author@example.invalid", date = AuthorDate },
+            ["committer"] = new { name = "coverage-bot", email = "bot@example.invalid", date = CommitterDate },
+            ["message"] = "Add Order (#1)\n\nCo-authored-by: Someone <someone@example.invalid>\n",
+            ["allowWorkflowChanges"] = allowWorkflowChanges,
         };
 
-    internal static object PublishRequest(Origin origin, string preparedSha, string expectedPrHeadSha, string? patch = null, string[]? regeneratedPaths = null,
+    /// <summary><c>POST /jobs/queue-branch</c> for <paramref name="prepared"/>: the prepare's fields, its answer, the lease.</summary>
+    internal static Dictionary<string, object?> QueueBranchRequest(Origin origin, Prepared prepared, string? expectedQueueSha = null, bool allowWorkflowChanges = false)
+        => With(PrepareRequest(origin, prepared.Head, prepared.Base, allowWorkflowChanges: allowWorkflowChanges), new()
+        {
+            ["preparedSha"] = prepared.Sha,
+            ["queueBranch"] = QueueBranch,
+            ["expectedQueueSha"] = expectedQueueSha,
+        });
+
+    /// <summary><c>POST /jobs/publish</c> for <paramref name="prepared"/>: the prepare's fields, its answer, the patch.</summary>
+    internal static Dictionary<string, object?> PublishRequest(Origin origin, Prepared prepared, string? patch = null, string[]? regeneratedPaths = null,
         Uri? pushUrl = null)
-        => new
+        => With(PrepareRequest(origin, prepared.Head, prepared.Base), new()
         {
-            provider = "github",
-            repoId = "1001",
-            cloneUrl = origin.Url.AbsoluteUri,
-            pushUrl = pushUrl?.AbsoluteUri,
-            credential = Credential(Token),
-            queueBranch = QueueBranch,
-            preparedSha,
-            headRef = "refs/pull/1/head",
-            prBranch = "feature",
-            expectedPrHeadSha,
-            patch = patch is null ? null : Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(patch)),
-            regeneratedPaths = regeneratedPaths ?? ["**/App_Data/modelHashes.json", "**/App_Data/Model/*.json"],
-            committer = new { name = "coverage-bot", email = "bot@example.invalid" },
-        };
+            ["pushUrl"] = pushUrl?.AbsoluteUri,
+            ["preparedSha"] = prepared.Sha,
+            ["prBranch"] = "feature",
+            ["patch"] = patch is null ? null : Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(patch)),
+            ["regeneratedPaths"] = regeneratedPaths ?? ["**/App_Data/modelHashes.json", "**/App_Data/Model/*.json"],
+        });
 
-    /// <summary>The roll-up conflict, prepared: returns the prepared SHA and the PR head.</summary>
-    internal async Task<(string Prepared, string Head)> PreparedAsync(Origin origin)
+    /// <summary><paramref name="request"/> with <paramref name="changes"/> set (a null value is sent as null).</summary>
+    internal static Dictionary<string, object?> With(Dictionary<string, object?> request, Dictionary<string, object?> changes)
+    {
+        var copy = new Dictionary<string, object?>(request);
+        foreach (var (key, value) in changes)
+            copy[key] = value;
+        return copy;
+    }
+
+    /// <summary>The roll-up conflict, prepared: returns the prepared SHA, the PR head and the base it was built on.</summary>
+    internal async Task<Prepared> PreparedAsync(Origin origin)
     {
         var head = RollUpConflict(origin);
         var prepared = await Writer.PrepareAsync(PrepareRequest(origin, head));
         prepared.Outcome.Should().Be("prepared", prepared.Detail);
-        return (prepared.PreparedSha!, head);
+        return new Prepared(prepared.PreparedSha!, head, prepared.BaseSha!);
+    }
+
+    /// <summary>The prepared commit, as a dispatch needs it: pushed to the queue branch (§0 D65), which only the
+    /// queue-branch push does.</summary>
+    internal async Task<Prepared> PushedAsync(Origin origin)
+    {
+        var prepared = await PreparedAsync(origin);
+        var pushed = await Writer.PushQueueBranchAsync(QueueBranchRequest(origin, prepared));
+        pushed.Outcome.Should().Be("pushed", pushed.Detail);
+        return prepared;
     }
 }
+
+/// <summary>A prepare's answer: the commit, the pinned head and the base it was built on.</summary>
+internal sealed record Prepared(string Sha, string Head, string Base);

@@ -37,18 +37,26 @@ public class HardeningTests : WriterTestBase
         Directory.GetFileSystemEntries(Writer.Root).Should().BeEmpty();
     }
 
-    public static TheoryData<string, object, string> BadRequests => new()
+    public static TheoryData<string, string, object, string> BadRequests => new()
     {
-        { "a queue branch outside mq/", new { queueBranch = "main" }, "queueBranch" },
-        { "an option-like base branch", new { baseBranch = "-uattacker" }, "baseBranch" },
-        { "a revision expression", new { baseBranch = "main@{1}" }, "baseBranch" },
-        { "a file remote", new { cloneUrl = "file:///etc" }, "cloneUrl" },
-        { "a remote with user info", new { cloneUrl = "https://user:pass@example.invalid/x.git" }, "cloneUrl" },
-        { "a short sha", new { headSha = "abc123" }, "headSha" },
-        { "an arbitrary head ref", new { headRef = "refs/remotes/origin/x" }, "headRef" },
-        { "no credential", new { credential = (object?)null }, "credential" },
-        { "an ident with a newline", new { author = new { name = "a\nb", email = "a@example.invalid" } }, "author" },
-        { "a key-less rule", new { autoResolve = new object[] { new { path = "**/x.json", keys = Array.Empty<string>() } } }, "autoResolve" },
+        { "a queue branch outside mq/", "queue-branch", new { queueBranch = "main" }, "queueBranch" },
+        { "an option-like base branch", "prepare", new { baseBranch = "-uattacker" }, "baseBranch" },
+        { "a revision expression", "prepare", new { baseBranch = "main@{1}" }, "baseBranch" },
+        { "a file remote", "prepare", new { cloneUrl = "file:///etc" }, "cloneUrl" },
+        { "a remote with user info", "prepare", new { cloneUrl = "https://user:pass@example.invalid/x.git" }, "cloneUrl" },
+        { "a short sha", "prepare", new { headSha = "abc123" }, "headSha" },
+        { "an arbitrary head ref", "prepare", new { headRef = "refs/remotes/origin/x" }, "headRef" },
+        { "no credential", "prepare", new { credential = (object?)null }, "credential" },
+        { "an ident with a newline", "prepare", new { author = new { name = "a\nb", email = "a@example.invalid", date = AuthorDate } }, "author" },
+        { "a key-less rule", "prepare", new { autoResolve = new object[] { new { path = "**/x.json", keys = Array.Empty<string>() } } }, "autoResolve" },
+        // §0 D65: a date git would stamp itself makes the same request build another commit.
+        { "an author without a date", "prepare", new { author = new { name = "a", email = "a@example.invalid" } }, "author" },
+        { "a committer without a date", "publish", new { committer = new { name = "bot", email = "bot@example.invalid" } }, "committer" },
+        { "a date before 1970", "queue-branch", new { committer = new { name = "bot", email = "bot@example.invalid", date = new DateTimeOffset(1969, 12, 31, 0, 0, 0, TimeSpan.Zero) } }, "committer" },
+        // §0 D65: a rebuild is of the prepared commit, on the base it was prepared on.
+        { "a queue-branch push without the base", "queue-branch", new { baseSha = (string?)null }, "baseSha" },
+        { "a publish without the base", "publish", new { baseSha = (string?)null }, "baseSha" },
+        { "a publish without the prepared commit", "publish", new { preparedSha = (string?)null }, "preparedSha" },
     };
 
     /// <summary>
@@ -57,12 +65,19 @@ public class HardeningTests : WriterTestBase
     /// </summary>
     [Theory]
     [MemberData(nameof(BadRequests))]
-    public async Task A_request_that_does_not_validate_is_a_400_naming_the_field_and_starts_no_git(string because, object overrides, string field)
+    public async Task A_request_that_does_not_validate_is_a_400_naming_the_field_and_starts_no_git(string because, string job, object overrides, string field)
     {
         var origin = Seed();
-        var body = Merge(PrepareRequest(origin, new string('a', 40)), overrides);
+        var prepared = new Prepared(new string('b', 40), new string('a', 40), new string('c', 40));
+        var valid = job switch
+        {
+            "queue-branch" => QueueBranchRequest(origin, prepared),
+            "publish" => PublishRequest(origin, prepared),
+            _ => PrepareRequest(origin, prepared.Head),
+        };
+        var body = Merge(valid, overrides);
 
-        var response = await Writer.Client.PostAsJsonAsync("/jobs/prepare", body);
+        var response = await Writer.Client.PostAsJsonAsync($"/jobs/{job}", body);
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest, because);
         var text = await response.Content.ReadAsStringAsync();
@@ -125,14 +140,9 @@ public class HardeningTests : WriterTestBase
         seen.Where(Forbidden).Should().BeEmpty();
     }
 
-    /// <summary>The anonymous body with some members replaced.</summary>
-    private static Dictionary<string, object?> Merge(object body, object overrides)
-    {
-        var merged = body.GetType().GetProperties().ToDictionary(p => p.Name, p => p.GetValue(body));
-        foreach (var property in overrides.GetType().GetProperties())
-            merged[property.Name] = property.GetValue(overrides);
-        return merged;
-    }
+    /// <summary>The body with some members replaced.</summary>
+    private static Dictionary<string, object?> Merge(Dictionary<string, object?> body, object overrides)
+        => With(body, overrides.GetType().GetProperties().ToDictionary(p => p.Name, p => p.GetValue(overrides)));
 }
 
 /// <summary>The wall clock: a job that runs out of time has its git process tree killed and its directory removed.</summary>

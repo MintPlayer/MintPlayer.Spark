@@ -199,7 +199,8 @@ internal sealed class Origin : IDisposable
 /// <summary>Edits of a commit object's raw text, for <see cref="Origin.Rewrite"/>.</summary>
 internal static class CommitText
 {
-    /// <summary>The same commit, committed at another time: what an earlier attempt of the same job would have written.</summary>
+    /// <summary>The same commit, committed at another time. Since §0 D65 pins every date, that is never what an earlier
+    /// attempt of the same job wrote: it is someone else's commit.</summary>
     public static string Redated(string raw)
         => Header(raw, "committer", line => line[..(line.LastIndexOf('>') + 1)] + " 1767225600 +0000");
 

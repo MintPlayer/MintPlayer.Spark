@@ -34,26 +34,38 @@ internal sealed partial class GitWriterPrepareEndpoint : IPostEndpoint<PrepareRe
 
     public override async Task<IResult> HandleAsync(PrepareRequestWire request, CancellationToken cancellationToken)
     {
-        var insecure = options.Value.AllowInsecureHttp;
         var refusal = new Refusal();
-        if (!refusal.Check(WireValidation.IsRepo(request.Provider, request.RepoId), "repoId", WireValidation.RepoRule)
-            || refusal.Check(WireValidation.RemoteUrl(request.CloneUrl, insecure), "cloneUrl", WireValidation.RemoteUrlRule) is not { } cloneUrl
-            || refusal.Check(WireValidation.Credential(request.Credential), "credential", WireValidation.CredentialRule) is not { } credential
-            || refusal.Check(WireValidation.Branch(request.BaseBranch), "baseBranch", MergeQueueWireRules.BranchRule) is not { } baseBranch
-            || !refusal.Check(request.BaseSha is null || WireValidation.ObjectId(request.BaseSha) is not null, "baseSha", WireValidation.ShaRule)
-            || refusal.Check(WireValidation.HeadRef(request.HeadRef), "headRef", WireValidation.HeadRefRule) is not { } headRef
-            || refusal.Check(WireValidation.ObjectId(request.HeadSha), "headSha", WireValidation.ShaRule) is not { } headSha
-            || refusal.Check(WireValidation.QueueBranch(request.QueueBranch), "queueBranch", WireValidation.QueueBranchRule) is not { } queueBranch
-            || !refusal.Check(request.ExpectedQueueSha is null || WireValidation.ObjectId(request.ExpectedQueueSha) is not null, "expectedQueueSha", WireValidation.ShaRule)
-            || refusal.Check(WireValidation.Rules(request.AutoResolve), "autoResolve", WireValidation.AutoResolveEntriesRule) is not { } rules
-            || refusal.Check(WireValidation.Identity(request.Author), "author", MergeQueueWireRules.IdentityRule) is not { } author
-            || refusal.Check(WireValidation.Identity(request.Committer), "committer", MergeQueueWireRules.IdentityRule) is not { } committer
-            || refusal.Check(WireValidation.Message(request.Message), "message", MergeQueueWireRules.MessageRule) is not { } message)
+        if (PrepareFields.Validate(refusal, request, options.Value.AllowInsecureHttp, baseShaRequired: false) is not { } job)
             return refusal.Result();
-
-        var job = new PrepareJob($"{request.Provider}/{request.RepoId}", cloneUrl, credential, baseBranch, request.BaseSha, headRef, headSha,
-            queueBranch, request.ExpectedQueueSha, rules, author, committer, message, request.AllowWorkflowChanges);
         return Results.Json(await writer.PrepareAsync(job), GitWriterHost.Json);
+    }
+}
+
+/// <summary>
+/// <c>POST /jobs/queue-branch</c> (§0 D65): rebuilds the prepared commit and pushes it to <c>mq/…</c>, which the saga asks
+/// for only before a dispatch.
+/// </summary>
+internal sealed partial class GitWriterQueueBranchPushEndpoint : IPostEndpoint<QueueBranchPushWire>
+{
+    public static string Path => "/jobs/queue-branch";
+
+    [Inject] private readonly WriterService writer;
+    [Inject] private readonly IOptions<GitWriterOptions> options;
+
+    protected override async ValueTask<QueueBranchPushWire?> BindRequestAsync(HttpContext context)
+        => await Body.ReadAsync<QueueBranchPushWire>(context, Body.SmallBytes);
+
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure) => new(Refusal.Body(Body.SmallBytes));
+
+    public override async Task<IResult> HandleAsync(QueueBranchPushWire request, CancellationToken cancellationToken)
+    {
+        var refusal = new Refusal();
+        if (PrepareFields.Validate(refusal, request, options.Value.AllowInsecureHttp, baseShaRequired: true) is not { } prepare
+            || refusal.Check(WireValidation.ObjectId(request.PreparedSha), "preparedSha", WireValidation.ShaRule) is not { } preparedSha
+            || refusal.Check(WireValidation.QueueBranch(request.QueueBranch), "queueBranch", WireValidation.QueueBranchRule) is not { } queueBranch
+            || !refusal.Check(request.ExpectedQueueSha is null || WireValidation.ObjectId(request.ExpectedQueueSha) is not null, "expectedQueueSha", WireValidation.ShaRule))
+            return refusal.Result();
+        return Results.Json(await writer.PushQueueBranchAsync(new QueueBranchJob(prepare, preparedSha, queueBranch, request.ExpectedQueueSha)), GitWriterHost.Json);
     }
 }
 
@@ -75,24 +87,16 @@ internal sealed partial class GitWriterPublishEndpoint : IPostEndpoint<PublishRe
     {
         var insecure = options.Value.AllowInsecureHttp;
         var refusal = new Refusal();
-        if (!refusal.Check(WireValidation.IsRepo(request.Provider, request.RepoId), "repoId", WireValidation.RepoRule)
-            || refusal.Check(WireValidation.RemoteUrl(request.CloneUrl, insecure), "cloneUrl", WireValidation.RemoteUrlRule) is not { } cloneUrl
+        if (PrepareFields.Validate(refusal, request, insecure, baseShaRequired: true) is not { } prepare
             // A fork's branch is pushed to the fork (O3); otherwise to the base repository.
-            || refusal.Check(request.PushUrl is null ? cloneUrl : WireValidation.RemoteUrl(request.PushUrl, insecure), "pushUrl", WireValidation.RemoteUrlRule) is not { } pushUrl
-            || refusal.Check(WireValidation.Credential(request.Credential), "credential", WireValidation.CredentialRule) is not { } credential
-            || refusal.Check(WireValidation.QueueBranch(request.QueueBranch), "queueBranch", WireValidation.QueueBranchRule) is not { } queueBranch
+            || refusal.Check(request.PushUrl is null ? prepare.CloneUrl : WireValidation.RemoteUrl(request.PushUrl, insecure), "pushUrl", WireValidation.RemoteUrlRule) is not { } pushUrl
             || refusal.Check(WireValidation.ObjectId(request.PreparedSha), "preparedSha", WireValidation.ShaRule) is not { } preparedSha
-            || refusal.Check(WireValidation.HeadRef(request.HeadRef), "headRef", WireValidation.HeadRefRule) is not { } headRef
             || refusal.Check(WireValidation.Branch(request.PrBranch), "prBranch", MergeQueueWireRules.BranchRule) is not { } prBranch
-            || refusal.Check(WireValidation.ObjectId(request.ExpectedPrHeadSha), "expectedPrHeadSha", WireValidation.ShaRule) is not { } expectedHead
             || refusal.Check(WireValidation.Globs(request.RegeneratedPaths), "regeneratedPaths", WireValidation.RegeneratedPathsRule) is not { } globs
-            || refusal.Check(WireValidation.Identity(request.Committer), "committer", MergeQueueWireRules.IdentityRule) is not { } committer
             || refusal.Check(Patch(request.Patch), "patch", "base64, or null for no patch") is not { } patch)
             return refusal.Result();
 
-        var job = new PublishJob($"{request.Provider}/{request.RepoId}", cloneUrl, pushUrl, credential, queueBranch, preparedSha, headRef,
-            prBranch, expectedHead, patch, globs, committer);
-        return Results.Json(await writer.PublishAsync(job), GitWriterHost.Json);
+        return Results.Json(await writer.PublishAsync(new PublishJob(prepare, pushUrl, preparedSha, prBranch, patch, globs)), GitWriterHost.Json);
     }
 
     /// <summary>The patch's bytes: empty for none, null when it is not base64.</summary>
@@ -135,6 +139,33 @@ internal sealed partial class GitWriterDeleteQueueBranchEndpoint : IDeleteEndpoi
             return refusal.Result();
         var job = new DeleteQueueBranchJob($"{request.Provider}/{request.RepoId}", cloneUrl, credential, queueBranch, request.ExpectedSha);
         return Results.Json(await writer.DeleteQueueBranchAsync(job), GitWriterHost.Json);
+    }
+}
+
+/// <summary>
+/// The fields every job that builds the prepared commit carries (§0 D65): the prepare's own, which the queue-branch push
+/// and the publish repeat so that they rebuild the same commit instead of reading it from the queue branch.
+/// </summary>
+internal static class PrepareFields
+{
+    /// <summary>The validated job, or null after recording the first field that broke its rule.</summary>
+    /// <param name="baseShaRequired">The queue-branch push and the publish build on the prepare's base, so they need it.</param>
+    public static PrepareJob? Validate(Refusal refusal, PrepareRequestWire request, bool allowInsecureHttp, bool baseShaRequired)
+    {
+        if (!refusal.Check(WireValidation.IsRepo(request.Provider, request.RepoId), "repoId", WireValidation.RepoRule)
+            || refusal.Check(WireValidation.RemoteUrl(request.CloneUrl, allowInsecureHttp), "cloneUrl", WireValidation.RemoteUrlRule) is not { } cloneUrl
+            || refusal.Check(WireValidation.Credential(request.Credential), "credential", WireValidation.CredentialRule) is not { } credential
+            || refusal.Check(WireValidation.Branch(request.BaseBranch), "baseBranch", MergeQueueWireRules.BranchRule) is not { } baseBranch
+            || !refusal.Check(request.BaseSha is null ? !baseShaRequired : WireValidation.ObjectId(request.BaseSha) is not null, "baseSha", WireValidation.ShaRule)
+            || refusal.Check(WireValidation.HeadRef(request.HeadRef), "headRef", WireValidation.HeadRefRule) is not { } headRef
+            || refusal.Check(WireValidation.ObjectId(request.HeadSha), "headSha", WireValidation.ShaRule) is not { } headSha
+            || refusal.Check(WireValidation.Rules(request.AutoResolve), "autoResolve", WireValidation.AutoResolveEntriesRule) is not { } rules
+            || refusal.Check(WireValidation.DatedIdentity(request.Author), "author", WireValidation.DatedIdentityRule) is not { } author
+            || refusal.Check(WireValidation.DatedIdentity(request.Committer), "committer", WireValidation.DatedIdentityRule) is not { } committer
+            || refusal.Check(WireValidation.Message(request.Message), "message", MergeQueueWireRules.MessageRule) is not { } message)
+            return null;
+        return new PrepareJob($"{request.Provider}/{request.RepoId}", cloneUrl, credential, baseBranch, request.BaseSha, headRef, headSha,
+            rules, author, committer, message, request.AllowWorkflowChanges);
     }
 }
 
