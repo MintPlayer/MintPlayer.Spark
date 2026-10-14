@@ -694,7 +694,13 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             }
             catch (Exception ex) when (ex is not InvalidOperationException)
             {
-                Console.WriteLine($"Error loading model file {file.Source}: {ex.Message}");
+                // Fail closed (docs/coverage_merge_queue_PRD.md S7). Skipping the file used to regenerate the
+                // entity as new: fresh GUIDs over the ids other files reference, and the hand edits dropped,
+                // with exit 0. A rebase that leaves conflict markers in the file is the usual cause.
+                throw new ModelFileUnreadableException(
+                    $"Model file {file.Source} cannot be read: {ex.Message}" + Environment.NewLine
+                    + "Synchronization stopped before writing anything. Fix the file (a merge or rebase may have left "
+                    + "conflict markers in it) and run the command again.", ex);
             }
         }
 
@@ -1695,3 +1701,9 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         return fields;
     }
 }
+
+/// <summary>
+/// A model file in <c>App_Data/Model</c> could not be read, so <c>--spark-synchronize-model</c> stopped before
+/// writing anything (exit 1). Regenerating around it would mint fresh ids and drop the file's hand edits.
+/// </summary>
+internal sealed class ModelFileUnreadableException(string message, Exception inner) : InvalidOperationException(message, inner);
