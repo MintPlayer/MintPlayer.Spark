@@ -587,8 +587,10 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             case GitWriterOutcomes.Evicted:
                 await EvictAsync(context, entry, result.Reason ?? "conflict",
                     result.Reason == "touches-workflows"
-                        ? "The pull request comes from a fork and changes files under `.github/`. The queue never pushes such a change to a branch of this "
-                          + "repository: the push alone would start this repository's push workflows from the fork's own workflow files (D12, §0 D63). Merge it by hand."
+                        ? (entry.IsFork
+                            ? "The pull request comes from a fork and changes files under `.github/`. The queue never pushes such a change to a branch of this "
+                              + "repository: the push alone would start this repository's push workflows from the fork's own workflow files (D12, §0 D63). Merge it by hand."
+                            : "The pull request changes files under `.github/`, which the git writer would not push (D12). Merge it by hand.")
                         : $"Rebasing onto `{entry.BaseBranch}` conflicts in files the queue may not resolve ({result.Reason}). Only generated files are resolved automatically (O1); rebase by hand and queue it again."
                           + (result.Detail is { Length: > 0 } detail ? $"\n\n{detail}" : string.Empty),
                     result.Paths, ct: ct);
@@ -1104,7 +1106,17 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             return;
         }
         // T9: a token of its own, like every writer job; the entry has ended, so a refusal only leaves the branch behind.
-        var push = await context.Queue.GetWriterAccessAsync(context.Repository, pullRequest: null, pushesWorkflowChanges: false, ct);
+        ForgePushAccess push;
+        try
+        {
+            push = await context.Queue.GetWriterAccessAsync(context.Repository, pullRequest: null, pushesWorkflowChanges: false, ct);
+        }
+        catch (ForgeAccessDeniedException ex)
+        {
+            // Refused now, refused on every retry (an uninstalled App, a permission not accepted).
+            logger.LogWarning(ex, "Merge queue: no credential to delete {Branch} in {Repository}", step.QueueBranch, context.Repository.FullName);
+            return;
+        }
         if (push.Access is not { } access)
         {
             logger.LogWarning("Merge queue: no credential to delete {Branch} in {Repository}: {Reason}", step.QueueBranch, context.Repository.FullName, push.RefusalReason);

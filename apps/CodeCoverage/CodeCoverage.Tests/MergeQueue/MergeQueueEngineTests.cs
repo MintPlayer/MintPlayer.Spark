@@ -1371,6 +1371,27 @@ public class MergeQueueEngineTests : CoverageRavenTest
         h.Queue.RevokedTokens.Should().Equal([.. h.Queue.WriterAccesses.Select(a => a.Token)]);
     }
 
+    /// <summary>The queue branch's cleanup runs after the entry ended: a mint GitHub refuses is refused on every retry, so
+    /// the step logs it and leaves the branch, instead of throwing into the messaging runtime's retries.</summary>
+    [Fact]
+    public async Task A_cleanup_whose_credential_is_refused_leaves_the_branch_without_failing_the_step()
+    {
+        var h = await HarnessAsync();
+        h.Writer.PrepareResults.Enqueue(FakeGitWriter.Prepared(BaseSha, Head, Prepared));
+        h.Writer.PublishResults.Enqueue(FakeGitWriter.Published(Final));
+        var minted = 0;
+        h.Queue.WriterAccess = _ => ++minted == 3
+            ? throw new ForgeAccessDeniedException("GitHub refused a token: Resource not accessible by integration", "contents=write")
+            : null;
+
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+
+        (await h.EntryAsync()).State.Should().Be(EMergeQueueEntryState.Merged);
+        h.Writer.Deletes.Should().BeEmpty();
+        h.Handled.Should().Contain(s => s.Step == EMergeQueueStep.Cleanup);
+    }
+
     [Theory]
     [InlineData(true, true, true)]
     [InlineData(true, false, false)]
