@@ -19,17 +19,24 @@ namespace SeoTester.Tests.Rendering;
 /// <summary>
 /// A site cannot leave anything in SeoTester's browser for a later render, and cannot make it save a file
 /// (<c>docs/seo_analyzer_PRD.md</c> §12, "Untrusted content: proof tests"). The real <see cref="PageRenderer"/> over one
-/// launched Chromium, every request routed through the fake web, which records the header names each request carried.
-/// Needs Playwright's Chromium (<c>playwright.ps1 install chromium</c>).
+/// launched Chromium with a temp folder of its own, every request routed through the fake web, which records the header
+/// names each request carried. Needs Playwright's Chromium (<c>playwright.ps1 install chromium</c>).
 /// </summary>
 [Collection(BrowserCollection.Name)]
 public sealed class BrowserStateTests(ITestOutputHelper output) : IAsyncLifetime
 {
+    /// <summary>Where Playwright's driver (node's <c>os.tmpdir()</c>) and Chromium take their temp folder from, on any OS.</summary>
+    private static readonly string[] TempVariables = ["TMPDIR", "TMP", "TEMP"];
+
+    /// <summary>A failure bound only: a scan takes milliseconds.</summary>
+    private static readonly TimeSpan ScanBound = TimeSpan.FromMinutes(1);
+
     private readonly FakeWeb web = new();
     private ServiceProvider services = null!;
     private ChromiumBrowser chromium = null!;
+    private DirectoryInfo browserTemp = null!;
 
-    public Task InitializeAsync()
+    public async Task InitializeAsync()
     {
         var collection = new ServiceCollection();
         collection.AddLogging();
@@ -41,13 +48,45 @@ public sealed class BrowserStateTests(ITestOutputHelper output) : IAsyncLifetime
         services = collection.BuildServiceProvider();
         chromium = new ChromiumBrowser(Options.Create(new BrowserOptions { Mode = BrowserMode.Launch, SettleTimeout = TimeSpan.FromSeconds(2) }),
             NullLogger<ChromiumBrowser>.Instance);
-        return Task.CompletedTask;
+        browserTemp = Directory.CreateTempSubdirectory("seo-browser-");
+        await LaunchAsync();
     }
 
     public async Task DisposeAsync()
     {
         await chromium.DisposeAsync();
         await services.DisposeAsync();
+        try
+        {
+            browserTemp.Delete(recursive: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // A browser process still on its way out holds a file: the folder stays behind.
+        }
+    }
+
+    /// <summary>
+    /// Launches the browser with <see cref="browserTemp"/> as its temp folder: its profile, Playwright's download folder
+    /// and Chromium's temp files land there, and the download proof scans that folder instead of the one every process on
+    /// the machine shares (<c>docs/seo_analyzer_PRD.md</c> §12, "CI stall"). The driver and Chromium take the variables
+    /// from this process's environment as they start, so they are set for that moment only: no other test runs meanwhile
+    /// (<c>AssemblyInfo.cs</c>).
+    /// </summary>
+    private async Task LaunchAsync()
+    {
+        var saved = TempVariables.Select(name => (Name: name, Value: Environment.GetEnvironmentVariable(name))).ToList();
+        try
+        {
+            foreach (var name in TempVariables)
+                Environment.SetEnvironmentVariable(name, browserTemp.FullName);
+            await chromium.GetAsync(CancellationToken.None);
+        }
+        finally
+        {
+            foreach (var (name, value) in saved)
+                Environment.SetEnvironmentVariable(name, value);
+        }
     }
 
     private async Task<PageRender> RenderAsync(Uri url)
@@ -144,9 +183,12 @@ public sealed class BrowserStateTests(ITestOutputHelper output) : IAsyncLifetime
     /// <summary>
     /// A page that tries three ways to save a file: a frame answered with <c>Content-Disposition: attachment</c>, a
     /// scripted click on <c>&lt;a download&gt;</c> (a served file and a blob), and a navigation to an
-    /// <c>application/octet-stream</c>. No download completes and no file holding the marker appears in the
-    /// browser's temp folders or the user's Downloads folder; the render finishes normally and the next one works. Red
-    /// with <c>AcceptDownloads = true</c>: the files land in Playwright's artifacts folder.
+    /// <c>application/octet-stream</c>. No download completes, no file holding the marker ever appears in Playwright's
+    /// download folder, and none is left in the browser's own temp folder or the user's Downloads folder once the render
+    /// is over; the render finishes normally and the next one works. Not "never" for the rest of the temp folder: Chromium
+    /// writes each denied download's bytes to a temp file of its own (<c>&lt;guid&gt;.tmp</c> at its top on Windows) and
+    /// deletes it within milliseconds (<c>docs/seo_analyzer_PRD.md</c> §12, "CI stall"). Red with
+    /// <c>AcceptDownloads = true</c>: the files land in Playwright's download folder.
     /// </summary>
     [Fact]
     public async Task A_page_cannot_make_the_browser_save_a_file()
@@ -172,16 +214,18 @@ public sealed class BrowserStateTests(ITestOutputHelper output) : IAsyncLifetime
         web.Html(site + "/next", FakeSite.Page("After the downloads"));
 
         var browser = await chromium.GetAsync(CancellationToken.None);
+        var downloadFolders = browserTemp.GetDirectories("playwright-artifacts-*").Select(d => (d.FullName, SearchOption.AllDirectories)).ToList();
+        downloadFolders.Should().NotBeEmpty("Playwright's download folder is in the browser's temp folder, the one scanned (else the scans prove nothing)");
         var downloads = new ConcurrentQueue<string>();
         using var stop = new CancellationTokenSource();
         var watcher = WatchDownloadsAsync(browser, downloads, stop.Token);
-        // Playwright deletes a context's downloads when the context closes, so the folders are scanned all along.
+        // Playwright deletes a context's downloads when the context closes, so its download folder is scanned all along.
         var files = new ConcurrentDictionary<string, byte>();
         var scanner = Task.Run(async () =>
         {
             while (!stop.IsCancellationRequested)
             {
-                foreach (var file in FilesHolding(marker, started, tempTopLevel: false))
+                foreach (var file in MarkerFiles.Holding(marker, started, downloadFolders))
                     files.TryAdd(file, 0);
                 await Task.Delay(50);
             }
@@ -189,18 +233,18 @@ public sealed class BrowserStateTests(ITestOutputHelper output) : IAsyncLifetime
 
         var render = await RenderAsync(new Uri(site + "/"));
         await Task.Delay(1500);
-        foreach (var file in FilesHolding(marker, started, tempTopLevel: true))
+        foreach (var file in await Task.Run(() => MarkerFiles.Holding(marker, started, Places())).WaitAsync(ScanBound))
             files.TryAdd(file, 0);
         stop.Cancel();
         await watcher;
-        await scanner;
+        await scanner.WaitAsync(ScanBound);
 
         foreach (var d in downloads)
             output.WriteLine("download event: " + d);
         render.Facts.Error.Should().BeNull("the render goes on as if nothing happened");
         render.Facts.Mobile.Should().NotBeNull();
         web.Requests.Should().Contain(r => r.Url == site + "/attachment");
-        files.Keys.Should().BeEmpty("no file holding what the site served was written");
+        files.Keys.Should().BeEmpty("no file holding what the site served reached Playwright's download folder or is left anywhere");
         downloads.Should().NotContain(d => d.EndsWith(" completed"), "Chromium announces some downloads, Playwright cancels them all");
         (await RenderAsync(new Uri(site + "/next"))).Facts.Error.Should().BeNull("the next render works");
     }
@@ -247,51 +291,15 @@ public sealed class BrowserStateTests(ITestOutputHelper output) : IAsyncLifetime
     }
 
     /// <summary>
-    /// Files written since <paramref name="since"/> whose name or bytes hold <paramref name="marker"/>, in every folder a
-    /// browser could save to: Playwright's artifacts folders (its download folder) and the rest of the temp folder's
-    /// top level, and the user's Downloads folder.
+    /// Every folder the browser could save to: its own temp folder, all of it (Playwright's download folder, the profile,
+    /// Chromium's temp files), and the user's Downloads folder (Chromium's default).
     /// </summary>
-    private static List<string> FilesHolding(string marker, DateTime since, bool tempTopLevel)
+    private List<(string Dir, SearchOption Depth)> Places()
     {
-        var bytes = Encoding.UTF8.GetBytes(marker);
-        var temp = Path.GetTempPath();
-        var places = new List<(string Dir, SearchOption Depth)>();
-        if (tempTopLevel)
-            places.Add((temp, SearchOption.TopDirectoryOnly));
-        places.AddRange(Directory.GetDirectories(temp, "playwright-artifacts-*").Select(d => (d, SearchOption.AllDirectories)));
+        var places = new List<(string Dir, SearchOption Depth)> { (browserTemp.FullName, SearchOption.AllDirectories) };
         var userDownloads = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
         if (Directory.Exists(userDownloads))
             places.Add((userDownloads, SearchOption.TopDirectoryOnly));
-
-        var found = new List<string>();
-        foreach (var (dir, depth) in places)
-        {
-            IEnumerable<string> candidates;
-            try
-            {
-                candidates = Directory.EnumerateFiles(dir, "*", new EnumerationOptions { RecurseSubdirectories = depth == SearchOption.AllDirectories, IgnoreInaccessible = true });
-            }
-            catch (IOException)
-            {
-                continue;
-            }
-            foreach (var file in candidates)
-            {
-                try
-                {
-                    var info = new FileInfo(file);
-                    if (info.LastWriteTimeUtc < since && info.CreationTimeUtc < since)
-                        continue;
-                    if (info.Name.Contains(marker, StringComparison.Ordinal)
-                        || (info.Length < 1024 * 1024 && File.ReadAllBytes(file).AsSpan().IndexOf(bytes) >= 0))
-                        found.Add(file);
-                }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                {
-                    // In use by another process, or gone already: not ours.
-                }
-            }
-        }
-        return found;
+        return places;
     }
 }
