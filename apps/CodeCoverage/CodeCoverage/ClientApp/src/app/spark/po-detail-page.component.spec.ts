@@ -10,6 +10,7 @@ import { RepoTrendPanelComponent } from '../components/repo-trend-panel/repo-tre
 import { RepoSetupPanelComponent } from '../components/repo-setup-panel/repo-setup-panel.component';
 import { RepoCommitGraphPanelComponent } from '../components/repo-commit-graph-panel/repo-commit-graph-panel.component';
 import { AccountDependencyGraphPanelComponent } from '../components/account-dependency-graph-panel/account-dependency-graph-panel.component';
+import { AccountPermissionsNoticeComponent } from '../components/account-permissions-notice/account-permissions-notice.component';
 import { CommitFilesExtrasComponent } from './commit-files-extras.component';
 import { HomeExtrasComponent } from './home-extras.component';
 import PoDetailPageComponent from './po-detail-page.component';
@@ -73,15 +74,21 @@ class StubDependencyGraphPanel {
   readonly login = input<string>();
 }
 
+@Component({ selector: 'app-account-permissions-notice', template: '' })
+class StubPermissionsNotice {
+  readonly provider = input<string>();
+  readonly login = input<string>();
+}
+
 describe('PoDetailPageComponent', () => {
   beforeEach(() => {
     TestBed.configureTestingModule({ providers: [provideZonelessChangeDetection()] });
     TestBed.overrideComponent(PoDetailPageComponent, {
       remove: {
         imports: [SparkPoDetailComponent, RepoBadgePanelComponent, RepoTrendPanelComponent, RepoCommitGraphPanelComponent, RepoSetupPanelComponent,
-          CommitFilesExtrasComponent, HomeExtrasComponent, AccountDependencyGraphPanelComponent],
+          CommitFilesExtrasComponent, HomeExtrasComponent, AccountDependencyGraphPanelComponent, AccountPermissionsNoticeComponent],
       },
-      add: { imports: [StubPoDetail, StubBadgePanel, StubTrendPanel, StubCommitGraphPanel, StubSetupPanel, StubCommitFilesExtras, StubHomeExtras, StubDependencyGraphPanel] },
+      add: { imports: [StubPoDetail, StubBadgePanel, StubTrendPanel, StubCommitGraphPanel, StubSetupPanel, StubCommitFilesExtras, StubHomeExtras, StubDependencyGraphPanel, StubPermissionsNotice] },
     });
   });
 
@@ -138,6 +145,9 @@ describe('PoDetailPageComponent', () => {
     const fixture = render('Account', po({ Login: 'acme', Provider: 'GitLab' }, 'Accounts/gitlab/7'));
     const panel = fixture.debugElement.query(By.directive(StubDependencyGraphPanel)).componentInstance as StubDependencyGraphPanel;
     expect([panel.provider(), panel.login()]).toEqual(['gitlab', 'acme']);
+    // The pending-permissions notice (O17) rides along, scoped the same way.
+    const notice = fixture.debugElement.query(By.directive(StubPermissionsNotice)).componentInstance as StubPermissionsNotice;
+    expect([notice.provider(), notice.login()]).toEqual(['gitlab', 'acme']);
 
     for (const object of [po({ Login: 'acme' }), po({}, 'Accounts/github/1'), po({ Login: 3 }, 'Accounts/github/1')]) {
       expect(has(render('Account', object), StubDependencyGraphPanel)).toBe(false);

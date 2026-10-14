@@ -104,6 +104,8 @@ public class RegistrationInventoryTests : CoverageRavenTest
     public void The_github_services_are_registered() => AssertRegistered(
         typeof(IGitHubAccessService),
         typeof(IGitHubAppReadinessService),
+        // The pending-permissions notice on the Account page (merge-queue PRD O17).
+        typeof(IForgeInstallationPermissions),
         typeof(IGitHubStateReconciler),
         typeof(IGitHubProjectCards),
         typeof(IInstallationProjects),

@@ -372,6 +372,19 @@ The Issues and Projects rows are derived from the project-automation code and
 only place an App's permissions are recorded, so verify them there. A raised permission only takes
 effect once **each installation accepts it**.
 
+**Accepting raised permissions in the app** (merge-queue PRD O17). The Account page (`/po/account/{id}`,
+reached from the accounts grid or `/github/a/{login}`) shows a warning to anyone who manages that account
+while its installation has not accepted everything the App declares: *"GitHub is waiting for you to accept
+new permissions: Actions (write), Workflows (write). Review and accept on GitHub"*. The link is the
+installation's own `html_url` (from `GET /app/installations/{id}`), so it works for user and organization
+installations alike and is never hard-coded. Pending means a permission whose level in `GET /app` exceeds
+the installation's (none < read < write < admin), compared over the raw JSON so permissions Octokit does
+not type are included. The server side is `GitHubInstallationPermissions` (CodeCoverage.GithubIntegration)
+behind `GET api/accounts/{provider}/{login}/pending-permissions` (`AccountPermissionsController`, right
+`Manage/RepoSettings` plus the owner check; 404 for an account the viewer does not manage, 204 when there
+is nothing to say). Answers are cached for a minute per installation; a GitHub failure is logged and shows
+no notice. Nothing shows in development unless a GitHub App is configured.
+
 **Webhook events to subscribe**
 
 | Event | Handled by | Needed for |

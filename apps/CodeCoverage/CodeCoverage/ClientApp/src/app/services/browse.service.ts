@@ -123,6 +123,21 @@ export interface AccountRef {
   login: string;
 }
 
+/** A permission the app declares above the level the account's installation accepted (merge-queue PRD O17). */
+export interface PendingPermission {
+  name: string;
+  displayName: string;
+  declared: string;
+  /** Null when the installation granted none of it. */
+  accepted: string | null;
+}
+
+/** The installation's own page on the forge, where the account accepts the new permissions. */
+export interface PendingInstallationPermissions {
+  htmlUrl: string;
+  pending: PendingPermission[];
+}
+
 export interface TreeEntry {
   name: string;
   path: string;
@@ -311,6 +326,15 @@ export class BrowseService {
 
   getAccountRepos(provider: string, login: string): Promise<RepoInfo[]> {
     return firstValueFrom(this.http.get<RepoInfo[]>(`/api/browse/accounts/${encodeURIComponent(provider)}/${encodeURIComponent(login)}/repos`));
+  }
+
+  /**
+   * The permissions the app asks for that the account's installation has not accepted yet (merge-queue PRD O17).
+   * Null (204) when nothing can be said; rejects with 401/404 for a viewer who does not manage the account.
+   */
+  getPendingPermissions(provider: string, login: string): Promise<PendingInstallationPermissions | null> {
+    return firstValueFrom(this.http.get<PendingInstallationPermissions | null>(
+      `/api/accounts/${encodeURIComponent(provider)}/${encodeURIComponent(login)}/pending-permissions`));
   }
 
   getDependencyGraph(provider: string, login: string): Promise<DependencyGraph> {
