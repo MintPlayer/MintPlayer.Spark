@@ -161,6 +161,12 @@ it names the file, writes nothing and exits 1. (It used to print the error, rege
 fresh GUIDs, and exit 0, which silently dropped the hand edits.) Resolve the model file by hand first,
 then regenerate the hash file as above.
 
+A repository that merges through CodeCoverage's merge queue gets the hash-file case done by the bot. It takes
+the base side of `modelHashes.json` and `securityPosture.txt`, and the repository's own CI runs synchronize on
+the rebased branch. The queue then publishes one squashed commit and merges once every check is green. A conflict
+in any other file, a model file included, evicts the pull request. See
+[the merge queue guide](code-coverage/merge-queue.md).
+
 ## When the check fires
 
 The error names the entities and files that moved. One entity drifting usually means a code change
