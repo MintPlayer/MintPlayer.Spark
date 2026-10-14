@@ -57,6 +57,12 @@ public class MergeQueueEntry
 
     public string? Title { get; set; }
 
+    /// <summary>
+    /// The <c>Co-authored-by:</c> trailers of the squashed commit and of the merge (§0 D60), read once when the run starts,
+    /// while the pull request's branch still holds its own commits. Null until then.
+    /// </summary>
+    public List<string>? CoAuthors { get; set; }
+
     /// <summary>What the pull request's branch should hold now: the pinned head, then each commit the queue published.</summary>
     public string ExpectedHeadSha { get; set; } = string.Empty;
 

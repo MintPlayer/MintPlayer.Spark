@@ -682,6 +682,30 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
                 && DateTimeOffset.TryParse(submitted, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var at) ? at : null))];
     }
 
+    /// <summary>
+    /// <c>GET /pulls/{n}/commits</c>, every page (GitHub stops at 250 commits). <c>author</c> is the GitHub account the
+    /// commit is attributed to, null when its email is linked to none; <c>commit.author</c> is what git recorded.
+    /// </summary>
+    public async Task<IReadOnlyList<ForgePullRequestCommit>> GetPullRequestCommitsAsync(Repository repository, int number, CancellationToken cancellationToken = default)
+    {
+        var commits = await GetPagedAsync(repository,
+            $"{RepoPath(repository)}/pulls/{number.ToString(CultureInfo.InvariantCulture)}/commits", null, cancellationToken);
+
+        return [.. commits.Select(item =>
+        {
+            var commit = item.TryGetProperty("commit", out var c) ? c : default;
+            var gitAuthor = commit.ValueKind == JsonValueKind.Object && commit.TryGetProperty("author", out var a) ? a : default;
+            var account = item.TryGetProperty("author", out var u) && u.ValueKind == JsonValueKind.Object ? u : default;
+            return new ForgePullRequestCommit(
+                Str(item, "sha") ?? string.Empty,
+                Str(gitAuthor, "name"),
+                Str(gitAuthor, "email"),
+                Str(account, "login"),
+                Str(account, "type") == "Bot",
+                Str(commit, "message") ?? string.Empty);
+        })];
+    }
+
     // ── Feedback ─────────────────────────────────────────────────────────────────────────────────
 
     /// <remarks>

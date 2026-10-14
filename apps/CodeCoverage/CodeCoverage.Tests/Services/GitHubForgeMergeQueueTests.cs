@@ -767,6 +767,33 @@ public class GitHubForgeMergeQueueTests
         reviews[1].State.Should().Be(EForgeReviewState.Dismissed);
     }
 
+    // ── Commits (§0 D60) ─────────────────────────────────────────────────────────────────────────
+
+    /// <summary><c>GET /pulls/{n}/commits</c> in the documented shape: <c>commit.author</c> is what git recorded,
+    /// <c>author</c> the account GitHub attributes the commit to, null for an email linked to none.</summary>
+    [Fact]
+    public async Task A_pull_requests_commits_carry_their_git_author_their_account_and_their_message()
+    {
+        var github = new StubGitHub().On(HttpMethod.Get, $"{Repo}/pulls/1/commits?per_page=100&page=1", HttpStatusCode.OK, $$"""
+            [{"sha":"{{Head}}","node_id":"C_1","commit":{"author":{"name":"Pair Partner","email":"pair@example.invalid","date":"2026-10-14T09:00:00Z"},
+               "committer":{"name":"Pair Partner","email":"pair@example.invalid","date":"2026-10-14T09:00:00Z"},
+               "message":"Fix widgets\n\nCo-authored-by: Third Person <third@example.invalid>"},
+              "author":{"login":"pair","id":5,"type":"User"},"committer":{"login":"pair","id":5,"type":"User"},"parents":[]},
+             {"sha":"{{MergeSha}}","commit":{"author":{"name":"dependabot[bot]","email":"49699333+dependabot[bot]@users.noreply.github.com"},"message":"Bump widgets"},
+              "author":{"login":"dependabot[bot]","id":49699333,"type":"Bot"} },
+             {"sha":"0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c","commit":{"author":{"name":"Someone","email":"someone@example.invalid"},"message":"Unlinked"},
+              "author":null}]
+            """);
+
+        var commits = await Queue(github).GetPullRequestCommitsAsync(Target(), 1);
+
+        commits.Should().Equal([
+            new ForgePullRequestCommit(Head, "Pair Partner", "pair@example.invalid", "pair", false, "Fix widgets\n\nCo-authored-by: Third Person <third@example.invalid>"),
+            new ForgePullRequestCommit(MergeSha, "dependabot[bot]", "49699333+dependabot[bot]@users.noreply.github.com", "dependabot[bot]", true, "Bump widgets"),
+            new ForgePullRequestCommit("0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c", "Someone", "someone@example.invalid", null, false, "Unlinked"),
+        ]);
+    }
+
     // ── Feedback ─────────────────────────────────────────────────────────────────────────────────
 
     [Fact]

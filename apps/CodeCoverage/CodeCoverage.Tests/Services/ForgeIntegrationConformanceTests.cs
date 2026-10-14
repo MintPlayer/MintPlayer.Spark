@@ -91,6 +91,7 @@ public class ForgeIntegrationConformanceTests
         (nameof(IForgeMergeQueue.RequestMergeAsync), q => q.RequestMergeAsync(SampleRepository, 1, SampleSha, EForgeMergeMethod.Squash, null, null)),
         (nameof(IForgeMergeQueue.GetMergeRequestStatusAsync), q => q.GetMergeRequestStatusAsync(SampleRepository, 1, Guid.Empty.ToString())),
         (nameof(IForgeMergeQueue.GetReviewsAsync), q => q.GetReviewsAsync(SampleRepository, 1)),
+        (nameof(IForgeMergeQueue.GetPullRequestCommitsAsync), q => q.GetPullRequestCommitsAsync(SampleRepository, 1)),
         (nameof(IForgeMergeQueue.PublishQueueCheckAsync), q => q.PublishQueueCheckAsync(SampleRepository, SampleSha, new ForgeQueueCheck(EForgeQueueCheckState.Queued, "t", "s", null), null)),
         (nameof(IForgeMergeQueue.AddLabelAsync), q => q.AddLabelAsync(SampleRepository, 1, "merge-queue")),
         (nameof(IForgeMergeQueue.RemoveLabelAsync), q => q.RemoveLabelAsync(SampleRepository, 1, "merge-queue")),

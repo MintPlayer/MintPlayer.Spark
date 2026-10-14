@@ -134,14 +134,24 @@ internal sealed class FakeForgeMergeQueue : IForgeMergeQueue
             throw thrown;
         }
         MergeRequests.Add((number, sha));
+        MergeMessages.Add((commitTitle, commitMessage));
         return Task.FromResult(MergeReplies.Count > 0 ? MergeReplies.Dequeue() : new ForgeMergeRequest(EForgeMergeState.Merged, null, "feedfacefeedfacefeedfacefeedfacefeedface", null));
     }
+
+    /// <summary>The squash commit's title and message each merge request asked for, in order.</summary>
+    public List<(string? Title, string? Message)> MergeMessages { get; } = [];
 
     public Task<ForgeMergeRequest> GetMergeRequestStatusAsync(Repository repository, int number, string requestId, CancellationToken cancellationToken = default)
         => Task.FromResult(MergeStatuses.Count > 0 ? MergeStatuses.Dequeue() : new ForgeMergeRequest(EForgeMergeState.Pending, requestId, null, null));
 
     public Task<IReadOnlyList<ForgeReview>> GetReviewsAsync(Repository repository, int number, CancellationToken cancellationToken = default)
         => Task.FromResult((IReadOnlyList<ForgeReview>)Reviews);
+
+    /// <summary>The pull request's commits, oldest first (§0 D60).</summary>
+    public List<ForgePullRequestCommit> Commits { get; } = [];
+
+    public Task<IReadOnlyList<ForgePullRequestCommit>> GetPullRequestCommitsAsync(Repository repository, int number, CancellationToken cancellationToken = default)
+        => Task.FromResult((IReadOnlyList<ForgePullRequestCommit>)Commits);
 
     public Task<long> PublishQueueCheckAsync(Repository repository, string sha, ForgeQueueCheck check, long? existingId, CancellationToken cancellationToken = default)
     {

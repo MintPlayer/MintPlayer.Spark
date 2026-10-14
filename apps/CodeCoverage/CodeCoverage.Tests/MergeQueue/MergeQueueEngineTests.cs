@@ -1071,6 +1071,75 @@ public class MergeQueueEngineTests : CoverageRavenTest
         h.Writer.Publishes.Should().BeEmpty();
     }
 
+    // ── Co-authors (§0 D60) ─────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The pull request's commits as GitHub lists them: the author's, a pair's crediting a third person, a bot's,
+    /// the pair's again under another case, and the author's again from an address GitHub links to no account.</summary>
+    private static ForgePullRequestCommit[] MixedCommits() =>
+    [
+        new("c1", "The Author", "author@example.invalid", "author", false, "Add widgets"),
+        new("c2", "Pair Partner", "pair@example.invalid", "pair", false, "Fix widgets\n\nCo-authored-by: Third Person <third@example.invalid>\n"),
+        new("c3", "dependabot[bot]", "49699333+dependabot[bot]@users.noreply.github.com", "dependabot[bot]", true, "Bump widgets"),
+        new("c4", "Pair Partner", "PAIR@example.invalid", "pair", false, "Again"),
+        new("c5", "The Author", "12345+author@users.noreply.github.com", null, false, "From the web editor"),
+    ];
+
+    private const string CoAuthored = "Co-authored-by: Pair Partner <pair@example.invalid>\nCo-authored-by: Third Person <third@example.invalid>";
+
+    [Fact]
+    public async Task The_squashed_commit_and_the_merge_credit_the_other_authors_but_not_the_author_or_a_bot()
+    {
+        var h = await HarnessAsync();
+        h.Queue.Commits.AddRange(MixedCommits());
+        h.Writer.PrepareResults.Enqueue(FakeGitWriter.Prepared(BaseSha, Head, Prepared));
+        h.Writer.PublishResults.Enqueue(FakeGitWriter.Published(Final));
+
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+
+        (await h.EntryAsync()).State.Should().Be(EMergeQueueEntryState.Merged);
+        h.Writer.Prepares.Single().Message.Should().Be($"Add widgets (#7)\n\n{CoAuthored}");
+        h.Queue.MergeMessages.Should().Equal([("Add widgets (#7)", CoAuthored)], "GitHub builds the merged commit from the merge's own message");
+    }
+
+    [Fact]
+    public async Task A_direct_merge_credits_the_other_authors_too_and_a_pull_request_of_one_author_credits_nobody()
+    {
+        var h = await HarnessAsync(mergeBase: BaseSha);
+        h.Queue.Commits.AddRange(MixedCommits());
+
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+
+        h.Queue.MergeMessages.Should().Equal([("Add widgets (#7)", CoAuthored)]);
+
+        var alone = await HarnessAsync(mergeBase: BaseSha);
+        alone.Queue.Commits.Add(new("c1", "The Author", "author@example.invalid", "author", false, "Add widgets"));
+        await alone.EnqueueAsync();
+        await alone.DrainAsync();
+
+        alone.Queue.MergeMessages.Should().Equal([("Add widgets (#7)", (string?)null)]);
+    }
+
+    [Fact]
+    public void Co_authors_the_writer_would_refuse_are_skipped_and_their_number_is_bounded()
+    {
+        ForgePullRequestCommit[] commits =
+        [
+            new("c1", "Spaced Email", "has space@example.invalid", "spaced", false, "x"),
+            new("c2", "  ", "blank@example.invalid", "blank", false, "x"),
+            new("c3", "The Queue", "merge-queue@noreply.coverage.mintplayer.com", null, false, "x"),
+            new("c4", "Many", "many@example.invalid", "many", false,
+                string.Join('\n', Enumerable.Range(1, MergeQueueEngine.MaxCoAuthors + 20).Select(i => $"Co-authored-by: Person {i} <p{i}@example.invalid>"))),
+        ];
+
+        var trailers = MergeQueueEngine.CoAuthorTrailers(commits, "author", "merge-queue@noreply.coverage.mintplayer.com");
+
+        trailers.Should().HaveCount(MergeQueueEngine.MaxCoAuthors);
+        trailers[0].Should().Be("Co-authored-by: Many <many@example.invalid>");
+        trailers.Should().NotContain(t => t.Contains("space@") || t.Contains("blank@") || t.Contains("merge-queue@"));
+    }
+
     // ── T9: a credential per writer job (§0 D59) ───────────────────────────────────────────────────────
 
     [Fact]

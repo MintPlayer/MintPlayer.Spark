@@ -143,6 +143,13 @@ public interface IForgeMergeQueue
     Task<IReadOnlyList<ForgeReview>> GetReviewsAsync(Repository repository, int number, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The pull request's commits, oldest first, with their authors and messages: facts for the queue's
+    /// <c>Co-authored-by:</c> trailers (§0 D60), whom to credit being the queue's call. The forge's own limit applies:
+    /// GitHub lists at most 250 commits of a pull request.
+    /// </summary>
+    Task<IReadOnlyList<ForgePullRequestCommit>> GetPullRequestCommitsAsync(Repository repository, int number, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Creates or updates the queue's own check on <paramref name="sha"/> (named
     /// <see cref="CheckGate.QueueCheckName"/>), returning its id so a later call updates it.
     /// </summary>
@@ -355,6 +362,14 @@ public enum EForgeMergeState
     /// <summary>The head is no longer the sha we asked for (S5: GitHub's 400 "head branch was modified").</summary>
     HeadModified,
 }
+
+/// <summary>One commit of a pull request (§0 D60).</summary>
+/// <param name="AuthorName">The author name git recorded.</param>
+/// <param name="AuthorEmail">The author email git recorded.</param>
+/// <param name="AuthorLogin">The forge account the commit is attributed to, when the forge knows one.</param>
+/// <param name="AuthorIsBot">The forge says that account is a bot.</param>
+/// <param name="Message">The whole commit message, trailers included.</param>
+public sealed record ForgePullRequestCommit(string Sha, string? AuthorName, string? AuthorEmail, string? AuthorLogin, bool AuthorIsBot, string Message);
 
 /// <summary>One pull-request review.</summary>
 /// <param name="CommitSha">The head the review was given on; an approval counts for that commit only (O11).</param>

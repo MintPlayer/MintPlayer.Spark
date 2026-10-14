@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.RegularExpressions;
 using CodeCoverage.CommitGraph;
 using CodeCoverage.Entities;
 using CodeCoverage.Feedback;
@@ -299,6 +300,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         entry.IsFork = pull.IsFromFork;
         entry.AuthorLogin = pull.AuthorLogin;
         entry.Title = pull.Title;
+        entry.CoAuthors = null;
         entry.EnqueuedAtUtc = Now;
         entry.StateChangedAtUtc = Now;
         entry.StartedAtUtc = null;
@@ -479,6 +481,10 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             return;
         }
 
+        // §0 D60: once per run, while the branch still holds the pull request's own commits (after PUBLISH it holds the
+        // queue's squash, whose trailers carry them over to a later run).
+        entry.CoAuthors ??= [.. CoAuthorTrailers(await context.Queue.GetPullRequestCommitsAsync(repository, entry.Number, ct), entry.AuthorLogin, options.Value.CommitterEmail)];
+
         // O20 case 1: the head already contains the latest base, so the commit to merge is the head itself. Its checks
         // decide; nothing is rebased, published or regenerated.
         var comparison = await context.Forge.CompareAsync(repository, baseSha, entry.ExpectedHeadSha, ct);
@@ -525,7 +531,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                 : new GitWriterAutoResolve(r.Path, r.Keys))],
             Author: new GitWriterIdentity(entry.AuthorLogin ?? "unknown", options.Value.AuthorEmailFormat.Replace("{login}", entry.AuthorLogin ?? "unknown", StringComparison.Ordinal)),
             Committer: Committer(),
-            Message: CommitTitle(entry)), ct));
+            Message: CommitMessage(entry)), ct));
 
         switch (result.Outcome)
         {
@@ -925,7 +931,8 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             return;
         }
 
-        var request = await context.Queue.RequestMergeAsync(repository, entry.Number, entry.FinalSha!, EForgeMergeMethod.Squash, CommitTitle(entry), null, ct);
+        // §0 D60: GitHub builds the merged commit from these, not from the branch's commit, so the trailers go here too.
+        var request = await context.Queue.RequestMergeAsync(repository, entry.Number, entry.FinalSha!, EForgeMergeMethod.Squash, CommitTitle(entry), CommitBody(entry), ct);
         await OnMergeRequestAsync(context, entry, request, ct);
     }
 
@@ -1237,6 +1244,68 @@ public partial class MergeQueueEngine : IMergeQueueEngine
 
     private static string CommitTitle(MergeQueueEntry entry)
         => $"{(string.IsNullOrWhiteSpace(entry.Title) ? $"Pull request {entry.Number.ToString(CultureInfo.InvariantCulture)}" : entry.Title.Trim())} (#{entry.Number.ToString(CultureInfo.InvariantCulture)})";
+
+    /// <summary>The squashed commit's message: the title, then the co-author trailers (§0 D60).</summary>
+    private static string CommitMessage(MergeQueueEntry entry)
+        => CommitBody(entry) is { } body ? $"{CommitTitle(entry)}\n\n{body}" : CommitTitle(entry);
+
+    /// <summary>The merge's <c>commit_message</c>: the co-author trailers, or nothing (§0 D60).</summary>
+    private static string? CommitBody(MergeQueueEntry entry)
+        => entry.CoAuthors is { Count: > 0 } coAuthors ? string.Join('\n', coAuthors) : null;
+
+    /// <summary>The most co-authors one squashed commit credits (§0 D60). GitHub lists 250 commits at most, but a single
+    /// commit message may credit any number, and the message must stay within the writer's limit.</summary>
+    internal const int MaxCoAuthors = 100;
+
+    /// <summary>
+    /// §0 D60: the <c>Co-authored-by:</c> trailers of the squashed commit. Credited are the authors of the pull request's
+    /// commits, and the people those commits credit in <c>Co-authored-by:</c> trailers of their own, as GitHub's squash
+    /// does by keeping every commit message. That also carries the credits over when a pull request whose branch already
+    /// holds the queue's squash is queued again. Each is credited once, by email, in commit order. Excluded are the author
+    /// (GitHub credits them as the commit's author), bots, the queue itself, and any identity the git writer would refuse.
+    /// </summary>
+    internal static IReadOnlyList<string> CoAuthorTrailers(IReadOnlyList<ForgePullRequestCommit> commits, string? authorLogin, string queueEmail)
+    {
+        // The author's addresses: those of the commits GitHub attributes to them, and GitHub's noreply forms of the login.
+        var authorEmails = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (authorLogin is not null)
+        {
+            authorEmails.Add($"{authorLogin}@users.noreply.github.com");
+            foreach (var commit in commits)
+                if (string.Equals(commit.AuthorLogin, authorLogin, StringComparison.OrdinalIgnoreCase) && commit.AuthorEmail is { } email)
+                    authorEmails.Add(email.Trim());
+        }
+        bool IsAuthor(string? login, string email)
+            => authorLogin is not null && (string.Equals(login, authorLogin, StringComparison.OrdinalIgnoreCase) || authorEmails.Contains(email)
+                || email.EndsWith($"+{authorLogin}@users.noreply.github.com", StringComparison.OrdinalIgnoreCase));
+        static bool IsBot(string? login, string name, string email)
+            => (login?.EndsWith("[bot]", StringComparison.OrdinalIgnoreCase) ?? false)
+               || name.Contains("[bot]", StringComparison.OrdinalIgnoreCase) || email.Contains("[bot]", StringComparison.OrdinalIgnoreCase);
+
+        var credited = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { queueEmail };
+        var trailers = new List<string>();
+        void Credit(string? name, string? email, string? login, bool isBot)
+        {
+            name = name?.Trim();
+            email = email?.Trim();
+            if (trailers.Count >= MaxCoAuthors || isBot || !MergeQueueWireRules.IsIdentity(name, email)
+                || IsBot(login, name!, email!) || IsAuthor(login, email!) || !credited.Add(email!))
+                return;
+            trailers.Add($"Co-authored-by: {name} <{email}>");
+        }
+
+        foreach (var commit in commits)
+        {
+            Credit(commit.AuthorName, commit.AuthorEmail, commit.AuthorLogin, commit.AuthorIsBot);
+            foreach (Match trailer in CoAuthoredBy().Matches(commit.Message))
+                Credit(trailer.Groups["name"].Value, trailer.Groups["email"].Value, null, false);
+        }
+        return trailers;
+    }
+
+    /// <summary>A <c>Co-authored-by: Name &lt;email&gt;</c> line, as GitHub reads it in a commit message.</summary>
+    [GeneratedRegex(@"^co-authored-by:[ \t]*(?<name>[^<>\r\n]+?)[ \t]*<(?<email>[^<>\s]+)>[ \t]*\r?$", RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.CultureInvariant)]
+    private static partial Regex CoAuthoredBy();
 
     private GitWriterIdentity Committer() => new(options.Value.CommitterName, options.Value.CommitterEmail);
 
