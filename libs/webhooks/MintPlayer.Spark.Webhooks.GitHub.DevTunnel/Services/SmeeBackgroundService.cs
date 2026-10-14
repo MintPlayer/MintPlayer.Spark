@@ -22,13 +22,20 @@ internal partial class SmeeBackgroundService : BackgroundService
 
     private static readonly TimeSpan ReconnectDelay = TimeSpan.FromSeconds(5);
 
+    /// <summary>
+    /// The named client the tunnel reads the channel with. <c>AddSmeeDevTunnel</c> removes
+    /// <c>IHttpClientFactory</c>'s request logging from it, which would print the channel URL
+    /// ("Start processing HTTP request GET https://smee.io/…", and the same URL as a scope).
+    /// </summary>
+    internal const string HttpClientName = nameof(SmeeBackgroundService);
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var channelUrl = _options.Value.ChannelUrl;
         if (string.IsNullOrEmpty(channelUrl))
             return;
 
-        _logger.LogInformation("Connecting to smee.io channel: {ChannelUrl}", channelUrl);
+        _logger.LogInformation("Connecting to smee.io channel {Channel}", Describe(channelUrl));
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -62,9 +69,22 @@ internal partial class SmeeBackgroundService : BackgroundService
         }
     }
 
+    /// <summary>
+    /// The channel as a log may show it: its last four characters, enough to tell two channels
+    /// apart. The URL itself is a credential, since whoever has it reads every webhook delivery smee
+    /// relays to it, so it is never logged. A channel too short to keep four characters back shows
+    /// none.
+    /// </summary>
+    internal static string Describe(string channelUrl)
+    {
+        var channel = channelUrl.TrimEnd('/');
+        channel = channel[(channel.LastIndexOf('/') + 1)..];
+        return channel.Length >= 12 ? $"…{channel[^4..]}" : "…";
+    }
+
     private async Task ReadEventStream(string channelUrl, CancellationToken cancellationToken)
     {
-        var client = _httpClientFactory.CreateClient(nameof(SmeeBackgroundService));
+        var client = _httpClientFactory.CreateClient(HttpClientName);
         client.Timeout = Timeout.InfiniteTimeSpan;
 
         using var request = new HttpRequestMessage(HttpMethod.Get, channelUrl);

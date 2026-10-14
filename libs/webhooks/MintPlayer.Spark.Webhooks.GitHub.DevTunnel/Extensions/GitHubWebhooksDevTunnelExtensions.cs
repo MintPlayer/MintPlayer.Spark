@@ -9,6 +9,8 @@ public static class GitHubWebhooksDevTunnelExtensions
     /// <summary>
     /// Adds a smee.io tunnel for receiving webhooks during local development.
     /// The developer configures the smee channel URL as the Webhook URL in the GitHub App settings.
+    /// The URL is a credential (whoever has it reads every relayed delivery), so it is never logged:
+    /// the tunnel logs only its last four characters, and its HTTP client has no request logging.
     /// </summary>
     public static GitHubWebhooksOptions AddSmeeDevTunnel(
         this GitHubWebhooksOptions options,
@@ -21,7 +23,10 @@ public static class GitHubWebhooksDevTunnelExtensions
                 opt.ChannelUrl = smeeChannelUrl;
             });
 
-            services.AddHttpClient();
+            // IHttpClientFactory's default logging writes every request URI, here the channel URL, at
+            // Information ("Start processing HTTP request GET https://smee.io/…") and as a scope.
+            // Removed for this named client alone (SmeeChannelLoggingTests).
+            services.AddHttpClient(SmeeBackgroundService.HttpClientName).RemoveAllLoggers();
             services.AddHostedService<SmeeBackgroundService>();
         });
 
