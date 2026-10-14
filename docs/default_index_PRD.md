@@ -1,6 +1,7 @@
 # Default index per entity type — PRD
 
-Status: **design settled (grilled 2026-10-13), spikes done (§7)**. Plan: [default_index_plan.md](default_index_plan.md).
+Status: **implemented (M0–M9 done 2026-10-14), PR #512**. Design grilled 2026-10-13, spikes in §7; D11 awaits owner
+review (autonomous decision). Plan: [default_index_plan.md](default_index_plan.md).
 Supersedes R279.5 and R279.6 of [issue_279_PRD.md](issue_279_PRD.md) and the `IsDefault` surface of
 [issue_210_PRD.md](issue_210_PRD.md). Packages are preview: **no backward compatibility** (owner, 2026-10-13).
 

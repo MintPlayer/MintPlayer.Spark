@@ -24,19 +24,17 @@ runs:
       uses: actions/cache@v6
       with:
         path: ~/.cache/ms-playwright
-        key: ${{ runner.os }}-playwright-${{ steps.version.outputs.version }}
+        # "-2": the first key's entry lacks chromium_headless_shell and a cache entry is never overwritten.
+        key: ${{ runner.os }}-playwright-2-${{ steps.version.outputs.version }}
 
     # Installed before any test project starts: SeoTester.Tests' render tests only USE Chromium, and under
     # nx's parallel run they started before the E2E fixture had installed it (PR #505). Node's Playwright at
-    # the SAME version installs the same builds (1.63.0 → chromium-1243, checked with --dry-run).
-    # On a cache hit only the OS packages are missing (they live outside the cached folder), so the browser
-    # download is skipped.
+    # the SAME version installs the same builds (1.63.0 → chromium-1243 and chromium_headless_shell-1243,
+    # checked with --dry-run).
+    # Always run, cache hit or not: install skips the builds already present and fetches only what is missing.
+    # A cache hit is no proof of completeness: the key was first saved (2026-10-09) by an older workflow
+    # without chromium_headless_shell, and skipping the install on a hit left every SeoTester render test with
+    # "Executable doesn't exist" (PR #512; master hid it behind an nx remote-cache replay).
     - name: Install Chromium
-      if: steps.cache.outputs.cache-hit != 'true'
       shell: bash
       run: npx --yes playwright@${{ steps.version.outputs.version }} install --with-deps chromium
-
-    - name: Install Chromium's OS dependencies
-      if: steps.cache.outputs.cache-hit == 'true'
-      shell: bash
-      run: npx --yes playwright@${{ steps.version.outputs.version }} install-deps chromium

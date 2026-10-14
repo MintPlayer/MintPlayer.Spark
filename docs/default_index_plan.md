@@ -2,6 +2,8 @@
 
 PRD: [default_index_PRD.md](default_index_PRD.md). One branch, one PR: `fix/seotester-site-organization-query`,
 which also fixes the trigger (SeoTester's empty Organization picker). Test runs are batched at the end (M9).
+**Status: all milestones done, PR #512** (the Site edit page's Organization renders as a reference picker, browser-checked
+2026-10-14).
 Generators follow the `C:\Repos\MintPlayer.Dotnet.Tools\SourceGenerators` pattern: read its docs before M3.
 
 ## M0 — Spikes (PRD §6)
@@ -175,6 +177,12 @@ B or fallback A; SP3 settles D6's ambiguity rule.
 the test assembly, and a scanner fixture with two differently shaped maps failed to compile (`0dc1b920`). The browser
 checks pass on SeoTester, DemoApp, HR and Fleet; the one gap is a reference value beyond the first 50 picker options,
 which the picker cannot select (D10) and was not seeded by hand.
+
+CI on PR #512 then failed 9 SeoTester render tests ("Executable doesn't exist … chromium_headless_shell-1243"),
+unrelated to this work: the Playwright action (#511) skipped its install on a cache hit, and the cache entry, first
+saved 2026-10-09 by the older workflow, lacks the headless shell. Master looked green only because nx replayed
+`SeoTester.Tests:test` from its remote cache. The action now always installs (it fetches only what is missing) under a
+new cache key.
 
 Run `RAVENDB_LICENSE='C:\Repos\MintPlayer.Spark\.secrets\raven-license.log' npm run test:affected` once, after
 M1–M8. Fix failures by re-running only the failing class.
