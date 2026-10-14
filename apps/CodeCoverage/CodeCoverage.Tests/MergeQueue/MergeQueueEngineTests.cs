@@ -212,6 +212,29 @@ public class MergeQueueEngineTests : CoverageRavenTest
         (await h.QueueDocumentAsync())!.LaneFor("master").Current.Should().Be(MergeQueueEntry.DocumentId(RepositoryId, 8));
     }
 
+    /// <summary>
+    /// §0 D72: the comment says once why a person must resolve the conflict. The writer's detail for a file outside the
+    /// allow-list is that reason, so the saga's own sentence only says what to do. Before, the comment read "Only generated
+    /// files are resolved automatically (O1); rebase by hand and queue it again." and then the writer's "Only allow-listed
+    /// generated files are resolved; these conflicts need a human.", before its own "Queue it again" line.
+    /// </summary>
+    [Fact]
+    public async Task A_conflict_outside_the_allow_list_is_explained_once()
+    {
+        var h = await HarnessAsync();
+        h.Writer.PrepareResults.Enqueue(new GitWriterPrepareResult(GitWriterOutcomes.Evicted, "conflict-outside-allow-list", BaseSha, Head, null, [],
+            ["apps/A/App_Data/translations.json"], CodeCoverage.Git.MergeQueue.MergeQueueResolver.OutsideAllowListDetail, 10));
+
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+
+        h.Queue.Comments.Should().ContainSingle().Which.Body.Should().Be(
+            "The merge queue removed this pull request: Rebasing onto `master` conflicts in files the queue may not resolve "
+            + "(conflict-outside-allow-list). Rebase it onto `master` by hand.\n\n"
+            + "Only allow-listed generated files are resolved automatically.\n\n"
+            + "Queue it again with `/queue` or the `merge-queue` label.");
+    }
+
     [Fact]
     public async Task An_author_push_mid_run_evicts_while_the_queues_own_push_is_ignored()
     {
@@ -632,7 +655,8 @@ public class MergeQueueEngineTests : CoverageRavenTest
         var entry = await h.EntryAsync();
         entry.State.Should().Be(EMergeQueueEntryState.Evicted);
         entry.EvictionReason.Should().Be("merge-refused");
-        entry.EvictionMessage.Should().Contain("someone other than the last pusher").And.Contain("O18");
+        // O18's advice, in words: the message no longer cites the decision (§0 D72).
+        entry.EvictionMessage.Should().Contain("someone other than the last pusher").And.Contain("turn those off for branches the queue manages");
     }
 
     [Fact]
@@ -1231,7 +1255,7 @@ public class MergeQueueEngineTests : CoverageRavenTest
 
         var entry = await h.EntryAsync();
         entry.State.Should().Be(EMergeQueueEntryState.Merged);
-        entry.History.Should().Contain(e => e.Text.Contains("no workflow will be dispatched (O25)", StringComparison.Ordinal));
+        entry.History.Should().Contain(e => e.Text.Contains("its .github/** change goes through, as no workflow will be dispatched", StringComparison.Ordinal));
         h.Writer.Publishes.Single().PushUrl.Should().Be("https://github.com/contributor/widget.git", "O3: the fork's branch");
         h.Writer.QueueBranchPushes.Should().BeEmpty("nothing of the fork reaches a branch of this repository");
         h.Queue.Dispatches.Should().BeEmpty();

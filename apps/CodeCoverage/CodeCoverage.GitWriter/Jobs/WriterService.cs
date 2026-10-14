@@ -89,9 +89,10 @@ public sealed class WriterService(GitRunner git, JobRunner jobs, IOptions<GitWri
         // O25, §0 D67: whatever else the request says, a fork's .github never goes to a branch of the base repository, where
         // a push runs the pushed commit's workflow files with the repository's secrets. The saga never asks for it.
         if (job.HeadFromFork && built.Workflows.Count > 0)
+            // The detail reaches the eviction message, so it cites no PRD id (§0 D72).
             return Answer(JobOutcomes.ForkTouchesWorkflows, paths: built.Workflows,
                 detail: $"The pull request's head is a fork's, and the prepared commit changes .github/ against its base: pushing it to {job.QueueBranch}, a "
-                        + "branch of the base repository, would run the fork's workflow files with that repository's secrets (O25). Nothing was pushed.");
+                        + "branch of the base repository, would run the fork's workflow files with that repository's secrets. Nothing was pushed.");
         var commit = built.Commit;
         if (commit != job.PreparedSha)
             return Answer(JobOutcomes.PreparedDiffers, detail: Differs(commit, job.PreparedSha));
@@ -244,7 +245,8 @@ public sealed class WriterService(GitRunner git, JobRunner jobs, IOptions<GitWri
             baseSha = job.BaseSha!;
         }
         if (headSha != job.HeadSha)
-            return new Build.Stopped(JobOutcomes.HeadMismatch, null, baseSha, headSha, [], $"{job.HeadRef} is at {headSha}, not the pinned {job.HeadSha} (T3).");
+            // T3: the detail reaches the eviction message, so it explains itself rather than citing the PRD (§0 D72).
+            return new Build.Stopped(JobOutcomes.HeadMismatch, null, baseSha, headSha, [], $"{job.HeadRef} is at {headSha}, not the pinned {job.HeadSha}.");
 
         var resolver = new MergeQueueResolver(git) { Timeout = context.Remaining, ScratchDirectory = context.Scratch, Config = JobContext.WriterConfig };
         var merged = await resolver.MergeAsync(context.GitDirectory, baseSha, headSha, job.Rules, context.Deadline, job.Credential);
@@ -276,7 +278,7 @@ public sealed class WriterService(GitRunner git, JobRunner jobs, IOptions<GitWri
     }
 
     private static string Differs(string rebuilt, string expected)
-        => $"The prepared commit rebuilt from this request is {rebuilt}, not {expected}: the request, the repository or the writer's git changed since the prepare (§0 D65).";
+        => $"The prepared commit rebuilt from this request is {rebuilt}, not {expected}: the request, the repository or the writer's git changed since the prepare.";
 
     /// <summary>The <c>.github</c> paths (case-insensitively, the path itself included) where <paramref name="tree"/>
     /// differs from <paramref name="baseSha"/>'s tree. Trees are in the blob-less clone, so this fetches nothing.</summary>

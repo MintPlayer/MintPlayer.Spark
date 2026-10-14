@@ -229,6 +229,7 @@ public class PrepareTests : WriterTestBase
 
         response.Outcome.Should().Be("head-mismatch");
         response.HeadSha.Should().Be(later);
+        response.Detail.Should().Contain(pinned).And.NotContain("T3", "the detail reaches the eviction message, whose readers never saw the PRD (§0 D72)");
         origin.Ref($"refs/heads/{QueueBranch}").Should().BeNull();
         Writer.Started.Should().NotContain(p => p.ArgumentList.Contains("merge-tree"), "T3: nothing is merged from an unpinned head");
     }

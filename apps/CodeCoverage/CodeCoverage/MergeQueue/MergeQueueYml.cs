@@ -171,7 +171,7 @@ public static partial class MergeQueueYml
         if (section.PostRebaseWhen == EPostRebaseWhen.Always && section.PostRebaseActionName is null)
             errors.Add("mergeQueue.postRebaseWhen 'always' needs mergeQueue.postRebaseActionName.");
         if (section.PostRebaseActionName is not null && section.PostRebaseWhen != EPostRebaseWhen.Never && section.RegeneratedPaths.Count == 0)
-            errors.Add("mergeQueue.regeneratedPaths is empty, so every regenerate patch would be refused (T4).");
+            errors.Add("mergeQueue.regeneratedPaths is empty, so every regenerate patch would be refused.");
 
         section.RetryFlaky = file.Checks?.RetryFlaky ?? 1;
         if (section.RetryFlaky is < 0 or > 3)

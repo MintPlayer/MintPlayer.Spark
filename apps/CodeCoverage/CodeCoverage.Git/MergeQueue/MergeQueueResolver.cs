@@ -69,6 +69,13 @@ public sealed partial class MergeQueueResolver(GitRunner git)
     [GeneratedRegex(@"\A[0-9a-f]{40}\z", RegexOptions.CultureInvariant)]
     private static partial Regex ObjectId();
 
+    /// <summary>
+    /// Why a conflict outside the allow-list ends the run (O1), as the eviction message's second paragraph shows it. The
+    /// saga's own sentence says what to do; before, this also said "these conflicts need a human", which repeated it
+    /// (merge-queue PRD §0 D72).
+    /// </summary>
+    public const string OutsideAllowListDetail = "Only allow-listed generated files are resolved automatically.";
+
     /// <summary>Merges <paramref name="headRef"/> into <paramref name="baseRef"/> in the repository at
     /// <paramref name="gitDirectory"/>. Stage 2 is the base branch, stage 3 the pull request. In a partial clone
     /// (<c>--filter=blob:none</c>) merge-tree fetches the blobs it needs on demand; <paramref name="credential"/> is for those
@@ -107,7 +114,7 @@ public sealed partial class MergeQueueResolver(GitRunner git)
         var conflicted = output.Stages.Select(s => s.Path).Distinct(StringComparer.Ordinal).ToList();
         var unruled = conflicted.Where(p => !rules.Any(r => r.Matches(p))).ToList();
         if (unruled.Count > 0)
-            return Evict(EvictionReason.ConflictOutsideAllowList, unruled, "Only allow-listed generated files are resolved; these conflicts need a human.");
+            return Evict(EvictionReason.ConflictOutsideAllowList, unruled, OutsideAllowListDetail);
 
         var unsupported = output.Messages.Where(m => m.Type != AutoMerging && !ResolvableTypes.Contains(m.Type)).ToList();
         if (unsupported.Count > 0)

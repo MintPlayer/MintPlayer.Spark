@@ -107,8 +107,9 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                     await GuardedAsync(context, pushed, EMergeQueueStep.Publish, () => PublishAsync(context, pushed, ct), ct);
                     break;
                 }
+                // T3. No PRD id in what people read (§0 D72): the eviction message goes on the check run and in a comment.
                 await EvictAsync(context, pushed, "author-push",
-                    $"The pull request's branch moved to `{sha}`, a commit the queue did not write. The queue merges only the commit that was queued (T3): queue it again to merge the new one.", ct: ct);
+                    $"The pull request's branch moved to `{sha}`, a commit the queue did not write. The queue merges only the commit that was queued: queue it again to merge the new one.", ct: ct);
                 break;
 
             case EMergeQueueSignal.Closed when signal.Number is { } number:
@@ -353,8 +354,9 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             return new("closed", "The pull request is closed.");
         if (pull.IsDraft)
             return new("draft", "The pull request is a draft.");
+        // O16. Here and below, what people read names no PRD id: they never saw the PRD (§0 D72). The ids stay in comments.
         if (!section.Branches.Contains(pull.BaseRef, StringComparer.Ordinal))
-            return new("branch", $"`{pull.BaseRef}` is not a queue branch; `coverage.yml` lists {string.Join(", ", section.Branches.Select(b => $"`{b}`"))} (O16).");
+            return new("branch", $"`{pull.BaseRef}` is not a queue branch: `coverage.yml` on the default branch lists {string.Join(", ", section.Branches.Select(b => $"`{b}`"))}.");
 
         // O9 / T2: the actor needs the write role; a triage user's label or a fork author's comment is refused.
         var role = await context.Queue.GetActorRoleAsync(repository, actor, ct);
@@ -366,18 +368,18 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         if (pull.IsFromFork && (pull.HeadRepositoryFullName is null || !pull.MaintainerCanModify))
             return new("fork", pull.HeadRepositoryFullName is null
                 ? "The pull request's fork no longer exists."
-                : $"The queue pushes the rebased commit to {pull.HeadRepositoryFullName}, which needs \"Allow edits by maintainers\" ticked on the pull request (O3). Forks owned by an organization cannot tick it.");
+                : $"The queue pushes the rebased commit to {pull.HeadRepositoryFullName}, which needs \"Allow edits by maintainers\" ticked on the pull request. Forks owned by an organization cannot tick it.");
 
         // O22: the bypass role skips the queue's own approval floor (re-checked before the merge, like the role itself).
         if (bypass)
-            entry.Note(Now, $"@{actor} has the {role.ToString().ToLowerInvariant()} role, which bypasses the approval floor (O22)");
+            entry.Note(Now, $"@{actor} has the {role.ToString().ToLowerInvariant()} role, which bypasses the approval floor");
         else if (await ApprovalFloorRefusalAsync(context, entry, ct) is { } floor)
             return floor;
 
         // D8, D16, T7, O18: read the base branch's rules once, at enable time for this run.
         var rules = await context.Queue.GetBranchRulesAsync(repository, pull.BaseRef, ct);
         if (rules.HasNativeMergeQueue)
-            return new("native-queue", $"`{pull.BaseRef}` requires GitHub's own merge queue. Turn that rule off: the two queues cannot share a branch (D8).");
+            return new("native-queue", $"`{pull.BaseRef}` requires GitHub's own merge queue. Turn that rule off: the two queues cannot share a branch.");
         // §0 D62: the queue's own check is in progress while the queue merges, so a branch that requires it never merges.
         if (rules.RequiredChecks.Contains(CheckGate.QueueCheckName, StringComparer.Ordinal))
             return new("self-required", $"`{pull.BaseRef}` requires the \"{CheckGate.QueueCheckName}\" check, which is the queue's own: it is still in progress while the queue merges, "
@@ -386,13 +388,13 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         {
             if (ruleset.Bypass != EForgeRulesetBypass.Never)
                 return new("bypass", ruleset.Bypass == EForgeRulesetBypass.Unknown
-                    ? $"Ruleset '{ruleset.Name ?? ruleset.Id.ToString(CultureInfo.InvariantCulture)}' holds the reviews or checks, and whether the App can bypass it could not be read. The queue must be held to it (T7)."
-                    : $"The App can bypass ruleset '{ruleset.Name ?? ruleset.Id.ToString(CultureInfo.InvariantCulture)}' ({ruleset.Bypass}), which holds the reviews or checks. Remove the App from its bypass list: only the \"Restrict updates\" ruleset may exempt it (O9, T7).");
+                    ? $"Ruleset '{ruleset.Name ?? ruleset.Id.ToString(CultureInfo.InvariantCulture)}' holds the reviews or checks, and whether the App can bypass it could not be read. The queue must be held to it."
+                    : $"The App can bypass ruleset '{ruleset.Name ?? ruleset.Id.ToString(CultureInfo.InvariantCulture)}' ({ruleset.Bypass}), which holds the reviews or checks. Remove the App from its bypass list: only the \"Restrict updates\" ruleset may exempt it.");
         }
         if (rules.DismissStaleReviewsOnPush)
-            entry.Warnings.Add("The branch dismisses stale approvals on push. The queue's regenerate commit changes the diff, so GitHub would dismiss the approval and the merge would be refused; turn \"dismiss stale approvals\" off for queue branches (O18).");
+            entry.Warnings.Add("The branch dismisses stale approvals on push. The queue's regenerate commit changes the diff, so GitHub would dismiss the approval and the merge would be refused; turn \"dismiss stale approvals\" off for queue branches.");
         if (rules.RequireLastPushApproval)
-            entry.Warnings.Add("The branch requires approval of the most recent push by someone else. The queue's commit is the most recent push, so the merge would be refused; turn that rule off for queue branches (O18).");
+            entry.Warnings.Add("The branch requires approval of the most recent push by someone else. The queue's commit is the most recent push, so the merge would be refused; turn that rule off for queue branches.");
         entry.RequiredChecks = [.. rules.RequiredChecks.Order(StringComparer.Ordinal)];
 
         // O12's expected minimum (§0 D45): the checks the pull request's own CI reported on the pinned head.
@@ -423,7 +425,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
 
         foreach (var objection in latest.Where(r => r.State == EForgeReviewState.ChangesRequested))
             if (await context.Queue.GetActorRoleAsync(context.Repository, objection.ReviewerLogin!, ct) >= EForgeRepositoryRole.Write)
-                return new("approval", $"@{objection.ReviewerLogin} has write access and requested changes. The queue does not merge while a writer's latest review requests changes (D47, §0 D61).");
+                return new("approval", $"@{objection.ReviewerLogin} has write access and requested changes. The queue does not merge while a writer's latest review requests changes.");
 
         if (floor == EMergeQueueApprovalFloor.ExternalAuthors && author is not null
             && await context.Queue.GetActorRoleAsync(context.Repository, author, ct) >= EForgeRepositoryRole.Write)
@@ -437,8 +439,8 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                 return null;
 
         return new("approval", floor == EMergeQueueApprovalFloor.Always
-            ? $"This repository's approval floor needs an approval of commit `{Short(entry.PinnedHeadSha)}` by someone with write access other than the author (O11)."
-            : $"@{author ?? "the author"} does not have write access, so an approval of commit `{Short(entry.PinnedHeadSha)}` by someone with write access is needed (O11).");
+            ? $"This repository's approval floor needs an approval of commit `{Short(entry.PinnedHeadSha)}` by someone with write access other than the author."
+            : $"@{author ?? "the author"} does not have write access, so an approval of commit `{Short(entry.PinnedHeadSha)}` by someone with write access is needed.");
     }
 
     private async Task RefuseAsync(Context context, MergeQueueEntry entry, string code, string message, EMergeQueueCommandSource source, string? label, CancellationToken ct, bool permissions = false)
@@ -503,7 +505,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             entry.BaseSha = baseSha;
             entry.FinalSha = entry.ExpectedHeadSha;
             entry.DirectMerge = true;
-            await EnterAwaitingChecksAsync(context, entry, "the head already contains the latest base (O20 case 1)", ct);
+            await EnterAwaitingChecksAsync(context, entry, "the head already contains the latest base", ct);
             return;
         }
 
@@ -546,22 +548,24 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                 {
                     case EMergeQueuePlan.Dispatch:
                         Transition(entry, EMergeQueueEntryState.Preparing, $"prepared {Short(prepared)} on {Short(entry.BaseSha)}; regenerating {entry.ResolvedPaths.Count} resolved path(s)"
-                            + (entry.WorkflowGuardBypassed ? $"; its .github/** change runs with them because @{entry.EnqueuedBy} has the bypass role (O22)" : string.Empty));
+                            + (entry.WorkflowGuardBypassed ? $"; its .github/** change runs with them because @{entry.EnqueuedBy} has the bypass role" : string.Empty));
                         await ScheduleAsync(entry, EMergeQueueStep.Dispatch, null, ct);
                         break;
                     case EMergeQueuePlan.Publish:
-                        // §0 D65: nothing is dispatched, so the queue branch is never created.
+                        // §0 D65: nothing is dispatched, so the queue branch is never created. A .github/** change goes
+                        // through (O21 A; a fork's too, O25).
                         Transition(entry, EMergeQueueEntryState.Publishing, $"prepared {Short(prepared)} on {Short(entry.BaseSha)}; nothing to regenerate"
-                            + (result.TouchesWorkflows ? $"; its .github/** change goes through, as no workflow will be dispatched ({(entry.IsFork ? "O25" : "O21 A")})" : string.Empty));
+                            + (result.TouchesWorkflows ? "; its .github/** change goes through, as no workflow will be dispatched" : string.Empty));
                         await ScheduleAsync(entry, EMergeQueueStep.Publish, null, ct);
                         break;
                     case EMergeQueuePlan.EvictForkTouchesWorkflows:
                         await EvictAsync(context, entry, ForkTouchesWorkflows, ForkTouchesWorkflowsMessage(entry, "Nothing was pushed"), result.Paths, ct: ct);
                         return;
                     default:
+                        // D12, O21 A; the admin's merge is O21 B.
                         await EvictAsync(context, entry, "touches-workflows",
                             "The pull request changes files under `.github/` and needs the regenerate workflow, whose run would execute the queue branch's "
-                            + "workflow files with this repository's context (D12, O21 A). Regenerate and rebase by hand, or merge it by hand (an admin may: O21 B).",
+                            + "workflow files with this repository's context. Regenerate and rebase by hand, or have an admin merge it by hand.",
                             result.Paths, ct: ct);
                         return;
                 }
@@ -573,7 +577,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                 break;
 
             case GitWriterOutcomes.HeadMismatch:
-                await EvictAsync(context, entry, "author-push", $"The pull request's head is no longer the queued commit `{Short(entry.ExpectedHeadSha)}` (T3). Queue it again to merge the new one.", ct: ct);
+                await EvictAsync(context, entry, "author-push", $"The pull request's head is no longer the queued commit `{Short(entry.ExpectedHeadSha)}`. Queue it again to merge the new one.", ct: ct);
                 break;
 
             case GitWriterOutcomes.BaseMoved:
@@ -585,22 +589,28 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         }
     }
 
-    /// <summary>The writer's <c>evicted</c>: a conflict it may not resolve (O1, O2), from a prepare or from a rebuild.</summary>
+    /// <summary>
+    /// The writer's <c>evicted</c>: a conflict it may not resolve (O1, O2), from a prepare or from a rebuild. The writer's
+    /// detail says why (for a file outside the allow-list, <see cref="MergeQueueResolver.OutsideAllowListDetail"/>), so this
+    /// text only says what to do: it used to repeat the reason, and the comment then said it twice (§0 D72). The comment's
+    /// own closing line says how to queue it again.
+    /// </summary>
     private Task EvictWriterAsync(Context context, MergeQueueEntry entry, string? reason, string? detail, IReadOnlyList<string> paths, CancellationToken ct)
         => EvictAsync(context, entry, reason ?? "conflict",
-            $"Rebasing onto `{entry.BaseBranch}` conflicts in files the queue may not resolve ({reason}). Only generated files are resolved automatically (O1); rebase by hand and queue it again."
+            $"Rebasing onto `{entry.BaseBranch}` conflicts in files the queue may not resolve ({reason}). Rebase it onto `{entry.BaseBranch}` by hand."
             + (detail is { Length: > 0 } text ? $"\n\n{text}" : string.Empty),
             paths, ct: ct);
 
     /// <summary>O25: a fork's change under <c>.github/**</c> that needs the regenerate workflow. Never bypassed.</summary>
     internal const string ForkTouchesWorkflows = "fork-touches-workflows";
 
-    /// <summary>Why a fork's <c>.github/**</c> change ends the entry before the dispatch (O25), and what to do instead.</summary>
+    /// <summary>Why a fork's <c>.github/**</c> change ends the entry before the dispatch (O25), and what to do instead: a
+    /// head that already contains the latest base is merged as it is (O20 case 1), or an admin merges it (O21 B).</summary>
     private static string ForkTouchesWorkflowsMessage(MergeQueueEntry entry, string what)
         => "The pull request comes from a fork, changes files under `.github/` (its own change, or one a rename on the base carries there), and needs "
            + $"the regenerate workflow. That workflow runs on `{entry.QueueBranch}`, a branch of this repository, and pushing the fork's workflow files there "
-           + $"would run them with this repository's secrets (O25). {what}, and no role bypasses this. Rebase it onto `{entry.BaseBranch}` and regenerate the "
-           + "files by hand (a head that already contains the latest base is merged as it is, O20 case 1), or have an admin merge it (O21 B).";
+           + $"would run them with this repository's secrets. {what}, and no role bypasses this. Rebase it onto `{entry.BaseBranch}` and regenerate the "
+           + "files by hand (a head that already contains the latest base is merged as it is), or have an admin merge it.";
 
     /// <summary>
     /// The fields of the prepare, which the queue-branch push and the publish repeat so the writer rebuilds the same commit
@@ -711,7 +721,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                 await EvictAsync(context, entry, MergeQueueForkGuard.ReasonCode, ForkRefusal(entry, findings), [.. findings.Select(f => f.Path).Distinct(StringComparer.Ordinal)], ct: ct);
                 return;
             }
-            entry.Note(Now, $"the fork precondition holds: no workflow runs on a push of {entry.QueueBranch}, and {file} is read-only (§0 D65)");
+            entry.Note(Now, $"the fork precondition holds: no workflow runs on a push of {entry.QueueBranch}, and {file} is read-only");
         }
 
         // §0 D65 (b): the queue branch is written now, and only for a dispatch.
@@ -730,7 +740,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         if (!string.Equals(atQueue, atDefault, StringComparison.Ordinal))
         {
             await EvictAsync(context, entry, "workflow-differs",
-                $"`{path}` on the queue commit is not the default branch's (D12). The queue only runs the default branch's workflow; bring `{entry.BaseBranch}` in line with it.", ct: ct);
+                $"`{path}` on the queue commit is not the default branch's. The queue only runs the default branch's workflow; bring `{entry.BaseBranch}` in line with it.", ct: ct);
             return;
         }
 
@@ -750,7 +760,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         }
         if (dispatch.RunId is not { } runId)
         {
-            await EvictAsync(context, entry, "dispatch-uncorrelated", $"The forge started `{file}` without saying which run it is (D14), so its result cannot be trusted.", ct: ct);
+            await EvictAsync(context, entry, "dispatch-uncorrelated", $"The forge started `{file}` without saying which run it is, so its result cannot be trusted.", ct: ct);
             return;
         }
 
@@ -788,7 +798,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             case GitWriterOutcomes.Pushed:
                 entry.QueueBranchSha = entry.PreparedSha;
                 if (result.Reason == GitWriterReasons.AlreadyPushed)
-                    entry.Note(Now, $"{entry.QueueBranch} already held {Short(entry.PreparedSha)}: an earlier attempt's push (§0 D52)");
+                    entry.Note(Now, $"{entry.QueueBranch} already held {Short(entry.PreparedSha)}: an earlier attempt's push");
                 return true;
             case GitWriterOutcomes.ForkTouchesWorkflows:
                 // The plan never dispatches this (MergeQueueWorkflowGuard); the writer's own line held where it did.
@@ -804,10 +814,10 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                 await ScheduleAsync(entry, EMergeQueueStep.ResetQueueBranch, null, ct);
                 return false;
             case GitWriterOutcomes.PreparedDiffers:
-                await EvictAsync(context, entry, "prepared-differs", $"The git writer rebuilt the prepared commit for `{entry.QueueBranch}` and got another one (§0 D65): {result.Detail}", ct: ct);
+                await EvictAsync(context, entry, "prepared-differs", $"The git writer rebuilt the prepared commit for `{entry.QueueBranch}` and got another one: {result.Detail}", ct: ct);
                 return false;
             case GitWriterOutcomes.HeadMismatch:
-                await EvictAsync(context, entry, "author-push", $"The pull request's head is no longer the queued commit `{Short(entry.ExpectedHeadSha)}` (T3). Queue it again to merge the new one.", ct: ct);
+                await EvictAsync(context, entry, "author-push", $"The pull request's head is no longer the queued commit `{Short(entry.ExpectedHeadSha)}`. Queue it again to merge the new one.", ct: ct);
                 return false;
             case GitWriterOutcomes.BaseMoved:
                 await RestartAsync(context, entry, $"the base the prepared commit was built on is gone from {entry.BaseBranch}; rebasing again.", ct);
@@ -832,7 +842,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             list += $"\n- and {findings.Count - shown} more.";
         var guide = GuideUrl("regenerate") is { } url ? $"the [setup guide]({url})" : "the merge queue's setup guide (\"The regenerate workflow\")";
         return $"The pull request comes from a fork and needs the regenerate workflow, so the queue would have to push the fork's code to `{entry.QueueBranch}` "
-               + "in this repository first. It does that only when nothing there can run that code with this repository's secrets (§0 D65), and these "
+               + "in this repository first. It does that only when nothing there can run that code with this repository's secrets, and these "
                + $"workflows could:\n{list}\n\nFix them, then queue it again; {guide} shows a safe setup.";
     }
 
@@ -885,7 +895,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         // D14: the run built the branch head as of the dispatch; a run of any other commit proves nothing about ours.
         if (!string.Equals(run.HeadSha, entry.PreparedSha, StringComparison.OrdinalIgnoreCase))
         {
-            await EvictAsync(context, entry, "regenerate-wrong-commit", $"The regenerate run built `{Short(run.HeadSha)}`, not the prepared `{Short(entry.PreparedSha)}` (D14).", ct: ct);
+            await EvictAsync(context, entry, "regenerate-wrong-commit", $"The regenerate run built `{Short(run.HeadSha)}`, not the prepared `{Short(entry.PreparedSha)}`.", ct: ct);
             return;
         }
         if (run.Conclusion != "success")
@@ -948,11 +958,11 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                 entry.ExpectedHeadSha = final;
                 Remember(entry, final);
                 await EnterAwaitingChecksAsync(context, entry, $"published {Short(final)}{(patch is null ? string.Empty : " with the regenerated files")}"
-                    + (result.Reason == GitWriterReasons.AlreadyPushed ? " (found on the branch: an earlier attempt's push, §0 D52)" : string.Empty), ct);
+                    + (result.Reason == GitWriterReasons.AlreadyPushed ? " (found on the branch: an earlier attempt's push)" : string.Empty), ct);
                 break;
 
             case GitWriterOutcomes.BranchMoved:
-                await EvictAsync(context, entry, "author-push", $"The pull request's branch moved during the queue run (T3). {result.Detail}", ct: ct);
+                await EvictAsync(context, entry, "author-push", $"The pull request's branch moved during the queue run. {result.Detail}", ct: ct);
                 break;
 
             case GitWriterOutcomes.BaseMoved:
@@ -960,7 +970,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                 break;
 
             case GitWriterOutcomes.PreparedDiffers:
-                await EvictAsync(context, entry, "prepared-differs", $"The git writer rebuilt the prepared commit to publish it and got another one (§0 D65): {result.Detail}", ct: ct);
+                await EvictAsync(context, entry, "prepared-differs", $"The git writer rebuilt the prepared commit to publish it and got another one: {result.Detail}", ct: ct);
                 break;
 
             case GitWriterOutcomes.Evicted:
@@ -969,7 +979,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
 
             case GitWriterOutcomes.PatchRejected:
                 await EvictAsync(context, entry, "patch-rejected",
-                    $"The regenerate patch was refused ({result.Reason}): it may only touch `regeneratedPaths`, as plain text files (T4). {result.Detail}", result.Paths, ct: ct);
+                    $"The regenerate patch was refused ({result.Reason}): it may only touch `regeneratedPaths`, as plain text files. {result.Detail}", result.Paths, ct: ct);
                 break;
 
             // §0 D69, D71: the App may push to a fork through "Allow edits by maintainers" (S6, measured live), but GitHub
@@ -1090,7 +1100,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         var role = await context.Queue.GetActorRoleAsync(repository, entry.EnqueuedBy, ct);
         if (role < EForgeRepositoryRole.Write)
         {
-            await EvictAsync(context, entry, "role-revoked", $"@{entry.EnqueuedBy}, who queued this pull request, no longer has write access (O9).", ct: ct);
+            await EvictAsync(context, entry, "role-revoked", $"@{entry.EnqueuedBy}, who queued this pull request, no longer has write access.", ct: ct);
             return;
         }
 
@@ -1100,7 +1110,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         if (entry.WorkflowGuardBypassed && !bypass)
         {
             await EvictAsync(context, entry, "bypass-revoked",
-                $"@{entry.EnqueuedBy} no longer has the role that let this pull request's `.github/` change run with the regenerate workflow (O22). Queue it again.", ct: ct);
+                $"@{entry.EnqueuedBy} no longer has the role that let this pull request's `.github/` change run with the regenerate workflow. Queue it again.", ct: ct);
             return;
         }
 
@@ -1172,7 +1182,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
 
             default:
                 await EvictAsync(context, entry, "merge-refused",
-                    $"The forge refused the merge: {request.Message ?? "no reason given"}\n\nIf this branch requires approval of the most recent push or dismisses stale approvals, turn those off for branches the queue manages: the queue's own commit is the most recent push, and it evicts any push it did not make (O18).", ct: ct);
+                    $"The forge refused the merge: {request.Message ?? "no reason given"}\n\nIf this branch requires approval of the most recent push or dismisses stale approvals, turn those off for branches the queue manages: the queue's own commit is the most recent push, and it evicts any push it did not make.", ct: ct);
                 break;
         }
     }
@@ -1394,7 +1404,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         if (!headJudgedByWriter && !string.Equals(pull.HeadSha, entry.ExpectedHeadSha, StringComparison.OrdinalIgnoreCase) && !entry.KnownShas.Contains(pull.HeadSha, StringComparer.OrdinalIgnoreCase))
         {
             await EvictAsync(context, entry, "author-push",
-                $"The pull request's branch moved to `{Short(pull.HeadSha)}`, a commit the queue did not write. The queue merges only the commit that was queued (T3): queue it again to merge the new one.", ct: ct);
+                $"The pull request's branch moved to `{Short(pull.HeadSha)}`, a commit the queue did not write. The queue merges only the commit that was queued: queue it again to merge the new one.", ct: ct);
             return null;
         }
         if (pull.BaseRef != entry.BaseBranch)

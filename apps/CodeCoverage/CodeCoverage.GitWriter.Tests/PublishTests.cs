@@ -257,6 +257,7 @@ public class PublishTests : WriterTestBase
         var response = await Writer.PublishAsync(PublishRequest(origin, other));
 
         response.Outcome.Should().Be("prepared-differs");
+        response.Detail.Should().NotContain("§", "the detail reaches the eviction message, whose readers never saw the PRD (§0 D72)");
         origin.Ref("refs/heads/feature").Should().Be(prepared.Head);
     }
 

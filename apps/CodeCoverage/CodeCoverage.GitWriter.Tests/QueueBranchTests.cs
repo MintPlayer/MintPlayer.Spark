@@ -76,7 +76,7 @@ public class QueueBranchTests : WriterTestBase
 
         response.Outcome.Should().Be("fork-touches-workflows", response.Detail);
         response.Paths.Should().Equal([".github/workflows/ci.yml"]);
-        response.Detail.Should().Contain(QueueBranch);
+        response.Detail.Should().Contain(QueueBranch).And.NotContain("O25", "the detail reaches the eviction message, whose readers never saw the PRD (§0 D72)");
         origin.Ref($"refs/heads/{QueueBranch}").Should().BeNull();
         origin.InBare("for-each-ref", "--format=%(refname) %(objectname)").Should().Be(refs, "no ref of the base repository moved or appeared");
         Writer.Started.Count(p => p.ArgumentList.Contains("push")).Should().Be(pushesBefore, "git push never started");
