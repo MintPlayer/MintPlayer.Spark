@@ -12,17 +12,16 @@ import { SparkAttributeDetailRenderer } from '@mintplayer/ng-spark/renderers';
   standalone: true,
   template: `
     @if (dict(); as a) {
-      <div class="card" style="max-width: 24rem;">
-        <div class="card-body py-2">
-          <div>{{ a['Street'] }}</div>
-          <div>{{ a['City'] }} {{ a['State'] }}</div>
-          <small class="text-muted">Address of {{ itemName() }}</small>
-        </div>
+      <div class="address-card">
+        <div>{{ a['Street'] }}</div>
+        <div>{{ a['City'] }} {{ a['State'] }}</div>
+        <small class="text-muted">Address of {{ itemName() }}</small>
       </div>
     } @else {
       <span class="text-muted">-</span>
     }
   `,
+  styleUrl: './address-card-detail-renderer.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AddressCardDetailRendererComponent implements SparkAttributeDetailRenderer {
