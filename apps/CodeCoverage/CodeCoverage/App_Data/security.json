@@ -23,21 +23,9 @@
       "isDenied": false
     },
     {
-      "key": "c0e5a9e1-0000-4000-8000-000000000002",
-      "resource": "QueryRead/Repository",
-      "groupId": "00000000-0000-0000-0000-000000000000",
-      "isDenied": false
-    },
-    {
-      "key": "c0e5a9e1-0000-4000-8000-000000000003",
-      "resource": "QueryRead/Commit",
-      "groupId": "00000000-0000-0000-0000-000000000000",
-      "isDenied": false
-    },
-    {
-      "key": "c0e5a9e1-0000-4000-8000-000000000004",
-      "resource": "QueryRead/Build",
-      "groupId": "00000000-0000-0000-0000-000000000000",
+      "key": "c0e5a9e1-0000-4000-8000-00000000006b",
+      "resource": "Edit/Account",
+      "groupId": "00000000-0000-0000-0000-000000000001",
       "isDenied": false
     },
     {
@@ -47,20 +35,50 @@
       "isDenied": false
     },
     {
-      "key": "c0e5a9e1-0000-4000-8000-000000000012",
-      "resource": "QueryRead/Repository",
+      "key": "c0e5a9e1-0000-4000-8000-000000000081",
+      "resource": "QueryRead/Account/OwnerKey",
+      "groupId": "00000000-0000-0000-0000-000000000000",
+      "isDenied": true
+    },
+    {
+      "key": "c0e5a9e1-0000-4000-8000-000000000082",
+      "resource": "QueryRead/Account/OwnerKey",
+      "groupId": "00000000-0000-0000-0000-000000000001",
+      "isDenied": true
+    },
+    {
+      "key": "c0e5a9e1-0000-4000-8000-000000000069",
+      "resource": "QueryReadEditNew/ApiToken",
       "groupId": "00000000-0000-0000-0000-000000000001",
       "isDenied": false
     },
     {
-      "key": "c0e5a9e1-0000-4000-8000-000000000013",
-      "resource": "QueryRead/Commit",
+      "key": "c0e5a9e1-0000-4000-8000-00000000006a",
+      "resource": "Revoke/ApiToken",
       "groupId": "00000000-0000-0000-0000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "c0e5a9e1-0000-4000-8000-000000000004",
+      "resource": "QueryRead/Build",
+      "groupId": "00000000-0000-0000-0000-000000000000",
       "isDenied": false
     },
     {
       "key": "c0e5a9e1-0000-4000-8000-000000000014",
       "resource": "QueryRead/Build",
+      "groupId": "00000000-0000-0000-0000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "c0e5a9e1-0000-4000-8000-000000000003",
+      "resource": "QueryRead/Commit",
+      "groupId": "00000000-0000-0000-0000-000000000000",
+      "isDenied": false
+    },
+    {
+      "key": "c0e5a9e1-0000-4000-8000-000000000013",
+      "resource": "QueryRead/Commit",
       "groupId": "00000000-0000-0000-0000-000000000001",
       "isDenied": false
     },
@@ -77,14 +95,44 @@
       "isDenied": false
     },
     {
-      "key": "c0e5a9e1-0000-4000-8000-000000000032",
-      "resource": "Manage/RepoSettings",
+      "key": "c0e5a9e1-0000-4000-8000-000000000033",
+      "resource": "Upload/Coverage",
       "groupId": "00000000-0000-0000-0000-000000000001",
       "isDenied": false
     },
     {
-      "key": "c0e5a9e1-0000-4000-8000-000000000033",
-      "resource": "Upload/Coverage",
+      "key": "c0e5a9e1-0000-4000-8000-000000000066",
+      "resource": "QueryReadEditNewDelete/EventColumnMapping",
+      "groupId": "00000000-0000-0000-0000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "c0e5a9e1-0000-4000-8000-000000000053",
+      "resource": "Read/ForgeAccounts",
+      "groupId": "00000000-0000-0000-0000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "c0e5a9e1-0000-4000-8000-000000000087",
+      "resource": "Read/ForgeAccounts/Provider",
+      "groupId": "00000000-0000-0000-0000-000000000001",
+      "isDenied": true
+    },
+    {
+      "key": "c0e5a9e1-0000-4000-8000-000000000063",
+      "resource": "Edit/GitHubProject",
+      "groupId": "00000000-0000-0000-0000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "c0e5a9e1-0000-4000-8000-000000000062",
+      "resource": "QueryRead/GitHubProject",
+      "groupId": "00000000-0000-0000-0000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "c0e5a9e1-0000-4000-8000-000000000064",
+      "resource": "SyncColumns/GitHubProject",
       "groupId": "00000000-0000-0000-0000-000000000001",
       "isDenied": false
     },
@@ -101,8 +149,32 @@
       "isDenied": false
     },
     {
-      "key": "c0e5a9e1-0000-4000-8000-000000000053",
-      "resource": "Read/ForgeAccounts",
+      "key": "c0e5a9e1-0000-4000-8000-000000000052",
+      "resource": "Resync/Home",
+      "groupId": "00000000-0000-0000-0000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "c0e5a9e1-0000-4000-8000-000000000088",
+      "resource": "QueryRead/Home/AccountCount",
+      "groupId": "00000000-0000-0000-0000-000000000000",
+      "isDenied": true
+    },
+    {
+      "key": "c0e5a9e1-0000-4000-8000-000000000089",
+      "resource": "QueryRead/Home/RepoCount",
+      "groupId": "00000000-0000-0000-0000-000000000000",
+      "isDenied": true
+    },
+    {
+      "key": "c0e5a9e1-0000-4000-8000-000000000091",
+      "resource": "Read/HostMetrics",
+      "groupId": "dashboards:administrators",
+      "isDenied": false
+    },
+    {
+      "key": "c0e5a9e1-0000-4000-8000-000000000068",
+      "resource": "Read/LookupReferences",
       "groupId": "00000000-0000-0000-0000-000000000001",
       "isDenied": false
     },
@@ -113,68 +185,26 @@
       "isDenied": false
     },
     {
-      "key": "c0e5a9e1-0000-4000-8000-000000000052",
-      "resource": "Resync/Home",
-      "groupId": "00000000-0000-0000-0000-000000000001",
-      "isDenied": false
-    },
-    {
-      "key": "c0e5a9e1-0000-4000-8000-000000000061",
-      "resource": "DeleteData/Repository",
-      "groupId": "00000000-0000-0000-0000-000000000001",
-      "isDenied": false
-    },
-    {
-      "key": "c0e5a9e1-0000-4000-8000-000000000062",
-      "resource": "QueryRead/GitHubProject",
-      "groupId": "00000000-0000-0000-0000-000000000001",
-      "isDenied": false
-    },
-    {
-      "key": "c0e5a9e1-0000-4000-8000-000000000063",
-      "resource": "Edit/GitHubProject",
-      "groupId": "00000000-0000-0000-0000-000000000001",
-      "isDenied": false
-    },
-    {
-      "key": "c0e5a9e1-0000-4000-8000-000000000064",
-      "resource": "SyncColumns/GitHubProject",
-      "groupId": "00000000-0000-0000-0000-000000000001",
-      "isDenied": false
-    },
-    {
-      "key": "c0e5a9e1-0000-4000-8000-000000000066",
-      "resource": "QueryReadEditNewDelete/EventColumnMapping",
-      "groupId": "00000000-0000-0000-0000-000000000001",
-      "isDenied": false
-    },
-    {
-      "key": "c0e5a9e1-0000-4000-8000-000000000069",
-      "resource": "QueryReadEditNew/ApiToken",
-      "groupId": "00000000-0000-0000-0000-000000000001",
-      "isDenied": false
-    },
-    {
-      "key": "c0e5a9e1-0000-4000-8000-00000000006a",
-      "resource": "Revoke/ApiToken",
-      "groupId": "00000000-0000-0000-0000-000000000001",
-      "isDenied": false
-    },
-    {
-      "key": "c0e5a9e1-0000-4000-8000-000000000068",
-      "resource": "Read/LookupReferences",
-      "groupId": "00000000-0000-0000-0000-000000000001",
-      "isDenied": false
-    },
-    {
       "key": "c0e5a9e1-0000-4000-8000-000000000065",
       "resource": "QueryRead/ProjectColumn",
       "groupId": "00000000-0000-0000-0000-000000000001",
       "isDenied": false
     },
     {
-      "key": "c0e5a9e1-0000-4000-8000-00000000006b",
-      "resource": "Edit/Account",
+      "key": "c0e5a9e1-0000-4000-8000-000000000032",
+      "resource": "Manage/RepoSettings",
+      "groupId": "00000000-0000-0000-0000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "c0e5a9e1-0000-4000-8000-000000000002",
+      "resource": "QueryRead/Repository",
+      "groupId": "00000000-0000-0000-0000-000000000000",
+      "isDenied": false
+    },
+    {
+      "key": "c0e5a9e1-0000-4000-8000-000000000061",
+      "resource": "DeleteData/Repository",
       "groupId": "00000000-0000-0000-0000-000000000001",
       "isDenied": false
     },
@@ -185,16 +215,10 @@
       "isDenied": false
     },
     {
-      "key": "c0e5a9e1-0000-4000-8000-000000000081",
-      "resource": "QueryRead/Account/OwnerKey",
-      "groupId": "00000000-0000-0000-0000-000000000000",
-      "isDenied": true
-    },
-    {
-      "key": "c0e5a9e1-0000-4000-8000-000000000082",
-      "resource": "QueryRead/Account/OwnerKey",
+      "key": "c0e5a9e1-0000-4000-8000-000000000012",
+      "resource": "QueryRead/Repository",
       "groupId": "00000000-0000-0000-0000-000000000001",
-      "isDenied": true
+      "isDenied": false
     },
     {
       "key": "c0e5a9e1-0000-4000-8000-000000000083",
@@ -219,30 +243,6 @@
       "resource": "QueryRead/Repository/PreviousFullNames",
       "groupId": "00000000-0000-0000-0000-000000000001",
       "isDenied": true
-    },
-    {
-      "key": "c0e5a9e1-0000-4000-8000-000000000087",
-      "resource": "Read/ForgeAccounts/Provider",
-      "groupId": "00000000-0000-0000-0000-000000000001",
-      "isDenied": true
-    },
-    {
-      "key": "c0e5a9e1-0000-4000-8000-000000000088",
-      "resource": "QueryRead/Home/AccountCount",
-      "groupId": "00000000-0000-0000-0000-000000000000",
-      "isDenied": true
-    },
-    {
-      "key": "c0e5a9e1-0000-4000-8000-000000000089",
-      "resource": "QueryRead/Home/RepoCount",
-      "groupId": "00000000-0000-0000-0000-000000000000",
-      "isDenied": true
-    },
-    {
-      "key": "c0e5a9e1-0000-4000-8000-000000000091",
-      "resource": "Read/HostMetrics",
-      "groupId": "dashboards:administrators",
-      "isDenied": false
     },
     {
       "key": "c0e5a9e1-0000-4000-8000-000000000092",

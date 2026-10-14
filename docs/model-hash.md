@@ -122,7 +122,7 @@ as `AdditionalFiles`.
 | exit | meaning |
 |---|---|
 | 0 | in sync |
-| 1 | synchronization threw (type mismatch, breadcrumb validation) |
+| 1 | synchronization threw (type mismatch, breadcrumb validation), or a `Model/*.json` cannot be read and nothing was written |
 | 2 | misconfiguration — no registered `SparkContext`, or it has no parameterless constructor |
 | 3 | drift |
 
@@ -143,6 +143,23 @@ git add App_Data/modelHashes.json
 
 Synchronization never *reads* the hash file — it recomputes and overwrites — so emptying it cannot
 corrupt anything.
+
+The other files a model change touches are kept in an order that merges cleanly:
+
+- **`translations.json`**: synchronize keeps every object's keys in ordinal order (`$schema` first), so a
+  seeded description lands among its siblings instead of at the end of the file. Two branches that seed
+  different entities change different lines, and git merges them. The order is a fixed point: a key
+  someone appended by hand is moved on the next run, and a file already in order with nothing to seed is
+  not rewritten.
+- **`security.json`**: `--spark-synchronize-security` keeps `rights` sorted by target, group, action and
+  key, moving whole rights and nothing else, and `--spark-verify-security` exits 3 when it is not (see
+  [Authorization](guide-authorization.md#the-shape-of-the-file)).
+
+**A model file is never resolved by picking a side.** `Model/<Entity>.json` holds hand edits and the ids
+other files point at. If a merge or rebase leaves conflict markers in one, synchronize **fails closed**:
+it names the file, writes nothing and exits 1. (It used to print the error, regenerate the entity with
+fresh GUIDs, and exit 0, which silently dropped the hand edits.) Resolve the model file by hand first,
+then regenerate the hash file as above.
 
 ## When the check fires
 
