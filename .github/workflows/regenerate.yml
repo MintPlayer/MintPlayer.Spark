@@ -1,0 +1,60 @@
+name: regenerate
+
+# The CodeCoverage merge queue's post-rebase step for this repository (coverage.yml `mergeQueue:`,
+# docs/coverage_merge_queue_PRD.md §5.6). The queue dispatches it on mq/<base>/pr-<n> after a rebase it
+# resolved; it regenerates the Spark files of every app and uploads them as the `merge-queue-patch`
+# artifact. It never commits or pushes: the queue validates the patch against `regeneratedPaths` and
+# pushes it with the App token.
+#
+# SECURITY: this workflow builds and runs untrusted pull-request code. No secrets, no environment, no
+# `id-token`, no self-hosted runner, and `persist-credentials: false` on the checkout. The queue evicts a
+# PR that touches .github/** and checks this file's blob on the mq/ branch against master's before it
+# dispatches (D12), because a dispatched run uses the workflow file from the dispatched branch.
+#
+# The app list is the verify steps' list in pull-request.yml; keep the two equal.
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: The commit the merge queue prepared. The run fails if the branch head differs.
+        required: true
+      pr_number:
+        description: The pull request being merged (shown in the run name only).
+        required: true
+      queue_run_id:
+        description: The merge queue's id for this attempt (shown in the run name only).
+        required: true
+
+run-name: regenerate PR #${{ inputs.pr_number }} (${{ inputs.queue_run_id }})
+
+permissions:
+  contents: read
+
+concurrency:
+  group: regenerate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The dispatched mq/ branch as of the dispatch; the action compares it with expected_sha (D14).
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      # The local copy, so a change to the action is exercised by this repository's own queue.
+      - uses: ./.github/actions/spark-regenerate
+        with:
+          expected_sha: ${{ inputs.expected_sha }}
+          projects: |
+            apps/DemoApp/DemoApp/DemoApp.csproj
+            apps/HR/HR/HR.csproj
+            apps/Fleet/Fleet/Fleet.csproj
+            apps/QnA/QnA/QnA.csproj
+            apps/SparkId/SparkId/SparkId.csproj
+            apps/CodeCoverage/CodeCoverage/CodeCoverage.csproj
+            apps/SeoTester/SeoTester/SeoTester.csproj

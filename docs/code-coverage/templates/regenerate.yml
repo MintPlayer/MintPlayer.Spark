@@ -1,0 +1,63 @@
+# Template: the merge queue's post-rebase workflow for a Spark repository.
+# Copy to .github/workflows/regenerate.yml on the default branch, list your apps under `projects:`, and set
+# `postRebaseActionName: regenerate.yml` in coverage.yml's `mergeQueue:` section.
+#
+# The CodeCoverage merge queue dispatches this workflow on its mq/<base>/pr-<n> branch after a rebase it
+# resolved. The run regenerates Spark's generated files (modelHashes.json, securityPosture.txt, ...) and
+# uploads them as a patch. The queue validates the patch against `regeneratedPaths` and pushes it itself:
+# this workflow never commits or pushes.
+#
+# ┌─ SECURITY ─────────────────────────────────────────────────────────────────────────────────────────┐
+# │ This workflow BUILDS AND RUNS UNTRUSTED PULL-REQUEST CODE, in the context of your repository.      │
+# │  - Never add a secret, an environment, or `${{ secrets.* }}` of any kind.                          │
+# │  - Never widen `permissions:`; never add `id-token: write`.                                        │
+# │  - Never run it on a self-hosted runner: the PR's build code would run on your machine.            │
+# │  - Keep `persist-credentials: false`, so the job token is not left in .git/config for the build.  │
+# │ The queue evicts any PR that changes this file or anything under .github/, and checks that the     │
+# │ mq/ branch's copy equals the default branch's before it dispatches, because a dispatched run uses  │
+# │ the workflow file from the dispatched branch.                                                      │
+# └────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+name: regenerate
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: The commit the merge queue prepared. The run fails if the branch head differs.
+        required: true
+      pr_number:
+        description: The pull request being merged (shown in the run name only).
+        required: true
+      queue_run_id:
+        description: The merge queue's id for this attempt (shown in the run name only).
+        required: true
+
+run-name: regenerate PR #${{ inputs.pr_number }} (${{ inputs.queue_run_id }})
+
+permissions:
+  contents: read
+
+concurrency:
+  group: regenerate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The dispatched mq/ branch as of the dispatch. The action compares it with expected_sha.
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      # Pin to a full commit SHA of MintPlayer/MintPlayer.Spark (Dependabot's github-actions ecosystem
+      # keeps it current). Never @master: that repository's default branch moves many times a day for
+      # reasons unrelated to this action.
+      - uses: MintPlayer/MintPlayer.Spark/.github/actions/spark-regenerate@<commit-sha>
+        with:
+          expected_sha: ${{ inputs.expected_sha }}
+          projects: |
+            src/MyApp/MyApp.csproj

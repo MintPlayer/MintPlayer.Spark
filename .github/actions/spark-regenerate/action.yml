@@ -1,0 +1,84 @@
+name: Spark regenerate
+description: >
+  The post-rebase step of the CodeCoverage merge queue. On the commit the queue prepared, builds each Spark
+  app, runs --spark-synchronize-model and --spark-synchronize-security twice (the second run must change
+  nothing), and uploads the resulting `git diff --binary` as the `merge-queue-patch` artifact. It never
+  commits or pushes and needs no secrets: the queue validates the patch and pushes it itself. See README.md.
+
+# SECURITY: this action builds and runs the pull request's code. The calling workflow must grant only
+# `contents: read`, pass no secrets, request no `id-token`, and run on a GitHub-hosted runner.
+
+inputs:
+  expected_sha:
+    description: The full SHA the merge queue prepared (the dispatch input). The run fails if HEAD differs.
+    required: true
+  projects:
+    description: The Spark app .csproj paths, one per line, relative to the repository root.
+    required: true
+  dotnet-version:
+    description: SDK version for actions/setup-dotnet. Empty (the default) reads the repository's global.json.
+    required: false
+    default: ''
+  configuration:
+    description: Build configuration. Keep it equal to the one the repository's verify step runs.
+    required: false
+    default: Debug
+  skip-spa-build:
+    description: >
+      Pass -p:EnableSpaBuilder=false, so MintPlayer.AspNetCore.SpaServices does not npm-install and build the
+      Angular client. Synchronize reads only the .NET model, so the client is never needed here.
+    required: false
+    default: 'true'
+  extra-build-args:
+    description: Extra arguments for every `dotnet build`, split on whitespace.
+    required: false
+    default: ''
+
+outputs:
+  changed:
+    description: '"true" when the patch is non-empty.'
+    value: ${{ steps.regenerate.outputs.changed }}
+  file-count:
+    description: The number of files the patch touches.
+    value: ${{ steps.regenerate.outputs.file-count }}
+  patch-path:
+    description: The patch file on the runner.
+    value: ${{ steps.regenerate.outputs.patch-path }}
+
+runs:
+  using: composite
+  steps:
+    - name: Setup .NET (global.json)
+      if: inputs.dotnet-version == ''
+      uses: actions/setup-dotnet@v6
+      with:
+        global-json-file: global.json
+
+    - name: Setup .NET (${{ inputs.dotnet-version }})
+      if: inputs.dotnet-version != ''
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: ${{ inputs.dotnet-version }}
+
+    - name: Regenerate
+      id: regenerate
+      shell: bash
+      env:
+        EXPECTED_SHA: ${{ inputs.expected_sha }}
+        PROJECTS: ${{ inputs.projects }}
+        CONFIGURATION: ${{ inputs.configuration }}
+        BUILD_ARGS: ${{ inputs.skip-spa-build == 'true' && '-p:EnableSpaBuilder=false ' || '' }}${{ inputs.extra-build-args }}
+        DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+        DOTNET_NOLOGO: '1'
+      run: bash "$GITHUB_ACTION_PATH/regenerate.sh"
+
+    # Uploaded even when empty: an empty patch from a green run means "nothing to regenerate", while a
+    # failed run or a missing artifact means the queue evicts. Short retention: the queue downloads it
+    # within minutes (postRebaseTimeout).
+    - name: Upload merge-queue-patch
+      uses: actions/upload-artifact@v7
+      with:
+        name: merge-queue-patch
+        path: ${{ steps.regenerate.outputs.patch-path }}
+        if-no-files-found: error
+        retention-days: 3
