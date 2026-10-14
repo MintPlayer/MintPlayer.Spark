@@ -24,6 +24,13 @@ namespace CodeCoverage.Services;
 /// object does not know would be silently missing from both sides, so its pending upgrade would never show.
 /// </para>
 /// <para>
+/// ⚠️ Only what this installation can accept is compared (§0 D76, <see cref="Applies"/>). The App declares
+/// repository, organization and account permissions in one list. An installation holds the repository ones, plus
+/// the organization ones on an organization; account permissions are granted per user, when someone authorizes the
+/// App. Comparing the whole list asked an organization for <c>emails</c>, and a user account for <c>emails</c>,
+/// <c>members</c> and <c>organization_projects</c>: a notice that accepting could never clear (live, 2026-10-14).
+/// </para>
+/// <para>
 /// Cached for a minute per installation, failures included: the notice sits on a page that is reloaded
 /// freely, and a failure must cost one log line a minute rather than two GitHub calls per view.
 /// </para>
@@ -70,13 +77,12 @@ public partial class GitHubInstallationPermissions : IForgeInstallationPermissio
             using var app = await GetJsonAsync(client, "app");
             using var installation = await GetJsonAsync(client, $"app/installations/{installationId}");
 
-            var htmlUrl = installation.RootElement.TryGetProperty("html_url", out var url) && url.ValueKind == JsonValueKind.String
-                ? url.GetString()
-                : null;
+            var htmlUrl = StringOf(installation.RootElement, "html_url");
             result = htmlUrl is null
                 ? null
                 : new PendingInstallationPermissions(htmlUrl, ComputePending(
-                    ReadPermissions(app.RootElement), ReadPermissions(installation.RootElement)));
+                    ReadPermissions(app.RootElement), ReadPermissions(installation.RootElement),
+                    StringOf(installation.RootElement, "target_type")));
         }
         catch (NotFoundException)
         {
@@ -107,6 +113,10 @@ public partial class GitHubInstallationPermissions : IForgeInstallationPermissio
                 $"GitHub answered GET /{path} with {(int)response.HttpResponse.StatusCode} and no body to read (content type {response.HttpResponse.ContentType ?? "none"}).");
         return JsonDocument.Parse(body);
     }
+
+    /// <summary>A string member of a reply, or null. A reply that is no JSON object throws: GitHub's never is.</summary>
+    private static string? StringOf(JsonElement payload, string name)
+        => payload.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
 
     /// <summary>
     /// The bytes of a <see cref="IConnection.GetRaw(Uri, IDictionary{string, string})"/> reply, wherever Octokit's transport
@@ -140,17 +150,21 @@ public partial class GitHubInstallationPermissions : IForgeInstallationPermissio
     }
 
     /// <summary>
-    /// Every permission whose declared level exceeds the accepted one, ordered by name. Levels rank
-    /// none &lt; read &lt; write &lt; admin. A level this code does not know is pending whenever the two
-    /// sides differ: an unrecognised word must not hide an upgrade.
+    /// Every permission the installation can accept (<see cref="Applies"/>) whose declared level exceeds the
+    /// accepted one, ordered by name. Levels rank none &lt; read &lt; write &lt; admin. A level this code does not
+    /// know is pending whenever the two sides differ: an unrecognised word must not hide an upgrade.
     /// </summary>
+    /// <param name="targetType">The installation's <c>target_type</c>: <c>Organization</c> or <c>User</c>.</param>
     public static IReadOnlyList<PendingPermission> ComputePending(
-        IReadOnlyDictionary<string, string> declared, IReadOnlyDictionary<string, string> accepted)
+        IReadOnlyDictionary<string, string> declared, IReadOnlyDictionary<string, string> accepted, string? targetType)
     {
         var pending = new List<PendingPermission>();
         foreach (var (name, declaredLevel) in declared)
         {
             var acceptedLevel = accepted.TryGetValue(name, out var level) ? level : null;
+            if (!Applies(name, held: acceptedLevel is not null, targetType))
+                continue;
+
             var declaredRank = Rank(declaredLevel);
             var acceptedRank = acceptedLevel is null ? 0 : Rank(acceptedLevel);
 
@@ -162,6 +176,67 @@ public partial class GitHubInstallationPermissions : IForgeInstallationPermissio
         }
         return [.. pending.OrderBy(p => p.Name, StringComparer.Ordinal)];
     }
+
+    /// <summary>
+    /// Whether an installation on a <paramref name="targetType"/> account can accept <paramref name="name"/> (§0 D76).
+    /// GitHub's "Choosing permissions for a GitHub App" (read 2026-10-14): organization permissions apply "if it is
+    /// installed on an organization account", account permissions "if the user has also authorized your app", and an
+    /// installer grants "the repository and organization permissions that the app requested".
+    /// <list type="bullet">
+    /// <item>An account permission: never. Nothing an installation accepts grants one.</item>
+    /// <item>A permission the installation already holds: always. GitHub's own reply shows it applies here.</item>
+    /// <item>A repository permission: always. Both kinds of account own repositories.</item>
+    /// <item>An enterprise permission: never. Every one starts with <c>enterprise_</c> (15 of 15), and CodeCoverage's
+    /// accounts are organizations and users.</item>
+    /// <item>Anything else, an organization permission or a name these tables do not know yet: on an organization only.
+    /// An organization holds both kinds, so a new repository permission still shows there. On a user account the name
+    /// may be organization-only, as <c>members</c>, <c>issue_types</c> and <c>secret_scanning_dismissal_requests</c>
+    /// are without an <c>organization_</c> prefix, and it could then never be accepted. The price: a new account
+    /// permission missing from <see cref="AccountPermissions"/> shows on organizations until it is added.</item>
+    /// </list>
+    /// A target type other than <c>Organization</c> counts as a user account, as the installation webhook does.
+    /// </summary>
+    private static bool Applies(string name, bool held, string? targetType)
+    {
+        if (AccountPermissions.Contains(name))
+            return false;
+        if (held || RepositoryPermissions.Contains(name))
+            return true;
+        if (name.StartsWith("enterprise_", StringComparison.OrdinalIgnoreCase))
+            return false;
+        return targetType == "Organization";
+    }
+
+    // The tables (§0 D76), read 2026-10-14. Categories come from the data behind GitHub's "Permissions required for
+    // GitHub Apps" (docs.github.com/en/rest/authentication/permissions-required-for-github-apps): github/docs
+    // src/github-apps/data/{fpt,ghec}-2026-03-10/server-to-server-permissions.json at b0207719, where every name's
+    // displayTitle reads "Repository", "Organization", "User" or "Enterprise permissions for …". That data covers only
+    // permissions some REST endpoint needs, so GitHub's REST description adds discussions, merge_queues, packages,
+    // repository_projects and single_file (github/rest-api-description, components/schemas/app-permissions at
+    // 33066b02). The schema lists repository, organization, user and enterprise permissions in four blocks, and the 47
+    // names both sources share agree on theirs. Its email_addresses and git_ssh_keys are the token request's spelling;
+    // GitHub's App payloads say emails and keys, so both are listed.
+
+    /// <summary>Repository permissions: an installation on either kind of account can hold them.</summary>
+    private static readonly HashSet<string> RepositoryPermissions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "actions", "actions_variables", "administration", "agent_secrets", "agent_variables", "artifact_metadata",
+        "attestations", "checks", "code_quality", "codespaces", "codespaces_lifecycle_admin", "codespaces_metadata",
+        "codespaces_secrets", "contents", "copilot_agent_settings", "dependabot_secrets", "deployments", "discussions",
+        "environments", "installation_repositories", "issues", "merge_queues", "metadata", "packages", "pages",
+        "pull_requests", "repo_secret_scanning_dismissal_requests", "repository_advisories", "repository_creation",
+        "repository_custom_properties", "repository_hooks", "repository_projects", "secret_scanning_alerts",
+        "secret_scanning_bypass_requests", "secrets", "security_events", "single_file", "statuses",
+        "vulnerability_alerts", "workflows",
+    };
+
+    /// <summary>Account ("User") permissions: granted per user when someone authorizes the App, never to an installation.</summary>
+    private static readonly HashSet<string> AccountPermissions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "blocking", "codespaces_user_secrets", "email_addresses", "emails", "followers", "gists",
+        "git_signing_ssh_public_keys", "git_ssh_keys", "gpg_keys", "interaction_limits", "keys", "plan",
+        "private_repository_invitations", "profile", "starring", "watching",
+    };
 
     private static int? Rank(string level) => level.ToLowerInvariant() switch
     {

@@ -442,7 +442,10 @@ new permissions: Actions (write), Workflows (write). Review and accept on GitHub
 installation's own `html_url` (from `GET /app/installations/{id}`), so it works for user and organization
 installations alike and is never hard-coded. Pending means a permission whose level in `GET /app` exceeds
 the installation's (none < read < write < admin), compared over the raw JSON so permissions Octokit does
-not type are included. The server side is `GitHubInstallationPermissions` (CodeCoverage.GithubIntegration)
+not type are included. Only what the installation can accept is compared (PRD D76): repository permissions,
+plus organization permissions (Projects, Members) when the installation's `target_type` is `Organization`.
+Account permissions (Email addresses) are granted per user when someone signs in, never to an installation,
+so they never show. The server side is `GitHubInstallationPermissions` (CodeCoverage.GithubIntegration)
 behind `GET api/accounts/{provider}/{login}/pending-permissions` (`AccountPermissionsController`, right
 `Manage/RepoSettings` plus the owner check; 404 for an account the viewer does not manage, 204 when there
 is nothing to say). Answers are cached for a minute per installation, and a failure shows no notice. A

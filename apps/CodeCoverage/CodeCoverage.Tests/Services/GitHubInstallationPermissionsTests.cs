@@ -25,6 +25,9 @@ namespace CodeCoverage.Tests.Services;
 /// </summary>
 public class GitHubInstallationPermissionsTests
 {
+    /// <summary>GitHub's <c>target_type</c> of an installation on an organization, and on a user account.</summary>
+    private const string Organization = "Organization", User = "User";
+
     private static Dictionary<string, string> Levels(params (string Name, string Level)[] levels)
         => levels.ToDictionary(l => l.Name, l => l.Level, StringComparer.OrdinalIgnoreCase);
 
@@ -33,7 +36,7 @@ public class GitHubInstallationPermissionsTests
     {
         var pending = GitHubInstallationPermissions.ComputePending(
             Levels(("contents", "write"), ("checks", "write")),
-            Levels(("contents", "read"), ("checks", "write")));
+            Levels(("contents", "read"), ("checks", "write")), Organization);
 
         pending.Should().HaveCount(1);
         pending[0].Should().Be(new PendingPermission("contents", "Contents", "write", "read"));
@@ -44,7 +47,7 @@ public class GitHubInstallationPermissionsTests
     {
         var pending = GitHubInstallationPermissions.ComputePending(
             Levels(("actions", "write"), ("workflows", "write"), ("metadata", "read")),
-            Levels(("metadata", "read")));
+            Levels(("metadata", "read")), Organization);
 
         pending.Select(p => p.Name).Should().Equal(["actions", "workflows"]);
         pending.Should().AllSatisfy(p => p.Accepted.Should().BeNull());
@@ -55,7 +58,7 @@ public class GitHubInstallationPermissionsTests
     {
         var pending = GitHubInstallationPermissions.ComputePending(
             Levels(("contents", "read"), ("statuses", "write"), ("administration", "write")),
-            Levels(("contents", "write"), ("statuses", "write"), ("administration", "admin")));
+            Levels(("contents", "write"), ("statuses", "write"), ("administration", "admin")), Organization);
 
         pending.Should().BeEmpty();
     }
@@ -63,14 +66,14 @@ public class GitHubInstallationPermissionsTests
     [Fact]
     public void A_declared_none_is_never_pending()
     {
-        GitHubInstallationPermissions.ComputePending(Levels(("pages", "none")), Levels()).Should().BeEmpty();
+        GitHubInstallationPermissions.ComputePending(Levels(("pages", "none")), Levels(), Organization).Should().BeEmpty();
     }
 
     [Fact]
     public void Admin_outranks_write()
     {
         var pending = GitHubInstallationPermissions.ComputePending(
-            Levels(("administration", "admin")), Levels(("administration", "write")));
+            Levels(("administration", "admin")), Levels(("administration", "write")), Organization);
 
         pending.Select(p => p.Name).Should().Equal(["administration"]);
     }
@@ -81,7 +84,7 @@ public class GitHubInstallationPermissionsTests
         // merge_queues is not one of Octokit 14's InstallationPermissions properties; comparing the raw
         // payloads is what keeps it from vanishing from both sides.
         var pending = GitHubInstallationPermissions.ComputePending(
-            Levels(("merge_queues", "write")), Levels(("merge_queues", "read")));
+            Levels(("merge_queues", "write")), Levels(("merge_queues", "read")), Organization);
 
         pending.Should().HaveCount(1);
         pending[0].DisplayName.Should().Be("Merge queues");
@@ -90,9 +93,9 @@ public class GitHubInstallationPermissionsTests
     [Fact]
     public void An_unknown_level_is_pending_only_when_the_two_sides_differ()
     {
-        GitHubInstallationPermissions.ComputePending(Levels(("future", "triage")), Levels(("future", "triage")))
+        GitHubInstallationPermissions.ComputePending(Levels(("future", "triage")), Levels(("future", "triage")), Organization)
             .Should().BeEmpty();
-        GitHubInstallationPermissions.ComputePending(Levels(("future", "triage")), Levels(("future", "read")))
+        GitHubInstallationPermissions.ComputePending(Levels(("future", "triage")), Levels(("future", "read")), Organization)
             .Should().HaveCount(1);
     }
 
@@ -100,9 +103,62 @@ public class GitHubInstallationPermissionsTests
     public void Pending_permissions_are_ordered_by_name()
     {
         var pending = GitHubInstallationPermissions.ComputePending(
-            Levels(("workflows", "write"), ("actions", "write"), ("checks", "write")), Levels());
+            Levels(("workflows", "write"), ("actions", "write"), ("checks", "write")), Levels(), Organization);
 
         pending.Select(p => p.Name).Should().Equal(["actions", "checks", "workflows"]);
+    }
+
+    /// <summary>
+    /// §0 D76: account permissions are granted per user, when someone authorizes the App, so no installation ever holds
+    /// one. Both spellings: GitHub's App payloads say <c>emails</c> and <c>keys</c>, the token request's schema
+    /// <c>email_addresses</c> and <c>git_ssh_keys</c>. Enterprise permissions, which all start with <c>enterprise_</c>,
+    /// belong to installations on an enterprise.
+    /// </summary>
+    [Theory]
+    [InlineData(Organization)]
+    [InlineData(User)]
+    public void Account_and_enterprise_permissions_are_never_pending(string targetType)
+    {
+        var declared = Levels(
+            ("emails", "read"), ("email_addresses", "read"), ("keys", "read"), ("git_ssh_keys", "read"), ("plan", "read"),
+            ("enterprise_teams", "read"), ("enterprise_permission_github_adds_later", "read"));
+
+        GitHubInstallationPermissions.ComputePending(declared, Levels(), targetType).Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// §0 D76: an organization holds organization permissions as well as repository ones, a user account repository
+    /// permissions only. GitHub's <c>target_type</c> missing counts as a user account, as the installation webhook
+    /// reads any value but <c>Organization</c>.
+    /// </summary>
+    [Theory]
+    [InlineData(Organization, new[] { "contents", "members", "organization_projects" })]
+    [InlineData(User, new[] { "contents" })]
+    [InlineData(null, new[] { "contents" })]
+    public void Organization_permissions_are_pending_on_an_organization_only(string? targetType, string[] expected)
+    {
+        var pending = GitHubInstallationPermissions.ComputePending(
+            Levels(("contents", "write"), ("members", "read"), ("organization_projects", "write")), Levels(), targetType);
+
+        pending.Select(p => p.Name).Should().Equal(expected);
+    }
+
+    /// <summary>
+    /// §0 D76: a name the tables do not know may be organization-only, as <c>members</c>, <c>issue_types</c> and
+    /// <c>secret_scanning_dismissal_requests</c> are without an <c>organization_</c> prefix. An organization holds
+    /// both kinds, so it is asked. A user account is asked only once its installation holds the permission, which
+    /// shows it can: otherwise a notice could ask it for something it could never accept.
+    /// </summary>
+    [Fact]
+    public void A_name_the_tables_do_not_know_is_asked_of_a_user_account_only_once_its_installation_holds_it()
+    {
+        var declared = Levels(("permission_github_adds_later", "write"));
+
+        GitHubInstallationPermissions.ComputePending(declared, Levels(), Organization)
+            .Select(p => p.Name).Should().Equal(["permission_github_adds_later"]);
+        GitHubInstallationPermissions.ComputePending(declared, Levels(), User).Should().BeEmpty();
+        GitHubInstallationPermissions.ComputePending(declared, Levels(("permission_github_adds_later", "read")), User)
+            .Select(p => p.Name).Should().Equal(["permission_github_adds_later"]);
     }
 
     [Fact]
@@ -209,6 +265,64 @@ public class GitHubInstallationPermissionsTests
             new PendingPermission("workflows", "Workflows", "write", null),
         ]);
         github.Paths.Should().Equal(["/app", "/app/installations/42"]);
+    }
+
+    /// <summary>
+    /// §0 D76: the App declares repository, organization and account permissions, and an installation can accept only
+    /// what its account type holds: repository permissions, plus organization permissions on an organization. Account
+    /// permissions are granted per user, when someone authorizes the App. Shaped like the live payloads of 2026-10-14,
+    /// where comparing every declared permission asked the organization for <c>emails</c>, and the user account for
+    /// <c>emails</c>, <c>members</c> and <c>organization_projects</c>, besides the real <c>discussions</c>: a notice that
+    /// accepting could never clear. With <c>discussions</c> accepted too, neither has anything pending.
+    /// </summary>
+    [Theory]
+    [InlineData(Organization, false)]
+    [InlineData(User, false)]
+    [InlineData(Organization, true)]
+    [InlineData(User, true)]
+    public async Task An_installation_is_asked_only_for_the_permissions_its_account_type_can_accept(string targetType, bool discussionsAccepted)
+    {
+        var accepted = new Dictionary<string, string>
+        {
+            ["actions"] = "write", ["checks"] = "write", ["contents"] = "write", ["issues"] = "write",
+            ["metadata"] = "read", ["pull_requests"] = "write", ["statuses"] = "write", ["workflows"] = "write",
+        };
+        if (targetType == Organization)
+        {
+            accepted["members"] = "read";
+            accepted["organization_projects"] = "write";
+        }
+        if (discussionsAccepted)
+            accepted["discussions"] = "read";
+
+        var github = new GitHubApi();
+        github.Replies["/app"] = (HttpStatusCode.OK, """
+            { "id": 1, "slug": "coverage", "html_url": "https://github.com/apps/coverage",
+              "permissions": {
+                "actions": "write", "checks": "write", "contents": "write", "discussions": "read", "issues": "write",
+                "metadata": "read", "pull_requests": "write", "statuses": "write", "workflows": "write",
+                "members": "read", "organization_projects": "write",
+                "emails": "read" } }
+            """);
+        github.Replies["/app/installations/42"] = (HttpStatusCode.OK, JsonSerializer.Serialize(new
+        {
+            id = 42,
+            app_id = 1,
+            target_type = targetType,
+            html_url = targetType == Organization
+                ? "https://github.com/organizations/acme/settings/installations/42"
+                : "https://github.com/settings/installations/42",
+            permissions = accepted,
+        }));
+        var logger = new RecordingLogger();
+
+        var result = await CreateService(new StubInstallations(() => OctokitClient(github)), logger: logger)
+            .GetPendingAsync(new Account { Login = "acme", InstallationId = 42 });
+
+        logger.Entries.Should().BeEmpty();
+        result.Should().NotBeNull();
+        PendingPermission[] expected = discussionsAccepted ? [] : [new("discussions", "Discussions", "read", null)];
+        result!.Pending.Should().Equal(expected);
     }
 
     /// <summary>
