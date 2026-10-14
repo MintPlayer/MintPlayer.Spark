@@ -400,7 +400,22 @@ environment.
 | Repository | Contents | **Read & write** | Source view and `coverage.yml` at a commit (read); `push` events; deleting a merged PR's head branch when a board opts in (write — `GitHubForgeClient.DeleteBranchAsync`). Read-only suffices without branch deletion. |
 | Repository | Pull requests | **Read & write** | `pull_request` events (read); the sticky PR comment (write). |
 | Repository | Checks | **Read & write** | The `coverage/project` and `coverage/patch` check-runs; `check_run` events. |
-| Repository | Issues | Read-only | `issues` and `issue_comment` events — board automation only. |
+| Repository | Issues | Read-only | `issues` and `issue_comment` events — board automation, and the merge queue's `/queue` and `/dequeue` comments. |
+| Repository | Actions | **Read & write** | Merge queue: dispatching the regenerate workflow (write), reading its run and downloading its `merge-queue-patch` artifact (read). `GitHubForgeMergeQueue`. |
+| Repository | Workflows | **Read & write** | Merge queue: GitHub refuses any App push that brings in commits touching `.github/workflows/**`, and a rebased branch can carry the base's own workflow changes (to a fork in particular, which does not have them yet). The queue still evicts every PR whose own change touches `.github/**` (PRD D12). |
+| Repository | Commit statuses | Read-only | Merge queue: the gate waits for every commit status as well as every check run (PRD O12; GitGuardian reports as one). |
+
+**What the merge queue uses the other permissions for** (`GitHubForgeMergeQueue`, PRD M4): **Metadata** reads a
+login's repository role (`collaborators/{login}/permission`, O9) and the branch's rulesets with each one's
+`current_user_can_bypass` (D16 measured `metadata=read` for both). **Contents: write** is what `merge-async` asks
+for (`X-Accepted-GitHub-Permissions: contents=write`, live 2026-10-14) and what the writer's pushes need; read
+gives the workflow file's blob for D12's identity check. **Pull requests: write** adds and removes the
+`merge-queue` label and posts the queue's comments; read gives the reviews (O11). **Checks: write** publishes the
+"Merge queue" check run; read lists check runs and suites. **Administration is not requested**: classic branch
+protection's required checks are readable without it (`GET /branches/{b}`), its review settings are not, and the
+queue reports that as `ChecksOnly` rather than guessing. On the production App, the Actions, Workflows and
+Commit statuses rows are new: each installation has to accept them (see the notice below, PRD O17) before the
+queue can run there; until then a refused call carries the permission GitHub named, for the queue check run to link.
 | Organization | Projects | Read & write | Moving cards on Projects V2 boards (GraphQL, `GitHubProjectCards.cs`) — board automation only. |
 | Organization | Members | Read-only | Required by GitHub to subscribe to the `organization` event (organization renames). |
 | Account | Email addresses | Read-only | First sign-in reads `GET /user/emails` for a verified primary address; without it sign-in fails with `email_not_verified`. |
@@ -431,7 +446,11 @@ no notice. Nothing shows in development unless a GitHub App is configured.
 | Push | `GitHubEventsRecipient` | branch tracking |
 | Pull request | `GitHubEventsRecipient`, project automation | authoritative PR ↔ branch labels, merged-PR cleanup, board rules |
 | Organization | `GitHubEventsRecipient` | organization renames (action `renamed`) |
-| Issues, Issue comment, Pull request review, Check run | `ProjectAutomationRouter` | board automation only |
+| Issues, Issue comment, Pull request review, Check run | `ProjectAutomationRouter` | board automation; Issue comment (`/queue`, `/dequeue`), Pull request review (approvals, dismissals) and Check run also feed the merge queue (PRD M5) |
+| Workflow run, Check suite | merge queue (PRD M5) | **New for the merge queue.** The regenerate run's completion (`workflow_run`) and "every suite on the final commit has completed" (`check_suite`, O12). Delivery to an App was measured live (PRD D19). |
+
+The merge queue's label (`merge-queue`) arrives as `pull_request` with action `labeled` / `unlabeled`; there is no
+separate label subscription to add.
 | `installation` (incl. action `new_permissions_accepted`), `installation_repositories` | `GitHubEventsRecipient` | always delivered to Apps; no subscription needed |
 
 ⚠️ `installation_target` is also handled but **not relied on**: it is not among the subscribed events,

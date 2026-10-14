@@ -271,6 +271,13 @@ public enum EForgeCapability
     /// Bitbucket (<c>x-token-auth</c>) declare it once they hold a credential to hand out.
     /// </summary>
     GitMirror,
+
+    /// <summary>
+    /// The conflict-resolving merge queue (merge-queue PRD M4). Its members live on the separate
+    /// <see cref="IForgeMergeQueue"/>; a forge declaring this registers exactly one implementation of it
+    /// for its provider, and the conformance test holds both directions. GitHub only for now (O7).
+    /// </summary>
+    MergeQueue,
 }
 
 /// <summary>How a git process reaches one repository (<see cref="IForgeIntegration.GetGitAccessAsync"/>).</summary>
@@ -342,7 +349,15 @@ public sealed record ForgeAccess(bool Available, string? UnavailableReason)
 /// (<c>Octokit.ApiException</c> and a status-code check, in the GitHub case). A second forge would
 /// have had nothing equivalent to catch.
 /// </remarks>
-public sealed class ForgeAccessDeniedException(string message) : Exception(message);
+/// <param name="requiredPermission">
+/// The permission the forge says the call needed, when it says (GitHub's
+/// <c>X-Accepted-GitHub-Permissions</c>, e.g. <c>actions=write</c>), so the caller can point at the
+/// acceptance page (merge-queue O17). Null when unknown.
+/// </param>
+public sealed class ForgeAccessDeniedException(string message, string? requiredPermission = null) : Exception(message)
+{
+    public string? RequiredPermission { get; } = requiredPermission;
+}
 
 /// <summary>What we are telling the forge about a commit.</summary>
 /// <param name="Outcome">The conclusion, in our vocabulary rather than any forge's.</param>

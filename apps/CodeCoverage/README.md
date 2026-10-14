@@ -413,7 +413,10 @@ the app actually uses:
 | Metadata | Read-only | Mandatory on every App; covers repository listings |
 | Pull requests | Read-only; **Read & write** for the PR comment | Required to subscribe to `pull_request` events |
 | Checks | Read & write | The `coverage/project` and `coverage/patch` check-runs (see below) |
-| Issues | Read-only | Only for project-board automation: the `issues` and `issue_comment` events |
+| Issues | Read-only | Project-board automation and the merge queue's `/queue` comments: the `issues` and `issue_comment` events |
+| Actions | Read & write | Merge queue only: dispatching the regenerate workflow, reading its run and artifact |
+| Workflows | Read & write | Merge queue only: pushing a rebased branch that brings in workflow changes |
+| Commit statuses | Read-only | Merge queue only: its gate waits for commit statuses as well as check runs |
 
 **Account permissions**
 
@@ -446,7 +449,8 @@ declared on the App but absent from that installation's grant — a live example
 of the accepted-vs-declared gap this section warns about.)
 
 **Webhook events to subscribe**: `Repository`, `Push`, `Pull request`, `Organization`; for
-project-board automation also `Issues`, `Issue comment`, `Pull request review` and `Check run`
+project-board automation also `Issues`, `Issue comment`, `Pull request review` and `Check run`;
+for the merge queue also `Workflow run` and `Check suite`
 (`installation` / `installation_repositories` are always delivered to Apps, no
 subscription needed). Webhook URL: your smee channel in dev, `https://<your-domain>/api/github/webhooks` in prod;
 set a webhook secret and keep it in `GitHub:WebhookSecret` (`GITHUB_WEBHOOK_SECRET` on the server).

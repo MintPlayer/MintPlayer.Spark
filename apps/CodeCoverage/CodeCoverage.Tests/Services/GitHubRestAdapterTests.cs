@@ -345,6 +345,9 @@ public class GitHubRestAdapterTests : CoverageRavenTest
           "title": "A change",
           "html_url": "https://github.com/acme/widget/pull/{{number}}",
           "user": { "login": "contributor", "id": 9, "type": "User" },
+          "draft": true,
+          "maintainer_can_modify": true,
+          "mergeable_state": "behind",
           "head": {
             "label": "contributor:feature",
             "ref": "feature",
@@ -384,6 +387,13 @@ public class GitHubRestAdapterTests : CoverageRavenTest
         pull.BaseRepositoryDefaultBranch.Should().Be("trunk");
         pull.IsOpen.Should().BeTrue();
         pull.IsFromFork.Should().BeTrue();
+        // The merge queue's fields (PRD M4).
+        pull.BaseSha.Should().Be(Base);
+        pull.HeadRepositoryFullName.Should().Be(headRepositoryId is null ? null : "contributor/widget");
+        pull.MaintainerCanModify.Should().BeTrue();
+        pull.IsDraft.Should().BeTrue();
+        pull.AuthorLogin.Should().Be("contributor");
+        pull.MergeableState.Should().Be("behind");
         github.InstallationClients.Should().Equal(InstallationId);
     }
 

@@ -106,6 +106,8 @@ public class RegistrationInventoryTests : CoverageRavenTest
         typeof(IGitHubAppReadinessService),
         // The pending-permissions notice on the Account page (merge-queue PRD O17).
         typeof(IForgeInstallationPermissions),
+        // The merge queue's forge seam (merge-queue PRD M4).
+        typeof(IForgeMergeQueue),
         typeof(IGitHubStateReconciler),
         typeof(IGitHubProjectCards),
         typeof(IInstallationProjects),

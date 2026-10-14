@@ -63,6 +63,39 @@ public class ForgeIntegrationConformanceTests
         (nameof(IForgeIntegration.GetTreeAsync), forge => forge.GetTreeAsync(SampleRepository, "main", CancellationToken.None)),
     ];
 
+    /// <summary>
+    /// Capabilities whose members live on a narrow interface of their own instead of on
+    /// <see cref="IForgeIntegration"/> (merge-queue PRD M4). Declaring one means registering exactly one
+    /// implementation of that interface for the same provider, and registering one means declaring it.
+    /// </summary>
+    private static readonly Dictionary<EForgeCapability, Type> SeparateSeams = new()
+    {
+        [EForgeCapability.MergeQueue] = typeof(IForgeMergeQueue),
+    };
+
+    /// <summary>Every member of <see cref="IForgeMergeQueue"/>; an implementation must refuse none of them.</summary>
+    private static readonly (string Name, Func<IForgeMergeQueue, Task> Invoke)[] MergeQueueMembers =
+    [
+        (nameof(IForgeMergeQueue.GetActorRoleAsync), q => q.GetActorRoleAsync(SampleRepository, "octocat")),
+        (nameof(IForgeMergeQueue.GetBranchRulesAsync), q => q.GetBranchRulesAsync(SampleRepository, "main")),
+        (nameof(IForgeMergeQueue.GetCheckStateAsync), q => q.GetCheckStateAsync(SampleRepository, SampleSha)),
+        (nameof(IForgeMergeQueue.GetCheckNamesOnCommitAsync), q => q.GetCheckNamesOnCommitAsync(SampleRepository, SampleSha)),
+        (nameof(IForgeMergeQueue.DispatchWorkflowAsync), q => q.DispatchWorkflowAsync(SampleRepository, "regenerate.yml", "mq/main/pr-1", new Dictionary<string, string>())),
+        (nameof(IForgeMergeQueue.GetWorkflowRunAsync), q => q.GetWorkflowRunAsync(SampleRepository, 1)),
+        (nameof(IForgeMergeQueue.DownloadArtifactAsync), q => q.DownloadArtifactAsync(SampleRepository, 1, "merge-queue-patch", 1024)),
+        (nameof(IForgeMergeQueue.GetFileBlobShaAsync), q => q.GetFileBlobShaAsync(SampleRepository, "main", ".github/workflows/regenerate.yml")),
+        (nameof(IForgeMergeQueue.RequestMergeAsync), q => q.RequestMergeAsync(SampleRepository, 1, SampleSha, EForgeMergeMethod.Squash, null, null)),
+        (nameof(IForgeMergeQueue.GetMergeRequestStatusAsync), q => q.GetMergeRequestStatusAsync(SampleRepository, 1, Guid.Empty.ToString())),
+        (nameof(IForgeMergeQueue.GetReviewsAsync), q => q.GetReviewsAsync(SampleRepository, 1)),
+        (nameof(IForgeMergeQueue.PublishQueueCheckAsync), q => q.PublishQueueCheckAsync(SampleRepository, SampleSha, new ForgeQueueCheck(EForgeQueueCheckState.Queued, "t", "s", null), null)),
+        (nameof(IForgeMergeQueue.AddLabelAsync), q => q.AddLabelAsync(SampleRepository, 1, "merge-queue")),
+        (nameof(IForgeMergeQueue.RemoveLabelAsync), q => q.RemoveLabelAsync(SampleRepository, 1, "merge-queue")),
+        (nameof(IForgeMergeQueue.PostCommentAsync), q => q.PostCommentAsync(SampleRepository, 1, "body")),
+        (nameof(IForgeMergeQueue.GetPushAccessAsync), q => q.GetPushAccessAsync(SampleRepository, new ForgePullRequest(1, SampleSha, "feature", 1, "main", 1, "main", true))),
+    ];
+
+    private const string SampleSha = "4a5b6c7d8e9f00112233445566778899aabbccdd";
+
     private static Repository SampleRepository =>new() { Id = "Repositories/1", OwnerLogin = "acme", Name = "widget" };
 
     public static TheoryData<Type> Implementations
@@ -75,11 +108,20 @@ public class ForgeIntegrationConformanceTests
         }
     }
 
-    private static IEnumerable<Type> DiscoverImplementations()
+    private static IEnumerable<Type> DiscoverImplementations() => Discover(typeof(IForgeIntegration));
+
+    private static IEnumerable<Type> Discover(Type seam)
         => typeof(GitHubForgeIntegration).Assembly
             .GetTypes()
-            .Where(t => t is { IsAbstract: false, IsInterface: false } && typeof(IForgeIntegration).IsAssignableFrom(t))
+            .Where(t => t is { IsAbstract: false, IsInterface: false } && seam.IsAssignableFrom(t))
             .OrderBy(t => t.Name);
+
+    /// <summary>Which provider registers which separate seam, from the real implementations.</summary>
+    private static IReadOnlyList<(Type Seam, EForgeProvider Provider)> DiscoverSeamProviders()
+        => [.. SeparateSeams.Values.SelectMany(seam => Discover(seam).Select(type => (seam, ProviderOf(Create<object>(type)))))];
+
+    private static EForgeProvider ProviderOf(object implementation)
+        => (EForgeProvider)implementation.GetType().GetProperty(nameof(IForgeIntegration.Provider))!.GetValue(implementation)!;
 
     /// <summary>
     /// Guards the guard: if discovery ever returns nothing — a namespace move, a renamed assembly —
@@ -92,7 +134,38 @@ public class ForgeIntegrationConformanceTests
     [Theory]
     [MemberData(nameof(Implementations))]
     public async Task Every_implementation_conforms(Type type)
-        => (await ViolationsAsync(Create(type))).Should().BeEmpty();
+        => (await ViolationsAsync(Create(type), DiscoverSeamProviders())).Should().BeEmpty();
+
+    /// <summary>
+    /// The separate seam's own guard: at least one implementation exists, so the pairing rule below cannot
+    /// pass vacuously, and none refuses a member — the capability is all of the interface or none of it.
+    /// </summary>
+    [Fact]
+    public async Task Every_merge_queue_implementation_answers_every_member()
+    {
+        var implementations = Discover(typeof(IForgeMergeQueue)).ToList();
+        implementations.Should().NotBeEmpty();
+
+        var refused = new List<string>();
+        foreach (var type in implementations)
+        {
+            var queue = Create<IForgeMergeQueue>(type);
+            foreach (var (member, invoke) in MergeQueueMembers)
+                if (await CaptureAsync(() => invoke(queue)) is NotSupportedException)
+                    refused.Add($"{type.Name}.{member}");
+        }
+        refused.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Each_forge_registers_at_most_one_merge_queue()
+        => DiscoverSeamProviders().Should().OnlyHaveUniqueItems();
+
+    /// <summary>The member list above must cover the interface, or a new member escapes the rule.</summary>
+    [Fact]
+    public void The_merge_queue_member_list_covers_the_interface()
+        => MergeQueueMembers.Select(m => m.Name).Should().BeEquivalentTo(
+            [.. typeof(IForgeMergeQueue).GetMethods().Where(m => !m.IsSpecialName).Select(m => m.Name).Distinct()]);
 
     /// <summary>
     /// Two implementations claiming one forge is the wiring bug <c>ForgeIntegrationResolver</c>
@@ -133,15 +206,39 @@ public class ForgeIntegrationConformanceTests
         => (await ViolationsAsync(new TreelessForge())).Should()
             .ContainSingle().Which.Should().Contain("GetTreeAsync").And.Contain("no capability governs");
 
+    /// <summary>A capability on a separate seam, declared with nothing behind it.</summary>
+    [Fact]
+    public async Task A_forge_declaring_the_merge_queue_without_an_implementation_is_a_violation()
+        => (await ViolationsAsync(new QueueClaimingForge(), seams: [])).Should()
+            .ContainSingle().Which.Should().Contain("MergeQueue").And.Contain("registers no IForgeMergeQueue");
+
+    /// <summary>The dangerous direction again: a merge queue the forge does not admit to.</summary>
+    [Fact]
+    public async Task A_merge_queue_for_a_forge_that_does_not_declare_it_is_a_violation()
+        => (await ViolationsAsync(new BoastfulForge(), seams: [(typeof(IForgeMergeQueue), EForgeProvider.GitHub)])).Should()
+            .Contain(v => v.Contains("MergeQueue") && v.Contains("does not advertise"));
+
     // ── The rules themselves ─────────────────────────────────────────────────────────────────────
 
-    private static async Task<IReadOnlyList<string>> ViolationsAsync(IForgeIntegration forge)
+    private static async Task<IReadOnlyList<string>> ViolationsAsync(
+        IForgeIntegration forge, IReadOnlyList<(Type Seam, EForgeProvider Provider)>? seams = null)
     {
         var name = forge.GetType().Name;
         var violations = new List<string>();
+        seams ??= [];
 
-        foreach (var capability in forge.Capabilities.Where(c => !Governs.ContainsKey(c)))
+        foreach (var capability in forge.Capabilities.Where(c => !Governs.ContainsKey(c) && !SeparateSeams.ContainsKey(c)))
             violations.Add($"{name} declares {capability}, which has no members — callers would filter for a call they cannot make.");
+
+        foreach (var (capability, seam) in SeparateSeams)
+        {
+            var declared = forge.Capabilities.Contains(capability);
+            var registered = seams.Count(s => s.Seam == seam && s.Provider == forge.Provider);
+            if (declared && registered == 0)
+                violations.Add($"{name} declares {capability} but its forge registers no {seam.Name}.");
+            else if (!declared && registered > 0)
+                violations.Add($"{name} does not advertise {capability} but its forge registers a {seam.Name} — a caller filtering on Capabilities would skip it.");
+        }
 
         foreach (var (capability, members) in Governs)
         {
@@ -170,7 +267,9 @@ public class ForgeIntegrationConformanceTests
     /// exception's <em>type</em> is ever inspected. What is under test is whether a member refuses
     /// by contract, not whether it works.
     /// </summary>
-    private static IForgeIntegration Create(Type type)
+    private static IForgeIntegration Create(Type type) => Create<IForgeIntegration>(type);
+
+    private static T Create<T>(Type type) where T : class
     {
         var constructor = type.GetConstructors()
             .OrderByDescending(c => c.GetParameters().Length)
@@ -180,14 +279,17 @@ public class ForgeIntegrationConformanceTests
             .Select(p => p.ParameterType.IsInterface ? Substitute.For([p.ParameterType], null) : null)
             .ToArray();
 
-        return (IForgeIntegration)constructor.Invoke(arguments);
+        return (T)constructor.Invoke(arguments);
     }
 
-    private static async Task<Exception?> CaptureAsync(Func<IForgeIntegration, Task> invoke, IForgeIntegration forge)
+    private static Task<Exception?> CaptureAsync(Func<IForgeIntegration, Task> invoke, IForgeIntegration forge)
+        => CaptureAsync(() => invoke(forge));
+
+    private static async Task<Exception?> CaptureAsync(Func<Task> invoke)
     {
         try
         {
-            var task = invoke(forge);
+            var task = invoke();
             if (task is not null) await task;
             return null;
         }
@@ -250,6 +352,12 @@ public class ForgeIntegrationConformanceTests
         public override Task<long> PublishStatusAsync(Repository repository, string sha, string name, ForgeVerdict verdict, long? existingId, CancellationToken cancellationToken = default) => Task.FromResult(1L);
         public override Task PublishCommentAsync(Repository repository, int pullRequestNumber, string sha, string body, CancellationToken cancellationToken = default) => Task.CompletedTask;
         public override Task<ForgeTree?> GetTreeAsync(Repository repository, string branch, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    }
+
+    /// <summary>Declares the merge queue; conforms otherwise.</summary>
+    private sealed class QueueClaimingForge : ConformanceDouble
+    {
+        public override EForgeCapability[] Capabilities => [EForgeCapability.MergeQueue];
     }
 
     /// <summary>Declares a capability that has no members yet.</summary>
