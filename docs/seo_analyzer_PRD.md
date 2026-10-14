@@ -2441,9 +2441,11 @@ The server, its data, logs and every certificate were deleted afterwards; no key
     `cookie=srv=evil; js=evil`, `ls-evil`, `idb-evil`, `cache-evil`.
   - **No downloads.** `BrowserStateTests.A_page_cannot_make_the_browser_save_a_file`: a frame answered
     `Content-Disposition: attachment`, scripted `<a download>` clicks (a served file and a blob), and a navigation to
-    `application/octet-stream`; Playwright's artifacts folders are scanned throughout (it deletes a context's downloads
-    when the context closes), the temp folder's top level and the user's Downloads folder at the end, for any new file
-    whose name or bytes hold the marker: none; the render finishes without an error and the next one works. **Chromium
+    `application/octet-stream`; ~~Playwright's artifacts folders are scanned throughout (it deletes a context's downloads
+    when the context closes), the temp folder's top level and the user's Downloads folder at the end~~ **[superseded,
+    "CI stall" below: the browser's own temp folder, all of it, and the user's Downloads folder are scanned throughout
+    and at the end; Playwright deletes a context's downloads when the context closes]**, for any new file whose name or
+    bytes hold the marker: none; the render finishes without an error and the next one works. **Chromium
     does announce the downloads** (a Playwright `download` event per attempt), and every one ends failed ("Pass
     { acceptDownloads: true } …"): no bytes are written, so the test asserts no completed download and no file rather
     than no event. *Red:* `AcceptDownloads = true`: six files in `playwright-artifacts-*` (one a `.crdownload`), the
@@ -2617,3 +2619,43 @@ The old 2 s window is gone because it misattributed late frames, not to absorb s
 
 **Runs** (`RAVENDB_LICENSE` = Developer licence): `tests/MintPlayer.Spark.Tests/Live/` 5× 49/49; full Spark.Tests
 4 727/4 727 with CodeCoverage.Tests 1 213/1 213 in parallel. Guide: `docs/guide-live-updates.md`, `IndexWait` row.
+
+### CI stall (2026-10-14): the download proof read a FIFO; every browser close is bounded
+
+- **The stall.** 4 of the 28 real CI executions of SeoTester.Tests since #505 printed nothing more and hit the step's
+  20-minute timeout (runs 38282102770, 38291705761, 38292236208, 38628925278; the CI evidence is in
+  `docs/coverage_merge_queue_PRD.md` D86). `A_page_cannot_make_the_browser_save_a_file` read every new entry under 1 MB
+  at the top of the machine's temp folder. On Linux every .NET process keeps two FIFOs there, made at its start
+  (CoreCLR's debugger pipes, `clr-debug-pipe-<pid>-<key>-in` and `-out`), and opening a FIFO for reading waits for a
+  writer that never comes. The test met one whenever it ran within 2 s of a .NET process's start: the testhost's own, when
+  xUnit's random collection order put the browser collection first (about 1 run in 25), or a concurrent build's. Windows
+  keeps no FIFO in `%TEMP%`. Latent since `9085b023`.
+- **Only regular files are opened** (`SeoTester.Tests/Rendering/MarkerFiles.cs`, the proof's scan). .NET 11 has no API
+  that tells a FIFO, a socket or a device from a regular file (the RC1 reference docs list none: `FileAttributes` is
+  `Normal` for all of them, `UnixFileMode` holds the permission bits only), and whatever looks closer opens the entry
+  first, which is the call that waits. So an entry is opened only when it is no link and at least as long as the marker:
+  FIFOs, sockets and devices report 0 bytes, while a link reports the length of its target's path. Reads deny the writer
+  nothing, and hidden files count too (the default `EnumerationOptions` skipped them).
+- **The browser has its own temp folder.** The fixture starts the Playwright driver and Chromium with
+  `TMPDIR`/`TMP`/`TEMP` set to a fresh folder, for that moment only (the assembly runs no test in parallel). Chromium's
+  profile, Playwright's download folder (`playwright-artifacts-*`) and Chromium's temp files land there, and the proof no
+  longer reads the shared temp folder. It scans Playwright's download folder throughout and, at the end, the browser's
+  whole temp folder and the user's Downloads folder; it first asserts that the download folder is in the scanned one.
+- **Found on the way: Chromium keeps a denied download on disk for a few milliseconds.** Scanning the browser's whole temp
+  folder throughout turned the proof red in 3 of 5 runs, on a `<guid>.tmp` at the folder's top that was gone by the end.
+  A `FileSystemWatcher` (a diagnostic, not committed) saw it in each of 2 runs: per render, 3 `<guid>.tmp` files, each
+  holding a denied download's bytes (the served body or the blob), each deleted 0 to 23 ms after it was made. None was
+  in Playwright's download folder and none was left. So "no bytes are written" above was never quite true. The old proof
+  looked at the temp folder's top only at the end, and on Linux it skipped hidden files, which is what Chromium's
+  `base::CreateTemporaryFile` makes there (`.org.chromium.Chromium.XXXXXX`, not observed here). The proof now holds
+  Playwright's download folder to "never" and every other place to "nothing left". **Open (owner):** should even this
+  buffer go? That would take the router refusing a response that would become a download, a production change.
+- **Every close the app makes is bounded: `SeoTester:Browser:CloseTimeout`, 30 s.** Playwright's `CloseAsync` of a
+  context or of the browser waits for the driver's answer with no timeout (Microsoft.Playwright 1.63.0, decompiled), and
+  a render whose close never returned would hold the render gate, and with it every later render, for good.
+  `ChromiumBrowser.CloseAsync(context)` (the renders' and the PDF export's) and the browser's own closes (dispose,
+  reconnect) stop waiting at the timeout and tear the browser down. They dispose the Playwright driver, which fails every
+  call still waiting on it. As the driver exits, it kills the browser it launched with its process tree (its bundled
+  `coreBundle.js`: a 30 s bound on its own graceful exit, then `taskkill /T /F` or `SIGKILL` to the process group); over
+  `ConnectAsync` the connection drops. The next render starts afresh. Nothing else changes.
+- *Runs:* see `docs/coverage_merge_queue_PRD.md` D86.
