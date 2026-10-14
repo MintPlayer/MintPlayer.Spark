@@ -556,6 +556,61 @@ describe('SparkPoFormComponent', () => {
       expect(fixture.nativeElement.querySelector('tbody bs-select')).toBeTruthy();
     });
 
+    describe('a reference query with more than one page renders the server-paged picker', () => {
+      // A <select> lists only the rows loaded (the query's first page, 50 by default), so a candidate
+      // past that page could not be chosen. When the query says it has more rows than were loaded,
+      // the column renders the picker instead, which pages and searches on the server.
+      async function mountInline(totalItems: number) {
+        const refChild: EntityType = {
+          id: 't-pagedchild', name: 'PagedChild', clrType: 'Test.PagedChild',
+          attributes: [attr({ id: 'c-co', name: 'CompanyId', dataType: 'Reference', order: 1, query: 'CompanyQuery', referenceType: 'Test.Company' })],
+        };
+        const refParent: EntityType = {
+          id: 't-pagedparent', name: 'PagedParent', clrType: 'Test.PagedParent',
+          attributes: [attr({ id: 'a-rows', name: 'Rows', dataType: 'AsDetail', isArray: true, editMode: 'inline', asDetailType: 'Test.PagedChild', order: 1 })],
+        };
+        const { fixture, component } = createComponent({
+          getEntityTypes: vi.fn().mockResolvedValue([refParent, refChild]),
+          executeQueryByName: vi.fn().mockResolvedValue({ columns: [], items: [{ id: 'companies/1', breadcrumb: 'Acme', values: [] }], totalItems }),
+        } as any);
+        component.formData.set({ Rows: [{ CompanyId: null }, { CompanyId: 'companies/1' }] });
+        await setEntityType(fixture, refParent);
+        fixture.detectChanges();
+        return fixture;
+      }
+
+      it('an inline row column renders the picker, not a <bs-select>, when totalItems exceeds the rows loaded', async () => {
+        const fixture = await mountInline(120);
+
+        expect(fixture.nativeElement.querySelectorAll('tbody spark-reference-picker').length).toBe(2);
+        expect(fixture.nativeElement.querySelector('tbody bs-select')).toBeFalsy();
+        const picker = fixture.debugElement.query(By.directive(SparkReferencePickerComponent)).componentInstance as SparkReferencePickerComponent;
+        expect(picker.query()).toBe('CompanyQuery');
+      });
+
+      it('an inline row column keeps its <bs-select> when every row was loaded', async () => {
+        const fixture = await mountInline(1);
+
+        expect(fixture.nativeElement.querySelector('tbody spark-reference-picker')).toBeFalsy();
+        expect(fixture.nativeElement.querySelectorAll('tbody bs-select').length).toBe(2);
+      });
+
+      it('a main-form Reference renders the picker whatever the page count', async () => {
+        for (const totalItems of [1, 120]) {
+          TestBed.resetTestingModule();
+          const { fixture } = createComponent({
+            executeQueryByName: vi.fn().mockResolvedValue({ columns: [], items: allCompanies, totalItems }),
+          } as any);
+          await setEntityType(fixture, personType);
+          fixture.detectChanges();
+
+          const picker = fixture.debugElement.query(By.directive(SparkReferencePickerComponent));
+          expect(picker).toBeTruthy();
+          expect((picker.componentInstance as SparkReferencePickerComponent).query()).toBe('CompanyQuery');
+        }
+      });
+    });
+
     describe('reference labels in collection rows (D10)', () => {
       // Two rows were loaded, both pointing at companies/500, which lies outside the options page.
       // Rows are matched to their loaded copy by row key, never by position.

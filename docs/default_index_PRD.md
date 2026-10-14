@@ -153,8 +153,13 @@ Today a generated root whose name is taken is silently dropped, and member names
   debounced through `spark-search-box`, pager from `totalItems`), the same mechanism as the query grid; a refresh
   hook's replacement list stays in memory. A multi-reference's tree-select uses `ReferenceQueryTreeSelectProvider`
   the same way, and a picked row joins the form's options so the table and the conflict dialog label it. Green: 3/3
-  in that class. Server search over `Professions_Lookup` needed no change. Still capped: an inline AsDetail
-  `<select>` (non-modal reference column) lists one page.
+  in that class. Server search over `Professions_Lookup` needed no change. The inline AsDetail `<select>` (non-modal
+  reference column) lists one page, so (owner's decision, 2026-10-14) such a column renders the server-paged picker
+  instead whenever the query's `totalItems` exceeds the rows loaded (`inlineRefUsesPicker`, the total kept per column
+  in `asDetailReferenceTotals` from the options request). Red before: spec "an inline row column renders the picker,
+  not a <bs-select>, when totalItems exceeds the rows loaded" (`spark-po-form.component.spec.ts`), 0 pickers found,
+  2 expected; green after. No E2E: HR's only inline-row reference (`CarreerJob.ProfessionId`) is already `Modal`. A
+  top-level Reference always renders the picker.
 
 ## 5. Scope
 

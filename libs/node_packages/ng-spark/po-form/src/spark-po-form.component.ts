@@ -280,6 +280,22 @@ export class SparkPoFormComponent {
 
   // Reference options for columns within array AsDetail types (keyed by parent attr name, then column name)
   asDetailReferenceOptions = signal<Record<string, Record<string, QueryResultItem[]>>>({});
+  /** The reference query's `totalItems` per AsDetail column, keyed like {@link asDetailReferenceOptions}. */
+  asDetailReferenceTotals = signal<Record<string, Record<string, number>>>({});
+
+  /**
+   * Whether an inline row's Reference column renders the server-paged picker rather than a `<select>`:
+   * the model asks for the modal, or the query has more rows than the options loaded. A `<select>` can
+   * only list the loaded rows (the query's first page, 50 by default), so a candidate past that page
+   * could not be chosen at all; the picker pages and searches the query on the server. The total comes
+   * from the same request that loaded the options. Rows picked later join the options, and once they
+   * hold every row the select lists the whole set again.
+   */
+  inlineRefUsesPicker(attr: EntityAttributeDefinition, col: EntityAttributeDefinition): boolean {
+    if (col.referenceDisplayType === EReferenceDisplayType.Modal) return true;
+    const total = this.asDetailReferenceTotals()[attr.name]?.[col.name] ?? 0;
+    return total > (this.asDetailReferenceOptions()[attr.name]?.[col.name]?.length ?? 0);
+  }
 
   // Reference/Lookup picking is owned by the standalone spark-reference-picker /
   // spark-lookup-picker components (per-instance modal state); the form just feeds them
@@ -484,10 +500,11 @@ export class SparkPoFormComponent {
             const refEntries = await Promise.all(
               refCols.filter(c => c.query).map(async col => {
                 const result = await this.sparkService.executeQueryByName(col.query!, this.optionQueryParent());
-                return [col.name, result.items] as [string, QueryResultItem[]];
+                return [col.name, result] as const;
               })
             );
-            this.asDetailReferenceOptions.update(prev => ({ ...prev, [attr.name]: this.toRecord(refEntries) }));
+            this.asDetailReferenceOptions.update(prev => ({ ...prev, [attr.name]: this.toRecord(refEntries.map(([name, r]) => [name, r.items])) }));
+            this.asDetailReferenceTotals.update(prev => ({ ...prev, [attr.name]: this.toRecord(refEntries.map(([name, r]) => [name, r.totalItems ?? 0])) }));
           }
 
           // Inline editing of LookupReference child columns needs their options loaded

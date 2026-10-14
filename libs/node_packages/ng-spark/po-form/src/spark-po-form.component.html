@@ -139,7 +139,8 @@
                     (ngModelChange)="onInlineCellChange(attr, rowIndex, col)">
                   </bs-checkbox>
                 } @else if (col.dataType === 'Reference' && col.query) {
-                  @if (col.referenceDisplayType === EReferenceDisplayType.Modal) {
+                  <!-- The picker also when the query has more rows than the select could list (one page). -->
+                  @if (inlineRefUsesPicker(attr, col)) {
                     <spark-reference-picker
                       [value]="row[col.name]"
                       [options]="(attr | inlineRefOptions:col:asDetailReferenceOptions())"

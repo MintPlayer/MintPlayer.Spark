@@ -81,8 +81,11 @@ resolved to a filtered root moves to the plain root's query, or loses its query 
   the new `ReferenceQueryTreeSelectProvider` ("load more" is the next server page). A picked row from a later page
   joins the form's options, so the textbox, the AsDetail table and the conflict dialog label it. A refresh hook's
   replacement option list is still searched in memory. `spark-reference-picker` gains `query`, `queryParent` and
-  `rowPicked`; `spark-po-form` gains `referencePicked`. An inline AsDetail `<select>` (non-modal reference column)
-  still lists one page: use `referenceDisplayType: "Modal"` for long lists.
+  `rowPicked`; `spark-po-form` gains `referencePicked`.
+- **An inline AsDetail reference column switches to the picker when its query has more than one page.** A non-modal
+  column's `<select>` lists only the rows loaded (one page, 50 by default); when the query's `totalItems` exceeds them,
+  the column renders the server-paged `spark-reference-picker` instead, with no extra request. Short lists keep the
+  `<select>`.
 - MCP `describe` states each reference's query.
 
 ## Deploy notes
