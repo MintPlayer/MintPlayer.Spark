@@ -144,10 +144,12 @@ public sealed record GitWriterAutoResolve(string Path, IReadOnlyList<string>? Ke
 }
 
 /// <summary>The body of <c>POST /jobs/prepare</c>. <paramref name="ExpectedQueueSha"/> null means the queue branch must not exist.</summary>
+/// <param name="AllowWorkflowChanges">Whether the net change may touch <c>.github/**</c> (§0 D63): false makes the writer
+/// refuse it before anything is pushed (<c>touches-workflows</c>).</param>
 public sealed record GitWriterPrepareRequest(
     string Provider, string RepoId, string CloneUrl, SidecarCredential Credential, string BaseBranch, string? BaseSha,
     string HeadRef, string HeadSha, string QueueBranch, string? ExpectedQueueSha, IReadOnlyList<GitWriterAutoResolve> AutoResolve,
-    GitWriterIdentity Author, GitWriterIdentity Committer, string Message);
+    GitWriterIdentity Author, GitWriterIdentity Committer, string Message, bool AllowWorkflowChanges = false);
 
 /// <summary>The body of <c>POST /jobs/publish</c>. <paramref name="Patch"/> is the regenerate artifact's bytes, base64,
 /// or null when nothing was regenerated; <paramref name="PushUrl"/> is the fork's clone URL for a fork's pull request (O3).</summary>

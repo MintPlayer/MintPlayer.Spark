@@ -309,6 +309,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         entry.PreparedSha = null;
         entry.ResolvedPaths = [];
         entry.BaseChangedWorkflows = false;
+        entry.WorkflowPaths = [];
         entry.DispatchRunId = null;
         entry.DispatchRunUrl = null;
         entry.DispatchRunFinished = false;
@@ -511,9 +512,13 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                 + "Rename the branch, or rebase it by hand and queue it again.", ct: ct);
             return;
         }
-        // T9 (§0 D59): the prepare pushes only to the base repository's queue branch, and a change under .github/** never
-        // gets that far (the writer refuses it, D12), so its token never needs the workflow permission.
-        if (await WriterAccessAsync(context, entry, pullRequest: null, pushesWorkflowChanges: false, ct) is not { } access) return;
+        // T9 (§0 D59): the prepare pushes to the base repository's queue branch. A fork's change under .github/** never
+        // gets that far (§0 D63), so only a same-repository change to .github/workflows/** needs the workflow permission:
+        // as the forge's compare lists the changes, or when it could not (missing, or capped at 300 files).
+        var mayPushWorkflowFiles = MergeQueueWorkflowGuard.MayPushWorkflowChanges(entry.IsFork)
+            && (comparison is null || comparison.Truncated
+                || comparison.Files.Any(f => MergeQueueWorkflowGuard.IsWorkflowFile(f.Path) || MergeQueueWorkflowGuard.IsWorkflowFile(f.PreviousPath)));
+        if (await WriterAccessAsync(context, entry, pullRequest: null, mayPushWorkflowFiles, ct) is not { } access) return;
 
         var result = await WithAccessAsync(context, access, credential => writer.PrepareAsync(new GitWriterPrepareRequest(
             Provider: repository.Provider.ToCanonicalString(),
@@ -531,7 +536,8 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                 : new GitWriterAutoResolve(r.Path, r.Keys))],
             Author: new GitWriterIdentity(entry.AuthorLogin ?? "unknown", options.Value.AuthorEmailFormat.Replace("{login}", entry.AuthorLogin ?? "unknown", StringComparison.Ordinal)),
             Committer: Committer(),
-            Message: CommitMessage(entry)), ct));
+            Message: CommitMessage(entry),
+            AllowWorkflowChanges: MergeQueueWorkflowGuard.MayPushWorkflowChanges(entry.IsFork)), ct));
 
         switch (result.Outcome)
         {
@@ -540,17 +546,27 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                 entry.PreparedSha = prepared;
                 entry.ResolvedPaths = [.. result.ResolvedPaths];
                 entry.BaseChangedWorkflows = result.BaseChangedWorkflows;
+                entry.WorkflowPaths = result.TouchesWorkflows ? [.. result.Paths] : [];
                 Remember(entry, prepared);
                 var found = result.Reason == GitWriterReasons.AlreadyPushed ? " (found on the queue branch: an earlier attempt's push, §0 D52)" : string.Empty;
-                if (NeedsRegeneration(entry))
+                // §0 D63: whether to dispatch is decided in one place, together with what a .github/** change may do.
+                switch (MergeQueueWorkflowGuard.AfterPrepare(entry.Config, entry.ResolvedPaths.Count, result.TouchesWorkflows, entry.IsFork, bypassesQueueRules: false))
                 {
-                    Transition(entry, EMergeQueueEntryState.Preparing, $"prepared {Short(prepared)} on {Short(entry.BaseSha)}{found}; regenerating {entry.ResolvedPaths.Count} resolved path(s)");
-                    await ScheduleAsync(entry, EMergeQueueStep.Dispatch, null, ct);
-                }
-                else
-                {
-                    Transition(entry, EMergeQueueEntryState.Publishing, $"prepared {Short(prepared)} on {Short(entry.BaseSha)}{found}; nothing to regenerate");
-                    await ScheduleAsync(entry, EMergeQueueStep.Publish, null, ct);
+                    case EMergeQueuePlan.Dispatch:
+                        Transition(entry, EMergeQueueEntryState.Preparing, $"prepared {Short(prepared)} on {Short(entry.BaseSha)}{found}; regenerating {entry.ResolvedPaths.Count} resolved path(s)");
+                        await ScheduleAsync(entry, EMergeQueueStep.Dispatch, null, ct);
+                        break;
+                    case EMergeQueuePlan.Publish:
+                        Transition(entry, EMergeQueueEntryState.Publishing, $"prepared {Short(prepared)} on {Short(entry.BaseSha)}{found}; nothing to regenerate"
+                            + (result.TouchesWorkflows ? "; its .github/** change goes through, as no workflow will be dispatched (O21 A)" : string.Empty));
+                        await ScheduleAsync(entry, EMergeQueueStep.Publish, null, ct);
+                        break;
+                    default:
+                        await EvictAsync(context, entry, "touches-workflows",
+                            "The pull request changes files under `.github/` and needs the regenerate workflow, whose run would execute the queue branch's "
+                            + "workflow files with this repository's context (D12, O21 A). Regenerate and rebase by hand, or merge it by hand (an admin may: O21 B).",
+                            result.Paths, ct: ct);
+                        return;
                 }
                 await PublishCheckAsync(context, entry, ct);
                 break;
@@ -558,7 +574,8 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             case GitWriterOutcomes.Evicted:
                 await EvictAsync(context, entry, result.Reason ?? "conflict",
                     result.Reason == "touches-workflows"
-                        ? "The pull request changes files under `.github/`. The queue never runs a workflow a pull request has changed (D12); merge it by hand."
+                        ? "The pull request comes from a fork and changes files under `.github/`. The queue never pushes such a change to a branch of this "
+                          + "repository: the push alone would start this repository's push workflows from the fork's own workflow files (D12, §0 D63). Merge it by hand."
                         : $"Rebasing onto `{entry.BaseBranch}` conflicts in files the queue may not resolve ({result.Reason}). Only generated files are resolved automatically (O1); rebase by hand and queue it again."
                           + (result.Detail is { Length: > 0 } detail ? $"\n\n{detail}" : string.Empty),
                     result.Paths, ct: ct);
@@ -585,13 +602,6 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                 throw new GitWriterUnavailableException($"The git writer answered prepare with {result.Outcome}: {result.Detail}");
         }
     }
-
-    private bool NeedsRegeneration(MergeQueueEntry entry) => entry.Config.PostRebaseActionName is not null && entry.Config.PostRebaseWhen switch
-    {
-        EPostRebaseWhen.Always => true,
-        EPostRebaseWhen.Never => false,
-        _ => entry.ResolvedPaths.Count > 0,
-    };
 
     private async Task ResetQueueBranchAsync(Context context, MergeQueueEntry entry, CancellationToken ct)
     {
@@ -648,8 +658,9 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         var file = entry.Config.PostRebaseActionName!;
         var path = $".github/workflows/{file}";
 
-        // D12: the run executes the workflow file of the dispatched ref. Prepare already evicts a pull request that
-        // touches .github/**; this asserts the file on the queue commit is byte-for-byte the default branch's.
+        // D12: the run executes the workflow file of the dispatched ref. A change under .github/** reaches a dispatch only
+        // through O22's bypass role (a same-repository pull request, §0 D63); either way, the regenerate workflow itself
+        // must be byte-for-byte the default branch's, and that is never bypassed.
         var atDefault = await context.Queue.GetFileBlobShaAsync(repository, repository.DefaultBranch ?? entry.BaseBranch, path, ct);
         if (atDefault is null)
         {
@@ -1235,10 +1246,11 @@ public partial class MergeQueueEngine : IMergeQueueEngine
 
     /// <summary>
     /// §0 D59: whether a publish may carry workflow files its target lacks. A fork that holds only the pinned head lacks
-    /// the base's when the base changed them since. A same-repository branch's push carries only workflow files the
-    /// repository has on a branch already, which GitHub allows without the permission.
+    /// the base's when the base changed them since. A same-repository publish needs the permission when the pull
+    /// request's own change touches <c>.github/workflows/**</c> (O21 A lets it through when nothing is dispatched).
     /// </summary>
-    private static bool PublishPushesWorkflowChanges(MergeQueueEntry entry) => entry.IsFork && entry.BaseChangedWorkflows;
+    private static bool PublishPushesWorkflowChanges(MergeQueueEntry entry)
+        => entry.IsFork ? entry.BaseChangedWorkflows : entry.WorkflowPaths.Any(MergeQueueWorkflowGuard.IsWorkflowFile);
 
     private static string PullHeadRef(MergeQueueEntry entry) => $"refs/pull/{entry.Number.ToString(CultureInfo.InvariantCulture)}/head";
 

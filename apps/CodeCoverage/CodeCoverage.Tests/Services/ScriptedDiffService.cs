@@ -132,10 +132,13 @@ public sealed class ScriptedDiffService(CommitComparison? comparison = null)
     public Task<string?> GetFirstParentAsync(Repository repository, string sha, CancellationToken cancellationToken = default)
         => Task.FromResult(Parents.TryGetValue(sha, out var parent) ? parent : null);
 
+    /// <summary>What <see cref="CompareAsync"/> answers; the constructor's value until a test scripts another.</summary>
+    public CommitComparison? Comparison { get; set; } = comparison;
+
     public Task<CommitComparison?> CompareAsync(Repository repository, string baseRef, string headSha, CancellationToken cancellationToken = default)
     {
         Calls.Add((baseRef, headSha));
-        return Task.FromResult(comparison);
+        return Task.FromResult(Comparison);
     }
 
     public Task<string?> GetFileContentAsync(Repository repository, string sha, string path, CancellationToken cancellationToken = default)

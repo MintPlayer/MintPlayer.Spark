@@ -89,6 +89,12 @@ public class MergeQueueEntry
     /// </summary>
     public bool BaseChangedWorkflows { get; set; }
 
+    /// <summary>
+    /// The <c>.github/**</c> paths the pull request's net change touches, as the prepare reported them. Allowed only when
+    /// nothing is dispatched, or through O22's bypass role (§0 D63).
+    /// </summary>
+    public List<string> WorkflowPaths { get; set; } = [];
+
     /// <summary>The regenerate workflow run (D14).</summary>
     public long? DispatchRunId { get; set; }
 
