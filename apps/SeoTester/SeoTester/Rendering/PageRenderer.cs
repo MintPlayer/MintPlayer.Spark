@@ -78,7 +78,7 @@ public sealed partial class PageRenderer(ChromiumBrowser chromium, ILogger<PageR
         var phone = await NewContextAsync(browser, mobile: true, major);
         try
         {
-            using var close = budget.Token.Register(() => _ = CloseAsync(phone));
+            using var close = budget.Token.Register(() => _ = chromium.CloseAsync(phone));
             var router = new BrowserRouter(network, budget.Token);
             await router.AttachAsync(phone);
             var page = await phone.NewPageAsync();
@@ -105,7 +105,7 @@ public sealed partial class PageRenderer(ChromiumBrowser chromium, ILogger<PageR
         }
         finally
         {
-            await CloseAsync(phone);
+            await chromium.CloseAsync(phone);
         }
 
         // ---- The desktop. ----------------------------------------------------------------------------------------
@@ -114,7 +114,7 @@ public sealed partial class PageRenderer(ChromiumBrowser chromium, ILogger<PageR
             var wide = await NewContextAsync(browser, mobile: false, major);
             try
             {
-                using var close = budget.Token.Register(() => _ = CloseAsync(wide));
+                using var close = budget.Token.Register(() => _ = chromium.CloseAsync(wide));
                 var router = new BrowserRouter(network, budget.Token);
                 await router.AttachAsync(wide);
                 var page = await wide.NewPageAsync();
@@ -131,7 +131,7 @@ public sealed partial class PageRenderer(ChromiumBrowser chromium, ILogger<PageR
             }
             finally
             {
-                await CloseAsync(wide);
+                await chromium.CloseAsync(wide);
             }
         }
 
@@ -287,17 +287,6 @@ public sealed partial class PageRenderer(ChromiumBrowser chromium, ILogger<PageR
         var result = await work();
         timings[step] = watch.ElapsedMilliseconds;
         return result;
-    }
-
-    private static async Task CloseAsync(IBrowserContext context)
-    {
-        try
-        {
-            await context.CloseAsync();
-        }
-        catch (PlaywrightException)
-        {
-        }
     }
 
     [GeneratedRegex(@"\S+")]

@@ -36,6 +36,13 @@ public sealed class BrowserOptions
     /// verified pages × 50 s stay under <c>seo-render</c>'s 10-minute handler timeout.
     /// </summary>
     public TimeSpan PageBudget { get; set; } = TimeSpan.FromSeconds(50);
+
+    /// <summary>
+    /// Closing a browser context, or the browser: Playwright's close has no timeout of its own, so past this the browser
+    /// is torn down instead (<see cref="ChromiumBrowser.CloseAsync(IBrowserContext)"/>). A failure bound: a close takes
+    /// well under a second.
+    /// </summary>
+    public TimeSpan CloseTimeout { get; set; } = TimeSpan.FromSeconds(30);
 }
 
 /// <summary>
@@ -43,7 +50,8 @@ public sealed class BrowserOptions
 /// <c>ConnectAsync</c>, always with <see cref="HardeningArgs"/>, so that whatever Playwright's routing does not see
 /// (a preconnect, a WebSocket, UDP) has nowhere to go. Every context it hands out is routed by
 /// <see cref="BrowserRouter"/>: Chromium itself never resolves a name or opens a connection to a site. Reconnects when
-/// the browser went away (a container restart).
+/// the browser went away (a container restart), and tears it down when a close of it hangs
+/// (<see cref="BrowserOptions.CloseTimeout"/>).
 /// </summary>
 public sealed class ChromiumBrowser(IOptions<BrowserOptions> options, ILogger<ChromiumBrowser> logger) : IAsyncDisposable
 {
@@ -92,18 +100,19 @@ public sealed class ChromiumBrowser(IOptions<BrowserOptions> options, ILogger<Ch
         {
             if (browser is { IsConnected: true } existing)
                 return existing;
-            if (browser is not null)
+            if (browser is { } gone)
             {
                 logger.LogWarning("The headless browser went away; reconnecting");
-                await SafeCloseAsync(browser);
+                await CloseOrTearDownAsync(gone.CloseAsync(), gone, "the browser that went away");
                 browser = null;
             }
-            playwright ??= await Playwright.CreateAsync();
+            // A local: a teardown (TearDown) may clear the field meanwhile.
+            var driver = playwright ??= await Playwright.CreateAsync();
             var o = options.Value;
             browser = o.Mode switch
             {
-                BrowserMode.Launch => await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions { Headless = true, Args = HardeningArgs, Proxy = DeadProxy }),
-                BrowserMode.Connect when !string.IsNullOrWhiteSpace(o.Endpoint) => await playwright.Chromium.ConnectAsync(o.Endpoint, new BrowserTypeConnectOptions
+                BrowserMode.Launch => await driver.Chromium.LaunchAsync(new BrowserTypeLaunchOptions { Headless = true, Args = HardeningArgs, Proxy = DeadProxy }),
+                BrowserMode.Connect when !string.IsNullOrWhiteSpace(o.Endpoint) => await driver.Chromium.ConnectAsync(o.Endpoint, new BrowserTypeConnectOptions
                 {
                     Timeout = 30_000,
                     // The run-server launches Chromium with these: the flags travel with every connection, so the container
@@ -130,19 +139,70 @@ public sealed class ChromiumBrowser(IOptions<BrowserOptions> options, ILogger<Ch
         proxy = new { server = DeadProxy.Server, bypass = DeadProxy.Bypass },
     });
 
+    /// <summary>
+    /// Closes a context of this browser (a render's, the PDF export's), waiting at most
+    /// <see cref="BrowserOptions.CloseTimeout"/>: past it the browser is torn down (<see cref="TearDown"/>).
+    /// </summary>
+    public Task CloseAsync(IBrowserContext context) => CloseOrTearDownAsync(context.CloseAsync(), context.Browser, "a browser context");
+
     public async ValueTask DisposeAsync()
     {
-        if (browser is not null)
-            await SafeCloseAsync(browser);
+        if (browser is { } open)
+            await CloseOrTearDownAsync(open.CloseAsync(), open, "the browser");
         playwright?.Dispose();
         gate.Dispose();
     }
 
-    private static async Task SafeCloseAsync(IBrowser browser)
+    /// <summary>
+    /// Waits for <paramref name="close"/> at most <see cref="BrowserOptions.CloseTimeout"/>, then tears
+    /// <paramref name="owner"/> down. Playwright's close has no timeout of its own (it waits for the driver's answer), and
+    /// a render that waits on a browser that hangs would hold the render gate for good.
+    /// </summary>
+    private async Task CloseOrTearDownAsync(Task close, IBrowser? owner, string what)
+    {
+        var closing = IgnoreGoneAsync(close);
+        using var timer = new CancellationTokenSource();
+        if (await Task.WhenAny(closing, Task.Delay(options.Value.CloseTimeout, timer.Token)) == closing)
+        {
+            timer.Cancel();
+            await closing;
+            return;
+        }
+        logger.LogWarning("Closing {What} took longer than {Timeout}; tearing the headless browser down", what, options.Value.CloseTimeout);
+        TearDown(owner);
+    }
+
+    /// <summary>
+    /// Disposes this process's Playwright driver, if <paramref name="owner"/> is still the browser (once: a browser that
+    /// replaced it is left alone). That fails every call still waiting on the driver, the hung close among them. As the
+    /// driver exits it kills the browser it launched, with its process tree (after at most 30 s of its own graceful
+    /// close); over <c>ConnectAsync</c> the connection drops. The next <see cref="GetAsync"/> starts a new driver.
+    /// </summary>
+    private void TearDown(IBrowser? owner)
+    {
+        if (owner is null || Interlocked.CompareExchange(ref browser, null, owner) != owner)
+            return;
+        if (Interlocked.Exchange(ref playwright, null) is not { } driver)
+            return;
+        // Dispose waits for the driver to exit: not on the caller's thread.
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                driver.Dispose();
+            }
+            catch (Exception ex)
+            {
+                logger.LogDebug(ex, "Disposing the torn-down Playwright driver failed");
+            }
+        });
+    }
+
+    private static async Task IgnoreGoneAsync(Task close)
     {
         try
         {
-            await browser.CloseAsync();
+            await close;
         }
         catch (PlaywrightException)
         {

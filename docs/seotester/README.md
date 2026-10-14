@@ -221,6 +221,7 @@ connections, no pause).
 | `SeoTester:Browser:NavigationTimeout` | `00:00:20` | one page load |
 | `SeoTester:Browser:SettleTimeout` | `00:00:05` | after `load`, at most this long for the network to go quiet |
 | `SeoTester:Browser:PageBudget` | `00:00:50` | everything one sampled page may take (10 pages fit the 10-minute handler timeout) |
+| `SeoTester:Browser:CloseTimeout` | `00:00:30` | closing a page's browser context, or the browser; past it the browser is torn down (a launched one is killed with its processes, a connection dropped) and the next render starts afresh |
 | `SeoTester:PageSpeed:Strategy` | `MOBILE` | |
 | `SeoTester:PageSpeed:CacheFor` | `1.00:00:00` | a measured page is reused this long |
 | `SeoTester:PageSpeed:QuotaRetries`, `…:QuotaRetryDelay` | 3, `00:02:00` (× attempt) | after a 429 |
