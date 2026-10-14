@@ -46,6 +46,29 @@ internal sealed class MergeQueueHarness
             retryFlaky: 1
         """;
 
+    public const string RegeneratePath = ".github/workflows/regenerate.yml";
+
+    /// <summary>The setup guide's regenerate workflow in its essentials (§5.6): dispatch only, <c>contents: read</c>, no
+    /// secret, a GitHub-hosted runner. The fork precondition passes it (§0 D65).</summary>
+    public const string SafeRegenerate = """
+        name: regenerate
+        on:
+          workflow_dispatch:
+            inputs:
+              expected_sha:
+                required: true
+        permissions:
+          contents: read
+        jobs:
+          regenerate:
+            runs-on: ubuntu-latest
+            steps:
+              - uses: actions/checkout@v7
+                with:
+                  ref: ${{ github.sha }}
+                  persist-credentials: false
+        """;
+
     private readonly IDocumentStore store;
 
     public IDocumentStore Store => store;
@@ -73,6 +96,9 @@ internal sealed class MergeQueueHarness
         Queue.CheckStates[Final] = Green(Final);
         Queue.Blobs["master:.github/workflows/regenerate.yml"] = "b10b";
         Queue.Blobs[$"{Prepared}:.github/workflows/regenerate.yml"] = "b10b";
+        // §0 D65: what the fork precondition reads, safe unless a test says otherwise: the regenerate template only.
+        Queue.WorkflowFiles["master"] = [new(RegeneratePath, SafeRegenerate)];
+        Queue.WorkflowFiles[BaseSha] = [new(RegeneratePath, SafeRegenerate)];
         Forge.GitAccess[RepositoryId] = new ForgeGitAccess("https://github.com/acme/widget.git", "x-access-token", "test-token", "github:4242");
     }
 

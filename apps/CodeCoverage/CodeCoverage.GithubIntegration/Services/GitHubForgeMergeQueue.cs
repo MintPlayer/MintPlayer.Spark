@@ -578,6 +578,68 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
         return root.ValueKind == JsonValueKind.Object && Str(root, "type") == "file" ? Str(root, "sha") : null;
     }
 
+    /// <summary>
+    /// <c>GET /contents/.github/workflows?ref=</c> for the listing (404: no folder, no workflows), then each workflow's
+    /// blob by its sha (<c>GET /git/blobs/{sha}</c>, which unlike the contents API serves files past 1 MB too). Workflow
+    /// names are matched case-insensitively, which is never fewer files than GitHub reads.
+    /// </summary>
+    public async Task<IReadOnlyList<ForgeWorkflowFile>> GetWorkflowFilesAsync(Repository repository, string gitRef, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(gitRef);
+        const string folder = ".github/workflows";
+        List<(string Path, string? Type, long? Size, string? Sha)> entries;
+        using (var listing = await SendAsync(repository, HttpMethod.Get,
+            $"{RepoPath(repository)}/contents/.github/workflows?ref={Uri.EscapeDataString(gitRef)}", null, DefaultApiVersion, cancellationToken))
+        {
+            if (listing.Status == HttpStatusCode.NotFound) return [];
+            EnsureSuccess(listing);
+            var root = listing.Json?.RootElement ?? default;
+            if (root.ValueKind != JsonValueKind.Array)
+                return [new ForgeWorkflowFile(folder, null, $"`{folder}` is a {Str(root, "type") ?? "thing"} here, not a folder")];
+            entries = [.. root.EnumerateArray()
+                .Select(e => (Path: Str(e, "path") ?? $"{folder}/{Str(e, "name")}", Type: Str(e, "type"), Size: Num(e, "size"), Sha: Str(e, "sha")))
+                .Where(e => e.Path.EndsWith(".yml", StringComparison.OrdinalIgnoreCase) || e.Path.EndsWith(".yaml", StringComparison.OrdinalIgnoreCase))
+                .OrderBy(e => e.Path, StringComparer.Ordinal)];
+        }
+
+        var files = new List<ForgeWorkflowFile>();
+        foreach (var (path, type, size, sha) in entries)
+        {
+            if (files.Count >= ForgeWorkflowFile.MaxFiles)
+                files.Add(new ForgeWorkflowFile(path, null, $"past the first {ForgeWorkflowFile.MaxFiles} workflow files"));
+            else if (type != "file" || sha is null || !CommitSha().IsMatch(sha))
+                files.Add(new ForgeWorkflowFile(path, null, $"a {type ?? "thing"}, not a file"));
+            else if (size is not { } bytes || bytes > ForgeWorkflowFile.MaxBytes)
+                files.Add(new ForgeWorkflowFile(path, null, $"over {ForgeWorkflowFile.MaxBytes} bytes"));
+            else
+                files.Add(await ReadWorkflowAsync(repository, path, sha, cancellationToken));
+        }
+        return files;
+    }
+
+    private async Task<ForgeWorkflowFile> ReadWorkflowAsync(Repository repository, string path, string sha, CancellationToken cancellationToken)
+    {
+        using var blob = await SendAsync(repository, HttpMethod.Get, $"{RepoPath(repository)}/git/blobs/{sha}", null, DefaultApiVersion, cancellationToken);
+        EnsureSuccess(blob);
+        var root = blob.Json?.RootElement ?? default;
+        if (Str(root, "encoding") != "base64" || Str(root, "content") is not { } content)
+            return new ForgeWorkflowFile(path, null, "GitHub did not hand over its content");
+        try
+        {
+            var bytes = Convert.FromBase64String(content.Replace("\n", "", StringComparison.Ordinal));
+            if (bytes.Length > ForgeWorkflowFile.MaxBytes)
+                return new ForgeWorkflowFile(path, null, $"over {ForgeWorkflowFile.MaxBytes} bytes");
+            var text = StrictUtf8.GetString(bytes);
+            return new ForgeWorkflowFile(path, text.StartsWith('﻿') ? text[1..] : text);
+        }
+        catch (Exception ex) when (ex is FormatException or DecoderFallbackException)
+        {
+            return new ForgeWorkflowFile(path, null, "not UTF-8 text");
+        }
+    }
+
+    private static readonly UTF8Encoding StrictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
+
     // ── The merge ────────────────────────────────────────────────────────────────────────────────
 
     public async Task<ForgeMergeRequest> RequestMergeAsync(

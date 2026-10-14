@@ -673,6 +673,87 @@ public class GitHubForgeMergeQueueTests
     public async Task A_path_that_climbs_is_refused()
         => await Throws<ArgumentException>(() => Queue(new StubGitHub()).GetFileBlobShaAsync(Target(), "main", ".github/../secrets"));
 
+    // ── The fork precondition's reads (§0 D65) ───────────────────────────────────────────────────
+
+    private const string BlobCi = "1111111111111111111111111111111111111111";
+    private const string BlobRelease = "2222222222222222222222222222222222222222";
+    private const string BlobReadme = "3333333333333333333333333333333333333333";
+
+    /// <summary><c>GET /git/blobs/{sha}</c>'s answer; GitHub wraps the base64 every 60 characters.</summary>
+    private static string Blob(byte[] content, bool wrap = true)
+    {
+        var base64 = Convert.ToBase64String(content);
+        var wrapped = wrap ? string.Join('\n', base64.Chunk(60).Select(c => new string(c))) + "\n" : base64;
+        return JsonSerializer.Serialize(new { sha = "x", size = content.Length, encoding = "base64", content = wrapped });
+    }
+
+    [Fact]
+    public async Task The_workflow_files_at_a_ref_are_listed_and_read_whole_from_their_blobs()
+    {
+        var ci = "name: ci\non:\n  push:\n    branches-ignore: ['mq/**']\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - run: " + new string('x', 200) + "\n";
+        var github = new StubGitHub()
+            .On(HttpMethod.Get, $"{Repo}/contents/.github/workflows?ref={Head}", HttpStatusCode.OK, $$"""
+                [{"name":"release.YAML","path":".github/workflows/release.YAML","type":"file","size":11,"sha":"{{BlobRelease}}"},
+                 {"name":"ci.yml","path":".github/workflows/ci.yml","type":"file","size":{{ci.Length}},"sha":"{{BlobCi}}"},
+                 {"name":"README.md","path":".github/workflows/README.md","type":"file","size":6,"sha":"{{BlobReadme}}"},
+                 {"name":"shared","path":".github/workflows/shared","type":"dir","size":0,"sha":"{{BlobReadme}}"}]
+                """)
+            .On(HttpMethod.Get, $"{Repo}/git/blobs/{BlobCi}", HttpStatusCode.OK, Blob(System.Text.Encoding.UTF8.GetBytes(ci)))
+            .On(HttpMethod.Get, $"{Repo}/git/blobs/{BlobRelease}", HttpStatusCode.OK, Blob([0xEF, 0xBB, 0xBF, .. "on: [push]\n"u8.ToArray()]));
+
+        var files = await Queue(github).GetWorkflowFilesAsync(Target(), Head);
+
+        files.Should().Equal([new ForgeWorkflowFile(".github/workflows/ci.yml", ci), new ForgeWorkflowFile(".github/workflows/release.YAML", "on: [push]\n")]);
+        github.Calls.Should().NotContain(c => c.Contains(BlobReadme, StringComparison.Ordinal), "only workflow names are read");
+    }
+
+    [Fact]
+    public async Task A_ref_without_a_workflows_folder_has_no_workflows()
+        => (await Queue(new StubGitHub()).GetWorkflowFilesAsync(Target(), "main")).Should().BeEmpty();
+
+    /// <summary>Never left out: what cannot be read whole is listed without content, and the caller counts it as unsafe.</summary>
+    [Fact]
+    public async Task A_workflow_that_cannot_be_read_whole_is_listed_unreadable_not_left_out()
+    {
+        var github = new StubGitHub()
+            .On(HttpMethod.Get, $"{Repo}/contents/.github/workflows?ref=main", HttpStatusCode.OK, $$"""
+                [{"name":"link.yml","path":".github/workflows/link.yml","type":"symlink","size":12,"sha":"{{BlobCi}}"},
+                 {"name":"huge.yml","path":".github/workflows/huge.yml","type":"file","size":{{ForgeWorkflowFile.MaxBytes + 1}},"sha":"{{BlobRelease}}"},
+                 {"name":"latin1.yml","path":".github/workflows/latin1.yml","type":"file","size":3,"sha":"{{BlobReadme}}"}]
+                """)
+            .On(HttpMethod.Get, $"{Repo}/git/blobs/{BlobReadme}", HttpStatusCode.OK, Blob([0x6F, 0x6E, 0xE9], wrap: false));
+
+        var files = await Queue(github).GetWorkflowFilesAsync(Target(), "main");
+
+        files.Select(f => (f.Path, f.Content)).Should().Equal([
+            (".github/workflows/huge.yml", (string?)null), (".github/workflows/latin1.yml", null), (".github/workflows/link.yml", null)]);
+        files.Should().OnlyContain(f => f.Unreadable != null);
+        github.Calls.Should().NotContain(c => c.Contains(BlobRelease, StringComparison.Ordinal) || c.Contains($"blobs/{BlobCi}", StringComparison.Ordinal),
+            "neither the oversized file nor the symlink is fetched");
+    }
+
+    [Fact]
+    public async Task A_workflows_path_that_is_not_a_folder_is_one_unreadable_entry()
+    {
+        var github = new StubGitHub().On(HttpMethod.Get, $"{Repo}/contents/.github/workflows?ref=main", HttpStatusCode.OK,
+            $$"""{"name":"workflows","path":".github/workflows","type":"symlink","sha":"{{BlobCi}}"}""");
+
+        var files = await Queue(github).GetWorkflowFilesAsync(Target(), "main");
+
+        files.Should().ContainSingle().Which.Content.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task A_refused_listing_names_the_permission_and_a_server_error_is_retryable()
+    {
+        var refused = new StubGitHub().On(HttpMethod.Get, $"{Repo}/contents/.github/workflows?ref=main", HttpStatusCode.Forbidden,
+            """{"message":"Resource not accessible by integration"}""");
+        var failing = new StubGitHub().On(HttpMethod.Get, $"{Repo}/contents/.github/workflows?ref=main", HttpStatusCode.BadGateway, """{"message":"Server Error"}""");
+
+        await Throws<ForgeAccessDeniedException>(() => Queue(refused).GetWorkflowFilesAsync(Target(), "main"));
+        await Throws<ForgeRequestException>(() => Queue(failing).GetWorkflowFilesAsync(Target(), "main"));
+    }
+
     // ── The merge (D13, D17) ─────────────────────────────────────────────────────────────────────
 
     [Fact]

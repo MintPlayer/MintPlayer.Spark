@@ -119,6 +119,19 @@ public interface IForgeMergeQueue
     Task<string?> GetFileBlobShaAsync(Repository repository, string gitRef, string path, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The workflow definitions at <paramref name="gitRef"/> (a branch or a sha): every file the forge would read as a
+    /// workflow there, with its text (on GitHub, each <c>*.yml</c>/<c>*.yaml</c> directly in <c>.github/workflows</c>),
+    /// in path order. Empty when there is none. The fork precondition reads them before the queue pushes a fork's code to
+    /// a queue branch (§0 D65).
+    /// </summary>
+    /// <remarks>
+    /// A workflow the forge cannot hand over whole (a symlink, a submodule, over 1 MiB, not UTF-8, or past
+    /// <see cref="ForgeWorkflowFile.MaxFiles"/>) is listed with a null <see cref="ForgeWorkflowFile.Content"/> and the
+    /// reason, never left out: the caller must count what it cannot read as unsafe.
+    /// </remarks>
+    Task<IReadOnlyList<ForgeWorkflowFile>> GetWorkflowFilesAsync(Repository repository, string gitRef, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Asks the forge to merge pull request <paramref name="number"/> if, and only if, its head is still
     /// <paramref name="sha"/> (D13). Never bypasses the repository's rules.
     /// </summary>
@@ -317,6 +330,17 @@ public sealed record ForgeWorkflowRun(long Id, string Status, string? Conclusion
 }
 
 /// <summary>An artifact's one file, or why there is none.</summary>
+/// <summary>One workflow definition (§0 D65): its repository path and text, or, when the forge could not hand it over
+/// whole, a null <paramref name="Content"/> and <paramref name="Unreadable"/>, the reason.</summary>
+public sealed record ForgeWorkflowFile(string Path, string? Content, string? Unreadable = null)
+{
+    /// <summary>The largest workflow file read; a larger one is listed unreadable.</summary>
+    public const int MaxBytes = 1024 * 1024;
+
+    /// <summary>The most workflow files read at one ref; the rest are listed unreadable.</summary>
+    public const int MaxFiles = 200;
+}
+
 public sealed record ForgeArtifactDownload(EForgeArtifactOutcome Outcome, string? FileName, byte[]? Content, string? Detail);
 
 public enum EForgeArtifactOutcome

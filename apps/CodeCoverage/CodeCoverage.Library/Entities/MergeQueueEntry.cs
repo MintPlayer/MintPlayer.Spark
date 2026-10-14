@@ -77,8 +77,16 @@ public class MergeQueueEntry
     /// <summary>The base branch's head this attempt was built on.</summary>
     public string? BaseSha { get; set; }
 
-    /// <summary>The squashed, rebased commit on the queue branch (§5.1 step 1).</summary>
+    /// <summary>The squashed, rebased commit the prepare built (§5.1 step 1). The writer pushes it nowhere until a dispatch
+    /// needs it on the queue branch (§0 D65); the publish rebuilds it.</summary>
     public string? PreparedSha { get; set; }
+
+    /// <summary>
+    /// The commit this run pushed to the queue branch, or null while the queue believes the branch does not exist (§0 D65).
+    /// Set only by the queue-branch push before a dispatch, so a run that never dispatches never creates the branch, and
+    /// the cleanup deletes only a branch that was pushed, under a lease on this commit (D5).
+    /// </summary>
+    public string? QueueBranchSha { get; set; }
 
     /// <summary>The paths the resolver took from the base side; non-empty means regeneration is due.</summary>
     public List<string> ResolvedPaths { get; set; } = [];
@@ -178,6 +186,10 @@ public class MergeQueueEntry
 
     // ── Time ─────────────────────────────────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// When this run was queued. Also the author and committer date of every commit the run writes (§0 D65), to the whole
+    /// second: the writer rebuilds the prepared commit from the request, so the date must not change within a run.
+    /// </summary>
     public DateTime EnqueuedAtUtc { get; set; }
 
     public DateTime? StartedAtUtc { get; set; }

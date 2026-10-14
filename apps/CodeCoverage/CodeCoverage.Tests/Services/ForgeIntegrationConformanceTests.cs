@@ -88,6 +88,7 @@ public class ForgeIntegrationConformanceTests
         (nameof(IForgeMergeQueue.ListWorkflowRunsAsync), q => q.ListWorkflowRunsAsync(SampleRepository, "regenerate.yml", "mq/main/pr-1")),
         (nameof(IForgeMergeQueue.DownloadArtifactAsync), q => q.DownloadArtifactAsync(SampleRepository, 1, "merge-queue-patch", 1024)),
         (nameof(IForgeMergeQueue.GetFileBlobShaAsync), q => q.GetFileBlobShaAsync(SampleRepository, "main", ".github/workflows/regenerate.yml")),
+        (nameof(IForgeMergeQueue.GetWorkflowFilesAsync), q => q.GetWorkflowFilesAsync(SampleRepository, "main")),
         (nameof(IForgeMergeQueue.RequestMergeAsync), q => q.RequestMergeAsync(SampleRepository, 1, SampleSha, EForgeMergeMethod.Squash, null, null)),
         (nameof(IForgeMergeQueue.GetMergeRequestStatusAsync), q => q.GetMergeRequestStatusAsync(SampleRepository, 1, Guid.Empty.ToString())),
         (nameof(IForgeMergeQueue.GetReviewsAsync), q => q.GetReviewsAsync(SampleRepository, 1)),

@@ -28,11 +28,14 @@ public enum EMergeQueuePlan
 /// workflow-only change (a Dependabot Actions bump) goes through.
 /// </para>
 /// <para>
-/// <b>A fork's change never goes anywhere (§0 D63).</b> The queue's push to <c>mq/…</c> is a push to a branch of the base
-/// repository, and it alone starts the base's <c>push</c> workflows from the pushed commit's own workflow files, with the
-/// base's secrets. So the writer refuses a fork's <c>.github/**</c> change before it pushes anything
-/// (<see cref="MayPushWorkflowChanges"/>), and <see cref="AfterPrepare"/> evicts one should the writer ever report it. A
-/// same-repository branch was pushed by someone with write access, and its own push already ran those workflows.
+/// <b>A fork's change never goes anywhere (§0 D63).</b> The queue's push to <c>mq/…</c> before a dispatch is a push to a
+/// branch of the base repository, and it alone starts the base's <c>push</c> workflows from the pushed commit's own
+/// workflow files, with the base's secrets. So the writer refuses to prepare a fork's commit that changes <c>.github/**</c>
+/// against its base (<see cref="MayPushWorkflowChanges"/>; §0 D65 reads that from the merged tree), and
+/// <see cref="AfterPrepare"/> evicts one should the writer ever report it. A same-repository branch was pushed by someone
+/// with write access, and its own push already ran those workflows. Since §0 D65 the queue branch is pushed only for a
+/// dispatch, and for a fork only after <see cref="MergeQueueForkGuard"/> found no workflow that could run the fork's code
+/// there with the base's secrets.
 /// </para>
 /// <para>
 /// <b>O22's bypass role</b> lets a same-repository change that needs the dispatch through as well. Never a fork's: T5's

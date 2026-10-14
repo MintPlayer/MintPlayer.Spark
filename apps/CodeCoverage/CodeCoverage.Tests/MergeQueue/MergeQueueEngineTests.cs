@@ -62,21 +62,69 @@ public class MergeQueueEngineTests : CoverageRavenTest
         prepare.HeadSha.Should().Be(Head, "prepare fetches exactly the pinned head (T3)");
         prepare.HeadRef.Should().Be("refs/pull/7/head");
         prepare.BaseSha.Should().Be(BaseSha);
-        prepare.QueueBranch.Should().Be("mq/master/pr-7");
-        prepare.ExpectedQueueSha.Should().BeNull();
         prepare.Message.Should().Be("Add widgets (#7)");
         prepare.AutoResolve.Should().Equal([new GitWriterAutoResolve("**/App_Data/modelHashes.json", AnyLine: true)]);
 
         var publish = h.Writer.Publishes.Should().ContainSingle().Which;
         publish.Patch.Should().BeNull("nothing was resolved, so nothing was regenerated");
-        publish.ExpectedPrHeadSha.Should().Be(Head, "the lease is the pinned head");
+        publish.PreparedSha.Should().Be(Prepared);
+        publish.Prepare.HeadSha.Should().Be(Head, "the lease is the pinned head");
+        publish.Prepare.BaseSha.Should().Be(BaseSha, "§0 D65: the writer rebuilds the prepared commit on the base it was built on");
         publish.PrBranch.Should().Be("feature-7");
         publish.PushUrl.Should().BeNull();
         h.Queue.Dispatches.Should().BeEmpty();
         h.Queue.MergeRequests.Should().Equal([(Number, Final)]);
 
-        // D5: the queue branch is deleted under a lease on the commit the run left there.
-        h.Writer.Deletes.Should().ContainSingle().Which.ExpectedSha.Should().Be(Prepared);
+        // §0 D65: nothing was dispatched, so the queue branch was never pushed, and there is nothing to delete. Before, the
+        // prepare pushed it on every run and this test asserted its deletion under a lease on Prepared.
+        h.Writer.QueueBranchPushes.Should().BeEmpty();
+        h.Writer.Deletes.Should().BeEmpty();
+        entry.QueueBranchSha.Should().BeNull();
+    }
+
+    /// <summary>
+    /// §0 D65: the writer rebuilds the prepared commit for the queue-branch push and the publish, so every job of a run gets
+    /// the same fields, and every date is the run's (when it was queued, to the second). Before, the saga sent no date: git
+    /// stamped the time, and no job could build the same commit twice.
+    /// </summary>
+    [Fact]
+    public async Task Every_job_of_a_run_builds_the_same_commit_from_the_same_fields_and_the_runs_date()
+    {
+        var h = await HarnessAsync();
+        h.Writer.PrepareResults.Enqueue(FakeGitWriter.Prepared(BaseSha, Head, Prepared, "apps/A/App_Data/modelHashes.json"));
+        h.Writer.PublishResults.Enqueue(FakeGitWriter.Published(Final, "apps/A/App_Data/modelHashes.json"));
+        h.Queue.Runs[9001] = new ForgeWorkflowRun(9001, "completed", "success", Prepared, "mq/master/pr-7", null);
+        h.Queue.Artifacts[9001] = new ForgeArtifactDownload(EForgeArtifactOutcome.Ok, "patch.diff", "diff --git a/x b/x\n"u8.ToArray(), null);
+
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+        await h.SignalAsync(EMergeQueueSignal.RunCompleted, runId: 9001);
+        await h.DrainAsync();
+
+        var entry = await h.EntryAsync();
+        entry.State.Should().Be(EMergeQueueEntryState.Merged);
+        var date = MergeQueueEngine.CommitDate(entry);
+        date.Offset.Should().Be(TimeSpan.Zero);
+        (date.Ticks % TimeSpan.TicksPerSecond).Should().Be(0, "git dates are whole seconds");
+        var prepare = h.Writer.Prepares.Should().ContainSingle().Which;
+        var push = h.Writer.QueueBranchPushes.Should().ContainSingle().Which;
+        var publish = h.Writer.Publishes.Should().ContainSingle().Which;
+        foreach (var rebuild in new[] { push.Prepare, publish.Prepare })
+        {
+            rebuild.Author.Should().Be(prepare.Author);
+            rebuild.Committer.Should().Be(prepare.Committer);
+            rebuild.Message.Should().Be(prepare.Message);
+            rebuild.HeadSha.Should().Be(prepare.HeadSha);
+            rebuild.HeadRef.Should().Be(prepare.HeadRef);
+            rebuild.BaseBranch.Should().Be(prepare.BaseBranch);
+            rebuild.BaseSha.Should().Be(BaseSha);
+            rebuild.AutoResolve.Should().Equal(prepare.AutoResolve);
+            rebuild.AllowWorkflowChanges.Should().Be(prepare.AllowWorkflowChanges);
+        }
+        prepare.Author.Date.Should().Be(date);
+        prepare.Committer.Date.Should().Be(date);
+        push.PreparedSha.Should().Be(Prepared);
+        publish.PreparedSha.Should().Be(Prepared);
     }
 
     [Fact]
@@ -97,6 +145,13 @@ public class MergeQueueEngineTests : CoverageRavenTest
         dispatch.Branch.Should().Be("mq/master/pr-7");
         dispatch.Inputs["expected_sha"].Should().Be(Prepared);
         dispatch.Inputs["pr_number"].Should().Be("7");
+        // §0 D65: the dispatch is the one step that writes the queue branch, leased on "absent" for a new run.
+        var push = h.Writer.QueueBranchPushes.Should().ContainSingle().Which;
+        push.QueueBranch.Should().Be("mq/master/pr-7");
+        push.PreparedSha.Should().Be(Prepared);
+        push.ExpectedQueueSha.Should().BeNull();
+        (await h.EntryAsync()).QueueBranchSha.Should().Be(Prepared);
+        h.Queue.WorkflowFileReads.Should().BeEmpty("a same-repository pull request needs no fork precondition (§0 D65)");
 
         await h.SignalAsync(EMergeQueueSignal.RunCompleted, runId: 9001, sha: Prepared);
         await h.DrainAsync();
@@ -106,6 +161,8 @@ public class MergeQueueEngineTests : CoverageRavenTest
         entry.DispatchRunId.Should().Be(9001);
         h.Writer.Publishes.Should().ContainSingle().Which.Patch.Should().Be(Convert.ToBase64String("diff --git a/x b/x\n"u8.ToArray()));
         h.Queue.CancelledRuns.Should().BeEmpty("the run ended the wait itself (§0 D53)");
+        // D5: the branch the dispatch needed goes under a lease on the commit the run pushed there.
+        h.Writer.Deletes.Should().ContainSingle().Which.ExpectedSha.Should().Be(Prepared);
     }
 
     [Fact]
@@ -232,7 +289,7 @@ public class MergeQueueEngineTests : CoverageRavenTest
         var entry = await h.EntryAsync();
         entry.State.Should().Be(EMergeQueueEntryState.AwaitingChecks);
         entry.History.Should().Contain(e => e.Text.Contains("an earlier attempt's push"));
-        h.Writer.Publishes[1].ExpectedPrHeadSha.Should().Be(Head, "the lease is still the pinned head: the writer, not the saga, recognises the commit");
+        h.Writer.Publishes[1].Prepare.HeadSha.Should().Be(Head, "the lease is still the pinned head: the writer, not the saga, recognises the commit");
 
         await h.SignalAsync(EMergeQueueSignal.HeadPushed, Number, Final);
         (await h.EntryAsync()).State.Should().Be(EMergeQueueEntryState.AwaitingChecks, "its echo is a known commit now");
@@ -270,22 +327,29 @@ public class MergeQueueEngineTests : CoverageRavenTest
     public async Task An_earlier_runs_cleanup_spares_the_queue_branch_the_next_run_adopted()
     {
         var h = await HarnessAsync();
-        h.Writer.PrepareResults.Enqueue(FakeGitWriter.Prepared(BaseSha, Head, Prepared));
+        h.Writer.PrepareResults.Enqueue(FakeGitWriter.Prepared(BaseSha, Head, Prepared, "apps/A/App_Data/modelHashes.json"));
         await h.EnqueueAsync();
         await h.StepOnceAsync();
+        await h.StepOnceAsync();
+        (await h.EntryAsync()).QueueBranchSha.Should().Be(Prepared, "run 1 dispatched, so it pushed the queue branch");
         await h.DequeueAsync("author");
         // Run 1's cleanup of mq/master/pr-7 (leased on Prepared) is held back, as a busy writer would delay it.
         var cleanup = h.Outbox.Messages.Select(m => m.Message).OfType<MergeQueueStepMessage>().Single(s => s.Step == EMergeQueueStep.Cleanup);
         cleanup.ExpectedSha.Should().Be(Prepared);
         h.Outbox.Messages.Clear();
 
-        // Run 2 finds run 1's commit on the queue branch and adopts it.
-        h.Writer.PrepareResults.Enqueue(FakeGitWriter.Prepared(BaseSha, Head, Prepared) with { Reason = GitWriterReasons.AlreadyPushed });
+        // Run 2's push finds the very commit on the queue branch and adopts it (since §0 D65 that needs the same date,
+        // so two runs queued within one second; the lease keeps any other commit safe anyway).
+        h.Writer.PrepareResults.Enqueue(FakeGitWriter.Prepared(BaseSha, Head, Prepared, "apps/A/App_Data/modelHashes.json"));
+        h.Writer.QueueBranchResults.Enqueue(FakeGitWriter.Pushed(Prepared, GitWriterReasons.AlreadyPushed));
+        h.Queue.NextDispatch = new ForgeWorkflowDispatch(EForgeDispatchOutcome.Dispatched, 9002, null, null);
         await h.EnqueueAsync();
+        await h.StepOnceAsync();
         await h.StepOnceAsync();
         var adopted = await h.EntryAsync();
         adopted.Run.Should().Be(2);
-        adopted.PreparedSha.Should().Be(Prepared);
+        adopted.QueueBranchSha.Should().Be(Prepared);
+        h.Writer.QueueBranchPushes[1].ExpectedQueueSha.Should().BeNull("a new run leases on an absent branch");
 
         await h.StepAsync(cleanup);
 
@@ -439,8 +503,9 @@ public class MergeQueueEngineTests : CoverageRavenTest
         var again = h.Writer.Prepares[1];
         again.BaseSha.Should().Be(NewBase);
         again.HeadSha.Should().Be(Final, "the pull request's branch now holds the queue's earlier commit");
-        again.ExpectedQueueSha.Should().Be(Prepared, "the queue branch is leased on the commit the run left there");
-        h.Writer.Publishes[1].ExpectedPrHeadSha.Should().Be(Final);
+        h.Writer.Publishes[1].Prepare.HeadSha.Should().Be(Final, "the lease is the head the second prepare was built from");
+        h.Writer.Publishes[1].Prepare.BaseSha.Should().Be(NewBase);
+        h.Writer.QueueBranchPushes.Should().BeEmpty("neither attempt dispatched, so neither wrote a queue branch (§0 D65)");
 
         var merged = await h.EntryAsync();
         merged.State.Should().Be(EMergeQueueEntryState.Merged);
@@ -1092,8 +1157,10 @@ public class MergeQueueEngineTests : CoverageRavenTest
         (await h.EntryAsync()).State.Should().Be(EMergeQueueEntryState.Merged);
         h.Writer.Prepares.Single().AllowWorkflowChanges.Should().BeTrue("a same-repository branch's push runs nothing its author could not run");
         h.Queue.Dispatches.Should().BeEmpty();
-        // §0 D59: the change touches .github/workflows/**, so both pushes need GitHub's workflow permission.
-        h.Queue.WriterAccesses.Select(a => a.Workflows).ToList().Should().Equal([true, true, false]);
+        // §0 D59: the change touches .github/workflows/**, so the publish needs GitHub's workflow permission. The prepare
+        // pushes nothing (§0 D65) and needs none, and without a dispatch there is no queue branch to delete.
+        h.Queue.WriterAccesses.Select(a => a.Workflows).ToList().Should().Equal([false, true]);
+        h.Writer.QueueBranchPushes.Should().BeEmpty();
     }
 
     /// <summary>O21 A, T5: a dispatched run executes the workflow files of the queue branch (D12), so a change under
@@ -1343,18 +1410,23 @@ public class MergeQueueEngineTests : CoverageRavenTest
     public async Task Every_writer_job_gets_a_credential_of_its_own_and_ends_it()
     {
         var h = await HarnessAsync();
-        h.Writer.PrepareResults.Enqueue(FakeGitWriter.Prepared(BaseSha, Head, Prepared));
+        h.Writer.PrepareResults.Enqueue(FakeGitWriter.Prepared(BaseSha, Head, Prepared, "apps/A/App_Data/modelHashes.json"));
         h.Writer.PublishResults.Enqueue(FakeGitWriter.Published(Final));
+        h.Queue.Runs[9001] = new ForgeWorkflowRun(9001, "completed", "success", Prepared, "mq/master/pr-7", null);
+        h.Queue.Artifacts[9001] = new ForgeArtifactDownload(EForgeArtifactOutcome.Ok, "patch.diff", [], null);
 
         await h.EnqueueAsync();
         await h.DrainAsync();
+        await h.SignalAsync(EMergeQueueSignal.RunCompleted, runId: 9001);
+        await h.DrainAsync();
 
         (await h.EntryAsync()).State.Should().Be(EMergeQueueEntryState.Merged);
-        h.Queue.WriterAccesses.Should().Equal([((int?)null, false, "job-token-1"), (Number, false, "job-token-2"), (null, false, "job-token-3")]);
+        h.Queue.WriterAccesses.Should().Equal([((int?)null, false, "job-token-1"), (null, false, "job-token-2"), (Number, false, "job-token-3"), (null, false, "job-token-4")]);
         h.Writer.Prepares.Single().Credential.Password.Should().Be("job-token-1");
-        h.Writer.Publishes.Single().Credential.Password.Should().Be("job-token-2");
-        h.Writer.Deletes.Single().Credential.Password.Should().Be("job-token-3", "the queue branch's deletion gets its own too");
-        h.Queue.RevokedTokens.Should().Equal(["job-token-1", "job-token-2", "job-token-3"]);
+        h.Writer.QueueBranchPushes.Single().Prepare.Credential.Password.Should().Be("job-token-2", "§0 D65: the queue-branch push is a job of its own");
+        h.Writer.Publishes.Single().Prepare.Credential.Password.Should().Be("job-token-3");
+        h.Writer.Deletes.Single().Credential.Password.Should().Be("job-token-4", "the queue branch's deletion gets its own too");
+        h.Queue.RevokedTokens.Should().Equal(["job-token-1", "job-token-2", "job-token-3", "job-token-4"]);
     }
 
     [Fact]
@@ -1377,14 +1449,19 @@ public class MergeQueueEngineTests : CoverageRavenTest
     public async Task A_cleanup_whose_credential_is_refused_leaves_the_branch_without_failing_the_step()
     {
         var h = await HarnessAsync();
-        h.Writer.PrepareResults.Enqueue(FakeGitWriter.Prepared(BaseSha, Head, Prepared));
+        // A dispatch, so there is a queue branch to delete (§0 D65): prepare, queue-branch push, publish, then the cleanup.
+        h.Writer.PrepareResults.Enqueue(FakeGitWriter.Prepared(BaseSha, Head, Prepared, "apps/A/App_Data/modelHashes.json"));
         h.Writer.PublishResults.Enqueue(FakeGitWriter.Published(Final));
+        h.Queue.Runs[9001] = new ForgeWorkflowRun(9001, "completed", "success", Prepared, "mq/master/pr-7", null);
+        h.Queue.Artifacts[9001] = new ForgeArtifactDownload(EForgeArtifactOutcome.Ok, "patch.diff", [], null);
         var minted = 0;
-        h.Queue.WriterAccess = _ => ++minted == 3
+        h.Queue.WriterAccess = _ => ++minted == 4
             ? throw new ForgeAccessDeniedException("GitHub refused a token: Resource not accessible by integration", "contents=write")
             : null;
 
         await h.EnqueueAsync();
+        await h.DrainAsync();
+        await h.SignalAsync(EMergeQueueSignal.RunCompleted, runId: 9001);
         await h.DrainAsync();
 
         (await h.EntryAsync()).State.Should().Be(EMergeQueueEntryState.Merged);
@@ -1406,8 +1483,157 @@ public class MergeQueueEngineTests : CoverageRavenTest
         await h.EnqueueAsync();
         await h.DrainAsync();
 
-        h.Queue.WriterAccesses.Select(a => (a.Number, a.Workflows)).ToList().Should().Equal([((int?)null, false), (Number, workflows), (null, false)]);
+        h.Queue.WriterAccesses.Select(a => (a.Number, a.Workflows)).ToList().Should().Equal([((int?)null, false), (Number, workflows)]);
         h.Writer.Publishes.Single().PushUrl.Should().Be(fork ? "https://github.com/contributor/widget.git" : null);
+    }
+
+    // ── §0 D65: the queue branch only for a dispatch, and a fork's only when nothing there runs its code ─────
+
+    /// <summary>A fork's pull request whose prepare resolved a generated file, so it needs the regenerate workflow.</summary>
+    private async Task<MergeQueueHarness> ForkNeedingRegenerationAsync()
+    {
+        var h = await HarnessAsync();
+        h.Forge.PullRequests[Number] = PullRequest(fork: true, maintainerCanModify: true);
+        h.Writer.PrepareResults.Enqueue(FakeGitWriter.Prepared(BaseSha, Head, Prepared, "apps/A/App_Data/modelHashes.json"));
+        return h;
+    }
+
+    /// <summary>
+    /// The pwn-request §0 D65 closes. Before, the prepare pushed the fork's commit to <c>mq/master/pr-7</c> in the base
+    /// repository and the saga dispatched, whatever the base's <c>push</c> workflows were: an unfiltered <c>on: push</c>
+    /// would run the fork's code on that branch with the base repository's secrets (red at 6fa6acb3: dispatched).
+    /// </summary>
+    [Fact]
+    public async Task A_forks_dispatch_is_refused_before_anything_is_pushed_when_a_push_workflow_would_run_on_the_queue_branch()
+    {
+        var h = await ForkNeedingRegenerationAsync();
+        h.Queue.WorkflowFiles[BaseSha].Add(new(".github/workflows/ci.yml", "name: ci\non: push\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - run: make test\n"));
+
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+
+        var entry = await h.EntryAsync();
+        entry.State.Should().Be(EMergeQueueEntryState.Evicted);
+        entry.EvictionReason.Should().Be("fork-unsafe-workflows");
+        entry.EvictionPaths.Should().Equal([".github/workflows/ci.yml"]);
+        entry.EvictionMessage.Should().Contain("`.github/workflows/ci.yml` on `master`, line 2");
+        entry.EvictionMessage.Should().Contain("mq/master/pr-7");
+        entry.EvictionMessage.Should().Contain("branches-ignore: ['mq/**']");
+        h.Queue.WorkflowFileReads.Should().Equal([BaseSha, "master"], "the push triggers are the base commit's, the rest the default branch's");
+        h.Writer.QueueBranchPushes.Should().BeEmpty("the fork's code never reaches a branch of this repository");
+        h.Queue.Dispatches.Should().BeEmpty();
+        entry.QueueBranchSha.Should().BeNull();
+        h.Writer.Deletes.Should().BeEmpty("nothing was pushed, so nothing is deleted");
+    }
+
+    [Fact]
+    public async Task A_forks_dispatch_goes_ahead_when_no_workflow_runs_on_the_queue_branch_and_the_regenerate_workflow_is_read_only()
+    {
+        var h = await ForkNeedingRegenerationAsync();
+        h.Queue.WorkflowFiles[BaseSha].Add(new(".github/workflows/ci.yml", "on:\n  push:\n    branches-ignore: ['mq/**']\n  pull_request:\n"));
+        h.Queue.WorkflowFiles[BaseSha].Add(new(".github/workflows/release.yml", "on:\n  push:\n    tags: ['v*']\n"));
+        h.Queue.WorkflowFiles[BaseSha].Add(new(".github/workflows/deploy.yml", "on:\n  push:\n    branches: [master]\n    paths: ['src/**']\n"));
+
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+
+        var entry = await h.EntryAsync();
+        entry.State.Should().Be(EMergeQueueEntryState.Regenerating);
+        entry.History.Should().Contain(e => e.Text.StartsWith("the fork precondition holds", StringComparison.Ordinal));
+        h.Writer.QueueBranchPushes.Should().ContainSingle().Which.PreparedSha.Should().Be(Prepared);
+        h.Queue.Dispatches.Should().ContainSingle();
+        entry.QueueBranchSha.Should().Be(Prepared);
+    }
+
+    [Theory]
+    [InlineData("secrets", "      - run: echo ${{ secrets.NPM_TOKEN }}\n")]
+    [InlineData("permissions", "    permissions:\n      contents: write\n")]
+    [InlineData("self-hosted", "    runs-on: [self-hosted, linux]\n")]
+    public async Task A_forks_dispatch_is_refused_when_the_regenerate_workflow_is_not_read_only(string what, string line)
+    {
+        var h = await ForkNeedingRegenerationAsync();
+        var regenerate = what switch
+        {
+            "secrets" => SafeRegenerate + "\n" + line,
+            "permissions" => SafeRegenerate.Replace("    runs-on: ubuntu-latest\n", "    runs-on: ubuntu-latest\n" + line, StringComparison.Ordinal),
+            _ => SafeRegenerate.Replace("    runs-on: ubuntu-latest\n", line, StringComparison.Ordinal),
+        };
+        h.Queue.WorkflowFiles["master"] = [new(RegeneratePath, regenerate)];
+
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+
+        var entry = await h.EntryAsync();
+        entry.State.Should().Be(EMergeQueueEntryState.Evicted);
+        entry.EvictionReason.Should().Be("fork-unsafe-workflows");
+        entry.EvictionMessage.Should().Contain("`.github/workflows/regenerate.yml` on `master`");
+        h.Writer.QueueBranchPushes.Should().BeEmpty();
+        h.Queue.Dispatches.Should().BeEmpty();
+    }
+
+    /// <summary>A fork's pull request that needs no regeneration publishes to the fork and never touches the base
+    /// repository's branches, so there is nothing to check (§0 D65).</summary>
+    [Fact]
+    public async Task A_fork_that_needs_no_dispatch_is_published_without_a_queue_branch_or_a_workflow_check()
+    {
+        var h = await HarnessAsync();
+        h.Forge.PullRequests[Number] = PullRequest(fork: true, maintainerCanModify: true);
+        h.Writer.PrepareResults.Enqueue(FakeGitWriter.Prepared(BaseSha, Head, Prepared));
+        h.Writer.PublishResults.Enqueue(FakeGitWriter.Published(Final));
+        h.Queue.WorkflowFiles[BaseSha].Add(new(".github/workflows/ci.yml", "on: push\n"));
+
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+
+        (await h.EntryAsync()).State.Should().Be(EMergeQueueEntryState.Merged);
+        h.Writer.Publishes.Single().PushUrl.Should().Be("https://github.com/contributor/widget.git");
+        h.Writer.QueueBranchPushes.Should().BeEmpty();
+        h.Queue.WorkflowFileReads.Should().BeEmpty("nothing is pushed to this repository, so no workflow here can run the fork's code");
+        h.Writer.Deletes.Should().BeEmpty();
+    }
+
+    /// <summary>§0 D65: the queue-branch push carries the commit the saga holds or nothing; a rebuild that differs would
+    /// differ again, so it is not retried.</summary>
+    [Fact]
+    public async Task A_queue_branch_push_whose_rebuild_differs_evicts_without_dispatching()
+    {
+        var h = await HarnessAsync();
+        h.Writer.PrepareResults.Enqueue(FakeGitWriter.Prepared(BaseSha, Head, Prepared, "apps/A/App_Data/modelHashes.json"));
+        h.Writer.QueueBranchResults.Enqueue(new GitWriterQueueBranchResult(GitWriterOutcomes.PreparedDiffers, null, null, [],
+            $"The prepared commit rebuilt from this request is {Final}, not {Prepared}.", 10));
+
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+
+        var entry = await h.EntryAsync();
+        entry.State.Should().Be(EMergeQueueEntryState.Evicted);
+        entry.EvictionReason.Should().Be("prepared-differs");
+        entry.TransientFailures.Should().Be(0);
+        h.Writer.QueueBranchPushes.Should().ContainSingle();
+        h.Queue.Dispatches.Should().BeEmpty();
+        h.Writer.Deletes.Should().BeEmpty();
+    }
+
+    /// <summary>A queue branch that holds something else (a run whose cleanup has not run yet) is reset, and the run
+    /// prepares again; the next push leases on "absent".</summary>
+    [Fact]
+    public async Task A_queue_branch_out_of_step_is_reset_and_the_run_prepares_again()
+    {
+        var h = await HarnessAsync();
+        h.Writer.PrepareResults.Enqueue(FakeGitWriter.Prepared(BaseSha, Head, Prepared, "apps/A/App_Data/modelHashes.json"));
+        h.Writer.PrepareResults.Enqueue(FakeGitWriter.Prepared(BaseSha, Head, Prepared, "apps/A/App_Data/modelHashes.json"));
+        h.Writer.QueueBranchResults.Enqueue(new GitWriterQueueBranchResult(GitWriterOutcomes.QueueBranchMoved, null, null, [], "mq/master/pr-7 is not where the lease expected it.", 10));
+
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+
+        var entry = await h.EntryAsync();
+        entry.State.Should().Be(EMergeQueueEntryState.Regenerating);
+        h.Writer.Deletes.Should().ContainSingle().Which.ExpectedSha.Should().BeNull("the reset removes whatever is there");
+        h.Writer.Prepares.Should().HaveCount(2);
+        h.Writer.QueueBranchPushes.Select(p => p.ExpectedQueueSha).Should().Equal([null, null]);
+        entry.QueueBranchSha.Should().Be(Prepared);
+        h.Queue.Dispatches.Should().ContainSingle();
     }
 
     // ── Re-checked before the merge (O9, O11, §0 D61) ───────────────────────────────────────────────

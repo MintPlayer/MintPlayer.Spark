@@ -126,6 +126,18 @@ internal sealed class FakeForgeMergeQueue : IForgeMergeQueue
     public Task<string?> GetFileBlobShaAsync(Repository repository, string gitRef, string path, CancellationToken cancellationToken = default)
         => Task.FromResult(Blobs.TryGetValue($"{gitRef}:{path}", out var blob) ? blob : null);
 
+    /// <summary>The workflow files at each ref (§0 D65); a ref not listed has none.</summary>
+    public Dictionary<string, List<ForgeWorkflowFile>> WorkflowFiles { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>Every ref whose workflow files were read, in order.</summary>
+    public List<string> WorkflowFileReads { get; } = [];
+
+    public Task<IReadOnlyList<ForgeWorkflowFile>> GetWorkflowFilesAsync(Repository repository, string gitRef, CancellationToken cancellationToken = default)
+    {
+        WorkflowFileReads.Add(gitRef);
+        return Task.FromResult<IReadOnlyList<ForgeWorkflowFile>>(WorkflowFiles.TryGetValue(gitRef, out var files) ? [.. files] : []);
+    }
+
     public Task<ForgeMergeRequest> RequestMergeAsync(Repository repository, int number, string sha, EForgeMergeMethod method, string? commitTitle, string? commitMessage, CancellationToken cancellationToken = default)
     {
         if (MergeThrows is { } thrown)
@@ -204,11 +216,24 @@ internal sealed class FakeGitWriter : IGitWriterSidecar
     public List<GitWriterPublishRequest> Publishes { get; } = [];
     public List<GitWriterDeleteQueueBranchRequest> Deletes { get; } = [];
 
+    /// <summary>Scripted answers to the queue-branch push (§0 D65); when none is left it answers <c>pushed</c>.</summary>
+    public Queue<GitWriterQueueBranchResult> QueueBranchResults { get; } = new();
+    public List<GitWriterQueueBranchRequest> QueueBranchPushes { get; } = [];
+
     public Task<GitWriterPrepareResult> PrepareAsync(GitWriterPrepareRequest request, CancellationToken cancellationToken = default)
     {
         Prepares.Add(request);
         return Task.FromResult(PrepareResults.Dequeue());
     }
+
+    public Task<GitWriterQueueBranchResult> PushQueueBranchAsync(GitWriterQueueBranchRequest request, CancellationToken cancellationToken = default)
+    {
+        QueueBranchPushes.Add(request);
+        return Task.FromResult(QueueBranchResults.Count > 0 ? QueueBranchResults.Dequeue() : Pushed(request.PreparedSha));
+    }
+
+    public static GitWriterQueueBranchResult Pushed(string sha, string? reason = null)
+        => new(GitWriterOutcomes.Pushed, reason, sha, [], null, 10);
 
     /// <summary>
     /// When set, the next publish is recorded and then throws it: the writer pushed, but its answer never reached the saga
