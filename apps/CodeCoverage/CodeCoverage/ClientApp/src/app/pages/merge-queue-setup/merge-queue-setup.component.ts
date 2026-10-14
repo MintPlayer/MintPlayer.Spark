@@ -8,7 +8,7 @@ import { BsCardBodyComponent, BsCardComponent, BsCardHeaderComponent } from '@mi
 import { BsCodeSnippetComponent } from '@mintplayer/ng-bootstrap/code-snippet';
 import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
 import { AccountPermissionsNoticeComponent } from '../../components/account-permissions-notice/account-permissions-notice.component';
-import { MERGE_QUEUE_SETUP_SCREENSHOTS, type MergeQueueSetupScreenshot } from './merge-queue-setup.screenshots';
+import { MERGE_QUEUE_SETUP_SCREENSHOTS, type MergeQueueSetupAttachment, type MergeQueueSetupScreenshot } from './merge-queue-setup.screenshots';
 import { COVERAGE_YML, CREATE_LABEL, CREATE_RULESETS, PUSH_TRIGGER, REGENERATE_WORKFLOW, RULESET_1, RULESET_2 } from './merge-queue-setup.snippets';
 
 /** A step of the guide. The id is its anchor, kept stable so a message can link `/merge-queue/setup#<id>`. */
@@ -18,8 +18,8 @@ interface SetupStep {
 }
 
 /**
- * A screenshot slot. Its URL, a GitHub attachment, is in MERGE_QUEUE_SETUP_SCREENSHOTS, whose file also says what each
- * screenshot shows and how it is captured. Every capture is 1280×720, the size the template declares.
+ * A screenshot slot. Its image, a GitHub attachment with its size in pixels, is in MERGE_QUEUE_SETUP_SCREENSHOTS, whose
+ * file also says what each screenshot shows and how it was captured.
  */
 interface Screenshot {
   name: MergeQueueSetupScreenshot;
@@ -39,9 +39,9 @@ interface Screenshot {
  *
  * The router has no anchor scrolling (app.config.ts), so the page scrolls to a `#<step>` fragment itself.
  *
- * Screenshots are GitHub attachments (O23) and use native `loading="lazy"` with explicit `width`/`height` (O13). One
- * without a URL yet is a "Screenshot pending" box of the same size, and nothing is requested for it; one that fails to
- * load becomes the same box, never a broken image.
+ * Screenshots are GitHub attachments (O23) and use native `loading="lazy"` with explicit `width`/`height` (O13), each
+ * the image's own size. One without a URL yet is a "Screenshot pending" box, and nothing is requested for it; one that
+ * fails to load becomes the same box at the image's size, never a broken image.
  */
 @Component({
   selector: 'app-merge-queue-setup',
@@ -113,8 +113,13 @@ export default class MergeQueueSetupComponent {
   protected readonly shots = {
     acceptPermissions: {
       name: 'accept-permissions',
-      alt: 'GitHub asking an organization owner to accept the CodeCoverage App\'s new permissions: Actions and Workflows read and write, Commit statuses read-only',
-      caption: 'GitHub: the installation\'s request for the new permissions.',
+      alt: 'GitHub asking an organization owner to accept updated permissions for the CodeCoverage app: the requested repository permission, marked New request, and the Accept new permissions button',
+      caption: 'GitHub: the installation\'s review page. It lists whatever the App is requesting at the time; the request shown is an example.',
+    },
+    permissionsBanner: {
+      name: 'app-pending-permissions-banner',
+      alt: 'The notice on a CodeCoverage organization page: GitHub is waiting for you to accept new permissions, the pending permission, and the links Review and accept on GitHub and Merge queue setup guide',
+      caption: 'CodeCoverage: what the organization page shows while a permission request is pending.',
     },
     nativeQueueOff: {
       name: 'native-merge-queue-off',
@@ -128,13 +133,13 @@ export default class MergeQueueSetupComponent {
     },
     ruleset1Bypass: {
       name: 'ruleset-1-bypass',
-      alt: 'Ruleset 1\'s bypass list on GitHub: the CodeCoverage App set to Exempt and the Repository admin role set to For pull requests only',
-      caption: 'Ruleset 1: the bypass list.',
+      alt: 'Ruleset 1\'s bypass list on GitHub, the Repository admin role allowed for pull requests only and the CodeCoverage App exempt, above its target, the default branch',
+      caption: 'Ruleset 1: the bypass list and the target branches.',
     },
     ruleset1Rules: {
       name: 'ruleset-1-rules',
-      alt: 'Ruleset 1 on GitHub targeting the default branch, with Restrict updates as its only branch rule',
-      caption: 'Ruleset 1: target branches and rules.',
+      alt: 'Ruleset 1\'s branch rules on GitHub: Restrict updates ticked, and every other rule unticked, Require a pull request before merging and Require status checks to pass among them',
+      caption: 'Ruleset 1: Restrict updates is its only branch rule.',
     },
     ruleset2PullRequest: {
       name: 'ruleset-2-pull-request',
@@ -143,17 +148,17 @@ export default class MergeQueueSetupComponent {
     },
     ruleset2StatusChecks: {
       name: 'ruleset-2-status-checks',
-      alt: 'Ruleset 2\'s Require status checks to pass rule on GitHub, listing the repository\'s CI checks and not the Merge queue check',
+      alt: 'Ruleset 2\'s Require status checks to pass rule on GitHub, with Require branches to be up to date before merging ticked and the repository\'s CI check required, not the Merge queue check',
       caption: 'Ruleset 2: required status checks, without the "Merge queue" check.',
     },
     allowEdits: {
       name: 'allow-edits-by-maintainers',
-      alt: 'The sidebar of a pull request from a fork on GitHub with Allow edits by maintainers ticked',
-      caption: 'A fork\'s pull request: Allow edits by maintainers.',
+      alt: 'The form that opens a pull request from a fork on GitHub, with Allow edits by maintainers ticked beside the Create pull request button',
+      caption: 'Opening a pull request from a fork: Allow edits by maintainers.',
     },
     accountSettings: {
       name: 'account-merge-queue-settings',
-      alt: 'The Merge queue group on a CodeCoverage organization page: Merge queue approval floor, Checks the merge queue ignores and Merge queue bypass role',
+      alt: 'The Merge queue group on a CodeCoverage organization page at its defaults: Merge queue approval floor on Approval for external authors, no Checks the merge queue ignores, Merge queue bypass role on Nobody',
       caption: 'CodeCoverage: the organization page\'s Merge queue group.',
     },
   } satisfies Record<string, Screenshot>;
@@ -181,8 +186,8 @@ export default class MergeQueueSetupComponent {
     this.document.getElementById(id)?.scrollIntoView({ block: 'start' });
   }
 
-  /** A screenshot's URL, or none while it is pending. */
-  protected urlOf(shot: Screenshot): string | undefined {
+  /** A screenshot's image, its URL and size, or none while it is pending. */
+  protected imageOf(shot: Screenshot): MergeQueueSetupAttachment | undefined {
     return MERGE_QUEUE_SETUP_SCREENSHOTS[shot.name];
   }
 

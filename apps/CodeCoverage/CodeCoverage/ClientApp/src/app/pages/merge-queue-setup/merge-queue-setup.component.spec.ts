@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { PendingInstallationPermissions } from '../../services/browse.service';
 import { BrowseServiceStub, createBrowseStub, provideBrowseStub, settle } from '../../../testing/test-utils';
 import MergeQueueSetupComponent from './merge-queue-setup.component';
-import { MERGE_QUEUE_SETUP_SCREENSHOTS, type MergeQueueSetupScreenshot } from './merge-queue-setup.screenshots';
+import { MERGE_QUEUE_SETUP_SCREENSHOTS, type MergeQueueSetupAttachment, type MergeQueueSetupScreenshot } from './merge-queue-setup.screenshots';
 
 /* The code snippet is a Lit element jsdom cannot host; this stand-in keeps what the page passed it. */
 @Component({ selector: 'bs-code-snippet', template: '' })
@@ -88,51 +88,66 @@ describe('MergeQueueSetupComponent', () => {
     const committed = { ...MERGE_QUEUE_SETUP_SCREENSHOTS };
     afterEach(() => { Object.assign(MERGE_QUEUE_SETUP_SCREENSHOTS, committed); });
 
-    /** A stand-in for the address GitHub gives an uploaded image, one per screenshot. */
-    const attachmentUrl = (name: MergeQueueSetupScreenshot) =>
-      `https://github.com/user-attachments/assets/00000000-0000-4000-8000-${String(names.indexOf(name)).padStart(12, '0')}`;
-    const setUrls = (url: (name: MergeQueueSetupScreenshot) => string | undefined) =>
-      names.forEach(name => { MERGE_QUEUE_SETUP_SCREENSHOTS[name] = url(name); });
+    /**
+     * A stand-in for an uploaded image, one per screenshot: the address GitHub gives it, and a size of its own, so a
+     * case can tell which image's size a box took.
+     */
+    const attachment = (name: MergeQueueSetupScreenshot): MergeQueueSetupAttachment => {
+      const i = names.indexOf(name);
+      return {
+        url: `https://github.com/user-attachments/assets/00000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
+        width: 900 + i,
+        height: 200 + i,
+      };
+    };
+    const setImages = (image: (name: MergeQueueSetupScreenshot) => MergeQueueSetupAttachment | undefined) =>
+      names.forEach(name => { MERGE_QUEUE_SETUP_SCREENSHOTS[name] = image(name); });
     const figures = () => all<HTMLElement>('figure[data-shot]');
     const shotName = (figure: Element) => figure.getAttribute('data-shot') as MergeQueueSetupScreenshot;
 
     it('shows each one once, and a "Screenshot pending" box, without requesting anything, for those without a URL', async () => {
-      setUrls(() => undefined);
+      setImages(() => undefined);
       await open('/merge-queue/setup');
 
       expect(figures().map(shotName).sort()).toEqual([...names].sort());
+      // GitHub's review page, then the notice CodeCoverage shows while a request waits there.
+      expect(all('#permissions figure[data-shot]').map(shotName)).toEqual(['accept-permissions', 'app-pending-permissions-banner']);
       expect(all('img')).toHaveLength(0);
       for (const figure of figures()) {
-        const pending = figure.querySelector('[data-shot-pending]')!;
+        const pending = figure.querySelector<HTMLElement>('[data-shot-pending]')!;
         expect(pending.classList).toContain('shot-pending');
         expect(pending.getAttribute('role')).toBe('img');
         expect(pending.getAttribute('aria-label')!.length).toBeGreaterThan(40);
         expect(pending.textContent).toContain('Screenshot pending');
+        // No size known: the stylesheet's 1280×720 box.
+        expect(pending.style.getPropertyValue('--shot-width')).toBe('');
+        expect(pending.style.getPropertyValue('--shot-height')).toBe('');
         expect(figure.querySelector('figcaption')?.textContent?.trim()).not.toBe('');
       }
       const descriptions = figures().map(figure => figure.querySelector('[data-shot-pending]')!.getAttribute('aria-label'));
       expect(new Set(descriptions).size).toBe(names.length);
     });
 
-    it('loads one with a URL from that URL, lazily, at its declared size and with its description', async () => {
-      setUrls(attachmentUrl);
+    it('loads one with a URL from that URL, lazily, at the image\'s own size and with its description', async () => {
+      setImages(attachment);
       await open('/merge-queue/setup');
 
       expect(figures()).toHaveLength(names.length);
       for (const figure of figures()) {
         const image = figure.querySelector('img')!;
-        expect(image.getAttribute('src')).toBe(attachmentUrl(shotName(figure)));
+        const expected = attachment(shotName(figure));
+        expect(image.getAttribute('src')).toBe(expected.url);
         expect(image.getAttribute('loading')).toBe('lazy');
-        expect(image.getAttribute('width')).toBe('1280');
-        expect(image.getAttribute('height')).toBe('720');
+        expect(image.getAttribute('width')).toBe(String(expected.width));
+        expect(image.getAttribute('height')).toBe(String(expected.height));
         expect(image.alt.length).toBeGreaterThan(40);
         expect(figure.querySelector('[data-shot-pending]')).toBeNull();
       }
       expect(new Set(figures().map(figure => figure.querySelector('img')!.alt)).size).toBe(names.length);
     });
 
-    it('shows the "Screenshot pending" box, with the same description, for an image that fails to load', async () => {
-      setUrls(attachmentUrl);
+    it('shows the "Screenshot pending" box, with the same description and the image\'s size, for an image that fails to load', async () => {
+      setImages(attachment);
       await open('/merge-queue/setup');
       const figure = el().querySelector('[data-shot="ruleset-1-bypass"]')!;
       const alt = figure.querySelector('img')!.alt;
@@ -140,25 +155,33 @@ describe('MergeQueueSetupComponent', () => {
       figure.querySelector('img')!.dispatchEvent(new Event('error'));
       await settle(harness.fixture);
 
-      const pending = figure.querySelector('[data-shot-pending]')!;
+      const pending = figure.querySelector<HTMLElement>('[data-shot-pending]')!;
       expect(figure.querySelector('img')).toBeNull();
       expect(pending.classList).toContain('shot-pending');
       expect(pending.getAttribute('role')).toBe('img');
       expect(pending.getAttribute('aria-label')).toBe(alt);
       expect(pending.textContent).toContain('Screenshot pending');
+      expect(pending.style.getPropertyValue('--shot-width')).toBe(String(attachment('ruleset-1-bypass').width));
+      expect(pending.style.getPropertyValue('--shot-height')).toBe(String(attachment('ruleset-1-bypass').height));
       expect(figure.querySelector('figcaption')?.textContent).toContain('Ruleset 1');
       // Only that one: the others still load.
       expect(all('figure img')).toHaveLength(names.length - 1);
     });
 
-    // The address a rendered attachment is served from can carry a token that expires; only this form lasts.
-    it('holds every committed URL to the form GitHub gives an attachment', () => {
-      const attachment = /^https:\/\/github\.com\/user-attachments\/assets\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      expect(attachmentUrl('ruleset-1-bypass')).toMatch(attachment);
-      expect('https://private-user-images.githubusercontent.com/1/2-3.png?jwt=x').not.toMatch(attachment);
+    // The address a rendered attachment is served from can carry a token that expires; only this form lasts. The size
+    // is the image's own, in whole pixels.
+    it('holds every committed URL to the form GitHub gives an attachment, with the image\'s size', () => {
+      const form = /^https:\/\/github\.com\/user-attachments\/assets\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      expect(attachment('ruleset-1-bypass').url).toMatch(form);
+      expect('https://private-user-images.githubusercontent.com/1/2-3.png?jwt=x').not.toMatch(form);
 
       for (const name of names) {
-        if (committed[name] !== undefined) expect(committed[name], name).toMatch(attachment);
+        const image = committed[name];
+        if (image === undefined) continue;
+        expect(image.url, name).toMatch(form);
+        for (const size of [image.width, image.height]) {
+          expect(Number.isInteger(size) && size > 0, `${name}: ${size}`).toBe(true);
+        }
       }
     });
   });

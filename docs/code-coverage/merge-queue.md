@@ -132,6 +132,13 @@ managers a notice with the installation's own acceptance link while anything the
 queue call that GitHub refuses for a permission ends the entry with `permission`, and the check run and the comment
 carry the same link.
 
+![The notice on a CodeCoverage organization page: GitHub is waiting for you to accept new permissions, the pending permission, and the links Review and accept on GitHub and Merge queue setup guide](https://github.com/user-attachments/assets/813f0779-6f7f-464b-a46a-b30971ab57da)
+
+The link opens the installation's page on GitHub, where the request is reviewed. The review page lists whatever the App
+is requesting at the time (the one below is an example) above **Accept new permissions**:
+
+![GitHub asking an organization owner to accept updated permissions for the CodeCoverage app: the requested repository permission, marked New request, and the Accept new permissions button](https://github.com/user-attachments/assets/558c6563-d0e3-43b9-abf3-2dd29914a7f3)
+
 ### 2.2 `coverage.yml` → `mergeQueue:`
 
 The file behaviour of the queue lives in the repository; the trust policy lives in CodeCoverage (§2.4, O15).
@@ -283,6 +290,8 @@ request cannot change them (O15). They are set on the **Account page** (group "M
 page can override them. Only the account's owner may change them, through the live forge ownership check. They are
 readable like `DeleteBranchOnPrClose` (D49, D64).
 
+![The Merge queue group on a CodeCoverage organization page at its defaults: Merge queue approval floor on Approval for external authors, no Checks the merge queue ignores, Merge queue bypass role on Nobody](https://github.com/user-attachments/assets/41dc6e47-3634-4d83-935d-1b20f48a08a7)
+
 **Approval floor (O11, tightened by D47 and D61).** It is checked at enqueue and again right before the merge, like
 O9's role. GitHub's ruleset 2 still enforces its own reviews at the merge.
 
@@ -369,6 +378,8 @@ documentation (`integrations/terraform-provider-github`, `docs/resources/reposit
 After creating the ruleset, check that `gh api repos/<owner>/<repo>/rulesets/<id> --jq .bypass_actors` lists the admin
 role. Picking "Repository admin" in the UI's bypass list writes the same entry.
 
+![Ruleset 1's bypass list on GitHub, the Repository admin role allowed for pull requests only and the CodeCoverage App exempt, above its target, the default branch](https://github.com/user-attachments/assets/1f80bbe3-b7c5-4ed8-a4e5-58d8e29b5dfd)
+
 **Ruleset 2** (`ruleset-2.json`; one entry per required check):
 
 ```json
@@ -391,6 +402,8 @@ role. Picking "Repository admin" in the UI's bypass list writes the same entry.
   "bypass_actors": []
 }
 ```
+
+![Ruleset 2's Require status checks to pass rule on GitHub, with Require branches to be up to date before merging ticked and the repository's CI check required, not the Merge queue check](https://github.com/user-attachments/assets/8d8fbe19-6195-4325-9131-3698d0b1773c)
 
 ```bash
 gh api apps/<app-slug> --jq .id                                       # <APP_ID>
@@ -437,11 +450,17 @@ pins the head at enqueue and evicts on any push it did not make (T3), its own ch
 `regeneratedPaths` (T4), and the verify checks run on the final commit. A repository that keeps either rule gets a
 **warning** on the check run at enqueue, and then `merge-refused` with GitHub's rule-violation message.
 
+![Ruleset 2's Require a pull request before merging rule on GitHub, with Dismiss stale pull request approvals and Require approval of the most recent reviewable push unticked](https://github.com/user-attachments/assets/d0bcd270-53c6-4841-b47d-8d5702da77f1)
+
 ### 3.2 Everything else
 
 - **GitHub's native merge queue rule off (D8).** The two queues cannot share a branch; enqueue refuses `native-queue`
   when a ruleset requires it. The queue also passes `merge_action=direct_merge`, so it never ends up in GitHub's queue.
+
+  ![A branch ruleset's rules on GitHub with Require merge queue unticked](https://github.com/user-attachments/assets/d11824a1-0040-4dd3-bf67-472bcaa84f62)
 - **Squash merging allowed** (Settings → General → Pull Requests).
+
+  ![The Pull Requests section of a repository's general settings on GitHub with Allow squash merging ticked](https://github.com/user-attachments/assets/f20b7b2d-bcff-4a93-8fa2-ea95545f13ad)
 - **`branches-ignore: ['mq/**']`** on every `push:` trigger that would otherwise match the queue's branches (D14).
   Since D65 this is **enforced for forks**: a fork's pull request that needs the regenerate workflow is evicted
   `fork-unsafe-workflows` while any `push:` (or `create:`) trigger would start on its queue branch (§2.3). Pushes to
@@ -454,6 +473,8 @@ pins the head at enqueue and evicts on any push it did not make (T3), its own ch
   fork's branch; there is no bot-made fork. GitHub offers the box only on forks owned by a user, not by an organization.
   The push uses a token scoped to the base repository (D59), whose write access is what the box honours; GitHub accepts
   it (S6, verified live in D69).
+
+  ![The form that opens a pull request from a fork on GitHub, with Allow edits by maintainers ticked beside the Create pull request button](https://github.com/user-attachments/assets/c35a720c-0704-4cd0-89c0-c8d9c41b27b9)
 - **A fork's branch must already hold the base's workflow files (D69).** GitHub never lets an App create or update a
   workflow file that the fork has on no branch, whatever permission its token carries. When the base changed its
   workflows since the fork branched, the publish is refused and the entry ends `fork-workflow-update-needed`. Someone
@@ -501,6 +522,11 @@ the check gate) do not run.
   label removal.
 - A second `/queue`, or the label re-applied, while queued changes nothing. A refused label is removed again and the
   check run says why; a refused comment or button gets a comment.
+
+The panel shows each base branch's lane: the pull request the queue is working on and the waiting ones, then the latest
+outcomes and the configuration the run read (D55).
+
+![The merge-queue panel of a CodeCoverage repository page: the main branch's lane with the pull request being published and two waiting ones, each with Dequeue, the latest outcomes, the effective configuration and the Queue button](https://github.com/user-attachments/assets/d8ddd90f-209c-4079-b95f-f06ffc245552)
 
 ### 4.2 Who may
 

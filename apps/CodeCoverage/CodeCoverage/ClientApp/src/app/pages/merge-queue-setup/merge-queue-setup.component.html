@@ -62,6 +62,7 @@
               <app-account-permissions-notice [provider]="a.provider" [login]="a.login" [showGuideLink]="false" />
             }
             <ng-container *ngTemplateOutlet="shot; context: { $implicit: shots.acceptPermissions }" />
+            <ng-container *ngTemplateOutlet="shot; context: { $implicit: shots.permissionsBanner }" />
           }
           @case ('native-queue') {
             <p>
@@ -335,16 +336,17 @@
   </p>
 </div>
 
-<!-- A screenshot slot: lazy, with its size declared up front. Without a URL yet, nothing is requested and a box of the
-     same size stands in; an image that fails to load becomes the same box. -->
+<!-- A screenshot slot: lazy, with the image's own size declared up front. Without a URL yet, nothing is requested and a
+     1280×720 box stands in; an image that fails to load becomes the same box at the image's size. -->
 <ng-template #shot let-s>
   <figure class="figure d-block my-3" [attr.data-shot]="s.name">
-    @let url = urlOf(s);
-    @if (url && !missing().has(s.name)) {
-      <img class="figure-img img-fluid rounded border mb-0" loading="lazy" decoding="async" width="1280" height="720"
-           [src]="url" [alt]="s.alt" (error)="markMissing(s.name)">
+    @let image = imageOf(s);
+    @if (image && !missing().has(s.name)) {
+      <img class="figure-img img-fluid rounded border mb-0" loading="lazy" decoding="async" [width]="image.width"
+           [height]="image.height" [src]="image.url" [alt]="s.alt" (error)="markMissing(s.name)">
     } @else {
-      <div class="shot-pending rounded" role="img" [attr.aria-label]="s.alt" data-shot-pending>
+      <div class="shot-pending rounded" role="img" [attr.aria-label]="s.alt" data-shot-pending
+           [style.--shot-width]="image?.width" [style.--shot-height]="image?.height">
         <i class="bi bi-image fs-3" aria-hidden="true"></i>
         <span>Screenshot pending</span>
       </div>
