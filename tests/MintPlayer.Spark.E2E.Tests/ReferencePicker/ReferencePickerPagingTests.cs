@@ -176,7 +176,11 @@ public class ReferencePickerPagingTests : IAsyncLifetime
             new() { Timeout = Timeout });
         await page.Locator("spark-po-form button[type='submit']", new() { HasTextString = "Save" }).ClickAsync();
         var response = await saved;
-        response.Ok.Should().BeTrue($"the save should succeed; /po/update answered {response.Status}: {await response.TextAsync()}");
+        // The body is read only on failure: a successful save navigates to the detail page, after which the browser
+        // no longer holds the body ("Response body is not available for a response that was navigated away from").
+        // An interpolated `because` is built before the assertion runs, so it must not touch the body either.
+        if (!response.Ok)
+            response.Ok.Should().BeTrue($"the save should succeed; /po/update answered {response.Status}: {await response.TextAsync()}");
 
         var stored = await _fixture.Host.LoadAsync<StoredPerson>(personId);
         stored.Should().NotBeNull();
