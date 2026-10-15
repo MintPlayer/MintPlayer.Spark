@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
+using CodeCoverage.Git.MergeQueue.Resolution;
 
 namespace CodeCoverage.Git.MergeQueue;
 
@@ -32,23 +33,34 @@ public abstract record MergeOutcome(string BaseCommit, string HeadCommit)
     /// <summary>No conflict: <see cref="Tree"/> is merge-tree's own result.</summary>
     public sealed record Clean(string BaseCommit, string HeadCommit, string Tree) : MergeOutcome(BaseCommit, HeadCommit);
 
-    /// <summary>Every conflict was on allow-listed lines; <see cref="Paths"/> were set to the base branch's version.</summary>
-    public sealed record Resolved(string BaseCommit, string HeadCommit, string Tree, IReadOnlyList<string> Paths) : MergeOutcome(BaseCommit, HeadCommit);
+    /// <summary>Every conflict was resolved under its rule; <see cref="Resolutions"/> says how, path by path.</summary>
+    public sealed record Resolved(string BaseCommit, string HeadCommit, string Tree, IReadOnlyList<string> Paths) : MergeOutcome(BaseCommit, HeadCommit)
+    {
+        /// <summary>One per resolved path, in <see cref="Paths"/>' order (§10.6).</summary>
+        public IReadOnlyList<ResolvedPath> Resolutions { get; init; } = [];
+    }
 
     /// <summary>The pull request leaves the queue; <see cref="Paths"/> are the ones that caused it.</summary>
     public sealed record Evicted(string BaseCommit, string HeadCommit, EvictionReason Reason, IReadOnlyList<string> Paths, string Detail) : MergeOutcome(BaseCommit, HeadCommit);
 }
 
+/// <summary>How one conflicted path was resolved (§10.6): the strategy, whether it needs the regenerate workflow, and the
+/// index of the <c>autoResolve</c> rule that matched it (the app maps that rule to its workflow, O36).</summary>
+public sealed record ResolvedPath(string Path, string Strategy, bool Regenerate, int Rule);
+
 /// <summary>
-/// The merge queue's resolver (docs/coverage_merge_queue_PRD.md §5.3 as amended by O1/O2). One three-way
+/// The merge queue's resolver (docs/coverage_merge_queue_PRD.md §5.3 as amended by O1/O2, and §10). One three-way
 /// <c>git merge-tree --write-tree</c> squashes and rebases the pull request onto its base in a bare repository, with no
-/// checkout, no hooks, no merge drivers and no attributes from the repository (<see cref="GitRunner"/>). Conflicts are
-/// then either all resolvable, by taking the base branch's version of allow-listed files whose every conflicting hunk
-/// sits on allow-listed JSON keys (<see cref="ConflictHunks"/> holds the argument), or the pull request is evicted.
-/// The output never contains conflict markers.
+/// checkout, no hooks, no merge drivers and no attributes from the repository (<see cref="GitRunner"/>). Each conflicted
+/// path is then dispatched to the strategy of the first <c>autoResolve</c> rule that matches it, through
+/// <see cref="ConflictResolverRegistry"/> (§10.3); one refusal evicts the pull request. The output never contains
+/// conflict markers.
 /// </summary>
-public sealed partial class MergeQueueResolver(GitRunner git)
+public sealed partial class MergeQueueResolver(GitRunner git, ConflictResolverRegistry? registry = null)
 {
+    /// <summary>The strategies and validators; the built-in set when none was given.</summary>
+    public ConflictResolverRegistry Registry { get; } = registry ?? ConflictResolverRegistry.Default;
+
     /// <summary>The cap on one blob of an allow-listed path; Spark's <c>modelHashes.json</c> is a few KB.</summary>
     public const long MaxBlobBytes = 1024 * 1024;
 
@@ -111,8 +123,10 @@ public sealed partial class MergeQueueResolver(GitRunner git)
         MergeOutcome Evict(EvictionReason reason, IEnumerable<string> paths, string detail)
             => new MergeOutcome.Evicted(baseCommit, headCommit, reason, paths.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList(), detail);
 
+        AutoResolveRule? RuleFor(string path) => rules.FirstOrDefault(r => r.Matches(path));
         var conflicted = output.Stages.Select(s => s.Path).Distinct(StringComparer.Ordinal).ToList();
-        var unruled = conflicted.Where(p => !rules.Any(r => r.Matches(p))).ToList();
+        // A path no rule matches, or whose first matching rule says `evict`, is never merged by the bot (O1, §10.3).
+        var unruled = conflicted.Where(p => RuleFor(p) is not { } r || r.Strategy == MergeQueueWireRules.Evict).ToList();
         if (unruled.Count > 0)
             return Evict(EvictionReason.ConflictOutsideAllowList, unruled, OutsideAllowListDetail);
 
@@ -125,56 +139,42 @@ public sealed partial class MergeQueueResolver(GitRunner git)
         if (merge.ExitCode == 0)
             return new MergeOutcome.Clean(baseCommit, headCommit, output.Tree);
 
-        var resolutions = new List<MergeTreeStage>();
+        var repository = new ConflictRepository(git, gitDirectory, credential, Timeout, Config, cancellationToken);
+        var replacements = new List<MergeTreeStage>();
+        var resolved = new List<ResolvedPath>();
         foreach (var path in conflicted)
         {
-            var rule = rules.First(r => r.Matches(path));
+            // §10.3: the first matching rule names the strategy; the registry runs it.
+            var rule = RuleFor(path)!;
+            var resolver = Registry.Resolver(rule.Strategy);
             var entries = output.Stages.Where(s => s.Path == path).ToDictionary(s => s.Stage);
-            if (!entries.TryGetValue(2, out var ours) || !entries.ContainsKey(3) || entries.Values.Any(e => e.Mode != "100644"))
+            if (!resolver.CanResolve(path, entries, rule))
                 return Evict(EvictionReason.UnsupportedEntry, [path], "Both sides must hold the file as a regular, non-executable file.");
-
-            if (rule.AnyLine)
+            foreach (var entry in entries.Values)
             {
-                // Q7's whole-file entry: no hunk check, no JSON; the size cap still holds (a side is never read whole).
-                foreach (var entry in entries.Values)
-                {
-                    if (await BlobSizeAsync(gitDirectory, entry.ObjectId, credential, cancellationToken) > MaxBlobBytes)
-                        return Evict(EvictionReason.TooLarge, [path], $"A side is over {MaxBlobBytes} bytes.");
-                }
-                resolutions.Add(ours);
-                continue;
+                if (await repository.SizeAsync(entry.ObjectId) > resolver.MaxSideBytes)
+                    return Evict(EvictionReason.TooLarge, [path], $"A side is over {resolver.MaxSideBytes} bytes.");
             }
 
-            var sides = new Dictionary<int, string>();
-            foreach (var (stage, entry) in entries)
+            var input = new ConflictInput(path, rule, entries, output.Tree, repository);
+            switch (await resolver.ResolveAsync(input, cancellationToken))
             {
-                if (await ReadBlobAsync(gitDirectory, entry.ObjectId, credential, cancellationToken) is not { } text)
-                    return Evict(EvictionReason.TooLarge, [path], $"A side is over {MaxBlobBytes} bytes.");
-                sides[stage] = text;
+                case ConflictResolution.UseStage use when entries.TryGetValue(use.Stage, out var stage):
+                    replacements.Add(stage with { Stage = 0 });
+                    break;
+                case ConflictResolution.Content content:
+                    replacements.Add(new MergeTreeStage("100644", await repository.WriteBlobAsync(content.Text), 0, path));
+                    break;
+                case ConflictResolution.Refused refused:
+                    return Evict(refused.Reason, [path], refused.Detail);
+                default:
+                    throw new InvalidOperationException($"The {rule.Strategy} resolver answered no usable resolution for a path.");
             }
-            if (await ReadBlobAsync(gitDirectory, $"{output.Tree}:{path}", credential, cancellationToken) is not { } merged)
-                return Evict(EvictionReason.TooLarge, [path], $"The merged file is over {MaxBlobBytes} bytes.");
-
-            var allowed = new Dictionary<int, IReadOnlySet<string>>();
-            foreach (var (stage, text) in sides)
-            {
-                if (ConflictHunks.AllowedLineTexts(text, rule.Keys) is not { } set)
-                    return Evict(EvictionReason.NotJson, [path], $"Stage {stage} is not a JSON object.");
-                allowed[stage] = set;
-            }
-
-            var hunks = ConflictHunks.Parse(merged);
-            if (hunks is null || hunks.Count == 0)
-                return Evict(EvictionReason.HunkOutsideAllowedKeys, [path], "The conflict regions could not be read.");
-            static bool Within(IReadOnlyList<string> lines, IReadOnlySet<string>? allowed) => lines.Count == 0 || allowed is not null && lines.All(allowed.Contains);
-            if (hunks.Any(h => !Within(h.Ours, allowed[2]) || !Within(h.Theirs, allowed[3]) || !Within(h.Base, allowed.GetValueOrDefault(1))))
-                return Evict(EvictionReason.HunkOutsideAllowedKeys, [path], $"A conflicting hunk touches a line outside {string.Join(", ", rule.Keys.Order(StringComparer.Ordinal))}.");
-
-            resolutions.Add(ours);
+            resolved.Add(new ResolvedPath(path, rule.Strategy, rule.Regenerate ?? resolver.RegeneratesByDefault, IndexOf(rules, rule)));
         }
 
-        var tree = await ReplaceAsync(gitDirectory, output.Tree, resolutions, cancellationToken);
-        return new MergeOutcome.Resolved(baseCommit, headCommit, tree, resolutions.Select(r => r.Path).ToList());
+        var tree = await ReplaceAsync(gitDirectory, output.Tree, replacements, cancellationToken);
+        return new MergeOutcome.Resolved(baseCommit, headCommit, tree, resolved.Select(r => r.Path).ToList()) { Resolutions = resolved };
     }
 
     /// <summary>The squashed commit: <paramref name="tree"/> on top of <paramref name="baseCommit"/>, authored by the pull
@@ -199,23 +199,6 @@ public sealed partial class MergeQueueResolver(GitRunner git)
         if (!result.Succeeded)
             throw new GitCommandException("rev-parse", $"'{reference}' is not a commit in the repository.");
         return Oid(result, "rev-parse");
-    }
-
-    /// <summary>A blob's text, or null when it is over the cap (the size is asked first, so a huge blob is never
-    /// read).</summary>
-    private async Task<string?> ReadBlobAsync(string gitDirectory, string objectName, GitCredential? credential, CancellationToken cancellationToken)
-    {
-        if (await BlobSizeAsync(gitDirectory, objectName, credential, cancellationToken) > MaxBlobBytes)
-            return null;
-        return (await RunAsync(gitDirectory, ["cat-file", "blob", objectName], cancellationToken, credential: credential)).StandardOutput;
-    }
-
-    private async Task<long> BlobSizeAsync(string gitDirectory, string objectName, GitCredential? credential, CancellationToken cancellationToken)
-    {
-        var size = await RunAsync(gitDirectory, ["cat-file", "-s", objectName], cancellationToken, credential: credential);
-        if (!long.TryParse(size.StandardOutput.Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out var bytes))
-            throw new GitCommandException("cat-file", "the size does not parse.");
-        return bytes;
     }
 
     /// <summary>§5.3 step 5: the merged tree with the resolved paths replaced, built in a throwaway index so nothing
@@ -260,6 +243,16 @@ public sealed partial class MergeQueueResolver(GitRunner git)
         if (!result.Succeeded)
             throw new GitCommandException(arguments[0], result);
         return result;
+    }
+
+    private static int IndexOf(IReadOnlyList<AutoResolveRule> rules, AutoResolveRule rule)
+    {
+        for (var i = 0; i < rules.Count; i++)
+        {
+            if (ReferenceEquals(rules[i], rule))
+                return i;
+        }
+        return -1;
     }
 
     private static string Oid(GitResult result, string verb)

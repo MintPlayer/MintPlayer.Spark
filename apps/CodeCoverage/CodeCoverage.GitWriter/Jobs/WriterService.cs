@@ -1,6 +1,7 @@
 using System.Text;
 using CodeCoverage.Git;
 using CodeCoverage.Git.MergeQueue;
+using CodeCoverage.Git.MergeQueue.Resolution;
 using Microsoft.Extensions.Options;
 
 namespace CodeCoverage.GitWriter.Jobs;
@@ -49,7 +50,7 @@ public sealed record DeleteQueueBranchJob(string Repo, Uri CloneUrl, GitCredenti
 /// differs from the base's itself (<c>fork-touches-workflows</c>), behind the saga's own rule.
 /// </para>
 /// </remarks>
-public sealed class WriterService(GitRunner git, JobRunner jobs, IOptions<GitWriterOptions> options)
+public sealed class WriterService(GitRunner git, JobRunner jobs, IOptions<GitWriterOptions> options, ConflictResolverRegistry registry)
 {
     private const string HeadTracking = "refs/mq/head";
 
@@ -248,7 +249,7 @@ public sealed class WriterService(GitRunner git, JobRunner jobs, IOptions<GitWri
             // T3: the detail reaches the eviction message, so it explains itself rather than citing the PRD (§0 D72).
             return new Build.Stopped(JobOutcomes.HeadMismatch, null, baseSha, headSha, [], $"{job.HeadRef} is at {headSha}, not the pinned {job.HeadSha}.");
 
-        var resolver = new MergeQueueResolver(git) { Timeout = context.Remaining, ScratchDirectory = context.Scratch, Config = JobContext.WriterConfig };
+        var resolver = new MergeQueueResolver(git, registry) { Timeout = context.Remaining, ScratchDirectory = context.Scratch, Config = JobContext.WriterConfig };
         var merged = await resolver.MergeAsync(context.GitDirectory, baseSha, headSha, job.Rules, context.Deadline, job.Credential);
         context.EnsureWithinDisk();
         if (merged is MergeOutcome.Evicted e)

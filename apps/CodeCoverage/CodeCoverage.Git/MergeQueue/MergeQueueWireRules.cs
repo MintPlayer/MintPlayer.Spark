@@ -31,6 +31,16 @@ public static partial class MergeQueueWireRules
     /// <summary>The longest identity name or email.</summary>
     public const int MaxIdentityLength = 256;
 
+    /// <summary>The conflict strategies (§10.3): <c>take-base</c> keeps the base branch's file (the regenerate workflow
+    /// then rewrites it); <c>evict</c> refuses the conflict, and in <c>coverage.yml</c> masks a default for one path.</summary>
+    public const string TakeBase = "take-base", Evict = "evict";
+
+    /// <summary>Every strategy a rule may name; the writer's <c>ConflictResolverRegistry</c> holds exactly these.</summary>
+    public static IReadOnlySet<string> Strategies { get; } = new HashSet<string>(StringComparer.Ordinal) { TakeBase, Evict };
+
+    /// <summary>Every validator a rule may name; the writer's <c>ConflictResolverRegistry</c> holds exactly these.</summary>
+    public static IReadOnlySet<string> Validators { get; } = new HashSet<string>(StringComparer.Ordinal);
+
     public const string BranchRule =
         "letters, digits, '.', '_', '/' and '-' only, 1 to 200 characters, not starting with '-', '/' or '.', not ending "
         + "with '/' or '.', no '..' or '//', and no part starting with '.' or ending in '.lock'";
