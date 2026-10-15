@@ -183,8 +183,9 @@ public sealed class BrowserStateTests(ITestOutputHelper output) : IAsyncLifetime
     /// <summary>
     /// A page that tries three routed ways to save a file: a frame answered with <c>Content-Disposition: attachment</c>, a
     /// scripted click on <c>&lt;a download&gt;</c> of a served file, and a navigation to an <c>application/octet-stream</c>.
-    /// Not one file is created in the browser's temp folder, not even for a moment: the router never hands Chromium a
-    /// response it would save (<c>docs/seo_analyzer_PRD.md</c> §12, "Downloads never reach Chromium"). None holds the marker,
+    /// Chromium announces no download of a routed response, and not one file is created in the browser's temp folder, not
+    /// even for a moment (off Windows, Chromium's own temp files apart: <see cref="CreatedFiles"/>): the router never hands
+    /// Chromium a response it would save (<c>docs/seo_analyzer_PRD.md</c> §12, "Downloads never reach Chromium"). None holds the marker,
     /// no download completes, the page stays as it was and the next render works. The <c>&lt;a download&gt;</c> is not routed
     /// at all (Chromium's download manager fetches it itself), and the dead proxy refuses it: the site never sees it. Red
     /// before the router stopped downloads: Chromium created a <c>&lt;guid&gt;.tmp</c> holding each body. Red with
@@ -216,6 +217,8 @@ public sealed class BrowserStateTests(ITestOutputHelper output) : IAsyncLifetime
         left.Render.Facts.Error.Should().BeNull("the render goes on as if nothing happened");
         left.Render.Facts.Mobile!.Title.Should().Be("Downloads", "the page stays as it was");
         left.Created.Should().BeEmpty("no file is created in the browser's temp folder, not even for a moment");
+        left.Downloads.Should().OnlyContain(d => d.StartsWith(marker + "-click.bin ", StringComparison.Ordinal),
+            "Chromium starts no download of what the router answers: only the unrouted <a download>, which the dead proxy fails");
         left.HeldMarker.Should().BeEmpty("no file holding what the site served reached Playwright's download folder or is left anywhere");
         left.Downloads.Should().NotContain(d => d.EndsWith(" completed"), "no download completes");
         left.Render.Facts.Network.Should().Contain(n => n.Url == site + "/attachment" && n.Outcome == "download", "the frame's attachment never reached Chromium");
@@ -273,6 +276,7 @@ public sealed class BrowserStateTests(ITestOutputHelper output) : IAsyncLifetime
         left.Render.Facts.Mobile.Should().BeNull();
         left.Render.Facts.Network.Should().Contain(n => n.Url == site + "/report.pdf" && n.Outcome == "download");
         left.Created.Should().BeEmpty("no file is created in the browser's temp folder, not even for a moment");
+        left.Downloads.Should().BeEmpty("Chromium starts no download: the router never hands it the file");
         left.HeldMarker.Should().BeEmpty();
         (await RenderAsync(new Uri(site + "/next"))).Facts.Error.Should().BeNull("the next render works");
     }
@@ -301,6 +305,7 @@ public sealed class BrowserStateTests(ITestOutputHelper output) : IAsyncLifetime
         left.Render.Facts.Mobile.H1Count.Should().Be(1);
         left.Render.Facts.Network.Should().Contain(n => n.Url == site + "/later.zip" && n.Outcome == "download");
         left.Created.Should().BeEmpty("no file is created in the browser's temp folder, not even for a moment");
+        left.Downloads.Should().BeEmpty("Chromium starts no download: the router never hands it the file");
         left.HeldMarker.Should().BeEmpty();
     }
 
@@ -350,6 +355,12 @@ public sealed class BrowserStateTests(ITestOutputHelper output) : IAsyncLifetime
     /// <summary>
     /// Every file created in a browser's temp folder while it watches, but in Chromium's profile: Chromium's own state (a
     /// render's contexts are off the record and keep what a site stores in memory). A lost event is recorded too.
+    /// Off Windows, also not Chromium's <c>.org.chromium.Chromium.XXXXXX</c> files. On POSIX that is the name of every temp
+    /// file Chromium makes, and Playwright launches it with <c>--disable-dev-shm-usage</c> (its <c>chromiumSwitches.js</c>),
+    /// so its shared memory lives in this folder too. CI on Linux saw 8 to 23 per render, a page that never loaded included
+    /// (run 38669888652). By name they cannot be told from a download's, so there the proof is that Chromium announces no
+    /// download (<see cref="Leftovers.Downloads"/>). On Windows a temp file is a <c>&lt;guid&gt;.tmp</c> and the folder is
+    /// otherwise quiet, so every file counts.
     /// </summary>
     private sealed class CreatedFiles : IDisposable
     {
@@ -372,8 +383,11 @@ public sealed class BrowserStateTests(ITestOutputHelper output) : IAsyncLifetime
         private void Add(string path)
         {
             var relative = Path.GetRelativePath(folder.FullName, path);
-            if (!relative.StartsWith("playwright_chromiumdev_profile-", StringComparison.Ordinal))
-                paths.Enqueue(relative);
+            if (relative.StartsWith("playwright_chromiumdev_profile-", StringComparison.Ordinal))
+                return;
+            if (!OperatingSystem.IsWindows() && Path.GetFileName(relative).StartsWith(".org.chromium.Chromium.", StringComparison.Ordinal))
+                return;
+            paths.Enqueue(relative);
         }
 
         public void Dispose() => watcher.Dispose();

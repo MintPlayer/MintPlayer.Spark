@@ -2718,4 +2718,12 @@ The old 2 s window is gone because it misattributed late frames, not to absorb s
     the in-page test got the outcome `fulfilled` and 2 files.
   - After: none in all three, and no download event for a routed download.
   - The blob/data test still sees its 4, the limitation.
+- *Linux (CI run 38669888652, 2026-10-15):* every render created `.org.chromium.Chromium.XXXXXX` files in the temp
+  folder, 8 to 23, including a page that never loaded.
+  - That is POSIX Chromium's name for any temp file, and Playwright's `--disable-dev-shm-usage` puts Chromium's shared
+    memory in that folder.
+  - By name they cannot be told from a download's. There the proof is that Chromium announces no download of a routed
+    response, and off Windows the watcher skips that template. On Windows every file still counts.
+  - Red with the router change reversed: download events for `later.zip`, `…-attachment.exe` and `octet`, and 11
+    `<guid>.tmp` files. Green with it.
 - *Runs:* see `docs/coverage_merge_queue_PRD.md` D86.
