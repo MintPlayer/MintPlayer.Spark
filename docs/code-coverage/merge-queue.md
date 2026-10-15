@@ -176,6 +176,23 @@ mergeQueue:
   autoResolve:
     - path: "**/App_Data/modelHashes.json"      # take-base, any line (O19)
     - path: "**/App_Data/securityPosture.txt"
+  # keepBothDefaults is on unless set to false: keep-both for **/*.json, ignore files, CHANGELOG.md and XML
+  # project files comes after the rules above (§10, O35, O36).
+```
+
+A repository with lockfiles and its own workflow per tool might add:
+
+```yaml
+  autoResolveDefaults: [npm, nuget]          # take-base presets, after the explicit rules
+  autoResolve:
+    - path: "**/packages.lock.json"
+      strategy: take-base
+      action: lockfiles-regenerate.yml       # its own regenerate workflow (O36)
+    - path: "config/appsettings.json"
+      strategy: evict                        # masks the JSON keep-both default for this one file
+    - path: "go.sum"
+      strategy: line-set
+  keepBothDefaults: { xmlProjects: false }   # every other default group stays on
 ```
 
 | Key | Type | Default | Rules |
@@ -187,22 +204,63 @@ mergeQueue:
 | `postRebaseActionName` | file name | none | A workflow file name under `.github/workflows`, without a path: `^[A-Za-z0-9][A-Za-z0-9._-]{0,99}\.ya?ml$`. |
 | `postRebaseTimeout` | duration | `20m` | `90s`, `20m`, `1h`; a bare number is minutes and seconds round up; 1–360 minutes. |
 | `postRebaseWhen` | `auto-resolved` · `always` · `never` | `auto-resolved` | Dispatch only after a resolved conflict, after every rebase, or never. |
-| `regeneratedPaths` | list of globs | none | The only paths a regenerate patch may touch (T4). At most 64, no empty pattern. None is fine without a regenerate step. |
-| `autoResolve[].path` | glob | — | Required. At most 64 entries. |
-| `autoResolve[].strategy` | `take-base` | `take-base` | Anything else is an error: `json-union` was dropped (O1). |
-| `autoResolve[].keys` | list of top-level JSON member names | none | None: a conflict on any line of the file resolves (O19). Given: only lines that hold one of these members do (O2), and every side must be a JSON object. At most 64 keys of 1–256 characters, no control character. |
+| `regeneratedPaths` | list of globs | none | The paths a regenerate patch may touch (T4), **plus the path of every `autoResolve` rule that regenerates** (O36). At most 64 together, no empty pattern. None is fine without a regenerate step. |
+| `autoResolve[].path` | glob | — | Required. At most 64 entries, presets and defaults included. The first rule that matches a conflicted path decides. |
+| `autoResolve[].strategy` | `take-base` · `keep-both` · `line-set` · `evict` | `take-base` | `take-base`: the base branch's file, then the regenerate run rewrites it. `keep-both`: both sides' insertions at one place, base branch first (O33). `line-set`: the sorted, de-duplicated union of lines (`go.sum`). `evict`: never resolved; masks a later rule or default for its path. Anything else is an error (`json-union` was dropped, O1). |
+| `autoResolve[].keys` | list of top-level JSON member names | none | `take-base` only. None: a conflict on any line of the file resolves (O19). Given: only lines that hold one of these members do (O2), and every side must be a JSON object. At most 64 keys of 1–256 characters, no control character. |
+| `autoResolve[].validate` | list of `utf8` · `json` · `json-no-duplicate-keys` · `xml` · `no-conflict-markers` | none | At most 8. The resolved file must pass each, inputs first (§10.4); a cleanly merged file under the rule and a regenerated one too. `no-conflict-markers` always runs on resolved content. Not on `evict`. |
+| `autoResolve[].regenerate` | bool | see the rule | Whether a resolution under the rule runs a regenerate workflow. `take-base`: always (`false` is an error). `keep-both`, `line-set`: `true` when a workflow exists for the rule (`action` or `postRebaseActionName`) and `postRebaseWhen` is not `never`, else `false`; `true` without one is an error. |
+| `autoResolve[].action` | file name | `postRebaseActionName` | The rule's own regenerate workflow, same file-name rule as `postRebaseActionName` (O36). Several distinct workflows run one after the other (§2.3). At most 8 distinct workflows. |
+| `autoResolveDefaults` | list of preset names | none | Opt-in `take-base` presets, appended after the explicit rules (table below). An unknown name is an error. |
+| `keepBothDefaults` | `true` · `false` · map | all on | The `keep-both` defaults, appended after the presets (table below). `false` turns every group off; a map such as `{ json: false }` turns off the groups it names, the others stay on. |
 | `checks.retryFlaky` | int | `1` | 0–3. Re-runs of a failed check run before evicting (D9). |
 | `checks.timeout` | duration | `60m` | 5–720 minutes, from the moment the queue starts waiting for checks. |
 
 Globs: `**` spans directories, `*` and `?` stay within one, and matching is case-sensitive, like git paths
-(`CodeCoverage.Git/PathGlob.cs`). Across keys: `autoResolve` needs `postRebaseActionName` and cannot be combined with
-`postRebaseWhen: never`, because the base side of a generated file is stale on purpose and only the regenerate run
-fixes it. `postRebaseWhen: always` needs an action, and an action that can run needs `regeneratedPaths`.
+(`CodeCoverage.Git/PathGlob.cs`). Across keys: a `take-base` rule (explicit or a preset) needs a workflow
+(`postRebaseActionName` or its `action`) and cannot be combined with `postRebaseWhen: never`, because the base side of a
+generated file is stale on purpose and only the regenerate run fixes it. A `keep-both` rule needs none, so the JSON
+default alone needs no workflow. `postRebaseWhen: always` needs an action, and an action that can run needs
+`regeneratedPaths` (or a regenerating rule).
 
-**Only wholly generated files belong in `autoResolve`** (O1): `modelHashes.json` and `securityPosture.txt` for Spark.
-A conflict in a hand-authored file (`translations.json`, `security.json`, `programUnits.json`, `Model/<Entity>.json`)
-always evicts, though synchronize's sorted output keeps most of their merges clean. `regeneratedPaths` is wider: it
-lists every file synchronize may rewrite.
+**`take-base` belongs to wholly generated files only** (O1): `modelHashes.json` and `securityPosture.txt` for Spark,
+lockfiles through the presets. A hand-authored file (`translations.json`, `security.json`, `programUnits.json`,
+`Model/<Entity>.json`, any `*.csproj`) is merged by the bot only through `keep-both`, and only when both sides inserted
+lines at the same place without touching a base line, the shape O33 allows; every other conflict there evicts.
+Synchronize's sorted output keeps most of their merges clean anyway. `regeneratedPaths` is wider: it lists every file
+synchronize may rewrite.
+
+**Rule order** (§10.3): the explicit `autoResolve` rules, then the `autoResolveDefaults` presets, then the
+`keepBothDefaults` groups. The first rule that matches a path wins, so an explicit `strategy: evict` turns a default off
+for that path. The queue check's "Effective configuration" lists every rule with its source: `coverage.yml @ <ref>`,
+`preset <name>` or `default` (O15).
+
+| Preset (`autoResolveDefaults`) | Rules (all `take-base`, regenerated) |
+|---|---|
+| `spark` | `**/App_Data/modelHashes.json`, `**/App_Data/securityPosture.txt` |
+| `npm` | `**/package-lock.json`, `**/npm-shrinkwrap.json` |
+| `pnpm` | `**/pnpm-lock.yaml` |
+| `yarn` | `**/yarn.lock` |
+| `nuget` | `**/packages.lock.json` |
+
+| Default group (`keepBothDefaults`) | Rules (all `keep-both`) | Validator |
+|---|---|---|
+| `json` | `**/*.json` | `json-no-duplicate-keys` |
+| `ignoreFiles` | `**/.gitignore`, `**/.dockerignore`, `**/.prettierignore`, `**/.eslintignore` | `utf8` |
+| `changelog` | `**/CHANGELOG.md` | `utf8` |
+| `xmlProjects` | `**/*.csproj`, `**/Directory.Packages.props`, `**/*.props`, `**/*.targets` | `xml` |
+
+The lists are `CodeCoverage.Git/MergeQueue/AutoResolvePresets.cs`. A default group regenerates like any keep-both rule:
+with a `postRebaseActionName`, a resolved JSON file is regenerated (synchronize re-sorts what it owns), and its glob joins
+`regeneratedPaths`. Set `regenerate: false` on an explicit rule, or turn the group off, where that is too wide.
+
+**keep-both, as built (§10.4).** The regions come from `git merge-file --diff3 --diff-algorithm=myers`, never zdiff3,
+which lifts lines both sides share (`"groupId": …`, `},`) out of a region and would glue two inserted objects into one.
+Refused (`resolver-refused`): an add/add conflict, a side that is not strict UTF-8, a side with a line that looks like a
+conflict marker (a Markdown setext underline of `=======` counts), a region that changes a base line (which includes
+adding after a one-line last member, since that line gains a comma), and a region at the end of a file whose side lacks
+a final newline. The result keeps every byte of the sides, line endings included. `line-set` resolves only the same
+shape, then sorts and de-duplicates the whole file's lines.
 
 Unknown keys are ignored, so a newer file does not break an older server. Errors are returned, not thrown. A `/queue` or
 the button gets a `configuration` refusal that lists them, and so does the configured label on a broken section. A
@@ -219,8 +277,23 @@ allows a `+`, for one) is evicted `branch-name` once it needs a rebase, because 
 
 ### 2.3 The regenerate workflow (`postRebaseActionName`)
 
-It runs only when `postRebaseActionName` is set, and either a conflict was resolved (`auto-resolved`) or always.
-`MergeQueueWorkflowGuard.AfterPrepare` makes that decision, and only it, together with the `.github/**` guard (D63,
+It runs only when a workflow is set (`postRebaseActionName`, or a rule's `action`), and either a resolution needs it
+(`auto-resolved`) or always. **Which workflows** (O36, `MergeQueueWorkflowGuard.RegenerateWorkflows`):
+
+- `auto-resolved`: for each resolved path whose rule regenerates, that rule's `action`, else `postRebaseActionName`. A
+  `keep-both` resolution that does not regenerate needs none, so a keep-both-only pull request publishes at once, with
+  no `mq/` push and no run. A writer older than §10 does not say how it resolved: every resolved path then regenerates
+  with `postRebaseActionName`, as before.
+- `always`: every workflow the configuration names. `never`: none.
+
+**Several workflows run one after the other**, in file-name order, each dispatched on the same `mq/<base>/pr-<n>` commit
+with the same `expected_sha`; a later run does not see an earlier run's patch. Each must pass D12's identity check and,
+for a fork, the fork precondition below (checked for every one of them before the first dispatch), each gets
+`postRebaseTimeout`, and each uploads its own `merge-queue-patch`. The publish applies every patch together: two patches
+that change one path differently evict `regenerate-overlap`; identical sections are kept once. Each patch is held to
+`regeneratedPaths`. The check run lists every run.
+
+`MergeQueueWorkflowGuard.AfterPrepare` makes the dispatch decision, and only it, together with the `.github/**` guard (D63,
 D67): a pull request whose change touches `.github/**` is never dispatched, unless the bypass role (§2.4) lets a
 same-repository one through; a fork's never (`fork-touches-workflows`, O25). Such a change that needs no regeneration
 goes through, a fork's too: nothing of it reaches your repository before the merge (D65). The git writer holds the fork
@@ -235,14 +308,16 @@ the request says (D67).
 - It declares `workflow_dispatch` with the inputs `expected_sha`, `pr_number` and `queue_run_id`. GitHub refuses a
   dispatch carrying an input the workflow does not declare.
 - The run builds the prepared commit, concludes `success`, and uploads an artifact named `merge-queue-patch` holding
-  exactly one file: the patch, at most 2 MiB, `git diff --binary --no-renames` text edits of regular files (D35).
+  exactly one file: the patch, at most 8 MiB (all runs' patches together too, §10.6), `git diff --binary --no-renames`
+  text edits of regular files (D35). A patched file whose `autoResolve` rule names validators must pass them after the
+  apply (`patch-rejected`, `invalid-content`).
   **An empty patch is uploaded too**: green + empty means "nothing to regenerate", while a failed run or a missing
   artifact evicts.
 - It never commits or pushes (D4): a `GITHUB_TOKEN` push starts no CI, so no check would ever appear on the result.
 
 **Runs the queue stops waiting for are cancelled (D53).** When the entry leaves the regenerate step other than by the
 run's own completion (the base moved, an author push, a dequeue, a close, a merge elsewhere, the timeout, a refused
-permission, or too many transient failures), the run is cancelled through the outbox, so it does not keep spending CI
+permission, or too many transient failures), every run of the entry still going is cancelled through the outbox, so it does not keep spending CI
 minutes. Before each dispatch, any run of the workflow still going on the entry's own queue branch is cancelled too,
 in case an earlier dispatch's answer was lost. A run that finished by itself is never cancelled.
 
@@ -689,7 +764,12 @@ kebab-cased by the writer.
 | `hunk-outside-allowed-keys` | A `keys:` rule met a conflict on another line (O2). | Rebase by hand; drop `keys:` for a wholly generated file (O19). |
 | `unsupported-conflict-type` | A modify/delete, rename, directory/file, binary, mode or submodule conflict. | Rebase by hand. |
 | `conflict-without-stages` | git reported a conflict without a conflicted file, e.g. a directory rename. | Rebase by hand. |
-| `unsupported-entry`, `too-large`, `not-json` | An allow-listed file's sides are not two or three regular 100644 files, a side is over 1 MiB, or (a `keys:` rule) not a JSON object. | Rebase by hand. |
+| `unsupported-entry`, `too-large`, `not-json` | An allow-listed file's sides are not two or three regular 100644 files, a side is over its strategy's cap (take-base 16 MiB; keep-both, line-set and validated files 4 MiB, §10.6), or (a `keys:` rule) not a JSON object. | Rebase by hand. |
+| `resolver-refused` | The rule's strategy does not resolve this conflict's shape: for `keep-both` and `line-set`, an add/add conflict, a changed base line (adding after a one-line last member included), a marker-like line in a side, a side that is not UTF-8, or a conflict at the end of a file without a final newline (§2.2). | Rebase by hand. |
+| `invalid-side` | A side of the conflicted file already fails one of the rule's validators, so the queue does not judge a result (inputs first, §10.4). The message names the validator, the side and the position, never the content. | Fix the file, or rebase by hand. |
+| `invalid-result` | Every side passes the rule's validators, but the resolved file does not (for example both sides added the same JSON member), or it holds a conflict marker. The message names the validator and the position. | Rebase by hand. |
+| `merged-content-invalid` | git merged a file without a conflict, both sides pass its rule's validators, and the merged file does not (for example a duplicate member added at two places). | Rebase by hand. |
+| `regenerate-overlap` | Two regenerate workflows' patches change one path differently (O36): each run built the same commit without the other's change. | Give the path to one workflow (the rule's `action`), or regenerate by hand. |
 | `workflow-missing` | `.github/workflows/<postRebaseActionName>` is not on the default branch. | Add it there. |
 | `workflow-differs` | The workflow on the queue commit differs from the default branch's (D12). This happens for a base other than the default branch with an older copy. | Bring that branch's copy in line. |
 | `dispatch-refused` | GitHub refused the dispatch: the workflow is not registered, it has no `workflow_dispatch` trigger, or an input is undeclared. | Fix the workflow (§2.3). |
@@ -697,7 +777,7 @@ kebab-cased by the writer.
 | `regenerate-missing`, `regenerate-wrong-commit` | The run disappeared, or built a different commit than the prepared one (D14). | Queue it again. |
 | `regenerate-failed` | The run did not conclude `success`; the message links it. | Read its log; regenerate by hand if needed. |
 | `regenerate-timeout` | It did not finish within `postRebaseTimeout`. | Raise the timeout, or speed the workflow up. |
-| `regenerate-artifact` | `merge-queue-patch` is missing, expired, over 2 MiB, or not exactly one file. | Fix the upload step. |
+| `regenerate-artifact` | A run's `merge-queue-patch` is missing, expired, over 8 MiB, or not exactly one file; the message names the workflow. | Fix the upload step. |
 | `patch-rejected` | The patch broke a T4 rule; the sub-reason and paths are shown (below). | Fix the generator, or `regeneratedPaths`. |
 | `push-rejected` | GitHub refused the push to `mq/…` before a dispatch or to the pull request's branch, or the deletion of `mq/…`; GitHub's message is shown. | Usually a rule covering `mq/**` or the pull request's branch (§3). |
 | `push-refused` | No credential to push with: the fork is gone or its box was unticked since enqueue, or there is no installation. | As the message says. |
@@ -718,12 +798,12 @@ kebab-cased by the writer.
 | `error` | The seventh transient failure in a row since the entry last changed state (the first and 6 retries, D58): GitHub 5xx or rate limit, or the writer busy, failed or unreachable. | Operator: §7.4. |
 
 **`patch-rejected` sub-reasons** (`CodeCoverage.GitWriter/Jobs/PatchValidator.cs`). These are checked before anything
-is cloned: `too-large` (over 2 MiB or 500 files); `malformed` (not UTF-8, a NUL byte, text outside a file section, an
+is cloned: `too-large` (over 8 MiB, the runs' patches together, or 500 files); `overlap` (two regenerate workflows' patches change one path differently, shown as `regenerate-overlap`, O36); `malformed` (not UTF-8, a NUL byte, text outside a file section, an
 unknown header, hunk line counts that do not match their header); `outside-regenerated-paths` (either end of a rename
 counts); `unsafe-path` (a path git would quote, whitespace, `..`, a `.git` or `.github` component, a `.gitmodules` or
 `.gitattributes` file); `mode-change`, `symlink`, `submodule`, `binary`, `copy`, and `unsupported-mode` for anything
 but 100644. After applying: `apply-failed` (git refused it) and `unexpected-change` (the applied tree changed a path
-the patch did not declare).
+the patch did not declare), and `invalid-content` (a patched file whose `autoResolve` rule names validators fails one the prepared version passed; the message names the validator and the position, §10.4).
 
 **Ended without an eviction** (state Dequeued, neutral, "Dequeued"): the pull request was closed, or merged outside the
 queue (no button), or `/dequeue`, the label removal or the panel took it out (the button stays).
@@ -738,7 +818,7 @@ power, or forged. It must never merge more than was approved or authorised (O10)
 | T1 | A forged actor | The actor is the HMAC-verified webhook's `sender`, or the signed-in session's linked login. It is never comment text or a request body. The panel's buttons are an antiforgery-guarded POST (queue) and DELETE (dequeue). A click on the check's button (O30) counts only on this App's own "Merge queue" check run with the `mq-enqueue` identifier, and its actor is the delivery's `sender`. Bots never command (D46). |
 | T2 | Too little role | `write` at enqueue and again before the merge. Dequeue needs the author or `write`. The bypass role (O22) is likewise read when it decides and again before the merge. |
 | T3 | A swap after approval | The head SHA is pinned at enqueue, and PREPARE fetches exactly it. Any push whose SHA the queue did not write evicts. Every push is a lease, and the merge carries `sha`. The approval floor counts only approvals of the pinned commit (or the queue's own commit from it), and is checked again right before the merge, where a writer's request for changes vetoes (D61). |
-| T4 | Content smuggled in the patch | Strict parser before any clone (D30): only `regeneratedPaths`, 100644 text, no mode change, symlink, submodule, binary, copy, `.github`, `.gitattributes` or `.gitmodules`; ≤ 500 files, ≤ 2 MiB. The trees are compared after applying. The verify checks run on the final commit. |
+| T4 | Content smuggled in the patch | Strict parser before any clone (D30): only `regeneratedPaths`, 100644 text, no mode change, symlink, submodule, binary, copy, `.github`, `.gitattributes` or `.gitmodules`; ≤ 500 files, ≤ 8 MiB. The trees are compared after applying, and patched files are held to their `autoResolve` validators (§10.4). The verify checks run on the final commit. |
 | T5 | Secrets stolen through a workflow the pull request changed, or through the base's own workflows running a fork's code | **D12:** a dispatched run uses the workflow file of the dispatched `mq/` ref, not the default branch's (T5(a) was refuted live), and a push to `mq/` starts `push` workflows from the pushed commit's own files, on that commit, with the repository's secrets. So the queue pushes to `mq/` only right before a dispatch (D65), never at PREPARE. A fork's commit that changes `.github/**` against its base never reaches `mq/`: it is evicted `fork-touches-workflows` before a dispatch, whatever the role (O25), and the git writer refuses its queue-branch push itself (D67); D65 reads the merged tree, so a rename on the base cannot carry a fork's edit into a workflow unseen. Without a dispatch it goes to the fork's own branch only, as it would without the queue (O25). A fork's commit is pushed to `mq/` only after the fork precondition (§2.3, D65): no `push`/`create` trigger runs on that branch, the regenerate workflow is read-only, no `workflow_run` follows it there, and no workflow runs on the commit's checks, statuses or deployments (O25). A same-repository change, whose author's own push already ran those workflows, goes through only when nothing is dispatched, or through the bypass role (O21 A, O22). Before every dispatch the workflow's blob on `mq/` must equal the default branch's, and nothing bypasses that. The main defence stays §2.3: `contents: read`, no secrets, no `id-token`, GitHub-hosted runners, because the pull request's build code runs either way. A dispatch happens only after an authorised enqueue. |
 | T6 | A pull request widening the configuration | `mergeQueue:` comes from the default branch only (O16); trust settings are in the database (O15). |
 | T7 | The bot skipping the repository's rules | The App is exempt only from ruleset 1. Enqueue refuses any ruleset holding reviews or checks that the App itself can bypass (`current_user_can_bypass` read with its own token, D16). People may bypass ruleset 2 (O22); that is the repository's policy, not the bot's. |
@@ -872,6 +952,14 @@ Not verified, or not supported:
   repository's workflows. Workflows on `check_run`, `check_suite`, `status`, `deployment` and `deployment_status` are
   read since O25, and refused whether or not their jobs filter `mq/`, which the queue cannot verify (D67).
 - **Co-authors beyond GitHub's 250-commit listing** of a pull request are not credited (D60).
+- **Conflict resolution v2 (§10).** keep-both resolves only insertions at one place on both sides; any changed base line
+  evicts, by design. Several regenerate workflows run one after the other, never in parallel, and none sees another's
+  patch, so two that write one file are refused (`regenerate-overlap`) rather than merged. At most 8 distinct workflows,
+  8 validators per rule, 64 rules with presets and defaults. Caps: take-base sides 16 MiB (never parsed); keep-both,
+  line-set and every validated file 4 MiB; the regenerate patches 8 MiB together. A keep-both default that regenerates
+  widens `regeneratedPaths` by its glob (`**/*.json` and friends with a `postRebaseActionName`); turn the group off or set
+  `regenerate: false` on an explicit rule where that is too wide. A writer deploy that changes the resolver or git version
+  between the prepare and a later job restarts the entry instead of evicting it (O35 #4).
 - Unmeasured with the production App so far: Commit statuses: read (D40); that an Actions check run's id is its job's id
   for re-runs (D48); that the App's `workflows` permission follows the OAuth scope's "same file on another branch" rule
   for a same-repository push (D59; for a fork's branch the rule held without the permission, D69); the
