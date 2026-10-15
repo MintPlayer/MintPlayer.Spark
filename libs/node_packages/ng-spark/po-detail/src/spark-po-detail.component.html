@@ -172,6 +172,20 @@
                     }
                   </tbody>
                 </bs-table>
+              } @else if (isPrimitiveList(attr)) {
+                <!-- A list of plain values (List<string>): one chip per item, as a reference array
+                     shows one per id. It used to print the array's comma-joined toString(). Before the
+                     url/color/image branches, which would otherwise take a list of those as one value. -->
+                @let listItems = primitiveListItems(attr.name | rawAttributeValue:item());
+                @if (listItems.length) {
+                  <div class="d-flex flex-wrap gap-1">
+                    @for (listItem of listItems; track $index) {
+                      <span class="spark-chip">{{ listItem }}</span>
+                    }
+                  </div>
+                } @else {
+                  -
+                }
               } @else if (attr.dataType === 'boolean') {
                 <input type="checkbox"
                   [checked]="(attr.name | attributeValue:item():entityType():lookupReferenceOptions():allEntityTypes()) === true"

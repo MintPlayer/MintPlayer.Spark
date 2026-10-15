@@ -923,6 +923,66 @@ public class GitHubForgeMergeQueueTests
         await Throws<ForgeRequestException>(() => Queue(failing).GetClosingIssuesAsync(Target(), 518));
     }
 
+    // ── The checks a repository has seen (§11 D109) ──────────────────────────────────────────────
+
+    /// <summary>
+    /// The documented shape of <c>statusCheckRollup</c>: the default branch's head with a check run and a status, and two
+    /// open pull requests, one repeating <c>build</c> and carrying the queue's own check, one with no rollup at all.
+    /// </summary>
+    private const string ReportedChecks = """
+        {"data":{"repository":{
+          "defaultBranchRef":{"target":{"statusCheckRollup":{"contexts":{"nodes":[
+            {"__typename":"CheckRun","name":"build","checkSuite":{"app":{"slug":"github-actions"}}},
+            {"__typename":"StatusContext","context":"ci/legacy"}]}}}},
+          "pullRequests":{"nodes":[
+            {"commits":{"nodes":[{"commit":{"statusCheckRollup":{"contexts":{"nodes":[
+              {"__typename":"CheckRun","name":"build","checkSuite":{"app":{"slug":"github-actions"}}},
+              {"__typename":"CheckRun","name":"Merge queue","checkSuite":{"app":{"slug":"coveragedevelopment"}}},
+              {"__typename":"CheckRun","name":"GitGuardian Security Checks","checkSuite":{"app":{"slug":"gitguardian"}}}]}}}}]}},
+            {"commits":{"nodes":[{"commit":{"statusCheckRollup":null}}]}}]}}}}
+        """;
+
+    [Fact]
+    public async Task Reported_checks_are_read_through_one_graphql_query_with_every_value_a_variable()
+    {
+        string? posted = null;
+        var github = new StubGitHub().On(HttpMethod.Post, "/graphql", (_, body) =>
+        {
+            posted = body;
+            return StubHttpMessageHandler.Json(HttpStatusCode.OK, ReportedChecks);
+        });
+
+        var checks = await Queue(github).GetReportedCheckNamesAsync(Target());
+
+        checks.Should().Equal([
+            new ForgeReportedCheck("GitGuardian Security Checks", EForgeCheckKind.CheckRun, "gitguardian"),
+            new ForgeReportedCheck("build", EForgeCheckKind.CheckRun, "github-actions"),
+            new ForgeReportedCheck("ci/legacy", EForgeCheckKind.Status, null)]);
+        using var json = JsonDocument.Parse(posted!);
+        var query = json.RootElement.GetProperty("query").GetString();
+        query.Should().Be(GitHubForgeMergeQueue.ReportedChecksQuery);
+        query.Should().NotContain("acme").And.NotContain("widget");
+        var variables = json.RootElement.GetProperty("variables");
+        variables.GetProperty("owner").GetString().Should().Be("acme");
+        variables.GetProperty("name").GetString().Should().Be("widget");
+        variables.GetProperty("pulls").GetInt32().Should().Be(GitHubForgeMergeQueue.ReportedChecksPullRequests);
+        variables.GetProperty("contexts").GetInt32().Should().Be(GitHubForgeMergeQueue.ReportedChecksPerCommit);
+    }
+
+    [Fact]
+    public async Task Reported_checks_of_a_missing_repository_are_none_and_a_refusal_is_an_access_failure()
+    {
+        var missing = new StubGitHub().On(HttpMethod.Post, "/graphql", HttpStatusCode.OK, """
+            {"data":{"repository":null},"errors":[{"type":"NOT_FOUND","path":["repository"],"message":"Could not resolve to a Repository."}]}
+            """);
+        var refused = new StubGitHub().On(HttpMethod.Post, "/graphql", HttpStatusCode.OK, """
+            {"data":{"repository":null},"errors":[{"type":"FORBIDDEN","path":["repository"],"message":"Resource not accessible by integration"}]}
+            """);
+
+        (await Queue(missing).GetReportedCheckNamesAsync(Target())).Should().BeEmpty();
+        await Throws<ForgeAccessDeniedException>(() => Queue(refused).GetReportedCheckNamesAsync(Target()));
+    }
+
     [Fact]
     public async Task An_issue_is_closed_as_completed_and_then_commented()
     {

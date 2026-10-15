@@ -194,4 +194,36 @@ describe('evaluateRules', () => {
     const a = attr({ rules: [{ type: 'minLength', value: 5 }, { type: 'email' }, { type: 'maxLength', value: 10 }] });
     expect(evaluateRules(a, 'ab').map(f => f.ruleType)).toEqual(['minLength', 'email']);
   });
+
+  describe('a list of plain values', () => {
+    it.each([[['', '  ']], [[null]]])('reports %j (only blank items) as missing when required', value => {
+      expect(evaluateRules(attr({ isRequired: true }), value).map(f => f.ruleType)).toEqual(['required']);
+    });
+
+    it('satisfies required with one non-blank item', () => {
+      expect(evaluateRules(attr({ isRequired: true }), ['', 'ci/build'])).toEqual([]);
+    });
+
+    it('judges maxLength per item, not on the joined text', () => {
+      const a = withRule({ type: 'maxLength', value: 5 });
+      // Joined, "abc,de" is 6 characters; every item is within the limit.
+      expect(evaluateRules(a, ['abc', 'de'])).toEqual([]);
+      expect(evaluateRules(a, ['abc', 'toolong']).map(f => f.ruleType)).toEqual(['maxLength']);
+    });
+
+    it('reports one failure per rule even when several items break it', () => {
+      const a = attr({ rules: [{ type: 'email' }, { type: 'maxLength', value: 3 }] });
+      expect(evaluateRules(a, ['nope', 'also-nope']).map(f => f.ruleType)).toEqual(['email', 'maxLength']);
+    });
+
+    it('judges range per number and skips blank items', () => {
+      const a = withRule({ type: 'range', min: 0, max: 10 });
+      expect(evaluateRules(a, [1, null, 10])).toEqual([]);
+      expect(evaluateRules(a, [1, 11]).map(f => f.ruleType)).toEqual(['range']);
+    });
+
+    it('leaves embedded rows (objects) to their own rules', () => {
+      expect(evaluateRules(withRule({ type: 'maxLength', value: 1 }), [{ Street: 'long street' }])).toEqual([]);
+    });
+  });
 });

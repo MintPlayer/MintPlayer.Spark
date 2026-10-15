@@ -507,6 +507,18 @@ Spark's model synchronizer automatically detects AsDetail types in two cases:
 
 The detection logic in `ModelSynchronizer` identifies complex types as those that are not built-in primitives, not `DateTime`/`DateOnly`/`Guid`/`Color`, and are classes with properties.
 
+## Lists of Plain Values (not AsDetail)
+
+A collection of a *simple* type — `List<string>`, `string[]`, `int[]`, `List<decimal>` — is not AsDetail: the synchronizer writes it with the element's own `dataType` and `isArray: true`, e.g. `"dataType": "string", "isArray": true`.
+
+- **Edit view:** `spark-primitive-list-editor` (`@mintplayer/ng-spark/po-form`) renders one input per item — the same input type the form uses for a single value of that `dataType` — with a remove button per item and an "Add" button that appends an empty item and focuses it. Number lists post numbers (a cleared item is `null`).
+- **Reorder:** put `[Sortable]` on the property, as for an AsDetail array. Each item then gets the same grip handle and CDK drag-reorder; without `[Sortable]`, or when the attribute is read-only, there is no handle.
+- **Rights:** a list has no row type, so the row-type `New`/`Edit`/`Delete` rights an AsDetail grid asks for do not apply. Adding, removing, editing and reordering items are all edits of the one attribute, governed by the attribute rights in `security.json`: an attribute the caller may not `Edit` (or `New`, on a create) arrives read-only and is not offered for editing, and the server keeps the stored list whatever is posted.
+- **Validation:** `required` fails for an empty list or one whose items are all blank. Every other rule (`maxLength`, `regex`, `email`, `url`, `range`, ...) applies to **each non-blank item**, in the browser and on the server, and reports once per rule.
+- **Saving:** `[]` stores an empty list, `null` clears a nullable list. A list whose items do not fit the element type (`["x"]` for an `int[]`) is a validation error naming the attribute, not a silent skip.
+- **Detail view:** one chip per item. **Query grid:** the items comma-separated.
+- **Not covered:** a list of `bool`, of dates (`date`/`datetime`, which need a per-item wire ⇄ wall-clock conversion) or of lookup values still renders through the single-value control. `Reference` arrays keep their multi-select picker (see [guide-reference-attributes.md](guide-reference-attributes.md)).
+
 ## RavenDB Storage
 
 AsDetail objects are stored inline within the parent document in RavenDB. For example, a Person document with an Address looks like:

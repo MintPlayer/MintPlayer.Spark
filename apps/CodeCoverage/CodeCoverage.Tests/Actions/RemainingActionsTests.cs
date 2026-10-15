@@ -9,6 +9,7 @@ using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Abstractions.ClientOperations;
 using MintPlayer.Spark.Queries;
 using MintPlayer.Spark.Services;
+using MintPlayer.Spark.Services.Breadcrumb;
 using NSubstitute;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Linq;
@@ -389,6 +390,183 @@ public class RemainingActionsTests : CoverageRavenTest
         (await actions.Project_Columns(QueryArgs(missing))).Should().BeEmpty();
         (await actions.Project_Columns(QueryArgs(null))).Should().BeEmpty();
         (await actions.Project_Columns(QueryArgs(board, parentType: "Account"))).Should().BeEmpty();
+    }
+
+    // ------------------------------------------------------------------------------------------
+    // ForgeCheckActions: the merge queue's exclusion pickers (merge-queue PRD §11, D112)
+    // ------------------------------------------------------------------------------------------
+
+    private static ForgeCheck KnownCheck(string name, int day)
+        => new() { Id = name, Name = name, Kind = EForgeCheckKind.CheckRun, LastSeenUtc = new DateTime(2026, 10, day, 0, 0, 0, DateTimeKind.Utc) };
+
+    /// <summary>
+    /// acme owns <c>mine</c> and the private <c>second</c>, which share <c>build</c>; other owns <c>theirs</c>, whose check
+    /// must never reach acme's account list.
+    /// </summary>
+    private static async Task SeedKnownChecksAsync(IDocumentStore store)
+    {
+        await SeedRepositoriesAsync(store);
+        using var seed = store.OpenAsyncSession();
+        var mine = await seed.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, 1));
+        mine!.KnownChecks = [KnownCheck("build", 2), KnownCheck("GitGuardian Security Checks", 1)];
+        var theirs = await seed.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, 2));
+        theirs!.KnownChecks = [KnownCheck("secret-scan", 1)];
+        await seed.StoreAsync(new Repository
+        {
+            GitHubId = 3, Name = "second", FullName = "acme/second", OwnerLogin = "acme", IsPrivate = true,
+            Account = Account.DocumentId(EForgeProvider.GitHub, 1),
+            KnownChecks = [KnownCheck("build", 5), KnownCheck("e2e", 3)],
+        }, Repository.DocumentId(EForgeProvider.GitHub, 3));
+        await seed.SaveChangesAsync();
+    }
+
+    private static PersistentObject Parent(string type, string id) => new() { Id = id, Name = type, ObjectTypeId = Guid.NewGuid() };
+
+    [Fact]
+    public async Task Repository_ForgeChecks_offers_a_manager_the_parent_repositorys_checks()
+    {
+        using var store = GetDocumentStore();
+        await SeedKnownChecksAsync(store);
+        using var session = store.OpenAsyncSession();
+        var mine = Parent("Repository", Repository.DocumentId(EForgeProvider.GitHub, 1));
+
+        var offered = await Create<ForgeCheckActions>(Managing("github:acme"), session).Repository_ForgeChecks(QueryArgs(mine));
+
+        offered.Select(c => c.Id).Should().Equal("build", "GitGuardian Security Checks");
+    }
+
+    /// <summary>Empty, never a 403 or 404 from inside the query (D112): not a manager, another parent type, no parent.</summary>
+    [Fact]
+    public async Task Repository_ForgeChecks_offers_nothing_to_a_non_manager_or_under_another_parent()
+    {
+        using var store = GetDocumentStore();
+        await SeedKnownChecksAsync(store);
+        using var session = store.OpenAsyncSession();
+        var mine = Parent("Repository", Repository.DocumentId(EForgeProvider.GitHub, 1));
+
+        (await Create<ForgeCheckActions>(Managing("github:other"), session).Repository_ForgeChecks(QueryArgs(mine))).Should().BeEmpty();
+        (await Create<ForgeCheckActions>(Managing(), session).Repository_ForgeChecks(QueryArgs(mine))).Should().BeEmpty();
+        var actions = Create<ForgeCheckActions>(Managing("github:acme"), session);
+        (await actions.Repository_ForgeChecks(QueryArgs(mine, parentType: "Account"))).Should().BeEmpty();
+        (await actions.Repository_ForgeChecks(QueryArgs(null))).Should().BeEmpty();
+        (await actions.Repository_ForgeChecks(QueryArgs(Parent("Repository", Repository.DocumentId(EForgeProvider.GitHub, 404))))).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Account_ForgeChecks_offers_a_manager_one_row_per_name_over_the_accounts_repositories()
+    {
+        using var store = GetDocumentStore();
+        await SeedKnownChecksAsync(store);
+        WaitForIndexing(store);
+        using var session = store.OpenAsyncSession();
+        var acme = Parent("Account", Account.DocumentId(EForgeProvider.GitHub, 1));
+
+        var offered = (await Create<ForgeCheckActions>(Managing("github:acme"), session).Account_ForgeChecks(QueryArgs(acme))).ToList();
+
+        offered.Select(c => c.Id).Order(StringComparer.Ordinal).Should().Equal("GitGuardian Security Checks", "build", "e2e");
+        offered.Single(c => c.Id == "build").LastSeenUtc.Day.Should().Be(5, "the most recent sighting of a shared name wins");
+    }
+
+    /// <summary>
+    /// Spark's row ids are case-insensitive, so two repositories reporting the same check in different case must give
+    /// one row, not a 500 ("produced two rows with the id 'tests / other suites'", seen locally 2026-10-15).
+    /// </summary>
+    [Fact]
+    public async Task Account_ForgeChecks_gives_one_row_for_names_that_differ_only_in_case()
+    {
+        using var store = GetDocumentStore();
+        await SeedKnownChecksAsync(store);
+        using (var seed = store.OpenAsyncSession())
+        {
+            var second = await seed.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, 3));
+            second!.KnownChecks = [KnownCheck("Build", 6)];
+            await seed.SaveChangesAsync();
+        }
+        WaitForIndexing(store);
+        using var session = store.OpenAsyncSession();
+
+        var offered = (await Create<ForgeCheckActions>(Managing("github:acme"), session)
+            .Account_ForgeChecks(QueryArgs(Parent("Account", Account.DocumentId(EForgeProvider.GitHub, 1))))).ToList();
+
+        offered.Where(c => string.Equals(c.Id, "build", StringComparison.OrdinalIgnoreCase)).Should().ContainSingle()
+            .Which.Id.Should().Be("Build", "the most recent sighting's spelling wins");
+    }
+
+    [Fact]
+    public async Task Account_ForgeChecks_offers_nothing_to_a_non_manager_or_under_another_parent()
+    {
+        using var store = GetDocumentStore();
+        await SeedKnownChecksAsync(store);
+        WaitForIndexing(store);
+        using var session = store.OpenAsyncSession();
+        var acme = Parent("Account", Account.DocumentId(EForgeProvider.GitHub, 1));
+
+        (await Create<ForgeCheckActions>(Managing("github:other"), session).Account_ForgeChecks(QueryArgs(acme))).Should().BeEmpty();
+        var actions = Create<ForgeCheckActions>(Managing("github:acme"), session);
+        (await actions.Account_ForgeChecks(QueryArgs(acme, parentType: "Repository"))).Should().BeEmpty();
+        (await actions.Account_ForgeChecks(QueryArgs(null))).Should().BeEmpty();
+    }
+
+    /// <summary>A mapper that scaffolds the way the framework's does for this test: the entity's id and a Name attribute.</summary>
+    private static IEntityMapper MapperCapturing(List<ForgeCheck> mapped)
+    {
+        var mapper = Substitute.For<IEntityMapper>();
+        mapper.ToPersistentObjectAsync(Arg.Any<ForgeCheck>(), Arg.Any<BreadcrumbResult?>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                var check = call.Arg<ForgeCheck>();
+                mapped.Add(check);
+                return Task.FromResult(new PersistentObject
+                {
+                    Id = check.Id,
+                    Name = nameof(ForgeCheck),
+                    ObjectTypeId = Guid.NewGuid(),
+                    Breadcrumb = nameof(ForgeCheck),
+                    Attributes = [new PersistentObjectAttribute { Name = nameof(ForgeCheck.Name), Value = check.Name, IsReadOnly = true }],
+                });
+            });
+        return mapper;
+    }
+
+    /// <summary>
+    /// An exclusion chip links to <c>/po/forgecheck/&lt;name&gt;</c> (D117): the page is the named check, built from the id
+    /// alone, with no document behind it (the store is empty here) and nothing to edit or delete.
+    /// </summary>
+    [Theory]
+    [InlineData("tests / other suites")]
+    [InlineData("GitGuardian Security Checks")]
+    [InlineData("build (ubuntu-latest, 22.x)")]
+    public async Task OnLoadAsync_serves_a_check_by_its_name_without_a_document(string name)
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        var mapped = new List<ForgeCheck>();
+
+        var po = await Create<ForgeCheckActions>(MapperCapturing(mapped), session).OnLoadAsync(name, parent: null);
+
+        po.Should().NotBeNull();
+        mapped.Should().ContainSingle().Which.Id.Should().Be(name);
+        mapped[0].Name.Should().Be(name);
+        po!.Id.Should().Be(name);
+        po.Breadcrumb.Should().Be(name, "the page's title is the check's name, not the type's");
+        po.Attributes.Single(a => a.Name == nameof(ForgeCheck.Name)).Value.Should().Be(name);
+        po.Can.Should().NotBeNull();
+        po.Can!.Edit.Should().BeFalse();
+        po.Can.Delete.Should().BeFalse();
+        session.Advanced.NumberOfRequests.Should().Be(0, "the page echoes the id; it reads nothing, so it is no existence oracle");
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task OnLoadAsync_refuses_a_blank_name(string name)
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        var mapped = new List<ForgeCheck>();
+
+        (await Create<ForgeCheckActions>(MapperCapturing(mapped), session).OnLoadAsync(name, parent: null)).Should().BeNull();
+        mapped.Should().BeEmpty();
     }
 
     // ------------------------------------------------------------------------------------------

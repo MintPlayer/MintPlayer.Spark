@@ -1147,6 +1147,16 @@ internal partial class EntityMapper : IEntityMapper
                     var deserializedValue = je.Deserialize(targetType, ComplexValueOptions);
                     setter(entity, deserializedValue);
                 }
+                catch (JsonException) when (GetCollectionElementType(targetType) is { } elementType
+                    && !IsComplexType(Nullable.GetUnderlyingType(elementType) ?? elementType))
+                {
+                    // A list of plain values (List<string>, int[]) whose items are not of the element
+                    // type — ["x"] or [null] for an int[]. Skipping it, as below, reported success and
+                    // kept the stored list: an edit lost with no signal. Report it as the scalar path
+                    // reports a value it cannot read.
+                    throw new SparkValidationException(
+                        $"'{je.GetRawText()}' is not a valid list of {elementType.Name} values for {property.Name}.", property.Name);
+                }
                 catch
                 {
                     // Skip properties that can't be deserialized

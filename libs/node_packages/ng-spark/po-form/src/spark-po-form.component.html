@@ -396,6 +396,20 @@
             </bs-input-group>
           } @else if (getEditRendererComponent(attr); as editComp) {
             <ng-container *ngComponentOutlet="editComp; inputs: getEditRendererInputs(editComp, attr)"></ng-container>
+          } @else if (isPrimitiveList(attr)) {
+            <!-- A list of plain values (List<string>, int[]): one input per item. Before this it fell
+                 through to the single textbox below, which showed the items comma-joined and posted
+                 the typed text as one string the server could not map onto the list. -->
+            <spark-primitive-list-editor
+              [value]="formData()[attr.name]"
+              [dataType]="attr.dataType"
+              [readonly]="attr.isReadOnly"
+              [sortable]="attr.isSortable"
+              [inputId]="attr.name"
+              [isInvalid]="hasError(attr.name)"
+              (valueChange)="onPrimitiveListChange(attr, $event)"
+              (itemBlur)="onFieldBlur(attr)">
+            </spark-primitive-list-editor>
           } @else if (attr.dataType === 'MultiLineString') {
             <textarea
               [id]="attr.name"

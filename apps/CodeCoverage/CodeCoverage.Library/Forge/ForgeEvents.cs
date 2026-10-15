@@ -251,3 +251,16 @@ public sealed record CommitChecksChanged(string RepositoryId, string Sha) : IFor
 
 /// <summary>A review was submitted on, or dismissed from, a pull request.</summary>
 public sealed record PullRequestReviewed(string RepositoryId, int Number) : IForgeEvent;
+
+/// <summary>
+/// A check run or commit status reported on a commit of the repository, whatever its outcome (merge-queue PRD §11, D108):
+/// one of the names the merge queue's exclusion lists may pick.
+/// </summary>
+/// <param name="Kind">Null when the source had the name alone.</param>
+/// <param name="AppSlug">The App that made the check run, when the forge says so.</param>
+/// <remarks>
+/// Raised whether or not the queue is busy, unlike the signals above, but only for a name that is new or a day stale
+/// (<see cref="Entities.ForgeCheck.Due"/>), so a repository is not rewritten on every delivery. The App's own check runs
+/// are not raised.
+/// </remarks>
+public sealed record CheckReported(string RepositoryId, string Name, Entities.EForgeCheckKind? Kind, string? AppSlug) : IForgeEvent;

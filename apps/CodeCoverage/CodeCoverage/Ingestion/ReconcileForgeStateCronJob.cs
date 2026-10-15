@@ -30,6 +30,8 @@ public partial class ReconcileForgeStateCronJob : ISparkCronJob
     // Nullable so the generated constructor keeps its old shape for callers that construct it
     // directly; the running app always resolves one.
     [Inject] private readonly MintPlayer.Spark.Messaging.Abstractions.IMessageBus? messageBus;
+    // Nullable for the same reason.
+    [Inject] private readonly MergeQueue.IKnownChecksScheduler? knownChecks;
 
     /// <summary>03:20 UTC. Nightly is enough: the webhook path handles the timely case, and this
     /// only has to catch what that path lost.</summary>
@@ -88,6 +90,11 @@ public partial class ReconcileForgeStateCronJob : ISparkCronJob
                 // Nightly manifest rescan (dependency-updates PRD §6.3), once the account's
                 // repositories are current. Never throws; a scan that finds nothing changed is cheap.
                 await manifestScans.ScheduleAccountAsync(account, waitForIndex: false, cancellationToken);
+
+                // Nightly backfill of the checks the merge queue's exclusion lists pick from (merge-queue PRD §11,
+                // D109), at most once per repository per day. Never throws.
+                if (knownChecks is not null)
+                    await knownChecks.ScheduleAccountAsync(account, waitForIndex: false, cancellationToken);
             }
             catch (Exception ex)
             {

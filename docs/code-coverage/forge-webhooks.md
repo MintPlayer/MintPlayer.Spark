@@ -87,10 +87,14 @@ for a port, not as a specification.
 | **`CiRunCompleted`** | ✅ `workflow_run` — `completed` (the App's own dispatched runs included) | `Pipeline Hook` — finished status | `repo:commit_status_updated` from Pipelines |
 | **`CommitChecksChanged`** | ✅ `check_run`, `check_suite` `completed`, `status`; the App's own check runs dropped | `Pipeline Hook`, `Job Hook` | `repo:commit_status_created`/`_updated` |
 | **`PullRequestReviewed`** | ✅ `pull_request_review` — `submitted`, `dismissed` | `Merge Request Hook` — `approved`, `unapproved` | `pullrequest:approved`, `pullrequest:unapproved` |
+| **`CheckReported`** | ✅ `check_run` (its `name`, the App's own dropped), `status` (its `context`); not `check_suite`, which names no check | `Pipeline Hook` / `Job Hook` job names | `repo:commit_status_created`/`_updated` keys |
 
-The last three are raised **only while the repository's merge queue is busy** (one point load of
-`MergeQueues/{provider}/{id}` per delivery), because check deliveries are the most frequent events an
-App receives and nothing else consumes them.
+`CiRunCompleted`, `CommitChecksChanged` and `PullRequestReviewed` are raised **only while the repository's merge queue
+is busy** (one point load of `MergeQueues/{provider}/{id}` per delivery), because check deliveries are the most frequent
+events an App receives and nothing else consumes them. `CheckReported` is the exception (merge-queue PRD §11, D108): it
+is raised whatever is queued, so the exclusion pickers learn every check name, but only for a name the repository does
+not know yet or last saw a day ago (`ForgeCheck.Due`, a point load the delivery already made), so it too costs nothing
+on most deliveries.
 
 An event belongs in this vocabulary only if **all three forges can raise it**. Anything one forge
 alone can say — GitHub's `check_run`, Projects V2 — keeps a forge-specific message and a recipient

@@ -535,7 +535,8 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
     /// <c>workflow_run</c>, <c>check_run</c>, <c>check_suite</c>, <c>status</c> and <c>pull_request_review</c>, raised
     /// only while the repository's queue is busy. The App's own check runs and suites are dropped (its "Merge queue"
     /// check would otherwise wake the queue about itself); its own dispatched workflow runs are not, they are the point.
-    /// A click on a check run's button is neither: see <see cref="OnQueueCheckButtonAsync"/>.
+    /// A click on a check run's button is neither: see <see cref="OnQueueCheckButtonAsync"/>. The one exception to "only while
+    /// busy" is <see cref="CheckReported"/> (§11 D108), raised before that filter.
     /// </summary>
     private async Task OnMergeQueueSignalAsync(GitHubWebhookMessage message, CancellationToken ct)
     {
@@ -567,6 +568,11 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
         };
 
         if (await LoadKnownRepositoryIdAsync(root, ct) is not { } repositoryId) return;
+
+        // Before the busy filter (§11 D108): a check that reports is a name the exclusion lists may pick, whether or not
+        // anything is queued.
+        await RaiseReportedCheckAsync(message.EventType, root, repositoryId, ct);
+
         if (Build(repositoryId) is not { } evt) return;
         var queue = await session.LoadAsync<MergeQueue>(MergeQueue.DocumentId(repositoryId), ct);
         if (queue is null || !queue.IsBusy()) return;
@@ -577,6 +583,28 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
             case CommitChecksChanged e: await RaiseAsync(e, ct); break;
             case PullRequestReviewed e: await RaiseAsync(e, ct); break;
         }
+    }
+
+    /// <summary>
+    /// <see cref="CheckReported"/> for a <c>check_run</c> another App made, or a <c>status</c>, when the name is new to the
+    /// repository or a day stale (merge-queue PRD §11, D108). A <c>check_suite</c> names no check, so it raises none.
+    /// </summary>
+    private async Task RaiseReportedCheckAsync(string eventType, JsonElement root, string repositoryId, CancellationToken ct)
+    {
+        var reported = eventType switch
+        {
+            "check_run" when Child(root, "check_run") is { } check && !IsOurApp(check) && Text(check, "name") is { Length: > 0 } name
+                => new ForgeCheck { Name = name, Kind = EForgeCheckKind.CheckRun, AppSlug = Child(check, "app") is { } app ? Text(app, "slug") : null },
+            "status" when Text(root, "context") is { Length: > 0 } context
+                => new ForgeCheck { Name = context, Kind = EForgeCheckKind.Status },
+            _ => null,
+        };
+        if (reported is null) return;
+
+        // A point load the session already holds: LoadKnownRepositoryIdAsync read the same document.
+        var repository = await session.LoadAsync<Repository>(repositoryId, ct);
+        foreach (var due in ForgeCheck.Due(repository?.KnownChecks, [reported], DateTimeOffset.UtcNow.UtcDateTime))
+            await RaiseAsync(new CheckReported(repositoryId, due.Name, due.Kind, due.AppSlug), ct);
     }
 
     /// <summary>

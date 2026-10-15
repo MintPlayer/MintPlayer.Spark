@@ -82,6 +82,9 @@ internal sealed class MergeQueueHarness
     public List<MergeQueueStepMessage> Delayed { get; } = [];
     public List<MergeQueueStepMessage> Handled { get; } = [];
 
+    /// <summary>Every other message the saga put in its outbox, in order, as the drain passed it (e.g. §11's CheckReported).</summary>
+    public List<object> Raised { get; } = [];
+
     /// <param name="mergeBase">What the forge's compare answers as the merge base of the base tip and the head: the
     /// base itself means the head already contains it (O20 case 1).</param>
     public MergeQueueHarness(IDocumentStore store, string mergeBase = OldBase)
@@ -113,7 +116,11 @@ internal sealed class MergeQueueHarness
     {
         while (Outbox.Messages.TryDequeue(out var queued))
         {
-            if (queued.Message is not MergeQueueStepMessage step) continue;
+            if (queued.Message is not MergeQueueStepMessage step)
+            {
+                Raised.Add(queued.Message);
+                continue;
+            }
             if (queued.Options?.Delay is not null)
             {
                 Delayed.Add(step);
@@ -202,7 +209,11 @@ internal sealed class MergeQueueHarness
         for (var i = 0; i < 100; i++)
         {
             if (!Outbox.Messages.TryDequeue(out var queued)) return;
-            if (queued.Message is not MergeQueueStepMessage step) continue;
+            if (queued.Message is not MergeQueueStepMessage step)
+            {
+                Raised.Add(queued.Message);
+                continue;
+            }
             if (queued.Options?.Delay is not null)
             {
                 Delayed.Add(step);

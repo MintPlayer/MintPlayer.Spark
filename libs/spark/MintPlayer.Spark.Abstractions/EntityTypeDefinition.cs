@@ -312,10 +312,10 @@ public sealed class EntityAttributeDefinition
     /// </summary>
     public EReferenceDisplayType? ReferenceDisplayType { get; set; }
     /// <summary>
-    /// For array AsDetail attributes, when true the rows can be drag-reordered in the
-    /// PO-edit UI (order = array position). Set by <c>[Sortable]</c> via the synchronizer.
-    /// Null/absent for non-sortable attributes. Only meaningful when
-    /// <see cref="DataType"/> is "AsDetail" and <see cref="IsArray"/> is true.
+    /// For array AsDetail attributes and lists of plain values, when true the rows / items can be
+    /// drag-reordered in the PO-edit UI (order = array position). Set by <c>[Sortable]</c> via the
+    /// synchronizer. Null/absent for non-sortable attributes. Only meaningful when
+    /// <see cref="IsArray"/> is true and <see cref="DataType"/> is not "Reference".
     /// </summary>
     public bool? IsSortable { get; set; }
     /// <summary>

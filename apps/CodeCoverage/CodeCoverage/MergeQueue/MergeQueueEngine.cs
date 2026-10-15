@@ -435,6 +435,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
 
         // O12's expected minimum (§0 D45): the checks the pull request's own CI reported on the pinned head.
         entry.ExpectedChecks = [.. await context.Queue.GetCheckNamesOnCommitAsync(repository, pull.HeadSha, ct)];
+        await RecordReportedChecksAsync(context, entry.ExpectedChecks.Select(name => new ForgeCheck { Name = name }), ct);
         return null;
     }
 
@@ -1333,6 +1334,9 @@ public partial class MergeQueueEngine : IMergeQueueEngine
     private async Task EvaluateChecksAsync(Context context, MergeQueueEntry entry, bool fromPoll, CancellationToken ct)
     {
         var state = await context.Queue.GetCheckStateAsync(context.Repository, entry.FinalSha!, ct);
+        await RecordReportedChecksAsync(context,
+            state.CheckRuns.Select(run => new ForgeCheck { Name = run.Name, Kind = EForgeCheckKind.CheckRun, AppSlug = run.AppSlug })
+                .Concat(state.Statuses.Select(status => new ForgeCheck { Name = status.Context, Kind = EForgeCheckKind.Status })), ct);
         var gate = CheckGate.Evaluate(state, entry.Config.CheckExclusions, entry.RequiredChecks, entry.ExpectedChecks);
 
         switch (gate.Verdict)
@@ -1959,6 +1963,20 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         entry.Polls = 0;
         entry.StateChangedAtUtc = Now;
         entry.Note(Now, why);
+    }
+
+    /// <summary>
+    /// The queue's own check reads are a source of the names its exclusion lists pick from (merge-queue PRD §11, D108 (b)).
+    /// Raised through the outbox with whatever this step saves, and only for names new to the repository or a day stale,
+    /// so a poll every two minutes writes nothing once the names are known. The repository itself is never written here.
+    /// </summary>
+    private async Task RecordReportedChecksAsync(Context context, IEnumerable<ForgeCheck> reported, CancellationToken ct)
+    {
+        var repository = context.Repository;
+        foreach (var due in ForgeCheck.Due(repository.KnownChecks, reported, Now))
+            await outbox.EnqueueAsync(session,
+                new ForgeWebhookMessage<CheckReported>(repository.Provider, new CheckReported(repository.Id!, due.Name, due.Kind, due.AppSlug)),
+                cancellationToken: ct);
     }
 
     private Task ScheduleAsync(MergeQueueEntry entry, EMergeQueueStep step, TimeSpan? delay, CancellationToken ct)

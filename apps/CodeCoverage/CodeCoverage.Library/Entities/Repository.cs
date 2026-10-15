@@ -227,8 +227,27 @@ public class Repository : IForgeConnectable
     /// This repository's own list of checks the merge queue ignores, used instead of the account's when chosen. A check a
     /// branch rule requires is always waited for.
     /// </summary>
+    /// <remarks>
+    /// Picked from <see cref="KnownChecks"/> (merge-queue PRD §11, D110). The stored value stays the name, and a name no
+    /// longer known stays as it is (D114).
+    /// </remarks>
     [IgnoreForIndex]
+    [Reference(typeof(ForgeCheck), "Repository_ForgeChecks")]
     public List<string> MergeQueueCheckExclusions { get; set; } = [];
+
+    /// <summary>
+    /// The checks that have reported on this repository at least once: the options of the merge queue's exclusion lists
+    /// (merge-queue PRD §11, O38, D107).
+    /// </summary>
+    /// <remarks>
+    /// Written by <c>KnownChecksRecorder</c> only when a name is new or a day stale, capped at
+    /// <see cref="ForgeCheck.MaxKnown"/>. [IgnoreProperty]: a cache behind the picker, never an attribute of its own, so it
+    /// stays out of <c>Repository.json</c> and off the wire (the <c>Repository_ForgeChecks</c> query serves it to managers
+    /// only). [IgnoreForIndex]: check names of a private repository have no business in the anonymous /spark grid.
+    /// </remarks>
+    [IgnoreProperty]
+    [IgnoreForIndex]
+    public List<ForgeCheck> KnownChecks { get; set; } = [];
 
     /// <summary>
     /// The lowest GitHub repository role whose holders bypass the merge queue's own rules when they queue a pull request in

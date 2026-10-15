@@ -1387,6 +1387,22 @@
         }
       }
     },
+    "ForgeCheck": {
+      "attributes": {
+        "Name": {
+          "description": {
+            "en": "The name of the check run or the context of the commit status, as the forge reports it.",
+            "fr": "Le nom de la vérification ou le contexte du statut de commit, tel que la forge le rapporte.",
+            "nl": "De naam van de check run of de context van de commitstatus, zoals de forge die meldt."
+          },
+          "label": {
+            "en": "Check",
+            "fr": "Vérification",
+            "nl": "Check"
+          }
+        }
+      }
+    },
     "GateSettings": {
       "attributes": {
         "Blocking": {
@@ -2430,6 +2446,13 @@
     }
   },
   "queries": {
+    "Account_ForgeChecks": {
+      "label": {
+        "en": "Checks that have reported",
+        "fr": "Vérifications déjà rapportées",
+        "nl": "Checks die al gerapporteerd hebben"
+      }
+    },
     "Account_Projects": {
       "label": {
         "en": "Project boards",
@@ -2484,6 +2507,13 @@
         "en": "Commits",
         "fr": "Commits",
         "nl": "Commits"
+      }
+    },
+    "Repository_ForgeChecks": {
+      "label": {
+        "en": "Checks that have reported",
+        "fr": "Vérifications déjà rapportées",
+        "nl": "Checks die al gerapporteerd hebben"
       }
     }
   },

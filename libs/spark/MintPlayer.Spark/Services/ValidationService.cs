@@ -99,13 +99,21 @@ internal partial class ValidationService : IValidationService
                 continue;
             }
 
-            // Apply validation rules
+            // Apply validation rules. A list of plain values (List<string>, int[]) is judged per item:
+            // its ToString() is the raw JSON text, so a maxLength measured `["a","b"]` and a regex or
+            // email rule failed every list. Blank items are skipped as a blank scalar is, and each
+            // rule reports once — at the first item that breaks it — since errors are per attribute.
+            var items = RuleItems(value);
             foreach (var rule in attrDef.Rules)
             {
-                var error = ValidateRule(attrDef, value, rule);
-                if (error != null)
+                foreach (var item in items)
                 {
-                    result.Errors.Add(error);
+                    var error = ValidateRule(attrDef, item, rule);
+                    if (error != null)
+                    {
+                        result.Errors.Add(error);
+                        break;
+                    }
                 }
             }
         }
@@ -288,6 +296,11 @@ internal partial class ValidationService : IValidationService
         return TranslatedString.Create($"{fallbackLabel}: validation failed ({translationKey})");
     }
 
+    /// <summary>
+    /// A list value — a wire array or a CLR collection a refresh hook put there — whose items are all
+    /// empty is empty: no items, or only the blank inputs a user added and left. Before, any array
+    /// satisfied <c>required</c>, even <c>[]</c>.
+    /// </summary>
     private static bool IsEmpty(object? value)
     {
         if (value == null) return true;
@@ -296,10 +309,39 @@ internal partial class ValidationService : IValidationService
         {
             return je.ValueKind == JsonValueKind.Null ||
                    je.ValueKind == JsonValueKind.Undefined ||
-                   (je.ValueKind == JsonValueKind.String && string.IsNullOrWhiteSpace(je.GetString()));
+                   (je.ValueKind == JsonValueKind.String && string.IsNullOrWhiteSpace(je.GetString())) ||
+                   (je.ValueKind == JsonValueKind.Array && je.EnumerateArray().All(item => IsEmpty(item)));
         }
+        if (value is System.Collections.IEnumerable items)
+            return items.Cast<object?>().All(IsEmpty);
         return false;
     }
+
+    /// <summary>
+    /// What the value rules judge: the value itself, or for a list its non-blank plain items. An item
+    /// that is an object (an embedded row) is left to its own type's rules.
+    /// </summary>
+    private static IReadOnlyList<object?> RuleItems(object? value)
+    {
+        IEnumerable<object?>? items = value switch
+        {
+            JsonElement { ValueKind: JsonValueKind.Array } array => array.EnumerateArray().Select(item => (object?)item),
+            string => null,
+            System.Collections.IEnumerable enumerable => enumerable.Cast<object?>(),
+            _ => null,
+        };
+        if (items is null)
+            return [value];
+
+        return [.. items.Where(item => !IsEmpty(item) && IsPlainItem(item))];
+    }
+
+    private static bool IsPlainItem(object? item) => item switch
+    {
+        JsonElement element => element.ValueKind is not (JsonValueKind.Object or JsonValueKind.Array),
+        string or bool or char or IFormattable => true,
+        _ => false,
+    };
 
     private static bool TryGetIntValue(object? value, out int result)
     {

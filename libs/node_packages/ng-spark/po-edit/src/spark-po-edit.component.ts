@@ -302,6 +302,10 @@ export class SparkPoEditComponent {
         // only a bare local wall clock. Assigning the wire value directly does not fail loudly -- the
         // control just renders blank, and saving the untouched form writes that blank back.
         data[attr.name] = toDateInputValue(attr.dataType, itemAttr?.value);
+      } else if (attr.isArray) {
+        // A list of plain values keeps a null list null: '' is no list at all, and posting it back
+        // untouched would ask the server to read '' as a List<T>.
+        data[attr.name] = itemAttr?.value ?? null;
       } else {
         data[attr.name] = itemAttr?.value ?? '';
       }

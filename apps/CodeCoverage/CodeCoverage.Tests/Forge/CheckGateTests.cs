@@ -80,6 +80,51 @@ public class CheckGateTests
         result.Excluded.Should().BeEmpty();
     }
 
+    /// <summary>
+    /// Exclusions match ignoring case (merge-queue PRD D118): the pickers offer one row per name ignoring case, so an
+    /// account's "tests / Other suites" must cover a repository that reports "tests / other suites" (seen locally 2026-10-15).
+    /// </summary>
+    [Fact]
+    public void An_exclusion_matches_a_check_that_differs_only_in_case()
+    {
+        var result = Evaluate(State([Run("build"), Run("tests / other suites", conclusion: "failure")]),
+            exclusions: ["tests / Other suites"]);
+
+        result.Verdict.Should().Be(ECheckVerdict.Passed);
+        // Listed as the check reported it, not as the exclusion spells it.
+        result.Excluded.Should().Equal(["tests / other suites"]);
+    }
+
+    [Fact]
+    public void An_exclusion_in_another_case_waits_for_no_expected_check()
+        => Evaluate(State([Run("build")]), exclusions: ["SLOW-SCAN"], expected: ["build", "slow-scan"])
+            .Verdict.Should().Be(ECheckVerdict.Passed);
+
+    /// <summary>
+    /// Required wins over the looser match (D118): an exclusion can never take out a check whose name matches a required
+    /// one ignoring case, whichever side carries which case.
+    /// </summary>
+    [Theory]
+    [InlineData("Build", "build", "Build")]
+    [InlineData("build", "Build", "build")]
+    [InlineData("build", "build", "BUILD")]
+    public void A_required_check_cannot_be_excluded_in_another_case(string reported, string required, string exclusion)
+    {
+        var result = Evaluate(State([Run(reported, conclusion: "failure")]), exclusions: [exclusion], required: [required]);
+
+        result.Verdict.Should().Be(ECheckVerdict.Failed);
+        result.Excluded.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void A_required_check_that_has_not_reported_is_still_missing_whatever_the_exclusion_case()
+    {
+        var result = Evaluate(State([Run("lint")]), exclusions: ["BUILD"], required: ["build"]);
+
+        result.Verdict.Should().Be(ECheckVerdict.Pending);
+        result.Missing.Should().Equal(["build"]);
+    }
+
     [Fact]
     public void An_expected_check_that_has_not_reported_keeps_the_gate_pending()
     {

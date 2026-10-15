@@ -150,10 +150,12 @@
       {
         "id": "17025e8a-dc2f-432e-a9f2-dfa8836f42e7",
         "name": "MergeQueueCheckExclusions",
-        "dataType": "string",
+        "dataType": "Reference",
         "isRequired": false,
         "isReadOnly": false,
         "order": 10,
+        "query": "Account_ForgeChecks",
+        "referenceType": "CodeCoverage.Entities.ForgeCheck",
         "isArray": true,
         "inQueryType": false,
         "showedOn": "PersistentObject",

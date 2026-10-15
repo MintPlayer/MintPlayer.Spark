@@ -68,6 +68,12 @@ export class QueryCellValuePipe implements PipeTransform {
       return Number.isNaN(parsed.getTime()) ? String(cell.value) : parsed;
     }
 
+    // A list of plain values (List<string>): its items, comma-separated. Interpolating the array
+    // itself gave "a,b" without spaces. A reference array is drawn from its chips, not from here.
+    if (column.dataType !== 'Reference' && Array.isArray(cell.value)) {
+      return cell.value.filter(v => v !== null && v !== undefined && v !== '').join(', ');
+    }
+
     return cell.value ?? '';
   }
 }

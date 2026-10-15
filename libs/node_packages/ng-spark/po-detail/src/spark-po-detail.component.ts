@@ -44,6 +44,7 @@ import {
   QueryResultItem,
   ShowedOn,
   hasShowedOnFlag,
+  isPrimitiveArrayAttribute,
   EntityPermissions,
   SparkDeletedFilter,
   builtInAction,
@@ -476,6 +477,17 @@ export class SparkPoDetailComponent {
 
   attrsForGroup(group: AttributeGroup): EntityAttributeDefinition[] {
     return this.visibleAttributes().filter(a => a.group === group.id);
+  }
+
+  /** A list of plain values (`List<string>`, `int[]`): one chip per item. */
+  isPrimitiveList(attr: EntityAttributeDefinition): boolean {
+    return isPrimitiveArrayAttribute(attr);
+  }
+
+  /** The non-blank items of a plain-value list, as text; empty for a missing list. */
+  primitiveListItems(value: unknown): string[] {
+    if (!Array.isArray(value)) return [];
+    return value.filter(v => v !== null && v !== undefined && String(v).trim() !== '').map(v => String(v));
   }
 
   /** Whether the attribute's renderer asks for the whole row, without a label (`fullWidth`). */
