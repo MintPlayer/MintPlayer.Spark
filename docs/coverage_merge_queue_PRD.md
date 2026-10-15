@@ -1,7 +1,7 @@
 # PRD — a conflict-resolving merge queue in CodeCoverage (rebase → auto-resolve → `postRebaseActionName` → squash)
 
 **Status (2026-10-15):** **Implemented; PR [#515](https://github.com/MintPlayer/MintPlayer.Spark/pull/515) open. The commits since its first CI run are local, for one push.**
-- **§11 (2026-10-15, PR #520): O38, D107–D116, milestones K1–K6: exclusion lists picked from reported check names.**
+- **§11 (2026-10-15, PR #520): O38, D107–D118, milestones K1–K6: exclusion lists picked from reported check names. Built, CI green at `63949ddb`, browser-verified, not deployed (§11.3).**
 - The owner decisions O1–O35 and the implementation decisions D12–D96 in §0 supersede §§1–8 where they disagree. ~~**In progress: O30, the "Add to merge queue" check button.**~~ **[Built 2026-10-15: D88; O32's comment link and "Remove from queue", D89 and D90; O31's menu links and url-only hash, D91; the live test's superseded-run defect, D92. Live-tested 2026-10-15 (M10).]** **[Follow-ups after the SparkTest live run, 2026-10-15: the queue-candidates dropdown and the notice slot, D93; the merged event's merge sha, D94; the App-gap check at enqueue, D95; the acceptance link only when pending, D96. Proposed next: conflict resolution v2 (keep-both, validators, pluggable resolvers), O33, O34, §10.]**
 - CI runs 2 and 3 (2026-10-15) each found one test defect:
   - Linux's Chromium temp files broke the download proof (D86).
@@ -1136,3 +1136,27 @@ The exclusion lists (O12, D49) were free text: `Account.MergeQueueCheckExclusion
 - **Grant key** `c0e5a9e1-0000-4000-8000-000000000093` (`QueryRead/ForgeCheck`, signed-in users).
 - **The check's page (D117), built.** `ForgeCheckActions.OnLoadAsync` overrides the load without calling the base and maps the name through `IEntityMapper`; no change to ng-spark or `libs/spark`. Because the hook is overridden, the framework no longer batches `ForgeCheck` loads (`SupportsBatchedLoad`), which costs nothing: there are no documents to batch.
 - **Exclusions ignore case (D118), built.** `CheckGate.Evaluate` compares exclusions and the required-check protection with `OrdinalIgnoreCase`; the `Excluded` list still names each check as it reported. `ResolveMergeQueueCheckExclusions` is unchanged (its ordinal `Distinct` may keep two spellings of one name; the gate treats them as one).
+
+### 11.3 Status (2026-10-15)
+
+**Built in PR #520. CI is green on every job at `63949ddb`. Not deployed.**
+
+**Verified in the browser on the local app (2026-10-15):**
+- The repository edit page's picker lists exactly that repository's `KnownChecks` (`Repositories/github/805880645`: the four `Analyze (…)` checks, `main-linux`, `main-macos`).
+- A pick saves as the plain name (`["Analyze (csharp)"]`).
+- The account edit page's picker lists the union: 50 options in the first page, each name once.
+- A detail chip opens `/po/forgecheck/tests%20%2F%20other%20suites`, a read-only page with only Back (D117).
+- The test data was restored afterwards.
+
+**Defects the local run found, both fixed:**
+
+| Defect | Cause and fix | Regression test |
+|---|---|---|
+| **The backfill threw for every repository** with *"Cannot perform save because document Repositories/github/… has been modified by the session and is also taking part in deferred PATCH command"*. | A repository saved before §11 has no `KnownChecks`. Loading it materialises an empty list, so the session counts the document as changed, and Raven refuses a deferred patch on a document the session would also save. `KnownChecksRecorder` now evicts the loaded repository before deferring its patch, so the patch is the only write (`KnownChecks.cs`). After the fix, 18 local repositories filled. | `KnownChecksTests.A_repository_saved_before_known_checks_existed_is_written_to` |
+| **The account picker returned 500:** *"Query 'Account_ForgeChecks' produced two rows with the id 'tests / other suites'"*. | `Repositories/github/402741072` reported `tests / other suites` and `…/1006469943` reported `tests / Other suites`. Spark's row ids are case-insensitive. Both queries now keep one row per name, ignoring case, with the most recent sighting's spelling (`ForgeCheckActions.DistinctRows`). This is also what makes D118 necessary. | `RemainingActionsTests.Account_ForgeChecks_gives_one_row_for_names_that_differ_only_in_case` |
+
+**Owner after deploy:**
+- Check the production App's Check suite / Status subscriptions and its Commit statuses: read permission (`hosting.md` §6). The Account page's D95 notice shows any that are missing. Without them only status-context names are missing; check-run names still arrive.
+- The backfill migration `M_202610151200_BackfillRepositoryKnownChecks` runs on the first start.
+
+**Left as it is:** the merge of the account and repository lists (`ResolveMergeQueueCheckExclusions`) still deduplicates case-sensitively, so a list can hold `Build` and `build` side by side. Since D118 the gate treats them as one check, so this only shows a duplicate.
