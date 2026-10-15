@@ -104,6 +104,22 @@ describe('SparkProgramUnitsComponent', () => {
     expect(external.getAttribute('target')).toBe('_blank');
     expect(external.getAttribute('rel')).toBe('noopener noreferrer');
     expect(external.querySelector('.visually-hidden')?.textContent?.trim()).toBe('(opens in a new tab)');
+    // Without an icon of its own, its fallback icon already is the external mark: the glyph is not shown twice.
+    expect(external.querySelectorAll('spark-icon').length).toBe(1);
+    expect(external.querySelector('.spark-external-mark')).toBeNull();
+  });
+
+  it('marks a url unit to another site that has its own icon with the external mark after its name, hidden from a screen reader', async () => {
+    getProgramUnits.mockResolvedValueOnce({
+      programUnitGroups: [{
+        id: 'g', name: { en: 'Links' }, order: 1,
+        programUnits: [{ id: 'u-docs', name: { en: 'Docs' }, icon: 'bi-book', type: 'url', url: 'https://docs.example.com', order: 1 }],
+      }],
+    });
+    const el = await render();
+
+    const external = anchorLabelled(el, 'Docs');
+    expect(external.querySelectorAll('spark-icon').length).toBe(2);
     expect(external.querySelector('.spark-external-mark')?.getAttribute('aria-hidden')).toBe('true');
   });
 

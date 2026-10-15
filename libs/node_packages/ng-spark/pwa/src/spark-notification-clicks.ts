@@ -50,8 +50,9 @@ export class SparkNotificationClicks {
     const target = sparkInAppUrl(url, this.document, this.location);
     // Another origin is ngsw's to open (onActionClick); the router cannot reach it.
     if (!target || !this.router || this.router.url === target) return;
-    // A same-origin link no route matches is the server's (a PDF download): load it as a page.
-    this.router.navigateByUrl(target).catch(() => this.assign(new URL(url!, this.document.baseURI).href));
+    // A same-origin link no route matches is the server's (a PDF download): load it as a page, at the address the route
+    // has below the base href, as the router saw it (an app path resolved from the host's root would leave the app).
+    this.router.navigateByUrl(target).catch(() => this.assign(new URL(this.location?.prepareExternalUrl(target) ?? target, this.document.baseURI).href));
   }
 
   /** A full page load (overridden in specs: jsdom cannot navigate). */

@@ -44,8 +44,9 @@ describe('SparkNotificationClicks', () => {
     expect(router.navigateByUrl).toHaveBeenCalledWith('/runs/42?tab=issues#top');
   });
 
-  // A same-origin link no route matches is the server's (SeoTester's report PDF, M11): loaded as a page.
-  it('loads a same-origin link the router cannot match as a page', async () => {
+  // A same-origin link no route matches is the server's (SeoTester's report PDF, M11): loaded as a page. An app path is
+  // below the base href for the page load too, as it was for the router: /app/seotester/…, never the host's /seotester/….
+  it('loads a same-origin link the router cannot match as a page, below the base href', async () => {
     router.navigateByUrl.mockRejectedValue(new Error('NG04002'));
     start();
     const clicksService = TestBed.inject(SparkNotificationClicks);
@@ -53,7 +54,7 @@ describe('SparkNotificationClicks', () => {
     click('/seotester/report.pdf?run=1');
     await Promise.resolve();
     await Promise.resolve();
-    expect(assign).toHaveBeenCalledWith(`${location.origin}/seotester/report.pdf?run=1`);
+    expect(assign).toHaveBeenCalledWith(`${location.origin}/app/seotester/report.pdf?run=1`);
   });
 
   it('navigates in-app to an app-relative URL', () => {
