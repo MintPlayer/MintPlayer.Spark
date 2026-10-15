@@ -226,6 +226,7 @@ public static class SparkDevelopmentExtensions
         VerifySubQueriesCanBeParentScoped(contentRoot);
         VerifyProgramUnitTargetsResolve(contentRoot);
         VerifyQueryColumnOverridesResolve(contentRoot);
+        VerifyQueryColumnOrders(indexCatalog, contentRoot);
         VerifyQuerySortColumnsResolve(contentRoot);
         VerifyIndexDefinitionsCompile(indexCatalog);
         VerifyBoundIndexHasAProjection(indexCatalog, contentRoot);
@@ -824,6 +825,146 @@ public static class SparkDevelopmentExtensions
         Console.Error.WriteLine(
             "An override entry is sparse — it only overrides a column it names. One that names nothing "
             + "is silently ignored, so a restriction the author believed they applied is not applied.");
+
+        Environment.ExitCode = ExitDrift;
+    }
+
+    /// <summary>
+    /// A query's <c>columnOrder</c> (#284, R6): a list the runtime would read ambiguously, or one the
+    /// synchronizer would change, exits 3; an entry the runtime ignores, and a renderer that reads a column
+    /// the query does not draw, warn.
+    /// </summary>
+    /// <remarks>
+    /// <b>Errors.</b> A duplicate, a name both plain and <c>!</c>, an empty entry or a bare <c>!</c>; and
+    /// drift: an append or removal <c>--spark-synchronize-model</c> would make (<see cref="ColumnOrderMaintenance"/>,
+    /// the code it runs). Drift is judged only where the synchronizer acts: a row type with a CLR class, on a
+    /// list its library does not own (D16). A misspelled name is drift, since the synchronizer removes it; the
+    /// shared schema cannot catch it, because valid names differ per file (S3).
+    /// <para>
+    /// <b>Warnings.</b> An entry for an attribute off the Query surface, which the runtime ignores but the
+    /// synchronizer keeps so the column comes back in place (D5). A visible entry that a non-default bound
+    /// index does not back, which draws a null-filled column (D10). A <c>rendererOptions</c> value under a key
+    /// ending in <c>Attribute</c> that names an attribute this query does not draw (D13): the value is not
+    /// shipped (#264 G-Q4), so the renderer reads nothing. A warning, not an error, because such an option can
+    /// still serve the detail page.
+    /// </para>
+    /// </remarks>
+    private static void VerifyQueryColumnOrders(IIndexCatalog indexCatalog, string contentRootPath)
+    {
+        var offenders = new List<string>();
+        var warnings = new List<string>();
+        var options = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+
+        var files = new List<EntityTypeFile>();
+        foreach (var file in SparkModelFiles.Compose(contentRootPath))
+        {
+            try
+            {
+                if (System.Text.Json.JsonSerializer.Deserialize<EntityTypeFile>(file.Json, options) is { PersistentObject: not null } model)
+                    files.Add(model);
+            }
+            catch (System.Text.Json.JsonException)
+            {
+                // Malformed model files are the hash check's business, not this one's.
+            }
+        }
+
+        var definitions = new Dictionary<string, EntityTypeDefinition>(StringComparer.OrdinalIgnoreCase);
+        foreach (var model in files)
+            definitions.TryAdd(model.PersistentObject.Name, model.PersistentObject);
+        var libraryColumnOrders = ColumnOrderMaintenance.LibraryColumnOrders(SparkLayerCatalog.Libraries);
+
+        foreach (var model in files)
+        {
+            foreach (var query in model.Queries ?? [])
+            {
+                // The synchronizer files a query under its row type, so judge it against that type.
+                var rowType = query.EntityType is { } entityType && definitions.TryGetValue(entityType, out var named)
+                    ? named
+                    : model.PersistentObject;
+                var at = $"{rowType.Name}.{query.Name}";
+
+                if (query.ColumnOrder is { } columnOrder)
+                {
+                    var entries = ColumnOrderEntry.ParseAll(columnOrder);
+                    foreach (var entry in entries.Where(e => e.Name.Length == 0))
+                        offenders.Add($"{at}: columnOrder has {(entry.Hidden ? "a bare '!'" : "an empty entry")}");
+
+                    foreach (var group in entries.Where(e => e.Name.Length > 0).GroupBy(e => e.Name, StringComparer.OrdinalIgnoreCase).Where(g => g.Count() > 1))
+                    {
+                        offenders.Add(group.Select(e => e.Hidden).Distinct().Count() > 1
+                            ? $"{at}: columnOrder lists '{group.Key}' both plain and hidden ('!{group.Key}')"
+                            : $"{at}: columnOrder lists '{group.Key}' more than once");
+                    }
+
+                    if (!string.IsNullOrEmpty(rowType.ClrType)
+                        && !ColumnOrderMaintenance.IsLibraryOwned(query, libraryColumnOrders)
+                        && ColumnOrderMaintenance.Maintain(rowType, query, indexCatalog) is { } maintained)
+                    {
+                        // An empty entry is reported above; its removal is not a second finding.
+                        foreach (var change in maintained.Changes.Where(c => c.Name.Length > 0))
+                            offenders.Add($"{at}: columnOrder drift: {change.Drift}");
+                    }
+
+                    var backed = ColumnOrderMaintenance.BackedByBoundIndex(rowType, query, indexCatalog);
+                    foreach (var entry in entries.Where(e => e.Name.Length > 0))
+                    {
+                        if (ColumnOrderMaintenance.FindAttribute(rowType, entry.Name) is not { } attribute)
+                            continue;
+                        if (!attribute.ShowedOn.HasFlag(EShowedOn.Query))
+                            warnings.Add($"{at}: columnOrder lists '{entry}', which is showedOn '{attribute.ShowedOn}' and so is ignored on this grid");
+                        else if (!entry.Hidden && backed is not null && !backed.Contains(attribute.Name))
+                            warnings.Add($"{at}: columnOrder shows '{attribute.Name}', which index '{query.IndexName}' does not back, so the column is always empty");
+                    }
+                }
+
+                var drawn = ColumnOrderMaintenance.DrawnColumns(rowType, query);
+                foreach (var column in rowType.Attributes.Where(a => drawn.Contains(a.Name) && a.RendererOptions is not null))
+                {
+                    foreach (var (key, value) in column.RendererOptions!)
+                    {
+                        if (!key.EndsWith("Attribute", StringComparison.Ordinal)) continue;
+                        var sibling = value switch
+                        {
+                            string s => s,
+                            System.Text.Json.JsonElement { ValueKind: System.Text.Json.JsonValueKind.String } e => e.GetString(),
+                            _ => null,
+                        };
+                        if (string.IsNullOrEmpty(sibling) || drawn.Contains(sibling)) continue;
+
+                        var target = ColumnOrderMaintenance.FindAttribute(rowType, sibling);
+                        warnings.Add($"{at}: column '{column.Name}' renderer option '{key}' reads '{sibling}', which "
+                            + (target is null ? "is not an attribute"
+                                : !target.ShowedOn.HasFlag(EShowedOn.Query) ? $"is showedOn '{target.ShowedOn}' and so is not on this grid"
+                                : "this query hides with columnOrder")
+                            + ", so the renderer gets no value for it");
+                    }
+                }
+            }
+        }
+
+        if (warnings.Count > 0)
+        {
+            Console.Error.WriteLine("Spark model warning: query columns that a grid ignores or cannot fill:");
+            foreach (var warning in warnings)
+                Console.Error.WriteLine("  " + warning);
+            Console.Error.WriteLine();
+            Console.Error.WriteLine("A grid ships a value only for a column it draws (#264). Put the attribute on the query surface "
+                + "and unhide it, or drop the entry or the renderer option if the grid does not need it.");
+            Console.Error.WriteLine();
+        }
+
+        if (offenders.Count == 0)
+            return;
+
+        Console.Error.WriteLine("Spark model has query columnOrder lists that are malformed or out of date:");
+        foreach (var offender in offenders)
+            Console.Error.WriteLine("  " + offender);
+        Console.Error.WriteLine();
+        Console.Error.WriteLine(
+            "Each entry is an attribute name, optionally prefixed with '!' to hide the column, listed once. "
+            + $"Run '{SynchronizeFlag}' to append the query-surface attributes a list is missing and remove names "
+            + "no attribute has; fix duplicates and empty entries by hand.");
 
         Environment.ExitCode = ExitDrift;
     }

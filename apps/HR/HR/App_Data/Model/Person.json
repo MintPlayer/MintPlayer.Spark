@@ -200,7 +200,13 @@
         }
       ],
       "renderMode": "Pagination",
-      "entityType": "Person"
+      "entityType": "Person",
+      "columnOrder": [
+        "FullName",
+        "Email",
+        "Address",
+        "!Company"
+      ]
     },
     {
       "id": "b20e8400-e29b-41d4-a716-446655440001",

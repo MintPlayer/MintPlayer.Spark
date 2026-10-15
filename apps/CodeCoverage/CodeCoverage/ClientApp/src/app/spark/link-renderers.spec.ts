@@ -41,10 +41,13 @@ beforeEach(async () => {
 
 describe('ShortShaRendererComponent', () => {
   const sha = 'abcdef1234567890';
+  // The sibling holding "owner/name" is declared in the model, not assumed (#284, D14).
+  const linkOptions = { linkAttribute: 'FullName' };
 
   it('links the 7-char sha to the forge-scoped vanity commit URL, with the full sha in the route', () => {
     const fixture = render(ShortShaRendererComponent, {
       value: sha,
+      options: linkOptions,
       item: row({ FullName: 'acme/widgets' }, 'Repositories/gitlab/1'),
     });
 
@@ -55,7 +58,7 @@ describe('ShortShaRendererComponent', () => {
 
   // No forge on the row means no link: a guessed forge would address a different account.
   it('renders plain text when the row id carries no forge', () => {
-    const fixture = render(ShortShaRendererComponent, { value: sha, item: row({ FullName: 'acme/widgets' }) });
+    const fixture = render(ShortShaRendererComponent, { value: sha, options: linkOptions, item: row({ FullName: 'acme/widgets' }) });
 
     expect(el(fixture).querySelector('a')).toBeNull();
     expect(el(fixture).querySelector('span')!.textContent!.trim()).toBe('abcdef1');
@@ -64,11 +67,38 @@ describe('ShortShaRendererComponent', () => {
   it('renders plain text when FullName is not owner/name', () => {
     const fixture = render(ShortShaRendererComponent, {
       value: sha,
+      options: linkOptions,
       item: row({ FullName: 'widgets' }, 'Repositories/github/1'),
     });
 
     expect(el(fixture).querySelector('a')).toBeNull();
     expect(el(fixture).querySelector('span')).not.toBeNull();
+  });
+
+  // Commit rows have no FullName, so their model declares no linkAttribute; a row that happens to
+  // carry a FullName still does not link without one.
+  it('renders plain text when linkAttribute is absent, not a string, or names a sibling the row lacks', () => {
+    const cases: [Record<string, unknown> | undefined, Record<string, unknown>][] = [
+      [undefined, { FullName: 'acme/widgets' }],
+      [{}, { FullName: 'acme/widgets' }],
+      [{ linkAttribute: 42 }, { FullName: 'acme/widgets' }],
+      [linkOptions, { Message: 'Fix the parser' }],
+    ];
+    for (const [options, values] of cases) {
+      const fixture = render(ShortShaRendererComponent, { value: sha, options, item: row(values, 'Repositories/github/1') });
+      expect(el(fixture).querySelector('a')).toBeNull();
+      expect(el(fixture).querySelector('span')!.textContent!.trim()).toBe('abcdef1');
+    }
+  });
+
+  it('links through whichever sibling linkAttribute names', () => {
+    const fixture = render(ShortShaRendererComponent, {
+      value: sha,
+      options: { linkAttribute: 'RepositoryFullName' },
+      item: row({ RepositoryFullName: 'acme/widgets' }, 'Repositories/github/1'),
+    });
+
+    expect(el(fixture).querySelector('a')!.getAttribute('href')).toBe(`/github/r/acme/widgets/c/${sha}`);
   });
 
   it('renders plain text without any row context', () => {
@@ -80,7 +110,7 @@ describe('ShortShaRendererComponent', () => {
 
   it('renders nothing for an empty or non-string value', () => {
     for (const value of [null, undefined, '', 1234567, { sha }]) {
-      const fixture = render(ShortShaRendererComponent, { value, item: row({ FullName: 'a/b' }, 'Repositories/github/1') });
+      const fixture = render(ShortShaRendererComponent, { value, options: linkOptions, item: row({ FullName: 'a/b' }, 'Repositories/github/1') });
       expect(el(fixture).querySelector('a, span')).toBeNull();
     }
   });
@@ -88,7 +118,7 @@ describe('ShortShaRendererComponent', () => {
   it('takes the tooltip from the sibling attribute named by titleAttribute', () => {
     const fixture = render(ShortShaRendererComponent, {
       value: sha,
-      options: { titleAttribute: 'Message' },
+      options: { ...linkOptions, titleAttribute: 'Message' },
       item: row({ FullName: 'acme/widgets', Message: 'Fix the parser' }, 'Repositories/github/1'),
     });
 
@@ -144,9 +174,13 @@ describe('AccountLinkRendererComponent', () => {
 });
 
 describe('AccountAvatarRendererComponent', () => {
+  // The alt sibling is declared in the model, not assumed (#284, D14).
+  const alt = { altAttribute: 'Login' };
+
   it('draws the avatar image with the login as alt text', () => {
     const fixture = render(AccountAvatarRendererComponent, {
       value: 'https://avatars.example.test/u/1',
+      options: alt,
       item: row({ Login: 'mintplayer' }),
     });
 
@@ -157,9 +191,16 @@ describe('AccountAvatarRendererComponent', () => {
   });
 
   it('uses an empty alt when the row has no string Login', () => {
-    const fixture = render(AccountAvatarRendererComponent, { value: 'https://avatars.example.test/u/1', item: row({ Login: 5 }) });
+    const fixture = render(AccountAvatarRendererComponent, { value: 'https://avatars.example.test/u/1', options: alt, item: row({ Login: 5 }) });
 
     expect(el(fixture).querySelector('img')!.getAttribute('alt')).toBe('');
+  });
+
+  it('uses an empty alt when altAttribute is absent or not a string, even with a Login on the row', () => {
+    for (const options of [undefined, {}, { altAttribute: 42 }]) {
+      const fixture = render(AccountAvatarRendererComponent, { value: 'https://avatars.example.test/u/1', options, item: row({ Login: 'mintplayer' }) });
+      expect(el(fixture).querySelector('img')!.getAttribute('alt')).toBe('');
+    }
   });
 
   // The server folds the account type into the cell (MyAccountRowActions.WithAvatarFallback).

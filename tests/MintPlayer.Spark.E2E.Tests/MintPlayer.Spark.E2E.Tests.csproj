@@ -55,6 +55,7 @@
   <ItemGroup>
     <!-- Seed files imported with JsonFixtureImporter (RavenDB query-result format). -->
     <Content Include="ReferencePicker\Data\*.json" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="QueryColumns\Data\*.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!--

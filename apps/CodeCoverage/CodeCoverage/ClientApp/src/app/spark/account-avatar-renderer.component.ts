@@ -41,8 +41,15 @@ export class AccountAvatarRendererComponent implements SparkAttributeColumnRende
     return typeof value === 'string' && value.length > 0 && value !== GROUP_AVATAR ? value : null;
   });
 
+  /**
+   * rendererOptions.altAttribute names the sibling attribute whose value is the image's alt text
+   * (e.g. `Login`). Declared in the model so `--spark-verify-model` can see the dependency (#284, D14);
+   * absent, the alt is empty.
+   */
   readonly alt = computed(() => {
-    const login = valueFor(this.item(), 'Login')?.value;
+    const altAttribute = this.options()?.['altAttribute'];
+    if (typeof altAttribute !== 'string') return '';
+    const login = valueFor(this.item(), altAttribute)?.value;
     return typeof login === 'string' ? login : '';
   });
 

@@ -68,8 +68,9 @@ public sealed class SparkQuery
     /// <remarks>
     /// A column not named here inherits the attribute's own <c>canSort</c>/<c>canFilter</c>/
     /// <c>canListDistincts</c>; an absent or empty list overrides nothing. Sparseness is what keeps
-    /// this from becoming a second place that decides which columns exist and in what order — that
-    /// remains <c>showedOn</c> plus <c>order</c> on the attributes.
+    /// this from becoming a second place that decides which columns exist — that remains
+    /// <c>showedOn</c> on the attributes. Which of them a query draws, and in what order, is
+    /// <see cref="ColumnOrder"/> (#284), the one column enumeration a query has.
     /// <para>
     /// An entry naming an attribute that is not on this query's surface is a
     /// <c>--spark-verify-model</c> error rather than a silent no-op.
@@ -82,6 +83,29 @@ public sealed class SparkQuery
     /// every model file. Measured: it did, across all four apps, before this was made nullable.
     /// </remarks>
     public SparkQueryColumn[]? Columns { get; set; }
+
+    /// <summary>
+    /// The order of this query's grid columns, by attribute name (#284). A name prefixed with <c>!</c>
+    /// is listed but hidden: it keeps its place, so un-hiding it puts the column back where it was.
+    /// Optional: absent means every query-surface attribute, ordered by <c>order</c>.
+    /// </summary>
+    /// <remarks>
+    /// Presentation only, and it only narrows and reorders. An entry can pick only from the query
+    /// surface (<c>showedOn</c> Query plus the caller's attribute rights); a surface attribute the list
+    /// does not mention is drawn after the listed ones, by (<c>order</c>, name). A hidden column is not
+    /// a security statement: sort, filter, search and distincts still follow the query surface, and the
+    /// list stays out of the structural hash.
+    /// <para>
+    /// Opt-in: <c>--spark-synchronize-model</c> never creates the list. On a list that exists it appends
+    /// the surface attributes it does not mention and removes names no attribute has.
+    /// </para>
+    /// <para>
+    /// Nullable for the same reason as <see cref="Columns"/>: an empty default would stamp
+    /// <c>"columnOrder": []</c> onto every query in every model file.
+    /// </para>
+    /// </remarks>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string[]? ColumnOrder { get; set; }
 
     /// <summary>
     /// Live updates (<c>docs/guide-live-updates.md</c>): grids showing this query subscribe over the one

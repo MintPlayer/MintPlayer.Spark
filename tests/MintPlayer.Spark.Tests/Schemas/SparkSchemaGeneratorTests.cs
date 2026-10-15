@@ -87,6 +87,37 @@ public sealed class SparkSchemaGeneratorTests
         Validate(model, valid.Replace("\"_comment\"", "\"comment\"")).Should().NotBeEmpty();
     }
 
+    [Theory]
+    [InlineData("""["Name", "!Account", "_Private1"]""", true)]
+    [InlineData("null", true)]
+    [InlineData("""["!"]""", false)]
+    [InlineData("""[""]""", false)]
+    [InlineData("""["!!Name"]""", false)]
+    [InlineData("""["a.b"]""", false)]
+    [InlineData("""["Name "]""", false)]
+    public void A_column_order_entry_is_an_attribute_name_optionally_prefixed_with_a_bang(string columnOrder, bool valid)
+    {
+        // #284 S3: syntax only. A misspelled but well-formed name is --spark-verify-model's to catch.
+        var model = Schemas()["model"];
+        var json = $$"""
+            {
+              "persistentObject": {
+                "id": "6f9619ff-8b86-d011-b42d-00cf4fc964ff",
+                "name": "Car",
+                "attributes": [ { "id": "6f9619ff-8b86-d011-b42d-00cf4fc964fe", "name": "Name" } ]
+              },
+              "queries": [
+                { "id": "6f9619ff-8b86-d011-b42d-00cf4fc964fd", "name": "GetCars", "source": "Database.Cars", "columnOrder": {{columnOrder}} }
+              ]
+            }
+            """;
+
+        if (valid)
+            Validate(model, json).Should().BeEmpty();
+        else
+            Validate(model, json).Should().NotBeEmpty();
+    }
+
     [Fact]
     public void A_translation_tree_mixing_leaves_and_namespaces_is_rejected()
     {

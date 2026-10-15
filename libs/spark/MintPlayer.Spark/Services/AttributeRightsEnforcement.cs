@@ -101,8 +101,9 @@ internal interface IAttributeRightsEnforcement
 
     /// <summary>
     /// The caller's view of a query's metadata (<c>Queries/Get|List</c>, S7): sort columns, column
-    /// overrides and the parent reference that name a <c>Query</c>-denied attribute of the row type
-    /// are left out. The same reference when nothing changes.
+    /// overrides, <c>columnOrder</c> entries (plain or <c>!</c>-hidden, #284) and the parent reference
+    /// that name a <c>Query</c>-denied attribute of the row type are left out. The same reference when
+    /// nothing changes.
     /// </summary>
     Task<SparkQuery> ForQueryMetadataAsync(SparkQuery query, CancellationToken cancellationToken = default);
 }
@@ -296,9 +297,12 @@ internal sealed partial class AttributeRightsEnforcement : IAttributeRightsEnfor
 
         var sortColumns = query.SortColumns.Where(s => !refused.Contains(s.Property)).ToArray();
         var columns = query.Columns?.Where(c => !refused.Contains(c.Name)).ToArray();
+        // #284: both forms. A "!Secret" entry says Secret exists as surely as a plain one does.
+        var columnOrder = query.ColumnOrder?.Where(c => !refused.Contains(ColumnOrderEntry.Parse(c).Name)).ToArray();
         var parentReference = query.ParentReference is { } named && refused.Contains(named) ? null : query.ParentReference;
         if (sortColumns.Length == query.SortColumns.Length
             && (columns?.Length ?? 0) == (query.Columns?.Length ?? 0)
+            && (columnOrder?.Length ?? 0) == (query.ColumnOrder?.Length ?? 0)
             && ReferenceEquals(parentReference, query.ParentReference))
         {
             return query;
@@ -307,6 +311,7 @@ internal sealed partial class AttributeRightsEnforcement : IAttributeRightsEnfor
         // WithSortColumns copies; the flag it sets is [JsonIgnore] and this copy is only serialized.
         var copy = query.WithSortColumns(sortColumns);
         copy.Columns = columns;
+        copy.ColumnOrder = columnOrder;
         copy.ParentReference = parentReference;
         return copy;
     }

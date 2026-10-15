@@ -11,7 +11,7 @@
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark</PackageId>
-		<Version>11.0.0-preview.108</Version>
+		<Version>11.0.0-preview.109</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>Low-code .NET framework for building data-driven web applications with minimal boilerplate. Uses PersistentObject pattern to eliminate DTOs and repository layers.</Description>
@@ -43,6 +43,9 @@
 		<InternalsVisibleTo Include="MintPlayer.Spark.Tests" />
 		<!-- The MCP tools call the same internal read, save and action paths as the HTTP endpoints (MCP PRD D9). -->
 		<InternalsVisibleTo Include="MintPlayer.Spark.Mcp" />
+		<!-- CodeCoverage's column guard pins its grids through the real loader and BuildColumns (#284 R8),
+		     not a re-implementation of the column rule. -->
+		<InternalsVisibleTo Include="CodeCoverage.Tests" />
 		<!-- Allows NSubstitute (Castle DynamicProxy) to mock internal interfaces -->
 		<InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
 	</ItemGroup>

@@ -46,6 +46,7 @@ public static class SparkSchemaGenerator
 {
     private const string MetaSchema = "https://json-schema.org/draft/2020-12/schema";
     private const string CommentPattern = "^_";
+    private const string ColumnOrderPattern = "^!?[A-Za-z_][A-Za-z0-9_]*$";
 
     /// <summary>The six schemas, in a fixed order.</summary>
     public static IReadOnlyList<SparkSchemaFile> Files { get; } =
@@ -150,6 +151,14 @@ public static class SparkSchemaGenerator
             // dictionary's value type argument, so it is stated here.
             if (type == typeof(ActionsFileEntry) && context.PropertyInfo is null)
                 obj["type"] = new JsonArray("object", "null");
+
+            // columnOrder (#284): an attribute name, optionally prefixed with "!" for a hidden column.
+            // Syntax only; whether the name exists in this file is --spark-verify-model's job (S3).
+            if (context.PropertyInfo is { } columnOrder
+                && columnOrder.DeclaringType == typeof(SparkQuery)
+                && columnOrder.Name == "columnOrder"
+                && obj["items"] is JsonObject items)
+                items["pattern"] = ColumnOrderPattern;
 
             if (IsObjectSchema(obj) && obj.ContainsKey("properties"))
                 Close(obj);

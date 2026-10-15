@@ -342,6 +342,42 @@ public class SynchronizeIdempotencyTests : IDisposable
     }
 
     [Fact]
+    public void A_column_order_reaches_a_fixed_point_after_one_run()
+    {
+        // #284 R5: the first run removes the dead names (plain and hidden; Id is no attribute) and appends
+        // the unlisted surface attribute; runs 2 and 3 must be byte-identical.
+        Seed("IdemProbe.json", """
+        {
+          "persistentObject": {
+            "id": "12345678-1234-1234-1234-123456789abe",
+            "name": "IdemProbe",
+            "clrType": "MintPlayer.Spark.Tests.Model.IdemProbe",
+            "attributes": [ { "id": "abcdefab-1234-1234-1234-123456789abe", "name": "Name" } ]
+          },
+          "queries": [
+            {
+              "id": "fedcba98-1234-1234-1234-123456789abe",
+              "name": "GetIdemProbes",
+              "source": "Database.IdemProbes",
+              "columnOrder": ["Gone", "!Id"]
+            }
+          ]
+        }
+        """);
+
+        Synchronize();
+        Synchronize();
+        var second = Snapshot();
+
+        Synchronize();
+
+        ((object)Snapshot()).Should().BeEquivalentTo(second);
+        var query = JsonSerializer.Deserialize<EntityTypeFile>(second["IdemProbe.json"],
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!.Queries.Single(q => q.Name == "GetIdemProbes");
+        query.ColumnOrder.Should().Equal("Name");
+    }
+
+    [Fact]
     public void A_hand_trimmed_showedOn_on_a_projected_entity_reaches_a_fixed_point()
     {
         // #274: Name is on both IdemProbe and its projection, so synchronize derives

@@ -108,6 +108,21 @@ public class ModelFileShapeQueryFieldsTests : IDisposable
     }
 
     [Fact]
+    public void A_querys_column_order_does_not_move_the_hash()
+    {
+        // #284 D7: columnOrder only narrows and reorders the query surface; sort, filter and rights
+        // still follow showedOn. Adding, reordering or hiding must not trip a deployed model's gate.
+        var before = HashOf(NoIndexName);
+        var added = HashOf(NoIndexName.Replace(
+            "\"entityType\": \"Probe\"", "\"entityType\": \"Probe\", \"columnOrder\": [\"Name\", \"!Account\"]"));
+        var changed = HashOf(NoIndexName.Replace(
+            "\"entityType\": \"Probe\"", "\"entityType\": \"Probe\", \"columnOrder\": [\"Account\", \"Name\"]"));
+
+        added.Should().Be(before);
+        changed.Should().Be(before);
+    }
+
+    [Fact]
     public void Reordering_queries_does_not_move_the_hash()
     {
         // Queries are hashed name-sorted, for the same reason attributes are: order in the file is

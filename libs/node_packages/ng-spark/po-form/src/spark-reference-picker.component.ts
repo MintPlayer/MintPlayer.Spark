@@ -8,7 +8,7 @@ import { BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirectiv
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { PaginationResponse } from '@mintplayer/pagination';
 import { SparkService, SparkLanguageService, sparkDatatableLabels } from '@mintplayer/ng-spark/services';
-import { EntityType, QueryResultItem, ShowedOn, hasShowedOnFlag } from '@mintplayer/ng-spark/models';
+import { EntityType, QueryColumn, QueryResultItem } from '@mintplayer/ng-spark/models';
 import { TranslateKeyPipe, ResolveTranslationPipe, ReferenceAttrValuePipe, LoadedReference, referenceLabel } from '@mintplayer/ng-spark/pipes';
 import { SparkAttributeDescriptionComponent } from '@mintplayer/ng-spark/attribute-description';
 import { SparkSearchBoxComponent } from '@mintplayer/ng-spark/grid';
@@ -58,7 +58,10 @@ export class SparkReferencePickerComponent {
   query = input<string | null | undefined>(undefined);
   /** The parent the reference query runs under (`parentId`/`parentType`), as for the pre-loaded options. */
   queryParent = input<ReferenceQueryParent | null | undefined>(undefined);
-  /** Target entity type's CLR type name; used to load the grid's column headers. */
+  /**
+   * Target entity type's CLR type name. The modal shows its grid once this type has loaded; the
+   * columns themselves come from the query result (#284, D9).
+   */
   referenceType = input<string | undefined>(undefined);
   /** Renders the field with the Bootstrap is-invalid state. */
   isInvalid = input(false);
@@ -98,12 +101,13 @@ export class SparkReferencePickerComponent {
   /** The last row picked here, so the textbox can label it even when the parent does not keep it. */
   private readonly picked = signal<QueryResultItem | null>(null);
 
-  /** The picker lists query rows, so its columns are the query's: `showedOn` includes Query (#264; not None). */
-  visibleAttributes = computed(() => {
-    return this.entityType()?.attributes
-      .filter(a => hasShowedOnFlag(a.showedOn, ShowedOn.Query))
-      .sort((a, b) => a.order - b.order) || [];
-  });
+  /**
+   * The columns the executed query result declares, in the order it declares them (#284, D9). The
+   * server decides them (surface, rights, the query's `columnOrder`), so the picker draws exactly what
+   * the query grid draws for the same query. Empty until the first page arrives, and without a
+   * `query`, where the rows carry only a breadcrumb and the template draws that instead.
+   */
+  columns = signal<QueryColumn[]>([]);
 
   /** The resize handle and its options dialog, translated; columns are named by `bsDatatableColumnLabel`. */
   datatableLabels = computed(() => sparkDatatableLabels(this.lang));
@@ -137,7 +141,7 @@ export class SparkReferencePickerComponent {
     this.loadError.set(null);
     this.settings.set(SparkReferencePickerComponent.freshSettings());
 
-    // Lazily resolve the target entity type for the grid's column headers.
+    // Lazily resolve the target entity type; the modal shows its grid once it has.
     const refType = this.referenceType();
     if (!this.entityType() && refType) {
       const types = await this.sparkService.getEntityTypes();
@@ -193,6 +197,7 @@ export class SparkReferencePickerComponent {
         });
         this.loadError.set(null);
         this.resultCount.set(result.totalItems);
+        this.setColumns(result.columns ?? []);
         return {
           data: result.items ?? [],
           totalRecords: result.totalItems,
@@ -207,6 +212,16 @@ export class SparkReferencePickerComponent {
         return { data: [], totalRecords: 0, totalPages: 1, perPage: req.perPage, page: req.page };
       }
     };
+  }
+
+  /**
+   * Takes a page's columns. Every page of the same query declares the same columns, so an equal set is
+   * not re-set: re-rendering every header per page would gain nothing (the query grid does the same).
+   */
+  private setColumns(columns: QueryColumn[]): void {
+    const current = this.columns();
+    if (current.length === columns.length && JSON.stringify(current) === JSON.stringify(columns)) return;
+    this.columns.set(columns);
   }
 
   /** In-memory paging and search over `options`, for a picker without a `query`. */

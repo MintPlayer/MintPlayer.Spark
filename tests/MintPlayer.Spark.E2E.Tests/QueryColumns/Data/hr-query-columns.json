@@ -1,0 +1,42 @@
+{
+  "Results": [
+    {
+      "Name": "Columnorder Works",
+      "Website": "https://columnorder.example",
+      "EmployeeCount": 12,
+      "BrandColor": "#0d6efd",
+      "AccentColor": "#6610f2",
+      "@metadata": {
+        "@id": "Companies/columns-works",
+        "@collection": "Companies",
+        "Raven-Clr-Type": "HR.Entities.Company, HR.Library"
+      }
+    },
+    {
+      "FirstName": "Columns",
+      "LastName": "Alpha",
+      "Email": "columns.alpha@e2e.local",
+      "Company": "Companies/columns-works",
+      "Professions": [],
+      "Jobs": [],
+      "@metadata": {
+        "@id": "People/columns-alpha",
+        "@collection": "People",
+        "Raven-Clr-Type": "HR.Entities.Person, HR.Library"
+      }
+    },
+    {
+      "FirstName": "Columns",
+      "LastName": "Beta",
+      "Email": "columns.beta@e2e.local",
+      "Company": "Companies/columns-works",
+      "Professions": [],
+      "Jobs": [],
+      "@metadata": {
+        "@id": "People/columns-beta",
+        "@collection": "People",
+        "Raven-Clr-Type": "HR.Entities.Person, HR.Library"
+      }
+    }
+  ]
+}
