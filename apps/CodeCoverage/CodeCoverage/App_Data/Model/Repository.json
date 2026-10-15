@@ -186,7 +186,10 @@
         "isArray": false,
         "showedOn": "Query, PersistentObject",
         "rules": [],
-        "renderer": "short-sha"
+        "renderer": "short-sha",
+        "rendererOptions": {
+          "linkAttribute": "FullName"
+        }
       },
       {
         "id": "c7156743-92ed-4ad2-b7ee-2bd7da8f8b82",

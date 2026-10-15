@@ -36,6 +36,9 @@
         "isArray": false,
         "showedOn": "Query",
         "renderer": "account-avatar",
+        "rendererOptions": {
+          "altAttribute": "Login"
+        },
         "rules": []
       },
       {

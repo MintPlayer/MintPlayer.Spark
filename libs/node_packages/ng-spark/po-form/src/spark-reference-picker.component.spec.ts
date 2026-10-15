@@ -100,7 +100,7 @@ describe('SparkReferencePickerComponent', () => {
     });
   });
 
-  it('open lazily loads the target entity type for the grid columns and seeds pagination', async () => {
+  it('open lazily loads the target entity type and seeds pagination', async () => {
     const { fixture, component, service } = createComponent();
     fixture.componentRef.setInput('options', companies);
     fixture.componentRef.setInput('referenceType', 'Test.Company');
@@ -181,6 +181,50 @@ describe('SparkReferencePickerComponent', () => {
       await component.fetchFn()!({ page: 1, perPage: 25, sortColumns } as any);
 
       expect(executeQueryByName).toHaveBeenLastCalledWith('GetCompanies', expect.objectContaining({ sortColumns, take: 25 }));
+    });
+
+    it(`draws the columns the result declares, in the result's order, not the entity type's attributes (#284, D9)`, async () => {
+      // The type has a Query-surface attribute the result leaves out (the query's columnOrder hid it,
+      // or rights stripped it), and its `order` would put Name before City. The result decides both.
+      const typed: EntityType = {
+        ...companyType,
+        attributes: [
+          { id: 'a-name', name: 'Name', dataType: 'string', order: 1, showedOn: 'Query, PersistentObject' },
+          { id: 'a-city', name: 'City', dataType: 'string', order: 2, showedOn: 'Query, PersistentObject' },
+          { id: 'a-secret', name: 'Secret', dataType: 'string', order: 3, showedOn: 'Query, PersistentObject' },
+        ] as any,
+      };
+      const columns = [
+        { name: 'City', dataType: 'string', order: 2 },
+        { name: 'Name', dataType: 'string', order: 1, canSort: false },
+      ];
+      const executeQueryByName = vi.fn().mockResolvedValue({ ...page(0, 10), columns });
+      const { fixture, component } = createComponent({ executeQueryByName, getEntityTypes: vi.fn().mockResolvedValue([typed]) } as any);
+      fixture.componentRef.setInput('referenceType', 'Test.Company');
+      fixture.componentRef.setInput('query', 'GetCompanies');
+      await component.open();
+      expect(component.columns()).toEqual([]);
+
+      await component.fetchFn()!({ page: 1, perPage: 10, sortColumns: [] } as any);
+
+      expect(component.columns().map(c => c.name)).toEqual(['City', 'Name']);
+      expect(component.columns().map(c => c.canSort)).toEqual([undefined, false]);
+    });
+
+    it('keeps the columns of the last good page when a page fails', async () => {
+      const columns = [{ name: 'Name', dataType: 'string', order: 1 }];
+      const executeQueryByName = vi.fn()
+        .mockResolvedValueOnce({ ...page(0, 10), columns })
+        .mockRejectedValueOnce(new Error('boom'));
+      const { fixture, component } = createComponent({ executeQueryByName } as any);
+      fixture.componentRef.setInput('referenceType', 'Test.Company');
+      fixture.componentRef.setInput('query', 'GetCompanies');
+      await component.open();
+
+      await component.fetchFn()!({ page: 1, perPage: 10, sortColumns: [] } as any);
+      await component.fetchFn()!({ page: 2, perPage: 10, sortColumns: [] } as any);
+
+      expect(component.columns().map(c => c.name)).toEqual(['Name']);
     });
 
     it('reports a failed page instead of showing it as an empty list', async () => {

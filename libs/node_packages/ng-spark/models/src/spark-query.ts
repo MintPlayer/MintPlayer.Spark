@@ -37,6 +37,11 @@ export interface SparkQuery {
    * when the row type references the parent's type more than once (#460, D19). Server-side use.
    */
   parentReference?: string;
+  /**
+   * The query's column order by attribute name (#284). A `!` prefix (`"!Account"`) keeps the column
+   * listed but hidden. The server applies it to the result's `columns`; the grid does not read it.
+   */
+  columnOrder?: string[];
 }
 
 /**

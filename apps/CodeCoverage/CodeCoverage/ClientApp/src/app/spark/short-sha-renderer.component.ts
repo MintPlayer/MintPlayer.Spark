@@ -7,8 +7,8 @@ import { forgeOf } from './forge-of';
 /**
  * Spark attribute renderer "short-sha": a commit sha as its 7-char short form
  * (master-parity "Latest commit" cell). With the item row context (Spark#245)
- * it links to the vanity commit page, derived from the row's FullName
- * ("owner/name"); without it, plain text.
+ * it links to the vanity commit page, derived from the "owner/name" sibling that
+ * `rendererOptions.linkAttribute` names; without it, plain text.
  */
 @Component({
   selector: 'app-short-sha-renderer',
@@ -42,9 +42,16 @@ export class ShortShaRendererComponent implements SparkAttributeColumnRenderer, 
     return typeof title === 'string' && title ? title : null;
   });
 
+  /**
+   * rendererOptions.linkAttribute names the sibling attribute holding the repository's "owner/name"
+   * (e.g. `FullName`). Declared in the model rather than assumed here, so `--spark-verify-model` can see
+   * the dependency (#284, D14). Absent, or the sibling absent from the row, the sha is plain text.
+   */
   readonly commitRoute = computed(() => {
     const sha = this.value();
-    const fullName = valueFor(this.item(), 'FullName')?.value;
+    const linkAttribute = this.options()?.['linkAttribute'];
+    if (typeof linkAttribute !== 'string') return null;
+    const fullName = valueFor(this.item(), linkAttribute)?.value;
     if (typeof sha !== 'string' || typeof fullName !== 'string') return null;
     const [owner, name] = fullName.split('/');
 
