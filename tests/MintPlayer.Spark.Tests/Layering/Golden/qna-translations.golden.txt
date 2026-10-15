@@ -261,6 +261,7 @@ common.noItemsFound	en="No items found"	fr="Aucun élément trouvé"	nl="Geen it
 common.notSelected	en="(not selected)"	fr="(non sélectionné)"	nl="(niet geselecteerd)"
 common.notSet	en="(not set)"	fr="(non défini)"	nl="(niet ingesteld)"
 common.onOtherPages	en="on other pages"	fr="sur d'autres pages"	nl="op andere pagina's"
+common.opensInNewTab	en="(opens in a new tab)"	fr="(s'ouvre dans un nouvel onglet)"	nl="(opent in een nieuw tabblad)"
 common.properties	en="Properties"	fr="Propriétés"	nl="Eigenschappen"
 common.resetColumn	en="Reset width"	fr="Réinitialiser la largeur"	nl="Breedte herstellen"
 common.resizeColumn	en="Resize column {column}"	fr="Redimensionner la colonne {column}"	nl="Breedte van kolom {column} aanpassen"

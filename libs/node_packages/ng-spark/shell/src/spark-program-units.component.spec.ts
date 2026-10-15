@@ -1,13 +1,13 @@
 import { Component, computed, signal, TemplateRef, viewChild } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { provideRouter, Router } from '@angular/router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SparkProgramUnitsComponent } from './spark-program-units.component';
 import { SPARK_AUTH_STATE } from '@mintplayer/ng-spark';
-import { SparkService } from '@mintplayer/ng-spark/services';
+import { SparkLanguageService, SparkService } from '@mintplayer/ng-spark/services';
 import { ProgramUnitsConfiguration } from '@mintplayer/ng-spark/models';
-import { settle } from '../../src/test-utils';
+import { settle, StubComponent } from '../../src/test-utils';
 
 /**
  * The menu's contract: everything rendered comes from the server response (consumers write no
@@ -33,6 +33,34 @@ const config: ProgramUnitsConfiguration = {
   ],
 };
 
+/**
+ * The url units, classified against the page's origin and the router's base href (`sparkAppUrl`): into the
+ * application, out of it, and neither.
+ */
+const urlConfig = (): ProgramUnitsConfiguration => ({
+  programUnitGroups: [
+    {
+      id: 'g', name: { en: 'Links' }, order: 1,
+      programUnits: [
+        { id: 'u-setup', name: { en: 'Setup' }, type: 'url', url: '/merge-queue/setup?provider=github#permissions', order: 1 },
+        { id: 'u-history', name: { en: 'History' }, type: 'url', url: `${location.origin}/merge-queue/history/`, order: 2 },
+        { id: 'u-status', name: { en: 'Status' }, type: 'url', url: 'https://status.example.com', order: 3 },
+        { id: 'u-script', name: { en: 'Script' }, type: 'url', url: 'javascript:alert(1)', order: 4 },
+        { id: 'u-tab', name: { en: 'Tab' }, type: 'url', url: 'java\tscript:alert(1)', order: 5 },
+        { id: 'u-data', name: { en: 'Data' }, type: 'url', url: 'data:text/html,<b>x</b>', order: 6 },
+        { id: 'u-cars', name: { en: 'Cars' }, type: 'query', queryId: 'q-cars', alias: 'cars', order: 7 },
+      ],
+    },
+  ],
+});
+
+/** The anchor whose label is `label`. */
+function anchorLabelled(el: HTMLElement, label: string): HTMLAnchorElement {
+  const anchor = Array.from(el.querySelectorAll('a')).find(a => a.querySelector('.ms-2')?.textContent?.trim() === label);
+  expect(anchor, `an anchor labelled ${label}`).toBeTruthy();
+  return anchor!;
+}
+
 describe('SparkProgramUnitsComponent', () => {
   const getProgramUnits = vi.fn(async () => config);
 
@@ -41,36 +69,90 @@ describe('SparkProgramUnitsComponent', () => {
     TestBed.configureTestingModule({
       imports: [SparkProgramUnitsComponent],
       providers: [
-        provideRouter([]),
+        provideRouter([{ path: '**', component: StubComponent }]),
         { provide: SparkService, useValue: { getProgramUnits } },
+        { provide: SparkLanguageService, useValue: { t: (key: string) => key === 'common.opensInNewTab' ? '(opens in a new tab)' : key } },
       ],
     });
   });
 
-  it('renders groups and units sorted by order, links sourced from the response', async () => {
+  async function render(): Promise<HTMLElement> {
     const fixture = TestBed.createComponent(SparkProgramUnitsComponent);
     fixture.detectChanges();
     await settle(fixture, { macrotask: true });
+    return fixture.nativeElement;
+  }
 
-    const el: HTMLElement = fixture.nativeElement;
+  it('renders groups and units sorted by order, links sourced from the response', async () => {
+    const el = await render();
+
     const anchors = Array.from(el.querySelectorAll('a'));
     // g1 (order 1) before g2 (order 2); within g1, u-a (order 1) before u-b (order 2).
-    expect(anchors.map(a => a.textContent?.trim())).toEqual(['A', 'B', 'Status']);
+    expect(anchors.map(a => a.querySelector('.ms-2')?.textContent?.trim())).toEqual(['A', 'B', 'Status']);
     // Deep link: alias + objectId.
     expect(anchors[0].getAttribute('href')).toBe('/po/start-page/start');
     expect(anchors[1].getAttribute('href')).toBe('/query/bees');
   });
 
-  it('renders a url unit as an external anchor, not a router link', async () => {
+  it('renders a url unit to another site as a new-tab anchor to the parsed href, announced to a screen reader', async () => {
+    getProgramUnits.mockResolvedValueOnce(urlConfig());
+    const el = await render();
+
+    const external = anchorLabelled(el, 'Status');
+    // The parsed href, never the raw string from the file.
+    expect(external.getAttribute('href')).toBe('https://status.example.com/');
+    expect(external.getAttribute('target')).toBe('_blank');
+    expect(external.getAttribute('rel')).toBe('noopener noreferrer');
+    expect(external.querySelector('.visually-hidden')?.textContent?.trim()).toBe('(opens in a new tab)');
+    expect(external.querySelector('.spark-external-mark')?.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  it('renders a url unit into the application as a router link in the same tab, query and fragment kept', async () => {
+    getProgramUnits.mockResolvedValueOnce(urlConfig());
+    const el = await render();
+
+    const setup = anchorLabelled(el, 'Setup');
+    expect(setup.getAttribute('href')).toBe('/merge-queue/setup?provider=github#permissions');
+    expect(setup.hasAttribute('target')).toBe(false);
+    expect(setup.hasAttribute('rel')).toBe(false);
+    expect(setup.querySelector('.visually-hidden')).toBeNull();
+    // Absolute on this origin, at the base: the route, without its trailing slash.
+    expect(anchorLabelled(el, 'History').getAttribute('href')).toBe('/merge-queue/history');
+  });
+
+  it('renders nothing for a url that is not http(s)', async () => {
+    getProgramUnits.mockResolvedValueOnce(urlConfig());
+    const el = await render();
+
+    const labels = Array.from(el.querySelectorAll('a')).map(a => a.querySelector('.ms-2')?.textContent?.trim());
+    expect(labels).toEqual(['Setup', 'History', 'Status', 'Cars']);
+    expect(Array.from(el.querySelectorAll('a')).map(a => a.getAttribute('href') ?? '').filter(href => !/^(\/|https:)/.test(href))).toEqual([]);
+  });
+
+  it('marks the current page with aria-current; an in-app url is current on exactly its path', async () => {
+    getProgramUnits.mockResolvedValueOnce(urlConfig());
     const fixture = TestBed.createComponent(SparkProgramUnitsComponent);
     fixture.detectChanges();
     await settle(fixture, { macrotask: true });
+    const router = TestBed.inject(Router);
+    const el: HTMLElement = fixture.nativeElement;
 
-    const external = Array.from(fixture.nativeElement.querySelectorAll('a'))
-      .find((a: any) => a.getAttribute('href') === 'https://status.example.com') as HTMLAnchorElement;
-    expect(external).toBeTruthy();
-    expect(external.getAttribute('target')).toBe('_blank');
-    expect(external.getAttribute('rel')).toBe('noopener');
+    // The page's query holds the link's own (provider=github); the fragment does not matter.
+    await router.navigateByUrl('/merge-queue/setup?provider=github&account=acme');
+    await settle(fixture, { macrotask: true });
+    expect(anchorLabelled(el, 'Setup').getAttribute('aria-current')).toBe('page');
+    expect(anchorLabelled(el, 'Setup').classList).toContain('active');
+    expect(anchorLabelled(el, 'Cars').hasAttribute('aria-current')).toBe(false);
+
+    // Below the url's path is not the url's page.
+    await router.navigateByUrl('/merge-queue/setup/child?provider=github');
+    await settle(fixture, { macrotask: true });
+    expect(anchorLabelled(el, 'Setup').hasAttribute('aria-current')).toBe(false);
+
+    // A query unit stays current on its page and below it, as before.
+    await router.navigateByUrl('/query/cars/details');
+    await settle(fixture, { macrotask: true });
+    expect(anchorLabelled(el, 'Cars').getAttribute('aria-current')).toBe('page');
   });
 
   it('renders extraTabs after the generated groups, inside the one accordion', async () => {

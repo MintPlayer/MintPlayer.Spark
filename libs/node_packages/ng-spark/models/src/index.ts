@@ -22,3 +22,4 @@ export * from './selection-mode';
 export * from './sub-query';
 export * from './refresh-overlay';
 export * from './rule-evaluation';
+export * from './spark-app-url';

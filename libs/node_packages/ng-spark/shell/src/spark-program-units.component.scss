@@ -36,3 +36,10 @@
     background-color: rgba(var(--bs-emphasis-color-rgb), 0.2);
   }
 }
+
+// The external link's "opens in a new tab" mark: after the label, smaller and quieter than the unit's own icon.
+.spark-external-mark {
+  margin-inline-start: 0.375rem;
+  font-size: 0.75em;
+  opacity: 0.65;
+}

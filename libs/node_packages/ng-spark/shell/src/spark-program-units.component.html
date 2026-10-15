@@ -5,20 +5,25 @@
         <spark-icon [name]="group.icon | iconName:'bi-folder'" />
         <span class="ms-2">{{ group.name | resolveTranslation }}</span>
       </ng-container>
-      @for (unit of group.programUnits; track unit.id) {
-        @if (unit | routerLink; as link) {
-          <a [routerLink]="link"
-             routerLinkActive="active"
+      @for (entry of group.entries; track entry.unit.id) {
+        @if (entry.href; as href) {
+          <!-- An external url: the parsed href in a new tab, which a screen reader is told about. -->
+          <a [href]="href" target="_blank" rel="noopener noreferrer"
              class="d-block px-3 py-2 text-decoration-none nav-link">
-            <spark-icon [name]="unit.icon | iconName:'bi-file'" />
-            <span class="ms-2">{{ unit.name | resolveTranslation }}</span>
+            <spark-icon [name]="entry.unit.icon | iconName:'bi-box-arrow-up-right'" />
+            <span class="ms-2">{{ entry.unit.name | resolveTranslation }}</span>
+            <spark-icon class="spark-external-mark" name="box-arrow-up-right" aria-hidden="true" />
+            <span class="visually-hidden">{{ 'common.opensInNewTab' | t }}</span>
           </a>
         } @else {
-          <!-- A url unit is an external address: a plain anchor, never a router link. -->
-          <a [href]="unit.url" target="_blank" rel="noopener"
+          <!-- A query or persistentObject unit, or a url into this application: a router link in the same tab. -->
+          <a [routerLink]="entry.route"
+             routerLinkActive="active"
+             [routerLinkActiveOptions]="entry.active"
+             ariaCurrentWhenActive="page"
              class="d-block px-3 py-2 text-decoration-none nav-link">
-            <spark-icon [name]="unit.icon | iconName:'bi-box-arrow-up-right'" />
-            <span class="ms-2">{{ unit.name | resolveTranslation }}</span>
+            <spark-icon [name]="entry.unit.icon | iconName:'bi-file'" />
+            <span class="ms-2">{{ entry.unit.name | resolveTranslation }}</span>
           </a>
         }
       }
