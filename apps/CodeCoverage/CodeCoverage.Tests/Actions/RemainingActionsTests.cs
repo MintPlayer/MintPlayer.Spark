@@ -9,6 +9,7 @@ using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Abstractions.ClientOperations;
 using MintPlayer.Spark.Queries;
 using MintPlayer.Spark.Services;
+using MintPlayer.Spark.Services.Breadcrumb;
 using NSubstitute;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Linq;
@@ -504,6 +505,68 @@ public class RemainingActionsTests : CoverageRavenTest
         var actions = Create<ForgeCheckActions>(Managing("github:acme"), session);
         (await actions.Account_ForgeChecks(QueryArgs(acme, parentType: "Repository"))).Should().BeEmpty();
         (await actions.Account_ForgeChecks(QueryArgs(null))).Should().BeEmpty();
+    }
+
+    /// <summary>A mapper that scaffolds the way the framework's does for this test: the entity's id and a Name attribute.</summary>
+    private static IEntityMapper MapperCapturing(List<ForgeCheck> mapped)
+    {
+        var mapper = Substitute.For<IEntityMapper>();
+        mapper.ToPersistentObjectAsync(Arg.Any<ForgeCheck>(), Arg.Any<BreadcrumbResult?>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                var check = call.Arg<ForgeCheck>();
+                mapped.Add(check);
+                return Task.FromResult(new PersistentObject
+                {
+                    Id = check.Id,
+                    Name = nameof(ForgeCheck),
+                    ObjectTypeId = Guid.NewGuid(),
+                    Breadcrumb = nameof(ForgeCheck),
+                    Attributes = [new PersistentObjectAttribute { Name = nameof(ForgeCheck.Name), Value = check.Name, IsReadOnly = true }],
+                });
+            });
+        return mapper;
+    }
+
+    /// <summary>
+    /// An exclusion chip links to <c>/po/forgecheck/&lt;name&gt;</c> (D117): the page is the named check, built from the id
+    /// alone, with no document behind it (the store is empty here) and nothing to edit or delete.
+    /// </summary>
+    [Theory]
+    [InlineData("tests / other suites")]
+    [InlineData("GitGuardian Security Checks")]
+    [InlineData("build (ubuntu-latest, 22.x)")]
+    public async Task OnLoadAsync_serves_a_check_by_its_name_without_a_document(string name)
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        var mapped = new List<ForgeCheck>();
+
+        var po = await Create<ForgeCheckActions>(MapperCapturing(mapped), session).OnLoadAsync(name, parent: null);
+
+        po.Should().NotBeNull();
+        mapped.Should().ContainSingle().Which.Id.Should().Be(name);
+        mapped[0].Name.Should().Be(name);
+        po!.Id.Should().Be(name);
+        po.Breadcrumb.Should().Be(name, "the page's title is the check's name, not the type's");
+        po.Attributes.Single(a => a.Name == nameof(ForgeCheck.Name)).Value.Should().Be(name);
+        po.Can.Should().NotBeNull();
+        po.Can!.Edit.Should().BeFalse();
+        po.Can.Delete.Should().BeFalse();
+        session.Advanced.NumberOfRequests.Should().Be(0, "the page echoes the id; it reads nothing, so it is no existence oracle");
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task OnLoadAsync_refuses_a_blank_name(string name)
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        var mapped = new List<ForgeCheck>();
+
+        (await Create<ForgeCheckActions>(MapperCapturing(mapped), session).OnLoadAsync(name, parent: null)).Should().BeNull();
+        mapped.Should().BeEmpty();
     }
 
     // ------------------------------------------------------------------------------------------

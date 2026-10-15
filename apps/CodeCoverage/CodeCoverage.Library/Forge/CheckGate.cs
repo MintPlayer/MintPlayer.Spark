@@ -22,7 +22,8 @@ namespace CodeCoverage.Forge;
 /// excluded is not waited for either, so an excluded slow scanner cannot hold the queue through its suite.
 /// </para>
 /// <para>
-/// Names compare ordinally. A required check's App pinning (GitHub's <c>integration_id</c>) is not checked
+/// Names compare ordinally, except against the exclusion list, which matches ignoring case (merge-queue PRD D118); a
+/// name that matches a required check ignoring case is never excluded. A required check's App pinning (GitHub's <c>integration_id</c>) is not checked
 /// here: the forge enforces it on the merge itself.
 /// </para>
 /// </remarks>
@@ -32,7 +33,8 @@ public static class CheckGate
     public const string QueueCheckName = "Merge queue";
 
     /// <summary>Evaluates <paramref name="state"/>.</summary>
-    /// <param name="exclusions">Names the owner excluded (O12). Ignored for names in <paramref name="required"/>.</param>
+    /// <param name="exclusions">Names the owner excluded (O12), matched ignoring case (D118). Ignored for names in
+    /// <paramref name="required"/>, also compared ignoring case.</param>
     /// <param name="required">Names the branch rules require (<see cref="ForgeBranchRules.RequiredChecks"/>).</param>
     /// <param name="expectedMinimum">Names that must report before the commit can pass: the checks that reported on the
     /// head pinned at enqueue (merge-queue PRD D45, not the base branch's latest commit, whose push-only workflows never run
@@ -46,8 +48,13 @@ public static class CheckGate
         ArgumentNullException.ThrowIfNull(state);
 
         var requiredSet = new HashSet<string>(required, StringComparer.Ordinal);
+        // Exclusions match ignoring case (merge-queue PRD D118): the pickers offer one row per name ignoring case, so an
+        // account-level exclusion must cover a repository whose check differs only in case. Protection from exclusion
+        // ignores case too, so the looser match can never take a required check out: required wins.
+        var exclusionSet = new HashSet<string>(exclusions, StringComparer.OrdinalIgnoreCase);
+        var requiredAnyCase = new HashSet<string>(required, StringComparer.OrdinalIgnoreCase);
         bool IsExcluded(string name)
-            => name == QueueCheckName || (!requiredSet.Contains(name) && exclusions.Contains(name, StringComparer.Ordinal));
+            => name == QueueCheckName || (!requiredAnyCase.Contains(name) && exclusionSet.Contains(name));
 
         var failed = new SortedSet<string>(StringComparer.Ordinal);
         var pending = new SortedSet<string>(StringComparer.Ordinal);

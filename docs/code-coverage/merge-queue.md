@@ -431,8 +431,10 @@ evicted `bypass-revoked`. **Never bypassed:** the check gate (O12), the regenera
 patch validation (T4), the lease and SHA pinning (T3), and the enqueuer's own `write` minimum (O9). CodeCoverage's own
 groups play no part: they are platform-wide, so they would cross tenants.
 
-**Checks the merge queue ignores (O12).** These are names of check runs or commit-status contexts, matched exactly and
-case-sensitively. A repository has "Ignored checks from" set to `Inherit` (the account's list) or `Override` (its own
+**Checks the merge queue ignores (O12).** These are names of check runs or commit-status contexts, matched exactly but
+ignoring case (D118): the pickers offer one row per name ignoring case, so an account's "tests / Other suites" also
+covers a repository that reports "tests / other suites". A name that matches a required check, in any case, is never
+excluded. A repository has "Ignored checks from" set to `Inherit` (the account's list) or `Override` (its own
 list, possibly empty), so "exclude nothing here" can be said. A check a ruleset requires is always waited for and cannot
 be excluded. The queue's own "Merge queue" check is always ignored. The typical exclusion is a secret scanner that flags
 the hash lines of `modelHashes.json`.
@@ -460,7 +462,11 @@ not named like its check, "GitGuardian Security Checks"). So push a commit or op
   public account page. This was already so when the name was typed; only a manager can pick, and the pick is deliberate.
 - **A stored name that is not known (any more) stays (D114).** Saving does not check the list against the options,
   and the picker shows such a name as a chip labelled with the name itself, which can be removed. A list typed before
-  the picker existed keeps working unchanged: the stored value is still the name, matched exactly by the gate.
+  the picker existed keeps working unchanged: the stored value is still the name, which the gate matches ignoring
+  case (D118).
+- **A chip opens the check's own page (D117).** A chip links to `/po/forgecheck/<name>`, a read-only page showing the
+  name. No document stands behind it: `ForgeCheckActions.OnLoadAsync` builds the page from the name in the link, so
+  every name opens (any signed-in user), and the page says nothing about which repositories reported it.
 
 **What the queue waits for (O12, D41, D45).** On the commit it is about to merge, it waits for every check run, commit
 status and check suite that is not excluded, and it fails at once on any failure. `neutral` and `skipped` pass; every

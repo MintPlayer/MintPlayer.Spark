@@ -1,9 +1,11 @@
 using CodeCoverage.Entities;
 using CodeCoverage.Services;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Queries;
+using MintPlayer.Spark.Services;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Linq;
 using Raven.Client.Documents.Session;
@@ -20,11 +22,16 @@ namespace CodeCoverage.Actions;
 /// the check's name, which is exactly what an exclusion list stores, so the picker writes the name with no translation
 /// and <c>CheckGate</c> reads it unchanged.
 /// </para>
+/// <para>
+/// A chip of the list links to <c>/po/forgecheck/&lt;name&gt;</c>; <see cref="OnLoadAsync"/> serves that page from the name
+/// alone (D117): the actions class, not a storage flag, decides how an object with no document behind it loads.
+/// </para>
 /// </summary>
 public partial class ForgeCheckActions : DefaultPersistentObjectActions<ForgeCheck>, ISparkOwnsRowSecurity
 {
     [Inject] private readonly IAsyncDocumentSession session;
     [Inject] private readonly ISparkVisibility visibility;
+    [Inject] private readonly IEntityMapper entityMapper;
 
     /// <summary>The repositories whose checks the account-level list offers; an account has far fewer.</summary>
     private const int MaxAccountRepositories = 1024;
@@ -44,7 +51,39 @@ public partial class ForgeCheckActions : DefaultPersistentObjectActions<ForgeChe
         "404 before this runs; the manager gate narrows further, because check names of a private repository are only " +
         "for those who may change its merge-queue settings. The raw session loads and the account query below bypass row " +
         "security and are safe only for that reason: they read the owner the gate has just authorized, and a manager sees " +
-        "every private repository of that owner anyway (RepositoryVisibility). Every failure path narrows to an empty list.";
+        "every private repository of that owner anyway (RepositoryVisibility). Every failure path narrows to an empty list. " +
+        "The detail load (OnLoadAsync) reads nothing at all: it echoes the id the caller sent, so every name 'exists' and " +
+        "the page is no oracle for which checks reported where.";
+
+    /// <summary>
+    /// The page an exclusion chip links to (<c>/po/forgecheck/&lt;name&gt;</c>, D117): the check named <paramref name="id"/>,
+    /// built from the id alone, since a check has no document to load.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Not calling the base is the point: there is no document for its collection guard and row rule to judge, so the
+    /// base answered 404 for every chip. The type-level <c>Read</c> right has been checked by the framework before this
+    /// runs. What is returned is only the name the caller supplied, so it discloses nothing and is no existence oracle:
+    /// every name loads, whether or not it ever reported. Which repository reported it stays with the manager-gated
+    /// queries above.
+    /// </para>
+    /// <para>
+    /// Mapped by the framework's own <see cref="IEntityMapper"/>, the mapper the base load uses, so the object is
+    /// scaffolded from <c>ForgeCheck.json</c> for this caller like any loaded one. It is read-only: <c>Name</c> is
+    /// read-only in the model, ForgeCheck grants no <c>Edit</c> or <c>Delete</c> (only <c>QueryRead</c>), and
+    /// <see cref="PersistentObject.Can"/> says so for the row as well.
+    /// </para>
+    /// </remarks>
+    public override async Task<PersistentObject?> OnLoadAsync(string id, PersistentObject? parent)
+    {
+        if (string.IsNullOrWhiteSpace(id))
+            return null;
+
+        var po = await entityMapper.ToPersistentObjectAsync(new ForgeCheck { Id = id, Name = id });
+        po.Breadcrumb = id;
+        po.Can = new PersistentObjectPermissions { Edit = false, Delete = false };
+        return po;
+    }
 
     /// <summary>The checks that have reported on the parent repository: the options of its own exclusion list.</summary>
     /// <remarks>
