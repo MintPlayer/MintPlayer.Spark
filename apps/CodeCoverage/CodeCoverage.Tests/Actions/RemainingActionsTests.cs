@@ -466,6 +466,31 @@ public class RemainingActionsTests : CoverageRavenTest
         offered.Single(c => c.Id == "build").LastSeenUtc.Day.Should().Be(5, "the most recent sighting of a shared name wins");
     }
 
+    /// <summary>
+    /// Spark's row ids are case-insensitive, so two repositories reporting the same check in different case must give
+    /// one row, not a 500 ("produced two rows with the id 'tests / other suites'", seen locally 2026-10-15).
+    /// </summary>
+    [Fact]
+    public async Task Account_ForgeChecks_gives_one_row_for_names_that_differ_only_in_case()
+    {
+        using var store = GetDocumentStore();
+        await SeedKnownChecksAsync(store);
+        using (var seed = store.OpenAsyncSession())
+        {
+            var second = await seed.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, 3));
+            second!.KnownChecks = [KnownCheck("Build", 6)];
+            await seed.SaveChangesAsync();
+        }
+        WaitForIndexing(store);
+        using var session = store.OpenAsyncSession();
+
+        var offered = (await Create<ForgeCheckActions>(Managing("github:acme"), session)
+            .Account_ForgeChecks(QueryArgs(Parent("Account", Account.DocumentId(EForgeProvider.GitHub, 1))))).ToList();
+
+        offered.Where(c => string.Equals(c.Id, "build", StringComparison.OrdinalIgnoreCase)).Should().ContainSingle()
+            .Which.Id.Should().Be("Build", "the most recent sighting's spelling wins");
+    }
+
     [Fact]
     public async Task Account_ForgeChecks_offers_nothing_to_a_non_manager_or_under_another_parent()
     {

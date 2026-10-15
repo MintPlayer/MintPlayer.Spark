@@ -63,8 +63,19 @@ public partial class ForgeCheckActions : DefaultPersistentObjectActions<ForgeChe
         if (repository is null || !await visibility.CanManageOwnerAsync(repository.OwnerKey))
             return [];
 
-        return repository.KnownChecks ?? [];
+        return DistinctRows(repository.KnownChecks ?? []);
     }
+
+    /// <summary>
+    /// One row per name, the most recent sighting's, compared ignoring case: Spark's row ids are case-insensitive (Raven
+    /// id semantics) and refuse two rows whose ids differ only in case. Seen locally 2026-10-15: one repository reported
+    /// "tests / Other suites", another "tests / other suites", and the account picker failed with a 500.
+    /// </summary>
+    private static ForgeCheck[] DistinctRows(IEnumerable<ForgeCheck> checks)
+        => [.. checks
+            .Where(check => !string.IsNullOrEmpty(check?.Id))
+            .GroupBy(check => check.Id, StringComparer.OrdinalIgnoreCase)
+            .Select(same => same.MaxBy(check => check.LastSeenUtc)!)];
 
     /// <summary>
     /// The checks that have reported on any repository of the parent account: the options of the account's exclusion
@@ -92,10 +103,6 @@ public partial class ForgeCheckActions : DefaultPersistentObjectActions<ForgeChe
             .Take(MaxAccountRepositories)
             .ToListAsync();
 
-        return [.. repositories
-            .SelectMany(r => r.KnownChecks ?? [])
-            .Where(check => !string.IsNullOrEmpty(check?.Id))
-            .GroupBy(check => check.Id, StringComparer.Ordinal)
-            .Select(same => same.MaxBy(check => check.LastSeenUtc)!)];
+        return DistinctRows(repositories.SelectMany(r => r.KnownChecks ?? []));
     }
 }
