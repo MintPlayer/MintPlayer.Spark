@@ -13,9 +13,12 @@ empty body, so this document is its design. App: `apps/CodeCoverage` (**producti
 | **M3 dependency graph (§6) + an Account-page graph card** | ✅ in PR #501 (owner: "just that, nothing more"); the owner judged the card "perfect" in the browser, 2026-10-09 |
 | Spikes S1–S11 (§10) | ⏸ **postponed**, possibly never; owner, 2026-10-09: "we'll see" |
 | Every other milestone (§11: M1, M2, M4–M11) | ⏸ **postponed**, possibly never. Nothing beyond M3 is built |
+| **Restart (§13):** a generic engine on the merge queue's workflow-hook pattern (#515/#517) | ✅ investigated + **grilled 2026-10-15 (R1–R17, §13.10 + §13.11.4); test plan §13.11**. Next: spikes S12–S18, then N1–N9 |
 
-The rest of this document (§1–§12) is the plan as grilled. It stays valid as a design, but nothing beyond M3 is
-committed to. If the work resumes, start from §12's decision log, which records why each choice was made.
+The rest of this document (§1–§12) is the plan as grilled on 2026-10-09. **§13 (2026-10-15) proposes replacing
+§7.1, most of §5 and §10–§11.** Where §13 and §1–§12 disagree, §13 is the proposal under discussion and the older
+text is the grilled baseline. Neither is committed until §13's open questions are grilled. Start from §13, then use
+§12's decision log for the reasons behind the choices that §13 keeps.
 
 **Interim (in #501):**
 - **Config:** `.github/dependabot.yml` puts every ecosystem into one multi-ecosystem group, `all-dependencies`,
@@ -266,6 +269,9 @@ row must be reproduced, or explained as a new rule.
 ## 7. Execution and the PR lifecycle
 
 ### 7.1 The split (Q2)
+
+> ⚠️ **Superseded by §13 if P1–P4 are accepted.** The merge queue already ships a one-way `workflow_dispatch`
+> → patch artifact → git-writer push path. §13.3 reuses it instead of `repository_dispatch` + an OIDC round trip.
 1. **Trigger:** the bot sends a `repository_dispatch` to the repo. Contents write is enough, and the App already
    has it.
 2. **The `dependency-update` Action, in the user's CI:**
@@ -405,6 +411,8 @@ The bot already receives `check_run` events, and reads the conclusion on its own
 
 ## 10. Spikes
 
+> ⚠️ §13.7 says which of S1–S11 survive the restart and adds S12–S18.
+
 | # | Question | Done when |
 |---|---|---|
 | S1 | The composite Action: conditional `setup-*` per detected ecosystem, OIDC round trip (candidates → plan → upload), timing on this repo | End-to-end dry run on a scratch repo; time per stage recorded |
@@ -420,6 +428,8 @@ The bot already receives `check_run` events, and reads the conclusion on its own
 | S11 | Metadata sources: licence per ecosystem, NuGet `alternatePackage`, release notes from GitHub releases / CHANGELOG | Extractor per ecosystem tested on real packages |
 
 ## 11. Milestones (one PR)
+
+> ⚠️ Superseded by §13.8 if §13 is accepted (kept as the grilled baseline).
 1. **M1 Settings:**
    - the §4.1 lookups on Account and Repository, with resolvers like `ResolveDeleteBranchOnPrClose`;
    - a migration;
@@ -474,3 +484,469 @@ The bot already receives `check_run` events, and reads the conclusion on its own
 | Q19 | All ecosystems | only the ones the owner uses | owner; this repo has npm, NuGet, global.json, dotnet-tools.json and Actions; pip and Composer were named in the request |
 | Q20 | The onboarding PR edits `dependabot.yml` and translates removed rules into the PR body | warn only; ignore | owner |
 | — | Branches `mintplayer/dependencies` / `-security`; private repos in scope (their minutes, visibility-filtered) | — | assistant defaults; not grilled |
+
+## 13. Restart (2026-10-15): a generic engine on the workflow-hook pattern
+
+**Status: grilled 2026-10-15. §13.10 is authoritative**; where §13.1–§13.9 disagree with it, §13.10 wins. Four parallel investigations on 2026-10-15:
+- the merge-queue code, as reuse candidates;
+- this PRD against the new requirement;
+- external engines and ecosystem commands;
+- where Dependabot and Renovate fall short.
+
+Their findings are below, with sources. Proposals P1–P12 are the assistant's. Each needs an owner decision (§13.9).
+
+### 13.1 What changed since §1–§12
+
+1. **Owner requirement (2026-10-15):** "generic across several/all/any ecosystems". Restore and update commands
+   must **never** run on the VPS: MSBuild targets, npm lifecycle scripts, `setup.py`, and Maven and Gradle plugins
+   all run arbitrary code. Instead, the bot triggers a GitHub Actions workflow in the repo, *exactly like the merge
+   queue's regenerate hook*.
+2. **The merge queue (#515, #517) built the pipeline §7.1 had planned.** All references are under `apps/CodeCoverage/`.
+   - **Dispatch.** `workflow_dispatch` with `return_run_details: true` (GitHub API since 2026-02-19), so the run id
+     comes back in the 200 response. A 204 evicts with `dispatch-uncorrelated` (`GitHubForgeMergeQueue.cs:442-474`,
+     `MergeQueueEngine.cs:939-943`).
+   - **Waiting.** The `workflow_run` webhook, with a `PollRun` every 3 min as fallback, and a `Timeout` step per
+     workflow (`MergeQueueEngine.cs:66,949,951,1376-1381`). The outcome check requires `head_sha == PreparedSha` and
+     `conclusion == success` (`:1132-1175`).
+   - **Results.** The workflow never pushes. It uploads a `git diff --binary` artifact, read with a capped zip read
+     at 8 MB (`GitWriterSidecarClient.cs:39-42`, `GitHubForgeMergeQueue.cs:547-620`).
+   - **Validation.** `PatchValidator` (`CodeCoverage.GitWriter/Jobs/PatchValidator.cs:8-34`) checks the path
+     allow-list. It refuses `.github/`, `.gitmodules`, `.gitattributes`, symlinks, mode changes, binary patches and
+     submodules. It runs the rule validators after apply, re-diffs to catch an `UnexpectedChange`, and refuses
+     overlaps between workflows.
+   - **Workflow provenance.** The dispatched workflow's blob must equal the default branch's (`MergeQueueEngine.cs:999-1015`).
+     There is a fork guard (`:960-991`). The template has `contents: read`, no secrets and `persist-credentials: false`.
+   - **The git writer** (`codecoverage-git-writer` image) is git-only: no Node or SDK, read-only rootfs, an empty
+     hooks dir, `attr.tree` = the empty tree, so in-repo filter and merge drivers never run (`GitRunner.cs:97-199`).
+     It pushes with a token minted per job, scoped to one repository and revoked afterwards
+     (`GitHubForgeMergeQueue.cs:1127-1185`, `MergeQueueEngine.cs:1838`). **`git` is the only executable that runs
+     on the server.**
+   - **Per-rule workflows.** O36 lets each rule name its own `action:`, and the workflows are dispatched in turn
+     (`MergeQueueYml.cs:169-197,285-303`).
+   - **The saga.** Step and signal messages, Generation gating, an outbox schedule and a transient retry cap of 6
+     (`MergeQueueEngine.cs:63,77-240,1958-1989`), on a serial queue lane (`CoverageQueues.cs:57-62`).
+3. **External facts that undo Q1's premise** ("building it ourselves" is no longer the only generic option):
+   - **Renovate** runs inside a job as a lookup engine:
+     - `--platform=local` defaults to `dryRun=lookup`. With `reportType=file` and `reportPath` it writes JSON:
+       `repositories[repo].packageFiles[manager][].deps[]` with `depName`, `currentValue`, `datasource`, and
+       `updates[]` (`newVersion`, `newValue`, `updateType`).
+     - That covers about 90 managers in **one format**. It is marked *experimental*.
+     - Local **apply** is not supported: "Branch creation is not supported".
+     - Sources: [local platform](https://docs.renovatebot.com/modules/platform/local/),
+       [self-hosted config](https://docs.renovatebot.com/self-hosted-configuration/),
+       [report types](https://raw.githubusercontent.com/renovatebot/renovate/main/lib/instrumentation/types.ts).
+       The report field names were read from source and are **unverified** (S12).
+   - **dependabot-core** has been **MIT since 2024-05-13**
+     ([changelog](https://github.blog/changelog/2024-05-13-dependabot-core-is-now-open-source-with-an-mit-license/)),
+     and the **Dependabot CLI** is MIT. `dependabot update <eco> <repo> -o out.yml` "outputs data that could be
+     used to create PRs" without creating them. It needs Docker, which `ubuntu-latest` has. Its proxy injects
+     credentials, so the updater never sees a secret. The job-file format is undocumented
+     ([cli](https://github.com/dependabot/cli)).
+   - **Renovate is AGPL-3.0.** Invoking it unmodified in the *user's* workflow places no obligation on us. This is
+     the assistant's reading, not legal advice.
+   - **Native commands** exist almost everywhere:
+     - `dotnet package update`: new in the .NET 10 SDK; it restores implicitly; CPM is **unverified**
+       ([docs](https://learn.microsoft.com/en-us/dotnet/core/tools/dotnet-package-update)).
+     - `npm install x@v --ignore-scripts`, `uv lock --upgrade-package`, `mvn versions:use-dep-version`,
+       `cargo update -p x --precise v`, `go get x@v`, `composer update --no-scripts`.
+     - Docker images and Actions `uses:` have no native updater. Renovate's lookup covers them.
+4. **The supply-chain threat is current.** Shai-Hulud (Sept and Nov 2025) ran from npm **preinstall** scripts and
+   harvested CI tokens ([Unit 42](https://unit42.paloaltonetworks.com/?p=157750)). So the runner side needs the same
+   discipline as the merge queue's regenerate template: a read-only token, no secrets, no push.
+5. **Dependabot closed some of §2's gaps.** Grouping one dependency across directories (2026-02), and CPM plus
+   transitive pins in the new NuGet updater. Our edge has to come from state Dependabot doesn't have (§13.6), not
+   from grouping.
+
+### 13.2 The contract: the bot is ecosystem-agnostic, the workflow is not (P1)
+
+**P1.** The bot never parses a version, a manifest or a lockfile to *update* it. M3's graph scanners stay, for
+reading only. The bot only handles records:
+
+```
+{ ecosystem, manager, packageFile, depName, currentValue, candidates[{ version, updateType, releaseTimestamp? }] }
+```
+
+The workflow produces them, and the bot answers with a plan of `{ depName, packageFile, newVersion, group }`.
+Everything ecosystem-specific lives in the workflow: lookup, compatibility, lockfile regeneration and migrations.
+Any ecosystem the workflow can handle is supported **without a bot change**. That is the merge queue's model:
+`coverage.yml` names a workflow, and the bot defines only the contract.
+
+The bot's policy needs no version parsing:
+- **Ordering and major/minor/patch** come from the report's `updateType` and candidate order.
+- **Rules** (§4.2) match on `ecosystem` / `depName` globs.
+- **Holds, fleet feedback, propagation and cooldown** compare `releaseTimestamp` against the policy.
+
+§5.1's per-ecosystem compatibility filters (npm peers, TFM, `requires_python`, …) move to stage 2 in the workflow,
+where the resolver reports them as resolve failures. The platform locks (Angular major, TFM major) become default
+account rules with `Enforced`, and stop being code.
+
+### 13.3 Two dispatches, one lookup and one apply (P2, P3)
+
+**P2.** The round trip of §7.1 becomes two dispatches through the merge queue's pipeline. Each is one way: inputs
+in, artifact out.
+
+| Phase | Workflow job | Token / secrets | Returns |
+|---|---|---|---|
+| **lookup** | Renovate `--platform=local --dry-run=lookup --report-type=file` (default implementation; S12). Private feeds via `hostRules` from repo secrets | `contents: read`; feed secrets **allowed** (no repo code executes in lookup; S12 must prove it per manager) | `lookup.json` artifact (the §13.2 records) |
+| *(bot)* | applies policy (rules, holds, cooldown, fleet, propagation) and stores the plan | — | plan id |
+| **apply** | for each plan group: apply to the pinned version with scripts off, regenerate the lockfile, optionally `verify` (S13) | `contents: read`; feed secrets only if S14 shows restore can't execute package code for that ecosystem; never `id-token`, never write | `git diff --binary` artifact plus `result.json` (applied, failed per group with the resolver message) |
+| *(git writer)* | `PatchValidator` with a `dependencies` path profile (P5), applies, pushes `mintplayer/dependencies` with the App token, so CI runs | per-job scoped token | — |
+
+**P3. Plan transport.** The apply dispatch passes `plan_id`, `expected_sha` and a compact plan as inputs. This is
+open: `workflow_dispatch` caps inputs at 25 and the payload size is unverified (S16). If the plan doesn't fit, the
+workflow fetches it read-only from `GET api/dependencies/plans/{id}`, authenticated by its OIDC token (it would
+reuse `ApiTokens/GitHubOidc.cs`). That token would be the only `id-token: write` in the template, and the GET
+returns nothing but the plan. Lookup and apply run against the same `expected_sha`; the bot discards the plan if
+the base moved in between.
+
+**Why two dispatches and not one.** The policy is fleet state: holds, red-elsewhere, propagation and enforced rules.
+Serialising all of it into one dispatch would push §5 into the workflow, in a different language per installation.
+Two runs of a small job cost about 2–4 runner-minutes (to measure in S12/S13). That is negligible next to one CI run
+of the resulting PR, which is 17–21 min (§1).
+
+**Pluggable like the merge queue.** `coverage.yml` names the workflows, and we ship defaults:
+
+```yaml
+dependencies:
+  lookupAction: dependency-lookup.yml   # default template ships in the onboarding PR
+  applyAction: dependency-apply.yml
+  migrate:                              # P9, see §13.6
+    - match: "@angular/core"
+      onMajor: angular-migrate.yml
+```
+
+A repo with an unusual ecosystem (Bazel, a private Maven layout) writes its own workflow that honours the contract.
+The bot doesn't change.
+
+### 13.4 Which engine does the apply (P4, decided by S13)
+
+| Option | Generic? | Concerns |
+|---|---|---|
+| A. Native commands per ecosystem, in our action (TS) | yes, with one small adapter per ecosystem (~10) | we maintain the adapters; Docker and `uses:` edits are text edits we write |
+| B. Dependabot CLI producing the updated file contents | about 20 ecosystems | Docker-in-runner; undocumented job and output format (YAML); it does its own version selection, so it has to be forced to our pins |
+| C. Renovate full mode | about 90 managers | can't apply locally; it pushes and opens PRs itself with a write token, which is the §13.1 threat. **Rejected** unless S13 finds a no-push mode |
+
+**P4.** Renovate (lookup) plus option A (apply), with option B as a fallback per ecosystem if an adapter turns out
+hard (Gradle, Maven). In S13 the plan is fixed and the engine only applies, so B's own version selection must be
+neutralised (`allowed-updates` / `ignore` down to exactly the pinned version).
+
+### 13.5 Paths, `.github`, rebase and replay (P5–P7)
+
+- **P5. A `dependencies` path profile for `PatchValidator`.** The allow-list comes from the lookup report, not a
+  static glob list: the `packageFile`s plus their manager's lockfiles. The existing preset already lists the
+  lockfiles (`AutoResolvePresets.cs:20-34`). Everything else is refused, as are `Directory.Build.*`, `*.targets`,
+  `nuget.config`, `.npmrc` and install scripts.
+  - **`.github/workflows/*` carve-out** for Actions `uses:` bumps. Only hunks whose `-`/`+` lines differ solely in
+    the ref after `uses: owner/repo@` are allowed. The writer token then gets `workflows: write`, which it already
+    can when needed (`GitHubForgeMergeQueue.cs:1127-1185`).
+  - The template's own `uses:` lines are bumped by the same path, so the onboarding stub stays current (Q4).
+- **P6. The rolling branch is maintained by the merge-queue machinery, not by the workflow.**
+  - Conflict-only rebase via the git writer's `merge-tree`.
+  - Lockfiles: take-base plus regenerate (presets O35/O37) through the apply workflow.
+  - Human commits are replayed by the writer, with §7.3's table expressed as resolver rules.
+  - This replaces §7.3's "the Action replays".
+- **P7. One commit per apply run.** §7.1's "one commit per ecosystem" is dropped. If per-ecosystem commits are
+  wanted, the git writer can split the validated patch by `manager`, since the report says which file belongs to
+  which manager. That's cheap, but adds no safety.
+- **Provenance.** The merge queue's `provenance.mjs` accepts only packages already present in the base or PR
+  lockfile (`lockfiles.sh:243-258`), which by design refuses an update. The apply phase needs its own check:
+  every changed lockfile entry is a planned package, or a transitive dependency the resolver brought in. That check
+  stays in the workflow (it is per ecosystem). The bot then checks `result.json` against the plan.
+
+### 13.6 Where this bot stands out (research 2026-10-15)
+
+These are ranked by defensibility. Each needs state that a stateless per-repo updater lacks.
+
+1. **Migrations through the repo's own workflow (P9; reopens a §3 non-goal).**
+   - Dependabot's grouped Angular PRs only edit `package.json`
+     ([angular/components#30464](https://github.com/angular/components/issues/30464)).
+   - `nx migrate` silently skips migrations after a manifest-only bump
+     ([nrwl/nx#23505](https://github.com/nrwl/nx/issues/23505)).
+   - Renovate's `postUpgradeTasks` needs an admin allow-list and is off by default.
+   - We'd dispatch a per-rule `migrate` workflow (`ng update --migrate-only --from --to`,
+     `nx migrate --run-migrations`) after apply, exactly like O36's per-rule `action:`.
+   - **Security cost:** migrations rewrite source, so the patch allow-list widens to the whole tree minus
+     `.github/` and build files. The PR then never auto-merges, and its body says "contains code migrations". Spike S17.
+2. **Release propagation in graph order** (§7.6, unchanged). The producer merges through the queue, then its
+   consumers are updated in topological order, with a "propagation wave" view: lib vX is in 7/10 consumers, 1 is red.
+3. **Red-CI diagnosis and fleet holds** (§7.4, §7.7). Renovate's Merge Confidence is anonymous crowd data; ours is
+   the owner's own fleet, weighted by coverage.
+4. **Coverage on the update PR.** It already works because the App pushes to a same-repo branch. **P10:** put the
+   coverage delta in the PR body, and add a "no coverage drop" auto-merge condition. This is display only, not Q3's
+   excluded per-bump risk model.
+5. **Auto-merge = enqueue in the merge queue (P8; replaces §7.8's native auto-merge).**
+   - Dependabot rebases every open PR and stops after 30 days
+     ([changelog](https://github.blog/changelog/2023-04-13-automatic-rebases-on-dependabot-pull-requests-stop-after-30-days-of-inactivity/)).
+   - We have one PR, rebased only on conflict, merged through the queue, with lockfiles regenerated and never merged
+     textually.
+6. **Platform readiness and lockstep** (§8). Combined with (1), "move to Angular 23" becomes one rule change that
+   opens a PR with the migrations already run.
+7. **Holds that expire** (§7.3/Q11), against `@dependabot ignore`, which lasts forever.
+
+**Not worth competing on:**
+- grouping (Renovate presets; Dependabot's 2026 grouping across directories);
+- transitive security fixes;
+- private-feed plumbing (Dependabot has OIDC for Azure Artifacts now);
+- NuGet CPM.
+
+**P11.** Reconsider Q17/Q18 (our own security PR). Deferring advisories to Dependabot security updates, and
+mentioning them in the fleet view, saves M10 with no loss of edge.
+
+### 13.7 Spikes
+
+Kept from §10:
+- **S3**: the selector replay, now against lookup records.
+- **S4**: rolling-PR mechanics, now on the writer (P6).
+- **S6**: log attribution, needed only if `verify` stays in apply.
+- **S8**: own-package correlation, now using `releaseTimestamp` from the report.
+- **S10**: a second published action.
+
+Dropped or absorbed:
+- **S1**: absorbed by S13 and S15.
+- **S2**: the bot no longer parses versions to update them.
+- **S5**: done in M3.
+- **S7**: folded into S13.
+- **S9**: pending P11.
+- **S11**: the metadata comes from the report or the workflow. Revisit after S12.
+
+| # | Question | Done when |
+|---|---|---|
+| S12 | **Renovate lookup as the generic report.** `--platform=local --dry-run=lookup --report-type=file` on this repo plus samples for Maven, Gradle, Cargo, Go, uv/Poetry, Composer and Docker. Check: the real report fields; whether `releaseTimestamp` is present; private feeds via `hostRules` from secrets; runtime; and **whether lookup or extract executes any repository code** for each manager (Gradle and Maven especially) | Field map checked against a real `report.json`; a "lookup executes no repo code" yes/no per manager, with evidence; minutes per repo |
+| S13 | **The apply engine.** For one fixed plan per sample repo, produce the patch with option A (native, pinned, scripts off) and option B (Dependabot CLI forced to the pins). Include `dotnet package update` on a **CPM** solution and on `global.json` / `dotnet-tools.json` | Byte-equal or explained patches; per-ecosystem pick recorded; adapter LOC estimated |
+| S14 | **Is restore safe with scripts off?** Per ecosystem: does lockfile regeneration run package-supplied code? Cases: NuGet `build/*.targets` during `restore` or `package update`; uv/pip building sdists (`--no-build`, `--only-binary`); Maven and Gradle plugins; Cargo `build.rs` (`cargo update` shouldn't); Go (none); Composer plugins | Table: executes / doesn't / flag to stop it. It decides per ecosystem whether feed secrets may enter the apply job (P2) |
+| S15 | **Extract the workflow hook.** Lift dispatch, correlation, wait, timeout, artifact read, `PatchValidator` and writer publish out of `MergeQueueEngine` into a shared service that both the merge queue and the updater use. Add the `dependencies` profile and the `uses:`-only `.github/workflows` rule (P5) | The merge-queue tests are still green; a `uses:` bump passes and any other workflow edit is refused, in unit tests |
+| S16 | **Plan transport.** The real `workflow_dispatch` input size limit; inputs vs an OIDC-authenticated plan GET (P3) | Limit measured; the largest real plan (this repo, all ecosystems) fits or doesn't |
+| S17 | **Migrations hook (P9).** `ng update --migrate-only --from 21 --to 22` and `nx migrate --run-migrations` on a scratch Angular/Nx repo through a dispatched workflow; the widened allow-list; the no-auto-merge marker | A green migrated PR on the scratch repo; the patch is refused if it touches `.github/` or build files |
+| S18 | **End-to-end on SparkTest** (`PieterjanDeClippel/SparkTest`, the merge queue's live repo): onboarding stub → lookup → plan → apply → push → CI → enqueue | One rolling PR updated twice; a tree-equal schedule triggers 0 CI runs; a human commit survives a recompute |
+
+### 13.8 Milestones (one PR, if §13 is accepted)
+
+1. **N1. Workflow hook extraction (S15).** No behaviour change for the merge queue.
+2. **N2. Settings and rules.** = M1 + M2, plus the `dependencies.lookupAction` / `applyAction` / `migrate` keys.
+3. **N3. The workflow templates and the action.**
+   - Lookup (Renovate, pinned by digest).
+   - Apply adapters (S13 picks), scripts off, `result.json`.
+   - Packaging per S10.
+4. **N4. Policy engine on records** (P1).
+   - Rules, holds, cooldown from `releaseTimestamp`, enforced platform locks as default rules.
+   - The S3 replay as a regression test, on a **real** recorded `report.json`.
+5. **N5. Lifecycle.**
+   - Cron + queue `coverage-dependency-updates`.
+   - Lookup → plan → apply saga on the extracted hook.
+   - Tree-equal no-op, conflict-only rebase and replay through the writer (P6).
+6. **N6. Red CI and commands** = M8.
+7. **N7. Propagation, fleet feedback and enqueue-on-green** = M9 with P8.
+8. **N8. Migrations hook** (P9, if accepted).
+9. **N9. Fleet view, readiness, coverage delta (P10), onboarding PR, Workflows permission, docs** = M11.
+10. Security PR (M10): only if P11 is rejected.
+
+M3 (the graph) is done. Optionally (**P12**), it also consumes the lookup report's `packageFiles`. That would give
+the graph Maven, Gradle, Cargo and Go for free, with the M3 scanners kept as the fallback for repos without the
+workflow.
+
+### 13.9 Open questions for the owner (as asked; answered in §13.10)
+
+| # | Proposal | Reverses | Recommendation |
+|---|---|---|---|
+| P1 | The bot is ecosystem-agnostic and handles records only; per-ecosystem logic lives in the workflow | Q1 (own engine), §5.1 filter 6, S2 | accept: it is the only way to be "any ecosystem" without code per ecosystem in the bot |
+| P2 | Two dispatches: lookup (read-only, may hold feed secrets) and apply (no write, no `id-token`; secrets only where S14 allows) | §7.1 (OIDC round trip) | accept; reuses #515/#517 |
+| P3 | Plan via inputs, falling back to an OIDC-authenticated GET | §7.1 step 2's OIDC upload | decide after S16 |
+| P4 | Renovate for lookup, native adapters for apply, Dependabot CLI as fallback per ecosystem | Q1 | decide after S12/S13 |
+| P5 | Allow-list taken from the report, plus a `uses:`-only carve-out under `.github/workflows` | — | accept |
+| P6 | The writer maintains the rolling branch (rebase and replay); the workflow only regenerates | §7.3 "the Action replays" | accept |
+| P7 | One commit per apply run | §7.1 step 6 | accept |
+| P8 | Auto-merge = enqueue in the merge queue at the slot | §7.8 native auto-merge | accept |
+| P9 | A migrations hook (`migrate:` per rule); migrated PRs never auto-merge | §3 non-goal "source-code migrations" | owner's call: biggest differentiator, biggest allow-list widening |
+| P10 | Coverage delta in the PR body, plus a "no coverage drop" merge condition | — (Q3 excluded per-bump *risk*, not display) | accept |
+| P11 | Drop our own security PR and defer to Dependabot security updates | Q17, Q18 | owner's call; saves M10 |
+| P12 | The graph also ingests the lookup report | — | accept, cheap |
+
+Also open:
+- Does Q19 ("all ecosystems") now mean "anything Renovate's lookup supports, plus an apply adapter"? It could also
+  mean the §3 G3 list first, then the rest.
+- Does the restart still go in one PR with the interim Dependabot config removed by the onboarding PR (Q20)?
+
+### 13.10 Decision log (grilled 2026-10-15; "owner" = decided by the repo owner)
+
+| # | Decision | Rejected | Evidence / reason |
+|---|---|---|---|
+| R1 | **P1 accepted.** The bot handles ecosystem-neutral records only (`ecosystem, depName, current, candidates[updateType, releaseTimestamp]`). All version, manifest and compatibility logic lives in the workflow. **Supersedes Q1** and §5.1 filter 6. Platform locks become default `Enforced` rules. A record missing `updateType`/`releaseTimestamp` is treated as a hold | hybrid with bot-side locks/compat; keep Q1 | owner. "Generic across any ecosystem" isn't reachable with per-ecosystem bot code |
+| R2 | **A group the resolver rejects** (e.g. Angular 23 before `@nx/angular` supports it): the apply run applies group by group and resets a failing group so the others still ship. `result.json` names the blockers (parsed per adapter: npm `ERESOLVE`, NuGet `NU1107`/`NU1202`, …). The bot holds the group until a lookup shows a newer version of a blocker. Fallbacks: no blockers parsed → retry when any package changes; always retry after 4 slots | fail the whole run; retry every slot without blockers | owner. Example raised by the owner: an Angular major before Nx is compatible |
+| R3 | **Two one-way dispatches**, lookup then apply, on the merge queue's pipeline. The plan is discarded only if the base moved **and** touched a manifest or lockfile | one run with a mid-run OIDC callback; one dispatch with policy upfront | owner. Reuses #515/#517 unchanged; a callback would need `id-token` in an install job |
+| R4 | **The rolling branch is rebuilt from scratch each slot.** Lookup + apply on the default branch, then the git writer replays human commits (`merge-tree` + resolver rules; a human manifest value wins and becomes a hold; packages a human fix depends on stay pinned). Force-push only if the tree differs | rebase the existing branch; drop human commits | owner. Keeps Q10/Q11 |
+| R5 | **Auto-merge = enqueue in the merge queue, only.** Repos without `mergeQueue: { enabled: true }` (`MergeQueueEngine.cs:383`) get no auto-merge. **Supersedes §7.8** | enqueue + native fallback; native only | owner. One safe path; native merges onto a moved base |
+| R6 | **Auto-merge thresholds live in `coverage.yml`** (`dependencies.autoMerge`, globs → `never/patch/minor/major`), with built-in defaults (e.g. `"@angular/*": never`, `"actions/*": minor`). **Over-threshold updates stay out of the PR** until a writer comments `approve <group>`. An approval expires when a newer major appears. Enforced account rules remain a ceiling (Q9). **Partly supersedes Q7/Q13** (thresholds move from lookups to the file) | all-or-nothing PR; a second review-lane PR | owner chose the file. The approval mechanism and the enforced ceiling are assistant assumptions, stated in the grill and not objected to |
+| R7 | **Platform/SDK updates.** The lookup emits `platform` records (endoflife.date + official feeds such as dotnet `releases-index.json`). The action has **one adapter per SDK** (`detect / current / apply(newMajor)`) that edits every location atomically together with the locked packages (TFM, `global.json`, Dockerfile `FROM`, `setup-*`, and `<Version>` major when opted in). Platform majors **never auto-merge**, whatever the file says. Previews are followed only if the repo is already on one. Adapters: dotnet, node, python, java, go | report-only; allow auto-merge | owner. Owner's request: "latest SDK → update csproj/props". A package major burns forever (repo CLAUDE.md) |
+| R8 | **Platform config:** auto-detect locations, with an optional override, under `dependencies.platforms.<sdk>`: `strategy: replace\|add` (default `replace`), `keepPrevious` (default 0), `lockPackageMajor` (explicit opt-in), `locations`, `exclude`. A computed TFM (`$(Prop)`, conditions) is **reported, never guessed** | explicit-only; auto-detect without override | owner: "specify if the sdk-version is configured globally (Directory.Build.props) or per project" |
+| R9 | **The migrate hook is accepted (P9; reopens the §3 non-goal).** `dependencies.migrate` maps a rule to a workflow (`ng update --migrate-only`, `nx migrate --run-migrations` templates shipped). It is dispatched after apply, **only for approved over-threshold groups**. Its patch may touch the tree except `.github/**`, `coverage.yml`, build files and scripts. It **never auto-merges** and the PR is marked "contains code migrations". A partial migration drops the whole group | on request only; keep the non-goal | owner. The top differentiator in §13.6 |
+| R10 | **Security fixes go in the rolling PR** (P11 variant). A vulnerable package skips schedule and cooldown and triggers an out-of-slot apply. If the PR is blocked (pending approval, bisecting), that run **rebuilds it with only the auto-mergeable groups plus the fix**, and the rest return at the next slot. The fix may auto-merge (never a major). **Supersedes Q17/Q18, §7.9 and M10** | our own security PR; defer to Dependabot | owner |
+| R11 | **The coverage delta goes in the PR body, and auto-merge requires no drop** beyond `dependencies.autoMerge.maxCoverageDrop`. An **incomplete** report (missing uploads) is its own hold, never read as a drop. No coverage data → the gate is skipped | display only; nothing | owner |
+| R12 | **Ecosystems: every ecosystem Renovate's lookup reports gets an apply adapter**, plus the platform adapters (R7). The T5 template rule (no secrets, no `id-token`, no write) also applies to user-supplied custom workflows. **Supersedes Q19 / G3** | the old Q19 list plus a pluggable fallback; only the owner's ecosystems | owner: "as many as possible" |
+| R13 | **Apply engine:** chosen per ecosystem after S12–S14, against four criteria: (1) patch byte-equal to the plan; (2) no package code executed during resolve, or contained; (3) machine-readable blockers; (4) under 5 runner-min on the sample. **Native adapters are the tie-breaker and the long-term direction**; the Dependabot CLI only where native fails the criteria. Renovate and the Dependabot CLI are pinned by digest, and the spike fixtures become regression tests | all native upfront; Dependabot CLI first | owner: "C, but I would eventually opt for A" |
+| R14 | **Plan transport:** a plan commit (`.mintplayer/dependency-plan.json`) on the bot-owned dispatch ref `mintplayer/dependencies-work` = `expected_sha` + that commit. `PatchValidator` refuses the plan path. The commit must never touch `.github/` (provenance check). The ref is cleaned up after each run. **Supersedes P3/S16** | inputs only; OIDC GET | assistant (owner delegated; owner has no objection to OIDC in general). Keeps `id-token` out of the job that installs fresh packages |
+| R15 | **Actions updates:** a narrow carve-out under `.github/workflows` and `action.yml`. Allowed: `uses: owner/repo@<ref>` changes (+ `# vX` comment), and `with:` version keys on a **closed, code-defined** list of setup actions (`setup-dotnet`, `setup-node`, …), never configurable in `coverage.yml`. The writer token gets `workflows: write` only for such patches. Action **majors** are over-threshold by default. The lookup reports an **interface diff** (removed or renamed inputs the repo passes, new required inputs, missing outputs it reads, node runtime) as blockers. Workflows not triggered by `pull_request` never auto-merge `uses:`/`with:` edits. **New `IContentValidator`s run bot-side** (next to `JsonValidator`, `CodeCoverage.Git/MergeQueue/Resolution/ContentValidators.cs`): `YamlValidator` (also used by the merge queue) and `GitHubWorkflowValidator` (schema, `uses:` well-formed, `with:` keys exist in the target `action.yml` read statically, referenced outputs exist). The runner's own actionlint result is advisory only | no carve-out; broad carve-out | assistant (owner delegated). Owner: "when an action does a major tag-bump, the inputs/outputs will probably have changed"; "validate if a github action/workflow doesn't yield errors before committing". The runner ran untrusted code, so its verdict can't be trusted |
+| R16 | **Onboarding PR switches the repo over** (Q20 kept). It adds thin template callers of the versioned action (`@dependency-update-v1`), a commented `dependencies:` section, and removes `dependabot.yml` version-update entries (translated into rules; alerts stay on). **The first rolling PR is a draft** and never auto-merges. This repo goes first; #501's `dependabot.yml` in git history is the rollback | shadow mode; manual switch | owner |
+| — | P7 (one commit per apply run) and P12 (the graph also ingests the lookup report, M3 scanners as fallback) | — | assistant defaults, stated in the grill and not objected to |
+
+**What the merge queue removes** (owner asked, 2026-10-15): dispatch, correlation and waiting, the patch artifact, `PatchValidator`, the git-writer push, provenance and fork guards, conflict-only rebase with lockfile regeneration, merging (R5), and the saga pattern. Roughly 35–40% of the old plan (the old M4/M6/M7 plumbing and §7.8).
+
+**Still to build:** the apply adapters (the biggest piece), the lookup contract, the policy engine, settings and onboarding, red-CI bisect, an apply-specific provenance check (the merge queue's `provenance.mjs` rejects new versions by design), the R15 carve-out and validators, and the platform adapters.
+
+**Preconditions:**
+- Merge-queue v2 (#517) deployed and re-tested on SparkTest.
+- S15 (extracting the hook out of `MergeQueueEngine`) keeps every merge-queue test green.
+
+**Spike changes after the grill:**
+- **S16 is dropped** (R14).
+- **S13 now covers every ecosystem Renovate reports** (R12) and the R13 criteria.
+- **S12 adds the `action.yml` interface diff** (R15) and the platform records (R7).
+- **New S19:** the platform adapters for dotnet and node. Covers `Directory.Build.props` vs per-csproj, multi-targeting, a computed TFM, and `lockPackageMajor` on this repo (`net10 → net11`, and 10.x → 11.x packages). Done when the dry-run patch on this repo matches the hand-made net11 migration commit, or each difference is explained.
+- **N8 also covers R7/R8/R15**, and **N10 is dropped** (R10).
+
+### 13.11 Test plan (investigated 2026-10-15)
+
+Three parallel investigations: bot-side C#, runner-side action, and an adversarial catalogue.
+
+**Rules for every test:**
+- Each parser fixture is a **real capture**: the Renovate `report.json`, `result.json`, resolver errors, `action.yml`, `dependabot.yml`, `releases-index.json`. Each capture directory has a `SOURCE.md` (tool, version, command, date), and `tools/capture-fixtures.mjs` re-captures them.
+- A red run before every fix; no mutation guards.
+- MintPlayer.Assertions.
+- No timing waits: delayed saga steps are released explicitly.
+
+#### 13.11.1 Bot side (C#), about 300–380 tests
+
+**Infrastructure reused:**
+- `MergeQueueHarness` (fake outbox; `DrainAsync`/`ReleaseAsync`), on `CoverageRavenTest`.
+- `FakeForgeMergeQueue` and `FakeGitWriter` (`MergeQueueFakes.cs`).
+- `StubGitHub`: real Octokit over captured bodies. There is no WireMock in CodeCoverage.
+- `TestRepo` (`CodeCoverage.Git.Tests`), and `WriterTestBase` + `GitHttpServer` (`CodeCoverage.GitWriter.Tests`).
+- **New:** an injectable clock in the harness (it hard-codes `TimeProvider.System` at `MergeQueueHarness.cs:171`). Reuse `MutableTime` (`CommitGraph/CommitGraphTestKit.cs:124`). Cooldown, expiry and the 4-slot retry need it.
+
+| Decision | Test classes (level) | Key cases |
+|---|---|---|
+| N1 hook extraction | the existing merge-queue suites, **unchanged** (941 in about 30 s); `WorkflowHookTests` (Raven) | Assertion files must not change in the diff. 204 → `dispatch-uncorrelated`; `head_sha` mismatch; `PollRun` fallback; `Timeout`; artifact cap, expired or missing; blob provenance; stale Generation |
+| R1 records | `LookupReportParserTests`, `PolicyEngineTests`, `SelectorReplayTests` (unit) | Real S12 reports; a missing `updateType`/`releaseTimestamp` becomes a hold; unknown managers pass through; a Docker digest or Go pseudo-version is never parsed as a version; golden plan replay |
+| R2 blockers | `ApplyResultParserTests` (unit), `GroupHoldTests` (Raven, clock) | Real S13 `result.json`; the hold lifts only on a newer blocker version; with no blockers, retry on any change; after 4 slots, always retry; other groups still ship |
+| R3 two dispatches | `DependencySagaTests` (Raven) | lookup → plan → apply → publish; the base moved in docs only → plan kept; the base moved in a manifest → re-lookup; red, timeout or uncorrelated lookup → no apply |
+| R4 rebuild + replay | `RollingBranchReplayTests` (`CodeCoverage.Git.Tests`, no host), `RollingBranchPushTests` (GitWriter, one host per class) | Human commits replayed; the human's manifest value becomes a hold; a pinned dependency for a human fix; equal tree → no push |
+| R5 enqueue only | saga cases | Queue on → `MergeQueueSignalMessage`; queue off → `MergeRequests` empty |
+| R6 thresholds | `DependenciesYmlTests` (unit, this repo's real file), `ApprovalCommandTests` (Raven, webhook path) | Defaults; invalid values are errors, not exceptions; the enforced ceiling wins; a non-writer's `approve` is refused; expiry on a newer major |
+| R7/R8 platforms | `PlatformRecordPolicyTests` (unit), `DependenciesYmlTests` `platforms.*` | A platform major never auto-merges; previews only when the repo is already on one; a computed TFM is reported, never planned |
+| R9 migrations | `MigrationPatchProfileTests` (real repo), saga | Source edits allowed; `.github/**`, `coverage.yml`, build files and scripts refused; dispatched only for approved groups; a partial migration drops the group; never enqueued |
+| R10 security | saga (clock) | Out-of-slot apply; a blocked PR is rebuilt with only the auto-mergeable groups plus the fix; a major fix is never auto-merged |
+| R11 coverage | `CoverageDeltaGateTests` (Raven, the existing cobertura fixtures) | A drop within the limit passes; beyond it holds; an incomplete report is its own hold; no data → gate skipped |
+| R12 custom workflows | `DependencyWorkflowGuardTests` (from `MergeQueueForkGuardTests`) | secrets, `id-token`, write permissions, a missing top-level `permissions:`, or `pull_request_target` → refused; the shipped templates are read from disk |
+| R13 pinning | unit + `PatchValidator` on S13 patches | Templates pin Renovate and the Dependabot CLI by `@sha256:`; every real S13 patch passes the `dependencies` profile |
+| R14 plan transport | `PlanCommitTests` (GitWriter), saga | ref = `expected_sha` + one commit touching only the plan file; a `.github/` touch is refused; the plan path in the patch is refused; the ref is deleted on success, failure and timeout |
+| R15 Actions | `PatchValidatorTests` (+ `uses:` cases), `ContentValidatorsTests` (`YamlValidator`), `GitHubWorkflowValidatorTests` | See §13.11.3; real `action.yml` pairs, **shared with the runner's interface-diff tests** |
+| R16 onboarding | `OnboardingPrTests` (Raven + fake forge) | This repo's real #501 `dependabot.yml` is translated; alerts are left alone; the first PR is a draft and never enqueued; the templates call `@dependency-update-v1`; new `IForgeMergeQueue` calls get `StubGitHub` cases with bodies captured live in S18 |
+
+**Speed:** the Raven and unit classes run at merge-queue speed. Only the GitWriter host classes are slow: share one host per class, and keep the replay matrix host-free. `tools/test-shard-weights.json` covers Spark.Tests only, so nothing changes there. Watch that `CodeCoverage.Tests` stays under the 4.7 min CI wall; if it doesn't, it gets its own matrix entry.
+
+#### 13.11.2 Runner side (`apps/CodeCoverage/dependency-action`)
+
+The merge queue's runner pieces (`lockfile-regenerate`, `spark-regenerate`) have **no automated tests**; they were proven live only. The new action must not repeat that.
+
+Its layout copies `apps/CodeCoverage/action` (vitest colocated, ncc `dist`, `test:bundle`). Three nx targets:
+- **`test`**: unit tests, in "Other suites", taking seconds.
+- **`test:bundle`**: the committed `dist` run against a stub.
+- **`test-integration`**: real package managers against **local registries**. It gets its own `test.yml` matrix entry, split into `node+dotnet`, `jvm`, `python+go+rust+php` and `docker+renovate+dependabot-cli`, each with a 15 min timeout. The Nx cache makes an unchanged action about 1 min.
+
+The local registries:
+- npm: verdaccio.
+- NuGet: a folder feed with `<clear/>`.
+- PyPI: `--find-links`.
+- Maven: `file://` + `-o`.
+- Go: `GOPROXY=file://…,off`.
+- Cargo: local-registry + `--offline`.
+- Composer: an artifact repo.
+
+The public registries are unset, so an accidental fetch fails instead of passing. Docker tests are skipped loudly on Windows.
+
+| Component | Level | Asserts |
+|---|---|---|
+| Record mapping | unit | Real S12 reports → golden records; a record missing a field becomes a hold marker and is never dropped |
+| Renovate lookup step | integration (Docker) | The report maps; **a sentinel planted by an `init.gradle` or Maven extension never appears** (lookup runs no repo code) |
+| Ecosystem adapters (all of R12) | integration | **The patch is byte-equal to a golden diff** (R13 criterion 1) |
+| Scripts off (S14 as regression tests) | integration | Synthetic packages with an npm `preinstall`, NuGet `build/*.targets`, a Composer plugin and a `setup.py` sdist write a sentinel; **it must be absent** |
+| Blocker parsers | unit | Real public captures (Angular N+1 against `@nx/angular`), plus the same failure re-produced against the local registry, so a tool upgrade that changes the message fails loudly; unrecognised text → "no blockers" |
+| Group-by-group apply/reset | unit (fake adapter, real git) + integration (npm, 3 groups, the middle one conflicting) | The tree has groups 1 and 3 only; no leftover lockfile or `node_modules` state; the blocker is named |
+| `result.json` + patch artifact | unit (ajv) + bundle | Validates against the schema; the artifact is a `git diff --binary` that `PatchValidator` accepts |
+| Platform adapters | unit on file trees + a `dotnet restore` smoke test | props vs csproj; `net10.0;net48`; `add`/`keepPrevious`; a **computed TFM is reported, not edited**; `global.json`, tools, Dockerfile, `setup-*`; `lockPackageMajor`; **S19 golden: this repo before the net11 commit equals the hand-made migration commit** |
+| `action.yml` interface diff | unit | Real tag pairs (`upload-artifact` v3→v4, `checkout` v4→v5, `setup-node`); fixtures shared with the C# validator, which must reach the same verdict |
+| Migrate templates | workflow level only (S17 scratch repo, S18 SparkTest) | Kept out of PR CI because they need the public registry and run for minutes; the allow-list logic is unit-tested |
+| Templates | static unit + pinned actionlint | `contents: read`, no `id-token`, `persist-credentials: false`, `@dependency-update-v1` pinned by SHA |
+
+**Contract test.** Schemas live in `apps/CodeCoverage/contracts/dependency-update/{record,plan,result,platform-record}.schema.json`, each with a `contractVersion`, plus `fixtures/valid` (real outputs) and `fixtures/invalid`.
+- The runner validates with ajv, and a test fails if the generated TS types are stale.
+- The bot round-trips every valid fixture through its DTOs, validates its plans with JsonSchema.Net, and refuses the invalid fixtures.
+- **Dogfood** extends the `UploadActionDogfoodTests` pattern:
+  1. C# writes `.mintplayer/dependency-plan.json`.
+  2. It runs the committed `dist` in apply mode against verdaccio.
+  3. It feeds the result into the real `PatchValidator` and the plan-vs-patch check.
+
+  Only this test catches drift between the two sides.
+
+#### 13.11.3 Adversarial catalogue
+
+**None of the R15 carve-out exists yet.** `PatchValidator.IsSafePath` refuses all of `.github/` (`PatchValidator.cs:295`) and never inspects hunk content, and `ContentValidators.cs` has no YAML validator.
+
+**Already covered:**
+- symlinks, modes, binaries, copies: GW `PatchValidatorTests.cs:111`
+- `..`, `.git/`, `.GITHUB/`, `.gitmodules`: `:134-145`
+- smuggled headers: `:148`
+- the patch cap: `:171-179`, `GitHubForgeMergeQueueTests.cs:593`
+- overlaps and invalid content: `ResolutionV2Tests.cs:86,119`
+- workflow blob provenance: `MergeQueueEngineTests.cs:610,1734`
+
+**NEW tests** (an attacker controls the apply or lookup runner unless stated):
+1. A new `Directory.Build.targets/.props` at any depth, any case → refused.
+2. Edits to `.npmrc`, `NuGet.Config`, `.yarnrc.yml` `yarnPath`, `.pnpmfile.cjs`, or `global.json` `msbuild-sdks` → refused.
+3. An allowed `*.csproj` gains `<Exec>`, or `package.json` gains `scripts.postinstall` → refused (gap A).
+4. `result.json` claims group X while the patch also bumps Y → refused. The applied groups are derived from the patch.
+5. A lockfile `resolved` URL on an attacker host, or `git+`, `github:`, `file:`, `link:`, `http:` → refused (gap B).
+6. A report `packageFile` of `../x`, `.github/workflows/ci.yml`, `src/Program.cs` or `coverage.yml` → the allow-list is not widened (gap A).
+7. A `uses:` bump plus an added `run:` in the same hunk; a Cyrillic homoglyph in owner/repo; `./local` → remote; `docker://` → refused (gap C).
+8. A `with:` key outside the closed list, a `${{ }}` value, or a multi-line value → refused.
+9. Flow-style steps, `uses:` text inside `run: |`, anchor or alias edits → refused, by comparing the parsed YAML before and after with aliases expanded.
+10. A moved tag → the bot pins its own resolved 40-hex SHA.
+11. A plan commit touching `.github/` or a second path → refused before dispatch. A writer pushing to the dispatch ref → `head_sha` mismatch.
+12. *Custom workflow:* `contents: write`, `id-token`, `secrets.*`, no top-level `permissions:`, or `pull_request_target` → refused.
+13. *Collaborator:* `coverage.yml` above an enforced rule → clamped. `dependencies:` edited on the rolling branch → ignored, because config is read from the default branch.
+14. *Non-writer commenter:* `approve`, an edited comment, a bot author → ignored. The role is checked again at apply time.
+15. *Approval replay:* after a newer major, a group-membership change, or loss of write access → expired.
+16. *Look-alike or dependency confusion* claiming "own package" → no cooldown bypass (gap E).
+17. A forged `updateType` or `releaseTimestamp`; a `replacement` without a rule; a platform major labelled minor (gap D).
+18. A migrate patch touching `.github/`, `coverage.yml`, build files or scripts → refused.
+
+#### 13.11.4 Design gaps found by the adversarial pass
+
+| Gap | Problem | Proposed fix | Status |
+|---|---|---|---|
+| A | P5 derives the allow-list from the **untrusted** lookup report. Even a correct list admits `*.csproj`/`package.json`, which can carry `<Exec>` targets or lifecycle scripts that then run in CI **with secrets** | Each `packageFile` must match a code-defined filename pattern for its manager and exist at `expected_sha`; lockfiles are code-defined siblings; the deny-list wins; **no added or deleted files**; a **substitution check**: each `-`/`+` pair in a non-lockfile differs only by a planned `current → new` token on a line naming the planned `depName`; applied groups derived from the patch | **accepted 2026-10-15** (owner did not object) |
+| B | Lockfile provenance (`provenance.mjs`-style) would run on the compromised runner | A bot-side, ecosystem-neutral scan of added lockfile lines: URL hosts on the account's registry allow-list or already in the base lockfile; no `git+`/`github:`/`file:`/`link:`/`http:`; an integrity value on every changed entry; more than N new transitive packages → a human | **accepted 2026-10-15** (owner did not object) |
+| C | The R15 carve-out exists only on paper | A `WorkflowRefPatchRule` in the writer + `GitHubWorkflowValidator`: strict 1:1 hunk pairs, owner/repo byte-identical ASCII, only the ref token + `# vX` change, the ref equals the SHA the bot resolved, a before/after YAML comparison with aliases expanded, flow-style and anchored changed nodes refused | **accepted 2026-10-15** (owner did not object) |
+| D | Auto-merge and cooldown trust the report's `updateType`/`releaseTimestamp`; R1 only catches *missing* values | see **R17** below | decided |
+| E | "Own package" and approvals are underspecified | Own package: three-way check bot-side against the registry (producer graph + publishing repo owned by the account + provenance attestation). Approvals bound to (group, depName set, target major, approver role at apply, base `coverage.yml` blob); `created` comments only | **accepted 2026-10-15** (owner did not object) |
+
+Also: protect `mintplayer/*` refs with a ruleset (App only); pin `@dependency-update-v1` by SHA in the templates; require an explicit top-level `permissions:` in custom workflows.
+
+**R17 (owner, 2026-10-15): lookup records are trusted, with two generic guards.**
+
+Why trust them at all: lookup is a different trust level from apply. It runs only Renovate, pinned by digest, on the default-branch checkout, and installs no fresh packages.
+
+The guards:
+1. **A version floor that can only raise the update type.** If the leading numeric segment differs (or the second, for `0.x`), the update counts as major, whatever the label says. This is string comparison, not version parsing, so R1 holds.
+2. **Managers where S12 shows lookup executes repo code** get no auto-merge and no cooldown bypass. Their records always go to a human.
+
+The VPS makes no registry calls. Rejected:
+- the bot re-fetching from registries: per-ecosystem clients would undo R1, and it defends against an attacker who already owns Renovate or the default branch;
+- trusting the report as is.
+
+Known costs:
+- CalVer and date tags classify as major, so they need a rule before they can auto-merge.
+- A Renovate image digest bump needs human review, like an action major.
+
+Gaps A, B, C and E are accepted as design amendments: they tighten R1, R12 and R15 without reversing them.
+
+**Residual risk, stated plainly:** once a malicious version is planned, the PR's CI installs it **with secrets**. The cooldown and fleet holds reduce that risk, and no validator removes it.
