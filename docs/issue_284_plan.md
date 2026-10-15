@@ -4,7 +4,8 @@ PRD: [issue_284_PRD.md](issue_284_PRD.md). Baseline: master `a401c9e7`.
 
 ## Status
 
-M0 done (2026-10-15): spike results and D13–D16 are in the PRD. M1–M9 in progress.
+M0 done (2026-10-15): spike results and D13–D16 are in the PRD. M1–M6 committed. M7 and M8 done
+(2026-10-15, uncommitted at the time of writing). M9 open.
 
 ## Milestones
 

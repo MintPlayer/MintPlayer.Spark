@@ -100,8 +100,12 @@ ignored at runtime.
 - `ModelColumnGuardTests` pins both shapes.
 
 ### R9 — Demo and E2E
-In HR, `Company_People` hides the constant `Company` column while `GetPeople` shows it. An E2E test
-asserts both grids' headers and the reference picker's column order.
+In HR, `Company_People` hides the constant `Company` column (`!Company`) while `GetPeople`, with no
+list, shows it. HR is one of the E2E-hosted apps (`HRTestHost`, `E2E_APPS` in `tools/test-local.mjs`),
+so the demo stays there. `GetCompanies` also gets a list that moves Sector to second place, because
+Person's Company picker runs that query and the picker's column order needs a list that differs from
+the attributes' `order` to be observable. `QueryColumns/QueryColumnOrderTests` (E2E) asserts the
+people grid's headers, the company page's people card's headers and the Company picker's headers.
 
 ## 3. Out of scope
 

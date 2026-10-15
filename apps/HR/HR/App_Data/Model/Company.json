@@ -114,7 +114,15 @@
         }
       ],
       "renderMode": "Pagination",
-      "entityType": "Company"
+      "entityType": "Company",
+      "columnOrder": [
+        "Name",
+        "Sector",
+        "EmployeeCount",
+        "Website",
+        "BrandColor",
+        "AccentColor"
+      ]
     }
   ]
 }

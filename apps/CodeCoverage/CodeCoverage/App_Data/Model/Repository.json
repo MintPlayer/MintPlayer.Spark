@@ -21,7 +21,7 @@
         "query": "GetAccounts",
         "referenceType": "CodeCoverage.Entities.Account",
         "isArray": false,
-        "showedOn": "PersistentObject",
+        "showedOn": "Query, PersistentObject",
         "rules": []
       },
       {
@@ -317,7 +317,15 @@
         }
       ],
       "renderMode": "Pagination",
-      "entityType": "Repository"
+      "entityType": "Repository",
+      "columnOrder": [
+        "Name",
+        "IsPrivate",
+        "LatestCoverage",
+        "FullName",
+        "LatestCoverageSha",
+        "!Account"
+      ]
     },
     {
       "id": "0f4e88db-d827-46ce-8367-56259fc81cad",
@@ -330,7 +338,15 @@
         }
       ],
       "renderMode": "Pagination",
-      "entityType": "Repository"
+      "entityType": "Repository",
+      "columnOrder": [
+        "Name",
+        "IsPrivate",
+        "LatestCoverage",
+        "FullName",
+        "LatestCoverageSha",
+        "!Account"
+      ]
     },
     {
       "id": "551b2212-8f16-4129-aea6-1dfe313d8edc",
@@ -344,7 +360,15 @@
       ],
       "renderMode": "Pagination",
       "indexName": "Repositories_Overview",
-      "entityType": "Repository"
+      "entityType": "Repository",
+      "columnOrder": [
+        "Name",
+        "Account",
+        "IsPrivate",
+        "LatestCoverage",
+        "FullName",
+        "LatestCoverageSha"
+      ]
     }
   ]
 }

@@ -76,6 +76,67 @@ column, as CodeCoverage's `Repository.IsPrivate` now is (a 🔒 renderer), or is
 into a column that is drawn (CodeCoverage's `MyAccountRow` folds its type into the avatar cell). Like
 Vidyano, Spark ships no values for columns it does not draw.
 
+### Per-query columns: `columnOrder` (#284)
+
+`showedOn` is per attribute, so without more every query over an entity draws the same columns in
+the same order. A query can choose its own with `columnOrder`, an ordered array of attribute names.
+A name prefixed with `!` is **listed but hidden**: it keeps its place in the list, so removing the
+`!` puts the column back where it was.
+
+```json
+{ "name": "GetPeople", "source": "Database.People", "entityType": "Person" },
+{ "name": "Company_People", "source": "Custom.Company_People", "entityType": "Person",
+  "columnOrder": ["FullName", "Email", "Address", "!Company"] }
+```
+
+HR's people grid draws Full Name, Email, Company and Address; a company's people card drops Company,
+which would be the same on every row. HR's `GetCompanies` moves Sector up to second place, and the
+Company picker on a person's form follows it.
+
+- **Opt-in.** A query without `columnOrder` draws its surface by `order`, exactly as before. The
+  synchronizer never creates the array; you write it (or the editor does, on the first reorder or
+  hide).
+- **It only narrows and reorders.** An entry can pick only from what the query would show without it:
+  attributes whose `showedOn` includes `Query` and that the caller's `Query` right allows. Naming a
+  PO-only, `None` or rights-denied attribute surfaces nothing. Query metadata removes rights-denied
+  names from the list, in both forms, the way it does for `sortColumns`.
+- **Every grid follows it.** It is applied where the server builds a query's columns, so the main
+  grid, a detail page's sub-query card, the reference picker's popup, live updates, share links, MCP
+  and a custom action's selected rows all agree. A surface attribute the list does not mention is
+  appended at the end by (`order`, name).
+- **Presentation only.** Sorting, filtering, search and distinct values keep the `ShowedOn.Query` +
+  rights boundary: a hidden column can still be the declared sort, and the same user sees it on a
+  sibling query anyway. The list is not part of the structural model hash, so adding or editing it
+  does not move `modelHashes.json`.
+
+**What `--spark-synchronize-model` does with an existing list** (one with no list is left alone):
+
+- it **appends** each surface attribute the list names in neither form, visible, at the end, ordered
+  by (`order`, name), and prints `Appended column 'X' to columnOrder of query 'Q'.`;
+- it **removes** an entry whose name matches no attribute of the entity at all, and prints
+  `Removed column 'X' from columnOrder of query 'Q': no attribute named 'X' exists.` An entry for an
+  attribute that still exists but is currently off the surface is kept, so it comes back in place if
+  its `showedOn` regains `Query`;
+- for a query bound to a **non-default** index (`indexName`), it appends the surface attributes that
+  index's projection does not back as `!X`, hidden, because they would render as empty columns;
+- it leaves a list that a **library layer** owns alone (when the library's list equals the composed
+  one), so the whole list is not copied into the application's file. The runtime appends what the
+  library list misses.
+
+Everything else (the order, the `!` markers) is yours, and a second run writes nothing.
+
+**What `--spark-verify-model` checks:** a duplicate name, a name listed both plain and with `!`, an
+empty name or a bare `!`, and a list the synchronizer would still change are errors (exit 3). An
+entry for an attribute that is off the Query surface, and a visible entry that a non-default index's
+projection does not back, are warnings.
+
+**Renderers that read a sibling cell.** A grid ships values only for the columns it draws, so hiding a
+column also stops its value reaching the row. A cell renderer that reads another column must name
+that column in its `rendererOptions`, under a key ending in `Attribute` (CodeCoverage's short-sha has
+`linkAttribute: "FullName"`, its account avatar `altAttribute: "Login"`). Verify then warns when a
+query's columns leave that sibling out, whether it is off the surface or `!`-hidden. A sibling named
+only in TypeScript is invisible to the check.
+
 ### Type hints
 
 `columns`, `items` and `values` may each carry a `typeHints` map — an open, string-keyed
