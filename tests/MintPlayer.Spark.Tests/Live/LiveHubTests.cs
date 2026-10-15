@@ -66,6 +66,31 @@ public class LiveHubTests
     }
 
     [Fact]
+    public async Task Two_reports_of_one_write_at_the_same_instant_are_dispatched_once()
+    {
+        // Measured on a real host (LiveSocketTests.Under_Both_…): the Changes notification of an in-process
+        // write lands 0.3–0.8 ms BEFORE the store event, on another thread, so the two reports meet in Publish
+        // concurrently. A check-then-set over the seen pairs let both through (CI run 38718678674: Deduplicated 0).
+        // (On an Actions hub, as above: de-duplication does not depend on the source.)
+        using var hub = Hub(SparkLiveSource.Actions);
+        var probe = new Probe(documents: ["Notes/1"]);
+        await hub.RegisterAsync(probe);
+
+        const int writes = 2000;
+        for (var i = 0; i < writes; i++)
+        {
+            var change = new LiveChange("Notes/1", "Notes", $"A:{i}", FromChanges: false);
+            using var barrier = new Barrier(2);
+            await Task.WhenAll(
+                Task.Run(() => { barrier.SignalAndWait(); hub.Publish(change); }),
+                Task.Run(() => { barrier.SignalAndWait(); hub.Publish(change); }));
+        }
+
+        hub.Counters.Deduplicated.Should().Be(writes, "exactly one of each pair is the echo");
+        probe.Dirty.Should().Be(writes);
+    }
+
+    [Fact]
     public async Task Each_source_is_ignored_when_the_configuration_excludes_it_but_the_notifier_never_is()
     {
         using var actionsOnly = Hub(SparkLiveSource.Actions);

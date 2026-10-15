@@ -117,7 +117,7 @@ public class LiveSocketTests : OrganizationsTestHost
 
         await WriteAsync(note.Id!, n => n.Title = "v2");
         await client.NextAsync("poPatch", "n");
-        await Task.Delay(1000); // the Changes echo arrives 4–22 ms after the commit; give it ample time
+        await Task.Delay(1000); // both reports land within 1 ms of each other (the Changes one first, measured); ample time
 
         var after = hub.Counters;
         (after.Deduplicated - before.Deduplicated).Should().Be(1, "the Changes echo of the in-process write is dropped");
@@ -313,13 +313,15 @@ public class LiveSocketTests : OrganizationsTestHost
         first.GetProperty("items").GetArrayLength().Should().Be(2);
 
         await client.UpdateAsync("q", new { queryId = NotesQueryId.ToString(), skip = 2, take = 2, sortColumns = new[] { new { property = "Title", direction = "asc" } } });
+        // An update is answered by a full result of the NEW page. The subscription's first evaluation is
+        // usually followed at once by a second (the Changes connection coming up marks everything dirty), so
+        // the update typically lands while that one is reading page 1: applied there, it reset the diff base
+        // under it and page 1 went out as the update's answer (skip 0), with page 2 following as a patch.
         var frame = await client.NextAsync();
         frame.GetProperty("sub").GetString().Should().Be("q");
-        // Page 2 of 3 rows: one row; a patch or a full result, whichever is smaller.
-        var json = JsonNode.Parse(frame.GetRawText())!;
-        (json["type"]!.GetValue<string>() == "result"
-            ? json["result"]!["skip"]!.GetValue<int>()
-            : json["patch"]!["set"]!["skip"]!.GetValue<int>()).Should().Be(2);
+        frame.GetProperty("type").GetString().Should().Be("result");
+        frame.GetProperty("result").GetProperty("skip").GetInt32().Should().Be(2);
+        frame.GetProperty("result").GetProperty("items").GetArrayLength().Should().Be(1, "page 2 of 3 rows");
     }
 
     [Fact]

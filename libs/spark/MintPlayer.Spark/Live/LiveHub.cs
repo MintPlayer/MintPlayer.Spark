@@ -39,7 +39,7 @@ internal sealed class LiveHub : ISparkLiveNotifier, IDisposable
     private readonly Dictionary<string, HashSet<LiveSubscription>> byCollection = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<LiveSubscription> all = [];
     private readonly Dictionary<string, IDisposable> watches = new(StringComparer.OrdinalIgnoreCase);
-    private readonly ConcurrentDictionary<string, long> seen = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, long> seen = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, int> sockets = new(StringComparer.Ordinal);
     private IDatabaseChanges? changes;
     private IDisposable? actionsSource;
@@ -76,9 +76,16 @@ internal sealed class LiveHub : ISparkLiveNotifier, IDisposable
     // ---- sources --------------------------------------------------------------------------------------------
 
     /// <summary>
-    /// A change seen by a source. Under <c>Both</c> the same write arrives twice — first from this process's
-    /// store event, 4–22 ms later from the Changes API — and the second is dropped by id + change vector.
+    /// A change seen by a source. Under <c>Both</c> the same write arrives twice, from this process's store
+    /// event and from the Changes API, and the second is dropped by id + change vector.
     /// </summary>
+    /// <remarks>
+    /// ⚠️ The two reports arrive at the same moment, on different threads: measured on a test host, the Changes
+    /// notification of an in-process write lands 0.3–0.8 ms <i>before</i> the store event. So the check and the
+    /// record are one step under a lock; a check-then-set let both reports through when they met, and the write
+    /// cost two evaluations (CI run 38718678674; 25–35% of simultaneous pairs in
+    /// <c>LiveHubTests.Two_reports_of_one_write_at_the_same_instant_are_dispatched_once</c>).
+    /// </remarks>
     public void Publish(LiveChange change)
     {
         if (change.FromChanges ? !WatchesChanges : Source == SparkLiveSource.Changes)
@@ -86,26 +93,29 @@ internal sealed class LiveHub : ISparkLiveNotifier, IDisposable
 
         if (change.DocumentId is { } id && change.ChangeVector is { } cv)
         {
-            var now = time.GetTimestamp();
             var key = id + "\n" + cv;
-            if (seen.TryGetValue(key, out var at) && time.GetElapsedTime(at, now) < DedupeWindow)
+            lock (seen)
             {
-                Interlocked.Increment(ref deduplicated);
-                return;
+                var now = time.GetTimestamp();
+                if (seen.TryGetValue(key, out var at) && time.GetElapsedTime(at, now) < DedupeWindow)
+                {
+                    Interlocked.Increment(ref deduplicated);
+                    return;
+                }
+                seen[key] = now;
+                if (seen.Count > 4096)
+                    Sweep(now);
             }
-            seen[key] = now;
-            if (seen.Count > 4096)
-                Sweep(now);
         }
 
         Dispatch(change);
     }
 
+    /// <summary>Drops the pairs older than the window; under the <c>seen</c> lock.</summary>
     private void Sweep(long now)
     {
-        foreach (var (key, at) in seen)
-            if (time.GetElapsedTime(at, now) >= DedupeWindow)
-                seen.TryRemove(key, out _);
+        foreach (var key in seen.Where(p => time.GetElapsedTime(p.Value, now) >= DedupeWindow).Select(p => p.Key).ToList())
+            seen.Remove(key);
     }
 
     private void Dispatch(LiveChange change)

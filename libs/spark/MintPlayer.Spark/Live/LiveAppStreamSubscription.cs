@@ -42,13 +42,14 @@ internal sealed class LiveAppStreamSubscription(LiveConnection connection, strin
     private Task? pump;
     private LiveAppStreamMethod? method;
 
-    public override async ValueTask<bool> UpdateAsync(ExecuteQueryRequest next)
+    public override bool Updatable => true;
+
+    protected override async ValueTask ApplyUpdateAsync(ExecuteQueryRequest next)
     {
         // The method got the old page, sort and search as arguments: restart it with the new ones.
         await StopAsync();
         request = next;
         Previous = null; // always answered with a full result, as LiveQuerySubscription
-        return true;
     }
 
     public override async Task<LiveOutcome> EvaluateAsync(IServiceProvider services, CancellationToken cancellationToken)
