@@ -27,7 +27,8 @@ public partial class AccountPermissionsController : ControllerBase
     [Inject] private readonly IEnumerable<IForgeInstallationPermissions> permissionSources;
 
     /// <returns>
-    /// 200 with the installation's page and the pending permissions; 204 when none are pending, or when
+    /// 200 with the installation's page and the pending permissions, and with what the App itself does not declare of
+    /// what the merge queue needs (§0 D95); 204 when neither has anything, or when
     /// nothing can be said (no installation, a forge without the concept, the forge unreachable); 404 for an
     /// account the viewer does not manage, exactly as for one that does not exist.
     /// </returns>
@@ -51,6 +52,9 @@ public partial class AccountPermissionsController : ControllerBase
 
         var source = permissionSources.FirstOrDefault(s => s.Provider == forge);
         var pending = source is null ? null : await source.GetPendingAsync(account, cancellationToken);
-        return pending is { Pending.Count: > 0 } ? Ok(pending) : NoContent();
+        // §0 D95: what the App itself lacks is worth a notice too, though no one on the account can accept it.
+        return pending is not null && (pending.Pending.Count > 0 || pending.MissingFromApp.Count > 0 || pending.MissingEvents.Count > 0)
+            ? Ok(pending)
+            : NoContent();
     }
 }

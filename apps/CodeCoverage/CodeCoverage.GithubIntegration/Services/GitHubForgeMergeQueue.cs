@@ -768,6 +768,27 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
         })];
     }
 
+    /// <summary>
+    /// <c>GET /pulls?state=open&amp;base={branch}</c>, every page. A pull request with no number or title (never seen on
+    /// GitHub) is left out rather than offered as #0.
+    /// </summary>
+    public async Task<IReadOnlyList<ForgeOpenPullRequest>> ListOpenPullRequestsAsync(Repository repository, string baseBranch, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(baseBranch);
+        var pulls = await GetPagedAsync(repository,
+            $"{RepoPath(repository)}/pulls?state=open&base={Uri.EscapeDataString(baseBranch)}", null, cancellationToken);
+
+        return [.. pulls
+            .Select(pull => (Number: Num(pull, "number"), Title: Str(pull, "title"), Pull: pull))
+            .Where(p => p.Number is > 0 and <= int.MaxValue && p.Title is not null)
+            .Select(p => new ForgeOpenPullRequest(
+                (int)p.Number!.Value,
+                p.Title!,
+                (p.Pull.TryGetProperty("base", out var @base) ? Str(@base, "ref") : null) ?? baseBranch,
+                p.Pull.TryGetProperty("user", out var user) ? Str(user, "login") : null,
+                Flag(p.Pull, "draft")))];
+    }
+
     // ── Feedback ─────────────────────────────────────────────────────────────────────────────────
 
     /// <remarks>

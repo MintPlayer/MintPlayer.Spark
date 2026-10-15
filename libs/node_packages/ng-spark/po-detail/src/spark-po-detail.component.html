@@ -254,6 +254,9 @@
           </ng-template>
     </bs-grid>
     }
+    @if (beforeQueriesTemplate(); as beforeQueriesTpl) {
+      <ng-container *ngTemplateOutlet="beforeQueriesTpl; context: { $implicit: currentItem, entityType: et }"></ng-container>
+    }
     @for (subQuery of subQueries(); track subQuery.query) {
       <!-- The entry's selectionMode overrides the query's own for this parent (#460, D17). -->
       <spark-query-card [queryId]="subQuery.query" [parentId]="currentItem.id!" [parentType]="et.name"

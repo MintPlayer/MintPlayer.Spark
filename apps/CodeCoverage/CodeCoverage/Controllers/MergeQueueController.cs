@@ -10,6 +10,8 @@ using MintPlayer.Spark.Messaging.Abstractions;
 using MintPlayer.Spark.Services;
 using MintPlayer.SourceGenerators.Attributes;
 using Raven.Client.Documents.Session;
+using CoverageYml = CodeCoverage.Feedback.CoverageYml;
+using MergeQueueYml = CodeCoverage.MergeQueue.MergeQueueYml;
 using QueueDocument = CodeCoverage.Entities.MergeQueue;
 
 namespace CodeCoverage.Controllers;
@@ -76,6 +78,19 @@ public partial class MergeQueueController : ControllerBase
     public sealed record CommandAccepted(int Number, string Command, string Actor);
 
     public sealed record CommandRefused(string Error);
+
+    /// <summary>The pull requests the panel's dropdown offers to queue, newest first.</summary>
+    /// <param name="Unavailable">Why the list is empty although it should not be (the queue is off, coverage.yml is broken,
+    /// the forge could not be read); null when it is simply empty or not empty.</param>
+    public sealed record QueueCandidates(IReadOnlyList<QueueCandidate> PullRequests, string? Unavailable);
+
+    public sealed record QueueCandidate(int Number, string Title, string BaseBranch, string? AuthorLogin);
+
+    /// <summary>How long the forge half of the candidates (coverage.yml and the open pull requests) is remembered.</summary>
+    private static readonly TimeSpan CandidatesCacheDuration = TimeSpan.FromSeconds(30);
+
+    /// <summary>The forge half of <see cref="Candidates"/>, the part that is cached: open, non-draft pull requests on the configured branches.</summary>
+    private sealed record OpenCandidates(IReadOnlyList<ForgeOpenPullRequest> PullRequests, string? Unavailable);
 
     /// <summary>The queue of one repository, for anyone who may browse the repository.</summary>
     [HttpGet("api/browse/repos/{provider}/{owner}/{name}/merge-queue")]
@@ -148,6 +163,84 @@ public partial class MergeQueueController : ControllerBase
     [RequireAntiforgeryToken]
     public Task<ActionResult<CommandAccepted>> Dequeue(string provider, string owner, string name, int number, CancellationToken cancellationToken)
         => CommandAsync(provider, owner, name, number, EMergeQueueCommand.Dequeue, cancellationToken);
+
+    /// <summary>
+    /// The panel's queue dropdown: the open, non-draft pull requests on a branch the default branch's <c>coverage.yml</c>
+    /// queues (O16), less those already in the queue. Same right as <see cref="Enqueue"/>, since only someone who may
+    /// press the button needs the list.
+    /// </summary>
+    /// <param name="refresh">Skip the remembered forge answer (the panel's refresh button).</param>
+    /// <remarks>
+    /// Only the forge half is remembered, for <see cref="CandidatesCacheDuration"/>: a panel that reloads after every
+    /// command would otherwise list the repository's pull requests each time. The queue's own state is read live, so a
+    /// pull request leaves the list the moment it is queued. A forge failure answers an empty list with the reason, is
+    /// not remembered, and is never a 500: the dropdown is a convenience, and the label and <c>/queue</c> still work.
+    /// </remarks>
+    [HttpGet("api/repos/{provider}/{owner}/{name}/merge-queue/candidates")]
+    [EnableRateLimiting("browse")]
+    [SparkAuthorize("Manage", "RepoSettings")]
+    public async Task<ActionResult<QueueCandidates>> Candidates(
+        string provider, string owner, string name, [FromQuery] bool refresh, CancellationToken cancellationToken)
+    {
+        var repository = await scope.ResolveAsync(provider, owner, name, cancellationToken);
+        if (repository is null) return Refuse();
+
+        var queue = queues.FirstOrDefault(q => q.Provider == repository.Provider);
+        if (queue is null) return Ok(new QueueCandidates([], null));
+
+        var key = $"merge-queue-candidates/{repository.Id}";
+        if (refresh || !cache.TryGetValue(key, out OpenCandidates? open) || open is null)
+        {
+            (open, var remember) = await ReadOpenCandidatesAsync(repository, queue, cancellationToken);
+            if (remember) cache.Set(key, open, CandidatesCacheDuration);
+            else cache.Remove(key);
+        }
+        if (open.PullRequests.Count == 0) return Ok(new QueueCandidates([], open.Unavailable));
+
+        // The same rule the enqueue applies: an entry that has not ended is in the queue; an evicted, dequeued or refused
+        // one may be queued again.
+        var entries = await session.LoadAsync<MergeQueueEntry>(
+            open.PullRequests.Select(p => MergeQueueEntry.DocumentId(repository.Id!, p.Number)).Distinct(StringComparer.Ordinal), cancellationToken);
+        var candidates = open.PullRequests
+            .Where(p => entries.GetValueOrDefault(MergeQueueEntry.DocumentId(repository.Id!, p.Number)) is not { } entry || entry.State.IsTerminal())
+            .OrderByDescending(p => p.Number)
+            .Select(p => new QueueCandidate(p.Number, p.Title, p.BaseRef, p.AuthorLogin))
+            .ToList();
+        return Ok(new QueueCandidates(candidates, null));
+    }
+
+    /// <summary>
+    /// The forge half of <see cref="Candidates"/>, and whether it may be remembered (a forge failure may not).
+    /// </summary>
+    private async Task<(OpenCandidates Open, bool Remember)> ReadOpenCandidatesAsync(
+        Repository repository, IForgeMergeQueue queue, CancellationToken cancellationToken)
+    {
+        if (repository.DefaultBranch is not { } defaultBranch)
+            return (new OpenCandidates([], "The repository's default branch is not known yet."), false);
+
+        try
+        {
+            // O16: the queue's configuration comes from the DEFAULT branch, as the engine reads it.
+            var yml = await forges.For(repository).GetFileContentAsync(repository, defaultBranch, CoverageYml.FileName, cancellationToken);
+            var parsed = MergeQueueYml.Parse(yml, defaultBranch);
+            if (!parsed.IsUsable || parsed.Section is not { } section)
+                return (new OpenCandidates([], parsed.Errors.Count > 0
+                    ? $"The mergeQueue section of {CoverageYml.FileName} on {defaultBranch} is not usable: {parsed.Errors[0]}"
+                    : $"The merge queue is not turned on in {CoverageYml.FileName} on {defaultBranch}."), true);
+
+            var open = new List<ForgeOpenPullRequest>();
+            foreach (var branch in section.Branches)
+                open.AddRange((await queue.ListOpenPullRequestsAsync(repository, branch, cancellationToken)).Where(p => !p.IsDraft));
+            return (new OpenCandidates(open, null), true);
+        }
+        catch (Exception ex) when (ex is ForgeAccessDeniedException or ForgeRequestException or HttpRequestException)
+        {
+            logger.LogWarning(ex, "Merge queue: could not list the queue candidates of {Repository}", repository.FullName);
+            return (new OpenCandidates([], ex is ForgeAccessDeniedException
+                ? "GitHub refused to list this repository's pull requests to the app. Queue one with the label or /queue instead."
+                : "GitHub could not list this repository's open pull requests right now. Try again in a minute."), false);
+        }
+    }
 
     private async Task<ActionResult<CommandAccepted>> CommandAsync(
         string provider, string owner, string name, int number, EMergeQueueCommand command, CancellationToken cancellationToken)

@@ -5,9 +5,9 @@ import { RouterLink } from '@angular/router';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
 import { BsCardBodyComponent, BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
-import { BsFormComponent, BsFormControlDirective } from '@mintplayer/ng-bootstrap/form';
+import { BsSelectComponent, BsSelectOption } from '@mintplayer/ng-bootstrap/select';
 import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
-import { BrowseService, MergeQueueCommandAccepted, MergeQueueEntry, MergeQueueView } from '../../services/browse.service';
+import { BrowseService, MergeQueueCandidates, MergeQueueCommandAccepted, MergeQueueEntry, MergeQueueView } from '../../services/browse.service';
 
 /** GitHub's repository roles, weakest first; queueing needs `write` (merge-queue PRD O9). */
 const ROLES = ['none', 'read', 'triage', 'write', 'maintain', 'admin'];
@@ -46,7 +46,7 @@ export const RELOAD_AFTER_COMMAND_MS = 2500;
  *
  * - **Read-only for everyone who may browse the repository:** per base branch, the pull request being worked on, the
  *   ones waiting in order, and how the latest runs ended; plus the configuration a run used, each value with its source.
- * - **The button** (a number and "Queue"; "Dequeue" on an entry) raises the same command a `merge-queue` label or a
+ * - **The button** (a pull request picked from the open ones not yet queued, and "Queue"; "Dequeue" on an entry) raises the same command a `merge-queue` label or a
  *   `/queue` comment raises, as the signed-in user's own GitHub login. The queue checks the role itself (O9), so the role
  *   the server reports here only decides which buttons make sense; an unknown role offers them and lets the queue decide.
  * - **The setup guide** (/merge-queue/setup, O13) is linked from the header for a GitHub repository, for its account, so
@@ -57,7 +57,7 @@ export const RELOAD_AFTER_COMMAND_MS = 2500;
  */
 @Component({
   selector: 'app-repo-merge-queue-panel',
-  imports: [FormsModule, RouterLink, BsAlertComponent, BsCardComponent, BsCardHeaderComponent, BsCardBodyComponent, BsFormComponent, BsFormControlDirective, BsTableComponent],
+  imports: [FormsModule, RouterLink, BsAlertComponent, BsCardComponent, BsCardHeaderComponent, BsCardBodyComponent, BsSelectComponent, BsSelectOption, BsTableComponent],
   template: `
     @if (visible()) {
       @let v = view()!;
@@ -71,7 +71,7 @@ export const RELOAD_AFTER_COMMAND_MS = 2500;
                   <i class="bi bi-book"></i> Setup guide
                 </a>
               }
-              <button type="button" class="btn btn-sm btn-link p-0" (click)="load()" aria-label="Refresh the merge queue">
+              <button type="button" class="btn btn-sm btn-link p-0" (click)="refresh()" aria-label="Refresh the merge queue">
                 <i class="bi bi-arrow-clockwise"></i>
               </button>
             </span>
@@ -180,11 +180,18 @@ export const RELOAD_AFTER_COMMAND_MS = 2500;
 
           @if (canQueue()) {
             <div class="d-flex flex-wrap align-items-center gap-2 mt-3" data-testid="mq-enqueue">
-              <bs-form class="mq-number" (submitted)="queue($event)">
-                <input type="number" min="1" step="1" name="mq-number" placeholder="PR number" aria-label="Pull request number"
-                       [ngModel]="number()" (ngModelChange)="number.set($event)">
-              </bs-form>
-              <button type="button" class="btn btn-sm btn-primary" [disabled]="busy()" (click)="queue()">
+              @if (candidateList().length > 0) {
+                <bs-select class="mq-candidates" [size]="'sm'" aria-label="Pull request to queue" data-testid="mq-candidates"
+                           [ngModel]="number()" (ngModelChange)="number.set($event)">
+                  <option [ngValue]="null">Choose a pull request</option>
+                  @for (pr of candidateList(); track pr.number) {
+                    <option [ngValue]="pr.number">#{{ pr.number }} {{ pr.title }}</option>
+                  }
+                </bs-select>
+              } @else if (candidates()) {
+                <span class="small text-muted" data-testid="mq-no-candidates">{{ noCandidates() }}</span>
+              }
+              <button type="button" class="btn btn-sm btn-primary" [disabled]="busy() || candidateList().length === 0" (click)="queue()">
                 <i class="bi bi-signpost-split"></i> Queue as &#64;{{ viewer()?.login }}
               </button>
             </div>
@@ -208,6 +215,9 @@ export class RepoMergeQueuePanelComponent {
   readonly name = input.required<string>();
 
   readonly view = signal<MergeQueueView | null>(null);
+  /** The pull requests the button may queue; null until fetched, and for a viewer who has no button. */
+  readonly candidates = signal<MergeQueueCandidates | null>(null);
+  /** The pull request picked in the dropdown. */
   readonly number = signal<number | null>(null);
   readonly busy = signal(false);
   readonly notice = signal<{ color: Color; text: string } | null>(null);
@@ -221,6 +231,11 @@ export class RepoMergeQueuePanelComponent {
   });
 
   readonly canQueue = computed(() => !!this.viewer()?.login && this.mayWrite());
+
+  readonly candidateList = computed(() => this.candidates()?.pullRequests ?? []);
+
+  /** Why the dropdown is missing: the server's reason when it gave one. */
+  readonly noCandidates = computed(() => this.candidates()?.unavailable || 'No open pull request is waiting to be queued.');
 
   /** Why a signed-in viewer has no button. Nothing for an anonymous visitor, who reads the queue only. */
   readonly hint = computed(() => {
@@ -256,13 +271,42 @@ export class RepoMergeQueuePanelComponent {
     this.destroyRef.onDestroy(() => clearTimeout(this.reload));
   }
 
-  async load(provider = this.provider(), owner = this.owner(), name = this.name()): Promise<void> {
+  /**
+   * The queue, then, for a viewer with the button, the pull requests it may queue. `refreshCandidates` asks the server to
+   * skip its remembered forge answer (the refresh button); the queue's own state is always read live.
+   */
+  async load(provider = this.provider(), owner = this.owner(), name = this.name(), refreshCandidates = false): Promise<void> {
     try {
       this.view.set(await this.browse.getMergeQueue(provider, owner, name));
     } catch {
       // 401/404: not this viewer's repository to see; anything else: no panel rather than a broken one.
       this.view.set(null);
     }
+    await this.loadCandidates(provider, owner, name, refreshCandidates);
+  }
+
+  /** The header's refresh button: the queue, and the open pull requests fresh from the forge. */
+  refresh(): Promise<void> {
+    return this.load(this.provider(), this.owner(), this.name(), true);
+  }
+
+  private async loadCandidates(provider: string, owner: string, name: string, refresh: boolean): Promise<void> {
+    // Only a viewer with the button needs the list, and only they may read it.
+    if (!this.canQueue()) {
+      this.candidates.set(null);
+      this.number.set(null);
+      return;
+    }
+    let candidates: MergeQueueCandidates;
+    try {
+      candidates = await this.browse.getQueueCandidates(provider, owner, name, refresh);
+    } catch {
+      candidates = { pullRequests: [], unavailable: 'The open pull requests could not be listed right now; try again in a minute.' };
+    }
+    this.candidates.set(candidates);
+    // A pick that left the list (queued meanwhile, closed) is no pick.
+    const picked = this.number();
+    if (picked !== null && !candidates.pullRequests.some(pr => pr.number === picked)) this.number.set(null);
   }
 
   canDequeue(entry: MergeQueueEntry): boolean {
@@ -270,12 +314,10 @@ export class RepoMergeQueuePanelComponent {
     return !!login && (this.mayWrite() || login.toLowerCase() === entry.authorLogin?.toLowerCase());
   }
 
-  async queue(event?: Event): Promise<void> {
-    // bs-form wraps a real <form>: Enter in the number field must not submit the page.
-    event?.preventDefault();
+  async queue(): Promise<void> {
     const number = this.number();
     if (!number || !Number.isInteger(number) || number < 1) {
-      this.notice.set({ color: Color.warning, text: 'Enter the number of an open pull request.' });
+      this.notice.set({ color: Color.warning, text: 'Choose a pull request to queue.' });
       return;
     }
     if (await this.send(() => this.browse.enqueuePullRequest(this.provider(), this.owner(), this.name(), number),

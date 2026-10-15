@@ -95,6 +95,16 @@ export class SparkPoDetailComponent {
   extraContentTemplate = input<TemplateRef<{ $implicit: PersistentObject; entityType: EntityType }> | null>(null);
 
   /**
+   * Content rendered after the attribute cards and BEFORE the first sub-query card, with the same
+   * `{ $implicit: PersistentObject; entityType: EntityType }` context as `extraContentTemplate`.
+   *
+   * `extraContentTemplate` renders last, below every query card, which is the wrong place for
+   * something the reader must see first (a notice, a call to action): on a page with a long
+   * sub-query grid it lands below the fold.
+   */
+  beforeQueriesTemplate = input<TemplateRef<{ $implicit: PersistentObject; entityType: EntityType }> | null>(null);
+
+  /**
    * Header slots forwarded to every sub-query card on this page.
    *
    * A structural directive cannot cross a component boundary, and this component is created by

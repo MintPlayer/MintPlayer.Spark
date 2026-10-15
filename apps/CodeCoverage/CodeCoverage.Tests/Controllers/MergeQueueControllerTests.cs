@@ -65,6 +65,9 @@ public class MergeQueueControllerTests : CoverageRavenTest
         public FakeForgeMergeQueue Queue { get; } = new();
         public RecordingMessageBus Bus { get; } = new();
         public Dictionary<int, ForgePullRequest> PullRequests { get; } = [];
+
+        /// <summary>Files on the forge, keyed <c>{ref}/{path}</c> (e.g. <c>master/coverage.yml</c>).</summary>
+        public Dictionary<string, string> Files { get; } = new(StringComparer.OrdinalIgnoreCase);
     }
 
     private static MergeQueueController Controller(IAsyncDocumentSession session, World world, ClaimsPrincipal? user = null)
@@ -72,6 +75,7 @@ public class MergeQueueControllerTests : CoverageRavenTest
         var visibility = new GitHubVisibility(world.Owners, GitHubTokenState.Ok);
         var forge = ScriptedForge.From(visibility);
         foreach (var (number, pull) in world.PullRequests) forge.PullRequests[number] = pull;
+        foreach (var (path, content) in world.Files) forge.Files[path] = content;
 
         var services = new ServiceCollection();
         services.AddLogging(logging => logging.SetMinimumLevel(LogLevel.None));
@@ -336,5 +340,137 @@ public class MergeQueueControllerTests : CoverageRavenTest
 
         Describe(await Controller(session, world, SignedIn()).Enqueue("github", "acme", "widget", 7, default)).Should().StartWith("202 ");
         world.Bus.Commands.Should().ContainSingle();
+    }
+
+    // ── The queue dropdown's candidates ──────────────────────────────────────────────────────────────
+
+    private const string QueueOnMasterAndRelease = "mergeQueue:\n  enabled: true\n  branches: [master, release]\n";
+
+    private static ForgeOpenPullRequest Open(int number, string branch = "master", bool draft = false)
+        => new(number, $"Pull request {number}", branch, "contributor", draft);
+
+    private static MergeQueueController.QueueCandidates Candidates(ActionResult<MergeQueueController.QueueCandidates> result)
+        => (MergeQueueController.QueueCandidates)((OkObjectResult)result.Result!).Value!;
+
+    private static World CandidateWorld(string? yml = QueueOnMasterAndRelease)
+    {
+        var world = new World { Verified = new GitHubVerifiedLogin("contributor", true, GitHubTokenState.Ok) };
+        if (yml is not null) world.Files["master/coverage.yml"] = yml;
+        return world;
+    }
+
+    [Fact]
+    public async Task The_candidates_leave_out_pull_requests_in_the_queue_and_offer_evicted_and_dequeued_ones_again()
+    {
+        using var store = await SeedAsync(GetDocumentStore(), more: session =>
+        {
+            Busy(session);
+            foreach (var ended in new[] { Entry(6, EMergeQueueEntryState.Evicted, "evicted"), Entry(11, EMergeQueueEntryState.Dequeued, "dequeued") })
+                session.StoreAsync(ended, ended.Id).GetAwaiter().GetResult();
+        });
+        using var session = store.OpenAsyncSession();
+        var world = CandidateWorld();
+        world.Queue.OpenPullRequests.AddRange([Open(6), Open(7), Open(8), Open(9), Open(11), Open(12)]);
+
+        var candidates = Candidates(await Controller(session, world, SignedIn()).Candidates("github", "acme", "widget", false, default));
+
+        candidates.PullRequests.Select(p => p.Number).Should().Equal([12, 11, 6], "7 is being worked on and 8 and 9 wait; newest first");
+        candidates.PullRequests[0].Should().Be(new MergeQueueController.QueueCandidate(12, "Pull request 12", "master", "contributor"));
+        candidates.Unavailable.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task The_candidates_are_the_open_non_draft_pull_requests_on_the_configured_branches_only()
+    {
+        using var store = await SeedAsync(GetDocumentStore());
+        using var session = store.OpenAsyncSession();
+        var world = CandidateWorld();
+        world.Queue.OpenPullRequests.AddRange([Open(1), Open(2, draft: true), Open(3, "release"), Open(4, "feature/x")]);
+
+        var candidates = Candidates(await Controller(session, world, SignedIn()).Candidates("github", "acme", "widget", false, default));
+
+        candidates.PullRequests.Select(p => (p.Number, p.BaseBranch)).Should().Equal([(3, "release"), (1, "master")]);
+        world.Queue.OpenPullRequestQueries.Should().Equal(["master", "release"], "only the branches coverage.yml queues are listed");
+    }
+
+    [Theory]
+    [InlineData(null, "not turned on")]
+    [InlineData("mergeQueue:\n  enabled: false\n", "not turned on")]
+    [InlineData("mergeQueue:\n  enabled: true\n  branches: []\n", "not usable")]
+    public async Task A_queue_coverage_yml_does_not_turn_on_offers_nothing_and_says_why(string? yml, string says)
+    {
+        using var store = await SeedAsync(GetDocumentStore());
+        using var session = store.OpenAsyncSession();
+        var world = CandidateWorld(yml);
+        world.Queue.OpenPullRequests.Add(Open(1));
+
+        var candidates = Candidates(await Controller(session, world, SignedIn()).Candidates("github", "acme", "widget", false, default));
+
+        candidates.PullRequests.Should().BeEmpty();
+        candidates.Unavailable.Should().Contain(says);
+        world.Queue.OpenPullRequestQueries.Should().BeEmpty("nothing is listed for a queue that is off");
+    }
+
+    [Fact]
+    public async Task The_forge_answer_is_remembered_briefly_while_the_queue_state_is_read_live()
+    {
+        using var store = await SeedAsync(GetDocumentStore());
+        var world = CandidateWorld();
+        world.Queue.OpenPullRequests.AddRange([Open(1), Open(2)]);
+        using var session = store.OpenAsyncSession();
+        var controller = Controller(session, world, SignedIn());
+
+        Candidates(await controller.Candidates("github", "acme", "widget", false, default)).PullRequests.Select(p => p.Number).Should().Equal([2, 1]);
+        world.Queue.OpenPullRequests.Add(Open(3));
+        // Through the controller's own session: it remembers #2 as missing from the first call, and storing it is what a
+        // request's fresh session would see anyway.
+        var queued = Entry(2, EMergeQueueEntryState.Queued, "queued");
+        await session.StoreAsync(queued, queued.Id);
+        await session.SaveChangesAsync();
+
+        Candidates(await controller.Candidates("github", "acme", "widget", false, default)).PullRequests.Select(p => p.Number)
+            .Should().Equal([1], "#3 is not listed until the remembered answer expires, but #2 leaves the moment it is queued");
+        world.Queue.OpenPullRequestQueries.Should().HaveCount(2, "one listing per configured branch, once");
+
+        Candidates(await controller.Candidates("github", "acme", "widget", true, default)).PullRequests.Select(p => p.Number)
+            .Should().Equal([3, 1], "refresh asks the forge again");
+        world.Queue.OpenPullRequestQueries.Should().HaveCount(4);
+    }
+
+    [Theory]
+    [InlineData(true, "refused")]
+    [InlineData(false, "could not list")]
+    public async Task A_forge_failure_offers_nothing_with_a_reason_is_not_a_500_and_is_not_remembered(bool accessDenied, string says)
+    {
+        using var store = await SeedAsync(GetDocumentStore());
+        using var session = store.OpenAsyncSession();
+        var world = CandidateWorld();
+        world.Queue.OpenPullRequests.Add(Open(1));
+        world.Queue.ListOpenPullRequestsThrows = accessDenied
+            ? new ForgeAccessDeniedException("Resource not accessible by integration", "pull_requests")
+            : new ForgeRequestException("GitHub answered 502.", 502);
+        var controller = Controller(session, world, SignedIn());
+
+        var failed = await controller.Candidates("github", "acme", "widget", false, default);
+
+        Describe(failed).Should().StartWith("200 ");
+        Candidates(failed).PullRequests.Should().BeEmpty();
+        Candidates(failed).Unavailable.Should().Contain(says);
+        Candidates(await controller.Candidates("github", "acme", "widget", false, default)).PullRequests.Select(p => p.Number)
+            .Should().Equal([1], "the failure was not remembered, so the next call asks again");
+    }
+
+    [Fact]
+    public async Task A_forge_without_a_merge_queue_has_no_candidates()
+    {
+        using var store = await SeedAsync(GetDocumentStore());
+        using var session = store.OpenAsyncSession();
+        var world = CandidateWorld();
+        world.QueueSupported = false;
+
+        var candidates = Candidates(await Controller(session, world, SignedIn()).Candidates("github", "acme", "widget", false, default));
+
+        candidates.PullRequests.Should().BeEmpty();
+        candidates.Unavailable.Should().BeNull();
     }
 }

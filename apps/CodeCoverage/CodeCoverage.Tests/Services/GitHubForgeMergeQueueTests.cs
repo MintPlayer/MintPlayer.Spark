@@ -880,6 +880,49 @@ public class GitHubForgeMergeQueueTests
         reviews[1].State.Should().Be(EForgeReviewState.Dismissed);
     }
 
+    // ── Open pull requests (the panel's queue dropdown) ─────────────────────────────────────────
+
+    private static string OpenPull(int number, string baseRef = "main", bool draft = false, string login = "contributor")
+        => $$$"""{"number":{{{number}}},"title":"Pull request {{{number}}}","state":"open","draft":{{{(draft ? "true" : "false")}}},"user":{"login":"{{{login}}}","id":7,"type":"User"},"base":{"ref":"{{{baseRef}}}","sha":"{{{Head}}}"},"head":{"ref":"feature-{{{number}}}","sha":"{{{Head}}}"}}""";
+
+    [Fact]
+    public async Task Open_pull_requests_on_a_base_are_listed_across_pages_with_their_draft_flag()
+    {
+        var firstPage = string.Join(",", Enumerable.Range(1, 100).Select(i => OpenPull(i, draft: i == 2)));
+        var github = new StubGitHub()
+            .On(HttpMethod.Get, $"{Repo}/pulls?state=open&base=main&per_page=100&page=1", HttpStatusCode.OK, $"[{firstPage}]")
+            .On(HttpMethod.Get, $"{Repo}/pulls?state=open&base=main&per_page=100&page=2", HttpStatusCode.OK,
+                $"[{OpenPull(101, login: "dependabot[bot]")}]");
+
+        var open = await Queue(github).ListOpenPullRequestsAsync(Target(), "main");
+
+        open.Should().HaveCount(101, "a full page is followed by the next");
+        open[0].Should().Be(new ForgeOpenPullRequest(1, "Pull request 1", "main", "contributor", false));
+        open[1].IsDraft.Should().BeTrue();
+        open[100].Should().Be(new ForgeOpenPullRequest(101, "Pull request 101", "main", "dependabot[bot]", false));
+    }
+
+    [Fact]
+    public async Task The_base_branch_is_escaped_into_the_listing_query()
+    {
+        var github = new StubGitHub()
+            .On(HttpMethod.Get, $"{Repo}/pulls?state=open&base=release%2F2.x&per_page=100&page=1", HttpStatusCode.OK, $"[{OpenPull(5, "release/2.x")}]");
+
+        (await Queue(github).ListOpenPullRequestsAsync(Target(), "release/2.x")).Should().ContainSingle().Which.BaseRef.Should().Be("release/2.x");
+    }
+
+    [Fact]
+    public async Task A_refused_listing_of_open_pull_requests_names_the_permission()
+    {
+        var github = new StubGitHub()
+            .On(HttpMethod.Get, $"{Repo}/pulls?state=open&base=main&per_page=100&page=1", (_, _) => WithHeader(
+                new HttpResponseMessage(HttpStatusCode.Forbidden) { Content = new StringContent("""{"message":"Resource not accessible by integration"}""") },
+                "X-Accepted-GitHub-Permissions", "pull_requests=read"));
+
+        (await Throws<ForgeAccessDeniedException>(() => Queue(github).ListOpenPullRequestsAsync(Target(), "main")))
+            .RequiredPermission.Should().Be("pull_requests=read");
+    }
+
     // ── Commits (§0 D60) ─────────────────────────────────────────────────────────────────────────
 
     /// <summary><c>GET /pulls/{n}/commits</c> in the documented shape: <c>commit.author</c> is what git recorded,

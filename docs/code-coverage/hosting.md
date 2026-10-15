@@ -454,6 +454,18 @@ read, an App client it could not build) fails the same way on every view, so it 
 (PRD D70). Look for "Could not read the pending permissions of GitHub installation" when the notice should
 show and does not. Nothing shows in development unless a GitHub App is configured.
 
+**What the App itself must declare** (merge-queue PRD D95). Pending only compares an installation with the
+App, so a permission or event the App never asks for is invisible there. The merge queue therefore checks the App's
+own `GET /app` (cached 5 minutes app-wide, a failure 1 minute) against what each repository's configuration needs,
+and **refuses the enqueue with `app-permissions`** (before anything is pushed) when the App lacks one: see
+[merge-queue.md §2.1](merge-queue.md#21-the-github-app-permissions-and-events) for the list. The Account page notice
+then adds *"The CodeCoverage App itself does not request: … This cannot be accepted here"*, linked to the App's own
+settings page, `https://github.com/organizations/{owner}/settings/apps/{slug}/permissions` (or
+`https://github.com/settings/apps/{slug}/permissions` for an App a user owns), built from `GET /app`'s `slug` and
+`owner` because GitHub returns no such URL. The endpoint answers 200 for such a gap even with nothing pending. Look
+for "Could not read the GitHub App's declared permissions and events" when it should show and does not; when `GET /app`
+cannot be read, the queue goes ahead (fail open) and a later 403 still evicts.
+
 **Webhook events to subscribe**
 
 | Event | Handled by | Needed for |

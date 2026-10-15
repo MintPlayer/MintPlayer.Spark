@@ -113,11 +113,17 @@ public sealed record PullRequestUpdated(
 /// A forge that cannot tell must report false — declining to delete is recoverable, deleting
 /// someone else's branch is not.
 /// </param>
+/// <param name="MergeCommitSha">
+/// The commit the merge created on the base branch, when the forge's event names it (GitHub's
+/// <c>merge_commit_sha</c>). The merge queue records it when this event, rather than its own poll,
+/// completes a merge it requested (merge-queue PRD §0 D94); null when the forge does not say.
+/// </param>
 public sealed record PullRequestMerged(
     string RepositoryId,
     int Number,
     string? HeadRef,
-    bool HeadIsFromSameRepository) : IForgeEvent;
+    bool HeadIsFromSameRepository,
+    string? MergeCommitSha = null) : IForgeEvent;
 
 /// <summary>A repository changed its name or moved to a different owner.</summary>
 /// <remarks>

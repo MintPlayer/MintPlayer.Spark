@@ -23,13 +23,16 @@ public class AccountPermissionsControllerTests : CoverageRavenTest
     private const string Owner = "acme";
     private const string InstallationPage = "https://github.com/organizations/acme/settings/installations/42";
 
-    /// <summary>The installation's permissions, answering whatever the test says.</summary>
-    private sealed class FixedPermissions(PendingInstallationPermissions? answer) : IForgeInstallationPermissions
+    /// <summary>The installation's permissions, answering whatever the test says (App gaps included, §0 D95).</summary>
+    private sealed class FixedPermissions(PendingInstallationPermissions? answer, ForgeAppGaps? gaps = null) : IForgeInstallationPermissions
     {
         public EForgeProvider Provider => EForgeProvider.GitHub;
 
         public Task<PendingInstallationPermissions?> GetPendingAsync(Account account, CancellationToken cancellationToken = default)
             => Task.FromResult(answer);
+
+        public Task<ForgeAppGaps?> GetAppGapsAsync(EMergeQueueAppNeed needs, CancellationToken cancellationToken = default)
+            => Task.FromResult(gaps);
     }
 
     private static AccountPermissionsController Controller(
@@ -89,6 +92,41 @@ public class AccountPermissionsControllerTests : CoverageRavenTest
         var result = await Controller(session, pending).Get("github", Owner, default);
 
         result.Result.Should().BeOfType<OkObjectResult>().Which.Value.Should().BeSameAs(pending);
+    }
+
+    /// <summary>
+    /// §0 D95: nothing to accept, but the App itself lacks what the merge queue needs. The notice must still show,
+    /// pointing at the App's settings page; it was this case that left the production App without <c>actions</c> unseen.
+    /// </summary>
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task What_the_app_itself_lacks_answers_ok_with_nothing_pending(bool permissionMissing, bool eventMissing)
+    {
+        using var store = await SeededStoreAsync();
+        using var session = store.OpenAsyncSession();
+        var answer = new PendingInstallationPermissions(InstallationPage, [])
+        {
+            MissingFromApp = permissionMissing ? [new PendingPermission("actions", "Actions", "write", null)] : [],
+            MissingEvents = eventMissing ? ["workflow_run"] : [],
+            AppSettingsUrl = "https://github.com/organizations/acme/settings/apps/coverage/permissions",
+        };
+
+        var result = await Controller(session, answer).Get("github", Owner, default);
+
+        result.Result.Should().BeOfType<OkObjectResult>().Which.Value.Should().BeSameAs(answer);
+    }
+
+    [Fact]
+    public async Task Nothing_pending_and_nothing_missing_from_the_app_answers_no_content()
+    {
+        using var store = await SeededStoreAsync();
+        using var session = store.OpenAsyncSession();
+        var answer = new PendingInstallationPermissions(InstallationPage, [], [], [], "https://github.com/settings/apps/coverage/permissions");
+
+        var result = await Controller(session, answer).Get("github", Owner, default);
+
+        result.Result.Should().BeOfType<NoContentResult>();
     }
 
     /// <summary>The answer for an account that does not exist, so the endpoint confirms nothing to a non-manager.</summary>

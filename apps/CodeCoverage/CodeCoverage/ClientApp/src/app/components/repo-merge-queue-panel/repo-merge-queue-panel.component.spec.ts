@@ -1,12 +1,40 @@
-import { provideZonelessChangeDetection } from '@angular/core';
+import { Component, forwardRef, input, provideZonelessChangeDetection } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { provideRouter } from '@angular/router';
+import { BsSelectComponent, BsSelectOption } from '@mintplayer/ng-bootstrap/select';
 import { describe, expect, it } from 'vitest';
-import { MergeQueueEntry, MergeQueueView, MergeQueueViewer } from '../../services/browse.service';
+import { MergeQueueCandidates, MergeQueueEntry, MergeQueueView, MergeQueueViewer } from '../../services/browse.service';
 import { BrowseServiceStub, createBrowseStub, provideBrowseStub, settle } from '../../../testing/test-utils';
 import { RepoMergeQueuePanelComponent } from './repo-merge-queue-panel.component';
+
+/**
+ * Stand-in for the Lit-backed `<bs-select>` (as in repo-badge-panel.component.spec.ts): a plain value accessor, so
+ * `[ngModel]` binds and a spec can push a pick the way a user would.
+ */
+@Component({
+  selector: 'bs-select',
+  template: '<ng-content />',
+  providers: [{ provide: NG_VALUE_ACCESSOR, useExisting: forwardRef(() => StubSelect), multi: true }],
+})
+class StubSelect implements ControlValueAccessor {
+  readonly size = input<string>();
+  value: unknown;
+  onChange: (value: unknown) => void = () => undefined;
+  writeValue(value: unknown): void { this.value = value; }
+  registerOnChange(fn: (value: unknown) => void): void { this.onChange = fn; }
+  registerOnTouched(): void { /* not needed */ }
+}
+
+const twoCandidates: MergeQueueCandidates = {
+  pullRequests: [
+    { number: 12, title: 'Add widgets', baseBranch: 'master', authorLogin: 'contributor' },
+    { number: 3, title: 'Fix the gears', baseBranch: 'master', authorLogin: 'someone' },
+  ],
+  unavailable: null,
+};
 
 const anonymous: MergeQueueViewer = { signedIn: false, linked: false, login: null, role: null, credential: null };
 const writer: MergeQueueViewer = { signedIn: true, linked: true, login: 'maintainer', role: 'write', credential: 'Ok' };
@@ -46,10 +74,14 @@ describe('RepoMergeQueuePanelComponent', () => {
   let browse: BrowseServiceStub;
 
   async function create(getMergeQueue: () => Promise<MergeQueueView>, overrides: Partial<Record<keyof BrowseServiceStub, (...args: any[]) => any>> = {}, provider = 'github') {
-    browse = createBrowseStub({ getMergeQueue, ...overrides });
+    browse = createBrowseStub({ getMergeQueue, getQueueCandidates: () => Promise.resolve(twoCandidates), ...overrides });
     TestBed.configureTestingModule({
       imports: [RepoMergeQueuePanelComponent],
       providers: [provideZonelessChangeDetection(), provideNoopAnimations(), provideRouter([]), provideBrowseStub(browse)],
+    });
+    TestBed.overrideComponent(RepoMergeQueuePanelComponent, {
+      remove: { imports: [BsSelectComponent, BsSelectOption] },
+      add: { imports: [StubSelect] },
     });
     fixture = TestBed.createComponent(RepoMergeQueuePanelComponent);
     fixture.componentRef.setInput('provider', provider);
@@ -61,6 +93,7 @@ describe('RepoMergeQueuePanelComponent', () => {
   const el = () => fixture.nativeElement as HTMLElement;
   const q = (selector: string) => el().querySelector(selector) as HTMLElement | null;
   const buttons = (text: string) => [...el().querySelectorAll('button')].filter(b => b.textContent?.includes(text));
+  const select = () => fixture.debugElement.query(d => d.componentInstance instanceof StubSelect)?.componentInstance as StubSelect | undefined;
 
   it('shows the running entry, the waiting ones in order, how the latest runs ended and the configuration a run used', async () => {
     await create(() => Promise.resolve(busy(anonymous)));
@@ -133,51 +166,84 @@ describe('RepoMergeQueuePanelComponent', () => {
     expect(q('[data-testid="merge-queue"]')).toBeNull();
   });
 
-  it('queues a pull request as the signed-in user and reports what the server accepted', async () => {
+  it('lists the open pull requests not yet queued by number and title, after a placeholder', async () => {
+    await create(() => Promise.resolve(idle(writer)));
+
+    expect(browse.getQueueCandidates).toHaveBeenCalledWith('github', 'acme', 'widget', false);
+    const options = [...el().querySelectorAll('[data-testid="mq-candidates"] option')].map(o => o.textContent?.trim());
+    expect(options).toEqual(['Choose a pull request', '#12 Add widgets', '#3 Fix the gears']);
+    expect(q('[data-testid="mq-no-candidates"]')).toBeNull();
+  });
+
+  it('queues the picked pull request as the signed-in user, reports what the server accepted and fetches the list again', async () => {
     await create(() => Promise.resolve(idle(writer)), {
       enqueuePullRequest: () => Promise.resolve({ number: 12, command: 'enqueue', actor: 'maintainer' }),
     });
     expect(el().textContent).toContain('Nothing has gone through the queue yet');
     expect(buttons('Queue as @maintainer')).toHaveLength(1);
 
-    fixture.componentInstance.number.set(12);
+    select()!.onChange(12);
+    await settle(fixture);
+    expect(fixture.componentInstance.number()).toBe(12);
     buttons('Queue as')[0].click();
     await settle(fixture);
 
     expect(browse.enqueuePullRequest).toHaveBeenCalledWith('github', 'acme', 'widget', 12);
     expect(q('[data-testid="mq-notice"]')?.textContent).toContain('Asked the queue to take #12 as @maintainer');
     expect(browse.getMergeQueue).toHaveBeenCalledTimes(2);
+    expect(browse.getQueueCandidates).toHaveBeenCalledTimes(2);
     expect(fixture.componentInstance.number()).toBeNull();
   });
 
-  it('submits on Enter without letting the form navigate away', async () => {
-    await create(() => Promise.resolve(idle(writer)), {
-      enqueuePullRequest: () => Promise.resolve({ number: 3, command: 'enqueue', actor: 'maintainer' }),
-    });
-    fixture.componentInstance.number.set(3);
+  it('asks the forge afresh from the refresh button', async () => {
+    await create(() => Promise.resolve(idle(writer)));
 
-    const submit = new Event('submit', { cancelable: true });
-    q('[data-testid="mq-enqueue"] form')!.dispatchEvent(submit);
+    q('[aria-label="Refresh the merge queue"]')!.click();
     await settle(fixture);
 
-    expect(submit.defaultPrevented).toBe(true);
-    expect(browse.enqueuePullRequest).toHaveBeenCalledWith('github', 'acme', 'widget', 3);
+    expect(browse.getQueueCandidates).toHaveBeenLastCalledWith('github', 'acme', 'widget', true);
   });
 
-  it('shows the server\'s own reason when the button is refused, and asks for a number before sending anything', async () => {
+  it('fetches no candidates for an anonymous visitor or a viewer without write access', async () => {
+    await create(() => Promise.resolve(busy(anonymous)));
+    expect(browse.getQueueCandidates).not.toHaveBeenCalled();
+
+    TestBed.resetTestingModule();
+    await create(() => Promise.resolve(busy({ ...writer, role: 'read' })));
+    expect(browse.getQueueCandidates).not.toHaveBeenCalled();
+    expect(q('[data-testid="mq-candidates"]')).toBeNull();
+  });
+
+  it('says why there is nothing to pick and disables the button', async () => {
     await create(() => Promise.resolve(idle(writer)), {
-      enqueuePullRequest: () => Promise.reject(new HttpErrorResponse({ status: 422, error: { error: 'acme/widget has no pull request #404.' } })),
+      getQueueCandidates: () => Promise.resolve({ pullRequests: [], unavailable: null }),
+    });
+    expect(q('[data-testid="mq-candidates"]')).toBeNull();
+    expect(q('[data-testid="mq-no-candidates"]')?.textContent).toContain('No open pull request is waiting to be queued.');
+    expect((buttons('Queue as')[0] as HTMLButtonElement).disabled).toBe(true);
+
+    TestBed.resetTestingModule();
+    await create(() => Promise.resolve(idle(writer)), {
+      getQueueCandidates: () => Promise.resolve({ pullRequests: [], unavailable: 'The merge queue is not turned on in coverage.yml on master.' }),
+    });
+    expect(q('[data-testid="mq-no-candidates"]')?.textContent).toContain('not turned on in coverage.yml');
+    expect((buttons('Queue as')[0] as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('shows the server\'s own reason when the button is refused, and asks for a pick before sending anything', async () => {
+    await create(() => Promise.resolve(idle(writer)), {
+      enqueuePullRequest: () => Promise.reject(new HttpErrorResponse({ status: 409, error: { error: '#12 is already in the queue.' } })),
     });
 
     buttons('Queue as')[0].click();
     await settle(fixture);
-    expect(q('[data-testid="mq-notice"]')?.textContent).toContain('Enter the number of an open pull request.');
+    expect(q('[data-testid="mq-notice"]')?.textContent).toContain('Choose a pull request to queue.');
     expect(browse.enqueuePullRequest).not.toHaveBeenCalled();
 
-    fixture.componentInstance.number.set(404);
+    select()!.onChange(12);
     buttons('Queue as')[0].click();
     await settle(fixture);
-    expect(q('[data-testid="mq-notice"]')?.textContent).toContain('acme/widget has no pull request #404.');
+    expect(q('[data-testid="mq-notice"]')?.textContent).toContain('#12 is already in the queue.');
   });
 
   it('dequeues an entry, and offers that to an author without write access only for their own pull request', async () => {

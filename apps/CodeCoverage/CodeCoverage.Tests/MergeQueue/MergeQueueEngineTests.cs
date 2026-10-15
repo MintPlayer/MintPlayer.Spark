@@ -4,6 +4,7 @@ using CodeCoverage.LookupReferences;
 using CodeCoverage.MergeQueue;
 using CodeCoverage.Tests.Services;
 using Xunit;
+using GitHubInstallationPermissions = CodeCoverage.Services.GitHubInstallationPermissions;
 using static CodeCoverage.Tests.MergeQueue.MergeQueueHarness;
 
 namespace CodeCoverage.Tests.MergeQueue;
@@ -663,6 +664,59 @@ public class MergeQueueEngineTests : CoverageRavenTest
         entry.EvictionMessage.Should().Contain("someone other than the last pusher").And.Contain("turn those off for branches the queue manages");
     }
 
+    /// <summary>
+    /// §0 D94, live 2026-10-15: GitHub's <c>pull_request.closed</c> (merged) webhook beat the 15 s merge poll, and the
+    /// Merged signal completed the entry with a hard-coded null merge commit. The signal now carries the event's
+    /// <c>merge_commit_sha</c>, and the poll that comes after changes nothing.
+    /// </summary>
+    [Fact]
+    public async Task A_merged_event_that_beats_the_poll_records_the_merge_commit()
+    {
+        var h = await HarnessAsync(mergeBase: BaseSha);
+        var uuid = "d45ff22b-73cf-44a4-9eb0-cbf81c955578";
+        h.Queue.MergeReplies.Enqueue(new ForgeMergeRequest(EForgeMergeState.Pending, uuid, null, "enqueued"));
+
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+        (await h.EntryAsync()).State.Should().Be(EMergeQueueEntryState.Merging);
+
+        await h.SignalAsync(new MergeQueueSignalMessage { RepositoryId = RepositoryId, Kind = EMergeQueueSignal.Merged, Number = Number, Sha = MergeCommit });
+        await h.DrainAsync();
+
+        var entry = await h.EntryAsync();
+        entry.State.Should().Be(EMergeQueueEntryState.Merged);
+        entry.MergeCommitSha.Should().Be(MergeCommit);
+        (await h.QueueDocumentAsync())!.Recent.Last().MergeCommitSha.Should().Be(MergeCommit);
+
+        await h.ReleaseAsync(EMergeQueueStep.PollMerge);
+
+        var after = await h.EntryAsync();
+        after.State.Should().Be(EMergeQueueEntryState.Merged);
+        after.MergeCommitSha.Should().Be(MergeCommit);
+        after.Generation.Should().Be(entry.Generation);
+        h.Queue.MergeRequests.Should().HaveCount(1);
+    }
+
+    /// <summary>§0 D94: an event without the sha still records it, from the merge request's own status.</summary>
+    [Fact]
+    public async Task A_merged_event_without_the_sha_reads_it_from_the_merge_request()
+    {
+        var h = await HarnessAsync(mergeBase: BaseSha);
+        var uuid = "d45ff22b-73cf-44a4-9eb0-cbf81c955578";
+        h.Queue.MergeReplies.Enqueue(new ForgeMergeRequest(EForgeMergeState.Pending, uuid, null, "enqueued"));
+
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+        h.Queue.MergeStatuses.Enqueue(new ForgeMergeRequest(EForgeMergeState.Merged, uuid, MergeCommit, null));
+
+        await h.SignalAsync(EMergeQueueSignal.Merged, Number);
+        await h.DrainAsync();
+
+        var entry = await h.EntryAsync();
+        entry.State.Should().Be(EMergeQueueEntryState.Merged);
+        entry.MergeCommitSha.Should().Be(MergeCommit);
+    }
+
     [Fact]
     public async Task A_head_modified_answer_is_retried_once_after_a_delay()
     {
@@ -1094,7 +1148,12 @@ public class MergeQueueEngineTests : CoverageRavenTest
     public async Task A_refused_permission_evicts_with_the_acceptance_link()
     {
         var h = await HarnessAsync(mergeBase: BaseSha);
-        h.Permissions.Add(new FixedPermissions("https://github.com/organizations/acme/settings/installations/4242"));
+        // Something waits for acceptance (a permission the queue itself does not need, so the enqueue passes), and what the
+        // App declares cannot be read, so nothing says the App itself lacks the permission.
+        h.Permissions.Add(new FixedPermissions("https://github.com/organizations/acme/settings/installations/4242")
+        {
+            Pending = [new PendingPermission("pages", "Pages", "write", null)],
+        });
         h.Queue.MergeThrows = new ForgeAccessDeniedException("GitHub answered 403 to PUT …/merge-async: Resource not accessible by integration", "contents=write");
 
         await h.EnqueueAsync();
@@ -1104,6 +1163,163 @@ public class MergeQueueEngineTests : CoverageRavenTest
         entry.EvictionReason.Should().Be("permission");
         entry.PermissionsUrl.Should().Be("https://github.com/organizations/acme/settings/installations/4242", "O17");
         h.Queue.LastCheck.Summary.Should().Contain("accept the new permissions");
+    }
+
+    /// <summary>
+    /// §0 D96: the acceptance link only when something waits for acceptance. Live (2026-10-15) the eviction linked
+    /// "Accept the App's new permissions" to an installation page with nothing pending.
+    /// </summary>
+    [Fact]
+    public async Task A_refused_permission_with_nothing_pending_gives_no_acceptance_link()
+    {
+        var h = await HarnessAsync(mergeBase: BaseSha);
+        h.Permissions.Add(new FixedPermissions("https://github.com/organizations/acme/settings/installations/4242"));
+        h.Queue.MergeThrows = new ForgeAccessDeniedException("GitHub answered 403 to PUT …/merge-async: Resource not accessible by integration", "contents=write");
+
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+
+        var entry = await h.EntryAsync();
+        entry.EvictionReason.Should().Be("permission");
+        entry.PermissionsUrl.Should().BeNull();
+        h.Queue.LastCheck.Summary.Should().NotContain("accept the new permissions");
+        h.Queue.Comments.Should().NotContain(c => c.Body.Contains("Accept the App's new permissions"));
+    }
+
+    // ── §0 D95: what the App itself declares, checked at enqueue ─────────────────────────────────
+
+    /// <summary>
+    /// Live, 2026-10-15: the production App requested neither <c>actions</c> nor <c>statuses</c> and heard no
+    /// <c>workflow_run</c>. The queue pushed its branch and learned of it from a 403 on the regenerate dispatch. Now the
+    /// enqueue refuses before anything is prepared or pushed, and says only the App's owner can fix it, where.
+    /// </summary>
+    [Fact]
+    public async Task An_app_that_does_not_declare_what_the_configuration_needs_refuses_before_anything_is_pushed()
+    {
+        var h = await HarnessAsync();
+        var app = FixedPermissions.FullApp();
+        app.Remove("actions");
+        h.Permissions.Add(new FixedPermissions("https://github.com/organizations/acme/settings/installations/4242")
+        {
+            AppPermissions = app,
+            AppEvents = [.. FixedPermissions.AllEvents.Where(e => e != "workflow_run")],
+        });
+
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+
+        var entry = await h.EntryAsync();
+        entry.State.Should().Be(EMergeQueueEntryState.Refused);
+        entry.EvictionReason.Should().Be("app-permissions");
+        entry.EvictionMessage.Should().Contain("Actions (write)").And.Contain("Workflow run")
+            .And.Contain(FixedPermissions.SettingsUrl).And.Contain("cannot add them");
+        entry.PermissionsUrl.Should().BeNull("accepting on the installation cannot add what the App does not request");
+        h.Writer.Prepares.Should().BeEmpty();
+        h.Writer.QueueBranchPushes.Should().BeEmpty();
+        h.Queue.Dispatches.Should().BeEmpty();
+        h.Queue.LastCheck.Actions.Should().NotBeEmpty("the button stays: once the App is fixed, the next click is accepted");
+    }
+
+    [Fact]
+    public async Task The_same_gaps_pass_a_configuration_that_dispatches_nothing_and_reruns_nothing()
+    {
+        var h = await HarnessAsync(mergeBase: BaseSha);
+        // Line by line, whatever the source file's line endings.
+        h.Forge.Files["master/coverage.yml"] = string.Join('\n', MergeQueueHarness.Yml.Split('\n').Where(l => !l.Contains("postRebaseActionName")))
+            .Replace("retryFlaky: 1", "retryFlaky: 0");
+        var app = FixedPermissions.FullApp();
+        app.Remove("actions");
+        h.Permissions.Add(new FixedPermissions("https://github.com/organizations/acme/settings/installations/4242")
+        {
+            AppPermissions = app,
+            AppEvents = [.. FixedPermissions.AllEvents.Where(e => e != "workflow_run")],
+        });
+
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+
+        var entry = await h.EntryAsync();
+        entry.EvictionReason.Should().NotBe("app-permissions");
+        entry.State.Should().Be(EMergeQueueEntryState.Merged);
+    }
+
+    [Fact]
+    public async Task An_app_without_statuses_is_refused()
+    {
+        var h = await HarnessAsync(mergeBase: BaseSha);
+        var app = FixedPermissions.FullApp();
+        app.Remove("statuses");
+        h.Permissions.Add(new FixedPermissions("https://github.com/organizations/acme/settings/installations/4242") { AppPermissions = app });
+
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+
+        var entry = await h.EntryAsync();
+        entry.State.Should().Be(EMergeQueueEntryState.Refused);
+        entry.EvictionReason.Should().Be("app-permissions");
+        entry.EvictionMessage.Should().Contain("Statuses (read)");
+    }
+
+    [Fact]
+    public async Task An_app_declaration_that_cannot_be_read_fails_open()
+    {
+        var h = await HarnessAsync(mergeBase: BaseSha);
+        h.Permissions.Add(new FixedPermissions("https://github.com/organizations/acme/settings/installations/4242") { AppPermissions = null });
+
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+
+        (await h.EntryAsync()).State.Should().Be(EMergeQueueEntryState.Merged);
+    }
+
+    /// <summary>After the App is updated, before the installation accepts: the needed permission waits, so the link helps.</summary>
+    [Fact]
+    public async Task A_needed_permission_still_waiting_for_acceptance_refuses_with_the_acceptance_link()
+    {
+        var h = await HarnessAsync();
+        h.Permissions.Add(new FixedPermissions("https://github.com/organizations/acme/settings/installations/4242")
+        {
+            AppPermissions = FixedPermissions.FullApp(),
+            Pending = [new PendingPermission("actions", "Actions", "write", null)],
+        });
+
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+
+        var entry = await h.EntryAsync();
+        entry.State.Should().Be(EMergeQueueEntryState.Refused);
+        entry.EvictionReason.Should().Be("permission");
+        entry.EvictionMessage.Should().Contain("Actions (write)");
+        entry.PermissionsUrl.Should().Be("https://github.com/organizations/acme/settings/installations/4242");
+        h.Writer.Prepares.Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// <c>workflows</c> is taken only by a push that touches a workflow file (§0 D59): its absence warns at enqueue, and
+    /// a 403 asking for it evicts naming the App's settings page, not the installation's.
+    /// </summary>
+    [Fact]
+    public async Task An_app_without_workflows_warns_and_a_403_for_it_points_at_the_apps_settings()
+    {
+        var h = await HarnessAsync(mergeBase: BaseSha);
+        var app = FixedPermissions.FullApp();
+        app.Remove("workflows");
+        h.Permissions.Add(new FixedPermissions("https://github.com/organizations/acme/settings/installations/4242")
+        {
+            AppPermissions = app,
+            Pending = [new PendingPermission("pages", "Pages", "write", null)],
+        });
+        h.Queue.MergeThrows = new ForgeAccessDeniedException("GitHub answered 403: Resource not accessible by integration", "workflows=write");
+
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+
+        var entry = await h.EntryAsync();
+        entry.Warnings.Should().ContainSingle(w => w.Contains("Workflows (write)"));
+        entry.State.Should().Be(EMergeQueueEntryState.Evicted);
+        entry.EvictionReason.Should().Be("app-permissions");
+        entry.EvictionMessage.Should().Contain("does not request Workflows (write)").And.Contain(FixedPermissions.SettingsUrl);
+        entry.PermissionsUrl.Should().BeNull();
     }
 
     [Fact]
@@ -1938,11 +2154,43 @@ public class MergeQueueEngineTests : CoverageRavenTest
             => inner.DeleteQueueBranchAsync(request, cancellationToken);
     }
 
+    /// <summary>
+    /// The installation's pending permissions and the App's declaration, scripted; the gaps and the needed pending ones are
+    /// computed by the GitHub implementation's own pure functions (§0 D95).
+    /// </summary>
     private sealed class FixedPermissions(string url) : IForgeInstallationPermissions
     {
+        public const string SettingsUrl = "https://github.com/organizations/acme/settings/apps/coverage/permissions";
+
+        /// <summary>Everything the queue can need: what a correctly set-up App declares.</summary>
+        public static Dictionary<string, string> FullApp() => new()
+        {
+            ["contents"] = "write", ["pull_requests"] = "write", ["checks"] = "write", ["metadata"] = "read",
+            ["statuses"] = "read", ["issues"] = "read", ["actions"] = "write", ["workflows"] = "write",
+        };
+
+        public static readonly string[] AllEvents =
+            ["pull_request", "push", "check_run", "check_suite", "status", "pull_request_review", "issue_comment", "workflow_run"];
+
+        public PendingPermission[] Pending { get; init; } = [];
+
+        // What the App declares; null: it could not be read (fail open). A plain comment: Spark's attribute-description
+        // generator reads a property's doc comment, and this class is private.
+        public Dictionary<string, string>? AppPermissions { get; init; }
+
+        public string[] AppEvents { get; init; } = AllEvents;
+
         public EForgeProvider Provider => EForgeProvider.GitHub;
 
         public Task<PendingInstallationPermissions?> GetPendingAsync(Account account, CancellationToken cancellationToken = default)
-            => Task.FromResult<PendingInstallationPermissions?>(new PendingInstallationPermissions(url, [new PendingPermission("actions", "Actions", "write", null)]));
+            => Task.FromResult<PendingInstallationPermissions?>(new PendingInstallationPermissions(url, Pending));
+
+        public Task<ForgeAppGaps?> GetAppGapsAsync(EMergeQueueAppNeed needs, CancellationToken cancellationToken = default)
+            => Task.FromResult(AppPermissions is null
+                ? null
+                : GitHubInstallationPermissions.ComputeMissing(AppPermissions, AppEvents.ToHashSet(), needs) with { SettingsUrl = SettingsUrl });
+
+        public IReadOnlyList<PendingPermission> NeededPending(IReadOnlyList<PendingPermission> pending, EMergeQueueAppNeed needs)
+            => GitHubInstallationPermissions.NeededPendingOf(pending, needs);
     }
 }

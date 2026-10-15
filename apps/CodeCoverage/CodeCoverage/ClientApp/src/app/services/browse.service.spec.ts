@@ -214,6 +214,18 @@ describe('BrowseService', () => {
     expect((await dequeued).command).toBe('dequeue');
   });
 
+  it('reads the queue candidates from the repository endpoint, asking for a fresh forge answer only on refresh', async () => {
+    const candidates = { pullRequests: [{ number: 12, title: 'Add widgets', baseBranch: 'main', authorLogin: 'me' }], unavailable: null };
+
+    const cached = service.getQueueCandidates(provider, owner, name);
+    expect(answer('GET', `/api/repos/${P}/${O}/${N}/merge-queue/candidates`, candidates).params.has('refresh')).toBe(false);
+    expect(await cached).toEqual(candidates);
+
+    const fresh = service.getQueueCandidates(provider, owner, name, true);
+    expect(answer('GET', `/api/repos/${P}/${O}/${N}/merge-queue/candidates`, candidates).params.get('refresh')).toBe('true');
+    await fresh;
+  });
+
   it('rejects when the server answers with an error', async () => {
     const repo = service.getRepo(provider, owner, name);
     http.expectOne(repoBase).flush('nope', { status: 404, statusText: 'Not Found' });

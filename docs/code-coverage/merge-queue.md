@@ -132,7 +132,20 @@ from the App's own check run, which every other check delivery from it is droppe
 Then every installation has to accept them. The CodeCoverage Account page (`/po/account/{id}`) shows the account's
 managers a notice with the installation's own acceptance link while anything the App declares is still pending. A
 queue call that GitHub refuses for a permission ends the entry with `permission`, and the check run and the comment
-carry the same link.
+carry the same link, but only while something is still pending there (PRD §0 D96).
+
+**What the App itself lacks (D95).** "Pending" compares the installation with what the App declares, so an App
+that never asked for a permission has nothing pending, and no installation can accept it. The queue therefore also
+compares the App's own declaration (`GET /app`, cached 5 minutes) with what it needs: `contents`, `pull_requests` and
+`checks` write, `metadata`, `statuses` and `issues` read, and the events `pull_request`, `push`, `check_run`,
+`check_suite`, `status`, `pull_request_review` and `issue_comment`; plus `actions` write and `workflow_run` when
+`postRebaseActionName` dispatches, and `actions` write when `checks.retryFlaky` is above 0. A gap refuses the enqueue
+with `app-permissions` before anything is pushed, and the notice on the Account page gets a second message naming the
+missing permissions and events, linked to the App's own settings page
+(`github.com/organizations/{owner}/settings/apps/{slug}/permissions`, or `github.com/settings/apps/{slug}/permissions`
+for a user's App). A needed permission the App declares but the installation has not accepted yet refuses `permission`,
+with the acceptance link. `workflows` write is only a warning on the check: only a push that changes a workflow file
+takes it (D59).
 
 ![The notice on a CodeCoverage organization page: GitHub is waiting for you to accept new permissions, the pending permission, and the links Review and accept on GitHub and Merge queue setup guide](https://github.com/user-attachments/assets/813f0779-6f7f-464b-a46a-b30971ab57da)
 
@@ -516,7 +529,7 @@ the check gate) do not run.
 |---|---|---|
 | Label | Add the `enqueue.label` label (`merge-queue`). | Remove it. |
 | Comment | `/queue` as the first word of a new comment on the pull request. | `/dequeue`, the same way. |
-| Button | **Queue** in the merge-queue panel of the CodeCoverage repository page (O8, M6; `POST /api/repos/{provider}/{owner}/{name}/merge-queue/{number}`): the user's linked GitHub login acts; without one, refused. | **Dequeue** in the same panel (`DELETE` on the same route), offered to the author and to `write`. |
+| Button | Pick the pull request in the merge-queue panel's dropdown on the CodeCoverage repository page, then **Queue** (O8, M6; `POST /api/repos/{provider}/{owner}/{name}/merge-queue/{number}`): the user's linked GitHub login acts; without one, refused. The dropdown lists the open pull requests that are not drafts, target a branch in `mergeQueue.branches` and are not already in the queue (evicted, dequeued and refused ones are offered again), newest first (`GET …/merge-queue/candidates`, D93). | **Dequeue** in the same panel (`DELETE` on the same route), offered to the author and to `write`. |
 | Check button | **Add to merge queue** on the pull request's "Merge queue" check (O30, §4.4): open the check from the pull request's checks, the button is at its top. GitHub sends the App a `check_run` `requested_action`, and whoever clicked acts. | **Remove from queue** on the same check while the pull request waits in line (O32). GitHub shows a check's buttons only once it has completed, so once its turn starts (an in-progress check) there is none: `/dequeue`, the label or the panel. |
 
 - The actor is always the signed webhook's sender, or the signed-in user's linked login (T1). Text after the command is
@@ -534,7 +547,14 @@ the check gate) do not run.
   with the button that fits it.
 
 The panel shows each base branch's lane: the pull request the queue is working on and the waiting ones, then the latest
-outcomes and the configuration the run read (D55).
+outcomes and the configuration the run read (D55). Below them, for a viewer who may queue, is the dropdown of pull
+requests to queue. The server remembers GitHub's list of open pull requests for 30 seconds; the panel's refresh button
+asks GitHub again. When there is nothing to pick, the panel says why instead: no open pull request is waiting,
+`coverage.yml` does not turn the queue on, or GitHub could not be read. The Queue button is then disabled, and the
+label and `/queue` still work.
+
+On an account's page, the pending-permissions notice (O17) sits right below the account's details, above the
+repositories grid, so that it is seen before a long grid.
 
 ![The merge-queue panel of a CodeCoverage repository page: the main branch's lane between runs ("Nothing is running on main"), the latest outcomes (merged pull requests, and one evicted for a conflict outside the allow-list with its reason), the effective configuration and the Queue button](https://github.com/user-attachments/assets/26145ce9-09a6-4b49-95e0-82423f83c0a3)
 
@@ -644,12 +664,13 @@ kebab-cased by the writer.
 | `closed`, `draft` | The pull request is closed, or a draft. | Reopen it or mark it ready, then queue it. |
 | `branch` | Its base is not in `mergeQueue.branches` (O16). | Retarget it, or add the branch on the default branch. |
 | `role` | The actor has less than `write` (O9). | Ask someone with `write`. |
+| `app-permissions` | The GitHub App itself does not request a permission, or is not subscribed to an event, that this repository's queue needs (D95, §2.1). Accepting on the installation cannot fix it. | The App's owner adds them under Permissions & events on the App's settings page (linked); then each installation accepts them. |
 | `fork` | The fork is gone, or "Allow edits by maintainers" is not ticked (O3). | Tick the box. For an organization-owned fork, see §3.3. |
 | `approval` | The approval floor is not met on the queued commit (O11, D47), or a writer's latest review requests changes (D61). | A writer other than the author approves the current head, or the one who asked for changes approves; queue again. |
 | `native-queue` | The base requires GitHub's own merge queue (D8). | Remove that rule. |
 | `self-required` | The base requires the queue's own "Merge queue" check, which is still in progress while the queue merges (D62). | Remove it from the required checks (§3). |
 | `bypass` | The App can bypass a ruleset with reviews or checks, or its bypass could not be read (T7). People listed as bypass actors never cause this (O22). | Remove the App from that ruleset's bypass list (§3). |
-| `permission` | GitHub refused a call for a permission. | Accept the new permissions (linked, O17). |
+| `permission` | GitHub refused a call for a permission, or a permission the queue needs is declared by the App but not yet accepted by the installation (D95). | Accept the new permissions (linked, O17). |
 
 **Evicted during a run** (state Evicted, failure, "Evicted: *code*", with a comment and the button):
 
@@ -692,7 +713,8 @@ kebab-cased by the writer.
 | `head-modified` | GitHub says the head is no longer the final commit, after one retry (D17). | Queue it again. |
 | `merge-refused` | GitHub refused the merge; its message is shown. | Usually ruleset 2's review settings (§3.1). |
 | `merge-timeout` | The merge request stayed pending for 40 polls (about 75 minutes). | Look at the pull request on GitHub; queue again. |
-| `permission` | A call was refused for a permission; the check run and the comment link the acceptance page (O17). | Accept the new permissions. |
+| `permission` | A call was refused for a permission; while something is pending, the check run and the comment link the acceptance page (O17, D96). | Accept the new permissions. |
+| `app-permissions` | A call was refused for a permission the App itself does not request, such as `workflows` for a push that changes a workflow file (D95). | The App's owner adds it on the App's settings page (linked); then each installation accepts it. |
 | `error` | The seventh transient failure in a row since the entry last changed state (the first and 6 retries, D58): GitHub 5xx or rate limit, or the writer busy, failed or unreachable. | Operator: §7.4. |
 
 **`patch-rejected` sub-reasons** (`CodeCoverage.GitWriter/Jobs/PatchValidator.cs`). These are checked before anything

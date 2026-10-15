@@ -165,6 +165,26 @@ internal sealed class FakeForgeMergeQueue : IForgeMergeQueue
     public Task<IReadOnlyList<ForgePullRequestCommit>> GetPullRequestCommitsAsync(Repository repository, int number, CancellationToken cancellationToken = default)
         => Task.FromResult((IReadOnlyList<ForgePullRequestCommit>)Commits);
 
+    /// <summary>Every open pull request, on any base; <see cref="ListOpenPullRequestsAsync"/> answers those on the asked one.</summary>
+    public List<ForgeOpenPullRequest> OpenPullRequests { get; } = [];
+
+    /// <summary>Every base branch whose open pull requests were listed, in order.</summary>
+    public List<string> OpenPullRequestQueries { get; } = [];
+
+    /// <summary>When set, the next listing of open pull requests throws it (a missing permission, a 5xx).</summary>
+    public Exception? ListOpenPullRequestsThrows { get; set; }
+
+    public Task<IReadOnlyList<ForgeOpenPullRequest>> ListOpenPullRequestsAsync(Repository repository, string baseBranch, CancellationToken cancellationToken = default)
+    {
+        OpenPullRequestQueries.Add(baseBranch);
+        if (ListOpenPullRequestsThrows is { } thrown)
+        {
+            ListOpenPullRequestsThrows = null;
+            throw thrown;
+        }
+        return Task.FromResult((IReadOnlyList<ForgeOpenPullRequest>)[.. OpenPullRequests.Where(p => p.BaseRef == baseBranch)]);
+    }
+
     public Task<long> PublishQueueCheckAsync(Repository repository, string sha, ForgeQueueCheck check, long? existingId, CancellationToken cancellationToken = default)
     {
         QueueChecks.Add((sha, check, existingId));

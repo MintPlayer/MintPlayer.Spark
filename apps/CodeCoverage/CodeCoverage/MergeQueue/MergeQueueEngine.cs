@@ -133,8 +133,9 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             case EMergeQueueSignal.Merged when signal.Number is { } number:
                 if (await LoadActiveAsync(signal.RepositoryId, number, ct) is { } merged)
                 {
+                    // §0 D94: the event often beats the poll, so its merge commit is the one the entry records.
                     if (merged.State == EMergeQueueEntryState.Merging)
-                        await CompleteAsync(context, merged, null, ct);
+                        await CompleteAsync(context, merged, signal.Sha, ct);
                     else
                         await EndAsync(context, merged, EMergeQueueEntryState.Dequeued, "The pull request was merged outside the queue.", ct);
                 }
@@ -274,7 +275,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         {
             if (await RefusalAsync(context, entry, pull, parsed, actor, ct) is { } refusal)
             {
-                await RefuseAsync(context, entry, refusal.Code, refusal.Message, source, label, ct);
+                await RefuseAsync(context, entry, refusal.Code, refusal.Message, source, label, ct, permissionsUrl: refusal.PermissionsUrl);
                 return;
             }
         }
@@ -361,7 +362,8 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         entry.QueueCheckId = null;
     }
 
-    private sealed record Refusal(string Code, string Message);
+    /// <param name="PermissionsUrl">The installation's acceptance page, for a refusal that accepting there would lift (O17).</param>
+    private sealed record Refusal(string Code, string Message, string? PermissionsUrl = null);
 
     /// <summary>Every enqueue condition, in the order a person would want to hear about them. Null: accepted.</summary>
     private async Task<Refusal?> RefusalAsync(Context context, MergeQueueEntry entry, ForgePullRequest pull, MergeQueueYmlResult parsed, string actor, CancellationToken ct)
@@ -383,6 +385,11 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         var role = await context.Queue.GetActorRoleAsync(repository, actor, ct);
         if (role < EForgeRepositoryRole.Write)
             return new("role", $"@{actor} needs at least write access to queue a pull request (has {role.ToString().ToLowerInvariant()}).");
+
+        // §0 D95: what this configuration takes must be declared by the App and accepted by the installation before
+        // anything is pushed. Otherwise the first sign was a 403 on the regenerate dispatch after the queue branch was pushed.
+        if (await AppPermissionsRefusalAsync(context, entry, ct) is { } permissionRefusal)
+            return permissionRefusal;
         var bypass = Bypasses(role, entry.Config.BypassRole);
 
         // O3: the queue pushes the rebased commit to the fork through "Allow edits by maintainers".
@@ -464,14 +471,94 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             : $"@{author ?? "the author"} does not have write access, so an approval of commit `{Short(entry.PinnedHeadSha)}` by someone with write access is needed.");
     }
 
-    private async Task RefuseAsync(Context context, MergeQueueEntry entry, string code, string message, EMergeQueueCommandSource source, string? label, CancellationToken ct, bool permissions = false)
+    /// <summary>What a run of this configuration takes of the App (§0 D95).</summary>
+    private static EMergeQueueAppNeed NeedsOf(MergeQueueConfigSnapshot config)
+    {
+        var needs = EMergeQueueAppNeed.Core;
+        if (!string.IsNullOrEmpty(config.PostRebaseActionName) && config.PostRebaseWhen != EPostRebaseWhen.Never)
+            needs |= EMergeQueueAppNeed.Dispatch;
+        if (config.RetryFlaky > 0)
+            needs |= EMergeQueueAppNeed.RerunActions;
+        return needs;
+    }
+
+    /// <summary>
+    /// §0 D95, at enqueue. A permission or event the App itself does not declare refuses <c>app-permissions</c>: no
+    /// installation can accept it, only the App's owner can add it. A needed permission the App declares but the
+    /// installation has not accepted yet refuses <c>permission</c>, with the acceptance link. <c>workflows</c> only warns:
+    /// only a push that touches a workflow file takes it (§0 D59). Fails open: when nothing can be read, the run goes ahead
+    /// and a 403 later still evicts.
+    /// </summary>
+    private async Task<Refusal?> AppPermissionsRefusalAsync(Context context, MergeQueueEntry entry, CancellationToken ct)
+    {
+        if (PermissionSource(context) is not { } source) return null;
+        var needs = NeedsOf(entry.Config);
+
+        if (await AppGapsAsync(source, needs, ct) is { IsEmpty: false } gaps)
+            return new("app-permissions", AppGapsMessage(gaps, needs));
+
+        if (await AppGapsAsync(source, EMergeQueueAppNeed.Workflows, ct) is { IsEmpty: false } workflowGaps)
+            entry.Warnings.Add($"The App does not request {Permissions(workflowGaps.MissingPermissions)}, so a run whose rebase changes a workflow file cannot push it. "
+                + $"The App's owner adds it under Permissions & events on {SettingsLink(workflowGaps.SettingsUrl)}, then each installation accepts it.");
+
+        if (context.Account is { } account
+            && await PendingAsync(context, source, ct) is { Pending.Count: > 0 } pending
+            && SafeNeededPending(source, pending, needs) is { Count: > 0 } needed)
+            return new("permission",
+                $"The App's installation on {account.Login} has not accepted {Permissions(needed)} yet, which this repository's merge queue needs. "
+                + "Someone who manages the installation accepts the new permissions on its settings page.", pending.HtmlUrl);
+
+        return null;
+    }
+
+    private IReadOnlyList<PendingPermission> SafeNeededPending(IForgeInstallationPermissions source, PendingInstallationPermissions pending, EMergeQueueAppNeed needs)
+    {
+        try
+        {
+            return source.NeededPending(pending.Pending, needs);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Merge queue: could not tell which pending permissions the queue needs");
+            return [];
+        }
+    }
+
+    /// <summary>The words of an <c>app-permissions</c> refusal or eviction: what is missing, and who can add it where.</summary>
+    private static string AppGapsMessage(ForgeAppGaps gaps, EMergeQueueAppNeed needs)
+    {
+        var parts = new List<string>();
+        if (gaps.MissingPermissions.Count > 0)
+            parts.Add($"does not request {Permissions(gaps.MissingPermissions)}");
+        if (gaps.MissingEvents.Count > 0)
+            parts.Add($"is not subscribed to {string.Join(", ", gaps.MissingEvents.Select(e => $"\"{Words(e)}\""))}");
+        var why = needs.HasFlag(EMergeQueueAppNeed.Dispatch) || needs.HasFlag(EMergeQueueAppNeed.RerunActions)
+            ? "which this repository's merge queue needs (its `coverage.yml` dispatches a workflow or re-runs failed jobs)"
+            : "which the merge queue needs";
+        return $"The App itself {string.Join(" and ", parts)}, {why}. Accepting permissions on the installation cannot add them: "
+            + $"the App's owner adds them under Permissions & events on {SettingsLink(gaps.SettingsUrl)}, then each installation accepts them.";
+    }
+
+    private static string Permissions(IEnumerable<PendingPermission> permissions)
+        => string.Join(", ", permissions.Select(p => $"{p.DisplayName} ({p.Declared})"));
+
+    private static string SettingsLink(string? url) => url is { Length: > 0 } ? $"[the App's settings page]({url})" : "the App's settings page";
+
+    /// <summary><c>workflow_run</c> → <c>Workflow run</c>.</summary>
+    private static string Words(string name)
+    {
+        var words = name.Replace('_', ' ').Trim();
+        return words.Length == 0 ? name : char.ToUpperInvariant(words[0]) + words[1..];
+    }
+
+    private async Task RefuseAsync(Context context, MergeQueueEntry entry, string code, string message, EMergeQueueCommandSource source, string? label, CancellationToken ct, bool permissions = false, string? permissionsUrl = null)
     {
         Transition(entry, EMergeQueueEntryState.Refused, $"refused: {code}");
         entry.EvictionReason = code;
         entry.EvictionMessage = message;
         entry.FinishedAtUtc = Now;
         context.Document.Record(Outcome(entry));
-        if (permissions) entry.PermissionsUrl = await PermissionsUrlAsync(context, ct);
+        entry.PermissionsUrl = permissionsUrl ?? (permissions ? await PermissionsUrlAsync(context, ct) : null);
         await PublishCheckAsync(context, entry, ct, offer: OffersAfterRefusal(code));
 
         // The label's own removal answers a label; a comment answers everything else, the check's button included.
@@ -479,7 +566,8 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             await BestEffortAsync(() => context.Queue.RemoveLabelAsync(context.Repository, entry.Number, label ?? entry.Config.Label, ct), "remove the label");
         else
             await BestEffortAsync(() => context.Queue.PostCommentAsync(context.Repository, entry.Number,
-                $"The merge queue did not queue this pull request: {message}", ct), "comment");
+                $"The merge queue did not queue this pull request: {message}"
+                + (entry.PermissionsUrl is { } url ? $"\n\n[Accept the App's new permissions]({url})." : string.Empty), ct), "comment");
         logger.LogInformation("Merge queue: refused #{Number} in {Repository}: {Code}", entry.Number, context.Repository.FullName, code);
     }
 
@@ -1265,6 +1353,21 @@ public partial class MergeQueueEngine : IMergeQueueEngine
     private async Task CompleteAsync(Context context, MergeQueueEntry entry, string? mergeCommitSha, CancellationToken ct)
     {
         entry.MergeCommitSha = mergeCommitSha ?? entry.MergeCommitSha;
+        // §0 D94: an event without the sha still leaves the merge request to ask. Best effort: the merge happened,
+        // and nothing may keep the entry from recording it.
+        if (entry.MergeCommitSha is null && entry.MergeRequestId is { } requestId)
+        {
+            try
+            {
+                var request = await context.Queue.GetMergeRequestStatusAsync(context.Repository, entry.Number, requestId, ct);
+                if (request.State == EForgeMergeState.Merged)
+                    entry.MergeCommitSha = request.MergeCommitSha;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogWarning(ex, "Merge queue: could not read the merge commit of #{Number} in {Repository}", entry.Number, context.Repository.FullName);
+            }
+        }
         await EndAsync(context, entry, EMergeQueueEntryState.Merged, null, ct);
     }
 
@@ -1442,8 +1545,12 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         }
         catch (ForgeAccessDeniedException ex)
         {
-            await EvictAsync(context, entry, "permission",
-                $"The forge refused a call the queue needs{(ex.RequiredPermission is { } p ? $" (it asks for `{p}`)" : string.Empty)}: {ex.Message}", permissions: true, ct: ct);
+            var refused = $"The forge refused a call the queue needs{(ex.RequiredPermission is { } p ? $" (it asks for `{p}`)" : string.Empty)}: {ex.Message}";
+            // §0 D95: when the App itself lacks the permission, the acceptance link would lead to nothing to accept.
+            if (await AppLacksAsync(context, ex.RequiredPermission, ct) is { } lacking)
+                await EvictAsync(context, entry, "app-permissions", $"{refused}\n\n{lacking}", ct: ct);
+            else
+                await EvictAsync(context, entry, "permission", refused, permissions: true, ct: ct);
         }
         catch (GitWriterRefusedException ex)
         {
@@ -1777,21 +1884,66 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         }
     }
 
-    /// <summary>O17: the installation's "accept the new permissions" page, when the forge can name it.</summary>
+    /// <summary>
+    /// O17: the installation's "accept the new permissions" page, when the forge can name it and something there waits for
+    /// acceptance (§0 D96). With nothing pending the link led to a page with nothing to accept (live, 2026-10-15).
+    /// </summary>
     private async Task<string?> PermissionsUrlAsync(Context context, CancellationToken ct)
+        => PermissionSource(context) is { } source && await PendingAsync(context, source, ct) is { Pending.Count: > 0 } pending
+            ? pending.HtmlUrl
+            : null;
+
+    private IForgeInstallationPermissions? PermissionSource(Context context)
+        => permissionSources.FirstOrDefault(p => p.Provider == context.Repository.Provider);
+
+    /// <summary>The installation's pending permissions, or null; a failure never stops the queue.</summary>
+    private async Task<PendingInstallationPermissions?> PendingAsync(Context context, IForgeInstallationPermissions source, CancellationToken ct)
     {
         if (context.Account is null) return null;
-        var source = permissionSources.FirstOrDefault(p => p.Provider == context.Repository.Provider);
-        if (source is null) return null;
         try
         {
-            return (await source.GetPendingAsync(context.Account, ct))?.HtmlUrl;
+            return await source.GetPendingAsync(context.Account, ct);
         }
-        catch (Exception ex) when (ex is ForgeAccessDeniedException or ForgeRequestException or HttpRequestException)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogWarning(ex, "Merge queue: could not read the pending permissions of {Account}", context.Account.Login);
             return null;
         }
+    }
+
+    /// <summary>What the App itself lacks of <paramref name="needs"/> (§0 D95), or null; fails open.</summary>
+    private async Task<ForgeAppGaps?> AppGapsAsync(IForgeInstallationPermissions source, EMergeQueueAppNeed needs, CancellationToken ct)
+    {
+        try
+        {
+            return await source.GetAppGapsAsync(needs, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "Merge queue: could not read what the App declares");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// After a 403 (§0 D95): the words for when the permission the forge asked for is one the App itself does not
+    /// request, so the acceptance link would lead nowhere. Null when that is not so, or cannot be told.
+    /// </summary>
+    private async Task<string?> AppLacksAsync(Context context, string? requiredPermission, CancellationToken ct)
+    {
+        if (requiredPermission is null || PermissionSource(context) is not { } source) return null;
+        // GitHub's X-Accepted-GitHub-Permissions: "actions=write", several joined by commas (or semicolons).
+        var asked = requiredPermission
+            .Split([',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(p => p.Split('=')[0].Trim())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        const EMergeQueueAppNeed everything = EMergeQueueAppNeed.Core | EMergeQueueAppNeed.Dispatch | EMergeQueueAppNeed.RerunActions | EMergeQueueAppNeed.Workflows;
+        if (await AppGapsAsync(source, everything, ct) is not { } gaps) return null;
+        var lacking = gaps.MissingPermissions.Where(p => asked.Contains(p.Name)).ToList();
+        return lacking.Count == 0
+            ? null
+            : $"The App itself does not request {Permissions(lacking)}, so accepting permissions on the installation cannot fix this: "
+                + $"the App's owner adds it under Permissions & events on {SettingsLink(gaps.SettingsUrl)}, then each installation accepts it.";
     }
 
     /// <summary>The repository page, where "Details" on the check run leads; null unless the base URL is https.</summary>

@@ -191,6 +191,7 @@ public class RepositoryExistenceParityTests : CoverageRavenTest
                 async c => (await c.Get(provider, owner, name, CancellationToken.None)).Result!,
                 async c => (await c.Enqueue(provider, owner, name, 1, CancellationToken.None)).Result!,
                 async c => (await c.Dequeue(provider, owner, name, 1, CancellationToken.None)).Result!,
+                async c => (await c.Candidates(provider, owner, name, false, CancellationToken.None)).Result!,
             })
             {
                 using var session = store.OpenAsyncSession();

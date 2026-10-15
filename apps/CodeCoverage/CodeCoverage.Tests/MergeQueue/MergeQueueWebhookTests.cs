@@ -310,6 +310,21 @@ public class MergeQueueWebhookTests : CoverageRavenTest
         otherBranch.Messages.Should().BeEmpty();
     }
 
+    /// <summary>§0 D94: the merged event's merge commit rides on the signal, for an entry the event completes.</summary>
+    [Fact]
+    public async Task A_merged_pull_request_forwards_its_merge_commit()
+    {
+        using var store = GetDocumentStore();
+        await SeedAsync(store, busy: true);
+
+        var bus = await ForwardAsync(store, new PullRequestMerged(RepositoryId, 7, "feature", true, Sha));
+
+        var signal = bus.Of<MergeQueueSignalMessage>().Should().ContainSingle().Which;
+        signal.Kind.Should().Be(EMergeQueueSignal.Merged);
+        signal.Number.Should().Be(7);
+        signal.Sha.Should().Be(Sha);
+    }
+
     [Fact]
     public async Task A_command_is_always_forwarded_with_its_actor()
     {

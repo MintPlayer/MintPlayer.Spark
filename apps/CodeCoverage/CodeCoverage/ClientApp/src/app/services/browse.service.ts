@@ -136,6 +136,15 @@ export interface PendingPermission {
 export interface PendingInstallationPermissions {
   htmlUrl: string;
   pending: PendingPermission[];
+  /**
+   * What the merge queue needs that the app itself does not request (merge-queue PRD §0 D95): `declared` is the
+   * level needed, `accepted` what the app requests. No installation can accept these; the app's owner adds them.
+   */
+  missingFromApp?: PendingPermission[];
+  /** Webhook events the merge queue needs that the app is not subscribed to, as GitHub names them (`workflow_run`). */
+  missingEvents?: string[];
+  /** The app's own "Permissions & events" settings page, where its owner adds what is missing. */
+  appSettingsUrl?: string | null;
 }
 
 export interface TreeEntry {
@@ -389,6 +398,20 @@ export interface MergeQueueCommandAccepted {
   actor: string;
 }
 
+/** One pull request the queue dropdown offers: open, not a draft, on a queued branch, and not in the queue. */
+export interface MergeQueueCandidate {
+  number: number;
+  title: string;
+  baseBranch: string;
+  authorLogin: string | null;
+}
+
+/** The queue dropdown's list, newest first. `unavailable` says why it is empty when it should not be. */
+export interface MergeQueueCandidates {
+  pullRequests: MergeQueueCandidate[];
+  unavailable: string | null;
+}
+
 export function coveragePercent(summary?: CoverageSummary | null): number | null {
   if (!summary || summary.linesCoverable === 0) return null;
   return (summary.linesCovered / summary.linesCoverable) * 100;
@@ -517,6 +540,16 @@ export class BrowseService {
 
   dequeuePullRequest(provider: string, owner: string, name: string, number: number): Promise<MergeQueueCommandAccepted> {
     return firstValueFrom(this.http.delete<MergeQueueCommandAccepted>(this.mergeQueueUrl(provider, owner, name, number)));
+  }
+
+  /**
+   * The pull requests the queue button may take: open, not drafts, on a branch `coverage.yml` queues, not already queued.
+   * The server remembers the forge's answer for half a minute; `refresh` asks the forge again.
+   */
+  getQueueCandidates(provider: string, owner: string, name: string, refresh = false): Promise<MergeQueueCandidates> {
+    return firstValueFrom(this.http.get<MergeQueueCandidates>(
+      `/api/repos/${encodeURIComponent(provider)}/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/merge-queue/candidates`,
+      refresh ? { params: { refresh: 'true' } } : {}));
   }
 
   private mergeQueueUrl(provider: string, owner: string, name: string, number: number): string {

@@ -66,6 +66,43 @@ describe('AccountPermissionsNoticeComponent', () => {
     expect(link()).toBeNull();
   });
 
+  // §0 D95: what the App itself lacks cannot be accepted, so it links the App's settings page, not the installation.
+  it('says what the App itself does not request or hear, and links the App\'s settings page', async () => {
+    await create(() => Promise.resolve({
+      htmlUrl: 'https://github.com/organizations/acme/settings/installations/42',
+      pending: [],
+      missingFromApp: [
+        { name: 'actions', displayName: 'Actions', declared: 'write', accepted: null },
+        { name: 'statuses', displayName: 'Statuses', declared: 'read', accepted: null },
+      ],
+      missingEvents: ['workflow_run', 'status'],
+      appSettingsUrl: 'https://github.com/organizations/MintPlayer/settings/apps/coverage/permissions',
+    }));
+
+    const gaps = fixture.nativeElement.querySelector('[data-testid="app-permission-gaps"]') as HTMLElement | null;
+    const settings = fixture.nativeElement.querySelector('[data-testid="app-settings-link"]') as HTMLAnchorElement | null;
+    const text = (gaps?.textContent ?? '').replace(/\s+/g, ' ');
+    expect(text).toContain(
+      'The CodeCoverage App itself does not request: Actions (write), Statuses (read); and is not subscribed to: Workflow run, Status.');
+    expect(text).toContain('This cannot be accepted here');
+    expect(settings?.getAttribute('href')).toBe('https://github.com/organizations/MintPlayer/settings/apps/coverage/permissions');
+    expect(settings?.getAttribute('target')).toBe('_blank');
+    expect(fixture.nativeElement.querySelector('[data-testid="pending-permissions"]')).toBeNull();
+    expect(guideLink()?.getAttribute('href')).toBe('/merge-queue/setup?provider=github&account=acme#permissions');
+  });
+
+  it('shows both messages when permissions are pending and the App lacks others', async () => {
+    await create(() => Promise.resolve({
+      ...pending,
+      missingEvents: ['workflow_run'],
+      appSettingsUrl: 'https://github.com/settings/apps/coverage/permissions',
+    }));
+
+    expect(fixture.nativeElement.querySelector('[data-testid="pending-permissions"]')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="app-permission-gaps"]')?.textContent).toContain('is not subscribed to: Workflow run');
+    expect(fixture.nativeElement.querySelectorAll('[data-testid="merge-queue-setup-link"]').length).toBe(1);
+  });
+
   it('shows nothing when the server has nothing to say (204)', async () => {
     await create(() => Promise.resolve(null));
     expect(link()).toBeNull();
