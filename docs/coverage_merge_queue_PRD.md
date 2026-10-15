@@ -1,7 +1,7 @@
 # PRD — a conflict-resolving merge queue in CodeCoverage (rebase → auto-resolve → `postRebaseActionName` → squash)
 
 **Status (2026-10-15):** **Implemented; PR [#515](https://github.com/MintPlayer/MintPlayer.Spark/pull/515) open. The commits since its first CI run are local, for one push.**
-- The owner decisions O1–O32 and the implementation decisions D12–D96 in §0 supersede §§1–8 where they disagree. ~~**In progress: O30, the "Add to merge queue" check button.**~~ **[Built 2026-10-15: D88; O32's comment link and "Remove from queue", D89 and D90; O31's menu links and url-only hash, D91; the live test's superseded-run defect, D92. Live-tested 2026-10-15 (M10).]** **[Follow-ups after the SparkTest live run, 2026-10-15: the queue-candidates dropdown and the notice slot, D93; the merged event's merge sha, D94; the App-gap check at enqueue, D95; the acceptance link only when pending, D96.]**
+- The owner decisions O1–O34 and the implementation decisions D12–D96 in §0 supersede §§1–8 where they disagree. ~~**In progress: O30, the "Add to merge queue" check button.**~~ **[Built 2026-10-15: D88; O32's comment link and "Remove from queue", D89 and D90; O31's menu links and url-only hash, D91; the live test's superseded-run defect, D92. Live-tested 2026-10-15 (M10).]** **[Follow-ups after the SparkTest live run, 2026-10-15: the queue-candidates dropdown and the notice slot, D93; the merged event's merge sha, D94; the App-gap check at enqueue, D95; the acceptance link only when pending, D96. Proposed next: conflict resolution v2 (keep-both, validators, pluggable resolvers), O33, O34, §10.]**
 - CI runs 2 and 3 (2026-10-15) each found one test defect:
   - Linux's Chromium temp files broke the download proof (D86).
   - The po-detail spec charged a one-time render to its first test (D87).
@@ -201,6 +201,16 @@ These supersede the text below where they disagree. Superseded passages are mark
 | O32 | **The coverage comment links the queue's check, and a waiting PR's check carries a "Remove from queue" button (owner, 2026-10-15).**
 - **The link.** CodeCoverage's coverage comment gains one short line to the pull request's current "Merge queue" check: `https://github.com/{owner}/{repo}/pull/{n}/checks?check_run_id={id}`, or `…/pull/{n}/checks` when no id is known. It shows only when the default branch's `coverage.yml` turns the queue on (O16), and cites no PRD id (D72). Whether it names the queue's state is the implementer's call, justified in the D-row. **[Done in D89.]**
 - **The button.** While a pull request waits in line, the queue's check is a completed neutral run titled "Queued: #N in line" with one requested action, "Remove from queue" (`mq-dequeue`). A click is the dequeue command `/dequeue` raises, authorized and refused the same way. When its turn starts, a new in-progress run takes over, without a button. After a dequeue, "Add to merge queue" comes back (O30). **[Done in D90.]** | The owner's decision, relayed by the coordinator, 2026-10-15 ("yes, this pull-request"). O31 is reserved for the program-unit link decision. |
+| O33 | **Trivial conflicts are resolved by keeping both sides, and the result must still be valid (owner, 2026-10-15). This amends O1 for that one conflict shape.**
+- **The shape:** both sides inserted lines at the same spot and neither touched a base line. Every other conflict still evicts.
+- **The check:** the resolved file must be valid for its type, e.g. strict JSON with no duplicate member names. If not, the PR is evicted with the reason.
+- **The regenerate step** (`postRebaseActionName`) still reruns synchronize where a resolved file is regenerated, so the hashes are current after the rebase.
+- Design: §10. **[Proposed; not built.]** | Owner, 2026-10-15: "I want to have the system be capable to resolve the most trivial 'conflicts' automatically (like 2 sections in json, added at the same line => take both) + make sure the file is still correct (like json => the json must be correct after resolution)". Trigger: the SparkTest live run, where two entities sorting into the same gap of `security.json` would have evicted the second PR. |
+| O34 | **Resolvers are C# (`IConflictResolver`, registered with `[Register]`), bound to paths by `coverage.yml`, and some file types get keep-both by default (owner, 2026-10-15).**
+- A hybrid: the strategies and validators are C#; `coverage.yml` binds paths to them and can override or disable a default.
+- Lockfiles (`package-lock.json`, `packages.lock.json`, …) are in scope.
+- Prior art: ProjectDashboard's `IConflictResolver` (§10.1).
+- Design: §10. **[Proposed; open points in §10.8.]** | Owner, 2026-10-15: "perhaps we may want to do this through the coverage.yml file. Or we could do a hybrid of both, where the coverage.yml file is used as a fallback. If you were to use the IConflictResolver interface, you can/should use the RegisterAttribute"; "Some file types may use left+right resolution by default"; "package-lock.json, packages.lock.json, ... will also be very likely to cause merge-conflicts that can be resolved automatically". |
 | D77 | **(O26) Every other use of the obsolete `UseOptimisticConcurrency` now sets `OptimisticConcurrencyMode` (packages `MintPlayer.Spark.Messaging`, `.Authorization` and `.IdentityProvider`).** All 13 sites set `true`, and each now sets `OptimisticConcurrencyMode.Writes`, as D74 did. None set `false`; its equivalent would be `None`, which `RevokeFamilyAsync` already uses.
 - **The sites.**
   - Messaging: `MessageBus.cs:68` (the deduplicated broadcast's create-only store), `MessageClaims.cs:91` (`TryRenewAsync`) and `MessageSubscriptionWorker.cs:88` (the pickup). `TryClaimAsync`'s remark named the obsolete property in a cref; it now names `OptimisticConcurrencyMode.Writes`.
@@ -931,3 +941,121 @@ Each spike records its numbers or its red/green result in this file.
 - **A malicious PR or generator.** Mitigations: the config is read from base, the patch paths are validated against `regeneratedPaths`, git runs in a hardened sidecar without checkout, and the token is short-lived and scoped to one repository.
 - **Rewriting a contributor's branch.** The PR branch is rewritten into one squashed commit, and its history is lost on the branch. That is acceptable because the merge squashes anyway. The author is preserved as `GIT_AUTHOR_*`, and the other commit authors become `Co-authored-by:` trailers. Approvals may be dismissed if the repo dismisses stale approvals (S3).
 - **CI cost.** Each queued PR that auto-resolved costs one regenerate run plus one PR CI run. That is less than what a human pays today: their own rebase CI run, plus a re-run after they forget to regenerate.
+
+## 10. Conflict resolution v2: keep-both, validators, pluggable resolvers (O33, O34; proposed 2026-10-15)
+
+**Status: design only, nothing built.** It comes from three investigations on 2026-10-15: ProjectDashboard's resolvers, a catalogue of conflict-prone files across ecosystems, and an architecture pass over this codebase. The open points are in §10.8. Branch `feat/merge-queue-followups`, in the same PR as D93–D96 (one PR).
+
+### 10.1 Prior art: ProjectDashboard's `IConflictResolver`
+
+`C:\Repos\ProjectDashboard\ProjectDashboard\Service\RecordCommands\Rebase.IConflictResolver.cs`:
+- **Contract:** `ResolverId`, `CanHandle(path)`, `ResolveConflicts`, `OnRebaseStepCompleted` and `OnRebaseCompleted`.
+- **Implementations:** three (`ModelHashesResolver`, `PackagesLockResolver`, `RolesAndPermissionsResolver`). Registered with plain `AddScoped` in `Startup.cs:143-145`.
+- **Strategy:** each one blanks the generated file, then regenerates it once at the end by running the repository's own tooling (`dotnet run … --vidyano-synchronize-schema`, `dotnet restore --force-evaluate`).
+
+What we keep:
+- the small contract;
+- the "regenerate once, after the whole rebase" hook (its #204 lesson: never on a half-rebased tree);
+- dedupe by id;
+- fail-closed on unknown files and renames;
+- one predicate shared by the rebase and the "would this conflict resolve?" policy.
+
+What we leave behind:
+- **It runs the PR's code on the production host**, unsandboxed. Here the git writer never runs repository code (T5, D59); regeneration stays in the target repository's workflow.
+- No validation of a resolver's output, and no tests.
+- Placeholder `{}` commits.
+- A force push without a lease.
+- An unstaged restored `packages.lock.json`, a live bug there.
+- Paths hard-coded in C#, which would change every repository's behaviour on a deploy (O15, O16).
+
+### 10.2 What is resolvable, by file type (catalogue)
+
+| Files | Generated? | Strategy | Notes |
+|---|---|---|---|
+| Spark `modelHashes.json`, `securityPosture.txt` | generated | take-base, then regenerate (today) | aggregate hashes make any union wrong |
+| Spark `security.json`, `translations.json`, `programUnits.json`, `Model/*.json`; any hand-authored `*.json` | hand-authored | **keep-both** (O33), then regenerate re-sorts where synchronize owns the order | take-base would silently drop the PR's rights: synchronize never writes rights |
+| `package-lock.json`, `npm-shrinkwrap.json`, `yarn.lock`, `pnpm-lock.yaml`, `bun.lock`, `packages.lock.json`, `Cargo.lock`, `poetry.lock`, `uv.lock`, `composer.lock`, `Gemfile.lock`, … | generated | take-base, then regenerate the lockfile in the workflow | mature tools rebuild lockfiles, never text-merge them (Renovate, Dependabot, Composer's docs) |
+| `go.sum`, `go.work.sum` | generated line set | `line-set` (union, sorted, de-duplicated) | safe without regeneration |
+| `CHANGELOG.md`, `.gitignore`-style lists, `Directory.Packages.props`, `*.csproj` | hand-authored | keep-both (text or XML validator) | |
+
+Two findings shape the lockfile path:
+- **npm, pnpm and Yarn resolve their own lockfile conflict markers** and keep both sides' pins, where take-base re-resolves the PR's new dependencies. A preset can rebuild the three-way markers in the workflow and let the tool merge them.
+- **The regenerate run executes PR code**, so a regenerated lockfile is not what reviewers approved. A provenance check closes this: every resolved (name, version, integrity, source) must exist in the base or the PR head's lockfile.
+
+### 10.3 Architecture (hybrid, O34)
+
+- **C# owns a closed vocabulary.** It lives in `CodeCoverage.Git/MergeQueue/Resolution/`, shared by the writer and its tests, and only the writer executes it.
+  - **Resolvers:** `IConflictResolver`, with `take-base`, `keep-both`, `line-set` and `evict`. Each is pure: `(rule, path, three blobs, writer git version) → stage | bytes | refusal`.
+  - **Validators:** `IContentValidator`, with `utf8`, `json`, `json-no-duplicate-keys`, `xml` and the always-on `no-conflict-markers`.
+  - **Registration:** `[Register(typeof(IConflictResolver), ServiceLifetime.Singleton)]`, plus a name-keyed `ConflictResolverRegistry`. `CodeCoverage.Git` gains the MintPlayer.SourceGenerators references. Its 13.0.0 `[Register]` has no keyed overload, so the registry goes over `IEnumerable<>`.
+- **`coverage.yml` binds paths:** `autoResolve: - path, strategy, validate: [...], regenerate: true|false`.
+  - Explicit rules come first, first match wins. Built-in defaults follow (§10.8 #1).
+  - `strategy: evict` disables a default for one path.
+  - The default branch only (O16); the expanded rules are snapshotted per entry (O15).
+- **Parser and writer stay in lockstep.** The name sets live in `MergeQueueWireRules`, and a test asserts that the DI registry names equal them (D57).
+
+Rejected alternatives:
+- **Commands in `coverage.yml`** (merge-driver style): repository-chosen code in the writer (T5, D21).
+- **Pure C# path matching** (ProjectDashboard style): invisible, and changes behaviour on a deploy.
+- **git `merge=union`:** blocked by D21. It also duplicates modified regions, and it marks the file clean, so no regenerate run is dispatched.
+- **mergiraf (structured merge):** a GPLv3 binary parsing hostile input inside the writer. A possible later `structural` strategy behind the same seam.
+
+### 10.4 The keep-both algorithm (O33)
+
+1. **Plain diff3 regions:** `git merge-file --object-id -p --diff3 --diff-algorithm=myers ours base theirs`, never merge-tree's zdiff3. zdiff3 lifts lines both sides share (`"groupId": …`, `},`) out of the region, so two five-line rights would be glued into one object: invalid in meaning, yet syntactically valid JSON. The guard is a regression test with multi-line rights.
+2. **Refuse** on any of these:
+   - stage 1 absent (add/add);
+   - a side that is not strict UTF-8;
+   - a side with a marker-like line;
+   - any region whose base section is **not empty**.
+
+   The last one also covers appending at the end of an array or object, because the previous line gains a comma.
+3. **Output:** common text, then per region the base branch's lines followed by the PR's lines. Every byte comes from one side, and the result's diff against the base is a subset of the PR's own insertions, so it is what was reviewed.
+4. **Validate.** `no-conflict-markers` always runs, plus the rule's validators, with **inputs first**: a validator judges the output only if every side passes it. A side that already fails refuses. A failing output evicts `invalid-result`, naming the validator, the path and the position, never the content.
+5. **Write** with `hash-object -w --no-filters`. Being a pure function of the blobs keeps prepare, queue-branch push and publish identical (D65).
+
+Also new:
+- **clean-merge validation:** a path git merged cleanly but whose rule has validators is validated too, and evicts `merged-content-invalid`;
+- **post-apply validation** of the regenerate patch at publish.
+
+### 10.5 Regeneration
+
+`postRebaseActionName` is unchanged, and so is D12's blob identity check. The dispatch fires when a resolution needs regeneration (take-base always, keep-both when `regenerate: true`). A keep-both-only resolution publishes straight away, with no `mq/` push.
+
+`spark-regenerate` gains lockfile steps:
+- It derives the work from the prepared squash: `git diff --name-only HEAD^ HEAD`, a manifest changed → regenerate that directory's lockfile. No new dispatch input; an undeclared one gets a 422.
+- Commands:
+  - `npm install --package-lock-only --ignore-scripts --no-audit --no-fund`
+  - `pnpm install --lockfile-only --ignore-scripts --ignore-pnpmfile`
+  - `yarn install --mode=update-lockfile`
+  - `dotnet restore` (no `--force-evaluate`, which re-floats versions)
+- Each is followed by a second run that must change nothing.
+- The provenance check (§10.2) runs after.
+
+### 10.6 Wire and storage back-compat
+
+- **Wire:** `AutoResolveWire` gains `Strategy` (null → take-base), `Validate` and `Regenerate`. `PrepareResponse` gains `Resolutions`; when it is missing, the app assumes "everything regenerates", today's behaviour.
+- **Stored config snapshot (RavenDB):** `MergeQueueAutoResolveRule.Strategy` is an enum with `TakeBase = 0`, so stored snapshots read unchanged.
+- **Size caps per strategy:** take-base never parses (16 MiB, so a real `package-lock.json` fits); keep-both and validators 4 MiB. The publish patch cap goes from 2 to 8 MiB.
+
+### 10.7 Milestones (this PR)
+
+| M | Scope | Proof |
+|---|---|---|
+| R1 | The abstraction with no behaviour change: interfaces, registry, `[Register]`, `TakeBaseResolver`/`EvictResolver` extracted, the resolver dispatches | the existing resolver and writer tests unchanged; a golden tree-oid test; a registry-name test |
+| R2 | Validators | unit tests: duplicates at depth and escaped (`"a"` = `"\u0061"`), trailing commas, comments, DTD/XXE, depth, inputs-first |
+| R3 | keep-both | real-repository tests: one-line and **five-line** rights in one gap, JSON members in one gap, a duplicate key, a non-empty base, add/add, a marker line, CRLF, append at the end evicts, twice gives the same tree; prepare → queue-branch → publish identical |
+| R4 | `line-set`, clean-merge and post-apply validation, size caps | tests per item |
+| R5 | Wire, parser, defaults, snapshot, engine, check-run text | parser-accepts ⇒ writer-accepts; defaults masked by `evict`; an old snapshot reads take-base; keep-both alone publishes without a dispatch |
+| R6 | Lockfile regeneration and provenance in `spark-regenerate`; template and setup page | local runs recorded like S4/D35 |
+| R7 | Docs (`merge-queue.md` §2.2, §2.3, §5, §6, §8), this repository's `coverage.yml`, D-rows for each milestone | |
+
+### 10.8 Open points for the owner
+
+1. **Defaults: automatic or opt-in?**
+   - O34 asks for keep-both by default for some file types. The proposal: keep-both with `json-no-duplicate-keys` on `**/*.json` applies **automatically** in every repository whose queue is on. The validators and CI make it safe; `strategy: evict` turns it off for a path.
+   - Lockfile take-base defaults stay **opt-in** (`autoResolveDefaults: [npm, nuget, …]`). They are useless without a regenerate step that knows the ecosystem, and the parser refuses take-base without one.
+   - The counter-argument recorded by the architecture pass: an automatic default widens what the bot merges in every repository on a CodeCoverage deploy (O15, O16).
+2. **npm, pnpm and Yarn: plain take-base** (simpler; the PR's new dependencies get re-resolved), **or rebuild the markers** and let the package manager merge them (keeps both sides' pins)?
+3. **The provenance check:** in this PR (recommended), or none?
+4. **`resolverVersion`:** when the writer image (git version) changes mid-run, restart the entry instead of evicting it `prepared-differs`?
