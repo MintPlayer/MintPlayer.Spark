@@ -338,6 +338,15 @@ public class ConstructionRightsTests(ConstructionRightsTests.Host host)
         query.Columns.Should().BeEmpty();
     }
 
+    [Fact]
+    public async Task Query_metadata_drops_the_hidden_attribute_from_column_order_in_both_forms()
+    {
+        // #284 R4: a "!Name" entry says the attribute exists as surely as a plain one.
+        var query = await Client.GetQueryAsync(VaultsQueryId);
+
+        query!.ColumnOrder.Should().Equal("Name", "Note");
+    }
+
     // ---- construction (PRD §7 acceptance) -----------------------------------------------------------
 
     [Fact]
@@ -610,6 +619,8 @@ public class ConstructionRightsTests(ConstructionRightsTests.Host host)
                 EntityType = "CanaryVault",
                 SortColumns = [new SortColumn { Property = CanaryName }],
                 Columns = [new SparkQueryColumn { Name = CanaryName, CanSort = true }],
+                // #284: the hidden attribute in both forms, between names the caller may see.
+                ColumnOrder = ["Name", CanaryName, "Note", "!" + CanaryName],
             },
         ],
     };

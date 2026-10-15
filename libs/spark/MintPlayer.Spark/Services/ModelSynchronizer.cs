@@ -39,6 +39,9 @@ internal partial class ModelSynchronizer : IModelSynchronizer
     /// <summary>The library model types (composition D6): never copied into the application, only their delta written.</summary>
     private Dictionary<string, (string Library, SparkJsonObject Layer)> libraryTypes = new(StringComparer.Ordinal);
 
+    /// <summary>Each library query's own <c>columnOrder</c> (#284 D16): a list the application has not changed is left to its library.</summary>
+    private IReadOnlyDictionary<string, string[]> libraryColumnOrders = new Dictionary<string, string[]>(StringComparer.Ordinal);
+
     /// <summary>The libraries whose model layers the run composes; <see langword="null"/>: the process's (<see cref="SparkLayerCatalog"/>). Set by tests.</summary>
     internal IReadOnlyList<SparkLibrary>? Libraries { get; init; }
 
@@ -66,6 +69,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
 
         // Load existing entity types and their inline queries: the composed model, library types included
         libraryTypes = LoadLibraryTypes();
+        libraryColumnOrders = ColumnOrderMaintenance.LibraryColumnOrders(Libraries ?? SparkLayerCatalog.Libraries);
         var (existingEntityTypes, existingQueries) = LoadExistingEntityTypeFiles();
 
         // Find all IRavenQueryable<T> properties on the SparkContext
@@ -188,6 +192,9 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                 // else: authored binding to a known non-default index — preserved verbatim.
             }
 
+            // After the bindings above settle: D10 reads a query's index to decide how an append is written.
+            MaintainColumnOrders(entityTypeDef, queriesForType);
+
             // One default query per context property exposing this type, under the name and alias planned for it.
             foreach (var property in group.Select(x => x.Property))
             {
@@ -275,6 +282,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             ApplyRendererSeeds(entityTypeDef, satelliteType);
 
             var satelliteQueries = satelliteQueriesByType[satelliteType];
+            MaintainColumnOrders(entityTypeDef, satelliteQueries);
             if (satellite.Query is { } minted
                 && satelliteQueryPlans.TryGetValue(satelliteType, out var plan) && plan.Existing is null)
             {
@@ -333,6 +341,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
 
             // Preserve any existing inline queries for this embedded type
             var embeddedQueries = CollectQueriesFor(existingQueries, embeddedType.Name).ToArray();
+            MaintainColumnOrders(entityTypeDef, embeddedQueries);
 
             var fileName = Path.Combine(modelPath, $"{embeddedType.Name}.json");
             var entityTypeFile = new EntityTypeFile
@@ -653,6 +662,25 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Keeps each existing <c>columnOrder</c> over <paramref name="rowType"/> complete and alive (#284 R5,
+    /// <see cref="ColumnOrderMaintenance"/>), with a console note per change. A null list is never created
+    /// (D4), and a list its library owns is left alone (D16).
+    /// </summary>
+    private void MaintainColumnOrders(EntityTypeDefinition rowType, IEnumerable<SparkQuery> queries)
+    {
+        foreach (var query in queries)
+        {
+            if (ColumnOrderMaintenance.IsLibraryOwned(query, libraryColumnOrders)
+                || ColumnOrderMaintenance.Maintain(rowType, query, indexCatalog) is not { } maintained)
+                continue;
+
+            query.ColumnOrder = maintained.ColumnOrder;
+            foreach (var change in maintained.Changes)
+                Console.WriteLine(change.Note(query.Name));
+        }
     }
 
     /// <summary>

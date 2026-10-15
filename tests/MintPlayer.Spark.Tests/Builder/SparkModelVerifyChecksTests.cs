@@ -232,6 +232,118 @@ public class SparkModelVerifyChecksTests
         reported.Should().Contain("VerifyColumnProbe.GetVerifyColumnProbes: " + expected);
     }
 
+    // --- columnOrder (#284, R6) ---------------------------------------------
+
+    private static JsonObject ColumnOrderQuery(params string[] columnOrder)
+    {
+        var query = Query("GetVerifyColumnOrderProbes", "Database.VerifyColumnOrderProbes");
+        query["columnOrder"] = new JsonArray([.. columnOrder.Select(c => (JsonNode)JsonValue.Create(c)!)]);
+        return query;
+    }
+
+    [Theory]
+    [InlineData(new[] { "Title", "Title" }, "columnOrder lists 'Title' more than once")]
+    [InlineData(new[] { "Title", "!title" }, "columnOrder lists 'Title' both plain and hidden ('!Title')")]
+    [InlineData(new[] { "", "Title" }, "columnOrder has an empty entry")]
+    [InlineData(new[] { "!", "Title" }, "columnOrder has a bare '!'")]
+    public void A_malformed_column_order_exits_3(string[] columnOrder, string expected)
+    {
+        using var scratch = new ScratchContentRoot();
+
+        var (exitCode, reported) = VerifyWith(scratch, () =>
+            Plant(scratch, "VerifyColumnOrderProbe", [Attribute("Title")], [ColumnOrderQuery(columnOrder)]));
+
+        exitCode.Should().Be(3);
+        reported.Should().Contain("query columnOrder lists that are malformed or out of date");
+        reported.Should().Contain("VerifyColumnOrderProbe.GetVerifyColumnOrderProbes: " + expected);
+        reported.Should().Contain(HashUnchanged);
+    }
+
+    [Fact]
+    public void A_column_order_synchronize_would_change_exits_3()
+    {
+        // Drift: the list is outside the hash (D7), so the hash still matches, and only this check sees that
+        // synchronize would remove the dead name and append the unlisted surface attribute.
+        using var scratch = new ScratchContentRoot();
+        var root = Synchronized(scratch);
+        var file = SyncProbeFile(root);
+        file["queries"]![0]!["columnOrder"] = new JsonArray("Gone");
+        File.WriteAllText(Path.Combine(root, "App_Data", "Model", "SyncProbe.json"), file.ToJsonString());
+
+        var (exitCode, reported) = SparkExtensionsTests.Verify(scratch);
+
+        exitCode.Should().Be(3);
+        reported.Should().Contain("columnOrder drift: synchronize would remove 'Gone': no attribute has that name");
+        reported.Should().Contain("columnOrder drift: synchronize would append 'Name'");
+        reported.Should().Contain(HashUnchanged);
+    }
+
+    [Fact]
+    public void A_synchronized_column_order_verifies()
+    {
+        using var scratch = new ScratchContentRoot();
+        var root = Synchronized(scratch);
+        var file = SyncProbeFile(root);
+        file["queries"]![0]!["columnOrder"] = new JsonArray("Gone");
+        File.WriteAllText(Path.Combine(root, "App_Data", "Model", "SyncProbe.json"), file.ToJsonString());
+        Synchronized(scratch);
+
+        var (exitCode, reported) = SparkExtensionsTests.Verify(scratch);
+
+        exitCode.Should().Be(0, reported);
+        SyncProbeFile(root)["queries"]![0]!["columnOrder"]!.AsArray().Select(c => c!.GetValue<string>()).Should().Equal("Name");
+    }
+
+    [Fact]
+    public void A_column_order_entry_off_the_query_surface_warns_but_verifies()
+    {
+        using var scratch = new ScratchContentRoot();
+
+        var (exitCode, reported) = VerifyWith(scratch, () =>
+            Plant(scratch, "VerifyColumnOrderProbe",
+                [Attribute("Title"), Attribute("Secret", showedOn: "PersistentObject")],
+                [ColumnOrderQuery("Title", "Secret")]));
+
+        exitCode.Should().Be(0, reported);
+        reported.Should().Contain("Spark model warning: query columns that a grid ignores or cannot fill");
+        reported.Should().Contain("VerifyColumnOrderProbe.GetVerifyColumnOrderProbes: columnOrder lists 'Secret', which is showedOn 'PersistentObject'");
+    }
+
+    [Fact]
+    public void A_renderer_reading_a_column_the_query_hides_warns_but_verifies()
+    {
+        // D13: the hidden column's value is not shipped (#264 G-Q4), so the renderer reads nothing.
+        using var scratch = new ScratchContentRoot();
+        var title = Attribute("Title");
+        title["rendererOptions"] = new JsonObject { ["titleAttribute"] = "Summary", ["mode"] = "Summary" };
+
+        var (exitCode, reported) = VerifyWith(scratch, () =>
+            Plant(scratch, "VerifyColumnOrderProbe",
+                [title, Attribute("Summary")],
+                [ColumnOrderQuery("Title", "!Summary")]));
+
+        exitCode.Should().Be(0, reported);
+        reported.Should().Contain("VerifyColumnOrderProbe.GetVerifyColumnOrderProbes: column 'Title' renderer option 'titleAttribute' "
+            + "reads 'Summary', which this query hides with columnOrder");
+        reported.Should().NotContain("renderer option 'mode'", "only a key ending in Attribute names a sibling");
+    }
+
+    [Fact]
+    public void A_renderer_reading_a_drawn_column_does_not_warn()
+    {
+        using var scratch = new ScratchContentRoot();
+        var title = Attribute("Title");
+        title["rendererOptions"] = new JsonObject { ["titleAttribute"] = "Summary" };
+
+        var (exitCode, reported) = VerifyWith(scratch, () =>
+            Plant(scratch, "VerifyColumnOrderProbe",
+                [title, Attribute("Summary")],
+                [ColumnOrderQuery("Summary", "Title")]));
+
+        exitCode.Should().Be(0, reported);
+        reported.Should().NotContain("renderer option");
+    }
+
     // --- Custom.* sources ------------------------------------------------
 
     [Theory]

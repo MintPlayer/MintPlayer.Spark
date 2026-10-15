@@ -18,7 +18,8 @@ internal static class QueryResultProjector
 {
     /// <summary>
     /// The columns of a query over <paramref name="definition"/>: the visible attributes flagged for
-    /// the query surface, in declared order.
+    /// the query surface, in declared order — or in the order the query's <c>columnOrder</c> draws them
+    /// (#284), which can also hide some.
     /// </summary>
     /// <remarks>
     /// This rule used to live in the client (<c>visibleGridAttributes</c>), which meant the server
@@ -27,8 +28,9 @@ internal static class QueryResultProjector
     /// server and client now derive the query surface from the same place.
     /// </remarks>
     /// <param name="query">
-    /// The query being executed, for its sparse per-column capability overrides (#431). Null resolves
-    /// every capability from the attribute alone, which is what a caller with no query in hand wants.
+    /// The query being executed, for its sparse per-column capability overrides (#431) and its
+    /// <c>columnOrder</c> (#284). Null resolves every capability from the attribute alone and draws the
+    /// whole surface by <c>order</c>, which is what a caller with no query in hand wants.
     /// </param>
     /// <param name="sortType">
     /// The type the query's rows are shaped by — an index's projection when one is bound, otherwise
@@ -51,13 +53,12 @@ internal static class QueryResultProjector
     public static IReadOnlyList<QueryColumn> BuildColumns(
         EntityTypeDefinition definition, SparkQuery? query = null, Type? sortType = null,
         IReadOnlySet<string>? indexedFields = null)
-        => [.. definition.Attributes
+        => [.. ApplyColumnOrder(definition.Attributes
             // ⚠️ ShowedOn ALONE decides what ships, and every column that ships is drawn (#264,
             // G-Q4: no ship-but-don't-draw). It is the same predicate the sort allow-list uses, so a
             // sortable attribute always has a column. Per-caller redaction is unaffected — it nulls
             // values on the row, never on this definition.
-            .Where(a => a.ShowedOn.HasFlag(EShowedOn.Query))
-            .OrderBy(a => a.Order)
+            .Where(a => a.ShowedOn.HasFlag(EShowedOn.Query)), query?.ColumnOrder)
             .Select(a => new QueryColumn
             {
                 Name = a.Name,
@@ -76,6 +77,40 @@ internal static class QueryResultProjector
                 Renderer = a.Renderer,
                 RendererOptions = a.RendererOptions,
             })];
+
+    /// <summary>
+    /// The query surface in the order the query's <see cref="SparkQuery.ColumnOrder"/> draws it (#284,
+    /// D8): listed visible entries first in list order, <c>!</c>-hidden entries dropped, and every
+    /// surface attribute the list does not mention appended by (<c>order</c>, name).
+    /// </summary>
+    /// <remarks>
+    /// Only ever narrows and reorders: an entry naming something off <paramref name="surface"/> (a
+    /// PO-only attribute, a rights-denied one, a typo) matches nothing and is ignored, so the list can
+    /// never surface a column. The append rule is the synchronizer's, so the grid is the same before
+    /// and after a sync fills the list in. Without a list the surface keeps today's stable sort by
+    /// <c>order</c> alone, byte for byte.
+    /// </remarks>
+    private static IEnumerable<EntityAttributeDefinition> ApplyColumnOrder(
+        IEnumerable<EntityAttributeDefinition> surface, string[]? columnOrder)
+    {
+        if (columnOrder is null)
+            return surface.OrderBy(a => a.Order);
+
+        var remaining = surface.ToList();
+        var ordered = new List<EntityAttributeDefinition>(remaining.Count);
+        foreach (var entry in ColumnOrderEntry.ParseAll(columnOrder))
+        {
+            var index = remaining.FindIndex(a => string.Equals(a.Name, entry.Name, StringComparison.OrdinalIgnoreCase));
+            if (index < 0) continue;
+
+            if (!entry.Hidden)
+                ordered.Add(remaining[index]);
+            remaining.RemoveAt(index);
+        }
+
+        ordered.AddRange(remaining.OrderBy(a => a.Order).ThenBy(a => a.Name, StringComparer.Ordinal));
+        return ordered;
+    }
 
     /// <summary>
     /// Whether the query's row shape actually carries this attribute, resolved exactly as the sort

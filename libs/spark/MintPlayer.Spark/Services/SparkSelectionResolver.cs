@@ -103,9 +103,11 @@ internal sealed partial class SparkSelectionResolver : ISparkSelectionResolver
             // Row-gated by the batched load itself (collection guard, Read row rule, redaction).
             var loaded = await databaseAccess.GetPersistentObjectsByIdAsync(entityType.Id, ids);
             // The caller's query surface, as a re-run query would have used (#264, G4): a Query-denied
-            // attribute is neither a column nor a value in these rows.
+            // attribute is neither a column nor a value in these rows. The query too (#284 D15): these
+            // rows become a custom action's SelectedItems, so their Values follow its columnOrder exactly
+            // as the re-run branch above does.
             var surface = await attributeRights.ForQueryAsync(entityType, cancellationToken);
-            var columns = QueryResultProjector.BuildColumns(surface);
+            var columns = QueryResultProjector.BuildColumns(surface, query);
             rows = QueryResultProjector.ToItems(
                 RowSecurityGate.SecuredRows.FromRowGatedLoad([.. loaded]), columns, $"Selection '{entityType.Name}'");
         }

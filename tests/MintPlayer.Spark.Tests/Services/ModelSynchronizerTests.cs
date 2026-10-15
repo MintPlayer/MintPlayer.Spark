@@ -981,6 +981,139 @@ public sealed class ModelSynchronizerTests : IDisposable
             "a [Reference] attribute's query has a derivation source and is structural — it re-derives");
     }
 
+    // --- #284: per-query columnOrder maintenance ---
+
+    private void SetColumnOrder(string entityName, string queryName, params string[] columnOrder)
+    {
+        var path = ModelFile(entityName);
+        var root = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!;
+        var query = root["queries"]!.AsArray().Single(q => q!["name"]!.GetValue<string>() == queryName)!;
+        query["columnOrder"] = new System.Text.Json.Nodes.JsonArray([.. columnOrder.Select(c => (System.Text.Json.Nodes.JsonNode)System.Text.Json.Nodes.JsonValue.Create(c)!)]);
+        File.WriteAllText(path, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+    }
+
+    private void SetAttributeOrder(string entityName, string attributeName, int order)
+    {
+        var path = ModelFile(entityName);
+        var root = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!;
+        var attr = root["persistentObject"]!["attributes"]!.AsArray().Single(a => a!["name"]!.GetValue<string>() == attributeName)!;
+        attr["order"] = order;
+        File.WriteAllText(path, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+    }
+
+    private string[]? ColumnOrderOf(string entityName, string queryName)
+        => Read<EntityTypeFile>(ModelFile(entityName)).Queries.Single(q => q.Name == queryName).ColumnOrder;
+
+    private static string CapturingConsole(Action action)
+    {
+        var original = Console.Out;
+        using var writer = new StringWriter();
+        Console.SetOut(writer);
+        try
+        {
+            action();
+        }
+        finally
+        {
+            Console.SetOut(original);
+        }
+        return writer.ToString();
+    }
+
+    [Fact]
+    public void Column_order_gets_the_unlisted_surface_attributes_appended_by_order_then_name()
+    {
+        var sync = CreateSynchronizer();
+        sync.SynchronizeModels(typeof(SinglePersonContext));
+        // Age ties FirstName on order: the name breaks the tie, so Age comes first.
+        var firstNameOrder = ReadAttribute("MS_TestPerson", "FirstName").Order;
+        SetAttributeOrder("MS_TestPerson", "Age", firstNameOrder);
+        SetColumnOrder("MS_TestPerson", "GetPeople", "LastName");
+
+        var output = CapturingConsole(() => sync.SynchronizeModels(typeof(SinglePersonContext)));
+
+        ColumnOrderOf("MS_TestPerson", "GetPeople").Should().Equal("LastName", "Age", "FirstName");
+        output.Should().Contain("Appended column 'Age' to columnOrder of query 'GetPeople'.");
+        output.Should().Contain("Appended column 'FirstName' to columnOrder of query 'GetPeople'.");
+    }
+
+    [Fact]
+    public void Column_order_loses_a_name_no_attribute_has()
+    {
+        var sync = CreateSynchronizer();
+        sync.SynchronizeModels(typeof(SinglePersonContext));
+        SetColumnOrder("MS_TestPerson", "GetPeople", "LastName", "Nickname", "FirstName", "!Ghost", "Age");
+
+        var output = CapturingConsole(() => sync.SynchronizeModels(typeof(SinglePersonContext)));
+
+        ColumnOrderOf("MS_TestPerson", "GetPeople").Should().Equal("LastName", "FirstName", "Age");
+        output.Should().Contain("Removed column 'Nickname' from columnOrder of query 'GetPeople': no attribute named 'Nickname' exists.");
+        output.Should().Contain("Removed column 'Ghost' from columnOrder of query 'GetPeople'");
+    }
+
+    [Fact]
+    public void Column_order_keeps_an_entry_for_an_attribute_off_the_query_surface()
+    {
+        // D5: when FirstName regains Query it comes back in the same place.
+        var sync = CreateSynchronizer();
+        sync.SynchronizeModels(typeof(SinglePersonContext));
+        TamperShowedOn("MS_TestPerson", "FirstName", "PersistentObject");
+        SetColumnOrder("MS_TestPerson", "GetPeople", "Age", "FirstName", "LastName");
+
+        sync.SynchronizeModels(typeof(SinglePersonContext));
+
+        ColumnOrderOf("MS_TestPerson", "GetPeople").Should().Equal("Age", "FirstName", "LastName");
+    }
+
+    [Fact]
+    public void Column_order_keeps_its_hidden_markers_and_their_places()
+    {
+        var sync = CreateSynchronizer();
+        sync.SynchronizeModels(typeof(SinglePersonContext));
+        SetColumnOrder("MS_TestPerson", "GetPeople", "LastName", "!Age", "FirstName");
+
+        var output = CapturingConsole(() => sync.SynchronizeModels(typeof(SinglePersonContext)));
+
+        ColumnOrderOf("MS_TestPerson", "GetPeople").Should().Equal("LastName", "!Age", "FirstName");
+        output.Should().NotContain("columnOrder");
+    }
+
+    [Fact]
+    public void A_query_without_a_column_order_is_never_given_one()
+    {
+        // D4: opt-in. Writing the list into every query would churn every model file.
+        var sync = CreateSynchronizer();
+        sync.SynchronizeModels(typeof(SinglePersonContext));
+        sync.SynchronizeModels(typeof(SinglePersonContext));
+
+        ColumnOrderOf("MS_TestPerson", "GetPeople").Should().BeNull();
+        File.ReadAllText(ModelFile("MS_TestPerson")).Should().NotContain("columnOrder");
+    }
+
+    [Fact]
+    public void Column_order_hides_an_appended_attribute_a_non_default_bound_index_does_not_back()
+    {
+        // D10/S2: the query reads Books_Lean, whose projection has no Title. Drawing Title would draw a
+        // null-filled column, so it is appended hidden; AuthorName is backed and stays as listed.
+        RegisterBookProjection(typeof(MS_ProjectedBookView));
+        _indexCatalog.GetByIndexName("Books_Lean").Returns(new IndexCatalogEntry
+        {
+            IndexName = "Books_Lean",
+            IndexType = typeof(MS_ProjectedBook),
+            CollectionType = typeof(MS_ProjectedBook),
+            ProjectionType = typeof(MS_ProjectedBookViewWithoutTitle),
+        });
+        var sync = CreateSynchronizer();
+        sync.SynchronizeModels(typeof(ProjectedBookContext));
+        TamperQuery("MS_ProjectedBook", "GetBooks", "indexName", "Books_Lean");
+        SetColumnOrder("MS_ProjectedBook", "GetBooks", "AuthorName");
+
+        var output = CapturingConsole(() => sync.SynchronizeModels(typeof(ProjectedBookContext)));
+
+        ColumnOrderOf("MS_ProjectedBook", "GetBooks").Should().Equal("AuthorName", "!Title");
+        output.Should().Contain("Appended column '!Title' to columnOrder of query 'GetBooks': index 'Books_Lean' does not back it");
+    }
+
     // --- #276: SparkQuery source staleness after a context property rename ---
 
     private void TamperQuery(string entityName, string queryName, string field, string? value)
