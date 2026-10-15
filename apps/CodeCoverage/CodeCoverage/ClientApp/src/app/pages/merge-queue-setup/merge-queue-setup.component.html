@@ -284,7 +284,7 @@
               page can override each one. Only the owner can change them; everyone who can see the organization can
               read them.
               @if (account(); as a) {
-                <a [routerLink]="['/', a.provider, 'a', a.login]" data-testid="mq-setup-account-link">Open {{ a.login }}'s organization page</a>.
+                <a [routerLink]="['/', a.provider, 'a', a.login]" data-testid="mq-setup-account-link">Open {{ a.login }}'s CodeCoverage page</a>.
               }
             </p>
             <dl>
