@@ -5,9 +5,8 @@ PRD: [issue_284_PRD.md](issue_284_PRD.md). Baseline: master `a401c9e7`.
 ## Status
 
 **Done. Merged 2026-10-15 as PR #518 (squash `3d78c584`), CI green on its head `c63aeedf`.**
-M0–M8 are as described below. M9 ran differently from the plan (see M9). Two items are still open:
-- the editor note for D11, because the `vscode-extension` branch is not active;
-- the sync/verify check on Fleet, QnA, SparkId and SeoTester.
+M0–M8 are as described below. M9 ran differently from the plan (see M9). One item is still open: the
+editor note for D11, because the `vscode-extension` branch is not active.
 
 #284 was closed by hand, because the merge queue's merge did not trigger GitHub's linked-issue
 auto-close. The fix is `docs/coverage_merge_queue_PRD.md` D106.
@@ -101,4 +100,4 @@ auto-close. The fix is `docs/coverage_merge_queue_PRD.md` D106.
   - The owner then ruled out tests on this machine, so CI was the sweep: PR #518 was green on every job.
 - **Synchronize twice + verify: run on CodeCoverage, HR and DemoApp.** The second run wrote nothing, and verify exited 0.
   - CodeCoverage's only warnings are the known D13 ones (`Commit.Sha` `titleAttribute: "Message"`).
-  - Fleet, QnA, SparkId and SeoTester were not run.
+  - Fleet, QnA, SparkId and SeoTester were not run locally. They are covered by CI: `pull-request.yml`'s "Verify Spark models are in sync" step runs `--spark-verify-model` on all seven apps, exits 3 on drift (that is, when a synchronize would write something), and passed on #518.
