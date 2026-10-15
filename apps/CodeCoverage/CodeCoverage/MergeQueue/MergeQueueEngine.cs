@@ -153,7 +153,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
 
             case EMergeQueueSignal.RunCompleted when signal.RunId is { } runId:
                 foreach (var entry in await LoadCurrentEntriesAsync(context, ct))
-                    if (entry.State == EMergeQueueEntryState.Regenerating && entry.DispatchRunId == runId)
+                    if (entry.State == EMergeQueueEntryState.Regenerating && entry.PendingDispatch()?.RunId == runId)
                         await GuardedAsync(context, entry, EMergeQueueStep.PollRun, () => OnRunAsync(context, entry, fromPoll: false, ct), ct);
                 break;
 
@@ -181,6 +181,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
 
         var entry = await session.LoadAsync<MergeQueueEntry>(step.EntryId, ct);
         if (entry is null) return;
+        entry.UpgradeLegacyDispatch();
         if (await LoadContextAsync(entry.Repository, create: false, ct) is not { } context) return;
 
         if (step.Step == EMergeQueueStep.Cleanup)
@@ -334,9 +335,10 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         entry.BaseChangedWorkflows = false;
         entry.WorkflowPaths = [];
         entry.WorkflowGuardBypassed = false;
-        entry.DispatchRunId = null;
-        entry.DispatchRunUrl = null;
-        entry.DispatchRunFinished = false;
+        entry.Dispatches = [];
+        entry.RegenerateWorkflows = [];
+        entry.Resolutions = null;
+        entry.ResolverVersion = null;
         entry.FinalSha = null;
         entry.DirectMerge = false;
         entry.RequiredChecks = [];
@@ -475,7 +477,8 @@ public partial class MergeQueueEngine : IMergeQueueEngine
     private static EMergeQueueAppNeed NeedsOf(MergeQueueConfigSnapshot config)
     {
         var needs = EMergeQueueAppNeed.Core;
-        if (!string.IsNullOrEmpty(config.PostRebaseActionName) && config.PostRebaseWhen != EPostRebaseWhen.Never)
+        // O36: a rule's own action needs the dispatch as much as postRebaseActionName does.
+        if (config.PostRebaseWhen != EPostRebaseWhen.Never && (!string.IsNullOrEmpty(config.PostRebaseActionName) || config.AutoResolve.Any(r => r.Action is not null)))
             needs |= EMergeQueueAppNeed.Dispatch;
         if (config.RetryFlaky > 0)
             needs |= EMergeQueueAppNeed.RerunActions;
@@ -697,6 +700,14 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                 entry.BaseSha = result.BaseSha ?? baseSha;
                 entry.PreparedSha = prepared;
                 entry.ResolvedPaths = [.. result.ResolvedPaths];
+                // §10.6: how each path was resolved; an older writer says nothing, and every resolved path regenerates.
+                entry.Resolutions = result.Resolutions is { } resolutions
+                    ? [.. resolutions.Select(r => new MergeQueueResolution { Path = r.Path, Strategy = r.Strategy, Regenerate = r.Regenerate, Rule = r.Rule })]
+                    : null;
+                entry.ResolverVersion = result.ResolverVersion;
+                // O36: the workflows the resolutions need, dispatched one after the other on the same queue commit.
+                entry.RegenerateWorkflows = [.. MergeQueueWorkflowGuard.RegenerateWorkflows(entry.Config, entry.Resolutions, entry.ResolvedPaths)];
+                entry.Dispatches = [];
                 entry.BaseChangedWorkflows = result.BaseChangedWorkflows;
                 entry.WorkflowPaths = result.TouchesWorkflows ? [.. result.Paths] : [];
                 Remember(entry, prepared);
@@ -705,12 +716,13 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                 var bypass = result.TouchesWorkflows && !entry.IsFork
                     && Bypasses(await context.Queue.GetActorRoleAsync(repository, entry.EnqueuedBy, ct), entry.Config.BypassRole);
                 // §0 D63, D67: whether to dispatch is decided in one place, together with what a .github/** change may do.
-                var plan = MergeQueueWorkflowGuard.AfterPrepare(entry.Config, entry.ResolvedPaths.Count, result.TouchesWorkflows, entry.IsFork, bypass);
+                var plan = MergeQueueWorkflowGuard.AfterPrepare(entry.RegenerateWorkflows, result.TouchesWorkflows, entry.IsFork, bypass);
                 entry.WorkflowGuardBypassed = plan == EMergeQueuePlan.Dispatch && result.TouchesWorkflows;
                 switch (plan)
                 {
                     case EMergeQueuePlan.Dispatch:
-                        Transition(entry, EMergeQueueEntryState.Preparing, $"prepared {Short(prepared)} on {Short(entry.BaseSha)}; regenerating {entry.ResolvedPaths.Count} resolved path(s)"
+                        Transition(entry, EMergeQueueEntryState.Preparing, $"prepared {Short(prepared)} on {Short(entry.BaseSha)}; regenerating {entry.ResolvedPaths.Count} resolved path(s) with "
+                            + string.Join(", ", entry.RegenerateWorkflows)
                             + (entry.WorkflowGuardBypassed ? $"; its .github/** change runs with them because @{entry.EnqueuedBy} has the bypass role" : string.Empty));
                         await ScheduleAsync(entry, EMergeQueueStep.Dispatch, null, ct);
                         break;
@@ -760,7 +772,14 @@ public partial class MergeQueueEngine : IMergeQueueEngine
     /// </summary>
     private Task EvictWriterAsync(Context context, MergeQueueEntry entry, string? reason, string? detail, IReadOnlyList<string> paths, CancellationToken ct)
         => EvictAsync(context, entry, reason ?? "conflict",
-            $"Rebasing onto `{entry.BaseBranch}` conflicts in files the queue may not resolve ({reason}). Rebase it onto `{entry.BaseBranch}` by hand."
+            reason switch
+            {
+                "resolver-refused" => $"Rebasing onto `{entry.BaseBranch}` conflicts in a way its auto-resolve strategy does not resolve: only lines both sides inserted at the same place are kept both. Rebase it onto `{entry.BaseBranch}` by hand.",
+                "invalid-side" => $"Rebasing onto `{entry.BaseBranch}` conflicts in a file that is already not valid for its type on one side, so the queue does not resolve it. Fix the file, or rebase it onto `{entry.BaseBranch}` by hand.",
+                "invalid-result" => $"Rebasing onto `{entry.BaseBranch}` conflicts, and keeping both sides would leave a file that is not valid for its type (for example a name both sides added). Rebase it onto `{entry.BaseBranch}` by hand.",
+                "merged-content-invalid" => $"Rebasing onto `{entry.BaseBranch}` merged a file without a conflict, but the merged file is not valid for its type (for example a name both sides added). Rebase it onto `{entry.BaseBranch}` by hand.",
+                _ => $"Rebasing onto `{entry.BaseBranch}` conflicts in files the queue may not resolve ({reason}). Rebase it onto `{entry.BaseBranch}` by hand.",
+            }
             + (detail is { Length: > 0 } text ? $"\n\n{text}" : string.Empty),
             paths, ct: ct);
 
@@ -794,9 +813,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             BaseSha: baseSha,
             HeadRef: PullHeadRef(entry),
             HeadSha: entry.ExpectedHeadSha,
-            AutoResolve: [.. entry.Config.AutoResolve.Select(r => r.Keys.Count == 0
-                ? new GitWriterAutoResolve(r.Path, AnyLine: true)
-                : new GitWriterAutoResolve(r.Path, r.Keys))],
+            AutoResolve: [.. entry.Config.AutoResolve.Select(GitWriterAutoResolve.From)],
             Author: new GitWriterIdentity(login, options.Value.AuthorEmailFormat.Replace("{login}", login, StringComparison.Ordinal), date),
             Committer: new GitWriterIdentity(options.Value.CommitterName, options.Value.CommitterEmail, date),
             Message: CommitMessage(entry));
@@ -846,9 +863,8 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         await AbandonRunAsync(entry, ct);
         entry.FinalSha = null;
         entry.DirectMerge = false;
-        entry.DispatchRunId = null;
-        entry.DispatchRunUrl = null;
-        entry.DispatchRunFinished = false;
+        entry.Dispatches = [];
+        entry.RegenerateWorkflows = [];
         entry.MergeRequestId = null;
         entry.CheckRetries = 0;
         entry.HeadModifiedRetries = 0;
@@ -859,54 +875,29 @@ public partial class MergeQueueEngine : IMergeQueueEngine
 
     // ═══ Step 2: regenerate (D12, D14) ═══════════════════════════════════════════════════════════════
 
+    /// <summary>
+    /// Dispatches the next regenerate workflow of <see cref="MergeQueueEntry.RegenerateWorkflows"/> (O36: one after the
+    /// other, each on the same queue commit with the same <c>expected_sha</c>, so a later run never sees an earlier run's
+    /// patch). Before the first: the fork precondition over every workflow that will run, the queue-branch push, and D12's
+    /// identity check of every workflow file. A document from before O36 plans <c>postRebaseActionName</c> alone.
+    /// </summary>
     private async Task DispatchAsync(Context context, MergeQueueEntry entry, CancellationToken ct)
     {
         var repository = context.Repository;
-        var file = entry.Config.PostRebaseActionName!;
-        var path = $".github/workflows/{file}";
+        if (entry.RegenerateWorkflows.Count == 0 && entry.Config.PostRebaseActionName is { } legacy)
+            entry.RegenerateWorkflows = [legacy];
+        if (entry.Dispatches.Count >= entry.RegenerateWorkflows.Count)
+        {
+            Transition(entry, EMergeQueueEntryState.Publishing, "every regenerate workflow ran");
+            await ScheduleAsync(entry, EMergeQueueStep.Publish, null, ct);
+            return;
+        }
         var defaultBranch = repository.DefaultBranch ?? entry.BaseBranch;
 
-        // §0 D65 (d): the dispatch needs the prepared commit on the queue branch, a branch of this repository. For a fork's
-        // pull request that is the fork's code, and it goes there only when nothing there can run it with the repository's
-        // secrets. A same-repository pull request was pushed by someone with write access, whose own push ran all that.
-        if (entry.IsFork)
-        {
-            var pushed = await context.Queue.GetWorkflowFilesAsync(repository, entry.BaseSha!, ct);
-            var atDefaultBranch = await context.Queue.GetWorkflowFilesAsync(repository, defaultBranch, ct);
-            if (!atDefaultBranch.Any(f => string.Equals(f.Path, path, StringComparison.Ordinal)))
-            {
-                await EvictAsync(context, entry, "workflow-missing", $"`{path}` does not exist on the default branch, so the regenerate step cannot run.", ct: ct);
-                return;
-            }
-            var findings = MergeQueueForkGuard.Evaluate(pushed, entry.BaseBranch, atDefaultBranch, defaultBranch, file, entry.QueueBranch);
-            if (findings.Count > 0)
-            {
-                await EvictAsync(context, entry, MergeQueueForkGuard.ReasonCode, ForkRefusal(entry, findings), [.. findings.Select(f => f.Path).Distinct(StringComparer.Ordinal)], ct: ct);
-                return;
-            }
-            entry.Note(Now, $"the fork precondition holds: no workflow runs on a push of {entry.QueueBranch}, and {file} is read-only");
-        }
-
-        // §0 D65 (b): the queue branch is written now, and only for a dispatch.
-        if (!await PushQueueBranchAsync(context, entry, ct)) return;
-
-        // D12: the run executes the workflow file of the dispatched ref. A change under .github/** reaches a dispatch only
-        // through O22's bypass role (a same-repository pull request, §0 D63); either way, the regenerate workflow itself
-        // must be byte-for-byte the default branch's, and that is never bypassed.
-        var atDefault = await context.Queue.GetFileBlobShaAsync(repository, defaultBranch, path, ct);
-        if (atDefault is null)
-        {
-            await EvictAsync(context, entry, "workflow-missing", $"`{path}` does not exist on the default branch, so the regenerate step cannot run.", ct: ct);
+        if (entry.Dispatches.Count == 0 && !await BeforeFirstDispatchAsync(context, entry, defaultBranch, ct))
             return;
-        }
-        var atQueue = await context.Queue.GetFileBlobShaAsync(repository, entry.PreparedSha!, path, ct);
-        if (!string.Equals(atQueue, atDefault, StringComparison.Ordinal))
-        {
-            await EvictAsync(context, entry, "workflow-differs",
-                $"`{path}` on the queue commit is not the default branch's. The queue only runs the default branch's workflow; bring `{entry.BaseBranch}` in line with it.", ct: ct);
-            return;
-        }
 
+        var file = entry.RegenerateWorkflows[entry.Dispatches.Count];
         await CancelStrayRunsAsync(context, entry, file, ct);
 
         var dispatch = await context.Queue.DispatchWorkflowAsync(repository, file, entry.QueueBranch, new Dictionary<string, string>
@@ -927,13 +918,78 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             return;
         }
 
-        entry.DispatchRunId = runId;
-        entry.DispatchRunUrl = dispatch.HtmlUrl;
-        entry.DispatchRunFinished = false;
-        Transition(entry, EMergeQueueEntryState.Regenerating, $"dispatched {file} run {runId}");
+        entry.Dispatches.Add(new MergeQueueDispatch { Workflow = file, RunId = runId, RunUrl = dispatch.HtmlUrl });
+        Transition(entry, EMergeQueueEntryState.Regenerating, entry.RegenerateWorkflows.Count == 1
+            ? $"dispatched {file} run {runId}"
+            : $"dispatched {file} run {runId} ({entry.Dispatches.Count} of {entry.RegenerateWorkflows.Count})");
         await ScheduleAsync(entry, EMergeQueueStep.PollRun, RunPollInterval, ct);
+        // Per run (O36): each workflow gets postRebaseTimeout; a new Generation retires the previous run's timer.
         await ScheduleAsync(entry, EMergeQueueStep.Timeout, TimeSpan.FromMinutes(entry.Config.PostRebaseTimeoutMinutes), ct);
         await PublishCheckAsync(context, entry, ct);
+    }
+
+    /// <summary>
+    /// What must hold before the queue branch is written and the first workflow dispatched: the fork precondition for
+    /// every workflow that will run (§0 D65 (d)), the push itself (§0 D65 (b)), and D12 for every workflow file. True: go
+    /// on; false: the entry was evicted, restarted or sent to reset the branch.
+    /// </summary>
+    private async Task<bool> BeforeFirstDispatchAsync(Context context, MergeQueueEntry entry, string defaultBranch, CancellationToken ct)
+    {
+        var repository = context.Repository;
+
+        // §0 D65 (d): the dispatch needs the prepared commit on the queue branch, a branch of this repository. For a fork's
+        // pull request that is the fork's code, and it goes there only when nothing there can run it with the repository's
+        // secrets. A same-repository pull request was pushed by someone with write access, whose own push ran all that.
+        if (entry.IsFork)
+        {
+            var pushed = await context.Queue.GetWorkflowFilesAsync(repository, entry.BaseSha!, ct);
+            var atDefaultBranch = await context.Queue.GetWorkflowFilesAsync(repository, defaultBranch, ct);
+            var findings = new List<ForkGuardFinding>();
+            foreach (var file in entry.RegenerateWorkflows)
+            {
+                var path = $".github/workflows/{file}";
+                if (!atDefaultBranch.Any(f => string.Equals(f.Path, path, StringComparison.Ordinal)))
+                {
+                    await EvictAsync(context, entry, "workflow-missing", $"`{path}` does not exist on the default branch, so the regenerate step cannot run.", ct: ct);
+                    return false;
+                }
+                foreach (var finding in MergeQueueForkGuard.Evaluate(pushed, entry.BaseBranch, atDefaultBranch, defaultBranch, file, entry.QueueBranch))
+                    if (!findings.Contains(finding))
+                        findings.Add(finding);
+            }
+            if (findings.Count > 0)
+            {
+                await EvictAsync(context, entry, MergeQueueForkGuard.ReasonCode, ForkRefusal(entry, findings), [.. findings.Select(f => f.Path).Distinct(StringComparer.Ordinal)], ct: ct);
+                return false;
+            }
+            entry.Note(Now, $"the fork precondition holds: no workflow runs on a push of {entry.QueueBranch}, and {string.Join(", ", entry.RegenerateWorkflows)} "
+                + (entry.RegenerateWorkflows.Count == 1 ? "is" : "are") + " read-only");
+        }
+
+        // §0 D65 (b): the queue branch is written now, and only for a dispatch.
+        if (!await PushQueueBranchAsync(context, entry, ct)) return false;
+
+        // D12: the run executes the workflow file of the dispatched ref. A change under .github/** reaches a dispatch only
+        // through O22's bypass role (a same-repository pull request, §0 D63); either way, every regenerate workflow itself
+        // must be byte-for-byte the default branch's, and that is never bypassed.
+        foreach (var file in entry.RegenerateWorkflows)
+        {
+            var path = $".github/workflows/{file}";
+            var atDefault = await context.Queue.GetFileBlobShaAsync(repository, defaultBranch, path, ct);
+            if (atDefault is null)
+            {
+                await EvictAsync(context, entry, "workflow-missing", $"`{path}` does not exist on the default branch, so the regenerate step cannot run.", ct: ct);
+                return false;
+            }
+            var atQueue = await context.Queue.GetFileBlobShaAsync(repository, entry.PreparedSha!, path, ct);
+            if (!string.Equals(atQueue, atDefault, StringComparison.Ordinal))
+            {
+                await EvictAsync(context, entry, "workflow-differs",
+                    $"`{path}` on the queue commit is not the default branch's. The queue only runs the default branch's workflow; bring `{entry.BaseBranch}` in line with it.", ct: ct);
+                return false;
+            }
+        }
+        return true;
     }
 
     /// <summary>
@@ -976,6 +1032,10 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                 Transition(entry, EMergeQueueEntryState.Preparing, $"{entry.QueueBranch} is out of step; resetting it");
                 await ScheduleAsync(entry, EMergeQueueStep.ResetQueueBranch, null, ct);
                 return false;
+            // O35 #4: another resolver or git version builds another commit; that is the writer's change, not the PR's.
+            case GitWriterOutcomes.PreparedDiffers when ResolverChanged(entry, result.ResolverVersion):
+                await RestartAsync(context, entry, $"the git writer's resolver changed since the prepare ({entry.ResolverVersion} → {result.ResolverVersion}); rebasing again.", ct);
+                return false;
             case GitWriterOutcomes.PreparedDiffers:
                 await EvictAsync(context, entry, "prepared-differs", $"The git writer rebuilt the prepared commit for `{entry.QueueBranch}` and got another one: {result.Detail}", ct: ct);
                 return false;
@@ -995,6 +1055,13 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                 throw new GitWriterUnavailableException($"The git writer answered the queue-branch push with {result.Outcome}: {result.Detail}");
         }
     }
+
+    /// <summary>
+    /// O35 #4: the writer answered <c>prepared-differs</c> under another resolver version than the prepare's (a deploy of
+    /// the writer between the jobs). Both must be known: an older writer that says nothing still evicts, as before.
+    /// </summary>
+    internal static bool ResolverChanged(MergeQueueEntry entry, string? now)
+        => entry.ResolverVersion is { } then && now is not null && !string.Equals(then, now, StringComparison.Ordinal);
 
     /// <summary>§0 D65: why the queue will not push this fork's commit to its queue branch, and what to change.</summary>
     private string ForkRefusal(MergeQueueEntry entry, IReadOnlyList<ForkGuardFinding> findings)
@@ -1040,11 +1107,12 @@ public partial class MergeQueueEngine : IMergeQueueEngine
 
     private async Task OnRunAsync(Context context, MergeQueueEntry entry, bool fromPoll, CancellationToken ct)
     {
-        var run = await context.Queue.GetWorkflowRunAsync(context.Repository, entry.DispatchRunId!.Value, ct);
+        if (entry.PendingDispatch() is not { RunId: { } runId } pending) return;
+        var run = await context.Queue.GetWorkflowRunAsync(context.Repository, runId, ct);
         if (run is null)
         {
-            entry.DispatchRunFinished = true;
-            await EvictAsync(context, entry, "regenerate-missing", $"The regenerate run {entry.DispatchRunId} no longer exists.", ct: ct);
+            pending.Finished = true;
+            await EvictAsync(context, entry, "regenerate-missing", $"The regenerate run {runId} of `{pending.Workflow}` no longer exists.", ct: ct);
             return;
         }
         if (!run.IsCompleted)
@@ -1053,22 +1121,32 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             return;
         }
         // Its own completion: whatever follows, there is nothing left to cancel (§0 D53).
-        entry.DispatchRunFinished = true;
+        pending.Finished = true;
 
         // D14: the run built the branch head as of the dispatch; a run of any other commit proves nothing about ours.
         if (!string.Equals(run.HeadSha, entry.PreparedSha, StringComparison.OrdinalIgnoreCase))
         {
-            await EvictAsync(context, entry, "regenerate-wrong-commit", $"The regenerate run built `{Short(run.HeadSha)}`, not the prepared `{Short(entry.PreparedSha)}`.", ct: ct);
+            await EvictAsync(context, entry, "regenerate-wrong-commit", $"The regenerate run of `{pending.Workflow}` built `{Short(run.HeadSha)}`, not the prepared `{Short(entry.PreparedSha)}`.", ct: ct);
             return;
         }
         if (run.Conclusion != "success")
         {
             await EvictAsync(context, entry, "regenerate-failed",
-                $"The regenerate run finished `{run.Conclusion ?? "without a conclusion"}`{(run.HtmlUrl is { } url ? $": {url}" : ".")} Regenerate by hand and queue it again.", ct: ct);
+                $"The regenerate run of `{pending.Workflow}` finished `{run.Conclusion ?? "without a conclusion"}`{(run.HtmlUrl is { } url ? $": {url}" : ".")} Regenerate by hand and queue it again.", ct: ct);
             return;
         }
+        pending.Succeeded = true;
 
-        Transition(entry, EMergeQueueEntryState.Publishing, $"regenerate run {run.Id} succeeded");
+        // O36: the next workflow runs on the same queue commit; the publish applies every run's patch.
+        if (entry.Dispatches.Count < entry.RegenerateWorkflows.Count)
+        {
+            Transition(entry, EMergeQueueEntryState.Preparing, $"regenerate run {run.Id} of {pending.Workflow} succeeded; dispatching {entry.RegenerateWorkflows[entry.Dispatches.Count]}");
+            await ScheduleAsync(entry, EMergeQueueStep.Dispatch, null, ct);
+            return;
+        }
+        Transition(entry, EMergeQueueEntryState.Publishing, entry.Dispatches.Count == 1
+            ? $"regenerate run {run.Id} succeeded"
+            : $"regenerate run {run.Id} of {pending.Workflow} succeeded; all {entry.Dispatches.Count} regenerate runs succeeded");
         await ScheduleAsync(entry, EMergeQueueStep.Publish, null, ct);
     }
 
@@ -1083,18 +1161,22 @@ public partial class MergeQueueEngine : IMergeQueueEngine
 
         // The contract of .github/actions/spark-regenerate (D35): a green run with an empty patch means nothing to
         // regenerate; a missing artifact means the step did not do its job.
-        string? patch = null;
-        if (entry.DispatchRunId is { } runId)
+        // O36: every run uploads its own patch; the writer applies them together, in the runs' (ordinal) order.
+        var patches = new List<GitWriterPatch>();
+        foreach (var run in entry.Dispatches.Where(d => d.RunId is not null))
         {
-            var artifact = await context.Queue.DownloadArtifactAsync(repository, runId, options.Value.PatchArtifactName, options.Value.MaxPatchBytes, ct);
+            var artifact = await context.Queue.DownloadArtifactAsync(repository, run.RunId!.Value, options.Value.PatchArtifactName, options.Value.MaxPatchBytes, ct);
             if (artifact.Outcome != EForgeArtifactOutcome.Ok)
             {
                 await EvictAsync(context, entry, "regenerate-artifact",
-                    $"The regenerate run's `{options.Value.PatchArtifactName}` artifact is unusable ({artifact.Outcome}): {artifact.Detail}", ct: ct);
+                    $"The regenerate run of `{run.Workflow}` left an unusable `{options.Value.PatchArtifactName}` artifact ({artifact.Outcome}): {artifact.Detail}", ct: ct);
                 return;
             }
-            if (artifact.Content is { Length: > 0 } bytes) patch = Convert.ToBase64String(bytes);
+            patches.Add(new GitWriterPatch(run.Workflow, artifact.Content is { Length: > 0 } bytes ? Convert.ToBase64String(bytes) : string.Empty));
         }
+        // One run sends the single patch every writer reads; more need a writer that combines them (O36).
+        string? patch = patches.Count == 1 && patches[0].Patch.Length > 0 ? patches[0].Patch : null;
+        var regenerated = patches.Any(p => p.Patch.Length > 0);
 
         if (!writer.IsConfigured)
         {
@@ -1112,7 +1194,10 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             PushUrl: entry.IsFork ? access.PushUrl : null,
             PrBranch: entry.HeadBranch,
             Patch: patch,
-            RegeneratedPaths: entry.Config.RegeneratedPaths), ct));
+            RegeneratedPaths: entry.Config.RegeneratedPaths)
+        {
+            Patches = patches.Count > 1 ? patches : null,
+        }, ct));
 
         switch (result.Outcome)
         {
@@ -1120,7 +1205,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                 entry.FinalSha = final;
                 entry.ExpectedHeadSha = final;
                 Remember(entry, final);
-                await EnterAwaitingChecksAsync(context, entry, $"published {Short(final)}{(patch is null ? string.Empty : " with the regenerated files")}"
+                await EnterAwaitingChecksAsync(context, entry, $"published {Short(final)}{(regenerated ? " with the regenerated files" : string.Empty)}"
                     + (result.Reason == GitWriterReasons.AlreadyPushed ? " (found on the branch: an earlier attempt's push)" : string.Empty), ct);
                 break;
 
@@ -1132,12 +1217,30 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                 await RestartAsync(context, entry, $"the base the prepared commit was built on is gone from {entry.BaseBranch}; rebasing again.", ct);
                 break;
 
+            // O35 #4: another resolver or git version builds another commit; that is the writer's change, not the PR's.
+            case GitWriterOutcomes.PreparedDiffers when ResolverChanged(entry, result.ResolverVersion):
+                await RestartAsync(context, entry, $"the git writer's resolver changed since the prepare ({entry.ResolverVersion} → {result.ResolverVersion}); rebasing again.", ct);
+                break;
+
             case GitWriterOutcomes.PreparedDiffers:
                 await EvictAsync(context, entry, "prepared-differs", $"The git writer rebuilt the prepared commit to publish it and got another one: {result.Detail}", ct: ct);
                 break;
 
             case GitWriterOutcomes.Evicted:
                 await EvictWriterAsync(context, entry, result.Reason, result.Detail, result.Paths, ct);
+                break;
+
+            // O36: two workflows' patches changed one path differently; neither saw the other's change.
+            case GitWriterOutcomes.PatchRejected when result.Reason == GitWriterReasons.Overlap:
+                await EvictAsync(context, entry, "regenerate-overlap",
+                    $"Two regenerate workflows ({string.Join(", ", entry.RegenerateWorkflows)}) changed the same file differently, and the queue cannot tell which change is right. "
+                    + $"Give the file to one workflow (its rule's `action`), or regenerate by hand and queue it again. {result.Detail}", result.Paths, ct: ct);
+                break;
+
+            // §10.4: after the apply, a file fails a validator of its autoResolve rule.
+            case GitWriterOutcomes.PatchRejected when result.Reason == GitWriterReasons.InvalidContent:
+                await EvictAsync(context, entry, "patch-rejected",
+                    $"The regenerated file is not valid for its type ({result.Reason}): {result.Detail} Fix the regenerate step, or regenerate by hand and queue it again.", result.Paths, ct: ct);
                 break;
 
             case GitWriterOutcomes.PatchRejected:
@@ -1242,7 +1345,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         if (entry.State == EMergeQueueEntryState.Regenerating)
         {
             await EvictAsync(context, entry, "regenerate-timeout",
-                $"The regenerate run did not finish within {entry.Config.PostRebaseTimeoutMinutes} minutes (`postRebaseTimeout`).", ct: ct);
+                $"The regenerate run{(entry.PendingDispatch() is { } pending ? $" of `{pending.Workflow}`" : string.Empty)} did not finish within {entry.Config.PostRebaseTimeoutMinutes} minutes (`postRebaseTimeout`).", ct: ct);
             return;
         }
 
@@ -1503,12 +1606,15 @@ public partial class MergeQueueEngine : IMergeQueueEngine
     /// </summary>
     private async Task AbandonRunAsync(MergeQueueEntry entry, CancellationToken ct)
     {
-        if (entry.State != EMergeQueueEntryState.Regenerating || entry.DispatchRunId is not { } runId || entry.DispatchRunFinished) return;
-        entry.DispatchRunFinished = true;
-        await outbox.EnqueueAsync(session, new MergeQueueStepMessage
+        // O36: every run of the entry that has not finished (one at a time while they run one after the other).
+        foreach (var dispatch in entry.Dispatches.Where(d => !d.Finished && d.RunId is not null))
         {
-            EntryId = entry.Id!, Run = entry.Run, Generation = entry.Generation, Step = EMergeQueueStep.CancelRun, RunId = runId,
-        }, null, ct);
+            dispatch.Finished = true;
+            await outbox.EnqueueAsync(session, new MergeQueueStepMessage
+            {
+                EntryId = entry.Id!, Run = entry.Run, Generation = entry.Generation, Step = EMergeQueueStep.CancelRun, RunId = dispatch.RunId,
+            }, null, ct);
+        }
     }
 
     /// <summary>
@@ -1798,14 +1904,21 @@ public partial class MergeQueueEngine : IMergeQueueEngine
     }
 
     private async Task<MergeQueueEntry?> LoadActiveAsync(string repositoryId, int number, CancellationToken ct)
-        => await session.LoadAsync<MergeQueueEntry>(MergeQueueEntry.DocumentId(repositoryId, number), ct) is { } entry && !entry.State.IsTerminal() ? entry : null;
+        => await session.LoadAsync<MergeQueueEntry>(MergeQueueEntry.DocumentId(repositoryId, number), ct) is { } entry && !entry.State.IsTerminal() ? Upgraded(entry) : null;
+
+    /// <summary>O36: a document from before the multi-workflow dispatch keeps its one run in the legacy fields.</summary>
+    private static MergeQueueEntry Upgraded(MergeQueueEntry entry)
+    {
+        entry.UpgradeLegacyDispatch();
+        return entry;
+    }
 
     private async Task<IReadOnlyList<MergeQueueEntry>> LoadCurrentEntriesAsync(Context context, CancellationToken ct)
     {
         var ids = context.Document.Lanes.Select(l => l.Current).OfType<string>().ToList();
         if (ids.Count == 0) return [];
         var loaded = await session.LoadAsync<MergeQueueEntry>(ids, ct);
-        return [.. loaded.Values.OfType<MergeQueueEntry>().Where(e => !e.State.IsTerminal())];
+        return [.. loaded.Values.OfType<MergeQueueEntry>().Where(e => !e.State.IsTerminal()).Select(Upgraded)];
     }
 
     /// <summary>Creates or updates the queue's check run on the head the pull request should have now. Never throws.</summary>

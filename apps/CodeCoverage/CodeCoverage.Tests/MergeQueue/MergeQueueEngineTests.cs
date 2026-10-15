@@ -159,7 +159,7 @@ public class MergeQueueEngineTests : CoverageRavenTest
 
         var entry = await h.EntryAsync();
         entry.State.Should().Be(EMergeQueueEntryState.Merged);
-        entry.DispatchRunId.Should().Be(9001);
+        entry.Dispatches.Should().ContainSingle().Which.RunId.Should().Be(9001);
         h.Writer.Publishes.Should().ContainSingle().Which.Patch.Should().Be(Convert.ToBase64String("diff --git a/x b/x\n"u8.ToArray()));
         h.Queue.CancelledRuns.Should().BeEmpty("the run ended the wait itself (§0 D53)");
         // D5: the branch the dispatch needed goes under a lease on the commit the run pushed there.
@@ -439,7 +439,7 @@ public class MergeQueueEngineTests : CoverageRavenTest
         if (why == "base-moved")
         {
             entry.State.Should().Be(EMergeQueueEntryState.Regenerating, "the rebase on the new base dispatched a run of its own");
-            entry.DispatchRunId.Should().Be(9002);
+            entry.Dispatches.Should().ContainSingle().Which.RunId.Should().Be(9002);
         }
     }
 
@@ -456,14 +456,14 @@ public class MergeQueueEngineTests : CoverageRavenTest
 
         var lost = await h.EntryAsync();
         lost.State.Should().Be(EMergeQueueEntryState.Preparing, "the dispatch is retried: its answer never arrived");
-        lost.DispatchRunId.HasValue.Should().BeFalse("run 9001 started, but the entry never learnt its id");
+        lost.Dispatches.Should().BeEmpty("run 9001 started, but the entry never learnt its id");
 
         h.Queue.NextDispatch = new(EForgeDispatchOutcome.Dispatched, 9002, null, null);
         await h.ReleaseAsync(EMergeQueueStep.Dispatch);
 
         var entry = await h.EntryAsync();
         entry.State.Should().Be(EMergeQueueEntryState.Regenerating);
-        entry.DispatchRunId.Should().Be(9002);
+        entry.Dispatches.Should().ContainSingle().Which.RunId.Should().Be(9002);
         h.Queue.CancelledRuns.Should().Equal([9001L], "the stray run is cancelled before another one is paid for");
         entry.History.Should().Contain(e => e.Text.StartsWith("cancelled the stray regenerate run 9001", StringComparison.Ordinal));
     }

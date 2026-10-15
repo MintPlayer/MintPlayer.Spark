@@ -22,7 +22,12 @@ public sealed record PrepareJob(
 public sealed record QueueBranchJob(PrepareJob Prepare, string PreparedSha, string QueueBranch, string? ExpectedQueueSha, bool HeadFromFork);
 
 /// <summary>A validated publish request; <see cref="Patch"/> is empty when the regenerate step changed nothing.</summary>
-public sealed record PublishJob(PrepareJob Prepare, Uri PushUrl, string PreparedSha, string PrBranch, byte[] Patch, IReadOnlyList<PathGlob> RegeneratedPaths);
+public sealed record PublishJob(PrepareJob Prepare, Uri PushUrl, string PreparedSha, string PrBranch, byte[] Patch, IReadOnlyList<PathGlob> RegeneratedPaths)
+{
+    /// <summary>O36: one patch per regenerate workflow run, combined by <see cref="PatchCombiner"/> into <see cref="Patch"/>
+    /// before anything else; null for the single patch of an older app.</summary>
+    public IReadOnlyList<byte[]>? Patches { get; init; }
+}
 
 /// <summary>A validated queue-branch deletion.</summary>
 public sealed record DeleteQueueBranchJob(string Repo, Uri CloneUrl, GitCredential Credential, string QueueBranch, string? ExpectedSha);
@@ -65,6 +70,8 @@ public sealed class WriterService(GitRunner git, JobRunner jobs, IOptions<GitWri
             {
                 TouchesWorkflows = built.Workflows.Count > 0,
                 BaseChangedWorkflows = built.BaseChangedWorkflows,
+                Resolutions = built.Resolutions,
+                ResolverVersion = await ResolverVersionAsync(),
             },
             Build.Stopped stopped => new PrepareResponse(stopped.Outcome, stopped.Reason, stopped.BaseSha, stopped.HeadSha, null, [], stopped.Paths,
                 stopped.Detail, context.ElapsedMilliseconds),
@@ -96,7 +103,7 @@ public sealed class WriterService(GitRunner git, JobRunner jobs, IOptions<GitWri
                         + "branch of the base repository, would run the fork's workflow files with that repository's secrets. Nothing was pushed.");
         var commit = built.Commit;
         if (commit != job.PreparedSha)
-            return Answer(JobOutcomes.PreparedDiffers, detail: Differs(commit, job.PreparedSha));
+            return Answer(JobOutcomes.PreparedDiffers, detail: Differs(commit, job.PreparedSha)) with { ResolverVersion = await ResolverVersionAsync() };
 
         switch (await PushAsync(context, prepare.CloneUrl, prepare.Credential, commit, $"refs/heads/{job.QueueBranch}", job.ExpectedQueueSha))
         {
@@ -123,6 +130,15 @@ public sealed class WriterService(GitRunner git, JobRunner jobs, IOptions<GitWri
     /// request's branch.</summary>
     public Task<PublishResponse> PublishAsync(PublishJob job)
     {
+        // O36: the patches of several regenerate workflows become one; two that change a path differently are refused.
+        if (job.Patches is { } patches)
+        {
+            var (combined, combinedVerdict) = PatchCombiner.Combine(patches, job.RegeneratedPaths, options.Value.MaxPatchBytes);
+            if (combined is null)
+                return Task.FromResult(new PublishResponse(JobOutcomes.PatchRejected, combinedVerdict.Reason, null, combinedVerdict.Paths, combinedVerdict.Detail, 0));
+            job = job with { Patch = combined, Patches = null };
+        }
+
         // T4: validated before anything is cloned or applied.
         var verdict = job.Patch.Length == 0
             ? PatchVerdict.Accept([])
@@ -153,7 +169,7 @@ public sealed class WriterService(GitRunner git, JobRunner jobs, IOptions<GitWri
                 return Answer(stopped.Outcome, stopped.Reason, paths: stopped.Paths, detail: stopped.Detail);
             var prepared = ((Build.Built)build).Commit;
             if (prepared != job.PreparedSha)
-                return Answer(JobOutcomes.PreparedDiffers, detail: Differs(prepared, job.PreparedSha));
+                return Answer(JobOutcomes.PreparedDiffers, detail: Differs(prepared, job.PreparedSha)) with { ResolverVersion = await ResolverVersionAsync() };
 
             var built = await FinalAsync(context, job, prepared, verdict.Paths);
             if (built.Sha is not { } final)
@@ -202,7 +218,11 @@ public sealed class WriterService(GitRunner git, JobRunner jobs, IOptions<GitWri
     {
         /// <summary>The prepared commit, with what the saga learns about it.</summary>
         public sealed record Built(string BaseSha, string HeadSha, string Commit, IReadOnlyList<string> Resolved, IReadOnlyList<string> Workflows,
-            bool BaseChangedWorkflows) : Build;
+            bool BaseChangedWorkflows) : Build
+        {
+            /// <summary>How each resolved path was resolved (§10.6).</summary>
+            public IReadOnlyList<ResolutionWire> Resolutions { get; init; } = [];
+        }
 
         /// <summary>No commit, and the outcome the job answers instead (<c>base-moved</c>, <c>head-mismatch</c>, <c>evicted</c>).</summary>
         public sealed record Stopped(string Outcome, string? Reason, string? BaseSha, string? HeadSha, IReadOnlyList<string> Paths, string? Detail) : Build;
@@ -275,7 +295,26 @@ public sealed class WriterService(GitRunner git, JobRunner jobs, IOptions<GitWri
         var baseChangedWorkflows = await WorkflowsTreeAsync(context, tree) != await WorkflowsTreeAsync(context, headSha);
 
         var commit = await resolver.CommitAsync(context.GitDirectory, tree, baseSha, job.Author, job.Committer, job.Message, context.Deadline);
-        return new Build.Built(baseSha, headSha, commit, resolvedPaths, workflows, baseChangedWorkflows);
+        return new Build.Built(baseSha, headSha, commit, resolvedPaths, workflows, baseChangedWorkflows)
+        {
+            Resolutions = merged is MergeOutcome.Resolved r ? [.. r.Resolutions.Select(x => new ResolutionWire(x.Path, x.Strategy, x.Regenerate, x.Rule))] : [],
+        };
+    }
+
+    private Task<string>? resolverVersion;
+
+    /// <summary>
+    /// The resolver's version and this writer's <c>git --version</c> (merge-queue PRD O35 #4): both decide the prepared
+    /// tree, so a job that rebuilds another commit than the prepare under another version is a writer change, not the pull
+    /// request's, and the saga restarts the entry. Read once per process.
+    /// </summary>
+    internal Task<string> ResolverVersionAsync() => resolverVersion ??= ReadVersionAsync();
+
+    private async Task<string> ReadVersionAsync()
+    {
+        var result = await git.RunAsync(new GitInvocation { Arguments = ["--version"], Timeout = TimeSpan.FromSeconds(30) }, CancellationToken.None);
+        var version = result.Succeeded ? result.StandardOutput.Trim() : "git (unknown)";
+        return $"{MergeQueueResolver.ResolverVersion}; {version}";
     }
 
     private static string Differs(string rebuilt, string expected)

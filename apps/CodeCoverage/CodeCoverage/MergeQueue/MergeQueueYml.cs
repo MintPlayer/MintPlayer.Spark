@@ -34,9 +34,16 @@ namespace CodeCoverage.MergeQueue;
 ///   postRebaseTimeout: 20m           # s, m or h
 ///   postRebaseWhen: auto-resolved    # auto-resolved | always | never
 ///   regeneratedPaths: ["**/App_Data/modelHashes.json"]
-///   autoResolve:
+///   autoResolve:                     # first match wins; then autoResolveDefaults, then keepBothDefaults
 ///     - path: "**/App_Data/modelHashes.json"
-///       strategy: take-base          # the only strategy (O1); keys: [..] limits it to those JSON members (O2)
+///       strategy: take-base          # take-base | keep-both | line-set | evict (§10.3); keys: [..] scope take-base (O2)
+///     - path: "**/security.json"
+///       strategy: keep-both
+///       validate: [json-no-duplicate-keys]
+///       regenerate: true             # default: take-base always; others when a workflow is set (O36)
+///       action: regenerate.yml       # default: postRebaseActionName (O36)
+///   autoResolveDefaults: [npm]       # opt-in take-base presets: spark, npm, pnpm, yarn, nuget
+///   keepBothDefaults: { xmlProjects: false }   # default all on (O35 #1, O36); false turns every group off
 ///   checks: { retryFlaky: 1, timeout: 60m }
 /// </code>
 /// </remarks>
@@ -130,48 +137,84 @@ public static partial class MergeQueueYml
             errors.Add($"mergeQueue.regeneratedPaths '{path}' is not a path glob the queue's git writer accepts: {MergeQueueWireRules.GlobRule}.");
         Value("regeneratedPaths", section.RegeneratedPaths.Count == 0 ? "(none)" : string.Join(", ", section.RegeneratedPaths), file.RegeneratedPaths is not null);
 
-        if (file.AutoResolve is { Count: > MergeQueueWireRules.MaxGlobs } tooMany)
-            errors.Add($"mergeQueue.autoResolve holds {tooMany.Count} entries; the queue's git writer takes at most {MergeQueueWireRules.MaxGlobs}.");
-        foreach (var rule in file.AutoResolve ?? [])
-        {
-            var path = rule?.Path?.Trim();
-            if (string.IsNullOrEmpty(path))
-            {
-                errors.Add("mergeQueue.autoResolve has an entry without a path.");
-                continue;
-            }
-            if (!MergeQueueWireRules.IsGlob(path))
-            {
-                errors.Add($"mergeQueue.autoResolve '{path}' is not a path glob the queue's git writer accepts: {MergeQueueWireRules.GlobRule}.");
-                continue;
-            }
-            // O1: json-union is dropped; anything a person writes is never merged by the bot.
-            if (rule!.Strategy is not (null or "take-base"))
-            {
-                errors.Add($"mergeQueue.autoResolve '{path}': strategy '{rule.Strategy}' is not supported; only take-base is (a conflict anywhere else evicts).");
-                continue;
-            }
-            List<string> keys = [.. (rule.Keys ?? []).Select(k => k?.Trim() ?? string.Empty).Where(k => k.Length > 0).Distinct(StringComparer.Ordinal)];
-            if (keys.Count > MergeQueueWireRules.MaxGlobs)
-                errors.Add($"mergeQueue.autoResolve '{path}' lists {keys.Count} keys; the queue's git writer takes at most {MergeQueueWireRules.MaxGlobs}.");
-            else if (keys.Any(k => !MergeQueueWireRules.IsKey(k)))
-                errors.Add($"mergeQueue.autoResolve '{path}' has a key the queue's git writer does not accept: {MergeQueueWireRules.KeyRule}.");
-            section.AutoResolve.Add(new MergeQueueAutoResolveRule { Path = path, Keys = keys });
-        }
-        Value("autoResolve", section.AutoResolve.Count == 0
-            ? "(none: every conflict evicts)"
-            : string.Join(", ", section.AutoResolve.Select(r => r.Keys.Count == 0 ? $"{r.Path} (take-base, any line)" : $"{r.Path} (take-base: {string.Join(", ", r.Keys)})")),
-            file.AutoResolve is not null);
+        // §10.3, O35, O36: the explicit rules first (first match wins), then the opt-in presets, then the keep-both defaults.
+        ReadExplicitRules(file.AutoResolve, section, errors);
 
+        foreach (var presetName in (file.AutoResolveDefaults ?? []).Select(n => n?.Trim() ?? string.Empty).Distinct(StringComparer.Ordinal))
+        {
+            if (!AutoResolvePresets.Presets.TryGetValue(presetName, out var preset))
+            {
+                errors.Add($"mergeQueue.autoResolveDefaults '{presetName}' is not a preset; the presets are {string.Join(", ", AutoResolvePresets.Presets.Keys)}.");
+                continue;
+            }
+            section.AutoResolveDefaults.Add(presetName);
+            section.AutoResolve.AddRange(preset.Select(p => FromPreset(p, $"preset {presetName}")));
+        }
+        Value("autoResolveDefaults", section.AutoResolveDefaults.Count == 0 ? "(none)" : string.Join(", ", section.AutoResolveDefaults), file.AutoResolveDefaults is not null);
+
+        var keepBoth = KeepBothGroups(file.KeepBothDefaults, errors);
+        foreach (var group in AutoResolvePresets.KeepBothDefaultOrder.Where(keepBoth.Contains))
+        {
+            section.KeepBothDefaults.Add(group);
+            section.AutoResolve.AddRange(AutoResolvePresets.KeepBothDefaults[group].Select(p => FromPreset(p, DefaultSource)));
+        }
+        Value("keepBothDefaults", section.KeepBothDefaults.Count == 0 ? "(none)" : string.Join(", ", section.KeepBothDefaults), file.KeepBothDefaults is not null);
+
+        if (section.AutoResolve.Count > MergeQueueWireRules.MaxGlobs)
+            errors.Add($"mergeQueue.autoResolve holds {section.AutoResolve.Count} entries with its presets and defaults; the queue's git writer takes at most {MergeQueueWireRules.MaxGlobs}.");
+
+        // O36: whether each rule regenerates, and with which workflow. take-base always does (an error when it cannot);
+        // keep-both and line-set do when a workflow is set for them and the queue runs workflows at all.
+        var never = section.PostRebaseWhen == EPostRebaseWhen.Never;
+        bool takeBaseWithoutWorkflow = false, takeBaseNever = false;
+        foreach (var rule in section.AutoResolve)
+        {
+            var workflow = rule.Action ?? section.PostRebaseActionName;
+            switch (rule.Strategy)
+            {
+                case EMergeQueueResolveStrategy.Evict:
+                    rule.Regenerate = false;
+                    break;
+                case EMergeQueueResolveStrategy.TakeBase:
+                    rule.Regenerate = true;
+                    takeBaseWithoutWorkflow |= workflow is null;
+                    takeBaseNever |= never;
+                    break;
+                default:
+                    if (rule.Regenerate == true && (workflow is null || never))
+                        errors.Add($"mergeQueue.autoResolve '{rule.Path}' asks for regenerate, but no workflow runs for it: set its action or mergeQueue.postRebaseActionName, and a postRebaseWhen other than never.");
+                    rule.Regenerate ??= workflow is not null && !never;
+                    break;
+            }
+        }
         // §5.2: take-base leaves the generated files stale on purpose, so the regenerate step is not optional.
-        if (section.AutoResolve.Count > 0 && section.PostRebaseActionName is null)
-            errors.Add("mergeQueue.autoResolve takes the base side of generated files, which only the regenerate workflow can fix: set mergeQueue.postRebaseActionName.");
-        if (section.AutoResolve.Count > 0 && section.PostRebaseWhen == EPostRebaseWhen.Never)
-            errors.Add("mergeQueue.postRebaseWhen 'never' cannot be combined with autoResolve: a taken base side is never regenerated.");
-        if (section.PostRebaseWhen == EPostRebaseWhen.Always && section.PostRebaseActionName is null)
+        if (takeBaseWithoutWorkflow)
+            errors.Add("mergeQueue.autoResolve takes the base side of generated files, which only the regenerate workflow can fix: set mergeQueue.postRebaseActionName (or the rule's action).");
+        if (takeBaseNever)
+            errors.Add("mergeQueue.postRebaseWhen 'never' cannot be combined with a take-base autoResolve rule: a taken base side is never regenerated.");
+
+        // Each rule with its source (O15): coverage.yml, a preset, or the default.
+        if (!section.AutoResolve.Any(r => r.Source == Source))
+            Value("autoResolve", "(none)", file.AutoResolve is not null);
+        foreach (var rule in section.AutoResolve)
+            values.Add(new MergeQueueConfigValue { Key = "autoResolve", Value = Describe(rule), Source = rule.Source ?? DefaultSource });
+
+        // O36: a regenerating rule's paths are paths its workflow may write, beside the explicit regeneratedPaths.
+        foreach (var path in section.AutoResolve.Where(r => r.Regenerate == true).Select(r => r.Path))
+            if (!section.RegeneratedPaths.Contains(path, StringComparer.Ordinal))
+                section.RegeneratedPaths.Add(path);
+        if (section.RegeneratedPaths.Count > MergeQueueWireRules.MaxGlobs)
+            errors.Add($"mergeQueue.regeneratedPaths holds {section.RegeneratedPaths.Count} patterns with the regenerating autoResolve rules; the queue's git writer takes at most {MergeQueueWireRules.MaxGlobs}.");
+        if (values.FindIndex(v => v.Key == "regeneratedPaths") is >= 0 and var shown)
+            values[shown].Value = section.RegeneratedPaths.Count == 0 ? "(none)" : string.Join(", ", section.RegeneratedPaths);
+
+        if (section.PostRebaseWhen == EPostRebaseWhen.Always && section.PostRebaseActionName is null && !section.AutoResolve.Any(r => r.Action is not null))
             errors.Add("mergeQueue.postRebaseWhen 'always' needs mergeQueue.postRebaseActionName.");
-        if (section.PostRebaseActionName is not null && section.PostRebaseWhen != EPostRebaseWhen.Never && section.RegeneratedPaths.Count == 0)
+        var anyWorkflow = section.PostRebaseActionName is not null || section.AutoResolve.Any(r => r.Action is not null);
+        if (anyWorkflow && !never && section.RegeneratedPaths.Count == 0)
             errors.Add("mergeQueue.regeneratedPaths is empty, so every regenerate patch would be refused.");
+        if (section.Workflows().Count > MergeQueueWireRules.MaxRegenerateWorkflows)
+            errors.Add($"mergeQueue.autoResolve names {section.Workflows().Count} regenerate workflows; the queue runs at most {MergeQueueWireRules.MaxRegenerateWorkflows}.");
 
         section.RetryFlaky = file.Checks?.RetryFlaky ?? 1;
         if (section.RetryFlaky is < 0 or > 3)
@@ -186,6 +229,133 @@ public static partial class MergeQueueYml
 
         section.Values = values;
         return new MergeQueueYmlResult(section, errors);
+    }
+
+    /// <summary>The <c>autoResolve</c> entries as written, each held to the git writer's rules (§0 D57, §10.3).</summary>
+    private static void ReadExplicitRules(List<FileAutoResolve?>? rules, MergeQueueSection section, List<string> errors)
+    {
+        if (rules is { Count: > MergeQueueWireRules.MaxGlobs } tooMany)
+            errors.Add($"mergeQueue.autoResolve holds {tooMany.Count} entries; the queue's git writer takes at most {MergeQueueWireRules.MaxGlobs}.");
+        foreach (var rule in rules ?? [])
+        {
+            var path = rule?.Path?.Trim();
+            if (string.IsNullOrEmpty(path))
+            {
+                errors.Add("mergeQueue.autoResolve has an entry without a path.");
+                continue;
+            }
+            if (!MergeQueueWireRules.IsGlob(path))
+            {
+                errors.Add($"mergeQueue.autoResolve '{path}' is not a path glob the queue's git writer accepts: {MergeQueueWireRules.GlobRule}.");
+                continue;
+            }
+            var strategyName = rule!.Strategy?.Trim() ?? MergeQueueWireRules.TakeBase;
+            if (!MergeQueueWireRules.Strategies.Contains(strategyName))
+            {
+                // O1: json-union is dropped; anything a person writes is merged by the bot only through these strategies.
+                errors.Add($"mergeQueue.autoResolve '{path}': strategy '{rule.Strategy}' is not supported; the strategies are {string.Join(", ", MergeQueueWireRules.Strategies.Order(StringComparer.Ordinal))} (a conflict anywhere else evicts).");
+                continue;
+            }
+            var strategy = StrategyOf(strategyName);
+            List<string> keys = [.. (rule.Keys ?? []).Select(k => k?.Trim() ?? string.Empty).Where(k => k.Length > 0).Distinct(StringComparer.Ordinal)];
+            if (keys.Count > 0 && strategy != EMergeQueueResolveStrategy.TakeBase)
+                errors.Add($"mergeQueue.autoResolve '{path}': keys only scope take-base.");
+            else if (keys.Count > MergeQueueWireRules.MaxGlobs)
+                errors.Add($"mergeQueue.autoResolve '{path}' lists {keys.Count} keys; the queue's git writer takes at most {MergeQueueWireRules.MaxGlobs}.");
+            else if (keys.Any(k => !MergeQueueWireRules.IsKey(k)))
+                errors.Add($"mergeQueue.autoResolve '{path}' has a key the queue's git writer does not accept: {MergeQueueWireRules.KeyRule}.");
+
+            List<string> validate = [.. (rule.Validate ?? []).Select(v => v?.Trim() ?? string.Empty).Distinct(StringComparer.Ordinal)];
+            if (validate.Count > MergeQueueWireRules.MaxValidators)
+                errors.Add($"mergeQueue.autoResolve '{path}' lists {validate.Count} validators; the queue's git writer takes at most {MergeQueueWireRules.MaxValidators}.");
+            foreach (var unknown in validate.Where(v => !MergeQueueWireRules.Validators.Contains(v)))
+                errors.Add($"mergeQueue.autoResolve '{path}': validator '{unknown}' is not one of {string.Join(", ", MergeQueueWireRules.Validators.Order(StringComparer.Ordinal))}.");
+
+            if (strategy == EMergeQueueResolveStrategy.TakeBase && rule.Regenerate == false)
+                errors.Add($"mergeQueue.autoResolve '{path}': take-base with regenerate: false would merge a stale generated file; take-base always regenerates.");
+            if (strategy == EMergeQueueResolveStrategy.Evict && (validate.Count > 0 || rule.Regenerate is not null || rule.Action is not null))
+                errors.Add($"mergeQueue.autoResolve '{path}': evict resolves nothing, so it takes no validate, regenerate or action.");
+
+            var action = rule.Action?.Trim();
+            if (action is not null && !MergeQueueWireRules.IsWorkflowFileName(action))
+                errors.Add($"mergeQueue.autoResolve '{path}': action '{action}' must be {MergeQueueWireRules.WorkflowFileRule}.");
+
+            section.AutoResolve.Add(new MergeQueueAutoResolveRule
+            {
+                Path = path,
+                Keys = strategy == EMergeQueueResolveStrategy.TakeBase ? keys : [],
+                Strategy = strategy,
+                Validate = validate,
+                Regenerate = rule.Regenerate,
+                Action = string.IsNullOrEmpty(action) ? null : action,
+                Source = Source,
+            });
+        }
+    }
+
+    private static EMergeQueueResolveStrategy StrategyOf(string name) => name switch
+    {
+        MergeQueueWireRules.KeepBoth => EMergeQueueResolveStrategy.KeepBoth,
+        MergeQueueWireRules.LineSet => EMergeQueueResolveStrategy.LineSet,
+        MergeQueueWireRules.Evict => EMergeQueueResolveStrategy.Evict,
+        _ => EMergeQueueResolveStrategy.TakeBase,
+    };
+
+    private static MergeQueueAutoResolveRule FromPreset(AutoResolvePresetRule preset, string source) => new()
+    {
+        Path = preset.Path,
+        Strategy = StrategyOf(preset.Strategy),
+        Validate = [.. preset.Validate],
+        Regenerate = preset.Regenerate,
+        Source = source,
+    };
+
+    /// <summary>
+    /// <c>keepBothDefaults</c> (O35 #1, O36 #1): absent or <c>true</c> turns every group on, <c>false</c> every group off,
+    /// and a map turns single groups off (<c>{ json: false }</c>); a group the map does not name stays on.
+    /// </summary>
+    private static IReadOnlySet<string> KeepBothGroups(object? value, List<string> errors)
+    {
+        var all = AutoResolvePresets.KeepBothDefaultOrder.ToHashSet(StringComparer.Ordinal);
+        switch (value)
+        {
+            case null:
+                return all;
+            case string text when bool.TryParse(text.Trim(), out var on):
+                return on ? all : new HashSet<string>(StringComparer.Ordinal);
+            case IDictionary<object, object> map:
+                var groups = new HashSet<string>(all, StringComparer.Ordinal);
+                foreach (var (key, raw) in map)
+                {
+                    var name = key?.ToString() ?? string.Empty;
+                    if (!all.Contains(name))
+                    {
+                        errors.Add($"mergeQueue.keepBothDefaults '{name}' is not a default; the defaults are {string.Join(", ", AutoResolvePresets.KeepBothDefaultOrder)}.");
+                        continue;
+                    }
+                    if (raw is not string flag || !bool.TryParse(flag.Trim(), out var enabled))
+                    {
+                        errors.Add($"mergeQueue.keepBothDefaults.{name} must be true or false.");
+                        continue;
+                    }
+                    if (!enabled)
+                        groups.Remove(name);
+                }
+                return groups;
+            default:
+                errors.Add("mergeQueue.keepBothDefaults must be true, false, or a map of json, ignoreFiles, changelog and xmlProjects to true or false.");
+                return all;
+        }
+    }
+
+    /// <summary>A rule as the check run shows it: path, strategy, validators, whether it regenerates and where it came from.</summary>
+    internal static string Describe(MergeQueueAutoResolveRule rule)
+    {
+        var parts = new List<string> { MergeQueueAutoResolveRule.WireName(rule.Strategy) };
+        if (rule.Keys.Count > 0) parts.Add($"keys {string.Join("/", rule.Keys)}");
+        if (rule.Validate.Count > 0) parts.Add($"validate {string.Join("/", rule.Validate)}");
+        if (rule.Regenerate == true) parts.Add(rule.Action is { } action ? $"regenerate with {action}" : "regenerate");
+        return $"{rule.Path} ({string.Join(", ", parts)})";
     }
 
     private static T Error<T>(List<string> errors, string message, T fallback)
@@ -234,7 +404,12 @@ public static partial class MergeQueueYml
         public string? PostRebaseTimeout { get; set; }
         public string? PostRebaseWhen { get; set; }
         public List<string>? RegeneratedPaths { get; set; }
-        public List<FileAutoResolve>? AutoResolve { get; set; }
+        public List<FileAutoResolve?>? AutoResolve { get; set; }
+        public List<string?>? AutoResolveDefaults { get; set; }
+
+        // true, false, or a map of group to true/false (a scalar or a mapping). No doc comment: the Spark generator reads them.
+        public object? KeepBothDefaults { get; set; }
+
         public FileChecks? Checks { get; set; }
     }
 
@@ -248,6 +423,9 @@ public static partial class MergeQueueYml
         public string? Path { get; set; }
         public string? Strategy { get; set; }
         public List<string>? Keys { get; set; }
+        public List<string?>? Validate { get; set; }
+        public bool? Regenerate { get; set; }
+        public string? Action { get; set; }
     }
 
     private sealed class FileChecks
@@ -273,10 +451,18 @@ public sealed class MergeQueueSection
     public int PostRebaseTimeoutMinutes { get; set; } = 20;
     public EPostRebaseWhen PostRebaseWhen { get; set; }
     public List<string> RegeneratedPaths { get; set; } = [];
+    /// <summary>The explicit rules, then the presets, then the keep-both defaults; first match wins (§10.3, O36).</summary>
     public List<MergeQueueAutoResolveRule> AutoResolve { get; set; } = [];
+    public List<string> AutoResolveDefaults { get; set; } = [];
+    public List<string> KeepBothDefaults { get; set; } = [];
     public int RetryFlaky { get; set; } = 1;
     public int ChecksTimeoutMinutes { get; set; } = 60;
     public List<MergeQueueConfigValue> Values { get; set; } = [];
+
+    /// <summary>Every regenerate workflow the configuration names: <see cref="PostRebaseActionName"/> and each rule's
+    /// action, distinct, ordinal (O36).</summary>
+    public IReadOnlyList<string> Workflows()
+        => [.. AutoResolve.Select(r => r.Action).Append(PostRebaseActionName).OfType<string>().Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
 
     /// <summary>
     /// The snapshot a run keeps (O15): this file half plus the owner's trust policy, each with its source.
@@ -295,7 +481,21 @@ public sealed class MergeQueueSection
             PostRebaseTimeoutMinutes = PostRebaseTimeoutMinutes,
             PostRebaseWhen = PostRebaseWhen,
             RegeneratedPaths = [.. RegeneratedPaths],
-            AutoResolve = [.. AutoResolve.Select(r => new MergeQueueAutoResolveRule { Path = r.Path, Keys = [.. r.Keys] })],
+            AutoResolve =
+            [
+                .. AutoResolve.Select(r => new MergeQueueAutoResolveRule
+                {
+                    Path = r.Path,
+                    Keys = [.. r.Keys],
+                    Strategy = r.Strategy,
+                    Validate = [.. r.Validate],
+                    Regenerate = r.Regenerate,
+                    Action = r.Action,
+                    Source = r.Source == MergeQueueYml.Source ? $"{MergeQueueYml.Source} @ {configRef}" : r.Source,
+                }),
+            ],
+            AutoResolveDefaults = [.. AutoResolveDefaults],
+            KeepBothDefaults = [.. KeepBothDefaults],
             RetryFlaky = RetryFlaky,
             ChecksTimeoutMinutes = ChecksTimeoutMinutes,
             ApprovalFloor = floor,

@@ -86,6 +86,32 @@ public sealed class AutoResolveRule
         };
     }
 
+    /// <summary>
+    /// The rule an <c>autoResolve</c> wire entry stands for, or null when the git writer refuses it (§0 D57, §10.3). The
+    /// writer's validation and the app's parser test both call this, so whatever the parser lets through, the writer
+    /// accepts. A strategy and validators from the closed vocabulary; keys only scope take-base; take-base never with
+    /// <c>regenerate: false</c>.
+    /// </summary>
+    public static AutoResolveRule? FromWire(string? path, IReadOnlyList<string>? keys, bool anyLine, string? strategy, IReadOnlyList<string>? validate, bool? regenerate)
+    {
+        if (!MergeQueueWireRules.IsGlob(path))
+            return null;
+        strategy ??= MergeQueueWireRules.TakeBase;
+        if (!MergeQueueWireRules.Strategies.Contains(strategy))
+            return null;
+        if (validate is not null && (validate.Count > MergeQueueWireRules.MaxValidators || !validate.All(v => v is not null && MergeQueueWireRules.Validators.Contains(v))))
+            return null;
+        if (strategy != MergeQueueWireRules.TakeBase)
+            return keys is { Count: > 0 } ? null : Create(path!, strategy, validate, regenerate);
+        if (regenerate == false)
+            return null;
+        if (anyLine)
+            return keys is { Count: > 0 } ? null : WholeFile(path!).With(validate, regenerate);
+        if (keys is not { Count: > 0 and <= MergeQueueWireRules.MaxGlobs } || !keys.All(MergeQueueWireRules.IsKey))
+            return null;
+        return new AutoResolveRule(path!, keys).With(validate, regenerate);
+    }
+
     /// <summary>This rule with validators and a regenerate choice (the key-scoped take-base rule keeps its keys).</summary>
     public AutoResolveRule With(IEnumerable<string>? validate, bool? regenerate)
         => new(this) { Validate = [.. validate ?? []], Regenerate = regenerate };

@@ -46,6 +46,14 @@ public class MergeQueueForkGuardTests
 
         var template = File.ReadAllText(Path.Combine(root.FullName, "docs", "code-coverage", "templates", "regenerate.yml"));
         Evaluate(regenerate: template).Should().BeEmpty();
+
+        // O36: a rule's own action (the lockfile template) is dispatched as well, so it must pass the precondition too,
+        // as the dispatched workflow and beside the regenerate one.
+        var lockfiles = new ForgeWorkflowFile(".github/workflows/lockfiles-regenerate.yml",
+            File.ReadAllText(Path.Combine(root.FullName, "docs", "code-coverage", "templates", "lockfiles-regenerate.yml")));
+        List<ForgeWorkflowFile> both = [new(RegeneratePath, template), lockfiles];
+        MergeQueueForkGuard.Evaluate(both, "master", both, "master", "lockfiles-regenerate.yml", QueueBranch).Should().BeEmpty();
+        MergeQueueForkGuard.Evaluate(both, "master", both, "master", "regenerate.yml", QueueBranch).Should().BeEmpty();
     }
 
     // ── (1) What a push of the queue branch starts ─────────────────────────────────────────────────

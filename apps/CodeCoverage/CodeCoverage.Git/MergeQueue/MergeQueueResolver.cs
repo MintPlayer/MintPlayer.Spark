@@ -71,6 +71,13 @@ public sealed record ResolvedPath(string Path, string Strategy, bool Regenerate,
 /// </summary>
 public sealed partial class MergeQueueResolver(GitRunner git, ConflictResolverRegistry? registry = null)
 {
+    /// <summary>
+    /// The resolver's own version (merge-queue PRD O35 #4). The writer answers it with <c>git --version</c> as the prepare's
+    /// <c>resolverVersion</c>: a later job that rebuilds another commit under another version restarts the entry instead
+    /// of evicting it. Bump it whenever a change here can change a prepared tree.
+    /// </summary>
+    public const string ResolverVersion = "resolution-2";
+
     /// <summary>The strategies and validators; the built-in set when none was given.</summary>
     public ConflictResolverRegistry Registry { get; } = registry ?? ConflictResolverRegistry.Default;
 

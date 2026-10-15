@@ -97,10 +97,34 @@ internal sealed partial class GitWriterPublishEndpoint : IPostEndpoint<PublishRe
             || refusal.Check(WireValidation.ObjectId(request.PreparedSha), "preparedSha", WireValidation.ShaRule) is not { } preparedSha
             || refusal.Check(WireValidation.Branch(request.PrBranch), "prBranch", MergeQueueWireRules.BranchRule) is not { } prBranch
             || refusal.Check(WireValidation.Globs(request.RegeneratedPaths), "regeneratedPaths", WireValidation.RegeneratedPathsRule) is not { } globs
-            || refusal.Check(Patch(request.Patch), "patch", "base64, or null for no patch") is not { } patch)
+            || refusal.Check(Patch(request.Patch), "patch", "base64, or null for no patch") is not { } patch
+            // O36: one patch per regenerate workflow run; the single `patch` of an older app, or `patches`, never both.
+            || refusal.Check(Patches(request.Patches, patch.Length > 0), "patches", PatchesRule) is not { } patches)
             return refusal.Result();
 
-        return Results.Json(await writer.PublishAsync(new PublishJob(prepare, pushUrl, preparedSha, prBranch, patch, globs)), GitWriterHost.Json);
+        return Results.Json(await writer.PublishAsync(new PublishJob(prepare, pushUrl, preparedSha, prBranch, patch, globs) { Patches = patches.Count == 0 ? null : patches }),
+            GitWriterHost.Json);
+    }
+
+    private static readonly string PatchesRule =
+        $"at most {MergeQueueWireRules.MaxRegenerateWorkflows} entries, each a workflow file name and a base64 patch, and no `patch` beside them";
+
+    /// <summary>The patches' bytes in the order given; empty for none, null when one is not base64, there are too many, or
+    /// a single <c>patch</c> came too.</summary>
+    private static List<byte[]>? Patches(List<PatchWire>? wires, bool hasSinglePatch)
+    {
+        if (wires is null)
+            return [];
+        if (hasSinglePatch || wires.Count > MergeQueueWireRules.MaxRegenerateWorkflows)
+            return null;
+        var patches = new List<byte[]>();
+        foreach (var wire in wires)
+        {
+            if (wire is null || !MergeQueueWireRules.IsWorkflowFileName(wire.Workflow) || Patch(wire.Patch) is not { } bytes)
+                return null;
+            patches.Add(bytes);
+        }
+        return patches;
     }
 
     /// <summary>The patch's bytes: empty for none, null when it is not base64.</summary>

@@ -54,6 +54,17 @@ public static partial class MergeQueueWireRules
     /// <summary>The most validators one rule names.</summary>
     public const int MaxValidators = 8;
 
+    /// <summary>The most distinct regenerate workflows one entry dispatches, one after the other (O36).</summary>
+    public const int MaxRegenerateWorkflows = 8;
+
+    public const string WorkflowFileRule = "a workflow file name under .github/workflows, 1 to 100 characters of letters, digits, '.', '_' or '-', ending in .yml or .yaml";
+
+    [GeneratedRegex(@"\A[A-Za-z0-9][A-Za-z0-9._-]{0,99}\.ya?ml\z", RegexOptions.CultureInvariant)]
+    private static partial Regex WorkflowFile();
+
+    /// <summary>A workflow file name as <c>postRebaseActionName</c> and a rule's <c>action</c> take it (no directory).</summary>
+    public static bool IsWorkflowFileName(string? value) => value is not null && WorkflowFile().IsMatch(value);
+
     public const string BranchRule =
         "letters, digits, '.', '_', '/' and '-' only, 1 to 200 characters, not starting with '-', '/' or '.', not ending "
         + "with '/' or '.', no '..' or '//', and no part starting with '.' or ending in '.lock'";

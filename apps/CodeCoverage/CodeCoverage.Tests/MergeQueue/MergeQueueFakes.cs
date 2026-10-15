@@ -24,6 +24,9 @@ internal sealed class FakeForgeMergeQueue : IForgeMergeQueue
     public List<ForgeReview> Reviews { get; } = [];
     public Queue<ForgeMergeRequest> MergeReplies { get; } = new();
     public Queue<ForgeMergeRequest> MergeStatuses { get; } = new();
+    /// <summary>Dispatches answered in order before <see cref="NextDispatch"/> (O36: one run per workflow).</summary>
+    public Queue<ForgeWorkflowDispatch> DispatchQueue { get; } = new();
+
     public ForgeWorkflowDispatch NextDispatch { get; set; } = new(EForgeDispatchOutcome.Dispatched, 9001, "https://github.com/acme/widget/actions/runs/9001", null);
     public bool RerunResult { get; set; } = true;
 
@@ -86,6 +89,8 @@ internal sealed class FakeForgeMergeQueue : IForgeMergeQueue
     public Task<ForgeWorkflowDispatch> DispatchWorkflowAsync(Repository repository, string workflowFile, string branch, IReadOnlyDictionary<string, string> inputs, CancellationToken cancellationToken = default)
     {
         Dispatches.Add((workflowFile, branch, inputs));
+        // O36: several workflows dispatched one after the other each get their own run.
+        if (DispatchQueue.TryDequeue(out var queued)) NextDispatch = queued;
         if (NextDispatch.RunId is { } runId) started.Add(runId);
         if (DispatchThrows is { } thrown)
         {

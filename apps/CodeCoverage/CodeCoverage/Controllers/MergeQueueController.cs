@@ -317,7 +317,7 @@ public partial class MergeQueueController : ControllerBase
     private static EntryView ToView(MergeQueueEntry entry, int? position) => new(
         entry.Number, entry.Title, entry.AuthorLogin, entry.State.ToString(), entry.History.LastOrDefault()?.Text, entry.StateChangedAtUtc,
         entry.EnqueuedAtUtc, entry.EnqueuedBy, entry.EnqueuedVia.ToString(), entry.Run, position,
-        entry.State == EMergeQueueEntryState.Regenerating ? entry.DispatchRunUrl : null);
+        entry.State == EMergeQueueEntryState.Regenerating ? entry.PendingDispatch()?.RunUrl ?? entry.DispatchRunUrl : null);
 
     private static OutcomeView ToView(MergeQueueOutcome outcome) => new(
         outcome.Number, outcome.Title, outcome.Run, outcome.State.ToString(), outcome.Reason, outcome.Message, outcome.EnqueuedBy,

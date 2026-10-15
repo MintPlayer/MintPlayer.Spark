@@ -190,8 +190,10 @@
               </tbody>
             </bs-table>
             <p>
-              Only wholly generated files belong in <code>autoResolve</code>. A conflict in any other file, a model file
-              or <code>translations.json</code> included, takes the pull request out of the queue.
+              <code>take-base</code> belongs to wholly generated files only. Hand-authored files may use
+              <code>keep-both</code>: when both sides only inserted lines at the same place, both are kept and the result
+              must pass its validators. JSON, ignore files, <code>CHANGELOG.md</code> and XML project files get that by
+              default (<code>keepBothDefaults</code>). Any other conflict takes the pull request out of the queue.
             </p>
             <p class="mb-1">The queue does not create its label; create it once:</p>
             <ng-container *ngTemplateOutlet="code; context: { $implicit: snippets.createLabel, language: 'bash' }" />

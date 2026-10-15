@@ -57,15 +57,13 @@ public static class MergeQueueWorkflowGuard
     /// <param name="isFork">The pull request's head lives in a fork.</param>
     /// <param name="bypassesQueueRules">The enqueuer's role reaches the bypass role (O22).</param>
     public static EMergeQueuePlan AfterPrepare(MergeQueueConfigSnapshot config, int resolvedPaths, bool touchesWorkflows, bool isFork, bool bypassesQueueRules)
+        => AfterPrepare(RegenerateWorkflows(config, null, Enumerable.Repeat("?", resolvedPaths).ToList()), touchesWorkflows, isFork, bypassesQueueRules);
+
+    /// <summary>What follows a prepare, given the regenerate workflows it needs (<see cref="RegenerateWorkflows"/>).</summary>
+    public static EMergeQueuePlan AfterPrepare(IReadOnlyList<string> workflows, bool touchesWorkflows, bool isFork, bool bypassesQueueRules)
     {
-        var dispatch = config.PostRebaseActionName is not null && config.PostRebaseWhen switch
-        {
-            EPostRebaseWhen.Always => true,
-            EPostRebaseWhen.Never => false,
-            _ => resolvedPaths > 0,
-        };
         // Invariant 3: nothing of the pull request reaches the base repository before the merge.
-        if (!dispatch)
+        if (workflows.Count == 0)
             return EMergeQueuePlan.Publish;
         if (!touchesWorkflows)
             return EMergeQueuePlan.Dispatch;
@@ -74,6 +72,31 @@ public static class MergeQueueWorkflowGuard
             return EMergeQueuePlan.EvictForkTouchesWorkflows;
         // Invariant 2.
         return bypassesQueueRules ? EMergeQueuePlan.Dispatch : EMergeQueuePlan.EvictTouchesWorkflows;
+    }
+
+    /// <summary>
+    /// The regenerate workflows a prepared entry dispatches, one after the other, in ordinal order (O36):
+    /// <list type="bullet">
+    /// <item><c>postRebaseWhen: never</c>: none.</item>
+    /// <item><c>always</c>: every workflow the configuration names (<c>postRebaseActionName</c> and each rule's
+    /// <c>action</c>).</item>
+    /// <item><c>auto-resolved</c>: the workflow of each resolution that regenerates: its rule's <c>action</c>, else
+    /// <c>postRebaseActionName</c>. A keep-both-only resolution regenerates nothing and dispatches nothing.</item>
+    /// </list>
+    /// <paramref name="resolutions"/> null (a writer older than §10.6) counts every one of <paramref name="resolvedPaths"/>
+    /// as regenerating with <c>postRebaseActionName</c>, as before.
+    /// </summary>
+    public static IReadOnlyList<string> RegenerateWorkflows(MergeQueueConfigSnapshot config, IReadOnlyList<MergeQueueResolution>? resolutions, IReadOnlyList<string> resolvedPaths)
+    {
+        IEnumerable<string?> workflows = config.PostRebaseWhen switch
+        {
+            EPostRebaseWhen.Never => [],
+            EPostRebaseWhen.Always => config.AutoResolve.Select(r => r.Action).Append(config.PostRebaseActionName),
+            _ when resolutions is null => resolvedPaths.Count > 0 ? [config.PostRebaseActionName] : [],
+            _ => resolutions.Where(r => r.Regenerate)
+                .Select(r => r.Rule >= 0 && r.Rule < config.AutoResolve.Count ? config.AutoResolve[r.Rule].Action ?? config.PostRebaseActionName : config.PostRebaseActionName),
+        };
+        return [.. workflows.OfType<string>().Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
     }
 
     /// <summary>A path GitHub reads workflows from: the files its <c>workflows</c> permission guards (§0 D59). Compared

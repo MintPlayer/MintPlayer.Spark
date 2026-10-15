@@ -42,6 +42,8 @@ internal sealed class MergeQueueHarness
           autoResolve:
             - path: "**/App_Data/modelHashes.json"
               strategy: take-base
+          # The keep-both defaults (O35, O36) are on by default; these fixtures pin the take-base-only shape.
+          keepBothDefaults: false
           checks:
             retryFlaky: 1
         """;
