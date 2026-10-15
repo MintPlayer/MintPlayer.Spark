@@ -24,6 +24,11 @@ namespace MintPlayer.Spark.Services;
 /// nested (<c>"model": { "Car": … }</c>) and dotted (<c>"model.Car": …</c>). A key that would put a
 /// child under an existing translation is skipped with a warning, mirroring <c>SPARK_TRANS_002</c>.
 /// </para>
+/// <para>
+/// Order (<c>docs/coverage_merge_queue_PRD.md</c> O4): every object's members are kept in ordinal key order,
+/// so a seed lands among its siblings rather than at the end, and two branches that seed different keys
+/// change different lines. A file whose order is already right and that gains no seed is not rewritten.
+/// </para>
 /// </remarks>
 internal static class TranslationsSeeder
 {
@@ -63,15 +68,50 @@ internal static class TranslationsSeeder
             if (Insert(root, key, text)) added++;
         }
 
-        if (added == 0) return 0;
+        // Sorting is what puts a seed at its place among its siblings, and running it every time makes the
+        // order a fixed point: a key a human appended is moved on the next run (docs/coverage_merge_queue_PRD.md O4).
+        var reordered = Sort(root);
+        if (added == 0 && !reordered) return 0;
 
         var canonical = original is null || Serialize(ReadRoot(original), "\n") == original.Replace("\r\n", "\n").TrimEnd('\n') + "\n";
         if (!canonical)
             Console.WriteLine($"Notice: {path} was not in canonical indented form and has been reformatted once (#467, D5).");
 
         File.WriteAllText(path, Serialize(root, lineEnding));
-        Console.WriteLine($"Seeded {added} description(s) into {path}.");
+        if (added > 0)
+            Console.WriteLine($"Seeded {added} description(s) into {path}.");
+        else
+            Console.WriteLine($"Sorted the keys of {path}.");
         return added;
+    }
+
+    /// <summary>
+    /// Puts the members of every object in ordinal key order, <c>$schema</c> first. Returns whether
+    /// anything moved.
+    /// </summary>
+    /// <remarks>
+    /// Ordinal rather than culture order, so the result does not depend on the machine that ran it.
+    /// Language members inside a translation are sorted too; <c>en</c>, <c>fr</c>, <c>nl</c> already are.
+    /// </remarks>
+    internal static bool Sort(JsonObject node)
+    {
+        var moved = false;
+        foreach (var (_, child) in node)
+            if (child is JsonObject obj && Sort(obj))
+                moved = true;
+
+        var members = node.ToList();
+        var sorted = members
+            .OrderBy(m => m.Key == "$schema" ? 0 : 1)
+            .ThenBy(m => m.Key, StringComparer.Ordinal)
+            .ToList();
+        if (members.Select(m => m.Key).SequenceEqual(sorted.Select(m => m.Key), StringComparer.Ordinal))
+            return moved;
+
+        node.Clear();
+        foreach (var (name, child) in sorted)
+            node.Add(name, child);
+        return true;
     }
 
     private static bool IsDefinedInEnglish(string key, IReadOnlyDictionary<string, TranslatedString> composed, JsonObject root)

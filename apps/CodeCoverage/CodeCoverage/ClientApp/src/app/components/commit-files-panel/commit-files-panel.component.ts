@@ -5,7 +5,9 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
+import { BsBadgeComponent } from '@mintplayer/ng-bootstrap/badge';
 import { BsBreadcrumbComponent, BsBreadcrumbItemComponent } from '@mintplayer/ng-bootstrap/breadcrumb';
+import { BsGridColumnDirective, BsGridComponent, BsGridRowDirective } from '@mintplayer/ng-bootstrap/grid';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsHierarchyChartComponent, type HierarchyNodeEventDetail } from '@mintplayer/ng-bootstrap/charts/hierarchy';
 import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
@@ -19,7 +21,7 @@ import { CoverageBarComponent } from '../coverage-bar/coverage-bar.component';
  */
 @Component({
   selector: 'app-commit-files-panel',
-  imports: [CommonModule, BsCardComponent, BsCardHeaderComponent, BsSpinnerComponent, BsAlertComponent, BsBreadcrumbComponent, BsBreadcrumbItemComponent, BsHierarchyChartComponent, BsTableComponent, CoverageBarComponent],
+  imports: [CommonModule, BsCardComponent, BsCardHeaderComponent, BsSpinnerComponent, BsAlertComponent, BsBadgeComponent, BsBreadcrumbComponent, BsBreadcrumbItemComponent, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsHierarchyChartComponent, BsTableComponent, CoverageBarComponent],
   templateUrl: './commit-files-panel.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
@@ -41,6 +43,7 @@ export class CommitFilesPanelComponent {
   readonly hierarchy = signal<CoverageHierarchyNode | null>(null);
   // The chart's zoom root; node ids are repo paths, '/' is the data root.
   readonly chartRootId = signal<string | undefined>('/');
+  readonly successColor = Color.success;
   readonly warningColor = Color.warning;
   readonly dangerColor = Color.danger;
 

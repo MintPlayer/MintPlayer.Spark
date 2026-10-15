@@ -2,7 +2,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net.Http.Json;
 using System.Text.Json;
-using CodeCoverage.GitMirror.Git;
+using CodeCoverage.Git;
 using CodeCoverage.GitMirror.Mirror;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;

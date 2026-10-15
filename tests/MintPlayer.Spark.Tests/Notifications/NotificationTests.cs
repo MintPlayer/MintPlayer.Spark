@@ -109,6 +109,22 @@ public class NotificationTests : OrganizationsTestHost
         JsonSerializer.SerializeToNode(mail.Data)!["link"]!.GetValue<string>().Should().Be(PublicBaseUrl + "/runs/7");
     }
 
+    /// <summary>
+    /// The shared link rule (<see cref="SparkLinkUrl"/>). The notifier's own copy let "/&lt;TAB&gt;/evil.example" through
+    /// as an app path; a browser strips the tab and reads the protocol-relative "//evil.example", another host.
+    /// </summary>
+    [Theory]
+    [InlineData("/\t/evil.example/runs/1")]
+    [InlineData("//evil.example/runs/1")]
+    [InlineData("javascript:alert(1)")]
+    [InlineData("https://github.com@evil.example/")]
+    public async Task A_url_a_browser_would_read_as_another_host_or_scheme_is_refused(string url)
+    {
+        var act = () => Notifier().NotifyAsync(new SparkNotification { UserIds = ["SparkUsers/ann"], Title = "Score dropped", Url = url });
+
+        (await act.Should().ThrowAsync<ArgumentException>()).Which.Message.Should().Contain("an app path ('/runs/42') or an absolute http(s) URL");
+    }
+
     [Fact]
     public async Task A_push_reaches_every_device_encrypted_and_a_gone_device_is_deleted()
     {

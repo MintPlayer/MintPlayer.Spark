@@ -4,6 +4,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
 import { BsBadgeComponent } from '@mintplayer/ng-bootstrap/badge';
+import { BsButtonGroupComponent } from '@mintplayer/ng-bootstrap/button-group';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
 import { SparkGridCellComponent, SparkGridRenderers } from '@mintplayer/ng-spark/grid';
@@ -44,7 +45,7 @@ const chipsPipe = new QueryReferenceChipsPipe();
  */
 @Component({
   selector: 'spark-po-history',
-  imports: [DatePipe, BsAlertComponent, BsBadgeComponent, BsSpinnerComponent, BsTableComponent, SparkGridCellComponent, ResolveTranslationPipe, TranslateKeyPipe],
+  imports: [DatePipe, BsAlertComponent, BsBadgeComponent, BsButtonGroupComponent, BsSpinnerComponent, BsTableComponent, SparkGridCellComponent, ResolveTranslationPipe, TranslateKeyPipe],
   templateUrl: './spark-po-history.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })

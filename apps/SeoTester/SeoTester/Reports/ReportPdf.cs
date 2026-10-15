@@ -125,13 +125,7 @@ public partial class PdfRecipient : IRecipient<PdfMessage>
         }
         finally
         {
-            try
-            {
-                await context.CloseAsync();
-            }
-            catch (PlaywrightException)
-            {
-            }
+            await chromium.CloseAsync(context);
         }
     }
 }

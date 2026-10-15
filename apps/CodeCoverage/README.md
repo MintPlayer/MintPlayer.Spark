@@ -18,6 +18,7 @@ Built on [MintPlayer.Spark](https://github.com/MintPlayer/MintPlayer.Spark)
 - **The upload GitHub Action**: [action/](action/README.md) (`uses: MintPlayer/MintPlayer.Spark/apps/CodeCoverage/action@coverage-upload-v1`) — it lives beside the server it talks to, so an API change and the action change are one pull request
 - **Releasing a new version of the action**: [action/README.md § Releasing](action/README.md#releasing-a-new-version) — Actions → *coverage-action-publish* → **Run workflow** with a `patch`/`minor`/`major` bump. The tag names derive from the action's `package.json`, so going to a new major needs no workflow edit
 - **The upload API contract** (states, polling, gating a PR): [docs/code-coverage/upload-api.md](../../docs/code-coverage/upload-api.md)
+- **The merge queue** (rebase, resolve conflicts in generated files, regenerate them in your CI, squash-merge; not yet deployed): [docs/code-coverage/merge-queue.md](../../docs/code-coverage/merge-queue.md)
 - **Upstream (Spark) work items**: [docs/PRD-CoverageHandoff.md](../../docs/PRD-CoverageHandoff.md)
 - **How this repo measures itself**: [docs/code-coverage/self-coverage-PRD.md](../../docs/code-coverage/self-coverage-PRD.md)
 
@@ -413,7 +414,10 @@ the app actually uses:
 | Metadata | Read-only | Mandatory on every App; covers repository listings |
 | Pull requests | Read-only; **Read & write** for the PR comment | Required to subscribe to `pull_request` events |
 | Checks | Read & write | The `coverage/project` and `coverage/patch` check-runs (see below) |
-| Issues | Read-only | Only for project-board automation: the `issues` and `issue_comment` events |
+| Issues | Read-only | Project-board automation and the merge queue's `/queue` comments: the `issues` and `issue_comment` events |
+| Actions | Read & write | Merge queue only: dispatching the regenerate workflow, reading its run and artifact, cancelling a run it no longer waits for |
+| Workflows | Read & write | Merge queue only: a push that brings workflow files the target repository lacks. Each writer job's own token asks for it only then (merge-queue PRD D59) |
+| Commit statuses | Read-only | Merge queue only: its gate waits for commit statuses as well as check runs |
 
 **Account permissions**
 
@@ -446,7 +450,8 @@ declared on the App but absent from that installation's grant — a live example
 of the accepted-vs-declared gap this section warns about.)
 
 **Webhook events to subscribe**: `Repository`, `Push`, `Pull request`, `Organization`; for
-project-board automation also `Issues`, `Issue comment`, `Pull request review` and `Check run`
+project-board automation also `Issues`, `Issue comment`, `Pull request review` and `Check run`;
+for the merge queue also `Workflow run` and `Check suite`
 (`installation` / `installation_repositories` are always delivered to Apps, no
 subscription needed). Webhook URL: your smee channel in dev, `https://<your-domain>/api/github/webhooks` in prod;
 set a webhook secret and keep it in `GitHub:WebhookSecret` (`GITHUB_WEBHOOK_SECRET` on the server).

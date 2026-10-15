@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 import type { PersistentObject } from '@mintplayer/ng-spark/models';
 import type { SparkAttributeColumnRenderer, SparkAttributeDetailRenderer } from '@mintplayer/ng-spark/renderers';
+import { Color } from '@mintplayer/ng-bootstrap';
 import { BsBadgeComponent } from '@mintplayer/ng-bootstrap/badge';
 
 interface SessionView {
@@ -25,10 +26,10 @@ interface SessionView {
       <div class="small">
         {{ session.name }}
         @for (flag of session.flags; track flag) {
-          <bs-badge class="text-bg-secondary ms-1">{{ flag }}</bs-badge>
+          <bs-badge class="ms-1" [type]="colors.secondary">{{ flag }}</bs-badge>
         }
         <bs-badge class="ms-1"
-                  [class]="session.parseStatus === 'Parsed' ? 'text-bg-success' : session.parseStatus === 'Pending' ? 'text-bg-warning' : 'text-bg-danger'">
+                  [type]="session.parseStatus === 'Parsed' ? colors.success : session.parseStatus === 'Pending' ? colors.warning : colors.danger">
           {{ session.parseStatus }}
         </bs-badge>
         @if (session.error) {
@@ -42,6 +43,8 @@ interface SessionView {
 export class BuildSessionsRendererComponent implements SparkAttributeColumnRenderer, SparkAttributeDetailRenderer {
   value = input<any>();
   options = input<Record<string, any> | undefined>();
+
+  protected readonly colors = Color;
 
   readonly sessions = computed<SessionView[]>(() => {
     const value = this.value();

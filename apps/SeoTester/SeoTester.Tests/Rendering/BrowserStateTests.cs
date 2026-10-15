@@ -19,17 +19,24 @@ namespace SeoTester.Tests.Rendering;
 /// <summary>
 /// A site cannot leave anything in SeoTester's browser for a later render, and cannot make it save a file
 /// (<c>docs/seo_analyzer_PRD.md</c> §12, "Untrusted content: proof tests"). The real <see cref="PageRenderer"/> over one
-/// launched Chromium, every request routed through the fake web, which records the header names each request carried.
-/// Needs Playwright's Chromium (<c>playwright.ps1 install chromium</c>).
+/// launched Chromium with a temp folder of its own, every request routed through the fake web, which records the header
+/// names each request carried. Needs Playwright's Chromium (<c>playwright.ps1 install chromium</c>).
 /// </summary>
 [Collection(BrowserCollection.Name)]
 public sealed class BrowserStateTests(ITestOutputHelper output) : IAsyncLifetime
 {
+    /// <summary>Where Playwright's driver (node's <c>os.tmpdir()</c>) and Chromium take their temp folder from, on any OS.</summary>
+    private static readonly string[] TempVariables = ["TMPDIR", "TMP", "TEMP"];
+
+    /// <summary>A failure bound only: a scan takes milliseconds.</summary>
+    private static readonly TimeSpan ScanBound = TimeSpan.FromMinutes(1);
+
     private readonly FakeWeb web = new();
     private ServiceProvider services = null!;
     private ChromiumBrowser chromium = null!;
+    private DirectoryInfo browserTemp = null!;
 
-    public Task InitializeAsync()
+    public async Task InitializeAsync()
     {
         var collection = new ServiceCollection();
         collection.AddLogging();
@@ -41,13 +48,45 @@ public sealed class BrowserStateTests(ITestOutputHelper output) : IAsyncLifetime
         services = collection.BuildServiceProvider();
         chromium = new ChromiumBrowser(Options.Create(new BrowserOptions { Mode = BrowserMode.Launch, SettleTimeout = TimeSpan.FromSeconds(2) }),
             NullLogger<ChromiumBrowser>.Instance);
-        return Task.CompletedTask;
+        browserTemp = Directory.CreateTempSubdirectory("seo-browser-");
+        await LaunchAsync();
     }
 
     public async Task DisposeAsync()
     {
         await chromium.DisposeAsync();
         await services.DisposeAsync();
+        try
+        {
+            browserTemp.Delete(recursive: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // A browser process still on its way out holds a file: the folder stays behind.
+        }
+    }
+
+    /// <summary>
+    /// Launches the browser with <see cref="browserTemp"/> as its temp folder: its profile, Playwright's download folder
+    /// and Chromium's temp files land there, and the download proof scans that folder instead of the one every process on
+    /// the machine shares (<c>docs/seo_analyzer_PRD.md</c> §12, "CI stall"). The driver and Chromium take the variables
+    /// from this process's environment as they start, so they are set for that moment only: no other test runs meanwhile
+    /// (<c>AssemblyInfo.cs</c>).
+    /// </summary>
+    private async Task LaunchAsync()
+    {
+        var saved = TempVariables.Select(name => (Name: name, Value: Environment.GetEnvironmentVariable(name))).ToList();
+        try
+        {
+            foreach (var name in TempVariables)
+                Environment.SetEnvironmentVariable(name, browserTemp.FullName);
+            await chromium.GetAsync(CancellationToken.None);
+        }
+        finally
+        {
+            foreach (var (name, value) in saved)
+                Environment.SetEnvironmentVariable(name, value);
+        }
     }
 
     private async Task<PageRender> RenderAsync(Uri url)
@@ -142,11 +181,15 @@ public sealed class BrowserStateTests(ITestOutputHelper output) : IAsyncLifetime
             .ToList();
 
     /// <summary>
-    /// A page that tries three ways to save a file: a frame answered with <c>Content-Disposition: attachment</c>, a
-    /// scripted click on <c>&lt;a download&gt;</c> (a served file and a blob), and a navigation to an
-    /// <c>application/octet-stream</c>. No download completes and no file holding the marker appears in the
-    /// browser's temp folders or the user's Downloads folder; the render finishes normally and the next one works. Red
-    /// with <c>AcceptDownloads = true</c>: the files land in Playwright's artifacts folder.
+    /// A page that tries three routed ways to save a file: a frame answered with <c>Content-Disposition: attachment</c>, a
+    /// scripted click on <c>&lt;a download&gt;</c> of a served file, and a navigation to an <c>application/octet-stream</c>.
+    /// Chromium announces no download of a routed response, and not one file is created in the browser's temp folder, not
+    /// even for a moment (off Windows, Chromium's own temp files apart: <see cref="CreatedFiles"/>): the router never hands
+    /// Chromium a response it would save (<c>docs/seo_analyzer_PRD.md</c> §12, "Downloads never reach Chromium"). None holds the marker,
+    /// no download completes, the page stays as it was and the next render works. The <c>&lt;a download&gt;</c> is not routed
+    /// at all (Chromium's download manager fetches it itself), and the dead proxy refuses it: the site never sees it. Red
+    /// before the router stopped downloads: Chromium created a <c>&lt;guid&gt;.tmp</c> holding each body. Red with
+    /// <c>AcceptDownloads = true</c>: the files land in Playwright's download folder.
     /// </summary>
     [Fact]
     public async Task A_page_cannot_make_the_browser_save_a_file()
@@ -158,9 +201,7 @@ public sealed class BrowserStateTests(ITestOutputHelper output) : IAsyncLifetime
             <!doctype html><html lang="en"><head><title>Downloads</title></head><body><h1>Downloads</h1>
             <iframe src="/attachment"></iframe>
             <script>
-              const click = (href, name) => { const a = document.createElement('a'); a.href = href; a.download = name; document.body.appendChild(a); a.click(); };
-              click('/file.bin', '{{marker}}-click.bin');
-              click(URL.createObjectURL(new Blob(['{{marker}} blob'], { type: 'application/octet-stream' })), '{{marker}}-blob.bin');
+              const a = document.createElement('a'); a.href = '/file.bin'; a.download = '{{marker}}-click.bin'; document.body.appendChild(a); a.click();
               setTimeout(() => { location.href = '/octet'; }, 300);
             </script></body></html>
             """);
@@ -171,38 +212,185 @@ public sealed class BrowserStateTests(ITestOutputHelper output) : IAsyncLifetime
         web.Pages[site + "/octet"] = new FakeResponse(HttpStatusCode.OK, "", ContentType: "application/octet-stream", Bytes: body);
         web.Html(site + "/next", FakeSite.Page("After the downloads"));
 
+        var left = await RenderWatchedAsync(new Uri(site + "/"), marker, started);
+
+        left.Render.Facts.Error.Should().BeNull("the render goes on as if nothing happened");
+        left.Render.Facts.Mobile!.Title.Should().Be("Downloads", "the page stays as it was");
+        left.Created.Should().BeEmpty("no file is created in the browser's temp folder, not even for a moment");
+        left.Downloads.Should().OnlyContain(d => d.StartsWith(marker + "-click.bin ", StringComparison.Ordinal),
+            "Chromium starts no download of what the router answers: only the unrouted <a download>, which the dead proxy fails");
+        left.HeldMarker.Should().BeEmpty("no file holding what the site served reached Playwright's download folder or is left anywhere");
+        left.Downloads.Should().NotContain(d => d.EndsWith(" completed"), "no download completes");
+        left.Render.Facts.Network.Should().Contain(n => n.Url == site + "/attachment" && n.Outcome == "download", "the frame's attachment never reached Chromium");
+        left.Render.Facts.Network.Should().Contain(n => n.Url == site + "/octet" && n.Outcome == "download", "nor did the navigation's file");
+        web.Requests.Should().NotContain(r => r.Url == site + "/file.bin", "an <a download> is not routed, and the dead proxy refuses it");
+        (await RenderAsync(new Uri(site + "/next"))).Facts.Error.Should().BeNull("the next render works");
+    }
+
+    /// <summary>
+    /// A <c>blob:</c> and a <c>data:</c> download never reach the router: Chromium serves those addresses itself, so it still
+    /// writes them to a temp file of its own before Playwright refuses the download (seen 2026-10-14: a <c>&lt;guid&gt;.tmp</c>
+    /// holding the blob, deleted 0 to 23 ms later). For them only "nothing left" can hold: no file holding the marker remains
+    /// once the render is over, none reaches Playwright's download folder, and no download completes.
+    /// </summary>
+    [Fact]
+    public async Task A_blob_or_data_download_leaves_nothing_behind()
+    {
+        var marker = "download-marker-" + Guid.NewGuid().ToString("N");
+        var site = "https://" + FakeSite.NewHost();
+        var started = DateTime.UtcNow.AddSeconds(-2);
+        web.Html(site + "/", $$"""
+            <!doctype html><html lang="en"><head><title>Downloads</title></head><body><h1>Downloads</h1>
+            <script>
+              const click = (href, name) => { const a = document.createElement('a'); a.href = href; a.download = name; document.body.appendChild(a); a.click(); };
+              click(URL.createObjectURL(new Blob(['{{marker}} blob'], { type: 'application/octet-stream' })), '{{marker}}-blob.bin');
+              click('data:application/octet-stream;base64,' + btoa('{{marker}} data'), '{{marker}}-data.bin');
+            </script></body></html>
+            """);
+
+        var left = await RenderWatchedAsync(new Uri(site + "/"), marker, started);
+
+        left.Render.Facts.Error.Should().BeNull("the render goes on as if nothing happened");
+        left.HeldMarker.Should().BeEmpty("no file holding what the page made reached Playwright's download folder or is left anywhere");
+        left.Downloads.Should().NotContain(d => d.EndsWith(" completed"), "no download completes");
+    }
+
+    /// <summary>
+    /// A render of an address that answers a file to download (a PDF: headless Chromium has no viewer) fails with that
+    /// reason, without a hang, and creates nothing in the browser's temp folder; the next render works. Red before the router
+    /// stopped downloads: "the page could not be loaded" (Playwright's "Download is starting") and a <c>&lt;guid&gt;.tmp</c>
+    /// holding the PDF.
+    /// </summary>
+    [Fact]
+    public async Task A_page_that_is_a_download_is_a_handled_render_failure()
+    {
+        var marker = "download-marker-" + Guid.NewGuid().ToString("N");
+        var site = "https://" + FakeSite.NewHost();
+        var started = DateTime.UtcNow.AddSeconds(-2);
+        web.Pages[site + "/report.pdf"] = new FakeResponse(HttpStatusCode.OK, "", ContentType: "application/pdf", Bytes: Encoding.UTF8.GetBytes("%PDF-1.4\n" + marker));
+        web.Html(site + "/next", FakeSite.Page("After the download"));
+
+        var left = await RenderWatchedAsync(new Uri(site + "/report.pdf"), marker, started);
+
+        left.Render.Facts.Error.Should().Be("the page is a file to download, not a document");
+        left.Render.Facts.Mobile.Should().BeNull();
+        left.Render.Facts.Network.Should().Contain(n => n.Url == site + "/report.pdf" && n.Outcome == "download");
+        left.Created.Should().BeEmpty("no file is created in the browser's temp folder, not even for a moment");
+        left.Downloads.Should().BeEmpty("Chromium starts no download: the router never hands it the file");
+        left.HeldMarker.Should().BeEmpty();
+        (await RenderAsync(new Uri(site + "/next"))).Facts.Error.Should().BeNull("the next render works");
+    }
+
+    /// <summary>
+    /// A loaded page that navigates to a file to download keeps the rendered page as it was: no error, its title and its
+    /// heading, and nothing created in the browser's temp folder. Chromium kept the page before too (a download does not
+    /// replace it); red before the router stopped downloads on the file it created and the navigation's outcome.
+    /// </summary>
+    [Fact]
+    public async Task A_navigation_to_a_download_leaves_the_rendered_page_as_it_was()
+    {
+        var marker = "download-marker-" + Guid.NewGuid().ToString("N");
+        var site = "https://" + FakeSite.NewHost();
+        var started = DateTime.UtcNow.AddSeconds(-2);
+        web.Html(site + "/", """
+            <!doctype html><html lang="en"><head><title>Stays</title></head><body><h1>Stays</h1><p>The page that was rendered.</p>
+            <script>setTimeout(() => { location.href = '/later.zip'; }, 100);</script></body></html>
+            """);
+        web.Pages[site + "/later.zip"] = new FakeResponse(HttpStatusCode.OK, "", ContentType: "application/zip", Bytes: [.. "PK\x03\x04"u8, .. Encoding.UTF8.GetBytes(marker)]);
+
+        var left = await RenderWatchedAsync(new Uri(site + "/"), marker, started);
+
+        left.Render.Facts.Error.Should().BeNull();
+        left.Render.Facts.Mobile!.Title.Should().Be("Stays");
+        left.Render.Facts.Mobile.H1Count.Should().Be(1);
+        left.Render.Facts.Network.Should().Contain(n => n.Url == site + "/later.zip" && n.Outcome == "download");
+        left.Created.Should().BeEmpty("no file is created in the browser's temp folder, not even for a moment");
+        left.Downloads.Should().BeEmpty("Chromium starts no download: the router never hands it the file");
+        left.HeldMarker.Should().BeEmpty();
+    }
+
+    /// <summary>What one watched render left: the files that held the marker, every file created in the browser's temp folder, the downloads announced.</summary>
+    private sealed record Leftovers(PageRender Render, IReadOnlyCollection<string> HeldMarker, IReadOnlyCollection<string> Created, IReadOnlyCollection<string> Downloads);
+
+    /// <summary>
+    /// Renders <paramref name="url"/> while watching everywhere the browser could save to. Playwright's download folder is
+    /// scanned all along (Playwright deletes a context's downloads when the context closes); the browser's whole temp folder
+    /// and the user's Downloads folder once the render is over; and every file created in the temp folder is recorded.
+    /// </summary>
+    private async Task<Leftovers> RenderWatchedAsync(Uri url, string marker, DateTime started)
+    {
         var browser = await chromium.GetAsync(CancellationToken.None);
+        var downloadFolders = browserTemp.GetDirectories("playwright-artifacts-*").Select(d => (d.FullName, SearchOption.AllDirectories)).ToList();
+        downloadFolders.Should().NotBeEmpty("Playwright's download folder is in the browser's temp folder, the one watched (else the scans prove nothing)");
         var downloads = new ConcurrentQueue<string>();
+        var files = new ConcurrentDictionary<string, byte>();
+        using var created = new CreatedFiles(browserTemp);
         using var stop = new CancellationTokenSource();
         var watcher = WatchDownloadsAsync(browser, downloads, stop.Token);
-        // Playwright deletes a context's downloads when the context closes, so the folders are scanned all along.
-        var files = new ConcurrentDictionary<string, byte>();
         var scanner = Task.Run(async () =>
         {
             while (!stop.IsCancellationRequested)
             {
-                foreach (var file in FilesHolding(marker, started, tempTopLevel: false))
+                foreach (var file in MarkerFiles.Holding(marker, started, downloadFolders))
                     files.TryAdd(file, 0);
                 await Task.Delay(50);
             }
         });
 
-        var render = await RenderAsync(new Uri(site + "/"));
+        var render = await RenderAsync(url);
         await Task.Delay(1500);
-        foreach (var file in FilesHolding(marker, started, tempTopLevel: true))
+        foreach (var file in await Task.Run(() => MarkerFiles.Holding(marker, started, Places())).WaitAsync(ScanBound))
             files.TryAdd(file, 0);
         stop.Cancel();
         await watcher;
-        await scanner;
+        await scanner.WaitAsync(ScanBound);
 
         foreach (var d in downloads)
             output.WriteLine("download event: " + d);
-        render.Facts.Error.Should().BeNull("the render goes on as if nothing happened");
-        render.Facts.Mobile.Should().NotBeNull();
-        web.Requests.Should().Contain(r => r.Url == site + "/attachment");
-        files.Keys.Should().BeEmpty("no file holding what the site served was written");
-        downloads.Should().NotContain(d => d.EndsWith(" completed"), "Chromium announces some downloads, Playwright cancels them all");
-        (await RenderAsync(new Uri(site + "/next"))).Facts.Error.Should().BeNull("the next render works");
+        foreach (var path in created.Paths)
+            output.WriteLine("created in the browser's temp folder: " + path);
+        return new Leftovers(render, files.Keys.ToList(), created.Paths, downloads.ToList());
+    }
+
+    /// <summary>
+    /// Every file created in a browser's temp folder while it watches, but in Chromium's profile: Chromium's own state (a
+    /// render's contexts are off the record and keep what a site stores in memory). A lost event is recorded too.
+    /// Off Windows, also not Chromium's <c>.org.chromium.Chromium.XXXXXX</c> files. On POSIX that is the name of every temp
+    /// file Chromium makes, and Playwright launches it with <c>--disable-dev-shm-usage</c> (its <c>chromiumSwitches.js</c>),
+    /// so its shared memory lives in this folder too. CI on Linux saw 8 to 23 per render, a page that never loaded included
+    /// (run 38669888652). By name they cannot be told from a download's, so there the proof is that Chromium announces no
+    /// download (<see cref="Leftovers.Downloads"/>). On Windows a temp file is a <c>&lt;guid&gt;.tmp</c> and the folder is
+    /// otherwise quiet, so every file counts.
+    /// </summary>
+    private sealed class CreatedFiles : IDisposable
+    {
+        private readonly DirectoryInfo folder;
+        private readonly FileSystemWatcher watcher;
+        private readonly ConcurrentQueue<string> paths = new();
+
+        public CreatedFiles(DirectoryInfo folder)
+        {
+            this.folder = folder;
+            watcher = new FileSystemWatcher(folder.FullName) { IncludeSubdirectories = true, NotifyFilter = NotifyFilters.FileName, InternalBufferSize = 64 * 1024 };
+            watcher.Created += (_, e) => Add(e.FullPath);
+            watcher.Renamed += (_, e) => Add(e.FullPath);
+            watcher.Error += (_, e) => paths.Enqueue("(the watcher lost events: " + e.GetException().Message + ")");
+            watcher.EnableRaisingEvents = true;
+        }
+
+        public IReadOnlyCollection<string> Paths => paths.ToArray();
+
+        private void Add(string path)
+        {
+            var relative = Path.GetRelativePath(folder.FullName, path);
+            if (relative.StartsWith("playwright_chromiumdev_profile-", StringComparison.Ordinal))
+                return;
+            if (!OperatingSystem.IsWindows() && Path.GetFileName(relative).StartsWith(".org.chromium.Chromium.", StringComparison.Ordinal))
+                return;
+            paths.Enqueue(relative);
+        }
+
+        public void Dispose() => watcher.Dispose();
     }
 
     /// <summary>Records every download the browser announces on any page of any context, with how it ended.</summary>
@@ -247,51 +435,15 @@ public sealed class BrowserStateTests(ITestOutputHelper output) : IAsyncLifetime
     }
 
     /// <summary>
-    /// Files written since <paramref name="since"/> whose name or bytes hold <paramref name="marker"/>, in every folder a
-    /// browser could save to: Playwright's artifacts folders (its download folder) and the rest of the temp folder's
-    /// top level, and the user's Downloads folder.
+    /// Every folder the browser could save to: its own temp folder, all of it (Playwright's download folder, the profile,
+    /// Chromium's temp files), and the user's Downloads folder (Chromium's default).
     /// </summary>
-    private static List<string> FilesHolding(string marker, DateTime since, bool tempTopLevel)
+    private List<(string Dir, SearchOption Depth)> Places()
     {
-        var bytes = Encoding.UTF8.GetBytes(marker);
-        var temp = Path.GetTempPath();
-        var places = new List<(string Dir, SearchOption Depth)>();
-        if (tempTopLevel)
-            places.Add((temp, SearchOption.TopDirectoryOnly));
-        places.AddRange(Directory.GetDirectories(temp, "playwright-artifacts-*").Select(d => (d, SearchOption.AllDirectories)));
+        var places = new List<(string Dir, SearchOption Depth)> { (browserTemp.FullName, SearchOption.AllDirectories) };
         var userDownloads = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
         if (Directory.Exists(userDownloads))
             places.Add((userDownloads, SearchOption.TopDirectoryOnly));
-
-        var found = new List<string>();
-        foreach (var (dir, depth) in places)
-        {
-            IEnumerable<string> candidates;
-            try
-            {
-                candidates = Directory.EnumerateFiles(dir, "*", new EnumerationOptions { RecurseSubdirectories = depth == SearchOption.AllDirectories, IgnoreInaccessible = true });
-            }
-            catch (IOException)
-            {
-                continue;
-            }
-            foreach (var file in candidates)
-            {
-                try
-                {
-                    var info = new FileInfo(file);
-                    if (info.LastWriteTimeUtc < since && info.CreationTimeUtc < since)
-                        continue;
-                    if (info.Name.Contains(marker, StringComparison.Ordinal)
-                        || (info.Length < 1024 * 1024 && File.ReadAllBytes(file).AsSpan().IndexOf(bytes) >= 0))
-                        found.Add(file);
-                }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                {
-                    // In use by another process, or gone already: not ours.
-                }
-            }
-        }
-        return found;
+        return places;
     }
 }

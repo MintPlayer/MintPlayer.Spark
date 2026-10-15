@@ -60,6 +60,8 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddCodeCoverage();
 // The commit graph (#504): options, the coverage-git sidecar client and the avatar image client.
 builder.Services.AddCodeCoverageCommitGraph(builder.Configuration);
+// The merge queue (docs/coverage_merge_queue_PRD.md): options and the coverage-git-writer client (M3).
+builder.Services.AddCodeCoverageMergeQueue(builder.Configuration);
 // Outgoing mail (#460 M8, D10): MailManager under Spark:Mail. Added only when a relay
 // (Spark:Mail:Smtp:Host) AND a sender (Spark:Mail:From:Address) are configured; compose maps both
 // from MAIL_HOST / MAIL_FROM_ADDRESS, and an unset MAIL_FROM_ADDRESS leaves mail off. Without it the

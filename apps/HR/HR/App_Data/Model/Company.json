@@ -4,8 +4,8 @@
     "id": "5a990917-387b-4f1e-8434-befc64da1958",
     "name": "Company",
     "clrType": "HR.Entities.Company",
-    "agentPermissions": "Read",
     "breadcrumb": "{Name} · {Sector}",
+    "agentPermissions": "Read",
     "tabs": [],
     "groups": [],
     "attributes": [

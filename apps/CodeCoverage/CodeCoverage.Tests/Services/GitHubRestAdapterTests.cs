@@ -254,6 +254,36 @@ public class GitHubRestAdapterTests : CoverageRavenTest
         (await service.GetFileContentAsync(Repo(910032, isPrivate: true), null, Head, "missing.ts")).Should().BeNull();
     }
 
+    /// <summary>
+    /// A file that is not at the ref is an answer, not a failure: the merge queue reads <c>coverage.yml</c> from the default
+    /// branch on each pull-request event (merge-queue PRD §0 O30, D88), and most repositories have none. A fetch that
+    /// fails still warns.
+    /// </summary>
+    [Fact]
+    public async Task A_file_that_is_not_there_warns_nothing_but_a_failed_fetch_does()
+    {
+        var github = new StubGitHub().On(HttpMethod.Get, "/repositories/910033/contents/broken.ts", HttpStatusCode.InternalServerError, """{"message":"Server Error"}""");
+        var logger = new RecordingLogger<GitHubContentService>();
+        var service = new GitHubContentService(github, new SingleClientHttpFactory(github.Rest), new SourceContentCache(), logger);
+
+        (await service.GetFileContentAsync(Repo(910033, isPrivate: true), 5, "master", CoverageYml.FileName)).Should().BeNull();
+        logger.Levels.Where(level => level >= Microsoft.Extensions.Logging.LogLevel.Warning).Should().BeEmpty();
+
+        (await service.GetFileContentAsync(Repo(910033, isPrivate: true), 5, Head, "broken.ts")).Should().BeNull();
+        logger.Levels.Should().Contain(Microsoft.Extensions.Logging.LogLevel.Warning);
+    }
+
+    private sealed class RecordingLogger<T> : Microsoft.Extensions.Logging.ILogger<T>
+    {
+        public List<Microsoft.Extensions.Logging.LogLevel> Levels { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
+
+        public void Log<TState>(Microsoft.Extensions.Logging.LogLevel logLevel, Microsoft.Extensions.Logging.EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            => Levels.Add(logLevel);
+    }
+
     /// <summary>The cache skips an entry too large to be worth holding, rather than evicting everything else for it.</summary>
     [Fact]
     public void An_oversized_source_is_not_cached()
@@ -345,6 +375,9 @@ public class GitHubRestAdapterTests : CoverageRavenTest
           "title": "A change",
           "html_url": "https://github.com/acme/widget/pull/{{number}}",
           "user": { "login": "contributor", "id": 9, "type": "User" },
+          "draft": true,
+          "maintainer_can_modify": true,
+          "mergeable_state": "behind",
           "head": {
             "label": "contributor:feature",
             "ref": "feature",
@@ -384,6 +417,14 @@ public class GitHubRestAdapterTests : CoverageRavenTest
         pull.BaseRepositoryDefaultBranch.Should().Be("trunk");
         pull.IsOpen.Should().BeTrue();
         pull.IsFromFork.Should().BeTrue();
+        // The merge queue's fields (PRD M4).
+        pull.BaseSha.Should().Be(Base);
+        pull.HeadRepositoryFullName.Should().Be(headRepositoryId is null ? null : "contributor/widget");
+        pull.MaintainerCanModify.Should().BeTrue();
+        pull.IsDraft.Should().BeTrue();
+        pull.AuthorLogin.Should().Be("contributor");
+        pull.MergeableState.Should().Be("behind");
+        pull.Title.Should().Be("A change");
         github.InstallationClients.Should().Equal(InstallationId);
     }
 

@@ -82,7 +82,7 @@ internal static class OidcAuthorizationFlow
         CancellationToken ct)
     {
         using var session = store.OpenAsyncSession();
-        session.Advanced.UseOptimisticConcurrency = true;
+        session.Advanced.OptimisticConcurrencyMode = OptimisticConcurrencyMode.Writes;
 
         var auth = await session.LoadAsync<OidcGrant>(authorizationId, ct);
 

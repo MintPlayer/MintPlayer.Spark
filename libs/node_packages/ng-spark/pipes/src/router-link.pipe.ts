@@ -6,8 +6,8 @@ import { ProgramUnit } from '@mintplayer/ng-spark/models';
  * server's loader canonicalizes `type` casing, so tolerating variants here would only mask a
  * server that stopped doing so.
  *
- * Returns null for a `url` unit — an external address is an `<a href>`, not a router link; the
- * component rendering the menu owns that branch.
+ * Returns null for a `url` unit: whether its address is a router link or an `<a href>` depends on
+ * the application's base, which the component rendering the menu decides (`sparkAppUrl`).
  */
 @Pipe({ name: 'routerLink', standalone: true, pure: true })
 export class RouterLinkPipe implements PipeTransform {

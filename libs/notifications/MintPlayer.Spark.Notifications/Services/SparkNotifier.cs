@@ -38,8 +38,8 @@ internal sealed class SparkNotifier(
             throw new ArgumentException($"A notification title is at most {MaxTitle} characters.", nameof(notification));
         if (notification.Body is { Length: > MaxBody })
             throw new ArgumentException($"A notification body is at most {MaxBody} characters.", nameof(notification));
-        if (notification.Url is { } url && !IsAllowedUrl(url))
-            throw new ArgumentException("A notification URL is an app-relative path ('/runs/42') or an absolute http(s) URL.", nameof(notification));
+        if (notification.Url is { } url && !SparkLinkUrl.IsAllowed(url))
+            throw new ArgumentException($"A notification URL is {SparkLinkUrl.AllowedForms}.", nameof(notification));
 
         var now = timeProvider.GetUtcNow().UtcDateTime;
         var absoluteUrl = Absolute(notification.Url);
@@ -143,8 +143,8 @@ internal sealed class SparkNotifier(
 
     private string? Absolute(string? url)
     {
-        // Decided on the text, not by Uri.TryCreate(UriKind.Absolute): on Linux that accepts "/runs/7" as a file:// URI.
-        if (url is null || !IsRootRelative(url))
+        // Decided on the text (SparkLinkUrl), not by Uri.TryCreate(UriKind.Absolute): on Linux that accepts "/runs/7" as a file:// URI.
+        if (!SparkLinkUrl.IsAppPath(url))
             return url;
         var origin = SparkPublicBaseUrl.Resolve(authOptions.Value.Links.PublicBaseUrl, configuration, environment, httpContextAccessor?.HttpContext);
         if (origin is null)
@@ -154,14 +154,6 @@ internal sealed class SparkNotifier(
         }
         return origin + url;
     }
-
-    internal static bool IsAllowedUrl(string url)
-        => IsRootRelative(url)
-           || (Uri.TryCreate(url, UriKind.Absolute, out var absolute) && (absolute.Scheme == Uri.UriSchemeHttps || absolute.Scheme == Uri.UriSchemeHttp));
-
-    /// <summary>A path on this app ("/x"), not a protocol-relative "//host" or the "/\host" browsers read as one.</summary>
-    private static bool IsRootRelative(string url)
-        => url.StartsWith('/') && !url.StartsWith("//", StringComparison.Ordinal) && !url.StartsWith("/\\", StringComparison.Ordinal);
 
     /// <summary>A category as an RFC 8030 topic (1–32 base64url characters), or none.</summary>
     internal static string? Topic(string? category)

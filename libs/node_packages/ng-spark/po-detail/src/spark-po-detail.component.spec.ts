@@ -6,7 +6,7 @@ import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { HttpErrorResponse } from '@angular/common/http';
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { describe, expect, it, vi, beforeAll, beforeEach, afterEach } from 'vitest';
 
 import { SparkPoDetailComponent } from './spark-po-detail.component';
 import { SparkService, SparkLanguageService } from '@mintplayer/ng-spark/services';
@@ -117,6 +117,16 @@ async function setup(serviceOverrides: Partial<SparkService> = {}, renderers: an
 
 describe('SparkPoDetailComponent', () => {
   const confirmSpy = vi.spyOn(globalThis, 'confirm');
+
+  // The first render of the detail page builds its whole component tree once per file. It took 0.4 s alone, 1.8 s in the
+  // full suite with coverage, and 5.4 s in CI run 38671342085, past vitest's 5 s per test. It is paid here, outside every
+  // test's bound, as WireMockWarmUp does for the .NET tests (merge-queue PRD D87).
+  beforeAll(async () => {
+    const { harness } = await setup();
+    await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
+    await harness.fixture.whenStable();
+    TestBed.resetTestingModule();
+  }, 60_000);
 
   beforeEach(() => confirmSpy.mockReset().mockReturnValue(true));
   afterEach(() => confirmSpy.mockReset());

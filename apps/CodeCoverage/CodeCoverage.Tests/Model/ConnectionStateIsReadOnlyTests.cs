@@ -84,7 +84,8 @@ public class ConnectionStateIsReadOnlyTests
     }
 
     /// <summary>
-    /// ⚠️ On the account page, <b>exactly one</b> attribute is editable.
+    /// ⚠️ On the account page, <b>only the owner's settings</b> are editable: the branch-deletion default and, since the
+    /// merge queue (PRD O11, O12), its approval floor and check exclusions.
     /// </summary>
     /// <remarks>
     /// The owner's rule, stated directly: <i>"only Delete branch on merge should be editable"</i>.
@@ -108,8 +109,9 @@ public class ConnectionStateIsReadOnlyTests
             .Select(a => a.GetProperty("name").GetString()!)
             .ToArray();
 
+        // The merge queue's trust policy joined it (merge-queue PRD O11, O12, O22: set by the owner on the organization page).
         editable.Should().Equal(
-            ["DeleteBranchOnPrClose"],
+            ["DeleteBranchOnPrClose", "MergeQueueApprovalFloor", "MergeQueueBypassRole", "MergeQueueCheckExclusions"],
             "an account carries nothing else a person may set — identity is part of its document id "
             + "and connection state belongs to the reconcile sweep");
     }

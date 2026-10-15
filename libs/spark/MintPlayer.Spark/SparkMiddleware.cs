@@ -501,6 +501,11 @@ public static class SparkExtensions
         // surfacing on the first request that lists actions.
         app.ApplicationServices.GetRequiredService<IActionsCatalogueLoader>().GetCatalogue();
 
+        // The menu too: a programUnits.json that does not load (an unknown type, a missing target, a url that is
+        // neither an app path nor an absolute http(s) URL) refuses startup in the loader's words, instead of
+        // failing the first GET /spark/program-units long after the deployment went green.
+        app.ApplicationServices.GetRequiredService<IProgramUnitsLoader>().GetProgramUnits();
+
         ReportSecurityPosture(app);
 
         // Document expiration (seo_analyzer_PRD X1): checks the model, installs the @expires stamper on

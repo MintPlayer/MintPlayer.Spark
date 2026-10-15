@@ -96,7 +96,16 @@ public partial class GitHubForgeClient : IForgeClient
                 BaseRef: pull.Base.Ref,
                 BaseRepositoryId: pull.Base.Repository.Id,
                 BaseRepositoryDefaultBranch: pull.Base.Repository.DefaultBranch,
-                IsOpen: pull.State.Value == Octokit.ItemState.Open);
+                IsOpen: pull.State.Value == Octokit.ItemState.Open)
+            {
+                BaseSha = pull.Base.Sha,
+                HeadRepositoryFullName = pull.Head.Repository?.FullName,
+                MaintainerCanModify = pull.MaintainerCanModify ?? false,
+                IsDraft = pull.Draft,
+                AuthorLogin = pull.User?.Login,
+                MergeableState = pull.MergeableState?.StringValue,
+                Title = pull.Title,
+            };
         }
         catch (Octokit.NotFoundException)
         {
@@ -214,7 +223,7 @@ public partial class GitHubForgeClient : IForgeClient
     /// name of letters, digits, <c>.</c>, <c>_</c> and <c>-</c> that is not <c>.</c> or <c>..</c>.
     /// </summary>
     [System.Text.RegularExpressions.GeneratedRegex(@"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})/(?!\.\.?$)[A-Za-z0-9._-]{1,100}$")]
-    private static partial System.Text.RegularExpressions.Regex GitHubFullName();
+    internal static partial System.Text.RegularExpressions.Regex GitHubFullName();
 
     private async Task<long?> ResolveInstallationAsync(Repository repository, CancellationToken cancellationToken)
     {

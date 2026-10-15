@@ -53,6 +53,27 @@ public sealed class MirrorPaths(string root)
             ? new DirectoryInfo(directory).EnumerateFiles("*", new EnumerationOptions { RecurseSubdirectories = true, AttributesToSkip = 0, IgnoreInaccessible = true }).Sum(f => f.Length)
             : 0;
 
+    /// <summary>Renames a finished clone into place and returns how many attempts failed first. On Windows a directory
+    /// rename fails with "Access to the path is denied" while any process holds a handle on a file inside it without
+    /// FILE_SHARE_DELETE; an on-access virus scanner opening the pack git has just written does exactly that for a
+    /// moment (docs/coverage_merge_queue_PRD.md D26: two of 14 full test runs failed this way at line 207, never on
+    /// Linux, where a rename ignores open handles). Retried for up to 2 s, like <see cref="DeleteTree"/>.</summary>
+    public static int MoveTree(string source, string destination)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                Directory.Move(source, destination);
+                return attempt;
+            }
+            catch (Exception ex) when ((ex is IOException or UnauthorizedAccessException) && attempt < 20 && Directory.Exists(source) && !Directory.Exists(destination))
+            {
+                Thread.Sleep(100);
+            }
+        }
+    }
+
     /// <summary>Deletes a directory tree, clearing the read-only attribute git puts on pack files (Windows refuses to
     /// delete those otherwise). A missing directory is not an error.</summary>
     public static void DeleteTree(string directory)

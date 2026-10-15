@@ -52,6 +52,9 @@ internal sealed class StubGitHub : IGitHubInstallationService
     /// <summary>Every REST request, as <c>METHOD /path?query</c>, in order.</summary>
     public ConcurrentQueue<string> Calls { get; } = new();
 
+    /// <summary>Every REST request's <c>X-GitHub-Api-Version</c> header, as (<c>METHOD /path</c>, version), in order.</summary>
+    public ConcurrentQueue<(string Call, string? ApiVersion)> ApiVersions { get; } = new();
+
     /// <summary>The installation ids clients were requested for, in order.</summary>
     public List<long> InstallationClients { get; } = [];
 
@@ -110,15 +113,29 @@ internal sealed class StubGitHub : IGitHubInstallationService
         if (Throws is not null) throw Throws;
         return Task.FromResult(new GraphQLConnection(
             new Octokit.GraphQL.ProductHeaderValue("coverage-tests"),
-            new Octokit.GraphQL.Internal.InMemoryCredentialStore("ghs_test"),
+            new Octokit.GraphQL.Internal.InMemoryCredentialStore(InstallationToken),
             new HttpClient(GraphQL, disposeHandler: false)));
+    }
+
+    /// <summary>The stub installation's token: the Octokit clients carry it, and a non-Octokit caller (the merge queue's REST
+    /// calls over <see cref="Rest"/>) gets it raw. A fixture value, not credential-shaped.</summary>
+    public const string InstallationToken = "stub-installation-token";
+
+    public Task<string> GetInstallationTokenAsync(long installationId, CancellationToken cancellationToken = default)
+        => GetInstallationTokenAsync(installationId, TimeSpan.FromSeconds(60), cancellationToken);
+
+    public Task<string> GetInstallationTokenAsync(long installationId, TimeSpan minRemaining, CancellationToken cancellationToken = default)
+    {
+        InstallationClients.Add(installationId);
+        if (Throws is not null) throw Throws;
+        return Task.FromResult(InstallationToken);
     }
 
     /// <summary>A REST client over the stub, exactly as Octokit builds one for api.github.com.</summary>
     public IGitHubClient Client() => new GitHubClient(new Connection(
         new Octokit.ProductHeaderValue("coverage-tests"),
         GitHubClient.GitHubApiUrl,
-        new InMemoryCredentialStore(new Credentials("ghs_test")),
+        new InMemoryCredentialStore(new Credentials(InstallationToken)),
         new HttpClientAdapter(() => new NonDisposingHandler(Rest)),
         new SimpleJsonSerializer()));
 
@@ -126,6 +143,8 @@ internal sealed class StubGitHub : IGitHubInstallationService
     {
         var uri = request.RequestUri!;
         Calls.Enqueue($"{request.Method} {uri.PathAndQuery}");
+        ApiVersions.Enqueue(($"{request.Method} {uri.AbsolutePath}",
+            request.Headers.TryGetValues("X-GitHub-Api-Version", out var versions) ? versions.FirstOrDefault() : null));
         foreach (var (method, path, respond) in routes)
         {
             var candidate = path.Contains('?') ? uri.PathAndQuery : uri.AbsolutePath;

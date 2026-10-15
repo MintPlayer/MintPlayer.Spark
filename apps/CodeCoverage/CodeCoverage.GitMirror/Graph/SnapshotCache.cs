@@ -1,4 +1,4 @@
-using CodeCoverage.GitMirror.Git;
+using CodeCoverage.Git;
 using CodeCoverage.GitMirror.Mirror;
 using Microsoft.Extensions.Options;
 

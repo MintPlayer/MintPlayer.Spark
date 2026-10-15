@@ -70,6 +70,12 @@
     },
     "test": {
       "executor": "@nx/angular:unit-test",
+      "inputs": [
+        "default",
+        "^production",
+        "{workspaceRoot}/coverage.yml",
+        "{workspaceRoot}/docs/code-coverage/templates/regenerate.yml"
+      ],
       "options": {
         "tsConfig": "apps/CodeCoverage/CodeCoverage/ClientApp/tsconfig.spec.json",
         "runner": "vitest",

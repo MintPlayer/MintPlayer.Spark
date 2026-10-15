@@ -43,8 +43,15 @@ public partial class GitHubForgeIntegration : IForgeIntegration
     /// runs but <em>never</em> for a pull request from a fork, so a capability declared per forge
     /// cannot express it honestly — whatever lands must be per call, not per implementation.
     /// </para>
+    /// <para>
+    /// <see cref="EForgeCapability.MergeQueue"/>'s members are on <see cref="IForgeMergeQueue"/>, implemented
+    /// by <see cref="GitHubForgeMergeQueue"/>; the conformance test pairs the two.
+    /// <see cref="EForgeCapability.CheckButtons"/> rides on it: GitHub's requested actions on the queue's own check run,
+    /// whose clicks <c>GitHubEventsRecipient</c> turns into commands (merge-queue PRD §0 O30).
+    /// </para>
     /// </remarks>
-    public EForgeCapability[] Capabilities => [EForgeCapability.Statuses, EForgeCapability.Comments, EForgeCapability.GitMirror];
+    public EForgeCapability[] Capabilities =>
+        [EForgeCapability.Statuses, EForgeCapability.Comments, EForgeCapability.GitMirror, EForgeCapability.MergeQueue, EForgeCapability.CheckButtons];
 
     public Task<ForgeVisibility> GetVisibilityAsync(CancellationToken cancellationToken = default)
         => access.GetVisibilityAsync(cancellationToken);

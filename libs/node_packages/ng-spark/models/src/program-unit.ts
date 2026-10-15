@@ -17,7 +17,10 @@ export interface ProgramUnit {
    * whatever stable string the app declared; the server's Actions class may ignore it.
    */
   objectId?: string;
-  /** For a url unit: the external address, rendered as a plain anchor (never a router link). */
+  /**
+   * For a url unit: an app path (`/merge-queue/setup`) or an absolute http(s) URL. `sparkAppUrl` decides against the
+   * application's base: a link into it is a router link in the same tab, any other opens in a new tab.
+   */
   url?: string;
   order: number;
   alias?: string;

@@ -1,6 +1,7 @@
 # SeoTester (#268): PRD and plan
 
 Status: **spec consolidated after 8 grilling rounds** (2026-10-10); M1–M12 built (M12's deploy pending the owner). Issue: https://github.com/MintPlayer/MintPlayer.Spark/issues/268
+**2026-10-15:** §12 "CI stall" (the download proof read a FIFO; every browser close is bounded) and "Downloads never reach Chromium" (owner decision) are in PR #515, recorded there as D86 and O29 of `docs/coverage_merge_queue_PRD.md`.
 
 §1–§11 are the current spec. §12 is the decision log (D1–D46 plus measurements): each decision with its evidence, in the order it was taken. Where the body and the log disagree, the log is the record and the body is wrong. Fix the body.
 
@@ -1888,7 +1889,8 @@ included), where it is followed live.
   Seen in dark mode only (the owner's default); light mode not looked at.
 - The share page handed an AsDetail array's `value` (empty) to its renderer: `objects` holds the rows; it uses
   `rendererValue` like the detail page. Its `row`/`col`/`table` classes had no CSS (grid and table CSS ship with
-  `bs-grid`/`bs-table`), so it was unstyled edge to edge; component styles lay it out.
+  `bs-grid`/`bs-table`), so it was unstyled edge to edge; ~~component styles lay it out~~ **[since 2026-10-15
+  `<bs-grid>` and `<bs-table>` do; its own sheet keeps only the page's width (`docs/coverage_merge_queue_PRD.md` D84)]**.
 - `withSparkLanguage()`: CodeCoverage's `sparkLanguageInterceptor` moved into ng-spark unchanged (with its spec);
   CodeCoverage and SeoTester call it. Server-resolved texts (the dashboard title, refusals) followed the browser's
   language, not the selector.
@@ -2441,11 +2443,15 @@ The server, its data, logs and every certificate were deleted afterwards; no key
     `cookie=srv=evil; js=evil`, `ls-evil`, `idb-evil`, `cache-evil`.
   - **No downloads.** `BrowserStateTests.A_page_cannot_make_the_browser_save_a_file`: a frame answered
     `Content-Disposition: attachment`, scripted `<a download>` clicks (a served file and a blob), and a navigation to
-    `application/octet-stream`; Playwright's artifacts folders are scanned throughout (it deletes a context's downloads
-    when the context closes), the temp folder's top level and the user's Downloads folder at the end, for any new file
-    whose name or bytes hold the marker: none; the render finishes without an error and the next one works. **Chromium
+    `application/octet-stream`; ~~Playwright's artifacts folders are scanned throughout (it deletes a context's downloads
+    when the context closes), the temp folder's top level and the user's Downloads folder at the end~~ **[superseded,
+    "CI stall" below: the browser's own temp folder, all of it, and the user's Downloads folder are scanned throughout
+    and at the end; Playwright deletes a context's downloads when the context closes]**, for any new file whose name or
+    bytes hold the marker: none; the render finishes without an error and the next one works. **Chromium
     does announce the downloads** (a Playwright `download` event per attempt), and every one ends failed ("Pass
-    { acceptDownloads: true } …"): no bytes are written, so the test asserts no completed download and no file rather
+    { acceptDownloads: true } …"): ~~no bytes are written~~ **[wrong: Chromium wrote each to a temp file for
+    milliseconds, "CI stall" below; since 2026-10-15 a routed download never reaches it at all, "Downloads never reach
+    Chromium" below]**, so the test asserts no completed download and no file rather
     than no event. *Red:* `AcceptDownloads = true`: six files in `playwright-artifacts-*` (one a `.crdownload`), the
     downloads "completed".
   - ~~**Nothing crawled is stored.**~~ **No crawled text or markup is stored; element selectors are kept with the latest
@@ -2617,3 +2623,107 @@ The old 2 s window is gone because it misattributed late frames, not to absorb s
 
 **Runs** (`RAVENDB_LICENSE` = Developer licence): `tests/MintPlayer.Spark.Tests/Live/` 5× 49/49; full Spark.Tests
 4 727/4 727 with CodeCoverage.Tests 1 213/1 213 in parallel. Guide: `docs/guide-live-updates.md`, `IndexWait` row.
+
+### CI stall (2026-10-14): the download proof read a FIFO; every browser close is bounded
+
+- **The stall.** 4 of the 28 real CI executions of SeoTester.Tests since #505 printed nothing more and hit the step's
+  20-minute timeout (runs 38282102770, 38291705761, 38292236208, 38628925278; the CI evidence is in
+  `docs/coverage_merge_queue_PRD.md` D86). `A_page_cannot_make_the_browser_save_a_file` read every new entry under 1 MB
+  at the top of the machine's temp folder. On Linux every .NET process keeps two FIFOs there, made at its start
+  (CoreCLR's debugger pipes, `clr-debug-pipe-<pid>-<key>-in` and `-out`), and opening a FIFO for reading waits for a
+  writer that never comes. The test met one whenever it ran within 2 s of a .NET process's start: the testhost's own, when
+  xUnit's random collection order put the browser collection first (about 1 run in 25), or a concurrent build's. Windows
+  keeps no FIFO in `%TEMP%`. Latent since `9085b023`.
+- **Only regular files are opened** (`SeoTester.Tests/Rendering/MarkerFiles.cs`, the proof's scan). .NET 11 has no API
+  that tells a FIFO, a socket or a device from a regular file (the RC1 reference docs list none: `FileAttributes` is
+  `Normal` for all of them, `UnixFileMode` holds the permission bits only), and whatever looks closer opens the entry
+  first, which is the call that waits. So an entry is opened only when it is no link and at least as long as the marker:
+  FIFOs, sockets and devices report 0 bytes, while a link reports the length of its target's path. Reads deny the writer
+  nothing, and hidden files count too (the default `EnumerationOptions` skipped them).
+- **The browser has its own temp folder.** The fixture starts the Playwright driver and Chromium with
+  `TMPDIR`/`TMP`/`TEMP` set to a fresh folder, for that moment only (the assembly runs no test in parallel). Chromium's
+  profile, Playwright's download folder (`playwright-artifacts-*`) and Chromium's temp files land there, and the proof no
+  longer reads the shared temp folder. It scans Playwright's download folder throughout and, at the end, the browser's
+  whole temp folder and the user's Downloads folder; it first asserts that the download folder is in the scanned one.
+- **Found on the way: Chromium keeps a denied download on disk for a few milliseconds.** Scanning the browser's whole temp
+  folder throughout turned the proof red in 3 of 5 runs, on a `<guid>.tmp` at the folder's top that was gone by the end.
+  A `FileSystemWatcher` (a diagnostic, not committed) saw it in each of 2 runs: per render, 3 `<guid>.tmp` files, each
+  holding a denied download's bytes (the served body or the blob), each deleted 0 to 23 ms after it was made. None was
+  in Playwright's download folder and none was left. So "no bytes are written" above was never quite true. The old proof
+  looked at the temp folder's top only at the end, and on Linux it skipped hidden files, which is what Chromium's
+  `base::CreateTemporaryFile` makes there (`.org.chromium.Chromium.XXXXXX`, not observed here). The proof now holds
+  Playwright's download folder to "never" and every other place to "nothing left". ~~**Open (owner):** should even this
+  buffer go? That would take the router refusing a response that would become a download, a production change.~~
+  **[Decided 2026-10-15: it goes, "Downloads never reach Chromium" below.]**
+- **Every close the app makes is bounded: `SeoTester:Browser:CloseTimeout`, 30 s.** Playwright's `CloseAsync` of a
+  context or of the browser waits for the driver's answer with no timeout (Microsoft.Playwright 1.63.0, decompiled), and
+  a render whose close never returned would hold the render gate, and with it every later render, for good.
+  `ChromiumBrowser.CloseAsync(context)` (the renders' and the PDF export's) and the browser's own closes (dispose,
+  reconnect) stop waiting at the timeout and tear the browser down. They dispose the Playwright driver, which fails every
+  call still waiting on it. As the driver exits, it kills the browser it launched with its process tree (its bundled
+  `coreBundle.js`: a 30 s bound on its own graceful exit, then `taskkill /T /F` or `SIGKILL` to the process group); over
+  `ConnectAsync` the connection drops. The next render starts afresh. Nothing else changes.
+- *Runs:* see `docs/coverage_merge_queue_PRD.md` D86.
+
+### Downloads never reach Chromium (owner decision 2026-10-15)
+
+- **The decision.** The owner, 2026-10-15: block the transient download write in the router. After the fetch and before
+  Chromium sees a byte, a navigation is aborted (`net::ERR_ABORTED`) when Chromium would save its answer instead of
+  rendering it. Frames count too. Chromium drops an aborted navigation and keeps the frame's document, as a refused
+  download does, and commits no error page. A fetch, an XHR, an image or a script is never blocked: its body goes to the
+  page, which saves nothing. The code is `Rendering/ChromiumDownloads.cs` (the predicate) and `BrowserRouter.HandleAsync`.
+- **"Would Chromium save it?" was measured, not assumed.** Five passes in headless Chromium (Playwright 1.63's build, on
+  Windows), one iframe per response, with its `download` event as the verdict. All 291 responses are cases in
+  `ChromiumDownloadsTests`. The predicate agrees with every one, and every run checks Chromium again on the 266 that do
+  not depend on the build's codecs. Where Chromium differs from the first outline ("attachment, or a type it does not
+  render, or a binary body with no type"):
+  - **`Content-Disposition`.** The type is the token before the first `;` or `,`, trimmed of spaces and tabs. Any token
+    but `inline` is saved, the unknown ones too (`foo`, `form-data`, `x-download`; RFC 6266 §4.2). An empty type or one
+    that is not a token is not saved: `filename=x`, `"attachment"`, `attachment<tab>x`, `, attachment`.
+  - **Status.** Only a 2xx is saved, 204 and 205 included: a 204 labelled `application/octet-stream` is saved. A redirect
+    is followed, and 4xx and 5xx show an error page.
+  - **`text/*`.** Not all of it renders: Chromium's 23 calendar, contact, spreadsheet and RTF types are saved
+    (`text/csv`, `text/calendar`, `text/vcard`, `text/rtf`, `text/tab-separated-values`, …).
+  - **`+xml`.** Only `application/xml`, `xhtml+xml`, `rss+xml`, `atom+xml` and `image/svg+xml` render: `vnd.test+xml`,
+    `soap+xml` and `xml-dtd` are saved. JSON renders as `application/json` and as `application/*+json`.
+  - **Images and media.** Only the formats the build decodes render: TIFF, HEIC, JXL, QuickTime, AVI, Opus and MPEG-TS
+    are saved. The media list is the build's. A build that lacks one saves that type, and the router lets it through as
+    before.
+  - **Other types.** PDF (headless has no viewer), `multipart/related` and `message/rfc822` are saved.
+  - **Sniffing.** A missing, empty, malformed or `*/*` type is sniffed, and `unknown/unknown` and
+    `application/unknown` likewise:
+    - A BOM or markup renders: Chromium's HTML tags in any case, `<?xml` exactly, after leading whitespace.
+    - A PDF, PostScript, EXE, TIFF, RealMedia or WMF signature is saved.
+    - An image, WebM, MP3 or text signature (`#!`, `%!`, `From`) renders.
+    - Otherwise any WHATWG binary data byte in the first 1024 bytes is saved.
+
+    `text/plain` is sniffed for binary bytes only, and a BOM or a rendered signature first keeps it text. `nosniff`
+    turns sniffing off: a missing type is then text and `unknown/unknown` is saved. No other type is sniffed.
+- **An `<a download>` of the page's own origin is not routed at all.** Measured: no route call, yet a download event.
+  Chromium's download manager fetches it itself; a cross-origin one is a plain navigation, routed and blocked as above.
+  The hardening (the dead proxy) closes this gap.
+  `BrowserEscapeTests.A_download_the_router_never_sees_reaches_nothing_through_the_hardening` gives a page the listener's
+  own origin and has it click one. Without the hardening `GET /download` reaches the listener (the control); with it,
+  nothing arrives. The test passed on its first run, because the proxy already refused it.
+- **`blob:` and `data:` downloads never reach the router either:** Chromium serves them itself and still buffers them in
+  a temp file for milliseconds. That is the documented limitation, and their test holds them to "nothing left".
+- **A page that is itself a file to download** fails its render with "the page is a file to download, not a document",
+  without a hang, and the next render works. The router flags the context's first main-frame document. Playwright's
+  `goto` ends in `net::ERR_ABORTED`; a 204 instead of the abort ends the same way (measured), so it is the abort. **A page
+  that navigates to one** stays as it was. The network log records such a navigation as `download`.
+- **Red → green.** `BrowserStateTests` watches the browser's temp folder with a `FileSystemWatcher`, Chromium's profile
+  aside.
+  - Before the router change: the routed-download proof saw 4 `<guid>.tmp` files made, for the attachment and the
+    octet-stream on both the phone and the desktop. The main-frame test got "the page could not be loaded" and 1 file;
+    the in-page test got the outcome `fulfilled` and 2 files.
+  - After: none in all three, and no download event for a routed download.
+  - The blob/data test still sees its 4, the limitation.
+- *Linux (CI run 38669888652, 2026-10-15):* every render created `.org.chromium.Chromium.XXXXXX` files in the temp
+  folder, 8 to 23, including a page that never loaded.
+  - That is POSIX Chromium's name for any temp file, and Playwright's `--disable-dev-shm-usage` puts Chromium's shared
+    memory in that folder.
+  - By name they cannot be told from a download's. There the proof is that Chromium announces no download of a routed
+    response, and off Windows the watcher skips that template. On Windows every file still counts.
+  - Red with the router change reversed: download events for `later.zip`, `…-attachment.exe` and `octet`, and 11
+    `<guid>.tmp` files. Green with it.
+- *Runs:* see `docs/coverage_merge_queue_PRD.md` D86.

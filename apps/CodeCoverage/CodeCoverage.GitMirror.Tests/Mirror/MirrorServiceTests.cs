@@ -52,6 +52,9 @@ public class MirrorServiceTests : MirrorTestBase
     {
         var shas = CreateOrigin("repo");
         var cloned = await Sidecar.FetchAsync("github", "1002", Server.UrlOf("repo"));
+        // The precondition, asserted: when the clone failed, the next fetch cloned and the failure read as "cloned" where
+        // "fetched" was expected, two steps away from its cause (D26).
+        cloned.Outcome.Should().Be("cloned", string.Join("\n", Sidecar.Logs.Lines.Where(l => l.StartsWith("Error"))));
 
         Push("repo", "main", "e", 5, shas["c"]);
         var fetched = await Sidecar.FetchAsync("github", "1002", Server.UrlOf("repo"));
@@ -286,5 +289,46 @@ public class DiskFloorTests : MirrorTestBase
         response.Reason.Should().Be("disk-floor");
         Sidecar.Started.Should().BeEmpty();
         Entries(Sidecar.Root).Should().BeEmpty();
+    }
+}
+
+/// <summary>
+/// D26 (docs/coverage_merge_queue_PRD.md): a finished clone is renamed into place, and on Windows a rename is refused while
+/// any process holds a file inside the directory without FILE_SHARE_DELETE. An on-access virus scanner opening the pack git
+/// has just written does that; 2 of 14 full runs failed at that rename (MirrorService.cs:207) before the retry.
+/// </summary>
+public class MirrorMoveTests
+{
+    [Fact]
+    public async Task A_rename_refused_while_a_fresh_file_is_held_open_succeeds_once_the_handle_closes()
+    {
+        using var dir = new TempDir("move");
+        var source = Path.Combine(dir.Path, "1.git.partial-x");
+        var destination = Path.Combine(dir.Path, "1.git");
+        Directory.CreateDirectory(Path.Combine(source, "objects", "pack"));
+        var pack = Path.Combine(source, "objects", "pack", "pack-1.idx");
+        File.WriteAllBytes(pack, [1, 2, 3]);
+        // What a scanner does: open for reading, sharing read only (no FILE_SHARE_DELETE).
+        var scanner = new FileStream(pack, FileMode.Open, FileAccess.Read, FileShare.Read);
+        if (OperatingSystem.IsWindows())
+        {
+            // Control, red without the retry: the exception of the failing runs.
+            Action move = () => Directory.Move(source, destination);
+            move.Should().Throw<IOException>();
+        }
+        var release = Task.Run(async () =>
+        {
+            await Task.Delay(300);
+            scanner.Dispose();
+        });
+
+        var retries = MirrorPaths.MoveTree(source, destination);
+        await release;
+
+        Directory.Exists(destination).Should().BeTrue();
+        Directory.Exists(source).Should().BeFalse();
+        File.ReadAllBytes(Path.Combine(destination, "objects", "pack", "pack-1.idx")).Should().Equal([1, 2, 3]);
+        if (OperatingSystem.IsWindows())
+            retries.Should().BeGreaterThan(0, "the handle was still open on the first attempt");
     }
 }

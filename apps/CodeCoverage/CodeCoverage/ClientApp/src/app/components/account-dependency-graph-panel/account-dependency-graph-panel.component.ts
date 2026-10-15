@@ -3,6 +3,8 @@ import {
   signal, viewChild,
 } from '@angular/core';
 import { Router } from '@angular/router';
+import { Color } from '@mintplayer/ng-bootstrap';
+import { BsBadgeComponent } from '@mintplayer/ng-bootstrap/badge';
 import { BsCardBodyComponent, BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
 import { BsCheckboxComponent } from '@mintplayer/ng-bootstrap/checkbox';
 import type cytoscape from 'cytoscape';
@@ -144,7 +146,7 @@ interface SelectedEdge {
  */
 @Component({
   selector: 'app-account-dependency-graph-panel',
-  imports: [BsCardComponent, BsCardHeaderComponent, BsCardBodyComponent, BsCheckboxComponent],
+  imports: [BsBadgeComponent, BsCardComponent, BsCardHeaderComponent, BsCardBodyComponent, BsCheckboxComponent],
   template: `
     @if (state() === 'pending' || state() === 'empty') {
       <bs-card class="mt-3 d-block">
@@ -205,9 +207,11 @@ interface SelectedEdge {
               <ul class="list-unstyled mb-0">
                 @for (pkg of edge.packages; track $index) {
                   <li class="d-flex flex-wrap align-items-baseline gap-2 py-1 border-bottom">
-                    <span class="badge" [style.background-color]="colorOf(pkg.ecosystem)">{{ pkg.ecosystem }}</span>
+                    <span class="d-inline-flex align-items-center gap-1">
+                      <span class="swatch" [style.background]="colorOf(pkg.ecosystem)"></span>{{ pkg.ecosystem }}
+                    </span>
                     <code>{{ pkg.name }}</code>
-                    @if (pkg.dev) { <span class="badge text-bg-secondary">dev</span> }
+                    @if (pkg.dev) { <bs-badge [type]="colors.secondary">dev</bs-badge> }
                     <span class="small text-muted text-break">{{ pkg.manifestPath }}</span>
                   </li>
                 }
@@ -218,22 +222,15 @@ interface SelectedEdge {
       </bs-card>
     }
   `,
-  styles: `
-    .graph {
-      height: 420px;
-      width: 100%;
-      border: 1px solid var(--bs-border-color);
-      border-radius: var(--bs-border-radius);
-      background: var(--bs-body-bg);
-    }
-    .swatch { display: inline-block; width: 1.25rem; height: 3px; border-radius: 2px; }
-  `,
+  styleUrl: './account-dependency-graph-panel.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class AccountDependencyGraphPanelComponent {
   private readonly browse = inject(BrowseService);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
+
+  protected readonly colors = Color;
 
   /** Canonical forge spelling, e.g. "github". Sourced from the PO's document id (`forgeOf`). */
   provider = input.required<string>();

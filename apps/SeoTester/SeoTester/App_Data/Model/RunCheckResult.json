@@ -1,5 +1,5 @@
 {
-  "$schema": "https://schemas.spark.mintplayer.com/v2/model.schema.json",
+  "$schema": "https://schemas.spark.mintplayer.com/v4/model.schema.json",
   "persistentObject": {
     "id": "11879f64-6286-4e5b-b01c-ff46e0c1ec5d",
     "name": "RunCheckResult",

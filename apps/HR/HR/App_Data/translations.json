@@ -1,40 +1,35 @@
 {
   "$schema": "../../../../schemas/translations.schema.json",
   "app": {
-    "welcomeTitle": {
-      "en": "Welcome to HR",
-      "fr": "Bienvenue à HR",
-      "nl": "Welkom bij HR"
+    "selectMenuItem": {
+      "en": "Select a menu item from the sidebar to get started.",
+      "fr": "Sélectionnez un élément du menu latéral pour commencer.",
+      "nl": "Selecteer een menu-item in de zijbalk om te beginnen."
     },
     "welcomeSubtitle": {
       "en": "Manage employees, departments, and organizational structure.",
       "fr": "Gérez les employés, les services et la structure organisationnelle.",
       "nl": "Beheer medewerkers, afdelingen en organisatiestructuur."
     },
-    "selectMenuItem": {
-      "en": "Select a menu item from the sidebar to get started.",
-      "fr": "Sélectionnez un élément du menu latéral pour commencer.",
-      "nl": "Selecteer een menu-item in de zijbalk om te beginnen."
+    "welcomeTitle": {
+      "en": "Welcome to HR",
+      "fr": "Bienvenue à HR",
+      "nl": "Welkom bij HR"
     }
   },
   "model": {
     "Address": {
-      "label": {
-        "en": "Address",
-        "fr": "Adresse",
-        "nl": "Adres"
-      },
       "attributes": {
         "City": {
-          "label": {
-            "en": "City",
-            "fr": "Ville",
-            "nl": "Stad"
-          },
           "description": {
             "en": "Town or city the address is in.",
             "fr": "Commune ou ville où se trouve l'adresse.",
             "nl": "Gemeente of stad waar het adres ligt."
+          },
+          "label": {
+            "en": "City",
+            "fr": "Ville",
+            "nl": "Stad"
           },
           "rules": {
             "minLength": {
@@ -45,27 +40,27 @@
           }
         },
         "Description": {
-          "label": {
-            "en": "Description",
-            "fr": "Description",
-            "nl": "Beschrijving"
-          },
           "description": {
             "en": "Optional label and notes for this address, such as Head office or delivery instructions.",
             "fr": "Libellé et notes facultatifs pour cette adresse, comme Siège social ou des instructions de livraison.",
             "nl": "Optioneel label en notities voor dit adres, zoals Hoofdkantoor of leveringsinstructies."
+          },
+          "label": {
+            "en": "Description",
+            "fr": "Description",
+            "nl": "Beschrijving"
           }
         },
         "PostalCode": {
-          "label": {
-            "en": "Postal Code",
-            "fr": "Code postal",
-            "nl": "Postcode"
-          },
           "description": {
             "en": "Postal code as the carrier prints it, e.g. 9000 for Ghent.",
             "fr": "Code postal tel que le transporteur l'imprime, p. ex. 9000 pour Gand.",
             "nl": "Postcode zoals de vervoerder ze afdrukt, bv. 9000 voor Gent."
+          },
+          "label": {
+            "en": "Postal Code",
+            "fr": "Code postal",
+            "nl": "Postcode"
           },
           "rules": {
             "minLength": {
@@ -76,15 +71,15 @@
           }
         },
         "Street": {
-          "label": {
-            "en": "Street",
-            "fr": "Rue",
-            "nl": "Straat"
-          },
           "description": {
             "en": "Street name and house number, e.g. Korenmarkt 12.",
             "fr": "Nom de rue et numéro de maison, p. ex. Korenmarkt 12.",
             "nl": "Straatnaam en huisnummer, bv. Korenmarkt 12."
+          },
+          "label": {
+            "en": "Street",
+            "fr": "Rue",
+            "nl": "Straat"
           },
           "rules": {
             "minLength": {
@@ -94,70 +89,70 @@
             }
           }
         }
+      },
+      "label": {
+        "en": "Address",
+        "fr": "Adresse",
+        "nl": "Adres"
       }
     },
     "AddressDescription": {
-      "label": {
-        "en": "Address Description",
-        "fr": "Description d'adresse",
-        "nl": "Adresbeschrijving"
-      },
       "attributes": {
         "Notes": {
-          "label": {
-            "en": "Notes",
-            "fr": "Notes",
-            "nl": "Notities"
-          },
           "description": {
             "en": "Free-text remarks about the address, such as access or delivery instructions.",
             "fr": "Remarques en texte libre sur l'adresse, comme des instructions d'accès ou de livraison.",
             "nl": "Vrije-tekstopmerkingen over het adres, zoals toegangs- of leveringsinstructies."
+          },
+          "label": {
+            "en": "Notes",
+            "fr": "Notes",
+            "nl": "Notities"
           }
         },
         "Title": {
-          "label": {
-            "en": "Title",
-            "fr": "Titre",
-            "nl": "Titel"
-          },
           "description": {
             "en": "Short label for the address, e.g. Home or Head office.",
             "fr": "Libellé court pour l'adresse, p. ex. Domicile ou Siège social.",
             "nl": "Kort label voor het adres, bv. Thuis of Hoofdkantoor."
+          },
+          "label": {
+            "en": "Title",
+            "fr": "Titre",
+            "nl": "Titel"
           }
         }
+      },
+      "label": {
+        "en": "Address Description",
+        "fr": "Description d'adresse",
+        "nl": "Adresbeschrijving"
       }
     },
     "Car": {
-      "label": {
-        "en": "Car",
-        "fr": "Voiture",
-        "nl": "Auto"
-      },
       "attributes": {
         "Color": {
-          "label": {
-            "en": "Color",
-            "fr": "Couleur",
-            "nl": "Kleur"
-          },
           "description": {
             "en": "Exterior colour of the car, as maintained in the Fleet app.",
             "fr": "Couleur extérieure de la voiture, telle que gérée dans l'application Fleet.",
             "nl": "Buitenkleur van de wagen, zoals bijgehouden in de Fleet-app."
+          },
+          "label": {
+            "en": "Color",
+            "fr": "Couleur",
+            "nl": "Kleur"
           }
         },
         "LicensePlate": {
-          "label": {
-            "en": "License Plate",
-            "fr": "Plaque d'immatriculation",
-            "nl": "Nummerplaat"
-          },
           "description": {
             "en": "Registration plate of the car as maintained in the Fleet app.",
             "fr": "Plaque d'immatriculation de la voiture, telle que gérée dans l'application Fleet.",
             "nl": "Nummerplaat van de wagen, zoals bijgehouden in de Fleet-app."
+          },
+          "label": {
+            "en": "License Plate",
+            "fr": "Plaque d'immatriculation",
+            "nl": "Nummerplaat"
           },
           "rules": {
             "minLength": {
@@ -173,15 +168,15 @@
           }
         },
         "Model": {
-          "label": {
-            "en": "Model",
-            "fr": "Modèle",
-            "nl": "Model"
-          },
           "description": {
             "en": "Make and model of the car as maintained in the Fleet app.",
             "fr": "Marque et modèle de la voiture, tels que gérés dans l'application Fleet.",
             "nl": "Merk en model van de wagen, zoals bijgehouden in de Fleet-app."
+          },
+          "label": {
+            "en": "Model",
+            "fr": "Modèle",
+            "nl": "Model"
           },
           "rules": {
             "minLength": {
@@ -192,112 +187,112 @@
           }
         },
         "Year": {
-          "label": {
-            "en": "Year",
-            "fr": "Année",
-            "nl": "Jaar"
-          },
           "description": {
             "en": "Year the car was built, as maintained in the Fleet app.",
             "fr": "Année de construction de la voiture, telle que gérée dans l'application Fleet.",
             "nl": "Bouwjaar van de wagen, zoals bijgehouden in de Fleet-app."
+          },
+          "label": {
+            "en": "Year",
+            "fr": "Année",
+            "nl": "Jaar"
           }
         }
+      },
+      "label": {
+        "en": "Car",
+        "fr": "Voiture",
+        "nl": "Auto"
       }
     },
     "CarreerJob": {
       "attributes": {
         "ContractEnd": {
-          "label": {
-            "en": "Contract End",
-            "fr": "Fin du contrat",
-            "nl": "Contracteinde"
-          },
           "description": {
             "en": "Date on which the contract ended; leave empty while the job is ongoing.",
             "fr": "Date de fin du contrat ; laissez vide tant que l'emploi est en cours.",
             "nl": "Datum waarop het contract eindigde; laat leeg zolang de job loopt."
+          },
+          "label": {
+            "en": "Contract End",
+            "fr": "Fin du contrat",
+            "nl": "Contracteinde"
           }
         },
         "ContractStart": {
-          "label": {
-            "en": "Contract Start",
-            "fr": "Début du contrat",
-            "nl": "Contractstart"
-          },
           "description": {
             "en": "Date on which the contract for this job started.",
             "fr": "Date de début du contrat pour cet emploi.",
             "nl": "Datum waarop het contract voor deze job begon."
+          },
+          "label": {
+            "en": "Contract Start",
+            "fr": "Début du contrat",
+            "nl": "Contractstart"
           }
         },
         "ProfessionId": {
-          "label": {
-            "en": "Profession",
-            "fr": "Profession",
-            "nl": "Beroep"
-          },
           "description": {
             "en": "The profession held during this career step.",
             "fr": "La profession exercée durant cette étape de carrière.",
             "nl": "Het beroep dat tijdens deze loopbaanstap uitgeoefend werd."
+          },
+          "label": {
+            "en": "Profession",
+            "fr": "Profession",
+            "nl": "Beroep"
           }
         }
       }
     },
     "Company": {
-      "label": {
-        "en": "Company",
-        "fr": "Entreprise",
-        "nl": "Bedrijf"
-      },
       "attributes": {
         "AccentColor": {
-          "label": {
-            "en": "Accent Color",
-            "fr": "Couleur d'accent",
-            "nl": "Accentkleur"
-          },
           "description": {
             "en": "Secondary brand colour of the company as a hex code, used alongside the primary colour.",
             "fr": "Couleur secondaire de la marque de l'entreprise sous forme de code hexadécimal, utilisée aux côtés de la couleur principale.",
             "nl": "Secundaire merkkleur van het bedrijf als hexcode, gebruikt naast de primaire kleur."
+          },
+          "label": {
+            "en": "Accent Color",
+            "fr": "Couleur d'accent",
+            "nl": "Accentkleur"
           }
         },
         "BrandColor": {
-          "label": {
-            "en": "Brand Color",
-            "fr": "Couleur de marque",
-            "nl": "Merkkleur"
-          },
           "description": {
             "en": "Primary brand colour of the company as a hex code, e.g. #0d6efd.",
             "fr": "Couleur principale de la marque de l'entreprise sous forme de code hexadécimal, p. ex. #0d6efd.",
             "nl": "Primaire merkkleur van het bedrijf als hexcode, bv. #0d6efd."
+          },
+          "label": {
+            "en": "Brand Color",
+            "fr": "Couleur de marque",
+            "nl": "Merkkleur"
           }
         },
         "EmployeeCount": {
-          "label": {
-            "en": "Employee Count",
-            "fr": "Nombre d'employés",
-            "nl": "Aantal werknemers"
-          },
           "description": {
             "en": "Approximate number of people the company employs.",
             "fr": "Nombre approximatif de personnes employées par l'entreprise.",
             "nl": "Bij benadering het aantal mensen dat het bedrijf tewerkstelt."
+          },
+          "label": {
+            "en": "Employee Count",
+            "fr": "Nombre d'employés",
+            "nl": "Aantal werknemers"
           }
         },
         "Name": {
-          "label": {
-            "en": "Name",
-            "fr": "Nom",
-            "nl": "Naam"
-          },
           "description": {
             "en": "Legal or trading name of the company.",
             "fr": "Raison sociale ou nom commercial de l'entreprise.",
             "nl": "Juridische of handelsnaam van het bedrijf."
+          },
+          "label": {
+            "en": "Name",
+            "fr": "Nom",
+            "nl": "Naam"
           },
           "rules": {
             "minLength": {
@@ -308,96 +303,96 @@
           }
         },
         "Sector": {
-          "label": {
-            "en": "Sector",
-            "fr": "Secteur",
-            "nl": "Sector"
-          },
           "description": {
             "en": "The profession that best describes the sector the company operates in.",
             "fr": "La profession qui décrit le mieux le secteur dans lequel l'entreprise opère.",
             "nl": "Het beroep dat de sector waarin het bedrijf actief is het best omschrijft."
+          },
+          "label": {
+            "en": "Sector",
+            "fr": "Secteur",
+            "nl": "Sector"
           }
         },
         "Website": {
-          "label": {
-            "en": "Website",
-            "fr": "Site web",
-            "nl": "Website"
-          },
           "description": {
             "en": "Public website of the company, including the scheme, e.g. https://example.com.",
             "fr": "Site web public de l'entreprise, schéma inclus, p. ex. https://example.com.",
             "nl": "Publieke website van het bedrijf, inclusief het schema, bv. https://example.com."
+          },
+          "label": {
+            "en": "Website",
+            "fr": "Site web",
+            "nl": "Website"
           }
         }
+      },
+      "label": {
+        "en": "Company",
+        "fr": "Entreprise",
+        "nl": "Bedrijf"
       }
     },
     "Person": {
-      "label": {
-        "en": "Person",
-        "fr": "Personne",
-        "nl": "Persoon"
-      },
       "attributes": {
         "Address": {
-          "label": {
-            "en": "Address",
-            "fr": "Adresse",
-            "nl": "Adres"
-          },
           "description": {
             "en": "Home address of the person.",
             "fr": "Adresse du domicile de la personne.",
             "nl": "Thuisadres van de persoon."
+          },
+          "label": {
+            "en": "Address",
+            "fr": "Adresse",
+            "nl": "Adres"
           }
         },
         "Company": {
-          "label": {
-            "en": "Company",
-            "fr": "Entreprise",
-            "nl": "Bedrijf"
-          },
           "description": {
             "en": "The company the person currently works for.",
             "fr": "L'entreprise pour laquelle la personne travaille actuellement.",
             "nl": "Het bedrijf waarvoor de persoon momenteel werkt."
+          },
+          "label": {
+            "en": "Company",
+            "fr": "Entreprise",
+            "nl": "Bedrijf"
           }
         },
         "DateOfBirth": {
-          "label": {
-            "en": "Date Of Birth",
-            "fr": "Date de naissance",
-            "nl": "Geboortedatum"
-          },
           "description": {
             "en": "Date on which the person was born.",
             "fr": "Date de naissance de la personne.",
             "nl": "Geboortedatum van de persoon."
+          },
+          "label": {
+            "en": "Date Of Birth",
+            "fr": "Date de naissance",
+            "nl": "Geboortedatum"
           }
         },
         "Email": {
-          "label": {
-            "en": "Email",
-            "fr": "E-mail",
-            "nl": "E-mail"
-          },
           "description": {
             "en": "E-mail address used to contact the person.",
             "fr": "Adresse e-mail utilisée pour contacter la personne.",
             "nl": "E-mailadres waarop de persoon gecontacteerd wordt."
+          },
+          "label": {
+            "en": "Email",
+            "fr": "E-mail",
+            "nl": "E-mail"
           }
         },
         "FirstName": {
-          "label": {
-            "en": "First Name",
-            "fr": "Prénom",
-            "nl": "Voornaam"
-          },
           "description": {
             "en": "Given name of the person.",
             "fr": "Prénom de la personne.",
             "nl": "Voornaam van de persoon."
+          },
+          "label": {
+            "en": "First Name",
+            "fr": "Prénom",
+            "nl": "Voornaam"
           },
           "rules": {
             "minLength": {
@@ -415,27 +410,27 @@
           }
         },
         "Jobs": {
-          "label": {
-            "en": "Jobs",
-            "fr": "Jobs",
-            "nl": "Jobs"
-          },
           "description": {
             "en": "Career history of the person, ordered by dragging rows into place.",
             "fr": "Parcours professionnel de la personne, ordonné en faisant glisser les lignes à leur place.",
             "nl": "Loopbaangeschiedenis van de persoon, geordend door rijen op hun plaats te slepen."
+          },
+          "label": {
+            "en": "Jobs",
+            "fr": "Jobs",
+            "nl": "Jobs"
           }
         },
         "LastName": {
-          "label": {
-            "en": "Last Name",
-            "fr": "Nom de famille",
-            "nl": "Achternaam"
-          },
           "description": {
             "en": "Family name of the person.",
             "fr": "Nom de famille de la personne.",
             "nl": "Familienaam van de persoon."
+          },
+          "label": {
+            "en": "Last Name",
+            "fr": "Nom de famille",
+            "nl": "Achternaam"
           },
           "rules": {
             "minLength": {
@@ -446,40 +441,24 @@
           }
         },
         "Professions": {
-          "label": {
-            "en": "Professions",
-            "fr": "Professions",
-            "nl": "Beroepen"
-          },
           "description": {
             "en": "All professions the person holds; several can be selected.",
             "fr": "Toutes les professions exercées par la personne ; plusieurs peuvent être sélectionnées.",
             "nl": "Alle beroepen die de persoon uitoefent; er kunnen er meerdere geselecteerd worden."
-          }
-        }
-      },
-      "tabs": {
-        "General": {
+          },
           "label": {
-            "en": "General",
-            "fr": "Général",
-            "nl": "Algemeen"
-          }
-        },
-        "Employment": {
-          "label": {
-            "en": "Employment",
-            "fr": "Emploi",
-            "nl": "Loopbaan"
+            "en": "Professions",
+            "fr": "Professions",
+            "nl": "Beroepen"
           }
         }
       },
       "groups": {
-        "Personal": {
+        "Career": {
           "label": {
-            "en": "Personal Information",
-            "fr": "Informations personnelles",
-            "nl": "Persoonlijke gegevens"
+            "en": "Career",
+            "fr": "Carrière",
+            "nl": "Carrière"
           }
         },
         "Contact": {
@@ -489,11 +468,32 @@
             "nl": "Contact"
           }
         },
-        "Career": {
+        "Personal": {
           "label": {
-            "en": "Career",
-            "fr": "Carrière",
-            "nl": "Carrière"
+            "en": "Personal Information",
+            "fr": "Informations personnelles",
+            "nl": "Persoonlijke gegevens"
+          }
+        }
+      },
+      "label": {
+        "en": "Person",
+        "fr": "Personne",
+        "nl": "Persoon"
+      },
+      "tabs": {
+        "Employment": {
+          "label": {
+            "en": "Employment",
+            "fr": "Emploi",
+            "nl": "Loopbaan"
+          }
+        },
+        "General": {
+          "label": {
+            "en": "General",
+            "fr": "Général",
+            "nl": "Algemeen"
           }
         }
       }
@@ -501,27 +501,15 @@
     "Profession": {
       "attributes": {
         "Description": {
-          "label": {
-            "en": "Description",
-            "fr": "Description",
-            "nl": "Omschrijving"
-          },
           "description": {
             "en": "Name of the profession as shown to users, e.g. Software engineer.",
             "fr": "Nom de la profession tel qu'il est affiché aux utilisateurs, p. ex. ingénieur logiciel.",
             "nl": "Naam van het beroep zoals getoond aan gebruikers, bv. software-ingenieur."
-          }
-        },
-        "Regime": {
-          "label": {
-            "en": "Regime",
-            "fr": "Régime",
-            "nl": "Regime"
           },
-          "description": {
-            "en": "Employment regime under which the profession is exercised, e.g. Employee or Freelance.",
-            "fr": "Régime d'emploi sous lequel la profession est exercée, p. ex. salarié ou indépendant.",
-            "nl": "Arbeidsregime waaronder het beroep wordt uitgeoefend, bv. werknemer of freelance."
+          "label": {
+            "en": "Description",
+            "fr": "Description",
+            "nl": "Omschrijving"
           }
         },
         "Label": {
@@ -530,11 +518,59 @@
             "fr": "Profession (régime)",
             "nl": "Beroep (regime)"
           }
+        },
+        "Regime": {
+          "description": {
+            "en": "Employment regime under which the profession is exercised, e.g. Employee or Freelance.",
+            "fr": "Régime d'emploi sous lequel la profession est exercée, p. ex. salarié ou indépendant.",
+            "nl": "Arbeidsregime waaronder het beroep wordt uitgeoefend, bv. werknemer of freelance."
+          },
+          "label": {
+            "en": "Regime",
+            "fr": "Régime",
+            "nl": "Regime"
+          }
         }
       }
     }
   },
+  "programUnits": {
+    "cars": {
+      "en": "Cars",
+      "fr": "Voitures",
+      "nl": "Auto's"
+    },
+    "companies": {
+      "en": "Companies",
+      "fr": "Entreprises",
+      "nl": "Bedrijven"
+    },
+    "groups": {
+      "hr": {
+        "en": "HR",
+        "fr": "RH",
+        "nl": "HR"
+      }
+    },
+    "people": {
+      "en": "People",
+      "fr": "Personnes",
+      "nl": "Personen"
+    },
+    "professions": {
+      "en": "Professions",
+      "fr": "Professions",
+      "nl": "Beroepen"
+    }
+  },
   "queries": {
+    "Company_People": {
+      "label": {
+        "en": "People in Company",
+        "fr": "Personnes dans l'entreprise",
+        "nl": "Personen in bedrijf"
+      }
+    },
     "GetCars": {
       "label": {
         "en": "Cars",
@@ -549,13 +585,6 @@
         "nl": "Bedrijven"
       }
     },
-    "Company_People": {
-      "label": {
-        "en": "People in Company",
-        "fr": "Personnes dans l'entreprise",
-        "nl": "Personen in bedrijf"
-      }
-    },
     "GetPeople": {
       "label": {
         "en": "People",
@@ -564,56 +593,20 @@
       }
     }
   },
-  "programUnits": {
-    "groups": {
-      "hr": {
-        "en": "HR",
-        "fr": "RH",
-        "nl": "HR"
-      }
-    },
-    "people": {
-      "en": "People",
-      "fr": "Personnes",
-      "nl": "Personen"
-    },
-    "companies": {
-      "en": "Companies",
-      "fr": "Entreprises",
-      "nl": "Bedrijven"
-    },
-    "cars": {
-      "en": "Cars",
-      "fr": "Voitures",
-      "nl": "Auto's"
-    },
-    "professions": {
-      "en": "Professions",
-      "fr": "Professions",
-      "nl": "Beroepen"
-    }
-  },
   "security": {
     "groups": {
-      "Anonymous visitors": {
-        "label": {
-          "en": "Anonymous visitors",
-          "fr": "Visiteurs anonymes",
-          "nl": "Anonieme bezoekers"
-        }
-      },
-      "Signed-in users": {
-        "label": {
-          "en": "Signed-in users",
-          "fr": "Utilisateurs connectés",
-          "nl": "Aangemelde gebruikers"
-        }
-      },
       "Administrators": {
         "label": {
           "en": "Administrators",
           "fr": "Administrateurs",
           "nl": "Beheerders"
+        }
+      },
+      "Anonymous visitors": {
+        "label": {
+          "en": "Anonymous visitors",
+          "fr": "Visiteurs anonymes",
+          "nl": "Anonieme bezoekers"
         }
       },
       "HR managers": {
@@ -623,18 +616,25 @@
           "nl": "HR-managers"
         }
       },
-      "Viewers": {
-        "label": {
-          "en": "Viewers",
-          "fr": "Lecteurs",
-          "nl": "Lezers"
-        }
-      },
       "Module:Fleet": {
         "label": {
           "en": "Module:Fleet",
           "fr": "Module:Fleet",
           "nl": "Module:Fleet"
+        }
+      },
+      "Signed-in users": {
+        "label": {
+          "en": "Signed-in users",
+          "fr": "Utilisateurs connectés",
+          "nl": "Aangemelde gebruikers"
+        }
+      },
+      "Viewers": {
+        "label": {
+          "en": "Viewers",
+          "fr": "Lecteurs",
+          "nl": "Lezers"
         }
       }
     }

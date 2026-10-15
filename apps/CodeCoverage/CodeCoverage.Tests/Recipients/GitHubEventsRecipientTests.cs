@@ -291,10 +291,11 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
     /// </remarks>
     private static string PullRequestJson(
         string headSha, string baseSha, string action = "opened",
-        bool merged = false, bool headFromFork = false) => $$"""
+        bool merged = false, bool headFromFork = false, string? changes = null) => $$"""
         {
           "action": "{{action}}",
           {{(action == "synchronize" ? $"\"before\": \"{HeadSha}\", \"after\": \"{headSha}\"," : "")}}
+          {{(changes is null ? "" : $"\"changes\": {changes},")}}
           "number": 42,
           "installation": { "id": 1, "node_id": "MDIzOkludGVncmF0aW9uSW5zdGFsbGF0aW9uMQ==" },
           "repository": {{RepositoryJson}},
@@ -389,6 +390,40 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
             .HandleAsync(Message("pull_request", PullRequestJson(HeadSha, BaseSha, "synchronize")));
         await DeliverForgeEventsAsync(session, bus);
 
+        bus.Messages.OfType<CodeCoverage.Feedback.OpenPullRequestCommentMessage>().Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// A pull request marked ready, or retargeted, may have just become one the merge queue can take, so the queue offers
+    /// its button again (merge-queue PRD §0 O30); a retarget also moves the base the coverage record keeps. A title or body
+    /// edit changes neither, and a draft is never offered the button, so both raise nothing. Neither is a first open: no
+    /// pending comment.
+    /// </summary>
+    [Theory]
+    [InlineData("ready_for_review", null, true)]
+    [InlineData("edited", """{"base":{"ref":{"from":"develop"},"sha":{"from":"cccccccccccccccccccccccccccccccccccccccc"}}}""", true)]
+    [InlineData("edited", """{"title":{"from":"Add a thing (draft title)"}}""", false)]
+    [InlineData("converted_to_draft", null, false)]
+    public async Task Ready_for_review_and_a_retarget_are_pull_request_updates_and_other_edits_are_not(string action, string? changes, bool raised)
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+
+        await CreateRecipient(session, out var bus)
+            .HandleAsync(Message("pull_request", PullRequestJson(HeadSha, BaseSha, action, changes: changes)));
+        await DeliverForgeEventsAsync(session, bus);
+
+        var updates = bus.Messages.OfType<ForgeWebhookMessage<PullRequestUpdated>>().Select(m => m.Event).ToList();
+        if (!raised)
+        {
+            updates.Should().BeEmpty();
+            return;
+        }
+        var update = updates.Should().ContainSingle().Which;
+        update.Number.Should().Be(42);
+        update.HeadSha.Should().Be(HeadSha);
+        update.BaseRef.Should().Be("master");
+        update.IsFirstOpen.Should().BeFalse();
         bus.Messages.OfType<CodeCoverage.Feedback.OpenPullRequestCommentMessage>().Should().BeEmpty();
     }
 

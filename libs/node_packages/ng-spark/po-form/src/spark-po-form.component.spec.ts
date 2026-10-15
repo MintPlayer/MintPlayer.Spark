@@ -348,14 +348,14 @@ describe('SparkPoFormComponent', () => {
       clrType: 'Test.Step',
       attributes: [attr({ id: 's-label', name: 'Label', order: 1 })],
     };
-    const sortableParent = (isSortable: boolean): EntityType => ({
+    const sortableParent = (isSortable: boolean, editMode: 'inline' | 'modal' = 'inline'): EntityType => ({
       id: 't-parent',
       name: 'Parent',
       clrType: 'Test.Parent',
       attributes: [
         attr({
           id: 'a-steps', name: 'Steps', dataType: 'AsDetail', isArray: true,
-          editMode: 'inline', asDetailType: 'Test.Step', isSortable, order: 1,
+          editMode, asDetailType: 'Test.Step', isSortable, order: 1,
         }),
       ],
     });
@@ -382,6 +382,31 @@ describe('SparkPoFormComponent', () => {
 
       // Reference is untouched — no needless re-emit / change-flag.
       expect(component.formData()['Steps']).toBe(before);
+    });
+
+    // CDK puts the floating preview at the end of <body>, outside every component, so it has to be a <bs-table>:
+    // Bootstrap's table CSS ships with it. A plain .table (inline) or CDK's bare cloned <tr> (modal) drew 1px cells (D84).
+    it.each(['inline', 'modal'] as const)('drags a %s row with a <bs-table> preview of its cells', async (editMode) => {
+      const { fixture, component } = createComponent({
+        getEntityTypes: vi.fn().mockResolvedValue([sortableParent(true, editMode), stepType]),
+      });
+      component.formData.set({ Steps: [{ Label: 'a' }, { Label: 'b' }] });
+      await setEntityType(fixture, sortableParent(true, editMode));
+      fixture.detectChanges();
+
+      const handle = fixture.nativeElement.querySelector('.cdk-drag-handle') as HTMLElement;
+      // detail 1: CDK ignores a mousedown with detail 0 as a screen reader's fake click.
+      handle.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0, buttons: 1, detail: 1, clientX: 10, clientY: 10 }));
+      document.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, buttons: 1, clientX: 10, clientY: 40 }));
+      fixture.detectChanges();
+      try {
+        const preview = document.querySelector('.cdk-drag-preview') as HTMLElement | null;
+        expect(preview?.tagName).toBe('BS-TABLE');
+        expect(preview!.querySelectorAll('table.table > tbody > tr > td').length).toBeGreaterThan(1);
+      } finally {
+        document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: 10, clientY: 40 }));
+        fixture.detectChanges();
+      }
     });
 
     it('renders a drag handle per row when the AsDetail array is sortable', async () => {

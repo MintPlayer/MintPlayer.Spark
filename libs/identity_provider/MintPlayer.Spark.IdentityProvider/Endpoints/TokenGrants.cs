@@ -26,7 +26,7 @@ internal sealed partial class OidcTokenEndpoint<TUser>
             return Results.Json(new { error = "invalid_request", error_description = "device_code is required." }, statusCode: 400);
 
         using var session = store.OpenAsyncSession();
-        session.Advanced.UseOptimisticConcurrency = true;
+        session.Advanced.OptimisticConcurrencyMode = Raven.Client.Documents.Session.OptimisticConcurrencyMode.Writes;
 
         var client = await clientAuthenticator.AuthenticateAsync(httpContext, form, session, ct);
         if (!client.Succeeded)

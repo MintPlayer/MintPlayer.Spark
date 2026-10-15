@@ -123,6 +123,21 @@ export interface AccountRef {
   login: string;
 }
 
+/** A permission the app declares above the level the account's installation accepted (merge-queue PRD O17). */
+export interface PendingPermission {
+  name: string;
+  displayName: string;
+  declared: string;
+  /** Null when the installation granted none of it. */
+  accepted: string | null;
+}
+
+/** The installation's own page on the forge, where the account accepts the new permissions. */
+export interface PendingInstallationPermissions {
+  htmlUrl: string;
+  pending: PendingPermission[];
+}
+
 export interface TreeEntry {
   name: string;
   path: string;
@@ -296,6 +311,84 @@ export interface CoverageDrop {
   deltaVsParent: number;
 }
 
+/** One pull request in a merge-queue lane (`GET …/merge-queue`, merge-queue PRD M6). */
+export interface MergeQueueEntry {
+  number: number;
+  title: string | null;
+  authorLogin: string | null;
+  /** The saga's state: `Queued`, `Preparing`, `Regenerating`, `Publishing`, `AwaitingChecks`, `Merging`. */
+  state: string;
+  /** The last thing the queue did for it, as its check run says. */
+  step: string | null;
+  sinceUtc: string;
+  enqueuedAtUtc: string;
+  enqueuedBy: string;
+  /** `Label`, `Comment` or `Button` (O8). */
+  enqueuedVia: string;
+  run: number;
+  /** 1 for the entry being worked on, 2.. for the waiting ones. */
+  position: number | null;
+  /** The regenerate workflow run, while there is one. */
+  runUrl: string | null;
+}
+
+/** How one run ended: `Merged`, `Evicted`, `Dequeued` or `Refused`, with the queue's reason code. */
+export interface MergeQueueOutcome {
+  number: number;
+  title: string | null;
+  run: number;
+  state: string;
+  reason: string | null;
+  message: string | null;
+  enqueuedBy: string | null;
+  mergeCommitSha: string | null;
+  finishedAtUtc: string;
+}
+
+export interface MergeQueueLane {
+  baseBranch: string;
+  paused: boolean;
+  current: MergeQueueEntry | null;
+  waiting: MergeQueueEntry[];
+  /** Newest first. */
+  recent: MergeQueueOutcome[];
+}
+
+/** The effective configuration (O15) a run read, each value with its source. */
+export interface MergeQueueConfig {
+  number: number;
+  run: number;
+  configRef: string | null;
+  values: { key: string; value: string; source: string }[];
+}
+
+/** Who is looking: the login the button acts as, and the role that decides which buttons make sense (O9 is the engine's). */
+export interface MergeQueueViewer {
+  signedIn: boolean;
+  /** The account has a sign-in with the repository's forge. */
+  linked: boolean;
+  login: string | null;
+  /** `none` … `admin`; null when it could not be read. */
+  role: string | null;
+  /** `Ok`, `ReauthRequired` or `Unavailable`. */
+  credential: string | null;
+}
+
+export interface MergeQueueView {
+  /** False when the repository's forge has no merge queue. */
+  supported: boolean;
+  lanes: MergeQueueLane[];
+  config: MergeQueueConfig | null;
+  viewer: MergeQueueViewer;
+}
+
+/** The button's answer: the command was raised as `actor`. The queue itself answers on the pull request. */
+export interface MergeQueueCommandAccepted {
+  number: number;
+  command: 'enqueue' | 'dequeue';
+  actor: string;
+}
+
 export function coveragePercent(summary?: CoverageSummary | null): number | null {
   if (!summary || summary.linesCoverable === 0) return null;
   return (summary.linesCovered / summary.linesCoverable) * 100;
@@ -311,6 +404,16 @@ export class BrowseService {
 
   getAccountRepos(provider: string, login: string): Promise<RepoInfo[]> {
     return firstValueFrom(this.http.get<RepoInfo[]>(`/api/browse/accounts/${encodeURIComponent(provider)}/${encodeURIComponent(login)}/repos`));
+  }
+
+  /**
+   * The permissions the app asks for that the account's installation has not accepted yet (merge-queue PRD O17).
+   * Null (204) when nothing is pending or nothing can be said; rejects with 401/404 for a viewer who does not
+   * manage the account.
+   */
+  getPendingPermissions(provider: string, login: string): Promise<PendingInstallationPermissions | null> {
+    return firstValueFrom(this.http.get<PendingInstallationPermissions | null>(
+      `/api/accounts/${encodeURIComponent(provider)}/${encodeURIComponent(login)}/pending-permissions`));
   }
 
   getDependencyGraph(provider: string, login: string): Promise<DependencyGraph> {
@@ -396,6 +499,28 @@ export class BrowseService {
   rotateBadgeToken(provider: string, owner: string, name: string): Promise<{ badgeToken: string }> {
     return firstValueFrom(this.http.post<{ badgeToken: string }>(
       `/api/repos/${encodeURIComponent(provider)}/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/settings/badge-token`, {}));
+  }
+
+  /** The repository's merge queue: lanes, recent outcomes, the effective configuration and what the viewer may do. */
+  getMergeQueue(provider: string, owner: string, name: string): Promise<MergeQueueView> {
+    return firstValueFrom(this.http.get<MergeQueueView>(
+      `/api/browse/repos/${encodeURIComponent(provider)}/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/merge-queue`));
+  }
+
+  /**
+   * The repository page's queue button (O8): the same command a label or `/queue` raises, as the signed-in user's own
+   * GitHub login. A mutating request, so the XSRF interceptor stamps it.
+   */
+  enqueuePullRequest(provider: string, owner: string, name: string, number: number): Promise<MergeQueueCommandAccepted> {
+    return firstValueFrom(this.http.post<MergeQueueCommandAccepted>(this.mergeQueueUrl(provider, owner, name, number), {}));
+  }
+
+  dequeuePullRequest(provider: string, owner: string, name: string, number: number): Promise<MergeQueueCommandAccepted> {
+    return firstValueFrom(this.http.delete<MergeQueueCommandAccepted>(this.mergeQueueUrl(provider, owner, name, number)));
+  }
+
+  private mergeQueueUrl(provider: string, owner: string, name: string, number: number): string {
+    return `/api/repos/${encodeURIComponent(provider)}/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/merge-queue/${encodeURIComponent(String(number))}`;
   }
 
 }

@@ -68,7 +68,8 @@
     "diffUnavailable":   { "en": "The version to compare with could not be loaded; the text is shown as it is.", "fr": "La version de comparaison n'a pas pu être chargée ; le texte est affiché tel quel.", "nl": "De versie om mee te vergelijken kon niet worden geladen; de tekst wordt getoond zoals hij is." },
     "diffIdentical":     { "en": "Identical to the current version.", "fr": "Identique à la version actuelle.", "nl": "Gelijk aan de huidige versie." },
     "diffAdded":         { "en": "Added",          "fr": "Ajouté",           "nl": "Toegevoegd" },
-    "diffRemoved":       { "en": "Removed",        "fr": "Supprimé",         "nl": "Verwijderd" }
+    "diffRemoved":       { "en": "Removed",        "fr": "Supprimé",         "nl": "Verwijderd" },
+    "opensInNewTab":     { "en": "(opens in a new tab)", "fr": "(s'ouvre dans un nouvel onglet)", "nl": "(opent in een nieuw tabblad)" }
   },
   "contributions": {
     "by":            { "en": "by {name}",      "fr": "par {name}",        "nl": "door {name}" },

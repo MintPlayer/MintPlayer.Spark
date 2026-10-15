@@ -8,6 +8,11 @@ namespace MintPlayer.Spark.Tests.Reflection;
 /// key" semantics — a regression here silently re-runs reflection on every call and defeats
 /// the cache. These tests pin the lock-free + Lazy contract.
 /// </summary>
+/// <remarks>
+/// Runs in <see cref="ReflectionCacheGlobalTierCollection"/>: the global string-keyed tier is one
+/// dictionary for the whole process, and these tests clear it and count it.
+/// </remarks>
+[Collection(ReflectionCacheGlobalTierCollection.Name)]
 public class ReflectionCacheTests
 {
     // Per-test isolation marker types — give each test its own TOwner generic-static cache
@@ -355,4 +360,18 @@ public class ReflectionCacheTests
     }
 
     private sealed class OwnerComplexValue;
+}
+
+/// <summary>
+/// Runs <see cref="ReflectionCacheTests"/> after every parallel class has finished, and alone. Production
+/// code writes the global string-keyed tier on nearly every Spark operation
+/// (<c>SparkTypeResolver.ResolveClrType</c>'s <c>resolveType|…</c> and <c>ActionsResolver.FindActionsType</c>'s
+/// <c>actionsType|…</c> keys), so a parallel class that maps an entity or runs a query adds an entry between
+/// <c>ClearGlobalForTests</c> and <c>GlobalCount</c>: "Expected ReflectionCache.GlobalCount to be 0, but
+/// found 1" in the 2026-10-14 sweep (merge queue PRD D81).
+/// </summary>
+[CollectionDefinition(Name, DisableParallelization = true)]
+public sealed class ReflectionCacheGlobalTierCollection
+{
+    public const string Name = "ReflectionCache global tier";
 }

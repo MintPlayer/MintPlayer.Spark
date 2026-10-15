@@ -119,6 +119,13 @@ public class RepositoryExistenceParityTests : CoverageRavenTest
         services.AddScoped<BrowseController>();
         services.AddScoped<BadgeController>();
         services.AddScoped<RepoSettingsController>();
+
+        // The merge-queue panel and button (M6). A caller with a verified login and a queue that would take the command,
+        // so a refusal can only come from the repository being invisible.
+        services.AddScoped<IForgeAccessService, GitHubForgeAccessService>();
+        services.AddSingleton<IForgeMergeQueue>(new CodeCoverage.Tests.MergeQueue.FakeForgeMergeQueue());
+        services.AddSingleton(NSubstitute.Substitute.For<MintPlayer.Spark.Messaging.Abstractions.IMessageBus>());
+        services.AddScoped<MergeQueueController>();
         return (services.BuildServiceProvider(), github);
     }
 
@@ -162,6 +169,37 @@ public class RepositoryExistenceParityTests : CoverageRavenTest
             Describe(result).Should().Be(
                 authenticated ? """404 {"error":"Not found"}""" : """401 {"error":"Authentication required"}""",
                 $"{provider}/{owner}/{name} must be indistinguishable from a repository that does not exist");
+        }
+    }
+
+    /// <summary>
+    /// The merge-queue panel and both halves of its button (M6) answer every variant like the browse API, and in the same
+    /// work: the button is no way round #453.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(Variants))]
+    public async Task The_merge_queue_panel_and_button_refuse_every_variant_with_the_canonical_refusal(string provider, string owner, string name)
+    {
+        using var store = await SeedAsync(GetDocumentStore());
+
+        foreach (var authenticated in new[] { false, true })
+        {
+            var expected = authenticated ? """404 {"error":"Not found"}""" : """401 {"error":"Authentication required"}""";
+            var because = $"{provider}/{owner}/{name} must be indistinguishable from a repository that does not exist";
+            foreach (var call in new Func<MergeQueueController, Task<ActionResult>>[]
+            {
+                async c => (await c.Get(provider, owner, name, CancellationToken.None)).Result!,
+                async c => (await c.Enqueue(provider, owner, name, 1, CancellationToken.None)).Result!,
+                async c => (await c.Dequeue(provider, owner, name, 1, CancellationToken.None)).Result!,
+            })
+            {
+                using var session = store.OpenAsyncSession();
+                var (services, github) = CreateServices(session);
+
+                Describe(await call(Controller<MergeQueueController>(services, authenticated))).Should().Be(expected, because);
+                if (provider == "github" && owner == "acme")
+                    github.AppClients.Should().Be(1, "the same steps as a name that does not exist (#453)");
+            }
         }
     }
 

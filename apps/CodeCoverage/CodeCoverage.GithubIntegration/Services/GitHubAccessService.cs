@@ -194,6 +194,27 @@ public partial class GitHubAccessService : IGitHubAccessService
         memoryCache.Remove($"github-owners-failed/{user.Id}");
     }
 
+    public async Task<GitHubVerifiedLogin> GetVerifiedLoginAsync(CancellationToken cancellationToken = default)
+    {
+        var user = await ViewerAsync();
+        if (user is null || !user.Logins.Any(l => ForgeProviders.TryParse(l.LoginProvider, out var forge) && forge == EForgeProvider.GitHub))
+            return new(null, false, GitHubTokenState.Ok);
+
+        // The same verified identity the owner set is built from (GetVisibilityAsync), so the login the queue acts as is
+        // exactly the one this user's own token answers GET /user with.
+        var identityKey = $"github-identity/{user.Id}";
+        if (memoryCache.Get<GitHubUser>(identityKey) is { } verified)
+            return new(verified.Login, true, GitHubTokenState.Ok);
+
+        // Nothing verified in the last VerifiedIdentityDuration: let the visibility query ask GitHub, which remembers the
+        // login it returns. Its owner cache goes first, since a cached owner set answers without asking.
+        memoryCache.Remove($"github-owners/{user.Id}");
+        var visibility = await GetVisibilityAsync(cancellationToken);
+        return memoryCache.Get<GitHubUser>(identityKey) is { } asked
+            ? new(asked.Login, true, GitHubTokenState.Ok)
+            : new(null, true, visibility.TokenState == GitHubTokenState.Ok ? GitHubTokenState.Unavailable : visibility.TokenState);
+    }
+
     /// <summary>The signed-in viewer's user document; <see langword="null"/> for an anonymous caller.</summary>
     private async Task<SparkUser?> ViewerAsync()
         => currentUser.Id is { Length: > 0 } userId ? await userManager.FindByIdAsync(userId) : null;

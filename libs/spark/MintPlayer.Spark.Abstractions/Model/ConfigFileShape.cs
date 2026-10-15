@@ -29,14 +29,22 @@ namespace MintPlayer.Spark.Abstractions.Model;
 /// application's file on top, so a library that changes Delete's rule shows up in verify even though
 /// no file of the application changed.
 /// </para>
+/// <para>
+/// <c>programUnits.json</c> is hashed for its <c>url</c> units' addresses only, each keyed by the unit's id
+/// (owner, 2026-10-15: "only include the urls in the modelhash. a normal program-unit change doesn't need to
+/// modify the hashes. the only risk is for external links to get tampered with somehow. Then the app mustn't
+/// start"). Names, icons, order, groups, the other unit types and comments do not move it, and a unit keyed by
+/// its id moves between groups without moving it. It used to walk the groups alone and never reached a unit,
+/// so a tampered url started as if nothing had changed.
+/// </para>
 /// </remarks>
 public static class ConfigFileShape
 {
     /// <summary>Fields of an action that change what it may do, rather than how it looks.</summary>
     private static readonly string[] StructuralActionFields = ["showedOn", "selectionRule"];
 
-    /// <summary>Fields of a program unit that decide where it points.</summary>
-    private static readonly string[] StructuralUnitFields = ["type", "queryId", "persistentObjectId", "url"];
+    /// <summary>The unit type whose address is hashed, matched ignoring case as the loader matches it.</summary>
+    private const string UrlUnitType = "url";
 
     /// <summary>The action catalogue's file name, relative to <c>App_Data</c>.</summary>
     public const string ActionsFileName = "actions.json";
@@ -49,8 +57,9 @@ public static class ConfigFileShape
 
     /// <summary>
     /// One structural hash per covered file, keyed by file name. <c>programUnits.json</c> is in the
-    /// result only when it exists; <c>actions.json</c> whenever the composed catalogue has an action,
-    /// since the libraries ship actions whether or not the application has a file.
+    /// result only when it exists and its composed menu has a <c>url</c> unit; <c>actions.json</c>
+    /// whenever the composed catalogue has an action, since the libraries ship actions whether or not
+    /// the application has a file.
     /// </summary>
     /// <param name="libraries">The library layers; <see cref="SparkActionLayers.Libraries"/> when omitted.</param>
     public static SortedDictionary<string, string> ComputeFileHashes(
@@ -93,7 +102,7 @@ public static class ConfigFileShape
         var result = new SortedDictionary<string, SortedDictionary<string, string>>(StringComparer.Ordinal);
 
         Add(ActionsFileName, SparkLayerKinds.Actions, json => DescribeLayerActions(json));
-        Add(ProgramUnitsFileName, SparkLayerKinds.ProgramUnits, json => Describe(json, ProgramUnitsFileName));
+        Add(ProgramUnitsFileName, SparkLayerKinds.ProgramUnits, DescribeUrlUnits);
         return result;
 
         void Add(string fileName, string kind, Func<string, string?> describe)
@@ -113,8 +122,8 @@ public static class ConfigFileShape
     }
 
     /// <summary>
-    /// The composed menu's structural rendering (<see cref="SparkProgramUnitsFiles"/>); <see langword="null"/>
-    /// when it does not compose, for the same reason <see cref="Describe"/> yields null.
+    /// The composed menu's rendering (<see cref="SparkProgramUnitsFiles"/>, <see cref="DescribeUrlUnits"/>);
+    /// <see langword="null"/> when it does not compose, for the same reason <see cref="DescribeUrlUnits"/> yields null.
     /// </summary>
     internal static string? DescribeProgramUnits(string appJson, IEnumerable<SparkLibrary> libraries)
     {
@@ -127,7 +136,7 @@ public static class ConfigFileShape
         {
             return null;
         }
-        return composed is null ? null : Describe(composed, ProgramUnitsFileName);
+        return composed is null ? null : DescribeUrlUnits(composed);
     }
 
     /// <summary>One <c>actions.json</c> layer on its own: each action it states, sorted, with the structural properties it states, or <c>removed</c>.</summary>
@@ -171,15 +180,23 @@ public static class ConfigFileShape
     }
 
     /// <summary>
-    /// The canonical structural rendering of one file, or <see langword="null"/> when it cannot be
-    /// parsed.
+    /// One <c>programUnits.json</c> rendering (a layer, or the composed menu) as its <c>url</c> units: each one's
+    /// id and <c>url</c>, sorted by id, so neither the authoring order nor the group a unit sits in is
+    /// structural. Empty when there is none; <see langword="null"/> when the text cannot be parsed.
     /// </summary>
     /// <remarks>
+    /// <para>
+    /// Every property is read as the loader reads it: names ignoring case, and the last of two spellings winning
+    /// (<c>JsonSerializer</c> with <c>PropertyNameCaseInsensitive</c>), so a <c>"Url"</c> or a <c>"type": "URL"</c>
+    /// cannot carry an address past the hash that the menu then serves.
+    /// </para>
+    /// <para>
     /// Unparseable yields null rather than throwing: a malformed file is refused by its own loader at
     /// startup, in that loader's words. Failing here would replace a specific message with a generic
     /// one, at a point the author has less context.
+    /// </para>
     /// </remarks>
-    internal static string? Describe(string json, string fileName)
+    internal static string? DescribeUrlUnits(string json)
     {
         JsonDocument document;
         try
@@ -197,16 +214,54 @@ public static class ConfigFileShape
 
         using (document)
         {
+            var units = new List<(string Id, string? Url)>();
+            foreach (var group in Items(Last(document.RootElement, "programUnitGroups")))
+            {
+                foreach (var unit in Items(Last(group, "programUnits")))
+                {
+                    if (Last(unit, "type") is not { ValueKind: JsonValueKind.String } type
+                        || !string.Equals(type.GetString(), UrlUnitType, StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    // Keyed by the id the loader reads, a Guid in one spelling, so its case does not matter either.
+                    var id = Last(unit, "id") is { } idValue ? Render(idValue) : string.Empty;
+                    units.Add((Guid.TryParse(id, out var guid) ? guid.ToString("D") : id, Last(unit, "url") is { } url ? Render(url) : null));
+                }
+            }
+
             var builder = new StringBuilder();
-            AppendEntries(builder, document.RootElement, StructuralUnitFields);
+            foreach (var (id, url) in units.OrderBy(u => u.Id, StringComparer.Ordinal).ThenBy(u => u.Url, StringComparer.Ordinal))
+            {
+                builder.Append(id).Append('\n');
+                if (url is not null)
+                    builder.Append("  url=").Append(url).Append('\n');
+            }
             return builder.ToString();
         }
     }
 
+    /// <summary>The last property of <paramref name="element"/> named <paramref name="name"/>, ignoring case; <see langword="null"/> when it has none or is no object.</summary>
+    private static JsonElement? Last(JsonElement element, string name)
+    {
+        if (element.ValueKind != JsonValueKind.Object)
+            return null;
+        JsonElement? found = null;
+        foreach (var property in element.EnumerateObject())
+        {
+            if (string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase))
+                found = property.Value;
+        }
+        return found;
+    }
+
+    /// <summary>The items of an array, or none.</summary>
+    private static IEnumerable<JsonElement> Items(JsonElement? array)
+        => array is { ValueKind: JsonValueKind.Array } items ? items.EnumerateArray() : [];
+
     /// <summary>
     /// The composed action catalogue's structural rendering: each action's name and the structural
     /// properties it ends up with, sorted. <see langword="null"/> when a layer cannot be composed,
-    /// for the same reason <see cref="Describe"/> yields null.
+    /// for the same reason <see cref="DescribeUrlUnits"/> yields null.
     /// </summary>
     internal static string? DescribeActions(string? appJson, IReadOnlyList<SparkActionsLayer> libraries)
     {
@@ -238,67 +293,6 @@ public static class ConfigFileShape
 
     private static string Render(System.Text.Json.Nodes.JsonNode value)
         => value.GetValueKind() == JsonValueKind.String ? value.GetValue<string>() : value.ToJsonString();
-
-    /// <summary>
-    /// Walks the entries — an object keyed by name for custom actions, or an array of units — and
-    /// renders each entry's identity plus its structural fields, sorted so authoring order is not
-    /// structural.
-    /// </summary>
-    private static void AppendEntries(StringBuilder builder, JsonElement root, string[] fields)
-    {
-        var entries = new List<(string Key, JsonElement Value)>();
-
-        if (root.ValueKind == JsonValueKind.Object)
-        {
-            foreach (var property in root.EnumerateObject())
-            {
-                // A units file nests its list under a property; an actions file is the map itself.
-                if (property.Value.ValueKind == JsonValueKind.Array)
-                {
-                    var index = 0;
-                    foreach (var item in property.Value.EnumerateArray())
-                        entries.Add((property.Name + "[" + Identity(item, index++) + "]", item));
-                }
-                else if (property.Value.ValueKind == JsonValueKind.Object)
-                {
-                    entries.Add((property.Name, property.Value));
-                }
-            }
-        }
-        else if (root.ValueKind == JsonValueKind.Array)
-        {
-            var index = 0;
-            foreach (var item in root.EnumerateArray())
-                entries.Add((Identity(item, index++), item));
-        }
-
-        foreach (var (key, value) in entries.OrderBy(e => e.Key, StringComparer.Ordinal))
-        {
-            builder.Append(key).Append('\n');
-            foreach (var field in fields)
-            {
-                if (value.ValueKind == JsonValueKind.Object
-                    && value.TryGetProperty(field, out var fieldValue))
-                {
-                    builder.Append("  ").Append(field).Append('=').Append(Render(fieldValue)).Append('\n');
-                }
-            }
-        }
-    }
-
-    /// <summary>A stable name for an array entry: its own name/id if it has one, else its position.</summary>
-    private static string Identity(JsonElement element, int index)
-    {
-        if (element.ValueKind == JsonValueKind.Object)
-        {
-            foreach (var candidate in (string[])["name", "id", "title"])
-            {
-                if (element.TryGetProperty(candidate, out var value) && value.ValueKind == JsonValueKind.String)
-                    return value.GetString() ?? index.ToString();
-            }
-        }
-        return index.ToString();
-    }
 
     private static string Render(JsonElement value) => value.ValueKind switch
     {

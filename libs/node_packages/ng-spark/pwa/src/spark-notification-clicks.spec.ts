@@ -1,4 +1,4 @@
-import { Location } from '@angular/common';
+import { APP_BASE_HREF, Location } from '@angular/common';
 import { PLATFORM_ID } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
@@ -19,8 +19,8 @@ describe('SparkNotificationClicks', () => {
       providers: [
         { provide: SwPush, useValue: { isEnabled: options.enabled ?? true, notificationClicks: clicks } },
         { provide: Router, useValue: router },
-        // The app is served under /app/: the router works below the base href.
-        { provide: Location, useValue: { normalize: (url: string) => url.replace(/^\/app(?=\/|$)/, '') } },
+        // The app is served under /app/: the router works below the base href (Angular's own Location over it).
+        { provide: APP_BASE_HREF, useValue: '/app/' },
         ...(options.platform ? [{ provide: PLATFORM_ID, useValue: options.platform }] : []),
       ],
     });
@@ -44,8 +44,9 @@ describe('SparkNotificationClicks', () => {
     expect(router.navigateByUrl).toHaveBeenCalledWith('/runs/42?tab=issues#top');
   });
 
-  // A same-origin link no route matches is the server's (SeoTester's report PDF, M11): loaded as a page.
-  it('loads a same-origin link the router cannot match as a page', async () => {
+  // A same-origin link no route matches is the server's (SeoTester's report PDF, M11): loaded as a page. An app path is
+  // below the base href for the page load too, as it was for the router: /app/seotester/…, never the host's /seotester/….
+  it('loads a same-origin link the router cannot match as a page, below the base href', async () => {
     router.navigateByUrl.mockRejectedValue(new Error('NG04002'));
     start();
     const clicksService = TestBed.inject(SparkNotificationClicks);
@@ -53,13 +54,22 @@ describe('SparkNotificationClicks', () => {
     click('/seotester/report.pdf?run=1');
     await Promise.resolve();
     await Promise.resolve();
-    expect(assign).toHaveBeenCalledWith(`${location.origin}/seotester/report.pdf?run=1`);
+    expect(assign).toHaveBeenCalledWith(`${location.origin}/app/seotester/report.pdf?run=1`);
   });
 
   it('navigates in-app to an app-relative URL', () => {
     start();
     click('/runs/7');
     expect(router.navigateByUrl).toHaveBeenCalledWith('/runs/7');
+  });
+
+  // The origin alone used to decide: a same-origin path outside /app/ (another application on the host) was handed
+  // to this application's router.
+  it('leaves a same-origin URL outside the base href to the page load', () => {
+    start();
+    click(`${location.origin}/other/runs/42`);
+    click(`${location.origin}/application/runs/42`);
+    expect(router.navigateByUrl).not.toHaveBeenCalled();
   });
 
   it('leaves another origin, a script URL and a missing URL alone', () => {
@@ -105,5 +115,13 @@ describe('sparkInAppUrl', () => {
 
   it('is null for an unparseable value', () => {
     expect(sparkInAppUrl('http://[', document, null)).toBeNull();
+  });
+
+  it('is null for a same-origin URL outside the base href', () => {
+    TestBed.configureTestingModule({ providers: [{ provide: APP_BASE_HREF, useValue: '/app/' }] });
+    const appLocation = TestBed.inject(Location);
+    expect(sparkInAppUrl(`${location.origin}/app/runs/42`, document, appLocation)).toBe('/runs/42');
+    expect(sparkInAppUrl(`${location.origin}/other/runs/42`, document, appLocation)).toBeNull();
+    TestBed.resetTestingModule();
   });
 });

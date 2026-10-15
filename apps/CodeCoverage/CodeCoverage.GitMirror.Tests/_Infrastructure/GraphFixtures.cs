@@ -1,5 +1,5 @@
 using System.Text;
-using CodeCoverage.GitMirror.Git;
+using CodeCoverage.Git;
 using CodeCoverage.GitMirror.Graph;
 using CodeCoverage.GitMirror.Mirror;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -9,7 +9,7 @@ namespace CodeCoverage.GitMirror.Tests._Infrastructure;
 
 internal static class GraphFixtures
 {
-    public static GitRunner Runner() => new(Options.Create(new GitMirrorOptions()), NullLogger<GitRunner>.Instance);
+    public static GitRunner Runner() => new(new GitMirrorOptions().ToRunnerOptions(), NullLogger<GitRunner>.Instance);
 
     public static SnapshotCache Cache(GitRunner runner, long budget = 256L * 1024 * 1024)
         => new(runner, Options.Create(new GitMirrorOptions { SnapshotCacheBytes = budget }), NullLogger<SnapshotCache>.Instance);

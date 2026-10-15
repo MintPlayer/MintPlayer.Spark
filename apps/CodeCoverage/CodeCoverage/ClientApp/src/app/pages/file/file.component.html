@@ -11,7 +11,7 @@
   } @else if (detail(); as d) {
     @if (stats(); as s) {
       <div class="mb-2 d-flex align-items-center gap-2">
-        <bs-badge [class]="s.coverable > 0 && s.covered / s.coverable >= 0.8 ? 'text-bg-success' : 'text-bg-warning'">
+        <bs-badge [type]="s.coverable > 0 && s.covered / s.coverable >= 0.8 ? colors.success : colors.warning">
           {{ s.covered }}/{{ s.coverable }} lines covered
         </bs-badge>
         @if (d.source === null) {

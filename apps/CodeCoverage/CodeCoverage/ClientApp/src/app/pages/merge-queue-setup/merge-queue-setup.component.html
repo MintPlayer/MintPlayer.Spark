@@ -1,0 +1,369 @@
+<div class="mq-setup py-3" data-merge-queue-setup>
+  <h1 class="h3 mb-3"><i class="bi bi-signpost-split"></i> Optimal GitHub setup for the merge queue</h1>
+  <p class="lead">
+    The merge queue rebases each pull request onto the latest base, resolves conflicts in generated files, waits for
+    your checks on the result and squash-merges it. Set the repository up as below, and every merge goes through the
+    queue while the queue is held to exactly the reviews and checks everyone else is.
+  </p>
+
+  <nav aria-label="Steps" class="mb-4">
+    <ol class="mb-0" data-testid="mq-setup-steps">
+      @for (step of steps; track step.id) {
+        <li>
+          <a [routerLink]="[]" [fragment]="step.id" queryParamsHandling="preserve" (click)="jumpTo(step.id)">{{ step.title }}</a>
+        </li>
+      }
+    </ol>
+  </nav>
+
+  @for (step of steps; track step.id; let n = $index) {
+    <bs-card class="d-block mb-4" [attr.id]="step.id" [attr.data-step]="step.id">
+      <bs-card-header>
+        <h2 class="h5 mb-0"><bs-badge class="me-2" [type]="primaryColor">{{ n + 1 }}</bs-badge>{{ step.title }}</h2>
+      </bs-card-header>
+      <bs-card-body>
+        @switch (step.id) {
+          @case ('permissions') {
+            <p>
+              Install the CodeCoverage GitHub App on the organization or user that owns the repository;
+              <a routerLink="/">Home</a> links it once you are signed in. On top of what coverage reporting uses, the
+              merge queue needs three more permissions:
+            </p>
+            <bs-table [isResponsive]="true" data-testid="mq-setup-permissions">
+              <thead>
+                <tr><th>Permission</th><th>Access</th><th>The queue uses it to</th></tr>
+              </thead>
+              <tbody>
+                @for (permission of permissions; track permission.name) {
+                  <tr>
+                    <td class="text-nowrap">
+                      {{ permission.name }}
+                      @if (permission.isNew) { <bs-badge class="ms-1" [type]="infoColor">new</bs-badge> }
+                    </td>
+                    <td class="text-nowrap">{{ permission.access }}</td>
+                    <td>{{ permission.use }}</td>
+                  </tr>
+                }
+              </tbody>
+            </bs-table>
+            <p>
+              And three more webhook events: <strong>Workflow run</strong>, <strong>Check suite</strong> and
+              <strong>Status</strong>, next to Pull request, Push, Issue comment, Pull request review and Check run.
+              Hosting CodeCoverage yourself? Add them to your GitHub App's <em>Permissions &amp; events</em> first.
+            </p>
+            <p>
+              GitHub applies raised permissions only once someone who manages the installation accepts them. Until
+              then, the account's CodeCoverage organization page shows its managers a banner, "GitHub is waiting for you
+              to accept new permissions", with a link to the installation's own page on GitHub, where you review and
+              accept them. A queued pull request that needs a permission still pending leaves the queue
+              (<code>permission</code>), and its check run carries the same link.
+            </p>
+            @if (account(); as a) {
+              <app-account-permissions-notice [provider]="a.provider" [login]="a.login" [showGuideLink]="false" />
+            }
+            <ng-container *ngTemplateOutlet="shot; context: { $implicit: shots.acceptPermissions }" />
+            <ng-container *ngTemplateOutlet="shot; context: { $implicit: shots.permissionsBanner }" />
+          }
+          @case ('native-queue') {
+            <p>
+              GitHub's own merge queue and this one cannot share a branch. If a ruleset or branch protection rule on a
+              branch the queue serves has <strong>Require merge queue</strong> ticked, untick it: while it is on, the
+              queue refuses pull requests into that branch (<code>native-queue</code>). The queue merges with GitHub's
+              direct merge, so it never ends up in GitHub's queue either.
+            </p>
+            <ng-container *ngTemplateOutlet="shot; context: { $implicit: shots.nativeQueueOff }" />
+            <p>
+              The queue squash-merges every pull request, so keep <strong>Allow squash merging</strong> ticked under
+              Settings → General → Pull Requests.
+            </p>
+            <ng-container *ngTemplateOutlet="shot; context: { $implicit: shots.squashMerging }" />
+          }
+          @case ('ruleset-1') {
+            <p>
+              Every merge should go through the queue, and the queue should be held to the same reviews and checks as
+              everyone else. One ruleset cannot do both: the App would need a bypass that also skips the reviews and
+              checks. So there are two rulesets, and this first one only restricts who may update the branch.
+            </p>
+            <p class="mb-1">Settings → Rules → Rulesets → New ruleset → New branch ruleset:</p>
+            <ul>
+              <li><strong>Ruleset name:</strong> Only the merge queue updates the default branch, or any name you like.</li>
+              <li><strong>Enforcement status:</strong> Active.</li>
+              <li>
+                <strong>Target branches:</strong> the default branch and every other branch in
+                <code>mergeQueue.branches</code>. Never all branches and never <code>mq/**</code>: the queue creates,
+                force-updates and deletes its own <code>mq/&lt;base&gt;/pr-&lt;n&gt;</code> branches and force-pushes
+                pull-request branches, and a rule on those ends its pull requests with <code>push-rejected</code>.
+              </li>
+              <li><strong>Branch rules:</strong> only <strong>Restrict updates</strong>.</li>
+              <li>
+                <strong>Bypass list:</strong> the CodeCoverage App with <strong>Exempt</strong>, and the
+                <strong>Repository admin</strong> role with <strong>For pull requests only</strong>.
+              </li>
+            </ul>
+            <p>
+              With the App exempt, <em>Squash and merge</em> is blocked for everyone else, maintainers included; their
+              <code>write</code> role still lets them queue. Repository admins can still merge by hand, through the pull
+              request only and never by a direct push, for what the queue refuses by design: a pull request from an
+              organization-owned fork, a fork push GitHub refused (<code>fork-push-rejected</code>), and a change under
+              <code>.github/</code> that also needs regenerating, from a fork whoever queued it, or from the repository
+              itself queued without the merge queue bypass role (step 8). Ruleset 2 still holds them to its reviews and
+              checks, unless you list them as its bypass actors (step 4).
+            </p>
+            <ng-container *ngTemplateOutlet="shot; context: { $implicit: shots.ruleset1Bypass }" />
+            <ng-container *ngTemplateOutlet="shot; context: { $implicit: shots.ruleset1Rules }" />
+            <p class="mb-1">
+              The same ruleset through the API, as <code>ruleset-1.json</code>. <code>&lt;APP_ID&gt;</code> is the App's
+              numeric id; role 5 is GitHub's built-in Repository admin.
+            </p>
+            <ng-container *ngTemplateOutlet="code; context: { $implicit: snippets.ruleset1, language: 'json' }" />
+          }
+          @case ('ruleset-2') {
+            <p class="mb-1">A second branch ruleset, on the same branches as ruleset 1:</p>
+            <ul>
+              <li><strong>Ruleset name:</strong> Reviews and checks. <strong>Enforcement status:</strong> Active.</li>
+              <li>
+                <strong>Require a pull request before merging</strong>, with as many approvals as your team requires.
+                A repository with a single maintainer sets 0, because GitHub does not let authors approve their own
+                pull requests; the queue's approval floor (step 8) still holds outside authors to an approval. Keep
+                <strong>Squash</strong> among the allowed merge methods.
+              </li>
+              <li><strong>Dismiss stale pull request approvals when new commits are pushed: off.</strong></li>
+              <li><strong>Require approval of the most recent reviewable push: off.</strong></li>
+              <li>
+                <strong>Require status checks to pass</strong>, with your CI's checks (for a Spark repository at least
+                the job that runs <code>--spark-verify-model</code> and <code>--spark-verify-security</code>), and
+                <strong>Require branches to be up to date before merging</strong> ticked.
+                <strong>Never add the "Merge queue" check:</strong> it is still running while the queue merges, so
+                GitHub would refuse every merge.
+              </li>
+              <li>
+                <strong>Bypass list: never the CodeCoverage App.</strong> People are up to you: a role, a team or a user
+                may bypass this ruleset.
+              </li>
+            </ul>
+            <bs-alert [type]="infoColor" class="d-block mb-3" data-testid="mq-setup-why-approvals">
+              <strong>Why both approval settings are off.</strong> GitHub dismisses an approval when a push changes the
+              pull request's diff. A plain rebase by the queue keeps the diff, but the regenerate step (step 6) changes
+              it. With the first setting, a pull request whose generated files the queue rewrote would lose its approval
+              just before the merge; with the second, it would wait for someone to approve again, because the queue
+              pushed last. The queue never pauses for that. It covers the gap itself: it pins the commit you queued and
+              takes the pull request out on any push it did not make, it limits its own change to the generated files
+              you list, and your checks run on the final commit. If you keep either setting on, the queue warns when it
+              takes a pull request, and GitHub refuses the merge of every pull request whose files it regenerated.
+            </bs-alert>
+            <p>
+              The queue checks the App's bypass itself every time it takes a pull request, with its own token, and
+              refuses (<code>bypass</code>) when it could bypass a ruleset that holds reviews or checks.
+            </p>
+            <ng-container *ngTemplateOutlet="shot; context: { $implicit: shots.ruleset2PullRequest }" />
+            <ng-container *ngTemplateOutlet="shot; context: { $implicit: shots.ruleset2StatusChecks }" />
+            <p class="mb-1">Through the API, as <code>ruleset-2.json</code>, with one entry per required check:</p>
+            <ng-container *ngTemplateOutlet="code; context: { $implicit: snippets.ruleset2, language: 'json' }" />
+            <p class="mb-1">
+              Create both, and see what now applies to the branch. The App's slug is the last part of its address,
+              <code>github.com/apps/&lt;app-slug&gt;</code>.
+            </p>
+            <ng-container *ngTemplateOutlet="code; context: { $implicit: snippets.createRulesets, language: 'bash' }" />
+          }
+          @case ('coverage-yml') {
+            <p>
+              The queue reads its file behaviour from <code>coverage.yml</code> at the repository root,
+              <strong>on the default branch only</strong>, never from a pull request's base branch: otherwise a pull
+              request into another branch could run under a configuration someone widened on that branch. A change takes
+              effect once it is merged to the default branch, and a pull request into a branch that is not in
+              <code>branches</code> is refused. Who must approve and which checks to ignore are not in this file
+              (step 8). A Spark repository needs no more than this:
+            </p>
+            <ng-container *ngTemplateOutlet="code; context: { $implicit: snippets.coverageYml, language: 'yaml' }" />
+            <bs-table [isResponsive]="true" data-testid="mq-setup-keys">
+              <thead>
+                <tr><th>Key</th><th>Default</th><th>Meaning</th></tr>
+              </thead>
+              <tbody>
+                @for (key of keys; track key.key) {
+                  <tr>
+                    <td><code>{{ key.key }}</code></td>
+                    <td class="text-nowrap">{{ key.defaultValue }}</td>
+                    <td>{{ key.meaning }}</td>
+                  </tr>
+                }
+              </tbody>
+            </bs-table>
+            <p>
+              Only wholly generated files belong in <code>autoResolve</code>. A conflict in any other file, a model file
+              or <code>translations.json</code> included, takes the pull request out of the queue.
+            </p>
+            <p class="mb-1">The queue does not create its label; create it once:</p>
+            <ng-container *ngTemplateOutlet="code; context: { $implicit: snippets.createLabel, language: 'bash' }" />
+          }
+          @case ('regenerate') {
+            <p>
+              Only for a repository with generated files, such as Spark's <code>modelHashes.json</code> and
+              <code>securityPosture.txt</code>. After a rebase that resolved a conflict in one of them, the queue
+              dispatches this workflow on its <code>mq/&lt;base&gt;/pr-&lt;n&gt;</code> branch. The run regenerates the
+              files and uploads them as a patch; the queue checks the patch against <code>regeneratedPaths</code> and
+              pushes it itself. The workflow never commits or pushes.
+            </p>
+            <p class="mb-1">
+              Copy it to <code>.github/workflows/regenerate.yml</code> <strong>on the default branch</strong> (GitHub
+              dispatches only a workflow the default branch has), list your apps under <code>projects:</code>, pin the
+              action and set <code>postRebaseActionName: regenerate.yml</code>.
+            </p>
+            <ng-container *ngTemplateOutlet="code; context: { $implicit: snippets.regenerate, language: 'yaml' }" />
+            <bs-alert [type]="dangerColor" class="d-block mb-3" data-testid="mq-setup-regenerate-security">
+              <strong>This workflow builds and runs the pull request's code, in your repository's context.</strong>
+              <ul class="mb-0 mt-2">
+                <li><code>permissions: contents: read</code> and nothing more; never <code>id-token: write</code>.</li>
+                <li>No secrets: no <code>secrets.*</code> and no environment. Restore packages from public feeds only.</li>
+                <li>GitHub-hosted runners only: on a self-hosted runner, the pull request's build code would run on your machine.</li>
+                <li>Keep <code>persist-credentials: false</code>, so the job token is not left in <code>.git/config</code> while the build runs.</li>
+                <li>
+                  Pin the action by a full commit SHA, never <code>&#64;master</code>: that branch moves many times a day,
+                  and the action has no moving tag.
+                </li>
+              </ul>
+            </bs-alert>
+            <p>
+              Before every dispatch, the queue checks that the <code>mq/</code> branch's copy of the workflow equals the
+              default branch's; nothing bypasses that. A pull request that changes anything under <code>.github/</code>
+              and would need this workflow leaves the queue before anything is pushed: from a fork always
+              (<code>fork-touches-workflows</code>), and from the repository itself (<code>touches-workflows</code>)
+              unless whoever queued it holds the <strong>Merge queue bypass role</strong> (step 8). One that needs no
+              regeneration goes through, a fork's too: nothing of it reaches your repository before the merge. Keep
+              <code>timeout-minutes</code> at or below <code>postRebaseTimeout</code>.
+            </p>
+            <h3 class="h6 mt-4">Your other workflows</h3>
+            <p class="mb-1">
+              The queue pushes to its <code>mq/</code> branch only to dispatch this workflow; a pull request that needs no
+              regeneration never creates one. Pushes to <code>mq/</code> start <code>push</code> workflows, never
+              <code>pull_request</code> ones, and their check runs land on the commit the queue may merge, so a push-only
+              workflow there would hold up the merge. Add <code>branches-ignore: ['mq/**']</code> to every
+              <code>push:</code> trigger that is not limited to named branches already; a <code>push:</code> with
+              <code>branches: [master]</code> needs nothing.
+            </p>
+            <ng-container *ngTemplateOutlet="code; context: { $implicit: snippets.pushTrigger, language: 'yaml' }" />
+            <bs-alert [type]="infoColor" class="d-block mb-3" data-testid="mq-setup-fork-precondition">
+              <strong>For a pull request from a fork, this is enforced.</strong> The <code>mq/</code> commit holds the
+              fork's code, and a workflow started by that push runs it with your repository's secrets. So before it
+              pushes there, the queue reads your workflows and removes the pull request
+              (<code>fork-unsafe-workflows</code>, naming the file, the line and the fix) while a <code>push:</code> or
+              <code>create:</code> trigger would start on that branch (<code>paths:</code> filters do not count), this
+              workflow grants more than <code>contents: read</code>, reads a secret or may run on a self-hosted runner,
+              a <code>workflow_run:</code> trigger follows this workflow there, or any workflow runs on
+              <code>check_run</code>, <code>check_suite</code>, <code>status</code>, <code>deployment</code> or
+              <code>deployment_status</code>: a check, a status or a deployment of the <code>mq/</code> commit starts it
+              with your secrets, and it may check that commit out. Anything the queue cannot read counts against it.
+            </bs-alert>
+          }
+          @case ('forks') {
+            <p>
+              For a pull request from a fork, the queue pushes the rebased commit to the contributor's own branch,
+              through GitHub's <strong>Allow edits by maintainers</strong> checkbox (on some pull requests "Allow edits
+              and access to secrets by maintainers"); it never makes a fork of its own. A fork's pull request without
+              the box ticked is refused when it is queued, with an explanation. The box is in the pull request's
+              sidebar, and on the form that opens the pull request.
+            </p>
+            <p>
+              GitHub offers the box only on forks owned by a user, not on forks owned by an organization. Those pull
+              requests, and any whose fork refuses the queue's push (<code>fork-push-rejected</code>), are merged by a
+              repository admin through ruleset 1's bypass (step 3).
+            </p>
+            <p>
+              GitHub never lets an App add or change a workflow file in a fork, whatever its permissions. When the base
+              branch changed its workflow files after the fork branched, the queue cannot publish to the fork, and the
+              run ends with <code>fork-workflow-update-needed</code>. Click <strong>Update branch</strong> on the pull
+              request (or merge the base into the branch), then queue it again.
+            </p>
+            <ng-container *ngTemplateOutlet="shot; context: { $implicit: shots.allowEdits }" />
+          }
+          @case ('settings') {
+            <p>
+              Who must approve, and which checks the queue may ignore, are trust decisions, so they live in CodeCoverage
+              and not in the repository, where a pull request could change them. The organization's owner sets them on
+              the organization's CodeCoverage page, in the <strong>Merge queue</strong> group, and a repository's own
+              page can override each one. Only the owner can change them; everyone who can see the organization can
+              read them.
+              @if (account(); as a) {
+                <a [routerLink]="['/', a.provider, 'a', a.login]" data-testid="mq-setup-account-link">Open {{ a.login }}'s CodeCoverage page</a>.
+              }
+            </p>
+            <dl>
+              <dt>Merge queue approval floor</dt>
+              <dd>
+                <strong>Approval for external authors</strong> (the default): a pull request by an author without
+                <code>write</code> needs an approval first; an author with <code>write</code> needs none.
+                <strong>Repository rules only</strong>: nothing beyond the repository's own rules, which suits an
+                organization with a single maintainer. <strong>Always require an approval</strong>: every pull request
+                needs one. An approval counts when it is an approving review of the queued commit, by someone with
+                <code>write</code> other than the author, and still that reviewer's latest word.
+              </dd>
+              <dt>Checks the merge queue ignores</dt>
+              <dd>
+                Check-run or commit-status names the queue does not wait for, matched exactly; the typical entry is a
+                secret scanner that flags the hash lines of <code>modelHashes.json</code>. A check a ruleset requires is
+                always waited for. A repository takes the account's list or its own (<strong>Ignored checks
+                from</strong>), which may be empty. Everything else on the commit about to be merged is waited for,
+                including every check that had reported on the pull request when it was queued: queue a pull request
+                once its CI has started.
+              </dd>
+              <dt>Merge queue bypass role</dt>
+              <dd>
+                The lowest GitHub role on the repository whose holders skip the queue's own rules:
+                <strong>Nobody</strong> (the default), <strong>Maintain or admin role</strong> or
+                <strong>Admin role only</strong>. A repository's page also offers <strong>Use account setting</strong>,
+                its default, and can turn the account's bypass off with <strong>Nobody</strong>. When whoever queued a
+                pull request holds the role, the approval floor is skipped, and so is the <code>.github/</code> rule of
+                step 6 for a pull request from the repository itself, never from a fork. The checks, the workflow and
+                patch checks, and the <code>write</code> role it takes to queue are never skipped.
+              </dd>
+            </dl>
+            <ng-container *ngTemplateOutlet="shot; context: { $implicit: shots.accountSettings }" />
+          }
+        }
+      </bs-card-body>
+    </bs-card>
+  }
+
+  <h2 class="h5">Then queue a pull request</h2>
+  <p>
+    Click <strong>Add to merge queue</strong> on the pull request's "Merge queue" check, add the <code>merge-queue</code>
+    label, comment <code>/queue</code> (<code>/dequeue</code> takes it out again), or use the button in the merge queue
+    panel of the repository's CodeCoverage page. Queueing takes the <code>write</code> role on the repository. The queue
+    answers on the pull request and in its "Merge queue" check run.
+  </p>
+  <p>
+    The "Merge queue" check is on every open pull request into a queue branch that is not a draft. While the pull request
+    is not queued, the check reads "Not queued", and its button is at the top of the check's page: open it from the pull
+    request's checks, or from the link at the end of CodeCoverage's coverage comment. While the pull request waits in
+    line, the check carries <strong>Remove from queue</strong> instead, which takes it out like <code>/dequeue</code>.
+    A pull request that leaves the queue without merging gets <strong>Add to merge queue</strong> back, and the check's
+    title says why it left.
+  </p>
+  <p class="small text-body-secondary mb-0">
+    Every reason a pull request can leave the queue is in
+    <a href="https://github.com/MintPlayer/MintPlayer.Spark/blob/master/docs/code-coverage/merge-queue.md" target="_blank" rel="noopener">the merge queue guide</a>.
+  </p>
+</div>
+
+<!-- A screenshot slot: lazy, with the image's own size declared up front. Without a URL yet, nothing is requested and a
+     1280×720 box stands in; an image that fails to load becomes the same box at the image's size. -->
+<ng-template #shot let-s>
+  <figure class="figure d-block my-3" [attr.data-shot]="s.name">
+    @let image = imageOf(s);
+    @if (image && !missing().has(s.name)) {
+      <img class="figure-img img-fluid rounded border mb-0" loading="lazy" decoding="async" [width]="image.width"
+           [height]="image.height" [src]="image.url" [alt]="s.alt" (error)="markMissing(s.name)">
+    } @else {
+      <div class="shot-pending rounded" role="img" [attr.aria-label]="s.alt" data-shot-pending
+           [style.--shot-width]="image?.width" [style.--shot-height]="image?.height">
+        <i class="bi bi-image fs-3" aria-hidden="true"></i>
+        <span>Screenshot pending</span>
+      </div>
+    }
+    <figcaption class="figure-caption mt-1">{{ s.caption }}</figcaption>
+  </figure>
+</ng-template>
+
+<ng-template #code let-code let-language="language">
+  <bs-code-snippet [code]="code" [language]="language" class="d-block mb-3" />
+</ng-template>

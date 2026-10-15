@@ -1,5 +1,6 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 
 namespace MintPlayer.Spark.Services;
@@ -89,31 +90,38 @@ internal partial class ProgramUnitsLoader : IProgramUnitsLoader, IDisposable
             foreach (var unit in group.ProgramUnits)
             {
                 unit.Name = ResolveName(unit.Name, $"Program unit '{unit.Id}'");
-                unit.Type = unit.Type switch
-                {
-                    _ when string.Equals(unit.Type, TypeQuery, StringComparison.OrdinalIgnoreCase) => TypeQuery,
-                    _ when string.Equals(unit.Type, TypePersistentObject, StringComparison.OrdinalIgnoreCase) => TypePersistentObject,
-                    _ when string.Equals(unit.Type, TypeUrl, StringComparison.OrdinalIgnoreCase) => TypeUrl,
-                    _ => throw new SparkProgramUnitsConfigurationException(
-                        $"Program unit '{unit.Id}' declares unknown type '{unit.Type}'. " +
-                        $"Valid types are '{TypeQuery}', '{TypePersistentObject}' and '{TypeUrl}'."),
-                };
-
-                switch (unit.Type)
-                {
-                    case TypeQuery when unit.QueryId is null:
-                        throw new SparkProgramUnitsConfigurationException(
-                            $"Program unit '{unit.Id}' has type '{TypeQuery}' but no 'queryId'.");
-                    case TypePersistentObject when unit.PersistentObjectId is null:
-                        throw new SparkProgramUnitsConfigurationException(
-                            $"Program unit '{unit.Id}' has type '{TypePersistentObject}' but no 'persistentObjectId'.");
-                    case TypeUrl when string.IsNullOrWhiteSpace(unit.Url):
-                        throw new SparkProgramUnitsConfigurationException(
-                            $"Program unit '{unit.Id}' has type '{TypeUrl}' but no 'url'.");
-                }
+                if (DescribeInvalidTarget(unit) is { } problem)
+                    throw new SparkProgramUnitsConfigurationException(problem);
+                unit.Type = CanonicalType(unit.Type)!;
             }
         }
     }
+
+    /// <summary>A unit type in its canonical spelling, matched ignoring case; <see langword="null"/> when it is none of the three.</summary>
+    internal static string? CanonicalType(string? type)
+        => string.Equals(type, TypeQuery, StringComparison.OrdinalIgnoreCase) ? TypeQuery
+            : string.Equals(type, TypePersistentObject, StringComparison.OrdinalIgnoreCase) ? TypePersistentObject
+            : string.Equals(type, TypeUrl, StringComparison.OrdinalIgnoreCase) ? TypeUrl
+            : null;
+
+    /// <summary>
+    /// Why a unit cannot open its target, or <see langword="null"/> when it can: an unknown type, a missing target
+    /// field, or a url that is not <see cref="SparkLinkUrl.AllowedForms"/>. One rule for startup (this loader) and
+    /// <c>--spark-verify-model</c>, so the merge queue refuses exactly what startup would.
+    /// </summary>
+    internal static string? DescribeInvalidTarget(ProgramUnit unit) => CanonicalType(unit.Type) switch
+    {
+        null => $"Program unit '{unit.Id}' declares unknown type '{unit.Type}'. " +
+                $"Valid types are '{TypeQuery}', '{TypePersistentObject}' and '{TypeUrl}'.",
+        TypeQuery when unit.QueryId is null => $"Program unit '{unit.Id}' has type '{TypeQuery}' but no 'queryId'.",
+        TypePersistentObject when unit.PersistentObjectId is null => $"Program unit '{unit.Id}' has type '{TypePersistentObject}' but no 'persistentObjectId'.",
+        TypeUrl when string.IsNullOrWhiteSpace(unit.Url) => $"Program unit '{unit.Id}' has type '{TypeUrl}' but no 'url'.",
+        // The url quoted with its control characters escaped: it is printed to a console and a CI log.
+        TypeUrl when !SparkLinkUrl.IsAllowed(unit.Url) =>
+            $"Program unit '{unit.Id}' has the url \"{JsonEncodedText.Encode(unit.Url!, JavaScriptEncoder.UnsafeRelaxedJsonEscaping)}\", " +
+            $"which is not {SparkLinkUrl.AllowedForms}. Whitespace, control characters, '\\', credentials and every other scheme are refused.",
+        _ => null,
+    };
 
     /// <summary>
     /// A menu entry's <c>name</c> is a <c>translations.json</c> key (#467, D1), e.g.
@@ -137,7 +145,8 @@ internal partial class ProgramUnitsLoader : IProgramUnitsLoader, IDisposable
 
 /// <summary>
 /// Thrown when <c>App_Data/programUnits.json</c> exists but cannot be trusted — unparseable, an
-/// unknown unit type, or a unit missing the field its type requires. Loud on purpose: the fail-soft
+/// unknown unit type, a unit missing the field its type requires, or a url that is neither an app
+/// path nor an absolute http(s) URL (<see cref="SparkLinkUrl"/>). Loud on purpose: the fail-soft
 /// alternative is a menu that silently drops entries, which reads exactly like an authorization
 /// problem and gets debugged as one. A missing file stays fail-soft (no menu is a valid choice).
 /// </summary>

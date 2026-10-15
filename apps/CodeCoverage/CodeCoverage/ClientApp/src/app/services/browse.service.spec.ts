@@ -200,6 +200,20 @@ describe('BrowseService', () => {
     expect(await result).toEqual({ badgeToken: 't0k' });
   });
 
+  it('reads the merge queue from the browse API and sends the button to the repository endpoint', async () => {
+    const view = service.getMergeQueue(provider, owner, name);
+    answer('GET', `${repoBase}/merge-queue`, { supported: false, lanes: [], config: null, viewer: {} });
+    expect((await view).supported).toBe(false);
+
+    const enqueued = service.enqueuePullRequest(provider, owner, name, 12);
+    expect(answer('POST', `/api/repos/${P}/${O}/${N}/merge-queue/12`, { number: 12, command: 'enqueue', actor: 'me' }).body).toEqual({});
+    expect(await enqueued).toEqual({ number: 12, command: 'enqueue', actor: 'me' });
+
+    const dequeued = service.dequeuePullRequest(provider, owner, name, 12);
+    answer('DELETE', `/api/repos/${P}/${O}/${N}/merge-queue/12`, { number: 12, command: 'dequeue', actor: 'me' });
+    expect((await dequeued).command).toBe('dequeue');
+  });
+
   it('rejects when the server answers with an error', async () => {
     const repo = service.getRepo(provider, owner, name);
     http.expectOne(repoBase).flush('nope', { status: 404, statusText: 'Not Found' });

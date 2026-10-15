@@ -50,6 +50,12 @@ public partial class GitHubForgeAccessService : IForgeAccessService
     public Task InvalidateAsync(CancellationToken cancellationToken = default)
         => gitHubAccess.InvalidateAsync(cancellationToken);
 
+    public async Task<ForgeViewerAccount> GetViewerAccountAsync(CancellationToken cancellationToken = default)
+    {
+        var verified = await gitHubAccess.GetVerifiedLoginAsync(cancellationToken);
+        return new ForgeViewerAccount(verified.Login, verified.Linked, MapState(verified.TokenState));
+    }
+
     private static ForgeOwner[] Qualify(string[] logins)
         => [.. logins.Select(login => new ForgeOwner(EForgeProvider.GitHub, login))];
 

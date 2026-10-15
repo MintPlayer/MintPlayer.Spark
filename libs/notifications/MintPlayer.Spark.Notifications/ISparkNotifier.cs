@@ -32,7 +32,10 @@ public sealed record SparkNotification
     /// <summary>The text, at most 2 000 characters (a push carries the first 1 000).</summary>
     public string? Body { get; init; }
 
-    /// <summary>Where a click goes: an app-relative path (<c>/runs/42</c>). Mails and pushes make it absolute with the public base URL.</summary>
+    /// <summary>
+    /// Where a click goes: an app-relative path (<c>/runs/42</c>), which mails and pushes make absolute with the public base
+    /// URL, or an absolute http(s) URL. Anything else is refused (<see cref="Abstractions.SparkLinkUrl"/>).
+    /// </summary>
     public string? Url { get; init; }
 
     /// <summary>The organization it is about: picks each user's preference for it.</summary>

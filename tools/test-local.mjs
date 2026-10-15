@@ -65,8 +65,12 @@ const shown = nx(['show', 'projects', '--affected', '--json', ...affectedArgs], 
 if (shown.status !== 0) finish(shown.status);
 const affected = JSON.parse(shown.stdout.slice(shown.stdout.indexOf('[')));
 
+// The cache flags apply to every nx call the sweep makes. Passed only to the test run, a remote cache that answers 403
+// still failed the E2E build below first, and the sweep ended with every task skipped (2026-10-14).
+const cacheArgs = passthrough.filter(a => /^--(skip-nx-cache|skip-remote-cache)\b/.test(a));
+
 if (affected.includes(E2E)) {
-  const built = nx(['run-many', '-t', 'build', `--projects=${E2E_APPS.join(',')}`], { env });
+  const built = nx(['run-many', '-t', 'build', `--projects=${E2E_APPS.join(',')}`, ...cacheArgs], { env });
   if (built.status !== 0) finish(built.status);
   env.SPARK_E2E_SKIP_APP_BUILD = '1';
 }

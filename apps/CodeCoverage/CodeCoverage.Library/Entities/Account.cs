@@ -92,6 +92,43 @@ public class Account : IForgeConnectable
     public bool DeleteBranchOnPrClose { get; set; }
 
     /// <summary>
+    /// What the merge queue requires in approvals before it queues a pull request, in every repository of this account
+    /// that does not set its own.
+    /// </summary>
+    /// <remarks>
+    /// Merge-queue PRD O11; a repository overrides it with <see cref="Repository.MergeQueueApprovalFloor"/>. Trust policy, so it lives here and not in the repository's <c>coverage.yml</c>, which a pull request could
+    /// touch (O15). Only the account's owner may change it: <c>AccountActions</c> narrows writes to managed owners.
+    /// <para>[IgnoreForIndex]: owner-facing configuration has no business in the anonymous account grid.</para>
+    /// </remarks>
+    [IgnoreForIndex]
+    [LookupReference(typeof(LookupReferences.MergeQueueApprovalFloor))]
+    public LookupReferences.EMergeQueueApprovalFloor MergeQueueApprovalFloor { get; set; }
+
+    /// <summary>
+    /// Check names the merge queue does not wait for, in every repository of this account that does not set its own
+    /// list. A check a branch rule requires is always waited for.
+    /// </summary>
+    /// <remarks>
+    /// Merge-queue PRD O12, e.g. a scanner known to report false positives on generated files.
+    /// [IgnoreForIndex]: see <see cref="MergeQueueApprovalFloor"/>.
+    /// </remarks>
+    [IgnoreForIndex]
+    public List<string> MergeQueueCheckExclusions { get; set; } = [];
+
+    /// <summary>
+    /// The lowest GitHub repository role whose holders bypass the merge queue's own rules when they queue a pull request,
+    /// in every repository of this account that does not set its own.
+    /// </summary>
+    /// <remarks>
+    /// Merge-queue PRD O22; a repository overrides it with <see cref="Repository.MergeQueueBypassRole"/>. What it skips and
+    /// what it never skips: <see cref="LookupReferences.EMergeQueueBypassRole"/>. Nobody by default.
+    /// [IgnoreForIndex]: see <see cref="MergeQueueApprovalFloor"/>.
+    /// </remarks>
+    [IgnoreForIndex]
+    [LookupReference(typeof(LookupReferences.MergeQueueBypassRole))]
+    public LookupReferences.EMergeQueueBypassRole MergeQueueBypassRole { get; set; }
+
+    /// <summary>
     /// The forge that hosts this account. Set on every document by the M6 re-key.
     /// </summary>
     /// <remarks>

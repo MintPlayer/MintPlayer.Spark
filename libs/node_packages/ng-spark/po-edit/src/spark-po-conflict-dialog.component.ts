@@ -4,6 +4,7 @@ import { Color } from '@mintplayer/ng-bootstrap';
 import { BsFormComponent } from '@mintplayer/ng-bootstrap/form';
 import { BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective } from '@mintplayer/ng-bootstrap/modal';
 import { BsButtonTypeDirective } from '@mintplayer/ng-bootstrap/button-type';
+import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
 import { SparkGridCellComponent, SparkGridRenderers } from '@mintplayer/ng-spark/grid';
 import { QueryCellValuePipe, QueryReferenceChipsPipe, ReferenceChip, ResolveTranslationPipe, TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
 import { cellValue } from '@mintplayer/ng-spark/renderers';
@@ -65,7 +66,7 @@ const chipsPipe = new QueryReferenceChipsPipe();
  */
 @Component({
   selector: 'spark-po-conflict-dialog',
-  imports: [NgTemplateOutlet, BsFormComponent, BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective, BsButtonTypeDirective, SparkGridCellComponent, ResolveTranslationPipe, TranslateKeyPipe],
+  imports: [NgTemplateOutlet, BsFormComponent, BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective, BsButtonTypeDirective, BsTableComponent, SparkGridCellComponent, ResolveTranslationPipe, TranslateKeyPipe],
   template: `
     <bs-modal [isOpen]="conflicts().length > 0" (isOpenChange)="!$event && cancelled.emit()">
       <div *bsModal>
@@ -93,7 +94,7 @@ const chipsPipe = new QueryReferenceChipsPipe();
                   }
                 </h6>
               }
-              <table class="table table-sm align-middle mb-0">
+              <bs-table [isResponsive]="true">
                 <thead>
                   <tr>
                     <th>{{ 'common.conflictField' | t }}</th>
@@ -101,7 +102,7 @@ const chipsPipe = new QueryReferenceChipsPipe();
                     <th>{{ 'common.conflictTheirs' | t }}</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody class="align-middle">
                   @for (entry of group.entries; track entry.conflict.path) {
                     <tr class="spark-conflict" [attr.data-path]="entry.conflict.path">
                       <th scope="row">
@@ -128,7 +129,7 @@ const chipsPipe = new QueryReferenceChipsPipe();
                     </tr>
                   }
                 </tbody>
-              </table>
+              </bs-table>
             </div>
           }
           </bs-form>
@@ -142,7 +143,8 @@ const chipsPipe = new QueryReferenceChipsPipe();
       </div>
     </bs-modal>
 
-    <!-- One side's value. A row is its attributes cell by cell, the ones the other side differs in marked. -->
+    <!-- One side's value. A row is its attributes cell by cell, the ones the other side differs in marked.
+         Its plain table renders only inside a cell of the <bs-table> above, whose table styles reach it. -->
     <ng-template #side let-cell>
       @if (cell.fields) {
         <table class="table table-sm table-borderless mb-0 spark-conflict-row-cells">

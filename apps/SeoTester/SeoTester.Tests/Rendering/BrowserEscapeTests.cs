@@ -142,6 +142,49 @@ public sealed class BrowserEscapeTests(ITestOutputHelper output) : IAsyncLifetim
         }
     }
 
+    /// <summary>
+    /// An <c>&lt;a download&gt;</c> of the page's own origin is fetched by Chromium's download manager, not routed (measured
+    /// 2026-10-15: no route ever saw it; a cross-origin one is a plain navigation, which is routed). Only the hardening
+    /// stands between it and the network: the page here has the listener's own origin (fulfilled by a route, never
+    /// fetched). Without the hardening the download reaches the listener (the control); with it, nothing arrives.
+    /// </summary>
+    [Fact]
+    public async Task A_download_the_router_never_sees_reaches_nothing_through_the_hardening()
+    {
+        using (var playwright = await Playwright.CreateAsync())
+        {
+            await using var bare = await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions { Headless = true });
+            await ClickOwnOriginDownloadAsync(bare);
+        }
+        output.WriteLine("Reached without the hardening: " + string.Join(" | ", arrivals));
+        arrivals.Should().Contain(a => a.StartsWith("tcp: GET /download", StringComparison.Ordinal), "the download manager fetched it from the listener itself (the control)");
+
+        arrivals.Clear();
+        await using var chromium = new ChromiumBrowser(Options.Create(new BrowserOptions { Mode = BrowserMode.Launch }), NullLogger<ChromiumBrowser>.Instance);
+        await ClickOwnOriginDownloadAsync(await chromium.GetAsync(CancellationToken.None));
+        arrivals.Should().BeEmpty("the dead proxy refuses what the router never sees");
+    }
+
+    /// <summary>A page of the listener's origin, every request of it routed (and refused), clicks an <c>&lt;a download&gt;</c> of that origin.</summary>
+    private async Task ClickOwnOriginDownloadAsync(IBrowser browser)
+    {
+        var origin = $"http://127.0.0.1:{TcpPort}";
+        var context = await browser.NewContextAsync(new BrowserNewContextOptions { AcceptDownloads = false });
+        try
+        {
+            await context.RouteAsync("**/*", route => route.Request.Url == origin + "/"
+                ? route.FulfillAsync(new() { Status = 200, ContentType = "text/html", Body = "<a download href=\"/download\">x</a><script>document.querySelector('a').click();</script>" })
+                : route.AbortAsync("blockedbyclient"));
+            var page = await context.NewPageAsync();
+            await page.GotoAsync(origin + "/");
+            await WaitForArrivalsAsync(TimeSpan.FromSeconds(4));
+        }
+        finally
+        {
+            await context.CloseAsync();
+        }
+    }
+
     [Fact]
     public void The_server_script_launches_with_the_same_flags_as_the_app()
     {

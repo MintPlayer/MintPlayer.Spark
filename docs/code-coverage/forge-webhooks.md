@@ -66,8 +66,8 @@ recipient (D17).
 
 ## The vocabulary, and what raises each event
 
-Six neutral events. A forge library normalises its own webhooks into them; the app writes nothing
-but recipients.
+Eleven neutral events: the six the app has always used, and five the merge queue added (merge-queue
+PRD M5). A forge library normalises its own webhooks into them; the app writes nothing but recipients.
 
 ✅ = implemented. The GitHub column is what the code does today. **The GitLab and Bitbucket columns
 are the *intended* mapping and are not verified against those APIs** — neither library exists yet
@@ -82,6 +82,15 @@ for a port, not as a specification.
 | **`OwnerRenamed`** | ✅ `organization` / `installation_target` — `renamed` | `System Hook` — `group_rename`, `user_rename` | ⚠️ no known webhook |
 | **`RepositoryRenamed`** | ✅ `repository` — `renamed`, `transferred` | `System Hook` — `project_rename`, `project_transfer` | `repo:transfer` |
 | **`RepositoryConnectionChanged`** | ✅ `repository` `deleted`; `installation_repositories` `removed`; `installation` `deleted`/`suspend`/`unsuspend` | `System Hook` `project_destroy`; token revoked or 401 on access | app uninstalled; `repo:deleted` |
+| **`MergeQueueCommandIssued`** | ✅ `pull_request` `labeled`/`unlabeled`; `issue_comment` `created` starting `/queue` or `/dequeue`. The actor is `sender`, never the text (T1); a bot sender raises nothing | `Merge Request Hook` label changes; `Note Hook` on a merge request | `pullrequest:comment_created` (no labels) |
+| **`PullRequestClosed`** | ✅ `pull_request` — `closed` **with `merged: false`** | `Merge Request Hook` — action `close` | `pullrequest:rejected` |
+| **`CiRunCompleted`** | ✅ `workflow_run` — `completed` (the App's own dispatched runs included) | `Pipeline Hook` — finished status | `repo:commit_status_updated` from Pipelines |
+| **`CommitChecksChanged`** | ✅ `check_run`, `check_suite` `completed`, `status`; the App's own check runs dropped | `Pipeline Hook`, `Job Hook` | `repo:commit_status_created`/`_updated` |
+| **`PullRequestReviewed`** | ✅ `pull_request_review` — `submitted`, `dismissed` | `Merge Request Hook` — `approved`, `unapproved` | `pullrequest:approved`, `pullrequest:unapproved` |
+
+The last three are raised **only while the repository's merge queue is busy** (one point load of
+`MergeQueues/{provider}/{id}` per delivery), because check deliveries are the most frequent events an
+App receives and nothing else consumes them.
 
 An event belongs in this vocabulary only if **all three forges can raise it**. Anything one forge
 alone can say — GitHub's `check_run`, Projects V2 — keeps a forge-specific message and a recipient

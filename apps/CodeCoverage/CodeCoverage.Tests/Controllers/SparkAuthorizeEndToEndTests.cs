@@ -132,6 +132,25 @@ public class SparkAuthorizeEndToEndTests
                 or HttpStatusCode.Redirect).Should().BeTrue($"{path} answered {(int)response.StatusCode} to an anonymous caller.");
     }
 
+    /// <summary>
+    /// The merge queue's button (M6) is <c>Manage/RepoSettings</c>, which only signed-in users hold: an anonymous caller is
+    /// challenged before the action runs, so no command can be raised without an identity to act as (T1).
+    /// </summary>
+    [Theory]
+    [InlineData("POST")]
+    [InlineData("DELETE")]
+    public async Task The_merge_queue_button_refuses_anonymous_callers(string method)
+    {
+        using var client = CreateClient();
+
+        var response = await client.SendAsync(new HttpRequestMessage(new HttpMethod(method), "/api/repos/github/acme/widget/merge-queue/7"));
+
+        (response.StatusCode is HttpStatusCode.Unauthorized
+                or HttpStatusCode.Forbidden
+                or HttpStatusCode.Found
+                or HttpStatusCode.Redirect).Should().BeTrue($"{method} answered {(int)response.StatusCode} to an anonymous caller.");
+    }
+
     // ----------------------------------------------------------------------------------
     // #453 — anonymous visitors on public pages, and private ≡ missing through the pipeline
     // ----------------------------------------------------------------------------------
@@ -177,6 +196,7 @@ public class SparkAuthorizeEndToEndTests
     [InlineData("/api/browse/repos/github/parity-org/open")]
     [InlineData("/api/browse/repos/github/parity-org/open/history")]
     [InlineData("/api/browse/repos/github/parity-org/open/branches")]
+    [InlineData("/api/browse/repos/github/parity-org/open/merge-queue")]
     public async Task An_anonymous_visitor_can_browse_a_public_repository(string path)
     {
         await SeedParityAsync();
@@ -207,6 +227,8 @@ public class SparkAuthorizeEndToEndTests
     [InlineData("/api/browse/repos/github/parity-stranger/x")]      // unknown owner
     [InlineData("/api/browse/repos/nosuchforge/parity-org/secret")] // unknown forge
     [InlineData("/api/browse/repos/github/parity-org/secret/history")]
+    [InlineData("/api/browse/repos/github/parity-org/secret/merge-queue")]
+    [InlineData("/api/browse/repos/github/parity-org/made-up/merge-queue")]
     public async Task Anonymous_browse_answers_a_private_repository_exactly_like_a_missing_one(string path)
     {
         await SeedParityAsync();

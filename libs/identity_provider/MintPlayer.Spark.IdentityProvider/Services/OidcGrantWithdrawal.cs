@@ -31,7 +31,7 @@ internal sealed class OidcGrantWithdrawal(IDocumentStore store, OidcAudit audit,
         for (var attempt = 0; attempt < 3; attempt++)
         {
             using var session = store.OpenAsyncSession();
-            session.Advanced.UseOptimisticConcurrency = true;
+            session.Advanced.OptimisticConcurrencyMode = OptimisticConcurrencyMode.Writes;
             var grant = await session.LoadAsync<OidcGrant>(grantId, ct);
             if (grant is null || grant.Status != "valid")
                 return true;

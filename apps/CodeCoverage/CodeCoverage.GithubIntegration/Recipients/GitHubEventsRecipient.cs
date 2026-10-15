@@ -32,6 +32,7 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
     [Inject] private readonly IGitHubIndexQueries indexes;
     [Inject] private readonly IMessageBus messageBus;
     [Inject] private readonly ILogger<GitHubEventsRecipient> logger;
+    [Inject] private readonly Microsoft.Extensions.Options.IOptions<MintPlayer.Spark.Webhooks.GitHub.Configuration.GitHubWebhooksOptions> webhookOptions;
 
     /// <summary>Bound on a per-account repository sweep; the session's request budget is 30.</summary>
     private const int MaxRepositoriesPerAccount = 1024;
@@ -63,7 +64,23 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
                 await OnPush(Deserialize<PushEvent>(message), cancellationToken);
                 break;
             case "pull_request":
-                await OnPullRequest(Deserialize<PullRequestEvent>(message), cancellationToken);
+                // Labels and unmerged closes concern only the merge queue, and Octokit's base PullRequestEvent drops
+                // the label, so they are read from the raw payload first.
+                if (await OnMergeQueuePullRequestAsync(message, cancellationToken)) break;
+                await OnPullRequest(Deserialize<PullRequestEvent>(message), message, cancellationToken);
+                break;
+            // The merge queue's events (PRD M5). Each is raised only while the repository has something queued, so the
+            // frequent check deliveries cost one point load and no message otherwise. The exception is a click on the queue
+            // check's button (check_run requested_action, §0 O30): a command, raised whatever the queue holds.
+            case "issue_comment":
+                await OnIssueCommentAsync(message, cancellationToken);
+                break;
+            case "workflow_run":
+            case "check_run":
+            case "check_suite":
+            case "status":
+            case "pull_request_review":
+                await OnMergeQueueSignalAsync(message, cancellationToken);
                 break;
             default:
                 return;
@@ -390,7 +407,7 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
         }
     }
 
-    private async Task OnPullRequest(PullRequestEvent evt, CancellationToken ct)
+    private async Task OnPullRequest(PullRequestEvent evt, GitHubWebhookMessage message, CancellationToken ct)
     {
         if (evt.Repository is null) return;
 
@@ -420,14 +437,18 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
             return;
         }
 
-        if (evt.Action is not ("opened" or "synchronize" or "reopened")) return;
+        // ready_for_review and a retarget may have just made the pull request one the merge queue can take, so the queue
+        // offers its button again (merge-queue PRD §0 O30); a retarget also moves the base recorded below. Octokit's
+        // edited event types no base change, so that one is read from the raw payload. A title or body edit raises nothing.
+        if (evt.Action is not ("opened" or "synchronize" or "reopened" or "ready_for_review")
+            && !(evt.Action == "edited" && BaseChanged(message))) return;
 
         var pr = evt.PullRequest;
         var account = await GetOrCreateAccount(evt.Repository.Owner.Id, ct);
         var repository = await UpsertRepository(evt.Repository.Id, evt.Repository.Name, evt.Repository.FullName, evt.Repository.Private, account, ct);
 
-        // The three actions collapse to one neutral event because the app does the same thing for
-        // all three; only "was this the first open?" survives the collapse, because exactly one
+        // The actions collapse to one neutral event because the app does the same thing for all of
+        // them; only "was this the first open?" survives the collapse, because exactly one
         // consumer — the pending coverage comment — needs it.
         await messageBus.BroadcastAsync(new ForgeWebhookMessage<PullRequestUpdated>(
             EForgeProvider.GitHub,
@@ -442,6 +463,218 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
                 IsFirstOpen: evt.Action is "opened" or "reopened",
                 AuthorIsBot: pr.User?.Type is not null && pr.User.Type == Octokit.Webhooks.Models.UserType.Bot)), ct);
     }
+
+    // ── The merge queue (PRD M5) ─────────────────────────────────────────────────────────────────────
+    //
+    // Read from the raw payload: the queue needs a few fields of five event types, and Octokit's typed events either
+    // drop them (the label on PullRequestEvent) or declare fields required that a real delivery may omit.
+
+    /// <summary>
+    /// <c>labeled</c>/<c>unlabeled</c> become queue commands and an unmerged <c>closed</c> becomes
+    /// <see cref="PullRequestClosed"/>. True when the delivery was one of those, so the coverage path skips it.
+    /// </summary>
+    private async Task<bool> OnMergeQueuePullRequestAsync(GitHubWebhookMessage message, CancellationToken ct)
+    {
+        using var payload = JsonDocument.Parse(message.EventJson);
+        var root = payload.RootElement;
+        var action = Text(root, "action");
+        if (action is not ("labeled" or "unlabeled" or "closed")) return false;
+        if (action == "closed" && Child(root, "pull_request") is { } closed && Flag(closed, "merged"))
+            return false; // the merged close is PullRequestMerged, raised by OnPullRequest
+
+        if (await LoadKnownRepositoryIdAsync(root, ct) is not { } repositoryId) return true;
+        if (Child(root, "pull_request") is not { } pull || Number(pull, "number") is not { } number) return true;
+
+        if (action == "closed")
+        {
+            await RaiseAsync(new PullRequestClosed(repositoryId, (int)number), ct);
+            return true;
+        }
+
+        // T1: the actor is the signed delivery's sender, nothing else. D46: a bot never commands the queue, which is
+        // also what drops this App's own label removals when it evicts.
+        if (HumanSender(root) is not { } actor) return true;
+        if (Child(root, "label") is not { } label || Text(label, "name") is not { Length: > 0 } labelName) return true;
+
+        await RaiseAsync(new MergeQueueCommandIssued(
+            repositoryId, (int)number,
+            action == "labeled" ? EMergeQueueCommand.Enqueue : EMergeQueueCommand.Dequeue,
+            actor, EMergeQueueCommandSource.Label, labelName), ct);
+        return true;
+    }
+
+    /// <summary>
+    /// <c>/queue</c> and <c>/dequeue</c> as the first word of a new comment on a pull request (O8). The actor is the
+    /// commenter (T1): "/queue as @maintainer" is still the commenter's command.
+    /// </summary>
+    private async Task OnIssueCommentAsync(GitHubWebhookMessage message, CancellationToken ct)
+    {
+        using var payload = JsonDocument.Parse(message.EventJson);
+        var root = payload.RootElement;
+        if (Text(root, "action") != "created") return;
+        if (Child(root, "issue") is not { } issue || Child(issue, "pull_request") is null) return;
+        if (Number(issue, "number") is not { } number) return;
+        if (Child(root, "comment") is not { } comment || Text(comment, "body") is not { } body) return;
+
+        var command = body.TrimStart().Split((char[])['\r', '\n', ' ', '\t'], 2)[0].ToLowerInvariant() switch
+        {
+            "/queue" => EMergeQueueCommand.Enqueue,
+            "/dequeue" => EMergeQueueCommand.Dequeue,
+            _ => (EMergeQueueCommand?)null,
+        };
+        if (command is null) return;
+        if (IsOurApp(comment) || HumanSender(root) is not { } actor) return;
+        if (await LoadKnownRepositoryIdAsync(root, ct) is not { } repositoryId) return;
+
+        await RaiseAsync(new MergeQueueCommandIssued(repositoryId, (int)number, command.Value, actor, EMergeQueueCommandSource.Comment), ct);
+    }
+
+    /// <summary>
+    /// <c>workflow_run</c>, <c>check_run</c>, <c>check_suite</c>, <c>status</c> and <c>pull_request_review</c>, raised
+    /// only while the repository's queue is busy. The App's own check runs and suites are dropped (its "Merge queue"
+    /// check would otherwise wake the queue about itself); its own dispatched workflow runs are not, they are the point.
+    /// A click on a check run's button is neither: see <see cref="OnQueueCheckButtonAsync"/>.
+    /// </summary>
+    private async Task OnMergeQueueSignalAsync(GitHubWebhookMessage message, CancellationToken ct)
+    {
+        using var payload = JsonDocument.Parse(message.EventJson);
+        var root = payload.RootElement;
+        var action = Text(root, "action");
+
+        if (message.EventType == "check_run" && action == "requested_action")
+        {
+            await OnQueueCheckButtonAsync(message, root, ct);
+            return;
+        }
+
+        IForgeEvent? Build(string repositoryId) => message.EventType switch
+        {
+            "workflow_run" when action == "completed" && Child(root, "workflow_run") is { } run
+                && Number(run, "id") is { } runId && Text(run, "head_sha") is { } runSha
+                => new CiRunCompleted(repositoryId, runId, runSha, Text(run, "conclusion")),
+            "check_run" when Child(root, "check_run") is { } check && !IsOurApp(check) && Text(check, "head_sha") is { } checkSha
+                => new CommitChecksChanged(repositoryId, checkSha),
+            "check_suite" when action == "completed" && Child(root, "check_suite") is { } suite && !IsOurApp(suite)
+                && Text(suite, "head_sha") is { } suiteSha
+                => new CommitChecksChanged(repositoryId, suiteSha),
+            "status" when Text(root, "sha") is { } statusSha => new CommitChecksChanged(repositoryId, statusSha),
+            "pull_request_review" when action is "submitted" or "dismissed" && Child(root, "pull_request") is { } reviewed
+                && Number(reviewed, "number") is { } reviewedNumber
+                => new PullRequestReviewed(repositoryId, (int)reviewedNumber),
+            _ => null,
+        };
+
+        if (await LoadKnownRepositoryIdAsync(root, ct) is not { } repositoryId) return;
+        if (Build(repositoryId) is not { } evt) return;
+        var queue = await session.LoadAsync<MergeQueue>(MergeQueue.DocumentId(repositoryId), ct);
+        if (queue is null || !queue.IsBusy()) return;
+
+        switch (evt)
+        {
+            case CiRunCompleted e: await RaiseAsync(e, ct); break;
+            case CommitChecksChanged e: await RaiseAsync(e, ct); break;
+            case PullRequestReviewed e: await RaiseAsync(e, ct); break;
+        }
+    }
+
+    /// <summary>
+    /// A click on a button of the queue's own check: "Add to merge queue" (merge-queue PRD §0 O30) or, while the pull
+    /// request waits in line, "Remove from queue" (§0 O32). GitHub's <c>check_run</c> <c>requested_action</c>, which GitHub
+    /// delivers only to the App that made the check run. It is the clicker's enqueue or dequeue command, and from here on
+    /// a label, a <c>/queue</c> or a <c>/dequeue</c> in all but its source.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ Both filters every other check delivery passes through would drop it, and must not. The self-echo filter: the
+    /// check run is the App's own, which is exactly how a click on the queue's button is told from anything else, while
+    /// the actor is the delivery's sender (T1), a person (D46). The busy filter: a click on an idle repository is the very
+    /// one that fills its queue.
+    /// </remarks>
+    private async Task OnQueueCheckButtonAsync(GitHubWebhookMessage message, JsonElement root, CancellationToken ct)
+    {
+        if (Child(root, "check_run") is not { } check || !IsOurApp(check) || Text(check, "name") != CheckGate.QueueCheckName) return;
+        if (Child(root, "requested_action") is not { } requested || ButtonCommand(Text(requested, "identifier")) is not { } command) return;
+        if (HumanSender(root) is not { } actor) return;
+        if (CheckRunPullRequest(check) is not { } number) return;
+        if (await LoadKnownRepositoryIdAsync(root, ct) is not { } repositoryId) return;
+
+        await RaiseAsync(new MergeQueueCommandIssued(repositoryId, number, command, actor, EMergeQueueCommandSource.Check), ct);
+        logger.LogInformation("Merge queue: {Command} of #{Number} in {Repository} by @{Actor} (check button)",
+            command == EMergeQueueCommand.Enqueue ? "enqueue" : "dequeue", number, message.RepositoryFullName, actor);
+    }
+
+    /// <summary>The command a button of the queue's check stands for; null for any other identifier.</summary>
+    private static EMergeQueueCommand? ButtonCommand(string? identifier)
+        => identifier == ForgeQueueCheckAction.Enqueue.Identifier ? EMergeQueueCommand.Enqueue
+         : identifier == ForgeQueueCheckAction.Dequeue.Identifier ? EMergeQueueCommand.Dequeue
+         : null;
+
+    /// <summary>
+    /// The pull request a check run of the queue speaks for: its <c>external_id</c>, which the queue writes because GitHub
+    /// lists no pull request on the check run of a fork's commit; else the one pull request GitHub lists.
+    /// </summary>
+    private static int? CheckRunPullRequest(JsonElement check)
+    {
+        if (Text(check, "external_id") is { } externalId
+            && int.TryParse(externalId, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var number) && number > 0)
+            return number;
+        return check.TryGetProperty("pull_requests", out var pulls) && pulls.ValueKind == JsonValueKind.Array && pulls.GetArrayLength() == 1
+               && Number(pulls[0], "number") is { } listed and > 0 and <= int.MaxValue
+            ? (int)listed
+            : null;
+    }
+
+    /// <summary>Whether a <c>pull_request</c> <c>edited</c> delivery changed the base branch (<c>changes.base</c>).</summary>
+    private static bool BaseChanged(GitHubWebhookMessage message)
+    {
+        using var payload = JsonDocument.Parse(message.EventJson);
+        return Child(payload.RootElement, "changes") is { } changes && Child(changes, "base") is not null;
+    }
+
+    /// <summary>The stored repository the payload's <c>repository.id</c> names, or null for one we do not know.</summary>
+    /// <remarks>Loaded, never upserted: a label or a check is not a reason to mint documents.</remarks>
+    private async Task<string?> LoadKnownRepositoryIdAsync(JsonElement root, CancellationToken ct)
+    {
+        if (Child(root, "repository") is not { } repo || Number(repo, "id") is not { } gitHubId) return null;
+        var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, gitHubId), ct);
+        return repository?.Id;
+    }
+
+    /// <summary>The sender's login, or null when the sender is a bot (D46) or absent.</summary>
+    private static string? HumanSender(JsonElement root)
+        => Child(root, "sender") is { } sender && Text(sender, "type") != "Bot" && Text(sender, "login") is { Length: > 0 } login
+           && !login.EndsWith("[bot]", StringComparison.Ordinal)
+            ? login
+            : null;
+
+    /// <summary>Whether <paramref name="resource"/> was made by this App (<c>app.id</c> or <c>performed_via_github_app.id</c>).</summary>
+    /// <remarks>Unconfigured App id: nothing is ours, the same fail-open choice as <c>ProjectAutomationRouter</c>.</remarks>
+    private bool IsOurApp(JsonElement resource)
+    {
+        if (webhookOptions.Value.ProductionAppId is not { } appId) return false;
+        foreach (var name in new[] { "app", "performed_via_github_app" })
+            if (Child(resource, name) is { } app && Number(app, "id") == appId)
+                return true;
+        return false;
+    }
+
+    private static JsonElement? Child(JsonElement element, string name)
+        => element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Object
+            ? value
+            : null;
+
+    private static string? Text(JsonElement element, string name)
+        => element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
+
+    private static long? Number(JsonElement element, string name)
+        => element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number
+           && value.TryGetInt64(out var number)
+            ? number
+            : null;
+
+    private static bool Flag(JsonElement element, string name)
+        => element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.True;
 
     private async Task<Account> GetOrCreateAccount(long gitHubId, CancellationToken ct)
     {

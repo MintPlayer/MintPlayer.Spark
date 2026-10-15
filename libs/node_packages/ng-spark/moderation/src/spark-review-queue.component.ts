@@ -1,7 +1,13 @@
 import { ChangeDetectionStrategy, Component, inject, OnInit, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { Color } from '@mintplayer/ng-bootstrap';
+import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
+import { BsBadgeComponent } from '@mintplayer/ng-bootstrap/badge';
 import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
+import { BsGridColumnDirective, BsGridComponent, BsGridRowDirective } from '@mintplayer/ng-bootstrap/grid';
+import { BsListGroupComponent, BsListGroupItemComponent } from '@mintplayer/ng-bootstrap/list-group';
+import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
 import { EntityType } from '@mintplayer/ng-spark/models';
 import { TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
 import { SparkService } from '@mintplayer/ng-spark/services';
@@ -20,28 +26,36 @@ import { describeModerationError } from './spark-vote.component';
  */
 @Component({
   selector: 'spark-review-queue',
-  imports: [BsCardComponent, BsCardHeaderComponent, RouterLink, TranslateKeyPipe, DatePipe],
+  imports: [
+    BsAlertComponent, BsBadgeComponent, BsCardComponent, BsCardHeaderComponent, BsGridComponent, BsGridRowDirective, BsGridColumnDirective,
+    BsListGroupComponent, BsListGroupItemComponent, BsTableComponent, RouterLink, TranslateKeyPipe, DatePipe,
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="container-fluid spark-review-queue">
+    <bs-grid stopFullWidthAt="never" class="d-block spark-review-queue">
       <h1 class="h3">{{ 'moderation.reviewQueue' | t }}</h1>
-      @if (error(); as message) { <div class="alert alert-danger" role="alert">{{ message }}</div> }
-      <div class="row g-3">
-        <div class="col-md-4">
-          @for (c of cases(); track c.id) {
-            <button type="button" class="list-group-item list-group-item-action w-100 text-start p-2 border mb-1 spark-case"
-                    [class.active]="selected()?.case?.id === c.id" (click)="open(c.id)">
-              <strong>{{ c.kind }}</strong>
-              @if (c.flagCount) { <span class="badge text-bg-warning ms-1">{{ c.flagCount }}</span> }
-              @if (targets()[c.id]?.title; as title) { <div class="small fw-semibold text-truncate spark-case-target">{{ title }}</div> }
-              <div class="small">{{ c.summary }}</div>
-              <div class="small text-muted">{{ c.openedAtUtc | date: 'short' }}</div>
-            </button>
-          } @empty {
+      @if (error(); as message) { <bs-alert [type]="colors.danger" [announce]="true" class="d-block">{{ message }}</bs-alert> }
+      <div bsRow class="g-3">
+        <div [md]="4">
+          @if (cases().length) {
+            <bs-list-group>
+              @for (c of cases(); track c.id) {
+                <bs-list-group-item [active]="selected()?.case?.id === c.id">
+                  <button type="button" class="w-100 text-start border-0 bg-transparent p-0 text-reset spark-case" (click)="open(c.id)">
+                    <strong>{{ c.kind }}</strong>
+                    @if (c.flagCount) { <bs-badge class="ms-1 spark-case-flag-count" [type]="colors.warning">{{ c.flagCount }}</bs-badge> }
+                    @if (targets()[c.id]?.title; as title) { <div class="small fw-semibold text-truncate spark-case-target">{{ title }}</div> }
+                    <div class="small">{{ c.summary }}</div>
+                    <div class="small opacity-75">{{ c.openedAtUtc | date: 'short' }}</div>
+                  </button>
+                </bs-list-group-item>
+              }
+            </bs-list-group>
+          } @else {
             <p class="text-muted spark-no-cases">{{ 'moderation.noCases' | t }}</p>
           }
         </div>
-        <div class="col-md-8">
+        <div [md]="8">
           @if (selected(); as d) {
             <bs-card class="d-block spark-case-detail">
               <bs-card-header>{{ 'moderation.rule' | t }}: {{ d.case.kind }} — {{ d.case.summary }}</bs-card-header>
@@ -54,14 +68,14 @@ import { describeModerationError } from './spark-vote.component';
                 }
                 @if (d.accounts.length) {
                   <h2 class="h6">{{ 'moderation.accounts' | t }}</h2>
-                  <table class="table table-sm spark-case-accounts">
+                  <bs-table class="d-block spark-case-accounts">
                     <thead><tr><th></th><th>{{ 'moderation.ageDays' | t }}</th><th></th><th>{{ 'moderation.sharesNetwork' | t }}</th><th>{{ 'moderation.repBefore' | t }}</th><th>{{ 'moderation.repAfter' | t }}</th></tr></thead>
                     <tbody>
                       @for (a of d.accounts; track a.id) {
                         <tr><td>{{ a.id }}</td><td>{{ a.ageDays }}</td><td>{{ a.registrationMethod }}</td><td>{{ a.sharesNetworkWith }}</td><td>{{ a.reputationBefore }}</td><td>{{ a.reputationAfter }}</td></tr>
                       }
                     </tbody>
-                  </table>
+                  </bs-table>
                 }
                 @if (d.matrix.length) {
                   <h2 class="h6">{{ 'moderation.matrix' | t }}</h2>
@@ -71,13 +85,13 @@ import { describeModerationError } from './spark-vote.component';
                 }
                 @if (d.timeline.length) {
                   <h2 class="h6">{{ 'moderation.timeline' | t }}</h2>
-                  <table class="table table-sm small spark-case-timeline">
+                  <bs-table class="d-block small spark-case-timeline">
                     <tbody>
                       @for (t of d.timeline; track t.voteId) {
                         <tr><td>{{ t.castAtUtc | date: 'short' }}</td><td>{{ t.voterId }} → {{ t.authorId }}</td><td>{{ t.direction > 0 ? '▲' : t.direction < 0 ? '▼' : '·' }}</td><td>{{ t.secondsAfterPost ?? '' }} s</td></tr>
                       }
                     </tbody>
-                  </table>
+                  </bs-table>
                 }
                 @if (d.flags.length) {
                   <ul class="small spark-case-flags">
@@ -104,7 +118,7 @@ import { describeModerationError } from './spark-vote.component';
           }
         </div>
       </div>
-    </div>
+    </bs-grid>
   `,
 })
 export class SparkReviewQueueComponent implements OnInit {
@@ -113,6 +127,8 @@ export class SparkReviewQueueComponent implements OnInit {
   private readonly router = inject(Router);
 
   private readonly spark = inject(SparkService);
+
+  protected readonly colors = Color;
 
   protected readonly cases = signal<ModerationCaseSummary[]>([]);
   /** Per case id: the target post's title and route, once resolved. */

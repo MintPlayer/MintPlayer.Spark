@@ -68,4 +68,33 @@ public sealed record ForgePullRequest(
     /// fork runner is not told it is one in any form the server could verify.
     /// </remarks>
     public bool IsFromFork => HeadRepositoryId is not { } head || head != BaseRepositoryId;
+
+    // ── Merge queue (PRD M4). Init-only so the upload path's construction is unchanged. ───────────
+
+    /// <summary>The base branch's head when the forge last computed the pull request.</summary>
+    public string? BaseSha { get; init; }
+
+    /// <summary>
+    /// <c>owner/name</c> of the repository the head branch lives in, or null when the fork is gone. The
+    /// queue pushes there (O3).
+    /// </summary>
+    public string? HeadRepositoryFullName { get; init; }
+
+    /// <summary>The author allows edits from maintainers (O3: a fork PR without it is refused at enqueue).</summary>
+    public bool MaintainerCanModify { get; init; }
+
+    public bool IsDraft { get; init; }
+
+    /// <summary>The author's login, or null for a deleted account.</summary>
+    public string? AuthorLogin { get; init; }
+
+    /// <summary>
+    /// The forge's word for mergeability (<c>clean</c>, <c>dirty</c>, <c>blocked</c>, <c>behind</c>,
+    /// <c>unstable</c>, <c>unknown</c>, …), or null when not computed yet. Informational: the merge request
+    /// itself is the authority (D17).
+    /// </summary>
+    public string? MergeableState { get; init; }
+
+    /// <summary>The pull request's title: the merge queue's squash commit subject.</summary>
+    public string? Title { get; init; }
 }

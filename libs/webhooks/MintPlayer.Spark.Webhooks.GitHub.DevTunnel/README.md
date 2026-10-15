@@ -29,6 +29,8 @@ spark.AddGithubWebhooks(options =>
 
 `AddSmeeDevTunnel(smeeChannelUrl)` registers a `SmeeBackgroundService` that connects to the channel over Server-Sent Events and feeds each delivery into the same `SparkWebhookEventProcessor` used in production. Signature validation still applies, and it reconnects on its own if the channel drops.
 
+> **The channel URL is a secret.** Whoever has it can read every delivery smee relays to it, so keep it in user secrets or the environment, not in a committed `appsettings.json`. The tunnel never logs it: its own log line shows only the channel's last four characters (`Connecting to smee.io channel …LkWd`), and its HTTP client is registered without `IHttpClientFactory`'s request logging, which would otherwise print the full URL at Information.
+
 > **Why it reads the SSE stream by hand rather than using a smee client library.** GitHub signs the exact bytes it sends, so the body must reach the processor unchanged. A client library that hands back a *parsed* body has already destroyed them: this tunnel previously went through `Smee.IO.Client`, whose body is typed `object` and materializes as a Newtonsoft `JObject`, and the body GitHub signed as `{"created_at":"2024-01-01T12:00:12.000+02:00","amount":1.50}` came back as `{"created_at":"2024-01-01T11:00:12+01:00","amount":1.5}` — the decimal lost its trailing zero and the timestamp was rebased into the *host machine's* timezone. Every such delivery failed HMAC validation and was silently dropped. The body is now lifted straight out of the frame with `JsonElement.GetRawText()`. The rule: **capture the signed bytes, never reconstruct them.**
 
 ## Option B — WebSocket forwarding from production

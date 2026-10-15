@@ -93,6 +93,7 @@ public partial class ForgeEventsRecipient :
                 RepositoryGitHubId = repository.GitHubId,
                 PullRequestNumber = evt.Number,
                 HeadSha = evt.HeadSha,
+                BaseRef = evt.BaseRef,
                 AuthorIsBot = evt.AuthorIsBot,
             }, cancellationToken);
         }

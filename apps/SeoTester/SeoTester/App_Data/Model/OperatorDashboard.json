@@ -1,5 +1,5 @@
 {
-  "$schema": "https://schemas.spark.mintplayer.com/v2/model.schema.json",
+  "$schema": "https://schemas.spark.mintplayer.com/v4/model.schema.json",
   "_comment": [
     "HAND-AUTHORED and NOT generated. The operator dashboard (docs/seo_analyzer_PRD.md F16, D28) is a dashboards-package",
     "dashboard (#504, D13): virtual (no clrType, no documents) and live, filled by OperatorDashboardFigures and the",

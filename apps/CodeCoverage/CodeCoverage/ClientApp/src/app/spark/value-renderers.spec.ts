@@ -67,11 +67,13 @@ describe('DateTimeRendererComponent', () => {
   });
 });
 
+// A badge's colour is the inner `.badge` bs-badge paints from its [type], `text-bg-{type}` since ng-bootstrap 22.25 (merge-queue
+// PRD §0 D84). A `text-bg-*` class on the host never reached it: the inner `.badge` kept the default primary.
 describe('ConnectedRendererComponent', () => {
   it('draws the green connected badge only for a literal true', () => {
     const fixture = render(ConnectedRendererComponent, { value: true });
 
-    const badge = (fixture.nativeElement as HTMLElement).querySelector('bs-badge')!;
+    const badge = (fixture.nativeElement as HTMLElement).querySelector('bs-badge .badge')!;
     expect(badge.classList.contains('text-bg-success')).toBe(true);
     expect(text(fixture)).toBe('app.connected');
   });
@@ -79,7 +81,7 @@ describe('ConnectedRendererComponent', () => {
   it('draws the grey not-connected badge for false, null and truthy non-booleans', () => {
     for (const value of [false, null, undefined, 'true', 1]) {
       const fixture = render(ConnectedRendererComponent, { value });
-      const badge = (fixture.nativeElement as HTMLElement).querySelector('bs-badge')!;
+      const badge = (fixture.nativeElement as HTMLElement).querySelector('bs-badge .badge')!;
       expect(badge.classList.contains('text-bg-secondary')).toBe(true);
       expect(text(fixture)).toBe('app.notConnected');
     }
@@ -196,7 +198,7 @@ describe('BuildSessionsRendererComponent', () => {
   }
 
   function badges(line: HTMLElement): HTMLElement[] {
-    return Array.from(line.querySelectorAll('bs-badge'));
+    return Array.from(line.querySelectorAll('bs-badge .badge'));
   }
 
   it('draws one line per nested PersistentObject session with its flags and parse status', () => {

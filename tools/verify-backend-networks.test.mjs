@@ -68,6 +68,10 @@ test('each backend network holds exactly the services that need each other', () 
     // out with nothing.
     'coverage-git': ['coverage-app', 'coverage-git'],
     'coverage-git-egress': ['coverage-git'],
+    // The merge queue's git writer (M3): its unauthenticated, pushing API is shared with the app alone, its way out with
+    // nothing.
+    'coverage-git-writer': ['coverage-app', 'coverage-git-writer'],
+    'coverage-git-writer-egress': ['coverage-git-writer'],
     'seo-raven': ['coverage-raven', 'seotester-app'],
     'seo-mail': ['coverage-smtp', 'seotester-app'],
     'seo-browser': ['seo-chromium', 'seotester-app'],
@@ -86,10 +90,11 @@ test('RavenDB and the mail relay share no network, and neither has a way out exc
   const egress = [...nets].filter(([, n]) => n.decls.every((d) => d.internal !== true && d.external !== true)).map(([name]) => name).sort();
   // Non-internal networks of a stack: Traefik's (external) aside, only the relay's egress network, the git sidecar's
   // (commit graph D18) and the fetcher's (PRD D54).
-  assert.deepEqual(egress, ['coverage-git-egress', 'coverage-smtp-egress', 'seo-egress'], 'the only compose-created networks with a route out are the relay\'s, the git sidecar\'s and the fetcher\'s');
+  assert.deepEqual(egress, ['coverage-git-egress', 'coverage-git-writer-egress', 'coverage-smtp-egress', 'seo-egress'], 'the only compose-created networks with a route out are the relay\'s, the two git sidecars\' and the fetcher\'s');
+  assert.deepEqual(members('coverage-git-writer-egress'), ['coverage-git-writer'], 'the git writer\'s egress network carries the writer alone');
   assert.deepEqual(members('seo-egress'), ['seo-fetcher'], 'the fetcher\'s egress network carries the fetcher alone (no database, no relay)');
   assert.deepEqual(members('coverage-git-egress'), ['coverage-git'], 'the git sidecar\'s egress network carries the sidecar alone (D18)');
-  for (const name of ['coverage-db', 'coverage-mail', 'coverage-git', 'seo-browser', 'seo-fetch']) {
+  for (const name of ['coverage-db', 'coverage-mail', 'coverage-git', 'coverage-git-writer', 'seo-browser', 'seo-fetch']) {
     assert.ok(nets.get(name).decls.every((d) => d.internal === true), `${name} is internal: true`);
   }
   const ravenNets = [...nets].filter(([, n]) => n.members.has('coverage-raven')).map(([name]) => name).sort();
@@ -113,6 +118,29 @@ test('RavenDB and the commit-graph sidecar share no network, and the sidecar is 
   }
   assert.ok(sidecar.mem_limit, 'the sidecar has a memory limit (D22)');
   assert.equal(env(stacks[CC].services['coverage-app']).CommitGraph__SidecarUrl, 'http://coverage-git:8080', 'the app reaches the sidecar by its service name');
+});
+
+test('the merge queue\'s git writer shares no network with RavenDB or the read-only mirror, and is capped (M3, S8)', () => {
+  for (const [name, { members: m }] of nets) {
+    assert.ok(!(m.has('coverage-raven') && m.has('coverage-git-writer')), `${name} carries both coverage-raven and coverage-git-writer`);
+    assert.ok(!(m.has('coverage-git') && m.has('coverage-git-writer')), `${name} carries both git sidecars (D2: the mirror stays read-only)`);
+  }
+  const writer = stacks[CC].services['coverage-git-writer'];
+  assert.deepEqual(networksOf(writer).sort(), ['coverage-git-writer', 'coverage-git-writer-egress'], 'coverage-git-writer is on its two networks only');
+  assert.ok(!(writer.ports ?? []).length, 'the writer publishes no port');
+  assert.deepEqual(writer.volumes, ['codecoverage-git-writer-jobs:/data/jobs'], 'the writer mounts its jobs volume and nothing else (no key, no certificate)');
+  for (const [service, def] of Object.entries(stacks[CC].services)) {
+    if (service === 'coverage-git-writer') continue;
+    assert.ok(!(def.volumes ?? []).some((v) => v.startsWith('codecoverage-git-writer-jobs:')), `${service} must not mount the writer's jobs`);
+  }
+  assert.equal(writer.mem_limit, '768m', 'S8: 512 MB per job plus the host');
+  assert.equal(writer.pids_limit, 128, 'S8: 64 processes per job plus the host');
+  assert.equal(writer.read_only, true, 'read-only root file system');
+  assert.equal(env(writer).GitWriter__MaxConcurrentJobs, '1', 'the limits above are sized for one job');
+  assert.equal(env(stacks[CC].services['coverage-app']).MergeQueue__GitWriterUrl, 'http://coverage-git-writer:8080', 'the app reaches the writer by its service name');
+  const deploy = read(CC_DEPLOY);
+  assert.match(deploy, /GIT_WRITER_IMAGE_NAME: mintplayer\/codecoverage-git-writer/, 'the deploy builds and pushes the writer image');
+  assert.match(deploy, /needs: \[build-and-push, build-and-push-git, build-and-push-git-writer\]/, 'the deploy waits for the writer image, which compose pulls');
 });
 
 test('the cross-stack networks are external in both files and created internal by both deploys before compose runs', () => {

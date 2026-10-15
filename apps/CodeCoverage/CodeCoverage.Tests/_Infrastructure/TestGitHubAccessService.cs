@@ -33,4 +33,10 @@ public sealed class TestGitHubAccessService(params string[] allowedOwners) : IGi
         => Task.FromResult(new GitHubVisibility(AllowedOwners, GitHubTokenState.Ok));
 
     public Task InvalidateAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+    /// <summary>The caller's own GitHub login as GitHub verified it; null models a caller with no linked GitHub sign-in.</summary>
+    public string? VerifiedLogin { get; set; }
+
+    public Task<GitHubVerifiedLogin> GetVerifiedLoginAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult(new GitHubVerifiedLogin(VerifiedLogin, VerifiedLogin is not null, GitHubTokenState.Ok));
 }

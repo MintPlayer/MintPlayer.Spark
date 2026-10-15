@@ -1,6 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
-using CodeCoverage.GitMirror.Git;
+using CodeCoverage.Git;
 using CodeCoverage.GitMirror.Mirror;
 
 namespace CodeCoverage.GitMirror.Graph;

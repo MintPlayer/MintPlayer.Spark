@@ -266,6 +266,24 @@ public class GetProgramUnitsEndpointTests(SparkSharedDatabase database)
         returned.Url.Should().Be("https://status.example.com");
     }
 
+    /// <summary>
+    /// The menu loads in <c>UseSpark</c>, like the action catalogue, so a programUnits.json the loader refuses (an
+    /// unknown type, a missing target, a url that is neither an app path nor an absolute http(s) URL) stops the host
+    /// instead of failing the first GET /spark/program-units after the deployment went green.
+    /// </summary>
+    [Fact]
+    public async Task The_menu_is_loaded_at_startup_before_any_request()
+    {
+        var loader = new StubProgramUnitsLoader(new ProgramUnitsConfiguration());
+        await using var factory = new SparkEndpointFactory(Store, [TestModels.Person(PersonTypeId)], services =>
+        {
+            services.RemoveAll<IProgramUnitsLoader>();
+            services.AddSingleton<IProgramUnitsLoader>(loader);
+        });
+
+        loader.Calls.Should().BeGreaterThan(0, "the host has started and no request was sent");
+    }
+
     // ---- helpers --------------------------------------------------------
 
     private static ProgramUnitsConfiguration OneGroup(string name, params ProgramUnit[] units) => new()
@@ -317,6 +335,11 @@ public class GetProgramUnitsEndpointTests(SparkSharedDatabase database)
     {
         private readonly ProgramUnitsConfiguration _config;
         public StubProgramUnitsLoader(ProgramUnitsConfiguration config) => _config = config;
-        public ProgramUnitsConfiguration GetProgramUnits() => _config;
+        public int Calls { get; private set; }
+        public ProgramUnitsConfiguration GetProgramUnits()
+        {
+            Calls++;
+            return _config;
+        }
     }
 }

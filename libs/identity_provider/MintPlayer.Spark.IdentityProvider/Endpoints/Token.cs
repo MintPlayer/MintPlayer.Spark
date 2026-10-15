@@ -136,7 +136,7 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
         // spends it must fail if anyone else spent it first. The point-load fixed replay
         // through a stale index; this fixes replay through simultaneity, where two requests
         // both load a valid code, both check it, and both save.
-        session.Advanced.UseOptimisticConcurrency = true;
+        session.Advanced.OptimisticConcurrencyMode = OptimisticConcurrencyMode.Writes;
 
         // Validate client (D8: basic, post, private_key_jwt, mTLS, or none for a public client)
         var client = await clientAuthenticator.AuthenticateAsync(httpContext, form, session, ct);
@@ -480,7 +480,7 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
         using var session = store.OpenAsyncSession();
 
         // Rotation spends the presented token, so it races exactly as code redemption does.
-        session.Advanced.UseOptimisticConcurrency = true;
+        session.Advanced.OptimisticConcurrencyMode = OptimisticConcurrencyMode.Writes;
 
         var client = await clientAuthenticator.AuthenticateAsync(httpContext, form, session, ct);
         if (!client.Succeeded)

@@ -86,6 +86,8 @@ describe('SparkSharedObjectComponent', () => {
     expect(element.querySelector('[data-attribute="Host"]')!.textContent!.trim()).toBe('example.com');
     expect(element.querySelector('[data-attribute="Score"] .spec-score')!.textContent!.trim()).toBe('score 87');
     expect(Array.from(element.querySelectorAll('.spark-shared-attributes dt')).map(d => d.textContent!.trim())).toEqual(['Host', 'Score']);
+    // ng-bootstrap's grid: Bootstrap's .row and .col-* rules ship with <bs-grid>, not globally (D84).
+    expect(element.querySelector('bs-grid dl.row.spark-shared-attributes > dt.col-sm-4 + dd.col-sm-8')).not.toBeNull();
   });
 
   // An AsDetail array travels in `objects`, not `value` (as on the detail page, rendererValue): the share page handed its
@@ -111,6 +113,8 @@ describe('SparkSharedObjectComponent', () => {
     expect(Array.from(sections[0].querySelectorAll('tbody tr')).map(r => r.getAttribute('data-id'))).toEqual(['Runs/1', 'Runs/2']);
     expect(sections[0].querySelector('.spark-shared-range')!.textContent!.trim()).toBe('1–2 / 3');
     expect(element.querySelector('a')).toBeNull();
+    // ng-bootstrap's table: the .table rules ship with <bs-table>, not globally (D84).
+    expect(sections[0].querySelector('bs-table table.table tbody tr[data-id="Runs/1"]')).not.toBeNull();
   });
 
   it('heads the object with its type label and each table with its query label', async () => {

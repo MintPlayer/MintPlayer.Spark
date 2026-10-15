@@ -30,6 +30,12 @@
 	</ItemGroup>
 
 	<ItemGroup>
+		<!-- The hardened GitRunner, shared with the merge queue's git writer (docs/coverage_merge_queue_PRD.md D2, M2). It
+		     references nothing but the ASP.NET Core shared framework. -->
+		<ProjectReference Include="..\CodeCoverage.Git\CodeCoverage.Git.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
 		<InternalsVisibleTo Include="CodeCoverage.GitMirror.Tests" />
 	</ItemGroup>
 

@@ -7,7 +7,7 @@ namespace CodeCoverage.Feedback;
 
 /// <summary>
 /// Renders the body of the sticky coverage comment. Pure — no GitHub, no
-/// RavenDB, no configuration lookups beyond the two values handed in — so every
+/// RavenDB, no configuration lookups beyond the values handed in — so every
 /// rule here is unit-testable.
 /// <para>
 /// The first line is always <see cref="Marker"/>: it is how the publisher
@@ -32,13 +32,15 @@ public static class PullRequestCommentRenderer
     /// What the comment says between the PR opening and CI finishing. Named
     /// after the sha so a reader can tell whether it is stale.
     /// </summary>
-    public static string RenderPending(Entities.Repository repository, string sha, string? baseUrl)
+    /// <param name="mergeQueueCheckUrl">See <see cref="Render"/>.</param>
+    public static string RenderPending(Entities.Repository repository, string sha, string? baseUrl, string? mergeQueueCheckUrl = null)
     {
         var body = new StringBuilder();
         body.AppendLine(Marker);
         body.AppendLine("### Coverage");
         body.AppendLine();
         body.AppendLine($"Waiting for coverage for `{Short(sha)}`. This comment updates itself when the upload finalizes.");
+        AppendMergeQueue(body, mergeQueueCheckUrl);
         AppendFooter(body, repository, sha, baseUrl);
         return body.ToString();
     }
@@ -53,6 +55,10 @@ public static class PullRequestCommentRenderer
     /// never expires, and a comment is read by every collaborator and gets
     /// quoted onward. Null on a private repo simply omits the image.
     /// </param>
+    /// <param name="mergeQueueCheckUrl">
+    /// The pull request's merge-queue check (<c>MergeQueueCommentLink</c>), or null for no merge-queue line: a repository
+    /// whose default branch does not turn the queue on, or a base the queue does not serve (merge-queue PRD O32).
+    /// </param>
     public static string Render(
         Entities.Repository repository,
         Entities.Commit commit,
@@ -60,7 +66,8 @@ public static class PullRequestCommentRenderer
         CheckVerdict patch,
         CommitAssembly? assembly,
         string? baseUrl,
-        string? badgeSignature)
+        string? badgeSignature,
+        string? mergeQueueCheckUrl = null)
     {
         var body = new StringBuilder();
         body.AppendLine(Marker);
@@ -108,8 +115,20 @@ public static class PullRequestCommentRenderer
                           + "so treat the number as a floor rather than a verdict.");
         }
 
+        AppendMergeQueue(body, mergeQueueCheckUrl);
         AppendFooter(body, repository, commit.Sha, baseUrl);
         return body.ToString();
+    }
+
+    /// <summary>
+    /// One line to the merge queue's check (merge-queue PRD O32). It names no state: the comment is rewritten when coverage
+    /// arrives, not when the queue moves, and the check it links shows the live state and the button that fits it.
+    /// </summary>
+    private static void AppendMergeQueue(StringBuilder body, string? mergeQueueCheckUrl)
+    {
+        if (mergeQueueCheckUrl is null) return;
+        body.AppendLine();
+        body.AppendLine(CultureInfo.InvariantCulture, $"**Merge queue:** [manage this pull request on its check →]({mergeQueueCheckUrl})");
     }
 
     /// <summary>

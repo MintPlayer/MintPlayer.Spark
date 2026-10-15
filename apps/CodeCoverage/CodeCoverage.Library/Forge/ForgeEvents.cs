@@ -66,7 +66,7 @@ public sealed record BranchCommitPushed(
     DateTimeOffset? AuthoredAt) : IForgeEvent;
 
 /// <summary>
-/// A pull request was opened, reopened, or had new commits pushed to it.
+/// A pull request was opened, reopened, had new commits pushed to it, was marked ready for review, or was retargeted.
 /// </summary>
 /// <param name="IsFirstOpen">
 /// True for an open or reopen, false for a later push. The only consumer that cares is the pending
@@ -81,6 +81,11 @@ public sealed record BranchCommitPushed(
 /// The three GitHub actions <c>opened</c>, <c>reopened</c> and <c>synchronize</c> collapse to this
 /// one event because the app does the same thing for all three: re-record the head commit and its
 /// base. Keeping them apart would export a distinction no consumer uses.
+/// <para>
+/// <c>ready_for_review</c> and an <c>edited</c> that changed the base join them (merge-queue PRD §0 O30): the
+/// pull request may have just become one the merge queue can take, so the queue offers its button again, and
+/// a retarget moves the base the coverage record keeps. A title or body edit raises nothing.
+/// </para>
 /// </remarks>
 public sealed record PullRequestUpdated(
     string RepositoryId,
@@ -190,3 +195,53 @@ public sealed record RepositoryConnectionChanged(
     bool Connected,
     string? Reason,
     string? ReportedByAccountId = null) : IForgeEvent;
+
+// ── The merge queue (merge-queue PRD M5) ──────────────────────────────────────────────────────────────
+//
+// Every forge can raise these: GitLab and Bitbucket have labels or comments, pipelines and commit statuses
+// too. Only the GitHub normaliser raises them today (O7: GitHub only in this PR; the others under #422).
+
+/// <summary>
+/// Somebody asked the merge queue to take a pull request, or to let it go (O8).
+/// </summary>
+/// <param name="ActorLogin">
+/// ⚠️ <b>The authenticated actor, never text from the request (T1).</b> For a label, a comment or a click on the queue
+/// check's button that is the signed webhook's sender; for the repository page's button, the signed-in user's linked
+/// forge login. A comment saying "/queue as @maintainer" is still the commenter's, and a click on the App's own check is
+/// the clicker's. A normaliser that cannot name the actor must raise nothing.
+/// </param>
+/// <param name="Label">The label added or removed, for <see cref="EMergeQueueCommandSource.Label"/>: the queue compares it
+/// with the configured one, which the normaliser does not know.</param>
+/// <remarks>
+/// A normaliser drops commands a bot sent, the App's own label removals included: the queue only ever acts for a
+/// person (§0 D46).
+/// </remarks>
+public sealed record MergeQueueCommandIssued(
+    string RepositoryId,
+    int Number,
+    EMergeQueueCommand Command,
+    string ActorLogin,
+    Entities.EMergeQueueCommandSource Source,
+    string? Label = null) : IForgeEvent;
+
+public enum EMergeQueueCommand
+{
+    Enqueue,
+    Dequeue,
+}
+
+/// <summary>A pull request was closed without being merged.</summary>
+/// <remarks>The merged close is <see cref="PullRequestMerged"/>; the two are never raised for the same close.</remarks>
+public sealed record PullRequestClosed(string RepositoryId, int Number) : IForgeEvent;
+
+/// <summary>A CI run (a GitHub Actions workflow run, a GitLab pipeline) finished.</summary>
+/// <param name="HeadSha">The commit the run built, which the queue compares with the commit it asked for (D14).</param>
+/// <param name="Conclusion">The forge's word; the queue re-reads the run before acting on it.</param>
+public sealed record CiRunCompleted(string RepositoryId, long RunId, string HeadSha, string? Conclusion) : IForgeEvent;
+
+/// <summary>A check or status on a commit was created or changed state.</summary>
+/// <remarks>Carries no verdict: the queue re-reads every check on the commit and decides with <see cref="CheckGate"/>.</remarks>
+public sealed record CommitChecksChanged(string RepositoryId, string Sha) : IForgeEvent;
+
+/// <summary>A review was submitted on, or dismissed from, a pull request.</summary>
+public sealed record PullRequestReviewed(string RepositoryId, int Number) : IForgeEvent;

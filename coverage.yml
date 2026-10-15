@@ -1,0 +1,29 @@
+# CodeCoverage's in-repository policy (coverage.mintplayer.com).
+#
+# `mergeQueue:` is read from the DEFAULT branch only (docs/coverage_merge_queue_PRD.md O16), so a pull
+# request cannot widen it for itself. Trust settings (approval floor, check exclusions) are not here: they
+# live on the organization/repository pages (O15).
+mergeQueue:
+  enabled: true
+  branches: [master]
+  mergeMethod: squash
+  enqueue:
+    label: merge-queue
+  # .github/workflows/regenerate.yml: builds every app and runs synchronize, returning a patch artifact.
+  postRebaseActionName: regenerate.yml
+  postRebaseTimeout: 20m
+  postRebaseWhen: auto-resolved
+  # The only paths the regenerate patch may touch (T4). Synchronize writes nothing else.
+  regeneratedPaths:
+    - "**/App_Data/modelHashes.json"
+    - "**/App_Data/securityPosture.txt"
+    - "**/App_Data/translations.json"
+    - "**/App_Data/security.json"
+    - "**/App_Data/Model/*.json"
+  # Wholly generated files only (O1, O19): a conflict anywhere in them takes the base side and the
+  # regenerate step rewrites them. A conflict in any other file evicts the pull request.
+  autoResolve:
+    - path: "**/App_Data/modelHashes.json"
+      strategy: take-base
+    - path: "**/App_Data/securityPosture.txt"
+      strategy: take-base

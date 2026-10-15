@@ -3,6 +3,7 @@ GET /.well-known/oauth-authorization-server
 GET /.well-known/oauth-protected-resource | allow-anonymous
 GET /.well-known/oauth-protected-resource/mcp | allow-anonymous
 GET /.well-known/openid-configuration
+GET /api/accounts/{provider}/{login}/pending-permissions | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=)
 GET /api/browse/accounts/{provider}/{login} | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=) | rate-limit=policy:browse
 GET /api/browse/accounts/{provider}/{login}/dependency-graph | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=) | rate-limit=policy:browse
 GET /api/browse/accounts/{provider}/{login}/repos | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=) | rate-limit=policy:browse
@@ -18,9 +19,12 @@ GET /api/browse/repos/{provider}/{owner}/{name}/commits/{sha}/tree | authorize(p
 GET /api/browse/repos/{provider}/{owner}/{name}/coverage-drops | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=) | rate-limit=policy:browse
 GET /api/browse/repos/{provider}/{owner}/{name}/graph | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=) | rate-limit=policy:browse
 GET /api/browse/repos/{provider}/{owner}/{name}/history | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=) | rate-limit=policy:browse
+GET /api/browse/repos/{provider}/{owner}/{name}/merge-queue | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=) | rate-limit=policy:browse
 POST /api/github/webhooks | antiforgery=not-required
 GET /api/me/accounts | authorize(policy=;roles=;schemes=) | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=)
 POST /api/me/accounts/resync | antiforgery=required | authorize(policy=;roles=;schemes=) | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=)
+DELETE /api/repos/{provider}/{owner}/{name}/merge-queue/{number:int} | antiforgery=required | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=)
+POST /api/repos/{provider}/{owner}/{name}/merge-queue/{number:int} | antiforgery=required | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=)
 POST /api/repos/{provider}/{owner}/{name}/settings/badge-token | antiforgery=required | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=)
 POST /api/uploads | antiforgery=not-required | authorize(policy=;roles=;schemes=ApiToken,GitHubOidc) | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=) | rate-limit=policy:uploads | request-size-limit=52428800
 GET /api/uploads/capabilities | authorize(policy=;roles=;schemes=ApiToken,GitHubOidc) | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=) | rate-limit=policy:uploads-status

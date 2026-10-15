@@ -5,6 +5,7 @@ using MintPlayer.Spark.Messaging.Models;
 using MintPlayer.Spark.Messaging.Services;
 using MintPlayer.Spark.Testing;
 using Raven.Client.Documents;
+using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.Tests.Messaging;
 
@@ -266,7 +267,7 @@ public class MessageBusTests : SparkTestDriver
         var act = () => NewOutbox().EnqueueAsync(session, new OrderPlaced("orders/4", 1m), new BroadcastOptions { DeduplicationKey = "k" });
 
         await act.Should().ThrowAsync<ArgumentException>();
-        session.Advanced.UseOptimisticConcurrency.Should().BeFalse("the caller's session is left as it was");
+        session.Advanced.OptimisticConcurrencyMode.Should().Be(OptimisticConcurrencyMode.None, "the caller's session is left as it was");
     }
 
     // ---- durable after-commit interceptors: the recipient (#482, D17) ----------------------------------------

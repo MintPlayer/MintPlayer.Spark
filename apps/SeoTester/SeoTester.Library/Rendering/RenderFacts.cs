@@ -39,7 +39,8 @@ public sealed record ImageFact(string? Source, bool Lazy, bool AboveFold);
 
 /// <summary>A request the page made and how it was answered (from the router, not from the page).</summary>
 /// <param name="Bytes">The body's bytes after decompression (the router's client decompresses).</param>
-/// <param name="Outcome"><c>fulfilled</c>, <c>blocked</c> (refused by the SSRF rules, robots.txt or a sink) or <c>failed</c>.</param>
+/// <param name="Outcome"><c>fulfilled</c>, <c>blocked</c> (refused by the SSRF rules, robots.txt or a sink), <c>failed</c>, or
+/// <c>download</c> (a navigation Chromium would have saved instead of rendering: fetched, never handed to it).</param>
 public sealed record NetworkEntry(string Url, string ResourceType, int Status, long Bytes, bool ThirdParty, string Outcome);
 
 /// <summary>An axe-core violation: the rule, its impact and how many elements failed it.</summary>

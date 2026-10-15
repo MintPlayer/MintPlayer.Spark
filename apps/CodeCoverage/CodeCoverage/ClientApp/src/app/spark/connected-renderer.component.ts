@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
+import { Color } from '@mintplayer/ng-bootstrap';
 import { BsBadgeComponent } from '@mintplayer/ng-bootstrap/badge';
 import { TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
 import type { SparkAttributeColumnRenderer } from '@mintplayer/ng-spark/renderers';
@@ -21,9 +22,9 @@ import type { SparkAttributeColumnRenderer } from '@mintplayer/ng-spark/renderer
   imports: [BsBadgeComponent, TranslateKeyPipe],
   template: `
     @if (connected()) {
-      <bs-badge class="text-bg-success text-nowrap">{{ 'app.connected' | t }}</bs-badge>
+      <bs-badge class="text-nowrap" [type]="colors.success">{{ 'app.connected' | t }}</bs-badge>
     } @else {
-      <bs-badge class="text-bg-secondary text-nowrap">{{ 'app.notConnected' | t }}</bs-badge>
+      <bs-badge class="text-nowrap" [type]="colors.secondary">{{ 'app.notConnected' | t }}</bs-badge>
     }
   `,
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -31,6 +32,8 @@ import type { SparkAttributeColumnRenderer } from '@mintplayer/ng-spark/renderer
 export class ConnectedRendererComponent implements SparkAttributeColumnRenderer {
   value = input<any>();
   options = input<Record<string, any> | undefined>();
+
+  protected readonly colors = Color;
 
   readonly connected = computed(() => this.value() === true);
 }
