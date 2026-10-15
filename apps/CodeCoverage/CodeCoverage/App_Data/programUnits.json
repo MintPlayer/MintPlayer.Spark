@@ -53,6 +53,14 @@
           "alias": "forge-accounts",
           "objectId": "github",
           "order": 2
+        },
+        {
+          "id": "0580223f-bbbd-425f-9be5-b7b2f289d323",
+          "name": "programUnits.mergeQueueSetup",
+          "icon": "bi-signpost-split",
+          "type": "url",
+          "url": "/merge-queue/setup",
+          "order": 3
         }
       ]
     },

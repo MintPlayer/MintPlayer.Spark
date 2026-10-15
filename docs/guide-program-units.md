@@ -30,9 +30,14 @@ comes from the file, and the menu re-fetches itself when the user signs in or ou
           "alias": "startpage", "objectId": "start", "order": 2
         },
         {
-          // An external link: a plain anchor (new tab), always visible.
+          // A page of this app the model cannot describe: a router link (same tab), always visible.
+          "id": "…guid…", "name": "programUnits.reports", "icon": "bi-bar-chart",
+          "type": "url", "url": "/reports?range=week", "order": 3
+        },
+        {
+          // Another site: a new tab, always visible.
           "id": "…guid…", "name": "programUnits.statusPage", "icon": "bi-activity",
-          "type": "url", "url": "https://status.example.com", "order": 3
+          "type": "url", "url": "https://status.example.com", "order": 4
         }
       ]
     }
@@ -50,7 +55,7 @@ Semantics:
 |---|---|---|---|
 | `query` | `queryId` | `Query` right on the entity type | `/query/{alias ?? queryId}` |
 | `persistentObject` | `persistentObjectId` | `Read` right on the type | `/po/{alias ?? typeId}` (list), or `/po/…/{objectId}` when `objectId` is set |
-| `url` | `url` | always | the external address, new tab |
+| `url` | `url` | always | a page of this app (same tab) or another site (new tab); see [`url` units](#url-units-links-into-and-out-of-the-app) |
 
 ⚠️ **The `alias` in that last column is the identifier the client actually uses**, not the id. A unit
 whose alias does not resolve to the same target as its id will 404 at runtime with a perfectly
@@ -59,15 +64,59 @@ endpoint answers the same for both. `--spark-verify-model` refuses the mismatch;
 [Aliases → A program unit's alias must resolve to its own target](guide-aliases.md#a-program-units-alias-must-resolve-to-its-own-target).
 
 The loader (`ProgramUnitsLoader`) canonicalizes `type` casing and validates these combinations
-at load time — an unknown type or a missing required field **throws**
-(`SparkProgramUnitsConfigurationException`) rather than silently dropping the unit, because a
-silently missing menu entry reads exactly like an authorization problem. A missing
-`programUnits.json` is fine: no menu is a valid choice.
+when the application starts (`UseSpark` loads the menu) — an unknown type, a missing required
+field or a `url` outside the [allowed forms](#url-units-links-into-and-out-of-the-app) **throws**
+(`SparkProgramUnitsConfigurationException`) and the application does not start, rather than
+silently dropping the unit, because a silently missing menu entry reads exactly like an
+authorization problem. `--spark-verify-model` applies the same rule, so the merge queue refuses
+what startup would. A missing `programUnits.json` is fine: no menu is a valid choice.
 
 There is deliberately **no visibility data in the file**. What a caller sees is derived from
 `security.json` rights on each unit's target; groups whose units all filtered away are not sent
 at all. `GET /spark/program-units` is therefore caller-scoped — which is why the client re-fetches
 it on sign-in/out.
+
+## `url` units: links into and out of the app
+
+A `url` is one of two forms, and nothing else:
+
+- an **app path**: one leading `/`, not `//` (`/merge-queue/setup?provider=github#permissions`). It
+  resolves below the app's base, like a router link, with its query and fragment;
+- an **absolute `http`/`https` URL** with a host (`https://status.example.com`).
+
+Everything else is refused: a blank value, whitespace or a control character anywhere, a `\`,
+credentials (`https://github.com@evil.example/` reads as GitHub and goes to evil.example), a relative
+path, and every other scheme (`javascript:`, `data:`, `file:`, `mailto:`, …). It is validated **at
+startup and by `--spark-verify-model`**, in the same words; `SparkLinkUrl` in
+`MintPlayer.Spark.Abstractions` is the rule, which notification links share.
+
+The client decides where a link leads, from the page's origin and the router's base href (not the
+server's `PublicBaseUrl`, which is for links that leave the request):
+
+| The url | Renders as |
+|---|---|
+| an app path, or an absolute URL on the page's origin at the base or below it | a router link in the same tab, query and fragment kept; current (`aria-current="page"`) on exactly its path |
+| any other `http`/`https` URL, including the page's origin outside the base | the parsed `href` in a new tab, `rel="noopener noreferrer"`, an external icon and an "opens in a new tab" text for screen readers (`common.opensInNewTab`) |
+| anything else | nothing |
+
+"Below the base" is compared per path segment and case-sensitively: under `/app/`, `/application/x`
+and `/APP/x` are other sites. A port, `http` from an `https` page, or a different host is another
+origin. The browser's reading wins: `//host`, `/\host` and `/<TAB>/host` all go to `host`.
+
+⚠️ **A `url` unit is visible to everyone, anonymous visitors included.** No right gates it: the
+server shows it whatever the caller holds, because it names no entity type to check. A link whose
+existence must stay hidden from some callers does not belong in a `url` unit: give it a typed unit
+(whose target the server checks per caller), or render it from a [slot](#spark-shell--the-application-frame)
+behind the app's own check.
+
+### The model hash covers the addresses
+
+Of `programUnits.json`, the [model hash](model-hash.md) covers the `url` units' addresses, keyed by
+each unit's id, and nothing else: names, icons, order, groups, the other unit types and `_comment`
+lines never need a synchronize run, and a unit moves between groups without moving the hash. A
+changed address does: outside Development the application **refuses to start** until
+`--spark-synchronize-model` records it (Development warns, as for any model drift), so an external
+link tampered with after the build cannot be served.
 
 ## Composed pages: a menu entry that opens code, not a document
 

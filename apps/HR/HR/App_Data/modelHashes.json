@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "modelHash": "d7716ffdd588e98ac929a37169e2b2f3dc49c5a49b80d2a241b30a11b0920cd1",
+  "modelHash": "71ffec6dcb496309c8c85a775aee3bc879d1a48a63929f78f774f8e44b843d3f",
   "contextRoots": "24c37fe33e4d7c7f9e131cb5248f3acb7dedbb20985be4bbbee1e5841cba5fc3",
   "modelFiles": "ce6ff5eb762b511adbbd16dd729e05e2c7ca2dc64e567de7166fa2b2f5a82f37",
   "files": {
@@ -26,8 +26,7 @@
     "Profession": "7d42f51e1104969ffc1c69a832e829c45b7feb16f946de0644c580a89abd0d43"
   },
   "configFiles": {
-    "actions.json": "32cc41b3dafef21b94b7ca75ac82dfed573e43b1207fe4902a16d9e3e9572b4d",
-    "programUnits.json": "96c48f0fcc007c33414d888c8d0cbf91eb05fa201fb43361d5a4cf5e1becf09f"
+    "actions.json": "32cc41b3dafef21b94b7ca75ac82dfed573e43b1207fe4902a16d9e3e9572b4d"
   },
   "libraries": {
     "authorization": "MintPlayer.Spark.Authorization",

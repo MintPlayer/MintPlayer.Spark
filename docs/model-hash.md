@@ -28,7 +28,10 @@ Two independent things are hashed, because neither sees what the other does.
   lookup type, sortability, projection membership, and **validation rules**
 
 **`actions.json` and `programUnits.json`** (`configFiles`), structurally, for the same reason: an action
-absent from `actions.json` cannot run, and its `selectionRule` bounds how many rows it may be handed.
+absent from `actions.json` cannot run, and its `selectionRule` bounds how many rows it may be handed. Of
+`programUnits.json` only the `url` units' addresses count, keyed by unit id: an external link tampered with
+must refuse startup, while renaming, reordering or regrouping the menu needs no synchronize run (see
+[Program units](guide-program-units.md#the-model-hash-covers-the-addresses)).
 
 The file and config hashes are of the **composed** files: the layers referenced libraries ship (see
 [Library layers](guide-library-layers.md)) with your own files on top. A type only a library ships,
