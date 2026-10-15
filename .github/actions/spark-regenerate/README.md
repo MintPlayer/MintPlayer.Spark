@@ -164,5 +164,41 @@ values: all equal. `tsc --noEmit -p tsconfig.spec.json` for the ClientApp: no er
 workspace's TS6059 rootDir noise). The vitest suites and `MergeQueueForkGuardTests` were **not** run (the owner
 batches test runs).
 
-**Not verified:** Yarn 2+ (Berry), the action on a real GitHub runner, a private repository's token fetch, and the
-`corepack` fallback when pnpm or Yarn is absent from the runner.
+**Not verified:** the action on a real GitHub runner and a private repository's token fetch. (Yarn 2+ and the
+`corepack` fallback were verified afterwards, below.)
+
+### Linux container run
+
+The same simulation, ported to Linux (fixture scripts in `C:\Repos\mq-lockfile-tests\scripts`, logs in `...\logs`):
+every run in a fresh container with `.github/actions` mounted read-only, the fixture repositories on the container's
+own filesystem, LF throughout, `CI=true` as on a runner, real registries.
+
+- **JS:** `node:22-trixie`: Debian 13, git 2.47.3, Node 22.23.3, npm 10.9.9, Yarn 1.22.22 global on PATH (as
+  `ubuntu-latest` ships it), corepack 0.36.0 → pnpm 12.11.2, Yarn 4.9.2 (`packageManager: "yarn@4.9.2"`). "PATH"
+  mode puts pnpm on PATH through `corepack enable pnpm`. "corepack" mode deletes `yarn`/`pnpm` from PATH first.
+- **NuGet:** `mcr.microsoft.com/dotnet/sdk:10.0`: Ubuntu 24.04 (the runner's base), **git 2.43.0** (Ubuntu 24.04's
+  own, older than the runner's), .NET SDK 10.0.402, plus Node 22.23.3 copied from the node image.
+- Every green run is re-run on its own result (the patch committed into the prepared squash): **the second patch was
+  0 bytes, and the tree was clean, in every ecosystem**.
+
+| Scenario | Result |
+|---|---|
+| npm `ok` / `pin` / `nopr` / `pin-nopr` | diff3 rebuilt (2 regions) and resolved; `pin` keeps `kind-of@6.0.0`; `pin-nopr` re-resolves to `6.0.3`, accepted by host allowlist with a warning; patch = `package-lock.json` only. Exit 0, fixed point. |
+| npm `extra` | provenance fails: the same 5 packages as on Windows. Exit 1, no patch. |
+| pnpm `ok` / `pin` / `extra` (PATH and corepack) | 3 regions resolved; `pin` keeps `kind-of@6.0.0`; `extra` fails provenance (5 packages, `default registry`). No `packageManager` was added to `package.json` by corepack. |
+| Yarn 1 `ok` / `pin` / `extra` (global and corepack) | 1 region resolved; `pin` (PR lock entry `"kind-of@^6.0.0"` → 6.0.0) **keeps 6.0.0**; `extra` fails provenance (`registry.yarnpkg.com`). |
+| Yarn 4 `ok` / `pin` / `extra` / `nopr` (global Yarn 1 on PATH, and corepack only) | **Failed before the fix, two bugs** (below). After it: `YN0048 Automatically fixed merge conflicts`; `pin` (`yarn set resolution kind-of@npm:^6.0.0 npm:6.0.0` in the PR) **keeps 6.0.0**; `extra` fails provenance with 5 packages (host `npm:`); `nopr` passes by allowlist with a warning. `.git/MERGE_HEAD` is gone afterwards, on success and on failure. |
+| corepack fallback (no pnpm or yarn on PATH) | pnpm, Yarn 1 and Yarn 4 `ok`, pnpm and Yarn 4 `pin`: green, same output as the PATH mode. |
+| NuGet `ok` / `extra` / `nopr` | `ok`: restore ×2 unchanged, 4 packages from base or head, patch `Lib/packages.lock.json`. `extra`: provenance refuses `System.Memory@4.5.5` and 3 dependencies. `nopr`: fails closed on `Newtonsoft.Json.Bson@1.0.2 (NuGet feed)`. |
+| `spark-regenerate` + `lockfiles:` (npm, Yarn 4, NuGet) | stub `dotnet` (NuGet: forwards `restore` to the SDK); lockfiles regenerated before the stub build and both synchronize passes; patch = the lockfile only; second run 0 bytes. |
+| CRLF: `core.autocrlf=input`, LF-committed lockfiles (npm, pnpm, Yarn 1, Yarn 4, NuGet) | checkout has 0 CR bytes; the regenerated lockfile and the patch have none; fixed point holds. |
+
+**Bugs found and fixed (`lockfiles.sh`):**
+1. The runner's global Yarn 1 refuses a project whose `package.json` declares `"packageManager": "yarn@4.x"`
+   ("the current global version of Yarn is 1.22.22"), and the script preferred PATH over corepack. Now corepack runs
+   whenever `packageManager` names the tool; otherwise PATH, otherwise corepack.
+2. Yarn 2+ does not read the markers: it calls `git rev-parse MERGE_HEAD HEAD` and merges the two commits'
+   `yarn.lock` (Berry 4.9.2's `autofixMergeConflicts`), so with no merge in progress it failed with YN0083. The
+   script now writes the pull request head to `.git/MERGE_HEAD` for that one install and removes it on exit.
+
+ShellCheck 0.11.0 (`koalaman/shellcheck:v0.11.0`) over the three `lockfile-regenerate` scripts: clean.

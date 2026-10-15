@@ -116,18 +116,35 @@ while IFS= read -r path; do
   done
 done < <(printf '%s\n%s\n' "$changed" "$pr_changed" | sort -u)
 
-pm() { # ecosystem, directory, [pass]: the lock-only install, in that directory
-  local eco="$1" dir="$2"
+# pnpm or yarn: corepack when package.json pins it in `packageManager` (a global Yarn 1, as GitHub's runners ship,
+# refuses a project that declares Yarn 4), else the one on PATH, else corepack.
+pm_cmd() {
+  if command -v corepack > /dev/null && grep -qE "\"packageManager\"[[:space:]]*:[[:space:]]*\"$1@" package.json 2> /dev/null; then
+    echo corepack "$1"
+  elif command -v "$1" > /dev/null; then echo "$1"
+  else echo corepack "$1"; fi
+}
+
+pm() { # ecosystem, directory, [merge head]: the lock-only install, in that directory
+  local eco="$1" dir="$2" merge_head="${3:-}"
   (
     cd "$dir"
     case "$eco" in
       npm) npm install --package-lock-only --ignore-scripts --no-audit --no-fund ;;
       pnpm)
-        if command -v pnpm > /dev/null; then p=(pnpm); else p=(corepack pnpm); fi
+        read -ra p <<< "$(pm_cmd pnpm)"
         "${p[@]}" install --lockfile-only --ignore-scripts --ignore-pnpmfile --no-frozen-lockfile ;;
       yarn)
-        if command -v yarn > /dev/null; then y=(yarn); else y=(corepack yarn); fi
+        read -ra y <<< "$(pm_cmd yarn)"
         if [ "$("${y[@]}" --version | cut -d. -f1)" -ge 2 ]; then
+          # Yarn 2+ ignores the markers' content: it resolves a conflicted yarn.lock from `git rev-parse MERGE_HEAD
+          # HEAD`, taking the union of both commits' lockfiles. Name the pull request head as MERGE_HEAD meanwhile.
+          if [ -n "$merge_head" ]; then
+            mh="$(git rev-parse --git-path MERGE_HEAD)"
+            [ ! -e "$mh" ] || { echo "::error::$mh already exists." >&2; exit 1; }
+            trap 'rm -f "$mh"' EXIT
+            echo "$merge_head" > "$mh"
+          fi
           YARN_ENABLE_SCRIPTS=0 "${y[@]}" install --mode=update-lockfile --no-immutable
         else
           "${y[@]}" install --ignore-scripts --non-interactive --no-progress
@@ -138,7 +155,8 @@ pm() { # ecosystem, directory, [pass]: the lock-only install, in that directory
 
 # O35 #2: when the queue took the base side of this lockfile, the pull request's pins were dropped. Rebuild the
 # three-way conflict (base branch | merge base | pull request) with plain diff3 markers and let the package manager
-# merge it: npm's parse-conflict-json needs the ||||||| merge-base section, Yarn and pnpm accept it.
+# merge it: npm's parse-conflict-json needs the ||||||| merge-base section, Yarn 1 and pnpm accept it. Yarn 2+ only
+# needs markers present; it merges the two commits' lockfiles itself, given MERGE_HEAD (pm).
 rebuild_markers() {
   local lock="$1" ours parent theirs rc
   [ -n "$pr" ] || return 1
@@ -165,8 +183,9 @@ declare -A pass1=()
 for lock in "${js_locks[@]}"; do
   eco="${js[$lock]}"
   echo "::group::$eco: $lock (pass 1)"
-  rebuild_markers "$lock" || note "$lock: lock-only install on HEAD's lockfile."
-  pm "$eco" "$(dirname "$lock")" || fail "$eco could not regenerate $lock."
+  merge_head=""
+  if rebuild_markers "$lock"; then merge_head="$pr"; else note "$lock: lock-only install on HEAD's lockfile."; fi
+  pm "$eco" "$(dirname "$lock")" "$merge_head" || fail "$eco could not regenerate $lock."
   echo "::endgroup::"
   grep -qE '^(<{7}|\|{7}|={7}|>{7})' "$lock" && fail "$lock still holds conflict markers after $eco ran."
   pass1[$lock]="$(git hash-object --no-filters "$lock")"

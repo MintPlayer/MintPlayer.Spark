@@ -53,7 +53,11 @@ The checkout needs **`fetch-depth: 2`**: the work is derived from the prepared c
    merge base, pull request), written over the lockfile. The package manager's lock-only install then resolves the
    markers and keeps both sides' pins. **diff3 is required for npm:** its `parse-conflict-json` rebuilds the common
    ancestor from the `|||||||` section, and without one the ancestor is not JSON and the install fails. Yarn 1
-   skips that section; pnpm accepts it (both measured below).
+   skips that section; pnpm accepts it (both measured below). **Yarn 2+ ignores the markers' content:** finding
+   `<<<<<<<` in `yarn.lock`, it runs `git rev-parse MERGE_HEAD HEAD`, reads `yarn.lock` from both commits and
+   installs over their union (YN0048). The script therefore writes the pull request head to `.git/MERGE_HEAD` for
+   the duration of that one install and removes it afterwards; without it Yarn fails with YN0083 (measured in Linux
+   containers, spark-regenerate README).
 5. **Runs the lock-only install**, in the lockfile's directory:
    - npm: `npm install --package-lock-only --ignore-scripts --no-audit --no-fund`
    - pnpm: `pnpm install --lockfile-only --ignore-scripts --ignore-pnpmfile --no-frozen-lockfile`
@@ -61,7 +65,8 @@ The checkout needs **`fetch-depth: 2`**: the work is derived from the prepared c
      `YARN_ENABLE_SCRIPTS=0 yarn install --mode=update-lockfile --no-immutable`
 
    `--no-frozen-lockfile` and `--no-immutable` matter on Actions: both tools freeze the lockfile when `CI` is set.
-   pnpm and Yarn come from the runner, or through `corepack` when absent.
+   pnpm and Yarn run through `corepack` when `package.json`'s `packageManager` names them (the Yarn 1 that GitHub's
+   runners ship refuses a project that declares `yarn@4`), else from the runner's PATH, else through `corepack`.
 6. **Fixed point:** every install runs a second time over the first one's output and must change nothing, like
    `spark-regenerate`'s synchronize check. Same for the NuGet restores.
 7. **Provenance** (O35 #3, [`provenance.mjs`](provenance.mjs), plain Node, no dependencies) over every lockfile the
