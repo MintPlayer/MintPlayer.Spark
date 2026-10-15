@@ -87,6 +87,9 @@ public sealed partial class PageRenderer(ChromiumBrowser chromium, ILogger<PageR
             await cdp.SendAsync("Profiler.startPreciseCoverage", new Dictionary<string, object> { ["callCount"] = false, ["detailed"] = true });
 
             error = await NavigateAsync(page, url, options, timings, "mobile");
+            // The router aborted the page itself: Chromium would have saved it (BrowserRouter, ChromiumDownloads).
+            if (error is not null && router.MainDocumentIsDownload)
+                error = "the page is a file to download, not a document";
             if (error is null)
             {
                 coverage = await Time(timings, "coverage", () => CoverageAsync(cdp));

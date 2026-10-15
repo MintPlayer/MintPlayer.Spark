@@ -175,7 +175,11 @@ Five queues (`Spark:Messaging:Queues`, concurrency and handler timeout per queue
    through the SSRF-safe client: redirects are handed back to Chromium one hop at a time, robots.txt applies to the
    audited host, its pages wait for the tier's interval and every request holds one of its connections, static files are
    fetched once per run, and analytics hits (GA4, Meta, Clarity, Matomo, …) are answered locally and never sent on, so an
-   audit never shows up in the site's statistics. Service workers are never installed: their registration is recorded
+   audit never shows up in the site's statistics. A navigation whose answer Chromium would save instead of rendering (an
+   attachment, a type it does not show, a binary body with no type: `Rendering/ChromiumDownloads.cs`) never reaches it,
+   because Chromium writes what it saves to a temp file before the download is refused. A page that is itself such a
+   file is a render error ("the page is a file to download, not a document"); a page that navigates to one stays as it
+   was. Service workers are never installed: their registration is recorded
    and the script fetched (does it handle `fetch`, how long is it cached). Without a browser the rendered checks are
    "not measured"; when the browser cannot be reached they are errors; neither counts in the score.
 4. **`seo-psi`** (`PageSpeed/PsiRecipient.cs`): PageSpeed Insights (mobile, performance) for the sample (the home page;

@@ -173,8 +173,9 @@ public sealed record RoutedResponse(int Status, IReadOnlyList<KeyValuePair<strin
 
 /// <summary>
 /// Routes one browser context (§6): every HTTP(S) request through <see cref="RenderNetwork"/>, every WebSocket closed
-/// before it connects, and SeoTester's init script in every frame. Keeps the context's network log and the main
-/// document as served (the raw HTML of the raw-vs-rendered comparison).
+/// before it connects, and SeoTester's init script in every frame. A navigation Chromium would save instead of rendering
+/// never reaches it (<see cref="ChromiumDownloads"/>). Keeps the context's network log and the main document as served
+/// (the raw HTML of the raw-vs-rendered comparison).
 /// </summary>
 public sealed class BrowserRouter(RenderNetwork network, CancellationToken cancellationToken)
 {
@@ -186,6 +187,9 @@ public sealed class BrowserRouter(RenderNetwork network, CancellationToken cance
 
     /// <summary>The first main-frame document the context loaded, as served.</summary>
     public RoutedResponse? MainDocument { get; private set; }
+
+    /// <summary>The context's first main-frame document was a file Chromium would have saved: it was never handed over.</summary>
+    public bool MainDocumentIsDownload { get; private set; }
 
     /// <summary>Main-frame documents requested so far (a client-side route change requests none).</summary>
     public int Documents => Volatile.Read(ref documents);
@@ -212,10 +216,23 @@ public sealed class BrowserRouter(RenderNetwork network, CancellationToken cance
                 Interlocked.Increment(ref documents);
             var headers = (await request.HeadersArrayAsync()).Select(h => new KeyValuePair<string, string>(h.Name, h.Value)).ToList();
             var answer = await network.FetchAsync(url, request.Method, headers, request.PostDataBuffer, request.IsNavigationRequest, cancellationToken);
-            log.Enqueue(new NetworkEntry(Cut(url.AbsoluteUri, 300), request.ResourceType, answer.Status, answer.Body.LongLength, !network.IsFirstParty(url), answer.Outcome));
+            // Owner decision 2026-10-15 (docs/seo_analyzer_PRD.md §12, "Downloads never reach Chromium"): Chromium writes what it
+            // is about to save to a temp file of its own before the download is refused, so a navigation (a frame's too) whose
+            // answer it would save never gets the bytes. Aborted, the navigation leaves the frame's document as it was. A
+            // fetch, an image or a script is never a download: its body goes to the page.
+            var download = request.IsNavigationRequest && answer.Outcome == "fulfilled" && ChromiumDownloads.WouldDownload(answer);
+            log.Enqueue(new NetworkEntry(Cut(url.AbsoluteUri, 300), request.ResourceType, answer.Status, answer.Body.LongLength, !network.IsFirstParty(url),
+                download ? "download" : answer.Outcome));
             if (answer.Outcome is "blocked" or "failed")
             {
                 await route.AbortAsync(answer.Outcome == "blocked" ? "blockedbyclient" : "failed");
+                return;
+            }
+            if (download)
+            {
+                if (mainFrameDocument && MainDocument is null)
+                    MainDocumentIsDownload = true;
+                await route.AbortAsync("aborted");
                 return;
             }
             if (mainFrameDocument && MainDocument is null && answer.Status is >= 200 and < 300)
