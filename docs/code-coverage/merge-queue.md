@@ -585,9 +585,10 @@ A pull request converted back to a draft keeps the button it had; a click is the
 
 Its title follows the state: *Not queued* (neutral, with the button); *Queued, position n* (queued); *Rebasing onto the
 latest base*, *Regenerating generated files*, *Publishing the rebased commit*, *Waiting for checks*, *Merging* (in
-progress); *Merged by the queue* (success). A pull request that leaves the queue without merging is not queued any
-more, so its check ends **neutral** with a title that says why: *Evicted: reason*, *Dequeued* or *Refused: reason*.
-It keeps the button, unless clicking could not help: a closed or merged pull request, and a refusal for the
+progress); *Merged by the queue* (success). A pull request that leaves the queue without merging gets a title that says
+why. *Evicted: reason* ends as a **failure**, so the pull request list shows its author a red X to act on (owner,
+2026-10-15). *Dequeued* and *Refused: reason* end **neutral**. GitHub shows a check's buttons whatever it concluded, so
+each keeps the button, unless clicking could not help: a closed or merged pull request, and a refusal for the
 configuration, a draft or a base that is not a queue branch. When a push evicts it, the new head gets the *Not queued*
 check as well. Queueing again starts a new check run, which takes the name over from the completed one: GitHub does
 not reliably reopen a completed run.
@@ -630,7 +631,7 @@ kebab-cased by the writer.
 | `bypass` | The App can bypass a ruleset with reviews or checks, or its bypass could not be read (T7). People listed as bypass actors never cause this (O22). | Remove the App from that ruleset's bypass list (§3). |
 | `permission` | GitHub refused a call for a permission. | Accept the new permissions (linked, O17). |
 
-**Evicted during a run** (state Evicted, neutral, "Evicted: *code*", with a comment and the button):
+**Evicted during a run** (state Evicted, failure, "Evicted: *code*", with a comment and the button):
 
 | Code | Meaning | What to do |
 |---|---|---|

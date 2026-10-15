@@ -206,9 +206,9 @@ public class MergeQueueEngineTests : CoverageRavenTest
         evicted.EvictionPaths.Should().Equal(["apps/A/App_Data/translations.json"]);
         h.Queue.Comments.Should().ContainSingle().Which.Body.Should().Contain("conflicts in files the queue may not resolve");
         h.Queue.RemovedLabels.Should().Contain((Number, "merge-queue"));
-        // §0 O30: neutral, like any pull request the queue does not hold, with the button to queue it again.
+        // Red, so the author sees an X to act on (owner, 2026-10-15), with the button to queue it again (§0 O30).
         var ended = h.Queue.QueueChecks.Last(c => c.Sha == Head).Check;
-        ended.State.Should().Be(EForgeQueueCheckState.Neutral);
+        ended.State.Should().Be(EForgeQueueCheckState.Failure);
         ended.Title.Should().Be("Evicted: conflict-outside-allow-list");
         ended.Actions.Should().Equal([ForgeQueueCheckAction.Enqueue]);
 

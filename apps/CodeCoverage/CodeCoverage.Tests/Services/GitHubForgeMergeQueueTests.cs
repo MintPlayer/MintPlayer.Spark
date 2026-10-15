@@ -938,18 +938,19 @@ public class GitHubForgeMergeQueueTests
         => await Throws<ArgumentException>(() => Queue(new StubGitHub()).PublishQueueCheckAsync(Target(), Head,
             new ForgeQueueCheck(EForgeQueueCheckState.Failure, "t", "s", "javascript:alert(1)"), null));
 
-    private static ForgeQueueCheck WithButton(string title) => new(EForgeQueueCheckState.Neutral, title, "Queue it with the button.", null)
-    {
-        Actions = [ForgeQueueCheckAction.Enqueue],
-        PullRequestNumber = 7,
-    };
+    private static ForgeQueueCheck WithButton(string title, EForgeQueueCheckState state = EForgeQueueCheckState.Neutral)
+        => new(state, title, "Queue it with the button.", null)
+        {
+            Actions = [ForgeQueueCheckAction.Enqueue],
+            PullRequestNumber = 7,
+        };
 
-    private static void ShouldCarryTheButton(string? body)
+    private static void ShouldCarryTheButton(string? body, string conclusion = "neutral")
     {
         using var json = JsonDocument.Parse(body!);
         var root = json.RootElement;
         root.GetProperty("status").GetString().Should().Be("completed");
-        root.GetProperty("conclusion").GetString().Should().Be("neutral");
+        root.GetProperty("conclusion").GetString().Should().Be(conclusion);
         root.GetProperty("external_id").GetString().Should().Be("7");
         var actions = root.GetProperty("actions");
         actions.GetArrayLength().Should().Be(1);
@@ -980,21 +981,22 @@ public class GitHubForgeMergeQueueTests
         ShouldCarryTheButton(posted);
     }
 
+    /// <summary>An eviction ends its own run red (owner, 2026-10-15), and the button rides on a failure as on any conclusion.</summary>
     [Fact]
-    public async Task A_run_that_ends_puts_the_button_on_its_own_check_run()
+    public async Task A_run_that_ends_red_puts_the_button_on_its_own_check_run()
     {
         string? patched = null;
         var github = new StubGitHub().On(HttpMethod.Patch, $"{Repo}/check-runs/42", (_, body) =>
         {
             patched = body;
             return StubHttpMessageHandler.Json(HttpStatusCode.OK, $$"""
-                {"id":42,"name":"Merge queue","head_sha":"{{Head}}","status":"completed","conclusion":"neutral","external_id":"7","html_url":"https://github.com/acme/widget/runs/42"}
+                {"id":42,"name":"Merge queue","head_sha":"{{Head}}","status":"completed","conclusion":"failure","external_id":"7","html_url":"https://github.com/acme/widget/runs/42"}
                 """);
         });
 
-        (await Queue(github).PublishQueueCheckAsync(Target(), Head, WithButton("Evicted: author-push"), 42)).Should().Be(42);
+        (await Queue(github).PublishQueueCheckAsync(Target(), Head, WithButton("Evicted: author-push", EForgeQueueCheckState.Failure), 42)).Should().Be(42);
 
-        ShouldCarryTheButton(patched);
+        ShouldCarryTheButton(patched, conclusion: "failure");
     }
 
     [Theory]

@@ -26,9 +26,10 @@ public class MergeQueueCheckButtonTests : CoverageRavenTest
 
     private static Task OfferAsync(MergeQueueHarness h, string sha = Head) => h.SignalAsync(EMergeQueueSignal.Offer, Number, sha);
 
-    private static void ShouldOfferTheButton(ForgeQueueCheck check)
+    /// <param name="state">Neutral, but for an eviction, which ends red (owner, 2026-10-15).</param>
+    private static void ShouldOfferTheButton(ForgeQueueCheck check, EForgeQueueCheckState state = EForgeQueueCheckState.Neutral)
     {
-        check.State.Should().Be(EForgeQueueCheckState.Neutral);
+        check.State.Should().Be(state);
         check.Actions.Should().Equal([ForgeQueueCheckAction.Enqueue]);
         check.PullRequestNumber.Should().Be(Number);
     }
@@ -179,8 +180,12 @@ public class MergeQueueCheckButtonTests : CoverageRavenTest
 
     // ── Leaving the queue without merging ────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// An eviction ends red, so the pull request list shows its author an X to act on (owner, 2026-10-15), and it keeps the
+    /// button: GitHub shows a check's requested actions whatever it concluded.
+    /// </summary>
     [Fact]
-    public async Task An_eviction_keeps_the_button_and_its_title_says_why()
+    public async Task An_eviction_ends_red_keeps_the_button_and_its_title_says_why()
     {
         var h = await HarnessAsync();
         h.Writer.PrepareResults.Enqueue(ConflictOutsideTheAllowList());
@@ -192,7 +197,7 @@ public class MergeQueueCheckButtonTests : CoverageRavenTest
         var (sha, check, existing) = h.Queue.QueueChecks[^1];
         sha.Should().Be(Head);
         existing.HasValue.Should().BeTrue("the run's own check run ends with the button on it");
-        ShouldOfferTheButton(check);
+        ShouldOfferTheButton(check, EForgeQueueCheckState.Failure);
         check.Title.Should().Be("Evicted: conflict-outside-allow-list");
         check.Summary.Should().Contain("Queue it again with the **Add to merge queue** button on this check, the `merge-queue` label or a `/queue` comment.");
     }
@@ -225,7 +230,9 @@ public class MergeQueueCheckButtonTests : CoverageRavenTest
         await h.SignalAsync(EMergeQueueSignal.HeadPushed, Number, Pushed);
 
         (await h.EntryAsync()).EvictionReason.Should().Be("author-push");
-        h.Queue.QueueChecks.Last(c => c.Sha == Head).Check.Title.Should().Be("Evicted: author-push");
+        var evicted = h.Queue.QueueChecks.Last(c => c.Sha == Head).Check;
+        ShouldOfferTheButton(evicted, EForgeQueueCheckState.Failure);
+        evicted.Title.Should().Be("Evicted: author-push");
         var offer = h.Queue.QueueChecks.Should().ContainSingle(c => c.Sha == Pushed).Which.Check;
         ShouldOfferTheButton(offer);
         offer.Title.Should().Be("Not queued");

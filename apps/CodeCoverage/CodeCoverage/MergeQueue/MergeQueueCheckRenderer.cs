@@ -31,9 +31,11 @@ public static class MergeQueueCheckRenderer
             EMergeQueueEntryState.AwaitingChecks => (EForgeQueueCheckState.InProgress, "Waiting for checks"),
             EMergeQueueEntryState.Merging => (EForgeQueueCheckState.InProgress, "Merging"),
             EMergeQueueEntryState.Merged => (EForgeQueueCheckState.Success, "Merged by the queue"),
-            // §0 O30: a pull request that left the queue without merging is not queued, like one that never was, so its
-            // check is neutral too. The title says why; with the button, the summary says how to queue it again.
-            EMergeQueueEntryState.Evicted => (EForgeQueueCheckState.Neutral, Why("Evicted", entry.EvictionReason)),
+            // The title says why the pull request left; with the button (§0 O30), the summary says how to queue it again.
+            // An eviction ends red, so the pull request list shows its author an X to act on (owner, 2026-10-15); a
+            // dequeue or a refusal is neutral, like a pull request that was never queued. GitHub shows a check's buttons
+            // whatever it concluded.
+            EMergeQueueEntryState.Evicted => (EForgeQueueCheckState.Failure, Why("Evicted", entry.EvictionReason)),
             EMergeQueueEntryState.Dequeued => (EForgeQueueCheckState.Neutral, "Dequeued"),
             EMergeQueueEntryState.Refused => (EForgeQueueCheckState.Neutral, Why("Refused", entry.EvictionReason)),
             _ => (EForgeQueueCheckState.Neutral, entry.State.ToString()),
