@@ -24,6 +24,18 @@ public enum EvictionReason
     NotJson,
     /// <summary>A conflicting hunk touches a line that is not an allow-listed key's (O2).</summary>
     HunkOutsideAllowedKeys,
+    /// <summary>The rule's strategy cannot resolve this conflict's shape (keep-both: add/add, a changed base line, a
+    /// marker-like line, a side that is not UTF-8; §10.4 step 2).</summary>
+    ResolverRefused,
+    /// <summary>A side already fails one of the rule's validators, so the result is not judged (inputs first, §10.4
+    /// step 4).</summary>
+    InvalidSide,
+    /// <summary>Every side passes the rule's validators, the resolved content does not (or it holds a conflict
+    /// marker).</summary>
+    InvalidResult,
+    /// <summary>git merged the file cleanly, both sides pass the rule's validators, and the merged file does not
+    /// (§10.4, clean-merge validation).</summary>
+    MergedContentInvalid,
 }
 
 /// <summary>The result of merging a pull request's head into its base. <see cref="BaseCommit"/> and
@@ -163,6 +175,8 @@ public sealed partial class MergeQueueResolver(GitRunner git, ConflictResolverRe
                     replacements.Add(stage with { Stage = 0 });
                     break;
                 case ConflictResolution.Content content:
+                    if (await ValidateContentAsync(input, content.Text, resolver.MaxSideBytes) is { } invalid)
+                        return Evict(invalid.Reason, [path], invalid.Detail);
                     replacements.Add(new MergeTreeStage("100644", await repository.WriteBlobAsync(content.Text), 0, path));
                     break;
                 case ConflictResolution.Refused refused:
@@ -175,6 +189,41 @@ public sealed partial class MergeQueueResolver(GitRunner git, ConflictResolverRe
 
         var tree = await ReplaceAsync(gitDirectory, output.Tree, replacements, cancellationToken);
         return new MergeOutcome.Resolved(baseCommit, headCommit, tree, resolved.Select(r => r.Path).ToList()) { Resolutions = resolved };
+    }
+
+    /// <summary>
+    /// §10.4 step 4: content a resolver made, judged before it is written. The rule's validators run <b>inputs first</b>:
+    /// each judges the result only if every side passes it, and a side that already fails refuses (<c>invalid-side</c>),
+    /// since the strategy cannot be blamed for it. <c>no-conflict-markers</c> always judges the result. A failing result
+    /// is <c>invalid-result</c>, naming the validator and the position, never the content.
+    /// </summary>
+    private async Task<ConflictResolution.Refused?> ValidateContentAsync(ConflictInput input, string result, long maxSideBytes)
+    {
+        var validators = input.Rule.Validate.Where(v => v != MergeQueueWireRules.NoConflictMarkers).Distinct(StringComparer.Ordinal).Select(Registry.Validator).ToList();
+        if (validators.Count > 0)
+        {
+            var sides = await ResolutionLimits.ReadSidesAsync(input, maxSideBytes);
+            if (sides.Problem is { } problem)
+                return new ConflictResolution.Refused(EvictionReason.InvalidSide, problem);
+            foreach (var validator in validators)
+            {
+                foreach (var (stage, text) in sides.Texts)
+                {
+                    var side = validator.Validate(text);
+                    if (!side.Valid)
+                        return new ConflictResolution.Refused(EvictionReason.InvalidSide,
+                            $"{ResolutionLimits.StageName(stage)} already fails {validator.Name} at {side.Position}: {side.Problem}.");
+                }
+            }
+        }
+        foreach (var validator in validators.Prepend(Registry.Validator(MergeQueueWireRules.NoConflictMarkers)))
+        {
+            var verdict = validator.Validate(result);
+            if (!verdict.Valid)
+                return new ConflictResolution.Refused(EvictionReason.InvalidResult,
+                    $"The {input.Rule.Strategy} result fails {validator.Name} at {verdict.Position}: {verdict.Problem}.");
+        }
+        return null;
     }
 
     /// <summary>The squashed commit: <paramref name="tree"/> on top of <paramref name="baseCommit"/>, authored by the pull

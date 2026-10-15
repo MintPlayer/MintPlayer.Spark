@@ -35,8 +35,11 @@ public static partial class MergeQueueWireRules
     /// then rewrites it); <c>evict</c> refuses the conflict, and in <c>coverage.yml</c> masks a default for one path.</summary>
     public const string TakeBase = "take-base", Evict = "evict";
 
+    /// <summary><c>keep-both</c> (O33, §10.4): both sides' insertions at one place, base branch first.</summary>
+    public const string KeepBoth = "keep-both";
+
     /// <summary>Every strategy a rule may name; the writer's <c>ConflictResolverRegistry</c> holds exactly these.</summary>
-    public static IReadOnlySet<string> Strategies { get; } = new HashSet<string>(StringComparer.Ordinal) { TakeBase, Evict };
+    public static IReadOnlySet<string> Strategies { get; } = new HashSet<string>(StringComparer.Ordinal) { TakeBase, KeepBoth, Evict };
 
     /// <summary>The content validators (§10.4 step 4). <c>no-conflict-markers</c> runs on every resolved content anyway;
     /// naming it is allowed and changes nothing.</summary>
