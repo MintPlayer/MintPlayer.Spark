@@ -31,7 +31,8 @@ public sealed class ConflictResolverRegistry
     public static IEnumerable<IConflictResolver> BuiltInResolvers() => [new TakeBaseResolver(), new EvictResolver()];
 
     /// <summary>Every <see cref="IContentValidator"/> of this assembly.</summary>
-    public static IEnumerable<IContentValidator> BuiltInValidators() => [];
+    public static IEnumerable<IContentValidator> BuiltInValidators()
+        => [new Utf8Validator(), new JsonValidator(), new JsonNoDuplicateKeysValidator(), new XmlValidator(), new NoConflictMarkersValidator()];
 
     public IReadOnlyCollection<string> StrategyNames => resolvers.Keys;
 

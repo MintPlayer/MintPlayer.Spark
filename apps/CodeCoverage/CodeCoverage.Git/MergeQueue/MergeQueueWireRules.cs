@@ -38,8 +38,15 @@ public static partial class MergeQueueWireRules
     /// <summary>Every strategy a rule may name; the writer's <c>ConflictResolverRegistry</c> holds exactly these.</summary>
     public static IReadOnlySet<string> Strategies { get; } = new HashSet<string>(StringComparer.Ordinal) { TakeBase, Evict };
 
+    /// <summary>The content validators (§10.4 step 4). <c>no-conflict-markers</c> runs on every resolved content anyway;
+    /// naming it is allowed and changes nothing.</summary>
+    public const string Utf8 = "utf8", Json = "json", JsonNoDuplicateKeys = "json-no-duplicate-keys", Xml = "xml", NoConflictMarkers = "no-conflict-markers";
+
     /// <summary>Every validator a rule may name; the writer's <c>ConflictResolverRegistry</c> holds exactly these.</summary>
-    public static IReadOnlySet<string> Validators { get; } = new HashSet<string>(StringComparer.Ordinal);
+    public static IReadOnlySet<string> Validators { get; } = new HashSet<string>(StringComparer.Ordinal) { Utf8, Json, JsonNoDuplicateKeys, Xml, NoConflictMarkers };
+
+    /// <summary>The most validators one rule names.</summary>
+    public const int MaxValidators = 8;
 
     public const string BranchRule =
         "letters, digits, '.', '_', '/' and '-' only, 1 to 200 characters, not starting with '-', '/' or '.', not ending "
