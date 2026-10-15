@@ -10,7 +10,7 @@ keeps an existing array complete by appending surface attributes it doesn't list
 of attributes that no longer exist.
 
 - Issue: https://github.com/MintPlayer/MintPlayer.Spark/issues/284
-- Implementation plan: [issue_284_plan.md](issue_284_plan.md) (decisions D1–D12 below)
+- Implementation plan: [issue_284_plan.md](issue_284_plan.md) (decisions D1–D16 below)
 - Baseline: master `a401c9e7`
 - Prior art: the #279 out-of-scope note (`docs/issue_279_PRD.md:230-238`); CodeCoverage D6
   (`docs/code-coverage/adoption-findings.md:48`, `:229-235`); the Vidyano per-query `Columns` list (§6)
@@ -135,8 +135,8 @@ asserts both grids' headers and the reference picker's column order.
   appends the attributes that projection does not back as `!X`, hidden. If it can't, append them
   visible and let verify warn.
 - **S3 — The schema pattern.** Confirm that `JsonSchemaExporter`, with a transform in
-  `SparkSchemaGenerator`, emits `items.pattern` for `ColumnOrder`. Confirm that VS Code flags `"Nme"`
-  but accepts `"!Name"`.
+  `SparkSchemaGenerator`, emits `items.pattern` for `ColumnOrder`. This checks syntax only; a misspelled
+  name is `--spark-verify-model`'s job (see the results).
 - **S4 — Library layers.** A query defined in a library with `columnOrder` added in the app has to be
   written as an app delta (`WriteModelFile`, `ModelSynchronizer.cs:737-747`), and appending must not
   copy the whole library query into the app file.
@@ -169,6 +169,35 @@ already use names. It leaves out `Width`.
 | D11 | Requirement on the editor: renaming an attribute also renames its `columnOrder` entries (both forms) | Without it, a rename in the editor turns into remove-and-append at the next sync, and the column loses its place. |
 | D12 | TS `SparkQuery` gets `columnOrder?: string[]` | The wire carries it (after rights stripping); typed for completeness. The grid does not read it. |
 
+| D13 | A renderer's sibling dependency is checked, not shipped: `--spark-verify-model` **warns** when a `rendererOptions` string value whose key ends in `Attribute` names an attribute that the query's columns exclude (off the Query surface, or `!`-hidden) | S1. Shipping hidden values would bring back the ship-but-don't-draw exception that #264 G-Q4 removed. A warning rather than an error, because CodeCoverage's `Commit.Sha` `titleAttribute: "Message"` is already dead on the grid and still works on the detail page. |
+| D14 | CodeCoverage renderers declare the siblings they read: short-sha gets `linkAttribute` (was the hard-coded `'FullName'`) and account-avatar gets `altAttribute` (was the hard-coded `'Login'`) | S1. Siblings named only in TypeScript are invisible to the D13 check. Commit rows never linked because `Commit` has no `FullName`, a bug that went unnoticed. The model JSON now states the dependency where the check can see it. |
+| D15 | `SparkSelectionResolver` passes the query to `BuildColumns` | S5. Its rows become a custom action's `SelectedItems`, so the fallback branch has to shape `Values` the same way as the branch that re-runs the query. |
+| D16 | The synchronizer and verify leave a library-owned `columnOrder` alone (library layer's list deep-equals the composed list) | S4. Appending or removing would copy the whole library list into the app file and freeze it there. The runtime append (D8) already fills the gap. |
+
 ### Spike results
 
-_To be filled in during M0._
+**S1 — renderers that read sibling cells.** No ng-spark library grid renderer reads a sibling; every `valueFor` uses `column.name`.
+- Only CodeCoverage's grid renderers read siblings:
+  - short-sha: `rendererOptions.titleAttribute`, plus a hard-coded `'FullName'` (`short-sha-renderer.component.ts:39-47`)
+  - account-avatar: hard-coded `'Login'` (`account-avatar-renderer.component.ts:45`)
+- Two dependencies are already silently dead since #264. `Commit.Message` is PO-only (`Commit.json:143` against `:239`), and `Commit` has no `FullName`, so commit rows never link.
+- The sparkline reads only the row id; the example in the original S1 text was wrong.
+- The server ships `Id`, `Breadcrumb`, `Etag` and one value per column only (`QueryResultProjector.cs:174-180`).
+
+Outcome: D13 and D14. A custom action reading a hidden column from `SelectedItems` gets an empty cell, the same on both resolver branches (D15).
+
+**S2 — the synchronizer can resolve a query's own projection.** `--spark-synchronize-model` builds a frozen, reflection-only `IndexCatalog` before the synchronizer runs (`SparkDevelopmentExtensions.cs:1361-1367, 1399-1434`). Then:
+- `indexCatalog.GetByIndexName(q.IndexName)?.ProjectionType` gives the projection's properties. A view-less index goes through `ViewlessQuerySurface` (`ModelSynchronizer.cs:1675`).
+- For the **default** index nothing is new, because `showedOn` is already narrowed to the projection (`:927-941`).
+
+Outcome: D10 is confirmed. Only for a query bound to a non-default index, the surface attributes that projection doesn't back are appended **hidden** (`!X`). Verify warns about a visible entry that the projection doesn't back.
+
+**S3 — schema pattern.** `JsonSchemaExporter` ignores DataAnnotations. A property-keyed `Transform` case fits, alongside `ActionsFileEntry.confirmation` (`SparkSchemaGenerator.cs:137-145`), and `items.pattern` was emitted as intended.
+- Checked with ajv: it accepts `"Name"`, `"!Name"` and `null`, and rejects `"!"`, `""`, `"!!Name"`, `"a.b"` and `"Name "`.
+- **Correction:** the shared schema cannot flag a misspelled `"Nme"`, because valid names differ per file. Only `--spark-verify-model` catches unknown names (R6). The schema catches syntax only.
+- All 671 attribute names across 87 model files match the pattern.
+- `schemas/` is gitignored build output, so the PR carries the generator change, not schema files.
+
+**S4 — library layers.** `queries` merge by `name`, and an array inside a query is replaced whole (`SparkLayers.cs:442-456`). `WriteModelFile`'s delta emits `{"name":Q,"columnOrder":[…]}` without copying the query (`SparkLayers.cs:295-353`), the same way an app already overrides `sortColumns` on a library query. No new mechanism is needed. Outcome: D16.
+
+**S5 — `BuildColumns` without a query.** `SparkSelectionResolver.cs:101-111` is the only call site that omits the query, and `query` is in scope. Outcome: D15.

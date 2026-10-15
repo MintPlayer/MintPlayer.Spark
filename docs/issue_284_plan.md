@@ -4,7 +4,7 @@ PRD: [issue_284_PRD.md](issue_284_PRD.md). Baseline: master `a401c9e7`.
 
 ## Status
 
-Not started. Run the spikes (M0) first; S1 and S2 can change D10 and the renderer rule.
+M0 done (2026-10-15): spike results and D13–D16 are in the PRD. M1–M9 in progress.
 
 ## Milestones
 
