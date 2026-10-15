@@ -7,8 +7,8 @@ namespace CodeCoverage.Forge;
 /// <para>
 /// <b>Every check counts unless excluded</b>, because a repository with no rules (MintPlayer.Spark's
 /// <c>master</c>, O12) would otherwise have no gate at all. Required checks can never be excluded. The queue's
-/// own check (<see cref="QueueCheckName"/>) is always ignored: it is pending for as long as the queue waits,
-/// so counting it would wait forever.
+/// own check (<see cref="QueueCheckName"/>) is always ignored, and so is the status of the check suite it is in:
+/// it is pending for as long as the queue waits, so counting it would wait forever.
 /// </para>
 /// <para>
 /// <b>"Nothing failed yet" is not "passed".</b> The commit passes only once every counted check has
@@ -90,8 +90,15 @@ public static class CheckGate
             .Where(run => run.SuiteId is not null && !IsExcluded(run.Name))
             .Select(run => run.SuiteId!.Value)
             .ToHashSet();
+        // GitHub keeps one suite per App and commit, so the queue's own check shares its suite with the App's other runs
+        // (the coverage checks), and that suite is in progress for as long as the queue's check is: waiting for it would
+        // wait for the queue itself (merge-queue PRD D88). Its other runs are counted one by one above.
+        var ownSuites = state.CheckRuns
+            .Where(run => run.SuiteId is not null && run.Name == QueueCheckName)
+            .Select(run => run.SuiteId!.Value)
+            .ToHashSet();
         var pendingSuites = state.Suites
-            .Where(suite => suite.LatestCheckRunsCount > 0 && suite.Status != "completed")
+            .Where(suite => suite.LatestCheckRunsCount > 0 && suite.Status != "completed" && !ownSuites.Contains(suite.Id))
             // A suite whose runs are all excluded is not waited for. One whose runs we have not seen (the
             // listing raced the suite) is.
             .Where(suite => countedSuites.Contains(suite.Id) || !state.CheckRuns.Any(run => run.SuiteId == suite.Id))

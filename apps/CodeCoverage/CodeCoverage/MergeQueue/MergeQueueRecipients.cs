@@ -33,8 +33,8 @@ public partial class MergeQueueRecipient :
 /// </para>
 /// <para>
 /// A command is always forwarded: whether a label is the configured one is only known after reading
-/// <c>coverage.yml</c>, which the saga does. M6's button raises the same <see cref="MergeQueueCommandIssued"/>, so all three
-/// enqueue paths share one permission check (O8).
+/// <c>coverage.yml</c>, which the saga does. M6's button and the check's button (§0 O30) raise the same
+/// <see cref="MergeQueueCommandIssued"/>, so every enqueue path shares one permission check (O8).
 /// </para>
 /// </remarks>
 public partial class MergeQueueEventsRecipient :
@@ -65,11 +65,16 @@ public partial class MergeQueueEventsRecipient :
         }, cancellationToken);
     }
 
+    /// <remarks>
+    /// A queued pull request's new head is the saga's to judge (T3). Any other pull request may be offered the queue's
+    /// button (§0 O30): whether its repository has a queue at all is only known after reading <c>coverage.yml</c> on the
+    /// default branch, which the saga does, like for a command.
+    /// </remarks>
     public async Task HandleAsync(ForgeWebhookMessage<PullRequestUpdated> message, CancellationToken cancellationToken = default)
     {
         var evt = message.Event;
-        if (await HasActiveEntryAsync(evt.RepositoryId, evt.Number, cancellationToken))
-            await SignalAsync(evt.RepositoryId, EMergeQueueSignal.HeadPushed, evt.Number, evt.HeadSha, cancellationToken: cancellationToken);
+        var kind = await HasActiveEntryAsync(evt.RepositoryId, evt.Number, cancellationToken) ? EMergeQueueSignal.HeadPushed : EMergeQueueSignal.Offer;
+        await SignalAsync(evt.RepositoryId, kind, evt.Number, evt.HeadSha, cancellationToken: cancellationToken);
     }
 
     public async Task HandleAsync(ForgeWebhookMessage<PullRequestClosed> message, CancellationToken cancellationToken = default)

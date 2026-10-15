@@ -308,11 +308,18 @@ public class GitHubForgeMergeQueueTests
         state.CheckRuns.Should().HaveCount(101);
     }
 
-    [Fact]
-    public async Task The_expected_minimum_set_is_every_name_once_without_our_own_check()
+    /// <remarks>
+    /// Our own check is on the pinned head in every state it can be in at enqueue: the "Not queued" check with its button
+    /// (neutral, §0 O30), an earlier run's end, or a run in progress.
+    /// </remarks>
+    [Theory]
+    [InlineData("completed", "neutral")]
+    [InlineData("completed", "success")]
+    [InlineData("in_progress", null)]
+    public async Task The_expected_minimum_set_is_every_name_once_without_our_own_check(string status, string? conclusion)
     {
         var github = WithChecks(new StubGitHub(),
-            $"[{CheckRun(1, "ci", "completed", "success")},{CheckRun(2, CheckGate.QueueCheckName, "completed", "success")},{CheckRun(3, "build", "completed", "failure")}]",
+            $"[{CheckRun(1, "ci", "completed", "success")},{CheckRun(2, CheckGate.QueueCheckName, status, conclusion)},{CheckRun(3, "build", "completed", "failure")}]",
             """[{"context":"ci","state":"success","target_url":null},{"context":"GitGuardian Security Checks","state":"success","target_url":null}]""");
 
         (await Queue(github).GetCheckNamesOnCommitAsync(Target(), Head))
@@ -923,12 +930,90 @@ public class GitHubForgeMergeQueueTests
         json.RootElement.GetProperty("status").GetString().Should().Be("queued");
         json.RootElement.GetProperty("details_url").GetString().Should().Be("https://coverage.example.com/github/acme/widget/queue");
         json.RootElement.TryGetProperty("conclusion", out var conclusion).Should().BeFalse(conclusion.ToString());
+        json.RootElement.TryGetProperty("actions", out var actions).Should().BeFalse(actions.ToString());
     }
 
     [Fact]
     public async Task A_details_link_that_is_not_https_is_refused()
         => await Throws<ArgumentException>(() => Queue(new StubGitHub()).PublishQueueCheckAsync(Target(), Head,
             new ForgeQueueCheck(EForgeQueueCheckState.Failure, "t", "s", "javascript:alert(1)"), null));
+
+    private static ForgeQueueCheck WithButton(string title) => new(EForgeQueueCheckState.Neutral, title, "Queue it with the button.", null)
+    {
+        Actions = [ForgeQueueCheckAction.Enqueue],
+        PullRequestNumber = 7,
+    };
+
+    private static void ShouldCarryTheButton(string? body)
+    {
+        using var json = JsonDocument.Parse(body!);
+        var root = json.RootElement;
+        root.GetProperty("status").GetString().Should().Be("completed");
+        root.GetProperty("conclusion").GetString().Should().Be("neutral");
+        root.GetProperty("external_id").GetString().Should().Be("7");
+        var actions = root.GetProperty("actions");
+        actions.GetArrayLength().Should().Be(1);
+        actions[0].GetProperty("label").GetString().Should().Be("Add to merge queue");
+        actions[0].GetProperty("description").GetString().Should().Be("Rebase, regenerate, check, then merge");
+        actions[0].GetProperty("identifier").GetString().Should().Be("mq-enqueue");
+    }
+
+    /// <summary>
+    /// The "Add to merge queue" button (§0 O30) is a requested action on the completed check run (docs.github.com/rest/checks/runs),
+    /// and the run's <c>external_id</c> names the pull request: GitHub lists none on the check run of a fork's commit, and
+    /// the click's webhook must name one.
+    /// </summary>
+    [Fact]
+    public async Task The_button_is_a_requested_action_and_the_pull_request_is_the_runs_external_id()
+    {
+        string? posted = null;
+        var github = new StubGitHub().On(HttpMethod.Post, $"{Repo}/check-runs", (_, body) =>
+        {
+            posted = body;
+            return StubHttpMessageHandler.Json(HttpStatusCode.Created, $$"""
+                {"id":43,"name":"Merge queue","head_sha":"{{Head}}","status":"completed","conclusion":"neutral","external_id":"7","html_url":"https://github.com/acme/widget/runs/43"}
+                """);
+        });
+
+        (await Queue(github).PublishQueueCheckAsync(Target(), Head, WithButton("Not queued"), null)).Should().Be(43);
+
+        ShouldCarryTheButton(posted);
+    }
+
+    [Fact]
+    public async Task A_run_that_ends_puts_the_button_on_its_own_check_run()
+    {
+        string? patched = null;
+        var github = new StubGitHub().On(HttpMethod.Patch, $"{Repo}/check-runs/42", (_, body) =>
+        {
+            patched = body;
+            return StubHttpMessageHandler.Json(HttpStatusCode.OK, $$"""
+                {"id":42,"name":"Merge queue","head_sha":"{{Head}}","status":"completed","conclusion":"neutral","external_id":"7","html_url":"https://github.com/acme/widget/runs/42"}
+                """);
+        });
+
+        (await Queue(github).PublishQueueCheckAsync(Target(), Head, WithButton("Evicted: author-push"), 42)).Should().Be(42);
+
+        ShouldCarryTheButton(patched);
+    }
+
+    [Theory]
+    [InlineData(4, "Add to merge queue", "Rebase, regenerate, check, then merge", "mq-enqueue")]
+    [InlineData(1, "Add this to the merge queue", "d", "mq-enqueue")]
+    [InlineData(1, "Queue", "Rebase onto the latest base, regenerate, check", "mq-enqueue")]
+    [InlineData(1, "Queue", "d", "merge-queue-enqueue-now")]
+    [InlineData(1, "", "d", "mq-enqueue")]
+    public async Task A_button_beyond_GitHubs_limits_is_refused_before_any_call(int count, string label, string description, string identifier)
+    {
+        var github = new StubGitHub();
+        var check = new ForgeQueueCheck(EForgeQueueCheckState.Neutral, "t", "s", null)
+        {
+            Actions = [.. Enumerable.Repeat(new ForgeQueueCheckAction(label, description, identifier), count)],
+        };
+
+        await Throws<ArgumentException>(() => Queue(github).PublishQueueCheckAsync(Target(), Head, check, null));
+        github.Calls.Should().BeEmpty();
+    }
 
     [Fact]
     public async Task A_label_that_is_already_gone_is_not_an_error()

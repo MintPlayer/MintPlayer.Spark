@@ -85,7 +85,11 @@ internal sealed class MergeQueueHarness
     public MergeQueueHarness(IDocumentStore store, string mergeBase = OldBase)
     {
         this.store = store;
-        Forge = new ScriptedDiffService(new CommitComparison(mergeBase, [], false));
+        Forge = new ScriptedDiffService(new CommitComparison(mergeBase, [], false))
+        {
+            // GitHub's own list (GitHubForgeIntegration.Capabilities): the queue, and buttons on its check (§0 O30).
+            Capabilities = [EForgeCapability.Statuses, EForgeCapability.Comments, EForgeCapability.GitMirror, EForgeCapability.MergeQueue, EForgeCapability.CheckButtons],
+        };
         Forge.Files[$"master/{CodeCoverage.Feedback.CoverageYml.FileName}"] = Yml;
         Forge.PullRequests[Number] = PullRequest();
         Queue.Roles["maintainer"] = EForgeRepositoryRole.Write;

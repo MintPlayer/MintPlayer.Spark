@@ -15,7 +15,8 @@ namespace CodeCoverage.Tests.MergeQueue;
 
 /// <summary>
 /// The GitHub normaliser's merge-queue events (PRD M5) and the forward onto the saga's lane: who the actor is (T1), which
-/// deliveries are the App's own (self-echo, D46), and that frequent check deliveries cost nothing while nothing is queued.
+/// deliveries are the App's own (self-echo, D46), that frequent check deliveries cost nothing while nothing is queued, and
+/// that a click on the queue check's button passes both of those filters (§0 O30).
 /// </summary>
 public class MergeQueueWebhookTests : CoverageRavenTest
 {
@@ -198,6 +199,67 @@ public class MergeQueueWebhookTests : CoverageRavenTest
         review.Of<ForgeWebhookMessage<PullRequestReviewed>>().Should().ContainSingle();
     }
 
+    // ── The button on the queue's own check (§0 O30) ─────────────────────────────────────────────────
+
+    /// <summary>A click on a check run's button: GitHub's <c>check_run</c> <c>requested_action</c>, sent to the App that made the run.</summary>
+    private static string Click(
+        string identifier = "mq-enqueue", long appId = AppId, string sender = "maintainer", string senderType = "User",
+        string name = "Merge queue", string? externalId = "7", string pullRequests = "[]") => $$$"""
+        {"action":"requested_action","requested_action":{"identifier":"{{{identifier}}}"},
+         "check_run":{"id":42,"name":"{{{name}}}","head_sha":"{{{Sha}}}","status":"completed","conclusion":"neutral",
+          "external_id":{{{(externalId is null ? "null" : $"\"{externalId}\"")}}},"app":{"id":{{{appId}}},"slug":"coveragedevelopment"},
+          "pull_requests":{{{pullRequests}}}},
+         "repository":{{{Repo}}},"sender":{"login":"{{{sender}}}","type":"{{{senderType}}}"}}
+        """;
+
+    /// <summary>
+    /// The click comes from the App's own check run, which the self-echo filter drops for every other check delivery, and
+    /// the busy filter drops check deliveries while nothing is queued: both must let it through. A fork's check run lists
+    /// no pull request on GitHub, so the run's <c>external_id</c>, which the queue writes, names it.
+    /// </summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_click_on_the_queue_checks_button_is_the_clickers_enqueue_command_whatever_is_queued(bool busy)
+    {
+        using var store = GetDocumentStore();
+        await SeedAsync(store, busy);
+
+        var bus = await DeliverAsync(store, "check_run", Click());
+
+        bus.Of<ForgeWebhookMessage<MergeQueueCommandIssued>>().Should().ContainSingle().Which.Event
+            .Should().Be(new MergeQueueCommandIssued(RepositoryId, 7, EMergeQueueCommand.Enqueue, "maintainer", EMergeQueueCommandSource.Check));
+        bus.Messages.Should().HaveCount(1, "a click is a command, not a change of the commit's checks");
+    }
+
+    [Fact]
+    public async Task A_click_on_a_check_without_an_external_id_names_the_one_pull_request_GitHub_lists()
+    {
+        using var store = GetDocumentStore();
+        await SeedAsync(store, busy: false);
+
+        var bus = await DeliverAsync(store, "check_run", Click(externalId: null,
+            pullRequests: $$$"""[{"url":"https://api.github.com/repos/acme/widget/pulls/7","id":1,"number":7,"head":{"ref":"feature","sha":"{{{Sha}}}"}}]"""));
+
+        bus.Of<ForgeWebhookMessage<MergeQueueCommandIssued>>().Should().ContainSingle().Which.Event.Number.Should().Be(7);
+    }
+
+    [Theory]
+    [InlineData("another button", "mq-other", AppId, "maintainer", "User", "Merge queue", "7")]
+    [InlineData("another App's check", "mq-enqueue", 15368L, "maintainer", "User", "Merge queue", "7")]
+    [InlineData("a bot's click", "mq-enqueue", AppId, "renovate[bot]", "Bot", "Merge queue", "7")]
+    [InlineData("another check of ours", "mq-enqueue", AppId, "maintainer", "User", "coverage/project", "7")]
+    [InlineData("no pull request", "mq-enqueue", AppId, "maintainer", "User", "Merge queue", null)]
+    public async Task A_click_that_is_not_the_queues_enqueue_raises_nothing(string what, string identifier, long appId, string sender, string senderType, string name, string? externalId)
+    {
+        using var store = GetDocumentStore();
+        await SeedAsync(store, busy: true);
+
+        var bus = await DeliverAsync(store, "check_run", Click(identifier, appId, sender, senderType, name, externalId));
+
+        bus.Messages.Should().BeEmpty(what);
+    }
+
     [Fact]
     public async Task An_unknown_repository_raises_nothing()
     {
@@ -219,8 +281,12 @@ public class MergeQueueWebhookTests : CoverageRavenTest
         return bus;
     }
 
+    /// <remarks>
+    /// Any other pull request's update is an offer (§0 O30): whether the repository has a queue at all is only known after
+    /// reading <c>coverage.yml</c> on the default branch, which the saga does.
+    /// </remarks>
     [Fact]
-    public async Task A_push_is_forwarded_only_for_a_queued_pull_request_and_a_base_only_for_a_busy_lane()
+    public async Task A_queued_pull_requests_update_is_a_head_push_any_other_an_offer_and_a_base_counts_only_for_a_busy_lane()
     {
         using var store = GetDocumentStore();
         await SeedAsync(store, busy: true);
@@ -232,7 +298,10 @@ public class MergeQueueWebhookTests : CoverageRavenTest
         var otherBranch = await ForwardAsync(store, new BranchCommitPushed(RepositoryId, "develop", Sha, null, null));
 
         queued.Of<MergeQueueSignalMessage>().Should().ContainSingle().Which.Kind.Should().Be(EMergeQueueSignal.HeadPushed);
-        other.Messages.Should().BeEmpty();
+        var offer = other.Of<MergeQueueSignalMessage>().Should().ContainSingle().Which;
+        offer.Kind.Should().Be(EMergeQueueSignal.Offer);
+        offer.Number.Should().Be(8);
+        offer.Sha.Should().Be(Sha);
         baseMoved.Of<MergeQueueSignalMessage>().Should().ContainSingle().Which.Branch.Should().Be("master");
         queueBranch.Messages.Should().BeEmpty();
         otherBranch.Messages.Should().BeEmpty();

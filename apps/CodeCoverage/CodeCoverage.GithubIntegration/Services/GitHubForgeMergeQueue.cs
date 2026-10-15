@@ -773,6 +773,12 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
     /// <remarks>
     /// ⚠️ GitHub does not reopen a completed check run reliably; a new attempt on the same commit should create
     /// a new run (pass no <paramref name="existingId"/>) rather than move a completed one back to in progress.
+    /// <para>
+    /// The check's buttons (merge-queue PRD §0 O30) are GitHub's requested actions, shown once the run has completed. A
+    /// click comes back as a <c>check_run</c> <c>requested_action</c> delivery to this App alone. The pull request's
+    /// number goes into the run's <c>external_id</c>, on an update too: GitHub lists no pull request on the check run
+    /// of a fork's commit, and the click must name one.
+    /// </para>
     /// </remarks>
     public async Task<long> PublishQueueCheckAsync(Repository repository, string sha, ForgeQueueCheck check, long? existingId, CancellationToken cancellationToken = default)
     {
@@ -781,6 +787,8 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
         if (check.DetailsUrl is { } detailsUrl
             && !(Uri.TryCreate(detailsUrl, UriKind.Absolute, out var parsed) && parsed.Scheme == Uri.UriSchemeHttps))
             throw new ArgumentException("A details URL must be absolute https.", nameof(check));
+        var actions = RequestedActions(check.Actions);
+        var externalId = check.PullRequestNumber?.ToString(CultureInfo.InvariantCulture);
 
         var (status, conclusion) = check.State switch
         {
@@ -806,6 +814,8 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
                     Conclusion = conclusion,
                     Output = output,
                     DetailsUrl = check.DetailsUrl,
+                    Actions = actions,
+                    ExternalId = externalId,
                 });
                 return id;
             }
@@ -816,6 +826,8 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
                 Conclusion = conclusion,
                 Output = output,
                 DetailsUrl = check.DetailsUrl,
+                Actions = actions,
+                ExternalId = externalId,
             });
             return created.Id;
         }
@@ -823,6 +835,29 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
         {
             throw new ForgeAccessDeniedException(ex.Message, "checks=write");
         }
+    }
+
+    /// <summary>
+    /// The check's buttons as GitHub's requested actions, held to GitHub's limits before anything is sent (GitHub would
+    /// answer 422). Null when there are none, so the request carries no <c>actions</c> at all.
+    /// </summary>
+    private static List<NewCheckRunAction>? RequestedActions(IReadOnlyList<ForgeQueueCheckAction> actions)
+    {
+        if (actions.Count == 0) return null;
+        if (actions.Count > ForgeQueueCheckAction.MaxActions)
+            throw new ArgumentException($"GitHub shows at most {ForgeQueueCheckAction.MaxActions} buttons on a check run.", nameof(actions));
+        foreach (var action in actions)
+        {
+            if (!Fits(action.Label, ForgeQueueCheckAction.MaxLabelLength)
+                || !Fits(action.Description, ForgeQueueCheckAction.MaxDescriptionLength)
+                || !Fits(action.Identifier, ForgeQueueCheckAction.MaxIdentifierLength))
+                throw new ArgumentException(
+                    $"A check run button needs a label and an identifier of 1 to {ForgeQueueCheckAction.MaxLabelLength} characters and a description of 1 to {ForgeQueueCheckAction.MaxDescriptionLength}: \"{action.Label}\".",
+                    nameof(actions));
+        }
+        return [.. actions.Select(action => new NewCheckRunAction(action.Label, action.Description, action.Identifier))];
+
+        static bool Fits(string text, int max) => text.Length is > 0 && text.Length <= max;
     }
 
     public async Task AddLabelAsync(Repository repository, int number, string label, CancellationToken cancellationToken = default)

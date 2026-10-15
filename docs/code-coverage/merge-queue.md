@@ -1,7 +1,7 @@
 # CodeCoverage — the merge queue
 
 A merge queue for GitHub repositories, run by CodeCoverage itself. The design and its decision log are in
-[`../coverage_merge_queue_PRD.md`](../coverage_merge_queue_PRD.md), whose §0 table (O1–O22, D12–D64) supersedes its
+[`../coverage_merge_queue_PRD.md`](../coverage_merge_queue_PRD.md), whose §0 table (O1–O30, D12–D88) supersedes its
 body. This page describes what is built; where it and the PRD's body disagree, this page and §0 win.
 
 **Status (2026-10-14):** built and tested piece by piece (PRD M2–M8), not yet deployed. No end-to-end run against a
@@ -20,7 +20,7 @@ waits for every check, and merges. Any other conflict, a failed check, or a push
 request, with the reason on its check run.
 
 ```
-enqueue: label · /queue · button (O8)
+enqueue: label · /queue · panel button (O8) · "Add to merge queue" on the check (O30)
   │  refused, not queued, unless every enqueue check passes (§4.2, §5)
   ▼
 QUEUED       one pull request at a time per base branch (D11)
@@ -94,7 +94,7 @@ The full App reference is [`hosting.md`](hosting.md) §6, "GitHub App". What the
 | Commit statuses | Read-only (new) | The gate counts commit statuses as well as check runs (O12). Not yet measured with the App (D40). |
 | Contents | Read & write | The writer's pushes, `merge-async`, `coverage.yml`, the workflow blob check (D12). |
 | Pull requests | Read & write | The pull request itself, reviews (O11), its commits for the co-author trailers (D60), the label, the queue's comments. |
-| Checks | Read & write | The "Merge queue" check run; reading check runs and suites; re-requesting another App's check. |
+| Checks | Read & write | The "Merge queue" check run and its **Add to merge queue** button (O30); reading check runs and suites; re-requesting another App's check. |
 | Metadata | Read-only | Roles (`collaborators/{login}/permission`, O9) and rulesets with `current_user_can_bypass` (D16). |
 | Issues | Read-only | The `issue_comment` event (`/queue`, `/dequeue`). |
 
@@ -114,17 +114,19 @@ with the acceptance link.
 
 | Webhook event | The queue uses it for |
 |---|---|
-| Pull request | `labeled`/`unlabeled` (label commands), `synchronize` (a push to a queued pull request), `closed` |
+| Pull request | `labeled`/`unlabeled` (label commands), `synchronize` (a push to a queued pull request), `closed`; `opened`, `reopened`, `synchronize`, `ready_for_review` and `edited` with a base change put the "Not queued" check with its button on a pull request the queue does not hold (O30, §4.4) |
 | Push | The base branch moved: back to PREPARE |
 | Issue comment | `/queue` and `/dequeue` |
 | Pull request review | Wakes the checks wait |
-| Check run | Checks changed on the commit the queue waits for |
+| Check run | Checks changed on the commit the queue waits for; `requested_action`, a click on the queue check's **Add to merge queue** button (O30) |
 | Check suite (new) | "Every suite on the final commit has completed" (O12) |
 | Workflow run (new) | The regenerate run completed |
 | Status (new) | Commit statuses (O12) |
 
 Check runs, check suites, statuses, workflow runs and reviews are forwarded only while the repository's queue has
-something in it: one point load of `MergeQueues/{provider}/{repoId}` per delivery (D43).
+something in it: one point load of `MergeQueues/{provider}/{repoId}` per delivery (D43). The one exception is a click on
+the queue check's button (`check_run` `requested_action`): it is a command, raised whatever the queue holds, and it comes
+from the App's own check run, which every other check delivery from it is dropped for (D88).
 
 **Accepting the raised permissions (O17).** A self-hosted App first gets the new rows on its GitHub settings page.
 Then every installation has to accept them. The CodeCoverage Account page (`/po/account/{id}`) shows the account's
@@ -144,7 +146,9 @@ is requesting at the time (the one below is an example) above **Accept new permi
 The file behaviour of the queue lives in the repository; the trust policy lives in CodeCoverage (§2.4, O15).
 **`mergeQueue:` is read from the repository's default branch, never from the pull request's base (O16).** Otherwise a
 pull request into branch A could run under a configuration someone had widened on A. A change to the section takes
-effect once it is merged to the default branch. Parser: `CodeCoverage/MergeQueue/MergeQueueYml.cs`.
+effect once it is merged to the default branch, and once the server's content cache lets go of the old file: the file is
+read by branch name through `GitHubContentService`, which keeps a file it found for 30 minutes per process (a missing
+file is not kept). Restarting the app reads it at once. Parser: `CodeCoverage/MergeQueue/MergeQueueYml.cs`.
 
 A Spark repository needs no more than this. The root [`coverage.yml`](../../coverage.yml) of this repository is the
 same, with the defaults spelled out.
@@ -513,14 +517,15 @@ the check gate) do not run.
 | Label | Add the `enqueue.label` label (`merge-queue`). | Remove it. |
 | Comment | `/queue` as the first word of a new comment on the pull request. | `/dequeue`, the same way. |
 | Button | **Queue** in the merge-queue panel of the CodeCoverage repository page (O8, M6; `POST /api/repos/{provider}/{owner}/{name}/merge-queue/{number}`): the user's linked GitHub login acts; without one, refused. | **Dequeue** in the same panel (`DELETE` on the same route), offered to the author and to `write`. |
+| Check button | **Add to merge queue** on the pull request's "Merge queue" check (O30, §4.4): open the check from the pull request's checks, the button is at its top. GitHub sends the App a `check_run` `requested_action`, and whoever clicked acts. | None: GitHub shows a check's buttons only once the check has completed, so a queued pull request has none. `/dequeue`, the label or the panel. |
 
 - The actor is always the signed webhook's sender, or the signed-in user's linked login (T1). Text after the command is
   ignored ("/queue as @maintainer" is the commenter's command), and edited comments do not count. Every path then runs
   the same checks.
-- **A bot never commands the queue** (D46): its label or comment is dropped, which also makes the queue ignore its own
-  label removal.
+- **A bot never commands the queue** (D46): its label, comment or click is dropped, which also makes the queue ignore
+  its own label removal.
 - A second `/queue`, or the label re-applied, while queued changes nothing. A refused label is removed again and the
-  check run says why; a refused comment or button gets a comment.
+  check run says why; a refused comment, panel button or check button gets a comment.
 
 The panel shows each base branch's lane: the pull request the queue is working on and the waiting ones, then the latest
 outcomes and the configuration the run read (D55).
@@ -567,9 +572,25 @@ The queue keeps one check run named **Merge queue** on the commit the pull reque
 then the final commit (`MergeQueueCheckRenderer.cs`). Its Details link opens the repository on CodeCoverage
 (`{Coverage:BaseUrl}/{provider}/r/{owner}/{name}`, only when the base URL is https).
 
-Its title follows the state: *Queued, position n* (queued); *Rebasing onto the latest base*, *Regenerating generated
-files*, *Publishing the rebased commit*, *Waiting for checks*, *Merging* (in progress); *Merged by the queue*
-(success); *Removed from the queue* (neutral, dequeued); *Removed from the queue: reason* or *Not queued* (failure).
+**On a pull request the queue does not hold (O30, D88)**, the check is there too: completed, **neutral**, titled *Not
+queued*, with the **Add to merge queue** button (§4.1). Its summary says how to queue it (the button, the label, a
+`/queue` comment) and links the repository's queue panel and the setup guide (when the base URL is https). No PRD id
+appears in it (D72). It is posted when the pull request is opened, reopened, pushed to, marked ready
+for review or retargeted, on the head GitHub reports at that moment, and only when all of these hold: the default
+branch's `coverage.yml` turns a working queue on (O16), the pull request is open and not a draft, and its base is in
+`mergeQueue.branches`. A fork's pull request gets it as well, on the fork's head in this repository; whether the queue
+can take it (O3) is decided when somebody clicks, like for any other way. GitHub lists no pull request on a fork's
+check run, so the queue writes the pull request's number into the run's `external_id`, and a click is matched by that.
+A pull request converted back to a draft keeps the button it had; a click is then refused `draft`.
+
+Its title follows the state: *Not queued* (neutral, with the button); *Queued, position n* (queued); *Rebasing onto the
+latest base*, *Regenerating generated files*, *Publishing the rebased commit*, *Waiting for checks*, *Merging* (in
+progress); *Merged by the queue* (success). A pull request that leaves the queue without merging is not queued any
+more, so its check ends **neutral** with a title that says why: *Evicted: reason*, *Dequeued* or *Refused: reason*.
+It keeps the button, unless clicking could not help: a closed or merged pull request, and a refusal for the
+configuration, a draft or a base that is not a queue branch. When a push evicts it, the new head gets the *Not queued*
+check as well. Queueing again starts a new check run, which takes the name over from the completed one: GitHub does
+not reliably reopen a completed run.
 
 The summary holds the reason's message and the paths behind it (up to 50), the permission-acceptance link (O17), and a
 table of the state, position, who queued it and how, the pinned head, the final commit, the regenerate run and the
@@ -578,16 +599,22 @@ merge commit. Then come the **Warnings** (O18's review settings) and the **Check
 each with its source (`coverage.yml @ <default branch>`, `default`, `organization` or `repository`).
 
 A run keeps the configuration it was queued with, so changing `coverage.yml` or a setting does not affect entries
-already running. Re-running the check on GitHub does nothing; queue again with `/queue`.
+already running. Re-running the check on GitHub does nothing; queue again with its button, the label or `/queue`.
+
+The queue never waits for its own check (O12): `CheckGate` ignores it by name, the expected-minimum set leaves it out,
+and its check suite is not waited for either. GitHub keeps one suite per App and commit, so that suite also holds the
+App's coverage checks, and it stays in progress for as long as the queue's own check does; those coverage checks are
+still counted one by one (D88).
 
 ## 5. Why a pull request left the queue
 
-Each code is stored as the entry's `EvictionReason` and logged. An eviction's check-run title shows it; a refusal's
-title is "Not queued", with the message in the summary. The codes come from `MergeQueueEngine` (`RefusalAsync`, the
+Each code is stored as the entry's `EvictionReason` and logged. The check-run title shows it ("Evicted: *code*",
+"Refused: *code*"), with the message in the summary. The codes come from `MergeQueueEngine` (`RefusalAsync`, the
 `EvictAsync` calls); the rebase codes are `MergeQueueResolver.EvictionReason` (`CodeCoverage.Git/MergeQueue/`),
 kebab-cased by the writer.
 
-**Refused at enqueue** (state Refused, "Not queued"):
+**Refused at enqueue** (state Refused, neutral, "Refused: *code*"; the button stays except for `configuration`,
+`disabled`, `closed`, `draft` and `branch`):
 
 | Code | Meaning | What to do |
 |---|---|---|
@@ -603,7 +630,7 @@ kebab-cased by the writer.
 | `bypass` | The App can bypass a ruleset with reviews or checks, or its bypass could not be read (T7). People listed as bypass actors never cause this (O22). | Remove the App from that ruleset's bypass list (§3). |
 | `permission` | GitHub refused a call for a permission. | Accept the new permissions (linked, O17). |
 
-**Evicted during a run** (state Evicted, "Removed from the queue: *code*", with a comment):
+**Evicted during a run** (state Evicted, neutral, "Evicted: *code*", with a comment and the button):
 
 | Code | Meaning | What to do |
 |---|---|---|
@@ -655,8 +682,8 @@ counts); `unsafe-path` (a path git would quote, whitespace, `..`, a `.git` or `.
 but 100644. After applying: `apply-failed` (git refused it) and `unexpected-change` (the applied tree changed a path
 the patch did not declare).
 
-**Ended without an eviction** (state Dequeued, neutral): the pull request was closed, or merged outside the queue, or
-`/dequeue` or the label removal took it out.
+**Ended without an eviction** (state Dequeued, neutral, "Dequeued"): the pull request was closed, or merged outside the
+queue (no button), or `/dequeue`, the label removal or the panel took it out (the button stays).
 
 ## 6. Security model
 
@@ -665,7 +692,7 @@ power, or forged. It must never merge more than was approved or authorised (O10)
 
 | # | Threat | What stops it |
 |---|---|---|
-| T1 | A forged actor | The actor is the HMAC-verified webhook's `sender`, or the signed-in session's linked login. It is never comment text or a request body. The buttons are an antiforgery-guarded POST (queue) and DELETE (dequeue). Bots never command (D46). |
+| T1 | A forged actor | The actor is the HMAC-verified webhook's `sender`, or the signed-in session's linked login. It is never comment text or a request body. The panel's buttons are an antiforgery-guarded POST (queue) and DELETE (dequeue). A click on the check's button (O30) counts only on this App's own "Merge queue" check run with the `mq-enqueue` identifier, and its actor is the delivery's `sender`. Bots never command (D46). |
 | T2 | Too little role | `write` at enqueue and again before the merge. Dequeue needs the author or `write`. The bypass role (O22) is likewise read when it decides and again before the merge. |
 | T3 | A swap after approval | The head SHA is pinned at enqueue, and PREPARE fetches exactly it. Any push whose SHA the queue did not write evicts. Every push is a lease, and the merge carries `sha`. The approval floor counts only approvals of the pinned commit (or the queue's own commit from it), and is checked again right before the merge, where a writer's request for changes vetoes (D61). |
 | T4 | Content smuggled in the patch | Strict parser before any clone (D30): only `regeneratedPaths`, 100644 text, no mode change, symlink, submodule, binary, copy, `.github`, `.gitattributes` or `.gitmodules`; ≤ 500 files, ≤ 2 MiB. The trees are compared after applying. The verify checks run on the final commit. |
@@ -753,7 +780,9 @@ The writer's `GitWriter:*` keys are in [`hosting.md`](hosting.md) §4, "Applicat
 - **App log** (`docker compose logs coverage-app`), lines starting `Merge queue:`. Entries end with
   `evicted #<n> in <repo>: <reason>` or `refused #<n> in <repo>: <code>`, and transient failures log
   `<Step> of <entry> failed (<n>/7); retrying in <delay>`. A failed check-run publish, a label removal, a comment or a
-  token revocation is logged as a warning and does not stop the run.
+  token revocation is logged as a warning and does not stop the run. The check's button (O30) logs
+  `offered #<n> in <repo> the button on <sha>` when the "Not queued" check goes up, and
+  `enqueue of #<n> in <repo> by @<login> (check button)` when a click arrives; the entry's `EnqueuedVia` is then `Check`.
 - **Writer log** (`docker compose logs coverage-git-writer`): `<prepare|publish|…> for <repo>: busy`,
   `… finished after <ms> ms`, and `… failed (<reason>) after <ms> ms`.
 - **RavenDB:** `MergeQueues/github/<repoId>` holds the lanes (per base, the current entry and the waiting ones).

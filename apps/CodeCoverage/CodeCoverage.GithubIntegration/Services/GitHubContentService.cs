@@ -50,6 +50,12 @@ public partial class GitHubContentService : IGitHubContentService
                 var files = await client.Repository.Content.GetAllContentsByRef(repository.GitHubId, path, sha);
                 content = files.FirstOrDefault()?.Content;
             }
+            catch (Octokit.NotFoundException)
+            {
+                // No such file at that ref: an answer, not a failure. The merge queue asks every repository's default branch
+                // for coverage.yml on each pull-request event (merge-queue PRD §0 O30, D88), and most repositories have none.
+                logger.LogDebug("No {Path} in {Repo} at {Sha}", path, repository.FullName, sha);
+            }
             catch (Exception ex)
             {
                 logger.LogWarning(ex, "Installation content fetch failed for {Repo}@{Sha}:{Path}", repository.FullName, sha, path);

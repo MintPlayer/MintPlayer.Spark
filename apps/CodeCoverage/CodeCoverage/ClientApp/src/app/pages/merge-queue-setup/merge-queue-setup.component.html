@@ -326,9 +326,16 @@
 
   <h2 class="h5">Then queue a pull request</h2>
   <p>
-    Add the <code>merge-queue</code> label, comment <code>/queue</code> (<code>/dequeue</code> takes it out again), or
-    use the button in the merge queue panel of the repository's CodeCoverage page. Queueing takes the
-    <code>write</code> role on the repository. The queue answers on the pull request and in its "Merge queue" check run.
+    Click <strong>Add to merge queue</strong> on the pull request's "Merge queue" check, add the <code>merge-queue</code>
+    label, comment <code>/queue</code> (<code>/dequeue</code> takes it out again), or use the button in the merge queue
+    panel of the repository's CodeCoverage page. Queueing takes the <code>write</code> role on the repository. The queue
+    answers on the pull request and in its "Merge queue" check run.
+  </p>
+  <p>
+    The "Merge queue" check is on every open pull request into a queue branch that is not a draft. While the pull request
+    is not queued, the check reads "Not queued", and its button is at the top of the check's page: open it from the pull
+    request's checks. A pull request that leaves the queue without merging keeps the button, and the check's title says
+    why it left.
   </p>
   <p class="small text-body-secondary mb-0">
     Every reason a pull request can leave the queue is in

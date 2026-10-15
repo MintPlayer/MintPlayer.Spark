@@ -73,6 +73,18 @@ public class ForgeIntegrationConformanceTests
         [EForgeCapability.MergeQueue] = typeof(IForgeMergeQueue),
     };
 
+    /// <summary>
+    /// Capabilities whose one member is a variant of a call on the merge queue's seam (merge-queue PRD §0 O30): the check's
+    /// buttons ride on the queue's own check, <see cref="IForgeMergeQueue.PublishQueueCheckAsync"/> with
+    /// <see cref="ForgeQueueCheck.Actions"/>. Declaring one takes the seam's capability too, and the forge's merge queue must
+    /// answer the call; a merge queue whose forge does not declare it must refuse it, like any undeclared member.
+    /// </summary>
+    private static readonly Dictionary<EForgeCapability, (EForgeCapability Seam, Func<IForgeMergeQueue, Task> Invoke)> OnTheQueueSeam = new()
+    {
+        [EForgeCapability.CheckButtons] = (EForgeCapability.MergeQueue, q => q.PublishQueueCheckAsync(SampleRepository, SampleSha,
+            new ForgeQueueCheck(EForgeQueueCheckState.Neutral, "t", "s", null) { Actions = [ForgeQueueCheckAction.Enqueue], PullRequestNumber = 1 }, null)),
+    };
+
     /// <summary>Every member of <see cref="IForgeMergeQueue"/>; an implementation must refuse none of them.</summary>
     private static readonly (string Name, Func<IForgeMergeQueue, Task> Invoke)[] MergeQueueMembers =
     [
@@ -141,7 +153,11 @@ public class ForgeIntegrationConformanceTests
     [Theory]
     [MemberData(nameof(Implementations))]
     public async Task Every_implementation_conforms(Type type)
-        => (await ViolationsAsync(Create(type), DiscoverSeamProviders())).Should().BeEmpty();
+    {
+        var forge = Create(type);
+        var queue = Discover(typeof(IForgeMergeQueue)).Select(Create<IForgeMergeQueue>).FirstOrDefault(q => q.Provider == forge.Provider);
+        (await ViolationsAsync(forge, DiscoverSeamProviders(), queue)).Should().BeEmpty();
+    }
 
     /// <summary>
     /// The separate seam's own guard: at least one implementation exists, so the pairing rule below cannot
@@ -225,17 +241,58 @@ public class ForgeIntegrationConformanceTests
         => (await ViolationsAsync(new BoastfulForge(), seams: [(typeof(IForgeMergeQueue), EForgeProvider.GitHub)])).Should()
             .Contain(v => v.Contains("MergeQueue") && v.Contains("does not advertise"));
 
+    private static readonly IReadOnlyList<(Type Seam, EForgeProvider Provider)> GitHubQueue = [(typeof(IForgeMergeQueue), EForgeProvider.GitHub)];
+
+    /// <summary>The visible direction, on the seam: buttons declared, and the forge's merge queue refuses a check with one.</summary>
+    [Fact]
+    public async Task A_forge_declaring_check_buttons_whose_merge_queue_refuses_them_is_a_violation()
+    {
+        var queue = Substitute.For<IForgeMergeQueue>();
+        queue.PublishQueueCheckAsync(Arg.Any<Repository>(), Arg.Any<string>(), Arg.Any<ForgeQueueCheck>(), Arg.Any<long?>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<long>(new NotSupportedException()));
+
+        (await ViolationsAsync(new ButtonForge(), GitHubQueue, queue)).Should()
+            .ContainSingle().Which.Should().Contain("CheckButtons").And.Contain("refuses");
+    }
+
+    /// <summary>The dangerous direction, on the seam: a merge queue that takes buttons its forge does not admit to.</summary>
+    [Fact]
+    public async Task A_merge_queue_that_takes_buttons_its_forge_does_not_declare_is_a_violation()
+        => (await ViolationsAsync(new QueueClaimingForge(), GitHubQueue, Substitute.For<IForgeMergeQueue>())).Should()
+            .ContainSingle().Which.Should().Contain("CheckButtons").And.Contain("does not advertise");
+
+    /// <summary>Buttons ride on the merge queue's own check: declaring them without it is declaring a call nobody can make.</summary>
+    [Fact]
+    public async Task Check_buttons_without_the_merge_queue_are_a_violation()
+        => (await ViolationsAsync(new ButtonsWithoutAQueueForge())).Should()
+            .ContainSingle().Which.Should().Contain("CheckButtons").And.Contain("without MergeQueue");
+
     // ── The rules themselves ─────────────────────────────────────────────────────────────────────
 
+    /// <param name="queue">The forge's merge queue, when it registers one: the seam <see cref="OnTheQueueSeam"/>'s calls go to.</param>
     private static async Task<IReadOnlyList<string>> ViolationsAsync(
-        IForgeIntegration forge, IReadOnlyList<(Type Seam, EForgeProvider Provider)>? seams = null)
+        IForgeIntegration forge, IReadOnlyList<(Type Seam, EForgeProvider Provider)>? seams = null, IForgeMergeQueue? queue = null)
     {
         var name = forge.GetType().Name;
         var violations = new List<string>();
         seams ??= [];
 
-        foreach (var capability in forge.Capabilities.Where(c => !Governs.ContainsKey(c) && !SeparateSeams.ContainsKey(c)))
+        foreach (var capability in forge.Capabilities.Where(c => !Governs.ContainsKey(c) && !SeparateSeams.ContainsKey(c) && !OnTheQueueSeam.ContainsKey(c)))
             violations.Add($"{name} declares {capability}, which has no members — callers would filter for a call they cannot make.");
+
+        foreach (var (capability, (seamCapability, invoke)) in OnTheQueueSeam)
+        {
+            var declared = forge.Capabilities.Contains(capability);
+            if (declared && !forge.Capabilities.Contains(seamCapability))
+                violations.Add($"{name} declares {capability} without {seamCapability}, whose call it rides on.");
+            if (queue is null) continue;
+
+            var refused = await CaptureAsync(() => invoke(queue)) is NotSupportedException;
+            if (declared && refused)
+                violations.Add($"{name} advertises {capability} but its {nameof(IForgeMergeQueue)} refuses the call.");
+            else if (!declared && !refused)
+                violations.Add($"{name} does not advertise {capability} but its {nameof(IForgeMergeQueue)} takes it — a caller filtering on Capabilities would skip a forge that could have answered.");
+        }
 
         foreach (var (capability, seam) in SeparateSeams)
         {
@@ -371,5 +428,17 @@ public class ForgeIntegrationConformanceTests
     private sealed class BoastfulForge : ConformanceDouble
     {
         public override EForgeCapability[] Capabilities => [EForgeCapability.Boards];
+    }
+
+    /// <summary>Declares the merge queue and buttons on its check; conforms otherwise.</summary>
+    private sealed class ButtonForge : ConformanceDouble
+    {
+        public override EForgeCapability[] Capabilities => [EForgeCapability.MergeQueue, EForgeCapability.CheckButtons];
+    }
+
+    /// <summary>Declares buttons on a check it has no merge queue to put them on.</summary>
+    private sealed class ButtonsWithoutAQueueForge : ConformanceDouble
+    {
+        public override EForgeCapability[] Capabilities => [EForgeCapability.CheckButtons];
     }
 }

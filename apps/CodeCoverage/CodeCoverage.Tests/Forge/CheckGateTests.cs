@@ -105,6 +105,40 @@ public class CheckGateTests
         result.Excluded.Should().BeEmpty();
     }
 
+    /// <summary>
+    /// GitHub keeps one suite per App per commit, so the queue's own check shares its suite with the App's other check runs
+    /// (the coverage checks). While the queue waits, its check is in progress and so is that suite: counting the suite
+    /// would wait for the queue itself, until the checks timeout evicted (merge-queue PRD D88). The App's other runs still
+    /// count, one by one.
+    /// </summary>
+    [Fact]
+    public void The_queue_checks_own_suite_is_not_waited_for_beside_the_Apps_other_checks()
+    {
+        var result = Evaluate(State(
+                [Run("build"), Run("coverage/project", suite: 2), Run(CheckGate.QueueCheckName, "in_progress", suite: 2)],
+                suites: [Suite(1), Suite(2, "in_progress", runs: 2, slug: "coveragedevelopment")]),
+            expected: ["build", "coverage/project"]);
+
+        result.Verdict.Should().Be(ECheckVerdict.Passed);
+        result.PendingSuites.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void A_check_beside_the_queues_own_in_its_suite_still_counts()
+    {
+        var pending = Evaluate(State(
+            [Run("build"), Run("coverage/project", "in_progress", suite: 2), Run(CheckGate.QueueCheckName, "in_progress", suite: 2)],
+            suites: [Suite(1), Suite(2, "in_progress", runs: 2, slug: "coveragedevelopment")]));
+        var failed = Evaluate(State(
+            [Run("build"), Run("coverage/project", conclusion: "failure", suite: 2), Run(CheckGate.QueueCheckName, "in_progress", suite: 2)],
+            suites: [Suite(1), Suite(2, "in_progress", runs: 2, slug: "coveragedevelopment")]));
+
+        pending.Verdict.Should().Be(ECheckVerdict.Pending);
+        pending.Pending.Should().Equal(["coverage/project"]);
+        failed.Verdict.Should().Be(ECheckVerdict.Failed);
+        failed.Failed.Should().Equal(["coverage/project"]);
+    }
+
     [Fact]
     public void A_running_suite_keeps_the_gate_pending()
     {

@@ -206,7 +206,11 @@ public class MergeQueueEngineTests : CoverageRavenTest
         evicted.EvictionPaths.Should().Equal(["apps/A/App_Data/translations.json"]);
         h.Queue.Comments.Should().ContainSingle().Which.Body.Should().Contain("conflicts in files the queue may not resolve");
         h.Queue.RemovedLabels.Should().Contain((Number, "merge-queue"));
-        h.Queue.QueueChecks.Last(c => c.Sha == Head).Check.State.Should().Be(EForgeQueueCheckState.Failure);
+        // §0 O30: neutral, like any pull request the queue does not hold, with the button to queue it again.
+        var ended = h.Queue.QueueChecks.Last(c => c.Sha == Head).Check;
+        ended.State.Should().Be(EForgeQueueCheckState.Neutral);
+        ended.Title.Should().Be("Evicted: conflict-outside-allow-list");
+        ended.Actions.Should().Equal([ForgeQueueCheckAction.Enqueue]);
 
         (await h.EntryAsync(8)).State.Should().Be(EMergeQueueEntryState.Preparing, "D11: the lane moves on to the next entry");
         (await h.QueueDocumentAsync())!.LaneFor("master").Current.Should().Be(MergeQueueEntry.DocumentId(RepositoryId, 8));
@@ -753,7 +757,7 @@ public class MergeQueueEngineTests : CoverageRavenTest
         entry.State.Should().Be(EMergeQueueEntryState.Refused);
         entry.EvictionReason.Should().Be("role", "T2: triage cannot queue");
         h.Queue.RemovedLabels.Should().Equal([(Number, "merge-queue")]);
-        h.Queue.LastCheck.Title.Should().Be("Not queued");
+        h.Queue.LastCheck.Title.Should().Be("Refused: role");
         h.Writer.Prepares.Should().BeEmpty();
         (await h.QueueDocumentAsync())!.IsBusy().Should().BeFalse();
     }

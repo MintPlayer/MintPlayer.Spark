@@ -278,6 +278,15 @@ public enum EForgeCapability
     /// for its provider, and the conformance test holds both directions. GitHub only for now (O7).
     /// </summary>
     MergeQueue,
+
+    /// <summary>
+    /// Buttons on the App's own check that report a click back to the App: GitHub's check-run <em>requested
+    /// actions</em>, which carry the merge queue's "Add to merge queue" (merge-queue PRD §0 O30). GitHub only:
+    /// GitLab's commit statuses and Bitbucket's Code Insights reports have no buttons. Its one member is
+    /// <see cref="IForgeMergeQueue.PublishQueueCheckAsync"/> with <see cref="ForgeQueueCheck.Actions"/>, so declaring
+    /// it takes <see cref="MergeQueue"/> too; a merge queue whose forge does not declare it refuses a check with actions.
+    /// </summary>
+    CheckButtons,
 }
 
 /// <summary>How a git process reaches one repository (<see cref="IForgeIntegration.GetGitAccessAsync"/>).</summary>

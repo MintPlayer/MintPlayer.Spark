@@ -8,11 +8,19 @@ namespace CodeCoverage.MergeQueue;
 /// <summary>
 /// The queue's own check run on the pull request's head (merge-queue PRD M5): position, state, eviction reason, the
 /// effective configuration with each value's source (O15), the excluded checks (O12) and, when a call was refused for a
-/// permission, the link to accept it (O17).
+/// permission, the link to accept it (O17). On a pull request the queue does not hold, the "Not queued" check with the
+/// "Add to merge queue" button (§0 O30, <see cref="RenderOffer"/>).
 /// </summary>
 public static class MergeQueueCheckRenderer
 {
-    public static ForgeQueueCheck Render(MergeQueueEntry entry, int? position, string? detailsUrl, string? note = null)
+    /// <summary>The title of the check on a pull request the queue does not hold (§0 O30).</summary>
+    public const string NotQueuedTitle = "Not queued";
+
+    /// <param name="offer">
+    /// The run ended without merging and the pull request may be queued again: the check keeps the "Add to merge queue"
+    /// button and says how to queue it (§0 O30). Only for a forge whose checks carry buttons.
+    /// </param>
+    public static ForgeQueueCheck Render(MergeQueueEntry entry, int? position, string? detailsUrl, string? note = null, bool offer = false)
     {
         var (state, title) = entry.State switch
         {
@@ -23,16 +31,24 @@ public static class MergeQueueCheckRenderer
             EMergeQueueEntryState.AwaitingChecks => (EForgeQueueCheckState.InProgress, "Waiting for checks"),
             EMergeQueueEntryState.Merging => (EForgeQueueCheckState.InProgress, "Merging"),
             EMergeQueueEntryState.Merged => (EForgeQueueCheckState.Success, "Merged by the queue"),
-            EMergeQueueEntryState.Evicted => (EForgeQueueCheckState.Failure, $"Removed from the queue: {entry.EvictionReason}"),
-            EMergeQueueEntryState.Dequeued => (EForgeQueueCheckState.Neutral, "Removed from the queue"),
-            EMergeQueueEntryState.Refused => (EForgeQueueCheckState.Failure, "Not queued"),
+            // §0 O30: a pull request that left the queue without merging is not queued, like one that never was, so its
+            // check is neutral too. The title says why; with the button, the summary says how to queue it again.
+            EMergeQueueEntryState.Evicted => (EForgeQueueCheckState.Neutral, Why("Evicted", entry.EvictionReason)),
+            EMergeQueueEntryState.Dequeued => (EForgeQueueCheckState.Neutral, "Dequeued"),
+            EMergeQueueEntryState.Refused => (EForgeQueueCheckState.Neutral, Why("Refused", entry.EvictionReason)),
             _ => (EForgeQueueCheckState.Neutral, entry.State.ToString()),
         };
+        offer &= entry.State is EMergeQueueEntryState.Evicted or EMergeQueueEntryState.Dequeued or EMergeQueueEntryState.Refused;
 
         var summary = new StringBuilder();
         if (entry.EvictionMessage is { Length: > 0 } message)
         {
             summary.AppendLine(message);
+            summary.AppendLine();
+        }
+        if (offer)
+        {
+            summary.AppendLine(CultureInfo.InvariantCulture, $"Queue it again with {HowToQueue(entry.Config.Label)}.");
             summary.AppendLine();
         }
         if (entry.EvictionPaths.Count > 0)
@@ -86,8 +102,44 @@ public static class MergeQueueCheckRenderer
                 summary.AppendLine(CultureInfo.InvariantCulture, $"| `{value.Key}` | {Cell(value.Value)} | {Cell(value.Source)} |");
         }
 
-        return new ForgeQueueCheck(state, title, summary.ToString(), detailsUrl);
+        return new ForgeQueueCheck(state, title, summary.ToString(), detailsUrl)
+        {
+            PullRequestNumber = entry.Number,
+            Actions = offer ? [ForgeQueueCheckAction.Enqueue] : [],
+        };
     }
+
+    /// <summary>
+    /// The check on an open, ready pull request into a queue branch that the queue does not hold (§0 O30): completed,
+    /// neutral, "Not queued", with the "Add to merge queue" button. The summary says how to queue it and links the
+    /// repository's queue panel and the setup guide, when there are https links to give.
+    /// </summary>
+    public static ForgeQueueCheck RenderOffer(int number, string label, string? panelUrl, string? setupUrl)
+    {
+        var summary = new StringBuilder();
+        summary.AppendLine(CultureInfo.InvariantCulture,
+            $"This pull request is not in the merge queue. Queue it with {HowToQueue(label)}. Queueing takes the `write` role on the repository.");
+        var links = new[] { panelUrl is null ? null : $"[The repository's merge queue]({panelUrl})", setupUrl is null ? null : $"[Setting up the merge queue]({setupUrl})" }
+            .OfType<string>()
+            .ToList();
+        if (links.Count > 0)
+        {
+            summary.AppendLine();
+            summary.AppendLine(string.Join(" · ", links));
+        }
+
+        return new ForgeQueueCheck(EForgeQueueCheckState.Neutral, NotQueuedTitle, summary.ToString(), panelUrl)
+        {
+            PullRequestNumber = number,
+            Actions = [ForgeQueueCheckAction.Enqueue],
+        };
+    }
+
+    /// <summary>The ways to queue a pull request from the forge itself; the panel is the fourth.</summary>
+    private static string HowToQueue(string label)
+        => $"the **{ForgeQueueCheckAction.Enqueue.Label}** button on this check, the `{label}` label or a `/queue` comment";
+
+    private static string Why(string what, string? reason) => reason is { Length: > 0 } ? $"{what}: {reason}" : what;
 
     private static string Cell(string text) => text.Replace("|", "\\|", StringComparison.Ordinal).Replace('\n', ' ');
 }

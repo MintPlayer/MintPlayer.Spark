@@ -267,7 +267,12 @@ public enum EMergeQueueCommandSource
 {
     Label,
     Comment,
+
+    /// <summary>The button in the merge-queue panel of the repository's CodeCoverage page (O8).</summary>
     Button,
+
+    /// <summary>The "Add to merge queue" button on the queue's own check on the forge (merge-queue PRD §0 O30).</summary>
+    Check,
 }
 
 public sealed class MergeQueueEntryEvent

@@ -67,10 +67,11 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
                 // Labels and unmerged closes concern only the merge queue, and Octokit's base PullRequestEvent drops
                 // the label, so they are read from the raw payload first.
                 if (await OnMergeQueuePullRequestAsync(message, cancellationToken)) break;
-                await OnPullRequest(Deserialize<PullRequestEvent>(message), cancellationToken);
+                await OnPullRequest(Deserialize<PullRequestEvent>(message), message, cancellationToken);
                 break;
             // The merge queue's events (PRD M5). Each is raised only while the repository has something queued, so the
-            // frequent check deliveries cost one point load and no message otherwise.
+            // frequent check deliveries cost one point load and no message otherwise. The exception is a click on the queue
+            // check's button (check_run requested_action, §0 O30): a command, raised whatever the queue holds.
             case "issue_comment":
                 await OnIssueCommentAsync(message, cancellationToken);
                 break;
@@ -406,7 +407,7 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
         }
     }
 
-    private async Task OnPullRequest(PullRequestEvent evt, CancellationToken ct)
+    private async Task OnPullRequest(PullRequestEvent evt, GitHubWebhookMessage message, CancellationToken ct)
     {
         if (evt.Repository is null) return;
 
@@ -436,14 +437,18 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
             return;
         }
 
-        if (evt.Action is not ("opened" or "synchronize" or "reopened")) return;
+        // ready_for_review and a retarget may have just made the pull request one the merge queue can take, so the queue
+        // offers its button again (merge-queue PRD §0 O30); a retarget also moves the base recorded below. Octokit's
+        // edited event types no base change, so that one is read from the raw payload. A title or body edit raises nothing.
+        if (evt.Action is not ("opened" or "synchronize" or "reopened" or "ready_for_review")
+            && !(evt.Action == "edited" && BaseChanged(message))) return;
 
         var pr = evt.PullRequest;
         var account = await GetOrCreateAccount(evt.Repository.Owner.Id, ct);
         var repository = await UpsertRepository(evt.Repository.Id, evt.Repository.Name, evt.Repository.FullName, evt.Repository.Private, account, ct);
 
-        // The three actions collapse to one neutral event because the app does the same thing for
-        // all three; only "was this the first open?" survives the collapse, because exactly one
+        // The actions collapse to one neutral event because the app does the same thing for all of
+        // them; only "was this the first open?" survives the collapse, because exactly one
         // consumer — the pending coverage comment — needs it.
         await messageBus.BroadcastAsync(new ForgeWebhookMessage<PullRequestUpdated>(
             EForgeProvider.GitHub,
@@ -528,12 +533,19 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
     /// <c>workflow_run</c>, <c>check_run</c>, <c>check_suite</c>, <c>status</c> and <c>pull_request_review</c>, raised
     /// only while the repository's queue is busy. The App's own check runs and suites are dropped (its "Merge queue"
     /// check would otherwise wake the queue about itself); its own dispatched workflow runs are not, they are the point.
+    /// A click on a check run's button is neither: see <see cref="OnQueueCheckButtonAsync"/>.
     /// </summary>
     private async Task OnMergeQueueSignalAsync(GitHubWebhookMessage message, CancellationToken ct)
     {
         using var payload = JsonDocument.Parse(message.EventJson);
         var root = payload.RootElement;
         var action = Text(root, "action");
+
+        if (message.EventType == "check_run" && action == "requested_action")
+        {
+            await OnQueueCheckButtonAsync(message, root, ct);
+            return;
+        }
 
         IForgeEvent? Build(string repositoryId) => message.EventType switch
         {
@@ -563,6 +575,51 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
             case CommitChecksChanged e: await RaiseAsync(e, ct); break;
             case PullRequestReviewed e: await RaiseAsync(e, ct); break;
         }
+    }
+
+    /// <summary>
+    /// A click on the "Add to merge queue" button of the queue's own check (merge-queue PRD §0 O30): GitHub's
+    /// <c>check_run</c> <c>requested_action</c>, which GitHub delivers only to the App that made the check run. It is
+    /// the clicker's enqueue command, and from here on a label or a <c>/queue</c> in all but its source.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ Both filters every other check delivery passes through would drop it, and must not. The self-echo filter: the
+    /// check run is the App's own, which is exactly how a click on the queue's button is told from anything else, while
+    /// the actor is the delivery's sender (T1), a person (D46). The busy filter: a click on an idle repository is the very
+    /// one that fills its queue.
+    /// </remarks>
+    private async Task OnQueueCheckButtonAsync(GitHubWebhookMessage message, JsonElement root, CancellationToken ct)
+    {
+        if (Child(root, "check_run") is not { } check || !IsOurApp(check) || Text(check, "name") != CheckGate.QueueCheckName) return;
+        if (Child(root, "requested_action") is not { } requested || Text(requested, "identifier") != ForgeQueueCheckAction.Enqueue.Identifier) return;
+        if (HumanSender(root) is not { } actor) return;
+        if (CheckRunPullRequest(check) is not { } number) return;
+        if (await LoadKnownRepositoryIdAsync(root, ct) is not { } repositoryId) return;
+
+        await RaiseAsync(new MergeQueueCommandIssued(repositoryId, number, EMergeQueueCommand.Enqueue, actor, EMergeQueueCommandSource.Check), ct);
+        logger.LogInformation("Merge queue: enqueue of #{Number} in {Repository} by @{Actor} (check button)", number, message.RepositoryFullName, actor);
+    }
+
+    /// <summary>
+    /// The pull request a check run of the queue speaks for: its <c>external_id</c>, which the queue writes because GitHub
+    /// lists no pull request on the check run of a fork's commit; else the one pull request GitHub lists.
+    /// </summary>
+    private static int? CheckRunPullRequest(JsonElement check)
+    {
+        if (Text(check, "external_id") is { } externalId
+            && int.TryParse(externalId, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var number) && number > 0)
+            return number;
+        return check.TryGetProperty("pull_requests", out var pulls) && pulls.ValueKind == JsonValueKind.Array && pulls.GetArrayLength() == 1
+               && Number(pulls[0], "number") is { } listed and > 0 and <= int.MaxValue
+            ? (int)listed
+            : null;
+    }
+
+    /// <summary>Whether a <c>pull_request</c> <c>edited</c> delivery changed the base branch (<c>changes.base</c>).</summary>
+    private static bool BaseChanged(GitHubWebhookMessage message)
+    {
+        using var payload = JsonDocument.Parse(message.EventJson);
+        return Child(payload.RootElement, "changes") is { } changes && Child(changes, "base") is not null;
     }
 
     /// <summary>The stored repository the payload's <c>repository.id</c> names, or null for one we do not know.</summary>

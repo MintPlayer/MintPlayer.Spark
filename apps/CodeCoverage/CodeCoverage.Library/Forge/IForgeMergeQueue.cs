@@ -165,7 +165,9 @@ public interface IForgeMergeQueue
 
     /// <summary>
     /// Creates or updates the queue's own check on <paramref name="sha"/> (named
-    /// <see cref="CheckGate.QueueCheckName"/>), returning its id so a later call updates it.
+    /// <see cref="CheckGate.QueueCheckName"/>), returning its id so a later call updates it. A check with
+    /// <see cref="ForgeQueueCheck.Actions"/> needs <see cref="EForgeCapability.CheckButtons"/>: a merge queue whose forge
+    /// does not declare it refuses one with <see cref="NotSupportedException"/> (merge-queue PRD §0 O30).
     /// </summary>
     Task<long> PublishQueueCheckAsync(
         Repository repository,
@@ -414,7 +416,38 @@ public enum EForgeReviewState
 /// <summary>What the queue says on its own check run.</summary>
 /// <param name="Summary">Markdown. Truncated to the forge's limit.</param>
 /// <param name="DetailsUrl">Where "Details" leads, e.g. the repository's queue page. Must be absolute https.</param>
-public sealed record ForgeQueueCheck(EForgeQueueCheckState State, string Title, string Summary, string? DetailsUrl);
+public sealed record ForgeQueueCheck(EForgeQueueCheckState State, string Title, string Summary, string? DetailsUrl)
+{
+    /// <summary>
+    /// Buttons the forge shows on the check once it is completed; a click comes back to the App as a command (merge-queue
+    /// PRD §0 O30). Only a forge that declares <see cref="EForgeCapability.CheckButtons"/> takes them: any other merge
+    /// queue refuses a check that carries one with <see cref="NotSupportedException"/>.
+    /// </summary>
+    public IReadOnlyList<ForgeQueueCheckAction> Actions { get; init; } = [];
+
+    /// <summary>
+    /// The pull request the check speaks for. The forge keeps it with the check, so a click on one of its
+    /// <see cref="Actions"/> names the pull request even where the forge's own link is missing: GitHub lists no pull
+    /// request on the check run of a fork's commit.
+    /// </summary>
+    public int? PullRequestNumber { get; init; }
+}
+
+/// <summary>A button on the queue's own check (merge-queue PRD §0 O30): what it says, and what a click sends back.</summary>
+/// <param name="Label">The button's text. GitHub takes at most <see cref="MaxLabelLength"/> characters.</param>
+/// <param name="Description">What the button does, shown with it. GitHub takes at most <see cref="MaxDescriptionLength"/>.</param>
+/// <param name="Identifier">What a click sends back to the App. GitHub takes at most <see cref="MaxIdentifierLength"/>.</param>
+public sealed record ForgeQueueCheckAction(string Label, string Description, string Identifier)
+{
+    /// <summary>GitHub's limits on a check run's requested actions.</summary>
+    public const int MaxActions = 3, MaxLabelLength = 20, MaxDescriptionLength = 40, MaxIdentifierLength = 20;
+
+    /// <summary>
+    /// "Add to merge queue": the clicker's enqueue command, which the queue authorises and refuses exactly as it does a
+    /// label or a <c>/queue</c> comment.
+    /// </summary>
+    public static readonly ForgeQueueCheckAction Enqueue = new("Add to merge queue", "Rebase, regenerate, check, then merge", "mq-enqueue");
+}
 
 public enum EForgeQueueCheckState
 {

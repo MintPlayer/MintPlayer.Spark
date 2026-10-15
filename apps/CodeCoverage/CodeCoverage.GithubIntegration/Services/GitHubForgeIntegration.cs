@@ -46,10 +46,12 @@ public partial class GitHubForgeIntegration : IForgeIntegration
     /// <para>
     /// <see cref="EForgeCapability.MergeQueue"/>'s members are on <see cref="IForgeMergeQueue"/>, implemented
     /// by <see cref="GitHubForgeMergeQueue"/>; the conformance test pairs the two.
+    /// <see cref="EForgeCapability.CheckButtons"/> rides on it: GitHub's requested actions on the queue's own check run,
+    /// whose clicks <c>GitHubEventsRecipient</c> turns into commands (merge-queue PRD §0 O30).
     /// </para>
     /// </remarks>
     public EForgeCapability[] Capabilities =>
-        [EForgeCapability.Statuses, EForgeCapability.Comments, EForgeCapability.GitMirror, EForgeCapability.MergeQueue];
+        [EForgeCapability.Statuses, EForgeCapability.Comments, EForgeCapability.GitMirror, EForgeCapability.MergeQueue, EForgeCapability.CheckButtons];
 
     public Task<ForgeVisibility> GetVisibilityAsync(CancellationToken cancellationToken = default)
         => access.GetVisibilityAsync(cancellationToken);

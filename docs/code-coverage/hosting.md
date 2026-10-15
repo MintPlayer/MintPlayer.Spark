@@ -462,7 +462,7 @@ show and does not. Nothing shows in development unless a GitHub App is configure
 | Push | `GitHubEventsRecipient` | branch tracking |
 | Pull request | `GitHubEventsRecipient`, project automation | authoritative PR ↔ branch labels, merged-PR cleanup, board rules |
 | Organization | `GitHubEventsRecipient` | organization renames (action `renamed`) |
-| Issues, Issue comment, Pull request review, Check run | `ProjectAutomationRouter`; `GitHubEventsRecipient` for the merge queue | board automation; Issue comment (`/queue`, `/dequeue`), Pull request review (approvals, dismissals) and Check run also feed the merge queue (PRD M5) |
+| Issues, Issue comment, Pull request review, Check run | `ProjectAutomationRouter`; `GitHubEventsRecipient` for the merge queue | board automation; Issue comment (`/queue`, `/dequeue`), Pull request review (approvals, dismissals) and Check run also feed the merge queue (PRD M5). A check run's `requested_action` is a click on the queue check's **Add to merge queue** button (PRD O30): a command, raised whatever the queue holds |
 | Workflow run, Check suite, Status | `GitHubEventsRecipient` → merge queue (PRD M5) | **New for the merge queue.** The regenerate run's completion (`workflow_run`), "every suite on the final commit has completed" (`check_suite`, O12) and commit statuses, which O12 counts too (`status`; needs Commit statuses: read, D40). Delivery to an App was measured live for the first two (PRD D19). Raised onward only while the repository has something queued. |
 | `installation` (incl. action `new_permissions_accepted`), `installation_repositories` | `GitHubEventsRecipient` | always delivered to Apps; no subscription needed |
 

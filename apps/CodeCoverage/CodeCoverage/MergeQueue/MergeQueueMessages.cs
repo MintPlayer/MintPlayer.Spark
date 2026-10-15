@@ -90,7 +90,10 @@ public sealed record MergeQueueSignalMessage
 
 public enum EMergeQueueSignal
 {
-    /// <summary>Enqueue or dequeue (<see cref="MergeQueueSignalMessage.Command"/>), from a label, a comment or the button.</summary>
+    /// <summary>
+    /// Enqueue or dequeue (<see cref="MergeQueueSignalMessage.Command"/>), from a label, a comment, the panel's button or
+    /// the check's button.
+    /// </summary>
     Command,
 
     /// <summary>The pull request's head moved to <see cref="MergeQueueSignalMessage.Sha"/>.</summary>
@@ -113,4 +116,11 @@ public enum EMergeQueueSignal
 
     /// <summary>A review was submitted or dismissed.</summary>
     Reviewed,
+
+    /// <summary>
+    /// A pull request the queue does not hold was opened, reopened, pushed to, marked ready or retargeted: the queue may
+    /// offer it the "Add to merge queue" button on its own check (merge-queue PRD §0 O30).
+    /// <see cref="MergeQueueSignalMessage.Sha"/> is the head the event named; the saga reads the pull request again.
+    /// </summary>
+    Offer,
 }

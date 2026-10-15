@@ -92,6 +92,14 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             return;
         }
 
+        if (signal.Kind == EMergeQueueSignal.Offer)
+        {
+            // Writes nothing but the check, so a repository whose queue never held anything gets no queue document.
+            if (signal.Number is { } offered && await LoadContextAsync(signal.RepositoryId, create: false, ct, orUnsaved: true) is { } offerContext)
+                await OfferAsync(offerContext, offered, besides: null, ct);
+            return;
+        }
+
         if (await LoadContextAsync(signal.RepositoryId, create: false, ct) is not { } context) return;
 
         switch (signal.Kind)
@@ -338,7 +346,11 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         entry.PermissionsUrl = null;
         entry.Warnings = [];
         entry.History = [];
-        // QueueCheckSha/QueueCheckId are kept: a new run on the same head updates the check run it already has.
+        // A new run starts a new check run: the earlier run's ended completed, and GitHub does not reliably reopen a completed
+        // one (GitHubForgeMergeQueue.PublishQueueCheckAsync). Under the same name, the new run takes over from the ended one
+        // and from the "Not queued" check, and with them their button (§0 O30, D88).
+        entry.QueueCheckSha = null;
+        entry.QueueCheckId = null;
     }
 
     private sealed record Refusal(string Code, string Message);
@@ -452,8 +464,9 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         entry.FinishedAtUtc = Now;
         context.Document.Record(Outcome(entry));
         if (permissions) entry.PermissionsUrl = await PermissionsUrlAsync(context, ct);
-        await PublishCheckAsync(context, entry, ct);
+        await PublishCheckAsync(context, entry, ct, offer: OffersAfterRefusal(code));
 
+        // The label's own removal answers a label; a comment answers everything else, the check's button included.
         if (source == EMergeQueueCommandSource.Label)
             await BestEffortAsync(() => context.Queue.RemoveLabelAsync(context.Repository, entry.Number, label ?? entry.Config.Label, ct), "remove the label");
         else
@@ -461,6 +474,14 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                 $"The merge queue did not queue this pull request: {message}", ct), "comment");
         logger.LogInformation("Merge queue: refused #{Number} in {Repository}: {Code}", entry.Number, context.Repository.FullName, code);
     }
+
+    /// <summary>
+    /// Whether a refusal leaves the "Add to merge queue" button on the check (§0 O30): not when no click could be accepted
+    /// until the pull request or the configuration changes, because then the offer would only refuse again. Any other
+    /// refusal may pass for the next person to click (a writer, after an approval, once a rule or permission is fixed).
+    /// </summary>
+    private static bool OffersAfterRefusal(string code)
+        => code is not ("configuration" or "disabled" or "closed" or "draft" or "branch");
 
     private async Task DequeueAsync(Context context, int number, string actor, EMergeQueueCommandSource source, string? label, CancellationToken ct)
     {
@@ -476,7 +497,51 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             return;
         }
 
-        await EndAsync(context, entry, EMergeQueueEntryState.Dequeued, $"Removed from the queue by @{actor}.", ct);
+        await EndAsync(context, entry, EMergeQueueEntryState.Dequeued, $"Removed from the queue by @{actor}.", ct, offer: true);
+    }
+
+    // ═══ The offer: "Add to merge queue" on the check of a pull request the queue does not hold (§0 O30) ══
+
+    /// <summary>
+    /// Puts the queue's own check on a pull request the queue does not hold: completed, neutral, "Not queued", with the
+    /// "Add to merge queue" button, whose click comes back as the clicker's enqueue command (§0 O30, D88). Only on a forge
+    /// whose checks carry buttons, in a repository whose default branch turns a working queue on (O16), for an open pull
+    /// request that is not a draft and targets a queue branch. Whether the queue can take it (role, fork, approvals, rules)
+    /// is the click's to find out, through the same checks as every other way to queue.
+    /// </summary>
+    /// <param name="besides">A head that already carries the queue's check with the button (the run that just ended): no
+    /// second check there.</param>
+    /// <remarks>
+    /// The head is the one the forge reports now, not the event's: a later push may have overtaken it. A new check run each
+    /// time: an offer is completed, and GitHub shows the latest run of a name. Never throws, whatever the forge answers: it
+    /// also runs right after an eviction, which must be saved whether or not the offer got through. A failure is logged,
+    /// and the label, <c>/queue</c> and the panel still work.
+    /// </remarks>
+    private async Task OfferAsync(Context context, int number, string? besides, CancellationToken ct)
+    {
+        var repository = context.Repository;
+        if (!HasCheckButtons(context) || repository.DefaultBranch is not { } defaultBranch) return;
+        // A queued pull request's check is its run's own.
+        if (await LoadActiveAsync(repository.Id!, number, ct) is not null) return;
+
+        try
+        {
+            // O16: the configuration of the DEFAULT branch, as for an enqueue.
+            var parsed = MergeQueueYml.Parse(await context.Forge.GetFileContentAsync(repository, defaultBranch, CoverageYml.FileName, ct), defaultBranch);
+            if (!parsed.IsUsable || parsed.Section is not { } section) return;
+            if (await context.Forge.GetPullRequestAsync(repository, number, ct) is not { IsOpen: true, IsDraft: false } pull
+                || !section.Branches.Contains(pull.BaseRef, StringComparer.Ordinal)
+                || string.Equals(pull.HeadSha, besides, StringComparison.OrdinalIgnoreCase))
+                return;
+
+            await context.Queue.PublishQueueCheckAsync(repository, pull.HeadSha,
+                MergeQueueCheckRenderer.RenderOffer(number, section.Label, DetailsUrl(repository), SetupUrl()), null, ct);
+            logger.LogInformation("Merge queue: offered #{Number} in {Repository} the button on {Sha}", number, repository.FullName, Short(pull.HeadSha));
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested)
+        {
+            logger.LogWarning(ex, "Merge queue: could not offer #{Number} in {Repository} the button", number, repository.FullName);
+        }
     }
 
     // ═══ Step 1: start (O20 case 1) or prepare ═══════════════════════════════════════════════════════
@@ -1202,14 +1267,20 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         entry.EvictionReason = reason;
         entry.EvictionPaths = [.. paths ?? []];
         if (permissions) entry.PermissionsUrl = await PermissionsUrlAsync(context, ct);
-        await EndAsync(context, entry, EMergeQueueEntryState.Evicted, message, ct);
+        await EndAsync(context, entry, EMergeQueueEntryState.Evicted, message, ct, offer: true);
         await BestEffortAsync(() => context.Queue.PostCommentAsync(context.Repository, entry.Number,
             $"The merge queue removed this pull request: {message}" + (entry.PermissionsUrl is { } url ? $"\n\n[Accept the App's new permissions]({url})." : string.Empty)
             + $"\n\nQueue it again with `/queue` or the `{entry.Config.Label}` label.", ct), "comment");
         logger.LogInformation("Merge queue: evicted #{Number} in {Repository}: {Reason}", entry.Number, context.Repository.FullName, reason);
+
+        // T3: a push the queue did not make left the pull request on a head the ended check is not on. That head is offered
+        // the button too (§0 O30), whichever step found the push.
+        if (reason == "author-push")
+            await OfferAsync(context, entry.Number, besides: entry.ExpectedHeadSha, ct);
     }
 
-    private async Task EndAsync(Context context, MergeQueueEntry entry, EMergeQueueEntryState state, string? message, CancellationToken ct)
+    /// <param name="offer">The pull request may be queued again: its check keeps the "Add to merge queue" button (§0 O30).</param>
+    private async Task EndAsync(Context context, MergeQueueEntry entry, EMergeQueueEntryState state, string? message, CancellationToken ct, bool offer = false)
     {
         if (message is not null) entry.EvictionMessage = message;
         await AbandonRunAsync(entry, ct);
@@ -1230,7 +1301,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                 QueueBranch = entry.QueueBranch, ExpectedSha = pushed,
             }, null, ct);
 
-        await PublishCheckAsync(context, entry, ct);
+        await PublishCheckAsync(context, entry, ct, offer);
         await BestEffortAsync(() => context.Queue.RemoveLabelAsync(context.Repository, entry.Number, entry.Config.Label, ct), "remove the label");
         await StartNextAsync(context, entry.BaseBranch, ct);
     }
@@ -1581,7 +1652,9 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             Step = step,
         }, delay is { } wait ? new BroadcastOptions { Delay = wait } : null, ct);
 
-    private async Task<Context?> LoadContextAsync(string repositoryId, bool create, CancellationToken ct)
+    /// <param name="create">Store a new queue document when the repository has none (an enqueue).</param>
+    /// <param name="orUnsaved">Without one, work on a new queue document that is never stored (the offer, which writes none).</param>
+    private async Task<Context?> LoadContextAsync(string repositoryId, bool create, CancellationToken ct, bool orUnsaved = false)
     {
         var repository = await session.LoadAsync<Repository>(repositoryId, ct);
         if (repository?.Id is null) return null;
@@ -1596,9 +1669,9 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         var document = await session.LoadAsync<QueueDocument>(id, ct);
         if (document is null)
         {
-            if (!create) return null;
+            if (!create && !orUnsaved) return null;
             document = new QueueDocument { Id = id, Repository = repository.Id };
-            await session.StoreAsync(document, id, ct);
+            if (create) await session.StoreAsync(document, id, ct);
         }
         var account = repository.Account is null ? null : await session.LoadAsync<Account>(repository.Account, ct);
         return new Context(repository, account, forges.For(repository), queue, document);
@@ -1616,12 +1689,13 @@ public partial class MergeQueueEngine : IMergeQueueEngine
     }
 
     /// <summary>Creates or updates the queue's check run on the head the pull request should have now. Never throws.</summary>
-    private async Task PublishCheckAsync(Context context, MergeQueueEntry entry, CancellationToken ct)
+    /// <param name="offer">A run that ended without merging leaves the "Add to merge queue" button on its check (§0 O30).</param>
+    private async Task PublishCheckAsync(Context context, MergeQueueEntry entry, CancellationToken ct, bool offer = false)
     {
         var sha = entry.ExpectedHeadSha;
         if (string.IsNullOrEmpty(sha)) return;
         var position = context.Document.Lanes.FirstOrDefault(l => l.BaseBranch == entry.BaseBranch)?.PositionOf(entry.Id!);
-        var check = MergeQueueCheckRenderer.Render(entry, position, DetailsUrl(context.Repository));
+        var check = MergeQueueCheckRenderer.Render(entry, position, DetailsUrl(context.Repository), offer: offer && HasCheckButtons(context));
         var existing = string.Equals(entry.QueueCheckSha, sha, StringComparison.OrdinalIgnoreCase) ? entry.QueueCheckId : null;
         try
         {
@@ -1665,11 +1739,23 @@ public partial class MergeQueueEngine : IMergeQueueEngine
 
     /// <summary>The repository page, where "Details" on the check run leads; null unless the base URL is https.</summary>
     private string? DetailsUrl(Repository repository)
+        => HttpsBaseUrl() is { } baseUrl
+            ? $"{baseUrl}/{repository.Provider.ToCanonicalString()}/r/{Uri.EscapeDataString(repository.OwnerLogin)}/{Uri.EscapeDataString(repository.Name)}"
+            : null;
+
+    /// <summary>The in-app setup guide (O13), linked from the "Not queued" check; null unless the base URL is https.</summary>
+    private string? SetupUrl() => HttpsBaseUrl() is { } baseUrl ? $"{baseUrl}/merge-queue/setup" : null;
+
+    /// <summary><c>Coverage:BaseUrl</c> without its trailing slash, or null unless it is an absolute https URL.</summary>
+    private string? HttpsBaseUrl()
     {
         var baseUrl = configuration["Coverage:BaseUrl"];
         if (baseUrl is null || !Uri.TryCreate(baseUrl, UriKind.Absolute, out var root) || root.Scheme != Uri.UriSchemeHttps) return null;
-        return $"{baseUrl.TrimEnd('/')}/{repository.Provider.ToCanonicalString()}/r/{Uri.EscapeDataString(repository.OwnerLogin)}/{Uri.EscapeDataString(repository.Name)}";
+        return baseUrl.TrimEnd('/');
     }
+
+    /// <summary>The forge shows buttons on the queue's check and reports clicks back (§0 O30).</summary>
+    private static bool HasCheckButtons(Context context) => context.Forge.Capabilities.Contains(EForgeCapability.CheckButtons);
 
     private static string Short(string? sha) => sha is { Length: > 12 } ? sha[..12] : sha ?? "?";
 }

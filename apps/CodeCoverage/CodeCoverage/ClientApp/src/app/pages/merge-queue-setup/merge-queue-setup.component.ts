@@ -80,7 +80,7 @@ export default class MergeQueueSetupComponent {
     { name: 'Commit statuses', access: 'Read-only', isNew: true, use: 'Wait for commit statuses as well as check runs.' },
     { name: 'Contents', access: 'Read and write', isNew: false, use: 'Push the rebased and squashed commits, merge, read coverage.yml.' },
     { name: 'Pull requests', access: 'Read and write', isNew: false, use: 'Read the pull request and its reviews; the label and the queue\'s comments.' },
-    { name: 'Checks', access: 'Read and write', isNew: false, use: 'Publish the "Merge queue" check run; read every other check.' },
+    { name: 'Checks', access: 'Read and write', isNew: false, use: 'Publish the "Merge queue" check run and its Add to merge queue button; read every other check.' },
     { name: 'Metadata', access: 'Read-only', isNew: false, use: 'Read repository roles and rulesets.' },
     { name: 'Issues', access: 'Read-only', isNew: false, use: 'Receive the /queue and /dequeue comments.' },
   ];

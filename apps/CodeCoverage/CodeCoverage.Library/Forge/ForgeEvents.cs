@@ -66,7 +66,7 @@ public sealed record BranchCommitPushed(
     DateTimeOffset? AuthoredAt) : IForgeEvent;
 
 /// <summary>
-/// A pull request was opened, reopened, or had new commits pushed to it.
+/// A pull request was opened, reopened, had new commits pushed to it, was marked ready for review, or was retargeted.
 /// </summary>
 /// <param name="IsFirstOpen">
 /// True for an open or reopen, false for a later push. The only consumer that cares is the pending
@@ -81,6 +81,11 @@ public sealed record BranchCommitPushed(
 /// The three GitHub actions <c>opened</c>, <c>reopened</c> and <c>synchronize</c> collapse to this
 /// one event because the app does the same thing for all three: re-record the head commit and its
 /// base. Keeping them apart would export a distinction no consumer uses.
+/// <para>
+/// <c>ready_for_review</c> and an <c>edited</c> that changed the base join them (merge-queue PRD §0 O30): the
+/// pull request may have just become one the merge queue can take, so the queue offers its button again, and
+/// a retarget moves the base the coverage record keeps. A title or body edit raises nothing.
+/// </para>
 /// </remarks>
 public sealed record PullRequestUpdated(
     string RepositoryId,
@@ -200,9 +205,10 @@ public sealed record RepositoryConnectionChanged(
 /// Somebody asked the merge queue to take a pull request, or to let it go (O8).
 /// </summary>
 /// <param name="ActorLogin">
-/// ⚠️ <b>The authenticated actor, never text from the request (T1).</b> For a label or a comment that is the signed
-/// webhook's sender; for the repository page's button, the signed-in user's linked forge login. A comment saying
-/// "/queue as @maintainer" is still the commenter's. A normaliser that cannot name the actor must raise nothing.
+/// ⚠️ <b>The authenticated actor, never text from the request (T1).</b> For a label, a comment or a click on the queue
+/// check's button that is the signed webhook's sender; for the repository page's button, the signed-in user's linked
+/// forge login. A comment saying "/queue as @maintainer" is still the commenter's, and a click on the App's own check is
+/// the clicker's. A normaliser that cannot name the actor must raise nothing.
 /// </param>
 /// <param name="Label">The label added or removed, for <see cref="EMergeQueueCommandSource.Label"/>: the queue compares it
 /// with the configured one, which the normaliser does not know.</param>
