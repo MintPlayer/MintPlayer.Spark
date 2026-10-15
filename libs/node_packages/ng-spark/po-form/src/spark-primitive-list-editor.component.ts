@@ -1,7 +1,8 @@
-import { ChangeDetectionStrategy, Component, ElementRef, Injector, afterNextRender, computed, inject, input, output, viewChildren } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, afterRenderEffect, computed, input, output, viewChildren } from '@angular/core';
 import { CdkDrag, CdkDragDrop, CdkDragHandle, CdkDropList, moveItemInArray } from '@angular/cdk/drag-drop';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsInputGroupComponent } from '@mintplayer/ng-bootstrap/input-group';
+import { BsFormControlDirective } from '@mintplayer/ng-bootstrap/form';
 import { BsButtonTypeDirective } from '@mintplayer/ng-bootstrap/button-type';
 import { InputTypePipe, TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
 import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
@@ -23,14 +24,12 @@ import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
  */
 @Component({
   selector: 'spark-primitive-list-editor',
-  imports: [CdkDropList, CdkDrag, CdkDragHandle, BsInputGroupComponent, BsButtonTypeDirective, SparkIconComponent, InputTypePipe, TranslateKeyPipe],
+  imports: [CdkDropList, CdkDrag, CdkDragHandle, BsFormControlDirective, BsInputGroupComponent, BsButtonTypeDirective, SparkIconComponent, InputTypePipe, TranslateKeyPipe],
   templateUrl: './spark-primitive-list-editor.component.html',
   styleUrl: './spark-primitive-list-editor.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class SparkPrimitiveListEditorComponent {
-  private readonly injector = inject(Injector);
-
   /** The list as held by the form. Anything that is not an array (null, the form's '' default) is an empty list. */
   value = input<unknown>(null);
   /** The item data type, i.e. the attribute's `dataType`; picks each item's input type. */
@@ -64,11 +63,28 @@ export class SparkPrimitiveListEditorComponent {
 
   isNumeric = computed(() => this.dataType() === 'number' || this.dataType() === 'decimal');
 
+  /** The index {@link add} appended, focused as soon as its input exists. */
+  private pendingFocus: number | null = null;
+
+  constructor() {
+    // Not afterNextRender (the new item exists only once the parent has written the emitted list back
+    // into `value`) and not effect (it runs before the view refresh that creates the input). And the
+    // focus itself waits a macrotask: the item's bs-input-group is inserted into the drop list after this
+    // hook, and that insertion drops a focus given earlier (measured in the browser: focus() called,
+    // then the insert, then activeElement still on the previous element).
+    afterRenderEffect(() => {
+      const inputs = this.itemInputs();
+      if (this.pendingFocus === null || inputs.length <= this.pendingFocus) return;
+      const element = inputs[this.pendingFocus].nativeElement;
+      this.pendingFocus = null;
+      setTimeout(() => element.focus());
+    });
+  }
+
   /** Appends an empty item and focuses its input once it renders. */
   add(): void {
-    const index = this.items().length;
+    this.pendingFocus = this.items().length;
     this.valueChange.emit([...this.items(), this.isNumeric() ? null : '']);
-    afterNextRender(() => this.itemInputs()[index]?.nativeElement.focus(), { injector: this.injector });
   }
 
   remove(index: number): void {

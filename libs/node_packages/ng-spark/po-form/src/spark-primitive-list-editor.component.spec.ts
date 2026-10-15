@@ -65,6 +65,8 @@ describe('SparkPrimitiveListEditorComponent', () => {
     component.add();
     fixture.detectChanges();
     await fixture.whenStable();
+    // The focus waits a macrotask, until the item's input group is in the list (see the component).
+    await new Promise(resolve => setTimeout(resolve));
 
     const all = inputs(fixture);
     expect(all).toHaveLength(2);
