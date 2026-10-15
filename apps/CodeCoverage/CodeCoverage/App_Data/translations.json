@@ -2418,6 +2418,11 @@
       "fr": "Métriques de l'hôte",
       "nl": "Hostmetingen"
     },
+    "mergeQueueSetup": {
+      "en": "Merge queue setup",
+      "fr": "Configuration de la file de fusion",
+      "nl": "Merge queue instellen"
+    },
     "mirrors": {
       "en": "Mirrors",
       "fr": "Miroirs",

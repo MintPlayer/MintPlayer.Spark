@@ -736,6 +736,7 @@ programUnits.groups.administration	en="Administration"	fr="Administration"	nl="B
 programUnits.groups.coverage	en="Coverage"	fr="Coverage"	nl="Coverage"
 programUnits.home	en="Home"	fr="Accueil"	nl="Start"
 programUnits.hostMetrics	en="Host metrics"	fr="Métriques de l'hôte"	nl="Hostmetingen"
+programUnits.mergeQueueSetup	en="Merge queue setup"	fr="Configuration de la file de fusion"	nl="Merge queue instellen"
 programUnits.mirrors	en="Mirrors"	fr="Miroirs"	nl="Mirrors"
 queries.Account_Projects.label	en="Project boards"	fr="Tableaux de projet"	nl="Projectborden"
 queries.Account_Repositories.label	en="Repositories"	fr="Dépôts"	nl="Repositories"
