@@ -55,6 +55,8 @@ jobs:
         with:
           # The dispatched mq/ branch as of the dispatch. The action compares it with expected_sha.
           ref: ${{ github.sha }}
+          # The prepared commit and its parent, the base branch: lockfiles are derived from their diff.
+          fetch-depth: 2
           persist-credentials: false
 
       # Pin to a full commit SHA of MintPlayer/MintPlayer.Spark (Dependabot's github-actions ecosystem
@@ -63,5 +65,12 @@ jobs:
       - uses: MintPlayer/MintPlayer.Spark/.github/actions/spark-regenerate@<commit-sha>
         with:
           expected_sha: ${{ inputs.expected_sha }}
+          pr_number: ${{ inputs.pr_number }}
           projects: |
             src/MyApp/MyApp.csproj
+          # Opt-in: also regenerate these lockfiles (npm, pnpm, yarn, nuget), and list them in
+          # regeneratedPaths. For a private repository the action fetches the pull request's head with
+          # the job's own read-only token, before any pull-request code runs; no secret is involved.
+          # lockfiles: |
+          #   npm
+          #   nuget

@@ -8,6 +8,8 @@
 #   BUILD_ARGS     extra `dotnet build` arguments, split on whitespace.
 #   SKIP_BUILD     "true" reuses binaries already on disk (local runs only).
 #   PATCH_PATH     where the patch is written. Default: $RUNNER_TEMP/merge-queue.patch.
+#   LOCKFILES      optional. Ecosystems for ../lockfile-regenerate/lockfiles.sh, run before the build. Empty: skipped.
+#   PR_HEAD, MERGE_BASE  optional, for lockfiles.sh (../lockfile-regenerate/fetch-pr-head.sh writes them).
 #
 # Exit codes: 0 patch written (possibly empty), 1 any failure. Nothing is ever committed or pushed: the
 # patch is the whole output, and the queue validates and applies it (D4, T4).
@@ -56,6 +58,13 @@ snapshot() {
 }
 
 started=$SECONDS
+
+# 2b. Lockfiles (opt-in): regenerated before the build, so the build restores against them. Their changes are part
+#     of the working tree from here on, so both synchronize snapshots, and the patch, include them.
+if [ -n "$(printf '%s' "${LOCKFILES:-}" | tr -d '[:space:]')" ]; then
+  PROJECTS="$PROJECTS" bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lockfile-regenerate/lockfiles.sh" \
+    || fail "Lockfile regeneration failed (see above)."
+fi
 
 # 3. Build.
 if [ "$SKIP_BUILD" != "true" ]; then

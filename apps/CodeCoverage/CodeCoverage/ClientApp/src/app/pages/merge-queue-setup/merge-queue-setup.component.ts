@@ -10,7 +10,7 @@ import { BsCodeSnippetComponent } from '@mintplayer/ng-bootstrap/code-snippet';
 import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
 import { AccountPermissionsNoticeComponent } from '../../components/account-permissions-notice/account-permissions-notice.component';
 import { MERGE_QUEUE_SETUP_SCREENSHOTS, type MergeQueueSetupAttachment, type MergeQueueSetupScreenshot } from './merge-queue-setup.screenshots';
-import { COVERAGE_YML, CREATE_LABEL, CREATE_RULESETS, PUSH_TRIGGER, REGENERATE_WORKFLOW, RULESET_1, RULESET_2 } from './merge-queue-setup.snippets';
+import { COVERAGE_YML, CREATE_LABEL, CREATE_RULESETS, LOCKFILES_WORKFLOW, PUSH_TRIGGER, REGENERATE_WORKFLOW, RULESET_1, RULESET_2 } from './merge-queue-setup.snippets';
 
 /** A step of the guide. The id is its anchor, kept stable so a message can link `/merge-queue/setup#<id>`. */
 interface SetupStep {
@@ -109,6 +109,7 @@ export default class MergeQueueSetupComponent {
     ruleset2: RULESET_2,
     createRulesets: CREATE_RULESETS,
     regenerate: REGENERATE_WORKFLOW,
+    lockfilesRegenerate: LOCKFILES_WORKFLOW,
     pushTrigger: PUSH_TRIGGER,
   };
 

@@ -3,7 +3,8 @@ description: >
   The post-rebase step of the CodeCoverage merge queue. On the commit the queue prepared, builds each Spark
   app, runs --spark-synchronize-model and --spark-synchronize-security twice (the second run must change
   nothing), and uploads the resulting `git diff --binary` as the `merge-queue-patch` artifact. It never
-  commits or pushes and needs no secrets: the queue validates the patch and pushes it itself. See README.md.
+  commits or pushes and needs no secrets: the queue validates the patch and pushes it itself. With `lockfiles`, it
+  first regenerates lockfiles through the sibling lockfile-regenerate action's scripts, into the same patch. See README.md.
 
 # SECURITY: this action builds and runs the pull request's code. The calling workflow must grant only
 # `contents: read`, pass no secrets, request no `id-token`, and run on a GitHub-hosted runner.
@@ -33,6 +34,25 @@ inputs:
     description: Extra arguments for every `dotnet build`, split on whitespace.
     required: false
     default: ''
+  lockfiles:
+    description: >
+      Opt-in. Lockfile ecosystems to regenerate before the build, one per line - npm, pnpm, yarn, nuget - with the
+      sibling lockfile-regenerate action's scripts (marker rebuild, fixed point, provenance). Empty (the default) changes
+      nothing. Needs the checkout's fetch-depth: 2.
+    required: false
+    default: ''
+  pr_number:
+    description: >
+      The pull request (the dispatch input). Used only with `lockfiles`: the pull request's head is fetched first, for
+      the three-way marker rebuild and provenance against both sides. Empty: the fallback (lockfile-regenerate README).
+    required: false
+    default: ''
+  token:
+    description: >
+      Used only with `lockfiles` and `pr_number`, to fetch refs/pull/<pr_number>/head of a private repository, before any
+      of the pull request's code runs; never written to disk. The job's own token (contents: read); '' fetches anonymously.
+    required: false
+    default: ${{ github.token }}
 
 outputs:
   changed:
@@ -48,6 +68,16 @@ outputs:
 runs:
   using: composite
   steps:
+    # First, before anything reads the pull request's files: the only step that may hold a token.
+    - name: Fetch the pull request's head (lockfiles)
+      id: pr
+      if: inputs.lockfiles != '' && inputs.pr_number != ''
+      shell: bash
+      env:
+        PR_NUMBER: ${{ inputs.pr_number }}
+        FETCH_TOKEN: ${{ inputs.token }}
+      run: bash "$GITHUB_ACTION_PATH/../lockfile-regenerate/fetch-pr-head.sh"
+
     - name: Setup .NET (global.json)
       if: inputs.dotnet-version == ''
       uses: actions/setup-dotnet@v6
@@ -68,6 +98,10 @@ runs:
         PROJECTS: ${{ inputs.projects }}
         CONFIGURATION: ${{ inputs.configuration }}
         BUILD_ARGS: ${{ inputs.skip-spa-build == 'true' && '-p:EnableSpaBuilder=false ' || '' }}${{ inputs.extra-build-args }}
+        LOCKFILES: ${{ inputs.lockfiles }}
+        PR_HEAD: ${{ steps.pr.outputs.pr-head }}
+        MERGE_BASE: ${{ steps.pr.outputs.merge-base }}
+        COREPACK_ENABLE_DOWNLOAD_PROMPT: '0'
         DOTNET_CLI_TELEMETRY_OPTOUT: '1'
         DOTNET_NOLOGO: '1'
       run: bash "$GITHUB_ACTION_PATH/regenerate.sh"
