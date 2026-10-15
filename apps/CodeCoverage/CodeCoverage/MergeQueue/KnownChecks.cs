@@ -84,6 +84,10 @@ public partial class KnownChecksRecorder : IKnownChecksRecorder
         var due = ForgeCheck.Due(repository.KnownChecks, reported, time.GetUtcNow().UtcDateTime);
         if (due.Count == 0) return;
 
+        // The patch must be this session's only write to the repository. A document saved before KnownChecks existed
+        // loads with an empty list, which the session counts as a change, and Raven refuses a deferred patch on a
+        // document it would also save. Evicting also keeps a caller's earlier load of it (the refresh) from being saved.
+        session.Advanced.Evict(repository);
         session.Advanced.Defer(new PatchCommandData(repositoryId, null, new PatchRequest
         {
             Script = UpsertScript,

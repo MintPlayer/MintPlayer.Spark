@@ -8,6 +8,7 @@ using CodeCoverage.Tests.Services;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Raven.Client.Documents;
+using Raven.Client.Documents.Operations;
 using Xunit;
 using static CodeCoverage.Tests.MergeQueue.MergeQueueHarness;
 
@@ -122,6 +123,24 @@ public class KnownChecksTests : CoverageRavenTest
         build.Kind.Should().Be(EForgeCheckKind.CheckRun);
         build.AppSlug.Should().Be("github-actions");
         repository.KnownChecks.Single(c => c.Id == "ci/legacy").Kind.Should().Be(EForgeCheckKind.Status);
+    }
+
+    /// <summary>
+    /// Every repository saved before §11 has no <c>KnownChecks</c> at all. Loading one materialises an empty list, so the
+    /// session counts the document as changed, and Raven refuses a deferred patch on a document the session would also
+    /// save ("has been modified by the session and is also taking part in deferred PATCH command"; seen on the local
+    /// backfill, 2026-10-15).
+    /// </summary>
+    [Fact]
+    public async Task A_repository_saved_before_known_checks_existed_is_written_to()
+    {
+        using var store = GetDocumentStore();
+        await SeedRepositoryAsync(store, 1);
+        await store.Operations.SendAsync(new PatchOperation(RepoId(1), null, new PatchRequest { Script = "delete this.KnownChecks;" }));
+
+        await RecordAsync(store, RepoId(1), Now, Seen("build"));
+
+        (await LoadAsync(store, 1)).KnownChecks.Select(c => c.Id).Should().Equal("build");
     }
 
     [Fact]

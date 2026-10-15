@@ -14,12 +14,6 @@ export class ReferenceLinkRoutePipe implements PipeTransform {
     // canRead and got it right. Same question, two answers.
     if (targetType.canRead === false) return null;
 
-    // A value object has no document of its own — it lives embedded in its owner and is listed by a
-    // custom query that reads the parent — so /po/<type>/<id> has nothing to load and 404s. Read is
-    // still granted on such a type (withholding it hides the referencing attribute altogether), so
-    // canRead cannot answer this one; the server-derived flag does.
-    if (targetType.isValueObject) return null;
-
     return ['/po', targetType.alias || targetType.id, referenceId];
   }
 }

@@ -74,7 +74,6 @@ internal sealed partial class SparkCatalogue : ISparkCatalogue
                 pruned = entityType.ShallowCopy();
 
             pruned.CanRead = await permissionService.IsAllowedAsync("Read", entityType.Name, cancellationToken);
-            pruned.IsValueObject = IsValueObject(entityType);
 
             visible.Add(pruned);
         }
@@ -102,30 +101,9 @@ internal sealed partial class SparkCatalogue : ISparkCatalogue
         // anything — the loader's definitions are shared process-wide.
         // A `new` form is shaped for the create form instead (#264, G1/G2): New-denied attributes absent
         // too, and no Edit deny applied. It only ever narrows what is seen: Read-denied stays absent.
-        var shaped = await attributeRights.ForFormAsync(
+        return await attributeRights.ForFormAsync(
             SubQueryPruner.EmbedDetailTypes(pruned, modelLoader), formVerb, cancellationToken);
-
-        // As in the list. Copy first when nothing above did: the loader's definition is shared.
-        var isValueObject = IsValueObject(entityType);
-        if (shaped.IsValueObject == isValueObject)
-            return shaped;
-        if (ReferenceEquals(shaped, entityType))
-            shaped = entityType.ShallowCopy();
-        shaped.IsValueObject = isValueObject;
-        return shaped;
     }
-
-    /// <summary>
-    /// <see langword="true"/> when the type's CLR type carries <c>[ValueObject]</c> — stored embedded in
-    /// its owner, so it has no page of its own; otherwise <see langword="null"/>, which keeps the
-    /// property off the wire. The marker, not a heuristic: "has no <c>Database.*</c> query" would also
-    /// catch real documents that are only listed through custom queries (the identity package's
-    /// <c>SparkUser</c>, for one), and their references would lose a working link.
-    /// </summary>
-    private static bool? IsValueObject(EntityTypeDefinition entityType)
-        => SparkTypeResolver.ResolveClrType(entityType.ClrType)?.IsDefined(typeof(ValueObjectAttribute), inherit: false) == true
-            ? true
-            : null;
 
     public async Task<IReadOnlyList<SparkQuery>> ListQueriesAsync(CancellationToken cancellationToken = default)
     {

@@ -121,15 +121,6 @@ export interface EntityType {
    * to, and the click refused on arrival.
    */
   canRead?: boolean;
-  /**
-   * True when the type is a `[ValueObject]`: stored embedded in its owner, with no document of its
-   * own, so no `/po/{type}/{id}` page can open one. Derived by the server, absent otherwise.
-   *
-   * A reference to such a type renders as plain text. It may still be a reference target (a row of
-   * a parent's collection, served by a custom query) and the caller still needs `canRead`, or the
-   * attribute is hidden — so `canRead` alone cannot say whether the link would work.
-   */
-  isValueObject?: boolean;
   alias?: string;
   /**
    * Whether an object of this type is followed over `/spark/live` (X4): `spark-po-detail` replaces the

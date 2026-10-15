@@ -53,23 +53,6 @@ public sealed class EntityTypeDefinition
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public bool? CanRead { get; set; }
     /// <summary>
-    /// <see langword="true"/> when the backing CLR type is a <c>[ValueObject]</c>: it has no document
-    /// of its own, so no <c>/po/{type}/{id}</c> page can open one.
-    /// </summary>
-    /// <remarks>
-    /// The client reads it to decide whether a reference to this type renders as a link. A value
-    /// object can still be a reference target — a row of a parent's embedded collection, served by a
-    /// <c>Custom.*</c> query that reads the parent — and the caller still needs <c>Read</c> on it, or
-    /// the referencing attribute is hidden. Without this the chip linked to a page that 404s.
-    /// <para>
-    /// Derived, never authored: the catalogue computes it from the <c>[ValueObject]</c> marker on the
-    /// way out and overwrites whatever a model file says. <c>null</c> otherwise, and not persisted,
-    /// exactly as <see cref="CanRead"/>. Not part of the model hash.
-    /// </para>
-    /// </remarks>
-    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
-    public bool? IsValueObject { get; set; }
-    /// <summary>
     /// The definitions of this type's AsDetail row types, so a client can render their columns
     /// without resolving them from the <c>Query</c>-gated catalogue.
     /// </summary>
