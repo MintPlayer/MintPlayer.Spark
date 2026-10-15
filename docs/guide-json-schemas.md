@@ -99,6 +99,22 @@ The schemas are **build artifacts and are never committed**: `schemas/` at the r
 relative `$schema` is unresolved and the editor validates nothing. After a build that changed the
 schemas, VS Code may keep the old ones cached: run **Developer: Reload Window**.
 
+### VS Code: trust the schema host
+
+VS Code downloads a remote schema only from a domain listed in `json.schemaDownload.trustedDomains`.
+Without that, a hosted `$schema` fails with *"Unable to load schema from
+'https://schemas.spark.mintplayer.com/v{n}/model.schema.json': Location … is untrusted"* (error 65538)
+and nothing is validated. The cause is the editor setting, not the schema server. Add the host to the
+application's `.vscode/settings.json` (this repository ships one), or to your user settings:
+
+```json
+{
+  "json.schemaDownload.trustedDomains": {
+    "https://schemas.spark.mintplayer.com/": true
+  }
+}
+```
+
 ### Regenerating them locally
 
 `tools/SchemaGenerator` (`MintPlayer.Spark.SchemaGenerator`, part of the solution) writes the set to
