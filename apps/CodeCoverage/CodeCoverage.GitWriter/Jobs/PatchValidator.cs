@@ -27,6 +27,9 @@ public static class PatchReasons
     public const string ApplyFailed = "apply-failed";
     /// <summary>The applied tree changed a path the patch did not declare (defence in depth; should never happen).</summary>
     public const string UnexpectedChange = "unexpected-change";
+    /// <summary>After the apply, a changed path whose <c>autoResolve</c> rule names validators fails one the prepared version
+    /// passed (merge-queue PRD §10.4, post-apply validation).</summary>
+    public const string InvalidContent = "invalid-content";
 }
 
 /// <summary>A patch's verdict: the paths it touches, or why it is refused.</summary>

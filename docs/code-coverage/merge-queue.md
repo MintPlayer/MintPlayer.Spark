@@ -813,7 +813,7 @@ set in compose.
 | `MergeQueue:CommitterName`, `CommitterEmail` | `CodeCoverage merge queue`, `merge-queue@noreply.coverage.mintplayer.com` | The committer of every commit the queue writes. |
 | `MergeQueue:AuthorEmailFormat` | `{login}@users.noreply.github.com` | The rebased commit's author email. Cosmetic: GitHub's squash sets the merged commit's author. |
 | `MergeQueue:PatchArtifactName` | `merge-queue-patch` | Must match the action's artifact. |
-| `MergeQueue:MaxPatchBytes` | 2 MiB | Keep it equal to the writer's `GitWriter:MaxPatchBytes`. |
+| `MergeQueue:MaxPatchBytes` | 8 MiB | Keep it equal to the writer's `GitWriter:MaxPatchBytes`. |
 | `Coverage:BaseUrl` | — | The check run's Details link (https only). |
 
 The writer's `GitWriter:*` keys are in [`hosting.md`](hosting.md) §4, "Application configuration keys".

@@ -13,10 +13,10 @@ namespace CodeCoverage.Git.MergeQueue.Resolution;
 public sealed class TakeBaseResolver : IConflictResolver
 {
     /// <summary>A side's cap: never parsed for a whole-file rule, so a real <c>package-lock.json</c> fits (§10.6).</summary>
-    public const long MaxBytes = MergeQueueResolver.MaxBlobBytes;
+    public const long MaxBytes = 16L * 1024 * 1024;
 
     /// <summary>The cap on a side the key-scoped check parses as JSON, and on merge-tree's merged file.</summary>
-    public const long MaxParsedBytes = MergeQueueResolver.MaxBlobBytes;
+    public const long MaxParsedBytes = ResolutionLimits.MaxParsedBytes;
 
     public string Strategy => MergeQueueWireRules.TakeBase;
 

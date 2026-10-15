@@ -38,7 +38,7 @@ public sealed class MergeQueueOptions
     public string PatchArtifactName { get; set; } = "merge-queue-patch";
 
     /// <summary>The largest regenerate patch accepted, the writer's own <c>MaxPatchBytes</c> (D30).</summary>
-    public long MaxPatchBytes { get; set; } = 2 * 1024 * 1024;
+    public long MaxPatchBytes { get; set; } = 8 * 1024 * 1024;
 }
 
 /// <summary>

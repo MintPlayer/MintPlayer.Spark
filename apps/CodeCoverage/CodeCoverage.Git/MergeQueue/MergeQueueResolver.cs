@@ -18,7 +18,8 @@ public enum EvictionReason
     ConflictWithoutStages,
     /// <summary>An allow-listed path's conflicted entries are not two or three regular, non-executable files.</summary>
     UnsupportedEntry,
-    /// <summary>A blob of an allow-listed path is over <see cref="MergeQueueResolver.MaxBlobBytes"/>.</summary>
+    /// <summary>A blob of an allow-listed path is over its strategy's cap (<see cref="IConflictResolver.MaxSideBytes"/>: take-base
+    /// 16 MiB, never parsed; keep-both, line-set and the validators 4 MiB, §10.6).</summary>
     TooLarge,
     /// <summary>A side of an allow-listed path is not a JSON object.</summary>
     NotJson,
@@ -72,9 +73,6 @@ public sealed partial class MergeQueueResolver(GitRunner git, ConflictResolverRe
 {
     /// <summary>The strategies and validators; the built-in set when none was given.</summary>
     public ConflictResolverRegistry Registry { get; } = registry ?? ConflictResolverRegistry.Default;
-
-    /// <summary>The cap on one blob of an allow-listed path; Spark's <c>modelHashes.json</c> is a few KB.</summary>
-    public const long MaxBlobBytes = 1024 * 1024;
 
     /// <summary>The only message types a resolvable merge may carry (O2; §5.3 step 2).</summary>
     private static readonly HashSet<string> ResolvableTypes = new(StringComparer.Ordinal) { "CONFLICT (contents)", "CONFLICT (add/add)" };
@@ -148,10 +146,20 @@ public sealed partial class MergeQueueResolver(GitRunner git, ConflictResolverRe
 
         if (merge.ExitCode == 1 && output.Stages.Count == 0)
             return Evict(EvictionReason.ConflictWithoutStages, output.Messages.SelectMany(m => m.Paths), "merge-tree reported a conflict without conflicted entries.");
+        var repository = new ConflictRepository(git, gitDirectory, credential, Timeout, Config, cancellationToken);
+
+        // §10.4, clean-merge validation: a file git merged on its own is held to its rule's validators too, inputs first.
+        foreach (var path in output.Messages.Where(m => m.Type == AutoMerging).SelectMany(m => m.Paths).Distinct(StringComparer.Ordinal).Except(conflicted, StringComparer.Ordinal))
+        {
+            if (RuleFor(path) is not { Validate.Count: > 0 } rule || rule.Strategy == MergeQueueWireRules.Evict)
+                continue;
+            if (await ValidateCleanMergeAsync(repository, rule, path, baseCommit, headCommit, output.Tree) is { } invalid)
+                return Evict(invalid.Reason, [path], invalid.Detail);
+        }
+
         if (merge.ExitCode == 0)
             return new MergeOutcome.Clean(baseCommit, headCommit, output.Tree);
 
-        var repository = new ConflictRepository(git, gitDirectory, credential, Timeout, Config, cancellationToken);
         var replacements = new List<MergeTreeStage>();
         var resolved = new List<ResolvedPath>();
         foreach (var path in conflicted)
@@ -222,6 +230,38 @@ public sealed partial class MergeQueueResolver(GitRunner git, ConflictResolverRe
             if (!verdict.Valid)
                 return new ConflictResolution.Refused(EvictionReason.InvalidResult,
                     $"The {input.Rule.Strategy} result fails {validator.Name} at {verdict.Position}: {verdict.Problem}.");
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Clean-merge validation (§10.4): the merged file of a path git merged without a conflict, judged by each of its
+    /// rule's validators that both sides (the base branch's and the pull request's version) pass. A merged file over the
+    /// validators' cap is <c>too-large</c>; a side that is too large or not UTF-8 is not judged (it fails every validator,
+    /// so the inputs-first rule skips it).
+    /// </summary>
+    private async Task<ConflictResolution.Refused?> ValidateCleanMergeAsync(ConflictRepository repository, AutoResolveRule rule, string path,
+        string baseCommit, string headCommit, string tree)
+    {
+        async Task<string?> Text(string name)
+            => await repository.SizeAsync(name) > ResolutionLimits.MaxParsedBytes ? null
+                : await repository.ReadBytesAsync(name, ResolutionLimits.MaxParsedBytes) is { } bytes ? ConflictRepository.DecodeStrict(bytes) : null;
+
+        if (await repository.SizeAsync($"{tree}:{path}") > ResolutionLimits.MaxParsedBytes)
+            return new ConflictResolution.Refused(EvictionReason.TooLarge, $"The merged file is over {ResolutionLimits.MaxParsedBytes} bytes, the cap of its validators.");
+        var ours = await Text($"{baseCommit}:{path}");
+        var theirs = await Text($"{headCommit}:{path}");
+        if (ours is null || theirs is null)
+            return null;
+        var merged = await Text($"{tree}:{path}");
+        foreach (var validator in rule.Validate.Distinct(StringComparer.Ordinal).Select(Registry.Validator))
+        {
+            if (!validator.Validate(ours).Valid || !validator.Validate(theirs).Valid)
+                continue;
+            var verdict = merged is null ? ContentVerdict.Invalid("not strict UTF-8 text") : validator.Validate(merged);
+            if (!verdict.Valid)
+                return new ConflictResolution.Refused(EvictionReason.MergedContentInvalid,
+                    $"git merged the file without a conflict, but the result fails {validator.Name} at {verdict.Position}: {verdict.Problem}.");
         }
         return null;
     }

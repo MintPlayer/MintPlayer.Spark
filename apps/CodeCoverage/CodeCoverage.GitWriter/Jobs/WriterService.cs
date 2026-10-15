@@ -312,7 +312,7 @@ public sealed class WriterService(GitRunner git, JobRunner jobs, IOptions<GitWri
     /// tree with the validated patch applied and checked again, on the base, with the request's author, committer and
     /// message (§0 D65: dated, so a retry builds the same commit).
     /// </summary>
-    private static async Task<FinalCommit> FinalAsync(JobContext context, PublishJob job, string prepared, IReadOnlyList<string> declared)
+    private async Task<FinalCommit> FinalAsync(JobContext context, PublishJob job, string prepared, IReadOnlyList<string> declared)
     {
         // Nothing regenerated: the prepared commit already is base + the net change.
         if (job.Patch.Length == 0)
@@ -325,7 +325,49 @@ public sealed class WriterService(GitRunner git, JobRunner jobs, IOptions<GitWri
         var newTree = (string)tree;
         if (await CheckTreeAsync(context, preparedTree, newTree, declared) is { } unexpected)
             return new FinalCommit(null, unexpected);
+        if (await ValidatePatchedAsync(context, job.Prepare, registry, preparedTree, newTree, declared) is { } invalid)
+            return new FinalCommit(null, invalid);
         return new FinalCommit(await CommitTreeAsync(context, job.Prepare, newTree), null);
+    }
+
+    /// <summary>
+    /// Post-apply validation (merge-queue PRD §10.4): every path the patch changed whose <c>autoResolve</c> rule names
+    /// validators must pass them after the apply, inputs first: a validator the prepared version already failed does not
+    /// judge the regenerated one. A failure is <c>patch-rejected</c> with <c>invalid-content</c>, naming the validator and
+    /// the position, never the content. A deleted path is not judged.
+    /// </summary>
+    private static async Task<PatchVerdict?> ValidatePatchedAsync(JobContext context, PrepareJob job, ConflictResolverRegistry registry,
+        string before, string after, IReadOnlyList<string> declared)
+    {
+        foreach (var path in declared)
+        {
+            if (job.Rules.FirstOrDefault(r => r.Matches(path)) is not { Validate.Count: > 0 } rule || rule.Strategy == MergeQueueWireRules.Evict)
+                continue;
+            if (await ReadTextAsync(context, job.Credential, $"{after}:{path}") is not { } patched)
+                continue;
+            var prepared = await ReadTextAsync(context, job.Credential, $"{before}:{path}");
+            foreach (var validator in rule.Validate.Distinct(StringComparer.Ordinal).Select(registry.Validator))
+            {
+                if (prepared is not null && !validator.Validate(prepared).Valid)
+                    continue;
+                var verdict = validator.Validate(patched);
+                if (!verdict.Valid)
+                    return PatchVerdict.Reject(PatchReasons.InvalidContent, $"After the patch, the file fails {validator.Name} at {verdict.Position}: {verdict.Problem}.", path);
+            }
+        }
+        return null;
+    }
+
+    /// <summary>A blob's text, or null when the path does not exist there. Over the validators' cap, a placeholder that
+    /// fails every validator, so an oversized regenerated file is refused rather than skipped.</summary>
+    private static async Task<string?> ReadTextAsync(JobContext context, GitCredential credential, string objectName)
+    {
+        var size = await context.GitAsync(["cat-file", "-s", objectName], credential);
+        if (!size.Succeeded)
+            return null;
+        if (!long.TryParse(size.StandardOutput.Trim(), out var bytes) || bytes > ResolutionLimits.MaxParsedBytes)
+            return "\0";
+        return (await context.RequireAsync(["cat-file", "blob", objectName], credential)).StandardOutput;
     }
 
     /// <summary>
@@ -336,7 +378,7 @@ public sealed class WriterService(GitRunner git, JobRunner jobs, IOptions<GitWri
     /// prepared commit bit for bit, and the patch on that must rebuild the candidate. Recognising it merges nothing the
     /// queue did not build: its content is the tree this job computes (T3), and the merge is still pinned to its sha (D13).
     /// </summary>
-    private static async Task<bool> IsOwnFinalAsync(JobContext context, PublishJob job, string candidate, IReadOnlyList<string> declared)
+    private async Task<bool> IsOwnFinalAsync(JobContext context, PublishJob job, string candidate, IReadOnlyList<string> declared)
     {
         if (job.Patch.Length == 0)
             return candidate == job.PreparedSha;

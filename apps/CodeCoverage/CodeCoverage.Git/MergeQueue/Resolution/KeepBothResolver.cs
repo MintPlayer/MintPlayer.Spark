@@ -40,32 +40,50 @@ public sealed class KeepBothResolver : IConflictResolver
 
     public async Task<ConflictResolution> ResolveAsync(ConflictInput input, CancellationToken cancellationToken)
     {
-        if (!input.Stages.TryGetValue(1, out var @base))
-            return Refuse("Both sides added the file (an add/add conflict): there is no merge base to keep both sides against.");
+        var (document, _, refusal) = await InsertionRegionsAsync(input, MaxBytes);
+        return refusal is not null ? refusal : new ConflictResolution.Content(Join(document!));
+    }
 
-        var sides = await ResolutionLimits.ReadSidesAsync(input, MaxBytes);
+    /// <summary>
+    /// Steps 1 and 2 of §10.4, shared with <c>line-set</c>: the plain diff3 document of the path, refused unless every
+    /// region is an insertion at one place on both sides (empty base section), with the sides' decoded texts.
+    /// </summary>
+    internal static async Task<(Diff3Document? Document, IReadOnlyDictionary<int, string> Sides, ConflictResolution.Refused? Refusal)> InsertionRegionsAsync(
+        ConflictInput input, long maxBytes)
+    {
+        var none = new Dictionary<int, string>();
+        if (!input.Stages.TryGetValue(1, out var @base))
+            return (null, none, Refuse("Both sides added the file (an add/add conflict): there is no merge base to keep both sides against."));
+
+        var sides = await ResolutionLimits.ReadSidesAsync(input, maxBytes);
         if (sides.Problem is { } problem)
-            return Refuse(problem);
+            return (null, none, Refuse(problem));
         foreach (var (stage, text) in sides.Texts)
         {
             if (ConflictHunks.SplitLines(text).Any(l => ConflictHunks.LooksLikeMarker(l.TrimEnd('\r'))))
-                return Refuse($"{ResolutionLimits.StageName(stage)} has a line that looks like a conflict marker.");
+                return (null, none, Refuse($"{ResolutionLimits.StageName(stage)} has a line that looks like a conflict marker."));
         }
 
-        var (conflicts, output) = await input.Repository.MergeFileAsync(input.Stages[2].ObjectId, @base.ObjectId, input.Stages[3].ObjectId, MaxBytes * 3);
+        var (conflicts, output) = await input.Repository.MergeFileAsync(input.Stages[2].ObjectId, @base.ObjectId, input.Stages[3].ObjectId, maxBytes * 3);
         if (output is null)
-            return Refuse("The merged file is too large.");
+            return (null, none, Refuse("The merged file is too large."));
         if (ConflictRepository.DecodeStrict(output) is not { } merged || Diff3Document.Parse(merged) is not { } document)
-            return Refuse("The conflict regions could not be read.");
+            return (null, none, Refuse("The conflict regions could not be read."));
         if (conflicts == 0 && document.Regions.Any() || conflicts > 0 && !document.Regions.Any())
-            return Refuse("The conflict regions do not match git's count.");
+            return (null, none, Refuse("The conflict regions do not match git's count."));
 
         if (document.Regions.Any(r => r.Base.Count > 0))
-            return Refuse("A conflict changes lines of the merge base; only lines both sides inserted at the same place are kept both.");
+            return (null, none, Refuse("A conflict changes lines of the merge base; only lines both sides inserted at the same place are kept both."));
         if (document.Pieces is [.., Diff3Piece.Region] && sides.Texts.Values.Any(t => t.Length > 0 && !t.EndsWith('\n')))
-            return Refuse("A conflict at the end of the file, where a side has no final newline.");
+            return (null, none, Refuse("A conflict at the end of the file, where a side has no final newline."));
+        return (document, sides.Texts, null);
+    }
 
-        var result = new StringBuilder(merged.Length);
+    /// <summary>Step 3: the common text, and per region the base branch's lines, then the pull request's (once when
+    /// they are the same).</summary>
+    internal static string Join(Diff3Document document)
+    {
+        var result = new StringBuilder();
         foreach (var piece in document.Pieces)
         {
             switch (piece)
@@ -85,7 +103,7 @@ public sealed class KeepBothResolver : IConflictResolver
                     break;
             }
         }
-        return new ConflictResolution.Content(result.ToString());
+        return result.ToString();
     }
 
     private static ConflictResolution.Refused Refuse(string detail) => new(EvictionReason.ResolverRefused, detail);

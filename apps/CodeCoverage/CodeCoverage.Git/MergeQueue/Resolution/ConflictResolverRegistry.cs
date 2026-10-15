@@ -28,7 +28,7 @@ public sealed class ConflictResolverRegistry
 
     /// <summary>Every <see cref="IConflictResolver"/> of this assembly. Kept in step with the <c>[Register]</c>ed set by
     /// <c>ConflictResolverRegistryTests</c>.</summary>
-    public static IEnumerable<IConflictResolver> BuiltInResolvers() => [new TakeBaseResolver(), new KeepBothResolver(), new EvictResolver()];
+    public static IEnumerable<IConflictResolver> BuiltInResolvers() => [new TakeBaseResolver(), new KeepBothResolver(), new LineSetResolver(), new EvictResolver()];
 
     /// <summary>Every <see cref="IContentValidator"/> of this assembly.</summary>
     public static IEnumerable<IContentValidator> BuiltInValidators()

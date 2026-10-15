@@ -38,8 +38,11 @@ public static partial class MergeQueueWireRules
     /// <summary><c>keep-both</c> (O33, §10.4): both sides' insertions at one place, base branch first.</summary>
     public const string KeepBoth = "keep-both";
 
+    /// <summary><c>line-set</c> (§10.2): the sorted, de-duplicated union of lines, for files like <c>go.sum</c>.</summary>
+    public const string LineSet = "line-set";
+
     /// <summary>Every strategy a rule may name; the writer's <c>ConflictResolverRegistry</c> holds exactly these.</summary>
-    public static IReadOnlySet<string> Strategies { get; } = new HashSet<string>(StringComparer.Ordinal) { TakeBase, KeepBoth, Evict };
+    public static IReadOnlySet<string> Strategies { get; } = new HashSet<string>(StringComparer.Ordinal) { TakeBase, KeepBoth, LineSet, Evict };
 
     /// <summary>The content validators (§10.4 step 4). <c>no-conflict-markers</c> runs on every resolved content anyway;
     /// naming it is allowed and changes nothing.</summary>
