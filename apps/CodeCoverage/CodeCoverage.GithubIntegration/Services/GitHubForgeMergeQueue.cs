@@ -11,6 +11,7 @@ using MintPlayer.Spark.Webhooks.GitHub.Services;
 using Octokit;
 using Raven.Client.Documents.Session;
 using Account = CodeCoverage.Entities.Account;
+using EForgeCheckKind = CodeCoverage.Entities.EForgeCheckKind;
 using Repository = CodeCoverage.Entities.Repository;
 
 namespace CodeCoverage.Services;
@@ -306,6 +307,98 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
             .Where(name => name.Length > 0 && name != CheckGate.QueueCheckName)
             .Distinct(StringComparer.Ordinal)
             .Order(StringComparer.Ordinal)];
+    }
+
+    // ── The checks a repository has seen (§11 D109) ──────────────────────────────────────────────
+
+    /// <summary>The open pull requests whose head commit the backfill reads: one page, most recently updated first.</summary>
+    internal const int ReportedChecksPullRequests = 50;
+
+    /// <summary>The checks read per commit; a commit with more is rare, and the webhooks fill in the rest.</summary>
+    internal const int ReportedChecksPerCommit = 100;
+
+    /// <summary>
+    /// The status check rollup of the default branch's head and of every listed open pull request's head commit, in one
+    /// request. Every value is a variable, never part of the text.
+    /// </summary>
+    internal const string ReportedChecksQuery = """
+        query($owner: String!, $name: String!, $pulls: Int!, $contexts: Int!) {
+          repository(owner: $owner, name: $name) {
+            defaultBranchRef { target { ... on Commit { ...Reported } } }
+            pullRequests(states: OPEN, first: $pulls, orderBy: { field: UPDATED_AT, direction: DESC }) {
+              nodes { commits(last: 1) { nodes { commit { ...Reported } } } }
+            }
+          }
+        }
+        fragment Reported on Commit {
+          statusCheckRollup {
+            contexts(first: $contexts) {
+              nodes {
+                __typename
+                ... on CheckRun { name checkSuite { app { slug } } }
+                ... on StatusContext { context }
+              }
+            }
+          }
+        }
+        """;
+
+    /// <remarks>
+    /// GraphQL's <c>statusCheckRollup</c>, through the same raw plumbing as <see cref="GetClosingIssuesAsync"/>: REST would
+    /// take three calls per commit. A refusal is a 200 with a <c>FORBIDDEN</c> error, a missing repository a 200 with
+    /// <c>NOT_FOUND</c>. An installation without Commit statuses: read loses the <c>StatusContext</c> entries only, which
+    /// the D95 notice already reports.
+    /// </remarks>
+    public async Task<IReadOnlyList<ForgeReportedCheck>> GetReportedCheckNamesAsync(Repository repository, CancellationToken cancellationToken = default)
+    {
+        var body = new Dictionary<string, object?>
+        {
+            ["query"] = ReportedChecksQuery,
+            ["variables"] = new Dictionary<string, object?>
+            {
+                ["owner"] = repository.OwnerLogin,
+                ["name"] = repository.Name,
+                ["pulls"] = ReportedChecksPullRequests,
+                ["contexts"] = ReportedChecksPerCommit,
+            },
+        };
+
+        using var reply = await SendAsync(repository, HttpMethod.Post, "graphql", body, DefaultApiVersion, cancellationToken);
+        EnsureSuccess(reply);
+        var root = reply.Json?.RootElement ?? default;
+
+        var errors = Items(root, "errors").ToList();
+        if (errors.Count > 0)
+        {
+            var messages = string.Join("; ", errors.Select(e => Str(e, "message") ?? "no message"));
+            if (errors.Any(e => Str(e, "type") == "FORBIDDEN"))
+                throw new ForgeAccessDeniedException($"GitHub refused the checks of {repository.FullName}: {messages}", reply.AcceptedPermissions);
+            if (errors.All(e => Str(e, "type") == "NOT_FOUND"))
+                return [];
+            throw new ForgeRequestException($"GitHub answered the checks of {repository.FullName} with errors: {messages}", (int)reply.Status);
+        }
+
+        var repo = Child(Child(root, "data"), "repository");
+        var commits = new List<JsonElement> { Child(Child(repo, "defaultBranchRef"), "target") };
+        foreach (var pull in Items(Child(repo, "pullRequests"), "nodes"))
+            commits.AddRange(Items(Child(pull, "commits"), "nodes").Select(node => Child(node, "commit")));
+
+        var found = new Dictionary<string, ForgeReportedCheck>(StringComparer.Ordinal);
+        foreach (var context in commits.SelectMany(commit => Items(Child(Child(commit, "statusCheckRollup"), "contexts"), "nodes")))
+        {
+            var check = Str(context, "__typename") switch
+            {
+                "CheckRun" when Str(context, "name") is { Length: > 0 } name
+                    => new ForgeReportedCheck(name, EForgeCheckKind.CheckRun, Str(Child(Child(context, "checkSuite"), "app"), "slug")),
+                "StatusContext" when Str(context, "context") is { Length: > 0 } name
+                    => new ForgeReportedCheck(name, EForgeCheckKind.Status, null),
+                _ => null,
+            };
+            if (check is null || check.Name == CheckGate.QueueCheckName) continue;
+            found.TryAdd(check.Name, check);
+        }
+
+        return [.. found.Values.OrderBy(check => check.Name, StringComparer.Ordinal)];
     }
 
     /// <summary>

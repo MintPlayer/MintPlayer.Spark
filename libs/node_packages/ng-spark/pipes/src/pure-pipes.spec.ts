@@ -587,6 +587,18 @@ describe('ReferenceLinkRoutePipe', () => {
   it('returns null when referenceId is empty', () => {
     expect(pipe.transform('TestApp.Person', null, [])).toBeNull();
   });
+  it('links a readable document type', () => {
+    const types = [{ id: 't1', clrType: 'TestApp.Person', alias: 'person', canRead: true }] as any;
+    expect(pipe.transform('TestApp.Person', 'people/1', types)).toEqual(['/po', 'person', 'people/1']);
+  });
+  it('returns null when the caller may not Read the target', () => {
+    const types = [{ id: 't1', clrType: 'TestApp.Person', alias: 'person', canRead: false }] as any;
+    expect(pipe.transform('TestApp.Person', 'people/1', types)).toBeNull();
+  });
+  it('returns null for a value-object target, which has no page of its own, even when readable', () => {
+    const types = [{ id: 't2', clrType: 'TestApp.ProjectColumn', alias: 'projectcolumn', canRead: true, isValueObject: true }] as any;
+    expect(pipe.transform('TestApp.ProjectColumn', 'f75ad846', types)).toBeNull();
+  });
 });
 
 // ---------------------------------------------------------------------------

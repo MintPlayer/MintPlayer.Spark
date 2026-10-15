@@ -14,6 +14,9 @@ public partial class ReconcileAccountRecipient : IRecipient<ReconcileAccountMess
     [Inject] private readonly IForgeIntegrationResolver forges;
     [Inject] private readonly Dependencies.IManifestScanScheduler manifestScans;
     [Inject] private readonly ILogger<ReconcileAccountRecipient> logger;
+    // Nullable so the generated constructor keeps its old shape for callers that construct it directly; the running app
+    // always resolves one.
+    [Inject] private readonly MergeQueue.IKnownChecksScheduler? knownChecks;
 
     public async Task HandleAsync(ReconcileAccountMessage message, CancellationToken cancellationToken = default)
     {
@@ -37,6 +40,11 @@ public partial class ReconcileAccountRecipient : IRecipient<ReconcileAccountMess
         // a default branch — so this is the moment it can first be scanned. The index wait is for
         // the repositories the reconcile just created.
         await manifestScans.ScheduleAccountAsync(account, waitForIndex: true, cancellationToken);
+
+        // The same moment fills a new repository's known checks, the options of the merge queue's exclusion lists
+        // (merge-queue PRD §11, D109). Never throws.
+        if (knownChecks is not null)
+            await knownChecks.ScheduleAccountAsync(account, waitForIndex: false, cancellationToken);
 
         logger.LogInformation("Reconciled {Login} after an installation change", account.Login);
     }

@@ -437,6 +437,31 @@ list, possibly empty), so "exclude nothing here" can be said. A check a ruleset 
 be excluded. The queue's own "Merge queue" check is always ignored. The typical exclusion is a secret scanner that flags
 the hash lines of `modelHashes.json`.
 
+**The names are picked, not typed (§11 O38, D107–D114).** Both lists are pickers over the checks that have **reported
+at least once**, with any outcome: on that repository for its own list, on any repository of the account for the
+account's list. A check that has never run cannot be picked until it has reported once, because GitHub lists only what
+reported on a commit, never what a repository *can* produce (an App does not say its check names; GitGuardian's App is
+not named like its check, "GitGuardian Security Checks"). So push a commit or open a pull request first, then pick.
+
+- **Where the names come from.** CodeCoverage stores them on the repository (`Repository.KnownChecks`, at most 200,
+  the oldest dropped); the picker never asks GitHub while it is open. Three sources fill it: the `check_run` and
+  `status` webhooks, whether or not anything is queued (the App's own check runs are left out, and a `check_suite`
+  names no check); the queue's own reads of a pull request's checks; and a backfill of the default branch's head and
+  the 50 most recently updated open pull requests' heads, one GraphQL query per repository, run after every account
+  reconcile (the nightly one and the one an installation change queues) at most once a day, and once for every
+  repository by the deploy that introduced it. Disconnected and archived repositories are skipped. A name is written
+  again only when it is new or last seen a day ago, so a busy repository is not rewritten on every delivery. An
+  installation without the *Commit statuses: read* permission loses the status contexts only, which the permissions
+  notice already reports.
+- **Who sees the options.** Only a manager of the owner: anyone else gets an empty picker, never an error. A manager
+  already sees every private repository of the owner, so the account's list shows them nothing new.
+- **A name picked from a private repository becomes public on the account (D113, accepted).** The account's list stays
+  readable like the rest of the group (D49), so a name a manager picks from a private repository can be read on the
+  public account page. This was already so when the name was typed; only a manager can pick, and the pick is deliberate.
+- **A stored name that is not known (any more) stays (D114).** Saving does not check the list against the options,
+  and the picker shows such a name as a chip labelled with the name itself, which can be removed. A list typed before
+  the picker existed keeps working unchanged: the stored value is still the name, matched exactly by the gate.
+
 **What the queue waits for (O12, D41, D45).** On the commit it is about to merge, it waits for every check run, commit
 status and check suite that is not excluded, and it fails at once on any failure. `neutral` and `skipped` pass; every
 other conclusion fails (`cancelled`, `timed_out`, `action_required` and `stale` too), as does a status `error`. On top

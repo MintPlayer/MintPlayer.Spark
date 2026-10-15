@@ -392,6 +392,96 @@ public class RemainingActionsTests : CoverageRavenTest
     }
 
     // ------------------------------------------------------------------------------------------
+    // ForgeCheckActions: the merge queue's exclusion pickers (merge-queue PRD §11, D112)
+    // ------------------------------------------------------------------------------------------
+
+    private static ForgeCheck KnownCheck(string name, int day)
+        => new() { Id = name, Name = name, Kind = EForgeCheckKind.CheckRun, LastSeenUtc = new DateTime(2026, 10, day, 0, 0, 0, DateTimeKind.Utc) };
+
+    /// <summary>
+    /// acme owns <c>mine</c> and the private <c>second</c>, which share <c>build</c>; other owns <c>theirs</c>, whose check
+    /// must never reach acme's account list.
+    /// </summary>
+    private static async Task SeedKnownChecksAsync(IDocumentStore store)
+    {
+        await SeedRepositoriesAsync(store);
+        using var seed = store.OpenAsyncSession();
+        var mine = await seed.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, 1));
+        mine!.KnownChecks = [KnownCheck("build", 2), KnownCheck("GitGuardian Security Checks", 1)];
+        var theirs = await seed.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, 2));
+        theirs!.KnownChecks = [KnownCheck("secret-scan", 1)];
+        await seed.StoreAsync(new Repository
+        {
+            GitHubId = 3, Name = "second", FullName = "acme/second", OwnerLogin = "acme", IsPrivate = true,
+            Account = Account.DocumentId(EForgeProvider.GitHub, 1),
+            KnownChecks = [KnownCheck("build", 5), KnownCheck("e2e", 3)],
+        }, Repository.DocumentId(EForgeProvider.GitHub, 3));
+        await seed.SaveChangesAsync();
+    }
+
+    private static PersistentObject Parent(string type, string id) => new() { Id = id, Name = type, ObjectTypeId = Guid.NewGuid() };
+
+    [Fact]
+    public async Task Repository_ForgeChecks_offers_a_manager_the_parent_repositorys_checks()
+    {
+        using var store = GetDocumentStore();
+        await SeedKnownChecksAsync(store);
+        using var session = store.OpenAsyncSession();
+        var mine = Parent("Repository", Repository.DocumentId(EForgeProvider.GitHub, 1));
+
+        var offered = await Create<ForgeCheckActions>(Managing("github:acme"), session).Repository_ForgeChecks(QueryArgs(mine));
+
+        offered.Select(c => c.Id).Should().Equal("build", "GitGuardian Security Checks");
+    }
+
+    /// <summary>Empty, never a 403 or 404 from inside the query (D112): not a manager, another parent type, no parent.</summary>
+    [Fact]
+    public async Task Repository_ForgeChecks_offers_nothing_to_a_non_manager_or_under_another_parent()
+    {
+        using var store = GetDocumentStore();
+        await SeedKnownChecksAsync(store);
+        using var session = store.OpenAsyncSession();
+        var mine = Parent("Repository", Repository.DocumentId(EForgeProvider.GitHub, 1));
+
+        (await Create<ForgeCheckActions>(Managing("github:other"), session).Repository_ForgeChecks(QueryArgs(mine))).Should().BeEmpty();
+        (await Create<ForgeCheckActions>(Managing(), session).Repository_ForgeChecks(QueryArgs(mine))).Should().BeEmpty();
+        var actions = Create<ForgeCheckActions>(Managing("github:acme"), session);
+        (await actions.Repository_ForgeChecks(QueryArgs(mine, parentType: "Account"))).Should().BeEmpty();
+        (await actions.Repository_ForgeChecks(QueryArgs(null))).Should().BeEmpty();
+        (await actions.Repository_ForgeChecks(QueryArgs(Parent("Repository", Repository.DocumentId(EForgeProvider.GitHub, 404))))).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Account_ForgeChecks_offers_a_manager_one_row_per_name_over_the_accounts_repositories()
+    {
+        using var store = GetDocumentStore();
+        await SeedKnownChecksAsync(store);
+        WaitForIndexing(store);
+        using var session = store.OpenAsyncSession();
+        var acme = Parent("Account", Account.DocumentId(EForgeProvider.GitHub, 1));
+
+        var offered = (await Create<ForgeCheckActions>(Managing("github:acme"), session).Account_ForgeChecks(QueryArgs(acme))).ToList();
+
+        offered.Select(c => c.Id).Order(StringComparer.Ordinal).Should().Equal("GitGuardian Security Checks", "build", "e2e");
+        offered.Single(c => c.Id == "build").LastSeenUtc.Day.Should().Be(5, "the most recent sighting of a shared name wins");
+    }
+
+    [Fact]
+    public async Task Account_ForgeChecks_offers_nothing_to_a_non_manager_or_under_another_parent()
+    {
+        using var store = GetDocumentStore();
+        await SeedKnownChecksAsync(store);
+        WaitForIndexing(store);
+        using var session = store.OpenAsyncSession();
+        var acme = Parent("Account", Account.DocumentId(EForgeProvider.GitHub, 1));
+
+        (await Create<ForgeCheckActions>(Managing("github:other"), session).Account_ForgeChecks(QueryArgs(acme))).Should().BeEmpty();
+        var actions = Create<ForgeCheckActions>(Managing("github:acme"), session);
+        (await actions.Account_ForgeChecks(QueryArgs(acme, parentType: "Repository"))).Should().BeEmpty();
+        (await actions.Account_ForgeChecks(QueryArgs(null))).Should().BeEmpty();
+    }
+
+    // ------------------------------------------------------------------------------------------
     // ApiTokenActions
     // ------------------------------------------------------------------------------------------
 

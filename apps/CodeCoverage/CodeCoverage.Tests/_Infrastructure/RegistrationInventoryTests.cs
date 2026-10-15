@@ -186,6 +186,18 @@ public class RegistrationInventoryTests : CoverageRavenTest
         typeof(IRecipient<ForgeWebhookMessage<PullRequestReviewed>>));
 
     /// <summary>
+    /// The checks a repository has seen, the options of the merge queue's exclusion lists (merge-queue PRD §11). Without
+    /// the recorder or its recipients the pickers stay empty with no error; without the scheduler the nightly backfill
+    /// silently stops, since the reconciles take it as optional.
+    /// </summary>
+    [Fact]
+    public void The_known_checks_are_registered() => AssertRegistered(
+        typeof(global::CodeCoverage.MergeQueue.IKnownChecksRecorder),
+        typeof(global::CodeCoverage.MergeQueue.IKnownChecksScheduler),
+        typeof(IRecipient<ForgeWebhookMessage<CheckReported>>),
+        typeof(IRecipient<global::CodeCoverage.MergeQueue.RefreshKnownChecksMessage>));
+
+    /// <summary>
     /// The Administrators group (#504, M5b). Without its membership provider the app still starts and the group still
     /// exists, but nobody is in it: the host metrics dashboard and the mirrors list go dark with no error.
     /// </summary>

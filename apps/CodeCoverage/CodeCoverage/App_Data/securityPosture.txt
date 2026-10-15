@@ -48,6 +48,7 @@ Signed-in users | grant | QueryRead/Account | c0e5a9e1-0000-4000-8000-0000000000
 Signed-in users | deny | QueryRead/Account/OwnerKey | c0e5a9e1-0000-4000-8000-000000000082 | app
 Signed-in users | grant | QueryRead/Build | c0e5a9e1-0000-4000-8000-000000000014 | app
 Signed-in users | grant | QueryRead/Commit | c0e5a9e1-0000-4000-8000-000000000013 | app
+Signed-in users | grant | QueryRead/ForgeCheck | c0e5a9e1-0000-4000-8000-000000000093 | app
 Signed-in users | grant | QueryRead/GitHubProject | c0e5a9e1-0000-4000-8000-000000000062 | app
 Signed-in users | grant | QueryRead/ProjectColumn | c0e5a9e1-0000-4000-8000-000000000065 | app
 Signed-in users | grant | QueryRead/Repository | c0e5a9e1-0000-4000-8000-000000000012 | app

@@ -77,6 +77,15 @@ internal sealed class FakeForgeMergeQueue : IForgeMergeQueue
     public Task<IReadOnlyList<string>> GetCheckNamesOnCommitAsync(Repository repository, string sha, CancellationToken cancellationToken = default)
         => Task.FromResult(CheckNames.TryGetValue(sha, out var names) ? names : (IReadOnlyList<string>)[]);
 
+    /// <summary>What <see cref="GetReportedCheckNamesAsync"/> answers (§11 D109): the backfill's view of the repository.</summary>
+    public List<ForgeReportedCheck> ReportedChecks { get; } = [];
+
+    /// <summary>When set, the backfill read throws it (a refusal, a 5xx).</summary>
+    public Exception? ReportedChecksThrows { get; set; }
+
+    public Task<IReadOnlyList<ForgeReportedCheck>> GetReportedCheckNamesAsync(Repository repository, CancellationToken cancellationToken = default)
+        => ReportedChecksThrows is { } thrown ? Task.FromException<IReadOnlyList<ForgeReportedCheck>>(thrown) : Task.FromResult<IReadOnlyList<ForgeReportedCheck>>([.. ReportedChecks]);
+
     /// <summary>The runs a dispatch started, so far: only these exist for <see cref="ListWorkflowRunsAsync"/>.</summary>
     private readonly HashSet<long> started = [];
 

@@ -111,8 +111,13 @@ public class Account : IForgeConnectable
     /// <remarks>
     /// Merge-queue PRD O12, e.g. a scanner known to report false positives on generated files.
     /// [IgnoreForIndex]: see <see cref="MergeQueueApprovalFloor"/>.
+    /// <para>
+    /// Picked from the checks that reported on any repository of this account (§11, O38, D110). The stored value stays
+    /// the name, and a name no longer known stays as it is (D114).
+    /// </para>
     /// </remarks>
     [IgnoreForIndex]
+    [Reference(typeof(ForgeCheck), "Account_ForgeChecks")]
     public List<string> MergeQueueCheckExclusions { get; set; } = [];
 
     /// <summary>

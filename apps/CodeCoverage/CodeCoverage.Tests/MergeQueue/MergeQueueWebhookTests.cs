@@ -199,6 +199,73 @@ public class MergeQueueWebhookTests : CoverageRavenTest
         review.Of<ForgeWebhookMessage<PullRequestReviewed>>().Should().ContainSingle();
     }
 
+    // ── The checks a repository has seen (§11 D108 (a)) ──────────────────────────────────────────────
+
+    private static string NamedCheckRun(string name, long appId, string slug = "gitguardian") => $$$"""
+        {"action":"completed","check_run":{"name":"{{{name}}}","head_sha":"{{{Sha}}}","status":"completed","conclusion":"failure",
+         "app":{"id":{{{appId}}},"slug":"{{{slug}}}"}},"repository":{{{Repo}}}}
+        """;
+
+    /// <summary>
+    /// A check that reports is a name the exclusion lists may pick, whether or not anything is queued: the hook sits before
+    /// the busy filter. Its outcome does not matter (a failing scanner is exactly what one wants to exclude).
+    /// </summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Another_Apps_check_run_and_a_status_are_reported_whatever_is_queued(bool busy)
+    {
+        using var store = GetDocumentStore();
+        await SeedAsync(store, busy);
+
+        var run = await DeliverAsync(store, "check_run", NamedCheckRun("GitGuardian Security Checks", 15368));
+        var status = await DeliverAsync(store, "status", $$$"""{"sha":"{{{Sha}}}","state":"error","context":"ci/legacy","repository":{{{Repo}}}}""");
+
+        run.Of<ForgeWebhookMessage<CheckReported>>().Should().ContainSingle().Which.Event
+            .Should().Be(new CheckReported(RepositoryId, "GitGuardian Security Checks", EForgeCheckKind.CheckRun, "gitguardian"));
+        status.Of<ForgeWebhookMessage<CheckReported>>().Should().ContainSingle().Which.Event
+            .Should().Be(new CheckReported(RepositoryId, "ci/legacy", EForgeCheckKind.Status, null));
+    }
+
+    [Fact]
+    public async Task The_Apps_own_check_runs_and_a_check_suite_report_no_check()
+    {
+        using var store = GetDocumentStore();
+        await SeedAsync(store, busy: false);
+
+        var ours = await DeliverAsync(store, "check_run", NamedCheckRun("coverage/project", AppId, "coveragedevelopment"));
+        var suite = await DeliverAsync(store, "check_suite", $$$"""
+            {"action":"completed","check_suite":{"head_sha":"{{{Sha}}}","app":{"id":15368,"slug":"gitguardian"}},"repository":{{{Repo}}}}
+            """);
+
+        ours.Of<ForgeWebhookMessage<CheckReported>>().Should().BeEmpty("the App's own runs stay filtered (D108)");
+        suite.Of<ForgeWebhookMessage<CheckReported>>().Should().BeEmpty("a suite names no check");
+    }
+
+    /// <summary>A known name is raised again only once a day: a delivery per check run must not rewrite the repository.</summary>
+    [Fact]
+    public async Task A_check_known_and_fresh_is_not_reported_again_but_a_stale_one_is()
+    {
+        using var store = GetDocumentStore();
+        await SeedAsync(store, busy: false);
+        using (var session = store.OpenAsyncSession())
+        {
+            var repository = await session.LoadAsync<Entities.Repository>(RepositoryId);
+            repository.KnownChecks =
+            [
+                new ForgeCheck { Id = "fresh", Name = "fresh", Kind = EForgeCheckKind.CheckRun, AppSlug = "gitguardian", LastSeenUtc = DateTime.UtcNow.AddHours(-1) },
+                new ForgeCheck { Id = "stale", Name = "stale", Kind = EForgeCheckKind.CheckRun, AppSlug = "gitguardian", LastSeenUtc = DateTime.UtcNow.AddDays(-2) },
+            ];
+            await session.SaveChangesAsync();
+        }
+
+        var fresh = await DeliverAsync(store, "check_run", NamedCheckRun("fresh", 15368));
+        var stale = await DeliverAsync(store, "check_run", NamedCheckRun("stale", 15368));
+
+        fresh.Of<ForgeWebhookMessage<CheckReported>>().Should().BeEmpty();
+        stale.Of<ForgeWebhookMessage<CheckReported>>().Should().ContainSingle().Which.Event.Name.Should().Be("stale");
+    }
+
     // ── The button on the queue's own check (§0 O30) ─────────────────────────────────────────────────
 
     /// <summary>A click on a check run's button: GitHub's <c>check_run</c> <c>requested_action</c>, sent to the App that made the run.</summary>

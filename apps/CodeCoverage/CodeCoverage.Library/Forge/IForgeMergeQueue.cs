@@ -70,6 +70,14 @@ public interface IForgeMergeQueue
     Task<IReadOnlyList<string>> GetCheckNamesOnCommitAsync(Repository repository, string sha, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Every check run and commit status that reported, with any outcome, on the default branch's head and on the heads
+    /// of the open pull requests (one page of the most recently updated), distinct by name, the queue's own check left
+    /// out: the backfill of the names the exclusion lists pick from (merge-queue PRD §11, D109). No forge lists the checks
+    /// a repository <em>can</em> produce, only those that reported on a commit.
+    /// </summary>
+    Task<IReadOnlyList<ForgeReportedCheck>> GetReportedCheckNamesAsync(Repository repository, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Dispatches <paramref name="workflowFile"/> (a file name under <c>.github/workflows</c>) on
     /// <paramref name="branch"/> and returns the run it started (D14).
     /// </summary>
@@ -308,6 +316,10 @@ public enum EForgeClassicProtection
     /// </summary>
     ChecksOnly,
 }
+
+/// <summary>A check that reported on some commit of the repository (<see cref="IForgeMergeQueue.GetReportedCheckNamesAsync"/>).</summary>
+/// <param name="AppSlug">The App that made the check run, when the forge says so; null for a commit status.</param>
+public sealed record ForgeReportedCheck(string Name, EForgeCheckKind Kind, string? AppSlug);
 
 /// <summary>Everything that reported on one commit.</summary>
 public sealed record ForgeCheckState(

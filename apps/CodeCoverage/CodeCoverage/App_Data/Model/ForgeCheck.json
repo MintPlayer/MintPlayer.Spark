@@ -1,0 +1,62 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "HAND-AUTHORED and NOT generated (merge-queue PRD section 11, D111). --spark-synchronize-model writes no file for",
+    "a type that only a List<string> reference reaches, and Repository.KnownChecks, the one property that holds",
+    "ForgeCheck values, is [IgnoreProperty]. The rows are served in memory by ForgeCheckActions' two Custom queries,",
+    "the options of the merge queue's exclusion lists; each row's id is the check's name, which is what the lists store.",
+    "",
+    "QueryRead is granted to signed-in users (security.json): without Read, GetHiddenReferencesAsync would remove the",
+    "two exclusion-list attributes altogether. The queries themselves answer managers only."
+  ],
+  "persistentObject": {
+    "id": "78d2126d-47e8-468b-bae5-ec52a02325f4",
+    "name": "ForgeCheck",
+    "clrType": "CodeCoverage.Entities.ForgeCheck",
+    "breadcrumb": "{Name}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "88dd5835-e558-4411-9123-a1841cb968eb",
+        "name": "Name",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": [
+    {
+      "id": "b4dc8302-a7a2-46e0-b3e7-439a52f41220",
+      "name": "Repository_ForgeChecks",
+      "source": "Custom.Repository_ForgeChecks",
+      "sortColumns": [
+        {
+          "property": "Name",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "ForgeCheck"
+    },
+    {
+      "id": "1f7be5eb-cece-4e4d-987e-a861bafc9e9c",
+      "name": "Account_ForgeChecks",
+      "source": "Custom.Account_ForgeChecks",
+      "sortColumns": [
+        {
+          "property": "Name",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "ForgeCheck"
+    }
+  ]
+}

@@ -77,7 +77,7 @@ Key fields:
 
 ### Step 3: How the UI Works
 
-On the **detail page**, a Reference attribute renders as a clickable link showing the referenced entity's display name (as defined by `displayAttribute` in the target entity's model JSON). Clicking the link navigates to the referenced entity's detail page.
+On the **detail page**, a Reference attribute renders as a clickable link showing the referenced entity's display name (as defined by `displayAttribute` in the target entity's model JSON). Clicking the link navigates to the referenced entity's detail page. The value renders as plain text instead when the target is a `[ValueObject]` (see [The target does not have to be a document type](#the-target-does-not-have-to-be-a-document-type)).
 
 On the **create/edit form**, a Reference attribute renders as an input with a search button. Clicking the button opens a modal that shows the referenced query's list view. The user selects an entity from the list, and the reference is set.
 
@@ -183,6 +183,12 @@ An **embedded value object** satisfies all four, so you do not have to promote a
 to documents just to make it pickable. Note what supplies the stored value: the mapper reads the
 CLR `Id` property directly rather than asking RavenDB for a document id, so whatever `Id` holds is
 what the picker writes.
+
+A reference to a `[ValueObject]` target renders as **plain text, not a link**: the row has no document
+of its own, so `/po/{type}/{id}` would 404. The catalogue marks such a type `isValueObject: true`,
+derived from the `[ValueObject]` marker on its CLR type (never authored in the model file), and
+ng-spark's `referenceLinkRoute` returns no route for it. The caller still needs `Read` on the target:
+without it the referencing attribute is hidden altogether.
 
 A `Custom.*` method may return `IQueryable<T>`, `IRavenQueryable<T>`, `IEnumerable<T>`, or a `Task<>`
 of any of those. Returning a plain in-memory sequence is fully supported: every Raven-specific step
