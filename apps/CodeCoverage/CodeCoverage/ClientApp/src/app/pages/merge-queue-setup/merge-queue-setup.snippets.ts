@@ -36,7 +36,7 @@ export const COVERAGE_YML = `mergeQueue:
     - path: "**/App_Data/securityPosture.txt"
       strategy: take-base
     # Lockfiles, optionally: take the base side, then a workflow of their own regenerates them (copy
-    # lockfiles-regenerate.yml below), and add the same paths to regeneratedPaths.
+    # lockfiles-regenerate.yml below); an explicit rule's path joins regeneratedPaths by itself.
     # - path: "**/package-lock.json"
     #   strategy: take-base
     #   action: lockfiles-regenerate.yml`;

@@ -33,7 +33,7 @@ namespace CodeCoverage.MergeQueue;
 ///   postRebaseActionName: regenerate.yml
 ///   postRebaseTimeout: 20m           # s, m or h
 ///   postRebaseWhen: auto-resolved    # auto-resolved | always | never
-///   regeneratedPaths: ["**/App_Data/modelHashes.json"]
+///   regeneratedPaths: ["**/App_Data/modelHashes.json"]   # default: Spark's files and the lockfiles; set, replaces it (O37)
 ///   autoResolve:                     # first match wins; then autoResolveDefaults, then keepBothDefaults
 ///     - path: "**/App_Data/modelHashes.json"
 ///       strategy: take-base          # take-base | keep-both | line-set | evict (§10.3); keys: [..] scope take-base (O2)
@@ -128,7 +128,10 @@ public static partial class MergeQueueYml
             _ => "auto-resolved",
         }, file.PostRebaseWhen is not null);
 
-        section.RegeneratedPaths = [.. (file.RegeneratedPaths ?? []).Select(p => p?.Trim() ?? string.Empty)];
+        // O37: absent, the built-in list; set (even to []), the file's list replaces it entirely.
+        section.RegeneratedPaths = file.RegeneratedPaths is null
+            ? [.. AutoResolvePresets.DefaultRegeneratedPaths]
+            : [.. file.RegeneratedPaths.Select(p => p?.Trim() ?? string.Empty)];
         if (section.RegeneratedPaths.Any(p => p.Length == 0)) errors.Add("mergeQueue.regeneratedPaths holds an empty pattern.");
         section.RegeneratedPaths.RemoveAll(p => p.Length == 0);
         if (section.RegeneratedPaths.Count > MergeQueueWireRules.MaxGlobs)
@@ -199,8 +202,11 @@ public static partial class MergeQueueYml
         foreach (var rule in section.AutoResolve)
             values.Add(new MergeQueueConfigValue { Key = "autoResolve", Value = Describe(rule), Source = rule.Source ?? DefaultSource });
 
-        // O36: a regenerating rule's paths are paths its workflow may write, beside the explicit regeneratedPaths.
-        foreach (var path in section.AutoResolve.Where(r => r.Regenerate == true).Select(r => r.Path))
+        // O36, narrowed by O37: an EXPLICIT regenerating rule's glob is a path its workflow may write (the owner wrote it).
+        // A default or preset rule never widens the list by its glob (`**/*.json` would let a regenerate run, which executes
+        // the pull request's code (T5), rewrite every JSON file); the queue allows only the concrete files such a rule
+        // resolved for the entry, at the publish (MergeQueueWorkflowGuard.PublishRegeneratedPaths).
+        foreach (var path in section.AutoResolve.Where(r => r.Regenerate == true && r.Source == Source).Select(r => r.Path))
             if (!section.RegeneratedPaths.Contains(path, StringComparer.Ordinal))
                 section.RegeneratedPaths.Add(path);
         if (section.RegeneratedPaths.Count > MergeQueueWireRules.MaxGlobs)
@@ -210,12 +216,14 @@ public static partial class MergeQueueYml
 
         if (section.PostRebaseWhen == EPostRebaseWhen.Always && section.PostRebaseActionName is null && !section.AutoResolve.Any(r => r.Action is not null))
             errors.Add("mergeQueue.postRebaseWhen 'always' needs mergeQueue.postRebaseActionName.");
-        // A workflow runs only when a rule regenerates (whose paths were just added) or under 'always'; under
-        // 'auto-resolved' with no regenerating rule nothing is ever dispatched, so an empty list refuses nothing.
+        // A workflow runs only when a rule regenerates or under 'always'; under 'auto-resolved' with no regenerating rule
+        // nothing is ever dispatched, so an empty list refuses nothing. The list is empty only when coverage.yml set it so
+        // (O37: absent, it is the default list).
         var anyWorkflow = section.PostRebaseActionName is not null || section.AutoResolve.Any(r => r.Action is not null);
         var dispatches = section.PostRebaseWhen == EPostRebaseWhen.Always || section.AutoResolve.Any(r => r.Regenerate == true);
         if (anyWorkflow && dispatches && !never && section.RegeneratedPaths.Count == 0)
-            errors.Add("mergeQueue.regeneratedPaths is empty, so every regenerate patch would be refused.");
+            errors.Add("mergeQueue.regeneratedPaths is empty, so a regenerate patch may touch only the files a default or preset rule resolved: "
+                + "list the paths the workflow writes, or remove the key for the default list.");
         if (section.Workflows().Count > MergeQueueWireRules.MaxRegenerateWorkflows)
             errors.Add($"mergeQueue.autoResolve names {section.Workflows().Count} regenerate workflows; the queue runs at most {MergeQueueWireRules.MaxRegenerateWorkflows}.");
 

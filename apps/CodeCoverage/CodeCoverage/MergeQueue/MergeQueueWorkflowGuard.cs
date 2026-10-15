@@ -1,4 +1,6 @@
 using CodeCoverage.Entities;
+using CodeCoverage.Git;
+using CodeCoverage.Git.MergeQueue;
 
 namespace CodeCoverage.MergeQueue;
 
@@ -97,6 +99,43 @@ public static class MergeQueueWorkflowGuard
                 .Select(r => r.Rule >= 0 && r.Rule < config.AutoResolve.Count ? config.AutoResolve[r.Rule].Action ?? config.PostRebaseActionName : config.PostRebaseActionName),
         };
         return [.. workflows.OfType<string>().Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
+    }
+
+    /// <summary>
+    /// The globs a regenerate patch of this entry may touch, as the publish sends them to the git writer (T4, O37): the
+    /// snapshot's <c>regeneratedPaths</c> (the default list or coverage.yml's, plus the globs of coverage.yml's own
+    /// regenerating rules), then each CONCRETE path this entry's prepare resolved under a regenerating default or preset
+    /// rule, as an exact entry. Null when the two together exceed the writer's <see cref="MergeQueueWireRules.MaxGlobs"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>A default or preset rule never widens the list by its glob (O37): <c>**/*.json</c> would let a regenerate run,
+    /// which executes the pull request's code (T5), rewrite any JSON file. The file it resolved is another matter: that is
+    /// the one file the run must rewrite.</para>
+    /// <para>A path without a wildcard matches only itself (<c>AutoResolveRule.GlobToRegex</c> escapes every other
+    /// character). A resolved path holding <c>*</c> or <c>?</c> would match more than itself, and <c>[</c> is kept out too
+    /// in case the grammar ever gains classes, so such a path is not added: a patch to that file is then refused
+    /// (<c>outside-regenerated-paths</c>), the safe side.</para>
+    /// <para><paramref name="resolutions"/> null (a writer older than §10.6, or an entry prepared before it) adds nothing:
+    /// the snapshot's list alone, as before.</para>
+    /// </remarks>
+    public static IReadOnlyList<string>? PublishRegeneratedPaths(MergeQueueConfigSnapshot config, IReadOnlyList<MergeQueueResolution>? resolutions)
+    {
+        var paths = new List<string>(config.RegeneratedPaths);
+        // A file the list already allows takes no extra entry (and so none of the writer's 64).
+        var globs = config.RegeneratedPaths.Where(MergeQueueWireRules.IsGlob).Select(g => new PathGlob(g)).ToList();
+        foreach (var resolution in resolutions ?? [])
+        {
+            if (!resolution.Regenerate || resolution.Rule < 0 || resolution.Rule >= config.AutoResolve.Count)
+                continue;
+            if (config.AutoResolve[resolution.Rule].Source is { } source && source.StartsWith(MergeQueueYml.Source, StringComparison.Ordinal))
+                continue; // coverage.yml's own rule: its glob is in the list already.
+            var path = resolution.Path;
+            if (!MergeQueueWireRules.IsGlob(path) || path.IndexOfAny(['*', '?', '[']) >= 0
+                || paths.Contains(path, StringComparer.Ordinal) || globs.Any(g => g.Matches(path)))
+                continue;
+            paths.Add(path);
+        }
+        return paths.Count > MergeQueueWireRules.MaxGlobs ? null : paths;
     }
 
     /// <summary>A path GitHub reads workflows from: the files its <c>workflows</c> permission guards (§0 D59). Compared

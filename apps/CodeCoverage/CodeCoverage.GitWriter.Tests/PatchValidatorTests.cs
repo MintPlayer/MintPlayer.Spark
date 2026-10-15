@@ -86,6 +86,27 @@ public class PatchValidatorTests : IDisposable
         rename.Paths.Should().Equal(["src/Order.json"]);
     }
 
+    /// <summary>O37: the app sends the concrete file a default keep-both rule resolved as an exact entry; it allows that
+    /// file and no sibling, where the default's glob <c>**/*.json</c> would have allowed every JSON file.</summary>
+    [Fact]
+    public void A_concrete_resolved_path_allows_that_file_and_not_its_siblings()
+    {
+        IReadOnlyList<PathGlob> globs = [new("**/App_Data/modelHashes.json"), new("App/security.json")];
+        var before = Tree(("App/security.json", "100644", "{\n  \"a\": 1\n}\n"), ("App/appsettings.json", "100644", "{\n  \"b\": 1\n}\n"));
+        var resolved = Tree(("App/security.json", "100644", "{\n  \"a\": 2\n}\n"), ("App/appsettings.json", "100644", "{\n  \"b\": 1\n}\n"));
+        var sibling = Tree(("App/security.json", "100644", "{\n  \"a\": 1\n}\n"), ("App/appsettings.json", "100644", "{\n  \"b\": 2\n}\n"));
+
+        var allowed = Validate(Diff(before, resolved), globs);
+        var refused = Validate(Diff(before, sibling), globs);
+
+        allowed.Accepted.Should().BeTrue(allowed.Detail ?? "");
+        allowed.Paths.Should().Equal(["App/security.json"]);
+        refused.Reason.Should().Be(PatchReasons.OutsideRegeneratedPaths);
+        refused.Paths.Should().Equal(["App/appsettings.json"]);
+        new PathGlob("App/security.json").Matches("App/security.jsonx").Should().BeFalse("a path without a wildcard matches only itself");
+        new PathGlob("App/security.json").Matches("Other/App/security.json").Should().BeFalse();
+    }
+
     [Fact]
     public void Symlinks_submodules_executables_mode_changes_binaries_and_copies_are_rejected()
     {

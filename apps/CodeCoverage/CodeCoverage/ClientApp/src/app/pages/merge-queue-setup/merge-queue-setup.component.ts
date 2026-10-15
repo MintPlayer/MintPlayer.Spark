@@ -94,7 +94,7 @@ export default class MergeQueueSetupComponent {
     { key: 'postRebaseActionName', defaultValue: 'none', meaning: 'The regenerate workflow\'s file name under .github/workflows (step 6).' },
     { key: 'postRebaseTimeout', defaultValue: '20m', meaning: 'How long the regenerate run may take: 1 minute to 6 hours.' },
     { key: 'postRebaseWhen', defaultValue: 'auto-resolved', meaning: 'When to run it: auto-resolved (after a resolved conflict), always or never.' },
-    { key: 'regeneratedPaths', defaultValue: 'none', meaning: 'The paths the regenerate patches may touch, besides the paths of every autoResolve rule that regenerates.' },
+    { key: 'regeneratedPaths', defaultValue: "Spark's generated files and the lockfiles", meaning: 'The paths the regenerate patches may touch. Setting it replaces the default list entirely. An explicit autoResolve rule that regenerates adds its path; a default or preset rule adds only the files it resolved, never its glob.' },
     { key: 'autoResolve[].path', defaultValue: '—', meaning: 'A path glob; the first rule that matches a conflicted file decides how it is resolved.' },
     { key: 'autoResolve[].strategy', defaultValue: 'take-base', meaning: 'take-base (the base side, then the regenerate run rewrites it), keep-both (both sides\' insertions at one place, base branch first), line-set (the sorted union of lines, e.g. go.sum) or evict (never resolve; masks a default for this path).' },
     { key: 'autoResolve[].keys', defaultValue: 'none', meaning: 'take-base only: only conflicts on these top-level JSON members resolve.' },

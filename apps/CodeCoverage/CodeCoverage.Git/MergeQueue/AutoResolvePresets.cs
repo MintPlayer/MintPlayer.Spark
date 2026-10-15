@@ -60,4 +60,20 @@ public static class AutoResolvePresets
 
     /// <summary>The order the keep-both default groups are appended in.</summary>
     public static IReadOnlyList<string> KeepBothDefaultOrder { get; } = ["json", "ignoreFiles", "changelog", "xmlProjects"];
+
+    /// <summary>
+    /// The <c>regeneratedPaths</c> a repository gets when its <c>coverage.yml</c> does not set the key (O37): the files a
+    /// regenerate workflow typically rewrites, Spark's generated files and the lockfiles. A <c>regeneratedPaths</c> in
+    /// <c>coverage.yml</c>, even an empty one, replaces this list entirely; it is never merged into it.
+    /// </summary>
+    public static IReadOnlyList<string> DefaultRegeneratedPaths { get; } =
+    [
+        "**/App_Data/modelHashes.json",
+        "**/App_Data/securityPosture.txt",
+        "**/package-lock.json",
+        "**/npm-shrinkwrap.json",
+        "**/yarn.lock",
+        "**/pnpm-lock.yaml",
+        "**/packages.lock.json",
+    ];
 }

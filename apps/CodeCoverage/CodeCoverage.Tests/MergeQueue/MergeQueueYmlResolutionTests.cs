@@ -75,7 +75,7 @@ public class MergeQueueYmlResolutionTests
         parsed.Section!.AutoResolve.Select(r => (r.Path, r.Source)).Should().Equal(
             [("**/package-lock.json", "preset npm"), ("**/npm-shrinkwrap.json", "preset npm"), ("**/packages.lock.json", "preset nuget")]);
         parsed.Section.AutoResolve.Should().AllSatisfy(r => r.Regenerate.Should().Be(true));
-        parsed.Section.RegeneratedPaths.Should().Contain("**/package-lock.json", "a regenerating rule's paths are the workflow's to write (O36)");
+        parsed.Section.RegeneratedPaths.Should().Equal(AutoResolvePresets.DefaultRegeneratedPaths, "a preset adds no glob; the lockfiles are in the default list (O37)");
 
         Parse("  autoResolveDefaults: [maven]\n").Errors.Should().Contain(e => e.Contains("autoResolveDefaults 'maven'"));
         Parse("  autoResolveDefaults: [npm]\n", action: "postRebaseWhen: auto-resolved").Errors.Should().Contain(e => e.Contains("postRebaseActionName"));
@@ -197,6 +197,122 @@ public class MergeQueueYmlResolutionTests
         summary.Should().Contain("- `a/modelHashes.json`: take-base, regenerated");
         summary.Should().Contain("| Regenerate run | `lockfiles.yml` succeeded: https://github.com/acme/widget/actions/runs/1 |");
         summary.Should().Contain("| Regenerate run | `regenerate.yml` running: https://github.com/acme/widget/actions/runs/2 |");
+    }
+
+    // ── regeneratedPaths: the default list, its replacement, and no widening by a default's glob (O37) ─────
+
+    [Fact]
+    public void Without_regeneratedPaths_the_default_list_applies_and_says_so()
+    {
+        var section = Parse("").Section!;
+
+        section.RegeneratedPaths.Should().Equal(AutoResolvePresets.DefaultRegeneratedPaths);
+        section.RegeneratedPaths.Should().Equal(
+            ["**/App_Data/modelHashes.json", "**/App_Data/securityPosture.txt", "**/package-lock.json", "**/npm-shrinkwrap.json", "**/yarn.lock", "**/pnpm-lock.yaml", "**/packages.lock.json"]);
+        section.Values.Should().ContainSingle(v => v.Key == "regeneratedPaths").Which.Source.Should().Be(MergeQueueYml.DefaultSource);
+    }
+
+    [Fact]
+    public void A_regeneratedPaths_in_the_file_replaces_the_default_list_entirely()
+    {
+        var section = Parse("  regeneratedPaths: [\"**/App_Data/Model/*.json\"]\n").Section!;
+
+        section.RegeneratedPaths.Should().Equal(["**/App_Data/Model/*.json"], "the file's list replaces the defaults, it is not merged into them");
+        section.Values.Should().ContainSingle(v => v.Key == "regeneratedPaths").Which.Source.Should().Be(MergeQueueYml.Source);
+        var snapshot = section.Snapshot("master@abc", new Repository(), null);
+        snapshot.Values.Should().ContainSingle(v => v.Key == "regeneratedPaths").Which.Source.Should().Be("coverage.yml @ master@abc");
+    }
+
+    [Fact]
+    public void An_empty_regeneratedPaths_is_kept_empty_and_is_an_error_only_when_a_workflow_can_dispatch()
+    {
+        // The keep-both defaults regenerate with postRebaseActionName set, so a workflow can run.
+        var dispatching = Parse("  regeneratedPaths: []\n");
+        dispatching.Section!.RegeneratedPaths.Should().BeEmpty();
+        dispatching.Errors.Should().ContainSingle().Which.Should().Contain("regeneratedPaths is empty");
+
+        // No rule regenerates and the queue runs no workflow on its own: nothing is dispatched, so nothing is refused.
+        var idle = Parse("  regeneratedPaths: []\n  keepBothDefaults: false\n");
+        idle.Errors.Should().BeEmpty();
+        idle.Section!.RegeneratedPaths.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void A_default_or_preset_rule_never_adds_its_glob_but_an_explicit_regenerating_rule_does()
+    {
+        var section = Parse("""
+              regeneratedPaths: ["**/App_Data/modelHashes.json"]
+              autoResolveDefaults: [nuget]
+              autoResolve:
+                - path: "**/App_Data/translations.json"
+                  strategy: keep-both
+                  regenerate: true
+            """).Section!;
+
+        section.AutoResolve.Should().Contain(r => r.Path == "**/*.json" && r.Regenerate == true, "the keep-both default regenerates here");
+        section.AutoResolve.Should().Contain(r => r.Path == "**/*.csproj" && r.Regenerate == true);
+        section.RegeneratedPaths.Should().Equal(["**/App_Data/modelHashes.json", "**/App_Data/translations.json"]);
+        section.RegeneratedPaths.Should().NotContain("**/*.json");
+        section.RegeneratedPaths.Should().NotContain("**/*.csproj");
+        section.RegeneratedPaths.Should().NotContain("**/packages.lock.json");
+        Parse("").Section!.RegeneratedPaths.Should().NotContain("**/*.json", "the default list is not widened by the keep-both defaults either");
+    }
+
+    // ── The globs a publish sends the writer: the list plus the concrete files a default resolved (O37) ──
+
+    private static MergeQueueConfigSnapshot PublishConfig(params string[] regeneratedPaths) => new()
+    {
+        PostRebaseActionName = "regenerate.yml",
+        RegeneratedPaths = [.. regeneratedPaths],
+        AutoResolve =
+        [
+            new() { Path = "**/App_Data/translations.json", Strategy = EMergeQueueResolveStrategy.KeepBoth, Regenerate = true, Source = "coverage.yml @ master" },
+            new() { Path = "**/packages.lock.json", Strategy = EMergeQueueResolveStrategy.TakeBase, Regenerate = true, Source = "preset nuget" },
+            new() { Path = "**/*.json", Strategy = EMergeQueueResolveStrategy.KeepBoth, Regenerate = true, Source = MergeQueueYml.DefaultSource },
+            new() { Path = "**/.gitignore", Strategy = EMergeQueueResolveStrategy.KeepBoth, Regenerate = false, Source = MergeQueueYml.DefaultSource },
+        ],
+    };
+
+    [Fact]
+    public void A_regenerating_default_or_preset_resolution_adds_its_concrete_file_only()
+    {
+        var config = PublishConfig("**/App_Data/modelHashes.json");
+
+        MergeQueueWorkflowGuard.PublishRegeneratedPaths(config,
+        [
+            Resolution("App/security.json", 2, true),
+            Resolution("src/A/packages.lock.json", 1, true),
+            Resolution("App/App_Data/translations.json", 0, true),
+            Resolution(".gitignore", 3, false),
+            Resolution("App/unknown.json", -1, true),
+            Resolution("App/security.json", 2, true),
+        ]).Should().Equal(["**/App_Data/modelHashes.json", "App/security.json", "src/A/packages.lock.json"],
+            "coverage.yml's own rule has its glob in the list, a non-regenerating or unknown rule adds nothing, and a path is added once");
+    }
+
+    [Fact]
+    public void A_resolved_file_the_list_already_allows_takes_no_entry()
+        => MergeQueueWorkflowGuard.PublishRegeneratedPaths(PublishConfig(AutoResolvePresets.DefaultRegeneratedPaths.ToArray()), [Resolution("src/A/packages.lock.json", 1, true)])
+            .Should().Equal(AutoResolvePresets.DefaultRegeneratedPaths);
+
+    [Theory]
+    [InlineData("App/*.json")]
+    [InlineData("App/s?curity.json")]
+    [InlineData("App/[ab].json")]
+    public void A_resolved_path_with_a_glob_character_is_not_added(string path)
+        => MergeQueueWorkflowGuard.PublishRegeneratedPaths(PublishConfig("**/x"), [Resolution(path, 2, true)]).Should().Equal(["**/x"]);
+
+    [Fact]
+    public void Without_resolutions_the_snapshots_list_is_sent_as_it_is()
+        => MergeQueueWorkflowGuard.PublishRegeneratedPaths(PublishConfig("**/App_Data/modelHashes.json", "**/*.json"), null)
+            .Should().Equal(["**/App_Data/modelHashes.json", "**/*.json"], "an entry prepared before §10.6 (or O37) keeps its stored list");
+
+    [Fact]
+    public void More_entries_than_the_writer_takes_is_null()
+    {
+        var full = PublishConfig([.. Enumerable.Range(0, MergeQueueWireRules.MaxGlobs - 1).Select(i => $"g{i}/**")]);
+        MergeQueueWorkflowGuard.PublishRegeneratedPaths(full, [Resolution("a.json", 2, true)]).Should().HaveCount(MergeQueueWireRules.MaxGlobs);
+        MergeQueueWorkflowGuard.PublishRegeneratedPaths(full, [Resolution("a.json", 2, true), Resolution("b.json", 2, true)]).Should().BeNull();
     }
 
     // ── Which workflows a prepared entry runs (O36) ──────────────────────────────────────────────────

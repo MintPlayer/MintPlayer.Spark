@@ -270,6 +270,92 @@ public class MergeQueueResolutionEngineTests : CoverageRavenTest
         (await h.EntryAsync()).EvictionReason.Should().Be("prepared-differs");
     }
 
+    // ── O37: what the publish lets a regenerate patch touch ─────────────────────────────────────────
+
+    /// <summary>The default lists: regeneratedPaths absent, keepBothDefaults on and regenerating (postRebaseActionName set).</summary>
+    private const string DefaultsYml = """
+        mergeQueue:
+          enabled: true
+          branches: [master]
+          postRebaseActionName: regenerate.yml
+        """;
+
+    private const string AppSecurity = "App/security.json";
+
+    /// <summary>Runs one dispatched regenerate run to its publish.</summary>
+    private static async Task RegenerateAndPublishAsync(MergeQueueHarness h)
+    {
+        h.Writer.PublishResults.Enqueue(FakeGitWriter.Published(Final));
+        h.Queue.DispatchQueue.Enqueue(new(EForgeDispatchOutcome.Dispatched, 9001, null, null));
+        h.Queue.Runs[9001] = new ForgeWorkflowRun(9001, "completed", "success", Prepared, "mq/master/pr-7", null);
+        h.Queue.Artifacts[9001] = new ForgeArtifactDownload(EForgeArtifactOutcome.Ok, "patch.diff", "diff --git a/x b/x\n"u8.ToArray(), null);
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+        await h.SignalAsync(EMergeQueueSignal.RunCompleted, runId: 9001);
+        await h.DrainAsync();
+    }
+
+    [Fact]
+    public async Task A_default_keep_both_resolution_lets_the_patch_touch_that_file_and_not_every_json_file()
+    {
+        var h = await HarnessAsync(DefaultsYml);
+        // Rule 0 is the keep-both default **/*.json: no explicit rules, no presets.
+        h.Writer.PrepareResults.Enqueue(PreparedWith(new GitWriterResolution(AppSecurity, "keep-both", true, 0)));
+
+        await RegenerateAndPublishAsync(h);
+
+        var entry = await h.EntryAsync();
+        entry.State.Should().Be(EMergeQueueEntryState.Merged);
+        entry.Config.AutoResolve[0].Path.Should().Be("**/*.json");
+        entry.Config.RegeneratedPaths.Should().Equal(Git.MergeQueue.AutoResolvePresets.DefaultRegeneratedPaths);
+        var sent = h.Writer.Publishes.Should().ContainSingle().Which.RegeneratedPaths;
+        sent.Should().Equal([.. Git.MergeQueue.AutoResolvePresets.DefaultRegeneratedPaths, AppSecurity]);
+        sent.Should().NotContain("**/*.json", "the writer would then accept a patch to App/appsettings.json (O37)");
+    }
+
+    [Fact]
+    public async Task A_preset_take_base_outside_an_overridden_list_allows_only_the_resolved_file()
+    {
+        var h = await HarnessAsync("""
+            mergeQueue:
+              enabled: true
+              branches: [master]
+              postRebaseActionName: regenerate.yml
+              regeneratedPaths: ["**/App_Data/modelHashes.json"]
+              autoResolveDefaults: [nuget]
+              keepBothDefaults: false
+            """);
+        h.Writer.PrepareResults.Enqueue(PreparedWith(new GitWriterResolution(LockFile, "take-base", true, 0)));
+
+        await RegenerateAndPublishAsync(h);
+
+        (await h.EntryAsync()).State.Should().Be(EMergeQueueEntryState.Merged);
+        h.Writer.Publishes.Should().ContainSingle().Which.RegeneratedPaths.Should().Equal(["**/App_Data/modelHashes.json", LockFile]);
+    }
+
+    [Fact]
+    public async Task More_globs_and_resolved_files_than_the_writer_takes_evicts_before_the_dispatch()
+    {
+        var globs = string.Join(", ", Enumerable.Range(0, Git.MergeQueue.MergeQueueWireRules.MaxGlobs - 1).Select(i => $"\"g{i}/**\""));
+        var h = await HarnessAsync($"""
+            mergeQueue:
+              enabled: true
+              branches: [master]
+              postRebaseActionName: regenerate.yml
+              regeneratedPaths: [{globs}]
+            """);
+        h.Writer.PrepareResults.Enqueue(PreparedWith(new GitWriterResolution("a/one.json", "keep-both", true, 0), new GitWriterResolution("a/two.json", "keep-both", true, 0)));
+
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+
+        var entry = await h.EntryAsync();
+        entry.State.Should().Be(EMergeQueueEntryState.Evicted);
+        entry.EvictionReason.Should().Be("regenerated-paths-cap");
+        h.Queue.Dispatches.Should().BeEmpty("no run is spent on a patch the writer could not take");
+        h.Writer.Publishes.Should().BeEmpty();
+    }
+
     /// <summary>O36: an entry stored before the multi-workflow dispatch, waiting for its one run in the old fields.</summary>
     [Fact]
     public async Task An_entry_with_the_old_single_dispatch_fields_still_completes()
@@ -301,6 +387,8 @@ public class MergeQueueResolutionEngineTests : CoverageRavenTest
         entry.State.Should().Be(EMergeQueueEntryState.Merged);
         entry.DispatchRunId.HasValue.Should().BeFalse("the legacy fields moved into Dispatches");
         entry.Dispatches.Should().ContainSingle().Which.Workflow.Should().Be("regenerate.yml");
-        h.Writer.Publishes.Should().ContainSingle().Which.Patch.Should().Be(Convert.ToBase64String("diff --git a/x b/x\n"u8.ToArray()));
+        var publish = h.Writer.Publishes.Should().ContainSingle().Which;
+        publish.Patch.Should().Be(Convert.ToBase64String("diff --git a/x b/x\n"u8.ToArray()));
+        publish.RegeneratedPaths.Should().Equal(entry.Config.RegeneratedPaths, "an entry without resolutions sends its snapshot's list as before (O37)");
     }
 }

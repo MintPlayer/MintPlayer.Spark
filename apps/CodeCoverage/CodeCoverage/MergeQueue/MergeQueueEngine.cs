@@ -720,6 +720,10 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                 entry.WorkflowGuardBypassed = plan == EMergeQueuePlan.Dispatch && result.TouchesWorkflows;
                 switch (plan)
                 {
+                    case EMergeQueuePlan.Dispatch when MergeQueueWorkflowGuard.PublishRegeneratedPaths(entry.Config, entry.Resolutions) is null:
+                        // O37: decided before a run spends the repository's CI minutes on a patch the writer could not take.
+                        await EvictAsync(context, entry, RegeneratedPathsCap, RegeneratedPathsCapMessage(entry), entry.ResolvedPaths, ct: ct);
+                        return;
                     case EMergeQueuePlan.Dispatch:
                         Transition(entry, EMergeQueueEntryState.Preparing, $"prepared {Short(prepared)} on {Short(entry.BaseSha)}; regenerating {entry.ResolvedPaths.Count} resolved path(s) with "
                             + string.Join(", ", entry.RegenerateWorkflows)
@@ -785,6 +789,14 @@ public partial class MergeQueueEngine : IMergeQueueEngine
 
     /// <summary>O25: a fork's change under <c>.github/**</c> that needs the regenerate workflow. Never bypassed.</summary>
     internal const string ForkTouchesWorkflows = "fork-touches-workflows";
+
+    /// <summary>O37: the regeneratedPaths and the files a default or preset rule resolved exceed the writer's 64 entries.</summary>
+    internal const string RegeneratedPathsCap = "regenerated-paths-cap";
+
+    private static string RegeneratedPathsCapMessage(MergeQueueEntry entry)
+        => $"The regenerate patch may touch the {entry.Config.RegeneratedPaths.Count} `regeneratedPaths` globs and each file a default or preset rule resolved "
+           + $"({entry.ResolvedPaths.Count} resolved path(s)); together that is more than the {MergeQueueWireRules.MaxGlobs} entries the queue's git writer takes. "
+           + "Add a glob covering those files to `mergeQueue.regeneratedPaths`, or rebase and regenerate by hand.";
 
     /// <summary>Why a fork's <c>.github/**</c> change ends the entry before the dispatch (O25), and what to do instead: a
     /// head that already contains the latest base is merged as it is (O20 case 1), or an admin merges it (O21 B).</summary>
@@ -1183,6 +1195,12 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             await EvictAsync(context, entry, "writer-unavailable", "This server's git writer is not configured (MergeQueue:GitWriterUrl).", ct: ct);
             return;
         }
+        // T4, O37: the snapshot's regeneratedPaths plus the concrete files a default or preset rule resolved for this entry.
+        if (MergeQueueWorkflowGuard.PublishRegeneratedPaths(entry.Config, entry.Resolutions) is not { } regeneratedPaths)
+        {
+            await EvictAsync(context, entry, RegeneratedPathsCap, RegeneratedPathsCapMessage(entry), entry.ResolvedPaths, ct: ct);
+            return;
+        }
         // T9 (§0 D59, D71): the workflow permission only where it can matter, a same-repository change to the workflows.
         if (await WriterAccessAsync(context, entry, pull, PublishPushesWorkflowChanges(entry), ct) is not { } access) return;
 
@@ -1194,7 +1212,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             PushUrl: entry.IsFork ? access.PushUrl : null,
             PrBranch: entry.HeadBranch,
             Patch: patch,
-            RegeneratedPaths: entry.Config.RegeneratedPaths)
+            RegeneratedPaths: regeneratedPaths)
         {
             Patches = patches.Count > 1 ? patches : null,
         }, ct));

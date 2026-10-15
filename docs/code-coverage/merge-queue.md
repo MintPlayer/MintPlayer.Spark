@@ -171,6 +171,7 @@ mergeQueue:
   enabled: true
   branches: [master]
   postRebaseActionName: regenerate.yml
+  # replaces the default list (Spark's generated files and the lockfiles, O37)
   regeneratedPaths: ["**/App_Data/modelHashes.json", "**/App_Data/securityPosture.txt",
                      "**/App_Data/translations.json", "**/App_Data/security.json", "**/App_Data/Model/*.json"]
   autoResolve:
@@ -204,7 +205,7 @@ A repository with lockfiles and its own workflow per tool might add:
 | `postRebaseActionName` | file name | none | A workflow file name under `.github/workflows`, without a path: `^[A-Za-z0-9][A-Za-z0-9._-]{0,99}\.ya?ml$`. |
 | `postRebaseTimeout` | duration | `20m` | `90s`, `20m`, `1h`; a bare number is minutes and seconds round up; 1–360 minutes. |
 | `postRebaseWhen` | `auto-resolved` · `always` · `never` | `auto-resolved` | Dispatch only after a resolved conflict, after every rebase, or never. |
-| `regeneratedPaths` | list of globs | none | The paths a regenerate patch may touch (T4), **plus the path of every `autoResolve` rule that regenerates** (O36). At most 64 together, no empty pattern. None is fine without a regenerate step. |
+| `regeneratedPaths` | list of globs | `**/App_Data/modelHashes.json`, `**/App_Data/securityPosture.txt`, `**/package-lock.json`, `**/npm-shrinkwrap.json`, `**/yarn.lock`, `**/pnpm-lock.yaml`, `**/packages.lock.json` | The paths a regenerate patch may touch (T4). **Set, it replaces the default list entirely** (O37), even as `[]`; it is never merged into it. The path of every explicit `autoResolve` rule in `coverage.yml` that regenerates is added; a default or preset rule never adds its glob (below). At most 64 together, no empty pattern. An empty list is an error only when a workflow can run. |
 | `autoResolve[].path` | glob | — | Required. At most 64 entries, presets and defaults included. The first rule that matches a conflicted path decides. |
 | `autoResolve[].strategy` | `take-base` · `keep-both` · `line-set` · `evict` | `take-base` | `take-base`: the base branch's file, then the regenerate run rewrites it. `keep-both`: both sides' insertions at one place, base branch first (O33). `line-set`: the sorted, de-duplicated union of lines (`go.sum`). `evict`: never resolved; masks a later rule or default for its path. Anything else is an error (`json-union` was dropped, O1). |
 | `autoResolve[].keys` | list of top-level JSON member names | none | `take-base` only. None: a conflict on any line of the file resolves (O19). Given: only lines that hold one of these members do (O2), and every side must be a JSON object. At most 64 keys of 1–256 characters, no control character. |
@@ -250,9 +251,20 @@ for that path. The queue check's "Effective configuration" lists every rule with
 | `changelog` | `**/CHANGELOG.md` | `utf8` |
 | `xmlProjects` | `**/*.csproj`, `**/Directory.Packages.props`, `**/*.props`, `**/*.targets` | `xml` |
 
-The lists are `CodeCoverage.Git/MergeQueue/AutoResolvePresets.cs`. A default group regenerates like any keep-both rule:
-with a `postRebaseActionName`, a resolved JSON file is regenerated (synchronize re-sorts what it owns), and its glob joins
-`regeneratedPaths`. Set `regenerate: false` on an explicit rule, or turn the group off, where that is too wide.
+The lists are `CodeCoverage.Git/MergeQueue/AutoResolvePresets.cs`, the default `regeneratedPaths` too
+(`DefaultRegeneratedPaths`). A default group regenerates like any keep-both rule: with a `postRebaseActionName`, a
+resolved JSON file is regenerated (synchronize re-sorts what it owns).
+
+**A default or preset rule never widens `regeneratedPaths` by its glob (O37).** The regenerate run executes the pull
+request's code (T5), so `**/*.json` in the list would let it rewrite every JSON file, `appsettings.json` included.
+Instead, the publish allows each **concrete file** the entry's prepare resolved under a regenerating default or preset
+rule, as an exact entry beside the list (`MergeQueueWorkflowGuard.PublishRegeneratedPaths`): a keep-both resolution of
+`App/security.json` lets the patch touch `App/security.json`, and a patch to `App/appsettings.json` is still refused
+`patch-rejected` (`outside-regenerated-paths`). A file the list already covers takes no entry; a resolved path holding
+`*`, `?` or `[` is not added (it would match more than itself), so a patch to it is refused. The list and those files
+together are held to the writer's 64; more evicts `regenerated-paths-cap` before any run is dispatched. Only an
+explicit rule in `coverage.yml` with `regenerate: true` (or a `take-base` one) adds its glob: you wrote it. An entry
+prepared by a writer that does not report its resolutions (§10.6) sends its stored list as before.
 
 **keep-both, as built (§10.4).** The regions come from `git merge-file --diff3 --diff-algorithm=myers`, never zdiff3,
 which lifts lines both sides share (`"groupId": …`, `},`) out of a region and would glue two inserted objects into one.
@@ -779,6 +791,7 @@ kebab-cased by the writer.
 | `regenerate-timeout` | It did not finish within `postRebaseTimeout`. | Raise the timeout, or speed the workflow up. |
 | `regenerate-artifact` | A run's `merge-queue-patch` is missing, expired, over 8 MiB, or not exactly one file; the message names the workflow. | Fix the upload step. |
 | `patch-rejected` | The patch broke a T4 rule; the sub-reason and paths are shown (below). | Fix the generator, or `regeneratedPaths`. |
+| `regenerated-paths-cap` | `regeneratedPaths` and the files a default or preset rule resolved are more than the writer's 64 entries (O37); evicted before any run. | Add a glob covering those files to `regeneratedPaths`, or rebase by hand. |
 | `push-rejected` | GitHub refused the push to `mq/…` before a dispatch or to the pull request's branch, or the deletion of `mq/…`; GitHub's message is shown. | Usually a rule covering `mq/**` or the pull request's branch (§3). |
 | `push-refused` | No credential to push with: the fork is gone or its box was unticked since enqueue, or there is no installation. | As the message says. |
 | `fork-workflow-update-needed` | GitHub refused to write workflow files into the fork's branch: an App may not create or update a workflow file the fork has on no branch, whatever its permissions, and the base changed its workflows since the fork branched (D69). | Click **Update branch** on the pull request (or merge the base into the branch), then queue it again. |
@@ -818,7 +831,7 @@ power, or forged. It must never merge more than was approved or authorised (O10)
 | T1 | A forged actor | The actor is the HMAC-verified webhook's `sender`, or the signed-in session's linked login. It is never comment text or a request body. The panel's buttons are an antiforgery-guarded POST (queue) and DELETE (dequeue). A click on the check's button (O30) counts only on this App's own "Merge queue" check run with the `mq-enqueue` identifier, and its actor is the delivery's `sender`. Bots never command (D46). |
 | T2 | Too little role | `write` at enqueue and again before the merge. Dequeue needs the author or `write`. The bypass role (O22) is likewise read when it decides and again before the merge. |
 | T3 | A swap after approval | The head SHA is pinned at enqueue, and PREPARE fetches exactly it. Any push whose SHA the queue did not write evicts. Every push is a lease, and the merge carries `sha`. The approval floor counts only approvals of the pinned commit (or the queue's own commit from it), and is checked again right before the merge, where a writer's request for changes vetoes (D61). |
-| T4 | Content smuggled in the patch | Strict parser before any clone (D30): only `regeneratedPaths`, 100644 text, no mode change, symlink, submodule, binary, copy, `.github`, `.gitattributes` or `.gitmodules`; ≤ 500 files, ≤ 8 MiB. The trees are compared after applying, and patched files are held to their `autoResolve` validators (§10.4). The verify checks run on the final commit. |
+| T4 | Content smuggled in the patch | Strict parser before any clone (D30): only `regeneratedPaths` (the default list or `coverage.yml`'s, plus the concrete files a default or preset rule resolved for the entry, never a default's glob, O37), 100644 text, no mode change, symlink, submodule, binary, copy, `.github`, `.gitattributes` or `.gitmodules`; ≤ 500 files, ≤ 8 MiB. The trees are compared after applying, and patched files are held to their `autoResolve` validators (§10.4). The verify checks run on the final commit. |
 | T5 | Secrets stolen through a workflow the pull request changed, or through the base's own workflows running a fork's code | **D12:** a dispatched run uses the workflow file of the dispatched `mq/` ref, not the default branch's (T5(a) was refuted live), and a push to `mq/` starts `push` workflows from the pushed commit's own files, on that commit, with the repository's secrets. So the queue pushes to `mq/` only right before a dispatch (D65), never at PREPARE. A fork's commit that changes `.github/**` against its base never reaches `mq/`: it is evicted `fork-touches-workflows` before a dispatch, whatever the role (O25), and the git writer refuses its queue-branch push itself (D67); D65 reads the merged tree, so a rename on the base cannot carry a fork's edit into a workflow unseen. Without a dispatch it goes to the fork's own branch only, as it would without the queue (O25). A fork's commit is pushed to `mq/` only after the fork precondition (§2.3, D65): no `push`/`create` trigger runs on that branch, the regenerate workflow is read-only, no `workflow_run` follows it there, and no workflow runs on the commit's checks, statuses or deployments (O25). A same-repository change, whose author's own push already ran those workflows, goes through only when nothing is dispatched, or through the bypass role (O21 A, O22). Before every dispatch the workflow's blob on `mq/` must equal the default branch's, and nothing bypasses that. The main defence stays §2.3: `contents: read`, no secrets, no `id-token`, GitHub-hosted runners, because the pull request's build code runs either way. A dispatch happens only after an authorised enqueue. |
 | T6 | A pull request widening the configuration | `mergeQueue:` comes from the default branch only (O16); trust settings are in the database (O15). |
 | T7 | The bot skipping the repository's rules | The App is exempt only from ruleset 1. Enqueue refuses any ruleset holding reviews or checks that the App itself can bypass (`current_user_can_bypass` read with its own token, D16). People may bypass ruleset 2 (O22); that is the repository's policy, not the bot's. |
@@ -956,9 +969,9 @@ Not verified, or not supported:
   evicts, by design. Several regenerate workflows run one after the other, never in parallel, and none sees another's
   patch, so two that write one file are refused (`regenerate-overlap`) rather than merged. At most 8 distinct workflows,
   8 validators per rule, 64 rules with presets and defaults. Caps: take-base sides 16 MiB (never parsed); keep-both,
-  line-set and every validated file 4 MiB; the regenerate patches 8 MiB together. A keep-both default that regenerates
-  widens `regeneratedPaths` by its glob (`**/*.json` and friends with a `postRebaseActionName`); turn the group off or set
-  `regenerate: false` on an explicit rule where that is too wide. A writer deploy that changes the resolver or git version
+  line-set and every validated file 4 MiB; the regenerate patches 8 MiB together. A keep-both default or preset that
+  regenerates lets the patch touch only the files it resolved, never its whole glob (O37, §2.2); `regeneratedPaths` and
+  those files together are capped at 64 entries (`regenerated-paths-cap`). A writer deploy that changes the resolver or git version
   between the prepare and a later job restarts the entry instead of evicting it (O35 #4).
 - Unmeasured with the production App so far: Commit statuses: read (D40); that an Actions check run's id is its job's id
   for re-runs (D48); that the App's `workflows` permission follows the OAuth scope's "same file on another branch" rule

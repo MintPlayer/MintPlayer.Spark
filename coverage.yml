@@ -13,7 +13,8 @@ mergeQueue:
   postRebaseActionName: regenerate.yml
   postRebaseTimeout: 20m
   postRebaseWhen: auto-resolved
-  # The only paths the regenerate patch may touch (T4). Synchronize writes nothing else.
+  # The only paths the regenerate patch may touch (T4), besides each file a keepBothDefaults rule resolved for the
+  # entry (never the default's glob, O37). Synchronize writes nothing else. This list replaces the default one.
   regeneratedPaths:
     - "**/App_Data/modelHashes.json"
     - "**/App_Data/securityPosture.txt"
