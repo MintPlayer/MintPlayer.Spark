@@ -193,6 +193,24 @@ public interface IForgeMergeQueue
     Task<long> PostCommentAsync(Repository repository, int number, string body, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The issues pull request <paramref name="number"/> says it closes (closing keywords in its description, or issues
+    /// linked to it by hand), each with its repository and whether it is still open, in the forge's order; at most
+    /// <see cref="ForgeClosingIssue.MaxListed"/>. Empty when there is none, or the pull request does not exist. Which of
+    /// them to close is the caller's call (merge-queue PRD §0 D106).
+    /// </summary>
+    Task<IReadOnlyList<ForgeClosingIssue>> GetClosingIssuesAsync(Repository repository, int number, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Closes issue <paramref name="number"/> of <paramref name="repository"/> as completed, then posts
+    /// <paramref name="comment"/> on it (§0 D106). False when the forge does not know the issue (deleted or moved).
+    /// </summary>
+    /// <remarks>
+    /// Closed first, so a retry after a failed comment finds the issue closed and neither closes nor comments twice; such a
+    /// retry leaves the comment out, never the close.
+    /// </remarks>
+    Task<bool> CloseIssueAsync(Repository repository, int number, string comment, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// What ONE git-writer job is handed (T9, merge-queue PRD §0 D59): the base repository's clone URL, where the job
     /// pushes, and a credential minted for this job alone. It reaches <paramref name="repository"/> and nothing else, with
     /// contents write, plus the forge's workflow permission only when <paramref name="pushesWorkflowChanges"/>. It is never
@@ -413,6 +431,16 @@ public sealed record ForgePullRequestCommit(string Sha, string? AuthorName, stri
 /// <param name="AuthorLogin">The forge account that opened it, when the forge says.</param>
 /// <param name="IsDraft">The forge marks it a draft; the queue does not offer drafts.</param>
 public sealed record ForgeOpenPullRequest(int Number, string Title, string BaseRef, string? AuthorLogin, bool IsDraft);
+
+/// <summary>One issue a pull request says it closes (merge-queue PRD §0 D106).</summary>
+/// <param name="Number">The issue's number in <paramref name="RepositoryFullName"/>.</param>
+/// <param name="RepositoryFullName">The repository the issue lives in, <c>owner/name</c>: a pull request may name an issue of another repository.</param>
+/// <param name="IsOpen">The issue is still open.</param>
+public sealed record ForgeClosingIssue(int Number, string RepositoryFullName, bool IsOpen)
+{
+    /// <summary>The most closing issues read of one pull request; the rest are left as they are.</summary>
+    public const int MaxListed = 50;
+}
 
 /// <summary>One pull-request review.</summary>
 /// <param name="CommitSha">The head the review was given on; an approval counts for that commit only (O11).</param>

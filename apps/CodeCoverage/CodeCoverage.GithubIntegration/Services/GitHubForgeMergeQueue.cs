@@ -931,6 +931,85 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
         }
     }
 
+    // ── Linked issues (§0 D106) ──────────────────────────────────────────────────────────────────
+
+    /// <summary>The closing issue references of one pull request; every value is a variable, never part of the text.</summary>
+    internal const string ClosingIssuesQuery = """
+        query($owner: String!, $name: String!, $number: Int!, $first: Int!) {
+          repository(owner: $owner, name: $name) {
+            pullRequest(number: $number) {
+              closingIssuesReferences(first: $first) { nodes { number state repository { nameWithOwner } } }
+            }
+          }
+        }
+        """;
+
+    /// <remarks>
+    /// GraphQL's <c>closingIssuesReferences</c>: REST lists no closing references. Sent raw like the rest of this class,
+    /// owner, name and number as variables. GraphQL answers a refusal with 200 and an <c>errors</c> entry of type
+    /// <c>FORBIDDEN</c>, and a missing repository or pull request with 200 and <c>NOT_FOUND</c>.
+    /// </remarks>
+    public async Task<IReadOnlyList<ForgeClosingIssue>> GetClosingIssuesAsync(Repository repository, int number, CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(number);
+        var body = new Dictionary<string, object?>
+        {
+            ["query"] = ClosingIssuesQuery,
+            ["variables"] = new Dictionary<string, object?>
+            {
+                ["owner"] = repository.OwnerLogin,
+                ["name"] = repository.Name,
+                ["number"] = number,
+                ["first"] = ForgeClosingIssue.MaxListed,
+            },
+        };
+
+        using var reply = await SendAsync(repository, HttpMethod.Post, "graphql", body, DefaultApiVersion, cancellationToken);
+        EnsureSuccess(reply);
+        var root = reply.Json?.RootElement ?? default;
+
+        var errors = Items(root, "errors").ToList();
+        if (errors.Count > 0)
+        {
+            var messages = string.Join("; ", errors.Select(e => Str(e, "message") ?? "no message"));
+            if (errors.Any(e => Str(e, "type") == "FORBIDDEN"))
+                throw new ForgeAccessDeniedException($"GitHub refused the closing issues of #{number}: {messages}", reply.AcceptedPermissions);
+            if (errors.All(e => Str(e, "type") == "NOT_FOUND"))
+                return [];
+            throw new ForgeRequestException($"GitHub answered the closing issues of #{number} with errors: {messages}", (int)reply.Status);
+        }
+
+        var references = Child(Child(Child(Child(root, "data"), "repository"), "pullRequest"), "closingIssuesReferences");
+        return [.. Items(references, "nodes")
+            .Select(node => (Number: Num(node, "number"), Repository: Str(Child(node, "repository"), "nameWithOwner"), State: Str(node, "state")))
+            .Where(n => n.Number is > 0 and <= int.MaxValue && n.Repository is not null)
+            .Select(n => new ForgeClosingIssue((int)n.Number!.Value, n.Repository!, n.State == "OPEN"))];
+    }
+
+    /// <remarks>
+    /// <c>PATCH /issues/{n}</c> with <c>state_reason: completed</c>, what a closing keyword does, then
+    /// <c>POST /issues/{n}/comments</c>. Both take <c>issues: write</c>; a 403 names it when GitHub does not.
+    /// </remarks>
+    public async Task<bool> CloseIssueAsync(Repository repository, int number, string comment, CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(number);
+        ArgumentException.ThrowIfNullOrEmpty(comment);
+        var path = $"{RepoPath(repository)}/issues/{number.ToString(CultureInfo.InvariantCulture)}";
+
+        using (var closed = await SendAsync(repository, HttpMethod.Patch, path,
+            new Dictionary<string, object?> { ["state"] = "closed", ["state_reason"] = "completed" }, DefaultApiVersion, cancellationToken))
+        {
+            // 404: no such issue, or none this installation can see; 410: deleted.
+            if (closed.Status is HttpStatusCode.NotFound or HttpStatusCode.Gone) return false;
+            EnsureSuccess(closed, "issues=write");
+        }
+
+        using var commented = await SendAsync(repository, HttpMethod.Post, $"{path}/comments",
+            new Dictionary<string, object?> { ["body"] = comment }, DefaultApiVersion, cancellationToken);
+        EnsureSuccess(commented, "issues=write");
+        return true;
+    }
+
     // ── The writer's credential (T9) ─────────────────────────────────────────────────────────────
 
     /// <remarks>
@@ -1106,13 +1185,14 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
         => response.Headers.TryGetValues("X-Accepted-GitHub-Permissions", out var values) ? values.FirstOrDefault() : null;
 
     /// <summary>Throws the neutral exception for anything that is not a 2xx.</summary>
-    private static void EnsureSuccess(Reply reply)
+    /// <param name="forbiddenNeeds">The permission a 403 names when GitHub's own header does not say.</param>
+    private static void EnsureSuccess(Reply reply, string? forbiddenNeeds = null)
     {
         if (reply.IsSuccess) return;
 
         var what = $"GitHub answered {(int)reply.Status} to {reply.Method} {reply.Path}: {reply.Message ?? "no message"}";
         throw reply.Status is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden
-            ? new ForgeAccessDeniedException(what, reply.AcceptedPermissions)
+            ? new ForgeAccessDeniedException(what, reply.AcceptedPermissions ?? (reply.Status == HttpStatusCode.Forbidden ? forbiddenNeeds : null))
             : new ForgeRequestException(what, (int)reply.Status);
     }
 
@@ -1209,6 +1289,13 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
 
     private static bool Flag(JsonElement element, string name)
         => element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.True;
+
+    /// <summary>The object or array <paramref name="name"/> of <paramref name="element"/>; default (undefined) otherwise, so it chains.</summary>
+    private static JsonElement Child(JsonElement element, string name)
+        => element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out var value)
+            && value.ValueKind is JsonValueKind.Object or JsonValueKind.Array
+            ? value
+            : default;
 
     private static IEnumerable<JsonElement> Items(JsonElement element, string name)
         => element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Array

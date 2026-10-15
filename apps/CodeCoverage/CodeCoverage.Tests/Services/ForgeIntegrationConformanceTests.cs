@@ -110,6 +110,8 @@ public class ForgeIntegrationConformanceTests
         (nameof(IForgeMergeQueue.AddLabelAsync), q => q.AddLabelAsync(SampleRepository, 1, "merge-queue")),
         (nameof(IForgeMergeQueue.RemoveLabelAsync), q => q.RemoveLabelAsync(SampleRepository, 1, "merge-queue")),
         (nameof(IForgeMergeQueue.PostCommentAsync), q => q.PostCommentAsync(SampleRepository, 1, "body")),
+        (nameof(IForgeMergeQueue.GetClosingIssuesAsync), q => q.GetClosingIssuesAsync(SampleRepository, 1)),
+        (nameof(IForgeMergeQueue.CloseIssueAsync), q => q.CloseIssueAsync(SampleRepository, 2, "Closed by #1 (merged by the merge queue).")),
         (nameof(IForgeMergeQueue.GetWriterAccessAsync), q => q.GetWriterAccessAsync(SampleRepository, new ForgePullRequest(1, SampleSha, "feature", 1, "main", 1, "main", true), false)),
         (nameof(IForgeMergeQueue.RevokeWriterAccessAsync), q => q.RevokeWriterAccessAsync(SampleRepository, new ForgeWriterAccess("https://example.invalid/a/b.git", "https://example.invalid/a/b.git", "x-access-token", "t"))),
     ];

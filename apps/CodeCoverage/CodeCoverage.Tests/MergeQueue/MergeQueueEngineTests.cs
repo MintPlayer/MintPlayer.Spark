@@ -717,6 +717,160 @@ public class MergeQueueEngineTests : CoverageRavenTest
         entry.MergeCommitSha.Should().Be(MergeCommit);
     }
 
+    // ── The linked issues after the merge (§0 D106) ─────────────────────────────────────────────────
+
+    private const string ClosedByComment = "Closed by #7 (merged by the merge queue).";
+
+    /// <summary>One open issue of this repository, one of another repository, and one already closed.</summary>
+    private static List<ForgeClosingIssue> LinkedIssues() =>
+    [
+        new(284, "acme/widget", true),
+        new(12, "acme/other", true),
+        new(154, "acme/widget", false),
+    ];
+
+    /// <summary>
+    /// §0 D106, live 2026-10-15: GitHub left #284 open after the queue merged #518, which lists it among its closing
+    /// issues. After the merge, the queue closes the open ones of its own repository, and only those.
+    /// </summary>
+    [Fact]
+    public async Task After_a_merge_the_open_linked_issues_of_the_repository_are_closed()
+    {
+        var h = await HarnessAsync(mergeBase: BaseSha);
+        h.Queue.ClosingIssues[Number] = LinkedIssues();
+
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+
+        (await h.EntryAsync()).State.Should().Be(EMergeQueueEntryState.Merged);
+        h.Queue.ClosingIssueQueries.Should().BeEmpty("the step waits, so GitHub's own close comes first when there is one");
+        h.Delayed.Should().ContainSingle(s => s.Step == EMergeQueueStep.CloseIssues);
+
+        await h.ReleaseAsync(EMergeQueueStep.CloseIssues);
+
+        h.Queue.ClosedIssues.Should().Equal([(284, ClosedByComment)], "another repository's issue and a closed one are left alone");
+        var entry = await h.EntryAsync();
+        entry.State.Should().Be(EMergeQueueEntryState.Merged);
+        entry.History.Should().Contain(e => e.Text == "closed the linked issues #284");
+    }
+
+    [Fact]
+    public async Task A_redelivered_close_step_closes_nothing_twice()
+    {
+        var h = await HarnessAsync(mergeBase: BaseSha);
+        h.Queue.ClosingIssues[Number] = LinkedIssues();
+        await h.EnqueueAsync();
+        await h.ReleaseAsync(EMergeQueueStep.CloseIssues);
+
+        await h.StepAsync(h.Handled[^1]);
+
+        h.Queue.ClosingIssueQueries.Should().Equal([Number, Number]);
+        h.Queue.ClosedIssues.Should().ContainSingle("the issue the first delivery closed is closed now");
+    }
+
+    /// <summary>A merge completed by the merged event, then by the late poll, queues the close once.</summary>
+    [Fact]
+    public async Task A_merge_completed_by_the_event_queues_the_close_once()
+    {
+        var h = await HarnessAsync(mergeBase: BaseSha);
+        h.Queue.MergeReplies.Enqueue(new ForgeMergeRequest(EForgeMergeState.Pending, "d45ff22b-73cf-44a4-9eb0-cbf81c955578", null, "enqueued"));
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+
+        await h.SignalAsync(new MergeQueueSignalMessage { RepositoryId = RepositoryId, Kind = EMergeQueueSignal.Merged, Number = Number, Sha = MergeCommit });
+        await h.ReleaseAsync(EMergeQueueStep.PollMerge);
+
+        h.Delayed.Where(s => s.Step == EMergeQueueStep.CloseIssues).Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task A_refused_close_leaves_the_merge_standing_and_says_so_on_the_pull_request()
+    {
+        var h = await HarnessAsync(mergeBase: BaseSha);
+        h.Queue.ClosingIssues[Number] = LinkedIssues();
+        h.Queue.CloseIssueThrows = new ForgeAccessDeniedException("GitHub answered 403 to PATCH repos/acme/widget/issues/284: Resource not accessible by integration", "issues=write");
+        await h.EnqueueAsync();
+
+        await h.ReleaseAsync(EMergeQueueStep.CloseIssues);
+
+        var entry = await h.EntryAsync();
+        entry.State.Should().Be(EMergeQueueEntryState.Merged, "closing the issues is best effort after the merge");
+        entry.MergeCommitSha.Should().Be(MergeCommit);
+        entry.History.Should().Contain(e => e.Text.StartsWith("could not close the linked issues", StringComparison.Ordinal));
+        h.Queue.ClosedIssues.Should().BeEmpty();
+        h.Queue.Comments.Should().Contain(c => c.Number == Number && c.Body.Contains("refused to let it close the issues it links") && c.Body.Contains("`issues=write`"));
+    }
+
+    [Fact]
+    public async Task A_close_that_may_pass_is_retried_by_the_runtime_and_then_closes()
+    {
+        var h = await HarnessAsync(mergeBase: BaseSha);
+        h.Queue.ClosingIssues[Number] = LinkedIssues();
+        h.Queue.CloseIssueThrows = new ForgeRequestException("GitHub answered 502 to PATCH repos/acme/widget/issues/284", 502);
+        await h.EnqueueAsync();
+
+        var release = () => h.ReleaseAsync(EMergeQueueStep.CloseIssues);
+        await release.Should().ThrowAsync<ForgeRequestException>("the messaging runtime retries a step that fails like this");
+        (await h.EntryAsync()).State.Should().Be(EMergeQueueEntryState.Merged, "the merge stands");
+
+        await h.StepAsync(h.Handled[^1]);
+
+        h.Queue.ClosedIssues.Should().Equal([(284, ClosedByComment)]);
+    }
+
+    [Fact]
+    public async Task A_merge_that_fails_closes_nothing()
+    {
+        var h = await HarnessAsync(mergeBase: BaseSha);
+        h.Queue.ClosingIssues[Number] = LinkedIssues();
+        h.Queue.MergeReplies.Enqueue(new ForgeMergeRequest(EForgeMergeState.Failed, null, null, "Repository rule violations found"));
+
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+
+        (await h.EntryAsync()).State.Should().Be(EMergeQueueEntryState.Evicted);
+        h.Delayed.Should().NotContain(s => s.Step == EMergeQueueStep.CloseIssues);
+        h.Queue.ClosingIssueQueries.Should().BeEmpty();
+        h.Queue.ClosedIssues.Should().BeEmpty();
+    }
+
+    /// <summary>GitHub closes linked issues only on a merge into the default branch, and the queue does no more.</summary>
+    [Fact]
+    public async Task A_merge_into_a_branch_that_is_not_the_default_closes_nothing()
+    {
+        var h = await HarnessAsync(mergeBase: BaseSha);
+        h.Queue.ClosingIssues[Number] = LinkedIssues();
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+        using (var session = h.Store.OpenAsyncSession())
+        {
+            (await session.LoadAsync<Entities.Repository>(RepositoryId))!.DefaultBranch = "main";
+            await session.SaveChangesAsync();
+        }
+
+        await h.ReleaseAsync(EMergeQueueStep.CloseIssues);
+
+        h.Queue.ClosingIssueQueries.Should().BeEmpty();
+        h.Queue.ClosedIssues.Should().BeEmpty();
+    }
+
+    /// <summary>§0 D106: an App without <c>issues: write</c> still merges; the check warns that the issues may stay open.</summary>
+    [Fact]
+    public async Task An_app_without_issues_write_warns_at_enqueue_and_still_merges()
+    {
+        var h = await HarnessAsync(mergeBase: BaseSha);
+        var app = FixedPermissions.FullApp();
+        app["issues"] = "read";
+        h.Permissions.Add(new FixedPermissions("https://github.com/organizations/acme/settings/installations/4242") { AppPermissions = app });
+
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+
+        var entry = await h.EntryAsync();
+        entry.State.Should().Be(EMergeQueueEntryState.Merged);
+        entry.Warnings.Should().ContainSingle(w => w.Contains("Issues (write)") && w.Contains("cannot close the issues"));
+    }
+
     [Fact]
     public async Task A_head_modified_answer_is_retried_once_after_a_delay()
     {
@@ -2178,7 +2332,7 @@ public class MergeQueueEngineTests : CoverageRavenTest
         public static Dictionary<string, string> FullApp() => new()
         {
             ["contents"] = "write", ["pull_requests"] = "write", ["checks"] = "write", ["metadata"] = "read",
-            ["statuses"] = "read", ["issues"] = "read", ["actions"] = "write", ["workflows"] = "write",
+            ["statuses"] = "read", ["issues"] = "write", ["actions"] = "write", ["workflows"] = "write",
         };
 
         public static readonly string[] AllEvents =

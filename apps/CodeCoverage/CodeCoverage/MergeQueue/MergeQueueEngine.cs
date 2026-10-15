@@ -196,6 +196,12 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             await session.SaveChangesAsync(ct);
             return;
         }
+        if (step.Step == EMergeQueueStep.CloseIssues)
+        {
+            await CloseLinkedIssuesAsync(context, entry, step, ct);
+            await session.SaveChangesAsync(ct);
+            return;
+        }
 
         // Idempotency: a step for another run, or for a state this run has left, is a no-op.
         if (entry.Run != step.Run || entry.Generation != step.Generation || !Expects(step.Step, entry.State))
@@ -503,6 +509,11 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         if (await AppGapsAsync(source, EMergeQueueAppNeed.Workflows, ct) is { IsEmpty: false } workflowGaps)
             entry.Warnings.Add($"The App does not request {Permissions(workflowGaps.MissingPermissions)}, so a run whose rebase changes a workflow file cannot push it. "
                 + $"The App's owner adds it under Permissions & events on {SettingsLink(workflowGaps.SettingsUrl)}, then each installation accepts it.");
+
+        // §0 D106: closing the linked issues runs after the merge and never holds it up, so its gap only warns.
+        if (await AppGapsAsync(source, EMergeQueueAppNeed.CloseIssues, ct) is { IsEmpty: false } issueGaps)
+            entry.Warnings.Add($"The App does not request {Permissions(issueGaps.MissingPermissions)}, so after the merge the queue cannot close the issues this pull request links if GitHub leaves them open. "
+                + $"The App's owner adds it under Permissions & events on {SettingsLink(issueGaps.SettingsUrl)}, then each installation accepts it.");
 
         if (context.Account is { } account
             && await PendingAsync(context, source, ct) is { Pending.Count: > 0 } pending
@@ -1490,6 +1501,69 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             }
         }
         await EndAsync(context, entry, EMergeQueueEntryState.Merged, null, ct);
+
+        // §0 D106: the linked issues, through the outbox, so the step is queued exactly when the merge is recorded. A crash
+        // before the save leaves the entry merging, and whichever of the poll or the merged event completes it queues it.
+        await outbox.EnqueueAsync(session, new MergeQueueStepMessage
+        {
+            EntryId = entry.Id!, Run = entry.Run, Generation = entry.Generation, Step = EMergeQueueStep.CloseIssues,
+        }, new BroadcastOptions { Delay = CloseIssuesDelay }, ct);
+    }
+
+    // ═══ After the merge: the linked issues (§0 D106) ═══════════════════════════════════════════════
+
+    /// <summary>
+    /// How long after the merge the queue looks at the linked issues. When GitHub closes them itself, it has by then, and
+    /// the queue only closes what it left open.
+    /// </summary>
+    internal static readonly TimeSpan CloseIssuesDelay = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// Closes the issues the merged pull request links that are still open, in the pull request's own repository, as
+    /// GitHub would have on a merge into the default branch (§0 D106: it left #284 open after the queue merged #518). Best
+    /// effort: the merge is recorded already and nothing here changes it. A forge failure that may pass throws, so the
+    /// messaging runtime retries the step, which skips what an earlier attempt closed; a refused permission is noted, logged
+    /// and said in a comment on the pull request, and not retried.
+    /// </summary>
+    private async Task CloseLinkedIssuesAsync(Context context, MergeQueueEntry entry, MergeQueueStepMessage step, CancellationToken ct)
+    {
+        if (entry.State != EMergeQueueEntryState.Merged || entry.Run != step.Run) return;
+        var repository = context.Repository;
+        // GitHub closes linked issues only on a merge into the default branch; the queue does no more than that.
+        if (repository.DefaultBranch is null || !string.Equals(entry.BaseBranch, repository.DefaultBranch, StringComparison.Ordinal)) return;
+
+        var closed = new List<int>();
+        try
+        {
+            foreach (var issue in await context.Queue.GetClosingIssuesAsync(repository, entry.Number, ct))
+            {
+                // Another repository's issue is that repository's to close; a closed one needs nothing (and a rerun finds
+                // the ones it closed before closed).
+                if (!issue.IsOpen || !string.Equals(issue.RepositoryFullName, repository.FullName, StringComparison.OrdinalIgnoreCase)) continue;
+                if (await context.Queue.CloseIssueAsync(repository, issue.Number, $"Closed by #{entry.Number} (merged by the merge queue).", ct))
+                    closed.Add(issue.Number);
+            }
+        }
+        catch (ForgeAccessDeniedException ex)
+        {
+            // Refused now, refused on every retry. The merge stands; the people who read the pull request are told.
+            entry.Note(Now, $"could not close the linked issues{Closed(closed, ", after closing ")}: {ex.Message}");
+            logger.LogWarning(ex, "Merge queue: could not close the issues #{Number} in {Repository} links", entry.Number, repository.FullName);
+            var lacking = await AppLacksAsync(context, ex.RequiredPermission, ct);
+            var url = lacking is null ? await PermissionsUrlAsync(context, ct) : null;
+            await BestEffortAsync(() => context.Queue.PostCommentAsync(context.Repository, entry.Number,
+                $"The merge queue merged this pull request, but the forge refused to let it close the issues it links"
+                + $"{(ex.RequiredPermission is { } p ? $" (it asks for `{p}`)" : string.Empty)}: {ex.Message}"
+                + (lacking is not null ? $"\n\n{lacking}" : url is not null ? $"\n\n[Accept the App's new permissions]({url})." : string.Empty)
+                + "\n\nClose them by hand.", ct), "comment");
+            return;
+        }
+
+        if (closed.Count > 0)
+            entry.Note(Now, $"closed the linked issues{Closed(closed, " ")}");
+
+        static string Closed(List<int> numbers, string lead)
+            => numbers.Count == 0 ? string.Empty : lead + string.Join(", ", numbers.Select(n => $"#{n.ToString(CultureInfo.InvariantCulture)}"));
     }
 
     // ═══ Ending a run ═══════════════════════════════════════════════════════════════════════════════
@@ -2068,7 +2142,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             .Split([',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Select(p => p.Split('=')[0].Trim())
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        const EMergeQueueAppNeed everything = EMergeQueueAppNeed.Core | EMergeQueueAppNeed.Dispatch | EMergeQueueAppNeed.RerunActions | EMergeQueueAppNeed.Workflows;
+        const EMergeQueueAppNeed everything = EMergeQueueAppNeed.Core | EMergeQueueAppNeed.Dispatch | EMergeQueueAppNeed.RerunActions | EMergeQueueAppNeed.Workflows | EMergeQueueAppNeed.CloseIssues;
         if (await AppGapsAsync(source, everything, ct) is not { } gaps) return null;
         var lacking = gaps.MissingPermissions.Where(p => asked.Contains(p.Name)).ToList();
         return lacking.Count == 0
