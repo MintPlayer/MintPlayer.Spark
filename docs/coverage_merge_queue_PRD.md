@@ -1,7 +1,7 @@
 # PRD — a conflict-resolving merge queue in CodeCoverage (rebase → auto-resolve → `postRebaseActionName` → squash)
 
 **Status (2026-10-15):** **Implemented; PR [#515](https://github.com/MintPlayer/MintPlayer.Spark/pull/515) open. The commits since its first CI run are local, for one push.**
-- The owner decisions O1–O32 and the implementation decisions D12–D92 in §0 supersede §§1–8 where they disagree. ~~**In progress: O30, the "Add to merge queue" check button.**~~ **[Built 2026-10-15: D88; O32's comment link and "Remove from queue", D89 and D90; O31's menu links and url-only hash, D91; the live test's superseded-run defect, D92. Next: the rest of the live test with the CoverageDevelopment App, then one push.]**
+- The owner decisions O1–O32 and the implementation decisions D12–D92 in §0 supersede §§1–8 where they disagree. ~~**In progress: O30, the "Add to merge queue" check button.**~~ **[Built 2026-10-15: D88; O32's comment link and "Remove from queue", D89 and D90; O31's menu links and url-only hash, D91; the live test's superseded-run defect, D92. Live-tested 2026-10-15 (M10). Next: the local sweep, then one push.]**
 - CI runs 2 and 3 (2026-10-15) each found one test defect:
   - Linux's Chromium temp files broke the download proof (D86).
   - The po-detail spec charged a one-time render to its first test (D87).
@@ -907,6 +907,18 @@ Each spike records its numbers or its red/green result in this file.
   - DemoApp's `<bs-card>` address card: 24rem, 8/16 px padding
   - QnA's moderation views were checked by their specs only.
 - **Left before the push:** ~~the last plain Bootstrap classes (D84's open bullet), then~~ **[done 2026-10-15, D84]** CI run 2.
+- **Live test of O30–O32 and O31, 2026-10-15.** Run against the CoverageDevelopment App, the local CodeCoverage host and the local git writer, on `mq-spike-public`. Each click was made in a browser signed in as the owner. The app logs `enqueue of #N … (check button)` and `dequeue of #18 … (check button)` show that GitHub delivered every requested action over the dev webhook channel, so the dev App receives `check_run`.
+  - **The button (O30).** #14–#18 each got "Merge queue · Not queued" (completed, neutral) with "Add to merge queue" (`offered #N … the button on <sha>`). A click queued the pull request.
+    - #14 already held the latest `main`: "Merged by the queue" ten seconds later.
+    - #15: "Queued: #2 in line", then rebased and published ("Publishing the rebased commit"), "Waiting for checks", merged.
+    - #16 and #17 merged.
+  - **Remove from queue (O32).** #18 showed "Queued: #2 in line" behind #17. "Remove from queue" made it "Dequeued" (neutral), which offers "Add to merge queue" again and no Remove button. Clicked, it was rebased onto the new `main` and merged.
+  - **An eviction stays red with the button.** #8 (a hand conflict), closed and reopened, was offered the button. Queued, it waited "Queued: #2 in line" behind #18, then ended "Evicted: conflict-outside-allow-list", conclusion `failure`, with one "Add to merge queue" button.
+  - **Found and fixed: D92.** The publish left #15's run on its original commit `in_progress` (run 116250749140).
+  - **Navigation (O31).**
+    - The menu item "Merge queue setup" renders `href="/merge-queue/setup"` with no `target` and no `rel`. A click opens the guide in the same tab, the item marked `active` and `aria-current="page"`.
+    - The repository page's queue panel links "Setup guide" to `/merge-queue/setup?provider=github&account=<login>`. There, "Open <login>'s CodeCoverage page" leads to the account page and its "Merge queue" group. The link said "organization page" for a personal account; it was reworded in `5c9263ee`.
+  - **Not exercised live:** the coverage comment's link to the check (O32 A). The scratch repository uploads no coverage to the local host, so it rests on `MergeQueueCommentLinkTests` and the renderer's tests.
 - **The deploy is the owner's:** raise the production App's permissions and events (hosting.md §6), and deploy the app with `codecoverage-git-writer`. The writer image built in CI, which settles D29. |
 
 ## 9. Risks
