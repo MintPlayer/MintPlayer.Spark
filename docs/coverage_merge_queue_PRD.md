@@ -1,7 +1,7 @@
 # PRD — a conflict-resolving merge queue in CodeCoverage (rebase → auto-resolve → `postRebaseActionName` → squash)
 
 **Status (2026-10-15):** **Implemented; PR [#515](https://github.com/MintPlayer/MintPlayer.Spark/pull/515) open. The commits since its first CI run are local, for one push.**
-- The owner decisions O1–O29 and the implementation decisions D12–D87 in §0 supersede §§1–8 where they disagree.
+- The owner decisions O1–O30 and the implementation decisions D12–D87 in §0 supersede §§1–8 where they disagree. **In progress: O30, the "Add to merge queue" check button.**
 - CI runs 2 and 3 (2026-10-15) each found one test defect:
   - Linux's Chromium temp files broke the download proof (D86).
   - The po-detail spec charged a one-time render to its first test (D87).
@@ -176,6 +176,15 @@ These supersede the text below where they disagree. Superseded passages are mark
 | O27 | **Use ng-bootstrap's components, never plain Bootstrap component classes (owner, 2026-10-14).** "plain bootstrap classes don't work. You need to use the mintplayer ng-bootstrap components": their styles ship inside the components, and the apps' global `_bootstrap.scss` has no grid, table, list-group, badge or alert partial. This applies to every view the PR touches and to every plain class found along the way. **[Done in D84. The last sites, D84's open bullet, are in progress.]** | The owner, to the D84 agent. |
 | O28 | **Fix `<bs-badge>`'s text contrast upstream, in this PR's cycle (owner, 2026-10-15: "I fix it upstream").** `<bs-badge>` painted `bg-{type}` with white text: 1.63:1 on warning, 1.96:1 on info. The cross-repo hook blocks edits to another repository from this session, so the fix went through a handoff to a session in mintplayer-ng-bootstrap: issue #434, PR #435, released as ng-bootstrap 22.25.0, which paints `text-bg-{type}`. **[Adopted in D84, commit 0a08cc49: 12.88:1 on warning and 10.72:1 on info, measured in the running app.]** | AskUserQuestion answer, 2026-10-15. |
 | O29 | **SeoTester: a download never reaches Chromium (owner, 2026-10-15: "Block in the router").** Chromium kept a denied download on disk for 0 to 23 ms, at most 16 MB (`SeoHttp.MaxBodyBytes[Browser]`). The router now aborts any navigation whose answer Chromium would save. `blob:` and `data:` downloads never reach the router and stay the documented limit. **[Done in D86.]** | AskUserQuestion answer, 2026-10-15. The recommendation had been to accept the brief write. |
+| O30 | **A fourth way to queue: a button on the PR's checks (owner, 2026-10-15: "yes, add it to #515 and test it live").** In a repository whose default branch configures the queue, CodeCoverage posts the queue's own check (`CheckGate.QueueCheckName`) on an open, non-draft PR's head commit. When the PR is not queued, that check is completed **neutral** and carries a GitHub *requested action*, an "Add to merge queue" button. A click is a `check_run` `requested_action` webhook to the App. It is authorized and enqueued exactly like the label, `/queue` and the panel button (O8, O9; the approval floor of O11 still applies at merge, D61).
+- **Not HTML buttons.** A check's summary is Markdown through GitHub's sanitizer, which strips `<button>`, `<form>` and scripts. GitGuardian's check is Markdown links too.
+- **The limits are GitHub's:**
+  - at most 3 actions per check
+  - a label of at most 20 characters
+  - the button shows only on a **completed** check, so no "remove" button while a PR is queued: `/dequeue` and the panel stay for that
+  - the button sits on the check's page, not in the merge box.
+- **No new permission or event:** the App already has Checks: read & write and receives `check_run` (`docs/code-coverage/hosting.md` §6).
+- **Live test** with the CoverageDevelopment App on the scratch repositories before the push. | The owner's request and answer, 2026-10-15. |
 | D77 | **(O26) Every other use of the obsolete `UseOptimisticConcurrency` now sets `OptimisticConcurrencyMode` (packages `MintPlayer.Spark.Messaging`, `.Authorization` and `.IdentityProvider`).** All 13 sites set `true`, and each now sets `OptimisticConcurrencyMode.Writes`, as D74 did. None set `false`; its equivalent would be `None`, which `RevokeFamilyAsync` already uses.
 - **The sites.**
   - Messaging: `MessageBus.cs:68` (the deduplicated broadcast's create-only store), `MessageClaims.cs:91` (`TryRenewAsync`) and `MessageSubscriptionWorker.cs:88` (the pickup). `TryClaimAsync`'s remark named the obsolete property in a cref; it now names `OptimisticConcurrencyMode.Writes`.
