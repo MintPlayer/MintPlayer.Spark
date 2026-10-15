@@ -312,7 +312,7 @@ public sealed class WriterService(GitRunner git, JobRunner jobs, IOptions<GitWri
 
     private async Task<string> ReadVersionAsync()
     {
-        var result = await git.RunAsync(new GitInvocation { Arguments = ["--version"], Timeout = TimeSpan.FromSeconds(30) }, CancellationToken.None);
+        var result = await git.RunAsync(new GitInvocation { Arguments = ["--version"], Config = JobContext.WriterConfig, Timeout = TimeSpan.FromSeconds(30) }, CancellationToken.None);
         var version = result.Succeeded ? result.StandardOutput.Trim() : "git (unknown)";
         return $"{MergeQueueResolver.ResolverVersion}; {version}";
     }

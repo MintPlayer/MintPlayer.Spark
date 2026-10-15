@@ -210,8 +210,11 @@ public static partial class MergeQueueYml
 
         if (section.PostRebaseWhen == EPostRebaseWhen.Always && section.PostRebaseActionName is null && !section.AutoResolve.Any(r => r.Action is not null))
             errors.Add("mergeQueue.postRebaseWhen 'always' needs mergeQueue.postRebaseActionName.");
+        // A workflow runs only when a rule regenerates (whose paths were just added) or under 'always'; under
+        // 'auto-resolved' with no regenerating rule nothing is ever dispatched, so an empty list refuses nothing.
         var anyWorkflow = section.PostRebaseActionName is not null || section.AutoResolve.Any(r => r.Action is not null);
-        if (anyWorkflow && !never && section.RegeneratedPaths.Count == 0)
+        var dispatches = section.PostRebaseWhen == EPostRebaseWhen.Always || section.AutoResolve.Any(r => r.Regenerate == true);
+        if (anyWorkflow && dispatches && !never && section.RegeneratedPaths.Count == 0)
             errors.Add("mergeQueue.regeneratedPaths is empty, so every regenerate patch would be refused.");
         if (section.Workflows().Count > MergeQueueWireRules.MaxRegenerateWorkflows)
             errors.Add($"mergeQueue.autoResolve names {section.Workflows().Count} regenerate workflows; the queue runs at most {MergeQueueWireRules.MaxRegenerateWorkflows}.");

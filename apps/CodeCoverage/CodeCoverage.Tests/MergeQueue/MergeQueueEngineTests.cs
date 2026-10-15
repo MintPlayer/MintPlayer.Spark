@@ -1224,9 +1224,17 @@ public class MergeQueueEngineTests : CoverageRavenTest
     public async Task The_same_gaps_pass_a_configuration_that_dispatches_nothing_and_reruns_nothing()
     {
         var h = await HarnessAsync(mergeBase: BaseSha);
-        // Line by line, whatever the source file's line endings.
-        h.Forge.Files["master/coverage.yml"] = string.Join('\n', MergeQueueHarness.Yml.Split('\n').Where(l => !l.Contains("postRebaseActionName")))
-            .Replace("retryFlaky: 1", "retryFlaky: 0");
+        // No workflow, no take-base rule (which needs one), no reruns: nothing in this configuration needs Actions.
+        h.Forge.Files["master/coverage.yml"] = """
+            mergeQueue:
+              enabled: true
+              branches: [master]
+              enqueue:
+                label: merge-queue
+              keepBothDefaults: false
+              checks:
+                retryFlaky: 0
+            """;
         var app = FixedPermissions.FullApp();
         app.Remove("actions");
         h.Permissions.Add(new FixedPermissions("https://github.com/organizations/acme/settings/installations/4242")
@@ -1879,12 +1887,16 @@ public class MergeQueueEngineTests : CoverageRavenTest
     public async Task A_forks_dispatch_is_refused_when_the_regenerate_workflow_is_not_read_only(string what, string line)
     {
         var h = await ForkNeedingRegenerationAsync();
+        // The raw literal carries the source file's line endings (CRLF in a Windows checkout), and the replacements match
+        // "\n": without normalising, they silently match nothing and the workflow stays safe.
+        var safe = SafeRegenerate.ReplaceLineEndings("\n");
         var regenerate = what switch
         {
-            "secrets" => SafeRegenerate + "\n" + line,
-            "permissions" => SafeRegenerate.Replace("    runs-on: ubuntu-latest\n", "    runs-on: ubuntu-latest\n" + line, StringComparison.Ordinal),
-            _ => SafeRegenerate.Replace("    runs-on: ubuntu-latest\n", line, StringComparison.Ordinal),
+            "secrets" => safe + "\n" + line,
+            "permissions" => safe.Replace("    runs-on: ubuntu-latest\n", "    runs-on: ubuntu-latest\n" + line, StringComparison.Ordinal),
+            _ => safe.Replace("    runs-on: ubuntu-latest\n", line, StringComparison.Ordinal),
         };
+        regenerate.Should().NotBe(safe, "the unsafe line must actually be in the workflow");
         h.Queue.WorkflowFiles["master"] = [new(RegeneratePath, regenerate)];
 
         await h.EnqueueAsync();

@@ -23,6 +23,7 @@ GET /api/browse/repos/{provider}/{owner}/{name}/merge-queue | authorize(policy=M
 POST /api/github/webhooks | antiforgery=not-required
 GET /api/me/accounts | authorize(policy=;roles=;schemes=) | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=)
 POST /api/me/accounts/resync | antiforgery=required | authorize(policy=;roles=;schemes=) | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=)
+GET /api/repos/{provider}/{owner}/{name}/merge-queue/candidates | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=) | rate-limit=policy:browse
 DELETE /api/repos/{provider}/{owner}/{name}/merge-queue/{number:int} | antiforgery=required | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=)
 POST /api/repos/{provider}/{owner}/{name}/merge-queue/{number:int} | antiforgery=required | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=)
 POST /api/repos/{provider}/{owner}/{name}/settings/badge-token | antiforgery=required | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=)
