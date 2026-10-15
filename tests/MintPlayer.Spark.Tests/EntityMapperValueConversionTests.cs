@@ -269,12 +269,38 @@ public class EntityMapperValueConversionTests
     }
 
     [Fact]
-    public void An_array_that_does_not_fit_the_property_is_skipped()
+    public void An_in_process_collection_that_does_not_fit_the_property_is_skipped()
     {
         var sample = new Sample { Tags = ["kept"] };
 
-        Write(nameof(Sample.Tags), Json("""[{ "nested": true }]"""), isArray: true, into: sample).Tags.Should().Equal("kept");
         Write(nameof(Sample.Tags), new List<object> { new { nested = true } }, isArray: true, into: sample).Tags.Should().Equal("kept");
+    }
+
+    [Theory]
+    [InlineData("""[{ "nested": true }]""")]
+    [InlineData("""[1, 2]""")]
+    public void A_wire_list_whose_items_do_not_fit_a_list_of_plain_values_is_a_validation_error(string json)
+    {
+        // It used to be skipped: the save reported success and the stored list stayed, an edit lost
+        // with no signal — the defect the scalar path above was already fixed for.
+        var sample = new Sample { Tags = ["kept"] };
+
+        var act = () => Write(nameof(Sample.Tags), Json(json), isArray: true, into: sample);
+
+        act.Should().Throw<SparkValidationException>().Which.AttributeName.Should().Be(nameof(Sample.Tags));
+        sample.Tags.Should().Equal("kept");
+    }
+
+    [Fact]
+    public void An_empty_wire_list_clears_a_list_of_plain_values()
+    {
+        Write(nameof(Sample.Tags), Json("[]"), isArray: true, into: new Sample { Tags = ["old"] }).Tags.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void A_null_wire_list_clears_a_nullable_list()
+    {
+        Write(nameof(Sample.Tags), Json("null"), isArray: true, into: new Sample { Tags = ["old"] }).Tags.Should().BeNull();
     }
 
     // --- references --------------------------------------------------------------

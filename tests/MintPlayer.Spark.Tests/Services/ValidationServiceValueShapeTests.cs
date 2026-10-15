@@ -200,6 +200,79 @@ public class ValidationServiceValueShapeTests
         result.Errors.Should().ContainSingle().Which.AttributeName.Should().Be("Missing");
     }
 
+    // --- lists of plain values (List<string>, int[]) ----------------------------
+
+    [Theory]
+    [InlineData("[]")]
+    [InlineData("[\"\", \"   \"]")]
+    [InlineData("[null]")]
+    public void A_list_with_no_non_blank_item_fails_required(string json)
+    {
+        // Before, any array satisfied required, `[]` included.
+        Validate(Json(json), isRequired: true).Errors.Should().ContainSingle().Which.RuleType.Should().Be("required");
+    }
+
+    [Fact]
+    public void A_list_with_one_non_blank_item_satisfies_required()
+    {
+        Validate(Json("[\"\", \"ci/build\"]"), isRequired: true).IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public void MaxLength_judges_each_item_not_the_json_text()
+    {
+        var rule = new ValidationRule { Type = "maxLength", Value = 5 };
+
+        // The raw text `["abc","de"]` is 12 characters; every item is within 5.
+        Validate(Json("[\"abc\", \"de\"]"), rules: rule).IsValid.Should().BeTrue();
+        Validate(Json("[\"abc\", \"toolong\"]"), rules: rule).Errors.Should().ContainSingle().Which.RuleType.Should().Be("maxLength");
+    }
+
+    [Fact]
+    public void Each_rule_reports_once_for_a_list_even_when_several_items_break_it()
+    {
+        var result = Validate(Json("[\"nope\", \"also-nope\", \"a@b.cd\"]"), rules: new ValidationRule { Type = "email" });
+
+        result.Errors.Should().ContainSingle().Which.RuleType.Should().Be("email");
+    }
+
+    [Fact]
+    public void A_list_whose_items_all_pass_is_valid()
+    {
+        Validate(Json("[\"a@b.cd\", \"\", \"x@y.org\"]"), rules: new ValidationRule { Type = "email" }).IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Range_judges_each_number_of_a_list()
+    {
+        Validate(Json("[1, 10]"), rules: Range()).IsValid.Should().BeTrue();
+        Validate(Json("[1, 11]"), rules: Range()).IsValid.Should().BeFalse();
+    }
+
+    [Fact]
+    public void A_clr_list_a_refresh_hook_put_there_is_judged_the_same_way()
+    {
+        var effective = new PersistentObject
+        {
+            Name = "Probe",
+            ObjectTypeId = TypeId,
+            Attributes =
+            [
+                new PersistentObjectAttribute { Name = "Empty", Value = new List<string>(), IsRequired = true },
+                new PersistentObjectAttribute { Name = "Long", Value = new List<string> { "ok", "far too long" }, Rules = [new ValidationRule { Type = "maxLength", Value = 3 }] },
+                new PersistentObjectAttribute { Name = "Fine", Value = new List<string> { "ok" }, IsRequired = true, Rules = [new ValidationRule { Type = "maxLength", Value = 3 }] },
+            ],
+        };
+
+        var result = Service().ValidateEffective(effective);
+
+        result.Errors.Select(e => (e.AttributeName, e.RuleType)).Should().BeEquivalentTo(new[]
+        {
+            ("Empty", "required"),
+            ("Long", "maxLength"),
+        });
+    }
+
     // --- the effective object -------------------------------------------------
 
     [Fact]

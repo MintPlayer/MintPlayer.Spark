@@ -1,0 +1,49 @@
+@if (readonly()) {
+  <!-- Read-only (the attribute rights deny Edit): the items stay readable, as an AsDetail row the
+       caller may not edit does, just not editable. -->
+  @if (items().length) {
+    <div class="d-flex flex-wrap gap-1">
+      @for (item of items(); track $index) {
+        <span class="spark-chip">{{ display(item) }}</span>
+      }
+    </div>
+  } @else {
+    <span class="text-muted">-</span>
+  }
+} @else {
+  <!-- Drag-reorder only for a [Sortable] attribute, by the handle only — the AsDetail grid's
+       CDK setup and grip icon. -->
+  <div cdkDropList [cdkDropListDisabled]="!canReorder()" (cdkDropListDropped)="reorder($event)">
+  @for (item of items(); track $index; let i = $index) {
+    <bs-input-group class="spark-primitive-list-item" cdkDrag [cdkDragDisabled]="!canReorder()">
+      @if (canReorder()) {
+        <span class="input-group-text text-muted spark-drag-handle" cdkDragHandle>
+          <spark-icon name="grip-vertical" />
+        </span>
+      }
+      <input
+        #itemInput
+        [type]="dataType() | inputType"
+        [attr.id]="i === 0 ? inputId() : null"
+        [value]="display(item)"
+        [step]="dataType() === 'decimal' ? '0.01' : '1'"
+        [class.is-invalid]="isInvalid()"
+        (input)="onInput(i, $event)"
+        (blur)="itemBlur.emit()">
+      <button
+        type="button"
+        bsInputGroupBtn
+        [color]="colors.secondary"
+        [attr.aria-label]="'common.delete' | t"
+        (click)="remove(i)">
+        <spark-icon name="trash" />
+      </button>
+    </bs-input-group>
+  } @empty {
+    <div class="text-muted small mb-1">{{ 'common.noItemsFound' | t }}</div>
+  }
+  </div>
+  <button type="button" [color]="colors.primary" class="w-100 rounded-0" (click)="add()">
+    <spark-icon name="plus" /> {{ 'common.add' | t }}
+  </button>
+}

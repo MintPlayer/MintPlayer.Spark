@@ -20,6 +20,7 @@ import {
   dictToNestedPo,
   EntityTypeResolver,
   isDateDataType,
+  isPrimitiveArrayAttribute,
   fromDateInputValue,
   toDateInputValue,
   RefreshOverlay,
@@ -145,6 +146,9 @@ export class SparkPoCreateComponent {
         // Same reason as spark-po-edit: a lookup-backed boolean's third state is the absence of a
         // value, and seeding `false` here would make every new object explicitly opted out.
         data[attr.name] = false;
+      } else if (isPrimitiveArrayAttribute(attr)) {
+        // A list of plain values starts as an empty list, as an AsDetail array does.
+        data[attr.name] = [];
       } else {
         data[attr.name] = '';
       }

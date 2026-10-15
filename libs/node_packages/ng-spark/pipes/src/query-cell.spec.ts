@@ -165,3 +165,20 @@ describe('QueryReferenceChipsPipe', () => {
     expect(chips({ value: 't/1' })).toEqual([]);
   });
 });
+
+describe('QueryCellValuePipe — a list of plain values', () => {
+  const list = column({ name: 'Exclusions', dataType: 'string', isArray: true, asDetailType: undefined });
+
+  it('joins the items with a comma and a space, skipping blank ones', () => {
+    expect(run(list, itemWith('Exclusions', { value: ['ci/build', '', 'lint'] }))).toBe('ci/build, lint');
+  });
+
+  it('renders an empty list as nothing', () => {
+    expect(run(list, itemWith('Exclusions', { value: [] }))).toBe('');
+  });
+
+  it('leaves a reference array to its chips', () => {
+    const refs = column({ name: 'Tags', dataType: 'Reference', isArray: true, asDetailType: undefined });
+    expect(run(refs, itemWith('Tags', { value: ['t/1'] }))).toEqual(['t/1']);
+  });
+});

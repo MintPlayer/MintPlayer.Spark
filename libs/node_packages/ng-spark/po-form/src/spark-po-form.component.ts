@@ -63,6 +63,7 @@ import {
   nestedPoToDict,
   evaluateRules,
   hasShowedOnFlag,
+  isPrimitiveArrayAttribute,
   mergeRefreshValues,
   overlayFromResponse,
   resolveTranslation,
@@ -72,6 +73,7 @@ import { SparkAttributeDescriptionComponent } from '@mintplayer/ng-spark/attribu
 import { SPARK_ATTRIBUTE_RENDERERS, SparkResolvedRowRenderer, rowRendererInputs, withDeclaredInputs } from '@mintplayer/ng-spark/renderers';
 import { SparkReferencePickerComponent } from './spark-reference-picker.component';
 import { SparkLookupPickerComponent } from './spark-lookup-picker.component';
+import { SparkPrimitiveListEditorComponent } from './spark-primitive-list-editor.component';
 import { ReferenceQueryTreeSelectProvider, referenceTreeNode } from './reference-query-tree-select-provider';
 import { RefreshCoordinator, RefreshDispatch, effectiveTrigger, refreshDispatch } from './refresh-coordinator';
 
@@ -90,7 +92,7 @@ export interface NestedTriggerRequest {
 
 @Component({
   selector: 'spark-po-form',
-  imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, FormsModule, CdkDropList, CdkDrag, CdkDragHandle, CdkDragPreview, BsCardComponent, BsCardHeaderComponent, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsGridColDirective, BsColFormLabelDirective, BsButtonTypeDirective, BsInputGroupComponent, BsSelectComponent, BsSelectOption, BsTreeSelectComponent, BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective, BsTableComponent, BsCheckboxComponent, BsSpinnerComponent, BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective, SparkIconComponent, SparkPoFormComponent, SparkReferencePickerComponent, SparkLookupPickerComponent, TranslateKeyPipe, ResolveTranslationPipe, InputTypePipe, LookupDisplayTypePipe, LookupOptionsPipe, AsDetailDisplayValuePipe, AsDetailTypePipe, AsDetailColumnsPipe, AsDetailRowRendererPipe, AsDetailCellValuePipe, CanCreateDetailRowPipe, CanDeleteDetailRowPipe, CanEditDetailRowPipe, InlineRefOptionsPipe, ErrorForAttributePipe, SparkAttributeDescriptionComponent],
+  imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, FormsModule, CdkDropList, CdkDrag, CdkDragHandle, CdkDragPreview, BsCardComponent, BsCardHeaderComponent, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsGridColDirective, BsColFormLabelDirective, BsButtonTypeDirective, BsInputGroupComponent, BsSelectComponent, BsSelectOption, BsTreeSelectComponent, BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective, BsTableComponent, BsCheckboxComponent, BsSpinnerComponent, BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective, SparkIconComponent, SparkPoFormComponent, SparkReferencePickerComponent, SparkLookupPickerComponent, SparkPrimitiveListEditorComponent, TranslateKeyPipe, ResolveTranslationPipe, InputTypePipe, LookupDisplayTypePipe, LookupOptionsPipe, AsDetailDisplayValuePipe, AsDetailTypePipe, AsDetailColumnsPipe, AsDetailRowRendererPipe, AsDetailCellValuePipe, CanCreateDetailRowPipe, CanDeleteDetailRowPipe, CanEditDetailRowPipe, InlineRefOptionsPipe, ErrorForAttributePipe, SparkAttributeDescriptionComponent],
   templateUrl: './spark-po-form.component.html',
   // The CDK drag placeholder is a clone of the dragged row (so it keeps the exact row
   // height). Hide its contents but keep it occupying space, so the drop gap is blank and
@@ -682,6 +684,17 @@ export class SparkPoFormComponent {
   onFieldChange(attr?: EntityAttributeDefinition): void {
     this.formData.set({ ...this.formData() });
     if (attr) this.noteChange(attr);
+  }
+
+  /** A list of plain values (`List<string>`, `int[]`): edited one input per item. */
+  isPrimitiveList(attr: EntityAttributeDefinition): boolean {
+    return isPrimitiveArrayAttribute(attr);
+  }
+
+  /** The list editor's new array: written like any scalar edit, so its triggers and rules apply. */
+  onPrimitiveListChange(attr: EntityAttributeDefinition, items: unknown[]): void {
+    this.formData()[attr.name] = items;
+    this.onFieldChange(attr);
   }
 
   /**

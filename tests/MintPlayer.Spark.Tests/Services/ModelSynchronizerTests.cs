@@ -201,6 +201,22 @@ public sealed class ModelSynchronizerTests : IDisposable
     }
 
     [Fact]
+    public void Sortable_attribute_on_a_list_of_plain_values_sets_IsSortable_true()
+    {
+        var ctx = typeof(OrderedContext);
+        var sync = CreateSynchronizer();
+
+        sync.SynchronizeModels(ctx);
+
+        var file = Read<EntityTypeFile>(ModelFile("MS_OrderedParent"));
+        var tags = file.PersistentObject.Attributes.Single(a => a.Name == "Tags");
+        tags.DataType.Should().Be("string");
+        tags.IsArray.Should().BeTrue();
+        tags.IsSortable.Should().BeTrue("the list editor reorders a [Sortable] List<string> as the AsDetail grid reorders rows");
+        file.PersistentObject.Attributes.Single(a => a.Name == "Labels").IsSortable.Should().NotHaveValue();
+    }
+
+    [Fact]
     public void IsSortable_survives_re_synchronize()
     {
         var ctx = typeof(OrderedContext);
@@ -1436,6 +1452,11 @@ public class MS_OrderedParent
 
     [Sortable]                                  // scalar + [Sortable] → ignored (null)
     public string Name { get; set; } = string.Empty;
+
+    [Sortable]                                  // list of plain values + [Sortable] → IsSortable: true
+    public List<string> Tags { get; set; } = [];
+
+    public List<string> Labels { get; set; } = []; // list of plain values, no [Sortable] → null
 }
 
 public class MS_BreadcrumbPerson

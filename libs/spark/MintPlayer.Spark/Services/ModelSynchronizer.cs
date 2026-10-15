@@ -938,10 +938,12 @@ internal partial class ModelSynchronizer : IModelSynchronizer
 
             string? lookupReferenceType = lookupRefAttr?.LookupType.Name;
 
-            // [Sortable] only takes effect on AsDetail arrays. Derived purely from the CLR
-            // shape (like IsArray), so it's always refreshed. Null (not false) for the
-            // non-sortable case keeps the flag absent from the model JSON.
-            bool? isSortable = sortableAttr != null && dataType == "AsDetail" && isArray ? true : null;
+            // [Sortable] takes effect on AsDetail arrays and on lists of plain values (List<string>,
+            // int[] — the form's list editor reorders their items the same way). Not on a Reference
+            // array, whose picker holds a set, nor on a scalar. Derived purely from the CLR shape
+            // (like IsArray), so it's always refreshed. Null (not false) for the non-sortable case
+            // keeps the flag absent from the model JSON.
+            bool? isSortable = sortableAttr != null && isArray && dataType != "Reference" ? true : null;
 
             // A reference that names no query resolves to its target's plain root query (D6); an explicit
             // [Reference(typeof(T), "Q")] wins (D2).
