@@ -257,8 +257,10 @@
                          placeholder still uses CDK's default clone (exact row height) and is
                          hidden via .cdk-drag-placeholder { visibility:hidden } in the styles,
                          so the drop gap is blank without collapsing/shifting the other rows. -->
+                    <!-- <bs-table>, not a plain .table: CDK puts the preview at the end of <body>, and
+                         Bootstrap's table CSS ships with <bs-table> (D84). -->
                     <ng-template cdkDragPreview>
-                      <table class="table mb-0 bg-body shadow-sm spark-drag-preview">
+                      <bs-table [isResponsive]="true" class="d-block bg-body shadow-sm spark-drag-preview">
                         <tbody class="align-middle">
                           <tr>
                             @if (attr.isSortable) {
@@ -269,7 +271,7 @@
                             }
                           </tr>
                         </tbody>
-                      </table>
+                      </bs-table>
                     </ng-template>
                   </tr>
                 } @empty {
@@ -290,6 +292,21 @@
               </button>
             }
           } @else if (attr.dataType === 'AsDetail' && attr.isArray) {
+            <!-- One source of truth for a modal-edited row's cell, reused by the row and by its drag preview. -->
+            <ng-template #modalDetailCell let-row="row" let-col="col" let-attr="attr" let-rowRenderer="rowRenderer">
+              <td>
+                @if (getAsDetailCellRendererComponent(col); as cellRenderer) {
+                  <ng-container *ngComponentOutlet="cellRenderer; inputs: getAsDetailCellRendererInputs(cellRenderer, row, col)"></ng-container>
+                } @else {
+                  {{ row | asDetailCellValue:attr:col:asDetailReferenceOptions():loadedRowReferences()[attr.name] }}
+                }
+                @if (rowRenderer) {
+                  <div class="spark-row-renderer">
+                    <ng-container *ngComponentOutlet="rowRenderer.component; inputs: getRowRendererInputs(rowRenderer, row)"></ng-container>
+                  </div>
+                }
+              </td>
+            </ng-template>
             <bs-table [isResponsive]="true" class="mb-1">
               <thead>
                 <tr>
@@ -312,18 +329,7 @@
                       </td>
                     }
                     @for (col of (attr | asDetailColumns:asDetailTypes():rendererRegistry); track col.name; let firstCol = $first) {
-                      <td>
-                        @if (getAsDetailCellRendererComponent(col); as cellRenderer) {
-                          <ng-container *ngComponentOutlet="cellRenderer; inputs: getAsDetailCellRendererInputs(cellRenderer, row, col)"></ng-container>
-                        } @else {
-                          {{ row | asDetailCellValue:attr:col:asDetailReferenceOptions():loadedRowReferences()[attr.name] }}
-                        }
-                        @if (firstCol && modalRowRenderer) {
-                          <div class="spark-row-renderer">
-                            <ng-container *ngComponentOutlet="modalRowRenderer.component; inputs: getRowRendererInputs(modalRowRenderer, row)"></ng-container>
-                          </div>
-                        }
-                      </td>
+                      <ng-container *ngTemplateOutlet="modalDetailCell; context: { row: row, col: col, attr: attr, rowRenderer: firstCol ? modalRowRenderer : null }"></ng-container>
                     }
                     <td class="text-nowrap">
                       @if (attr | canEditDetailRow:asDetailPermissions()) {
@@ -337,6 +343,23 @@
                         </button>
                       }
                     </td>
+
+                    <!-- CDK's default preview clones the <tr> to the end of <body>, outside any table, so its
+                         cells lost the table's styles. A <bs-table> of the row's cells, as the inline grid draws. -->
+                    <ng-template cdkDragPreview>
+                      <bs-table [isResponsive]="true" class="d-block bg-body shadow-sm spark-drag-preview">
+                        <tbody class="align-middle">
+                          <tr>
+                            @if (attr.isSortable) {
+                              <td class="text-center text-muted" style="width: 32px"><spark-icon name="grip-vertical" /></td>
+                            }
+                            @for (col of (attr | asDetailColumns:asDetailTypes():rendererRegistry); track col.name) {
+                              <ng-container *ngTemplateOutlet="modalDetailCell; context: { row: row, col: col, attr: attr }"></ng-container>
+                            }
+                          </tr>
+                        </tbody>
+                      </bs-table>
+                    </ng-template>
                   </tr>
                 } @empty {
                   <tr>
