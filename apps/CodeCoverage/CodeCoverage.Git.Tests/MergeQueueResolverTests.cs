@@ -1,4 +1,5 @@
 using CodeCoverage.Git.MergeQueue;
+using CodeCoverage.Git.MergeQueue.Resolution;
 using CodeCoverage.Git.Tests._Infrastructure;
 
 namespace CodeCoverage.Git.Tests;
@@ -320,7 +321,7 @@ public class MergeQueueResolverTests
         repo.Write("data/blob.txt", "base\n");
         repo.Commit("blob");
         repo.InWork("branch", "-f", "pr");
-        repo.Write("data/blob.txt", new string('m', (int)MergeQueueResolver.MaxBlobBytes + 1));
+        repo.Write("data/blob.txt", new string('m', (int)TakeBaseResolver.MaxBytes + 1));
         repo.Commit("A: big");
         repo.Checkout("pr");
         repo.Write("data/blob.txt", "not json at all\n");

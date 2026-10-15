@@ -1,0 +1,99 @@
+name: Lockfile regenerate
+description: >
+  A post-rebase step of the CodeCoverage merge queue for lockfiles. On the commit the queue prepared, regenerates the
+  npm, pnpm, Yarn and NuGet lockfiles the pull request's manifests touch; where the queue took the base side of an
+  npm-family lockfile, rebuilds the three-way conflict so the package manager keeps both sides' pins. Every
+  regenerated package must exist in the base branch's or the pull request's lockfile (provenance). Uploads the result
+  as the `merge-queue-patch` artifact; never commits or pushes. See README.md.
+
+# SECURITY: this action runs the pull request's package-manager configuration and, for NuGet, MSBuild. The calling
+# workflow must grant only `contents: read`, pass no secrets, request no `id-token`, and run on a GitHub-hosted runner.
+
+inputs:
+  expected_sha:
+    description: The full SHA the merge queue prepared (the dispatch input). The run fails if HEAD differs.
+    required: true
+  lockfiles:
+    description: The ecosystems to regenerate, one per line - npm, pnpm, yarn, nuget.
+    required: true
+  pr_number:
+    description: >
+      The pull request (the dispatch input). With it, the action fetches the pull request's head before any of its
+      code runs, rebuilds the npm/pnpm/Yarn three-way merge and checks provenance against both sides. Without it, a
+      plain lock-only install and a host-allowlist provenance check (README.md, "Fallback").
+    required: false
+    default: ''
+  token:
+    description: >
+      Used only to fetch refs/pull/<pr_number>/head of a private repository, in a step that runs before any of the
+      pull request's code and never writes it to disk. The job's own token (contents: read); '' fetches anonymously.
+    required: false
+    default: ${{ github.token }}
+  projects:
+    description: NuGet only. Extra .csproj paths to restore, one per line, besides every project beside a packages.lock.json.
+    required: false
+    default: ''
+  dotnet-version:
+    description: NuGet only. SDK version for actions/setup-dotnet; empty reads global.json when there is one.
+    required: false
+    default: ''
+
+outputs:
+  changed:
+    description: '"true" when the patch is non-empty.'
+    value: ${{ steps.regenerate.outputs.changed }}
+  file-count:
+    description: The number of files the patch touches.
+    value: ${{ steps.regenerate.outputs.file-count }}
+  patch-path:
+    description: The patch file on the runner.
+    value: ${{ steps.regenerate.outputs.patch-path }}
+
+runs:
+  using: composite
+  steps:
+    # First, before anything reads the pull request's files: the only step that may hold a token.
+    - name: Fetch the pull request's head
+      id: pr
+      if: inputs.pr_number != ''
+      shell: bash
+      env:
+        PR_NUMBER: ${{ inputs.pr_number }}
+        FETCH_TOKEN: ${{ inputs.token }}
+      run: bash "$GITHUB_ACTION_PATH/fetch-pr-head.sh"
+
+    - name: Setup .NET (global.json)
+      if: contains(inputs.lockfiles, 'nuget') && inputs.dotnet-version == '' && hashFiles('global.json') != ''
+      uses: actions/setup-dotnet@v6
+      with:
+        global-json-file: global.json
+
+    - name: Setup .NET (${{ inputs.dotnet-version }})
+      if: contains(inputs.lockfiles, 'nuget') && inputs.dotnet-version != ''
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: ${{ inputs.dotnet-version }}
+
+    - name: Regenerate lockfiles
+      id: regenerate
+      shell: bash
+      env:
+        EXPECTED_SHA: ${{ inputs.expected_sha }}
+        LOCKFILES: ${{ inputs.lockfiles }}
+        PROJECTS: ${{ inputs.projects }}
+        PR_HEAD: ${{ steps.pr.outputs.pr-head }}
+        MERGE_BASE: ${{ steps.pr.outputs.merge-base }}
+        DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+        DOTNET_NOLOGO: '1'
+        COREPACK_ENABLE_DOWNLOAD_PROMPT: '0'
+      run: bash "$GITHUB_ACTION_PATH/run.sh"
+
+    # Uploaded even when empty, as spark-regenerate does: an empty patch from a green run means "nothing to
+    # regenerate"; a failed run or a missing artifact means the queue evicts.
+    - name: Upload merge-queue-patch
+      uses: actions/upload-artifact@v7
+      with:
+        name: merge-queue-patch
+        path: ${{ steps.regenerate.outputs.patch-path }}
+        if-no-files-found: error
+        retention-days: 3

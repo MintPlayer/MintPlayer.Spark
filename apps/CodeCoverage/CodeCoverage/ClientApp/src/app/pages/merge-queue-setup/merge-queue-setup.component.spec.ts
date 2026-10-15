@@ -206,6 +206,20 @@ describe('MergeQueueSetupComponent', () => {
     expect(snippet('branches-ignore').code()).toContain('branches-ignore: [\'mq/**\']');
   });
 
+  it('shows a lockfiles-only regenerate workflow that keeps the same rules', async () => {
+    await open('/merge-queue/setup');
+
+    const workflow = snippet('/lockfile-regenerate@<commit-sha>');
+    expect(workflow.language()).toBe('yaml');
+    for (const rule of ['contents: read', 'persist-credentials: false', 'fetch-depth: 2', 'ref: ${{ github.sha }}', 'runs-on: ubuntu-latest', 'pr_number: ${{ inputs.pr_number }}']) {
+      expect(live(workflow.code())).toContain(rule);
+    }
+    for (const forbidden of ['secrets.', 'id-token', 'self-hosted', 'environment:', '@master', 'token:']) {
+      expect(live(workflow.code())).not.toContain(forbidden);
+    }
+    expect(workflow.code()).toContain('action: lockfiles-regenerate.yml');
+  });
+
   it('gives ruleset 1 the App exempt and admins pull requests only, and ruleset 2 both approval settings off', async () => {
     await open('/merge-queue/setup');
 

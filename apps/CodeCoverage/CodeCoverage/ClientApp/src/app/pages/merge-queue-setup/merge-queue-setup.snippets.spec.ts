@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { COVERAGE_YML, REGENERATE_WORKFLOW } from './merge-queue-setup.snippets';
+import { COVERAGE_YML, LOCKFILES_WORKFLOW, REGENERATE_WORKFLOW } from './merge-queue-setup.snippets';
 
 /*
  * Two of the page's snippets are copies of files elsewhere in the repository (merge-queue-setup.snippets.ts). These
@@ -70,6 +70,10 @@ describe('the setup page\'s copied snippets', () => {
   it('show docs/code-coverage/templates/regenerate.yml byte for byte', async () => {
     // The snippet leaves out the file's final newline, so the code block ends on its last line.
     expect(REGENERATE_WORKFLOW + '\n').toBe(await repositoryFile('docs/code-coverage/templates/regenerate.yml'));
+  });
+
+  it('show docs/code-coverage/templates/lockfiles-regenerate.yml byte for byte', async () => {
+    expect(LOCKFILES_WORKFLOW + '\n').toBe(await repositoryFile('docs/code-coverage/templates/lockfiles-regenerate.yml'));
   });
 
   // Compared without comments: the page's comments leave out the plan's decision numbers on purpose, and no comment

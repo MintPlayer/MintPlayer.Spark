@@ -112,17 +112,50 @@ public class MergeQueueEntry
     /// </summary>
     public bool WorkflowGuardBypassed { get; set; }
 
-    /// <summary>The regenerate workflow run (D14).</summary>
+    /// <summary>How the writer resolved each path of <see cref="ResolvedPaths"/> (merge-queue PRD §10.6); null when the
+    /// writer did not say (an older writer), which counts as "every resolved path regenerates".</summary>
+    public List<MergeQueueResolution>? Resolutions { get; set; }
+
+    /// <summary>The writer's resolver and git version at the prepare (O35 #4). A later job that rebuilds another commit
+    /// under another version restarts the entry instead of evicting it <c>prepared-differs</c>.</summary>
+    public string? ResolverVersion { get; set; }
+
+    /// <summary>The regenerate workflows this run dispatches, one after the other on the same queue commit, in ordinal order
+    /// (O36). Empty: nothing to regenerate.</summary>
+    public List<string> RegenerateWorkflows { get; set; } = [];
+
+    /// <summary>The regenerate runs dispatched so far, in <see cref="RegenerateWorkflows"/>' order (D14, O36).</summary>
+    public List<MergeQueueDispatch> Dispatches { get; set; } = [];
+
+    /// <summary>Before O36: the one regenerate run. Read from older documents only; <see cref="UpgradeLegacyDispatch"/>
+    /// moves it into <see cref="Dispatches"/>.</summary>
     public long? DispatchRunId { get; set; }
 
+    /// <summary>Before O36; see <see cref="DispatchRunId"/>.</summary>
     public string? DispatchRunUrl { get; set; }
 
-    /// <summary>
-    /// The regenerate run reported its completion, vanished, or its cancellation was queued. While false, an entry that
-    /// leaves <see cref="EMergeQueueEntryState.Regenerating"/> for any other reason cancels the run, which would otherwise
-    /// keep spending the repository's CI minutes (merge-queue PRD §0 D53).
-    /// </summary>
+    /// <summary>Before O36; see <see cref="DispatchRunId"/>.</summary>
     public bool DispatchRunFinished { get; set; }
+
+    /// <summary>The run the entry waits for now: the last one dispatched, while it has not finished.</summary>
+    public MergeQueueDispatch? PendingDispatch() => Dispatches.Count > 0 && !Dispatches[^1].Finished ? Dispatches[^1] : null;
+
+    /// <summary>
+    /// A document written before O36 kept its one regenerate run in <see cref="DispatchRunId"/>, <see cref="DispatchRunUrl"/>
+    /// and <see cref="DispatchRunFinished"/>: it becomes the first <see cref="Dispatches"/> element, for
+    /// <see cref="MergeQueueConfigSnapshot.PostRebaseActionName"/>, and an entry that planned no workflows yet plans that
+    /// one. Idempotent; the engine calls it on every entry it loads.
+    /// </summary>
+    public void UpgradeLegacyDispatch()
+    {
+        if (DispatchRunId is { } runId && Dispatches.Count == 0)
+            Dispatches.Add(new MergeQueueDispatch { Workflow = Config.PostRebaseActionName ?? string.Empty, RunId = runId, RunUrl = DispatchRunUrl, Finished = DispatchRunFinished });
+        if (Dispatches.Count > 0 && RegenerateWorkflows.Count == 0)
+            RegenerateWorkflows = [.. Dispatches.Select(d => d.Workflow).Distinct(StringComparer.Ordinal)];
+        DispatchRunId = null;
+        DispatchRunUrl = null;
+        DispatchRunFinished = false;
+    }
 
     /// <summary>The commit whose checks the queue waits for and that it merges.</summary>
     public string? FinalSha { get; set; }
@@ -327,8 +360,59 @@ public sealed class MergeQueueConfigSnapshot
     /// <summary>The role from which the enqueuer bypasses the queue's own rules (O22); re-checked before the merge.</summary>
     public EMergeQueueBypassRole BypassRole { get; set; }
 
+    /// <summary>The keep-both default groups that were on (<c>keepBothDefaults</c>: json, ignoreFiles, changelog,
+    /// xmlProjects; O35 #1, O36). Their rules are already in <see cref="AutoResolve"/>; this says which.</summary>
+    public List<string> KeepBothDefaults { get; set; } = [];
+
+    /// <summary>The opt-in presets (<c>autoResolveDefaults</c>), already expanded into <see cref="AutoResolve"/>.</summary>
+    public List<string> AutoResolveDefaults { get; set; } = [];
+
     /// <summary>Every value above as displayed, with its source: <c>coverage.yml</c>, <c>default</c>, <c>organization</c>, <c>repository</c>.</summary>
     public List<MergeQueueConfigValue> Values { get; set; } = [];
+}
+
+/// <summary>One regenerate workflow run of an entry (D14, O36).</summary>
+public sealed class MergeQueueDispatch
+{
+    /// <summary>The workflow file under <c>.github/workflows</c>.</summary>
+    public string Workflow { get; set; } = string.Empty;
+
+    public long? RunId { get; set; }
+
+    public string? RunUrl { get; set; }
+
+    /// <summary>
+    /// The run reported its completion, vanished, or its cancellation was queued. While false, an entry that leaves
+    /// <see cref="EMergeQueueEntryState.Regenerating"/> for any other reason cancels it, as it would otherwise keep spending
+    /// the repository's CI minutes (merge-queue PRD §0 D53).
+    /// </summary>
+    public bool Finished { get; set; }
+
+    /// <summary>The run finished with success on the prepared commit; its <c>merge-queue-patch</c> is published.</summary>
+    public bool Succeeded { get; set; }
+}
+
+/// <summary>How the writer resolved one conflicted path (§10.6).</summary>
+public sealed class MergeQueueResolution
+{
+    public string Path { get; set; } = string.Empty;
+
+    /// <summary><c>take-base</c>, <c>keep-both</c>, <c>line-set</c>.</summary>
+    public string Strategy { get; set; } = string.Empty;
+
+    public bool Regenerate { get; set; }
+
+    /// <summary>The index of the <see cref="MergeQueueConfigSnapshot.AutoResolve"/> rule that matched it; -1 unknown.</summary>
+    public int Rule { get; set; } = -1;
+}
+
+/// <summary>A conflict strategy (§10.3). <see cref="TakeBase"/> is 0, so a snapshot stored before §10 reads as it was.</summary>
+public enum EMergeQueueResolveStrategy
+{
+    TakeBase = 0,
+    KeepBoth,
+    LineSet,
+    Evict,
 }
 
 public sealed class MergeQueueConfigValue
@@ -338,13 +422,42 @@ public sealed class MergeQueueConfigValue
     public string Source { get; set; } = string.Empty;
 }
 
-/// <summary>One <c>autoResolve</c> entry: take the base side of a conflict in <see cref="Path"/> (O1, O2, O19).</summary>
+/// <summary>One <c>autoResolve</c> entry (O1, O2, O19, §10.3, O36): how a conflict in <see cref="Path"/> is resolved.</summary>
 public sealed class MergeQueueAutoResolveRule
 {
     public string Path { get; set; } = string.Empty;
 
-    /// <summary>Top-level JSON keys whose lines may conflict (O2); empty means any line of the file (O19).</summary>
+    /// <summary>Top-level JSON keys whose lines may conflict (O2), take-base only; empty means any line of the file (O19).</summary>
     public List<string> Keys { get; set; } = [];
+
+    /// <summary>The strategy; a snapshot stored before §10 has none and reads <see cref="EMergeQueueResolveStrategy.TakeBase"/>.</summary>
+    public EMergeQueueResolveStrategy Strategy { get; set; }
+
+    /// <summary>The validators the resolved content must pass (§10.4 step 4).</summary>
+    public List<string> Validate { get; set; } = [];
+
+    /// <summary>Whether a resolution under this rule regenerates (O36). The parser stores the effective value; null in an
+    /// older snapshot means the strategy's default (take-base: yes).</summary>
+    public bool? Regenerate { get; set; }
+
+    /// <summary>The regenerate workflow for this rule (O36); null falls back to
+    /// <see cref="MergeQueueConfigSnapshot.PostRebaseActionName"/>.</summary>
+    public string? Action { get; set; }
+
+    /// <summary>Where the rule came from: <c>coverage.yml @ &lt;ref&gt;</c>, <c>preset npm</c>, <c>default</c>.</summary>
+    public string? Source { get; set; }
+
+    /// <summary>The wire name of <see cref="Strategy"/>.</summary>
+    public static string WireName(EMergeQueueResolveStrategy strategy) => strategy switch
+    {
+        EMergeQueueResolveStrategy.KeepBoth => "keep-both",
+        EMergeQueueResolveStrategy.LineSet => "line-set",
+        EMergeQueueResolveStrategy.Evict => "evict",
+        _ => "take-base",
+    };
+
+    /// <summary>Whether a resolution under this rule needs a regenerate run.</summary>
+    public bool Regenerates() => Regenerate ?? Strategy == EMergeQueueResolveStrategy.TakeBase;
 }
 
 /// <summary>When the regenerate workflow runs (§5.2).</summary>

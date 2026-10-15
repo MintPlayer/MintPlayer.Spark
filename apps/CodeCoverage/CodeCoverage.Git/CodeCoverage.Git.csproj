@@ -21,6 +21,16 @@
 	</ItemGroup>
 
 	<ItemGroup>
+		<!-- [Register] for the merge queue's conflict resolvers and content validators (docs/coverage_merge_queue_PRD.md §10.3).
+		     The attributes assembly holds attributes only; the generator runs at build time and ships nothing. -->
+		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="13.0.0" />
+		<PackageReference Include="MintPlayer.SourceGenerators" Version="13.0.0">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+	</ItemGroup>
+
+	<ItemGroup>
 		<InternalsVisibleTo Include="CodeCoverage.GitMirror.Tests" />
 		<InternalsVisibleTo Include="CodeCoverage.Git.Tests" />
 		<InternalsVisibleTo Include="CodeCoverage.GitWriter.Tests" />

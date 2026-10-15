@@ -433,7 +433,9 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
                     HeadRef: evt.PullRequest.Head.Ref,
                     // Unknown counts as "from a fork". Declining to delete is recoverable;
                     // deleting someone else's branch is not.
-                    HeadIsFromSameRepository: head is not null && @base is not null && head.Id == @base.Id)), ct);
+                    HeadIsFromSameRepository: head is not null && @base is not null && head.Id == @base.Id,
+                    // The merge queue's record of what it merged, when this event beats its own poll (§0 D94).
+                    MergeCommitSha: evt.PullRequest.MergeCommitSha)), ct);
             return;
         }
 

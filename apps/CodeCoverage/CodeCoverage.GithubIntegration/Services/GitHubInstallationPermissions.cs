@@ -19,6 +19,13 @@ namespace CodeCoverage.Services;
 /// </summary>
 /// <remarks>
 /// <para>
+/// A second fact (§0 D95): what the merge queue needs that the App <em>itself</em> does not declare. O17's
+/// "pending" compares against whatever the App declares, so an App that never asked for <c>actions</c> had nothing
+/// pending and the queue learned of the gap from a 403 after pushing (live, 2026-10-15). <see cref="ComputeMissing"/>
+/// compares the App against fixed need tables; the queue refuses at enqueue on a gap, and the notice reports it with the
+/// App's own settings page, since no installation can accept what the App does not request.
+/// </para>
+/// <para>
 /// ⚠️ Compared as raw JSON, not through Octokit's <see cref="InstallationPermissions"/>. Octokit 14 types 36
 /// permissions; GitHub has more (<c>merge_queues</c>, <c>attestations</c>, …), and a permission the typed
 /// object does not know would be silently missing from both sides, so its pending upgrade would never show.
@@ -53,6 +60,14 @@ public partial class GitHubInstallationPermissions : IForgeInstallationPermissio
 
     private static readonly TimeSpan CacheDuration = TimeSpan.FromMinutes(1);
 
+    /// <summary>
+    /// How long the App's own declaration (<c>GET /app</c>) is kept (§0 D95): it changes only when its owner edits the
+    /// App, and every enqueue reads it. A failure is kept for <see cref="CacheDuration"/>.
+    /// </summary>
+    private static readonly TimeSpan AppCacheDuration = TimeSpan.FromMinutes(5);
+
+    private const string AppCacheKey = "github-app-declaration";
+
     public EForgeProvider Provider => EForgeProvider.GitHub;
 
     public async Task<PendingInstallationPermissions?> GetPendingAsync(Account account, CancellationToken cancellationToken = default)
@@ -61,28 +76,41 @@ public partial class GitHubInstallationPermissions : IForgeInstallationPermissio
             return null;
 
         // Unconfigured (the normal dev state): say nothing, and log nothing either.
-        var envPrefix = environment.EnvironmentName;
-        if (string.IsNullOrEmpty(configuration[$"GitHub:{envPrefix}:PrivateKeyPath"])
-            || !long.TryParse(configuration[$"GitHub:{envPrefix}:AppId"], out _))
+        if (!IsConfigured())
             return null;
 
         var cacheKey = $"github-installation-permissions:{installationId}";
         if (memoryCache.TryGetValue(cacheKey, out PendingInstallationPermissions? cached))
             return cached;
 
+        IGitHubClient? client = null;
+        async Task<IGitHubClient> Client() => client ??= await installationService.CreateAppClientAsync();
+
         PendingInstallationPermissions? result;
+        // The App's half is read (and logged, when it fails) once for every installation and for the queue's own check.
+        var app = await ReadAppAsync(Client);
+        if (app is null)
+        {
+            memoryCache.Set(cacheKey, (PendingInstallationPermissions?)null, CacheDuration);
+            return null;
+        }
+
         try
         {
-            var client = await installationService.CreateAppClientAsync();
-            using var app = await GetJsonAsync(client, "app");
-            using var installation = await GetJsonAsync(client, $"app/installations/{installationId}");
+            using var installation = await GetJsonAsync(await Client(), $"app/installations/{installationId}");
 
             var htmlUrl = StringOf(installation.RootElement, "html_url");
+            var gaps = ComputeMissing(app.Permissions, app.Events, AllNeeds);
             result = htmlUrl is null
                 ? null
                 : new PendingInstallationPermissions(htmlUrl, ComputePending(
-                    ReadPermissions(app.RootElement), ReadPermissions(installation.RootElement),
-                    StringOf(installation.RootElement, "target_type")));
+                    app.Permissions, ReadPermissions(installation.RootElement),
+                    StringOf(installation.RootElement, "target_type")))
+                {
+                    MissingFromApp = gaps.MissingPermissions,
+                    MissingEvents = gaps.MissingEvents,
+                    AppSettingsUrl = app.SettingsUrl,
+                };
         }
         catch (NotFoundException)
         {
@@ -102,6 +130,168 @@ public partial class GitHubInstallationPermissions : IForgeInstallationPermissio
 
         memoryCache.Set(cacheKey, result, CacheDuration);
         return result;
+    }
+
+    public async Task<ForgeAppGaps?> GetAppGapsAsync(EMergeQueueAppNeed needs, CancellationToken cancellationToken = default)
+    {
+        if (!IsConfigured())
+            return null;
+        if (await ReadAppAsync(installationService.CreateAppClientAsync) is not { } app)
+            return null;
+        return ComputeMissing(app.Permissions, app.Events, needs) with { SettingsUrl = app.SettingsUrl };
+    }
+
+    private bool IsConfigured()
+    {
+        var envPrefix = environment.EnvironmentName;
+        return !string.IsNullOrEmpty(configuration[$"GitHub:{envPrefix}:PrivateKeyPath"])
+            && long.TryParse(configuration[$"GitHub:{envPrefix}:AppId"], out _);
+    }
+
+    /// <summary>What the App declares (<c>GET /app</c>), shared by every installation's notice and the queue's enqueue check.</summary>
+    private sealed record AppDeclaration(IReadOnlyDictionary<string, string> Permissions, IReadOnlySet<string> Events, string? SettingsUrl);
+
+    /// <summary>
+    /// The App's declaration, cached app-wide (§0 D95): <see cref="AppCacheDuration"/> on success, <see cref="CacheDuration"/>
+    /// on failure. Null when it could not be read; the failure is logged here, once, at the levels of §0 D70.
+    /// </summary>
+    private async Task<AppDeclaration?> ReadAppAsync(Func<Task<IGitHubClient>> client)
+    {
+        if (memoryCache.TryGetValue(AppCacheKey, out AppDeclaration? cached))
+            return cached;
+
+        AppDeclaration? result;
+        try
+        {
+            using var app = await GetJsonAsync(await client(), "app");
+            var root = app.RootElement;
+            var owner = root.TryGetProperty("owner", out var o) && o.ValueKind == JsonValueKind.Object ? o : default;
+            result = new AppDeclaration(
+                ReadPermissions(root),
+                ReadEvents(root),
+                SettingsUrl(StringOf(root, "slug"), owner.ValueKind == JsonValueKind.Object ? StringOf(owner, "login") : null,
+                    owner.ValueKind == JsonValueKind.Object ? StringOf(owner, "type") : null));
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            logger.LogWarning(ex, "Could not read the GitHub App's declared permissions and events");
+            result = null;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "Could not read the GitHub App's declared permissions and events. This is no GitHub outage, so it repeats until it is fixed");
+            result = null;
+        }
+
+        memoryCache.Set(AppCacheKey, result, result is null ? CacheDuration : AppCacheDuration);
+        return result;
+    }
+
+    /// <summary>The <c>events</c> array of the App payload: the webhook events it is subscribed to.</summary>
+    public static IReadOnlySet<string> ReadEvents(JsonElement payload)
+    {
+        var events = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (payload.ValueKind != JsonValueKind.Object
+            || !payload.TryGetProperty("events", out var element)
+            || element.ValueKind != JsonValueKind.Array)
+            return events;
+
+        foreach (var item in element.EnumerateArray())
+            if (item.ValueKind == JsonValueKind.String && item.GetString() is { Length: > 0 } name)
+                events.Add(name);
+        return events;
+    }
+
+    /// <summary>
+    /// The App's own "Permissions &amp; events" settings page (§0 D95). GitHub's <c>GET /app</c> returns no such URL
+    /// (its <c>html_url</c> is the public <c>github.com/apps/{slug}</c> page), so it is built from the slug and the owner:
+    /// <c>github.com/organizations/{owner}/settings/apps/{slug}/permissions</c> for an organization's App,
+    /// <c>github.com/settings/apps/{slug}/permissions</c> for a user's. This is the App's page, which only its owner can
+    /// change; O17's rule against building the <em>installation's</em> URL from a login still stands. Null for an owner
+    /// of another type, or a payload without slug or owner.
+    /// </summary>
+    public static string? SettingsUrl(string? slug, string? ownerLogin, string? ownerType)
+    {
+        if (string.IsNullOrEmpty(slug)) return null;
+        var app = Uri.EscapeDataString(slug);
+        return ownerType switch
+        {
+            "Organization" when !string.IsNullOrEmpty(ownerLogin) => $"https://github.com/organizations/{Uri.EscapeDataString(ownerLogin)}/settings/apps/{app}/permissions",
+            "User" => $"https://github.com/settings/apps/{app}/permissions",
+            _ => null,
+        };
+    }
+
+    private const EMergeQueueAppNeed AllNeeds = EMergeQueueAppNeed.Core | EMergeQueueAppNeed.Dispatch | EMergeQueueAppNeed.RerunActions;
+
+    // What each need takes of the App (§0 D95). Core: the queue reads the pull request, its reviews, statuses and
+    // checks, rebases and pushes, publishes its check, comments and labels (issues), and merges; it hears pushes, check
+    // runs and suites, statuses, reviews, pull request changes and /queue comments. Dispatch: it dispatches the regenerate
+    // workflow (actions write) and hears its run finish. RerunActions: it re-runs failed jobs (actions write).
+    // Workflows: only a push that touches a workflow file takes workflows write (§0 D59), so the engine warns about it
+    // instead of refusing, and the installation notice (AllNeeds) leaves it out.
+    private static readonly (EMergeQueueAppNeed Need, (string Name, string Level)[] Permissions, string[] Events)[] NeedTables =
+    [
+        (EMergeQueueAppNeed.Core,
+            [("contents", "write"), ("pull_requests", "write"), ("checks", "write"), ("metadata", "read"), ("statuses", "read"), ("issues", "read")],
+            ["pull_request", "push", "check_run", "check_suite", "status", "pull_request_review", "issue_comment"]),
+        (EMergeQueueAppNeed.Dispatch, [("actions", "write")], ["workflow_run"]),
+        (EMergeQueueAppNeed.RerunActions, [("actions", "write")], []),
+        (EMergeQueueAppNeed.Workflows, [("workflows", "write")], []),
+    ];
+
+    public IReadOnlyList<PendingPermission> NeededPending(IReadOnlyList<PendingPermission> pending, EMergeQueueAppNeed needs)
+        => NeededPendingOf(pending, needs);
+
+    /// <summary>The pure half of <see cref="NeededPending"/>.</summary>
+    public static IReadOnlyList<PendingPermission> NeededPendingOf(IReadOnlyList<PendingPermission> pending, EMergeQueueAppNeed needs)
+    {
+        // What the installation accepted, for the pending ones; a permission that is not pending is accepted at the App's
+        // level already, and what the App lacks is GetAppGapsAsync's to report.
+        var accepted = pending
+            .Where(p => p.Accepted is not null)
+            .ToDictionary(p => p.Name, p => p.Accepted!, StringComparer.OrdinalIgnoreCase);
+        var belowNeed = ComputeMissing(accepted, new HashSet<string>(), needs).MissingPermissions
+            .Select(p => p.Name)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return [.. pending.Where(p => belowNeed.Contains(p.Name))];
+    }
+
+    /// <summary>
+    /// What <paramref name="needs"/> takes that the App does not declare (§0 D95): each permission at the highest level
+    /// any need asks, missing when the App declares less (a level this code does not rank counts as missing unless it is
+    /// the same word), and each event it is not subscribed to. Ordered by name. <see cref="ForgeAppGaps.SettingsUrl"/> is null.
+    /// </summary>
+    public static ForgeAppGaps ComputeMissing(IReadOnlyDictionary<string, string> declaredPermissions, IReadOnlySet<string> declaredEvents, EMergeQueueAppNeed needs)
+    {
+        var required = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var events = new SortedSet<string>(StringComparer.Ordinal);
+        foreach (var (need, permissions, needEvents) in NeedTables)
+        {
+            if (!needs.HasFlag(need)) continue;
+            foreach (var (name, level) in permissions)
+                if (!required.TryGetValue(name, out var current) || Rank(level) > Rank(current))
+                    required[name] = level;
+            foreach (var e in needEvents)
+                events.Add(e);
+        }
+
+        var missing = new List<PendingPermission>();
+        foreach (var (name, level) in required)
+        {
+            var declared = declaredPermissions.TryGetValue(name, out var d) ? d : null;
+            var declaredRank = declared is null ? 0 : Rank(declared);
+            var lacks = declaredRank is null
+                ? !string.Equals(declared, level, StringComparison.OrdinalIgnoreCase)
+                : declaredRank < Rank(level);
+            if (lacks)
+                missing.Add(new PendingPermission(name, DisplayName(name), level, declared));
+        }
+
+        return new ForgeAppGaps(
+            null,
+            [.. missing.OrderBy(p => p.Name, StringComparer.Ordinal)],
+            [.. events.Where(e => !declaredEvents.Contains(e))]);
     }
 
     private static async Task<JsonDocument> GetJsonAsync(IGitHubClient client, string path)

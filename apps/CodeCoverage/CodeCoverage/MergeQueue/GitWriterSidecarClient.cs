@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using CodeCoverage.CommitGraph;
+using CodeCoverage.Entities;
 using Microsoft.Extensions.Options;
 
 namespace CodeCoverage.MergeQueue;
@@ -38,7 +39,7 @@ public sealed class MergeQueueOptions
     public string PatchArtifactName { get; set; } = "merge-queue-patch";
 
     /// <summary>The largest regenerate patch accepted, the writer's own <c>MaxPatchBytes</c> (D30).</summary>
-    public long MaxPatchBytes { get; set; } = 2 * 1024 * 1024;
+    public long MaxPatchBytes { get; set; } = 8 * 1024 * 1024;
 }
 
 /// <summary>
@@ -166,10 +167,25 @@ public sealed class GitWriterRefusedException(string job, string field, string r
 /// job of the run builds the same commit from the same request.</summary>
 public sealed record GitWriterIdentity(string Name, string Email, DateTimeOffset Date);
 
-/// <summary>One auto-resolve entry: a path glob and the top-level JSON keys whose lines may conflict (O2), or
-/// <paramref name="AnyLine"/> for a wholly generated file whose every line may (O19).</summary>
-public sealed record GitWriterAutoResolve(string Path, IReadOnlyList<string>? Keys = null, bool AnyLine = false)
+/// <summary>One auto-resolve entry: a path glob and its strategy (§10.3; null is take-base). For take-base, the top-level
+/// JSON keys whose lines may conflict (O2), or <paramref name="AnyLine"/> for a wholly generated file whose every line may
+/// (O19). <paramref name="Validate"/> and <paramref name="Regenerate"/> as in <c>coverage.yml</c>.</summary>
+public sealed record GitWriterAutoResolve(string Path, IReadOnlyList<string>? Keys = null, bool AnyLine = false, string? Strategy = null,
+    IReadOnlyList<string>? Validate = null, bool? Regenerate = null)
 {
+    /// <summary>
+    /// A stored rule as the writer reads it (§10.3). A take-base rule without keys is any line (O19). The strategy is sent
+    /// by name only when it is not take-base, so an older writer still reads a take-base-only configuration; the
+    /// regenerate choice is the effective one the parser stored (O36).
+    /// </summary>
+    public static GitWriterAutoResolve From(MergeQueueAutoResolveRule rule)
+    {
+        var validate = rule.Validate.Count == 0 ? null : rule.Validate;
+        return rule.Strategy == EMergeQueueResolveStrategy.TakeBase
+            ? new GitWriterAutoResolve(rule.Path, rule.Keys.Count == 0 ? null : rule.Keys, AnyLine: rule.Keys.Count == 0, Validate: validate)
+            : new GitWriterAutoResolve(rule.Path, Strategy: MergeQueueAutoResolveRule.WireName(rule.Strategy), Validate: validate, Regenerate: rule.Regenerate);
+    }
+
     /// <summary>O19's default: <c>modelHashes.json</c> and <c>securityPosture.txt</c>, any line, take-base.</summary>
     public static IReadOnlyList<GitWriterAutoResolve> SparkGeneratedFiles { get; } =
         [new("**/App_Data/modelHashes.json", AnyLine: true), new("**/App_Data/securityPosture.txt", AnyLine: true)];
@@ -196,7 +212,20 @@ public sealed record GitWriterQueueBranchRequest(GitWriterPrepareRequest Prepare
 /// answered. <paramref name="Patch"/> is the regenerate artifact's bytes, base64, or null when nothing was regenerated;
 /// <paramref name="PushUrl"/> is the fork's clone URL for a fork's pull request (O3).</summary>
 public sealed record GitWriterPublishRequest(
-    GitWriterPrepareRequest Prepare, string PreparedSha, string? PushUrl, string PrBranch, string? Patch, IReadOnlyList<string> RegeneratedPaths);
+    GitWriterPrepareRequest Prepare, string PreparedSha, string? PushUrl, string PrBranch, string? Patch, IReadOnlyList<string> RegeneratedPaths)
+{
+    /// <summary>O36: one patch per regenerate workflow run, in the order the writer applies them (workflow name, ordinal).
+    /// Null sends the single <see cref="Patch"/> an older writer reads.</summary>
+    public IReadOnlyList<GitWriterPatch>? Patches { get; init; }
+}
+
+/// <summary>One regenerate run's patch (O36): the workflow it came from and its <c>git diff</c>, base64 (empty: no
+/// change).</summary>
+public sealed record GitWriterPatch(string Workflow, string Patch);
+
+/// <summary>How the writer resolved one conflicted path (§10.6); <paramref name="Rule"/> indexes the request's
+/// <c>autoResolve</c>.</summary>
+public sealed record GitWriterResolution(string Path, string Strategy, bool Regenerate, int Rule);
 
 /// <summary>The body of <c>DELETE /jobs/queue-branch</c>.</summary>
 public sealed record GitWriterDeleteQueueBranchRequest(string Provider, string RepoId, string CloneUrl, SidecarCredential Credential, string QueueBranch, string? ExpectedSha);
@@ -214,13 +243,28 @@ public sealed record GitWriterPrepareResult(
     /// <summary>The commit's <c>.github/workflows</c> differs from the pinned head's (§0 D59, D67): the base changed
     /// workflow files since, which a fork's branch lacks and no App may write there (§0 D69, D71).</summary>
     public bool BaseChangedWorkflows { get; init; }
+
+    /// <summary>How each resolved path was resolved (§10.6). Null from a writer older than resolution v2: the saga then
+    /// treats every resolved path as needing regeneration, as before.</summary>
+    public IReadOnlyList<GitWriterResolution>? Resolutions { get; init; }
+
+    /// <summary>The writer's resolver version and git version (O35 #4); null from an older writer.</summary>
+    public string? ResolverVersion { get; init; }
 }
 
 /// <param name="PreparedSha">For <c>pushed</c>: the commit the queue branch holds now.</param>
 /// <param name="Paths">Why, for <c>evicted</c> and <c>fork-touches-workflows</c>.</param>
-public sealed record GitWriterQueueBranchResult(string Outcome, string? Reason, string? PreparedSha, IReadOnlyList<string> Paths, string? Detail, long DurationMs);
+public sealed record GitWriterQueueBranchResult(string Outcome, string? Reason, string? PreparedSha, IReadOnlyList<string> Paths, string? Detail, long DurationMs)
+{
+    /// <summary>With <c>prepared-differs</c>: the writer's resolver version now (O35 #4).</summary>
+    public string? ResolverVersion { get; init; }
+}
 
-public sealed record GitWriterPublishResult(string Outcome, string? Reason, string? FinalSha, IReadOnlyList<string> Paths, string? Detail, long DurationMs);
+public sealed record GitWriterPublishResult(string Outcome, string? Reason, string? FinalSha, IReadOnlyList<string> Paths, string? Detail, long DurationMs)
+{
+    /// <summary>With <c>prepared-differs</c>: the writer's resolver version now (O35 #4).</summary>
+    public string? ResolverVersion { get; init; }
+}
 
 public sealed record GitWriterDeleteResult(string Outcome, string? Reason, string? Detail, long DurationMs);
 
@@ -253,4 +297,10 @@ public static class GitWriterReasons
 {
     /// <summary><c>pushed</c>/<c>published</c> with the commit an earlier attempt of the same job pushed (§0 D52).</summary>
     public const string AlreadyPushed = "already-pushed";
+
+    /// <summary><c>patch-rejected</c>: two regenerate workflows' patches change one path differently (O36).</summary>
+    public const string Overlap = "overlap";
+
+    /// <summary><c>patch-rejected</c>: a patched path fails a validator of its <c>autoResolve</c> rule (§10.4).</summary>
+    public const string InvalidContent = "invalid-content";
 }

@@ -25,6 +25,10 @@ import { HomeExtrasComponent } from './home-extras.component';
  * this work as a page: on Account the order comes out title → attributes → repositories grid →
  * upload tokens, which is the page a reader expects.
  *
+ * The one exception is the Account's pending-permissions notice, mounted through
+ * `beforeQueriesTemplate`: it renders after the attributes and BEFORE the repositories grid,
+ * because a notice the owner has to act on is no use below a long grid.
+ *
  * ⚠️ It no longer forwards anything. Until preview.67 this component pre-fetched the whole
  * PersistentObject on every navigation just to decide whether Account should redirect to a
  * hand-written `/{provider}/a/{login}` page — a wasted round-trip on every detail view of every type.
@@ -41,7 +45,16 @@ import { HomeExtrasComponent } from './home-extras.component';
     CommitFilesExtrasComponent, HomeExtrasComponent, AccountDependencyGraphPanelComponent, AccountPermissionsNoticeComponent,
   ],
   template: `
-    <spark-po-detail [extraContentTemplate]="extras" />
+    <spark-po-detail [beforeQueriesTemplate]="lead" [extraContentTemplate]="extras" />
+
+    <ng-template #lead let-po let-entityType="entityType">
+      @if (entityType.name === 'Account') {
+        @if (accountOf(po); as account) {
+          <!-- mx-3 lines it up with the attribute cards (m-3); the notice keeps its own classes, it also renders on the setup guide. -->
+          <app-account-permissions-notice class="d-block mx-3" [provider]="account.provider" [login]="account.login" />
+        }
+      }
+    </ng-template>
 
     <ng-template #extras let-po let-entityType="entityType">
       @if (entityType.name === 'Repository') {
@@ -54,7 +67,6 @@ import { HomeExtrasComponent } from './home-extras.component';
         }
       } @else if (entityType.name === 'Account') {
         @if (accountOf(po); as account) {
-          <app-account-permissions-notice [provider]="account.provider" [login]="account.login" />
           <app-account-dependency-graph-panel [provider]="account.provider" [login]="account.login" />
         }
       } @else if (entityType.name === 'Commit') {

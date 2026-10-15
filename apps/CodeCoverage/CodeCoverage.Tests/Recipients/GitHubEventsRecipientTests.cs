@@ -570,6 +570,24 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
     private static string MergedPr(bool headFromFork = false)
         => PullRequestJson(HeadSha, BaseSha, action: "closed", merged: true, headFromFork: headFromFork);
 
+    /// <summary>
+    /// merge-queue PRD §0 D94: the merged event carries GitHub's <c>merge_commit_sha</c>, so a merge the queue
+    /// requested records its commit even when this event beats the queue's own poll.
+    /// </summary>
+    [Fact]
+    public async Task A_merged_pull_request_event_carries_the_merge_commit()
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        await SeedRepositoryAsync(session, EDeleteBranchPolicy.Enabled);
+        var recipient = CreateRecipient(session, out var bus);
+
+        await recipient.HandleAsync(Message("pull_request", MergedPr()));
+
+        bus.Messages.OfType<ForgeWebhookMessage<PullRequestMerged>>().Should().ContainSingle()
+            .Which.Event.MergeCommitSha.Should().Be(BaseSha, "the fixture's merge_commit_sha");
+    }
+
     [Fact]
     public async Task A_merged_pull_request_deletes_its_head_branch_when_the_repository_opted_in()
     {

@@ -49,6 +49,16 @@ public class HardeningTests : WriterTestBase
         { "no credential", "prepare", new { credential = (object?)null }, "credential" },
         { "an ident with a newline", "prepare", new { author = new { name = "a\nb", email = "a@example.invalid", date = AuthorDate } }, "author" },
         { "a key-less rule", "prepare", new { autoResolve = new object[] { new { path = "**/x.json", keys = Array.Empty<string>() } } }, "autoResolve" },
+        // §10.3: the strategies and validators are a closed vocabulary; keys scope take-base only; take-base regenerates.
+        { "an unknown strategy", "prepare", new { autoResolve = new object[] { new { path = "**/x.json", strategy = "merge-driver" } } }, "autoResolve" },
+        { "keys on a keep-both rule", "prepare", new { autoResolve = new object[] { new { path = "**/x.json", strategy = "keep-both", keys = new[] { "a" } } } }, "autoResolve" },
+        { "take-base that does not regenerate", "prepare", new { autoResolve = new object[] { new { path = "**/x.json", anyLine = true, regenerate = false } } }, "autoResolve" },
+        { "an unknown validator", "prepare", new { autoResolve = new object[] { new { path = "**/x.json", strategy = "keep-both", validate = new[] { "yaml" } } } }, "autoResolve" },
+        { "nine validators", "queue-branch", new { autoResolve = new object[] { new { path = "**/x.json", strategy = "keep-both", validate = Enumerable.Repeat("json", 9).ToArray() } } }, "autoResolve" },
+        // O36: one patch per regenerate run, or the single patch of an older app, never both.
+        { "a patch beside patches", "publish", new { patch = "ZGlmZg==", patches = new object[] { new { workflow = "regenerate.yml", patch = "" } } }, "patches" },
+        { "a patch without its workflow", "publish", new { patches = new object[] { new { patch = "" } } }, "patches" },
+        { "nine patches", "publish", new { patches = Enumerable.Range(0, 9).Select(i => (object)new { workflow = $"w{i}.yml", patch = "" }).ToArray() }, "patches" },
         // §0 D65: a date git would stamp itself makes the same request build another commit.
         { "an author without a date", "prepare", new { author = new { name = "a", email = "a@example.invalid" } }, "author" },
         { "a committer without a date", "publish", new { committer = new { name = "bot", email = "bot@example.invalid" } }, "committer" },

@@ -26,13 +26,20 @@ function po(attributes: Record<string, unknown>, id = 'items/1'): PersistentObje
 /** What the stand-in detail page hands the extras template, set per test. */
 let extrasContext: { $implicit: PersistentObject; entityType: { name: string } };
 
-/** Stands in for spark-po-detail: renders only the extras slot, with the context the real one passes. */
+/**
+ * Stands in for spark-po-detail: renders only the before-queries and extras slots, each in its own
+ * marked wrapper, with the context the real one passes.
+ */
 @Component({
   selector: 'spark-po-detail',
   imports: [NgTemplateOutlet],
-  template: `@if (extraContentTemplate(); as tpl) { <ng-container *ngTemplateOutlet="tpl; context: context" /> }`,
+  template: `
+    <div class="slot-before-queries">@if (beforeQueriesTemplate(); as tpl) { <ng-container *ngTemplateOutlet="tpl; context: context" /> }</div>
+    <div class="slot-extras">@if (extraContentTemplate(); as tpl) { <ng-container *ngTemplateOutlet="tpl; context: context" /> }</div>
+  `,
 })
 class StubPoDetail {
+  readonly beforeQueriesTemplate = input<TemplateRef<unknown> | null>(null);
   readonly extraContentTemplate = input<TemplateRef<unknown> | null>(null);
   readonly context = extrasContext;
 }
@@ -156,9 +163,15 @@ describe('PoDetailPageComponent', () => {
     const fixture = render('Account', po({ Login: 'acme', Provider: 'GitLab' }, 'Accounts/gitlab/7'));
     const panel = fixture.debugElement.query(By.directive(StubDependencyGraphPanel)).componentInstance as StubDependencyGraphPanel;
     expect([panel.provider(), panel.login()]).toEqual(['gitlab', 'acme']);
-    // The pending-permissions notice (O17) rides along, scoped the same way.
-    const notice = fixture.debugElement.query(By.directive(StubPermissionsNotice)).componentInstance as StubPermissionsNotice;
-    expect([notice.provider(), notice.login()]).toEqual(['gitlab', 'acme']);
+    // The pending-permissions notice (O17) is scoped the same way, but mounted through the
+    // before-queries slot so it sits above the repositories grid, not among the extras below it.
+    const notice = fixture.debugElement.query(By.directive(StubPermissionsNotice));
+    expect([(notice.componentInstance as StubPermissionsNotice).provider(), (notice.componentInstance as StubPermissionsNotice).login()])
+      .toEqual(['gitlab', 'acme']);
+    expect((notice.nativeElement as HTMLElement).closest('.slot-before-queries')).not.toBeNull();
+    expect(fixture.debugElement.query(By.css('.slot-extras')).query(By.directive(StubPermissionsNotice))).toBeNull();
+    // The dependency graph stays an extra.
+    expect(fixture.debugElement.query(By.css('.slot-extras')).query(By.directive(StubDependencyGraphPanel))).not.toBeNull();
 
     for (const object of [po({ Login: 'acme' }), po({}, 'Accounts/github/1'), po({ Login: 3 }, 'Accounts/github/1')]) {
       expect(has(render('Account', object), StubDependencyGraphPanel)).toBe(false);

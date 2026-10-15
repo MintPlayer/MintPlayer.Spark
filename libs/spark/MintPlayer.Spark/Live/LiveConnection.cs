@@ -289,12 +289,9 @@ internal sealed class LiveConnection
         {
         }
 
-        if (subscription is null || request is null || !await subscription.UpdateAsync(request))
-        {
+        // Queued, not applied: the worker may be evaluating this subscription right now (see RequestUpdate).
+        if (subscription is null || request is null || !subscription.RequestUpdate(request))
             await SendAsync(ErrorFrame(sub, LiveCodes.Invalid, "Only an existing query subscription can be updated, with a \"query\""), cancellationToken);
-            return;
-        }
-        subscription.MarkDirty(null);
     }
 
     // ---- the worker ---------------------------------------------------------------------------------------------
@@ -393,6 +390,9 @@ internal sealed class LiveConnection
         LiveOutcome outcome;
         try
         {
+            // A client's update (page, sort, search) takes effect here, between evaluations, never during one.
+            await subscription.ApplyPendingUpdateAsync();
+
             // A query re-run straight after a write would read its index stale; wait (bounded) until the
             // indexes over the changed collections caught up. Cheap when they already have: one statistics call.
             if (collections.Count > 0 && subscription is LiveQuerySubscription)

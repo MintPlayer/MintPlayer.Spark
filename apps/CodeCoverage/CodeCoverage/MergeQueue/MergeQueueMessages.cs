@@ -111,7 +111,10 @@ public enum EMergeQueueSignal
     /// <summary>The pull request was closed without merging.</summary>
     Closed,
 
-    /// <summary>The pull request was merged (by the queue's request, or by somebody else).</summary>
+    /// <summary>
+    /// The pull request was merged (by the queue's request, or by somebody else). <see cref="MergeQueueSignalMessage.Sha"/>
+    /// is the merge commit when the forge's event named it (§0 D94), else null.
+    /// </summary>
     Merged,
 
     /// <summary>A review was submitted or dismissed.</summary>

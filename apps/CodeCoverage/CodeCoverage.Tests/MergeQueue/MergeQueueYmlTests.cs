@@ -30,8 +30,9 @@ public class MergeQueueYmlTests
         section.PostRebaseActionName.Should().Be("regenerate.yml");
         section.PostRebaseTimeoutMinutes.Should().Be(20);
         section.PostRebaseWhen.Should().Be(EPostRebaseWhen.AutoResolved);
-        section.AutoResolve.Select(r => r.Path).Should().Equal(["**/App_Data/modelHashes.json", "**/App_Data/securityPosture.txt"]);
-        section.AutoResolve.Should().AllSatisfy(r => r.Keys.Should().BeEmpty("O19: these files resolve on any line"));
+        var own = section.AutoResolve.Where(r => r.Source == MergeQueueYml.Source).ToList();
+        own.Select(r => r.Path).Should().Equal(["**/App_Data/modelHashes.json", "**/App_Data/securityPosture.txt"]);
+        own.Should().AllSatisfy(r => r.Keys.Should().BeEmpty("O19: these files resolve on any line"));
         section.RegeneratedPaths.Should().Contain("**/App_Data/security.json");
     }
 
@@ -76,7 +77,7 @@ public class MergeQueueYmlTests
               autoResolve:
                 - path: "**/translations.json"
                   strategy: json-union
-            """, "main").Errors.Should().ContainSingle().Which.Should().Contain("only take-base");
+            """, "main").Errors.Should().ContainSingle().Which.Should().Contain("json-union");
 
     [Theory]
     [InlineData("postRebaseTimeout: 90s", 2)]
@@ -160,7 +161,7 @@ public class MergeQueueYmlTests
                 - path: "**/modelHashes.json"
                   strategy: take-base
                   keys: [modelHash, contextRoots]
-            """, "main").Section!.AutoResolve.Single().Keys.Should().Equal(["modelHash", "contextRoots"]);
+            """, "main").Section!.AutoResolve.First().Keys.Should().Equal(["modelHash", "contextRoots"]);
 
     // ── Settings resolution (O11, O12) ───────────────────────────────────────────────────────────────
 

@@ -13,15 +13,19 @@ mergeQueue:
   postRebaseActionName: regenerate.yml
   postRebaseTimeout: 20m
   postRebaseWhen: auto-resolved
-  # The only paths the regenerate patch may touch (T4). Synchronize writes nothing else.
+  # The only paths the regenerate patch may touch (T4), besides each file a keepBothDefaults rule resolved for the
+  # entry (never the default's glob, O37). Synchronize writes nothing else. This list replaces the default one.
   regeneratedPaths:
     - "**/App_Data/modelHashes.json"
     - "**/App_Data/securityPosture.txt"
     - "**/App_Data/translations.json"
     - "**/App_Data/security.json"
     - "**/App_Data/Model/*.json"
-  # Wholly generated files only (O1, O19): a conflict anywhere in them takes the base side and the
-  # regenerate step rewrites them. A conflict in any other file evicts the pull request.
+  # take-base for the wholly generated files (O1, O19): a conflict anywhere in them takes the base side and
+  # the regenerate step rewrites them. These explicit rules come first; after them, keepBothDefaults (on
+  # unless set to false, O35/O36) adds keep-both for **/*.json (json-no-duplicate-keys), ignore files,
+  # CHANGELOG.md and XML project files: both sides' insertions at one place are kept, the result must
+  # validate, and regenerate.yml re-sorts what synchronize owns. Any other conflict evicts the pull request.
   autoResolve:
     - path: "**/App_Data/modelHashes.json"
       strategy: take-base

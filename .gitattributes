@@ -75,3 +75,5 @@ apps/CodeCoverage/action/dist/index.js text eol=lf linguist-generated=true
 # The spark-regenerate action's script runs under bash; a CRLF checkout breaks it.
 ###############################################################################
 .github/actions/spark-regenerate/*.sh text eol=lf
+.github/actions/lockfile-regenerate/*.sh text eol=lf
+.github/actions/lockfile-regenerate/*.mjs text eol=lf

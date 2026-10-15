@@ -1,5 +1,8 @@
-.mq-number {
-  width: 9rem;
+// The queue dropdown: wide enough to read a title, never wider than the card on a phone.
+.mq-candidates {
+  display: block;
+  min-width: 14rem;
+  max-width: min(36rem, 100%);
 }
 
 // An eviction's reason is a sentence or two: let it wrap so the "When" column stays in view, instead of inheriting the

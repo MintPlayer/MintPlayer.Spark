@@ -924,4 +924,50 @@ describe('SparkPoDetailComponent', () => {
       expect(c.asDetailReferenceOptions()).toEqual({});
     });
   });
+
+  describe('beforeQueriesTemplate', () => {
+    /** What the slot was handed, recorded by the host's template. */
+    let received: { po: PersistentObject; entityType: EntityType } | null = null;
+
+    /** Routed in place of the detail page, as an app's `SparkRouteConfig.poDetail` override is. */
+    @Component({
+      imports: [SparkPoDetailComponent],
+      template: `
+        <spark-po-detail [beforeQueriesTemplate]="lead" />
+        <ng-template #lead let-po let-entityType="entityType">
+          <div class="before-queries">{{ record(po, entityType) }}</div>
+        </ng-template>
+      `,
+    })
+    class BeforeQueriesHost {
+      record(po: PersistentObject, entityType: EntityType): string {
+        received = { po, entityType };
+        return 'lead';
+      }
+    }
+
+    it('renders after the attributes and before the first sub-query card, with the object and its type', async () => {
+      received = null;
+      const withSubQuery = { ...personType, queries: ['person-friends'] } as any;
+      const { harness } = await setup({
+        getEntityTypes: vi.fn().mockResolvedValue([withSubQuery]),
+        // Keeps the sub-query grid parked: this test is about where the slot lands, not the grid.
+        getQuery: vi.fn().mockReturnValue(new Promise(() => undefined)),
+      } as any);
+      TestBed.inject(Router).resetConfig([{ path: 'po/:type/:id', component: BeforeQueriesHost }, ...routes.slice(1)]);
+      await harness.navigateByUrl('/po/person/people%2F1', BeforeQueriesHost);
+      await settle(harness.fixture);
+
+      const root = harness.routeNativeElement!;
+      const lead = root.querySelector('.before-queries');
+      const firstCard = root.querySelector('spark-query-card');
+      expect(lead).not.toBeNull();
+      expect(firstCard).not.toBeNull();
+      expect(lead!.compareDocumentPosition(firstCard!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      // Assigned from the template, which TypeScript's narrowing of `received = null` above cannot see.
+      const got = received as { po: PersistentObject; entityType: EntityType } | null;
+      expect(got?.po.id).toBe('people/1');
+      expect(got?.entityType.name).toBe('Person');
+    });
+  });
 });

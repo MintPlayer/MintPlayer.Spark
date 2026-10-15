@@ -34,8 +34,9 @@ public sealed class GitWriterOptions
     /// <summary>How long a request waits for a free slot before it is answered <c>busy</c> (the saga retries).</summary>
     public int SlotWaitSeconds { get; set; } = 30;
 
-    /// <summary>The largest regenerate patch accepted (T4). Spark's generated files change by a few KB per entity.</summary>
-    public long MaxPatchBytes { get; set; } = 2L * 1024 * 1024;
+    /// <summary>The largest regenerate patch accepted (T4): 8 MiB since merge-queue PRD §10.6, so a regenerated lockfile fits.
+    /// Spark's generated files change by a few KB per entity.</summary>
+    public long MaxPatchBytes { get; set; } = 8L * 1024 * 1024;
 
     /// <summary>An empty, read-only directory every git process gets as <c>core.hooksPath</c>. The image creates
     /// <c>/opt/git-hooks-empty</c> owned by root; when empty, one is created under the temp directory.</summary>

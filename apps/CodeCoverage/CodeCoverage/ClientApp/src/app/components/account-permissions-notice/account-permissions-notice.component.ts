@@ -4,6 +4,12 @@ import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
 import { BrowseService, PendingInstallationPermissions } from '../../services/browse.service';
 
+/** `workflow_run` → `Workflow run`, as GitHub's settings page lists the event. */
+function words(name: string): string {
+  const text = name.replace(/_/g, ' ').trim();
+  return text.length === 0 ? name : text[0].toUpperCase() + text.slice(1);
+}
+
 /**
  * "GitHub is waiting for you to accept new permissions" on the Account page (merge-queue PRD O17).
  *
@@ -13,7 +19,10 @@ import { BrowseService, PendingInstallationPermissions } from '../../services/br
  * different paths. A second link opens the merge queue's setup guide (O13) at its permissions step, for this
  * account, so the guide shows this same notice there; the guide turns that link off (`showGuideLink`).
  *
- * Hidden when nothing is pending, and when the endpoint refuses (401/404: the viewer does not manage the
+ * A second message (§0 D95) says what the merge queue needs that the App itself does not request or hear. No
+ * installation can accept that; it links the App's own settings page, where its owner adds them.
+ *
+ * Hidden when nothing is pending or missing, and when the endpoint refuses (401/404: the viewer does not manage the
  * account) or cannot answer, so the notice never stands between a reader and the page.
  */
 @Component({
@@ -25,6 +34,21 @@ import { BrowseService, PendingInstallationPermissions } from '../../services/br
         GitHub is waiting for you to accept new permissions: {{ n.summary }}.
         <a class="alert-link ms-1" [href]="n.htmlUrl" target="_blank" rel="noopener">Review and accept on GitHub</a>
         @if (showGuideLink()) {
+          <a class="alert-link ms-2" routerLink="/merge-queue/setup" [queryParams]="{ provider: provider(), account: login() }"
+             fragment="permissions" data-testid="merge-queue-setup-link">Merge queue setup guide</a>
+        }
+      </bs-alert>
+    }
+    @if (appGaps(); as g) {
+      <bs-alert [type]="warningColor" class="d-block mt-3" data-testid="app-permission-gaps">
+        The CodeCoverage App itself {{ g.summary }}. This cannot be accepted here: the App's owner adds them under
+        Permissions &amp; events on
+        @if (g.settingsUrl) {
+          <a class="alert-link" [href]="g.settingsUrl" target="_blank" rel="noopener" data-testid="app-settings-link">the App's settings page</a>.
+        } @else {
+          the App's settings page.
+        }
+        @if (showGuideLink() && !notice()) {
           <a class="alert-link ms-2" routerLink="/merge-queue/setup" [queryParams]="{ provider: provider(), account: login() }"
              fragment="permissions" data-testid="merge-queue-setup-link">Merge queue setup guide</a>
         }
@@ -52,6 +76,23 @@ export class AccountPermissionsNoticeComponent {
       htmlUrl: p.htmlUrl,
       summary: p.pending.map((permission) => `${permission.displayName} (${permission.declared})`).join(', '),
     };
+  });
+
+  /**
+   * What the merge queue needs that the App itself does not request or hear (merge-queue PRD §0 D95). Accepting on
+   * the installation cannot add those, so this notice points at the App's own settings page instead.
+   */
+  readonly appGaps = computed(() => {
+    const p = this.permissions();
+    const permissions = p?.missingFromApp ?? [];
+    const events = p?.missingEvents ?? [];
+    if (permissions.length === 0 && events.length === 0) return null;
+    const parts: string[] = [];
+    if (permissions.length > 0)
+      parts.push(`does not request: ${permissions.map((permission) => `${permission.displayName} (${permission.declared})`).join(', ')}`);
+    if (events.length > 0)
+      parts.push(`is not subscribed to: ${events.map(words).join(', ')}`);
+    return { summary: parts.join('; and '), settingsUrl: p?.appSettingsUrl ?? null };
   });
 
   constructor() {

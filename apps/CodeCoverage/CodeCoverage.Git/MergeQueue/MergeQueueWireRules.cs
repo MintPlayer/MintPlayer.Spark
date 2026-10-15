@@ -31,6 +31,40 @@ public static partial class MergeQueueWireRules
     /// <summary>The longest identity name or email.</summary>
     public const int MaxIdentityLength = 256;
 
+    /// <summary>The conflict strategies (§10.3): <c>take-base</c> keeps the base branch's file (the regenerate workflow
+    /// then rewrites it); <c>evict</c> refuses the conflict, and in <c>coverage.yml</c> masks a default for one path.</summary>
+    public const string TakeBase = "take-base", Evict = "evict";
+
+    /// <summary><c>keep-both</c> (O33, §10.4): both sides' insertions at one place, base branch first.</summary>
+    public const string KeepBoth = "keep-both";
+
+    /// <summary><c>line-set</c> (§10.2): the sorted, de-duplicated union of lines, for files like <c>go.sum</c>.</summary>
+    public const string LineSet = "line-set";
+
+    /// <summary>Every strategy a rule may name; the writer's <c>ConflictResolverRegistry</c> holds exactly these.</summary>
+    public static IReadOnlySet<string> Strategies { get; } = new HashSet<string>(StringComparer.Ordinal) { TakeBase, KeepBoth, LineSet, Evict };
+
+    /// <summary>The content validators (§10.4 step 4). <c>no-conflict-markers</c> runs on every resolved content anyway;
+    /// naming it is allowed and changes nothing.</summary>
+    public const string Utf8 = "utf8", Json = "json", JsonNoDuplicateKeys = "json-no-duplicate-keys", Xml = "xml", NoConflictMarkers = "no-conflict-markers";
+
+    /// <summary>Every validator a rule may name; the writer's <c>ConflictResolverRegistry</c> holds exactly these.</summary>
+    public static IReadOnlySet<string> Validators { get; } = new HashSet<string>(StringComparer.Ordinal) { Utf8, Json, JsonNoDuplicateKeys, Xml, NoConflictMarkers };
+
+    /// <summary>The most validators one rule names.</summary>
+    public const int MaxValidators = 8;
+
+    /// <summary>The most distinct regenerate workflows one entry dispatches, one after the other (O36).</summary>
+    public const int MaxRegenerateWorkflows = 8;
+
+    public const string WorkflowFileRule = "a workflow file name under .github/workflows, 1 to 100 characters of letters, digits, '.', '_' or '-', ending in .yml or .yaml";
+
+    [GeneratedRegex(@"\A[A-Za-z0-9][A-Za-z0-9._-]{0,99}\.ya?ml\z", RegexOptions.CultureInvariant)]
+    private static partial Regex WorkflowFile();
+
+    /// <summary>A workflow file name as <c>postRebaseActionName</c> and a rule's <c>action</c> take it (no directory).</summary>
+    public static bool IsWorkflowFileName(string? value) => value is not null && WorkflowFile().IsMatch(value);
+
     public const string BranchRule =
         "letters, digits, '.', '_', '/' and '-' only, 1 to 200 characters, not starting with '-', '/' or '.', not ending "
         + "with '/' or '.', no '..' or '//', and no part starting with '.' or ending in '.lock'";

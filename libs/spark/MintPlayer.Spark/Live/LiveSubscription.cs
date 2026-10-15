@@ -153,8 +153,49 @@ internal abstract class LiveSubscription(LiveConnection connection, string id) :
     /// <summary>Re-runs the read under the viewer's rights in <paramref name="services"/> (a fresh scope) and diffs it.</summary>
     public abstract Task<LiveOutcome> EvaluateAsync(IServiceProvider services, CancellationToken cancellationToken);
 
-    /// <summary>Replaces a query subscription's request (page, sort, search); false for a kind that has none.</summary>
-    public virtual ValueTask<bool> UpdateAsync(ExecuteQueryRequest request) => ValueTask.FromResult(false);
+    // ---- replacing the request (page, sort, search) ---------------------------------------------------------------
+
+    private ExecuteQueryRequest? pendingUpdate;
+
+    /// <summary>Whether this kind has a request a client may replace (<c>update</c>): the query kinds.</summary>
+    public virtual bool Updatable => false;
+
+    /// <summary>
+    /// Queues <paramref name="request"/> to replace this subscription's request and marks it dirty; false for a
+    /// kind that has none. The latest update wins.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ Called from the socket's receive loop, while the worker may be evaluating this subscription, so it
+    /// only queues: the worker applies it (<see cref="ApplyPendingUpdateAsync"/>) before its next evaluation.
+    /// Applied here, it raced that evaluation: one that had already read the old page finished after the
+    /// update had reset <see cref="Previous"/>, so the full result that answers an update carried the old page,
+    /// and the new page arrived later as a patch against it (<c>An_update_changes_the_page_the_subscription_follows</c>).
+    /// </remarks>
+    public bool RequestUpdate(ExecuteQueryRequest request)
+    {
+        if (!Updatable)
+            return false;
+        lock (dirtyGate)
+            pendingUpdate = request;
+        MarkDirty(null);
+        return true;
+    }
+
+    /// <summary>Applies a queued update; called only by the connection's worker, before an evaluation.</summary>
+    public async ValueTask ApplyPendingUpdateAsync()
+    {
+        ExecuteQueryRequest? next;
+        lock (dirtyGate)
+        {
+            next = pendingUpdate;
+            pendingUpdate = null;
+        }
+        if (next is not null)
+            await ApplyUpdateAsync(next);
+    }
+
+    /// <summary>Replaces the request (worker only, between evaluations). Overridden by the <see cref="Updatable"/> kinds.</summary>
+    protected virtual ValueTask ApplyUpdateAsync(ExecuteQueryRequest request) => ValueTask.CompletedTask;
 
     public virtual ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
@@ -205,13 +246,15 @@ internal sealed class LiveQuerySubscription(LiveConnection connection, string id
 
     public override IReadOnlyCollection<string> Collections => collections;
 
-    public override ValueTask<bool> UpdateAsync(ExecuteQueryRequest next)
+    public override bool Updatable => true;
+
+    protected override ValueTask ApplyUpdateAsync(ExecuteQueryRequest next)
     {
         request = next;
         // An update is always answered: the next evaluation sends a full result, so the grid knows its
         // new page, sort or search took effect even when the rows it shows did not change.
         Previous = null;
-        return ValueTask.FromResult(true);
+        return ValueTask.CompletedTask;
     }
 
     public override async Task<LiveOutcome> EvaluateAsync(IServiceProvider services, CancellationToken cancellationToken)

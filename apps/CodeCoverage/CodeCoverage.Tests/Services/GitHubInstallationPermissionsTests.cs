@@ -352,6 +352,149 @@ public class GitHubInstallationPermissionsTests
         outageLog.Entries.Should().ContainSingle().Which.Level.Should().Be(LogLevel.Warning);
     }
 
+    // ── §0 D95: what the App itself declares against what the merge queue needs ─────────────────────
+
+    private static readonly string[] CoreEvents = ["pull_request", "push", "check_run", "check_suite", "status", "pull_request_review", "issue_comment"];
+
+    private static Dictionary<string, string> CoreApp() => Levels(
+        ("contents", "write"), ("pull_requests", "write"), ("checks", "write"), ("metadata", "read"), ("statuses", "read"), ("issues", "read"));
+
+    [Fact]
+    public void An_app_declaring_everything_core_takes_lacks_nothing_for_core()
+    {
+        var gaps = GitHubInstallationPermissions.ComputeMissing(CoreApp(), CoreEvents.ToHashSet(), EMergeQueueAppNeed.Core);
+
+        gaps.IsEmpty.Should().BeTrue();
+        gaps.SettingsUrl.Should().BeNull("the pure half names no page");
+    }
+
+    [Theory]
+    [InlineData(EMergeQueueAppNeed.Dispatch, new[] { "actions" }, new[] { "workflow_run" })]
+    [InlineData(EMergeQueueAppNeed.RerunActions, new[] { "actions" }, new string[0])]
+    [InlineData(EMergeQueueAppNeed.Dispatch | EMergeQueueAppNeed.RerunActions, new[] { "actions" }, new[] { "workflow_run" })]
+    [InlineData(EMergeQueueAppNeed.Workflows, new[] { "workflows" }, new string[0])]
+    [InlineData(EMergeQueueAppNeed.None, new string[0], new string[0])]
+    public void Each_need_adds_its_own_permissions_and_events(EMergeQueueAppNeed extra, string[] permissions, string[] events)
+    {
+        var gaps = GitHubInstallationPermissions.ComputeMissing(CoreApp(), CoreEvents.ToHashSet(), EMergeQueueAppNeed.Core | extra);
+
+        gaps.MissingPermissions.Select(p => p.Name).Should().Equal(permissions);
+        gaps.MissingEvents.Should().Equal(events);
+    }
+
+    [Fact]
+    public void A_permission_declared_below_the_level_needed_is_missing_with_both_levels()
+    {
+        var app = CoreApp();
+        app["contents"] = "read";
+        app.Remove("statuses");
+
+        var gaps = GitHubInstallationPermissions.ComputeMissing(app, CoreEvents.ToHashSet(), EMergeQueueAppNeed.Core);
+
+        gaps.MissingPermissions.Should().Equal([
+            new PendingPermission("contents", "Contents", "write", "read"),
+            new PendingPermission("statuses", "Statuses", "read", null),
+        ]);
+    }
+
+    [Fact]
+    public void A_higher_declared_level_satisfies_a_lower_need()
+    {
+        var app = CoreApp();
+        app["statuses"] = "write";
+        app["contents"] = "admin";
+
+        GitHubInstallationPermissions.ComputeMissing(app, CoreEvents.ToHashSet(), EMergeQueueAppNeed.Core).IsEmpty.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Only_a_needed_permission_below_its_level_is_needed_pending()
+    {
+        PendingPermission[] pending =
+        [
+            new("actions", "Actions", "write", null),       // needed, never granted
+            new("contents", "Contents", "admin", "write"),  // raised, but write is all the queue needs
+            new("pages", "Pages", "write", null),           // not the queue's
+        ];
+
+        GitHubInstallationPermissions.NeededPendingOf(pending, EMergeQueueAppNeed.Core | EMergeQueueAppNeed.Dispatch)
+            .Select(p => p.Name).Should().Equal(["actions"]);
+        GitHubInstallationPermissions.NeededPendingOf(pending, EMergeQueueAppNeed.Core).Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("Organization", "acme", "https://github.com/organizations/acme/settings/apps/coverage/permissions")]
+    [InlineData("User", "pieter", "https://github.com/settings/apps/coverage/permissions")]
+    [InlineData("Enterprise", "acme", null)]
+    [InlineData(null, null, null)]
+    public void The_apps_settings_page_depends_on_who_owns_it(string? ownerType, string? ownerLogin, string? expected)
+        => GitHubInstallationPermissions.SettingsUrl("coverage", ownerLogin, ownerType).Should().Be(expected);
+
+    /// <summary>
+    /// Shaped like the production App of 2026-10-15: no <c>actions</c>, no <c>statuses</c>, and only two events. Nothing
+    /// is pending (the installation accepted all the App asks), yet the queue cannot work; both reads report it, and the
+    /// App is read once for both.
+    /// </summary>
+    [Fact]
+    public async Task What_the_app_lacks_is_read_once_and_shared_by_the_notice_and_the_queue()
+    {
+        var github = new GitHubApi();
+        github.Replies["/app"] = (HttpStatusCode.OK, """
+            { "id": 1, "slug": "coverage", "html_url": "https://github.com/apps/coverage",
+              "owner": { "login": "MintPlayer", "type": "Organization" },
+              "permissions": { "metadata": "read", "contents": "write", "pull_requests": "write", "checks": "write", "issues": "write" },
+              "events": [ "pull_request", "push" ] }
+            """);
+        github.Replies["/app/installations/42"] = (HttpStatusCode.OK, """
+            { "id": 42, "app_id": 1, "target_type": "Organization",
+              "html_url": "https://github.com/organizations/acme/settings/installations/42",
+              "permissions": { "metadata": "read", "contents": "write", "pull_requests": "write", "checks": "write", "issues": "write" } }
+            """);
+        var logger = new RecordingLogger();
+        var service = CreateService(new StubInstallations(() => OctokitClient(github)), logger: logger);
+        const string settings = "https://github.com/organizations/MintPlayer/settings/apps/coverage/permissions";
+
+        var gaps = await service.GetAppGapsAsync(EMergeQueueAppNeed.Core | EMergeQueueAppNeed.Dispatch);
+        var pending = await service.GetPendingAsync(new Account { Login = "acme", InstallationId = 42 });
+
+        logger.Entries.Should().BeEmpty();
+        gaps.Should().NotBeNull();
+        gaps!.SettingsUrl.Should().Be(settings);
+        gaps.MissingPermissions.Select(p => p.Name).Should().Equal(["actions", "statuses"]);
+        gaps.MissingEvents.Should().Equal(["check_run", "check_suite", "issue_comment", "pull_request_review", "status", "workflow_run"]);
+
+        pending.Should().NotBeNull();
+        pending!.Pending.Should().BeEmpty();
+        pending.MissingFromApp.Select(p => p.Name).Should().Equal(["actions", "statuses"]);
+        pending.MissingEvents.Should().Contain("workflow_run");
+        pending.AppSettingsUrl.Should().Be(settings);
+        github.Paths.Should().Equal(["/app", "/app/installations/42"]);
+    }
+
+    [Fact]
+    public async Task What_the_app_lacks_fails_open_on_an_outage_and_the_failure_is_cached()
+    {
+        var github = new GitHubApi();
+        github.Replies["/app"] = (HttpStatusCode.ServiceUnavailable, """{ "message": "Service Unavailable" }""");
+        var logger = new RecordingLogger();
+        var service = CreateService(new StubInstallations(() => OctokitClient(github)), logger: logger);
+
+        (await service.GetAppGapsAsync(EMergeQueueAppNeed.Core)).Should().BeNull();
+        (await service.GetAppGapsAsync(EMergeQueueAppNeed.Core)).Should().BeNull();
+
+        github.Paths.Should().Equal(["/app"]);
+        logger.Entries.Should().ContainSingle().Which.Level.Should().Be(LogLevel.Warning);
+    }
+
+    [Fact]
+    public async Task An_unconfigured_app_has_no_gaps_and_calls_nothing()
+    {
+        var installations = new StubInstallations(() => throw new InvalidOperationException("must not be called"));
+
+        (await CreateService(installations, configured: false).GetAppGapsAsync(EMergeQueueAppNeed.Core)).Should().BeNull();
+        installations.Calls.Should().Be(0);
+    }
+
     private static GitHubInstallationPermissions CreateService(IGitHubInstallationService installations, bool configured = true, ILogger<GitHubInstallationPermissions>? logger = null)
     {
         var config = new ConfigurationBuilder().AddInMemoryCollection(configured

@@ -28,7 +28,9 @@ internal static partial class WireValidation
     public const string DatedIdentityRule = MergeQueueWireRules.IdentityRule + ", with a date from 1970 on";
 
     public static readonly string AutoResolveEntriesRule =
-        $"at most {MaxGlobs} entries, each a path ({MergeQueueWireRules.GlobRule}) with 1 to {MaxGlobs} keys ({MergeQueueWireRules.KeyRule}), or anyLine and no keys";
+        $"at most {MaxGlobs} entries, each a path ({MergeQueueWireRules.GlobRule}), a strategy ({string.Join(", ", MergeQueueWireRules.Strategies.Order(StringComparer.Ordinal))}; none is take-base), "
+        + $"at most {MergeQueueWireRules.MaxValidators} validators ({string.Join(", ", MergeQueueWireRules.Validators.Order(StringComparer.Ordinal))}) and regenerate (never false for take-base); "
+        + $"take-base with 1 to {MaxGlobs} keys ({MergeQueueWireRules.KeyRule}) or anyLine and no keys, any other strategy without keys";
 
     public static readonly string RegeneratedPathsRule = $"at most {MaxGlobs} globs, each {MergeQueueWireRules.GlobRule}";
 
@@ -116,18 +118,10 @@ internal static partial class WireValidation
         var rules = new List<AutoResolveRule>();
         foreach (var wire in wires)
         {
-            if (wire is null || !MergeQueueWireRules.IsGlob(wire.Path))
+            // §0 D57, §10.3: the one rule set the app's parser is tested against.
+            if (wire is null || AutoResolveRule.FromWire(wire.Path, wire.Keys, wire.AnyLine, wire.Strategy, wire.Validate, wire.Regenerate) is not { } rule)
                 return null;
-            if (wire.AnyLine)
-            {
-                if (wire.Keys is { Count: > 0 })
-                    return null;
-                rules.Add(AutoResolveRule.WholeFile(wire.Path!));
-                continue;
-            }
-            if (wire.Keys is not { Count: > 0 and <= MaxGlobs } keys || !keys.All(MergeQueueWireRules.IsKey))
-                return null;
-            rules.Add(new AutoResolveRule(wire.Path!, keys));
+            rules.Add(rule);
         }
         return rules;
     }

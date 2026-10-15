@@ -61,6 +61,72 @@ public sealed class AutoResolveRule
     /// <summary>Any line of the file may conflict (<see cref="WholeFile"/>).</summary>
     public bool AnyLine { get; }
 
+    /// <summary>The conflict strategy (§10.3), one of <see cref="MergeQueueWireRules.Strategies"/>; <c>take-base</c> for
+    /// the key-scoped and whole-file rules.</summary>
+    public string Strategy { get; private init; } = MergeQueueWireRules.TakeBase;
+
+    /// <summary>The validators the resolved content must pass (§10.4 step 4), besides the always-on
+    /// <c>no-conflict-markers</c>; also the ones a cleanly merged file under this rule must pass.</summary>
+    public IReadOnlyList<string> Validate { get; private init; } = [];
+
+    /// <summary>Whether a resolution under this rule needs the regenerate workflow; null leaves it to the strategy's
+    /// default (take-base: yes).</summary>
+    public bool? Regenerate { get; private init; }
+
+    /// <summary>A rule with a strategy other than the key-scoped or whole-file take-base: <c>keep-both</c>,
+    /// <c>line-set</c> or <c>evict</c>, or a whole-file <c>take-base</c> with validators or a regenerate choice.</summary>
+    public static AutoResolveRule Create(string pathGlob, string strategy, IEnumerable<string>? validate = null, bool? regenerate = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(strategy);
+        return new AutoResolveRule(pathGlob)
+        {
+            Strategy = strategy,
+            Validate = [.. validate ?? []],
+            Regenerate = regenerate,
+        };
+    }
+
+    /// <summary>
+    /// The rule an <c>autoResolve</c> wire entry stands for, or null when the git writer refuses it (§0 D57, §10.3). The
+    /// writer's validation and the app's parser test both call this, so whatever the parser lets through, the writer
+    /// accepts. A strategy and validators from the closed vocabulary; keys only scope take-base; take-base never with
+    /// <c>regenerate: false</c>.
+    /// </summary>
+    public static AutoResolveRule? FromWire(string? path, IReadOnlyList<string>? keys, bool anyLine, string? strategy, IReadOnlyList<string>? validate, bool? regenerate)
+    {
+        if (!MergeQueueWireRules.IsGlob(path))
+            return null;
+        strategy ??= MergeQueueWireRules.TakeBase;
+        if (!MergeQueueWireRules.Strategies.Contains(strategy))
+            return null;
+        if (validate is not null && (validate.Count > MergeQueueWireRules.MaxValidators || !validate.All(v => v is not null && MergeQueueWireRules.Validators.Contains(v))))
+            return null;
+        if (strategy != MergeQueueWireRules.TakeBase)
+            return keys is { Count: > 0 } ? null : Create(path!, strategy, validate, regenerate);
+        if (regenerate == false)
+            return null;
+        if (anyLine)
+            return keys is { Count: > 0 } ? null : WholeFile(path!).With(validate, regenerate);
+        if (keys is not { Count: > 0 and <= MergeQueueWireRules.MaxGlobs } || !keys.All(MergeQueueWireRules.IsKey))
+            return null;
+        return new AutoResolveRule(path!, keys).With(validate, regenerate);
+    }
+
+    /// <summary>This rule with validators and a regenerate choice (the key-scoped take-base rule keeps its keys).</summary>
+    public AutoResolveRule With(IEnumerable<string>? validate, bool? regenerate)
+        => new(this) { Validate = [.. validate ?? []], Regenerate = regenerate };
+
+    private AutoResolveRule(AutoResolveRule other)
+    {
+        pattern = other.pattern;
+        PathGlob = other.PathGlob;
+        Keys = other.Keys;
+        AnyLine = other.AnyLine;
+        Strategy = other.Strategy;
+        Validate = other.Validate;
+        Regenerate = other.Regenerate;
+    }
+
     public bool Matches(string path) => pattern.IsMatch(path);
 
     internal static string GlobToRegex(string glob)

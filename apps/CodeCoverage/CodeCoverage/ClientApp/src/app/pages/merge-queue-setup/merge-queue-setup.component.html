@@ -190,8 +190,10 @@
               </tbody>
             </bs-table>
             <p>
-              Only wholly generated files belong in <code>autoResolve</code>. A conflict in any other file, a model file
-              or <code>translations.json</code> included, takes the pull request out of the queue.
+              <code>take-base</code> belongs to wholly generated files only. Hand-authored files may use
+              <code>keep-both</code>: when both sides only inserted lines at the same place, both are kept and the result
+              must pass its validators. JSON, ignore files, <code>CHANGELOG.md</code> and XML project files get that by
+              default (<code>keepBothDefaults</code>). Any other conflict takes the pull request out of the queue.
             </p>
             <p class="mb-1">The queue does not create its label; create it once:</p>
             <ng-container *ngTemplateOutlet="code; context: { $implicit: snippets.createLabel, language: 'bash' }" />
@@ -223,6 +225,15 @@
                 </li>
               </ul>
             </bs-alert>
+            <p class="mb-1" data-testid="mq-setup-lockfiles">
+              <strong>Lockfiles.</strong> A conflict in <code>package-lock.json</code>, <code>pnpm-lock.yaml</code>,
+              <code>yarn.lock</code> or <code>packages.lock.json</code> can take the base side too, when a workflow then
+              regenerates it: either add <code>lockfiles:</code> to the workflow above, or give those rules a workflow of
+              their own with <code>action: lockfiles-regenerate.yml</code> and copy this one. It merges both sides' pins
+              where the package manager can, and refuses any package that neither the base branch's nor the pull
+              request's lockfile resolved. The same rules apply to it.
+            </p>
+            <ng-container *ngTemplateOutlet="code; context: { $implicit: snippets.lockfilesRegenerate, language: 'yaml' }" />
             <p>
               Before every dispatch, the queue checks that the <code>mq/</code> branch's copy of the workflow equals the
               default branch's; nothing bypasses that. A pull request that changes anything under <code>.github/</code>

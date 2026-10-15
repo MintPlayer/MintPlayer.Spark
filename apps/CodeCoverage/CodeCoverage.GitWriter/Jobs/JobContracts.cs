@@ -22,14 +22,38 @@ public sealed class IdentityWire
     public DateTimeOffset? Date { get; set; }
 }
 
-/// <summary>One auto-resolve entry (O1, O2): a path glob and the top-level JSON members whose lines may conflict, or
-/// <see cref="AnyLine"/> for a file whose every line may (open question Q7).</summary>
+/// <summary>One auto-resolve entry (O1, O2, §10.3): a path glob and its strategy. For take-base, the top-level JSON members
+/// whose lines may conflict, or <see cref="AnyLine"/> for a file whose every line may (open question Q7).</summary>
 public sealed class AutoResolveWire
 {
     public string? Path { get; set; }
     public List<string>? Keys { get; set; }
     public bool AnyLine { get; set; }
+
+    /// <summary>One of <c>MergeQueueWireRules.Strategies</c>; null is take-base (an older app).</summary>
+    public string? Strategy { get; set; }
+
+    /// <summary>The validators the resolved content must pass (at most <c>MergeQueueWireRules.MaxValidators</c>).</summary>
+    public List<string>? Validate { get; set; }
+
+    /// <summary>Whether a resolution needs the regenerate workflow; null is the strategy's default. take-base with false is
+    /// refused: its result is stale by design.</summary>
+    public bool? Regenerate { get; set; }
 }
+
+/// <summary>One patch of the publish (O36): the <c>merge-queue-patch</c> of one regenerate workflow's run.</summary>
+public sealed class PatchWire
+{
+    /// <summary>The workflow file the patch came from, for messages; the patches apply in the order given.</summary>
+    public string? Workflow { get; set; }
+
+    /// <summary>The run's <c>git diff</c>, base64; empty when the run changed nothing.</summary>
+    public string? Patch { get; set; }
+}
+
+/// <summary>How one conflicted path was resolved (§10.6).</summary>
+/// <param name="Rule">The index of the matching <c>autoResolve</c> entry in the request.</param>
+public sealed record ResolutionWire(string Path, string Strategy, bool Regenerate, int Rule);
 
 /// <summary>
 /// <c>POST /jobs/prepare</c> (§5.1 step 1, §0 D65): squashes and rebases the pinned head onto the base and answers the
@@ -97,8 +121,15 @@ public sealed class PublishRequestWire : PrepareRequestWire
     /// <summary>The commit the prepare answered; a rebuild that is not it is <c>prepared-differs</c>.</summary>
     public string? PreparedSha { get; set; }
     public string? PrBranch { get; set; }
-    /// <summary>The regenerate artifact's <c>git diff</c>, base64; null or empty publishes the prepared tree as is.</summary>
+    /// <summary>The regenerate artifact's <c>git diff</c>, base64; null or empty publishes the prepared tree as is. An
+    /// older app's single patch; with <see cref="Patches"/> it must be null.</summary>
     public string? Patch { get; set; }
+
+    /// <summary>
+    /// One patch per regenerate workflow run (O36), applied together: two patches that change one path differently are
+    /// refused (<c>overlap</c>), identical sections are kept once. Their total is held to <c>MaxPatchBytes</c>.
+    /// </summary>
+    public List<PatchWire>? Patches { get; set; }
     /// <summary>The globs the patch may touch (<c>coverage.yml</c> <c>regeneratedPaths</c>, read from the default branch,
     /// O16). May be empty when there is no regenerate step (§0 D57); a patch against an empty list is refused (T4).</summary>
     public List<string>? RegeneratedPaths { get; set; }
@@ -134,13 +165,29 @@ public sealed record PrepareResponse(
     /// refused. The pull request's own workflow change is <see cref="TouchesWorkflows"/> instead.
     /// </summary>
     public bool BaseChangedWorkflows { get; init; }
+
+    /// <summary>For <c>prepared</c>: how each path in <see cref="ResolvedPaths"/> was resolved (§10.6). An app that does
+    /// not read it treats every resolved path as needing regeneration, as before.</summary>
+    public IReadOnlyList<ResolutionWire> Resolutions { get; init; } = [];
+
+    /// <summary>The resolver's version and the writer's <c>git --version</c> (O35 #4): when a later job rebuilds another
+    /// commit and this changed, the saga restarts the entry instead of evicting it.</summary>
+    public string? ResolverVersion { get; init; }
 }
 
 /// <param name="PreparedSha">For <c>pushed</c>: the commit the queue branch holds now.</param>
 /// <param name="Paths">Why, for <c>evicted</c> and <c>fork-touches-workflows</c>.</param>
-public sealed record QueueBranchPushResponse(string Outcome, string? Reason, string? PreparedSha, IReadOnlyList<string> Paths, string? Detail, long DurationMs);
+public sealed record QueueBranchPushResponse(string Outcome, string? Reason, string? PreparedSha, IReadOnlyList<string> Paths, string? Detail, long DurationMs)
+{
+    /// <summary>The writer's resolver version (<see cref="PrepareResponse.ResolverVersion"/>), with every answer.</summary>
+    public string? ResolverVersion { get; init; }
+}
 
-public sealed record PublishResponse(string Outcome, string? Reason, string? FinalSha, IReadOnlyList<string> Paths, string? Detail, long DurationMs);
+public sealed record PublishResponse(string Outcome, string? Reason, string? FinalSha, IReadOnlyList<string> Paths, string? Detail, long DurationMs)
+{
+    /// <summary>The writer's resolver version (<see cref="PrepareResponse.ResolverVersion"/>), with every answer.</summary>
+    public string? ResolverVersion { get; init; }
+}
 
 public sealed record DeleteQueueBranchResponse(string Outcome, string? Reason, string? Detail, long DurationMs);
 

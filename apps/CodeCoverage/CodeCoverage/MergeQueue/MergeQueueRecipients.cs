@@ -88,7 +88,7 @@ public partial class MergeQueueEventsRecipient :
     {
         var evt = message.Event;
         if (await HasActiveEntryAsync(evt.RepositoryId, evt.Number, cancellationToken))
-            await SignalAsync(evt.RepositoryId, EMergeQueueSignal.Merged, evt.Number, cancellationToken: cancellationToken);
+            await SignalAsync(evt.RepositoryId, EMergeQueueSignal.Merged, evt.Number, sha: evt.MergeCommitSha, cancellationToken: cancellationToken);
     }
 
     public async Task HandleAsync(ForgeWebhookMessage<BranchCommitPushed> message, CancellationToken cancellationToken = default)

@@ -90,7 +90,33 @@ public static class MergeQueueCheckRenderer
         summary.AppendLine(CultureInfo.InvariantCulture, $"| Pinned head | `{entry.PinnedHeadSha}` |");
         if (entry.FinalSha is { } final) summary.AppendLine(CultureInfo.InvariantCulture, $"| Final commit | `{final}` |");
         if (entry.DispatchRunUrl is { } run) summary.AppendLine(CultureInfo.InvariantCulture, $"| Regenerate run | {run} |");
+        // O36: one row per regenerate workflow run, in the order they ran.
+        foreach (var dispatch in entry.Dispatches)
+        {
+            var runState = dispatch.Succeeded ? "succeeded" : dispatch.Finished ? "finished" : "running";
+            summary.AppendLine(CultureInfo.InvariantCulture,
+                $"| Regenerate run | `{Cell(dispatch.Workflow)}` {runState}{(dispatch.RunUrl is { } runUrl ? $": {runUrl}" : string.Empty)} |");
+        }
         if (entry.MergeCommitSha is { } merged) summary.AppendLine(CultureInfo.InvariantCulture, $"| Merge commit | `{merged}` |");
+
+        // §10.6: how each conflicted path was resolved, and whether a workflow regenerates it.
+        if (entry.Resolutions is { Count: > 0 } resolutions)
+        {
+            summary.AppendLine();
+            summary.AppendLine("**Resolved conflicts**");
+            summary.AppendLine();
+            foreach (var resolution in resolutions.Take(50))
+                summary.AppendLine(CultureInfo.InvariantCulture,
+                    $"- `{Cell(resolution.Path)}`: {Cell(resolution.Strategy)}{(resolution.Regenerate ? ", regenerated" : string.Empty)}");
+        }
+        else if (entry.ResolvedPaths.Count > 0)
+        {
+            summary.AppendLine();
+            summary.AppendLine("**Resolved conflicts**");
+            summary.AppendLine();
+            foreach (var path in entry.ResolvedPaths.Take(50))
+                summary.AppendLine(CultureInfo.InvariantCulture, $"- `{Cell(path)}`: take-base, regenerated");
+        }
 
         if (entry.Warnings.Count > 0)
         {

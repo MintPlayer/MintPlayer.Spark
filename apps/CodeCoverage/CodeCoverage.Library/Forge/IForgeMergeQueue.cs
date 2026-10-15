@@ -164,6 +164,13 @@ public interface IForgeMergeQueue
     Task<IReadOnlyList<ForgePullRequestCommit>> GetPullRequestCommitsAsync(Repository repository, int number, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Every open pull request whose base is <paramref name="baseBranch"/>, drafts included (each says whether it is one),
+    /// in the forge's own order. Empty when there is none. The merge-queue panel offers them as queue candidates, so a
+    /// maintainer picks a pull request instead of typing its number.
+    /// </summary>
+    Task<IReadOnlyList<ForgeOpenPullRequest>> ListOpenPullRequestsAsync(Repository repository, string baseBranch, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Creates or updates the queue's own check on <paramref name="sha"/> (named
     /// <see cref="CheckGate.QueueCheckName"/>), returning its id so a later call updates it. A check with
     /// <see cref="ForgeQueueCheck.Actions"/> needs <see cref="EForgeCapability.CheckButtons"/>: a merge queue whose forge
@@ -398,6 +405,14 @@ public enum EForgeMergeState
 /// <param name="AuthorIsBot">The forge says that account is a bot.</param>
 /// <param name="Message">The whole commit message, trailers included.</param>
 public sealed record ForgePullRequestCommit(string Sha, string? AuthorName, string? AuthorEmail, string? AuthorLogin, bool AuthorIsBot, string Message);
+
+/// <summary>One open pull request, as <see cref="IForgeMergeQueue.ListOpenPullRequestsAsync"/> lists it.</summary>
+/// <param name="Number">The pull request's number in its repository.</param>
+/// <param name="Title">Its title, as the author wrote it.</param>
+/// <param name="BaseRef">The branch it targets.</param>
+/// <param name="AuthorLogin">The forge account that opened it, when the forge says.</param>
+/// <param name="IsDraft">The forge marks it a draft; the queue does not offer drafts.</param>
+public sealed record ForgeOpenPullRequest(int Number, string Title, string BaseRef, string? AuthorLogin, bool IsDraft);
 
 /// <summary>One pull-request review.</summary>
 /// <param name="CommitSha">The head the review was given on; an approval counts for that commit only (O11).</param>

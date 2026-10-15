@@ -2,9 +2,10 @@
  * The code blocks of the "Optimal GitHub setup" page (/merge-queue/setup), apart from the component so that each one
  * reads as the file it shows.
  *
- * ⚠️ Two are copies, so change them together with their source. merge-queue-setup.snippets.spec.ts reads both sources
+ * ⚠️ Three are copies, so change them together with their source. merge-queue-setup.snippets.spec.ts reads the sources
  * from disk and fails when a copy falls behind:
  * - REGENERATE_WORKFLOW is docs/code-coverage/templates/regenerate.yml, byte for byte, without its final newline.
+ * - LOCKFILES_WORKFLOW is docs/code-coverage/templates/lockfiles-regenerate.yml, the same way.
  * - COVERAGE_YML is the `mergeQueue:` section of the repository's own coverage.yml, with the plan's decision numbers
  *   taken out of its comments (they mean nothing in someone else's repository). Its keys and values are the same.
  */
@@ -33,7 +34,12 @@ export const COVERAGE_YML = `mergeQueue:
     - path: "**/App_Data/modelHashes.json"
       strategy: take-base
     - path: "**/App_Data/securityPosture.txt"
-      strategy: take-base`;
+      strategy: take-base
+    # Lockfiles, optionally: take the base side, then a workflow of their own regenerates them (copy
+    # lockfiles-regenerate.yml below); an explicit rule's path joins regeneratedPaths by itself.
+    # - path: "**/package-lock.json"
+    #   strategy: take-base
+    #   action: lockfiles-regenerate.yml`;
 
 /** The queue does not create its label. */
 export const CREATE_LABEL = 'gh label create merge-queue';
@@ -146,6 +152,8 @@ jobs:
         with:
           # The dispatched mq/ branch as of the dispatch. The action compares it with expected_sha.
           ref: \${{ github.sha }}
+          # The prepared commit and its parent, the base branch: lockfiles are derived from their diff.
+          fetch-depth: 2
           persist-credentials: false
 
       # Pin to a full commit SHA of MintPlayer/MintPlayer.Spark (Dependabot's github-actions ecosystem
@@ -154,5 +162,87 @@ jobs:
       - uses: MintPlayer/MintPlayer.Spark/.github/actions/spark-regenerate@<commit-sha>
         with:
           expected_sha: \${{ inputs.expected_sha }}
+          pr_number: \${{ inputs.pr_number }}
           projects: |
-            src/MyApp/MyApp.csproj`;
+            src/MyApp/MyApp.csproj
+          # Opt-in: also regenerate these lockfiles (npm, pnpm, yarn, nuget), and list them in
+          # regeneratedPaths. For a private repository the action fetches the pull request's head with
+          # the job's own read-only token, before any pull-request code runs; no secret is involved.
+          # lockfiles: |
+          #   npm
+          #   nuget`;
+
+/** docs/code-coverage/templates/lockfiles-regenerate.yml: a regenerate workflow for lockfiles only (O36). */
+export const LOCKFILES_WORKFLOW = `# Template: a merge-queue post-rebase workflow that regenerates lockfiles only.
+# Copy to .github/workflows/lockfiles-regenerate.yml on the default branch, list your ecosystems under
+# \`lockfiles:\`, and name it in coverage.yml's \`mergeQueue:\` section on the rules it serves:
+#
+#   autoResolve:
+#     - path: "**/package-lock.json"
+#       strategy: take-base
+#       action: lockfiles-regenerate.yml
+#   regeneratedPaths:
+#     - "**/package-lock.json"
+#
+# The CodeCoverage merge queue dispatches this workflow on its mq/<base>/pr-<n> branch after a rebase that
+# took the base side of a lockfile. The run regenerates the lockfiles the pull request's manifests touch,
+# merges both sides' pins where it can, checks that every resolved package comes from the base branch's or
+# the pull request's own lockfile, and uploads the result as a patch. The queue validates the patch against
+# \`regeneratedPaths\` and pushes it itself: this workflow never commits or pushes.
+#
+# ┌─ SECURITY ─────────────────────────────────────────────────────────────────────────────────────────┐
+# │ This workflow RUNS UNTRUSTED PULL-REQUEST CODE (package-manager config, MSBuild for NuGet).        │
+# │  - Never add a secret, an environment, or \`\${{ secrets.* }}\` of any kind.                          │
+# │  - Never widen \`permissions:\`; never add \`id-token: write\`.                                        │
+# │  - Never run it on a self-hosted runner: the PR's code would run on your machine.                  │
+# │  - Keep \`persist-credentials: false\`, so the job token is not left in .git/config.                 │
+# │ For a private repository the action fetches the pull request's head with the job's own read-only   │
+# │ token, in its first step, before any pull-request code runs, and never writes it to disk.          │
+# │ The queue checks that the mq/ branch's copy of this file equals the default branch's before every  │
+# │ dispatch, and for a fork's PR pushes to mq/ only while this file keeps the rules above.            │
+# └────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+name: lockfiles-regenerate
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: The commit the merge queue prepared. The run fails if the branch head differs.
+        required: true
+      pr_number:
+        description: The pull request being merged. Its head is fetched for the three-way lockfile merge.
+        required: true
+      queue_run_id:
+        description: The merge queue's id for this attempt (shown in the run name only).
+        required: true
+
+run-name: 'lockfiles-regenerate PR #\${{ inputs.pr_number }} (\${{ inputs.queue_run_id }})'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lockfiles-regenerate-\${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The dispatched mq/ branch as of the dispatch. The action compares it with expected_sha.
+          ref: \${{ github.sha }}
+          # The prepared commit and its parent, the base branch: lockfiles are derived from their diff.
+          fetch-depth: 2
+          persist-credentials: false
+
+      # Pin to a full commit SHA of MintPlayer/MintPlayer.Spark, as for spark-regenerate.
+      - uses: MintPlayer/MintPlayer.Spark/.github/actions/lockfile-regenerate@<commit-sha>
+        with:
+          expected_sha: \${{ inputs.expected_sha }}
+          pr_number: \${{ inputs.pr_number }}
+          lockfiles: |
+            npm`;
