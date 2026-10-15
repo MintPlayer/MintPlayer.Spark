@@ -322,7 +322,7 @@ describe('CommitFilesPanelComponent', () => {
       expect(summary.textContent).toContain('2 changed file(s) measured by nobody');
       expect(summary.textContent).toContain('2 builds');
       expect(summary.textContent).toContain('(affected)');
-      expect(summary.querySelector('bs-badge .badge')?.classList.contains('bg-warning')).toBe(true);
+      expect(summary.querySelector('bs-badge .badge')?.classList.contains('text-bg-warning')).toBe(true);
 
       (summary.querySelector('a') as HTMLElement).click();
       expect(navigate).toHaveBeenCalledWith(['/', 'github', 'r', 'acme', 'widgets', 'c', 'bbbbbbbbbb']);

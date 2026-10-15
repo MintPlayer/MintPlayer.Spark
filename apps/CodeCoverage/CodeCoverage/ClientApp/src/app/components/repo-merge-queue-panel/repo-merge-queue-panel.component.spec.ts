@@ -93,8 +93,8 @@ describe('RepoMergeQueuePanelComponent', () => {
   });
 
   // A state must read in both themes (merge-queue PRD §0 D75, D84). Bootstrap's *-subtle backgrounds with *-emphasis text
-  // are its own pairs for both themes: 7.15:1 or more, where <bs-badge>'s white text gets 1.96:1 on info and 1.63:1 on
-  // warning. The .mq-state class is the chip's shape, since .badge is styled only inside <bs-badge>.
+  // are its own pairs for both themes: 7.15:1 or more, where <bs-badge>'s solid text-bg-* colours go down to 4.5:1. The
+  // .mq-state class is the chip's shape, since .badge is styled only inside <bs-badge>.
   it('shows each state as a chip, a subtle background with emphasis text', async () => {
     const view = busy(anonymous);
     await create(() => Promise.resolve({ ...view, lanes: [{ ...view.lanes[0], paused: true }] }));

@@ -67,14 +67,14 @@ describe('DateTimeRendererComponent', () => {
   });
 });
 
-// A badge's colour is the inner `.badge` bs-badge paints, set by its [type] (merge-queue PRD §0 D84). A `text-bg-*` class
-// on the host never reached it: the inner `.badge` stayed `bg-primary`.
+// A badge's colour is the inner `.badge` bs-badge paints from its [type], `text-bg-{type}` since ng-bootstrap 22.25 (merge-queue
+// PRD §0 D84). A `text-bg-*` class on the host never reached it: the inner `.badge` kept the default primary.
 describe('ConnectedRendererComponent', () => {
   it('draws the green connected badge only for a literal true', () => {
     const fixture = render(ConnectedRendererComponent, { value: true });
 
     const badge = (fixture.nativeElement as HTMLElement).querySelector('bs-badge .badge')!;
-    expect(badge.classList.contains('bg-success')).toBe(true);
+    expect(badge.classList.contains('text-bg-success')).toBe(true);
     expect(text(fixture)).toBe('app.connected');
   });
 
@@ -82,7 +82,7 @@ describe('ConnectedRendererComponent', () => {
     for (const value of [false, null, undefined, 'true', 1]) {
       const fixture = render(ConnectedRendererComponent, { value });
       const badge = (fixture.nativeElement as HTMLElement).querySelector('bs-badge .badge')!;
-      expect(badge.classList.contains('bg-secondary')).toBe(true);
+      expect(badge.classList.contains('text-bg-secondary')).toBe(true);
       expect(text(fixture)).toBe('app.notConnected');
     }
   });
@@ -213,8 +213,8 @@ describe('BuildSessionsRendererComponent', () => {
     expect(lines(fixture)).toHaveLength(2);
     expect(first.textContent).toContain('unit');
     expect(badges(first).map(b => b.textContent!.trim())).toEqual(['dotnet', 'linux', 'Parsed']);
-    expect(badges(first)[2].classList.contains('bg-success')).toBe(true);
-    expect(badges(second)[0].classList.contains('bg-warning')).toBe(true);
+    expect(badges(first)[2].classList.contains('text-bg-success')).toBe(true);
+    expect(badges(second)[0].classList.contains('text-bg-warning')).toBe(true);
     expect(first.querySelector('.text-danger')).toBeNull();
   });
 
@@ -226,7 +226,7 @@ describe('BuildSessionsRendererComponent', () => {
     const [line] = lines(fixture);
     expect(line.textContent).toContain('s9');
     expect(badges(line)).toHaveLength(1);
-    expect(badges(line)[0].classList.contains('bg-danger')).toBe(true);
+    expect(badges(line)[0].classList.contains('text-bg-danger')).toBe(true);
     expect(line.querySelector('span.text-danger')!.textContent).toBe('Malformed XML');
   });
 

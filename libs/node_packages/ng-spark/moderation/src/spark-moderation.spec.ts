@@ -136,7 +136,7 @@ describe('moderation entry point (#460)', () => {
     expect(moderator.nativeElement.querySelector('.spark-unlock')).not.toBeNull();
     expect(moderator.nativeElement.querySelector('.spark-open-flags').textContent).toContain('2');
     // ng-bootstrap's badge: a bare .badge has no shape outside <bs-badge>.
-    expect(moderator.nativeElement.querySelector('bs-badge.spark-moderation-locked .badge.bg-secondary')).not.toBeNull();
+    expect(moderator.nativeElement.querySelector('bs-badge.spark-moderation-locked .badge.text-bg-secondary')).not.toBeNull();
   });
 
   it('the vote widget disables an arrow the caller holds no right for, but not the active one', async () => {
@@ -203,7 +203,7 @@ describe('moderation entry point (#460)', () => {
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('.spark-reputation-pending').textContent.trim()).toBe('(+10 moderation.pending)');
     // ng-bootstrap's badge: a bare .badge has no shape outside <bs-badge>.
-    expect(fixture.nativeElement.querySelector('bs-badge.spark-reputation-badge .badge.bg-secondary')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('bs-badge.spark-reputation-badge .badge.text-bg-secondary')).not.toBeNull();
 
     pending = -2;
     await TestBed.inject(Router).navigateByUrl('/');
@@ -270,7 +270,7 @@ describe('moderation entry point (#460)', () => {
     expect(fixture.nativeElement.querySelector('bs-list-group bs-list-group-item button.spark-case')).not.toBeNull();
     const flags = fixture.nativeElement.querySelector('bs-badge.spark-case-flag-count .badge') as HTMLElement;
     expect(flags.textContent!.trim()).toBe('1');
-    expect(flags.classList.contains('bg-warning')).toBe(true);
+    expect(flags.classList.contains('text-bg-warning')).toBe(true);
   });
 
   it('describes a validation refusal, a quota and a plain error', () => {

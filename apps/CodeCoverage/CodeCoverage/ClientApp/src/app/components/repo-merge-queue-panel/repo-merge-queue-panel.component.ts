@@ -28,8 +28,8 @@ const STATES: Record<string, { label: string; color: string }> = {
 
 /**
  * A state chip's classes: Bootstrap's subtle background with its emphasis text and border, a pair made for both themes
- * (merge-queue PRD §0 D75, D84). Every state reads at 7.15:1 or more in both themes. `<bs-badge>` keeps white text on its
- * solid colour, 1.96:1 on info (rebasing, regenerating, publishing) and 1.63:1 on warning (not queued).
+ * (merge-queue PRD §0 D75, D84). Every state reads at 7.15:1 or more in both themes; `<bs-badge>`'s solid colours
+ * (`text-bg-*` since ng-bootstrap 22.25) go down to 4.5:1 on primary, success and danger.
  * Not a bare `.badge`: ng-bootstrap styles `.badge` only inside `<bs-badge>`, so `.mq-state` carries the shape itself.
  */
 function chip(color: string): string {

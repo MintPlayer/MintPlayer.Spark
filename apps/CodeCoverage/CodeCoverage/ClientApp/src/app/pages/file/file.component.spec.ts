@@ -95,8 +95,8 @@ describe('FileComponent', () => {
     expect(snippet()!.label()).toBe('src/a.ts');
     expect(snippet()!.lineHref()!(7)).toBe('#L7');
     expect(text()).toContain('2/3 lines covered');
-    // Under 80% is amber, on the inner .badge that bs-badge paints (merge-queue PRD §0 D84).
-    expect((harness.routeNativeElement as HTMLElement).querySelector('bs-badge .badge')!.classList.contains('bg-warning')).toBe(true);
+    // Under 80% is amber with dark text, on the inner .badge that bs-badge paints (merge-queue PRD §0 D84).
+    expect((harness.routeNativeElement as HTMLElement).querySelector('bs-badge .badge')!.classList.contains('text-bg-warning')).toBe(true);
     expect(text()).toContain('abc1234');
   });
 
