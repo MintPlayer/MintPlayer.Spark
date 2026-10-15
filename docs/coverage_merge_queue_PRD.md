@@ -1,7 +1,7 @@
 # PRD — a conflict-resolving merge queue in CodeCoverage (rebase → auto-resolve → `postRebaseActionName` → squash)
 
 **Status (2026-10-15):** **Implemented; PR [#515](https://github.com/MintPlayer/MintPlayer.Spark/pull/515) open. The commits since its first CI run are local, for one push.**
-- The owner decisions O1–O32 (O31 reserved) and the implementation decisions D12–D90 in §0 supersede §§1–8 where they disagree. ~~**In progress: O30, the "Add to merge queue" check button.**~~ **[Built 2026-10-15 (D88), with O32's comment link and "Remove from queue" (D89, D90), local. Next: the owner's live test with the CoverageDevelopment App, then one push.]**
+- The owner decisions O1–O32 and the implementation decisions D12–D91 in §0 supersede §§1–8 where they disagree. ~~**In progress: O30, the "Add to merge queue" check button.**~~ **[Built 2026-10-15: D88; O32's comment link and "Remove from queue", D89 and D90; O31's menu links and url-only hash, D91. Next: the live test with the CoverageDevelopment App, then one push.]**
 - CI runs 2 and 3 (2026-10-15) each found one test defect:
   - Linux's Chromium temp files broke the download proof (D86).
   - The po-detail spec charged a one-time render to its first test (D87).
@@ -188,6 +188,15 @@ These supersede the text below where they disagree. Superseded passages are mark
 - **No new permission or event:** the App already has Checks: read & write and receives `check_run` (`docs/code-coverage/hosting.md` §6).
 - **Live test** with the CoverageDevelopment App on the scratch repositories before the push.
 - **[Built in D88, 2026-10-15. The live test is the owner's, next.]** | The owner's request and answer, 2026-10-15. |
+| O31 | **Menu links: one `url` program-unit type, classified against the app's base. The hash covers only the urls, and a tampered or invalid url stops the app (owner, 2026-10-15).**
+- **The owner's words.** On links: "the app should be able to tell if a link is internal or external, based on the app's base-url". On the hash: "only include the urls in the modelhash. a normal program-unit change doesn't need to modify the hashes. the only risk is for external links to get tampered with somehow. Then the app mustn't start".
+- **Rendering.**
+  - An internal link (an app path, or the same origin under the base href) is a router link in the same tab.
+  - An external link opens a new tab with `rel="noopener noreferrer"`, an external mark, and "opens in a new tab" for a screen reader.
+  - Any other scheme renders no link.
+- **The server's rule** is one helper, `SparkLinkUrl`: an app path, or an absolute http(s) URL with a host. The loader checks it at startup, and so does `--spark-verify-model`.
+- **CodeCoverage** gets "Merge queue setup" (`/merge-queue/setup`) in the Coverage menu.
+- **[Done: D91.]** | AskUserQuestion answers and owner messages, 2026-10-15; the investigation in scratchpad `progunits/`. |
 | O32 | **The coverage comment links the queue's check, and a waiting PR's check carries a "Remove from queue" button (owner, 2026-10-15).**
 - **The link.** CodeCoverage's coverage comment gains one short line to the pull request's current "Merge queue" check: `https://github.com/{owner}/{repo}/pull/{n}/checks?check_run_id={id}`, or `…/pull/{n}/checks` when no id is known. It shows only when the default branch's `coverage.yml` turns the queue on (O16), and cites no PRD id (D72). Whether it names the queue's state is the implementer's call, justified in the D-row. **[Done in D89.]**
 - **The button.** While a pull request waits in line, the queue's check is a completed neutral run titled "Queued: #N in line" with one requested action, "Remove from queue" (`mq-dequeue`). A click is the dequeue command `/dequeue` raises, authorized and refused the same way. When its turn starts, a new in-progress run takes over, without a button. After a dequeue, "Add to merge queue" comes back (O30). **[Done in D90.]** | The owner's decision, relayed by the coordinator, 2026-10-15 ("yes, this pull-request"). O31 is reserved for the program-unit link decision. |
@@ -351,6 +360,24 @@ These supersede the text below where they disagree. Superseded passages are mark
   - `MergeQueueWebhookTests.A_click_on_a_queue_check_button_is_the_clickers_command_whatever_is_queued`, `mq-dequeue`, idle and busy: "found 0".
 
   The engine-level dequeue tests passed then too, as they must: the engine's dequeue was already the same for every source. `CheckGateTests.The_queue_check_is_ignored_in_every_state` (5 states) passed before and after. **Green:** in D89's run, 1044/1044 (`o32_green.log`). **Not verified here:** GitHub showing "Remove from queue" on the completed waiting run and delivering its click; that is the owner's live test. |
+| D91 | **(O31) Program-unit links and the url-only hash.**
+- **Before:**
+  - A url unit was only checked for being non-blank (`ProgramUnitsLoader.cs:110-112`), so `javascript:`, `data:` and `//host` loaded.
+  - `--spark-verify-model` swallowed load errors.
+  - The client rendered the raw string in a new tab with `rel="noopener"`.
+  - The `programUnits.json` hash walked only the groups (`ConfigFileShape.cs:247-287`), so a changed url never reached `modelHashes.json`.
+- **Startup.** `UseSpark` → `VerifySparkModelHash` → `ModelHashVerifier.Verify` already refused a mismatch outside Development with `SparkModelOutOfSyncException`; Development warns.
+  - The hash now covers only url units, keyed by id, so a tampered url stops a production start.
+  - `UseSpark` also loads and validates the menu (`SparkMiddleware.cs:507`), so an invalid url stops every start.
+- **Client.**
+  - `sparkAppUrl` (`ng-spark/models`) classifies a url against the origin and the router's base href.
+  - `sparkInAppUrl`, used for notification clicks, reuses it and now checks the base path.
+  - The menu renders an internal link as a router link. An external one gets the parsed href, `target="_blank" rel="noopener noreferrer"`, an external mark and `common.opensInNewTab`.
+- **Found on the way and fixed:**
+  - An external unit without an icon showed the glyph twice; it now shows once.
+  - A notification click's page-load fallback resolved an app path from the host's root instead of below the base (`spark-notification-clicks.ts:54`, red → green).
+- **Versions:** MintPlayer.Spark.Abstractions 11.0.0-preview.106 and MintPlayer.Spark.Notifications 11.0.0-preview.105. ng-spark 22.38.0 and MintPlayer.Spark .107 were already bumped.
+- **Consumers re-sync once:** every app's `modelHashes.json` changes. This repository's 7 were re-synced with each app's own `--spark-synchronize-model`, and verify exits 0 for each. | Commits `cb4b2035`, `d4df3dd2`, `e7814387` and `9e32beab`.<br>**Red on the old code:** 29 of the 40 new C# tests, including the 4 required cases: a url change moved no hash, a group rename moved it, a tampered url started, and `javascript:` passed verify. Also 6 client specs.<br>**Green:** the 17 affected C# classes, 291/291; ng-spark shell, pwa, notifications and models, 291/291, plus 1 for the glyph; the notification fallback spec, 12/12.<br>Logs: scratchpad `links/`, `notifclick_red.log`, `notifclick_green.log`. |
 | O3 | **Fork PRs need "Allow edits from maintainers" ticked.** The bot pushes to the contributor's fork branch through that permission; there is no bot-made fork. Without the box ticked, the PR is refused at enqueue with an explanation. | Owner. S6 now only verifies that an **App installation token** counts as a maintainer for that checkbox. GitHub documents the checkbox for user-owned forks only; org-owned forks cannot tick it. |
 | D20 | **The O2 hunk check reads git's own conflict regions, with `merge.conflictStyle=zdiff3`.** merge-tree writes each conflicted file into its result tree with markers. A region is accepted only if every line in its ours/base/theirs sections is a line of that stage's blob that holds nothing but one allow-listed top-level JSON member (name, value, comma). Lines are matched by text, and a text counts only if *every* line of that stage with that text is allowed, so position never has to be guessed. Every stage blob must be a strict JSON object (which also rules out marker-like lines), at most 1 MiB, mode `100644`. Plain `diff3` was tried first and is too coarse: for an add/add conflict it reports the whole file as one region, so even a roll-up-only add/add evicted. | `CodeCoverage.Git/MergeQueue/ConflictHunks.cs` (the full argument is in its doc comment). `MergeQueueResolverTests.An_add_add_conflict_on_the_roll_ups_only_resolves_to_the_base_side`: red with `diff3`, green with `zdiff3`, 2026-10-14. |
 | D21 | **`attr.tree` = the empty tree on every git command, and `GIT_ATTR_SOURCE` is cleared.** git 2.47.1 (local) supports `attr.tree`. In a bare repo it does **not** read in-tree `.gitattributes` by default, but pointing `attr.tree` at the PR's tree makes `merge=union` silently merge a hand-authored file, so pinning the empty tree is the guard. The 2.50.1 floor in §4.3 stays: it is about the July 2025 CVEs, not about `attr.tree`, and M3 pins it in the writer image. | `MergeQueueResolverTests.An_in_repo_gitattributes_cannot_pick_a_merge_driver`: red (`-c attr.tree=pr`: `translations.json` merges cleanly) and green (the runner's empty tree: conflict, evicted). |
