@@ -938,14 +938,15 @@ public class GitHubForgeMergeQueueTests
         => await Throws<ArgumentException>(() => Queue(new StubGitHub()).PublishQueueCheckAsync(Target(), Head,
             new ForgeQueueCheck(EForgeQueueCheckState.Failure, "t", "s", "javascript:alert(1)"), null));
 
-    private static ForgeQueueCheck WithButton(string title, EForgeQueueCheckState state = EForgeQueueCheckState.Neutral)
+    private static ForgeQueueCheck WithButton(string title, EForgeQueueCheckState state = EForgeQueueCheckState.Neutral, ForgeQueueCheckAction? action = null)
         => new(state, title, "Queue it with the button.", null)
         {
-            Actions = [ForgeQueueCheckAction.Enqueue],
+            Actions = [action ?? ForgeQueueCheckAction.Enqueue],
             PullRequestNumber = 7,
         };
 
-    private static void ShouldCarryTheButton(string? body, string conclusion = "neutral")
+    private static void ShouldCarryTheButton(string? body, string conclusion = "neutral",
+        string label = "Add to merge queue", string description = "Rebase, regenerate, check, then merge", string identifier = "mq-enqueue")
     {
         using var json = JsonDocument.Parse(body!);
         var root = json.RootElement;
@@ -954,9 +955,30 @@ public class GitHubForgeMergeQueueTests
         root.GetProperty("external_id").GetString().Should().Be("7");
         var actions = root.GetProperty("actions");
         actions.GetArrayLength().Should().Be(1);
-        actions[0].GetProperty("label").GetString().Should().Be("Add to merge queue");
-        actions[0].GetProperty("description").GetString().Should().Be("Rebase, regenerate, check, then merge");
-        actions[0].GetProperty("identifier").GetString().Should().Be("mq-enqueue");
+        actions[0].GetProperty("label").GetString().Should().Be(label);
+        actions[0].GetProperty("description").GetString().Should().Be(description);
+        actions[0].GetProperty("identifier").GetString().Should().Be(identifier);
+    }
+
+    /// <summary>
+    /// A pull request waiting in line (§0 O32): a completed, neutral run carrying "Remove from queue", whose 17, 39 and
+    /// 10 characters fit GitHub's 20, 40 and 20.
+    /// </summary>
+    [Fact]
+    public async Task A_waiting_pull_requests_check_is_completed_with_the_remove_button()
+    {
+        string? posted = null;
+        var github = new StubGitHub().On(HttpMethod.Post, $"{Repo}/check-runs", (_, body) =>
+        {
+            posted = body;
+            return StubHttpMessageHandler.Json(HttpStatusCode.Created, $$"""
+                {"id":44,"name":"Merge queue","head_sha":"{{Head}}","status":"completed","conclusion":"neutral","external_id":"7","html_url":"https://github.com/acme/widget/runs/44"}
+                """);
+        });
+
+        (await Queue(github).PublishQueueCheckAsync(Target(), Head, WithButton("Queued: #2 in line", action: ForgeQueueCheckAction.Dequeue), null)).Should().Be(44);
+
+        ShouldCarryTheButton(posted, label: "Remove from queue", description: "Take this pull request out of the queue", identifier: "mq-dequeue");
     }
 
     /// <summary>

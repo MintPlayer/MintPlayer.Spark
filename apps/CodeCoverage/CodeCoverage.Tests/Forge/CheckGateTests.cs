@@ -95,6 +95,27 @@ public class CheckGateTests
         => Evaluate(State([Run("build")]), exclusions: ["slow-scan"], expected: ["build", "slow-scan"])
             .Verdict.Should().Be(ECheckVerdict.Passed);
 
+    /// <summary>
+    /// The queue's own run, in every state it can be in on a commit (merge-queue PRD O30, O32): a "Not queued" or
+    /// waiting-in-line check (completed, neutral), an evicted run's (failure), a merged one's (success), or one in progress.
+    /// </summary>
+    [Theory]
+    [InlineData("completed", "neutral")]
+    [InlineData("completed", "failure")]
+    [InlineData("completed", "success")]
+    [InlineData("in_progress", null)]
+    [InlineData("queued", null)]
+    public void The_queue_check_is_ignored_in_every_state(string status, string? conclusion)
+    {
+        var result = Evaluate(State([Run("build"), Run(CheckGate.QueueCheckName, status, conclusion, suite: 2)],
+                suites: [Suite(1), Suite(2, status == "completed" ? "completed" : "in_progress")]),
+            expected: ["build", CheckGate.QueueCheckName]);
+
+        result.Verdict.Should().Be(ECheckVerdict.Passed);
+        result.Failed.Should().BeEmpty();
+        result.Excluded.Should().BeEmpty();
+    }
+
     [Fact]
     public void The_queue_check_itself_is_never_counted()
     {

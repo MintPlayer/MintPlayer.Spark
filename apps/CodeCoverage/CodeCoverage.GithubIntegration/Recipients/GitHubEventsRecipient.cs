@@ -578,9 +578,10 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
     }
 
     /// <summary>
-    /// A click on the "Add to merge queue" button of the queue's own check (merge-queue PRD §0 O30): GitHub's
-    /// <c>check_run</c> <c>requested_action</c>, which GitHub delivers only to the App that made the check run. It is
-    /// the clicker's enqueue command, and from here on a label or a <c>/queue</c> in all but its source.
+    /// A click on a button of the queue's own check: "Add to merge queue" (merge-queue PRD §0 O30) or, while the pull
+    /// request waits in line, "Remove from queue" (§0 O32). GitHub's <c>check_run</c> <c>requested_action</c>, which GitHub
+    /// delivers only to the App that made the check run. It is the clicker's enqueue or dequeue command, and from here on
+    /// a label, a <c>/queue</c> or a <c>/dequeue</c> in all but its source.
     /// </summary>
     /// <remarks>
     /// ⚠️ Both filters every other check delivery passes through would drop it, and must not. The self-echo filter: the
@@ -591,14 +592,21 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
     private async Task OnQueueCheckButtonAsync(GitHubWebhookMessage message, JsonElement root, CancellationToken ct)
     {
         if (Child(root, "check_run") is not { } check || !IsOurApp(check) || Text(check, "name") != CheckGate.QueueCheckName) return;
-        if (Child(root, "requested_action") is not { } requested || Text(requested, "identifier") != ForgeQueueCheckAction.Enqueue.Identifier) return;
+        if (Child(root, "requested_action") is not { } requested || ButtonCommand(Text(requested, "identifier")) is not { } command) return;
         if (HumanSender(root) is not { } actor) return;
         if (CheckRunPullRequest(check) is not { } number) return;
         if (await LoadKnownRepositoryIdAsync(root, ct) is not { } repositoryId) return;
 
-        await RaiseAsync(new MergeQueueCommandIssued(repositoryId, number, EMergeQueueCommand.Enqueue, actor, EMergeQueueCommandSource.Check), ct);
-        logger.LogInformation("Merge queue: enqueue of #{Number} in {Repository} by @{Actor} (check button)", number, message.RepositoryFullName, actor);
+        await RaiseAsync(new MergeQueueCommandIssued(repositoryId, number, command, actor, EMergeQueueCommandSource.Check), ct);
+        logger.LogInformation("Merge queue: {Command} of #{Number} in {Repository} by @{Actor} (check button)",
+            command == EMergeQueueCommand.Enqueue ? "enqueue" : "dequeue", number, message.RepositoryFullName, actor);
     }
+
+    /// <summary>The command a button of the queue's check stands for; null for any other identifier.</summary>
+    private static EMergeQueueCommand? ButtonCommand(string? identifier)
+        => identifier == ForgeQueueCheckAction.Enqueue.Identifier ? EMergeQueueCommand.Enqueue
+         : identifier == ForgeQueueCheckAction.Dequeue.Identifier ? EMergeQueueCommand.Dequeue
+         : null;
 
     /// <summary>
     /// The pull request a check run of the queue speaks for: its <c>external_id</c>, which the queue writes because GitHub

@@ -214,21 +214,24 @@ public class MergeQueueWebhookTests : CoverageRavenTest
 
     /// <summary>
     /// The click comes from the App's own check run, which the self-echo filter drops for every other check delivery, and
-    /// the busy filter drops check deliveries while nothing is queued: both must let it through. A fork's check run lists
-    /// no pull request on GitHub, so the run's <c>external_id</c>, which the queue writes, names it.
+    /// the busy filter drops check deliveries while nothing is queued: both must let it through, for "Add to merge queue"
+    /// (§0 O30) and for "Remove from queue" (§0 O32) alike. A fork's check run lists no pull request on GitHub, so the run's
+    /// <c>external_id</c>, which the queue writes, names it.
     /// </summary>
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task A_click_on_the_queue_checks_button_is_the_clickers_enqueue_command_whatever_is_queued(bool busy)
+    [InlineData("mq-enqueue", EMergeQueueCommand.Enqueue, false)]
+    [InlineData("mq-enqueue", EMergeQueueCommand.Enqueue, true)]
+    [InlineData("mq-dequeue", EMergeQueueCommand.Dequeue, false)]
+    [InlineData("mq-dequeue", EMergeQueueCommand.Dequeue, true)]
+    public async Task A_click_on_a_queue_check_button_is_the_clickers_command_whatever_is_queued(string identifier, EMergeQueueCommand command, bool busy)
     {
         using var store = GetDocumentStore();
         await SeedAsync(store, busy);
 
-        var bus = await DeliverAsync(store, "check_run", Click());
+        var bus = await DeliverAsync(store, "check_run", Click(identifier));
 
         bus.Of<ForgeWebhookMessage<MergeQueueCommandIssued>>().Should().ContainSingle().Which.Event
-            .Should().Be(new MergeQueueCommandIssued(RepositoryId, 7, EMergeQueueCommand.Enqueue, "maintainer", EMergeQueueCommandSource.Check));
+            .Should().Be(new MergeQueueCommandIssued(RepositoryId, 7, command, "maintainer", EMergeQueueCommandSource.Check));
         bus.Messages.Should().HaveCount(1, "a click is a command, not a change of the commit's checks");
     }
 

@@ -118,7 +118,7 @@ with the acceptance link.
 | Push | The base branch moved: back to PREPARE |
 | Issue comment | `/queue` and `/dequeue` |
 | Pull request review | Wakes the checks wait |
-| Check run | Checks changed on the commit the queue waits for; `requested_action`, a click on the queue check's **Add to merge queue** button (O30) |
+| Check run | Checks changed on the commit the queue waits for; `requested_action`, a click on the queue check's **Add to merge queue** (O30) or **Remove from queue** (O32) button |
 | Check suite (new) | "Every suite on the final commit has completed" (O12) |
 | Workflow run (new) | The regenerate run completed |
 | Status (new) | Commit statuses (O12) |
@@ -517,7 +517,7 @@ the check gate) do not run.
 | Label | Add the `enqueue.label` label (`merge-queue`). | Remove it. |
 | Comment | `/queue` as the first word of a new comment on the pull request. | `/dequeue`, the same way. |
 | Button | **Queue** in the merge-queue panel of the CodeCoverage repository page (O8, M6; `POST /api/repos/{provider}/{owner}/{name}/merge-queue/{number}`): the user's linked GitHub login acts; without one, refused. | **Dequeue** in the same panel (`DELETE` on the same route), offered to the author and to `write`. |
-| Check button | **Add to merge queue** on the pull request's "Merge queue" check (O30, §4.4): open the check from the pull request's checks, the button is at its top. GitHub sends the App a `check_run` `requested_action`, and whoever clicked acts. | None: GitHub shows a check's buttons only once the check has completed, so a queued pull request has none. `/dequeue`, the label or the panel. |
+| Check button | **Add to merge queue** on the pull request's "Merge queue" check (O30, §4.4): open the check from the pull request's checks, the button is at its top. GitHub sends the App a `check_run` `requested_action`, and whoever clicked acts. | **Remove from queue** on the same check while the pull request waits in line (O32). GitHub shows a check's buttons only once it has completed, so once its turn starts (an in-progress check) there is none: `/dequeue`, the label or the panel. |
 
 - The actor is always the signed webhook's sender, or the signed-in user's linked login (T1). Text after the command is
   ignored ("/queue as @maintainer" is the commenter's command), and edited comments do not count. Every path then runs
@@ -526,6 +526,12 @@ the check gate) do not run.
   its own label removal.
 - A second `/queue`, or the label re-applied, while queued changes nothing. A refused label is removed again and the
   check run says why; a refused comment, panel button or check button gets a comment.
+- **The coverage comment links the queue's check (O32, D89).** In a repository whose default branch turns the queue on,
+  CodeCoverage's coverage comment on a pull request into a queue branch ends with "**Merge queue:** manage this pull
+  request on its check →", a link to the pull request's latest "Merge queue" check
+  (`…/pull/<n>/checks?check_run_id=<id>`, or `…/pull/<n>/checks` before the queue has posted one). The line names no
+  state: the comment is rewritten when coverage arrives, not when the queue moves, and the check shows the live state
+  with the button that fits it.
 
 The panel shows each base branch's lane: the pull request the queue is working on and the waiting ones, then the latest
 outcomes and the configuration the run read (D55).
@@ -583,9 +589,19 @@ can take it (O3) is decided when somebody clicks, like for any other way. GitHub
 check run, so the queue writes the pull request's number into the run's `external_id`, and a click is matched by that.
 A pull request converted back to a draft keeps the button it had; a click is then refused `draft`.
 
-Its title follows the state: *Not queued* (neutral, with the button); *Queued, position n* (queued); *Rebasing onto the
-latest base*, *Regenerating generated files*, *Publishing the rebased commit*, *Waiting for checks*, *Merging* (in
-progress); *Merged by the queue* (success). A pull request that leaves the queue without merging gets a title that says
+Its title follows the state: *Not queued* (neutral, with the button); *Queued: #n in line* (neutral, with the **Remove
+from queue** button, O32); *Rebasing onto the latest base*, *Regenerating generated files*, *Publishing the rebased
+commit*, *Waiting for checks*, *Merging* (in progress); *Merged by the queue* (success).
+
+**Waiting in line (O32, D90).** GitHub shows a check's buttons only on a completed check, so a pull request waiting for
+its turn has a completed, neutral check titled *Queued: #n in line* (n counts the running pull request as 1), with
+**Remove from queue**. A click is `/dequeue` in all but its source: the author or someone with `write` may, anyone
+else is noted in the entry's history and ignored, and the pull request leaves with *Dequeued* and **Add to merge
+queue** on the same check. The position is refreshed whenever the line moves, for the first ten waiting. When its turn
+starts, a new check run in progress takes the name over, without a button; a pull request whose turn starts at once
+never gets the waiting check.
+
+A pull request that leaves the queue without merging gets a title that says
 why. *Evicted: reason* ends as a **failure**, so the pull request list shows its author a red X to act on (owner,
 2026-10-15). *Dequeued* and *Refused: reason* end **neutral**. GitHub shows a check's buttons whatever it concluded, so
 each keeps the button, unless clicking could not help: a closed or merged pull request, and a refusal for the
@@ -784,6 +800,7 @@ The writer's `GitWriter:*` keys are in [`hosting.md`](hosting.md) §4, "Applicat
   token revocation is logged as a warning and does not stop the run. The check's button (O30) logs
   `offered #<n> in <repo> the button on <sha>` when the "Not queued" check goes up, and
   `enqueue of #<n> in <repo> by @<login> (check button)` when a click arrives; the entry's `EnqueuedVia` is then `Check`.
+  A click on **Remove from queue** logs `dequeue of #<n> in <repo> by @<login> (check button)`.
 - **Writer log** (`docker compose logs coverage-git-writer`): `<prepare|publish|…> for <repo>: busy`,
   `… finished after <ms> ms`, and `… failed (<reason>) after <ms> ms`.
 - **RavenDB:** `MergeQueues/github/<repoId>` holds the lanes (per base, the current entry and the waiting ones).
@@ -791,6 +808,8 @@ The writer's `GitWriter:*` keys are in [`hosting.md`](hosting.md) §4, "Applicat
   `EvictionMessage`, `History` (the last 50 steps), `PastRuns` (the last 10 outcomes), `TransientFailures`, `LastError`,
   `KnownShas`. `<repoId>` is GitHub's numeric id (`gh api repos/<owner>/<repo> --jq .id`). Dead-lettered steps:
   `from SparkMessages where QueueName = 'coverage-merge-queue' and Status = 'DeadLettered'`.
+  `MergeQueueLatestChecks/github/<repoId>/<n>` is the pull request's latest queue check run (`Sha`, `CheckRunId`), which
+  the coverage comment links; the queue writes it each time it starts a new check run, the "Not queued" one included (O32).
 - **On GitHub:** the check run, the regenerate run it links, and any `mq/` branch left behind. Deleting a leftover `mq/`
   branch by hand is safe when no entry of that pull request is running.
 

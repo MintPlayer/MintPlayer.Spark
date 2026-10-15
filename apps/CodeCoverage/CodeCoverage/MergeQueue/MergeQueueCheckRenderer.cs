@@ -9,7 +9,8 @@ namespace CodeCoverage.MergeQueue;
 /// The queue's own check run on the pull request's head (merge-queue PRD M5): position, state, eviction reason, the
 /// effective configuration with each value's source (O15), the excluded checks (O12) and, when a call was refused for a
 /// permission, the link to accept it (O17). On a pull request the queue does not hold, the "Not queued" check with the
-/// "Add to merge queue" button (§0 O30, <see cref="RenderOffer"/>).
+/// "Add to merge queue" button (§0 O30, <see cref="RenderOffer"/>); on one waiting in line, the "Remove from queue" button
+/// (§0 O32).
 /// </summary>
 public static class MergeQueueCheckRenderer
 {
@@ -18,13 +19,16 @@ public static class MergeQueueCheckRenderer
 
     /// <param name="offer">
     /// The run ended without merging and the pull request may be queued again: the check keeps the "Add to merge queue"
-    /// button and says how to queue it (§0 O30). Only for a forge whose checks carry buttons.
+    /// button and says how to queue it (§0 O30).
     /// </param>
-    public static ForgeQueueCheck Render(MergeQueueEntry entry, int? position, string? detailsUrl, string? note = null, bool offer = false)
+    /// <param name="buttons">The forge shows buttons on the check and reports clicks back; without it there are none.</param>
+    public static ForgeQueueCheck Render(MergeQueueEntry entry, int? position, string? detailsUrl, string? note = null, bool offer = false, bool buttons = false)
     {
         var (state, title) = entry.State switch
         {
-            EMergeQueueEntryState.Queued => (EForgeQueueCheckState.Queued, position is { } p ? $"Queued, position {p}" : "Queued"),
+            // §0 O32: GitHub shows a check's buttons only once the check has completed, so a pull request waiting in line
+            // gets a completed, neutral check with "Remove from queue"; its turn starts a new run, in progress.
+            EMergeQueueEntryState.Queued => (buttons ? EForgeQueueCheckState.Neutral : EForgeQueueCheckState.Queued, position is { } p ? $"Queued: #{p} in line" : "Queued"),
             EMergeQueueEntryState.Preparing => (EForgeQueueCheckState.InProgress, "Rebasing onto the latest base"),
             EMergeQueueEntryState.Regenerating => (EForgeQueueCheckState.InProgress, "Regenerating generated files"),
             EMergeQueueEntryState.Publishing => (EForgeQueueCheckState.InProgress, "Publishing the rebased commit"),
@@ -40,7 +44,8 @@ public static class MergeQueueCheckRenderer
             EMergeQueueEntryState.Refused => (EForgeQueueCheckState.Neutral, Why("Refused", entry.EvictionReason)),
             _ => (EForgeQueueCheckState.Neutral, entry.State.ToString()),
         };
-        offer &= entry.State is EMergeQueueEntryState.Evicted or EMergeQueueEntryState.Dequeued or EMergeQueueEntryState.Refused;
+        offer &= buttons && entry.State is EMergeQueueEntryState.Evicted or EMergeQueueEntryState.Dequeued or EMergeQueueEntryState.Refused;
+        var dequeue = buttons && entry.State == EMergeQueueEntryState.Queued;
 
         var summary = new StringBuilder();
         if (entry.EvictionMessage is { Length: > 0 } message)
@@ -51,6 +56,12 @@ public static class MergeQueueCheckRenderer
         if (offer)
         {
             summary.AppendLine(CultureInfo.InvariantCulture, $"Queue it again with {HowToQueue(entry.Config.Label)}.");
+            summary.AppendLine();
+        }
+        if (dequeue)
+        {
+            summary.AppendLine(CultureInfo.InvariantCulture,
+                $"Take it out of the queue with the **{ForgeQueueCheckAction.Dequeue.Label}** button on this check or a `/dequeue` comment.");
             summary.AppendLine();
         }
         if (entry.EvictionPaths.Count > 0)
@@ -107,7 +118,7 @@ public static class MergeQueueCheckRenderer
         return new ForgeQueueCheck(state, title, summary.ToString(), detailsUrl)
         {
             PullRequestNumber = entry.Number,
-            Actions = offer ? [ForgeQueueCheckAction.Enqueue] : [],
+            Actions = offer ? [ForgeQueueCheckAction.Enqueue] : dequeue ? [ForgeQueueCheckAction.Dequeue] : [],
         };
     }
 

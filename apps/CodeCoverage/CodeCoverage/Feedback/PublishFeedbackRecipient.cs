@@ -131,7 +131,9 @@ public partial class PublishFeedbackRecipient : IRecipient<PublishFeedbackMessag
                 configuration["Coverage:BaseUrl"],
                 repository.IsPrivate
                     ? BadgePrSignature.Compute(configuration, repository.GitHubId, pullRequestNumber)
-                    : null);
+                    : null,
+                // Merge-queue PRD O32: a line to the queue's check, when the default branch turns the queue on.
+                await MergeQueue.MergeQueueCommentLink.ResolveAsync(session, forge, repository, pullRequestNumber, commit.PullRequestBaseRef, cancellationToken));
 
             await forge.PublishCommentAsync(repository, pullRequestNumber, commit.Sha, body, cancellationToken);
         }

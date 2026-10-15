@@ -58,7 +58,9 @@ public partial class OpenPullRequestCommentRecipient : IRecipient<OpenPullReques
             return;
         }
 
-        var body = PullRequestCommentRenderer.RenderPending(repository, message.HeadSha, configuration["Coverage:BaseUrl"]);
+        var body = PullRequestCommentRenderer.RenderPending(repository, message.HeadSha, configuration["Coverage:BaseUrl"],
+            // Merge-queue PRD O32: a line to the queue's check, when the default branch turns the queue on.
+            await MergeQueue.MergeQueueCommentLink.ResolveAsync(session, forge, repository, message.PullRequestNumber, message.BaseRef, cancellationToken));
         await forge.PublishCommentAsync(repository, message.PullRequestNumber, message.HeadSha, body, cancellationToken);
     }
 

@@ -94,9 +94,13 @@ public partial class MergeQueueEngine : IMergeQueueEngine
 
         if (signal.Kind == EMergeQueueSignal.Offer)
         {
-            // Writes nothing but the check, so a repository whose queue never held anything gets no queue document.
+            // Writes the check and its id for the coverage comment (§0 O32), and no queue document: a repository whose queue
+            // never held anything gets none.
             if (signal.Number is { } offered && await LoadContextAsync(signal.RepositoryId, create: false, ct, orUnsaved: true) is { } offerContext)
+            {
                 await OfferAsync(offerContext, offered, besides: null, ct);
+                await session.SaveChangesAsync(ct);
+            }
             return;
         }
 
@@ -282,8 +286,12 @@ public partial class MergeQueueEngine : IMergeQueueEngine
 
         Transition(entry, EMergeQueueEntryState.Queued, $"queued by @{actor} ({source.ToString().ToLowerInvariant()})");
         context.Document.LaneFor(entry.BaseBranch).Waiting.Add(entry.Id!);
-        await PublishCheckAsync(context, entry, ct);
+        // Its turn first: on an idle lane it starts at once, and its first check run is the one in progress. A pull request
+        // that waits gets its "Queued" check, with "Remove from queue" (§0 O32), from the line's refresh, or here when it is
+        // further back than the refresh reaches.
         await StartNextAsync(context, entry.BaseBranch, ct);
+        if (entry.State == EMergeQueueEntryState.Queued && entry.QueueCheckSha is null)
+            await PublishCheckAsync(context, entry, ct);
     }
 
     /// <summary>Resets the per-pull-request document for a new run, keeping the earlier runs' outcomes.</summary>
@@ -534,8 +542,9 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                 || string.Equals(pull.HeadSha, besides, StringComparison.OrdinalIgnoreCase))
                 return;
 
-            await context.Queue.PublishQueueCheckAsync(repository, pull.HeadSha,
+            var checkRunId = await context.Queue.PublishQueueCheckAsync(repository, pull.HeadSha,
                 MergeQueueCheckRenderer.RenderOffer(number, section.Label, DetailsUrl(repository), SetupUrl()), null, ct);
+            await RecordLatestCheckAsync(context, number, pull.HeadSha, checkRunId, ct);
             logger.LogInformation("Merge queue: offered #{Number} in {Repository} the button on {Sha}", number, repository.FullName, Short(pull.HeadSha));
         }
         catch (Exception ex) when (!ct.IsCancellationRequested)
@@ -1323,6 +1332,10 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                 next.StartedAtUtc = Now;
                 Transition(next, EMergeQueueEntryState.Preparing, "its turn");
                 await ScheduleAsync(next, EMergeQueueStep.Start, null, ct);
+                // A new run, in progress: the waiting one is completed (it carried "Remove from queue", §0 O32), and GitHub
+                // does not reliably reopen a completed run.
+                next.QueueCheckSha = null;
+                next.QueueCheckId = null;
                 await PublishCheckAsync(context, next, ct);
                 break;
             }
@@ -1695,17 +1708,37 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         var sha = entry.ExpectedHeadSha;
         if (string.IsNullOrEmpty(sha)) return;
         var position = context.Document.Lanes.FirstOrDefault(l => l.BaseBranch == entry.BaseBranch)?.PositionOf(entry.Id!);
-        var check = MergeQueueCheckRenderer.Render(entry, position, DetailsUrl(context.Repository), offer: offer && HasCheckButtons(context));
+        var check = MergeQueueCheckRenderer.Render(entry, position, DetailsUrl(context.Repository), offer: offer, buttons: HasCheckButtons(context));
         var existing = string.Equals(entry.QueueCheckSha, sha, StringComparison.OrdinalIgnoreCase) ? entry.QueueCheckId : null;
         try
         {
             entry.QueueCheckId = await context.Queue.PublishQueueCheckAsync(context.Repository, sha, check, existing, ct);
             entry.QueueCheckSha = sha;
+            if (existing != entry.QueueCheckId)
+                await RecordLatestCheckAsync(context, entry.Number, sha, entry.QueueCheckId.Value, ct);
         }
         catch (Exception ex) when (ex is ForgeAccessDeniedException || IsTransient(ex, ct))
         {
             logger.LogWarning(ex, "Merge queue: could not publish the check run for #{Number} in {Repository}", entry.Number, context.Repository.FullName);
         }
+    }
+
+    /// <summary>
+    /// Points the pull request's <see cref="MergeQueueLatestCheck"/> at a check run the saga just started, for the coverage
+    /// comment's link (§0 O32, D89). Saved with the handler's other changes.
+    /// </summary>
+    private async Task RecordLatestCheckAsync(Context context, int number, string sha, long checkRunId, CancellationToken ct)
+    {
+        var id = MergeQueueLatestCheck.DocumentId(context.Repository.Id!, number);
+        var latest = await session.LoadAsync<MergeQueueLatestCheck>(id, ct);
+        if (latest is null)
+        {
+            latest = new MergeQueueLatestCheck { Id = id, Repository = context.Repository.Id!, Number = number };
+            await session.StoreAsync(latest, id, ct);
+        }
+        latest.Sha = sha;
+        latest.CheckRunId = checkRunId;
+        latest.UpdatedAtUtc = Now;
     }
 
     private async Task BestEffortAsync(Func<Task> action, string what)

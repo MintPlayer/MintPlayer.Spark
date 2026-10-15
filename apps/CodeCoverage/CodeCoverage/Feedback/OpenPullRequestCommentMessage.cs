@@ -27,6 +27,12 @@ public record OpenPullRequestCommentMessage
     public required string HeadSha { get; init; }
 
     /// <summary>
+    /// The branch the PR targets: the comment links the merge queue's check only for a branch the queue serves
+    /// (merge-queue PRD O32). Null on a message sent before this existed, which then skips that test.
+    /// </summary>
+    public string? BaseRef { get; init; }
+
+    /// <summary>
     /// Whether the PR was opened by a bot (dependabot, renovate).
     /// <para>
     /// Measured: dependabot-triggered workflow runs receive no repository

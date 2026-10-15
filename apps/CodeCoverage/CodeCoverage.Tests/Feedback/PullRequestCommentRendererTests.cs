@@ -227,4 +227,39 @@ public class PullRequestCommentRendererTests
         // The commit link is on github.com and never depended on our base url.
         body.Should().Contain("https://github.com/MintPlayer/MintPlayer.Spark/commit/");
     }
+
+    private const string QueueCheck = "https://github.com/MintPlayer/MintPlayer.Spark/pull/79/checks?check_run_id=4242";
+
+    /// <summary>
+    /// Merge-queue PRD O32: one line to the queue's check, in the pending body and the real one alike, before the footer.
+    /// It names no state, because the comment is rewritten when coverage arrives, not when the queue moves.
+    /// </summary>
+    [Fact]
+    public void A_queue_check_link_is_one_state_free_line_before_the_footer()
+    {
+        var full = PullRequestCommentRenderer.Render(
+            Repo(false), Commit(), Verdict("success", "71.4%"), Verdict("neutral", "80.9%"),
+            Assembly(CommitAssembly.Complete), BaseUrl, null, QueueCheck);
+        var pending = PullRequestCommentRenderer.RenderPending(Repo(false), "abc1234", BaseUrl, QueueCheck);
+
+        const string line = $"**Merge queue:** [manage this pull request on its check →]({QueueCheck})";
+        foreach (var body in new[] { full, pending })
+        {
+            body.Should().Contain(line);
+            body.IndexOf(line, StringComparison.Ordinal).Should().BeLessThan(body.IndexOf("<sub>Head", StringComparison.Ordinal));
+        }
+    }
+
+    /// <summary>No link, no line: a repository without the queue, or a base it does not serve.</summary>
+    [Fact]
+    public void Without_a_queue_check_link_there_is_no_merge_queue_line()
+    {
+        var full = PullRequestCommentRenderer.Render(
+            Repo(false), Commit(), Verdict("success", "71.4%"), Verdict("neutral", "80.9%"),
+            Assembly(CommitAssembly.Complete), BaseUrl, null);
+        var pending = PullRequestCommentRenderer.RenderPending(Repo(false), "abc1234", BaseUrl);
+
+        full.Should().NotContain("Merge queue");
+        pending.Should().NotContain("Merge queue");
+    }
 }

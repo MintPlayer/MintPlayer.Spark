@@ -184,11 +184,11 @@ internal sealed class MergeQueueHarness
             Command = EMergeQueueCommand.Enqueue, Actor = actor, Source = source, Label = source == EMergeQueueCommandSource.Label ? label : null,
         });
 
-    public Task DequeueAsync(string actor, int number = Number)
+    public Task DequeueAsync(string actor, int number = Number, EMergeQueueCommandSource source = EMergeQueueCommandSource.Comment)
         => SignalAsync(new MergeQueueSignalMessage
         {
             RepositoryId = RepositoryId, Kind = EMergeQueueSignal.Command, Number = number,
-            Command = EMergeQueueCommand.Dequeue, Actor = actor, Source = EMergeQueueCommandSource.Comment,
+            Command = EMergeQueueCommand.Dequeue, Actor = actor, Source = source,
         });
 
     public Task SignalAsync(EMergeQueueSignal kind, int? number = null, string? sha = null, string? branch = null, long? runId = null)

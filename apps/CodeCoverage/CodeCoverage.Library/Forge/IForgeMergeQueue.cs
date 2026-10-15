@@ -447,6 +447,12 @@ public sealed record ForgeQueueCheckAction(string Label, string Description, str
     /// label or a <c>/queue</c> comment.
     /// </summary>
     public static readonly ForgeQueueCheckAction Enqueue = new("Add to merge queue", "Rebase, regenerate, check, then merge", "mq-enqueue");
+
+    /// <summary>
+    /// "Remove from queue", on the check of a pull request waiting in line (merge-queue PRD §0 O32): the clicker's dequeue
+    /// command, which the queue authorises and refuses exactly as it does a <c>/dequeue</c> comment.
+    /// </summary>
+    public static readonly ForgeQueueCheckAction Dequeue = new("Remove from queue", "Take this pull request out of the queue", "mq-dequeue");
 }
 
 public enum EForgeQueueCheckState

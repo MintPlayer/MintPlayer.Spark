@@ -334,8 +334,10 @@
   <p>
     The "Merge queue" check is on every open pull request into a queue branch that is not a draft. While the pull request
     is not queued, the check reads "Not queued", and its button is at the top of the check's page: open it from the pull
-    request's checks. A pull request that leaves the queue without merging keeps the button, and the check's title says
-    why it left.
+    request's checks, or from the link at the end of CodeCoverage's coverage comment. While the pull request waits in
+    line, the check carries <strong>Remove from queue</strong> instead, which takes it out like <code>/dequeue</code>.
+    A pull request that leaves the queue without merging gets <strong>Add to merge queue</strong> back, and the check's
+    title says why it left.
   </p>
   <p class="small text-body-secondary mb-0">
     Every reason a pull request can leave the queue is in
