@@ -1,6 +1,7 @@
 # SeoTester (#268): PRD and plan
 
 Status: **spec consolidated after 8 grilling rounds** (2026-10-10); M1–M12 built (M12's deploy pending the owner). Issue: https://github.com/MintPlayer/MintPlayer.Spark/issues/268
+**2026-10-15:** §12 "CI stall" (the download proof read a FIFO; every browser close is bounded) and "Downloads never reach Chromium" (owner decision) are in PR #515, recorded there as D86 and O29 of `docs/coverage_merge_queue_PRD.md`.
 
 §1–§11 are the current spec. §12 is the decision log (D1–D46 plus measurements): each decision with its evidence, in the order it was taken. Where the body and the log disagree, the log is the record and the body is wrong. Fix the body.
 

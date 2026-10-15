@@ -1,9 +1,15 @@
 # PRD — a conflict-resolving merge queue in CodeCoverage (rebase → auto-resolve → `postRebaseActionName` → squash)
 
-**Status (2026-10-14, evening):** **Implemented; PR [#515](https://github.com/MintPlayer/MintPlayer.Spark/pull/515) open.**
-- The owner decisions O1–O26 and the implementation decisions D12–D85 in §0 supersede §§1–8 where they disagree.
+**Status (2026-10-15):** **Implemented; PR [#515](https://github.com/MintPlayer/MintPlayer.Spark/pull/515) open. The commits since its first CI run are local, for one push.**
+- The owner decisions O1–O29 and the implementation decisions D12–D86 in §0 supersede §§1–8 where they disagree.
 - Spikes S1–S8 have run (results in §7); S9 moved to #422 under O7.
-- Milestones M1–M9 are done. M10's sweep and live end-to-end run are done; the deploy is the owner's step.
+- Milestones M1–M9 are done. M10's sweep, live end-to-end run and first PR CI run are done; the deploy is the owner's step.
+- Since the first CI run:
+  - D84: the upstream card fix (web-components 2.20.0, ng-bootstrap 22.24.0) is adopted, and the badge contrast fix (ng-bootstrap 22.25.0, O28) after it. Badges, grids, lists, tables and alerts are ng-bootstrap's components (O27).
+  - D85: no credential-shaped test literal.
+  - D86: the SeoTester.Tests CI stall is fixed, and downloads never reach Chromium (O29).
+  - The browser check of the converted views is done (M10).
+- **In progress:** the last plain Bootstrap classes, from D84's open bullet. Then one push, and CI run 2.
 - ~~Grilled 2026-10-14; the owner decisions are O1–O17 in §0, and they supersede §§1–8 where they disagree. Spikes S1–S8 have not been run.~~ ~~No owner grill yet~~
 **Date:** 2026-10-14 · **Issue:** none yet · **App:** `apps/CodeCoverage` (production, coverage.mintplayer.com)
 **Origin:** a four-agent investigation, 2026-10-14:
@@ -19,7 +25,7 @@ Claims about this repository carry a `file:line` pointer (paths relative to `app
 
 Every inferred claim that a decision rests on has a spike in §7.
 
-## 0. Owner decisions (2026-10-14)
+## 0. Owner decisions (2026-10-14, 2026-10-15)
 
 These supersede the text below where they disagree. Superseded passages are marked **[superseded by On]**.
 
@@ -162,6 +168,9 @@ These supersede the text below where they disagree. Superseded passages are mark
 - **Tracked upstream:** [MintPlayer/mintplayer-ng-bootstrap#432](https://github.com/MintPlayer/mintplayer-ng-bootstrap/issues/432).
 - **Here:** the merge-queue panel keeps D75's local workaround. The account dependency-graph and commit-files panels stay affected until the fixed package is adopted (owner: "I'll first address that upstream issue, and we can update the package here"). **[Adopted in #515: D84. Upstream fixed it in MintPlayer/mintplayer-ng-bootstrap#433, released as web-components 2.20.0 and ng-bootstrap 22.24.0.]**
 - **Same pass:** the ten other `UseOptimisticConcurrency` uses in libs (messaging, authorization, identity provider) are fixed in this PR (owner, 2026-10-14). **[Done: D77.]** | AskUserQuestion answers, 2026-10-14; CSS read from `node_modules/@mintplayer/web-components/card/index.mjs` (8 × `RGBA(#`). |
+| O27 | **Use ng-bootstrap's components, never plain Bootstrap component classes (owner, 2026-10-14).** "plain bootstrap classes don't work. You need to use the mintplayer ng-bootstrap components": their styles ship inside the components, and the apps' global `_bootstrap.scss` has no grid, table, list-group, badge or alert partial. This applies to every view the PR touches and to every plain class found along the way. **[Done in D84. The last sites, D84's open bullet, are in progress.]** | The owner, to the D84 agent. |
+| O28 | **Fix `<bs-badge>`'s text contrast upstream, in this PR's cycle (owner, 2026-10-15: "I fix it upstream").** `<bs-badge>` painted `bg-{type}` with white text: 1.63:1 on warning, 1.96:1 on info. The cross-repo hook blocks edits to another repository from this session, so the fix went through a handoff to a session in mintplayer-ng-bootstrap: issue #434, PR #435, released as ng-bootstrap 22.25.0, which paints `text-bg-{type}`. **[Adopted in D84, commit 0a08cc49: 12.88:1 on warning and 10.72:1 on info, measured in the running app.]** | AskUserQuestion answer, 2026-10-15. |
+| O29 | **SeoTester: a download never reaches Chromium (owner, 2026-10-15: "Block in the router").** Chromium kept a denied download on disk for 0 to 23 ms, at most 16 MB (`SeoHttp.MaxBodyBytes[Browser]`). The router now aborts any navigation whose answer Chromium would save. `blob:` and `data:` downloads never reach the router and stay the documented limit. **[Done in D86.]** | AskUserQuestion answer, 2026-10-15. The recommendation had been to accept the brief write. |
 | D77 | **(O26) Every other use of the obsolete `UseOptimisticConcurrency` now sets `OptimisticConcurrencyMode` (packages `MintPlayer.Spark.Messaging`, `.Authorization` and `.IdentityProvider`).** All 13 sites set `true`, and each now sets `OptimisticConcurrencyMode.Writes`, as D74 did. None set `false`; its equivalent would be `None`, which `RevokeFamilyAsync` already uses.
 - **The sites.**
   - Messaging: `MessageBus.cs:68` (the deduplicated broadcast's create-only store), `MessageClaims.cs:91` (`TryRenewAsync`) and `MessageSubscriptionWorker.cs:88` (the pickup). `TryClaimAsync`'s remark named the obsolete property in a cref; it now names `OptimisticConcurrencyMode.Writes`.
@@ -737,7 +746,20 @@ Each spike records its numbers or its red/green result in this file.
   - a fork PR merged (S6)
   - the O17 notice appeared and cleared (D70, D76)
 - **Full local sweep:** green after D80–D83 (MintPlayer.Spark.Tests 5140/5140, the rest green incl. E2E).
-- **PR #515 CI:** green except SeoTester.Tests, a latent stall from #505 found and fixed (D85).
+- **PR #515 CI:** green except SeoTester.Tests, a latent stall from #505 found and fixed (~~D85~~ D86).
+- **Since CI run 1 (local commits, for one push):**
+  - D84 (O26–O28): web-components 2.20.0 and ng-bootstrap 22.24.0, then 22.25.0. The vitest suites of all 8 frontend projects are green on 22.25.0.
+  - D85: no credential-shaped test literal.
+  - D86 (O29): SeoTester.Tests 249 passed, 1 skipped (Linux-only), 0 failed.
+- **Browser check, 2026-10-15** (the playwright_node MCP, local data with the `acme/demo` fixture):
+  - commit-files `<bs-grid>`: chart and list side by side, with the gutters right
+  - the dependency graph's swatch and `dev` badge
+  - D75 chips: 7.15–7.67:1 in dark, 10.2–10.4:1 in light
+  - the build-session badges
+  - the setup page's and file page's badges on 22.25.0
+  - DemoApp's `<bs-card>` address card: 24rem, 8/16 px padding
+  - QnA's moderation views were checked by their specs only.
+- **Left before the push:** the last plain Bootstrap classes (D84's open bullet), then CI run 2.
 - **The deploy is the owner's:** raise the production App's permissions and events (hosting.md §6), and deploy the app with `codecoverage-git-writer`. The writer image built in CI, which settles D29. |
 
 ## 9. Risks
