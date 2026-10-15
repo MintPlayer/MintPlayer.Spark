@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
+import { BsContainerComponent } from '@mintplayer/ng-bootstrap/container';
 import { BsGridComponent, BsGridRowDirective, BsGridColumnDirective } from '@mintplayer/ng-bootstrap/grid';
 import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
 import {
@@ -22,6 +23,7 @@ import {
   selector: 'app-query-slots',
   imports: [
     BsAlertComponent,
+    BsContainerComponent,
     BsGridComponent, BsGridRowDirective, BsGridColumnDirective,
     SparkIconComponent,
     SparkQueryCardComponent,

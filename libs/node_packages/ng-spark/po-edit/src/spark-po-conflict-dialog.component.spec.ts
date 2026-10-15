@@ -83,6 +83,11 @@ describe('SparkPoConflictDialogComponent', () => {
     // Theirs removed it: that is the "remove" half of the keep/remove choice.
     expect(entry.theirs.fields).toBeUndefined();
     expect(entry.theirs.text).toBe('common.conflictRowRemoved');
+
+    // ng-bootstrap's table: a plain .table is unstyled outside <bs-table> (D84). The modal renders in an overlay,
+    // so the document holds it. The row's own cells table is styled by being inside that <bs-table>.
+    expect(document.querySelector('.spark-conflict-dialog table .spark-conflict-row-cells')).not.toBeNull();
+    expect(document.querySelector('.spark-conflict-dialog bs-table table.table tr.spark-conflict .spark-conflict-row-cells')).not.toBeNull();
   });
 
   it('marks the attributes a row differs in when both sides hold it', () => {

@@ -1889,7 +1889,8 @@ included), where it is followed live.
   Seen in dark mode only (the owner's default); light mode not looked at.
 - The share page handed an AsDetail array's `value` (empty) to its renderer: `objects` holds the rows; it uses
   `rendererValue` like the detail page. Its `row`/`col`/`table` classes had no CSS (grid and table CSS ship with
-  `bs-grid`/`bs-table`), so it was unstyled edge to edge; component styles lay it out.
+  `bs-grid`/`bs-table`), so it was unstyled edge to edge; ~~component styles lay it out~~ **[since 2026-10-15
+  `<bs-grid>` and `<bs-table>` do; its own sheet keeps only the page's width (`docs/coverage_merge_queue_PRD.md` D84)]**.
 - `withSparkLanguage()`: CodeCoverage's `sparkLanguageInterceptor` moved into ng-spark unchanged (with its spec);
   CodeCoverage and SeoTester call it. Server-resolved texts (the dashboard title, refusals) followed the browser's
   language, not the selector.

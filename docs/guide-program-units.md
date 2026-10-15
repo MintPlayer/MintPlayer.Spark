@@ -175,7 +175,7 @@ Notes:
 
   ```html
   <ng-container *sparkShellTab="'Component demos'; icon: 'palette'">
-    <a routerLink="/query-slots" routerLinkActive="active" class="d-block px-3 py-2 nav-link">Query card slots</a>
+    <a routerLink="/query-slots" routerLinkActive="active" class="d-block px-3 py-2 text-decoration-none nav-link">Query card slots</a>
   </ng-container>
   ```
 

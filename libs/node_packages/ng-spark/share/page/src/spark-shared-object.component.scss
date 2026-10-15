@@ -1,0 +1,7 @@
+// The page's width and inset. The grid's container-fluid adds its 12px gutter, so .25rem here keeps the text
+// 1rem from the edge of a phone, as before the page used <bs-grid> (D84).
+.spark-shared-object {
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 1.5rem .25rem;
+}

@@ -4,7 +4,9 @@ import { ActivatedRoute } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
+import { BsGridColumnDirective, BsGridComponent, BsGridRowDirective } from '@mintplayer/ng-bootstrap/grid';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
+import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
 import { SPARK_CONFIG } from '@mintplayer/ng-spark';
 import { SparkGridCellComponent } from '@mintplayer/ng-spark/grid';
 import { PersistentObject, PersistentObjectAttribute, QueryColumn, QueryResult, QueryResultItem, TranslatedString, valueFor } from '@mintplayer/ng-spark/models';
@@ -45,26 +47,16 @@ type State = 'loading' | 'ready' | 'notFound' | 'failed';
 @Component({
   selector: 'spark-shared-object',
   standalone: true,
-  // Bootstrap's grid and table CSS are not global in ng-bootstrap (they ship with bs-grid / bs-table), so the
-  // `row`/`col-sm-4`/`table` classes alone left the page unstyled and edge to edge (seen in SeoTester, M11).
-  styles: [`
-    .spark-shared-object { max-width: 72rem; margin: 0 auto; padding: 1.5rem 1rem; }
-    .spark-shared-attributes { display: grid; grid-template-columns: minmax(8rem, max-content) minmax(0, 1fr); gap: .5rem 1.5rem; margin: 0; }
-    .spark-shared-attributes dt { font-weight: 600; }
-    .spark-shared-attributes dd { margin: 0; min-width: 0; }
-    /* A phone stacks each label over its value: beside it, the label column took 40 % of 375 px. */
-    @media (max-width: 575.98px) {
-      .spark-shared-attributes { grid-template-columns: minmax(0, 1fr); gap: .15rem; }
-      .spark-shared-attributes dd { margin-bottom: .6rem; }
-    }
-    .spark-shared-query { overflow-x: auto; }
-    .spark-shared-query table { width: 100%; border-collapse: collapse; }
-    .spark-shared-query th, .spark-shared-query td { padding: .35rem .5rem; border-bottom: 1px solid var(--bs-border-color); text-align: start; }
-  `],
+  // Bootstrap's grid and table CSS are not global in ng-bootstrap: they ship with <bs-grid> and <bs-table>, so plain
+  // `row`/`col-sm-4`/`table` classes leave the page unstyled and edge to edge (seen in SeoTester, M11; D84).
+  styleUrl: './spark-shared-object.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [BsAlertComponent, BsSpinnerComponent, SparkGridCellComponent, ResolveTranslationPipe],
+  imports: [
+    BsAlertComponent, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsSpinnerComponent, BsTableComponent,
+    SparkGridCellComponent, ResolveTranslationPipe,
+  ],
   template: `
-    <div class="spark-shared-object">
+    <bs-grid stopFullWidthAt="never" class="d-block spark-shared-object">
       @if (notice(); as text) {
         <bs-alert [type]="colors.warning" class="d-block mb-3 spark-shared-notice">{{ text }}</bs-alert>
       }
@@ -77,10 +69,10 @@ type State = 'loading' | 'ready' | 'notFound' | 'failed';
         }
         @case ('ready') {
           <h1 class="h4 mb-3 spark-shared-title">{{ shared()?.label ?? undefined | resolveTranslation:(shared()?.type ?? '') }}</h1>
-          <dl class="row spark-shared-attributes">
+          <dl bsRow class="spark-shared-attributes">
             @for (cell of attributeCells(); track cell.attribute.name) {
-              <dt class="col-sm-4">{{ cell.attribute.label | resolveTranslation:cell.attribute.name }}</dt>
-              <dd class="col-sm-8" [attr.data-attribute]="cell.attribute.name">
+              <dt [sm]="4">{{ cell.attribute.label | resolveTranslation:cell.attribute.name }}</dt>
+              <dd [sm]="8" [attr.data-attribute]="cell.attribute.name">
                 <spark-grid-cell [column]="cell.attribute" [display]="cell.display" [rendererValue]="cell.value" [item]="object()" />
               </dd>
             }
@@ -88,26 +80,24 @@ type State = 'loading' | 'ready' | 'notFound' | 'failed';
           @for (query of queryTables(); track query.name) {
             <section class="mt-4 spark-shared-query" [attr.data-query]="query.name">
               <h2 class="h5">{{ query.label | resolveTranslation:query.name }}</h2>
-              <div class="table-responsive">
-                <table class="table table-sm align-middle">
-                  <thead>
-                    <tr>
+              <bs-table [isResponsive]="true">
+                <thead>
+                  <tr>
+                    @for (column of query.columns; track column.name) {
+                      <th scope="col">{{ column.label | resolveTranslation:column.name }}</th>
+                    }
+                  </tr>
+                </thead>
+                <tbody class="align-middle">
+                  @for (item of query.result.items; track item.id) {
+                    <tr [attr.data-id]="item.id">
                       @for (column of query.columns; track column.name) {
-                        <th scope="col">{{ column.label | resolveTranslation:column.name }}</th>
+                        <td><spark-grid-cell [column]="column" [display]="display(column, item)" [rendererValue]="raw(item, column)" [item]="item" /></td>
                       }
                     </tr>
-                  </thead>
-                  <tbody>
-                    @for (item of query.result.items; track item.id) {
-                      <tr [attr.data-id]="item.id">
-                        @for (column of query.columns; track column.name) {
-                          <td><spark-grid-cell [column]="column" [display]="display(column, item)" [rendererValue]="raw(item, column)" [item]="item" /></td>
-                        }
-                      </tr>
-                    }
-                  </tbody>
-                </table>
-              </div>
+                  }
+                </tbody>
+              </bs-table>
               @if (query.result.totalItems > query.result.take) {
                 <nav class="d-flex align-items-center gap-2 spark-shared-pager">
                   <button type="button" class="btn btn-sm btn-outline-secondary spark-shared-previous" aria-label="Previous"
@@ -121,7 +111,7 @@ type State = 'loading' | 'ready' | 'notFound' | 'failed';
           }
         }
       }
-    </div>
+    </bs-grid>
   `,
 })
 export class SparkSharedObjectComponent {
