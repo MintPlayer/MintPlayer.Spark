@@ -222,14 +222,16 @@ public partial class GitHubInstallationPermissions : IForgeInstallationPermissio
         };
     }
 
-    private const EMergeQueueAppNeed AllNeeds = EMergeQueueAppNeed.Core | EMergeQueueAppNeed.Dispatch | EMergeQueueAppNeed.RerunActions;
+    private const EMergeQueueAppNeed AllNeeds = EMergeQueueAppNeed.Core | EMergeQueueAppNeed.Dispatch | EMergeQueueAppNeed.RerunActions | EMergeQueueAppNeed.CloseIssues;
 
     // What each need takes of the App (§0 D95). Core: the queue reads the pull request, its reviews, statuses and
     // checks, rebases and pushes, publishes its check, comments and labels (issues), and merges; it hears pushes, check
     // runs and suites, statuses, reviews, pull request changes and /queue comments. Dispatch: it dispatches the regenerate
     // workflow (actions write) and hears its run finish. RerunActions: it re-runs failed jobs (actions write).
     // Workflows: only a push that touches a workflow file takes workflows write (§0 D59), so the engine warns about it
-    // instead of refusing, and the installation notice (AllNeeds) leaves it out.
+    // instead of refusing, and the installation notice (AllNeeds) leaves it out. CloseIssues: closing the issues a merged
+    // pull request links takes issues write (§0 D106); it runs after the merge and never holds one up, so the engine only
+    // warns, but every merge takes it, so the notice asks for it.
     private static readonly (EMergeQueueAppNeed Need, (string Name, string Level)[] Permissions, string[] Events)[] NeedTables =
     [
         (EMergeQueueAppNeed.Core,
@@ -238,6 +240,7 @@ public partial class GitHubInstallationPermissions : IForgeInstallationPermissio
         (EMergeQueueAppNeed.Dispatch, [("actions", "write")], ["workflow_run"]),
         (EMergeQueueAppNeed.RerunActions, [("actions", "write")], []),
         (EMergeQueueAppNeed.Workflows, [("workflows", "write")], []),
+        (EMergeQueueAppNeed.CloseIssues, [("issues", "write")], []),
     ];
 
     public IReadOnlyList<PendingPermission> NeededPending(IReadOnlyList<PendingPermission> pending, EMergeQueueAppNeed needs)

@@ -59,6 +59,12 @@ public enum EMergeQueueAppNeed
     /// refusing, and the installation notice does not ask for it.
     /// </summary>
     Workflows = 8,
+
+    /// <summary>
+    /// Close the issues a merged pull request links when the forge left them open (merge-queue PRD §0 D106). Best effort
+    /// after the merge, so the queue warns about it rather than refusing; the installation notice does ask for it.
+    /// </summary>
+    CloseIssues = 16,
 }
 
 /// <summary>What the app itself lacks of what was asked about (§0 D95).</summary>

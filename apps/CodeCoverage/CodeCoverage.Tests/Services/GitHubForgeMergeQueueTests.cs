@@ -861,6 +861,117 @@ public class GitHubForgeMergeQueueTests
     public async Task A_request_id_that_is_not_one_is_refused()
         => await Throws<ArgumentException>(() => Queue(new StubGitHub()).GetMergeRequestStatusAsync(Target(), 1, "../../x"));
 
+    // ── Linked issues (§0 D106) ──────────────────────────────────────────────────────────────────
+
+    /// <summary>The documented GraphQL shape of <c>closingIssuesReferences</c>: one issue here, one elsewhere, one closed.</summary>
+    private const string ClosingIssues = """
+        {"data":{"repository":{"pullRequest":{"closingIssuesReferences":{"nodes":[
+          {"number":284,"state":"OPEN","repository":{"nameWithOwner":"acme/widget"}},
+          {"number":12,"state":"OPEN","repository":{"nameWithOwner":"acme/other"}},
+          {"number":154,"state":"CLOSED","repository":{"nameWithOwner":"acme/widget"}}]}}}}}
+        """;
+
+    [Fact]
+    public async Task Closing_issues_are_read_through_graphql_with_every_value_a_variable()
+    {
+        string? posted = null;
+        var github = new StubGitHub().On(HttpMethod.Post, "/graphql", (_, body) =>
+        {
+            posted = body;
+            return StubHttpMessageHandler.Json(HttpStatusCode.OK, ClosingIssues);
+        });
+
+        var issues = await Queue(github).GetClosingIssuesAsync(Target(), 518);
+
+        issues.Should().Equal([
+            new ForgeClosingIssue(284, "acme/widget", true),
+            new ForgeClosingIssue(12, "acme/other", true),
+            new ForgeClosingIssue(154, "acme/widget", false)]);
+        using var json = JsonDocument.Parse(posted!);
+        var query = json.RootElement.GetProperty("query").GetString();
+        query.Should().Be(GitHubForgeMergeQueue.ClosingIssuesQuery);
+        query.Should().NotContain("acme").And.NotContain("518");
+        var variables = json.RootElement.GetProperty("variables");
+        variables.GetProperty("owner").GetString().Should().Be("acme");
+        variables.GetProperty("name").GetString().Should().Be("widget");
+        variables.GetProperty("number").GetInt32().Should().Be(518);
+        variables.GetProperty("first").GetInt32().Should().Be(ForgeClosingIssue.MaxListed);
+    }
+
+    [Fact]
+    public async Task A_pull_request_graphql_does_not_find_has_no_closing_issues()
+    {
+        var github = new StubGitHub().On(HttpMethod.Post, "/graphql", HttpStatusCode.OK, """
+            {"data":{"repository":{"pullRequest":null}},"errors":[{"type":"NOT_FOUND","path":["repository","pullRequest"],"message":"Could not resolve to a PullRequest with the number of 9999."}]}
+            """);
+
+        (await Queue(github).GetClosingIssuesAsync(Target(), 9999)).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task A_graphql_refusal_is_an_access_failure_and_any_other_error_is_retryable()
+    {
+        var refused = new StubGitHub().On(HttpMethod.Post, "/graphql", HttpStatusCode.OK, """
+            {"data":{"repository":{"pullRequest":null}},"errors":[{"type":"FORBIDDEN","path":["repository","pullRequest"],"message":"Resource not accessible by integration"}]}
+            """);
+        var failing = new StubGitHub().On(HttpMethod.Post, "/graphql", HttpStatusCode.OK, """
+            {"errors":[{"type":"RATE_LIMITED","message":"API rate limit exceeded"}]}
+            """);
+
+        (await Throws<ForgeAccessDeniedException>(() => Queue(refused).GetClosingIssuesAsync(Target(), 518)))
+            .Message.Should().Contain("Resource not accessible by integration");
+        await Throws<ForgeRequestException>(() => Queue(failing).GetClosingIssuesAsync(Target(), 518));
+    }
+
+    [Fact]
+    public async Task An_issue_is_closed_as_completed_and_then_commented()
+    {
+        string? patched = null, commented = null;
+        var github = new StubGitHub()
+            .On(HttpMethod.Patch, $"{Repo}/issues/284", (_, body) =>
+            {
+                patched = body;
+                return StubHttpMessageHandler.Json(HttpStatusCode.OK, """{"number":284,"state":"closed","state_reason":"completed"}""");
+            })
+            .On(HttpMethod.Post, $"{Repo}/issues/284/comments", (_, body) =>
+            {
+                commented = body;
+                return StubHttpMessageHandler.Json(HttpStatusCode.Created, """{"id":9001,"body":"Closed by #518 (merged by the merge queue)."}""");
+            });
+
+        (await Queue(github).CloseIssueAsync(Target(), 284, "Closed by #518 (merged by the merge queue).")).Should().BeTrue();
+
+        github.Calls.Should().Equal([$"PATCH {Repo}/issues/284", $"POST {Repo}/issues/284/comments"], "closed first, so a retry never comments twice");
+        using var close = JsonDocument.Parse(patched!);
+        close.RootElement.GetProperty("state").GetString().Should().Be("closed");
+        close.RootElement.GetProperty("state_reason").GetString().Should().Be("completed");
+        using var comment = JsonDocument.Parse(commented!);
+        comment.RootElement.GetProperty("body").GetString().Should().Be("Closed by #518 (merged by the merge queue).");
+    }
+
+    [Fact]
+    public async Task An_issue_github_does_not_know_is_not_closed_nor_commented()
+    {
+        var gone = new StubGitHub().On(HttpMethod.Patch, $"{Repo}/issues/284", HttpStatusCode.Gone, """{"message":"This issue was deleted"}""");
+        var missing = new StubGitHub();
+
+        (await Queue(gone).CloseIssueAsync(Target(), 284, "Closed by #518 (merged by the merge queue).")).Should().BeFalse();
+        (await Queue(missing).CloseIssueAsync(Target(), 284, "Closed by #518 (merged by the merge queue).")).Should().BeFalse();
+        gone.Calls.Should().ContainSingle();
+        missing.Calls.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task A_close_refused_names_issues_write_even_when_github_does_not()
+    {
+        var github = new StubGitHub().On(HttpMethod.Patch, $"{Repo}/issues/284", HttpStatusCode.Forbidden,
+            """{"message":"Resource not accessible by integration","documentation_url":"https://docs.github.com/rest/issues/issues#update-an-issue","status":"403"}""");
+
+        (await Throws<ForgeAccessDeniedException>(() => Queue(github).CloseIssueAsync(Target(), 284, "Closed by #518 (merged by the merge queue).")))
+            .RequiredPermission.Should().Be("issues=write");
+        github.Calls.Should().ContainSingle("nothing is commented on an issue that was not closed");
+    }
+
     // ── Reviews ──────────────────────────────────────────────────────────────────────────────────
 
     [Fact]

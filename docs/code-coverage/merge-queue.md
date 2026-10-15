@@ -96,7 +96,7 @@ The full App reference is [`hosting.md`](hosting.md) §6, "GitHub App". What the
 | Pull requests | Read & write | The pull request itself, reviews (O11), its commits for the co-author trailers (D60), the label, the queue's comments. |
 | Checks | Read & write | The "Merge queue" check run and its **Add to merge queue** button (O30); reading check runs and suites; re-requesting another App's check. |
 | Metadata | Read-only | Roles (`collaborators/{login}/permission`, O9) and rulesets with `current_user_can_bypass` (D16). |
-| Issues | Read-only | The `issue_comment` event (`/queue`, `/dequeue`). |
+| Issues | **Read & write** (new) | The `issue_comment` event (`/queue`, `/dequeue`) (read). After a merge, closing the issues the pull request links that GitHub left open, with a comment (write, D106). Without write the queue still merges; the check warns at enqueue, and a refused close is said in a comment on the pull request. |
 
 **Administration is not requested.** Classic branch protection's required checks are readable without it; its review
 settings are not. The queue then reports the branch as `ChecksOnly` and gives no O18 warnings from classic protection.
@@ -145,7 +145,8 @@ missing permissions and events, linked to the App's own settings page
 (`github.com/organizations/{owner}/settings/apps/{slug}/permissions`, or `github.com/settings/apps/{slug}/permissions`
 for a user's App). A needed permission the App declares but the installation has not accepted yet refuses `permission`,
 with the acceptance link. `workflows` write is only a warning on the check: only a push that changes a workflow file
-takes it (D59).
+takes it (D59). So is `issues` write: closing the linked issues runs after the merge and never holds one up (D106),
+but the Account page's notice does ask for it.
 
 ![The notice on a CodeCoverage organization page: GitHub is waiting for you to accept new permissions, the pending permission, and the links Review and accept on GitHub and Merge queue setup guide](https://github.com/user-attachments/assets/813f0779-6f7f-464b-a46a-b30971ab57da)
 
@@ -678,6 +679,12 @@ repositories grid, so that it is seen before a long grid.
   deleted under a lease, a regenerate
   run the entry no longer waits for is cancelled (D53), and the next pull request in the lane starts. An eviction posts
   a comment with the reason and how to queue again; a merge posts nothing.
+- **The linked issues are closed (D106).** GitHub did not close the issue a queue-merged pull request linked (#518
+  merged, #284 left open), so 30 seconds after a merge into the default branch the queue reads the pull request's
+  closing issues and closes those still open in the same repository as *completed*, each with the comment
+  `Closed by #<n> (merged by the merge queue).` An issue of another repository, or one already closed (by GitHub
+  itself, or by an earlier attempt), is left alone. It is best effort: a refused permission leaves a comment on the pull
+  request saying the issues stay open, and the merge stands whatever happens.
 
 ### 4.4 The "Merge queue" check run
 

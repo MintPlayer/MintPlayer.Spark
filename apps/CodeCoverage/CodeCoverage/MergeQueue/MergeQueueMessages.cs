@@ -67,6 +67,12 @@ public enum EMergeQueueStep
     /// why the run is cancelled.
     /// </summary>
     CancelRun,
+
+    /// <summary>
+    /// Close the issues a merged pull request links, when the forge has not (§0 D106). Not gated on the run either: the
+    /// entry has ended by design, and a redelivered step skips the issues that are closed already.
+    /// </summary>
+    CloseIssues,
 }
 
 /// <summary>

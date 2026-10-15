@@ -1,0 +1,5 @@
+{
+  "json.schemaDownload.trustedDomains": {
+    "https://schemas.spark.mintplayer.com/": true
+  }
+}

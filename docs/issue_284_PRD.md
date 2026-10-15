@@ -123,8 +123,11 @@ people grid's headers, the company page's people card's headers and the Company 
 1. ~~Same key as the existing `columns`?~~ **Resolved 2026-10-15:** no, use a new key (D1).
 2. ~~How to hide when the synchronizer appends everything?~~ **Resolved 2026-10-15:** use a `!` prefix
    in the same array (D2).
-3. Should a query bound to a non-default projection show the projection's fields by default rather than
-   the entity's? Partly answered by D10; the rest depends on S2.
+3. ~~Should a query bound to a non-default projection show the projection's fields by default rather than
+   the entity's?~~ **Resolved 2026-10-15 (S2, D10):**
+   - There is no automatic default.
+   - The synchronizer appends the surface attributes that the bound non-default index doesn't back as hidden (`!X`).
+   - Verify warns about a visible entry that index doesn't back.
 
 ## 5. Spikes
 

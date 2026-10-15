@@ -210,6 +210,39 @@ internal sealed class FakeForgeMergeQueue : IForgeMergeQueue
         return Task.FromResult((long)Comments.Count);
     }
 
+    /// <summary>The issues each pull request says it closes (§0 D106); closing one here marks it closed.</summary>
+    public Dictionary<int, List<ForgeClosingIssue>> ClosingIssues { get; } = [];
+
+    /// <summary>Every issue closed, with the comment it was given, in order.</summary>
+    public List<(int Number, string Comment)> ClosedIssues { get; } = [];
+
+    /// <summary>Every pull request whose closing issues were read, in order.</summary>
+    public List<int> ClosingIssueQueries { get; } = [];
+
+    /// <summary>When set, the next close throws it (a missing permission, a 5xx).</summary>
+    public Exception? CloseIssueThrows { get; set; }
+
+    public Task<IReadOnlyList<ForgeClosingIssue>> GetClosingIssuesAsync(Repository repository, int number, CancellationToken cancellationToken = default)
+    {
+        ClosingIssueQueries.Add(number);
+        return Task.FromResult<IReadOnlyList<ForgeClosingIssue>>(ClosingIssues.TryGetValue(number, out var issues) ? [.. issues] : []);
+    }
+
+    public Task<bool> CloseIssueAsync(Repository repository, int number, string comment, CancellationToken cancellationToken = default)
+    {
+        if (CloseIssueThrows is { } thrown)
+        {
+            CloseIssueThrows = null;
+            throw thrown;
+        }
+        ClosedIssues.Add((number, comment));
+        foreach (var issues in ClosingIssues.Values)
+            for (var i = 0; i < issues.Count; i++)
+                if (issues[i].Number == number && string.Equals(issues[i].RepositoryFullName, repository.FullName, StringComparison.OrdinalIgnoreCase))
+                    issues[i] = issues[i] with { IsOpen = false };
+        return Task.FromResult(true);
+    }
+
     public Task<ForgePushAccess> GetWriterAccessAsync(Repository repository, ForgePullRequest? pullRequest, bool pushesWorkflowChanges, CancellationToken cancellationToken = default)
     {
         if (WriterAccess?.Invoke(pullRequest) is { } scripted)
