@@ -386,6 +386,48 @@ public class SparkModelVerifyChecksTests
             "with no target on the id side either, the only fix to name is the unit's own alias");
     }
 
+    // --- a menu startup would refuse ---------------------------------------
+
+    /// <summary>
+    /// Verify runs where the loader never does, so it applies the loader's rule itself: a menu the merge queue
+    /// passes is one startup accepts. It used to skip every unit without an alias, and with it every url unit.
+    /// The JSON is escaped: <c>\t</c> is a tab.
+    /// </summary>
+    [Theory]
+    [InlineData("""{ "id": "33333333-3333-3333-3333-333333333333", "name": { "en": "Script" }, "type": "url", "url": "javascript:alert(1)", "order": 1 }""",
+        "Program unit '33333333-3333-3333-3333-333333333333' has the url \"javascript:alert(1)\", which is not an app path ('/runs/42') or an absolute http(s) URL")]
+    [InlineData("""{ "id": "33333333-3333-3333-3333-333333333333", "name": { "en": "Tab" }, "type": "url", "url": "/\t/evil.example/x", "order": 1 }""",
+        "Program unit '33333333-3333-3333-3333-333333333333' has the url")]
+    [InlineData("""{ "id": "33333333-3333-3333-3333-333333333333", "name": { "en": "Board" }, "type": "dashboard", "order": 1 }""",
+        "Program unit '33333333-3333-3333-3333-333333333333' declares unknown type 'dashboard'")]
+    [InlineData("""{ "id": "33333333-3333-3333-3333-333333333333", "name": { "en": "Docs" }, "type": "url", "order": 1 }""",
+        "Program unit '33333333-3333-3333-3333-333333333333' has type 'url' but no 'url'")]
+    [InlineData("""{ "id": "33333333-3333-3333-3333-333333333333", "name": { "en": "Cars" }, "type": "query", "order": 1 }""",
+        "Program unit '33333333-3333-3333-3333-333333333333' has type 'query' but no 'queryId'")]
+    public void A_unit_startup_would_refuse_exits_3(string unit, string expected)
+    {
+        using var scratch = new ScratchContentRoot();
+
+        var (exitCode, reported) = VerifyWith(scratch, () => PlantUnits(scratch, unit));
+
+        exitCode.Should().Be(3);
+        reported.Should().Contain(expected);
+        reported.Should().Contain(HashUnchanged, "the hash was re-stamped after planting, so only the menu check can have failed");
+    }
+
+    [Fact]
+    public void An_app_path_and_an_absolute_http_url_verify()
+    {
+        using var scratch = new ScratchContentRoot();
+
+        var (exitCode, _) = VerifyWith(scratch, () => PlantUnits(scratch, """
+            { "id": "33333333-3333-3333-3333-333333333333", "name": { "en": "Setup" }, "type": "url", "url": "/merge-queue/setup?provider=github", "order": 1 },
+            { "id": "44444444-4444-4444-4444-444444444444", "name": { "en": "Docs" }, "type": "url", "url": "https://example.com/docs", "order": 2 }
+            """));
+
+        exitCode.Should().Be(0);
+    }
+
     private static void PlantUnits(ScratchContentRoot scratch, string unit) =>
         File.WriteAllText(Path.Combine(scratch.Path, "App_Data", "programUnits.json"), $$"""
             { "programUnitGroups": [ { "id": "11111111-1111-1111-1111-111111111111", "name": { "en": "Group" },

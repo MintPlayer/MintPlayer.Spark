@@ -11,7 +11,7 @@
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.Notifications</PackageId>
-		<Version>11.0.0-preview.104</Version>
+		<Version>11.0.0-preview.105</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>Notifications for MintPlayer.Spark: one ISparkNotifier call reaches a user in-app (live over /spark/live), by email (MailManager) and by Web Push (RFC 8291/8292, hand-rolled), with each user's channels chosen per organization.</Description>

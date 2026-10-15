@@ -1069,7 +1069,9 @@ public static class SparkDevelopmentExtensions
     }
 
     /// <summary>
-    /// Refuses a program unit whose <c>alias</c> does not resolve to the target its id names.
+    /// Refuses a menu startup would refuse — one that does not load, a unit of an unknown type or without the
+    /// field its type requires, a url that is neither an app path nor an absolute http(s) URL — and a program
+    /// unit whose <c>alias</c> does not resolve to the target its id names.
     /// </summary>
     /// <remarks>
     /// A unit identifies its target twice — <c>queryId</c>/<c>persistentObjectId</c> and
@@ -1103,7 +1105,9 @@ public static class SparkDevelopmentExtensions
         var unitsPath = SparkProgramUnitsFiles.PathFor(contentRootPath);
         var jsonOptions = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
 
-        // The composed menu (composition D3): what the application serves, library units included.
+        // The composed menu (composition D3): what the application serves, library units included. A menu that
+        // does not load is reported in the loader's words: startup refuses it, and verify runs where the loader
+        // never does, so swallowing it here (as this check used to) let CI pass a menu the deployment would refuse.
         ProgramUnitsConfiguration? units;
         try
         {
@@ -1112,10 +1116,14 @@ public static class SparkDevelopmentExtensions
                 return; // An app may legitimately ship no menu.
             units = System.Text.Json.JsonSerializer.Deserialize<ProgramUnitsConfiguration>(composed, jsonOptions);
         }
-        catch (Exception ex) when (ex is System.Text.Json.JsonException or InvalidOperationException)
+        catch (InvalidOperationException ex)
         {
-            // ProgramUnitsLoader reports this, with its own message. Reporting it twice,
-            // differently, helps nobody — the same rule the alias-collision check follows.
+            ReportVerificationProblems([ex.Message]);
+            return;
+        }
+        catch (System.Text.Json.JsonException ex)
+        {
+            ReportVerificationProblems([$"{SparkProgramUnitsFiles.AppLayerName} is not valid JSON: {ex.Message}"]);
             return;
         }
 
@@ -1162,6 +1170,14 @@ public static class SparkDevelopmentExtensions
 
         foreach (var unit in groups.SelectMany(g => g.ProgramUnits ?? []))
         {
+            // The rule startup applies (ProgramUnitsLoader): a known type, the field it requires, and a url that
+            // is an app path or an absolute http(s) URL.
+            if (ProgramUnitsLoader.DescribeInvalidTarget(unit) is { } invalid)
+            {
+                problems.Add(invalid);
+                continue;
+            }
+
             // No alias is a supported shape, not a smell: the client then routes by id.
             if (unit.Alias is not { Length: > 0 } alias)
                 continue;
@@ -1213,7 +1229,7 @@ public static class SparkDevelopmentExtensions
                 }
             }
 
-            // Every other type (currently "url") has no server-side target to resolve.
+            // A url unit has no server-side target to resolve; its address was checked above.
         }
 
         ReportVerificationProblems(problems);

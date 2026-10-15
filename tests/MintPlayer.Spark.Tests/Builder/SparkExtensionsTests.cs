@@ -560,18 +560,22 @@ public class SparkExtensionsTests
     }
 
     /// <summary>
-    /// Malformed JSON belongs to `ProgramUnitsLoader`, which reports it with its own message.
-    /// Reporting it twice, differently, tells the reader less rather than more.
+    /// Malformed JSON refuses startup in `ProgramUnitsLoader`'s words, so verify reports it in the same words. It
+    /// used to stay silent, leaving the error to the loader, which never runs during verify: the merge queue passed
+    /// a menu the deployment then refused.
     /// </summary>
     [Fact]
-    public void A_malformed_programUnits_file_is_not_this_checks_error()
+    public void A_malformed_programUnits_file_exits_3_in_the_loaders_words()
     {
         using var scratch = new ScratchContentRoot();
         Synchronized(scratch);
         File.WriteAllText(Path.Combine(scratch.Path, "App_Data", "programUnits.json"), "{ not json");
         Synchronized(scratch);
 
-        VerifyExitCode(scratch).Should().Be(0);
+        var (exitCode, reported) = Verify(scratch);
+
+        exitCode.Should().Be(3);
+        reported.Should().Contain("programUnits.json is not valid JSON");
     }
 
     public sealed class Person

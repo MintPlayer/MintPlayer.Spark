@@ -184,6 +184,51 @@ public sealed class ProgramUnitsLoaderTests : IDisposable
             .WithMessage($"*no '{missingField}'*");
     }
 
+    /// <summary>
+    /// A url unit's address is an app path or an absolute http(s) URL (<see cref="SparkLinkUrl"/>), and the message
+    /// names the unit and both forms. Written JSON-escaped: <c>\t</c> is a tab, <c>\\</c> one backslash.
+    /// </summary>
+    [Theory]
+    [InlineData("javascript:alert(1)")]
+    [InlineData("JaVaScRiPt:alert(1)")]
+    [InlineData("data:text/html,<b>x</b>")]
+    [InlineData("mailto:someone@example.com")]
+    [InlineData("//evil.example/x")]
+    [InlineData(@"/\\evil.example/x")]
+    [InlineData(@"/\t/evil.example/x")]
+    [InlineData(" /merge-queue/setup")]
+    [InlineData("merge-queue/setup")]
+    [InlineData("https://github.com@evil.example/")]
+    public void Throws_on_a_url_that_is_neither_an_app_path_nor_an_absolute_http_url(string url)
+    {
+        WriteUnits(UnitJson($"""
+            "type": "url",
+            "url": "{url}"
+            """));
+        var loader = CreateLoader();
+
+        var act = () => loader.GetProgramUnits();
+
+        act.Should().Throw<SparkProgramUnitsConfigurationException>()
+            .Which.Message.Should().Contain("Program unit '22222222-2222-2222-2222-222222222222'")
+            .And.Contain("an app path ('/runs/42') or an absolute http(s) URL");
+    }
+
+    [Theory]
+    [InlineData("/merge-queue/setup?provider=github#permissions")]
+    [InlineData("https://example.com/docs")]
+    public void Accepts_an_app_path_or_an_absolute_http_url(string url)
+    {
+        WriteUnits(UnitJson($"""
+            "type": "url",
+            "url": "{url}"
+            """));
+
+        var unit = Own(CreateLoader().GetProgramUnits())[0].ProgramUnits[0];
+
+        unit.Url.Should().Be(url);
+    }
+
     [Fact]
     public void Returns_empty_configuration_when_json_deserializes_to_null()
     {

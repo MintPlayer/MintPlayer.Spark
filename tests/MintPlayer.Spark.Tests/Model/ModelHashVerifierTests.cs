@@ -192,6 +192,47 @@ public class ModelHashVerifierTests : IDisposable
             "the override takes a specific hash, so there is no 'set it to anything truthy' path");
     }
 
+    private string ProgramUnitsPath => Path.Combine(_contentRoot, "App_Data", ConfigFileShape.ProgramUnitsFileName);
+
+    private void WriteProgramUnits(string url, string name = "programUnits.docs", int order = 1)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(ProgramUnitsPath)!);
+        File.WriteAllText(ProgramUnitsPath, $$"""
+            { "programUnitGroups": [ { "id": "11111111-1111-1111-1111-111111111111", "name": "programUnits.groups.main", "order": 1,
+              "programUnits": [ { "id": "22222222-2222-2222-2222-222222222222", "name": "{{name}}", "type": "url",
+                "url": "{{url}}", "order": {{order}} } ] } ] }
+            """);
+    }
+
+    /// <summary>
+    /// The owner's rule (2026-10-15): an external link tampered with after the build must stop the application.
+    /// The hash used to cover the menu's groups alone, so this started as if nothing had changed.
+    /// </summary>
+    [Fact]
+    public void A_tampered_program_unit_url_stops_the_application()
+    {
+        WriteProgramUnits("https://example.com/docs");
+        Synchronize();
+        WriteProgramUnits("https://evil.example/docs");
+
+        Action act = () => Verify();
+
+        act.Should().Throw<SparkModelOutOfSyncException>()
+            .Which.Message.Should().Contain("config programUnits.json").And.Contain("dotnet run --spark-synchronize-model");
+    }
+
+    [Fact]
+    public void Renaming_or_reordering_a_program_unit_does_not_stop_the_application()
+    {
+        WriteProgramUnits("https://example.com/docs");
+        Synchronize();
+        WriteProgramUnits("https://example.com/docs", name: "programUnits.documentation", order: 9);
+
+        Action act = () => Verify();
+
+        act.Should().NotThrow("only a url unit's address is in the hash");
+    }
+
     [Fact]
     public void Editing_a_label_does_not_stop_the_application()
     {

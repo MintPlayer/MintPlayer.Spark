@@ -26,7 +26,7 @@ public sealed class ProgramUnitGroup
     public ProgramUnit[] ProgramUnits { get; set; } = [];
 }
 
-/// <summary>One menu entry: opens a query, an entity type's list or page, or an external URL.</summary>
+/// <summary>One menu entry: opens a query, an entity type's list or page, or a URL.</summary>
 public sealed class ProgramUnit
 {
     /// <summary>The entry's stable id; its identity across layers.</summary>
@@ -46,7 +46,7 @@ public sealed class ProgramUnit
     ///   <item><c>"persistentObject"</c> — the entity type named by
     ///   <see cref="PersistentObjectId"/>: its default list when <see cref="ObjectId"/> is absent,
     ///   or that specific object's page when present.</item>
-    ///   <item><c>"url"</c> — the external address in <see cref="Url"/>.</item>
+    ///   <item><c>"url"</c> — the address in <see cref="Url"/>, a page of this application or another site.</item>
     /// </list>
     /// </summary>
     public required string Type { get; set; }
@@ -67,9 +67,13 @@ public sealed class ProgramUnit
     public string? ObjectId { get; set; }
 
     /// <summary>
-    /// For a <c>url</c> unit: the external address. Deliberately its own field rather than an
-    /// overload of <see cref="ObjectId"/> — one string with two meanings fails the obviousness
-    /// test. Rendered as a plain anchor (new tab), never a router link.
+    /// For a <c>url</c> unit: an app path (<c>/merge-queue/setup</c>, below the application's base; query and
+    /// fragment allowed) or an absolute <c>http</c>/<c>https</c> URL. Anything else (another scheme, whitespace,
+    /// <c>\</c>, credentials) refuses startup and <c>--spark-verify-model</c>. A link into the application opens
+    /// in the same tab through the router, any other in a new tab. The only part of the menu in the model hash:
+    /// a changed address refuses startup outside Development until <c>--spark-synchronize-model</c> records it.
+    /// Deliberately its own field rather than an overload of <see cref="ObjectId"/> — one string with two
+    /// meanings fails the obviousness test.
     /// </summary>
     public string? Url { get; set; }
 
