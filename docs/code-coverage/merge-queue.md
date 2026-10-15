@@ -576,7 +576,11 @@ outcomes and the configuration the run read (D55).
 
 The queue keeps one check run named **Merge queue** on the commit the pull request should have now: the queued head,
 then the final commit (`MergeQueueCheckRenderer.cs`). Its Details link opens the repository on CodeCoverage
-(`{Coverage:BaseUrl}/{provider}/r/{owner}/{name}`, only when the base URL is https).
+(`{Coverage:BaseUrl}/{provider}/r/{owner}/{name}`, only when the base URL is https). When the queue moves the pull
+request to its own commit, the run on the commit left behind is completed **neutral**, *Superseded: continued on
+<sha>*, with no button: left in progress, it would stay pending on a commit that a squash-merged pull request keeps
+listing (D92). A verdict already given stays as it is: an eviction ends red on the head it was on, and the new head
+gets the *Not queued* check instead.
 
 **On a pull request the queue does not hold (O30, D88)**, the check is there too: completed, **neutral**, titled *Not
 queued*, with the **Add to merge queue** button (§4.1). Its summary says how to queue it (the button, the label, a

@@ -1021,6 +1021,33 @@ public class GitHubForgeMergeQueueTests
         ShouldCarryTheButton(patched, conclusion: "failure");
     }
 
+    /// <summary>
+    /// A run the pull request's head left behind (§0 D92) is completed through its own id: neutral, its title saying where the
+    /// queue went on, and no button sent.
+    /// </summary>
+    [Fact]
+    public async Task A_superseded_run_is_completed_neutral_through_its_own_id_without_a_button()
+    {
+        string? patched = null;
+        var github = new StubGitHub().On(HttpMethod.Patch, $"{Repo}/check-runs/41", (_, body) =>
+        {
+            patched = body;
+            return StubHttpMessageHandler.Json(HttpStatusCode.OK, $$"""
+                {"id":41,"name":"Merge queue","head_sha":"{{Head}}","status":"completed","conclusion":"neutral","external_id":"7","html_url":"https://github.com/acme/widget/runs/41"}
+                """);
+        });
+
+        (await Queue(github).PublishQueueCheckAsync(Target(), Head,
+            new ForgeQueueCheck(EForgeQueueCheckState.Neutral, "Superseded: continued on 5555555", "The queue continued on commit `5555555555555555555555555555555555555555`.", null)
+            { PullRequestNumber = 7 }, 41)).Should().Be(41);
+
+        using var json = JsonDocument.Parse(patched!);
+        json.RootElement.GetProperty("status").GetString().Should().Be("completed");
+        json.RootElement.GetProperty("conclusion").GetString().Should().Be("neutral");
+        json.RootElement.GetProperty("output").GetProperty("title").GetString().Should().Be("Superseded: continued on 5555555");
+        json.RootElement.TryGetProperty("actions", out var actions).Should().BeFalse(actions.ToString());
+    }
+
     [Theory]
     [InlineData(4, "Add to merge queue", "Rebase, regenerate, check, then merge", "mq-enqueue")]
     [InlineData(1, "Add this to the merge queue", "d", "mq-enqueue")]

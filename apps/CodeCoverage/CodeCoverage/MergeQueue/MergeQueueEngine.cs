@@ -1710,6 +1710,12 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         var position = context.Document.Lanes.FirstOrDefault(l => l.BaseBranch == entry.BaseBranch)?.PositionOf(entry.Id!);
         var check = MergeQueueCheckRenderer.Render(entry, position, DetailsUrl(context.Repository), offer: offer, buttons: HasCheckButtons(context));
         var existing = string.Equals(entry.QueueCheckSha, sha, StringComparison.OrdinalIgnoreCase) ? entry.QueueCheckId : null;
+        // §0 D92: the run moved to a new head (the queue's own publish). Its run on the commit left behind is completed first,
+        // or it stays in progress there for good, on a commit a squash-merged pull request keeps listing. That run is always
+        // one still going: an ended run's check (an eviction's red one too) is its last publish, and a new run starts with no
+        // id (BeginRun), so a verdict is never overwritten.
+        if (existing is null && entry.QueueCheckId is { } leftId && entry.QueueCheckSha is { Length: > 0 } leftSha)
+            await SupersedeAsync(context, entry.Number, leftSha, leftId, sha, ct);
         try
         {
             entry.QueueCheckId = await context.Queue.PublishQueueCheckAsync(context.Repository, sha, check, existing, ct);
@@ -1720,6 +1726,24 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         catch (Exception ex) when (ex is ForgeAccessDeniedException || IsTransient(ex, ct))
         {
             logger.LogWarning(ex, "Merge queue: could not publish the check run for #{Number} in {Repository}", entry.Number, context.Repository.FullName);
+        }
+    }
+
+    /// <summary>
+    /// Completes the check run a head move left on <paramref name="leftSha"/>, through its own id: neutral, "Superseded:
+    /// continued on …", no button (§0 D92). Never throws: the run on the new head goes up whatever happens here.
+    /// </summary>
+    private async Task SupersedeAsync(Context context, int number, string leftSha, long leftId, string newSha, CancellationToken ct)
+    {
+        try
+        {
+            await context.Queue.PublishQueueCheckAsync(context.Repository, leftSha,
+                MergeQueueCheckRenderer.RenderSuperseded(number, newSha, DetailsUrl(context.Repository)), leftId, ct);
+        }
+        catch (Exception ex) when (ex is ForgeAccessDeniedException || IsTransient(ex, ct))
+        {
+            logger.LogWarning(ex, "Merge queue: could not complete the check run left on {Sha} for #{Number} in {Repository}",
+                Short(leftSha), number, context.Repository.FullName);
         }
     }
 

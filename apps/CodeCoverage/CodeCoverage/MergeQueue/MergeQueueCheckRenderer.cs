@@ -148,6 +148,19 @@ public static class MergeQueueCheckRenderer
         };
     }
 
+    /// <summary>
+    /// The check run a head move left behind (§0 D92): completed, neutral, saying where the queue went on. No button: the
+    /// pull request's check on its new head carries the one that fits.
+    /// </summary>
+    public static ForgeQueueCheck RenderSuperseded(int number, string newSha, string? detailsUrl)
+        => new(EForgeQueueCheckState.Neutral, $"Superseded: continued on {ShortSha(newSha)}",
+            $"The queue moved this pull request to commit `{newSha}`, and its \"{CheckGate.QueueCheckName}\" check continues there.", detailsUrl)
+        {
+            PullRequestNumber = number,
+        };
+
+    private static string ShortSha(string sha) => sha.Length > 7 ? sha[..7] : sha;
+
     /// <summary>The ways to queue a pull request from the forge itself; the panel is the fourth.</summary>
     private static string HowToQueue(string label)
         => $"the **{ForgeQueueCheckAction.Enqueue.Label}** button on this check, the `{label}` label or a `/queue` comment";
