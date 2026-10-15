@@ -1,7 +1,7 @@
 # PRD — a conflict-resolving merge queue in CodeCoverage (rebase → auto-resolve → `postRebaseActionName` → squash)
 
 **Status (2026-10-15):** **Implemented; PR [#515](https://github.com/MintPlayer/MintPlayer.Spark/pull/515) open. The commits since its first CI run are local, for one push.**
-- The owner decisions O1–O34 and the implementation decisions D12–D96 in §0 supersede §§1–8 where they disagree. ~~**In progress: O30, the "Add to merge queue" check button.**~~ **[Built 2026-10-15: D88; O32's comment link and "Remove from queue", D89 and D90; O31's menu links and url-only hash, D91; the live test's superseded-run defect, D92. Live-tested 2026-10-15 (M10).]** **[Follow-ups after the SparkTest live run, 2026-10-15: the queue-candidates dropdown and the notice slot, D93; the merged event's merge sha, D94; the App-gap check at enqueue, D95; the acceptance link only when pending, D96. Proposed next: conflict resolution v2 (keep-both, validators, pluggable resolvers), O33, O34, §10.]**
+- The owner decisions O1–O35 and the implementation decisions D12–D96 in §0 supersede §§1–8 where they disagree. ~~**In progress: O30, the "Add to merge queue" check button.**~~ **[Built 2026-10-15: D88; O32's comment link and "Remove from queue", D89 and D90; O31's menu links and url-only hash, D91; the live test's superseded-run defect, D92. Live-tested 2026-10-15 (M10).]** **[Follow-ups after the SparkTest live run, 2026-10-15: the queue-candidates dropdown and the notice slot, D93; the merged event's merge sha, D94; the App-gap check at enqueue, D95; the acceptance link only when pending, D96. Proposed next: conflict resolution v2 (keep-both, validators, pluggable resolvers), O33, O34, §10.]**
 - CI runs 2 and 3 (2026-10-15) each found one test defect:
   - Linux's Chromium temp files broke the download proof (D86).
   - The po-detail spec charged a one-time render to its first test (D87).
@@ -1050,7 +1050,15 @@ Also new:
 | R6 | Lockfile regeneration and provenance in `spark-regenerate`; template and setup page | local runs recorded like S4/D35 |
 | R7 | Docs (`merge-queue.md` §2.2, §2.3, §5, §6, §8), this repository's `coverage.yml`, D-rows for each milestone | |
 
-### 10.8 Open points for the owner
+### 10.8 Open points for the owner: **answered 2026-10-15 (O35); the text below them is the question as asked**
+
+**O35, the owner's answers (2026-10-15, AskUserQuestion):**
+1. **The JSON keep-both default is a `coverage.yml` setting that defaults to on.** In the owner's words: "through coverage.yml, but default to true/yes". A queue-enabled repository gets keep-both with `json-no-duplicate-keys` on `**/*.json` unless its `coverage.yml` turns that off; a single path can still be disabled with `strategy: evict`. The check run shows where each value came from: `default`, or `coverage.yml @ <branch>` (O15). Lockfile presets stay opt-in.
+2. **npm, pnpm and Yarn: rebuild the three-way markers** in the regenerate workflow and let the package manager merge them, so both sides' pins are kept.
+3. **The provenance check is built in this PR.**
+4. **`resolverVersion`: restart, not evict,** when the writer's resolver version changed between prepare and a later job.
+
+The questions as asked:
 
 1. **Defaults: automatic or opt-in?**
    - O34 asks for keep-both by default for some file types. The proposal: keep-both with `json-no-duplicate-keys` on `**/*.json` applies **automatically** in every repository whose queue is on. The validators and CI make it safe; `strategy: evict` turns it off for a path.
