@@ -371,26 +371,13 @@ public sealed class MergeQueueConfigSnapshot
     public List<MergeQueueConfigValue> Values { get; set; } = [];
 }
 
-/// <summary>One regenerate workflow run of an entry (D14, O36).</summary>
-public sealed class MergeQueueDispatch
-{
-    /// <summary>The workflow file under <c>.github/workflows</c>.</summary>
-    public string Workflow { get; set; } = string.Empty;
-
-    public long? RunId { get; set; }
-
-    public string? RunUrl { get; set; }
-
-    /// <summary>
-    /// The run reported its completion, vanished, or its cancellation was queued. While false, an entry that leaves
-    /// <see cref="EMergeQueueEntryState.Regenerating"/> for any other reason cancels it, as it would otherwise keep spending
-    /// the repository's CI minutes (merge-queue PRD §0 D53).
-    /// </summary>
-    public bool Finished { get; set; }
-
-    /// <summary>The run finished with success on the prepared commit; its <c>merge-queue-patch</c> is published.</summary>
-    public bool Succeeded { get; set; }
-}
+/// <summary>
+/// One regenerate workflow run of an entry (D14, O36). Its fields are the workflow hook's (<see cref="WorkflowHookRun"/>):
+/// <see cref="WorkflowHookRun.Finished"/> is set when the entry leaves <see cref="EMergeQueueEntryState.Regenerating"/>
+/// (the run's cancellation is queued then), and <see cref="WorkflowHookRun.Succeeded"/> means its <c>merge-queue-patch</c>
+/// is published.
+/// </summary>
+public sealed class MergeQueueDispatch : WorkflowHookRun;
 
 /// <summary>How the writer resolved one conflicted path (§10.6).</summary>
 public sealed class MergeQueueResolution

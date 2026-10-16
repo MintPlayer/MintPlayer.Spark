@@ -2,6 +2,7 @@ using CodeCoverage.Entities;
 using CodeCoverage.Forge;
 using CodeCoverage.MergeQueue;
 using CodeCoverage.Tests.Services;
+using CodeCoverage.WorkflowHooks;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -167,11 +168,14 @@ internal sealed class MergeQueueHarness
     /// <summary>When set, the saga talks to this writer instead of <see cref="Writer"/> (e.g. the real client over a stub).</summary>
     public IGitWriterSidecar? WriterOverride { get; set; }
 
+    /// <summary>The saga's clock; a test that moves time sets a <see cref="CommitGraph.MutableTime"/>.</summary>
+    public TimeProvider Time { get; set; } = TimeProvider.System;
+
     private MergeQueueEngine Engine(Raven.Client.Documents.Session.IAsyncDocumentSession session)
-        => new(session, Forge, [Queue], Permissions, WriterOverride ?? Writer, Outbox, TimeProvider.System,
+        => new(session, Forge, [Queue], Permissions, WriterOverride ?? Writer, Outbox, Time,
             Options.Create(new MergeQueueOptions { GitWriterUrl = "http://writer" }),
             new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Coverage:BaseUrl"] = "https://coverage.example" }).Build(),
-            NullLogger<MergeQueueEngine>.Instance);
+            NullLogger<MergeQueueEngine>.Instance, new WorkflowHook(NullLogger<WorkflowHook>.Instance));
 
     public async Task SignalAsync(MergeQueueSignalMessage signal)
     {

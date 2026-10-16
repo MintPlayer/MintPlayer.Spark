@@ -177,6 +177,7 @@ public class RegistrationInventoryTests : CoverageRavenTest
     public void The_merge_queue_is_registered() => AssertRegistered(
         typeof(global::CodeCoverage.MergeQueue.IGitWriterSidecar),
         typeof(global::CodeCoverage.MergeQueue.IMergeQueueEngine),
+        typeof(global::CodeCoverage.WorkflowHooks.IWorkflowHook),
         typeof(IRecipient<global::CodeCoverage.MergeQueue.MergeQueueStepMessage>),
         typeof(IRecipient<global::CodeCoverage.MergeQueue.MergeQueueSignalMessage>),
         typeof(IRecipient<ForgeWebhookMessage<MergeQueueCommandIssued>>),
