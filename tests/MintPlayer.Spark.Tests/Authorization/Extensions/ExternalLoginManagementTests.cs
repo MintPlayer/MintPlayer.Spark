@@ -296,6 +296,55 @@ public class ExternalLoginManagementTests : SparkTestDriver
     }
 
     /// <summary>
+    /// dependency-updates PRD R35: a Spark user who links a provider afterwards gets the provider's tokens stored, exactly
+    /// as a sign-in with that provider stores them (<c>ExternalLoginCallback</c>). Without them, an app calling the
+    /// provider's API as that user (CodeCoverage's onboarding page, as the user's GitHub identity) finds nothing.
+    /// </summary>
+    [Fact]
+    public async Task A_successful_attach_stores_the_providers_tokens()
+    {
+        using var server = await StartHostAsync(SparkExternalLoginLinking.WhenSignedIn);
+        var info = new ExternalLoginInfo(
+            new ClaimsPrincipal(new ClaimsIdentity()), "GitHub", "gh-9", "GitHub")
+        {
+            AuthenticationTokens =
+            [
+                new AuthenticationToken { Name = "access_token", Value = "fixture-access" },
+                new AuthenticationToken { Name = "refresh_token", Value = "fixture-refresh" },
+            ],
+        };
+        _signInManager.GetExternalLoginInfoAsync(Arg.Any<string>()).Returns(info);
+        using var client = server.CreateClient();
+
+        var response = await client.GetAsync(
+            "/spark/auth/link-external-login-callback?popup=1&returnUrl=%2Faccount");
+
+        ExternalLoginPopupPayload.Parse(await response.Content.ReadAsStringAsync()).Success.Should().BeTrue();
+        await _userManager.Received(1).SetAuthenticationTokenAsync(_user, "GitHub", "access_token", "fixture-access");
+        await _userManager.Received(1).SetAuthenticationTokenAsync(_user, "GitHub", "refresh_token", "fixture-refresh");
+    }
+
+    /// <summary>A refused attach stores nothing: the tokens belong to a login the user does not have.</summary>
+    [Fact]
+    public async Task A_refused_attach_stores_no_tokens()
+    {
+        using var server = await StartHostAsync(SparkExternalLoginLinking.WhenSignedIn);
+        var info = new ExternalLoginInfo(
+            new ClaimsPrincipal(new ClaimsIdentity()), "GitHub", "gh-9", "GitHub")
+        {
+            AuthenticationTokens = [new AuthenticationToken { Name = "access_token", Value = "fixture-access" }],
+        };
+        _signInManager.GetExternalLoginInfoAsync(Arg.Any<string>()).Returns(info);
+        _userManager.AddLoginAsync(_user, Arg.Any<UserLoginInfo>())
+            .Returns(IdentityResult.Failed(new IdentityError { Code = "LoginAlreadyAssociated" }));
+        using var client = server.CreateClient();
+
+        await client.GetAsync("/spark/auth/link-external-login-callback?popup=1&returnUrl=%2Faccount");
+
+        await _userManager.DidNotReceiveWithAnyArgs().SetAuthenticationTokenAsync(default!, default!, default!, default);
+    }
+
+    /// <summary>
     /// ⚠️ The challenge is keyed on the signed-in user, so the identity coming back is attached to
     /// the session that asked rather than to whoever the callback happens to find signed in.
     /// </summary>
