@@ -32,7 +32,9 @@ describe('runLookup (Renovate injected, everything else real)', () => {
     });
     expect(isValid('lookup', JSON.parse(fs.readFileSync(file, 'utf8'))).errors).toBe('');
     expect(path.basename(file)).toBe('lookup.json');
-    expect(document.records).toHaveLength(33);
+    // 33 deps in the report; 7 platform locations whose only move is a channel move fold into their
+    // platform record (R31, foldPlatform.test.ts).
+    expect(document.records).toHaveLength(26);
     expect(document.platforms.map((p) => p.sdk).sort()).toEqual(['dotnet', 'go', 'java', 'node', 'python']);
     const dotnet = document.platforms.find((p) => p.sdk === 'dotnet')!;
     expect(dotnet.current.channels).toEqual(['8.0']);

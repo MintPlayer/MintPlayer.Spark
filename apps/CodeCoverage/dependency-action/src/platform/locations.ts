@@ -30,6 +30,12 @@ const DOCKER_IMAGES: Record<Sdk, RegExp> = {
   go: /^(?:docker\.io\/)?(?:library\/)?golang$/,
 };
 
+/** The sdk whose platform record owns this Docker image's tags (D-S12c), or null. */
+export function platformOfImage(image: string): Sdk | null {
+  for (const sdk of Object.keys(DOCKER_IMAGES) as Sdk[]) if (DOCKER_IMAGES[sdk].test(image)) return sdk;
+  return null;
+}
+
 const SETUP_ACTIONS: Record<Sdk, { action: string; keys: string[] }> = {
   dotnet: { action: 'actions/setup-dotnet', keys: ['dotnet-version'] },
   node: { action: 'actions/setup-node', keys: ['node-version'] },

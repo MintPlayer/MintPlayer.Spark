@@ -1,0 +1,26 @@
+name: ci
+
+on:
+  pull_request:
+    branches: [ master ]
+  push:
+    branches: [ master ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - run: npm ci --ignore-scripts
+      - run: npm test
+      - run: dotnet restore src/Lib/Lib.csproj --locked-mode
+      - run: dotnet build src/Lib/Lib.csproj --no-restore
