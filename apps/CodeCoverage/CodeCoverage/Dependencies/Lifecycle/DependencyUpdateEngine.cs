@@ -229,6 +229,8 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         run.Restarts = 0;
         run.Evaluations = 0;
         run.Bisect = null;
+        run.Pins = [];
+        ClearRelock(run);
         run.Outcome = null;
         run.OutcomeMessage = null;
         run.StartedAtUtc = Now;
@@ -362,6 +364,10 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
             case EWorkflowHookRunVerdict.WrongCommit:
                 await EndAsync(context, $"{pending.Purpose}-wrong-commit", $"The {pending.Purpose} run built `{Short(observation.Run!.HeadSha)}`, not `{Short(pending.ExpectedSha)}`.", ct);
                 return;
+            case EWorkflowHookRunVerdict.Failed when pending.Purpose == "relock":
+                await ReplayStoppedAsync(context, GitWriterDependencyOutcomes.ReplayConflict,
+                    $"The lockfile regeneration after the replay did not succeed (run {runId}, {observation.Run?.Conclusion ?? "another commit"}).", context.Run.RelockPaths, ct);
+                return;
             case EWorkflowHookRunVerdict.Failed when pending.Purpose == "migrate":
                 // R9/S17: a failed migration may have left a partial patch; the whole group is dropped.
                 await DropMigrationAsync(context, pending, $"its migration run finished {observation.Run!.Conclusion ?? "without a conclusion"}", ct);
@@ -382,6 +388,9 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
                 break;
             case "migrate":
                 await CollectMigrateAsync(context, pending, ct);
+                break;
+            case "relock":
+                await CollectRelockAsync(context, pending, ct);
                 break;
         }
     }
@@ -415,6 +424,17 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         }
         var data = await DataAsync(context, ct);
         data.LookupJson = json;
+
+        // P12: the dependency graph and the fleet view read what the lookup found (every ecosystem it covers, with versions).
+        var manifestId = RepositoryManifest.ForRepository(context.Repository.Id!);
+        var manifest = await session.LoadAsync<RepositoryManifest>(manifestId, ct);
+        if (manifest is null)
+        {
+            manifest = new RepositoryManifest { Repository = context.Repository.Id, OwnerKey = context.Repository.OwnerKey };
+            await session.StoreAsync(manifest, manifestId, ct);
+        }
+        DependencyLookupIngest.Apply(manifest, parsed.Document!, time.GetUtcNow());
+
         Transition(run, EDependencyRunState.Planning, $"lookup: {parsed.Document!.Records.Count} records, {parsed.Document.Platforms.Count} platforms");
         await ScheduleAsync(run, EDependencyStep.Plan, null, ct);
     }
@@ -460,6 +480,11 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         run.Evaluations++;
         Apply(state, outcome.NextState);
 
+        // D-N1: a human fix on the rolling branch keeps the versions it was written against.
+        var (pinnedOutcome, pins) = await FixPinsAsync(context, data, lookup, state, outcome, ct);
+        outcome = pinnedOutcome;
+        run.Pins = [.. pins.Select(p => $"{p.DepName} {p.Version} ({p.PackageFile})")];
+
         var excluded = run.DroppedGroups.Concat(run.Bisect?.Excluded ?? []).ToHashSet(StringComparer.Ordinal);
         var groups = outcome.Groups.Where(g => !excluded.Contains(g.Group)).ToList();
 
@@ -497,7 +522,11 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         data.ResolvedActions = resolved;
         data.TargetActions = targets;
 
-        var report = DependencyRunReport.From(outcome with { Groups = groups }, []) with { Failures = failures };
+        var report = DependencyRunReport.From(outcome with { Groups = groups }, []) with
+        {
+            Failures = failures,
+            Pins = [.. pins.Where(p => groups.Any(g => g.Group == p.Group))],
+        };
         data.ReportJson = JsonSerializer.Serialize(report, JsonSerializerOptions.Web);
 
         if (groups.Count == 0)
@@ -552,6 +581,32 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
             ["run_id"] = token,
         }, ApplyTimeout, "apply");
         await DispatchAsync(context, request, "apply", run.PlanCommitSha!, $"dependency-apply-{token}", null, EDependencyRunState.Applying, ct);
+    }
+
+    /// <summary>
+    /// D-N1: when people pushed commits above the bot's own on the rolling branch, and those commits change more than the
+    /// previous plan's manifests and lockfiles, the groups of that plan stay at the versions the fix was made against.
+    /// </summary>
+    private async Task<(DependencyPolicyOutcome Outcome, IReadOnlyList<DependencyPin> Pins)> FixPinsAsync(Context context, DependencyUpdateRunData data,
+        LookupDocument lookup, DependencyUpdateState state, DependencyPolicyOutcome outcome, CancellationToken ct)
+    {
+        var (repository, run) = (context.Repository, context.Run);
+        if (run.PullRequestNumber is null || run.RollingBotSha is not { } bot || data.RollingPlanJson is not { } previousJson
+            || DependencyContract.Deserialize<DependencyPlan>(previousJson) is not { } previous)
+            return (outcome, []);
+        var head = await context.Queue.GetBranchHeadAsync(repository, DependencyUpdateRun.RollingBranch, ct);
+        if (head is null || string.Equals(head, bot, StringComparison.OrdinalIgnoreCase))
+            return (outcome, []);
+        var comparison = await context.Forge.CompareAsync(repository, bot, head, ct);
+        IReadOnlyCollection<string>? changed = comparison is null || comparison.Truncated
+            ? null
+            : [.. comparison.Files.SelectMany(f => f.PreviousPath is { } previousPath ? new[] { f.Path, previousPath } : [f.Path])];
+        if (!DependencyFixPins.HumanFixPresent(previous, changed))
+            return (outcome, []);
+        var pinned = DependencyFixPins.Apply(outcome, previous, lookup, state);
+        foreach (var pin in pinned.Pins)
+            run.Note(Now, $"{pin.DepName} stays at {pin.Version}: a fix on {DependencyUpdateRun.RollingBranch} was made against it (D-N1)");
+        return pinned;
     }
 
     private static bool IsAction(DependencyPlannedItem item) => item.Record.Ecosystem == "github-actions" || item.Record.Manager == "github-actions";
@@ -810,13 +865,27 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
                 Author = Identity(run), Committer = Identity(run), Message = CommitMessage(report),
                 Plan = data.PlanJson, Patch = data.Patch, ClaimedGroups = claimed, TargetActions = data.TargetActions, AllowedHosts = section.Registries,
                 Migrations = [.. data.Migrations.Select(m => new GitWriterMigratePatch(m.Group, m.Patch))],
-                ExpectedRollingSha = rollingHead, LastBotSha = rollingHead is null ? null : run.RollingBotSha,
+                ExpectedRollingSha = rollingHead, LastBotSha = rollingHead is null ? null : run.RollingBotSha, ExpectedWorkSha = run.WorkRefSha,
             }, ct), ct) is not { } result)
             return;
 
+        run.RelockRollingSha = rollingHead;
+        await AfterRollingAsync(context, data, report, lookup, result, botSha: null, ct);
+    }
+
+    /// <summary>What a rolling build answered: the human holds, then the push (or the relock, D-N2, or the stop), then the pull
+    /// request, the bot's check and the wait for CI. <paramref name="botSha"/> overrides the answer's bot commit (a relock's
+    /// answer names the relock commit; the replay must start from the dependency commit under it).</summary>
+    private async Task AfterRollingAsync(Context context, DependencyUpdateRunData data, DependencyRunReport report, LookupDocument lookup,
+        GitWriterDependencyResult result, string? botSha, CancellationToken ct)
+    {
+        var (repository, run) = (context.Repository, context.Run);
         var state = await stateStore.LoadAsync(repository.Id!, ct);
+        var newHolds = 0;
         foreach (var value in result.HumanValues)
         {
+            if (!state.Holds.Any(h => h.Kind == EDependencyHoldKind.Human && h.DepNames.Contains(value.DepName) && h.HeldValue == value.HeldValue))
+                newHolds++;
             DependencyHolds.AddHumanHold(state, value.DepName, value.HeldValue, value.ProposedValue, value.Author ?? "someone", value.Commit, lookup, time.GetUtcNow());
             run.Note(Now, $"{value.DepName} is held at {value.HeldValue}: set by hand in {Short(value.Commit)} (Q11)");
         }
@@ -825,19 +894,34 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         {
             case GitWriterOutcomes.Pushed when result.Sha is { } pushed:
                 run.RollingSha = pushed;
-                run.RollingBotSha = result.BotSha;
+                run.RollingBotSha = botSha ?? result.BotSha;
                 run.Note(Now, $"pushed {DependencyUpdateRun.RollingBranch} at {Short(pushed)}{(result.Replayed > 0 ? $" with {result.Replayed} human commit(s) replayed" : string.Empty)}");
                 break;
             case GitWriterDependencyOutcomes.Unchanged when result.Sha is { } unchanged:
                 run.RollingSha = unchanged;
-                run.RollingBotSha ??= result.BotSha;
+                run.RollingBotSha = botSha ?? run.RollingBotSha ?? result.BotSha;
                 run.Note(Now, "the rebuilt branch equals the pushed one: nothing pushed, no CI (R4)");
                 break;
+            case GitWriterDependencyOutcomes.RelockNeeded when result.Sha is { } replayed && botSha is null:
+                await StartRelockAsync(context, data, result, replayed, ct);
+                return;
+            case GitWriterDependencyOutcomes.ReplayConflict when newHolds > 0 && !run.ReplayRetried:
+                // D-N2: the person's values are holds now, so the next plan leaves those dependencies alone and the same
+                // commits replay without the conflict. Retried once, at once; a second conflict stops.
+                run.ReplayRetried = true;
+                if (run.PendingTrigger is not { } waiting || EDependencyRunTrigger.Refresh > waiting)
+                    run.PendingTrigger = EDependencyRunTrigger.Refresh;
+                await EndAsync(context, "replay-retry", $"{result.Detail} The values set by hand are holds now; rebuilding once without them.", ct);
+                return;
             case GitWriterDependencyOutcomes.ReplayConflict:
             case GitWriterDependencyOutcomes.RollingRewritten:
-                await CommentAsync(context, $"⚠️ {result.Detail} {(result.Paths.Count > 0 ? $"({string.Join(", ", result.Paths.Take(10).Select(p => $"`{p}`"))}) " : string.Empty)}"
-                    + "The rolling branch was kept as it is; resolve it by hand, or close the pull request to let the bot start over.", ct);
-                await EndAsync(context, result.Outcome, result.Detail ?? result.Outcome, ct);
+                await ReplayStoppedAsync(context, result.Outcome, result.Detail ?? result.Outcome, result.Paths, ct);
+                return;
+            case GitWriterDependencyOutcomes.BranchMoved when botSha is not null:
+                // A person pushed while the lockfiles were regenerated: rebuild from the apply patch, with the new commits too.
+                ClearRelock(run);
+                Transition(run, EDependencyRunState.Publishing, $"{DependencyUpdateRun.RollingBranch} moved during the relock; rebuilding it");
+                await ScheduleAsync(run, EDependencyStep.Publish, null, ct);
                 return;
             case GitWriterOutcomes.Busy or GitWriterOutcomes.Failed or GitWriterDependencyOutcomes.BranchMoved:
                 throw new GitWriterUnavailableException($"The git writer answered the rolling build with {result.Outcome}: {result.Detail}");
@@ -846,6 +930,10 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
                     $"The rolling branch was not built ({result.Outcome}, {result.Reason}): {result.Detail}", ct);
                 return;
         }
+        // D-N1: the plan this bot commit was built from is the base any later human fix is made against.
+        data.RollingPlanJson = data.PlanJson;
+        run.ReplayRetried = false;
+        ClearRelock(run);
 
         var bisecting = run.Bisect is { Culprit: null };
         await UpsertPullRequestAsync(context, report, null, ct);
@@ -863,6 +951,125 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         Transition(run, bisecting ? EDependencyRunState.Bisecting : EDependencyRunState.AwaitingChecks, $"waiting for the checks of {Short(run.RollingSha)}");
         await ScheduleAsync(run, EDependencyStep.PollChecks, ChecksPollInterval, ct);
         await ScheduleAsync(run, EDependencyStep.ChecksTimeout, ChecksTimeout, ct);
+    }
+
+    // ═══ Relock (D-N2): lockfile conflicts in the replay, regenerated by the apply workflow ════════════
+
+    /// <summary>
+    /// The writer took the bot's side of the conflicting lockfiles and left the replayed head on the work ref. A relock plan
+    /// (the plan's items that own those lockfiles, as lockfile-only updates at the versions already in the manifests) goes on
+    /// top of it, and the repository's own apply workflow regenerates the lockfiles from the manifests, scripts off, exactly
+    /// like an apply. Its patch is judged by the same <c>dependencies</c> profile before the writer commits it.
+    /// </summary>
+    private async Task StartRelockAsync(Context context, DependencyUpdateRunData data, GitWriterDependencyResult result, string replayed, CancellationToken ct)
+    {
+        var run = context.Run;
+        run.WorkRefSha = replayed;
+        run.RelockBaseSha = replayed;
+        run.RelockBotSha = result.BotSha;
+        run.RelockPaths = [.. result.Paths];
+        var plan = DependencyContract.Deserialize<DependencyPlan>(data.PlanJson!)!;
+        var byHand = result.HumanValues.Select(v => (v.DepName, v.PackageFile)).ToHashSet();
+        if (DependencyRelockPlan.Build(plan, result.Paths, byHand, $"{run.PlanId}-relock", replayed) is not { } relock)
+        {
+            await ReplayStoppedAsync(context, GitWriterDependencyOutcomes.ReplayConflict,
+                "A replayed commit conflicts in a lockfile whose planned dependencies were all changed by hand, so the bot cannot regenerate it.", result.Paths, ct);
+            return;
+        }
+        var json = DependencyContractReader.WritePlan(relock);
+        data.RelockPlanJson = json;
+        run.Note(Now, $"replayed {result.Replayed} human commit(s); regenerating {string.Join(", ", result.Paths)} (D-N2)");
+
+        if (await WriterAsync(context, false, (access, credential) => writer.DependencyWorkRefAsync(Request(context, access, credential) with
+            {
+                ExpectedSha = replayed, Author = Identity(run), Committer = Identity(run), Message = $"Dependency relock plan {relock.PlanId}",
+                PlanJson = json, ExpectedWorkSha = replayed,
+            }, ct), ct) is not { } committed)
+            return;
+        switch (committed.Outcome)
+        {
+            case GitWriterOutcomes.Pushed when committed.Sha is { } sha:
+                run.WorkRefSha = sha;
+                break;
+            case GitWriterOutcomes.Busy or GitWriterOutcomes.Failed or GitWriterDependencyOutcomes.BranchMoved:
+                throw new GitWriterUnavailableException($"The git writer answered the relock plan commit with {committed.Outcome}: {committed.Detail}");
+            default:
+                await EndAsync(context, "plan-commit", $"The relock plan commit was refused ({committed.Outcome}): {committed.Detail}", ct);
+                return;
+        }
+
+        if (!await WorkflowsUsableAsync(context, run.DefaultBranch!, run.WorkRefSha!, [run.ApplyAction], allowSecrets: true, ct))
+            return;
+        var token = RunToken(context);
+        var request = new WorkflowHookRequest(run.ApplyAction, DependencyUpdateRun.WorkBranch, new Dictionary<string, string>
+        {
+            ["expected_sha"] = replayed,
+            ["run_id"] = token,
+        }, ApplyTimeout, "relock");
+        await DispatchAsync(context, request, "relock", run.WorkRefSha!, $"dependency-apply-{token}", null, EDependencyRunState.Applying, ct);
+    }
+
+    private async Task CollectRelockAsync(Context context, DependencyWorkflowRun pending, CancellationToken ct)
+    {
+        var (repository, run) = (context.Repository, context.Run);
+        var data = await DataAsync(context, ct);
+        if (await ArtifactAsync(context, pending, ["result.json", "dependency.patch"], ct) is not { } files) return;
+        var relock = DependencyContract.Deserialize<DependencyPlan>(data.RelockPlanJson!)!;
+        var read = DependencyContractReader.ReadApplyResult(Encoding.UTF8.GetString(files["result.json"]));
+        if (!read.IsValid || read.Document!.PlanId != relock.PlanId || read.Document.ExpectedSha != run.RelockBaseSha)
+        {
+            await ReplayStoppedAsync(context, GitWriterDependencyOutcomes.ReplayConflict, "The lockfile regeneration left a result.json that does not validate or names another plan.", run.RelockPaths, ct);
+            return;
+        }
+        var claimed = read.Document.Groups.Where(g => g.Status == EApplyGroupStatus.Applied).Select(g => g.Group).ToList();
+        if (read.Document.Groups.FirstOrDefault(g => g.Status != EApplyGroupStatus.Applied) is { } failed)
+        {
+            await ReplayStoppedAsync(context, GitWriterDependencyOutcomes.ReplayConflict,
+                $"{failed.Group.Replace(DependencyRelockPlan.GroupPrefix, string.Empty, StringComparison.Ordinal)} could not be regenerated after the replay ({failed.Blockers.FirstOrDefault()?.Message ?? failed.Message ?? failed.Status.ToString()}).",
+                run.RelockPaths, ct);
+            return;
+        }
+        var lookup = DependencyContract.Deserialize<LookupDocument>(data.LookupJson!)!;
+        var section = DependenciesYml.Parse(await context.Forge.GetFileContentAsync(repository, run.ExpectedSha!, CoverageYml.FileName, ct)).Section;
+        var patch = Convert.ToBase64String(files["dependency.patch"]);
+        var relockJson = data.RelockPlanJson;
+        // The relocked head still carries the dependency commit, workflow edits included (R15): same token as its first push.
+        if (await WriterAsync(context, run.RequiresWorkflowsPermission, (access, credential) => writer.DependencyRollingAsync(Request(context, access, credential) with
+            {
+                ExpectedSha = run.RelockBaseSha, Author = Identity(run), Committer = Identity(run), Message = RelockMessage(relock),
+                Plan = relockJson, Patch = patch, ClaimedGroups = claimed, AllowedHosts = section.Registries, Migrations = [],
+                ExpectedRollingSha = run.RelockRollingSha, LastBotSha = null,
+            }, ct), ct) is not { } result)
+            return;
+        if (result.Verdict == GitWriterDependencyOutcomes.NeedsHuman)
+            run.PatchVerdict = GitWriterDependencyOutcomes.NeedsHuman;
+        await AfterRollingAsync(context, data, Report(data), lookup, result, botSha: run.RelockBotSha, ct);
+    }
+
+    internal static string RelockMessage(DependencyPlan relock)
+    {
+        var message = new StringBuilder("Regenerate lockfiles after replaying commits on the dependency branch\n\n");
+        foreach (var group in relock.Groups)
+            message.Append("- ").Append(group.Group[DependencyRelockPlan.GroupPrefix.Length..]).Append('\n');
+        message.Append('\n').Append(RollingBranchReplay.RelockTrailer).Append(' ').Append(relock.PlanId).Append('\n');
+        return message.ToString();
+    }
+
+    /// <summary>The replay cannot go on: the branch is kept for a person, who is told why.</summary>
+    private async Task ReplayStoppedAsync(Context context, string outcome, string detail, IReadOnlyList<string> paths, CancellationToken ct)
+    {
+        ClearRelock(context.Run);
+        await CommentAsync(context, $"⚠️ {detail} {(paths.Count > 0 ? $"({string.Join(", ", paths.Take(10).Select(p => $"`{p}`"))}) " : string.Empty)}"
+            + "The rolling branch was kept as it is; resolve it by hand, or close the pull request to let the bot start over.", ct);
+        await EndAsync(context, outcome, detail, ct);
+    }
+
+    private static void ClearRelock(DependencyUpdateRun run)
+    {
+        run.RelockBaseSha = null;
+        run.RelockBotSha = null;
+        run.RelockRollingSha = null;
+        run.RelockPaths = [];
     }
 
     private static string CommitMessage(DependencyRunReport report)
@@ -958,6 +1165,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
                 Budget = forceBisect && budget == 0 ? 4 : budget,
                 Sha = run.RollingSha,
                 FailingChecks = [.. gate.Failed],
+                FailureKind = DependencyCheckFailure.Classify(gate.Failed).ToString(),
                 FailingRunUrl = failedRuns.Select(r => r.DetailsUrl).FirstOrDefault(u => u is not null),
                 Items = [.. report.Groups.SelectMany(g => g.Items.Select(i => new DependencyBisectItem { Group = g.Group, Ecosystem = i.Ecosystem, DepName = i.DepName, Version = i.NewVersion }))],
             };
@@ -1024,7 +1232,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         }
         bisect.Culprit = culprit;
         await CommentAsync(context, $"🔎 Bisect: `{culprit}` broke CI ({string.Join(", ", bisect.FailingChecks)}){(bisect.FailingRunUrl is { } run2 ? $" — {run2}" : string.Empty)}. "
-            + "It is held, and the rest is rebuilt without it.", ct);
+            + $"{KindSentence(bisect)}It is held, and the rest is rebuilt without it.", ct);
         await PublishOwnCheckAsync(context, run.RollingSha!, EForgeQueueCheckState.Failure, $"{culprit} broke CI", $"Held: {culprit}. The pull request is rebuilt without it.", ct);
         run.PendingTrigger = EDependencyRunTrigger.Refresh;
         await EndAsync(context, "bisected", $"the culprit is {culprit}", ct);
@@ -1034,9 +1242,17 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
     {
         var ranked = string.Join("\n", bisect.Suspects.Select((s, i) => $"{i + 1}. `{s}`{(bisect.Excluded.Contains(s) ? " (left out in a red test: not alone to blame)" : string.Empty)}"));
         await CommentAsync(context, $"❌ CI failed on this pull request ({string.Join(", ", bisect.FailingChecks.Select(c => $"`{c}`"))}){(bisect.FailingRunUrl is { } url ? $": {url}" : ".")} "
-            + $"No culprit was found: {why}. The groups, most suspect first:\n\n{ranked}\n\nComment `hold <group>` to take one out, or `bisect` to try again.", ct);
+            + $"{KindSentence(bisect)}No culprit was found: {why}. The groups, most suspect first:\n\n{ranked}\n\nComment `hold <group>` to take one out, or `bisect` to try again.", ct);
         await PublishOwnCheckAsync(context, context.Run.RollingSha!, EForgeQueueCheckState.Failure, "CI failed", $"No culprit found: {why}.", ct);
         await EndAsync(context, "red", why, ct);
+    }
+
+    /// <summary>D-N3: "A build check failed. " from the failing checks' names, or nothing when they do not say.</summary>
+    private static string KindSentence(DependencyBisect bisect)
+    {
+        var kind = Enum.TryParse<ECheckFailureKind>(bisect.FailureKind, out var parsed) ? parsed : ECheckFailureKind.Unknown;
+        var text = DependencyCheckFailure.Describe(kind);
+        return text.Length == 0 ? string.Empty : $"{char.ToUpperInvariant(text[0])}{text[1..]}. ";
     }
 
     private async Task OnGreenAsync(Context context, CancellationToken ct)
@@ -1188,6 +1404,11 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         run.CheckRunId = null;
         run.CheckSha = null;
         run.PullRequestIsDraft = false;
+        run.Pins = [];
+        run.ReplayRetried = false;
+        // D-N1: a merged or closed pull request takes its human fixes with it; nothing is pinned for them any more.
+        if (await session.LoadAsync<DependencyUpdateRunData>(DependencyUpdateRunData.ForRepository(context.Repository.Id!), ct) is { } data)
+            data.RollingPlanJson = null;
         if (run.State is EDependencyRunState.AwaitingChecks or EDependencyRunState.Bisecting)
             await EndAsync(context, wasMerged ? "merged" : "closed", wasMerged ? "The pull request was merged." : "The pull request was closed.", ct);
     }
@@ -1446,7 +1667,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         {
             // A new run starts from nothing but its own lookup.
             data.Run = context.Run.Run;
-            data.PlanJson = data.ReportJson = data.ApplyResultJson = data.Patch = null;
+            data.PlanJson = data.ReportJson = data.ApplyResultJson = data.Patch = data.RelockPlanJson = null;
             data.Migrations = [];
             data.ResolvedActions = new(StringComparer.Ordinal);
             data.TargetActions = new(StringComparer.Ordinal);

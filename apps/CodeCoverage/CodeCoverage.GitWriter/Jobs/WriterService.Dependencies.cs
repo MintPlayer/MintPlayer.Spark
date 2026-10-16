@@ -78,8 +78,12 @@ public sealed partial class WriterService
     /// branch replayed onto it (<see cref="RollingBranchReplay"/>), then a push under a lease, or none when the tree is the
     /// branch's already.
     /// </summary>
+    /// <remarks>D-N2: when a replayed commit conflicts in a lockfile of the plan, the bot's side is taken and nothing is pushed
+    /// to the rolling branch: the replayed head goes to the work ref (under <paramref name="expectedWorkSha"/>) and the answer
+    /// is <see cref="DependencyJobOutcomes.RelockNeeded"/>, so the saga regenerates those lockfiles through the apply workflow
+    /// and calls this job again on that head (no replay then: <paramref name="lastBotSha"/> is null).</remarks>
     public Task<DependencyJobResponse> DependencyRollingAsync(DependencyJob job, DependencyCommit commit, DependencyPatchInput input,
-        IReadOnlyList<(string Group, byte[] Patch)> migrations, string? expectedRollingSha, string? lastBotSha)
+        IReadOnlyList<(string Group, byte[] Patch)> migrations, string? expectedRollingSha, string? lastBotSha, string? expectedWorkSha = null)
         => jobs.RunAsync("dependencies-rolling", job.Repo, async context =>
         {
             DependencyJobResponse Answer(string outcome, string? reason = null, string? sha = null, string? bot = null, IReadOnlyList<string>? paths = null,
@@ -139,10 +143,24 @@ public sealed partial class WriterService
                         detail: $"{DependencyBranches.Rolling} no longer holds the bot's commit {lastBotSha}: it was rewritten by hand, so nothing was replayed or pushed.");
                 var entries = DependencyPlanEntry.From(input.Plan)
                     .Select(e => new ReplayManifestEntry(e.DepName, e.PackageName, e.PackageFile, e.CurrentValue, e.NewValue)).ToList();
-                switch (await replay.ReplayAsync(context.GitDirectory, bot, humans, entries, context.Deadline, job.Credential))
+                var relockable = input.Plan.Groups.SelectMany(g => g.Items).SelectMany(i => i.LockFiles).ToHashSet(StringComparer.Ordinal);
+                switch (await replay.ReplayAsync(context.GitDirectory, bot, humans, entries, context.Deadline, job.Credential, relockable))
                 {
                     case ReplayOutcome.Conflict conflict:
                         return Answer(DependencyJobOutcomes.ReplayConflict, sha: oldTip, paths: conflict.Paths, detail: conflict.Detail, values: conflict.HumanValues);
+                    case ReplayOutcome.Replayed { RelockPaths.Count: > 0 } relock:
+                        // D-N2: the replayed head goes to the work ref, where the apply workflow regenerates the lockfiles.
+                        return await PushBotRefAsync(context, job, relock.Tip, DependencyBranches.Work, expectedWorkSha) switch
+                        {
+                            Push.Done or Push.UpToDate => Answer(DependencyJobOutcomes.RelockNeeded, sha: relock.Tip, bot: bot, paths: relock.RelockPaths,
+                                values: relock.HumanValues, replayed: relock.Commits.Count) with
+                            {
+                                Verdict = VerdictWord(verdict.Outcome), AppliedGroups = verdict.AppliedGroups, RequiresWorkflowsPermission = verdict.RequiresWorkflowsPermission,
+                            },
+                            Push.LeaseRejected => Answer(DependencyJobOutcomes.BranchMoved, detail: $"{DependencyBranches.Work} is not at {expectedWorkSha}."),
+                            Push.Rejected rejected => Answer(JobOutcomes.PushRejected, detail: rejected.Detail),
+                            _ => throw new InvalidOperationException("Unknown push outcome."),
+                        };
                     case ReplayOutcome.Replayed done:
                         tip = done.Tip;
                         values = done.HumanValues;

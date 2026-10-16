@@ -18,7 +18,14 @@ public sealed record HumanManifestValue(string DepName, string PackageFile, stri
 public abstract record ReplayOutcome(IReadOnlyList<HumanManifestValue> HumanValues)
 {
     /// <summary>Every human commit applied; <paramref name="Tip"/> is the new rolling head (the bot commit when there was none).</summary>
-    public sealed record Replayed(string Tip, IReadOnlyList<string> Commits, IReadOnlyList<HumanManifestValue> HumanValues) : ReplayOutcome(HumanValues);
+    public sealed record Replayed(string Tip, IReadOnlyList<string> Commits, IReadOnlyList<HumanManifestValue> HumanValues) : ReplayOutcome(HumanValues)
+    {
+        /// <summary>
+        /// D-N2: lockfiles whose conflict took the bot's side. The tree at <see cref="Tip"/> then holds a lockfile that may not
+        /// match the manifests the humans changed, so it must be regenerated (the apply workflow's relock) before it is pushed.
+        /// </summary>
+        public IReadOnlyList<string> RelockPaths { get; init; } = [];
+    }
 
     /// <summary>
     /// R4/§7.3 "anything else": a human commit conflicts outside a planned manifest (a lockfile included: lockfiles are never
@@ -39,9 +46,14 @@ public abstract record ReplayOutcome(IReadOnlyList<HumanManifestValue> HumanValu
 /// <list type="bullet">
 /// <item>a conflict in a <b>planned manifest</b>: every conflict region takes the human's lines ("the human's value wins");
 /// the bot's other edits in that file stay;</item>
-/// <item>any other conflict, a <b>lockfile</b> included (never merged textually), a delete, a mode change or a binary:
+/// <item>a conflict in a <b>lockfile of the plan</b> (D-N2, only when the caller names it relockable): the bot's side is
+/// taken, never a textual merge, and the path is reported in <see cref="ReplayOutcome.Replayed.RelockPaths"/> so the caller
+/// regenerates it from the manifests before anything is pushed;</item>
+/// <item>any other conflict, another lockfile included, a delete, a mode change or a binary:
 /// <see cref="ReplayOutcome.Conflict"/>;</item>
-/// <item>a merge commit of the human's is skipped: the rebuilt branch already holds the default branch it merged.</item>
+/// <item>a merge commit of the human's is skipped: the rebuilt branch already holds the default branch it merged;</item>
+/// <item>a bot relock commit (its message carries <see cref="RelockTrailer"/>) is skipped: it is derived from the commits
+/// below it and regenerated whenever it is needed again.</item>
 /// </list>
 /// <para>Each replayed commit keeps the human's author, committer, dates and message, so a replay of the same input builds
 /// the same commits.</para>
@@ -60,6 +72,13 @@ public sealed partial class RollingBranchReplay(GitRunner git)
 
     private const int MarkerSize = 7;
 
+    /// <summary>D-N2: the trailer line of the bot's relock commit, which a later replay skips.</summary>
+    public const string RelockTrailer = "Dependency-Relock:";
+
+    /// <summary>Whether a commit message is the bot's relock commit's: a line that starts with <see cref="RelockTrailer"/>.</summary>
+    public static bool IsRelockCommit(string message)
+        => message.Split('\n').Any(line => line.TrimEnd('\r').StartsWith(RelockTrailer, StringComparison.Ordinal));
+
     /// <summary>
     /// The human commits on <paramref name="oldTip"/> above <paramref name="botCommit"/>, oldest first, merges left out. Null
     /// when <paramref name="botCommit"/> is not an ancestor of <paramref name="oldTip"/> (someone rewrote the branch).
@@ -76,8 +95,10 @@ public sealed partial class RollingBranchReplay(GitRunner git)
     }
 
     /// <summary>Replays <paramref name="humanCommits"/> (oldest first) onto <paramref name="newBotCommit"/>.</summary>
+    /// <param name="relockable">D-N2: the lockfiles whose conflict may take the bot's side for a later regeneration; null
+    /// or empty: every lockfile conflict is a <see cref="ReplayOutcome.Conflict"/>.</param>
     public async Task<ReplayOutcome> ReplayAsync(string gitDirectory, string newBotCommit, IReadOnlyList<string> humanCommits,
-        IReadOnlyList<ReplayManifestEntry> entries, CancellationToken cancellationToken, GitCredential? credential = null)
+        IReadOnlyList<ReplayManifestEntry> entries, CancellationToken cancellationToken, GitCredential? credential = null, IReadOnlySet<string>? relockable = null)
     {
         var values = new List<HumanManifestValue>();
         if (humanCommits.Count > MaxCommits)
@@ -86,9 +107,12 @@ public sealed partial class RollingBranchReplay(GitRunner git)
         var manifests = entries.Select(e => e.PackageFile).ToHashSet(StringComparer.Ordinal);
         var tip = newBotCommit;
         var made = new List<string>();
+        var relocked = new SortedSet<string>(StringComparer.Ordinal);
         foreach (var commit in humanCommits)
         {
             var info = await CommitInfoAsync(gitDirectory, commit, cancellationToken, credential);
+            if (IsRelockCommit(info.Message))
+                continue;
             if (info.Parent is not { } parent)
                 return new ReplayOutcome.Conflict(commit, [], "A root commit on the rolling branch cannot be replayed.", values);
 
@@ -110,7 +134,7 @@ public sealed partial class RollingBranchReplay(GitRunner git)
             if (merge.ExitCode == 1)
             {
                 var conflicted = output.Stages.Select(s => s.Path).Distinct(StringComparer.Ordinal).ToList();
-                var foreign = conflicted.Where(p => !manifests.Contains(p)).ToList();
+                var foreign = conflicted.Where(p => !manifests.Contains(p) && relockable?.Contains(p) != true).ToList();
                 if (foreign.Count > 0 || output.Stages.Count == 0)
                     return new ReplayOutcome.Conflict(commit, foreign.Count > 0 ? foreign : conflicted,
                         $"{Short(commit)} conflicts with the rebuilt dependency commit outside a planned manifest; the rolling branch was kept as it is.", values);
@@ -120,6 +144,13 @@ public sealed partial class RollingBranchReplay(GitRunner git)
                     var stages = output.Stages.Where(s => s.Path == path).ToList();
                     if (!stages.Any(s => s.Stage == 2) || !stages.Any(s => s.Stage == 3) || stages.Any(s => s.Mode != "100644"))
                         return new ReplayOutcome.Conflict(commit, [path], $"{Short(commit)} deletes or retypes {path}, which the dependency commit edits.", values);
+                    if (!manifests.Contains(path))
+                    {
+                        // D-N2: a lockfile is never merged textually; the bot's side stands until the relock regenerates it.
+                        replacements.Add(stages.First(s => s.Stage == 2) with { Stage = 0 });
+                        relocked.Add(path);
+                        continue;
+                    }
                     var merged = (await RunAsync(gitDirectory, ["cat-file", "blob", $"{output.Tree}:{path}"], cancellationToken, credential)).StandardOutput;
                     if (TakeTheirs(merged) is not { } resolved)
                         return new ReplayOutcome.Conflict(commit, [path], $"The conflict regions of {path} could not be read.", values);
@@ -143,7 +174,7 @@ public sealed partial class RollingBranchReplay(GitRunner git)
                 author: author, committer: committer), "commit-tree");
             made.Add(tip);
         }
-        return new ReplayOutcome.Replayed(tip, made, values);
+        return new ReplayOutcome.Replayed(tip, made, values) { RelockPaths = [.. relocked] };
     }
 
     /// <summary>

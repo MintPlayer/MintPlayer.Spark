@@ -135,6 +135,27 @@ public class DependencyUpdateRun
     /// <summary>The bot's own commit under any human commits on the rolling branch: what the replay starts from (R4).</summary>
     public string? RollingBotSha { get; set; }
 
+    /// <summary>D-N2: the replayed head on the work ref whose lockfiles the relock run regenerates; null outside a relock.</summary>
+    public string? RelockBaseSha { get; set; }
+
+    /// <summary>D-N2: the bot's dependency commit under <see cref="RelockBaseSha"/>, which becomes <see cref="RollingBotSha"/>.</summary>
+    public string? RelockBotSha { get; set; }
+
+    /// <summary>D-N2: the lockfiles the relock regenerates.</summary>
+    public List<string> RelockPaths { get; set; } = [];
+
+    /// <summary>D-N2: the rolling branch's head the replay was made from: the lease of the relocked push.</summary>
+    public string? RelockRollingSha { get; set; }
+
+    /// <summary>
+    /// D-N2: a replay conflict whose human values had just become holds was retried at once (a refresh, which no longer plans
+    /// the held dependencies). Set until a rolling build succeeds, so a second conflict stops instead of looping.
+    /// </summary>
+    public bool ReplayRetried { get; set; }
+
+    /// <summary>D-N1: dependencies kept at the version a human fix on the rolling branch was made against, as last planned.</summary>
+    public List<string> Pins { get; set; } = [];
+
     public int? PullRequestNumber { get; set; }
 
     /// <summary>R16: the first rolling pull request after onboarding is opened as a draft and never auto-merges.</summary>
@@ -197,6 +218,16 @@ public class DependencyUpdateRunData
     /// <summary>The plan the bot committed (plan.schema.json), as written.</summary>
     public string? PlanJson { get; set; }
 
+    /// <summary>
+    /// D-N1: the plan the rolling branch's bot commit (<see cref="DependencyUpdateRun.RollingBotSha"/>) was built from. Kept
+    /// across runs (a new run does not clear it): it is the base a human fix on the branch was made against. Cleared when the
+    /// pull request is merged or closed.
+    /// </summary>
+    public string? RollingPlanJson { get; set; }
+
+    /// <summary>D-N2: the relock plan committed on the work ref for the current relock run.</summary>
+    public string? RelockPlanJson { get; set; }
+
     /// <summary>The policy's report for the pull request body: planned groups, held, awaiting approval, available, ignored.</summary>
     public string? ReportJson { get; set; }
 
@@ -237,7 +268,7 @@ public class DependencySecurityFixRecord
 /// <summary>One dispatched workflow run of a dependency run.</summary>
 public class DependencyWorkflowRun : WorkflowHookRun
 {
-    /// <summary><c>lookup</c>, <c>apply</c>, <c>migrate</c>.</summary>
+    /// <summary><c>lookup</c>, <c>apply</c>, <c>migrate</c>, <c>relock</c> (D-N2).</summary>
     public string Purpose { get; set; } = string.Empty;
 
     /// <summary>The commit the run must build (D14): the default branch's for the lookup, the plan or staged commit otherwise.</summary>
@@ -272,6 +303,9 @@ public class DependencyBisect
     public string? FailingRunUrl { get; set; }
 
     public List<string> FailingChecks { get; set; } = [];
+
+    /// <summary>D-N3: <c>Build</c>, <c>Test</c>, <c>Both</c> or <c>Unknown</c>, from the failing checks' names only.</summary>
+    public string? FailureKind { get; set; }
 
     public string? Culprit { get; set; }
 

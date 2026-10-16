@@ -48,7 +48,8 @@ public static class DependencyGraph
             .Select(r =>
             {
                 var manifest = manifestsByRepositoryId.GetValueOrDefault(r.Id!);
-                return new DependencyGraphNode(r.Id!, r.FullName, r.Name, r.IsPrivate, r.Archived, manifest?.ScannedAt, manifest?.ScanError);
+                // P12: a repository whose lookup ran counts as scanned, even before its first manifest scan.
+                return new DependencyGraphNode(r.Id!, r.FullName, r.Name, r.IsPrivate, r.Archived, manifest?.ScannedAt ?? manifest?.LookupAt, manifest?.ScanError);
             })
             .ToList();
 
@@ -75,7 +76,7 @@ public static class DependencyGraph
         {
             if (manifestsByRepositoryId.GetValueOrDefault(consumer.Id!) is not { } manifest) continue;
 
-            foreach (var dependency in manifest.Consumes)
+            foreach (var dependency in DependencyLookupIngest.Consumes(manifest))
             {
                 foreach (var producer in ProducersOf(producers, dependency))
                 {

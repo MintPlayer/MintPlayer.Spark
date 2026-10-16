@@ -33,6 +33,9 @@ public sealed record DependencyRunReport
     /// <summary>Gap B: the lockfiles bring in more new packages than the cap.</summary>
     public string? NeedsHumanDetail { get; init; }
 
+    /// <summary>D-N1: dependencies kept at the version a human fix on the rolling branch was made against.</summary>
+    public List<DependencyPin> Pins { get; init; } = [];
+
     public static DependencyRunReport From(DependencyPolicyOutcome outcome, IReadOnlyCollection<string> dropped) => new()
     {
         Groups = [.. outcome.Groups.Where(g => !dropped.Contains(g.Group)).Select(DependencyReportGroup.From)],
@@ -83,16 +86,60 @@ public static class DependencySlots
         var zone = Zone(schedule.TimeZone);
         var local = TimeZoneInfo.ConvertTime(nowUtc, zone);
         var key = $"dependency-slot:{repositoryId}:{local:yyyy-MM-dd}";
-        var day = schedule.Frequency switch
-        {
-            EDependencyScheduleFrequency.Daily => true,
-            EDependencyScheduleFrequency.Monthly => IsWeekday(local, schedule.Weekday) && local.Day <= 7,
-            _ => IsWeekday(local, schedule.Weekday),
-        };
-        return (day && local.Hour == schedule.Hour && local.Minute >= SpreadMinute(repositoryId), key);
+        return (IsSlotDay(schedule, local.DateTime) && local.Hour == schedule.Hour && local.Minute >= SpreadMinute(repositoryId), key);
     }
 
-    private static bool IsWeekday(DateTimeOffset local, EDependencyWeekday weekday) => weekday switch
+    private static bool IsSlotDay(DependencySchedule schedule, DateTime local) => schedule.Frequency switch
+    {
+        EDependencyScheduleFrequency.Daily => true,
+        EDependencyScheduleFrequency.Monthly => IsWeekday(local, schedule.Weekday) && local.Day <= 7,
+        _ => IsWeekday(local, schedule.Weekday),
+    };
+
+    /// <summary>The schedule the cron uses for a repository (D-L13): the settings, overridden part by part by the
+    /// <c>coverage.yml</c> schedule the last run read.</summary>
+    public static DependencySchedule Effective(Repository repository, Account? account, DependencyUpdateRun? run)
+    {
+        var (settings, _) = Repository.ResolveDependencySchedule(repository, account);
+        return settings with
+        {
+            Frequency = run?.FileFrequency ?? settings.Frequency,
+            Weekday = run?.FileWeekday ?? settings.Weekday,
+            Hour = run?.FileHour ?? settings.Hour,
+        };
+    }
+
+    /// <summary>
+    /// When the slot is next due at or after <paramref name="fromUtc"/>: the start of the next slot window (its spread
+    /// minute), or <paramref name="fromUtc"/> itself while a window is open. Null when none falls within
+    /// <paramref name="horizonDays"/> (the three frequencies repeat within 35 days). Uses the same day and hour rule as
+    /// <see cref="Due"/>, local hour by local hour.
+    /// </summary>
+    public static DateTimeOffset? Next(DependencySchedule schedule, DateTimeOffset fromUtc, string repositoryId, int horizonDays = 40)
+    {
+        var zone = Zone(schedule.TimeZone);
+        var minute = SpreadMinute(repositoryId);
+        var local = TimeZoneInfo.ConvertTime(fromUtc, zone).DateTime;
+        var hour = new DateTime(local.Year, local.Month, local.Day, local.Hour, 0, 0, DateTimeKind.Unspecified);
+        for (var i = 0; i < horizonDays * 24; i++)
+        {
+            var h = hour.AddHours(i);
+            if (h.Hour != schedule.Hour || !IsSlotDay(schedule, h))
+                continue;
+            var opens = h.AddMinutes(minute);
+            var closes = h.AddHours(1);
+            if (zone.IsInvalidTime(opens) || zone.IsInvalidTime(closes))
+                continue;
+            var opensUtc = new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(opens, zone));
+            var closesUtc = new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(closes, zone));
+            if (closesUtc <= fromUtc)
+                continue;
+            return opensUtc > fromUtc ? opensUtc : fromUtc;
+        }
+        return null;
+    }
+
+    private static bool IsWeekday(DateTime local, EDependencyWeekday weekday) => weekday switch
     {
         EDependencyWeekday.Monday => local.DayOfWeek == DayOfWeek.Monday,
         EDependencyWeekday.Tuesday => local.DayOfWeek == DayOfWeek.Tuesday,
@@ -192,6 +239,61 @@ public static class DependencyAutoMergeGate
             _ => null,
         };
     }
+}
+
+/// <summary>What kind of failure a red head shows, as far as the failing checks' names tell.</summary>
+public enum ECheckFailureKind
+{
+    /// <summary>No failing check's name says.</summary>
+    Unknown,
+
+    /// <summary>Only checks named for building (build, compile, restore, lint, typecheck, pack).</summary>
+    Build,
+
+    /// <summary>Only checks named for testing (test, e2e, spec, integration).</summary>
+    Test,
+
+    /// <summary>Both kinds failed, or one check is named for both (<c>build-and-test</c>).</summary>
+    Both,
+}
+
+/// <summary>
+/// Old §7.4's "build failure vs test failure", read from the failing check runs' <b>names</b> only (dependency-updates PRD
+/// §13.12 D-N3). The bot reads no logs and no annotations: a log is repository output a runner produced, and reading it would
+/// need the Actions log API per job for a hint that only changes the comment's wording. So a check named <c>ci</c> is
+/// <see cref="ECheckFailureKind.Unknown"/>, and the bisect is the same either way.
+/// </summary>
+public static class DependencyCheckFailure
+{
+    private static readonly string[] BuildWords = ["build", "compile", "restore", "lint", "typecheck", "type-check", "tsc", "pack"];
+    private static readonly string[] TestWords = ["test", "e2e", "spec", "integration", "playwright", "cypress", "vitest", "jest"];
+
+    public static ECheckFailureKind Classify(IEnumerable<string> failingChecks)
+    {
+        bool build = false, test = false;
+        foreach (var name in failingChecks)
+        {
+            var lower = name.ToLowerInvariant();
+            build |= BuildWords.Any(w => lower.Contains(w, StringComparison.Ordinal));
+            test |= TestWords.Any(w => lower.Contains(w, StringComparison.Ordinal));
+        }
+        return (build, test) switch
+        {
+            (true, true) => ECheckFailureKind.Both,
+            (true, false) => ECheckFailureKind.Build,
+            (false, true) => ECheckFailureKind.Test,
+            _ => ECheckFailureKind.Unknown,
+        };
+    }
+
+    /// <summary>A few words for the pull request comment; empty when the names say nothing.</summary>
+    public static string Describe(ECheckFailureKind kind) => kind switch
+    {
+        ECheckFailureKind.Build => "a build check failed (the update likely breaks compilation or restore)",
+        ECheckFailureKind.Test => "a test check failed (it builds; behaviour changed)",
+        ECheckFailureKind.Both => "build and test checks failed",
+        _ => string.Empty,
+    };
 }
 
 /// <summary>Old §7.4's suspicion order and the next commit to test.</summary>

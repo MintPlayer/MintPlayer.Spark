@@ -99,6 +99,49 @@ public class RollingBranchReplayTests
     }
 
     [Fact]
+    public async Task D_N2_a_relockable_lockfile_conflict_takes_the_bots_side_and_is_reported_for_regeneration()
+    {
+        using var f = Build(r => r.Write(Lock, Lockfile("4.1.1")).Write("README.md", "fixed by hand\n"), bot2Lock: "4.1.3");
+
+        var outcome = await Replay().ReplayAsync(f.Bare, f.Bot2, [f.Human], Entries, CancellationToken.None, relockable: new HashSet<string>([Lock]));
+
+        var replayed = outcome.Should().BeOfType<ReplayOutcome.Replayed>().Which;
+        replayed.RelockPaths.Should().Equal([Lock]);
+        Show(f.Bare, replayed.Tip, Lock).Should().Be(Lockfile("4.1.3"), "the bot's side stands until the relock regenerates it");
+        Show(f.Bare, replayed.Tip, "README.md").Should().Be("fixed by hand\n", "the rest of the person's commit is replayed");
+    }
+
+    [Fact]
+    public async Task D_N2_a_lockfile_outside_the_relockable_set_still_stops_the_replay()
+    {
+        using var f = Build(r => r.Write(Lock, Lockfile("4.1.1")), bot2Lock: "4.1.3");
+
+        var outcome = await Replay().ReplayAsync(f.Bare, f.Bot2, [f.Human], Entries, CancellationToken.None, relockable: new HashSet<string>(["other/package-lock.json"]));
+
+        outcome.Should().BeOfType<ReplayOutcome.Conflict>().Which.Paths.Should().Equal([Lock]);
+    }
+
+    [Fact]
+    public async Task D_N2_the_bots_relock_commit_is_never_replayed()
+    {
+        using var f = Build(r => r.Write("README.md", "fixed by hand\n"));
+        var repo = f.Repo;
+        repo.Checkout("relocked", f.Rolling);
+        repo.Write(Lock, Lockfile("4.1.9"));
+        var relock = repo.Commit($"Regenerate lockfiles after replaying commits on the dependency branch\n\n{RollingBranchReplay.RelockTrailer} 1-2-3-relock");
+        var bare = repo.Bare();
+        var humans = await Replay().HumanCommitsAsync(bare, f.Bot1, relock, CancellationToken.None);
+        humans.Should().Equal([f.Human, relock]);
+
+        var outcome = await Replay().ReplayAsync(bare, f.Bot2, humans!, Entries, CancellationToken.None);
+
+        var replayed = outcome.Should().BeOfType<ReplayOutcome.Replayed>().Which;
+        replayed.Commits.Should().ContainSingle("only the person's commit is replayed; the relock is derived and made again when needed");
+        Show(bare, replayed.Tip, Lock).Should().Be(Lockfile("4.1.2"), "the new build's lockfile, not the old relock's");
+        RollingBranchReplay.IsRelockCommit("Update chalk\n").Should().BeFalse();
+    }
+
+    [Fact]
     public async Task A_branch_without_the_bots_commit_was_rewritten_and_is_not_replayed()
     {
         using var f = Build(r => r.Write("README.md", "x\n"));

@@ -85,6 +85,9 @@ public sealed class DependencyRollingWire : DependencyPatchJobWire
 
     /// <summary>The bot's own commit of the previous build; the commits above it on the branch are the humans'.</summary>
     public string? LastBotSha { get; set; }
+
+    /// <summary>D-N2: the lease of the work ref, where a replayed head whose lockfiles need regenerating is pushed.</summary>
+    public string? ExpectedWorkSha { get; set; }
 }
 
 /// <summary>One file of the onboarding commit: its text, or <see cref="Delete"/>.</summary>
@@ -142,6 +145,10 @@ public static class DependencyJobOutcomes
 
     /// <summary>Rolling: a human commit conflicts outside a planned manifest; nothing was pushed (§7.3).</summary>
     public const string ReplayConflict = "replay-conflict";
+
+    /// <summary>Rolling (D-N2): lockfile conflicts took the bot's side; the replayed head is on the work ref, waiting for the
+    /// lockfiles named in <see cref="DependencyJobResponse.Paths"/> to be regenerated. Nothing was pushed to the rolling branch.</summary>
+    public const string RelockNeeded = "relock-needed";
 
     /// <summary>Rolling: the bot's last commit is no longer under the branch's head; nothing was pushed.</summary>
     public const string RollingRewritten = "rolling-rewritten";

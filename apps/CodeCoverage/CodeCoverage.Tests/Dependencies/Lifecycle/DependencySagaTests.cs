@@ -266,6 +266,97 @@ public class DependencySagaTests : CoverageRavenTest
         h.Updates.Created.Should().BeEmpty();
     }
 
+    // ── D-N1: a human fix keeps its versions; D-N2: lockfile conflicts are regenerated ───────────────
+
+    [Fact]
+    public async Task D_N1_a_human_code_fix_on_the_rolling_branch_keeps_the_versions_it_was_made_against()
+    {
+        var h = await HarnessAsync();
+        await PublishAsync(h, Chalk());
+        const string fixedHead = "f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0";
+        h.Queue.BranchHeads[DependencyUpdateRun.RollingBranch] = fixedHead;
+        h.Forge.Comparison = new CommitComparison(h.Writer.BotSha, [new DiffFile("src/index.ts", "modified", null, [3])], false);
+
+        h.ScriptApply(runId: 6002);
+        h.ScriptLookup(Lookup(Npm("chalk", "4.1.0", "4.1.3", Git.Dependencies.EUpdateType.Patch)), runId: 6001);
+        h.Queue.DispatchQueue.Enqueue(new ForgeWorkflowDispatch(EForgeDispatchOutcome.Dispatched, 6002, null, null));
+        await h.TriggerAsync();
+        await h.ReleaseAsync(EDependencyStep.PollRun);
+
+        var plan = DependencyContract.Deserialize<DependencyPlan>(h.Writer.Requests("work-ref")[^1].PlanJson!)!;
+        plan.Groups.Single().Items.Single().NewVersion.Should().Be("4.1.2", "the fix in src/index.ts was written against chalk 4.1.2");
+        var run = await h.RunAsync();
+        run.Pins.Should().Equal(["chalk 4.1.2 (package.json)"]);
+
+        await h.FinishApplyAsync();
+        h.Updates.Updated[^1].Body.Should().Contain("## Pinned for a fix on this branch");
+    }
+
+    [Fact]
+    public async Task D_N2_a_lockfile_conflict_in_the_replay_is_regenerated_by_the_apply_workflow_before_the_push()
+    {
+        var h = await HarnessAsync();
+        const string replayed = "7777777777777777777777777777777777777777", relockPlanCommit = "8888888888888888888888888888888888888888",
+            dependencyCommit = "e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1";
+        h.Writer.Script("rolling", new GitWriterDependencyResult(GitWriterDependencyOutcomes.RelockNeeded, null, replayed, dependencyCommit, ["package-lock.json"], null, 5)
+        {
+            Verdict = GitWriterDependencyOutcomes.Accepted, Replayed = 1,
+        });
+        h.Writer.Script("work-ref", new GitWriterDependencyResult(GitWriterOutcomes.Pushed, null, h.Writer.PlanCommitSha, null, [], null, 5));
+        h.Writer.Script("work-ref", new GitWriterDependencyResult(GitWriterOutcomes.Pushed, null, relockPlanCommit, null, [], null, 5));
+
+        await h.RunToApplyAsync(Chalk());
+        // The relock run is dispatched after the apply (the lookup and the apply took the dispatches queued before).
+        h.Queue.DispatchQueue.Enqueue(new ForgeWorkflowDispatch(EForgeDispatchOutcome.Dispatched, 7002, null, null));
+        h.ScriptRun(7002, relockPlanCommit, branch: DependencyUpdateRun.WorkBranch, dispatch: false);
+        await h.FinishApplyAsync();
+
+        var relockCommit = h.Writer.Requests("work-ref")[^1];
+        relockCommit.ExpectedSha.Should().Be(replayed, "the relock plan goes on top of the replayed head");
+        var relock = DependencyContract.Deserialize<DependencyPlan>(relockCommit.PlanJson!)!;
+        relock.Groups.Select(g => g.Group).Should().Equal(["relock:package-lock.json"]);
+        h.Queue.Dispatches[^1].Inputs["expected_sha"].Should().Be(replayed);
+        (await h.RunAsync()).State.Should().Be(EDependencyRunState.Applying);
+        h.Updates.Created.Should().BeEmpty("nothing is pushed or opened before the lockfile is regenerated");
+
+        const string relockPatch = "diff --git a/package-lock.json b/package-lock.json\n";
+        h.Updates.Artifacts[7002] = new()
+        {
+            ["result.json"] = Encoding.UTF8.GetBytes(DependencyContract.Serialize(Result(relock, relockPatch, []))),
+            ["dependency.patch"] = Encoding.UTF8.GetBytes(relockPatch),
+        };
+        await h.ReleaseAsync(EDependencyStep.PollRun);
+
+        var push = h.Writer.Requests("rolling")[^1];
+        push.ExpectedSha.Should().Be(replayed);
+        push.LastBotSha.Should().BeNull("the replay is done; the relock commit goes on top");
+        push.ClaimedGroups.Should().Equal(["relock:package-lock.json"]);
+        RollingBranchReplay.IsRelockCommit(push.Message!).Should().BeTrue("a later replay skips the relock commit");
+        var run = await h.RunAsync();
+        run.State.Should().Be(EDependencyRunState.AwaitingChecks);
+        run.RollingBotSha.Should().Be(dependencyCommit, "the next replay starts above the dependency commit, not the relock commit");
+        run.RelockBaseSha.Should().BeNull();
+        h.Updates.Created.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task D_N2_a_replay_conflict_whose_values_just_became_holds_is_retried_once_at_once()
+    {
+        var h = await HarnessAsync();
+        h.Writer.Script("rolling", new GitWriterDependencyResult(GitWriterDependencyOutcomes.ReplayConflict, null, h.Writer.RollingSha, null, ["package-lock.json"], "conflicts", 5)
+        {
+            HumanValues = [new GitWriterHumanValue("chalk", "package.json", "4.1.1", "4.1.2", "abcdefabcdefabcdefabcdefabcdefabcdefabcd", "octocat")],
+        });
+
+        await PublishAsync(h, Chalk());
+
+        var run = await h.RunAsync();
+        run.History.Should().Contain(e => e.Text.Contains("replay-retry"));
+        run.ReplayRetried.Should().BeTrue();
+        run.Run.Should().Be(2, "the refresh starts at once, planning without the held chalk");
+        (await h.StateAsync()).Holds.Should().Contain(x => x.Id == "human:chalk");
+    }
+
     // ── R16: the first pull request is a draft ────────────────────────────────────────────────────
 
     [Fact]

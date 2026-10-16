@@ -49,6 +49,16 @@ public static class DependencyPullRequestBody
             More(body, report.Groups.Sum(g => g.Items.Count));
         }
 
+        if (report.Pins.Count > 0)
+        {
+            body.AppendLine("## Pinned for a fix on this branch").AppendLine();
+            body.AppendLine("Commits pushed on this branch change more than the dependency files, so the versions they were written against stay as they were until this pull request is merged or closed.").AppendLine();
+            body.AppendLine("| Group | Dependency | Kept at | Now available |").AppendLine("|---|---|---|---|");
+            foreach (var pin in report.Pins.Take(MaxRows))
+                body.AppendLine($"| {Cell(pin.Group)} | {Code(pin.DepName)} | {Cell(pin.Version)} | {Cell(pin.Wanted)} |");
+            More(body, report.Pins.Count);
+        }
+
         if (report.AwaitingApproval.Count > 0)
         {
             body.AppendLine("## Awaiting approval").AppendLine();

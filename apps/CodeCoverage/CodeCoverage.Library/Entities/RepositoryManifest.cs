@@ -76,6 +76,20 @@ public class RepositoryManifest
     /// <summary>Manifests that could not be parsed, as <c>path: reason</c>. Diagnostics only.</summary>
     public List<string> ParseErrors { get; set; } = [];
 
+    /// <summary>
+    /// P12 (dependency-updates PRD §13.8): what the repository's own lookup workflow reported it consumes, every ecosystem
+    /// Renovate's lookup covers, with versions. Read before <see cref="Consumes"/> for each ecosystem it covers
+    /// (<c>DependencyLookupIngest.Consumes</c>); written only by the dependency saga.
+    /// </summary>
+    public List<ManifestDependency> LookupConsumes { get; set; } = [];
+
+    /// <summary>The default-branch commit of the lookup behind <see cref="LookupConsumes"/>.</summary>
+    public string? LookupSha { get; set; }
+
+    /// <summary>When <see cref="LookupConsumes"/> was stored; null: no lookup yet, the scanners' lists stand alone. Loaded by
+    /// id only, like <see cref="ScannedAt"/>.</summary>
+    public DateTimeOffset? LookupAt { get; set; }
+
     /// <summary><c>RepositoryManifests/{provider}/{repositoryId}</c>.</summary>
     public static string DocumentId(EForgeProvider provider, long repositoryId)
         => $"RepositoryManifests/{provider.ToCanonicalString()}/{repositoryId}";
@@ -120,6 +134,10 @@ public class ManifestDependency
 
     /// <summary>The version range or ref as written, when the manifest states one.</summary>
     public string? Constraint { get; set; }
+
+    /// <summary>The resolved version (the lockfile's, else the current one), when a lookup reported it (P12); a token, never
+    /// parsed. The scanners leave it null.</summary>
+    public string? Version { get; set; }
 
     /// <summary>Development-only: a dev dependency, a test project's reference, a private asset.</summary>
     public bool Dev { get; set; }

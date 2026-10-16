@@ -29,7 +29,7 @@ public class DependencyWriterJobTests : WriterTestBase
         return (origin, baseSha, patch);
     }
 
-    private static string Plan(string expectedSha) => DependencyContract.Serialize(new DependencyPlan
+    private static string Plan(string expectedSha, string to = "4.1.2", bool withLock = false) => DependencyContract.Serialize(new DependencyPlan
     {
         PlanId = "t-1",
         ExpectedSha = expectedSha,
@@ -39,10 +39,60 @@ public class DependencyWriterJobTests : WriterTestBase
             Items = [new PlanItem
             {
                 DepName = "chalk", PackageName = "chalk", Ecosystem = "npm", Datasource = "npm", Manager = "npm", PackageFile = "package.json",
-                CurrentValue = "4.1.0", NewValue = "4.1.2", NewVersion = "4.1.2", UpdateType = "patch",
+                LockFiles = withLock ? ["package-lock.json"] : [],
+                CurrentValue = "4.1.0", NewValue = to, NewVersion = to, UpdateType = "patch",
             }],
         }],
     });
+
+    private static string Lock(string chalk) => $"{{\n  \"packages\": {{\n    \"node_modules/chalk\": {{\n      \"version\": \"{chalk}\"\n    }}\n  }}\n}}\n";
+
+    /// <summary>main holds package.json and package-lock.json at chalk 4.1.0; the patch moves both to <paramref name="to"/>.</summary>
+    private static string LockPatch(Origin origin, string to)
+    {
+        origin.Write("package.json", Before.Replace("4.1.0", to)).Write("package-lock.json", Lock(to));
+        var patch = FixtureGit.Run(origin.Work, "diff", "--binary", "--", "package.json", "package-lock.json");
+        FixtureGit.Run(origin.Work, "checkout", "--quiet", "--", "package.json", "package-lock.json");
+        return patch;
+    }
+
+    [Fact]
+    public async Task D_N2_a_lockfile_conflict_in_the_replay_puts_the_replayed_head_on_the_work_ref_for_a_relock()
+    {
+        var origin = Seed();
+        origin.Checkout("main").Write("package.json", Before).Write("package-lock.json", Lock("4.1.0"));
+        var baseSha = origin.Commit("package.json and lock");
+        origin.Push("main");
+        var first = await PostAsync("rolling", With(Job(origin, baseSha), new()
+        {
+            ["plan"] = Plan(baseSha, withLock: true), ["patch"] = Base64(LockPatch(origin, "4.1.2")), ["claimedGroups"] = new[] { "chalk" },
+        }));
+        first.Outcome.Should().Be("pushed", first.Detail);
+
+        // A person refreshes the lockfile by hand and fixes the README; the next build moves chalk to 4.1.3.
+        FixtureGit.Run(origin.Work, "fetch", "--quiet", "origin", $"{DependencyBranches.Rolling}:rolling");
+        origin.Checkout("rolling");
+        origin.Write("package-lock.json", Lock("4.1.2-hand")).Write("README.md", "fixed by hand\n");
+        var human = origin.Commit("Refresh the lock", author: "Octo Cat", email: "octo@example.invalid");
+        FixtureGit.Run(origin.Work, "push", "--quiet", "--force", "origin", $"rolling:refs/heads/{DependencyBranches.Rolling}");
+        origin.Checkout("main");
+
+        var answer = await PostAsync("rolling", With(Job(origin, baseSha), new()
+        {
+            ["plan"] = Plan(baseSha, to: "4.1.3", withLock: true), ["patch"] = Base64(LockPatch(origin, "4.1.3")), ["claimedGroups"] = new[] { "chalk" },
+            ["expectedRollingSha"] = human, ["lastBotSha"] = first.BotSha,
+        }));
+
+        answer.Outcome.Should().Be(DependencyJobOutcomes.RelockNeeded, answer.Detail);
+        answer.Paths.Should().Equal(["package-lock.json"]);
+        origin.Ref($"refs/heads/{DependencyBranches.Rolling}").Should().Be(human, "nothing reaches the rolling branch before the relock");
+        origin.Ref($"refs/heads/{DependencyBranches.Work}").Should().Be(answer.Sha);
+        origin.InBare("show", $"{answer.Sha}:package-lock.json").Should().Contain("\"version\": \"4.1.3\"", "the bot's side, until the relock regenerates it");
+        origin.InBare("show", $"{answer.Sha}:README.md").Should().Contain("fixed by hand");
+        origin.InBare("rev-parse", $"{answer.Sha}^").Trim().Should().Be(answer.BotSha);
+    }
+
+    private static string Base64(string text) => Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(text));
 
     private Dictionary<string, object?> Job(Origin origin, string expectedSha, DateTimeOffset? date = null) => new()
     {

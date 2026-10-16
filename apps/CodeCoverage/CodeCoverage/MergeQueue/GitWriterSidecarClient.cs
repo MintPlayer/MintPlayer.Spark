@@ -362,6 +362,7 @@ public static class GitWriterDependencyOutcomes
     public const string Validated = "validated";
     public const string Unchanged = "unchanged";
     public const string ReplayConflict = "replay-conflict";
+    public const string RelockNeeded = "relock-needed";
     public const string RollingRewritten = "rolling-rewritten";
     public const string PlanRejected = "plan-rejected";
     public const string BranchMoved = "branch-moved";

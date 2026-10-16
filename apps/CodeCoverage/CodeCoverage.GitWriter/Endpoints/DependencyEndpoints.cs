@@ -98,9 +98,10 @@ internal sealed partial class GitWriterDependencyRollingEndpoint : IPostEndpoint
             || DependencyFields.PatchInput(refusal, request, job.ExpectedSha) is not { } input
             || !refusal.Check(request.ExpectedRollingSha is null || WireValidation.ObjectId(request.ExpectedRollingSha) is not null, "expectedRollingSha", WireValidation.ShaRule)
             || !refusal.Check(request.LastBotSha is null || WireValidation.ObjectId(request.LastBotSha) is not null, "lastBotSha", WireValidation.ShaRule)
+            || !refusal.Check(request.ExpectedWorkSha is null || WireValidation.ObjectId(request.ExpectedWorkSha) is not null, "expectedWorkSha", WireValidation.ShaRule)
             || refusal.Check(Migrations(request.Migrations), "migrations", $"at most {MaxMigrations} entries, each a group name and a base64 patch") is not { } migrations)
             return refusal.Result();
-        return Results.Json(await writer.DependencyRollingAsync(job, commit, input, migrations, request.ExpectedRollingSha, request.LastBotSha), GitWriterHost.Json);
+        return Results.Json(await writer.DependencyRollingAsync(job, commit, input, migrations, request.ExpectedRollingSha, request.LastBotSha, request.ExpectedWorkSha), GitWriterHost.Json);
     }
 
     private static List<(string Group, byte[] Patch)>? Migrations(List<DependencyMigratePatchWire>? wires)

@@ -74,13 +74,7 @@ public partial class DependencyUpdatesCronJob : ISparkCronJob
             }
             if (run?.FileDisabled == true) continue;
 
-            var (settings, _) = Repository.ResolveDependencySchedule(repository, account);
-            var schedule = settings with
-            {
-                Frequency = run?.FileFrequency ?? settings.Frequency,
-                Weekday = run?.FileWeekday ?? settings.Weekday,
-                Hour = run?.FileHour ?? settings.Hour,
-            };
+            var schedule = DependencySlots.Effective(repository, account, run);
             var (due, key) = DependencySlots.Due(schedule, now, repository.Id!);
             if (due)
                 await messageBus.BroadcastOnceAsync(new DependencyUpdateSignalMessage
