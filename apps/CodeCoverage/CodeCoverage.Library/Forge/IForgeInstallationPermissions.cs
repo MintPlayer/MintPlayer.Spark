@@ -65,6 +65,13 @@ public enum EMergeQueueAppNeed
     /// after the merge, so the queue warns about it rather than refusing; the installation notice does ask for it.
     /// </summary>
     CloseIssues = 16,
+
+    /// <summary>
+    /// The dependency updater (dependency-updates PRD §7.2, R15, R16): its own branches and pull request, the lookup, apply and
+    /// migrate dispatches, comments and reactions, its check run, and <c>workflows: write</c> for the onboarding pull request
+    /// and Actions <c>uses:</c> bumps. It hears its runs finish, comments, checks and the producers' releases.
+    /// </summary>
+    DependencyUpdates = 32,
 }
 
 /// <summary>What the app itself lacks of what was asked about (§0 D95).</summary>

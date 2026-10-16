@@ -55,7 +55,7 @@ public sealed record DeleteQueueBranchJob(string Repo, Uri CloneUrl, GitCredenti
 /// differs from the base's itself (<c>fork-touches-workflows</c>), behind the saga's own rule.
 /// </para>
 /// </remarks>
-public sealed class WriterService(GitRunner git, JobRunner jobs, IOptions<GitWriterOptions> options, ConflictResolverRegistry registry)
+public sealed partial class WriterService(GitRunner git, JobRunner jobs, IOptions<GitWriterOptions> options, ConflictResolverRegistry registry)
 {
     private const string HeadTracking = "refs/mq/head";
 

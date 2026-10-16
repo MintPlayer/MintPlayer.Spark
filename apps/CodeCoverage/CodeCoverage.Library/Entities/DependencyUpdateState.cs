@@ -186,6 +186,11 @@ public class DependencyFleetState
     /// coincided with a release or push event from it). Exempt from the cooldown.</summary>
     public List<DependencyOwnRelease> OwnReleases { get; set; } = [];
 
+    /// <summary>§7.6, gap E: the release and default-branch push events the bot received from the account's repositories,
+    /// newest per producer kept (capped at <see cref="MaxEntries"/>). The third leg of the own-package check, and the clock
+    /// of the 30-minute propagation debounce.</summary>
+    public List<DependencyProducerEvent> ProducerEvents { get; set; } = [];
+
     public static string ForAccount(string accountId)
     {
         const string prefix = "Accounts/";
@@ -205,6 +210,20 @@ public class DependencyFleetRed
     public string Repository { get; set; } = string.Empty;
 
     public string? RunUrl { get; set; }
+
+    public DateTime AtUtc { get; set; }
+}
+
+/// <summary>A release or default-branch push of a producer repository, as the bot received it.</summary>
+public class DependencyProducerEvent
+{
+    public string ProducerRepository { get; set; } = string.Empty;
+
+    /// <summary><c>release</c> or <c>push</c>.</summary>
+    public string Kind { get; set; } = string.Empty;
+
+    /// <summary>The release tag, or the pushed commit.</summary>
+    public string? Reference { get; set; }
 
     public DateTime AtUtc { get; set; }
 }

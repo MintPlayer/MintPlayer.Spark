@@ -61,4 +61,11 @@ public static class CoverageQueues
     /// serial (D11) without a lock. A step runs at most one git-writer job (≤ 240 s), under the 5-minute claim.
     /// </summary>
     public const string MergeQueue = "coverage-merge-queue";
+
+    /// <summary>
+    /// The dependency updater's saga (dependency-updates PRD §13.8 N5): its steps, the triggers that start a run and the
+    /// webhook signals that wake one. Its own lane, apart from the merge queue's, so a lookup or a rolling-branch rebuild
+    /// never delays a queued merge; serial like it, so one repository's run never changes twice at once.
+    /// </summary>
+    public const string DependencyUpdates = "coverage-dependency-updates";
 }
