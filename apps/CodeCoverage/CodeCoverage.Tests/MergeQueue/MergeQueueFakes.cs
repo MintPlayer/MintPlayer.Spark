@@ -134,8 +134,14 @@ internal sealed class FakeForgeMergeQueue : IForgeMergeQueue
         return Task.FromResult(true);
     }
 
+    /// <summary>Every artifact read: the run, the artifact's name and the cap it was read under, in order.</summary>
+    public List<(long RunId, string Name, long MaxBytes)> ArtifactReads { get; } = [];
+
     public Task<ForgeArtifactDownload> DownloadArtifactAsync(Repository repository, long runId, string artifactName, long maxBytes, CancellationToken cancellationToken = default)
-        => Task.FromResult(Artifacts.TryGetValue(runId, out var artifact) ? artifact : new ForgeArtifactDownload(EForgeArtifactOutcome.NotFound, null, null, "no artifact"));
+    {
+        ArtifactReads.Add((runId, artifactName, maxBytes));
+        return Task.FromResult(Artifacts.TryGetValue(runId, out var artifact) ? artifact : new ForgeArtifactDownload(EForgeArtifactOutcome.NotFound, null, null, "no artifact"));
+    }
 
     public Task<string?> GetFileBlobShaAsync(Repository repository, string gitRef, string path, CancellationToken cancellationToken = default)
         => Task.FromResult(Blobs.TryGetValue($"{gitRef}:{path}", out var blob) ? blob : null);
