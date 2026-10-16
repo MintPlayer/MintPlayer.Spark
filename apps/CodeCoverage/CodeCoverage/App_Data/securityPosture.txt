@@ -55,6 +55,7 @@ Signed-in users | grant | QueryRead/Repository | c0e5a9e1-0000-4000-8000-0000000
 Signed-in users | deny | QueryRead/Repository/OwnerKey | c0e5a9e1-0000-4000-8000-000000000084 | app
 Signed-in users | deny | QueryRead/Repository/PreviousFullNames | c0e5a9e1-0000-4000-8000-000000000086 | app
 Signed-in users | grant | QueryReadEditNew/ApiToken | c0e5a9e1-0000-4000-8000-000000000069 | app
+Signed-in users | grant | QueryReadEditNewDelete/DependencyRule | c0e5a9e1-0000-4000-8000-000000000094 | app
 Signed-in users | grant | QueryReadEditNewDelete/EventColumnMapping | c0e5a9e1-0000-4000-8000-000000000066 | app
 Signed-in users | grant | Read/ForgeAccounts | c0e5a9e1-0000-4000-8000-000000000053 | app
 Signed-in users | deny | Read/ForgeAccounts/Provider | c0e5a9e1-0000-4000-8000-000000000087 | app

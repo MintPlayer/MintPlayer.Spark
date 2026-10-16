@@ -1,0 +1,82 @@
+{
+  "$schema": "https://schemas.spark.mintplayer.com/v7/model.schema.json",
+  "persistentObject": {
+    "id": "6dd82acf-7ee7-4427-b8d0-57710ddb8944",
+    "name": "DependencyRule",
+    "clrType": "CodeCoverage.Entities.DependencyRule",
+    "breadcrumb": "{Match}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "7002d13c-fdba-4ba1-9b1a-ef9de7038d9f",
+        "name": "Ecosystem",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "1507c6e0-5631-4270-a9ce-9e0f1b5ce8bf",
+        "name": "Enforced",
+        "dataType": "boolean",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "0d1384d4-3e18-45db-8370-f8bfb29c3e02",
+        "name": "Group",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "4d9028a8-7d1e-4627-b0c3-1f41f5582cb6",
+        "name": "Ignore",
+        "dataType": "boolean",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "c318981a-4d41-44c8-bbc3-43a260152890",
+        "name": "Match",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "6d24c4e3-b980-465d-9937-0ef9d93b90d5",
+        "name": "MaxUpdate",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "lookupReferenceType": "DependencyThreshold",
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": []
+}

@@ -44,6 +44,12 @@
         "name": "MergeQueue",
         "tab": "a7c1f9d2-4b60-4e3a-9c85-1f27b0e6d431",
         "order": 5
+      },
+      {
+        "id": "3f0b7c62-9d41-4e8a-b5c3-6a2e81d4f907",
+        "name": "DependencyUpdates",
+        "tab": "a7c1f9d2-4b60-4e3a-9c85-1f27b0e6d431",
+        "order": 6
       }
     ],
     "attributes": [
@@ -82,6 +88,122 @@
         "showedOn": "Query, PersistentObject",
         "rules": [],
         "group": "d8a1e46f-2b93-4c07-95fe-3a6b18d2c740"
+      },
+      {
+        "id": "d70c8703-c448-43ed-9cc4-ab57e8941537",
+        "name": "DependencyBisectBudget",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 18,
+        "isArray": false,
+        "lookupReferenceType": "DependencyBisectBudget",
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "3f0b7c62-9d41-4e8a-b5c3-6a2e81d4f907"
+      },
+      {
+        "id": "865c7dc7-6123-4e45-b0d2-3af73e637dd0",
+        "name": "DependencyCooldown",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 17,
+        "isArray": false,
+        "lookupReferenceType": "DependencyCooldown",
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "3f0b7c62-9d41-4e8a-b5c3-6a2e81d4f907"
+      },
+      {
+        "id": "1371ce4f-2882-4721-9fb9-9c3d282760fb",
+        "name": "DependencyRules",
+        "dataType": "AsDetail",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 19,
+        "asDetailType": "CodeCoverage.Entities.DependencyRule",
+        "isArray": true,
+        "editMode": "inline",
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "3f0b7c62-9d41-4e8a-b5c3-6a2e81d4f907"
+      },
+      {
+        "id": "845f5cb5-c316-4c60-8c47-fd202eda612b",
+        "name": "DependencyScheduleFrequency",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 13,
+        "isArray": false,
+        "lookupReferenceType": "DependencyScheduleFrequency",
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "3f0b7c62-9d41-4e8a-b5c3-6a2e81d4f907"
+      },
+      {
+        "id": "df2c5bb1-078b-4dc6-b431-879d2912a569",
+        "name": "DependencyScheduleHour",
+        "dataType": "number",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 15,
+        "isArray": false,
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": [
+          {
+            "type": "range",
+            "min": 0,
+            "max": 23
+          }
+        ],
+        "group": "3f0b7c62-9d41-4e8a-b5c3-6a2e81d4f907"
+      },
+      {
+        "id": "a8bea362-e6e3-4522-a446-1dfd923ddf19",
+        "name": "DependencyScheduleWeekday",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 14,
+        "isArray": false,
+        "lookupReferenceType": "DependencyWeekday",
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "3f0b7c62-9d41-4e8a-b5c3-6a2e81d4f907"
+      },
+      {
+        "id": "7e400086-444f-4fe7-ac8b-616365ecfd80",
+        "name": "DependencyTimeZone",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 16,
+        "isArray": false,
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "3f0b7c62-9d41-4e8a-b5c3-6a2e81d4f907"
+      },
+      {
+        "id": "acd11896-03fc-4bbb-a4b1-08fd9681fc24",
+        "name": "DependencyUpdates",
+        "dataType": "boolean",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 12,
+        "isArray": false,
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "3f0b7c62-9d41-4e8a-b5c3-6a2e81d4f907"
       },
       {
         "id": "bebedc41-cc23-4296-8341-1529056db3af",

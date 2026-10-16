@@ -82,6 +82,102 @@
         "rules": []
       },
       {
+        "id": "98a4f3d9-843b-4108-bbb8-5b38e6138366",
+        "name": "DependencyBisectBudget",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 31,
+        "isArray": false,
+        "lookupReferenceType": "DependencyBisectBudgetPolicy",
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "07b5443d-ded5-4619-a966-82aad8801c9f",
+        "name": "DependencyCooldown",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 30,
+        "isArray": false,
+        "lookupReferenceType": "DependencyCooldownPolicy",
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "ff787814-3dc6-42d0-92b4-e64c0937a660",
+        "name": "DependencyScheduleFrequency",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 27,
+        "isArray": false,
+        "lookupReferenceType": "DependencyScheduleFrequency",
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "8a0b0f3b-bcf1-4e16-8bd9-b762f275c461",
+        "name": "DependencyScheduleHour",
+        "dataType": "number",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 29,
+        "isArray": false,
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": [
+          {
+            "type": "range",
+            "min": 0,
+            "max": 23
+          }
+        ]
+      },
+      {
+        "id": "e3ca54f1-2409-46bc-bbc5-f152996c1d9c",
+        "name": "DependencySchedulePolicy",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 26,
+        "isArray": false,
+        "lookupReferenceType": "DependencySchedulePolicy",
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "26614b4a-29f0-4cfc-803a-e0247e6e4d11",
+        "name": "DependencyScheduleWeekday",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 28,
+        "isArray": false,
+        "lookupReferenceType": "DependencyWeekday",
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "ae9f673b-4e40-4e59-a37a-3121618aacee",
+        "name": "DependencyUpdates",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 25,
+        "isArray": false,
+        "lookupReferenceType": "DependencyUpdatesPolicy",
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
         "id": "f478a083-eb0b-4468-af19-cddbdb07fcc1",
         "name": "DisconnectedAtUtc",
         "dataType": "datetime",

@@ -109,9 +109,12 @@ public class ConnectionStateIsReadOnlyTests
             .Select(a => a.GetProperty("name").GetString()!)
             .ToArray();
 
-        // The merge queue's trust policy joined it (merge-queue PRD O11, O12, O22: set by the owner on the organization page).
+        // The merge queue's trust policy joined it (merge-queue PRD O11, O12, O22: set by the owner on the organization page),
+        // and so did the dependency updater's owner settings (dependency-updates PRD §4.1, Q9).
         editable.Should().Equal(
-            ["DeleteBranchOnPrClose", "MergeQueueApprovalFloor", "MergeQueueBypassRole", "MergeQueueCheckExclusions"],
+            ["DeleteBranchOnPrClose", "DependencyBisectBudget", "DependencyCooldown", "DependencyRules", "DependencyScheduleFrequency",
+             "DependencyScheduleHour", "DependencyScheduleWeekday", "DependencyTimeZone", "DependencyUpdates",
+             "MergeQueueApprovalFloor", "MergeQueueBypassRole", "MergeQueueCheckExclusions"],
             "an account carries nothing else a person may set — identity is part of its document id "
             + "and connection state belongs to the reconcile sweep");
     }
