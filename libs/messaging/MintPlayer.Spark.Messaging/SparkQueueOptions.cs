@@ -61,6 +61,13 @@ public class SparkQueueOptions
     public int? MaxAttempts { get; set; }
 
     /// <summary>
+    /// Rate-limit parks (<c>RetryAfterException</c>) that cost one attempt on this queue. Null = the global
+    /// <see cref="SparkMessagingOptions.RateLimitParksPerAttempt"/> (5). Raise it on a queue that talks to an
+    /// API which throttles often, so throttling alone takes longer to exhaust the budget.
+    /// </summary>
+    public int? RateLimitParksPerAttempt { get; set; }
+
+    /// <summary>
     /// Retry delays for this queue, indexed by attempt. Empty = the global schedule. Read it through
     /// <see cref="ResolveBackoff"/>. Empty by default for the same binder reason as
     /// <see cref="SparkMessagingOptions.BackoffDelays"/>; a configured schedule replaces a

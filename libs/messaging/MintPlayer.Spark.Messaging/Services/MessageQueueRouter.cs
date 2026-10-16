@@ -73,7 +73,15 @@ internal sealed partial class MessageQueueRouter : IAsyncDisposable
     /// the message has been accepted into the lane, not when it has been processed — awaiting it
     /// applies the feeder backpressure described on <see cref="LaneCapacity"/>.
     /// </summary>
-    public async ValueTask RouteAsync(string queueName, string messageId, CancellationToken cancellationToken)
+    public ValueTask RouteAsync(string queueName, string messageId, CancellationToken cancellationToken)
+        => RouteAsync(queueName, messageId, expedite: false, cancellationToken);
+
+    /// <summary>
+    /// <see cref="RouteAsync(string, string, CancellationToken)"/> for a message that may be expedited
+    /// (<see cref="Models.SparkMessage.Expedite"/>, R29): the lane serves it before the normal ids it holds,
+    /// within the starvation cap of <see cref="LaneBuffer"/>.
+    /// </summary>
+    public async ValueTask RouteAsync(string queueName, string messageId, bool expedite, CancellationToken cancellationToken)
     {
         var lane = lanes.GetOrAdd(
             queueName,
@@ -81,9 +89,13 @@ internal sealed partial class MessageQueueRouter : IAsyncDisposable
                 () => self.CreateLane(name), LazyThreadSafetyMode.ExecutionAndPublication),
             this).Value;
 
-        await lane.Channel.Writer.WriteAsync(messageId, cancellationToken);
+        await lane.Buffer.WriteAsync(messageId, expedite, cancellationToken);
         Routed?.Invoke(queueName, messageId);
     }
+
+    /// <summary>Ids routed to <paramref name="queueName"/>'s lane and not yet taken by a pump. For tests and diagnostics.</summary>
+    internal int BufferedCount(string queueName)
+        => lanes.TryGetValue(queueName, out var lane) && lane.IsValueCreated ? lane.Value.Buffer.Count : 0;
 
     /// <summary>
     /// Raised after a message is accepted into its lane, in the order the feeder served it. For tests
@@ -96,19 +108,15 @@ internal sealed partial class MessageQueueRouter : IAsyncDisposable
         // MaxConcurrency > 1 trades this queue's FIFO for throughput: N pumps drain one channel.
         var pumps = Math.Max(1, Options.QueueOptionsFor(queueName)?.MaxConcurrency ?? 1);
 
-        var channel = Channel.CreateBounded<string>(new BoundedChannelOptions(LaneCapacity)
-        {
-            SingleReader = pumps == 1,
-            SingleWriter = false,
-            FullMode = BoundedChannelFullMode.Wait,
-        });
+        // Expedited and normal ids share the one capacity (R29); the pumps share one starvation counter.
+        var buffer = new LaneBuffer(LaneCapacity);
 
         logger.LogInformation("Started {Pumps} message pump(s) for queue '{QueueName}'", pumps, queueName);
-        var lane = new Lane(channel);
+        var lane = new Lane(buffer);
         var token = lifetime?.Token ?? CancellationToken.None;
         lane.PumpTask = pumps == 1
-            ? PumpAsync(queueName, channel, token)
-            : Task.WhenAll(Enumerable.Range(0, pumps).Select(_ => PumpAsync(queueName, channel, token)));
+            ? PumpAsync(queueName, buffer, token)
+            : Task.WhenAll(Enumerable.Range(0, pumps).Select(_ => PumpAsync(queueName, buffer, token)));
         return lane;
     }
 
@@ -121,16 +129,16 @@ internal sealed partial class MessageQueueRouter : IAsyncDisposable
     /// exception is a queue configured with <see cref="SparkQueueOptions.MaxConcurrency"/> above 1,
     /// which runs that many of these on one channel and is FIFO no longer.
     /// </summary>
-    private async Task PumpAsync(string queueName, Channel<string> channel, CancellationToken cancellationToken)
+    private async Task PumpAsync(string queueName, LaneBuffer buffer, CancellationToken cancellationToken)
     {
-        await foreach (var messageId in channel.Reader.ReadAllAsync(cancellationToken))
+        await foreach (var messageId in buffer.ReadAllAsync(cancellationToken))
         {
             try
             {
                 // Claim renewal + HandlerTimeout, shared with the per-queue worker.
                 await ClaimedExecution.RunAsync(
                     documentStore, Options, logger, messageId, Options.HandlerTimeoutFor(queueName),
-                    token => processor.ProcessAsync(messageId, MessageClaims.NodeId, token),
+                    token => processor.ProcessAsync(messageId, MessageClaims.NodeId, token, cancellationToken),
                     cancellationToken);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -166,7 +174,7 @@ internal sealed partial class MessageQueueRouter : IAsyncDisposable
         var live = lanes.Values.Where(l => l.IsValueCreated).Select(l => l.Value).ToArray();
 
         foreach (var lane in live)
-            lane.Channel.Writer.TryComplete();
+            lane.Buffer.TryComplete();
 
         var pumps = live.Select(l => l.PumpTask).OfType<Task>().ToArray();
         if (pumps.Length == 0)
@@ -231,9 +239,9 @@ internal sealed partial class MessageQueueRouter : IAsyncDisposable
         lanes.Clear();
     }
 
-    private sealed class Lane(Channel<string> channel)
+    private sealed class Lane(LaneBuffer buffer)
     {
-        public Channel<string> Channel { get; } = channel;
+        public LaneBuffer Buffer { get; } = buffer;
         public Task? PumpTask { get; set; }
     }
 }

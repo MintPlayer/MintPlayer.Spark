@@ -78,7 +78,7 @@ internal sealed class MessageFeeder : SparkSubscriptionWorker<SparkMessage>
     }
 
     /// <summary>A message the feeder may serve on this wake-up, with its sort key.</summary>
-    internal readonly record struct Candidate(string Id, string QueueName, int Priority, DateTime Sequence);
+    internal readonly record struct Candidate(string Id, string QueueName, int Priority, DateTime Sequence, bool Expedite = false);
 
     /// <summary>
     /// The order in which one wake-up is served (#460, M16b): the sorted page and the subscription
@@ -103,6 +103,9 @@ internal sealed class MessageFeeder : SparkSubscriptionWorker<SparkMessage>
 
         return merged.Values
             .OrderByDescending(c => c.Priority)
+            // R29: within a queue priority, expedited messages first. The lane reorders again on its
+            // own (it may already hold normal messages); this decides which are claimed first.
+            .ThenByDescending(c => c.Expedite)
             .ThenBy(c => c.Sequence)
             .ThenBy(c => c.Id, StringComparer.Ordinal)
             .GroupBy(c => c.Priority)
@@ -156,7 +159,7 @@ internal sealed class MessageFeeder : SparkSubscriptionWorker<SparkMessage>
         var page = await ReadPageAsync(cancellationToken);
         var delivered = batch.Items
             .Where(i => i.Result?.Id is not null)
-            .Select(i => new Candidate(i.Result.Id!, i.Result.QueueName, i.Result.Priority, SequenceOf(i.Result, i.Metadata)))
+            .Select(i => new Candidate(i.Result.Id!, i.Result.QueueName, i.Result.Priority, SequenceOf(i.Result, i.Metadata), i.Result.Expedite))
             .ToList();
 
         var inPage = page.Select(c => c.Id).ToHashSet(StringComparer.Ordinal);
@@ -186,13 +189,14 @@ internal sealed class MessageFeeder : SparkSubscriptionWorker<SparkMessage>
             using var session = DocumentStore.OpenAsyncSession();
             var entries = await session.Query<SparkMessages_ByPriority.Entry, SparkMessages_ByPriority>()
                 .OrderByDescending(e => e.Priority)
+                .ThenByDescending(e => e.Expedite)
                 .ThenBy(e => e.Sequence)
                 .Take(PageSize)
                 .ProjectInto<SparkMessages_ByPriority.Entry>()
                 .ToListAsync(cancellationToken);
             return entries
                 .Where(e => e.Id is not null)
-                .Select(e => new Candidate(e.Id!, e.QueueName, e.Priority, e.Sequence))
+                .Select(e => new Candidate(e.Id!, e.QueueName, e.Priority, e.Sequence, e.Expedite))
                 .ToList();
         }
         catch (Raven.Client.Exceptions.Documents.Indexes.IndexDoesNotExistException)
@@ -280,7 +284,7 @@ internal sealed class MessageFeeder : SparkSubscriptionWorker<SparkMessage>
         {
             try
             {
-                await router.RouteAsync(toRoute[i].QueueName, toRoute[i].Id!, cancellationToken);
+                await router.RouteAsync(toRoute[i].QueueName, toRoute[i].Id!, toRoute[i].Expedite, cancellationToken);
             }
             catch (Exception ex) when (ex is OperationCanceledException or System.Threading.Channels.ChannelClosedException)
             {

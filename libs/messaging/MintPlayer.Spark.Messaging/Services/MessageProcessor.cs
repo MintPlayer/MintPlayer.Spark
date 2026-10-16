@@ -53,10 +53,15 @@ internal sealed partial class MessageProcessor
     /// redelivery, and continuing would process it twice.
     /// </param>
     /// <param name="cancellationToken">
-    /// Cancelled on host shutdown. Note that the park in the outer catch deliberately does
-    /// <b>not</b> use this token — see the comment there.
+    /// Cancelled on host shutdown or when the handler timeout elapses. Note that the park in the outer
+    /// catch deliberately does <b>not</b> use this token — see the comment there.
     /// </param>
-    public async Task ProcessAsync(string messageId, string ownerId, CancellationToken cancellationToken)
+    /// <param name="stoppingToken">
+    /// Cancelled on host shutdown only. A handler cancelled because this fired has not failed, so it is
+    /// not charged an attempt; one cancelled by the handler timeout (<paramref name="cancellationToken"/>
+    /// alone) has, and is.
+    /// </param>
+    public async Task ProcessAsync(string messageId, string ownerId, CancellationToken cancellationToken, CancellationToken stoppingToken = default)
     {
         using var session = documentStore.OpenAsyncSession();
         var sparkMessage = await session.LoadAsync<SparkMessage>(messageId, cancellationToken);
@@ -90,7 +95,7 @@ internal sealed partial class MessageProcessor
                 ExtendOwnClaim(sparkMessage, ownerId, claimTtl);
         };
 
-        await RunHandlersAsync(session, sparkMessage, cancellationToken);
+        await RunHandlersAsync(session, sparkMessage, cancellationToken, stoppingToken);
     }
 
     /// <summary>
@@ -115,8 +120,10 @@ internal sealed partial class MessageProcessor
     public async Task RunHandlersAsync(
         IAsyncDocumentSession session,
         SparkMessage sparkMessage,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        CancellationToken stoppingToken = default)
     {
+        var parksPerAttempt = Options.RateLimitParksPerAttemptFor(sparkMessage.QueueName);
         try
         {
             // WakeUp is consumed here: it must be false on every subsequent save, or a message
@@ -129,6 +136,13 @@ internal sealed partial class MessageProcessor
             // feeder writing into it, and with it every other queue. Over budget means one write that
             // parks the message at its reserved slot, and the lane moves on.
             if (await AdmitAsync(session, sparkMessage, cancellationToken) is false)
+                return;
+
+            // P18: a message abandoned by its host MaxAttempts times is dead-lettered here, before any
+            // handler runs again. Reclaims used to be counted only on SparkMessage.AttemptCount, which the
+            // dead-letter decision never read, so a message that killed every host it reached was handed
+            // to the next one for ever.
+            if (sparkMessage.ReclaimCount > 0 && await DeadLetterExhaustedByReclaimsAsync(session, sparkMessage, parksPerAttempt, cancellationToken))
                 return;
 
             // R2-H6: allow-list check BEFORE Type.GetType. The DI-derived allow-list contains
@@ -272,9 +286,16 @@ internal sealed partial class MessageProcessor
 
                         handler.Status = EHandlerStatus.Completed;
                         handler.CompletedAtUtc = DateTime.UtcNow;
+                        handler.RateLimitedUntilUtc = null;
                         await session.SaveChangesAsync(cancellationToken);
 
                         logger.LogDebug("Handler {HandlerType} completed for message {MessageId}", handlerType.Name, sparkMessage.Id);
+                    }
+                    catch (Exception ex) when (stoppingToken.IsCancellationRequested && Unwrap(ex) is OperationCanceledException)
+                    {
+                        // The host is shutting down, so the handler was interrupted, not failed: no
+                        // attempt is charged. The outer catch parks the message for the next leader.
+                        throw;
                     }
                     catch (TargetInvocationException ex) when (IsNonRetryable(ex.InnerException!))
                     {
@@ -294,6 +315,34 @@ internal sealed partial class MessageProcessor
                         handler.LastError = ex.Message;
                         await session.SaveChangesAsync(cancellationToken);
                     }
+                    catch (Exception ex) when (AsRetryAfter(ex) is { } retryAfter)
+                    {
+                        // R30: told to come back later, which is not a failure. A park costs a fraction
+                        // of an attempt (RetryBudget), and the handler waits for the longer of its
+                        // backoff and the hint; the roll-up below parks the message accordingly.
+                        handler.RateLimitParks++;
+                        handler.LastError = retryAfter.Message;
+
+                        if (RetryBudget.IsExhausted(handler, sparkMessage.ReclaimCount, sparkMessage.MaxAttempts, parksPerAttempt))
+                        {
+                            handler.Status = EHandlerStatus.DeadLettered;
+                            handler.RateLimitedUntilUtc = null;
+                            logger.LogWarning(
+                                "Handler {HandlerType} dead-lettered for message {MessageId} after {Parks} rate-limit park(s) and {AttemptCount} failure(s)",
+                                handlerType.Name, sparkMessage.Id, handler.RateLimitParks, handler.AttemptCount);
+                        }
+                        else
+                        {
+                            var wait = RetryAfterDelay(sparkMessage.QueueName, handler.AttemptCount, retryAfter.Delay);
+                            handler.Status = EHandlerStatus.Failed;
+                            handler.RateLimitedUntilUtc = DateTime.UtcNow + wait;
+                            logger.LogInformation(
+                                "Handler {HandlerType} was rate-limited for message {MessageId}; parked until {Until} (park {Parks})",
+                                handlerType.Name, sparkMessage.Id, handler.RateLimitedUntilUtc, handler.RateLimitParks);
+                        }
+
+                        await session.SaveChangesAsync(cancellationToken);
+                    }
                     catch (Exception ex)
                     {
                         var actualException = ex is TargetInvocationException tie ? tie.InnerException! : ex;
@@ -302,8 +351,9 @@ internal sealed partial class MessageProcessor
 
                         handler.AttemptCount++;
                         handler.LastError = actualException.Message;
+                        handler.RateLimitedUntilUtc = null;
 
-                        if (handler.AttemptCount >= sparkMessage.MaxAttempts)
+                        if (RetryBudget.IsExhausted(handler, sparkMessage.ReclaimCount, sparkMessage.MaxAttempts, parksPerAttempt))
                         {
                             handler.Status = EHandlerStatus.DeadLettered;
                             logger.LogWarning("Handler {HandlerType} dead-lettered after {AttemptCount} attempts for message {MessageId}",
@@ -329,10 +379,20 @@ internal sealed partial class MessageProcessor
         }
         catch (Exception ex)
         {
-            // Unexpected error outside the handler loop (deserialization, DI, etc.)
-            logger.LogError(ex, "Unexpected error processing message {MessageId} (queue: {QueueName})", sparkMessage.Id, sparkMessage.QueueName);
-
-            ParkForRetry(session, sparkMessage, sparkMessage.AttemptCount);
+            if (stoppingToken.IsCancellationRequested && Unwrap(ex) is OperationCanceledException)
+            {
+                // Shutdown, not a failure: no handler was charged, and the message is due at once for
+                // whichever host takes over (the sweeper wakes it on its next tick).
+                logger.LogInformation("Message {MessageId} (queue: {QueueName}) was interrupted by shutdown; parked for the next host",
+                    sparkMessage.Id, sparkMessage.QueueName);
+                ParkForRetry(session, sparkMessage, DateTime.UtcNow);
+            }
+            else
+            {
+                // Unexpected error outside the handler loop (deserialization, DI, etc.)
+                logger.LogError(ex, "Unexpected error processing message {MessageId} (queue: {QueueName})", sparkMessage.Id, sparkMessage.QueueName);
+                ParkForRetry(session, sparkMessage, DateTime.UtcNow + BackoffDelay(sparkMessage.QueueName, sparkMessage.AttemptCount));
+            }
 
             // CancellationToken.None, deliberately. This save is the park that makes the message
             // retryable, and the usual reason we are here on shutdown is that `cancellationToken`
@@ -403,16 +463,32 @@ internal sealed partial class MessageProcessor
     }
 
     /// <summary>
-    /// Parks a message for another attempt after <paramref name="attempt"/> failures, with the queue's
-    /// backoff when it has one. A retry that would fall after the message's expiry dead-letters it as
-    /// Expired instead: the retry could only ever run too late.
+    /// The queue's backoff (or the global one) after <paramref name="attempt"/> failures: the table entry
+    /// for that attempt, the first one for 0, the last one beyond the table.
     /// </summary>
-    private void ParkForRetry(IAsyncDocumentSession session, SparkMessage sparkMessage, int attempt)
+    internal TimeSpan BackoffDelay(string queueName, int attempt)
     {
-        var delays = Options.QueueOptionsFor(sparkMessage.QueueName)?.ResolveBackoff(Options.ResolvedBackoffDelays)
+        var delays = Options.QueueOptionsFor(queueName)?.ResolveBackoff(Options.ResolvedBackoffDelays)
             ?? Options.ResolvedBackoffDelays;
-        var next = DateTime.UtcNow + delays[Math.Clamp(attempt - 1, 0, delays.Length - 1)];
+        return delays[Math.Clamp(attempt - 1, 0, delays.Length - 1)];
+    }
 
+    /// <summary>
+    /// R30: how long a rate-limited handler waits — the longer of its backoff for the failures it has
+    /// (<paramref name="attempt"/>) and the remote side's hint.
+    /// </summary>
+    internal TimeSpan RetryAfterDelay(string queueName, int attempt, TimeSpan hint)
+    {
+        var backoff = BackoffDelay(queueName, attempt);
+        return hint > backoff ? hint : backoff;
+    }
+
+    /// <summary>
+    /// Parks a message for another attempt at <paramref name="next"/>. A retry that would fall after the
+    /// message's expiry dead-letters it as Expired instead: the retry could only ever run too late.
+    /// </summary>
+    private void ParkForRetry(IAsyncDocumentSession session, SparkMessage sparkMessage, DateTime next)
+    {
         if (sparkMessage.ExpiresAtUtc is { } expiresAt && next > expiresAt)
         {
             logger.LogWarning("Message {MessageId} would retry at {Next}, after it expires at {ExpiresAt}; dead-lettering",
@@ -453,6 +529,7 @@ internal sealed partial class MessageProcessor
         sparkMessage.CompletedAtUtc = DateTime.UtcNow;
         sparkMessage.OwnerId = null;
         sparkMessage.ClaimExpiresAtUtc = null;
+        sparkMessage.RateLimitedUntilUtc = null;
         if (sparkMessage.ScrubPayloadOnTerminal)
             sparkMessage.PayloadJson = string.Empty;
         if (sparkMessage.Id is { } id)
@@ -481,19 +558,25 @@ internal sealed partial class MessageProcessor
                 return;
             }
 
-            var exhausted = sparkMessage.Handlers.Any(h => h.AttemptCount >= sparkMessage.MaxAttempts);
             Finish(session, sparkMessage, EMessageStatus.DeadLettered,
-                exhausted ? EDeadLetterReason.MaxAttempts : EDeadLetterReason.NonRetryable);
+                RetryBudget.ReasonFor(sparkMessage, Options.RateLimitParksPerAttemptFor(sparkMessage.QueueName)));
         }
         else if (hasAnyFailed || hasAnyPending)
         {
-            // Schedule retry based on the highest attempt count among failed handlers.
-            var maxAttempt = sparkMessage.Handlers
-                .Where(h => h.Status == EHandlerStatus.Failed)
-                .Select(h => h.AttemptCount)
-                .DefaultIfEmpty(0)
+            // The message comes back when its slowest failed handler may run again: a rate-limited one
+            // at the end of its park (max(backoff, hint), set when it was parked), any other at its
+            // backoff for the failures it has. Without a failed handler, the first backoff step.
+            var now = DateTime.UtcNow;
+            var failed = sparkMessage.Handlers.Where(h => h.Status == EHandlerStatus.Failed).ToList();
+            var next = failed
+                .Select(h => h.RateLimitedUntilUtc ?? now + BackoffDelay(sparkMessage.QueueName, h.AttemptCount))
+                .DefaultIfEmpty(now + BackoffDelay(sparkMessage.QueueName, 0))
                 .Max();
-            ParkForRetry(session, sparkMessage, maxAttempt);
+
+            // Null when no handler is waiting for a rate limit (Max over nullables skips nulls).
+            sparkMessage.RateLimitedUntilUtc = failed.Max(h => h.RateLimitedUntilUtc);
+
+            ParkForRetry(session, sparkMessage, next);
 
             if (sparkMessage.Status == EMessageStatus.Failed)
                 logger.LogInformation("Message {MessageId} has failing handlers, retrying at {NextAttempt}",
@@ -532,9 +615,74 @@ internal sealed partial class MessageProcessor
         }
     }
 
+    /// <summary>
+    /// P18: dead-letters every unfinished handler whose budget the reclaims have used up, before any of
+    /// them runs again. Returns true when that made the message terminal (it has been saved).
+    /// </summary>
+    private async Task<bool> DeadLetterExhaustedByReclaimsAsync(
+        IAsyncDocumentSession session, SparkMessage sparkMessage, int parksPerAttempt, CancellationToken cancellationToken)
+    {
+        var reclaims = sparkMessage.ReclaimCount;
+
+        // Abandoned before its handlers were even recorded (a crash during the first pickup itself).
+        if (sparkMessage.Handlers.Count == 0)
+        {
+            if (reclaims < sparkMessage.MaxAttempts)
+                return false;
+            logger.LogWarning("Message {MessageId} was abandoned by its host {Reclaims} time(s); dead-lettering", sparkMessage.Id, reclaims);
+            DeadLetter(session, sparkMessage, EDeadLetterReason.MaxAttempts);
+            await session.SaveChangesAsync(cancellationToken);
+            return true;
+        }
+
+        var changed = false;
+        foreach (var handler in sparkMessage.Handlers)
+        {
+            if (handler.Status is EHandlerStatus.Completed or EHandlerStatus.DeadLettered)
+                continue;
+            if (!RetryBudget.IsExhausted(handler, reclaims, sparkMessage.MaxAttempts, parksPerAttempt))
+                continue;
+
+            handler.Status = EHandlerStatus.DeadLettered;
+            handler.RateLimitedUntilUtc = null;
+            handler.LastError = $"The message was abandoned by its host {reclaims} time(s) (reclaimed); "
+                + (handler.LastError is { } last ? $"last error: {last}" : "no handler error was recorded");
+            changed = true;
+            logger.LogWarning("Handler {HandlerType} dead-lettered for message {MessageId}: abandoned by its host {Reclaims} time(s)",
+                handler.HandlerType, sparkMessage.Id, reclaims);
+        }
+
+        if (!changed)
+            return false;
+
+        if (!sparkMessage.Handlers.All(h => h.Status is EHandlerStatus.Completed or EHandlerStatus.DeadLettered))
+        {
+            await session.SaveChangesAsync(cancellationToken);
+            return false;
+        }
+
+        RollupMessageStatus(sparkMessage, session);
+        await session.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
     private static bool IsNonRetryable(Exception ex)
     {
         return ex is NonRetryableException
             || ex.InnerException is NonRetryableException;
+    }
+
+    /// <summary>The handler's own exception: reflection wraps a synchronous throw in a <see cref="TargetInvocationException"/>.</summary>
+    private static Exception Unwrap(Exception ex)
+        => ex is TargetInvocationException { InnerException: { } inner } ? inner : ex;
+
+    /// <summary>
+    /// The <see cref="RetryAfterException"/> a handler threw, wrapped by reflection or not, or carried as
+    /// the inner exception — the same shapes <see cref="IsNonRetryable"/> recognises.
+    /// </summary>
+    private static RetryAfterException? AsRetryAfter(Exception ex)
+    {
+        var actual = Unwrap(ex);
+        return actual as RetryAfterException ?? actual.InnerException as RetryAfterException;
     }
 }

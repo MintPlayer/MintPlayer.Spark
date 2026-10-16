@@ -40,6 +40,19 @@ public class SparkMessagingOptions
     public int MaxAttempts { get; set; } = 5;
 
     /// <summary>
+    /// How many rate-limit parks (<c>RetryAfterException</c>) cost one attempt of <see cref="MaxAttempts"/>.
+    /// A handler is dead-lettered when <c>AttemptCount + RateLimitParks / RateLimitParksPerAttempt &gt;= MaxAttempts</c>
+    /// (integer division): with the defaults, 5 genuine errors, 25 parks, or a mix such as 2 errors and 15
+    /// parks. Default 5; values below 1 count as 1. Overridable per queue
+    /// (<see cref="SparkQueueOptions.RateLimitParksPerAttempt"/>); read it through
+    /// <see cref="RateLimitParksPerAttemptFor"/>.
+    /// </summary>
+    public int RateLimitParksPerAttempt { get; set; } = DefaultRateLimitParksPerAttempt;
+
+    /// <summary>The <see cref="RateLimitParksPerAttempt"/> used when nothing is configured.</summary>
+    public const int DefaultRateLimitParksPerAttempt = 5;
+
+    /// <summary>
     /// How often <c>MessageRetrySweeper</c> wakes up messages whose retry backoff or
     /// broadcast delay has elapsed, by setting their <c>WakeUp</c> gate so the queue
     /// subscriptions re-evaluate and redeliver them. This is the redelivery granularity:
@@ -163,6 +176,13 @@ public class SparkMessagingOptions
     /// <summary>The handler timeout of <paramref name="queueName"/>: its <see cref="SparkQueueOptions.HandlerTimeout"/>, or <see cref="HandlerTimeout"/>.</summary>
     public TimeSpan HandlerTimeoutFor(string queueName)
         => QueueOptionsFor(queueName)?.HandlerTimeout ?? HandlerTimeout;
+
+    /// <summary>
+    /// The rate-limit parks per attempt of <paramref name="queueName"/>: its
+    /// <see cref="SparkQueueOptions.RateLimitParksPerAttempt"/>, or <see cref="RateLimitParksPerAttempt"/>; at least 1.
+    /// </summary>
+    public int RateLimitParksPerAttemptFor(string queueName)
+        => Math.Max(1, QueueOptionsFor(queueName)?.RateLimitParksPerAttempt ?? RateLimitParksPerAttempt);
 
     /// <summary>The priority of <paramref name="queueName"/>: its setting, or <see cref="SparkQueuePriority.Normal"/>.</summary>
     public SparkQueuePriority PriorityFor(string queueName)

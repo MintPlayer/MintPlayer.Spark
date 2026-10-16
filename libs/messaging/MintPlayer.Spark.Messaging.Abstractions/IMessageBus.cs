@@ -35,4 +35,13 @@ public interface IMessageBus
     /// </summary>
     Task BroadcastOnceAsync<TMessage>(TMessage message, string deduplicationKey, CancellationToken cancellationToken = default)
         => BroadcastAsync(message, new BroadcastOptions { DeduplicationKey = deduplicationKey }, cancellationToken);
+
+    /// <summary>
+    /// <see cref="BroadcastOnceAsync{TMessage}(TMessage, string, CancellationToken)"/> with the other
+    /// per-publish settings (for example <see cref="BroadcastOptions.Expedite"/>).
+    /// <paramref name="deduplicationKey"/> replaces any <see cref="BroadcastOptions.DeduplicationKey"/>
+    /// in <paramref name="options"/>.
+    /// </summary>
+    Task BroadcastOnceAsync<TMessage>(TMessage message, string deduplicationKey, BroadcastOptions options, CancellationToken cancellationToken = default)
+        => BroadcastAsync(message, options with { DeduplicationKey = deduplicationKey }, cancellationToken);
 }
