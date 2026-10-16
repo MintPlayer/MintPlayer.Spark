@@ -1,0 +1,22 @@
+// A reason or a version list is a sentence or a few lines: let it wrap so the table stays in view, instead of inheriting the
+// responsive table's nowrap and scrolling the whole table sideways.
+.du-why {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  min-width: 12rem;
+}
+
+.du-state {
+  display: inline-block;
+  padding: 0.35em 0.65em;
+  font-size: 0.75em;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  vertical-align: baseline;
+  border-radius: var(--bs-border-radius-pill);
+}
+
+summary {
+  cursor: pointer;
+}

@@ -11,6 +11,8 @@ import { RepoSetupPanelComponent } from '../components/repo-setup-panel/repo-set
 import { RepoCommitGraphPanelComponent } from '../components/repo-commit-graph-panel/repo-commit-graph-panel.component';
 import { RepoMergeQueuePanelComponent } from '../components/repo-merge-queue-panel/repo-merge-queue-panel.component';
 import { AccountDependencyGraphPanelComponent } from '../components/account-dependency-graph-panel/account-dependency-graph-panel.component';
+import { AccountDependencyUpdatesPanelComponent } from '../components/account-dependency-updates-panel/account-dependency-updates-panel.component';
+import { RepoDependencyUpdatesPanelComponent } from '../components/repo-dependency-updates-panel/repo-dependency-updates-panel.component';
 import { AccountPermissionsNoticeComponent } from '../components/account-permissions-notice/account-permissions-notice.component';
 import { CommitFilesExtrasComponent } from './commit-files-extras.component';
 import { HomeExtrasComponent } from './home-extras.component';
@@ -89,6 +91,19 @@ class StubDependencyGraphPanel {
   readonly login = input<string>();
 }
 
+@Component({ selector: 'app-account-dependency-updates-panel', template: '' })
+class StubDependencyFleetPanel {
+  readonly provider = input<string>();
+  readonly login = input<string>();
+}
+
+@Component({ selector: 'app-repo-dependency-updates-panel', template: '' })
+class StubRepoDependencyPanel {
+  readonly provider = input<string>();
+  readonly owner = input<string>();
+  readonly name = input<string>();
+}
+
 @Component({ selector: 'app-account-permissions-notice', template: '' })
 class StubPermissionsNotice {
   readonly provider = input<string>();
@@ -101,11 +116,12 @@ describe('PoDetailPageComponent', () => {
     TestBed.overrideComponent(PoDetailPageComponent, {
       remove: {
         imports: [SparkPoDetailComponent, RepoBadgePanelComponent, RepoTrendPanelComponent, RepoCommitGraphPanelComponent, RepoMergeQueuePanelComponent,
-          RepoSetupPanelComponent, CommitFilesExtrasComponent, HomeExtrasComponent, AccountDependencyGraphPanelComponent, AccountPermissionsNoticeComponent],
+          RepoSetupPanelComponent, CommitFilesExtrasComponent, HomeExtrasComponent, AccountDependencyGraphPanelComponent, AccountPermissionsNoticeComponent,
+          AccountDependencyUpdatesPanelComponent, RepoDependencyUpdatesPanelComponent],
       },
       add: {
         imports: [StubPoDetail, StubBadgePanel, StubTrendPanel, StubCommitGraphPanel, StubMergeQueuePanel, StubSetupPanel, StubCommitFilesExtras,
-          StubHomeExtras, StubDependencyGraphPanel, StubPermissionsNotice],
+          StubHomeExtras, StubDependencyGraphPanel, StubPermissionsNotice, StubDependencyFleetPanel, StubRepoDependencyPanel],
       },
     });
   });
@@ -124,10 +140,11 @@ describe('PoDetailPageComponent', () => {
   it('mounts the badge, trend, commit-graph, merge-queue and setup panels on a Repository, scoped to its forge', () => {
     const fixture = render('Repository', po({ FullName: 'acme/widgets' }, 'Repositories/gitlab/1'));
 
-    for (const type of [StubBadgePanel, StubTrendPanel, StubCommitGraphPanel, StubMergeQueuePanel]) {
+    for (const type of [StubBadgePanel, StubTrendPanel, StubCommitGraphPanel, StubMergeQueuePanel, StubRepoDependencyPanel]) {
       const panel = fixture.debugElement.query(By.directive(type)).componentInstance as StubBadgePanel;
       expect([panel.provider(), panel.owner(), panel.name()]).toEqual(['gitlab', 'acme', 'widgets']);
     }
+    expect(has(fixture, StubDependencyFleetPanel)).toBe(false);
     expect(has(fixture, StubSetupPanel)).toBe(true);
     expect(has(fixture, StubCommitFilesExtras)).toBe(false);
     expect(has(fixture, StubHomeExtras)).toBe(false);
@@ -170,8 +187,11 @@ describe('PoDetailPageComponent', () => {
       .toEqual(['gitlab', 'acme']);
     expect((notice.nativeElement as HTMLElement).closest('.slot-before-queries')).not.toBeNull();
     expect(fixture.debugElement.query(By.css('.slot-extras')).query(By.directive(StubPermissionsNotice))).toBeNull();
-    // The dependency graph stays an extra.
+    // The dependency graph stays an extra, and the fleet view follows it, scoped the same way.
     expect(fixture.debugElement.query(By.css('.slot-extras')).query(By.directive(StubDependencyGraphPanel))).not.toBeNull();
+    const fleet = fixture.debugElement.query(By.directive(StubDependencyFleetPanel)).componentInstance as StubDependencyFleetPanel;
+    expect([fleet.provider(), fleet.login()]).toEqual(['gitlab', 'acme']);
+    expect(has(fixture, StubRepoDependencyPanel)).toBe(false);
 
     for (const object of [po({ Login: 'acme' }), po({}, 'Accounts/github/1'), po({ Login: 3 }, 'Accounts/github/1')]) {
       expect(has(render('Account', object), StubDependencyGraphPanel)).toBe(false);

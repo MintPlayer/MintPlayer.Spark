@@ -1,1 +1,3 @@
 .claude/
+# Test fixtures that are whole repository snapshots (csproj, package.json): not projects of this workspace.
+apps/CodeCoverage/dependency-action/test/fixtures/
