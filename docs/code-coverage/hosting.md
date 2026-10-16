@@ -410,6 +410,7 @@ environment.
 | Repository | Actions | **Read & write** | Merge queue: dispatching the regenerate workflow (write), reading its run and downloading its `merge-queue-patch` artifact (read). `GitHubForgeMergeQueue`. |
 | Repository | Workflows | **Read & write** | Merge queue: GitHub refuses an App push that brings workflow files (`.github/workflows/**`) the target repository has on no branch. The queue's per-job token asks for it only then (PRD D59): the publish of a same-repository pull request whose own change touches `.github/workflows/**` and goes through because nothing is dispatched (O21 A, D63), the queue-branch push of one the bypass role lets through a dispatch (O22), and a fork's publish whose commit changes `.github/workflows` against the fork branch's head (the base changed them since, which the fork lacks) or against the base (the fork's own change, which O25 lets through without a dispatch; D67). The prepare pushes nothing and never asks for it (D65). |
 | Repository | Commit statuses | Read-only | Merge queue: the gate waits for every commit status as well as every check run (PRD O12; GitGuardian reports as one). |
+| Repository | Dependabot alerts | Read-only | Dependency updates: the `dependabot_alert` event that starts an out-of-slot security run (dependency-updates PRD R10, D-L12). GitHub's key for it is `vulnerability_alerts`. |
 | Organization | Projects | Read & write | Moving cards on Projects V2 boards (GraphQL, `GitHubProjectCards.cs`) — board automation only. |
 | Organization | Members | Read-only | Required by GitHub to subscribe to the `organization` event (organization renames). |
 | Account | Email addresses | Read-only | First sign-in reads `GET /user/emails` for a verified primary address; without it sign-in fails with `email_not_verified`. |
@@ -429,6 +430,19 @@ settings are not, and the queue reports that as `ChecksOnly` rather than guessin
 Actions, Workflows and Commit statuses rows are new: each installation has to accept them (see the notice below,
 PRD O17) before the queue can run there; until then a refused call carries the permission GitHub named, for the
 queue check run to link.
+
+**What dependency updates use** ([dependency-updates.md](dependency-updates.md), PRD §13): the same rows, at
+the levels the table gives. **Contents: write** pushes the bot-owned branches `mintplayer/dependencies`,
+`mintplayer/dependencies-work` and `mintplayer/dependencies-onboarding` (always through a per-job token, like the
+merge queue). **Workflows: write** is needed for the onboarding pull request (it adds the lookup and apply
+workflows) and for Actions `uses:` bumps (R15); the per-job token asks for it only for those pushes. **Actions:
+write** dispatches the lookup, apply, relock and migrate runs and reads their artifacts. **Pull requests: write**
+opens and updates the rolling pull request. **Checks: write** publishes the `Dependency updates` check run.
+**Issues: write** posts the bot's comments and reacts to `approve`, `hold`, `unhold`, `bisect` and `refresh`.
+**Dependabot alerts: read** delivers the `dependabot_alert` event. Before it opens an onboarding pull request, the bot
+reads the App's declaration and the installation's acceptance of this set (`EMergeQueueAppNeed.DependencyUpdates`); a
+gap blocks onboarding with the reason, shown on the repository's dependency panel and the account's fleet view, and
+retried daily.
 
 The Issues and Projects rows are derived from the project-automation code and
 [`docs/coverage_project_automation_PRD.md`](../coverage_project_automation_PRD.md); GitHub's UI is the
@@ -476,7 +490,13 @@ cannot be read, the queue goes ahead (fail open) and a later 403 still evicts.
 | Organization | `GitHubEventsRecipient` | organization renames (action `renamed`) |
 | Issues, Issue comment, Pull request review, Check run | `ProjectAutomationRouter`; `GitHubEventsRecipient` for the merge queue | board automation; Issue comment (`/queue`, `/dequeue`), Pull request review (approvals, dismissals) and Check run also feed the merge queue (PRD M5). A check run's `requested_action` is a click on the queue check's **Add to merge queue** button (PRD O30): a command, raised whatever the queue holds |
 | Workflow run, Check suite, Status | `GitHubEventsRecipient` → merge queue (PRD M5) | **New for the merge queue.** The regenerate run's completion (`workflow_run`), "every suite on the final commit has completed" (`check_suite`, O12) and commit statuses, which O12 counts too (`status`; needs Commit statuses: read, D40). Delivery to an App was measured live for the first two (PRD D19). Raised onward only while the repository has something queued. |
+| Release | `GitHubEventsRecipient` → dependency updates | **New for dependency updates.** A published release of a producer repository: half of the own-package check, and the start of release propagation to its consumers (PRD §7.6, D-L11). |
+| Dependabot alert | `GitHubEventsRecipient` → dependency updates | **New for dependency updates.** `created`, `reopened`, `reintroduced` start an out-of-slot security run (R10, D-L12). Needs Dependabot alerts: read. |
 | `installation` (incl. action `new_permissions_accepted`), `installation_repositories` | `GitHubEventsRecipient` | always delivered to Apps; no subscription needed |
+
+Dependency updates also listen to events already in the table: `workflow_run` (their lookup, apply, relock and migrate
+runs finish), `check_run` / `check_suite` (the rolling head's CI), `issue_comment` (commands), `pull_request` (the rolling
+and onboarding pull requests merged or closed) and `push` (a producer's default branch, and manifest rescans).
 
 The merge queue's label (`merge-queue`) arrives as `pull_request` with action `labeled` / `unlabeled`; there is no
 separate label subscription to add.

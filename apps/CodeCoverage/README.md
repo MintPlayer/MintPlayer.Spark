@@ -414,10 +414,11 @@ the app actually uses:
 | Metadata | Read-only | Mandatory on every App; covers repository listings |
 | Pull requests | Read-only; **Read & write** for the PR comment | Required to subscribe to `pull_request` events |
 | Checks | Read & write | The `coverage/project` and `coverage/patch` check-runs (see below) |
-| Issues | Read-only | Project-board automation and the merge queue's `/queue` comments: the `issues` and `issue_comment` events |
-| Actions | Read & write | Merge queue only: dispatching the regenerate workflow, reading its run and artifact, cancelling a run it no longer waits for |
-| Workflows | Read & write | Merge queue only: a push that brings workflow files the target repository lacks. Each writer job's own token asks for it only then (merge-queue PRD D59) |
+| Issues | Read-only; **Read & write** for the merge queue and dependency updates | Project-board automation and the merge queue's `/queue` comments: the `issues` and `issue_comment` events. Write: the merge queue closes linked issues; dependency updates post comments and react to `approve`, `hold`, `unhold`, `bisect`, `refresh` |
+| Actions | Read & write | Merge queue: dispatching the regenerate workflow, reading its run and artifact, cancelling a run it no longer waits for. Dependency updates: the same for the lookup, apply, relock and migrate runs |
+| Workflows | Read & write | Merge queue: a push that brings workflow files the target repository lacks. Dependency updates: the onboarding pull request (it adds the workflows) and Actions `uses:` bumps. Each writer job's own token asks for it only then (merge-queue PRD D59, dependency-updates PRD R15) |
 | Commit statuses | Read-only | Merge queue only: its gate waits for commit statuses as well as check runs |
+| Dependabot alerts | Read-only | Dependency updates only: the `dependabot_alert` event starts an out-of-slot security run (dependency-updates PRD R10) |
 
 **Account permissions**
 
@@ -451,7 +452,7 @@ of the accepted-vs-declared gap this section warns about.)
 
 **Webhook events to subscribe**: `Repository`, `Push`, `Pull request`, `Organization`; for
 project-board automation also `Issues`, `Issue comment`, `Pull request review` and `Check run`;
-for the merge queue also `Workflow run` and `Check suite`
+for the merge queue also `Workflow run` and `Check suite`; for dependency updates also `Release` and `Dependabot alert`
 (`installation` / `installation_repositories` are always delivered to Apps, no
 subscription needed). Webhook URL: your smee channel in dev, `https://<your-domain>/api/github/webhooks` in prod;
 set a webhook secret and keep it in `GitHub:WebhookSecret` (`GITHUB_WEBHOOK_SECRET` on the server).

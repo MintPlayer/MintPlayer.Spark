@@ -241,13 +241,15 @@ public partial class GitHubInstallationPermissions : IForgeInstallationPermissio
         (EMergeQueueAppNeed.RerunActions, [("actions", "write")], []),
         (EMergeQueueAppNeed.Workflows, [("workflows", "write")], []),
         (EMergeQueueAppNeed.CloseIssues, [("issues", "write")], []),
-        // The dependency updater (dependency-updates PRD §7.2, R15, R16): its branches and pull request, its dispatches and
-        // check run, reactions on commands, and workflows write for the onboarding templates and Actions bumps. It hears its
-        // runs finish, its commands, its head's checks and the producers' releases. Not in AllNeeds: only an account that
-        // turns the feature on is asked for it.
+        // The dependency updater (dependency-updates PRD §7.2, R10, R15, R16, D-L12): its branches and pull request, its
+        // dispatches (lookup, apply, relock, migrate) and their artifacts, its check run, its comments and the reactions on
+        // commands, workflows write for the onboarding templates and Actions bumps, and Dependabot alerts read for the
+        // security trigger. It hears its runs finish, its commands, its head's checks, its pull requests merge or close,
+        // producers' pushes and releases, and new alerts. Not in AllNeeds: only an account that turns the feature on is asked.
         (EMergeQueueAppNeed.DependencyUpdates,
-            [("contents", "write"), ("pull_requests", "write"), ("workflows", "write"), ("actions", "write"), ("checks", "write"), ("issues", "write")],
-            ["workflow_run", "issue_comment", "check_run", "check_suite", "push", "release"]),
+            [("contents", "write"), ("pull_requests", "write"), ("workflows", "write"), ("actions", "write"), ("checks", "write"), ("issues", "write"),
+                ("metadata", "read"), ("vulnerability_alerts", "read")],
+            ["workflow_run", "issue_comment", "check_run", "check_suite", "pull_request", "push", "release", "dependabot_alert"]),
     ];
 
     public IReadOnlyList<PendingPermission> NeededPending(IReadOnlyList<PendingPermission> pending, EMergeQueueAppNeed needs)
@@ -450,6 +452,9 @@ public partial class GitHubInstallationPermissions : IForgeInstallationPermissio
     /// <summary><c>pull_requests</c> → <c>Pull requests</c>.</summary>
     public static string DisplayName(string name)
     {
+        // GitHub's settings page calls the vulnerability_alerts key "Dependabot alerts".
+        if (string.Equals(name, "vulnerability_alerts", StringComparison.OrdinalIgnoreCase))
+            return "Dependabot alerts";
         var words = name.Replace('_', ' ').Trim();
         return words.Length == 0 ? name : char.ToUpperInvariant(words[0]) + words[1..];
     }

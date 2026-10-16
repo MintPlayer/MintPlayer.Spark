@@ -383,6 +383,20 @@ public class GitHubInstallationPermissionsTests
     }
 
     [Fact]
+    public void Dependency_updates_take_workflows_actions_issues_write_dependabot_alerts_and_their_events()
+    {
+        var gaps = GitHubInstallationPermissions.ComputeMissing(CoreApp(), CoreEvents.ToHashSet(), EMergeQueueAppNeed.DependencyUpdates);
+
+        gaps.MissingPermissions.Should().Equal([
+            new PendingPermission("actions", "Actions", "write", null),
+            new PendingPermission("issues", "Issues", "write", "read"),
+            new PendingPermission("vulnerability_alerts", "Dependabot alerts", "read", null),
+            new PendingPermission("workflows", "Workflows", "write", null),
+        ]);
+        gaps.MissingEvents.Should().Equal(["dependabot_alert", "release", "workflow_run"]);
+    }
+
+    [Fact]
     public void A_permission_declared_below_the_level_needed_is_missing_with_both_levels()
     {
         var app = CoreApp();
