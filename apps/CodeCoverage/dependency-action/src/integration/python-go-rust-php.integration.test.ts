@@ -1,3 +1,4 @@
+import { pathToFileURL } from 'node:url';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { item, tempDir } from '../testing/helpers';
@@ -43,7 +44,7 @@ describe.skipIf(!enabled('python+go+rust+php', 'go'))('Go against GOPROXY=file:/
     { path: 'example.com/liba', version: 'v1.0.0' }, { path: 'example.com/liba', version: 'v1.1.0' },
     { path: 'example.com/newgo', version: 'v1.0.0' }, { path: 'example.com/newgo', version: 'v1.1.0', goVersion: '1.999' },
   ]));
-  const env = () => ({ GOPROXY: `file://${proxy.replace(/\\/g, '/')},off`, GONOSUMDB: '*', GONOSUMCHECK: '1', GOFLAGS: '-mod=mod', GOSUMDB: 'off', GOPATH: tempDir(), GOTOOLCHAIN: 'local' });
+  const env = () => ({ GOPROXY: `${pathToFileURL(proxy).href},off`, GONOSUMDB: '*', GONOSUMCHECK: '1', GOFLAGS: '-mod=mod', GOSUMDB: 'off', GOPATH: tempDir(), GOTOOLCHAIN: 'local' });
   const main = 'package main\n\nimport (\n\t_ "example.com/liba"\n\t_ "example.com/newgo"\n)\n\nfunc main() {}\n';
   const gomod = 'module example.com/it\n\ngo 1.21\n\nrequire (\n\texample.com/liba v1.0.0 // pinned\n\texample.com/newgo v1.0.0\n)\n';
   const goItem = (dep: string, to: string) => item({ depName: dep, datasource: 'go', manager: 'gomod', packageFile: 'go.mod', currentValue: 'v1.0.0', newValue: to, newVersion: to });

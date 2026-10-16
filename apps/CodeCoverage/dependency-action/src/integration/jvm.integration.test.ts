@@ -1,3 +1,4 @@
+import { pathToFileURL } from 'node:url';
 import { item, tempDir } from '../testing/helpers';
 import { mavenRepo } from './registries';
 import { applyOnRepo, enabled, must } from './setup';
@@ -20,7 +21,7 @@ describe.skipIf(!enabled('jvm', 'mvn'))('Maven against a file:// repository', ()
   <properties>
     <liba.version>${prop}</liba.version>   <!-- shared -->
   </properties>
-  <repositories><repository><id>local</id><url>file://${repo.replace(/\\/g, '/')}</url></repository></repositories>
+  <repositories><repository><id>local</id><url>${pathToFileURL(repo).href}</url></repository></repositories>
   <dependencies>
     <dependency><groupId>com.acme</groupId><artifactId>liba</artifactId><version>\${liba.version}</version></dependency>
   </dependencies>
@@ -47,7 +48,7 @@ describe.skipIf(!enabled('jvm', 'gradle'))('Gradle against a file:// repository'
   ]));
   const files = () => ({
     'settings.gradle': 'rootProject.name = "it"\n',
-    'build.gradle': `plugins { id 'java-library' }\nrepositories { maven { url = uri("file://${repo.replace(/\\/g, '/')}") } }\ndependencyLocking { lockAllConfigurations() }\ndependencies { implementation(libs.liba) }\n`,
+    'build.gradle': `plugins { id 'java-library' }\nrepositories { maven { url = uri("${pathToFileURL(repo).href}") } }\ndependencyLocking { lockAllConfigurations() }\ndependencies { implementation(libs.liba) }\n`,
     'gradle/libs.versions.toml': '[libraries]\nliba = { module = "com.acme:liba", version = "1.0.0" }\n',
   });
 
