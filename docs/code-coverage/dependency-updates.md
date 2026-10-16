@@ -7,7 +7,14 @@ your repository ever runs on the CodeCoverage server: every restore, relock and 
 Actions**, in workflows the bot dispatches and whose results it checks before anything is pushed.
 
 The design, its decisions and their evidence are in [dependency-updates-PRD.md](dependency-updates-PRD.md) (§13 is
-authoritative). This page is the user guide.
+authoritative). This page is the user guide. The app's own setup guide, **Guides → Dependency updater** in the sidebar
+(`/dependency-updates/setup`), walks through the same setup step by step; its `dependencies:` example is §4's block,
+checked byte for byte by `dependency-updates-setup.snippets.spec.ts`, so change the two together.
+
+**Before you start:** auto-merge is an enqueue in the [merge queue](merge-queue.md) and nothing else (R5), so a repository
+without `mergeQueue: { enabled: true }` gets the rolling pull request but merges it by hand. The coverage gate
+(`autoMerge.maxCoverageDrop`, R11) needs the rolling pull request's CI to upload coverage; without coverage data the gate is
+skipped, and a report with uploads missing is a hold of its own.
 
 ## 1. How it works, in one run
 
