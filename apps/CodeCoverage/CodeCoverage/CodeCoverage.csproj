@@ -29,6 +29,8 @@
 	<ItemGroup>
 		<!-- The schemas themselves, one source shared with the runner (ajv): embedded, never copied. -->
 		<EmbeddedResource Include="..\contracts\dependency-update\*.schema.json" LogicalName="DependencyContracts.%(Filename)%(Extension)" />
+		<!-- The onboarding pull request's workflow templates (R16), one source with the action's own template tests. -->
+		<EmbeddedResource Include="..\dependency-action\templates\*.yml" LogicalName="DependencyTemplates.%(Filename)%(Extension)" />
 	</ItemGroup>
 
 	<ItemGroup>

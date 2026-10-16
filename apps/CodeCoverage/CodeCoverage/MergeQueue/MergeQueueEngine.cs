@@ -396,7 +396,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             return new("branch", $"`{pull.BaseRef}` is not a queue branch: `coverage.yml` on the default branch lists {string.Join(", ", section.Branches.Select(b => $"`{b}`"))}.");
 
         // O9 / T2: the actor needs the write role; a triage user's label or a fork author's comment is refused.
-        var role = await context.Queue.GetActorRoleAsync(repository, actor, ct);
+        var role = await ActorRoleAsync(context, actor, entry.EnqueuedVia, ct);
         if (role < EForgeRepositoryRole.Write)
             return new("role", $"@{actor} needs at least write access to queue a pull request (has {role.ToString().ToLowerInvariant()}).");
 
@@ -731,7 +731,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                 // O22: the bypass role matters here only for a same-repository change under .github/** (a fork's never
                 // bypasses, O25); the enqueuer's role is read now, when it decides.
                 var bypass = result.TouchesWorkflows && !entry.IsFork
-                    && Bypasses(await context.Queue.GetActorRoleAsync(repository, entry.EnqueuedBy, ct), entry.Config.BypassRole);
+                    && Bypasses(await ActorRoleAsync(context, entry.EnqueuedBy, entry.EnqueuedVia, ct), entry.Config.BypassRole);
                 // §0 D63, D67: whether to dispatch is decided in one place, together with what a .github/** change may do.
                 var plan = MergeQueueWorkflowGuard.AfterPrepare(entry.RegenerateWorkflows, result.TouchesWorkflows, entry.IsFork, bypass);
                 entry.WorkflowGuardBypassed = plan == EMergeQueuePlan.Dispatch && result.TouchesWorkflows;
@@ -1351,7 +1351,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         var repository = context.Repository;
 
         // O9: the role is checked again right before the merge; a revoked role evicts.
-        var role = await context.Queue.GetActorRoleAsync(repository, entry.EnqueuedBy, ct);
+        var role = await ActorRoleAsync(context, entry.EnqueuedBy, entry.EnqueuedVia, ct);
         if (role < EForgeRepositoryRole.Write)
         {
             await EvictAsync(context, entry, "role-revoked", $"@{entry.EnqueuedBy}, who queued this pull request, no longer has write access.", ct: ct);
@@ -1798,6 +1798,16 @@ public partial class MergeQueueEngine : IMergeQueueEngine
     /// and pinning, O9's own <c>write</c> minimum and a fork's <c>.github/**</c> change that needs the dispatch (O25) are
     /// never bypassed.
     /// </summary>
+    /// <summary>
+    /// The enqueuer's role, read from the forge. The dependency updater's own enqueue (dependency-updates PRD R5) is the App
+    /// acting under the repository's dependency policy: it counts as <see cref="EForgeRepositoryRole.Write"/>, the floor, and
+    /// never reaches a bypass role. Only the app raises that source; no normaliser maps a forge event onto it.
+    /// </summary>
+    private Task<EForgeRepositoryRole> ActorRoleAsync(Context context, string actor, EMergeQueueCommandSource source, CancellationToken ct)
+        => source == EMergeQueueCommandSource.DependencyUpdates
+            ? Task.FromResult(EForgeRepositoryRole.Write)
+            : context.Queue.GetActorRoleAsync(context.Repository, actor, ct);
+
     private static bool Bypasses(EForgeRepositoryRole role, EMergeQueueBypassRole bypassRole) => bypassRole switch
     {
         EMergeQueueBypassRole.Maintain => role >= EForgeRepositoryRole.Maintain,

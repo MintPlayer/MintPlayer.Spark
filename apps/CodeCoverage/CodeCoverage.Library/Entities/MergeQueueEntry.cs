@@ -306,6 +306,13 @@ public enum EMergeQueueCommandSource
 
     /// <summary>The "Add to merge queue" button on the queue's own check on the forge (merge-queue PRD §0 O30).</summary>
     Check,
+
+    /// <summary>
+    /// The dependency updater's enqueue-on-green (dependency-updates PRD R5, N7): raised by the app itself, never by a
+    /// normaliser, for its own rolling pull request. The App counts as a writer and never reaches a bypass role, so every
+    /// other condition (approval floor, rules, checks) holds as for a person.
+    /// </summary>
+    DependencyUpdates,
 }
 
 public sealed class MergeQueueEntryEvent

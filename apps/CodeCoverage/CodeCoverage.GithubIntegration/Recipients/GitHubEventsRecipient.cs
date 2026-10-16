@@ -75,6 +75,13 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
             case "issue_comment":
                 await OnIssueCommentAsync(message, cancellationToken);
                 break;
+            // The dependency updater (dependency-updates PRD §7.6, R10): a producer's release, and an advisory alert.
+            case "release":
+                await OnReleaseAsync(message, cancellationToken);
+                break;
+            case "dependabot_alert":
+                await OnDependabotAlertAsync(message, cancellationToken);
+                break;
             case "workflow_run":
             case "check_run":
             case "check_suite":
@@ -524,12 +531,67 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
             "/dequeue" => EMergeQueueCommand.Dequeue,
             _ => (EMergeQueueCommand?)null,
         };
-        if (command is null) return;
+        // The dependency updater's commands (§7.5): the first word of a new comment, by a person (gap E), never the App.
+        var dependencyCommand = command is null ? DependencyCommandParser.Parse(body) : null;
+        if (command is null && dependencyCommand is null) return;
         if (IsOurApp(comment) || HumanSender(root) is not { } actor) return;
+        if (Child(comment, "user") is { } author && (Text(author, "type") == "Bot" || Text(author, "login")?.EndsWith("[bot]", StringComparison.Ordinal) == true)) return;
         if (await LoadKnownRepositoryIdAsync(root, ct) is not { } repositoryId) return;
 
-        await RaiseAsync(new MergeQueueCommandIssued(repositoryId, (int)number, command.Value, actor, EMergeQueueCommandSource.Comment), ct);
+        if (dependencyCommand is { } dependency)
+        {
+            if (Number(comment, "id") is not { } commentId) return;
+            await RaiseAsync(new DependencyCommandIssued(repositoryId, (int)number, commentId, dependency.Command, dependency.Argument, actor), ct);
+            return;
+        }
+        await RaiseAsync(new MergeQueueCommandIssued(repositoryId, (int)number, command!.Value, actor, EMergeQueueCommandSource.Comment), ct);
     }
+
+    /// <summary>A published release of a known repository (§7.6, gap E's event leg); drafts and pre-releases included as
+    /// GitHub publishes them, since a registry publish may follow either.</summary>
+    private async Task OnReleaseAsync(GitHubWebhookMessage message, CancellationToken ct)
+    {
+        using var payload = JsonDocument.Parse(message.EventJson);
+        var root = payload.RootElement;
+        if (Text(root, "action") != "published") return;
+        if (Child(root, "release") is not { } release || Text(release, "tag_name") is not { Length: > 0 } tag) return;
+        var published = DateTimeOffset.TryParse(Text(release, "published_at"), System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.AssumeUniversal, out var at) ? at : DateTimeOffset.UtcNow;
+        if (await LoadKnownRepositoryIdAsync(root, ct) is not { } repositoryId) return;
+        await RaiseAsync(new ReleasePublished(repositoryId, tag, published), ct);
+    }
+
+    /// <summary>
+    /// A new or reopened Dependabot alert (R10): the vulnerable package, its ecosystem mapped onto the lookup records' words.
+    /// Needs the App's <c>Dependabot alerts: read</c> permission and the event subscription.
+    /// </summary>
+    private async Task OnDependabotAlertAsync(GitHubWebhookMessage message, CancellationToken ct)
+    {
+        using var payload = JsonDocument.Parse(message.EventJson);
+        var root = payload.RootElement;
+        if (Text(root, "action") is not ("created" or "reopened" or "reintroduced")) return;
+        if (Child(root, "alert") is not { } alert || Child(alert, "dependency") is not { } dependency || Child(dependency, "package") is not { } package) return;
+        if (Text(package, "name") is not { Length: > 0 } name || DependabotEcosystem(Text(package, "ecosystem")) is not { } ecosystem) return;
+        var advisory = Child(alert, "security_advisory") is { } sa ? Text(sa, "ghsa_id") : null;
+        if (await LoadKnownRepositoryIdAsync(root, ct) is not { } repositoryId) return;
+        await RaiseAsync(new DependencyAlertRaised(repositoryId, ecosystem, name, advisory), ct);
+    }
+
+    /// <summary>GitHub's advisory ecosystem words onto the lookup records' (<c>LookupRecord.Ecosystem</c>); null for one the
+    /// updater does not plan.</summary>
+    internal static string? DependabotEcosystem(string? word) => word?.ToLowerInvariant() switch
+    {
+        "npm" => "npm",
+        "nuget" => "nuget",
+        "pip" => "pypi",
+        "maven" => "maven",
+        "composer" => "composer",
+        "rubygems" => "rubygems",
+        "rust" => "cargo",
+        "go" => "go",
+        "actions" => "github-actions",
+        _ => null,
+    };
 
     /// <summary>
     /// <c>workflow_run</c>, <c>check_run</c>, <c>check_suite</c>, <c>status</c> and <c>pull_request_review</c>, raised
@@ -575,7 +637,10 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
 
         if (Build(repositoryId) is not { } evt) return;
         var queue = await session.LoadAsync<MergeQueue>(MergeQueue.DocumentId(repositoryId), ct);
-        if (queue is null || !queue.IsBusy()) return;
+        // The dependency updater waits for its own workflow runs and its rolling head's checks the same way.
+        if ((queue is null || !queue.IsBusy())
+            && await session.LoadAsync<DependencyUpdateRun>(DependencyUpdateRun.ForRepository(repositoryId), ct) is not { State: not EDependencyRunState.Idle })
+            return;
 
         switch (evt)
         {

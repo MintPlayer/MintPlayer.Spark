@@ -241,6 +241,13 @@ public partial class GitHubInstallationPermissions : IForgeInstallationPermissio
         (EMergeQueueAppNeed.RerunActions, [("actions", "write")], []),
         (EMergeQueueAppNeed.Workflows, [("workflows", "write")], []),
         (EMergeQueueAppNeed.CloseIssues, [("issues", "write")], []),
+        // The dependency updater (dependency-updates PRD §7.2, R15, R16): its branches and pull request, its dispatches and
+        // check run, reactions on commands, and workflows write for the onboarding templates and Actions bumps. It hears its
+        // runs finish, its commands, its head's checks and the producers' releases. Not in AllNeeds: only an account that
+        // turns the feature on is asked for it.
+        (EMergeQueueAppNeed.DependencyUpdates,
+            [("contents", "write"), ("pull_requests", "write"), ("workflows", "write"), ("actions", "write"), ("checks", "write"), ("issues", "write")],
+            ["workflow_run", "issue_comment", "check_run", "check_suite", "push", "release"]),
     ];
 
     public IReadOnlyList<PendingPermission> NeededPending(IReadOnlyList<PendingPermission> pending, EMergeQueueAppNeed needs)

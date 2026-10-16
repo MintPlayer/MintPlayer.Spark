@@ -67,6 +67,17 @@ public class DependencyUpdateRun
     /// <summary>The blob id of the default branch's <c>coverage.yml</c> (gap E: approvals are bound to it).</summary>
     public string ConfigBlob { get; set; } = string.Empty;
 
+    /// <summary>D-P13: the default branch's <c>dependencies.schedule</c> parts as last read, so the scheduler honours them
+    /// without reading every repository's file on every tick.</summary>
+    public LookupReferences.EDependencyScheduleFrequency? FileFrequency { get; set; }
+
+    public LookupReferences.EDependencyWeekday? FileWeekday { get; set; }
+
+    public int? FileHour { get; set; }
+
+    /// <summary>The file opted out (<c>dependencies.enabled: false</c>) when last read.</summary>
+    public bool FileDisabled { get; set; }
+
     public string LookupAction { get; set; } = string.Empty;
 
     public string ApplyAction { get; set; } = string.Empty;
@@ -105,6 +116,10 @@ public class DependencyUpdateRun
 
     /// <summary>How often the run started over because the base moved under it (R3) or a run built another commit.</summary>
     public int Restarts { get; set; }
+
+    /// <summary>Policy evaluations in this run: only the first of a scheduled run advances the slot clock (R2), whatever
+    /// re-plans follow (a dropped migration, a bisect step).</summary>
+    public int Evaluations { get; set; }
 
     public int TransientFailures { get; set; }
 
