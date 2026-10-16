@@ -51,8 +51,40 @@ export function nextTfmList(value: string, plan: PlatformPlan): string | null {
   return [...new Set([added, ...kept, ...legacy])].join(';');
 }
 
+/**
+ * Why the platform adapter never edits this location, or null when a plan on the location's channel
+ * does edit it. The lookup (R31) folds a Renovate record into the platform record only when this is
+ * null, so the two sides agree on which locations the platform owns.
+ */
+export function notEditedReason(f: Found): string | null {
+  if (f.computed) return f.reason ?? 'computed value';
+  switch (f.kind) {
+    case 'types-node':
+    case 'requires-python':
+      return f.reason ?? 'reported only';
+    case 'docker':
+      return f.sdk === 'dotnet' && /^\d+\.\d+\.\d+/.test(f.value)
+        ? `mcr tag '${f.value}' is pinned to a full version; it is updated as a docker record`
+        : null;
+    case 'tfm':
+    case 'global.json':
+    case 'package-version':
+    case 'maven-release':
+    case 'go.mod':
+    case 'toolchain':
+    case 'setup-action':
+    case 'version-file':
+    case 'tool-versions':
+    case 'engines':
+      return null;
+    default:
+      return 'unsupported location';
+  }
+}
+
 function replacementFor(f: Found, plan: PlatformPlan): { replacement?: Replacement[]; report?: string } {
-  if (f.computed) return { report: f.reason ?? 'computed value' };
+  const notEdited = notEditedReason(f);
+  if (notEdited !== null) return { report: notEdited };
   const sdk = plan.sdk;
   switch (f.kind) {
     case 'tfm': {
@@ -79,9 +111,6 @@ function replacementFor(f: Found, plan: PlatformPlan): { replacement?: Replaceme
       const toMajor = plan.toChannel.split('.')[0];
       return { replacement: [{ line: f.line, start: f.start, end: f.end, text: `${toMajor}.0.0${m[2]}` }] };
     }
-    case 'types-node':
-    case 'requires-python':
-      return { report: f.reason ?? 'reported only' };
     case 'maven-release':
     case 'go.mod':
     case 'toolchain':
@@ -93,9 +122,6 @@ function replacementFor(f: Found, plan: PlatformPlan): { replacement?: Replaceme
       if (f.channel !== plan.fromChannel) return {};
       // dotnet: a full SDK version (feature band >= 100, e.g. setup-dotnet `10.0.100`) takes the SDK
       // version of the plan, not the runtime version (S19: 10.0.100 -> 11.0.100-rc.1.26425.128).
-      if (sdk === 'dotnet' && f.kind === 'docker' && /^\d+\.\d+\.\d+/.test(f.value)) {
-        return { report: `mcr tag '${f.value}' is pinned to a full version; it is updated as a docker record` };
-      }
       const sdkLike = sdk === 'dotnet' && f.kind === 'setup-action' && /^\d+\.\d+\.(\d{3,})/.test(f.value);
       if (sdkLike) {
         if (!plan.sdkVersion) return { report: `'${f.value}' is an SDK version and the plan has no sdkVersion` };

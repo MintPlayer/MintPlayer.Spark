@@ -1,0 +1,138 @@
+{
+  "problems": [],
+  "repositories": {
+    "local": {
+      "problems": [],
+      "packageFiles": {
+        "github-actions": [
+          {
+            "packageFile": ".github/workflows/ci.yml",
+            "deps": [
+              {
+                "depName": "actions/checkout",
+                "versioning": "github-actions",
+                "depType": "action",
+                "replaceString": "actions/checkout@v7",
+                "currentValue": "v7",
+                "datasource": "github-tags",
+                "packageName": "actions/checkout",
+                "updates": []
+              },
+              {
+                "depName": "actions/setup-node",
+                "versioning": "github-actions",
+                "depType": "action",
+                "replaceString": "actions/setup-node@v4",
+                "currentValue": "v4",
+                "datasource": "github-tags",
+                "packageName": "actions/setup-node",
+                "updates": [
+                  {
+                    "bucket": "major",
+                    "newVersion": "v7.1.0",
+                    "newValue": "v7",
+                    "releaseTimestamp": "2026-10-08T02:52:34.000Z",
+                    "updateType": "major",
+                    "isBreaking": false,
+                    "branchName": "renovate/actions-setup-node-7.x"
+                  }
+                ]
+              },
+              {
+                "depName": "actions/setup-dotnet",
+                "versioning": "github-actions",
+                "depType": "action",
+                "replaceString": "actions/setup-dotnet@v4",
+                "currentValue": "v4",
+                "datasource": "github-tags",
+                "packageName": "actions/setup-dotnet",
+                "updates": [
+                  {
+                    "bucket": "major",
+                    "newVersion": "v6.0.0",
+                    "newValue": "v6",
+                    "releaseTimestamp": "2026-07-16T02:56:10.000Z",
+                    "updateType": "major",
+                    "isBreaking": false,
+                    "branchName": "renovate/actions-setup-dotnet-6.x"
+                  }
+                ]
+              },
+              {
+                "datasource": "github-releases",
+                "depName": "node",
+                "packageName": "actions/node-versions",
+                "versioning": "node",
+                "extractVersion": "^(?<version>\\d+\\.\\d+\\.\\d+)(-\\d+)?$",
+                "currentValue": "20",
+                "depType": "uses-with",
+                "updates": [
+                  {
+                    "bucket": "major",
+                    "newVersion": "24.22.0",
+                    "newValue": "24",
+                    "releaseTimestamp": "2026-10-15T01:57:24.000Z",
+                    "updateType": "major",
+                    "isBreaking": true,
+                    "branchName": "renovate/node-24.x"
+                  }
+                ]
+              },
+              {
+                "datasource": "dotnet-version",
+                "packageName": "dotnet-sdk",
+                "versioning": "npm",
+                "currentValue": "8.0.x",
+                "depType": "uses-with",
+                "depName": "dotnet-sdk",
+                "updates": [
+                  {
+                    "bucket": "major",
+                    "newVersion": "10.0.402",
+                    "newValue": "10.0.x",
+                    "releaseTimestamp": "2026-10-13T00:00:00.000Z",
+                    "updateType": "major",
+                    "isBreaking": true,
+                    "branchName": "renovate/dotnet-sdk-10.x"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "nuget": [
+          {
+            "packageFile": "src/Lib/Lib.csproj",
+            "lockFiles": ["src/Lib/packages.lock.json"],
+            "deps": [
+              {
+                "depName": "Newtonsoft.Json",
+                "currentValue": "13.0.4",
+                "datasource": "nuget",
+                "depType": "nuget",
+                "updates": []
+              },
+              {
+                "depName": "Serilog",
+                "currentValue": "3.1.1",
+                "datasource": "nuget",
+                "depType": "nuget",
+                "updates": [
+                  {
+                    "bucket": "major",
+                    "newVersion": "4.3.0",
+                    "newValue": "4.3.0",
+                    "releaseTimestamp": "2025-05-20T00:00:00.000Z",
+                    "updateType": "major",
+                    "isBreaking": true,
+                    "branchName": "renovate/serilog-4.x"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }
+}
