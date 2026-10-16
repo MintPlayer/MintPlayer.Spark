@@ -13,14 +13,17 @@ empty body, so this document is its design. App: `apps/CodeCoverage` (**producti
 | **M3 dependency graph (§6) + an Account-page graph card** | ✅ in PR #501 (owner: "just that, nothing more"); the owner judged the card "perfect" in the browser, 2026-10-09 |
 | Spikes S1–S11 (§10) | ⏸ **postponed**, possibly never; owner, 2026-10-09: "we'll see" |
 | Every other milestone (§11: M1, M2, M4–M11) | ⏸ **postponed**, possibly never. Nothing beyond M3 is built |
-| **Restart (§13):** a generic engine on the merge queue's workflow-hook pattern (#515/#517) | ✅ investigated + **grilled 2026-10-15 (R1–R19, §13.10 + §13.11.4 + §13.12); test plan §13.11; spikes S12/S13/S14/S17 done (§13.12)**. Next: N1–N9 implementation; S18 after deploy |
-| N5–N7 + the bot side of N8/N9 (saga, red CI and commands, propagation and enqueue-on-green, onboarding PR) | ✅ built 2026-10-16, decisions D-L1–D-L15 (§13.12); tests written, **not run yet** |
-| Saga gaps, App permissions, N9 UI, P12, user guide | ✅ built 2026-10-16, decisions D-N1–D-N5 (§13.12): fix pins (R4), lockfile relock in the replay, build-vs-test from check names, the `DependencyUpdates` App need (+ Dependabot alerts, `dependabot_alert`, `pull_request`), the account fleet view + readiness and the repository panel, the graph reading the lookup report; user guide [dependency-updates.md](dependency-updates.md). Tests written, **not run yet** (owner batches the sweep). Remaining: the owner's sweep, deploy, the App's permission change on GitHub, and S18 live |
+| **Restart (§13): investigation + grilling** | ✅ 2026-10-15/16, owner. Decisions R1–R19 (§13.10, §13.11.4, §13.12) |
+| Spikes S12, S13, S14, S17 (§13.12); S15 (= N1) and S19 (the net11 golden, in N3) | ✅ 2026-10-16 |
+| N1 hook extraction · validators (gaps A/B/C, R14/R18; D-V1–D-V8) · N3 runner action + contracts + templates · N2/N4 config + policy engine (D-P1–D-P18) · N5–N7 saga, commands, bisect, propagation, enqueue, onboarding (D-L1–D-L15) · N8 migrate · N9 fleet view, readiness, P12, App permissions, user guide (D-N1–D-N5) | ✅ built 2026-10-16 |
+| Owner privacy: settings visible only to managers and administrators; Spark `OnDisableActionsAsync` can withhold Read/Query, refused server-side (D-A1–D-A8, MintPlayer.Spark 11.0.0-preview.111) | ✅ 2026-10-16, red→green `OwnerPrivacyEndToEndTests` |
+| Guides sidebar group (Merge queue setup, Dependency updater setup page, Connect an AI agent) | ✅ 2026-10-16 |
+| **Local sweep** (before the privacy and guides work): Git 142, GitWriter 252, CodeCoverage 2719, action unit 276 + bundle 2, ClientApp 350, all green. Integration 6 passed and **6 skipped** (mvn, uv, go and composer missing locally; Renovate Docker test skipped on Windows), so their **first real run is CI** | ✅ 2026-10-16 |
+| After the privacy work: CodeCoverage 2752/2752, the affected Spark classes 533/533. Guides: the 34 affected Angular specs | ✅ 2026-10-16 |
+| S18 live on SparkTest; re-capturing the GitHub response bodies in `GitHubForgeDependencyUpdatesTests` (currently derived from the docs) | ⏳ needs the deploy |
+| Deploy (after #517); GitHub App settings changed by hand (Workflows write, Dependabot alerts read, `release` + `dependabot_alert` events; no manifest file in the repo) | ⏳ owner |
 
-The rest of this document (§1–§12) is the plan as grilled on 2026-10-09. **§13 (2026-10-15) proposes replacing
-§7.1, most of §5 and §10–§11.** Where §13 and §1–§12 disagree, §13 is the proposal under discussion and the older
-text is the grilled baseline. Neither is committed until §13's open questions are grilled. Start from §13, then use
-§12's decision log for the reasons behind the choices that §13 keeps.
+§1–§12 are the plan as grilled on 2026-10-09. **§13 replaces §7.1, most of §5, §7.8, §7.9 and §10–§11**, and §13.10–§13.12 are authoritative. Where they disagree with §1–§12, §13 wins. §12 still records the reasons for the choices §13 keeps. The user guide is [dependency-updates.md](dependency-updates.md).
 
 **Interim (in #501):**
 - **Config:** `.github/dependabot.yml` puts every ecosystem into one multi-ecosystem group, `all-dependencies`,
