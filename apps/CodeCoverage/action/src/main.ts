@@ -10,9 +10,16 @@ import { findCoverageFiles } from './files';
 import { formatFileList } from './filelist';
 import { toPosixPath } from './paths';
 import { isRebasableReport, rebaseReportContent } from './rebase';
-import { UploadStatus, rate, waitForFinalize } from './status';
+import { UploadStatus, rate, retryAfter, waitForFinalize } from './status';
 
-const MAX_RETRIES = 3;
+/**
+ * Waits between attempts, in seconds: 7 attempts over about 2 minutes, so an
+ * upload outlasts a coverage-server redeploy (`docker compose down` then `up`
+ * keeps it offline for about 30 s). A `Retry-After` on a 429 or 503 replaces
+ * the scheduled wait (capped at 60 s); the schedule's length still bounds the
+ * number of attempts.
+ */
+export const RETRY_DELAYS_SECONDS: readonly number[] = [5, 10, 20, 30, 30, 30];
 
 // getBooleanInput throws on empty input; action.yml defaults cover GitHub
 // runs, but be robust for local/other runners: absent means false.
@@ -514,7 +521,8 @@ async function postWithRetry(
   contentType?: string,
 ): Promise<Response> {
   let lastError: unknown;
-  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+  for (let attempt = 1; ; attempt++) {
+    let serverDelaySeconds: number | undefined;
     try {
       const headers: Record<string, string> = { ...(await authHeaders(credential)) };
       if (contentType) headers['Content-Type'] = contentType;
@@ -525,16 +533,16 @@ async function postWithRetry(
       if (response.status < 500 && response.status !== 429) {
         throw new Error(`${url} responded ${response.status}: ${await safeText(response)}`);
       }
+      if (response.status === 429 || response.status === 503) serverDelaySeconds = retryAfter(response);
       lastError = new Error(`${url} responded ${response.status}`);
     } catch (error) {
       if (error instanceof Error && error.message.includes('responded 4')) throw error;
       lastError = error;
     }
-    if (attempt < MAX_RETRIES) {
-      const delaySeconds = attempt * 5;
-      core.info(`Upload attempt ${attempt} failed, retrying in ${delaySeconds}s...`);
-      await new Promise((resolve) => setTimeout(resolve, delaySeconds * 1000));
-    }
+    if (attempt > RETRY_DELAYS_SECONDS.length) break;
+    const delaySeconds = serverDelaySeconds ?? RETRY_DELAYS_SECONDS[attempt - 1];
+    core.info(`Upload attempt ${attempt} failed, retrying in ${delaySeconds}s...`);
+    await new Promise((resolve) => setTimeout(resolve, delaySeconds * 1000));
   }
   throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }

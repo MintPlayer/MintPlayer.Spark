@@ -77,6 +77,20 @@ Every format the action discovers by default is parsed by the server: lcov, Cobe
 Clover and Istanbul's `coverage-final.json`. Anything else is reported as `unrecognizedFormat`
 rather than silently contributing nothing.
 
+### When the server is unreachable
+
+The upload and the `finish` call retry a network error, a 5xx and a 429 on a fixed schedule:
+waits of 5, 10, 20, 30, 30 and 30 s, seven attempts over about 2 minutes. That outlasts a
+coverage-server redeploy (`docker compose down` then `up`, about 30 s offline), which the earlier
+three attempts over 15 s did not ([#523](https://github.com/MintPlayer/MintPlayer.Spark/issues/523)).
+
+- A `Retry-After` in seconds on a 429 or 503 replaces the scheduled wait, capped at 60 s. The
+  schedule still bounds the number of attempts.
+- Any other 4xx fails at once, with the server's response body: a bad token or an unregistered
+  repository does not get better by waiting.
+- Once the schedule is exhausted, the last error decides the step: it fails with
+  `fail-ci-if-error: true` and warns otherwise.
+
 ## Why it lives here
 
 Beside the server it talks to, so a change to the upload API and the change to the action that
