@@ -64,6 +64,15 @@ internal sealed partial class PersistentObjectReadPath : IPersistentObjectReadPa
             // row-gated read every mutating path starts with, and those never render the object.
             await disabledActions.ApplyOnLoadAsync(obj);
 
+            // A withheld Read is a refused read, enforced here rather than left to the client: the
+            // page load IS the Read action, so there is no later submit to refuse it at. It answers
+            // like every other refusal on this path (null, so 404, or the uniform 401 for an
+            // anonymous caller), because a 403 would confirm that the row exists to a caller the
+            // actions class just decided may not read it. Narrowing only: the type-level Read right
+            // and the row gate above already ran, so a hook can take Read away, never grant it.
+            if (obj.DisabledActions?.Contains(SparkCoreActions.Read, StringComparer.OrdinalIgnoreCase) == true)
+                return null;
+
             // Static attribute rights (contributions M2c-2a) are no longer applied here: the object was
             // built for this caller (D13a) — a Read-denied attribute absent, an Edit-denied one
             // read-only — before OnLoadAsync saw it, and the boundary net checks it on the way out.

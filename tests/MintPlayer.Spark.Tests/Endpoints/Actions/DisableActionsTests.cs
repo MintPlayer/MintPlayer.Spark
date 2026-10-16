@@ -34,6 +34,7 @@ public class DisableActionsTests : SparkTestDriver
     private static readonly Guid ProbeTypeId = Guid.Parse("d13d0000-0000-4000-8000-d13d00000001");
     private static readonly Guid ProbesQueryId = Guid.Parse("d13d0000-0000-4000-8000-d13d00000002");
     private static readonly Guid FrozenQueryId = Guid.Parse("d13d0000-0000-4000-8000-d13d00000003");
+    private static readonly Guid ClosedQueryId = Guid.Parse("d13d0000-0000-4000-8000-d13d00000004");
 
     private const string Run = "DisProbeRun";
     private const string Export = "DisProbeExport";
@@ -89,6 +90,16 @@ public class DisableActionsTests : SparkTestDriver
 
             if (context.TargetKind == DisableActionsTargetKind.Query && context.Query?.Name == "DisProbesFrozen")
                 target.DisableActions(Run);
+
+            // The read actions: a sealed row withholds Read, the closed query withholds Query.
+            if (context.TargetKind == DisableActionsTargetKind.PersistentObject
+                && context.Entity is DisProbe { State: "Sealed" })
+            {
+                target.DisableActions("Read");
+            }
+
+            if (context.TargetKind == DisableActionsTargetKind.Query && context.Query?.Name == "DisProbesClosed")
+                target.DisableActions("Query");
 
             if (recorder.DisableNew)
                 target.DisableActions("New");
@@ -164,7 +175,9 @@ public class DisableActionsTests : SparkTestDriver
         await base.DisposeAsync();
     }
 
-    private SparkEndpointFactory<DisProbeContext> NewFactory(Action<MintPlayer.Spark.Abstractions.Builder.ISparkBuilder>? configureSpark = null)
+    private SparkEndpointFactory<DisProbeContext> NewFactory(
+        Action<MintPlayer.Spark.Abstractions.Builder.ISparkBuilder>? configureSpark = null,
+        SparkTestSecurity? security = null)
         => new(
             Store,
             [ProbeModel()],
@@ -184,7 +197,7 @@ public class DisableActionsTests : SparkTestDriver
                 }));
             },
             configureSpark: configureSpark,
-            security: SparkTestSecurity.Permissive);
+            security: security ?? SparkTestSecurity.Permissive);
 
     // ---- S6: load ---------------------------------------------------------------------------------
 
@@ -228,6 +241,72 @@ public class DisableActionsTests : SparkTestDriver
         seen.Phase.Should().Be(DisableActionsPhase.Load);
         seen.TargetKind.Should().Be(DisableActionsTargetKind.Query);
         seen.Entity.Should().BeNull("a query target is judged before any row exists");
+    }
+
+    // ---- The read actions: Read and Query are refused at load ------------------------------------
+
+    [Fact]
+    public async Task Load_of_a_row_that_withholds_Read_is_404_and_a_row_that_does_not_still_loads()
+    {
+        var sealedRow = await SeedAsync("S-1", "Sealed");
+        var open = await SeedAsync("O-1", "Open");
+
+        var (sealedStatus, sealedBody) = await SendAsync("/spark/po/load", Wire.Typed(ProbeTypeId, id: sealedRow.Id));
+        var (openStatus, _) = await SendAsync("/spark/po/load", Wire.Typed(ProbeTypeId, id: open.Id));
+        var (missingStatus, missingBody) = await SendAsync("/spark/po/load", Wire.Typed(ProbeTypeId, id: "DisProbes/does-not-exist"));
+
+        sealedStatus.Should().Be(HttpStatusCode.NotFound, "a withheld Read refuses the load the way a missing row does");
+        sealedBody.GetRawText().Should().Be(missingBody.GetRawText(), "a withheld read must not be told apart from a missing row");
+        sealedBody.GetRawText().Should().NotContain("S-1");
+        missingStatus.Should().Be(HttpStatusCode.NotFound);
+        openStatus.Should().Be(HttpStatusCode.OK, "only the row the hook withheld Read on is refused");
+    }
+
+    [Fact]
+    public async Task Query_execute_that_withholds_Query_is_404_and_the_other_queries_still_run()
+    {
+        await SeedAsync("O-1", "Open");
+
+        var (closedStatus, closedBody) = await SendAsync("/spark/queries/execute", Wire.Query(ClosedQueryId));
+        var (plainStatus, plain) = await SendAsync("/spark/queries/execute", Wire.Query(ProbesQueryId));
+
+        closedStatus.Should().Be(HttpStatusCode.NotFound, "a withheld Query refuses the execution the way an unknown query is refused");
+        closedBody.GetRawText().Should().NotContain("O-1");
+        plainStatus.Should().Be(HttpStatusCode.OK);
+        plain.GetProperty("totalItems").GetInt32().Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Distinct_values_of_a_query_that_withholds_Query_are_refused_too()
+    {
+        await SeedAsync("O-1", "Open");
+
+        var (closedStatus, closedBody) = await SendAsync("/spark/queries/distinct-values",
+            new { queryId = ClosedQueryId.ToString(), column = "Reference" });
+        var (plainStatus, plainBody) = await SendAsync("/spark/queries/distinct-values",
+            new { queryId = ProbesQueryId.ToString(), column = "Reference" });
+
+        closedStatus.Should().Be(HttpStatusCode.NotFound, "the filter panel must not list the values of a grid the caller may not open");
+        closedBody.GetRawText().Should().NotContain("O-1");
+        plainStatus.Should().Be(HttpStatusCode.OK);
+        plainBody.GetRawText().Should().Contain("O-1");
+    }
+
+    [Fact]
+    public async Task Withholding_nothing_never_grants_what_security_json_denies()
+    {
+        // The hook withholds nothing on an open row and on the plain query, yet security.json denies both
+        // reads: the hook only narrows a grant, it never stands in for one.
+        await using var denied = NewFactory(security: SparkTestSecurity.Permissive.Denying("Read/DisProbe", "Query/DisProbe"));
+        using var client = denied.CreateClient();
+        var (cookie, xsrf) = await denied.MintAntiforgeryAsync();
+        var open = await SeedAsync("O-1", "Open");
+
+        var load = await SendAsync(client, cookie, xsrf, "/spark/po/load", Wire.Typed(ProbeTypeId, id: open.Id));
+        var query = await SendAsync(client, cookie, xsrf, "/spark/queries/execute", Wire.Query(ProbesQueryId));
+
+        load.Status.Should().Be(HttpStatusCode.NotFound);
+        query.Status.Should().Be(HttpStatusCode.NotFound);
     }
 
     // ---- S6: submit, built-in actions ------------------------------------------------------------
@@ -570,13 +649,17 @@ public class DisableActionsTests : SparkTestDriver
 
     private Task<string> EtagAsync(string id) => StoredEtag.OfAsync(Store, id);
 
-    private async Task<(HttpStatusCode Status, JsonElement Body)> SendAsync(string url, object payload)
+    private Task<(HttpStatusCode Status, JsonElement Body)> SendAsync(string url, object payload)
+        => SendAsync(_client, _cookieHeader, _xsrfToken, url, payload);
+
+    private static async Task<(HttpStatusCode Status, JsonElement Body)> SendAsync(
+        HttpClient client, string cookieHeader, string xsrfToken, string url, object payload)
     {
         var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = JsonContent.Create(payload) };
-        request.Headers.Add("Cookie", _cookieHeader);
-        request.Headers.Add("X-XSRF-TOKEN", _xsrfToken);
+        request.Headers.Add("Cookie", cookieHeader);
+        request.Headers.Add("X-XSRF-TOKEN", xsrfToken);
 
-        var response = await _client.SendAsync(request);
+        var response = await client.SendAsync(request);
         var text = await response.Content.ReadAsStringAsync();
 
         return (response.StatusCode,
@@ -630,6 +713,7 @@ public class DisableActionsTests : SparkTestDriver
         [
             new SparkQuery { Id = ProbesQueryId, Name = "DisProbes", Source = "Database.Probes", EntityType = "DisProbe" },
             new SparkQuery { Id = FrozenQueryId, Name = "DisProbesFrozen", Source = "Database.Probes", EntityType = "DisProbe" },
+            new SparkQuery { Id = ClosedQueryId, Name = "DisProbesClosed", Source = "Database.Probes", EntityType = "DisProbe" },
         ],
     };
 }
