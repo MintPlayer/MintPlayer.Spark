@@ -53,7 +53,7 @@ public class HardeningTests : WriterTestBase
         { "an unknown strategy", "prepare", new { autoResolve = new object[] { new { path = "**/x.json", strategy = "merge-driver" } } }, "autoResolve" },
         { "keys on a keep-both rule", "prepare", new { autoResolve = new object[] { new { path = "**/x.json", strategy = "keep-both", keys = new[] { "a" } } } }, "autoResolve" },
         { "take-base that does not regenerate", "prepare", new { autoResolve = new object[] { new { path = "**/x.json", anyLine = true, regenerate = false } } }, "autoResolve" },
-        { "an unknown validator", "prepare", new { autoResolve = new object[] { new { path = "**/x.json", strategy = "keep-both", validate = new[] { "yaml" } } } }, "autoResolve" },
+        { "an unknown validator", "prepare", new { autoResolve = new object[] { new { path = "**/x.json", strategy = "keep-both", validate = new[] { "toml" } } } }, "autoResolve" },
         { "nine validators", "queue-branch", new { autoResolve = new object[] { new { path = "**/x.json", strategy = "keep-both", validate = Enumerable.Repeat("json", 9).ToArray() } } }, "autoResolve" },
         // O36: one patch per regenerate run, or the single patch of an older app, never both.
         { "a patch beside patches", "publish", new { patch = "ZGlmZg==", patches = new object[] { new { workflow = "regenerate.yml", patch = "" } } }, "patches" },
