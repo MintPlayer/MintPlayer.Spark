@@ -65,7 +65,9 @@ public partial class DependencyUpdatesCronJob : ISparkCronJob
         foreach (var repository in enabled)
         {
             var run = runs.GetValueOrDefault(DependencyUpdateRun.ForRepository(repository.Id!));
-            if (run is null || run.Onboarding == EDependencyOnboarding.None)
+            // A blocked onboarding (a permission not accepted yet) is tried again daily; one whose pull request was closed is not.
+            if (run is null || run.Onboarding == EDependencyOnboarding.None
+                || run.Onboarding == EDependencyOnboarding.Blocked && run.OnboardingPullRequestNumber is null)
             {
                 await messageBus.BroadcastOnceAsync(new DependencyUpdateSignalMessage { RepositoryId = repository.Id!, Kind = EDependencySignal.Onboard },
                     $"dependency-onboard:{repository.Id}:{now.UtcDateTime:yyyy-MM-dd}", ct);

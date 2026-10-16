@@ -14,6 +14,7 @@ empty body, so this document is its design. App: `apps/CodeCoverage` (**producti
 | Spikes S1–S11 (§10) | ⏸ **postponed**, possibly never; owner, 2026-10-09: "we'll see" |
 | Every other milestone (§11: M1, M2, M4–M11) | ⏸ **postponed**, possibly never. Nothing beyond M3 is built |
 | **Restart (§13):** a generic engine on the merge queue's workflow-hook pattern (#515/#517) | ✅ investigated + **grilled 2026-10-15 (R1–R19, §13.10 + §13.11.4 + §13.12); test plan §13.11; spikes S12/S13/S14/S17 done (§13.12)**. Next: N1–N9 implementation; S18 after deploy |
+| N5–N7 + the bot side of N8/N9 (saga, red CI and commands, propagation and enqueue-on-green, onboarding PR) | ✅ built 2026-10-16, decisions D-L1–D-L15 (§13.12); tests written, **not run yet**; fleet view, App manifest, docs and S18 remain |
 
 The rest of this document (§1–§12) is the plan as grilled on 2026-10-09. **§13 (2026-10-15) proposes replacing
 §7.1, most of §5 and §10–§11.** Where §13 and §1–§12 disagree, §13 is the proposal under discussion and the older
@@ -1212,3 +1213,82 @@ Built in `CodeCoverage/Dependencies` (`DependenciesYml`, `DependencyContractRead
   major, `3.11 → 3.15` minor). A platform major never auto-merges, even when the file admits it; `platform:*` defaults to
   minor, so a major waits for `approve platform:<sdk> <channel>`. Computed locations are reported; a platform whose every
   location is computed is not planned.
+
+#### N5–N7 and the bot side of N8/N9: the saga, red CI, propagation, onboarding (2026-10-16)
+
+Built in `CodeCoverage/Dependencies/Lifecycle` (`DependencyUpdateEngine` on the lane `coverage-dependency-updates`, its
+messages, recipients, `DependencyUpdatesCronJob`, and the pure rules: `DependencyLifecycleRules`, `DependencyPullRequestBody`,
+`DependencyOnboarding`), the state in `CodeCoverage.Library/Entities/DependencyUpdateRun.cs`, the replay in
+`CodeCoverage.Git/Dependencies/RollingBranchReplay.cs`, the writer jobs in `CodeCoverage.GitWriter` (`WriterService.Dependencies.cs`,
+`Endpoints/DependencyEndpoints.cs`), and GitHub's side in `GitHubForgeDependencyUpdates` and `GitHubEventsRecipient`. Decisions
+taken while building them (assistant, within R1–R19, D-S*, D-C*, D-V*, D-P*):
+
+- **D-L1. A seam of its own, `IForgeDependencyUpdates`**, beside `IForgeMergeQueue` (the PR create/update, reactions, the bot's
+  check run, a multi-file artifact, tag resolution, a static file read of another repository). The hook keeps speaking
+  `IForgeMergeQueue`, so the merge queue's conformance list is untouched. The new `IGitWriterSidecar` members default to
+  `NotSupportedException`, so every other writer implementation compiles unchanged.
+- **D-L2. The lookup is dispatched on the default branch itself**, not on a bot ref: D14's `head_sha` check then fails a run
+  whose branch moved between the read and the dispatch, and the saga starts over on the new head (`Restarts`, at most 3). A
+  bot ref would need a writer job per run for no stronger guarantee.
+- **D-L3. Artifacts are read by name** (`lookup.json`; `result.json` + `dependency.patch`; `migrate-result.json` +
+  `migrate.patch`): the action uploads a directory, so the hook's single-file read would refuse it. Other files in the archive
+  are ignored; the cap holds for the archive and for the named files together.
+- **D-L4. The writer judges every patch again before it builds from it** (`validate`, the staged work ref, `rolling`): the
+  saga's verdict is not trusted across a request boundary. The rolling bot commit is built on `expected_sha`, never on the
+  plan commit, so the plan file never reaches the rolling branch.
+- **D-L5. R3's "manifest or lockfile"** is every `packageFile` and lock file of the lookup report and of the plan; a compare
+  that is truncated or unreadable counts as touched (start over).
+- **D-L6. The replay (R4).** Human commits are the non-merge commits above the bot's last commit (`RollingBotSha`); a branch
+  that no longer holds it was rewritten by hand and is kept (`rolling-rewritten`, comment, no push). Each conflict region of a
+  planned manifest is resolved line by line where the three sides line up (the human's line where the human changed it, the
+  bot's otherwise), else the human's lines whole. Any other conflict, a lockfile included, stops (`replay-conflict`): lockfiles
+  are never merged textually, and the writer cannot regenerate them. The human's manifest values are read from the human
+  commits' own diffs (the changed token of a line naming a planned dependency, D-V2's three lines above), conflict or not,
+  and become Q11 holds, so the next slot does not fight the person. Replayed commits keep the person's author, committer,
+  dates and message. "Packages a human fix depends on stay pinned" (R4) is **not built**: the human hold covers the values a
+  person set; a fix that depends on an unchanged pin is not detected.
+- **D-L7. Bisect (old §7.4).** One re-run of the failing check runs first (`RerunCheckAsync`), counted in the budget; a red
+  verdict within 2 minutes of it is the old one. Then suspects are left out **cumulatively** (majors first, then a version red
+  elsewhere in the fleet, then the later plan groups, D-P10's order reversed), one re-plan + apply + CI run per step; the first
+  green build names the last group left out, and a red build with one suspect left names that one. The culprit gets an
+  unattributed hold (`red:<group>`, lifts when the lookup changes or after 4 slots), its versions go on the fleet's red list
+  (Q15), and a refresh rebuilds everything else. Failing stack traces are not read (no log access), and build failures are
+  not told from test failures. A budget of 0 reports the ranked suspects without bisecting; a writer's `bisect` comment then
+  runs one with a budget of 4.
+- **D-L8. The bot's own check run** (`Dependency updates`) is completed (neutral, success, failure) everywhere except while it
+  bisects, when it stays in progress. The saga leaves it and its check suite out of its own gate (else the gate waits for
+  itself), and "nothing reported" is never green: at least one check must have passed.
+- **D-L9. Enqueue-on-green (R5)** sends the merge queue's own command signal with a new source,
+  `EMergeQueueCommandSource.DependencyUpdates`: the queue counts the App as `write` (never a bypass role) and keeps every other
+  condition (the approval floor, rules, checks). Only scheduled, security and own-release runs enqueue; a run a comment started
+  (`approve`, `hold`, `refresh`) does not, and the next slot's tree-equal rebuild picks it up.
+- **D-L10. Commands** come only from the first word of a **created** comment by a non-bot sender, never from the App; the role
+  is read from the forge per command (write or above), and approvals are re-read at plan time (gap E's "again at apply"): an
+  approver who lost write access loses the approval. `bisect` and `refresh` take no argument; anything after them is an
+  ordinary comment.
+- **D-L11. Own packages (§7.6, gap E).** A producer event is a published release, or a push to a producer's default branch
+  (a repository whose manifest declares packages). The own-package window is ±2 hours between that event and the lookup's
+  `releaseTimestamp`; the bot reads no registry (R17), so "provenance attestation" is not checked. Propagation is debounced
+  30 minutes per producer; each consumer on the account (manifest `Consumes` ∩ the producer's `Produces`) gets an own-release
+  run.
+- **D-L12. Security alerts (R10)** arrive as GitHub `dependabot_alert` events (created, reopened, reintroduced), mapped onto
+  the lookup's ecosystem words. The App must subscribe to the event and request *Dependabot alerts: read*; that is not in the
+  `DependencyUpdates` need yet (a separate accept prompt, as §7.9 noted).
+- **D-L13. The schedule (Q8)** is checked by a cron every 10 minutes; a slot is due from the repository's spread minute (a
+  hash of its id) to the end of the slot hour, deduplicated per repository and local day. The file's `schedule` parts and
+  opt-out are read from the run document, written at each run's start, so a changed file takes effect from the next run.
+- **D-L14. Onboarding (R16).** The migrate templates are added only where the tree has `angular.json` / `nx.json`. The action is
+  pinned to the commit the bot resolved for `dependency-update-v1`, the tag kept as a comment; an unresolvable tag keeps the
+  tag. `dependabot.yml` loses `updates:` (every ecosystem: R12) and what only served them (`multi-ecosystem-groups`,
+  `registries`); with nothing else left it is deleted. Dependabot `ignore:` translates to `rules: ignore`, to an `autoMerge`
+  threshold for update-type ignores (majors → `minor`, minors and majors → `patch`, so they wait for `approve`), and to a
+  comment for version ranges (R1: rules take no ranges). Before pushing, the App's declaration and the installation's
+  acceptance of the `DependencyUpdates` need are read; a gap blocks onboarding with the reason, retried daily until the
+  pull request exists.
+- **D-L15. Platform majors, migrations, gap B's new-package cap, R19's held versions and workflows not run on `pull_request`
+  (R15)** each refuse the enqueue with their own line in the body. A security run follows D-P15 (the policy's `Security` mode
+  always), whether or not the pull request was blocked.
+
+**Not built here:** the fleet view (§8 readiness, the propagation wave), the App manifest change itself (Workflows: write,
+the `release` and `dependabot_alert` events), docs (`hosting.md`, the README), and any live capture: every GitHub body in
+`GitHubForgeDependencyUpdatesTests` follows the REST docs and S18 must replace them with captures.
