@@ -142,6 +142,24 @@ sweep, which took 26.2 min **without** E2E. Per project:
 The wall time is now set by `MintPlayer.Spark.Tests` alone. Running projects in parallel does not
 make a single project faster: the suites compete for the same cores.
 
+## The committed ncc bundles: build them only from the main checkout
+
+`apps/CodeCoverage/action/dist` and `apps/CodeCoverage/dependency-action/dist` are committed. The
+pull-request workflow rebuilds each one and **fails on any byte difference** ("dist is stale").
+
+- **The build is deterministic.** It is the same on Windows and Linux and across Node 24 minors.
+  Measured on PR #522 (2026-10-16): Node 24.15.0 on Windows and 24.21.0 on Linux gave the same sha.
+- **What does change the bytes is where `node_modules` resolves from.** ncc derives its module ids
+  from relative paths. An agent worktree (`.claude/worktrees/*`) has no `node_modules` of its own, so
+  dependencies resolve from the main checkout one level up. Every id then changes, and CI's rebuild
+  differs on every line.
+- **Guard:** `tools/ncc-build-guard.mjs` runs as `prebuild` in both actions. It refuses a build where
+  `@vercel/ncc` or `@actions/core` resolves outside the checkout's own `node_modules`. Rebuild
+  `dist` in the main checkout after the worktree's work is merged.
+- **Never `npm ci` in a container on a writable mount of the repo.** It is a workspace install, and
+  it wipes the root `node_modules`, replacing it with Linux symlinks. Use a read-only mount or a
+  `git archive` copy.
+
 ## RavenDB queries: never splice strings into RQL
 
 Never build RQL or a patch script by interpolating a string, even when today's callers only pass
