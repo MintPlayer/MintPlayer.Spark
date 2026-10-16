@@ -20,8 +20,9 @@ empty body, so this document is its design. App: `apps/CodeCoverage` (**producti
 | Guides sidebar group (Merge queue setup, Dependency updater setup page, Connect an AI agent) | ✅ 2026-10-16 |
 | **Local sweep** (before the privacy and guides work): Git 142, GitWriter 252, CodeCoverage 2719, action unit 276 + bundle 2, ClientApp 350, all green. Integration 6 passed and **6 skipped** (mvn, uv, go and composer missing locally; Renovate Docker test skipped on Windows), so their **first real run is CI** | ✅ 2026-10-16 |
 | After the privacy work: CodeCoverage 2752/2752, the affected Spark classes 533/533. Guides: the 34 affected Angular specs | ✅ 2026-10-16 |
-| S18 live on SparkTest; re-capturing the GitHub response bodies in `GitHubForgeDependencyUpdatesTests` (currently derived from the docs) | ⏳ needs the deploy |
-| Deploy (after #517); GitHub App settings changed by hand (Workflows write, Dependabot alerts read, `release` + `dependabot_alert` events; no manifest file in the repo) | ⏳ owner |
+| S18 live (`PieterjanDeClippel/DependencyUpdaterTest`) | ✅ 2026-10-16, §13.13.1: onboarding, draft rolling PR, tree-equal no-op, approve + `uses:` carve-out, human-commit replay, scheduled PR merged by the queue; defects S18-D1–D4 |
+| Event-driven onboarding, rate-limit retries, two library fixes (P13–P18, §13.13.2) | 🔍 investigated 2026-10-16; to grill |
+| Deploy; GitHub App permissions (Dependabot alerts read, `release` + `dependabot_alert`) | ✅ 2026-10-16 (#522 deployed, both Apps changed, all 4 installations accepted) |
 
 §1–§12 are the plan as grilled on 2026-10-09. **§13 replaces §7.1, most of §5, §7.8, §7.9 and §10–§11**, and §13.10–§13.12 are authoritative. Where they disagree with §1–§12, §13 wins. §12 still records the reasons for the choices §13 keeps. The user guide is [dependency-updates.md](dependency-updates.md).
 
@@ -1412,3 +1413,92 @@ do see the settings (administrators without the badge token).
 (the visibility service, the forges, `CoverageAdministrators`, the browse controllers, the app's indexes) would be there
 unless the test re-registered them by hand, which is the composition under test. `CoverageWebAppFactory` boots the real
 `Program`, so the test uses it, with the header sign-in `HostMetricsDashboardTests` already uses.
+
+### 13.13 After S18: event-driven onboarding, rate-limit retries, and the defects found live (2026-10-16)
+
+#### 13.13.1 S18 live results (`PieterjanDeClippel/DependencyUpdaterTest`)
+
+The test repository is public and scratch. It pins old NuGet packages (Newtonsoft.Json, Serilog, Humanizer.Core, with `packages.lock.json`), old npm packages (lodash, chalk, date-fns, typescript, with `package-lock.json`), and `actions/*@v4`. Its `coverage.yml` sets `mergeQueue: { enabled: true }`. Dependency updates are enabled on the Repository only; the account stays on "use account setting" (off).
+
+**Passed:**
+- **Onboarding PR #1.** Opened by `app/coverageproduction`. One commit with the two templates, pinned to `bfd709a9` (`dependency-update-v1`), each with `contents: read`, no `id-token` and `persist-credentials: false`, and a commented `dependencies:` section appended to the existing `coverage.yml`. Its CI was green.
+- **Merging #1 started the first run.** `PullRequestEndedAsync` triggers a refresh.
+  - The lookup was dispatched on `master` (17:11:53, success) and the apply on `mintplayer/dependencies-work` (17:12:55, success).
+  - **Rolling PR #2** was opened as a **draft** at 17:13:39. It holds one commit touching only `package.json`, `package-lock.json`, `Lib.csproj` and `packages.lock.json`, and applies 6 groups within the default `minor` threshold.
+  - The PR body lists 12 groups "awaiting approval" (all majors, the Actions majors, the platforms), each with its `approve <group>` line. .NET 11 is "available, not applied" as a preview (R7).
+  - Its CI (`build`) is green, and so is the bot's own **Dependency updates** check run.
+
+**Defects found:**
+- **S18-D1: platforms appear twice.** The `setup-node`/`setup-dotnet` `with:` records (`node` 20 → 24.22.0, `dotnet-sdk` 8.0.x → 10.0.402) are separate groups from `platform:node 26` / `platform:dotnet 10.0`, with different targets. Per D-S12c, records of a platform's `setup-*` `with:` values (and its images) must fall under that platform's record. One approval then moves every location to one target.
+- **S18-D2: the scheduled onboarding is not event-driven.** The repository was enabled at about 17:03; the onboarding PR came from the 10-minute cron. See §13.13.2.
+
+**Also passed (17:14–17:38):**
+- **Tree-equal `refresh`.** The comment got 👍. Lookup and apply ran (17:15:05, 17:16:02). The head stayed `e28f07d8`, with **no push and no CI run**.
+- **`approve actions/checkout` and the human-commit replay.**
+  - A human commit `da7a4fa6` (`NOTES.md`) was pushed to the rolling branch, then `approve actions/checkout` was commented, which got 👍.
+  - The rebuild gave "Update dependencies (7 groups)" plus the replayed human commit `04b3e974` on top, and `NOTES.md` was kept.
+  - `ci.yml` went from `actions/checkout@v4` to `@v7` (tag style kept, D-V1). The unapproved `setup-*@v4` stayed.
+  - The push changing `.github/workflows/ci.yml` went through, so the `workflows: write` token and the R15 carve-out work live. CI was green.
+- **Merging the first (draft) PR #2** by hand ended the draft phase.
+- **A scheduled, non-draft run.**
+  - `ms` 2.1.1 was added to `master`, with a repository schedule override of daily at 17:00 UTC (spread minute :30).
+  - The cron fired at 17:30:04 (lookup) and 17:31:04 (apply). **PR #3**, not a draft, applied 2 groups (`ms` patch, `typescript` minor). CI and the bot check went green, and the bot handed it to the merge queue (R5).
+- **The merge queue merged #3 at 17:37:55** ("Merged by the queue"), once the S18-D3 workaround below was applied.
+
+**More defects:**
+- **S18-D3: the merge queue refuses the bot's own rolling PR.**
+  - The refusal read: "Refused: approval — @coverageproduction[bot] does not have write access, so an approval of commit `a69d6514` by someone with write access is needed." The approval floor for authors without write access applies to the App, which is never a collaborator, so auto-merge can never happen without a human approval.
+  - **Fix:** a rolling PR whose head the bot pushed and validated itself (`DependencyUpdateRun.RollingSha` = the PR head) counts as trusted for the approval floor. Branch protection's required reviews still apply, because GitHub enforces them.
+  - Workaround used in S18: the owner's approval plus `/queue`.
+- **S18-D4: testing waits for the schedule.**
+  - There is no way to start a *scheduled* run (the only kind that may auto-merge, D-L) on demand. The owner asked whether to edit the `SparkMessages` documents on production; that was rejected as unsafe for the messaging state machine.
+  - **Proposal:** an admin-only "Run the scheduled slot now" custom action on Repository, which broadcasts `Trigger(Scheduled)` with a fresh dedup key.
+
+**Not yet done:** re-capturing the GitHub response bodies for `GitHubForgeDependencyUpdatesTests` from this run.
+
+#### 13.13.2 Event-driven onboarding (owner, 2026-10-16)
+
+Owner: "Each time someone installs the app on one of his repos, accounts or organizations, the bot should broadcast a message on the message queue … create the onboarding pull-request — if it fails because a rate-limit is hit, the message-queue will retry automatically with an incremental backoff. The bulk of all that complex code already exists as generic library." Also: "the recipient should be idempotent. So if the code fails halfway, the retry cannot fail at the first line again because the first file already exists."
+
+**What exists, investigated 2026-10-16 with file:line evidence in the session:**
+
+*Webhooks:*
+- One catch-all recipient, `GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>` (GI `Recipients/GitHubEventsRecipient.cs:29`). The typed `GitHubWebhookMessage<TEvent>` is deliberately unused (see that file's doc comment).
+- `installation` and `installation_repositories` upsert the repositories, then send `ReconcileAccountMessage`.
+- `ReconcileAccountRecipient` (CC `Ingestion/ReconcileAccountRecipient.cs:21-49`) is the first point where repositories have a `DefaultBranch`, and it already fans out the manifest scans.
+- `OnboardAsync` returns early without a `DefaultBranch`, so hooking the raw webhook would silently do nothing.
+
+*Messaging (`libs/messaging`):*
+- Per-handler retries: `MaxAttempts` 5, with backoff from a table (5 s, 30 s, 2 min, 10 min, 1 h), configurable per queue. After the last attempt the message is dead-lettered.
+- `NonRetryableException` dead-letters at once.
+- `BroadcastOnceAsync` deduplicates enqueueing by key, per message type.
+- `IMessageContext.MessageId` stays the same across retries, and `IMessageCheckpoint` / `IMessageProgress` let a recipient resume.
+- A parked message does not block its lane.
+- A recipient **cannot** ask for a specific delay.
+
+*Spark save hooks:*
+- `IAfterSaveCommitted<T>` is a durable outbox: it is retried, and the recipient throws to retry. `SaveContext.Before` gives the stored entity, so an off→on change can be detected.
+- `RepositoryActions` has `IBeforeSave<Repository>`; `AccountActions` has no save hook.
+
+*Onboarding today:*
+- About 10–14 GitHub calls, plus one git-writer push of a single commit.
+- It is already idempotent on three points: an early return on state, "workflows already on the default branch → Done", and find-before-create of the PR. The branch is pushed as a whole, never file by file.
+- **Gaps:**
+  - It does **not** short-circuit `Blocked`, so an owner-closed PR would be reopened by an event-driven trigger. Only the cron filters that case today.
+  - The Onboard signal is not wrapped in `GuardedAsync`, so failures go straight to the message bus's retry, which is fine.
+  - `GetTreeAsync` and `FetchFileContentAsync` **swallow every error and return null**. A rate-limited onboarding would build its PR from an empty tree and a missing `coverage.yml` or dependabot file, and open a **wrong** PR.
+  - A secondary-rate-limit 403 on the push is read as a permission problem (`Blocked`).
+  - Rate limits become `ForgeRequestException(…, 429)`, and the reset time is lost.
+
+**Proposed design (P13–P18, to grill):**
+
+| # | Proposal |
+|---|---|
+| P13 | **Triggers.** (a) `ReconcileAccountRecipient`, after its manifest-scan fan-out, broadcasts an `Onboard` signal for every repository whose setting **resolves on** and has not been onboarded. That covers installs, repositories added to an installation, and permissions accepted. (b) `IAfterSaveCommitted<Repository>` / `<Account>` broadcast `Onboard` when `DependencyUpdates` changes from off to on. An account fans out over its repositories that resolve on. Both use `BroadcastOnceAsync` with the key `dependency-onboard:{repoId}:{settingsChangeId or installation event}`. The 10-minute cron stays only as the fallback for a `Blocked` onboarding, once a day |
+| P14 | **The setting stays the gate.** Installing the App does not onboard repositories that resolve off; the account default stays off ("the updater pushes branches into somebody else's repository", `Account.cs:139-143`). Enabling the setting is the trigger. Recommended; owner decision |
+| P15 | **Idempotent recipient.** Each step is "look up, then create or reuse": the branch is rebuilt as one commit and force-pushed with a lease (never file by file); the open onboarding PR is found by its head branch and updated, never duplicated; a 422 "already exists" counts as success; progress (branch head, PR number) is saved to `DependencyUpdateRun` after each step. `OnboardAsync` itself short-circuits `Done`, `PullRequestOpened` and **owner-closed `Blocked`** (moved from the cron). Test: fail after each step, deliver the retry, and expect exactly one branch and one PR |
+| P16 | **Rate limits are retried and never mistaken for data.** Classify GitHub 429, 403 with `x-ratelimit-remaining: 0`, and the secondary-limit 403 (its documented message, or `Retry-After`) as `ForgeRateLimitedException(retryAfter)`, carrying the reset or `Retry-After`. `GetTreeAsync` and `FetchFileContentAsync` must rethrow it (and every non-404 error) instead of returning null. A missing file is a 404, and only a 404 |
+| P17 | **Library: `RetryAfterException(TimeSpan)`** in `MintPlayer.Spark.Messaging.Abstractions`, next to `NonRetryableException`. The processor parks the handler for `max(table delay, hint)`, keeps the expiry check, and counts the attempt toward `MaxAttempts`. That bounds an endlessly throttled message; a larger `MaxAttempts` can be set for the dependency queue. This is generic: every external API has 429s. `ForgeRateLimitedException` derives from it, or is mapped to it at the recipient boundary |
+| P18 | **Library defect found by the investigation:** a reclaim (host crash, lapsed claim) increments `SparkMessage.AttemptCount`, but dead-lettering only looks at the handler's `AttemptCount`. A message that keeps killing its host is never dead-lettered, despite the comment at `MessageRetrySweeper.cs:218`. Fix it in the same PR, with a red→green test |
+
+Also in the same PR: **S18-D1** (platforms appearing twice), **S18-D3** (the bot's own rolling PR trusted for the approval floor), **S18-D4** (a "run the scheduled slot now" action), and re-capturing the GitHub bodies.
