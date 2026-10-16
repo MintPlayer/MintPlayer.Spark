@@ -222,8 +222,7 @@
     "panel.mergeQueue": { "en": "Merge queue", "fr": "File de fusion", "nl": "Merge queue" },
     "panel.onboardingPr": { "en": "Onboarding pull request #{0}", "fr": "Pull request d'intégration n°{0}", "nl": "Onboarding-pull-request #{0}" },
     "panel.rateLimit": { "en": "waiting for GitHub's rate limit until {0} (park {1} of {2})", "fr": "en attente de la limite de débit de GitHub jusqu'à {0} (attente {1} sur {2})", "nl": "wacht op GitHubs rate limit tot {0} (park {1} van {2})" },
-    "panel.repoOff": { "en": "Dependency updates are off for this repository.", "fr": "Les mises à jour des dépendances sont désactivées pour ce dépôt.", "nl": "Dependency-updates staan uit voor deze repository." },
-    "panel.runNow": { "en": "Run the scheduled slot now", "fr": "Lancer le passage planifié maintenant", "nl": "Geplande run nu starten" }
+    "panel.repoOff": { "en": "Dependency updates are off for this repository.", "fr": "Les mises à jour des dépendances sont désactivées pour ce dépôt.", "nl": "Dependency-updates staan uit voor deze repository." }
   },
   "mcpUi": {
     "addressTitle": {

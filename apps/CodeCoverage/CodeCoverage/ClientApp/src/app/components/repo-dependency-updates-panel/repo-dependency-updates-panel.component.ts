@@ -2,14 +2,9 @@ import { ChangeDetectionStrategy, Component, computed, effect, inject, input, si
 import { RouterLink } from '@angular/router';
 import { BsCardBodyComponent, BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
 import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
-import { NotificationKind, SparkNotificationService } from '@mintplayer/ng-spark/client-operations';
-import { PersistentObject } from '@mintplayer/ng-spark/models';
-import { describeSparkError, SparkLanguageService, SparkService } from '@mintplayer/ng-spark/services';
+import { SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { BrowseService, DependencyRepoView } from '../../services/browse.service';
 import { chip, HEALTH, time } from '../dependency-updates/dependency-health';
-
-/** The Repository detail action "Run the scheduled slot now" (App_Data/actions.json, PRD R28). */
-export const RUN_NOW_ACTION = 'RunScheduledSlotNow';
 
 /**
  * A repository's dependency updates on the generic /po Repository detail page (dependency-updates PRD §13.8 N9): the
@@ -47,11 +42,6 @@ export const RUN_NOW_ACTION = 'RunScheduledSlotNow';
               @if (pr.draft) { <span class="small text-muted">draft</span> }
             }
             @if (s.plannedGroups > 0) { <span class="small text-muted">{{ s.plannedGroups }} group(s) applied</span> }
-            @if (canRunNow()) {
-              <button type="button" class="btn btn-sm btn-outline-primary ms-auto" data-testid="du-run-now" [disabled]="running()" (click)="runNow()">
-                <i class="bi bi-play-circle"></i> {{ t('dependencyOnboardingUi.panel.runNow', 'Run the scheduled slot now') }}
-              </button>
-            }
           </div>
 
           @if (s.rateLimit; as rl) {
@@ -168,25 +158,14 @@ export const RUN_NOW_ACTION = 'RunScheduledSlotNow';
 })
 export class RepoDependencyUpdatesPanelComponent {
   private readonly browse = inject(BrowseService);
-  private readonly spark = inject(SparkService);
   private readonly lang = inject(SparkLanguageService);
-  private readonly notifications = inject(SparkNotificationService);
 
   /** Canonical forge spelling, e.g. "github". Sourced from the PO's document id (`forgeOf`). */
   readonly provider = input.required<string>();
   readonly owner = input.required<string>();
   readonly name = input.required<string>();
 
-  /**
-   * The Repository persistent object the page shows, for "Run the scheduled slot now" (R28): a detail action, executed
-   * with this object as its parent. Optional: without it the button is not offered.
-   */
-  readonly po = input<PersistentObject | null>(null);
-
   readonly view = signal<DependencyRepoView | null>(null);
-  /** The server offers `RunScheduledSlotNow` to this caller on this type (security.json; it re-checks R21 when run). */
-  readonly canRunNow = signal(false);
-  readonly running = signal(false);
 
   /** Off and never run: nothing to show. */
   readonly visible = computed(() => {
@@ -208,34 +187,6 @@ export class RepoDependencyUpdatesPanelComponent {
       const name = this.name();
       void this.load(provider, owner, name);
     });
-    effect(() => {
-      const po = this.po();
-      void this.loadRunNow(po);
-    });
-  }
-
-  private async loadRunNow(po: PersistentObject | null): Promise<void> {
-    if (!po) { this.canRunNow.set(false); return; }
-    try {
-      this.canRunNow.set((await this.spark.getCustomActions(po.objectTypeId)).some(a => a.name === RUN_NOW_ACTION));
-    } catch {
-      this.canRunNow.set(false);
-    }
-  }
-
-  /** Starts a run exactly like the scheduled slot; the server answers with a toast (started, busy, off, refused). */
-  async runNow(): Promise<void> {
-    const po = this.po();
-    if (!po || this.running()) return;
-    this.running.set(true);
-    try {
-      await this.spark.executeCustomAction<{ outcome: string }>(po.objectTypeId, RUN_NOW_ACTION, po);
-      await this.load();
-    } catch (e) {
-      this.notifications.show(describeSparkError(e, this.lang, this.t('dependencyOnboardingUi.actionFailed', 'The action failed.')), NotificationKind.Error);
-    } finally {
-      this.running.set(false);
-    }
   }
 
   t(key: string, fallback: string): string {

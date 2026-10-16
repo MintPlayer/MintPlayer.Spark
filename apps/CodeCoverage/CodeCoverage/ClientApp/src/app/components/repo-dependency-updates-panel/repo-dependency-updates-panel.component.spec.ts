@@ -2,13 +2,11 @@ import { provideZonelessChangeDetection } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { provideRouter } from '@angular/router';
-import { SparkNotificationService } from '@mintplayer/ng-spark/client-operations';
-import { PersistentObject } from '@mintplayer/ng-spark/models';
-import { SparkLanguageService, SparkService } from '@mintplayer/ng-spark/services';
-import { describe, expect, it, vi } from 'vitest';
+import { SparkLanguageService } from '@mintplayer/ng-spark/services';
+import { describe, expect, it } from 'vitest';
 import { DependencyRepoView } from '../../services/browse.service';
 import { BrowseServiceStub, createBrowseStub, provideBrowseStub, settle } from '../../../testing/test-utils';
-import { RepoDependencyUpdatesPanelComponent, RUN_NOW_ACTION } from './repo-dependency-updates-panel.component';
+import { RepoDependencyUpdatesPanelComponent } from './repo-dependency-updates-panel.component';
 
 const view: DependencyRepoView = {
   status: {
@@ -27,30 +25,20 @@ const view: DependencyRepoView = {
 describe('RepoDependencyUpdatesPanelComponent', () => {
   let fixture: ComponentFixture<RepoDependencyUpdatesPanelComponent>;
   let browse: BrowseServiceStub;
-  let spark: { getCustomActions: ReturnType<typeof vi.fn>; executeCustomAction: ReturnType<typeof vi.fn> };
 
-  const repositoryPo = { id: 'Repositories/github/1', objectTypeId: 'type-repository' } as PersistentObject;
-
-  async function create(getRepoDependencyUpdates: () => Promise<DependencyRepoView>, options: { po?: PersistentObject; actions?: string[] } = {}) {
+  async function create(getRepoDependencyUpdates: () => Promise<DependencyRepoView>) {
     browse = createBrowseStub({ getRepoDependencyUpdates });
-    spark = {
-      getCustomActions: vi.fn(() => Promise.resolve((options.actions ?? [RUN_NOW_ACTION]).map(name => ({ name })))),
-      executeCustomAction: vi.fn(() => Promise.resolve({ outcome: 'started' })),
-    };
     TestBed.configureTestingModule({
       imports: [RepoDependencyUpdatesPanelComponent],
       providers: [
         provideZonelessChangeDetection(), provideNoopAnimations(), provideRouter([]), provideBrowseStub(browse),
-        { provide: SparkService, useValue: spark },
         { provide: SparkLanguageService, useValue: { t: (key: string, fallback?: string) => fallback ?? key, resolve: () => '' } },
-        { provide: SparkNotificationService, useValue: { show: vi.fn() } },
       ],
     });
     fixture = TestBed.createComponent(RepoDependencyUpdatesPanelComponent);
     fixture.componentRef.setInput('provider', 'github');
     fixture.componentRef.setInput('owner', 'acme');
     fixture.componentRef.setInput('name', 'widget');
-    if (options.po) fixture.componentRef.setInput('po', options.po);
     await settle(fixture);
   }
 
@@ -112,24 +100,9 @@ describe('RepoDependencyUpdatesPanelComponent', () => {
     expect(q('[data-testid="du-rate-limit"]')).toBeNull();
   });
 
-  // R28: the detail action, with the Repository as its parent; the server's toast says how it went.
-  it('runs the scheduled slot now through the Repository detail action, then reloads', async () => {
-    await create(() => Promise.resolve(view), { po: repositoryPo });
-
-    expect(spark.getCustomActions).toHaveBeenCalledWith('type-repository');
-    q('[data-testid="du-run-now"]')!.click();
-    await settle(fixture);
-
-    expect(spark.executeCustomAction).toHaveBeenCalledWith('type-repository', RUN_NOW_ACTION, repositoryPo);
-    expect(browse.getRepoDependencyUpdates).toHaveBeenCalledTimes(2);
-  });
-
-  it('offers no run-now button without the object, or when the server does not offer the action', async () => {
+  // R28: "Run the scheduled slot now" is the Repository's detail action in Spark's own action bar, not a panel button.
+  it('offers no run-now button of its own', async () => {
     await create(() => Promise.resolve(view));
-    expect(q('[data-testid="du-run-now"]')).toBeNull();
-
-    TestBed.resetTestingModule();
-    await create(() => Promise.resolve(view), { po: repositoryPo, actions: [] });
     expect(q('[data-testid="du-run-now"]')).toBeNull();
   });
 });
