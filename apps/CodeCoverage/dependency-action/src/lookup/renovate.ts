@@ -50,9 +50,10 @@ export interface RenovateOptions {
  * `docker run` arguments. Secrets travel as `-e NAME` (value inherited from this process's env),
  * never as `-e NAME=value`, so they never appear in a command line or a log.
  */
-export function dockerArgs(o: { repoDir: string; outDir: string; configFile: string; image: string; githubTokenEnv?: string; hostRulesEnv?: string }): string[] {
+export function dockerArgs(o: { repoDir: string; outDir: string; configFile: string; image: string; user?: string; githubTokenEnv?: string; hostRulesEnv?: string }): string[] {
   const args = [
     'run', '--rm',
+    ...(o.user ? ['--user', o.user] : []),
     '-v', `${o.repoDir}:/usr/src/app`,
     '-v', `${o.outDir}:/out`,
     '-v', `${o.configFile}:/config/renovate.json:ro`,
@@ -74,6 +75,17 @@ export function dockerArgs(o: { repoDir: string; outDir: string; configFile: str
   return args;
 }
 
+/**
+ * The container runs as THIS process's uid, with group 0 (the image's own group, which keeps its tool
+ * and cache directories writable for an arbitrary uid). The image's default user (12021) is nobody on
+ * the host: a checkout that is not world-readable, such as an mkdtemp 0700 directory, made every git
+ * call fail with `spawn git EACCES`, which Renovate reports as "git version needs upgrading". Undefined
+ * where there are no POSIX uids (Windows), where Docker Desktop does not enforce host permissions.
+ */
+export function containerUser(getuid: (() => number) | undefined = process.getuid): string | undefined {
+  return getuid ? `${getuid()}:0` : undefined;
+}
+
 export async function runRenovate(o: RenovateOptions): Promise<RenovateRun> {
   const outDir = path.join(o.workDir, 'renovate-out');
   await fs.mkdir(outDir, { recursive: true });
@@ -85,7 +97,7 @@ export async function runRenovate(o: RenovateOptions): Promise<RenovateRun> {
   if (o.githubTokenEnv) env.RENOVATE_GITHUB_COM_TOKEN = process.env[o.githubTokenEnv];
   if (o.hostRulesEnv) env.RENOVATE_HOST_RULES = process.env[o.hostRulesEnv];
   const started = Date.now();
-  const result = await o.exec('docker', dockerArgs({ repoDir: o.repoDir, outDir, configFile, image, githubTokenEnv: o.githubTokenEnv, hostRulesEnv: o.hostRulesEnv }), {
+  const result = await o.exec('docker', dockerArgs({ repoDir: o.repoDir, outDir, configFile, image, user: containerUser(), githubTokenEnv: o.githubTokenEnv, hostRulesEnv: o.hostRulesEnv }), {
     cwd: o.repoDir,
     env,
     timeoutMs: 30 * 60_000,

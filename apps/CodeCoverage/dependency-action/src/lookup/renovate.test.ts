@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fakeExec, readFixture, tempDir } from '../testing/helpers';
-import { dockerArgs, RENOVATE_IMAGE, renovateConfig, runRenovate } from './renovate';
+import { containerUser, dockerArgs, RENOVATE_IMAGE, renovateConfig, runRenovate } from './renovate';
 
 describe('Renovate invocation', () => {
   it('pins the S12 image by digest (R13)', () => {
@@ -24,6 +24,14 @@ describe('Renovate invocation', () => {
     // Never `-e NAME=value` for a secret.
     expect(args.filter((a) => /^RENOVATE_(GITHUB_COM_TOKEN|HOST_RULES)=/.test(a))).toEqual([]);
     expect(args.indexOf(RENOVATE_IMAGE)).toBeLessThan(args.indexOf('--platform=local'));
+  });
+
+  it('runs the container as the caller uid with group 0, so a 0700 checkout stays readable', () => {
+    expect(containerUser(() => 1001)).toBe('1001:0');
+    expect(containerUser(undefined)).toBeUndefined();
+    const args = dockerArgs({ repoDir: '/repo', outDir: '/out', configFile: '/cfg.json', image: RENOVATE_IMAGE, user: '1001:0' });
+    expect(args.slice(0, 4)).toEqual(['run', '--rm', '--user', '1001:0']);
+    expect(dockerArgs({ repoDir: '/repo', outDir: '/out', configFile: '/cfg.json', image: RENOVATE_IMAGE })).not.toContain('--user');
   });
 
   it('reads the report the container wrote, and fails loudly on a non-zero exit', async () => {
