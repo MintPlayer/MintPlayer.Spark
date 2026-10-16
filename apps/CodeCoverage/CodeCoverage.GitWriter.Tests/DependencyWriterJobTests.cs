@@ -188,8 +188,15 @@ public class DependencyWriterJobTests : WriterTestBase
         var human = origin.Commit("Pin chalk", author: "Octo Cat", email: "octo@example.invalid");
         FixtureGit.Run(origin.Work, "push", "--quiet", "--force", "origin", $"rolling:refs/heads/{DependencyBranches.Rolling}");
 
-        var rebuilt = await PostAsync("rolling", With(body, new()
+        // The next slot builds on a moved default branch (a docs-only commit): rebuilt on the same base, the replayed
+        // tree would equal the human's head and R4 pushes nothing ("force-push only if the tree differs").
+        origin.Checkout("main").Write("CHANGELOG.md", "notes\n");
+        var movedBase = origin.Commit("Docs");
+        origin.Push("main");
+
+        var rebuilt = await PostAsync("rolling", With(Job(origin, movedBase), new()
         {
+            ["plan"] = Plan(movedBase), ["patch"] = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(patch)), ["claimedGroups"] = new[] { "chalk" },
             ["expectedRollingSha"] = human, ["lastBotSha"] = first.BotSha,
             ["author"] = new { name = "CodeCoverage dependency updates", email = "bot@example.invalid", date = CommitterDate.AddDays(7) },
             ["committer"] = new { name = "CodeCoverage dependency updates", email = "bot@example.invalid", date = CommitterDate.AddDays(7) },
@@ -207,6 +214,29 @@ public class DependencyWriterJobTests : WriterTestBase
         value.HeldValue.Should().Be("4.1.1");
         value.ProposedValue.Should().Be("4.1.2");
         value.Commit.Should().Be(human);
+    }
+
+    [Fact]
+    public async Task R4_a_human_commit_replayed_onto_an_equal_tree_pushes_nothing_but_still_reports_its_manifest_value()
+    {
+        var (origin, baseSha, patch) = Seeded();
+        var body = With(Job(origin, baseSha), new()
+        {
+            ["plan"] = Plan(baseSha), ["patch"] = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(patch)), ["claimedGroups"] = new[] { "chalk" },
+        });
+        var first = await PostAsync("rolling", body);
+        FixtureGit.Run(origin.Work, "fetch", "--quiet", "origin", $"{DependencyBranches.Rolling}:rolling");
+        origin.Checkout("rolling");
+        origin.Write("package.json", After.Replace("4.1.2", "4.1.1"));
+        var human = origin.Commit("Pin chalk", author: "Octo Cat", email: "octo@example.invalid");
+        FixtureGit.Run(origin.Work, "push", "--quiet", "--force", "origin", $"rolling:refs/heads/{DependencyBranches.Rolling}");
+
+        var again = await PostAsync("rolling", With(body, new() { ["expectedRollingSha"] = human, ["lastBotSha"] = first.BotSha }));
+
+        again.Outcome.Should().Be(DependencyJobOutcomes.Unchanged, "R4: force-push only if the tree differs");
+        origin.Ref($"refs/heads/{DependencyBranches.Rolling}").Should().Be(human);
+        again.Replayed.Should().Be(1);
+        again.HumanValues.Should().ContainSingle().Which.HeldValue.Should().Be("4.1.1", "the human's value still becomes a hold");
     }
 
     [Fact]
