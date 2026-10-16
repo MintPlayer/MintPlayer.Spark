@@ -21,7 +21,7 @@ empty body, so this document is its design. App: `apps/CodeCoverage` (**producti
 | **Local sweep** (before the privacy and guides work): Git 142, GitWriter 252, CodeCoverage 2719, action unit 276 + bundle 2, ClientApp 350, all green. Integration 6 passed and **6 skipped** (mvn, uv, go and composer missing locally; Renovate Docker test skipped on Windows), so their **first real run is CI** | ✅ 2026-10-16 |
 | After the privacy work: CodeCoverage 2752/2752, the affected Spark classes 533/533. Guides: the 34 affected Angular specs | ✅ 2026-10-16 |
 | S18 live (`PieterjanDeClippel/DependencyUpdaterTest`) | ✅ 2026-10-16, §13.13.1: onboarding, draft rolling PR, tree-equal no-op, approve + `uses:` carve-out, human-commit replay, scheduled PR merged by the queue; defects S18-D1–D4 |
-| Event-driven onboarding, rate-limit retries, two library fixes (P13–P18, §13.13.2) | 🔍 investigated 2026-10-16; to grill |
+| Onboarding page + event-driven onboarding, messaging priority + rate-limit budget, S18-D1/D3/D4 (§13.13.3, R20–R31) | ✅ grilled 2026-10-16; next: build in one PR |
 | Deploy; GitHub App permissions (Dependabot alerts read, `release` + `dependabot_alert`) | ✅ 2026-10-16 (#522 deployed, both Apps changed, all 4 installations accepted) |
 
 §1–§12 are the plan as grilled on 2026-10-09. **§13 replaces §7.1, most of §5, §7.8, §7.9 and §10–§11**, and §13.10–§13.12 are authoritative. Where they disagree with §1–§12, §13 wins. §12 still records the reasons for the choices §13 keeps. The user guide is [dependency-updates.md](dependency-updates.md).
