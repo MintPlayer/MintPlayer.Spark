@@ -42,7 +42,16 @@ jobs:
           - { name: CodeCoverage.Tests, artifact: codecoverage, projects: CodeCoverage.Tests }
           - { name: SeoTester.Tests, artifact: seotester, projects: SeoTester.Tests, playwright: true }
           # Everything else: the generator, client and app test projects and the Angular (vitest) suites.
+          # This includes the dependency-update action's `test` target (unit + committed-bundle smoke test).
           - { name: Other suites, artifact: other, exclude: 'MintPlayer.Spark.Tests,MintPlayer.Spark.E2E.Tests,CodeCoverage.Tests,SeoTester.Tests' }
+          # The dependency-update action against real package managers and LOCAL registries
+          # (docs/code-coverage/dependency-updates-PRD.md §13.11.2): its own `test-integration` target, so
+          # "Other suites" (target `test`) never runs it. One slice per ecosystem group, 15 minutes each;
+          # the Nx cache makes an unchanged action about a minute.
+          - { name: 'dependency-action IT node+dotnet', artifact: dep-it-node-dotnet, projects: '@mintplayer/dependency-update-action', target: test-integration, itGroup: 'node+dotnet', timeout: 15 }
+          - { name: 'dependency-action IT jvm', artifact: dep-it-jvm, projects: '@mintplayer/dependency-update-action', target: test-integration, itGroup: 'jvm', timeout: 15 }
+          - { name: 'dependency-action IT python+go+rust+php', artifact: dep-it-python-go-rust-php, projects: '@mintplayer/dependency-update-action', target: test-integration, itGroup: 'python+go+rust+php', timeout: 15 }
+          - { name: 'dependency-action IT docker+renovate', artifact: dep-it-docker-renovate, projects: '@mintplayer/dependency-update-action', target: test-integration, itGroup: 'docker+renovate', timeout: 15 }
 
     steps:
     - name: Checkout
@@ -57,21 +66,33 @@ jobs:
       if: matrix.playwright
       uses: ./.github/actions/playwright
 
+    # The package managers ubuntu-latest lacks, at the versions the S13/S14 spikes ran. npm, yarn,
+    # dotnet, java/maven/gradle, go, cargo, php/composer and docker are on the image already.
+    - name: Integration toolchains
+      if: matrix.itGroup == 'node+dotnet' || matrix.itGroup == 'python+go+rust+php'
+      run: |
+        npm install -g pnpm@10.18.0 --ignore-scripts
+        pipx install uv==0.13.1
+
     - name: Run tests
       # Step-level, so a hung suite fails here and the artifact upload below still runs with what the
       # suite produced. The large .NET suites also carry --blame-hang (5-10 min per test) in their nx
       # command, which names the hung test instead of just timing out.
-      timeout-minutes: 20
+      timeout-minutes: ${{ matrix.timeout || 20 }}
       # --output-style=stream: nx buffers each task's output until the task finishes, so a hung task
       # prints NOTHING. Streaming trades tidy grouping for a visible last line.
       run: |
         if [ -n "${{ matrix.projects }}" ]; then
-          npx nx run-many --target=test --projects=${{ matrix.projects }} --output-style=stream
+          npx nx run-many --target=${{ matrix.target || 'test' }} --projects=${{ matrix.projects }} --output-style=stream
         else
           npx nx run-many --target=test --exclude=${{ matrix.exclude }} --output-style=stream
         fi
       env:
-        RAVENDB_LICENSE: ${{ secrets.RAVENDB_LICENSE }}
+        # The integration tests' ecosystem slice; unset for every other suite.
+        DEP_ACTION_IT_GROUP: ${{ matrix.itGroup }}
+        # Only the integration slices see it, for Renovate's GitHub tag lookups (read-only).
+        GITHUB_TOKEN: ${{ matrix.itGroup && github.token || '' }}
+        RAVENDB_LICENSE: ${{ !matrix.itGroup && secrets.RAVENDB_LICENSE || '' }}
         # Read by tools/test-shard.mjs; an input of the MintPlayer.Spark.Tests task, so each shard is
         # cached on its own.
         SPARK_TEST_SHARD: ${{ matrix.shard }}
@@ -100,5 +121,6 @@ jobs:
           apps/CodeCoverage/CodeCoverage/ClientApp/coverage/cobertura-coverage.xml
           coverage/@spark-apps/code-coverage/cobertura-coverage.xml
           apps/CodeCoverage/action/coverage/cobertura-coverage.xml
+          apps/CodeCoverage/dependency-action/coverage/cobertura-coverage.xml
         if-no-files-found: ignore
         retention-days: 7
