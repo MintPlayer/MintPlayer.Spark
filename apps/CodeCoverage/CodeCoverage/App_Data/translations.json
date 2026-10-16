@@ -8,6 +8,13 @@
         "nl": "Gegevens verwijderen"
       }
     },
+    "EnableDependencyUpdates": {
+      "label": {
+        "en": "Enable dependency updates",
+        "fr": "Activer les mises à jour des dépendances",
+        "nl": "Dependency-updates inschakelen"
+      }
+    },
     "Resync": {
       "label": {
         "en": "Resync",
@@ -25,6 +32,13 @@
         "en": "Revoke",
         "fr": "Révoquer",
         "nl": "Intrekken"
+      }
+    },
+    "RunScheduledSlotNow": {
+      "label": {
+        "en": "Run the scheduled slot now",
+        "fr": "Lancer le créneau planifié maintenant",
+        "nl": "Geplande run nu starten"
       }
     },
     "SyncColumns": {
@@ -100,6 +114,53 @@
       "en": "Welcome to Coverage",
       "fr": "Bienvenue sur Coverage",
       "nl": "Welkom bij Coverage"
+    }
+  },
+  "dependencyOnboarding": {
+    "enabled": {
+      "en": "Dependency updates enabled for {0} repositories; their onboarding pull requests follow.",
+      "fr": "Mises à jour des dépendances activées pour {0} dépôts ; leurs pull requests d'intégration suivent.",
+      "nl": "Dependency-updates ingeschakeld voor {0} repositories; hun onboarding-pull-requests volgen."
+    },
+    "mergeQueueQuestion": {
+      "en": "Merge dependency pull requests automatically through the merge queue?",
+      "fr": "Fusionner automatiquement les pull requests de dépendances par la file de fusion ?",
+      "nl": "Dependency-pull-requests automatisch mergen via de merge queue?"
+    },
+    "notEnabled": {
+      "en": "Not enabled: {0}",
+      "fr": "Non activé : {0}",
+      "nl": "Niet ingeschakeld: {0}"
+    },
+    "runNow.busy": {
+      "en": "A run is in progress for this repository; try again when it ends.",
+      "fr": "Un passage est en cours pour ce dépôt ; réessayez quand il se termine.",
+      "nl": "Er loopt al een run voor deze repository; probeer opnieuw wanneer die klaar is."
+    },
+    "runNow.off": {
+      "en": "Dependency updates are off for this repository.",
+      "fr": "Les mises à jour des dépendances sont désactivées pour ce dépôt.",
+      "nl": "Dependency-updates staan uit voor deze repository."
+    },
+    "runNow.refused": {
+      "en": "You don't manage this repository.",
+      "fr": "Vous ne gérez pas ce dépôt.",
+      "nl": "Je beheert deze repository niet."
+    },
+    "runNow.started": {
+      "en": "The scheduled run started.",
+      "fr": "Le passage planifié a démarré.",
+      "nl": "De geplande run is gestart."
+    },
+    "withMergeQueue": {
+      "en": "Enable, with the merge queue",
+      "fr": "Activer, avec la file de fusion",
+      "nl": "Inschakelen, met de merge queue"
+    },
+    "withoutMergeQueue": {
+      "en": "Enable, without the merge queue",
+      "fr": "Activer, sans la file de fusion",
+      "nl": "Inschakelen, zonder de merge queue"
     }
   },
   "mcpUi": {
@@ -349,6 +410,18 @@
             "en": "Release cooldown",
             "fr": "Délai après publication",
             "nl": "Wachttijd na release"
+          }
+        },
+        "DependencyOnboardingMergeQueue": {
+          "description": {
+            "en": "Whether the onboarding pull request also turns the merge queue on in coverage.yml (mergeQueue: { enabled: true }). Dependency pull requests within your thresholds merge through it, and your own pull requests can use it too. It only matters when the onboarding pull request is created, and a mergeQueue section already in the file is left alone.",
+            "fr": "Si la pull request d'intégration active aussi la file de fusion dans coverage.yml (mergeQueue: { enabled: true }). Les pull requests de dépendances dans vos seuils fusionnent par elle, et vos propres pull requests peuvent l'utiliser aussi. Cela ne compte qu'à la création de la pull request d'intégration, et une section mergeQueue déjà présente n'est pas modifiée.",
+            "nl": "Of de onboarding-pull-request ook de merge queue aanzet in coverage.yml (mergeQueue: { enabled: true }). Dependency-pull-requests binnen je drempels mergen erdoor, en je eigen pull requests kunnen hem ook gebruiken. Het telt alleen wanneer de onboarding-pull-request wordt aangemaakt, en een mergeQueue-sectie die al in het bestand staat, blijft ongemoeid."
+          },
+          "label": {
+            "en": "Onboarding adds the merge queue",
+            "fr": "L'intégration ajoute la file de fusion",
+            "nl": "Onboarding voegt de merge queue toe"
           }
         },
         "DependencyRules": {
@@ -2282,6 +2355,18 @@
             "nl": "Wachttijd na release"
           }
         },
+        "DependencyOnboardingMergeQueue": {
+          "description": {
+            "en": "Whether this repository's onboarding pull request turns the merge queue on in coverage.yml, or the account's setting. It only matters when the onboarding pull request is created.",
+            "fr": "Si la pull request d'intégration de ce dépôt active la file de fusion dans coverage.yml, ou le paramètre du compte. Cela ne compte qu'à la création de la pull request d'intégration.",
+            "nl": "Of de onboarding-pull-request van deze repository de merge queue aanzet in coverage.yml, of de accountinstelling. Het telt alleen wanneer de onboarding-pull-request wordt aangemaakt."
+          },
+          "label": {
+            "en": "Onboarding adds the merge queue",
+            "fr": "L'intégration ajoute la file de fusion",
+            "nl": "Onboarding voegt de merge queue toe"
+          }
+        },
         "DependencyScheduleFrequency": {
           "description": {
             "en": "How often the rolling dependency pull request is recomputed, when this repository has its own schedule.",
@@ -2489,6 +2574,18 @@
             "en": "Ignored checks from",
             "fr": "Vérifications ignorées selon",
             "nl": "Genegeerde checks volgens"
+          }
+        },
+        "MergeQueueInCoverageYml": {
+          "description": {
+            "en": "What coverage.yml on the default branch says about the merge queue, as the dependency updater last read it: enabled, disabled or absent. Empty until it has read the file.",
+            "fr": "Ce que dit coverage.yml sur la branche par défaut à propos de la file de fusion, tel que le gestionnaire de dépendances l'a lu en dernier : enabled, disabled ou absent. Vide tant qu'il n'a pas lu le fichier.",
+            "nl": "Wat coverage.yml op de standaardbranch over de merge queue zegt, zoals de dependency-updater het laatst las: enabled, disabled of absent. Leeg zolang hij het bestand niet gelezen heeft."
+          },
+          "label": {
+            "en": "Merge queue in coverage.yml",
+            "fr": "File de fusion dans coverage.yml",
+            "nl": "Merge queue in coverage.yml"
           }
         },
         "Name": {
@@ -2785,6 +2882,13 @@
         "en": "Commits",
         "fr": "Commits",
         "nl": "Commits"
+      }
+    },
+    "Repository_DependencyOnboarding": {
+      "label": {
+        "en": "Set up dependency updates",
+        "fr": "Configurer les mises à jour des dépendances",
+        "nl": "Dependency-updates instellen"
       }
     },
     "Repository_ForgeChecks": {

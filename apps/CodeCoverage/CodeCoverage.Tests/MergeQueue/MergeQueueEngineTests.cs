@@ -1,3 +1,4 @@
+using CodeCoverage.Dependencies.Lifecycle;
 using CodeCoverage.Entities;
 using CodeCoverage.Forge;
 using CodeCoverage.LookupReferences;
@@ -1063,6 +1064,67 @@ public class MergeQueueEngineTests : CoverageRavenTest
         entry.Run.Should().Be(2);
         entry.State.Should().Be(EMergeQueueEntryState.Merged);
         entry.PastRuns.Should().ContainSingle().Which.State.Should().Be(EMergeQueueEntryState.Refused);
+    }
+
+    // ── Dependency-updates R27 (S18-D3): the updater's own rolling pull request and the approval floor ──────────
+
+    private const string BotAuthor = "coverageproduction[bot]";
+
+    private static async Task<MergeQueueHarness> RollingPullRequestAsync(MergeQueueHarness h, string botSha)
+    {
+        h.Forge.PullRequests[Number] = PullRequest(author: BotAuthor) with { HeadRef = DependencyUpdateRun.RollingBranch };
+        using var session = h.Store.OpenAsyncSession();
+        await session.StoreAsync(new DependencyUpdateRun
+        {
+            Id = DependencyUpdateRun.ForRepository(RepositoryId), Repository = RepositoryId, PullRequestNumber = Number, RollingSha = Head, RollingBotSha = botSha,
+        }, DependencyUpdateRun.ForRepository(RepositoryId));
+        await session.SaveChangesAsync();
+        return h;
+    }
+
+    [Fact]
+    public async Task R27_the_bots_own_rolling_pull_request_passes_the_approval_floor_without_a_person()
+    {
+        var h = await RollingPullRequestAsync(await HarnessAsync(mergeBase: BaseSha), botSha: Head);
+
+        await h.EnqueueAsync(DependencyUpdateEngine.QueueActor, EMergeQueueCommandSource.DependencyUpdates);
+        await h.DrainAsync();
+
+        (await h.EntryAsync()).State.Should().Be(EMergeQueueEntryState.Merged, "S18: refused before with \"@coverageproduction[bot] does not have write access\"");
+    }
+
+    [Fact]
+    public async Task R27_a_human_commit_on_the_rolling_branch_needs_a_writers_approval_again()
+    {
+        // The head is a replayed human commit on top of the bot's (RollingSha != RollingBotSha).
+        var h = await RollingPullRequestAsync(await HarnessAsync(mergeBase: BaseSha), botSha: "d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4");
+
+        await h.EnqueueAsync(DependencyUpdateEngine.QueueActor, EMergeQueueCommandSource.DependencyUpdates);
+
+        (await h.EntryAsync()).EvictionReason.Should().Be("approval");
+    }
+
+    [Fact]
+    public async Task R27_a_writers_request_for_changes_still_vetoes_the_bots_pull_request()
+    {
+        var h = await RollingPullRequestAsync(await HarnessAsync(mergeBase: BaseSha), botSha: Head);
+        h.Queue.Roles["reviewer"] = EForgeRepositoryRole.Write;
+        h.Queue.Reviews.Add(new ForgeReview(1, "reviewer", EForgeReviewState.ChangesRequested, Head, null));
+
+        await h.EnqueueAsync(DependencyUpdateEngine.QueueActor, EMergeQueueCommandSource.DependencyUpdates);
+
+        (await h.EntryAsync()).EvictionReason.Should().Be("approval");
+    }
+
+    [Fact]
+    public async Task R27_another_branch_with_the_bots_sha_is_not_trusted()
+    {
+        var h = await RollingPullRequestAsync(await HarnessAsync(mergeBase: BaseSha), botSha: Head);
+        h.Forge.PullRequests[Number] = PullRequest(author: BotAuthor);
+
+        await h.EnqueueAsync(DependencyUpdateEngine.QueueActor, EMergeQueueCommandSource.DependencyUpdates);
+
+        (await h.EntryAsync()).EvictionReason.Should().Be("approval");
     }
 
     [Fact]

@@ -20,12 +20,13 @@ public partial class DependencyUpdateRecipient :
 {
     [Inject] private readonly IDependencyUpdateEngine engine;
     [Inject] private readonly IDependencyPropagation propagation;
+    [Inject] private readonly IDependencyRateLimitNotes rateLimits;
 
     public Task HandleAsync(DependencyUpdateStepMessage message, CancellationToken cancellationToken = default)
-        => engine.HandleStepAsync(message, cancellationToken);
+        => rateLimits.WatchAsync(message.RepositoryId, () => engine.HandleStepAsync(message, cancellationToken), cancellationToken);
 
     public Task HandleAsync(DependencyUpdateSignalMessage message, CancellationToken cancellationToken = default)
-        => engine.HandleSignalAsync(message, cancellationToken);
+        => rateLimits.WatchAsync(message.RepositoryId, () => engine.HandleSignalAsync(message, cancellationToken), cancellationToken);
 
     public Task HandleAsync(DependencyProducerEventMessage message, CancellationToken cancellationToken = default)
         => propagation.RecordAsync(message, cancellationToken);

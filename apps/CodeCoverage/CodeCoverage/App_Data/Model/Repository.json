@@ -108,6 +108,19 @@
         "rules": []
       },
       {
+        "id": "35ebf9ac-2c17-4201-b5c5-aadbf1db3ace",
+        "name": "DependencyOnboardingMergeQueue",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 32,
+        "isArray": false,
+        "lookupReferenceType": "DependencyOnboardingMergeQueuePolicy",
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
         "id": "ff787814-3dc6-42d0-92b4-e64c0937a660",
         "name": "DependencyScheduleFrequency",
         "dataType": "string",
@@ -341,6 +354,18 @@
         "rules": []
       },
       {
+        "id": "82d933f4-00e9-4531-a622-08e2c6a61238",
+        "name": "MergeQueueInCoverageYml",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 33,
+        "isArray": false,
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
         "id": "6cca49ee-2ede-4502-8811-4de802d904b6",
         "name": "Name",
         "dataType": "string",
@@ -466,6 +491,28 @@
         "LatestCoverage",
         "FullName",
         "LatestCoverageSha"
+      ]
+    },
+    {
+      "id": "9d2f6b41-7c3e-4a85-b0d1-5e8a2c4f6b93",
+      "name": "Repository_DependencyOnboarding",
+      "source": "Custom.Repository_DependencyOnboarding",
+      "alias": "dependency-onboarding",
+      "sortColumns": [
+        {
+          "property": "FullName",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "Repository",
+      "columnOrder": [
+        "FullName",
+        "IsPrivate",
+        "Name",
+        "LatestCoverage",
+        "LatestCoverageSha",
+        "!Account"
       ]
     }
   ]

@@ -22,6 +22,7 @@ GET /api/browse/repos/{provider}/{owner}/{name}/dependency-updates | authorize(p
 GET /api/browse/repos/{provider}/{owner}/{name}/graph | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=) | rate-limit=policy:browse
 GET /api/browse/repos/{provider}/{owner}/{name}/history | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=) | rate-limit=policy:browse
 GET /api/browse/repos/{provider}/{owner}/{name}/merge-queue | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=) | rate-limit=policy:browse
+GET /api/dependency-updates/onboarding | authorize(policy=;roles=;schemes=) | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=)
 POST /api/github/webhooks | antiforgery=not-required
 GET /api/me/accounts | authorize(policy=;roles=;schemes=) | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=)
 POST /api/me/accounts/resync | antiforgery=required | authorize(policy=;roles=;schemes=) | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=)

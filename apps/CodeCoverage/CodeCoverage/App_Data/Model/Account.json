@@ -118,6 +118,20 @@
         "group": "3f0b7c62-9d41-4e8a-b5c3-6a2e81d4f907"
       },
       {
+        "id": "55284c0c-7e93-431c-96d7-93494c2269c4",
+        "name": "DependencyOnboardingMergeQueue",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 20,
+        "isArray": false,
+        "lookupReferenceType": "DependencyOnboardingMergeQueue",
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "3f0b7c62-9d41-4e8a-b5c3-6a2e81d4f907"
+      },
+      {
         "id": "1371ce4f-2882-4721-9fb9-9c3d282760fb",
         "name": "DependencyRules",
         "dataType": "AsDetail",

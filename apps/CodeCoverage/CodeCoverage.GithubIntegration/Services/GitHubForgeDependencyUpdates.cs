@@ -177,6 +177,16 @@ public partial class GitHubForgeDependencyUpdates : IForgeDependencyUpdates
         EnsureSuccess(reply, "pull_requests=write");
     }
 
+    /// <remarks>docs: <c>PATCH /repos/{owner}/{repo}/pulls/{n}</c> with <c>state: closed</c>; closing a closed one answers 200.</remarks>
+    public async Task ClosePullRequestAsync(Repository repository, int number, CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(number);
+        using var reply = await SendAsync(repository, HttpMethod.Patch, $"{RepoPath(repository)}/pulls/{number.ToString(CultureInfo.InvariantCulture)}",
+            new Dictionary<string, object?> { ["state"] = "closed" }, cancellationToken);
+        if (reply.Status == HttpStatusCode.NotFound) return;
+        EnsureSuccess(reply, "pull_requests=write");
+    }
+
     internal static ForgeBotPullRequest ReadPull(JsonElement pull)
         => new((int)(Num(pull, "number") ?? 0), Str(Child(pull, "head"), "ref") ?? string.Empty, Str(Child(pull, "head"), "sha") ?? string.Empty,
             Str(Child(pull, "base"), "ref") ?? string.Empty, Str(pull, "state") == "open", Flag(pull, "merged") || Str(pull, "merged_at") is not null,

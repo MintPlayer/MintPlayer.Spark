@@ -233,8 +233,20 @@
       "isDenied": false
     },
     {
+      "key": "c0e5a9e1-0000-4000-8000-0000000000a1",
+      "resource": "EnableDependencyUpdates/Repository",
+      "groupId": "00000000-0000-0000-0000-000000000001",
+      "isDenied": false
+    },
+    {
       "key": "c0e5a9e1-0000-4000-8000-000000000012",
       "resource": "QueryRead/Repository",
+      "groupId": "00000000-0000-0000-0000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "c0e5a9e1-0000-4000-8000-0000000000a2",
+      "resource": "RunScheduledSlotNow/Repository",
       "groupId": "00000000-0000-0000-0000-000000000001",
       "isDenied": false
     },

@@ -183,6 +183,37 @@ public class DependencyUpdateRun
 
     public string? OnboardingNote { get; set; }
 
+    /// <summary>
+    /// P15: when this onboarding attempt began. The onboarding commit is dated with it, so a retry rebuilds the very same
+    /// commit (same tree, same parent, same date) and its force-push is a no-op instead of a second commit.
+    /// </summary>
+    public DateTime? OnboardingStartedAtUtc { get; set; }
+
+    /// <summary>P15: the default branch's head the onboarding commit was built on, saved before the push.</summary>
+    public string? OnboardingBaseSha { get; set; }
+
+    /// <summary>P15: the onboarding commit, saved right after its push; a retry that finds the branch there skips the push.</summary>
+    public string? OnboardingBranchSha { get; set; }
+
+    /// <summary>
+    /// The default branch's <c>coverage.yml</c> merge-queue state as the updater last read it (R26): <c>enabled</c>,
+    /// <c>disabled</c> or <c>absent</c>; null until read. Shown on the Repository page beside the onboarding setting.
+    /// </summary>
+    public string? FileMergeQueue { get; set; }
+
+    // ── Rate limits (R30, P16): what the status pages show while the bus waits ───────────────────
+
+    /// <summary>When the bus wakes the repository's rate-limited message; null when none is waiting.</summary>
+    public DateTime? RateLimitedUntilUtc { get; set; }
+
+    /// <summary>The waiting message, so its parks are counted (<see cref="RateLimitParks"/> of <see cref="RateLimitParkBudget"/>).</summary>
+    public string? RateLimitMessageId { get; set; }
+
+    public int RateLimitParks { get; set; }
+
+    /// <summary>How many parks the message may take before it is dead-lettered (<c>MaxAttempts × RateLimitParksPerAttempt</c>).</summary>
+    public int RateLimitParkBudget { get; set; }
+
     public List<DependencyRunEvent> History { get; set; } = [];
 
     public void Note(DateTime atUtc, string text)
