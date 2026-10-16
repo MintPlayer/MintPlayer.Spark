@@ -8,6 +8,8 @@ import { RepoSetupPanelComponent } from '../components/repo-setup-panel/repo-set
 import { RepoCommitGraphPanelComponent } from '../components/repo-commit-graph-panel/repo-commit-graph-panel.component';
 import { RepoMergeQueuePanelComponent } from '../components/repo-merge-queue-panel/repo-merge-queue-panel.component';
 import { AccountDependencyGraphPanelComponent } from '../components/account-dependency-graph-panel/account-dependency-graph-panel.component';
+import { AccountDependencyUpdatesPanelComponent } from '../components/account-dependency-updates-panel/account-dependency-updates-panel.component';
+import { RepoDependencyUpdatesPanelComponent } from '../components/repo-dependency-updates-panel/repo-dependency-updates-panel.component';
 import { AccountPermissionsNoticeComponent } from '../components/account-permissions-notice/account-permissions-notice.component';
 import { CommitFilesExtrasComponent } from './commit-files-extras.component';
 import { forgeOf } from './forge-of';
@@ -43,6 +45,7 @@ import { HomeExtrasComponent } from './home-extras.component';
     SparkPoDetailComponent,
     RepoBadgePanelComponent, RepoTrendPanelComponent, RepoCommitGraphPanelComponent, RepoMergeQueuePanelComponent, RepoSetupPanelComponent,
     CommitFilesExtrasComponent, HomeExtrasComponent, AccountDependencyGraphPanelComponent, AccountPermissionsNoticeComponent,
+    AccountDependencyUpdatesPanelComponent, RepoDependencyUpdatesPanelComponent,
   ],
   template: `
     <spark-po-detail [beforeQueriesTemplate]="lead" [extraContentTemplate]="extras" />
@@ -63,11 +66,13 @@ import { HomeExtrasComponent } from './home-extras.component';
           <app-repo-trend-panel [provider]="repo.provider" [owner]="repo.owner" [name]="repo.name" />
           <app-repo-commit-graph-panel [provider]="repo.provider" [owner]="repo.owner" [name]="repo.name" />
           <app-repo-merge-queue-panel [provider]="repo.provider" [owner]="repo.owner" [name]="repo.name" />
+          <app-repo-dependency-updates-panel [provider]="repo.provider" [owner]="repo.owner" [name]="repo.name" />
           <app-repo-setup-panel />
         }
       } @else if (entityType.name === 'Account') {
         @if (accountOf(po); as account) {
           <app-account-dependency-graph-panel [provider]="account.provider" [login]="account.login" />
+          <app-account-dependency-updates-panel [provider]="account.provider" [login]="account.login" />
         }
       } @else if (entityType.name === 'Commit') {
         <app-commit-files-extras [po]="po" />

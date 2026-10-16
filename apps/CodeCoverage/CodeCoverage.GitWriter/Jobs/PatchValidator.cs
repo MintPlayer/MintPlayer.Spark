@@ -74,6 +74,17 @@ public static partial class PatchValidator
     private static partial Regex SimilarityLine();
 
     public static PatchVerdict Validate(ReadOnlySpan<byte> patch, IReadOnlyList<PathGlob> regeneratedPaths, long maxBytes)
+        => Parse(patch, path => !IsSafePath(path) ? PatchVerdict.Reject(PatchReasons.UnsafePath, null, path)
+            : !regeneratedPaths.Any(g => g.Matches(path)) ? PatchVerdict.Reject(PatchReasons.OutsideRegeneratedPaths, null, path)
+            : null, maxBytes, files: null);
+
+    /// <summary>
+    /// The strict parse behind <see cref="Validate"/>, with the path rule of the caller's profile
+    /// (docs/code-coverage/dependency-updates-PRD.md §13.5 P5, R18): <paramref name="pathPolicy"/> answers a refusal for a
+    /// path it does not allow, or null. Every shape rule (modes, symlinks, binaries, copies, exact hunk counts, the caps)
+    /// holds whatever the policy. With <paramref name="files"/>, the sections are also collected, hunk lines and all.
+    /// </summary>
+    internal static PatchVerdict Parse(ReadOnlySpan<byte> patch, Func<string, PatchVerdict?> pathPolicy, long maxBytes, List<PatchFile>? files)
     {
         if (patch.Length > maxBytes)
             return PatchVerdict.Reject(PatchReasons.TooLarge, $"The patch is {patch.Length} bytes; the cap is {maxBytes}.");
@@ -100,7 +111,7 @@ public static partial class PatchValidator
                 return PatchVerdict.Reject(PatchReasons.Malformed, $"Line {i + 1} is outside a file section.");
             if (paths.Count >= 2 * MaxFiles)
                 return PatchVerdict.Reject(PatchReasons.TooLarge, $"The patch touches more than {MaxFiles} files.");
-            var section = ReadSection(lines, count, ref i, regeneratedPaths);
+            var section = ReadSection(lines, count, ref i, pathPolicy, files);
             if (!section.Accepted)
                 return section;
             paths.AddRange(section.Paths);
@@ -109,7 +120,7 @@ public static partial class PatchValidator
     }
 
     /// <summary>One <c>diff --git</c> section: its extended headers, then its hunks.</summary>
-    private static PatchVerdict ReadSection(string[] lines, int count, ref int i, IReadOnlyList<PathGlob> globs)
+    private static PatchVerdict ReadSection(string[] lines, int count, ref int i, Func<string, PatchVerdict?> pathPolicy, List<PatchFile>? files)
     {
         var header = lines[i]["diff --git ".Length..];
         var start = i + 1;
@@ -206,16 +217,16 @@ public static partial class PatchValidator
         var touched = renameFrom is null ? new[] { from } : [from, to];
         foreach (var path in touched)
         {
-            if (!IsSafePath(path))
-                return PatchVerdict.Reject(PatchReasons.UnsafePath, null, path);
-            if (!globs.Any(g => g.Matches(path)))
-                return PatchVerdict.Reject(PatchReasons.OutsideRegeneratedPaths, null, path);
+            if (pathPolicy(path) is { } refused)
+                return refused;
         }
 
         // Hunks, counted exactly.
         var hunks = 0;
+        var collected = files is null ? null : new List<PatchHunk>();
         while (i < count && lines[i].StartsWith("@@ ", StringComparison.Ordinal))
         {
+            var hunkLines = collected is null ? null : new List<PatchLine>();
             var match = HunkHeader().Match(lines[i]);
             if (!match.Success)
                 return PatchVerdict.Reject(PatchReasons.Malformed, $"Line {i + 1}: a hunk header that does not parse.");
@@ -225,6 +236,12 @@ public static partial class PatchValidator
             var newLines = Count(match.Groups[4]);
             if (oldLines is null || newLines is null)
                 return PatchVerdict.Reject(PatchReasons.Malformed, $"Line {i + 1}: a hunk count out of range.");
+            // Only a collecting parse needs the starts (Validate's verdicts stay exactly what they were).
+            var oldStart = 0;
+            var newStart = 0;
+            if (files is not null && (!int.TryParse(match.Groups[1].Value, NumberStyles.None, CultureInfo.InvariantCulture, out oldStart)
+                || !int.TryParse(match.Groups[3].Value, NumberStyles.None, CultureInfo.InvariantCulture, out newStart)))
+                return PatchVerdict.Reject(PatchReasons.Malformed, $"Line {i + 1}: a hunk start out of range.");
             i++;
             int remainingOld = oldLines.Value, remainingNew = newLines.Value;
             while (remainingOld > 0 || remainingNew > 0)
@@ -246,21 +263,31 @@ public static partial class PatchValidator
                         remainingNew--;
                         break;
                     case '\\':
+                        if (hunkLines is { Count: > 0 })
+                            hunkLines[^1] = hunkLines[^1] with { NoNewline = true };
                         break;
                     default:
                         return PatchVerdict.Reject(PatchReasons.Malformed, $"Line {i + 1} does not fit its hunk's counts.");
                 }
+                if (kind != '\\')
+                    hunkLines?.Add(new PatchLine(kind, line.Length == 0 ? string.Empty : line[1..], false));
                 i++;
             }
             // "\ No newline at end of file" may follow the hunk's last line.
             while (i < count && lines[i].StartsWith('\\'))
+            {
+                if (hunkLines is { Count: > 0 })
+                    hunkLines[^1] = hunkLines[^1] with { NoNewline = true };
                 i++;
+            }
+            collected?.Add(new PatchHunk(oldStart, oldLines.Value, newStart, newLines.Value, hunkLines!));
             hunks++;
         }
         if (i < count && !lines[i].StartsWith("diff --git ", StringComparison.Ordinal))
             return PatchVerdict.Reject(PatchReasons.Malformed, $"Line {i + 1} is outside a hunk.");
         if (hunks == 0 && !isNew && !isDeleted && renameFrom is null)
             return PatchVerdict.Reject(PatchReasons.Malformed, $"Line {start}: a section with no change git diff would write.");
+        files?.Add(new PatchFile(from, to, isNew, isDeleted, renameFrom is not null, collected!));
         return PatchVerdict.Accept(touched);
     }
 
@@ -282,7 +309,11 @@ public static partial class PatchValidator
     /// <summary>A path the writer is willing to write: printable ASCII without spaces, quotes or backslashes (git would
     /// quote it otherwise), no empty, <c>.</c> or <c>..</c> component, nothing under <c>.git</c> or <c>.github</c>, and
     /// not a <c>.gitmodules</c> or <c>.gitattributes</c> file (case-insensitive, as on the file systems that fold case).</summary>
-    internal static bool IsSafePath(string path)
+    internal static bool IsSafePath(string path) => IsWritablePath(path) && !IsUnderGitHub(path);
+
+    /// <summary><see cref="IsSafePath"/> without the <c>.github/</c> rule, for the dependency profile's workflow carve-out
+    /// (docs/code-coverage/dependency-updates-PRD.md R15), which decides on <c>.github/</c> paths itself.</summary>
+    internal static bool IsWritablePath(string path)
     {
         if (path.Length is 0 or > 4096 || path.Any(c => c <= ' ' || c > '~' || c is '"' or '\\'))
             return false;
@@ -292,9 +323,11 @@ public static partial class PatchValidator
             if (component is "" or "." or ".." || component.Equals(".git", StringComparison.OrdinalIgnoreCase))
                 return false;
         }
-        if (components[0].Equals(".github", StringComparison.OrdinalIgnoreCase))
-            return false;
         var name = components[^1];
         return !name.Equals(".gitmodules", StringComparison.OrdinalIgnoreCase) && !name.Equals(".gitattributes", StringComparison.OrdinalIgnoreCase);
     }
+
+    /// <summary>The path's first component is <c>.github</c>, in any case.</summary>
+    internal static bool IsUnderGitHub(string path)
+        => path.StartsWith(".github/", StringComparison.OrdinalIgnoreCase) || path.Equals(".github", StringComparison.OrdinalIgnoreCase);
 }

@@ -1,5 +1,6 @@
 using System.Linq.Expressions;
 using Raven.Client.Documents.Linq;
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
 using CodeCoverage.Entities;
 using CodeCoverage.Services;
@@ -9,23 +10,33 @@ using MintPlayer.Spark.Actions;
 namespace CodeCoverage.Actions;
 
 /// <summary>
-/// Accounts are public to READ (GitHub logins/avatars) and manager-only to WRITE. The installation
-/// id is operational detail that never leaves the server (<c>[IgnoreProperty]</c>, #264).
+/// An account's public face (login, avatar, connection) is public to READ; its settings are its managers' and the
+/// Administrators' alone; WRITES are its managers' alone. The installation id never leaves the server
+/// (<c>[IgnoreProperty]</c>, #264).
 /// </summary>
+/// <remarks>
+/// The layering (dependency-updates PRD §13.12, D-A1–D-A8): <c>security.json</c> grants <c>QueryRead/Account</c> to
+/// everyone, <c>Edit/Account</c> to signed-in users and <c>ReadSettings/Account</c> to the Administrators, and this class
+/// narrows per request — the settings are protected attributes for anyone who neither manages the account nor holds
+/// ReadSettings, Edit is withheld (and filtered) on an account the caller does not manage, and Query (the account grid)
+/// is withheld from anyone without ReadSettings. Narrowing never widens: nothing here grants what <c>security.json</c>
+/// does not.
+/// </remarks>
 public partial class AccountActions : DefaultPersistentObjectActions<Account>, ISparkOwnsRowSecurity
 {
     /// <inheritdoc />
     public string RowSecurityRationale =>
-        "Unfiltered for READS, filtered for WRITES. An Account is a GitHub login and avatar — data " +
-        "GitHub already publishes — and coverage.mintplayer.com is a public dashboard, so " +
-        "security.json grants QueryRead/Account to the anonymous role on purpose. Edit/Account is " +
-        "granted too, so an owner can set the account-wide DeleteBranchOnPrClose default, and that " +
-        "makes the write path reachable: without a filter, RowSecurity treats a missing rule as " +
-        "ALLOWED, so any signed-in user could edit any account. Writes are therefore narrowed to " +
-        "accounts the caller manages. What is never public is the installation id, which is " +
+        "Unfiltered for READS, filtered for WRITES, redacted per account. An account's login, avatar and connection are " +
+        "data the forge already publishes, and coverage.mintplayer.com is a public dashboard, so security.json grants " +
+        "QueryRead/Account to the anonymous role on purpose (the account page is public; the grid is withheld from non-administrators by OnDisableActionsAsync). Everything else on an account is " +
+        "its owner's configuration, and GetProtectedAttributesAsync blanks it for anyone who neither manages the account " +
+        "nor is an administrator (D-A3). Edit/Account is granted to signed-in users so an owner can change those " +
+        "settings, which makes the write path reachable: without a filter, RowSecurity treats a missing rule as ALLOWED, " +
+        "so writes are narrowed to accounts the caller manages, and Edit is withheld on the rest. The installation id is " +
         "[IgnoreProperty] on the entity and so never reaches the wire at all.";
 
     [Inject] private readonly ISparkVisibility visibility;
+    [Inject] private readonly IPermissionService permissions;
 
     /// <summary>
     /// No filter for reads; managers only for writes.
@@ -45,5 +56,48 @@ public partial class AccountActions : DefaultPersistentObjectActions<Account>, I
         // untranslatable — see ApiTokenActions for the production outage that taught us.
         var owners = await visibility.GetAllowedOwnersAsync();
         return account => account.OwnerKey.In(owners);
+    }
+
+    /// <summary>
+    /// Everything but the public face, for anyone who may not read this account's settings (D-A3).
+    /// </summary>
+    /// <remarks>
+    /// Deny by default: <see cref="OwnerSettings.ProtectedAccountAttributes"/> is every property NOT on the public list, so
+    /// a setting added later is protected without anybody remembering to say so. Spark blanks these on every read path —
+    /// the detail load, query rows, breadcrumbs, refresh — and shields them from write-back.
+    /// </remarks>
+    public override async Task<IReadOnlyCollection<string>?> GetProtectedAttributesAsync(string action, Account entity)
+        => await OwnerSettings.CanReadAsync(visibility, permissions, entity.OwnerKey, nameof(Account))
+            ? null
+            : OwnerSettings.ProtectedAccountAttributes;
+
+    /// <summary>
+    /// Withholds Edit (and Save) on an account the caller does not manage (D-A4): the per-request narrowing of the
+    /// <c>Edit/Account</c> grant. An administrator reads every account's settings but manages none, so is withheld it too.
+    /// </summary>
+    /// <remarks>
+    /// The write row filter above stays: it is what turns an edit of somebody else's account into the same 404 as a
+    /// missing one, and this hook is asked only after that gate. What this adds is the page's answer — the Edit button is
+    /// not offered — from the same rule, so the page and the submit cannot disagree.
+    /// </remarks>
+    public override async Task OnDisableActionsAsync(IDisablable target, DisableActionsContext context)
+    {
+        if (context is { TargetKind: DisableActionsTargetKind.PersistentObject, Entity: Account account }
+            && !await visibility.CanManageOwnerAsync(account.OwnerKey))
+        {
+            target.DisableActions(SparkCoreActions.Edit, "Save");
+        }
+
+        // The account grid is the Administrators' alone (D-A2). security.json cannot say so: Read implies Query in Spark
+        // (#324, SparkRightImplications), and the account page — public — needs Read. So the grant stays QueryRead and
+        // the listing is narrowed here. It is a real narrowing, not cosmetics: a grid sorts and filters on stored values,
+        // which per-row redaction cannot hide (Spark decides ordering and filtering per query, before rows exist), so a
+        // listing would be an oracle for every setting it can sort or filter by. No page needs it: the account page is a
+        // Read, and every reference to an account is a breadcrumb (Read) on a read-only attribute.
+        if (context.TargetKind == DisableActionsTargetKind.Query
+            && !await permissions.IsAllowedAsync(OwnerSettingsRights.ReadSettings, nameof(Account)))
+        {
+            target.DisableActions(SparkCoreActions.Query);
+        }
     }
 }

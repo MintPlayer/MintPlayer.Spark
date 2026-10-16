@@ -114,7 +114,7 @@ public class MergeQueueYmlResolutionTests
     [Theory]
     [InlineData("strategy: take-base\n      regenerate: false", "take-base")]
     [InlineData("strategy: keep-both\n      keys: [a]", "keys only scope take-base")]
-    [InlineData("strategy: keep-both\n      validate: [yaml]", "validator 'yaml'")]
+    [InlineData("strategy: keep-both\n      validate: [toml]", "validator 'toml'")]
     [InlineData("strategy: evict\n      validate: [json]", "evict resolves nothing")]
     [InlineData("strategy: keep-both\n      action: ../evil.yml", "action '../evil.yml'")]
     [InlineData("strategy: merge-driver", "merge-driver")]

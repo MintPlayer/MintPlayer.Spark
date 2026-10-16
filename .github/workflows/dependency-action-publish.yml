@@ -1,0 +1,129 @@
+name: dependency-action-publish
+
+# Republishes the dependency-update action's bundle and moves the tags the template callers pin
+# (docs/code-coverage/dependency-updates-PRD.md R16: `uses: ...@dependency-update-v1`). Modelled on
+# coverage-action-publish.yml; the reasoning there applies here unchanged:
+#
+#   dependency-update-v<full>   cut once, on one commit, never moved: an apply or migrate run stays
+#                               reproducible, and a repository bitten by a release can pin backwards.
+#   dependency-update-v<major>  force-moved to the latest commit of that major: what the onboarding
+#                               templates pin (or the SHA it resolves to), so a bundle fix reaches every
+#                               repository with no PR anywhere.
+#
+# Both names derive from apps/CodeCoverage/dependency-action/package.json, so a major bump retires the old
+# moving tag without editing this file. A Renovate digest bump inside the action is a reviewed change
+# (R17): it ships through here like any other bundle change.
+#
+# Its own workflow for the `paths:` filter: the moving tag must only move for a commit that touched the
+# action, never for an unrelated master push.
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'apps/CodeCoverage/dependency-action/**'
+      # The contract schemas are bundled into the action (ajv validates every emitted file).
+      - 'apps/CodeCoverage/contracts/dependency-update/*.schema.json'
+      - '.github/workflows/dependency-action-publish.yml'
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Version bump to apply before publishing (none = just repack)"
+        type: choice
+        default: none
+        options:
+          - none
+          - patch
+          - minor
+          - major
+
+# Queue rather than cancel: two publishers racing to force-move the major tag is worse than waiting.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: publish dependency-update action
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7
+      with:
+        fetch-depth: 0
+        fetch-tags: true
+
+    # `--no-git-tag-version`: npm would cut a bare `v1.0.1` tag in the monorepo's shared namespace.
+    # A GITHUB_TOKEN push does not trigger workflows, so bumping cannot re-enter this workflow.
+    - name: Bump the action's version
+      if: inputs.bump != '' && inputs.bump != 'none'
+      run: |
+        cd apps/CodeCoverage/dependency-action
+        npm version "${BUMP}" --no-git-tag-version
+        version="$(node -p "require('./package.json').version")"
+        cd "$GITHUB_WORKSPACE"
+
+        git config --local user.name  'github-actions[bot]'
+        git config --local user.email '41898282+github-actions[bot]@users.noreply.github.com'
+        git add apps/CodeCoverage/dependency-action/package.json apps/CodeCoverage/dependency-action/package-lock.json
+        git commit -m "release(dependency-action): ${version}"
+        git push origin "HEAD:${GITHUB_REF_NAME}"
+        echo "Bumped to ${version}."
+      env:
+        BUMP: ${{ inputs.bump }}
+
+    # Both tag names from ONE source, the action's package.json version (see coverage-action-publish.yml
+    # for why a hard-coded major tag is a trap).
+    - name: Derive the action's tag names
+      id: tags
+      run: |
+        version="$(node -p "require('./apps/CodeCoverage/dependency-action/package.json').version")"
+        major="${version%%.*}"
+        case "$major" in
+          ''|*[!0-9]*)
+            echo "::error::Could not read a numeric major version from apps/CodeCoverage/dependency-action/package.json (got '${version}')."
+            exit 1
+            ;;
+        esac
+        echo "major=dependency-update-v${major}" >> "$GITHUB_OUTPUT"
+        echo "Moving tag: dependency-update-v${major} (from version ${version})"
+
+        # Cut the immutable tag only when this version does not have one yet; otherwise just repack and
+        # re-point the moving tag (a README-only change must not turn master red).
+        if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/dependency-update-v${version}" >/dev/null 2>&1; then
+          echo "version-from=" >> "$GITHUB_OUTPUT"
+          echo "::notice::Version ${version} is already tagged. Run this workflow with a bump (patch/minor/major) to release a new one."
+        else
+          echo "version-from=apps/CodeCoverage/dependency-action/package.json" >> "$GITHUB_OUTPUT"
+          echo "Will cut dependency-update-v${version}."
+        fi
+      env:
+        GH_TOKEN: ${{ github.token }}
+
+    - name: Rebuild, publish and tag
+      uses: MintPlayer/github-actions/compile-ts-action@main
+      with:
+        working-directory: apps/CodeCoverage/dependency-action
+        output-dir: dist
+        node-version: 24.x
+        install-command: npm ci
+        test-command: npm test
+        build-command: npm run build
+        mode: push
+        commit-message: 'build: repack the dependency-update bundle'
+        major-tag: ${{ steps.tags.outputs.major }}
+        # Empty on purpose: see coverage-action-publish.yml (checkout@v7 keeps its credential outside
+        # .git/config, and a second Authorization header fails every git request with HTTP 400).
+        token: ''
+        version-tag-from: ${{ steps.tags.outputs.version-from }}
+        version-tag-prefix: dependency-update-v
+
+    # The bundle about to be pinned by every onboarded repository must actually run.
+    - name: Smoke-test the published bundle
+      working-directory: apps/CodeCoverage/dependency-action
+      run: npm run test:bundle

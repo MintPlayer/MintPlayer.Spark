@@ -282,7 +282,13 @@ internal partial class QueryExecutor : IQueryExecutor
         string? querySearch, CancellationToken cancellationToken)
     {
         var (isCustom, name) = ResolveSource(query);
-        await InvokeQueryHookAsync(query, parent);
+        var (hookContext, hookActions) = await InvokeQueryHookAsync(query, parent);
+
+        // A distinct list is a read of the query's rows, so a withheld Query refuses it exactly as it
+        // refuses /execute — otherwise the filter panel would list the values of a grid the caller
+        // may not open.
+        EnsureQueryNotDisabled(query, await DisabledActionsEvaluator.EvaluateQueryCoreAsync(
+            hookActions, query, parent, hookContext.ParentType));
 
         // The grid's own search, exactly as /execute applies it (#460 M15): pushed down where it can
         // be, narrowed in memory where it cannot. Without it a searched grid's filter panel listed the
@@ -339,6 +345,7 @@ internal partial class QueryExecutor : IQueryExecutor
         // and the submit path, which re-asks it, gets the same answer.
         var disabledActions = await DisabledActionsEvaluator.EvaluateQueryCoreAsync(
             queryActions, query, parent, queryContext.ParentType);
+        EnsureQueryNotDisabled(query, disabledActions);
 
         var source = isCustom
             ? await ExecuteCustomQueryAsync(query, name, parent, searchTerm, skip, take, search, restrictToIds, columnFilters, cancellationToken)
@@ -461,6 +468,21 @@ internal partial class QueryExecutor : IQueryExecutor
     /// failure yields a context nobody wrote to rather than throwing.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// Refuses a query whose actions class withheld <c>Query</c> in <c>OnDisableActionsAsync</c>: the
+    /// execution IS the Query action, so this is where a withheld one is enforced.
+    /// </summary>
+    /// <remarks>
+    /// Thrown as <see cref="SparkAccessDeniedException"/>, so every query endpoint answers it with the
+    /// uniform not-found it gives a type-level denial: a withheld query and a missing one are
+    /// indistinguishable. Narrowing only — the type-level Query right was checked before this runs.
+    /// </remarks>
+    private static void EnsureQueryNotDisabled(SparkQuery query, IReadOnlyList<string>? disabledActions)
+    {
+        if (disabledActions?.Contains(SparkCoreActions.Query, StringComparer.OrdinalIgnoreCase) == true)
+            throw new SparkAccessDeniedException($"Query '{query.Name}' is disabled for this caller.");
+    }
+
     private async Task<(SparkQueryContext Context, object? Actions)> InvokeQueryHookAsync(SparkQuery query, PersistentObject? parent)
     {
         var context = new SparkQueryContext

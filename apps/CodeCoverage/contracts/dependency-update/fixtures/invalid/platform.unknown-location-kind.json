@@ -1,0 +1,577 @@
+{
+  "contractVersion": 1,
+  "kind": "platform",
+  "sdk": "dotnet",
+  "source": "releases-index",
+  "current": {
+    "channels": [
+      "10.0"
+    ],
+    "preview": false
+  },
+  "locations": [
+    {
+      "file": ".github/workflows/dotnet-build-master.yml",
+      "kind": "csproj-anything",
+      "value": "10.0.100",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": ".github/workflows/pull-request.yml",
+      "kind": "setup-action",
+      "value": "10.0.100",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "apps/CodeCoverage/CodeCoverage.BitbucketIntegration/CodeCoverage.BitbucketIntegration.csproj",
+      "kind": "tfm",
+      "value": "net10.0",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "apps/CodeCoverage/CodeCoverage.GithubIntegration/CodeCoverage.GithubIntegration.csproj",
+      "kind": "tfm",
+      "value": "net10.0",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "apps/CodeCoverage/CodeCoverage.GitlabIntegration/CodeCoverage.GitlabIntegration.csproj",
+      "kind": "tfm",
+      "value": "net10.0",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "apps/CodeCoverage/CodeCoverage.Library/CodeCoverage.Library.csproj",
+      "kind": "tfm",
+      "value": "net10.0",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "apps/CodeCoverage/CodeCoverage.Tests/CodeCoverage.Tests.csproj",
+      "kind": "tfm",
+      "value": "net10.0",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "apps/CodeCoverage/CodeCoverage/CodeCoverage.csproj",
+      "kind": "tfm",
+      "value": "net10.0",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "apps/CodeCoverage/CodeCoverage/Dockerfile",
+      "kind": "docker",
+      "value": "10.0",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "apps/CodeCoverage/CodeCoverage/Dockerfile",
+      "kind": "docker",
+      "value": "10.0",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "apps/DemoApp/DemoApp.Library/DemoApp.Library.csproj",
+      "kind": "tfm",
+      "value": "net10.0",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "apps/DemoApp/DemoApp/DemoApp.csproj",
+      "kind": "tfm",
+      "value": "net10.0",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "apps/Fleet/Fleet.Library/Fleet.Library.csproj",
+      "kind": "tfm",
+      "value": "net10.0",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "apps/Fleet/Fleet/Fleet.csproj",
+      "kind": "tfm",
+      "value": "net10.0",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "apps/HR/HR.Library/HR.Library.csproj",
+      "kind": "tfm",
+      "value": "net10.0",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "apps/HR/HR/HR.csproj",
+      "kind": "tfm",
+      "value": "net10.0",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "global.json",
+      "kind": "global.json",
+      "value": "10.0.100",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "libs/all_features/MintPlayer.Spark.AllFeatures.SourceGenerators/MintPlayer.Spark.AllFeatures.SourceGenerators.csproj",
+      "kind": "tfm",
+      "value": "netstandard2.0",
+      "channel": null,
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "libs/all_features/MintPlayer.Spark.AllFeatures.SourceGenerators/MintPlayer.Spark.AllFeatures.SourceGenerators.csproj",
+      "kind": "package-version",
+      "value": "10.0.0-preview.84",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "libs/all_features/MintPlayer.Spark.AllFeatures/MintPlayer.Spark.AllFeatures.csproj",
+      "kind": "tfm",
+      "value": "net10.0",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "libs/all_features/MintPlayer.Spark.AllFeatures/MintPlayer.Spark.AllFeatures.csproj",
+      "kind": "package-version",
+      "value": "10.0.0-preview.84",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "libs/attributes/MintPlayer.Spark.Attributes/MintPlayer.Spark.Attributes.csproj",
+      "kind": "tfm",
+      "value": "net10.0",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "libs/attributes/MintPlayer.Spark.Attributes/MintPlayer.Spark.Attributes.csproj",
+      "kind": "package-version",
+      "value": "10.0.0-preview.86",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "libs/authorization/MintPlayer.Spark.Authorization/MintPlayer.Spark.Authorization.csproj",
+      "kind": "tfm",
+      "value": "net10.0",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "libs/authorization/MintPlayer.Spark.Authorization/MintPlayer.Spark.Authorization.csproj",
+      "kind": "package-version",
+      "value": "10.0.0-preview.85",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "libs/client/MintPlayer.Spark.Client.Authorization/MintPlayer.Spark.Client.Authorization.csproj",
+      "kind": "tfm",
+      "value": "net10.0",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "libs/client/MintPlayer.Spark.Client.Authorization/MintPlayer.Spark.Client.Authorization.csproj",
+      "kind": "package-version",
+      "value": "10.0.0-preview.84",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "libs/client/MintPlayer.Spark.Client/MintPlayer.Spark.Client.csproj",
+      "kind": "tfm",
+      "value": "net10.0",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "libs/client/MintPlayer.Spark.Client/MintPlayer.Spark.Client.csproj",
+      "kind": "package-version",
+      "value": "10.0.0-preview.85",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "libs/controllers/MintPlayer.Spark.Controllers/MintPlayer.Spark.Controllers.csproj",
+      "kind": "tfm",
+      "value": "net10.0",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "libs/controllers/MintPlayer.Spark.Controllers/MintPlayer.Spark.Controllers.csproj",
+      "kind": "package-version",
+      "value": "10.0.0-preview.84",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "libs/cron/MintPlayer.Spark.Cron/MintPlayer.Spark.Cron.csproj",
+      "kind": "tfm",
+      "value": "net10.0",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "libs/cron/MintPlayer.Spark.Cron/MintPlayer.Spark.Cron.csproj",
+      "kind": "package-version",
+      "value": "10.0.0-preview.84",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "libs/identity_provider/MintPlayer.Spark.IdentityProvider/MintPlayer.Spark.IdentityProvider.csproj",
+      "kind": "tfm",
+      "value": "net10.0",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "libs/identity_provider/MintPlayer.Spark.IdentityProvider/MintPlayer.Spark.IdentityProvider.csproj",
+      "kind": "package-version",
+      "value": "10.0.0-preview.86",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "libs/messaging/MintPlayer.Spark.Messaging.Abstractions/MintPlayer.Spark.Messaging.Abstractions.csproj",
+      "kind": "tfm",
+      "value": "net10.0",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "libs/messaging/MintPlayer.Spark.Messaging.Abstractions/MintPlayer.Spark.Messaging.Abstractions.csproj",
+      "kind": "package-version",
+      "value": "10.0.0-preview.84",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "libs/messaging/MintPlayer.Spark.Messaging/MintPlayer.Spark.Messaging.csproj",
+      "kind": "tfm",
+      "value": "net10.0",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "libs/messaging/MintPlayer.Spark.Messaging/MintPlayer.Spark.Messaging.csproj",
+      "kind": "package-version",
+      "value": "10.0.0-preview.84",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "libs/migrations/MintPlayer.Spark.Migrations/MintPlayer.Spark.Migrations.csproj",
+      "kind": "tfm",
+      "value": "net10.0",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "libs/migrations/MintPlayer.Spark.Migrations/MintPlayer.Spark.Migrations.csproj",
+      "kind": "package-version",
+      "value": "10.0.0-preview.84",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "libs/replication/MintPlayer.Spark.Replication.Abstractions/MintPlayer.Spark.Replication.Abstractions.csproj",
+      "kind": "tfm",
+      "value": "net10.0",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "libs/replication/MintPlayer.Spark.Replication.Abstractions/MintPlayer.Spark.Replication.Abstractions.csproj",
+      "kind": "package-version",
+      "value": "10.0.0-preview.84",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "libs/replication/MintPlayer.Spark.Replication/MintPlayer.Spark.Replication.csproj",
+      "kind": "tfm",
+      "value": "net10.0",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "libs/replication/MintPlayer.Spark.Replication/MintPlayer.Spark.Replication.csproj",
+      "kind": "package-version",
+      "value": "10.0.0-preview.84",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "libs/socket_extensions/MintPlayer.Dotnet.SocketExtensions/MintPlayer.Dotnet.SocketExtensions.csproj",
+      "kind": "tfm",
+      "value": "net10.0",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "libs/socket_extensions/MintPlayer.Dotnet.SocketExtensions/MintPlayer.Dotnet.SocketExtensions.csproj",
+      "kind": "package-version",
+      "value": "10.0.1",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "libs/source_generators/MintPlayer.Spark.LibraryGenerators/MintPlayer.Spark.LibraryGenerators.csproj",
+      "kind": "tfm",
+      "value": "netstandard2.0",
+      "channel": null,
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "libs/source_generators/MintPlayer.Spark.LibraryGenerators/MintPlayer.Spark.LibraryGenerators.csproj",
+      "kind": "package-version",
+      "value": "10.0.0-preview.84",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "libs/source_generators/MintPlayer.Spark.SourceGenerators/MintPlayer.Spark.SourceGenerators.csproj",
+      "kind": "tfm",
+      "value": "netstandard2.0",
+      "channel": null,
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "libs/source_generators/MintPlayer.Spark.SourceGenerators/MintPlayer.Spark.SourceGenerators.csproj",
+      "kind": "package-version",
+      "value": "10.0.0-preview.86",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "libs/spark/MintPlayer.Spark.Abstractions/MintPlayer.Spark.Abstractions.csproj",
+      "kind": "tfm",
+      "value": "net10.0",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "libs/spark/MintPlayer.Spark.Abstractions/MintPlayer.Spark.Abstractions.csproj",
+      "kind": "package-version",
+      "value": "10.0.0-preview.86",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "libs/spark/MintPlayer.Spark/MintPlayer.Spark.csproj",
+      "kind": "tfm",
+      "value": "net10.0",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "libs/spark/MintPlayer.Spark/MintPlayer.Spark.csproj",
+      "kind": "package-version",
+      "value": "10.0.0-preview.86",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "libs/subscription_worker/MintPlayer.Spark.SubscriptionWorker.Abstractions/MintPlayer.Spark.SubscriptionWorker.Abstractions.csproj",
+      "kind": "tfm",
+      "value": "net10.0",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "libs/subscription_worker/MintPlayer.Spark.SubscriptionWorker.Abstractions/MintPlayer.Spark.SubscriptionWorker.Abstractions.csproj",
+      "kind": "package-version",
+      "value": "10.0.0-preview.84",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "libs/subscription_worker/MintPlayer.Spark.SubscriptionWorker/MintPlayer.Spark.SubscriptionWorker.csproj",
+      "kind": "tfm",
+      "value": "net10.0",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "libs/subscription_worker/MintPlayer.Spark.SubscriptionWorker/MintPlayer.Spark.SubscriptionWorker.csproj",
+      "kind": "package-version",
+      "value": "10.0.0-preview.84",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "libs/testing/MintPlayer.Spark.Testing/MintPlayer.Spark.Testing.csproj",
+      "kind": "tfm",
+      "value": "net10.0",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "libs/testing/MintPlayer.Spark.Testing/MintPlayer.Spark.Testing.csproj",
+      "kind": "package-version",
+      "value": "10.0.0-preview.84",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "libs/webhooks/MintPlayer.Spark.Webhooks.GitHub.DevTunnel/MintPlayer.Spark.Webhooks.GitHub.DevTunnel.csproj",
+      "kind": "tfm",
+      "value": "net10.0",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "libs/webhooks/MintPlayer.Spark.Webhooks.GitHub.DevTunnel/MintPlayer.Spark.Webhooks.GitHub.DevTunnel.csproj",
+      "kind": "package-version",
+      "value": "10.0.0-preview.84",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "libs/webhooks/MintPlayer.Spark.Webhooks.GitHub/MintPlayer.Spark.Webhooks.GitHub.csproj",
+      "kind": "tfm",
+      "value": "net10.0",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "libs/webhooks/MintPlayer.Spark.Webhooks.GitHub/MintPlayer.Spark.Webhooks.GitHub.csproj",
+      "kind": "package-version",
+      "value": "10.0.0-preview.84",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "tests/MintPlayer.Spark.Client.Tests/MintPlayer.Spark.Client.Tests.csproj",
+      "kind": "tfm",
+      "value": "net10.0",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "tests/MintPlayer.Spark.E2E.Tests/MintPlayer.Spark.E2E.Tests.csproj",
+      "kind": "tfm",
+      "value": "net10.0",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "tests/MintPlayer.Spark.SourceGenerators.Tests/MintPlayer.Spark.SourceGenerators.Tests.csproj",
+      "kind": "tfm",
+      "value": "net10.0",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": "tests/MintPlayer.Spark.Tests/MintPlayer.Spark.Tests.csproj",
+      "kind": "tfm",
+      "value": "net10.0",
+      "channel": "10.0",
+      "computed": false,
+      "reason": null
+    }
+  ],
+  "candidates": [
+    {
+      "channel": "11.0",
+      "latestVersion": "11.0.0-rc.2",
+      "latestSdk": "11.0.100-rc.2.26504.105",
+      "releaseTimestamp": "2026-10-13",
+      "preview": true,
+      "eol": null,
+      "lts": false
+    }
+  ]
+}

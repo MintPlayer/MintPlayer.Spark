@@ -1,0 +1,47 @@
+diff --git a/nx.json b/nx.json
+index fe2e718..874e54c 100644
+--- a/nx.json
++++ b/nx.json
+@@ -3,20 +3,28 @@
+   "defaultBase": "main",
+   "targetDefaults": {
+     "build": {
+-      "dependsOn": ["^build"],
++      "dependsOn": [
++        "^build"
++      ],
+       "cache": true
+     },
+     "@nx/js:tsc": {
+-      "dependsOn": ["^build"]
++      "dependsOn": [
++        "^build"
++      ]
+     }
+   },
+   "release": {
+-    "projects": ["util"],
+-    "releaseTagPattern": "v{version}",
++    "projects": [
++      "util"
++    ],
+     "version": {
+       "generatorOptions": {
+         "currentVersionResolver": "git-tag"
+       }
++    },
++    "releaseTag": {
++      "pattern": "v{version}"
+     }
+   }
+ }
+diff --git a/tools/read-config.ts b/tools/read-config.ts
+index e341545..0efe446 100644
+--- a/tools/read-config.ts
++++ b/tools/read-config.ts
+@@ -1,4 +1,4 @@
+-import { readTsConfig } from '@nx/js/src/utils/typescript/ts-config';
++import { readTsConfig } from '@nx/js/internal';
+ import { createNodesV2 } from '@nx/js/typescript';
+ 
+ export const config = readTsConfig('tsconfig.base.json');

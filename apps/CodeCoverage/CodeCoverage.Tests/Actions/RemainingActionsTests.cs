@@ -266,26 +266,45 @@ public class RemainingActionsTests : CoverageRavenTest
         return visibility;
     }
 
+    private static IPermissionService Administrator()
+    {
+        var permissions = Substitute.For<IPermissionService>();
+        permissions.IsAllowedAsync(OwnerSettingsRights.ReadSettings, Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(true));
+        return permissions;
+    }
+
     /// <summary>
-    /// The installation id is no longer withheld per row: it is <c>[IgnoreProperty]</c>, so it is in
-    /// no model and on no wire for anyone (#264), and the hook has nothing left to protect.
+    /// An account's settings are its managers' and the administrators' (D-A3). Everything but the public face is protected
+    /// for anyone else — deny by default, so a setting added later is protected too. The installation id is not among
+    /// them: it is <c>[IgnoreProperty]</c>, in no model and on no wire (#264).
     /// </summary>
     [Fact]
-    public async Task An_account_protects_no_attribute_per_row()
+    public async Task An_accounts_settings_are_withheld_from_anyone_who_neither_manages_it_nor_administers()
     {
         var account = new Account { Login = "acme", InstallationId = 5 };
 
-        (await Create<AccountActions>(Managing("github:other")).GetProtectedAttributesAsync("Read", account)).Should().BeNull();
+        (await Create<AccountActions>(Managing("github:acme")).GetProtectedAttributesAsync("Read", account)).Should().BeNull();
+        (await Create<AccountActions>(Managing("github:other"), Administrator()).GetProtectedAttributesAsync("Read", account)).Should().BeNull();
+        var outsider = await Create<AccountActions>(Managing("github:other")).GetProtectedAttributesAsync("Read", account);
+        outsider.Should().Contain(nameof(Account.DependencyRules));
+        outsider.Should().Contain(nameof(Account.DeleteBranchOnPrClose));
+        outsider.Should().NotContain(nameof(Account.Login));
+        outsider.Should().NotContain(nameof(Account.AvatarUrl));
     }
 
     [Fact]
-    public async Task A_repositorys_badge_token_is_withheld_from_anyone_who_does_not_manage_it()
+    public async Task A_repositorys_settings_are_withheld_from_outsiders_and_its_badge_token_from_everyone_but_its_managers()
     {
         var repository = new Repository { OwnerLogin = "acme", BadgeToken = "t" };
 
         (await Create<RepositoryActions>(Managing("github:acme")).GetProtectedAttributesAsync("Read", repository)).Should().BeNull();
-        (await Create<RepositoryActions>(Managing()).GetProtectedAttributesAsync("Read", repository))
+        (await Create<RepositoryActions>(Managing(), Administrator()).GetProtectedAttributesAsync("Read", repository))
             .Should().Equal(nameof(Repository.BadgeToken));
+        var outsider = await Create<RepositoryActions>(Managing()).GetProtectedAttributesAsync("Read", repository);
+        outsider.Should().Contain(nameof(Repository.BadgeToken));
+        outsider.Should().Contain(nameof(Repository.DependencyUpdates));
+        outsider.Should().NotContain(nameof(Repository.FullName));
         Create<RepositoryActions>(Managing()).GetDefaultIncludes().Should().Equal(nameof(Repository.Account));
     }
 

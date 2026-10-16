@@ -134,8 +134,14 @@ internal sealed class FakeForgeMergeQueue : IForgeMergeQueue
         return Task.FromResult(true);
     }
 
+    /// <summary>Every artifact read: the run, the artifact's name and the cap it was read under, in order.</summary>
+    public List<(long RunId, string Name, long MaxBytes)> ArtifactReads { get; } = [];
+
     public Task<ForgeArtifactDownload> DownloadArtifactAsync(Repository repository, long runId, string artifactName, long maxBytes, CancellationToken cancellationToken = default)
-        => Task.FromResult(Artifacts.TryGetValue(runId, out var artifact) ? artifact : new ForgeArtifactDownload(EForgeArtifactOutcome.NotFound, null, null, "no artifact"));
+    {
+        ArtifactReads.Add((runId, artifactName, maxBytes));
+        return Task.FromResult(Artifacts.TryGetValue(runId, out var artifact) ? artifact : new ForgeArtifactDownload(EForgeArtifactOutcome.NotFound, null, null, "no artifact"));
+    }
 
     public Task<string?> GetFileBlobShaAsync(Repository repository, string gitRef, string path, CancellationToken cancellationToken = default)
         => Task.FromResult(Blobs.TryGetValue($"{gitRef}:{path}", out var blob) ? blob : null);
@@ -324,6 +330,59 @@ internal sealed class FakeGitWriter : IGitWriterSidecar
         Deletes.Add(request);
         return Task.FromResult(new GitWriterDeleteResult(GitWriterOutcomes.Deleted, null, null, 1));
     }
+
+    // ── The dependency updater's jobs (dependency-updates PRD R4, R14, R16) ─────────────────────────
+
+    /// <summary>Every dependency job request, by job name (<c>work-ref</c>, <c>validate</c>, <c>rolling</c>, <c>files</c>,
+    /// <c>delete</c>), in order.</summary>
+    public List<(string Job, GitWriterDependencyRequest Request)> DependencyJobs { get; } = [];
+
+    /// <summary>Scripted answers per job; when none is left a job answers its default (pushed, accepted, deleted).</summary>
+    public Dictionary<string, Queue<GitWriterDependencyResult>> DependencyResults { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>The commit a default work-ref answer names: the plan commit for a plan, the staged commit for a patch.</summary>
+    public string PlanCommitSha { get; set; } = "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1";
+    public string StagedSha { get; set; } = "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2";
+    public string RollingSha { get; set; } = "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3";
+    public string BotSha { get; set; } = "d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4";
+
+    public void Script(string job, GitWriterDependencyResult result)
+    {
+        if (!DependencyResults.TryGetValue(job, out var queue))
+            DependencyResults[job] = queue = new Queue<GitWriterDependencyResult>();
+        queue.Enqueue(result);
+    }
+
+    public IReadOnlyList<GitWriterDependencyRequest> Requests(string job) => [.. DependencyJobs.Where(j => j.Job == job).Select(j => j.Request)];
+
+    private Task<GitWriterDependencyResult> DependencyAsync(string job, GitWriterDependencyRequest request, Func<GitWriterDependencyResult> fallback)
+    {
+        DependencyJobs.Add((job, request));
+        return Task.FromResult(DependencyResults.TryGetValue(job, out var queue) && queue.Count > 0 ? queue.Dequeue() : fallback());
+    }
+
+    public Task<GitWriterDependencyResult> DependencyWorkRefAsync(GitWriterDependencyRequest request, CancellationToken cancellationToken = default)
+        => DependencyAsync("work-ref", request, () => new GitWriterDependencyResult(GitWriterOutcomes.Pushed, null, request.PlanJson is not null ? PlanCommitSha : StagedSha, null, [], null, 10));
+
+    public Task<GitWriterDependencyResult> DependencyValidateAsync(GitWriterDependencyRequest request, CancellationToken cancellationToken = default)
+        => DependencyAsync("validate", request, () => new GitWriterDependencyResult(GitWriterDependencyOutcomes.Validated, null, null, null, [], null, 10)
+        {
+            Verdict = GitWriterDependencyOutcomes.Accepted,
+            AppliedGroups = [.. request.ClaimedGroups ?? []],
+        });
+
+    public Task<GitWriterDependencyResult> DependencyRollingAsync(GitWriterDependencyRequest request, CancellationToken cancellationToken = default)
+        => DependencyAsync("rolling", request, () => new GitWriterDependencyResult(GitWriterOutcomes.Pushed, null, RollingSha, BotSha, [], null, 10)
+        {
+            Verdict = GitWriterDependencyOutcomes.Accepted,
+            AppliedGroups = [.. request.ClaimedGroups ?? []],
+        });
+
+    public Task<GitWriterDependencyResult> DependencyFilesAsync(GitWriterDependencyRequest request, CancellationToken cancellationToken = default)
+        => DependencyAsync("files", request, () => new GitWriterDependencyResult(GitWriterOutcomes.Pushed, null, "e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5", null, [], null, 10));
+
+    public Task<GitWriterDependencyResult> DependencyDeleteWorkRefAsync(GitWriterDependencyRequest request, CancellationToken cancellationToken = default)
+        => DependencyAsync("delete", request, () => new GitWriterDependencyResult(GitWriterOutcomes.Deleted, null, null, null, [], null, 10));
 
     public static GitWriterPrepareResult Prepared(string baseSha, string head, string prepared, params string[] resolved)
         => new(GitWriterOutcomes.Prepared, null, baseSha, head, prepared, resolved, [], null, 10);

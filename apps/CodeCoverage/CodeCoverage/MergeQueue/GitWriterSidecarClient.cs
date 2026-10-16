@@ -73,6 +73,29 @@ public interface IGitWriterSidecar
 
     /// <summary>Removes the queue branch after its entry ended (D5). Idempotent.</summary>
     Task<GitWriterDeleteResult> DeleteQueueBranchAsync(GitWriterDeleteQueueBranchRequest request, CancellationToken cancellationToken = default);
+
+    // ── The dependency updater (dependency-updates PRD R4, R14, R16) ───────────────────────────────────
+
+    /// <summary>R14: <c>mintplayer/dependencies-work</c> = <c>expected_sha</c> + the plan commit, or + the validated apply patch.</summary>
+    Task<GitWriterDependencyResult> DependencyWorkRefAsync(GitWriterDependencyRequest request, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException("This git writer has no dependency jobs: DependencyWorkRefAsync.");
+
+    /// <summary>The <c>dependencies</c> patch profile on an apply patch; nothing is pushed.</summary>
+    Task<GitWriterDependencyResult> DependencyValidateAsync(GitWriterDependencyRequest request, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException("This git writer has no dependency jobs: DependencyValidateAsync.");
+
+    /// <summary>R4: rebuild <c>mintplayer/dependencies</c> (bot commit, migrations, the humans' commits replayed) and push it
+    /// under a lease, or nothing when the tree is the branch's.</summary>
+    Task<GitWriterDependencyResult> DependencyRollingAsync(GitWriterDependencyRequest request, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException("This git writer has no dependency jobs: DependencyRollingAsync.");
+
+    /// <summary>R16: the onboarding commit on <c>mintplayer/dependencies-onboarding</c>.</summary>
+    Task<GitWriterDependencyResult> DependencyFilesAsync(GitWriterDependencyRequest request, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException("This git writer has no dependency jobs: DependencyFilesAsync.");
+
+    /// <summary>R14: deletes the work ref while it is at <see cref="GitWriterDependencyRequest.ExpectedSha"/>. Idempotent.</summary>
+    Task<GitWriterDependencyResult> DependencyDeleteWorkRefAsync(GitWriterDependencyRequest request, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException("This git writer has no dependency jobs: DependencyDeleteWorkRefAsync.");
 }
 
 /// <summary>A typed <see cref="HttpClient"/> over the writer's contract.</summary>
@@ -93,6 +116,21 @@ public sealed class GitWriterSidecarClient(HttpClient http, IOptions<MergeQueueO
 
     public Task<GitWriterDeleteResult> DeleteQueueBranchAsync(GitWriterDeleteQueueBranchRequest request, CancellationToken cancellationToken = default)
         => SendAsync<GitWriterDeleteResult>(HttpMethod.Delete, "jobs/queue-branch", request, cancellationToken);
+
+    public Task<GitWriterDependencyResult> DependencyWorkRefAsync(GitWriterDependencyRequest request, CancellationToken cancellationToken = default)
+        => SendAsync<GitWriterDependencyResult>(HttpMethod.Post, "jobs/dependencies/work-ref", request, cancellationToken);
+
+    public Task<GitWriterDependencyResult> DependencyValidateAsync(GitWriterDependencyRequest request, CancellationToken cancellationToken = default)
+        => SendAsync<GitWriterDependencyResult>(HttpMethod.Post, "jobs/dependencies/validate", request, cancellationToken);
+
+    public Task<GitWriterDependencyResult> DependencyRollingAsync(GitWriterDependencyRequest request, CancellationToken cancellationToken = default)
+        => SendAsync<GitWriterDependencyResult>(HttpMethod.Post, "jobs/dependencies/rolling", request, cancellationToken);
+
+    public Task<GitWriterDependencyResult> DependencyFilesAsync(GitWriterDependencyRequest request, CancellationToken cancellationToken = default)
+        => SendAsync<GitWriterDependencyResult>(HttpMethod.Post, "jobs/dependencies/files", request, cancellationToken);
+
+    public Task<GitWriterDependencyResult> DependencyDeleteWorkRefAsync(GitWriterDependencyRequest request, CancellationToken cancellationToken = default)
+        => SendAsync<GitWriterDependencyResult>(HttpMethod.Delete, "jobs/dependencies/work-ref", request, cancellationToken);
 
     /// <summary>
     /// The request as the writer reads it: one flat object. The queue-branch push and the publish carry their prepare's
@@ -267,6 +305,71 @@ public sealed record GitWriterPublishResult(string Outcome, string? Reason, stri
 }
 
 public sealed record GitWriterDeleteResult(string Outcome, string? Reason, string? Detail, long DurationMs);
+
+/// <summary>
+/// The body of every dependency job (the writer's <c>Dependency*Wire</c>s, one flat object). Each job reads the fields it
+/// takes; the rest go as null.
+/// </summary>
+public sealed record GitWriterDependencyRequest(string Provider, string RepoId, string CloneUrl, SidecarCredential Credential, string BaseBranch, string? ExpectedSha)
+{
+    public GitWriterIdentity? Author { get; init; }
+    public GitWriterIdentity? Committer { get; init; }
+    public string? Message { get; init; }
+
+    /// <summary>The plan as committed (plan.schema.json text), for the jobs that judge a patch against it.</summary>
+    public string? Plan { get; init; }
+
+    /// <summary>The apply patch, base64.</summary>
+    public string? Patch { get; init; }
+
+    public IReadOnlyList<string>? ClaimedGroups { get; init; }
+    public IReadOnlyDictionary<string, string>? TargetActions { get; init; }
+    public IReadOnlyList<string>? AllowedHosts { get; init; }
+
+    /// <summary>Work ref: the plan file's content for the plan commit (R14).</summary>
+    public string? PlanJson { get; init; }
+
+    public string? ExpectedWorkSha { get; init; }
+
+    public IReadOnlyList<GitWriterMigratePatch>? Migrations { get; init; }
+    public string? ExpectedRollingSha { get; init; }
+    public string? LastBotSha { get; init; }
+
+    public IReadOnlyList<GitWriterFile>? Files { get; init; }
+}
+
+public sealed record GitWriterMigratePatch(string Group, string Patch);
+
+/// <summary>One onboarding file: <paramref name="Content"/>, or <paramref name="Delete"/>.</summary>
+public sealed record GitWriterFile(string Path, string? Content, bool Delete = false);
+
+/// <summary>A dependency job's answer (CodeCoverage.GitWriter's <c>DependencyJobResponse</c>).</summary>
+public sealed record GitWriterDependencyResult(string Outcome, string? Reason, string? Sha, string? BotSha, IReadOnlyList<string> Paths, string? Detail, long DurationMs)
+{
+    public string? Verdict { get; init; }
+    public IReadOnlyList<string> AppliedGroups { get; init; } = [];
+    public bool RequiresWorkflowsPermission { get; init; }
+    public IReadOnlyList<string> NewPackages { get; init; } = [];
+    public IReadOnlyList<GitWriterHumanValue> HumanValues { get; init; } = [];
+    public int Replayed { get; init; }
+}
+
+public sealed record GitWriterHumanValue(string DepName, string PackageFile, string HeldValue, string? ProposedValue, string Commit, string? Author);
+
+/// <summary>The dependency jobs' own outcome words (CodeCoverage.GitWriter's <c>DependencyJobOutcomes</c>).</summary>
+public static class GitWriterDependencyOutcomes
+{
+    public const string Validated = "validated";
+    public const string Unchanged = "unchanged";
+    public const string ReplayConflict = "replay-conflict";
+    public const string RelockNeeded = "relock-needed";
+    public const string RollingRewritten = "rolling-rewritten";
+    public const string PlanRejected = "plan-rejected";
+    public const string BranchMoved = "branch-moved";
+    public const string Accepted = "accepted";
+    public const string Rejected = "rejected";
+    public const string NeedsHuman = "needs-human";
+}
 
 /// <summary>The writer's <c>outcome</c> values (CodeCoverage.GitWriter's <c>JobOutcomes</c>).</summary>
 public static class GitWriterOutcomes

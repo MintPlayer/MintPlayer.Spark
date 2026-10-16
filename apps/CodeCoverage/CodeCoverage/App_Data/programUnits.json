@@ -25,7 +25,12 @@
     "The Administration group (#504, M5b) holds the host metrics dashboard and the commit-graph mirrors. Both targets",
     "are granted to Administrators alone (Read/HostMetrics through dashboards:administrators, QueryRead/",
     "RepositoryGraphState directly), so for everyone else the group is empty and not shown. The dashboards package adds",
-    "its own Dashboards > Database entry under the same rule."
+    "its own Dashboards > Database entry under the same rule.",
+    "",
+    "The Guides group holds the static how-to pages, each an Angular route of its own and open to anonymous visitors:",
+    "the merge queue's GitHub setup (/merge-queue/setup), the dependency updater's setup (/dependency-updates/setup)",
+    "and connecting an AI agent to /mcp (/connect-agent, also the topbar's button). A url unit has no target to grant,",
+    "so the group is shown to everyone. The merge queue unit kept its id when it moved here from the Coverage group."
   ],
   "programUnitGroups": [
     {
@@ -53,13 +58,37 @@
           "alias": "forge-accounts",
           "objectId": "github",
           "order": 2
-        },
+        }
+      ]
+    },
+    {
+      "id": "b218c106-b36a-4915-a14b-47d39438c392",
+      "name": "programUnits.groups.guides",
+      "icon": "bi-book",
+      "order": 2,
+      "programUnits": [
         {
           "id": "0580223f-bbbd-425f-9be5-b7b2f289d323",
           "name": "programUnits.mergeQueueSetup",
           "icon": "bi-signpost-split",
           "type": "url",
           "url": "/merge-queue/setup",
+          "order": 1
+        },
+        {
+          "id": "4267ae23-783e-4942-ac37-cd22431299e8",
+          "name": "programUnits.dependencyUpdatesSetup",
+          "icon": "bi-box-seam",
+          "type": "url",
+          "url": "/dependency-updates/setup",
+          "order": 2
+        },
+        {
+          "id": "a8025e33-3ea7-4bca-9804-3433240839b2",
+          "name": "programUnits.connectAgent",
+          "icon": "bi-robot",
+          "type": "url",
+          "url": "/connect-agent",
           "order": 3
         }
       ]

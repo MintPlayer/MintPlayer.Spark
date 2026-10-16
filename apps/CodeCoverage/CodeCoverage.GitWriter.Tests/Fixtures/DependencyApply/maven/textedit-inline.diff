@@ -1,0 +1,13 @@
+diff --git a/pom.xml b/pom.xml
+index daefaf8..a0801a8 100644
+--- a/pom.xml
++++ b/pom.xml
+@@ -17,7 +17,7 @@
+     <dependency>
+         <groupId>com.google.guava</groupId>
+         <artifactId>guava</artifactId>
+-        <version>32.1.2-jre</version>
++        <version>33.0.0-jre</version>
+     </dependency>
+   </dependencies>
+ </project>

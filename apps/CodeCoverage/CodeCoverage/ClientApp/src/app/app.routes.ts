@@ -53,6 +53,9 @@ export const routes: Routes = [
       // The merge queue's "Optimal GitHub setup" guide (docs/coverage_merge_queue_PRD.md O13); static, open to anonymous
       // visitors too. Linked from the repository page's merge-queue panel and the account page's permissions notice.
       { path: 'merge-queue/setup', loadComponent: () => import('./pages/merge-queue-setup/merge-queue-setup.component') },
+      // The dependency updater's setup guide (docs/code-coverage/dependency-updates.md); static, open to anonymous visitors
+      // too. Like the two above, it is reached from the sidebar's Guides group (programUnits.json).
+      { path: 'dependency-updates/setup', loadComponent: () => import('./pages/dependency-updates-setup/dependency-updates-setup.component') },
       // poDetail override: the generic detail page plus the app panels that
       // can't be expressed as attribute renderers (badge, trend chart, CI
       // setup, the commit file tree).

@@ -677,6 +677,19 @@ as the object's update, where the object target decides. A query-level "Edit dis
 from that list and has no execution of its own to block, so put "this row may not be edited" on the
 object target.
 
+**The read actions: `Read` and `Query`.** Loading is their submit, so they are refused at load: `Read`
+withheld on an object target refuses `POST /spark/po/load` (and the live socket's load), `Query`
+withheld on a query target refuses `POST /spark/queries/execute` and `/distinct-values`. Both answer as
+a missing object or query does — 404, or the uniform 401 for an anonymous caller — never 403, so a
+withheld read confirms nothing. `Read` judges one object; it does not remove rows from a list (that is
+`GetRowFilterAsync`) or hide attributes (that is `GetProtectedAttributesAsync`, see
+[guide-row-security.md](./guide-row-security.md#per-viewer-attribute-redaction)).
+
+**Narrowing, never widening.** `security.json` is the allow-list: the hook only runs for a caller the
+type right, the attribute rights and the row rule already admitted, and it can only take actions away.
+A typical shape is a grant to every signed-in user in `security.json`, narrowed here to "not on records
+that are not yours, unless you are an administrator".
+
 For a large selection, override the **batched** form `OnDisableActionsAsync(IReadOnlyList<DisableActionsItem>)`
 — every target of one request in one call — to answer with one round-trip instead of one per row. The
 default calls the single form per item.

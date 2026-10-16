@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://coverage.mintplayer.com/contracts/dependency-update/result.schema.json",
+  "title": "result.json: the apply run's outcome",
+  "description": "Written by dependency-action mode=apply next to dependency.patch (git diff --binary against expectedSha, plan file excluded). The bot derives applied groups from the PATCH, never from this file alone (gap A); this file says why the others were not applied (R2).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contractVersion", "kind", "planId", "expectedSha", "groups", "consistency", "patch"],
+  "properties": {
+    "contractVersion": { "const": 1 },
+    "kind": { "const": "apply-result" },
+    "planId": { "type": "string" },
+    "expectedSha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "groups": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["group", "status", "items", "files", "blockers", "message"],
+        "properties": {
+          "group": { "type": "string" },
+          "status": {
+            "description": "applied: in the patch. unresolvable: the resolver refused the set (blockers name why; the bot holds it, R2). failed: anything else (no adapter, edit refused, tool missing, consistency bisect).",
+            "enum": ["applied", "unresolvable", "failed"]
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["depName", "packageFile", "newVersion", "adapter"],
+              "properties": {
+                "depName": { "type": "string" },
+                "packageFile": { "type": "string" },
+                "newVersion": { "type": "string" },
+                "adapter": { "type": ["string", "null"] }
+              }
+            }
+          },
+          "files": { "type": "array", "items": { "type": "string" }, "description": "Files this group changed (applied) or would have changed (reset)." },
+          "blockers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["depName", "code", "message"],
+              "properties": {
+                "depName": { "type": ["string", "null"], "description": "The package whose version blocks; a newer version of it lifts the hold (R2). null = unattributed." },
+                "version": { "type": ["string", "null"], "description": "The blocking version or range, when the tool says." },
+                "code": { "type": "string", "description": "Tool code (ERESOLVE, NU1605, YN0060, ...) or a parser label." },
+                "message": { "type": "string", "maxLength": 2000 }
+              }
+            }
+          },
+          "message": { "type": ["string", "null"], "maxLength": 4000 },
+          "platform": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["edited", "reported"],
+            "properties": {
+              "edited": { "type": "array", "items": { "type": "string" } },
+              "reported": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["file", "value", "reason"],
+                  "properties": { "file": { "type": "string" }, "value": { "type": "string" }, "reason": { "type": "string" } }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "consistency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "checks", "bisected"],
+      "properties": {
+        "status": { "enum": ["passed", "failed", "skipped"] },
+        "checks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["adapter", "directory", "ok"],
+            "properties": {
+              "adapter": { "type": "string" },
+              "directory": { "type": "string" },
+              "ok": { "type": "boolean" },
+              "message": { "type": ["string", "null"] }
+            }
+          }
+        },
+        "bisected": { "type": "array", "items": { "type": "string" }, "description": "Groups dropped by the D-C3 bisect." }
+      }
+    },
+    "patch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "bytes", "sha256"],
+      "properties": {
+        "file": { "const": "dependency.patch" },
+        "bytes": { "type": "integer", "minimum": 0 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "contractVersion": 1,
+  "kind": "plan",
+  "planId": "n3-s19-net11",
+  "expectedSha": "0000c1a3b2145652b1e248f9ccf528920a221442",
+  "groups": [
+    {
+      "group": "platform:dotnet 11.0",
+      "items": [],
+      "platform": {
+        "sdk": "dotnet",
+        "fromChannel": "10.0",
+        "toChannel": "11.0",
+        "toVersion": "11.0.0-rc.2",
+        "sdkVersion": "11.0.100-rc.1.26425.128",
+        "strategy": "replace",
+        "keepPrevious": 0,
+        "lockPackageMajor": true
+      }
+    }
+  ]
+}

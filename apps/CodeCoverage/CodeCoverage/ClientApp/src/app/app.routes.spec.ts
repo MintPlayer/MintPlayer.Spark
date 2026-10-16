@@ -196,6 +196,16 @@ describe('app routes: navigation', () => {
     expect(lookups(browse)).toBe(0);
   });
 
+  it('routes the dependency updater setup guide as a page of its own, with no lookup', async () => {
+    const { harness, router, browse } = await setup();
+
+    await harness.navigateByUrl('/dependency-updates/setup#coverage-yml');
+
+    expect(leaf(router).routeConfig?.path).toBe('dependency-updates/setup');
+    expect(router.url).toBe('/dependency-updates/setup#coverage-yml');
+    expect(lookups(browse)).toBe(0);
+  });
+
   it('keeps the file viewer a page of its own, with no lookup', async () => {
     const { harness, router, browse } = await setup();
 

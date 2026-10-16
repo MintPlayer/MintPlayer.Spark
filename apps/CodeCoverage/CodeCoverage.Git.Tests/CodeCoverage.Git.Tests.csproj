@@ -34,6 +34,8 @@
 
 	<ItemGroup>
 		<Content Include="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
+		<!-- Real action.yml pairs captured in spike S12, with their SOURCE.md. -->
+		<Content Include="Fixtures\**" CopyToOutputDirectory="PreserveNewest" />
 	</ItemGroup>
 
 </Project>

@@ -1,0 +1,852 @@
+diff --git a/.github/workflows/dotnet-build-master.yml b/.github/workflows/dotnet-build-master.yml
+index e42b67fc..481c0357 100644
+--- a/.github/workflows/dotnet-build-master.yml
++++ b/.github/workflows/dotnet-build-master.yml
+@@ -34,7 +34,7 @@ jobs:
+     - name: Setup .NET Core
+       uses: actions/setup-dotnet@v6
+       with:
+-        dotnet-version: 10.0.100
++        dotnet-version: 11.0.100-rc.1.26425.128
+         # Authenticates packages to push to GPR
+         source-url: https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json
+       env:
+diff --git a/.github/workflows/pull-request.yml b/.github/workflows/pull-request.yml
+index 033c57d4..12ecb678 100644
+--- a/.github/workflows/pull-request.yml
++++ b/.github/workflows/pull-request.yml
+@@ -45,7 +45,7 @@ jobs:
+     - name: Setup .NET Core
+       uses: actions/setup-dotnet@v6
+       with:
+-        dotnet-version: 10.0.100
++        dotnet-version: 11.0.100-rc.1.26425.128
+         # Authenticates packages to push to GPR
+         source-url: https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json
+       env:
+@@ -125,7 +125,7 @@ jobs:
+       run: |
+         for project in apps/DemoApp/DemoApp apps/HR/HR apps/Fleet/Fleet apps/CodeCoverage/CodeCoverage; do
+           name="$(basename "$project")"
+-          # Globbed rather than hardcoding net10.0, so a target-framework bump cannot turn this
++          # Globbed rather than hardcoding net11.0, so a target-framework bump cannot turn this
+           # guard into a false alarm. Better than dotnet's start-process error, which names a path
+           # without saying why it is absent.
+           if [ -z "$(ls -d $project/bin/Debug/*/$name 2>/dev/null)" ]; then
+@@ -147,7 +147,7 @@ jobs:
+       run: |
+         for project in apps/DemoApp/DemoApp apps/HR/HR apps/Fleet/Fleet apps/CodeCoverage/CodeCoverage; do
+           name="$(basename "$project")"
+-          # Globbed rather than hardcoding net10.0, so a target-framework bump cannot turn this
++          # Globbed rather than hardcoding net11.0, so a target-framework bump cannot turn this
+           # guard into a false alarm. Better than dotnet's start-process error, which names a path
+           # without saying why it is absent.
+           if [ -z "$(ls -d $project/bin/Debug/*/$name 2>/dev/null)" ]; then
+diff --git a/apps/CodeCoverage/CodeCoverage.BitbucketIntegration/CodeCoverage.BitbucketIntegration.csproj b/apps/CodeCoverage/CodeCoverage.BitbucketIntegration/CodeCoverage.BitbucketIntegration.csproj
+index 72d9a116..2c1627ef 100644
+--- a/apps/CodeCoverage/CodeCoverage.BitbucketIntegration/CodeCoverage.BitbucketIntegration.csproj
++++ b/apps/CodeCoverage/CodeCoverage.BitbucketIntegration/CodeCoverage.BitbucketIntegration.csproj
+@@ -1,7 +1,7 @@
+ ﻿<Project Sdk="Microsoft.NET.Sdk">
+ 
+ 	<PropertyGroup>
+-		<TargetFramework>net10.0</TargetFramework>
++		<TargetFramework>net11.0</TargetFramework>
+ 		<Nullable>enable</Nullable>
+ 		<ImplicitUsings>enable</ImplicitUsings>
+ 		<IsPackable>false</IsPackable>
+diff --git a/apps/CodeCoverage/CodeCoverage.GithubIntegration/CodeCoverage.GithubIntegration.csproj b/apps/CodeCoverage/CodeCoverage.GithubIntegration/CodeCoverage.GithubIntegration.csproj
+index 8d53fecd..b8cee75e 100644
+--- a/apps/CodeCoverage/CodeCoverage.GithubIntegration/CodeCoverage.GithubIntegration.csproj
++++ b/apps/CodeCoverage/CodeCoverage.GithubIntegration/CodeCoverage.GithubIntegration.csproj
+@@ -1,7 +1,7 @@
+ ﻿<Project Sdk="Microsoft.NET.Sdk">
+ 
+ 	<PropertyGroup>
+-		<TargetFramework>net10.0</TargetFramework>
++		<TargetFramework>net11.0</TargetFramework>
+ 		<Nullable>enable</Nullable>
+ 		<ImplicitUsings>enable</ImplicitUsings>
+ 		<!--
+diff --git a/apps/CodeCoverage/CodeCoverage.GitlabIntegration/CodeCoverage.GitlabIntegration.csproj b/apps/CodeCoverage/CodeCoverage.GitlabIntegration/CodeCoverage.GitlabIntegration.csproj
+index 72d9a116..2c1627ef 100644
+--- a/apps/CodeCoverage/CodeCoverage.GitlabIntegration/CodeCoverage.GitlabIntegration.csproj
++++ b/apps/CodeCoverage/CodeCoverage.GitlabIntegration/CodeCoverage.GitlabIntegration.csproj
+@@ -1,7 +1,7 @@
+ ﻿<Project Sdk="Microsoft.NET.Sdk">
+ 
+ 	<PropertyGroup>
+-		<TargetFramework>net10.0</TargetFramework>
++		<TargetFramework>net11.0</TargetFramework>
+ 		<Nullable>enable</Nullable>
+ 		<ImplicitUsings>enable</ImplicitUsings>
+ 		<IsPackable>false</IsPackable>
+diff --git a/apps/CodeCoverage/CodeCoverage.Library/CodeCoverage.Library.csproj b/apps/CodeCoverage/CodeCoverage.Library/CodeCoverage.Library.csproj
+index 7ba23e6c..807c501b 100644
+--- a/apps/CodeCoverage/CodeCoverage.Library/CodeCoverage.Library.csproj
++++ b/apps/CodeCoverage/CodeCoverage.Library/CodeCoverage.Library.csproj
+@@ -1,7 +1,7 @@
+ <Project Sdk="Microsoft.NET.Sdk">
+ 
+ 	<PropertyGroup>
+-		<TargetFramework>net10.0</TargetFramework>
++		<TargetFramework>net11.0</TargetFramework>
+ 		<ImplicitUsings>enable</ImplicitUsings>
+ 		<Nullable>enable</Nullable>
+ 		<IsPackable>false</IsPackable>
+diff --git a/apps/CodeCoverage/CodeCoverage.Tests/CodeCoverage.Tests.csproj b/apps/CodeCoverage/CodeCoverage.Tests/CodeCoverage.Tests.csproj
+index 0eaec4cb..c6abe630 100644
+--- a/apps/CodeCoverage/CodeCoverage.Tests/CodeCoverage.Tests.csproj
++++ b/apps/CodeCoverage/CodeCoverage.Tests/CodeCoverage.Tests.csproj
+@@ -1,7 +1,7 @@
+ <Project Sdk="Microsoft.NET.Sdk">
+ 
+ 	<PropertyGroup>
+-		<TargetFramework>net10.0</TargetFramework>
++		<TargetFramework>net11.0</TargetFramework>
+ 		<ImplicitUsings>enable</ImplicitUsings>
+ 		<Nullable>enable</Nullable>
+ 		<IsPackable>false</IsPackable>
+@@ -29,7 +29,7 @@
+ 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+ 		</PackageReference>
+ 		<PackageReference Include="MintPlayer.Assertions" Version="1.0.0" />
+-		<PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.11" />
++		<PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="11.0.0-rc.1.26425.128" />
+ 		<PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.0.1" />
+ 		<PackageReference Include="NSubstitute" Version="6.2.0" />
+ 		<!-- Embedded RavenDB for tests that must exercise the real client
+diff --git a/apps/CodeCoverage/CodeCoverage/CodeCoverage.csproj b/apps/CodeCoverage/CodeCoverage/CodeCoverage.csproj
+index 278e9da1..b4023607 100644
+--- a/apps/CodeCoverage/CodeCoverage/CodeCoverage.csproj
++++ b/apps/CodeCoverage/CodeCoverage/CodeCoverage.csproj
+@@ -4,7 +4,7 @@
+ 	<Import Project="..\..\..\libs\authorization\MintPlayer.Spark.Authorization\Targets\spark-authorization.props" />
+ 
+ 	<PropertyGroup>
+-		<TargetFramework>net10.0</TargetFramework>
++		<TargetFramework>net11.0</TargetFramework>
+ 		<Nullable>enable</Nullable>
+ 		<ImplicitUsings>enable</ImplicitUsings>
+ 		<IsPackable>false</IsPackable>
+@@ -15,7 +15,7 @@
+ 	<ItemGroup>
+ 		<!-- Pinned to the version MintPlayer.Spark.Authorization pins, rather than the floating
+ 		     10.0.* it carried out-of-tree: in-repo the two must not disagree. -->
+-		<PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.11" />
++		<PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="11.0.0-rc.1.26425.128" />
+ 		<PackageReference Include="MintPlayer.AspNetCore.SpaServices" Version="10.5.0" />
+ 		<PackageReference Include="MintPlayer.SourceGenerators" Version="10.22.0">
+ 			<PrivateAssets>all</PrivateAssets>
+diff --git a/apps/CodeCoverage/CodeCoverage/Dockerfile b/apps/CodeCoverage/CodeCoverage/Dockerfile
+index 2701e5b3..95022ebd 100644
+--- a/apps/CodeCoverage/CodeCoverage/Dockerfile
++++ b/apps/CodeCoverage/CodeCoverage/Dockerfile
+@@ -1,11 +1,11 @@
+-FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS base
++FROM mcr.microsoft.com/dotnet/aspnet:11.0 AS base
+ USER app
+ WORKDIR /app
+ # 8080 only, deliberately. Traefik's port detection picks the single exposed port; exposing 8081 as
+ # well makes it ambiguous and the router can end up pointing at the wrong one.
+ EXPOSE 8080
+ 
+-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
++FROM mcr.microsoft.com/dotnet/sdk:11.0 AS build
+ # Node.js for the Angular build
+ RUN apt-get update && \
+     apt-get -y install curl && \
+diff --git a/apps/DemoApp/DemoApp.Library/DemoApp.Library.csproj b/apps/DemoApp/DemoApp.Library/DemoApp.Library.csproj
+index 731b04c3..094634a6 100644
+--- a/apps/DemoApp/DemoApp.Library/DemoApp.Library.csproj
++++ b/apps/DemoApp/DemoApp.Library/DemoApp.Library.csproj
+@@ -1,7 +1,7 @@
+ ﻿<Project Sdk="Microsoft.NET.Sdk">
+ 
+ 	<PropertyGroup>
+-		<TargetFramework>net10.0</TargetFramework>
++		<TargetFramework>net11.0</TargetFramework>
+ 		<ImplicitUsings>enable</ImplicitUsings>
+ 		<Nullable>enable</Nullable>
+ 		<IsPackable>false</IsPackable>
+diff --git a/apps/DemoApp/DemoApp/DemoApp.csproj b/apps/DemoApp/DemoApp/DemoApp.csproj
+index f9b1aa9a..4383f810 100644
+--- a/apps/DemoApp/DemoApp/DemoApp.csproj
++++ b/apps/DemoApp/DemoApp/DemoApp.csproj
+@@ -2,7 +2,7 @@
+ 	<Import Project="..\..\..\libs\spark\MintPlayer.Spark\Targets\spark.props" />
+ 
+ 	<PropertyGroup>
+-		<TargetFramework>net10.0</TargetFramework>
++		<TargetFramework>net11.0</TargetFramework>
+ 		<Nullable>enable</Nullable>
+ 		<ImplicitUsings>enable</ImplicitUsings>
+ 		<IsPackable>false</IsPackable>
+diff --git a/apps/Fleet/Fleet.Library/Fleet.Library.csproj b/apps/Fleet/Fleet.Library/Fleet.Library.csproj
+index 745957f5..045f2e22 100644
+--- a/apps/Fleet/Fleet.Library/Fleet.Library.csproj
++++ b/apps/Fleet/Fleet.Library/Fleet.Library.csproj
+@@ -1,7 +1,7 @@
+ <Project Sdk="Microsoft.NET.Sdk">
+ 
+ 	<PropertyGroup>
+-		<TargetFramework>net10.0</TargetFramework>
++		<TargetFramework>net11.0</TargetFramework>
+ 		<ImplicitUsings>enable</ImplicitUsings>
+ 		<Nullable>enable</Nullable>
+ 		<IsPackable>false</IsPackable>
+diff --git a/apps/Fleet/Fleet/Fleet.csproj b/apps/Fleet/Fleet/Fleet.csproj
+index e31b4a8a..ed6d5f26 100644
+--- a/apps/Fleet/Fleet/Fleet.csproj
++++ b/apps/Fleet/Fleet/Fleet.csproj
+@@ -5,7 +5,7 @@
+ 	<Import Project="..\..\..\libs\all_features\MintPlayer.Spark.AllFeatures\Targets\spark-allfeatures.targets" />
+ 
+ 	<PropertyGroup>
+-		<TargetFramework>net10.0</TargetFramework>
++		<TargetFramework>net11.0</TargetFramework>
+ 		<Nullable>enable</Nullable>
+ 		<ImplicitUsings>enable</ImplicitUsings>
+ 		<IsPackable>false</IsPackable>
+diff --git a/apps/HR/HR.Library/HR.Library.csproj b/apps/HR/HR.Library/HR.Library.csproj
+index faee85cf..bfa7950a 100644
+--- a/apps/HR/HR.Library/HR.Library.csproj
++++ b/apps/HR/HR.Library/HR.Library.csproj
+@@ -1,7 +1,7 @@
+ <Project Sdk="Microsoft.NET.Sdk">
+ 
+ 	<PropertyGroup>
+-		<TargetFramework>net10.0</TargetFramework>
++		<TargetFramework>net11.0</TargetFramework>
+ 		<ImplicitUsings>enable</ImplicitUsings>
+ 		<Nullable>enable</Nullable>
+ 		<IsPackable>false</IsPackable>
+diff --git a/apps/HR/HR/HR.csproj b/apps/HR/HR/HR.csproj
+index 98923fd8..ae05254c 100644
+--- a/apps/HR/HR/HR.csproj
++++ b/apps/HR/HR/HR.csproj
+@@ -4,7 +4,7 @@
+ 	<Import Project="..\..\..\libs\authorization\MintPlayer.Spark.Authorization\Targets\spark-authorization.props" />
+ 
+ 	<PropertyGroup>
+-		<TargetFramework>net10.0</TargetFramework>
++		<TargetFramework>net11.0</TargetFramework>
+ 		<Nullable>enable</Nullable>
+ 		<ImplicitUsings>enable</ImplicitUsings>
+ 		<IsPackable>false</IsPackable>
+diff --git a/global.json b/global.json
+index 1e7fdfa9..79627600 100644
+--- a/global.json
++++ b/global.json
+@@ -1,6 +1,6 @@
+ {
+   "sdk": {
+-    "version": "10.0.100",
++    "version": "11.0.100-rc.1.26425.128",
+     "rollForward": "latestMinor"
+   }
+ }
+diff --git a/libs/all_features/MintPlayer.Spark.AllFeatures.SourceGenerators/MintPlayer.Spark.AllFeatures.SourceGenerators.csproj b/libs/all_features/MintPlayer.Spark.AllFeatures.SourceGenerators/MintPlayer.Spark.AllFeatures.SourceGenerators.csproj
+index 6d80a647..9c918800 100644
+--- a/libs/all_features/MintPlayer.Spark.AllFeatures.SourceGenerators/MintPlayer.Spark.AllFeatures.SourceGenerators.csproj
++++ b/libs/all_features/MintPlayer.Spark.AllFeatures.SourceGenerators/MintPlayer.Spark.AllFeatures.SourceGenerators.csproj
+@@ -11,7 +11,7 @@
+ 
+         <!-- NuGet Package Metadata -->
+         <PackageId>MintPlayer.Spark.AllFeatures.SourceGenerators</PackageId>
+-		<Version>10.0.0-preview.84</Version>
++		<Version>11.0.0-preview.84</Version>
+ 		<Authors>MintPlayer</Authors>
+         <Company>MintPlayer</Company>
+         <Description>Source generators for MintPlayer.Spark.AllFeatures. Auto-generates AddSparkFull/UseSparkFull/MapSparkFull convenience methods.</Description>
+diff --git a/libs/all_features/MintPlayer.Spark.AllFeatures/MintPlayer.Spark.AllFeatures.csproj b/libs/all_features/MintPlayer.Spark.AllFeatures/MintPlayer.Spark.AllFeatures.csproj
+index 94701645..91411987 100644
+--- a/libs/all_features/MintPlayer.Spark.AllFeatures/MintPlayer.Spark.AllFeatures.csproj
++++ b/libs/all_features/MintPlayer.Spark.AllFeatures/MintPlayer.Spark.AllFeatures.csproj
+@@ -1,7 +1,7 @@
+ ﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+ 
+ 	<PropertyGroup>
+-		<TargetFramework>net10.0</TargetFramework>
++		<TargetFramework>net11.0</TargetFramework>
+ 		<ImplicitUsings>enable</ImplicitUsings>
+ 		<Nullable>enable</Nullable>
+ 		<OutputType>Library</OutputType>
+@@ -9,7 +9,7 @@
+ 
+ 		<!-- NuGet Package Metadata -->
+ 		<PackageId>MintPlayer.Spark.AllFeatures</PackageId>
+-		<Version>10.0.0-preview.84</Version>
++		<Version>11.0.0-preview.84</Version>
+ 		<Authors>MintPlayer</Authors>
+ 		<Company>MintPlayer</Company>
+ 		<Description>All-in-one package for MintPlayer.Spark. References all Spark libraries and source-generates AddSparkFull/UseSparkFull/MapSparkFull convenience methods.</Description>
+diff --git a/libs/attributes/MintPlayer.Spark.Attributes/MintPlayer.Spark.Attributes.csproj b/libs/attributes/MintPlayer.Spark.Attributes/MintPlayer.Spark.Attributes.csproj
+index fbab70cb..bddba173 100644
+--- a/libs/attributes/MintPlayer.Spark.Attributes/MintPlayer.Spark.Attributes.csproj
++++ b/libs/attributes/MintPlayer.Spark.Attributes/MintPlayer.Spark.Attributes.csproj
+@@ -1,13 +1,13 @@
+ ﻿<Project Sdk="Microsoft.NET.Sdk">
+ 
+ 	<PropertyGroup>
+-		<TargetFramework>net10.0</TargetFramework>
++		<TargetFramework>net11.0</TargetFramework>
+ 		<ImplicitUsings>enable</ImplicitUsings>
+ 		<Nullable>enable</Nullable>
+ 
+ 		<!-- NuGet Package Metadata -->
+ 		<PackageId>MintPlayer.Spark.Attributes</PackageId>
+-		<Version>10.0.0-preview.86</Version>
++		<Version>11.0.0-preview.86</Version>
+ 		<Authors>MintPlayer</Authors>
+ 		<Company>MintPlayer</Company>
+ 		<Description>The MintPlayer.Spark model vocabulary: the attributes an entity library applies to its own types. Depends on nothing, so a library of entities need not reference the framework.</Description>
+diff --git a/libs/authorization/MintPlayer.Spark.Authorization/MintPlayer.Spark.Authorization.csproj b/libs/authorization/MintPlayer.Spark.Authorization/MintPlayer.Spark.Authorization.csproj
+index 2637f2b3..99d8a2d7 100644
+--- a/libs/authorization/MintPlayer.Spark.Authorization/MintPlayer.Spark.Authorization.csproj
++++ b/libs/authorization/MintPlayer.Spark.Authorization/MintPlayer.Spark.Authorization.csproj
+@@ -1,7 +1,7 @@
+ ﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+ 
+ 	<PropertyGroup>
+-		<TargetFramework>net10.0</TargetFramework>
++		<TargetFramework>net11.0</TargetFramework>
+ 		<ImplicitUsings>enable</ImplicitUsings>
+ 		<Nullable>enable</Nullable>
+ 		<OutputType>Library</OutputType>
+@@ -9,7 +9,7 @@
+ 
+ 		<!-- NuGet Package Metadata -->
+ 		<PackageId>MintPlayer.Spark.Authorization</PackageId>
+-		<Version>10.0.0-preview.85</Version>
++		<Version>11.0.0-preview.85</Version>
+ 		<Authors>MintPlayer</Authors>
+ 		<Company>MintPlayer</Company>
+ 		<Description>Optional authorization package for MintPlayer.Spark low-code framework. Provides group-based access control for PersistentObjects and Queries.</Description>
+@@ -47,7 +47,7 @@
+ 	</ItemGroup>
+ 
+ 	<ItemGroup>
+-		<PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.11" />
++		<PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="11.0.0-rc.1.26425.128" />
+ 		<PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="10.0.0" />
+ 		<ProjectReference Include="..\..\spark\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
+ 		<ProjectReference Include="..\..\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+diff --git a/libs/client/MintPlayer.Spark.Client.Authorization/MintPlayer.Spark.Client.Authorization.csproj b/libs/client/MintPlayer.Spark.Client.Authorization/MintPlayer.Spark.Client.Authorization.csproj
+index b709beed..d9066449 100644
+--- a/libs/client/MintPlayer.Spark.Client.Authorization/MintPlayer.Spark.Client.Authorization.csproj
++++ b/libs/client/MintPlayer.Spark.Client.Authorization/MintPlayer.Spark.Client.Authorization.csproj
+@@ -1,14 +1,14 @@
+ ﻿<Project Sdk="Microsoft.NET.Sdk">
+ 
+   <PropertyGroup>
+-    <TargetFramework>net10.0</TargetFramework>
++    <TargetFramework>net11.0</TargetFramework>
+     <ImplicitUsings>enable</ImplicitUsings>
+     <Nullable>enable</Nullable>
+     <OutputType>Library</OutputType>
+ 
+     <!-- NuGet Package Metadata -->
+     <PackageId>MintPlayer.Spark.Client.Authorization</PackageId>
+-    <Version>10.0.0-preview.84</Version>
++    <Version>11.0.0-preview.84</Version>
+     <Authors>MintPlayer</Authors>
+     <Company>MintPlayer</Company>
+     <Description>Authorization extensions for the MintPlayer.Spark typed C# client.</Description>
+diff --git a/libs/client/MintPlayer.Spark.Client/MintPlayer.Spark.Client.csproj b/libs/client/MintPlayer.Spark.Client/MintPlayer.Spark.Client.csproj
+index 296a0cad..503d8af1 100644
+--- a/libs/client/MintPlayer.Spark.Client/MintPlayer.Spark.Client.csproj
++++ b/libs/client/MintPlayer.Spark.Client/MintPlayer.Spark.Client.csproj
+@@ -1,14 +1,14 @@
+ ﻿<Project Sdk="Microsoft.NET.Sdk">
+ 
+   <PropertyGroup>
+-    <TargetFramework>net10.0</TargetFramework>
++    <TargetFramework>net11.0</TargetFramework>
+     <ImplicitUsings>enable</ImplicitUsings>
+     <Nullable>enable</Nullable>
+     <OutputType>Library</OutputType>
+ 
+     <!-- NuGet Package Metadata -->
+     <PackageId>MintPlayer.Spark.Client</PackageId>
+-    <Version>10.0.0-preview.85</Version>
++    <Version>11.0.0-preview.85</Version>
+     <Authors>MintPlayer</Authors>
+     <Company>MintPlayer</Company>
+     <Description>Typed C# client for consuming MintPlayer.Spark backend APIs.</Description>
+diff --git a/libs/controllers/MintPlayer.Spark.Controllers/MintPlayer.Spark.Controllers.csproj b/libs/controllers/MintPlayer.Spark.Controllers/MintPlayer.Spark.Controllers.csproj
+index a2da8ce7..6a94fb10 100644
+--- a/libs/controllers/MintPlayer.Spark.Controllers/MintPlayer.Spark.Controllers.csproj
++++ b/libs/controllers/MintPlayer.Spark.Controllers/MintPlayer.Spark.Controllers.csproj
+@@ -1,7 +1,7 @@
+ ﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+ 
+ 	<PropertyGroup>
+-		<TargetFramework>net10.0</TargetFramework>
++		<TargetFramework>net11.0</TargetFramework>
+ 		<ImplicitUsings>enable</ImplicitUsings>
+ 		<Nullable>enable</Nullable>
+ 		<OutputType>Library</OutputType>
+@@ -9,7 +9,7 @@
+ 
+ 		<!-- NuGet Package Metadata -->
+ 		<PackageId>MintPlayer.Spark.Controllers</PackageId>
+-		<Version>10.0.0-preview.84</Version>
++		<Version>11.0.0-preview.84</Version>
+ 		<Authors>MintPlayer</Authors>
+ 		<Company>MintPlayer</Company>
+ 		<Description>MVC controller support for MintPlayer.Spark. Mounts an application's own controllers inside Spark's pipeline so they share its authentication, authorization and antiforgery rules, and ships the SPARK010 analyzer that reports a bare MapControllers() call.</Description>
+diff --git a/libs/cron/MintPlayer.Spark.Cron/MintPlayer.Spark.Cron.csproj b/libs/cron/MintPlayer.Spark.Cron/MintPlayer.Spark.Cron.csproj
+index 631dc77a..9bf569d2 100644
+--- a/libs/cron/MintPlayer.Spark.Cron/MintPlayer.Spark.Cron.csproj
++++ b/libs/cron/MintPlayer.Spark.Cron/MintPlayer.Spark.Cron.csproj
+@@ -1,14 +1,14 @@
+ ﻿<Project Sdk="Microsoft.NET.Sdk">
+ 
+ 	<PropertyGroup>
+-		<TargetFramework>net10.0</TargetFramework>
++		<TargetFramework>net11.0</TargetFramework>
+ 		<ImplicitUsings>enable</ImplicitUsings>
+ 		<Nullable>enable</Nullable>
+ 		<OutputType>Library</OutputType>
+ 
+ 		<!-- NuGet Package Metadata -->
+ 		<PackageId>MintPlayer.Spark.Cron</PackageId>
+-		<Version>10.0.0-preview.84</Version>
++		<Version>11.0.0-preview.84</Version>
+ 		<Authors>MintPlayer</Authors>
+ 		<Company>MintPlayer</Company>
+ 		<Description>Cron-scheduled background jobs for MintPlayer.Spark. Define jobs by implementing ISparkCronJob, declare the schedule with a static abstract CronSchedule, and let the scheduler run them. Multi-node safe via RavenDB compare-exchange locking.</Description>
+@@ -30,9 +30,6 @@
+ 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+ 		</PackageReference>
+ 		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="10.20.1" GeneratePathProperty="true" />
+-		<PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.11" />
+-		<PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.11" />
+-		<PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.11" />
+ 		<PackageReference Include="NCrontab" Version="3.4.0" />
+ 		<PackageReference Include="RavenDB.Client" Version="7.2.6" />
+ 	</ItemGroup>
+diff --git a/libs/identity_provider/MintPlayer.Spark.IdentityProvider/MintPlayer.Spark.IdentityProvider.csproj b/libs/identity_provider/MintPlayer.Spark.IdentityProvider/MintPlayer.Spark.IdentityProvider.csproj
+index 008e2c1e..b55e8b6d 100644
+--- a/libs/identity_provider/MintPlayer.Spark.IdentityProvider/MintPlayer.Spark.IdentityProvider.csproj
++++ b/libs/identity_provider/MintPlayer.Spark.IdentityProvider/MintPlayer.Spark.IdentityProvider.csproj
+@@ -1,7 +1,7 @@
+ ﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+ 
+ 	<PropertyGroup>
+-		<TargetFramework>net10.0</TargetFramework>
++		<TargetFramework>net11.0</TargetFramework>
+ 		<ImplicitUsings>enable</ImplicitUsings>
+ 		<Nullable>enable</Nullable>
+ 		<OutputType>library</OutputType>
+@@ -9,7 +9,7 @@
+ 
+ 		<!-- NuGet Package Metadata -->
+ 		<PackageId>MintPlayer.Spark.IdentityProvider</PackageId>
+-		<Version>10.0.0-preview.86</Version>
++		<Version>11.0.0-preview.86</Version>
+ 		<Authors>MintPlayer</Authors>
+ 		<Company>MintPlayer</Company>
+ 		<Description>Self-contained OIDC Identity Provider for MintPlayer.Spark. Adds Authorization Code + PKCE flow with RavenDB storage. No external OIDC framework required.</Description>
+diff --git a/libs/messaging/MintPlayer.Spark.Messaging.Abstractions/MintPlayer.Spark.Messaging.Abstractions.csproj b/libs/messaging/MintPlayer.Spark.Messaging.Abstractions/MintPlayer.Spark.Messaging.Abstractions.csproj
+index bf2e75d9..63663705 100644
+--- a/libs/messaging/MintPlayer.Spark.Messaging.Abstractions/MintPlayer.Spark.Messaging.Abstractions.csproj
++++ b/libs/messaging/MintPlayer.Spark.Messaging.Abstractions/MintPlayer.Spark.Messaging.Abstractions.csproj
+@@ -1,13 +1,13 @@
+ ﻿<Project Sdk="Microsoft.NET.Sdk">
+ 
+ 	<PropertyGroup>
+-		<TargetFramework>net10.0</TargetFramework>
++		<TargetFramework>net11.0</TargetFramework>
+ 		<ImplicitUsings>enable</ImplicitUsings>
+ 		<Nullable>enable</Nullable>
+ 
+ 		<!-- NuGet Package Metadata -->
+ 		<PackageId>MintPlayer.Spark.Messaging.Abstractions</PackageId>
+-		<Version>10.0.0-preview.84</Version>
++		<Version>11.0.0-preview.84</Version>
+ 		<Authors>MintPlayer</Authors>
+ 		<Company>MintPlayer</Company>
+ 		<Description>Abstractions for MintPlayer.Spark.Messaging: IMessageBus, IRecipient, and MessageQueueAttribute.</Description>
+diff --git a/libs/messaging/MintPlayer.Spark.Messaging/MintPlayer.Spark.Messaging.csproj b/libs/messaging/MintPlayer.Spark.Messaging/MintPlayer.Spark.Messaging.csproj
+index bfdd5901..e25fdc21 100644
+--- a/libs/messaging/MintPlayer.Spark.Messaging/MintPlayer.Spark.Messaging.csproj
++++ b/libs/messaging/MintPlayer.Spark.Messaging/MintPlayer.Spark.Messaging.csproj
+@@ -1,7 +1,7 @@
+ ﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+ 
+ 	<PropertyGroup>
+-		<TargetFramework>net10.0</TargetFramework>
++		<TargetFramework>net11.0</TargetFramework>
+ 		<ImplicitUsings>enable</ImplicitUsings>
+ 		<Nullable>enable</Nullable>
+ 		<OutputType>Library</OutputType>
+@@ -9,7 +9,7 @@
+ 
+ 		<!-- NuGet Package Metadata -->
+ 		<PackageId>MintPlayer.Spark.Messaging</PackageId>
+-		<Version>10.0.0-preview.84</Version>
++		<Version>11.0.0-preview.84</Version>
+ 		<Authors>MintPlayer</Authors>
+ 		<Company>MintPlayer</Company>
+ 		<Description>Durable message bus for MintPlayer.Spark with RavenDB persistence, scoped recipients, queue isolation, and retry logic.</Description>
+diff --git a/libs/migrations/MintPlayer.Spark.Migrations/MintPlayer.Spark.Migrations.csproj b/libs/migrations/MintPlayer.Spark.Migrations/MintPlayer.Spark.Migrations.csproj
+index 1885069c..2d6acb33 100644
+--- a/libs/migrations/MintPlayer.Spark.Migrations/MintPlayer.Spark.Migrations.csproj
++++ b/libs/migrations/MintPlayer.Spark.Migrations/MintPlayer.Spark.Migrations.csproj
+@@ -1,14 +1,14 @@
+ ﻿<Project Sdk="Microsoft.NET.Sdk">
+ 
+ 	<PropertyGroup>
+-		<TargetFramework>net10.0</TargetFramework>
++		<TargetFramework>net11.0</TargetFramework>
+ 		<ImplicitUsings>enable</ImplicitUsings>
+ 		<Nullable>enable</Nullable>
+ 		<OutputType>Library</OutputType>
+ 
+ 		<!-- NuGet Package Metadata -->
+ 		<PackageId>MintPlayer.Spark.Migrations</PackageId>
+-		<Version>10.0.0-preview.84</Version>
++		<Version>11.0.0-preview.84</Version>
+ 		<Authors>MintPlayer</Authors>
+ 		<Company>MintPlayer</Company>
+ 		<Description>Database migrations for MintPlayer.Spark. Define migrations by implementing ISparkMigration with a static abstract Version; they run once, in version order, at startup. Multi-node safe via RavenDB compare-exchange locking, idempotent via per-version marker documents.</Description>
+@@ -30,8 +30,6 @@
+ 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+ 		</PackageReference>
+ 		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="10.20.1" GeneratePathProperty="true" />
+-		<PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.11" />
+-		<PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.11" />
+ 		<PackageReference Include="RavenDB.Client" Version="7.2.6" />
+ 	</ItemGroup>
+ 
+diff --git a/libs/replication/MintPlayer.Spark.Replication.Abstractions/MintPlayer.Spark.Replication.Abstractions.csproj b/libs/replication/MintPlayer.Spark.Replication.Abstractions/MintPlayer.Spark.Replication.Abstractions.csproj
+index 6fce88ab..03f30259 100644
+--- a/libs/replication/MintPlayer.Spark.Replication.Abstractions/MintPlayer.Spark.Replication.Abstractions.csproj
++++ b/libs/replication/MintPlayer.Spark.Replication.Abstractions/MintPlayer.Spark.Replication.Abstractions.csproj
+@@ -1,13 +1,13 @@
+ ﻿<Project Sdk="Microsoft.NET.Sdk">
+ 
+ 	<PropertyGroup>
+-		<TargetFramework>net10.0</TargetFramework>
++		<TargetFramework>net11.0</TargetFramework>
+ 		<ImplicitUsings>enable</ImplicitUsings>
+ 		<Nullable>enable</Nullable>
+ 
+ 		<!-- NuGet Package Metadata -->
+ 		<PackageId>MintPlayer.Spark.Replication.Abstractions</PackageId>
+-		<Version>10.0.0-preview.84</Version>
++		<Version>11.0.0-preview.84</Version>
+ 		<Authors>MintPlayer</Authors>
+ 		<Company>MintPlayer</Company>
+ 		<Description>Abstractions for MintPlayer.Spark.Replication: ReplicatedAttribute, ModuleInformation, and ETL script models.</Description>
+diff --git a/libs/replication/MintPlayer.Spark.Replication/MintPlayer.Spark.Replication.csproj b/libs/replication/MintPlayer.Spark.Replication/MintPlayer.Spark.Replication.csproj
+index 1b066cc6..3e873544 100644
+--- a/libs/replication/MintPlayer.Spark.Replication/MintPlayer.Spark.Replication.csproj
++++ b/libs/replication/MintPlayer.Spark.Replication/MintPlayer.Spark.Replication.csproj
+@@ -1,7 +1,7 @@
+ ﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+ 
+ 	<PropertyGroup>
+-		<TargetFramework>net10.0</TargetFramework>
++		<TargetFramework>net11.0</TargetFramework>
+ 		<ImplicitUsings>enable</ImplicitUsings>
+ 		<Nullable>enable</Nullable>
+ 		<OutputType>library</OutputType>
+@@ -9,7 +9,7 @@
+ 
+ 		<!-- NuGet Package Metadata -->
+ 		<PackageId>MintPlayer.Spark.Replication</PackageId>
+-		<Version>10.0.0-preview.84</Version>
++		<Version>11.0.0-preview.84</Version>
+ 		<Authors>MintPlayer</Authors>
+ 		<Company>MintPlayer</Company>
+ 		<Description>Cross-module ETL replication for MintPlayer.Spark using RavenDB ETL tasks and the durable message bus.</Description>
+@@ -26,7 +26,7 @@
+ 	</ItemGroup>
+ 
+ 	<ItemGroup>
+-		<PackageReference Include="Microsoft.AspNetCore.Authentication.Certificate" Version="10.0.11" />
++		<PackageReference Include="Microsoft.AspNetCore.Authentication.Certificate" Version="11.0.0-rc.1.26425.128" />
+ 		<PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="10.0.0" />
+ 		<ProjectReference Include="..\..\spark\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
+ 		<ProjectReference Include="..\MintPlayer.Spark.Replication.Abstractions\MintPlayer.Spark.Replication.Abstractions.csproj" />
+diff --git a/libs/socket_extensions/MintPlayer.Dotnet.SocketExtensions/MintPlayer.Dotnet.SocketExtensions.csproj b/libs/socket_extensions/MintPlayer.Dotnet.SocketExtensions/MintPlayer.Dotnet.SocketExtensions.csproj
+index c3ddf2d4..d8c03f17 100644
+--- a/libs/socket_extensions/MintPlayer.Dotnet.SocketExtensions/MintPlayer.Dotnet.SocketExtensions.csproj
++++ b/libs/socket_extensions/MintPlayer.Dotnet.SocketExtensions/MintPlayer.Dotnet.SocketExtensions.csproj
+@@ -1,14 +1,14 @@
+ ﻿<Project Sdk="Microsoft.NET.Sdk">
+ 
+ 	<PropertyGroup>
+-		<TargetFramework>net10.0</TargetFramework>
++		<TargetFramework>net11.0</TargetFramework>
+ 		<ImplicitUsings>enable</ImplicitUsings>
+ 		<Nullable>enable</Nullable>
+ 	</PropertyGroup>
+ 
+ 	<PropertyGroup>
+ 		<IsPackable>true</IsPackable>
+-		<Version>10.0.1</Version>
++		<Version>11.0.0</Version>
+ 		<Authors>MintPlayer</Authors>
+ 		<Company>MintPlayer</Company>
+ 		<Description>Extension methods for WebSocket (ReadMessage, WriteMessage, ReadObject, WriteObject)</Description>
+diff --git a/libs/source_generators/MintPlayer.Spark.LibraryGenerators/MintPlayer.Spark.LibraryGenerators.csproj b/libs/source_generators/MintPlayer.Spark.LibraryGenerators/MintPlayer.Spark.LibraryGenerators.csproj
+index 006f1865..f218aaef 100644
+--- a/libs/source_generators/MintPlayer.Spark.LibraryGenerators/MintPlayer.Spark.LibraryGenerators.csproj
++++ b/libs/source_generators/MintPlayer.Spark.LibraryGenerators/MintPlayer.Spark.LibraryGenerators.csproj
+@@ -11,7 +11,7 @@
+ 
+         <!-- NuGet Package Metadata -->
+         <PackageId>MintPlayer.Spark.LibraryGenerators</PackageId>
+-		<Version>10.0.0-preview.84</Version>
++		<Version>11.0.0-preview.84</Version>
+ 		<Authors>MintPlayer</Authors>
+         <Company>MintPlayer</Company>
+         <Description>Source generators for a MintPlayer.Spark entity library: generates row keys for [ValueObject] types and registers them. Carries none of the index, actions or DI generators, which are application concerns.</Description>
+diff --git a/libs/source_generators/MintPlayer.Spark.SourceGenerators/MintPlayer.Spark.SourceGenerators.csproj b/libs/source_generators/MintPlayer.Spark.SourceGenerators/MintPlayer.Spark.SourceGenerators.csproj
+index dddfd5c6..19a4e961 100644
+--- a/libs/source_generators/MintPlayer.Spark.SourceGenerators/MintPlayer.Spark.SourceGenerators.csproj
++++ b/libs/source_generators/MintPlayer.Spark.SourceGenerators/MintPlayer.Spark.SourceGenerators.csproj
+@@ -11,7 +11,7 @@
+ 
+         <!-- NuGet Package Metadata -->
+         <PackageId>MintPlayer.Spark.SourceGenerators</PackageId>
+-		<Version>10.0.0-preview.86</Version>
++		<Version>11.0.0-preview.86</Version>
+ 		<Authors>MintPlayer</Authors>
+         <Company>MintPlayer</Company>
+         <Description>Source generators for MintPlayer.Spark low-code framework. Auto-generates DI registration for Actions classes.</Description>
+diff --git a/libs/spark/MintPlayer.Spark.Abstractions/MintPlayer.Spark.Abstractions.csproj b/libs/spark/MintPlayer.Spark.Abstractions/MintPlayer.Spark.Abstractions.csproj
+index b8c90331..1253c363 100644
+--- a/libs/spark/MintPlayer.Spark.Abstractions/MintPlayer.Spark.Abstractions.csproj
++++ b/libs/spark/MintPlayer.Spark.Abstractions/MintPlayer.Spark.Abstractions.csproj
+@@ -1,7 +1,7 @@
+ ﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+ 
+ 	<PropertyGroup>
+-		<TargetFramework>net10.0</TargetFramework>
++		<TargetFramework>net11.0</TargetFramework>
+ 		<ImplicitUsings>enable</ImplicitUsings>
+ 		<Nullable>enable</Nullable>
+ 		<OutputType>Library</OutputType>
+@@ -9,7 +9,7 @@
+ 
+ 		<!-- NuGet Package Metadata -->
+ 		<PackageId>MintPlayer.Spark.Abstractions</PackageId>
+-		<Version>10.0.0-preview.86</Version>
++		<Version>11.0.0-preview.86</Version>
+ 		<Authors>MintPlayer</Authors>
+ 		<Company>MintPlayer</Company>
+ 		<Description>Abstractions and shared models for MintPlayer.Spark low-code framework.</Description>
+diff --git a/libs/spark/MintPlayer.Spark/MintPlayer.Spark.csproj b/libs/spark/MintPlayer.Spark/MintPlayer.Spark.csproj
+index fe10c292..86dc579d 100644
+--- a/libs/spark/MintPlayer.Spark/MintPlayer.Spark.csproj
++++ b/libs/spark/MintPlayer.Spark/MintPlayer.Spark.csproj
+@@ -1,7 +1,7 @@
+ ﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+ 
+ 	<PropertyGroup>
+-		<TargetFramework>net10.0</TargetFramework>
++		<TargetFramework>net11.0</TargetFramework>
+ 		<ImplicitUsings>enable</ImplicitUsings>
+ 		<Nullable>enable</Nullable>
+ 		<OutputType>library</OutputType>
+@@ -9,7 +9,7 @@
+ 
+ 		<!-- NuGet Package Metadata -->
+ 		<PackageId>MintPlayer.Spark</PackageId>
+-		<Version>10.0.0-preview.86</Version>
++		<Version>11.0.0-preview.86</Version>
+ 		<Authors>MintPlayer</Authors>
+ 		<Company>MintPlayer</Company>
+ 		<Description>Low-code .NET framework for building data-driven web applications with minimal boilerplate. Uses PersistentObject pattern to eliminate DTOs and repository layers.</Description>
+diff --git a/libs/subscription_worker/MintPlayer.Spark.SubscriptionWorker.Abstractions/MintPlayer.Spark.SubscriptionWorker.Abstractions.csproj b/libs/subscription_worker/MintPlayer.Spark.SubscriptionWorker.Abstractions/MintPlayer.Spark.SubscriptionWorker.Abstractions.csproj
+index 75d0b86d..c1ad7fb6 100644
+--- a/libs/subscription_worker/MintPlayer.Spark.SubscriptionWorker.Abstractions/MintPlayer.Spark.SubscriptionWorker.Abstractions.csproj
++++ b/libs/subscription_worker/MintPlayer.Spark.SubscriptionWorker.Abstractions/MintPlayer.Spark.SubscriptionWorker.Abstractions.csproj
+@@ -1,13 +1,13 @@
+ ﻿<Project Sdk="Microsoft.NET.Sdk">
+ 
+ 	<PropertyGroup>
+-		<TargetFramework>net10.0</TargetFramework>
++		<TargetFramework>net11.0</TargetFramework>
+ 		<ImplicitUsings>enable</ImplicitUsings>
+ 		<Nullable>enable</Nullable>
+ 
+ 		<!-- NuGet Package Metadata -->
+ 		<PackageId>MintPlayer.Spark.SubscriptionWorker.Abstractions</PackageId>
+-		<Version>10.0.0-preview.84</Version>
++		<Version>11.0.0-preview.84</Version>
+ 		<Authors>MintPlayer</Authors>
+ 		<Company>MintPlayer</Company>
+ 		<Description>Public abstractions for MintPlayer.Spark.SubscriptionWorker: the SparkSubscriptionWorker&lt;T&gt; base class, RetryNumerator, options. Reference this from libraries that only need to DEFINE workers; reference the implementation package from hosts that register them.</Description>
+@@ -24,8 +24,6 @@
+ 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+ 		</PackageReference>
+ 		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="10.20.1" GeneratePathProperty="true" />
+-		<PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.11" />
+-		<PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.11" />
+ 		<PackageReference Include="RavenDB.Client" Version="7.2.6" />
+ 	</ItemGroup>
+ 
+diff --git a/libs/subscription_worker/MintPlayer.Spark.SubscriptionWorker/MintPlayer.Spark.SubscriptionWorker.csproj b/libs/subscription_worker/MintPlayer.Spark.SubscriptionWorker/MintPlayer.Spark.SubscriptionWorker.csproj
+index d5c22f8a..d11cbf6c 100644
+--- a/libs/subscription_worker/MintPlayer.Spark.SubscriptionWorker/MintPlayer.Spark.SubscriptionWorker.csproj
++++ b/libs/subscription_worker/MintPlayer.Spark.SubscriptionWorker/MintPlayer.Spark.SubscriptionWorker.csproj
+@@ -1,7 +1,7 @@
+ ﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+ 
+ 	<PropertyGroup>
+-		<TargetFramework>net10.0</TargetFramework>
++		<TargetFramework>net11.0</TargetFramework>
+ 		<ImplicitUsings>enable</ImplicitUsings>
+ 		<Nullable>enable</Nullable>
+ 		<OutputType>Library</OutputType>
+@@ -9,7 +9,7 @@
+ 
+ 		<!-- NuGet Package Metadata -->
+ 		<PackageId>MintPlayer.Spark.SubscriptionWorker</PackageId>
+-		<Version>10.0.0-preview.84</Version>
++		<Version>11.0.0-preview.84</Version>
+ 		<Authors>MintPlayer</Authors>
+ 		<Company>MintPlayer</Company>
+ 		<Description>RavenDB subscription worker framework for MintPlayer.Spark with built-in retry logic, incremental backoff, and ASP.NET Core lifecycle management.</Description>
+diff --git a/libs/testing/MintPlayer.Spark.Testing/MintPlayer.Spark.Testing.csproj b/libs/testing/MintPlayer.Spark.Testing/MintPlayer.Spark.Testing.csproj
+index 5aca7b7a..f60595a6 100644
+--- a/libs/testing/MintPlayer.Spark.Testing/MintPlayer.Spark.Testing.csproj
++++ b/libs/testing/MintPlayer.Spark.Testing/MintPlayer.Spark.Testing.csproj
+@@ -1,7 +1,7 @@
+ ﻿<Project Sdk="Microsoft.NET.Sdk">
+ 
+   <PropertyGroup>
+-    <TargetFramework>net10.0</TargetFramework>
++    <TargetFramework>net11.0</TargetFramework>
+     <ImplicitUsings>enable</ImplicitUsings>
+     <Nullable>enable</Nullable>
+     <IsPackable>true</IsPackable>
+@@ -15,7 +15,7 @@
+ 
+     <!-- NuGet Package Metadata -->
+     <PackageId>MintPlayer.Spark.Testing</PackageId>
+-    <Version>10.0.0-preview.84</Version>
++    <Version>11.0.0-preview.84</Version>
+     <Authors>MintPlayer</Authors>
+     <Company>MintPlayer</Company>
+     <Description>Test harness for writing integration tests against MintPlayer.Spark apps: an embedded RavenDB driver (SparkTestDriver), an in-memory Spark host factory (SparkEndpointFactory), an antiforgery-aware HTTP client, JSON fixture seeding, index helpers, and Verify snapshot defaults.</Description>
+@@ -42,7 +42,7 @@
+   <ItemGroup>
+     <!-- TestServer / GetTestClient (SparkEndpointFactory). The harness boots a host directly via
+          IHost + TestServer, so it needs TestHost but not the heavier Mvc.Testing/WebApplicationFactory. -->
+-    <PackageReference Include="Microsoft.AspNetCore.TestHost" Version="10.0.11" />
++    <PackageReference Include="Microsoft.AspNetCore.TestHost" Version="11.0.0-rc.1.26425.128" />
+     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+     <PackageReference Include="RavenDB.TestDriver" Version="7.2.6" />
+     <PackageReference Include="Verify.Xunit" Version="31.12.5" />
+diff --git a/libs/webhooks/MintPlayer.Spark.Webhooks.GitHub.DevTunnel/MintPlayer.Spark.Webhooks.GitHub.DevTunnel.csproj b/libs/webhooks/MintPlayer.Spark.Webhooks.GitHub.DevTunnel/MintPlayer.Spark.Webhooks.GitHub.DevTunnel.csproj
+index 375ee1f8..d22015e7 100644
+--- a/libs/webhooks/MintPlayer.Spark.Webhooks.GitHub.DevTunnel/MintPlayer.Spark.Webhooks.GitHub.DevTunnel.csproj
++++ b/libs/webhooks/MintPlayer.Spark.Webhooks.GitHub.DevTunnel/MintPlayer.Spark.Webhooks.GitHub.DevTunnel.csproj
+@@ -1,7 +1,7 @@
+ ﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+ 
+ 	<PropertyGroup>
+-		<TargetFramework>net10.0</TargetFramework>
++		<TargetFramework>net11.0</TargetFramework>
+ 		<ImplicitUsings>enable</ImplicitUsings>
+ 		<Nullable>enable</Nullable>
+ 		<OutputType>Library</OutputType>
+@@ -9,7 +9,7 @@
+ 
+ 		<!-- NuGet Package Metadata -->
+ 		<PackageId>MintPlayer.Spark.Webhooks.GitHub.DevTunnel</PackageId>
+-		<Version>10.0.0-preview.84</Version>
++		<Version>11.0.0-preview.84</Version>
+ 		<Authors>MintPlayer</Authors>
+ 		<Company>MintPlayer</Company>
+ 		<Description>Development tunneling for MintPlayer.Spark GitHub webhooks — smee.io tunnel and WebSocket dev client for receiving production-forwarded webhooks locally.</Description>
+diff --git a/libs/webhooks/MintPlayer.Spark.Webhooks.GitHub/MintPlayer.Spark.Webhooks.GitHub.csproj b/libs/webhooks/MintPlayer.Spark.Webhooks.GitHub/MintPlayer.Spark.Webhooks.GitHub.csproj
+index 723e9fa2..8719acca 100644
+--- a/libs/webhooks/MintPlayer.Spark.Webhooks.GitHub/MintPlayer.Spark.Webhooks.GitHub.csproj
++++ b/libs/webhooks/MintPlayer.Spark.Webhooks.GitHub/MintPlayer.Spark.Webhooks.GitHub.csproj
+@@ -1,7 +1,7 @@
+ ﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+ 
+ 	<PropertyGroup>
+-		<TargetFramework>net10.0</TargetFramework>
++		<TargetFramework>net11.0</TargetFramework>
+ 		<ImplicitUsings>enable</ImplicitUsings>
+ 		<Nullable>enable</Nullable>
+ 		<OutputType>Library</OutputType>
+@@ -9,7 +9,7 @@
+ 
+ 		<!-- NuGet Package Metadata -->
+ 		<PackageId>MintPlayer.Spark.Webhooks.GitHub</PackageId>
+-		<Version>10.0.0-preview.84</Version>
++		<Version>11.0.0-preview.84</Version>
+ 		<Authors>MintPlayer</Authors>
+ 		<Company>MintPlayer</Company>
+ 		<Description>GitHub webhook integration for MintPlayer.Spark — broadcasts typed webhook events to the Spark message bus with support for production-to-dev WebSocket forwarding.</Description>
+diff --git a/tests/MintPlayer.Spark.Client.Tests/MintPlayer.Spark.Client.Tests.csproj b/tests/MintPlayer.Spark.Client.Tests/MintPlayer.Spark.Client.Tests.csproj
+index 43649239..d8c77af2 100644
+--- a/tests/MintPlayer.Spark.Client.Tests/MintPlayer.Spark.Client.Tests.csproj
++++ b/tests/MintPlayer.Spark.Client.Tests/MintPlayer.Spark.Client.Tests.csproj
+@@ -1,7 +1,7 @@
+ <Project Sdk="Microsoft.NET.Sdk">
+ 
+   <PropertyGroup>
+-    <TargetFramework>net10.0</TargetFramework>
++    <TargetFramework>net11.0</TargetFramework>
+     <ImplicitUsings>enable</ImplicitUsings>
+     <Nullable>enable</Nullable>
+     <IsPackable>false</IsPackable>
+diff --git a/tests/MintPlayer.Spark.E2E.Tests/MintPlayer.Spark.E2E.Tests.csproj b/tests/MintPlayer.Spark.E2E.Tests/MintPlayer.Spark.E2E.Tests.csproj
+index be693c8d..df8f5041 100644
+--- a/tests/MintPlayer.Spark.E2E.Tests/MintPlayer.Spark.E2E.Tests.csproj
++++ b/tests/MintPlayer.Spark.E2E.Tests/MintPlayer.Spark.E2E.Tests.csproj
+@@ -1,7 +1,7 @@
+ <Project Sdk="Microsoft.NET.Sdk">
+ 
+   <PropertyGroup>
+-    <TargetFramework>net10.0</TargetFramework>
++    <TargetFramework>net11.0</TargetFramework>
+     <ImplicitUsings>enable</ImplicitUsings>
+     <Nullable>enable</Nullable>
+     <IsPackable>false</IsPackable>
+diff --git a/tests/MintPlayer.Spark.SourceGenerators.Tests/MintPlayer.Spark.SourceGenerators.Tests.csproj b/tests/MintPlayer.Spark.SourceGenerators.Tests/MintPlayer.Spark.SourceGenerators.Tests.csproj
+index 94b3ebd3..aa77c72d 100644
+--- a/tests/MintPlayer.Spark.SourceGenerators.Tests/MintPlayer.Spark.SourceGenerators.Tests.csproj
++++ b/tests/MintPlayer.Spark.SourceGenerators.Tests/MintPlayer.Spark.SourceGenerators.Tests.csproj
+@@ -1,7 +1,7 @@
+ ﻿<Project Sdk="Microsoft.NET.Sdk">
+ 
+   <PropertyGroup>
+-    <TargetFramework>net10.0</TargetFramework>
++    <TargetFramework>net11.0</TargetFramework>
+     <ImplicitUsings>enable</ImplicitUsings>
+     <Nullable>enable</Nullable>
+     <IsPackable>false</IsPackable>
+@@ -61,7 +61,7 @@
+     <!--
+     Reference the generator projects with ReferenceOutputAssembly="false" so their netstandard2.0
+     surface (and the polyfilled types in MintPlayer.SourceGenerators.Tools, e.g. ModuleInitializerAttribute)
+-    don't enter this net10.0 project's compile-time graph. The DLLs are copied into the test bin
++    don't enter this net11.0 project's compile-time graph. The DLLs are copied into the test bin
+     root below so coverlet's collector picks them up for instrumentation, and so the harness can
+     Assembly.Load them at test time via the default probing path.
+     -->
+diff --git a/tests/MintPlayer.Spark.Tests/MintPlayer.Spark.Tests.csproj b/tests/MintPlayer.Spark.Tests/MintPlayer.Spark.Tests.csproj
+index 432f6848..575f4eee 100644
+--- a/tests/MintPlayer.Spark.Tests/MintPlayer.Spark.Tests.csproj
++++ b/tests/MintPlayer.Spark.Tests/MintPlayer.Spark.Tests.csproj
+@@ -1,7 +1,7 @@
+ <Project Sdk="Microsoft.NET.Sdk">
+ 
+   <PropertyGroup>
+-    <TargetFramework>net10.0</TargetFramework>
++    <TargetFramework>net11.0</TargetFramework>
+     <ImplicitUsings>enable</ImplicitUsings>
+     <Nullable>enable</Nullable>
+     <IsPackable>false</IsPackable>

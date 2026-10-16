@@ -31,6 +31,7 @@ public partial class RepositoryActions : DefaultPersistentObjectActions<Reposito
 {
     [Inject] private readonly ISparkVisibility visibility;
     [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly MintPlayer.Spark.Abstractions.Authorization.IPermissionService permissions;
 
     /// <summary>
     /// Opens the embedded gate in the shape its mode calls for (#264, G-Q3): a <c>fixed</c> gate
@@ -219,11 +220,25 @@ public partial class RepositoryActions : DefaultPersistentObjectActions<Reposito
             .Where(r => r.Account == account.Id);
     }
 
-    /// <summary>BadgeToken grants badge access on private repos — managers only.</summary>
+    /// <summary>
+    /// The settings are the owner's (D-A5): everything but the public face is blanked for anyone who neither manages the
+    /// repository nor is an administrator. BadgeToken is a credential (badge access on private repos), so it stays the
+    /// managers' alone — an administrator reads the settings, not the secret.
+    /// </summary>
+    /// <remarks>
+    /// Deny by default, like <c>AccountActions</c>: <see cref="OwnerSettings.ProtectedRepositoryAttributes"/> is every
+    /// property not on the public list. The repository grids show only public attributes, so no sort or filter oracle
+    /// reaches a protected one.
+    /// </remarks>
     public override async Task<IReadOnlyCollection<string>?> GetProtectedAttributesAsync(string action, Repository entity)
-        => await visibility.CanManageOwnerAsync(entity.OwnerKey)
-            ? null
-            : [nameof(Repository.BadgeToken)];
+    {
+        if (await visibility.CanManageOwnerAsync(entity.OwnerKey))
+            return null;
+
+        return await permissions.IsAllowedAsync(OwnerSettingsRights.ReadSettings, nameof(Repository))
+            ? [nameof(Repository.BadgeToken)]
+            : OwnerSettings.ProtectedRepositoryAttributes;
+    }
 
     public override IReadOnlyCollection<string>? GetDefaultIncludes() => [nameof(Repository.Account)];
 

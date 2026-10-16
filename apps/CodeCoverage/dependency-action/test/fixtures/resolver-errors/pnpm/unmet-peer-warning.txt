@@ -1,0 +1,12 @@
+Progress: resolved 1, reused 0, downloaded 0, added 0
+Progress: resolved 2, reused 0, downloaded 0, added 0, done
+ WARN  Issues with peer dependencies found
+.
+└─┬ peerhost 1.0.0
+  └── ✕ unmet peer evil-pkg@^1.0.0: found 2.0.0
+
+dependencies:
++ peerhost 1.0.0
+
+Done in 705ms using pnpm v10.18.0
+EXIT 0

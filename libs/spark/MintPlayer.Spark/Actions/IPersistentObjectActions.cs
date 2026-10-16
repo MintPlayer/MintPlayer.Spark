@@ -219,6 +219,20 @@ public interface IPersistentObjectActions<T> where T : class
     /// row gate passed: a row the caller may not see is still a <c>404</c>.
     /// </para>
     /// <para>
+    /// The two read actions are refused at load, because loading is their submit: <c>Read</c> withheld
+    /// on a <see cref="DisableActionsTargetKind.PersistentObject"/> target refuses the detail load, and
+    /// <c>Query</c> withheld on a <see cref="DisableActionsTargetKind.Query"/> target refuses the
+    /// execution and its distinct values. Both answer as a missing object or query does (404, or the
+    /// uniform 401 for an anonymous caller), never 403, so a withheld read confirms nothing. Rows a
+    /// query lists are not judged by <c>Read</c>: scope rows with <see cref="GetRowFilterAsync"/> and
+    /// hide attributes with <see cref="GetProtectedAttributesAsync"/>.
+    /// </para>
+    /// <para>
+    /// <b>Narrowing only.</b> Withholding never grants: <c>security.json</c> (the type right, the
+    /// attribute rights) and the row rule are checked first, and this hook can only take an action
+    /// away from a caller who already holds it.
+    /// </para>
+    /// <para>
     /// The answer must depend only on the entity, the user and stored state — see
     /// <see cref="DisableActionsContext"/>. Not asked at submit in the system context (module
     /// sync, background work), where no user is submitting anything.

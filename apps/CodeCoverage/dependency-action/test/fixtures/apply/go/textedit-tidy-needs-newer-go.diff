@@ -1,0 +1,11 @@
+diff --git a/go.mod b/go.mod
+index 3af3031..d9d17d9 100644
+--- a/go.mod
++++ b/go.mod
+@@ -4,5 +4,5 @@ go 1.22
+ 
+ require (
+ 	github.com/google/uuid v1.3.0 // ids
+-	golang.org/x/text v0.13.0
++	golang.org/x/text v0.30.0
+ )

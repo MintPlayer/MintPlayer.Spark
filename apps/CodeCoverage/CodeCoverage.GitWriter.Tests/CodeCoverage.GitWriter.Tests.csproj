@@ -37,6 +37,9 @@
 
 	<ItemGroup>
 		<Content Include="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
+		<!-- Real spike captures (S13 apply patches with their base files, S17 migrate patches), each with its SOURCE.md.
+		     A leading '_' in a fixture directory name stands for '.' (_github, _config), so nothing is a dot-folder. -->
+		<Content Include="Fixtures\**" CopyToOutputDirectory="PreserveNewest" />
 	</ItemGroup>
 
 </Project>

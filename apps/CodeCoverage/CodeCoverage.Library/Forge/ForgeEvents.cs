@@ -264,3 +264,47 @@ public sealed record PullRequestReviewed(string RepositoryId, int Number) : IFor
 /// are not raised.
 /// </remarks>
 public sealed record CheckReported(string RepositoryId, string Name, Entities.EForgeCheckKind? Kind, string? AppSlug) : IForgeEvent;
+
+// ── The dependency updater (dependency-updates PRD §7.5, §7.6, R10) ────────────────────────────────────────────────
+//
+// Every forge has comments, releases (or tags) and an advisory feed; only the GitHub normaliser raises these today.
+
+/// <summary>
+/// A person wrote one of the dependency updater's comment commands (§7.5, R6) as the first word of a NEW comment on a pull
+/// request: <c>approve</c>, <c>hold</c>, <c>unhold</c>, <c>bisect</c> or <c>refresh</c>.
+/// </summary>
+/// <param name="ActorLogin">The signed webhook's sender (T1), never text from the comment. A normaliser drops edited comments,
+/// comments a bot or the App itself wrote, and raises nothing when it cannot name the actor (gap E).</param>
+/// <param name="Argument">The rest of the first line (a group or package name), trimmed; null when there is none.</param>
+/// <remarks>Whether the pull request is the bot's, and whether the actor may command it, is the saga's to decide (the
+/// role is read from the forge per command, R6).</remarks>
+public sealed record DependencyCommandIssued(
+    string RepositoryId,
+    int Number,
+    long CommentId,
+    EDependencyCommand Command,
+    string? Argument,
+    string ActorLogin) : IForgeEvent;
+
+public enum EDependencyCommand
+{
+    Approve,
+    Hold,
+    Unhold,
+    Bisect,
+    Refresh,
+}
+
+/// <summary>
+/// A repository published a release (§7.6, gap E): one of the three facts an "own package" needs, the others being that the
+/// repository is on the same account and declares the package. <paramref name="PublishedAt"/> is the forge's time, compared
+/// with the registry's publish time the lookup reports.
+/// </summary>
+public sealed record ReleasePublished(string RepositoryId, string Tag, DateTimeOffset PublishedAt) : IForgeEvent;
+
+/// <summary>
+/// The forge's advisory feed named a vulnerable dependency of the repository (R10): it skips the schedule and the cooldown.
+/// </summary>
+/// <param name="Ecosystem">The ecosystem as the lookup records name it (<c>npm</c>, <c>nuget</c>, <c>pypi</c>, …), mapped by
+/// the normaliser from the forge's own word.</param>
+public sealed record DependencyAlertRaised(string RepositoryId, string Ecosystem, string DepName, string? Advisory) : IForgeEvent;

@@ -1,0 +1,6 @@
+  Determining projects to restore...
+<SPIKES>\s13\work\nuget-cpm\App.csproj : warning NU1507: There are 2 package sources defined in your configuration. When using central package management, map your package sources with package source mapping (https://aka.ms/nuget-package-source-mapping) or specify a single package source. The following sources are defined: nuget.org, github-mintplayer
+<SPIKES>\s13\work\nuget-cpm\App.csproj : error NU1605: Warning As Error: Detected package downgrade: Serilog from 4.0.0 to 3.0.1. Reference the package directly from the project to select a different version. 
+<SPIKES>\s13\work\nuget-cpm\App.csproj : error NU1605:  App -> Serilog.Sinks.Console 6.0.0 -> Serilog (>= 4.0.0) 
+<SPIKES>\s13\work\nuget-cpm\App.csproj : error NU1605:  App -> Serilog (>= 3.0.1)
+  Failed to restore <SPIKES>\s13\work\nuget-cpm\App.csproj (in 670 ms).

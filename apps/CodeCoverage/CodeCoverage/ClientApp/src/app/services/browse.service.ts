@@ -412,6 +412,114 @@ export interface MergeQueueCandidates {
   unavailable: string | null;
 }
 
+/** The chip word of a repository's dependency updates (server: `DependencyFleetView.Health`). */
+export type DependencyHealth = 'off' | 'new' | 'onboarding' | 'blocked' | 'running' | 'waiting' | 'bisecting' | 'red' | 'frozen' | 'silent' | 'failed' | 'ok';
+
+export interface DependencyPullRequestLink {
+  number: number;
+  url: string | null;
+  draft: boolean;
+}
+
+export interface DependencyHoldView {
+  /** `Blocker`, `Unattributed`, `Human` or `Command`. */
+  kind: string;
+  group: string | null;
+  depNames: string[];
+  reason: string;
+  by: string | null;
+  createdAtUtc: string;
+}
+
+export interface DependencyAwaitingView {
+  group: string;
+  depName: string;
+  current: string | null;
+  target: string | null;
+  /** What a writer comments on the pull request. */
+  command: string;
+}
+
+export interface DependencyRepoStatus {
+  id: string;
+  fullName: string;
+  name: string;
+  isPrivate: boolean;
+  enabled: boolean;
+  health: DependencyHealth;
+  state: string;
+  outcome: string | null;
+  outcomeMessage: string | null;
+  lastRunAtUtc: string | null;
+  lastFinishedAtUtc: string | null;
+  nextSlotUtc: string | null;
+  schedule: string | null;
+  pullRequest: DependencyPullRequestLink | null;
+  onboarding: string | null;
+  onboardingNote: string | null;
+  holds: DependencyHoldView[];
+  awaitingApproval: DependencyAwaitingView[];
+  plannedGroups: number;
+  pins: string[];
+  coverageNote: string | null;
+}
+
+export interface DependencyPackageUse {
+  repositoryId: string;
+  fullName: string;
+  version: string | null;
+  path: string;
+  dev: boolean;
+  status: string | null;
+}
+
+export interface DependencyPackageRow {
+  ecosystem: string;
+  name: string;
+  uses: DependencyPackageUse[];
+}
+
+export interface DependencyReadinessRepo {
+  repositoryId: string;
+  fullName: string;
+  current: string | null;
+  /** `on-target`, `in-pull-request`, `ready`, `blocked`, `held` or `not-offered`. */
+  status: string;
+  detail: string | null;
+  blockers: string[];
+}
+
+export interface DependencyReadiness {
+  platform: string;
+  anchor: string;
+  nextMajor: string;
+  ready: number;
+  total: number;
+  repositories: DependencyReadinessRepo[];
+  blockers: { name: string; repositories: number }[];
+}
+
+export interface DependencyFleet {
+  enabled: boolean;
+  repositories: DependencyRepoStatus[];
+  packages: DependencyPackageRow[];
+  packagesTruncated: boolean;
+  readiness: DependencyReadiness[];
+}
+
+export interface DependencyPlannedGroupView {
+  group: string;
+  level: string;
+  autoMerge: boolean;
+  items: { depName: string; packageFile: string; from: string; to: string }[];
+}
+
+export interface DependencyRepoView {
+  status: DependencyRepoStatus;
+  planned: DependencyPlannedGroupView[];
+  history: { atUtc: string; text: string }[];
+}
+
 export function coveragePercent(summary?: CoverageSummary | null): number | null {
   if (!summary || summary.linesCoverable === 0) return null;
   return (summary.linesCovered / summary.linesCoverable) * 100;
@@ -554,6 +662,18 @@ export class BrowseService {
 
   private mergeQueueUrl(provider: string, owner: string, name: string, number: number): string {
     return `/api/repos/${encodeURIComponent(provider)}/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/merge-queue/${encodeURIComponent(String(number))}`;
+  }
+
+  /** The account's dependency-update fleet view; repositories the viewer cannot see are left out by the server (#453). */
+  getDependencyFleet(provider: string, login: string): Promise<DependencyFleet> {
+    return firstValueFrom(this.http.get<DependencyFleet>(
+      `/api/browse/accounts/${encodeURIComponent(provider)}/${encodeURIComponent(login)}/dependency-updates`));
+  }
+
+  /** One repository's dependency-update status: the rolling pull request, the last run, the next slot and the holds. */
+  getRepoDependencyUpdates(provider: string, owner: string, name: string): Promise<DependencyRepoView> {
+    return firstValueFrom(this.http.get<DependencyRepoView>(
+      `/api/browse/repos/${encodeURIComponent(provider)}/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/dependency-updates`));
   }
 
 }

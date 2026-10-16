@@ -10,7 +10,8 @@ namespace MintPlayer.Spark.Abstractions;
 /// hook, and that hook is the single source of truth: the framework calls it when a page loads (the
 /// answer travels back as <c>DisabledActions</c>) and again when any action is submitted, built-in
 /// (<c>Edit</c>, <c>Save</c>, <c>Delete</c>, <c>New</c>) or custom, refusing a disabled one with
-/// <c>403</c>.
+/// <c>403</c>. The read actions are refused at load instead, as a missing object or query is (404):
+/// <c>Read</c> on an object, <c>Query</c> on a query.
 /// </para>
 /// <para>
 /// Do not downcast the target. At load it may be the object being returned; at submit it is a

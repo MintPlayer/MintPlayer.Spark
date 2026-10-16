@@ -1,0 +1,4 @@
+Resolving dependencies...
+
+Because c depends on flask (3.0.0) which depends on Werkzeug (>=3.0.0), werkzeug is required.
+So, because c depends on werkzeug (2.3.8), version solving failed.

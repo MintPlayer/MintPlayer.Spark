@@ -1,6 +1,7 @@
 using System.Text.Json;
 using CodeCoverage.Controllers;
 using CodeCoverage.Dependencies;
+using CodeCoverage.Dependencies.Lifecycle;
 using CodeCoverage.Entities;
 using CodeCoverage.Forge;
 using CodeCoverage.Services;
@@ -134,6 +135,89 @@ public class DependencyGraphEndpointTests : CoverageRavenTest
             $"{RepoId(Lib)} -> {RepoId(App)}: actions:acme/lib@.github/workflows/ci.yml; npm:@acme/lib@e2e/package.json (dev); npm:@acme/lib@package.json");
         // Not even a package name of the hidden repository survives into a visible edge.
         graph.Edges.SelectMany(e => e.Dependencies).Any(d => d.Name.Contains("secret", StringComparison.OrdinalIgnoreCase)).Should().BeFalse();
+    }
+
+    /// <summary>The fleet view (D-N5) reads the run, state and fleet documents of the listed repositories only.</summary>
+    private static async Task SeedDependencyUpdatesAsync(IDocumentStore store)
+    {
+        using var seed = store.OpenAsyncSession();
+        var account = Account.DocumentId(EForgeProvider.GitHub, 77);
+        await seed.StoreAsync(new Account { GitHubId = 77, Login = "acme", Type = "Organization", DependencyUpdates = true }, account);
+        foreach (var (id, outcome) in new[] { (Secret, "red"), (App, "green") })
+            await seed.StoreAsync(new DependencyUpdateRun
+            {
+                Repository = RepoId(id), Run = 3, Outcome = outcome, OutcomeMessage = $"{outcome} in {id}", PullRequestNumber = (int)(id - 9000),
+                Onboarding = EDependencyOnboarding.Done, StartedAtUtc = ScannedAt.UtcDateTime,
+            }, DependencyUpdateRun.ForRepository(RepoId(id)));
+        await seed.StoreAsync(new DependencyUpdateState
+        {
+            Repository = RepoId(Secret),
+            Holds = [new DependencyHold { Id = "command:@acme/lib", Kind = EDependencyHoldKind.Command, DepNames = ["@acme/lib"], Reason = "secret hold", By = "octocat" }],
+        }, DependencyUpdateState.ForRepository(RepoId(Secret)));
+        await seed.StoreAsync(new DependencyFleetState
+        {
+            Account = account,
+            RedVersions = [new DependencyFleetRed { Ecosystem = "npm", DepName = "@acme/lib", Version = "2.0.0", Repository = RepoId(Secret), AtUtc = ScannedAt.UtcDateTime }],
+        }, DependencyFleetState.ForAccount(account));
+        await seed.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task D_N5_the_fleet_view_shows_an_anonymous_viewer_no_trace_of_the_private_repository()
+    {
+        using var store = GetDocumentStore();
+        await SeedAsync(store);
+        await SeedDependencyUpdatesAsync(store);
+        WaitForIndexing(store);
+        using var session = store.OpenAsyncSession();
+
+        var result = await CreateController(session).GetDependencyFleet("github", "acme", default);
+        var fleet = (DependencyFleetResponse)((OkObjectResult)result.Result!).Value!;
+
+        fleet.Enabled.Should().BeTrue();
+        fleet.Repositories.Select(r => r.FullName).Should().Equal("acme/app", "acme/lib", "acme/unscanned");
+        fleet.Repositories.Single(r => r.Name == "app").PullRequest!.Url.Should().Be("https://github.com/acme/app/pull/403");
+        var json = JsonSerializer.Serialize(fleet, JsonSerializerOptions.Web);
+        json.Should().NotContain(RepoId(Secret), "#453: not a row, not a use, not a red version");
+        json.Should().NotContain("acme/secret");
+        json.Should().NotContain("secret hold");
+        fleet.Packages.Single(p => p.Name == "@acme/lib").Uses.Select(u => u.FullName).Distinct().Should().Equal("acme/app", "acme/lib");
+    }
+
+    [Fact]
+    public async Task D_N5_an_owner_sees_the_private_repositorys_state_and_holds_in_the_fleet_view()
+    {
+        using var store = GetDocumentStore();
+        await SeedAsync(store);
+        await SeedDependencyUpdatesAsync(store);
+        WaitForIndexing(store);
+        using var session = store.OpenAsyncSession();
+
+        var result = await CreateController(session, "acme").GetDependencyFleet("github", "acme", default);
+        var fleet = (DependencyFleetResponse)((OkObjectResult)result.Result!).Value!;
+
+        var secret = fleet.Repositories.Single(r => r.Name == "secret");
+        secret.Health.Should().Be("red");
+        secret.Holds.Should().ContainSingle().Which.Reason.Should().Be("secret hold");
+        fleet.Packages.Single(p => p.Name == "@acme/lib").Uses.Single(u => u.FullName == "acme/secret").Status.Should().Be("held: secret hold");
+    }
+
+    [Fact]
+    public async Task D_N5_the_repository_panel_is_refused_for_a_repository_the_viewer_cannot_see()
+    {
+        using var store = GetDocumentStore();
+        await SeedAsync(store);
+        await SeedDependencyUpdatesAsync(store);
+        WaitForIndexing(store);
+        using var session = store.OpenAsyncSession();
+
+        var hidden = await CreateController(session).GetRepoDependencyUpdates("github", "acme", "secret", default);
+        hidden.Result.Should().NotBeOfType<OkObjectResult>();
+
+        var shown = await CreateController(session).GetRepoDependencyUpdates("github", "acme", "app", default);
+        var view = (DependencyRepoView)((OkObjectResult)shown.Result!).Value!;
+        view.Status.Outcome.Should().Be("green");
+        view.Status.PullRequest!.Number.Should().Be(403);
     }
 
     [Fact]

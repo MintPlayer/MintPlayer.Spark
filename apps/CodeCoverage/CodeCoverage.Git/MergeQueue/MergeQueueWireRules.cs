@@ -48,8 +48,12 @@ public static partial class MergeQueueWireRules
     /// naming it is allowed and changes nothing.</summary>
     public const string Utf8 = "utf8", Json = "json", JsonNoDuplicateKeys = "json-no-duplicate-keys", Xml = "xml", NoConflictMarkers = "no-conflict-markers";
 
+    /// <summary><c>yaml</c> and <c>github-workflow</c> (docs/code-coverage/dependency-updates-PRD.md R15): added for the
+    /// dependency updater, and nameable by a merge-queue rule for <c>*.yml</c>/<c>*.yaml</c> files too.</summary>
+    public const string Yaml = "yaml", GitHubWorkflow = "github-workflow";
+
     /// <summary>Every validator a rule may name; the writer's <c>ConflictResolverRegistry</c> holds exactly these.</summary>
-    public static IReadOnlySet<string> Validators { get; } = new HashSet<string>(StringComparer.Ordinal) { Utf8, Json, JsonNoDuplicateKeys, Xml, NoConflictMarkers };
+    public static IReadOnlySet<string> Validators { get; } = new HashSet<string>(StringComparer.Ordinal) { Utf8, Json, JsonNoDuplicateKeys, Xml, NoConflictMarkers, Yaml, GitHubWorkflow };
 
     /// <summary>The most validators one rule names.</summary>
     public const int MaxValidators = 8;

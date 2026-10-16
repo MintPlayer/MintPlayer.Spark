@@ -2,6 +2,7 @@ using CodeCoverage.Entities;
 using CodeCoverage.Forge;
 using CodeCoverage.MergeQueue;
 using CodeCoverage.Tests.Services;
+using CodeCoverage.WorkflowHooks;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -52,7 +53,9 @@ internal sealed class MergeQueueHarness
 
     /// <summary>The setup guide's regenerate workflow in its essentials (§5.6): dispatch only, <c>contents: read</c>, no
     /// secret, a GitHub-hosted runner. The fork precondition passes it (§0 D65).</summary>
-    public const string SafeRegenerate = """
+    /// <remarks>LF whatever the checkout: a raw literal takes the source file's line endings, and the fork-guard theories
+    /// edit it by "\n"-terminated lines, which a Windows (autocrlf) checkout turned into no-ops.</remarks>
+    public static readonly string SafeRegenerate = """
         name: regenerate
         on:
           workflow_dispatch:
@@ -69,7 +72,7 @@ internal sealed class MergeQueueHarness
                 with:
                   ref: ${{ github.sha }}
                   persist-credentials: false
-        """;
+        """.ReplaceLineEndings("\n");
 
     private readonly IDocumentStore store;
 
@@ -167,11 +170,14 @@ internal sealed class MergeQueueHarness
     /// <summary>When set, the saga talks to this writer instead of <see cref="Writer"/> (e.g. the real client over a stub).</summary>
     public IGitWriterSidecar? WriterOverride { get; set; }
 
+    /// <summary>The saga's clock; a test that moves time sets a <see cref="CommitGraph.MutableTime"/>.</summary>
+    public TimeProvider Time { get; set; } = TimeProvider.System;
+
     private MergeQueueEngine Engine(Raven.Client.Documents.Session.IAsyncDocumentSession session)
-        => new(session, Forge, [Queue], Permissions, WriterOverride ?? Writer, Outbox, TimeProvider.System,
+        => new(session, Forge, [Queue], Permissions, WriterOverride ?? Writer, Outbox, Time,
             Options.Create(new MergeQueueOptions { GitWriterUrl = "http://writer" }),
             new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Coverage:BaseUrl"] = "https://coverage.example" }).Build(),
-            NullLogger<MergeQueueEngine>.Instance);
+            NullLogger<MergeQueueEngine>.Instance, new WorkflowHook(NullLogger<WorkflowHook>.Instance));
 
     public async Task SignalAsync(MergeQueueSignalMessage signal)
     {

@@ -1,0 +1,16 @@
+npm warn ERESOLVE overriding peer dependency
+npm warn While resolving: proj@1.0.0
+npm warn Found: evil-pkg@1.0.0
+npm warn node_modules/evil-pkg
+npm warn   peer evil-pkg@"^1.0.0" from peerhost@1.0.0
+npm warn   node_modules/peerhost
+npm warn     peerhost@"1.0.0" from the root project
+npm warn   1 more (the root project)
+npm warn
+npm warn Could not resolve dependency:
+npm warn peer evil-pkg@"^1.0.0" from peerhost@1.0.0
+npm warn node_modules/peerhost
+npm warn   peerhost@"1.0.0" from the root project
+
+up to date in 719ms
+EXIT 0

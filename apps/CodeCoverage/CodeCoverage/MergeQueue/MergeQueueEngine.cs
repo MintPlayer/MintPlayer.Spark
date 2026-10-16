@@ -6,6 +6,7 @@ using CodeCoverage.Feedback;
 using CodeCoverage.Forge;
 using CodeCoverage.Git.MergeQueue;
 using CodeCoverage.LookupReferences;
+using CodeCoverage.WorkflowHooks;
 using Microsoft.Extensions.Options;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Messaging;
@@ -58,12 +59,17 @@ public partial class MergeQueueEngine : IMergeQueueEngine
     [Inject] private readonly IOptions<MergeQueueOptions> options;
     [Inject] private readonly IConfiguration configuration;
     [Inject] private readonly ILogger<MergeQueueEngine> logger;
+    /// <summary>Dispatch, correlation, waiting, provenance, the fork guard, artifacts and writer tokens (dependency-updates PRD N1).</summary>
+    [Inject] private readonly IWorkflowHook hook;
 
     /// <summary>Retries of a step after a transient failure; the failure after the last retry evicts (§0 D58).</summary>
     public const int MaxTransientRetries = 6;
     public const int MaxPrepareAttempts = 5;
     public const int MaxMergePolls = 40;
-    internal static readonly TimeSpan RunPollInterval = TimeSpan.FromMinutes(3);
+    internal static readonly TimeSpan RunPollInterval = WorkflowHook.RunPollInterval;
+
+    /// <summary>What the regenerate runs are called in the entry's history.</summary>
+    private const string RegeneratePurpose = "regenerate";
     internal static readonly TimeSpan ChecksPollInterval = TimeSpan.FromMinutes(2);
     internal static readonly TimeSpan HeadModifiedRetryDelay = TimeSpan.FromSeconds(15);
 
@@ -390,7 +396,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             return new("branch", $"`{pull.BaseRef}` is not a queue branch: `coverage.yml` on the default branch lists {string.Join(", ", section.Branches.Select(b => $"`{b}`"))}.");
 
         // O9 / T2: the actor needs the write role; a triage user's label or a fork author's comment is refused.
-        var role = await context.Queue.GetActorRoleAsync(repository, actor, ct);
+        var role = await ActorRoleAsync(context, actor, entry.EnqueuedVia, ct);
         if (role < EForgeRepositoryRole.Write)
             return new("role", $"@{actor} needs at least write access to queue a pull request (has {role.ToString().ToLowerInvariant()}).");
 
@@ -702,9 +708,8 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             return;
         }
         // T9 (§0 D59): one job, one token. The prepare pushes nothing (§0 D65), so it never needs the workflow permission.
-        if (await WriterAccessAsync(context, entry, pullRequest: null, pushesWorkflowChanges: false, ct) is not { } access) return;
-
-        var result = await WithAccessAsync(context, access, credential => writer.PrepareAsync(PrepareRequest(context, entry, access, credential, baseSha), ct));
+        if (await WriterJobAsync(context, entry, pullRequest: null, pushesWorkflowChanges: false,
+                (access, credential) => writer.PrepareAsync(PrepareRequest(context, entry, access, credential, baseSha), ct), ct) is not { } result) return;
 
         switch (result.Outcome)
         {
@@ -726,7 +731,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                 // O22: the bypass role matters here only for a same-repository change under .github/** (a fork's never
                 // bypasses, O25); the enqueuer's role is read now, when it decides.
                 var bypass = result.TouchesWorkflows && !entry.IsFork
-                    && Bypasses(await context.Queue.GetActorRoleAsync(repository, entry.EnqueuedBy, ct), entry.Config.BypassRole);
+                    && Bypasses(await ActorRoleAsync(context, entry.EnqueuedBy, entry.EnqueuedVia, ct), entry.Config.BypassRole);
                 // §0 D63, D67: whether to dispatch is decided in one place, together with what a .github/** change may do.
                 var plan = MergeQueueWorkflowGuard.AfterPrepare(entry.RegenerateWorkflows, result.TouchesWorkflows, entry.IsFork, bypass);
                 entry.WorkflowGuardBypassed = plan == EMergeQueuePlan.Dispatch && result.TouchesWorkflows;
@@ -855,11 +860,10 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         var pull = await ReadPullRequestAsync(context, entry, ct);
         if (pull is null) return;
         // T9: the queue branch lives in the base repository; deleting it needs nothing but contents.
-        if (await WriterAccessAsync(context, entry, pullRequest: null, pushesWorkflowChanges: false, ct) is not { } access) return;
-
-        var result = await WithAccessAsync(context, access, credential => writer.DeleteQueueBranchAsync(new GitWriterDeleteQueueBranchRequest(
-            context.Repository.Provider.ToCanonicalString(), context.Repository.GitHubId.ToString(CultureInfo.InvariantCulture),
-            access.CloneUrl, credential, entry.QueueBranch, ExpectedSha: null), ct));
+        if (await WriterJobAsync(context, entry, pullRequest: null, pushesWorkflowChanges: false,
+                (access, credential) => writer.DeleteQueueBranchAsync(new GitWriterDeleteQueueBranchRequest(
+                    context.Repository.Provider.ToCanonicalString(), context.Repository.GitHubId.ToString(CultureInfo.InvariantCulture),
+                    access.CloneUrl, credential, entry.QueueBranch, ExpectedSha: null), ct), ct) is not { } result) return;
         switch (result.Outcome)
         {
             case GitWriterOutcomes.Deleted:
@@ -884,7 +888,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             await EvictAsync(context, entry, "base-churn", $"The base moved {MaxPrepareAttempts} times during this run; queue it again when `{entry.BaseBranch}` is quieter.", ct: ct);
             return;
         }
-        await AbandonRunAsync(entry, ct);
+        await AbandonRunAsync(context, entry, ct);
         entry.FinalSha = null;
         entry.DirectMerge = false;
         entry.Dispatches = [];
@@ -922,33 +926,32 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             return;
 
         var file = entry.RegenerateWorkflows[entry.Dispatches.Count];
-        await CancelStrayRunsAsync(context, entry, file, ct);
-
-        var dispatch = await context.Queue.DispatchWorkflowAsync(repository, file, entry.QueueBranch, new Dictionary<string, string>
+        // D53 (strays), D14 (correlation); per run (O36) each workflow gets postRebaseTimeout, and a new Generation retires
+        // the previous run's timer.
+        var request = new WorkflowHookRequest(file, entry.QueueBranch, new Dictionary<string, string>
         {
             ["expected_sha"] = entry.PreparedSha!,
             ["pr_number"] = entry.Number.ToString(CultureInfo.InvariantCulture),
             ["queue_run_id"] = $"{entry.Number}.{entry.Run}.{entry.PrepareAttempts}",
+        }, TimeSpan.FromMinutes(entry.Config.PostRebaseTimeoutMinutes), RegeneratePurpose);
+        var dispatch = await hook.DispatchAsync(Saga(context, entry), request, dispatched =>
+        {
+            entry.Dispatches.Add(new MergeQueueDispatch { Workflow = file, RunId = dispatched.RunId, RunUrl = dispatched.RunUrl });
+            Transition(entry, EMergeQueueEntryState.Regenerating, entry.RegenerateWorkflows.Count == 1
+                ? $"dispatched {file} run {dispatched.RunId}"
+                : $"dispatched {file} run {dispatched.RunId} ({entry.Dispatches.Count} of {entry.RegenerateWorkflows.Count})");
+            return Task.CompletedTask;
         }, ct);
 
-        if (dispatch.Outcome != EForgeDispatchOutcome.Dispatched)
+        switch (dispatch.Outcome)
         {
-            await EvictAsync(context, entry, "dispatch-refused", $"The forge refused to run `{file}` on `{entry.QueueBranch}` ({dispatch.Outcome}): {dispatch.Message}", ct: ct);
-            return;
+            case EWorkflowHookDispatch.Refused:
+                await EvictAsync(context, entry, "dispatch-refused", $"The forge refused to run `{file}` on `{entry.QueueBranch}` ({dispatch.ForgeOutcome}): {dispatch.Message}", ct: ct);
+                return;
+            case EWorkflowHookDispatch.Uncorrelated:
+                await EvictAsync(context, entry, "dispatch-uncorrelated", $"The forge started `{file}` without saying which run it is, so its result cannot be trusted.", ct: ct);
+                return;
         }
-        if (dispatch.RunId is not { } runId)
-        {
-            await EvictAsync(context, entry, "dispatch-uncorrelated", $"The forge started `{file}` without saying which run it is, so its result cannot be trusted.", ct: ct);
-            return;
-        }
-
-        entry.Dispatches.Add(new MergeQueueDispatch { Workflow = file, RunId = runId, RunUrl = dispatch.HtmlUrl });
-        Transition(entry, EMergeQueueEntryState.Regenerating, entry.RegenerateWorkflows.Count == 1
-            ? $"dispatched {file} run {runId}"
-            : $"dispatched {file} run {runId} ({entry.Dispatches.Count} of {entry.RegenerateWorkflows.Count})");
-        await ScheduleAsync(entry, EMergeQueueStep.PollRun, RunPollInterval, ct);
-        // Per run (O36): each workflow gets postRebaseTimeout; a new Generation retires the previous run's timer.
-        await ScheduleAsync(entry, EMergeQueueStep.Timeout, TimeSpan.FromMinutes(entry.Config.PostRebaseTimeoutMinutes), ct);
         await PublishCheckAsync(context, entry, ct);
     }
 
@@ -959,29 +962,19 @@ public partial class MergeQueueEngine : IMergeQueueEngine
     /// </summary>
     private async Task<bool> BeforeFirstDispatchAsync(Context context, MergeQueueEntry entry, string defaultBranch, CancellationToken ct)
     {
-        var repository = context.Repository;
-
         // §0 D65 (d): the dispatch needs the prepared commit on the queue branch, a branch of this repository. For a fork's
         // pull request that is the fork's code, and it goes there only when nothing there can run it with the repository's
         // secrets. A same-repository pull request was pushed by someone with write access, whose own push ran all that.
         if (entry.IsFork)
         {
-            var pushed = await context.Queue.GetWorkflowFilesAsync(repository, entry.BaseSha!, ct);
-            var atDefaultBranch = await context.Queue.GetWorkflowFilesAsync(repository, defaultBranch, ct);
-            var findings = new List<ForkGuardFinding>();
-            foreach (var file in entry.RegenerateWorkflows)
+            var verdict = await hook.CheckForkAsync(Saga(context, entry),
+                new WorkflowHookForkCheck(entry.BaseSha!, entry.BaseBranch, defaultBranch, entry.RegenerateWorkflows, entry.QueueBranch), ct);
+            if (verdict.MissingWorkflow is { } missing)
             {
-                var path = $".github/workflows/{file}";
-                if (!atDefaultBranch.Any(f => string.Equals(f.Path, path, StringComparison.Ordinal)))
-                {
-                    await EvictAsync(context, entry, "workflow-missing", $"`{path}` does not exist on the default branch, so the regenerate step cannot run.", ct: ct);
-                    return false;
-                }
-                foreach (var finding in MergeQueueForkGuard.Evaluate(pushed, entry.BaseBranch, atDefaultBranch, defaultBranch, file, entry.QueueBranch))
-                    if (!findings.Contains(finding))
-                        findings.Add(finding);
+                await EvictAsync(context, entry, "workflow-missing", $"`{missing}` does not exist on the default branch, so the regenerate step cannot run.", ct: ct);
+                return false;
             }
-            if (findings.Count > 0)
+            if (verdict.Findings is { Count: > 0 } findings)
             {
                 await EvictAsync(context, entry, MergeQueueForkGuard.ReasonCode, ForkRefusal(entry, findings), [.. findings.Select(f => f.Path).Distinct(StringComparer.Ordinal)], ct: ct);
                 return false;
@@ -996,22 +989,15 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         // D12: the run executes the workflow file of the dispatched ref. A change under .github/** reaches a dispatch only
         // through O22's bypass role (a same-repository pull request, §0 D63); either way, every regenerate workflow itself
         // must be byte-for-byte the default branch's, and that is never bypassed.
-        foreach (var file in entry.RegenerateWorkflows)
+        switch (await hook.VerifyProvenanceAsync(Saga(context, entry), defaultBranch, entry.PreparedSha!, entry.RegenerateWorkflows, ct))
         {
-            var path = $".github/workflows/{file}";
-            var atDefault = await context.Queue.GetFileBlobShaAsync(repository, defaultBranch, path, ct);
-            if (atDefault is null)
-            {
+            case { Kind: EWorkflowHookProvenance.Missing, Path: var path }:
                 await EvictAsync(context, entry, "workflow-missing", $"`{path}` does not exist on the default branch, so the regenerate step cannot run.", ct: ct);
                 return false;
-            }
-            var atQueue = await context.Queue.GetFileBlobShaAsync(repository, entry.PreparedSha!, path, ct);
-            if (!string.Equals(atQueue, atDefault, StringComparison.Ordinal))
-            {
+            case { Kind: EWorkflowHookProvenance.Differs, Path: var path }:
                 await EvictAsync(context, entry, "workflow-differs",
                     $"`{path}` on the queue commit is not the default branch's. The queue only runs the default branch's workflow; bring `{entry.BaseBranch}` in line with it.", ct: ct);
                 return false;
-            }
         }
         return true;
     }
@@ -1031,11 +1017,11 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         // T9 (§0 D59): the queue branch is in the base repository. It carries workflow files only when O22's bypass role
         // let a same-repository change under .github/workflows/ through to the dispatch.
         var workflowFiles = entry.WorkflowPaths.Any(MergeQueueWorkflowGuard.IsWorkflowFile);
-        if (await WriterAccessAsync(context, entry, pullRequest: null, workflowFiles, ct) is not { } access) return false;
-
         // O25, §0 D67: the writer is told where the head lives, and refuses a fork's .github change on its own.
-        var result = await WithAccessAsync(context, access, credential => writer.PushQueueBranchAsync(new GitWriterQueueBranchRequest(
-            PrepareRequest(context, entry, access, credential, entry.BaseSha), entry.PreparedSha!, entry.QueueBranch, entry.QueueBranchSha, entry.IsFork), ct));
+        if (await WriterJobAsync(context, entry, pullRequest: null, workflowFiles,
+                (access, credential) => writer.PushQueueBranchAsync(new GitWriterQueueBranchRequest(
+                    PrepareRequest(context, entry, access, credential, entry.BaseSha), entry.PreparedSha!, entry.QueueBranch, entry.QueueBranchSha, entry.IsFork), ct), ct) is not { } result)
+            return false;
         switch (result.Outcome)
         {
             case GitWriterOutcomes.Pushed:
@@ -1108,58 +1094,28 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         return $"{baseUrl.TrimEnd('/')}/merge-queue/setup#{anchor}";
     }
 
-    /// <summary>
-    /// §0 D53: a dispatch whose answer never arrived (the app died, or the response was lost) may have started a run the
-    /// entry never learnt the id of, which nothing would cancel. Right before a dispatch the entry waits for no run, so any
-    /// run of the workflow still going on the entry's own queue branch is such a stray (or an abandoned run whose
-    /// cancellation is still on its way): it is cancelled rather than paid for twice. Best effort: a failure here never
-    /// holds the dispatch back.
-    /// </summary>
-    private async Task CancelStrayRunsAsync(Context context, MergeQueueEntry entry, string file, CancellationToken ct)
-    {
-        try
-        {
-            foreach (var run in await context.Queue.ListWorkflowRunsAsync(context.Repository, file, entry.QueueBranch, ct))
-                if (!run.IsCompleted && await context.Queue.CancelWorkflowRunAsync(context.Repository, run.Id, ct))
-                    entry.Note(Now, $"cancelled the stray regenerate run {run.Id}, started by a dispatch whose answer never arrived");
-        }
-        catch (Exception ex) when (ex is ForgeAccessDeniedException || IsTransient(ex, ct))
-        {
-            logger.LogWarning(ex, "Merge queue: could not look for stray runs of {Workflow} on {Branch} in {Repository}", file, entry.QueueBranch, context.Repository.FullName);
-        }
-    }
-
     private async Task OnRunAsync(Context context, MergeQueueEntry entry, bool fromPoll, CancellationToken ct)
     {
         if (entry.PendingDispatch() is not { RunId: { } runId } pending) return;
-        var run = await context.Queue.GetWorkflowRunAsync(context.Repository, runId, ct);
-        if (run is null)
+        // D14 and D53: the hook marks the run finished on its own completion, and succeeded only on the prepared commit.
+        var observation = await hook.ObserveAsync(Saga(context, entry), pending, entry.PreparedSha!, fromPoll, ct);
+        var run = observation.Run;
+        switch (observation.Verdict)
         {
-            pending.Finished = true;
-            await EvictAsync(context, entry, "regenerate-missing", $"The regenerate run {runId} of `{pending.Workflow}` no longer exists.", ct: ct);
-            return;
+            case EWorkflowHookRunVerdict.Running:
+                return;
+            case EWorkflowHookRunVerdict.Missing:
+                await EvictAsync(context, entry, "regenerate-missing", $"The regenerate run {runId} of `{pending.Workflow}` no longer exists.", ct: ct);
+                return;
+            case EWorkflowHookRunVerdict.WrongCommit:
+                await EvictAsync(context, entry, "regenerate-wrong-commit", $"The regenerate run of `{pending.Workflow}` built `{Short(run!.HeadSha)}`, not the prepared `{Short(entry.PreparedSha)}`.", ct: ct);
+                return;
+            case EWorkflowHookRunVerdict.Failed:
+                await EvictAsync(context, entry, "regenerate-failed",
+                    $"The regenerate run of `{pending.Workflow}` finished `{run!.Conclusion ?? "without a conclusion"}`{(run.HtmlUrl is { } url ? $": {url}" : ".")} Regenerate by hand and queue it again.", ct: ct);
+                return;
         }
-        if (!run.IsCompleted)
-        {
-            if (fromPoll) await ScheduleAsync(entry, EMergeQueueStep.PollRun, RunPollInterval, ct);
-            return;
-        }
-        // Its own completion: whatever follows, there is nothing left to cancel (§0 D53).
-        pending.Finished = true;
-
-        // D14: the run built the branch head as of the dispatch; a run of any other commit proves nothing about ours.
-        if (!string.Equals(run.HeadSha, entry.PreparedSha, StringComparison.OrdinalIgnoreCase))
-        {
-            await EvictAsync(context, entry, "regenerate-wrong-commit", $"The regenerate run of `{pending.Workflow}` built `{Short(run.HeadSha)}`, not the prepared `{Short(entry.PreparedSha)}`.", ct: ct);
-            return;
-        }
-        if (run.Conclusion != "success")
-        {
-            await EvictAsync(context, entry, "regenerate-failed",
-                $"The regenerate run of `{pending.Workflow}` finished `{run.Conclusion ?? "without a conclusion"}`{(run.HtmlUrl is { } url ? $": {url}" : ".")} Regenerate by hand and queue it again.", ct: ct);
-            return;
-        }
-        pending.Succeeded = true;
+        if (run is null) return;
 
         // O36: the next workflow runs on the same queue commit; the publish applies every run's patch.
         if (entry.Dispatches.Count < entry.RegenerateWorkflows.Count)
@@ -1189,7 +1145,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         var patches = new List<GitWriterPatch>();
         foreach (var run in entry.Dispatches.Where(d => d.RunId is not null))
         {
-            var artifact = await context.Queue.DownloadArtifactAsync(repository, run.RunId!.Value, options.Value.PatchArtifactName, options.Value.MaxPatchBytes, ct);
+            var artifact = await hook.DownloadArtifactAsync(Saga(context, entry), run.RunId!.Value, options.Value.PatchArtifactName, options.Value.MaxPatchBytes, ct);
             if (artifact.Outcome != EForgeArtifactOutcome.Ok)
             {
                 await EvictAsync(context, entry, "regenerate-artifact",
@@ -1214,20 +1170,19 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             return;
         }
         // T9 (§0 D59, D71): the workflow permission only where it can matter, a same-repository change to the workflows.
-        if (await WriterAccessAsync(context, entry, pull, PublishPushesWorkflowChanges(entry), ct) is not { } access) return;
-
         // §0 D65: the writer rebuilds the prepared commit from the prepare's own fields (the queue branch exists only when a
         // dispatch needed it) and publishes only when it is PreparedSha; the lease is the head the prepare was built from.
-        var result = await WithAccessAsync(context, access, credential => writer.PublishAsync(new GitWriterPublishRequest(
-            Prepare: PrepareRequest(context, entry, access, credential, entry.BaseSha),
-            PreparedSha: entry.PreparedSha!,
-            PushUrl: entry.IsFork ? access.PushUrl : null,
-            PrBranch: entry.HeadBranch,
-            Patch: patch,
-            RegeneratedPaths: regeneratedPaths)
-        {
-            Patches = patches.Count > 1 ? patches : null,
-        }, ct));
+        if (await WriterJobAsync(context, entry, pull, PublishPushesWorkflowChanges(entry), (access, credential) => writer.PublishAsync(new GitWriterPublishRequest(
+                Prepare: PrepareRequest(context, entry, access, credential, entry.BaseSha),
+                PreparedSha: entry.PreparedSha!,
+                PushUrl: entry.IsFork ? access.PushUrl : null,
+                PrBranch: entry.HeadBranch,
+                Patch: patch,
+                RegeneratedPaths: regeneratedPaths)
+            {
+                Patches = patches.Count > 1 ? patches : null,
+            }, ct), ct) is not { } result)
+            return;
 
         switch (result.Outcome)
         {
@@ -1396,7 +1351,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         var repository = context.Repository;
 
         // O9: the role is checked again right before the merge; a revoked role evicts.
-        var role = await context.Queue.GetActorRoleAsync(repository, entry.EnqueuedBy, ct);
+        var role = await ActorRoleAsync(context, entry.EnqueuedBy, entry.EnqueuedVia, ct);
         if (role < EForgeRepositoryRole.Write)
         {
             await EvictAsync(context, entry, "role-revoked", $"@{entry.EnqueuedBy}, who queued this pull request, no longer has write access.", ct: ct);
@@ -1594,7 +1549,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
     private async Task EndAsync(Context context, MergeQueueEntry entry, EMergeQueueEntryState state, string? message, CancellationToken ct, bool offer = false)
     {
         if (message is not null) entry.EvictionMessage = message;
-        await AbandonRunAsync(entry, ct);
+        await AbandonRunAsync(context, entry, ct);
         Transition(entry, state, message ?? state.ToString());
         entry.FinishedAtUtc = Now;
         context.Document.Record(Outcome(entry));
@@ -1659,10 +1614,14 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             return;
         }
         // T9: a token of its own, like every writer job; the entry has ended, so a refusal only leaves the branch behind.
-        ForgePushAccess push;
+        // Not gated on the entry: it may already run again. The lease keeps a newer queue branch safe.
+        WorkflowHookWriterJob<GitWriterDeleteResult> job;
         try
         {
-            push = await context.Queue.GetWriterAccessAsync(context.Repository, pullRequest: null, pushesWorkflowChanges: false, ct);
+            job = await hook.RunWriterJobAsync(Saga(context, entry), pullRequest: null, pushesWorkflowChanges: false,
+                (access, credential) => writer.DeleteQueueBranchAsync(new GitWriterDeleteQueueBranchRequest(
+                    context.Repository.Provider.ToCanonicalString(), context.Repository.GitHubId.ToString(CultureInfo.InvariantCulture),
+                    access.CloneUrl, credential, step.QueueBranch, step.ExpectedSha), ct), ct);
         }
         catch (ForgeAccessDeniedException ex)
         {
@@ -1670,24 +1629,15 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             logger.LogWarning(ex, "Merge queue: no credential to delete {Branch} in {Repository}", step.QueueBranch, context.Repository.FullName);
             return;
         }
-        if (push.Access is not { } access)
-        {
-            logger.LogWarning("Merge queue: no credential to delete {Branch} in {Repository}: {Reason}", step.QueueBranch, context.Repository.FullName, push.RefusalReason);
-            return;
-        }
-
-        // Not gated on the entry: it may already run again. The lease keeps a newer queue branch safe.
-        GitWriterDeleteResult result;
-        try
-        {
-            result = await WithAccessAsync(context, access, credential => writer.DeleteQueueBranchAsync(new GitWriterDeleteQueueBranchRequest(
-                context.Repository.Provider.ToCanonicalString(), context.Repository.GitHubId.ToString(CultureInfo.InvariantCulture),
-                access.CloneUrl, credential, step.QueueBranch, step.ExpectedSha), ct));
-        }
         catch (GitWriterRefusedException ex)
         {
             // §0 D57: refused now, refused on every retry; the branch is left for a person (merge-queue.md §7.4).
             logger.LogWarning(ex, "Merge queue: the git writer refused to delete {Branch} in {Repository}", step.QueueBranch, context.Repository.FullName);
+            return;
+        }
+        if (!job.Ran || job.Result is not { } result)
+        {
+            logger.LogWarning("Merge queue: no credential to delete {Branch} in {Repository}: {Reason}", step.QueueBranch, context.Repository.FullName, job.Refusal);
             return;
         }
         if (result.Outcome is GitWriterOutcomes.Busy or GitWriterOutcomes.Failed)
@@ -1700,18 +1650,9 @@ public partial class MergeQueueEngine : IMergeQueueEngine
     /// run's own completion (a moved base, an eviction, a dequeue, a close, the timeout). Through the outbox, so the run is
     /// only cancelled when the state change that abandons it commits.
     /// </summary>
-    private async Task AbandonRunAsync(MergeQueueEntry entry, CancellationToken ct)
-    {
+    private Task AbandonRunAsync(Context context, MergeQueueEntry entry, CancellationToken ct)
         // O36: every run of the entry that has not finished (one at a time while they run one after the other).
-        foreach (var dispatch in entry.Dispatches.Where(d => !d.Finished && d.RunId is not null))
-        {
-            dispatch.Finished = true;
-            await outbox.EnqueueAsync(session, new MergeQueueStepMessage
-            {
-                EntryId = entry.Id!, Run = entry.Run, Generation = entry.Generation, Step = EMergeQueueStep.CancelRun, RunId = dispatch.RunId,
-            }, null, ct);
-        }
-    }
+        => hook.AbandonAsync(Saga(context, entry), entry.Dispatches, ct);
 
     /// <summary>
     /// Cancels an abandoned regenerate run. Not gated on the entry, like <see cref="CleanupAsync"/>: the entry has moved on
@@ -1721,16 +1662,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
     private async Task CancelRunAsync(Context context, MergeQueueEntry entry, MergeQueueStepMessage step, CancellationToken ct)
     {
         if (step.RunId is not { } runId) return;
-        try
-        {
-            var cancelled = await context.Queue.CancelWorkflowRunAsync(context.Repository, runId, ct);
-            entry.Note(Now, cancelled ? $"cancelled the abandoned regenerate run {runId}" : $"the abandoned regenerate run {runId} had already finished");
-        }
-        catch (ForgeAccessDeniedException ex)
-        {
-            entry.Note(Now, $"could not cancel the abandoned regenerate run {runId}: {ex.Message}");
-            logger.LogWarning(ex, "Merge queue: could not cancel run {RunId} in {Repository}", runId, context.Repository.FullName);
-        }
+        await hook.CancelAbandonedRunAsync(Saga(context, entry), RegeneratePurpose, runId, ct);
     }
 
     // ═══ Helpers ════════════════════════════════════════════════════════════════════════════════════
@@ -1777,9 +1709,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         }
     }
 
-    private static bool IsTransient(Exception ex, CancellationToken ct)
-        => ex is ForgeRequestException or GitWriterUnavailableException or HttpRequestException or TimeoutException
-           || (ex is OperationCanceledException && !ct.IsCancellationRequested);
+    private static bool IsTransient(Exception ex, CancellationToken ct) => WorkflowHook.IsTransient(ex, ct);
 
     /// <summary>Reads the pull request and ends the run when it is no longer the one that was queued. Null: ended.</summary>
     /// <param name="headJudgedByWriter">
@@ -1810,33 +1740,42 @@ public partial class MergeQueueEngine : IMergeQueueEngine
     }
 
     /// <summary>
-    /// One writer job's access (T9, §0 D59): the base clone URL, where to push (O3: a fork's pull request pushes to the
-    /// fork) and a token minted for this job alone. Null: evicted with the forge's reason.
+    /// One writer job with its own access (T9, §0 D59): the base clone URL, where to push (O3: a fork's pull request pushes
+    /// to the fork) and a token minted for this job alone, ended whatever the job answered or threw instead of living out
+    /// its hour. Null: no token, and the entry was evicted with the forge's reason.
     /// </summary>
     /// <param name="pullRequest">The pull request whose branch the job pushes; null for a job on the queue branch only.</param>
-    private async Task<ForgeWriterAccess?> WriterAccessAsync(Context context, MergeQueueEntry entry, ForgePullRequest? pullRequest, bool pushesWorkflowChanges, CancellationToken ct)
+    private async Task<T?> WriterJobAsync<T>(Context context, MergeQueueEntry entry, ForgePullRequest? pullRequest, bool pushesWorkflowChanges,
+        Func<ForgeWriterAccess, SidecarCredential, Task<T>> job, CancellationToken ct) where T : class
     {
-        var push = await context.Queue.GetWriterAccessAsync(context.Repository, pullRequest, pushesWorkflowChanges, ct);
-        if (push.Access is { } access) return access;
-        await EvictAsync(context, entry, "push-refused", push.RefusalReason ?? "The forge gave no credential to push the rebased commit.", ct: ct);
+        var answer = await hook.RunWriterJobAsync(Saga(context, entry), pullRequest, pushesWorkflowChanges, job, ct);
+        if (answer.Ran) return answer.Result;
+        await EvictAsync(context, entry, "push-refused", answer.Refusal ?? "The forge gave no credential to push the rebased commit.", ct: ct);
         return null;
     }
 
-    /// <summary>
-    /// Runs one writer job with its own credential, then ends the credential (T9): whatever the job answered or threw, the
-    /// token dies with it instead of living out its hour.
-    /// </summary>
-    private static async Task<T> WithAccessAsync<T>(Context context, ForgeWriterAccess access, Func<SidecarCredential, Task<T>> job)
+    /// <summary>The workflow hook's view of one entry: its repository, its history, and its own step messages.</summary>
+    private HookSaga Saga(Context context, MergeQueueEntry entry) => new(this, context, entry);
+
+    private sealed class HookSaga(MergeQueueEngine engine, Context context, MergeQueueEntry entry) : IWorkflowHookSaga
     {
-        try
+        public Repository Repository => context.Repository;
+
+        public IForgeMergeQueue Forge => context.Queue;
+
+        public void Note(string text) => entry.Note(engine.Now, text);
+
+        public Task ScheduleAsync(EWorkflowHookStep step, TimeSpan? delay, long? runId, CancellationToken cancellationToken) => step switch
         {
-            return await job(new SidecarCredential(access.Username, access.Password));
-        }
-        finally
-        {
-            // Bounded inside, and never thrown from: the job's own outcome is what the step acts on.
-            await context.Queue.RevokeWriterAccessAsync(context.Repository, access, CancellationToken.None);
-        }
+            EWorkflowHookStep.PollRun => engine.ScheduleAsync(entry, EMergeQueueStep.PollRun, delay, cancellationToken),
+            EWorkflowHookStep.Timeout => engine.ScheduleAsync(entry, EMergeQueueStep.Timeout, delay, cancellationToken),
+            // §0 D53: not gated on the entry (CancelRunAsync), so it carries the run.
+            EWorkflowHookStep.CancelRun => engine.outbox.EnqueueAsync(engine.session, new MergeQueueStepMessage
+            {
+                EntryId = entry.Id!, Run = entry.Run, Generation = entry.Generation, Step = EMergeQueueStep.CancelRun, RunId = runId,
+            }, null, cancellationToken),
+            _ => throw new ArgumentOutOfRangeException(nameof(step), step, null),
+        };
     }
 
     /// <summary>
@@ -1859,6 +1798,16 @@ public partial class MergeQueueEngine : IMergeQueueEngine
     /// and pinning, O9's own <c>write</c> minimum and a fork's <c>.github/**</c> change that needs the dispatch (O25) are
     /// never bypassed.
     /// </summary>
+    /// <summary>
+    /// The enqueuer's role, read from the forge. The dependency updater's own enqueue (dependency-updates PRD R5) is the App
+    /// acting under the repository's dependency policy: it counts as <see cref="EForgeRepositoryRole.Write"/>, the floor, and
+    /// never reaches a bypass role. Only the app raises that source; no normaliser maps a forge event onto it.
+    /// </summary>
+    private Task<EForgeRepositoryRole> ActorRoleAsync(Context context, string actor, EMergeQueueCommandSource source, CancellationToken ct)
+        => source == EMergeQueueCommandSource.DependencyUpdates
+            ? Task.FromResult(EForgeRepositoryRole.Write)
+            : context.Queue.GetActorRoleAsync(context.Repository, actor, ct);
+
     private static bool Bypasses(EForgeRepositoryRole role, EMergeQueueBypassRole bypassRole) => bypassRole switch
     {
         EMergeQueueBypassRole.Maintain => role >= EForgeRepositoryRole.Maintain,

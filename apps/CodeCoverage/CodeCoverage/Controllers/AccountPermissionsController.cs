@@ -52,6 +52,17 @@ public partial class AccountPermissionsController : ControllerBase
 
         var source = permissionSources.FirstOrDefault(s => s.Provider == forge);
         var pending = source is null ? null : await source.GetPendingAsync(account, cancellationToken);
+        // Dependency updates (dependency-updates PRD §7.2, D-N4): an account that turned them on is also told what the App
+        // lacks for them (Workflows, Dependabot alerts, the release and dependabot_alert events). Their need is not in
+        // the notice's default set, so an account without the feature is never asked for it.
+        if (pending is not null && source is not null && account.DependencyUpdates
+            && await source.GetAppGapsAsync(EMergeQueueAppNeed.DependencyUpdates, cancellationToken) is { IsEmpty: false } gaps)
+            pending = pending with
+            {
+                MissingFromApp = [.. pending.MissingFromApp.Concat(gaps.MissingPermissions).DistinctBy(p => p.Name).OrderBy(p => p.Name, StringComparer.Ordinal)],
+                MissingEvents = [.. pending.MissingEvents.Concat(gaps.MissingEvents).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)],
+                AppSettingsUrl = pending.AppSettingsUrl ?? gaps.SettingsUrl,
+            };
         // §0 D95: what the App itself lacks is worth a notice too, though no one on the account can accept it.
         return pending is not null && (pending.Pending.Count > 0 || pending.MissingFromApp.Count > 0 || pending.MissingEvents.Count > 0)
             ? Ok(pending)

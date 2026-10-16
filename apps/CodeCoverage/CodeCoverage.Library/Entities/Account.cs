@@ -134,6 +134,55 @@ public class Account : IForgeConnectable
     public LookupReferences.EMergeQueueBypassRole MergeQueueBypassRole { get; set; }
 
     /// <summary>
+    /// Keep a rolling dependency-update pull request in every repository of this account that does not decide for itself.
+    /// </summary>
+    /// <remarks>
+    /// Dependency-updates PRD §4.1 (G2); a repository overrides it with <see cref="Repository.DependencyUpdates"/>, and its
+    /// <c>coverage.yml</c> may only opt out (Q6). Off by default: the updater pushes branches into somebody else's
+    /// repository. [IgnoreForIndex]: owner-facing configuration, like <see cref="MergeQueueApprovalFloor"/>.
+    /// </remarks>
+    [IgnoreForIndex]
+    public bool DependencyUpdates { get; set; }
+
+    /// <summary>How often the dependency updater recomputes the rolling pull request (PRD §4.1, Q8).</summary>
+    [IgnoreForIndex]
+    [LookupReference(typeof(LookupReferences.DependencyScheduleFrequency))]
+    public LookupReferences.EDependencyScheduleFrequency DependencyScheduleFrequency { get; set; }
+
+    /// <summary>The weekday of a weekly or monthly slot (Q8).</summary>
+    [IgnoreForIndex]
+    [LookupReference(typeof(LookupReferences.DependencyWeekday))]
+    public LookupReferences.EDependencyWeekday DependencyScheduleWeekday { get; set; }
+
+    /// <summary>The hour of the slot, 0–23, in <see cref="DependencyTimeZone"/>; runs are spread across that hour (Q8).</summary>
+    [IgnoreForIndex]
+    public int DependencyScheduleHour { get; set; } = DefaultDependencyScheduleHour;
+
+    /// <summary>The IANA time zone of the schedule (<c>Europe/Brussels</c>); an unknown id is read as UTC.</summary>
+    [IgnoreForIndex]
+    public string DependencyTimeZone { get; set; } = "UTC";
+
+    /// <summary>How old a third-party release must be before it is planned (Q16). Own packages are exempt (§7.6).</summary>
+    [IgnoreForIndex]
+    [LookupReference(typeof(LookupReferences.DependencyCooldown))]
+    public LookupReferences.EDependencyCooldown DependencyCooldown { get; set; }
+
+    /// <summary>How many CI runs a red rolling pull request may spend on bisecting (Q12, §7.4).</summary>
+    [IgnoreForIndex]
+    [LookupReference(typeof(LookupReferences.DependencyBisectBudget))]
+    public LookupReferences.EDependencyBisectBudget DependencyBisectBudget { get; set; }
+
+    /// <summary>
+    /// Account-wide dependency rules (§4.2, Q9). An enforced rule is a ceiling every repository's <c>coverage.yml</c> stays
+    /// under (R6); see <see cref="DependencyRule"/>.
+    /// </summary>
+    [IgnoreForIndex]
+    public List<DependencyRule> DependencyRules { get; set; } = [];
+
+    /// <summary>Q8's default hour.</summary>
+    public const int DefaultDependencyScheduleHour = 6;
+
+    /// <summary>
     /// The forge that hosts this account. Set on every document by the M6 re-key.
     /// </summary>
     /// <remarks>

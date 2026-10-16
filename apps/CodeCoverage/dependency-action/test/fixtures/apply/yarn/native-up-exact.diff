@@ -1,0 +1,44 @@
+diff --git a/package.json b/package.json
+index 77a2e52..480de6c 100644
+--- a/package.json
++++ b/package.json
+@@ -4,7 +4,7 @@
+ 	"private": true,
+ 	"packageManager": "yarn@4.5.3",
+ 	"dependencies": {
+-		"chalk": "4.1.0",
++		"chalk": "4.1.2",
+ 		"express": "^4.18.2",
+ 		"zod": "3.22.4"
+ 	}
+diff --git a/yarn.lock b/yarn.lock
+index 623d9ad..0a27531 100644
+--- a/yarn.lock
++++ b/yarn.lock
+@@ -92,13 +92,13 @@ __metadata:
+   languageName: node
+   linkType: hard
+ 
+-"chalk@npm:4.1.0":
+-  version: 4.1.0
+-  resolution: "chalk@npm:4.1.0"
++"chalk@npm:4.1.2":
++  version: 4.1.2
++  resolution: "chalk@npm:4.1.2"
+   dependencies:
+     ansi-styles: "npm:^4.1.0"
+     supports-color: "npm:^7.1.0"
+-  checksum: 10c0/3787bd65ecd98ab3a1acc3b4f71d006268a675875e49ee6ea75fb54ba73d268b97544368358c18c42445e408e076ae8ad5cec8fbad36942a2c7ac654883dc61e
++  checksum: 10c0/4a3fef5cc34975c898ffe77141450f679721df9dde00f6c304353fa9c8b571929123b26a0e4617bde5018977eb655b31970c297b91b63ee83bb82aeb04666880
+   languageName: node
+   linkType: hard
+ 
+@@ -558,7 +558,7 @@ __metadata:
+   version: 0.0.0-use.local
+   resolution: "s13-js@workspace:."
+   dependencies:
+-    chalk: "npm:4.1.0"
++    chalk: "npm:4.1.2"
+     express: "npm:^4.18.2"
+     zod: "npm:3.22.4"
+   languageName: unknown

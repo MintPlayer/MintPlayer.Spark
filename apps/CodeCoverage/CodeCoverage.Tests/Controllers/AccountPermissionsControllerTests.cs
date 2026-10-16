@@ -36,7 +36,7 @@ public class AccountPermissionsControllerTests : CoverageRavenTest
     }
 
     private static AccountPermissionsController Controller(
-        IAsyncDocumentSession session, PendingInstallationPermissions? answer, string viewerManages = Owner)
+        IAsyncDocumentSession session, PendingInstallationPermissions? answer, string viewerManages = Owner, ForgeAppGaps? gaps = null)
     {
         var forge = new ScriptedDiffService();
         forge.Owners.Add(new ForgeOwner(EForgeProvider.GitHub, viewerManages));
@@ -44,18 +44,18 @@ public class AccountPermissionsControllerTests : CoverageRavenTest
         var services = new ServiceCollection();
         services.AddSingleton(session);
         services.AddSingleton<IForgeIntegrationResolver>(forge);
-        services.AddSingleton<IForgeInstallationPermissions>(new FixedPermissions(answer));
+        services.AddSingleton<IForgeInstallationPermissions>(new FixedPermissions(answer, gaps));
         services.AddScoped<AccountPermissionsController>();
         return services.BuildServiceProvider().GetRequiredService<AccountPermissionsController>();
     }
 
-    private async Task<IDocumentStore> SeededStoreAsync()
+    private async Task<IDocumentStore> SeededStoreAsync(bool dependencyUpdates = false)
     {
         var store = GetDocumentStore();
         using (var seed = store.OpenAsyncSession())
         {
             await seed.StoreAsync(
-                new Account { GitHubId = 1, Login = Owner, Type = "Organization", InstallationId = 42 },
+                new Account { GitHubId = 1, Login = Owner, Type = "Organization", InstallationId = 42, DependencyUpdates = dependencyUpdates },
                 Account.DocumentId(EForgeProvider.GitHub, 1));
             await seed.SaveChangesAsync();
         }
@@ -127,6 +127,31 @@ public class AccountPermissionsControllerTests : CoverageRavenTest
         var result = await Controller(session, answer).Get("github", Owner, default);
 
         result.Result.Should().BeOfType<NoContentResult>();
+    }
+
+    /// <summary>D-N4: an account with dependency updates on also hears what the App lacks for them; one without is not asked.</summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Dependency_update_gaps_are_added_only_for_an_account_that_turned_them_on(bool enabled)
+    {
+        using var store = await SeededStoreAsync(dependencyUpdates: enabled);
+        using var session = store.OpenAsyncSession();
+        var answer = new PendingInstallationPermissions(InstallationPage, []);
+        var gaps = new ForgeAppGaps("https://github.com/organizations/acme/settings/apps/coverage/permissions",
+            [new PendingPermission("vulnerability_alerts", "Dependabot alerts", "read", null)], ["dependabot_alert"]);
+
+        var result = await Controller(session, answer, gaps: gaps).Get("github", Owner, default);
+
+        if (!enabled)
+        {
+            result.Result.Should().BeOfType<NoContentResult>();
+            return;
+        }
+        var body = result.Result.Should().BeOfType<OkObjectResult>().Which.Value.Should().BeOfType<PendingInstallationPermissions>().Which;
+        body.MissingFromApp.Select(p => p.DisplayName).Should().Equal(["Dependabot alerts"]);
+        body.MissingEvents.Should().Equal(["dependabot_alert"]);
+        body.AppSettingsUrl.Should().Be(gaps.SettingsUrl);
     }
 
     /// <summary>The answer for an account that does not exist, so the endpoint confirms nothing to a non-manager.</summary>

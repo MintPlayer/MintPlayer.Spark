@@ -1,0 +1,2 @@
+# Byte-exact captures: line endings, BOMs and trailing bytes are part of what the tests assert.
+* -text

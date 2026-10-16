@@ -129,6 +129,7 @@ export const EXPECTED_REPORTS = [
   { name: '@mintplayer/ng-spark', glob: 'libs/node_packages/ng-spark/coverage/cobertura-coverage.xml' },
   { name: '@spark-apps/code-coverage (SPA)', glob: 'coverage/@spark-apps/code-coverage/cobertura-coverage.xml' },
   { name: '@mintplayer/coverage-upload-action', glob: 'apps/CodeCoverage/action/coverage/cobertura-coverage.xml' },
+  { name: '@mintplayer/dependency-update-action', glob: 'apps/CodeCoverage/dependency-action/coverage/cobertura-coverage.xml' },
 ];
 
 /**
@@ -143,6 +144,7 @@ export const UPLOAD_GLOBS = [
   'apps/CodeCoverage/CodeCoverage/ClientApp/coverage/cobertura-coverage.xml',
   'coverage/@spark-apps/code-coverage/cobertura-coverage.xml',
   'apps/CodeCoverage/action/coverage/cobertura-coverage.xml',
+  'apps/CodeCoverage/dependency-action/coverage/cobertura-coverage.xml',
 ];
 
 const unify = (p) => p.replace(/\\/g, '/');

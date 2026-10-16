@@ -1,0 +1,9 @@
+Loading composer repositories with package information
+Updating dependencies
+Your requirements could not be resolved to an installable set of packages.
+
+  Problem 1
+    - Root composer.json requires monolog/monolog 3.5.0 -> satisfiable by monolog/monolog[3.5.0].
+    - monolog/monolog 3.5.0 requires psr/log ^2.0 || ^3.0 -> found psr/log[2.0.0, 3.0.0, 3.0.1, 3.0.2] but it conflicts with your root composer.json require (^1.1).
+
+Use the option --with-all-dependencies (-W) to allow upgrades, downgrades and removals for packages currently locked to specific versions.

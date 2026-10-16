@@ -284,6 +284,100 @@ public class Repository : IForgeConnectable
             _ => (account?.MergeQueueBypassRole ?? EMergeQueueBypassRole.None, account is null ? "default" : "organization"),
         };
 
+    /// <summary>Whether this repository keeps a rolling dependency-update pull request, or the account's setting (PRD §4.1, G2).</summary>
+    /// <remarks>Its <c>coverage.yml</c> may still opt out (<c>dependencies.enabled: false</c>, Q6), never in.</remarks>
+    [IgnoreForIndex]
+    [LookupReference(typeof(DependencyUpdatesPolicy))]
+    public EDependencyUpdatesPolicy DependencyUpdates { get; set; }
+
+    /// <summary>Whether this repository uses the account's dependency-update schedule or its own (Q8).</summary>
+    [IgnoreForIndex]
+    [LookupReference(typeof(DependencySchedulePolicy))]
+    public EDependencySchedulePolicy DependencySchedulePolicy { get; set; }
+
+    /// <summary>This repository's own frequency, used when <see cref="DependencySchedulePolicy"/> overrides.</summary>
+    [IgnoreForIndex]
+    [LookupReference(typeof(DependencyScheduleFrequency))]
+    public EDependencyScheduleFrequency DependencyScheduleFrequency { get; set; }
+
+    /// <summary>This repository's own weekday, used when <see cref="DependencySchedulePolicy"/> overrides.</summary>
+    [IgnoreForIndex]
+    [LookupReference(typeof(DependencyWeekday))]
+    public EDependencyWeekday DependencyScheduleWeekday { get; set; }
+
+    /// <summary>This repository's own hour (0–23, in the account's time zone), used when <see cref="DependencySchedulePolicy"/> overrides.</summary>
+    [IgnoreForIndex]
+    public int DependencyScheduleHour { get; set; } = CodeCoverage.Entities.Account.DefaultDependencyScheduleHour;
+
+    /// <summary>This repository's cooldown, or the account's (Q16).</summary>
+    [IgnoreForIndex]
+    [LookupReference(typeof(DependencyCooldownPolicy))]
+    public EDependencyCooldownPolicy DependencyCooldown { get; set; }
+
+    /// <summary>This repository's bisect budget, or the account's (Q12).</summary>
+    [IgnoreForIndex]
+    [LookupReference(typeof(DependencyBisectBudgetPolicy))]
+    public EDependencyBisectBudgetPolicy DependencyBisectBudget { get; set; }
+
+    /// <summary>Whether dependency updates run here: the repository's choice, or its account's. A missing account is off.</summary>
+    /// <remarks>The file half (<c>dependencies.enabled: false</c>) is applied on top by the caller, and may only switch it off.</remarks>
+    public static bool ResolveDependencyUpdates(Repository? repository, Account? account)
+        => repository?.DependencyUpdates switch
+        {
+            EDependencyUpdatesPolicy.Enabled => true,
+            EDependencyUpdatesPolicy.Disabled => false,
+            _ => account?.DependencyUpdates ?? false,
+        };
+
+    /// <summary>The effective schedule and where it came from (<c>repository</c>, <c>organization</c> or <c>default</c>).</summary>
+    /// <remarks>An hour outside 0–23 is read as the default hour; an unknown time zone as UTC.</remarks>
+    public static (DependencySchedule Schedule, string Source) ResolveDependencySchedule(Repository? repository, Account? account)
+    {
+        var zone = account?.DependencyTimeZone is { Length: > 0 } id ? id : "UTC";
+        static int Hour(int hour) => hour is >= 0 and <= 23 ? hour : CodeCoverage.Entities.Account.DefaultDependencyScheduleHour;
+        if (repository?.DependencySchedulePolicy == EDependencySchedulePolicy.Override)
+            return (new DependencySchedule(repository.DependencyScheduleFrequency, repository.DependencyScheduleWeekday, Hour(repository.DependencyScheduleHour), zone), "repository");
+        return account is null
+            ? (new DependencySchedule(EDependencyScheduleFrequency.Weekly, EDependencyWeekday.Monday, CodeCoverage.Entities.Account.DefaultDependencyScheduleHour, zone), "default")
+            : (new DependencySchedule(account.DependencyScheduleFrequency, account.DependencyScheduleWeekday, Hour(account.DependencyScheduleHour), zone), "organization");
+    }
+
+    /// <summary>The effective cooldown and where it came from (Q16). A missing account resolves to Q16's three days.</summary>
+    public static (TimeSpan Cooldown, string Source) ResolveDependencyCooldown(Repository? repository, Account? account)
+        => repository?.DependencyCooldown switch
+        {
+            EDependencyCooldownPolicy.None => (TimeSpan.Zero, "repository"),
+            EDependencyCooldownPolicy.OneDay => (TimeSpan.FromDays(1), "repository"),
+            EDependencyCooldownPolicy.ThreeDays => (TimeSpan.FromDays(3), "repository"),
+            EDependencyCooldownPolicy.SevenDays => (TimeSpan.FromDays(7), "repository"),
+            _ => (account?.DependencyCooldown switch
+            {
+                EDependencyCooldown.None => TimeSpan.Zero,
+                EDependencyCooldown.OneDay => TimeSpan.FromDays(1),
+                EDependencyCooldown.SevenDays => TimeSpan.FromDays(7),
+                _ => TimeSpan.FromDays(3),
+            }, account is null ? "default" : "organization"),
+        };
+
+    /// <summary>The effective bisect budget in CI runs and where it came from (Q12). A missing account resolves to two.</summary>
+    public static (int Runs, string Source) ResolveDependencyBisectBudget(Repository? repository, Account? account)
+        => repository?.DependencyBisectBudget switch
+        {
+            EDependencyBisectBudgetPolicy.Off => (0, "repository"),
+            EDependencyBisectBudgetPolicy.One => (1, "repository"),
+            EDependencyBisectBudgetPolicy.Two => (2, "repository"),
+            EDependencyBisectBudgetPolicy.Four => (4, "repository"),
+            EDependencyBisectBudgetPolicy.Eight => (8, "repository"),
+            _ => (account?.DependencyBisectBudget switch
+            {
+                EDependencyBisectBudget.Off => 0,
+                EDependencyBisectBudget.One => 1,
+                EDependencyBisectBudget.Four => 4,
+                EDependencyBisectBudget.Eight => 8,
+                _ => 2,
+            }, account is null ? "default" : "organization"),
+        };
+
     /// <summary>The effective check exclusions and where they came from (O12, O15); trimmed, distinct, ordinal-sorted.</summary>
     public static (IReadOnlyList<string> Exclusions, string Source) ResolveMergeQueueCheckExclusions(Repository? repository, Account? account)
     {
