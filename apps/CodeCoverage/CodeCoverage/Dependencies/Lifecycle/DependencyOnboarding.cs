@@ -26,7 +26,7 @@ public static class DependencyOnboarding
     public const string Title = "Set up MintPlayer dependency updates";
 
     /// <summary>The section appended to <c>coverage.yml</c>, all commented: the defaults apply until someone uncomments it.</summary>
-    public const string CommentedSection = """
+    public static readonly string CommentedSection = Lf("""
 
         # MintPlayer dependency updates (added by the onboarding pull request). Every line is a default: uncomment to change it.
         # dependencies:
@@ -45,16 +45,23 @@ public static class DependencyOnboarding
         #       onMajor: angular-migrate.yml
         #     - match: "nx"
         #       onMajor: nx-migrate.yml
-        """;
+        """);
 
     /// <summary>R25: what the onboarding pull request adds to <c>coverage.yml</c> when its setting resolves to Yes.</summary>
-    public const string MergeQueueSection = """
+    public static readonly string MergeQueueSection = Lf("""
         # The merge queue (added by the onboarding pull request): dependency pull requests within your thresholds merge through
         # it, and your own pull requests can use it too (label `merge-queue`, or comment `/queue`).
         mergeQueue:
           enabled: true
 
-        """;
+        """);
+
+    /// <summary>
+    /// LF, whatever the build machine checked out: a raw string literal and an embedded template take the source file's
+    /// line endings (CRLF in a Windows checkout under <c>text=auto</c>), and what is committed to someone's repository must
+    /// not depend on where this app was built.
+    /// </summary>
+    private static string Lf(string text) => text.ReplaceLineEndings("\n");
 
     /// <summary>Whether <paramref name="yml"/> has <paramref name="key"/> as a top-level key (not commented, not indented).</summary>
     public static bool HasTopLevelKey(string? yml, string key)
@@ -82,7 +89,7 @@ public static class DependencyOnboarding
         using var stream = typeof(DependencyOnboarding).Assembly.GetManifestResourceStream(name)
             ?? throw new InvalidOperationException($"The embedded workflow template '{name}' is missing.");
         using var reader = new StreamReader(stream, Encoding.UTF8);
-        return reader.ReadToEnd();
+        return Lf(reader.ReadToEnd());
     }
 
     /// <summary>The template with the action pinned to <paramref name="actionSha"/> (the tag kept as a comment), or unchanged
