@@ -14,7 +14,7 @@ namespace CodeCoverage.Dependencies.Policy;
 /// <item>the file's <c>autoMerge</c> globs (the most specific matching glob wins);</item>
 /// <item>a non-enforced account rule, when no file glob or rule names the dependency (§4.2: "a default that a repo rule
 /// replaces");</item>
-/// <item>the built-in globs (<c>@angular/*: never</c>, <c>actions/*: minor</c>);</item>
+/// <item>the built-in globs (<c>@angular/*: never</c>, <c>actions/*: minor</c>), never above the file's default;</item>
 /// <item>the ecosystem defaults: <c>github-actions</c> and <c>platform:*</c> stop at minor (R15, R7);</item>
 /// <item>the file's <c>autoMerge.default</c> (built-in minor).</item>
 /// </list>
@@ -115,8 +115,9 @@ public sealed class DependencyPolicyConfig
             return fileGlob.Threshold;
         if (FileRule(ecosystem, depName) is null && Defaults(ecosystem, depName).OrderByDescending(r => DependencyGlob.Specificity(r.Match)).FirstOrDefault() is { } fallback)
             return fallback.MaxUpdate;
+        // A built-in only ever lowers the file's default: it is a safety default, never a widening.
         if (MostSpecific(DependenciesSection.BuiltInThresholds, depName) is { } builtIn)
-            return builtIn.Threshold;
+            return Min(builtIn.Threshold, File.DefaultThreshold);
         if (ecosystem == "github-actions" || ecosystem.StartsWith("platform:", StringComparison.Ordinal))
             return Min(File.DefaultThreshold, EDependencyThreshold.Minor);
         return File.DefaultThreshold;

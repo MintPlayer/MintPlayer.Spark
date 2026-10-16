@@ -70,8 +70,21 @@ public static class DependencyPolicyEngine
             ?? (string.IsNullOrWhiteSpace(record.GroupName) ? null : record.GroupName)
             ?? record.DepName;
 
-    /// <summary>The version token of a candidate: its version, else its value, else its digest. A token, never parsed.</summary>
-    public static string Token(LookupCandidate candidate) => candidate.Version ?? candidate.Value ?? candidate.Digest ?? string.Empty;
+    /// <summary>The token that identifies a candidate: the digest of a digest update (a new digest of the same tag is a new
+    /// release), else its version, else its value. A token, never parsed.</summary>
+    public static string Token(LookupCandidate candidate)
+        => (candidate.UpdateType is EUpdateType.Digest or EUpdateType.PinDigest ? candidate.Digest : null)
+            ?? candidate.Version ?? candidate.Value ?? candidate.Digest ?? string.Empty;
+
+    /// <summary>
+    /// A digest update Renovate reported without a <c>newVersion</c> (S12: a Docker <c>python:3.11-slim</c> re-push) keeps
+    /// its version by definition, so the current version stands in for the missing one (D-P5). Anything else is returned
+    /// as it is, and a missing version stays a hold (R1).
+    /// </summary>
+    public static LookupCandidate Effective(LookupRecord record, LookupCandidate candidate)
+        => candidate is { Version: null, UpdateType: EUpdateType.Digest or EUpdateType.PinDigest, Digest: not null } && record.CurrentVersion is { } current
+            ? candidate with { Version = current, Missing = [.. candidate.Missing.Where(m => m != "version")] }
+            : candidate;
 
     private sealed class View(LookupRecord record, LookupCandidate candidate, int index)
     {
@@ -262,7 +275,7 @@ public static class DependencyPolicyEngine
                         picks.Add(pick);
                         continue;
                     }
-                    var fallback = views.First(v => v.Record == pick.Record).Views
+                    var fallback = views.First(v => ReferenceEquals(v.Record, pick.Record)).Views
                         .FirstOrDefault(v => v.Level <= tier && v.Problem is null && !v.InCooldown);
                     if (fallback is null)
                         cooling.Add(Entry(group, pick, EDependencyReportReason.Cooldown, $"released less than {Days(config.Cooldown)} ago") with { Until = pick.Until });
@@ -453,8 +466,9 @@ public static class DependencyPolicyEngine
             var securityFix = security.Contains((record.Ecosystem, record.DepName));
             var fileHold = config.FileHold(record.Ecosystem, record.DepName);
             var depHold = next.Holds.FirstOrDefault(h => h.Group.Length == 0 && h.DepNames.Contains(record.DepName, StringComparer.Ordinal));
-            foreach (var (candidate, index) in record.Candidates.Select((c, i) => (c, i)))
+            foreach (var (original, index) in record.Candidates.Select((c, i) => (c, i)))
             {
+                var candidate = Effective(record, original);
                 var view = new View(record, candidate, index) { Security = securityFix };
                 var labeled = UpdateTypeFloor.Labeled(candidate.UpdateType);
                 if (labeled is { } label)

@@ -52,6 +52,9 @@ public static class DependencyContract
             UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
             PropertyNameCaseInsensitive = false,
             DefaultIgnoreCondition = JsonIgnoreCondition.Never,
+            // The plan is committed to the repository and read by people: keep '+' (17.0.8+7), '<' and non-ASCII readable.
+            // Never embedded in HTML, so the relaxed escaping is safe.
+            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
         };
         options.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase, allowIntegerValues: false));
         options.MakeReadOnly(populateMissingResolver: true);
