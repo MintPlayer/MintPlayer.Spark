@@ -197,7 +197,9 @@ These supersede the text below where they disagree. Superseded passages are mark
   - An external link opens a new tab with `rel="noopener noreferrer"`, an external mark, and "opens in a new tab" for a screen reader.
   - Any other scheme renders no link.
 - **The server's rule** is one helper, `SparkLinkUrl`: an app path, or an absolute http(s) URL with a host. The loader checks it at startup, and so does `--spark-verify-model`.
-- **CodeCoverage** gets "Merge queue setup" (`/merge-queue/setup`) in the Coverage menu.
+- **CodeCoverage** gets "Merge queue setup" (`/merge-queue/setup`) in the ~~Coverage~~ menu. *Superseded 2026-10-16
+  (owner preference):* it moved to a **Guides** group with the dependency updater's guide (`/dependency-updates/setup`)
+  and Connect an AI agent (`/connect-agent`); same unit id and URL (`App_Data/programUnits.json`).
 - **[Done: D91.]** | AskUserQuestion answers and owner messages, 2026-10-15; the investigation in scratchpad `progunits/`. |
 | O32 | **The coverage comment links the queue's check, and a waiting PR's check carries a "Remove from queue" button (owner, 2026-10-15).**
 - **The link.** CodeCoverage's coverage comment gains one short line to the pull request's current "Merge queue" check: `https://github.com/{owner}/{repo}/pull/{n}/checks?check_run_id={id}`, or `…/pull/{n}/checks` when no id is known. It shows only when the default branch's `coverage.yml` turns the queue on (O16), and cites no PRD id (D72). Whether it names the queue's state is the implementer's call, justified in the D-row. **[Done in D89.]**

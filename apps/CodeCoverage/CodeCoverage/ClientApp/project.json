@@ -75,7 +75,8 @@
         "^production",
         "{workspaceRoot}/coverage.yml",
         "{workspaceRoot}/docs/code-coverage/templates/regenerate.yml",
-        "{workspaceRoot}/docs/code-coverage/templates/lockfiles-regenerate.yml"
+        "{workspaceRoot}/docs/code-coverage/templates/lockfiles-regenerate.yml",
+        "{workspaceRoot}/docs/code-coverage/dependency-updates.md"
       ],
       "options": {
         "tsConfig": "apps/CodeCoverage/CodeCoverage/ClientApp/tsconfig.spec.json",

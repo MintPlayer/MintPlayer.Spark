@@ -2670,6 +2670,16 @@
     }
   },
   "programUnits": {
+    "connectAgent": {
+      "en": "Connect an AI agent",
+      "fr": "Connecter un agent IA",
+      "nl": "Een AI-agent koppelen"
+    },
+    "dependencyUpdatesSetup": {
+      "en": "Dependency updater",
+      "fr": "Mises à jour des dépendances",
+      "nl": "Dependency-updater"
+    },
     "forgeAccounts": {
       "en": "GitHub",
       "fr": "GitHub",
@@ -2685,6 +2695,11 @@
         "en": "Coverage",
         "fr": "Coverage",
         "nl": "Coverage"
+      },
+      "guides": {
+        "en": "Guides",
+        "fr": "Guides",
+        "nl": "Handleidingen"
       }
     },
     "home": {

@@ -1,0 +1,303 @@
+<div class="du-setup py-3" data-dependency-updates-setup>
+  <h1 class="h3 mb-3"><i class="bi bi-box-seam"></i> Setting up the dependency updater</h1>
+  <p class="lead">
+    CodeCoverage keeps a repository's dependencies current with one rolling pull request, <code>mintplayer/dependencies</code>,
+    rebuilt on a schedule. It updates every ecosystem the lookup reports (npm, pnpm, yarn, NuGet, Maven, Gradle, Cargo,
+    Go, Python, Composer, Bundler, Docker, GitHub Actions, …) and the platform SDKs (.NET, Node.js, Python, Java, Go).
+  </p>
+  <p>
+    Nothing of your repository ever runs on the CodeCoverage server. Every restore, relock and migration runs in your own
+    GitHub Actions, in workflows the bot dispatches and whose results it checks before anything is pushed. Each run:
+  </p>
+  <ol data-testid="du-setup-run">
+    <li><strong>Lookup.</strong> The bot dispatches <code>dependency-lookup.yml</code> on the default branch, which lists every dependency and the versions available.</li>
+    <li><strong>Plan.</strong> It applies your policy (thresholds, holds, cooldown, account rules, approvals) and commits the plan to the bot-only ref <code>mintplayer/dependencies-work</code>.</li>
+    <li><strong>Apply.</strong> It dispatches <code>dependency-apply.yml</code>, which edits the manifests and relocks with scripts off, and never builds.</li>
+    <li><strong>Validate and push.</strong> The bot checks the patch against the plan line by line, then builds the rolling branch from the default branch, with commits people pushed on it replayed on top.</li>
+    <li><strong>Pull request and CI.</strong> The pull request says what was applied, what waits for an approval and what is held. Green and within the thresholds, it goes to the merge queue; red, the bot bisects to find the culprit.</li>
+  </ol>
+
+  <nav aria-label="Steps" class="mb-4">
+    <ol class="mb-0" data-testid="du-setup-steps">
+      @for (step of steps; track step.id) {
+        <li>
+          <a [routerLink]="[]" [fragment]="step.id" (click)="jumpTo(step.id)">{{ step.title }}</a>
+        </li>
+      }
+    </ol>
+  </nav>
+
+  @for (step of steps; track step.id; let n = $index) {
+    <bs-card class="d-block mb-4" [attr.id]="step.id" [attr.data-step]="step.id">
+      <bs-card-header>
+        <h2 class="h5 mb-0"><bs-badge class="me-2" [type]="primaryColor">{{ n + 1 }}</bs-badge>{{ step.title }}</h2>
+      </bs-card-header>
+      <bs-card-body>
+        @switch (step.id) {
+          @case ('prerequisites') {
+            <p>
+              <strong>The GitHub App, with every permission it needs.</strong> Install the CodeCoverage GitHub App on the
+              organization or user that owns the repository; <a routerLink="/">Home</a> links it once you are signed in.
+              Dependency updates need:
+            </p>
+            <bs-table [isResponsive]="true" data-testid="du-setup-permissions">
+              <thead>
+                <tr><th>Permission</th><th>Access</th><th>The updater uses it to</th></tr>
+              </thead>
+              <tbody>
+                @for (permission of permissions; track permission.name) {
+                  <tr>
+                    <td class="text-nowrap">{{ permission.name }}</td>
+                    <td class="text-nowrap">{{ permission.access }}</td>
+                    <td>{{ permission.use }}</td>
+                  </tr>
+                }
+              </tbody>
+            </bs-table>
+            <p data-testid="du-setup-events">
+              And the webhook events
+              @for (event of events; track event; let last = $last) {
+                <strong>{{ event }}</strong>{{ last ? '.' : ', ' }}
+              }
+              Hosting CodeCoverage yourself? Add them to your GitHub App's <em>Permissions &amp; events</em> first.
+              Before it opens the onboarding pull request, the bot checks that the App requests them and that the
+              installation has accepted them. A gap blocks onboarding with the reason, on the repository's
+              <em>Dependency updates</em> panel and the account's fleet view; the account page's permission notice lists
+              it too, with the link to accept it on GitHub. Onboarding is retried daily.
+            </p>
+            <p data-testid="du-setup-merge-queue">
+              <strong>The merge queue, for auto-merge.</strong> The dependency pull request auto-merges only by being
+              handed to CodeCoverage's merge queue; there is no other merge path. A repository without the queue switched
+              on still gets the rolling pull request, but a person merges it. Set the queue up with
+              <a routerLink="/merge-queue/setup" data-testid="du-setup-merge-queue-link">the merge queue setup guide</a>;
+              the least it takes in <code>coverage.yml</code> on the default branch is:
+            </p>
+            <ng-container *ngTemplateOutlet="code; context: { $implicit: snippets.mergeQueueOn, language: 'yaml' }" />
+            <p class="mb-0" data-testid="du-setup-coverage-gate">
+              <strong>Coverage uploads, for the coverage gate.</strong> When the rolling pull request's CI uploads
+              coverage like every other pull request, its body shows the coverage delta, and auto-merge is refused when
+              coverage drops by more than <code>autoMerge.maxCoverageDrop</code> (0 points unless you set it). A report
+              with uploads missing is a hold of its own, never read as a drop. A repository without coverage data skips
+              the gate.
+            </p>
+          }
+          @case ('enable') {
+            <p>
+              Switch <strong>Dependency updates</strong> on in the <em>Dependency updates</em> group of the account's
+              CodeCoverage page, for every repository of the account that does not decide for itself, or on one
+              repository's page, which can also turn it off for itself. A repository's <code>coverage.yml</code> can only
+              opt out (<code>enabled: false</code>), so a pull request can never switch the updater on.
+            </p>
+            <bs-table [isResponsive]="true" data-testid="du-setup-settings">
+              <thead>
+                <tr><th>Setting</th><th>Where</th><th>Default</th></tr>
+              </thead>
+              <tbody>
+                @for (setting of settings; track setting.name) {
+                  <tr>
+                    <td>{{ setting.name }}</td>
+                    <td>{{ setting.where }}</td>
+                    <td class="text-nowrap">{{ setting.defaultValue }}</td>
+                  </tr>
+                }
+              </tbody>
+            </bs-table>
+            <p class="mb-0">
+              Runs within a slot hour are spread by repository, so a fleet does not dispatch at once. An
+              <strong>enforced</strong> account rule is a ceiling no file and no approval can raise; a rule that is not
+              enforced applies only where the repository's file says nothing.
+            </p>
+          }
+          @case ('onboarding') {
+            <p>Within a day of switching it on, the bot opens <code>mintplayer/dependencies-onboarding</code>. It:</p>
+            <ul>
+              <li>
+                adds <code>.github/workflows/dependency-lookup.yml</code> and <code>dependency-apply.yml</code>, thin
+                callers of the published action, pinned to a commit with the <code>dependency-update-v1</code> tag kept
+                as a comment;
+              </li>
+              <li>adds <code>angular-migrate.yml</code> and <code>nx-migrate.yml</code> when the repository has <code>angular.json</code> or <code>nx.json</code>;</li>
+              <li>appends a commented <code>dependencies:</code> section to <code>coverage.yml</code>: the defaults apply until you uncomment it;</li>
+              <li>
+                removes the version-update entries of <code>.github/dependabot.yml</code> and lists its
+                <code>ignore:</code> entries translated into <code>dependencies:</code> rules, for you to keep the ones you want.
+              </li>
+            </ul>
+            <bs-alert [type]="infoColor" class="d-block mb-3" data-testid="du-setup-first-draft">
+              <strong>The first rolling pull request is a draft.</strong> After you merge the onboarding pull request, the
+              first <code>mintplayer/dependencies</code> pull request is opened as a draft and never auto-merges: review
+              it once. The ones after it follow your thresholds.
+            </bs-alert>
+            <p class="mb-0">
+              Dependabot <strong>alerts</strong> stay on: they are what starts a security run. A vulnerable package skips
+              the schedule and the cooldown, and the fix goes into the rolling pull request, with only the groups that
+              may auto-merge anyway; a fix that is a major still waits for <code>approve</code>.
+            </p>
+          }
+          @case ('coverage-yml') {
+            <p>
+              The <code>dependencies:</code> section of <code>coverage.yml</code> is read from the <strong>default branch
+              only</strong>: a change on the rolling branch has no effect. A section with an error falls back to the
+              defaults, keeping only a valid <code>enabled: false</code>, and the error is listed in the pull request.
+              Every key, with an example value:
+            </p>
+            <ng-container *ngTemplateOutlet="code; context: { $implicit: snippets.dependencies, language: 'yaml' }" />
+            <bs-table [isResponsive]="true" data-testid="du-setup-keys">
+              <thead>
+                <tr><th>Key</th><th>Default</th><th>Meaning</th></tr>
+              </thead>
+              <tbody>
+                @for (key of keys; track key.key) {
+                  <tr>
+                    <td><code>{{ key.key }}</code></td>
+                    <td>{{ key.defaultValue }}</td>
+                    <td>{{ key.meaning }}</td>
+                  </tr>
+                }
+              </tbody>
+            </bs-table>
+            <p class="mb-0">
+              <strong>Thresholds.</strong> A threshold is both "planned without asking" and "may auto-merge". GitHub
+              Actions and platforms never go above minor without an approval, and every group of a library family
+              (<code>&#64;angular/*</code>, <code>nx</code> with <code>&#64;nx/*</code>, …) moves together.
+            </p>
+          }
+          @case ('commands') {
+            <p>
+              Anyone with write access comments on the rolling pull request, one command per comment. Edited comments and
+              comments by bots are ignored; the bot reacts 👍 or 👎.
+            </p>
+            <bs-table [isResponsive]="true" data-testid="du-setup-commands">
+              <thead>
+                <tr><th>Command</th><th>Does</th></tr>
+              </thead>
+              <tbody>
+                @for (command of commands; track command.command) {
+                  <tr>
+                    <td class="text-nowrap"><code>{{ command.command }}</code></td>
+                    <td>{{ command.does }}</td>
+                  </tr>
+                }
+              </tbody>
+            </bs-table>
+            <dl class="mb-0">
+              <dt>Approvals</dt>
+              <dd>
+                An update over its threshold stays out of the pull request until a writer comments
+                <code>approve &lt;group&gt;</code>. The approval is bound to the exact dependency set, the target major
+                and the <code>coverage.yml</code> it was given under: a newer major, a changed group or another
+                <code>coverage.yml</code> expires it. It is checked again at apply time, so an approver who lost write
+                access loses the approval.
+              </dd>
+              <dt>Holds</dt>
+              <dd>
+                A group is held by a <code>hold</code> comment or a rule's <code>hold:</code>, until removed; by a
+                manifest value you pushed on the rolling branch, so the next slot does not undo it; and by the bot
+                itself, when CI went red on it or the resolver refused it. The pull request lists every hold and why.
+              </dd>
+              <dt>Blockers</dt>
+              <dd>
+                A group the resolver refuses (an Angular major before the Nx plugin supports it, say) is reset and held,
+                naming its blockers, and the other groups still ship. The hold lifts when a newer version of a blocker
+                appears, and after four slots in any case.
+              </dd>
+              <dt>Red CI</dt>
+              <dd>
+                The failing checks are re-run once. Then suspects are left out one by one, majors first, one CI run each
+                within the bisect budget, until the culprit is found; it is held, recorded as red for the whole account,
+                and the rest is rebuilt without it.
+              </dd>
+              <dt>Your own commits</dt>
+              <dd>
+                A code fix you push on the rolling branch keeps the versions it was written against pinned until the pull
+                request is merged or closed, and such a pull request is merged by a person. A conflict the bot cannot
+                regenerate, or a branch rewritten by hand, freezes the branch: resolve it there, or close the pull request
+                to let it start over.
+              </dd>
+            </dl>
+          }
+          @case ('platforms') {
+            <p>
+              <strong>Platform SDKs.</strong> When <code>net10.0</code> becomes <code>net11.0</code> or Node 22 becomes 24,
+              every location moves together: the target framework, <code>global.json</code>, a Dockerfile's
+              <code>FROM</code> and the <code>setup-*</code> versions in your workflows. Locations are detected; a
+              computed target framework is reported, never guessed. Override the detection under
+              <code>platforms.&lt;sdk&gt;</code> with <code>locations</code> and <code>exclude</code>;
+              <code>strategy: add</code> with <code>keepPrevious</code> multi-targets instead of replacing, and
+              <code>lockPackageMajor: true</code> moves your packages' own major version with the platform. Previews are
+              followed only when the repository is already on one, and a platform major never auto-merges.
+            </p>
+            <p class="mb-0">
+              <strong>Code migrations.</strong> <code>migrate:</code> maps a dependency to a workflow, such as the
+              <code>angular-migrate.yml</code> and <code>nx-migrate.yml</code> templates the onboarding adds. It runs only
+              after an <code>approve</code> of a major, with no secrets (<code>ng update --migrate-only</code>,
+              <code>nx migrate --run-migrations</code>). A migration that does not complete drops its group, and a pull
+              request with migrations never auto-merges and says so.
+            </p>
+          }
+          @case ('security') {
+            <ul>
+              <li><strong>No repository code runs on the server.</strong> The server runs <code>git</code> only, without hooks, filters or merge drivers.</li>
+              <li>
+                <strong>The workflows are read-only.</strong> The templates have <code>contents: read</code>, no
+                <code>id-token</code> and <code>persist-credentials: false</code>. The bot refuses to dispatch a workflow,
+                yours included, with write permissions, <code>id-token</code>, no top-level <code>permissions:</code> or a
+                <code>pull_request_target</code> trigger, or a migrate workflow that reads secrets. The dispatched file
+                must equal the default branch's.
+              </li>
+              <li>
+                <strong>Feed secrets</strong> reach only the lookup, and the apply of ecosystems whose relock runs no
+                package code (npm, pnpm, yarn, NuGet restore, Composer with <code>--no-plugins</code>, Cargo, Go, Maven);
+                never Gradle, and uv only with <code>--no-build</code>.
+              </li>
+              <li>
+                <strong>The bot judges every patch, not the runner:</strong> only planned package files, each changed line
+                a planned version swap, no added or deleted files, no build or registry configuration, no install scripts,
+                nothing under <code>.github/</code> but <code>uses:</code> refs and <code>setup-*</code> versions, lockfile
+                URLs on known registries with integrity on every entry, and a person for more than 25 new packages.
+              </li>
+              <li><strong>Pushes</strong> use a token minted per job for the one repository, revoked afterwards.</li>
+            </ul>
+            <bs-alert [type]="dangerColor" class="d-block mb-0" data-testid="du-setup-residual-risk">
+              <strong>The residual risk, stated plainly.</strong> The validators stop the runner from changing anything
+              beyond the plan; they cannot make a <em>planned</em> package safe. Once a malicious version is planned, your
+              pull request's CI installs it <strong>with your CI's secrets</strong> (npm scripts in CI's own install,
+              NuGet <code>build/*.targets</code> on build). The cooldown, the fleet holds and a person's review of
+              majors are what reduce that risk.
+            </bs-alert>
+          }
+          @case ('troubleshooting') {
+            <p>
+              The last run's outcome is on the repository page's <em>Dependency updates</em> panel; the full story is in
+              its <em>Recent steps</em> and on the pull request. The account page's panel shows the whole fleet, per
+              repository, per package and per platform.
+            </p>
+            <bs-table [isResponsive]="true" data-testid="du-setup-outcomes">
+              <thead>
+                <tr><th>Outcome</th><th>Meaning</th><th>What to do</th></tr>
+              </thead>
+              <tbody>
+                @for (row of outcomes; track row.outcome) {
+                  <tr>
+                    <td><code>{{ row.outcome }}</code></td>
+                    <td>{{ row.meaning }}</td>
+                    <td>{{ row.action }}</td>
+                  </tr>
+                }
+              </tbody>
+            </bs-table>
+          }
+        }
+      </bs-card-body>
+    </bs-card>
+  }
+
+  <p class="small text-body-secondary mb-0">
+    The full reference, including what happens in every case, is
+    <a href="https://github.com/MintPlayer/MintPlayer.Spark/blob/master/docs/code-coverage/dependency-updates.md" target="_blank" rel="noopener">the dependency updates guide</a>.
+  </p>
+</div>
+
+<ng-template #code let-code let-language="language">
+  <bs-code-snippet [code]="code" [language]="language" class="d-block mb-3" />
+</ng-template>
