@@ -14,7 +14,8 @@ empty body, so this document is its design. App: `apps/CodeCoverage` (**producti
 | Spikes S1–S11 (§10) | ⏸ **postponed**, possibly never; owner, 2026-10-09: "we'll see" |
 | Every other milestone (§11: M1, M2, M4–M11) | ⏸ **postponed**, possibly never. Nothing beyond M3 is built |
 | **Restart (§13):** a generic engine on the merge queue's workflow-hook pattern (#515/#517) | ✅ investigated + **grilled 2026-10-15 (R1–R19, §13.10 + §13.11.4 + §13.12); test plan §13.11; spikes S12/S13/S14/S17 done (§13.12)**. Next: N1–N9 implementation; S18 after deploy |
-| N5–N7 + the bot side of N8/N9 (saga, red CI and commands, propagation and enqueue-on-green, onboarding PR) | ✅ built 2026-10-16, decisions D-L1–D-L15 (§13.12); tests written, **not run yet**; fleet view, App manifest, docs and S18 remain |
+| N5–N7 + the bot side of N8/N9 (saga, red CI and commands, propagation and enqueue-on-green, onboarding PR) | ✅ built 2026-10-16, decisions D-L1–D-L15 (§13.12); tests written, **not run yet** |
+| Saga gaps, App permissions, N9 UI, P12, user guide | ✅ built 2026-10-16, decisions D-N1–D-N5 (§13.12): fix pins (R4), lockfile relock in the replay, build-vs-test from check names, the `DependencyUpdates` App need (+ Dependabot alerts, `dependabot_alert`, `pull_request`), the account fleet view + readiness and the repository panel, the graph reading the lookup report; user guide [dependency-updates.md](dependency-updates.md). Tests written, **not run yet** (owner batches the sweep). Remaining: the owner's sweep, deploy, the App's permission change on GitHub, and S18 live |
 
 The rest of this document (§1–§12) is the plan as grilled on 2026-10-09. **§13 (2026-10-15) proposes replacing
 §7.1, most of §5 and §10–§11.** Where §13 and §1–§12 disagree, §13 is the proposal under discussion and the older
@@ -722,6 +723,14 @@ Dropped or absorbed:
 
 ### 13.8 Milestones (one PR, if §13 is accepted)
 
+**Status (2026-10-16):** N1–N9 are built on `docs/issue419-dependency-updates-restart` with their tests (not run yet;
+the owner batches the sweep). N1 ✅ (`WorkflowHook`), N2 ✅ (D-P13/D-P16), N3 ✅ (`dependency-action`, templates,
+contracts), N4 ✅ (D-P1–D-P18), N5 ✅ (D-L1–D-L6, D-N1, D-N2), N6 ✅ (D-L7, D-L10, D-N3), N7 ✅ (D-L9, D-L11), N8 ✅ bot and
+runner side (R7–R9, R15, R19; the dispatched half is S18), N9 ✅ (onboarding D-L14, permissions D-N4, fleet view and
+readiness D-N5, coverage delta R11, docs). P12 ✅ (D-N5). Security PR (old M10) not built: superseded by R10. **Left:** S18
+live on SparkTest after deploy, and the S12/S13 re-captures that replace the REST-doc bodies in
+`GitHubForgeDependencyUpdatesTests`.
+
 1. **N1. Workflow hook extraction (S15).** No behaviour change for the merge queue.
 2. **N2. Settings and rules.** = M1 + M2, plus the `dependencies.lookupAction` / `applyAction` / `migrate` keys.
 3. **N3. The workflow templates and the action.**
@@ -1245,15 +1254,15 @@ taken while building them (assistant, within R1–R19, D-S*, D-C*, D-V*, D-P*):
   are never merged textually, and the writer cannot regenerate them. The human's manifest values are read from the human
   commits' own diffs (the changed token of a line naming a planned dependency, D-V2's three lines above), conflict or not,
   and become Q11 holds, so the next slot does not fight the person. Replayed commits keep the person's author, committer,
-  dates and message. "Packages a human fix depends on stay pinned" (R4) is **not built**: the human hold covers the values a
-  person set; a fix that depends on an unchanged pin is not detected.
+  dates and message. ~~"Packages a human fix depends on stay pinned" (R4) is not built~~ **superseded by D-N1** (built), and
+  ~~"a lockfile included, stops"~~ **superseded by D-N2** for the plan's own lockfiles.
 - **D-L7. Bisect (old §7.4).** One re-run of the failing check runs first (`RerunCheckAsync`), counted in the budget; a red
   verdict within 2 minutes of it is the old one. Then suspects are left out **cumulatively** (majors first, then a version red
   elsewhere in the fleet, then the later plan groups, D-P10's order reversed), one re-plan + apply + CI run per step; the first
   green build names the last group left out, and a red build with one suspect left names that one. The culprit gets an
   unattributed hold (`red:<group>`, lifts when the lookup changes or after 4 slots), its versions go on the fleet's red list
-  (Q15), and a refresh rebuilds everything else. Failing stack traces are not read (no log access), and build failures are
-  not told from test failures. A budget of 0 reports the ranked suspects without bisecting; a writer's `bisect` comment then
+  (Q15), and a refresh rebuilds everything else. Failing stack traces are not read (no log access); ~~build failures are
+  not told from test failures~~ **superseded by D-N3** (told apart by the failing checks' names). A budget of 0 reports the ranked suspects without bisecting; a writer's `bisect` comment then
   runs one with a budget of 4.
 - **D-L8. The bot's own check run** (`Dependency updates`) is completed (neutral, success, failure) everywhere except while it
   bisects, when it stays in progress. The saga leaves it and its check suite out of its own gate (else the gate waits for
@@ -1272,8 +1281,8 @@ taken while building them (assistant, within R1–R19, D-S*, D-C*, D-V*, D-P*):
   30 minutes per producer; each consumer on the account (manifest `Consumes` ∩ the producer's `Produces`) gets an own-release
   run.
 - **D-L12. Security alerts (R10)** arrive as GitHub `dependabot_alert` events (created, reopened, reintroduced), mapped onto
-  the lookup's ecosystem words. The App must subscribe to the event and request *Dependabot alerts: read*; that is not in the
-  `DependencyUpdates` need yet (a separate accept prompt, as §7.9 noted).
+  the lookup's ecosystem words. The App must subscribe to the event and request *Dependabot alerts: read*; ~~that is not in the
+  `DependencyUpdates` need yet~~ **superseded by D-N4** (it is now).
 - **D-L13. The schedule (Q8)** is checked by a cron every 10 minutes; a slot is due from the repository's spread minute (a
   hash of its id) to the end of the slot hour, deduplicated per repository and local day. The file's `schedule` parts and
   opt-out are read from the run document, written at each run's start, so a changed file takes effect from the next run.
@@ -1289,6 +1298,74 @@ taken while building them (assistant, within R1–R19, D-S*, D-C*, D-V*, D-P*):
   (R15)** each refuse the enqueue with their own line in the body. A security run follows D-P15 (the policy's `Security` mode
   always), whether or not the pull request was blocked.
 
-**Not built here:** the fleet view (§8 readiness, the propagation wave), the App manifest change itself (Workflows: write,
-the `release` and `dependabot_alert` events), docs (`hosting.md`, the README), and any live capture: every GitHub body in
-`GitHubForgeDependencyUpdatesTests` follows the REST docs and S18 must replace them with captures.
+~~**Not built here:** the fleet view (§8 readiness, the propagation wave), the App manifest change itself (Workflows: write,
+the `release` and `dependabot_alert` events), docs (`hosting.md`, the README)~~ **built in the next wave (D-N1–D-N5)**,
+except the propagation wave view (the fleet view's per-package rows show which consumer is on which version, which is what
+the wave view was for) and any live capture: every GitHub body in `GitHubForgeDependencyUpdatesTests` follows the REST
+docs and S18 must replace them with captures. The App's settings on GitHub are not in the repository (no App manifest JSON
+exists here); the owner changes them by hand, as [hosting.md §6](hosting.md#6-github-app) lists.
+
+#### Saga gaps, permissions, the fleet view and P12 (2026-10-16)
+
+Built in `CodeCoverage/Dependencies/Lifecycle` (`DependencyFixPins`, `DependencyRelockPlan`, `DependencyCheckFailure`,
+`DependencyFleetView`, `DependencySlots.Next`), `CodeCoverage/Dependencies/DependencyLookupIngest.cs`, the replay
+(`RollingBranchReplay`: `relockable`, `RelockTrailer`) and the writer's rolling job (`relock-needed`), the read endpoints in
+`BrowseController.DependencyUpdates.cs`, the App need in `GitHubInstallationPermissions` and `AccountPermissionsController`,
+and the Angular panels `account-dependency-updates-panel` and `repo-dependency-updates-panel`. User guide:
+[dependency-updates.md](dependency-updates.md). Decisions (assistant, within R1–R19 and D-L*):
+
+- **D-N1. A human fix keeps the versions it was made against (R4).** *Detection by the fix's base:* the commits above the
+  bot's own (`RollingBotSha`) are compared against it (the forge's compare); if they change any path that is not a package
+  file or lockfile of the plan that commit was built from (`DependencyUpdateRunData.RollingPlanJson`, kept across runs,
+  cleared when the pull request is merged or closed), they are a fix. A truncated or unreadable compare counts as a fix.
+  *The pin:* each group of that previous plan whose versions the policy moved (or no longer plans) is planned again from
+  the previous plan's items, token for token, over the current lookup records (nothing parsed, R1). A person's own hold
+  (comment or human value) wins, as does a record whose current value moved on the default branch, and platform groups are
+  not pinned. A pinned group never auto-merges (a person already changed code there). The pins are listed in the body
+  ("Pinned for a fix on this branch") and on the repository panel. Rejected: pinning every dependency of a branch with any
+  human commit (would freeze manifest-only edits, which Q11 already covers); reading the fix's imports (per-ecosystem code,
+  R1).
+- **D-N2. Lockfile conflicts in the replay are regenerated, not stopped.** Mirrors the merge queue's take-one-side +
+  regenerate (O35/O37) without its per-rule workflow: the writer takes the **bot's side** of a conflicting lockfile that
+  belongs to the plan (never a textual merge), finishes the replay, and pushes the replayed head to the work ref instead of
+  the rolling branch (`relock-needed`). The saga commits a **relock plan** on it (`DependencyRelockPlan`: per lockfile, the
+  plan's items that own it, as lockfile-only updates at the versions already in the manifests; owners a person changed by
+  hand are left out) and dispatches the repository's own **apply workflow** in purpose `relock` (no action change: lockfile-
+  only items run pin + relock + verify, scripts off, D-C3 consistency check). Its patch is judged by the same `dependencies`
+  profile against the replayed head, then committed on it with a `Dependency-Relock:` trailer and pushed under the lease of
+  the head the replay read; a later replay skips relock commits (they are derived, and made again when needed). Any failure
+  (relock run red, a group not regenerated, a lockfile whose every owner a person changed) falls back to the old stop. One
+  more fallback: a replay conflict whose human values have just become Q11 holds is retried **once, at once** (a refresh,
+  which no longer plans those dependencies, so the same commits replay cleanly); a second conflict stops for a person.
+  Rejected: reusing the merge queue's `lockfile-regenerate` action (it needs a merge-queue rule and its provenance refuses
+  new versions by design, §13.5); a new action mode (a rebuild of the committed `dist` for what lockfile-only items already
+  do).
+- **D-N3. Build vs test failure, from check names only.** The failing check runs' names are classified (`build`, `compile`,
+  `restore`, `lint`, `typecheck`, `pack` → build; `test`, `e2e`, `spec`, `integration`, … → test; both → both) and the bisect
+  and red comments say "a build check failed" or "a test check failed". Logs and annotations are not read: a log is runner
+  output, and the Actions log API per job would buy only the comment's wording; a check named `ci` stays unknown. The
+  bisect itself is the same either way. This is the shipped behaviour, not a deferral.
+- **D-N4. The `DependencyUpdates` App need is complete.** Contents, Pull requests, Checks, Issues, Actions and Workflows
+  write, Metadata read, **Dependabot alerts read** (`vulnerability_alerts`, shown as "Dependabot alerts"), and the events
+  `workflow_run`, `issue_comment`, `check_run`, `check_suite`, **`pull_request`** (the saga's merged/closed signals),
+  `push`, `release`, **`dependabot_alert`**. Onboarding checks it (D-L14); the Account page's permission notice adds its
+  App-side gaps **only for an account with dependency updates on** (an account without the feature is never asked). The
+  repository has no App manifest JSON; `hosting.md` §6 and the README list the permissions and events.
+- **D-N5. The fleet view, readiness and the repository panel are built from the saga's own state**, never from a forge or a
+  registry: run documents, policy state, the last report (projected server-side, the lookup JSON is never loaded) and the
+  manifests. *Visibility:* the repositories are exactly `GetAccountRepos`' list for the viewer (#453); every document is
+  loaded by an id derived from one of them; the account's red versions are used only for the repository they belong to.
+  *Health* per repository: off, new, onboarding, blocked, running, waiting, bisecting, red (`red`, `bisected`), frozen
+  (`replay-conflict`, `rolling-rewritten`), **silent** (`dispatch-uncorrelated`, `dispatch-refused`, `*-timeout`,
+  `*-missing`: a dispatch whose run never answered), failed, ok. *Packages:* the ones two repositories or more use, or with
+  something going on (planned, awaiting approval, held, red), at most 300, with each repository's version (P12's lookup
+  version, else the scanners' constraint). *Readiness* per platform (Angular via `@angular/core`, and the SDK platform
+  records): the next major is the highest any lookup offered or any repository is on (R17's leading segment only); per
+  repository on-target, in-pull-request, ready (offered, and only an approval, the cooldown or an account rule in the way),
+  blocked (an R2 blocker hold, with its blockers; or fleet-red), held, or not-offered; listed only when someone is behind.
+  *Next slot:* `DependencySlots.Next`, the same day/hour rule as the cron, skipping a window whose run already started.
+  *P12:* the lookup's records are stored on the repository's manifest (`LookupConsumes`, with versions; platform and runner
+  records left out; names normalized like M3's parsers); the graph and the fleet view read them for every ecosystem the
+  lookup reported and keep the scanners for the rest. Produces stays the scanners' (a lookup says what a repository uses,
+  not what it publishes). The settings UI is Spark's own PO pages (Account, Repository, `DependencyRule`), already exposed
+  by the N2 model.
