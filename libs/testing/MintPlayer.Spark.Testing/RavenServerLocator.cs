@@ -153,6 +153,7 @@ public static class RavenServerLocator
                     if (IsProvisioned(target))
                         return true;
 
+                    RemoveIncomplete(target);
                     CopyIntoPlace(source, target, version);
                     CleanStaleStaging(target);
                     return IsProvisioned(target);
@@ -197,6 +198,27 @@ public static class RavenServerLocator
     }
 
     /// <summary>Removes staging directories abandoned by a process that died mid-copy.</summary>
+    /// <summary>
+    /// Deletes a <paramref name="target"/> that exists without the completion marker. The marker is written before the
+    /// staged copy is moved into place, so such a directory never held a complete copy: it was emptied or truncated
+    /// from outside (measured 2026-10-16: 194 of the package's 206 entries, no marker). Left in place, it made every
+    /// later <see cref="Directory.Move(string, string)"/> fail, so provisioning returned null forever and every
+    /// RavenDB test failed with "Value cannot be null. (Parameter 'ServerDirectory')". Called under the lock.
+    /// </summary>
+    private static void RemoveIncomplete(string target)
+    {
+        if (!Directory.Exists(target) || IsProvisioned(target))
+            return;
+        try
+        {
+            Directory.Delete(target, recursive: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // A file in it is held open; the move below then fails and provisioning reports null as before.
+        }
+    }
+
     private static void CleanStaleStaging(string target)
     {
         var parent = Path.GetDirectoryName(target);
