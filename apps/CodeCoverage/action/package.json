@@ -15,6 +15,7 @@
     "email": "info@mintplayer.com"
   },
   "scripts": {
+    "prebuild": "node ../../../tools/ncc-build-guard.mjs @vercel/ncc @actions/core",
     "build": "ncc build src/index.ts -o dist --minify",
     "test": "vitest run",
     "test:bundle": "vitest run --config vitest.bundle.config.ts",
