@@ -148,8 +148,8 @@ public sealed partial class RollingBranchReplay(GitRunner git)
 
     /// <summary>
     /// The human's manifest values in one commit: each changed line of a planned manifest that names a planned dependency (on
-    /// the line, or up to three lines above it, as D-V2) and whose old side held the current or the bot's value. The value is
-    /// the token where the two lines differ, after their common prefix and suffix: compared, never parsed (R1).
+    /// the line, or up to three lines above it, as D-V2). The value is the token where the two lines differ, after their
+    /// common prefix and suffix: compared, never parsed (R1).
     /// </summary>
     internal async Task<IReadOnlyList<HumanManifestValue>> HumanValuesAsync(string gitDirectory, string parent, string commit, string? author,
         IReadOnlyList<ReplayManifestEntry> entries, IReadOnlySet<string> manifests, CancellationToken cancellationToken, GitCredential? credential)
@@ -179,9 +179,9 @@ public sealed partial class RollingBranchReplay(GitRunner git)
                     var above = context.Concat(removed.Take(k)).TakeLast(3).ToList();
                     foreach (var entry in entries.Where(e => e.PackageFile == file))
                     {
+                        // The line names the dependency; its old side held the previous build's value, which need not be this
+                        // plan's (a newer version may have come out since), so it is not compared.
                         if (!Names(entry, removed[k], above) && !Names(entry, added[k], above))
-                            continue;
-                        if (!removed[k].Contains(entry.NewValue, StringComparison.Ordinal) && !removed[k].Contains(entry.CurrentValue, StringComparison.Ordinal))
                             continue;
                         var value = Difference(removed[k], added[k]);
                         if (value.Length == 0 || value == entry.NewValue || found.Any(f => f.DepName == entry.DepName && f.PackageFile == file && f.Commit == commit))
@@ -268,11 +268,15 @@ public sealed partial class RollingBranchReplay(GitRunner git)
         return start >= end ? string.Empty : after[start..end];
     }
 
-    private static bool IsTokenChar(char c) => char.IsLetterOrDigit(c) || c is '.' or '-' or '+' or '_' or '^' or '~' or '=' or '<' or '>' or '*';
+    /// <summary>What a version token is made of when the difference is widened to whole tokens; a range operator that changed
+    /// is inside the difference already, and quotes, tags and <c>=</c> end a token.</summary>
+    private static bool IsTokenChar(char c) => char.IsLetterOrDigit(c) || c is '.' or '-' or '+' or '_';
 
     /// <summary>
-    /// Every zdiff3 conflict region of <paramref name="merged"/> replaced by its third side (the human's lines); null when a
-    /// region does not parse. Line endings are kept as the file has them.
+    /// Every zdiff3 conflict region of <paramref name="merged"/> resolved for the human: where the region's three sides have
+    /// as many lines, line by line, the human's line where the human changed it and the bot's otherwise (a bot edit on the
+    /// next line survives a human edit on this one); else the human's lines whole. Null when a region does not parse. Line
+    /// endings are kept as the file has them.
     /// </summary>
     public static string? TakeTheirs(string merged)
     {
@@ -287,21 +291,37 @@ public sealed partial class RollingBranchReplay(GitRunner git)
                 continue;
             }
             i++;
+            var ours = new List<string>();
+            List<string>? @base = null;
+            var theirs = new List<string>();
             while (i < lines.Count && !IsMarker(lines[i], '|') && !IsMarker(lines[i], '='))
-                i++;
+                ours.Add(lines[i++]);
             if (i < lines.Count && IsMarker(lines[i], '|'))
             {
+                i++;
+                @base = [];
                 while (i < lines.Count && !IsMarker(lines[i], '='))
-                    i++;
+                    @base.Add(lines[i++]);
             }
             if (i >= lines.Count)
                 return null;
             i++; // =======
             while (i < lines.Count && !IsMarker(lines[i], '>'))
-                output.Append(lines[i++]);
+                theirs.Add(lines[i++]);
             if (i >= lines.Count)
                 return null;
             i++; // >>>>>>>
+
+            if (@base is not null && @base.Count == ours.Count && ours.Count == theirs.Count)
+            {
+                for (var k = 0; k < theirs.Count; k++)
+                    output.Append(theirs[k] != @base[k] ? theirs[k] : ours[k]);
+            }
+            else
+            {
+                foreach (var line in theirs)
+                    output.Append(line);
+            }
         }
         return output.ToString();
     }

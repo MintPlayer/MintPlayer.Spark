@@ -274,6 +274,18 @@ public class DependencyBisect
     public List<string> FailingChecks { get; set; } = [];
 
     public string? Culprit { get; set; }
+
+    /// <summary>What each suspect group updated, from the full (red) build: a bisect step's plan leaves groups out, so the
+    /// culprit's versions are kept here for the fleet's red list (Q15).</summary>
+    public List<DependencyBisectItem> Items { get; set; } = [];
+}
+
+public class DependencyBisectItem
+{
+    public string Group { get; set; } = string.Empty;
+    public string Ecosystem { get; set; } = string.Empty;
+    public string DepName { get; set; } = string.Empty;
+    public string Version { get; set; } = string.Empty;
 }
 
 public class DependencyRunEvent

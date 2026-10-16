@@ -77,20 +77,25 @@ public interface IGitWriterSidecar
     // ── The dependency updater (dependency-updates PRD R4, R14, R16) ───────────────────────────────────
 
     /// <summary>R14: <c>mintplayer/dependencies-work</c> = <c>expected_sha</c> + the plan commit, or + the validated apply patch.</summary>
-    Task<GitWriterDependencyResult> DependencyWorkRefAsync(GitWriterDependencyRequest request, CancellationToken cancellationToken = default);
+    Task<GitWriterDependencyResult> DependencyWorkRefAsync(GitWriterDependencyRequest request, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException("This git writer has no dependency jobs: DependencyWorkRefAsync.");
 
     /// <summary>The <c>dependencies</c> patch profile on an apply patch; nothing is pushed.</summary>
-    Task<GitWriterDependencyResult> DependencyValidateAsync(GitWriterDependencyRequest request, CancellationToken cancellationToken = default);
+    Task<GitWriterDependencyResult> DependencyValidateAsync(GitWriterDependencyRequest request, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException("This git writer has no dependency jobs: DependencyValidateAsync.");
 
     /// <summary>R4: rebuild <c>mintplayer/dependencies</c> (bot commit, migrations, the humans' commits replayed) and push it
     /// under a lease, or nothing when the tree is the branch's.</summary>
-    Task<GitWriterDependencyResult> DependencyRollingAsync(GitWriterDependencyRequest request, CancellationToken cancellationToken = default);
+    Task<GitWriterDependencyResult> DependencyRollingAsync(GitWriterDependencyRequest request, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException("This git writer has no dependency jobs: DependencyRollingAsync.");
 
     /// <summary>R16: the onboarding commit on <c>mintplayer/dependencies-onboarding</c>.</summary>
-    Task<GitWriterDependencyResult> DependencyFilesAsync(GitWriterDependencyRequest request, CancellationToken cancellationToken = default);
+    Task<GitWriterDependencyResult> DependencyFilesAsync(GitWriterDependencyRequest request, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException("This git writer has no dependency jobs: DependencyFilesAsync.");
 
     /// <summary>R14: deletes the work ref while it is at <see cref="GitWriterDependencyRequest.ExpectedSha"/>. Idempotent.</summary>
-    Task<GitWriterDependencyResult> DependencyDeleteWorkRefAsync(GitWriterDependencyRequest request, CancellationToken cancellationToken = default);
+    Task<GitWriterDependencyResult> DependencyDeleteWorkRefAsync(GitWriterDependencyRequest request, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException("This git writer has no dependency jobs: DependencyDeleteWorkRefAsync.");
 }
 
 /// <summary>A typed <see cref="HttpClient"/> over the writer's contract.</summary>

@@ -847,8 +847,12 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
                 return;
         }
 
+        var bisecting = run.Bisect is { Culprit: null };
         await UpsertPullRequestAsync(context, report, null, ct);
-        await PublishOwnCheckAsync(context, run.RollingSha!, EForgeQueueCheckState.Neutral, "Waiting for CI", $"{report.Groups.Count} group(s) applied; waiting for this commit's checks.", ct);
+        // Old §7.4: while a bisection runs, the bot's own check stays in progress on the head, a "don't merge".
+        await PublishOwnCheckAsync(context, run.RollingSha!, bisecting ? EForgeQueueCheckState.InProgress : EForgeQueueCheckState.Neutral,
+            bisecting ? "Bisecting: don't merge" : "Waiting for CI",
+            bisecting ? $"Testing without {string.Join(", ", run.Bisect!.Excluded)} (step {run.Bisect.Spent} of {run.Bisect.Budget})." : $"{report.Groups.Count} group(s) applied; waiting for this commit's checks.", ct);
         await ScheduleCleanupAsync(context, ct);
 
         if (run.PendingTrigger is { } next)
@@ -856,7 +860,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
             await EndAsync(context, "published", $"published {Short(run.RollingSha)}; a {Word(next)} trigger is waiting", ct);
             return;
         }
-        Transition(run, EDependencyRunState.AwaitingChecks, $"waiting for the checks of {Short(run.RollingSha)}");
+        Transition(run, bisecting ? EDependencyRunState.Bisecting : EDependencyRunState.AwaitingChecks, $"waiting for the checks of {Short(run.RollingSha)}");
         await ScheduleAsync(run, EDependencyStep.PollChecks, ChecksPollInterval, ct);
         await ScheduleAsync(run, EDependencyStep.ChecksTimeout, ChecksTimeout, ct);
     }
@@ -955,6 +959,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
                 Sha = run.RollingSha,
                 FailingChecks = [.. gate.Failed],
                 FailingRunUrl = failedRuns.Select(r => r.DetailsUrl).FirstOrDefault(u => u is not null),
+                Items = [.. report.Groups.SelectMany(g => g.Items.Select(i => new DependencyBisectItem { Group = g.Group, Ecosystem = i.Ecosystem, DepName = i.DepName, Version = i.NewVersion }))],
             };
             if (bisect.Budget == 0 || bisect.Suspects.Count == 0)
             {
@@ -973,10 +978,10 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
             return;
         }
 
-        // Still red without the suspects tried so far: one suspect left means it is the culprit.
-        if (bisect.Suspects.Count == 1)
+        // Still red without the suspects tried so far: the one suspect never left out is the culprit.
+        if (bisect.Suspects.Count - bisect.Excluded.Count == 1)
         {
-            await CulpritAsync(context, bisect, bisect.Suspects[0], ct);
+            await CulpritAsync(context, bisect, bisect.Suspects.First(s => !bisect.Excluded.Contains(s)), ct);
             return;
         }
         if (DependencyBisectPlanner.NextExclusion(bisect) is not { } next)
@@ -996,23 +1001,23 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         var (repository, run) = (context.Repository, context.Run);
         var data = await DataAsync(context, ct);
         var lookup = DependencyContract.Deserialize<LookupDocument>(data.LookupJson!)!;
-        var group = Report(data).Groups.FirstOrDefault(g => g.Group == culprit);
+        var items = bisect.Items.Where(i => i.Group == culprit).ToList();
         var state = await stateStore.LoadAsync(repository.Id!, ct);
         state.Holds.RemoveAll(h => h.Id == $"red:{culprit}");
         state.Holds.Add(new DependencyHold
         {
             Id = $"red:{culprit}", Kind = EDependencyHoldKind.Unattributed, Group = culprit,
-            DepNames = [.. group?.Items.Select(i => i.DepName).Distinct(StringComparer.Ordinal) ?? []],
+            DepNames = [.. items.Select(i => i.DepName).Distinct(StringComparer.Ordinal)],
             Reason = $"CI went red with it{(bisect.FailingRunUrl is { } url ? $" ({url})" : string.Empty)}; found by bisect",
             Fingerprint = DependencyHolds.Fingerprint(lookup), CreatedAtUtc = Now, PlanId = run.PlanId,
         });
-        if (context.Account?.Id is { } accountId && group is not null)
+        if (context.Account?.Id is { } accountId && items.Count > 0)
         {
             var fleet = await stateStore.LoadFleetAsync(accountId, ct);
-            foreach (var item in group.Items)
+            foreach (var item in items)
             {
-                fleet.RedVersions.RemoveAll(r => r.Ecosystem == item.Ecosystem && r.DepName == item.DepName && r.Version == item.NewVersion && r.Repository == repository.Id);
-                fleet.RedVersions.Add(new DependencyFleetRed { Ecosystem = item.Ecosystem, DepName = item.DepName, Version = item.NewVersion, Repository = repository.Id!, RunUrl = bisect.FailingRunUrl, AtUtc = Now });
+                fleet.RedVersions.RemoveAll(r => r.Ecosystem == item.Ecosystem && r.DepName == item.DepName && r.Version == item.Version && r.Repository == repository.Id);
+                fleet.RedVersions.Add(new DependencyFleetRed { Ecosystem = item.Ecosystem, DepName = item.DepName, Version = item.Version, Repository = repository.Id!, RunUrl = bisect.FailingRunUrl, AtUtc = Now });
             }
             if (fleet.RedVersions.Count > DependencyFleetState.MaxEntries)
                 fleet.RedVersions = [.. fleet.RedVersions.OrderByDescending(r => r.AtUtc).Take(DependencyFleetState.MaxEntries)];

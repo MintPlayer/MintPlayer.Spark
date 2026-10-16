@@ -129,7 +129,10 @@ public static class DependencyOnboarding
             foreach (var entry in entries.Children.OfType<YamlMappingNode>())
             {
                 var ecosystem = Scalar(entry, "package-ecosystem") ?? "?";
-                var directory = Scalar(entry, "directory") ?? Scalar(entry, "directories") ?? "/";
+                var directory = Scalar(entry, "directory")
+                    ?? (entry.Children.TryGetValue(new YamlScalarNode("directories"), out var dirs) && dirs is YamlSequenceNode list
+                        ? string.Join(", ", list.Children.OfType<YamlScalarNode>().Select(d => d.Value))
+                        : "/");
                 removed.Add($"{ecosystem} ({directory})");
                 if (entry.Children.TryGetValue(new YamlScalarNode("ignore"), out var ignore) && ignore is YamlSequenceNode ignores)
                 {
@@ -148,7 +151,9 @@ public static class DependencyOnboarding
             }
         }
 
-        var meaningful = root.Children.Keys.OfType<YamlScalarNode>().Select(k => k.Value).Where(k => k is not ("version" or "registries")).ToList();
+        // What only served the version updates goes with them: the version line, the registries and the groups of updates.
+        var meaningful = root.Children.Keys.OfType<YamlScalarNode>().Select(k => k.Value)
+            .Where(k => k is not ("version" or "registries" or "multi-ecosystem-groups" or "groups")).ToList();
         if (removed.Count == 0)
             return (yml, [], rules, registries);
         if (meaningful.Count == 0)
