@@ -1,0 +1,26 @@
+{"time":1792092666522,"hostname":"<HOST>","pid":2308,"level":"debug","name":"pnpm:scope","selected":1}
+{"time":1792092666524,"hostname":"<HOST>","pid":2308,"level":"debug","name":"pnpm","msg":"loading workspace state"}
+{"time":1792092666572,"hostname":"<HOST>","pid":2308,"level":"debug","name":"pnpm:package-manifest","initial":{"name":"c","private":true,"dependencies":{"react":"17.0.2","react-dom":"18.2.0"}},"prefix":"<SPIKES>\\s13\\work\\pnpm-conflict"}
+{"time":1792092666575,"hostname":"<HOST>","pid":2308,"level":"debug","name":"pnpm:context","currentLockfileExists":false,"storeDir":"<HOME>\\AppData\\Local\\pnpm\\store\\v11","virtualStoreDir":"<SPIKES>\\s13\\work\\pnpm-conflict\\node_modules\\.pnpm"}
+{"time":1792092666579,"hostname":"<HOST>","pid":2308,"level":"debug","name":"pnpm:stage","prefix":"<SPIKES>\\s13\\work\\pnpm-conflict","stage":"resolution_started"}
+{"time":1792092666633,"hostname":"<HOST>","pid":2308,"level":"debug","name":"pnpm:_dependency_resolved","resolution":"react@17.0.2","wanted":{"dependentId":".","name":"react","rawSpec":"17.0.2"}}
+{"time":1792092666633,"hostname":"<HOST>","pid":2308,"level":"debug","name":"pnpm:progress","packageId":"react@17.0.2","requester":"<SPIKES>\\s13\\work\\pnpm-conflict","status":"resolved"}
+{"time":1792092666652,"hostname":"<HOST>","pid":2308,"level":"debug","name":"pnpm:_dependency_resolved","resolution":"react-dom@18.2.0","wanted":{"dependentId":".","name":"react-dom","rawSpec":"18.2.0"}}
+{"time":1792092666652,"hostname":"<HOST>","pid":2308,"level":"debug","name":"pnpm:progress","packageId":"react-dom@18.2.0","requester":"<SPIKES>\\s13\\work\\pnpm-conflict","status":"resolved"}
+{"time":1792092666858,"hostname":"<HOST>","pid":2308,"level":"debug","name":"pnpm:_dependency_resolved","resolution":"object-assign@4.1.1","wanted":{"dependentId":"react@17.0.2","name":"object-assign","rawSpec":"^4.1.1"}}
+{"time":1792092666858,"hostname":"<HOST>","pid":2308,"level":"debug","name":"pnpm:progress","packageId":"object-assign@4.1.1","requester":"<SPIKES>\\s13\\work\\pnpm-conflict","status":"resolved"}
+{"time":1792092666859,"hostname":"<HOST>","pid":2308,"level":"debug","name":"pnpm:_dependency_resolved","resolution":"loose-envify@1.4.0","wanted":{"dependentId":"react@17.0.2","name":"loose-envify","rawSpec":"^1.1.0"}}
+{"time":1792092666859,"hostname":"<HOST>","pid":2308,"level":"debug","name":"pnpm:progress","packageId":"loose-envify@1.4.0","requester":"<SPIKES>\\s13\\work\\pnpm-conflict","status":"resolved"}
+{"time":1792092666861,"hostname":"<HOST>","pid":2308,"level":"debug","name":"pnpm:_dependency_resolved","resolution":"loose-envify@1.4.0","wanted":{"dependentId":"react-dom@18.2.0","name":"loose-envify","rawSpec":"^1.1.0"}}
+{"time":1792092666918,"hostname":"<HOST>","pid":2308,"level":"debug","name":"pnpm:_dependency_resolved","resolution":"js-tokens@4.0.0","wanted":{"dependentId":"loose-envify@1.4.0","name":"js-tokens","rawSpec":"^3.0.0 || ^4.0.0"}}
+{"time":1792092666918,"hostname":"<HOST>","pid":2308,"level":"debug","name":"pnpm:progress","packageId":"js-tokens@4.0.0","requester":"<SPIKES>\\s13\\work\\pnpm-conflict","status":"resolved"}
+{"time":1792092667326,"hostname":"<HOST>","pid":2308,"level":"debug","name":"pnpm:_dependency_resolved","resolution":"scheduler@0.23.2","wanted":{"dependentId":"react-dom@18.2.0","name":"scheduler","rawSpec":"^0.23.0"}}
+{"time":1792092667327,"hostname":"<HOST>","pid":2308,"level":"debug","name":"pnpm:progress","packageId":"scheduler@0.23.2","requester":"<SPIKES>\\s13\\work\\pnpm-conflict","status":"resolved"}
+{"time":1792092667329,"hostname":"<HOST>","pid":2308,"level":"debug","name":"pnpm:_dependency_resolved","resolution":"loose-envify@1.4.0","wanted":{"dependentId":"scheduler@0.23.2","name":"loose-envify","rawSpec":"^1.1.0"}}
+{"time":1792092667336,"hostname":"<HOST>","pid":2308,"level":"debug","name":"pnpm:package-manifest","prefix":"<SPIKES>\\s13\\work\\pnpm-conflict","updated":{"name":"c","private":true,"dependencies":{"react":"17.0.2","react-dom":"18.2.0"}}}
+{"time":1792092667339,"hostname":"<HOST>","pid":2308,"level":"debug","name":"pnpm:stage","prefix":"<SPIKES>\\s13\\work\\pnpm-conflict","stage":"resolution_done"}
+{"time":1792092667368,"hostname":"<HOST>","pid":2308,"level":"debug","name":"pnpm:stage","prefix":"<SPIKES>\\s13\\work\\pnpm-conflict","stage":"importing_done"}
+{"time":1792092667373,"hostname":"<HOST>","pid":2308,"level":"debug","name":"pnpm:peer-dependency-issues","issuesByProjects":{".":{"bad":{"react":[{"foundVersion":"17.0.2","resolvedFrom":[],"parents":[{"name":"react-dom","version":"18.2.0"}],"optional":false,"wantedRange":"^18.2.0"}]},"missing":{},"conflicts":[],"intersections":{}}}}
+{"time":1792092667373,"hostname":"<HOST>","pid":2308,"level":"debug","name":"pnpm:summary","prefix":"<SPIKES>\\s13\\work\\pnpm-conflict"}
+{"time":1792092667373,"hostname":"<HOST>","pid":2308,"level":"debug","name":"pnpm:ignored-scripts","packageNames":[]}
+{"time":1792092667374,"hostname":"<HOST>","pid":2308,"level":"debug","name":"pnpm:execution-time","startedAt":1792092665988,"endedAt":1792092667374}

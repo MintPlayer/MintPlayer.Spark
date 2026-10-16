@@ -1,0 +1,12 @@
+    Updating crates.io index
+error: failed to select a version for `serde_derive`.
+    ... required by package `serde v1.0.200`
+    ... which satisfies dependency `serde = "=1.0.200"` of package `s13 v0.1.0 (<SPIKES>\s13\work\cargo)`
+versions that meet the requirements `=1.0.200` are: 1.0.200
+
+all possible versions conflict with previously selected packages.
+
+  previously selected package `serde_derive v1.0.190`
+    ... which satisfies dependency `serde_derive = "=1.0.190"` of package `s13 v0.1.0 (<SPIKES>\s13\work\cargo)`
+
+failed to select a version for `serde_derive` which could resolve this conflict

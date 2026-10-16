@@ -1,0 +1,15 @@
+{"type":"info","name":0,"displayName":"YN0000","indent":"· ","data":"Yarn 4.5.3"}
+{"type":"info","name":null,"displayName":"YN0000","indent":"","data":"┌ Resolution step"}
+{"type":"info","name":85,"displayName":"YN0085","indent":"│ ","data":"+ react-dom@npm:18.2.0, react@npm:17.0.2, js-tokens@npm:4.0.0, loose-envify@npm:1.4.0, object-assign@npm:4.1.1, scheduler@npm:0.23.2"}
+{"type":"info","name":null,"displayName":"YN0000","indent":"","data":"└ Completed in 0s 965ms"}
+{"type":"info","name":null,"displayName":"YN0000","indent":"","data":"┌ Post-resolution validation"}
+{"type":"warning","name":60,"displayName":"YN0060","indent":"│ ","data":"react is listed by your project with version 17.0.2 (pcb45e), which doesn't satisfy what react-dom requests (^18.2.0)."}
+{"type":"warning","name":86,"displayName":"YN0086","indent":"│ ","data":"Some peer dependencies are incorrectly met by your project; run yarn explain peer-requirements <hash> for details, where <hash> is the six-letter p-prefixed code."}
+{"type":"info","name":null,"displayName":"YN0000","indent":"","data":"└ Completed"}
+{"type":"info","name":null,"displayName":"YN0000","indent":"","data":"┌ Fetch step"}
+{"type":"info","name":13,"displayName":"YN0013","indent":"│ ","data":"6 packages were added to the project (+ 4.7 MiB)."}
+{"type":"info","name":null,"displayName":"YN0000","indent":"","data":"└ Completed in 0s 451ms"}
+{"type":"info","name":null,"displayName":"YN0000","indent":"","data":"┌ Link step"}
+{"type":"warning","name":73,"displayName":"YN0073","indent":"│ ","data":"Skipped due to mode=update-lockfile"}
+{"type":"info","name":null,"displayName":"YN0000","indent":"","data":"└ Completed"}
+{"type":"warning","name":0,"displayName":"YN0000","indent":"· ","data":"Done with warnings in 1s 455ms"}

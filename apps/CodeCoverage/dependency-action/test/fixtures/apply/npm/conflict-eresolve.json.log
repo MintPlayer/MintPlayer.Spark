@@ -1,0 +1,26 @@
+npm error code ERESOLVE
+npm error ERESOLVE unable to resolve dependency tree
+npm error
+npm error While resolving: s13-npm-conflict@undefined
+npm error Found: react@17.0.2
+npm error node_modules/react
+npm error   react@"17.0.2" from the root project
+npm error
+npm error Could not resolve dependency:
+npm error peer react@"^18.2.0" from react-dom@18.2.0
+npm error node_modules/react-dom
+npm error   react-dom@"18.2.0" from the root project
+npm error
+npm error Fix the upstream dependency conflict, or retry this command with --force or --legacy-peer-deps to accept an incorrect (and potentially broken) dependency resolution.
+npm error
+npm error
+npm error For a full report see:
+npm error <HOME>\AppData\Local\npm-cache\_logs\2026-10-15T18_59_26_283Z-eresolve-report.txt
+{
+  "error": {
+    "code": "ERESOLVE",
+    "summary": "unable to resolve dependency tree",
+    "detail": "While resolving: s13-npm-conflict@undefined\nFound: react@17.0.2\nnode_modules/react\n  react@\"17.0.2\" from the root project\n\nCould not resolve dependency:\npeer react@\"^18.2.0\" from react-dom@18.2.0\nnode_modules/react-dom\n  react-dom@\"18.2.0\" from the root project\n\nFix the upstream dependency conflict, or retry this command with --force or --legacy-peer-deps to accept an incorrect (and potentially broken) dependency resolution.\n\n\nFor a full report see:\n<HOME>\\AppData\\Local\\npm-cache\\_logs\\2026-10-15T18_59_26_283Z-eresolve-report.txt"
+  }
+}
+npm error A complete log of this run can be found in: <HOME>\AppData\Local\npm-cache\_logs\2026-10-15T18_59_26_283Z-debug-0.log

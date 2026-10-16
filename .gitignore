@@ -98,6 +98,8 @@ StyleCopReport.xml
 *.tmp_proj
 *_wpftmp.csproj
 *.log
+# Real resolver output captured by spike S13: the dependency-action's blocker parsers are tested on it.
+!apps/CodeCoverage/dependency-action/test/fixtures/**/*.log
 *.vspscc
 *.vssscc
 .builds
