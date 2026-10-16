@@ -51,7 +51,8 @@ public partial class GitHubForgeIntegration : IForgeIntegration
     /// </para>
     /// </remarks>
     public EForgeCapability[] Capabilities =>
-        [EForgeCapability.Statuses, EForgeCapability.Comments, EForgeCapability.GitMirror, EForgeCapability.MergeQueue, EForgeCapability.CheckButtons];
+        [EForgeCapability.Statuses, EForgeCapability.Comments, EForgeCapability.GitMirror, EForgeCapability.MergeQueue, EForgeCapability.CheckButtons,
+            EForgeCapability.RepositoryAdminCheck, EForgeCapability.SetupRedirect];
 
     public Task<ForgeVisibility> GetVisibilityAsync(CancellationToken cancellationToken = default)
         => access.GetVisibilityAsync(cancellationToken);

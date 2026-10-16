@@ -314,10 +314,12 @@ public partial class GitHubForgeDependencyUpdates : IForgeDependencyUpdates
             try { json = JsonDocument.Parse(bytes); }
             catch (JsonException) { /* not JSON: an error page from a proxy; the status decides */ }
         }
-        if (response.StatusCode == HttpStatusCode.Forbidden && response.Headers.TryGetValues("x-ratelimit-remaining", out var remaining) && remaining.FirstOrDefault() == "0")
+        // P16: a rate limit is "not now", never a refusal (a secondary limit is a 403 too) and never an absence.
+        var message = json?.RootElement is { ValueKind: JsonValueKind.Object } errorRoot ? Str(errorRoot, "message") : null;
+        if (GitHubRateLimits.Classify(response, message, DateTimeOffset.UtcNow, $"{method} {path}") is { } limited)
         {
             json?.Dispose();
-            throw new ForgeRequestException($"GitHub rate limit reached on {method} {path}.", 429);
+            throw new ForgeRequestException($"GitHub rate limit reached on {method} {path}.", 429, limited);
         }
         var accepted = response.Headers.TryGetValues("X-Accepted-GitHub-Permissions", out var values) ? values.FirstOrDefault() : null;
         return new Reply(response.StatusCode, json, accepted, method.Method, path);

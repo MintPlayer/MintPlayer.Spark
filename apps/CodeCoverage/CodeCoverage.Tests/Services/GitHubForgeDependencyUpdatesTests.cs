@@ -15,16 +15,16 @@ namespace CodeCoverage.Tests.Services;
 /// <see cref="GitHubForgeDependencyUpdates"/> over <see cref="StubGitHub"/>.
 /// </summary>
 /// <remarks>
-/// ⚠️ <b>None of these bodies is live-captured.</b> Their shapes follow docs.github.com/rest (git refs and tags, contents,
-/// pulls, reactions, check runs, artifacts) as of 2026-10; S18 (end to end on SparkTest) captures the real answers and replaces
-/// them. Owner, repository and logins are neutral placeholders.
+/// <b>The READ bodies are live captures</b> (2026-10-16, after S18; <c>Fixtures/GitHub/DependencyUpdates/SOURCE.md</c>):
+/// git refs and tags, contents, pulls, the artifact listing. <b>The WRITE bodies are still docs-derived</b> (marked
+/// "docs:"): creating a pull request, editing it, a reaction, the check run, the artifact zip. Re-capturing them would
+/// write to a repository. Owner, repository and logins are the placeholders <c>acme</c> / <c>widget</c>.
 /// </remarks>
 public class GitHubForgeDependencyUpdatesTests
 {
     private const long InstallationId = 4242;
     private const string Repo = "/repos/acme/widget";
     private const string Commit = "6f9b0a0f8d7e5e3c2b1a09f8e7d6c5b4a3928170";
-    private const string TagObject = "c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00";
 
     private static readonly string AccountId = Account.DocumentId(EForgeProvider.GitHub, 77);
 
@@ -41,34 +41,40 @@ public class GitHubForgeDependencyUpdatesTests
         return new GitHubForgeDependencyUpdates(github, new SingleClientHttpFactory(github.Rest), session);
     }
 
+
+    private static string Captured(string name) => Fixture.Read($"GitHub/DependencyUpdates/{name}");
+
     // ── Gap C: tag → commit ──────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task A_lightweight_tag_resolves_to_its_commit()
     {
-        // docs: GET /repos/{owner}/{repo}/git/ref/{ref}
-        var github = new StubGitHub().On(HttpMethod.Get, "/repos/actions/checkout/git/ref/tags/v4.2.0", HttpStatusCode.OK, $$$"""
-            {"ref":"refs/tags/v4.2.0","node_id":"REF_x","url":"https://api.github.com/repos/actions/checkout/git/refs/tags/v4.2.0",
-             "object":{"sha":"{{{Commit}}}","type":"commit","url":"https://api.github.com/repos/actions/checkout/git/commits/{{{Commit}}}"}}
-            """);
+        // live: GET /repos/MintPlayer/MintPlayer.Spark/git/ref/tags/dependency-update-v1, the onboarding templates' pin
+        var github = new StubGitHub().On(HttpMethod.Get, "/repos/MintPlayer/MintPlayer.Spark/git/ref/tags/dependency-update-v1", HttpStatusCode.OK,
+            Captured("ref-tag-dependency-update-v1.json"));
 
-        (await Updates(github).ResolveTagCommitAsync(Target(), "actions/checkout", "v4.2.0")).Should().Be(Commit);
+        (await Updates(github).ResolveTagCommitAsync(Target(), "MintPlayer/MintPlayer.Spark", "dependency-update-v1"))
+            .Should().Be("bfd709a9bf088fc45190e5f49da779129bb9ff45");
+    }
+
+    [Fact]
+    public async Task A_lightweight_tag_of_an_action_resolves_to_its_commit()
+    {
+        // live: GET /repos/actions/checkout/git/ref/tags/v4.2.0
+        var github = new StubGitHub().On(HttpMethod.Get, "/repos/actions/checkout/git/ref/tags/v4.2.0", HttpStatusCode.OK, Captured("ref-tag-lightweight.json"));
+
+        (await Updates(github).ResolveTagCommitAsync(Target(), "actions/checkout", "v4.2.0")).Should().Be("d632683dd7b4114ad314bca15554477dd762a938");
     }
 
     [Fact]
     public async Task An_annotated_tag_is_dereferenced_to_its_commit()
     {
-        // docs: GET /repos/{owner}/{repo}/git/tags/{tag_sha}
+        // live: GET /repos/nodejs/node/git/ref/tags/v20.0.0 (type: tag), then GET /repos/nodejs/node/git/tags/{sha}
         var github = new StubGitHub()
-            .On(HttpMethod.Get, "/repos/actions/checkout/git/ref/tags/v4.2.0", HttpStatusCode.OK, $$$"""
-                {"ref":"refs/tags/v4.2.0","object":{"sha":"{{{TagObject}}}","type":"tag","url":"https://api.github.com/repos/actions/checkout/git/tags/{{{TagObject}}}"}}
-                """)
-            .On(HttpMethod.Get, $"/repos/actions/checkout/git/tags/{TagObject}", HttpStatusCode.OK, $$$"""
-                {"node_id":"TAG_x","tag":"v4.2.0","sha":"{{{TagObject}}}","message":"v4.2.0\n","tagger":{"name":"x","email":"x@example.invalid","date":"2026-09-01T00:00:00Z"},
-                 "object":{"type":"commit","sha":"{{{Commit}}}","url":"https://api.github.com/repos/actions/checkout/git/commits/{{{Commit}}}"},"verification":{"verified":false,"reason":"unsigned"}}
-                """);
+            .On(HttpMethod.Get, "/repos/nodejs/node/git/ref/tags/v20.0.0", HttpStatusCode.OK, Captured("ref-tag-annotated-node.json"))
+            .On(HttpMethod.Get, "/repos/nodejs/node/git/tags/ffca5a7a113131b1a252fd95b53161b5182e66be", HttpStatusCode.OK, Captured("tag-object-node.json"));
 
-        (await Updates(github).ResolveTagCommitAsync(Target(), "actions/checkout", "v4.2.0")).Should().Be(Commit);
+        (await Updates(github).ResolveTagCommitAsync(Target(), "nodejs/node", "v20.0.0")).Should().Be("e7618fb5a5fc25d76b6474e2a6607f04fd6f10e0");
     }
 
     [Theory]
@@ -78,29 +84,31 @@ public class GitHubForgeDependencyUpdatesTests
     public async Task A_missing_or_malformed_tag_resolves_to_nothing(string ownerRepo, string tag)
         => (await Updates(new StubGitHub()).ResolveTagCommitAsync(Target(), ownerRepo, tag)).Should().BeNull();
 
-    // ── R15: the target action.yml, read statically ──────────────────────────────────────────────
+    // ── R15: another repository's file, read statically ──────────────────────────────────────────
 
     [Fact]
-    public async Task The_target_action_yml_is_read_as_text()
+    public async Task A_file_is_read_as_text()
     {
-        const string text = "name: checkout\nruns:\n  using: node24\n  main: dist/index.js\n";
-        // docs: GET /repos/{owner}/{repo}/contents/{path}?ref=
-        var github = new StubGitHub().On(HttpMethod.Get, $"/repos/actions/checkout/contents/action.yml?ref={Commit}", HttpStatusCode.OK, $$$"""
-            {"type":"file","encoding":"base64","size":{{{text.Length}}},"name":"action.yml","path":"action.yml","sha":"abc",
-             "content":"{{{Convert.ToBase64String(Encoding.UTF8.GetBytes(text))}}}"}
-            """);
+        // live: GET /repos/{o}/{r}/contents/coverage.yml?ref=master, the file onboarding PR #1 wrote
+        var github = new StubGitHub().On(HttpMethod.Get, "/repos/acme/widget/contents/coverage.yml?ref=master", HttpStatusCode.OK, Captured("contents-file.json"));
 
-        (await Updates(github).GetRepositoryFileAsync(Target(), "actions/checkout", Commit, "action.yml")).Should().Be(text);
+        var text = await Updates(github).GetRepositoryFileAsync(Target(), "acme/widget", "master", "coverage.yml");
+
+        text.Should().StartWith("mergeQueue:\n  enabled: true\n");
+        text.Should().Contain("# dependencies:");
     }
 
     [Fact]
     public async Task A_directory_or_an_absent_file_reads_as_nothing()
     {
-        var github = new StubGitHub().On(HttpMethod.Get, "/repos/actions/checkout/contents/action.yml?ref=v4", HttpStatusCode.OK, """[{"type":"file","name":"x"}]""");
+        // live: a directory answers an array; a missing file GitHub's 404 body
+        var github = new StubGitHub()
+            .On(HttpMethod.Get, "/repos/acme/widget/contents/.github?ref=master", HttpStatusCode.OK, Captured("contents-dir.json"))
+            .On(HttpMethod.Get, "/repos/acme/widget/contents/nope.yml?ref=master", HttpStatusCode.NotFound, Captured("contents-missing.json"));
         var updates = Updates(github);
-        (await updates.GetRepositoryFileAsync(Target(), "actions/checkout", "v4", "action.yml")).Should().BeNull();
-        (await updates.GetRepositoryFileAsync(Target(), "actions/checkout", "v4", "action.yaml")).Should().BeNull();
-        (await updates.GetRepositoryFileAsync(Target(), "actions/checkout", "v4", "../secrets")).Should().BeNull();
+        (await updates.GetRepositoryFileAsync(Target(), "acme/widget", "master", ".github")).Should().BeNull();
+        (await updates.GetRepositoryFileAsync(Target(), "acme/widget", "master", "nope.yml")).Should().BeNull();
+        (await updates.GetRepositoryFileAsync(Target(), "acme/widget", "master", "../secrets")).Should().BeNull();
     }
 
     // ── The pull request ─────────────────────────────────────────────────────────────────────────
@@ -136,15 +144,48 @@ public class GitHubForgeDependencyUpdatesTests
     [Fact]
     public async Task The_open_pull_request_is_found_by_its_head_branch()
     {
-        // docs: GET /repos/{owner}/{repo}/pulls?state=open&head={owner}:{branch}&base={base}
-        var github = new StubGitHub().On(HttpMethod.Get, $"{Repo}/pulls", HttpStatusCode.OK, $"[{Pull(41, false)}]");
+        // live: GET /repos/{o}/{r}/pulls?head={o}:mintplayer/dependencies — the S18 rolling PRs #3 and #2, newest first
+        // (captured with state=all, since both are merged now; the adapter asks for state=open and takes the first).
+        var github = new StubGitHub().On(HttpMethod.Get, $"{Repo}/pulls", HttpStatusCode.OK, Captured("pulls-open-by-head.json"));
 
         var pull = await Updates(github).FindPullRequestAsync(Target(), "mintplayer/dependencies", "master");
 
         github.Calls.Should().ContainSingle().Which.Should().Contain("state=open").And.Contain("head=acme").And.Contain("base=master");
-        pull!.Number.Should().Be(41);
+        pull!.Number.Should().Be(3);
         pull.HeadRef.Should().Be("mintplayer/dependencies");
-        pull.IsOpen.Should().BeTrue();
+        pull.HeadSha.Should().Be("a69d651483c76bd32d85f6515b66816d34218fcd");
+        pull.BaseRef.Should().Be("master");
+    }
+
+    [Fact]
+    public async Task A_merged_pull_request_reads_as_merged()
+    {
+        // live: GET /repos/{o}/{r}/pulls/3, merged by the merge queue at 17:37:55
+        var github = new StubGitHub().On(HttpMethod.Get, $"{Repo}/pulls/3", HttpStatusCode.OK, Captured("pull-3.json"));
+
+        var pull = await Updates(github).GetPullRequestAsync(Target(), 3);
+
+        pull!.IsOpen.Should().BeFalse();
+        pull.IsMerged.Should().BeTrue();
+        pull.IsDraft.Should().BeFalse();
+        pull.HtmlUrl.Should().Be("https://github.com/acme/widget/pull/3");
+    }
+
+    [Fact]
+    public async Task The_artifact_listing_is_read_as_github_sends_it()
+    {
+        // live: GET /repos/{o}/{r}/actions/runs/{id}/artifacts of a dependency workflow run; the zip itself stays docs-derived
+        var zip = Zip(("result.json", "{}"));
+        var github = new StubGitHub()
+            .On(HttpMethod.Get, $"{Repo}/actions/runs/7/artifacts", HttpStatusCode.OK, Captured("run-artifacts.json"))
+            .On(HttpMethod.Get, $"{Repo}/actions/artifacts/12062163661/zip", (_, _) => new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(zip) });
+
+        var files = await Updates(github).DownloadArtifactFilesAsync(Target(), 7, "dependency-apply-1422440175-4-2", ["result.json"], 4096);
+
+        files.Outcome.Should().Be(EForgeArtifactOutcome.Ok);
+        files.Files.Keys.Should().Equal(["result.json"]);
+        (await Updates(github).DownloadArtifactFilesAsync(Target(), 7, "dependency-apply-1422440175-4-2", ["result.json"], 1000)).Outcome
+            .Should().Be(EForgeArtifactOutcome.TooLarge, "the listing declares 1482 bytes");
     }
 
     [Fact]

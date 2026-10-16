@@ -1,0 +1,1 @@
+{"data":{"r0":{"collaborators":{"edges":[{"permission":"ADMIN"}]}},"r1":{"collaborators":null}},"errors":[{"type":"FORBIDDEN","path":["r1","collaborators"],"locations":[{"line":1,"column":228}],"message":"You do not have permission to view repository collaborators."}]}

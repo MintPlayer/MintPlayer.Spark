@@ -592,7 +592,17 @@ public partial class BrowseController : ControllerBase
             FileCoverage.DocumentId(await CoverageSourceAsync(commit, cancellationToken), path), cancellationToken);
         if (fileCoverage is null) return NotFound();
 
-        var source = await forges.For(repository).GetFileContentAsync(repository, sha, path, cancellationToken);
+        // The viewer shows the coverage without the source when the forge cannot give it right now (a rate limit, an
+        // outage): the read throws for those since P16, so the onboarding cannot mistake them for a missing file.
+        string? source;
+        try
+        {
+            source = await forges.For(repository).GetFileContentAsync(repository, sha, path, cancellationToken);
+        }
+        catch (Exception ex) when (ex is ForgeRequestException or ForgeAccessDeniedException or HttpRequestException)
+        {
+            source = null;
+        }
 
         return Ok(new
         {

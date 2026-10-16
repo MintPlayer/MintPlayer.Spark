@@ -55,13 +55,19 @@ public interface IForgeClient
     /// <summary>Deletes a branch. Best-effort, never throws; the implementation logs its outcome.</summary>
     Task DeleteBranchAsync(Repository repository, string branch, CancellationToken cancellationToken = default);
 
-    /// <summary>Source of one file at an exact commit, or null when unavailable. Never stored.</summary>
+    /// <summary>
+    /// Source of one file at an exact commit, or null when there is no such file (the forge's 404) or no credential and no
+    /// anonymous path. Never stored. ⚠️ Any other failure throws (dependency-updates PRD P16): a rate limit as a
+    /// <c>ForgeRequestException</c> (429) carrying a <c>ForgeRateLimitedException</c>, a refusal as a
+    /// <c>ForgeAccessDeniedException</c>; a throttled read must never look like a missing file.
+    /// </summary>
     Task<string?> GetFileContentAsync(Repository repository, string sha, string path, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Every file in the head commit of <paramref name="branch"/>: the commit and tree it resolved to,
     /// each blob's path and size, and whether the forge truncated the listing. Null when there is no
-    /// credential, the branch does not exist, or the forge fails — never an exception.
+    /// credential or the branch (or any commit) does not exist, the forge's 404. ⚠️ Any other failure throws, as
+    /// <see cref="GetFileContentAsync"/> does (P16): an onboarding built from a throttled, empty tree opened a wrong pull request.
     /// </summary>
     /// <remarks>
     /// ⚠️ Fetch file content at <see cref="ForgeTree.CommitSha"/>, never at the branch name: content

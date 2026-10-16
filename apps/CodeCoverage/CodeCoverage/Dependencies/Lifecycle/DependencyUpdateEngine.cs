@@ -1444,7 +1444,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         {
             actionSha = await context.Updates.ResolveTagCommitAsync(repository, DependencyOnboarding.ActionRepository, DependencyOnboarding.ActionTag, ct);
         }
-        catch (Exception ex) when (ex is ForgeRequestException or ForgeAccessDeniedException or HttpRequestException)
+        catch (Exception ex) when (ex is ForgeRequestException or ForgeAccessDeniedException or HttpRequestException && ForgeRateLimitedException.Find(ex) is null)
         {
             logger.LogWarning(ex, "Dependency updates: could not resolve {Tag}; the onboarding templates keep the tag", DependencyOnboarding.ActionTag);
         }
@@ -1604,6 +1604,12 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         try
         {
             await body();
+        }
+        catch (Exception ex) when (ForgeRateLimitedException.Find(ex) is not null)
+        {
+            // P16/R30: a rate limit is the message bus's to wait out (a park until the reset, a fifth of an attempt), not a
+            // transient failure of the run's own budget. Nothing of this attempt is saved; the same step or signal comes back.
+            throw;
         }
         catch (ForgeAccessDeniedException ex)
         {

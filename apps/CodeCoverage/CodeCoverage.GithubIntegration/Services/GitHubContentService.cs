@@ -6,7 +6,7 @@ namespace CodeCoverage.Services;
 
 public interface IGitHubContentService
 {
-    /// <summary>Source of one file at an exact commit, or null when unavailable.</summary>
+    /// <summary>Source of one file at an exact commit, or null when it does not exist (a 404); any other failure throws (P16).</summary>
     Task<string?> GetFileContentAsync(Repository repository, long? installationId, string sha, string path, CancellationToken cancellationToken = default);
 }
 
@@ -40,46 +40,47 @@ public partial class GitHubContentService : IGitHubContentService
     /// </summary>
     private async Task<string?> FetchFileContentAsync(Repository repository, long? installationId, string sha, string path)
     {
-        string? content = null;
-
+        // P16 (dependency-updates PRD): only a 404 is an absence. Every other failure is thrown, so a rate-limited read is
+        // retried instead of being read as "no coverage.yml" or "no dependabot file" (an onboarding built on that answer
+        // opened a wrong pull request). Nothing failed is cached: the cache stores only a non-null answer.
         if (installationId is not null)
         {
             try
             {
                 var client = await installationService.CreateInstallationClientAsync(installationId.Value);
                 var files = await client.Repository.Content.GetAllContentsByRef(repository.GitHubId, path, sha);
-                content = files.FirstOrDefault()?.Content;
+                return files.FirstOrDefault()?.Content;
             }
             catch (Octokit.NotFoundException)
             {
                 // No such file at that ref: an answer, not a failure. The merge queue asks every repository's default branch
                 // for coverage.yml on each pull-request event (merge-queue PRD §0 O30, D88), and most repositories have none.
                 logger.LogDebug("No {Path} in {Repo} at {Sha}", path, repository.FullName, sha);
+                return null;
             }
-            catch (Exception ex)
+            catch (Octokit.ApiException ex)
             {
                 logger.LogWarning(ex, "Installation content fetch failed for {Repo}@{Sha}:{Path}", repository.FullName, sha, path);
+                throw GitHubForgeClient.ForgeFailure(ex, $"{path} of {repository.FullName}@{sha}");
             }
         }
 
-        if (content is null && !repository.IsPrivate)
-        {
-            try
-            {
-                var http = httpClientFactory.CreateClient();
-                using var request = new HttpRequestMessage(HttpMethod.Get,
-                    $"https://raw.githubusercontent.com/{repository.FullName}/{sha}/{Uri.EscapeDataString(path).Replace("%2F", "/")}");
-                request.Headers.UserAgent.Add(new System.Net.Http.Headers.ProductInfoHeaderValue("Coverage", "1.0"));
-                var response = await http.SendAsync(request);
-                if (response.IsSuccessStatusCode)
-                    content = await response.Content.ReadAsStringAsync();
-            }
-            catch (Exception ex)
-            {
-                logger.LogWarning(ex, "Raw content fetch failed for {Repo}@{Sha}:{Path}", repository.FullName, sha, path);
-            }
-        }
+        if (repository.IsPrivate)
+            return null;
 
-        return content;
+        // A public repository with no installation: anonymously, from raw.githubusercontent.com.
+        var http = httpClientFactory.CreateClient();
+        using var request = new HttpRequestMessage(HttpMethod.Get,
+            $"https://raw.githubusercontent.com/{repository.FullName}/{sha}/{Uri.EscapeDataString(path).Replace("%2F", "/")}");
+        request.Headers.UserAgent.Add(new System.Net.Http.Headers.ProductInfoHeaderValue("Coverage", "1.0"));
+        using var response = await http.SendAsync(request);
+        if (response.IsSuccessStatusCode)
+            return await response.Content.ReadAsStringAsync();
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            return null;
+        if (GitHubRateLimits.Classify(response, null, DateTimeOffset.UtcNow, $"{path} of {repository.FullName}@{sha}") is { } limited)
+            throw new CodeCoverage.Forge.ForgeRequestException($"GitHub rate limit reached reading {path} of {repository.FullName}.", 429, limited);
+        throw new CodeCoverage.Forge.ForgeRequestException(
+            $"raw.githubusercontent.com answered {(int)response.StatusCode} for {path} of {repository.FullName}@{sha}.", (int)response.StatusCode);
     }
 }

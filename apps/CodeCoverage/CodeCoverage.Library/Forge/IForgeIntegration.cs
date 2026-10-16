@@ -118,11 +118,11 @@ public interface IForgeIntegration
     /// </summary>
     Task<string?> GetFirstParentAsync(Repository repository, string sha, CancellationToken cancellationToken = default);
 
-    /// <summary>Source of one file at an exact commit, or null when unavailable. Never stored.</summary>
+    /// <summary>Source of one file at an exact commit, or null when absent (a 404). Never stored. Any other failure throws: see <see cref="IForgeClient.GetFileContentAsync"/>.</summary>
     Task<string?> GetFileContentAsync(Repository repository, string sha, string path, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Every file in the head commit of <paramref name="branch"/>, or null when it cannot be listed.
+    /// Every file in the head commit of <paramref name="branch"/>, or null when there is none (a 404); any other failure throws.
     /// See <see cref="IForgeClient.GetTreeAsync"/>.
     /// </summary>
     /// <remarks>
@@ -287,6 +287,19 @@ public enum EForgeCapability
     /// it takes <see cref="MergeQueue"/> too; a merge queue whose forge does not declare it refuses a check with actions.
     /// </summary>
     CheckButtons,
+
+    /// <summary>
+    /// The repositories of the App's installations a signed-in viewer can reach, with whether the viewer administers each,
+    /// and the same checked again with the App's credential when an action executes (dependency-updates PRD R21, R32, R33).
+    /// Its members live on <see cref="IForgeRepositoryAdministration"/>. GitHub only for now.
+    /// </summary>
+    RepositoryAdminCheck,
+
+    /// <summary>
+    /// The forge sends the viewer back to the app after installing it, with parameters <see cref="IForgeSetupRedirect"/>
+    /// reads (R20, R36). GitHub's App setup URL; GitLab or Bitbucket would need an OAuth app or a Connect descriptor.
+    /// </summary>
+    SetupRedirect,
 }
 
 /// <summary>How a git process reaches one repository (<see cref="IForgeIntegration.GetGitAccessAsync"/>).</summary>

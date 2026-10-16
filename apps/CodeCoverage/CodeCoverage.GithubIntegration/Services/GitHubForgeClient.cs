@@ -174,11 +174,26 @@ public partial class GitHubForgeClient : IForgeClient
             logger.LogInformation("No tree for {FullName}@{Branch}: not found.", repository.FullName, branch);
             return null;
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Octokit.ApiException ex)
         {
-            logger.LogWarning(ex, "Could not list the tree of {FullName}@{Branch}.", repository.FullName, branch);
-            return null;
+            // P16: only a 404 is an absence. A throttled tree read is a 403 (R37's capture a2), and answering it with null
+            // built the onboarding pull request from an empty tree; every other failure is thrown, neutrally, for a retry.
+            throw ForgeFailure(ex, $"the tree of {repository.FullName}@{branch}");
         }
+    }
+
+    /// <summary>
+    /// An Octokit failure other than a 404, as the neutral exception: a rate limit is a <see cref="ForgeRequestException"/>
+    /// (429) carrying the <see cref="ForgeRateLimitedException"/> (D-O1), a 401 or a permission 403 a
+    /// <see cref="ForgeAccessDeniedException"/>, anything else a <see cref="ForgeRequestException"/>.
+    /// </summary>
+    internal static Exception ForgeFailure(Octokit.ApiException ex, string what)
+    {
+        if (GitHubRateLimits.FromOctokit(ex, DateTimeOffset.UtcNow, what) is { } limited)
+            return new ForgeRequestException($"GitHub rate limit reached reading {what}.", 429, limited);
+        return ex.StatusCode is System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden
+            ? new ForgeAccessDeniedException($"GitHub refused {what}: {ex.Message}")
+            : new ForgeRequestException($"GitHub answered {(int)ex.StatusCode} reading {what}: {ex.Message}", (int)ex.StatusCode, ex);
     }
 
     /// <inheritdoc />
