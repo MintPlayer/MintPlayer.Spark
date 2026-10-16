@@ -26,5 +26,17 @@
     "selectionRule": ">0",
     "variant": "danger",
     "refreshOnCompleted": false
+  },
+  "EnableDependencyUpdates": {
+    "icon": "BoxArrowInDown",
+    "showedOn": "query",
+    "selectionRule": ">0",
+    "refreshOnCompleted": true
+  },
+  "RunScheduledSlotNow": {
+    "icon": "PlayCircle",
+    "showedOn": "detail",
+    "selectionRule": "=0",
+    "refreshOnCompleted": true
   }
 }

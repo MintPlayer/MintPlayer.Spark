@@ -71,6 +71,8 @@ public class ForgeIntegrationConformanceTests
     private static readonly Dictionary<EForgeCapability, Type> SeparateSeams = new()
     {
         [EForgeCapability.MergeQueue] = typeof(IForgeMergeQueue),
+        [EForgeCapability.RepositoryAdminCheck] = typeof(IForgeRepositoryAdministration),
+        [EForgeCapability.SetupRedirect] = typeof(IForgeSetupRedirect),
     };
 
     /// <summary>

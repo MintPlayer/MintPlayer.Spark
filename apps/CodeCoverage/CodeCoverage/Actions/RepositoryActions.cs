@@ -1,4 +1,5 @@
 using System.Linq.Expressions;
+using CodeCoverage.Dependencies.Lifecycle;
 using CodeCoverage.Entities;
 using CodeCoverage.LookupReferences;
 using CodeCoverage.Services;
@@ -27,11 +28,13 @@ namespace CodeCoverage.Actions;
 /// enforces server-side regardless of what a client posts.
 /// </para>
 /// </summary>
-public partial class RepositoryActions : DefaultPersistentObjectActions<Repository>, IBeforeSave<Repository>
+public partial class RepositoryActions : DefaultPersistentObjectActions<Repository>, IBeforeSave<Repository>, IAfterSaveCommitted<Repository>
 {
     [Inject] private readonly ISparkVisibility visibility;
     [Inject] private readonly IAsyncDocumentSession session;
     [Inject] private readonly MintPlayer.Spark.Abstractions.Authorization.IPermissionService permissions;
+    [Inject] private readonly MintPlayer.Spark.Messaging.Abstractions.IMessageBus messageBus;
+    [Inject] private readonly CodeCoverage.Dependencies.Onboarding.IDependencyOnboardingService onboarding;
 
     /// <summary>
     /// Opens the embedded gate in the shape its mode calls for (#264, G-Q3): a <c>fixed</c> gate
@@ -47,6 +50,11 @@ public partial class RepositoryActions : DefaultPersistentObjectActions<Reposito
         var po = await base.OnLoadAsync(id, parent);
         if (po?.Attributes.FirstOrDefault(a => a.Name == nameof(Repository.Gate)) is PersistentObjectAttributeAsDetail { Object: { } gate })
             GateSettingsActions.ShapeForMode(gate);
+
+        // R26: the file's truth beside the onboarding setting, as the dependency updater last read coverage.yml.
+        if (po?.Attributes.FirstOrDefault(a => a.Name == nameof(Repository.MergeQueueInCoverageYml)) is { } mergeQueue
+            && await session.LoadAsync<DependencyUpdateRun>(DependencyUpdateRun.ForRepository(id)) is { FileMergeQueue: { } state })
+            mergeQueue.Value = state;
         return po;
     }
 
@@ -99,11 +107,30 @@ public partial class RepositoryActions : DefaultPersistentObjectActions<Reposito
     /// the two must be changed together.
     /// </para>
     /// </summary>
-    public ValueTask OnBeforeSaveAsync(Repository entity, SaveContext context)
+    public async ValueTask OnBeforeSaveAsync(Repository entity, SaveContext context)
+    {
+        ValidateGate(entity);
+
+        // R23: the switch's transition, for the after-commit hook (which gets facts, never the entity).
+        var account = entity.Account is { Length: > 0 } accountId ? await session.LoadAsync<Account>(accountId) : null;
+        if (DependencyUpdateSwitch.Transition(context.Before as Repository, entity, account) is { } transition)
+            context.Facts[DependencyUpdateSwitch.Fact] = transition;
+    }
+
+    /// <summary>
+    /// R23/R24: a switch of this repository's dependency updates, committed: onboard (off → on) or offboard (on → off),
+    /// expedited, since a person is waiting on the page they switched it from.
+    /// </summary>
+    public Task OnAfterSaveCommittedAsync(SparkCommittedChange change, CancellationToken cancellationToken)
+        => change.Facts.TryGetValue(DependencyUpdateSwitch.Fact, out var transition)
+            ? DependencyUpdateSwitch.SignalAsync(messageBus, change.Id, transition, change.OccurredAt, expedite: true, cancellationToken)
+            : Task.CompletedTask;
+
+    private static void ValidateGate(Repository entity)
     {
         var gate = entity.Gate;
         if (gate is null)
-            return ValueTask.CompletedTask;
+            return;
 
         // A form posts every attribute, including the ones nobody touched, so an unset dropdown
         // arrives as null rather than as the property initializer's value — that initializer only
@@ -147,8 +174,6 @@ public partial class RepositoryActions : DefaultPersistentObjectActions<Reposito
         if (gate.ProjectMode == ProjectComparison.Fixed && gate.ProjectTarget is null)
             throw new SparkValidationException(
                 "A fixed comparison needs a project target.", nameof(GateSettings.ProjectTarget));
-
-        return ValueTask.CompletedTask;
     }
 
     public override async Task<Expression<Func<Repository, bool>>?> GetRowFilterAsync(string action)
@@ -248,6 +273,18 @@ public partial class RepositoryActions : DefaultPersistentObjectActions<Reposito
     /// queries drop parentId upstream (Spark#242); the framework still applies
     /// the row filter and sorting on top.
     /// </summary>
+    public async Task<IQueryable<Repository>> Repository_DependencyOnboarding(CustomQueryArgs args)
+    {
+        // R22: the onboarding page's selection. The repositories the viewer manages on any forge (the page itself shows the
+        // richer rows of api/dependency-updates/onboarding); the framework applies the row filter on top, and the custom
+        // action EnableDependencyUpdates re-checks every selected row.
+        var listing = await onboarding.ListAsync(new Dictionary<string, string?>());
+        var ids = listing.Repositories.Where(r => r.RepositoryId is not null).Select(r => r.RepositoryId!).Distinct().ToList();
+        if (ids.Count == 0)
+            return Enumerable.Empty<Repository>().AsQueryable();
+        return session.Query<Repository, Indexes.Repositories_Overview>().Where(r => r.Id.In(ids));
+    }
+
     public IRavenQueryable<Repository> Account_Repositories(CustomQueryArgs args)
     {
         args.EnsureParent("Account");

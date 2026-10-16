@@ -56,7 +56,10 @@ internal sealed class FakeForgeDependencyUpdates : IForgeDependencyUpdates
     }
 
     public Task<ForgeBotPullRequest?> FindPullRequestAsync(Repository repository, string headBranch, string baseBranch, CancellationToken cancellationToken = default)
-        => Task.FromResult(PullRequests.Values.FirstOrDefault(p => p.HeadRef == headBranch && p.BaseRef == baseBranch && p.IsOpen));
+    {
+        Fault("find");
+        return Task.FromResult(PullRequests.Values.FirstOrDefault(p => p.HeadRef == headBranch && p.BaseRef == baseBranch && p.IsOpen));
+    }
 
     public Task<ForgeBotPullRequest?> GetPullRequestAsync(Repository repository, int number, CancellationToken cancellationToken = default)
         => Task.FromResult(PullRequests.TryGetValue(number, out var pull) ? pull : null);
@@ -64,9 +67,14 @@ internal sealed class FakeForgeDependencyUpdates : IForgeDependencyUpdates
     public Task<ForgeBotPullRequest> CreatePullRequestAsync(Repository repository, string headBranch, string baseBranch, string title, string body, bool draft,
         CancellationToken cancellationToken = default)
     {
+        Fault("create");
+        // GitHub's answer to a second pull request from the same head: 422 "A pull request already exists".
+        if (PullRequests.Values.Any(p => p.HeadRef == headBranch && p.BaseRef == baseBranch && p.IsOpen))
+            throw new ForgeRequestException($"GitHub answered 422 to POST pulls: A pull request already exists for acme:{headBranch}.", 422);
         Created.Add((headBranch, baseBranch, title, body, draft));
-        var pull = new ForgeBotPullRequest(nextNumber++, headBranch, "f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0", baseBranch, true, false, draft, null);
+        var pull = new ForgeBotPullRequest(nextNumber++, headBranch, HeadShaFor?.Invoke(headBranch) ?? "f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0", baseBranch, true, false, draft, null);
         PullRequests[pull.Number] = pull;
+        Fault("create!");
         return Task.FromResult(pull);
     }
 
@@ -74,6 +82,37 @@ internal sealed class FakeForgeDependencyUpdates : IForgeDependencyUpdates
     {
         Updated.Add((number, title, body));
         return Task.CompletedTask;
+    }
+
+    public List<int> Closed { get; } = [];
+
+    /// <summary>The head a created pull request reports, by branch (the branch head the writer pushed); a fixed sha when unset.</summary>
+    public Func<string, string?>? HeadShaFor { get; set; }
+
+    public Task ClosePullRequestAsync(Repository repository, int number, CancellationToken cancellationToken = default)
+    {
+        Closed.Add(number);
+        if (PullRequests.TryGetValue(number, out var pull))
+            PullRequests[number] = pull with { IsOpen = false };
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// P15: throw <c>Fault</c> on the <c>Nth</c> (1-based) call named <c>Call</c> ("find", "create"); "create!" creates the
+    /// pull request first and then throws, as an answer lost on the way back does. Each fault fires once.
+    /// </summary>
+    public List<(string Call, int Nth, Exception Fault)> Faults { get; } = [];
+
+    private readonly Dictionary<string, int> calls = new(StringComparer.Ordinal);
+
+    private void Fault(string call)
+    {
+        calls[call] = calls.GetValueOrDefault(call) + 1;
+        var index = Faults.FindIndex(f => f.Call == call && f.Nth == calls[call]);
+        if (index < 0) return;
+        var fault = Faults[index].Fault;
+        Faults.RemoveAt(index);
+        throw fault;
     }
 
     public Task AddCommentReactionAsync(Repository repository, long commentId, EForgeReaction reaction, CancellationToken cancellationToken = default)

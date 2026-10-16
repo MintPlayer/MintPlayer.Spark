@@ -23,7 +23,22 @@ public sealed record DependencyRepoStatus(
     string Id, string FullName, string Name, bool IsPrivate, bool Enabled, string Health, string State, string? Outcome, string? OutcomeMessage,
     DateTime? LastRunAtUtc, DateTime? LastFinishedAtUtc, DateTimeOffset? NextSlotUtc, string? Schedule, DependencyPullRequestLink? PullRequest,
     string? Onboarding, string? OnboardingNote, IReadOnlyList<DependencyHoldView> Holds, IReadOnlyList<DependencyAwaitingView> AwaitingApproval,
-    int PlannedGroups, IReadOnlyList<string> Pins, string? CoverageNote);
+    int PlannedGroups, IReadOnlyList<string> Pins, string? CoverageNote)
+{
+    /// <summary>The onboarding pull request (R16), open, merged or closed; null when none was opened.</summary>
+    public DependencyPullRequestLink? OnboardingPullRequest { get; init; }
+
+    /// <summary>R26: <c>coverage.yml</c>'s merge queue as last read: <c>enabled</c>, <c>disabled</c>, <c>absent</c>; null until read.</summary>
+    public string? MergeQueueInFile { get; init; }
+
+    /// <summary>R30: "waiting for the forge's rate limit until hh:mm (park n of m)"; null when nothing waits.</summary>
+    public DependencyRateLimitView? RateLimit { get; init; }
+}
+
+/// <param name="UntilUtc">When the bus retries the waiting message.</param>
+/// <param name="Park">This message's park count, 1-based.</param>
+/// <param name="Budget">The parks it may take before it is dead-lettered (<c>MaxAttempts × RateLimitParksPerAttempt</c>).</param>
+public sealed record DependencyRateLimitView(DateTime UntilUtc, int Park, int Budget);
 
 public sealed record DependencyPullRequestLink(int Number, string? Url, bool Draft);
 
@@ -139,7 +154,14 @@ public static class DependencyFleetView
             run?.Onboarding.ToString(), run?.OnboardingNote,
             [.. (state?.Holds ?? []).Select(h => new DependencyHoldView(h.Kind.ToString(), h.Group.Length == 0 ? null : h.Group, [.. h.DepNames], h.Reason, h.By, h.CreatedAtUtc))],
             [.. (report?.AwaitingApproval ?? []).Select(e => new DependencyAwaitingView(e.Group, e.DepName, e.Current, e.Target, $"approve {e.Group}"))],
-            report?.Groups.Count ?? 0, [.. run?.Pins ?? []], run?.CoverageNote);
+            report?.Groups.Count ?? 0, [.. run?.Pins ?? []], run?.CoverageNote)
+        {
+            OnboardingPullRequest = run?.OnboardingPullRequestNumber is { } onboarding ? new DependencyPullRequestLink(onboarding, PullRequestUrl(repository, onboarding), false) : null,
+            MergeQueueInFile = run?.FileMergeQueue,
+            RateLimit = run?.RateLimitedUntilUtc is { } until && until > input.Now.UtcDateTime
+                ? new DependencyRateLimitView(until, run.RateLimitParks, run.RateLimitParkBudget)
+                : null,
+        };
     }
 
     /// <summary>The chip's word: what a reader most needs to know first.</summary>
@@ -182,7 +204,7 @@ public static class DependencyFleetView
         };
     }
 
-    private static string? PullRequestUrl(Repository repository, int number)
+    internal static string? PullRequestUrl(Repository repository, int number)
         => repository.Provider == EForgeProvider.GitHub ? $"https://github.com/{repository.FullName}/pull/{number}" : null;
 
     // ── Packages ────────────────────────────────────────────────────────────────────────────────

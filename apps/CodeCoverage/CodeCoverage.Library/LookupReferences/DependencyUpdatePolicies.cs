@@ -291,6 +291,81 @@ public sealed class DependencyBisectBudgetPolicy : TransientLookupReference<EDep
     ];
 }
 
+/// <summary>
+/// Whether the onboarding pull request also turns the merge queue on (dependency-updates PRD R25, R26): it adds
+/// <c>mergeQueue: { enabled: true }</c> to <c>coverage.yml</c> unless the file already has a <c>mergeQueue</c> section.
+/// </summary>
+/// <remarks>⚠️ <see cref="Yes"/> is the zero value on purpose: it is R25's default, so an account written before the field
+/// existed reads right without a migration.</remarks>
+public enum EDependencyOnboardingMergeQueue
+{
+    Yes,
+
+    No,
+}
+
+/// <summary>A repository's choice for <see cref="EDependencyOnboardingMergeQueue"/>, or its account's (R26).</summary>
+public enum EDependencyOnboardingMergeQueuePolicy
+{
+    Inherit,
+
+    Yes,
+
+    No,
+}
+
+public sealed class DependencyOnboardingMergeQueue : TransientLookupReference<EDependencyOnboardingMergeQueue>
+{
+    private DependencyOnboardingMergeQueue() { }
+
+    public override ELookupDisplayType DisplayType => ELookupDisplayType.Dropdown;
+
+    public static IReadOnlyCollection<DependencyOnboardingMergeQueue> Items { get; } =
+    [
+        new DependencyOnboardingMergeQueue
+        {
+            Key = EDependencyOnboardingMergeQueue.Yes,
+            Description = "The onboarding pull request turns the merge queue on in coverage.yml",
+            Values = _TS("Yes", "Oui", "Ja"),
+        },
+        new DependencyOnboardingMergeQueue
+        {
+            Key = EDependencyOnboardingMergeQueue.No,
+            Description = "The onboarding pull request leaves coverage.yml's merge queue as it is",
+            Values = _TS("No", "Non", "Nee"),
+        },
+    ];
+}
+
+public sealed class DependencyOnboardingMergeQueuePolicy : TransientLookupReference<EDependencyOnboardingMergeQueuePolicy>
+{
+    private DependencyOnboardingMergeQueuePolicy() { }
+
+    public override ELookupDisplayType DisplayType => ELookupDisplayType.Dropdown;
+
+    public static IReadOnlyCollection<DependencyOnboardingMergeQueuePolicy> Items { get; } =
+    [
+        new DependencyOnboardingMergeQueuePolicy
+        {
+            Key = EDependencyOnboardingMergeQueuePolicy.Inherit,
+            Description = "Use the account's setting",
+            Values = _TS("Use account setting", "Utiliser le paramètre du compte", "Accountinstelling gebruiken"),
+        },
+        new DependencyOnboardingMergeQueuePolicy
+        {
+            Key = EDependencyOnboardingMergeQueuePolicy.Yes,
+            Description = "The onboarding pull request turns the merge queue on in coverage.yml",
+            Values = _TS("Yes", "Oui", "Ja"),
+        },
+        new DependencyOnboardingMergeQueuePolicy
+        {
+            Key = EDependencyOnboardingMergeQueuePolicy.No,
+            Description = "The onboarding pull request leaves coverage.yml's merge queue as it is",
+            Values = _TS("No", "Non", "Nee"),
+        },
+    ];
+}
+
 public sealed class DependencyThreshold : TransientLookupReference<EDependencyThreshold>
 {
     private DependencyThreshold() { }

@@ -101,6 +101,13 @@ public enum EDependencySignal
 
     /// <summary>The feature is enabled for the repository: open the onboarding pull request when it needs one (R16).</summary>
     Onboard,
+
+    /// <summary>
+    /// The feature was switched off (R24): close the open rolling pull request with a comment, delete the bot's branches,
+    /// reset the pull request and branch state. Holds and approvals are kept; the templates and <c>coverage.yml</c> are the
+    /// owner's code and stay.
+    /// </summary>
+    Offboard,
 }
 
 /// <summary>

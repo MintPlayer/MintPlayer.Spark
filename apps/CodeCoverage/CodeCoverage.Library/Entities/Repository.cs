@@ -319,6 +319,29 @@ public class Repository : IForgeConnectable
     [LookupReference(typeof(DependencyBisectBudgetPolicy))]
     public EDependencyBisectBudgetPolicy DependencyBisectBudget { get; set; }
 
+    /// <summary>Whether this repository's onboarding pull request turns the merge queue on, or the account's choice (R26).</summary>
+    [IgnoreForIndex]
+    [LookupReference(typeof(DependencyOnboardingMergeQueuePolicy))]
+    public EDependencyOnboardingMergeQueuePolicy DependencyOnboardingMergeQueue { get; set; }
+
+    /// <summary>
+    /// Read-only, never written by the server (it stays null in the document): what <c>coverage.yml</c> on the default branch says about the merge queue, as the dependency
+    /// updater last read it (<c>enabled</c>, <c>disabled</c>, <c>absent</c>), or null when it has not read it yet (R26). Filled
+    /// on load from the repository's dependency run, so the page shows the file's truth beside the onboarding setting.
+    /// </summary>
+    [IgnoreForIndex]
+    public string? MergeQueueInCoverageYml { get; set; }
+
+    /// <summary>R26: whether the onboarding pull request adds <c>mergeQueue: { enabled: true }</c>: the repository's choice,
+    /// or its account's (Yes by default, and for a missing account).</summary>
+    public static bool ResolveDependencyOnboardingMergeQueue(Repository? repository, Account? account)
+        => repository?.DependencyOnboardingMergeQueue switch
+        {
+            EDependencyOnboardingMergeQueuePolicy.Yes => true,
+            EDependencyOnboardingMergeQueuePolicy.No => false,
+            _ => account?.DependencyOnboardingMergeQueue != EDependencyOnboardingMergeQueue.No,
+        };
+
     /// <summary>Whether dependency updates run here: the repository's choice, or its account's. A missing account is off.</summary>
     /// <remarks>The file half (<c>dependencies.enabled: false</c>) is applied on top by the caller, and may only switch it off.</remarks>
     public static bool ResolveDependencyUpdates(Repository? repository, Account? account)

@@ -46,6 +46,9 @@ public interface IForgeDependencyUpdates
     /// <summary>Replaces the pull request's title and body.</summary>
     Task UpdatePullRequestAsync(Repository repository, int number, string title, string body, CancellationToken cancellationToken = default);
 
+    /// <summary>Closes the pull request without merging (R24's offboarding). Closing one that is already closed is no error.</summary>
+    Task ClosePullRequestAsync(Repository repository, int number, CancellationToken cancellationToken = default);
+
     /// <summary>Puts a reaction on a pull request comment (👍 a command taken, 👎 one refused, §7.5).</summary>
     Task AddCommentReactionAsync(Repository repository, long commentId, EForgeReaction reaction, CancellationToken cancellationToken = default);
 
