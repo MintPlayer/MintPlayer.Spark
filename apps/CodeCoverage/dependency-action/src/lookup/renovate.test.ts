@@ -28,7 +28,8 @@ describe('Renovate invocation', () => {
 
   it('runs the container as the caller uid with group 0, so a 0700 checkout stays readable', () => {
     expect(containerUser(() => 1001)).toBe('1001:0');
-    expect(containerUser(undefined)).toBeUndefined();
+    // null, not undefined: undefined would fall back to the default parameter, process.getuid.
+    expect(containerUser(null)).toBeUndefined();
     const args = dockerArgs({ repoDir: '/repo', outDir: '/out', configFile: '/cfg.json', image: RENOVATE_IMAGE, user: '1001:0' });
     expect(args.slice(0, 4)).toEqual(['run', '--rm', '--user', '1001:0']);
     expect(dockerArgs({ repoDir: '/repo', outDir: '/out', configFile: '/cfg.json', image: RENOVATE_IMAGE })).not.toContain('--user');

@@ -82,7 +82,7 @@ export function dockerArgs(o: { repoDir: string; outDir: string; configFile: str
  * call fail with `spawn git EACCES`, which Renovate reports as "git version needs upgrading". Undefined
  * where there are no POSIX uids (Windows), where Docker Desktop does not enforce host permissions.
  */
-export function containerUser(getuid: (() => number) | undefined = process.getuid): string | undefined {
+export function containerUser(getuid: (() => number) | null = process.getuid ?? null): string | undefined {
   return getuid ? `${getuid()}:0` : undefined;
 }
 
