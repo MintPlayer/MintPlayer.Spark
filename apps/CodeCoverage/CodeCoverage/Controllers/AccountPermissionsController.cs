@@ -23,7 +23,7 @@ namespace CodeCoverage.Controllers;
 public partial class AccountPermissionsController : ControllerBase
 {
     [Inject] private readonly IAsyncDocumentSession session;
-    [Inject] private readonly IForgeIntegrationResolver forges;
+    [Inject] private readonly ISparkVisibility visibility;
     [Inject] private readonly IEnumerable<IForgeInstallationPermissions> permissionSources;
 
     /// <returns>
@@ -36,7 +36,8 @@ public partial class AccountPermissionsController : ControllerBase
     public async Task<ActionResult<PendingInstallationPermissions>> Get(string provider, string login, CancellationToken cancellationToken)
     {
         // The owner set first, so an account the viewer cannot manage takes the same steps as a missing one.
-        var owners = await forges.GetAllowedOwnerKeysAsync(cancellationToken);
+        // The MANAGED owners (R39, D-O12): only an organization's owner can accept the App's permissions anyway.
+        var owners = await visibility.GetManagedOwnersAsync();
         if (!ForgeProviders.TryParse(provider, out var forge))
             return NotFound();
 

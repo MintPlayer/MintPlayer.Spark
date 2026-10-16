@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using CodeCoverage.Forge;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.Caching.Memory;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions.Authentication;
 using MintPlayer.Spark.Authorization.Identity;
@@ -44,6 +45,7 @@ public partial class GitHubRepositoryAdministration : IForgeRepositoryAdministra
     [Inject] private readonly IGitHubInstallationService installationService;
     [Inject] private readonly IHttpClientFactory httpClientFactory;
     [Inject] private readonly ILogger<GitHubRepositoryAdministration> logger;
+    [Inject] private readonly Microsoft.Extensions.Caching.Memory.IMemoryCache memoryCache;
 
     private static readonly Uri ApiBase = new("https://api.github.com/");
     private const string ApiVersion = "2022-11-28";
@@ -135,6 +137,47 @@ public partial class GitHubRepositoryAdministration : IForgeRepositoryAdministra
         return new ForgeViewerRepository(installationId.ToString(CultureInfo.InvariantCulture), ownerId, Str(owner, "login") ?? string.Empty, id, fullName,
             Flag(repository, "private"), Flag(Child(repository, "permissions"), "admin"));
     }
+
+    /// <summary>How long a viewer's admin set per account is kept: the owner set's lifetime (<see cref="GitHubAccessService"/>).</summary>
+    private static readonly TimeSpan AdministeredCacheDuration = TimeSpan.FromMinutes(5);
+
+    /// <summary>How long a failed admin check is remembered as "none": the owner set's failure memo.</summary>
+    private static readonly TimeSpan AdministeredFailureCacheDuration = TimeSpan.FromSeconds(30);
+
+    public async Task<IReadOnlySet<string>> GetAdministeredRepositoriesAsync(Account account, IReadOnlyList<Repository> repositories,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(account);
+        if (currentUser.Id is not { Length: > 0 } userId || account.Id is null || repositories.Count == 0)
+            return EmptySet;
+
+        var key = $"github-repo-admins/{userId}/{account.Id}";
+        if (memoryCache.TryGetValue<IReadOnlySet<string>>(key, out var cached) && cached is not null)
+            return cached;
+
+        if ((await GetViewerLoginAsync(cancellationToken)).Login is not { } login)
+            return EmptySet;
+
+        IReadOnlySet<string> administered;
+        var lifetime = AdministeredCacheDuration;
+        try
+        {
+            var answer = await CheckAdministratorAsync(account, repositories, login, cancellationToken);
+            administered = answer.Where(a => a.Value).Select(a => a.Key).ToHashSet(StringComparer.Ordinal);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            // A rate limit or an unreachable GitHub: nobody administers anything for a short while, never a stale "yes".
+            logger.LogWarning(ex, "Repository admin check failed for {Account}; treating the viewer as no admin", account.Login);
+            administered = EmptySet;
+            lifetime = AdministeredFailureCacheDuration;
+        }
+
+        GitHubViewerCache.Set(memoryCache, userId, key, administered, lifetime);
+        return administered;
+    }
+
+    private static readonly IReadOnlySet<string> EmptySet = new HashSet<string>(StringComparer.Ordinal);
 
     public async Task<IReadOnlyDictionary<string, bool>> CheckAdministratorAsync(Account account, IReadOnlyList<Repository> repositories, string login,
         CancellationToken cancellationToken = default)

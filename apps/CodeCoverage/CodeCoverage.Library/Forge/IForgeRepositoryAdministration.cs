@@ -48,6 +48,17 @@ public interface IForgeRepositoryAdministration
     /// </summary>
     Task<IReadOnlyDictionary<string, bool>> CheckAdministratorAsync(Account account, IReadOnlyList<Repository> repositories, string login,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The document ids of those of <paramref name="repositories"/> (all of <paramref name="account"/>) the signed-in viewer
+    /// administers: <see cref="CheckAdministratorAsync"/> for the viewer's verified login, cached per (viewer, account) with
+    /// the owner set's lifetime and dropped by the manual resync. It is what makes a repository admin who does not own the
+    /// account a manager of that repository's settings (D-O12); an action that changes something on the forge still asks
+    /// <see cref="CheckAdministratorAsync"/> now. Empty when the viewer has no verified login or the forge cannot be asked
+    /// (fail closed).
+    /// </summary>
+    Task<IReadOnlySet<string>> GetAdministeredRepositoriesAsync(Account account, IReadOnlyList<Repository> repositories,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>The viewer's verified login on one forge, or why there is none.</summary>

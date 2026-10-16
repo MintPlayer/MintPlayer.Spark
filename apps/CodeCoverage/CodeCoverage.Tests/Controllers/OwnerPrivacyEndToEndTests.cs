@@ -172,6 +172,8 @@ public class OwnerPrivacyEndToEndTests(OwnerPrivacyHostFixture host) : IClassFix
     [InlineData(null)]
     [InlineData(OwnerPrivacyHostFixture.StrangerUserId)]
     [InlineData(OwnerPrivacyHostFixture.AdminUserId)]
+    [InlineData(OwnerPrivacyHostFixture.MemberUserId)]
+    [InlineData(OwnerPrivacyHostFixture.RepoAdminUserId)]
     public async Task Edit_is_withheld_on_an_account_the_caller_does_not_manage(string? user)
     {
         var (_, body) = await host.PostAsync("/spark/po/load", new { objectTypeId = AccountTypeId, id = host.AccountId }, user);
@@ -272,6 +274,110 @@ public class OwnerPrivacyEndToEndTests(OwnerPrivacyHostFixture host) : IClassFix
         body.Should().NotContain(OwnerPrivacyHostFixture.BadgeTokenMarker);
     }
 
+    // ── R39 (D-O12): who manages is the forge's owner role, not installation reach ─────────────────────────────────────
+    //
+    // The member reaches acme's installation (GET /user/installations lists it: read access to one repository is enough)
+    // but is a plain member of the organization; the repository admin reaches it too and administers acme/open only. Both
+    // keep seeing the private repository's coverage (that is visibility, unchanged); neither manages the account.
+
+    /// <summary>Callers who reach acme's installation without owning the organization.</summary>
+    public static TheoryData<string> ReachingNonOwners => new() { OwnerPrivacyHostFixture.MemberUserId, OwnerPrivacyHostFixture.RepoAdminUserId };
+
+    [Theory]
+    [MemberData(nameof(ReachingNonOwners))]
+    public async Task A_member_or_a_repository_admin_who_does_not_own_the_organization_sees_only_the_accounts_public_attributes(string user)
+    {
+        var (status, body) = await host.PostAsync("/spark/po/load", new { objectTypeId = AccountTypeId, id = host.AccountId }, user);
+
+        status.Should().Be(HttpStatusCode.OK);
+        using var json = JsonDocument.Parse(body);
+        FilledAttributes(json.RootElement).Except(PublicAccountAttributes).Should().BeEmpty(
+            "reaching the organization's installation is not owning it (R39): its settings are its owners'");
+        AssertNoMarker(body);
+        json.RootElement.GetProperty("disabledActions").EnumerateArray().Select(e => e.GetString()).Should().Contain("Edit",
+            "only an owner of the organization may edit the account");
+    }
+
+    [Fact]
+    public async Task A_read_only_member_still_sees_the_private_repository_but_none_of_its_settings()
+    {
+        foreach (var id in new[] { host.PublicRepositoryId, host.PrivateRepositoryId })
+        {
+            var (status, body) = await host.PostAsync("/spark/po/load", new { objectTypeId = RepositoryTypeId, id }, OwnerPrivacyHostFixture.MemberUserId);
+
+            status.Should().Be(HttpStatusCode.OK, "seeing a repository's coverage follows installation reach, which R39 leaves as it was");
+            using var json = JsonDocument.Parse(body);
+            FilledAttributes(json.RootElement).Except(PublicRepositoryAttributes).Should().BeEmpty(
+                "a member who does not administer the repository is a stranger to its settings");
+            AssertNoMarker(body);
+        }
+    }
+
+    [Fact]
+    public async Task A_repository_admin_sees_the_settings_of_the_repository_they_administer_and_no_other()
+    {
+        var (status, body) = await host.PostAsync("/spark/po/load", new { objectTypeId = RepositoryTypeId, id = host.PublicRepositoryId }, OwnerPrivacyHostFixture.RepoAdminUserId);
+        var (otherStatus, otherBody) = await host.PostAsync("/spark/po/load", new { objectTypeId = RepositoryTypeId, id = host.PrivateRepositoryId }, OwnerPrivacyHostFixture.RepoAdminUserId);
+
+        status.Should().Be(HttpStatusCode.OK);
+        body.Should().Contain(OwnerPrivacyHostFixture.RepositoryCheckMarker, "an administrator of acme/open manages its settings");
+        body.Should().Contain(OwnerPrivacyHostFixture.BadgeTokenMarker);
+        otherStatus.Should().Be(HttpStatusCode.OK);
+        using var other = JsonDocument.Parse(otherBody);
+        FilledAttributes(other.RootElement).Except(PublicRepositoryAttributes).Should().BeEmpty("they do not administer acme/secret");
+    }
+
+    [Fact]
+    public async Task A_read_only_member_cannot_save_the_account_or_a_repository()
+    {
+        var (account, _) = await host.UpdateAsync(AccountTypeId, host.AccountId, "DeleteBranchOnPrClose", false, OwnerPrivacyHostFixture.MemberUserId);
+        var (repository, _) = await host.UpdateAsync(RepositoryTypeId, host.PrivateRepositoryId, "DeleteBranchOnPrClose", "Disabled", OwnerPrivacyHostFixture.MemberUserId);
+
+        account.Should().NotBe(HttpStatusCode.OK, "the account write filter admits the organization's owners only");
+        repository.Should().NotBe(HttpStatusCode.OK, "the repository write filter admits owners and that repository's admins only");
+        using var session = host.Store.OpenAsyncSession();
+        (await session.LoadAsync<Account>(host.AccountId)).DeleteBranchOnPrClose.Should().BeTrue();
+        (await session.LoadAsync<Repository>(host.PrivateRepositoryId)).DeleteBranchOnPrClose.Should().Be(EDeleteBranchPolicy.Enabled);
+    }
+
+    [Fact]
+    public async Task A_repository_admin_may_save_the_repository_they_administer_but_not_the_account()
+    {
+        var (repository, body) = await host.UpdateAsync(RepositoryTypeId, host.AdministeredRepositoryId, "DeleteBranchOnPrClose", "Disabled", OwnerPrivacyHostFixture.RepoAdminUserId);
+        var (account, _) = await host.UpdateAsync(AccountTypeId, host.AccountId, "DeleteBranchOnPrClose", false, OwnerPrivacyHostFixture.RepoAdminUserId);
+
+        repository.Should().Be(HttpStatusCode.OK, $"R39: a repository's settings also accept an administrator of that repository ({body})");
+        account.Should().NotBe(HttpStatusCode.OK, "administering one repository is not managing the account");
+        using var session = host.Store.OpenAsyncSession();
+        (await session.LoadAsync<Repository>(host.AdministeredRepositoryId)).DeleteBranchOnPrClose.Should().Be(EDeleteBranchPolicy.Disabled);
+        (await session.LoadAsync<Account>(host.AccountId)).DeleteBranchOnPrClose.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task An_organization_owner_may_save_the_account()
+    {
+        var (account, body) = await host.UpdateAsync(AccountTypeId, host.AccountId, "DeleteBranchOnPrClose", true, OwnerPrivacyHostFixture.OwnerUserId);
+
+        account.Should().Be(HttpStatusCode.OK, $"an active owner of the organization manages the account ({body})");
+    }
+
+    [Theory]
+    [InlineData(OwnerPrivacyHostFixture.OwnerUserId, "acme/admin-only=owner,acme/open=owner,acme/secret=owner")]
+    [InlineData(OwnerPrivacyHostFixture.RepoAdminUserId, "acme/admin-only=repo-admin,acme/open=repo-admin")]
+    [InlineData(OwnerPrivacyHostFixture.MemberUserId, "")]
+    public async Task The_onboarding_page_lists_what_the_caller_manages_and_why(string user, string expected)
+    {
+        var (status, body) = await host.GetAsync("/api/dependency-updates/onboarding", user);
+
+        status.Should().Be(HttpStatusCode.OK);
+        using var json = JsonDocument.Parse(body);
+        var rows = json.RootElement.GetProperty("repositories").EnumerateArray()
+            .Select(r => $"{r.GetProperty("fullName").GetString()}={r.GetProperty("managedBy").GetString()}")
+            .Order(StringComparer.Ordinal);
+        string.Join(",", rows).Should().Be(expected,
+            "managedBy is \"owner\" for an organization owner and \"repo-admin\" for an administrator of the repository; a read-only member manages nothing");
+    }
+
     // ── helpers ─────────────────────────────────────────────────────────────────────────────────
 
     private static void AssertNoMarker(string body, bool includeTimeZone = true)
@@ -317,6 +423,10 @@ public sealed class OwnerPrivacyHostFixture : CoverageRavenTest, IAsyncLifetime
     public const string OwnerUserId = "SparkUsers/privacy-owner";
     public const string StrangerUserId = "SparkUsers/privacy-stranger";
     public const string AdminUserId = "SparkUsers/privacy-admin";
+    /// <summary>Reaches acme's installation (read access), membership role <c>member</c>: manages nothing (R39).</summary>
+    public const string MemberUserId = "SparkUsers/privacy-member";
+    /// <summary>Reaches acme's installation, not an owner of the organization, ADMIN of acme/open and acme/admin-only.</summary>
+    public const string RepoAdminUserId = "SparkUsers/privacy-repo-admin";
     private const string AdminGitHubId = "770077";
     private const string UserHeader = "X-Test-User";
 
@@ -332,6 +442,8 @@ public sealed class OwnerPrivacyHostFixture : CoverageRavenTest, IAsyncLifetime
     public string AccountId { get; } = Account.DocumentId(EForgeProvider.GitHub, 5);
     public string PublicRepositoryId { get; } = Repository.DocumentId(EForgeProvider.GitHub, 4601);
     public string PrivateRepositoryId { get; } = Repository.DocumentId(EForgeProvider.GitHub, 4602);
+    /// <summary>A private repository the repository admin administers; the save tests write to it alone.</summary>
+    public string AdministeredRepositoryId { get; } = Repository.DocumentId(EForgeProvider.GitHub, 4603);
 
     public async Task InitializeAsync()
     {
@@ -341,6 +453,8 @@ public sealed class OwnerPrivacyHostFixture : CoverageRavenTest, IAsyncLifetime
             services.AddSingleton<IStartupFilter, TestPrincipalStartupFilter>();
             services.RemoveAll<IForgeIntegrationResolver>();
             services.AddScoped<IForgeIntegrationResolver, PerCallerForges>();
+            services.RemoveAll<IForgeRepositoryAdministration>();
+            services.AddScoped<IForgeRepositoryAdministration, PerCallerAdministration>();
         }, new Dictionary<string, string?>
         {
             [$"{CoverageAdministrators.Section}:0"] = $"github:{AdminGitHubId}",
@@ -352,6 +466,8 @@ public sealed class OwnerPrivacyHostFixture : CoverageRavenTest, IAsyncLifetime
             await session.StoreAsync(User("privacy-owner", "880001"), OwnerUserId);
             await session.StoreAsync(User("privacy-stranger", "880002"), StrangerUserId);
             await session.StoreAsync(User("privacy-admin", AdminGitHubId), AdminUserId);
+            await session.StoreAsync(User("privacy-member", "880003"), MemberUserId);
+            await session.StoreAsync(User("privacy-repo-admin", "880004"), RepoAdminUserId);
 
             await session.StoreAsync(new Account
             {
@@ -376,6 +492,7 @@ public sealed class OwnerPrivacyHostFixture : CoverageRavenTest, IAsyncLifetime
 
             await session.StoreAsync(Repo(4601, "open", isPrivate: false), PublicRepositoryId);
             await session.StoreAsync(Repo(4602, "secret", isPrivate: true), PrivateRepositoryId);
+            await session.StoreAsync(Repo(4603, "admin-only", isPrivate: true), AdministeredRepositoryId);
             await session.SaveChangesAsync();
         }
         WaitForIndexing(Store);
@@ -417,6 +534,29 @@ public sealed class OwnerPrivacyHostFixture : CoverageRavenTest, IAsyncLifetime
     public Task<(HttpStatusCode Status, string Body)> GetAsync(string path, string? user)
         => SendAsync(new HttpRequestMessage(HttpMethod.Get, path), user);
 
+    /// <summary>
+    /// Loads the object as <paramref name="user"/>, sets one attribute's value and posts it to <c>/spark/po/update</c>, as
+    /// the page's Save does; the status of the update.
+    /// </summary>
+    public async Task<(HttpStatusCode Status, string Body)> UpdateAsync(string objectTypeId, string id, string attribute, object value, string user)
+    {
+        var (status, body) = await PostAsync("/spark/po/load", new { objectTypeId, id }, user);
+        status.Should().Be(HttpStatusCode.OK);
+        var po = System.Text.Json.Nodes.JsonNode.Parse(body)!.AsObject();
+        var target = po["attributes"]!.AsArray().Single(a => a!["name"]!.GetValue<string>() == attribute)!.AsObject();
+        target["value"] = System.Text.Json.Nodes.JsonValue.Create(value);
+        target["isValueChanged"] = true;
+        return await SendAsync(new HttpRequestMessage(HttpMethod.Post, "/spark/po/update")
+        {
+            Content = new StringContent(new System.Text.Json.Nodes.JsonObject
+            {
+                ["objectTypeId"] = objectTypeId,
+                ["id"] = id,
+                ["persistentObject"] = po,
+            }.ToJsonString(), Encoding.UTF8, "application/json"),
+        }, user);
+    }
+
     private async Task<(HttpStatusCode Status, string Body)> SendAsync(HttpRequestMessage request, string? user)
     {
         using var client = Factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
@@ -452,6 +592,9 @@ public sealed class OwnerPrivacyHostFixture : CoverageRavenTest, IAsyncLifetime
                 {
                     context.User = new ClaimsPrincipal(new ClaimsIdentity(
                         [new Claim(ClaimTypes.NameIdentifier, id), new Claim(ClaimTypes.Name, id)], "OwnerPrivacyTest"));
+                    // A header is not a credential the browser attaches by itself, so the save tests need no antiforgery
+                    // token (CSRF has its own tests: CsrfSurfaceTests). Recorded the way Spark's own schemes record it.
+                    context.Features.Set<MintPlayer.Spark.Abstractions.Authentication.ISparkAuthenticatedSchemeFeature>(new HeaderScheme());
                 }
                 await nextMiddleware();
             });
@@ -472,8 +615,13 @@ public sealed class OwnerPrivacyHostFixture : CoverageRavenTest, IAsyncLifetime
         {
             var user = accessor.HttpContext?.User;
             signedIn = user?.Identity?.IsAuthenticated == true;
-            if (user?.FindFirstValue(ClaimTypes.NameIdentifier) == OwnerUserId)
+            var id = user?.FindFirstValue(ClaimTypes.NameIdentifier);
+            // All three reach acme's installation (GET /user/installations lists it); only the owner OWNS the organization
+            // (GET /user/memberships/orgs/acme answers role admin, state active; the others role member).
+            if (id is OwnerUserId or MemberUserId or RepoAdminUserId)
                 forge.Owners.Add(new ForgeOwner(EForgeProvider.GitHub, "acme"));
+            if (id is MemberUserId or RepoAdminUserId)
+                forge.Managed = [];
         }
 
         public IForgeIntegration? For(EForgeProvider provider) => forge.For(provider);
@@ -484,5 +632,66 @@ public sealed class OwnerPrivacyHostFixture : CoverageRavenTest, IAsyncLifetime
 
         public Task<IReadOnlyList<EForgeProvider>> GetLinkedProvidersAsync(CancellationToken cancellationToken = default)
             => Task.FromResult<IReadOnlyList<EForgeProvider>>(signedIn ? [EForgeProvider.GitHub] : []);
+    }
+
+    private sealed class HeaderScheme : MintPlayer.Spark.Abstractions.Authentication.ISparkAuthenticatedSchemeFeature
+    {
+        public MintPlayer.Spark.Abstractions.Builder.SparkCredentialScheme Scheme { get; } = new("OwnerPrivacyTest", IsAmbient: false);
+    }
+
+    /// <summary>
+    /// The forge's repository-admin answers per caller (R33): the owner administers every acme repository, the repository
+    /// admin acme/open and acme/admin-only, everybody else none. The listing is what the onboarding page shows; the checks
+    /// are what settings visibility, the write filter and the enable action ask.
+    /// </summary>
+    private sealed class PerCallerAdministration : IForgeRepositoryAdministration
+    {
+        private static readonly (long Id, string Name, bool IsPrivate)[] Repositories = [(4601, "open", false), (4602, "secret", true), (4603, "admin-only", true)];
+        private readonly string? caller;
+
+        public PerCallerAdministration(IHttpContextAccessor accessor)
+            => caller = accessor.HttpContext?.User?.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        public EForgeProvider Provider => EForgeProvider.GitHub;
+
+        private string? Login => caller switch
+        {
+            OwnerUserId => "privacy-owner",
+            MemberUserId => "privacy-member",
+            RepoAdminUserId => "privacy-repo-admin",
+            StrangerUserId => "privacy-stranger",
+            AdminUserId => "privacy-admin",
+            _ => null,
+        };
+
+        private bool Administers(long repositoryGitHubId) => caller switch
+        {
+            OwnerUserId => true,
+            RepoAdminUserId => repositoryGitHubId is 4601 or 4603,
+            _ => false,
+        };
+
+        public Task<ForgeViewerLogin> GetViewerLoginAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(new ForgeViewerLogin(Login, Login is not null, EForgeCredentialState.Ok));
+
+        public Task<ForgeViewerRepositories> ListViewerRepositoriesAsync(string? installationKey, CancellationToken cancellationToken = default)
+        {
+            if (caller is not (OwnerUserId or MemberUserId or RepoAdminUserId))
+                return Task.FromResult(ForgeViewerRepositories.None(Login, EForgeCredentialState.Ok));
+            return Task.FromResult(new ForgeViewerRepositories(
+                [.. Repositories.Select(r => new ForgeViewerRepository("5555", 5, "acme", r.Id, $"acme/{r.Name}", r.IsPrivate, Administers(r.Id)))],
+                Login, EForgeCredentialState.Ok));
+        }
+
+        public Task<IReadOnlyDictionary<string, bool>> CheckAdministratorAsync(Account account, IReadOnlyList<Repository> repositories, string login,
+            CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyDictionary<string, bool>>(repositories.Where(r => r.Id is not null)
+                .ToDictionary(r => r.Id!, r => login == Login && Administers(r.GitHubId)));
+
+        public async Task<IReadOnlySet<string>> GetAdministeredRepositoriesAsync(Account account, IReadOnlyList<Repository> repositories,
+            CancellationToken cancellationToken = default)
+            => Login is { } login
+                ? (await CheckAdministratorAsync(account, repositories, login, cancellationToken)).Where(a => a.Value).Select(a => a.Key).ToHashSet()
+                : new HashSet<string>();
     }
 }

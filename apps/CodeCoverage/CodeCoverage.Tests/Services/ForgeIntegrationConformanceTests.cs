@@ -389,6 +389,7 @@ public class ForgeIntegrationConformanceTests
             => Task.FromResult(new ForgeVisibility([], EForgeCredentialState.Ok));
         public Task<ForgeOwner[]> GetAllowedOwnersAsync(CancellationToken cancellationToken = default) => Task.FromResult<ForgeOwner[]>([]);
         public Task<bool> IsOwnerAllowedAsync(ForgeOwner owner, CancellationToken cancellationToken = default) => Task.FromResult(false);
+        public Task<bool> ManagesOwnerAsync(ForgeOwner owner, CancellationToken cancellationToken = default) => Task.FromResult(false);
         public Task InvalidateAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task<ForgeAccess> CheckAccessAsync(Repository repository, CancellationToken cancellationToken = default) => Task.FromResult(ForgeAccess.Yes);
         public Task DeleteBranchAsync(Repository repository, string branch, CancellationToken cancellationToken = default) => Task.CompletedTask;

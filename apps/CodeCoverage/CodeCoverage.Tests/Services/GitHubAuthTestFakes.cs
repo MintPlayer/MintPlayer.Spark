@@ -185,6 +185,8 @@ internal sealed class ScriptedAccessService(GitHubVisibility visibility, GitHubV
     public async Task<string[]> GetAllowedOwnersAsync(CancellationToken ct = default) => (await GetVisibilityAsync(ct)).Owners;
     public async Task<bool> IsOwnerAllowedAsync(string ownerLogin, CancellationToken ct = default)
         => (await GetVisibilityAsync(ct)).Owners.Contains(ownerLogin, StringComparer.OrdinalIgnoreCase);
+    public async Task<bool> ManagesOwnerAsync(string ownerLogin, CancellationToken ct = default)
+        => await IsOwnerAllowedAsync(ownerLogin, ct);
     public Task InvalidateAsync(CancellationToken ct = default) => Task.CompletedTask;
     public Task<GitHubVerifiedLogin> GetVerifiedLoginAsync(CancellationToken ct = default)
         => Task.FromResult(verified ?? new GitHubVerifiedLogin(null, false, GitHubTokenState.Ok));

@@ -32,6 +32,13 @@ public sealed class TestGitHubAccessService(params string[] allowedOwners) : IGi
     public Task<GitHubVisibility> GetVisibilityAsync(CancellationToken cancellationToken = default)
         => Task.FromResult(new GitHubVisibility(AllowedOwners, GitHubTokenState.Ok));
 
+    /// <summary>Owners the caller MANAGES (R39); null (the default) means every one of <see cref="AllowedOwners"/>.</summary>
+    public string[]? ManagedOwners { get; set; }
+
+    public Task<bool> ManagesOwnerAsync(string ownerLogin, CancellationToken cancellationToken = default)
+        => Task.FromResult(AllowedOwners.Contains(ownerLogin, StringComparer.OrdinalIgnoreCase)
+            && (ManagedOwners ?? AllowedOwners).Contains(ownerLogin, StringComparer.OrdinalIgnoreCase));
+
     public Task InvalidateAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
     /// <summary>The caller's own GitHub login as GitHub verified it; null models a caller with no linked GitHub sign-in.</summary>

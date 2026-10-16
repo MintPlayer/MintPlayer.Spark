@@ -45,6 +45,7 @@ public class RepoSettingsControllerTests : CoverageRavenTest
         services.AddSingleton(Substitute.For<CodeCoverage.Services.IGitHubStateReconciler>());
         services.AddScoped<IForgeIntegration, CodeCoverage.Services.GitHubForgeIntegration>();
         services.AddScoped<IForgeIntegrationResolver>(sp => new SingleForgeResolver(sp.GetRequiredService<IForgeIntegration>()));
+        services.AddScoped<CodeCoverage.Services.ISparkVisibility, CodeCoverage.Services.SparkVisibility>();
         services.AddScoped<RepoSettingsController>();
 
         return services.BuildServiceProvider().GetRequiredService<RepoSettingsController>();

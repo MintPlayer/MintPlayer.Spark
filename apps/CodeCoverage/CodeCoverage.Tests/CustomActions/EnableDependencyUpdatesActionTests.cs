@@ -31,7 +31,7 @@ public class EnableDependencyUpdatesActionTests : CoverageRavenTest
         public Task<IReadOnlyDictionary<string, string?>> CheckAsync(IReadOnlyList<Repository> repositories, CancellationToken cancellationToken = default)
         {
             Checked.AddRange(repositories.Select(r => r.Id!));
-            return Task.FromResult<IReadOnlyDictionary<string, string?>>(repositories.ToDictionary(r => r.Id!, r => r.Id == RepositoryId ? DependencyOnboardingService.Manager : null));
+            return Task.FromResult<IReadOnlyDictionary<string, string?>>(repositories.ToDictionary(r => r.Id!, r => r.Id == RepositoryId ? DependencyOnboardingService.Owner : null));
         }
     }
 

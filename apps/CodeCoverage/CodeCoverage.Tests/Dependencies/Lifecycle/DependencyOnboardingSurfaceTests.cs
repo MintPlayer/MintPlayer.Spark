@@ -148,7 +148,7 @@ public class DependencyOnboardingSurfaceTests : CoverageRavenTest
     [Fact]
     public async Task R28_run_now_starts_a_scheduled_run_with_a_fresh_key_expedited()
     {
-        var (action, bus, repository, _) = await RunNowAsync(DependencyOnboardingService.Manager, EDependencyRunState.Idle);
+        var (action, bus, repository, _) = await RunNowAsync(DependencyOnboardingService.Owner, EDependencyRunState.Idle);
 
         (await action.RunAsync(repository, CancellationToken.None)).Should().Be(RunScheduledSlotNowAction.Started);
         (await action.RunAsync(repository, CancellationToken.None)).Should().Be(RunScheduledSlotNowAction.Started);
@@ -163,7 +163,7 @@ public class DependencyOnboardingSurfaceTests : CoverageRavenTest
     [InlineData(EDependencyRunState.Publishing)]
     public async Task R28_run_now_is_refused_while_a_run_is_in_progress(EDependencyRunState state)
     {
-        var (action, bus, repository, _) = await RunNowAsync(DependencyOnboardingService.Manager, state);
+        var (action, bus, repository, _) = await RunNowAsync(DependencyOnboardingService.Owner, state);
 
         (await action.RunAsync(repository, CancellationToken.None)).Should().Be(RunScheduledSlotNowAction.Busy);
         bus.Sent.Should().BeEmpty();
@@ -175,7 +175,7 @@ public class DependencyOnboardingSurfaceTests : CoverageRavenTest
         var (refused, bus, repository, _) = await RunNowAsync(reason: null, EDependencyRunState.Idle);
         (await refused.RunAsync(repository, CancellationToken.None)).Should().Be(RunScheduledSlotNowAction.Refused);
 
-        var (off, offBus, offRepository, _) = await RunNowAsync(DependencyOnboardingService.ForgeAdmin, null, enabled: false);
+        var (off, offBus, offRepository, _) = await RunNowAsync(DependencyOnboardingService.RepoAdmin, null, enabled: false);
         (await off.RunAsync(offRepository, CancellationToken.None)).Should().Be(RunScheduledSlotNowAction.Off);
 
         bus.Sent.Concat(offBus.Sent).Should().BeEmpty();
@@ -246,16 +246,28 @@ public class DependencyOnboardingSurfaceTests : CoverageRavenTest
             AdminChecks++;
             return Task.FromResult<IReadOnlyDictionary<string, bool>>(repositories.ToDictionary(r => r.Id!, r => Admins.GetValueOrDefault(r.Id!)));
         }
+
+        public Task<IReadOnlySet<string>> GetAdministeredRepositoriesAsync(Account account, IReadOnlyList<Repository> repositories, CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlySet<string>>(repositories.Where(r => Admins.GetValueOrDefault(r.Id!)).Select(r => r.Id!).ToHashSet());
     }
 
+    /// <summary>The viewer's owners: <paramref name="managed"/> are reached AND managed; <see cref="ReachedOnly"/> are
+    /// reached (installation access) but not managed, the read-only organization member of R39.</summary>
     private sealed class ScriptedVisibility(params string[] managed) : ISparkVisibility
     {
-        public Task<string[]> GetAllowedOwnersAsync() => Task.FromResult(managed);
+        public string[] ReachedOnly { get; init; } = [];
+        public Task<string[]> GetAllowedOwnersAsync() => Task.FromResult<string[]>([.. managed, .. ReachedOnly]);
         public Task<string[]> GetVisibleRepositoryIdsAsync() => Task.FromResult(Array.Empty<string>());
         public Task<bool> CanManageOwnerAsync(string ownerKey) => Task.FromResult(managed.Contains(ownerKey, StringComparer.OrdinalIgnoreCase));
+        public Task<string[]> GetManagedOwnersAsync() => Task.FromResult(managed);
+        public Task<bool> CanManageRepositoryAsync(Repository repository) => CanManageOwnerAsync(repository.OwnerKey);
+        public Task<string[]> GetAdministeredRepositoryIdsAsync() => Task.FromResult(Array.Empty<string>());
     }
 
-    private async Task<(DependencyOnboardingService Service, ScriptedAdministration Forge)> OnboardingAsync(params string[] managed)
+    private Task<(DependencyOnboardingService Service, ScriptedAdministration Forge)> OnboardingAsync(params string[] managed)
+        => OnboardingAsync(new ScriptedVisibility(managed));
+
+    private async Task<(DependencyOnboardingService Service, ScriptedAdministration Forge)> OnboardingAsync(ScriptedVisibility visibility)
     {
         var h = new DependencyHarness(GetDocumentStore());
         await h.SeedAsync(enabled: false);
@@ -264,7 +276,7 @@ public class DependencyOnboardingSurfaceTests : CoverageRavenTest
         forge.Listed.Add(new ForgeViewerRepository("4242", AccountGitHubId, "acme", 910099, "acme/not-synced-yet", false, IsAdmin: false));
         forge.Listed.Add(new ForgeViewerRepository("5151", 88, "other-org", 920001, "other-org/tool", false, IsAdmin: true));
         forge.Listed.Add(new ForgeViewerRepository("5151", 88, "other-org", 920002, "other-org/readonly", false, IsAdmin: false));
-        var service = new DependencyOnboardingService([forge], [new GitHubSetupRedirect()], new ScriptedVisibility(managed), h.Store.OpenAsyncSession());
+        var service = new DependencyOnboardingService([forge], [new GitHubSetupRedirect()], visibility, h.Store.OpenAsyncSession());
         return (service, forge);
     }
 
@@ -278,7 +290,7 @@ public class DependencyOnboardingSurfaceTests : CoverageRavenTest
         listing.Login.Should().Be("octocat");
         listing.Narrowed.Should().BeFalse();
         listing.Repositories.Select(r => (r.FullName, r.ManagedBy)).Should().Equal(
-            [("acme/not-synced-yet", "manager"), ("acme/widget", "manager"), ("other-org/tool", "forge-admin")]);
+            [("acme/not-synced-yet", "owner"), ("acme/widget", "owner"), ("other-org/tool", "repo-admin")]);
         var widget = listing.Repositories.Single(r => r.FullName == "acme/widget");
         widget.RepositoryId.Should().Be(RepositoryId);
         widget.Syncing.Should().BeFalse();
@@ -318,9 +330,27 @@ public class DependencyOnboardingSurfaceTests : CoverageRavenTest
 
         var reasons = await service.CheckAsync([widget, foreign, refused]);
 
-        reasons[widget.Id!].Should().Be("manager");
-        reasons[foreign.Id!].Should().Be("forge-admin");
+        reasons[widget.Id!].Should().Be("owner");
+        reasons[foreign.Id!].Should().Be("repo-admin");
         reasons[refused.Id!].Should().BeNull("a listing's admin flag is shown, never trusted: the forge said no now");
         forge.AdminChecks.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task R39_a_read_only_member_who_reaches_the_installation_gets_no_owner_reason_only_a_checked_repo_admin_one()
+    {
+        // acme's installation is reachable (the owner set has it), but the viewer is no owner of the organization.
+        var (service, forge) = await OnboardingAsync(new ScriptedVisibility { ReachedOnly = ["github:acme"] });
+        var widget = new Repository { Id = RepositoryId, OwnerLogin = "acme", Account = AccountId, Provider = EForgeProvider.GitHub };
+
+        var listing = await service.ListAsync(new Dictionary<string, string?>());
+        var before = await service.CheckAsync([widget]);
+        forge.Admins[widget.Id!] = true;
+        var after = await service.CheckAsync([widget]);
+
+        listing.Repositories.Select(r => (r.FullName, r.ManagedBy)).Should().Equal([("other-org/tool", "repo-admin")],
+            "acme's repositories are listed without the admin flag, and reaching the installation is not owning it");
+        before[widget.Id!].Should().BeNull("a member with read access may not enable dependency updates");
+        after[widget.Id!].Should().Be("repo-admin", "an administrator of the repository may, asked of the forge now");
     }
 }

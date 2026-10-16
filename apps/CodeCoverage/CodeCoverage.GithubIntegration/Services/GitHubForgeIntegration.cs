@@ -63,6 +63,9 @@ public partial class GitHubForgeIntegration : IForgeIntegration
     public Task<bool> IsOwnerAllowedAsync(ForgeOwner owner, CancellationToken cancellationToken = default)
         => access.IsOwnerAllowedAsync(owner, cancellationToken);
 
+    public Task<bool> ManagesOwnerAsync(ForgeOwner owner, CancellationToken cancellationToken = default)
+        => access.ManagesOwnerAsync(owner, cancellationToken);
+
     public Task InvalidateAsync(CancellationToken cancellationToken = default)
         => access.InvalidateAsync(cancellationToken);
 

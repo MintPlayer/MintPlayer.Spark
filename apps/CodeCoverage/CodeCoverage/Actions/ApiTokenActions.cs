@@ -115,7 +115,8 @@ public partial class ApiTokenActions : DefaultPersistentObjectActions<ApiToken>,
     /// </remarks>
     private async Task<List<string>> ManagedAccountIdsAsync()
     {
-        var owners = await visibility.GetAllowedOwnersAsync();
+        // Managed, not merely visible (R39, D-O12): an upload token is the account's credential.
+        var owners = await visibility.GetManagedOwnersAsync();
         if (owners.Length == 0)
             return [];
 

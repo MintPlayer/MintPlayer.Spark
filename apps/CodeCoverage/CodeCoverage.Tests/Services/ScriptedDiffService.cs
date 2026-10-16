@@ -123,6 +123,15 @@ public sealed class ScriptedDiffService(CommitComparison? comparison = null)
     public Task<bool> IsOwnerAllowedAsync(ForgeOwner owner, CancellationToken cancellationToken = default)
         => Task.FromResult(Owners.Any(o => o.Matches(owner)));
 
+    /// <summary>
+    /// Owners the scripted viewer MANAGES (R39, D-O12); null (the default) means every one of <see cref="Owners"/>, which is
+    /// what tests written before the two questions split assumed. Script it to model a read-only organization member.
+    /// </summary>
+    public List<ForgeOwner>? Managed { get; set; }
+
+    public Task<bool> ManagesOwnerAsync(ForgeOwner owner, CancellationToken cancellationToken = default)
+        => Task.FromResult(Owners.Any(o => o.Matches(owner)) && (Managed ?? Owners).Any(o => o.Matches(owner)));
+
     public Task InvalidateAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
     public Task<ForgeAccess> CheckAccessAsync(Repository repository, CancellationToken cancellationToken = default)

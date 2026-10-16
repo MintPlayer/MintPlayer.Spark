@@ -45,6 +45,7 @@ public class AccountPermissionsControllerTests : CoverageRavenTest
         services.AddSingleton(session);
         services.AddSingleton<IForgeIntegrationResolver>(forge);
         services.AddSingleton<IForgeInstallationPermissions>(new FixedPermissions(answer, gaps));
+        services.AddScoped<CodeCoverage.Services.ISparkVisibility, CodeCoverage.Services.SparkVisibility>();
         services.AddScoped<AccountPermissionsController>();
         return services.BuildServiceProvider().GetRequiredService<AccountPermissionsController>();
     }
