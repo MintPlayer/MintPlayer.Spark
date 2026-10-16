@@ -1,0 +1,1716 @@
+{
+  "contractVersion": 1,
+  "kind": "lookup",
+  "expectedSha": "ee304c5c9ee2d72267b5092eb83f5546d8658baa",
+  "generatedAt": "2026-10-16T08:00:00.000Z",
+  "engine": {
+    "name": "renovate",
+    "image": "renovate/renovate:44.125.2@sha256:a7dec3432d62b39872058424f0490829413b3f597f5d72fb41b9b7bd57ccac77",
+    "seconds": null
+  },
+  "records": [
+    {
+      "ecosystem": "platform:node",
+      "manager": "asdf",
+      "datasource": "node-version",
+      "packageFile": ".tool-versions",
+      "lockFiles": [],
+      "depName": "node",
+      "packageName": "node",
+      "depType": null,
+      "currentValue": "20.11.0",
+      "currentVersion": "v20.11.0",
+      "lockedVersion": null,
+      "currentDigest": null,
+      "replaceString": null,
+      "sharedVariableName": null,
+      "groupName": null,
+      "skipReason": null,
+      "hold": false,
+      "candidates": [
+        {
+          "version": "v20.20.2",
+          "value": "20.20.2",
+          "updateType": "minor",
+          "releaseTimestamp": "2026-03-24T00:00:00.000Z",
+          "digest": null,
+          "isBreaking": false,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/node-20.x",
+          "missing": []
+        },
+        {
+          "version": "v24.22.0",
+          "value": "24.22.0",
+          "updateType": "major",
+          "releaseTimestamp": "2026-10-14T00:00:00.000Z",
+          "digest": null,
+          "isBreaking": true,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/node-24.x",
+          "missing": []
+        }
+      ]
+    },
+    {
+      "ecosystem": "platform:python",
+      "manager": "asdf",
+      "datasource": "github-tags",
+      "packageFile": ".tool-versions",
+      "lockFiles": [],
+      "depName": "python",
+      "packageName": "python/cpython",
+      "depType": null,
+      "currentValue": "3.11.4",
+      "currentVersion": "3.11.4",
+      "lockedVersion": null,
+      "currentDigest": null,
+      "replaceString": null,
+      "sharedVariableName": null,
+      "groupName": null,
+      "skipReason": null,
+      "hold": false,
+      "candidates": [
+        {
+          "version": "3.15.0",
+          "value": "3.15.0",
+          "updateType": "minor",
+          "releaseTimestamp": "2026-10-09T11:16:41.000Z",
+          "digest": null,
+          "isBreaking": false,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/python-3.x",
+          "missing": []
+        }
+      ]
+    },
+    {
+      "ecosystem": "platform:go",
+      "manager": "asdf",
+      "datasource": "github-tags",
+      "packageFile": ".tool-versions",
+      "lockFiles": [],
+      "depName": "golang",
+      "packageName": "golang/go",
+      "depType": null,
+      "currentValue": "1.21.0",
+      "currentVersion": "1.21.0",
+      "lockedVersion": null,
+      "currentDigest": null,
+      "replaceString": null,
+      "sharedVariableName": null,
+      "groupName": null,
+      "skipReason": null,
+      "hold": false,
+      "candidates": [
+        {
+          "version": "1.27.2",
+          "value": "1.27.2",
+          "updateType": "minor",
+          "releaseTimestamp": "2026-10-08T15:36:10.000Z",
+          "digest": null,
+          "isBreaking": false,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/golang-1.x",
+          "missing": []
+        }
+      ]
+    },
+    {
+      "ecosystem": "platform:java",
+      "manager": "asdf",
+      "datasource": "java-version",
+      "packageFile": ".tool-versions",
+      "lockFiles": [],
+      "depName": "java",
+      "packageName": "java-jdk",
+      "depType": null,
+      "currentValue": "17.0.8+7",
+      "currentVersion": "17.0.8+7",
+      "lockedVersion": null,
+      "currentDigest": null,
+      "replaceString": null,
+      "sharedVariableName": null,
+      "groupName": null,
+      "skipReason": null,
+      "hold": false,
+      "candidates": [
+        {
+          "version": "17.0.20+8",
+          "value": "17.0.20+8",
+          "updateType": "patch",
+          "releaseTimestamp": null,
+          "digest": null,
+          "isBreaking": false,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/java-17.x",
+          "missing": [
+            "releaseTimestamp"
+          ]
+        },
+        {
+          "version": "27.0.0+35",
+          "value": "27.0.0+35",
+          "updateType": "major",
+          "releaseTimestamp": null,
+          "digest": null,
+          "isBreaking": true,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/java-27.x",
+          "missing": [
+            "releaseTimestamp"
+          ]
+        }
+      ]
+    },
+    {
+      "ecosystem": "docker",
+      "manager": "dockerfile",
+      "datasource": "docker",
+      "packageFile": "Dockerfile",
+      "lockFiles": [],
+      "depName": "node",
+      "packageName": "node",
+      "depType": "stage",
+      "currentValue": "20.11.0-alpine",
+      "currentVersion": "20.11.0",
+      "lockedVersion": null,
+      "currentDigest": null,
+      "replaceString": "node:20.11.0-alpine",
+      "sharedVariableName": null,
+      "groupName": null,
+      "skipReason": null,
+      "hold": false,
+      "candidates": [
+        {
+          "version": "20.20.2",
+          "value": "20.20.2-alpine",
+          "updateType": "minor",
+          "releaseTimestamp": null,
+          "digest": null,
+          "isBreaking": false,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/node-20.x",
+          "missing": [
+            "releaseTimestamp"
+          ]
+        },
+        {
+          "version": "26.12.0",
+          "value": "26.12.0-alpine",
+          "updateType": "major",
+          "releaseTimestamp": null,
+          "digest": null,
+          "isBreaking": true,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/node-26.x",
+          "missing": [
+            "releaseTimestamp"
+          ]
+        }
+      ]
+    },
+    {
+      "ecosystem": "docker",
+      "manager": "dockerfile",
+      "datasource": "docker",
+      "packageFile": "Dockerfile",
+      "lockFiles": [],
+      "depName": "mcr.microsoft.com/dotnet/sdk",
+      "packageName": "mcr.microsoft.com/dotnet/sdk",
+      "depType": "stage",
+      "currentValue": "8.0.100",
+      "currentVersion": "8.0.100",
+      "lockedVersion": null,
+      "currentDigest": null,
+      "replaceString": "mcr.microsoft.com/dotnet/sdk:8.0.100",
+      "sharedVariableName": null,
+      "groupName": null,
+      "skipReason": null,
+      "hold": false,
+      "candidates": [
+        {
+          "version": "8.0.426",
+          "value": "8.0.426",
+          "updateType": "patch",
+          "releaseTimestamp": null,
+          "digest": null,
+          "isBreaking": false,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/mcr.microsoft.com-dotnet-sdk-8.x",
+          "missing": [
+            "releaseTimestamp"
+          ]
+        },
+        {
+          "version": "10.0.402",
+          "value": "10.0.402",
+          "updateType": "major",
+          "releaseTimestamp": null,
+          "digest": null,
+          "isBreaking": true,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/mcr.microsoft.com-dotnet-sdk-10.x",
+          "missing": [
+            "releaseTimestamp"
+          ]
+        }
+      ]
+    },
+    {
+      "ecosystem": "docker",
+      "manager": "dockerfile",
+      "datasource": "docker",
+      "packageFile": "Dockerfile",
+      "lockFiles": [],
+      "depName": "mcr.microsoft.com/dotnet/aspnet",
+      "packageName": "mcr.microsoft.com/dotnet/aspnet",
+      "depType": "stage",
+      "currentValue": "8.0",
+      "currentVersion": "8.0",
+      "lockedVersion": null,
+      "currentDigest": null,
+      "replaceString": "mcr.microsoft.com/dotnet/aspnet:8.0",
+      "sharedVariableName": null,
+      "groupName": null,
+      "skipReason": null,
+      "hold": false,
+      "candidates": [
+        {
+          "version": "11.0",
+          "value": "11.0",
+          "updateType": "major",
+          "releaseTimestamp": null,
+          "digest": null,
+          "isBreaking": true,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/mcr.microsoft.com-dotnet-aspnet-11.x",
+          "missing": [
+            "releaseTimestamp"
+          ]
+        }
+      ]
+    },
+    {
+      "ecosystem": "docker",
+      "manager": "dockerfile",
+      "datasource": "docker",
+      "packageFile": "Dockerfile",
+      "lockFiles": [],
+      "depName": "python",
+      "packageName": "python",
+      "depType": "stage",
+      "currentValue": "3.11-slim",
+      "currentVersion": "3.11",
+      "lockedVersion": null,
+      "currentDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "replaceString": "python:3.11-slim@sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "sharedVariableName": null,
+      "groupName": null,
+      "skipReason": null,
+      "hold": false,
+      "candidates": [
+        {
+          "version": "3.15",
+          "value": "3.15-slim",
+          "updateType": "minor",
+          "releaseTimestamp": null,
+          "digest": "sha256:f48fda6d59b2b3437781d1c3ccf4aa0e26ae871de3cdd758b49ab45ee7291619",
+          "isBreaking": false,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/python-3.x",
+          "missing": [
+            "releaseTimestamp"
+          ]
+        },
+        {
+          "version": null,
+          "value": "3.11-slim",
+          "updateType": "digest",
+          "releaseTimestamp": null,
+          "digest": "sha256:e88e9763f943ec1834f992a4b51e0f24500486803e8bc534e5767af9ea65f6ce",
+          "isBreaking": false,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/python-3.11-slim",
+          "missing": [
+            "version",
+            "releaseTimestamp"
+          ]
+        }
+      ]
+    },
+    {
+      "ecosystem": "docker",
+      "manager": "dockerfile",
+      "datasource": "docker",
+      "packageFile": "Dockerfile",
+      "lockFiles": [],
+      "depName": "ubuntu",
+      "packageName": "ubuntu",
+      "depType": "final",
+      "currentValue": "22.04",
+      "currentVersion": "22.04",
+      "lockedVersion": null,
+      "currentDigest": null,
+      "replaceString": "ubuntu:22.04",
+      "sharedVariableName": null,
+      "groupName": null,
+      "skipReason": null,
+      "hold": false,
+      "candidates": [
+        {
+          "version": "resolute",
+          "value": "26.04",
+          "updateType": "major",
+          "releaseTimestamp": "2026-10-04T01:04:38.668Z",
+          "digest": null,
+          "isBreaking": true,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/ubuntu-26.x",
+          "missing": []
+        }
+      ]
+    },
+    {
+      "ecosystem": "github-actions",
+      "manager": "github-actions",
+      "datasource": "github-tags",
+      "packageFile": ".github/workflows/ci.yml",
+      "lockFiles": [],
+      "depName": "actions/checkout",
+      "packageName": "actions/checkout",
+      "depType": "action",
+      "currentValue": "v4",
+      "currentVersion": "v4.4.0",
+      "lockedVersion": null,
+      "currentDigest": null,
+      "replaceString": "actions/checkout@v4",
+      "sharedVariableName": null,
+      "groupName": null,
+      "skipReason": null,
+      "hold": false,
+      "candidates": [
+        {
+          "version": "v7.0.1",
+          "value": "v7",
+          "updateType": "major",
+          "releaseTimestamp": "2026-07-20T15:10:05.000Z",
+          "digest": null,
+          "isBreaking": false,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/actions-checkout-7.x",
+          "missing": []
+        }
+      ]
+    },
+    {
+      "ecosystem": "github-actions",
+      "manager": "github-actions",
+      "datasource": "github-tags",
+      "packageFile": ".github/workflows/ci.yml",
+      "lockFiles": [],
+      "depName": "actions/checkout",
+      "packageName": "actions/checkout",
+      "depType": "action",
+      "currentValue": "v4.1.1",
+      "currentVersion": "v4.1.1",
+      "lockedVersion": null,
+      "currentDigest": "b4ffde65f46336ab88eb53be808477a3936bae11",
+      "replaceString": "actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1",
+      "sharedVariableName": null,
+      "groupName": null,
+      "skipReason": null,
+      "hold": false,
+      "candidates": [
+        {
+          "version": "v4.4.0",
+          "value": "v4.4.0",
+          "updateType": "minor",
+          "releaseTimestamp": "2026-07-20T15:36:10.000Z",
+          "digest": "11d5960a326750d5838078e36cf38b85af677262",
+          "isBreaking": false,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/actions-checkout-4.x",
+          "missing": []
+        },
+        {
+          "version": "v7.0.1",
+          "value": "v7.0.1",
+          "updateType": "major",
+          "releaseTimestamp": "2026-07-20T15:10:05.000Z",
+          "digest": "3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "isBreaking": false,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/actions-checkout-7.x",
+          "missing": []
+        }
+      ]
+    },
+    {
+      "ecosystem": "github-actions",
+      "manager": "github-actions",
+      "datasource": "github-tags",
+      "packageFile": ".github/workflows/ci.yml",
+      "lockFiles": [],
+      "depName": "actions/setup-node",
+      "packageName": "actions/setup-node",
+      "depType": "action",
+      "currentValue": "v4",
+      "currentVersion": "v4.4.0",
+      "lockedVersion": null,
+      "currentDigest": null,
+      "replaceString": "actions/setup-node@v4",
+      "sharedVariableName": null,
+      "groupName": null,
+      "skipReason": null,
+      "hold": false,
+      "candidates": [
+        {
+          "version": "v7.1.0",
+          "value": "v7",
+          "updateType": "major",
+          "releaseTimestamp": "2026-10-08T02:52:34.000Z",
+          "digest": null,
+          "isBreaking": false,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/actions-setup-node-7.x",
+          "missing": []
+        }
+      ]
+    },
+    {
+      "ecosystem": "github-actions",
+      "manager": "github-actions",
+      "datasource": "github-tags",
+      "packageFile": ".github/workflows/ci.yml",
+      "lockFiles": [],
+      "depName": "actions/setup-node",
+      "packageName": "actions/setup-node",
+      "depType": "action",
+      "currentValue": "v4.0.0",
+      "currentVersion": "v4.0.0",
+      "lockedVersion": null,
+      "currentDigest": null,
+      "replaceString": "actions/setup-node@v4.0.0",
+      "sharedVariableName": null,
+      "groupName": null,
+      "skipReason": null,
+      "hold": false,
+      "candidates": [
+        {
+          "version": "v4.4.0",
+          "value": "v4.4.0",
+          "updateType": "minor",
+          "releaseTimestamp": "2025-04-14T02:55:06.000Z",
+          "digest": null,
+          "isBreaking": false,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/actions-setup-node-4.x",
+          "missing": []
+        },
+        {
+          "version": "v7.1.0",
+          "value": "v7.1.0",
+          "updateType": "major",
+          "releaseTimestamp": "2026-10-08T02:52:34.000Z",
+          "digest": null,
+          "isBreaking": false,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/actions-setup-node-7.x",
+          "missing": []
+        }
+      ]
+    },
+    {
+      "ecosystem": "github-actions",
+      "manager": "github-actions",
+      "datasource": "github-tags",
+      "packageFile": ".github/workflows/ci.yml",
+      "lockFiles": [],
+      "depName": "actions/setup-dotnet",
+      "packageName": "actions/setup-dotnet",
+      "depType": "action",
+      "currentValue": "v4",
+      "currentVersion": "v4.3.1",
+      "lockedVersion": null,
+      "currentDigest": null,
+      "replaceString": "actions/setup-dotnet@v4",
+      "sharedVariableName": null,
+      "groupName": null,
+      "skipReason": null,
+      "hold": false,
+      "candidates": [
+        {
+          "version": "v6.0.0",
+          "value": "v6",
+          "updateType": "major",
+          "releaseTimestamp": "2026-07-16T02:56:10.000Z",
+          "digest": null,
+          "isBreaking": false,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/actions-setup-dotnet-6.x",
+          "missing": []
+        }
+      ]
+    },
+    {
+      "ecosystem": "github-actions",
+      "manager": "github-actions",
+      "datasource": "github-tags",
+      "packageFile": ".github/workflows/ci.yml",
+      "lockFiles": [],
+      "depName": "actions/setup-python",
+      "packageName": "actions/setup-python",
+      "depType": "action",
+      "currentValue": "v5",
+      "currentVersion": "v5.6.0",
+      "lockedVersion": null,
+      "currentDigest": null,
+      "replaceString": "actions/setup-python@v5",
+      "sharedVariableName": null,
+      "groupName": null,
+      "skipReason": null,
+      "hold": false,
+      "candidates": [
+        {
+          "version": "v7.0.0",
+          "value": "v7",
+          "updateType": "major",
+          "releaseTimestamp": "2026-07-20T03:15:01.000Z",
+          "digest": null,
+          "isBreaking": false,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/actions-setup-python-7.x",
+          "missing": []
+        }
+      ]
+    },
+    {
+      "ecosystem": "github-actions",
+      "manager": "github-actions",
+      "datasource": "github-tags",
+      "packageFile": ".github/workflows/ci.yml",
+      "lockFiles": [],
+      "depName": "actions/setup-java",
+      "packageName": "actions/setup-java",
+      "depType": "action",
+      "currentValue": "v3",
+      "currentVersion": "v3.14.2",
+      "lockedVersion": null,
+      "currentDigest": null,
+      "replaceString": "actions/setup-java@v3",
+      "sharedVariableName": null,
+      "groupName": null,
+      "skipReason": null,
+      "hold": false,
+      "candidates": [
+        {
+          "version": "v6.1.0",
+          "value": "v6",
+          "updateType": "major",
+          "releaseTimestamp": "2026-10-14T20:17:01.000Z",
+          "digest": null,
+          "isBreaking": false,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/actions-setup-java-6.x",
+          "missing": []
+        }
+      ]
+    },
+    {
+      "ecosystem": "github-actions",
+      "manager": "github-actions",
+      "datasource": "github-tags",
+      "packageFile": ".github/workflows/ci.yml",
+      "lockFiles": [],
+      "depName": "actions/setup-go",
+      "packageName": "actions/setup-go",
+      "depType": "action",
+      "currentValue": "v4",
+      "currentVersion": "v4.3.0",
+      "lockedVersion": null,
+      "currentDigest": null,
+      "replaceString": "actions/setup-go@v4",
+      "sharedVariableName": null,
+      "groupName": null,
+      "skipReason": null,
+      "hold": false,
+      "candidates": [
+        {
+          "version": "v7.0.0",
+          "value": "v7",
+          "updateType": "major",
+          "releaseTimestamp": "2026-07-16T02:50:50.000Z",
+          "digest": null,
+          "isBreaking": false,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/actions-setup-go-7.x",
+          "missing": []
+        }
+      ]
+    },
+    {
+      "ecosystem": "github-actions",
+      "manager": "github-actions",
+      "datasource": "github-tags",
+      "packageFile": ".github/workflows/ci.yml",
+      "lockFiles": [],
+      "depName": "actions/upload-artifact",
+      "packageName": "actions/upload-artifact",
+      "depType": "action",
+      "currentValue": "v3",
+      "currentVersion": "v3.2.2",
+      "lockedVersion": null,
+      "currentDigest": null,
+      "replaceString": "actions/upload-artifact@v3",
+      "sharedVariableName": null,
+      "groupName": null,
+      "skipReason": null,
+      "hold": false,
+      "candidates": [
+        {
+          "version": "v7.0.2",
+          "value": "v7",
+          "updateType": "major",
+          "releaseTimestamp": "2026-10-07T10:08:14.000Z",
+          "digest": null,
+          "isBreaking": false,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/actions-upload-artifact-7.x",
+          "missing": []
+        }
+      ]
+    },
+    {
+      "ecosystem": "docker",
+      "manager": "github-actions",
+      "datasource": "docker",
+      "packageFile": ".github/workflows/ci.yml",
+      "lockFiles": [],
+      "depName": "alpine",
+      "packageName": "alpine",
+      "depType": "docker",
+      "currentValue": "3.18.0",
+      "currentVersion": "3.18.0",
+      "lockedVersion": null,
+      "currentDigest": null,
+      "replaceString": "alpine:3.18.0",
+      "sharedVariableName": null,
+      "groupName": null,
+      "skipReason": null,
+      "hold": false,
+      "candidates": [
+        {
+          "version": "3.24.2",
+          "value": "3.24.2",
+          "updateType": "minor",
+          "releaseTimestamp": "2026-09-18T17:24:43.786Z",
+          "digest": null,
+          "isBreaking": false,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/alpine-3.x",
+          "missing": []
+        }
+      ]
+    },
+    {
+      "ecosystem": "docker",
+      "manager": "github-actions",
+      "datasource": "docker",
+      "packageFile": ".github/workflows/ci.yml",
+      "lockFiles": [],
+      "depName": "node",
+      "packageName": "node",
+      "depType": "container",
+      "currentValue": "18.19.0",
+      "currentVersion": "18.19.0",
+      "lockedVersion": null,
+      "currentDigest": null,
+      "replaceString": "node:18.19.0",
+      "sharedVariableName": null,
+      "groupName": null,
+      "skipReason": null,
+      "hold": false,
+      "candidates": [
+        {
+          "version": "18.20.8",
+          "value": "18.20.8",
+          "updateType": "minor",
+          "releaseTimestamp": null,
+          "digest": null,
+          "isBreaking": false,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/node-18.x",
+          "missing": [
+            "releaseTimestamp"
+          ]
+        },
+        {
+          "version": "26.12.0",
+          "value": "26.12.0",
+          "updateType": "major",
+          "releaseTimestamp": null,
+          "digest": null,
+          "isBreaking": true,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/node-26.x",
+          "missing": [
+            "releaseTimestamp"
+          ]
+        }
+      ]
+    },
+    {
+      "ecosystem": "docker",
+      "manager": "github-actions",
+      "datasource": "docker",
+      "packageFile": ".github/workflows/ci.yml",
+      "lockFiles": [],
+      "depName": "redis",
+      "packageName": "redis",
+      "depType": "service",
+      "currentValue": "6.2.0",
+      "currentVersion": "6.2.0",
+      "lockedVersion": null,
+      "currentDigest": null,
+      "replaceString": "redis:6.2.0",
+      "sharedVariableName": null,
+      "groupName": null,
+      "skipReason": null,
+      "hold": false,
+      "candidates": [
+        {
+          "version": "6.2.24",
+          "value": "6.2.24",
+          "updateType": "patch",
+          "releaseTimestamp": null,
+          "digest": null,
+          "isBreaking": false,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/redis-6.x",
+          "missing": [
+            "releaseTimestamp"
+          ]
+        },
+        {
+          "version": "8.10.2",
+          "value": "8.10.2",
+          "updateType": "major",
+          "releaseTimestamp": null,
+          "digest": null,
+          "isBreaking": true,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/redis-8.x",
+          "missing": [
+            "releaseTimestamp"
+          ]
+        }
+      ]
+    },
+    {
+      "ecosystem": "github-runners",
+      "manager": "github-actions",
+      "datasource": "github-runners",
+      "packageFile": ".github/workflows/ci.yml",
+      "lockFiles": [],
+      "depName": "ubuntu",
+      "packageName": "ubuntu",
+      "depType": "github-runner",
+      "currentValue": "22.04",
+      "currentVersion": "22.04",
+      "lockedVersion": null,
+      "currentDigest": null,
+      "replaceString": "ubuntu-22.04",
+      "sharedVariableName": null,
+      "groupName": null,
+      "skipReason": null,
+      "hold": false,
+      "candidates": [
+        {
+          "version": "26.04",
+          "value": "26.04",
+          "updateType": "major",
+          "releaseTimestamp": null,
+          "digest": null,
+          "isBreaking": true,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/ubuntu-26.x",
+          "missing": [
+            "releaseTimestamp"
+          ]
+        }
+      ]
+    },
+    {
+      "ecosystem": "platform:node",
+      "manager": "github-actions",
+      "datasource": "github-releases",
+      "packageFile": ".github/workflows/ci.yml",
+      "lockFiles": [],
+      "depName": "node",
+      "packageName": "actions/node-versions",
+      "depType": "uses-with",
+      "currentValue": "20.11.0",
+      "currentVersion": "20.11.0",
+      "lockedVersion": null,
+      "currentDigest": null,
+      "replaceString": null,
+      "sharedVariableName": null,
+      "groupName": null,
+      "skipReason": null,
+      "hold": false,
+      "candidates": [
+        {
+          "version": "20.20.2",
+          "value": "20.20.2",
+          "updateType": "minor",
+          "releaseTimestamp": "2026-03-25T02:26:18.000Z",
+          "digest": null,
+          "isBreaking": false,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/node-20.x",
+          "missing": []
+        },
+        {
+          "version": "24.22.0",
+          "value": "24.22.0",
+          "updateType": "major",
+          "releaseTimestamp": "2026-10-15T01:57:24.000Z",
+          "digest": null,
+          "isBreaking": true,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/node-24.x",
+          "missing": []
+        }
+      ]
+    },
+    {
+      "ecosystem": "platform:node",
+      "manager": "github-actions",
+      "datasource": "github-releases",
+      "packageFile": ".github/workflows/ci.yml",
+      "lockFiles": [],
+      "depName": "node",
+      "packageName": "actions/node-versions",
+      "depType": "uses-with",
+      "currentValue": null,
+      "currentVersion": null,
+      "lockedVersion": null,
+      "currentDigest": null,
+      "replaceString": null,
+      "sharedVariableName": null,
+      "groupName": null,
+      "skipReason": "unspecified-version",
+      "hold": false,
+      "candidates": []
+    },
+    {
+      "ecosystem": "platform:dotnet",
+      "manager": "github-actions",
+      "datasource": "dotnet-version",
+      "packageFile": ".github/workflows/ci.yml",
+      "lockFiles": [],
+      "depName": "dotnet-sdk",
+      "packageName": "dotnet-sdk",
+      "depType": "uses-with",
+      "currentValue": "8.0.100",
+      "currentVersion": "8.0.100",
+      "lockedVersion": null,
+      "currentDigest": null,
+      "replaceString": null,
+      "sharedVariableName": null,
+      "groupName": null,
+      "skipReason": null,
+      "hold": false,
+      "candidates": [
+        {
+          "version": "8.0.426",
+          "value": "8.0.426",
+          "updateType": "patch",
+          "releaseTimestamp": "2026-10-13T00:00:00.000Z",
+          "digest": null,
+          "isBreaking": false,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/dotnet-sdk-8.x",
+          "missing": []
+        },
+        {
+          "version": "10.0.402",
+          "value": "10.0.402",
+          "updateType": "major",
+          "releaseTimestamp": "2026-10-13T00:00:00.000Z",
+          "digest": null,
+          "isBreaking": true,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/dotnet-sdk-10.x",
+          "missing": []
+        }
+      ]
+    },
+    {
+      "ecosystem": "platform:python",
+      "manager": "github-actions",
+      "datasource": "github-releases",
+      "packageFile": ".github/workflows/ci.yml",
+      "lockFiles": [],
+      "depName": "python",
+      "packageName": "actions/python-versions",
+      "depType": "uses-with",
+      "currentValue": "3.11.4",
+      "currentVersion": "3.11.4",
+      "lockedVersion": null,
+      "currentDigest": null,
+      "replaceString": null,
+      "sharedVariableName": null,
+      "groupName": null,
+      "skipReason": null,
+      "hold": false,
+      "candidates": [
+        {
+          "version": "3.15.0",
+          "value": "3.15.0",
+          "updateType": "minor",
+          "releaseTimestamp": "2026-10-10T19:04:00.000Z",
+          "digest": null,
+          "isBreaking": false,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/python-3.x",
+          "missing": []
+        }
+      ]
+    },
+    {
+      "ecosystem": "platform:java",
+      "manager": "github-actions",
+      "datasource": "java-version",
+      "packageFile": ".github/workflows/ci.yml",
+      "lockFiles": [],
+      "depName": "java-jdk",
+      "packageName": "java-jdk",
+      "depType": "uses-with",
+      "currentValue": "17",
+      "currentVersion": "17.0.20+8",
+      "lockedVersion": null,
+      "currentDigest": null,
+      "replaceString": null,
+      "sharedVariableName": null,
+      "groupName": null,
+      "skipReason": null,
+      "hold": false,
+      "candidates": [
+        {
+          "version": "27.0.0+35",
+          "value": "27",
+          "updateType": "major",
+          "releaseTimestamp": null,
+          "digest": null,
+          "isBreaking": false,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/java-jdk-27.x",
+          "missing": [
+            "releaseTimestamp"
+          ]
+        }
+      ]
+    },
+    {
+      "ecosystem": "platform:go",
+      "manager": "github-actions",
+      "datasource": "github-releases",
+      "packageFile": ".github/workflows/ci.yml",
+      "lockFiles": [],
+      "depName": "go",
+      "packageName": "actions/go-versions",
+      "depType": "uses-with",
+      "currentValue": "1.21.0",
+      "currentVersion": "1.21.0",
+      "lockedVersion": null,
+      "currentDigest": null,
+      "replaceString": null,
+      "sharedVariableName": null,
+      "groupName": null,
+      "skipReason": null,
+      "hold": false,
+      "candidates": [
+        {
+          "version": "1.27.2",
+          "value": "1.27.2",
+          "updateType": "minor",
+          "releaseTimestamp": "2026-10-09T02:37:12.000Z",
+          "digest": null,
+          "isBreaking": false,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/go-1.x",
+          "missing": []
+        }
+      ]
+    },
+    {
+      "ecosystem": "platform:node",
+      "manager": "nodenv",
+      "datasource": "node-version",
+      "packageFile": ".node-version",
+      "lockFiles": [],
+      "depName": "node",
+      "packageName": "node",
+      "depType": null,
+      "currentValue": "20.11.0",
+      "currentVersion": "v20.11.0",
+      "lockedVersion": null,
+      "currentDigest": null,
+      "replaceString": null,
+      "sharedVariableName": null,
+      "groupName": null,
+      "skipReason": null,
+      "hold": false,
+      "candidates": [
+        {
+          "version": "v20.20.2",
+          "value": "20.20.2",
+          "updateType": "minor",
+          "releaseTimestamp": "2026-03-24T00:00:00.000Z",
+          "digest": null,
+          "isBreaking": false,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/node-20.x",
+          "missing": []
+        },
+        {
+          "version": "v24.22.0",
+          "value": "24.22.0",
+          "updateType": "major",
+          "releaseTimestamp": "2026-10-14T00:00:00.000Z",
+          "digest": null,
+          "isBreaking": true,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/node-24.x",
+          "missing": []
+        }
+      ]
+    },
+    {
+      "ecosystem": "platform:dotnet",
+      "manager": "nuget",
+      "datasource": "dotnet-version",
+      "packageFile": "global.json",
+      "lockFiles": [],
+      "depName": "dotnet-sdk",
+      "packageName": "dotnet-sdk",
+      "depType": "dotnet-sdk",
+      "currentValue": "8.0.100",
+      "currentVersion": "8.0.100",
+      "lockedVersion": null,
+      "currentDigest": null,
+      "replaceString": null,
+      "sharedVariableName": null,
+      "groupName": null,
+      "skipReason": null,
+      "hold": false,
+      "candidates": [
+        {
+          "version": "8.0.426",
+          "value": "8.0.426",
+          "updateType": "patch",
+          "releaseTimestamp": "2026-10-13T00:00:00.000Z",
+          "digest": null,
+          "isBreaking": false,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/dotnet-sdk-8.x",
+          "missing": []
+        },
+        {
+          "version": "10.0.402",
+          "value": "10.0.402",
+          "updateType": "major",
+          "releaseTimestamp": "2026-10-13T00:00:00.000Z",
+          "digest": null,
+          "isBreaking": true,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/dotnet-sdk-10.x",
+          "missing": []
+        }
+      ]
+    },
+    {
+      "ecosystem": "nuget",
+      "manager": "nuget",
+      "datasource": "nuget",
+      "packageFile": "global.json",
+      "lockFiles": [],
+      "depName": "Microsoft.Build.Traversal",
+      "packageName": "Microsoft.Build.Traversal",
+      "depType": "msbuild-sdk",
+      "currentValue": "3.4.0",
+      "currentVersion": "3.4.0",
+      "lockedVersion": null,
+      "currentDigest": null,
+      "replaceString": null,
+      "sharedVariableName": null,
+      "groupName": null,
+      "skipReason": null,
+      "hold": false,
+      "candidates": [
+        {
+          "version": "4.1.82",
+          "value": "4.1.82",
+          "updateType": "major",
+          "releaseTimestamp": "2025-02-07T00:51:27.920Z",
+          "digest": null,
+          "isBreaking": true,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/microsoft.build.traversal-4.x",
+          "missing": []
+        }
+      ]
+    },
+    {
+      "ecosystem": "platform:node",
+      "manager": "nvm",
+      "datasource": "node-version",
+      "packageFile": ".nvmrc",
+      "lockFiles": [],
+      "depName": "node",
+      "packageName": "node",
+      "depType": null,
+      "currentValue": "20.11.0",
+      "currentVersion": "v20.11.0",
+      "lockedVersion": null,
+      "currentDigest": null,
+      "replaceString": null,
+      "sharedVariableName": null,
+      "groupName": null,
+      "skipReason": null,
+      "hold": false,
+      "candidates": [
+        {
+          "version": "v20.20.2",
+          "value": "20.20.2",
+          "updateType": "minor",
+          "releaseTimestamp": "2026-03-24T00:00:00.000Z",
+          "digest": null,
+          "isBreaking": false,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/node-20.x",
+          "missing": []
+        },
+        {
+          "version": "v24.22.0",
+          "value": "24.22.0",
+          "updateType": "major",
+          "releaseTimestamp": "2026-10-14T00:00:00.000Z",
+          "digest": null,
+          "isBreaking": true,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/node-24.x",
+          "missing": []
+        }
+      ]
+    },
+    {
+      "ecosystem": "platform:python",
+      "manager": "pyenv",
+      "datasource": "docker",
+      "packageFile": ".python-version",
+      "lockFiles": [],
+      "depName": "python",
+      "packageName": "python",
+      "depType": null,
+      "currentValue": "3.11.4",
+      "currentVersion": "3.11.4",
+      "lockedVersion": null,
+      "currentDigest": null,
+      "replaceString": null,
+      "sharedVariableName": null,
+      "groupName": null,
+      "skipReason": null,
+      "hold": false,
+      "candidates": [
+        {
+          "version": "3.15.0",
+          "value": "3.15.0",
+          "updateType": "minor",
+          "releaseTimestamp": null,
+          "digest": null,
+          "isBreaking": false,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/python-3.x",
+          "missing": [
+            "releaseTimestamp"
+          ]
+        }
+      ]
+    }
+  ],
+  "platforms": [
+    {
+      "contractVersion": 1,
+      "kind": "platform",
+      "sdk": "dotnet",
+      "source": "releases-index",
+      "current": {
+        "channels": [
+          "8.0"
+        ],
+        "preview": false
+      },
+      "locations": [
+        {
+          "file": ".github/workflows/ci.yml",
+          "kind": "setup-action",
+          "value": "8.0.100",
+          "channel": "8.0",
+          "computed": false,
+          "reason": null
+        },
+        {
+          "file": "Dockerfile",
+          "kind": "docker",
+          "value": "8.0.100",
+          "channel": "8.0",
+          "computed": false,
+          "reason": null
+        },
+        {
+          "file": "Dockerfile",
+          "kind": "docker",
+          "value": "8.0",
+          "channel": "8.0",
+          "computed": false,
+          "reason": null
+        },
+        {
+          "file": "global.json",
+          "kind": "global.json",
+          "value": "8.0.100",
+          "channel": "8.0",
+          "computed": false,
+          "reason": null
+        }
+      ],
+      "candidates": [
+        {
+          "channel": "11.0",
+          "latestVersion": "11.0.0-rc.2",
+          "latestSdk": "11.0.100-rc.2.26504.105",
+          "releaseTimestamp": "2026-10-13",
+          "preview": true,
+          "eol": null,
+          "lts": false
+        },
+        {
+          "channel": "10.0",
+          "latestVersion": "10.0.13",
+          "latestSdk": "10.0.402",
+          "releaseTimestamp": "2026-10-13",
+          "preview": false,
+          "eol": "2028-11-14",
+          "lts": true
+        },
+        {
+          "channel": "9.0",
+          "latestVersion": "9.0.21",
+          "latestSdk": "9.0.319",
+          "releaseTimestamp": "2026-10-13",
+          "preview": false,
+          "eol": "2026-11-10",
+          "lts": false
+        }
+      ]
+    },
+    {
+      "contractVersion": 1,
+      "kind": "platform",
+      "sdk": "node",
+      "source": "endoflife.date",
+      "current": {
+        "channels": [
+          "20"
+        ],
+        "preview": false
+      },
+      "locations": [
+        {
+          "file": ".github/workflows/ci.yml",
+          "kind": "setup-action",
+          "value": "20.11.0",
+          "channel": "20",
+          "computed": false,
+          "reason": null
+        },
+        {
+          "file": ".node-version",
+          "kind": "version-file",
+          "value": "20.11.0",
+          "channel": "20",
+          "computed": false,
+          "reason": null
+        },
+        {
+          "file": ".nvmrc",
+          "kind": "version-file",
+          "value": "20.11.0",
+          "channel": "20",
+          "computed": false,
+          "reason": null
+        },
+        {
+          "file": ".tool-versions",
+          "kind": "tool-versions",
+          "value": "20.11.0",
+          "channel": "20",
+          "computed": false,
+          "reason": null
+        },
+        {
+          "file": "Dockerfile",
+          "kind": "docker",
+          "value": "20.11.0-alpine",
+          "channel": "20",
+          "computed": false,
+          "reason": null
+        }
+      ],
+      "candidates": [
+        {
+          "channel": "26",
+          "latestVersion": "26.12.0",
+          "releaseTimestamp": "2026-10-14",
+          "preview": false,
+          "eol": "2029-04-30",
+          "lts": true
+        },
+        {
+          "channel": "24",
+          "latestVersion": "24.22.0",
+          "releaseTimestamp": "2026-10-14",
+          "preview": false,
+          "eol": "2028-04-30",
+          "lts": true
+        },
+        {
+          "channel": "22",
+          "latestVersion": "22.23.3",
+          "releaseTimestamp": "2026-09-23",
+          "preview": false,
+          "eol": "2027-04-30",
+          "lts": true
+        }
+      ]
+    },
+    {
+      "contractVersion": 1,
+      "kind": "platform",
+      "sdk": "python",
+      "source": "endoflife.date",
+      "current": {
+        "channels": [
+          "3.11"
+        ],
+        "preview": false
+      },
+      "locations": [
+        {
+          "file": ".github/workflows/ci.yml",
+          "kind": "setup-action",
+          "value": "3.11.4",
+          "channel": "3.11",
+          "computed": false,
+          "reason": null
+        },
+        {
+          "file": ".python-version",
+          "kind": "version-file",
+          "value": "3.11.4",
+          "channel": "3.11",
+          "computed": false,
+          "reason": null
+        },
+        {
+          "file": ".tool-versions",
+          "kind": "tool-versions",
+          "value": "3.11.4",
+          "channel": "3.11",
+          "computed": false,
+          "reason": null
+        },
+        {
+          "file": "Dockerfile",
+          "kind": "docker",
+          "value": "3.11-slim",
+          "channel": "3.11",
+          "computed": true,
+          "reason": "digest-pinned image (the bot plans image digests as docker records)"
+        }
+      ],
+      "candidates": [
+        {
+          "channel": "3.15",
+          "latestVersion": "3.15.0",
+          "releaseTimestamp": "2026-10-09",
+          "preview": false,
+          "eol": "2031-10-31",
+          "lts": false
+        },
+        {
+          "channel": "3.14",
+          "latestVersion": "3.14.8",
+          "releaseTimestamp": "2026-09-30",
+          "preview": false,
+          "eol": "2030-10-31",
+          "lts": false
+        },
+        {
+          "channel": "3.13",
+          "latestVersion": "3.13.16",
+          "releaseTimestamp": "2026-09-30",
+          "preview": false,
+          "eol": "2029-10-31",
+          "lts": false
+        },
+        {
+          "channel": "3.12",
+          "latestVersion": "3.12.15",
+          "releaseTimestamp": "2026-10-01",
+          "preview": false,
+          "eol": "2028-10-31",
+          "lts": false
+        }
+      ]
+    },
+    {
+      "contractVersion": 1,
+      "kind": "platform",
+      "sdk": "java",
+      "source": "endoflife.date",
+      "current": {
+        "channels": [
+          "17"
+        ],
+        "preview": false
+      },
+      "locations": [
+        {
+          "file": ".github/workflows/ci.yml",
+          "kind": "setup-action",
+          "value": "17",
+          "channel": "17",
+          "computed": false,
+          "reason": null
+        },
+        {
+          "file": ".tool-versions",
+          "kind": "tool-versions",
+          "value": "temurin-17.0.8+7",
+          "channel": "17",
+          "computed": false,
+          "reason": null
+        }
+      ],
+      "candidates": [
+        {
+          "channel": "27",
+          "latestVersion": "27+35",
+          "releaseTimestamp": "2026-09-21",
+          "preview": false,
+          "eol": "2027-03-23",
+          "lts": false
+        },
+        {
+          "channel": "25",
+          "latestVersion": "25.0.4.1+1",
+          "releaseTimestamp": "2026-08-19",
+          "preview": false,
+          "eol": "2031-09-30",
+          "lts": true
+        },
+        {
+          "channel": "21",
+          "latestVersion": "21.0.12.1+1",
+          "releaseTimestamp": "2026-08-19",
+          "preview": false,
+          "eol": "2029-12-31",
+          "lts": true
+        }
+      ]
+    },
+    {
+      "contractVersion": 1,
+      "kind": "platform",
+      "sdk": "go",
+      "source": "endoflife.date",
+      "current": {
+        "channels": [
+          "1.21"
+        ],
+        "preview": false
+      },
+      "locations": [
+        {
+          "file": ".github/workflows/ci.yml",
+          "kind": "setup-action",
+          "value": "1.21.0",
+          "channel": "1.21",
+          "computed": false,
+          "reason": null
+        },
+        {
+          "file": ".tool-versions",
+          "kind": "tool-versions",
+          "value": "1.21.0",
+          "channel": "1.21",
+          "computed": false,
+          "reason": null
+        }
+      ],
+      "candidates": [
+        {
+          "channel": "1.27",
+          "latestVersion": "1.27.2",
+          "releaseTimestamp": "2026-10-08",
+          "preview": false,
+          "eol": false,
+          "lts": false
+        },
+        {
+          "channel": "1.26",
+          "latestVersion": "1.26.9",
+          "releaseTimestamp": "2026-10-08",
+          "preview": false,
+          "eol": false,
+          "lts": false
+        }
+      ]
+    }
+  ],
+  "interfaceDiffs": [
+    {
+      "action": "actions/checkout",
+      "from": "v4",
+      "to": "v5",
+      "packageFiles": [
+        ".github/workflows/ci.yml"
+      ],
+      "runtime": {
+        "from": "node20",
+        "to": "node24"
+      },
+      "addedInputs": [],
+      "removedInputs": [],
+      "newRequiredInputs": [],
+      "removedOutputs": [],
+      "blockers": [
+        {
+          "kind": "runtime-changed",
+          "name": "node20 -> node24",
+          "file": ".github/workflows/ci.yml"
+        }
+      ],
+      "verdict": "compatible"
+    },
+    {
+      "action": "actions/upload-artifact",
+      "from": "v3",
+      "to": "v4",
+      "packageFiles": [
+        ".github/workflows/ci.yml"
+      ],
+      "runtime": {
+        "from": "node16",
+        "to": "node20"
+      },
+      "addedInputs": [
+        "compression-level",
+        "overwrite"
+      ],
+      "removedInputs": [],
+      "newRequiredInputs": [],
+      "removedOutputs": [],
+      "blockers": [
+        {
+          "kind": "runtime-changed",
+          "name": "node16 -> node20",
+          "file": ".github/workflows/ci.yml"
+        }
+      ],
+      "verdict": "compatible"
+    },
+    {
+      "action": "actions/setup-node",
+      "from": "v4",
+      "to": "v5",
+      "packageFiles": [
+        ".github/workflows/ci.yml"
+      ],
+      "runtime": {
+        "from": "node20",
+        "to": "node24"
+      },
+      "addedInputs": [
+        "package-manager-cache"
+      ],
+      "removedInputs": [],
+      "newRequiredInputs": [],
+      "removedOutputs": [],
+      "blockers": [
+        {
+          "kind": "runtime-changed",
+          "name": "node20 -> node24",
+          "file": ".github/workflows/ci.yml"
+        }
+      ],
+      "verdict": "compatible"
+    }
+  ],
+  "problems": [
+    {
+      "source": "renovate",
+      "message": "Unknown error fetching default owner preset: The platform you're using (local) does not support local presets."
+    }
+  ]
+}

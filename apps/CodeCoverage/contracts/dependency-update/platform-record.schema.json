@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://coverage.mintplayer.com/contracts/dependency-update/platform-record.schema.json",
+  "title": "A platform/SDK record (R7, R8, D-S12c)",
+  "description": "Emitted by the lookup's platform step from adapter detection plus an official feed (dotnet releases-index.json, endoflife.date). A channel is the platform's major line as the platform names it: dotnet '10.0', node '24', python '3.13', java '21', go '1.25'.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contractVersion", "kind", "sdk", "source", "current", "locations", "candidates"],
+  "properties": {
+    "contractVersion": { "const": 1 },
+    "kind": { "const": "platform" },
+    "sdk": { "enum": ["dotnet", "node", "python", "java", "go"] },
+    "source": { "enum": ["releases-index", "endoflife.date", "none"] },
+    "current": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["channels", "preview"],
+      "properties": {
+        "channels": { "type": "array", "items": { "type": "string" }, "description": "Every channel found in an editable location, highest first." },
+        "preview": { "type": "boolean", "description": "true when a location already uses a preview (R7: previews are followed only then)." }
+      }
+    },
+    "locations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["file", "kind", "value", "channel", "computed"],
+        "properties": {
+          "file": { "type": "string" },
+          "kind": {
+            "enum": ["tfm", "global.json", "dotnet-tools", "docker", "setup-action", "version-file", "engines", "types-node", "tool-versions", "go.mod", "toolchain", "requires-python", "maven-release", "package-version"]
+          },
+          "value": { "type": "string" },
+          "channel": { "type": ["string", "null"] },
+          "computed": { "type": "boolean", "description": "R8: a computed value ($(Prop), a Condition, a range) is REPORTED, never edited." },
+          "reason": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "candidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["channel", "latestVersion", "releaseTimestamp", "preview", "eol", "lts"],
+        "properties": {
+          "channel": { "type": "string" },
+          "latestVersion": { "type": ["string", "null"] },
+          "latestSdk": { "type": ["string", "null"], "description": "dotnet only: the latest SDK of the channel (global.json)." },
+          "releaseTimestamp": { "type": ["string", "null"] },
+          "preview": { "type": "boolean" },
+          "eol": { "type": ["string", "boolean", "null"] },
+          "lts": { "type": ["boolean", "null"] }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,291 @@
+{
+  "contractVersion": 1,
+  "kind": "lookup",
+  "expectedSha": "ee304c5c9ee2d72267b5092eb83f5546d8658baa",
+  "generatedAt": "2026-10-16T08:00:00.000Z",
+  "engine": {
+    "name": "renovate",
+    "image": "renovate/renovate:44.125.2@sha256:a7dec3432d62b39872058424f0490829413b3f597f5d72fb41b9b7bd57ccac77",
+    "seconds": null
+  },
+  "records": [
+    {
+      "ecosystem": "npm",
+      "manager": "npm",
+      "datasource": "npm",
+      "packageFile": "package.json",
+      "lockFiles": [],
+      "depName": "lodash",
+      "packageName": "lodash",
+      "depType": "dependencies",
+      "currentValue": "4.17.20",
+      "currentVersion": "4.17.20",
+      "lockedVersion": null,
+      "currentDigest": null,
+      "replaceString": null,
+      "sharedVariableName": null,
+      "groupName": null,
+      "skipReason": null,
+      "hold": false,
+      "candidates": [
+        {
+          "version": "4.18.1",
+          "value": "4.18.1",
+          "updateType": "huge",
+          "releaseTimestamp": "2026-04-01T21:01:20.458Z",
+          "digest": "sha512-dMInicTPVE8d1e5otfwmmjlxkZoUpiVLwyeTdUsi/Caj/gfzzblBcCE5sRHV/AsjuCmxWrte2TNGSYuCeCq+0Q==",
+          "isBreaking": false,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/lodash-4.x",
+          "missing": []
+        }
+      ]
+    },
+    {
+      "ecosystem": "npm",
+      "manager": "npm",
+      "datasource": "npm",
+      "packageFile": "package.json",
+      "lockFiles": [],
+      "depName": "express",
+      "packageName": "express",
+      "depType": "dependencies",
+      "currentValue": "^4.17.0",
+      "currentVersion": "4.22.3",
+      "lockedVersion": null,
+      "currentDigest": null,
+      "replaceString": null,
+      "sharedVariableName": null,
+      "groupName": null,
+      "skipReason": null,
+      "hold": false,
+      "candidates": [
+        {
+          "version": "5.3.0",
+          "value": "^5.0.0",
+          "updateType": "major",
+          "releaseTimestamp": "2026-10-09T12:56:54.505Z",
+          "digest": "sha512-qCqy1xSoaugxOD4IVHb1ZWdkvCF2W3aE2okKouWj8VwJ+ztskSiXoBnCSJqfKT+cVPJhuJqe9YLbY425+Zh00g==",
+          "isBreaking": true,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/express-5.x",
+          "missing": []
+        }
+      ]
+    },
+    {
+      "ecosystem": "npm",
+      "manager": "npm",
+      "datasource": "npm",
+      "packageFile": "package.json",
+      "lockFiles": [],
+      "depName": "@angular/core",
+      "packageName": "@angular/core",
+      "depType": "dependencies",
+      "currentValue": "~17.0.0",
+      "currentVersion": "17.0.9",
+      "lockedVersion": null,
+      "currentDigest": null,
+      "replaceString": null,
+      "sharedVariableName": null,
+      "groupName": null,
+      "skipReason": null,
+      "hold": false,
+      "candidates": [
+        {
+          "version": "17.3.12",
+          "value": "~17.3.0",
+          "updateType": "minor",
+          "releaseTimestamp": "2024-07-17T19:07:08.597Z",
+          "digest": "sha512-MuFt5yKi161JmauUta4Dh0m8ofwoq6Ino+KoOtkYMBGsSx+A7dSm+DUxxNwdj7+DNyg3LjVGCFgBFnq4g8z06A==",
+          "isBreaking": false,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/angular-core-17.x",
+          "missing": []
+        },
+        {
+          "version": "22.2.3",
+          "value": "~22.2.0",
+          "updateType": "major",
+          "releaseTimestamp": "2026-10-14T23:41:35.703Z",
+          "digest": "sha512-ponarFrAZsPutT+htRt3PEmkt2/IB7DyrBy2f48sxsIx3ZA6xw09i2HOEBo+VBphlN6B/ynK9q+o04HPhdJ+dQ==",
+          "isBreaking": true,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/angular-core-22.x",
+          "missing": []
+        }
+      ]
+    },
+    {
+      "ecosystem": "npm",
+      "manager": "npm",
+      "datasource": "npm",
+      "packageFile": "package.json",
+      "lockFiles": [],
+      "depName": "typescript",
+      "packageName": "typescript",
+      "depType": "devDependencies",
+      "currentValue": "5.0.2",
+      "currentVersion": "5.0.2",
+      "lockedVersion": null,
+      "currentDigest": null,
+      "replaceString": null,
+      "sharedVariableName": null,
+      "groupName": null,
+      "skipReason": null,
+      "hold": false,
+      "candidates": [
+        {
+          "version": "5.9.3",
+          "value": "5.9.3",
+          "updateType": "minor",
+          "releaseTimestamp": "2025-09-30T21:19:38.784Z",
+          "digest": "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==",
+          "isBreaking": false,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/typescript-5.x",
+          "missing": []
+        },
+        {
+          "version": "7.0.2",
+          "value": "7.0.2",
+          "updateType": "major",
+          "releaseTimestamp": "2026-07-08T15:55:18.431Z",
+          "digest": "sha512-8FYau96o3NKOhbjKi/qNvG/W5jhzxkbdm5sj9AbZ/5T5sWqn3hJgLfGx27sRKZWTvyzCP8dLRBTf5tBTSRVUNA==",
+          "isBreaking": true,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/typescript-7.x",
+          "missing": []
+        }
+      ]
+    },
+    {
+      "ecosystem": "platform:node",
+      "manager": "npm",
+      "datasource": "node-version",
+      "packageFile": "package.json",
+      "lockFiles": [],
+      "depName": "node",
+      "packageName": "node",
+      "depType": "engines",
+      "currentValue": ">=18.0.0",
+      "currentVersion": "v26.12.0",
+      "lockedVersion": null,
+      "currentDigest": null,
+      "replaceString": null,
+      "sharedVariableName": null,
+      "groupName": null,
+      "skipReason": null,
+      "hold": false,
+      "candidates": []
+    },
+    {
+      "ecosystem": "npm",
+      "manager": "npm",
+      "datasource": "npm",
+      "packageFile": "package.json",
+      "lockFiles": [],
+      "depName": "npm",
+      "packageName": "npm",
+      "depType": "packageManager",
+      "currentValue": "10.2.0",
+      "currentVersion": "10.2.0",
+      "lockedVersion": null,
+      "currentDigest": null,
+      "replaceString": null,
+      "sharedVariableName": null,
+      "groupName": null,
+      "skipReason": null,
+      "hold": false,
+      "candidates": [
+        {
+          "version": "10.9.9",
+          "value": "10.9.9",
+          "updateType": "minor",
+          "releaseTimestamp": "2026-07-29T17:56:50.421Z",
+          "digest": "sha512-1g+6jLQvaIuB4zwvHL7yrXuXcWZwDsCtBX8bbWDqbvJSSr9nPiDDWTHNgwXR27iIcTTW7v3A57hDW9RYv2W4Yg==",
+          "isBreaking": false,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/npm-10.x",
+          "missing": []
+        },
+        {
+          "version": "12.2.0",
+          "value": "12.2.0",
+          "updateType": "major",
+          "releaseTimestamp": "2026-09-30T16:46:11.700Z",
+          "digest": "sha512-ZsJjKpTnlmSXOLLXiU1xDCzC4Wlok4IwZmh/aw2KUuXytU7q6qMv/cUT7MoeSf95Slwuw/lRXYefGzGCspHPNQ==",
+          "isBreaking": true,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/npm-12.x",
+          "missing": []
+        }
+      ]
+    }
+  ],
+  "platforms": [
+    {
+      "contractVersion": 1,
+      "kind": "platform",
+      "sdk": "node",
+      "source": "endoflife.date",
+      "current": {
+        "channels": [
+          "18"
+        ],
+        "preview": false
+      },
+      "locations": [
+        {
+          "file": "package.json",
+          "kind": "engines",
+          "value": ">=18.0.0",
+          "channel": "18",
+          "computed": false,
+          "reason": null
+        }
+      ],
+      "candidates": [
+        {
+          "channel": "26",
+          "latestVersion": "26.12.0",
+          "releaseTimestamp": "2026-10-14",
+          "preview": false,
+          "eol": "2029-04-30",
+          "lts": true
+        },
+        {
+          "channel": "24",
+          "latestVersion": "24.22.0",
+          "releaseTimestamp": "2026-10-14",
+          "preview": false,
+          "eol": "2028-04-30",
+          "lts": true
+        },
+        {
+          "channel": "22",
+          "latestVersion": "22.23.3",
+          "releaseTimestamp": "2026-09-23",
+          "preview": false,
+          "eol": "2027-04-30",
+          "lts": true
+        }
+      ]
+    }
+  ],
+  "interfaceDiffs": [],
+  "problems": [
+    {
+      "source": "renovate",
+      "message": "Unknown error fetching default owner preset: The platform you're using (local) does not support local presets."
+    }
+  ]
+}

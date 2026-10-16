@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://coverage.mintplayer.com/contracts/dependency-update/record.schema.json",
+  "title": "lookup.json: the dependency-update lookup document",
+  "description": "Written by the lookup workflow (dependency-action mode=lookup), read by the bot (PRD #419 §13.2, R1, R7, R15, R17). Records are ecosystem-neutral: the bot never parses a version from them, it only compares updateType, releaseTimestamp and string tokens.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contractVersion", "kind", "expectedSha", "generatedAt", "engine", "records", "platforms", "interfaceDiffs", "problems"],
+  "properties": {
+    "contractVersion": { "const": 1 },
+    "kind": { "const": "lookup" },
+    "expectedSha": { "$ref": "#/$defs/sha" },
+    "generatedAt": { "type": "string", "minLength": 1 },
+    "engine": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "image"],
+      "properties": {
+        "name": { "const": "renovate" },
+        "image": { "type": "string", "pattern": "^[^@\\s]+@sha256:[0-9a-f]{64}$" },
+        "seconds": { "type": ["number", "null"] }
+      }
+    },
+    "records": { "type": "array", "items": { "$ref": "#/$defs/record" } },
+    "platforms": { "type": "array", "items": { "$ref": "platform-record.schema.json" } },
+    "interfaceDiffs": { "type": "array", "items": { "$ref": "#/$defs/interfaceDiff" } },
+    "problems": {
+      "description": "Non-fatal problems: Renovate's own problems[] (level >= 40) and platform-source fetch failures.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["source", "message"],
+        "properties": {
+          "source": { "type": "string" },
+          "message": { "type": "string" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "updateType": {
+      "description": "Renovate's label, passed through. null = the report had none: the candidate is a hold (R1). The bot applies the R17 floor on top.",
+      "enum": ["major", "minor", "patch", "digest", "pin", "pinDigest", "lockfileUpdate", "rollback", "bump", "replacement", null]
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "value", "updateType", "releaseTimestamp", "digest", "isBreaking", "isLockfileUpdate", "groupName", "branchName", "missing"],
+      "properties": {
+        "version": { "type": ["string", "null"], "description": "Renovate newVersion (may be a codename, e.g. ubuntu 'resolute')." },
+        "value": { "type": ["string", "null"], "description": "Renovate newValue: the manifest token to write (keeps the range operator)." },
+        "updateType": { "$ref": "#/$defs/updateType" },
+        "releaseTimestamp": { "type": ["string", "null"], "description": "null = unknown; the bot counts cooldown from its first-seen time (D-S12a)." },
+        "digest": { "type": ["string", "null"], "description": "Renovate newDigest. For npm this is an integrity hash, not a version." },
+        "isBreaking": { "type": "boolean" },
+        "isLockfileUpdate": { "type": "boolean" },
+        "groupName": { "type": ["string", "null"], "description": "Update-level group (group:monorepos / group:recommended, D-C1)." },
+        "branchName": { "type": ["string", "null"], "description": "Renovate's branch for this update; equal branch = same Renovate group." },
+        "missing": {
+          "type": "array",
+          "items": { "enum": ["version", "value", "updateType", "releaseTimestamp"] },
+          "uniqueItems": true
+        }
+      }
+    },
+    "record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ecosystem", "manager", "datasource", "packageFile", "lockFiles", "depName", "packageName", "depType", "currentValue", "currentVersion", "lockedVersion", "currentDigest", "replaceString", "sharedVariableName", "groupName", "skipReason", "hold", "candidates"],
+      "properties": {
+        "ecosystem": { "type": "string", "minLength": 1, "description": "Adapter family derived from datasource (npm, nuget, pypi, maven, cargo, go, composer, docker, github-actions, rubygems, platform:<sdk>, or the datasource itself)." },
+        "manager": { "type": "string", "minLength": 1 },
+        "datasource": { "type": "string", "minLength": 1 },
+        "packageFile": { "type": "string", "minLength": 1 },
+        "lockFiles": { "type": "array", "items": { "type": "string" } },
+        "depName": { "type": "string", "minLength": 1 },
+        "packageName": { "type": ["string", "null"] },
+        "depType": { "type": ["string", "null"] },
+        "currentValue": { "type": ["string", "null"] },
+        "currentVersion": { "type": ["string", "null"] },
+        "lockedVersion": { "type": ["string", "null"] },
+        "currentDigest": { "type": ["string", "null"] },
+        "replaceString": { "type": ["string", "null"] },
+        "sharedVariableName": { "type": ["string", "null"], "description": "Maven property / Gradle catalog [versions] key the value lives in; copied into the plan item." },
+        "groupName": { "type": ["string", "null"], "description": "Dep-level group; a candidate's own groupName wins. No group anywhere = a group of its own (D-C1)." },
+        "skipReason": { "type": ["string", "null"] },
+        "hold": { "type": "boolean", "description": "true when any candidate lacks updateType (R1: never dropped, always held)." },
+        "candidates": { "type": "array", "items": { "$ref": "#/$defs/candidate" } }
+      }
+    },
+    "interfaceDiff": {
+      "description": "R15: the action.yml interface diff for an Actions major, against how the repo uses the action.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action", "from", "to", "packageFiles", "runtime", "addedInputs", "removedInputs", "newRequiredInputs", "removedOutputs", "blockers", "verdict"],
+      "properties": {
+        "action": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(/[^@\\s]+)?$" },
+        "from": { "type": "string" },
+        "to": { "type": "string" },
+        "packageFiles": { "type": "array", "items": { "type": "string" } },
+        "runtime": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["from", "to"],
+          "properties": { "from": { "type": ["string", "null"] }, "to": { "type": ["string", "null"] } }
+        },
+        "addedInputs": { "type": "array", "items": { "type": "string" } },
+        "removedInputs": { "type": "array", "items": { "type": "string" } },
+        "newRequiredInputs": { "type": "array", "items": { "type": "string" } },
+        "removedOutputs": { "type": "array", "items": { "type": "string" } },
+        "blockers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "name", "file"],
+            "properties": {
+              "kind": { "enum": ["removed-input-used", "new-required-input", "missing-output-read", "runtime-changed"] },
+              "name": { "type": "string" },
+              "file": { "type": "string" }
+            }
+          }
+        },
+        "verdict": {
+          "description": "incompatible when any blocker other than runtime-changed exists; unknown when an action.yml could not be read. Majors stay over-threshold either way (R15).",
+          "enum": ["compatible", "incompatible", "unknown"]
+        }
+      }
+    }
+  }
+}

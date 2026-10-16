@@ -1,0 +1,335 @@
+{
+  "contractVersion": 1,
+  "kind": "lookup",
+  "expectedSha": "ee304c5c9ee2d72267b5092eb83f5546d8658baa",
+  "generatedAt": "2026-10-16T08:00:00.000Z",
+  "engine": {
+    "name": "renovate",
+    "image": "renovate/renovate:44.125.2@sha256:a7dec3432d62b39872058424f0490829413b3f597f5d72fb41b9b7bd57ccac77",
+    "seconds": null
+  },
+  "records": [
+    {
+      "ecosystem": "nuget",
+      "manager": "nuget",
+      "datasource": "nuget",
+      "packageFile": ".config/dotnet-tools.json",
+      "lockFiles": [],
+      "depName": "dotnet-ef",
+      "packageName": "dotnet-ef",
+      "depType": "nuget",
+      "currentValue": "7.0.0",
+      "currentVersion": "7.0.0",
+      "lockedVersion": null,
+      "currentDigest": null,
+      "replaceString": null,
+      "sharedVariableName": null,
+      "groupName": null,
+      "skipReason": null,
+      "hold": false,
+      "candidates": [
+        {
+          "version": "7.0.20",
+          "value": "7.0.20",
+          "updateType": "patch",
+          "releaseTimestamp": "2024-05-28T16:38:49.410Z",
+          "digest": null,
+          "isBreaking": false,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/dotnet-ef-7.x",
+          "missing": []
+        },
+        {
+          "version": "10.0.13",
+          "value": "10.0.13",
+          "updateType": "major",
+          "releaseTimestamp": "2026-10-13T17:09:05.130Z",
+          "digest": null,
+          "isBreaking": true,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/dotnet-ef-10.x",
+          "missing": []
+        }
+      ]
+    },
+    {
+      "ecosystem": "nuget",
+      "manager": "nuget",
+      "datasource": "nuget",
+      "packageFile": "Directory.Build.props",
+      "lockFiles": [],
+      "depName": "Microsoft.SourceLink.GitHub",
+      "packageName": "Microsoft.SourceLink.GitHub",
+      "depType": "nuget",
+      "currentValue": "1.1.1",
+      "currentVersion": "1.1.1",
+      "lockedVersion": null,
+      "currentDigest": null,
+      "replaceString": null,
+      "sharedVariableName": null,
+      "groupName": null,
+      "skipReason": null,
+      "hold": false,
+      "candidates": [
+        {
+          "version": "10.0.402",
+          "value": "10.0.402",
+          "updateType": "major",
+          "releaseTimestamp": "2026-10-13T17:21:37.780Z",
+          "digest": null,
+          "isBreaking": true,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/microsoft.sourcelink.github-10.x",
+          "missing": []
+        }
+      ]
+    },
+    {
+      "ecosystem": "nuget",
+      "manager": "nuget",
+      "datasource": "nuget",
+      "packageFile": "Directory.Packages.props",
+      "lockFiles": [],
+      "depName": "Serilog",
+      "packageName": "Serilog",
+      "depType": "nuget",
+      "currentValue": "2.10.0",
+      "currentVersion": "2.10.0",
+      "lockedVersion": null,
+      "currentDigest": null,
+      "replaceString": null,
+      "sharedVariableName": null,
+      "groupName": null,
+      "skipReason": null,
+      "hold": false,
+      "candidates": [
+        {
+          "version": "2.12.0",
+          "value": "2.12.0",
+          "updateType": "minor",
+          "releaseTimestamp": "2022-09-13T04:20:52.867Z",
+          "digest": null,
+          "isBreaking": false,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/serilog-2.x",
+          "missing": []
+        },
+        {
+          "version": "4.4.0",
+          "value": "4.4.0",
+          "updateType": "major",
+          "releaseTimestamp": "2026-07-10T03:35:24.047Z",
+          "digest": null,
+          "isBreaking": true,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/serilog-4.x",
+          "missing": []
+        }
+      ]
+    },
+    {
+      "ecosystem": "nuget",
+      "manager": "nuget",
+      "datasource": "nuget",
+      "packageFile": "Directory.Packages.props",
+      "lockFiles": [],
+      "depName": "Newtonsoft.Json",
+      "packageName": "Newtonsoft.Json",
+      "depType": "nuget",
+      "currentValue": "12.0.1",
+      "currentVersion": "12.0.1",
+      "lockedVersion": null,
+      "currentDigest": null,
+      "replaceString": null,
+      "sharedVariableName": null,
+      "groupName": null,
+      "skipReason": null,
+      "hold": false,
+      "candidates": [
+        {
+          "version": "12.0.3",
+          "value": "12.0.3",
+          "updateType": "patch",
+          "releaseTimestamp": "2019-11-09T01:27:30.723Z",
+          "digest": null,
+          "isBreaking": false,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/newtonsoft.json-12.x",
+          "missing": []
+        },
+        {
+          "version": "13.0.4",
+          "value": "13.0.4",
+          "updateType": "major",
+          "releaseTimestamp": "2025-09-16T08:13:09.313Z",
+          "digest": null,
+          "isBreaking": true,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/newtonsoft.json-13.x",
+          "missing": []
+        }
+      ]
+    },
+    {
+      "ecosystem": "nuget",
+      "manager": "nuget",
+      "datasource": "nuget",
+      "packageFile": "src/App/App.csproj",
+      "lockFiles": [],
+      "depName": "Dapper",
+      "packageName": "Dapper",
+      "depType": "nuget",
+      "currentValue": "2.0.123",
+      "currentVersion": "2.0.123",
+      "lockedVersion": null,
+      "currentDigest": null,
+      "replaceString": null,
+      "sharedVariableName": null,
+      "groupName": null,
+      "skipReason": null,
+      "hold": false,
+      "candidates": [
+        {
+          "version": "2.1.89",
+          "value": "2.1.89",
+          "updateType": "minor",
+          "releaseTimestamp": "2026-09-23T04:34:40.213Z",
+          "digest": null,
+          "isBreaking": false,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/dapper-2.x",
+          "missing": []
+        }
+      ]
+    },
+    {
+      "ecosystem": "nuget",
+      "manager": "nuget",
+      "datasource": "nuget",
+      "packageFile": "src/App/App.csproj",
+      "lockFiles": [],
+      "depName": "Serilog",
+      "packageName": "Serilog",
+      "depType": "nuget",
+      "currentValue": "2.12.0",
+      "currentVersion": "2.12.0",
+      "lockedVersion": null,
+      "currentDigest": null,
+      "replaceString": null,
+      "sharedVariableName": null,
+      "groupName": null,
+      "skipReason": null,
+      "hold": false,
+      "candidates": [
+        {
+          "version": "4.4.0",
+          "value": "4.4.0",
+          "updateType": "major",
+          "releaseTimestamp": "2026-07-10T03:35:24.047Z",
+          "digest": null,
+          "isBreaking": true,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/serilog-4.x",
+          "missing": []
+        }
+      ]
+    },
+    {
+      "ecosystem": "nuget",
+      "manager": "nuget",
+      "datasource": "nuget",
+      "packageFile": "src/App/App.csproj",
+      "lockFiles": [],
+      "depName": "Newtonsoft.Json",
+      "packageName": "Newtonsoft.Json",
+      "depType": "nuget",
+      "currentValue": null,
+      "currentVersion": null,
+      "lockedVersion": null,
+      "currentDigest": null,
+      "replaceString": null,
+      "sharedVariableName": null,
+      "groupName": null,
+      "skipReason": "invalid-version",
+      "hold": false,
+      "candidates": []
+    }
+  ],
+  "platforms": [
+    {
+      "contractVersion": 1,
+      "kind": "platform",
+      "sdk": "dotnet",
+      "source": "releases-index",
+      "current": {
+        "channels": [
+          "8.0"
+        ],
+        "preview": false
+      },
+      "locations": [
+        {
+          "file": "Directory.Build.props",
+          "kind": "tfm",
+          "value": "net8.0",
+          "channel": "8.0",
+          "computed": false,
+          "reason": null
+        },
+        {
+          "file": "src/App/App.csproj",
+          "kind": "tfm",
+          "value": "net6.0;net8.0",
+          "channel": "8.0",
+          "computed": false,
+          "reason": null
+        }
+      ],
+      "candidates": [
+        {
+          "channel": "11.0",
+          "latestVersion": "11.0.0-rc.2",
+          "latestSdk": "11.0.100-rc.2.26504.105",
+          "releaseTimestamp": "2026-10-13",
+          "preview": true,
+          "eol": null,
+          "lts": false
+        },
+        {
+          "channel": "10.0",
+          "latestVersion": "10.0.13",
+          "latestSdk": "10.0.402",
+          "releaseTimestamp": "2026-10-13",
+          "preview": false,
+          "eol": "2028-11-14",
+          "lts": true
+        },
+        {
+          "channel": "9.0",
+          "latestVersion": "9.0.21",
+          "latestSdk": "9.0.319",
+          "releaseTimestamp": "2026-10-13",
+          "preview": false,
+          "eol": "2026-11-10",
+          "lts": false
+        }
+      ]
+    }
+  ],
+  "interfaceDiffs": [],
+  "problems": [
+    {
+      "source": "renovate",
+      "message": "Unknown error fetching default owner preset: The platform you're using (local) does not support local presets."
+    }
+  ]
+}
