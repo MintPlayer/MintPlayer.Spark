@@ -66,18 +66,19 @@ public partial class GitHubRepositoryAdministration : IForgeRepositoryAdministra
 
     public async Task<ForgeViewerRepositories> ListViewerRepositoriesAsync(string? installationKey, CancellationToken cancellationToken = default)
     {
-        long? only = null;
-        if (installationKey is not null)
-        {
-            // Not a number: not a GitHub installation, and so nothing of the viewer's.
-            if (!long.TryParse(installationKey, NumberStyles.None, CultureInfo.InvariantCulture, out var parsed) || parsed <= 0)
-                return ForgeViewerRepositories.None(null, EForgeCredentialState.Ok);
-            only = parsed;
-        }
-
         var login = await GetViewerLoginAsync(cancellationToken);
         if (login.Login is null)
             return ForgeViewerRepositories.None(null, login.State);
+
+        long? only = null;
+        if (installationKey is not null)
+        {
+            // Not a number: not a GitHub installation, and so nothing of the viewer's. The same answer, login included, as
+            // a number GitHub answers 403/404 for (D-O13: no existence oracle, and no telling a malformed key apart).
+            if (!long.TryParse(installationKey, NumberStyles.None, CultureInfo.InvariantCulture, out var parsed) || parsed <= 0)
+                return ForgeViewerRepositories.None(login.Login, EForgeCredentialState.Ok);
+            only = parsed;
+        }
         if (currentUser.Id is not { Length: > 0 } userId || await userManager.FindByIdAsync(userId) is not { } user)
             return ForgeViewerRepositories.None(null, EForgeCredentialState.Ok);
 
@@ -383,10 +384,18 @@ public sealed partial class GitHubSetupRedirect : IForgeSetupRedirect
 {
     public EForgeProvider Provider => EForgeProvider.GitHub;
 
+    /// <summary>
+    /// Any <c>installation_id</c> narrows (D-O13): a usable one to that installation, and a malformed one (empty, negative,
+    /// out of range, duplicated, which arrives comma-joined) to an installation that does not exist, so it lists nothing
+    /// instead of silently widening to every installation. Only the viewer's own listing ever resolves the key.
+    /// </summary>
     public ForgeSetupRedirect? Read(IReadOnlyDictionary<string, string?> query)
     {
-        if (!query.TryGetValue("installation_id", out var raw) || !long.TryParse(raw, NumberStyles.None, CultureInfo.InvariantCulture, out var id) || id <= 0)
+        if (!query.TryGetValue("installation_id", out var raw))
             return null;
+        var key = long.TryParse(raw, NumberStyles.None, CultureInfo.InvariantCulture, out var id) && id > 0
+            ? id.ToString(CultureInfo.InvariantCulture)
+            : UnknownInstallation;
         var action = query.TryGetValue("setup_action", out var hint) ? hint switch
         {
             "install" => EForgeSetupAction.Install,
@@ -394,6 +403,9 @@ public sealed partial class GitHubSetupRedirect : IForgeSetupRedirect
             "request" => EForgeSetupAction.Request,
             _ => EForgeSetupAction.Unknown,
         } : EForgeSetupAction.Unknown;
-        return new ForgeSetupRedirect(EForgeProvider.GitHub, id.ToString(CultureInfo.InvariantCulture), action);
+        return new ForgeSetupRedirect(EForgeProvider.GitHub, key, action);
     }
+
+    /// <summary>The key of a malformed <c>installation_id</c>: no GitHub installation (ids are positive), so it lists nothing.</summary>
+    public const string UnknownInstallation = "0";
 }

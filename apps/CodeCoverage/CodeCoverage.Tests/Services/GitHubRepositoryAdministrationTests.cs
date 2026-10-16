@@ -150,7 +150,12 @@ public class GitHubRepositoryAdministrationTests
 
         listing.Repositories.Should().BeEmpty();
         listing.State.Should().Be(EForgeCredentialState.Ok, "no existence oracle: the same answer as an installation that does not exist");
-        (await Administration(new StubGitHub()).ListViewerRepositoriesAsync("not-a-number")).Repositories.Should().BeEmpty();
+        foreach (var malformed in new[] { "not-a-number", GitHubSetupRedirect.UnknownInstallation })
+        {
+            var none = await Administration(new StubGitHub()).ListViewerRepositoriesAsync(malformed);
+            none.Repositories.Should().BeEmpty();
+            (none.Login, none.State).Should().Be((listing.Login, listing.State), "D-O13: a malformed key answers exactly like a foreign one");
+        }
     }
 
     [Fact]
@@ -194,10 +199,19 @@ public class GitHubRepositoryAdministrationTests
         read.Should().Be(new ForgeSetupRedirect(EForgeProvider.GitHub, "4242", expected));
     }
 
+    // D-O13: a malformed installation_id narrows to an installation that does not exist; it never widens to all of them.
     [Theory]
     [InlineData("")]
     [InlineData("-1")]
+    [InlineData("0")]
     [InlineData("42; drop")]
-    public void A_setup_redirect_without_a_usable_installation_is_none(string id)
-        => new GitHubSetupRedirect().Read(new Dictionary<string, string?> { ["installation_id"] = id }).Should().BeNull();
+    [InlineData("4242,5151")]
+    [InlineData("99999999999999999999999")]
+    public void A_setup_redirect_without_a_usable_installation_names_an_unknown_one(string id)
+        => new GitHubSetupRedirect().Read(new Dictionary<string, string?> { ["installation_id"] = id })
+            .Should().Be(new ForgeSetupRedirect(EForgeProvider.GitHub, GitHubSetupRedirect.UnknownInstallation, EForgeSetupAction.Unknown));
+
+    [Fact]
+    public void Without_an_installation_id_there_is_no_setup_redirect()
+        => new GitHubSetupRedirect().Read(new Dictionary<string, string?> { ["setup_action"] = "install" }).Should().BeNull();
 }

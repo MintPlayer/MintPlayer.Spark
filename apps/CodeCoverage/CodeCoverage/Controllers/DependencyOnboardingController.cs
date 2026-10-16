@@ -30,7 +30,9 @@ public partial class DependencyOnboardingController : ControllerBase
     [HttpGet("onboarding")]
     public async Task<ActionResult<DependencyOnboardingResponse>> GetOnboarding(CancellationToken cancellationToken)
     {
-        var query = Request.Query.ToDictionary(q => q.Key, q => (string?)q.Value.FirstOrDefault(), StringComparer.Ordinal);
+        // A repeated parameter arrives comma-joined (StringValues.ToString), never first-wins: a duplicated installation_id
+        // is then malformed, and the forge's redirect reads it as an unknown installation (D-O13).
+        var query = Request.Query.ToDictionary(q => q.Key, q => (string?)q.Value.ToString(), StringComparer.Ordinal);
         return Ok(await onboarding.ListAsync(query, cancellationToken));
     }
 }

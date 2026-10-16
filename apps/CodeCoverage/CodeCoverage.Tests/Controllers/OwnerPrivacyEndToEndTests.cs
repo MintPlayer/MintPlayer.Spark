@@ -427,6 +427,12 @@ public sealed class OwnerPrivacyHostFixture : CoverageRavenTest, IAsyncLifetime
     public const string MemberUserId = "SparkUsers/privacy-member";
     /// <summary>Reaches acme's installation, not an owner of the organization, ADMIN of acme/open and acme/admin-only.</summary>
     public const string RepoAdminUserId = "SparkUsers/privacy-repo-admin";
+    /// <summary>User B: owns the organization globex and reaches its installation <see cref="OtherInstallation"/>; nobody else does.</summary>
+    public const string OtherOwnerUserId = "SparkUsers/privacy-other-owner";
+    /// <summary>acme's installation of the App, reached by the owner, the member and the repository admin.</summary>
+    public const string AcmeInstallation = "5555";
+    /// <summary>globex's installation of the App, reached by <see cref="OtherOwnerUserId"/> alone.</summary>
+    public const string OtherInstallation = "6666";
     private const string AdminGitHubId = "770077";
     private const string UserHeader = "X-Test-User";
 
@@ -444,6 +450,10 @@ public sealed class OwnerPrivacyHostFixture : CoverageRavenTest, IAsyncLifetime
     public string PrivateRepositoryId { get; } = Repository.DocumentId(EForgeProvider.GitHub, 4602);
     /// <summary>A private repository the repository admin administers; the save tests write to it alone.</summary>
     public string AdministeredRepositoryId { get; } = Repository.DocumentId(EForgeProvider.GitHub, 4603);
+
+    /// <summary>User B's organization and its two private repositories, both with dependency updates Disabled.</summary>
+    public string OtherAccountId { get; } = Account.DocumentId(EForgeProvider.GitHub, 6);
+    public string[] OtherRepositoryIds { get; } = [Repository.DocumentId(EForgeProvider.GitHub, 4701), Repository.DocumentId(EForgeProvider.GitHub, 4702)];
 
     public async Task InitializeAsync()
     {
@@ -493,6 +503,15 @@ public sealed class OwnerPrivacyHostFixture : CoverageRavenTest, IAsyncLifetime
             await session.StoreAsync(Repo(4601, "open", isPrivate: false), PublicRepositoryId);
             await session.StoreAsync(Repo(4602, "secret", isPrivate: true), PrivateRepositoryId);
             await session.StoreAsync(Repo(4603, "admin-only", isPrivate: true), AdministeredRepositoryId);
+
+            await session.StoreAsync(User("privacy-other-owner", "880005"), OtherOwnerUserId);
+            await session.StoreAsync(new Account { GitHubId = 6, Provider = EForgeProvider.GitHub, Login = "globex", Type = "Organization" }, OtherAccountId);
+            foreach (var (id, name) in new[] { (4701L, "b-secret"), (4702L, "b-tool") })
+                await session.StoreAsync(new Repository
+                {
+                    GitHubId = id, Provider = EForgeProvider.GitHub, Account = OtherAccountId, Name = name, FullName = $"globex/{name}",
+                    OwnerLogin = "globex", IsPrivate = true, DefaultBranch = "main", DependencyUpdates = EDependencyUpdatesPolicy.Disabled,
+                }, Repository.DocumentId(EForgeProvider.GitHub, id));
             await session.SaveChangesAsync();
         }
         WaitForIndexing(Store);
@@ -622,6 +641,9 @@ public sealed class OwnerPrivacyHostFixture : CoverageRavenTest, IAsyncLifetime
                 forge.Owners.Add(new ForgeOwner(EForgeProvider.GitHub, "acme"));
             if (id is MemberUserId or RepoAdminUserId)
                 forge.Managed = [];
+            // User B reaches and owns globex alone.
+            if (id is OtherOwnerUserId)
+                forge.Owners.Add(new ForgeOwner(EForgeProvider.GitHub, "globex"));
         }
 
         public IForgeIntegration? For(EForgeProvider provider) => forge.For(provider);
@@ -644,9 +666,18 @@ public sealed class OwnerPrivacyHostFixture : CoverageRavenTest, IAsyncLifetime
     /// admin acme/open and acme/admin-only, everybody else none. The listing is what the onboarding page shows; the checks
     /// are what settings visibility, the write filter and the enable action ask.
     /// </summary>
+    /// <remarks>
+    /// The listing answers like GitHub's <c>/user/installations/{id}/repositories</c> with the viewer's own token: an
+    /// installation the viewer does not reach lists nothing, exactly like one that does not exist (403/404 there).
+    /// </remarks>
     private sealed class PerCallerAdministration : IForgeRepositoryAdministration
     {
-        private static readonly (long Id, string Name, bool IsPrivate)[] Repositories = [(4601, "open", false), (4602, "secret", true), (4603, "admin-only", true)];
+        private static readonly (string Installation, long AccountId, string AccountLogin, long Id, string Name, bool IsPrivate)[] Repositories =
+        [
+            (AcmeInstallation, 5, "acme", 4601, "open", false), (AcmeInstallation, 5, "acme", 4602, "secret", true),
+            (AcmeInstallation, 5, "acme", 4603, "admin-only", true),
+            (OtherInstallation, 6, "globex", 4701, "b-secret", true), (OtherInstallation, 6, "globex", 4702, "b-tool", true),
+        ];
         private readonly string? caller;
 
         public PerCallerAdministration(IHttpContextAccessor accessor)
@@ -661,13 +692,22 @@ public sealed class OwnerPrivacyHostFixture : CoverageRavenTest, IAsyncLifetime
             RepoAdminUserId => "privacy-repo-admin",
             StrangerUserId => "privacy-stranger",
             AdminUserId => "privacy-admin",
+            OtherOwnerUserId => "privacy-other-owner",
             _ => null,
+        };
+
+        private bool Reaches(string installation) => installation switch
+        {
+            AcmeInstallation => caller is OwnerUserId or MemberUserId or RepoAdminUserId,
+            OtherInstallation => caller is OtherOwnerUserId,
+            _ => false,
         };
 
         private bool Administers(long repositoryGitHubId) => caller switch
         {
-            OwnerUserId => true,
+            OwnerUserId => repositoryGitHubId is >= 4601 and <= 4603,
             RepoAdminUserId => repositoryGitHubId is 4601 or 4603,
+            OtherOwnerUserId => repositoryGitHubId is 4701 or 4702,
             _ => false,
         };
 
@@ -676,10 +716,12 @@ public sealed class OwnerPrivacyHostFixture : CoverageRavenTest, IAsyncLifetime
 
         public Task<ForgeViewerRepositories> ListViewerRepositoriesAsync(string? installationKey, CancellationToken cancellationToken = default)
         {
-            if (caller is not (OwnerUserId or MemberUserId or RepoAdminUserId))
-                return Task.FromResult(ForgeViewerRepositories.None(Login, EForgeCredentialState.Ok));
+            if (Login is null)
+                return Task.FromResult(ForgeViewerRepositories.None(null, EForgeCredentialState.Ok));
             return Task.FromResult(new ForgeViewerRepositories(
-                [.. Repositories.Select(r => new ForgeViewerRepository("5555", 5, "acme", r.Id, $"acme/{r.Name}", r.IsPrivate, Administers(r.Id)))],
+                [.. Repositories
+                    .Where(r => Reaches(r.Installation) && (installationKey is null || r.Installation == installationKey))
+                    .Select(r => new ForgeViewerRepository(r.Installation, r.AccountId, r.AccountLogin, r.Id, $"{r.AccountLogin}/{r.Name}", r.IsPrivate, Administers(r.Id)))],
                 Login, EForgeCredentialState.Ok));
         }
 
