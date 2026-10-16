@@ -35,6 +35,8 @@ Anonymous visitors | grant | Read/Home | c0e5a9e1-0000-4000-8000-000000000041 | 
 
 ## Rights
 Administrators | grant | QueryRead/RepositoryGraphState | c0e5a9e1-0000-4000-8000-000000000092 | app
+Administrators | grant | ReadSettings/Account | c0e5a9e1-0000-4000-8000-000000000096 | app
+Administrators | grant | ReadSettings/Repository | c0e5a9e1-0000-4000-8000-000000000097 | app
 Administrators (dashboards:administrators) | grant | Read/DatabaseStatistics | dashboards:administrators | dashboards
 Administrators (dashboards:administrators) | grant | Read/HostMetrics | c0e5a9e1-0000-4000-8000-000000000091 | app
 Signed-in users | grant | Browse/Coverage | c0e5a9e1-0000-4000-8000-000000000022 | app

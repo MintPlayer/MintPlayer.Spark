@@ -35,6 +35,12 @@
       "isDenied": false
     },
     {
+      "key": "c0e5a9e1-0000-4000-8000-000000000096",
+      "resource": "ReadSettings/Account",
+      "groupId": "c0e5ad00-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
       "key": "c0e5a9e1-0000-4000-8000-000000000081",
       "resource": "QueryRead/Account/OwnerKey",
       "groupId": "00000000-0000-0000-0000-000000000000",
@@ -230,6 +236,12 @@
       "key": "c0e5a9e1-0000-4000-8000-000000000012",
       "resource": "QueryRead/Repository",
       "groupId": "00000000-0000-0000-0000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "c0e5a9e1-0000-4000-8000-000000000097",
+      "resource": "ReadSettings/Repository",
+      "groupId": "c0e5ad00-0000-4000-8000-000000000001",
       "isDenied": false
     },
     {

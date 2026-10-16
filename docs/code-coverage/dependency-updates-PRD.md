@@ -1369,3 +1369,43 @@ and the Angular panels `account-dependency-updates-panel` and `repo-dependency-u
   lookup reported and keep the scanners for the rest. Produces stays the scanners' (a lookup says what a repository uses,
   not what it publishes). The settings UI is Spark's own PO pages (Account, Repository, `DependencyRule`), already exposed
   by the N2 model.
+
+#### Who reads an owner's settings (2026-10-16): D-A1–D-A8
+
+**Found:** N2 put the dependency settings on `Account` (`DependencyUpdates`, `DependencySchedule*`, `DependencyTimeZone`,
+`DependencyCooldown`, `DependencyBisectBudget`, the `DependencyRules` AsDetail) and on `Repository`, next to the merge-queue
+and branch-deletion settings. `security.json` grants `QueryRead/Account` and `QueryRead/Repository` to the anonymous role,
+`AccountActions.GetRowFilterAsync` returns no read filter, and `GetProtectedAttributesAsync` hid only `BadgeToken`. So
+anyone, signed in or not, read every account's settings and every public repository's settings, and listed (sorted,
+filtered, distinct-valued) the account grid on them. `DependencyRules` can name packages of private repositories.
+*Red run* (`OwnerPrivacyEndToEndTests` before the fix, 9 of 30 failing): a visitor's and a stranger's account load carried
+`DeleteBranchOnPrClose`, every `Dependency*` attribute and `DependencyRules`; their public-repository load carried
+`DeleteBranchOnPrClose`, `DependencySchedulePolicy`, `DependencyCooldown` …; `GetAccounts` answered 200 to a visitor, a
+stranger and the owner, sorted and filtered by `DeleteBranchOnPrClose`. The `/api/browse` endpoints (account ref, repos,
+dependency graph, both dependency-updates views, sparklines, repo) leaked none of the seeded markers.
+
+| # | Decision | Rejected | Evidence / reason |
+|---|---|---|---|
+| D-A1 | **Layering: `security.json` is the allow-list, the actions class narrows it per request and never widens it.** The grants stay (`QueryRead/Account` to everyone, `Edit/Account` to signed-in users); `AccountActions`/`RepositoryActions` take away per record and per caller | per-user rules in `security.json` (it has no per-record form) | owner, 2026-10-16. Spark's `OnDisableActionsAsync` runs only after the type right and the row gate, so it cannot grant (Spark test `Withholding_nothing_never_grants_what_security_json_denies`) |
+| D-A2 | **The account grid is the Administrators' alone, withheld per request** (`AccountActions.OnDisableActionsAsync` disables `Query` on the query target for anyone without `ReadSettings/Account`). **"Isn't Read enough?" — yes for every page, but `security.json` cannot express "Read without Query":** Spark expands `Read` ⇒ `Query` (`SparkRightImplications`, #324), and the type catalogue a detail page renders from is Query-scoped, so `Read/Account` is the same grant as `QueryRead/Account` | narrowing the grant to `Read/Account` (measured: the posture report still listed `Query/Account` as reachable anonymously); denying `Query/Account` (a deny beats the Administrators' grant, and blanks the catalogue) | no page runs `GetAccounts`: the account page is `POST /spark/po/load` (`vanity-redirects.ts` → `/po/account/{id}`), the three `Account` references (Repository, ApiToken, GitHubProject) are read-only breadcrumbs resolved under `Read` (`BreadcrumbResolver`), `programUnits.json` has no accounts unit, and `/api/browse/accounts/*` queries the index itself. A grid must go because sort and filter run on stored values before any row exists, so redaction cannot hide them (`QueryExecutor`, #295) |
+| D-A3 | **An account's settings are protected attributes for anyone who neither manages the account nor holds `ReadSettings/Account`.** Deny by default: `OwnerSettings.ProtectedAccountAttributes` is every property not on the public list (`Login`, `Type`, `AvatarUrl`, `Provider`, `Connection`, `DisconnectedReason`, `DisconnectedAtUtc`), so a setting added later is owner-only without anyone remembering | `DisableActions("Read")` on another owner's account (removes the public account page); static attribute denies (`Read/Account/DependencyRules`: managers are signed-in users too, and a deny beats every grant) | Spark nulls protected attributes on every read path (detail load, query rows, breadcrumbs, refresh, retry, live socket) and shields them from write-back (`IPersistentObjectActions.GetProtectedAttributesAsync`) |
+| D-A4 | **Edit is withheld on an account the caller does not manage** (`OnDisableActionsAsync`, object target), the administrator included. The write row filter stays | only the row filter (the page offered Edit and the submit 404'd); letting administrators edit | the page and the submit answer from one rule; the filter keeps an edit of somebody else's account a 404 |
+| D-A5 | **Repository: the same, deny by default.** Public: `Account`, `Archived`, `Connection`, `DefaultBranch`, `Disconnected*`, `FullName`, `IsPrivate`, `LatestCoverage*`, `Name`, `OwnerLogin`, `Provider`; everything else (settings, gate, fork budget, keys) is protected for outsiders. **`BadgeToken` stays the managers' alone**, administrators included | administrators read the badge token | it is a credential (badge access on private repositories), not a setting. The repository grids show only public attributes, so no sort/filter oracle reaches a protected one |
+| D-A6 | **Administrators = `ReadSettings/Account` and `ReadSettings/Repository` in `security.json`**, granted to the Administrators group (forge id in `Coverage:Administrators`). The verb is declared with `[assembly: SparkReservedActions(typeof(OwnerSettingsRights))]` | hard-coding `CoverageAdministrators.GroupId` in the actions (bypasses the allow-list); a free-standing target such as `ReadAll/OwnerSettings` (SPARK011 + SPARK012: Spark could not see that the app asks for it) | owner: "except for administrators"; the posture report lists both rights |
+| D-A7 | **The dependency-updates views stay as built (D-N5).** They show, per repository the caller can see, its own status, the next slot and a schedule line; never the account's rules, check exclusions or badge token | redacting the schedule line for outsiders | the panel is the public status of a repository the caller can already see; the regression test asserts the rule, check-exclusion and badge-token markers never travel on any `/api/browse` endpoint |
+| D-A8 | **Spark: `Read` and `Query` can be disabled too, enforced server-side.** `Read` withheld on an object refuses `POST /spark/po/load` (and the live socket's load); `Query` withheld on a query refuses `/spark/queries/execute` and `/distinct-values`. Both answer as a missing object or query (404, or the uniform 401 to a visitor), never 403. ng-spark needs no change: it renders no Read/Query buttons and already handles the 404 | a 403 (confirms existence, #453) | owner requirement; `DisableActionsTests` red without the change (3 of 20 failing: `found HttpStatusCode.OK`) and green with it (20/20) |
+
+**Regression test** (`apps/CodeCoverage/CodeCoverage.Tests/Controllers/OwnerPrivacyEndToEndTests.cs`): the real composition
+root, the app's own `security.json`, model and actions; the forge scripted per caller; the Administrators group the real
+`CoverageAdministrators` provider. Callers: a visitor, a signed-in stranger, the account's manager, an administrator who
+manages nothing. It fails when a model attribute of `Account` or `Repository` is on neither of its public/private lists,
+asserts that an outsider's account and repository loads carry nothing outside the public list, that only an administrator
+runs, sorts, filters or lists distinct values of `GetAccounts`, that the repository grids and the account page's sub-query
+carry public attributes only, that no `/api/browse` endpoint carries a seeded marker, and that managers and administrators
+do see the settings (administrators without the badge token).
+
+**SparkTestDriver or the app host?** `SparkEndpointFactory` can boot with the app's `security.json`
+(`SparkTestSecurity.FromFile`) and its model files, but it is its own minimal host: none of `Program.cs`'s registrations
+(the visibility service, the forges, `CoverageAdministrators`, the browse controllers, the app's indexes) would be there
+unless the test re-registered them by hand, which is the composition under test. `CoverageWebAppFactory` boots the real
+`Program`, so the test uses it, with the header sign-in `HostMetricsDashboardTests` already uses.
