@@ -1,0 +1,30 @@
+diff --git a/gradle.lockfile b/gradle.lockfile
+index e19e267..bdaa5d0 100644
+--- a/gradle.lockfile
++++ b/gradle.lockfile
+@@ -1,10 +1,10 @@
+ # This is a Gradle generated file for dependency locking.
+ # Manual edits can break the build and are not advised.
+ # This file is expected to be part of source control.
+-com.fasterxml.jackson.core:jackson-annotations:2.15.2=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+-com.fasterxml.jackson.core:jackson-core:2.15.2=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+-com.fasterxml.jackson.core:jackson-databind:2.15.2=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+-com.fasterxml.jackson:jackson-bom:2.15.2=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
++com.fasterxml.jackson.core:jackson-annotations:2.16.1=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
++com.fasterxml.jackson.core:jackson-core:2.16.1=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
++com.fasterxml.jackson.core:jackson-databind:2.16.1=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
++com.fasterxml.jackson:jackson-bom:2.16.1=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+ com.google.code.findbugs:jsr305:3.0.2=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+ com.google.errorprone:error_prone_annotations:2.18.0=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+ com.google.guava:failureaccess:1.0.1=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+diff --git a/gradle/libs.versions.toml b/gradle/libs.versions.toml
+index 1e4646d..c4a88ce 100644
+--- a/gradle/libs.versions.toml
++++ b/gradle/libs.versions.toml
+@@ -1,5 +1,5 @@
+ [versions]
+-jackson = "2.15.2"   # json
++jackson = "2.16.1"   # json
+ 
+ [libraries]
+ guava = { module = "com.google.guava:guava", version = "32.1.2-jre" }

@@ -1,0 +1,66 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="10.0.1">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="MintPlayer.Assertions" Version="1.0.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
+    <PackageReference Include="NSubstitute" Version="6.2.0" />
+    <PackageReference Include="Verify.Xunit" Version="31.12.5" />
+    <PackageReference Include="WireMock.Net" Version="2.15.0" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+    <Using Include="MintPlayer.Assertions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Reflection\Fixtures\**\*.json" CopyToOutputDirectory="PreserveNewest" />
+    <!-- xUnit only reads this from the output directory, not the project root. -->
+    <Content Include="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\libs\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
+    <ProjectReference Include="..\..\libs\spark\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
+    <ProjectReference Include="..\..\libs\authorization\MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj" />
+    <ProjectReference Include="..\..\libs\webhooks\MintPlayer.Spark.Webhooks.GitHub\MintPlayer.Spark.Webhooks.GitHub.csproj" />
+    <ProjectReference Include="..\..\libs\webhooks\MintPlayer.Spark.Webhooks.GitHub.DevTunnel\MintPlayer.Spark.Webhooks.GitHub.DevTunnel.csproj" />
+    <ProjectReference Include="..\..\libs\socket_extensions\MintPlayer.Dotnet.SocketExtensions\MintPlayer.Dotnet.SocketExtensions.csproj" />
+    <ProjectReference Include="..\..\libs\messaging\MintPlayer.Spark.Messaging\MintPlayer.Spark.Messaging.csproj" />
+    <ProjectReference Include="..\..\libs\replication\MintPlayer.Spark.Replication\MintPlayer.Spark.Replication.csproj" />
+    <ProjectReference Include="..\..\libs\identity_provider\MintPlayer.Spark.IdentityProvider\MintPlayer.Spark.IdentityProvider.csproj" />
+    <ProjectReference Include="..\..\libs\subscription_worker\MintPlayer.Spark.SubscriptionWorker.Abstractions\MintPlayer.Spark.SubscriptionWorker.Abstractions.csproj" />
+    <!-- The shipping worker package. Referenced so it is MEASURED at all: without this it appears in no coverage report. -->
+    <ProjectReference Include="..\..\libs\subscription_worker\MintPlayer.Spark.SubscriptionWorker\MintPlayer.Spark.SubscriptionWorker.csproj" />
+    <ProjectReference Include="..\..\libs\cron\MintPlayer.Spark.Cron\MintPlayer.Spark.Cron.csproj" />
+    <ProjectReference Include="..\..\libs\controllers\MintPlayer.Spark.Controllers\MintPlayer.Spark.Controllers.csproj" />
+    <ProjectReference Include="..\..\libs\migrations\MintPlayer.Spark.Migrations\MintPlayer.Spark.Migrations.csproj" />
+    <ProjectReference Include="..\..\libs\all_features\MintPlayer.Spark.AllFeatures\MintPlayer.Spark.AllFeatures.csproj" />
+    <ProjectReference Include="..\..\libs\client\MintPlayer.Spark.Client\MintPlayer.Spark.Client.csproj" />
+    <ProjectReference Include="..\..\libs\testing\MintPlayer.Spark.Testing\MintPlayer.Spark.Testing.csproj" />
+  </ItemGroup>
+
+  <!--
+    Imported explicitly because this repo consumes the package by ProjectReference, where NuGet's
+    automatic build/ import does not apply. A downstream consumer using a PackageReference gets
+    this for free.
+  -->
+  <Import Project="..\..\libs\testing\MintPlayer.Spark.Testing\Targets\spark-testing.targets" />
+
+</Project>

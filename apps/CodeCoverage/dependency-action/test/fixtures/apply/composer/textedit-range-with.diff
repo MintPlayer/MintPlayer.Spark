@@ -1,0 +1,89 @@
+diff --git a/composer.json b/composer.json
+index 67717f7..10b92be 100644
+--- a/composer.json
++++ b/composer.json
+@@ -3,7 +3,7 @@
+     "require": {
+         "psr/log": "^1.1",
+         "monolog/monolog": "2.9.1",
+-        "guzzlehttp/guzzle": "^7.5"
++        "guzzlehttp/guzzle": "^7.8"
+     },
+     "config": { "allow-plugins": false, "policy": { "advisories": { "block": false } } }
+ }
+diff --git a/composer.lock b/composer.lock
+index 624c787..0285aad 100644
+--- a/composer.lock
++++ b/composer.lock
+@@ -4,26 +4,26 @@
+         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
+         "This file is @generated automatically"
+     ],
+-    "content-hash": "89e6bd64b722ea76833400816bf66b54",
++    "content-hash": "fdb113d013c42f050e7e0803225dd65e",
+     "packages": [
+         {
+             "name": "guzzlehttp/guzzle",
+-            "version": "7.5.0",
++            "version": "7.8.0",
+             "source": {
+                 "type": "git",
+                 "url": "https://github.com/guzzle/guzzle.git",
+-                "reference": "b50a2a1251152e43f6a37f0fa053e730a67d25ba"
++                "reference": "1110f66a6530a40fe7aea0378fe608ee2b2248f9"
+             },
+             "dist": {
+                 "type": "zip",
+-                "url": "https://api.github.com/repos/guzzle/guzzle/zipball/b50a2a1251152e43f6a37f0fa053e730a67d25ba",
+-                "reference": "b50a2a1251152e43f6a37f0fa053e730a67d25ba",
++                "url": "https://api.github.com/repos/guzzle/guzzle/zipball/1110f66a6530a40fe7aea0378fe608ee2b2248f9",
++                "reference": "1110f66a6530a40fe7aea0378fe608ee2b2248f9",
+                 "shasum": ""
+             },
+             "require": {
+                 "ext-json": "*",
+-                "guzzlehttp/promises": "^1.5",
+-                "guzzlehttp/psr7": "^1.9 || ^2.4",
++                "guzzlehttp/promises": "^1.5.3 || ^2.0.1",
++                "guzzlehttp/psr7": "^1.9.1 || ^2.5.1",
+                 "php": "^7.2.5 || ^8.0",
+                 "psr/http-client": "^1.0",
+                 "symfony/deprecation-contracts": "^2.2 || ^3.0"
+@@ -34,7 +34,8 @@
+             "require-dev": {
+                 "bamarni/composer-bin-plugin": "^1.8.1",
+                 "ext-curl": "*",
+-                "php-http/client-integration-tests": "^3.0",
++                "php-http/client-integration-tests": "dev-master#2c025848417c1135031fdf9c728ee53d0a7ceaee as 3.0.999",
++                "php-http/message-factory": "^1.1",
+                 "phpunit/phpunit": "^8.5.29 || ^9.5.23",
+                 "psr/log": "^1.1 || ^2.0 || ^3.0"
+             },
+@@ -48,9 +49,6 @@
+                 "bamarni-bin": {
+                     "bin-links": true,
+                     "forward-command": false
+-                },
+-                "branch-alias": {
+-                    "dev-master": "7.5-dev"
+                 }
+             },
+             "autoload": {
+@@ -116,7 +114,7 @@
+             ],
+             "support": {
+                 "issues": "https://github.com/guzzle/guzzle/issues",
+-                "source": "https://github.com/guzzle/guzzle/tree/7.5.0"
++                "source": "https://github.com/guzzle/guzzle/tree/7.8.0"
+             },
+             "funding": [
+                 {
+@@ -132,7 +130,7 @@
+                     "type": "tidelift"
+                 }
+             ],
+-            "time": "2022-08-28T15:39:27+00:00"
++            "time": "2023-08-27T10:20:53+00:00"
+         },
+         {
+             "name": "guzzlehttp/promises",

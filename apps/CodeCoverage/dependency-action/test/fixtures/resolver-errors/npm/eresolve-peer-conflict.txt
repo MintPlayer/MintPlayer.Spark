@@ -1,0 +1,19 @@
+npm error code ERESOLVE
+npm error ERESOLVE unable to resolve dependency tree
+npm error
+npm error While resolving: proj@1.0.0
+npm error Found: evil-pkg@2.0.0
+npm error node_modules/evil-pkg
+npm error   evil-pkg@"2.0.0" from the root project
+npm error
+npm error Could not resolve dependency:
+npm error peer evil-pkg@"^1.0.0" from peerhost@1.0.0
+npm error node_modules/peerhost
+npm error   peerhost@"1.0.0" from the root project
+npm error
+npm error Fix the upstream dependency conflict, or retry this command with --force or --legacy-peer-deps to accept an incorrect (and potentially broken) dependency resolution.
+npm error
+npm error
+npm error For a full report see:
+npm error <HOME>\AppData\Local\npm-cache\_logs\2026-10-15T18_59_44_315Z-eresolve-report.txt
+npm error A complete log of this run can be found in: <HOME>\AppData\Local\npm-cache\_logs\2026-10-15T18_59_44_315Z-debug-0.log

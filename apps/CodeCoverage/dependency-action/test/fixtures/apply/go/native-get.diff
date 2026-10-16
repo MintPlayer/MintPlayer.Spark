@@ -1,0 +1,23 @@
+diff --git a/go.mod b/go.mod
+index 3af3031..8b9d08e 100644
+--- a/go.mod
++++ b/go.mod
+@@ -3,6 +3,6 @@ module example.com/s13
+ go 1.22
+ 
+ require (
+-	github.com/google/uuid v1.3.0 // ids
++	github.com/google/uuid v1.4.0 // ids
+ 	golang.org/x/text v0.13.0
+ )
+diff --git a/go.sum b/go.sum
+index 9373ebb..17e46ee 100644
+--- a/go.sum
++++ b/go.sum
+@@ -1,4 +1,6 @@
+ github.com/google/uuid v1.3.0 h1:t6JiXgmwXMjEs8VusXIJk2BXHsn+wx8BZdTaoZ5fu7I=
+ github.com/google/uuid v1.3.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
++github.com/google/uuid v1.4.0 h1:MtMxsa51/r9yyhkyLsVeVt0B+BGQZzpQiTQ4eHZ8bc4=
++github.com/google/uuid v1.4.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
+ golang.org/x/text v0.13.0 h1:ablQoSUd0tRdKxZewP80B+BaqeKJuVhuRxj/dkrun3k=
+ golang.org/x/text v0.13.0/go.mod h1:TvPlkZtksWOMsz7fbANvkp4WM8x/WCo/om8BMLbz+aE=

@@ -1,0 +1,26 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index 0b3793c..77507b3 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -4,9 +4,9 @@ version = 4
+ 
+ [[package]]
+ name = "itoa"
+-version = "1.0.9"
++version = "1.0.18"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "af150ab688ff2122fcef229be89cb50dd66af9e01a4ff320cc137eecc9bacc38"
++checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
+ 
+ [[package]]
+ name = "proc-macro2"
+diff --git a/Cargo.toml b/Cargo.toml
+index 53842ce..6bbbd33 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -5,4 +5,4 @@ edition = "2021"
+ 
+ [dependencies]
+ serde = { version = "1.0.190", features = ["derive"] }  # ser
+-itoa   = "1.0.9"
++itoa   = "1.0.10"

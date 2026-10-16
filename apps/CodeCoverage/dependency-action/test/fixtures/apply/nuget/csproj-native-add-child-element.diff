@@ -1,0 +1,36 @@
+diff --git a/App.csproj b/App.csproj
+index 701a699..9e38957 100644
+--- a/App.csproj
++++ b/App.csproj
+@@ -7,11 +7,11 @@
+ 
+   <ItemGroup>
+     <!-- json -->
+-    <PackageReference Include="Newtonsoft.Json"   Version="13.0.1" />
++    <PackageReference Include="Newtonsoft.Json" Version="13.0.1" />
+     <PackageReference Include="Serilog">
+-      <Version>3.0.1</Version>
++      <Version>3.1.1</Version>
+     </PackageReference>
+-    <PackageReference Include="Humanizer.Core" Version="2.14.1" PrivateAssets="all"/>
++    <PackageReference Include="Humanizer.Core" Version="2.14.1" PrivateAssets="all" />
+   </ItemGroup>
+ 
+ </Project>
+diff --git a/packages.lock.json b/packages.lock.json
+index fe83a4a..10b925b 100644
+--- a/packages.lock.json
++++ b/packages.lock.json
+@@ -16,9 +16,9 @@
+       },
+       "Serilog": {
+         "type": "Direct",
+-        "requested": "[3.0.1, )",
+-        "resolved": "3.0.1",
+-        "contentHash": "E4UmOQ++eNJax1laE+lws7E3zbhKgHsGJbO7ra0yE5smUh+5FfUPIKKBxM3MO1tK4sgpQke6/pLReDxIc/ggNw=="
++        "requested": "[3.1.1, )",
++        "resolved": "3.1.1",
++        "contentHash": "P6G4/4Kt9bT635bhuwdXlJ2SCqqn2nhh4gqFqQueCOr9bK/e7W9ll/IoX1Ter948cV2Z/5+5v8pAfJYUISY03A=="
+       }
+     }
+   }

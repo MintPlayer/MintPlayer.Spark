@@ -1,0 +1,11 @@
+diff --git a/Dockerfile b/Dockerfile
+index 2185646..d87dc0a 100644
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -1,5 +1,5 @@
+ # syntax=docker/dockerfile:1
+-FROM node:20.11.0-alpine AS build   # builder
++FROM node:20.11.1-alpine AS build   # builder
+ WORKDIR /src
+ FROM mcr.microsoft.com/dotnet/aspnet:8.0.1@sha256:0000000000000000000000000000000000000000000000000000000000000000
+ COPY --from=build /src /app

@@ -1,0 +1,35 @@
+{
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "name": "@mintplayer/dependency-update-action",
+  "projectType": "application",
+  "sourceRoot": "apps/CodeCoverage/dependency-action/src",
+  "targets": {
+    "test": {
+      "executor": "nx:run-commands",
+      "inputs": ["default", "{workspaceRoot}/apps/CodeCoverage/contracts/dependency-update/**/*"],
+      "options": {
+        "cwd": "apps/CodeCoverage/dependency-action",
+        "commands": ["npm run test:coverage", "npm run test:bundle"],
+        "parallel": false
+      },
+      "configurations": {
+        "local": {
+          "commands": ["npm run test", "npm run test:bundle"]
+        }
+      },
+      "outputs": ["{projectRoot}/coverage"]
+    },
+    "test-integration": {
+      "executor": "nx:run-commands",
+      "inputs": [
+        "default",
+        "{workspaceRoot}/apps/CodeCoverage/contracts/dependency-update/**/*",
+        { "env": "DEP_ACTION_IT_GROUP" }
+      ],
+      "options": {
+        "cwd": "apps/CodeCoverage/dependency-action",
+        "command": "npm run test:integration"
+      }
+    }
+  }
+}

@@ -1,0 +1,60 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index 0b3793c..a9db6bc 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -36,18 +36,28 @@ dependencies = [
+ 
+ [[package]]
+ name = "serde"
+-version = "1.0.190"
++version = "1.0.229"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "91d3c334ca1ee894a2c6f6ad698fe8c435b76d504b13d436f0685d648d6d96f7"
++checksum = "4148590afebada386688f18773da617792bf2ef03ffc1e4cbd2b1d45b023e0ba"
++dependencies = [
++ "serde_core",
++ "serde_derive",
++]
++
++[[package]]
++name = "serde_core"
++version = "1.0.229"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "67dca2c9c51e58a4791a4b1ed58308b39c64224d349a935ab5039aa360942a48"
+ dependencies = [
+  "serde_derive",
+ ]
+ 
+ [[package]]
+ name = "serde_derive"
+-version = "1.0.190"
++version = "1.0.229"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "67c5609f394e5c2bd7fc51efda478004ea80ef42fee983d5c67a65e34f32c0e3"
++checksum = "e7a5d71263a5a7d47b41f6b3f06ba276f10cc18b0931f1799f710578e2309348"
+ dependencies = [
+  "proc-macro2",
+  "quote",
+@@ -56,9 +66,9 @@ dependencies = [
+ 
+ [[package]]
+ name = "syn"
+-version = "2.0.119"
++version = "3.0.9"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "872831b642d1a07999a962a351ed35b955ea2cfc8f3862091e2a240a84f17297"
++checksum = "d78c8dee4c7bf0e14673097256fed6142ce9d3b85a408189d07482442145823b"
+ dependencies = [
+  "proc-macro2",
+  "quote",
+diff --git a/Cargo.toml b/Cargo.toml
+index 53842ce..72125fd 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -4,5 +4,5 @@ version = "0.1.0"
+ edition = "2021"
+ 
+ [dependencies]
+-serde = { version = "1.0.190", features = ["derive"] }  # ser
++serde = { version = "1.0.200", features = ["derive"] }  # ser
+ itoa   = "1.0.9"
