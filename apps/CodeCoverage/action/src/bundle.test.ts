@@ -90,7 +90,11 @@ interface RunResult {
 }
 
 /** Runs the bundle the way a runner does: inputs and context through the environment. */
-async function runBundle(port: number, inputs: Record<string, string>): Promise<RunResult> {
+async function runBundle(
+  port: number,
+  inputs: Record<string, string>,
+  options: { instantRetrySleeps?: boolean } = {},
+): Promise<RunResult> {
   const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'coverage-bundle-'));
   fs.mkdirSync(path.join(workspace, 'coverage'), { recursive: true });
   fs.writeFileSync(path.join(workspace, 'coverage', 'lcov.info'), 'TN:\nSF:src/app.ts\nDA:1,1\nend_of_record\n');
@@ -122,7 +126,8 @@ async function runBundle(port: number, inputs: Record<string, string>): Promise<
   };
 
   return await new Promise<RunResult>((resolve, reject) => {
-    const child = spawn(process.execPath, [path.join(__dirname, '..', 'dist', 'index.js')], { env });
+    const preload = options.instantRetrySleeps ? ['--require', path.join(__dirname, 'instant-retry-sleeps.cjs')] : [];
+    const child = spawn(process.execPath, [...preload, path.join(__dirname, '..', 'dist', 'index.js')], { env });
     let stdout = '';
     child.stdout.on('data', (chunk: Buffer) => (stdout += chunk.toString()));
     child.stderr.on('data', (chunk: Buffer) => (stdout += chunk.toString()));
@@ -257,10 +262,19 @@ describe('the committed bundle', () => {
     const dead = stub.port;
     stub = { port: dead, captures: [], close: async () => {} };
 
-    const result = await runBundle(dead, { token: 'covt_smoke', 'fail-ci-if-error': 'false' });
+    const result = await runBundle(dead, { token: 'covt_smoke', 'fail-ci-if-error': 'false' }, { instantRetrySleeps: true });
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toMatch(/::warning::/);
+    // The bundle carries the full schedule: six waits, about 2 minutes, enough to outlast a redeploy.
+    expect(result.stdout.match(/Upload attempt \d failed, retrying in \d+s\.\.\./g)).toEqual([
+      'Upload attempt 1 failed, retrying in 5s...',
+      'Upload attempt 2 failed, retrying in 10s...',
+      'Upload attempt 3 failed, retrying in 20s...',
+      'Upload attempt 4 failed, retrying in 30s...',
+      'Upload attempt 5 failed, retrying in 30s...',
+      'Upload attempt 6 failed, retrying in 30s...',
+    ]);
   });
 
   it('fails the step on an unreachable server when told to', async () => {
@@ -269,7 +283,7 @@ describe('the committed bundle', () => {
     const dead = stub.port;
     stub = { port: dead, captures: [], close: async () => {} };
 
-    const result = await runBundle(dead, { token: 'covt_smoke', 'fail-ci-if-error': 'true' });
+    const result = await runBundle(dead, { token: 'covt_smoke', 'fail-ci-if-error': 'true' }, { instantRetrySleeps: true });
 
     expect(result.exitCode).not.toBe(0);
     expect(result.stdout).toMatch(/::error::/);

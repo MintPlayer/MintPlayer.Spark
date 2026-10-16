@@ -170,7 +170,8 @@ export function rate(covered?: number, coverable?: number): string {
   return (Math.round((covered / coverable) * 1000) / 10).toFixed(1);
 }
 
-function retryAfter(response: Response): number | undefined {
+/** The server's `Retry-After` in whole seconds, capped at a minute; undefined when absent or not a delay. */
+export function retryAfter(response: Response): number | undefined {
   const header = response.headers.get('retry-after');
   if (!header) return undefined;
   const seconds = parseInt(header, 10);

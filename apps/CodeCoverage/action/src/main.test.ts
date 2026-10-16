@@ -514,6 +514,84 @@ describe('run: upload failures and retries', () => {
     expect(mocks.outputs.has('build-id')).toBe(false);
   });
 
+  it('outlasts a redeploy: a server down for six attempts, then up, is uploaded to on the seventh', async () => {
+    const delays = instantTimers();
+    // A redeploy looks like refused connections, then a 502 from the proxy while the container starts.
+    const down = () => Promise.reject(new TypeError('fetch failed'));
+    routes.upload = [down, down, down, down, text('', 502), text('', 502), json({ buildId: 'b7', sessionId: 's7' }, 202)];
+
+    await run();
+
+    expect(callsTo('upload')).toHaveLength(7);
+    expect(delays).toEqual([5000, 10000, 20000, 30000, 30000, 30000]);
+    // About two minutes in all, well past the ~30 s a `docker compose down`/`up` takes.
+    expect(delays.reduce((a, b) => a + b, 0)).toBe(125_000);
+    expect(mocks.info).toContain('Upload attempt 6 failed, retrying in 30s...');
+    expect(mocks.outputs.get('build-id')).toBe('b7');
+    expect(mocks.failed).toEqual([]);
+  });
+
+  it('waits what Retry-After says on a 429 or a 503', async () => {
+    const delays = instantTimers();
+    const withRetryAfter = (status: number, seconds: string) => () =>
+      new Response('', { status, headers: { 'retry-after': seconds } });
+    routes.upload = [
+      withRetryAfter(429, '12'),
+      withRetryAfter(503, '3'),
+      // Capped at a minute: a server cannot park the job.
+      withRetryAfter(503, '3600'),
+      // Not a delay in seconds: fall back to the schedule.
+      withRetryAfter(503, 'Wed, 21 Oct 2026 07:28:00 GMT'),
+      // Only 429 and 503 carry a meaningful Retry-After.
+      withRetryAfter(502, '45'),
+      json({ buildId: 'b6', sessionId: 's6' }, 202),
+    ];
+
+    await run();
+
+    expect(callsTo('upload')).toHaveLength(6);
+    expect(delays).toEqual([12000, 3000, 60000, 30000, 30000]);
+    expect(mocks.info).toContain('Upload attempt 1 failed, retrying in 12s...');
+    expect(mocks.outputs.get('build-id')).toBe('b6');
+  });
+
+  it.each([400, 401, 404])('fails a %i at once, without retrying', async (status) => {
+    const delays = instantTimers();
+    routes.upload = [text('nope', status)];
+
+    await run();
+
+    expect(callsTo('upload')).toHaveLength(1);
+    expect(delays).toEqual([]);
+    expect(mocks.failed).toEqual([`${SERVER}/api/uploads responded ${status}: nope`]);
+  });
+
+  it('retries the finish call on the same schedule', async () => {
+    const delays = instantTimers();
+    setInputs({ finish: 'true' });
+    routes.finish = [text('', 503), text('', 502), json({}, 200)];
+
+    await run();
+
+    expect(callsTo('upload')).toHaveLength(1);
+    expect(callsTo('finish')).toHaveLength(3);
+    expect(delays).toEqual([5000, 10000]);
+    expect(mocks.info).toContain('Finish requested (200) — the build finalizes once parsing completes.');
+    expect(mocks.failed).toEqual([]);
+  });
+
+  it('fails the finish call once the schedule is exhausted', async () => {
+    const delays = instantTimers();
+    setInputs({ finish: 'true' });
+    routes.finish = [text('', 503)];
+
+    await run();
+
+    expect(callsTo('finish')).toHaveLength(7);
+    expect(delays).toEqual([5000, 10000, 20000, 30000, 30000, 30000]);
+    expect(mocks.failed).toEqual([`${SERVER}/api/uploads/finish responded 503`]);
+  });
+
   it('retries a 5xx with a growing delay and succeeds on the third attempt', async () => {
     const delays = instantTimers();
     routes.upload = [text('', 502), text('', 503), json({ buildId: 'build-3', sessionId: 'session-3' }, 202)];
@@ -538,15 +616,15 @@ describe('run: upload failures and retries', () => {
     expect(mocks.outputs.get('build-id')).toBe('build-2');
   });
 
-  it('fails with the last status after three 5xx attempts', async () => {
+  it('fails with the last status once every scheduled attempt got a 5xx', async () => {
     const delays = instantTimers();
     routes.upload = [text('', 500)];
 
     await run();
 
-    expect(callsTo('upload')).toHaveLength(3);
+    expect(callsTo('upload')).toHaveLength(7);
     // No sleep after the final attempt.
-    expect(delays).toEqual([5000, 10000]);
+    expect(delays).toEqual([5000, 10000, 20000, 30000, 30000, 30000]);
     expect(mocks.failed).toEqual([`${SERVER}/api/uploads responded 500`]);
   });
 
@@ -556,7 +634,7 @@ describe('run: upload failures and retries', () => {
 
     await run();
 
-    expect(callsTo('upload')).toHaveLength(3);
+    expect(callsTo('upload')).toHaveLength(7);
     expect(mocks.failed).toEqual(['fetch failed']);
   });
 
