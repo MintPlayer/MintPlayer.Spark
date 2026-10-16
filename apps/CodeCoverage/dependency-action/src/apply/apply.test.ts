@@ -63,7 +63,7 @@ describe('runApply', () => {
   it('writes a schema-valid result.json and a git diff --binary patch without the plan file', async () => {
     const { dir, sha } = dispatchRef({ Dockerfile: 'FROM node:20.11.0-alpine AS build\nRUN true\n' }, () => [
       { group: 'node', items: [dockerItem] },
-      { group: 'missing', items: [item({ depName: 'rails', datasource: 'rubygems', packageFile: 'Gemfile', currentValue: '7.0.0', newValue: '7.1.0' })] },
+      { group: 'missing', items: [item({ depName: 'phoenix', datasource: 'hex', packageFile: 'mix.exs', currentValue: '1.7.0', newValue: '1.7.1' })] },
     ]);
     const out = tempDir();
     const { result, resultFile, patchFile } = await runApply({ exec: realExec, repoDir: dir, outDir: out, expectedSha: sha, feedSecrets: false });

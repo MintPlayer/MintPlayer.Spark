@@ -4,6 +4,7 @@ import { npmAdapter, pnpmAdapter, yarnAdapter } from './adapters/js';
 import { gradleAdapter, mavenAdapter } from './adapters/jvm';
 import { cargoAdapter, composerAdapter, goAdapter } from './adapters/native';
 import { nugetAdapter } from './adapters/nuget';
+import { bundlerAdapter } from './adapters/bundler';
 import { pipAdapter, pipCompileAdapter, poetryAdapter, uvAdapter } from './adapters/python';
 import { replaceStringAdapter, versionFileAdapter } from './adapters/replaceString';
 
@@ -27,6 +28,7 @@ export const ADAPTERS: readonly Adapter[] = [
   gradleAdapter,
   cargoAdapter,
   goAdapter,
+  bundlerAdapter,
 ];
 
 export function adapterFor(item: PlanItem, adapters: readonly Adapter[] = ADAPTERS): Adapter | null {

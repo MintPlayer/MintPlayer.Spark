@@ -156,6 +156,20 @@ describe('pure manifest edits equal the real S13 manifest changes', () => {
   });
 });
 
+describe('Bundler (no S13 capture: the S12 sample Gemfile and its reported tokens)', () => {
+  it('edits the quoted token on the gem line only', async () => {
+    const root = tempDir();
+    copyTree(fixture('renovate/bundler/input'), root);
+    const before = fs.readFileSync(path.join(root, 'Gemfile'), 'utf8');
+    // Renovate reports the quotes as part of currentValue/newValue (S12 bundler report).
+    const i = item({ depName: 'rails', datasource: 'rubygems', manager: 'bundler', packageFile: 'Gemfile', currentValue: "'7.0.0'", newValue: "'7.2.4'", newVersion: '7.2.4' });
+    const a = adapterFor(i)!;
+    expect(a.id).toBe('bundler');
+    await a.edit(ctxFor(root, undefined, [i]), i);
+    expect(changedPairs(before, fs.readFileSync(path.join(root, 'Gemfile'), 'utf8'))).toEqual([{ minus: "gem 'rails', '7.0.0'", plus: "gem 'rails', '7.2.4'" }]);
+  });
+});
+
 describe('edits refuse instead of guessing', () => {
   it.each([
     ['a version that is not there', npmItem('express', '^9.9.9', '^9.9.10', 'package-lock.json'), 'npm'],
