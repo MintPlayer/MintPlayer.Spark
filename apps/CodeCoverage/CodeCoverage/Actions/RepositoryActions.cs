@@ -193,8 +193,15 @@ public partial class RepositoryActions : DefaultPersistentObjectActions<Reposito
         // Owners only, no public tier. An empty owner set matches nothing, which is the correct
         // reading of "signed in, manages nothing". `.In()` rather than Contains -- see
         // ApiTokenActions for what a non-translatable predicate costs.
+        //
+        // R39 (D-O12): the owners the viewer MANAGES, plus the repositories they administer on the forge — not the owner set,
+        // which a read-only member of an organization reaches as well.
         if (action is not ("Query" or "Read"))
-            return repository => repository.OwnerKey.In(owners);
+        {
+            var managed = await visibility.GetManagedOwnersAsync();
+            var administered = await visibility.GetAdministeredRepositoryIdsAsync();
+            return repository => repository.OwnerKey.In(managed) || repository.Id.In(administered);
+        }
 
         // The one place the two READ rules diverge. "Query" is the grid — a listing, which must stop
         // advertising a repository we have lost access to. "Read" is the detail page, which is
@@ -257,7 +264,9 @@ public partial class RepositoryActions : DefaultPersistentObjectActions<Reposito
     /// </remarks>
     public override async Task<IReadOnlyCollection<string>?> GetProtectedAttributesAsync(string action, Repository entity)
     {
-        if (await visibility.CanManageOwnerAsync(entity.OwnerKey))
+        // A manager of the account, or an administrator of this repository (R39, D-O12): both may edit its settings, so both
+        // read them, the badge token included (a repository admin already reads the private repository it unlocks).
+        if (await visibility.CanManageRepositoryAsync(entity))
             return null;
 
         return await permissions.IsAllowedAsync(OwnerSettingsRights.ReadSettings, nameof(Repository))

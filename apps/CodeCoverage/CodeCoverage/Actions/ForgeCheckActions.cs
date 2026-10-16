@@ -99,7 +99,8 @@ public partial class ForgeCheckActions : DefaultPersistentObjectActions<ForgeChe
         }
 
         var repository = await session.LoadAsync<Repository>(args.Parent.Id);
-        if (repository is null || !await visibility.CanManageOwnerAsync(repository.OwnerKey))
+        // The repository's exclusion picker: whoever may edit the repository's settings (R39, D-O12), a repository admin too.
+        if (repository is null || !await visibility.CanManageRepositoryAsync(repository))
             return [];
 
         return DistinctRows(repository.KnownChecks ?? []);

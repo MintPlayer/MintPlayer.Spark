@@ -79,7 +79,9 @@ public partial class AccountActions : DefaultPersistentObjectActions<Account>, I
 
         // `.In()` rather than Contains: this predicate is pushed into RQL, where Contains is
         // untranslatable — see ApiTokenActions for the production outage that taught us.
-        var owners = await visibility.GetAllowedOwnersAsync();
+        // The MANAGED owners (R39, D-O12), not the owner set: a read-only member of an organization reaches its installation
+        // but does not manage the account.
+        var owners = await visibility.GetManagedOwnersAsync();
         return account => account.OwnerKey.In(owners);
     }
 

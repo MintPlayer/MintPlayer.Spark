@@ -20,8 +20,9 @@ public sealed record DependencyOnboardingResponse(string? Login, string Credenti
 
 /// <param name="RepositoryId">The <c>Repository</c> document id, the id the Spark query and its custom action take; null while
 /// the repository is not in this app yet (<paramref name="Syncing"/>).</param>
-/// <param name="ManagedBy">Why the viewer may enable it: <c>manager</c> (manages the account) or <c>forge-admin</c> (administers
-/// the repository on the forge, R33: the top role only). Re-checked when the action executes, never taken from here.</param>
+/// <param name="ManagedBy">Why the viewer may enable it: <c>owner</c> (manages the account: an active owner of the organization,
+/// or the personal account's own user, R39) or <c>repo-admin</c> (administers this repository on the forge, R33: the top role
+/// only; a read or write member of the organization is neither, D-O12). Re-checked when the action executes, never taken from here.</param>
 /// <param name="Setting">The repository's own choice: <c>Inherit</c>, <c>Enabled</c>, <c>Disabled</c>.</param>
 /// <param name="Enabled">The setting as it resolves, the account's default included.</param>
 /// <param name="Onboarding"><c>None</c>, <c>PullRequestOpened</c>, <c>Done</c>, <c>Blocked</c>.</param>
@@ -55,8 +56,11 @@ public partial class DependencyOnboardingService : IDependencyOnboardingService
     [Inject] private readonly ISparkVisibility visibility;
     [Inject] private readonly IAsyncDocumentSession session;
 
-    public const string Manager = "manager";
-    public const string ForgeAdmin = "forge-admin";
+    /// <summary>The viewer manages the repository's account (<see cref="ISparkVisibility.CanManageOwnerAsync"/>, R39).</summary>
+    public const string Owner = "owner";
+
+    /// <summary>The viewer administers this one repository on its forge (R33), without managing the account.</summary>
+    public const string RepoAdmin = "repo-admin";
 
     public async Task<DependencyOnboardingResponse> ListAsync(IReadOnlyDictionary<string, string?> query, CancellationToken cancellationToken = default)
     {
@@ -89,7 +93,7 @@ public partial class DependencyOnboardingService : IDependencyOnboardingService
                 if (!managed.TryGetValue(ownerKey, out var isManager))
                     managed[ownerKey] = isManager = await visibility.CanManageOwnerAsync(ownerKey);
                 // Filtered to what the viewer manages first; only then shown (R20).
-                var reason = isManager ? Manager : listed.IsAdmin ? ForgeAdmin : null;
+                var reason = isManager ? Owner : listed.IsAdmin ? RepoAdmin : null;
                 if (reason is null) continue;
 
                 var id = Repository.DocumentId(provider, listed.RepositoryForgeId);
@@ -121,7 +125,7 @@ public partial class DependencyOnboardingService : IDependencyOnboardingService
         foreach (var repository in repositories.Where(r => r.Id is not null))
         {
             if (await visibility.CanManageOwnerAsync(repository.OwnerKey))
-                answer[repository.Id!] = Manager;
+                answer[repository.Id!] = Owner;
             else
             {
                 answer[repository.Id!] = null;
@@ -139,7 +143,7 @@ public partial class DependencyOnboardingService : IDependencyOnboardingService
                 if (await session.LoadAsync<Account>(byAccount.Key, cancellationToken) is not { } account) continue;
                 var admins = await administration.CheckAdministratorAsync(account, [.. byAccount], login, cancellationToken);
                 foreach (var (id, isAdmin) in admins)
-                    if (isAdmin) answer[id] = ForgeAdmin;
+                    if (isAdmin) answer[id] = RepoAdmin;
             }
         }
         return answer;

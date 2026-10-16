@@ -80,7 +80,7 @@ public class DeleteDataActionReportingTests : CoverageRavenTest
         //
         // A double that ignores the argument carrying the bug is not coverage. It answers only when
         // it is given the key the real service would have matched.
-        var visibility = Substitute.For<ISparkVisibility>();
+        var visibility = Substitute.For<ISparkVisibility>().ManagingWhatItSees();
         var expectedKey = new ForgeOwner(EForgeProvider.GitHub, Owner).ToString();
         visibility.CanManageOwnerAsync(Arg.Any<string>())
             .Returns(call => Task.FromResult(

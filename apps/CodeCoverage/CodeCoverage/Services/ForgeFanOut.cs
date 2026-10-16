@@ -63,16 +63,6 @@ public static class ForgeFanOut
             .Distinct(StringComparer.OrdinalIgnoreCase)];
 
     /// <summary>
-    /// Whether the viewer may manage the owner of this repository, asked of the forge that owns it.
-    /// </summary>
-    public static Task<bool> CanManageAsync(
-        this IForgeIntegrationResolver forges, Entities.Repository repository, CancellationToken cancellationToken = default)
-    {
-        var forge = forges.For(repository);
-        return forge.IsOwnerAllowedAsync(new ForgeOwner(forge.Provider, repository.OwnerLogin), cancellationToken);
-    }
-
-    /// <summary>
     /// Drops the viewer's cached owner set on every forge they are signed in to — the manual resync.
     /// </summary>
     /// <remarks>

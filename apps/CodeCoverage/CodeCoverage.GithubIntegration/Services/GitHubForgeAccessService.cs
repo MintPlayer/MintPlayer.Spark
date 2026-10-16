@@ -47,6 +47,9 @@ public partial class GitHubForgeAccessService : IForgeAccessService
         return await gitHubAccess.IsOwnerAllowedAsync(owner.Login, cancellationToken);
     }
 
+    public async Task<bool> ManagesOwnerAsync(ForgeOwner owner, CancellationToken cancellationToken = default)
+        => owner.Provider == Provider && await gitHubAccess.ManagesOwnerAsync(owner.Login, cancellationToken);
+
     public Task InvalidateAsync(CancellationToken cancellationToken = default)
         => gitHubAccess.InvalidateAsync(cancellationToken);
 

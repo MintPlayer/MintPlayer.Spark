@@ -39,6 +39,8 @@ public partial class BrowseController : ControllerBase
     [Inject] private readonly IRepositoryScope scope;
     [Inject] private readonly IForgeIntegrationResolver forges;
     [Inject] private readonly IConfiguration configuration;
+    // Who manages a repository (its badge token, its settings): the app's one definition (R39, D-O12), never the owner set.
+    [Inject] private readonly ISparkVisibility visibility;
 
     public sealed record RepoInfo(string Id, string Owner, string Name, string FullName, bool IsPrivate, string? DefaultBranch,
         CoverageSummary? LatestCoverage, string? LatestCoverageSha, bool CanManage, string? BadgeToken, string? BaseUrl);
@@ -105,7 +107,7 @@ public partial class BrowseController : ControllerBase
     {
         var repository = await scope.ResolveAsync(provider, owner, name, cancellationToken);
         if (repository is null) return Refuse();
-        var canManage = await forges.CanManageAsync(repository, cancellationToken);
+        var canManage = await visibility.CanManageRepositoryAsync(repository);
         return Ok(ToRepoInfo(repository, canManage));
     }
 

@@ -83,13 +83,16 @@ public class ReadRowFilterTests : CoverageRavenTest
         forge.Provider.Returns(EForgeProvider.GitHub);
         forge.GetAllowedOwnersAsync(Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(logins.Select(l => new ForgeOwner(EForgeProvider.GitHub, l)).ToArray()));
+        // Every owner these tests script is one the viewer also manages (R39 splits the two; ScriptedDiffService.Managed).
+        forge.ManagesOwnerAsync(Arg.Any<ForgeOwner>(), Arg.Any<CancellationToken>())
+            .Returns(call => Task.FromResult(logins.Contains(call.Arg<ForgeOwner>().Login, StringComparer.OrdinalIgnoreCase)));
 
         var resolver = Substitute.For<IForgeIntegrationResolver>();
         resolver.GetLinkedProvidersAsync(Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<IReadOnlyList<EForgeProvider>>(logins.Length == 0 ? [] : [EForgeProvider.GitHub]));
         resolver.For(EForgeProvider.GitHub).Returns(forge);
 
-        return new SparkVisibility(resolver, session);
+        return new SparkVisibility(resolver, session, []);
     }
 
     /// <summary>Builds a real actions class, handing it the given visibility and session by parameter type.</summary>
@@ -377,13 +380,14 @@ public class ReadRowFilterTests : CoverageRavenTest
             new ForgeOwner(EForgeProvider.GitHub, "acme"),
             new ForgeOwner(EForgeProvider.GitHub, "ACME"),
         }));
+        github.ManagesOwnerAsync(Arg.Any<ForgeOwner>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult(true));
         var resolver = Substitute.For<IForgeIntegrationResolver>();
         resolver.GetLinkedProvidersAsync(Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<IReadOnlyList<EForgeProvider>>([EForgeProvider.GitHub, EForgeProvider.GitLab]));
         resolver.For(EForgeProvider.GitHub).Returns(github);
         resolver.For(EForgeProvider.GitLab).Returns((IForgeIntegration?)null);
 
-        var visibility = new SparkVisibility(resolver, session);
+        var visibility = new SparkVisibility(resolver, session, []);
 
         (await visibility.GetAllowedOwnersAsync()).Should().Equal("github:acme");
         (await visibility.CanManageOwnerAsync("GITHUB:acme")).Should().BeTrue();
@@ -392,5 +396,41 @@ public class ReadRowFilterTests : CoverageRavenTest
         // Memoized per request: a second ask does not go back to the forge.
         await visibility.GetAllowedOwnersAsync();
         await resolver.Received(1).GetLinkedProvidersAsync(Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// R39 (D-O12): seeing and managing are two questions. An owner the viewer reaches but does not own stays visible and is
+    /// not managed; an owner outside the set is never asked of the forge; each answer is asked once per request.
+    /// </summary>
+    [Fact]
+    public async Task Managing_is_the_forges_owner_answer_within_the_owner_set_and_memoized()
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        var forge = Substitute.For<IForgeIntegration>();
+        forge.GetAllowedOwnersAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult(new[]
+        {
+            new ForgeOwner(EForgeProvider.GitHub, "owned"),
+            new ForgeOwner(EForgeProvider.GitHub, "member-of"),
+        }));
+        forge.ManagesOwnerAsync(Arg.Any<ForgeOwner>(), Arg.Any<CancellationToken>())
+            .Returns(call => Task.FromResult(call.Arg<ForgeOwner>().Login == "owned"));
+        var resolver = Substitute.For<IForgeIntegrationResolver>();
+        resolver.GetLinkedProvidersAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlyList<EForgeProvider>>([EForgeProvider.GitHub]));
+        resolver.For(EForgeProvider.GitHub).Returns(forge);
+        var visibility = new SparkVisibility(resolver, session, []);
+
+        (await visibility.GetAllowedOwnersAsync()).Should().BeEquivalentTo(["github:owned", "github:member-of"]);
+        (await visibility.CanManageOwnerAsync("github:owned")).Should().BeTrue();
+        (await visibility.CanManageOwnerAsync("github:member-of")).Should().BeFalse("reaching the installation is not owning the organization");
+        (await visibility.CanManageOwnerAsync("github:stranger")).Should().BeFalse();
+        (await visibility.GetManagedOwnersAsync()).Should().Equal("github:owned");
+        (await visibility.CanManageRepositoryAsync(new Repository { Id = "Repositories/x", OwnerLogin = "member-of", Account = "Accounts/x" }))
+            .Should().BeFalse("no forge administers anything here: no IForgeRepositoryAdministration is registered");
+
+        await forge.Received(1).ManagesOwnerAsync(new ForgeOwner(EForgeProvider.GitHub, "owned"), Arg.Any<CancellationToken>());
+        await forge.Received(1).ManagesOwnerAsync(new ForgeOwner(EForgeProvider.GitHub, "member-of"), Arg.Any<CancellationToken>());
+        await forge.DidNotReceive().ManagesOwnerAsync(new ForgeOwner(EForgeProvider.GitHub, "stranger"), Arg.Any<CancellationToken>());
     }
 }

@@ -22,7 +22,7 @@ public partial class RepoSettingsController : ControllerBase
 {
     [Inject] private readonly IAsyncDocumentSession session;
     [Inject] private readonly IRepositoryResolver repositories;
-    [Inject] private readonly IForgeIntegrationResolver forges;
+    [Inject] private readonly ISparkVisibility visibility;
 
     /// <summary>
     /// (Re)generates the badge token. Rotation invalidates the previous badge
@@ -66,9 +66,14 @@ public partial class RepoSettingsController : ControllerBase
         // ⚠️ And in the same time (#453): the viewer's owner set is fetched first and is the
         // resolver's visibility, so a repository they cannot manage resolves exactly like a missing
         // one. Membership of that set is what IsOwnerAllowedAsync checked after resolving.
-        var owners = await forges.GetAllowedOwnerKeysAsync(cancellationToken);
-        return (await repositories.ResolveAsync(
+        //
+        // R39 (D-O12): resolved by what the viewer may SEE, then refused unless they MANAGE it (the account's owner, or an
+        // administrator of the repository). A repository the viewer can see is no secret to them, so the second step adds
+        // no existence oracle.
+        var owners = await visibility.GetAllowedOwnersAsync();
+        var repository = (await repositories.ResolveAsync(
             parsedProvider, owner, name,
             r => owners.Contains(r.OwnerKey, StringComparer.OrdinalIgnoreCase), cancellationToken)).Repository;
+        return repository is not null && await visibility.CanManageRepositoryAsync(repository) ? repository : null;
     }
 }

@@ -116,6 +116,7 @@ public class RepositoryExistenceParityTests : CoverageRavenTest
             new Dictionary<string, string?> { [BadgePrSignature.KeyConfigurationPath] = "test-badge-signing-key" }).Build());
 
         services.AddScoped<IRepositoryScope, RepositoryScope>();
+        services.AddScoped<CodeCoverage.Services.ISparkVisibility, CodeCoverage.Services.SparkVisibility>();
         services.AddScoped<BrowseController>();
         services.AddScoped<BadgeController>();
         services.AddScoped<RepoSettingsController>();

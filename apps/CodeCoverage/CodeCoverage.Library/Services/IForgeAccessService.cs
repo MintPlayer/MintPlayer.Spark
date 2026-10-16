@@ -53,11 +53,18 @@ public interface IForgeAccessService
     Task<ForgeOwner[]> GetAllowedOwnersAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Whether the viewer may manage this owner. ⚠️ Today this is set membership and nothing more —
-    /// no forge role, permission level or admin flag is consulted, so anyone who can see an
-    /// account's grant can manage it. Generalising across forges must not silently widen that.
+    /// Whether the viewer may SEE this owner's private repositories: membership of the owner set, nothing more. ⚠️ Not a
+    /// management right (dependency-updates PRD D-O12): who manages an owner is <see cref="ManagesOwnerAsync"/>.
     /// </summary>
     Task<bool> IsOwnerAllowedAsync(ForgeOwner owner, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Whether the viewer MANAGES this owner (R39, D-O12): it is their own personal account, or an organization of which the
+    /// forge says they are an active owner (GitHub: <c>GET /user/memberships/orgs/{org}</c>, <c>role: admin</c>,
+    /// <c>state: active</c>). Members with read or write access are not managers. Always within the owner set; fails closed;
+    /// cached with the owner set's lifetime and dropped by <see cref="InvalidateAsync"/>.
+    /// </summary>
+    Task<bool> ManagesOwnerAsync(ForgeOwner owner, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Drops the viewer's cached owner set for this provider so the next call re-queries the forge

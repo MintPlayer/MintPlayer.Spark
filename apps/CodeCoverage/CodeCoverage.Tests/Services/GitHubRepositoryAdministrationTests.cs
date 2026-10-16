@@ -40,7 +40,8 @@ public class GitHubRepositoryAdministrationTests
             GitHubAuthTestFakes.UserManagerOver(store),
             new ScriptedTokenService(tokens ?? (_ => new GitHubUserToken("user-token", GitHubTokenState.Ok))),
             new ScriptedAccessService(new GitHubVisibility([], GitHubTokenState.Ok), new GitHubVerifiedLogin(login, login is not null, GitHubTokenState.Ok)),
-            github, new SingleClientHttpFactory(github.Rest), NullLogger<GitHubRepositoryAdministration>.Instance);
+            github, new SingleClientHttpFactory(github.Rest), NullLogger<GitHubRepositoryAdministration>.Instance,
+            new Microsoft.Extensions.Caching.Memory.MemoryCache(new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions()));
     }
 
     private static string Onboarding(string name) => Fixture.Read($"GitHub/Onboarding/{name}");
