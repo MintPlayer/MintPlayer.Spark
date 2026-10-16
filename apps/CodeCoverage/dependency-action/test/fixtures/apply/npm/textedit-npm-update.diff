@@ -1,0 +1,13 @@
+diff --git a/package.json b/package.json
+index e81b54d..79e2da5 100644
+--- a/package.json
++++ b/package.json
+@@ -4,7 +4,7 @@
+ 	"private": true,
+ 	"dependencies": {
+ 		"zod": "3.22.4",
+-		"express": "^4.18.2",
++		"express": "^4.19.2",
+ 		"chalk": "4.1.0"
+ 	},
+ 	"devDependencies": { "typescript": "~5.3.3" }

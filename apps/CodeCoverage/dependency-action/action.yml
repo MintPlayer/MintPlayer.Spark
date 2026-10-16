@@ -1,0 +1,44 @@
+name: 'MintPlayer Dependency Update'
+description: 'Runner side of the MintPlayer CodeCoverage dependency-update bot: Renovate lookup, pinned apply with scripts off, and Angular/Nx migrations. Never pushes.'
+author: 'MintPlayer'
+branding:
+  icon: 'package'
+  color: 'green'
+
+inputs:
+  mode:
+    description: 'lookup | apply | migrate'
+    required: true
+  expected-sha:
+    description: 'lookup/apply: the commit the bot planned against. lookup requires HEAD == expected-sha; apply requires HEAD^ == expected-sha (the dispatch ref is expected-sha + the plan commit, R14).'
+    required: false
+  base-sha:
+    description: 'migrate: the checked-out commit (the applied group); the patch is a diff against it.'
+    required: false
+  output-dir:
+    description: 'Where lookup.json / result.json + dependency.patch / migrate-result.json + migrate.patch are written. Default: $RUNNER_TEMP/dependency-update.'
+    required: false
+  github-token:
+    description: 'lookup only: a READ token for Renovate GitHub lookups and action.yml interface diffs (github.token is enough). Never passed to apply or migrate.'
+    required: false
+  host-rules:
+    description: 'lookup only: a RENOVATE_HOST_RULES JSON array for private feeds (from a repo secret). Lookup runs no repository code (S12).'
+    required: false
+  feed-secrets:
+    description: 'apply: "true" when the workflow passes feed credentials to this step (only for the D-S14b safe list). uv then resolves with --no-build.'
+    required: false
+    default: 'false'
+  migrate-tool:
+    description: 'migrate: angular | nx'
+    required: false
+  migrate-packages:
+    description: 'migrate: JSON array of {"name","from","to"}, e.g. [{"name":"@angular/core","from":"21.2.0","to":"22.2.3"}]'
+    required: false
+
+outputs:
+  output-dir:
+    description: 'The directory holding the run''s JSON and patch; upload it with `if: success()`.'
+
+runs:
+  using: 'node24'
+  main: 'dist/index.js'

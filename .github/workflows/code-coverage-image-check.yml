@@ -16,6 +16,7 @@ on:
     paths:
       - 'apps/CodeCoverage/**'
       - '!apps/CodeCoverage/action/**'
+      - '!apps/CodeCoverage/dependency-action/**'
       - 'libs/spark/MintPlayer.Spark/**'
       - 'libs/spark/MintPlayer.Spark.SafeHttp/**'
       - 'libs/spark/MintPlayer.Spark.Abstractions/**'

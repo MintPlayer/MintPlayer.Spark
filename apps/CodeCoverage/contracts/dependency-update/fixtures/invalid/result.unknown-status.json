@@ -1,0 +1,83 @@
+{
+  "contractVersion": 1,
+  "kind": "apply-result",
+  "planId": "n3-capture-npm-1",
+  "expectedSha": "03c15f0c0e0c92c813f59c7a555e271a5b4eb4e8",
+  "groups": [
+    {
+      "group": "express",
+      "items": [
+        {
+          "depName": "express",
+          "packageFile": "package.json",
+          "newVersion": "4.19.2",
+          "adapter": "npm"
+        }
+      ],
+      "status": "partial",
+      "files": [
+        "package-lock.json",
+        "package.json"
+      ],
+      "blockers": [],
+      "message": null
+    },
+    {
+      "group": "react-dom",
+      "items": [
+        {
+          "depName": "react-dom",
+          "packageFile": "package.json",
+          "newVersion": "18.2.0",
+          "adapter": "npm"
+        }
+      ],
+      "status": "unresolvable",
+      "files": [],
+      "blockers": [
+        {
+          "depName": "react",
+          "version": "17.0.2",
+          "code": "ERESOLVE",
+          "message": "peer react@\"^18.2.0\" from react-dom@18.2.0; found react@17.0.2"
+        }
+      ],
+      "message": "npm: npm error code ERESOLVE\nnpm error ERESOLVE unable to resolve dependency tree\nnpm error\nnpm error While resolving: s13-npm@1.0.0\nnpm error Found: react@17.0.2\nnpm error node_modules/react\nnpm error   react@\"17.0.2\" from the root project\nnpm error\nnpm error Could not resolve dependency:\nnpm error peer react@\"^18.2.0\" from react-dom@18.2.0\nnpm error node_modules/react-dom\nnpm error   react-dom@\"18.2.0\" from the root project\nnpm error\nnpm error Fix the upstream dependency conflict, or retry this command with --no-strict-peer-deps, --force, or --legacy-peer-deps to accept an incorrect (and potentially broken) dependency resolution.\nnpm error\nnpm error\nnpm error For a full report see:\nnpm error <HOME>\\AppData\\Local\\npm-cache\\_logs\\2026-10-16T06_23_57_205Z-eresolve-report.txt\nnpm error A complete log of this run can be found in: <HOME>\\AppData\\Local\\npm-cache\\_logs\\2026-10-16T06_23_57_205Z-debug-0.log"
+    },
+    {
+      "group": "chalk",
+      "items": [
+        {
+          "depName": "chalk",
+          "packageFile": "package.json",
+          "newVersion": "4.1.2",
+          "adapter": "npm"
+        }
+      ],
+      "status": "applied",
+      "files": [
+        "package-lock.json",
+        "package.json"
+      ],
+      "blockers": [],
+      "message": null
+    }
+  ],
+  "consistency": {
+    "status": "passed",
+    "checks": [
+      {
+        "adapter": "npm",
+        "directory": ".",
+        "ok": true,
+        "message": null
+      }
+    ],
+    "bisected": []
+  },
+  "patch": {
+    "file": "dependency.patch",
+    "bytes": 4169,
+    "sha256": "3c6c07f9ff914e524a5d366616ccef48fed42f2485691a821f293721d8fadb9c"
+  }
+}

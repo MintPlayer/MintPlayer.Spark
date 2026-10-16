@@ -1,0 +1,239 @@
+{
+  "contractVersion": 1,
+  "kind": "lookup",
+  "expectedSha": "ee304c5c9ee2d72267b5092eb83f5546d8658baa",
+  "generatedAt": "2026-10-16T08:00:00.000Z",
+  "engine": {
+    "name": "renovate",
+    "image": "renovate/renovate:44.125.2@sha256:a7dec3432d62b39872058424f0490829413b3f597f5d72fb41b9b7bd57ccac77",
+    "seconds": null
+  },
+  "records": [
+    {
+      "ecosystem": "platform:go",
+      "manager": "gomod",
+      "datasource": "golang-version",
+      "packageFile": "go.mod",
+      "lockFiles": [],
+      "depName": "go",
+      "packageName": "go",
+      "depType": "golang",
+      "currentValue": "1.21",
+      "currentVersion": "1.27.2",
+      "lockedVersion": null,
+      "currentDigest": null,
+      "replaceString": null,
+      "sharedVariableName": null,
+      "groupName": null,
+      "skipReason": null,
+      "hold": false,
+      "candidates": []
+    },
+    {
+      "ecosystem": "platform:go",
+      "manager": "gomod",
+      "datasource": "golang-version",
+      "packageFile": "go.mod",
+      "lockFiles": [],
+      "depName": "go",
+      "packageName": "go",
+      "depType": "toolchain",
+      "currentValue": "1.21.5",
+      "currentVersion": "1.21.5",
+      "lockedVersion": null,
+      "currentDigest": null,
+      "replaceString": null,
+      "sharedVariableName": null,
+      "groupName": null,
+      "skipReason": null,
+      "hold": false,
+      "candidates": [
+        {
+          "version": "1.27.2",
+          "value": "1.27.2",
+          "updateType": "minor",
+          "releaseTimestamp": "2026-10-08T00:00:00.000Z",
+          "digest": null,
+          "isBreaking": false,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/go-1.x",
+          "missing": []
+        }
+      ]
+    },
+    {
+      "ecosystem": "go",
+      "manager": "gomod",
+      "datasource": "go",
+      "packageFile": "go.mod",
+      "lockFiles": [],
+      "depName": "github.com/gin-gonic/gin",
+      "packageName": "github.com/gin-gonic/gin",
+      "depType": "require",
+      "currentValue": "v1.9.0",
+      "currentVersion": "v1.9.0",
+      "lockedVersion": null,
+      "currentDigest": null,
+      "replaceString": null,
+      "sharedVariableName": null,
+      "groupName": null,
+      "skipReason": null,
+      "hold": false,
+      "candidates": [
+        {
+          "version": "v1.12.0",
+          "value": "v1.12.0",
+          "updateType": "minor",
+          "releaseTimestamp": "2026-02-28T10:12:25.000Z",
+          "digest": null,
+          "isBreaking": false,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/github.com-gin-gonic-gin-1.x",
+          "missing": []
+        }
+      ]
+    },
+    {
+      "ecosystem": "go",
+      "manager": "gomod",
+      "datasource": "go",
+      "packageFile": "go.mod",
+      "lockFiles": [],
+      "depName": "github.com/stretchr/testify",
+      "packageName": "github.com/stretchr/testify",
+      "depType": "require",
+      "currentValue": "v1.8.0",
+      "currentVersion": "v1.8.0",
+      "lockedVersion": null,
+      "currentDigest": null,
+      "replaceString": null,
+      "sharedVariableName": null,
+      "groupName": null,
+      "skipReason": null,
+      "hold": false,
+      "candidates": [
+        {
+          "version": "v1.12.1",
+          "value": "v1.12.1",
+          "updateType": "minor",
+          "releaseTimestamp": "2026-08-19T13:08:44.000Z",
+          "digest": null,
+          "isBreaking": false,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/github.com-stretchr-testify-1.x",
+          "missing": []
+        }
+      ]
+    },
+    {
+      "ecosystem": "go",
+      "manager": "gomod",
+      "datasource": "go",
+      "packageFile": "go.mod",
+      "lockFiles": [],
+      "depName": "golang.org/x/text",
+      "packageName": "golang.org/x/text",
+      "depType": "require",
+      "currentValue": "v0.3.7",
+      "currentVersion": "v0.3.7",
+      "lockedVersion": null,
+      "currentDigest": null,
+      "replaceString": null,
+      "sharedVariableName": null,
+      "groupName": null,
+      "skipReason": null,
+      "hold": false,
+      "candidates": [
+        {
+          "version": "v0.43.0",
+          "value": "v0.43.0",
+          "updateType": "minor",
+          "releaseTimestamp": "2026-10-09T15:18:32.000Z",
+          "digest": null,
+          "isBreaking": true,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/golang.org-x-text-0.x",
+          "missing": []
+        }
+      ]
+    },
+    {
+      "ecosystem": "go",
+      "manager": "gomod",
+      "datasource": "go",
+      "packageFile": "go.mod",
+      "lockFiles": [],
+      "depName": "github.com/google/uuid",
+      "packageName": "github.com/google/uuid",
+      "depType": "require",
+      "currentValue": "v1.3.0",
+      "currentVersion": "v1.3.0",
+      "lockedVersion": null,
+      "currentDigest": null,
+      "replaceString": null,
+      "sharedVariableName": null,
+      "groupName": null,
+      "skipReason": null,
+      "hold": false,
+      "candidates": [
+        {
+          "version": "v1.6.0",
+          "value": "v1.6.0",
+          "updateType": "minor",
+          "releaseTimestamp": "2024-01-23T18:54:13.000Z",
+          "digest": null,
+          "isBreaking": false,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/github.com-google-uuid-1.x",
+          "missing": []
+        }
+      ]
+    },
+    {
+      "ecosystem": "go",
+      "manager": "gomod",
+      "datasource": "go",
+      "packageFile": "go.mod",
+      "lockFiles": [],
+      "depName": "golang.org/x/exp",
+      "packageName": "golang.org/x/exp",
+      "depType": "require",
+      "currentValue": "v0.0.0-20230801115018-d63ba01acd4b",
+      "currentVersion": "v0.0.0-20230801115018-d63ba01acd4b",
+      "lockedVersion": null,
+      "currentDigest": "d63ba01acd4b",
+      "replaceString": null,
+      "sharedVariableName": null,
+      "groupName": null,
+      "skipReason": null,
+      "hold": false,
+      "candidates": [
+        {
+          "version": "v0.0.0-20261014143641-f0251eb4aa3e",
+          "value": "v0.0.0-20261014143641-f0251eb4aa3e",
+          "updateType": "digest",
+          "releaseTimestamp": "2026-10-14T14:36:41.000Z",
+          "digest": "f0251eb4aa3e",
+          "isBreaking": false,
+          "isLockfileUpdate": false,
+          "groupName": null,
+          "branchName": "renovate/golang.org-x-exp-digest",
+          "missing": []
+        }
+      ]
+    }
+  ],
+  "platforms": [],
+  "interfaceDiffs": [],
+  "problems": [
+    {
+      "source": "renovate",
+      "message": "Unknown error fetching default owner preset: The platform you're using (local) does not support local presets."
+    }
+  ]
+}

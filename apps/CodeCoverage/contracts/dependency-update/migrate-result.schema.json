@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://coverage.mintplayer.com/contracts/dependency-update/migrate-result.schema.json",
+  "title": "migrate-result.json: the migrate run's completion marker (S17)",
+  "description": "Written as the LAST step of a migrate run, only when every step exited 0. The bot requires conclusion == success AND this marker, else it drops the group (S17 partial-migration detection).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contractVersion", "kind", "tool", "baseSha", "packages", "completed", "steps", "extraBumps", "patch"],
+  "properties": {
+    "contractVersion": { "const": 1 },
+    "kind": { "const": "migrate-result" },
+    "tool": { "enum": ["angular", "nx"] },
+    "baseSha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "packages": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "from", "to"],
+        "properties": {
+          "name": { "type": "string", "pattern": "^(@[a-z0-9._~-]+/)?[a-z0-9._~-]+$" },
+          "from": { "type": "string", "pattern": "^[0-9A-Za-z.+-]+$" },
+          "to": { "type": "string", "pattern": "^[0-9A-Za-z.+-]+$" }
+        }
+      }
+    },
+    "completed": { "const": true },
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "exitCode", "seconds"],
+        "properties": {
+          "name": { "type": "string" },
+          "exitCode": { "const": 0 },
+          "seconds": { "type": "number", "minimum": 0 }
+        }
+      }
+    },
+    "extraBumps": {
+      "description": "R19: dependency changes the migration made beyond the group (nx --include=all packageJsonUpdates). Listed in the PR body; a held version gets a blocking note.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["depName", "packageFile", "from", "to"],
+        "properties": {
+          "depName": { "type": "string" },
+          "packageFile": { "type": "string" },
+          "from": { "type": ["string", "null"] },
+          "to": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "patch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "bytes", "sha256"],
+      "properties": {
+        "file": { "const": "migrate.patch" },
+        "bytes": { "type": "integer", "minimum": 0 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    }
+  }
+}

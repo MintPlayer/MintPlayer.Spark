@@ -1,0 +1,190 @@
+name: publish-release
+
+on:
+  push:
+    branches:
+      - 'master'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+  attestations: write
+
+env:
+  NX_SELF_HOSTED_REMOTE_CACHE_SERVER: ${{ secrets.NX_CACHE_SERVER }}
+  NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN: ${{ (github.event_name == 'push' && github.ref_name == github.event.repository.default_branch) && secrets.NX_CACHE_RW_TOKEN || secrets.NX_CACHE_RO_TOKEN }}
+
+jobs:
+  build:
+    name: publish-release
+    runs-on: ubuntu-latest
+    # Build + full test sweep + pack + publish normally lands well under this;
+    # the ceiling exists so a wedged run can't hold the 6-hour default.
+    timeout-minutes: 45
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7
+
+    - name: Setup .NET Core
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: 10.0.100
+        # Authenticates packages to push to GPR
+        source-url: https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json
+      env:
+        NUGET_AUTH_TOKEN: '%NUGET_AUTH_TOKEN%'
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v7
+      with:
+        node-version: 22
+
+    - name: Install npm dependencies
+      run: npm ci
+
+    # `nx <target>` for .NET projects uses `dotnet build --no-restore`, so
+    # restore must run first on a fresh runner with no cache hit on `obj/`.
+    - name: Install dependencies
+      run: dotnet restore
+      env:
+        NUGET_AUTH_TOKEN: ${{ github.token }}
+
+    # Build everything via Nx so master populates the self-hosted remote
+    # cache that PRs read from. Two run-many calls because:
+    #   - .NET projects have a `build:release` target (Release config —
+    #     produces bin/Release/ artifacts that `dotnet pack --no-build`
+    #     consumes below).
+    #   - Angular libraries (@mintplayer/ng-spark, @mintplayer/ng-spark-auth)
+    #     only have a `build` target and produce ng-packagr `dist/` for the
+    #     `JS-DevTools/npm-publish` steps below.
+    - name: Build .NET projects (Release)
+      run: npx nx run-many --target=build:release
+
+    # Pack MUST run immediately after the Release build, before any other Nx
+    # invocation. Nx cache replay is destructive: it deletes a task's declared
+    # output directories before extracting the cached archive. The Debug
+    # `build` tasks that the `test` step replays used to declare the whole
+    # bin/ + obj/ as outputs, so a cache-hit test step wiped the bin/Release
+    # artifacts this pack consumes (preview.43 release failure, run
+    # 31778271642 — preview.42 only survived because some cached archives
+    # happened to contain Release artifacts). nx.json now scopes each
+    # configuration's outputs to its own directory, and pack runs here so no
+    # later step can starve it either way. Output goes to nupkgs/ (outside
+    # any project's bin/) so cache replays can't delete the packages; the
+    # push steps below stay after the tests, so publishing is still gated on
+    # a green test run.
+    - name: Pack
+      run: dotnet pack --no-build --configuration Release /p:ContinuousIntegrationBuild=true -o nupkgs
+
+    - name: Build Angular libraries
+      run: npx nx run-many --target=build --projects=@mintplayer/ng-spark,@mintplayer/ng-spark-auth
+
+    - name: Resolve Playwright version
+      id: playwright
+      run: |
+        version=$(grep -oE 'Microsoft\.Playwright"[[:space:]]*Version="[^"]+"' tests/MintPlayer.Spark.E2E.Tests/MintPlayer.Spark.E2E.Tests.csproj \
+          | grep -oE 'Version="[^"]+"' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+        echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+    - name: Cache Playwright browsers
+      uses: actions/cache@v6
+      with:
+        path: ~/.cache/ms-playwright
+        key: ${{ runner.os }}-playwright-${{ steps.playwright.outputs.version }}
+        restore-keys: |
+          ${{ runner.os }}-playwright-
+
+    # All test projects (.NET + Angular) run via Nx so master populates the remote
+    # cache that PRs read from. The .NET test target's coverage args live in each
+    # test project's project.json so the layout (`{ProjectName}/coverage/{guid}/
+    # coverage.cobertura.xml`) is identical between PR and master runs — matches
+    # the glob pattern each flagged codecov upload step below uses.
+    - name: Test (all projects via Nx)
+      # Step-level so a wedged test run (the intermittent E2E hang) fails here
+      # and the `if: always()` coverage upload below still runs.
+      timeout-minutes: 20
+      # --output-style=stream: see pull-request.yml — buffered output hides
+      # where a hung test task is stuck.
+      run: npx nx run-many --target=test --output-style=stream
+      env:
+        RAVENDB_LICENSE: ${{ secrets.RAVENDB_LICENSE }}
+
+    # Master runs every test project unconditionally, so this is a whole-
+    # workspace upload (no `partial`) — it becomes the baseline the Coverage
+    # server compares partial PR uploads against.
+    # A report path the server cannot resolve is dropped SILENTLY -- it is simply
+    # absent from the percentage, which reads as a coverage drop rather than as a
+    # bug. This runs the server's own resolution rules over every report before
+    # upload and fails the build instead, so the failure mode that hid five dead
+    # queues cannot also hide a shrinking denominator.
+    - name: Verify coverage report paths
+      if: always()
+      run: node tools/verify-coverage-paths.mjs
+
+    - name: Upload coverage
+      if: always() && hashFiles('tests/*/coverage/**/coverage.cobertura.xml', 'apps/*/*/coverage/**/coverage.cobertura.xml', 'libs/node_packages/*/coverage/cobertura-coverage.xml', 'apps/*/*/ClientApp/coverage/cobertura-coverage.xml') != ''
+      # The working copy — the action's source lives in this repository now.
+      uses: ./apps/CodeCoverage/action
+      with:
+        url: https://coverage.mintplayer.com
+        token: ${{ secrets.COVERAGE_TOKEN }}
+        files: |
+          tests/*/coverage/**/coverage.cobertura.xml
+          apps/*/*/coverage/**/coverage.cobertura.xml
+          libs/node_packages/*/coverage/cobertura-coverage.xml
+          apps/*/*/ClientApp/coverage/cobertura-coverage.xml
+          coverage/@spark-apps/*/cobertura-coverage.xml
+          apps/*/action/coverage/cobertura-coverage.xml
+        disable-search: true
+        finish: true
+        fail-ci-if-error: false
+
+    - name: PushNuget
+      run: dotnet nuget push 'nupkgs/*.nupkg' --source https://api.nuget.org/v3/index.json --api-key ${{ secrets.PUBLISH_TO_NUGET_ORG }} --skip-duplicate
+
+    - name: PushGithub
+      run: dotnet nuget push 'nupkgs/*.nupkg' --no-symbols --skip-duplicate
+      env:
+        NUGET_AUTH_TOKEN: ${{ github.token }}
+
+    - name: Push ng-spark to NPM
+      uses: JS-DevTools/npm-publish@v4
+      with:
+        package: 'libs/node_packages/ng-spark/dist/package.json'
+        registry: 'https://registry.npmjs.org'
+        token: ${{ secrets.PUBLISH_TO_NPMJS }}
+        access: 'public'
+        provenance: true
+
+    - name: Push ng-spark to Github
+      uses: JS-DevTools/npm-publish@v4
+      with:
+        package: 'libs/node_packages/ng-spark/dist/package.json'
+        registry: 'https://npm.pkg.github.com'
+        token: ${{ github.token }}
+        access: 'public'
+        provenance: true
+
+    - name: Push ng-spark-auth to NPM
+      uses: JS-DevTools/npm-publish@v4
+      with:
+        package: 'libs/node_packages/ng-spark-auth/dist/package.json'
+        registry: 'https://registry.npmjs.org'
+        token: ${{ secrets.PUBLISH_TO_NPMJS }}
+        access: 'public'
+        provenance: true
+
+    - name: Push ng-spark-auth to Github
+      uses: JS-DevTools/npm-publish@v4
+      with:
+        package: 'libs/node_packages/ng-spark-auth/dist/package.json'
+        registry: 'https://npm.pkg.github.com'
+        token: ${{ github.token }}
+        access: 'public'
+        provenance: true

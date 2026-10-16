@@ -1,0 +1,13 @@
+diff --git a/pom.xml b/pom.xml
+index daefaf8..de8273b 100644
+--- a/pom.xml
++++ b/pom.xml
+@@ -5,7 +5,7 @@
+   <modelVersion>4.0.0</modelVersion>
+   <groupId>s13</groupId><artifactId>app</artifactId><version>1.0.0</version>
+   <properties>
+-    <jackson.version>2.15.2</jackson.version>   <!-- json -->
++    <jackson.version>2.16.1</jackson.version>   <!-- json -->
+     <maven.compiler.release>21</maven.compiler.release>
+   </properties>
+   <dependencies>

@@ -1,0 +1,37 @@
+{
+  "name": "@mintplayer/dependency-update-action",
+  "version": "1.0.0",
+  "private": true,
+  "description": "GitHub Action behind the MintPlayer CodeCoverage dependency-update bot: Renovate lookup, pinned apply with scripts off, and Angular/Nx migrations",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MintPlayer/MintPlayer.Spark",
+    "directory": "apps/CodeCoverage/dependency-action"
+  },
+  "license": "Apache-2.0",
+  "author": {
+    "name": "Pieterjan De Clippel",
+    "url": "https://github.com/MintPlayer",
+    "email": "info@mintplayer.com"
+  },
+  "scripts": {
+    "build": "ncc build src/index.ts -o dist --minify",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "test:bundle": "vitest run --config vitest.bundle.config.ts",
+    "test:coverage": "vitest run --coverage",
+    "test:integration": "vitest run --config vitest.integration.config.ts"
+  },
+  "dependencies": {
+    "@actions/core": "^3.0.1",
+    "ajv": "^8.20.0",
+    "yaml": "^2.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.1",
+    "@vercel/ncc": "^0.45.0",
+    "@vitest/coverage-v8": "^5.0.3",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.3"
+  }
+}

@@ -1,0 +1,10 @@
+{
+	"name": "s13-js",
+	"version": "1.0.0",
+	"private": true,
+	"dependencies": {
+		"zod": "3.22.4",
+		"express": "^4.18.2",
+		"chalk": "4.1.0"
+	}
+}

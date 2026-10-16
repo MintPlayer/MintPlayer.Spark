@@ -1,0 +1,87 @@
+{
+  "contractVersion": 1,
+  "kind": "plan",
+  "planId": "n3-capture-npm-1",
+  "expectedSha": "03c15f0c0e0c92c813f59c7a555e271a5b4eb4e8",
+  "options": {
+    "feedSecrets": false,
+    "consistencyCheck": true
+  },
+  "groups": [
+    {
+      "group": "express",
+      "items": [
+        {
+          "depName": "express",
+          "packageName": "express",
+          "ecosystem": "npm",
+          "datasource": "npm",
+          "manager": "npm",
+          "depType": "dependencies",
+          "packageFile": "package.json",
+          "lockFiles": [
+            "package-lock.json"
+          ],
+          "currentValue": "^4.18.2",
+          "newValue": "^4.19.2",
+          "newVersion": "4.19.2",
+          "currentDigest": null,
+          "newDigest": null,
+          "replaceString": null,
+          "sharedVariableName": null,
+          "updateType": "minor"
+        }
+      ]
+    },
+    {
+      "group": "react-dom",
+      "items": [
+        {
+          "depName": "react-dom",
+          "packageName": "react-dom",
+          "ecosystem": "npm",
+          "datasource": "npm",
+          "manager": "npm",
+          "depType": "dependencies",
+          "packageFile": "package.json",
+          "lockFiles": [
+            "package-lock.json"
+          ],
+          "currentValue": "17.0.2",
+          "newValue": "18.2.0",
+          "newVersion": "18.2.0",
+          "currentDigest": null,
+          "newDigest": null,
+          "replaceString": null,
+          "sharedVariableName": null,
+          "updateType": "major"
+        }
+      ]
+    },
+    {
+      "group": "chalk",
+      "items": [
+        {
+          "depName": "chalk",
+          "packageName": "chalk",
+          "ecosystem": "npm",
+          "datasource": "npm",
+          "manager": "npm",
+          "depType": "dependencies",
+          "packageFile": "package.json",
+          "lockFiles": [
+            "package-lock.json"
+          ],
+          "currentValue": "4.1.0",
+          "newValue": "4.1.2",
+          "newVersion": "4.1.2",
+          "currentDigest": null,
+          "newDigest": null,
+          "replaceString": null,
+          "sharedVariableName": null,
+          "updateType": "patch"
+        }
+      ]
+    }
+  ]
+}

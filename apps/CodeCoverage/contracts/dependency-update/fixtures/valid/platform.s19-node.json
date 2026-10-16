@@ -1,0 +1,48 @@
+{
+  "contractVersion": 1,
+  "kind": "platform",
+  "sdk": "node",
+  "source": "endoflife.date",
+  "current": {
+    "channels": [
+      "22"
+    ],
+    "preview": false
+  },
+  "locations": [
+    {
+      "file": ".github/workflows/dotnet-build-master.yml",
+      "kind": "setup-action",
+      "value": "22",
+      "channel": "22",
+      "computed": false,
+      "reason": null
+    },
+    {
+      "file": ".github/workflows/pull-request.yml",
+      "kind": "setup-action",
+      "value": "22",
+      "channel": "22",
+      "computed": false,
+      "reason": null
+    }
+  ],
+  "candidates": [
+    {
+      "channel": "26",
+      "latestVersion": "26.12.0",
+      "releaseTimestamp": "2026-10-14",
+      "preview": false,
+      "eol": "2029-04-30",
+      "lts": true
+    },
+    {
+      "channel": "24",
+      "latestVersion": "24.22.0",
+      "releaseTimestamp": "2026-10-14",
+      "preview": false,
+      "eol": "2028-04-30",
+      "lts": true
+    }
+  ]
+}

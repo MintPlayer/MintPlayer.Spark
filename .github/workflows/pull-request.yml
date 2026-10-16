@@ -285,6 +285,7 @@ jobs:
           apps/CodeCoverage/CodeCoverage/ClientApp/coverage/cobertura-coverage.xml
           coverage/@spark-apps/code-coverage/cobertura-coverage.xml
           apps/CodeCoverage/action/coverage/cobertura-coverage.xml
+          apps/CodeCoverage/dependency-action/coverage/cobertura-coverage.xml
         disable-search: true
         partial: true
         base-sha: ${{ env.NX_BASE }}
@@ -296,13 +297,13 @@ jobs:
   # One check that is green only when every job is, under the name the single job used to carry.
   pull-request:
     name: pull-request
-    needs: [build, tests, coverage, coverage-action]
+    needs: [build, tests, coverage, coverage-action, dependency-action]
     if: always()
     runs-on: ubuntu-latest
     steps:
     - name: Every job passed
       run: |
-        echo 'build=${{ needs.build.result }} tests=${{ needs.tests.result }} coverage=${{ needs.coverage.result }} coverage-action=${{ needs.coverage-action.result }}'
+        echo 'build=${{ needs.build.result }} tests=${{ needs.tests.result }} coverage=${{ needs.coverage.result }} coverage-action=${{ needs.coverage-action.result }} dependency-action=${{ needs.dependency-action.result }}'
         if ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped') }}; then
           echo "::error::A job failed, was cancelled or was skipped."
           exit 1
@@ -343,4 +344,31 @@ jobs:
     # action that exits 0 having uploaded nothing. Only this catches that.
     - name: Smoke-test the built bundle
       working-directory: apps/CodeCoverage/action
+      run: npm run test:bundle
+
+  # The dependency-update action (docs/code-coverage/dependency-updates-PRD.md §13.11.2), the same
+  # guarantee: its committed dist/index.js is what the template callers run, so a src/ change without a
+  # rebuild must not merge. Its unit and bundle tests also run in test.yml's "Other suites".
+  dependency-action:
+    name: dependency-update action
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7
+
+    - name: Build and verify the bundle
+      uses: MintPlayer/github-actions/compile-ts-action@main
+      with:
+        working-directory: apps/CodeCoverage/dependency-action
+        output-dir: dist
+        node-version: 24.x
+        install-command: npm ci
+        test-command: npm test
+        build-command: npm run build
+        mode: verify
+
+    - name: Smoke-test the built bundle
+      working-directory: apps/CodeCoverage/dependency-action
       run: npm run test:bundle

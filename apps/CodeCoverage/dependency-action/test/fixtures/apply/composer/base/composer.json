@@ -1,0 +1,9 @@
+{
+    "name": "s13/app",
+    "require": {
+        "psr/log": "^1.1",
+        "monolog/monolog": "2.9.1",
+        "guzzlehttp/guzzle": "^7.5"
+    },
+    "config": { "allow-plugins": false, "policy": { "advisories": { "block": false } } }
+}

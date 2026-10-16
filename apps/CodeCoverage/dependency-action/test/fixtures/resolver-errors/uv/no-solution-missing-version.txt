@@ -1,0 +1,2 @@
+error: No solution found when resolving dependencies
+  cause: Because there is no version of evilpkg==9.9.9 and your project depends on evilpkg==9.9.9, we can conclude that your project's requirements are unsatisfiable.

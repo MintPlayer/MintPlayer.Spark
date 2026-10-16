@@ -1,0 +1,30 @@
+diff --git a/App.csproj b/App.csproj
+index 701a699..6907348 100644
+--- a/App.csproj
++++ b/App.csproj
+@@ -7,7 +7,7 @@
+ 
+   <ItemGroup>
+     <!-- json -->
+-    <PackageReference Include="Newtonsoft.Json"   Version="13.0.1" />
++    <PackageReference Include="Newtonsoft.Json"   Version="13.0.3" />
+     <PackageReference Include="Serilog">
+       <Version>3.0.1</Version>
+     </PackageReference>
+diff --git a/packages.lock.json b/packages.lock.json
+index fe83a4a..e5cbbab 100644
+--- a/packages.lock.json
++++ b/packages.lock.json
+@@ -10,9 +10,9 @@
+       },
+       "Newtonsoft.Json": {
+         "type": "Direct",
+-        "requested": "[13.0.1, )",
+-        "resolved": "13.0.1",
+-        "contentHash": "ppPFpBcvxdsfUonNcvITKqLl3bqxWbDCZIzDWHzjpdAHRFfZe0Dw9HmA0+za13IdyrgJwpkDTDA9fHaxOrt20A=="
++        "requested": "[13.0.3, )",
++        "resolved": "13.0.3",
++        "contentHash": "HrC5BXdl00IP9zeV+0Z848QWPAoCr9P3bDEZguI+gkLcBKAOxix/tLEAAHC+UvDNPv4a2d18lOReHMOagPa+zQ=="
+       },
+       "Serilog": {
+         "type": "Direct",

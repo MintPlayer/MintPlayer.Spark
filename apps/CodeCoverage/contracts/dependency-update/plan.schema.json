@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://coverage.mintplayer.com/contracts/dependency-update/plan.schema.json",
+  "title": ".mintplayer/dependency-plan.json: the apply plan",
+  "description": "Written by the bot as the single commit on top of expected_sha on the dispatch ref (R14). Groups are applied in array order, each on top of the previous ones (D-C2). Every item token comes from a lookup record: the runner writes newValue where currentValue was, and pins the lock at newVersion.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contractVersion", "kind", "planId", "expectedSha", "groups"],
+  "properties": {
+    "contractVersion": { "const": 1 },
+    "kind": { "const": "plan" },
+    "planId": { "type": "string", "pattern": "^[A-Za-z0-9._:-]{1,128}$" },
+    "expectedSha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "options": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "feedSecrets": { "type": "boolean", "description": "true when the workflow passes feed secrets; uv then runs with --no-build (D-S14b)." },
+        "consistencyCheck": { "type": "boolean", "description": "Default true (D-C3)." }
+      }
+    },
+    "groups": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["group", "items"],
+        "properties": {
+          "group": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "items": { "type": "array", "items": { "$ref": "#/$defs/item" } },
+          "platform": { "$ref": "#/$defs/platform" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["depName", "datasource", "manager", "packageFile", "lockFiles", "currentValue", "newValue", "newVersion", "updateType"],
+      "properties": {
+        "depName": { "type": "string", "minLength": 1 },
+        "packageName": { "type": ["string", "null"] },
+        "ecosystem": { "type": "string" },
+        "datasource": { "type": "string", "minLength": 1 },
+        "manager": { "type": "string", "minLength": 1 },
+        "depType": { "type": ["string", "null"] },
+        "packageFile": { "type": "string", "minLength": 1, "not": { "pattern": "(^|/)\\.\\.(/|$)" } },
+        "lockFiles": { "type": "array", "items": { "type": "string", "not": { "pattern": "(^|/)\\.\\.(/|$)" } } },
+        "currentValue": { "type": "string", "minLength": 1 },
+        "newValue": { "type": "string", "minLength": 1 },
+        "newVersion": { "type": "string", "minLength": 1 },
+        "currentDigest": { "type": ["string", "null"] },
+        "newDigest": { "type": ["string", "null"] },
+        "replaceString": { "type": ["string", "null"] },
+        "sharedVariableName": { "type": ["string", "null"], "description": "Maven property / Gradle version-catalog ref, from the record's managerData when known." },
+        "updateType": { "type": "string" }
+      }
+    },
+    "platform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sdk", "fromChannel", "toChannel"],
+      "properties": {
+        "sdk": { "enum": ["dotnet", "node", "python", "java", "go"] },
+        "fromChannel": { "type": "string", "pattern": "^[0-9]+(\\.[0-9]+)?$" },
+        "toChannel": { "type": "string", "pattern": "^[0-9]+(\\.[0-9]+)?$" },
+        "toVersion": { "type": ["string", "null"], "description": "Latest full version of the target channel (for locations holding a full version)." },
+        "sdkVersion": { "type": ["string", "null"], "description": "dotnet: the SDK version written to global.json." },
+        "strategy": { "enum": ["replace", "add"] },
+        "keepPrevious": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "lockPackageMajor": { "type": "boolean", "description": "Also move the repo's own <Version> major to the platform major (explicit opt-in, R8)." },
+        "locations": { "type": "array", "items": { "type": "string" }, "description": "Override: only these files." },
+        "exclude": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

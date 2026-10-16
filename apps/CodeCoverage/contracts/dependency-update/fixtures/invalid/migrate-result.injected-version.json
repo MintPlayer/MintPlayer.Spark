@@ -1,0 +1,59 @@
+{
+  "contractVersion": 1,
+  "kind": "migrate-result",
+  "tool": "nx",
+  "baseSha": "1111111111111111111111111111111111111111",
+  "packages": [
+    {
+      "name": "nx",
+      "from": "22.7.12",
+      "to": "23.3.0; rm -rf /"
+    },
+    {
+      "name": "@nx/js",
+      "from": "22.7.12",
+      "to": "23.3.0"
+    }
+  ],
+  "completed": true,
+  "steps": [
+    {
+      "name": "install",
+      "exitCode": 0,
+      "seconds": 77
+    },
+    {
+      "name": "nx migrate",
+      "exitCode": 0,
+      "seconds": 98
+    },
+    {
+      "name": "install (migrated package.json)",
+      "exitCode": 0,
+      "seconds": 35
+    },
+    {
+      "name": "nx migrate --run-migrations",
+      "exitCode": 0,
+      "seconds": 49
+    },
+    {
+      "name": "relock",
+      "exitCode": 0,
+      "seconds": 19
+    }
+  ],
+  "extraBumps": [
+    {
+      "depName": "typescript",
+      "packageFile": "package.json",
+      "from": "~5.9.2",
+      "to": "6.0.3"
+    }
+  ],
+  "patch": {
+    "file": "migrate.patch",
+    "bytes": 11030,
+    "sha256": "c8b5a6d13acbdee4547270949b111de268d6971c07ea6da663cc18d4c4aa7182"
+  }
+}

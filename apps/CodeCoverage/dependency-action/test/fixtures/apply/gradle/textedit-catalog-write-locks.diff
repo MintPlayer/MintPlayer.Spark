@@ -1,0 +1,31 @@
+diff --git a/gradle.lockfile b/gradle.lockfile
+index e19e267..ef20bd2 100644
+--- a/gradle.lockfile
++++ b/gradle.lockfile
+@@ -6,11 +6,10 @@ com.fasterxml.jackson.core:jackson-core:2.15.2=compileClasspath,runtimeClasspath
+ com.fasterxml.jackson.core:jackson-databind:2.15.2=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+ com.fasterxml.jackson:jackson-bom:2.15.2=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+ com.google.code.findbugs:jsr305:3.0.2=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+-com.google.errorprone:error_prone_annotations:2.18.0=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+-com.google.guava:failureaccess:1.0.1=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+-com.google.guava:guava-parent:32.1.2-jre=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+-com.google.guava:guava:32.1.2-jre=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
++com.google.errorprone:error_prone_annotations:2.23.0=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
++com.google.guava:failureaccess:1.0.2=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
++com.google.guava:guava:33.0.0-jre=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+ com.google.guava:listenablefuture:9999.0-empty-to-avoid-conflict-with-guava=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+ com.google.j2objc:j2objc-annotations:2.8=compileClasspath,testCompileClasspath
+-org.checkerframework:checker-qual:3.33.0=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
++org.checkerframework:checker-qual:3.41.0=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+ empty=annotationProcessor,testAnnotationProcessor
+diff --git a/gradle/libs.versions.toml b/gradle/libs.versions.toml
+index 1e4646d..178ef70 100644
+--- a/gradle/libs.versions.toml
++++ b/gradle/libs.versions.toml
+@@ -2,5 +2,5 @@
+ jackson = "2.15.2"   # json
+ 
+ [libraries]
+-guava = { module = "com.google.guava:guava", version = "32.1.2-jre" }
++guava = { module = "com.google.guava:guava", version = "33.0.0-jre" }
+ jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jackson" }
