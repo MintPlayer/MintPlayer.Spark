@@ -130,6 +130,7 @@ internal sealed partial class MessageRetrySweeper : BackgroundService
             this.WakeUp = true;
             this.LastWakeUpUtc = args.now;
             this.AttemptCount = (this.AttemptCount || 0) + 1;
+            this.ReclaimCount = (this.ReclaimCount || 0) + 1;
         }
         """;
 
@@ -215,9 +216,13 @@ internal sealed partial class MessageRetrySweeper : BackgroundService
         // even against a live owner — it loses the claim, and the pump's next renewal fails and
         // abandons the message rather than double-completing it.
         //
-        // AttemptCount is incremented so an abandoned message cannot cycle for ever: a message
-        // that reliably kills its host is retried, backed off and eventually dead-lettered like
-        // any other failure, rather than crash-looping the process that picks it up.
+        // ReclaimCount is incremented so an abandoned message cannot cycle for ever: every reclaim
+        // is a failed attempt for each handler that had not finished (RetryBudget), and once the
+        // budget is spent MessageProcessor dead-letters the message (MaxAttempts) before any handler
+        // runs again, rather than crash-looping the next process that picks it up. P18: this comment
+        // used to promise that of AttemptCount, which counts pickups and which the dead-letter
+        // decision never read, so a message that killed its host every time was never dead-lettered.
+        // AttemptCount is still incremented here, as the pickup count it is.
         //
         // The predicate is re-checked on the document, as in the wake-up: a stale index can still
         // list as Processing a message that has since completed, and an unconditional patch would

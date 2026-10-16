@@ -115,7 +115,7 @@ internal sealed class MessageSubscriptionWorker : SparkSubscriptionWorker<SparkM
             var messageId = message.Id!;
             await ClaimedExecution.RunAsync(
                 DocumentStore, _options, Logger, messageId, _options.HandlerTimeoutFor(_queueName),
-                token => processor.ProcessAsync(messageId, MessageClaims.NodeId, token),
+                token => processor.ProcessAsync(messageId, MessageClaims.NodeId, token, cancellationToken),
                 cancellationToken);
         }
     }
