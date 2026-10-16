@@ -31,9 +31,11 @@ public class YamlValidatorTests
     [InlineData("a: 1\na: 2\n", "duplicate key")]
     [InlineData("jobs:\n  b:\n    x: 1\n    'x': 2\n", "duplicate key")]
     [InlineData("? [a, b]\n: 1\n", "not a scalar")]
-    [InlineData("a:\n\t- b\n", "")]
+    // YamlDotNet's scanner refuses a tab-indented block entry itself (at the mapping's start, 1:1), before the
+    // validator's own tab check runs; the flow-continuation case below is the one only that check catches.
+    [InlineData("a:\n\t- b\n", "not well-formed")]
     [InlineData("a: [1, 2\n", "not well-formed")]
-    [InlineData("a: *missing\n", "")]
+    [InlineData("a: *missing\n", "an alias to an anchor that is not defined")]
     public void Ambiguous_or_broken_yaml_is_invalid(string text, string problem)
     {
         var verdict = Yaml.Validate(text);
