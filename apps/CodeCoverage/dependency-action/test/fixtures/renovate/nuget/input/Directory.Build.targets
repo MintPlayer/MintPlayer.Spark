@@ -1,0 +1,5 @@
+<Project>
+  <Target Name="Sentinel" BeforeTargets="Restore;_GenerateRestoreGraph;CollectPackageReferences">
+    <Exec Command="echo executed &gt; /sentinel/nuget-directory-build-targets" />
+  </Target>
+</Project>

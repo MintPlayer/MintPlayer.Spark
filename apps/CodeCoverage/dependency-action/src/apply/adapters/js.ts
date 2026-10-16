@@ -164,7 +164,7 @@ export const pnpmAdapter: Adapter = {
     }
     return misses.length ? notPinned(misses) : OK;
   },
-  parseBlockers: (output) => parsePnpmNdjson(output),
+  parseBlockers: (output, _ctx, items) => parsePnpmNdjson(output, items.map((i) => i.depName)),
   consistencyDir: (item) => dirOf(lockOf(item, ['pnpm-lock.yaml']) ?? item.packageFile),
   consistency: async (ctx, dir) =>
     outcome(await ctx.exec('pnpm', ['install', '--frozen-lockfile', '--ignore-scripts', '--lockfile-only'], { cwd: rel2abs(ctx, dir), env: PNPM_ENV, timeoutMs: 15 * 60_000 })),
@@ -229,7 +229,7 @@ export const yarnAdapter: Adapter = {
     }
     return misses.length ? notPinned(misses) : OK;
   },
-  parseBlockers: (output): Blocker[] => parseYarnJson(output),
+  parseBlockers: (output, _ctx, items): Blocker[] => parseYarnJson(output, items.map((i) => i.depName)),
   consistencyDir: (item) => dirOf(lockOf(item, ['yarn.lock']) ?? item.packageFile),
   consistency: async (ctx, dir) =>
     outcome(await ctx.exec('corepack', ['yarn', 'install', '--immutable', '--mode=skip-build'], { cwd: rel2abs(ctx, dir), env: YARN_ENV, timeoutMs: 15 * 60_000 })),

@@ -80,8 +80,11 @@ export function parseNpm(output: string, planned: readonly string[] = []): Block
 }
 
 /** pnpm `--reporter=ndjson`: the pnpm:peer-dependency-issues event (structured). */
-export function parsePnpmNdjson(output: string): Blocker[] {
+export function parsePnpmNdjson(output: string, planned: readonly string[] = []): Blocker[] {
   const out: Blocker[] = [];
+  /** Same rule as npm: a planned declarer means the peer it wants is what blocks. */
+  const attribute = (peer: string, found: string | undefined, parent?: { name: string; version: string }) =>
+    parent && planned.includes(parent.name) ? { depName: peer, version: found ?? null } : { depName: parent?.name ?? peer, version: parent?.version ?? null };
   for (const line of output.split(/\r?\n/)) {
     if (!line.startsWith('{')) continue;
     let ev: Record<string, unknown>;
@@ -97,8 +100,7 @@ export function parsePnpmNdjson(output: string): Blocker[] {
           for (const issue of list) {
             const parent = issue.parents?.[issue.parents.length - 1];
             out.push({
-              depName: parent?.name ?? peer,
-              version: parent?.version ?? null,
+              ...attribute(peer, issue.foundVersion, parent),
               code: 'ERR_PNPM_PEER_DEP_ISSUES',
               message: clip(`unmet peer ${peer}@${issue.wantedRange ?? '?'}: found ${issue.foundVersion ?? '?'}${parent ? ` (required by ${parent.name}@${parent.version})` : ''}`),
             });
@@ -123,14 +125,14 @@ export function parsePnpmNdjson(output: string): Blocker[] {
     let m: RegExpExecArray | null;
     const parent = output.match(/┬ (\S+) (\S+)\s*\n\s*└──? ✕ unmet peer/);
     while ((m = re.exec(output)) !== null) {
-      out.push({ depName: parent?.[1] ?? m[1], version: parent?.[2] ?? null, code: 'ERR_PNPM_PEER_DEP_ISSUES', message: clip(m[0]) });
+      out.push({ ...attribute(m[1], m[3], parent ? { name: parent[1], version: parent[2] } : undefined), code: 'ERR_PNPM_PEER_DEP_ISSUES', message: clip(m[0]) });
     }
   }
   return dedupe(out);
 }
 
 /** yarn berry `--json` NDJSON: YN0060 (incompatible peer) / YN0002 (missing peer) / YN0001 / YN0082. */
-export function parseYarnJson(output: string): Blocker[] {
+export function parseYarnJson(output: string, planned: readonly string[] = []): Blocker[] {
   const out: Blocker[] = [];
   for (const line of output.split(/\r?\n/)) {
     if (!line.startsWith('{')) continue;
@@ -144,7 +146,8 @@ export function parseYarnJson(output: string): Blocker[] {
     if (ev.displayName === 'YN0060') {
       // "react is listed by your project with version 17.0.2 (pcb45e), which doesn't satisfy what react-dom requests (^18.2.0)."
       const m = data.match(/^(\S+) is listed by your project with version (\S+) .*? what (\S+) requests \(([^)]+)\)/);
-      out.push({ depName: m?.[3] ?? null, version: m?.[4] ?? null, code: 'YN0060', message: clip(data) });
+      const declarerPlanned = !!m && planned.includes(m[3]);
+      out.push({ depName: (declarerPlanned ? m?.[1] : m?.[3]) ?? null, version: declarerPlanned ? m![2] : null, code: 'YN0060', message: clip(data) });
     } else if (ev.displayName === 'YN0002') {
       const m = data.match(/^(\S+?)@\S+ doesn't provide (\S+)/);
       out.push({ depName: m?.[1] ?? null, version: null, code: 'YN0002', message: clip(data) });
@@ -199,28 +202,41 @@ export function parseNuGetText(output: string): Blocker[] {
   return dedupe(out);
 }
 
-export function parseComposer(output: string): Blocker[] {
+export function parseComposer(output: string, planned: readonly string[] = []): Blocker[] {
   const out: Blocker[] = [];
-  const blocks = output.split(/\n\s*Problem \d+\s*\n/).slice(1);
+  const blocks = output.split(/(?:^|\n)[ \t]*Problem \d+[ \t]*\r?\n/).slice(1);
   for (const block of blocks) {
     const lines = block.split('\n').filter((l) => /^\s*- /.test(l));
     const text = lines.join('\n');
+    if (!text) continue;
     // "- monolog/monolog 3.5.0 requires psr/log ^2.0 || ^3.0 -> found psr/log[...] but it conflicts with your root composer.json require (^1.1)."
     const req = text.match(/- (\S+\/\S+) (\S+) requires (\S+\/\S+) ([^-\n]+?) -> /);
     const root = text.match(/Root composer\.json requires (\S+\/\S+) (\S+)/);
+    // A planned package that requires something the root pins: the required package blocks.
+    const requirerPlanned = !!req && planned.includes(req[1]);
     out.push({
-      depName: req?.[1] ?? root?.[1] ?? null,
-      version: req?.[2] ?? root?.[2] ?? null,
+      depName: (requirerPlanned ? req![3] : req?.[1] ?? root?.[1]) ?? null,
+      version: requirerPlanned ? req![4].trim() : (req?.[2] ?? root?.[2] ?? null),
       code: 'composer',
-      message: clip(text || block),
+      message: clip(text),
     });
   }
   return dedupe(out);
 }
 
-export function parseCargo(output: string): Blocker[] {
+export function parseCargo(output: string, planned: readonly string[] = []): Blocker[] {
   const m = output.match(/failed to select a version for `([^`]+)`[\s\S]*?required by package `(\S+) v(\S+)`/);
-  if (m) return [{ depName: m[2], version: m[3], code: 'cargo', message: clip(`failed to select a version for ${m[1]} (required by ${m[2]} v${m[3]})`) }];
+  if (m) {
+    // serde 1.0.200 (planned) needs a serde_derive the root pins: serde_derive blocks.
+    const previous = output.match(/previously selected package `(\S+) v(\S+)`/);
+    const planned2 = planned.includes(m[2]);
+    return [{
+      depName: planned2 ? m[1] : m[2],
+      version: planned2 ? (previous && previous[1] === m[1] ? previous[2] : null) : m[3],
+      code: 'cargo',
+      message: clip(`failed to select a version for ${m[1]} (required by ${m[2]} v${m[3]})${previous ? `; previously selected ${previous[1]} v${previous[2]}` : ''}`),
+    }];
+  }
   const nf = output.match(/no matching package named `([^`]+)` found|failed to select a version for the requirement `(\S+) = "([^"]+)"`/);
   if (nf) return [{ depName: nf[1] ?? nf[2], version: nf[3] ?? null, code: 'cargo', message: clip(nf[0]) }];
   return [];
@@ -229,7 +245,7 @@ export function parseCargo(output: string): Blocker[] {
 export function parseGo(output: string): Blocker[] {
   const tc = output.match(/go: (\S+)@(\S+) requires go >= (\S+) \(running go (\S+)/);
   if (tc) return [{ depName: 'go', version: tc[3], code: 'go-toolchain', message: clip(tc[0]) }];
-  const nf = output.match(/go: (\S+)@(\S+): (?:reading [^:]+: )?(?:no such file or directory|unknown revision|invalid version)[^\n]*/);
+  const nf = output.match(/go: (\S+?)@(\S+?): [^\n]*?(?:no such file or directory|unknown revision|invalid version|not found)[^\n]*/);
   if (nf) return [{ depName: nf[1], version: nf[2], code: 'go-missing-version', message: clip(nf[0]) }];
   return [];
 }

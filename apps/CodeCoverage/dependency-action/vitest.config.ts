@@ -19,7 +19,7 @@ export default defineConfig({
         'text-summary',
       ],
       include: ['src/**/*.ts'],
-      exclude: ['src/**/*.test.ts', 'src/index.ts', 'dist/**'],
+      exclude: ['src/**/*.test.ts', 'src/index.ts', 'src/testing/**', 'src/integration/**', 'dist/**'],
     },
   },
 });

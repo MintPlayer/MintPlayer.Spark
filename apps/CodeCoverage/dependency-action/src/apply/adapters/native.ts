@@ -82,7 +82,7 @@ export const cargoAdapter: Adapter = {
     }
     return OK;
   },
-  parseBlockers: (output) => parseCargo(output),
+  parseBlockers: (output, _ctx, items) => parseCargo(output, items.map((i) => i.depName)),
   consistencyDir: (item) => dirOf(item.packageFile),
   consistency: async (ctx, dir) => outcome(await ctx.exec('cargo', ['metadata', '--locked', '--format-version', '1'], { cwd: rel2abs(ctx, dir), timeoutMs: 10 * 60_000 })),
   tools: () => ['cargo'],
@@ -164,7 +164,7 @@ export const composerAdapter: Adapter = {
     }
     return misses.length ? notPinned(misses) : OK;
   },
-  parseBlockers: (output) => parseComposer(output),
+  parseBlockers: (output, _ctx, items) => parseComposer(output, items.map((i) => i.depName)),
   consistencyDir: (item) => dirOf(item.packageFile),
   async consistency(ctx, dir) {
     const v = await ctx.exec('composer', ['validate', '--no-check-publish', '--no-check-all', '--no-interaction'], { cwd: rel2abs(ctx, dir), timeoutMs: 5 * 60_000 });
