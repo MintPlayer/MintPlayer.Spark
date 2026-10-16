@@ -1,0 +1,158 @@
+<div class="du-onboard py-3" data-dependency-updates-onboard>
+  <h1 class="h3 mb-3"><i class="bi bi-box-arrow-in-down"></i> {{ 'dependencyOnboardingUi.title' | t }}</h1>
+  <p class="lead">{{ 'dependencyOnboardingUi.intro' | t }}</p>
+
+  @let r = response();
+
+  @if (r?.setupAction === 'request') {
+    <bs-alert [type]="warningColor" class="d-block mb-3" data-testid="onboard-request">
+      <strong>{{ 'dependencyOnboardingUi.requestTitle' | t }}</strong> {{ 'dependencyOnboardingUi.requestBody' | t }}
+    </bs-alert>
+  }
+
+  @if (r?.narrowed) {
+    <p class="small" data-testid="onboard-narrowed">
+      {{ 'dependencyOnboardingUi.narrowed' | t }} ·
+      <a routerLink="/dependency-updates/onboard" data-testid="onboard-all-accounts">{{ 'dependencyOnboardingUi.allAccounts' | t }}</a>
+    </p>
+  }
+
+  @if (r && !r.linked) {
+    <bs-alert [type]="warningColor" class="d-block mb-3" data-testid="onboard-not-linked">
+      {{ 'dependencyOnboardingUi.notLinked' | t }}
+      <a routerLink="/account">{{ 'dependencyOnboardingUi.notLinkedAction' | t }}</a>
+    </bs-alert>
+  } @else if (r?.credentialState === 'ReauthRequired') {
+    <bs-alert [type]="warningColor" class="d-block mb-3" data-testid="onboard-reauth">
+      {{ 'dependencyOnboardingUi.reauth' | t }}
+    </bs-alert>
+  } @else if (r?.credentialState === 'Unavailable') {
+    <bs-alert [type]="warningColor" class="d-block mb-3" data-testid="onboard-unavailable">
+      {{ 'dependencyOnboardingUi.unavailable' | t }}
+    </bs-alert>
+  }
+
+  @if (result(); as res) {
+    <bs-card class="d-block mb-3" data-testid="onboard-result">
+      <bs-card-header><h2 class="h6 mb-0">{{ 'dependencyOnboardingUi.resultTitle' | t }}</h2></bs-card-header>
+      <bs-card-body>
+        @if (res.enabled.length > 0) {
+          <p class="mb-1">
+            {{ format('dependencyOnboardingUi.resultEnabled', res.enabled.length) }}
+            {{ (res.withMergeQueue ? 'dependencyOnboardingUi.resultWithQueue' : 'dependencyOnboardingUi.resultWithoutQueue') | t }}
+          </p>
+          <ul class="small" data-testid="onboard-enabled">
+            @for (name of res.enabled; track name) { <li>{{ name }}</li> }
+          </ul>
+          <p class="small text-muted">{{ 'dependencyOnboardingUi.resultNext' | t }}</p>
+        }
+        @if (res.notEnabled.length > 0) {
+          <p class="mb-1">{{ 'dependencyOnboardingUi.resultNotEnabled' | t }}</p>
+          <ul class="small mb-0" data-testid="onboard-not-enabled">
+            @for (n of res.notEnabled; track n.repositoryId) { <li class="du-why"><strong>{{ n.fullName }}</strong>: {{ n.reason }}</li> }
+          </ul>
+        }
+        @if (res.enabled.length === 0 && res.notEnabled.length === 0) {
+          <p class="mb-0">{{ 'dependencyOnboardingUi.resultNothing' | t }}</p>
+        }
+      </bs-card-body>
+    </bs-card>
+  }
+
+  @if (loading() && !r) {
+    <p class="text-muted" data-testid="onboard-loading">{{ 'dependencyOnboardingUi.loading' | t }}</p>
+  } @else if (loadError(); as err) {
+    <bs-alert [type]="dangerColor" class="d-block mb-3" data-testid="onboard-error">{{ err }}</bs-alert>
+  } @else if (r && r.repositories.length === 0) {
+    <bs-alert [type]="infoColor" class="d-block mb-3" data-testid="onboard-empty">
+      <strong>{{ (r.narrowed ? 'dependencyOnboardingUi.emptyNarrowed' : 'dependencyOnboardingUi.empty') | t }}</strong>
+      {{ 'dependencyOnboardingUi.whoMayEnable' | t }}
+    </bs-alert>
+  } @else if (r) {
+    <bs-card class="d-block mb-3">
+      <bs-card-header>
+        <div class="d-flex flex-wrap align-items-center gap-2">
+          <h2 class="h6 mb-0">{{ 'dependencyOnboardingUi.listTitle' | t }}</h2>
+          <span class="small text-muted" data-testid="onboard-selected-count">{{ format('dependencyOnboardingUi.selected', selectedCount()) }}</span>
+          @if (canEnable()) {
+            <button type="button" class="btn btn-primary btn-sm ms-auto" data-testid="onboard-enable"
+                    [disabled]="selectedCount() === 0 || busy()" (click)="enable()">
+              <i class="bi bi-box-arrow-in-down"></i> {{ 'dependencyOnboardingUi.enable' | t }}
+            </button>
+          }
+        </div>
+      </bs-card-header>
+      <bs-card-body>
+        @if (actionError(); as err) {
+          <bs-alert [type]="dangerColor" class="d-block mb-3" data-testid="onboard-action-error">{{ err }}</bs-alert>
+        }
+        @if (!canEnable()) {
+          <p class="small text-muted" data-testid="onboard-cannot-enable">{{ 'dependencyOnboardingUi.cannotEnable' | t }}</p>
+        }
+        <p class="small text-muted">{{ 'dependencyOnboardingUi.mergeQueueHelp' | t }} <a routerLink="/merge-queue/setup">{{ 'dependencyOnboardingUi.mergeQueueGuide' | t }}</a></p>
+        <bs-table [isResponsive]="true" data-testid="onboard-rows">
+          <thead>
+            <tr>
+              <th class="du-select">
+                @if (canEnable() && selectable().length > 0) {
+                  <bs-checkbox [type]="'checkbox'" [name]="'onboard-all'" [isToggled]="allSelected()" (isToggledChange)="toggleAll($event === true)"
+                               data-testid="onboard-select-all">
+                    <span class="visually-hidden">{{ 'dependencyOnboardingUi.selectAll' | t }}</span>
+                  </bs-checkbox>
+                }
+              </th>
+              <th>{{ 'dependencyOnboardingUi.col.repository' | t }}</th>
+              <th>{{ 'dependencyOnboardingUi.col.managedBy' | t }}</th>
+              <th>{{ 'dependencyOnboardingUi.col.state' | t }}</th>
+              <th>{{ 'dependencyOnboardingUi.col.mergeQueue' | t }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (row of r.repositories; track row.provider + row.fullName) {
+              <tr [attr.data-repo]="row.fullName">
+                <td class="du-select">
+                  @if (canEnable() && isSelectable(row)) {
+                    <bs-checkbox [type]="'checkbox'" [name]="'onboard-' + row.repositoryId" [isToggled]="isSelected(row)"
+                                 (isToggledChange)="toggle(row, $event === true)" data-testid="onboard-select">
+                      <span class="visually-hidden">{{ row.fullName }}</span>
+                    </bs-checkbox>
+                  }
+                </td>
+                <td>
+                  @if (row.repositoryId) {
+                    <a [routerLink]="link(row)">{{ row.fullName }}</a>
+                  } @else {
+                    {{ row.fullName }}
+                  }
+                  @if (row.isPrivate) { <i class="bi bi-lock ms-1" [attr.aria-label]="'dependencyOnboardingUi.private' | t"></i> }
+                </td>
+                <td class="small" data-testid="onboard-managed-by">{{ managedByLabel(row) }}</td>
+                <td class="small" data-testid="onboard-state">
+                  <span>{{ onboardingLabel(row) }}</span>
+                  @if (row.onboardingPullRequest; as pr) {
+                    @if (pr.url) {
+                      <a class="ms-1" [href]="pr.url" target="_blank" rel="noopener" data-testid="onboard-pr">#{{ pr.number }}</a>
+                    } @else {
+                      <span class="ms-1" data-testid="onboard-pr">#{{ pr.number }}</span>
+                    }
+                  }
+                  @if (row.onboardingNote) { <div class="text-muted du-why">{{ row.onboardingNote }}</div> }
+                </td>
+                <td class="small" data-testid="onboard-merge-queue">
+                  {{ mergeQueueLabel(row) }}
+                  @if (!row.enabled) {
+                    <div class="text-muted">{{ (row.onboardingMergeQueue ? 'dependencyOnboardingUi.queueWillAdd' : 'dependencyOnboardingUi.queueWontAdd') | t }}</div>
+                  }
+                </td>
+              </tr>
+            }
+          </tbody>
+        </bs-table>
+        <p class="small text-muted mb-0">
+          {{ 'dependencyOnboardingUi.settingsHint' | t }}
+          <a routerLink="/dependency-updates/setup">{{ 'dependencyOnboardingUi.guide' | t }}</a>
+        </p>
+      </bs-card-body>
+    </bs-card>
+  }
+</div>

@@ -462,6 +462,62 @@ export interface DependencyRepoStatus {
   plannedGroups: number;
   pins: string[];
   coverageNote: string | null;
+  /** The onboarding pull request (R16), open, merged or closed; null when none was opened. */
+  onboardingPullRequest?: DependencyPullRequestLink | null;
+  /** R26: `coverage.yml`'s merge queue as last read: `enabled`, `disabled`, `absent`; null until read. */
+  mergeQueueInFile?: string | null;
+  /** R30 / D-O7: a message waiting for the forge's rate limit; null when nothing waits. */
+  rateLimit?: DependencyRateLimitView | null;
+}
+
+export interface DependencyRateLimitView {
+  untilUtc: string;
+  /** This message's park count, 1-based. */
+  park: number;
+  /** The parks it may take before it is dead-lettered. */
+  budget: number;
+}
+
+/** One row of the onboarding page (server: `DependencyOnboardingRow`, dependency-updates PRD R20–R26). */
+export interface DependencyOnboardingRow {
+  /** The Repository document id the Spark action takes; null while the repository is still syncing. */
+  repositoryId: string | null;
+  provider: string;
+  fullName: string;
+  accountLogin: string;
+  isPrivate: boolean;
+  /** Why the viewer may enable it, as the server words it (R39); shown, never interpreted. */
+  managedBy: string;
+  /** `Inherit`, `Enabled`, `Disabled`. */
+  setting: string;
+  enabled: boolean;
+  accountDefault: boolean;
+  /** `None`, `PullRequestOpened`, `Done`, `Blocked`. */
+  onboarding: string;
+  onboardingNote: string | null;
+  onboardingPullRequest: { number: number; url: string | null } | null;
+  syncing: boolean;
+  onboardingMergeQueue: boolean;
+  mergeQueueInFile: string | null;
+}
+
+/** `GET api/dependency-updates/onboarding` (server: `DependencyOnboardingResponse`). */
+export interface DependencyOnboardingResponse {
+  login: string | null;
+  /** `Ok`, `ReauthRequired` or `Unavailable`. */
+  credentialState: string;
+  linked: boolean;
+  narrowed: boolean;
+  /** `install`, `update`, `request`, or null without a setup redirect (a hint only, R36). */
+  setupAction: string | null;
+  repositories: DependencyOnboardingRow[];
+}
+
+/** What the `EnableDependencyUpdates` action hands back (server: `DependencyOnboardingResult`). */
+export interface DependencyOnboardingResult {
+  enabled: string[];
+  notEnabled: { repositoryId: string; fullName: string; reason: string }[];
+  withMergeQueue: boolean;
 }
 
 export interface DependencyPackageUse {
@@ -674,6 +730,14 @@ export class BrowseService {
   getRepoDependencyUpdates(provider: string, owner: string, name: string): Promise<DependencyRepoView> {
     return firstValueFrom(this.http.get<DependencyRepoView>(
       `/api/browse/repos/${encodeURIComponent(provider)}/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/dependency-updates`));
+  }
+
+  /**
+   * The onboarding page's rows (R20). `query` is the page's own query string, passed through untouched: which setup-redirect
+   * parameter means what is the forge's business on the server, so nothing here names one.
+   */
+  getDependencyOnboarding(query: Record<string, string>): Promise<DependencyOnboardingResponse> {
+    return firstValueFrom(this.http.get<DependencyOnboardingResponse>('/api/dependency-updates/onboarding', { params: query }));
   }
 
 }

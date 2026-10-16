@@ -82,11 +82,22 @@
             </p>
           }
           @case ('enable') {
+            <p data-testid="du-setup-onboard">
+              <strong>The quickest way: the onboarding page.</strong> After you install or update the GitHub App, GitHub
+              sends you back to CodeCoverage's onboarding page, which lists that installation's repositories you may
+              manage: organization owners for an organization's repositories, you for your own, and a repository's GitHub
+              admins for that repository. Select the repositories, choose <strong>Enable dependency updates</strong>, and
+              say whether their onboarding pull requests add the merge queue. Nothing is switched on until you do: closing
+              the page leaves everything off. You can open the page at any time:
+              <a routerLink="/dependency-updates/onboard" data-testid="du-setup-onboard-link">Enable it for your repositories →</a>
+            </p>
             <p>
-              Switch <strong>Dependency updates</strong> on in the <em>Dependency updates</em> group of the account's
-              CodeCoverage page, for every repository of the account that does not decide for itself, or on one
-              repository's page, which can also turn it off for itself. A repository's <code>coverage.yml</code> can only
-              opt out (<code>enabled: false</code>), so a pull request can never switch the updater on.
+              The same switch is <strong>Dependency updates</strong> in the <em>Dependency updates</em> group of the
+              account's CodeCoverage page, for every repository of the account that does not decide for itself, or on one
+              repository's page, which can also turn it off for itself. Switching it off closes the rolling pull request
+              and deletes the bot's branches; holds, approvals and the files in your repository stay. A repository's
+              <code>coverage.yml</code> can only opt out (<code>enabled: false</code>), so a pull request can never switch
+              the updater on.
             </p>
             <bs-table [isResponsive]="true" data-testid="du-setup-settings">
               <thead>
@@ -109,7 +120,11 @@
             </p>
           }
           @case ('onboarding') {
-            <p>Within a day of switching it on, the bot opens <code>mintplayer/dependencies-onboarding</code>. It:</p>
+            <p>
+              Right after you switch it on, the bot opens <code>mintplayer/dependencies-onboarding</code> (a repository
+              GitHub has only just added shows as "syncing" on the onboarding page and is onboarded once it is in; a
+              daily pass retries anything that did not go through). It:
+            </p>
             <ul>
               <li>
                 adds <code>.github/workflows/dependency-lookup.yml</code> and <code>dependency-apply.yml</code>, thin

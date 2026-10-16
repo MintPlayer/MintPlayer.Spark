@@ -2,6 +2,7 @@ import { Component, provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRouteSnapshot, provideRouter, Route, Router, RouterOutlet, Routes } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
+import { sparkAuthGuard } from '@mintplayer/ng-spark/auth/guards';
 import { describe, expect, it } from 'vitest';
 import { BrowseServiceStub, createBrowseStub, provideBrowseStub } from '../testing/test-utils';
 import { routes } from './app.routes';
@@ -61,6 +62,19 @@ describe('app routes: declaration order', () => {
     for (const route of children.slice(firstParam)) {
       expect(firstSegment(route).startsWith(':')).toBe(true);
     }
+  });
+});
+
+// dependency-updates PRD R36: the GitHub App's Setup URL lands here with installation_id; only the guard keeps that query
+// through the sign-in (the auth interceptor strips it from an API 401 bounce), so the guard is the contract.
+describe('app routes: the dependency onboarding page', () => {
+  it('is behind sparkAuthGuard, and declared before the :provider routes', () => {
+    const children = shellChildren();
+    const index = children.findIndex(r => r.path === 'dependency-updates/onboard');
+    expect(index).toBeGreaterThanOrEqual(0);
+    expect(children[index].canActivate).toContain(sparkAuthGuard);
+    expect(children[index].loadComponent).toBeDefined();
+    expect(index).toBeLessThan(children.findIndex(r => firstSegment(r).startsWith(':')));
   });
 });
 

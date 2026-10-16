@@ -91,6 +91,14 @@ describe('DependencyUpdatesSetupComponent', () => {
     ]);
   });
 
+  // R20: the onboarding page is where the App's setup redirect lands; the guide links it for everyone else.
+  it('links the onboarding page and says nothing is switched on until the reader enables it', async () => {
+    await open('/dependency-updates/setup');
+
+    expect(q('[data-testid="du-setup-onboard-link"]')?.getAttribute('href')).toBe('/dependency-updates/onboard');
+    expect(q('[data-testid="du-setup-onboard"]')?.textContent).toContain('Nothing is switched on until you do');
+  });
+
   // R5: auto-merge is an enqueue in the merge queue, so the guide sends the reader to the queue's own setup first.
   it('makes the merge queue a prerequisite of auto-merge and links its setup guide', async () => {
     await open('/dependency-updates/setup');

@@ -102,6 +102,7 @@ class StubRepoDependencyPanel {
   readonly provider = input<string>();
   readonly owner = input<string>();
   readonly name = input<string>();
+  readonly po = input<unknown>();
 }
 
 @Component({ selector: 'app-account-permissions-notice', template: '' })
@@ -144,6 +145,9 @@ describe('PoDetailPageComponent', () => {
       const panel = fixture.debugElement.query(By.directive(type)).componentInstance as StubBadgePanel;
       expect([panel.provider(), panel.owner(), panel.name()]).toEqual(['gitlab', 'acme', 'widgets']);
     }
+    // The dependency panel also gets the object itself, for its "Run the scheduled slot now" detail action (R28).
+    expect((fixture.debugElement.query(By.directive(StubRepoDependencyPanel)).componentInstance as StubRepoDependencyPanel).po())
+      .toEqual(expect.objectContaining({ id: 'Repositories/gitlab/1' }));
     expect(has(fixture, StubDependencyFleetPanel)).toBe(false);
     expect(has(fixture, StubSetupPanel)).toBe(true);
     expect(has(fixture, StubCommitFilesExtras)).toBe(false);

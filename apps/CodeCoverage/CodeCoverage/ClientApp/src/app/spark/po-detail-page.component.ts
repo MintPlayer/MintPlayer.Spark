@@ -66,7 +66,7 @@ import { HomeExtrasComponent } from './home-extras.component';
           <app-repo-trend-panel [provider]="repo.provider" [owner]="repo.owner" [name]="repo.name" />
           <app-repo-commit-graph-panel [provider]="repo.provider" [owner]="repo.owner" [name]="repo.name" />
           <app-repo-merge-queue-panel [provider]="repo.provider" [owner]="repo.owner" [name]="repo.name" />
-          <app-repo-dependency-updates-panel [provider]="repo.provider" [owner]="repo.owner" [name]="repo.name" />
+          <app-repo-dependency-updates-panel [provider]="repo.provider" [owner]="repo.owner" [name]="repo.name" [po]="po" />
           <app-repo-setup-panel />
         }
       } @else if (entityType.name === 'Account') {
