@@ -4,6 +4,13 @@ on:
   pull_request:
     branches: [ master ]
 
+# A newer push to the same PR supersedes the run in progress, as in the sibling check workflows
+# (code-coverage-image-check.yml and others). Every run is a full round of paid CI, and only the
+# latest head's checks matter to review, the merge queue and auto-merge.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
 # R2-H18: explicit least-privilege token. Without this the workflow inherited
 # the repo default GITHUB_TOKEN scope, which on older repos could be
 # read-write across every API. Fork PRs already don't get secrets, but a
