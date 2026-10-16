@@ -1,9 +1,11 @@
+using CodeCoverage.Git.Dependencies;
+
 namespace CodeCoverage.GitWriter.Jobs.Dependencies;
 
 /// <summary>
 /// One planned update, as the bot planned it from a lookup record (docs/code-coverage/dependency-updates-PRD.md §13.2,
-/// R1, R17). A minimal stand-in for the plan entry of <c>apps/CodeCoverage/contracts/dependency-update/plan.schema.json</c>:
-/// the validators read only these fields, so swapping in the contract's DTO is a mapping, not a redesign.
+/// R1, R17): the validators' view of a <see cref="PlanItem"/> of the contract plan (<c>plan.schema.json</c>), mapped by
+/// <see cref="From(PlanItem, string)"/>. The validators read only these fields.
 /// </summary>
 /// <param name="DepName">Renovate's <c>depName</c> (<c>express</c>, <c>actions/checkout</c>, <c>com.google.guava:guava</c>).</param>
 /// <param name="PackageFile">The repository-relative file the record came from.</param>
@@ -32,6 +34,21 @@ public sealed record DependencyPlanEntry(string DepName, string PackageFile, str
 
     /// <summary>A lockfile-only update: the manifest keeps its value.</summary>
     public bool IsLockfileOnly => CurrentValue == NewValue && CurrentDigest == NewDigest;
+
+    /// <summary>The validators' view of one item of the contract plan (<see cref="DependencyPlan"/>, D-V8 resolved).</summary>
+    public static DependencyPlanEntry From(PlanItem item, string group) => new(item.DepName, item.PackageFile, item.CurrentValue, item.NewValue, group, item.Datasource)
+    {
+        PackageName = item.PackageName,
+        CurrentDigest = item.CurrentDigest,
+        NewDigest = item.NewDigest,
+        SharedVariableName = item.SharedVariableName,
+        Manager = item.Manager,
+    };
+
+    /// <summary>Every item of every group of <paramref name="plan"/>, in plan order. A platform group carries no items: its
+    /// edits are the SDK adapter's, which this profile does not cover.</summary>
+    public static IReadOnlyList<DependencyPlanEntry> From(DependencyPlan plan)
+        => [.. plan.Groups.SelectMany(g => g.Items.Select(i => From(i, g.Group)))];
 }
 
 /// <summary>Gap B's limits (§13.11.4): the registry hosts a lockfile may point at besides the ones its base already
@@ -64,6 +81,15 @@ public sealed record DependencyPatchRequest(IReadOnlyList<DependencyPlanEntry> P
 
     /// <summary>The target <c>action.yml</c> per new <c>uses:</c> value, when the caller fetched them (a later milestone).</summary>
     public IReadOnlyDictionary<string, string>? TargetActions { get; init; }
+
+    /// <summary>The request for the contract <paramref name="plan"/>; with <paramref name="result"/>, its <c>applied</c>
+    /// groups become the claim the patch must equal (§13.11.3 #4, D-V5).</summary>
+    public static DependencyPatchRequest From(DependencyPlan plan, ApplyResult? result = null) => new(DependencyPlanEntry.From(plan))
+    {
+        ClaimedAppliedGroups = result is null
+            ? null
+            : [.. result.Groups.Where(g => g.Status == EApplyGroupStatus.Applied).Select(g => g.Group)],
+    };
 }
 
 public enum DependencyPatchOutcome

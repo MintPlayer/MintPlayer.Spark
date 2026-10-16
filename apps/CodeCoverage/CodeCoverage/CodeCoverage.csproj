@@ -20,6 +20,15 @@
 		</PackageReference>
 		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="13.0.0" GeneratePathProperty="true" />
 		<PackageReference Include="YamlDotNet" Version="18.1.0" />
+		<!-- The dependency-update contract (docs/code-coverage/dependency-updates-PRD.md §13.11.2): every document a runner
+		     returns is validated against its schema before it is deserialized, and every plan the bot writes before it is
+		     committed. The version MintPlayer.Spark.Tests already uses. -->
+		<PackageReference Include="JsonSchema.Net" Version="9.4.0" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- The schemas themselves, one source shared with the runner (ajv): embedded, never copied. -->
+		<EmbeddedResource Include="..\contracts\dependency-update\*.schema.json" LogicalName="DependencyContracts.%(Filename)%(Extension)" />
 	</ItemGroup>
 
 	<ItemGroup>
