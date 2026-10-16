@@ -88,6 +88,9 @@ for a port, not as a specification.
 | **`CommitChecksChanged`** | ✅ `check_run`, `check_suite` `completed`, `status`; the App's own check runs dropped | `Pipeline Hook`, `Job Hook` | `repo:commit_status_created`/`_updated` |
 | **`PullRequestReviewed`** | ✅ `pull_request_review` — `submitted`, `dismissed` | `Merge Request Hook` — `approved`, `unapproved` | `pullrequest:approved`, `pullrequest:unapproved` |
 | **`CheckReported`** | ✅ `check_run` (its `name`, the App's own dropped), `status` (its `context`); not `check_suite`, which names no check | `Pipeline Hook` / `Job Hook` job names | `repo:commit_status_created`/`_updated` keys |
+| **`DependencyCommandIssued`** | ✅ `issue_comment` `created` on a pull request, first word `approve`/`hold`/`unhold`/`bisect`/`refresh` (dependency-updates PRD §7.5, R6). The actor is `sender` (T1); edited comments, bot authors and the App's own comments raise nothing | `Note Hook` on a merge request | `pullrequest:comment_created` |
+| **`ReleasePublished`** | ✅ `release` — `published` (`tag_name`, `published_at`; §7.6) | `Release Hook` — action `create` | ⚠️ no releases; a tag `repo:push` is the nearest |
+| **`DependencyAlertRaised`** | ✅ `dependabot_alert` — `created`, `reopened`, `reintroduced`; needs the App's *Dependabot alerts: read* (R10) | `Vulnerability` events | ⚠️ no known webhook |
 
 `CiRunCompleted`, `CommitChecksChanged` and `PullRequestReviewed` are raised **only while the repository's merge queue
 is busy** (one point load of `MergeQueues/{provider}/{id}` per delivery), because check deliveries are the most frequent
