@@ -1129,5 +1129,86 @@ building them (assistant, within the accepted gaps):
 - **D-V6. The `migrate` profile also refuses** what the writer never writes (`.git` components, `.gitmodules`,
   `.gitattributes`, paths git would quote) and all of `.mintplayer/`.
 - **D-V7. Over the new-package cap (default 25) is `NeedsHuman`, a third outcome**, not a refusal.
-- **D-V8. The plan entry is a minimal record** (`DependencyPlanEntry`) until the contract DTO lands; the S13 NuGet CPM
+- **D-V8. The plan entry is a minimal record** (`DependencyPlanEntry`) until the contract DTO lands (**resolved by D-P2**:
+  it now maps from the contract `PlanItem`, `DependencyPlanEntry.From(plan)`); the S13 NuGet CPM
   capture is not a test fixture because its spike work tree no longer holds the captured base (blob ids differ).
+
+#### N2 + N4: settings, `dependencies:` and the policy engine (2026-10-16)
+
+Built in `CodeCoverage/Dependencies` (`DependenciesYml`, `DependencyContractReader`, `Policy/*`), the contract DTOs in
+`CodeCoverage.Git/Dependencies/DependencyContracts.cs`, the settings and state documents in `CodeCoverage.Library`. Tests in
+`CodeCoverage.Tests/Dependencies/Policy` (the S12 reports copied to `Fixtures/Dependencies/renovate` with their
+`SOURCE.md`). Decisions taken while building them (assistant, within R1–R19, D-S12*, D-C*, gap E):
+
+- **D-P1. The Renovate-report mapping exists in C# only as a test helper** (`RenovateReportMapper`, a port of the runner's
+  `mapReport()`). The bot reads only contract records (R1); the port lets the policy tests run on the real S12 reports and is
+  pinned to the runner by a test: for the five reports the runner turned into `lookup.*.json` fixtures, both give identical
+  records.
+- **D-P2. The DTOs live in `CodeCoverage.Git`, the schema validation in the app.** The writer maps its
+  `DependencyPlanEntry` from the contract `PlanItem` (D-V8 resolved), so both sides read one plan type; JsonSchema.Net stays
+  out of the sidecars. Every runner document is validated against the embedded `contracts/dependency-update` schemas before
+  it is deserialized (errors are data); every plan the bot writes is validated too, and an invalid one throws (a bot bug,
+  never committed).
+- **D-P3. Thresholds** (R6): built-in `default: minor`, so majors wait for an approval. The most specific matching
+  `autoMerge` glob wins (literal characters; an exact name beats a glob); the file's globs beat the built-ins; a built-in
+  (`@angular/*: never`, `actions/*: minor`) and the ecosystem defaults (`github-actions` and `platform:*` stop at minor,
+  R15/R7) only ever *lower* the file's default. `allowMajor: true` raises inclusion only: the major is planned without an
+  approval but never auto-merges. Because R6 makes the threshold also the inclusion gate, `@angular/*: never` means every
+  Angular update, patches included, waits for `approve` (it moves with migrations, R9).
+- **D-P4. The account rule's `pin <range>` became `MaxUpdate`** (never/patch/minor/major): a range cannot be read without
+  parsing versions (R1). An enforced rule caps the threshold, `allowMajor` and any approval (an update above it is "above the
+  account rule", never "awaiting approval"); an enforced `ignore` cannot be undone. A non-enforced rule applies only when no
+  file glob or rule names the dependency. Its `Group` applies when the file sets none.
+- **D-P5. A digest update without a `newVersion`** (S12: `python:3.11-slim` re-pushed) is planned at the record's current
+  version, which a digest update keeps by definition; any other missing version stays an R1 hold. The identity token of a
+  digest update is its digest (first-seen, hold snapshots), so each re-push gets its own cooldown.
+- **D-P6. Selection per group, by level.** The engine tries the levels present from major down. At each, every member takes
+  its best problem-free candidate within the level; the group passes only if no member is stopped (R1 marker, rollback or
+  replacement, no current value, fleet-red, file/human/comment hold), it is under the enforced ceiling, within its inclusion
+  threshold or approved, and old enough. The cooldown falls back, member by member, to an older candidate of the same level.
+  Reasons are reported in that precedence (held > above ceiling > awaiting approval > cooldown), so an over-threshold update
+  shows as awaiting approval even while it is still cooling down (with its `Until`). Every level above the planned one is
+  reported, so the PR body lists the waiting major next to the shipped minor.
+- **D-P7. The group key:** a configured group (file rule, then account rule) beats the lookup's candidate `groupName`, then
+  the record's, then the dependency name; one dependency in several package files is one group (§5.1 #8).
+- **D-P8. Holds.** R2 "a newer version of a blocker" = a version token for that blocker the lookup did not show when the
+  hold was taken (tokens are compared, never ordered). A `failed` group, or an `unresolvable` one with no attributed blocker,
+  is an *unattributed* hold that lifts on any change of the lookup fingerprint. "Always after 4 slots" counts scheduled slots
+  only (`IsScheduledSlot`); an out-of-slot security run does not advance it. A human hold (Q11) lifts on any version token not
+  seen when it was taken (the bot's proposal included); a comment hold lifts only on `unhold`, which never removes a bot hold.
+- **D-P9. Approvals** (R6, gap E) are taken from the PR body's awaiting-approval entries for the group: its sorted dependency
+  names, `depName@major` per dependency (the R17 leading segment, `0.x` for zero majors) and the base `coverage.yml` blob. An
+  approval stays valid while the group still offers exactly that (a hold on the group does not expire it) and expires on a
+  newer major, a membership change or another blob. The role check (write+, `created` comments, again at apply) is N6's.
+- **D-P10. Plan order** (D-C2): security fixes first, then by level (patch first, so the safest groups land before a riskier
+  one can be reset), then by group name (ordinal); platform groups last, because they move the TFM under everything else.
+- **D-P11. A digest is planned only where one is pinned today** (`currentDigest`): npm's `newDigest` is an integrity hash,
+  and planning it would make the validators' lockfile-only test (`CurrentDigest == NewDigest`) fail.
+- **D-P12. Lockfile-only updates** (Renovate `isLockfileUpdate`, value unchanged) are planned when the record has a lock
+  file, and skipped silently when it has none (nothing to apply). `lockFileMaintenance` (D-S12e) is parsed but produces no
+  record: it is an input of the lookup template (N5), not of the policy.
+- **D-P13. The file's `cooldown` may only lengthen the owner's** (a cooldown is a supply-chain control); its `schedule` parts
+  override the settings' slot. A section with any error falls back to the defaults and keeps only a valid `enabled: false`.
+- **D-P14. State documents are loaded by id, never queried:** `DependencyUpdateStates/{provider}/{id}` per repository
+  (first-seen times capped at 5000, holds, approvals, slot count) and `DependencyFleetStates/{provider}/{id}` per account
+  (red versions, confirmed own releases; capped at 2000 each). A version red in the repository itself is not a fleet hold
+  there: R2 and the bisect own that case. Own-release confirmation (gap E's three-way check) is N7's; the policy trusts only
+  what is recorded.
+- **D-P15. A security fix still respects the thresholds** (R10 skips schedule and cooldown, not R6): a major fix waits for an
+  approval, flagged as security. A security run plans only the fixes' groups and groups that may auto-merge anyway; the rest
+  are listed as left for the next slot.
+- **D-P16. Settings.** The account also carries `DependencyTimeZone` (IANA, UTC; an unknown id reads as UTC), because the
+  slot hour needs one. A repository overrides the schedule as one unit (`DependencySchedulePolicy` Inherit/Override, like
+  `MergeQueueCheckExclusionsPolicy`). Every zero value is the default, so reading needs no migration;
+  `M_202610161200_BackfillDependencyUpdateSettings` writes the defaults onto old documents only so the N5 scheduler can query
+  them (an absent field matches nothing in RQL).
+- **D-P17. The S3 replay's golden plans were derived by hand** from this repository's real report (2026-10-15T19:17Z, three
+  days' cooldown, built-in thresholds), not by running the engine: at capture time only the five groups released before
+  2026-10-12T19:17Z ship (`@types/node` lockfile, `JsonSchema.Net` 9.4.1, `Microsoft.CodeAnalysis` 5.9.0 ×3,
+  `boky/postfix` 4.4.0, RavenDB 7.2.3); a week later 27 groups ship and 15 wait for approval (12 `@angular/*`, `typescript`,
+  and the `@types/node` and `postfix` majors). Re-derive them when the fixture is re-captured.
+- **D-P18. Platform records:** the target is the first candidate channel (the runner lists them highest first) that is not a
+  preview, or any when the repository already is on one; its level is the R17 floor on the channel strings (`10.0 → 11.0`
+  major, `3.11 → 3.15` minor). A platform major never auto-merges, even when the file admits it; `platform:*` defaults to
+  minor, so a major waits for `approve platform:<sdk> <channel>`. Computed locations are reported; a platform whose every
+  location is computed is not planned.
