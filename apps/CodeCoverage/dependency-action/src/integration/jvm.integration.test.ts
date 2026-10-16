@@ -14,6 +14,7 @@ describe.skipIf(!enabled('jvm', 'mvn'))('Maven against a file:// repository', ()
   beforeAll(() => mavenRepo(repo, [
     { group: 'com.acme', artifact: 'liba', version: '1.0.0' }, { group: 'com.acme', artifact: 'liba', version: '1.1.0' },
   ]));
+  // Not `local`: Maven 3.10 reserves that id for the local repository and refuses to build the POM.
   const pom = (prop: string, inline: string) => `<?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0">
   <modelVersion>4.0.0</modelVersion>
@@ -21,7 +22,7 @@ describe.skipIf(!enabled('jvm', 'mvn'))('Maven against a file:// repository', ()
   <properties>
     <liba.version>${prop}</liba.version>   <!-- shared -->
   </properties>
-  <repositories><repository><id>local</id><url>${pathToFileURL(repo).href}</url></repository></repositories>
+  <repositories><repository><id>it-file-repo</id><url>${pathToFileURL(repo).href}</url></repository></repositories>
   <dependencies>
     <dependency><groupId>com.acme</groupId><artifactId>liba</artifactId><version>\${liba.version}</version></dependency>
   </dependencies>
