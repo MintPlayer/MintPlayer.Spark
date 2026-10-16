@@ -1102,3 +1102,32 @@ Method: a local registry or feed per ecosystem holding a malicious-by-design pac
 - **D-C1.** The lookup template extends Renovate's `group:monorepos` + `group:recommended`. Records carry `groupName`, and the bot plans per group, so related packages (`@angular/*`, `nx` + `@nx/*`) always move together. A record without a `groupName` is a group of its own.
 - **D-C2.** Pin/relock runs with **strict peer checking** wherever the tool has it (npm `--strict-peer-deps`, pnpm `strict-peer-dependencies=true`). A peer mismatch is then a blocker, never a warning: S14 captured npm's "overriding peer dependency" *warning* form, which otherwise writes a lockfile that later fails. Groups are applied in order, each on top of the previous ones. A conflicting group is reset and held (R2), so the remaining set is always one the resolver accepted together.
 - **D-C3.** After the last group, a **whole-tree consistency check** runs per ecosystem: `npm ci --ignore-scripts --dry-run`, `pnpm install --frozen-lockfile --ignore-scripts --lockfile-only`, `yarn install --immutable --mode=skip-build`, `dotnet restore --locked-mode`, `uv lock --check`, `composer validate` + `install --dry-run --no-scripts --no-plugins`, `cargo metadata --locked`, `go mod verify`. If it fails, the apply bisects over the groups instead of shipping. The PR's CI is the final gate (§7.4).
+
+#### Bot-side validators (2026-10-16, gaps A–C, R14, R15, R18)
+
+Built in `CodeCoverage.GitWriter/Jobs/Dependencies` (`DependencyPatchValidator`, `LockfileScanner`, `WorkflowRefPatchRule`,
+`MigratePatchValidator`, `PlanCommitRule`) and `CodeCoverage.Git/MergeQueue/Resolution` (`YamlValidator`,
+`GitHubWorkflowValidator`, both also nameable by merge-queue rules). Tests run the real S13 apply captures, the S17 migrate
+patches and the S12 `action.yml` pairs (copied into the test projects with their `SOURCE.md`). Decisions taken while
+building them (assistant, within the accepted gaps):
+
+- **D-V1. A tag-pinned `uses:` line may take the planned tag or the bot's SHA; a SHA-pinned line only the bot's SHA.**
+  Evidence: the S13 actions capture bumps `setup-node@v4.0.0 → @v4.0.2` (tag to tag) beside a SHA bump. Forcing every
+  line to a SHA would rewrite the repository's pinning style; a moved tag is still caught on SHA-pinned lines (#10).
+- **D-V2. The substitution check's "line naming the dependency"** is the line itself or up to 3 old-side lines above it,
+  naming the depName, packageName, their last `/`/`:` segment or `sharedVariableName`. Evidence: S13 Maven inline
+  (`<version>` under `<artifactId>guava`), Maven property (`<jackson.version>`), dotnet-tools (`"version"` under
+  `"dotnet-ef"`). `global.json`'s `msbuild-sdks` lines are refused outright, because the `sdk.version` line names
+  `"version"` too.
+- **D-V3. A lockfile belongs to a package file in its directory or an ancestor** (workspace roots), and
+  `Directory.Packages.props` also owns the lockfiles below it (CPM). Each changed lockfile needs an applied owner.
+- **D-V4. The deny-list also holds** `setup.py`, `build.rs`, Gradle settings/init scripts/properties, the Gradle and Maven
+  wrapper properties and the `.mvn`/`.yarn`/`.husky` directories, so wrapper updates are never applied by this profile.
+- **D-V5. Groups are derived from the patch and must be whole** (`partial-group`), and must equal `result.json`'s claim
+  in both directions (`group-mismatch`). A lockfile-only record (`currentValue == newValue`) counts as applied when one of
+  its lockfiles changed.
+- **D-V6. The `migrate` profile also refuses** what the writer never writes (`.git` components, `.gitmodules`,
+  `.gitattributes`, paths git would quote) and all of `.mintplayer/`.
+- **D-V7. Over the new-package cap (default 25) is `NeedsHuman`, a third outcome**, not a refusal.
+- **D-V8. The plan entry is a minimal record** (`DependencyPlanEntry`) until the contract DTO lands; the S13 NuGet CPM
+  capture is not a test fixture because its spike work tree no longer holds the captured base (blob ids differ).
