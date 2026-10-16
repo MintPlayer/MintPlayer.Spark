@@ -273,9 +273,12 @@ public static class DependencyCheckFailure
         bool build = false, test = false;
         foreach (var name in failingChecks)
         {
+            // Words, not substrings: "build (ubuntu-latest)" holds "test" inside "latest", and "contest" or "protest"
+            // would too. A word starts a token ("tests", "linter", "compiler"); a hyphenated word matches as written.
             var lower = name.ToLowerInvariant();
-            build |= BuildWords.Any(w => lower.Contains(w, StringComparison.Ordinal));
-            test |= TestWords.Any(w => lower.Contains(w, StringComparison.Ordinal));
+            var tokens = lower.Split(NonWord, StringSplitOptions.RemoveEmptyEntries);
+            build |= BuildWords.Any(w => Matches(lower, tokens, w));
+            test |= TestWords.Any(w => Matches(lower, tokens, w));
         }
         return (build, test) switch
         {
@@ -285,6 +288,13 @@ public static class DependencyCheckFailure
             _ => ECheckFailureKind.Unknown,
         };
     }
+
+    private static readonly char[] NonWord = [.. Enumerable.Range(0, 128).Select(c => (char)c).Where(c => !char.IsAsciiLetterOrDigit(c))];
+
+    private static bool Matches(string lower, string[] tokens, string word)
+        => word.Contains('-')
+            ? lower.Contains(word, StringComparison.Ordinal)
+            : tokens.Any(t => t.StartsWith(word, StringComparison.Ordinal));
 
     /// <summary>A few words for the pull request comment; empty when the names say nothing.</summary>
     public static string Describe(ECheckFailureKind kind) => kind switch
