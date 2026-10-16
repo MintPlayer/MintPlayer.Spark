@@ -185,9 +185,17 @@ public class DependenciesYmlTests
             DependencyScheduleHour = 3,
         };
 
-        Repository.ResolveDependencySchedule(new Repository(), null).Should().Be((new DependencySchedule(EDependencyScheduleFrequency.Weekly, EDependencyWeekday.Monday, 6, "UTC"), "default"));
-        Repository.ResolveDependencySchedule(new Repository(), account).Should().Be((new DependencySchedule(EDependencyScheduleFrequency.Daily, EDependencyWeekday.Monday, 22, "Europe/Brussels"), "organization"));
-        Repository.ResolveDependencySchedule(own, account).Should().Be((new DependencySchedule(EDependencyScheduleFrequency.Monthly, EDependencyWeekday.Sunday, 3, "Europe/Brussels"), "repository"));
+        // Compared part by part: a (record, string) tuple resolves to the comparable assertions, and ValueTuple.CompareTo
+        // throws for a record that is not IComparable.
+        var byDefault = Repository.ResolveDependencySchedule(new Repository(), null);
+        byDefault.Schedule.Should().Be(new DependencySchedule(EDependencyScheduleFrequency.Weekly, EDependencyWeekday.Monday, 6, "UTC"));
+        byDefault.Source.Should().Be("default");
+        var byAccount = Repository.ResolveDependencySchedule(new Repository(), account);
+        byAccount.Schedule.Should().Be(new DependencySchedule(EDependencyScheduleFrequency.Daily, EDependencyWeekday.Monday, 22, "Europe/Brussels"));
+        byAccount.Source.Should().Be("organization");
+        var byRepository = Repository.ResolveDependencySchedule(own, account);
+        byRepository.Schedule.Should().Be(new DependencySchedule(EDependencyScheduleFrequency.Monthly, EDependencyWeekday.Sunday, 3, "Europe/Brussels"));
+        byRepository.Source.Should().Be("repository");
         Repository.ResolveDependencySchedule(own, new Account { DependencyScheduleHour = 99 }).Schedule.Hour.Should().Be(3);
         Repository.ResolveDependencySchedule(new Repository(), new Account { DependencyScheduleHour = 99 }).Schedule.Hour.Should().Be(6, "an hour outside 0-23 is read as the default");
 

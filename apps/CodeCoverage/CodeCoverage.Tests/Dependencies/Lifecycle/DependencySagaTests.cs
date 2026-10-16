@@ -304,6 +304,8 @@ public class DependencySagaTests : CoverageRavenTest
         });
         h.Writer.Script("work-ref", new GitWriterDependencyResult(GitWriterOutcomes.Pushed, null, h.Writer.PlanCommitSha, null, [], null, 5));
         h.Writer.Script("work-ref", new GitWriterDependencyResult(GitWriterOutcomes.Pushed, null, relockPlanCommit, null, [], null, 5));
+        // The relock run is dispatched on the relock plan commit, so its apply workflow's provenance is checked there too.
+        h.Queue.Blobs[$"{relockPlanCommit}:.github/workflows/dependency-apply.yml"] = "blob-dependency-apply.yml";
 
         await h.RunToApplyAsync(Chalk());
         // The relock run is dispatched after the apply (the lookup and the apply took the dispatches queued before).

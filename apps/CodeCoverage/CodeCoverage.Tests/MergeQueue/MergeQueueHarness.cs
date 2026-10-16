@@ -53,7 +53,9 @@ internal sealed class MergeQueueHarness
 
     /// <summary>The setup guide's regenerate workflow in its essentials (§5.6): dispatch only, <c>contents: read</c>, no
     /// secret, a GitHub-hosted runner. The fork precondition passes it (§0 D65).</summary>
-    public const string SafeRegenerate = """
+    /// <remarks>LF whatever the checkout: a raw literal takes the source file's line endings, and the fork-guard theories
+    /// edit it by "\n"-terminated lines, which a Windows (autocrlf) checkout turned into no-ops.</remarks>
+    public static readonly string SafeRegenerate = """
         name: regenerate
         on:
           workflow_dispatch:
@@ -70,7 +72,7 @@ internal sealed class MergeQueueHarness
                 with:
                   ref: ${{ github.sha }}
                   persist-credentials: false
-        """;
+        """.ReplaceLineEndings("\n");
 
     private readonly IDocumentStore store;
 
