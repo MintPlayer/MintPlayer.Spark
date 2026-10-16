@@ -13,7 +13,7 @@ empty body, so this document is its design. App: `apps/CodeCoverage` (**producti
 | **M3 dependency graph (§6) + an Account-page graph card** | ✅ in PR #501 (owner: "just that, nothing more"); the owner judged the card "perfect" in the browser, 2026-10-09 |
 | Spikes S1–S11 (§10) | ⏸ **postponed**, possibly never; owner, 2026-10-09: "we'll see" |
 | Every other milestone (§11: M1, M2, M4–M11) | ⏸ **postponed**, possibly never. Nothing beyond M3 is built |
-| **Restart (§13):** a generic engine on the merge queue's workflow-hook pattern (#515/#517) | ✅ investigated + **grilled 2026-10-15 (R1–R17, §13.10 + §13.11.4); test plan §13.11**. Next: spikes S12–S18, then N1–N9 |
+| **Restart (§13):** a generic engine on the merge queue's workflow-hook pattern (#515/#517) | ✅ investigated + **grilled 2026-10-15 (R1–R19, §13.10 + §13.11.4 + §13.12); test plan §13.11; spikes S12/S13/S14/S17 done (§13.12)**. Next: N1–N9 implementation; S18 after deploy |
 
 The rest of this document (§1–§12) is the plan as grilled on 2026-10-09. **§13 (2026-10-15) proposes replacing
 §7.1, most of §5 and §10–§11.** Where §13 and §1–§12 disagree, §13 is the proposal under discussion and the older
@@ -950,3 +950,150 @@ Known costs:
 Gaps A, B, C and E are accepted as design amendments: they tighten R1, R12 and R15 without reversing them.
 
 **Residual risk, stated plainly:** once a malicious version is planned, the PR's CI installs it **with secrets**. The cooldown and fleet holds reduce that risk, and no validator removes it.
+
+### 13.12 Spike results (2026-10-15/16) and the decisions they forced
+
+S12, S13, S14 and S17 ran locally (Docker for the missing toolchains). S15 and S19 are implementation work (N1, N3). S18 needs the deployed bot. Captured fixtures are copied into the test projects by N3/N4 with their `SOURCE.md`.
+
+**Owner decisions from the spikes:**
+
+| # | Decision | Rejected | Evidence / reason |
+|---|---|---|---|
+| R18 | **The migrate patch uses a deny-list only:** `.github/**`, `coverage.yml`, symlinks, mode changes, executable files. Everything else may change, including `tsconfig*.json`, `angular.json`, `nx.json`, `project.json`, `package.json` and the lockfile. **Refines R9.** There is no extra "review these" block | a defined allow-list; keep "build files refused" | owner: "it's kinda hard to let dependency-updates that require migration steps work across all ecosystems", and "any third-party nuget package can suddenly decide to ship an auto-loaded targets file, so if you'd be worried about malicious code, we shouldn't even update the package version at all". S17: real Angular 21→22 and Nx 22→23 migrations touched tsconfig, angular.json, nx.json, .gitignore, package.json + lock and tools/*.ts, and none touched `.github`/`coverage.yml` |
+| R19 | **`nx migrate --include=all`.** Its extra dependency bumps (S17: typescript 5.9.2 → 6.0.3) ride along in the migrated group. They are listed in the PR body, and the lockfile is regenerated with scripts off. If an extra bump hits a bot hold (fleet-red, enforced rule), the PR gets a blocking note "held version introduced by migration" | `--include=required` (loses the TS6 tsconfig migrations, 9 → 7); re-planning extra bumps as their own groups | owner |
+
+**Residual risk, restated (owner, 2026-10-16):** the validators stop the *runner* from changing anything beyond the plan. They cannot make a *planned* package safe: any updated package can bring code that CI runs (NuGet `build/*.targets`, npm scripts in CI's own install). Only the cooldown, fleet holds and human review of majors address that.
+
+#### S12: Renovate lookup ✅ (2026-10-15)
+
+**Engine:** `renovate/renovate:44.125.2` @ `sha256:a7dec3432d62b39872058424f0490829413b3f597f5d72fb41b9b7bd57ccac77`, run as `--platform=local --dry-run=lookup --binary-source=install --report-type=file`. Fixtures: 14 samples plus this repo (scratchpad `spikes/s12/fixtures/renovate`, to be copied into the test projects).
+
+**Shape:** `repositories.local.packageFiles[manager][] → {packageFile, lockFiles?, deps[]}`.
+- Each dep: `depName`, `packageName`, `datasource`, `versioning`, `currentValue`, `currentVersion`, `lockedVersion?`, `currentDigest?`, `skipReason?`, `updates[]`.
+- Each update: `updateType` (major/minor/patch/digest), `newValue`, `newVersion`, `newDigest?`, `releaseTimestamp?`, `isBreaking`, `isLockfileUpdate?`.
+
+**`releaseTimestamp`:** present for npm, nuget, maven, gradle, cargo, go, pypi, composer, rubygems, Actions tags, dotnet-version, node-version and rust. **Missing** for most Docker tags (1 of 9), setup-java, `.python-version` and `runs-on`.
+
+**Lookup executes no repo code** for any tested manager: gradle(+wrapper), maven(+wrapper), npm with `.npmrc`, gomod, cargo, pep621, poetry, pip_setup, pip_requirements, composer, bundler, nuget, dockerfile, github-actions, asdf/nvm/nodenv/pyenv, and this repo.
+- ~35 planted hooks produced 0 sentinels.
+- The positive control fired inside the same image.
+- `util/exec` is imported only by the artifact and post-update paths.
+- So the R17 guard-2 list is **empty**. Re-run the sentinel test on every digest bump; this becomes a test.
+
+**Parser facts:**
+- Only one candidate per bucket unless the `separate*` options are set.
+- 0.x breaks are labelled `minor` (confirms the R17 floor).
+- npm `newDigest` is an integrity hash, not a version.
+- Go pseudo-versions come back as `digest` updates.
+- ubuntu has `newVersion: "resolute"`.
+- An SDK rc.1→rc.2 is labelled `patch`.
+- The manager name ≠ the tool (pyproject without `uv.lock` → `poetry`).
+- **The TFM is not represented.** `.mvn/extensions.xml` and `[tool.uv] dev-dependencies` are silently dropped.
+
+**Actions:** majors are reported, with SHA pins (`currentDigest`/`newDigest`). `action.yml` is fetched via `gh api … contents/action.yml?ref=`, falling back to `action.yaml`. In the real pairs (checkout v4/v5, upload-artifact v3/v4, setup-node v4/v5) **no input or output was removed**; only the node runtime changed and inputs were added. upload-artifact v4's real break is invisible in `action.yml`, so the interface diff is necessary but not sufficient. That is why majors stay over-threshold (R15).
+
+**Runtime:** 17–50 s per sample; this repo 187 s (504 deps), plus about 30–60 s to pull the image. **One lookup ≈ 3.5–4 runner-min**, so the §13.3 estimate was low.
+
+**Decisions taken from S12** (assistant; technical, within R1–R17):
+- **D-S12a.** A missing `releaseTimestamp` → the cooldown counts from the **bot's first-seen time**, which is never earlier than the real release, so it is conservative. This refines R1's "missing → hold", which would hold Docker updates forever.
+- **D-S12b.** The lookup template sets `separateMultipleMajor`, `separateMinorPatch` and `separateMultipleMinor`, so holds and cooldown have fallback candidates.
+- **D-S12c.** The TFM stays **adapter-only** (R7). The action's platform step emits the platform records from `releases-index.json`/endoflife.date. Docker tags of platform images (mcr dotnet/node/python) are grouped under their platform record, which owns the preview rule.
+- **D-S12d.** Apply adapters are keyed on `datasource` + `lockFiles`, never on `manager`.
+- **D-S12e.** Lockfile-only refresh (transitive updates without a manifest change) is an **opt-in** `dependencies.lockFileMaintenance: true` step, default off. It widens the transitive change surface, which gap B's new-package cap then bounds.
+
+#### S13: apply engines ✅ (2026-10-15)
+
+16 cases across 15 ecosystems. Fixtures in scratchpad `spikes/s13/fixtures/apply/<eco>/*.diff` with `SOURCE.md`.
+
+**Result:** **text-edit + an ecosystem pin/lock step, for every ecosystem.** With the pin step, all 16 cases were *pure* (only the version token on the dep's own line changed) and *exact* (the lockfile holds exactly the planned version).
+- **Native commands break gap A in JS and .NET.** npm and pnpm re-sort dependencies, `yarn up` drops the `^`, and `dotnet add package` / `tool update` reformat the XML/JSON; under CPM it rewrote the whole props file. Python, Composer, the Maven versions plugin and `go get` stayed pure.
+- **Text-edit plus plain relock is not exact for ranges.** npm, pnpm and yarn locked `^4.19.2` → 4.22.3, and Cargo re-resolved to 1.0.229. Every adapter therefore has a **pin** step:
+  - npm: `i name@ver --package-lock-only --ignore-scripts`, then restore the manifest and relock.
+  - pnpm: `update name@ver --lockfile-only`.
+  - yarn: `set resolution`.
+  - cargo: `update -p --precise` **before** the edit.
+  - uv: `lock --upgrade-package n==v`.
+  - composer: `update n --with n:v --no-install --no-scripts --no-plugins`.
+- **A failed restore can still write the lockfile** (NuGet rewrote packages.lock.json on NU1605). So R2's reset must restore the group's files explicitly.
+- **Structured blockers** exist only for NuGet (`project.assets.json` `logs[]` with code + libraryId), pnpm (`--reporter=ndjson`) and yarn (`--json` YN codes). npm is semi-structured (`--json` code `ERESOLVE`, prose detail). The rest are regex over prose, built on the fixtures, plus R2's "nothing parsed" fallback.
+- **Gradle exits 0 while printing `FAILED`**, so it needs output scanning, not just the exit code.
+- **Composer ≥2.9** blocks versions that have advisories (`policy.advisories.block`), so an old repo can fail to lock.
+- **Criterion 2 can't be met everywhere:**
+  - Gradle evaluates `*.gradle.kts` on every run.
+  - Maven loads plugins and extensions.
+  - NuGet restore runs MSBuild evaluation (repo code; S14).
+  - npm, pnpm and yarn run with scripts off; Cargo resolve doesn't run `build.rs`.
+- **Timings:** 1–15 s per ecosystem, except Gradle at 40–126 s.
+- **Size:** about 1,100–1,300 LOC of TypeScript. That is a ~200 LOC shared core (unique-match line edit, EOL and BOM byte-preserving, refuse on 0 or more than 1 match) plus 20–110 LOC per adapter.
+
+**Dependabot CLI v1.95.0 (fallback B).**
+- `--local <dir>` works without a token: 154 s including a 2.17 GB image.
+- An ignore-condition forced the exact version, and the result was pure and exact.
+- **`dependencies: [x]` did not restrict the job**: it also emitted unrelated majors.
+- Its output is YAML events with whole file contents.
+- **It is not needed.** It internally runs the same text-edit + pin strategy as our npm adapter.
+
+**Decisions taken from S13** (assistant; within R13, where native is the tie-breaker):
+- **D-S13a.** Every adapter is `edit() → pin() → relock() → verify() → parseBlockers()`, and **resets the group's files on any failure**.
+- **D-S13b.** There is no Dependabot CLI fallback. R13's per-ecosystem choice resolves to native text-edit + pin everywhere.
+- **D-S13c.** Golden-diff tests use **range manifests with old lockfiles** (exact-pin samples hide the latest-satisfying trap).
+- **D-S13d.** Gradle and Maven apply jobs are treated as executing repo code: no secrets, under T5. This holds regardless of S14.
+
+#### S14: does lockfile regeneration run package code? ✅ (2026-10-15)
+
+Method: a local registry or feed per ecosystem holding a malicious-by-design package whose hook writes a sentinel. Networked tools ran in Docker with `--network none`. Resolver-error fixtures are in scratchpad `spikes/s14/fixtures/resolver-errors/<eco>/`. Full table: `spikes/s14/FINDINGS.md`.
+
+| Ecosystem | Safest command | Package code runs? | What stops it |
+|---|---|---|---|
+| npm | `--ignore-scripts --package-lock-only` | no (the default `npm install` fired 3 hooks) | either flag |
+| pnpm 9/10 | `--lockfile-only --ignore-scripts` | no (v10 also blocks by default) | either flag |
+| yarn 4 | `--mode=update-lockfile` | no | the mode |
+| NuGet | restore only | **no on restore**; its `build/*.targets` fire on the **next build** (`buildTransitive` too) | no switch exists: **never build** in the apply job |
+| uv | `uv lock --upgrade-package` | **yes, for sdist-only packages** (`setup.py` runs) | `--no-build` (fails when a package has no wheel) |
+| Composer | `--no-scripts --no-plugins` | no; `--no-scripts` **alone still ran the plugin** | `--no-plugins` |
+| Cargo | `update -p --precise` | no (`build.rs` only runs on build) | don't build |
+| Go | `go get` / `go mod tidy` | no (even `go build` runs no module code) | — |
+| Maven | `versions:use-dep-version` | no | — |
+| Gradle | `--write-locks` | the dependency doesn't run, but **the repo's `build.gradle` does** (configuration phase), and so would a dependency that is itself a build plugin | — |
+
+`dotnet package update` picked the latest version and not `--version`. That confirms D-S13a: edit the csproj, then restore.
+
+**Decisions taken from S14** (assistant; within R12/R13 and gap A):
+- **D-S14a. The apply job never builds.** There is no `verify` stage in apply; the PR's own CI is the verify. This makes NuGet restore-only safe, and it means §13.3's "optionally `verify`" is removed.
+- **D-S14b. Feed secrets enter the apply job only for ecosystems on a code-defined safe list:** npm, pnpm, yarn, NuGet (restore only), Composer, Cargo, Go and Maven. **uv** gets `--no-build` whenever feed secrets are present. Without secrets it may build sdists, because that job holds nothing worth stealing and its output is still bounded by the gap A/B validators. **Gradle** never gets feed secrets: the repo's build script and any plugin dependency run.
+- **D-S14c.** Composer always runs with **both** `--no-scripts --no-plugins`.
+
+#### S17: migrations hook ✅ locally (2026-10-15; the dispatched half is in S18)
+
+**Verdict:** works for Angular 21→22 and Nx 22.7.12→23.3.0. Fixtures are in scratchpad `spikes/s17/fixtures/migrate`.
+
+**Template conditions (all verified):**
+1. **Install first:** `npm ci --ignore-scripts` (181 s Angular, 77 s Nx). Without it, `ng update` exits 1 with ELSPROBLEMS.
+2. **Nx needs `--from`.** After our apply, plain `nx migrate <new>` is a **silent exit-0 no-op**, which reproduces nx#23505. Use `nx migrate <new> --from=nx@<old>,@nx/js@<old> --agentic=false`, then `npm install --ignore-scripts`, then `nx migrate --run-migrations --agentic=false`.
+3. **Angular:**
+   - Set `NG_DISABLE_VERSION_CHECK=1` and use the local binary (`npx --no-install ng`); otherwise it fetches a temporary `latest` CLI.
+   - Run one package per `--migrate-only` run, with `--allow-dirty` from the second package on.
+   - Re-running is idempotent.
+4. **Job env:** `npm_config_ignore_scripts=true NG_CLI_ANALYTICS=false NX_DAEMON=false NX_NO_CLOUD=true`.
+5. **Migrations execute package code by design.** The job therefore has `contents: read` and no secrets.
+
+**Exit 0 ≠ the result builds.** The Angular 22 core migrations on an app without `strictTemplates` produced NG4003 on `ng build`. The migrated Nx tree built green. That confirms never auto-merge, with the PR's CI as the real gate.
+
+**Partial migration:** both tools exit 1 and leave the earlier edits on disk, so the partial patch looks valid. Nx says "Run halted at migration 3 of 7". Detection:
+1. `set -euo pipefail`.
+2. Upload only `if: success()`.
+3. A completion marker, `migrate-result.json`, written as the last step.
+4. The bot requires `conclusion == success` **and** the marker, else it drops the group.
+
+**Paths real migrations touch:**
+- Angular core: `src/**/*.ts`, `tsconfig.app.json`.
+- The Angular cli schematic ran its own install, giving `package.json` + lockfile changes. Its `update-workspace-config` migration edits `angular.json`.
+- Nx 23: `nx.json` (reformatted whole), `.gitignore`, `tsconfig.base.json`, `libs/*/tsconfig.lib.json`, `tools/*.ts`, `package.json` + lockfile.
+- Earlier Nx migrations have also touched `project.json` and `.nx/nxw.js` (a script).
+- None touched `.github/**` or `coverage.yml`.
+
+**This conflicts with R9's "build files refused"** if that includes tsconfig, angular.json, nx.json, project.json or package.json (owner question S17-Q1).
+
+**Nx `--include=all`** (the default) adds its `packageJsonUpdates`: typescript `~5.9.2` → `6.0.3`, a bump outside the group. `--include=required` avoids that, but drops the TS6 tsconfig migrations (9 → 7), which would then never run (owner question S17-Q2).
+
+**Timings:** `ng update` core 38 s, cli 7 s; `nx migrate --from` 98 s; `--run-migrations` 49 s; lock regeneration 19–35 s.
