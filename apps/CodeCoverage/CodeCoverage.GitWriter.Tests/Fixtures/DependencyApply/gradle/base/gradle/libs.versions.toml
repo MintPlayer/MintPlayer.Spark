@@ -1,0 +1,6 @@
+[versions]
+jackson = "2.15.2"   # json
+
+[libraries]
+guava = { module = "com.google.guava:guava", version = "32.1.2-jre" }
+jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jackson" }

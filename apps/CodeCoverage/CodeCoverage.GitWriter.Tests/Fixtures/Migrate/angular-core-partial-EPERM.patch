@@ -1,0 +1,36 @@
+diff --git a/src/app/app.ts b/src/app/app.ts
+index cb20752..9f16f06 100644
+--- a/src/app/app.ts
++++ b/src/app/app.ts
+@@ -1,4 +1,4 @@
+-import { Component, signal } from '@angular/core';
++import { Component, signal, ChangeDetectionStrategy } from '@angular/core';
+ import { RouterOutlet } from '@angular/router';
+ import { UserCard } from './user-card';
+ 
+@@ -10,6 +10,7 @@ import { UserCard } from './user-card';
+ 
+     <router-outlet />
+   `,
++  changeDetection: ChangeDetectionStrategy.Eager,
+   styles: [],
+ })
+ export class App {
+diff --git a/src/app/user-card.ts b/src/app/user-card.ts
+index b77783e..e5016b5 100644
+--- a/src/app/user-card.ts
++++ b/src/app/user-card.ts
+@@ -1,4 +1,4 @@
+-import { Component, Input } from '@angular/core';
++import { Component, Input, ChangeDetectionStrategy } from '@angular/core';
+ 
+ export interface User {
+   name: string;
+@@ -7,6 +7,7 @@ export interface User {
+ 
+ @Component({
+   selector: 'app-user-card',
++  changeDetection: ChangeDetectionStrategy.Eager,
+   template: `
+     <p>{{ user?.name }}</p>
+     <p>{{ user?.address?.city ?? 'unknown' }}</p>

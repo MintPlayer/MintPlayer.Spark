@@ -34,9 +34,21 @@ public static class SubstitutionCheck
         var used = new List<Swap>();
         if (!Search(old, @new, 0, MaxSwapsPerLine, swaps, used))
             return null;
-        var explained = used.Select(s => s.Entry).Distinct().ToList();
+        // Each swap the line used must belong to an entry the line (or the lines just above it) names; every such entry
+        // is explained, so two records sharing one Maven property or catalog version both count as applied.
         var context = new List<string>(linesAbove.TakeLast(AnchorLinesAbove)) { old, @new };
-        return explained.All(e => Anchors(e).Any(a => context.Any(l => l.Contains(a, StringComparison.OrdinalIgnoreCase)))) ? explained : null;
+        var explained = new List<DependencyPlanEntry>();
+        foreach (var swap in used)
+        {
+            var named = swaps.Where(s => s.From == swap.From && s.To == swap.To)
+                .Select(s => s.Entry)
+                .Where(e => Anchors(e).Any(a => context.Any(l => l.Contains(a, StringComparison.OrdinalIgnoreCase))))
+                .ToList();
+            if (named.Count == 0)
+                return null;
+            explained.AddRange(named);
+        }
+        return explained.Distinct().ToList();
     }
 
     /// <summary>Left-to-right, non-overlapping swaps; a swap is tried only at or before the first difference, so the

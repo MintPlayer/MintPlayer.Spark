@@ -65,7 +65,11 @@ public static class DependencyFiles
             return false;
         var lockDirectory = Directory(lockfile);
         var directory = Directory(packageFile);
-        return lockDirectory.Length == 0 || directory == lockDirectory || directory.StartsWith(lockDirectory + "/", StringComparison.Ordinal);
+        if (lockDirectory.Length == 0 || directory == lockDirectory || directory.StartsWith(lockDirectory + "/", StringComparison.Ordinal))
+            return true;
+        // Central package management: Directory.Packages.props versions every project below it, each with its own
+        // packages.lock.json beside it.
+        return FileName(packageFile) == "Directory.Packages.props" && (directory.Length == 0 || lockDirectory.StartsWith(directory + "/", StringComparison.Ordinal));
     }
 
     /// <summary>

@@ -1,0 +1,13 @@
+diff --git a/.config/dotnet-tools.json b/.config/dotnet-tools.json
+index bb1359d..5a82e53 100644
+--- a/.config/dotnet-tools.json
++++ b/.config/dotnet-tools.json
+@@ -3,7 +3,7 @@
+   "isRoot": true,
+   "tools": {
+     "dotnet-ef": {
+-      "version": "8.0.0",
++      "version": "8.0.1",
+       "commands": [ "dotnet-ef" ]
+     },
+     "dotnet-reportgenerator-globaltool": {

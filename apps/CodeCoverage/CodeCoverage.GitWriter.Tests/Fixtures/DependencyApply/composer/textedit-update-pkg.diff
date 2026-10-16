@@ -1,0 +1,65 @@
+diff --git a/composer.json b/composer.json
+index 67717f7..a29440a 100644
+--- a/composer.json
++++ b/composer.json
+@@ -2,7 +2,7 @@
+     "name": "s13/app",
+     "require": {
+         "psr/log": "^1.1",
+-        "monolog/monolog": "2.9.1",
++        "monolog/monolog": "2.9.2",
+         "guzzlehttp/guzzle": "^7.5"
+     },
+     "config": { "allow-plugins": false, "policy": { "advisories": { "block": false } } }
+diff --git a/composer.lock b/composer.lock
+index 624c787..4cec4ed 100644
+--- a/composer.lock
++++ b/composer.lock
+@@ -4,7 +4,7 @@
+         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
+         "This file is @generated automatically"
+     ],
+-    "content-hash": "89e6bd64b722ea76833400816bf66b54",
++    "content-hash": "2c7f8512d44a38fc465dad10bd7e97f3",
+     "packages": [
+         {
+             "name": "guzzlehttp/guzzle",
+@@ -334,16 +334,16 @@
+         },
+         {
+             "name": "monolog/monolog",
+-            "version": "2.9.1",
++            "version": "2.9.2",
+             "source": {
+                 "type": "git",
+                 "url": "https://github.com/Seldaek/monolog.git",
+-                "reference": "f259e2b15fb95494c83f52d3caad003bbf5ffaa1"
++                "reference": "437cb3628f4cf6042cc10ae97fc2b8472e48ca1f"
+             },
+             "dist": {
+                 "type": "zip",
+-                "url": "https://api.github.com/repos/Seldaek/monolog/zipball/f259e2b15fb95494c83f52d3caad003bbf5ffaa1",
+-                "reference": "f259e2b15fb95494c83f52d3caad003bbf5ffaa1",
++                "url": "https://api.github.com/repos/Seldaek/monolog/zipball/437cb3628f4cf6042cc10ae97fc2b8472e48ca1f",
++                "reference": "437cb3628f4cf6042cc10ae97fc2b8472e48ca1f",
+                 "shasum": ""
+             },
+             "require": {
+@@ -420,7 +420,7 @@
+             ],
+             "support": {
+                 "issues": "https://github.com/Seldaek/monolog/issues",
+-                "source": "https://github.com/Seldaek/monolog/tree/2.9.1"
++                "source": "https://github.com/Seldaek/monolog/tree/2.9.2"
+             },
+             "funding": [
+                 {
+@@ -432,7 +432,7 @@
+                     "type": "tidelift"
+                 }
+             ],
+-            "time": "2023-02-06T13:44:46+00:00"
++            "time": "2023-10-27T15:25:26+00:00"
+         },
+         {
+             "name": "psr/http-client",
