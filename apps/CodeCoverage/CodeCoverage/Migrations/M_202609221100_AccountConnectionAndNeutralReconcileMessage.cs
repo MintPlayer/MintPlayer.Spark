@@ -53,7 +53,7 @@ public partial class M_202609221100_AccountConnectionAndNeutralReconcileMessage 
         // ⚠️ `d.Connection === undefined` rather than a falsy test: the field is an enum serialised
         // as a string, and re-running this must not re-decide an account somebody has since
         // reconnected. Only documents that have never carried the field are touched.
-        var backfill = await store.Operations.SendAsync(new PatchByQueryOperation(new IndexQuery
+        var backfilled = await BulkOperation.RunAsync(store, new PatchByQueryOperation(new IndexQuery
         {
             Query = """
                 from Accounts as d update {
@@ -68,9 +68,7 @@ public partial class M_202609221100_AccountConnectionAndNeutralReconcileMessage 
                 """,
         },
         // Wait for the index rather than throw "Index is stale": a bulk operation on a stale index is refused outright.
-        new QueryOperationOptions { StaleTimeout = TimeSpan.FromMinutes(5) }), token: cancellationToken);
-
-        var backfilled = await backfill.WaitForCompletionAsync<BulkOperationResult>();
+        new QueryOperationOptions { StaleTimeout = TimeSpan.FromMinutes(5) }), cancellationToken);
         logger.LogInformation("Account.Connection backfilled: {Count} accounts scanned.", backfilled.Total);
 
         // The type name is assembly-qualified in SparkMessage.MessageType, so match on the simple
@@ -83,7 +81,7 @@ public partial class M_202609221100_AccountConnectionAndNeutralReconcileMessage 
         // startup, and retries forever. The indexing pipeline is also saturated at this moment: the
         // migration two versions earlier has just patched ~220,000 FileCoverages, and the Accounts
         // patch above ran three statements ago.
-        var drop = await store.Operations.SendAsync(new DeleteByQueryOperation(new IndexQuery
+        var dropped = await BulkOperation.RunAsync(store, new DeleteByQueryOperation(new IndexQuery
         {
             Query = """
                 from SparkMessages as d
@@ -93,9 +91,7 @@ public partial class M_202609221100_AccountConnectionAndNeutralReconcileMessage 
             WaitForNonStaleResultsTimeout = IndexCatchUpBudget,
         },
         // Wait for the index rather than throw "Index is stale": a bulk operation on a stale index is refused outright.
-        new QueryOperationOptions { StaleTimeout = TimeSpan.FromMinutes(5) }), token: cancellationToken);
-
-        var dropped = await drop.WaitForCompletionAsync<BulkOperationResult>();
+        new QueryOperationOptions { StaleTimeout = TimeSpan.FromMinutes(5) }), cancellationToken);
         if (dropped.Total > 0)
         {
             // ⚠️ Warning, because the queue was supposed to be empty. Finding one here means the

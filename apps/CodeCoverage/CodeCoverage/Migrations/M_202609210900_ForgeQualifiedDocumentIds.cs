@@ -246,9 +246,8 @@ public partial class M_202609210900_ForgeQualifiedDocumentIds : ISparkMigration
 
     private async Task PutAsync(string label, string script, CancellationToken cancellationToken)
     {
-        var operation = await store.Operations.SendAsync(
-            new PatchByQueryOperation(new IndexQuery { Query = script }, new QueryOperationOptions { StaleTimeout = IndexCatchUpBudget }), token: cancellationToken);
-        var result = await operation.WaitForCompletionAsync<BulkOperationResult>();
+        var result = await BulkOperation.RunAsync(store, 
+            new PatchByQueryOperation(new IndexQuery { Query = script }, new QueryOperationOptions { StaleTimeout = IndexCatchUpBudget }), cancellationToken);
         // ⚠️ "scanned", not "re-keyed". The script skips documents that already carry the segment,
         // but the operation still matched them, so a second run legitimately reports roughly double
         // the collection size. Reading this number as work done would make a correct idempotent
@@ -373,7 +372,7 @@ public partial class M_202609210900_ForgeQualifiedDocumentIds : ISparkMigration
                     + "usually means a field or collection name in its script does not match the data.");
             }
 
-            var operation = await store.Operations.SendAsync(new DeleteByQueryOperation(new IndexQuery
+            var result = await BulkOperation.RunAsync(store, new DeleteByQueryOperation(new IndexQuery
             {
                 // The prefixes are values, so parameters; only the collection is spliced (#264).
                 Query = $"from {RqlIdentifier.Collection(collection)} as d where startsWith(id(d), $legacy) "
@@ -390,8 +389,7 @@ public partial class M_202609210900_ForgeQualifiedDocumentIds : ISparkMigration
                 WaitForNonStaleResultsTimeout = IndexCatchUpBudget,
             },
             // Wait up to IndexCatchUpBudget for the index, never AllowStale: a bulk operation on a stale index is refused outright.
-            new QueryOperationOptions { StaleTimeout = IndexCatchUpBudget }), token: cancellationToken);
-            var result = await operation.WaitForCompletionAsync<BulkOperationResult>();
+            new QueryOperationOptions { StaleTimeout = IndexCatchUpBudget }), cancellationToken);
 
             logger.LogInformation(
                 "Forge-qualified {Collection}: {Kept} kept, {Removed} legacy removed.",

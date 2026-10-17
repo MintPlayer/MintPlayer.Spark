@@ -105,9 +105,8 @@ public partial class M_202609220900_ForgeQualifiedReferencesTheFirstPassMissed :
 
     private async Task PatchAsync(string label, string script, CancellationToken cancellationToken)
     {
-        var operation = await store.Operations.SendAsync(
-            new PatchByQueryOperation(new IndexQuery { Query = script }, new QueryOperationOptions { StaleTimeout = TimeSpan.FromMinutes(5) }), token: cancellationToken);
-        var result = await operation.WaitForCompletionAsync<BulkOperationResult>();
+        var result = await BulkOperation.RunAsync(store, 
+            new PatchByQueryOperation(new IndexQuery { Query = script }, new QueryOperationOptions { StaleTimeout = TimeSpan.FromMinutes(5) }), cancellationToken);
 
         // ⚠️ "scanned", not "repaired" — the same caveat the first pass records. The patch matches
         // every document in the collection and `qualify` no-ops the ones already correct, so this
