@@ -8,7 +8,50 @@ using Raven.Client.Documents.Session;
 
 namespace CodeCoverage.Dependencies.Onboarding;
 
-/// <summary><c>GET api/dependency-updates/onboarding</c>: the onboarding page (dependency-updates PRD R20, R21, R36).</summary>
+/// <summary>
+/// <c>GET api/dependency-updates/onboarding</c>: the onboarding page's header (dependency-updates PRD R20, R36, D-O14). The rows
+/// themselves are the Spark query <c>DependencyOnboardingRows</c>; this says only what the grid cannot.
+/// </summary>
+/// <param name="Login">The viewer's verified forge login (never a claim); null when there is none.</param>
+/// <param name="CredentialState"><c>Ok</c>, <c>ReauthRequired</c> or <c>Unavailable</c>.</param>
+/// <param name="Linked">The viewer has a sign-in of a forge that can list installations at all.</param>
+/// <param name="Narrowed">The setup redirect named an installation, so the grid is narrowed to it.</param>
+/// <param name="SetupAction"><c>install</c>, <c>update</c>, <c>request</c>, or null.</param>
+/// <param name="Repositories">How many repositories the viewer manages here, the syncing ones included.</param>
+/// <param name="Syncing">How many of them are not in this app yet (no Repository document), so not rows of the grid.</param>
+public sealed record DependencyOnboardingSummary(string? Login, string CredentialState, bool Linked, bool Narrowed, string? SetupAction,
+    int Repositories, int Syncing)
+{
+    public static DependencyOnboardingSummary From(DependencyOnboardingResponse listing) => new(
+        listing.Login, listing.CredentialState, listing.Linked, listing.Narrowed, listing.SetupAction,
+        listing.Repositories.Count, listing.Repositories.Count(r => r.RepositoryId is null));
+}
+
+/// <summary>
+/// The onboarding page's scope (D-O14): the setup redirect's query string, carried to the Spark query as the id of its
+/// virtual parent <see cref="TypeName"/>, and read here exactly as the header endpoint reads <c>Request.Query</c>.
+/// </summary>
+/// <remarks>
+/// The raw query string rather than an installation id, so the page names no forge parameter (R32): which key narrows to
+/// which installation is <see cref="IForgeSetupRedirect.Read"/>'s business. A repeated key is comma-joined, never
+/// first-wins, as ASP.NET joins it for the endpoint, so a duplicated <c>installation_id</c> is malformed on both paths (D-O13).
+/// The scope only ever narrows the viewer's own list; it is never trusted beyond that.
+/// </remarks>
+public static class DependencyOnboardingScope
+{
+    /// <summary>The virtual parent type of the onboarding query (App_Data/Model/DependencyOnboardingScope.json).</summary>
+    public const string TypeName = "DependencyOnboardingScope";
+
+    private static readonly IReadOnlyDictionary<string, string?> None = new Dictionary<string, string?>();
+
+    public static IReadOnlyDictionary<string, string?> Parse(string? raw)
+        => string.IsNullOrEmpty(raw)
+            ? None
+            : Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(raw)
+                .ToDictionary(q => q.Key, q => (string?)q.Value.ToString(), StringComparer.Ordinal);
+}
+
+/// <summary>The viewer's listing, as both the header endpoint and the query read it.</summary>
 /// <param name="Login">The viewer's verified forge login the list was made for (never a claim); null when there is none.</param>
 /// <param name="CredentialState">Why the list may be incomplete: <c>Ok</c>, <c>ReauthRequired</c> or <c>Unavailable</c>.</param>
 /// <param name="Linked">The viewer has a sign-in of a forge that can list installations at all.</param>
@@ -16,7 +59,7 @@ namespace CodeCoverage.Dependencies.Onboarding;
 /// <param name="SetupAction">The redirect's hint (<c>install</c>, <c>update</c>, <c>request</c>), null without one. <c>request</c>
 /// means "waiting for an organization owner's approval" (R36).</param>
 public sealed record DependencyOnboardingResponse(string? Login, string CredentialState, bool Linked, bool Narrowed, string? SetupAction,
-    IReadOnlyList<DependencyOnboardingRow> Repositories);
+    IReadOnlyList<DependencyOnboardingEntry> Repositories);
 
 /// <param name="RepositoryId">The <c>Repository</c> document id, the id the Spark query and its custom action take; null while
 /// the repository is not in this app yet (<paramref name="Syncing"/>).</param>
@@ -29,7 +72,7 @@ public sealed record DependencyOnboardingResponse(string? Login, string Credenti
 /// <param name="Syncing">No default branch known yet (or no document): the installation's webhook is still being processed.</param>
 /// <param name="OnboardingMergeQueue">R26: whether its onboarding pull request would add the merge queue, as it resolves.</param>
 /// <param name="MergeQueueInFile">R26: <c>coverage.yml</c>'s merge queue as last read, null until read.</param>
-public sealed record DependencyOnboardingRow(
+public sealed record DependencyOnboardingEntry(
     string? RepositoryId, string Provider, string FullName, string AccountLogin, bool IsPrivate, string ManagedBy,
     string Setting, bool Enabled, bool AccountDefault, string Onboarding, string? OnboardingNote, DependencyPullRequestLink? OnboardingPullRequest,
     bool Syncing, bool OnboardingMergeQueue, string? MergeQueueInFile);
@@ -65,7 +108,7 @@ public partial class DependencyOnboardingService : IDependencyOnboardingService
     public async Task<DependencyOnboardingResponse> ListAsync(IReadOnlyDictionary<string, string?> query, CancellationToken cancellationToken = default)
     {
         var redirect = redirects.Select(r => r.Read(query)).FirstOrDefault(r => r is not null);
-        var rows = new List<DependencyOnboardingRow>();
+        var rows = new List<DependencyOnboardingEntry>();
         string? login = null;
         var linked = false;
         var state = EForgeCredentialState.Ok;
@@ -100,7 +143,7 @@ public partial class DependencyOnboardingService : IDependencyOnboardingService
                 var repository = repositories.GetValueOrDefault(id);
                 var account = accounts.GetValueOrDefault(Account.DocumentId(provider, listed.AccountForgeId));
                 var run = runs.GetValueOrDefault(DependencyUpdateRun.ForRepository(id));
-                rows.Add(new DependencyOnboardingRow(
+                rows.Add(new DependencyOnboardingEntry(
                     repository?.Id, provider.ToCanonicalString(), listed.FullName, listed.AccountLogin, listed.IsPrivate, reason,
                     (repository?.DependencyUpdates ?? EDependencyUpdatesPolicy.Inherit).ToString(),
                     repository is not null && Repository.ResolveDependencyUpdates(repository, account),

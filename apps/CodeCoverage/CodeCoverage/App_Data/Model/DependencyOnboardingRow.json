@@ -1,0 +1,135 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "HAND-AUTHORED and NOT generated. A virtual type like MyAccountRow: no clrType, no documents. The rows of the",
+    "dependency onboarding page (/dependency-updates/onboard, dependency-updates PRD R22, D-O14) are computed per request",
+    "and per viewer by Custom.DependencyOnboardingRows (DependencyOnboardingRowActions -> IDependencyOnboardingService),",
+    "from the repositories the viewer manages, narrowed by the parent DependencyOnboardingScope (the setup redirect's query).",
+    "",
+    "Each row's id is the Repository document id, which is what the query action EnableDependencyUpdates takes: the",
+    "framework re-runs this query narrowed to the selected ids, so a repository the viewer does not manage cannot even be",
+    "selected (the action refuses the whole request), and the action re-checks every row that is (R21).",
+    "",
+    "The status columns are text the server translated, so the framework's search and sort work on what the user reads.",
+    "Only Query is granted on this type (security.json), never Read: the rows have no detail page. The row link is the",
+    "page's rowRoute, to the repository's own page."
+  ],
+  "persistentObject": {
+    "id": "4832e68c-b6c1-464e-af34-9d8ceb013c34",
+    "name": "DependencyOnboardingRow",
+    "breadcrumb": "{FullName}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "9bf2e541-d789-4103-9d03-8de9088ceee6",
+        "name": "FullName",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": true,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query",
+        "rules": []
+      },
+      {
+        "id": "61f32cfb-688a-4427-951f-030e9ab82ac1",
+        "name": "IsPrivate",
+        "dataType": "boolean",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query",
+        "renderer": "private-lock",
+        "rules": []
+      },
+      {
+        "id": "451d6e73-6213-4e45-b188-684bb7344e00",
+        "name": "ManagedBy",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query",
+        "rules": []
+      },
+      {
+        "id": "9f490690-2769-4e5b-8437-ca9bfc4b5530",
+        "name": "State",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query",
+        "rules": []
+      },
+      {
+        "id": "abd1a7df-ef7b-42ea-b014-0d49ae6d0215",
+        "name": "OnboardingPullRequest",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query",
+        "renderer": "pull-request-link",
+        "rules": []
+      },
+      {
+        "id": "e848c58c-107f-4496-9f21-d6737d6f22f5",
+        "name": "Note",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query",
+        "rules": []
+      },
+      {
+        "id": "2787558c-ba3a-4d78-8aa0-80012450b276",
+        "name": "MergeQueueInCoverageYml",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "Query",
+        "rules": []
+      },
+      {
+        "id": "6bd7855e-4057-4974-bd57-db177534ee77",
+        "name": "OnboardingMergeQueue",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "Query",
+        "rules": []
+      }
+    ],
+    "queries": [
+      "dependency-onboarding"
+    ]
+  },
+  "queries": [
+    {
+      "id": "9d2f6b41-7c3e-4a85-b0d1-5e8a2c4f6b93",
+      "name": "DependencyOnboardingRows",
+      "source": "Custom.DependencyOnboardingRows",
+      "alias": "dependency-onboarding",
+      "sortColumns": [
+        {
+          "property": "FullName",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "DependencyOnboardingRow"
+    }
+  ]
+}

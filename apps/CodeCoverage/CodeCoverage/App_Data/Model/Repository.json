@@ -492,28 +492,6 @@
         "FullName",
         "LatestCoverageSha"
       ]
-    },
-    {
-      "id": "9d2f6b41-7c3e-4a85-b0d1-5e8a2c4f6b93",
-      "name": "Repository_DependencyOnboarding",
-      "source": "Custom.Repository_DependencyOnboarding",
-      "alias": "dependency-onboarding",
-      "sortColumns": [
-        {
-          "property": "FullName",
-          "direction": "asc"
-        }
-      ],
-      "renderMode": "Pagination",
-      "entityType": "Repository",
-      "columnOrder": [
-        "FullName",
-        "IsPrivate",
-        "Name",
-        "LatestCoverage",
-        "LatestCoverageSha",
-        "!Account"
-      ]
     }
   ]
 }

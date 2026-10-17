@@ -34,7 +34,6 @@ public partial class RepositoryActions : DefaultPersistentObjectActions<Reposito
     [Inject] private readonly IAsyncDocumentSession session;
     [Inject] private readonly MintPlayer.Spark.Abstractions.Authorization.IPermissionService permissions;
     [Inject] private readonly MintPlayer.Spark.Messaging.Abstractions.IMessageBus messageBus;
-    [Inject] private readonly CodeCoverage.Dependencies.Onboarding.IDependencyOnboardingService onboarding;
 
     /// <summary>
     /// Opens the embedded gate in the shape its mode calls for (#264, G-Q3): a <c>fixed</c> gate
@@ -282,18 +281,6 @@ public partial class RepositoryActions : DefaultPersistentObjectActions<Reposito
     /// queries drop parentId upstream (Spark#242); the framework still applies
     /// the row filter and sorting on top.
     /// </summary>
-    public async Task<IQueryable<Repository>> Repository_DependencyOnboarding(CustomQueryArgs args)
-    {
-        // R22: the onboarding page's selection. The repositories the viewer manages on any forge (the page itself shows the
-        // richer rows of api/dependency-updates/onboarding); the framework applies the row filter on top, and the custom
-        // action EnableDependencyUpdates re-checks every selected row.
-        var listing = await onboarding.ListAsync(new Dictionary<string, string?>());
-        var ids = listing.Repositories.Where(r => r.RepositoryId is not null).Select(r => r.RepositoryId!).Distinct().ToList();
-        if (ids.Count == 0)
-            return Enumerable.Empty<Repository>().AsQueryable();
-        return session.Query<Repository, Indexes.Repositories_Overview>().Where(r => r.Id.In(ids));
-    }
-
     public IRavenQueryable<Repository> Account_Repositories(CustomQueryArgs args)
     {
         args.EnsureParent("Account");

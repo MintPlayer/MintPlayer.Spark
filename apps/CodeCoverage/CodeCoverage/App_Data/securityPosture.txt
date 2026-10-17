@@ -44,8 +44,9 @@ Signed-in users | grant | DeleteData/Repository | c0e5a9e1-0000-4000-8000-000000
 Signed-in users | grant | Edit/Account | c0e5a9e1-0000-4000-8000-00000000006b | app
 Signed-in users | grant | Edit/GitHubProject | c0e5a9e1-0000-4000-8000-000000000063 | app
 Signed-in users | grant | Edit/Repository | c0e5a9e1-0000-4000-8000-00000000006c | app
-Signed-in users | grant | EnableDependencyUpdates/Repository | c0e5a9e1-0000-4000-8000-0000000000a1 | app
+Signed-in users | grant | EnableDependencyUpdates/DependencyOnboardingRow | c0e5a9e1-0000-4000-8000-0000000000a1 | app
 Signed-in users | grant | Manage/RepoSettings | c0e5a9e1-0000-4000-8000-000000000032 | app
+Signed-in users | grant | Query/DependencyOnboardingRow | c0e5a9e1-0000-4000-8000-0000000000a3 | app
 Signed-in users | grant | Query/MyAccountRow | c0e5a9e1-0000-4000-8000-000000000051 | app
 Signed-in users | grant | QueryRead/Account | c0e5a9e1-0000-4000-8000-000000000011 | app
 Signed-in users | deny | QueryRead/Account/OwnerKey | c0e5a9e1-0000-4000-8000-000000000082 | app
@@ -60,6 +61,7 @@ Signed-in users | deny | QueryRead/Repository/PreviousFullNames | c0e5a9e1-0000-
 Signed-in users | grant | QueryReadEditNew/ApiToken | c0e5a9e1-0000-4000-8000-000000000069 | app
 Signed-in users | grant | QueryReadEditNewDelete/DependencyRule | c0e5a9e1-0000-4000-8000-000000000094 | app
 Signed-in users | grant | QueryReadEditNewDelete/EventColumnMapping | c0e5a9e1-0000-4000-8000-000000000066 | app
+Signed-in users | grant | Read/DependencyOnboardingScope | c0e5a9e1-0000-4000-8000-0000000000a4 | app
 Signed-in users | grant | Read/ForgeAccounts | c0e5a9e1-0000-4000-8000-000000000053 | app
 Signed-in users | deny | Read/ForgeAccounts/Provider | c0e5a9e1-0000-4000-8000-000000000087 | app
 Signed-in users | grant | Read/Home | c0e5a9e1-0000-4000-8000-000000000042 | app

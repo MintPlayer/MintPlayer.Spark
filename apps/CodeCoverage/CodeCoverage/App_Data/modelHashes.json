@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "modelHash": "8a313a779674d64fd3e87a61c63b2fdf1f7428d4bbc1834667d0003c05beb776",
+  "modelHash": "b66581cce3e61b08cc3fb1635a96cfd12c691659f34c8211c832c524d776559b",
   "contextRoots": "e7473dd70a94a2fc49b39eebefb5cda4fbbacd83e7edb4ef632fb605c716fa84",
-  "modelFiles": "8d7abf0833502bc754251366f711a9e8e621cec4be2703b2a5a7a04b10f1943c",
+  "modelFiles": "9803f339cee109dc828e27b8723f47122474e40ca7dd1c037ff68acb28c97495",
   "files": {
     "Account.json": "c803ee41e368a53d84663fa680b3a27295902d59d4c3a1931efe7c80772f355b",
     "ApiToken.json": "335fbf2468044559073c832ed0da7b73e1a8b4447f95d3e66df1c16815933619",
@@ -14,6 +14,8 @@
     "Commit.json": "dd05e6dc4b3c3b7778f9fca7ef8c4ae01567095ffb0d9fdfc729738a0988ae80",
     "CoverageSummary.json": "ae8fc0e1669186618f6ec8ef7114b7fd6ea91c94b61e50db1e0221f84950c699",
     "DatabaseStatistics.json": "c6855f53fc792722fd52f5d537268698211f5936953a3e36254252adf55f6d84",
+    "DependencyOnboardingRow.json": "ea71281d958c7312d67456a5d3c70481753bcc81beca2944e9448edc13dd60d1",
+    "DependencyOnboardingScope.json": "b692ed77a97e714e645a933cc5f1097521a924c9f34f5ee65b0101b0131eb9e8",
     "DependencyRule.json": "01dd483803153df12960ec908983f676d600b7f5201f51f936ad7e21ef0b8073",
     "EventColumnMapping.json": "f36b5c67ab777791d11672add3c82ae81b9a55607d8a1a50401ce273a97614ab",
     "ForgeAccounts.json": "04f7d8499b56100bed5f963239b28cd2296027d4ac3842aa2bf2e36ec9b2aac9",
@@ -44,7 +46,7 @@
     "PatchCoverage.json": "4823bb3701a70fb02e92c620c098eb815089f9e249f74565af59b1fec56e4484",
     "ProjectColumn.json": "0cf0f8a943163b86996690acb306a125960fd07b9cdd25633019b78a9ff02b3f",
     "ReportIngestOutcome.json": "914923e139ff8209050f9899f0972b18e25ce2f849b765062e979bee1fe3ee5e",
-    "Repository.json": "99531689a6521b953df7d3f9e0471f67acb6c250a52fb9db41f3a04439dd333a",
+    "Repository.json": "1c9d02ad2c29bc0ff15c241b3252ab1fbce162622d4e77b95cc03ca917763279",
     "RepositoryGraphState.json": "72dfae99f343bf8336ec4c601d5d6b3b9b5e507829405d6d23b73d86190326a5",
     "SparkUser.json": "81d5e4fe403e329fc20404f35c3b9944aa11c17374981df5a4073ddf08fcdb69"
   },

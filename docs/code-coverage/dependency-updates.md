@@ -45,14 +45,15 @@ A slot whose rebuilt tree equals the pushed one pushes nothing and starts no CI.
    - **Who may enable:** an organization's **owners** for its repositories, you for your own account's, and a
      repository's GitHub **admins** for that repository. Read and write members cannot, and Spark administrators can read
      the settings but not enable. Checked again on the server when you press the button.
-   - A repository GitHub has only just added shows **syncing** until its webhook is processed; it can be selected once
-     it is in.
+   - A repository GitHub has only just added is not listed until its webhook is processed: a banner above the list says
+     how many are still syncing, and they appear in a moment. One that is in but has no default branch yet shows **syncing**.
    - When GitHub sends the install to an organization owner for approval, the page says it is **waiting for an
      organization owner's approval**.
-2. **Select and enable.** Tick the repositories and press **Enable dependency updates**. You are asked whether their
-   onboarding pull requests add the merge queue (*with* or *without*, defaulting to the account's setting). The page then
-   lists what was enabled and, per repository, why one was not. Nothing is switched on until you do this: closing the page
-   changes nothing.
+2. **Select and enable.** The list is a regular CodeCoverage grid: search, sort and page it, and the ticks survive paging.
+   Tick the repositories and press **Enable dependency updates** in its header. You are asked whether their onboarding
+   pull requests add the merge queue (*with* or *without*, defaulting to the account's setting). A notification then says
+   what was enabled (and whether with the merge queue), another one per repository why it was not, and the list reloads
+   with each one's new state. Nothing is switched on until you do this: closing the page changes nothing.
    - The same switch is on the Account page (*Dependency updates*, for every repository that does not decide for itself)
      and on the Repository page (which can also turn it off for itself), next to *Onboarding adds the merge queue* and the
      real state read from `coverage.yml`.

@@ -50,6 +50,7 @@ public class OwnerPrivacyEndToEndTests(OwnerPrivacyHostFixture host) : IClassFix
     private const string GetAccountsQueryId = "c74dd235-11a2-49ef-bb8f-f5ba78eb72c3";
     private const string GetRepositoriesQueryId = "551b2212-8f16-4129-aea6-1dfe313d8edc";
     private const string AccountRepositoriesQueryId = "7a4c9b30-5d2e-4f81-9c67-3e8b1a6d0f21";
+    private const string OnboardingQueryId = "9d2f6b41-7c3e-4a85-b0d1-5e8a2c4f6b93";
 
     /// <summary>What a visitor may read of an account: the forge's own public profile, and whether we are connected to it.</summary>
     public static readonly string[] PublicAccountAttributes =
@@ -362,20 +363,29 @@ public class OwnerPrivacyEndToEndTests(OwnerPrivacyHostFixture host) : IClassFix
     }
 
     [Theory]
-    [InlineData(OwnerPrivacyHostFixture.OwnerUserId, "acme/admin-only=owner,acme/open=owner,acme/secret=owner")]
-    [InlineData(OwnerPrivacyHostFixture.RepoAdminUserId, "acme/admin-only=repo-admin,acme/open=repo-admin")]
-    [InlineData(OwnerPrivacyHostFixture.MemberUserId, "")]
-    public async Task The_onboarding_page_lists_what_the_caller_manages_and_why(string user, string expected)
+    [InlineData(OwnerPrivacyHostFixture.OwnerUserId, "acme/admin-only=account owner,acme/open=account owner,acme/secret=account owner", 3)]
+    [InlineData(OwnerPrivacyHostFixture.RepoAdminUserId, "acme/admin-only=repository admin,acme/open=repository admin", 2)]
+    [InlineData(OwnerPrivacyHostFixture.MemberUserId, "", 0)]
+    public async Task The_onboarding_page_lists_what_the_caller_manages_and_why(string user, string expected, int count)
     {
-        var (status, body) = await host.GetAsync("/api/dependency-updates/onboarding", user);
+        // The rows are the grid's Spark query (D-O14); the header endpoint only counts them.
+        var (status, body) = await host.PostAsync("/spark/queries/execute", new { queryId = OnboardingQueryId }, user);
+        var (headerStatus, header) = await host.GetAsync("/api/dependency-updates/onboarding", user);
 
-        status.Should().Be(HttpStatusCode.OK);
+        status.Should().Be(HttpStatusCode.OK, body);
         using var json = JsonDocument.Parse(body);
-        var rows = json.RootElement.GetProperty("repositories").EnumerateArray()
-            .Select(r => $"{r.GetProperty("fullName").GetString()}={r.GetProperty("managedBy").GetString()}")
+        var rows = json.RootElement.GetProperty("items").EnumerateArray()
+            .Select(r => $"{Value(r, "FullName")}={Value(r, "ManagedBy")}")
             .Order(StringComparer.Ordinal);
         string.Join(",", rows).Should().Be(expected,
-            "managedBy is \"owner\" for an organization owner and \"repo-admin\" for an administrator of the repository; a read-only member manages nothing");
+            "an organization owner manages as the account owner and an administrator of the repository as its admin; a read-only member manages nothing");
+        headerStatus.Should().Be(HttpStatusCode.OK);
+        using var headerJson = JsonDocument.Parse(header);
+        headerJson.RootElement.GetProperty("repositories").GetInt32().Should().Be(count);
+        headerJson.RootElement.GetProperty("syncing").GetInt32().Should().Be(0, "every listed repository has its document");
+
+        static string? Value(JsonElement row, string key)
+            => row.GetProperty("values").EnumerateArray().First(v => v.GetProperty("key").GetString() == key).GetProperty("value").GetString();
     }
 
     // ── helpers ─────────────────────────────────────────────────────────────────────────────────

@@ -13,7 +13,7 @@ namespace CodeCoverage.CustomActions;
 
 /// <summary>
 /// "Enable dependency updates" (dependency-updates PRD R22, R23, R25, R26): a query action on the onboarding page's query
-/// (<c>Repository_DependencyOnboarding</c>, <c>selectionRule ">0"</c>). For every selected repository it re-checks that the
+/// (<c>DependencyOnboardingRows</c> on the virtual type <c>DependencyOnboardingRow</c>, whose row ids are Repository document ids; <c>selectionRule ">0"</c>). For every selected repository it re-checks that the
 /// caller may (R21: a manager of its account, or an administrator of it on the forge, asked now), then sets the
 /// repository's <c>DependencyUpdates</c> override to Enabled and its onboarding merge-queue setting, and saves through
 /// Spark. The save is the one trigger path: the after-commit hook onboards it (R23).
@@ -25,8 +25,8 @@ namespace CodeCoverage.CustomActions;
 /// so the pass that carries the answer repeats it harmlessly.
 /// </para>
 /// <para>
-/// <b>Partial results are reported, never hidden</b> (R22): the result lists what was enabled and, per refused repository,
-/// why ("you don't manage it", "the save was refused: …").
+/// <b>Partial results are reported, never hidden</b> (R22): a success notification names what was enabled (and whether with the merge queue), a warning per refused repository says
+/// why ("you don't manage it", "the save was refused: …"); the result carries the same for API callers (D-O14).
 /// </para>
 /// </remarks>
 public partial class EnableDependencyUpdatesAction : SparkCustomAction
@@ -51,8 +51,8 @@ public partial class EnableDependencyUpdatesAction : SparkCustomAction
         var reasons = await onboarding.CheckAsync(repositories, cancellationToken);
         var allowed = repositories.Where(r => reasons.GetValueOrDefault(r.Id!) is not null).ToList();
         var refused = repositories.Where(r => reasons.GetValueOrDefault(r.Id!) is null)
-            .Select(r => new DependencyOnboardingRefusal(r.Id!, r.FullName, "you don't manage this repository")).ToList();
-        refused.AddRange(ids.Where(id => !loaded.ContainsKey(id) || loaded[id] is null).Select(id => new DependencyOnboardingRefusal(id, id, "no such repository")));
+            .Select(r => new DependencyOnboardingRefusal(r.Id!, r.FullName, Reason("notManaged", "you don't manage this repository"))).ToList();
+        refused.AddRange(ids.Where(id => !loaded.ContainsKey(id) || loaded[id] is null).Select(id => new DependencyOnboardingRefusal(id, id, Reason("notFound", "no such repository"))));
 
         bool withMergeQueue = true;
         if (allowed.Count > 0)
@@ -78,7 +78,7 @@ public partial class EnableDependencyUpdatesAction : SparkCustomAction
         {
             if (objects.FirstOrDefault(o => string.Equals(o.Id, repository.Id, StringComparison.Ordinal)) is not { } po)
             {
-                refused.Add(new DependencyOnboardingRefusal(repository.Id!, repository.FullName, "you don't manage this repository"));
+                refused.Add(new DependencyOnboardingRefusal(repository.Id!, repository.FullName, Reason("notManaged", "you don't manage this repository")));
                 continue;
             }
             po[nameof(Repository.DependencyUpdates)].Value = nameof(EDependencyUpdatesPolicy.Enabled);
@@ -93,16 +93,29 @@ public partial class EnableDependencyUpdatesAction : SparkCustomAction
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 logger.LogWarning(ex, "Dependency onboarding: could not enable {Repository}", repository.FullName);
-                refused.Add(new DependencyOnboardingRefusal(repository.Id!, repository.FullName, $"the save was refused: {ex.Message}"));
+                refused.Add(new DependencyOnboardingRefusal(repository.Id!, repository.FullName, Reason("saveRefused", $"the save was refused: {ex.Message}", ex.Message)));
             }
         }
 
         args.SetResult(new DependencyOnboardingResult(enabled, refused, withMergeQueue));
+
+        // The page's report is the framework's notifications (D-O14): one for what was enabled (how many, which, and with or
+        // without the merge queue), and one per repository that was not, with why. The grid then refreshes
+        // (refreshOnCompleted) and shows each one's new state.
         if (enabled.Count > 0)
-            manager.Client.Notify(manager.GetTranslatedMessage("dependencyOnboarding.enabled", enabled.Count), NotificationKind.Success);
-        if (refused.Count > 0)
-            manager.Client.Notify(manager.GetTranslatedMessage("dependencyOnboarding.notEnabled",
-                string.Join("; ", refused.Select(r => $"{r.FullName}: {r.Reason}"))), NotificationKind.Warning);
+            manager.Client.Notify(manager.GetTranslatedMessage(
+                withMergeQueue ? "dependencyOnboarding.enabledWithQueue" : "dependencyOnboarding.enabledWithoutQueue",
+                enabled.Count, string.Join(", ", enabled)), NotificationKind.Success);
+        foreach (var refusal in refused)
+            manager.Client.Notify(manager.GetTranslatedMessage("dependencyOnboarding.notEnabled", refusal.FullName, refusal.Reason),
+                NotificationKind.Warning);
+    }
+
+    /// <summary>Why a repository was not enabled, in the caller's language (English when the key is missing).</summary>
+    private string Reason(string key, string fallback, params object[] parameters)
+    {
+        var text = manager.GetTranslatedMessage($"dependencyOnboarding.reason.{key}", parameters);
+        return string.IsNullOrEmpty(text) || text.StartsWith("dependencyOnboarding.", StringComparison.Ordinal) ? fallback : text;
     }
 }
 

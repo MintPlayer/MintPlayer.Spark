@@ -478,31 +478,11 @@ export interface DependencyRateLimitView {
   budget: number;
 }
 
-/** One row of the onboarding page (server: `DependencyOnboardingRow`, dependency-updates PRD R20–R26). */
-export interface DependencyOnboardingRow {
-  /** The Repository document id the Spark action takes; null while the repository is still syncing. */
-  repositoryId: string | null;
-  provider: string;
-  fullName: string;
-  accountLogin: string;
-  isPrivate: boolean;
-  /** Why the viewer may enable it, as the server words it (R39); shown, never interpreted. */
-  managedBy: string;
-  /** `Inherit`, `Enabled`, `Disabled`. */
-  setting: string;
-  enabled: boolean;
-  accountDefault: boolean;
-  /** `None`, `PullRequestOpened`, `Done`, `Blocked`. */
-  onboarding: string;
-  onboardingNote: string | null;
-  onboardingPullRequest: { number: number; url: string | null } | null;
-  syncing: boolean;
-  onboardingMergeQueue: boolean;
-  mergeQueueInFile: string | null;
-}
-
-/** `GET api/dependency-updates/onboarding` (server: `DependencyOnboardingResponse`). */
-export interface DependencyOnboardingResponse {
+/**
+ * `GET api/dependency-updates/onboarding` (server: `DependencyOnboardingSummary`, dependency-updates PRD R20, R36, D-O14): the
+ * onboarding page's header. The rows are the Spark query `dependency-onboarding`.
+ */
+export interface DependencyOnboardingSummary {
   login: string | null;
   /** `Ok`, `ReauthRequired` or `Unavailable`. */
   credentialState: string;
@@ -510,14 +490,10 @@ export interface DependencyOnboardingResponse {
   narrowed: boolean;
   /** `install`, `update`, `request`, or null without a setup redirect (a hint only, R36). */
   setupAction: string | null;
-  repositories: DependencyOnboardingRow[];
-}
-
-/** What the `EnableDependencyUpdates` action hands back (server: `DependencyOnboardingResult`). */
-export interface DependencyOnboardingResult {
-  enabled: string[];
-  notEnabled: { repositoryId: string; fullName: string; reason: string }[];
-  withMergeQueue: boolean;
+  /** The repositories the viewer manages here, the syncing ones included. */
+  repositories: number;
+  /** How many of them are not in the app yet, so not rows of the grid. */
+  syncing: number;
 }
 
 export interface DependencyPackageUse {
@@ -733,11 +709,13 @@ export class BrowseService {
   }
 
   /**
-   * The onboarding page's rows (R20). `query` is the page's own query string, passed through untouched: which setup-redirect
-   * parameter means what is the forge's business on the server, so nothing here names one.
+   * The onboarding page's header (R20, D-O14). `scope` is the page's own query string, passed through untouched (a repeated
+   * key stays repeated): which setup-redirect parameter means what is the forge's business on the server, so nothing here
+   * names one.
    */
-  getDependencyOnboarding(query: Record<string, string>): Promise<DependencyOnboardingResponse> {
-    return firstValueFrom(this.http.get<DependencyOnboardingResponse>('/api/dependency-updates/onboarding', { params: query }));
+  getDependencyOnboarding(scope: string): Promise<DependencyOnboardingSummary> {
+    return firstValueFrom(this.http.get<DependencyOnboardingSummary>('/api/dependency-updates/onboarding',
+      { params: new HttpParams({ fromString: scope }) }));
   }
 
 }

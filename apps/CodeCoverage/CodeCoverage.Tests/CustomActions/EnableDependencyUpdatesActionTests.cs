@@ -83,6 +83,16 @@ public class EnableDependencyUpdatesActionTests : CoverageRavenTest
         var result = (DependencyOnboardingResult)args.Result!;
         result.Enabled.Should().Equal(["acme/widget"]);
         result.NotEnabled.Should().ContainSingle().Which.Should().Be(new DependencyOnboardingRefusal(Foreign, "other-org/tool", "you don't manage this repository"));
+
+        // D-O14: the page's report is the framework's notifications, one for the enabled ones (how many, which, with or
+        // without the merge queue) and one per repository that was not, with why.
+        manager.Received(1).GetTranslatedMessage(
+            mergeQueue == "Yes" ? "dependencyOnboarding.enabledWithQueue" : "dependencyOnboarding.enabledWithoutQueue",
+            Arg.Is<object[]>(a => a.Length == 2 && Equals(a[0], 1) && Equals(a[1], "acme/widget")));
+        manager.Received(1).GetTranslatedMessage("dependencyOnboarding.notEnabled",
+            Arg.Is<object[]>(a => a.Length == 2 && Equals(a[0], "other-org/tool") && Equals(a[1], "you don't manage this repository")));
+        manager.Client.Received(1).Notify(Arg.Any<string>(), MintPlayer.Spark.Abstractions.ClientOperations.NotificationKind.Success, Arg.Any<TimeSpan?>());
+        manager.Client.Received(1).Notify(Arg.Any<string>(), MintPlayer.Spark.Abstractions.ClientOperations.NotificationKind.Warning, Arg.Any<TimeSpan?>());
     }
 
     [Fact]

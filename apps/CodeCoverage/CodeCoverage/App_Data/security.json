@@ -107,6 +107,24 @@
       "isDenied": false
     },
     {
+      "key": "c0e5a9e1-0000-4000-8000-0000000000a1",
+      "resource": "EnableDependencyUpdates/DependencyOnboardingRow",
+      "groupId": "00000000-0000-0000-0000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "c0e5a9e1-0000-4000-8000-0000000000a3",
+      "resource": "Query/DependencyOnboardingRow",
+      "groupId": "00000000-0000-0000-0000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "c0e5a9e1-0000-4000-8000-0000000000a4",
+      "resource": "Read/DependencyOnboardingScope",
+      "groupId": "00000000-0000-0000-0000-000000000001",
+      "isDenied": false
+    },
+    {
       "key": "c0e5a9e1-0000-4000-8000-000000000094",
       "resource": "QueryReadEditNewDelete/DependencyRule",
       "groupId": "00000000-0000-0000-0000-000000000001",
@@ -229,12 +247,6 @@
     {
       "key": "c0e5a9e1-0000-4000-8000-00000000006c",
       "resource": "Edit/Repository",
-      "groupId": "00000000-0000-0000-0000-000000000001",
-      "isDenied": false
-    },
-    {
-      "key": "c0e5a9e1-0000-4000-8000-0000000000a1",
-      "resource": "EnableDependencyUpdates/Repository",
       "groupId": "00000000-0000-0000-0000-000000000001",
       "isDenied": false
     },

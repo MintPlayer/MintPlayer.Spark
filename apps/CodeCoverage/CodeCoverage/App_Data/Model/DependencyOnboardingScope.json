@@ -1,0 +1,20 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "HAND-AUTHORED and NOT generated. A virtual parent with no clrType, no documents and no values (dependency-updates PRD",
+    "D-O14). Its id is the onboarding page's setup-redirect query string (e.g. installation_id=123&setup_action=install),",
+    "passed as the grid's parentId so the query DependencyOnboardingRows narrows to the installation it names, the way",
+    "ForgeAccounts' id scopes my-accounts. DependencyOnboardingScopeActions.OnLoadAsync scaffolds it for ANY id: an",
+    "installation of someone else, a malformed one and one that does not exist must load alike (D-O13), and the id is",
+    "never trusted beyond narrowing the viewer's own list. Read is granted to the authenticated role only."
+  ],
+  "persistentObject": {
+    "id": "1eb9db36-2af3-462a-9522-7dbaf83a5707",
+    "name": "DependencyOnboardingScope",
+    "tabs": [],
+    "groups": [],
+    "attributes": [],
+    "queries": []
+  },
+  "queries": []
+}
