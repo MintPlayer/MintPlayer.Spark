@@ -38,6 +38,28 @@ internal static class SparkIndexWait
     /// <summary>The longest single waiting query inside the bound.</summary>
     internal static readonly TimeSpan Slice = TimeSpan.FromMilliseconds(500);
 
+    /// <summary>
+    /// <paramref name="name"/> as an RQL double-quoted string, for <c>from index …</c>.
+    /// </summary>
+    /// <remarks>
+    /// An index name cannot be a query parameter, and the RavenDB client splices it into
+    /// <c>from index '{name}'</c> unescaped: an auto index whose name holds a quote
+    /// (<c>Auto/Repositories/By'Connection'And…</c>, live test 2026-10-17, D-O19) broke the query with
+    /// "Expected end of query". The name comes from the server's own index statistics, not from a
+    /// request, but it is still validated before it is spliced (repository rule: never splice into RQL):
+    /// a name with a double quote, a backslash or a control character could leave its quotes or change
+    /// meaning, and is refused with <see cref="ArgumentException"/>. Everything else — letters, digits,
+    /// <c>/ . _ - [ ] ( ) @ ,</c>, spaces and single quotes — is inert inside double quotes.
+    /// </remarks>
+    internal static string QuoteIndexName(string name)
+    {
+        if (string.IsNullOrEmpty(name) || name.Any(c => c is '"' or '\\' || char.IsControl(c)))
+            throw new ArgumentException(
+                $"'{name}' is not an index name that may be spliced into RQL: it is empty or holds a double quote, a backslash or a control character.",
+                nameof(name));
+        return $"\"{name}\"";
+    }
+
     public static async Task<bool> WaitAsync(
         IDocumentStore documentStore,
         string database,
@@ -88,9 +110,15 @@ internal static class SparkIndexWait
                                 throw new TimeoutException($"The {bound.TotalSeconds:0.#} s bound ran out.");
                             try
                             {
-                                await waitSession.Advanced.AsyncDocumentQuery<object>(name)
+                                // Not AsyncDocumentQuery<object>(name): the client splices the name into
+                                // "from index '…'" unescaped (D-O19). The name is validated and quoted here,
+                                // the paging goes through parameters.
+                                await waitSession.Advanced
+                                    .AsyncRawQuery<object>($"from index {QuoteIndexName(name)} limit $skip, $take")
+                                    .AddParameter("skip", 0)
+                                    .AddParameter("take", 0)
                                     .WaitForNonStaleResults(remaining < Slice ? remaining : Slice)
-                                    .CountAsync(limit.Token);
+                                    .ToListAsync(limit.Token);
                                 break;
                             }
                             catch (TimeoutException) when (elapsed.Elapsed < bound)

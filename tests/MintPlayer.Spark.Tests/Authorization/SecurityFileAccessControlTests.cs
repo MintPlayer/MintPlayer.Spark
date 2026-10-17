@@ -13,7 +13,7 @@ public class SecurityFileAccessControlTests
 {
     private readonly ISecurityConfigurationLoader _configLoader = Substitute.For<ISecurityConfigurationLoader>();
     private readonly IGroupMembershipProvider _groupMembership = Substitute.For<IGroupMembershipProvider>();
-    private readonly ILogger<SecurityFileAccessControl> _logger = NullLogger<SecurityFileAccessControl>.Instance;
+    private ILogger<SecurityFileAccessControl> _logger = NullLogger<SecurityFileAccessControl>.Instance;
 
     private static readonly Guid AdminsId = Guid.Parse("11111111-1111-1111-1111-111111111111");
     private static readonly Guid EditorsId = Guid.Parse("22222222-2222-2222-2222-222222222222");
@@ -641,5 +641,61 @@ public class SecurityFileAccessControlTests
 
         composed.Calls.Should().Be(1);
         await _groupMembership.Received(1).GetCurrentUserGroupsAsync(Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// D-O17 (live test 2026-10-17): a denied question is a capability probe far more often than a
+    /// refused request — the catalogue asks Query/Read/Edit of every type, the custom-action list asks
+    /// every action — so it is logged at Debug, never Warning. One page load wrote about a hundred
+    /// "Authorization DENIED" warnings before.
+    /// </summary>
+    [Fact]
+    public async Task A_denied_question_is_logged_at_debug_with_the_role_and_never_as_a_warning()
+    {
+        var logs = new RecordingLogger<SecurityFileAccessControl>();
+        _logger = logs;
+        var config = ConfigWith(
+            groups: new() { [AuthenticatedId] = En("Signed-in users") },
+            wellKnown: new() { ["authenticated"] = AuthenticatedId },
+            new Right { GroupId = AuthenticatedId, Resource = "Read/Car" });
+
+        var service = CreateService(config, userGroups: [], authenticated: true);
+
+        (await service.IsAllowedAsync("Edit/Car")).Should().BeFalse();
+        (await service.GetAttributeRightsAsync("Edit", "Car")).TypeAllowed.Should().BeFalse();
+
+        logs.Entries.Should().NotContain(e => e.Level >= LogLevel.Warning);
+        logs.Entries.Should().Contain(e => e.Level == LogLevel.Debug
+            && e.Message.Contains("DENIED for Edit/Car")
+            && e.Message.Contains("role: authenticated"));
+    }
+
+    /// <summary>The enforcement point is where a refusal is a Warning (D-O17).</summary>
+    [Fact]
+    public async Task A_refused_request_is_logged_at_warning_where_it_is_enforced()
+    {
+        var accessControl = Substitute.For<IAccessControl>();
+        accessControl.IsAllowedAsync("Delete/Car", Arg.Any<CancellationToken>()).Returns(false);
+        var logs = new RecordingLogger<PermissionService>();
+        var permissions = new PermissionService(accessControl, logger: logs);
+
+        (await permissions.IsAllowedAsync("Delete", "Car")).Should().BeFalse();
+        logs.Entries.Should().BeEmpty();
+
+        var refuse = () => permissions.EnsureAuthorizedAsync("Delete", "Car");
+        await refuse.Should().ThrowAsync<SparkAccessDeniedException>();
+        logs.Entries.Should().ContainSingle(e => e.Level == LogLevel.Warning && e.Message.Contains("Delete/Car"));
+    }
+
+    private sealed class RecordingLogger<T> : ILogger<T>
+    {
+        public List<(LogLevel Level, string Message)> Entries { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            => Entries.Add((logLevel, formatter(state, exception)));
     }
 }
