@@ -93,11 +93,11 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         switch (signal.Kind)
         {
             case EDependencySignal.Trigger when signal.Trigger is { } trigger:
-                await TriggerAsync(context, trigger, signal.SecurityFixes, ct);
+                await TriggerAsync(context, trigger, signal.SecurityFixes, ct, signal.Expedite);
                 break;
 
             case EDependencySignal.Onboard:
-                await OnboardAsync(context, ct);
+                await OnboardAsync(context, signal.Expedite, ct);
                 break;
 
             case EDependencySignal.Offboard:
@@ -191,7 +191,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
     /// A run starts at once when none is going (a wait for checks is superseded); otherwise the trigger waits, the strongest
     /// kept. R10: a security trigger interrupts a bisection, which would otherwise block the fix.
     /// </summary>
-    private async Task TriggerAsync(Context context, EDependencyRunTrigger trigger, IReadOnlyList<DependencySecurityFixRecord>? fixes, CancellationToken ct)
+    private async Task TriggerAsync(Context context, EDependencyRunTrigger trigger, IReadOnlyList<DependencySecurityFixRecord>? fixes, CancellationToken ct, bool expedite = false)
     {
         var run = context.Run;
         foreach (var fix in fixes ?? [])
@@ -203,7 +203,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
             if (run.State != EDependencyRunState.Idle)
                 await hook.AbandonAsync(Saga(context), run.Runs, ct);
             BeginRun(context, trigger);
-            await ScheduleAsync(run, EDependencyStep.Start, null, ct);
+            await ScheduleAsync(run, EDependencyStep.Start, null, ct, expedite);
             return;
         }
         if (run.PendingTrigger is not { } pending || trigger > pending)
@@ -259,7 +259,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         var parsed = DependenciesYml.Parse(yml);
         foreach (var error in parsed.Errors.Take(5))
             run.Note(Now, $"coverage.yml: {error}");
-        run.FileMergeQueue = FileMergeQueueState(yml, defaultBranch);
+        run.FileMergeQueue = DependencyFileMergeQueue.State(yml, defaultBranch);
         run.FileFrequency = parsed.Section.Schedule?.Frequency;
         run.FileWeekday = parsed.Section.Schedule?.Weekday;
         run.FileHour = parsed.Section.Schedule?.Hour;
@@ -538,7 +538,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         {
             if (run.PullRequestNumber is not null)
                 await UpdatePullRequestBodyAsync(context, report, null, ct);
-            await EndAsync(context, "nothing-planned", "Nothing to apply this time.", ct);
+            await EndAsync(context, "nothing-planned", NothingPlannedMessage(report), ct);
             return;
         }
 
@@ -1281,6 +1281,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         var yml = await context.Forge.GetFileContentAsync(repository, run.DefaultBranch!, CoverageYml.FileName, ct);
         var section = DependenciesYml.Parse(yml).Section;
         var queueEnabled = MergeQueueYml.Parse(yml, run.DefaultBranch!).Section is { Enabled: true };
+        run.FileMergeQueue = DependencyFileMergeQueue.State(yml, run.DefaultBranch!);
         var commit = await session.LoadAsync<Commit>(Commit.DocumentId(repository.Provider, repository.GitHubId, run.RollingSha!), ct);
         var (coverage, note) = DependencyCoverageGate.Evaluate(commit, section.MaxCoverageDrop);
         run.CoverageNote = note;
@@ -1433,20 +1434,33 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
     /// number). Switching the feature off and on again (<see cref="OffboardAsync"/>) clears the last one, so an explicit
     /// re-enable onboards again.
     /// </remarks>
-    private async Task OnboardAsync(Context context, CancellationToken ct)
+    private async Task OnboardAsync(Context context, bool expedite, CancellationToken ct)
     {
         var (repository, run) = (context.Repository, context.Run);
-        if (run.Onboarding is EDependencyOnboarding.Done or EDependencyOnboarding.PullRequestOpened || repository.DefaultBranch is not { } defaultBranch) return;
+        if (run.Onboarding is EDependencyOnboarding.PullRequestOpened || repository.DefaultBranch is not { } defaultBranch) return;
         if (run.Onboarding == EDependencyOnboarding.Blocked && run.OnboardingPullRequestNumber is not null)
         {
             logger.LogDebug("Dependency updates: {Repository}'s onboarding pull request was closed by its owner; not onboarding again", repository.FullName);
             return;
         }
         if (!Repository.ResolveDependencyUpdates(repository, context.Account)) return;
-        if (await context.Queue.GetFileBlobShaAsync(repository, defaultBranch, ".github/workflows/dependency-lookup.yml", ct) is not null)
+
+        // D-O15 (live test 2026-10-17): an onboarding that ends Done without a pull request starts the first run now, as a
+        // merged onboarding pull request does (PullRequestEndedAsync); a re-enabled repository otherwise waited for its
+        // schedule (Monday 06:00). Done already (switched off and on again: offboarding keeps Done, D-O5) is the same case.
+        // Expedited when a person flipped the switch.
+        if (run.Onboarding == EDependencyOnboarding.Done
+            || await context.Queue.GetFileBlobShaAsync(repository, defaultBranch, ".github/workflows/dependency-lookup.yml", ct) is not null)
         {
-            run.Onboarding = EDependencyOnboarding.Done;
-            run.Note(Now, "the dependency workflows were already on the default branch: no onboarding pull request");
+            if (run.Onboarding != EDependencyOnboarding.Done)
+            {
+                run.Onboarding = EDependencyOnboarding.Done;
+                run.Note(Now, "the dependency workflows were already on the default branch: no onboarding pull request");
+            }
+            // D-O16: this is a read of the default branch's coverage.yml as much as the pull-request path below is.
+            run.FileMergeQueue = DependencyFileMergeQueue.State(
+                await context.Forge.GetFileContentAsync(repository, defaultBranch, CoverageYml.FileName, ct), defaultBranch);
+            await TriggerAsync(context, EDependencyRunTrigger.Refresh, null, ct, expedite);
             return;
         }
 
@@ -1471,7 +1485,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
 
         var tree = await context.Forge.GetTreeAsync(repository, defaultBranch, ct);
         var coverageYml = await context.Forge.GetFileContentAsync(repository, defaultBranch, CoverageYml.FileName, ct);
-        run.FileMergeQueue = FileMergeQueueState(coverageYml, defaultBranch);
+        run.FileMergeQueue = DependencyFileMergeQueue.State(coverageYml, defaultBranch);
         string? dependabotPath = null, dependabotYml = null;
         foreach (var path in new[] { ".github/dependabot.yml", ".github/dependabot.yaml" })
         {
@@ -1633,10 +1647,6 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         }
     }
 
-    private static string FileMergeQueueState(string? yml, string defaultBranch)
-        => MergeQueueYml.Parse(yml, defaultBranch).Section is { Enabled: true } ? "enabled"
-            : DependencyOnboarding.HasTopLevelKey(yml, "mergeQueue") ? "disabled"
-            : "absent";
 
     private void Opened(DependencyUpdateRun run, int number, string note)
     {
@@ -1676,6 +1686,23 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
     }
 
     // ═══ Ending, cleanup ═══════════════════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// D-O20 (live test 2026-10-17): a run that plans nothing says why, so "no pull request" is not silence. The groups
+    /// above the thresholds are the usual reason: they wait for an <c>approve &lt;group&gt;</c> (or a higher threshold).
+    /// </summary>
+    internal static string NothingPlannedMessage(DependencyRunReport report)
+    {
+        var awaiting = report.AwaitingApproval.Select(e => e.Group).Distinct(StringComparer.Ordinal).Count();
+        var held = report.Held.Select(e => e.Group).Distinct(StringComparer.Ordinal).Count();
+        var parts = new List<string>();
+        if (awaiting > 0) parts.Add($"{awaiting} {(awaiting == 1 ? "group" : "groups")} awaiting approval");
+        if (held > 0) parts.Add($"{held} held");
+        if (report.Failures.Count > 0) parts.Add($"{report.Failures.Count} not applicable");
+        return parts.Count == 0
+            ? "Nothing to apply this time: every dependency is current, cooling down or ignored."
+            : $"Nothing within your thresholds to apply this time; {string.Join(", ", parts)}.";
+    }
 
     private async Task EndAsync(Context context, string outcome, string message, CancellationToken ct)
     {
@@ -1882,11 +1909,11 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         run.Note(Now, why);
     }
 
-    private Task ScheduleAsync(DependencyUpdateRun run, EDependencyStep step, TimeSpan? delay, CancellationToken ct)
+    private Task ScheduleAsync(DependencyUpdateRun run, EDependencyStep step, TimeSpan? delay, CancellationToken ct, bool expedite = false)
         => outbox.EnqueueAsync(session, new DependencyUpdateStepMessage
         {
             RepositoryId = run.Repository, Run = run.Run, Generation = run.Generation, Step = step,
-        }, delay is { } wait ? new BroadcastOptions { Delay = wait } : null, ct);
+        }, delay is null && !expedite ? null : new BroadcastOptions { Delay = delay, Expedite = expedite }, ct);
 
     private async Task<Context?> LoadContextAsync(string repositoryId, bool create, CancellationToken ct)
     {

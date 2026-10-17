@@ -55,7 +55,7 @@ public partial class RunScheduledSlotNowAction : SparkCustomAction
             return Busy;
         await messageBus.BroadcastOnceAsync(new DependencyUpdateSignalMessage
         {
-            RepositoryId = repository.Id!, Kind = EDependencySignal.Trigger, Trigger = EDependencyRunTrigger.Scheduled,
+            RepositoryId = repository.Id!, Kind = EDependencySignal.Trigger, Trigger = EDependencyRunTrigger.Scheduled, Expedite = true,
         }, $"dependency-run-now:{repository.Id}:{time.GetUtcNow().UtcTicks}:{Guid.NewGuid():N}", new BroadcastOptions { Expedite = true }, ct);
         return Started;
     }

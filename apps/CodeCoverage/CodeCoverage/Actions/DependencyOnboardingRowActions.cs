@@ -67,7 +67,7 @@ public partial class DependencyOnboardingRowActions : ISparkOwnsRowSecurity
         T($"dependencyOnboarding.managedBy.{entry.ManagedBy}", entry.ManagedBy),
         T($"dependencyOnboarding.state.{StateKey(entry)}", entry.Onboarding),
         entry.OnboardingPullRequest is { } pr ? pr.Url ?? $"#{pr.Number}" : null,
-        entry.OnboardingNote,
+        entry.OnboardingNote ?? LastRun(entry),
         T($"dependencyOnboardingUi.mergeQueueInFile.{entry.MergeQueueInFile ?? "unknown"}", entry.MergeQueueInFile ?? "unknown"),
         T(entry.OnboardingMergeQueue ? "dependencyOnboarding.queueWillAdd" : "dependencyOnboarding.queueWontAdd",
             entry.OnboardingMergeQueue ? "yes" : "no"));
@@ -77,6 +77,20 @@ public partial class DependencyOnboardingRowActions : ISparkOwnsRowSecurity
         => entry.Syncing ? "syncing"
             : !entry.Enabled && entry.Onboarding == "None" ? "off"
             : entry.Onboarding;
+
+    /// <summary>
+    /// D-O20 (live test 2026-10-17): once onboarding has nothing to say, the Note says how the last run ended, so a run
+    /// that opened no pull request ("nothing within your thresholds; 12 groups awaiting approval", "the git writer is not
+    /// configured") is not silence on the page that started it.
+    /// </summary>
+    private string? LastRun(DependencyOnboardingEntry entry)
+    {
+        if (entry.LastRunOutcome is not { } outcome)
+            return null;
+        var message = entry.LastRunMessage ?? string.Empty;
+        var text = manager.GetTranslatedMessage("dependencyOnboarding.lastRun", outcome, message);
+        return string.IsNullOrEmpty(text) || text == "dependencyOnboarding.lastRun" ? $"Last run: {outcome}: {message}" : text;
+    }
 
     private string T(string key, string fallback)
     {

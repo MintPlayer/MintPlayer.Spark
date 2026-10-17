@@ -127,6 +127,11 @@
       "fr": "Mises à jour des dépendances activées pour {0} dépôts, sans la file de fusion : {1}. Leurs pull requests d'intégration suivent.",
       "nl": "Dependency-updates ingeschakeld voor {0} repositories, zonder de merge queue: {1}. Hun onboarding-pull-requests volgen."
     },
+    "lastRun": {
+      "en": "Last run: {0}: {1}",
+      "fr": "Dernière exécution : {0} : {1}",
+      "nl": "Laatste run: {0}: {1}"
+    },
     "managedBy.owner": {
       "en": "account owner",
       "fr": "propriétaire du compte",

@@ -77,6 +77,13 @@ public sealed record DependencyUpdateSignalMessage
     public EDependencyCommand? Command { get; init; }
     public string? Argument { get; init; }
     public string? Actor { get; init; }
+
+    /// <summary>
+    /// A person is waiting on this signal (a repository's own switch, "Run the scheduled slot now"): it was broadcast
+    /// expedited, and the run it starts schedules its first step expedited too (D-O15). A message cannot read its own
+    /// <c>BroadcastOptions</c>, so the sender states it here as well.
+    /// </summary>
+    public bool Expedite { get; init; }
 }
 
 public enum EDependencySignal

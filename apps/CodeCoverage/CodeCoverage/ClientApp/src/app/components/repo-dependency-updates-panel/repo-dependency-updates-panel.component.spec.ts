@@ -95,6 +95,22 @@ describe('RepoDependencyUpdatesPanelComponent', () => {
     expect(q('[data-testid="du-rate-limit"]')?.textContent).toMatch(/waiting for GitHub's rate limit until \S+.*\(park 3 of 25\)/);
   });
 
+  // D-O16 (live test 2026-10-17): an empty line read as "no merge queue" although the file had one; it says "not read yet".
+  it('says the merge queue in coverage.yml is not read yet rather than leaving the line out', async () => {
+    await create(() => Promise.resolve({ ...view, status: { ...view.status, mergeQueueInFile: null } }));
+    expect(q('[data-testid="du-merge-queue-file"]')?.textContent).toContain('not read yet');
+  });
+
+  // D-O20: a run that opened no pull request shows how it ended.
+  it('shows the outcome of a run that planned nothing', async () => {
+    await create(() => Promise.resolve({ ...view, status: {
+      ...view.status, health: 'ok', state: 'Idle', pullRequest: null, outcome: 'nothing-planned',
+      outcomeMessage: 'Nothing within your thresholds to apply this time; 12 groups awaiting approval.',
+    } }));
+    expect(el().textContent).toContain('nothing-planned');
+    expect(el().textContent).toContain('12 groups awaiting approval');
+  });
+
   it('has no rate-limit line when nothing waits', async () => {
     await create(() => Promise.resolve(view));
     expect(q('[data-testid="du-rate-limit"]')).toBeNull();

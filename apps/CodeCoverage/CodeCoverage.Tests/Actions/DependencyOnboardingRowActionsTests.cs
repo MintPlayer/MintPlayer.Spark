@@ -91,6 +91,34 @@ public class DependencyOnboardingRowActionsTests
         row.ManagedBy.Should().Be("owner");
     }
 
+    /// <summary>
+    /// D-O20 (live test 2026-10-17): "Run now" ended without a pull request and the page said nothing. Once onboarding
+    /// has no note of its own, the Note is how the last run ended; an onboarding note still wins.
+    /// </summary>
+    [Fact]
+    public async Task The_note_says_how_the_last_run_ended_once_onboarding_has_nothing_to_say()
+    {
+        var manager = Substitute.For<IManager>();
+        manager.GetTranslatedMessage("dependencyOnboarding.lastRun", Arg.Any<object[]>())
+            .Returns(call => $"Last run: {call.ArgAt<object[]>(1)[0]}: {call.ArgAt<object[]>(1)[1]}");
+        var onboarding = new ScriptedOnboarding(
+            Entry("Repositories/github/1", "acme/quiet", enabled: true, onboarding: "Done") with
+            {
+                LastRunOutcome = "nothing-planned", LastRunMessage = "Nothing within your thresholds to apply this time; 12 groups awaiting approval.",
+            },
+            Entry("Repositories/github/2", "acme/blocked", enabled: true, onboarding: "Blocked") with
+            {
+                OnboardingNote = "The App lacks contents: write.", LastRunOutcome = "permission", LastRunMessage = "refused",
+            },
+            Entry("Repositories/github/3", "acme/never", enabled: true, onboarding: "Done"));
+
+        var rows = (await new DependencyOnboardingRowActions(onboarding, manager).DependencyOnboardingRows(Args())).ToList();
+
+        rows[0].Note.Should().Be("Last run: nothing-planned: Nothing within your thresholds to apply this time; 12 groups awaiting approval.");
+        rows[1].Note.Should().Be("The App lacks contents: write.");
+        rows[2].Note.Should().BeNull("no run yet");
+    }
+
     [Fact]
     public async Task The_scope_parents_id_is_the_setup_query_and_a_repeated_key_is_comma_joined()
     {

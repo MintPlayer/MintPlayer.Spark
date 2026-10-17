@@ -34,6 +34,7 @@ public partial class RepositoryActions : DefaultPersistentObjectActions<Reposito
     [Inject] private readonly IAsyncDocumentSession session;
     [Inject] private readonly MintPlayer.Spark.Abstractions.Authorization.IPermissionService permissions;
     [Inject] private readonly MintPlayer.Spark.Messaging.Abstractions.IMessageBus messageBus;
+    [Inject] private readonly IManager manager;
 
     /// <summary>
     /// Opens the embedded gate in the shape its mode calls for (#264, G-Q3): a <c>fixed</c> gate
@@ -50,10 +51,16 @@ public partial class RepositoryActions : DefaultPersistentObjectActions<Reposito
         if (po?.Attributes.FirstOrDefault(a => a.Name == nameof(Repository.Gate)) is PersistentObjectAttributeAsDetail { Object: { } gate })
             GateSettingsActions.ShapeForMode(gate);
 
-        // R26: the file's truth beside the onboarding setting, as the dependency updater last read coverage.yml.
-        if (po?.Attributes.FirstOrDefault(a => a.Name == nameof(Repository.MergeQueueInCoverageYml)) is { } mergeQueue
-            && await session.LoadAsync<DependencyUpdateRun>(DependencyUpdateRun.ForRepository(id)) is { FileMergeQueue: { } state })
-            mergeQueue.Value = state;
+        // R26: the file's truth beside the onboarding setting, as the bot last read coverage.yml. D-O16: always a sentence,
+        // the onboarding page's own ("enabled in coverage.yml", "not in coverage.yml", "not read yet"), never a bare enum
+        // value or an empty field that reads as "absent".
+        if (po?.Attributes.FirstOrDefault(a => a.Name == nameof(Repository.MergeQueueInCoverageYml)) is { } mergeQueue)
+        {
+            var state = (await session.LoadAsync<DependencyUpdateRun>(DependencyUpdateRun.ForRepository(id)))?.FileMergeQueue;
+            var key = DependencyFileMergeQueue.TranslationKey(state);
+            var text = manager.GetTranslatedMessage(key);
+            mergeQueue.Value = string.IsNullOrEmpty(text) || text == key ? state ?? "not read yet" : text;
+        }
         return po;
     }
 

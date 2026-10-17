@@ -137,6 +137,35 @@ public class DependencyOnboardingTests : CoverageRavenTest
         (await h.RunAsync()).Onboarding.Should().Be(EDependencyOnboarding.Blocked);
     }
 
+    // ── D-O15: workflows already on the default branch ───────────────────────────────────────────
+
+    /// <summary>
+    /// Live test 2026-10-17: a re-enabled repository whose workflows were already merged became Done without a pull
+    /// request and then waited for its schedule (Monday 06:00). It starts the first run at once, as a merged onboarding
+    /// pull request does, expedited when the switch was a person's.
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task D_O15_workflows_already_on_the_default_branch_start_the_first_run_now(bool expedite)
+    {
+        var h = new DependencyHarness(GetDocumentStore());
+        await h.SeedAsync();
+
+        await h.SignalAsync(Onboard with { Expedite = expedite });
+
+        var run = await h.RunAsync();
+        run.Onboarding.Should().Be(EDependencyOnboarding.Done);
+        run.State.Should().Be(EDependencyRunState.Starting);
+        run.Trigger.Should().Be(EDependencyRunTrigger.Refresh);
+        run.FileMergeQueue.Should().Be("enabled", "D-O16: the onboarding check read coverage.yml, so the repository page can say so");
+        var start = h.Outbox.Messages.Where(m => m.Message is DependencyUpdateStepMessage { Step: EDependencyStep.Start }).Should().ContainSingle().Which;
+        (start.Options?.Expedite ?? false).Should().Be(expedite);
+        h.Updates.Created.Should().BeEmpty("no onboarding pull request when the workflows are there");
+        (await h.Store.Maintenance.SendAsync(new Raven.Client.Documents.Operations.Indexes.GetIndexNamesOperation(0, 1024)))
+            .Where(name => name.StartsWith("Auto/", StringComparison.OrdinalIgnoreCase)).Should().BeEmpty("D-O18: no auto index in the onboarding path");
+    }
+
     // ── R25/R26: the merge queue at onboarding ───────────────────────────────────────────────────
 
     [Fact]

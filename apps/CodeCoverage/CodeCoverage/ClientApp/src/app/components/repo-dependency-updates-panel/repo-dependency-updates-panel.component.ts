@@ -76,10 +76,9 @@ import { chip, HEALTH, time } from '../dependency-updates/dependency-health';
                 @if (s.onboardingNote) { <div>{{ s.onboardingNote }}</div> }
               </dd>
             }
-            @if (s.mergeQueueInFile) {
-              <dt>{{ t('dependencyOnboardingUi.panel.mergeQueue', 'Merge queue') }}</dt>
-              <dd data-testid="du-merge-queue-file">{{ t('dependencyOnboardingUi.mergeQueueInFile.' + s.mergeQueueInFile, s.mergeQueueInFile) }}</dd>
-            }
+            <!-- D-O16: always shown, "not read yet" until the bot read coverage.yml, so an empty line never reads as "absent". -->
+            <dt>{{ t('dependencyOnboardingUi.panel.mergeQueue', 'Merge queue') }}</dt>
+            <dd data-testid="du-merge-queue-file">{{ t('dependencyOnboardingUi.mergeQueueInFile.' + (s.mergeQueueInFile ?? 'unknown'), s.mergeQueueInFile ?? 'not read yet') }}</dd>
             @if (s.coverageNote) {
               <dt>Coverage</dt>
               <dd>{{ s.coverageNote }}</dd>

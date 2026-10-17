@@ -72,10 +72,12 @@ public sealed record DependencyOnboardingResponse(string? Login, string Credenti
 /// <param name="Syncing">No default branch known yet (or no document): the installation's webhook is still being processed.</param>
 /// <param name="OnboardingMergeQueue">R26: whether its onboarding pull request would add the merge queue, as it resolves.</param>
 /// <param name="MergeQueueInFile">R26: <c>coverage.yml</c>'s merge queue as last read, null until read.</param>
+/// <param name="LastRunOutcome">D-O20: the last run's outcome (<c>nothing-planned</c>, <c>writer-unavailable</c>, ...), null before the first.</param>
+/// <param name="LastRunMessage">D-O20: why, in the run's own words.</param>
 public sealed record DependencyOnboardingEntry(
     string? RepositoryId, string Provider, string FullName, string AccountLogin, bool IsPrivate, string ManagedBy,
     string Setting, bool Enabled, bool AccountDefault, string Onboarding, string? OnboardingNote, DependencyPullRequestLink? OnboardingPullRequest,
-    bool Syncing, bool OnboardingMergeQueue, string? MergeQueueInFile);
+    bool Syncing, bool OnboardingMergeQueue, string? MergeQueueInFile, string? LastRunOutcome = null, string? LastRunMessage = null);
 
 /// <summary>The rows of one viewer, and the execution-time check of the same (R21: shown, re-checked, never trusted).</summary>
 public interface IDependencyOnboardingService
@@ -154,7 +156,8 @@ public partial class DependencyOnboardingService : IDependencyOnboardingService
                         : null,
                     Syncing: repository?.DefaultBranch is null,
                     Repository.ResolveDependencyOnboardingMergeQueue(repository, account),
-                    run?.FileMergeQueue));
+                    run?.FileMergeQueue,
+                    run?.Outcome, run?.OutcomeMessage));
             }
         }
         return new DependencyOnboardingResponse(login, state.ToString(), linked, redirect is not null,

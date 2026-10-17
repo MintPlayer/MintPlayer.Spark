@@ -54,6 +54,7 @@ public static class DependencyUpdateSwitch
         {
             RepositoryId = repositoryId,
             Kind = transition == On ? EDependencySignal.Onboard : EDependencySignal.Offboard,
+            Expedite = expedite,
         }, $"dependency-{(transition == On ? "onboard" : "offboard")}:{repositoryId}:{occurredAt.UtcTicks}", new BroadcastOptions { Expedite = expedite }, ct);
 
     /// <summary>

@@ -264,6 +264,9 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         var defaultBranch = repository.DefaultBranch;
         var yml = defaultBranch is null ? null : await context.Forge.GetFileContentAsync(repository, defaultBranch, CoverageYml.FileName, ct);
         var parsed = MergeQueueYml.Parse(yml, defaultBranch ?? "main");
+        // D-O16: every read of the default branch's coverage.yml records what it says about the queue for the repository page.
+        if (defaultBranch is not null)
+            Dependencies.Lifecycle.DependencyFileMergeQueue.Record(session, repository.Id!, yml, defaultBranch);
 
         // A label speaks only when it is the configured one, on a repository that turned the queue on. Anything else is
         // somebody else's label and is ignored without a word; a comment or the button always gets an answer.
