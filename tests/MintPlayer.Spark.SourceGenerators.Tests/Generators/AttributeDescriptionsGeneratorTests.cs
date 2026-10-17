@@ -287,6 +287,106 @@ public class AttributeDescriptionsGeneratorTests
         result.GeneratedSources.Should().BeEmpty();
     }
 
+    // A documented property on a type that an [assembly: ...] attribute cannot name. The generated
+    // typeof(...) was CS0122 for these and failed the build (hit in the identity provider's
+    // M_202610090900_OidcDataModel, whose private nested classes carry the comments).
+    private const string AccessibilityFixture = """
+        namespace Fx;
+
+        public class Outer
+        {
+            private class PrivateNested
+            {
+                /// <summary>In a private nested class.</summary>
+                public string InPrivate { get; set; } = "";
+            }
+
+            protected class ProtectedNested
+            {
+                /// <summary>In a protected nested class.</summary>
+                public string InProtected { get; set; } = "";
+            }
+
+            private protected class PrivateProtectedNested
+            {
+                /// <summary>In a private protected nested class.</summary>
+                public string InPrivateProtected { get; set; } = "";
+            }
+
+            protected internal class ProtectedInternalNested
+            {
+                /// <summary>In a protected internal nested class.</summary>
+                public string InProtectedInternal { get; set; } = "";
+            }
+
+            private sealed class PrivateHost
+            {
+                public class PublicInPrivate
+                {
+                    /// <summary>Public, but nested in a private class.</summary>
+                    public string InPublicInPrivate { get; set; } = "";
+                }
+            }
+
+            internal class InternalNested
+            {
+                /// <summary>In an internal nested class.</summary>
+                public string InInternal { get; set; } = "";
+            }
+
+            public class PublicNested
+            {
+                /// <summary>In a public nested class.</summary>
+                public string InPublic { get; set; } = "";
+            }
+        }
+
+        file class FileLocal
+        {
+            /// <summary>In a file-local class.</summary>
+            public string InFileLocal { get; set; } = "";
+        }
+        """;
+
+    [Theory, MemberData(nameof(Modes))]
+    public void Types_an_assembly_attribute_cannot_name_emit_nothing(string _, CSharpParseOptions mode)
+    {
+        var generated = Generate(mode, AccessibilityFixture);
+
+        generated.Should().NotContain("\"InPrivate\"");
+        generated.Should().NotContain("\"InProtected\"");
+        generated.Should().NotContain("\"InPrivateProtected\"");
+        generated.Should().NotContain("\"InPublicInPrivate\"");
+        generated.Should().NotContain("\"InFileLocal\"");
+    }
+
+    [Theory, MemberData(nameof(Modes))]
+    public void Public_internal_and_protected_internal_nested_types_still_emit(string _, CSharpParseOptions mode)
+    {
+        var generated = Generate(mode, AccessibilityFixture);
+
+        generated.Should().Contain(Line("global::Fx.Outer.PublicNested", "InPublic", "\"In a public nested class.\""));
+        generated.Should().Contain(Line("global::Fx.Outer.InternalNested", "InInternal", "\"In an internal nested class.\""));
+        generated.Should().Contain(Line(
+            "global::Fx.Outer.ProtectedInternalNested", "InProtectedInternal", "\"In a protected internal nested class.\""));
+    }
+
+    [Fact]
+    public void Generated_source_compiles_beside_inaccessible_documented_types()
+    {
+        var generated = Generate(NoDocs, AccessibilityFixture);
+        var attrs = GeneratorHarness.EmitAndLoad(
+            "Fx.Accessibility",
+            [AccessibilityFixture, generated],
+            [typeof(SparkAttributeDescriptionAttribute)],
+            NoDocs.WithPreprocessorSymbols("DEBUG"))
+            .GetCustomAttributes(typeof(SparkAttributeDescriptionAttribute), inherit: false)
+            .Cast<SparkAttributeDescriptionAttribute>()
+            .ToList();
+
+        attrs.Select(a => a.Property).Should().BeEquivalentTo(["InPublic", "InInternal", "InProtectedInternal"]);
+    }
+
     [Fact]
     public void Malformed_xml_still_yields_the_summary_text()
     {

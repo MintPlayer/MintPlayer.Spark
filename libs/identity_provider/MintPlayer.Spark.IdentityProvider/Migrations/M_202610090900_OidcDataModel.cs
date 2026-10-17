@@ -55,7 +55,7 @@ public partial class M_202610090900_OidcDataModel : ISparkMigration
     {
         public string? Id { get; set; }
         public List<string>? AllowedScopes { get; set; }
-        // Whether the document has the field at all, null included: what exists() meant.
+        /// <summary>Whether the document has the field at all, null included: what exists() meant.</summary>
         public bool HasAllowedScopes { get; set; }
     }
 

@@ -56,6 +56,9 @@ public class AttributeDescriptionsGenerator : IncrementalGenerator
                     if (property.ContainingType is not INamedTypeSymbol type || type.IsStatic)
                         return default;
 
+                    if (!IsNameableFromAssemblyScope(type))
+                        return default;
+
                     var typeOf = TypeOfExpression(type);
                     if (typeOf is null)
                         return default;
@@ -111,6 +114,35 @@ public class AttributeDescriptionsGenerator : IncrementalGenerator
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Whether <c>typeof(T)</c> compiles in an <c>[assembly: ...]</c> attribute, in a separate generated
+    /// file. That position sits outside every type, so <paramref name="type"/> and each type containing it
+    /// must be public, internal or protected internal (the internal half grants it): a private,
+    /// protected or private protected type anywhere in the chain is CS0122 there, and a file-local type
+    /// cannot be named from another file. An assembly attribute cannot be emitted inside the containing
+    /// type, so such properties are skipped rather than spelled differently.
+    /// </summary>
+    private static bool IsNameableFromAssemblyScope(INamedTypeSymbol type)
+    {
+        for (var current = type; current != null; current = current.ContainingType)
+        {
+            if (current.IsFileLocal)
+                return false;
+
+            switch (current.DeclaredAccessibility)
+            {
+                case Accessibility.Public:
+                case Accessibility.Internal:
+                case Accessibility.ProtectedOrInternal:
+                    break;
+                default:
+                    return false;
+            }
+        }
+
+        return true;
     }
 
     /// <summary>
