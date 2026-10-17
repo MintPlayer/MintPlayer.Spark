@@ -1,6 +1,8 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import { BsCardBodyComponent, BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
 import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
+import { SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { BrowseService, DependencyRepoView } from '../../services/browse.service';
 import { chip, HEALTH, time } from '../dependency-updates/dependency-health';
 
@@ -14,7 +16,7 @@ import { chip, HEALTH, time } from '../dependency-updates/dependency-health';
  */
 @Component({
   selector: 'app-repo-dependency-updates-panel',
-  imports: [BsCardComponent, BsCardHeaderComponent, BsCardBodyComponent, BsTableComponent],
+  imports: [RouterLink, BsCardComponent, BsCardHeaderComponent, BsCardBodyComponent, BsTableComponent],
   template: `
     @if (visible()) {
       @let v = view()!;
@@ -42,6 +44,13 @@ import { chip, HEALTH, time } from '../dependency-updates/dependency-health';
             @if (s.plannedGroups > 0) { <span class="small text-muted">{{ s.plannedGroups }} group(s) applied</span> }
           </div>
 
+          @if (s.rateLimit; as rl) {
+            <p class="small text-warning-emphasis mb-2" data-testid="du-rate-limit">
+              <i class="bi bi-hourglass-split"></i>
+              {{ format('dependencyOnboardingUi.panel.rateLimit', "waiting for GitHub's rate limit until {0} (park {1} of {2})", clock(rl.untilUtc), rl.park, rl.budget) }}
+            </p>
+          }
+
           <dl class="du-facts small mb-2">
             <dt>Last run</dt>
             <dd>
@@ -54,10 +63,22 @@ import { chip, HEALTH, time } from '../dependency-updates/dependency-health';
               @if (s.nextSlotUtc) { {{ time(s.nextSlotUtc) }} } @else { — }
               @if (s.schedule) { <span class="text-muted">({{ s.schedule }})</span> }
             </dd>
-            @if (s.onboardingNote) {
+            @if (s.onboardingNote || s.onboardingPullRequest) {
               <dt>Onboarding</dt>
-              <dd class="du-why" data-testid="du-onboarding">{{ s.onboardingNote }}</dd>
+              <dd class="du-why" data-testid="du-onboarding">
+                @if (s.onboardingPullRequest; as opr) {
+                  @if (opr.url) {
+                    <a [href]="opr.url" target="_blank" rel="noopener" data-testid="du-onboarding-pr">{{ format('dependencyOnboardingUi.panel.onboardingPr', 'Onboarding pull request #{0}', opr.number) }}</a>
+                  } @else {
+                    <span data-testid="du-onboarding-pr">{{ format('dependencyOnboardingUi.panel.onboardingPr', 'Onboarding pull request #{0}', opr.number) }}</span>
+                  }
+                }
+                @if (s.onboardingNote) { <div>{{ s.onboardingNote }}</div> }
+              </dd>
             }
+            <!-- D-O16: always shown, "not read yet" until the bot read coverage.yml, so an empty line never reads as "absent". -->
+            <dt>{{ t('dependencyOnboardingUi.panel.mergeQueue', 'Merge queue') }}</dt>
+            <dd data-testid="du-merge-queue-file">{{ t('dependencyOnboardingUi.mergeQueueInFile.' + (s.mergeQueueInFile ?? 'unknown'), s.mergeQueueInFile ?? 'not read yet') }}</dd>
             @if (s.coverageNote) {
               <dt>Coverage</dt>
               <dd>{{ s.coverageNote }}</dd>
@@ -123,6 +144,12 @@ import { chip, HEALTH, time } from '../dependency-updates/dependency-health';
           }
         </bs-card-body>
       </bs-card>
+    } @else if (view()) {
+      <!-- Readable, but off and never run here: the way in is the onboarding page (dependency-updates PRD R20). -->
+      <p class="small text-muted mt-3 mb-0" data-testid="du-off">
+        <i class="bi bi-box-seam"></i> {{ t('dependencyOnboardingUi.panel.repoOff', 'Dependency updates are off for this repository.') }}
+        <a routerLink="/dependency-updates/onboard" data-testid="du-onboard-link">{{ t('dependencyOnboardingUi.panel.enableLink', 'Enable it for your repositories →') }}</a>
+      </p>
     }
   `,
   styleUrl: './repo-dependency-updates-panel.component.scss',
@@ -130,6 +157,7 @@ import { chip, HEALTH, time } from '../dependency-updates/dependency-health';
 })
 export class RepoDependencyUpdatesPanelComponent {
   private readonly browse = inject(BrowseService);
+  private readonly lang = inject(SparkLanguageService);
 
   /** Canonical forge spelling, e.g. "github". Sourced from the PO's document id (`forgeOf`). */
   readonly provider = input.required<string>();
@@ -158,6 +186,20 @@ export class RepoDependencyUpdatesPanelComponent {
       const name = this.name();
       void this.load(provider, owner, name);
     });
+  }
+
+  t(key: string, fallback: string): string {
+    return this.lang.t(key, fallback);
+  }
+
+  format(key: string, fallback: string, ...args: (string | number)[]): string {
+    return args.reduce<string>((text, arg, i) => text.split(`{${i}}`).join(String(arg)), this.t(key, fallback));
+  }
+
+  /** hh:mm in the viewer's time zone. */
+  clock(utc: string): string {
+    const d = new Date(utc);
+    return Number.isNaN(d.getTime()) ? utc : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }
 
   async load(provider = this.provider(), owner = this.owner(), name = this.name()): Promise<void> {

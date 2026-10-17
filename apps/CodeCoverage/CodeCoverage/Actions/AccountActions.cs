@@ -2,6 +2,7 @@ using System.Linq.Expressions;
 using Raven.Client.Documents.Linq;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
+using CodeCoverage.Dependencies.Lifecycle;
 using CodeCoverage.Entities;
 using CodeCoverage.Services;
 using MintPlayer.SourceGenerators.Attributes;
@@ -22,7 +23,7 @@ namespace CodeCoverage.Actions;
 /// is withheld from anyone without ReadSettings. Narrowing never widens: nothing here grants what <c>security.json</c>
 /// does not.
 /// </remarks>
-public partial class AccountActions : DefaultPersistentObjectActions<Account>, ISparkOwnsRowSecurity
+public partial class AccountActions : DefaultPersistentObjectActions<Account>, ISparkOwnsRowSecurity, MintPlayer.Spark.Abstractions.Interceptors.IBeforeSave<Account>, MintPlayer.Spark.Abstractions.Interceptors.IAfterSaveCommitted<Account>
 {
     /// <inheritdoc />
     public string RowSecurityRationale =>
@@ -37,6 +38,30 @@ public partial class AccountActions : DefaultPersistentObjectActions<Account>, I
 
     [Inject] private readonly ISparkVisibility visibility;
     [Inject] private readonly IPermissionService permissions;
+    [Inject] private readonly MintPlayer.Spark.Messaging.Abstractions.IMessageBus messageBus;
+    [Inject] private readonly Raven.Client.Documents.IDocumentStore documentStore;
+    [Inject] private readonly ILogger<AccountActions> logger;
+
+    /// <summary>R23: the account default's transition, for the after-commit hook (which gets facts, never the entity).</summary>
+    public ValueTask OnBeforeSaveAsync(Account entity, MintPlayer.Spark.Abstractions.Interceptors.SaveContext context)
+    {
+        if (DependencyUpdateSwitch.Transition(context.Before as Account, entity) is { } transition)
+            context.Facts[DependencyUpdateSwitch.Fact] = transition;
+        return ValueTask.CompletedTask;
+    }
+
+    /// <summary>
+    /// R23/R24: the account's default switched, committed: every connected repository that inherits it is onboarded
+    /// (off → on) or offboarded (on → off), not expedited. Progress shows on the Dependency updates page.
+    /// </summary>
+    public async Task OnAfterSaveCommittedAsync(MintPlayer.Spark.Abstractions.Interceptors.SparkCommittedChange change, CancellationToken cancellationToken)
+    {
+        if (!change.Facts.TryGetValue(DependencyUpdateSwitch.Fact, out var transition))
+            return;
+        using var session = documentStore.OpenAsyncSession();
+        var count = await DependencyUpdateSwitch.FanOutAsync(session, messageBus, change.Id, transition, change.OccurredAt, cancellationToken);
+        logger.LogInformation("Dependency updates: {Transition} for account {Account}, fanned out over {Count} repositories", transition, change.Id, count);
+    }
 
     /// <summary>
     /// No filter for reads; managers only for writes.
@@ -54,7 +79,9 @@ public partial class AccountActions : DefaultPersistentObjectActions<Account>, I
 
         // `.In()` rather than Contains: this predicate is pushed into RQL, where Contains is
         // untranslatable — see ApiTokenActions for the production outage that taught us.
-        var owners = await visibility.GetAllowedOwnersAsync();
+        // The MANAGED owners (R39, D-O12), not the owner set: a read-only member of an organization reaches its installation
+        // but does not manage the account.
+        var owners = await visibility.GetManagedOwnersAsync();
         return account => account.OwnerKey.In(owners);
     }
 

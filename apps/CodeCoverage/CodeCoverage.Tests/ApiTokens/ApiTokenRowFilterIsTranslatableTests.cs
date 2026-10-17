@@ -54,7 +54,7 @@ public class ApiTokenRowFilterIsTranslatableTests : CoverageRavenTest
     /// </remarks>
     private static ApiTokenActions Actions(IAsyncDocumentSession session, string[] owners)
     {
-        var visibility = Substitute.For<ISparkVisibility>();
+        var visibility = Substitute.For<ISparkVisibility>().ManagingWhatItSees();
         visibility.GetAllowedOwnersAsync().Returns(Task.FromResult(
             owners.Select(ForgeOwner.KeyFromUnqualifiedLogin).ToArray()));
 

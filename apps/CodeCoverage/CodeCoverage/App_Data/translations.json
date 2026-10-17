@@ -8,6 +8,13 @@
         "nl": "Gegevens verwijderen"
       }
     },
+    "EnableDependencyUpdates": {
+      "label": {
+        "en": "Enable dependency updates",
+        "fr": "Activer les mises à jour des dépendances",
+        "nl": "Dependency-updates inschakelen"
+      }
+    },
     "Resync": {
       "label": {
         "en": "Resync",
@@ -25,6 +32,13 @@
         "en": "Revoke",
         "fr": "Révoquer",
         "nl": "Intrekken"
+      }
+    },
+    "RunScheduledSlotNow": {
+      "label": {
+        "en": "Run the scheduled slot now",
+        "fr": "Lancer le créneau planifié maintenant",
+        "nl": "Geplande run nu starten"
       }
     },
     "SyncColumns": {
@@ -100,6 +114,275 @@
       "en": "Welcome to Coverage",
       "fr": "Bienvenue sur Coverage",
       "nl": "Welkom bij Coverage"
+    }
+  },
+  "dependencyOnboarding": {
+    "enabledWithQueue": {
+      "en": "Dependency updates enabled for {0} repositories, with the merge queue: {1}. Their onboarding pull requests follow.",
+      "fr": "Mises à jour des dépendances activées pour {0} dépôts, avec la file de fusion : {1}. Leurs pull requests d'intégration suivent.",
+      "nl": "Dependency-updates ingeschakeld voor {0} repositories, met de merge queue: {1}. Hun onboarding-pull-requests volgen."
+    },
+    "enabledWithoutQueue": {
+      "en": "Dependency updates enabled for {0} repositories, without the merge queue: {1}. Their onboarding pull requests follow.",
+      "fr": "Mises à jour des dépendances activées pour {0} dépôts, sans la file de fusion : {1}. Leurs pull requests d'intégration suivent.",
+      "nl": "Dependency-updates ingeschakeld voor {0} repositories, zonder de merge queue: {1}. Hun onboarding-pull-requests volgen."
+    },
+    "lastRun": {
+      "en": "Last run: {0}: {1}",
+      "fr": "Dernière exécution : {0} : {1}",
+      "nl": "Laatste run: {0}: {1}"
+    },
+    "managedBy.owner": {
+      "en": "account owner",
+      "fr": "propriétaire du compte",
+      "nl": "accounteigenaar"
+    },
+    "managedBy.repo-admin": {
+      "en": "repository admin",
+      "fr": "administrateur du dépôt",
+      "nl": "repository-admin"
+    },
+    "mergeQueueQuestion": {
+      "en": "Merge dependency pull requests automatically through the merge queue?",
+      "fr": "Fusionner automatiquement les pull requests de dépendances par la file de fusion ?",
+      "nl": "Dependency-pull-requests automatisch mergen via de merge queue?"
+    },
+    "notEnabled": {
+      "en": "Not enabled: {0}: {1}",
+      "fr": "Non activé : {0} : {1}",
+      "nl": "Niet ingeschakeld: {0}: {1}"
+    },
+    "queueWillAdd": {
+      "en": "onboarding adds it",
+      "fr": "l'intégration l'ajoute",
+      "nl": "onboarding voegt hem toe"
+    },
+    "queueWontAdd": {
+      "en": "onboarding leaves it out",
+      "fr": "l'intégration ne l'ajoute pas",
+      "nl": "onboarding laat hem weg"
+    },
+    "reason.notFound": {
+      "en": "no such repository",
+      "fr": "ce dépôt n'existe pas",
+      "nl": "deze repository bestaat niet"
+    },
+    "reason.notManaged": {
+      "en": "you don't manage this repository",
+      "fr": "vous ne gérez pas ce dépôt",
+      "nl": "je beheert deze repository niet"
+    },
+    "reason.saveRefused": {
+      "en": "the save was refused: {0}",
+      "fr": "l'enregistrement a été refusé : {0}",
+      "nl": "het opslaan werd geweigerd: {0}"
+    },
+    "runNow.busy": {
+      "en": "A run is in progress for this repository; try again when it ends.",
+      "fr": "Un passage est en cours pour ce dépôt ; réessayez quand il se termine.",
+      "nl": "Er loopt al een run voor deze repository; probeer opnieuw wanneer die klaar is."
+    },
+    "runNow.off": {
+      "en": "Dependency updates are off for this repository.",
+      "fr": "Les mises à jour des dépendances sont désactivées pour ce dépôt.",
+      "nl": "Dependency-updates staan uit voor deze repository."
+    },
+    "runNow.refused": {
+      "en": "You don't manage this repository.",
+      "fr": "Vous ne gérez pas ce dépôt.",
+      "nl": "Je beheert deze repository niet."
+    },
+    "runNow.started": {
+      "en": "The scheduled run started.",
+      "fr": "Le passage planifié a démarré.",
+      "nl": "De geplande run is gestart."
+    },
+    "state.Blocked": {
+      "en": "onboarding blocked",
+      "fr": "intégration bloquée",
+      "nl": "onboarding geblokkeerd"
+    },
+    "state.Done": {
+      "en": "on",
+      "fr": "activé",
+      "nl": "aan"
+    },
+    "state.None": {
+      "en": "on, onboarding follows",
+      "fr": "activé, l'intégration suit",
+      "nl": "aan, onboarding volgt"
+    },
+    "state.PullRequestOpened": {
+      "en": "onboarding pull request open",
+      "fr": "pull request d'intégration ouverte",
+      "nl": "onboarding-pull-request open"
+    },
+    "state.off": {
+      "en": "off",
+      "fr": "désactivé",
+      "nl": "uit"
+    },
+    "state.syncing": {
+      "en": "syncing: GitHub's notice is still being processed",
+      "fr": "synchronisation : l'avis de GitHub est encore en cours de traitement",
+      "nl": "synchroniseren: GitHubs melding wordt nog verwerkt"
+    },
+    "withMergeQueue": {
+      "en": "Enable, with the merge queue",
+      "fr": "Activer, avec la file de fusion",
+      "nl": "Inschakelen, met de merge queue"
+    },
+    "withoutMergeQueue": {
+      "en": "Enable, without the merge queue",
+      "fr": "Activer, sans la file de fusion",
+      "nl": "Inschakelen, zonder de merge queue"
+    }
+  },
+  "dependencyOnboardingUi": {
+    "allAccounts": {
+      "en": "all my accounts →",
+      "fr": "tous mes comptes →",
+      "nl": "al mijn accounts →"
+    },
+    "empty": {
+      "en": "There is nothing here you manage.",
+      "fr": "Vous ne gérez rien ici.",
+      "nl": "Er is hier niets dat je beheert."
+    },
+    "emptyNarrowed": {
+      "en": "This installation has no repositories you manage.",
+      "fr": "Cette installation n'a aucun dépôt que vous gérez.",
+      "nl": "Deze installatie heeft geen repositories die je beheert."
+    },
+    "guide": {
+      "en": "Dependency updater setup →",
+      "fr": "Configuration du gestionnaire de dépendances →",
+      "nl": "Instellen van de dependency-updater →"
+    },
+    "intro": {
+      "en": "Choose the repositories CodeCoverage keeps up to date. Nothing is switched on until you enable it here: closing this page changes nothing.",
+      "fr": "Choisissez les dépôts que CodeCoverage tient à jour. Rien n'est activé tant que vous ne l'activez pas ici : fermer cette page ne change rien.",
+      "nl": "Kies de repositories die CodeCoverage up-to-date houdt. Niets wordt ingeschakeld tot je het hier inschakelt: deze pagina sluiten verandert niets."
+    },
+    "loadFailed": {
+      "en": "The repositories could not be loaded.",
+      "fr": "Les dépôts n'ont pas pu être chargés.",
+      "nl": "De repositories konden niet worden geladen."
+    },
+    "mergeQueueGuide": {
+      "en": "Merge queue guide →",
+      "fr": "Guide de la file de fusion →",
+      "nl": "Merge-queue-handleiding →"
+    },
+    "mergeQueueHelp": {
+      "en": "Enabling asks whether the onboarding pull requests also switch on the merge queue, which merges green dependency pull requests automatically and is then available for your own pull requests too.",
+      "fr": "L'activation demande si les pull requests d'intégration activent aussi la file de fusion, qui fusionne automatiquement les pull requests de dépendances au vert et sert ensuite aussi à vos propres pull requests.",
+      "nl": "Bij het inschakelen wordt gevraagd of de onboarding-pull-requests ook de merge queue aanzetten, die groene dependency-pull-requests automatisch merget en daarna ook voor je eigen pull requests beschikbaar is."
+    },
+    "mergeQueueInFile.absent": {
+      "en": "not in coverage.yml",
+      "fr": "absente de coverage.yml",
+      "nl": "niet in coverage.yml"
+    },
+    "mergeQueueInFile.disabled": {
+      "en": "disabled in coverage.yml",
+      "fr": "désactivée dans coverage.yml",
+      "nl": "uitgeschakeld in coverage.yml"
+    },
+    "mergeQueueInFile.enabled": {
+      "en": "enabled in coverage.yml",
+      "fr": "activée dans coverage.yml",
+      "nl": "ingeschakeld in coverage.yml"
+    },
+    "mergeQueueInFile.unknown": {
+      "en": "not read yet",
+      "fr": "pas encore lue",
+      "nl": "nog niet gelezen"
+    },
+    "narrowed": {
+      "en": "Showing the repositories of this installation",
+      "fr": "Dépôts de cette installation",
+      "nl": "De repositories van deze installatie"
+    },
+    "notLinked": {
+      "en": "Your account has no GitHub sign-in, so CodeCoverage cannot see which repositories you manage. Link your GitHub account first:",
+      "fr": "Votre compte n'a pas de connexion GitHub, donc CodeCoverage ne peut pas voir quels dépôts vous gérez. Liez d'abord votre compte GitHub :",
+      "nl": "Je account heeft geen GitHub-aanmelding, dus CodeCoverage kan niet zien welke repositories je beheert. Koppel eerst je GitHub-account:"
+    },
+    "notLinkedAction": {
+      "en": "Account → Connected logins",
+      "fr": "Compte → Connexions liées",
+      "nl": "Account → Gekoppelde aanmeldingen"
+    },
+    "panel.accountOff": {
+      "en": "Dependency updates are not on for this account's repositories.",
+      "fr": "Les mises à jour des dépendances ne sont pas activées pour les dépôts de ce compte.",
+      "nl": "Dependency-updates staan niet aan voor de repositories van dit account."
+    },
+    "panel.enableLink": {
+      "en": "Enable it for your repositories →",
+      "fr": "Activez-le pour vos dépôts →",
+      "nl": "Schakel het in voor je repositories →"
+    },
+    "panel.mergeQueue": {
+      "en": "Merge queue",
+      "fr": "File de fusion",
+      "nl": "Merge queue"
+    },
+    "panel.onboardingPr": {
+      "en": "Onboarding pull request #{0}",
+      "fr": "Pull request d'intégration n°{0}",
+      "nl": "Onboarding-pull-request #{0}"
+    },
+    "panel.rateLimit": {
+      "en": "waiting for GitHub's rate limit until {0} (park {1} of {2})",
+      "fr": "en attente de la limite de débit de GitHub jusqu'à {0} (attente {1} sur {2})",
+      "nl": "wacht op GitHubs rate limit tot {0} (park {1} van {2})"
+    },
+    "panel.repoOff": {
+      "en": "Dependency updates are off for this repository.",
+      "fr": "Les mises à jour des dépendances sont désactivées pour ce dépôt.",
+      "nl": "Dependency-updates staan uit voor deze repository."
+    },
+    "reauth": {
+      "en": "Your GitHub sign-in has expired. Sign out and sign in with GitHub again to see every repository you manage.",
+      "fr": "Votre connexion GitHub a expiré. Déconnectez-vous et reconnectez-vous avec GitHub pour voir tous les dépôts que vous gérez.",
+      "nl": "Je GitHub-aanmelding is verlopen. Meld je af en opnieuw aan met GitHub om elke repository te zien die je beheert."
+    },
+    "requestBody": {
+      "en": "GitHub sent the installation to an organization owner for approval. Once they approve it, this page lists its repositories.",
+      "fr": "GitHub a envoyé l'installation à un propriétaire de l'organisation pour approbation. Dès son approbation, cette page liste ses dépôts.",
+      "nl": "GitHub heeft de installatie ter goedkeuring naar een organisatie-eigenaar gestuurd. Zodra die ze goedkeurt, toont deze pagina de repositories."
+    },
+    "requestTitle": {
+      "en": "Waiting for an organization owner's approval.",
+      "fr": "En attente de l'approbation d'un propriétaire de l'organisation.",
+      "nl": "Wacht op goedkeuring van een organisatie-eigenaar."
+    },
+    "settingsHint": {
+      "en": "Change or switch it off later on the account's or the repository's page.",
+      "fr": "Modifiez ou désactivez-le plus tard sur la page du compte ou du dépôt.",
+      "nl": "Wijzig of schakel het later uit op de pagina van het account of de repository."
+    },
+    "syncing": {
+      "en": "{0} of these repositories are still syncing with GitHub; they appear here in a moment.",
+      "fr": "{0} de ces dépôts sont encore en cours de synchronisation avec GitHub ; ils apparaissent ici dans un instant.",
+      "nl": "{0} van deze repositories worden nog met GitHub gesynchroniseerd; ze verschijnen hier zo meteen."
+    },
+    "title": {
+      "en": "Enable dependency updates",
+      "fr": "Activer les mises à jour des dépendances",
+      "nl": "Dependency-updates inschakelen"
+    },
+    "unavailable": {
+      "en": "GitHub could not be reached, so this list may be incomplete. Try again in a moment.",
+      "fr": "GitHub est injoignable, cette liste peut donc être incomplète. Réessayez dans un instant.",
+      "nl": "GitHub was niet bereikbaar, dus deze lijst is mogelijk onvolledig. Probeer het zo opnieuw."
+    },
+    "whoMayEnable": {
+      "en": "Only organization owners and repository admins can enable dependency updates.",
+      "fr": "Seuls les propriétaires d'organisation et les administrateurs de dépôt peuvent activer les mises à jour des dépendances.",
+      "nl": "Alleen organisatie-eigenaars en repository-admins kunnen dependency-updates inschakelen."
     }
   },
   "mcpUi": {
@@ -349,6 +632,18 @@
             "en": "Release cooldown",
             "fr": "Délai après publication",
             "nl": "Wachttijd na release"
+          }
+        },
+        "DependencyOnboardingMergeQueue": {
+          "description": {
+            "en": "Whether the onboarding pull request also turns the merge queue on in coverage.yml (mergeQueue: { enabled: true }). Dependency pull requests within your thresholds merge through it, and your own pull requests can use it too. It only matters when the onboarding pull request is created, and a mergeQueue section already in the file is left alone.",
+            "fr": "Si la pull request d'intégration active aussi la file de fusion dans coverage.yml (mergeQueue: { enabled: true }). Les pull requests de dépendances dans vos seuils fusionnent par elle, et vos propres pull requests peuvent l'utiliser aussi. Cela ne compte qu'à la création de la pull request d'intégration, et une section mergeQueue déjà présente n'est pas modifiée.",
+            "nl": "Of de onboarding-pull-request ook de merge queue aanzet in coverage.yml (mergeQueue: { enabled: true }). Dependency-pull-requests binnen je drempels mergen erdoor, en je eigen pull requests kunnen hem ook gebruiken. Het telt alleen wanneer de onboarding-pull-request wordt aangemaakt, en een mergeQueue-sectie die al in het bestand staat, blijft ongemoeid."
+          },
+          "label": {
+            "en": "Onboarding adds the merge queue",
+            "fr": "L'intégration ajoute la file de fusion",
+            "nl": "Onboarding voegt de merge queue toe"
           }
         },
         "DependencyRules": {
@@ -1365,6 +1660,66 @@
         }
       }
     },
+    "DependencyOnboardingRow": {
+      "attributes": {
+        "FullName": {
+          "label": {
+            "en": "Repository",
+            "fr": "Dépôt",
+            "nl": "Repository"
+          }
+        },
+        "IsPrivate": {
+          "label": {
+            "en": "Private",
+            "fr": "Privé",
+            "nl": "Privé"
+          }
+        },
+        "ManagedBy": {
+          "label": {
+            "en": "You may, as",
+            "fr": "Vous pouvez, en tant que",
+            "nl": "Je mag, als"
+          }
+        },
+        "MergeQueueInCoverageYml": {
+          "label": {
+            "en": "Merge queue",
+            "fr": "File de fusion",
+            "nl": "Merge queue"
+          }
+        },
+        "Note": {
+          "label": {
+            "en": "Note",
+            "fr": "Remarque",
+            "nl": "Opmerking"
+          }
+        },
+        "OnboardingMergeQueue": {
+          "label": {
+            "en": "Onboarding",
+            "fr": "Intégration",
+            "nl": "Onboarding"
+          }
+        },
+        "OnboardingPullRequest": {
+          "label": {
+            "en": "Pull request",
+            "fr": "Pull request",
+            "nl": "Pull request"
+          }
+        },
+        "State": {
+          "label": {
+            "en": "Dependency updates",
+            "fr": "Mises à jour des dépendances",
+            "nl": "Dependency-updates"
+          }
+        }
+      }
+    },
     "DependencyRule": {
       "attributes": {
         "Ecosystem": {
@@ -2282,6 +2637,18 @@
             "nl": "Wachttijd na release"
           }
         },
+        "DependencyOnboardingMergeQueue": {
+          "description": {
+            "en": "Whether this repository's onboarding pull request turns the merge queue on in coverage.yml, or the account's setting. It only matters when the onboarding pull request is created.",
+            "fr": "Si la pull request d'intégration de ce dépôt active la file de fusion dans coverage.yml, ou le paramètre du compte. Cela ne compte qu'à la création de la pull request d'intégration.",
+            "nl": "Of de onboarding-pull-request van deze repository de merge queue aanzet in coverage.yml, of de accountinstelling. Het telt alleen wanneer de onboarding-pull-request wordt aangemaakt."
+          },
+          "label": {
+            "en": "Onboarding adds the merge queue",
+            "fr": "L'intégration ajoute la file de fusion",
+            "nl": "Onboarding voegt de merge queue toe"
+          }
+        },
         "DependencyScheduleFrequency": {
           "description": {
             "en": "How often the rolling dependency pull request is recomputed, when this repository has its own schedule.",
@@ -2489,6 +2856,18 @@
             "en": "Ignored checks from",
             "fr": "Vérifications ignorées selon",
             "nl": "Genegeerde checks volgens"
+          }
+        },
+        "MergeQueueInCoverageYml": {
+          "description": {
+            "en": "What coverage.yml on the default branch says about the merge queue, as the dependency updater last read it: enabled, disabled or absent. Empty until it has read the file.",
+            "fr": "Ce que dit coverage.yml sur la branche par défaut à propos de la file de fusion, tel que le gestionnaire de dépendances l'a lu en dernier : enabled, disabled ou absent. Vide tant qu'il n'a pas lu le fichier.",
+            "nl": "Wat coverage.yml op de standaardbranch over de merge queue zegt, zoals de dependency-updater het laatst las: enabled, disabled of absent. Leeg zolang hij het bestand niet gelezen heeft."
+          },
+          "label": {
+            "en": "Merge queue in coverage.yml",
+            "fr": "File de fusion dans coverage.yml",
+            "nl": "Merge queue in coverage.yml"
           }
         },
         "Name": {
@@ -2764,6 +3143,13 @@
         "en": "Builds",
         "fr": "Builds",
         "nl": "Builds"
+      }
+    },
+    "DependencyOnboardingRows": {
+      "label": {
+        "en": "Set up dependency updates",
+        "fr": "Configurer les mises à jour des dépendances",
+        "nl": "Dependency-updates instellen"
       }
     },
     "GetRepositoryGraphStates": {

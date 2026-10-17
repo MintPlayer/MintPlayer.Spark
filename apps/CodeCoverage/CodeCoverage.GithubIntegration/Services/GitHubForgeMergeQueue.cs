@@ -375,7 +375,8 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
                 throw new ForgeAccessDeniedException($"GitHub refused the checks of {repository.FullName}: {messages}", reply.AcceptedPermissions);
             if (errors.All(e => Str(e, "type") == "NOT_FOUND"))
                 return [];
-            throw new ForgeRequestException($"GitHub answered the checks of {repository.FullName} with errors: {messages}", (int)reply.Status);
+            throw new ForgeRequestException($"GitHub answered the checks of {repository.FullName} with errors: {messages}", (int)reply.Status,
+                GraphQLRateLimit(errors, $"the checks of {repository.FullName}"));
         }
 
         var repo = Child(Child(root, "data"), "repository");
@@ -1069,7 +1070,8 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
                 throw new ForgeAccessDeniedException($"GitHub refused the closing issues of #{number}: {messages}", reply.AcceptedPermissions);
             if (errors.All(e => Str(e, "type") == "NOT_FOUND"))
                 return [];
-            throw new ForgeRequestException($"GitHub answered the closing issues of #{number} with errors: {messages}", (int)reply.Status);
+            throw new ForgeRequestException($"GitHub answered the closing issues of #{number} with errors: {messages}", (int)reply.Status,
+                GraphQLRateLimit(errors, $"the closing issues of #{number}"));
         }
 
         var references = Child(Child(Child(Child(root, "data"), "repository"), "pullRequest"), "closingIssuesReferences");
@@ -1177,9 +1179,9 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
                 ? token
                 : throw new ForgeRequestException($"GitHub minted no token for {repository.FullName}.", (int)response.HttpResponse.StatusCode);
         }
-        catch (ApiException ex) when (ex is RateLimitExceededException or SecondaryRateLimitExceededException)
+        catch (ApiException ex) when (GitHubRateLimits.FromOctokit(ex, DateTimeOffset.UtcNow, $"minting a token for {repository.FullName}") is { } limited)
         {
-            throw new ForgeRequestException($"GitHub rate limit reached minting a token for {repository.FullName}.", 429);
+            throw new ForgeRequestException($"GitHub rate limit reached minting a token for {repository.FullName}.", 429, limited);
         }
         catch (ApiException ex) when (ex.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden or HttpStatusCode.NotFound or HttpStatusCode.UnprocessableEntity)
         {
@@ -1253,10 +1255,13 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
             catch (JsonException) { /* not JSON: an HTML error page from a proxy; the status decides */ }
         }
 
-        if (response.StatusCode == HttpStatusCode.Forbidden && IsRateLimited(response))
+        // P16: a rate limit (primary or secondary: both are 403s or 429s) is retryable, never a refusal. Still a
+        // ForgeRequestException(429) for this adapter's callers, with the hint inside for the message bus.
+        var message = json?.RootElement is { ValueKind: JsonValueKind.Object } errorRoot ? Str(errorRoot, "message") : null;
+        if (GitHubRateLimits.Classify(response, message, DateTimeOffset.UtcNow, $"{method} {path}") is { } limited)
         {
             json?.Dispose();
-            throw new ForgeRequestException($"GitHub rate limit reached on {method} {path}.", 429);
+            throw new ForgeRequestException($"GitHub rate limit reached on {method} {path}.", 429, limited);
         }
         return new Reply(response.StatusCode, json, AcceptedPermissions(response), method.Method, path);
     }
@@ -1271,8 +1276,9 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
         return request;
     }
 
-    private static bool IsRateLimited(HttpResponseMessage response)
-        => response.Headers.TryGetValues("x-ratelimit-remaining", out var values) && values.FirstOrDefault() == "0";
+    /// <summary>R37: a GraphQL answer's RATE_LIMITED error, as the hint inside the <see cref="ForgeRequestException"/>; null otherwise.</summary>
+    private static ForgeRateLimitedException? GraphQLRateLimit(IEnumerable<JsonElement> errors, string what)
+        => GitHubRateLimits.FromGraphQLErrors(errors.Select(e => (Str(e, "type"), Str(e, "message"))), _ => null, DateTimeOffset.UtcNow, what);
 
     private static string? AcceptedPermissions(HttpResponseMessage response)
         => response.Headers.TryGetValues("X-Accepted-GitHub-Permissions", out var values) ? values.FirstOrDefault() : null;

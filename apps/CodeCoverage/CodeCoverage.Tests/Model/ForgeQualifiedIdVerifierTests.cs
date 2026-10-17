@@ -63,6 +63,12 @@ public class ForgeQualifiedIdVerifierTests : CoverageRavenTest
 
         findings.Should().NotBeEmpty();
         findings.Should().AllSatisfy(f => f.Ok.Should().BeTrue($"{f.Check}: {f.Detail}"));
+
+        // D-O22: the verifier runs against production, and its reference checks used to build one auto index per
+        // (collection, field) there.
+        (await store.Maintenance.SendAsync(new Raven.Client.Documents.Operations.Indexes.GetIndexNamesOperation(0, 1024)))
+            .Where(name => name.StartsWith("Auto/", StringComparison.OrdinalIgnoreCase))
+            .Should().BeEmpty("indexes belong to the application");
     }
 
     [Fact]

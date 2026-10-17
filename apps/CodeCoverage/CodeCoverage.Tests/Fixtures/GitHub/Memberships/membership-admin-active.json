@@ -1,0 +1,43 @@
+{
+  "url": "https://api.github.com/orgs/acme/memberships/acme-owner",
+  "state": "active",
+  "role": "admin",
+  "organization_url": "https://api.github.com/orgs/acme",
+  "user": {
+    "login": "acme-owner",
+    "id": 1001,
+    "node_id": "MDQ6VXNlcjEwMDE=",
+    "avatar_url": "https://avatars.githubusercontent.com/u/1001?v=4",
+    "gravatar_id": "",
+    "url": "https://api.github.com/users/acme-owner",
+    "html_url": "https://github.com/acme-owner",
+    "followers_url": "https://api.github.com/users/acme-owner/followers",
+    "following_url": "https://api.github.com/users/acme-owner/following{/other_user}",
+    "gists_url": "https://api.github.com/users/acme-owner/gists{/gist_id}",
+    "starred_url": "https://api.github.com/users/acme-owner/starred{/owner}{/repo}",
+    "subscriptions_url": "https://api.github.com/users/acme-owner/subscriptions",
+    "organizations_url": "https://api.github.com/users/acme-owner/orgs",
+    "repos_url": "https://api.github.com/users/acme-owner/repos",
+    "events_url": "https://api.github.com/users/acme-owner/events{/privacy}",
+    "received_events_url": "https://api.github.com/users/acme-owner/received_events",
+    "type": "User",
+    "user_view_type": "public",
+    "site_admin": false
+  },
+  "direct_membership": true,
+  "enterprise_teams_providing_indirect_membership": [],
+  "organization": {
+    "login": "acme",
+    "id": 5,
+    "node_id": "MDEyOk9yZ2FuaXphdGlvbjU=",
+    "url": "https://api.github.com/orgs/acme",
+    "repos_url": "https://api.github.com/orgs/acme/repos",
+    "events_url": "https://api.github.com/orgs/acme/events",
+    "hooks_url": "https://api.github.com/orgs/acme/hooks",
+    "issues_url": "https://api.github.com/orgs/acme/issues",
+    "members_url": "https://api.github.com/orgs/acme/members{/member}",
+    "public_members_url": "https://api.github.com/orgs/acme/public_members{/member}",
+    "avatar_url": "https://avatars.githubusercontent.com/u/5?v=4",
+    "description": ""
+  }
+}

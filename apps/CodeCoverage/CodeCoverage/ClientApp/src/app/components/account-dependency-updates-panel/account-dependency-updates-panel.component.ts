@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, effect, inject, input, si
 import { RouterLink } from '@angular/router';
 import { BsCardBodyComponent, BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
 import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
+import { SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { BrowseService, DependencyFleet, DependencyRepoStatus } from '../../services/browse.service';
 import { chip, HEALTH, READINESS, repoLink, time } from '../dependency-updates/dependency-health';
 
@@ -32,7 +33,8 @@ export const PACKAGES_SHOWN = 25;
         <bs-card-header>
           <div class="d-flex align-items-center">
             <span><i class="bi bi-box-seam"></i> Dependency updates</span>
-            <button type="button" class="btn btn-sm btn-link p-0 ms-auto" (click)="load()" aria-label="Refresh the dependency updates">
+            <a class="small ms-auto me-2" routerLink="/dependency-updates/onboard" data-testid="du-onboard-link">{{ enableLink() }}</a>
+            <button type="button" class="btn btn-sm btn-link p-0" (click)="load()" aria-label="Refresh the dependency updates">
               <i class="bi bi-arrow-clockwise"></i>
             </button>
           </div>
@@ -147,6 +149,12 @@ export const PACKAGES_SHOWN = 25;
           }
         </bs-card-body>
       </bs-card>
+    } @else if (fleet()) {
+      <!-- Readable, but nothing here uses dependency updates yet: the way in is the onboarding page (dependency-updates PRD R20). -->
+      <p class="small text-muted mt-3 mb-0" data-testid="du-off">
+        <i class="bi bi-box-seam"></i> {{ lang.t('dependencyOnboardingUi.panel.accountOff', "Dependency updates are not on for this account's repositories.") }}
+        <a routerLink="/dependency-updates/onboard" data-testid="du-onboard-link">{{ enableLink() }}</a>
+      </p>
     }
   `,
   styleUrl: './account-dependency-updates-panel.component.scss',
@@ -154,6 +162,12 @@ export const PACKAGES_SHOWN = 25;
 })
 export class AccountDependencyUpdatesPanelComponent {
   private readonly browse = inject(BrowseService);
+  protected readonly lang = inject(SparkLanguageService);
+
+  /** "Enable it for your repositories →", to the onboarding page (R20). */
+  protected enableLink(): string {
+    return this.lang.t('dependencyOnboardingUi.panel.enableLink', 'Enable it for your repositories →');
+  }
 
   /** Canonical forge spelling, e.g. "github". Sourced from the PO's document id (`forgeOf`). */
   readonly provider = input.required<string>();

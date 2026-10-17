@@ -16,7 +16,16 @@ public interface IGitHubAccessService
     Task<GitHubVisibility> GetVisibilityAsync(CancellationToken cancellationToken = default);
 
     Task<string[]> GetAllowedOwnersAsync(CancellationToken cancellationToken = default);
+    /// <summary>Whether the viewer may SEE this owner's private repositories (installation reach). Not a management right.</summary>
     Task<bool> IsOwnerAllowedAsync(string ownerLogin, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Whether the viewer MANAGES this owner (dependency-updates PRD D-O12, R39): their own account, or an organization of
+    /// which GitHub says they are an active owner (<c>GET /user/memberships/orgs/{org}</c>, <c>role: admin</c>,
+    /// <c>state: active</c>). Installation reach alone (<c>/user/installations</c>, which read access to one repository
+    /// gives) is not management. Fails closed.
+    /// </summary>
+    Task<bool> ManagesOwnerAsync(string ownerLogin, CancellationToken cancellationToken = default);
 
     /// <summary>Drops the current user's cached owner list so the next call re-queries GitHub (manual resync).</summary>
     Task InvalidateAsync(CancellationToken cancellationToken = default);

@@ -172,6 +172,17 @@ public class Account : IForgeConnectable
     [LookupReference(typeof(LookupReferences.DependencyBisectBudget))]
     public LookupReferences.EDependencyBisectBudget DependencyBisectBudget { get; set; }
 
+    /// <summary>Whether the onboarding pull request also turns the merge queue on in <c>coverage.yml</c>.</summary>
+    /// <remarks>
+    /// Dependency-updates PRD R25, R26: Yes by default, because R5 auto-merges through the merge queue only. It matters only
+    /// when the onboarding pull request is created, and a <c>mergeQueue</c> section already in the file is never touched. A
+    /// repository overrides it with <see cref="Repository.DependencyOnboardingMergeQueue"/>. [IgnoreForIndex]: owner-facing
+    /// configuration, like <see cref="DependencyUpdates"/>.
+    /// </remarks>
+    [IgnoreForIndex]
+    [LookupReference(typeof(LookupReferences.DependencyOnboardingMergeQueue))]
+    public LookupReferences.EDependencyOnboardingMergeQueue DependencyOnboardingMergeQueue { get; set; }
+
     /// <summary>
     /// Account-wide dependency rules (§4.2, Q9). An enforced rule is a ceiling every repository's <c>coverage.yml</c> stays
     /// under (R6); see <see cref="DependencyRule"/>.

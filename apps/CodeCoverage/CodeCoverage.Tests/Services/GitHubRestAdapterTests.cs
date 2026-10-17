@@ -269,7 +269,9 @@ public class GitHubRestAdapterTests : CoverageRavenTest
         (await service.GetFileContentAsync(Repo(910033, isPrivate: true), 5, "master", CoverageYml.FileName)).Should().BeNull();
         logger.Levels.Where(level => level >= Microsoft.Extensions.Logging.LogLevel.Warning).Should().BeEmpty();
 
-        (await service.GetFileContentAsync(Repo(910033, isPrivate: true), 5, Head, "broken.ts")).Should().BeNull();
+        // P16 (dependency-updates PRD): a failed fetch is no longer an absence. It throws, and still warns.
+        var failed = async () => await service.GetFileContentAsync(Repo(910033, isPrivate: true), 5, Head, "broken.ts");
+        (await failed.Should().ThrowAsync<ForgeRequestException>()).Which.StatusCode.Should().Be(500);
         logger.Levels.Should().Contain(Microsoft.Extensions.Logging.LogLevel.Warning);
     }
 

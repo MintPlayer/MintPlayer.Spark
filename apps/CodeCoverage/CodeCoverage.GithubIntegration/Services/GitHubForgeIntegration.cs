@@ -51,7 +51,8 @@ public partial class GitHubForgeIntegration : IForgeIntegration
     /// </para>
     /// </remarks>
     public EForgeCapability[] Capabilities =>
-        [EForgeCapability.Statuses, EForgeCapability.Comments, EForgeCapability.GitMirror, EForgeCapability.MergeQueue, EForgeCapability.CheckButtons];
+        [EForgeCapability.Statuses, EForgeCapability.Comments, EForgeCapability.GitMirror, EForgeCapability.MergeQueue, EForgeCapability.CheckButtons,
+            EForgeCapability.RepositoryAdminCheck, EForgeCapability.SetupRedirect];
 
     public Task<ForgeVisibility> GetVisibilityAsync(CancellationToken cancellationToken = default)
         => access.GetVisibilityAsync(cancellationToken);
@@ -61,6 +62,9 @@ public partial class GitHubForgeIntegration : IForgeIntegration
 
     public Task<bool> IsOwnerAllowedAsync(ForgeOwner owner, CancellationToken cancellationToken = default)
         => access.IsOwnerAllowedAsync(owner, cancellationToken);
+
+    public Task<bool> ManagesOwnerAsync(ForgeOwner owner, CancellationToken cancellationToken = default)
+        => access.ManagesOwnerAsync(owner, cancellationToken);
 
     public Task InvalidateAsync(CancellationToken cancellationToken = default)
         => access.InvalidateAsync(cancellationToken);

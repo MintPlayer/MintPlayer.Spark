@@ -52,4 +52,22 @@ public sealed record BroadcastOptions
     /// dead-letter cannot be replayed; that is the price.
     /// </summary>
     public bool ScrubPayloadOnTerminal { get; init; }
+
+    /// <summary>
+    /// Expedite the message within its queue: the queue's lane takes its oldest expedited message before
+    /// any normal one. <b>Use only for rare, human-triggered messages</b> — somebody clicked a button and
+    /// is waiting for the result (an onboarding click, "run now", an <c>approve</c> comment). Never for
+    /// fan-outs, schedules or webhook traffic: the flag on bulk work only holds up everything else.
+    /// <para>
+    /// The lane stays serial (<c>SparkQueueOptions.MaxConcurrency</c> is unchanged), so this reorders,
+    /// never parallelises. Normal messages are not starved: after 10 expedited messages in a row, one
+    /// ready normal message goes next. The feeder also pulls expedited messages ahead within a queue
+    /// priority (the queue's <c>SparkQueueOptions.Priority</c> still ranks first). Persisted on the
+    /// message (<c>SparkMessage.Expedite</c>), so a retry keeps it. Named apart from the queue-level
+    /// priority on purpose: this is the R29 "priority" bool of the dependency-updates PRD.
+    /// <c>SingleSubscription</c> mode only; in <c>SubscriptionPerQueue</c> mode each queue is delivered in
+    /// commit order and this is ignored.
+    /// </para>
+    /// </summary>
+    public bool Expedite { get; init; }
 }

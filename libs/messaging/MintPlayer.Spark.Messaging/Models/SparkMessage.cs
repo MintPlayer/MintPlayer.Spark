@@ -18,6 +18,34 @@ public class SparkMessage
     public int Priority { get; set; }
 
     /// <summary>
+    /// <c>BroadcastOptions.Expedite</c> (dependency-updates PRD R29): a rare, human-triggered message that
+    /// jumps its lane. Not to be confused with <see cref="Priority"/>, which is the <i>queue's</i> rank in
+    /// the feeder and still sorts first. Indexed by <c>SparkMessages_ByPriority</c> so the feeder's page
+    /// pulls it ahead within its queue priority; the lane then takes it before any normal message, with a
+    /// starvation cap (<c>LaneBuffer.StarvationCap</c>). Absent on messages written before it existed,
+    /// which read as false.
+    /// </summary>
+    public bool Expedite { get; set; }
+
+    /// <summary>
+    /// Times the message was abandoned at <see cref="EMessageStatus.Processing"/> — its host died or
+    /// lost the claim mid-handler — and returned to the queue by <c>MessageRetrySweeper</c> (P18).
+    /// Every reclaim is a failed attempt for every handler that had not finished, so it counts in each
+    /// unfinished handler's budget (<c>RetryBudget</c>); at <see cref="MaxAttempts"/> the message is
+    /// dead-lettered (<see cref="EDeadLetterReason.MaxAttempts"/>) before any handler runs again.
+    /// Not <see cref="AttemptCount"/>, which counts pickups and is decremented by a release or deferral.
+    /// </summary>
+    public int ReclaimCount { get; set; }
+
+    /// <summary>
+    /// When the last rate-limit park (<c>RetryAfterException</c>) of any handler ends: the latest
+    /// <see cref="HandlerExecution.RateLimitedUntilUtc"/> of the round that parked the message. Null when
+    /// the message is not waiting for a rate limit. For visibility only; the wake-up is
+    /// <see cref="NextAttemptAtUtc"/>.
+    /// </summary>
+    public DateTime? RateLimitedUntilUtc { get; set; }
+
+    /// <summary>
     /// When the message joined the queue <b>by the database server's clock</b> (#460, M16b, spike S-M7):
     /// the <c>@last-modified</c> of the write that made it claimable, captured by the feeder on the first
     /// write it makes to the message (its claim or its throttle deferral), which costs no extra write.
@@ -91,7 +119,7 @@ public class SparkMessage
     /// <summary>
     /// When the current <see cref="OwnerId"/>'s claim lapses. Past this instant the message is
     /// considered abandoned and <c>MessageRetrySweeper</c> returns it to
-    /// <see cref="EMessageStatus.Pending"/> with <see cref="AttemptCount"/> incremented.
+    /// <see cref="EMessageStatus.Pending"/> with <see cref="AttemptCount"/> and <see cref="ReclaimCount"/> incremented.
     /// <para>
     /// It is a wall-clock deadline rather than a liveness check, so it must comfortably exceed the
     /// slowest handler: reclaiming a message a live process is still working on causes duplicate

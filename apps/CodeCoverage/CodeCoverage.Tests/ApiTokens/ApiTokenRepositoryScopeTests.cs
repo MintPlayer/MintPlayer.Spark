@@ -50,7 +50,7 @@ public class ApiTokenRepositoryScopeTests : CoverageRavenTest
 
     private static ApiTokenActions CreateActions(IAsyncDocumentSession session, params string[] owners)
     {
-        var visibility = Substitute.For<ISparkVisibility>();
+        var visibility = Substitute.For<ISparkVisibility>().ManagingWhatItSees();
         visibility.GetAllowedOwnersAsync().Returns(Task.FromResult(owners));
         visibility.CanManageOwnerAsync(Arg.Any<string>())
             .Returns(call => Task.FromResult(owners.Contains(call.Arg<string>(), StringComparer.OrdinalIgnoreCase)));

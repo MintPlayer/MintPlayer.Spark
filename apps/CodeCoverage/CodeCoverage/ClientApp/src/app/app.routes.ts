@@ -1,6 +1,7 @@
 import { Routes } from '@angular/router';
 import { sparkRoutes } from '@mintplayer/ng-spark/routes';
 import { sparkAuthRoutes, withExternalLogin, githubProvider, withAccount, withConnectedAgents } from '@mintplayer/ng-spark/auth/routes';
+import { sparkAuthGuard } from '@mintplayer/ng-spark/auth/guards';
 import { ShellComponent } from './shell/shell.component';
 import { accountRedirectGuard, commitRedirectGuard, repositoryRedirectGuard } from './spark/vanity-redirects';
 import { HOME_URL } from './spark/home-route';
@@ -56,6 +57,14 @@ export const routes: Routes = [
       // The dependency updater's setup guide (docs/code-coverage/dependency-updates.md); static, open to anonymous visitors
       // too. Like the two above, it is reached from the sidebar's Guides group (programUnits.json).
       { path: 'dependency-updates/setup', loadComponent: () => import('./pages/dependency-updates-setup/dependency-updates-setup.component') },
+      // The dependency updater's onboarding page (dependency-updates PRD R20, R36): the GitHub App's Setup URL. Signed-in
+      // only, and through the GUARD, which keeps the setup redirect's query (installation_id, setup_action) through the
+      // sign-in. ⚠️ Never rely on the API's 401 bounce instead: the auth interceptor strips the query.
+      {
+        path: 'dependency-updates/onboard',
+        canActivate: [sparkAuthGuard],
+        loadComponent: () => import('./pages/dependency-updates-onboard/dependency-updates-onboard.component'),
+      },
       // poDetail override: the generic detail page plus the app panels that
       // can't be expressed as attribute renderers (badge, trend chart, CI
       // setup, the commit file tree).

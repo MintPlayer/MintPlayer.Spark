@@ -9,6 +9,7 @@ import type { Exec } from '../util/exec';
 import { revParse } from '../util/git';
 import { directoryFiles, isWorkflowFile } from '../util/repoFiles';
 import { findUsages, interfaceDiffsFor, type ActionUsage, type ActionYmlFetcher } from './interfaceDiff';
+import { foldPlatformLocations } from './foldPlatform';
 import { mapReport, reportProblems } from './mapReport';
 import { RENOVATE_IMAGE, runRenovate, type RenovateRun } from './renovate';
 
@@ -30,6 +31,10 @@ export interface LookupOptions {
 const SDKS: Sdk[] = ['dotnet', 'node', 'python', 'java', 'go'];
 
 export async function platformRecords(repoDir: string, fetcher: Fetcher, problems: LookupDocument['problems'], now = new Date()): Promise<PlatformRecord[]> {
+  return (await scanPlatforms(repoDir, fetcher, problems, now)).platforms;
+}
+
+async function scanPlatforms(repoDir: string, fetcher: Fetcher, problems: LookupDocument['problems'], now: Date): Promise<{ platforms: PlatformRecord[]; found: Found[] }> {
   const found = await scanLocations(directoryFiles(repoDir), SDKS);
   const bySdk = new Map<Sdk, Found[]>();
   for (const f of found) bySdk.set(f.sdk, [...(bySdk.get(f.sdk) ?? []), f]);
@@ -45,7 +50,7 @@ export async function platformRecords(repoDir: string, fetcher: Fetcher, problem
     }
     out.push(buildPlatformRecord(sdk, locations, feed, now));
   }
-  return out;
+  return { platforms: out, found };
 }
 
 export async function workflowUsages(repoDir: string): Promise<Map<string, ActionUsage[]>> {
@@ -69,9 +74,10 @@ export async function runLookup(o: LookupOptions): Promise<{ document: LookupDoc
   const run = o.renovate
     ? await o.renovate()
     : await runRenovate({ exec: o.exec, repoDir: o.repoDir, workDir: o.workDir, githubTokenEnv: o.githubTokenEnv, hostRulesEnv: o.hostRulesEnv });
-  const records = mapReport(run.report);
   const problems = reportProblems(run.report);
-  const platforms = await platformRecords(o.repoDir, o.fetcher, problems, o.now?.() ?? new Date());
+  const { platforms, found } = await scanPlatforms(o.repoDir, o.fetcher, problems, o.now?.() ?? new Date());
+  // R31: the platform record owns its locations; their channel moves are never offered separately.
+  const { records } = foldPlatformLocations(mapReport(run.report), found, platforms);
   const interfaceDiffs = await interfaceDiffsFor(records, await workflowUsages(o.repoDir), o.fetchActionYml);
   const document: LookupDocument = {
     contractVersion: CONTRACT_VERSION,

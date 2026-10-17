@@ -37,16 +37,40 @@ A slot whose rebuilt tree equals the pushed one pushes nothing and starts no CI.
 
 ## 2. Onboarding
 
-1. **Turn it on** for the account (the Account page, *Dependency updates*), or for one repository (the Repository page,
-   which can also turn it off for itself).
-2. **The onboarding pull request.** Within a day the bot opens `mintplayer/dependencies-onboarding`. It adds:
+1. **Install the GitHub App, and land on the onboarding page.** After an install or an update GitHub redirects to
+   `/dependency-updates/onboard` (the App's Setup URL). Sign in with GitHub, or with a CodeCoverage account that has
+   GitHub linked (Account → connected logins); the sign-in keeps the redirect's query, so the page then shows that
+   installation's repositories you may manage, with **all my accounts →** to see every installation. Without the
+   redirect (from *Guides → Dependency updater setup*, the Account page or a Repository page) it shows all of them.
+   - **Who may enable:** an organization's **owners** for its repositories, you for your own account's, and a
+     repository's GitHub **admins** for that repository. Read and write members cannot, and Spark administrators can read
+     the settings but not enable. Checked again on the server when you press the button.
+   - A repository GitHub has only just added is not listed until its webhook is processed: a banner above the list says
+     how many are still syncing, and they appear in a moment. One that is in but has no default branch yet shows **syncing**.
+   - When GitHub sends the install to an organization owner for approval, the page says it is **waiting for an
+     organization owner's approval**.
+2. **Select and enable.** The list is a regular CodeCoverage grid: search, sort and page it, and the ticks survive paging.
+   Tick the repositories and press **Enable dependency updates** in its header. You are asked whether their onboarding
+   pull requests add the merge queue (*with* or *without*, defaulting to the account's setting). A notification then says
+   what was enabled (and whether with the merge queue), another one per repository why it was not, and the list reloads
+   with each one's new state. Nothing is switched on until you do this: closing the page changes nothing.
+   - The same switch is on the Account page (*Dependency updates*, for every repository that does not decide for itself)
+     and on the Repository page (which can also turn it off for itself), next to *Onboarding adds the merge queue* and the
+     real state read from `coverage.yml`.
+3. **The onboarding pull request.** Right after the switch goes on, the bot opens `mintplayer/dependencies-onboarding`
+   (a daily pass retries anything that did not go through, a syncing repository included). It adds:
    - `.github/workflows/dependency-lookup.yml` and `dependency-apply.yml`, thin callers of the published action, pinned
      to a commit (the tag kept as a comment);
    - `angular-migrate.yml` / `nx-migrate.yml` when the repository has `angular.json` / `nx.json`;
    - a commented `dependencies:` section in `coverage.yml`;
    - and it removes the version-update entries of `.github/dependabot.yml`, translating its `ignore:` into rules.
      Dependabot **alerts** stay on: they feed the security trigger (§6).
-3. **Merge it.** The first rolling pull request after onboarding is a **draft** and never auto-merges: review it once.
+   - and, when you chose *with the merge queue*, `mergeQueue: { enabled: true }` unless `coverage.yml` already has it.
+4. **Merge it.** The first rolling pull request after onboarding is a **draft** and never auto-merges: review it once.
+
+**Switching off.** Turning the setting off (Account or Repository page) closes the open rolling pull request with a
+comment and deletes the bot's branches (`mintplayer/dependencies`, `-work`, `-onboarding`). Holds and approvals are kept,
+and the workflow templates and the `coverage.yml` section stay: they are your code. Switching it on again onboards anew.
 
 **Permissions.** Before it opens the onboarding pull request, the bot checks that the App requests, and the installation
 has accepted, what dependency updates need: *Contents*, *Pull requests*, *Checks*, *Issues*, *Actions* and *Workflows*
@@ -60,6 +84,7 @@ with the link to accept. Onboarding is retried daily. See [hosting.md §6](hosti
 | Setting | Where | Default |
 |---|---|---|
 | Dependency updates on | Account, overridable per repository | off |
+| Onboarding adds the merge queue (only matters when the onboarding pull request is made) | Account, overridable per repository | yes |
 | Schedule (frequency, weekday, hour) | Account (with its time zone), overridable per repository | weekly, Monday, 06:00 |
 | Time zone | Account | UTC |
 | Cooldown (how old a release must be) | Account, overridable per repository | 3 days |
@@ -154,7 +179,11 @@ Edited comments and comments by bots are ignored. The bot reacts 👍 or 👎.
 ## 7. Seeing the state
 
 - **Repository page → Dependency updates:** the rolling pull request, the last run and how it ended, the next slot, the
-  holds and approvals waiting, the pinned versions, what the pull request applies, and the recent steps.
+  holds and approvals waiting, the pinned versions, what the pull request applies, and the recent steps. It also shows the
+  onboarding pull request, `coverage.yml`'s merge queue as last read, and, while a message waits for GitHub's rate limit,
+  "waiting for GitHub's rate limit until hh:mm (park n of m)". **Run the scheduled slot now** starts a run exactly like
+  the scheduled one (so it may auto-merge); it is refused while a run is in progress. Off and never run, the panel is a
+  link to the onboarding page.
 - **Account page → Dependency updates:** per repository (state: CI red, frozen, a run that never answered), per package
   (which repository is on which version, and what the bot does with it there), and **platform readiness**: "Angular 23:
   3 of 5 ready", with the blockers. *Ready* means the lookup offers the next major there and only an approval, the

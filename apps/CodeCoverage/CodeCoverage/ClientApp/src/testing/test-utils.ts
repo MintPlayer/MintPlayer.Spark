@@ -40,6 +40,7 @@ export function createBrowseStub(overrides: Partial<Record<keyof BrowseService, 
     'getAccount', 'getAccountRepos', 'getPendingPermissions', 'getDependencyGraph', 'getRepo', 'getHistory', 'getSparklines', 'getBranches',
     'getCommits', 'getCommit', 'getTree', 'getHierarchy', 'getFile', 'rotateBadgeToken', 'getCommitGraph', 'getCoverageDrops', 'avatarUrl',
     'getMergeQueue', 'enqueuePullRequest', 'dequeuePullRequest', 'getQueueCandidates', 'getDependencyFleet', 'getRepoDependencyUpdates',
+    'getDependencyOnboarding',
   ];
   const stub = {} as BrowseServiceStub;
   for (const name of methods) {

@@ -259,7 +259,7 @@ public class RemainingActionsTests : CoverageRavenTest
 
     private static ISparkVisibility Managing(params string[] ownerKeys)
     {
-        var visibility = Substitute.For<ISparkVisibility>();
+        var visibility = Substitute.For<ISparkVisibility>().ManagingWhatItSees();
         visibility.GetAllowedOwnersAsync().Returns(Task.FromResult(ownerKeys));
         visibility.CanManageOwnerAsync(Arg.Any<string>())
             .Returns(call => Task.FromResult(ownerKeys.Contains(call.Arg<string>(), StringComparer.OrdinalIgnoreCase)));

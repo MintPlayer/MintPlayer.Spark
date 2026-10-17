@@ -246,9 +246,8 @@ public partial class M_202609210900_ForgeQualifiedDocumentIds : ISparkMigration
 
     private async Task PutAsync(string label, string script, CancellationToken cancellationToken)
     {
-        var operation = await store.Operations.SendAsync(
-            new PatchByQueryOperation(new IndexQuery { Query = script }, new QueryOperationOptions { StaleTimeout = IndexCatchUpBudget }), token: cancellationToken);
-        var result = await operation.WaitForCompletionAsync<BulkOperationResult>();
+        var result = await BulkOperation.RunAsync(store, 
+            new PatchByQueryOperation(new IndexQuery { Query = script }, new QueryOperationOptions { StaleTimeout = IndexCatchUpBudget }), cancellationToken);
         // ⚠️ "scanned", not "re-keyed". The script skips documents that already carry the segment,
         // but the operation still matched them, so a second run legitimately reports roughly double
         // the collection size. Reading this number as work done would make a correct idempotent
@@ -373,11 +372,14 @@ public partial class M_202609210900_ForgeQualifiedDocumentIds : ISparkMigration
                     + "usually means a field or collection name in its script does not match the data.");
             }
 
-            var operation = await store.Operations.SendAsync(new DeleteByQueryOperation(new IndexQuery
+            // A patch that deletes, not a DeleteByQuery: `startsWith(id(d), ...)` alone is a collection
+            // query, but `and not startsWith(...)` beside it made RavenDB build Auto/<collection>/ById()
+            // on every fresh database (D-O22). The second test runs in the script instead.
+            var result = await BulkOperation.RunAsync(store, new PatchByQueryOperation(new IndexQuery
             {
                 // The prefixes are values, so parameters; only the collection is spliced (#264).
                 Query = $"from {RqlIdentifier.Collection(collection)} as d where startsWith(id(d), $legacy) "
-                      + "and not startsWith(id(d), $qualified)",
+                      + "update { if (!id(d).startsWith($qualified)) { del(id(d)); } }",
                 QueryParameters = new Parameters
                 {
                     ["legacy"] = $"{prefix}/",
@@ -390,12 +392,11 @@ public partial class M_202609210900_ForgeQualifiedDocumentIds : ISparkMigration
                 WaitForNonStaleResultsTimeout = IndexCatchUpBudget,
             },
             // Wait up to IndexCatchUpBudget for the index, never AllowStale: a bulk operation on a stale index is refused outright.
-            new QueryOperationOptions { StaleTimeout = IndexCatchUpBudget }), token: cancellationToken);
-            var result = await operation.WaitForCompletionAsync<BulkOperationResult>();
+            new QueryOperationOptions { StaleTimeout = IndexCatchUpBudget }), cancellationToken);
 
             logger.LogInformation(
-                "Forge-qualified {Collection}: {Kept} kept, {Removed} legacy removed.",
-                collection, qualified, result.Total);
+                "Forge-qualified {Collection}: {Kept} kept, {Removed} legacy removed ({Scanned} scanned).",
+                collection, qualified, legacy, result.Total);
         }
     }
 

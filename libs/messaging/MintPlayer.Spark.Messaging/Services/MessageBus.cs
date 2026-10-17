@@ -37,6 +37,15 @@ internal partial class MessageBus : IMessageBus, IMessageOutbox
         return BroadcastAsync(message, new BroadcastOptions { DeduplicationKey = deduplicationKey }, cancellationToken);
     }
 
+    public Task BroadcastOnceAsync<TMessage>(TMessage message, string deduplicationKey, BroadcastOptions broadcastOptions, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(broadcastOptions);
+        if (string.IsNullOrWhiteSpace(deduplicationKey))
+            throw new ArgumentException("A deduplication key is required.", nameof(deduplicationKey));
+
+        return BroadcastAsync(message, broadcastOptions with { DeduplicationKey = deduplicationKey }, cancellationToken);
+    }
+
     public async Task BroadcastAsync<TMessage>(TMessage message, BroadcastOptions broadcastOptions, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(broadcastOptions);
@@ -108,6 +117,7 @@ internal partial class MessageBus : IMessageBus, IMessageOutbox
             CreatedAtUtc = now,
             NextAttemptAtUtc = broadcastOptions.Delay is { } delay ? now + delay : null,
             Priority = (int)Options.PriorityFor(queueName),
+            Expedite = broadcastOptions.Expedite,
             AttemptCount = 0,
             MaxAttempts = broadcastOptions.MaxAttempts ?? queueOptions?.MaxAttempts ?? Options.MaxAttempts,
             Status = EMessageStatus.Pending,

@@ -159,6 +159,43 @@ public class ValueObjectKeyVerifierTests : SparkTestDriver
     /// <summary>
     /// An empty database is not a failure — a fresh deployment has nothing to migrate.
     /// </summary>
+    /// <summary>
+    /// D-O18 (live test 2026-10-17): the gate ran one dynamic query per embedded collection at every
+    /// startup, so every application carried an auto index per root collection
+    /// (<c>Auto/Repositories/ByKnownChecks[].Id…</c>, merged with whatever else was ever asked of the
+    /// collection), and the request write path then waited on those auto indexes after every write.
+    /// Indexes belong to the application; the gate scans the collection and creates none.
+    /// </summary>
+    [Fact]
+    public async Task The_gate_creates_no_index()
+    {
+        using var store = GetDocumentStore();
+        await SeedAsync(store);
+        await StripKeysAsync(store, "Shipping.Legs");
+
+        var act = () => VerifyAsync(store);
+
+        (await act.Should().ThrowAsync<InvalidOperationException>()).WithMessage("*Shipping.Legs*");
+        (await store.Maintenance.SendAsync(new GetStatisticsOperation())).Indexes
+            .Should().BeEmpty("the gate scans the collection instead of querying an auto index");
+    }
+
+    /// <summary>An empty or absent collection has no row to be missing a key.</summary>
+    [Fact]
+    public async Task A_document_without_rows_passes()
+    {
+        using var store = GetDocumentStore();
+        using (var session = store.OpenAsyncSession())
+        {
+            await session.StoreAsync(new Order { Lines = [], Shipping = new Shipping { Legs = [] } }, "Orders/2-A");
+            await session.SaveChangesAsync();
+        }
+
+        var act = () => VerifyAsync(store);
+
+        await act.Should().NotThrowAsync();
+    }
+
     [Fact]
     public async Task An_empty_database_passes()
     {

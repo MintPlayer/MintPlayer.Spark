@@ -5,7 +5,7 @@ namespace MintPlayer.Spark.Messaging.Indexes;
 
 /// <summary>
 /// The single feeder's sorted view of the queue (#460, M16b): every message that may be claimed
-/// <b>now</b>, ordered by <c>Priority desc, Sequence asc</c>. On each subscription wake-up the feeder
+/// <b>now</b>, ordered by <c>Priority desc, Expedite desc, Sequence asc</c>. On each subscription wake-up the feeder
 /// takes one page of this (<c>FeederBatchSize</c>) and serves it together with the subscription batch
 /// itself, so a message the index has not caught up with yet is served from the batch instead.
 /// </summary>
@@ -40,6 +40,14 @@ public class SparkMessages_ByPriority : AbstractIndexCreationTask<SparkMessage, 
         public string? Id { get; set; }
         public string QueueName { get; set; } = string.Empty;
         public int Priority { get; set; }
+
+        /// <summary>
+        /// <see cref="SparkMessage.Expedite"/> (R29): sorted second, so within a queue priority an expedited
+        /// message is pulled ahead of a normal backlog the subscription has not reached yet. The one field
+        /// R29 adds; the lane then orders what it holds (<c>LaneBuffer</c>).
+        /// </summary>
+        public bool Expedite { get; set; }
+
         public DateTime Sequence { get; set; }
     }
 
@@ -54,6 +62,8 @@ public class SparkMessages_ByPriority : AbstractIndexCreationTask<SparkMessage, 
                 // Coalesced: a message written before M16b has no Priority member, and a null sorts
                 // below Low under "desc" (measured, S-M7), where it should read as Normal.
                 Priority = (int?)m.Priority ?? 0,
+                // Coalesced for the same reason: absent on messages written before R29.
+                Expedite = (bool?)m.Expedite ?? false,
                 Sequence = m.QueuedAtUtc != null
                     ? m.QueuedAtUtc.Value
                     : MetadataFor(m).Value<DateTime>("@last-modified"),
@@ -61,6 +71,7 @@ public class SparkMessages_ByPriority : AbstractIndexCreationTask<SparkMessage, 
 
         Store(x => x.QueueName, FieldStorage.Yes);
         Store(x => x.Priority, FieldStorage.Yes);
+        Store(x => x.Expedite, FieldStorage.Yes);
         Store(x => x.Sequence, FieldStorage.Yes);
     }
 }

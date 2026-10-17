@@ -26,7 +26,7 @@ public static class DependencyOnboarding
     public const string Title = "Set up MintPlayer dependency updates";
 
     /// <summary>The section appended to <c>coverage.yml</c>, all commented: the defaults apply until someone uncomments it.</summary>
-    public const string CommentedSection = """
+    public static readonly string CommentedSection = Lf("""
 
         # MintPlayer dependency updates (added by the onboarding pull request). Every line is a default: uncomment to change it.
         # dependencies:
@@ -45,7 +45,28 @@ public static class DependencyOnboarding
         #       onMajor: angular-migrate.yml
         #     - match: "nx"
         #       onMajor: nx-migrate.yml
-        """;
+        """);
+
+    /// <summary>R25: what the onboarding pull request adds to <c>coverage.yml</c> when its setting resolves to Yes.</summary>
+    public static readonly string MergeQueueSection = Lf("""
+        # The merge queue (added by the onboarding pull request): dependency pull requests within your thresholds merge through
+        # it, and your own pull requests can use it too (label `merge-queue`, or comment `/queue`).
+        mergeQueue:
+          enabled: true
+
+        """);
+
+    /// <summary>
+    /// LF, whatever the build machine checked out: a raw string literal and an embedded template take the source file's
+    /// line endings (CRLF in a Windows checkout under <c>text=auto</c>), and what is committed to someone's repository must
+    /// not depend on where this app was built.
+    /// </summary>
+    private static string Lf(string text) => text.ReplaceLineEndings("\n");
+
+    /// <summary>Whether <paramref name="yml"/> has <paramref name="key"/> as a top-level key (not commented, not indented).</summary>
+    public static bool HasTopLevelKey(string? yml, string key)
+        => yml is not null && yml.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n')
+            .Any(line => line.StartsWith(key, StringComparison.Ordinal) && line.AsSpan(key.Length).TrimStart().StartsWith(":"));
 
     /// <summary>The workflow templates, by repository path; the migrate ones only where their tool is used.</summary>
     public static IReadOnlyList<(string Path, string Resource)> Templates(IReadOnlyCollection<string> treePaths)
@@ -68,7 +89,7 @@ public static class DependencyOnboarding
         using var stream = typeof(DependencyOnboarding).Assembly.GetManifestResourceStream(name)
             ?? throw new InvalidOperationException($"The embedded workflow template '{name}' is missing.");
         using var reader = new StreamReader(stream, Encoding.UTF8);
-        return reader.ReadToEnd();
+        return Lf(reader.ReadToEnd());
     }
 
     /// <summary>The template with the action pinned to <paramref name="actionSha"/> (the tag kept as a comment), or unchanged
@@ -79,23 +100,30 @@ public static class DependencyOnboarding
             : template;
 
     public static DependencyOnboardingPlan Plan(IReadOnlyCollection<string> treePaths, string? coverageYml, string? dependabotPath, string? dependabotYml,
-        string? actionSha, Func<string, string> readTemplate)
+        string? actionSha, Func<string, string> readTemplate, bool addMergeQueue = false)
     {
         var files = new List<GitWriterFile>();
         foreach (var (path, resource) in Templates(treePaths))
             files.Add(new GitWriterFile(path, Pin(readTemplate(resource), actionSha)));
 
         var yml = coverageYml ?? string.Empty;
+        var text = yml.Length == 0 || yml.EndsWith('\n') ? yml : yml + "\n";
+        // R25: the merge queue is what R5 auto-merges through. Added only when the file has no mergeQueue section at all:
+        // one that is there, enabled or not, is the owner's choice.
+        if (addMergeQueue && !HasTopLevelKey(yml, "mergeQueue"))
+            text += MergeQueueSection;
         if (!yml.Contains("\ndependencies:", StringComparison.Ordinal) && !yml.StartsWith("dependencies:", StringComparison.Ordinal)
             && !yml.Contains("# dependencies:", StringComparison.Ordinal))
-            files.Add(new GitWriterFile("coverage.yml", (yml.Length == 0 || yml.EndsWith('\n') ? yml : yml + "\n") + CommentedSection.TrimStart('\r', '\n') + "\n"));
+            text += CommentedSection.TrimStart('\r', '\n') + "\n";
+        if (text != yml && text != yml + "\n")
+            files.Add(new GitWriterFile("coverage.yml", text));
 
         var (newDependabot, removed, rules, registries) = TranslateDependabot(dependabotYml);
         if (dependabotPath is not null && removed.Count > 0)
             files.Add(new GitWriterFile(dependabotPath, newDependabot, Delete: newDependabot is null));
 
         return new DependencyOnboardingPlan(files, rules, removed, registries, actionSha is { Length: 40 },
-            Body(files, rules, removed, registries, actionSha, dependabotPath));
+            Body(files, rules, removed, registries, actionSha, dependabotPath, addMergeQueue && !HasTopLevelKey(yml, "mergeQueue")));
     }
 
     /// <summary>
@@ -211,7 +239,7 @@ public static class DependencyOnboarding
         => node.Children.TryGetValue(new YamlScalarNode(key), out var value) && value is YamlScalarNode scalar ? scalar.Value : null;
 
     private static string Body(IReadOnlyList<GitWriterFile> files, IReadOnlyList<string> rules, IReadOnlyList<string> removed, IReadOnlyList<string> registries,
-        string? actionSha, string? dependabotPath)
+        string? actionSha, string? dependabotPath, bool mergeQueueAdded = false)
     {
         var body = new StringBuilder();
         body.AppendLine(DependencyPullRequestBody.Marker);
@@ -220,6 +248,8 @@ public static class DependencyOnboarding
         foreach (var file in files)
             body.AppendLine($"- `{file.Path}`{(file.Delete ? " (deleted)" : string.Empty)}");
         body.AppendLine();
+        if (mergeQueueAdded)
+            body.AppendLine("`coverage.yml` gets `mergeQueue: { enabled: true }`: dependency pull requests within your thresholds merge through the merge queue, and your own pull requests can use it too. See the [merge queue guide](https://coverage.mintplayer.com/merge-queue/setup). Remove the section to keep merging by hand.").AppendLine();
         body.AppendLine(actionSha is { Length: 40 }
             ? $"The workflows call the action pinned to `{actionSha}` (`{ActionTag}`); the bot keeps that pin current through its own Actions updates."
             : $"The workflows call the action at `{ActionTag}`; pin it to a commit if your policy requires it.");

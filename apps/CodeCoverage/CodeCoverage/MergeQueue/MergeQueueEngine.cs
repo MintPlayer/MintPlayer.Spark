@@ -264,6 +264,9 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         var defaultBranch = repository.DefaultBranch;
         var yml = defaultBranch is null ? null : await context.Forge.GetFileContentAsync(repository, defaultBranch, CoverageYml.FileName, ct);
         var parsed = MergeQueueYml.Parse(yml, defaultBranch ?? "main");
+        // D-O16: every read of the default branch's coverage.yml records what it says about the queue for the repository page.
+        if (defaultBranch is not null)
+            Dependencies.Lifecycle.DependencyFileMergeQueue.Record(session, repository.Id!, yml, defaultBranch);
 
         // A label speaks only when it is the configured one, on a repository that turned the queue on. Anything else is
         // somebody else's label and is ignored without a word; a comment or the button always gets an answer.
@@ -474,6 +477,14 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             && await context.Queue.GetActorRoleAsync(context.Repository, author, ct) >= EForgeRepositoryRole.Write)
             return null;
 
+        // Dependency-updates PRD R27 (S18-D3): the updater's own rolling pull request counts as approved when its pinned head
+        // is the commit the bot pushed and validated itself and no human commit is on the branch. The App is never a
+        // collaborator, so the floor could otherwise never pass without a person. A replayed human commit makes the head a
+        // person's work again: the normal rule applies. A writer's request for changes (above) still vetoes, and the
+        // branch's required reviews still apply, because the forge enforces those itself.
+        if (await IsBotsOwnRollingHeadAsync(context, entry, ct))
+            return null;
+
         var approvers = latest
             .Where(r => r.State == EForgeReviewState.Approved && r.CommitSha is { } sha && entry.KnownShas.Contains(sha, StringComparer.OrdinalIgnoreCase))
             .Select(r => r.ReviewerLogin!);
@@ -484,6 +495,22 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         return new("approval", floor == EMergeQueueApprovalFloor.Always
             ? $"This repository's approval floor needs an approval of commit `{Short(entry.PinnedHeadSha)}` by someone with write access other than the author."
             : $"@{author ?? "the author"} does not have write access, so an approval of commit `{Short(entry.PinnedHeadSha)}` by someone with write access is needed.");
+    }
+
+    /// <summary>
+    /// R27: <paramref name="entry"/> is the dependency updater's rolling pull request, on its own branch, pinned at the head
+    /// the bot pushed (<see cref="DependencyUpdateRun.RollingSha"/>), which is the bot's own commit
+    /// (<see cref="DependencyUpdateRun.RollingBotSha"/>): no human commit replayed on top.
+    /// </summary>
+    private async Task<bool> IsBotsOwnRollingHeadAsync(Context context, MergeQueueEntry entry, CancellationToken ct)
+    {
+        if (entry.HeadBranch != DependencyUpdateRun.RollingBranch || context.Repository.Id is not { } repositoryId)
+            return false;
+        var run = await session.LoadAsync<DependencyUpdateRun>(DependencyUpdateRun.ForRepository(repositoryId), ct);
+        return run is { PullRequestNumber: { } number, RollingSha: { } rolling, RollingBotSha: { } bot }
+            && number == entry.Number
+            && string.Equals(rolling, bot, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(entry.PinnedHeadSha, rolling, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>What a run of this configuration takes of the App (§0 D95).</summary>

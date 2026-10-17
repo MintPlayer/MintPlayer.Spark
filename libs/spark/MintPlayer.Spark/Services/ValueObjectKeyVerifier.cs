@@ -37,6 +37,46 @@ internal static class ValueObjectKeyVerifier
     /// <summary>One embedded collection to check: where it lives, and what its key is called.</summary>
     private readonly record struct KeyedCollection(string Collection, string Path, string KeyProperty);
 
+    /// <summary>The projection of one scanned document: how many of its rows on the path lack a key.</summary>
+    private sealed class KeylessCount
+    {
+        public int Keyless { get; set; }
+    }
+
+    /// <summary>
+    /// Counts the rows at a dot-separated <c>path</c> whose <c>key</c> is absent, null or "". Every
+    /// array met on the way is flattened, so <c>Sessions.Reports</c> reaches the reports of every
+    /// session. A null element is not a row.
+    /// </summary>
+    private const string KeylessRowsFunction = """
+        declare function keylessRows(doc, path, key) {
+            var nodes = [doc];
+            var segments = path.split('.');
+            for (var i = 0; i < segments.length; i++) {
+                var next = [];
+                for (var j = 0; j < nodes.length; j++) {
+                    var value = nodes[j][segments[i]];
+                    if (value === null || value === undefined) continue;
+                    if (Array.isArray(value)) {
+                        for (var k = 0; k < value.length; k++) {
+                            if (value[k] !== null && value[k] !== undefined) next.push(value[k]);
+                        }
+                    } else {
+                        next.push(value);
+                    }
+                }
+                nodes = next;
+            }
+            var keyless = 0;
+            for (var j = 0; j < nodes.length; j++) {
+                var id = nodes[j][key];
+                if (id === null || id === undefined || id === '') keyless++;
+            }
+            return keyless;
+        }
+
+        """;
+
     public static async Task VerifyAsync(
         Type contextType, IDocumentStore store, Action<string> log, CancellationToken cancellationToken)
     {
@@ -51,32 +91,37 @@ internal static class ValueObjectKeyVerifier
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            // An absent field DOES match `== null` — unlike `== false`, which an absent field does
-            // not match. The empty-string arm covers a key whose default is "" rather than a guid:
-            // ProjectColumn and EventColumnMapping both derive theirs, so a row saved before the
-            // deriving hook existed holds a present-but-useless key.
+            // ⚠️ A collection SCAN, not a `where` query (D-O18). `where Lines[].Id == null` creates an
+            // auto index per root collection on every application at startup — indexes belong to the
+            // application — and the request write path then waits on those auto indexes after every
+            // write to the collection. A collection query without `where` uses no index, and the
+            // JavaScript projection sends back one number per document instead of the document.
             //
-            // Both names are spliced, because RQL takes no parameter for an identifier. They come from
-            // the collection-name convention and CLR property names, never from a request, and are
-            // validated anyway: a convention can be customised to produce anything.
+            // A row counts as keyless when its key is absent, null or "": the empty string is the shape
+            // a key that defaults to "" leaves behind (ProjectColumn and EventColumnMapping derive
+            // theirs, so a row saved before the deriving hook existed holds a present-but-useless key).
+            //
+            // Only the collection is spliced, because RQL takes no parameter for it; it comes from the
+            // collection-name convention and is validated anyway. Path and key are parameters.
             var collection = RqlIdentifier.Collection(target.Collection);
-            var key = RqlIdentifier.FieldPath($"{target.Path}[].{target.KeyProperty}");
-            var rql =
-                $"from '{collection}' " +
-                $"where {key} == null " +
-                $"or {key} == ''";
+            var rql = KeylessRowsFunction + $"from '{collection}' as d select {{ Keyless: keylessRows(d, $path, $key) }}";
 
-            var query = session.Advanced.AsyncRawQuery<object>(rql)
-                .Statistics(out var statistics)
-                // The first run on a large collection builds an auto-index, and a stale result is
-                // an empty result — which would read as "nothing to fix" and let startup proceed.
-                .WaitForNonStaleResults(TimeSpan.FromMinutes(2))
-                .Take(0);
+            var query = session.Advanced.AsyncRawQuery<KeylessCount>(rql)
+                .AddParameter("path", target.Path)
+                .AddParameter("key", target.KeyProperty);
 
-            await query.ToListAsync(cancellationToken);
+            var documents = 0;
+            await using (var stream = await session.Advanced.StreamAsync(query, cancellationToken))
+            {
+                while (await stream.MoveNextAsync())
+                {
+                    if (stream.Current.Document?.Keyless > 0)
+                        documents++;
+                }
+            }
 
-            if (statistics.TotalResults > 0)
-                offenders.Add($"{target.Collection}.{target.Path} ({statistics.TotalResults} document(s))");
+            if (documents > 0)
+                offenders.Add($"{target.Collection}.{target.Path} ({documents} document(s))");
         }
 
         if (offenders.Count == 0)

@@ -12,6 +12,7 @@ import { AccountAvatarRendererComponent } from './account-avatar-renderer.compon
 import { AccountLinkRendererComponent } from './account-link-renderer.component';
 import { AccountCoverageRendererComponent } from './account-coverage-renderer.component';
 import { ConnectedRendererComponent } from './connected-renderer.component';
+import { PullRequestLinkRendererComponent } from './pull-request-link-renderer.component';
 
 /**
  * The attribute renderers this app registers, by the `renderer` names its App_Data model uses.
@@ -79,5 +80,10 @@ export const codeCoverageRenderers: SparkAttributeRendererRegistration[] = [
   {
     name: 'connected',
     columnComponent: ConnectedRendererComponent,
+  },
+  // The dependency onboarding grid (DependencyOnboardingRow, D-O14): the onboarding pull request as #n.
+  {
+    name: 'pull-request-link',
+    columnComponent: PullRequestLinkRendererComponent,
   },
 ];

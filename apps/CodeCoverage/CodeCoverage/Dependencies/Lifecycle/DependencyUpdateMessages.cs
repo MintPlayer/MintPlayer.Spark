@@ -77,6 +77,13 @@ public sealed record DependencyUpdateSignalMessage
     public EDependencyCommand? Command { get; init; }
     public string? Argument { get; init; }
     public string? Actor { get; init; }
+
+    /// <summary>
+    /// A person is waiting on this signal (a repository's own switch, "Run the scheduled slot now"): it was broadcast
+    /// expedited, and the run it starts schedules its first step expedited too (D-O15). A message cannot read its own
+    /// <c>BroadcastOptions</c>, so the sender states it here as well.
+    /// </summary>
+    public bool Expedite { get; init; }
 }
 
 public enum EDependencySignal
@@ -101,6 +108,13 @@ public enum EDependencySignal
 
     /// <summary>The feature is enabled for the repository: open the onboarding pull request when it needs one (R16).</summary>
     Onboard,
+
+    /// <summary>
+    /// The feature was switched off (R24): close the open rolling pull request with a comment, delete the bot's branches,
+    /// reset the pull request and branch state. Holds and approvals are kept; the templates and <c>coverage.yml</c> are the
+    /// owner's code and stay.
+    /// </summary>
+    Offboard,
 }
 
 /// <summary>

@@ -93,11 +93,15 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         switch (signal.Kind)
         {
             case EDependencySignal.Trigger when signal.Trigger is { } trigger:
-                await TriggerAsync(context, trigger, signal.SecurityFixes, ct);
+                await TriggerAsync(context, trigger, signal.SecurityFixes, ct, signal.Expedite);
                 break;
 
             case EDependencySignal.Onboard:
-                await OnboardAsync(context, ct);
+                await OnboardAsync(context, signal.Expedite, ct);
+                break;
+
+            case EDependencySignal.Offboard:
+                await OffboardAsync(context, ct);
                 break;
 
             case EDependencySignal.RunCompleted when signal.RunId is { } runId:
@@ -187,7 +191,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
     /// A run starts at once when none is going (a wait for checks is superseded); otherwise the trigger waits, the strongest
     /// kept. R10: a security trigger interrupts a bisection, which would otherwise block the fix.
     /// </summary>
-    private async Task TriggerAsync(Context context, EDependencyRunTrigger trigger, IReadOnlyList<DependencySecurityFixRecord>? fixes, CancellationToken ct)
+    private async Task TriggerAsync(Context context, EDependencyRunTrigger trigger, IReadOnlyList<DependencySecurityFixRecord>? fixes, CancellationToken ct, bool expedite = false)
     {
         var run = context.Run;
         foreach (var fix in fixes ?? [])
@@ -199,7 +203,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
             if (run.State != EDependencyRunState.Idle)
                 await hook.AbandonAsync(Saga(context), run.Runs, ct);
             BeginRun(context, trigger);
-            await ScheduleAsync(run, EDependencyStep.Start, null, ct);
+            await ScheduleAsync(run, EDependencyStep.Start, null, ct, expedite);
             return;
         }
         if (run.PendingTrigger is not { } pending || trigger > pending)
@@ -255,6 +259,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         var parsed = DependenciesYml.Parse(yml);
         foreach (var error in parsed.Errors.Take(5))
             run.Note(Now, $"coverage.yml: {error}");
+        run.FileMergeQueue = DependencyFileMergeQueue.State(yml, defaultBranch);
         run.FileFrequency = parsed.Section.Schedule?.Frequency;
         run.FileWeekday = parsed.Section.Schedule?.Weekday;
         run.FileHour = parsed.Section.Schedule?.Hour;
@@ -533,7 +538,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         {
             if (run.PullRequestNumber is not null)
                 await UpdatePullRequestBodyAsync(context, report, null, ct);
-            await EndAsync(context, "nothing-planned", "Nothing to apply this time.", ct);
+            await EndAsync(context, "nothing-planned", NothingPlannedMessage(report), ct);
             return;
         }
 
@@ -1276,6 +1281,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         var yml = await context.Forge.GetFileContentAsync(repository, run.DefaultBranch!, CoverageYml.FileName, ct);
         var section = DependenciesYml.Parse(yml).Section;
         var queueEnabled = MergeQueueYml.Parse(yml, run.DefaultBranch!).Section is { Enabled: true };
+        run.FileMergeQueue = DependencyFileMergeQueue.State(yml, run.DefaultBranch!);
         var commit = await session.LoadAsync<Commit>(Commit.DocumentId(repository.Provider, repository.GitHubId, run.RollingSha!), ct);
         var (coverage, note) = DependencyCoverageGate.Evaluate(commit, section.MaxCoverageDrop);
         run.CoverageNote = note;
@@ -1415,21 +1421,71 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
 
     // ═══ Onboarding (R16) ═══════════════════════════════════════════════════════════════════════════
 
-    private async Task OnboardAsync(Context context, CancellationToken ct)
+    /// <summary>
+    /// R16, made idempotent (P15): every step is "look up, then create or reuse", and its progress is saved before the next
+    /// external call, so a retry after a failure anywhere (a rate limit, a crash, a lost answer) neither fails on what the
+    /// first attempt already did nor does it twice. The branch is one commit, rebuilt identically (dated with
+    /// <see cref="DependencyUpdateRun.OnboardingStartedAtUtc"/>) and force-pushed, so a repeated push is a no-op; the pull
+    /// request is found by its head branch before one is created, and a 422 "already exists" is read as found.
+    /// </summary>
+    /// <remarks>
+    /// Short-circuits here, not in its callers (P15): <see cref="EDependencyOnboarding.Done"/>, an open onboarding pull
+    /// request, and an onboarding whose pull request the owner closed (<see cref="EDependencyOnboarding.Blocked"/> with a
+    /// number). Switching the feature off and on again (<see cref="OffboardAsync"/>) clears the last one, so an explicit
+    /// re-enable onboards again.
+    /// </remarks>
+    private async Task OnboardAsync(Context context, bool expedite, CancellationToken ct)
     {
         var (repository, run) = (context.Repository, context.Run);
-        if (run.Onboarding is EDependencyOnboarding.Done or EDependencyOnboarding.PullRequestOpened || repository.DefaultBranch is not { } defaultBranch) return;
-        if (!Repository.ResolveDependencyUpdates(repository, context.Account)) return;
-        if (await context.Queue.GetFileBlobShaAsync(repository, defaultBranch, ".github/workflows/dependency-lookup.yml", ct) is not null)
+        if (run.Onboarding is EDependencyOnboarding.PullRequestOpened || repository.DefaultBranch is not { } defaultBranch) return;
+        if (run.Onboarding == EDependencyOnboarding.Blocked && run.OnboardingPullRequestNumber is not null)
         {
-            run.Onboarding = EDependencyOnboarding.Done;
-            run.Note(Now, "the dependency workflows were already on the default branch: no onboarding pull request");
+            logger.LogDebug("Dependency updates: {Repository}'s onboarding pull request was closed by its owner; not onboarding again", repository.FullName);
             return;
         }
+        if (!Repository.ResolveDependencyUpdates(repository, context.Account)) return;
+
+        // D-O15 (live test 2026-10-17): an onboarding that ends Done without a pull request starts the first run now, as a
+        // merged onboarding pull request does (PullRequestEndedAsync); a re-enabled repository otherwise waited for its
+        // schedule (Monday 06:00). Done already (switched off and on again: offboarding keeps Done, D-O5) is the same case.
+        // Expedited when a person flipped the switch.
+        if (run.Onboarding == EDependencyOnboarding.Done
+            || await context.Queue.GetFileBlobShaAsync(repository, defaultBranch, ".github/workflows/dependency-lookup.yml", ct) is not null)
+        {
+            if (run.Onboarding != EDependencyOnboarding.Done)
+            {
+                run.Onboarding = EDependencyOnboarding.Done;
+                run.Note(Now, "the dependency workflows were already on the default branch: no onboarding pull request");
+            }
+            // D-O16: this is a read of the default branch's coverage.yml as much as the pull-request path below is.
+            run.FileMergeQueue = DependencyFileMergeQueue.State(
+                await context.Forge.GetFileContentAsync(repository, defaultBranch, CoverageYml.FileName, ct), defaultBranch);
+            await TriggerAsync(context, EDependencyRunTrigger.Refresh, null, ct, expedite);
+            return;
+        }
+
+        // Step 0: an open onboarding pull request from an attempt whose answer was lost is the answer.
+        if (await context.Updates.FindPullRequestAsync(repository, DependencyUpdateRun.OnboardingBranch, defaultBranch, ct) is { } existing
+            && run.OnboardingBranchSha is not null && string.Equals(existing.HeadSha, run.OnboardingBranchSha, StringComparison.OrdinalIgnoreCase))
+        {
+            Opened(run, existing.Number, "found the onboarding pull request a previous attempt opened");
+            return;
+        }
+
         var head = await context.Queue.GetBranchHeadAsync(repository, defaultBranch, ct)
             ?? throw new ForgeRequestException($"The head of {defaultBranch} in {repository.FullName} could not be read.", null);
+        if (!string.Equals(run.OnboardingBaseSha, head, StringComparison.OrdinalIgnoreCase))
+        {
+            // A new attempt, or the default branch moved: the commit is rebuilt on the new head, dated anew.
+            run.OnboardingBaseSha = head;
+            run.OnboardingStartedAtUtc = Now;
+            run.OnboardingBranchSha = null;
+            await session.SaveChangesAsync(ct);
+        }
+
         var tree = await context.Forge.GetTreeAsync(repository, defaultBranch, ct);
         var coverageYml = await context.Forge.GetFileContentAsync(repository, defaultBranch, CoverageYml.FileName, ct);
+        run.FileMergeQueue = DependencyFileMergeQueue.State(coverageYml, defaultBranch);
         string? dependabotPath = null, dependabotYml = null;
         foreach (var path in new[] { ".github/dependabot.yml", ".github/dependabot.yaml" })
         {
@@ -1444,11 +1500,12 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         {
             actionSha = await context.Updates.ResolveTagCommitAsync(repository, DependencyOnboarding.ActionRepository, DependencyOnboarding.ActionTag, ct);
         }
-        catch (Exception ex) when (ex is ForgeRequestException or ForgeAccessDeniedException or HttpRequestException)
+        catch (Exception ex) when (ex is ForgeRequestException or ForgeAccessDeniedException or HttpRequestException && ForgeRateLimitedException.Find(ex) is null)
         {
             logger.LogWarning(ex, "Dependency updates: could not resolve {Tag}; the onboarding templates keep the tag", DependencyOnboarding.ActionTag);
         }
-        var plan = DependencyOnboarding.Plan([.. tree?.Entries.Select(e => e.Path) ?? []], coverageYml, dependabotPath, dependabotYml, actionSha, DependencyOnboarding.ReadTemplate);
+        var plan = DependencyOnboarding.Plan([.. tree?.Entries.Select(e => e.Path) ?? []], coverageYml, dependabotPath, dependabotYml, actionSha, DependencyOnboarding.ReadTemplate,
+            addMergeQueue: Repository.ResolveDependencyOnboardingMergeQueue(repository, context.Account));
 
         // §7.2: Workflows: write (and the rest of the feature's needs) must be declared by the App and accepted by the
         // installation before the templates can be pushed; say which, and where, instead of failing on the push.
@@ -1458,48 +1515,145 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
             return;
         }
 
-        GitWriterDependencyResult? pushed;
-        try
+        // Step 1: the branch. A retry that finds it at the commit this attempt pushed skips the push; otherwise the same
+        // commit is rebuilt (same base, files and date) and force-pushed, which is a no-op when it is already there.
+        if (run.OnboardingBranchSha is not { } branchSha
+            || !string.Equals(await context.Queue.GetBranchHeadAsync(repository, DependencyUpdateRun.OnboardingBranch, ct), branchSha, StringComparison.OrdinalIgnoreCase))
         {
-            var job = await hook.RunWriterJobAsync(Saga(context), null, pushesWorkflowChanges: true, (access, credential) => writer.DependencyFilesAsync(
-                new GitWriterDependencyRequest(repository.Provider.ToCanonicalString(), repository.GitHubId.ToString(CultureInfo.InvariantCulture), access.CloneUrl, credential, defaultBranch, head)
-                {
-                    Author = Identity(run), Committer = Identity(run), Message = DependencyOnboarding.Title, Files = plan.Files,
-                }, ct), ct);
-            pushed = job.Ran ? job.Result : null;
-            if (!job.Ran)
+            GitWriterDependencyResult? pushed;
+            var identity = new GitWriterIdentity(CommitterName, options.Value.CommitterEmail,
+                new DateTimeOffset(DateTime.SpecifyKind(run.OnboardingStartedAtUtc ?? Now, DateTimeKind.Utc)));
+            try
             {
-                Block(run, job.Refusal ?? "The forge gave no credential to push the onboarding branch.");
+                var job = await hook.RunWriterJobAsync(Saga(context), null, pushesWorkflowChanges: true, (access, credential) => writer.DependencyFilesAsync(
+                    new GitWriterDependencyRequest(repository.Provider.ToCanonicalString(), repository.GitHubId.ToString(CultureInfo.InvariantCulture), access.CloneUrl, credential, defaultBranch, head)
+                    {
+                        Author = identity, Committer = identity, Message = DependencyOnboarding.Title, Files = plan.Files,
+                    }, ct), ct);
+                pushed = job.Ran ? job.Result : null;
+                if (!job.Ran)
+                {
+                    Block(run, job.Refusal ?? "The forge gave no credential to push the onboarding branch.");
+                    return;
+                }
+            }
+            catch (ForgeAccessDeniedException ex)
+            {
+                Block(run, $"The App could not push the onboarding branch ({ex.Message}). It needs **Workflows: write**: the installation's owner accepts the new permission on GitHub.");
                 return;
             }
+            catch (GitWriterRefusedException ex)
+            {
+                Block(run, ex.Message);
+                return;
+            }
+            if (pushed is not { Outcome: GitWriterOutcomes.Pushed })
+            {
+                if (pushed?.Outcome is GitWriterOutcomes.Busy or GitWriterOutcomes.Failed)
+                    throw new GitWriterUnavailableException($"The git writer answered the onboarding commit with {pushed.Outcome}: {pushed.Detail}");
+                Block(run, $"The onboarding branch was not pushed ({pushed?.Outcome}): {pushed?.Detail}");
+                return;
+            }
+            run.OnboardingBranchSha = pushed.Sha;
+            run.Note(Now, $"pushed {DependencyUpdateRun.OnboardingBranch} at {Short(pushed.Sha)}");
+            await session.SaveChangesAsync(ct);
         }
-        catch (ForgeAccessDeniedException ex)
+
+        // Step 2: the pull request, found by its head branch before one is created; GitHub's 422 "already exists" (an
+        // attempt whose answer was lost, or a race) is read as "found".
+        var pull = await context.Updates.FindPullRequestAsync(repository, DependencyUpdateRun.OnboardingBranch, defaultBranch, ct);
+        if (pull is null)
         {
-            Block(run, $"The App could not push the onboarding branch ({ex.Message}). It needs **Workflows: write**: the installation's owner accepts the new permission on GitHub.");
-            return;
+            try
+            {
+                pull = await context.Updates.CreatePullRequestAsync(repository, DependencyUpdateRun.OnboardingBranch, defaultBranch, DependencyOnboarding.Title, plan.Body, draft: false, ct);
+            }
+            catch (ForgeRequestException ex) when (ex.StatusCode == 422)
+            {
+                pull = await context.Updates.FindPullRequestAsync(repository, DependencyUpdateRun.OnboardingBranch, defaultBranch, ct);
+                if (pull is null)
+                    throw;
+            }
         }
-        catch (GitWriterRefusedException ex)
+        else
         {
-            Block(run, ex.Message);
-            return;
+            await context.Updates.UpdatePullRequestAsync(repository, pull.Number, DependencyOnboarding.Title, plan.Body, ct);
         }
-        if (pushed is not { Outcome: GitWriterOutcomes.Pushed })
+        Opened(run, pull.Number, $"opened the onboarding pull request #{pull.Number}");
+    }
+
+    /// <summary>
+    /// R24: the feature was switched off. Only when it still resolves off (it may have been switched on again since the
+    /// signal was sent). Each step is idempotent: closing a closed pull request and deleting a missing branch are no errors,
+    /// so a retry repeats them harmlessly.
+    /// </summary>
+    private async Task OffboardAsync(Context context, CancellationToken ct)
+    {
+        var (repository, run) = (context.Repository, context.Run);
+        if (Repository.ResolveDependencyUpdates(repository, context.Account))
         {
-            if (pushed?.Outcome is GitWriterOutcomes.Busy or GitWriterOutcomes.Failed)
-                throw new GitWriterUnavailableException($"The git writer answered the onboarding commit with {pushed.Outcome}: {pushed.Detail}");
-            Block(run, $"The onboarding branch was not pushed ({pushed?.Outcome}): {pushed?.Detail}");
+            run.Note(Now, "offboarding skipped: dependency updates are on again");
             return;
         }
 
-        var pull = await context.Updates.FindPullRequestAsync(repository, DependencyUpdateRun.OnboardingBranch, defaultBranch, ct);
-        if (pull is null)
-            pull = await context.Updates.CreatePullRequestAsync(repository, DependencyUpdateRun.OnboardingBranch, defaultBranch, DependencyOnboarding.Title, plan.Body, draft: false, ct);
+        if (run.PullRequestNumber is { } rolling)
+        {
+            await CommentAsync(context, "Dependency updates were switched off for this repository, so this pull request is closed and its branch deleted. "
+                + "Holds and approvals are kept: switching them on again picks up where this left off.", ct);
+            await context.Updates.ClosePullRequestAsync(repository, rolling, ct);
+        }
+        if (run.Onboarding == EDependencyOnboarding.PullRequestOpened && run.OnboardingPullRequestNumber is { } onboarding)
+            await context.Updates.ClosePullRequestAsync(repository, onboarding, ct);
+
+        // The runs the saga still waits for are cancelled; the bot's own branches go (DeleteBranchAsync never throws).
+        await hook.AbandonAsync(Saga(context), run.Runs, ct);
+        foreach (var branch in new[] { DependencyUpdateRun.RollingBranch, DependencyUpdateRun.WorkBranch, DependencyUpdateRun.OnboardingBranch })
+            await context.Forge.DeleteBranchAsync(repository, branch, ct);
+
+        run.PullRequestNumber = null;
+        run.RollingSha = null;
+        run.RollingBotSha = null;
+        run.CheckRunId = null;
+        run.CheckSha = null;
+        run.PullRequestIsDraft = false;
+        run.WorkRefSha = null;
+        run.Pins = [];
+        run.ReplayRetried = false;
+        run.PendingTrigger = null;
+        run.SecurityFixes = [];
+        run.Bisect = null;
+        ClearRelock(run);
+        if (run.Onboarding is EDependencyOnboarding.PullRequestOpened or EDependencyOnboarding.Blocked)
+        {
+            // An explicit re-enable onboards again, even after an owner closed the onboarding pull request.
+            run.Onboarding = EDependencyOnboarding.None;
+            run.OnboardingPullRequestNumber = null;
+            run.OnboardingNote = null;
+        }
+        run.OnboardingBaseSha = run.OnboardingBranchSha = null;
+        run.OnboardingStartedAtUtc = null;
+        if (await session.LoadAsync<DependencyUpdateRunData>(DependencyUpdateRunData.ForRepository(repository.Id!), ct) is { } data)
+            data.RollingPlanJson = null;
+        if (run.State != EDependencyRunState.Idle)
+        {
+            run.Outcome = "offboarded";
+            run.OutcomeMessage = "Dependency updates were switched off.";
+            run.FinishedAtUtc = Now;
+            Transition(run, EDependencyRunState.Idle, "offboarded: dependency updates were switched off");
+        }
         else
-            await context.Updates.UpdatePullRequestAsync(repository, pull.Number, DependencyOnboarding.Title, plan.Body, ct);
+        {
+            run.Note(Now, "offboarded: dependency updates were switched off");
+        }
+    }
+
+
+    private void Opened(DependencyUpdateRun run, int number, string note)
+    {
         run.Onboarding = EDependencyOnboarding.PullRequestOpened;
-        run.OnboardingPullRequestNumber = pull.Number;
+        run.OnboardingPullRequestNumber = number;
         run.OnboardingNote = null;
-        run.Note(Now, $"opened the onboarding pull request #{pull.Number}");
+        run.Note(Now, note);
     }
 
     /// <summary>What the App lacks, or the installation has not accepted, of <see cref="EMergeQueueAppNeed.DependencyUpdates"/>;
@@ -1532,6 +1686,23 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
     }
 
     // ═══ Ending, cleanup ═══════════════════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// D-O20 (live test 2026-10-17): a run that plans nothing says why, so "no pull request" is not silence. The groups
+    /// above the thresholds are the usual reason: they wait for an <c>approve &lt;group&gt;</c> (or a higher threshold).
+    /// </summary>
+    internal static string NothingPlannedMessage(DependencyRunReport report)
+    {
+        var awaiting = report.AwaitingApproval.Select(e => e.Group).Distinct(StringComparer.Ordinal).Count();
+        var held = report.Held.Select(e => e.Group).Distinct(StringComparer.Ordinal).Count();
+        var parts = new List<string>();
+        if (awaiting > 0) parts.Add($"{awaiting} {(awaiting == 1 ? "group" : "groups")} awaiting approval");
+        if (held > 0) parts.Add($"{held} held");
+        if (report.Failures.Count > 0) parts.Add($"{report.Failures.Count} not applicable");
+        return parts.Count == 0
+            ? "Nothing to apply this time: every dependency is current, cooling down or ignored."
+            : $"Nothing within your thresholds to apply this time; {string.Join(", ", parts)}.";
+    }
 
     private async Task EndAsync(Context context, string outcome, string message, CancellationToken ct)
     {
@@ -1604,6 +1775,12 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         try
         {
             await body();
+        }
+        catch (Exception ex) when (ForgeRateLimitedException.Find(ex) is not null)
+        {
+            // P16/R30: a rate limit is the message bus's to wait out (a park until the reset, a fifth of an attempt), not a
+            // transient failure of the run's own budget. Nothing of this attempt is saved; the same step or signal comes back.
+            throw;
         }
         catch (ForgeAccessDeniedException ex)
         {
@@ -1732,11 +1909,11 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         run.Note(Now, why);
     }
 
-    private Task ScheduleAsync(DependencyUpdateRun run, EDependencyStep step, TimeSpan? delay, CancellationToken ct)
+    private Task ScheduleAsync(DependencyUpdateRun run, EDependencyStep step, TimeSpan? delay, CancellationToken ct, bool expedite = false)
         => outbox.EnqueueAsync(session, new DependencyUpdateStepMessage
         {
             RepositoryId = run.Repository, Run = run.Run, Generation = run.Generation, Step = step,
-        }, delay is { } wait ? new BroadcastOptions { Delay = wait } : null, ct);
+        }, delay is null && !expedite ? null : new BroadcastOptions { Delay = delay, Expedite = expedite }, ct);
 
     private async Task<Context?> LoadContextAsync(string repositoryId, bool create, CancellationToken ct)
     {

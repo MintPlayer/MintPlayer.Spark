@@ -79,7 +79,7 @@ public partial class M_202609230900_DisconnectedReasonsStopNamingGitHub : ISpark
             // The old and new values travel as parameters rather than being spliced into the script
             // as literals (#264); the loop applies them in order, exactly as the chain of `if`s it
             // replaced did. Only the collection, an identifier, is spliced.
-            var operation = await store.Operations.SendAsync(new PatchByQueryOperation(new IndexQuery
+            var result = await BulkOperation.RunAsync(store, new PatchByQueryOperation(new IndexQuery
             {
                 Query = $$"""
                     from {{RqlIdentifier.Collection(collection)}} as d update {
@@ -95,9 +95,7 @@ public partial class M_202609230900_DisconnectedReasonsStopNamingGitHub : ISpark
                 },
             },
             // Wait for the index rather than throw "Index is stale": a bulk operation on a stale index is refused outright.
-            new QueryOperationOptions { StaleTimeout = TimeSpan.FromMinutes(5) }), token: cancellationToken);
-
-            var result = await operation.WaitForCompletionAsync<BulkOperationResult>();
+            new QueryOperationOptions { StaleTimeout = TimeSpan.FromMinutes(5) }), cancellationToken);
             total += result.Total;
 
             logger.LogInformation(

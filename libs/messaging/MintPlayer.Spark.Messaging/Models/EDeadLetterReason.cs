@@ -20,4 +20,11 @@ public enum EDeadLetterReason
     /// throttle slot — so the message was never (fully) handled.
     /// </summary>
     Expired,
+
+    /// <summary>
+    /// A handler's retry budget ran out and rate-limit parks (<c>RetryAfterException</c>) made up most of
+    /// it: <c>RateLimitParks / RateLimitParksPerAttempt &gt; AttemptCount</c>. Otherwise an exhausted budget
+    /// is <see cref="MaxAttempts"/>.
+    /// </summary>
+    RateLimited,
 }

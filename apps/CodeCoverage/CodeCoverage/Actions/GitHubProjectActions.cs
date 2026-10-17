@@ -39,7 +39,11 @@ public partial class GitHubProjectActions : DefaultPersistentObjectActions<GitHu
         // The corollary is the constraint: because the result is cached per request, the filter has
         // to be a pure function of request-scoped state. Per-row rules belong in IsAllowedAsync,
         // which is genuinely per-row and deliberately not memoized.
-        var owners = await visibility.GetAllowedOwnersAsync();
+        // Reads: the owners the viewer may see. Writes: only those they manage (R39, D-O12) — a board's automation and rules
+        // are the account's settings, and a read-only member of the organization reaches its installation too.
+        var owners = action is "Query" or "Read"
+            ? await visibility.GetAllowedOwnersAsync()
+            : await visibility.GetManagedOwnersAsync();
 
         // Applies to writes as well as reads, deliberately. Boards are mutable through this surface
         // — enabling automation and editing rules is the whole point — so unlike RepositoryActions

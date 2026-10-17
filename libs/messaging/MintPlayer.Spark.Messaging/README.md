@@ -208,8 +208,16 @@ await messageBus.BroadcastAsync(new PasswordResetMail(userId, token), new Broadc
     ExpiresAtUtc = tokenExpiresAtUtc,               // never handle it after this; dead-letter as Expired
     Queue = "mail-transactional",                   // must be declared under Spark:Messaging:Queues
     ScrubPayloadOnTerminal = true,                  // clear PayloadJson once Completed/DeadLettered
+    Expedite = true,                                // jump the lane: rare, human-triggered messages only
 });
 ```
+
+`BroadcastOnceAsync(message, key, options)` combines the key with the other options (for example
+`Expedite`).
+
+`Expedite` makes the queue's lane take this message before any normal one (see *Expedited messages*
+below). **Use it only for rare, human-triggered messages** — somebody clicked a button and is waiting:
+an onboarding click, "run now", an `approve` comment. Never for fan-outs, schedules or webhook traffic.
 
 `ExpiresAtUtc` is checked at pickup, against the throttle slot, and before every retry: a message
 whose next retry or slot would fall after it is dead-lettered with `DeadLetterReason = Expired`
@@ -282,8 +290,18 @@ Queues declared in `SparkMessagingOptions.Queues` get a worker in this mode too.
 
 A claim is the durable record that some process is working on a message. If a host dies between
 pickup and completion, the message stays at `Processing` with a lapsing `ClaimExpiresAtUtc`, and
-`MessageRetrySweeper` returns it to `Pending` with `AttemptCount` incremented so it is delivered
+`MessageRetrySweeper` returns it to `Pending` with `ReclaimCount` incremented so it is delivered
 again.
+
+A reclaim is a failed attempt for every handler that had not finished: it counts in each one's budget
+(see *Retry budget*), so a message that kills its host every time is dead-lettered
+(`DeadLetterReason = MaxAttempts`) after `MaxAttempts` reclaims, before any handler runs again. Until
+the dependency-updates PRD's P18 fix it was counted only in `SparkMessage.AttemptCount` (the pickup
+count), which the dead-letter decision never read, so such a message crash-looped for ever.
+
+A handler cancelled because the host is **shutting down** has not failed: it is not charged an
+attempt, and the message is parked due at once for the next host. A handler cancelled by its
+`HandlerTimeout` has failed, and is charged.
 
 That reader is new, and its absence was a real bug: `Processing` used to be written on pickup and
 consulted by **nothing** — not the subscription query, not the sweeper — so a message interrupted
@@ -335,7 +353,40 @@ When a handler throws an exception, retries are scheduled with increasing delays
 
 After the maximum number of attempts (default 5), the handler is **dead-lettered** and the message continues processing remaining handlers. The message completes when all handlers reach a terminal state.
 
-When multiple handlers have different attempt counts, the retry delay is based on the highest `AttemptCount` among failing handlers.
+When multiple handlers have different attempt counts, the message comes back when its slowest failed handler may run again: the backoff for the highest `AttemptCount`, or a longer rate-limit park.
+
+#### Rate limits: `RetryAfterException`
+
+A recipient that was told to come back later — a 429, a rate-limit 403, a `Retry-After` header —
+throws `RetryAfterException` instead of failing:
+
+```csharp
+if (response.StatusCode == HttpStatusCode.TooManyRequests)
+    throw new RetryAfterException(response.Headers.RetryAfter?.Delta ?? TimeSpan.FromMinutes(1), "GitHub rate limit");
+```
+
+The handler is parked for `max(backoff delay for its current AttemptCount, hint)` and its
+`RateLimitParks` is incremented instead of `AttemptCount`. `HandlerExecution.RateLimitedUntilUtc`
+and `SparkMessage.RateLimitedUntilUtc` say until when it waits. The message's `ExpiresAtUtc` still
+applies: a park that would end after it dead-letters the message as `Expired`. Recognised thrown
+synchronously, from the task, or as an inner exception, like `NonRetryableException`.
+
+#### Retry budget
+
+Each handler has one budget of `MaxAttempts` units, spent by genuine failures (1 each), reclaims
+(1 each, for every unfinished handler) and rate-limit parks (`1 / RateLimitParksPerAttempt` each,
+integer division). It is dead-lettered when
+
+```
+AttemptCount + ReclaimCount + RateLimitParks / RateLimitParksPerAttempt >= MaxAttempts
+```
+
+With the defaults (`MaxAttempts` 5, `RateLimitParksPerAttempt` 5): 5 errors, 25 parks, or a mix such
+as 2 errors and 15 parks; 4 errors and 4 parks, or 24 parks, are not yet. The dead-letter reason is
+`RateLimited` when parks made up most of the budget (`RateLimitParks / RateLimitParksPerAttempt >
+AttemptCount + ReclaimCount`), otherwise `MaxAttempts`. `RateLimitParksPerAttempt` is set globally
+(`Spark:Messaging:RateLimitParksPerAttempt`) or per queue
+(`Spark:Messaging:Queues:{name}:RateLimitParksPerAttempt`).
 
 #### How redelivery works
 
@@ -396,6 +447,7 @@ spark.AddMessaging(options =>
 | `BatchSize` + `MinDelayBetweenBatches` | Start at most N back to back, then pause. A batch is a pacing window only; each message keeps its own status and retries. |
 | `MaxConcurrency` | Messages of this queue handled at once (default 1 = FIFO). `SingleSubscription` mode only; warned about and ignored in `SubscriptionPerQueue` mode. |
 | `MaxAttempts` | Attempts per handler for messages published to this queue. |
+| `RateLimitParksPerAttempt` | Rate-limit parks (`RetryAfterException`) that cost one attempt on this queue (empty = the global value, 5). See *Retry budget*. |
 | `Backoff` | Retry schedule for this queue (empty = the global `BackoffDelays`). |
 | `HandlerTimeout` | How long one message of this queue may run its handlers before it is cancelled and parked (empty = the global `HandlerTimeout`, 10 min). Raise it for a queue whose handlers are legitimately long (a crawl batch) instead of raising it for every queue. Both subscription modes. |
 | `Priority` | `Low`, `Normal` (default) or `High` (or `-1`/`0`/`1`): the order in which the single feeder serves queues, strictly, across the whole backlog — see *Priority lanes* below. Stamped on each message at publish. `SingleSubscription` mode only. |
@@ -492,6 +544,25 @@ serves each batch alone, priority first within it (M16's window). The measured f
 at a time, and nothing is shared to prioritise. The index is deployed in both modes; only the single
 feeder reads it.
 
+### Expedited messages
+
+`BroadcastOptions.Expedite` (stored as `SparkMessage.Expedite`) reorders work **within one queue**;
+the queue's `Priority` above still ranks first. It is for rare, human-triggered messages only.
+
+- **The lane takes its oldest expedited message before any normal one.** A lane holds its claimed ids
+  in two FIFO queues that share the lane's capacity (512), so an expedited message the feeder routes
+  behind normal ones still runs next.
+- **The lane stays serial.** `MaxConcurrency` is unchanged: the flag reorders, it never runs two
+  messages of a FIFO queue at once.
+- **No starvation.** After 10 expedited messages in a row, one ready normal message goes next. With no
+  normal message waiting, expedited ones keep going, and the first normal one to arrive goes next.
+  The counter is per lane, shared by all of its pumps.
+- **The feeder pulls it ahead too.** `SparkMessages_ByPriority` sorts `Priority desc, Expedite desc,
+  Sequence asc`, so an expedited message behind more than a page of its own queue's backlog is claimed
+  on the next wake-up. No subscription is added.
+- Persisted on every publish path (`BroadcastAsync`, `BroadcastOnceAsync`, `IMessageOutbox`), so a
+  retry keeps it. Ignored in `SubscriptionPerQueue` mode.
+
 ### Inside a handler: `IMessageContext` and `IMessageProgress`
 
 Both are scoped services a recipient can inject.
@@ -525,8 +596,8 @@ public partial class SendCampaignRecipient : IRecipient<Campaign>
 
 ### Dead-letter reasons
 
-A dead-lettered message carries `DeadLetterReason`: `MaxAttempts` (a handler failed `MaxAttempts`
-times), `NonRetryable` (`NonRetryableException`, or an unusable message — type outside the
+A dead-lettered message carries `DeadLetterReason`: `MaxAttempts` (a handler spent its retry budget,
+mostly on failures or reclaims), `RateLimited` (it spent it mostly on rate-limit parks), `NonRetryable` (`NonRetryableException`, or an unusable message — type outside the
 allow-list, unresolvable, empty payload) or `Expired` (`ExpiresAtUtc` passed, or the next retry or
 throttle slot would have fallen after it). The status stays `DeadLettered`; there is no new status.
 
@@ -550,7 +621,10 @@ Messages are stored as `SparkMessage` documents in the `SparkMessages` collectio
 | `WakeUp` | `bool` | Redelivery gate: set by the sweeper when the message is due, cleared by the worker on pickup |
 | `LastWakeUpUtc` | `DateTime?` | When the sweeper last woke this message (informational) |
 | `ExpiresAtUtc` | `DateTime?` | Publish-time deadline (`BroadcastOptions.ExpiresAtUtc`) |
-| `DeadLetterReason` | `EDeadLetterReason?` | `MaxAttempts`, `NonRetryable` or `Expired`; set only with `DeadLettered` |
+| `DeadLetterReason` | `EDeadLetterReason?` | `MaxAttempts`, `NonRetryable`, `Expired` or `RateLimited`; set only with `DeadLettered` |
+| `ReclaimCount` | `int` | Times the message was abandoned mid-handler and reclaimed; counts in every unfinished handler's budget |
+| `Expedite` | `bool` | `BroadcastOptions.Expedite`: served before normal messages in its lane |
+| `RateLimitedUntilUtc` | `DateTime?` | When the message's latest rate-limit park ends; null when not waiting for one |
 | `ScrubPayloadOnTerminal` | `bool` | Clear `PayloadJson` once terminal |
 | `Priority` | `int` | The queue's `SparkQueuePriority` at publish (`-1` Low, `0` Normal, `1` High); the single feeder's sort key |
 | `QueuedAtUtc` | `DateTime?` | The server's `@last-modified` when the message became claimable, captured on the feeder's first write; its FIFO place within a priority |
@@ -565,7 +639,9 @@ Each entry in the `Handlers` array tracks an individual recipient:
 |---|---|---|
 | `HandlerType` | `string` | Assembly-qualified type name of the `IRecipient<T>` implementation |
 | `Status` | `EHandlerStatus` | `Pending`, `Completed`, `Failed`, `DeadLettered` |
-| `AttemptCount` | `int` | Number of attempts for this handler |
+| `AttemptCount` | `int` | Genuine failures of this handler (a throw or a timeout) |
+| `RateLimitParks` | `int` | Rate-limit parks (`RetryAfterException`); `RateLimitParksPerAttempt` of them cost one attempt |
+| `RateLimitedUntilUtc` | `DateTime?` | When the current rate-limit park ends; null otherwise |
 | `LastError` | `string?` | Exception message from last failure |
 | `CompletedAtUtc` | `DateTime?` | When this handler completed successfully |
 | `Checkpoint` | `string?` | Last checkpoint saved by `ICheckpointRecipient<T>` handlers |
@@ -606,7 +682,7 @@ You can query message status directly in RavenDB Studio for observability. Compl
 | Type | Description |
 |------|-------------|
 | `IMessageBus` | `BroadcastAsync<T>(message, BroadcastOptions)`; shorthands `BroadcastAsync<T>()`, `DelayBroadcastAsync<T>()`, `BroadcastOnceAsync<T>()` (default interface methods — a fake implements only the options overload) |
-| `BroadcastOptions` | `DeduplicationKey`, `Delay`, `MaxAttempts`, `ExpiresAtUtc`, `Queue`, `ScrubPayloadOnTerminal` |
+| `BroadcastOptions` | `DeduplicationKey`, `Delay`, `MaxAttempts`, `ExpiresAtUtc`, `Queue`, `ScrubPayloadOnTerminal`, `Expedite` |
 | `IMessageContext` | The message the current handler runs for (`MessageId`, `QueueName`, `AttemptCount`, `ExpiresAtUtc`) |
 | `IMessageProgress` | `IsDoneAsync(step)` / `MarkDoneAsync(step)` — per-handler progress sidecar |
 | `IRecipient<TMessage>` | `HandleAsync(TMessage, CancellationToken)` |
@@ -614,6 +690,7 @@ You can query message status directly in RavenDB Studio for observability. Compl
 | `IMessageCheckpoint` | `SaveAsync(string)` -- saves progress during handler execution |
 | `MessageQueueAttribute` | Assigns a message class to a named queue |
 | `NonRetryableException` | Thrown by a recipient to dead-letter its handler immediately, with no retries |
+| `RetryAfterException(TimeSpan delay, string? message = null, Exception? inner = null)` | Thrown by a rate-limited recipient: parks the handler for `max(backoff, delay)` and counts a rate-limit park, not an attempt |
 
 ### Extension Methods (`MintPlayer.Spark.Messaging`)
 

@@ -35,7 +35,7 @@ public class WriteRowFilterTests : CoverageRavenTest
 {
     private static ISparkVisibility VisibilityFor(params string[] owners)
     {
-        var visibility = Substitute.For<ISparkVisibility>();
+        var visibility = Substitute.For<ISparkVisibility>().ManagingWhatItSees();
         // Bare logins in, provider-qualified keys out - the shape the production flattening
         // produces, and the shape the row filters compare.
         visibility.GetAllowedOwnersAsync().Returns(Task.FromResult(

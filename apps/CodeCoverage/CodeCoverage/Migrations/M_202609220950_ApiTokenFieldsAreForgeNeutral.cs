@@ -74,7 +74,7 @@ public partial class M_202609220950_ApiTokenFieldsAreForgeNeutral : ISparkMigrat
 
     public async Task UpAsync(CancellationToken cancellationToken)
     {
-        var operation = await store.Operations.SendAsync(new PatchByQueryOperation(new IndexQuery
+        var result = await BulkOperation.RunAsync(store, new PatchByQueryOperation(new IndexQuery
         {
             Query = """
                 from ApiTokens as d update {
@@ -93,9 +93,7 @@ public partial class M_202609220950_ApiTokenFieldsAreForgeNeutral : ISparkMigrat
                 """,
         },
         // Wait for the index rather than throw "Index is stale": a bulk operation on a stale index is refused outright.
-        new QueryOperationOptions { StaleTimeout = TimeSpan.FromMinutes(5) }), token: cancellationToken);
-
-        var result = await operation.WaitForCompletionAsync<BulkOperationResult>();
+        new QueryOperationOptions { StaleTimeout = TimeSpan.FromMinutes(5) }), cancellationToken);
 
         // Scanned, not renamed — the guards no-op documents already converted, so a re-run reports
         // the collection size. Logged because ZERO is the informative case: it means the collection

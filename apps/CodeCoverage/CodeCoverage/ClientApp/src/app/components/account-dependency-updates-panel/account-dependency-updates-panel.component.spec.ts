@@ -2,6 +2,7 @@ import { provideZonelessChangeDetection } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { provideRouter } from '@angular/router';
+import { SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { describe, expect, it } from 'vitest';
 import { DependencyFleet, DependencyRepoStatus } from '../../services/browse.service';
 import { BrowseServiceStub, createBrowseStub, provideBrowseStub, settle } from '../../../testing/test-utils';
@@ -52,7 +53,10 @@ describe('AccountDependencyUpdatesPanelComponent', () => {
     browse = createBrowseStub({ getDependencyFleet });
     TestBed.configureTestingModule({
       imports: [AccountDependencyUpdatesPanelComponent],
-      providers: [provideZonelessChangeDetection(), provideNoopAnimations(), provideRouter([]), provideBrowseStub(browse)],
+      providers: [
+        provideZonelessChangeDetection(), provideNoopAnimations(), provideRouter([]), provideBrowseStub(browse),
+        { provide: SparkLanguageService, useValue: { t: (key: string, fallback?: string) => fallback ?? key } },
+      ],
     });
     fixture = TestBed.createComponent(AccountDependencyUpdatesPanelComponent);
     fixture.componentRef.setInput('provider', 'github');
@@ -110,9 +114,17 @@ describe('AccountDependencyUpdatesPanelComponent', () => {
   it('is hidden when the server refuses, and when nothing on the account uses dependency updates', async () => {
     await create(() => Promise.reject(new Error('404')));
     expect(q('[data-testid="dependency-fleet"]')).toBeNull();
+    expect(q('[data-testid="du-off"]')).toBeNull();
 
     TestBed.resetTestingModule();
     await create(() => Promise.resolve({ ...fleet, enabled: false, repositories: [repo('lib', { enabled: false, health: 'off', outcome: null })] }));
     expect(q('[data-testid="dependency-fleet"]')).toBeNull();
+    // Off but readable: the way in is the onboarding page (R20).
+    expect(q('[data-testid="du-off"] [data-testid="du-onboard-link"]')?.getAttribute('href')).toBe('/dependency-updates/onboard');
+  });
+
+  it('links the onboarding page from the fleet view', async () => {
+    await create(() => Promise.resolve(fleet));
+    expect(q('[data-testid="dependency-fleet"] [data-testid="du-onboard-link"]')?.getAttribute('href')).toBe('/dependency-updates/onboard');
   });
 });

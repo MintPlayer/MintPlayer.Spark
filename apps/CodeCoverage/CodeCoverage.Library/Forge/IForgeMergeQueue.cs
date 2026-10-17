@@ -543,7 +543,11 @@ public sealed record ForgeWriterAccess(string CloneUrl, string PushUrl, string U
 /// The forge answered something other than success, refusal-for-permission or absence: a 5xx, a rate
 /// limit, an unexpected status. Retryable by the saga.
 /// </summary>
-public sealed class ForgeRequestException(string message, int? statusCode) : Exception(message)
+/// <remarks>
+/// A rate limit (<see cref="StatusCode"/> 429) carries the <see cref="ForgeRateLimitedException"/> as its inner exception,
+/// so the message bus, which looks one level in, parks the handler until the limit resets (dependency-updates PRD P16).
+/// </remarks>
+public sealed class ForgeRequestException(string message, int? statusCode, Exception? inner = null) : Exception(message, inner)
 {
     public int? StatusCode { get; } = statusCode;
 }

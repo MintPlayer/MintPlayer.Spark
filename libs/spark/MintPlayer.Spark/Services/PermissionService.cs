@@ -39,10 +39,17 @@ internal partial class PermissionService : IPermissionService
     /// </remarks>
     private readonly Dictionary<string, bool> decisions = new(StringComparer.OrdinalIgnoreCase);
 
+    // Optional for hand-built instances. The one place a refusal is logged at Warning: a denial in
+    // IAccessControl is usually a capability probe and is logged at Debug there (D-O17).
+    [Inject] private readonly ILogger<PermissionService>? logger;
+
     public async Task EnsureAuthorizedAsync(string action, string target, CancellationToken cancellationToken = default)
     {
         if (!await DecideAsync(action, target, cancellationToken))
+        {
+            logger?.LogWarning("Authorization DENIED for {Resource}: the request is refused", $"{action}/{target}");
             throw new SparkAccessDeniedException($"{action}/{target}");
+        }
     }
 
     public Task<bool> IsAllowedAsync(string action, string target, CancellationToken cancellationToken = default)

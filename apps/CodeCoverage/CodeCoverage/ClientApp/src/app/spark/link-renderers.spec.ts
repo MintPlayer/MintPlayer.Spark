@@ -8,6 +8,7 @@ import { AccountLinkRendererComponent } from './account-link-renderer.component'
 import { AccountAvatarRendererComponent, GROUP_AVATAR } from './account-avatar-renderer.component';
 import { RepoNameRendererComponent } from './repo-name-renderer.component';
 import { PrivateLockRendererComponent } from './private-lock-renderer.component';
+import { PullRequestLinkRendererComponent } from './pull-request-link-renderer.component';
 
 /**
  * The renderers that read a SIBLING attribute off the row (Spark#245 item context). Each one
@@ -261,5 +262,30 @@ describe('PrivateLockRendererComponent', () => {
     const publicRepo = render(PrivateLockRendererComponent, { value: false, item: po() });
     expect(el(publicRepo).querySelector('i')).toBeNull();
     expect(el(publicRepo).textContent!.trim()).toBe('public');
+  });
+});
+
+describe('PullRequestLinkRendererComponent', () => {
+  it('links the onboarding pull request as #n', () => {
+    const fixture = render(PullRequestLinkRendererComponent, { value: 'https://github.com/acme/widget/pull/7', item: row({}) });
+
+    const link = el(fixture).querySelector('a');
+    expect(link?.getAttribute('href')).toBe('https://github.com/acme/widget/pull/7');
+    expect(link?.getAttribute('rel')).toContain('noopener');
+    expect(link?.textContent!.trim()).toBe('#7');
+  });
+
+  it('shows the server text without a link when the forge gives no URL, and nothing without a value', () => {
+    expect(el(render(PullRequestLinkRendererComponent, { value: '#7', item: row({}) })).textContent!.trim()).toBe('#7');
+    expect(el(render(PullRequestLinkRendererComponent, { value: '#7', item: row({}) })).querySelector('a')).toBeNull();
+    for (const value of [null, undefined, '', 42]) {
+      expect(el(render(PullRequestLinkRendererComponent, { value, item: row({}) })).textContent!.trim()).toBe('');
+    }
+  });
+
+  it('never links a value that is not an http(s) URL', () => {
+    const fixture = render(PullRequestLinkRendererComponent, { value: 'javascript:alert(1)', item: row({}) });
+    expect(el(fixture).querySelector('a')).toBeNull();
+    expect(el(fixture).textContent!.trim()).toBe('javascript:alert(1)');
   });
 });

@@ -180,6 +180,129 @@ public partial class GitHubAccessService : IGitHubAccessService
         return owners.Contains(ownerLogin, StringComparer.OrdinalIgnoreCase);
     }
 
+    /// <inheritdoc />
+    /// <remarks>
+    /// <para>
+    /// <b>Reach first.</b> An owner outside the viewer's owner set (no installation they can reach) is never one this app
+    /// manages for them, so it costs no call. Their own login is managed without asking (a personal account is managed by
+    /// that user only); any other login is asked of GitHub with the viewer's own token. A personal account that is not the
+    /// viewer's answers 404 there, which is "not an owner".
+    /// </para>
+    /// <para>
+    /// <b>Cached per (user, org)</b> with the owner set's lifetime (<see cref="CacheDuration"/>) and its invalidation (the
+    /// manual resync drops it, <see cref="GitHubViewerCache"/>). A definite answer (200, 403, 404) is cached for the full
+    /// lifetime; a failure (an unreachable GitHub, a rate limit, a refused token) is "no" and remembered only for
+    /// <see cref="FailureCacheDuration"/>, like the owner set's. It needs the App's <b>Members: read</b> organization
+    /// permission, which the App already declares; an organization that has not granted it answers 403, and nobody
+    /// manages it until it does (fail closed).
+    /// </para>
+    /// </remarks>
+    public async Task<bool> ManagesOwnerAsync(string ownerLogin, CancellationToken cancellationToken = default)
+    {
+        var user = await ViewerAsync();
+        if (user is null || string.IsNullOrEmpty(ownerLogin))
+            return false;
+
+        if (!await IsOwnerAllowedAsync(ownerLogin, cancellationToken))
+            return false;
+
+        var verified = await GetVerifiedLoginAsync(cancellationToken);
+        if (verified.Login is { } me && string.Equals(me, ownerLogin, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        // The login goes into a URL path: only a GitHub login shape is ever asked about.
+        if (!GitHubLoginShape().IsMatch(ownerLogin))
+            return false;
+
+        var key = $"github-org-owner/{user.Id}/{ownerLogin.ToLowerInvariant()}";
+        if (memoryCache.TryGetValue<bool>(key, out var cached))
+            return cached;
+
+        var (isOwner, definite) = await QueryOrganizationOwnerAsync(user, ownerLogin, cancellationToken);
+        GitHubViewerCache.Set(memoryCache, user.Id!, key, isOwner, definite ? CacheDuration : FailureCacheDuration);
+        return isOwner;
+    }
+
+    /// <summary>
+    /// <c>GET /user/memberships/orgs/{org}</c> with the viewer's own token: whether they are an active owner, and whether
+    /// that is GitHub's definite answer (200, or 403/404 that is not a rate limit) or a failure read as "no".
+    /// </summary>
+    private async Task<(bool IsOwner, bool Definite)> QueryOrganizationOwnerAsync(SparkUser user, string org, CancellationToken cancellationToken)
+    {
+        var token = await tokenService.GetAccessTokenAsync(user, forceRefresh: false, cancellationToken);
+        if (token.State != GitHubTokenState.Ok)
+            return (false, false);
+
+        var url = $"https://api.github.com/user/memberships/orgs/{Uri.EscapeDataString(org)}";
+        var (status, json, rateLimited) = await GetStatusAsync(url, token.AccessToken!, user.Id, cancellationToken);
+        if (status == System.Net.HttpStatusCode.Unauthorized)
+        {
+            token = await tokenService.GetAccessTokenAsync(user, forceRefresh: true, cancellationToken);
+            if (token.State != GitHubTokenState.Ok)
+                return (false, false);
+            (status, json, rateLimited) = await GetStatusAsync(url, token.AccessToken!, user.Id, cancellationToken);
+        }
+
+        return status switch
+        {
+            System.Net.HttpStatusCode.OK when json is not null => (IsActiveOwnerMembership(json), true),
+            System.Net.HttpStatusCode.NotFound => (false, true),
+            System.Net.HttpStatusCode.Forbidden when !rateLimited => (false, true),
+            _ => (false, false),
+        };
+    }
+
+    /// <summary>
+    /// Whether a <c>GET /user/memberships/orgs/{org}</c> body is an owner's: <c>role == "admin"</c> AND
+    /// <c>state == "active"</c>. A <c>member</c>, a <c>billing_manager</c> and a pending invitation are not; neither is an
+    /// unreadable body.
+    /// </summary>
+    internal static bool IsActiveOwnerMembership(string json)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            return root.ValueKind == JsonValueKind.Object
+                && root.TryGetProperty("role", out var role) && role.ValueKind == JsonValueKind.String && role.GetString() == "admin"
+                && root.TryGetProperty("state", out var state) && state.ValueKind == JsonValueKind.String && state.GetString() == "active";
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private async Task<(System.Net.HttpStatusCode? Status, string? Json, bool RateLimited)> GetStatusAsync(
+        string url, string accessToken, string? userId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var httpClient = httpClientFactory.CreateClient();
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
+            request.Headers.UserAgent.Add(new ProductInfoHeaderValue("Coverage", "1.0"));
+
+            using var response = await httpClient.SendAsync(request, cancellationToken);
+            var rateLimited = response.Headers.RetryAfter is not null
+                || (response.Headers.TryGetValues("x-ratelimit-remaining", out var remaining) && remaining.FirstOrDefault() == "0");
+            if (!response.IsSuccessStatusCode && response.StatusCode is not (System.Net.HttpStatusCode.NotFound or System.Net.HttpStatusCode.Unauthorized))
+                logger.LogWarning("GitHub {Url} query failed: {StatusCode} for user {UserId}", url, response.StatusCode, userId);
+            var body = response.IsSuccessStatusCode ? await response.Content.ReadAsStringAsync(cancellationToken) : null;
+            return (response.StatusCode, body, rateLimited);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            logger.LogError(ex, "Failed to query GitHub {Url} for user {UserId}", url, userId);
+            return (null, null, false);
+        }
+    }
+
+    /// <summary>A GitHub user or organization login: letters, digits and hyphens, at most 39.</summary>
+    [System.Text.RegularExpressions.GeneratedRegex(@"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$")]
+    private static partial System.Text.RegularExpressions.Regex GitHubLoginShape();
+
     public async Task InvalidateAsync(CancellationToken cancellationToken = default)
     {
         var user = await ViewerAsync();
@@ -187,6 +310,10 @@ public partial class GitHubAccessService : IGitHubAccessService
             return;
 
         memoryCache.Remove($"github-owners/{user.Id}");
+
+        // The per-(user, org) owner checks and per-(user, account) admin sets go with it (D-O12): a resync that left them
+        // cached would keep an organization owner who was just demoted managing it.
+        GitHubViewerCache.Invalidate(memoryCache, user.Id!);
 
         // The failure memo has to go too. A user who has just fixed their authorization and
         // pressed Resync would otherwise keep getting the remembered failure for up to

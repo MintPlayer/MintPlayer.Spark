@@ -39,6 +39,8 @@ describe('channels', () => {
     ['python', '3.12-slim', '3.12', '3.13', null, '3.13-slim'],
     ['node', '20.11.0', '20', '22', null, null],
     ['node', '18', '20', '22', null, null],
+    // The feed's build replaces the old one (R31 folds .tool-versions into the platform group).
+    ['java', 'temurin-17.0.8+7', '17', '25', '25.0.4.1+1', 'temurin-25.0.4.1+1'],
   ] as const)('rewrite %s %s (%s -> %s)', (sdk, value, from, to, toVersion, expected) => {
     expect(rewriteVersionValue(sdk, value, from, to, toVersion)).toBe(expected);
   });

@@ -65,9 +65,10 @@ public partial class DependencyUpdatesCronJob : ISparkCronJob
         foreach (var repository in enabled)
         {
             var run = runs.GetValueOrDefault(DependencyUpdateRun.ForRepository(repository.Id!));
-            // A blocked onboarding (a permission not accepted yet) is tried again daily; one whose pull request was closed is not.
-            if (run is null || run.Onboarding == EDependencyOnboarding.None
-                || run.Onboarding == EDependencyOnboarding.Blocked && run.OnboardingPullRequestNumber is null)
+            // R23: onboarding is event-driven (the switch's after-commit hook). This is only the daily fallback: a blocked
+            // onboarding (a permission not accepted yet), and one the event could not do (no default branch yet when the
+            // switch was flipped). An owner-closed onboarding is filtered by OnboardAsync itself (P15), not here.
+            if (run is null || run.Onboarding is EDependencyOnboarding.None or EDependencyOnboarding.Blocked)
             {
                 await messageBus.BroadcastOnceAsync(new DependencyUpdateSignalMessage { RepositoryId = repository.Id!, Kind = EDependencySignal.Onboard },
                     $"dependency-onboard:{repository.Id}:{now.UtcDateTime:yyyy-MM-dd}", ct);

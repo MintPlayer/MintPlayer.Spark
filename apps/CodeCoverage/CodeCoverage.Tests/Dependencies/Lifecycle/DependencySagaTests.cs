@@ -800,6 +800,23 @@ public class DependencySagaTests : CoverageRavenTest
         h.Writer.Requests("work-ref").Should().BeEmpty();
         (await h.RunAsync()).Outcome.Should().Be("nothing-planned");
     }
+
+    /// <summary>
+    /// D-O20 (live test 2026-10-17): a run that opens no pull request says why. With every remaining update above the
+    /// default <c>minor</c> threshold, "Nothing to apply this time." read as silence; it counts what waits for approval.
+    /// </summary>
+    [Fact]
+    public async Task D_O20_nothing_within_the_thresholds_says_how_many_groups_await_approval()
+    {
+        var h = await HarnessAsync();
+
+        await h.RunToApplyAsync(Lookup(Npm("lodash", "3.10.1", "4.17.21", Git.Dependencies.EUpdateType.Major)));
+
+        h.Writer.Requests("work-ref").Should().BeEmpty();
+        var run = await h.RunAsync();
+        run.Outcome.Should().Be("nothing-planned");
+        run.OutcomeMessage.Should().Be("Nothing within your thresholds to apply this time; 1 group awaiting approval.");
+    }
 }
 
 file static class PullExtensions

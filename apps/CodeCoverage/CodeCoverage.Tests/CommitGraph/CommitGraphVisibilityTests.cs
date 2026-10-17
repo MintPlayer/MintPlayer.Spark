@@ -88,6 +88,7 @@ public class CommitGraphVisibilityTests : CoverageRavenTest
         services.AddSingleton<IGitHubAccessService>(new ScriptedAccessService(new([], GitHubTokenState.Ok)));
         services.AddSingleton<IConfiguration>(new ConfigurationBuilder().Build());
         services.AddScoped<CodeCoverage.Services.IRepositoryScope, CodeCoverage.Services.RepositoryScope>();
+        services.AddScoped<CodeCoverage.Services.ISparkVisibility, CodeCoverage.Services.SparkVisibility>();
         services.AddScoped<BrowseController>();
         var provider = services.BuildServiceProvider();
 

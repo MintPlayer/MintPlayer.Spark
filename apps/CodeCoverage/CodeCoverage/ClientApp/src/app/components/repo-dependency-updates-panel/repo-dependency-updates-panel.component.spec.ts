@@ -1,6 +1,8 @@
 import { provideZonelessChangeDetection } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
+import { provideRouter } from '@angular/router';
+import { SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { describe, expect, it } from 'vitest';
 import { DependencyRepoView } from '../../services/browse.service';
 import { BrowseServiceStub, createBrowseStub, provideBrowseStub, settle } from '../../../testing/test-utils';
@@ -28,7 +30,10 @@ describe('RepoDependencyUpdatesPanelComponent', () => {
     browse = createBrowseStub({ getRepoDependencyUpdates });
     TestBed.configureTestingModule({
       imports: [RepoDependencyUpdatesPanelComponent],
-      providers: [provideZonelessChangeDetection(), provideNoopAnimations(), provideBrowseStub(browse)],
+      providers: [
+        provideZonelessChangeDetection(), provideNoopAnimations(), provideRouter([]), provideBrowseStub(browse),
+        { provide: SparkLanguageService, useValue: { t: (key: string, fallback?: string) => fallback ?? key, resolve: () => '' } },
+      ],
     });
     fixture = TestBed.createComponent(RepoDependencyUpdatesPanelComponent);
     fixture.componentRef.setInput('provider', 'github');
@@ -69,5 +74,51 @@ describe('RepoDependencyUpdatesPanelComponent', () => {
     TestBed.resetTestingModule();
     await create(() => Promise.resolve({ planned: [], history: [], status: { ...view.status, enabled: false, health: 'off', outcome: null, pullRequest: null } }));
     expect(q('[data-testid="dependency-updates"]')).toBeNull();
+    // Off but readable: the way in is the onboarding page (R20).
+    expect(q('[data-testid="du-onboard-link"]')?.getAttribute('href')).toBe('/dependency-updates/onboard');
+  });
+
+  it('shows no onboarding link when the server refuses the repository', async () => {
+    await create(() => Promise.reject(new Error('404')));
+    expect(q('[data-testid="du-off"]')).toBeNull();
+  });
+
+  // R26, R30/D-O7: the onboarding pull request, coverage.yml's real merge queue, and a message waiting for the rate limit.
+  it('shows the onboarding pull request, the merge queue in coverage.yml and the rate-limit wait', async () => {
+    await create(() => Promise.resolve({ ...view, status: {
+      ...view.status, onboardingPullRequest: { number: 1, url: 'https://github.com/acme/widget/pull/1', draft: false },
+      mergeQueueInFile: 'enabled', rateLimit: { untilUtc: '2026-10-16T17:45:00Z', park: 3, budget: 25 },
+    } }));
+
+    expect(q('[data-testid="du-onboarding-pr"]')?.getAttribute('href')).toBe('https://github.com/acme/widget/pull/1');
+    expect(q('[data-testid="du-merge-queue-file"]')?.textContent).toContain('enabled');
+    expect(q('[data-testid="du-rate-limit"]')?.textContent).toMatch(/waiting for GitHub's rate limit until \S+.*\(park 3 of 25\)/);
+  });
+
+  // D-O16 (live test 2026-10-17): an empty line read as "no merge queue" although the file had one; it says "not read yet".
+  it('says the merge queue in coverage.yml is not read yet rather than leaving the line out', async () => {
+    await create(() => Promise.resolve({ ...view, status: { ...view.status, mergeQueueInFile: null } }));
+    expect(q('[data-testid="du-merge-queue-file"]')?.textContent).toContain('not read yet');
+  });
+
+  // D-O20: a run that opened no pull request shows how it ended.
+  it('shows the outcome of a run that planned nothing', async () => {
+    await create(() => Promise.resolve({ ...view, status: {
+      ...view.status, health: 'ok', state: 'Idle', pullRequest: null, outcome: 'nothing-planned',
+      outcomeMessage: 'Nothing within your thresholds to apply this time; 12 groups awaiting approval.',
+    } }));
+    expect(el().textContent).toContain('nothing-planned');
+    expect(el().textContent).toContain('12 groups awaiting approval');
+  });
+
+  it('has no rate-limit line when nothing waits', async () => {
+    await create(() => Promise.resolve(view));
+    expect(q('[data-testid="du-rate-limit"]')).toBeNull();
+  });
+
+  // R28: "Run the scheduled slot now" is the Repository's detail action in Spark's own action bar, not a panel button.
+  it('offers no run-now button of its own', async () => {
+    await create(() => Promise.resolve(view));
+    expect(q('[data-testid="du-run-now"]')).toBeNull();
   });
 });

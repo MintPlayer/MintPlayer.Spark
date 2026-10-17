@@ -50,6 +50,7 @@ public class BrowseControllerRemainderTests : CoverageRavenTest
         services.AddSingleton(GitHubAuthTestFakes.TestConfiguration());
         services.AddScoped<IRepositoryResolver>(sp => new TestRepositoryResolver(sp.GetService<IAsyncDocumentSession>()));
         services.AddScoped<CodeCoverage.Services.IRepositoryScope, CodeCoverage.Services.RepositoryScope>();
+        services.AddScoped<CodeCoverage.Services.ISparkVisibility, CodeCoverage.Services.SparkVisibility>();
         services.AddScoped<BrowseController>();
         var provider = services.BuildServiceProvider();
         var controller = provider.GetRequiredService<BrowseController>();

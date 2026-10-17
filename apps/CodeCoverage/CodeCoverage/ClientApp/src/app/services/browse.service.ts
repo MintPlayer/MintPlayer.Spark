@@ -462,6 +462,38 @@ export interface DependencyRepoStatus {
   plannedGroups: number;
   pins: string[];
   coverageNote: string | null;
+  /** The onboarding pull request (R16), open, merged or closed; null when none was opened. */
+  onboardingPullRequest?: DependencyPullRequestLink | null;
+  /** R26: `coverage.yml`'s merge queue as last read: `enabled`, `disabled`, `absent`; null until read. */
+  mergeQueueInFile?: string | null;
+  /** R30 / D-O7: a message waiting for the forge's rate limit; null when nothing waits. */
+  rateLimit?: DependencyRateLimitView | null;
+}
+
+export interface DependencyRateLimitView {
+  untilUtc: string;
+  /** This message's park count, 1-based. */
+  park: number;
+  /** The parks it may take before it is dead-lettered. */
+  budget: number;
+}
+
+/**
+ * `GET api/dependency-updates/onboarding` (server: `DependencyOnboardingSummary`, dependency-updates PRD R20, R36, D-O14): the
+ * onboarding page's header. The rows are the Spark query `dependency-onboarding`.
+ */
+export interface DependencyOnboardingSummary {
+  login: string | null;
+  /** `Ok`, `ReauthRequired` or `Unavailable`. */
+  credentialState: string;
+  linked: boolean;
+  narrowed: boolean;
+  /** `install`, `update`, `request`, or null without a setup redirect (a hint only, R36). */
+  setupAction: string | null;
+  /** The repositories the viewer manages here, the syncing ones included. */
+  repositories: number;
+  /** How many of them are not in the app yet, so not rows of the grid. */
+  syncing: number;
 }
 
 export interface DependencyPackageUse {
@@ -674,6 +706,16 @@ export class BrowseService {
   getRepoDependencyUpdates(provider: string, owner: string, name: string): Promise<DependencyRepoView> {
     return firstValueFrom(this.http.get<DependencyRepoView>(
       `/api/browse/repos/${encodeURIComponent(provider)}/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/dependency-updates`));
+  }
+
+  /**
+   * The onboarding page's header (R20, D-O14). `scope` is the page's own query string, passed through untouched (a repeated
+   * key stays repeated): which setup-redirect parameter means what is the forge's business on the server, so nothing here
+   * names one.
+   */
+  getDependencyOnboarding(scope: string): Promise<DependencyOnboardingSummary> {
+    return firstValueFrom(this.http.get<DependencyOnboardingSummary>('/api/dependency-updates/onboarding',
+      { params: new HttpParams({ fromString: scope }) }));
   }
 
 }

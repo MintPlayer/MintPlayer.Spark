@@ -71,6 +71,7 @@ export default class DependencyUpdatesSetupComponent {
   /** The CodeCoverage settings (dependency-updates.md §3). */
   protected readonly settings = [
     { name: 'Dependency updates on', where: 'Account, overridable per repository', defaultValue: 'off' },
+    { name: 'Onboarding adds the merge queue (only matters when the onboarding pull request is made)', where: 'Account, overridable per repository', defaultValue: 'yes' },
     { name: 'Schedule (frequency, weekday, hour)', where: 'Account (in its time zone), overridable per repository', defaultValue: 'weekly, Monday, 06:00' },
     { name: 'Time zone', where: 'Account', defaultValue: 'UTC' },
     { name: 'Cooldown (how old a release must be)', where: 'Account, overridable per repository', defaultValue: '3 days' },

@@ -60,6 +60,18 @@ internal sealed partial class LinkExternalLoginCallback<TUser> : IGetEndpoint
             return SparkAuthenticationExtensions.ExternalLoginOutcome(httpContext, safeReturnUrl, error);
         }
 
+        // The provider's OAuth tokens, stored as a sign-in with the provider stores them (ExternalLoginCallback): an app
+        // that calls the provider's API as this user must find them whether the login was the first one or linked later.
+        // Only after the login is attached, so a refused link stores nothing.
+        if (info.AuthenticationTokens is not null)
+        {
+            foreach (var token in info.AuthenticationTokens)
+            {
+                await userManager.SetAuthenticationTokenAsync(
+                    user, info.LoginProvider, token.Name, token.Value);
+            }
+        }
+
         // Nothing about the session changed except which credentials reach it, and the external
         // cookie is spent; refreshing keeps this consistent with the unlink path.
         await signInManager.RefreshSignInAsync(user);

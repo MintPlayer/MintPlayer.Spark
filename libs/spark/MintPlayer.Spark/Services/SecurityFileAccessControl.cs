@@ -30,10 +30,10 @@ internal partial class SecurityFileAccessControl : IAccessControl
 
     public async Task<bool> IsAllowedAsync(string resource, CancellationToken cancellationToken = default)
     {
-        var (decision, groups) = await ResolveDecisionAsync(cancellationToken);
+        var (decision, groups, role) = await ResolveDecisionAsync(cancellationToken);
         var allowed = decision.Allows(resource);
 
-        LogAuthorizationDecision(resource, groups.Names, allowed);
+        LogAuthorizationDecision(resource, groups.Names, role, allowed);
         return allowed;
     }
 
@@ -44,14 +44,14 @@ internal partial class SecurityFileAccessControl : IAccessControl
     public async Task<EffectiveAttributeRights> GetAttributeRightsAsync(
         string verb, string entityTypeName, CancellationToken cancellationToken = default)
     {
-        var (decision, groups) = await ResolveDecisionAsync(cancellationToken);
+        var (decision, groups, role) = await ResolveDecisionAsync(cancellationToken);
         var rights = decision.ForAttributes(verb, entityTypeName);
 
-        LogAuthorizationDecision($"{verb}/{entityTypeName}", groups.Names, rights.TypeAllowed);
+        LogAuthorizationDecision($"{verb}/{entityTypeName}", groups.Names, role, rights.TypeAllowed);
         return rights;
     }
 
-    private async Task<(RightsDecision Decision, SparkRequestGroups Groups)> ResolveDecisionAsync(CancellationToken cancellationToken)
+    private async Task<(RightsDecision Decision, SparkRequestGroups Groups, string Role)> ResolveDecisionAsync(CancellationToken cancellationToken)
     {
         var config = configLoader.GetConfiguration();
         var groups = await groupMembership.GetAsync(cancellationToken);
@@ -72,7 +72,7 @@ internal partial class SecurityFileAccessControl : IAccessControl
         if (ResolveWellKnownGroupId(config, role) is { } wellKnownGroupId)
             groupIds.Add(wellKnownGroupId);
 
-        return (configLoader.GetResolvedRights(groupIds), groups);
+        return (configLoader.GetResolvedRights(groupIds), groups, role);
     }
 
     /// <summary>
@@ -180,13 +180,31 @@ internal partial class SecurityFileAccessControl : IAccessControl
         return result;
     }
 
-    private void LogAuthorizationDecision(string resource, IEnumerable<string> groups, bool allowed)
+    /// <summary>
+    /// Every decision is logged at Debug, a denial included.
+    /// </summary>
+    /// <remarks>
+    /// <b>A denial here is an answer, not an incident.</b> Most questions are capability probes: the
+    /// catalogue, program units, aliases and <c>GetPermissions</c> ask Query/Read/Edit of every entity
+    /// type, and the custom-action list asks every action of the type on screen, so that the client
+    /// shows only what the caller may do. A signed-in user without any group claim is refused most of
+    /// them by design. Logged at Warning, one page load of the CodeCoverage app wrote about a hundred
+    /// "DENIED" lines (live test 2026-10-17, D-O17). The refusal of an actual request is logged at
+    /// Warning where it is enforced, in <c>PermissionService.EnsureAuthorizedAsync</c>.
+    /// <para>
+    /// The well-known role (<c>authenticated</c> / <c>anonymous</c>) is logged beside the claimed
+    /// groups. It is decided from authentication state and never appears among them, so "groups: []"
+    /// alone read as "no rights at all".
+    /// </para>
+    /// </remarks>
+    private void LogAuthorizationDecision(string resource, IEnumerable<string> groups, string role, bool allowed)
     {
-        var groupsString = string.Join(", ", groups);
+        if (!logger.IsEnabled(LogLevel.Debug))
+            return;
 
-        if (allowed)
-            logger.LogDebug("Authorization ALLOWED for {Resource} (groups: [{Groups}])", resource, groupsString);
-        else
-            logger.LogWarning("Authorization DENIED for {Resource} (groups: [{Groups}])", resource, groupsString);
+        var groupsString = string.Join(", ", groups);
+        logger.LogDebug(
+            "Authorization {Decision} for {Resource} (role: {Role}, groups: [{Groups}])",
+            allowed ? "ALLOWED" : "DENIED", resource, role, groupsString);
     }
 }

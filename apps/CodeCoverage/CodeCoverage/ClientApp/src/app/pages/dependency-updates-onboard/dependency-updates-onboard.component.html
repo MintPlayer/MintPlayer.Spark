@@ -1,0 +1,68 @@
+<div class="du-onboard py-3" data-dependency-updates-onboard>
+  <h1 class="h3 mb-3"><i class="bi bi-box-arrow-in-down"></i> {{ 'dependencyOnboardingUi.title' | t }}</h1>
+  <p class="lead">{{ 'dependencyOnboardingUi.intro' | t }}</p>
+
+  @let s = summary();
+
+  @if (s?.setupAction === 'request') {
+    <bs-alert [type]="warningColor" class="d-block mb-3" data-testid="onboard-request">
+      <strong>{{ 'dependencyOnboardingUi.requestTitle' | t }}</strong> {{ 'dependencyOnboardingUi.requestBody' | t }}
+    </bs-alert>
+  }
+
+  @if (s?.narrowed) {
+    <p class="small" data-testid="onboard-narrowed">
+      {{ 'dependencyOnboardingUi.narrowed' | t }} ·
+      <a routerLink="/dependency-updates/onboard" data-testid="onboard-all-accounts">{{ 'dependencyOnboardingUi.allAccounts' | t }}</a>
+    </p>
+  }
+
+  @if (s && !s.linked) {
+    <bs-alert [type]="warningColor" class="d-block mb-3" data-testid="onboard-not-linked">
+      {{ 'dependencyOnboardingUi.notLinked' | t }}
+      <a routerLink="/account">{{ 'dependencyOnboardingUi.notLinkedAction' | t }}</a>
+    </bs-alert>
+  } @else if (s?.credentialState === 'ReauthRequired') {
+    <bs-alert [type]="warningColor" class="d-block mb-3" data-testid="onboard-reauth">
+      {{ 'dependencyOnboardingUi.reauth' | t }}
+    </bs-alert>
+  } @else if (s?.credentialState === 'Unavailable') {
+    <bs-alert [type]="warningColor" class="d-block mb-3" data-testid="onboard-unavailable">
+      {{ 'dependencyOnboardingUi.unavailable' | t }}
+    </bs-alert>
+  }
+
+  @if (loadError(); as err) {
+    <bs-alert [type]="dangerColor" class="d-block mb-3" data-testid="onboard-error">{{ err }}</bs-alert>
+  }
+
+  @if (s && s.linked && s.repositories === 0) {
+    <bs-alert [type]="infoColor" class="d-block mb-3" data-testid="onboard-empty">
+      <strong>{{ (s.narrowed ? 'dependencyOnboardingUi.emptyNarrowed' : 'dependencyOnboardingUi.empty') | t }}</strong>
+      {{ 'dependencyOnboardingUi.whoMayEnable' | t }}
+    </bs-alert>
+  }
+
+  @if (s && s.syncing > 0) {
+    <bs-alert [type]="infoColor" class="d-block mb-3" data-testid="onboard-syncing">
+      {{ format('dependencyOnboardingUi.syncing', s.syncing) }}
+    </bs-alert>
+  }
+
+  @if (showGrid()) {
+    <p class="small text-muted mb-0">
+      {{ 'dependencyOnboardingUi.mergeQueueHelp' | t }}
+      <a routerLink="/merge-queue/setup">{{ 'dependencyOnboardingUi.mergeQueueGuide' | t }}</a>
+    </p>
+    <spark-query-card data-testid="onboard-grid"
+        [queryId]="queryId"
+        [parentId]="scope()"
+        [parentType]="scopeType()"
+        [rowRoute]="rowRoute"
+        (customActionExecuted)="onActionExecuted()" />
+    <p class="small text-muted mb-0">
+      {{ 'dependencyOnboardingUi.settingsHint' | t }}
+      <a routerLink="/dependency-updates/setup">{{ 'dependencyOnboardingUi.guide' | t }}</a>
+    </p>
+  }
+</div>

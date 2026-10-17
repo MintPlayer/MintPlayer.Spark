@@ -58,7 +58,9 @@ export function rewriteVersionValue(sdk: Sdk, value: string, from: string, to: s
   const target = toVersion.replace(/^(v|go)/i, '');
   if (channelOf(sdk, target) !== to) return null;
   // A prerelease toVersion ('11.0.0-rc.2') carries its own suffix; keep the value's suffix after it.
-  return `${prefix}${target}${rest}`;
+  // A java build ('temurin-17.0.8+7' -> '25.0.4.1+1') is part of the version: the old one goes.
+  const kept = target.includes('+') ? rest.replace(/^\+[^\s\-_]*/, '') : rest;
+  return `${prefix}${target}${kept}`;
 }
 
 /** 'net10.0' -> 'net11.0' (keeps '-windows' etc.); null when the token is not on `from`. */

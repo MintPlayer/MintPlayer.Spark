@@ -1,4 +1,5 @@
 using System.Linq.Expressions;
+using CodeCoverage.Dependencies.Lifecycle;
 using CodeCoverage.Entities;
 using CodeCoverage.LookupReferences;
 using CodeCoverage.Services;
@@ -27,11 +28,13 @@ namespace CodeCoverage.Actions;
 /// enforces server-side regardless of what a client posts.
 /// </para>
 /// </summary>
-public partial class RepositoryActions : DefaultPersistentObjectActions<Repository>, IBeforeSave<Repository>
+public partial class RepositoryActions : DefaultPersistentObjectActions<Repository>, IBeforeSave<Repository>, IAfterSaveCommitted<Repository>
 {
     [Inject] private readonly ISparkVisibility visibility;
     [Inject] private readonly IAsyncDocumentSession session;
     [Inject] private readonly MintPlayer.Spark.Abstractions.Authorization.IPermissionService permissions;
+    [Inject] private readonly MintPlayer.Spark.Messaging.Abstractions.IMessageBus messageBus;
+    [Inject] private readonly IManager manager;
 
     /// <summary>
     /// Opens the embedded gate in the shape its mode calls for (#264, G-Q3): a <c>fixed</c> gate
@@ -47,6 +50,23 @@ public partial class RepositoryActions : DefaultPersistentObjectActions<Reposito
         var po = await base.OnLoadAsync(id, parent);
         if (po?.Attributes.FirstOrDefault(a => a.Name == nameof(Repository.Gate)) is PersistentObjectAttributeAsDetail { Object: { } gate })
             GateSettingsActions.ShapeForMode(gate);
+
+        // R26: the file's truth beside the onboarding setting, as the bot last read coverage.yml. D-O16: always a sentence,
+        // the onboarding page's own ("enabled in coverage.yml", "not in coverage.yml", "not read yet"), never a bare enum
+        // value or an empty field that reads as "absent".
+        //
+        // ⚠️ Filled here, after base.OnLoadAsync blanked the protected attributes, so it asks the same deny-by-default
+        // question itself: an outsider or a read-only member gets nothing (OwnerPrivacyEndToEndTests). Before D-O16 this
+        // filled the state for anyone whenever a run had recorded one.
+        if (po?.Attributes.FirstOrDefault(a => a.Name == nameof(Repository.MergeQueueInCoverageYml)) is { } mergeQueue
+            && await session.LoadAsync<Repository>(id) is { } entity
+            && (await GetProtectedAttributesAsync("Read", entity))?.Contains(nameof(Repository.MergeQueueInCoverageYml)) != true)
+        {
+            var state = (await session.LoadAsync<DependencyUpdateRun>(DependencyUpdateRun.ForRepository(id)))?.FileMergeQueue;
+            var key = DependencyFileMergeQueue.TranslationKey(state);
+            var text = manager.GetTranslatedMessage(key);
+            mergeQueue.Value = string.IsNullOrEmpty(text) || text == key ? state ?? "not read yet" : text;
+        }
         return po;
     }
 
@@ -99,11 +119,30 @@ public partial class RepositoryActions : DefaultPersistentObjectActions<Reposito
     /// the two must be changed together.
     /// </para>
     /// </summary>
-    public ValueTask OnBeforeSaveAsync(Repository entity, SaveContext context)
+    public async ValueTask OnBeforeSaveAsync(Repository entity, SaveContext context)
+    {
+        ValidateGate(entity);
+
+        // R23: the switch's transition, for the after-commit hook (which gets facts, never the entity).
+        var account = entity.Account is { Length: > 0 } accountId ? await session.LoadAsync<Account>(accountId) : null;
+        if (DependencyUpdateSwitch.Transition(context.Before as Repository, entity, account) is { } transition)
+            context.Facts[DependencyUpdateSwitch.Fact] = transition;
+    }
+
+    /// <summary>
+    /// R23/R24: a switch of this repository's dependency updates, committed: onboard (off → on) or offboard (on → off),
+    /// expedited, since a person is waiting on the page they switched it from.
+    /// </summary>
+    public Task OnAfterSaveCommittedAsync(SparkCommittedChange change, CancellationToken cancellationToken)
+        => change.Facts.TryGetValue(DependencyUpdateSwitch.Fact, out var transition)
+            ? DependencyUpdateSwitch.SignalAsync(messageBus, change.Id, transition, change.OccurredAt, expedite: true, cancellationToken)
+            : Task.CompletedTask;
+
+    private static void ValidateGate(Repository entity)
     {
         var gate = entity.Gate;
         if (gate is null)
-            return ValueTask.CompletedTask;
+            return;
 
         // A form posts every attribute, including the ones nobody touched, so an unset dropdown
         // arrives as null rather than as the property initializer's value — that initializer only
@@ -147,8 +186,6 @@ public partial class RepositoryActions : DefaultPersistentObjectActions<Reposito
         if (gate.ProjectMode == ProjectComparison.Fixed && gate.ProjectTarget is null)
             throw new SparkValidationException(
                 "A fixed comparison needs a project target.", nameof(GateSettings.ProjectTarget));
-
-        return ValueTask.CompletedTask;
     }
 
     public override async Task<Expression<Func<Repository, bool>>?> GetRowFilterAsync(string action)
@@ -168,8 +205,15 @@ public partial class RepositoryActions : DefaultPersistentObjectActions<Reposito
         // Owners only, no public tier. An empty owner set matches nothing, which is the correct
         // reading of "signed in, manages nothing". `.In()` rather than Contains -- see
         // ApiTokenActions for what a non-translatable predicate costs.
+        //
+        // R39 (D-O12): the owners the viewer MANAGES, plus the repositories they administer on the forge — not the owner set,
+        // which a read-only member of an organization reaches as well.
         if (action is not ("Query" or "Read"))
-            return repository => repository.OwnerKey.In(owners);
+        {
+            var managed = await visibility.GetManagedOwnersAsync();
+            var administered = await visibility.GetAdministeredRepositoryIdsAsync();
+            return repository => repository.OwnerKey.In(managed) || repository.Id.In(administered);
+        }
 
         // The one place the two READ rules diverge. "Query" is the grid — a listing, which must stop
         // advertising a repository we have lost access to. "Read" is the detail page, which is
@@ -232,7 +276,9 @@ public partial class RepositoryActions : DefaultPersistentObjectActions<Reposito
     /// </remarks>
     public override async Task<IReadOnlyCollection<string>?> GetProtectedAttributesAsync(string action, Repository entity)
     {
-        if (await visibility.CanManageOwnerAsync(entity.OwnerKey))
+        // A manager of the account, or an administrator of this repository (R39, D-O12): both may edit its settings, so both
+        // read them, the badge token included (a repository admin already reads the private repository it unlocks).
+        if (await visibility.CanManageRepositoryAsync(entity))
             return null;
 
         return await permissions.IsAllowedAsync(OwnerSettingsRights.ReadSettings, nameof(Repository))

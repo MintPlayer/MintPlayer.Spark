@@ -172,28 +172,36 @@ public static class ForgeQualifiedIdVerifier
         // The collection and field are identifiers, which RQL cannot take as parameters, so they are
         // spliced — from the constant tables above, and validated so that stays the only possibility.
         // The prefix is a value and goes in $p.
+        //
+        // ⚠️ A scan with a JavaScript projection, not `where d.{path} != null and not startsWith(...)`:
+        // that query made RavenDB build an auto index per (collection, field) on the database it ran
+        // against, production included, and indexes belong to the application (D-O22). The scan reads
+        // one flag per document and needs no index, so it can never answer stale either. The nested
+        // path is guarded segment by segment (`d.Origin && d.Origin.FromBuildId`), so a document
+        // without the parent object reads as "no reference" instead of throwing.
         var from = RqlIdentifier.Collection(collection);
-        var path = RqlIdentifier.FieldPath(field);
+        var segments = RqlIdentifier.FieldPath(field).Split('.');
+        var value = string.Join(" && ", segments.Select((_, i) => "d." + string.Join(".", segments.Take(i + 1))));
         using var session = store.OpenAsyncSession();
         var query = session.Advanced
-            .AsyncRawQuery<object>(
-                $"from {from} as d where d.{path} != null and not startsWith(d.{path}, $p) limit 0")
-            .AddParameter("p", $"{points}/github/")
-            // ⚠️ This dynamic query builds its auto-index on first use, so the first answer is stale by
-            // construction, and a caller's "wait for indexing" beforehand cannot help: the index does not
-            // exist yet. Under load that first answer reached the throw below
-            // (ForgeQualifiedIdVerifierTests, #264 sweep). The bound is a failure bound, not a delay: a
-            // fresh index on these collections settles in well under a second.
-            .WaitForNonStaleResults(TimeSpan.FromMinutes(2));
+            .AsyncRawQuery<ReferenceRow>(
+                $"from {from} as d select {{ Unqualified: (function (v) {{ return v !== undefined && v !== null && !(typeof v === 'string' && v.startsWith($p)); }})({value}) }}")
+            .AddParameter("p", $"{points}/github/");
 
-        query.Statistics(out var statistics);
-        await query.ToListAsync(cancellationToken);
+        long unqualified = 0;
+        await using var stream = await session.Advanced.StreamAsync(query, cancellationToken);
+        while (await stream.MoveNextAsync())
+        {
+            if (stream.Current.Document.Unqualified)
+                unqualified++;
+        }
 
-        if (statistics.IsStale)
-            throw new InvalidOperationException(
-                $"The index behind '{collection}.{field}' is stale, so its count cannot be trusted.");
+        return unqualified;
+    }
 
-        return statistics.TotalResults;
+    private sealed class ReferenceRow
+    {
+        public bool Unqualified { get; set; }
     }
 
     /// <summary>

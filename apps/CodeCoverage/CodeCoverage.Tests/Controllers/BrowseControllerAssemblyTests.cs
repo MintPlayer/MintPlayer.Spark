@@ -41,6 +41,7 @@ public class BrowseControllerAssemblyTests : CoverageRavenTest
         services.AddScoped<CodeCoverage.Services.IRepositoryResolver>(sp =>
             new TestRepositoryResolver(sp.GetService<Raven.Client.Documents.Session.IAsyncDocumentSession>()));
         services.AddScoped<CodeCoverage.Services.IRepositoryScope, CodeCoverage.Services.RepositoryScope>();
+        services.AddScoped<CodeCoverage.Services.ISparkVisibility, CodeCoverage.Services.SparkVisibility>();
         services.AddScoped<BrowseController>();
         return services.BuildServiceProvider().GetRequiredService<BrowseController>();
     }
