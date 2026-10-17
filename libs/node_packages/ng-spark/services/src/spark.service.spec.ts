@@ -534,6 +534,26 @@ describe('SparkService', () => {
     await expect(promise).resolves.toEqual({ jobId: 'job-8' });
   });
 
+  // CodeCoverage live test 2026-10-17 (dependency-updates PRD D-O21): the action notifies only on the execute that carries
+  // the answer, so the operations of THAT response must reach the dispatcher (and through it the toast container).
+  it('executeCustomAction dispatches the notifications of the attempt that completes after a 449', async () => {
+    retryService.show.mockResolvedValueOnce({ step: 0, option: 'With the merge queue' });
+
+    const promise = service.executeCustomAction('DependencyOnboardingRow', 'EnableDependencyUpdates', undefined, ['Repositories/github/1']);
+    httpTesting.expectOne('/spark/actions/execute').flush(
+      { result: null, operations: [{ type: 'retry', step: 0, title: 'Merge queue?', options: ['With the merge queue', 'Without'] }] },
+      { status: 449, statusText: 'Retry With' });
+
+    await flushMicrotasks();
+    expect(dispatcher.dispatch).not.toHaveBeenCalled();
+
+    const notify = { type: 'notify', message: 'Dependency updates enabled for 1 repositories', kind: 'success' };
+    httpTesting.expectOne('/spark/actions/execute').flush({ result: { enabled: ['acme/widget'] }, operations: [notify] });
+
+    await expect(promise).resolves.toEqual({ enabled: ['acme/widget'] });
+    expect(dispatcher.dispatch).toHaveBeenCalledWith([notify]);
+  });
+
   it('executeCustomAction without a query parent leaves parentId/parentType unset', async () => {
     const promise = service.executeCustomAction('Car', 'Wash');
     const req = httpTesting.expectOne('/spark/actions/execute');

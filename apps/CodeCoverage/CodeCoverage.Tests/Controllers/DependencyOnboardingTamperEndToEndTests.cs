@@ -310,6 +310,78 @@ public class DependencyOnboardingTamperEndToEndTests(OwnerPrivacyHostFixture hos
         await AssertBUnchangedAsync();
     }
 
+    /// <summary>
+    /// D-O21 (live test 2026-10-17: no toast was seen after enabling). The whole round trip over HTTP: the first execute
+    /// answers 449 with the merge-queue prompt and enables nothing; the execute that carries the answer enables and its
+    /// envelope carries the success notification, which the browser's envelope helper dispatches to the toast container.
+    /// </summary>
+    [Fact]
+    public async Task Enabling_through_the_merge_queue_prompt_notifies_on_the_retried_execute()
+    {
+        try
+        {
+            var (status, body) = await EnableAsync([host.PrivateRepositoryId], A);
+            ((int)status).Should().Be(449, body);
+            using var prompt = JsonDocument.Parse(body);
+            var retry = prompt.RootElement.GetProperty("operations").EnumerateArray().Single(o => o.GetProperty("type").GetString() == "retry");
+            prompt.RootElement.GetProperty("operations").EnumerateArray().Should().NotContain(o => o.GetProperty("type").GetString() == "notify",
+                "nothing is enabled before the answer, so nothing is reported");
+
+            (status, body) = await host.PostAsync("/spark/actions/execute", new
+            {
+                objectTypeId = OnboardingRowTypeId, actionName = "EnableDependencyUpdates", selectedItemIds = new[] { host.PrivateRepositoryId },
+                queryId = OnboardingQueryId,
+                retryResults = new[] { new { step = retry.GetProperty("step").GetInt32(), option = retry.GetProperty("options")[0].GetString() } },
+            }, A);
+
+            status.Should().Be(HttpStatusCode.OK, body);
+            using var answered = JsonDocument.Parse(body);
+            var notifications = answered.RootElement.GetProperty("operations").EnumerateArray()
+                .Where(o => o.GetProperty("type").GetString() == "notify")
+                .Select(o => (Message: o.GetProperty("message").GetString(), Kind: o.GetProperty("kind").GetRawText())).ToList();
+            notifications.Should().ContainSingle();
+            notifications[0].Message.Should().Contain("acme/secret");
+            // The toast container colours a toast by comparing this with ng-spark's numeric NotificationKind (Success = 1); a
+            // kind in any other form renders white text on no background, a toast nobody sees.
+            notifications[0].Kind.Should().Be("1");
+            using var session = host.Store.OpenAsyncSession();
+            (await session.LoadAsync<Repository>(host.PrivateRepositoryId)).DependencyOnboardingMergeQueue.Should().Be(EDependencyOnboardingMergeQueuePolicy.Yes);
+        }
+        finally
+        {
+            // The class shares one host: put back what the other tests assert on.
+            using var session = host.Store.OpenAsyncSession();
+            var repository = await session.LoadAsync<Repository>(host.PrivateRepositoryId);
+            repository.DependencyUpdates = EDependencyUpdatesPolicy.Enabled;
+            repository.DependencyOnboardingMergeQueue = default;
+            await session.SaveChangesAsync();
+        }
+    }
+
+    /// <summary>
+    /// D-O18 (live test 2026-10-17): indexes belong to the application, and an auto index over Repositories turned every
+    /// write into a wait on it. The whole app runs here (startup gates included), and the onboarding header, its query and
+    /// its action must leave the database without a single auto index.
+    /// </summary>
+    [Fact]
+    public async Task The_onboarding_paths_create_no_auto_index()
+    {
+        // Measured against what the host already holds: its seeding and other paths of the app leave auto indexes of
+        // their own (listed in the PRD's live-test notes), which are not the onboarding's.
+        async Task<HashSet<string>> AutoIndexesAsync() => [.. (await host.Store.Maintenance.SendAsync(
+                new Raven.Client.Documents.Operations.Indexes.GetIndexNamesOperation(0, 1024)))
+            .Where(name => name.StartsWith("Auto/", StringComparison.OrdinalIgnoreCase))];
+        var before = await AutoIndexesAsync();
+
+        await host.GetAsync(Onboarding, A);
+        await host.GetAsync(Narrow(OwnerPrivacyHostFixture.AcmeInstallation), A);
+        await RowsAsync(null, A);
+        await RowsAsync($"installation_id={OwnerPrivacyHostFixture.AcmeInstallation}", A);
+        await EnableAsync(host.OtherRepositoryIds, A);
+
+        (await AutoIndexesAsync()).Except(before).Should().BeEmpty();
+    }
+
     private Task<(HttpStatusCode Status, string Body)> EnableAsync(string[] ids, string user, string? scope = null)
         => host.PostAsync("/spark/actions/execute", scope is null
             ? new { objectTypeId = OnboardingRowTypeId, actionName = "EnableDependencyUpdates", selectedItemIds = ids, queryId = OnboardingQueryId }
