@@ -55,6 +55,8 @@ public partial class M_202610090900_OidcDataModel : ISparkMigration
     {
         public string? Id { get; set; }
         public List<string>? AllowedScopes { get; set; }
+        // Whether the document has the field at all, null included: what exists() meant.
+        public bool HasAllowedScopes { get; set; }
     }
 
     public async Task UpAsync(CancellationToken cancellationToken)
@@ -152,11 +154,15 @@ public partial class M_202610090900_OidcDataModel : ISparkMigration
         // A projection, so the session does not track these documents as LegacyApplicationScopes:
         // tracked, the LoadAsync<OidcApplication> of the same id below returned that instance and threw
         // InvalidCastException (a database whose applications were seeded before this migration ran).
-        // The where clause is an auto-index read, so it waits for the index rather than miss a document.
-        var legacy = await session.Advanced
-            .AsyncRawQuery<LegacyApplicationScopes>("from OidcApplications where exists(AllowedScopes) select id() as Id, AllowedScopes")
-            .WaitForNonStaleResults(TimeSpan.FromMinutes(1))
-            .ToListAsync(ct);
+        // A scan with a JavaScript projection and no where clause: `where exists(AllowedScopes)` made RavenDB
+        // build Auto/OidcApplications/ByAllowedScopes on every fresh database, and indexes belong to the
+        // application. The scan needs no index, so it cannot be stale either.
+        var legacy = (await session.Advanced
+            .AsyncRawQuery<LegacyApplicationScopes>(
+                "from OidcApplications as a select { Id: id(a), AllowedScopes: a.AllowedScopes, HasAllowedScopes: a.AllowedScopes !== undefined }")
+            .ToListAsync(ct))
+            .Where(l => l.HasAllowedScopes)
+            .ToList();
         if (legacy.Count == 0)
             return;
 
@@ -187,7 +193,7 @@ public partial class M_202610090900_OidcDataModel : ISparkMigration
 
         // The old field is dropped from the documents: RavenDB would otherwise keep it for ever
         // (PreserveDocumentPropertiesNotFoundOnModel), and the query above would find it again.
-        await RunAsync("from OidcApplications as a where exists(AllowedScopes) update { delete a.AllowedScopes; }", ct);
+        await RunAsync("from OidcApplications as a update { if (a.AllowedScopes !== undefined) { delete a.AllowedScopes; } }", ct);
     }
 
     private async Task MigrateGrantsAsync(CancellationToken ct)

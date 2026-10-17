@@ -366,8 +366,8 @@ public class DependencyOnboardingTamperEndToEndTests(OwnerPrivacyHostFixture hos
     [Fact]
     public async Task The_onboarding_paths_create_no_auto_index()
     {
-        // Measured against what the host already holds: its seeding and other paths of the app leave auto indexes of
-        // their own (listed in the PRD's live-test notes), which are not the onboarding's.
+        // Measured against what the host already holds, because other tests share this host and may query it. Startup
+        // itself creates none: NoAutoIndexEndToEndTests (D-O22).
         async Task<HashSet<string>> AutoIndexesAsync() => [.. (await host.Store.Maintenance.SendAsync(
                 new Raven.Client.Documents.Operations.Indexes.GetIndexNamesOperation(0, 1024)))
             .Where(name => name.StartsWith("Auto/", StringComparison.OrdinalIgnoreCase))];

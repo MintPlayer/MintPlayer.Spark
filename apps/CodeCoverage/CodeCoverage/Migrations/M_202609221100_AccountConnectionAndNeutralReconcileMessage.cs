@@ -38,13 +38,6 @@ public partial class M_202609221100_AccountConnectionAndNeutralReconcileMessage 
     public static long Version => 202609221100;
     public static string? Description => "Account.Connection, and stale reconcile messages";
 
-    /// <summary>How long to let a new auto-index catch up before the delete gives up.</summary>
-    /// <remarks>
-    /// Settable so a test does not wait ten minutes to prove a timeout. Matches the budget the
-    /// forge-qualifying migration settled on after this same hazard took a deploy down.
-    /// </remarks>
-    internal static TimeSpan IndexCatchUpBudget { get; set; } = TimeSpan.FromMinutes(10);
-
     [Inject] private readonly IDocumentStore store;
     [Inject] private readonly ILogger<M_202609221100_AccountConnectionAndNeutralReconcileMessage> logger;
 
@@ -74,32 +67,55 @@ public partial class M_202609221100_AccountConnectionAndNeutralReconcileMessage 
         // The type name is assembly-qualified in SparkMessage.MessageType, so match on the simple
         // name rather than reconstructing it — a message written by an older assembly version
         // carries that version's string and would not match an exact comparison.
-        // ⚠️ `WaitForNonStaleResults` is NOT optional, and this exact omission crash-looped a
-        // previous deploy. A `where` on a field forces a brand-new auto-index, which is stale by
-        // definition until it has covered the collection — and RavenDB REFUSES a bulk delete on a
-        // stale index ("Cannot perform bulk operation. Index is stale."), which throws, aborts
-        // startup, and retries forever. The indexing pipeline is also saturated at this moment: the
-        // migration two versions earlier has just patched ~220,000 FileCoverages, and the Accounts
-        // patch above ran three statements ago.
-        var dropped = await BulkOperation.RunAsync(store, new DeleteByQueryOperation(new IndexQuery
-        {
-            Query = """
-                from SparkMessages as d
-                where startsWith(d.MessageType, 'CodeCoverage.Ingestion.ReconcileAccountMessage')
-                """,
-            WaitForNonStaleResults = true,
-            WaitForNonStaleResultsTimeout = IndexCatchUpBudget,
-        },
-        // Wait for the index rather than throw "Index is stale": a bulk operation on a stale index is refused outright.
-        new QueryOperationOptions { StaleTimeout = TimeSpan.FromMinutes(5) }), cancellationToken);
-        if (dropped.Total > 0)
+        //
+        // ⚠️ A scan of the collection, not `where startsWith(d.MessageType, ...)`. A `where` on a field
+        // makes RavenDB build an auto index (Auto/SparkMessages/ByMessageType) on every fresh database,
+        // and indexes belong to the application (D-O22). That auto index also crash-looped a deploy
+        // once: stale by definition when new, and RavenDB refuses a bulk delete on a stale index. The
+        // scan reads two fields per message and needs no index, so nothing can be stale.
+        var dropped = await DropLegacyReconcileMessagesAsync(cancellationToken);
+        if (dropped > 0)
         {
             // ⚠️ Warning, because the queue was supposed to be empty. Finding one here means the
             // assumption the rename rested on was wrong, and it is worth knowing how wrong.
             logger.LogWarning(
                 "Dropped {Count} queued ReconcileAccountMessage(s) written before the payload became "
                 + "forge-neutral. The nightly sweep re-derives whatever they would have done.",
-                dropped.Total);
+                dropped);
         }
+    }
+
+    private const string LegacyReconcileMessageType = "CodeCoverage.Ingestion.ReconcileAccountMessage";
+
+    private sealed class MessageTypeRow
+    {
+        public string? Id { get; set; }
+        public string? MessageType { get; set; }
+    }
+
+    private async Task<int> DropLegacyReconcileMessagesAsync(CancellationToken cancellationToken)
+    {
+        var ids = new List<string>();
+        using (var scan = store.OpenAsyncSession())
+        {
+            var query = scan.Advanced.AsyncRawQuery<MessageTypeRow>(
+                "from SparkMessages as d select id(d) as Id, d.MessageType as MessageType");
+            await using var stream = await scan.Advanced.StreamAsync(query, cancellationToken);
+            while (await stream.MoveNextAsync())
+            {
+                var row = stream.Current.Document;
+                if (row.Id is not null && row.MessageType?.StartsWith(LegacyReconcileMessageType, StringComparison.Ordinal) == true)
+                    ids.Add(row.Id);
+            }
+        }
+
+        if (ids.Count == 0)
+            return 0;
+
+        using var session = store.OpenAsyncSession();
+        foreach (var id in ids)
+            session.Delete(id);
+        await session.SaveChangesAsync(cancellationToken);
+        return ids.Count;
     }
 }

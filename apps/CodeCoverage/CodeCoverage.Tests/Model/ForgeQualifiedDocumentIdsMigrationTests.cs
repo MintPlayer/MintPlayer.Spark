@@ -171,14 +171,19 @@ public class ForgeQualifiedDocumentIdsMigrationTests : CoverageRavenTest
     }
 
     /// <summary>
-    /// The guard that stands between a failed put phase and permanent data loss. It is driven by
-    /// counts, and those counts are answered from the same auto-index the delete uses — so if they
-    /// ever come back stale the guard is deciding on a picture of the database taken before the
-    /// migration started. Rather than risk that, the count throws — and throwing is safe, because
-    /// no delete runs before its collection's replacements are already written.
+    /// The guard that stands between a failed put phase and permanent data loss is driven by counts, and
+    /// those counts, like every other phase, read no index: <c>startsWith(id(d), $p)</c> alone is a collection
+    /// query, and the delete tests its second condition in the patch script (D-O22). A count can therefore
+    /// never answer from a stale picture, and the migration finishes even with no time at all to wait for
+    /// an index.
     /// </summary>
+    /// <remarks>
+    /// This test used to assert the opposite, a throw with a zero budget. That throw came from the delete:
+    /// its <c>and not startsWith(id(d), ...)</c> built <c>Auto/&lt;collection&gt;/ById()</c>, stale by definition
+    /// when new, on every fresh database.
+    /// </remarks>
     [Fact]
-    public async Task A_count_that_cannot_catch_up_refuses_rather_than_guesses()
+    public async Task No_phase_waits_on_an_index_so_a_zero_budget_still_completes()
     {
         using var store = GetDocumentStore();
         await SeedLegacyAsync(store);
@@ -186,22 +191,18 @@ public class ForgeQualifiedDocumentIdsMigrationTests : CoverageRavenTest
         var original = M_202609210900_ForgeQualifiedDocumentIds.IndexCatchUpBudget;
         try
         {
-            // Not "a short wait" — zero. Anything larger is a race with a fast machine.
             M_202609210900_ForgeQualifiedDocumentIds.IndexCatchUpBudget = TimeSpan.Zero;
-
-            var act = async () => await RunAsync(store);
-            await act.Should().ThrowAsync<Exception>();
+            await RunAsync(store);
         }
         finally
         {
             M_202609210900_ForgeQualifiedDocumentIds.IndexCatchUpBudget = original;
         }
 
-        // ⚠ The recoverable state is NOT "nothing happened". Phases run per collection, so a
-        // throw part-way leaves earlier collections fully migrated and later ones untouched. What
-        // must hold is that nothing was DESTROYED: the put phase runs before any delete, so every
-        // document that could have been deleted already has its replacement. Re-running finishes
-        // the job, which is why the applied-marker is written only after Up returns.
         (await ExistsAsync(store, $"Repositories/github/{RepositoryId}")).Should().BeTrue();
+        (await ExistsAsync(store, $"Repositories/{RepositoryId}")).Should().BeFalse("the legacy copy is deleted once its replacement exists");
+        (await store.Maintenance.SendAsync(new Raven.Client.Documents.Operations.Indexes.GetIndexNamesOperation(0, 1024)))
+            .Where(name => name.StartsWith("Auto/", StringComparison.OrdinalIgnoreCase))
+            .Should().BeEmpty("indexes belong to the application");
     }
 }
