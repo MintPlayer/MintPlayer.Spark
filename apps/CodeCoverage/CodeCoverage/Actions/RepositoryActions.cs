@@ -54,7 +54,13 @@ public partial class RepositoryActions : DefaultPersistentObjectActions<Reposito
         // R26: the file's truth beside the onboarding setting, as the bot last read coverage.yml. D-O16: always a sentence,
         // the onboarding page's own ("enabled in coverage.yml", "not in coverage.yml", "not read yet"), never a bare enum
         // value or an empty field that reads as "absent".
-        if (po?.Attributes.FirstOrDefault(a => a.Name == nameof(Repository.MergeQueueInCoverageYml)) is { } mergeQueue)
+        //
+        // ⚠️ Filled here, after base.OnLoadAsync blanked the protected attributes, so it asks the same deny-by-default
+        // question itself: an outsider or a read-only member gets nothing (OwnerPrivacyEndToEndTests). Before D-O16 this
+        // filled the state for anyone whenever a run had recorded one.
+        if (po?.Attributes.FirstOrDefault(a => a.Name == nameof(Repository.MergeQueueInCoverageYml)) is { } mergeQueue
+            && await session.LoadAsync<Repository>(id) is { } entity
+            && (await GetProtectedAttributesAsync("Read", entity))?.Contains(nameof(Repository.MergeQueueInCoverageYml)) != true)
         {
             var state = (await session.LoadAsync<DependencyUpdateRun>(DependencyUpdateRun.ForRepository(id)))?.FileMergeQueue;
             var key = DependencyFileMergeQueue.TranslationKey(state);
