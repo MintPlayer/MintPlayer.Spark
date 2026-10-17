@@ -72,10 +72,14 @@ public partial class DependencyOnboardingRowActions : ISparkOwnsRowSecurity
         T(entry.OnboardingMergeQueue ? "dependencyOnboarding.queueWillAdd" : "dependencyOnboarding.queueWontAdd",
             entry.OnboardingMergeQueue ? "yes" : "no"));
 
-    /// <summary>Syncing (no default branch yet), off (not enabled and nothing started), or the onboarding's own state.</summary>
+    /// <summary>
+    /// Syncing (no default branch yet), off (the setting resolves off), or the onboarding's own state. A repository onboarded
+    /// once and switched off since keeps <c>Done</c> on its run document; the row follows the setting, not that history (P1,
+    /// production re-test 2026-10-17).
+    /// </summary>
     internal static string StateKey(DependencyOnboardingEntry entry)
         => entry.Syncing ? "syncing"
-            : !entry.Enabled && entry.Onboarding == "None" ? "off"
+            : !entry.Enabled ? "off"
             : entry.Onboarding;
 
     /// <summary>

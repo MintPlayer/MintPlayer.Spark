@@ -344,6 +344,19 @@ public class OnboardingPrTests
         CodeCoverage.Dependencies.DependenciesYml.Parse(plan.Files.Single(f => f.Path == "coverage.yml").Content).Section.Present.Should().BeFalse("the section is all commented");
     }
 
+    /// <summary>The onboarding pull request says which GitHub Action the workflows call and what each added file is for.</summary>
+    [Fact]
+    public void The_onboarding_body_names_the_action_and_says_what_each_workflow_does()
+    {
+        var plan = DependencyOnboarding.Plan(["package.json", "angular.json"], null, null, null, Sha, DependencyOnboarding.ReadTemplate);
+
+        plan.Body.Should().Contain($"`MintPlayer/MintPlayer.Spark/apps/CodeCoverage/dependency-action`, pinned to `{Sha}`");
+        plan.Body.Should().Contain("- `.github/workflows/dependency-lookup.yml`: the lookup.");
+        plan.Body.Should().Contain("- `.github/workflows/dependency-apply.yml`: the apply.");
+        plan.Body.Should().Contain("- `.github/workflows/angular-migrate.yml`: runs the `ng update` migrations");
+        plan.Body.Should().Contain("Nothing else needs adding");
+    }
+
     [Fact]
     public void An_unresolved_tag_keeps_the_tag()
     {
@@ -379,6 +392,24 @@ public class DependencyPullRequestBodyTests
         body.Should().Contain("`approve angular`");
         body.Should().Contain("held by @\u200bsomeone (comment)", "a mention in a reason never pings");
         body.Should().Contain("| chalk | `chalk` | `package.json` | 4.1.0 | 4.1.2 | patch |");
+    }
+
+    /// <summary>P2 (production re-test 2026-10-17): one action pin in two workflow files was listed twice, word for word.</summary>
+    [Fact]
+    public void The_same_dependency_in_two_files_is_one_line_in_the_sections_without_a_file_column()
+    {
+        static DependencyReportEntry Cooling(string file) => new("actions", "github-actions", "acme/some-action", file, "v1", "abc123", EUpdateLevel.Patch,
+            EDependencyReportReason.Cooldown, "released less than 3 days ago");
+        var report = new DependencyRunReport
+        {
+            AwaitingApproval = [Awaiting("angular", "@angular/core") with { PackageFile = "a/package.json" }, Awaiting("angular", "@angular/core") with { PackageFile = "b/package.json" }],
+            Available = [Cooling(".github/workflows/a.yml"), Cooling(".github/workflows/b.yml")],
+        };
+
+        var body = DependencyPullRequestBody.Render(new DependencyUpdateRun(), report, null);
+
+        body.Split('\n').Count(l => l.Contains("`acme/some-action`")).Should().Be(1);
+        body.Split('\n').Count(l => l.Contains("`@angular/core`")).Should().Be(1);
     }
 
     [Fact]

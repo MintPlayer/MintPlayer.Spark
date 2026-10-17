@@ -128,16 +128,28 @@
             <ul>
               <li>
                 adds <code>.github/workflows/dependency-lookup.yml</code> and <code>dependency-apply.yml</code>, thin
-                callers of the published action, pinned to a commit with the <code>dependency-update-v1</code> tag kept
-                as a comment;
+                callers of the GitHub Action <code>MintPlayer/MintPlayer.Spark/apps/CodeCoverage/dependency-action</code>,
+                pinned to a commit with the <code>dependency-update-v1</code> tag kept as a comment. The lookup lists
+                what is available; the apply edits and relocks with scripts off;
               </li>
-              <li>adds <code>angular-migrate.yml</code> and <code>nx-migrate.yml</code> when the repository has <code>angular.json</code> or <code>nx.json</code>;</li>
+              <li>
+                adds <code>angular-migrate.yml</code> and <code>nx-migrate.yml</code> when the repository has
+                <code>angular.json</code> or <code>nx.json</code>: they run the migrations of a group you approved;
+              </li>
               <li>appends a commented <code>dependencies:</code> section to <code>coverage.yml</code>: the defaults apply until you uncomment it;</li>
               <li>
                 removes the version-update entries of <code>.github/dependabot.yml</code> and lists its
                 <code>ignore:</code> entries translated into <code>dependencies:</code> rules, for you to keep the ones you want.
               </li>
             </ul>
+            <p data-testid="du-setup-workflows-only">
+              <strong>The workflows are all you add</strong>: no other action, and no secret unless a private feed needs
+              one. Keep their file names, or name them in <code>dependencies.lookupAction</code> /
+              <code>applyAction</code>. To add them by hand, copy them from
+              <a href="https://github.com/MintPlayer/MintPlayer.Spark/tree/master/apps/CodeCoverage/dependency-action/templates" target="_blank" rel="noopener">the action's templates</a>.
+              The rolling pull request keeps the action's pin current without the cooldown, because the action is the
+              bot's own runtime.
+            </p>
             <bs-alert [type]="infoColor" class="d-block mb-3" data-testid="du-setup-first-draft">
               <strong>The first rolling pull request is a draft.</strong> After you merge the onboarding pull request, the
               first <code>mintplayer/dependencies</code> pull request is opened as a draft and never auto-merges: review

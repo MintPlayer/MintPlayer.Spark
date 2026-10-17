@@ -69,6 +69,32 @@ public class PolicyEngineTests
         entry.Until.Should().Be(released.AddDays(3));
     }
 
+    private static LookupRecord ActionPin(string repository, string tag, string workflow, string released)
+        => Record(repository, tag, Candidate(EUpdateType.Digest, tag, released) with { Digest = "1d2c066310fa3fa1e24efa9efeb9d2a0c42606fa" }) with
+        {
+            Ecosystem = "github-actions", Manager = "github-actions", Datasource = "github-tags",
+            PackageFile = workflow, LockFiles = [], CurrentDigest = "bfd709a9d1e1c3c7c9a2f7a0c2b4e6d8f0a1b2c3",
+        };
+
+    /// <summary>
+    /// P2 (production re-test 2026-10-17): the bot's own action pin waited three days after every release, so onboarded
+    /// repositories ran the previous action (without R31) meanwhile. It is the bot's runtime: never cooled down. Any
+    /// other action released an hour ago still waits.
+    /// </summary>
+    [Fact]
+    public void The_bots_own_action_pin_skips_the_cooldown_and_other_actions_do_not()
+    {
+        var released = Now.AddHours(-1).ToString("O");
+        var outcome = Evaluate(Lookup(
+            ActionPin("MintPlayer/MintPlayer.Spark", "dependency-update-v1", ".github/workflows/dependency-lookup.yml", released),
+            ActionPin("MintPlayer/MintPlayer.Spark", "dependency-update-v1", ".github/workflows/dependency-apply.yml", released),
+            ActionPin("acme/some-action", "v1", ".github/workflows/ci.yml", released)));
+
+        outcome.Groups.SelectMany(g => g.Items).Select(i => i.Record.PackageFile).Should()
+            .BeEquivalentTo([".github/workflows/dependency-lookup.yml", ".github/workflows/dependency-apply.yml"]);
+        outcome.Available.Should().ContainSingle().Which.DepName.Should().Be("acme/some-action");
+    }
+
     [Fact]
     public void Without_a_releaseTimestamp_the_cooldown_counts_from_the_first_time_the_bot_saw_it()
     {

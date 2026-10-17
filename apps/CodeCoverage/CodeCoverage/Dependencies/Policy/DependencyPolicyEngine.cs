@@ -497,7 +497,8 @@ public static class DependencyPolicyEngine
                     (view.Problem, view.Detail) = (EDependencyReportReason.Held, depHold.Reason);
 
                 var (inCooldown, until) = Cooldown(record.Ecosystem, record.DepName, Token(candidate), candidate.ReleaseTimestamp,
-                    securityFix, own.Contains((record.Ecosystem, record.DepName, candidate.Version ?? string.Empty)) && !config.RepoCodeManagers.Contains(record.Manager));
+                    securityFix, IsBotRuntime(record)
+                        || own.Contains((record.Ecosystem, record.DepName, candidate.Version ?? string.Empty)) && !config.RepoCodeManagers.Contains(record.Manager));
                 view.InCooldown = inCooldown;
                 view.Until = until;
                 views.Add(view);
@@ -507,6 +508,16 @@ public static class DependencyPolicyEngine
                 .ThenByDescending(v => UpdateTypeFloor.LeadingNumber(v.Candidate.Version) ?? long.MinValue)
                 .ThenBy(v => v.Index)];
         }
+
+        /// <summary>
+        /// The bot's own action pin (<c>dependency-action@sha # dependency-update-v1</c>) is the bot's runtime, so it never waits out
+        /// the cooldown: a repository would otherwise run the previous action for days after every release. Own-release detection
+        /// cannot catch it, because the producing account (the MintPlayer organization) is not the consuming one (P2).
+        /// </summary>
+        private static bool IsBotRuntime(LookupRecord record)
+            => (record.Ecosystem == "github-actions" || record.Manager == "github-actions")
+                && string.Equals(record.DepName, Lifecycle.DependencyOnboarding.ActionRepository, StringComparison.Ordinal)
+                && string.Equals(record.CurrentValue, Lifecycle.DependencyOnboarding.ActionTag, StringComparison.Ordinal);
 
         private (bool InCooldown, DateTimeOffset Until) Cooldown(string eco, string dep, string token, string? releaseTimestamp, bool securityFix, bool ownRelease = false)
         {

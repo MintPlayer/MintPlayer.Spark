@@ -25,6 +25,16 @@ public static class DependencyOnboarding
 
     public const string Title = "Set up MintPlayer dependency updates";
 
+    /// <summary>What an added file is for, in the onboarding pull request's list; null for one that needs no word.</summary>
+    internal static string? Describe(string path) => Path.GetFileName(path) switch
+    {
+        "dependency-lookup.yml" => "the lookup. The bot dispatches it on the default branch; it runs Renovate in lookup-only mode and uploads what is available.",
+        "dependency-apply.yml" => "the apply. The bot dispatches it on its plan; it edits the manifests and relocks with scripts off, and uploads the patch the bot validates and pushes.",
+        "angular-migrate.yml" => "runs the `ng update` migrations of an Angular update you approved with `approve <group>`; such a pull request never auto-merges.",
+        "nx-migrate.yml" => "runs the `nx migrate` migrations of an Nx update you approved with `approve <group>`; such a pull request never auto-merges.",
+        _ => null,
+    };
+
     /// <summary>The section appended to <c>coverage.yml</c>, all commented: the defaults apply until someone uncomments it.</summary>
     public static readonly string CommentedSection = Lf("""
 
@@ -246,13 +256,16 @@ public static class DependencyOnboarding
         body.AppendLine("This switches the repository to MintPlayer dependency updates: one rolling pull request, rebuilt on your schedule, merged through the merge queue when it is within your thresholds and green.").AppendLine();
         body.AppendLine("## What this adds").AppendLine();
         foreach (var file in files)
-            body.AppendLine($"- `{file.Path}`{(file.Delete ? " (deleted)" : string.Empty)}");
+            body.AppendLine($"- `{file.Path}`{(file.Delete ? " (deleted)" : Describe(file.Path) is { } what ? $": {what}" : string.Empty)}");
         body.AppendLine();
         if (mergeQueueAdded)
             body.AppendLine("`coverage.yml` gets `mergeQueue: { enabled: true }`: dependency pull requests within your thresholds merge through the merge queue, and your own pull requests can use it too. See the [merge queue guide](https://coverage.mintplayer.com/merge-queue/setup). Remove the section to keep merging by hand.").AppendLine();
+        var action = ActionReference[..ActionReference.LastIndexOf('@')];
         body.AppendLine(actionSha is { Length: 40 }
-            ? $"The workflows call the action pinned to `{actionSha}` (`{ActionTag}`); the bot keeps that pin current through its own Actions updates."
-            : $"The workflows call the action at `{ActionTag}`; pin it to a commit if your policy requires it.");
+            ? $"The workflows call the GitHub Action `{action}`, pinned to `{actionSha}` (`{ActionTag}`). The rolling pull request keeps that pin current, without the cooldown other updates wait for: it is the bot's own runtime."
+            : $"The workflows call the GitHub Action `{action}` at `{ActionTag}`; pin it to a commit if your policy requires it.");
+        body.AppendLine();
+        body.AppendLine("Nothing else needs adding: the bot dispatches these workflows by file name (`dependencies.lookupAction` / `applyAction` in coverage.yml, when you rename them), so keep them on the default branch.");
         body.AppendLine();
         body.AppendLine("Both workflows run with `contents: read`, no `id-token` and `persist-credentials: false`. They never push: the bot validates their output and its git writer pushes.").AppendLine();
 
