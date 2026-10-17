@@ -59,14 +59,29 @@ A slot whose rebuilt tree equals the pushed one pushes nothing and starts no CI.
      real state read from `coverage.yml`.
 3. **The onboarding pull request.** Right after the switch goes on, the bot opens `mintplayer/dependencies-onboarding`
    (a daily pass retries anything that did not go through, a syncing repository included). It adds:
-   - `.github/workflows/dependency-lookup.yml` and `dependency-apply.yml`, thin callers of the published action, pinned
-     to a commit (the tag kept as a comment);
-   - `angular-migrate.yml` / `nx-migrate.yml` when the repository has `angular.json` / `nx.json`;
+   - `.github/workflows/dependency-lookup.yml` and `dependency-apply.yml`, thin callers of the GitHub Action
+     **`MintPlayer/MintPlayer.Spark/apps/CodeCoverage/dependency-action`**, pinned to a commit with the release line
+     kept as a comment (`…/dependency-action@<sha> # dependency-update-v1`). The bot dispatches the lookup on the
+     default branch (Renovate in lookup-only mode) and the apply on its plan (edit, pin and relock with scripts off);
+   - `angular-migrate.yml` / `nx-migrate.yml` when the repository has `angular.json` / `nx.json`: they run the
+     `ng update` / `nx migrate` migrations of a group you approved, and such a pull request never auto-merges;
    - a commented `dependencies:` section in `coverage.yml`;
    - and it removes the version-update entries of `.github/dependabot.yml`, translating its `ignore:` into rules.
      Dependabot **alerts** stay on: they feed the security trigger (§6).
    - and, when you chose *with the merge queue*, `mergeQueue: { enabled: true }` unless `coverage.yml` already has it.
 4. **Merge it.** The first rolling pull request after onboarding is a **draft** and never auto-merges: review it once.
+
+**The workflows are all you add.** There is no other action to install and no secret to create (the lookup's optional
+`host-rules` secret is for private feeds only). The bot dispatches the workflows by file name: keep them on the default
+branch, or set `dependencies.lookupAction` / `applyAction` in `coverage.yml` when you rename them. To add them without
+the onboarding pull request, copy them from
+[`apps/CodeCoverage/dependency-action/templates/`](https://github.com/MintPlayer/MintPlayer.Spark/tree/master/apps/CodeCoverage/dependency-action/templates).
+Before every dispatch the bot checks that each one is on the default branch and still read-only (`contents: read`, no
+`id-token`, no write permissions; see §8); one that is not ends the run with `workflow-unsafe`.
+
+**The action stays current by itself.** The rolling pull request bumps the action's pin like any other Actions
+dependency, but **without the cooldown**: the action is the bot's own runtime, so a repository never runs an older
+action for days after a release. Its pin in two workflow files is one line in the pull request.
 
 **Switching off.** Turning the setting off (Account or Repository page) closes the open rolling pull request with a
 comment and deletes the bot's branches (`mintplayer/dependencies`, `-work`, `-onboarding`). Holds and approvals are kept,
@@ -149,7 +164,10 @@ Edited comments and comments by bots are ignored. The bot reacts 👍 or 👎.
 
 - **A release is very new.** It waits out the cooldown (the release time from the registry; for a record without one,
   the time the bot first saw it). The account's own releases (published by one of its repositories, matched to a release
-  or push event of that repository) skip the cooldown and propagate to the account's consumers in graph order.
+  or push event of that repository) skip the cooldown and propagate to the account's consumers in graph order. So does
+  the bot's own action pin (`dependency-update-v1`), whichever account consumes it (§2).
+- **The onboarding started the run.** Onboarding an already-set-up repository runs at once; that run, like `refresh`,
+  never auto-merges. The next scheduled slot (or *Run the scheduled slot now* on the Repository page) may.
 - **A vulnerability is announced.** A Dependabot alert starts an out-of-slot security run with only the fix and the
   groups that may auto-merge anyway. A major fix still waits for `approve`.
 - **The resolver refuses a group** (e.g. Angular N+1 before the Nx plugin supports it). The group is reset and held,
@@ -220,7 +238,7 @@ The last run's outcome is on the repository panel; the full story is in *Recent 
 
 | Outcome | Meaning | What to do |
 |---|---|---|
-| `workflow-missing` | The lookup or apply workflow is not on the default branch. | Merge the onboarding pull request. |
+| `workflow-missing` | The lookup or apply workflow is not on the default branch. | Merge the onboarding pull request, or copy the templates (§2). |
 | `workflow-differs`, `workflow-unsafe` | The dispatched workflow is not the default branch's, or it may write. | Restore the template's permissions. |
 | `dispatch-uncorrelated`, `*-timeout`, `*-missing` | A run never answered ("silent"). | Check the Actions tab; the next slot retries. |
 | `lookup-failed`, `apply-failed` | The workflow run failed. | Open the run from the history. |

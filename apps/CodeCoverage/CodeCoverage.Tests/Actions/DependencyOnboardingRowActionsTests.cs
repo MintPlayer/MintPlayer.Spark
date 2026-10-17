@@ -78,6 +78,22 @@ public class DependencyOnboardingRowActionsTests
         rows[3].OnboardingPullRequest.Should().Be("#9", "the forge gave no URL");
     }
 
+    /// <summary>
+    /// P1 (production re-test 2026-10-17): a repository onboarded in an earlier test and set back to "Use account setting"
+    /// (account default off) showed as onboarded, because its run document still said <c>Done</c>.
+    /// </summary>
+    [Theory]
+    [InlineData("Done")]
+    [InlineData("PullRequestOpened")]
+    [InlineData("Blocked")]
+    public async Task A_repository_whose_setting_resolves_off_shows_off_whatever_its_earlier_onboarding_left(string onboarding)
+    {
+        var row = (await new DependencyOnboardingRowActions(new ScriptedOnboarding(Entry("Repositories/github/1", "acme/was-on", enabled: false, onboarding: onboarding)), Translating())
+            .DependencyOnboardingRows(Args())).Single();
+
+        row.State.Should().Be("T(dependencyOnboarding.state.off)");
+    }
+
     [Fact]
     public async Task An_untranslated_state_falls_back_to_the_servers_own_word()
     {

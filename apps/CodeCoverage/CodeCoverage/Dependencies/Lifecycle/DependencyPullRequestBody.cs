@@ -64,18 +64,14 @@ public static class DependencyPullRequestBody
             body.AppendLine("## Awaiting approval").AppendLine();
             body.AppendLine("Over the auto-merge threshold (`dependencies.autoMerge` in coverage.yml). A writer comments the line in the last column to take the group into this pull request.").AppendLine();
             body.AppendLine("| Group | Dependency | From | To | Comment |").AppendLine("|---|---|---|---|---|");
-            foreach (var entry in report.AwaitingApproval.Take(MaxRows))
-                body.AppendLine($"| {Cell(entry.Group)} | {Code(entry.DepName)} | {Cell(entry.Current)} | {Cell(entry.Target)} | {Code("approve " + entry.Group)} |");
-            More(body, report.AwaitingApproval.Count);
+            Rows(body, report.AwaitingApproval.Select(entry => $"| {Cell(entry.Group)} | {Code(entry.DepName)} | {Cell(entry.Current)} | {Cell(entry.Target)} | {Code("approve " + entry.Group)} |"));
         }
 
         if (report.Held.Count > 0)
         {
             body.AppendLine("## Held").AppendLine();
             body.AppendLine("| Group | Dependency | Wanted | Why |").AppendLine("|---|---|---|---|");
-            foreach (var entry in report.Held.Take(MaxRows))
-                body.AppendLine($"| {Cell(entry.Group)} | {Code(entry.DepName)} | {Cell(entry.Target)} | {Cell(entry.Detail)} |");
-            More(body, report.Held.Count);
+            Rows(body, report.Held.Select(entry => $"| {Cell(entry.Group)} | {Code(entry.DepName)} | {Cell(entry.Target)} | {Cell(entry.Detail)} |"));
         }
 
         var noAdapter = report.Failures.Where(f => f.NoAdapter).ToList();
@@ -90,8 +86,9 @@ public static class DependencyPullRequestBody
         if (report.Available.Count > 0 || noAdapter.Count > 0)
         {
             body.AppendLine("## Available, not applied").AppendLine();
-            foreach (var entry in report.Available.Take(MaxRows))
-                body.AppendLine($"- {Code(entry.DepName)} {Cell(entry.Current)} → {Cell(entry.Target)}: {Cell(entry.Detail)}{(entry.Until is { } until ? $" (until {until:yyyy-MM-dd HH:mm} UTC)" : string.Empty)}");
+            // One line per dependency and version: the same pin in two workflow files is one decision (P2).
+            foreach (var line in report.Available.Select(entry => $"- {Code(entry.DepName)} {Cell(entry.Current)} → {Cell(entry.Target)}: {Cell(entry.Detail)}{(entry.Until is { } until ? $" (until {until:yyyy-MM-dd HH:mm} UTC)" : string.Empty)}").Distinct(StringComparer.Ordinal).Take(MaxRows))
+                body.AppendLine(line);
             foreach (var failure in noAdapter)
                 body.AppendLine($"- {Code(failure.Group)}: no apply adapter for its ecosystem yet.");
             body.AppendLine();
@@ -128,6 +125,15 @@ public static class DependencyPullRequestBody
 
     private static string Level(DependencyReportGroup group)
         => group.Level.ToString().ToLowerInvariant() + (group.Approved ? " (approved)" : string.Empty) + (group.Security ? " 🔒" : string.Empty);
+
+    /// <summary>Table rows without a file column: the same dependency in two files renders, and counts, once.</summary>
+    private static void Rows(StringBuilder body, IEnumerable<string> rows)
+    {
+        var distinct = rows.Distinct(StringComparer.Ordinal).ToList();
+        foreach (var row in distinct.Take(MaxRows))
+            body.AppendLine(row);
+        More(body, distinct.Count);
+    }
 
     private static void More(StringBuilder body, int total)
     {

@@ -23,6 +23,8 @@ on:
       - master
     paths:
       - 'apps/CodeCoverage/dependency-action/**'
+      # Docs only: moving the tag would hand every consumer an action bump with no code in it.
+      - '!apps/CodeCoverage/dependency-action/**/*.md'
       # The contract schemas are bundled into the action (ajv validates every emitted file).
       - 'apps/CodeCoverage/contracts/dependency-update/*.schema.json'
       - '.github/workflows/dependency-action-publish.yml'
