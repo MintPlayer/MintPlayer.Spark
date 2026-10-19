@@ -56,9 +56,22 @@ public static class RavenIndexHelper
         ArgumentNullException.ThrowIfNull(store);
         if (assemblies.Length == 0) return;
 
+        // The engine choice SparkMiddleware makes (commerce X18): a hand-written index whose projection marks a
+        // field [Fuzzy] deploys on Lucene here too, or a test would query a Corax index the app never deploys.
+        var fuzzyIndexTypes = SparkSearchEngine.FuzzyIndexTypes(assemblies.SelectMany(a => a.GetTypes()));
+
         foreach (var assembly in assemblies)
         {
-            await IndexCreation.CreateIndexesAsync(assembly, store);
+            var tasks = assembly.GetTypes()
+                .Where(t => t is { IsClass: true, IsAbstract: false, IsGenericTypeDefinition: false }
+                    && typeof(IAbstractIndexCreationTask).IsAssignableFrom(t)
+                    && t.GetConstructor(Type.EmptyTypes) is not null)
+                .Select(t => (IAbstractIndexCreationTask)Activator.CreateInstance(t)!)
+                .ToList();
+            SparkSearchEngine.Apply(tasks, fuzzyIndexTypes);
+
+            if (tasks.Count > 0)
+                await IndexCreation.CreateIndexesAsync(tasks, store);
         }
 
         // One wait covering both halves: the declared definitions are registered AND everything is

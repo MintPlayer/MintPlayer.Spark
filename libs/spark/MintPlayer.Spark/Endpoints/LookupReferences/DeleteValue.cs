@@ -14,6 +14,7 @@ internal sealed partial class DeleteLookupReferenceValue : IDeleteEndpoint
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
     {
         builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
+        builder.RefuseDeniedAsJson();
     }
 
     [RouteParam] public string Name { get; set; } = "";
@@ -31,10 +32,6 @@ internal sealed partial class DeleteLookupReferenceValue : IDeleteEndpoint
 
             await lookupReferenceService.DeleteValueAsync(Name, Key);
             return Results.NoContent();
-        }
-        catch (SparkAccessDeniedException)
-        {
-            return SparkDenial.RefuseJson(httpContext);
         }
         catch (InvalidOperationException ex)
         {

@@ -50,16 +50,22 @@ public class SparkReplicationExtensionsTests
     }
 
     [Fact]
-    public void AddSparkReplication_registers_EtlScriptCollector_and_EtlTaskManager_as_singletons()
+    public void AddSparkReplication_registers_the_contract_and_ETL_services_as_singletons()
     {
         var services = new ServiceCollection();
 
         services.AddSparkReplication(o => o.ModuleName = "TestModule");
 
         services.Should().Contain(d =>
-            d.ServiceType == typeof(EtlScriptCollector) && d.Lifetime == ServiceLifetime.Singleton);
+            d.ServiceType == typeof(ReplicaContractCollector) && d.Lifetime == ServiceLifetime.Singleton);
+        services.Should().Contain(d =>
+            d.ServiceType == typeof(ReplicationContractCatalog) && d.Lifetime == ServiceLifetime.Singleton);
+        services.Should().Contain(d =>
+            d.ServiceType == typeof(IRavenEtlLicence) && d.Lifetime == ServiceLifetime.Singleton);
         services.Should().Contain(d =>
             d.ServiceType == typeof(EtlTaskManager) && d.Lifetime == ServiceLifetime.Singleton);
+        services.Should().Contain(d =>
+            d.ServiceType == typeof(IEtlTaskManager) && d.Lifetime == ServiceLifetime.Singleton);
     }
 
     [Fact]
@@ -96,54 +102,54 @@ public class SparkReplicationExtensionsTests
     [Fact]
     public void BuildDeploymentMessages_returns_one_envelope_per_source_module()
     {
-        var appStore = Substitute.For<IDocumentStore>();
-        appStore.Database.Returns("hr-db");
-        appStore.Urls.Returns(["http://hr.test:8080"]);
-
-        var scriptsByModule = new Dictionary<string, List<EtlScriptItem>>
+        var contractsByModule = new Dictionary<string, List<EtlContractRequest>>
         {
-            ["Fleet"] = [new EtlScriptItem { SourceCollection = "Cars", Script = "// ..." }],
-            ["Inventory"] = [new EtlScriptItem { SourceCollection = "Parts", Script = "// ..." }],
+            ["Fleet"] = [new EtlContractRequest { Contract = "cars", TargetCollection = "Cars" }],
+            ["Inventory"] = [new EtlContractRequest { Contract = "parts", TargetCollection = "Parts" }],
         };
         var options = new SparkReplicationOptions { ModuleName = "HR", ModuleUrl = "http://hr.test:8080" };
 
-        var messages = SparkReplicationExtensions.BuildDeploymentMessages(scriptsByModule, options, appStore).ToList();
+        var messages = SparkReplicationExtensions.BuildDeploymentMessages(contractsByModule, options).ToList();
 
         messages.Should().HaveCount(2);
         messages.Select(m => m.SourceModuleName).Should().BeEquivalentTo(["Fleet", "Inventory"]);
     }
 
     [Fact]
-    public void BuildDeploymentMessages_propagates_target_database_url_and_requesting_module()
+    public void BuildDeploymentMessages_carries_the_requesting_module_and_its_contracts()
     {
-        var appStore = Substitute.For<IDocumentStore>();
-        appStore.Database.Returns("hr-db");
-        appStore.Urls.Returns(["http://hr.test:8080", "http://hr.test:8081"]);
-
-        var scriptsByModule = new Dictionary<string, List<EtlScriptItem>>
+        var contractsByModule = new Dictionary<string, List<EtlContractRequest>>
         {
-            ["Fleet"] = [new EtlScriptItem { SourceCollection = "Cars", Script = "// fleet.cars" }],
+            ["Fleet"] = [new EtlContractRequest { Contract = "cars", Version = 2, TargetCollection = "Cars" }],
         };
         var options = new SparkReplicationOptions { ModuleName = "HR", ModuleUrl = "http://hr.test:8080" };
 
-        var msg = SparkReplicationExtensions.BuildDeploymentMessages(scriptsByModule, options, appStore).Single();
+        var msg = SparkReplicationExtensions.BuildDeploymentMessages(contractsByModule, options).Single();
 
         msg.SourceModuleName.Should().Be("Fleet");
         msg.Request.RequestingModule.Should().Be("HR");
-        msg.Request.TargetDatabase.Should().Be("hr-db");
-        msg.Request.TargetUrls.Should().BeEquivalentTo(new[] { "http://hr.test:8080", "http://hr.test:8081" });
-        msg.Request.Scripts.Should().ContainSingle()
-            .Which.SourceCollection.Should().Be("Cars");
+        msg.Request.Contracts.Should().ContainSingle()
+            .Which.Should().BeEquivalentTo(new { Contract = "cars", Version = 2, TargetCollection = "Cars" });
+    }
+
+    /// <summary>
+    /// F19: the consumer no longer tells the owner where to send the data. The owner takes the
+    /// destination from the consumer's registry entry, so the request has nowhere to put one.
+    /// </summary>
+    [Fact]
+    public void The_deployment_request_names_no_destination_and_no_script()
+    {
+        typeof(EtlDeploymentRequest).GetProperties().Select(p => p.Name)
+            .Should().BeEquivalentTo(["RequestingModule", "Contracts"]);
     }
 
     [Fact]
-    public void BuildDeploymentMessages_returns_empty_when_no_scripts_collected()
+    public void BuildDeploymentMessages_returns_empty_when_no_contracts_collected()
     {
-        var appStore = Substitute.For<IDocumentStore>();
-        var scriptsByModule = new Dictionary<string, List<EtlScriptItem>>();
+        var contractsByModule = new Dictionary<string, List<EtlContractRequest>>();
         var options = new SparkReplicationOptions { ModuleName = "HR", ModuleUrl = "http://hr.test:8080" };
 
-        SparkReplicationExtensions.BuildDeploymentMessages(scriptsByModule, options, appStore)
+        SparkReplicationExtensions.BuildDeploymentMessages(contractsByModule, options)
             .Should().BeEmpty();
     }
 

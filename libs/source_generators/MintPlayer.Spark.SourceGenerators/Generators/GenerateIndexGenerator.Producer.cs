@@ -158,6 +158,12 @@ public class GenerateIndexProducer : Producer, IDiagnosticReporter
                     rejection.Location.ToLocation(compilation), rejection.PropertyName, rejection.TypeDisplay);
             }
 
+            foreach (var fuzzy in entity.InvalidFuzzyProperties)
+            {
+                yield return GenerateIndexDiagnostics.FuzzyOnUnsupportedType.Create(
+                    fuzzy.Location.ToLocation(compilation), fuzzy.PropertyName, fuzzy.TypeDisplay);
+            }
+
             if (entity.Properties.Count == 0)
             {
                 yield return GenerateIndexDiagnostics.NoIndexableProperties.Create(
@@ -293,6 +299,13 @@ public class GenerateIndexProducer : Producer, IDiagnosticReporter
                 // ProjectInto while the index itself is provably correct -- no error, no index fault, just
                 // empty values. It is the likeliest way a generated index appears broken.
                 writer.WriteLine($"StoreAllFields({RavenIndexes}.FieldStorage.Yes);");
+
+                // Commerce X18: a [Fuzzy] field needs Lucene, because Corax refuses fuzzy queries. Set here rather
+                // than left to Spark's registration so every deployment path (a test helper, index.Execute) agrees.
+                // Before OnInitialize, so a hand-written partial has the last word.
+                if (info.UsesLucene)
+                    writer.WriteLine($"SearchEngineType = {RavenIndexes}.SearchEngineType.Lucene;");
+
                 writer.WriteLine("OnInitialize();");
             }
 

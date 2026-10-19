@@ -1,7 +1,7 @@
 import { ShowedOn } from './showed-on';
 import { SparkDateTimeDisplay } from './date-time-display';
 import { TranslatedString } from './translated-string';
-import { ValidationRule } from './validation-rule';
+import { ValidationRule } from './generated/contracts';
 import { SparkSubQueryEntry } from './sub-query';
 
 /**

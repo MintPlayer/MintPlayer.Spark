@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Authorization.Configuration;
+using MintPlayer.Spark.Authorization.Contracts;
 using MintPlayer.Spark.Authorization.Endpoints.Account;
 using MintPlayer.Spark.Authorization.Endpoints.ExternalLogin;
 using MintPlayer.Spark.Authorization.Endpoints.Passkeys;
@@ -70,11 +71,11 @@ internal sealed partial class GetAuthCapabilities : IGetEndpoint
         // The one value read from the options rather than derived from a route: it shapes how /login
         // resolves an identifier, not which routes exist. Empty when there is no password sign-in.
         var identifiers = options.Value.SignInIdentifiers;
-        var signInIdentifiers = new List<string>();
+        var signInIdentifiers = new List<SparkSignInIdentifier>();
         if (localCredentials != SparkLocalCredentials.Disabled)
         {
-            if (identifiers.HasFlag(SparkSignInIdentifiers.Email)) signInIdentifiers.Add("email");
-            if (identifiers.HasFlag(SparkSignInIdentifiers.UserName)) signInIdentifiers.Add("userName");
+            if (identifiers.HasFlag(SparkSignInIdentifiers.Email)) signInIdentifiers.Add(SparkSignInIdentifier.Email);
+            if (identifiers.HasFlag(SparkSignInIdentifiers.UserName)) signInIdentifiers.Add(SparkSignInIdentifier.UserName);
         }
 
         // #490 D11: the account page offers the skip only where its endpoint is mapped (AllowUserBypass).
@@ -82,18 +83,16 @@ internal sealed partial class GetAuthCapabilities : IGetEndpoint
 
         var providers = await ExternalAuthenticationSchemes.GetInteractiveAsync(schemes);
 
-        return Results.Ok(new
-        {
-            localCredentials = localCredentials.ToString(),
+        // A typed record (commerce X20): ng-spark's SparkAuthCapabilities is generated from it.
+        // GetInteractiveAsync keeps only schemes with a display name, hence the `!`.
+        return Results.Ok(new SparkAuthCapabilities(
+            localCredentials,
             signInIdentifiers,
             passkeys,
             twoFactor,
             emailChange,
             externalLogins,
             externalLoginTwoFactorBypass,
-            externalProviders = providers
-                .Select(scheme => new { scheme = scheme.Name, displayName = scheme.DisplayName })
-                .ToArray(),
-        });
+            [.. providers.Select(scheme => new SparkExternalProvider(scheme.Name, scheme.DisplayName!))]));
     }
 }

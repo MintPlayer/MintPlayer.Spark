@@ -16,7 +16,6 @@ namespace SparkId.Migrations;
 /// </remarks>
 public partial class M_202610101200_SeoTesterRelyingParty : ISparkMigration
 {
-    public static long Version => 202610101200;
     public static string? Description => "Development: register the SeoTester relying party";
 
     internal const string ClientId = "seotester";

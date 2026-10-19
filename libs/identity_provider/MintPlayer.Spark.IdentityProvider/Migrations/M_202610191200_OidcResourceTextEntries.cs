@@ -17,7 +17,6 @@ namespace MintPlayer.Spark.IdentityProvider.Migrations;
 /// </summary>
 public partial class M_202610191200_OidcResourceTextEntries : ISparkMigration
 {
-    public static long Version => 202610191200;
     public static string? Description => "Identity provider: OidcResources texts to the TranslatedString entries shape (X17)";
 
     [Inject] private readonly IDocumentStore store;

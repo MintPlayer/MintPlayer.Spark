@@ -18,6 +18,8 @@ internal sealed partial class DeletePersistentObject : IPostEndpoint<PersistentO
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
     {
         builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
+        // Type- and row-level denials (R2-H2: a row-level Delete denial is the same 404, M-3).
+        builder.RefuseDeniedInEnvelope();
     }
 
     [Inject] private readonly IPersistentObjectSavePath savePath;
@@ -78,19 +80,10 @@ internal sealed partial class DeletePersistentObject : IPostEndpoint<PersistentO
             // tokens", say. Same envelope, so the screen shows it the same way.
             return ClientResult.Envelope(clientAccessor, new { errors = new[] { ex.ToError() } }, 400);
         }
-        catch (SparkRowLevelAccessDeniedException)
-        {
-            // R2-H2: row-level Delete denial returns 404 (M-3 uniformity).
-            return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
-        }
         catch (SparkActionDisabledException ex)
         {
             // After the row gate (#460, D13): the caller can see this row, so naming the action hides nothing.
             return ClientResult.ActionDisabled(clientAccessor, ex);
-        }
-        catch (SparkAccessDeniedException)
-        {
-            return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
         }
         catch (SparkThrottledException ex)
         {

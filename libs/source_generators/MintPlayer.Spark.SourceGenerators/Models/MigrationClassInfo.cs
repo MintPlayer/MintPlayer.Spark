@@ -12,7 +12,7 @@ public partial class MigrationClassInfo
 /// <summary>
 /// The migrations that referenced packages ship (#388): public <c>ISparkMigration</c> classes in
 /// assemblies that reference <c>MintPlayer.Spark.Migrations</c>. Read only for a host application,
-/// since only the app's generated <c>AddMigrations()</c> registers them.
+/// since only the app's generated <c>AddSparkDiscovered()</c> registers them.
 /// </summary>
 [GenerateEquality]
 public partial class ReferencedMigrationsInfo

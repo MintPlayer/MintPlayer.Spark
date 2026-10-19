@@ -38,7 +38,7 @@
 	<ItemGroup>
 		<ProjectReference Include="..\..\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
 		<ProjectReference Include="..\..\authorization\MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj" />
-		<!-- Ships M_202610090900_OidcDataModel (PRD I1); the app's generated AddMigrations() registers it. -->
+		<!-- Ships M_202610090900_OidcDataModel (PRD I1); the app's generated AddSparkDiscovered() registers it. -->
 		<ProjectReference Include="..\..\migrations\MintPlayer.Spark.Migrations\MintPlayer.Spark.Migrations.csproj" />
 		<!-- Runs AttributeDescriptionsGenerator here, where the /// summaries live (#348). Analyzer ProjectReferences are not transitive. -->
 		<ProjectReference Include="..\..\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />

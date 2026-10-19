@@ -19,7 +19,6 @@ namespace MintPlayer.Spark.IdentityProvider.Migrations;
 /// </remarks>
 public partial class M_202610091100_StandardIdentityResources : ISparkMigration
 {
-    public static long Version => 202610091100;
     public static string? Description => "Identity provider: ensure the standard openid, profile and email identity resources";
 
     [Inject] private readonly IAsyncDocumentSession session;

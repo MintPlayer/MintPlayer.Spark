@@ -11,7 +11,7 @@ public static class SparkBuilderInterceptorExtensions
     private static readonly Type[] Phases =
     [
         typeof(IBeforeSave), typeof(IAfterSave), typeof(IBeforeDelete), typeof(IAfterDelete),
-        typeof(IDeleteReplacement), typeof(IAfterMaterialize), typeof(IAfterLoad), typeof(INaturalIdCollision),
+        typeof(IDeleteReplacement), typeof(ISaveReplacement), typeof(IAfterMaterialize), typeof(IAfterLoad), typeof(INaturalIdCollision),
         typeof(IAfterSaveCommitted), typeof(IAfterDeleteCommitted),
     ];
 

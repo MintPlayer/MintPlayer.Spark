@@ -80,7 +80,7 @@ When a query returns an **index projection** (e.g. `VCar` from a `Cars_Overview`
 
 ## Row policies — one rule for many types (#460)
 
-A rule that is not about any one entity — soft deletion, tenancy, a moderation lock — is a **row policy**: written once, applied to every type it claims, ANDed with each type's own rule. Register it with `AddSparkRowPolicy<T>()` (scoped):
+A rule that is not about any one entity — soft deletion, tenancy, a moderation lock — is a **row policy**: written once, applied to every type it claims, ANDed with each type's own rule. Register it with `AddSparkRowPolicy<T>()` (scoped). In an application the generated `spark.AddSparkDiscovered()` registers every non-abstract, non-generic policy class of the project for you; the explicit call is idempotent, and a library calls it in its own `AddXxx()`:
 
 ```csharp
 public sealed class HideDeleted : RowFilterPolicy<ISoftDeletable>   // covers every implementer
@@ -113,7 +113,7 @@ builder.Services.AddSpark(builder.Configuration, spark => spark.AddSparkRowPolic
 
 ## Persistence interceptors (#460, #482)
 
-Cross-cutting write behaviour — stamping, soft deletion, locks — is a persistence interceptor: a DI service implementing one interface per phase, registered with `spark.AddInterceptor<T>()` (or found by the generated `AddInterceptors()`). The framework runs interceptors only after every gate passed. See the [interceptors guide](guide-interceptors.md) for the whole sequence; in short:
+Cross-cutting write behaviour — stamping, soft deletion, locks — is a persistence interceptor: a DI service implementing one interface per phase, registered with `spark.AddInterceptor<T>()` (or found by the generated `AddSparkDiscovered()`). The framework runs interceptors only after every gate passed. See the [interceptors guide](guide-interceptors.md) for the whole sequence; in short:
 
 | Hook | When |
 |---|---|

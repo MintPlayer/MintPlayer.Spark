@@ -30,11 +30,7 @@ public static class SparkBuilderGroupMembershipExtensions
     public static ISparkBuilder UseGroupMembershipProvider<TProvider>(this ISparkBuilder builder)
         where TProvider : class, IGroupMembershipProvider
     {
-        var existing = builder.Services.FirstOrDefault(d => d.ServiceType == typeof(IGroupMembershipProvider));
-        if (existing != null)
-            builder.Services.Remove(existing);
-
-        builder.Services.AddScoped<IGroupMembershipProvider, TProvider>();
+        builder.Services.UseSparkProvider<IGroupMembershipProvider, TProvider>(ServiceLifetime.Scoped);
         return builder;
     }
 

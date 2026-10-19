@@ -24,7 +24,7 @@ export interface SparkDetailContext {
   entityType: EntityType;
   /**
    * Type-level rights (`/spark/permissions/{type}`). `null` while they load — treat as "not allowed".
-   * The optional add-on flags (`canRestore`, `canViewHistory`, …) are absent on an older server.
+   * Every flag, the add-ons' (`canRestore`, `canViewHistory`, …) included, is always sent.
    */
   permissions: EntityPermissions | null;
   /**

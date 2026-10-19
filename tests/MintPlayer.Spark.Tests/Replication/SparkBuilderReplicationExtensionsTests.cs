@@ -43,7 +43,7 @@ public class SparkBuilderReplicationExtensionsTests
         // Spot-check the registrations AddSparkReplication contributes; the full DI shape
         // is pinned in SparkReplicationExtensionsTests.
         builder.Services.Should().Contain(d => d.ServiceType == typeof(ModuleRegistrationService));
-        builder.Services.Should().Contain(d => d.ServiceType == typeof(EtlScriptCollector));
+        builder.Services.Should().Contain(d => d.ServiceType == typeof(ReplicaContractCollector));
         builder.Services.Should().Contain(d => d.ServiceType == typeof(EtlTaskManager));
     }
 

@@ -416,7 +416,7 @@ public sealed class SecurityConfigurationAnalyzer : DiagnosticAnalyzer
     /// <summary>
     /// The model file's attributes, plus the public instance properties of its CLR type: the model is
     /// one build behind (synchronize runs after compilation), and a property added in this build is an
-    /// attribute the next synchronize writes — the same set the generated <c>AttributeNames</c> lists.
+    /// attribute the next synchronize writes.
     /// </summary>
     private static IReadOnlyList<string> KnownAttributes(ModelType entry, Compilation compilation)
     {

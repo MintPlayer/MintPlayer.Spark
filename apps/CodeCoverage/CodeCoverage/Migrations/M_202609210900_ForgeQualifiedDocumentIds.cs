@@ -61,7 +61,6 @@ namespace CodeCoverage.Migrations;
 /// </remarks>
 public partial class M_202609210900_ForgeQualifiedDocumentIds : ISparkMigration
 {
-    public static long Version => 202609210900;
     public static string? Description => "Document ids carry the forge that hosts them";
 
     /// <summary>

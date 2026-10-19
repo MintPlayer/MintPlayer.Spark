@@ -45,6 +45,7 @@ internal sealed partial class DeleteRowPersistentObject : IPostEndpoint<DeleteRo
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
     {
         builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
+        builder.RefuseDeniedInEnvelope();
     }
 
     [Inject] private readonly IModelLoader modelLoader;
@@ -80,14 +81,6 @@ internal sealed partial class DeleteRowPersistentObject : IPostEndpoint<DeleteRo
             // A hook refused — "this invoice line has already been settled". The one outcome of this
             // endpoint a user is meant to read.
             return ClientResult.Envelope(clientAccessor, new { errors = new[] { ex.ToError() } }, 400);
-        }
-        catch (SparkRowLevelAccessDeniedException)
-        {
-            return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
-        }
-        catch (SparkAccessDeniedException)
-        {
-            return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
         }
     }
 

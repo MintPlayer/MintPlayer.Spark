@@ -102,7 +102,17 @@ internal sealed class McpPlanner(
     public sealed record Proposal(string PlanId, DateTime ExpiresAt, IReadOnlyList<string> Changes);
 
     /// <summary>A committed plan, as <c>apply_changes</c> answers it.</summary>
-    public sealed record Application(string PlanId, IReadOnlyList<string> Changes, IReadOnlyList<string?> ResultIds, object? ActionResult);
+    public sealed record Application(string PlanId, IReadOnlyList<string> Changes, IReadOnlyList<string?> ResultIds, object? ActionResult)
+    {
+        /// <summary>
+        /// The operations the application diverted for approval (an <c>ISaveReplacement</c>, commerce X7): committed as
+        /// proposals with the plan, not saved. Their <see cref="ResultIds"/> entry is null.
+        /// </summary>
+        public IReadOnlyList<Submission> Submitted { get; init; } = [];
+    }
+
+    /// <summary>An operation the application diverted for approval: its 1-based number and what it became.</summary>
+    public sealed record Submission(int Operation, string Kind, string ReferenceId);
 
     private sealed record Prepared(McpPlanOperation Operation, EntityTypeDefinition EntityType, PersistentObject? Object, string Text);
 
@@ -239,6 +249,7 @@ internal sealed class McpPlanner(
         }
 
         var resultIds = new List<string?>(operations.Count);
+        var submitted = new List<Submission>();
         object? actionResult = null;
 
         if (prepared is [{ Operation.Kind: Kinds.Action } action])
@@ -265,7 +276,7 @@ internal sealed class McpPlanner(
                 for (var i = 0; i < prepared.Count; i++)
                 {
                     var index = i;
-                    resultIds.Add(await Guarded(index, () => WriteAsync(prepared[index], cancellationToken)));
+                    resultIds.Add(await Guarded(index, () => WriteAsync(prepared[index], index, submitted, cancellationToken)));
                 }
 
                 // The plan's "applied" record commits with the data, in the same transaction.
@@ -273,7 +284,7 @@ internal sealed class McpPlanner(
             }, RequestBudget(operations.Count), $"MCP apply_changes ({operations.Count} operations)");
         }
 
-        return new Application(plan.Id!, plan.Changes, resultIds, actionResult);
+        return new Application(plan.Id!, plan.Changes, resultIds, actionResult) { Submitted = submitted };
     }
 
     // ---- preparing an operation ------------------------------------------------------------------------------------
@@ -459,17 +470,14 @@ internal sealed class McpPlanner(
         }
     }
 
-    private async Task<string?> WriteAsync(Prepared prepared, CancellationToken cancellationToken)
+    private async Task<string?> WriteAsync(Prepared prepared, int index, List<Submission> submitted, CancellationToken cancellationToken)
     {
         switch (prepared.Operation.Kind)
         {
             case Kinds.Create:
-                var created = await savePath.CreateAsync(prepared.EntityType, prepared.Object!, parent: null, cancellationToken);
-                // An interceptor cancelled it (#482). Alone on the web that is "nothing happened"; in a plan it would be
-                // a silently smaller change than the one approved, so the whole plan fails.
-                return created?.Id ?? throw new SparkCancelException();
+                return Written(await savePath.CreateAsync(prepared.EntityType, prepared.Object!, parent: null, cancellationToken), index, submitted)?.Id;
             case Kinds.Update:
-                await savePath.UpdateAsync(prepared.EntityType, prepared.Operation.Id!, prepared.Object!, retry: null, cancellationToken);
+                Written(await savePath.UpdateAsync(prepared.EntityType, prepared.Operation.Id!, prepared.Object!, retry: null, cancellationToken), index, submitted);
                 return null;
             case Kinds.Delete:
                 if (!await savePath.DeleteAsync(prepared.EntityType, prepared.Operation.Id!, prepared.Operation.Etag!, cancellationToken))
@@ -477,6 +485,29 @@ internal sealed class McpPlanner(
                 return null;
             default:
                 throw new InvalidOperationException($"Operation kind '{prepared.Operation.Kind}' does not write through a batch.");
+        }
+    }
+
+    /// <summary>
+    /// The saved row of a create or an update, or null when the application diverted it for approval (recorded in
+    /// <paramref name="submitted"/>, commerce X7).
+    /// </summary>
+    /// <exception cref="SparkCancelException">
+    /// An interceptor cancelled it (#482). Alone on the web that is "nothing happened"; in a plan it would be a
+    /// silently smaller change than the one approved, so the whole plan fails — for an update too, which the save path
+    /// answers with the stored row (commerce F4: that used to be reported as applied).
+    /// </exception>
+    private static PersistentObject? Written(SaveOutcome outcome, int index, List<Submission> submitted)
+    {
+        switch (outcome.Kind)
+        {
+            case SaveOutcomeKind.Cancelled:
+                throw new SparkCancelException();
+            case SaveOutcomeKind.Submitted:
+                submitted.Add(new Submission(index + 1, outcome.Receipt!.Kind, outcome.Receipt.ReferenceId));
+                return null;
+            default:
+                return outcome.Object;
         }
     }
 

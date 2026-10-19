@@ -13,6 +13,8 @@ and the Actions class had its own save and delete methods (`OnSaveAsync`, `OnBef
 A save (create, edit, revert, restore, sync):
 
 1. Every gate: the type right, the row gate, the etag check, disabled actions, the attribute write shield, validation.
+   - The `ISaveReplacement`, if one governs the type: it may divert the whole save (to a proposal awaiting
+     approval) and answer with a receipt. Then nothing below runs, and the caller gets 202 (§4a).
 2. Load the stored row into the request session (an edit) and run the `IAfterMaterialize` interceptors.
 3. `MapAsync(obj, existing)` on the Actions class — the posted values onto the row, or a new instance.
 4. The `IBeforeSave` interceptors: `InterceptorStage.Default` ones, then `InterceptorStage.Finalize` ones.
@@ -81,8 +83,8 @@ public sealed class CarInterceptors(IManager manager) : IBeforeDelete<Car>, IAft
 covers a whole kind. For a rule the type alone cannot express, implement the untyped interface and
 `AppliesTo(Type)`. The answer must depend on the type only; it is cached.
 
-**Register it** with `spark.AddInterceptor<CarInterceptors>()`. With `AddSparkFull`, the generated `AddInterceptors()` already
-registers every interceptor in the project. Without it, call `spark.AddInterceptors()` yourself. A library registers
+**Register it** with `spark.AddInterceptor<CarInterceptors>()`. The generated `spark.AddSparkDiscovered()` (which `AddSparkFull` calls) already
+registers every interceptor in the project. A library registers
 its interceptors inside its own `AddXxx()`.
 
 **Or put it on the Actions class.** An Actions class may implement interceptors for its own type
@@ -99,7 +101,8 @@ session the write commits through (`context.GetSession()` returns it typed).
 - `SaveContext`: `Operation`, `PersistentObject` (the posted object, minus what the caller may not
   write), `Entity`, `Id`, `Before` (the stored row from a separate session; null for a create),
   `UnwritableAttributes`, `IsNew`. **`Id` is null in a before-interceptor of a create**: the id, natural ids
-  included, is assigned when the row is stored, after the before-interceptors.
+  included, is assigned when the row is stored, after the before-interceptors. `IsReplacedSaveApply` and
+  `OnBehalfOf` are set when the save applies a diverted one (§4a).
 - `DeleteContext`: `Operation`, `Id`, `Entity`, `Reason`, `IsPurge`, `IsReplaced`.
 - Both: `Facts`, small strings a before-interceptor records for the durable interceptors (§5a).
 
@@ -116,9 +119,82 @@ session the write commits through (`context.GetSession()` returns it typed).
 - **Cancel**: `throw new SparkCancelException()`. This is not an error. Nothing is written, nothing the
   interceptors stored is kept, and no after-interceptor or replication runs. The client gets a no-op success: 204 for
   a delete or a delete-many, 200 with the object as stored for an update, 204 for a create.
-  In a bulk delete, one row's cancel cancels the batch.
+  In a bulk delete, one row's cancel cancels the batch. An MCP plan treats any cancel, an update's included,
+  as a refusal of the whole plan: it would otherwise be smaller than the one the user approved.
 
 A refusal is safe in any order: everything any interceptor put in the session is evicted.
+
+## 4a. Diverting a save: `ISaveReplacement`
+
+A before-interceptor cannot skip the write. An `ISaveReplacement` can: it replaces the whole save with
+something of its own, typically a document proposal that waits for approval (commerce PRD X7, the seam the
+Approvals library builds on).
+
+```csharp
+public sealed class InvoiceProposals : ISaveReplacement
+{
+    public bool AppliesTo(Type entityType) => entityType == typeof(Invoice);
+
+    public async ValueTask<SaveReplacementReceipt?> ReplaceAsync(SaveReplacementContext context)
+    {
+        var proposal = new Proposal
+        {
+            ObjectTypeId = context.PersistentObject.ObjectTypeId,
+            Json = context.PersistentObjectJson,   // the wire JSON text, never the object
+            BaseEtag = context.BaseEtag,           // null for a create
+        };
+        await context.GetSession().StoreAsync(proposal);
+        return new SaveReplacementReceipt("approval", proposal.Id!);
+    }
+}
+```
+
+- **When it is asked.** After every gate the caller must pass (step 1 above), and before anything is mapped or
+  loaded into the request session. No `IBeforeSave` or Actions hook runs for a diverted save: they run once,
+  when the change is applied, as whoever applies it. So the proposer still needs the `New`/`Edit` right on the
+  type, and an attribute they may not write is already gone from what is proposed.
+- **A receipt diverts; `null` saves normally.** Throwing is a refusal, as anywhere else, and takes back what the
+  replacement stored. What it stores in `context.Session` commits with the request.
+- **The caller gets 202**, `{ result: { submitted: { kind, referenceId } } }`: not an error. ng-spark's create and
+  edit pages show a "submitted for approval" notice and emit `submitted`; `SparkService.create`/`update` resolve
+  to a `SparkSaveSubmitted` (check with `isSaveSubmitted`). The .NET `SparkClient` throws a
+  `SparkClientException` with status 202 and the receipt as its body. Server-side code calling
+  `IDatabaseAccess.SavePersistentObjectAsync` reads `PersistentObject.Replacement`. An MCP plan commits the
+  proposal with the plan and says which operations were submitted rather than saved.
+- **Store `PersistentObjectJson`, never the `PersistentObject`.** RavenDB serializes with Newtonsoft, which
+  ignores the System.Text.Json converter that tells an AsDetail attribute from a plain one: nested rows would
+  come back as plain attributes without their objects.
+- **At most one per type**, like `IDeleteReplacement`. A second one is an error on the first save.
+
+**Applying it** is `ISparkReplacedSaves.ApplyAsync`, called as the approver:
+
+```csharp
+var outcome = await replacedSaves.ApplyAsync(new ReplacedSave
+{
+    ObjectTypeId = proposal.ObjectTypeId,
+    PersistentObjectJson = proposal.Json,
+    BaseEtag = proposal.BaseEtag,
+    OnBehalfOf = proposal.ProposedBy,
+    // Commits with the apply, or not at all.
+    Alongside = async session => (await ((IAsyncDocumentSession)session).LoadAsync<Proposal>(proposal.Id))!.Status = "Applied",
+});
+```
+
+It saves through the same path as `/spark/po/create` and `/spark/po/update` (rights, row gates, shield,
+validation, interceptors, WITH CHECK) with `Etag = BaseEtag`, in one commit with `Alongside`, and never asks the
+replacement again. The outcome:
+
+| Kind | Meaning |
+|---|---|
+| `Applied` | Saved; `Object` is the row as a load presents it. |
+| `Cancelled` | An interceptor cancelled it; nothing was written. |
+| `Conflict` | The row changed or went since the proposal (`ConflictReason` `changed`/`deleted`), or a create's natural id is taken (`exists`): answer 409, the proposal is stale. |
+| `Unwritable` | The approver may not write attributes the proposal sets (`Attributes`). Saving would silently drop them, so nothing is written. |
+| `Invalid` | Validation refused it (`Errors`). |
+
+The interceptors see `SaveContext.IsReplacedSaveApply` and `OnBehalfOf` (also the `SparkFacts.OnBehalfOf`
+fact), so authorship can name the proposer while the write is the approver's. A type whose change vector moves
+by itself (a token refreshed hourly) goes stale for good; handle such a decision without a proposal.
 
 ## 5. After-interceptors
 
@@ -156,7 +232,7 @@ public sealed class OrderMail(IMailer mailer) : IBeforeSave<Order>, IAfterSaveCo
   matters. There is **no new change vector**: the message is written before the database assigns one.
 - **Facts** are what a before-interceptor copies from the entity for later: `SparkFacts.Reason` (the delete
   reason, set by the framework and SoftDelete), `SparkFacts.ChangedAttributes` (set by History for
-  types with revisions). Keep them small, and never put a secret in them: they are stored in an outbox
+  types with revisions), `SparkFacts.OnBehalfOf` (the proposer of an applied diverted save, §4a). Keep them small, and never put a secret in them: they are stored in an outbox
   document. A secret shown once (CodeCoverage's API token) stays an in-request `IAfterSave`.
 - **At least once, outside any request**: the interceptor runs in its own DI scope with no HTTP context, and a
   redelivery can repeat it. Make it idempotent. Throw to retry.
@@ -181,6 +257,8 @@ last. That order is not a contract. Two structural rules replace the old numbers
 
 - **One `IDeleteReplacement` per type**, consulted before any before-delete interceptor. A second one for
   the same type is a configuration error.
+- **One `ISaveReplacement` per type**, consulted after the gates and before anything else of the save (§4a). A
+  second one is a configuration error too.
 - **`InterceptorStage.Finalize`** before-interceptors run after every `Default` one. History stamps there, so its
   "did this edit change anything?" sees the row as it will be written.
 

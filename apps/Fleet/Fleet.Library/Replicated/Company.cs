@@ -3,22 +3,13 @@ using MintPlayer.Spark.Replication.Abstractions;
 namespace Fleet.Replicated;
 
 /// <summary>
-/// A read-only copy of Companies from the HR module.
-/// The ETL script defines which fields are replicated.
+/// A read-only copy of HR's <c>companies</c> contract (v1, <c>HR.Contracts.CompanyV1</c>). HR
+/// decides which fields are replicated and generates the ETL transform; this type only has that shape.
 /// </summary>
 [Replicated(
     SourceModule = "HR",
-    SourceCollection = "Companies",
-    EtlScript = """
-        loadToCompanies({
-            Name: this.Name,
-            Website: this.Website,
-            EmployeeCount: this.EmployeeCount,
-            '@metadata': {
-                '@collection': 'Companies'
-            }
-        });
-    """)]
+    Contract = "companies",
+    SourceCollection = "Companies")]
 public class Company
 {
     /// <summary>Identifier of the company, replicated from HR; it matches the HR document id.</summary>

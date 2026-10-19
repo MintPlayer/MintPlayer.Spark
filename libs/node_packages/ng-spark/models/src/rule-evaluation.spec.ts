@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { EvaluableAttribute, evaluateRules } from './rule-evaluation';
-import { ValidationRule } from './validation-rule';
+import { ValidationRule } from './generated/contracts';
 import { translated } from './translated-string';
 
 /**

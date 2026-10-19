@@ -37,7 +37,6 @@ namespace CodeCoverage.Migrations;
 /// </remarks>
 public partial class M_202610021200_ApiTokenReferencesItsAccount : ISparkMigration
 {
-    public static long Version => 202610021200;
     public static string? Description => "ApiToken references its Account; the owner fields move to ApiTokens_Overview";
 
     [Inject] private readonly IDocumentStore store;

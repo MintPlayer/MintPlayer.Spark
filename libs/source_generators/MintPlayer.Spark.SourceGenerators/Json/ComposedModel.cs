@@ -48,17 +48,6 @@ internal static class ComposedModel
         return composition.Types.Select(t => t.Json).ToList();
     }
 
-    /// <summary>The type names the libraries alone declare, for <c>PersistentObjectNames</c>.</summary>
-    public static IReadOnlyList<string> LibraryTypeNames(IEnumerable<LibraryModelFileInfo> libraries)
-        => SparkModelLayers.Compose(
-                libraries.Select(l => new SparkModelInput(l.Assembly, l.FileName, l.Json, isLibrary: true, l.DependsOn)),
-                Array.Empty<SparkModelInput>())
-            .Types
-            .Select(t => t.Name)
-            .OfType<string>()
-            .Where(IsIdentifier)
-            .ToList();
-
     private static string FileNameOf(string path)
     {
         var normalized = path.Replace('\\', '/');

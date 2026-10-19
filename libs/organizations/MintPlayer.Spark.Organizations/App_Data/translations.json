@@ -321,5 +321,29 @@
         "nl": "persoonlijk"
       }
     }
+  },
+  "lookup": {
+    "OrganizationRole": {
+      "Viewer": {
+        "en": "Viewer",
+        "fr": "Lecteur",
+        "nl": "Lezer"
+      },
+      "Member": {
+        "en": "Member",
+        "fr": "Membre",
+        "nl": "Lid"
+      },
+      "Admin": {
+        "en": "Admin",
+        "fr": "Administrateur",
+        "nl": "Beheerder"
+      },
+      "Owner": {
+        "en": "Owner",
+        "fr": "Propriétaire",
+        "nl": "Eigenaar"
+      }
+    }
   }
 }

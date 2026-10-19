@@ -39,6 +39,30 @@
       "nl": "Welkom bij Fleet"
     }
   },
+  "lookup": {
+    "ECarStatus": {
+      "InUse": {
+        "en": "In use",
+        "fr": "En usage",
+        "nl": "In gebruik"
+      },
+      "OnParking": {
+        "en": "On parking",
+        "fr": "Au parking",
+        "nl": "Op parking"
+      },
+      "InMaintenance": {
+        "en": "In maintenance",
+        "fr": "En maintenance",
+        "nl": "In onderhoud"
+      },
+      "Stolen": {
+        "en": "Stolen",
+        "fr": "Volé",
+        "nl": "Gestolen"
+      }
+    }
+  },
   "model": {
     "Car": {
       "attributes": {

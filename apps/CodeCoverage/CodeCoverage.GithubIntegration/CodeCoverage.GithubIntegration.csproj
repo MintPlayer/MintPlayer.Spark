@@ -42,7 +42,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<!-- The generated AddCodeCoverageGithubIntegrationServices() and AddRecipients() are
+		<!-- The generated AddCodeCoverageGithubIntegrationServices() and AddSparkDiscovered() are
 		     internal to this assembly, so the tests that assert on them need to see it. -->
 		<InternalsVisibleTo Include="CodeCoverage.Tests" />
 	</ItemGroup>

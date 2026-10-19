@@ -25,7 +25,6 @@ namespace Fleet.Migrations;
 /// </remarks>
 public partial class M_202610191200_TranslatedStringEntries : ISparkMigration
 {
-    public static long Version => 202610191200;
     public static string? Description => "Cars.Description and dynamic lookup values to the TranslatedString entries shape (X17)";
 
     [Inject] private readonly IDocumentStore store;

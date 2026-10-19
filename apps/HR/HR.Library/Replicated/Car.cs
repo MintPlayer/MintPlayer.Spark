@@ -4,23 +4,13 @@ using System.Drawing;
 namespace HR.Replicated;
 
 /// <summary>
-/// A read-only copy of Cars from the Fleet module.
-/// The ETL script defines which fields are replicated.
+/// A read-only copy of Fleet's <c>cars</c> contract (v1, <c>Fleet.Contracts.CarV1</c>). Fleet
+/// decides which fields are replicated and generates the ETL transform; this type only has that shape.
 /// </summary>
 [Replicated(
     SourceModule = "Fleet",
-    SourceCollection = "Cars",
-    EtlScript = """
-        loadToCars({
-            LicensePlate: this.LicensePlate,
-            Model: this.Model,
-            Year: this.Year,
-            Color: this.Color,
-            '@metadata': {
-                '@collection': 'Cars'
-            }
-        });
-    """)]
+    Contract = "cars",
+    SourceCollection = "Cars")]
 public class Car
 {
     /// <summary>Identifier of the car, replicated read-only from the Fleet app.</summary>

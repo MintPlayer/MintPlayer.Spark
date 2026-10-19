@@ -311,6 +311,8 @@ internal partial class DatabaseAccess : IDatabaseAccess
         if (operation is PersistentObjectOperation.Save or PersistentObjectOperation.New)
             operation = string.IsNullOrEmpty(persistentObject.Id) ? PersistentObjectOperation.New : PersistentObjectOperation.Save;
         object? before = null;
+        // The stored row's change vector, read with `before`: the base a diverted save is applied against (X7).
+        string? storedChangeVector = null;
 
         // Row-level Edit gate (R2-H2): for an update against an existing entity, the
         // Actions class's IsAllowedAsync(Edit, entity) hook decides whether THIS caller
@@ -381,6 +383,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
                     throw SparkConcurrencyException.AlreadyExists();
 
                 before = existing;
+                storedChangeVector = checkSession.Advanced.GetChangeVectorFor(existing);
             }
         }
 
@@ -406,6 +409,16 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
         if (checkOnly)
             return persistentObject;
+
+        // A diverted save (commerce X7, S10): every gate the caller must pass has passed, the base version is
+        // verified, and nothing is mapped or loaded into the request session yet — so no before-interceptor or
+        // Actions hook has run with side effects a proposal would commit. Those run once, when the change is
+        // applied. Never while applying one: an approved proposal must not propose itself again.
+        if (await ReplaceSaveAsync(entityType, persistentObject, operation, before, storedChangeVector, unwritable) is { } receipt)
+        {
+            persistentObject.Replacement = receipt;
+            return persistentObject;
+        }
 
         // The framework owns the write (#482): interceptors only ever see a save the caller was allowed to make,
         // and nothing an Actions class or an interceptor does can skip WITH CHECK, the expected change vector or
@@ -784,6 +797,53 @@ internal partial class DatabaseAccess : IDatabaseAccess
     }
 
     /// <summary>
+    /// Asks the type's <see cref="ISaveReplacement"/>, if any, whether it diverts this save, and commits what it
+    /// recorded (in a batch, the batch commits it). The receipt, or <see langword="null"/> to save normally.
+    /// </summary>
+    /// <remarks>
+    /// A receipt, never an exception, diverts: a thrown exception is a refusal, and like any refusal it takes
+    /// back what the replacement stored in the request session.
+    /// </remarks>
+    private async Task<SaveReplacementReceipt?> ReplaceSaveAsync(
+        Type entityType, PersistentObject persistentObject, PersistentObjectOperation operation, object? before,
+        string? storedChangeVector, IReadOnlyList<string> unwritable)
+    {
+        if (Applying(persistentObject) is not null || interceptors.For<ISaveReplacement>(entityType, operation) is not [var replacement])
+            return null;
+
+        var context = new SaveReplacementContext
+        {
+            EntityType = entityType,
+            Operation = operation,
+            PersistentObject = persistentObject,
+            // Wire JSON, never the object itself: a RavenDB field loses the AsDetail type split (S10).
+            PersistentObjectJson = SparkReplacedSaves.Serialize(persistentObject),
+            BaseEtag = before is null ? null : storedChangeVector,
+            Id = before is null ? null : persistentObject.Id,
+            Before = before,
+            UnwritableAttributes = unwritable,
+            Session = session,
+            User = interceptors.User,
+            IsSystemContext = interceptors.IsSystemContext,
+        };
+
+        var sessionBefore = SessionWriteSnapshot.Take(session);
+        try
+        {
+            var receipt = await replacement.ReplaceAsync(context);
+            // Inside a write batch the batch commits, once, for every operation (ISparkWriteUnit).
+            if (receipt is not null && batch is null)
+                await CommitAsync();
+            return receipt;
+        }
+        catch
+        {
+            sessionBefore.EvictWrittenSince();
+            throw;
+        }
+    }
+
+    /// <summary>
     /// The framework's half of a save (#482), after every gate and before the commit: load (or not),
     /// hydrate, map through the Actions class's <c>MapAsync</c>, run the before-save interceptors, WITH CHECK,
     /// and store with the expected change vector. The caller commits. Nothing here can be skipped by an
@@ -831,7 +891,11 @@ internal partial class DatabaseAccess : IDatabaseAccess
             Session = session,
             User = interceptors.User,
             IsSystemContext = interceptors.IsSystemContext,
+            IsReplacedSaveApply = Applying(obj) is not null,
+            OnBehalfOf = Applying(obj)?.OnBehalfOf,
         };
+        if (Applying(obj)?.OnBehalfOf is { Length: > 0 } onBehalfOf)
+            context.Facts[SparkFacts.OnBehalfOf] = onBehalfOf;
 
         foreach (var interceptor in interceptors.For<IBeforeSave>(entityType, operation))
             await interceptor.OnBeforeSaveAsync(context);

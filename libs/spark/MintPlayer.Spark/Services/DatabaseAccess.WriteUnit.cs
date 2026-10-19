@@ -47,6 +47,14 @@ internal interface ISparkWriteUnit
     /// <param name="requestBudget">The request count the batch is expected to stay under (logged when exceeded).</param>
     /// <param name="label">What the batch is, for that log line.</param>
     Task RunInOneCommitAsync(Func<Task> operations, int requestBudget, string label);
+
+    /// <summary>
+    /// Marks the save of exactly <paramref name="target"/> (by reference) as the apply of a change an
+    /// <see cref="ISaveReplacement"/> diverted (commerce X7), until the result is disposed: the replacement is not
+    /// asked again, and the interceptors see <see cref="SaveContext.IsReplacedSaveApply"/> and
+    /// <paramref name="onBehalfOf"/>. Other saves in the same scope (an interceptor's side writes) are unaffected.
+    /// </summary>
+    IDisposable ApplyingReplacedSave(PersistentObject target, string? onBehalfOf);
 }
 
 internal partial class DatabaseAccess : ISparkWriteUnit
@@ -60,6 +68,29 @@ internal partial class DatabaseAccess : ISparkWriteUnit
 
         /// <summary>Set while the batch itself commits, the one commit allowed while it is open.</summary>
         public bool Committing { get; set; }
+    }
+
+    /// <summary>The diverted save being applied in this request (X7), or <see langword="null"/>.</summary>
+    private ReplacedSaveApplication? applyingReplacement;
+
+    private sealed record ReplacedSaveApplication(PersistentObject Target, string? OnBehalfOf);
+
+    /// <summary>The apply <paramref name="persistentObject"/>'s save is part of, or <see langword="null"/>.</summary>
+    private ReplacedSaveApplication? Applying(PersistentObject persistentObject)
+        => applyingReplacement is { } applying && ReferenceEquals(applying.Target, persistentObject) ? applying : null;
+
+    public IDisposable ApplyingReplacedSave(PersistentObject target, string? onBehalfOf)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        if (applyingReplacement is not null)
+            throw new InvalidOperationException("A replaced save is already being applied in this request; applies do not nest.");
+        applyingReplacement = new ReplacedSaveApplication(target, onBehalfOf);
+        return new Scope(this);
+    }
+
+    private sealed class Scope(DatabaseAccess owner) : IDisposable
+    {
+        public void Dispose() => owner.applyingReplacement = null;
     }
 
     public Task CheckSaveAsync(PersistentObject persistentObject)

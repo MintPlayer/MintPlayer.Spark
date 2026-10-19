@@ -15,7 +15,7 @@ public static class SparkCronExtensions
     /// builder.Services.AddSpark(builder.Configuration, spark =>
     /// {
     ///     spark.AddCron(cron => cron.AddJob&lt;NightlyCleanup&gt;());
-    ///     // or rely on the generated spark.AddCronJobs(); for auto-discovery
+    ///     // or rely on the generated spark.AddSparkDiscovered(); for auto-discovery
     /// });
     /// </code>
     /// </example>

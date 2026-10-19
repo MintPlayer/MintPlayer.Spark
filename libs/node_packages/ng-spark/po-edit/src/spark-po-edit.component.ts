@@ -29,7 +29,10 @@ import {
   RefreshOverlay,
   applyOverlay,
   translated,
+  isSaveSubmitted,
+  SparkSaveSubmitted,
 } from '@mintplayer/ng-spark/models';
+import { NotificationKind, SparkNotificationService } from '@mintplayer/ng-spark/client-operations';
 import { ConflictSide, ContributionNotice, MergeResult, MergeSchema, TheirChange, mergeThreeWay } from './conflict-merge';
 import { SparkPoConflictDialogComponent } from './spark-po-conflict-dialog.component';
 import { ReferenceLabels, addReferenceLabelsOf, addReferenceLabelsOfOptions } from './reference-labels';
@@ -58,10 +61,13 @@ export class SparkPoEditComponent {
   private readonly sparkService = inject(SparkService);
   private readonly live = inject(SparkLiveService);
   private readonly language = inject(SparkLanguageService);
+  private readonly notifications = inject(SparkNotificationService);
   /** `SparkConfig.conflictDialog.showChangedBy`: whether the conflict notice may name a user at all. */
   private readonly showChangedBy = inject(SPARK_CONFIG, { optional: true })?.conflictDialog?.showChangedBy === true;
 
   saved = output<PersistentObject>();
+  /** The edit was diverted for approval (commerce X7): nothing was written yet. */
+  submitted = output<SparkSaveSubmitted>();
   cancelled = output<void>();
 
   colors = Color;
@@ -459,7 +465,15 @@ export class SparkPoEditComponent {
     try {
       const result = await this.sparkService.update(this.type, this.id, po);
       this.isSaving.set(false);
-      this.saved.emit(result as PersistentObject);
+      // Diverted for approval (202, commerce X7): accepted, not written yet — a notice, never an error. The detail
+      // page shows the object as stored, which is still the truth until someone approves.
+      if (isSaveSubmitted(result)) {
+        this.notifications.show(this.language.t('common.submittedForApproval'), NotificationKind.Info, 8000);
+        this.submitted.emit(result);
+        this.router.navigate(['/po', this.type, this.id]);
+        return;
+      }
+      this.saved.emit(result);
       this.router.navigate(['/po', this.type, this.id]);
     } catch (e) {
       this.isSaving.set(false);

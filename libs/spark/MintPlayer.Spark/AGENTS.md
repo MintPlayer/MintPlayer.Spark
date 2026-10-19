@@ -46,10 +46,10 @@ For writing *tests*, the `MintPlayer.Spark.Testing` package ships its own `AGENT
 builder.Services.AddSpark(builder.Configuration, spark =>
 {
     spark.UseContext<MySparkContext>();   // required — the entity surface
-    spark.AddActions();                    // generated: discovers your {Entity}Actions classes
+    spark.AddSparkDiscovered();            // generated: Actions classes, custom actions, recipients, cron jobs, migrations, …
     // optional modules:
     // spark.AddAuthentication<SparkUser>();  spark.AddControllers();  spark.UseControllers();
-    // spark.AddMessaging();  spark.AddCron();  spark.AddMigrations();  spark.AddReplication();
+    // spark.AddMessaging();  spark.AddCron();  spark.AddReplication();
     // spark.AddIdentityProvider();  spark.AddRateLimiter();  spark.AddGithubWebhooks();
     // spark.AddSafeHttp();   // SSRF-safe named HttpClient for user-supplied URLs (SparkBuilderSafeHttpExtensions.ClientName)
     // spark.AddExpiration(); // only for options in code; IExpiring types need nothing (docs/guide-expiration.md)
@@ -145,7 +145,7 @@ Kinds: `actions`, `model`, `translations`, `security` (or `rights`), `programUni
 ## Actions classes
 
 `{EntityName}Actions : DefaultPersistentObjectActions<TEntity>`, discovered by convention and
-registered by the generated `AddActions()`.
+registered by the generated `AddSparkDiscovered()`.
 
 ```csharp
 public partial class PersonActions : DefaultPersistentObjectActions<Person>, IBeforeSave<Person>, IAfterSave<Person>
@@ -203,8 +203,10 @@ not copies in every Actions class — see `docs/guide-row-security.md`:
   document without the field does not match `!x`).
 - Persistence interceptors (#482): `spark.AddInterceptor<T>()` with `IBeforeSave`,
   `IAfterSave`, `IBeforeDelete`, `IAfterDelete`, `IDeleteReplacement` (one per type; replaces the hard
-  delete before any before-delete interceptor runs), `IAfterMaterialize`, `IAfterLoad`,
-  `INaturalIdCollision`. The framework owns the write: no interceptor or Actions class can skip WITH CHECK,
+  delete before any before-delete interceptor runs), `ISaveReplacement` (one per type; diverts a whole save,
+  after the gates and before anything maps, into e.g. an approval proposal — 202; store
+  `context.PersistentObjectJson`, never the object; apply later with `ISparkReplacedSaves.ApplyAsync`),
+  `IAfterMaterialize`, `IAfterLoad`, `INaturalIdCollision`. The framework owns the write: no interceptor or Actions class can skip WITH CHECK,
   the expected change vector or the single commit. Cancel with `throw new SparkCancelException()`.
   No numeric order: registration order, plus `InterceptorStage.Finalize` for interceptors that must run last.
 - ⚠️ An `OnLoadAsync` override that skips the base also skips the read gate for its type — policies

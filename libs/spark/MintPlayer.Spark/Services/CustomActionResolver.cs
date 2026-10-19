@@ -51,7 +51,7 @@ internal partial class CustomActionResolver : ICustomActionResolver
                 throw new InvalidOperationException(
                     $"Custom action '{actionName}' is declared as {type.FullName} but could not be "
                     + "constructed. Its dependencies are most likely not registered -- check that "
-                    + "the application calls AddCustomActions() and that every [Inject] dependency "
+                    + "the application calls AddSparkDiscovered() and that every [Inject] dependency "
                     + "of the action has a registration.", ex);
             }
         }

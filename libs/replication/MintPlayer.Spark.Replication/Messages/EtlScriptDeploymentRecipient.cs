@@ -1,3 +1,4 @@
+using System.Net;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Messaging.Abstractions;
 using MintPlayer.Spark.Replication.Abstractions.Models;
@@ -6,7 +7,7 @@ using MintPlayer.Spark.Replication.Services;
 namespace MintPlayer.Spark.Replication.Messages;
 
 /// <summary>
-/// Message bus recipient that POSTs ETL script requests to source modules.
+/// Message bus recipient that POSTs ETL deployment requests (contracts, never scripts) to source modules.
 /// Resolves the source module's URL from the shared <c>SparkModules</c> database
 /// on each delivery — never trusts a URL baked into the message — so retries pick
 /// up freshly-registered modules instead of repeatedly hitting a stale URL captured
@@ -25,8 +26,8 @@ internal partial class EtlScriptDeploymentRecipient : IRecipient<EtlScriptDeploy
         var url = $"{sourceUrl.TrimEnd('/')}/spark/etl/deploy";
 
         logger.LogInformation(
-            "Sending ETL scripts to module '{SourceModule}' at {Url} ({ScriptCount} scripts)",
-            message.SourceModuleName, url, message.Request.Scripts.Count);
+            "Requesting ETL deployment from module '{SourceModule}' at {Url} ({ContractCount} contracts)",
+            message.SourceModuleName, url, message.Request.Contracts.Count);
 
         var client = httpClientProvider.GetClient(message.SourceModuleName);
         var response = await client.PostAsJsonAsync(url, message.Request, cancellationToken);
@@ -34,6 +35,15 @@ internal partial class EtlScriptDeploymentRecipient : IRecipient<EtlScriptDeploy
         if (!response.IsSuccessStatusCode)
         {
             var body = await response.Content.ReadAsStringAsync(cancellationToken);
+
+            // 400 (malformed), 404 (a contract the owner does not publish) and 409 (no ETL in the
+            // owner's licence, F18; no registered database) are the owner's settled answer: retrying
+            // changes nothing until someone changes configuration, so dead-letter once with the
+            // reason. 401/403 can still settle (registration or grants landing) and 5xx is transient.
+            if (response.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.NotFound or HttpStatusCode.Conflict)
+                throw new NonRetryableException(
+                    $"ETL deployment to '{message.SourceModuleName}' refused with status {response.StatusCode}: {body}");
+
             throw new HttpRequestException(
                 $"ETL deployment to '{message.SourceModuleName}' failed with status {response.StatusCode}: {body}");
         }

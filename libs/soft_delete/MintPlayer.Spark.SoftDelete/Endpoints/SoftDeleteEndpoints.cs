@@ -49,7 +49,7 @@ internal sealed partial class RestorePersistentObject : IPostEndpoint<SoftDelete
     public static string Path => "/restore";
 
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
-        => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
+        => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true)).RefuseDeniedInEnvelope();
 
     [Inject] private readonly ISparkSoftDelete softDelete;
     [Inject] private readonly IDatabaseAccess databaseAccess;
@@ -93,10 +93,6 @@ internal sealed partial class RestorePersistentObject : IPostEndpoint<SoftDelete
         {
             return addOn.ActionDisabled(ex);
         }
-        catch (SparkAccessDeniedException)
-        {
-            return addOn.Refusal(httpContext);
-        }
     }
 }
 
@@ -110,7 +106,7 @@ internal sealed partial class PurgePersistentObject : IPostEndpoint<SoftDeleteRe
     public static string Path => "/purge";
 
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
-        => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
+        => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true)).RefuseDeniedInEnvelope();
 
     [Inject] private readonly ISparkSoftDelete softDelete;
     [Inject] private readonly ISparkAddOnEndpoints addOn;
@@ -154,10 +150,6 @@ internal sealed partial class PurgePersistentObject : IPostEndpoint<SoftDeleteRe
         catch (SparkActionDisabledException ex)
         {
             return addOn.ActionDisabled(ex);
-        }
-        catch (SparkAccessDeniedException)
-        {
-            return addOn.Refusal(httpContext);
         }
     }
 }

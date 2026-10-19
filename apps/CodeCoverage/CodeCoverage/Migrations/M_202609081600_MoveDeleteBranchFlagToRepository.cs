@@ -39,7 +39,6 @@ namespace CodeCoverage.Migrations;
 /// </summary>
 public partial class M_202609081600_MoveDeleteBranchFlagToRepository : ISparkMigration
 {
-    public static long Version => 202609081600;
     public static string? Description => "Drop the orphaned GitHubProject.DeleteBranchOnPrClose; the setting moved to Repository";
 
     [Inject] private readonly IDocumentStore store;

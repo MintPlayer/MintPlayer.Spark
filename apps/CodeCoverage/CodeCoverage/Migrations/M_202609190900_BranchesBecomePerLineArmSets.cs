@@ -49,7 +49,6 @@ namespace CodeCoverage.Migrations;
 /// </remarks>
 public partial class M_202609190900_BranchesBecomePerLineArmSets : ISparkMigration
 {
-    public static long Version => 202609190900;
     public static string? Description => "Branch coverage becomes a per-line arm set plus a floor";
 
     [Inject] private readonly IDocumentStore store;

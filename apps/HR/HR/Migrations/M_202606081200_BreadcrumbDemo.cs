@@ -12,7 +12,6 @@ namespace HR.Migrations;
 /// </summary>
 public partial class M_202606081200_BreadcrumbDemo : ISparkMigration
 {
-    public static long Version => 202606081200;
     public static string? Description => "Seed 3-level breadcrumb demo (Person → Company → Profession)";
 
     [Inject] private readonly IAsyncDocumentSession session;

@@ -41,16 +41,10 @@ public static class SparkDashboardsExtensions
     public static ISparkBuilder AddDashboards(this ISparkBuilder builder, Action<SparkDashboardsBuilder>? configure = null)
     {
         var services = builder.Services;
-        var catalog = services.FirstOrDefault(d => d.ServiceType == typeof(DashboardCatalog))?.ImplementationInstance as DashboardCatalog;
-        if (catalog is null)
+        var catalog = services.GetOrAddSparkSingleton(() => new DashboardCatalog(), out var created);
+        if (created)
         {
-            catalog = new DashboardCatalog();
-            services.AddSingleton(catalog);
-
-            services.AddOptions<SparkDashboardsOptions>();
-            services.AddSingleton<IConfigureOptions<SparkDashboardsOptions>>(sp => new ConfigureNamedOptions<SparkDashboardsOptions>(
-                Options.DefaultName,
-                options => sp.GetService<IConfiguration>()?.GetSection(SparkDashboardsOptions.SectionName).Bind(options)));
+            services.AddSparkConfigurationSection<SparkDashboardsOptions>();
 
             services.TryAddSingleton(TimeProvider.System);
             services.TryAddSingleton<SparkCpuUsage>();

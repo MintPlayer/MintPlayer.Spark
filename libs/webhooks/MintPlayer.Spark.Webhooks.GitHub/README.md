@@ -158,7 +158,7 @@ builder.Services.AddSpark(builder.Configuration, spark =>
 {
     spark.UseContext<MySparkContext>();
     spark.AddMessaging();
-    spark.AddRecipients();
+    spark.AddSparkDiscovered();
     spark.AddGithubWebhooks(options =>
     {
         options.WebhookSecret = builder.Configuration["GitHub:WebhookSecret"] ?? string.Empty;
@@ -378,7 +378,7 @@ builder.Services.AddSpark(builder.Configuration, spark =>
 {
     spark.UseContext<MySparkContext>();
     spark.AddMessaging();
-    spark.AddRecipients();
+    spark.AddSparkDiscovered();
     spark.AddGithubWebhooks(options =>
     {
         options.WebhookSecret = builder.Configuration["GitHub:WebhookSecret"] ?? string.Empty;

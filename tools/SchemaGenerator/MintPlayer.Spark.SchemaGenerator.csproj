@@ -28,6 +28,13 @@
 
 	<ItemGroup>
 		<ProjectReference Include="..\..\libs\spark\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
+		<!--
+		  The `contracts` command (commerce X20 item 2): the TypeScript contracts generator lives in MintPlayer.Spark (an
+		  application's binary runs it too), and every library that declares [SparkContract] types is referenced here
+		  so its types can be reflected over. SparkLibraryContracts.Libraries lists them.
+		-->
+		<ProjectReference Include="..\..\libs\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
+		<ProjectReference Include="..\..\libs\authorization\MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj" />
 	</ItemGroup>
 
 	<!--

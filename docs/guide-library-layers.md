@@ -246,6 +246,60 @@ application never uses. An application needs nothing for this.
 `<SparkLibraryLayers>false</SparkLibraryLayers>` opts a class library out. Executables and test
 projects never ship layers.
 
+### The library's `AddXxx()`
+
+`MintPlayer.Spark.Abstractions.Builder` has the conventions every Spark plugin follows, so an
+`AddXxx()` doesn't copy them:
+
+```csharp
+public sealed class MyLibraryOptions : ISparkConfigurationSection
+{
+    public static string SectionName => "Spark:MyLibrary";
+    public int Size { get; set; } = 10;
+}
+
+public static ISparkBuilder AddMyLibrary(this ISparkBuilder builder, Action<MyLibraryOptions>? configure = null)
+{
+    var services = builder.Services;
+    if (!services.TryAddSparkMarker<MyLibraryMarker>())   // a second call registers nothing twice
+    {
+        if (configure is not null) services.Configure(configure);
+        return builder;
+    }
+
+    services.AddSparkConfigurationSection<MyLibraryOptions>();   // Spark:MyLibrary, bound lazily
+    if (configure is not null) services.Configure(configure);     // code runs after it, so it wins
+
+    services.UseSparkProvider<IMySender, DefaultSender>(ServiceLifetime.Singleton);   // one per slot
+    return builder;
+}
+```
+
+| Helper | Does |
+|---|---|
+| `AddSparkConfigurationSection<TOptions>()` | Binds `TOptions.SectionName` when the options are first read. Works over a bare `ServiceCollection` with no `IConfiguration` (tests, tools): the defaults stay |
+| `TryAddSparkMarker<TMarker>()` | `true` on the first call only; return early on `false` |
+| `GetOrAddSparkSingleton(() => new Catalog(), out var created)` | One shared catalog that every call adds to; `created` marks the call that wires the rest |
+| `UseSparkProvider<TService, TImplementation>(lifetime)` | Removes every earlier registration of the slot first, so the last call wins whatever the registration order |
+
+---
+
+## Naming composed types in code
+
+An application gets two generated classes from the **composed** model, its own `Model/*.json` on
+top of every referenced library's layer:
+
+- `PersistentObjectNames.Home` (`"Home"`): one constant per type name, for APIs that take a name
+  (`manager.GetPersistentObjectAsync(PersistentObjectNames.Home)`,
+  `permissions.IsAllowedAsync(verb, PersistentObjectNames.Question)`);
+- `PersistentObjectIds.Default.Car`: the type's id, per schema.
+
+Both come from the model files, never from class names, so a virtual type without a class (CodeCoverage's
+`Home`) has constants, a library type has them without a copy in the application, and a type the
+model drops stops compiling at every place that named it. A library compilation gets neither: only an
+application composes the model. Attribute names have no generated constants; use
+`nameof(Entity.Property)`.
+
 ---
 
 ## In this repository

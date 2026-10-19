@@ -1,6 +1,7 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
+using MintPlayer.Spark.Abstractions.Interceptors;
 using MintPlayer.Spark.Abstractions.Retry;
 using MintPlayer.Spark.Exceptions;
 
@@ -13,7 +14,7 @@ namespace MintPlayer.Spark.Services;
 /// <remarks>
 /// <para>
 /// Request parsing and the envelope stay with the caller; everything that decides
-/// whether a write happens is here. Refusals are exceptions, exactly the ones the save itself raises,
+/// whether a write happens is here, and so is the answer to whether it happened (<see cref="SaveOutcome"/>). Refusals are exceptions, exactly the ones the save itself raises,
 /// so a caller maps one set: <see cref="SparkAccessDeniedException"/> (and its row-level subclass),
 /// <see cref="SparkConcurrencyException"/>, <see cref="SparkSaveValidationException"/>,
 /// <see cref="SparkValidationException"/>, <see cref="SparkActionDisabledException"/> and
@@ -27,18 +28,21 @@ namespace MintPlayer.Spark.Services;
 internal interface IPersistentObjectSavePath
 {
     /// <summary>
-    /// Creates <paramref name="obj"/> as a new <paramref name="entityType"/> and returns it as a load
-    /// presents it; <see langword="null"/> when an interceptor cancelled the create (#482).
+    /// Creates <paramref name="obj"/> as a new <paramref name="entityType"/>. <see cref="SaveOutcomeKind.Saved"/>
+    /// carries it as a load presents it; <see cref="SaveOutcomeKind.Cancelled"/> (an interceptor cancelled the
+    /// create, #482) carries nothing; <see cref="SaveOutcomeKind.Submitted"/> (an <see cref="ISaveReplacement"/>
+    /// diverted it, X7) carries the receipt.
     /// </summary>
     /// <param name="parent">The sub-query parent the create was started from, already resolved and authorized.</param>
-    Task<PersistentObject?> CreateAsync(EntityTypeDefinition entityType, PersistentObject obj, PersistentObject? parent, CancellationToken cancellationToken = default);
+    Task<SaveOutcome> CreateAsync(EntityTypeDefinition entityType, PersistentObject obj, PersistentObject? parent, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Saves <paramref name="obj"/> over the stored <paramref name="id"/> at the version its etag names,
-    /// and returns the row as a load presents it. A cancelled save answers the row as stored (#482).
+    /// Saves <paramref name="obj"/> over the stored <paramref name="id"/> at the version its etag names.
+    /// <see cref="SaveOutcomeKind.Saved"/> carries the row as a load presents it; <see cref="SaveOutcomeKind.Cancelled"/>
+    /// carries the row as stored (#482: nothing was written); <see cref="SaveOutcomeKind.Submitted"/> the receipt (X7).
     /// </summary>
     /// <param name="retry">The request whose retry answers are accepted once the row is known to exist, as the endpoint always did; <see langword="null"/> for a first attempt.</param>
-    Task<PersistentObject> UpdateAsync(EntityTypeDefinition entityType, string id, PersistentObject obj, IRetryableRequest? retry = null, CancellationToken cancellationToken = default);
+    Task<SaveOutcome> UpdateAsync(EntityTypeDefinition entityType, string id, PersistentObject obj, IRetryableRequest? retry = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Deletes the stored <paramref name="id"/> at the version <paramref name="etag"/> names: the sequence of
@@ -64,6 +68,32 @@ internal interface IPersistentObjectSavePath
     Task<bool> CheckDeleteAsync(EntityTypeDefinition entityType, string id, string etag, CancellationToken cancellationToken = default);
 }
 
+/// <summary>How a create or an update through <see cref="IPersistentObjectSavePath"/> ended.</summary>
+internal enum SaveOutcomeKind
+{
+    /// <summary>Written.</summary>
+    Saved,
+
+    /// <summary>
+    /// An interceptor cancelled it (#482): nothing was written, and nothing went wrong. On the web a no-op; in an MCP
+    /// plan a refusal, since the plan would silently be smaller than the one approved (commerce F4).
+    /// </summary>
+    Cancelled,
+
+    /// <summary>An <see cref="ISaveReplacement"/> diverted it (commerce X7): nothing was written yet; HTTP 202.</summary>
+    Submitted,
+}
+
+/// <summary>The outcome of a create or an update (see <see cref="SaveOutcomeKind"/>).</summary>
+/// <param name="Object">The row as a load presents it: the saved one, or for a cancelled update the stored one.</param>
+/// <param name="Receipt">For <see cref="SaveOutcomeKind.Submitted"/>: what the save became.</param>
+internal sealed record SaveOutcome(SaveOutcomeKind Kind, PersistentObject? Object, SaveReplacementReceipt? Receipt = null)
+{
+    public static SaveOutcome Saved(PersistentObject presented) => new(SaveOutcomeKind.Saved, presented);
+    public static SaveOutcome Cancelled(PersistentObject? stored) => new(SaveOutcomeKind.Cancelled, stored);
+    public static SaveOutcome Submitted(SaveReplacementReceipt receipt) => new(SaveOutcomeKind.Submitted, null, receipt);
+}
+
 [Register(typeof(IPersistentObjectSavePath), ServiceLifetime.Scoped)]
 internal sealed partial class PersistentObjectSavePath : IPersistentObjectSavePath
 {
@@ -74,7 +104,7 @@ internal sealed partial class PersistentObjectSavePath : IPersistentObjectSavePa
     [Inject] private readonly IRetryAccessor retryAccessor;
     [Inject] private readonly ISparkWriteUnit writeUnit;
 
-    public async Task<PersistentObject?> CreateAsync(EntityTypeDefinition entityType, PersistentObject obj, PersistentObject? parent, CancellationToken cancellationToken = default)
+    public async Task<SaveOutcome> CreateAsync(EntityTypeDefinition entityType, PersistentObject obj, PersistentObject? parent, CancellationToken cancellationToken = default)
     {
         // Still in addition to the check EnsureSaveAuthorizedAsync makes below, and still free: the
         // permission service memoises per request.
@@ -113,17 +143,21 @@ internal sealed partial class PersistentObjectSavePath : IPersistentObjectSavePa
             // refused, because a refusal would say which attributes exist.
             var result = await databaseAccess.SavePersistentObjectAsync(obj);
 
+            // Diverted (X7): nothing was created, so there is nothing to present — only the receipt.
+            if (result.Replacement is { } receipt)
+                return SaveOutcome.Submitted(receipt);
+
             // Re-presented as a load presents it, as an update is (leak 2).
-            return await saveResponse.PresentAsync(entityType, result, isNew: true, cancellationToken);
+            return SaveOutcome.Saved(await saveResponse.PresentAsync(entityType, result, isNew: true, cancellationToken));
         }
         catch (SparkCancelException)
         {
             // An interceptor cancelled the create (#482): nothing was created, and nothing went wrong.
-            return null;
+            return SaveOutcome.Cancelled(null);
         }
     }
 
-    public async Task<PersistentObject> UpdateAsync(EntityTypeDefinition entityType, string id, PersistentObject obj, IRetryableRequest? retry = null, CancellationToken cancellationToken = default)
+    public async Task<SaveOutcome> UpdateAsync(EntityTypeDefinition entityType, string id, PersistentObject obj, IRetryableRequest? retry = null, CancellationToken cancellationToken = default)
     {
         // An update says which version it edits (#467, D16): without one it would overwrite whatever
         // is stored now. Before any read, so the answer says nothing about the row.
@@ -158,6 +192,7 @@ internal sealed partial class PersistentObjectSavePath : IPersistentObjectSavePa
         saveValidation.Request(obj, cancellationToken);
 
         PersistentObject result;
+        var cancelled = false;
         try
         {
             result = await databaseAccess.SavePersistentObjectAsync(obj);
@@ -165,13 +200,20 @@ internal sealed partial class PersistentObjectSavePath : IPersistentObjectSavePa
         catch (SparkCancelException)
         {
             // An interceptor cancelled the save (#482): nothing was written, so the answer is the object as
-            // stored — a 200, never an error.
+            // stored — a 200 on the web, never an error. It stays a Cancelled outcome, though: a caller that must
+            // know whether the change happened (an MCP plan, commerce F4) may not read it as saved.
             result = await databaseAccess.GetPersistentObjectAsync(entityType.Id, id) ?? existingObj;
+            cancelled = true;
         }
+
+        // Diverted (X7): nothing was written yet. The receipt, never the posted object.
+        if (result.Replacement is { } receipt)
+            return SaveOutcome.Submitted(receipt);
 
         // Re-presented as a load presents it (contributions M2c-2b, leak 2): never the posted
         // object, which is the client's values plus whatever the save hooks wrote into it.
-        return await saveResponse.PresentAsync(entityType, result, isNew: false, cancellationToken);
+        var presented = await saveResponse.PresentAsync(entityType, result, isNew: false, cancellationToken);
+        return cancelled ? SaveOutcome.Cancelled(presented) : SaveOutcome.Saved(presented);
     }
 
     public async Task<bool> DeleteAsync(EntityTypeDefinition entityType, string id, string etag, CancellationToken cancellationToken = default)

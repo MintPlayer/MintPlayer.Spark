@@ -1,3 +1,5 @@
+using MintPlayer.Spark.Abstractions.Builder;
+
 namespace MintPlayer.Spark.Live;
 
 /// <summary>Where live updates (X4) learn that data changed (D33).</summary>
@@ -27,10 +29,10 @@ public enum SparkLiveSource
 /// <c>spark.AddLive(o =&gt; …)</c> (code wins). Every value has a default; an app sets none of them for the
 /// common case (D34).
 /// </summary>
-public sealed class SparkLiveOptions
+public sealed class SparkLiveOptions : ISparkConfigurationSection
 {
     /// <summary>The configuration section these options are bound from.</summary>
-    public const string SectionName = "Spark:Live";
+    public static string SectionName => "Spark:Live";
 
     /// <summary>The change source (D33). Default <see cref="SparkLiveSource.Both"/>.</summary>
     public SparkLiveSource Source { get; set; } = SparkLiveSource.Both;

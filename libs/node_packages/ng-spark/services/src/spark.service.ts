@@ -1,7 +1,7 @@
 import { inject, Injectable } from '@angular/core';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
-import { CustomActionDefinition, DistinctValuesResult, EntityPermissions, EntityType, LookupReference, LookupReferenceListItem, LookupReferenceValue, PersistentObject, ProgramUnitsConfiguration, QueryColumnFilter, QueryResult, SparkDeletedFilter, SparkQuery, RetryActionPayload, RetryActionResult, SPARK_RETRY_CANCEL } from '@mintplayer/ng-spark/models';
+import { CustomActionDefinition, DistinctValuesResult, EntityPermissions, EntityType, LookupReference, LookupReferenceListItem, LookupReferenceValue, PersistentObject, ProgramUnitsConfiguration, QueryColumnFilter, QueryResult, SparkDeletedFilter, SparkQuery, RetryActionPayload, RetryActionResult, SPARK_RETRY_CANCEL, SparkSaveSubmitted } from '@mintplayer/ng-spark/models';
 import { ClientOperationEnvelope, RetryOperation, SparkClientMethodRegistry, SparkClientOperationDispatcher } from '@mintplayer/ng-spark/client-operations';
 import { SortColumn } from '@mintplayer/pagination';
 import { RetryActionService } from './retry-action.service';
@@ -249,14 +249,16 @@ export class SparkService {
    * as `PersistentObject.Parent`.
    *
    * Resolves to `null` when a server interceptor cancelled the create (#482: the user answered a prompt with
-   * Cancel) — the server answers 204 and nothing was created.
+   * Cancel) — the server answers 204 and nothing was created — and to a {@link SparkSaveSubmitted} when the
+   * server diverted it for approval (202, commerce X7): nothing was created yet. Tell them apart with
+   * `isSaveSubmitted`.
    */
   async create(
     type: string,
     data: Partial<PersistentObject>,
     parent?: { parentId: string; parentType: string; queryId: string },
-  ): Promise<PersistentObject | null> {
-    const created = await this.postWithEnvelope<PersistentObject | null>(
+  ): Promise<PersistentObject | SparkSaveSubmitted | null> {
+    const created = await this.postWithEnvelope<PersistentObject | SparkSaveSubmitted | null>(
       `${this.baseUrl}/po/create`,
       { objectTypeId: type, persistentObject: data, ...(parent ?? {}) }
     );
@@ -266,11 +268,12 @@ export class SparkService {
   /**
    * Saves an edit. `data.etag` — the etag the object was loaded with — is required (#467, D16): it is
    * the version being edited. A 409 means the object changed since (`reason: 'changed'`) or was
-   * deleted since (`reason: 'deleted'`).
+   * deleted since (`reason: 'deleted'`). A {@link SparkSaveSubmitted} (202, commerce X7) means the server
+   * diverted the edit for approval: nothing was written yet.
    */
-  async update(type: string, id: string, data: Partial<PersistentObject>): Promise<PersistentObject> {
+  async update(type: string, id: string, data: Partial<PersistentObject>): Promise<PersistentObject | SparkSaveSubmitted> {
     if (!data.etag) throw new Error(`An update of '${id}' must carry the etag it was loaded with.`);
-    return this.postWithEnvelope<PersistentObject>(
+    return this.postWithEnvelope<PersistentObject | SparkSaveSubmitted>(
       `${this.baseUrl}/po/update`,
       { objectTypeId: type, id, persistentObject: data }
     );

@@ -1,3 +1,5 @@
+using MintPlayer.Spark.Abstractions.Builder;
+
 namespace MintPlayer.Spark.PageMeta;
 
 /// <summary>
@@ -65,9 +67,9 @@ public interface ISparkPageMetaProvider
 }
 
 /// <summary><c>Spark:PageMeta</c>. Code given to <c>AddPageMeta</c> runs after the section.</summary>
-public sealed class SparkPageMetaOptions
+public sealed class SparkPageMetaOptions : ISparkConfigurationSection
 {
-    public const string SectionName = "Spark:PageMeta";
+    public static string SectionName => "Spark:PageMeta";
 
     /// <summary>The global switch. Off: every request passes through untouched.</summary>
     public bool Enabled { get; set; } = true;

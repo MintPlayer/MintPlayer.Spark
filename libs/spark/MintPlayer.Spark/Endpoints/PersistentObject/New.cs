@@ -29,6 +29,7 @@ internal sealed partial class NewPersistentObject : IPostEndpoint<NewPersistentO
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
     {
         builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
+        builder.RefuseDeniedInEnvelope();
     }
 
     [Inject] private readonly IModelLoader modelLoader;
@@ -68,14 +69,6 @@ internal sealed partial class NewPersistentObject : IPostEndpoint<NewPersistentO
         {
             // A construction hook may refuse outright — "this contract already has a signatory".
             return ClientResult.Envelope(clientAccessor, new { errors = new[] { ex.ToError() } }, 400);
-        }
-        catch (SparkRowLevelAccessDeniedException)
-        {
-            return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
-        }
-        catch (SparkAccessDeniedException)
-        {
-            return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
         }
     }
 

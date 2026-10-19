@@ -22,7 +22,7 @@ public sealed partial class QnAAccess
 
     /// <summary>Whether the caller moderates (holds <c>Lock/Question</c>). Answered once per request.</summary>
     public async Task<bool> IsModeratorAsync()
-        => isModerator ??= UserId is not null && await permissions.IsAllowedAsync(ModerationRights.Lock, "Question");
+        => isModerator ??= UserId is not null && await permissions.IsAllowedAsync(ModerationRights.Lock, PersistentObjectNames.Question);
 
     /// <summary>Whether the caller may manage a post: its author, or a moderator.</summary>
     public async Task<bool> CanManageAsync(string? authorId)

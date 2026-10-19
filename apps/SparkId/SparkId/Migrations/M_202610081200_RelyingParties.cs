@@ -32,7 +32,6 @@ namespace SparkId.Migrations;
 /// </remarks>
 public partial class M_202610081200_RelyingParties : ISparkMigration
 {
-    public static long Version => 202610081200;
     public static string? Description => "Development: seed openid/profile/email scopes and the QnA, HR and Fleet relying parties";
 
     /// <summary>The demo relying parties: client id, display name, https origin, development-only secret.</summary>

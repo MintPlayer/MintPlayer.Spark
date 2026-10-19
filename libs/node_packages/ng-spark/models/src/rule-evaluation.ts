@@ -1,4 +1,4 @@
-import { ValidationRule } from './validation-rule';
+import { ValidationRule } from './generated/contracts';
 import { DEFAULT_LANGUAGE, TranslatedString, isCurrentEntry } from './translated-string';
 
 /** One rule failure, in the shape the form already renders per field. */

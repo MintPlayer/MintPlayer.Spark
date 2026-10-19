@@ -224,7 +224,7 @@ them, because only one can vary its options per object:
 
 | Need | Use | Why |
 |---|---|---|
-| A fixed set, known at compile time | `[LookupReference]` + `TransientLookupReference<TKey>` | Values are C#; no storage, no query |
+| A fixed set, known at compile time | `[LookupReference]` + a `[SparkLookup]` enum | Values are C#, labels in `translations.json`; no storage, no query |
 | A user-managed set, shared app-wide | `[LookupReference]` + `DynamicLookupReference<TValue>` | Persisted and runtime-editable, but **one global set per lookup name** — a single `LookupReferences/{Name}` document |
 | Options that depend on **which object** you are editing | `[Reference(typeof(X), "CustomQuery")]` | The only shape whose option source receives the parent |
 
@@ -317,62 +317,87 @@ LookupReferences are used for attributes that should be selected from a predefin
 
 A transient lookup reference defines its values in C# code. Values are not stored in RavenDB -- they are compiled into the application.
 
-#### Step 1: Define the Enum and Lookup Class
+#### Step 1: Declare the Enum
+
+Mark the enum `[SparkLookup]`. The source generator (`SparkLookupGenerator`, in
+`MintPlayer.Spark.SourceGenerators`) emits the lookup class: one item per member, keyed by the member,
+labelled by the `translations.json` key `lookup.{Enum}.{Member}`.
 
 ```csharp
 using MintPlayer.Spark.Abstractions;
 
 namespace MyApp.Library.LookupReferences;
 
+[SparkLookup]
 public enum ECarStatus
 {
+    /// <summary>Car is in use.</summary>
     InUse,
+    /// <summary>Car is parked.</summary>
     OnParking,
     InMaintenance,
     Stolen
 }
+// generated: public sealed partial class CarStatus : TransientLookupReference<ECarStatus>
+```
 
-public sealed class CarStatus : TransientLookupReference<ECarStatus>
-{
-    private CarStatus() { }
+The labels live with the app's other texts, in the declaring project's `App_Data/translations.json`
+(for a library, the library's own layer; an app may override any of them in its layer):
 
-    public override ELookupDisplayType DisplayType => ELookupDisplayType.Dropdown;
-
-    public static IReadOnlyCollection<CarStatus> Items { get; } =
-    [
-        new CarStatus()
-        {
-            Key = ECarStatus.InUse,
-            Description = "Car is in use",
-            Values = _TS(("en", "In use"), ("fr", "En usage"), ("nl", "In gebruik")),
-        },
-        new CarStatus()
-        {
-            Key = ECarStatus.OnParking,
-            Description = "Car is parked",
-            Values = _TS(("en", "In parking lot"), ("fr", "Dans le parking"), ("nl", "Op parking")),
-        },
-        new CarStatus()
-        {
-            Key = ECarStatus.InMaintenance,
-            Description = "Car is being maintained",
-            Values = _TS(("en", "In maintenance"), ("fr", "En maintenance"), ("nl", "In onderhoud")),
-        },
-        new CarStatus()
-        {
-            Key = ECarStatus.Stolen,
-            Description = "Car is stolen",
-            Values = _TS(("en", "Stolen"), ("fr", "Vole"), ("nl", "Gestolen")),
-        },
-    ];
+```json
+"lookup": {
+  "ECarStatus": {
+    "InUse":         { "en": "In use",         "fr": "En usage",        "nl": "In gebruik" },
+    "OnParking":     { "en": "In parking lot", "fr": "Dans le parking", "nl": "Op parking" },
+    "InMaintenance": { "en": "In maintenance", "fr": "En maintenance",  "nl": "In onderhoud" },
+    "Stolen":        { "en": "Stolen",         "fr": "Volé",            "nl": "Gestolen" }
+  }
 }
 ```
 
 Key points:
-- Extend `TransientLookupReference<TEnum>` where `TEnum` is your enum
-- Override `DisplayType` to control the UI: `Dropdown` renders a `<select>`, `Modal` renders a search modal
-- `_TS(("en", "…"), ("fr", "…"), ("nl", "…"))` is a helper that creates a `TranslatedString` with one tagged text per language (any RFC 5646 tag; see [Translated strings](guide-translated-strings.md))
-- The `Items` collection must be `static` and `IReadOnlyCollection<T>`
+- The lookup's name (the generated class, and what model files put in `lookupReferenceType`) is the
+  enum's name without its `E` prefix; pass one when it has none: `[SparkLookup("OrganizationRoles")] enum OrganizationRole`
+- `[SparkLookup(DisplayType = ELookupDisplayType.Modal)]` renders a search modal instead of a `<select>`
+- Items follow the declaration order; `[SparkLookupOrder(n)]` on members reorders them when the zero
+  value (the stored default) is not the first to show
+- The endpoint (`GET /spark/lookupref/{name}`) resolves each key through the composed translation layers;
+  a key no layer defines shows the humanized member name (`InMaintenance` → `In Maintenance`)
+- `tools/verify-translation-keys.test.mjs` (`npm run test:tools`, run by CI) fails when a member's label is
+  missing, or when a `lookup.*` key labels no member any more
+- An enum the generator cannot emit a class for (nested in a type, no `E` prefix and no name, aliased
+  values, ...) is error **SPARK064**
+
+**Keys stored as strings.** For a property that stores the key as a `string`, set `StringKeys = true`:
+the class derives from `TransientLookupReference<string>` and carries a `const string` per member. A
+member whose stored key differs from its name says so with `[SparkLookupKey]`:
+
+```csharp
+[SparkLookup(StringKeys = true)]
+public enum EProjectBasis
+{
+    [SparkLookupKey("scoped")] Scoped,
+    [SparkLookupKey("projection")] Projection,
+}
+// generated: ProjectBasis.Scoped == "scoped"; the label key stays lookup.EProjectBasis.Scoped
+```
+
+**Extra data per item.** Declare the extra properties in a partial of the generated class, with a private
+setter, and fill them in `Initialize`, which runs once per item. The lookup endpoint sends every extra
+public property in the value's `extra` dictionary:
+
+```csharp
+public sealed partial class CarStatus
+{
+    public bool AllowOnCarNotes { get; private set; }
+
+    static partial void Initialize(CarStatus item) => item.AllowOnCarNotes = item.Key != ECarStatus.OnParking;
+}
+```
+
+A lookup that one enum cannot express (a subset of another lookup's members) stays a hand-written
+`TransientLookupReference<TKey>` subclass; give its items `TranslatedString.FromKey("lookup.{Enum}.{Member}")`
+labels, never inline text.
 
 #### Step 2: Apply to Entity Property
 

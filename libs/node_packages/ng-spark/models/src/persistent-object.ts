@@ -1,19 +1,15 @@
 import { PersistentObjectAttribute } from './persistent-object-attribute';
+import type { AssertNone, MissingMembers } from './contract-mirror';
+import type * as Wire from './generated/contracts';
+// Per-row action affordances (#236 G5) are generated: present only when the entity type has a row-level
+// rule, each value the intersection of the caller's type-level right and the row rule (#243).
+import type { PersistentObjectPermissions } from './generated/contracts';
 
 /**
- * Per-row action affordances (#236 G5). Present only when the entity type has a row-level rule;
- * absent otherwise, so clients fall back to the type-level permissions from
- * `GET /spark/permissions/{type}`.
- *
- * The server computes each value as the intersection of the caller's type-level right and the
- * row rule (#243) — a present block never claims more than the permissions endpoint would, so
- * letting it override the type-level answer is safe.
+ * The client's view of `Wire.PersistentObject` (generated from the C# class, docs/guide-typescript-contracts.md).
+ * Hand-written because the client treats a loaded object's `id` as a string; the check at the end of this file
+ * fails the build when the server's object gains a member this mirror does not carry.
  */
-export interface PersistentObjectPermissions {
-  edit: boolean;
-  delete: boolean;
-}
-
 export interface PersistentObject {
   id: string;
   name: string;
@@ -48,4 +44,12 @@ export interface PersistentObject {
    * `{ contribution: { own: true } }` on a contribution row). Server-written; never sent back.
    */
   metadata?: Record<string, any>;
+  /**
+   * The object this one is nested inside, sent with a refresh of an AsDetail row so the row's hook sees its
+   * parent. Read-only context for the server; never set on a loaded object.
+   */
+  parent?: PersistentObject;
 }
+
+/** Fails to compile when the server's PersistentObject gains a member this mirror leaves out. */
+export type PersistentObjectMirrorsContract = AssertNone<MissingMembers<Wire.PersistentObject, PersistentObject>>;

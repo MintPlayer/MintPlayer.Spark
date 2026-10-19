@@ -37,18 +37,14 @@ public static class SparkOrganizationsExtensions
     public static ISparkBuilder AddOrganizations(this ISparkBuilder builder, Action<SparkOrganizationsOptions>? configure = null)
     {
         var services = builder.Services;
-        if (services.Any(d => d.ServiceType == typeof(OrganizationsMarker)))
+        if (!services.TryAddSparkMarker<OrganizationsMarker>())
         {
             if (configure is not null)
                 services.Configure(configure);
             return builder;
         }
-        services.AddSingleton<OrganizationsMarker>();
 
-        services.AddOptions<SparkOrganizationsOptions>();
-        services.AddSingleton<IConfigureOptions<SparkOrganizationsOptions>>(sp => new ConfigureNamedOptions<SparkOrganizationsOptions>(
-            Options.DefaultName,
-            options => sp.GetService<IConfiguration>()?.GetSection(SparkOrganizationsOptions.SectionName).Bind(options)));
+        services.AddSparkConfigurationSection<SparkOrganizationsOptions>();
         if (configure is not null)
             services.Configure(configure);
 

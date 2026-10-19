@@ -35,7 +35,6 @@ namespace CodeCoverage.Migrations;
 /// </remarks>
 public partial class M_202609221100_AccountConnectionAndNeutralReconcileMessage : ISparkMigration
 {
-    public static long Version => 202609221100;
     public static string? Description => "Account.Connection, and stale reconcile messages";
 
     [Inject] private readonly IDocumentStore store;

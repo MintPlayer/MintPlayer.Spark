@@ -7,6 +7,10 @@
 # so the committed copy must keep LF on every OS.
 libs/node_packages/ng-spark/scanning/src/gs1/** text eol=lf
 
+# The C#-generated TypeScript contracts (docs/guide-typescript-contracts.md): the generator writes LF, and its verify
+# step compares normalized text, but keeping LF in every checkout keeps a regeneration from showing as a diff.
+**/generated/contracts.ts text eol=lf
+
 ###############################################################################
 # Set default behavior for command prompt diff.
 #

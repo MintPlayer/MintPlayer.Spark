@@ -8,9 +8,8 @@ namespace MintPlayer.Spark.SourceGenerators.Generators;
 
 /// <summary>
 /// Finds the migrations referenced packages ship (#388): a package such as Authorization can carry an
-/// <c>ISparkMigration</c> for its own documents, which the app's generated <c>AddMigrations()</c>
-/// then registers next to the app's own. Shared (as a linked source file) by <c>MigrationRegistrationGenerator</c> and
-/// AllFeatures' <c>SparkFullGenerator</c>.
+/// <c>ISparkMigration</c> for its own documents, which the app's generated <c>AddSparkDiscovered()</c>
+/// then registers next to the app's own. Used by <c>SparkDiscoveryGenerator</c>.
 /// </summary>
 /// <remarks>
 /// Only assemblies that themselves reference <c>MintPlayer.Spark.Migrations</c> are walked, which keeps

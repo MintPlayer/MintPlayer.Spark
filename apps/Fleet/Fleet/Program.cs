@@ -51,7 +51,14 @@ builder.Services.AddSparkFull(builder.Configuration, options =>
 {
     // Everything else comes from the `Spark:Replication` section, bound by AddReplication.
     // Assemblies are the one setting configuration cannot express.
-    options.Replication = opt => opt.AssembliesToScan = [typeof(Fleet.Replicated.Person).Assembly];
+    // Fleet owns cars: it publishes the `cars` contract, and generates the ETL transform for every
+    // consumer from this projection (consumers send no script).
+    options.Replication = opt =>
+    {
+        opt.AssembliesToScan = [typeof(Fleet.Replicated.Person).Assembly];
+        opt.Publish<Fleet.Entities.Car, Fleet.Contracts.CarV1>("cars", 1,
+            car => new Fleet.Contracts.CarV1(car.LicensePlate, car.Model, car.Year, car.Color));
+    };
     options.RateLimiter = _ => { };
 
     // Explicit since preview.60: LocalCredentials now defaults to Disabled, matching the client's
@@ -71,10 +78,6 @@ builder.Services.AddSparkFull(builder.Configuration, options =>
         // #460 D6: registration needs somewhere to send account mail. Demo app: every mail is written
         // as an .eml file into Spark:Mail:PickupFolder (appsettings.json) instead of being sent.
         spark.AddMailManager();
-
-        // Fleet's own data migrations, by hand: the generated AddMigrations() would also run the identity
-        // provider's library migrations, which add identity resources an agents-only provider does not serve.
-        spark.AddMigrations(m => m.AddMigration<Fleet.Migrations.M_202610191200_TranslatedStringEntries>());
 
         // Stamps Car.CreatedBy / CreatedAt (IAuditCreated; the members are generated, #271). The row
         // filter in CarActions scopes users to the cars they created by that stamp.

@@ -1,13 +1,15 @@
+using MintPlayer.Spark.Abstractions.Builder;
+
 namespace MintPlayer.Spark.Expiration;
 
 /// <summary>
 /// Document expiration (<c>docs/seo_analyzer_PRD.md</c> X1), bound from <c>Spark:Expiration</c>, then
 /// <c>spark.AddExpiration(o =&gt; …)</c> (code wins).
 /// </summary>
-public sealed class SparkExpirationOptions
+public sealed class SparkExpirationOptions : ISparkConfigurationSection
 {
     /// <summary>The configuration section these options are bound from.</summary>
-    public const string SectionName = "Spark:Expiration";
+    public static string SectionName => "Spark:Expiration";
 
     /// <summary>
     /// How often RavenDB sweeps expired documents. Default and minimum

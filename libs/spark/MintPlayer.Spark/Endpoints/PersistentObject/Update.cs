@@ -18,6 +18,9 @@ internal sealed partial class UpdatePersistentObject : IPostEndpoint<PersistentO
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
     {
         builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
+        // Type- and row-level denials. R2-H2: a row-level denial is the same 404 as the read path's
+        // (M-3: authorized-but-forbidden is indistinguishable from not-found).
+        builder.RefuseDeniedInEnvelope();
     }
 
     [Inject] private readonly IPersistentObjectSavePath savePath;
@@ -56,8 +59,10 @@ internal sealed partial class UpdatePersistentObject : IPostEndpoint<PersistentO
             // Load, authorize, validate, save and present: the shared sequence the MCP tools run too (MCP
             // PRD D9). A row that is gone — deleted, soft-deleted, or no longer the caller's to see —
             // is "deleted by another user" (#467, D15), raised as the concurrency conflict below.
-            var presented = await savePath.UpdateAsync(entityType, request.Id, obj, request, httpContext.RequestAborted);
-            return ClientResult.Envelope(clientAccessor, presented, 200);
+            // 200 with the row (as stored when an interceptor cancelled the save, #482); 202 when an
+            // ISaveReplacement diverted it for approval (X7).
+            var outcome = await savePath.UpdateAsync(entityType, request.Id, obj, request, httpContext.RequestAborted);
+            return ClientResult.Saved(clientAccessor, outcome, 200);
         }
         catch (SparkConcurrencyException ex)
         {
@@ -76,21 +81,10 @@ internal sealed partial class UpdatePersistentObject : IPostEndpoint<PersistentO
         {
             return ClientResult.Envelope(clientAccessor, new { errors = new[] { ex.ToError() } }, 400);
         }
-        catch (SparkRowLevelAccessDeniedException)
-        {
-            // R2-H2: row-level denial returns 404 to match the read path —
-            // M-3 says authorized-but-forbidden must be indistinguishable from
-            // not-found for instance-level checks.
-            return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
-        }
         catch (SparkActionDisabledException ex)
         {
             // After the row gate (#460, D13): the caller can see this row, so naming the action hides nothing.
             return ClientResult.ActionDisabled(clientAccessor, ex);
-        }
-        catch (SparkAccessDeniedException)
-        {
-            return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
         }
     }
 }

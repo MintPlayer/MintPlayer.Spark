@@ -54,23 +54,13 @@ public class CrossModuleSyncTests
     { BaseAddress = new Uri(_fixture.Host.FleetUrl) };
 
     /// <summary>
-    /// A well-formed ETL deployment request. <c>TargetDatabase</c> and <c>TargetUrls</c> are
-    /// <c>required</c> on the contract, and omitting them fails model binding — surfacing as a 400
-    /// that looks nothing like an authorization outcome.
+    /// A well-formed ETL deployment request: the contract and the consumer's collection. The owner
+    /// takes the destination from the module's registry entry, which <c>SeedModuleAsync</c> writes.
     /// </summary>
-    private EtlScriptRequest DeployRequest(string module, string sourceCollection) => new()
+    private static EtlDeploymentRequest DeployRequest(string module, string contract) => new()
     {
         RequestingModule = module,
-        TargetDatabase = $"{module}-e2e",
-        TargetUrls = _fixture.Host.RavenUrls,
-        Scripts =
-        [
-            new EtlScriptItem
-            {
-                SourceCollection = sourceCollection,
-                Script = $"loadTo{sourceCollection}(this);",
-            },
-        ],
+        Contracts = [new EtlContractRequest { Contract = contract, Version = 1, TargetCollection = "Cars" }],
     };
 
     private static SyncActionRequest InsertCar(string module, string documentId, string licensePlate) => new()
@@ -152,20 +142,31 @@ public class CrossModuleSyncTests
     }
 
     [Fact]
-    public async Task Etl_deployment_is_refused_for_a_collection_the_module_may_not_replicate()
+    public async Task Etl_deployment_is_refused_for_a_contract_the_module_may_not_replicate()
     {
-        await _fixture.Host.SeedModuleAsync(GrantedModule);
+        await _fixture.Host.SeedModuleAsync(UnprivilegedModule);
         using var client = NewClient();
 
-        // HR is granted Replicate/Cars and nothing else. SparkUsers is the collection that makes
-        // the point: without F12's per-script check, any authenticated module could have the user
-        // store continuously pushed into a database it controls.
-        var response = await client.PostAsJsonAsync("/spark/etl/deploy",
-            DeployRequest(GrantedModule, "SparkUsers"));
+        // Marketing is registered but holds no Replicate right. The grant is checked on the
+        // owner's contract source (Cars), never on a collection the request names.
+        var response = await client.PostAsJsonAsync("/spark/etl/deploy", DeployRequest(UnprivilegedModule, "cars"));
 
         response.StatusCode.Should().Be(HttpStatusCode.Forbidden,
             "ETL grants read access to a whole collection, so it needs its own right — being a "
             + "known module is not enough");
+    }
+
+    [Fact]
+    public async Task Etl_deployment_is_refused_for_a_contract_the_owner_does_not_publish()
+    {
+        await _fixture.Host.SeedModuleAsync(GrantedModule);
+        using var client = NewClient();
+
+        // SparkUsers makes the point: a consumer can only ask for what the owner chose to publish,
+        // so the user store cannot be requested at all, granted or not.
+        var response = await client.PostAsJsonAsync("/spark/etl/deploy", DeployRequest(GrantedModule, "sparkusers"));
+
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
     [Fact]
@@ -175,7 +176,7 @@ public class CrossModuleSyncTests
         using var client = NewClient();
 
         var response = await client.PostAsJsonAsync("/spark/etl/deploy",
-            DeployRequest(GrantedModule, "Cars"));
+            DeployRequest(GrantedModule, "cars"));
 
         // The paired positive: F12's check must gate on the right, not refuse everything. Without
         // it, a fix that returned 403 unconditionally would look correct.

@@ -29,6 +29,30 @@
       "nl": "Welkom bij Spark"
     }
   },
+  "lookup": {
+    "ECarStatus": {
+      "InUse": {
+        "en": "In use",
+        "fr": "En usage",
+        "nl": "In gebruik"
+      },
+      "OnParking": {
+        "en": "In parking lot",
+        "fr": "Dans le parking",
+        "nl": "Op parking"
+      },
+      "InMaintenance": {
+        "en": "In maintenance",
+        "fr": "En maintenance",
+        "nl": "In onderhoud"
+      },
+      "Stolen": {
+        "en": "Stolen",
+        "fr": "Vole",
+        "nl": "Gestolen"
+      }
+    }
+  },
   "model": {
     "Address": {
       "attributes": {

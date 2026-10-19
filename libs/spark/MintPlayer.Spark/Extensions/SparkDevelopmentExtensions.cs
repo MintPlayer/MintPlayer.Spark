@@ -62,6 +62,8 @@ public static class SparkDevelopmentExtensions
     /// <item><c>--spark-synchronize-model</c> regenerates <c>App_Data/Model</c> and the hash file.</item>
     /// <item><c>--spark-verify-model</c> writes nothing and exits 3 if the model has drifted — the
     /// merge-queue gate.</item>
+    /// <item><c>--spark-synchronize-contracts</c> / <c>--spark-verify-contracts</c> write or check the application's
+    /// generated TypeScript contracts (<see cref="SparkContractCommands"/>).</item>
     /// </list>
     /// <para>
     /// The entity context type is taken from the registration made by
@@ -91,6 +93,9 @@ public static class SparkDevelopmentExtensions
         if (DescribeIfRequested(builder, args))
             return true;
 
+        if (SparkContractCommands.RunIfRequested(builder, args))
+            return true;
+
         var verifyOnly = args.Contains(VerifyFlag);
         if (!verifyOnly && !args.Contains(SynchronizeFlag))
             return false;
@@ -118,6 +123,9 @@ public static class SparkDevelopmentExtensions
         ArgumentNullException.ThrowIfNull(args);
 
         if (DescribeIfRequested(builder, args))
+            return true;
+
+        if (SparkContractCommands.RunIfRequested(builder, args))
             return true;
 
         var verifyOnly = args.Contains(VerifyFlag);

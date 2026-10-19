@@ -61,9 +61,9 @@ internal sealed partial class ListRevisions : IPostEndpoint<HistoryRequest>
 
     // ⚠️ EXPLICITLY exempt: a read, like /spark/po/load. A forged one changes nothing and its response
     // cannot be read cross-origin. Stated, not merely absent, so the next default change cannot sweep
-    // it in.
+    // it in. A denial is the standard refusal, answered by the endpoint filter.
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
-        => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(false));
+        => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(false)).RefuseDeniedInEnvelope();
 
     [Inject] private readonly ISparkHistory history;
     [Inject] private readonly ISparkAddOnEndpoints addOn;
@@ -83,15 +83,8 @@ internal sealed partial class ListRevisions : IPostEndpoint<HistoryRequest>
         // Before the current-row gate asks row security (row filters are memoized per request).
         addOn.UseDeletedFilter(request.Deleted, entityType);
 
-        try
-        {
-            var revisions =await history.ListAsync(entityType.Id, request.Id, request.Skip ?? 0, request.Take ?? 50, httpContext.RequestAborted);
-            return addOn.Envelope(revisions, StatusCodes.Status200OK);
-        }
-        catch (SparkAccessDeniedException)
-        {
-            return addOn.Refusal(httpContext);
-        }
+        var revisions = await history.ListAsync(entityType.Id, request.Id, request.Skip ?? 0, request.Take ?? 50, httpContext.RequestAborted);
+        return addOn.Envelope(revisions, StatusCodes.Status200OK);
     }
 }
 
@@ -107,7 +100,7 @@ internal sealed partial class GetRevision : IPostEndpoint<HistoryRequest>
 
     // ⚠️ EXPLICITLY exempt: a read (see ListRevisions).
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
-        => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(false));
+        => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(false)).RefuseDeniedInEnvelope();
 
     [Inject] private readonly ISparkHistory history;
     [Inject] private readonly ISparkAddOnEndpoints addOn;
@@ -126,15 +119,8 @@ internal sealed partial class GetRevision : IPostEndpoint<HistoryRequest>
 
         addOn.UseDeletedFilter(request.Deleted, entityType);
 
-        try
-        {
-            var revision =await history.GetAsync(entityType.Id, request.Id, request.ChangeVector, httpContext.RequestAborted);
-            return addOn.Envelope(revision, StatusCodes.Status200OK);
-        }
-        catch (SparkAccessDeniedException)
-        {
-            return addOn.Refusal(httpContext);
-        }
+        var revision = await history.GetAsync(entityType.Id, request.Id, request.ChangeVector, httpContext.RequestAborted);
+        return addOn.Envelope(revision, StatusCodes.Status200OK);
     }
 }
 
@@ -150,7 +136,7 @@ internal sealed partial class RevertPersistentObject : IPostEndpoint<HistoryRequ
     public static string Path => "/revert";
 
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
-        => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
+        => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true)).RefuseDeniedInEnvelope();
 
     [Inject] private readonly ISparkHistory history;
     [Inject] private readonly IDatabaseAccess databaseAccess;
@@ -190,10 +176,6 @@ internal sealed partial class RevertPersistentObject : IPostEndpoint<HistoryRequ
         catch (SparkActionDisabledException ex)
         {
             return addOn.ActionDisabled(ex);
-        }
-        catch (SparkAccessDeniedException)
-        {
-            return addOn.Refusal(httpContext);
         }
     }
 }

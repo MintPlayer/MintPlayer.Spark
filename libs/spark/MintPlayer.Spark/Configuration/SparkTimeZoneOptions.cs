@@ -1,3 +1,5 @@
+using MintPlayer.Spark.Abstractions.Builder;
+
 namespace MintPlayer.Spark.Configuration;
 
 /// <summary>
@@ -19,10 +21,10 @@ namespace MintPlayer.Spark.Configuration;
 /// its IANA id before sending it.
 /// </para>
 /// </remarks>
-public sealed class SparkTimeZoneOptions
+public sealed class SparkTimeZoneOptions : ISparkConfigurationSection
 {
     /// <summary>The configuration section these options are bound from.</summary>
-    public const string SectionName = "Spark:TimeZone";
+    public static string SectionName => "Spark:TimeZone";
 
     /// <summary>
     /// The default cookie name. Must stay in lockstep with <c>SPARK_TIMEZONE_COOKIE</c> in ng-spark's

@@ -75,12 +75,10 @@ public class EtlScriptDeploymentRecipientTests : SparkTestDriver
     private static EtlScriptDeploymentMessage Msg(string source = SourceModule) => new()
     {
         SourceModuleName = source,
-        Request = new EtlScriptRequest
+        Request = new EtlDeploymentRequest
         {
             RequestingModule = "HR",
-            TargetDatabase = "hr-db",
-            TargetUrls = ["http://localhost:8080"],
-            Scripts = [],
+            Contracts = [new EtlContractRequest { Contract = "cars", TargetCollection = "Cars" }],
         },
     };
 
@@ -152,6 +150,46 @@ public class EtlScriptDeploymentRecipientTests : SparkTestDriver
 
         await act.Should().ThrowAsync<HttpRequestException>()
             .Where(e => e.Message.Contains(SourceModule) && e.Message.Contains("boom"));
+    }
+
+    /// <summary>
+    /// F18, red before the fix: an owner without ETL in its licence answered 500 and the message
+    /// was retried until it dead-lettered. The owner's settled answers (400, 404, 409) now
+    /// dead-letter once, with the owner's reason; retrying cannot change them.
+    /// </summary>
+    [Theory]
+    [InlineData(HttpStatusCode.Conflict, EtlDeploymentResult.NotLicensedError)]
+    [InlineData(HttpStatusCode.NotFound, "Unknown contract 'cars' v1")]
+    [InlineData(HttpStatusCode.BadRequest, "Invalid target collection")]
+    public async Task A_settled_refusal_is_not_retried(HttpStatusCode status, string error)
+    {
+        await SeedSourceAsync(SourceModule, "http://fleet.test");
+        var handler = new StubHttpMessageHandler
+        {
+            Respond = _ => new HttpResponseMessage(status) { Content = new StringContent($$"""{"success":false,"error":"{{error}}"}""") },
+        };
+        var recipient = NewRecipient(handler);
+
+        var act = () => recipient.HandleAsync(Msg(), CancellationToken.None);
+
+        await act.Should().ThrowAsync<MintPlayer.Spark.Messaging.Abstractions.NonRetryableException>()
+            .Where(e => e.Message.Contains(SourceModule) && e.Message.Contains(error));
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.Unauthorized)]
+    [InlineData(HttpStatusCode.Forbidden)]
+    [InlineData(HttpStatusCode.ServiceUnavailable)]
+    public async Task A_refusal_that_can_still_settle_is_retried(HttpStatusCode status)
+    {
+        await SeedSourceAsync(SourceModule, "http://fleet.test");
+        var handler = new StubHttpMessageHandler { Respond = _ => new HttpResponseMessage(status) { Content = new StringContent("") } };
+        var recipient = NewRecipient(handler);
+
+        var act = () => recipient.HandleAsync(Msg(), CancellationToken.None);
+
+        // HttpRequestException is what the bus retries with backoff; a NonRetryableException would fail this.
+        await act.Should().ThrowAsync<HttpRequestException>();
     }
 
     [Fact]

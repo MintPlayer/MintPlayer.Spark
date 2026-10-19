@@ -99,13 +99,13 @@ semantics.
 ### Option A: Source-Generated Registration (Recommended)
 
 If your project references `MintPlayer.Spark.SourceGenerators`, a source generator discovers all
-`ISparkCronJob` implementers and generates an `AddCronJobs()` extension on `ISparkBuilder`:
+`ISparkCronJob` implementers and registers them in the generated `AddSparkDiscovered()` extension on `ISparkBuilder`:
 
 ```csharp
 builder.Services.AddSpark(builder.Configuration, spark =>
 {
     spark.UseContext<MyContext>();
-    spark.AddCronJobs(); // source-generated — registers every discovered job with its default schedule
+    spark.AddSparkDiscovered(); // source-generated — registers every discovered job with its default schedule
 });
 ```
 
@@ -122,7 +122,7 @@ builder.Services.AddSpark(builder.Configuration, spark =>
 });
 ```
 
-`AddCron` and `AddCronJobs` both register the scheduler exactly once, so they compose freely — call
+`AddCron` and `AddSparkDiscovered` both register the scheduler exactly once, so they compose freely — call
 both if you want auto-discovery plus an extra manual registration.
 
 ### Overriding the Schedule
@@ -149,8 +149,8 @@ Registering the same type twice without a distinct name throws an `InvalidOperat
 ### AllFeatures
 
 Apps that use `AddSparkFull` (the `MintPlayer.Spark.AllFeatures` package) get cron jobs wired
-automatically — the AllFeatures generator detects `ISparkCronJob` implementers and emits the
-`AddCronJobs()` call into `AddSparkFull`. No explicit registration is needed.
+automatically — `AddSparkFull` calls the generated `AddSparkDiscovered()`, which registers every
+`ISparkCronJob` implementer. No explicit registration is needed.
 
 ## How Scheduling Works
 
@@ -225,6 +225,6 @@ See the following files for working implementations:
 - `SparkCronScheduler.cs` — the background service: per-job loop + compare-exchange claim
 - `ISparkCronBuilder.cs` — `AddJob` registration (default, override, multi-schedule)
 - `SparkCronExtensions.cs` — `AddCron` DI registration
-- `../MintPlayer.Spark.SourceGenerators/Generators/CronJobRegistrationGenerator.cs` — source generator for auto-registration
-- `../apps/DemoApp/DemoApp/Jobs/HeartbeatJob.cs` — explicit `AddCronJobs()` registration
+- `../MintPlayer.Spark.SourceGenerators/Generators/SparkDiscoveryGenerator.cs` — source generator for auto-registration
+- `../apps/DemoApp/DemoApp/Jobs/HeartbeatJob.cs` — registration via the generated `AddSparkDiscovered()`
 - `../apps/Fleet/Fleet/Jobs/FleetHeartbeatJob.cs` — zero-config registration via `AddSparkFull`

@@ -1,3 +1,5 @@
+using MintPlayer.Spark.Abstractions.Builder;
+
 namespace MintPlayer.Spark.Authorization.Configuration;
 
 /// <summary>
@@ -9,10 +11,10 @@ namespace MintPlayer.Spark.Authorization.Configuration;
 /// attack is after. The per-number limit is shared by every account, so many accounts cannot point one number
 /// (or one premium-rate range) at the sender either.
 /// </remarks>
-public sealed class SparkPhoneVerificationOptions
+public sealed class SparkPhoneVerificationOptions : ISparkConfigurationSection
 {
     /// <summary>The configuration section the options are bound from.</summary>
-    public const string SectionName = "Spark:Auth:PhoneVerification";
+    public static string SectionName => "Spark:Auth:PhoneVerification";
 
     /// <summary>Digits in a code, 4 to 10. Default 6.</summary>
     public int CodeLength { get; set; } = 6;

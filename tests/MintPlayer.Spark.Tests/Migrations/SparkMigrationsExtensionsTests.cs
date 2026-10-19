@@ -15,15 +15,13 @@ namespace MintPlayer.Spark.Tests.Migrations;
 /// </summary>
 public class SparkMigrationsExtensionsTests
 {
-    private sealed class Mig_A : ISparkMigration
+    private sealed class M_202601010001_A : ISparkMigration
     {
-        public static long Version => 202601010001;
         public Task UpAsync(CancellationToken ct) => Task.CompletedTask;
     }
 
-    private sealed class Mig_B : ISparkMigration
+    private sealed class M_202601010002_B : ISparkMigration
     {
-        public static long Version => 202601010002;
         public Task UpAsync(CancellationToken ct) => Task.CompletedTask;
     }
 
@@ -32,7 +30,7 @@ public class SparkMigrationsExtensionsTests
     {
         var builder = new SparkBuilder(new ServiceCollection());
 
-        builder.AddMigrations(m => m.AddMigration<Mig_A>());
+        builder.AddMigrations(m => m.AddMigration<M_202601010001_A>());
 
         var registryDescriptor = builder.Services
             .Single(d => d.ServiceType == typeof(SparkMigrationRegistry));
@@ -40,7 +38,7 @@ public class SparkMigrationsExtensionsTests
 
         var registry = (SparkMigrationRegistry)registryDescriptor.ImplementationInstance!;
         registry.Migrations.Should().ContainSingle()
-            .Which.Version.Should().Be(Mig_A.Version);
+            .Which.Version.Should().Be(202601010001L);
 
         // Exactly one startup middleware was recorded on the builder's registry.
         MiddlewareCount(builder.Registry).Should().Be(1);
@@ -51,8 +49,8 @@ public class SparkMigrationsExtensionsTests
     {
         var builder = new SparkBuilder(new ServiceCollection());
 
-        builder.AddMigrations(m => m.AddMigration<Mig_A>());
-        builder.AddMigrations(m => m.AddMigration<Mig_B>());
+        builder.AddMigrations(m => m.AddMigration<M_202601010001_A>());
+        builder.AddMigrations(m => m.AddMigration<M_202601010002_B>());
 
         // Only ONE registry descriptor — the second call re-used the existing singleton.
         var descriptors = builder.Services
@@ -62,7 +60,7 @@ public class SparkMigrationsExtensionsTests
 
         var registry = (SparkMigrationRegistry)descriptors[0].ImplementationInstance!;
         registry.Migrations.Select(x => x.Version)
-            .Should().Equal(Mig_A.Version, Mig_B.Version);
+            .Should().Equal(202601010001L, 202601010002L);
 
         // The startup middleware was wired a single time despite two AddMigrations calls.
         MiddlewareCount(builder.Registry).Should().Be(1);
@@ -73,10 +71,10 @@ public class SparkMigrationsExtensionsTests
     {
         var builder = new SparkBuilder(new ServiceCollection());
 
-        builder.AddMigrations(m => m.AddMigration<Mig_A>());
+        builder.AddMigrations(m => m.AddMigration<M_202601010001_A>());
 
         var migDescriptor = builder.Services
-            .Single(d => d.ServiceType == typeof(Mig_A));
+            .Single(d => d.ServiceType == typeof(M_202601010001_A));
         migDescriptor.Lifetime.Should().Be(ServiceLifetime.Scoped);
     }
 

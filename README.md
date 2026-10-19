@@ -81,9 +81,8 @@ If you only need a subset of features, use the individual packages directly:
 builder.Services.AddSpark(builder.Configuration, spark =>
 {
     spark.UseContext<MySparkContext>();
-    spark.AddActions();
     spark.AddMessaging();
-    spark.AddRecipients();
+    spark.AddSparkDiscovered(); // generated: Actions classes, recipients, custom actions, cron jobs, migrations, …
 });
 
 app.UseRouting();
@@ -175,6 +174,7 @@ MintPlayer.Spark/
 | [Full-Text Search](docs/guide-search.md) | What a search term matches, why `[Search]` is not the gate, the breadcrumb narrowing, and why fuzzy search is not offered |
 | [The model hash](docs/model-hash.md) | Why a deployed app refuses to start on a stale model, verifying in CI, merge conflicts, the override, and which library layer moved |
 | [JSON schemas](docs/guide-json-schemas.md) | Validation, completion and hover descriptions for the six `App_Data` files, the managed `$schema`, `_` comments, and regenerating them in this repository |
+| [TypeScript contracts](docs/guide-typescript-contracts.md) | `[SparkContract]` records generated into committed `contracts.ts` files, the wire rules (camelCase, enums, `long`, nullability), and the CI verify step |
 | [Library layers](docs/guide-library-layers.md) | What a referenced library ships in `App_Data` (model, actions, rights, translations, program units) and how your files override it: merge rules, keyed rights and `bindings`, the `libraries` opt-out, `--spark-describe`, the gates |
 | [Attribute Grouping](docs/guide-attribute-grouping.md) | Two-level Tabs and Groups layout for entity forms and detail pages |
 | [Custom Attribute Renderers](docs/guide-custom-attribute-renderers.md) | Replace default attribute display/editing with custom Angular components |
@@ -417,9 +417,9 @@ Two things to know:
   `App_Data/Model/`, not by a runtime attribute check. If you add `[IgnoreProperty]` to a
   property that was already in the model and don't re-run synchronize, the old attribute is
   still there and still writable. Re-synchronize and commit the result.
-- **It does not filter your ETL script.** `[Replicated(EtlScript = "…")]` is developer-authored
-  JavaScript that Spark copies verbatim to RavenDB — nothing derives it from your properties. If
-  a field must not leave the source module, leave it out of the script yourself.
+- **It does not filter a replication contract.** The owner's ETL transform is generated from its
+  published contract projection (`Publish<TSource, TContract>(…)`), not from `[IgnoreProperty]`. If
+  a field must not leave the source module, leave it out of the projection.
 
 Note that `[JsonIgnore]` does **not** do this — model synchronization does not read serialization
 attributes.

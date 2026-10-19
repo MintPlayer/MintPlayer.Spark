@@ -1,7 +1,7 @@
 import { EntityAttributeDefinition } from './entity-type';
 import { PersistentObject } from './persistent-object';
 import { ShowedOn } from './showed-on';
-import { ValidationRule } from './validation-rule';
+import { ValidationRule } from './generated/contracts';
 import { TranslatedString } from './translated-string';
 
 /**

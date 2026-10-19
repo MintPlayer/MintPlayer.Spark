@@ -1,11 +1,12 @@
-using MintPlayer.Spark.Abstractions.Sharing;
+using MintPlayer.Spark.Abstractions.Sharing;
+using MintPlayer.Spark.Abstractions.Builder;
 
 namespace MintPlayer.Spark.Sharing;
 
 /// <summary><c>Spark:Share</c> (<c>docs/seo_analyzer_PRD.md</c> X6). Code given to <c>AddShareLinks</c> runs after the section.</summary>
-public sealed class SparkShareOptions
+public sealed class SparkShareOptions : ISparkConfigurationSection
 {
-    public const string SectionName = "Spark:Share";
+    public static string SectionName => "Spark:Share";
 
     /// <summary>The global switch (D31). Off: no new link is made and every existing link reads as unknown.</summary>
     public bool Enabled { get; set; } = true;

@@ -81,6 +81,13 @@ jobs:
         chmod +x "$pg"
         "$pg" build --check --only typescript
 
+    # The TypeScript contracts in ng-spark's entry points (<entry>/src/generated/contracts.ts) are generated from
+    # the C# [SparkContract] types and committed (commerce X20, docs/guide-typescript-contracts.md). Regenerate
+    # them in memory and fail on any difference, so a changed response record cannot drift from the client.
+    # Exit 3: out of date (run the command without --verify and commit); exit 2: a contract cannot be stated.
+    - name: Verify the generated TypeScript contracts are up to date
+      run: dotnet run --project tools/SchemaGenerator -- contracts --verify
+
     # vitest strips TypeScript without checking it, and the library build (ng-packagr) excludes the
     # spec files, so a type error in a spec was never reported anywhere: ten had built up in
     # ng-spark's specs (#460), one of them a fixture silently set to `undefined` because it named an
@@ -135,6 +142,9 @@ jobs:
           fi
           echo "::group::$project"
           dotnet run --project "$project" --no-build -c Debug -- --spark-verify-model
+          # The app's own TypeScript contracts (ClientApp/src/app/generated/contracts.ts); a no-op for an app
+          # that claims no namespace with [assembly: SparkClientModule]. Exit 3 means drift.
+          dotnet run --project "$project" --no-build -c Debug -- --spark-verify-contracts
           echo "::endgroup::"
         done
 

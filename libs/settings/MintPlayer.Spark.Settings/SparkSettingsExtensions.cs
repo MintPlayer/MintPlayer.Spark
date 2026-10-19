@@ -34,16 +34,10 @@ public static class SparkSettingsExtensions
     public static ISparkBuilder AddSettings(this ISparkBuilder builder, params Type[] declaringTypes)
     {
         var services = builder.Services;
-        var catalog = services.FirstOrDefault(d => d.ServiceType == typeof(SparkSettingsCatalog))?.ImplementationInstance as SparkSettingsCatalog;
-        if (catalog is null)
+        var catalog = services.GetOrAddSparkSingleton(() => new SparkSettingsCatalog(), out var created);
+        if (created)
         {
-            catalog = new SparkSettingsCatalog();
-            services.AddSingleton(catalog);
-
-            services.AddOptions<SparkSettingsOptions>();
-            services.AddSingleton<IConfigureOptions<SparkSettingsOptions>>(sp => new ConfigureNamedOptions<SparkSettingsOptions>(
-                Options.DefaultName,
-                options => sp.GetService<IConfiguration>()?.GetSection(SparkSettingsOptions.SectionName).Bind(options)));
+            services.AddSparkConfigurationSection<SparkSettingsOptions>();
 
             services.TryAddSingleton<ISparkSettings, SparkSettings>();
             services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, SettingsSeeder>());
@@ -66,11 +60,9 @@ public static class SparkSettingsExtensions
         var services = builder.Services;
         builder.AddSettings([]);
         var settingsCatalog = (SparkSettingsCatalog)services.First(d => d.ServiceType == typeof(SparkSettingsCatalog)).ImplementationInstance!;
-        var quotaCatalog = services.FirstOrDefault(d => d.ServiceType == typeof(Quotas.SparkQuotaCatalog))?.ImplementationInstance as Quotas.SparkQuotaCatalog;
-        if (quotaCatalog is null)
+        var quotaCatalog = services.GetOrAddSparkSingleton(() => new Quotas.SparkQuotaCatalog(), out var created);
+        if (created)
         {
-            quotaCatalog = new Quotas.SparkQuotaCatalog();
-            services.AddSingleton(quotaCatalog);
             services.TryAddSingleton(TimeProvider.System);
             services.TryAddSingleton<Quotas.ISparkQuotas, Quotas.SparkQuotas>();
             services.TryAddEnumerable(ServiceDescriptor.Scoped<MintPlayer.Spark.Abstractions.Actions.ISparkCustomActionGate, Quotas.SparkQuotaGate>());

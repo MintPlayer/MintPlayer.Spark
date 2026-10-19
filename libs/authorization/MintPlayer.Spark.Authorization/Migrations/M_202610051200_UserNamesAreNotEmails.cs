@@ -21,11 +21,10 @@ namespace MintPlayer.Spark.Authorization.Migrations;
 /// handle is ASCII). A generated handle is checked against every user name in the collection, so it is
 /// unique. Documents are patched, not stored, so an application subclass and the protected secrets on
 /// the document are left as they are. A second run finds nothing to do. Shipped by the package and
-/// registered by each application's generated <c>AddMigrations()</c>.
+/// registered by each application's generated <c>AddSparkDiscovered()</c>.
 /// </summary>
 public partial class M_202610051200_UserNamesAreNotEmails : ISparkMigration
 {
-    public static long Version => 202610051200;
     public static string? Description => "User names are public handles: replace email-shaped user names with a generated handle";
 
     [Inject] private readonly IDocumentStore store;

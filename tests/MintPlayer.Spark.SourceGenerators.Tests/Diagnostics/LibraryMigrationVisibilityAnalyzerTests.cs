@@ -5,7 +5,7 @@ namespace MintPlayer.Spark.SourceGenerators.Tests.Diagnostics;
 
 /// <summary>
 /// SPARK037 (#388): a library's migration is registered by the application's generated
-/// <c>AddMigrations()</c>, which names it, so a non-public one would never run.
+/// <c>AddSparkDiscovered()</c>, which names it, so a non-public one would never run.
 /// </summary>
 public class LibraryMigrationVisibilityAnalyzerTests
 {

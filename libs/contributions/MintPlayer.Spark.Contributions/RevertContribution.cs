@@ -50,7 +50,7 @@ internal sealed partial class RevertContribution : IPostEndpoint<RevertContribut
     public static string Path => "/revert-contribution";
 
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
-        => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
+        => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true)).RefuseDeniedInEnvelope();
 
     [Inject] private readonly ISparkAddOnEndpoints addOn;
     [Inject] private readonly IClientAccessor client;
@@ -123,10 +123,6 @@ internal sealed partial class RevertContribution : IPostEndpoint<RevertContribut
         catch (SparkValidationException ex)
         {
             return addOn.ValidationFailed(ex);
-        }
-        catch (SparkAccessDeniedException)
-        {
-            return addOn.Refusal(httpContext);
         }
     }
 }

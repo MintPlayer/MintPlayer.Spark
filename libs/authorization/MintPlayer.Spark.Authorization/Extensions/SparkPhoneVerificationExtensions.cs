@@ -35,18 +35,14 @@ public static class SparkPhoneVerificationExtensions
     /// <summary>The registrations of <see cref="AddPhoneVerification"/>; <paramref name="userType"/> is read when the service is first resolved.</summary>
     internal static void AddPhoneVerificationServices(IServiceCollection services, Func<Type?> userType, Action<SparkPhoneVerificationOptions>? configure)
     {
-        if (services.Any(d => d.ServiceType == typeof(PhoneVerificationMarker)))
+        if (!services.TryAddSparkMarker<PhoneVerificationMarker>())
         {
             if (configure is not null)
                 services.Configure(configure);
             return;
         }
-        services.AddSingleton<PhoneVerificationMarker>();
 
-        services.AddOptions<SparkPhoneVerificationOptions>();
-        services.AddSingleton<IConfigureOptions<SparkPhoneVerificationOptions>>(sp => new ConfigureNamedOptions<SparkPhoneVerificationOptions>(
-            Options.DefaultName,
-            options => sp.GetService<IConfiguration>()?.GetSection(SparkPhoneVerificationOptions.SectionName).Bind(options)));
+        services.AddSparkConfigurationSection<SparkPhoneVerificationOptions>();
         if (configure is not null)
             services.Configure(configure);
 

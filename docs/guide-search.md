@@ -161,13 +161,48 @@ also the only path that still matches breadcrumb text, since it runs after mappi
 
 ## Known limits
 
-### No fuzzy matching
+### No fuzzy matching in the grid search
 
-`volkswagon` does not find `Volkswagen`. This was measured and deliberately not implemented: RavenDB's `Fuzzy`
-is **unsupported by Corax**, the default search engine and the one generated indexes use — it fails server-side
-with `Method 'Fuzzy' is not supported`. It is therefore an index-definition decision (`SearchEngineType.Lucene`)
-rather than a query feature. It is also mutually exclusive with the wildcard wrapping above, because wildcards
+`volkswagon` does not find `Volkswagen` through the grid's search box. RavenDB's `Fuzzy` is **unsupported by
+Corax**, the default engine on Community and Developer servers: it fails server-side with
+`Method 'Fuzzy' is not supported`. It is also mutually exclusive with the wildcard wrapping above, because wildcards
 count as literal edits and silently consume the edit-distance budget.
+
+Your own queries can use it (commerce X18). Mark the field `[Fuzzy]` and Spark deploys that index on Lucene, which
+every licence allows per index:
+
+```csharp
+[GenerateIndex]
+public class Place
+{
+    public string? Id { get; set; }
+    [Fuzzy] public string Name { get; set; } = string.Empty;
+}
+
+var hits = session.Advanced.DocumentQuery<Place, Places_Overview>()
+    .WhereEquals(nameof(Place.Name), "brusels")
+    .Fuzzy(0.8m)
+    .ToList();
+```
+
+- **Where the marker goes.** On a `[GenerateIndex]` entity property, the generated index sets
+  `SearchEngineType = SearchEngineType.Lucene` itself. On a hand-written index, mark a property of its
+  `[FromIndex]` projection or of the document it maps; Spark's index registration (`UseSpark`, and
+  `RavenIndexHelper` in tests) sets the engine before deploying. A library-declared index takes it from its result
+  type ([Queries & Sorting](guide-queries-and-sorting.md#indexes-declared-by-a-library-sparkindexmap)).
+- **Every other index keeps the server default.** Nothing is pinned to Corax, because pinning would change the
+  definition of every existing index and rebuild all of them.
+- **An engine change rebuilds side by side.** Adding or removing the marker changes the definition, and RavenDB
+  builds `ReplacementOf/{name}` while the old index keeps serving. RavenDB applies an engine only to a new or reset
+  index, so after deployment Spark reads each fuzzy index's statistics and, if it still runs another engine with no
+  replacement under way, resets it side by side (`SparkSearchEngine.Reconcile`).
+- **A pin that contradicts the marker stops startup.** A hand-written index that sets `SearchEngineType.Corax` in
+  its constructor while a field of it is `[Fuzzy]` throws at registration: every fuzzy query on it would fail.
+- **SPARK063** flags `Fuzzy(...)` on a `DocumentQuery<T, TIndex>()` (or `DocumentQuery<T>("Index/Name")`) whose
+  index marks no field, and on a dynamic query, which runs on an auto index. It follows one fluent chain only; a
+  query passed in from elsewhere is not followed, and raw RQL is not inspected.
+- `[Fuzzy]` on a non-text property still switches the engine but is reported (SPARK_INDEX_014): edit distance means
+  nothing on a number.
 
 ### No relevance ranking
 

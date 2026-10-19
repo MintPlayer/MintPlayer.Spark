@@ -39,6 +39,7 @@ internal sealed partial class DeleteManyPersistentObjects : IPostEndpoint<Delete
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
     {
         builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
+        builder.RefuseDeniedInEnvelope();
     }
 
     [Inject] private readonly IDatabaseAccess databaseAccess;
@@ -178,17 +179,9 @@ internal sealed partial class DeleteManyPersistentObjects : IPostEndpoint<Delete
         {
             return ClientResult.Envelope(clientAccessor, new { errors = new[] { ex.ToError() } }, StatusCodes.Status400BadRequest);
         }
-        catch (SparkRowLevelAccessDeniedException)
-        {
-            return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
-        }
         catch (SparkActionDisabledException ex)
         {
             return ClientResult.ActionDisabled(clientAccessor, ex);
-        }
-        catch (SparkAccessDeniedException)
-        {
-            return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
         }
         catch (SparkThrottledException ex)
         {

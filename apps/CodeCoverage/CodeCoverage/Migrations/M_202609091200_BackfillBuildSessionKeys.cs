@@ -49,7 +49,6 @@ namespace CodeCoverage.Migrations;
 /// </remarks>
 public partial class M_202609091200_BackfillBuildSessionKeys : ISparkMigration
 {
-    public static long Version => 202609091200;
     public static string? Description => "Give stored BuildSession rows a key";
 
     [Inject] private readonly IDocumentStore store;

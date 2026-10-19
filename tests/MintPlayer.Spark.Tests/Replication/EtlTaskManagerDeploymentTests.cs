@@ -5,7 +5,8 @@ using MintPlayer.Spark.Replication.Services;
 using MintPlayer.Spark.Testing;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Operations.OngoingTasks;
-using Raven.Client.Exceptions.Commercial;
+using Microsoft.Extensions.Logging.Abstractions;
+using NSubstitute;
 using Raven.Client.ServerWide;
 using Raven.Client.ServerWide.Operations;
 
@@ -49,25 +50,64 @@ public class EtlTaskManagerDeploymentTests : SparkTestDriver
         await base.DisposeAsync();
     }
 
-    private EtlScriptRequest Request(string script = "loadToCars(this);") => new()
-    {
-        RequestingModule = Module,
-        TargetDatabase = _targetDatabase,
-        TargetUrls = Store.Urls,
-        Scripts = [new EtlScriptItem { SourceCollection = "Cars", Script = script }],
-    };
+    private EtlDeployment Request(string script = "loadToCars({\n    Plate: this.Plate\n});\n") => new(
+        Module,
+        _targetDatabase,
+        Store.Urls,
+        [new EtlTransformScript("cars-v1-Cars", "Cars", script)]);
 
     private OngoingTaskRavenEtl? Task_()
         => Store.Maintenance.Send(new GetOngoingTaskInfoOperation($"spark-etl-{Module}", OngoingTaskType.RavenEtl)) as OngoingTaskRavenEtl;
 
     /// <summary>True when this server's licence refuses ETL, in which case there is nothing further to test.</summary>
-    private bool EtlIsNotLicensed(EtlDeploymentResult result)
-        => !result.Success && _log.Entries.Any(e => e.Exception is LicenseLimitException);
+    private static bool EtlIsNotLicensed(EtlDeploymentResult result)
+        => !result.Success && result.Error == EtlDeploymentResult.NotLicensedError;
+
+    private EtlTaskManager NewManager(IDocumentStore store) => new(store, _log, new RavenEtlLicence(store, NullLogger<RavenEtlLicence>.Instance));
+
+    /// <summary>
+    /// F18: the licence read reports what the server does. Where it says ETL is licensed the
+    /// deployment goes through; where it says not, the deployment refuses with the reason instead
+    /// of a generic failure. CI's Developer licence covers the first branch.
+    /// </summary>
+    [Fact]
+    public async Task The_licence_read_agrees_with_what_the_server_does()
+    {
+        var hasEtl = await new RavenEtlLicence(Store, NullLogger<RavenEtlLicence>.Instance).HasRavenEtlAsync(CancellationToken.None);
+        hasEtl.HasValue.Should().BeTrue("/license/status reports HasRavenEtl on every licence");
+
+        var result = await NewManager(Store).DeployAsync(Request());
+
+        if (hasEtl == true)
+            result.Success.Should().BeTrue(result.Error ?? "");
+        else
+            result.Error.Should().Be(EtlDeploymentResult.NotLicensedError);
+    }
+
+    /// <summary>
+    /// F16 at the database: the transform RavenDB holds is exactly the owner-generated script, and the
+    /// connection string points at the deployment's (registry-taken) database.
+    /// </summary>
+    [Fact]
+    public async Task The_deployed_transform_and_connection_string_are_the_owners()
+    {
+        var script = EtlTransformGenerator.Script([new EtlField("Plate", ["LicensePlate"])], "Cars");
+
+        var result = await NewManager(Store).DeployAsync(Request(script));
+        if (EtlIsNotLicensed(result))
+            return;
+
+        result.Success.Should().BeTrue(result.Error ?? "");
+        var record = Store.Maintenance.Server.Send(new GetDatabaseRecordOperation(Store.Database));
+        var etl = record.RavenEtls.Single(e => e.Name == $"spark-etl-{Module}");
+        etl.Transforms.Single().Script.Should().Be(script);
+        record.RavenConnectionStrings[$"spark-etl-{Module}"].Database.Should().Be(_targetDatabase);
+    }
 
     [Fact]
     public async Task A_first_deployment_creates_the_task_and_a_second_updates_it()
     {
-        var manager = new EtlTaskManager(Store, _log);
+        var manager = NewManager(Store);
 
         var created = await manager.DeployAsync(Request());
         if (EtlIsNotLicensed(created))
@@ -78,7 +118,7 @@ public class EtlTaskManagerDeploymentTests : SparkTestDriver
         var task = Task_();
         task.Should().NotBeNull();
 
-        var updated = await manager.DeployAsync(Request("loadToCars({ Plate: this.Plate });"));
+        var updated = await manager.DeployAsync(Request("loadToCars({\n    Plate: this.LicensePlate\n});\n"));
 
         updated.Success.Should().BeTrue(updated.Error ?? "");
         updated.TasksUpdated.Should().Be(1);
@@ -91,7 +131,7 @@ public class EtlTaskManagerDeploymentTests : SparkTestDriver
         var record = Store.Maintenance.Server.Send(new GetDatabaseRecordOperation(Store.Database));
         record.RavenEtls.Count(e => e.Name == task!.TaskName).Should().Be(1);
         record.RavenEtls.Single(e => e.Name == task!.TaskName).Transforms.Single().Script
-            .Should().Contain("Plate: this.Plate");
+            .Should().Contain("Plate: this.LicensePlate");
     }
 
     /// <summary>
@@ -106,7 +146,7 @@ public class EtlTaskManagerDeploymentTests : SparkTestDriver
         // Where the licence allows it, make the task exist first: that is the case the bug turned
         // into a duplicate. Without ETL in the licence the assertion below still holds — a failed
         // lookup must not be answered by an add either way — so the test does not stop here.
-        var created = await new EtlTaskManager(Store, _log).DeployAsync(Request());
+        var created = await NewManager(Store).DeployAsync(Request());
         if (!EtlIsNotLicensed(created))
             created.Success.Should().BeTrue(created.Error ?? "");
 
@@ -122,7 +162,10 @@ public class EtlTaskManagerDeploymentTests : SparkTestDriver
         flaky.Initialize();
         _log.Entries.Clear();
 
-        var result = await new EtlTaskManager(flaky, _log).DeployAsync(Request());
+        // The licence was read above through the healthy store; the flaky one is only for the task lookup.
+        var licence = Substitute.For<IRavenEtlLicence>();
+        licence.HasRavenEtlAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult<bool?>(true));
+        var result = await new EtlTaskManager(flaky, _log, licence).DeployAsync(Request());
 
         result.Success.Should().BeFalse();
         result.Error.Should().Be("ETL_DEPLOY_FAILED");

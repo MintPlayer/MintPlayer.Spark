@@ -79,9 +79,8 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSpark(builder.Configuration, spark =>
 {
     spark.UseContext<MySparkContext>();
-    spark.AddActions();       // Source-generated: registers all Actions classes
     spark.AddMessaging();     // Optional: durable message bus
-    spark.AddRecipients();    // Source-generated: registers all IRecipient<T> classes
+    spark.AddSparkDiscovered(); // Source-generated: registers the Actions classes, IRecipient<T> classes, … (see below)
 });
 
 var app = builder.Build();
@@ -345,7 +344,7 @@ the [CORS guide](../../../docs/guide-cors.md).
 | `MapSparkFull()` | **AllFeatures**: Maps all Spark REST endpoints |
 | `AddSpark(IConfiguration, Action<ISparkBuilder>)` | Register Spark services, bound to the `Spark` configuration section |
 | `AddSpark(Action<ISparkBuilder>)` | Register Spark services without configuration binding |
-| `spark.AddActions()` | Register all entity-specific Actions classes (source-generated) |
+| `spark.AddSparkDiscovered()` | Register everything the source generator discovered in the project (see "Discovered registrations") |
 | `AddSparkActions<TActions, TEntity>()` | Register a specific Actions class |
 | `UseSpark()` | Add Spark middleware to the pipeline |
 | `UseSpark(Action<UseSparkOptions>)` | Add Spark middleware with per-app options |
@@ -354,6 +353,43 @@ the [CORS guide](../../../docs/guide-cors.md).
 | `builder.SynchronizeSparkModelsIfRequested(args)` | Build step: sync or verify the model, then return from `Main` |
 
 RavenDB indexes are deployed by `UseSpark()` itself — there is nothing to call.
+
+### Discovered registrations
+
+`MintPlayer.Spark.SourceGenerators` scans the project once and emits one `internal` extension,
+`spark.AddSparkDiscovered()`, into the project's root namespace. It registers, in this order:
+
+| Kind | Found by | Registered with |
+|------|----------|-----------------|
+| Actions classes | derives from `DefaultPersistentObjectActions<T>` | `AddSparkActions<TActions, T>()` |
+| Custom actions | implements `ICustomAction` | scoped |
+| Message recipients | implements `IRecipient<T>` (and `ICheckpointRecipient<T>`) | scoped, per message type |
+| Cron jobs | implements `ISparkCronJob` | `AddCron(cron => cron.AddJob<T>())` |
+| Migrations | implements `ISparkMigration`; in an application also the public migrations referenced packages ship | `AddMigrations(m => m.AddMigration<T>())`, the project's own first |
+| Interceptors | implements `ISparkInterceptor` (not an Actions class) | `AddInterceptor<T>()` |
+| Subscription workers | derives from `SparkSubscriptionWorker<T>` | `AddSubscriptionWorker<T>()` |
+| Row policies | implements `IRowPolicy` | `AddSparkRowPolicy<T>()` |
+| Contracts | implements an interface marked `[SparkDiscoverable]` | `TryAddEnumerable`, with the attribute's `Lifetime` (default scoped) |
+
+Abstract classes are skipped, and so are generic and private classes for the last four kinds. A
+kind is emitted only when the package its registration calls is referenced. `AddSparkFull` calls
+`AddSparkDiscovered()` itself.
+
+The method covers **its own compilation only**: a class library calls its own generated
+`AddSparkDiscovered()` from inside its `AddXxx()` extension, because the method is internal.
+
+**`[SparkDiscoverable]`** puts a new extension point under discovery without touching the
+generator. Mark the interface, and every implementation in an application is registered:
+
+```csharp
+[SparkDiscoverable]                                    // Lifetime = ServiceLifetime.Scoped by default
+public interface IReplicaChanged<T> { Task OnChangedAsync(T replica, CancellationToken ct); }
+
+public class ProductChanged : IReplicaChanged<Product> { … }  // registered as IReplicaChanged<Product>
+```
+
+Registration uses `TryAddEnumerable`, so several implementations of one interface all register and
+a hand-written registration of the same pair is not doubled.
 
 ## Model Synchronization
 

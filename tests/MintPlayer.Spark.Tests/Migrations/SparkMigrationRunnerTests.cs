@@ -16,39 +16,35 @@ public class SparkMigrationRunnerTests : SparkTestDriver
     // Shared observer so we can see what ran, across DI scopes.
     public sealed class Recorder { public List<long> Applied { get; } = []; }
 
-    public sealed class Mig_1 : ISparkMigration
+    public sealed class M_202601010001_One : ISparkMigration
     {
-        public static long Version => 202601010001;
         private readonly Recorder _recorder; private readonly IAsyncDocumentSession _session;
-        public Mig_1(Recorder recorder, IAsyncDocumentSession session) { _recorder = recorder; _session = session; }
+        public M_202601010001_One(Recorder recorder, IAsyncDocumentSession session) { _recorder = recorder; _session = session; }
         public async Task UpAsync(CancellationToken ct)
         {
-            _recorder.Applied.Add(Version);
+            _recorder.Applied.Add(SparkMigrationVersion.Of(GetType()));
             await _session.StoreAsync(new SeededDoc { Tag = "one" }, "seeded/1", ct);
             await _session.SaveChangesAsync(ct);
         }
     }
 
-    public sealed class Mig_2 : ISparkMigration
+    public sealed class M_202601010002_Two : ISparkMigration
     {
-        public static long Version => 202601010002;
         private readonly Recorder _recorder;
-        public Mig_2(Recorder recorder) { _recorder = recorder; }
-        public Task UpAsync(CancellationToken ct) { _recorder.Applied.Add(Version); return Task.CompletedTask; }
+        public M_202601010002_Two(Recorder recorder) { _recorder = recorder; }
+        public Task UpAsync(CancellationToken ct) { _recorder.Applied.Add(SparkMigrationVersion.Of(GetType())); return Task.CompletedTask; }
     }
 
-    public sealed class Mig_3 : ISparkMigration
+    public sealed class M_202601010003_Three : ISparkMigration
     {
-        public static long Version => 202601010003;
         private readonly Recorder _recorder;
-        public Mig_3(Recorder recorder) { _recorder = recorder; }
-        public Task UpAsync(CancellationToken ct) { _recorder.Applied.Add(Version); return Task.CompletedTask; }
+        public M_202601010003_Three(Recorder recorder) { _recorder = recorder; }
+        public Task UpAsync(CancellationToken ct) { _recorder.Applied.Add(SparkMigrationVersion.Of(GetType())); return Task.CompletedTask; }
     }
 
-    // A migration that throws — registered with a version BETWEEN 1 and 3 to prove fail-fast halts.
-    public sealed class Mig_Boom : ISparkMigration
+    // A migration that throws — its name gives it version 2, BETWEEN 1 and 3, to prove fail-fast halts.
+    public sealed class M_202601010002_Boom : ISparkMigration
     {
-        public static long Version => 202601010002; // same slot as Mig_2 when used alone
         public Task UpAsync(CancellationToken ct) => throw new InvalidOperationException("boom");
     }
 
@@ -80,7 +76,7 @@ public class SparkMigrationRunnerTests : SparkTestDriver
     public async Task Runs_pending_migrations_in_version_order_and_writes_markers()
     {
         // Register out of order to prove the runner sorts by version.
-        var sp = BuildProvider(typeof(Mig_3), typeof(Mig_1), typeof(Mig_2));
+        var sp = BuildProvider(typeof(M_202601010003_Three), typeof(M_202601010001_One), typeof(M_202601010002_Two));
 
         await SparkMigrationRunner.RunAsync(sp, CancellationToken.None);
 
@@ -95,7 +91,7 @@ public class SparkMigrationRunnerTests : SparkTestDriver
     [Fact]
     public async Task Applied_migrations_are_skipped_on_a_second_run()
     {
-        var sp = BuildProvider(typeof(Mig_1), typeof(Mig_2));
+        var sp = BuildProvider(typeof(M_202601010001_One), typeof(M_202601010002_Two));
 
         await SparkMigrationRunner.RunAsync(sp, CancellationToken.None);
         await SparkMigrationRunner.RunAsync(sp, CancellationToken.None);
@@ -106,13 +102,13 @@ public class SparkMigrationRunnerTests : SparkTestDriver
     [Fact]
     public async Task A_throwing_migration_halts_the_run_and_leaves_itself_unmarked()
     {
-        // Mig_1 (applies) → Mig_Boom (throws, version 2) → Mig_3 (must NOT run).
-        var sp = BuildProvider(typeof(Mig_1), typeof(Mig_Boom), typeof(Mig_3));
+        // M_202601010001_One (applies) → M_202601010002_Boom (throws, version 2) → M_202601010003_Three (must NOT run).
+        var sp = BuildProvider(typeof(M_202601010001_One), typeof(M_202601010002_Boom), typeof(M_202601010003_Three));
 
         var act = async () => await SparkMigrationRunner.RunAsync(sp, CancellationToken.None);
         await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("boom");
 
-        // Mig_1 ran; Mig_3 must not — fail-fast halts the run at the throwing migration.
+        // M_202601010001_One ran; M_202601010003_Three must not — fail-fast halts the run at the throwing migration.
         _recorder.Applied.Should().Equal(202601010001L);
 
         using var session = Store.OpenAsyncSession();
@@ -151,7 +147,7 @@ public class SparkMigrationRunnerTests : SparkTestDriver
     [Fact]
     public async Task RunAtStartup_applies_migrations_synchronously()
     {
-        var sp = BuildProvider(typeof(Mig_1), typeof(Mig_2));
+        var sp = BuildProvider(typeof(M_202601010001_One), typeof(M_202601010002_Two));
 
         // Synchronous wrapper: blocks until done.
         SparkMigrationRunner.RunAtStartup(sp);
@@ -165,8 +161,8 @@ public class SparkMigrationRunnerTests : SparkTestDriver
     [Fact]
     public async Task Lock_is_released_after_success_so_a_later_run_proceeds()
     {
-        // First run applies Mig_1 + Mig_2 and must RELEASE the lock in its finally block.
-        var first = BuildProvider(typeof(Mig_1), typeof(Mig_2));
+        // First run applies M_202601010001_One + M_202601010002_Two and must RELEASE the lock in its finally block.
+        var first = BuildProvider(typeof(M_202601010001_One), typeof(M_202601010002_Two));
         await SparkMigrationRunner.RunAsync(first, CancellationToken.None);
 
         // The lock is gone — a later run can acquire it fresh.
@@ -175,7 +171,7 @@ public class SparkMigrationRunnerTests : SparkTestDriver
         afterFirst.Should().BeNull("the runner releases the compare-exchange lock after a successful run");
 
         // Second run adds a NEW higher-version migration; it must acquire the lock again and apply it.
-        var second = BuildProvider(typeof(Mig_1), typeof(Mig_2), typeof(Mig_3));
+        var second = BuildProvider(typeof(M_202601010001_One), typeof(M_202601010002_Two), typeof(M_202601010003_Three));
         await SparkMigrationRunner.RunAsync(second, CancellationToken.None);
 
         _recorder.Applied.Should().Equal(202601010001, 202601010002, 202601010003);
@@ -208,7 +204,7 @@ public class SparkMigrationRunnerTests : SparkTestDriver
         await Store.Operations.SendAsync(new PutCompareExchangeValueOperation<DateTime>(
             LockKey, DateTime.UtcNow.AddMinutes(20), 0));
 
-        var sp = BuildProvider(typeof(Mig_1), typeof(Mig_2));
+        var sp = BuildProvider(typeof(M_202601010001_One), typeof(M_202601010002_Two));
 
         var act = async () => await SparkMigrationRunner.RunAsync(
             sp, CancellationToken.None, lockWaitBudget: TimeSpan.FromSeconds(2));
@@ -246,7 +242,7 @@ public class SparkMigrationRunnerTests : SparkTestDriver
             await seed.SaveChangesAsync();
         }
 
-        var sp = BuildProvider(typeof(Mig_1), typeof(Mig_2));
+        var sp = BuildProvider(typeof(M_202601010001_One), typeof(M_202601010002_Two));
 
         await SparkMigrationRunner.RunAsync(sp, CancellationToken.None, lockWaitBudget: TimeSpan.FromSeconds(5));
 
@@ -260,7 +256,7 @@ public class SparkMigrationRunnerTests : SparkTestDriver
         await Store.Operations.SendAsync(new PutCompareExchangeValueOperation<DateTime>(
             LockKey, DateTime.UtcNow.AddMinutes(-5), 0));
 
-        var sp = BuildProvider(typeof(Mig_1), typeof(Mig_2));
+        var sp = BuildProvider(typeof(M_202601010001_One), typeof(M_202601010002_Two));
 
         await SparkMigrationRunner.RunAsync(sp, CancellationToken.None);
 

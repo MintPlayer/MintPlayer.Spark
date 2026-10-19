@@ -56,9 +56,10 @@ var hague = new TranslatedString { Entries =
 ] };
 ```
 
-Code-defined lookup labels use the same one-liner through `_TS(("en", "Active"), ("fr", "Actif"), ("nl", "Actief"))`.
 Each text names its language, so the languages cannot silently swap. The old positional
-`Create(en, fr, nl)` could swap them.
+`Create(en, fr, nl)` could swap them. Code-defined lookup labels carry no text at all: a
+`[SparkLookup]` enum's labels are the keys `lookup.{Enum}.{Member}` in `translations.json` (see
+[Reference attributes](guide-reference-attributes.md#transient-lookup-references-code-defined)).
 
 | Member | What |
 |---|---|
@@ -280,6 +281,14 @@ A model element finds its text without naming a key (D4):
 | Action label / confirmation / description | `actions.{Name}.label` / `.confirmation` / `.description` |
 | Security group | `security.groups.{name}.label` (the group's untranslated name stays its identity for claims, D24) |
 | Language name | `culture.languages.{code}` |
+| Lookup value (`[SparkLookup]` enum member) | `lookup.{Enum}.{Member}` (resolved when `/spark/lookupref/{name}` serves it) |
+
+**The key guard.** `tools/verify-translation-keys.test.mjs` (`npm run test:tools`, run by CI) fails when
+the ng-spark library or an app's `ClientApp` asks for a literal key (`lang.t('common.save', …)`,
+`'auth.logout' | t`, a component's prefixed `t('title')` helper) that no layer defines, when a
+`[SparkLookup]` member has no label in its project's layer, and when a `lookup.*` key labels no member.
+Keys built at runtime (`'x.' + name`) are not checked. A key a library's client code needs belongs in
+that library's layer; an app's, in its own or a library's.
 
 A model file may instead name a key to reuse one (`"label": "common.name"`). An element whose key no
 layer translates shows its humanized name (`CreatedBy` → `Created By`); a help text shows nothing.

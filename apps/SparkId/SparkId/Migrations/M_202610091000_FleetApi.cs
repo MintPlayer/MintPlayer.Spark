@@ -24,7 +24,6 @@ namespace SparkId.Migrations;
 /// </remarks>
 public partial class M_202610091000_FleetApi : ISparkMigration
 {
-    public static long Version => 202610091000;
     public static string? Description => "Development: seed the fleet API resource (fleet.read) and offer it to HR";
 
     [Inject] private readonly IAsyncDocumentSession session;

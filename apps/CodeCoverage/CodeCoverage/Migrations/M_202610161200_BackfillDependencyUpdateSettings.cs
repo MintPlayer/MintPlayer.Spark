@@ -24,7 +24,6 @@ namespace CodeCoverage.Migrations;
 /// </remarks>
 public partial class M_202610161200_BackfillDependencyUpdateSettings : ISparkMigration
 {
-    public static long Version => 202610161200;
 
     public static string? Description =>
         "Accounts and repositories get the dependency updater's settings with their defaults, so they can be queried";

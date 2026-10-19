@@ -2944,5 +2944,72 @@
         }
       }
     }
+  },
+  "lookup": {
+    "EOidcMemberRole": {
+      "Admin": {
+        "en": "Admin",
+        "fr": "Administrateur",
+        "nl": "Beheerder"
+      },
+      "Developer": {
+        "en": "Developer",
+        "fr": "Développeur",
+        "nl": "Ontwikkelaar"
+      },
+      "Tester": {
+        "en": "Tester",
+        "fr": "Testeur",
+        "nl": "Tester"
+      }
+    },
+    "EOidcApplicationMode": {
+      "Development": {
+        "en": "Development",
+        "fr": "Développement",
+        "nl": "Ontwikkeling"
+      },
+      "Live": {
+        "en": "Live",
+        "fr": "En ligne",
+        "nl": "Live"
+      }
+    },
+    "EOidcResourceKind": {
+      "Identity": {
+        "en": "Identity",
+        "fr": "Identité",
+        "nl": "Identiteit"
+      },
+      "Api": {
+        "en": "API",
+        "fr": "API",
+        "nl": "API"
+      }
+    },
+    "EOidcClientType": {
+      "Confidential": {
+        "en": "Confidential",
+        "fr": "Confidentiel",
+        "nl": "Vertrouwelijk"
+      },
+      "Public": {
+        "en": "Public",
+        "fr": "Public",
+        "nl": "Publiek"
+      }
+    },
+    "EOidcConsentType": {
+      "Explicit": {
+        "en": "Ask the user",
+        "fr": "Demander à l'utilisateur",
+        "nl": "De gebruiker vragen"
+      },
+      "Implicit": {
+        "en": "Automatic",
+        "fr": "Automatique",
+        "nl": "Automatisch"
+      }
+    }
   }
 }

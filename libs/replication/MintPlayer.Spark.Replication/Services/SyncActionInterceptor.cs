@@ -212,7 +212,7 @@ internal partial class SyncActionInterceptor : ISyncActionInterceptor
 
     /// <summary>
     /// Infers RavenDB collection name from a CLR type using the default pluralization convention.
-    /// Matches the logic in EtlScriptCollector.
+    /// Used only for write-back; the read path takes the source collection from the owner's contract.
     /// </summary>
     private static string InferCollectionName(Type type)
     {

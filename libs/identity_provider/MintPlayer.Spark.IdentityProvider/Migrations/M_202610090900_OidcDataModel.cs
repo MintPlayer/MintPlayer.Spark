@@ -32,7 +32,6 @@ namespace MintPlayer.Spark.IdentityProvider.Migrations;
 /// </summary>
 public partial class M_202610090900_OidcDataModel : ISparkMigration
 {
-    public static long Version => 202610090900;
     public static string? Description => "Identity provider platform data model: OidcResources, OidcGrants, application Scopes[], token expiry";
 
     [Inject] private readonly IDocumentStore store;

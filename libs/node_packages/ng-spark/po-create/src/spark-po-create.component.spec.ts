@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { SparkPoCreateComponent } from './spark-po-create.component';
 import { SparkService, SparkLanguageService } from '@mintplayer/ng-spark/services';
+import { SparkNotificationService } from '@mintplayer/ng-spark/client-operations';
 import { EntityType, ShowedOn, translated } from '@mintplayer/ng-spark/models';
 import { nextNavigationEnd, StubComponent } from '../../src/test-utils';
 
@@ -130,6 +131,31 @@ describe('SparkPoCreateComponent', () => {
     expect(saved).toHaveBeenCalledWith({ id: 'people/new-1', name: 'Created' });
     expect(TestBed.inject(Router).url).toBe('/po/person/people%2Fnew-1');
     expect(c.isSaving()).toBe(false);
+  });
+
+  // Commerce X7: a 202 is a create the server diverted for approval. Accepted, not created: a notice, no
+  // navigation to an object that does not exist, no error in the form.
+  it('a create submitted for approval shows a notice, emits submitted and never saved', async () => {
+    const receipt = { submitted: { kind: 'approval', referenceId: 'approvals/1' } };
+    const { harness } = await setup({ create: vi.fn().mockResolvedValue(receipt) });
+    const c = await harness.navigateByUrl('/po/person/new', SparkPoCreateComponent);
+    await harness.fixture.whenStable();
+    c.formData.set({ ...c.formData(), FirstName: 'Alice' });
+
+    const saved = vi.fn();
+    const submitted = vi.fn();
+    c.saved.subscribe(saved);
+    c.submitted.subscribe(submitted);
+    const back = vi.spyOn(window.history, 'back').mockImplementation(() => undefined);
+
+    await c.onSave();
+
+    expect(submitted).toHaveBeenCalledWith(receipt);
+    expect(saved).not.toHaveBeenCalled();
+    expect(back).toHaveBeenCalledOnce();
+    expect(c.validationErrors()).toEqual([]);
+    expect(TestBed.inject(SparkNotificationService).toasts().map(t => t.message)).toEqual(['common.submittedForApproval']);
+    back.mockRestore();
   });
 
   // Worse here than on the edit page: this list is the ONLY source of the create payload, so an

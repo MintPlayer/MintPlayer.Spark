@@ -28,9 +28,9 @@ app.MapSparkFull();
 app.Run();
 ```
 
-That's the whole wiring. The source generator discovers your `SparkContext`, `SparkUser`, Actions, Recipients, Custom Actions, and Cron jobs **at compile time** — no generic type parameters, no manual `AddActions()`/`AddRecipients()`/`AddCronJobs()` calls.
+That's the whole wiring. The source generator discovers your `SparkContext`, `SparkUser`, Actions, Recipients, Custom Actions, and Cron jobs **at compile time** — no generic type parameters, no manual `AddSparkDiscovered()` call.
 
-- **`AddSparkFull`** — registers Spark + every feature it detects in your project (and the discovered Actions/Recipients/Custom Actions/Cron jobs).
+- **`AddSparkFull`** — registers Spark + every feature it detects in your project (and calls the generated `AddSparkDiscovered()`, which registers the discovered Actions classes, recipients, custom actions, cron jobs, migrations, interceptors, row policies and `[SparkDiscoverable]` contracts).
 - **`UseSparkFull()`** — adds the Spark middleware pipeline. Model synchronization moved to the
   builder phase: call `builder.SynchronizeSparkModelsIfRequested(args)` before `builder.Build()`.
 - **`MapSparkFull`** — maps all Spark + Identity endpoints.

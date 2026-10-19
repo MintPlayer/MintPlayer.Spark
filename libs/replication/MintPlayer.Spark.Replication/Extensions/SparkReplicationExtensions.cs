@@ -27,8 +27,11 @@ internal static class SparkReplicationExtensions
         services.AddSingleton<ModuleRegistrationService>();
         services.AddSingleton<IModuleDirectory, ModuleDirectory>();
         services.AddMintPlayerSparkReplication();
-        services.AddSingleton<EtlScriptCollector>();
+        services.AddSingleton<ReplicaContractCollector>();
+        services.AddSingleton<ReplicationContractCatalog>();
+        services.AddSingleton<IRavenEtlLicence, RavenEtlLicence>();
         services.AddSingleton<EtlTaskManager>();
+        services.AddSingleton<IEtlTaskManager>(sp => sp.GetRequiredService<EtlTaskManager>());
         services.AddScoped<IRecipient<EtlScriptDeploymentMessage>, EtlScriptDeploymentRecipient>();
 
         // R2-C1/C2: outbound replication HttpClients attach this module's
@@ -56,9 +59,10 @@ internal static class SparkReplicationExtensions
     }
 
     /// <summary>
-    /// On startup: (1) registers this module in the shared SparkModules database,
-    /// (2) scans assemblies for [Replicated] attributes, (3) sends ETL scripts to
-    /// source modules via the durable message bus.
+    /// On startup: (0) translates the contracts this module publishes, refusing startup on a
+    /// projection the ETL transform cannot express, (1) registers this module in the shared
+    /// SparkModules database, (2) scans assemblies for [Replicated] replica types, (3) asks each
+    /// source module for the contracts they read, via the durable message bus.
     /// </summary>
     internal static WebApplication UseSparkReplication(this WebApplication app)
     {
@@ -66,8 +70,12 @@ internal static class SparkReplicationExtensions
         var options = app.Services.GetRequiredService<IOptions<SparkReplicationOptions>>().Value;
         var registrationService = app.Services.GetRequiredService<ModuleRegistrationService>();
         var moduleDirectory = app.Services.GetRequiredService<IModuleDirectory>();
-        var collector = app.Services.GetRequiredService<EtlScriptCollector>();
+        var collector = app.Services.GetRequiredService<ReplicaContractCollector>();
         var appStore = app.Services.GetRequiredService<IDocumentStore>();
+
+        // Step 0, synchronously: resolving the catalog translates every published projection, so a
+        // complex one refuses startup here rather than failing a consumer's deployment later.
+        app.Services.GetRequiredService<ReplicationContractCatalog>();
 
         // Deploy the SparkSyncActions index
         new SparkSyncActions_ByStatus().Execute(appStore);
@@ -88,11 +96,11 @@ internal static class SparkReplicationExtensions
                     ? options.AssembliesToScan
                     : [Assembly.GetEntryAssembly()!];
 
-                var scriptsByModule = collector.CollectScripts(assemblies);
+                var contractsByModule = collector.Collect(type => appStore.Conventions.FindCollectionName(type), assemblies);
 
-                if (scriptsByModule.Count == 0)
+                if (contractsByModule.Count == 0)
                 {
-                    logger.LogInformation("No [Replicated] attributes found — no ETL scripts to deploy");
+                    logger.LogInformation("No [Replicated] attributes found — no contracts to request");
                     return;
                 }
 
@@ -102,12 +110,12 @@ internal static class SparkReplicationExtensions
                 // longer needs a fabricated fallback URL (which previously baked
                 // `http://{name}:5000` into the message and made retries hit a stale endpoint
                 // forever even after the source module finally registered).
-                foreach (var deploymentMessage in BuildDeploymentMessages(scriptsByModule, options, appStore))
+                foreach (var deploymentMessage in BuildDeploymentMessages(contractsByModule, options))
                 {
                     await messageBus.BroadcastAsync(deploymentMessage);
                     logger.LogInformation(
-                        "Queued ETL deployment to '{SourceModule}' ({ScriptCount} scripts) via message bus",
-                        deploymentMessage.SourceModuleName, deploymentMessage.Request.Scripts.Count);
+                        "Queued ETL deployment to '{SourceModule}' ({ContractCount} contracts) via message bus",
+                        deploymentMessage.SourceModuleName, deploymentMessage.Request.Contracts.Count);
                 }
             }
             catch (Exception ex)
@@ -120,32 +128,28 @@ internal static class SparkReplicationExtensions
     }
 
     /// <summary>
-    /// Pure function that projects the collected per-source-module scripts into the
+    /// Pure function that projects the collected per-source-module contracts into the
     /// <see cref="EtlScriptDeploymentMessage"/> envelopes the message bus broadcasts.
     /// Extracted so the message-shape contract can be unit-tested without spinning up
     /// a host (which would otherwise require IMessageBus + IDocumentStore + Task.Run timing).
+    /// <para>
+    /// The message names no database or URLs (F19): the owner reads this module's destination
+    /// from its SparkModules registry entry, which registration keeps current.
+    /// </para>
     /// </summary>
     internal static IEnumerable<EtlScriptDeploymentMessage> BuildDeploymentMessages(
-        IReadOnlyDictionary<string, List<EtlScriptItem>> scriptsByModule,
-        SparkReplicationOptions options,
-        IDocumentStore appStore)
+        IReadOnlyDictionary<string, List<EtlContractRequest>> contractsByModule,
+        SparkReplicationOptions options)
     {
-        foreach (var (sourceModule, scripts) in scriptsByModule)
+        foreach (var (sourceModule, contracts) in contractsByModule)
         {
-            // Note: TargetDatabase and TargetUrls are captured here at send-time and travel
-            // with the message — unlike the source module's URL, which the recipient
-            // resolves freshly from SparkModules on each delivery. If the consumer module's
-            // RavenDB cluster ever moves to new URLs, pending deployment messages will
-            // carry stale values until the next app startup re-broadcasts.
             yield return new EtlScriptDeploymentMessage
             {
                 SourceModuleName = sourceModule,
-                Request = new EtlScriptRequest
+                Request = new EtlDeploymentRequest
                 {
                     RequestingModule = options.ModuleName,
-                    TargetDatabase = appStore.Database,
-                    TargetUrls = appStore.Urls,
-                    Scripts = scripts,
+                    Contracts = contracts,
                 },
             };
         }

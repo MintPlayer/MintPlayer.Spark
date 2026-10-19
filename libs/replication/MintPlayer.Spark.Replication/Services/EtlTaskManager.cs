@@ -4,36 +4,58 @@ using Raven.Client.Documents;
 using Raven.Client.Documents.Operations.ConnectionStrings;
 using Raven.Client.Documents.Operations.ETL;
 using Raven.Client.Documents.Operations.OngoingTasks;
+using Raven.Client.Exceptions.Commercial;
 
 namespace MintPlayer.Spark.Replication.Services;
+
+/// <summary>One owner-generated ETL transform.</summary>
+/// <param name="Name">The transform name, unique within the task.</param>
+/// <param name="SourceCollection">The owner's collection it reads.</param>
+/// <param name="Script">The script <see cref="EtlTransformGenerator"/> generated.</param>
+internal sealed record EtlTransformScript(string Name, string SourceCollection, string Script);
+
+/// <summary>
+/// What the owner deploys for one consumer. Every part of it is the owner's own: the destination
+/// from the consumer's registry entry (F19), the transforms from the owner's contracts (F16).
+/// </summary>
+internal sealed record EtlDeployment(
+    string RequestingModule,
+    string TargetDatabase,
+    string[] TargetUrls,
+    IReadOnlyList<EtlTransformScript> Transforms);
+
+internal interface IEtlTaskManager
+{
+    /// <summary>Creates or updates the consumer's ETL task. Idempotent.</summary>
+    Task<EtlDeploymentResult> DeployAsync(EtlDeployment deployment, CancellationToken cancellationToken = default);
+}
 
 /// <summary>
 /// Creates, updates, and removes RavenDB ETL tasks to replicate data to requesting modules.
 /// </summary>
-internal partial class EtlTaskManager
+internal partial class EtlTaskManager : IEtlTaskManager
 {
     [Inject] private readonly IDocumentStore documentStore;
     [Inject] private readonly ILogger<EtlTaskManager> logger;
+    [Inject] private readonly IRavenEtlLicence licence;
 
     /// <summary>
-    /// Deploys ETL scripts by creating/updating RavenDB ETL tasks.
+    /// Deploys the transforms by creating or updating the consumer's RavenDB ETL task.
     /// This operation is idempotent.
     /// </summary>
-    public Task<EtlDeploymentResult> DeployAsync(EtlScriptRequest request)
+    public async Task<EtlDeploymentResult> DeployAsync(EtlDeployment deployment, CancellationToken cancellationToken = default)
     {
         var result = new EtlDeploymentResult { Success = true };
-        var connectionStringName = $"spark-etl-{request.RequestingModule}";
-        var taskName = $"spark-etl-{request.RequestingModule}";
+        var connectionStringName = $"spark-etl-{deployment.RequestingModule}";
+        var taskName = $"spark-etl-{deployment.RequestingModule}";
 
         try
         {
             // Refuse to create an ETL task whose source and target are the same database —
             // that would cause an infinite write loop (every applied transform re-triggers
-            // the source). Only the requesting module is supposed to invoke this, on the
-            // source module's store; if the two collapse to the same DB, the message bus
-            // routed the deployment to the wrong recipient (e.g. stale moduleInformations
-            // URL pointing back at the requester).
-            if (string.Equals(request.TargetDatabase, documentStore.Database, StringComparison.OrdinalIgnoreCase))
+            // the source). The target comes from the requesting module's registry entry, so the
+            // two collapse only when that entry names this module's own database.
+            if (string.Equals(deployment.TargetDatabase, documentStore.Database, StringComparison.OrdinalIgnoreCase))
             {
                 // Known, expected failure — return it directly so callers can
                 // distinguish self-loop config errors from generic ETL_DEPLOY_FAILED
@@ -41,32 +63,37 @@ internal partial class EtlTaskManager
                 // string here because the caller is a trusted module (per R2-C1
                 // mTLS gate); only fully-generic ex.Message round-trips were the leak.
                 logger.LogWarning("Refusing self-loop ETL deployment for module '{Module}' (target db = local db '{Db}')",
-                    request.RequestingModule, documentStore.Database);
-                return Task.FromResult(new EtlDeploymentResult
+                    deployment.RequestingModule, documentStore.Database);
+                return new EtlDeploymentResult
                 {
                     Success = false,
                     Error = $"self-loop refused: source and target are both '{documentStore.Database}'",
-                });
+                };
             }
+
+            // F18: a licence without ETL (Community) refuses here with a reason the consumer can act
+            // on, instead of failing on AddEtlOperation with a generic error it would retry for ever.
+            if (await licence.HasRavenEtlAsync(cancellationToken) == false)
+                return NotLicensed(deployment.RequestingModule);
 
             // Step 1: Create/update connection string to the requesting module's database
             var connectionString = new RavenConnectionString
             {
                 Name = connectionStringName,
-                Database = request.TargetDatabase,
-                TopologyDiscoveryUrls = request.TargetUrls,
+                Database = deployment.TargetDatabase,
+                TopologyDiscoveryUrls = deployment.TargetUrls,
             };
 
             documentStore.Maintenance.Send(new PutConnectionStringOperation<RavenConnectionString>(connectionString));
             logger.LogDebug("Connection string '{ConnectionStringName}' created/updated for database '{Database}'",
-                connectionStringName, request.TargetDatabase);
+                connectionStringName, deployment.TargetDatabase);
 
-            // Step 2: Build the ETL configuration with transformations
-            var transforms = request.Scripts.Select(script => new Transformation
+            // Step 2: Build the ETL configuration from the owner-generated transforms
+            var transforms = deployment.Transforms.Select(transform => new Transformation
             {
-                Name = script.SourceCollection,
-                Collections = { script.SourceCollection },
-                Script = script.Script,
+                Name = transform.Name,
+                Collections = { transform.SourceCollection },
+                Script = transform.Script,
             }).ToList();
 
             var etlConfig = new RavenEtlConfiguration
@@ -85,27 +112,41 @@ internal partial class EtlTaskManager
                     new UpdateEtlOperation<RavenConnectionString>(existingTaskId.Value, etlConfig));
                 result.TasksUpdated = 1;
                 logger.LogInformation("Updated ETL task '{TaskName}' with {ScriptCount} transformation(s) for module '{Module}'",
-                    taskName, transforms.Count, request.RequestingModule);
+                    taskName, transforms.Count, deployment.RequestingModule);
             }
             else
             {
                 documentStore.Maintenance.Send(new AddEtlOperation<RavenConnectionString>(etlConfig));
                 result.TasksCreated = 1;
                 logger.LogInformation("Created ETL task '{TaskName}' with {ScriptCount} transformation(s) for module '{Module}'",
-                    taskName, transforms.Count, request.RequestingModule);
+                    taskName, transforms.Count, deployment.RequestingModule);
             }
+        }
+        catch (LicenseLimitException ex)
+        {
+            // The licence status was unreadable, and RavenDB refused on send: the same answer.
+            logger.LogError(ex, "ETL deployment for module '{Module}' refused by the RavenDB licence", deployment.RequestingModule);
+            return NotLicensed(deployment.RequestingModule);
         }
         catch (Exception ex)
         {
             // R2-L6: log full exception server-side; surface a generic message
             // to the caller. RavenDB maintenance exceptions often contain
             // connection-string detail useful for recon.
-            logger.LogError(ex, "Failed to deploy ETL scripts for module '{Module}'", request.RequestingModule);
+            logger.LogError(ex, "Failed to deploy ETL scripts for module '{Module}'", deployment.RequestingModule);
             result.Success = false;
             result.Error = "ETL_DEPLOY_FAILED";
         }
 
-        return Task.FromResult(result);
+        return result;
+    }
+
+    private EtlDeploymentResult NotLicensed(string module)
+    {
+        logger.LogError(
+            "ETL deployment for module '{Module}' refused: this RavenDB licence has no ETL (Community). " +
+            "Use a licence with RavenDB ETL, or the HTTP replication transport.", module);
+        return new EtlDeploymentResult { Success = false, Error = EtlDeploymentResult.NotLicensedError };
     }
 
     /// <summary>

@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Routing.Template;
 using Microsoft.Extensions.Options;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Builder;
 using MintPlayer.Spark.Extensions;
 
 namespace MintPlayer.Spark.PageMeta;
@@ -38,7 +39,7 @@ internal static class SparkPageMetaInjection
 
     public static IServiceCollection AddSparkPageMeta(this IServiceCollection services)
     {
-        services.AddSparkConfigurationSection<SparkPageMetaOptions>(SparkPageMetaOptions.SectionName);
+        services.AddSparkConfigurationSection<SparkPageMetaOptions>();
         services.AddTransient<IStartupFilter, StartupFilter>();
         return services;
     }

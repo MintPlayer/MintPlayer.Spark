@@ -108,6 +108,11 @@
       "en": "None",
       "fr": "Aucun",
       "nl": "Geen"
+    },
+    "yes": {
+      "en": "yes",
+      "fr": "oui",
+      "nl": "ja"
     }
   }
 }

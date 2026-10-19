@@ -85,7 +85,7 @@ public static class SparkHistoryExtensions
     public static ISparkBuilder AddHistoryUserNameResolver<TResolver>(this ISparkBuilder builder)
         where TResolver : class, IHistoryUserNameResolver
     {
-        builder.Services.Replace(ServiceDescriptor.Scoped<IHistoryUserNameResolver, TResolver>());
+        builder.Services.UseSparkProvider<IHistoryUserNameResolver, TResolver>(ServiceLifetime.Scoped);
         // The same names for every feature (contributions M5b): core's optional contract, unless the
         // app registered a resolver of its own there.
         builder.Services.TryAddScoped<ISparkUserNameResolver>(sp => new HistoryUserNames(sp.GetRequiredService<IHistoryUserNameResolver>()));

@@ -15,9 +15,8 @@ namespace CodeCoverage.Tests.Infrastructure;
 /// <remarks>
 /// <para>
 /// ⚠️ <b>This exists because the registrations are source-generated PER COMPILATION, and the
-/// generated entry points are <c>internal</c>.</b> <c>AddCodeCoverage()</c>,
-/// <c>spark.AddRecipients()</c>, <c>AddCronJobs()</c>, <c>AddCustomActions()</c> and
-/// <c>AddActions()</c> each cover the app assembly and nothing else. So the moment a type moves to
+/// generated entry points are <c>internal</c>.</b> <c>AddCodeCoverage()</c> and
+/// <c>spark.AddSparkDiscovered()</c> each cover the app assembly and nothing else. So the moment a type moves to
 /// another project — which is exactly what M15 does — it drops off its registration <b>silently</b>:
 /// the app still compiles, still starts, and still serves pages. It just stops publishing pull
 /// request comments, or stops reconciling state, or stops running a cron job, with no error
@@ -136,7 +135,7 @@ public class RegistrationInventoryTests : CoverageRavenTest
     /// </summary>
     /// <remarks>
     /// ⚠️ <c>GitHubEventsRecipient</c> is the one M15 must move, and it is registered through the
-    /// generated <c>internal AddRecipients()</c> over the APP assembly. Moving it without giving
+    /// generated <c>internal AddSparkDiscovered()</c> over the APP assembly. Moving it without giving
     /// the new project its own builder extension stops every GitHub webhook being handled, while
     /// the endpoint keeps answering 200.
     /// </remarks>

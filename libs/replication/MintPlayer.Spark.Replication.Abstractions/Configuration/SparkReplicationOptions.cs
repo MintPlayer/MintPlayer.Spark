@@ -75,6 +75,49 @@ public class SparkReplicationOptions
     /// <summary>Assemblies to scan for [Replicated] attributes. If empty, scans the entry assembly.</summary>
     public System.Reflection.Assembly[] AssembliesToScan { get; set; } = [];
 
+    private readonly List<ReplicationContract> contracts = [];
+
+    /// <summary>
+    /// The contracts this module publishes as an owner, in declaration order. Filled by
+    /// <see cref="Publish{TSource, TContract}"/>; code only, never bound from configuration.
+    /// </summary>
+    public IReadOnlyList<ReplicationContract> Contracts => contracts;
+
+    /// <summary>
+    /// Publishes a replication contract: consumers that declare <c>[Replicated(Contract = …)]</c>
+    /// with this name and version receive <typeparamref name="TContract"/> records projected from
+    /// this module's <typeparamref name="TSource"/> documents.
+    /// <para>
+    /// For the ETL transport the projection must be a plain field selection with optional renames:
+    /// <c>s =&gt; new CarV1 { Plate = s.LicensePlate, Street = s.Address.Street }</c>, or a
+    /// positional record constructor whose arguments are member paths. The owner generates the ETL
+    /// transform from it. Anything else (method calls, arithmetic, conditionals, constants,
+    /// captured variables) is refused at startup.
+    /// </para>
+    /// </summary>
+    /// <param name="contract">Permanent lower-kebab name, e.g. <c>cars</c>. Never rename it once published.</param>
+    /// <param name="version">The contract version, 1 or higher. Versions run side by side.</param>
+    /// <param name="projection">The projection from the source document to the contract record.</param>
+    /// <exception cref="ArgumentException">The name is not lower-kebab, the version is below 1, or the pair is already published.</exception>
+    public SparkReplicationOptions Publish<TSource, TContract>(
+        string contract,
+        int version,
+        System.Linq.Expressions.Expression<Func<TSource, TContract>> projection)
+    {
+        ArgumentNullException.ThrowIfNull(projection);
+        if (!ReplicationContract.IsValidName(contract))
+            throw new ArgumentException(
+                $"Replication contract name '{contract}' must be lower-kebab (a-z, digits, single hyphens), e.g. 'cars' or 'fulfilment-orders'.",
+                nameof(contract));
+        if (version < 1)
+            throw new ArgumentException($"Replication contract '{contract}' version must be 1 or higher, not {version}.", nameof(version));
+        if (contracts.Any(c => c.Name == contract && c.Version == version))
+            throw new ArgumentException($"Replication contract '{contract}' v{version} is published twice.", nameof(contract));
+
+        contracts.Add(new ReplicationContract(contract, version, typeof(TSource), typeof(TContract), projection));
+        return this;
+    }
+
     /// <summary>
     /// Cross-module mTLS configuration (R2-C1 / R2-C2 / R2-H7). Each module deploys
     /// with its own X.509 client certificate; cross-module requests carry the cert and

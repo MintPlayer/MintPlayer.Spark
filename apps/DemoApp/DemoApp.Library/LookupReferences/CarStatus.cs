@@ -2,52 +2,25 @@ using MintPlayer.Spark.Abstractions;
 
 namespace DemoApp.Library.LookupReferences;
 
+/// <summary>Where a car is. The lookup <see cref="CarStatus"/> is generated; its labels are <c>lookup.ECarStatus.*</c> in translations.json.</summary>
+[SparkLookup]
 public enum ECarStatus
 {
+    /// <summary>Car is in use.</summary>
     InUse,
+    /// <summary>Car is parked.</summary>
     OnParking,
+    /// <summary>Car is being maintained.</summary>
     InMaintenance,
+    /// <summary>Car is stolen.</summary>
     Stolen
 }
 
-public sealed class CarStatus : TransientLookupReference<ECarStatus>
+public sealed partial class CarStatus
 {
-    private CarStatus() { }
-
-    public override ELookupDisplayType DisplayType => ELookupDisplayType.Dropdown;
-
     // Extra properties beyond Key/Values
-    public bool AllowOnCarNotes { get; init; }
+    public bool AllowOnCarNotes { get; private set; }
 
-    public static IReadOnlyCollection<CarStatus> Items { get; } =
-    [
-        new CarStatus()
-        {
-            Key = ECarStatus.InUse,
-            Description = "Car is in use",
-            Values = _TS(("en", "In use"), ("fr", "En usage"), ("nl", "In gebruik")),
-            AllowOnCarNotes = true,
-        },
-        new CarStatus()
-        {
-            Key = ECarStatus.OnParking,
-            Description = "Car is parked",
-            Values = _TS(("en", "In parking lot"), ("fr", "Dans le parking"), ("nl", "Op parking")),
-            AllowOnCarNotes = false,
-        },
-        new CarStatus()
-        {
-            Key = ECarStatus.InMaintenance,
-            Description = "Car is being maintained",
-            Values = _TS(("en", "In maintenance"), ("fr", "En maintenance"), ("nl", "In onderhoud")),
-            AllowOnCarNotes = true,
-        },
-        new CarStatus()
-        {
-            Key = ECarStatus.Stolen,
-            Description = "Car is stolen",
-            Values = _TS(("en", "Stolen"), ("fr", "Vole"), ("nl", "Gestolen")),
-            AllowOnCarNotes = true,
-        },
-    ];
+    static partial void Initialize(CarStatus item)
+        => item.AllowOnCarNotes = item.Key != ECarStatus.OnParking;
 }

@@ -96,8 +96,8 @@ public class ApiTokenForgeNeutralRenameTests : CoverageRavenTest
     [Fact]
     public void The_rename_is_ordered_before_the_account_reference_migration()
     {
-        (M_202609220950_ApiTokenFieldsAreForgeNeutral.Version
-                < M_202610021200_ApiTokenReferencesItsAccount.Version).Should().BeTrue("The rename must run first, or the account migration never sees the numeric id.");
+        (MintPlayer.Spark.Migrations.SparkMigrationVersion.Of<M_202609220950_ApiTokenFieldsAreForgeNeutral>()
+                < MintPlayer.Spark.Migrations.SparkMigrationVersion.Of<M_202610021200_ApiTokenReferencesItsAccount>()).Should().BeTrue("The rename must run first, or the account migration never sees the numeric id.");
     }
 
     [Fact]

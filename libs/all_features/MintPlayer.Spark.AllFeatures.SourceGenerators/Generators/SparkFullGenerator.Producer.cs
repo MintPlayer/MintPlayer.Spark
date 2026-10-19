@@ -37,13 +37,6 @@ public class SparkFullProducer : Producer
             ? discoveryList.FirstOrDefault(d => d.Kind == "User")?.TypeName ?? "global::MintPlayer.Spark.Authorization.Identity.SparkUser"
             : null;
 
-        var hasActions = discoveryList.Any(d => d.Kind == "Actions");
-        var hasCustomActions = discoveryList.Any(d => d.Kind == "CustomAction");
-        var hasRecipients = discoveryList.Any(d => d.Kind == "Recipient");
-        var hasCron = discoveryList.Any(d => d.Kind == "CronJob");
-        var hasMigrations = discoveryList.Any(d => d.Kind == "Migration") || flags.HasReferencedMigrations;
-        var hasInterceptors = discoveryList.Any(d => d.Kind == "Interceptor");
-
         writer.WriteLine(Header);
         writer.WriteLine();
         writer.WriteLine("#nullable enable");
@@ -53,7 +46,7 @@ public class SparkFullProducer : Producer
         {
             using (writer.OpenBlock("internal static class SparkFullBuilderExtensions"))
             {
-                WriteAddSparkFull(writer, contextType, userType, hasActions, hasCustomActions, hasRecipients, hasCron, hasMigrations, hasInterceptors);
+                WriteAddSparkFull(writer, contextType, userType);
                 writer.WriteLine();
                 WriteUseSparkFull(writer);
                 writer.WriteLine();
@@ -65,16 +58,10 @@ public class SparkFullProducer : Producer
     private void WriteAddSparkFull(
         IndentedTextWriter writer,
         string contextType,
-        string? userType,
-        bool hasActions,
-        bool hasCustomActions,
-        bool hasRecipients,
-        bool hasCron,
-        bool hasMigrations,
-        bool hasInterceptors)
+        string? userType)
     {
         writer.WriteLine("/// <summary>");
-        writer.WriteLine("/// Registers all Spark services, modules, and discovered actions/recipients.");
+        writer.WriteLine("/// Registers all Spark services, modules, and everything AddSparkDiscovered finds in this project.");
         writer.WriteLine("/// </summary>");
         using (writer.OpenBlock("public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection AddSparkFull(this global::Microsoft.Extensions.DependencyInjection.IServiceCollection services, global::Microsoft.Extensions.Configuration.IConfiguration configuration, global::System.Action<global::MintPlayer.Spark.AllFeatures.SparkFullOptions>? configure = null)"))
         {
@@ -86,24 +73,10 @@ public class SparkFullProducer : Producer
             {
                 writer.WriteLine($"global::MintPlayer.Spark.SparkExtensions.UseContext<{contextType}>(spark);");
 
-                // These registration extensions are generated into {RootNamespace} by the other
-                // Spark generators. Call them fully-qualified (not as extension methods) so the
-                // emitted code can't collide with extension methods the developer writes themselves.
-                if (hasActions)
-                    writer.WriteLine($"global::{RootNamespace}.SparkActionsBuilderExtensions.AddActions(spark);");
-                if (hasCustomActions)
-                    writer.WriteLine($"global::{RootNamespace}.SparkCustomActionsBuilderExtensions.AddCustomActions(spark);");
-                if (hasRecipients)
-                    writer.WriteLine($"global::{RootNamespace}.SparkRecipientsBuilderExtensions.AddRecipients(spark);");
-
-                if (hasCron)
-                    writer.WriteLine($"global::{RootNamespace}.SparkCronJobsBuilderExtensions.AddCronJobs(spark);");
-
-                if (hasMigrations)
-                    writer.WriteLine($"global::{RootNamespace}.SparkMigrationsBuilderExtensions.AddMigrations(spark);");
-
-                if (hasInterceptors)
-                    writer.WriteLine($"global::{RootNamespace}.SparkInterceptorsBuilderExtensions.AddInterceptors(spark);");
+                // Generated into {RootNamespace} by MintPlayer.Spark.SourceGenerators' SparkDiscoveryGenerator,
+                // which always emits it when SparkFullOptions resolves. Called fully-qualified (not as an
+                // extension method) so the emitted code can't collide with the developer's own extensions.
+                writer.WriteLine($"global::{RootNamespace}.SparkDiscoveryBuilderExtensions.AddSparkDiscovered(spark);");
 
                 if (userType != null)
                 {

@@ -85,6 +85,15 @@ public partial class GeneratedIndexInfo
     /// </summary>
     public List<InvalidSearchInfo> BreadcrumbRejections { get; set; } = new();
 
+    /// <summary>
+    /// Whether an indexed property carries <c>[Fuzzy]</c> (commerce X18): the generated index then sets
+    /// <c>SearchEngineType = SearchEngineType.Lucene</c>, since Corax refuses fuzzy queries.
+    /// </summary>
+    public bool UsesLucene { get; set; }
+
+    /// <summary><c>[Fuzzy]</c> on a property that is not text. SPARK_INDEX_014.</summary>
+    public List<InvalidSearchInfo> InvalidFuzzyProperties { get; set; } = new();
+
     /// <summary>Where to anchor diagnostics about this entity.</summary>
     public LocationKey? Location { get; set; }
 }

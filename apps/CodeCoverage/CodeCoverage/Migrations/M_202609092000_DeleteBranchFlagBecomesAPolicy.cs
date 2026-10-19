@@ -43,7 +43,6 @@ namespace CodeCoverage.Migrations;
 /// </remarks>
 public partial class M_202609092000_DeleteBranchFlagBecomesAPolicy : ISparkMigration
 {
-    public static long Version => 202609092000;
 
     public static string? Description =>
         "Repository.DeleteBranchOnPrClose becomes a three-state policy; an untouched repository inherits its account";

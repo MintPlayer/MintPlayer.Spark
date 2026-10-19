@@ -48,7 +48,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSpark(builder.Configuration, spark =>
 {
     spark.UseContext<MySparkContext>();
-    spark.AddActions();
+    spark.AddSparkDiscovered();
     spark.AddAuthentication<SparkUser>();
 });
 

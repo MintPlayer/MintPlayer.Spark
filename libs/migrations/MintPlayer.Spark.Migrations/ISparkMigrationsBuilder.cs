@@ -7,10 +7,11 @@ namespace MintPlayer.Spark.Migrations;
 public interface ISparkMigrationsBuilder
 {
     /// <summary>
-    /// Registers <typeparamref name="TMigration"/>, reading its version from the
-    /// <see cref="ISparkMigration.Version"/> static abstract member. The migration is resolved
+    /// Registers <typeparamref name="TMigration"/>, reading its version from its class name
+    /// (<c>M_{yyyyMMddHHmm}_{Name}</c>, <see cref="SparkMigrationVersion"/>). The migration is resolved
     /// per run from a DI scope, so its <c>[Inject]</c> dependencies work.
     /// </summary>
+    /// <exception cref="InvalidOperationException">The class name carries no version.</exception>
     ISparkMigrationsBuilder AddMigration<TMigration>() where TMigration : class, ISparkMigration;
 }
 
@@ -23,7 +24,7 @@ internal sealed class SparkMigrationsBuilder(IServiceCollection services, SparkM
 
         registry.Add(new SparkMigrationDescriptor(
             MigrationType: typeof(TMigration),
-            Version: TMigration.Version,          // static abstract, read here
+            Version: SparkMigrationVersion.Of<TMigration>(),   // the class name's timestamp; refuses any other name
             Name: typeof(TMigration).Name,
             Description: TMigration.Description));
 

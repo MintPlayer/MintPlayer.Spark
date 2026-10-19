@@ -403,6 +403,38 @@ decided by the same rights, `anonymous` grants included (since #453; before, ASP
 policy refused every anonymous caller first). A host that configures authorization without `AddSpark`
 must call `SparkAuthorizeAttribute.AddPolicy`.
 
+### Refusing from your own endpoint
+
+An endpoint that checks a right in code (an add-on package's, or an application's under `/spark/*`)
+calls `EnsureAuthorizedAsync` and lets the `SparkAccessDeniedException` propagate. The endpoint
+filter it installs in `Configure` turns the denial into the refusal above:
+
+```csharp
+static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
+    => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true)).RefuseDeniedInEnvelope();
+
+public override async Task<IResult> HandleAsync(MyRequest request, CancellationToken ct)
+{
+    await permissionService.EnsureAuthorizedAsync("Publish", entityType.Name);   // denied → 401/404
+    // ...
+}
+```
+
+- `RefuseDeniedInEnvelope()` answers in the `{ result, operations }` envelope, as `/spark/po/*`,
+  `/spark/actions/execute` and the add-on endpoints do (`ISparkAddOnEndpoints.Refusal`). Notifications
+  the request queued before the denial stay in it.
+- `RefuseDeniedAsJson()` answers the bare `{ error }` body, as `/spark/lookupref/*` does.
+- Both live in `MintPlayer.Spark.Endpoints.SparkDenialFilters` and also catch
+  `SparkRowLevelAccessDeniedException`, which derives from it.
+- Install them **per endpoint**, never on a route group: an endpoint that answers a denial differently
+  on purpose (`/spark/queries/distinct` answers a 404 naming the query) would change.
+- A handler with a catch-all must exclude the denial
+  (`catch (Exception ex) when (ex is not SparkAccessDeniedException)`), or it answers 500 first.
+
+Before #521 every access endpoint carried its own `try { … } catch (SparkAccessDeniedException) {
+return refusal; }`. `DenialCatchGuardTests` now fails on a new one, unless the catch maps the denial to
+a domain outcome (an MCP refusal, a `null` row) and is listed there with its reason.
+
 Catalogue endpoints (`/spark/types`, `/spark/queries`, `/spark/aliases`, `/spark/program-units`,
 `/spark/actions/list`, `/spark/permissions/{type}`) are the exception. The client shell loads
 them on boot for every visitor, so they answer **200 with everything filtered out** rather than

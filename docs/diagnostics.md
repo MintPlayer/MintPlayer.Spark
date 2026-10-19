@@ -79,6 +79,7 @@ the diagnostic guarding the generated row key — reached no external consumer a
 | SPARK054 | Error | `[DefaultIndex]` on a JavaScript index, which can neither name its entity type nor carry the collection discriminator. Also refused at startup (PRD §7, SP1) | `DefaultIndexAnalyzer` | — |
 | SPARK055 | Error | A multi-map default index does not derive from `SparkMultiMapIndexCreationTask`, so Spark cannot narrow its rows to the queried type's collection. Also refused at startup (D4) | `DefaultIndexAnalyzer` | — |
 | SPARK056 | Warning | A writable `[Reference(typeof(T))]` names no query, and no `SparkContext` in the project has a **plain** entity root of `T`: an `IRavenQueryable<T>` property, own or inherited from a base in the project, whose body is `Session.Query<T>()` (the generator's own classifier), or a `[SparkPlainRoot]` marker. A filtered or customized root does not count, because a query-less reference resolves to the plain root only (D6), and neither does a view root, which mints no query. The synchronizer then gives the reference no query and the edit page's picker no options. Skips `[ReadOnly(true)]` and setter-less properties, generated members and views. Runs on the compilation after generation; a project without a context is not checked (D8) | `MissingReferenceRootAnalyzer` | ✅ Add the root `public IRavenQueryable<T> {Plural} => Session.Query<T>();` to the context |
+| SPARK063 | Warning | `Fuzzy(...)` on a query whose index marks no field `[Fuzzy]`, so Spark deploys it on the server default engine, and Corax refuses fuzzy queries at runtime (commerce X18). Also on a dynamic query, which runs on an auto index. The query is followed back to its `DocumentQuery<T, TIndex>()` / `DocumentQuery<T>("Index/Name")` within one fluent chain; an index counts as marked through a `[FromIndex]` projection, its mapped document or result type, or a `SearchEngineType = …Lucene` in its own source. A query passed in from elsewhere and raw RQL are not inspected | `FuzzyQueryAnalyzer` | — |
 | SPARKLIB001 | Error | A project marked `<SparkEntityLibrary>true</SparkEntityLibrary>` depends on the ASP.NET Core shared framework (`Microsoft.AspNetCore.App`), directly or through a reference to a Web-SDK project such as `MintPlayer.Spark.Abstractions` or `MintPlayer.Spark.Authorization`. Reference `MintPlayer.Spark.Attributes`, `MintPlayer.Spark.Model` and the plain `*.Abstractions` packages instead (#388) | MSBuild target `SparkEntityLibraryGuard` (repository `Directory.Build.targets`) | — |
 
 SPARK030 is an **MSBuild** warning, not a Roslyn diagnostic: it is raised before `Build` in a project
@@ -95,8 +96,9 @@ the root `Directory.Build.targets`, which is not shipped in any package. It runs
 `ResolvePackageAssets` and checks both `FrameworkReference` and `TransitiveFrameworkReference`,
 because a framework reference inherited through a `ProjectReference` arrives as the latter.
 
-Two further id namespaces are generator-only and not analyzer diagnostics: `SPARK_INDEX_001…013`
-(`GenerateIndexDiagnostics.cs`, note `004` is absent) and `SPARK_TRANS_001…006`
+Two further id namespaces are generator-only and not analyzer diagnostics: `SPARK_INDEX_001…016`
+(`GenerateIndexDiagnostics.cs`, note `004` is absent; `014` is `[Fuzzy]` on a non-text property, `015` and `016`
+are unusable or disagreeing `[SparkIndexMap]` declarations, reported by `DeclaredIndexGenerator`) and `SPARK_TRANS_001…006`
 (`TranslationsDiagnostics.cs`). Two of the index ids concern the app's `SparkContext`
 ([PRD](default_index_PRD.md), D6, D7): `SPARK_INDEX_008` (Warning) fires when the context, or a type containing
 it, is not `partial` while the generator has anything to add to it, a view root or a `[SparkPlainRoot]` marker;
