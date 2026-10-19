@@ -20,11 +20,11 @@ The order of work for [commerce_PRD.md](commerce_PRD.md). The PRD carries the de
 
 - [x] S0 demo-app feasibility (both systems, one App_Data)
 - [x] S18 Community feature checklist (written first: it constrains S1–S3)
-- [x] S1 engine correctness (0 oversell, I1–I5, sweeper killed) — CI size green; full 100 × 1,000 awaits an owner window
-- [ ] S2 engine throughput (≥150 holds/s, p95 ≤250 ms, shards K ∈ {1, 8, 32, 64}, chain cursor)
+- [x] S1 engine correctness (0 oversell, I1–I5, sweeper killed) — CI size green; the full run is dropped (round 4)
+- [~] S2 engine throughput — dropped (owner, round 4: no stress tests); harness kept, env-gated
 - [x] S3 sweeper and live availability (≤5 s)
-- [ ] S4 waiting room at 200k on cloud VMs (owner provisions and destroys)
-- [ ] S5 Mollie + Stripe sandboxes; real fixtures recorded
+- [~] S4 waiting room at 200k — dropped (owner, round 4: no cloud VMs)
+- [ ] S5 Mollie + Stripe: documented-API fixtures (round 4; sandbox recordings later)
 - [ ] S6 Connect onboarding (both providers), including the insufficient-balance refund
 - [ ] S7 seat-map rendering (50k seats)
 - [x] S8 PBKDF2 cost (server ≤10 ms; WebCrypto ≤300 ms on low-end Android)
@@ -32,8 +32,8 @@ The order of work for [commerce_PRD.md](commerce_PRD.md). The PRD carries the de
 - [x] S10 `ISaveReplacement` proposal round trip
 - [x] S11 name-collision analyzer (SPARK057–062, code fixes)
 - [ ] S12 bot defence S1–S10 (research §6)
-- [ ] S13 carrier sandboxes (Sendcloud, bpost, PostNL)
-- [ ] S14 Peppol sandboxes (two access points, after Q-O2)
+- [ ] S13 carriers: documented-API fixtures (round 4) (Sendcloud, bpost, PostNL)
+- [ ] S14 Peppol: documented-API fixtures + EN 16931 Schematron (round 4) (two access points, after Q-O2)
 - [ ] S15 mass refund at scale with crash and resume
 - [x] S16 visitor identity merge and anonymous-POST antiforgery
 - [x] S17 live broadcast topics + private per-identity stream
