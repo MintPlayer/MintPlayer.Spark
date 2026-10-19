@@ -66,23 +66,23 @@ public static class Gs1Barcode
     public static Gs1ScanResult Parse(string scan)
     {
         ArgumentNullException.ThrowIfNull(scan);
-        return Map(Core.Gs1Core.gs1ParseScan(scan));
+        return ToScanResult(Core.Gs1Core.gs1ParseScan(scan));
     }
 
     /// <summary>Parses GS1 element-string data only (see <see cref="Parse"/>).</summary>
     public static Gs1ScanResult ParseElementString(string data)
     {
         ArgumentNullException.ThrowIfNull(data);
-        return Map(Core.Gs1Core.gs1ParseElementString(data));
+        return ToScanResult(Core.Gs1Core.gs1ParseElementString(data));
     }
 
     /// <summary>Parses a GS1 Digital Link URI only (see <see cref="Parse"/>).</summary>
     public static Gs1ScanResult ParseDigitalLink(string uri)
     {
         ArgumentNullException.ThrowIfNull(uri);
-        return Map(Core.Gs1Core.gs1ParseDigitalLink(uri));
+        return ToScanResult(Core.Gs1Core.gs1ParseDigitalLink(uri));
     }
 
-    private static Gs1ScanResult Map(Core.Gs1ParseResult result)
+    private static Gs1ScanResult ToScanResult(Core.Gs1ParseResult result)
         => new(result.error, result.errorAi, result.elements.Select(e => new Gs1Element(e.ai, e.value)).ToArray());
 }
