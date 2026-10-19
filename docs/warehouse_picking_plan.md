@@ -189,6 +189,8 @@ All paths below are under `libs/replication/MintPlayer.Spark.Replication/` unles
 - [ ] `StockLevel` per (owner, item), updated in the movement's session (WI6)
 - [ ] `stock-levels` publication: dirty-set flush; per-channel projection filtered by owner links
 - [ ] Min/max replenishment: daily sweep plus every short pick; fixed pick faces only; lots chosen by FEFO
+- [ ] Round 5 (commerce GA7): Recalled lots blocked at once (allocations re-allocated or short-picked); owner-scoped, audited **recall trace** report lot → movements → shipment lines → fulfilment orders (+ stock still on hand), CSV export; the shop resolves buyers and sends the notice; item + date-range trace for untracked items
+- [ ] Round 5 (commerce GC9): dangerous-goods data on `WarehouseItem` (UN number, class, packing group, lithium-battery kind, limited quantity); zone mixing rules can segregate them
 
 **Work, indexes, guard**
 - [ ] Task envelope: `WarehouseTask` (one collection for every kind) and `WarehouseTaskGroup`; assignment, leases (commerce X12), op ids
@@ -213,6 +215,7 @@ All paths below are under `libs/replication/MintPlayer.Spark.Replication/` unles
   - consume `expected-returns`
   - receipt (scanned or blind) and inspection
   - disposition: Restock, Quarantine, Scrap or Return to vendor
+  - round 5 (commerce GA8): the return reason per line (`Withdrawal`, `NonConformity`, `WrongItem`, `DamagedInTransit`, `SellerAllowed`, `Other`) sets the default disposition; inspection overrides it with a reason code
   - publish `return-receipts`
 - [ ] Contribute this package's maps to `Warehouse_Documents` (Q-W26)
 
@@ -288,10 +291,11 @@ All paths below are under `libs/replication/MintPlayer.Spark.Replication/` unles
   - weigh, manually or through the agent
   - capture serials
   - create the label through `Commerce.Shipping`; print the packing slip
+  - round 5: only carrier services accepting the parcel's dangerous-goods classes, with label marks (commerce GC9); customs documents for non-EU destinations (GB6); optional return label in the parcel (GB5)
   - allocate an SSCC through `Gs1`
 - [ ] Ship-confirm:
   - on hand −n and `ShippedTotal` +n in one session (WI6)
-  - `WarehouseShipment` at `{fulfilmentOrderId}/shipments/{n}`
+  - `WarehouseShipment` at `{fulfilmentOrderId}/shipments/{n}`, with the lots per line (round 5: feeds the GA7 recall trace)
   - publish `shipments`
   - handover per Q-W10
 - [ ] Carriers:
@@ -344,8 +348,10 @@ All paths below are under `libs/replication/MintPlayer.Spark.Replication/` unles
   - an epoch baseline at onboarding
   - bundles through quota multipliers
   - the I4 exception
-- [ ] Returns gate: refund on the warehouse's receipt by default; the host can switch to refund on request (WD12)
-- [ ] Sync the commerce text with WD1/WD2 (PRD §0): commerce PRD §4.9's transport paragraph, plus commerce plan M11 and S20
+- [ ] Returns gate: refund on the warehouse's receipt by default; the host can switch to refund on request (WD12); round 5 (commerce GA1): for withdrawals, also on the buyer's proof of dispatch, whichever is earlier
+- [ ] Round 5 (commerce GA8): `expected-returns` carries the return reason per line
+- [ ] Round 5 (commerce GA7): the shop resolves a recall trace's fulfilment orders to buyers and mails the recall notice
+- [x] Sync the commerce text with WD1/WD2 (PRD §0): commerce PRD §4.9's transport paragraph, plus commerce plan M11 and S20 *(docs only; S20 synced in commerce round 5, 2026-10-19)*
 
 ### WM11 — Demo app and E2E
 

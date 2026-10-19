@@ -27,7 +27,7 @@ The order of work for [reference_data_PRD.md](reference_data_PRD.md). The PRD ca
 - [ ] RS3 ledger conflict stop: a code-reassigning fixture stops that source only; ledger and documents unchanged
 - [ ] RS4 lineage decision table: Kruisem, Ooike 1977-01-01, Hasselt (per Q-R1), Zwijndrecht, Borsbeek, Bastogne (per Q-R3), La Louvière, Sambreville, restore, reissue; as-of before and on each date
 - [ ] RS5 typeahead p95 ≤ 50 ms server-side at 50 requests/s (proposed target), BE + one large country loaded
-- [ ] RS6 fuzzy fallback: misspelling set in the top 3; fuzzy only below *k* prefix hits; multi-token fuzzy composition settled; same order on two databases with different country subsets; X18 sets Lucene with no engine code in the app
+- [ ] RS6 fuzzy fallback: misspelling set in the top 3; fuzzy only below *k* prefix hits; multi-token fuzzy composition settled; same order on two databases with different country subsets; X18 sets Lucene with no engine code in the app (RD10: by default, as the typeahead fields are searchable)
 - [ ] RS7 release delta exactness: delta(A→B) on A gives B's digests; an id-dropping release refused; a digest mismatch re-imports that collection
 - [ ] RS8 per-adapter fixtures: all 18 adapters + the global baseline parse real fixtures (cp1252, BOMs, Excel-serial dates, Lambert 72/2008, combined NIS6 parts, ZIP64 where relevant, dated file names found by pattern); AT, SI, EE and NO postcode linkage verified
 - [ ] RS10 determinism: two builds give identical manifests; Windows and Linux give identical keys and bytes
@@ -43,10 +43,11 @@ The order of work for [reference_data_PRD.md](reference_data_PRD.md). The PRD ca
 - [ ] RS20 time-zone assignment (Q-R10) on US, AU, ES and FR fixtures: right zone or null with a reason; tz database validation
 - [ ] RS21 machine transliteration for keys (Cyrillic, Greek, Armenian, Georgian): ICU P/Invoke vs AnyAscii vs own tables; identical on Windows and Linux; pinned in `KeyVersion`
 - [ ] RS22 1977 lineage without curation: share of the 1,832 ending codes that get an event from REFNIS + NIS6; every unresolved one listed
+- [ ] RS23 (round 3) optional commerce sources: TEDB rates and one holiday source per seeded country; formats, change checks and licences recorded; fixtures from the public downloads
 
 ### R1 — Framework prerequisites and defects
 
-- [ ] Commerce M1 items this plan needs have landed: X3 (natural-id race, F6), X10 (IPv6 /64, F5), X15 (single-`AsDetail` edit renderer + `noteChange`), X16 + D36 (`ISparkTimeZoneNames`), X17 (`TranslatedString` redesign incl. sanitized language index fields, RFC 4647 chain, any-language factory, `culture.json` tag warning; fixes FR2, FR3), X18 (automatic Lucene for fuzzy-marked indexes)
+- [ ] Commerce M1 items this plan needs have landed: X3 (natural-id race, F6), X10 (IPv6 /64, F5), X15 (single-`AsDetail` edit renderer + `noteChange`), X16 + D36 (`ISparkTimeZoneNames`), X17 (`TranslatedString` redesign incl. sanitized language index fields, RFC 4647 chain, any-language factory, `culture.json` tag warning; fixes FR2, FR3), X18 (~~automatic Lucene for fuzzy-marked indexes~~ revised by RD10 / commerce D38: fuzzy by default, per-field opt-out, engine pinned on every index)
 - [ ] RX1 CORS-readable 429s with `Retry-After` (`RateLimiterOptions.OnRejected`) (FR4, red test first)
 - [ ] RX2 the route-table snapshot records skip-XSRF per route
 - [ ] RX3 anonymous endpoints visible in review: posture listing or an exact-set anonymous-surface helper in `MintPlayer.Spark.Testing`, adopted by every app (FR5)
@@ -159,7 +160,7 @@ Each package: change check, streaming parser, ids and history per PRD §4.4, cou
 ### R9 — Search and the public API
 
 - [ ] Q-R6 (index placement) and Q-R15 (API keys) answered
-- [ ] Indexes per PRD §4.10: the two typeahead indexes on Lucene through X18, the others with Corax pinned; placed per Q-R6; within any cap RS9 finds
+- [ ] Indexes per PRD §4.10: the two typeahead indexes on Lucene through X18 (fuzzy by default, RD10), ~~the others with Corax pinned~~ the others pinned by Spark's own engine rule (no searchable fields; RD10); placed per Q-R6; within any cap RS9 finds
 - [ ] Two-step typeahead: prefix tiers as lazy queries in one round trip → fuzzy fallback below *k* → C# re-ranking (tier, edit distance, `Rank`, id)
 - [ ] Digits-only queries on postal codes; the as-of filter on integer keys; `within` and `kinds` validated; fixed templates only
 - [ ] `/api/v1/*` endpoints per PRD §4.11 (generator endpoints in one group), including `/api/v1/timezones` and `/api/v1/sources`
@@ -194,7 +195,15 @@ Each package: change check, streaming parser, ids and history per PRD §4.4, cou
 - [ ] Database `RefData` on localhost:8080 in development; tests on the embedded server
 - [ ] New-app checklist: `package.json` workspaces; slnx folder; `pull-request.yml` build list and the verify-model / verify-security loops; `regenerate.yml`; `tools/verify-ngsw-config.test.mjs` (`/api`, `/health` excluded both ways; app added to the list); SPA fallback excluding `/api`; `test.yml` matrix if the suite is long; `tools/test-local.mjs` `E2E_APPS` if E2E hosts the app
 - [ ] `securityPosture.txt` and route-table snapshot baselines; anonymous-surface check (RX3)
+- [ ] Round 3 (RD9 = commerce D39): **basic seed set**: a handful of countries (BE, NL, FR, LU, DE) with profiles and VAT territories, BE regions and provinces, a few dozen places including every decision-table case, postal localities, a few streets per place, zones and exemplar cities, a few holidays; built from the adapters' real fixtures by the same pipeline and ledgers; regenerated by a tool with a CI diff check; seeded on first start (`SeededHash`) and in tests; a second start writes nothing
 - [ ] E2E flows of PRD §14
+
+### R11b — Optional commerce sources (round 3; commerce GC10, GC11, GA4)
+
+- [ ] `Sources.Tedb`: EU VAT rates into `VatRateSuggestion` (suggestions only; commerce §4.8)
+- [ ] Holiday-calendar source(s) into `PublicHoliday`, per country and region; "no holiday data" where no open source exists
+- [ ] `VatTerritories` in the country profile with postcode/subdivision patterns and the cited legal basis (checked on EUR-Lex, commerce D37)
+- [ ] Client package exposes them to commerce (rates to Invoicing, holidays to the zone-aware schedule, territories to the place-of-supply rule)
 - [ ] `git status` confirms the fixtures and the ledger are tracked (no `.gitignore` trap)
 
 ### R12 — Commerce integration

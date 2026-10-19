@@ -22,7 +22,7 @@
 > - open questions: Q-W1–Q-W26;
 > - warehouse invariants: WI1–WI6.
 >
-> Commerce numbers (D, F, I, K, M, Q-O, S, X) keep their commerce meaning.
+> Commerce numbers (D, F, I, K, M, Q-O, S, X) keep their commerce meaning, and so do the commerce round-5 gap items **GA/GB/GC** (commerce §4.21). Three land here: GA7 (recall trace), GA8 (return reasons) and GC9 (dangerous goods).
 
 ---
 
@@ -35,14 +35,15 @@
 | Grilling round 1 (WQ1–WQ12) | ✅ | 2026-10-17 | §13 Round 1 |
 | Research verification pass: F19 (the caller chooses the ETL destination); Community index limits (12 static, 24 auto per database; **later found lifted on 2024-05-22**, #18564) | ✅ | 2026-10-17 | §6; §4.5 index budget (corrected); W19 |
 | Commerce PRD adjusted for this plugin: `Commerce.Shipping` without Checkout, `Fulfilment.Contracts`, the I4 exception, the stock-feed formula, Q-O9, Q-O5 closed | ✅ | 2026-10-17 | commerce §4.1, §4.3, §4.9, §11 |
-| Commerce text still to sync with WD1/WD2 (three places) | ⏳ | — | see below |
+| Commerce text still to sync with WD1/WD2 (three places) | ✅ (~~⏳~~; synced: commerce §4.9 and plan M11 earlier, S20 in commerce round 5) | 2026-10-19 | see below |
+| Commerce round 5 (owner, 2026-10-19): GA7 recall trace, GA8 return reasons, GC9 dangerous goods land here; reference data is developed, not deployed (commerce D39) | ✅ decided; ⏳ to build | 2026-10-19 | §4.3, §4.5, §4.7; commerce §13 Round 5 |
 | Spikes W1–W19 | ⏳ | — | §7 |
 | Milestones WM0–WM13 (inside commerce M20) | ⏳ | — | §10, plan |
 
-The three commerce places still to sync with WD1/WD2:
-- commerce §4.9 still says "Transport is not settled";
-- commerce plan M11 still builds the `Commerce.Fulfilment` contract on `[Replicated]` + SyncAction;
-- commerce S20 still expects "status write-back lands on the owner".
+The three commerce places ~~still~~ to sync with WD1/WD2 (all synced by 2026-10-19):
+- ~~commerce §4.9 still says "Transport is not settled"~~ (now states the WD1/WD2 transport);
+- ~~commerce plan M11 still builds the `Commerce.Fulfilment` contract on `[Replicated]` + SyncAction~~ (now the WD1 transport);
+- ~~commerce S20 still expects "status write-back lands on the owner"~~ (struck in commerce round 5; status comes back as the warehouse's contract).
 
 ---
 
@@ -486,13 +487,13 @@ Edits after acceptance:
 - `ShipComplete=true` keeps an order unallocated until every line can be allocated.
 
 **Returns (WD5, WD12).** The flow:
-1. The shop creates the return (14-day withdrawal, commerce §4.7).
-2. It reaches the warehouse as `expected-returns`.
+1. The shop creates the return (14-day withdrawal, commerce §4.7; round 5: also a legal-guarantee claim, a wrong item, transit damage or a seller-allowed return).
+2. It reaches the warehouse as `expected-returns`, **with a return reason per line** (commerce GA8: `Withdrawal`, `NonConformity`, `WrongItem`, `DamagedInTransit`, `SellerAllowed`, `Other`). The reason sets the **default disposition**: `Withdrawal` and `SellerAllowed` → Restock after inspection; `NonConformity` and `DamagedInTransit` → Inspect then Quarantine (pending repair, replacement or return to vendor); `WrongItem` → Restock. Inspection can always override it, with a reason code.
 3. The warehouse receives it, by scanning the return or order barcode, or blind.
 4. The warehouse inspects each line and gives it a disposition: **Restock**, **Quarantine**, **Scrap** or **Return to vendor**.
 5. The result goes back as `return-receipts`.
 
-- **Refund timing:** for warehouse-backed stock, the refund waits for the warehouse's receipt by default. The host can switch to refund on request (WD12, commerce §4.9).
+- **Refund timing:** for warehouse-backed stock, the refund waits for the warehouse's receipt by default. The host can switch to refund on request (WD12, commerce §4.9). *(Round 5, commerce GA1: for a withdrawal the refund may wait only until receipt **or the buyer's proof of dispatch, whichever is earlier** (CRD Art. 13(3)), so the shop may release it before `return-receipts` arrives. The quota rule below is unchanged: restock, not refund, raises it.)*
 - **Quota:** restock raises `OnHandSellable`; a refund of shipped units returns no quota (commerce I4 exception).
 
 **Genericity.**
@@ -569,10 +570,10 @@ These shapes are initial; W1, W3 and W4 validate or replace them.
 | `WarehouseSite` | `warehouse-sites/{code}` | Name; address (reference data, commerce §4.18); IANA time zone; default carrier accounts; wave cut-offs | Per-site overrides of `Spark:Warehouse` |
 | `WarehouseZone` | `{siteId}/zones/{code}` | Kind: pick zone (for zone picking), bulk, cold, quarantine… Mixing rules | WD5 |
 | `WarehouseLocation` | `{siteId}/locations/{code}` | • Zone; parent with a materialized path; human code; barcode<br>• Check digits; walk sequence<br>• Type: Receiving, Storage, PickFace, Staging, Consolidation, PackStation, Quarantine, Returns<br>• Aisle, bay, level, position, side<br>• Capacity hint; fixed item with min/max; active flag; count class | Separate documents. Deactivated, never deleted, once it has ledger history |
-| `WarehouseItem` | Immutable id; unique key (owner, SKU) | • Owner, SKU, replica link<br>• Dimensions, weight<br>• Packaging levels with quantities<br>• Storage requirements; tracking (none, or lot + expiry); minimum shelf life<br>• Removal rule; default and fixed locations | WD9; pre-items (Q-W12) |
+| `WarehouseItem` | Immutable id; unique key (owner, SKU) | • Owner, SKU, replica link<br>• Dimensions, weight<br>• Packaging levels with quantities<br>• Storage requirements; tracking (none, or lot + expiry); minimum shelf life<br>• Removal rule; default and fixed locations<br>• **Round 5 (commerce GC9):** dangerous-goods data: UN number, class, packing group, lithium-battery kind (none, in equipment, with equipment, alone), limited-quantity flag | WD9; pre-items (Q-W12). Dangerous-goods items restrict carrier services at packing (§4.7) and may need a segregated zone (`WarehouseZone` mixing rules) |
 | `CatalogItem` (replica) | Source id | SKU, GTINs, name, variant, discontinued | Read-only. Tombstoned while stock remains (WD9) |
 | `BarcodeRegistration` | Per (code, item, owner) | Normalised code; type; packaging level and quantity; owner; item | WD8; one code may map to several items |
-| `StockLot` | `{itemId}/lots/{lotCode}` | Lot code; expiry (`DateOnly`); status: Released, Quarantine, Recalled | WD4 |
+| `StockLot` | `{itemId}/lots/{lotCode}` | Lot code; expiry (`DateOnly`); status: Released, Quarantine, Recalled | WD4. **Recall trace (round 5, commerce GA7):** below |
 | `StockBalance` | `{locationId}/{itemId}/{lotKey}` | Owner; `OnHand`, `Allocated` (base units); a copy of the expiry, for FEFO | WD4: one document per (location, SKU, lot) |
 | `StockMovement` | The op id | From, to, item, lot, quantity, reason code, reference, owner, user, device, device time, server time | The append-only ledger, and the idempotency anchor |
 | `StockLevel` | `{ownerId}/{itemId}` | `OnHandSellable`; per channel the open quantity and `ShippedTotal`; version | The feed (§4.4) |
@@ -594,6 +595,8 @@ These shapes are initial; W1, W3 and W4 validate or replace them.
 - **WI4** An op id is applied at most once: the movement id is the op id.
 - **WI5** Every owner-bearing document belongs to one owner, and no member of one owner ever reads another owner's document, in lists, pick lists, search or exports (WD3).
 - **WI6** `OnHandSellable` and `ShippedTotal` of an item change in the same transaction.
+
+**Recall trace (round 5, commerce GA7; GPSR Reg. 2023/988 recalls, confirm the duties on EUR-Lex, commerce D37).** Setting a lot to **Recalled** blocks it at once (no allocation, pick or ship; open allocations on it are re-allocated or short-picked) and enables a **forward trace**: lot → `StockMovement`s out of stock → `WarehouseShipment` lines (lots are recorded per shipment line at ship-confirm, §4.7) → fulfilment order → the shop's order and buyer contact. The warehouse holds no buyer contact beyond the ship-to address (§4.15), so the report it produces lists shipments and fulfilment-order ids, and the **shop** resolves them to buyers and sends the recall notice (a commerce mail template). The trace also lists stock still on hand per location and lots of the same item received in the same receipt. It is an owner-scoped report (WI5), exportable as CSV, and every run is audited. Items without lot tracking are traced by item and ship date range instead.
 
 **Concurrency.**
 - Moves, picks, put-aways and adjustments are domain services exposed as custom actions.
@@ -806,9 +809,9 @@ A picker holds a batch under a lease (commerce X12). A supervisor can take the b
 3. Cartonise: a manual carton choice, or a rule-based volumetric suggestion (the smallest carton type whose volume and weight limits fit). 3D packing is not built in (Q-W22).
 4. Weigh: manual entry, or a scale through the agent (WD7).
 5. Capture serials on the parcel (WD4).
-6. Create the carrier label through `Commerce.Shipping` (§4.12) and print it (§4.11). Print the packing slip.
+6. Create the carrier label through `Commerce.Shipping` (§4.12) and print it (§4.11). Print the packing slip. *(Round 5: only carrier services that accept the parcel's dangerous-goods classes are offered, and the label carries the marks the carrier API takes (commerce GC9). Shipments leaving the EU customs territory get their CN22/CN23 or commercial invoice through the same adapter (commerce GB6). A return label can be printed into the parcel when the seller offers one (commerce GB5).)*
 7. Optionally allocate an SSCC per carton, when the host configures a GS1 company prefix.
-8. Ship-confirm: the stock leaves (on hand down, `ShippedTotal` up, WI6), the shipment is created, and the status says shipped. Whether a separate handover scan comes first is Q-W10.
+8. Ship-confirm: the stock leaves (on hand down, `ShippedTotal` up, WI6), the shipment is created, and the status says shipped. Whether a separate handover scan comes first is Q-W10. *(Round 5: each shipment line records the **lots** shipped, which the recall trace (§4.5, commerce GA7) follows.)*
 
 **Counting (the Counting package).**
 - **Count plans** per location class: **A every 30 days, B every 60, C every 120**, spread evenly (WD5). The figures come from a Dynamics GP example (research §1). Class assignment is Q-W8. Spot counts can be made on demand.
@@ -1196,7 +1199,7 @@ All are in code that ships today, so they belong in this PR (K5). This PRD imple
 | Warehouse demo deployment | demo | **Not deployed** (WD11) | Runs locally and in CI E2E. Revisit once the spikes measure VPS headroom |
 | Replication redesign (transport, contracts, F12–F19) | Fleet, HR (local demos) | This PR | No production app uses Replication: only `apps/Fleet/Fleet/Program.cs` and `apps/HR/HR/Program.cs` wire it |
 | Regenerated `modelHashes.json`, `securityPosture.txt` and route snapshots for the rewired grants | Fleet, HR | This PR | `--spark-verify-model` gates in CI |
-| The reference-data app's consumers | reference data (live, K8) and its consumers | When the reference-data PRD adds a consumer | **None required now:** no production app consumes replicas. A future production consumer needs the next two rows |
+| The reference-data app's consumers | reference data (~~live, K8~~ not deployed: K8 revised; developed locally with a basic seed set, commerce D39) and its consumers | When the reference-data PRD adds a consumer | **None required now:** no production app consumes replicas. A future production consumer needs the next two rows |
 | A `SparkModules` registry database on `coverage-raven` | VPS | Only with the first production consumer | The operator creates it. Registration's create needs cluster admin and only logs a warning when refused (`ModuleRegistrationService.cs:33-35`). App certificates hold Admin on their own database only (`docs/code-coverage/raven-tls-migration.md:49-54`). WX4's read-only registry mode applies |
 | Module mTLS through Traefik | VPS | Only with the first production consumer | `passTLSClientCert` plus `KnownProxies` (`ModuleCertificateForwarding.cs:9-35`), or the internal Docker network |
 | Subscriptions per database | VPS | — | The HTTP transport adds none. The SyncAction worker runs only where write-back is used. Community allows 3 per database and 15 per cluster |
@@ -1242,11 +1245,11 @@ These milestones are the content of commerce M20 and ship in the commerce PR (K5
 | WM0 | Spikes W1–W19 (results logged in §13) | — |
 | WM1 | Replication redesign:<br>• WX1–WX4 and WX13;<br>• F12–F19;<br>• Fleet and HR rewired;<br>• replication guides rewritten | W5, W6, W7; commerce X7 |
 | WM2 | Shared foundations:<br>• `Fulfilment.Contracts`, `Gs1`, `Warehouse.Abstractions`;<br>• WX8 `Quantity`, WX9 picker, WX11 CSV, WX14 zone-aware schedules | WM1; commerce X4; W12 |
-| WM3 | Warehouse core:<br>• sites, zones, locations;<br>• items and pre-items; owner links;<br>• barcode registry and resolution;<br>• stock engine (WI1–WI6);<br>• replenishment;<br>• `StockLevel` and the feed;<br>• task envelope; productivity events;<br>• the static indexes of §4.5 (WX16 if Q-W26 is accepted) | WM2; commerce X3, X12; W1, W19 |
-| WM4 | Inbound: receipts, put-away, returns and dispositions | WM3 |
+| WM3 | Warehouse core:<br>• sites, zones, locations;<br>• items and pre-items; owner links;<br>• barcode registry and resolution;<br>• stock engine (WI1–WI6); round 5: Recalled lots blocked + recall trace report (GA7), dangerous-goods item data (GC9);<br>• replenishment;<br>• `StockLevel` and the feed;<br>• task envelope; productivity events;<br>• the static indexes of §4.5 (WX16 if Q-W26 is accepted) | WM2; commerce X3, X12; W1, W19 |
+| WM4 | Inbound: receipts, put-away, returns and dispositions; round 5: return reasons in `expected-returns` set the default disposition (GA8) | WM3 |
 | WM5 | Outbound:<br>• intake and routing;<br>• release and waves; allocation;<br>• discrete, batch, cluster and zone picking; scan-to-confirm;<br>• short picks, backorders, cancellation;<br>• consolidation | WM3; W3, W4 |
 | WM6 | Printing:<br>• the job queue and the PDF dialog;<br>• the agent and its protocol;<br>• QZ Tray, Zebra Browser Print;<br>• label rendering (WX6) | W15, W16, W17 (commerce Q-O9) |
-| WM7 | Packing:<br>• the pack station;<br>• cartonisation and weighing;<br>• carrier labels, SSCC, serials;<br>• ship-confirm and handover | WM5, WM6; commerce M11 (Shipping and carriers) |
+| WM7 | Packing:<br>• the pack station;<br>• cartonisation and weighing;<br>• carrier labels, SSCC, serials;<br>• ship-confirm and handover;<br>• round 5: lots per shipment line and the recall trace (GA7), dangerous-goods service restrictions (GC9), customs documents and return labels (GB6, GB5) | WM5, WM6; commerce M11 (Shipping and carriers) |
 | WM8 | Counting: ABC plans, blind counts, variance review | WM3 |
 | WM9 | Client entry points:<br>• `scanning` (WX5), `offline` (WX7), `printing`;<br>• the warehouse pages;<br>• idle sign-out (WX15) | W9–W14, W18 |
 | WM10 | Shop side (commerce work):<br>• `Commerce.Fulfilment` over the contracts;<br>• the capacity source and the stock-feed rules;<br>• the returns gate | WM1, WM2; commerce M11–M12; W2 |
@@ -1501,8 +1504,8 @@ Owner answers are quoted where they changed or refined the recommendation.
   - (b) as the scanning device itself: camera scanning, PWA install (WD7).
 
   BYOD data minimisation: sign-out clears the cached tasks and the unsent offline queue (with a warning), and no customer address is kept beyond the current task.
-- **WD11 (WQ11, deployment):** **Demos stay local** (commerce and warehouse); only the reference-data app goes live. Revisit after the spikes measure VPS headroom. Closes commerce Q-O5. Commerce gained Q-O9 (PDF rendering), shared with WX6 and W17. *Evidence:* about 3 GB of RAM is free on the VPS (commerce §8).
-- **WD12 (WQ12, returns gating; decided as a default, no question asked):** For warehouse-backed stock, refunds for returned goods wait for the warehouse's receipt **by default**. The host can switch to refund on request (commerce §4.9). *Evidence:* research §6: EU withdrawal law lets the trader withhold the refund until the goods are received (unverified; Directive 2011/83/EU art. 13(3)).
+- **WD11 (WQ11, deployment):** **Demos stay local** (commerce and warehouse); ~~only the reference-data app goes live. Revisit after the spikes measure VPS headroom.~~ *(Superseded: K8 revised the same day, so the reference-data app is not deployed either (commerce D39, round 5: developed locally with a basic seed set); the VPS-headroom spikes S2/S4 were dropped in commerce round 4.)* Closes commerce Q-O5. Commerce gained Q-O9 (PDF rendering), shared with WX6 and W17. *Evidence:* about 3 GB of RAM is free on the VPS (commerce §8).
+- **WD12 (WQ12, returns gating; decided as a default, no question asked):** For warehouse-backed stock, refunds for returned goods wait for the warehouse's receipt **by default**. The host can switch to refund on request (commerce §4.9). *Evidence:* research §6: EU withdrawal law lets the trader withhold the refund until the goods are received (unverified; Directive 2011/83/EU art. 13(3)). *(Round 5, commerce GA1: the same article also ends the withholding at the buyer's proof of dispatch, whichever comes first; still to be confirmed on EUR-Lex, commerce D37. §4.3 updated.)*
 - **Constraints restated for this PRD:**
   - **K9:** "A redesign would be allowed too, but we'll probably need to change things on the vps then" → §8.
   - **K10:** "Now we only really need to bother with timezones in one place - all the complex timezone logic can be offloaded to core-framework shipped built-ins" → §4.14, WX14.
@@ -1555,6 +1558,9 @@ Owner answers are quoted where they changed or refined the recommendation.
 - cluster pick with a short pick → re-allocation → backorder → receipt → allocation → shipped;
 - cancellation accepted before pick; accepted with a put-back after pick; refused after shipping, then turned into a return;
 - return received and restocked → refund released (WD12) → capacity rises, and no quota returns on the refund;
+- round 5: a `NonConformity` return defaults to Inspect → Quarantine; a withdrawal with proof of dispatch releases the refund before receipt, and the quota still rises only at restock (GA1, GA8);
+- round 5: a lot set to Recalled is blocked from allocation, and the recall trace lists the shipments and fulfilment orders that carried it, which the shop resolves to buyers (GA7);
+- round 5: a lithium-battery item is never offered a carrier service that refuses it (GC9);
 - offline replay with a conflict landing in the exceptions (scaled-down W13);
 - a barcode with two matches → the user chooses; an unknown barcode → link to item;
 - owner isolation: a member of owner A sees nothing of owner B in any list, pick list, search or export;

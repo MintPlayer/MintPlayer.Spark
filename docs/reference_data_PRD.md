@@ -1,6 +1,6 @@
 # Reference data (K8): PRD and plan
 
-**Status:** research and grilling round 1 complete (2026-10-17). Spikes not started.
+**Status:** research and grilling rounds 1–2 complete (2026-10-17); round 3 (owner, 2026-10-19): developed on this branch with a basic seed set (RD9 = commerce D39), search fuzzy by default (RD10 = commerce D38). Spikes not started.
 **Issue:** part of [#521](https://github.com/MintPlayer/MintPlayer.Spark/issues/521) (owner scope K8), in the same PR as commerce and the warehouse plugin.
 **Companions:**
 - [reference_data_research.md](reference_data_research.md): the evidence. §1 Belgium, §2 other countries, §3 global sources and licences, §4 attribution, §5 romanization and tags, §6 model evidence, §7 Spark fit, §8 sources.
@@ -18,6 +18,8 @@
 |---|---|---|---|
 | Research: Belgium, world sources and licences, model, Spark app architecture | ✅ | 2026-10-17 | research §1–§8 |
 | Grilling round 1 (RQ1–RQ7, RD1, defaults) | ✅ | 2026-10-17 | §13 Round 1 |
+| Round 2 (Q-R1–Q-R18 accepted) | ✅ | 2026-10-17 | §13 Round 2 |
+| Round 3: develop on this branch with a basic seed set; fuzzy by default; optional VAT-rate, holiday and VAT-territory data for commerce | ✅ decided; ⏳ to build | 2026-10-19 | §13 Round 3 |
 | Source-generator study (K12) | ⏳ | — | §5 |
 | Open decisions Q-R1–Q-R18 | ⏳ | — | §11 |
 | Spikes RS1–RS22 | ⏳ | — | §7 |
@@ -43,7 +45,7 @@ Three properties drive every section:
 | K5 | One PR for everything: commerce, the warehouse plugin, this plugin, and every defect found along the way. |
 | K6 | This repo is a **framework**, not a platform. The plugin is a set of configurable building blocks; `apps/ReferenceData` shows one instance. |
 | K7 | The framework does not pick vendors. Every register gets its own adapter package, and the host chooses countries, sources and schedules in configuration. |
-| K8 | **The owner's request** (as recorded on 2026-10-17: a paraphrase, with the owner's own words in quotation marks): a new Spark app in this repo for reference data. Countries, languages, cities, and regions at several levels per country (Belgium: Vlaanderen / Wallonie / Brussels gewest → provincies → cities; other countries have other layouts), plus street names. Localized in several languages and romanized. A publicly accessible, non-protected API without CORS restrictions. An address typeahead that narrows each box. Seeded deterministically into dev/prod **and** consumer databases. Belgium's open-data XML export. Merger history: Kruishoutem + Zingem → Kruisem, and Ooike split between two towns (owner recalled "the 1990's"; verified: 1 January 1977, §4.2). The owner's model idea: a `Place` for any municipality name, e.g. Bevere `isCity=false`, `parent=Oudenaarde`; on a merger, `isCity` goes from true to false and a parent is assigned. Owner: "This will almost certainly also be in-scope, as a new live-deployed application."<br>~~Live-deployed~~ **Revised:** "second thoughts - i don't think I'll be deploying this reference data app to my vps. If the code is written and can work properly, that would be great already". The app must work locally and under test; any host can deploy its own instance (§8). |
+| K8 | **The owner's request** (as recorded on 2026-10-17: a paraphrase, with the owner's own words in quotation marks): a new Spark app in this repo for reference data. Countries, languages, cities, and regions at several levels per country (Belgium: Vlaanderen / Wallonie / Brussels gewest → provincies → cities; other countries have other layouts), plus street names. Localized in several languages and romanized. A publicly accessible, non-protected API without CORS restrictions. An address typeahead that narrows each box. Seeded deterministically into dev/prod **and** consumer databases. Belgium's open-data XML export. Merger history: Kruishoutem + Zingem → Kruisem, and Ooike split between two towns (owner recalled "the 1990's"; verified: 1 January 1977, §4.2). The owner's model idea: a `Place` for any municipality name, e.g. Bevere `isCity=false`, `parent=Oudenaarde`; on a merger, `isCity` goes from true to false and a parent is assigned. Owner: "This will almost certainly also be in-scope, as a new live-deployed application."<br>~~Live-deployed~~ **Revised:** "second thoughts - i don't think I'll be deploying this reference data app to my vps. If the code is written and can work properly, that would be great already". The app must work locally and under test; any host can deploy its own instance (§8).<br>**Round 3 (RD9, 2026-10-19):** "2 days ago I "decided" not to develop or not to seed-data the "reference data" application (countries, cities, streets, ...) - But I think I'll do it anyway, just a basic set, some countries, some regions, some streets, ... Just to be able to test --- All of that is in-scope for the current branch". → Developed on this branch, with a **basic seed set** (§3.2). Still not deployed by us. |
 | K10 | **Time zones in one place.** All zone logic lives in core built-ins. Places only *carry* an IANA zone id; labels flow through the core `ISparkTimeZoneNames` (D36). This plugin never converts or formats zones. |
 | K11 | **Standard web APIs first.** Country, language, script and currency names come from `Intl.DisplayNames` in the browser; sorting and filtering use `Intl.Collator` and `String.prototype.normalize`. The API serves only what a browser cannot know: subdivisions, places, postal codes and streets. |
 | K12 | **Prefer source generators** over hand-written boilerplate. The study is running; its results are folded into §5. |
@@ -112,6 +114,15 @@ The gaps closed in this PR are in §5 (framework additions) and §6 (defects).
 - **History depth (RD4)** is what authorities publish in machine-readable form, and nothing more. Older units that still exist as sections appear as places without dated lineage (Bevere, absorbed by Oudenaarde in 1965, is NIS6 `45035Y`). There is **no hand curation**.
 - **Each country profile states "history known since".** When an `asOf` date predates it, the API says so explicitly instead of guessing (§4.11).
 - **The global baseline** also supplies exonyms (Wikidata labels), romanized names (NGA GNS, UN/LOCODE), localized country, language and script names (CLDR), codes (IANA Language Subtag Registry) and time-zone exemplar cities (CLDR, §4.13).
+
+**Basic seed set (RD9, round 3).** For testing, the plugin ships a small committed seed set, built from the adapters' real sample fixtures (RS8) by the same import pipeline, so its ids come from the same ledgers and a later full import continues them instead of colliding:
+- **countries:** a handful (BE, NL, FR, LU, DE) with their country profiles (levels, address-line template, postcode regex, VAT-territory exceptions for commerce GA4);
+- **regions:** Belgium's three regions and its provinces; the top level of the others;
+- **places:** a few dozen municipalities and sections, including every decision-table case (Kruisem with Kruishoutem and Zingem, Ooike, Oudenaarde with Bevere, Hasselt 2025, Bastogne), postal localities for them;
+- **streets:** a few streets per seeded municipality;
+- **time zones:** the zone and CLDR exemplar city of each seeded place.
+
+It is seeded deterministically by `apps/ReferenceData` on first start (a `SeededHash` seeder, which leaves documents nobody edited refreshable) and by the tests. It is test data, not a coverage tier: the tiers below describe what full imports provide, and full imports stay manual local runs (RD2).
 
 Volumes for Belgium (research §1): 565 municipalities, 2,720 municipality code rows since 1970, 2,616 NIS6 sections, 2,016 Walloon parts of municipality, 1,191 postal codes, 156,055 current streets, about 147k (postcode, street) pairs. That is about **310k small documents**. House numbers would add 6,656,349 current addresses and about 13 GB of XML a week (RD5 keeps them out).
 
@@ -383,6 +394,13 @@ Two refinements of RD2's "open postcodes" from research §2: **US** postal codes
 | [Unicode CLDR](https://www.unicode.org/license.txt) | Localized country, language and script names; time-zone exemplar cities (§4.13) | Unicode License v3 (notice on the sources page) | **Not** for subdivision names: since CLDR 42 they are uncurated Wikidata copies |
 | [IANA Language Subtag Registry](https://www.iana.org/assignments/language-subtag-registry) | Every ISO 639 language, ISO 15924 script, ISO 3166-1 α-2 and M49 region code, with deprecations | CC0 | Used **instead of** SIL's ISO 639-3 tables, whose terms forbid offering "a means to redistribute the code set" |
 
+**Optional sources for commerce (round 3, 2026-10-19; commerce GC10, GC11, GA4).** Off by default; each is its own adapter package under the same `IReferenceDataSource` contract, and each licence is verified in R0 before it ships (commerce D37):
+- **EU VAT rates (GC10):** the Commission's TEDB (Taxes in Europe Database) rates per member state into a `VatRateSuggestion` collection (country, category, rate, valid from/to). Commerce shows them as **suggestions**; the host still sets its own rates (commerce §4.8). Fixtures from the public download; licence and machine-readable format to verify (RS23).
+- **Holiday calendars (GC11):** public holidays per country (and per region where they differ) as dated `PublicHoliday` documents, consumed by commerce's carrier cut-offs and delivery promises through the core zone-aware schedule (warehouse WX14). Source per country chosen in R0 (an official open source where one exists; otherwise the global baseline marks the country "no holiday data"); no hand curation (RD4).
+- **VAT territories (GA4):** the country profile gains a `VatTerritories` list (Canary Islands, Åland, Mount Athos, Northern Ireland as `XI`, the French overseas departments, …) with their postcode or subdivision patterns, so commerce's place-of-supply rule can tell a special territory from the mainland. Hand-written per profile (like the address-line template, RD-DEF 6), with the legal basis cited and checked on EUR-Lex.
+
+The basic seed set (§3.2) includes the VAT territories of its countries, and a few holidays per seeded country for commerce's tests.
+
 **Kept out of the core database** (research §3): OpenStreetMap and Overture (ODbL share-alike would reach our backing database), GISCO boundary geometries (non-commercial; the LAU code lists are fine), Chile INE (CC BY-SA), SIL ISO 639-3, Bulgaria's NSI EKATTE (no derivative works), Google's libaddressinput data (no licence), Who's On First (per-record licence mix; concordance only), and the proprietary postal products (PAF, AddressBase, Eircode, Canada Post, USPS, Correos, Poste Italiane, CTT, Deutsche Post, BKG, Australia Post, NZ Post).
 
 ### 4.5 The sync pipeline (RD1)
@@ -464,9 +482,11 @@ Stored addresses keep the local official name. The API returns `local`, `ui` and
 
 **Country, language, script and currency names (RD-DEF 10, K11).** Browsers use `Intl.DisplayNames` (and `Intl.Collator` to sort and filter about 250 countries). Server-side output (mails, PDFs) uses CLDR names: the instance ingests CLDR and serves them (`GET /api/v1/countries?lang=`) for non-.NET consumers; how a .NET consumer gets them, including in free-text mode, is Q-R18. Neither is stored as documents in a consumer.
 
-### 4.10 Search (RD8, RD8b, X18)
+### 4.10 Search (RD8, RD8b, RD10, X18)
 
 Owner: "If Lucene fuzzy can be used with any ravendb license, yes pick option C - otherwise we should let the framework provide a second option for the developer to choose from". Verified: the engine is chosen per index on every licence (Community, Developer and unlicensed servers default new indexes to Corax; an explicit `SearchEngineType.Lucene` overrides it; [docs](https://docs.ravendb.net/7.1/indexes/search-engine/corax); a Lucene index on a Corax-default server works, measured on 7.2.5). Then: "And perhaps lucene can be enabled on that index automatically" (X18).
+
+**Round 3 (RD10 = commerce D38, 2026-10-19):** the owner chose **"Fuzzy by default"** for the whole framework: every index with searchable fields runs on Lucene and search is typo-tolerant by default, with a per-field opt-out; existing search indexes rebuild side by side. For this plugin that changes only the engine table below: the two typeahead indexes were already Lucene. The typeahead's own **two-step** query (prefix tiers first, fuzzy only when they return fewer than *k*) stays, because the deterministic re-ranking needs exact and prefix matches to outrank fuzzy ones; it is the "fuzzy by default" behaviour applied in this order.
 
 **Search keys are data, computed at import** (one versioned C# pipeline, used again to fold the query):
 1. assert at startup that `"é".Normalize(NormalizationForm.FormD).Length == 2` (invariant-globalization mode may return input unchanged);
@@ -494,13 +514,13 @@ Owner: "If Lucene fuzzy can be used with any ravendb license, yes pick option C 
 
 | Index | Engine | Purpose |
 |---|---|---|
-| `RefLocalities/Typeahead` | Lucene (automatic, X18) | Multi-map over places and postal localities, one entry per validity segment |
-| `RefStreets/Typeahead` | Lucene (automatic, X18) | One entry per street period; a query always carries a municipality or postal-code filter, so it never scans millions |
-| `RefPlaces/ByParent` | Corax, pinned | Children as of a date |
-| `RefPlaces/ByCode` | Corax, pinned | Who held code X on date D |
-| `RefLineageEvents/ByParticipant` | Corax, pinned | Lineage per place |
+| `RefLocalities/Typeahead` | Lucene (~~automatic, X18~~ fuzzy by default, RD10) | Multi-map over places and postal localities, one entry per validity segment |
+| `RefStreets/Typeahead` | Lucene (~~automatic, X18~~ fuzzy by default, RD10) | One entry per street period; a query always carries a municipality or postal-code filter, so it never scans millions |
+| `RefPlaces/ByParent` | ~~Corax, pinned~~ engine pinned by Spark (RD10): no searchable field, so not switched to Lucene | Children as of a date |
+| `RefPlaces/ByCode` | ~~Corax, pinned~~ engine pinned by Spark (RD10): no searchable field; code lookups are exact (an opt-out would apply if a code field were ever made searchable) | Who held code X on date D |
+| `RefLineageEvents/ByParticipant` | ~~Corax, pinned~~ engine pinned by Spark (RD10): no searchable field | Lineage per place |
 
-Non-fuzzy indexes pin Corax explicitly, because Lucene is the default on Professional and Enterprise and an unpinned index would change engine on a licence upgrade. Spark's own library indexes count against the same 12 (RS9). The owner rule "indexes always live in the application" meets a reusable plugin here: Q-R6.
+~~Non-fuzzy indexes pin Corax explicitly, because Lucene is the default on Professional and Enterprise and an unpinned index would change engine on a licence upgrade.~~ *(Superseded by RD10 / commerce D38, round 3: the plugin no longer pins engines itself and has no "non-fuzzy index" class.)* **Spark pins the engine explicitly on every index it registers** (commerce X18 as revised): Lucene where the index has a searchable field that has not opted out of fuzzy matching, otherwise the engine it pins at registration, so a licence upgrade (Lucene is the default on Professional and Enterprise) still never switches an index. The three lookup indexes have no searchable fields, so the rule leaves them where they are. Spark's own library indexes count against the same 12 (RS9) (~~12~~: cap lifted 2024-05-22, see above). The owner rule "indexes always live in the application" meets a reusable plugin here: Q-R6.
 
 ### 4.11 Public API (RD-DEF 3)
 
@@ -617,6 +637,7 @@ Free text is always possible (`Verified: false`): new streets appear before the 
 - **`apps/ReferenceData`** with `ReferenceData` (host + ClientApp), `ReferenceData.Library` and `ReferenceData.Tests`. Ports **https 5017 / http 5018** (free: commerce's demo uses 5015/5016, the warehouse demo 5019/5020). **Local only.**
 - **Admin sign-in** with a local password; an Administrators group holds the import actions and the import-run pages.
 - **A consumer page** in the same app uses the client packages against the instance itself: the address form, free-text mode, and a sync status.
+- **Basic seed set (RD9, round 3):** seeded on first start and in tests (§3.2), so the address form, the as-of queries and commerce's E2E work without a full import. The admin's "Import now" still runs full imports locally.
 - **Database:** `RefData` on the local development server (localhost:8080, Developer licence). Spikes pin RavenDB to 3 cores and use no feature Community lacks (commerce D24, S18).
 - **The new-app checklist** (commerce research §10; research §7): `package.json` workspaces; the slnx folder; `pull-request.yml` build list, `--spark-verify-model` and `--spark-verify-security` loops; `regenerate.yml`; `tools/verify-ngsw-config.test.mjs` (`/api` and `/health` excluded both ways, and the app added to the list of Spark apps); the SPA fallback excluding `/api`; `/health`; the `test.yml` matrix if the suite is long; `securityPosture.txt` and the route-table snapshot baselines.
 - **`.gitignore` traps for folder names:** `[Rr]eleases/`, `[Ll]ogs/`, `*.log`, `publish/`, `**/[Pp]ackages/*`, `*.[Cc]ache` and `Backup*/` would silently untrack a fixture folder or the ledger (research §7). The ledger is `.ndjson`, never `.log`.
@@ -627,7 +648,7 @@ Free text is always possible (`Verified: false`): new streets appear before the 
 
 > **Source-generator programme (commerce X20, K12, accepted 2026-10-17)** applies here:
 > - **TypeScript contracts** for the `reference-data` entry points (typeahead results, address form, release manifest types) come from the C#→TS tool;
-> - the extended **`GenerateIndexGenerator`** brings sanitized per-language field names (X17) and the fuzzy marker (X18 → Lucene);
+> - the extended **`GenerateIndexGenerator`** brings sanitized per-language field names (X17) and the fuzzy marker (X18 → Lucene; since RD10 an opt-out marker, fuzzy being the default);
 > - **library-declared indexes** are emitted into the host app (X19, Q-R6);
 > - **enum-backed lookups** (G1) cover kinds such as place kinds and name kinds, through `translations.json` keys;
 > - the **translation-key guard** covers this plugin's layers.
@@ -643,7 +664,7 @@ Free text is always possible (`Verified: false`): new streets appear before the 
 | X15 | po-form edit renderer for a single `AsDetail` value object, plus `noteChange` for renderer edits | `<spark-address-input>` inside generic forms (§4.15) |
 | X16 + D36 | `<spark-date-time>`, `ISparkDateTimeFormatter`, and `ISparkTimeZoneNames` with its fallback chain | The time-zone label provider (§4.13) |
 | X17 | **One name system:** `TranslatedString` redesigned (RD7). Includes the Spark fixes from research §5 and §7: sanitized per-language index field names (`IndexNaming.LanguageField`, `IndexNaming.cs:91-92`), the RFC 4647 chain on server and client, a factory for any language, and a startup warning for `culture.json` tags that are not well-formed BCP 47 | Place, postal-locality and street names (§4.9); FR2, FR3 |
-| X18 | **Lucene set automatically** on an index with a fuzzy-marked field or search rule; deterministic side-by-side rebuild on an engine change; an analyzer for fuzzy queries against unmarked indexes (RD8b) | The two typeahead indexes (§4.10) |
+| X18 | ~~**Lucene set automatically** on an index with a fuzzy-marked field or search rule; deterministic side-by-side rebuild on an engine change; an analyzer for fuzzy queries against unmarked indexes (RD8b)~~ **Revised (RD10 = commerce D38): fuzzy by default.** Every index with searchable fields on Lucene, typo-tolerant search by default with a per-field opt-out, the engine pinned explicitly on every index, side-by-side rebuilds of existing search indexes; the analyzer flags fuzzy queries on opted-out fields | The two typeahead indexes (§4.10) |
 
 **New in this PRD:**
 
@@ -703,12 +724,15 @@ Every spike ends with a measured result recorded in §13: numbers, file:line, or
 | RS20 | Time-zone assignment | Q-R10's method on multi-zone countries | 100% of fixture places in US, AU, ES and FR get the right zone, or null with a stated reason; every id validated against the tz database |
 | RS21 | Machine transliteration for keys | Which implementation for true alphabets? | ICU P/Invoke, AnyAscii (ISC) and own tables compared on Cyrillic, Greek, Armenian and Georgian samples; the choice gives identical keys on Windows and Linux (RS10) and is pinned in `KeyVersion` |
 | RS22 | Lineage derivation for 1977 | How much of the 1977 fusion is derivable without curation (RD4)? | Share of 1,832 codes ending 1976-12-31 that get a demote or merge event from REFNIS + NIS6 name matching; every unresolved one listed |
+| RS23 | Optional commerce sources (round 3) | TEDB rates and one holiday source per seeded country: format, change check, licence | Fixtures from the public downloads parse in CI; licences recorded; no rate is ever applied automatically (commerce GC10, GC11) |
 
 ---
 
 ## 8. Production impact (VPS) (K9)
 
-**The reference-data app: none.** It is not deployed by us (K8 revised); it runs locally and under test, and any host may deploy its own instance.
+**The reference-data app: none.** It is not deployed by us (K8 revised); it runs locally and under test, and any host may deploy its own instance. Round 3 (RD9) develops it on this branch with a basic seed set; that changes nothing on the VPS.
+
+Round 3 (RD10 = commerce D38) does reach production apps: their search indexes switch to Lucene and rebuild side by side on the next deploy. That row is in commerce §8.
 
 Changes of this PRD that do reach production apps:
 
@@ -739,7 +763,7 @@ This whole PRD is commerce milestone **M19**. Tests run once at the end, batched
 
 | # | Milestone | Depends on |
 |---|---|---|
-| R0 | Spikes RS1–RS22 (results logged in §13) | — |
+| R0 | Spikes RS1–RS23 (results logged in §13) | — |
 | R1 | Framework: commerce X3, X10, X15, X16 + D36, X17, X18 (commerce M1); RX1–RX5; defects FR1–FR5, FR8, FR9 | commerce M1, RS16, RS18 |
 | R2 | Abstractions: document types, country profile, `Address`, DTOs, release-format contract and JSON schemas | R1 (X17), Q-R7, Q-R14 |
 | R3 | Core engine: id grammar and ledger, lineage decision table, derived fields, search-key pipeline, rank, hash, as-of resolution, the display rule | R2, RS3, RS4, RS21, Q-R1–Q-R5, Q-R11–Q-R13 |
@@ -750,7 +774,8 @@ This whole PRD is commerce milestone **M19**. Tests run once at the end, batched
 | R8 | The 17 tier-1 adapters | R4, RS8, RS19 |
 | R9 | Search and the public API | R3, RS5, RS6, RS9, RS12, RS18, Q-R6, Q-R15 |
 | R10 | Client packages (.NET and Angular) and the ng-bootstrap typeahead (RX5) | R5, R9, RS13, RS15, Q-R9, Q-R18 |
-| R11 | Demo app `apps/ReferenceData`, new-app checklist, E2E | R6–R10 |
+| R11 | Demo app `apps/ReferenceData`, new-app checklist, **basic seed set (RD9)**, E2E | R6–R10 |
+| R11b | Optional commerce sources: TEDB VAT-rate suggestions, holiday calendars, VAT territories in country profiles (round 3; commerce GC10, GC11, GA4) | R4, RS23 |
 | R12 | Commerce integration: `Address` on venues, seller profiles and orders; venue zone from the address (commerce M19, second line) | R10, commerce M4, M14 |
 | R13 | Guides and READMEs; the release-format specification; the sources page | all |
 | R14 | Test sweep and browser verification, with commerce M22 | all |
@@ -797,6 +822,7 @@ This whole PRD is commerce milestone **M19**. Tests run once at the end, batched
 | Typeahead scraping | Releases make scraping pointless; rate limits protect the instance |
 | Fixture or ledger folders silently untracked by `.gitignore` | Folder naming rules (§4.16); `git status` check in R11 |
 | PR size and duration | Accepted (K5); milestones committed separately; tests batched at the end |
+| The seed set drifts from what a full import would produce (round 3) | Built from the adapters' real fixtures by the same pipeline and ledgers (§3.2), regenerated by a tool with a CI diff check, so a later import continues its ids |
 
 ---
 
@@ -863,6 +889,12 @@ Owner answers are quoted where the record quotes them.
   - a release per changing run, with an optional coalescing window;
   - a pinned CLDR subset in `.Client`.
 
+### Round 3 (owner, 2026-10-19; recorded in commerce §13 Round 5)
+
+- **RD9 (= commerce D39):** Owner: "2 days ago I "decided" not to develop or not to seed-data the "reference data" application (countries, cities, streets, ...) - But I think I'll do it anyway, just a basic set, some countries, some regions, some streets, ... Just to be able to test --- All of that is in-scope for the current branch". → The app is **developed on this branch** (R0–R14) with a **basic seed set** (§3.2): some countries, regions, places (with every decision-table case) and streets, built from the adapters' real fixtures through the same ledgers. Still not deployed by us (K8 revised). *Note:* the record holds no earlier decision not to develop it; K8 revised only dropped the deployment.
+- **RD10 (= commerce D38):** Owner chose **"Fuzzy by default"**: every index with searchable fields runs on Lucene and search is typo-tolerant by default with a per-field opt-out; existing search indexes rebuild side by side, production apps included. → §4.10's "non-fuzzy indexes pin Corax" is **superseded** (struck in §4.10); Spark pins every index's engine itself (commerce X18 revised). The typeahead's two-step order stays.
+- **Commerce round 5 additions that land here (commerce D37, "Include everything"):** optional sources for EU VAT rates (TEDB, GC10) and holiday calendars (GC11), and VAT territories in the country profile (GA4), §4.4, RS23, R11b. Their licences and formats are checked in R0; legal content against EUR-Lex (commerce D37).
+
 ---
 
 ## 14. Verification and acceptance
@@ -878,6 +910,7 @@ Owner answers are quoted where the record quotes them.
   - free-text mode with a `null` endpoint;
   - an as-of query before and after the Kruisem merger;
   - a consumer sync to the latest release, then a second sync writing nothing;
-  - the time-zone label provider giving the translated exemplar city.
+  - the time-zone label provider giving the translated exemplar city;
+  - **round 3:** a fresh database is seeded with the basic set on first start, and a second start writes nothing (RD9); a misspelled place ("Oudenarde") is found through the default fuzzy step (RD10).
 - **Browser checks** of the address form, the import-run pages and the sources page through the Playwright MCP tools.
 - **Versions:** new packages start at `11.0.0-preview.1`; touched `libs/` csproj files get a preview bump; `@mintplayer/ng-spark` gets one minor bump for the whole PR. No major changes (repo rule).
