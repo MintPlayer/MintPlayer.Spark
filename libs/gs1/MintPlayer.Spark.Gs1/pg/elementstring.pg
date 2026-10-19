@@ -1,0 +1,292 @@
+import "std.strings"
+import "std.collections"
+import "./aitable"
+import "./checkdigit"
+import "./linters"
+
+// One parsed AI element: the AI and its value as transmitted.
+record Gs1Element(ai: string, value: string)
+
+// The result of a parse: `error` is "" on success; otherwise it names the failure, and `errorAi` the AI it concerns
+// (empty when the failure is not tied to one AI).
+record Gs1ParseResult(error: string, errorAi: string, elements: List<Gs1Element>)
+
+// These parsers follow GS1's Barcode Syntax Engine (https://github.com/gs1/gs1-syntax-engine); libs/gs1/corpus holds
+// the engine's verdicts that the tests hold them to.
+//
+// Polyglot note: in this module and digitallink.pg a range loop ends on a variable or a literal, and `!` applies to a
+// variable. A range ending on a call, or `!` on a call, takes a temporary whose number is counted across the whole
+// build, so the module would be emitted differently depending on which module the build reached it from, and
+// `polyglot build` refuses such conflicting outputs.
+
+let gs1Table: List<Gs1AiEntry> = gs1AiTable()
+
+fn gs1Fail(error: string, ai: string): Gs1ParseResult {
+  var none: List<Gs1Element> = []
+  return Gs1ParseResult(error, ai, none)
+}
+
+fn gs1IsDigits(s: string): bool {
+  let n = s.len()
+  if n == 0 { return false }
+  for i in 0..n {
+    let c = s.codePointAt(i)
+    if c < 48 || c > 57 { return false }
+  }
+  return true
+}
+
+// The dictionary entry for the AI starting at `pos` (AIs are 2 to 4 digits and prefix-free), or null.
+fn gs1FindAi(data: string, pos: i32): Gs1AiEntry? {
+  for size in 2..=4 {
+    if pos + size > data.len() { return null }
+    let candidate = data.substring(pos, pos + size)
+    if !gs1IsDigits(candidate) { return null }
+    let value = i32.parse(candidate)
+    for entry in gs1Table {
+      if entry.first.len() == size && i32.parse(entry.first) <= value && value <= i32.parse(entry.last) {
+        return entry
+      }
+    }
+  }
+  return null
+}
+
+// The dictionary entry for exactly `ai`, or null.
+fn gs1LookupAi(ai: string): Gs1AiEntry? {
+  if ai.len() < 2 || ai.len() > 4 || !gs1IsDigits(ai) { return null }
+  let found = gs1FindAi(ai, 0)
+  if found == null { return null }
+  let entry = found!
+  return if entry.first.len() == ai.len() { entry } else { null }
+}
+
+fn gs1PredefinedLength(entry: Gs1AiEntry): i32 {
+  var total = 0
+  for c in entry.components { total = total + c.maxLength }
+  return total
+}
+
+// The length of the entry's mandatory components: a value of just that length leaves the optional ones out.
+fn gs1MandatoryLength(entry: Gs1AiEntry): i32 {
+  var total = 0
+  for c in entry.components {
+    if !c.optional { total = total + c.minLength }
+  }
+  return total
+}
+
+// The linter of a component's character set, which runs before the component's own linters.
+fn gs1CharsetLinter(charset: string): string {
+  return if charset == "N" { "csetnumeric" } else if charset == "X" { "cset82" } else if charset == "Y" { "cset39" } else { "cset64" }
+}
+
+// Checks `value` against the entry's components: each takes the characters that are left, up to its maximum length;
+// an optional component may be absent once the value is used up; each runs its character-set linter and then its own
+// linters; and the value must be used up.
+fn gs1ValidateValue(entry: Gs1AiEntry, value: string): string {
+  let n = value.len()
+  if n == 0 { return "GS1_EMPTY_VALUE" }
+  var pos = 0
+  for c in entry.components {
+    var take = n - pos
+    if take > c.maxLength { take = c.maxLength }
+    if take == 0 && c.optional { continue }
+    if take < c.minLength { return "GS1_VALUE_TOO_SHORT" }
+    let part = value.substring(pos, pos + take)
+    let charsetError = gs1Lint(gs1CharsetLinter(c.charset), part)
+    if charsetError != "" { return charsetError }
+    if c.linters != "" {
+      for linter in c.linters.split(",") {
+        let lintError = gs1Lint(linter, part)
+        if lintError != "" { return lintError }
+      }
+    }
+    pos = pos + take
+  }
+  return if pos < n { "GS1_VALUE_TOO_LONG" } else { "" }
+}
+
+// True when `ai` matches an `ex=` pattern: the AI itself, or digits followed by `n` wildcards (`310n`).
+fn gs1AiMatchesPattern(pattern: string, ai: string): bool {
+  let n = pattern.len()
+  if n != ai.len() { return false }
+  for i in 0..n {
+    let p = pattern.charAt(i)
+    if p != "n" && p != ai.charAt(i) { return false }
+  }
+  return true
+}
+
+// The checks the engine makes across the elements of a scan (its AI validations, with the RequisiteAIs one left off:
+// associations are judged over all the carriers on an item, not per barcode):
+// - AIs the dictionary marks mutually exclusive (`ex=`) may not appear together;
+// - an AI that appears more than once must carry the same value each time;
+// - next to a digital signature (8030), a GDTI (253), GCN (255) or GRAI (8003) must carry its serial component.
+fn gs1Validated(elements: List<Gs1Element>): Gs1ParseResult {
+  for e in elements {
+    let found = gs1LookupAi(e.ai)
+    if found == null { return gs1Fail("GS1_UNKNOWN_AI", e.ai) }
+    let entry = found!
+    for attribute in entry.attributes.split(" ") {
+      if attribute.startsWith("ex=") {
+        for pattern in attribute.substring(3, attribute.len()).split(",") {
+          for other in elements {
+            if other.ai != e.ai && gs1AiMatchesPattern(pattern, other.ai) { return gs1Fail("GS1_EXCLUSIVE_AIS", e.ai) }
+          }
+        }
+      }
+    }
+  }
+  let count = elements.count
+  var i = 0
+  while i < count {
+    var j = i + 1
+    while j < count {
+      if elements[i].ai == elements[j].ai && elements[i].value != elements[j].value {
+        return gs1Fail("GS1_REPEATED_AI_DIFFERENT_VALUES", elements[i].ai)
+      }
+      j = j + 1
+    }
+    i = i + 1
+  }
+  var signed = false
+  for e in elements {
+    if e.ai == "8030" { signed = true }
+  }
+  if signed {
+    for e in elements {
+      if e.ai == "253" || e.ai == "255" || e.ai == "8003" {
+        let found = gs1LookupAi(e.ai)
+        if found != null {
+          let entry = found!
+          if e.value.len() == gs1MandatoryLength(entry) { return gs1Fail("GS1_SERIAL_NOT_PRESENT", e.ai) }
+        }
+      }
+    }
+  }
+  return Gs1ParseResult("", "", elements)
+}
+
+// Parses unbracketed AI data: AIs and values back to back, a GS (FNC1) after every value whose length is not
+// predefined. A leading GS (FNC1 in first position) and a GS after a predefined-length value are tolerated.
+fn gs1ParseAiData(data: string): Gs1ParseResult {
+  var elements: List<Gs1Element> = []
+  let n = data.len()
+  var pos = if n > 0 && data.codePointAt(0) == 29 { 1 } else { 0 }
+  if pos == n { return gs1Fail("GS1_NO_DATA", "") }
+  while pos < n {
+    let found = gs1FindAi(data, pos)
+    if found == null { return gs1Fail("GS1_UNKNOWN_AI", "") }
+    let entry = found!
+    let ai = data.substring(pos, pos + entry.first.len())
+    pos = pos + ai.len()
+    var end = n
+    let gs = data.indexOf("\u{1D}", pos)
+    if gs >= 0 { end = gs }
+    if entry.predefinedLength {
+      let fixedEnd = pos + gs1PredefinedLength(entry)
+      if fixedEnd < end { end = fixedEnd }
+    }
+    let value = data.substring(pos, end)
+    let error = gs1ValidateValue(entry, value)
+    if error != "" { return gs1Fail(error, ai) }
+    elements.add(Gs1Element(ai, value))
+    pos = end
+    if pos < n && data.codePointAt(pos) == 29 { pos = pos + 1 }
+  }
+  return gs1Validated(elements)
+}
+
+// Parses bracketed AI data, `(01)09521234543213(10)ABC`. A literal `(` inside a value is written `\(`.
+fn gs1ParseBracketed(data: string): Gs1ParseResult {
+  var elements: List<Gs1Element> = []
+  let n = data.len()
+  var pos = 0
+  while pos < n {
+    if data.charAt(pos) != "(" { return gs1Fail("GS1_MALFORMED_BRACKETS", "") }
+    let close = data.indexOf(")", pos)
+    if close < 0 { return gs1Fail("GS1_MALFORMED_BRACKETS", "") }
+    let ai = data.substring(pos + 1, close)
+    let found = gs1LookupAi(ai)
+    if found == null { return gs1Fail("GS1_UNKNOWN_AI", ai) }
+    let entry = found!
+    var value = ""
+    pos = close + 1
+    while pos < n && data.charAt(pos) != "(" {
+      if data.charAt(pos) == "\\" && pos + 1 < n && data.charAt(pos + 1) == "(" {
+        value = value + "("
+        pos = pos + 2
+      } else {
+        value = value + data.charAt(pos)
+        pos = pos + 1
+      }
+    }
+    let error = gs1ValidateValue(entry, value)
+    if error != "" { return gs1Fail(error, ai) }
+    elements.add(Gs1Element(ai, value))
+  }
+  if elements.count == 0 { return gs1Fail("GS1_NO_DATA", "") }
+  return gs1Validated(elements)
+}
+
+// An EAN-13 (`digits` 13) or EAN-8 (8) symbol: exactly that many digits with a valid check digit, its GTIN padded to
+// GTIN-14 as AI (01), optionally followed by `|]e0` and the AI data of a composite component (the engine's notation
+// for the second message of a reader that returns both).
+fn gs1ParseRetail(data: string, digits: i32): Gs1ParseResult {
+  let n = data.len()
+  if n < digits { return gs1Fail("GS1_INVALID_RETAIL_SYMBOL", "01") }
+  var composite = ""
+  var hasComposite = false
+  if n > digits {
+    let ccStart = digits + 4
+    if n < ccStart || data.substring(digits, ccStart) != "|]e0" { return gs1Fail("GS1_INVALID_RETAIL_SYMBOL", "01") }
+    hasComposite = true
+    composite = data.substring(ccStart, n)
+  }
+  let primary = data.substring(0, digits)
+  if !gs1IsDigits(primary) || !gs1HasValidCheckDigit(primary) { return gs1Fail("GS1_INVALID_RETAIL_SYMBOL", "01") }
+  var gtin = primary
+  while gtin.len() < 14 { gtin = "0" + gtin }
+  var elements: List<Gs1Element> = []
+  elements.add(Gs1Element("01", gtin))
+  if hasComposite {
+    // Like AI data after a symbology identifier: no leading GS. The composite's AIs are validated among themselves.
+    if composite.len() > 0 && composite.codePointAt(0) == 29 { return gs1Fail("GS1_UNKNOWN_AI", "") }
+    let cc = gs1ParseAiData(composite)
+    if cc.error != "" { return cc }
+    for e in cc.elements { elements.add(e) }
+  }
+  return Gs1ParseResult("", "", elements)
+}
+
+// Parses scanned or typed GS1 element-string data:
+// - with a symbology identifier: `]C1` (GS1-128), `]e0` (GS1 DataBar), `]d2` (GS1 DataMatrix), `]Q3` (GS1 QR) or
+//   `]J1` (GS1 DotCode) followed by AI data (the identifier stands for FNC1 in first position, so no GS may follow it);
+//   `]E0` (EAN-13, UPC-A, UPC-E) or `]E4` (EAN-8) as a GTIN;
+// - without one: bracketed AI data when it starts with `(`, otherwise unbracketed AI data with GS separators.
+// Digital Link URIs are parsed by gs1ParseDigitalLink; gs1ParseScan picks between the two.
+fn gs1ParseElementString(input: string): Gs1ParseResult {
+  if input.startsWith("]") {
+    if input.len() < 3 { return gs1Fail("GS1_MISSING_SYMBOLOGY", "") }
+    let sym = input.substring(1, 3)
+    let rest = input.substring(3, input.len())
+    if sym == "C1" || sym == "e0" || sym == "d2" || sym == "Q3" || sym == "J1" {
+      if rest.len() > 0 && rest.codePointAt(0) == 29 { return gs1Fail("GS1_UNKNOWN_AI", "") }
+      return gs1ParseAiData(rest)
+    }
+    if sym == "E0" { return gs1ParseRetail(rest, 13) }
+    if sym == "E4" { return gs1ParseRetail(rest, 8) }
+    return gs1Fail("GS1_UNSUPPORTED_SYMBOLOGY", "")
+  }
+  if input.startsWith("(") { return gs1ParseBracketed(input) }
+  return gs1ParseAiData(input)
+}
+
+// The value of the first element with `ai`, or "".
+fn gs1ElementValue(result: Gs1ParseResult, ai: string): string {
+  for e in result.elements {
+    if e.ai == ai { return e.value }
+  }
+  return ""
+}

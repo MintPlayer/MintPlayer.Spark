@@ -1,4 +1,11 @@
 <Project>
+
+	<!-- SDK 11.0.100-rc.2 injects dotnet-watch's browser-tools JS module into every Debug build of a Web-SDK project.
+	     A class library maps no endpoint for it, so the build fails with "scoped css bundles do not have matching
+	     endpoints: _framework/Microsoft.NET.Sdk.BlazorWeb.DotNetWatch…". Hot reload belongs to the apps only. -->
+	<PropertyGroup Condition="'$(OutputType)' == 'Library' And '$(UsingMicrosoftNETSdkWeb)' == 'true'">
+		<EnableHotReloadInRuntimeConfigDevFile>false</EnableHotReloadInRuntimeConfigDevFile>
+	</PropertyGroup>
 	<!--
 	  Spark's app-level props/targets imported once, repo-wide, for applications only.
 	  Here and not in Directory.Build.props: OutputType (from the csproj body or the Web SDK) and

@@ -132,7 +132,7 @@ problem to fix:
 
 ⚠️ **The generator ships only in `analyzers/dotnet/roslyn5.9/cs`.** On an SDK older than 10.0.400 it
 is skipped *silently* and the build fails with an unexplained `CS1061` on `Map…Endpoints`. `global.json`
-and both CI workflows pin `11.0.100-rc.1.26425.128`, so this is satisfied — but it is the first thing
+and both CI workflows pin `11.0.100-rc.2.26504.105`, so this is satisfied — but it is the first thing
 to check if that error ever appears.
 
 ## Code fixes

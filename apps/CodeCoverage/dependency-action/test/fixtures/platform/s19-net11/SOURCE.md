@@ -12,3 +12,4 @@ in `applyPlatform.test.ts`:
   NuGet items next to the platform group, not platform edits (R7).
 - Removed `PackageReference` lines (Cron, Migrations, ...): a human cleanup in the same commit.
 - Workflow comments mentioning net10.0/net11.0: prose, never edited.
+- 2026-10-19: `MintPlayer.SourceGenerators` 10.22.0 and `MintPlayer.ValueComparerGenerator` 10.20.2 are bumped to 13.0.0 in `before/` and in `commit.diff`'s context lines (the commit didn't touch them). Those versions aren't on GitHub Packages, where `nuget.config` maps `MintPlayer.*`.
