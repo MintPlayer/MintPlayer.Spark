@@ -151,13 +151,13 @@ export function gs1LintFirstNonDigit(data: string): number {
 }
 export function gs1LintNumber(data: string, start: number, count: number): number {
     let value = 0;
-    for (let i = start, __end1 = (start + count | 0); i < __end1; i++) {
+    for (let i = start, __end0 = (start + count | 0); i < __end0; i++) {
         value = ((Math.imul(value, 10) + _pg_codePointAt(data, i) | 0) - 48 | 0);
     }
     return value;
 }
 export function gs1LintCompare(a: string, b: string): number {
-    for (let i = 0, __end2 = a.length; i < __end2; i++) {
+    for (let i = 0, __end0 = a.length; i < __end0; i++) {
         const x = _pg_codePointAt(a, i);
         const y = _pg_codePointAt(b, i);
         if (x < y) {
@@ -210,7 +210,7 @@ export function gs1LintCsetnumeric(data: string): string {
     return "";
 }
 export function gs1LintCset82(data: string): string {
-    for (let i = 0, __end3 = data.length; i < __end3; i++) {
+    for (let i = 0, __end0 = data.length; i < __end0; i++) {
         if (!gs1LintIsCset82(_pg_codePointAt(data, i))) {
             return "GS1_LINTER_INVALID_CSET82_CHARACTER";
         }
@@ -218,7 +218,7 @@ export function gs1LintCset82(data: string): string {
     return "";
 }
 export function gs1LintCset39(data: string): string {
-    for (let i = 0, __end4 = data.length; i < __end4; i++) {
+    for (let i = 0, __end0 = data.length; i < __end0; i++) {
         if (!gs1LintIsCset39(_pg_codePointAt(data, i))) {
             return "GS1_LINTER_INVALID_CSET39_CHARACTER";
         }
@@ -234,7 +234,7 @@ export function gs1LintCset64(data: string): string {
     if (pads > 2 || pads > 0 && (n % 3 | 0) !== 0) {
         return "GS1_LINTER_INVALID_CSET64_PADDING";
     }
-    for (let i = 0, __end5 = (n - pads | 0); i < __end5; i++) {
+    for (let i = 0, __end0 = (n - pads | 0); i < __end0; i++) {
         if (!gs1LintIsCset64(_pg_codePointAt(data, i))) {
             return "GS1_LINTER_INVALID_CSET64_CHARACTER";
         }
@@ -248,7 +248,7 @@ export function gs1LintCsum(data: string): string {
     }
     let weight = ((n % 2 | 0) === 0 ? 3 : 1);
     let parity = 0;
-    for (let pos = 0, __end6 = (n - 1 | 0); pos < __end6; pos++) {
+    for (let pos = 0, __end0 = (n - 1 | 0); pos < __end0; pos++) {
         const d = gs1LintDigitAt(data, pos);
         if (d < 0) {
             return "GS1_LINTER_NON_DIGIT_CHARACTER";
@@ -282,7 +282,7 @@ export function gs1LintCsumalpha(data: string): string {
         return "";
     }
     let sum = 0;
-    for (let pos = 0, __end7 = (n - 2 | 0); pos < __end7; pos++) {
+    for (let pos = 0, __end0 = (n - 2 | 0); pos < __end0; pos++) {
         const c = _pg_codePointAt(data, pos);
         if (!gs1LintIsCset82(c)) {
             return "GS1_LINTER_INVALID_CSET82_CHARACTER";
@@ -323,7 +323,7 @@ export function gs1LintIban(data: string): string {
         return "GS1_LINTER_IBAN_TOO_SHORT";
     }
     let csum = 0;
-    for (let pos = 4, __end8 = (n + 4 | 0); pos < __end8; pos++) {
+    for (let pos = 4, __end0 = (n + 4 | 0); pos < __end0; pos++) {
         const at = (pos < n ? pos : (pos - n | 0));
         const c = _pg_codePointAt(data, at);
         let weight = 0;
@@ -519,7 +519,7 @@ export function gs1LintImporteridx(data: string): string {
 }
 export function gs1LintNonzero(data: string): string {
     let nonzero = false;
-    for (let i = 0, __end9 = data.length; i < __end9; i++) {
+    for (let i = 0, __end0 = data.length; i < __end0; i++) {
         const d = gs1LintDigitAt(data, i);
         if (d < 0) {
             return "GS1_LINTER_NON_DIGIT_CHARACTER";
@@ -546,7 +546,7 @@ export function gs1LintZero(data: string): string {
     if (data.length === 0) {
         return "GS1_LINTER_NOT_ZERO";
     }
-    for (let i = 0, __end10 = data.length; i < __end10; i++) {
+    for (let i = 0, __end0 = data.length; i < __end0; i++) {
         if (_pg_codePointAt(data, i) !== 48) {
             return "GS1_LINTER_NOT_ZERO";
         }
@@ -563,7 +563,7 @@ export function gs1LintHyphen(data: string): string {
     if (data.length === 0) {
         return "GS1_LINTER_NOT_HYPHEN";
     }
-    for (let i = 0, __end11 = data.length; i < __end11; i++) {
+    for (let i = 0, __end0 = data.length; i < __end0; i++) {
         if (_pg_codePointAt(data, i) !== 45) {
             return "GS1_LINTER_NOT_HYPHEN";
         }

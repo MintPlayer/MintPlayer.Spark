@@ -28,7 +28,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<PackageReference Include="MintPlayer.Polyglot.MSBuild" Version="0.10.2" PrivateAssets="all" />
+		<PackageReference Include="MintPlayer.Polyglot.MSBuild" Version="0.10.3" PrivateAssets="all" />
 	</ItemGroup>
 
 </Project>
