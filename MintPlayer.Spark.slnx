@@ -83,6 +83,9 @@
   <Folder Name="/libs/dashboards/">
     <Project Path="libs/dashboards/MintPlayer.Spark.Dashboards/MintPlayer.Spark.Dashboards.csproj" />
   </Folder>
+  <Folder Name="/libs/gs1/">
+    <Project Path="libs/gs1/MintPlayer.Spark.Gs1/MintPlayer.Spark.Gs1.csproj" />
+  </Folder>
   <Folder Name="/libs/history/">
     <Project Path="libs/history/MintPlayer.Spark.History/MintPlayer.Spark.History.csproj" />
     <Project Path="libs/history/MintPlayer.Spark.History.Abstractions/MintPlayer.Spark.History.Abstractions.csproj" />
@@ -162,6 +165,7 @@
   <Folder Name="/tests/">
     <Project Path="tests/MintPlayer.Spark.Client.Tests/MintPlayer.Spark.Client.Tests.csproj" />
     <Project Path="tests/MintPlayer.Spark.E2E.Tests/MintPlayer.Spark.E2E.Tests.csproj" />
+    <Project Path="tests/MintPlayer.Spark.Gs1.Tests/MintPlayer.Spark.Gs1.Tests.csproj" />
     <Project Path="tests/MintPlayer.Spark.SourceGenerators.Tests/MintPlayer.Spark.SourceGenerators.Tests.csproj" />
     <Project Path="tests/MintPlayer.Spark.Tests/MintPlayer.Spark.Tests.csproj" />
   </Folder>

@@ -10,13 +10,13 @@
 |---|---|
 | U0: v0.10.1 probe; [Polyglot#73](https://github.com/MintPlayer/MintPlayer.Polyglot/issues/73) and [#74](https://github.com/MintPlayer/MintPlayer.Polyglot/issues/74) filed | ✅ 2026-10-17 |
 | U1: P40 decisions accepted with Spark's terms; acceptance checklist posted | ✅ 2026-10-17 ([6233584472](https://github.com/MintPlayer/MintPlayer.Polyglot/issues/73#issuecomment-6233584472), [6233861572](https://github.com/MintPlayer/MintPlayer.Polyglot/issues/73#issuecomment-6233861572)) |
-| U2: review rounds on PR [#75](https://github.com/MintPlayer/MintPlayer.Polyglot/pull/75) | ⏳ Round 5 requested changes on `c436aae` (24 gating). The Polyglot session is fixing them for one push ([6245957811](https://github.com/MintPlayer/MintPlayer.Polyglot/issues/73#issuecomment-6245957811)). |
-| U3: **approval comment** on #73 | ⏳ owed by the Spark session once a push passes the bar (PRD §6) |
-| U4: a Polyglot release carrying #73 (`MintPlayer.Polyglot.MSBuild`) | ⏳ after the squash-merge |
-| S1: `libs/gs1` project with the package, `PolyglotTargets=csharp`, internal access, its own namespace, the facade | not started (blocked on U4) |
-| S2: TS twin routed into ng-spark `scanning`, `.gitattributes` `eol=lf`, CI `polyglot build --check --only typescript` from the config dir, barrel outside the owned folder | not started |
-| S3: GS1 core in `.pg` (check digits, SSCC, element strings, Digital Link, AI linters), with the AI tables from the `tools/` script (Q-W16) and Syntax Engine vectors run against both outputs | not started |
-| S4: consumers (commerce GTIN validation; ng-spark scanning) | not started |
+| U2: review rounds on PR [#75](https://github.com/MintPlayer/MintPlayer.Polyglot/pull/75) | ✅ ten rounds; approved `629b0c2` ([6258506901](https://github.com/MintPlayer/MintPlayer.Polyglot/issues/73#issuecomment-6258506901)) with two non-gating items, fixed in `3e9a2f5` |
+| U3: **approval comment** on #73 | ✅ 2026-10-19: approval 6258506901, confirmation of `3e9a2f5` [6262383457](https://github.com/MintPlayer/MintPlayer.Polyglot/issues/73#issuecomment-6262383457) |
+| U4: a Polyglot release carrying #73 (`MintPlayer.Polyglot.MSBuild`) | ✅ 0.10.2, 2026-10-19 (GitHub Packages 08:12Z, nuget.org ~08:24Z). `nuget.config` maps `MintPlayer.*` to the GitHub feed (`GH_PKG_USER`/`GH_PKG_TOKEN`; CI passes `github.actor` and `GITHUB_TOKEN`) |
+| S1: `libs/gs1` project with the package, `PolyglotTargets=csharp`, internal access, its own namespace, the facade | ✅ `libs/gs1/MintPlayer.Spark.Gs1` (namespace `MintPlayer.Spark.Gs1.Core`, class `Gs1Core`, internal); facades `Gs1CheckDigit`, `Gs1Barcode`, `Gs1Sscc` |
+| S2: TS twin routed into ng-spark `scanning`, `.gitattributes` `eol=lf`, CI `polyglot build --check --only typescript` from the config dir, barrel outside the owned folder | ✅ new entry point `@mintplayer/ng-spark/scanning` (22.42.0); owned folder `scanning/src/gs1/`; CI step in `pull-request.yml` with the package's linux-x64 CLI |
+| S3: GS1 core in `.pg` (check digits, SSCC, element strings, Digital Link, AI linters), with the AI tables from the `tools/` script (Q-W16) and Syntax Engine vectors run against both outputs | ✅ `tools/gs1/generate-ai-table.mjs` emits the vendored Syntax Dictionary as `pg/aitable.pg` (one table, transpiled to both targets); `pg/` holds element strings (symbology identifiers, GS/FNC1, bracketed, `ex=` pairs, repeats), Digital Link, SSCC and all 39 linters (5683/5683 GS1 unit vectors on C# and TS). **W12:** `libs/gs1/corpus/gs1-corpus.json`, 2995 cases from `tools/gs1/build-corpus.mjs` (Syntax Engine 1.4.1 WASM, RequisiteAIs off), every dictionary AI covered; `tests/MintPlayer.Spark.Gs1.Tests` and `scanning/src/gs1-corpus.spec.ts` agree on all of them |
+| S4: consumers (commerce GTIN validation; ng-spark scanning) | ⏳ ng-spark `scanning` exports the parser; commerce GTIN validation waits for the commerce code (#521, branch `feat/issue521-commerce-suite`) |
 | Fallback | If no Polyglot release with #73 ships before warehouse WM2, hand-write both parsers against the Syntax Engine vectors (owner decision, 2026-10-17) |
 
 ## Review history of PR #75

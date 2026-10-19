@@ -1,0 +1,24 @@
+import "std.strings"
+
+// GS1 mod-10 check digit over the data digits (a code without its check digit). From the right, the
+// weights are 3, 1, 3, … Returns -1 when the input is empty or holds anything but ASCII digits.
+fn gs1CheckDigit(digits: string): i32 {
+  let n = digits.len()
+  if n == 0 { return -1 }
+  var sum = 0
+  for i in 0..n {
+    let d = digits.codePointAt(n - 1 - i) - 48
+    if d < 0 || d > 9 { return -1 }
+    if i % 2 == 0 { sum = sum + d * 3 } else { sum = sum + d }
+  }
+  return (10 - sum % 10) % 10
+}
+
+// True when the last digit of `code` is the GS1 check digit of the digits before it.
+fn gs1HasValidCheckDigit(code: string): bool {
+  let n = code.len()
+  if n < 2 { return false }
+  let expected = gs1CheckDigit(code.substring(0, n - 1))
+  if expected < 0 { return false }
+  return code.codePointAt(n - 1) - 48 == expected
+}

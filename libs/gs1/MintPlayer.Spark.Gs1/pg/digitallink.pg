@@ -1,0 +1,225 @@
+import "std.strings"
+import "std.collections"
+import "./aitable"
+import "./elementstring"
+
+// The characters a GS1 Digital Link URI may hold, and those of them a domain may not.
+let gs1UriCharacters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~:/?#[]@!$&'()*+,;=%"
+let gs1BadDomainCharacters = "_~?#@!$&'()*+,;=%"
+let gs1HexDigits = "0123456789ABCDEF"
+
+fn gs1HexValue(c: string): i32 {
+  let upper = gs1HexDigits.indexOf(c)
+  if upper >= 0 { return upper }
+  return "0123456789abcdef".indexOf(c)
+}
+
+// Percent-decodes a URI component: `%` and two hex digits is that character, a `%` without two hex digits after it
+// stays as it is, and in a query value `+` is a space. "\u{0}" marks an encoded NUL, which is an error. Characters
+// that GS1 values may not hold are left for the character-set linters to reject.
+fn gs1PercentDecode(s: string, query: bool): string {
+  var out = ""
+  let n = s.len()
+  var i = 0
+  while i < n {
+    let c = s.charAt(i)
+    var hi = -1
+    var lo = -1
+    if c == "%" && i + 2 < n {
+      hi = gs1HexValue(s.charAt(i + 1))
+      lo = gs1HexValue(s.charAt(i + 2))
+    }
+    if hi >= 0 && lo >= 0 {
+      let code = hi * 16 + lo
+      if code == 0 { return "\u{0}" }
+      out = out + string.fromCodePoint(code)
+      i = i + 3
+    } else {
+      out = out + (if query && c == "+" { " " } else { c })
+      i = i + 1
+    }
+  }
+  return out
+}
+
+// True when `s` starts with one of the schemes GS1 Digital Link URIs use: http or https, in lower or upper case.
+fn gs1IsDigitalLinkScheme(s: string): bool {
+  return s.startsWith("https://") || s.startsWith("HTTPS://") || s.startsWith("http://") || s.startsWith("HTTP://")
+}
+
+// True when `qualifiers` (in path order) is an in-order subsequence of one of the primary key's dlpkey alternatives.
+fn gs1QualifiersAllowed(entry: Gs1AiEntry, qualifiers: List<string>): bool {
+  var spec = ""
+  var hasKey = false
+  for attribute in entry.attributes.split(" ") {
+    if attribute == "dlpkey" { hasKey = true }
+    if attribute.startsWith("dlpkey=") {
+      hasKey = true
+      spec = attribute.substring(7, attribute.len())
+    }
+  }
+  if !hasKey { return false }
+  if qualifiers.count == 0 { return true }
+  if spec == "" { return false }
+  for alternative in spec.split("|") {
+    let allowed = alternative.split(",")
+    var next = 0
+    var ok = true
+    for q in qualifiers {
+      var found = false
+      while next < allowed.count && !found {
+        if allowed[next] == q { found = true }
+        next = next + 1
+      }
+      if !found { ok = false }
+    }
+    if ok { return true }
+  }
+  return false
+}
+
+fn gs1IsPrimaryKey(entry: Gs1AiEntry): bool {
+  for attribute in entry.attributes.split(" ") {
+    if attribute == "dlpkey" || attribute.startsWith("dlpkey=") { return true }
+  }
+  return false
+}
+
+// Parses a GS1 Digital Link URI, e.g. `https://id.gs1.org/01/09520123456788/10/ABC1/21/12345?17=201225`, as GS1's
+// engine does:
+// - the scheme is http or https (lower or upper case), the domain is not empty, and every character is a URI one;
+// - the path may start with any prefix: its AI/value pairs are read from the right up to the primary key, and the
+//   AIs after the key must be qualifiers it allows, in order;
+// - numeric query keys are data attributes: AIs the dictionary allows there that could not stand in the path
+//   instead; other query parameters, and parameters without `=`, are ignored;
+// - no AI may appear twice, and the values and the checks across them are those of an element string.
+fn gs1ParseDigitalLink(uri: string): Gs1ParseResult {
+  let n = uri.len()
+  for i in 0..n {
+    if gs1UriCharacters.indexOf(uri.charAt(i)) < 0 { return gs1Fail("GS1_DL_ILLEGAL_CHARACTER", "") }
+  }
+  var start = 0
+  if uri.startsWith("https://") || uri.startsWith("HTTPS://") { start = 8 } else if uri.startsWith("http://") || uri.startsWith("HTTP://") { start = 7 } else {
+    return gs1Fail("GS1_DL_NOT_A_URI", "")
+  }
+  var slash = start
+  while slash < n && uri.charAt(slash) != "/" {
+    if gs1BadDomainCharacters.indexOf(uri.charAt(slash)) >= 0 { return gs1Fail("GS1_DL_BAD_DOMAIN", "") }
+    slash = slash + 1
+  }
+  if slash == n || slash == start { return gs1Fail("GS1_DL_NO_PATH", "") }
+  var path = uri.substring(slash, n)
+  let hash = path.indexOf("#")
+  if hash >= 0 { path = path.substring(0, hash) }
+  var query = ""
+  let q = path.indexOf("?")
+  if q >= 0 {
+    query = path.substring(q + 1, path.len())
+    path = path.substring(0, q)
+  }
+  let segments = path.substring(1, path.len()).split("/")
+
+  // Walk AI/value pairs from the right until the primary key.
+  var pairs: List<Gs1Element> = []
+  var keyFound = false
+  var i = segments.count - 2
+  while i >= 0 && !keyFound {
+    let entryOrNull = gs1LookupAi(segments[i])
+    if entryOrNull == null { return gs1Fail("GS1_DL_NO_PRIMARY_KEY", "") }
+    let entry = entryOrNull!
+    pairs.add(Gs1Element(segments[i], segments[i + 1]))
+    if gs1IsPrimaryKey(entry) { keyFound = true }
+    i = i - 2
+  }
+  if !keyFound { return gs1Fail("GS1_DL_NO_PRIMARY_KEY", "") }
+
+  // pairs runs right to left; the last one added is the primary key.
+  var elements: List<Gs1Element> = []
+  var qualifiers: List<string> = []
+  var k = pairs.count - 1
+  while k >= 0 {
+    let pair = pairs[k]
+    if pair.value == "" { return gs1Fail("GS1_EMPTY_VALUE", pair.ai) }
+    let value = gs1PercentDecode(pair.value, false)
+    if value == "\u{0}" { return gs1Fail("GS1_DL_BAD_PERCENT_ENCODING", pair.ai) }
+    elements.add(Gs1Element(pair.ai, value))
+    if k < pairs.count - 1 { qualifiers.add(pair.ai) }
+    k = k - 1
+  }
+  let keyAi = elements[0].ai
+  let keyOrNull = gs1LookupAi(keyAi)
+  if keyOrNull == null { return gs1Fail("GS1_DL_NO_PRIMARY_KEY", "") }
+  let key = keyOrNull!
+  if !gs1QualifiersAllowed(key, qualifiers) { return gs1Fail("GS1_DL_INVALID_QUALIFIERS", keyAi) }
+  let pathCount = elements.count
+
+  if q >= 0 {
+    for param in query.split("&") {
+      let eq = param.indexOf("=")
+      if eq >= 0 {
+        let name = param.substring(0, eq)
+        if name == "" || gs1IsDigits(name) {
+          if gs1LookupAi(name) == null { return gs1Fail("GS1_UNKNOWN_AI", name) }
+          let raw = param.substring(eq + 1, param.len())
+          if raw == "" { return gs1Fail("GS1_EMPTY_VALUE", name) }
+          let value = gs1PercentDecode(raw, true)
+          if value == "\u{0}" { return gs1Fail("GS1_DL_BAD_PERCENT_ENCODING", name) }
+          elements.add(Gs1Element(name, value))
+        }
+      }
+    }
+  }
+
+  let count = elements.count
+  var a = 0
+  while a < count {
+    var b = a + 1
+    while b < count {
+      if elements[a].ai == elements[b].ai { return gs1Fail("GS1_DL_DUPLICATE_AI", elements[a].ai) }
+      b = b + 1
+    }
+    a = a + 1
+  }
+
+  // A data attribute must be one the dictionary allows in the query, and must not be a qualifier the path could hold.
+  let qualifierCount = qualifiers.count
+  var attribute = pathCount
+  while attribute < count {
+    let ai = elements[attribute].ai
+    let entryOrNull = gs1LookupAi(ai)
+    if entryOrNull == null { return gs1Fail("GS1_UNKNOWN_AI", ai) }
+    let entry = entryOrNull!
+    if !entry.dlDataAttribute { return gs1Fail("GS1_DL_NOT_A_DATA_ATTRIBUTE", ai) }
+    for at in 0..=qualifierCount {
+      var trial: List<string> = []
+      for j in 0..qualifierCount {
+        if j == at { trial.add(ai) }
+        trial.add(qualifiers[j])
+      }
+      if at == qualifierCount { trial.add(ai) }
+      if gs1QualifiersAllowed(key, trial) { return gs1Fail("GS1_DL_ATTRIBUTE_BELONGS_IN_PATH", ai) }
+    }
+    attribute = attribute + 1
+  }
+
+  for e in elements {
+    let entryOrNull = gs1LookupAi(e.ai)
+    if entryOrNull == null { return gs1Fail("GS1_UNKNOWN_AI", e.ai) }
+    let entry = entryOrNull!
+    let error = gs1ValidateValue(entry, e.value)
+    if error != "" { return gs1Fail(error, e.ai) }
+  }
+  return gs1Validated(elements)
+}
+
+// Parses any scanned GS1 payload: a Digital Link URI (bare, or after the `]Q1`, `]d1` or `]J0` plain-data
+// identifiers) or an element string (see gs1ParseElementString). Other plain data is not GS1 data.
+fn gs1ParseScan(input: string): Gs1ParseResult {
+  if input.startsWith("]Q1") || input.startsWith("]d1") || input.startsWith("]J0") {
+    let data = input.substring(3, input.len())
+    if gs1IsDigitalLinkScheme(data) { return gs1ParseDigitalLink(data) }
+    return gs1Fail("GS1_NOT_GS1_DATA", "")
+  }
+  if gs1IsDigitalLinkScheme(input) { return gs1ParseDigitalLink(input) }
+  return gs1ParseElementString(input)
+}

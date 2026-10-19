@@ -3,6 +3,10 @@
 ###############################################################################
 * text=auto
 
+# Polyglot's generated TypeScript (libs/gs1/MintPlayer.Spark.Gs1/pg): `polyglot build --check` compares bytes,
+# so the committed copy must keep LF on every OS.
+libs/node_packages/ng-spark/scanning/src/gs1/** text eol=lf
+
 ###############################################################################
 # Set default behavior for command prompt diff.
 #

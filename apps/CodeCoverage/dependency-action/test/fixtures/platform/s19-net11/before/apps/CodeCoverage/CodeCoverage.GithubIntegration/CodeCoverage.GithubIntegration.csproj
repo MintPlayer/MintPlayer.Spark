@@ -62,7 +62,7 @@
 		  "the app should not call GitHub directly" from a review promise into a compile error.
 		-->
 		<PackageReference Include="Octokit.GraphQL" Version="0.4.0-beta" />
-		<PackageReference Include="MintPlayer.SourceGenerators" Version="10.22.0">
+		<PackageReference Include="MintPlayer.SourceGenerators" Version="13.0.0">
 			<PrivateAssets>all</PrivateAssets>
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>

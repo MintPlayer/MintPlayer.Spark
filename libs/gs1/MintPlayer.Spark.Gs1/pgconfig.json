@@ -1,0 +1,14 @@
+{
+  "targets": ["csharp", "typescript"],
+  "targetOptions": {
+    "csharp": { "namespace": "MintPlayer.Spark.Gs1.Core", "class": "Gs1Core", "access": "internal" }
+  },
+  "include": [
+    {
+      "pattern": "pg/**/*.pg",
+      "target": "typescript",
+      "output": "../../node_packages/ng-spark/scanning/src/gs1/%(RecursiveDir)%(Filename)",
+      "owned": true
+    }
+  ]
+}

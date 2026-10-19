@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<OutputType>Library</OutputType>
+		<!-- pg/*.pg is transpiled to C# into obj/ on every build; only the TypeScript twin is committed
+		     (docs/polyglot_migration_PRD.md D3). -->
+		<PolyglotTargets>csharp</PolyglotTargets>
+
+		<!-- NuGet Package Metadata -->
+		<PackageId>MintPlayer.Spark.Gs1</PackageId>
+		<Version>11.0.0-preview.1</Version>
+		<Authors>MintPlayer</Authors>
+		<Company>MintPlayer</Company>
+		<Description>GS1 logic for MintPlayer.Spark (check digits first), written once in Polyglot and shared by .NET and @mintplayer/ng-spark.</Description>
+		<PackageTags>gs1;gtin;sscc;barcode;check-digit;spark</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="README.md" Pack="true" PackagePath="\" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="MintPlayer.Polyglot.MSBuild" Version="0.10.2" PrivateAssets="all" />
+	</ItemGroup>
+
+</Project>

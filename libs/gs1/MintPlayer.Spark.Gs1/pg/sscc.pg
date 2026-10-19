@@ -1,0 +1,18 @@
+import "std.strings"
+import "./checkdigit"
+import "./elementstring"
+
+// An SSCC (AI 00, 18 digits): the extension digit, the GS1 Company Prefix (7 to 10 digits), the serial reference
+// left-padded with zeros to fill 16 digits, and the check digit. Returns "" when an input is malformed or the serial
+// reference does not fit after that company prefix.
+fn gs1Sscc(extensionDigit: string, companyPrefix: string, serialReference: string): string {
+  if extensionDigit.len() != 1 || !gs1IsDigits(extensionDigit) { return "" }
+  if companyPrefix.len() < 7 || companyPrefix.len() > 10 || !gs1IsDigits(companyPrefix) { return "" }
+  if !gs1IsDigits(serialReference) { return "" }
+  let room = 16 - companyPrefix.len()
+  if serialReference.len() > room { return "" }
+  var serial = serialReference
+  while serial.len() < room { serial = "0" + serial }
+  let body = extensionDigit + companyPrefix + serial
+  return body + "${gs1CheckDigit(body)}"
+}

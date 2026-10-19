@@ -136,7 +136,7 @@ index 278e9da1..b4023607 100644
 -		<PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.11" />
 +		<PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="11.0.0-rc.1.26425.128" />
  		<PackageReference Include="MintPlayer.AspNetCore.SpaServices" Version="10.5.0" />
- 		<PackageReference Include="MintPlayer.SourceGenerators" Version="10.22.0">
+ 		<PackageReference Include="MintPlayer.SourceGenerators" Version="13.0.0">
  			<PrivateAssets>all</PrivateAssets>
 diff --git a/apps/CodeCoverage/CodeCoverage/Dockerfile b/apps/CodeCoverage/CodeCoverage/Dockerfile
 index 2701e5b3..95022ebd 100644
