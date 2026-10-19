@@ -1,0 +1,7 @@
+ADS_OID;ADR_ID;ADS_KEHTIV;ADS_KEHTETU;TASE1_KOOD;TASE1_NIMETUS;TASE2_KOOD;TASE2_NIMETUS;TASE3_KOOD;TASE3_NIMETUS;TASE5_KOOD;TASE5_NIMETUS;TASE5_NIMETUS_LIIGIGA;SIHTNUMBER;LAHIAADRESS
+LP01000001;1001;01.01.2010;;0037;Harju maakond;0784;Tallinn;0298;Kesklinna linnaosa;05481;Narva;Narva mnt;10120;Narva mnt
+LP01000002;1002;01.01.2010;;0037;Harju maakond;0784;Tallinn;0298;Kesklinna linnaosa;06371;Pärnu;Pärnu mnt;10141;Pärnu mnt
+LP01000003;1003;01.01.2010;;0037;Harju maakond;0784;Tallinn;0176;Haabersti linnaosa;06200;Paldiski;Paldiski mnt;13517;Paldiski mnt
+LP07000001;2001;01.01.2010;24.10.2017;0074;Saare maakond;0349;Kuressaare linn;;;04230;Lossi;Lossi tn;93815;Lossi tn
+LP07000001;2002;24.10.2017;;0074;Saare maakond;0714;Saaremaa vald;3655;Kuressaare linn;04230;Lossi;Lossi tn;93815;Lossi tn
+LP07000002;2003;24.10.2017;;0074;Saare maakond;0714;Saaremaa vald;5725;Orissaare alevik;05100;Kuivastu;Kuivastu mnt;94601;Kuivastu mnt

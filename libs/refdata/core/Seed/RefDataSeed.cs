@@ -27,10 +27,15 @@ public static class RefDataSeed
     public const string VerifyFlag = "--refdata-verify-seed";
 
     /// <summary>The seed's documents and manifest, stamped with <see cref="Release"/>.</summary>
-    public static async Task<(ReleaseManifest Manifest, IReadOnlyList<object> Documents, RefDataBuild Build)> BuildAsync(RefDatasetBuilder builder, CancellationToken cancellationToken)
+    public static async Task<(ReleaseManifest Manifest, IReadOnlyList<object> Documents, RefDataBuild Build)> BuildAsync(RefDatasetBuilder builder, CancellationToken cancellationToken, IReadOnlyCollection<string>? countries = null)
     {
-        var build = await builder.BuildFixturesAsync(cancellationToken);
-        var documents = build.Documents().ToList();
+        var seed = (countries ?? []).Select(RefIds.Country).ToHashSet(StringComparer.Ordinal);
+        // Only the fixtures of mappers that write a seed country (the basic set, RD9); every adapter stays registered.
+        var inputs = builder.Fixtures()
+            .Where(f => seed.Count == 0 || builder.Mappers.Any(m => m.SourceIds.Contains(f.Key) && m.Countries.Any(seed.Contains)))
+            .ToDictionary(f => f.Key, f => f.Value, StringComparer.Ordinal);
+        var build = await builder.BuildAsync(inputs, null, cancellationToken);
+        var documents = build.Documents().Where(d => seed.Count == 0 || InSeed(d, seed)).ToList();
         foreach (var document in documents)
             document.GetType().GetProperty("Release")!.SetValue(document, new ReleaseStamp { Introduced = Release, Changed = Release });
         var manifest = new ReleaseManifest
@@ -44,12 +49,22 @@ public static class RefDataSeed
         return (manifest, documents, build);
     }
 
+    /// <summary>Whether a document belongs to the seed's countries (documents of no country, such as time zones, always do).</summary>
+    private static bool InSeed(object document, HashSet<string> seed)
+    {
+        var country = RefIds.CountryOf(ReleaseWriter.IdOf(document))
+            ?? (document.GetType().GetProperty("Country")?.GetValue(document) as string)?.ToLowerInvariant();
+        return country is null || country.Length == 0 || seed.Contains(country);
+    }
+
     /// <summary>
     /// Handles <c>--refdata-build-seed</c> (writes the seed release, and the ids it had to mint under <c>ledger-added/</c>) and <c>--refdata-verify-seed</c> (writes nothing; exit 3 when the committed seed or ledgers differ
     /// from what the fixtures build). Needs no database. Returns <see langword="true"/> when a command ran.
     /// </summary>
     public static bool RunReferenceDataSeedCommandIfRequested(this WebApplication app, string[] args)
     {
+        if (RunReleaseCommand(app, args))
+            return true;
         var build = args.Contains(BuildFlag);
         var verify = args.Contains(VerifyFlag);
         if (!build && !verify)
@@ -58,7 +73,9 @@ public static class RefDataSeed
         var options = app.Services.GetRequiredService<IOptions<SparkReferenceDataOptions>>().Value;
         var directory = Path.GetFullPath(Path.Combine(app.Environment.ContentRootPath, options.Seed.Directory));
         var builder = app.Services.GetRequiredService<RefDatasetBuilder>();
-        var (manifest, documents, dataset) = BuildAsync(builder, CancellationToken.None).GetAwaiter().GetResult();
+        var (manifest, documents, _) = BuildAsync(builder, CancellationToken.None, options.Seed.Countries).GetAwaiter().GetResult();
+        // The ledger check covers every registered adapter's fixture, not only the seed's countries (Q-R5).
+        var dataset = builder.BuildFixturesAsync(CancellationToken.None).GetAwaiter().GetResult();
 
         var memory = new MemoryReleaseFileStore();
         ReleaseWriter.WriteAsync(memory, manifest, documents, CancellationToken.None).GetAwaiter().GetResult();
@@ -101,6 +118,64 @@ public static class RefDataSeed
         {
             Console.WriteLine("The reference-data seed is up to date.");
             Environment.ExitCode = 0;
+        }
+        return true;
+    }
+
+    public const string GenerateKeyFlag = "--refdata-generate-signing-key";
+    public const string VerifyReleaseFlag = "--refdata-verify-release";
+
+    /// <summary>
+    /// <c>--refdata-generate-signing-key &lt;file&gt;</c>: writes a new Ed25519 private key (base64) to a file that must not
+    /// exist yet, and prints only the public key (RD-DEF 5); the host moves the private key into user-secrets
+    /// (<c>Spark:ReferenceData:Releases:SigningKey</c>) and deletes the file. <c>--refdata-verify-release &lt;directory&gt;</c>:
+    /// reads a release directory as a consumer would (every file's SHA-256, count and digest over (id, Hash), every
+    /// document's own hash, and the signature when <c>Spark:ReferenceData:Client:PublicKey</c> is set); exit 3 on refusal.
+    /// Neither needs a database.
+    /// </summary>
+    private static bool RunReleaseCommand(WebApplication app, string[] args)
+    {
+        var index = Array.IndexOf(args, GenerateKeyFlag);
+        if (index >= 0)
+        {
+            if (index + 1 >= args.Length || File.Exists(args[index + 1]))
+            {
+                Console.Error.WriteLine($"{GenerateKeyFlag} needs the path of a file that does not exist yet.");
+                Environment.ExitCode = 2;
+                return true;
+            }
+            var key = ReleaseSignatures.NewPrivateKey();
+            File.WriteAllText(args[index + 1], Convert.ToBase64String(key) + "\n");
+            Console.WriteLine($"Private key written to {Path.GetFullPath(args[index + 1])}: set it as Spark:ReferenceData:Releases:SigningKey in user-secrets, then delete the file.");
+            Console.WriteLine("Public key (Spark:ReferenceData:Client:PublicKey for consumers): " + Convert.ToBase64String(ReleaseSignatures.PublicKeyOf(key)));
+            Environment.ExitCode = 0;
+            return true;
+        }
+
+        index = Array.IndexOf(args, VerifyReleaseFlag);
+        if (index < 0)
+            return false;
+        if (index + 1 >= args.Length || !Directory.Exists(args[index + 1]))
+        {
+            Console.Error.WriteLine($"{VerifyReleaseFlag} needs a release directory.");
+            Environment.ExitCode = 2;
+            return true;
+        }
+        var publicKey = app.Configuration["Spark:ReferenceData:Client:PublicKey"];
+        try
+        {
+            var verify = ReleaseSignatures.Verifier(publicKey is { Length: > 0 } k ? ReleaseSignatures.DecodeKey(k, "Spark:ReferenceData:Client:PublicKey") : null);
+            var release = ReleaseReader.ReadAsync(new DirectoryReleaseFileStore(args[index + 1]), CancellationToken.None, verify).GetAwaiter().GetResult();
+            foreach (var delta in release.Manifest.Deltas)
+                ReleaseReader.ReadFilesAsync(new DirectoryReleaseFileStore(args[index + 1]), delta.Files, null, CancellationToken.None).GetAwaiter().GetResult();
+            Console.WriteLine($"Release {release.Manifest.Release} verifies: {release.Manifest.Files.Count} files, {release.Documents.Count} documents, {release.Manifest.Deltas.Count} deltas"
+                + (publicKey is { Length: > 0 } ? ", signature valid." : " (signature not checked: no public key configured)."));
+            Environment.ExitCode = 0;
+        }
+        catch (Exception ex) when (ex is ReleaseRefusedException or FormatException)
+        {
+            Console.Error.WriteLine("The release is refused: " + ex.Message);
+            Environment.ExitCode = 3;
         }
         return true;
     }

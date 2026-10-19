@@ -17,7 +17,7 @@ public interface ICommerceSellerNotifier
 {
     /// <summary>Notifies the admins of <paramref name="organizationId"/>.</summary>
     /// <param name="organizationId">The seller.</param>
-    /// <param name="topic">What about (<c>dac7-reminder</c>, <c>payouts-blocked</c>, <c>statement-of-reasons</c>).</param>
+    /// <param name="topic">What about (<c>dac7-reminder</c>, <c>sales-blocked</c>, <c>statement-of-reasons</c>).</param>
     /// <param name="details">Translation keys or free text to include.</param>
     Task NotifyAsync(string organizationId, string topic, IReadOnlyList<string> details, CancellationToken cancellationToken);
 }
@@ -32,9 +32,11 @@ internal sealed class LoggingSellerNotifier(ILogger<LoggingSellerNotifier> logge
 }
 
 /// <summary>
-/// DAC7 (GA6): reminds sellers with missing data every <c>ReminderInterval</c>, and blocks payouts once
+/// DAC7 (GA6): reminds sellers with missing data every <c>ReminderInterval</c>, and closes their sales once
 /// <c>RemindersBeforeBlock</c> reminders went unanswered and <c>MinimumWaitBeforeBlock</c> passed since the first
-/// request (Directive (EU) 2021/514 Annex V; confirm, D37). Connected mode only. Idempotent per run.
+/// request (Directive (EU) 2021/514 Annex V; confirm, D37). D43: the block feeds <see cref="ISparkSellers.CanSellAsync"/>;
+/// provider payouts are not touched. Completing the data reopens sales (<c>SellerRegistration</c>). Connected mode
+/// only. Idempotent per run.
 /// </summary>
 internal sealed partial class Dac7ReminderJob : ISparkCronJob
 {
@@ -53,7 +55,7 @@ internal sealed partial class Dac7ReminderJob : ISparkCronJob
         var now = clock.GetUtcNow();
         using var session = store.OpenAsyncSession();
         var profiles = await session.Query<SellerProfile>()
-            .Where(p => p.Status == SellerRegistrationStatus.Approved && p.PayoutsBlocked == false)
+            .Where(p => p.Status == SellerRegistrationStatus.Approved && p.SalesBlocked == false)
             .Take(1024).ToListAsync(cancellationToken);
         foreach (var profile in profiles)
         {
@@ -68,13 +70,13 @@ internal sealed partial class Dac7ReminderJob : ISparkCronJob
             }
             else
             {
-                profile.PayoutsBlocked = true;
+                profile.SalesBlocked = true;
                 await audit.RecordAsync(session, new CommerceAuditEntry
                 {
-                    Action = CommerceAuditActions.PayoutBlock, SubjectId = profile.Id!, OrganizationId = profile.OrganizationId,
-                    Reason = "dac7-missing: payouts blocked", At = now,
+                    Action = CommerceAuditActions.Dac7SalesBlock, SubjectId = profile.Id!, OrganizationId = profile.OrganizationId,
+                    Reason = "dac7-missing: sales closed", At = now,
                 }, cancellationToken);
-                await notifier.NotifyAsync(profile.OrganizationId, "payouts-blocked", profile.Dac7.Missing(), cancellationToken);
+                await notifier.NotifyAsync(profile.OrganizationId, "sales-blocked", profile.Dac7.Missing(), cancellationToken);
             }
         }
         await session.SaveChangesAsync(cancellationToken);

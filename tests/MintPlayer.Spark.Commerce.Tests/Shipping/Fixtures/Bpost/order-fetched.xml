@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- SDK-derived, not official: the fetch-order response of Antidot-be/bpost-api-library
+     (tests/BpostApiExamples/FetchOrder/NationalBoxAtBpostTest.php), personal data replaced. Not recorded. -->
+<orderInfo xmlns="http://schema.post.be/shm/deepintegration/v3/" xmlns:ns2="http://schema.post.be/shm/deepintegration/v3/common" xmlns:ns3="http://schema.post.be/shm/deepintegration/v3/national" xmlns:ns4="http://schema.post.be/shm/deepintegration/v3/international">
+  <accountId>120865</accountId>
+  <reference>my-reference</reference>
+  <box>
+    <sender>
+      <ns2:name/>
+      <ns2:company>Example shop</ns2:company>
+      <ns2:address>
+        <ns2:streetName>Rue du Grand Duc</ns2:streetName>
+        <ns2:number>13</ns2:number>
+        <ns2:postalCode>1040</ns2:postalCode>
+        <ns2:locality>Etterbeek</ns2:locality>
+        <ns2:countryCode>BE</ns2:countryCode>
+      </ns2:address>
+    </sender>
+    <nationalBox>
+      <ns3:atBpost>
+        <ns3:product>bpack@bpost</ns3:product>
+        <ns3:weight>1000</ns3:weight>
+        <ns3:openingHours/>
+        <ns3:pugoId>619037</ns3:pugoId>
+        <ns3:pugoName>GB EXPRESS HOEILAART</ns3:pugoName>
+        <ns3:pugoAddress>
+          <ns2:streetName>JOSEPH KUMPSSTRAAT</ns2:streetName>
+          <ns2:number>5</ns2:number>
+          <ns2:postalCode>1560</ns2:postalCode>
+          <ns2:locality>HOEILAART</ns2:locality>
+          <ns2:countryCode>BE</ns2:countryCode>
+        </ns3:pugoAddress>
+        <ns3:receiverName>Test Receiver</ns3:receiverName>
+      </ns3:atBpost>
+    </nationalBox>
+    <additionalCustomerReference>additional-reference</additionalCustomerReference>
+    <barcode>323212086559959097180037</barcode>
+    <status>AWAITING_PICKUP</status>
+  </box>
+</orderInfo>

@@ -1,0 +1,24 @@
+{
+  "_fixture": {
+    "source": "https://api.postnl.nl/shipment/v2/status/swagger.json (CurrentStatus example of /status/barcode/{barcode})",
+    "derived": "public documentation example, trimmed; empty values kept as {} as the API sends them",
+    "recorded": false
+  },
+  "CurrentStatus": {
+    "Shipment": {
+      "MainBarcode": "3SDEVC288882229",
+      "Barcode": "3SDEVC288882229",
+      "ShipmentAmount": "1",
+      "ShipmentCounter": "1",
+      "Customer": { "CustomerCode": "DEVC", "CustomerNumber": "11223344", "Name": "Testaccount API PNP" },
+      "ProductCode": "002285",
+      "ProductDescription": "Parcels, domestic <= 10 kg",
+      "Reference": "202213331635095807",
+      "DeliveryDate": "2022-11-08",
+      "Dimension": { "Height": "125", "Length": "250", "Volume": "6250", "Weight": "180", "Width": "200" },
+      "Address": [ { "AddressType": "01", "Building": {}, "City": "Utrecht", "CompanyName": {}, "CountryCode": "NL", "FirstName": "Peter", "HouseNumber": "74", "HouseNumberSuffix": {}, "LastName": "de Ruiter", "Street": "Molengraaffplantsoen", "Zipcode": "3571ZZ" } ],
+      "ProductOptions": [ { "OptionCode": "6", "CharacteristicCode": "118" } ],
+      "Status": { "TimeStamp": "08-11-2022 10:13:20", "StatusCode": "7", "StatusDescription": "Shipment out for delivery", "PhaseCode": "3", "PhaseDescription": "Distribution" }
+    }
+  }
+}

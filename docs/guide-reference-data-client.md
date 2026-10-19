@@ -13,6 +13,7 @@ spark.AddReferenceDataClient();   // typed /api/v1 client, Address behaviour, zo
   "ReferenceData": {
     "Client": {
       "BaseAddress": "https://refdata.example.org/",   // no default; unset = free-text mode (RD-DEF 8)
+      "PublicKey": "…",                                // optional: the instance's Ed25519 public key (base64); then releases must be signed
       "Sync": { "Enabled": true, "Schedule": "0 15 4 * * *", "Countries": [ "be" ] },
       "HouseNumbers": { "Enabled": false, "Timeout": "00:00:02" }
     }
@@ -31,13 +32,19 @@ spark.AddReferenceDataClient();   // typed /api/v1 client, Address behaviour, zo
   shape only and marks the address unverified.
 - **Zone names (D36 step 1):** the client registers the core's `ISparkTimeZoneNameProvider`. `ISparkTimeZoneNames`
   then labels `Europe/Brussels` "Brussel" in Dutch; where CLDR states no city, the core derives it from the id.
-- **Release sync (RD6):** a conditional check on `/api/v1/releases/latest`; a changed release is read, verified (file
-  hashes, digests, each document's hash), refused when it drops an id the database holds, and applied skip-if-unchanged,
-  so re-applying it writes nothing. `refdata/state` is written last. Streets stay on the live API.
+- **Release sync (RD6):** a conditional check on `/api/v1/releases/latest`; a changed release is read and verified (file
+  hashes, digests, each document's hash, and the Ed25519 signature when `PublicKey` is set: then an unsigned release is
+  refused too). The delta from the release this database holds is applied when the manifest carries one, else the full
+  files, which are refused when they drop an id the database holds. Writes skip unchanged documents (a first load goes
+  through BulkInsert), so re-applying writes nothing. Every run then compares, per release file, the digest of what the
+  database holds with the manifest's (the **periodic checksum**) and re-imports a file that differs in full.
+  `refdata/state` is written last. Streets stay on the live API.
+- **Read-only local copies (plan R10):** the client package's library layer (alias `reference-data-client`) declares
+  `RefCountry`, `RefPlace` and `RefPostalCode` with read-only attributes and their queries; no write right ships, and
+  only the sync writes them. Grant `QueryRead/RefPlace` (and the others) in your own `security.json` if users may browse
+  them. An instance references this package and does not declare those types itself, so a host that is both instance
+  and consumer composes each type once.
 - **Country names on the server** (mails, PDFs): `CldrNames.Territory("BE", "nl")`, a pinned CLDR subset (Q-R18).
-
-Not built yet: deltas, the periodic per-collection checksum, signature verification (RS17), and the read-only model
-layer for the local copies (consumers reference them by id).
 
 ## Angular
 

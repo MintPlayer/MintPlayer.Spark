@@ -1,0 +1,150 @@
+BE,BRU,"Bruxelles-Capitale, Région de",Region
+BE,VAN,Antwerpen,Province
+BE,VBR,Vlaams Brabant,Province
+BE,VLI,Limburg,Province
+BE,VOV,Oost-Vlaanderen,Province
+BE,VWV,West-Vlaanderen,Province
+BE,WBR,Brabant wallon,Province
+BE,WHT,Hainaut,Province
+BE,WLG,Liège,Province
+BE,WLX,Luxembourg,Province
+BE,WNA,Namur,Province
+DE,BB,Brandenburg,Land
+DE,BE,Berlin,Land
+DE,BW,Baden-Württemberg,Land
+DE,BY,Bayern,Land
+DE,HB,Bremen,Land
+DE,HE,Hessen,Land
+DE,HH,Hamburg,Land
+DE,MV,Mecklenburg-Vorpommern,Land
+DE,NI,Niedersachsen,Land
+DE,NW,Nordrhein-Westfalen,Land
+DE,RP,Rheinland-Pfalz,Land
+DE,SH,Schleswig-Holstein,Land
+DE,SL,Saarland,Land
+DE,SN,Sachsen,Land
+DE,ST,Sachsen-Anhalt,Land
+DE,TH,Thüringen,Land
+FR,01,Ain,Metropolitan department
+FR,02,Aisne,Metropolitan department
+FR,03,Allier,Metropolitan department
+FR,04,Alpes-de-Haute-Provence,Metropolitan department
+FR,05,Hautes-Alpes,Metropolitan department
+FR,06,Alpes-Maritimes,Metropolitan department
+FR,07,Ardèche,Metropolitan department
+FR,08,Ardennes,Metropolitan department
+FR,09,Ariège,Metropolitan department
+FR,10,Aube,Metropolitan department
+FR,11,Aude,Metropolitan department
+FR,12,Aveyron,Metropolitan department
+FR,13,Bouches-du-Rhône,Metropolitan department
+FR,14,Calvados,Metropolitan department
+FR,15,Cantal,Metropolitan department
+FR,16,Charente,Metropolitan department
+FR,17,Charente-Maritime,Metropolitan department
+FR,18,Cher,Metropolitan department
+FR,19,Corrèze,Metropolitan department
+FR,21,Côte-d'Or,Metropolitan department
+FR,22,Côtes-d'Armor,Metropolitan department
+FR,23,Creuse,Metropolitan department
+FR,24,Dordogne,Metropolitan department
+FR,25,Doubs,Metropolitan department
+FR,26,Drôme,Metropolitan department
+FR,27,Eure,Metropolitan department
+FR,28,Eure-et-Loir,Metropolitan department
+FR,29,Finistère,Metropolitan department
+FR,2A,Corse-du-Sud,Metropolitan department
+FR,2B,Haute-Corse,Metropolitan department
+FR,30,Gard,Metropolitan department
+FR,31,Haute-Garonne,Metropolitan department
+FR,32,Gers,Metropolitan department
+FR,33,Gironde,Metropolitan department
+FR,34,Hérault,Metropolitan department
+FR,35,Ille-et-Vilaine,Metropolitan department
+FR,36,Indre,Metropolitan department
+FR,37,Indre-et-Loire,Metropolitan department
+FR,38,Isère,Metropolitan department
+FR,39,Jura,Metropolitan department
+FR,40,Landes,Metropolitan department
+FR,41,Loir-et-Cher,Metropolitan department
+FR,42,Loire,Metropolitan department
+FR,43,Haute-Loire,Metropolitan department
+FR,44,Loire-Atlantique,Metropolitan department
+FR,45,Loiret,Metropolitan department
+FR,46,Lot,Metropolitan department
+FR,47,Lot-et-Garonne,Metropolitan department
+FR,48,Lozère,Metropolitan department
+FR,49,Maine-et-Loire,Metropolitan department
+FR,50,Manche,Metropolitan department
+FR,51,Marne,Metropolitan department
+FR,52,Haute-Marne,Metropolitan department
+FR,53,Mayenne,Metropolitan department
+FR,54,Meurthe-et-Moselle,Metropolitan department
+FR,55,Meuse,Metropolitan department
+FR,56,Morbihan,Metropolitan department
+FR,57,Moselle,Metropolitan department
+FR,58,Nièvre,Metropolitan department
+FR,59,Nord,Metropolitan department
+FR,60,Oise,Metropolitan department
+FR,61,Orne,Metropolitan department
+FR,62,Pas-de-Calais,Metropolitan department
+FR,63,Puy-de-Dôme,Metropolitan department
+FR,64,Pyrénées-Atlantiques,Metropolitan department
+FR,65,Hautes-Pyrénées,Metropolitan department
+FR,66,Pyrénées-Orientales,Metropolitan department
+FR,67,Bas-Rhin,Metropolitan department
+FR,68,Haut-Rhin,Metropolitan department
+FR,69,Rhône,Metropolitan department
+FR,69M,Métropole de Lyon,Metropolitan collectivity withspecial status
+FR,6AE,Alsace,European collectivity
+FR,70,Haute-Saône,Metropolitan department
+FR,71,Saône-et-Loire,Metropolitan department
+FR,72,Sarthe,Metropolitan department
+FR,73,Savoie,Metropolitan department
+FR,74,Haute-Savoie,Metropolitan department
+FR,75C,Paris,Metropolitan collectivity with special status
+FR,76,Seine-Maritime,Metropolitan department
+FR,77,Seine-et-Marne,Metropolitan department
+FR,78,Yvelines,Metropolitan department
+FR,79,Deux-Sèvres,Metropolitan department
+FR,80,Somme,Metropolitan department
+FR,81,Tarn,Metropolitan department
+FR,82,Tarn-et-Garonne,Metropolitan department
+FR,83,Var,Metropolitan department
+FR,84,Vaucluse,Metropolitan department
+FR,85,Vendée,Metropolitan department
+FR,86,Vienne,Metropolitan department
+FR,87,Haute-Vienne,Metropolitan department
+FR,88,Vosges,Metropolitan department
+FR,89,Yonne,Metropolitan department
+FR,90,Territoire de Belfort,Metropolitan department
+FR,91,Essonne,Metropolitan department
+FR,92,Hauts-de-Seine,Metropolitan department
+FR,93,Seine-Saint-Denis,Metropolitan department
+FR,94,Val-de-Marne,Metropolitan department
+FR,95,Val-d'Oise,Metropolitan department
+FR,H,Corse,Metropolitan region
+LU,CA,Capellen,canton
+LU,CL,Clervaux,canton
+LU,DI,Diekirch,canton
+LU,EC,Echternach,canton
+LU,ES,Esch-sur-Alzette,canton
+LU,GR,Gréivemaacher,canton
+LU,LU,Luxembourg,canton
+LU,ME,Mersch,canton
+LU,RD,Redange,canton
+LU,RM,Remich,canton
+LU,VD,Vianden,canton
+LU,WI,Wiltz,canton
+NL,DR,Drenthe,Province
+NL,FL,Flevoland,Province
+NL,FR,Fryslân,Province
+NL,GE,Gelderland,Province
+NL,GR,Groningen,Province
+NL,LI,Limburg,Province
+NL,NB,Noord-Brabant,Province
+NL,NH,Noord-Holland,Province
+NL,OV,Overijssel,Province
+NL,UT,Utrecht,Province
+NL,ZE,Zeeland,Province
+NL,ZH,Zuid-Holland,Province

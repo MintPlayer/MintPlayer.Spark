@@ -45,9 +45,13 @@ internal sealed partial class BelgiumMapper : IReferenceDataMapper
 
     public IReadOnlyList<string> Countries => ["be"];
 
-    public IReadOnlyList<string> SourceIds => [BelgiumRefnisSource.SourceId, BelgiumNis6Source.SourceId, BelgiumPostalStreetsSource.SourceId];
+    public IReadOnlyList<string> SourceIds =>
+        [BelgiumRefnisSource.SourceId, BelgiumNis6Source.SourceId, BelgiumPostalStreetsSource.SourceId,
+         Best.BelgiumBestSource.SourceId, Flemish.FlemishDiffSource.SourceId, Flemish.FlemishApiSource.SourceId];
 
     public int Order => 10;
+
+    public bool IsCountryAdapter => true;
 
     public IEnumerable<LedgerEntry> ShippedLedger() => EmbeddedSourceFiles.Ledger(typeof(BelgiumMapper).Assembly);
 
@@ -62,12 +66,12 @@ internal sealed partial class BelgiumMapper : IReferenceDataMapper
             foreach (var file in p.Files.Where(f => PostalStreetFile.IsMatch(f.Name)).OrderBy(f => f.Name, StringComparer.Ordinal))
                 streets.AddRange(PostalStreetsReader.Read(file.Open(), file.Name.Split('_')[0]));
 
-        new Run(build, refnis, nis6, streets).Map();
+        new Run(build, refnis, nis6, streets) { Rest = RestInputs.From(inputs) }.Map();
         return Task.CompletedTask;
     }
 
     /// <summary>One mapping pass; holds the lookups the steps share.</summary>
-    private sealed class Run(RefDataBuild build, List<RefnisRow> refnis, List<Nis6Row> nis6, List<PostalStreetRow> streets)
+    private sealed partial class Run(RefDataBuild build, List<RefnisRow> refnis, List<Nis6Row> nis6, List<PostalStreetRow> streets)
     {
         private readonly Dictionary<string, List<RefnisRow>> units = refnis
             .GroupBy(x => x.Code).ToDictionary(g => g.Key, g => g.OrderBy(x => x.From).ToList(), StringComparer.Ordinal);
@@ -79,6 +83,9 @@ internal sealed partial class BelgiumMapper : IReferenceDataMapper
         private readonly Dictionary<string, string> sectionPlace = new(StringComparer.Ordinal);
 
         private string countryPlace = string.Empty;
+
+        /// <summary>The build, for the steps in <c>BelgiumMapper.Rest.cs</c> (primary-constructor parameters are scoped to this part).</summary>
+        private RefDataBuild Target => build;
 
         public void Map()
         {
@@ -93,6 +100,7 @@ internal sealed partial class BelgiumMapper : IReferenceDataMapper
             }
             MapSections();
             MapPostalStreets();
+            MapRest();
         }
 
         // ---- the country ----

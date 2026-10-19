@@ -1,0 +1,227 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "TicketEventDate (docs/commerce_PRD.md §4.11, D17): a date of an event, with its own layout snapshot, quotas, doors-open",
+    "and start time. Times are shown in the viewer's zone with the venue-local hint (D33-D35, X16 zoneFrom VenueTimeZoneId).",
+    "OrganizationId is copied from the event on every save; LayoutSnapshotId and ProvisionedAt are set at publication.",
+    "",
+    "HAND-AUTHORED. Ids are UUIDv5 of 'ticketing-events:TicketEventDate[...]', written by 'npm run stamp:library-model-ids'."
+  ],
+  "persistentObject": {
+    "id": "07781d4b-3fd2-5579-a820-1b7457ef02d5",
+    "name": "TicketEventDate",
+    "clrType": "MintPlayer.Spark.Commerce.Ticketing.Events.Models.TicketEventDate",
+    "alias": "ticketeventdate",
+    "breadcrumb": "{StartsAt}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "3522cf06-3a9d-503e-bd47-344b727d7668",
+        "name": "EventId",
+        "dataType": "Reference",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 1,
+        "query": "TicketEvents",
+        "referenceType": "MintPlayer.Spark.Commerce.Ticketing.Events.Models.TicketEvent",
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "600113a8-2146-5ff8-9125-f465f3ad5139",
+        "name": "Name",
+        "dataType": "TranslatedString",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "ebb02df0-496c-5bf3-abab-cfd4a8cfd29c",
+        "name": "StartsAt",
+        "dataType": "datetime",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "dateTimeDisplay": {
+          "primary": "viewer",
+          "hint": {
+            "zoneFrom": "VenueTimeZoneId"
+          }
+        }
+      },
+      {
+        "id": "498bb786-101b-5f08-969c-908a906d6afb",
+        "name": "DoorsOpenAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "dateTimeDisplay": {
+          "primary": "viewer",
+          "hint": {
+            "zoneFrom": "VenueTimeZoneId"
+          }
+        }
+      },
+      {
+        "id": "a433afb5-bbc1-57c2-90e4-346a8311a471",
+        "name": "EndsAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "dateTimeDisplay": {
+          "primary": "viewer",
+          "hint": {
+            "zoneFrom": "VenueTimeZoneId"
+          }
+        }
+      },
+      {
+        "id": "53e281ac-f8b6-58e9-b0ee-fe7225628375",
+        "name": "VenueId",
+        "dataType": "Reference",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 6,
+        "query": "Venues",
+        "referenceType": "MintPlayer.Spark.Commerce.Ticketing.Venues.Models.Venue",
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "2e46e956-10ed-5448-9052-3458539ac01b",
+        "name": "VenueTimeZoneId",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "5b66c3d1-e61f-5a7f-8c96-46877ee99c07",
+        "name": "LayoutId",
+        "dataType": "Reference",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 8,
+        "query": "VenueLayouts",
+        "referenceType": "MintPlayer.Spark.Commerce.Ticketing.Venues.Models.VenueLayout",
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "7f785c60-ac9a-5ffc-83e8-8a0b48e5fe77",
+        "name": "LayoutVersion",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 9,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "eb465213-41cf-59f1-bc9f-58211c3c48f4",
+        "name": "Capacity",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 10,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "7311bbf8-03ac-5c3d-a8af-584efb72b0f3",
+        "name": "Status",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 11,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "lookupReferenceType": "TicketEventStatus"
+      },
+      {
+        "id": "794e0e1a-2704-55bd-8163-925f36d1709b",
+        "name": "SortOrder",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 12,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "cc83063c-a8b1-58c5-9e0c-12e34a55647b",
+        "name": "LayoutSnapshotId",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 13,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "1f1a1e9a-5be0-5b20-9491-c5e899838c7f",
+        "name": "PreviousStartsAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 14,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "d7c6312e-e794-51a1-b203-f7618d0d3fe6",
+        "name": "ProvisionedAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 15,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      }
+    ]
+  },
+  "queries": [
+    {
+      "id": "d786ec6e-ac04-528f-b078-8be707d37fef",
+      "name": "TicketEventDates",
+      "source": "Custom.TicketEventDates",
+      "alias": "ticketeventdates",
+      "sortColumns": [
+        {
+          "property": "StartsAt",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "TicketEventDate"
+    }
+  ]
+}

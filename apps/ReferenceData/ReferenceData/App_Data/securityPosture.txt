@@ -4,7 +4,7 @@
 
 ## Layers: libraries that ship rights (alias | assembly | hash)
 authorization | MintPlayer.Spark.Authorization | 45c4fc153e9d
-reference-data | MintPlayer.Spark.ReferenceData | a1c3d8b4f6a5
+reference-data | MintPlayer.Spark.ReferenceData | 0054a7d2da22
 
 ## Reachable without signing in (expanded)
 (nothing)
@@ -13,11 +13,11 @@ reference-data | MintPlayer.Spark.ReferenceData | a1c3d8b4f6a5
 (nothing)
 
 ## Rights
-Administrators (reference-data:administrators) | grant | QueryRead/RefCountry | reference-data:countries | reference-data | reference-data:RefCountry
+Administrators | grant | QueryRead/RefCountry | ref-countries | app | reference-data-client:RefCountry
+Administrators | grant | QueryRead/RefPlace | ref-places | app | reference-data-client:RefPlace
+Administrators | grant | QueryRead/RefPostalCode | ref-postal-codes | app | reference-data-client:RefPostalCode
 Administrators (reference-data:administrators) | grant | QueryRead/RefImportRun | reference-data:import-runs | reference-data | reference-data:RefImportRun
 Administrators (reference-data:administrators) | grant | QueryRead/RefLineageEvent | reference-data:lineage | reference-data | reference-data:RefLineageEvent
-Administrators (reference-data:administrators) | grant | QueryRead/RefPlace | reference-data:places | reference-data | reference-data:RefPlace
-Administrators (reference-data:administrators) | grant | QueryRead/RefPostalCode | reference-data:postal-codes | reference-data | reference-data:RefPostalCode
 Administrators (reference-data:administrators) | grant | QueryRead/RefStreet | reference-data:streets | reference-data | reference-data:RefStreet
 Administrators (reference-data:administrators) | grant | RefDataImportNow/RefImportRun | reference-data:import-now | reference-data | reference-data:RefImportRun
 Signed-in users | grant | QueryReadEditNewDelete/Venue | venues | app | b7d6b31b-e1fa-4ffc-856a-d7c9759545c4

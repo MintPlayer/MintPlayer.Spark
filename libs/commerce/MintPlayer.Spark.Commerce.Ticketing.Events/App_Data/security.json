@@ -1,0 +1,18 @@
+{
+  "$schema": "../../../../schemas/security.schema.json",
+  "_comment": [
+    "The ticketing-events package's rights, shipped as a library layer (docs/commerce_PRD.md §4.11). They name only its own",
+    "types and only @authenticated: no slot, so no application has to bind anything. Every type is organization-owned (X8):",
+    "Organizations' row rule narrows each right to the members of the owning organization (Viewer reads, Member creates",
+    "and edits, Admin deletes and publishes), so the right alone shows a signed-in user nothing of another seller.",
+    "The storefront reads published events through /spark/ticketing/events/public (anonymous). An application that wants",
+    "published events in its generic pages too grants { \"resource\": \"QueryRead/TicketEvent\", \"groupId\": \"@anonymous\" }.",
+    "Opt out of all of these with \"libraries\": { \"ticketing-events\": false }."
+  ],
+  "rights": [
+    { "key": "events", "resource": "QueryReadEditNewDelete/TicketEvent", "groupId": "@authenticated" },
+    { "key": "dates", "resource": "QueryReadEditNewDelete/TicketEventDate", "groupId": "@authenticated" },
+    { "key": "types", "resource": "QueryReadEditNewDelete/TicketType", "groupId": "@authenticated" },
+    { "key": "phases", "resource": "QueryReadEditNewDelete/TicketSalePhase", "groupId": "@authenticated" }
+  ]
+}

@@ -33,6 +33,11 @@ internal sealed class SparkPayments(
 {
     public string DefaultProvider => registry.DefaultName;
 
+    /// <summary>Pure (D41): whether a payment may be split across sellers: connected mode, <c>Basket:MixSellers</c>
+    /// and the host's <c>Basket:AcknowledgeSplitMerchantOfRecord</c> opt-in.</summary>
+    internal static bool SplitEnabled(SparkCommerceOptions commerce)
+        => commerce.Merchant == MerchantMode.ConnectedSellers && commerce.Basket.MixSellers && commerce.Basket.AcknowledgeSplitMerchantOfRecord;
+
     public IReadOnlyList<PaymentMethodInfo> GetMethods(string? provider = null) => registry.Methods(registry.Get(provider));
 
     public IReadOnlyList<PaymentMethodInfo> GetOfferableMethods(PaymentMethodQuery query, string? provider = null)
@@ -68,6 +73,10 @@ internal sealed class SparkPayments(
         {
             if (!connected)
                 throw new SparkValidationException("commercePayments.splitNeedsConnectedSellers");
+            // D41: a split passes through the platform's account (the platform is the merchant of record for that
+            // order), so it is only made when the host opted in to mixed-seller baskets.
+            if (!SplitEnabled(commerce.Value))
+                throw new SparkValidationException("commercePayments.splitNotEnabled");
             if (!provider.Capabilities.SupportsSplit || method is { SupportsSplit: false })
                 throw new SparkValidationException("commercePayments.splitUnsupported");
             foreach (var split in creation.Splits)

@@ -1,0 +1,18 @@
+{
+  "$schema": "../../../../schemas/security.schema.json",
+  "_comment": [
+    "The venues package's rights, shipped as a library layer (docs/commerce_PRD.md §4.11, D8). They name only its own",
+    "types and only @authenticated: no slot, so no application has to bind anything.",
+    "Venues are a shared catalogue: every signed-in user lists them and proposes new ones or changes; each save is an",
+    "Approvals document proposal (modifications always, creations when ApproveCreations is on). Layouts are created and",
+    "copied by the package's endpoints (New is not granted); only their name is a form field, renamed by the owner as a",
+    "proposal, and VenueLayoutActions' row rule hides other users' drafts.",
+    "The application grants the approvers: { \"resource\": \"ApproveProposal/Venue\", \"groupId\": \"…\" } and",
+    "{ \"resource\": \"ApproveProposal/VenueLayout\", \"groupId\": \"…\" } (the latter also decides layout publications).",
+    "Opt out of all of these with \"libraries\": { \"ticketing-venues\": false }."
+  ],
+  "rights": [
+    { "key": "venues", "resource": "QueryReadEditNew/Venue", "groupId": "@authenticated" },
+    { "key": "layouts", "resource": "QueryReadEdit/VenueLayout", "groupId": "@authenticated" }
+  ]
+}

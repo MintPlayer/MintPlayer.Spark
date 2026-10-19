@@ -148,6 +148,12 @@ public sealed class ReleaseManifest
     public List<ReleaseSource> Sources { get; set; } = [];
     public List<ReleaseFile> Files { get; set; } = [];
 
+    /// <summary>
+    /// Deltas from earlier releases (§4.6): for each, every document whose <c>Hash</c> changed since that release, under
+    /// <c>deltas/{from}/{cc}/{Collection}.ndjson</c>. Ending is a closed period, so deltas need no tombstones.
+    /// </summary>
+    public List<ReleaseDelta> Deltas { get; set; } = [];
+
     /// <summary>Per country: how many documents changed against <see cref="Previous"/>.</summary>
     public Dictionary<string, int> Changes { get; set; } = new(StringComparer.Ordinal);
 
@@ -177,6 +183,16 @@ public sealed class ReleaseFile
 
     /// <summary><see cref="ReleaseCanonical.Digest"/> over the file's (id, Hash) pairs.</summary>
     public string Digest { get; set; } = string.Empty;
+}
+
+/// <summary>The delta files from one earlier release (§4.6).</summary>
+public sealed class ReleaseDelta
+{
+    /// <summary>The release the delta starts from: a consumer holding it applies these files instead of the full ones.</summary>
+    public string From { get; set; } = string.Empty;
+
+    /// <summary>Paths <c>deltas/{from}/{cc}/{Collection}.ndjson</c>; their digests cover only the changed documents.</summary>
+    public List<ReleaseFile> Files { get; set; } = [];
 }
 
 /// <summary>A release whose id set lacks an id of the previous one is refused (§4.6 "Never delete").</summary>

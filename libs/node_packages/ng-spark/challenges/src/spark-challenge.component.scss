@@ -1,0 +1,24 @@
+.spark-challenge {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.spark-challenge-title {
+  font-size: 1rem;
+  margin: 0;
+}
+
+.spark-challenge-note,
+.spark-challenge-status {
+  margin: 0;
+  color: var(--bs-secondary-color);
+}
+
+.spark-challenge-widget:empty {
+  display: none;
+}
+
+.spark-challenge-retry {
+  align-self: flex-start;
+}

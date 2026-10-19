@@ -1,0 +1,105 @@
+{
+  "$schema": "../../../../schemas/translations.schema.json",
+  "commerceInvoicing": {
+    "invoice": {
+      "en": "Invoice",
+      "fr": "Facture",
+      "nl": "Factuur"
+    },
+    "receipt": {
+      "en": "Receipt",
+      "fr": "Ticket de caisse",
+      "nl": "Kasticket"
+    },
+    "creditNote": {
+      "en": "Credit note",
+      "fr": "Note de crédit",
+      "nl": "Creditnota"
+    },
+    "documents": {
+      "en": "Invoices and credit notes",
+      "fr": "Factures et notes de crédit",
+      "nl": "Facturen en creditnota's"
+    },
+    "download": {
+      "en": "Download PDF",
+      "fr": "Télécharger le PDF",
+      "nl": "PDF downloaden"
+    },
+    "billingDetails": {
+      "en": "Billing details",
+      "fr": "Coordonnées de facturation",
+      "nl": "Facturatiegegevens"
+    },
+    "requestInvoice": {
+      "en": "I need an invoice (company)",
+      "fr": "J'ai besoin d'une facture (entreprise)",
+      "nl": "Ik wil een factuur (bedrijf)"
+    },
+    "companyName": {
+      "en": "Company name",
+      "fr": "Nom de l'entreprise",
+      "nl": "Bedrijfsnaam"
+    },
+    "vatId": {
+      "en": "VAT number",
+      "fr": "Numéro de TVA",
+      "nl": "Btw-nummer"
+    },
+    "peppolId": {
+      "en": "Peppol ID (optional)",
+      "fr": "Identifiant Peppol (facultatif)",
+      "nl": "Peppol-ID (optioneel)"
+    },
+    "address": {
+      "en": "Address",
+      "fr": "Adresse",
+      "nl": "Adres"
+    },
+    "postalCode": {
+      "en": "Postal code",
+      "fr": "Code postal",
+      "nl": "Postcode"
+    },
+    "city": {
+      "en": "City",
+      "fr": "Ville",
+      "nl": "Gemeente"
+    },
+    "country": {
+      "en": "Country",
+      "fr": "Pays",
+      "nl": "Land"
+    },
+    "save": {
+      "en": "Save",
+      "fr": "Enregistrer",
+      "nl": "Opslaan"
+    },
+    "saved": {
+      "en": "Your billing details are saved; the invoice will use them.",
+      "fr": "Vos coordonnées de facturation sont enregistrées ; la facture les utilisera.",
+      "nl": "Je facturatiegegevens zijn bewaard; de factuur gebruikt ze."
+    },
+    "alreadyInvoiced": {
+      "en": "This order is already invoiced; an issued invoice is never changed.",
+      "fr": "Cette commande est déjà facturée ; une facture émise n'est jamais modifiée.",
+      "nl": "Deze bestelling is al gefactureerd; een uitgereikte factuur wordt nooit gewijzigd."
+    },
+    "invalidVatId": {
+      "en": "This VAT number is not valid.",
+      "fr": "Ce numéro de TVA n'est pas valide.",
+      "nl": "Dit btw-nummer is niet geldig."
+    },
+    "noDocuments": {
+      "en": "No invoices yet.",
+      "fr": "Pas encore de factures.",
+      "nl": "Nog geen facturen."
+    },
+    "vatRateSuggestions": {
+      "en": "EU VAT rates (TEDB) — suggestions only, never applied automatically",
+      "fr": "Taux de TVA de l'UE (TEDB) — suggestions, jamais appliquées automatiquement",
+      "nl": "Btw-tarieven van de EU (TEDB) — enkel suggesties, nooit automatisch toegepast"
+    }
+  }
+}

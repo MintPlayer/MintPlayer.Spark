@@ -52,11 +52,17 @@ internal sealed class SparkSellers(
     {
         var standing = await GetStandingAsync(organizationId, cancellationToken);
         if (standing is null) return SellerGate.Refused("commerce.seller.notRegistered");
+        return PayoutReasons(standing) is { Count: > 0 } reasons ? new SellerGate(false, reasons) : SellerGate.Open;
+    }
+
+    /// <summary>Pure: why payouts to a seller with <paramref name="standing"/> may not be released. The DAC7 block is
+    /// not one of them: it closes selling, and provider payouts are not touched (D43).</summary>
+    internal static IReadOnlyList<string> PayoutReasons(SellerStanding standing)
+    {
         var reasons = new List<string>();
         if (standing.Kyc != KycStatus.Verified) reasons.Add("commerce.seller.kycNotVerified");
-        if (standing.PayoutsBlocked) reasons.Add("commerce.seller.dac7Blocked");
         if (standing.Suspended) reasons.Add("commerce.seller.suspended");
-        return reasons.Count == 0 ? SellerGate.Open : new SellerGate(false, reasons);
+        return reasons;
     }
 
     /// <summary>Pure: why a seller with <paramref name="standing"/> may not sell. Empty when it may.</summary>
@@ -70,6 +76,8 @@ internal sealed class SparkSellers(
             reasons.Add("commerce.seller.traderNotVerified");
         if (options.Merchant == MerchantMode.ConnectedSellers && standing.Kyc != KycStatus.Verified)
             reasons.Add("commerce.seller.kycNotVerified");
+        // D43: DAC7 data still missing after the reminders closes the seller's sales until it is complete.
+        if (standing.SalesBlocked) reasons.Add("commerce.seller.dac7Blocked");
         return reasons;
     }
 
@@ -82,7 +90,7 @@ internal sealed class SparkSellers(
             profile.TraderStatus,
             profile.Verification?.Passed == true,
             profile.Dac7.Missing().Count == 0,
-            profile.PayoutsBlocked);
+            profile.SalesBlocked);
 
     /// <summary>The strongest answer of the registered KYC sources (Verified beats Pending beats the rest); the cached
     /// value when no source is registered.</summary>

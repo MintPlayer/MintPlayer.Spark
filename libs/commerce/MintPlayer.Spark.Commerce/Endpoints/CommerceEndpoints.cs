@@ -532,7 +532,7 @@ internal static class CommerceViews
                 p.Trader.PaymentAccount, p.Trader.TradeRegister, p.Trader.RegistrationNumber, p.Trader.VatId, p.Trader.SelfCertification),
             new CommerceDac7View(p.Dac7.IsEntity, p.Dac7.Tin, p.Dac7.TinCountry, p.Dac7.VatId, p.Dac7.BirthDate, p.Dac7.PrimaryAddress,
                 p.Dac7.BusinessRegistrationNumber, p.Dac7.Iban, p.Dac7.AccountHolder, p.Dac7.RemindersSent),
-            p.Verification?.Passed == true, kyc.ToString(), p.PayoutsBlocked, missing, sellReasons);
+            p.Verification?.Passed == true, kyc.ToString(), p.SalesBlocked, missing, sellReasons);
 
     public static TraderData FromView(CommerceTraderDataView v) => new()
     {

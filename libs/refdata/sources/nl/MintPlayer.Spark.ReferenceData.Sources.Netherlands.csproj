@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+
+		<!-- NuGet Package Metadata -->
+		<PackageId>MintPlayer.Spark.ReferenceData.Sources.Netherlands</PackageId>
+		<Version>11.0.0-preview.1</Version>
+		<Authors>MintPlayer</Authors>
+		<Company>MintPlayer</Company>
+		<Description>The Dutch reference-data adapter (docs/reference_data_PRD.md §4.4): the free monthly LVBAG extract via the PDOK Atom feed (woonplaatsen, streets, postcodes; CC0) and CBS gemeenten with their herindelingen since 1991 (CC BY 4.0), mapped with lineage, the Dutch country profile, the id ledger and real sample fixtures.</Description>
+		<PackageTags>reference-data;netherlands;bag;cbs;addresses;spark</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="README.md" Pack="true" PackagePath="\" />
+		<!-- Real sample fixtures cut from the real files (RS8), and the id ledger (Q-R5). -->
+		<EmbeddedResource Include="Fixtures\**\*" LogicalName="Fixtures/%(RecursiveDir)%(Filename)%(Extension)" WithCulture="false" />
+		<EmbeddedResource Include="Ledger\*.ndjson" LogicalName="Ledger/%(Filename)%(Extension)" WithCulture="false" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\..\core\MintPlayer.Spark.ReferenceData.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<InternalsVisibleTo Include="ReferenceData.Tests" />
+	</ItemGroup>
+
+</Project>

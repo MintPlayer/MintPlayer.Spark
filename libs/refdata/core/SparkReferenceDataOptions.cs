@@ -62,8 +62,18 @@ public sealed class ReferenceDataReleaseOptions
     /// <summary>Where release files are written (Q-R8's file-system default). Relative paths are under the content root.</summary>
     public string Directory { get; set; } = "RefDataReleaseStore";
 
-    /// <summary>Sign manifests (RD-DEF 5). Needs an <c>IReleaseSigner</c>; the algorithm choice is spike RS17.</summary>
+    /// <summary>Sign manifests with Ed25519 (RD-DEF 5, RS17). Needs <see cref="SigningKey"/> (or a host's own <c>IReleaseSigner</c>).</summary>
     public bool Sign { get; set; }
+
+    /// <summary>
+    /// The instance's Ed25519 private key: base64 of the 32-byte RFC 8032 seed. A secret: set it in user-secrets or the
+    /// environment, never in appsettings; it is never logged or printed. <c>--refdata-generate-signing-key &lt;file&gt;</c>
+    /// writes a new one to a file and prints only the public key consumers configure.
+    /// </summary>
+    public string? SigningKey { get; set; }
+
+    /// <summary>How many earlier releases each release carries a delta from (§4.6). 0 writes full files only.</summary>
+    public int DeltaDepth { get; set; } = 3;
 
     /// <summary>A release dropping more than this share of a collection's stored ids is refused as a broken download (§4.5 step 8).</summary>
     public double MaxRetiredShare { get; set; } = 0.2;
@@ -76,6 +86,14 @@ public sealed class ReferenceDataSeedOptions
 
     /// <summary>The seed release directory. Relative paths are under the content root.</summary>
     public string Directory { get; set; } = "Seed";
+
+    /// <summary>
+    /// The countries the seed holds (lower-case ISO 3166-1 alpha-2); empty = every registered adapter's fixture. An
+    /// instance may register many adapters while its seed stays a basic set (RD9 = commerce D39): only the mappers that
+    /// write one of these countries run, and only their documents are kept. The ledger check still covers every
+    /// registered adapter's fixture, so their shipped ledgers stay complete.
+    /// </summary>
+    public List<string> Countries { get; set; } = [];
 }
 
 public sealed class ReferenceDataImportOptions
@@ -87,4 +105,10 @@ public sealed class ReferenceDataImportOptions
     public long MaxDownloadBytes { get; set; } = 2L * 1024 * 1024 * 1024;
 
     public TimeSpan DownloadTimeout { get; set; } = TimeSpan.FromMinutes(30);
+
+    /// <summary>
+    /// Where a run keeps its downloads until it succeeds (relative paths are under the content root). A run that stops
+    /// (a restart, a crash) resumes from its checkpoint and reuses what it already fetched (§4.5 step 5).
+    /// </summary>
+    public string WorkDirectory { get; set; } = "RefDataImportWork";
 }

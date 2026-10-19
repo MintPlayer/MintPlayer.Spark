@@ -46,7 +46,7 @@
       "traderStatusUndeclared": { "en": "Declare whether you sell as a trader.", "fr": "Indiquez si vous vendez en tant que professionnel.", "nl": "Geef aan of u als handelaar verkoopt." },
       "traderNotVerified": { "en": "The trader data is not verified yet.", "fr": "Les données du professionnel ne sont pas encore vérifiées.", "nl": "De handelaarsgegevens zijn nog niet geverifieerd." },
       "kycNotVerified": { "en": "The payment provider has not verified the seller yet.", "fr": "Le prestataire de paiement n'a pas encore vérifié le vendeur.", "nl": "De betaalprovider heeft de verkoper nog niet geverifieerd." },
-      "dac7Blocked": { "en": "Payouts are blocked until the tax data is complete.", "fr": "Les versements sont bloqués jusqu'à ce que les données fiscales soient complètes.", "nl": "Uitbetalingen zijn geblokkeerd tot de fiscale gegevens volledig zijn." },
+      "dac7Blocked": { "en": "Sales are closed until the tax data is complete.", "fr": "Les ventes sont fermées jusqu'à ce que les données fiscales soient complètes.", "nl": "De verkoop is gesloten tot de fiscale gegevens volledig zijn." },
       "profile": { "en": "Seller profile", "fr": "Profil vendeur", "nl": "Verkopersprofiel" },
       "submit": { "en": "Submit registration", "fr": "Soumettre l'inscription", "nl": "Registratie indienen" }
     },

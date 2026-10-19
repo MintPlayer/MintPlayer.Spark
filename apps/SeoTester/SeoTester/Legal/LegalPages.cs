@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using SeoTester.Bot;
 using SeoTester.Pages;
 using SeoTester.Settings;
+using MintPlayer.AspNetCore.SpaServices.Xsrf;
 
 namespace SeoTester.Legal;
 
@@ -243,6 +244,10 @@ internal sealed partial class PrivacyPageEndpoint : IGetEndpoint
 {
     public static string Path => "/privacy";
 
+    // FR1: shared-cacheable (Cache-Control: public), so no per-visitor XSRF cookie: the cookie generator would force
+    // the response private (SparkMiddleware, UseAntiforgeryGenerator).
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => builder.SkipXsrfToken();
+
     [Inject] private readonly ISparkSettings settings;
     [Inject] private readonly IOptions<SeoLegalOptions> legal;
     [Inject] private readonly IConfiguration configuration;
@@ -263,6 +268,10 @@ internal sealed partial class PrivacyPageEndpoint : IGetEndpoint
 internal sealed partial class TermsPageEndpoint : IGetEndpoint
 {
     public static string Path => "/terms";
+
+    // FR1: shared-cacheable (Cache-Control: public), so no per-visitor XSRF cookie: the cookie generator would force
+    // the response private (SparkMiddleware, UseAntiforgeryGenerator).
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => builder.SkipXsrfToken();
 
     [Inject] private readonly IOptions<SeoLegalOptions> legal;
 

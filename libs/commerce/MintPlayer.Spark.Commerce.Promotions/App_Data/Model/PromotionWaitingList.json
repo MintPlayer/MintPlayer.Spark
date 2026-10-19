@@ -1,0 +1,134 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "PromotionWaitingList, a ticket waiting list (§4.6, D18). Written by the promotions package only; read-only here under PromotionsAccess. Entries are personal data and are not shown here.",
+    "",
+    "HAND-AUTHORED. Ids are UUIDv5 of 'commerce-promotions:PromotionWaitingList[...]', written by 'npm run stamp:library-model-ids'."
+  ],
+  "persistentObject": {
+    "id": "b933c7b2-27b5-55b4-8214-58070c68c726",
+    "name": "PromotionWaitingList",
+    "clrType": "MintPlayer.Spark.Commerce.Promotions.Models.PromotionWaitingList",
+    "alias": "promotion-waiting-list",
+    "breadcrumb": "{ItemId} {Status}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "40333b22-db8a-5841-b6b7-b4f7282601b9",
+        "name": "ItemId",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "0cd700e1-d558-5151-9777-8998d5e5716c",
+        "name": "Status",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "39fe3f9d-8287-57ca-8fbe-a26cda9bc83d",
+        "name": "QueueScope",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "d9a97b6a-8f8a-519b-919c-83a8a1c49394",
+        "name": "QueueClosedAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "a83dd3e4-42f7-5b59-80f6-8b4d0d771d9f",
+        "name": "ActivatedAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "9027f763-0bd8-5a5b-853a-abab76d550b7",
+        "name": "ClosedAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "9f6ce3c8-6587-576b-adc7-37b14821c232",
+        "name": "EntrySequence",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "66586ab7-35fe-524b-9bbb-b7cb210d1329",
+        "name": "OrganizationId",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "ad461d66-de85-5645-a14e-e4f8f246e796",
+        "name": "CreatedAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 9,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      }
+    ]
+  },
+  "queries": [
+    {
+      "id": "ae7f830a-f092-5fcb-9c0a-fe530e6575ad",
+      "name": "PromotionWaitingLists",
+      "source": "Custom.PromotionWaitingLists",
+      "alias": "promotion-waiting-lists",
+      "sortColumns": [
+        {
+          "property": "CreatedAt",
+          "direction": "desc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "PromotionWaitingList"
+    }
+  ]
+}

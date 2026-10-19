@@ -2,24 +2,34 @@ using MintPlayer.Spark.ReferenceData;
 using MintPlayer.Spark.ReferenceData.Build;
 using MintPlayer.Spark.ReferenceData.Sources;
 using MintPlayer.Spark.ReferenceData.Sources.Belgium;
+using MintPlayer.Spark.ReferenceData.Sources.Belgium.Best;
+using MintPlayer.Spark.ReferenceData.Sources.Belgium.Flemish;
 using MintPlayer.Spark.ReferenceData.Sources.Global;
 using MintPlayer.Spark.ReferenceData.Sources.Holidays;
 using MintPlayer.Spark.ReferenceData.Sources.Tedb;
+using MintPlayer.Spark.ReferenceData.Sources.France;
+using MintPlayer.Spark.ReferenceData.Sources.Luxembourg;
+using MintPlayer.Spark.ReferenceData.Sources.Netherlands;
 
 namespace ReferenceData.Tests.Engine;
 
-/// <summary>The adapters as apps/ReferenceData registers them, over their real sample fixtures (RS8).</summary>
+/// <summary>The adapters of the basic seed set's countries (BE, NL, FR, LU, DE via the baseline), over their real sample fixtures (RS8).</summary>
 internal static class RefFixtures
 {
     public static IReadOnlyList<IReferenceDataSource> Sources() =>
     [
         new BelgiumRefnisSource(), new BelgiumNis6Source(), new BelgiumPostalStreetsSource(),
+        new BelgiumBestSource(), new FlemishDiffSource(), new FlemishApiSource(),
         new GeoNamesSource(), new WikidataSource(), new CldrSource(), new TzDataSource(),
+        new GnsSource(), new UnLocodeSource(), new IanaSubtagSource(),
+        new NetherlandsCbsGemeentenSource(), new NetherlandsHerindelingenSource(), new NetherlandsBagSource(),
+        new FranceCogSource(), new FranceBanSource(), new FranceLaPosteSource(),
+        new LuxembourgCaclrSource(),
         new TedbSource(), new StatuteHolidaysSource(),
     ];
 
     public static IReadOnlyList<IReferenceDataMapper> Mappers() =>
-        [new GlobalMapper(), new BelgiumMapper(), new TedbMapper(), new StatuteHolidaysMapper()];
+        [new GlobalMapper(), new GlobalNamesMapper(), new BelgiumMapper(), new NetherlandsMapper(), new FranceMapper(), new LuxembourgMapper(), new TedbMapper(), new StatuteHolidaysMapper()];
 
     public static RefDatasetBuilder Builder() => new(Sources(), Mappers());
 

@@ -14,6 +14,15 @@ internal static class BelgiumLicences
         "FPS BOSA BeST Address", "CC BY 4.0", "https://creativecommons.org/licenses/by/4.0/",
         "Digitaal Vlaanderen (Vlaams Gewest), Paradigm (Brussels Hoofdstedelijk Gewest), Service public de Wallonie (Waals Gewest), " +
         "via FOD BOSA BeST Address (https://opendata.bosa.be/). The data was modified: names are split per locality and linked to places.");
+
+    /// <summary>
+    /// The Flemish register (Basisregisters API, 2025 merger diff files). ⚠️ The licence wording of the diff files is
+    /// unverified (PRD §4.4); the Flemish base registers are published under the Modellicentie Gratis Hergebruik.
+    /// </summary>
+    public static readonly SourceLicence Flemish = new(
+        "Digitaal Vlaanderen", "Modellicentie Gratis Hergebruik v1.0 (unverified for the diff files)",
+        "https://www.vlaanderen.be/digitaal-vlaanderen/onze-oplossingen/open-data/voorwaarden-voor-het-hergebruik-van-overheidsinformatie/modellicentie-gratis-hergebruik",
+        "Bron: Digitaal Vlaanderen. The data was modified: street and municipality successions are derived from it.");
 }
 
 /// <summary>A source whose edition is a dated file name found on the publisher's page (Statbel publishes no ETag or checksum).</summary>

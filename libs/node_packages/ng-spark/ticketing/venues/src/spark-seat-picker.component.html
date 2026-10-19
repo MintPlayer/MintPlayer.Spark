@@ -1,0 +1,60 @@
+<section class="spark-seat-picker">
+  <div class="btn-group" role="group" [attr.aria-label]="'ticketingVenues.picker.view' | t">
+    <button type="button" class="btn btn-outline-primary" [class.active]="view() === 'map'" [attr.aria-pressed]="view() === 'map'" (click)="view.set('map')">
+      {{ 'ticketingVenues.picker.map' | t }}
+    </button>
+    <button type="button" class="btn btn-outline-primary" [class.active]="view() === 'list'" [attr.aria-pressed]="view() === 'list'" (click)="view.set('list')">
+      {{ 'ticketingVenues.picker.list' | t }}
+    </button>
+  </div>
+
+  @if (view() === 'map') {
+    <spark-seat-map [snapshotId]="snapshotId()" [(selected)]="selected" [maxSelection]="maxSelection()" [allowedTags]="allowedTags()" />
+  } @else {
+    <table class="table spark-seat-picker-list">
+      <caption>{{ 'ticketingVenues.picker.listCaption' | t }}</caption>
+      <thead>
+        <tr>
+          <th scope="col">{{ 'ticketingVenues.picker.block' | t }}</th>
+          <th scope="col">{{ 'ticketingVenues.picker.available' | t }}</th>
+          <th scope="col">{{ 'ticketingVenues.picker.quantity' | t }}</th>
+          <th scope="col"><span class="visually-hidden">{{ 'ticketingVenues.picker.action' | t }}</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (option of options(); track option.blockKey) {
+          <tr>
+            <th scope="row">{{ option.name }}</th>
+            <td>{{ option.available }}</td>
+            <td>
+              <input type="number" class="spark-seat-picker-quantity" min="1" [max]="maxSelection()"
+                     [value]="quantity(option.blockKey)" (change)="setQuantity(option.blockKey, $any($event.target).value)"
+                     [attr.aria-label]="('ticketingVenues.picker.quantity' | t) + ' ' + option.name" />
+            </td>
+            <td>
+              <button type="button" class="btn btn-sm btn-primary" [disabled]="option.available < quantity(option.blockKey)" (click)="request(option)">
+                {{ (option.numbered ? 'ticketingVenues.picker.bestAvailable' : 'ticketingVenues.picker.addPlaces') | t }}
+              </button>
+            </td>
+          </tr>
+        } @empty {
+          <tr><td colspan="4">{{ 'ticketingVenues.picker.none' | t }}</td></tr>
+        }
+      </tbody>
+    </table>
+  }
+
+  @if (pickedSeats().length > 0) {
+    <h3 class="h6 mt-3">{{ 'ticketingVenues.picker.picked' | t }}</h3>
+    <ul class="spark-seat-picker-picked">
+      @for (seat of pickedSeats(); track seat.key) {
+        <li>
+          {{ seat.label }}
+          <button type="button" class="btn btn-sm btn-link" (click)="remove(seat.key)" [attr.aria-label]="('ticketingVenues.picker.remove' | t) + ' ' + seat.label">
+            {{ 'ticketingVenues.picker.remove' | t }}
+          </button>
+        </li>
+      }
+    </ul>
+  }
+</section>

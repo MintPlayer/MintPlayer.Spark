@@ -150,12 +150,14 @@ MintPlayer.Spark/
 │   │   └── MintPlayer.Dotnet.SocketExtensions/   # WebSocket read/write helpers
 │   └── node_packages/                            # Angular libraries (@mintplayer/ng-spark, auth entries under ng-spark/auth)
 ├── tests/                                        # Test projects (unit, source-generator, client, E2E)
-├── apps/                                         # Applications: the demos, and CodeCoverage
+├── apps/                                         # Applications: the demos, and the production apps CodeCoverage and SeoTester
 │   ├── CodeCoverage/                             # The coverage server behind coverage.mintplayer.com (a product, not a demo)
 │   ├── DemoApp/                                  # The minimal Spark app: core only, no Authorization, no identity provider
 │   ├── Fleet/                                    # Fleet management demo (auth, messaging, replication)
 │   ├── HR/                                       # HR demo (auth, messaging, replication)
 │   ├── QnA/                                      # Q&A demo (#460: moderation, soft delete, history, mail, account pages)
+│   ├── ReferenceData/                            # A reference-data instance with a basic seed set (local only, https 5017)
+│   ├── SeoTester/                                # The SEO analyzer behind seotester.mintplayer.com (a product, not a demo)
 │   └── SparkId/                                  # The demo identity provider (HR, Fleet and QnA sign in here)
 └── docs/                                         # Documentation (guides, prd/, code-coverage/, codecov/)
 ```

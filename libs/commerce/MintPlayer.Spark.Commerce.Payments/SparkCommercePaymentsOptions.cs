@@ -93,8 +93,8 @@ public sealed class DisputeOptions
     /// <summary>
     /// A Mollie chargeback has no decision by the provider: it is reversed or it stays. One not reversed after this long
     /// is closed as lost (I4 then releases, a credit note follows). Default 120 days, the usual card-scheme window for
-    /// the issuer's side of a chargeback cycle; a seller may accept it as lost earlier. ⚠️ An owner decision to confirm:
-    /// Mollie's public docs state no such deadline.
+    /// the issuer's side of a chargeback cycle; a seller may accept it as lost earlier. The owner's decision (D42,
+    /// 2026-10-19: "After 120 days", matching card-scheme dispute windows); Mollie's public docs state no such deadline.
     /// </summary>
     public TimeSpan ChargebackFinalAfter { get; set; } = TimeSpan.FromDays(120);
 

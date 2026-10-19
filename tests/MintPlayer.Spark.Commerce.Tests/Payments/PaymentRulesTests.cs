@@ -128,4 +128,23 @@ public class PaymentRulesTests
         merchant.ToString().Should().NotContain("access_secret_value");
     }
 
+    /// <summary>D41 (owner, 2026-10-19): a split makes the platform the merchant of record, so it needs the host's opt-in
+    /// on top of connected mode and <c>MixSellers</c>.</summary>
+    [Fact]
+    public void D41_a_split_needs_connected_mode_mix_sellers_and_the_merchant_of_record_opt_in()
+    {
+        static SparkCommerceOptions With(MerchantMode mode, bool mix, bool acknowledged)
+            => new() { Merchant = mode, Basket = { MixSellers = mix, AcknowledgeSplitMerchantOfRecord = acknowledged } };
+
+        SparkPayments.SplitEnabled(With(MerchantMode.ConnectedSellers, true, true)).Should().BeTrue();
+        SparkPayments.SplitEnabled(With(MerchantMode.ConnectedSellers, true, false)).Should().BeFalse();
+        SparkPayments.SplitEnabled(With(MerchantMode.ConnectedSellers, false, true)).Should().BeFalse();
+        SparkPayments.SplitEnabled(With(MerchantMode.Platform, true, true)).Should().BeFalse();
+        SparkPayments.SplitEnabled(new SparkCommerceOptions()).Should().BeFalse();
+    }
+
+    /// <summary>D42 (owner, 2026-10-19): an undecided Mollie chargeback counts as lost after 120 days by default.</summary>
+    [Fact]
+    public void D42_an_undecided_chargeback_is_final_after_120_days_by_default()
+        => new DisputeOptions().ChargebackFinalAfter.Should().Be(TimeSpan.FromDays(120));
 }

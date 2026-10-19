@@ -39,6 +39,9 @@
 
 	<ItemGroup>
 		<ProjectReference Include="..\abstractions\MintPlayer.Spark.ReferenceData.Abstractions.csproj" />
+		<!-- Plan R10: the client's layer declares the read-only types both sides hold (countries, places, postal codes), so
+		     an instance that is also a consumer composes each of them once. The reverse reference never exists (PRD §4.1). -->
+		<ProjectReference Include="..\client\MintPlayer.Spark.ReferenceData.Client.csproj" />
 		<ProjectReference Include="..\..\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
 		<!-- The import queue (RD1 step 3) and the per-source schedules (RD1 step 1). -->
 		<ProjectReference Include="..\..\messaging\MintPlayer.Spark.Messaging\MintPlayer.Spark.Messaging.csproj" />

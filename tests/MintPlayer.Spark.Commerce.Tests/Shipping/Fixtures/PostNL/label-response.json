@@ -1,0 +1,27 @@
+{
+  "_fixture": {
+    "source": "https://api.postnl.nl/shipment/v2_2/label/swagger.json (200 response examples: single label, and the multi-label example with CN23)",
+    "derived": "public documentation examples merged: the domestic response plus a second shipment carrying Label and CN23; Content replaced by short base64 PDFs",
+    "recorded": false
+  },
+  "MergedLabels": [],
+  "ResponseShipments": [
+    {
+      "Barcode": "3SDEVC272730803",
+      "Errors": [],
+      "Warnings": [],
+      "Labels": [ { "Content": "JVBERi0xLjMKJSVFT0YK", "Labeltype": "Label", "OutputType": "PDF" } ],
+      "ProductCodeDelivery": "3085"
+    },
+    {
+      "Barcode": "3SDEVC272730804",
+      "Errors": [],
+      "Warnings": [],
+      "Labels": [
+        { "Content": "JVBERi0xLjMKJSVFT0YK", "Labeltype": "Label", "OutputType": "PDF" },
+        { "Content": "JVBERi0xLjQKJSVFT0YK", "Labeltype": "CN23", "OutputType": "PDF" }
+      ],
+      "ProductCodeDelivery": "3085"
+    }
+  ]
+}

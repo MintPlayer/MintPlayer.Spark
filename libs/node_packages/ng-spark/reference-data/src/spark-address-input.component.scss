@@ -21,34 +21,10 @@
   }
 }
 
-.spark-address-combobox {
-  position: relative;
-}
-
-.spark-address-options {
-  position: absolute;
-  z-index: 1050;
-  left: 0;
-  right: 0;
-  max-height: 18rem;
-  overflow-y: auto;
-  margin: 0;
-  padding: 0.25rem 0;
-  list-style: none;
-  background: var(--bs-body-bg);
-  border: 1px solid var(--bs-border-color);
-  border-radius: var(--bs-border-radius);
-  box-shadow: var(--bs-box-shadow-sm);
-
-  li {
-    padding: 0.25rem 0.75rem;
-    cursor: pointer;
-
-    &.active,
-    &:hover {
-      background: var(--bs-tertiary-bg);
-    }
-  }
+// A box that cannot be used yet (the street before a locality is picked, or a disabled form). bs-typeahead has no
+// disabled input in 22.25 (RX5), so the row is inert and dimmed.
+.spark-address-blocked {
+  opacity: 0.6;
 }
 
 .spark-address-preview {

@@ -1,0 +1,2596 @@
+File-Date: 2026-09-17
+%%
+Type: language
+Subtag: aa
+Description: Afar
+Added: 2005-10-16
+%%
+Type: language
+Subtag: ab
+Description: Abkhazian
+Added: 2005-10-16
+Suppress-Script: Cyrl
+%%
+Type: language
+Subtag: ae
+Description: Avestan
+Added: 2005-10-16
+%%
+Type: language
+Subtag: af
+Description: Afrikaans
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: ak
+Description: Akan
+Added: 2005-10-16
+Scope: macrolanguage
+%%
+Type: language
+Subtag: am
+Description: Amharic
+Added: 2005-10-16
+Suppress-Script: Ethi
+%%
+Type: language
+Subtag: an
+Description: Aragonese
+Added: 2005-10-16
+%%
+Type: language
+Subtag: ar
+Description: Arabic
+Added: 2005-10-16
+Suppress-Script: Arab
+Scope: macrolanguage
+%%
+Type: language
+Subtag: as
+Description: Assamese
+Added: 2005-10-16
+Suppress-Script: Beng
+%%
+Type: language
+Subtag: av
+Description: Avaric
+Added: 2005-10-16
+%%
+Type: language
+Subtag: ay
+Description: Aymara
+Added: 2005-10-16
+Suppress-Script: Latn
+Scope: macrolanguage
+%%
+Type: language
+Subtag: az
+Description: Azerbaijani
+Added: 2005-10-16
+Scope: macrolanguage
+%%
+Type: language
+Subtag: ba
+Description: Bashkir
+Added: 2005-10-16
+%%
+Type: language
+Subtag: be
+Description: Belarusian
+Added: 2005-10-16
+Suppress-Script: Cyrl
+%%
+Type: language
+Subtag: bg
+Description: Bulgarian
+Added: 2005-10-16
+Suppress-Script: Cyrl
+%%
+Type: language
+Subtag: bh
+Description: Bihari languages
+Added: 2005-10-16
+Deprecated: 2026-06-14
+Preferred-Value: bih
+Scope: collection
+%%
+Type: language
+Subtag: bi
+Description: Bislama
+Added: 2005-10-16
+%%
+Type: language
+Subtag: bm
+Description: Bambara
+Added: 2005-10-16
+%%
+Type: language
+Subtag: bn
+Description: Bengali
+Description: Bangla
+Added: 2005-10-16
+Suppress-Script: Beng
+%%
+Type: language
+Subtag: bo
+Description: Tibetan
+Added: 2005-10-16
+%%
+Type: language
+Subtag: br
+Description: Breton
+Added: 2005-10-16
+%%
+Type: language
+Subtag: bs
+Description: Bosnian
+Added: 2005-10-16
+Suppress-Script: Latn
+Macrolanguage: sh
+%%
+Type: language
+Subtag: ca
+Description: Catalan
+Description: Valencian
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: ce
+Description: Chechen
+Added: 2005-10-16
+%%
+Type: language
+Subtag: ch
+Description: Chamorro
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: co
+Description: Corsican
+Added: 2005-10-16
+%%
+Type: language
+Subtag: cr
+Description: Cree
+Added: 2005-10-16
+Scope: macrolanguage
+%%
+Type: language
+Subtag: cs
+Description: Czech
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: cu
+Description: Church Slavic
+Description: Church Slavonic
+Description: Old Bulgarian
+Description: Old Church Slavonic
+Description: Old Slavonic
+Added: 2005-10-16
+%%
+Type: language
+Subtag: cv
+Description: Chuvash
+Added: 2005-10-16
+%%
+Type: language
+Subtag: cy
+Description: Welsh
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: da
+Description: Danish
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: de
+Description: German
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: dv
+Description: Dhivehi
+Description: Divehi
+Description: Maldivian
+Added: 2005-10-16
+Suppress-Script: Thaa
+%%
+Type: language
+Subtag: dz
+Description: Dzongkha
+Added: 2005-10-16
+Suppress-Script: Tibt
+%%
+Type: language
+Subtag: ee
+Description: Ewe
+Added: 2005-10-16
+%%
+Type: language
+Subtag: el
+Description: Modern Greek (1453-)
+Added: 2005-10-16
+Suppress-Script: Grek
+%%
+Type: language
+Subtag: en
+Description: English
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: eo
+Description: Esperanto
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: es
+Description: Spanish
+Description: Castilian
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: et
+Description: Estonian
+Added: 2005-10-16
+Suppress-Script: Latn
+Scope: macrolanguage
+%%
+Type: language
+Subtag: eu
+Description: Basque
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: fa
+Description: Persian
+Added: 2005-10-16
+Suppress-Script: Arab
+Scope: macrolanguage
+%%
+Type: language
+Subtag: ff
+Description: Fulah
+Added: 2005-10-16
+Scope: macrolanguage
+%%
+Type: language
+Subtag: fi
+Description: Finnish
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: fj
+Description: Fijian
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: fo
+Description: Faroese
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: fr
+Description: French
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: fy
+Description: Western Frisian
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: ga
+Description: Irish
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: gd
+Description: Scottish Gaelic
+Description: Gaelic
+Added: 2005-10-16
+%%
+Type: language
+Subtag: gl
+Description: Galician
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: gn
+Description: Guarani
+Added: 2005-10-16
+Suppress-Script: Latn
+Scope: macrolanguage
+%%
+Type: language
+Subtag: gu
+Description: Gujarati
+Added: 2005-10-16
+Suppress-Script: Gujr
+%%
+Type: language
+Subtag: gv
+Description: Manx
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: ha
+Description: Hausa
+Added: 2005-10-16
+%%
+Type: language
+Subtag: he
+Description: Hebrew
+Added: 2005-10-16
+Suppress-Script: Hebr
+%%
+Type: language
+Subtag: hi
+Description: Hindi
+Added: 2005-10-16
+Suppress-Script: Deva
+%%
+Type: language
+Subtag: ho
+Description: Hiri Motu
+Added: 2005-10-16
+%%
+Type: language
+Subtag: hr
+Description: Croatian
+Added: 2005-10-16
+Suppress-Script: Latn
+Macrolanguage: sh
+%%
+Type: language
+Subtag: ht
+Description: Haitian
+Description: Haitian Creole
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: hu
+Description: Hungarian
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: hy
+Description: Armenian
+Added: 2005-10-16
+Suppress-Script: Armn
+Comments: see also hyw
+%%
+Type: language
+Subtag: hz
+Description: Herero
+Added: 2005-10-16
+%%
+Type: language
+Subtag: ia
+Description: Interlingua (IALA)
+Description: Interlingua (International Auxiliary Language
+  Association)
+Added: 2005-10-16
+%%
+Type: language
+Subtag: id
+Description: Indonesian
+Added: 2005-10-16
+Suppress-Script: Latn
+Macrolanguage: ms
+%%
+Type: language
+Subtag: ie
+Description: Interlingue
+Description: Occidental
+Added: 2005-10-16
+%%
+Type: language
+Subtag: ig
+Description: Igbo
+Added: 2005-10-16
+%%
+Type: language
+Subtag: ii
+Description: Sichuan Yi
+Description: Nuosu
+Added: 2005-10-16
+%%
+Type: language
+Subtag: ik
+Description: Inupiaq
+Added: 2005-10-16
+Scope: macrolanguage
+%%
+Type: language
+Subtag: in
+Description: Indonesian
+Added: 2005-10-16
+Deprecated: 1989-01-01
+Preferred-Value: id
+Suppress-Script: Latn
+Macrolanguage: ms
+%%
+Type: language
+Subtag: io
+Description: Ido
+Added: 2005-10-16
+%%
+Type: language
+Subtag: is
+Description: Icelandic
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: it
+Description: Italian
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: iu
+Description: Inuktitut
+Added: 2005-10-16
+Scope: macrolanguage
+%%
+Type: language
+Subtag: iw
+Description: Hebrew
+Added: 2005-10-16
+Deprecated: 1989-01-01
+Preferred-Value: he
+Suppress-Script: Hebr
+%%
+Type: language
+Subtag: ja
+Description: Japanese
+Added: 2005-10-16
+Suppress-Script: Jpan
+%%
+Type: language
+Subtag: ji
+Description: Yiddish
+Added: 2005-10-16
+Deprecated: 1989-01-01
+Preferred-Value: yi
+%%
+Type: language
+Subtag: jv
+Description: Javanese
+Added: 2005-10-16
+%%
+Type: language
+Subtag: jw
+Description: Javanese
+Added: 2005-10-16
+Deprecated: 2001-08-13
+Preferred-Value: jv
+Comments: published by error in Table 1 of ISO 639:1988
+%%
+Type: language
+Subtag: ka
+Description: Georgian
+Added: 2005-10-16
+Suppress-Script: Geor
+%%
+Type: language
+Subtag: kg
+Description: Kongo
+Added: 2005-10-16
+Scope: macrolanguage
+%%
+Type: language
+Subtag: ki
+Description: Kikuyu
+Description: Gikuyu
+Added: 2005-10-16
+%%
+Type: language
+Subtag: kj
+Description: Kuanyama
+Description: Kwanyama
+Added: 2005-10-16
+%%
+Type: language
+Subtag: kk
+Description: Kazakh
+Added: 2005-10-16
+Suppress-Script: Cyrl
+%%
+Type: language
+Subtag: kl
+Description: Kalaallisut
+Description: Greenlandic
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: km
+Description: Khmer
+Description: Central Khmer
+Added: 2005-10-16
+Suppress-Script: Khmr
+%%
+Type: language
+Subtag: kn
+Description: Kannada
+Added: 2005-10-16
+Suppress-Script: Knda
+%%
+Type: language
+Subtag: ko
+Description: Korean
+Added: 2005-10-16
+Suppress-Script: Kore
+%%
+Type: language
+Subtag: kr
+Description: Kanuri
+Added: 2005-10-16
+Scope: macrolanguage
+%%
+Type: language
+Subtag: ks
+Description: Kashmiri
+Added: 2005-10-16
+%%
+Type: language
+Subtag: ku
+Description: Kurdish
+Added: 2005-10-16
+Scope: macrolanguage
+%%
+Type: language
+Subtag: kv
+Description: Komi
+Added: 2005-10-16
+Scope: macrolanguage
+%%
+Type: language
+Subtag: kw
+Description: Cornish
+Added: 2005-10-16
+%%
+Type: language
+Subtag: ky
+Description: Kirghiz
+Description: Kyrgyz
+Added: 2005-10-16
+%%
+Type: language
+Subtag: la
+Description: Latin
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: lb
+Description: Luxembourgish
+Description: Letzeburgesch
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: lg
+Description: Ganda
+Description: Luganda
+Added: 2005-10-16
+%%
+Type: language
+Subtag: li
+Description: Limburgan
+Description: Limburger
+Description: Limburgish
+Added: 2005-10-16
+%%
+Type: language
+Subtag: ln
+Description: Lingala
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: lo
+Description: Lao
+Added: 2005-10-16
+Suppress-Script: Laoo
+%%
+Type: language
+Subtag: lt
+Description: Lithuanian
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: lu
+Description: Luba-Katanga
+Added: 2005-10-16
+%%
+Type: language
+Subtag: lv
+Description: Latvian
+Added: 2005-10-16
+Suppress-Script: Latn
+Scope: macrolanguage
+%%
+Type: language
+Subtag: mg
+Description: Malagasy
+Added: 2005-10-16
+Suppress-Script: Latn
+Scope: macrolanguage
+%%
+Type: language
+Subtag: mh
+Description: Marshallese
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: mi
+Description: Maori
+Added: 2005-10-16
+%%
+Type: language
+Subtag: mk
+Description: Macedonian
+Added: 2005-10-16
+Suppress-Script: Cyrl
+%%
+Type: language
+Subtag: ml
+Description: Malayalam
+Added: 2005-10-16
+Suppress-Script: Mlym
+%%
+Type: language
+Subtag: mn
+Description: Mongolian
+Added: 2005-10-16
+Scope: macrolanguage
+%%
+Type: language
+Subtag: mo
+Description: Moldavian
+Description: Moldovan
+Added: 2005-10-16
+Deprecated: 2008-11-22
+Preferred-Value: ro
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: mr
+Description: Marathi
+Added: 2005-10-16
+Suppress-Script: Deva
+%%
+Type: language
+Subtag: ms
+Description: Malay (macrolanguage)
+Added: 2005-10-16
+Suppress-Script: Latn
+Scope: macrolanguage
+%%
+Type: language
+Subtag: mt
+Description: Maltese
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: my
+Description: Burmese
+Added: 2005-10-16
+Suppress-Script: Mymr
+%%
+Type: language
+Subtag: na
+Description: Nauru
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: nb
+Description: Norwegian Bokmål
+Added: 2005-10-16
+Suppress-Script: Latn
+Macrolanguage: no
+%%
+Type: language
+Subtag: nd
+Description: North Ndebele
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: ne
+Description: Nepali (macrolanguage)
+Added: 2005-10-16
+Suppress-Script: Deva
+Scope: macrolanguage
+%%
+Type: language
+Subtag: ng
+Description: Ndonga
+Added: 2005-10-16
+%%
+Type: language
+Subtag: nl
+Description: Dutch
+Description: Flemish
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: nn
+Description: Norwegian Nynorsk
+Added: 2005-10-16
+Suppress-Script: Latn
+Macrolanguage: no
+%%
+Type: language
+Subtag: no
+Description: Norwegian
+Added: 2005-10-16
+Suppress-Script: Latn
+Scope: macrolanguage
+%%
+Type: language
+Subtag: nr
+Description: South Ndebele
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: nv
+Description: Navajo
+Description: Navaho
+Added: 2005-10-16
+%%
+Type: language
+Subtag: ny
+Description: Chichewa
+Description: Chewa
+Description: Nyanja
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: oc
+Description: Occitan (post 1500)
+Added: 2005-10-16
+%%
+Type: language
+Subtag: oj
+Description: Ojibwa
+Added: 2005-10-16
+Scope: macrolanguage
+%%
+Type: language
+Subtag: om
+Description: Oromo
+Added: 2005-10-16
+Suppress-Script: Latn
+Scope: macrolanguage
+%%
+Type: language
+Subtag: or
+Description: Oriya (macrolanguage)
+Description: Odia (macrolanguage)
+Added: 2005-10-16
+Suppress-Script: Orya
+Scope: macrolanguage
+%%
+Type: language
+Subtag: os
+Description: Iron Ossetic
+Description: Iron
+Description: Iron Ossetian
+Description: Ossetian
+Description: Ossetic
+Added: 2005-10-16
+%%
+Type: language
+Subtag: pa
+Description: Panjabi
+Description: Punjabi
+Added: 2005-10-16
+Suppress-Script: Guru
+%%
+Type: language
+Subtag: pi
+Description: Pali
+Added: 2005-10-16
+%%
+Type: language
+Subtag: pl
+Description: Polish
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: ps
+Description: Pushto
+Description: Pashto
+Added: 2005-10-16
+Suppress-Script: Arab
+Scope: macrolanguage
+%%
+Type: language
+Subtag: pt
+Description: Portuguese
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: qu
+Description: Quechua
+Added: 2005-10-16
+Suppress-Script: Latn
+Scope: macrolanguage
+%%
+Type: language
+Subtag: rm
+Description: Romansh
+Suppress-Script: Latn
+Added: 2005-10-16
+%%
+Type: language
+Subtag: rn
+Description: Rundi
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: ro
+Description: Romanian
+Description: Moldavian
+Description: Moldovan
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: ru
+Description: Russian
+Added: 2005-10-16
+Suppress-Script: Cyrl
+%%
+Type: language
+Subtag: rw
+Description: Kinyarwanda
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: sa
+Description: Sanskrit
+Added: 2005-10-16
+Scope: macrolanguage
+%%
+Type: language
+Subtag: sc
+Description: Sardinian
+Added: 2005-10-16
+Scope: macrolanguage
+%%
+Type: language
+Subtag: sd
+Description: Sindhi
+Added: 2005-10-16
+%%
+Type: language
+Subtag: se
+Description: Northern Sami
+Added: 2005-10-16
+%%
+Type: language
+Subtag: sg
+Description: Sango
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: sh
+Description: Serbo-Croatian
+Added: 2005-10-16
+Scope: macrolanguage
+Comments: sr, hr, bs are preferred for most modern uses
+%%
+Type: language
+Subtag: si
+Description: Sinhala
+Description: Sinhalese
+Added: 2005-10-16
+Suppress-Script: Sinh
+%%
+Type: language
+Subtag: sk
+Description: Slovak
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: sl
+Description: Slovenian
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: sm
+Description: Samoan
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: sn
+Description: Shona
+Added: 2005-10-16
+%%
+Type: language
+Subtag: so
+Description: Somali
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: sq
+Description: Albanian
+Added: 2005-10-16
+Suppress-Script: Latn
+Scope: macrolanguage
+%%
+Type: language
+Subtag: sr
+Description: Serbian
+Added: 2005-10-16
+Macrolanguage: sh
+Comments: see cnr for Montenegrin
+%%
+Type: language
+Subtag: ss
+Description: Swati
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: st
+Description: Southern Sotho
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: su
+Description: Sundanese
+Added: 2005-10-16
+%%
+Type: language
+Subtag: sv
+Description: Swedish
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: sw
+Description: Swahili (macrolanguage)
+Added: 2005-10-16
+Suppress-Script: Latn
+Scope: macrolanguage
+%%
+Type: language
+Subtag: ta
+Description: Tamil
+Added: 2005-10-16
+Suppress-Script: Taml
+%%
+Type: language
+Subtag: te
+Description: Telugu
+Added: 2005-10-16
+Suppress-Script: Telu
+%%
+Type: language
+Subtag: tg
+Description: Tajik
+Added: 2005-10-16
+%%
+Type: language
+Subtag: th
+Description: Thai
+Added: 2005-10-16
+Suppress-Script: Thai
+%%
+Type: language
+Subtag: ti
+Description: Tigrinya
+Added: 2005-10-16
+Suppress-Script: Ethi
+%%
+Type: language
+Subtag: tk
+Description: Turkmen
+Added: 2005-10-16
+%%
+Type: language
+Subtag: tl
+Description: Tagalog
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: tn
+Description: Tswana
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: to
+Description: Tonga (Tonga Islands)
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: tr
+Description: Turkish
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: ts
+Description: Tsonga
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: tt
+Description: Tatar
+Added: 2005-10-16
+%%
+Type: language
+Subtag: tw
+Description: Twi
+Added: 2005-10-16
+Macrolanguage: ak
+%%
+Type: language
+Subtag: ty
+Description: Tahitian
+Added: 2005-10-16
+%%
+Type: language
+Subtag: ug
+Description: Uighur
+Description: Uyghur
+Added: 2005-10-16
+%%
+Type: language
+Subtag: uk
+Description: Ukrainian
+Added: 2005-10-16
+Suppress-Script: Cyrl
+%%
+Type: language
+Subtag: ur
+Description: Urdu
+Added: 2005-10-16
+Suppress-Script: Arab
+%%
+Type: language
+Subtag: uz
+Description: Uzbek
+Added: 2005-10-16
+Scope: macrolanguage
+%%
+Type: language
+Subtag: ve
+Description: Venda
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: vi
+Description: Vietnamese
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: vo
+Description: Volapük
+Added: 2005-10-16
+%%
+Type: language
+Subtag: wa
+Description: Walloon
+Added: 2005-10-16
+%%
+Type: language
+Subtag: wo
+Description: Wolof
+Added: 2005-10-16
+%%
+Type: language
+Subtag: xh
+Description: Xhosa
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: language
+Subtag: yi
+Description: Yiddish
+Added: 2005-10-16
+Suppress-Script: Hebr
+Scope: macrolanguage
+%%
+Type: language
+Subtag: yo
+Description: Yoruba
+Added: 2005-10-16
+%%
+Type: language
+Subtag: za
+Description: Zhuang
+Description: Chuang
+Added: 2005-10-16
+Scope: macrolanguage
+%%
+Type: language
+Subtag: zh
+Description: Chinese
+Added: 2005-10-16
+Scope: macrolanguage
+%%
+Type: language
+Subtag: zu
+Description: Zulu
+Added: 2005-10-16
+Suppress-Script: Latn
+%%
+Type: script
+Subtag: Arab
+Description: Arabic
+Added: 2005-10-16
+%%
+Type: script
+Subtag: Cyrl
+Description: Cyrillic
+Added: 2005-10-16
+%%
+Type: script
+Subtag: Grek
+Description: Greek
+Added: 2005-10-16
+%%
+Type: script
+Subtag: Hans
+Description: Han (Simplified variant)
+Added: 2005-10-16
+%%
+Type: script
+Subtag: Hant
+Description: Han (Traditional variant)
+Added: 2005-10-16
+%%
+Type: script
+Subtag: Hebr
+Description: Hebrew
+Added: 2005-10-16
+%%
+Type: script
+Subtag: Latn
+Description: Latin
+Added: 2005-10-16
+%%
+Type: region
+Subtag: AA
+Description: Private use
+Added: 2005-10-16
+%%
+Type: region
+Subtag: AC
+Description: Ascension Island
+Added: 2009-07-29
+%%
+Type: region
+Subtag: AD
+Description: Andorra
+Added: 2005-10-16
+%%
+Type: region
+Subtag: AE
+Description: United Arab Emirates
+Added: 2005-10-16
+%%
+Type: region
+Subtag: AF
+Description: Afghanistan
+Added: 2005-10-16
+%%
+Type: region
+Subtag: AG
+Description: Antigua and Barbuda
+Added: 2005-10-16
+%%
+Type: region
+Subtag: AI
+Description: Anguilla
+Added: 2005-10-16
+%%
+Type: region
+Subtag: AL
+Description: Albania
+Added: 2005-10-16
+%%
+Type: region
+Subtag: AM
+Description: Armenia
+Added: 2005-10-16
+%%
+Type: region
+Subtag: AN
+Description: Netherlands Antilles
+Added: 2005-10-16
+Deprecated: 2011-01-07
+Comments: see BQ, CW, and SX
+%%
+Type: region
+Subtag: AO
+Description: Angola
+Added: 2005-10-16
+%%
+Type: region
+Subtag: AQ
+Description: Antarctica
+Added: 2005-10-16
+%%
+Type: region
+Subtag: AR
+Description: Argentina
+Added: 2005-10-16
+%%
+Type: region
+Subtag: AS
+Description: American Samoa
+Added: 2005-10-16
+%%
+Type: region
+Subtag: AT
+Description: Austria
+Added: 2005-10-16
+%%
+Type: region
+Subtag: AU
+Description: Australia
+Added: 2005-10-16
+%%
+Type: region
+Subtag: AW
+Description: Aruba
+Added: 2005-10-16
+%%
+Type: region
+Subtag: AX
+Description: Åland Islands
+Added: 2005-10-16
+%%
+Type: region
+Subtag: AZ
+Description: Azerbaijan
+Added: 2005-10-16
+%%
+Type: region
+Subtag: BA
+Description: Bosnia and Herzegovina
+Added: 2005-10-16
+%%
+Type: region
+Subtag: BB
+Description: Barbados
+Added: 2005-10-16
+%%
+Type: region
+Subtag: BD
+Description: Bangladesh
+Added: 2005-10-16
+%%
+Type: region
+Subtag: BE
+Description: Belgium
+Added: 2005-10-16
+%%
+Type: region
+Subtag: BF
+Description: Burkina Faso
+Added: 2005-10-16
+%%
+Type: region
+Subtag: BG
+Description: Bulgaria
+Added: 2005-10-16
+%%
+Type: region
+Subtag: BH
+Description: Bahrain
+Added: 2005-10-16
+%%
+Type: region
+Subtag: BI
+Description: Burundi
+Added: 2005-10-16
+%%
+Type: region
+Subtag: BJ
+Description: Benin
+Added: 2005-10-16
+%%
+Type: region
+Subtag: BL
+Description: Saint Barthélemy
+Added: 2007-11-02
+%%
+Type: region
+Subtag: BM
+Description: Bermuda
+Added: 2005-10-16
+%%
+Type: region
+Subtag: BN
+Description: Brunei Darussalam
+Added: 2005-10-16
+%%
+Type: region
+Subtag: BO
+Description: Bolivia
+Added: 2005-10-16
+%%
+Type: region
+Subtag: BQ
+Description: Bonaire, Sint Eustatius and Saba
+Added: 2011-01-07
+%%
+Type: region
+Subtag: BR
+Description: Brazil
+Added: 2005-10-16
+%%
+Type: region
+Subtag: BS
+Description: Bahamas
+Added: 2005-10-16
+%%
+Type: region
+Subtag: BT
+Description: Bhutan
+Added: 2005-10-16
+%%
+Type: region
+Subtag: BU
+Description: Burma
+Added: 2005-10-16
+Deprecated: 1989-12-05
+Preferred-Value: MM
+%%
+Type: region
+Subtag: BV
+Description: Bouvet Island
+Added: 2005-10-16
+%%
+Type: region
+Subtag: BW
+Description: Botswana
+Added: 2005-10-16
+%%
+Type: region
+Subtag: BY
+Description: Belarus
+Added: 2005-10-16
+%%
+Type: region
+Subtag: BZ
+Description: Belize
+Added: 2005-10-16
+%%
+Type: region
+Subtag: CA
+Description: Canada
+Added: 2005-10-16
+%%
+Type: region
+Subtag: CC
+Description: Cocos (Keeling) Islands
+Added: 2005-10-16
+%%
+Type: region
+Subtag: CD
+Description: The Democratic Republic of the Congo
+Added: 2005-10-16
+%%
+Type: region
+Subtag: CF
+Description: Central African Republic
+Added: 2005-10-16
+%%
+Type: region
+Subtag: CG
+Description: Congo
+Added: 2005-10-16
+%%
+Type: region
+Subtag: CH
+Description: Switzerland
+Added: 2005-10-16
+%%
+Type: region
+Subtag: CI
+Description: Côte d'Ivoire
+Added: 2005-10-16
+%%
+Type: region
+Subtag: CK
+Description: Cook Islands
+Added: 2005-10-16
+%%
+Type: region
+Subtag: CL
+Description: Chile
+Added: 2005-10-16
+%%
+Type: region
+Subtag: CM
+Description: Cameroon
+Added: 2005-10-16
+%%
+Type: region
+Subtag: CN
+Description: China
+Added: 2005-10-16
+%%
+Type: region
+Subtag: CO
+Description: Colombia
+Added: 2005-10-16
+%%
+Type: region
+Subtag: CP
+Description: Clipperton Island
+Added: 2009-07-29
+%%
+Type: region
+Subtag: CQ
+Description: Sark
+Added: 2023-02-07
+%%
+Type: region
+Subtag: CR
+Description: Costa Rica
+Added: 2005-10-16
+%%
+Type: region
+Subtag: CS
+Description: Serbia and Montenegro
+Added: 2005-10-16
+Deprecated: 2006-10-05
+Comments: see RS for Serbia or ME for Montenegro
+%%
+Type: region
+Subtag: CU
+Description: Cuba
+Added: 2005-10-16
+%%
+Type: region
+Subtag: CV
+Description: Cabo Verde
+Description: Cape Verde
+Added: 2005-10-16
+%%
+Type: region
+Subtag: CW
+Description: Curaçao
+Added: 2011-01-07
+%%
+Type: region
+Subtag: CX
+Description: Christmas Island
+Added: 2005-10-16
+%%
+Type: region
+Subtag: CY
+Description: Cyprus
+Added: 2005-10-16
+%%
+Type: region
+Subtag: CZ
+Description: Czechia
+Description: Czech Republic
+Added: 2005-10-16
+%%
+Type: region
+Subtag: DD
+Description: German Democratic Republic
+Added: 2005-10-16
+Deprecated: 1990-10-30
+Preferred-Value: DE
+%%
+Type: region
+Subtag: DE
+Description: Germany
+Added: 2005-10-16
+%%
+Type: region
+Subtag: DG
+Description: Diego Garcia
+Added: 2009-07-29
+%%
+Type: region
+Subtag: DJ
+Description: Djibouti
+Added: 2005-10-16
+%%
+Type: region
+Subtag: DK
+Description: Denmark
+Added: 2005-10-16
+%%
+Type: region
+Subtag: DM
+Description: Dominica
+Added: 2005-10-16
+%%
+Type: region
+Subtag: DO
+Description: Dominican Republic
+Added: 2005-10-16
+%%
+Type: region
+Subtag: DZ
+Description: Algeria
+Added: 2005-10-16
+%%
+Type: region
+Subtag: EA
+Description: Ceuta, Melilla
+Added: 2009-07-29
+%%
+Type: region
+Subtag: EC
+Description: Ecuador
+Added: 2005-10-16
+%%
+Type: region
+Subtag: EE
+Description: Estonia
+Added: 2005-10-16
+%%
+Type: region
+Subtag: EG
+Description: Egypt
+Added: 2005-10-16
+%%
+Type: region
+Subtag: EH
+Description: Western Sahara
+Added: 2005-10-16
+%%
+Type: region
+Subtag: ER
+Description: Eritrea
+Added: 2005-10-16
+%%
+Type: region
+Subtag: ES
+Description: Spain
+Added: 2005-10-16
+%%
+Type: region
+Subtag: ET
+Description: Ethiopia
+Added: 2005-10-16
+%%
+Type: region
+Subtag: EU
+Description: European Union
+Added: 2009-07-29
+%%
+Type: region
+Subtag: EZ
+Description: Eurozone
+Added: 2016-07-14
+%%
+Type: region
+Subtag: FI
+Description: Finland
+Added: 2005-10-16
+%%
+Type: region
+Subtag: FJ
+Description: Fiji
+Added: 2005-10-16
+%%
+Type: region
+Subtag: FK
+Description: Falkland Islands (Malvinas)
+Added: 2005-10-16
+%%
+Type: region
+Subtag: FM
+Description: Federated States of Micronesia
+Added: 2005-10-16
+%%
+Type: region
+Subtag: FO
+Description: Faroe Islands
+Added: 2005-10-16
+%%
+Type: region
+Subtag: FR
+Description: France
+Added: 2005-10-16
+%%
+Type: region
+Subtag: FX
+Description: Metropolitan France
+Added: 2005-10-16
+Deprecated: 1997-07-14
+Preferred-Value: FR
+%%
+Type: region
+Subtag: GA
+Description: Gabon
+Added: 2005-10-16
+%%
+Type: region
+Subtag: GB
+Description: United Kingdom
+Added: 2005-10-16
+Comments: as of 2006-03-29 GB no longer includes the Channel Islands and
+  Isle of Man; see GG, JE, IM
+%%
+Type: region
+Subtag: GD
+Description: Grenada
+Added: 2005-10-16
+%%
+Type: region
+Subtag: GE
+Description: Georgia
+Added: 2005-10-16
+%%
+Type: region
+Subtag: GF
+Description: French Guiana
+Added: 2005-10-16
+%%
+Type: region
+Subtag: GG
+Description: Guernsey
+Added: 2006-03-29
+%%
+Type: region
+Subtag: GH
+Description: Ghana
+Added: 2005-10-16
+%%
+Type: region
+Subtag: GI
+Description: Gibraltar
+Added: 2005-10-16
+%%
+Type: region
+Subtag: GL
+Description: Greenland
+Added: 2005-10-16
+%%
+Type: region
+Subtag: GM
+Description: Gambia
+Added: 2005-10-16
+%%
+Type: region
+Subtag: GN
+Description: Guinea
+Added: 2005-10-16
+%%
+Type: region
+Subtag: GP
+Description: Guadeloupe
+Added: 2005-10-16
+%%
+Type: region
+Subtag: GQ
+Description: Equatorial Guinea
+Added: 2005-10-16
+%%
+Type: region
+Subtag: GR
+Description: Greece
+Added: 2005-10-16
+%%
+Type: region
+Subtag: GS
+Description: South Georgia and the South Sandwich Islands
+Added: 2005-10-16
+%%
+Type: region
+Subtag: GT
+Description: Guatemala
+Added: 2005-10-16
+%%
+Type: region
+Subtag: GU
+Description: Guam
+Added: 2005-10-16
+%%
+Type: region
+Subtag: GW
+Description: Guinea-Bissau
+Added: 2005-10-16
+%%
+Type: region
+Subtag: GY
+Description: Guyana
+Added: 2005-10-16
+%%
+Type: region
+Subtag: HK
+Description: Hong Kong
+Added: 2005-10-16
+%%
+Type: region
+Subtag: HM
+Description: Heard Island and McDonald Islands
+Added: 2005-10-16
+%%
+Type: region
+Subtag: HN
+Description: Honduras
+Added: 2005-10-16
+%%
+Type: region
+Subtag: HR
+Description: Croatia
+Added: 2005-10-16
+%%
+Type: region
+Subtag: HT
+Description: Haiti
+Added: 2005-10-16
+%%
+Type: region
+Subtag: HU
+Description: Hungary
+Added: 2005-10-16
+%%
+Type: region
+Subtag: IC
+Description: Canary Islands
+Added: 2009-07-29
+%%
+Type: region
+Subtag: ID
+Description: Indonesia
+Added: 2005-10-16
+%%
+Type: region
+Subtag: IE
+Description: Ireland
+Added: 2005-10-16
+%%
+Type: region
+Subtag: IL
+Description: Israel
+Added: 2005-10-16
+%%
+Type: region
+Subtag: IM
+Description: Isle of Man
+Added: 2006-03-29
+%%
+Type: region
+Subtag: IN
+Description: India
+Added: 2005-10-16
+%%
+Type: region
+Subtag: IO
+Description: British Indian Ocean Territory
+Added: 2005-10-16
+%%
+Type: region
+Subtag: IQ
+Description: Iraq
+Added: 2005-10-16
+%%
+Type: region
+Subtag: IR
+Description: Islamic Republic of Iran
+Added: 2005-10-16
+%%
+Type: region
+Subtag: IS
+Description: Iceland
+Added: 2005-10-16
+%%
+Type: region
+Subtag: IT
+Description: Italy
+Added: 2005-10-16
+%%
+Type: region
+Subtag: JE
+Description: Jersey
+Added: 2006-03-29
+%%
+Type: region
+Subtag: JM
+Description: Jamaica
+Added: 2005-10-16
+%%
+Type: region
+Subtag: JO
+Description: Jordan
+Added: 2005-10-16
+%%
+Type: region
+Subtag: JP
+Description: Japan
+Added: 2005-10-16
+%%
+Type: region
+Subtag: KE
+Description: Kenya
+Added: 2005-10-16
+%%
+Type: region
+Subtag: KG
+Description: Kyrgyzstan
+Added: 2005-10-16
+%%
+Type: region
+Subtag: KH
+Description: Cambodia
+Added: 2005-10-16
+%%
+Type: region
+Subtag: KI
+Description: Kiribati
+Added: 2005-10-16
+%%
+Type: region
+Subtag: KM
+Description: Comoros
+Added: 2005-10-16
+%%
+Type: region
+Subtag: KN
+Description: Saint Kitts and Nevis
+Added: 2005-10-16
+%%
+Type: region
+Subtag: KP
+Description: Democratic People's Republic of Korea
+Added: 2005-10-16
+%%
+Type: region
+Subtag: KR
+Description: Republic of Korea
+Added: 2005-10-16
+%%
+Type: region
+Subtag: KW
+Description: Kuwait
+Added: 2005-10-16
+%%
+Type: region
+Subtag: KY
+Description: Cayman Islands
+Added: 2005-10-16
+%%
+Type: region
+Subtag: KZ
+Description: Kazakhstan
+Added: 2005-10-16
+%%
+Type: region
+Subtag: LA
+Description: Lao People's Democratic Republic
+Added: 2005-10-16
+%%
+Type: region
+Subtag: LB
+Description: Lebanon
+Added: 2005-10-16
+%%
+Type: region
+Subtag: LC
+Description: Saint Lucia
+Added: 2005-10-16
+%%
+Type: region
+Subtag: LI
+Description: Liechtenstein
+Added: 2005-10-16
+%%
+Type: region
+Subtag: LK
+Description: Sri Lanka
+Added: 2005-10-16
+%%
+Type: region
+Subtag: LR
+Description: Liberia
+Added: 2005-10-16
+%%
+Type: region
+Subtag: LS
+Description: Lesotho
+Added: 2005-10-16
+%%
+Type: region
+Subtag: LT
+Description: Lithuania
+Added: 2005-10-16
+%%
+Type: region
+Subtag: LU
+Description: Luxembourg
+Added: 2005-10-16
+%%
+Type: region
+Subtag: LV
+Description: Latvia
+Added: 2005-10-16
+%%
+Type: region
+Subtag: LY
+Description: Libya
+Added: 2005-10-16
+%%
+Type: region
+Subtag: MA
+Description: Morocco
+Added: 2005-10-16
+%%
+Type: region
+Subtag: MC
+Description: Monaco
+Added: 2005-10-16
+%%
+Type: region
+Subtag: MD
+Description: Moldova
+Added: 2005-10-16
+%%
+Type: region
+Subtag: ME
+Description: Montenegro
+Added: 2006-10-05
+%%
+Type: region
+Subtag: MF
+Description: Saint Martin (French part)
+Added: 2007-11-02
+%%
+Type: region
+Subtag: MG
+Description: Madagascar
+Added: 2005-10-16
+%%
+Type: region
+Subtag: MH
+Description: Marshall Islands
+Added: 2005-10-16
+%%
+Type: region
+Subtag: MK
+Description: North Macedonia
+Added: 2005-10-16
+%%
+Type: region
+Subtag: ML
+Description: Mali
+Added: 2005-10-16
+%%
+Type: region
+Subtag: MM
+Description: Myanmar
+Added: 2005-10-16
+%%
+Type: region
+Subtag: MN
+Description: Mongolia
+Added: 2005-10-16
+%%
+Type: region
+Subtag: MO
+Description: Macao
+Added: 2005-10-16
+%%
+Type: region
+Subtag: MP
+Description: Northern Mariana Islands
+Added: 2005-10-16
+%%
+Type: region
+Subtag: MQ
+Description: Martinique
+Added: 2005-10-16
+%%
+Type: region
+Subtag: MR
+Description: Mauritania
+Added: 2005-10-16
+%%
+Type: region
+Subtag: MS
+Description: Montserrat
+Added: 2005-10-16
+%%
+Type: region
+Subtag: MT
+Description: Malta
+Added: 2005-10-16
+%%
+Type: region
+Subtag: MU
+Description: Mauritius
+Added: 2005-10-16
+%%
+Type: region
+Subtag: MV
+Description: Maldives
+Added: 2005-10-16
+%%
+Type: region
+Subtag: MW
+Description: Malawi
+Added: 2005-10-16
+%%
+Type: region
+Subtag: MX
+Description: Mexico
+Added: 2005-10-16
+%%
+Type: region
+Subtag: MY
+Description: Malaysia
+Added: 2005-10-16
+%%
+Type: region
+Subtag: MZ
+Description: Mozambique
+Added: 2005-10-16
+%%
+Type: region
+Subtag: NA
+Description: Namibia
+Added: 2005-10-16
+%%
+Type: region
+Subtag: NC
+Description: New Caledonia
+Added: 2005-10-16
+%%
+Type: region
+Subtag: NE
+Description: Niger
+Added: 2005-10-16
+%%
+Type: region
+Subtag: NF
+Description: Norfolk Island
+Added: 2005-10-16
+%%
+Type: region
+Subtag: NG
+Description: Nigeria
+Added: 2005-10-16
+%%
+Type: region
+Subtag: NI
+Description: Nicaragua
+Added: 2005-10-16
+%%
+Type: region
+Subtag: NL
+Description: Netherlands
+Added: 2005-10-16
+%%
+Type: region
+Subtag: NO
+Description: Norway
+Added: 2005-10-16
+%%
+Type: region
+Subtag: NP
+Description: Nepal
+Added: 2005-10-16
+%%
+Type: region
+Subtag: NR
+Description: Naoero
+Description: Nauru
+Added: 2005-10-16
+%%
+Type: region
+Subtag: NT
+Description: Neutral Zone
+Added: 2005-10-16
+Deprecated: 1993-07-12
+%%
+Type: region
+Subtag: NU
+Description: Niue
+Added: 2005-10-16
+%%
+Type: region
+Subtag: NZ
+Description: New Zealand
+Added: 2005-10-16
+%%
+Type: region
+Subtag: OM
+Description: Oman
+Added: 2005-10-16
+%%
+Type: region
+Subtag: PA
+Description: Panama
+Added: 2005-10-16
+%%
+Type: region
+Subtag: PE
+Description: Peru
+Added: 2005-10-16
+%%
+Type: region
+Subtag: PF
+Description: French Polynesia
+Added: 2005-10-16
+%%
+Type: region
+Subtag: PG
+Description: Papua New Guinea
+Added: 2005-10-16
+%%
+Type: region
+Subtag: PH
+Description: Philippines
+Added: 2005-10-16
+%%
+Type: region
+Subtag: PK
+Description: Pakistan
+Added: 2005-10-16
+%%
+Type: region
+Subtag: PL
+Description: Poland
+Added: 2005-10-16
+%%
+Type: region
+Subtag: PM
+Description: Saint Pierre and Miquelon
+Added: 2005-10-16
+%%
+Type: region
+Subtag: PN
+Description: Pitcairn
+Added: 2005-10-16
+%%
+Type: region
+Subtag: PR
+Description: Puerto Rico
+Added: 2005-10-16
+%%
+Type: region
+Subtag: PS
+Description: State of Palestine
+Added: 2005-10-16
+%%
+Type: region
+Subtag: PT
+Description: Portugal
+Added: 2005-10-16
+%%
+Type: region
+Subtag: PW
+Description: Palau
+Added: 2005-10-16
+%%
+Type: region
+Subtag: PY
+Description: Paraguay
+Added: 2005-10-16
+%%
+Type: region
+Subtag: QA
+Description: Qatar
+Added: 2005-10-16
+%%
+Type: region
+Subtag: RE
+Description: Réunion
+Added: 2005-10-16
+%%
+Type: region
+Subtag: RO
+Description: Romania
+Added: 2005-10-16
+%%
+Type: region
+Subtag: RS
+Description: Serbia
+Added: 2006-10-05
+%%
+Type: region
+Subtag: RU
+Description: Russian Federation
+Added: 2005-10-16
+%%
+Type: region
+Subtag: RW
+Description: Rwanda
+Added: 2005-10-16
+%%
+Type: region
+Subtag: SA
+Description: Saudi Arabia
+Added: 2005-10-16
+%%
+Type: region
+Subtag: SB
+Description: Solomon Islands
+Added: 2005-10-16
+%%
+Type: region
+Subtag: SC
+Description: Seychelles
+Added: 2005-10-16
+%%
+Type: region
+Subtag: SD
+Description: Sudan
+Added: 2005-10-16
+%%
+Type: region
+Subtag: SE
+Description: Sweden
+Added: 2005-10-16
+%%
+Type: region
+Subtag: SG
+Description: Singapore
+Added: 2005-10-16
+%%
+Type: region
+Subtag: SH
+Description: Saint Helena, Ascension and Tristan da Cunha
+Added: 2005-10-16
+%%
+Type: region
+Subtag: SI
+Description: Slovenia
+Added: 2005-10-16
+%%
+Type: region
+Subtag: SJ
+Description: Svalbard and Jan Mayen
+Added: 2005-10-16
+%%
+Type: region
+Subtag: SK
+Description: Slovakia
+Added: 2005-10-16
+%%
+Type: region
+Subtag: SL
+Description: Sierra Leone
+Added: 2005-10-16
+%%
+Type: region
+Subtag: SM
+Description: San Marino
+Added: 2005-10-16
+%%
+Type: region
+Subtag: SN
+Description: Senegal
+Added: 2005-10-16
+%%
+Type: region
+Subtag: SO
+Description: Somalia
+Added: 2005-10-16
+%%
+Type: region
+Subtag: SR
+Description: Suriname
+Added: 2005-10-16
+%%
+Type: region
+Subtag: SS
+Description: South Sudan
+Added: 2011-08-25
+%%
+Type: region
+Subtag: ST
+Description: Sao Tome and Principe
+Added: 2005-10-16
+%%
+Type: region
+Subtag: SU
+Description: Union of Soviet Socialist Republics
+Added: 2005-10-16
+Deprecated: 1992-08-30
+%%
+Type: region
+Subtag: SV
+Description: El Salvador
+Added: 2005-10-16
+%%
+Type: region
+Subtag: SX
+Description: Sint Maarten (Dutch part)
+Added: 2011-01-07
+%%
+Type: region
+Subtag: SY
+Description: Syrian Arab Republic
+Added: 2005-10-16
+%%
+Type: region
+Subtag: SZ
+Description: Eswatini
+Description: eSwatini
+Description: Swaziland
+Added: 2005-10-16
+%%
+Type: region
+Subtag: TA
+Description: Tristan da Cunha
+Added: 2009-07-29
+%%
+Type: region
+Subtag: TC
+Description: Turks and Caicos Islands
+Added: 2005-10-16
+%%
+Type: region
+Subtag: TD
+Description: Chad
+Added: 2005-10-16
+%%
+Type: region
+Subtag: TF
+Description: French Southern Territories
+Added: 2005-10-16
+%%
+Type: region
+Subtag: TG
+Description: Togo
+Added: 2005-10-16
+%%
+Type: region
+Subtag: TH
+Description: Thailand
+Added: 2005-10-16
+%%
+Type: region
+Subtag: TJ
+Description: Tajikistan
+Added: 2005-10-16
+%%
+Type: region
+Subtag: TK
+Description: Tokelau
+Added: 2005-10-16
+%%
+Type: region
+Subtag: TL
+Description: Timor-Leste
+Added: 2005-10-16
+%%
+Type: region
+Subtag: TM
+Description: Turkmenistan
+Added: 2005-10-16
+%%
+Type: region
+Subtag: TN
+Description: Tunisia
+Added: 2005-10-16
+%%
+Type: region
+Subtag: TO
+Description: Tonga
+Added: 2005-10-16
+%%
+Type: region
+Subtag: TP
+Description: East Timor
+Added: 2005-10-16
+Deprecated: 2002-05-20
+Preferred-Value: TL
+%%
+Type: region
+Subtag: TR
+Description: Türkiye
+Description: Turkey
+Added: 2005-10-16
+%%
+Type: region
+Subtag: TT
+Description: Trinidad and Tobago
+Added: 2005-10-16
+%%
+Type: region
+Subtag: TV
+Description: Tuvalu
+Added: 2005-10-16
+%%
+Type: region
+Subtag: TW
+Description: Taiwan, Province of China
+Added: 2005-10-16
+%%
+Type: region
+Subtag: TZ
+Description: United Republic of Tanzania
+Added: 2005-10-16
+%%
+Type: region
+Subtag: UA
+Description: Ukraine
+Added: 2005-10-16
+%%
+Type: region
+Subtag: UG
+Description: Uganda
+Added: 2005-10-16
+%%
+Type: region
+Subtag: UM
+Description: United States Minor Outlying Islands
+Added: 2005-10-16
+%%
+Type: region
+Subtag: UN
+Description: United Nations
+Added: 2016-07-14
+%%
+Type: region
+Subtag: US
+Description: United States
+Added: 2005-10-16
+%%
+Type: region
+Subtag: UY
+Description: Uruguay
+Added: 2005-10-16
+%%
+Type: region
+Subtag: UZ
+Description: Uzbekistan
+Added: 2005-10-16
+%%
+Type: region
+Subtag: VA
+Description: Holy See (Vatican City State)
+Added: 2005-10-16
+%%
+Type: region
+Subtag: VC
+Description: Saint Vincent and the Grenadines
+Added: 2005-10-16
+%%
+Type: region
+Subtag: VE
+Description: Venezuela
+Added: 2005-10-16
+%%
+Type: region
+Subtag: VG
+Description: British Virgin Islands
+Added: 2005-10-16
+%%
+Type: region
+Subtag: VI
+Description: U.S. Virgin Islands
+Added: 2005-10-16
+%%
+Type: region
+Subtag: VN
+Description: Viet Nam
+Added: 2005-10-16
+%%
+Type: region
+Subtag: VU
+Description: Vanuatu
+Added: 2005-10-16
+%%
+Type: region
+Subtag: WF
+Description: Wallis and Futuna
+Added: 2005-10-16
+%%
+Type: region
+Subtag: WS
+Description: Samoa
+Added: 2005-10-16
+%%
+Type: region
+Subtag: YD
+Description: Democratic Yemen
+Added: 2005-10-16
+Deprecated: 1990-08-14
+Preferred-Value: YE
+%%
+Type: region
+Subtag: YE
+Description: Yemen
+Added: 2005-10-16
+%%
+Type: region
+Subtag: YT
+Description: Mayotte
+Added: 2005-10-16
+%%
+Type: region
+Subtag: YU
+Description: Yugoslavia
+Added: 2005-10-16
+Deprecated: 2003-07-23
+Comments: see BA, HR, ME, MK, RS, or SI
+%%
+Type: region
+Subtag: ZA
+Description: South Africa
+Added: 2005-10-16
+%%
+Type: region
+Subtag: ZM
+Description: Zambia
+Added: 2005-10-16
+%%
+Type: region
+Subtag: ZR
+Description: Zaire
+Added: 2005-10-16
+Deprecated: 1997-07-14
+Preferred-Value: CD
+%%
+Type: region
+Subtag: ZW
+Description: Zimbabwe
+Added: 2005-10-16
+%%
+Type: region
+Subtag: ZZ
+Description: Private use
+Added: 2005-10-16
+%%
+Type: region
+Subtag: 150
+Description: Europe
+Added: 2005-10-16

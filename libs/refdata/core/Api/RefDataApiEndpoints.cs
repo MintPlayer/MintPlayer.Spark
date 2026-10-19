@@ -450,7 +450,8 @@ internal sealed partial class ReleaseFileEndpoint : IGetEndpoint
         if (path is null || !System.IO.File.Exists(path))
             return Task.FromResult(Results.NotFound());
         httpContext.Response.Headers.CacheControl = "public, max-age=31536000, immutable";
-        var type = path.EndsWith(".json", StringComparison.OrdinalIgnoreCase) ? "application/json" : "application/x-ndjson";
+        var type = path.EndsWith(".json", StringComparison.OrdinalIgnoreCase) ? "application/json"
+            : path.EndsWith(".sig", StringComparison.OrdinalIgnoreCase) ? "text/plain" : "application/x-ndjson";
         return Task.FromResult(Results.File(path, type));
     }
 }

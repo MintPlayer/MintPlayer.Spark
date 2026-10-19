@@ -1,0 +1,20 @@
+<mjml>
+  <mj-head>
+    <mj-title>Order {{ number }}: refund of {{ amount }}</mj-title>
+    <mj-attributes>
+      <mj-all font-family="Segoe UI, Helvetica, Arial, sans-serif" />
+      <mj-text font-size="15px" line-height="22px" color="#111827" />
+      <mj-button background-color="#2563eb" color="#ffffff" border-radius="6px" font-size="15px" />
+    </mj-attributes>
+  </mj-head>
+  <mj-body background-color="#f3f4f6">
+    <mj-section background-color="#ffffff" padding="24px 0">
+      <mj-column>
+        <mj-text font-size="20px" font-weight="600">{{ if buyer_name }}{{ buyer_name }}, w{{ else }}W{{ end }}e refunded {{ amount }} for order {{ number }}</mj-text>
+        {{ if kept }}<mj-text>Kept under the terms you accepted: {{ kept }}.</mj-text>{{ end }}
+        <mj-text>The refund goes to the payment method you used. Your bank may take a few days to show it.</mj-text>
+        {{ if link }}<mj-button href="{{ link }}">View your order</mj-button>{{ end }}
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>

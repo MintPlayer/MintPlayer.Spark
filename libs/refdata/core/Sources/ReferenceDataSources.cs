@@ -54,6 +54,13 @@ public interface IReferenceDataMapper
     /// <summary>Mappers run in this order (the global baseline first, country adapters after it override its profiles).</summary>
     int Order => 0;
 
+    /// <summary>
+    /// Whether this mapper is its <see cref="Countries"/>' own adapter (Belgium, a tier-1 register): it writes their
+    /// profile and territorial units, so the global baseline leaves those countries to it (PRD §3.2: for the 18 adapter
+    /// countries the baseline adds names and cross-ids only). Optional sources (holidays, VAT rates) are not.
+    /// </summary>
+    bool IsCountryAdapter => false;
+
     /// <summary>The ledger lines this adapter ships (<c>Ledger/{cc}.ndjson</c>), so independent instances mint the same ids (Q-R5).</summary>
     IEnumerable<LedgerEntry> ShippedLedger();
 
@@ -98,6 +105,12 @@ public sealed class SourceInput
     public string? Url { get; init; }
     public string? Sha256 { get; init; }
     public required IReadOnlyList<SourceFile> Files { get; init; }
+
+    /// <summary>
+    /// The credit line of this version when the publisher asks for a dated one (BEV "Stichtagsdaten vom …", ČÚZK's data
+    /// year, TERYT's retrieval date); <see langword="null"/> = <see cref="SourceLicence.Attribution"/>.
+    /// </summary>
+    public string? Attribution { get; init; }
 
     /// <summary>The file whose name matches <paramref name="pattern"/> (BeST's Lambert 2008 rename: match by pattern, never by name).</summary>
     public SourceFile? Find(System.Text.RegularExpressions.Regex pattern) => Files.FirstOrDefault(f => pattern.IsMatch(f.Name));

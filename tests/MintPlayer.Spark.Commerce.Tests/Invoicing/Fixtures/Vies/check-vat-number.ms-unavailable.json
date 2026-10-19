@@ -1,0 +1,9 @@
+{
+  "actionSucceed": false,
+  "errorWrappers": [
+    {
+      "error": "MS_UNAVAILABLE",
+      "message": "The member state service is unavailable."
+    }
+  ]
+}

@@ -3,8 +3,35 @@
   "Release": "seed",
   "Previous": null,
   "Builder": "MintPlayer.Spark.ReferenceData seed",
-  "KeyVersion": 1,
+  "KeyVersion": 2,
   "Sources": [
+    {
+      "Id": "be-best",
+      "Version": "fixture",
+      "Url": null,
+      "Sha256": null,
+      "Licence": "CC BY 4.0",
+      "LicenceUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "Attribution": "Digitaal Vlaanderen (Vlaams Gewest), Paradigm (Brussels Hoofdstedelijk Gewest), Service public de Wallonie (Waals Gewest), via FOD BOSA BeST Address (https://opendata.bosa.be/). The data was modified: names are split per locality and linked to places."
+    },
+    {
+      "Id": "be-flemish-api",
+      "Version": "fixture",
+      "Url": null,
+      "Sha256": null,
+      "Licence": "Modellicentie Gratis Hergebruik v1.0 (unverified for the diff files)",
+      "LicenceUrl": "https://www.vlaanderen.be/digitaal-vlaanderen/onze-oplossingen/open-data/voorwaarden-voor-het-hergebruik-van-overheidsinformatie/modellicentie-gratis-hergebruik",
+      "Attribution": "Bron: Digitaal Vlaanderen. The data was modified: street and municipality successions are derived from it."
+    },
+    {
+      "Id": "be-flemish-diff",
+      "Version": "fixture",
+      "Url": null,
+      "Sha256": null,
+      "Licence": "Modellicentie Gratis Hergebruik v1.0 (unverified for the diff files)",
+      "LicenceUrl": "https://www.vlaanderen.be/digitaal-vlaanderen/onze-oplossingen/open-data/voorwaarden-voor-het-hergebruik-van-overheidsinformatie/modellicentie-gratis-hergebruik",
+      "Attribution": "Bron: Digitaal Vlaanderen. The data was modified: street and municipality successions are derived from it."
+    },
     {
       "Id": "be-nis6",
       "Version": "fixture",
@@ -42,6 +69,33 @@
       "Attribution": "Source: European Commission, Taxes in Europe Database (TEDB). VAT rates are suggestions; the host sets its own."
     },
     {
+      "Id": "fr-ban",
+      "Version": "fixture",
+      "Url": null,
+      "Sha256": null,
+      "Licence": "Licence Ouverte 2.0",
+      "LicenceUrl": "https://www.etalab.gouv.fr/licence-ouverte-open-licence/",
+      "Attribution": "Source : Base Adresse Nationale (adresse.data.gouv.fr), Licence Ouverte 2.0. Données modifiées : voies et codes postaux extraits des adresses."
+    },
+    {
+      "Id": "fr-cog",
+      "Version": "fixture",
+      "Url": null,
+      "Sha256": null,
+      "Licence": "Licence Ouverte 2.0",
+      "LicenceUrl": "https://www.etalab.gouv.fr/licence-ouverte-open-licence/",
+      "Attribution": "Source : Insee, Code officiel géographique (millésime de la dernière mise à jour). Données modifiées : périodes, hiérarchie et filiation dérivées."
+    },
+    {
+      "Id": "fr-laposte",
+      "Version": "fixture",
+      "Url": null,
+      "Sha256": null,
+      "Licence": "Licence Ouverte 2.0",
+      "LicenceUrl": "https://www.etalab.gouv.fr/licence-ouverte-open-licence/",
+      "Attribution": "Source : La Poste, base officielle des codes postaux (datanova), Licence Ouverte 2.0. Données modifiées : localités liées aux communes."
+    },
+    {
       "Id": "global-cldr",
       "Version": "fixture",
       "Url": null,
@@ -60,6 +114,24 @@
       "Attribution": "Contains data from GeoNames (https://www.geonames.org), licensed under CC BY 4.0, modified."
     },
     {
+      "Id": "global-gns",
+      "Version": "fixture",
+      "Url": null,
+      "Sha256": null,
+      "Licence": "No restrictions (citation requested)",
+      "LicenceUrl": "https://geonames.nga.mil/",
+      "Attribution": "Toponymic information is based on the Geographic Names Database, containing official standard names approved by the United States Board on Geographic Names and maintained by the National Geospatial-Intelligence Agency. More information is available at https://geonames.nga.mil/. The National Geospatial-Intelligence Agency name, initials, and seal are protected by 10 United States Code § 425."
+    },
+    {
+      "Id": "global-iana-subtags",
+      "Version": "fixture",
+      "Url": null,
+      "Sha256": null,
+      "Licence": "CC0 1.0",
+      "LicenceUrl": "https://www.iana.org/help/licensing-terms",
+      "Attribution": "Language, script and region subtags from the IANA Language Subtag Registry (https://www.iana.org/assignments/language-subtag-registry), used instead of SIL's ISO 639-3 tables; credited although not required."
+    },
+    {
       "Id": "global-tzdata",
       "Version": "fixture",
       "Url": null,
@@ -69,6 +141,15 @@
       "Attribution": "Zone list from the IANA tz database (zone.tab), public domain."
     },
     {
+      "Id": "global-unlocode",
+      "Version": "fixture",
+      "Url": null,
+      "Sha256": null,
+      "Licence": "CC BY 4.0",
+      "LicenceUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "Attribution": "UN/LOCODE, United Nations Economic Commission for Europe (https://unlocode.unece.org/), CC BY 4.0. The data was modified: location codes are linked to places by name."
+    },
+    {
       "Id": "global-wikidata",
       "Version": "fixture",
       "Url": null,
@@ -76,6 +157,42 @@
       "Licence": "CC0 1.0",
       "LicenceUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
       "Attribution": "Labels and codes from Wikidata (https://www.wikidata.org), CC0; credited although CC0 does not require it."
+    },
+    {
+      "Id": "lu-caclr",
+      "Version": "fixture",
+      "Url": null,
+      "Sha256": null,
+      "Licence": "CC0 1.0",
+      "LicenceUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "Attribution": "Registre national des localités et des rues (CACLR), Administration du cadastre et de la topographie, via data.public.lu, CC0; credited although CC0 does not require it."
+    },
+    {
+      "Id": "nl-bag",
+      "Version": "fixture",
+      "Url": null,
+      "Sha256": null,
+      "Licence": "CC0 1.0",
+      "LicenceUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "Attribution": "Bron: Kadaster, Basisregistratie Adressen en Gebouwen (LVBAG extract via PDOK). The PDOK feed labels it CC0, Kadaster's product page the Public Domain Mark; credited although neither requires it."
+    },
+    {
+      "Id": "nl-cbs-gemeenten",
+      "Version": "fixture",
+      "Url": null,
+      "Sha256": null,
+      "Licence": "CC BY 4.0",
+      "LicenceUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "Attribution": "Bron: CBS (Centraal Bureau voor de Statistiek), CC BY 4.0. The data was modified: herindelingen are turned into dated periods and lineage."
+    },
+    {
+      "Id": "nl-cbs-herindelingen",
+      "Version": "fixture",
+      "Url": null,
+      "Sha256": null,
+      "Licence": "CC BY 4.0",
+      "LicenceUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "Attribution": "Bron: CBS (Centraal Bureau voor de Statistiek), CC BY 4.0. The data was modified: herindelingen are turned into dated periods and lineage."
     },
     {
       "Id": "statute-holidays",
@@ -108,25 +225,25 @@
       "Path": "be/RefPlaces.ndjson",
       "Collection": "RefPlaces",
       "Country": "be",
-      "Sha256": "sha256:7467af1aa1a3106089bfba6d691949d225c88db98228615ce4853e9197ec165b",
+      "Sha256": "sha256:2c89cd8c67e77339abba86ed5e20aa8b823d704d243a83883ad653b53029faf2",
       "Count": 190,
-      "Digest": "sha256:f7543334065e23fc50a37b0ea0fc69389dccfa22a6ae839f6ff8233497caa9e1"
+      "Digest": "sha256:878884ad75f9b972c2d63b9b3c67904dde257b92cca8fb2335e52b3ec60c9045"
     },
     {
       "Path": "be/RefPostalCodes.ndjson",
       "Collection": "RefPostalCodes",
       "Country": "be",
-      "Sha256": "sha256:5f6ae96a375a6583af2e822bbe4d33da74a00359cf874ecd5322294f78dfae09",
+      "Sha256": "sha256:e04dc2ffbda16983b499f7d7d743f8cdcd30e6bf95d4a1306d81e450cc5760d8",
       "Count": 29,
-      "Digest": "sha256:8ec49294493a07157f8f9fc14a0ede72070ee247bcabcd24ea460dc85d2f20a8"
+      "Digest": "sha256:dcca27f1fd192cb5675fdd3391b9777d9b88ecb5693a81e88f4566303dadaa7e"
     },
     {
       "Path": "be/RefStreets.ndjson",
       "Collection": "RefStreets",
       "Country": "be",
-      "Sha256": "sha256:a10ca54f4f2904bc65031cde09cfa595281fb2fa9ea2bfb1ce4724b803a1f23d",
-      "Count": 205,
-      "Digest": "sha256:dca2c72f1f99cb609c3bad6f753ce0a512a1ab54842b343642933d31a8f1d750"
+      "Sha256": "sha256:efd72997c50fee9013a714b2e66138be6fba23a7be61bf0db982737dffe382ed",
+      "Count": 213,
+      "Digest": "sha256:96c2971398f20cf17d85c7d1bacab873591a5d2dab9f40b8507d8d5a47e0638c"
     },
     {
       "Path": "be/RefLineageEvents.ndjson",
@@ -164,9 +281,9 @@
       "Path": "de/RefPlaces.ndjson",
       "Collection": "RefPlaces",
       "Country": "de",
-      "Sha256": "sha256:70a818b2c6a6fc0087c7e899e24fbadac4c4d2735d83e3869d6db2df97c64b90",
+      "Sha256": "sha256:04743011ebaa3e7885f7914ffdb2c060ef6b54f5e37df5454ae6432088cb1626",
       "Count": 17,
-      "Digest": "sha256:b6e199630631136731e3a3b2c61584f09b31857aea40945c6d31e373221de0ac"
+      "Digest": "sha256:1199a79920e63ccc8051936f3482d49b366f1deb02dfb4f998a089cf7452c718"
     },
     {
       "Path": "de/PublicHolidays.ndjson",
@@ -188,17 +305,41 @@
       "Path": "fr/RefCountries.ndjson",
       "Collection": "RefCountries",
       "Country": "fr",
-      "Sha256": "sha256:1db16dcdcedda250c87f5056919830a689ac601ff5444503b8311ad38d303de0",
+      "Sha256": "sha256:77c07be1356392caac14cc97d59a37b956a341e749e65a58e0515bddd54a3f14",
       "Count": 1,
-      "Digest": "sha256:68f6aadaca3cbb7568db132b58abe5a050a4c50e5eb25c08760f20851e25a4e6"
+      "Digest": "sha256:70a85d0ddc9b00d3c8d422ac776c0551b00854d67773b0f40ad0a29521b82800"
     },
     {
       "Path": "fr/RefPlaces.ndjson",
       "Collection": "RefPlaces",
       "Country": "fr",
-      "Sha256": "sha256:ebc5eea1c3e2da839130378eaab1911ae2f87c830757e5bb970812494fd5cc09",
-      "Count": 14,
-      "Digest": "sha256:4dc8d9925a38af3fd94e7c8fd73da89da65ef31b9b389276a4a3e4b610155b2f"
+      "Sha256": "sha256:364ee90709eeab2c694803d4e277fcf043a91efba8ca99120a921b5a57020717",
+      "Count": 13,
+      "Digest": "sha256:0f48b153983a548bcc9507e29fffd163a9bc6b1f1c193aa842d61ed28c9791ed"
+    },
+    {
+      "Path": "fr/RefPostalCodes.ndjson",
+      "Collection": "RefPostalCodes",
+      "Country": "fr",
+      "Sha256": "sha256:d820eab78fe50c738fda4f713589e13aec0627e391b743b53c7d132a420e66e0",
+      "Count": 6,
+      "Digest": "sha256:b585e5c75a0d6484b9f722dd5fc9d7633194d876d096b0f096b4634357408f0f"
+    },
+    {
+      "Path": "fr/RefStreets.ndjson",
+      "Collection": "RefStreets",
+      "Country": "fr",
+      "Sha256": "sha256:e4ff4751d47329d7fbba50d84bf1a092158c0ae1e458382bc89af51db728c644",
+      "Count": 26,
+      "Digest": "sha256:0c7069d93ecf0dc5feda8008f53b7bf76ef58dd17b2128fddca2c6f29efe804a"
+    },
+    {
+      "Path": "fr/RefLineageEvents.ndjson",
+      "Collection": "RefLineageEvents",
+      "Country": "fr",
+      "Sha256": "sha256:4f370acb39dee9b6800930a3229cbb2c507facadf167bf05d848a31ba1243234",
+      "Count": 6,
+      "Digest": "sha256:caf87fd607a72266297428bb9a9aa49dfbb4368c4f0fb251cf45470bd3ebf39c"
     },
     {
       "Path": "fr/PublicHolidays.ndjson",
@@ -220,17 +361,33 @@
       "Path": "lu/RefCountries.ndjson",
       "Collection": "RefCountries",
       "Country": "lu",
-      "Sha256": "sha256:133982d12fc5a60858ed9d33f05831367c89b2f56dc6b33b30a410f67e3cc049",
+      "Sha256": "sha256:8bb7a33ee9dd5c133875b92cbe6e7bae784519fe20a805de75fb973536f3515a",
       "Count": 1,
-      "Digest": "sha256:9ca9c296330efae6df044cf6d3ef93dbec68f076216e60e855177cbeb9100b41"
+      "Digest": "sha256:fef8c40ff863b1691c8ef8c96ec81cfd30134cda41845c311a501684a8e9c5c4"
     },
     {
       "Path": "lu/RefPlaces.ndjson",
       "Collection": "RefPlaces",
       "Country": "lu",
-      "Sha256": "sha256:469a8a4e5f00f9c68e3252e51a6e3b47002bef861be1d970b5c7eeaf95993cf6",
+      "Sha256": "sha256:fad8692d0bed3c236c8965145da4018ac98b7dfdf7be971136d5b7779224ea9e",
+      "Count": 9,
+      "Digest": "sha256:219ce1e44da93cee65b85a6442c775cb88a8fcead44e3c49a7816898fe34f7b5"
+    },
+    {
+      "Path": "lu/RefPostalCodes.ndjson",
+      "Collection": "RefPostalCodes",
+      "Country": "lu",
+      "Sha256": "sha256:55a7af5954066b4e0b3b68328b13f6e0b090c2ccf14a543f9bd14778685f28ae",
+      "Count": 7,
+      "Digest": "sha256:78ed3f55a9eab1b09c840055296984edfa36efe8b6049e5ee38cfb8bd82cf40a"
+    },
+    {
+      "Path": "lu/RefStreets.ndjson",
+      "Collection": "RefStreets",
+      "Country": "lu",
+      "Sha256": "sha256:03b65ef81e2e2f50f229434e62c23ad683c7e5b80618d2b10663d344349a19a9",
       "Count": 13,
-      "Digest": "sha256:a22e5009325458276c1d6a2fe606f411fd14158aff172958566497b44a033048"
+      "Digest": "sha256:6876897c961a9db621216b1e8fb23baa16384444982e75a1366945957ea0e7c0"
     },
     {
       "Path": "lu/PublicHolidays.ndjson",
@@ -252,17 +409,41 @@
       "Path": "nl/RefCountries.ndjson",
       "Collection": "RefCountries",
       "Country": "nl",
-      "Sha256": "sha256:de98e5c91878405526a16ca4f6e3d1fe4262d5625f2c42b7783be2b041bbc232",
+      "Sha256": "sha256:f5580e1537a667ed1cee11892eb28b387d862705794a7c0c5a2246c96a9b0fa6",
       "Count": 1,
-      "Digest": "sha256:e67468a723f08679763dc92ec2ecdf0ae591044a1ec9bc0b9b7025003b60d8f8"
+      "Digest": "sha256:13cc17f343d7f1d2bab72318dff1fe5fd7ea1562dcd0517935a2db866d47a7b3"
     },
     {
       "Path": "nl/RefPlaces.ndjson",
       "Collection": "RefPlaces",
       "Country": "nl",
-      "Sha256": "sha256:672443ee2ec4514cb3bf7d79daf76364bfb227204280df52225c5b679189f45b",
-      "Count": 13,
-      "Digest": "sha256:d562014456f7e8f108415f2544c87b61f3c835b9a551fdc3b7f2a776003d3d9e"
+      "Sha256": "sha256:6a650aa8d56c4130bd4543ebd35f772a47e5f00092e4cf6854a3bce387fdd6f0",
+      "Count": 14,
+      "Digest": "sha256:3b219800eb4058b1fc57b0cd05ec15db42d71bf406e4c65f8e4ee5a06e91f22b"
+    },
+    {
+      "Path": "nl/RefPostalCodes.ndjson",
+      "Collection": "RefPostalCodes",
+      "Country": "nl",
+      "Sha256": "sha256:47b9ce60b9223110ff0b87c1ce0ec0d739a1818ae9e76a0da0e49cea4412982d",
+      "Count": 5,
+      "Digest": "sha256:04bd86f6bbc8184734fd759360c6bb5851a9850d73acb7e623ad159e8b59cc86"
+    },
+    {
+      "Path": "nl/RefStreets.ndjson",
+      "Collection": "RefStreets",
+      "Country": "nl",
+      "Sha256": "sha256:ebb00e7312c7f80119c2b4d2cb396c07ac2ca349df4dbd3df019158c5da755e9",
+      "Count": 12,
+      "Digest": "sha256:0bafc1aac3e74136e5606b1a56342180e256a678197a7865fbaa140da67f6d60"
+    },
+    {
+      "Path": "nl/RefLineageEvents.ndjson",
+      "Collection": "RefLineageEvents",
+      "Country": "nl",
+      "Sha256": "sha256:16c3da1c038ec2092c167be0974cbda57d06340066b8898b14db5aa476a7fa17",
+      "Count": 2,
+      "Digest": "sha256:2dab368995187ccef4ec57aafcb065dc91a236e3cb2be249fb307ed5ff5c894f"
     },
     {
       "Path": "nl/PublicHolidays.ndjson",
@@ -281,6 +462,7 @@
       "Digest": "sha256:a32b5be77b6f71c092cdddcb2f7c7e04669a3b265e0c75357bfc60339696d3dc"
     }
   ],
+  "Deltas": [],
   "Changes": {},
   "NextEffectiveDate": null
 }

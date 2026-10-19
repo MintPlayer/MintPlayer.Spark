@@ -1,0 +1,7 @@
+BEV - Bundesamt für Eich- und Vermessungswesen
+
+Produkt: Adresse Relationale Tabellen - Stichtagsdaten
+
+Aktualitätsstand (Stichtag) der enthaltenen Daten: 01.10.2026
+
+www.bev.gv.at

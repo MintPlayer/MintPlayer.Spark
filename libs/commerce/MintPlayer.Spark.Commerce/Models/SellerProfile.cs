@@ -73,8 +73,9 @@ public sealed class SellerProfile
     /// <summary>The cached KYC state reported by the provider (D21); refreshed on read.</summary>
     public KycStatus Kyc { get; set; } = KycStatus.NotStarted;
 
-    /// <summary>Whether payouts are blocked for missing DAC7 data (GA6).</summary>
-    public bool PayoutsBlocked { get; set; }
+    /// <summary>Whether the seller's sales are closed for DAC7 data still missing after the reminders (GA6, D43).
+    /// Provider payouts are not touched.</summary>
+    public bool SalesBlocked { get; set; }
 
     /// <summary>The DPA version accepted at registration (GB14).</summary>
     public string? AcceptedDpaId { get; set; }

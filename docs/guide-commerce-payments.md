@@ -91,8 +91,8 @@ The **evidence pack** is assembled from every `IDisputeEvidenceContributor` (Che
 register theirs): `GET /spark/commerce/payments/disputes/evidence?id=…` downloads it; the `PaymentDisputeSubmitEvidence`
 action submits it where the provider takes evidence by API (Stripe). Mollie takes evidence only in its dashboard and
 gives chargebacks no decision: `PaymentDisputeAccept` closes one as lost, and one still open after
-`Disputes:ChargebackFinalAfter` is closed as lost by a nightly job (⚠️ the 120-day default is a design choice, not a
-Mollie rule: an owner decision).
+`Disputes:ChargebackFinalAfter` is closed as lost by a nightly job. The 120-day default is the owner's decision (D42,
+2026-10-19), matching the card schemes' dispute windows; Mollie's public docs state no deadline. Configurable.
 
 ## 7. Settlements and the fee ledger (GB4)
 
@@ -111,13 +111,24 @@ dies. Immediate methods are therefore "expire on demand" in the catalog; SEPA Di
 complete: Checkout's late-payment path re-claims or refunds (research §4.4). PaymentIntents with the Payment Element were
 the alternative; rejected because they need Stripe.js on the host's pages (GA9 consent) and a second buyer flow.
 
-## 9. Split payments (D40)
+## 9. Split payments (D40, D41)
 
 `PaymentCreation.Splits` splits one payment across sellers. Mollie: routing (`Mollie:SplitPayments`, needs Mollie to
 enable split payments on the account). Stripe: separate charges and transfers (`Stripe:SeparateChargesAndTransfers`),
-the transfers made once the payment is paid. ⚠️ Both route the money through the platform's own account, which D5
-("the platform never holds third-party funds") excludes: they are off by default, and Commerce refuses
-`Basket:MixSellers` until one is on. An owner decision.
+the transfers made once the payment is paid.
+
+Both route the money through the platform's own account, so for a split order the **platform is the merchant of
+record**, the one exception to D5 ("the platform never holds third-party funds"). The owner allowed it as an opt-in
+(D41, 2026-10-19): a split payment is created only when
+
+- `Spark:Commerce:Merchant` is `ConnectedSellers`,
+- `Spark:Commerce:Basket:MixSellers` **and** `Spark:Commerce:Basket:AcknowledgeSplitMerchantOfRecord` are on, and
+- the chosen provider (and method) can split.
+
+Otherwise `CreatePaymentAsync` refuses with `commercePayments.splitNotEnabled` (no opt-in),
+`commercePayments.splitNeedsConnectedSellers` or `commercePayments.splitUnsupported`. Commerce's startup validation
+refuses `MixSellers` without the opt-in or when no registered provider can split. Off by default; read the licensing
+and KYC warning in the commerce guide ("Mixed-seller baskets") before switching it on.
 
 ## 10. Testing
 

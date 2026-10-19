@@ -38,6 +38,13 @@
 		<ProjectReference Include="..\..\libs\refdata\abstractions\MintPlayer.Spark.ReferenceData.Abstractions.csproj" />
 		<ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce\MintPlayer.Spark.Commerce.csproj" />
 		<ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce.Payments\MintPlayer.Spark.Commerce.Payments.csproj" />
+		<ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce.Checkout\MintPlayer.Spark.Commerce.Checkout.csproj" />
+		<ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce.Promotions\MintPlayer.Spark.Commerce.Promotions.csproj" />
+		<ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce.Shipping\MintPlayer.Spark.Commerce.Shipping.csproj" />
+		<ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce.Ticketing.Venues\MintPlayer.Spark.Commerce.Ticketing.Venues.csproj" />
+		<ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce.Ticketing.Events\MintPlayer.Spark.Commerce.Ticketing.Events.csproj" />
+		<ProjectReference Include="..\..\libs\challenges\MintPlayer.Spark.Challenges\MintPlayer.Spark.Challenges.csproj" />
+		<ProjectReference Include="..\..\libs\waiting_room\MintPlayer.Spark.WaitingRoom\MintPlayer.Spark.WaitingRoom.csproj" />
 	</ItemGroup>
 
 	<!--

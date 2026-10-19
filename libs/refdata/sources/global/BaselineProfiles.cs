@@ -3,9 +3,11 @@ using MintPlayer.Spark.Abstractions;
 namespace MintPlayer.Spark.ReferenceData.Sources.Global;
 
 /// <summary>
-/// Baseline country profiles for the seed's other countries (plan R7 "tier-2 country profiles", RD-DEF 6): generic
-/// levels (country, first level, municipality), a hand-authored address template, the postcode pattern and the VAT
-/// territories (commerce GA4). A tier-1 adapter for the country (plan R8) replaces them.
+/// Baseline country profiles for the seed's countries without a country adapter (plan R7 "tier-2 country profiles",
+/// RD-DEF 6): generic levels (country, first level, municipality), a hand-authored address template, the postcode
+/// pattern and the VAT territories (commerce GA4). Today: Germany. The Netherlands, France and Luxembourg moved to their
+/// tier-1 adapters (plan R8: <c>Sources.Netherlands</c>, <c>Sources.France</c> with the French VAT territories,
+/// <c>Sources.Luxembourg</c>), which replace a baseline profile wherever they are registered.
 /// </summary>
 /// <remarks>
 /// <b>VAT territories, legal basis.</b> Council Directive 2006/112/EC, Article 6 (as amended by Directive (EU) 2019/475):
@@ -15,8 +17,8 @@ namespace MintPlayer.Spark.ReferenceData.Sources.Global;
 /// Livigno). ⚠️ <b>Not confirmed on EUR-Lex</b>: the consolidated text could not be fetched on 2026-10-19 (EUR-Lex
 /// answered HTTP 202 with an empty body to every request). The letters below follow the amended text as recalled and
 /// must be checked against https://eur-lex.europa.eu/eli/dir/2006/112/oj before a host relies on them (commerce D37).
-/// The postcode patterns are the national postal codes of those territories (France: the overseas departments' 97x
-/// codes; Germany: 27498 Helgoland, 78266 Büsingen).
+/// The postcode patterns are the national postal codes of those territories (Germany: 27498 Helgoland, 78266 Büsingen;
+/// France's are in <c>FranceProfile</c>).
 /// </remarks>
 public static class BaselineProfiles
 {
@@ -46,72 +48,6 @@ public static class BaselineProfiles
                 Territory("DE-HELGOLAND", VatTerritoryTreatment.OutsideVatAndCustoms, @"^27498$", "Directive 2006/112/EC, Art. 6(2)(a)", ("de", "Helgoland"), ("en", "Heligoland"), ("fr", "Heligoland"), ("nl", "Helgoland")),
                 Territory("DE-BUSINGEN", VatTerritoryTreatment.OutsideVatAndCustoms, @"^78266$", "Directive 2006/112/EC, Art. 6(2)(b)", ("de", "Büsingen am Hochrhein"), ("en", "Büsingen am Hochrhein"), ("fr", "Büsingen am Hochrhein"), ("nl", "Büsingen am Hochrhein")),
             ],
-        }),
-        new("fr", "FRA", "250", new CountryProfile
-        {
-            Levels =
-            [
-                Level("fr:country", PlaceRole.Country, 0, 1, ("fr", "Pays"), ("en", "Country"), ("de", "Staat"), ("nl", "Land")),
-                Level("fr:region", PlaceRole.Region, 1, 2, ("fr", "Région"), ("en", "Region"), ("de", "Region"), ("nl", "Regio")),
-                Level("fr:department", PlaceRole.Subregion, 2, 3, ("fr", "Département"), ("en", "Department"), ("de", "Département"), ("nl", "Departement")),
-                Level("fr:commune", PlaceRole.Municipality, 3, 7, ("fr", "Commune"), ("en", "Commune"), ("de", "Gemeinde"), ("nl", "Gemeente")),
-                Level("fr:commune-deleguee", PlaceRole.Submunicipality, 4, 6, ("fr", "Commune déléguée"), ("en", "Delegated commune"), ("de", "Delegierte Gemeinde"), ("nl", "Gedelegeerde gemeente")),
-            ],
-            MunicipalityLevel = "fr:commune",
-            OfficialLanguages = [new() { Lang = "fr" }],
-            AddressLines = ["{houseNumber}[ {box}] {street}", "{postalCode} {locality}"],
-            PostcodePattern = @"^[0-9]{5}$",
-            HouseNumbers = new HouseNumberRules { NumberPattern = @"^[1-9][0-9]{0,4}$", BoxPattern = @"^(bis|ter|quater|[A-Za-z])$" },
-            TypeaheadSteps = ["locality", "street", "houseNumber"],
-            // Metropolitan France and the overseas departments have different zones: places carry their own (Q-R10).
-            TimeZone = null,
-            VatTerritories =
-            [
-                Territory("FR-GP", VatTerritoryTreatment.OutsideVatInsideCustoms, @"^971(?!33|50)[0-9]{2}$", "Directive 2006/112/EC, Art. 6(1)(c); TFEU Art. 349", ("fr", "Guadeloupe"), ("en", "Guadeloupe"), ("de", "Guadeloupe"), ("nl", "Guadeloupe")),
-                Territory("FR-MQ", VatTerritoryTreatment.OutsideVatInsideCustoms, @"^972[0-9]{2}$", "Directive 2006/112/EC, Art. 6(1)(c); TFEU Art. 349", ("fr", "Martinique"), ("en", "Martinique"), ("de", "Martinique"), ("nl", "Martinique")),
-                Territory("FR-GF", VatTerritoryTreatment.OutsideVatInsideCustoms, @"^973[0-9]{2}$", "Directive 2006/112/EC, Art. 6(1)(c); TFEU Art. 349", ("fr", "Guyane"), ("en", "French Guiana"), ("de", "Französisch-Guayana"), ("nl", "Frans-Guyana")),
-                Territory("FR-RE", VatTerritoryTreatment.OutsideVatInsideCustoms, @"^974[0-9]{2}$", "Directive 2006/112/EC, Art. 6(1)(c); TFEU Art. 349", ("fr", "La Réunion"), ("en", "Réunion"), ("de", "Réunion"), ("nl", "Réunion")),
-                Territory("FR-YT", VatTerritoryTreatment.OutsideVatInsideCustoms, @"^976[0-9]{2}$", "Directive 2006/112/EC, Art. 6(1)(c); TFEU Art. 349", ("fr", "Mayotte"), ("en", "Mayotte"), ("de", "Mayotte"), ("nl", "Mayotte")),
-                Territory("FR-MF", VatTerritoryTreatment.OutsideVatInsideCustoms, @"^97150$", "Directive 2006/112/EC, Art. 6(1)(c); TFEU Art. 349", ("fr", "Saint-Martin"), ("en", "Saint Martin"), ("de", "Saint-Martin"), ("nl", "Sint-Maarten (Frans deel)")),
-                Territory("FR-BL", VatTerritoryTreatment.OutsideEu, @"^97133$", "TFEU Art. 355(2) and Annex II (an overseas country and territory since 2012)", ("fr", "Saint-Barthélemy"), ("en", "Saint Barthélemy"), ("de", "Saint-Barthélemy"), ("nl", "Saint-Barthélemy")),
-            ],
-        }),
-        new("lu", "LUX", "442", new CountryProfile
-        {
-            Levels =
-            [
-                Level("lu:country", PlaceRole.Country, 0, 1, ("fr", "Pays"), ("de", "Staat"), ("en", "Country"), ("nl", "Land")),
-                Level("lu:canton", PlaceRole.Region, 1, 2, ("fr", "Canton"), ("de", "Kanton"), ("en", "Canton"), ("nl", "Kanton")),
-                Level("lu:commune", PlaceRole.Municipality, 2, 7, ("fr", "Commune"), ("de", "Gemeinde"), ("en", "Municipality"), ("nl", "Gemeente")),
-                Level("lu:locality", PlaceRole.Locality, 3, 5, ("fr", "Localité"), ("de", "Ortschaft"), ("en", "Locality"), ("nl", "Plaats")),
-            ],
-            MunicipalityLevel = "lu:commune",
-            OfficialLanguages = [new() { Lang = "fr" }, new() { Lang = "de" }, new() { Lang = "lb" }],
-            AddressLines = ["{houseNumber}[ {box}], {street}", "L-{postalCode} {locality}"],
-            PostcodePattern = @"^(L-)?[0-9]{4}$",
-            HouseNumbers = new HouseNumberRules { NumberPattern = @"^[1-9][0-9]{0,4}[A-Za-z]?$" },
-            TypeaheadSteps = ["locality", "street", "houseNumber"],
-            TimeZone = "Europe/Luxembourg",
-            VatTerritories = [],
-        }),
-        new("nl", "NLD", "528", new CountryProfile
-        {
-            Levels =
-            [
-                Level("nl:country", PlaceRole.Country, 0, 1, ("nl", "Land"), ("en", "Country"), ("fr", "Pays"), ("de", "Staat")),
-                Level("nl:province", PlaceRole.Region, 1, 2, ("nl", "Provincie"), ("en", "Province"), ("fr", "Province"), ("de", "Provinz")),
-                Level("nl:municipality", PlaceRole.Municipality, 2, 7, ("nl", "Gemeente"), ("en", "Municipality"), ("fr", "Commune"), ("de", "Gemeinde")),
-                Level("nl:woonplaats", PlaceRole.Locality, 3, 6, ("nl", "Woonplaats"), ("en", "Locality"), ("fr", "Localité"), ("de", "Ortschaft")),
-            ],
-            MunicipalityLevel = "nl:municipality",
-            OfficialLanguages = [new() { Lang = "nl" }],
-            AddressLines = ["{street} {houseNumber}[{box}]", "{postalCode} {locality}"],
-            PostcodePattern = @"^[1-9][0-9]{3} ?[A-Z]{2}$",
-            HouseNumbers = new HouseNumberRules { NumberPattern = @"^[1-9][0-9]{0,4}$", BoxPattern = @"^[A-Za-z0-9-]{1,4}$" },
-            TypeaheadSteps = ["locality", "street", "houseNumber"],
-            TimeZone = "Europe/Amsterdam",
-            // The Caribbean Netherlands are not part of the EU and have their own ISO codes (BQ): none here.
-            VatTerritories = [],
         }),
     ];
 

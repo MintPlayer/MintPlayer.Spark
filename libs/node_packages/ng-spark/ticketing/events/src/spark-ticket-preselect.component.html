@@ -1,0 +1,52 @@
+<section class="spark-ticket-preselect">
+  <h2>{{ 'ticketingEvents.preselect.title' | t }}</h2>
+  <p>{{ 'ticketingEvents.preselect.explain' | t }}</p>
+
+  @if (selection()?.applied?.length) {
+    <p class="spark-ticket-preselect-held" role="status">{{ 'ticketingEvents.preselect.held' | t }}</p>
+    <button type="button" [disabled]="busy()" (click)="release()">{{ 'ticketingEvents.preselect.release' | t }}</button>
+  } @else if (selection()?.appliedAt) {
+    <p class="spark-ticket-preselect-none" role="status">{{ 'ticketingEvents.preselect.notHeld' | t }}</p>
+  }
+
+  <ol class="spark-ticket-preselect-lines">
+    @for (line of lines(); track $index; let l = $index) {
+      <li>
+        <ol class="spark-ticket-preselect-alternatives">
+          @for (alternative of line.alternatives; track $index; let a = $index) {
+            <li>
+              @if (a > 0) {
+                <small>{{ 'ticketingEvents.preselect.alternative' | t }} {{ a }}</small>
+              }
+              <select [value]="alternative.itemId" (change)="setItem(l, a, $any($event.target).value)">
+                @for (offer of offers(); track offer.itemId) {
+                  <option [value]="offer.itemId" [selected]="offer.itemId === alternative.itemId">
+                    {{ offer.label }} — {{ money(offer.price) }}
+                  </option>
+                }
+              </select>
+              @if (startOf(alternative.itemId); as start) {
+                <spark-date-time [value]="start" [alsoIn]="zoneOfItem(alternative.itemId)" />
+              }
+              <label>
+                {{ 'ticketingEvents.quantity' | t }}
+                <input type="number" min="1" max="20" [value]="alternative.quantity" (change)="setQuantity(l, a, $any($event.target).value)" />
+              </label>
+              <button type="button" class="spark-ticket-preselect-remove" (click)="removeAlternative(l, a)" aria-label="×">×</button>
+            </li>
+          }
+        </ol>
+        <button type="button" (click)="addAlternative(l)">{{ 'ticketingEvents.preselect.addAlternative' | t }}</button>
+      </li>
+    }
+  </ol>
+
+  <div class="spark-ticket-preselect-actions">
+    <button type="button" (click)="addLine()">{{ 'ticketingEvents.preselect.addLine' | t }}</button>
+    <button type="button" class="primary" [disabled]="busy() || lines().length === 0" (click)="save()">{{ 'ticketingEvents.preselect.save' | t }}</button>
+  </div>
+
+  @if (refusal(); as key) {
+    <p class="spark-ticket-preselect-refusal" role="alert">{{ key | t }}</p>
+  }
+</section>

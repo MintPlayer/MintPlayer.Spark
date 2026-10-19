@@ -33,8 +33,9 @@ public sealed class StripePaymentsOptions : ISparkConfigurationSection
 
     /// <summary>
     /// Split payments (D40) through separate charges and transfers: the buyer pays the platform, which then transfers each
-    /// seller's share (<c>source_transaction</c>). Off by default: the money passes through the platform's balance, which
-    /// D5 ("the platform never holds third-party funds") excludes unless the host's counsel and Stripe contract allow it.
+    /// seller's share (<c>source_transaction</c>). Off by default: the money passes through the platform's balance, so the
+    /// platform is the merchant of record for a split order, the opt-in exception to D5 (D41): a split is only made when
+    /// <c>Spark:Commerce:Basket:MixSellers</c> and <c>AcknowledgeSplitMerchantOfRecord</c> are on as well.
     /// </summary>
     public bool SeparateChargesAndTransfers { get; set; }
 

@@ -1,0 +1,161 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "VenueLayout, a seating layout owned by its creator (docs/commerce_PRD.md §4.11, D8, D32). Created and copied by",
+    "POST /spark/ticketing/venues/layouts/create|copy, edited in the layout editor (ng-spark ticketing/venues), published",
+    "through Approvals (kind ticketing-venues.layout-publish). Only Name is a form field; renaming is a proposal (modify).",
+    "The plans are VenueLayoutPlan documents beside it, never attributes (a 50k-seat plan is megabytes).",
+    "",
+    "HAND-AUTHORED. Ids are UUIDv5 of 'ticketing-venues:VenueLayout[...]', written by 'npm run stamp:library-model-ids'."
+  ],
+  "persistentObject": {
+    "id": "3cb6e53d-f8d4-57db-bf26-f2e35d057dd0",
+    "name": "VenueLayout",
+    "clrType": "MintPlayer.Spark.Commerce.Ticketing.Venues.Models.VenueLayout",
+    "alias": "venue-layout",
+    "breadcrumb": "{Name}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "9563fe13-381a-51be-8473-8f5d8a942fab",
+        "name": "Name",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "e33943f4-eb1d-58c6-b85a-2d7ee2fbb5bf",
+        "name": "VenueId",
+        "dataType": "Reference",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "query": "Venues",
+        "referenceType": "MintPlayer.Spark.Commerce.Ticketing.Venues.Models.Venue"
+      },
+      {
+        "id": "6b62b5db-fe94-500f-b104-55c7f13e1e24",
+        "name": "State",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "62d5645d-f01a-5e8d-b7e2-8ce6db28485f",
+        "name": "PublishedVersion",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "3d01b178-5d85-5c41-8e39-ef925cb88c54",
+        "name": "SeatCount",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "00389dbe-93ea-5bbe-8281-2cda278a93f4",
+        "name": "UnnumberedCapacity",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "7881f3ff-ff08-5934-836c-ea9ecbfa76d6",
+        "name": "BlockCount",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "815f32f9-7391-513b-a0b5-2029fcdb7cda",
+        "name": "OwnerId",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "00b79259-7aef-5a40-a773-814d9434a0d4",
+        "name": "CopiedFromId",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 9,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "23eb4870-300c-5d85-b366-69870613abfd",
+        "name": "LastRejection",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 10,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "cb8db2a7-742c-546c-bd4a-69a7a587dba1",
+        "name": "UpdatedAtUtc",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 11,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ]
+  },
+  "queries": [
+    {
+      "id": "bd74c66a-0cf2-5263-8edf-7004b747a6af",
+      "name": "VenueLayouts",
+      "source": "Custom.VenueLayouts",
+      "alias": "venue-layouts",
+      "sortColumns": [
+        {
+          "property": "UpdatedAtUtc",
+          "direction": "desc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "VenueLayout"
+    }
+  ]
+}

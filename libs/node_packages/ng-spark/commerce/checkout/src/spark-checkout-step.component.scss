@@ -1,0 +1,92 @@
+:host {
+  display: block;
+}
+
+.spark-checkout-refusal {
+  color: var(--bs-danger, #dc3545);
+}
+
+.spark-checkout-step-lines,
+.spark-checkout-step-breakdown,
+.spark-checkout-step-extras,
+.spark-checkout-step-documents ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.spark-checkout-step-line {
+  display: flex;
+  flex-direction: column;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--bs-border-color, #dee2e6);
+}
+
+.spark-checkout-step-line-head,
+.spark-checkout-step-fee,
+.spark-checkout-step-adjustment,
+.spark-checkout-step-extra,
+.spark-checkout-step-total {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.spark-checkout-step-description {
+  margin: 0.25rem 0;
+}
+
+.spark-checkout-step-breakdown {
+  font-size: 0.875rem;
+  padding-left: 1rem;
+}
+
+.spark-checkout-step-extras {
+  padding: 0.5rem 0;
+}
+
+.spark-checkout-step-total {
+  font-size: 1.125rem;
+  margin: 0.75rem 0;
+}
+
+.spark-checkout-step-donation,
+.spark-checkout-step-methods {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  margin: 0.75rem 0;
+  border: 0;
+  padding: 0;
+
+  legend {
+    width: 100%;
+    font-size: 1rem;
+    font-weight: 600;
+  }
+}
+
+.spark-checkout-step-insurance,
+.spark-checkout-step-sellers,
+.spark-checkout-step-documents,
+.spark-checkout-step-contact {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0.75rem 0;
+}
+
+.spark-checkout-step-accept,
+.spark-checkout-step-attest,
+.spark-checkout-step-opt-in {
+  display: block;
+  margin: 0.5rem 0;
+}
+
+.spark-checkout-step-window {
+  font-size: 0.875rem;
+}
+
+.spark-checkout-pay {
+  margin-top: 1rem;
+}

@@ -115,6 +115,9 @@ public static class RefDerivation
         {
             foreach (var op in lineage.Operations)
             {
+                // Street merges and splits (Flemish diff files) are lineage too; places' edges come from place operations only.
+                if (!RefIds.IsValid(op.Place, RefIds.Places))
+                    continue;
                 if (!build.Places.TryGetValue(op.Place, out var place))
                 {
                     build.Warnings.Add($"{lineage.Id} names {op.Place}, which is not in the build.");

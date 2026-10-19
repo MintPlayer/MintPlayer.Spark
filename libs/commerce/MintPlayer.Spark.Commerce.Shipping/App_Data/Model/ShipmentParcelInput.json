@@ -1,0 +1,62 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "ShipmentParcelInput, the form ShipmentAddParcel prompts with through a retry (GB5). A virtual prompt type.",
+    "",
+    "HAND-AUTHORED. Ids are UUIDv5 of 'commerce-shipping:ShipmentParcelInput[...]', written by 'npm run stamp:library-model-ids'."
+  ],
+  "persistentObject": {
+    "id": "d5b47b66-b841-5b95-a3ce-fd15c3f5345a",
+    "name": "ShipmentParcelInput",
+    "breadcrumb": "{WeightGrams}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "00e57998-6a28-5120-8afe-620ca2578c81",
+        "name": "WeightGrams",
+        "dataType": "number",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "9719b16f-0c5e-5ca6-8944-6b4c25620daf",
+        "name": "LengthMm",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "b1dd1dee-e66e-5eb8-82b3-f288755a953a",
+        "name": "WidthMm",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "d2908dec-b11b-548c-8fe9-2fce111c03a3",
+        "name": "HeightMm",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      }
+    ]
+  },
+  "queries": []
+}

@@ -1,0 +1,67 @@
+<section class="spark-checkout-basket">
+  <h2>{{ 'commerceCheckout.basket' | t }}</h2>
+
+  @if (refusal(); as key) {
+    <p class="spark-checkout-refusal" role="alert">{{ key | t }}</p>
+  }
+
+  @if (basket()?.pendingOrderNumber; as number) {
+    <div class="spark-checkout-basket-pending" role="status">
+      <p>{{ 'commerceCheckout.refusal.pendingOrder' | t }}</p>
+      <p class="spark-checkout-basket-pending-number">{{ pendingText(number) }}</p>
+      <button type="button" class="btn btn-primary" (click)="resume.emit(number)">{{ 'commerceCheckout.payNow' | t }}</button>
+    </div>
+  }
+
+  @if (lines().length === 0) {
+    <p class="spark-checkout-basket-empty">{{ 'commerceCheckout.basketEmpty' | t }}</p>
+  } @else {
+    @if (countdown(); as text) {
+      <p class="spark-checkout-basket-countdown" role="timer">{{ text }}</p>
+    }
+
+    <ul class="spark-checkout-basket-lines">
+      @for (line of lines(); track line.lineId) {
+        <li class="spark-checkout-basket-line" [class.spark-checkout-basket-addon]="!!line.parentLineId" [attr.data-line-id]="line.lineId">
+          <div class="spark-checkout-basket-line-main">
+            <span class="spark-checkout-basket-title">{{ line.title | resolveTranslation: line.itemId }}</span>
+            @if (line.units.length > 0) {
+              <small class="spark-checkout-basket-units">{{ line.units.join(', ') }}</small>
+            }
+            @if (line.holdLapsed) {
+              <small class="spark-checkout-basket-hold spark-checkout-basket-hold-lapsed">{{ 'commerceCheckout.holdLapsed' | t }}</small>
+            } @else if (line.heldUntil) {
+              <small class="spark-checkout-basket-hold">{{ heldUntilText(line) }}</small>
+            }
+            @if (line.minimumAge != null) {
+              <small class="spark-checkout-basket-age">{{ minimumAgeText(line.minimumAge) }}</small>
+            }
+          </div>
+          <div class="spark-checkout-basket-quantity">
+            <button type="button" class="btn btn-outline-secondary btn-sm" [disabled]="busy()"
+                    [attr.aria-label]="'commerceCheckout.decreaseQuantity' | t" (click)="setQuantity(line, line.quantity - 1)">−</button>
+            <span class="spark-checkout-basket-quantity-value">{{ line.quantity }}</span>
+            <button type="button" class="btn btn-outline-secondary btn-sm" [disabled]="busy()"
+                    [attr.aria-label]="'commerceCheckout.increaseQuantity' | t" (click)="setQuantity(line, line.quantity + 1)">+</button>
+            <button type="button" class="btn btn-link btn-sm" [disabled]="busy()" (click)="setQuantity(line, 0)">{{ 'commerceCheckout.remove' | t }}</button>
+          </div>
+          <span class="spark-checkout-basket-line-total">{{ money(line.total) }}</span>
+        </li>
+      }
+    </ul>
+
+    @if (minimumAge(); as age) {
+      <p class="spark-checkout-basket-age-note">{{ minimumAgeText(age) }}</p>
+    }
+
+    <p class="spark-checkout-basket-total">
+      <span>{{ 'commerceCheckout.total' | t }}</span>
+      <strong>{{ total() }}</strong>
+    </p>
+
+    <button type="button" class="btn btn-primary spark-checkout-basket-checkout"
+            [disabled]="busy() || !!basket()?.pendingOrderNumber" (click)="goToCheckout()">
+      {{ 'commerceCheckout.checkout' | t }}
+    </button>
+  }
+</section>

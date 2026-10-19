@@ -82,7 +82,7 @@ public partial class M_202606081200_SeedDemo : ISparkMigration
 
 | Risk | Mitigation |
 |---|---|
-| Two instances start together | Compare-exchange lock; the loser skips and serves once the winner releases. |
+| Two instances start together | Compare-exchange lock. The loser waits (polling) instead of serving: it continues startup once every pending migration is applied, and refuses to start after a 35-minute wait budget while migrations are still pending (`SparkMigrationRunner.AcquireOrWaitAsync`). |
 | A node crashes mid-run holding the lock | 30-minute lease; expired lock is taken over. |
 | Long-running migration blocks startup | By design — correctness over availability; keep migrations bounded, or move heavy backfills to a cron/subscription worker. |
 | Version collision | Registry throws at registration if two migrations share a `Version`. |

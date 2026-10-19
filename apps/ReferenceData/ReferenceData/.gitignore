@@ -1,2 +1,4 @@
 # Release files written by imports (Spark:ReferenceData:Releases:Directory): runtime output, never committed.
 RefDataReleaseStore/
+# Downloads of an import run until it ends (Spark:ReferenceData:Import:WorkDirectory): resumable runtime state.
+RefDataImportWork/

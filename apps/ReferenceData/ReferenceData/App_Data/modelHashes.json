@@ -1,6 +1,6 @@
 {
   "version": 3,
-  "modelHash": "05dd57e1d7e3c2a3cc6c93c960d2c79063bf5bda514554303c7d1dbadae155c6",
+  "modelHash": "fdc7f0adcd22a4afeb736bffadc011e7ca9653d99700e5ec924786c4528908d0",
   "contextRoots": "aea1b15df626f337de5eb359dd6f7651b9f25a39ddb515b6ab765e1167456d87",
   "modelFiles": "e7cb1996057db0d9d008db4991b0c7aed8b39998deef44848dfb5add61a938fa",
   "files": {
@@ -28,6 +28,7 @@
   "libraries": {
     "authorization": "MintPlayer.Spark.Authorization",
     "reference-data": "MintPlayer.Spark.ReferenceData",
+    "reference-data-client": "MintPlayer.Spark.ReferenceData.Client",
     "spark": "MintPlayer.Spark"
   },
   "layers": {
@@ -41,7 +42,7 @@
       "authorization": "738742f13217adeeb4724f72f968923099f7d7210cee1133dfd6707eb55856ce"
     },
     "Model/RefCountry.json": {
-      "reference-data": "533e57ba156e465494250d9f903e567a7e7906831cce8928ceff382631abb821"
+      "reference-data-client": "533e57ba156e465494250d9f903e567a7e7906831cce8928ceff382631abb821"
     },
     "Model/RefImportRun.json": {
       "reference-data": "b33e01ab5f504021830dbc2fec85fe591ed4802f1d506f9c2783f174a31205cc"
@@ -50,10 +51,10 @@
       "reference-data": "18363794b4477ef24a88d28d2419d95deafc8320254cc7ae7abab2fdf81dcba5"
     },
     "Model/RefPlace.json": {
-      "reference-data": "cb9a0f52a204772587672f74045931e14d4e61767f5c272e18204d26bfc6bafd"
+      "reference-data-client": "cb9a0f52a204772587672f74045931e14d4e61767f5c272e18204d26bfc6bafd"
     },
     "Model/RefPostalCode.json": {
-      "reference-data": "17c102000874bbe8be161c214bb45320ebaacb4e130c834fe2b5c0fcce666ec0"
+      "reference-data-client": "17c102000874bbe8be161c214bb45320ebaacb4e130c834fe2b5c0fcce666ec0"
     },
     "Model/RefStreet.json": {
       "reference-data": "de093146f36e8295d1088a818caa510fe5a1f47a1bad2a6a87f17ec7e8d75443"
@@ -70,15 +71,15 @@
   "names": {
     "09fef399-13b0-4de4-9d88-e8f624dddbc5": "Address",
     "0d3faefa-624c-5135-bca7-652aa9053e0e": "SparkUser (authorization:SparkUser)",
+    "1093fbd5-9938-5f73-b38f-414c2af039cc": "RefPlace (reference-data-client:RefPlace)",
     "18e3683b-deea-5064-84ca-2620745ba064": "RefImportRun (reference-data:RefImportRun)",
+    "562be46d-570a-53ab-88b2-cd83b4596c89": "RefPostalCode (reference-data-client:RefPostalCode)",
     "56ff129c-fe1e-5b7a-9012-c7a685f7970a": "RefStreet (reference-data:RefStreet)",
-    "578a51d3-8a7f-58f9-bba2-eba807959cc8": "RefCountry (reference-data:RefCountry)",
     "b7d6b31b-e1fa-4ffc-856a-d7c9759545c4": "Venue",
     "bc7a3a73-5852-5111-974d-ea0c7ab290e0": "PasskeyRow (authorization:PasskeyRow)",
-    "bde284e0-82e3-5aca-b377-de1922a5bff5": "RefPlace (reference-data:RefPlace)",
     "cd8a0767-2a18-5c73-a608-14cf9efe99ac": "Passkeys (authorization:Passkeys)",
     "da8a90fd-91ae-593a-8b48-0ad102082412": "PasskeyRename (authorization:PasskeyRename)",
-    "e1de9cc3-6389-5449-b950-41ab5fd877f7": "RefPostalCode (reference-data:RefPostalCode)",
+    "e72c212e-68e6-552f-8e1a-191189ac5cf1": "RefCountry (reference-data-client:RefCountry)",
     "f147a09a-b58b-59e6-aaa5-d40e1f2efe5b": "RefLineageEvent (reference-data:RefLineageEvent)"
   }
 }

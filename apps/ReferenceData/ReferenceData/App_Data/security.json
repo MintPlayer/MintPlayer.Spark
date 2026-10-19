@@ -19,6 +19,9 @@
     "reference-data:administrators": [ "Administrators" ]
   },
   "rights": [
+    { "key": "ref-countries", "resource": "QueryRead/RefCountry", "groupId": "7ef00000-0000-4000-8000-000000000001" },
+    { "key": "ref-places", "resource": "QueryRead/RefPlace", "groupId": "7ef00000-0000-4000-8000-000000000001" },
+    { "key": "ref-postal-codes", "resource": "QueryRead/RefPostalCode", "groupId": "7ef00000-0000-4000-8000-000000000001" },
     { "key": "venues", "resource": "QueryReadEditNewDelete/Venue", "groupId": "7ef00000-0000-4000-8000-00000000000f" }
   ]
 }

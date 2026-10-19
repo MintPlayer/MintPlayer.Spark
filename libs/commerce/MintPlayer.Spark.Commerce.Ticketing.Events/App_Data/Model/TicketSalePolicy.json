@@ -1,0 +1,131 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "TicketSalePolicy: an event's per-sale values (D2), edited as a detail of TicketEvent. Each is clamped to the channel's",
+    "bounds when read (SalePolicies.Effective), so a value outside them is not an error, it is narrowed.",
+    "",
+    "HAND-AUTHORED. Ids are UUIDv5 of 'ticketing-events:TicketSalePolicy[...]', written by 'npm run stamp:library-model-ids'."
+  ],
+  "persistentObject": {
+    "id": "326c1692-73e9-5c1c-9560-720acf449127",
+    "name": "TicketSalePolicy",
+    "clrType": "MintPlayer.Spark.Commerce.Ticketing.Events.Models.TicketSalePolicy",
+    "breadcrumb": "{LimitScope}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "5c70e7b5-cc54-57a3-b0bc-4b73aa65b411",
+        "name": "HoldMinutes",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "aae96229-3842-561a-8426-74f99870a83d",
+        "name": "PerBuyerLimit",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "ef5c297f-12d4-5a56-9348-48f850497dbf",
+        "name": "LimitScope",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "lookupReferenceType": "TicketLimitScope"
+      },
+      {
+        "id": "b7ac1511-bd07-5fe9-8fb0-5b548657ebb9",
+        "name": "RefundPolicy",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "41952273-a75b-5936-8006-6aca36c22ddd",
+        "name": "RefundDaysBefore",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "9a8abba4-8942-598e-8f20-9d997074e467",
+        "name": "RefundFeeBasisPoints",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "680cc6db-c4b2-5f83-8044-754e0205a811",
+        "name": "Transfer",
+        "dataType": "boolean",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "52489286-62e4-5398-b93d-766e49ca7c8b",
+        "name": "FaceValueResale",
+        "dataType": "boolean",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "8a356c59-fa74-57b2-a463-204f4b897ff1",
+        "name": "QueueMode",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 9,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "d321e733-6cd4-5867-a602-47e48a99555c",
+        "name": "SingleSeatRule",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 10,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      }
+    ]
+  },
+  "queries": []
+}

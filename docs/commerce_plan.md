@@ -29,15 +29,15 @@ The order of work for [commerce_PRD.md](commerce_PRD.md). The PRD carries the de
 - [~] S4 waiting room at 200k — dropped (owner, round 4: no cloud VMs)
 - [x] S5 Mollie + Stripe: documented-API fixtures (round 4; sandbox recordings later); round 5: dispute/chargeback events (GB1), settlement/payout reports (GB4), split capability (D40)
 - [x] S6 Connect onboarding (both providers), including the insufficient-balance refund
-- [ ] S7 seat-map rendering (50k seats)
+- [x] S7 seat-map rendering (50k seats)
 - [x] S8 PBKDF2 cost (server ≤10 ms; ~~WebCrypto ≤300 ms on low-end Android~~ dropped, round 4)
 - [ ] S9 offline scanner list and double-entry sync
 - [x] S10 `ISaveReplacement` proposal round trip
 - [x] S11 name-collision analyzer (SPARK057–062, code fixes)
-- [ ] S12 bot defence S1–S10 (research §6)
-- [ ] S13 carriers: documented-API fixtures (round 4) (Sendcloud, bpost, PostNL); round 5: service points, return labels, multi-parcel (GB5), customs documents (GB6), dangerous-goods restrictions (GC9)
-- [ ] S14 Peppol: documented-API fixtures + EN 16931 Schematron (round 4) (two access points, after Q-O2); round 5: reverse-charge and export invoices validate (GA4)
-- [ ] S15 mass refund at scale with crash and resume
+- [x] S12 bot defence S1–S10 (research §6)
+- [x] S13 carriers: documented-API fixtures (round 4) (Sendcloud, bpost, PostNL); round 5: service points, return labels, multi-parcel (GB5), customs documents (GB6), dangerous-goods restrictions (GC9)
+- [x] S14 Peppol: documented-API fixtures + EN 16931 Schematron (round 4) (two access points, after Q-O2); round 5: reverse-charge and export invoices validate (GA4)
+- [x] S15 mass refund at scale with crash and resume
 - [x] S16 visitor identity merge and anonymous-POST antiforgery
 - [x] S17 live broadcast topics + private per-identity stream
 - [x] S19 server-side meta tags validated by SeoTester's OpenGraph checks
@@ -135,64 +135,64 @@ The order of work for [commerce_PRD.md](commerce_PRD.md). The PRD carries the de
 
 ### M7 — Checkout
 
-- [ ] Baskets (visitor or account), channel-pure *(by default; see the D40 line below)*
-- [ ] Round 5 — multi-channel basket (D40, GB2): `Basket:MixChannels`, per-line channel rules, one order + one payment, shortest payment window, method intersection, sign-in if any line needs it, `Basket:OnLineFailure` (`RefundLine` default | `VoidOrder`), `MixSellers` only with split capability
-- [ ] Round 5 — last step: pre-contract information, terms acceptance with versions stored on the order, "Order with obligation to pay" button, durable confirmation with attached documents (GA2)
-- [ ] Round 5 — `Disputed` / `DisputeWon` / `DisputeLost` states; I4 release keyed by dispute id (GB1)
-- [ ] Round 5 — back-office orders: `box-office` role, phone/manual orders (payment link or audited mark-paid), comps and guest lists (zero total, counted against quotas and limits), re-send, seat change and upgrade in one cluster-wide transaction (GB7)
-- [ ] Round 5 — `MinimumAge` attestation stored on the order; ID-check marker on tickets and pickup slips (GB12)
-- [ ] Round 5 — geo-blocking: same conditions for every member state; no refusal by residence or card country (GA11)
-- [ ] Round 5 — abandoned-basket reminder, consent-gated, never for held seats (GC1); donation / round-up pricing step (GC3); `IInsuranceProvider` + `.Test`, never pre-ticked (GC4)
-- [ ] Order state machine (PRD §4.4) for all three modes; zero-total orders
-- [ ] PaymentPending extension capped by `MaxPaymentWindow`; method filtering in held channels
-- [ ] Late payment: re-claim the same units, else refund; OnPayment race loser: void or refund
-- [ ] Admission-token check for waiting-room-gated phases
-- [ ] Linked-identifier limits; card-fingerprint enforcement (Stripe pre-charge refuse; Mollie ≤60 s void/refund)
-- [ ] Extension points: pricing steps, order-event recipients, capacity sources
+- [x] Baskets (visitor or account), channel-pure *(by default; see the D40 line below)*
+- [x] Round 5 — multi-channel basket (D40, GB2): `Basket:MixChannels`, per-line channel rules, one order + one payment, shortest payment window, method intersection, sign-in if any line needs it, `Basket:OnLineFailure` (`RefundLine` default | `VoidOrder`), `MixSellers` only with split capability
+- [x] Round 5 — last step: pre-contract information, terms acceptance with versions stored on the order, "Order with obligation to pay" button, durable confirmation with attached documents (GA2)
+- [x] Round 5 — `Disputed` / `DisputeWon` / `DisputeLost` states; I4 release keyed by dispute id (GB1)
+- [x] Round 5 — back-office orders: `box-office` role, phone/manual orders (payment link or audited mark-paid), comps and guest lists (zero total, counted against quotas and limits), re-send, seat change and upgrade in one cluster-wide transaction (GB7)
+- [x] Round 5 — `MinimumAge` attestation stored on the order; ID-check marker on tickets and pickup slips (GB12)
+- [x] Round 5 — geo-blocking: same conditions for every member state; no refusal by residence or card country (GA11)
+- [x] Round 5 — abandoned-basket reminder, consent-gated, never for held seats (GC1); donation / round-up pricing step (GC3); `IInsuranceProvider` + `.Test`, never pre-ticked (GC4)
+- [x] Order state machine (PRD §4.4) for all three modes; zero-total orders
+- [x] PaymentPending extension capped by `MaxPaymentWindow`; method filtering in held channels
+- [x] Late payment: re-claim the same units, else refund; OnPayment race loser: void or refund
+- [x] Admission-token check for waiting-room-gated phases
+- [x] Linked-identifier limits; card-fingerprint enforcement (Stripe pre-charge refuse; Mollie ≤60 s void/refund)
+- [x] Extension points: pricing steps, order-event recipients, capacity sources
 
 ### M8 — Promotions + waiting list
 
-- [ ] Codes (percentage, fixed, unlock, capacity-blocking quota), limits, windows, once-per-buyer, presale access
-- [ ] Pro-rata discount allocation (feeds refunds and VAT)
-- [ ] Waiting list with personal time-limited codes; activation rule (sold out + queue closed + no holds) — the **ticket mode**
-- [ ] Round 5 — back-in-stock mode for shops: subscriptions per variant, batched mails on restock, expiry, GDPR erasure (GB11)
-- [ ] Round 5 — seller sale prices with validity; Omnibus reference price (lowest `FinalPrice` of the previous 30 days) rendered automatically with every announced reduction; perishable exemption per item (GA3; confirm against PID Art. 6a and the Commission guidance)
-- [ ] Round 5 — promoter/affiliate tracking links with UTM attribution on basket and order, per-link reports, optional commissions into the fee ledger, consent-aware (GC2)
+- [x] Codes (percentage, fixed, unlock, capacity-blocking quota), limits, windows, once-per-buyer, presale access
+- [x] Pro-rata discount allocation (feeds refunds and VAT)
+- [x] Waiting list with personal time-limited codes; activation rule (sold out + queue closed + no holds) — the **ticket mode**
+- [x] Round 5 — back-in-stock mode for shops: subscriptions per variant, batched mails on restock, expiry, GDPR erasure (GB11)
+- [x] Round 5 — seller sale prices with validity; Omnibus reference price (lowest `FinalPrice` of the previous 30 days) rendered automatically with every announced reduction; perishable exemption per item (GA3; confirm against PID Art. 6a and the Commission guidance)
+- [x] Round 5 — promoter/affiliate tracking links with UTM attribution on basket and order, per-link reports, optional commissions into the fee ledger, consent-aware (GC2)
 
 ### M9 — Refunds and cancellations
 
-- [ ] Refund policies within channel bounds; fee refund rules
-- [ ] Mass refund (batched, resumable, idempotent, progress, rate limits, insufficient-balance handling)
-- [ ] Reschedule keep-or-refund window; 14-day withdrawal for goods (unconditional: see the GA1 line)
-- [ ] Every refund: credit note, exactly-once counter returns, ticket revocation
-- [ ] Round 5 — withdrawal function (GA1; CRD Art. 11a, confirm wording and date on EUR-Lex): permanent labelled button on the order page (account or signed guest link), confirmation step, durable receipt with date and time; model withdrawal form; staff registration of mailed withdrawals; **no approval step**
-- [ ] Round 5 — withdrawal refund: price + standard delivery cost within 14 days; withheld until goods received or proof of dispatch (earlier wins); diminished-value deduction with reason and audit (GA1, CRD Art. 13)
-- [ ] Round 5 — legal-guarantee claims (repair, replace, price reduction, refund; seller pays return shipping; period per country) (GA8)
-- [ ] Round 5 — return-reason taxonomy (`Withdrawal`, `NonConformity`, `WrongItem`, `DamagedInTransit`, `SellerAllowed`, `Other`) driving flow, refund rules and the warehouse disposition default (GA8)
+- [x] Refund policies within channel bounds; fee refund rules
+- [x] Mass refund (batched, resumable, idempotent, progress, rate limits, insufficient-balance handling)
+- [x] Reschedule keep-or-refund window; 14-day withdrawal for goods (unconditional: see the GA1 line)
+- [x] Every refund: credit note, exactly-once counter returns, ticket revocation
+- [x] Round 5 — withdrawal function (GA1; CRD Art. 11a, confirm wording and date on EUR-Lex): permanent labelled button on the order page (account or signed guest link), confirmation step, durable receipt with date and time; model withdrawal form; staff registration of mailed withdrawals; **no approval step**
+- [x] Round 5 — withdrawal refund: price + standard delivery cost within 14 days; withheld until goods received or proof of dispatch (earlier wins); diminished-value deduction with reason and audit (GA1, CRD Art. 13)
+- [x] Round 5 — legal-guarantee claims (repair, replace, price reduction, refund; seller pays return shipping; period per country) (GA8)
+- [x] Round 5 — return-reason taxonomy (`Withdrawal`, `NonConformity`, `WrongItem`, `DamagedInTransit`, `SellerAllowed`, `Other`) driving flow, refund rules and the warehouse disposition default (GA8)
 
 ### M10 — Invoicing
 
-- [ ] Gap-free numbering per issuer per year; receipts, invoices, credit notes (PDF)
-- [ ] Host-defined VAT categories and rates; VIES check; issuer per merchant mode; platform-fee invoices
-- [ ] E-invoice abstraction (EN 16931 / Peppol BIS UBL) + two access-point adapters (Q-O2) + test
-- [ ] Round 5 — `IPlaceOfSupplyRule` per line: B2C distance sales with the €10k threshold tracked per seller, admission where the event takes place, B2B reverse charge with the invoice mention, VAT-territory exception list, exports at 0 % (GA4; confirm against Directive 2006/112/EC)
-- [ ] Round 5 — quarterly OSS export per seller (GA4); IOSS variant for non-EU sellers (GC8)
-- [ ] Round 5 — DAC7 quarterly aggregation and yearly XML + CSV export; ticket sales flagged until confirmed (GA6)
-- [ ] Round 5 — accounting export per seller and period: sales journal, payments journal, UBL batch (GB4)
-- [ ] Round 5 — optional TEDB rate suggestions from reference data, never applied automatically (GC10)
-- [ ] Round 5 — legal-document PDFs attached to confirmations (GA2); invoice retention floor enforced (PRD §4.8)
+- [x] Gap-free numbering per issuer per year; receipts, invoices, credit notes (PDF)
+- [x] Host-defined VAT categories and rates; VIES check; issuer per merchant mode; platform-fee invoices
+- [x] E-invoice abstraction (EN 16931 / Peppol BIS UBL) + two access-point adapters (Q-O2) + test
+- [x] Round 5 — `IPlaceOfSupplyRule` per line: B2C distance sales with the €10k threshold tracked per seller, admission where the event takes place, B2B reverse charge with the invoice mention, VAT-territory exception list, exports at 0 % (GA4; confirm against Directive 2006/112/EC)
+- [x] Round 5 — quarterly OSS export per seller (GA4); IOSS variant for non-EU sellers (GC8)
+- [x] Round 5 — DAC7 quarterly aggregation and yearly XML + CSV export; ticket sales flagged until confirmed (GA6)
+- [x] Round 5 — accounting export per seller and period: sales journal, payments journal, UBL batch (GB4)
+- [x] Round 5 — optional TEDB rate suggestions from reference data, never applied automatically (GC10)
+- [x] Round 5 — legal-document PDFs attached to confirmations (GA2); invoice retention floor enforced (PRD §4.8)
 
 ### M11 — Shipping + carriers + fulfilment
 
-- [ ] Methods and zones, free threshold, pickup, `IShippingRateProvider`
-- [ ] `.Sendcloud`, `.Bpost`, `.PostNL`, `.Test` (labels, tracking webhooks via X5)
+- [x] Methods and zones, free threshold, pickup, `IShippingRateProvider`
+- [x] `.Sendcloud`, `.Bpost`, `.PostNL`, `.Test` (labels, tracking webhooks via X5)
 - [ ] `MintPlayer.Spark.Commerce.Fulfilment` (shop side) over `MintPlayer.Spark.Fulfilment.Contracts`, using the WD1 transport (ETL when licensed, else SyncAction → owner → HTTPS push + digest reconcile; module client certificates); state both ways, one owner per fact (WD2); stub consumer test
-- [ ] Round 5 — `IServicePointProvider` (bpost, PostNL, Sendcloud, Test) and the checkout point picker (GB5)
-- [ ] Round 5 — shop-only multi-parcel shipments and buyer return labels (GB5)
-- [ ] Round 5 — customs: CN22/CN23 or commercial invoice through adapters; DAP/DDP per destination zone shown at checkout (GB6)
-- [ ] Round 5 — dangerous-goods classes restrict carrier services and add label marks (GC9)
-- [ ] Round 5 — cut-offs and delivery promises skip holidays from the reference-data holiday calendar via the zone-aware schedule (GC11, WX14)
-- [ ] Round 5 — "refund on receipt" also triggered by the buyer's proof of dispatch for withdrawals (GA1)
+- [x] Round 5 — `IServicePointProvider` (bpost, PostNL, Sendcloud, Test) and the checkout point picker (GB5)
+- [x] Round 5 — shop-only multi-parcel shipments and buyer return labels (GB5)
+- [x] Round 5 — customs: CN22/CN23 or commercial invoice through adapters; DAP/DDP per destination zone shown at checkout (GB6)
+- [x] Round 5 — dangerous-goods classes restrict carrier services and add label marks (GC9)
+- [x] Round 5 — cut-offs and delivery promises skip holidays from the reference-data holiday calendar via the zone-aware schedule (GC11, WX14)
+- [x] Round 5 — "refund on receipt" also triggered by the buyer's proof of dispatch for withdrawals (GA1)
 
 ### M12 — Shop
 
@@ -209,18 +209,18 @@ The order of work for [commerce_PRD.md](commerce_PRD.md). The PRD carries the de
 
 ### M13 — Ticketing events
 
-- [ ] Event → Dates → Sale phases; ticket types; prices per category; per-sale policies within bounds
-- [ ] One-screen defaults for a one-off event; multi-date phase → one room, availability per date
-- [ ] PreSelectOrder (ranked alternatives; auto-hold at admission; presence check; one-click release)
-- [ ] Round 5 — `AddOn` ticket types sold only with a parent ticket in the same order, refunded with it (GB2)
-- [ ] Round 5 — attendee questions per ticket type (asked at checkout or later until a deadline), stored per position, seller retention + GDPR erasure, sensitive questions consent-gated and excluded from exports by default (GB3)
+- [x] Event → Dates → Sale phases; ticket types; prices per category; per-sale policies within bounds
+- [x] One-screen defaults for a one-off event; multi-date phase → one room, availability per date
+- [x] PreSelectOrder (ranked alternatives; auto-hold at admission; presence check; one-click release)
+- [x] Round 5 — `AddOn` ticket types sold only with a parent ticket in the same order, refunded with it (GB2)
+- [x] Round 5 — attendee questions per ticket type (asked at checkout or later until a deadline), stored per position, seller retention + GDPR erasure, sensitive questions consent-gated and excluded from exports by default (GB3)
 
 ### M14 — Venues and layouts
 
-- [ ] Shared venues (address from reference data, M19), owned layouts, copy-to-edit, Approvals for modify (always) and create (configurable)
-- [ ] Snapshots per published date
-- [ ] Editor: polygons over background, seat generation, labelling, standing, decor, chain order, seat tags, price categories, CSV import/export, undo/redo, snapping, touch, keyboard, canvas level of detail
-- [ ] Buyer seat picker + accessible list alternative; accessible seating rules
+- [x] Shared venues (address from reference data, M19), owned layouts, copy-to-edit, Approvals for modify (always) and create (configurable)
+- [x] Snapshots per published date
+- [x] Editor: polygons over background, seat generation, labelling, standing, decor, chain order, seat tags, price categories, CSV import/export, undo/redo, snapping, touch, keyboard, canvas level of detail
+- [x] Buyer seat picker + accessible list alternative; accessible seating rules
 
 ### M15 — Tickets and scanner
 
@@ -235,16 +235,16 @@ The order of work for [commerce_PRD.md](commerce_PRD.md). The PRD carries the de
 
 ### M16 — Waiting room and bot defence
 
-- [ ] Rooms, schedules, RandomizedPreQueue (recorded seed), Ballot (commit-reveal seed, staged single-use links), Fifo (`@last-modified`)
-- [ ] One entry per identity; dense ranks via a single ranker; public broadcast topic + private admission stream
-- [ ] Admission worker under a lease (max active, rate, projected capacity), presence check, signed single-use tokens
-- [ ] Truthful sold-out handling
-- [ ] `MintPlayer.Spark.Challenges` (ALTCHA built in) + `.Turnstile`, `.HCaptcha`, `.Recaptcha`, `.FriendlyCaptcha`; runtime-switchable points; 449 step-up
-- [ ] Risk pipeline (`ISparkRiskSignal`), deterministic-only blocking, decision log
-- [ ] Deceptive measures: each a separate switch, off by default, deterministic triggers by default, startup warning, logged for appeal
-- [ ] Round 5 — third-party challenge adapters declare `RequiresConsent`; refused consent falls back to ALTCHA (GA9)
-- [ ] Round 5 — presence check: automatic while visible, ≥20 s single action when hidden, rejoin at the previous rank (GA10, WCAG 2.2.1)
-- [ ] Round 5 — risk signals never refuse on country alone (GA11)
+- [x] Rooms, schedules, RandomizedPreQueue (recorded seed), Ballot (commit-reveal seed, staged single-use links), Fifo (`@last-modified`)
+- [x] One entry per identity; dense ranks via a single ranker; public broadcast topic + private admission stream
+- [x] Admission worker under a lease (max active, rate, projected capacity), presence check, signed single-use tokens
+- [x] Truthful sold-out handling
+- [x] `MintPlayer.Spark.Challenges` (ALTCHA built in) + `.Turnstile`, `.HCaptcha`, `.Recaptcha`, `.FriendlyCaptcha`; runtime-switchable points; 449 step-up
+- [x] Risk pipeline (`ISparkRiskSignal`), deterministic-only blocking, decision log
+- [x] Deceptive measures: each a separate switch, off by default, deterministic triggers by default, startup warning, logged for appeal
+- [x] Round 5 — third-party challenge adapters declare `RequiresConsent`; refused consent falls back to ALTCHA (GA9)
+- [x] Round 5 — presence check: automatic while visible, ≥20 s single action when hidden, rejoin at the previous rank (GA10, WCAG 2.2.1)
+- [x] Round 5 — risk signals never refuse on country alone (GA11)
 
 ### M17 — Storefront + meta tags
 
@@ -267,10 +267,10 @@ The order of work for [commerce_PRD.md](commerce_PRD.md). The PRD carries the de
 
 ### M19 — Reference-data app
 
-- [ ] Per `docs/reference_data_PRD.md` and `docs/reference_data_plan.md` (R0–R14) ~~(to be written after its research and grilling)~~ (written 2026-10-17); developed on this branch (D39)
-- [ ] Round 5 — basic seed set (some countries, regions, places with the merger cases, streets) seeded deterministically in the demo and tests (D39; reference-data plan R11)
-- [ ] Commerce `Address` + typeahead integration with a host-configurable endpoint
-- [ ] Round 5 — optional sources: TEDB VAT-rate suggestions (GC10), holiday calendars (GC11), VAT-territory list in the country profile (GA4)
+- [x] Per `docs/reference_data_PRD.md` and `docs/reference_data_plan.md` (R0–R14) ~~(to be written after its research and grilling)~~ (written 2026-10-17); developed on this branch (D39)
+- [x] Round 5 — basic seed set (some countries, regions, places with the merger cases, streets) seeded deterministically in the demo and tests (D39; reference-data plan R11)
+- [x] Commerce `Address` + typeahead integration with a host-configurable endpoint
+- [x] Round 5 — optional sources: TEDB VAT-rate suggestions (GC10), holiday calendars (GC11), VAT-territory list in the country profile (GA4)
 
 ### M20 — Warehouse plugin
 

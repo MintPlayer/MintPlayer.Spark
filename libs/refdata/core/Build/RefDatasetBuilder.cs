@@ -27,6 +27,8 @@ public sealed class RefDatasetBuilder(IEnumerable<IReferenceDataSource> sources,
         RefSearchKeys.AssertNormalizationAvailable();
         var ledger = new RefLedger(Mappers.SelectMany(m => m.ShippedLedger()).Concat(localLedger ?? []));
         var build = new RefDataBuild(ledger);
+        foreach (var mapper in Mappers.Where(m => m.IsCountryAdapter))
+            build.AdapterCountries.UnionWith(mapper.Countries);
         foreach (var mapper in Mappers)
         {
             var mine = mapper.SourceIds

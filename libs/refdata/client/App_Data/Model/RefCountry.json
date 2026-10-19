@@ -1,0 +1,93 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "RefCountry, shipped by MintPlayer.Spark.ReferenceData.Client (docs/reference_data_PRD.md §4.7, plan R10): a read-only local copy",
+    "in the model: only the release sync, imports and the seed write it (no New/Edit/Delete right ships), and it is not live",
+    "(a bulk import must not set off re-query storms, FR8). The admin pages show the flat fields; nested history",
+    "(periods, segments, codes) is served by /api/v1.",
+    "",
+    "HAND-AUTHORED. The ids are UUIDv5 of 'reference-data-client:RefCountry[.attributes.<Name>]' (D5), verified by SPARK045."
+  ],
+  "persistentObject": {
+    "id": "e72c212e-68e6-552f-8e1a-191189ac5cf1",
+    "name": "RefCountry",
+    "clrType": "MintPlayer.Spark.ReferenceData.RefCountry",
+    "alias": "ref-country",
+    "breadcrumb": "{Code}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "0627c278-75bd-5655-a362-44452183426d",
+        "name": "Code",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "63e37547-805a-5386-9336-af00f0e43a70",
+        "name": "Alpha3",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "5159cc82-1524-5ddd-ad8f-81b1e5bde35f",
+        "name": "Numeric",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "3faed973-0a25-5f12-92da-5dec2c5e310e",
+        "name": "Place",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "70455bf3-95d0-5d0f-964a-56c788e9f78d",
+        "name": "Hash",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      }
+    ]
+  },
+  "queries": [
+    {
+      "id": "e5859bea-27ab-554b-9f33-66e920cd4699",
+      "name": "RefCountries",
+      "source": "Custom.RefCountries",
+      "alias": "ref-countries",
+      "sortColumns": [
+        {
+          "property": "Code",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "RefCountry"
+    }
+  ]
+}

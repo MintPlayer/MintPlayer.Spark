@@ -1,0 +1,19 @@
+{
+  "countryCode": "BE",
+  "vatNumber": "0123456749",
+  "requestDate": "2026-10-19T10:00:00.000Z",
+  "valid": true,
+  "requestIdentifier": "WAPIAAAAZ1example",
+  "name": "EXAMPLE BV",
+  "address": "VOORBEELDSTRAAT 1\n9000 GENT",
+  "traderName": "---",
+  "traderStreet": "---",
+  "traderPostalCode": "---",
+  "traderCity": "---",
+  "traderCompanyType": "---",
+  "traderNameMatch": "NOT_PROCESSED",
+  "traderStreetMatch": "NOT_PROCESSED",
+  "traderPostalCodeMatch": "NOT_PROCESSED",
+  "traderCityMatch": "NOT_PROCESSED",
+  "traderCompanyTypeMatch": "NOT_PROCESSED"
+}

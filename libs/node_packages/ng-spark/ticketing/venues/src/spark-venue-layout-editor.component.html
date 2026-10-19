@@ -1,0 +1,208 @@
+<section class="spark-layout-editor">
+  <header class="spark-layout-editor-toolbar" role="toolbar" [attr.aria-label]="'ticketingVenues.editor.tools' | t">
+    <div class="btn-group" role="group">
+      @for (t of ['select', 'block', 'standing', 'decor', 'stage', 'text']; track t) {
+        <button type="button" class="btn btn-sm btn-outline-secondary" [class.active]="tool() === t" [attr.aria-pressed]="tool() === t"
+                (click)="setTool($any(t))">{{ 'ticketingVenues.editor.tool.' + t | t }}</button>
+      }
+    </div>
+    <div class="btn-group" role="group">
+      <button type="button" class="btn btn-sm btn-outline-secondary" [disabled]="!canUndo()" (click)="undo()" [attr.aria-label]="'ticketingVenues.editor.undo' | t">↶</button>
+      <button type="button" class="btn btn-sm btn-outline-secondary" [disabled]="!canRedo()" (click)="redo()" [attr.aria-label]="'ticketingVenues.editor.redo' | t">↷</button>
+      <button type="button" class="btn btn-sm btn-outline-secondary" (click)="zoom(1.4)" [attr.aria-label]="'ticketingVenues.map.zoomIn' | t">+</button>
+      <button type="button" class="btn btn-sm btn-outline-secondary" (click)="zoom(1 / 1.4)" [attr.aria-label]="'ticketingVenues.map.zoomOut' | t">−</button>
+      <button type="button" class="btn btn-sm btn-outline-secondary" (click)="fit()" [attr.aria-label]="'ticketingVenues.map.fit' | t">⤢</button>
+    </div>
+    <label class="spark-layout-editor-field">
+      {{ 'ticketingVenues.editor.snap' | t }}
+      <input type="number" min="0" step="1" [value]="snapGrid()" (change)="snapGrid.set(number($any($event.target).value))" />
+    </label>
+    @if (tool() === 'text') {
+      <label class="spark-layout-editor-field">
+        {{ 'ticketingVenues.editor.textLabel' | t }}
+        <input type="text" [value]="textLabel()" (input)="textLabel.set($any($event.target).value)" />
+      </label>
+    }
+    @if (drawing().length >= 6) {
+      <button type="button" class="btn btn-sm btn-primary" (click)="closePolygon()">{{ 'ticketingVenues.editor.closeShape' | t }}</button>
+    }
+    <span class="spark-layout-editor-spacer"></span>
+    <span class="spark-layout-editor-count">{{ seatCount() }} {{ 'ticketingVenues.editor.seats' | t }}</span>
+    <button type="button" class="btn btn-sm btn-outline-primary" [disabled]="busy() || !dirty()" (click)="save()">{{ 'ticketingVenues.editor.save' | t }}</button>
+    <button type="button" class="btn btn-sm btn-primary" [disabled]="busy() || meta()?.status === 'pendingApproval'" (click)="publish()">{{ 'ticketingVenues.editor.publish' | t }}</button>
+  </header>
+
+  @if (message(); as m) {
+    <p class="spark-layout-editor-message" role="status">{{ m | t }}</p>
+  }
+  @if (meta()?.lastRejection; as reason) {
+    <p class="spark-layout-editor-problems" role="alert">{{ 'ticketingVenues.editor.rejected' | t }} {{ reason }}</p>
+  }
+  @if (problems().length > 0) {
+    <ul class="spark-layout-editor-problems" role="alert">
+      @for (p of problems(); track $index) {
+        <li>{{ p.path }}: {{ p.code | t }}</li>
+      }
+    </ul>
+  }
+
+  <div class="spark-layout-editor-body">
+    <canvas #canvas class="spark-layout-editor-canvas" tabindex="0" role="application"
+            [attr.aria-label]="'ticketingVenues.editor.canvas' | t" aria-describedby="spark-layout-editor-help"></canvas>
+    <p id="spark-layout-editor-help" class="visually-hidden">{{ 'ticketingVenues.editor.help' | t }}</p>
+
+    <aside class="spark-layout-editor-panel">
+      @if (block(); as b) {
+        <fieldset>
+          <legend>{{ 'ticketingVenues.editor.block' | t }}</legend>
+          <label>{{ 'ticketingVenues.editor.name' | t }}
+            <input type="text" [value]="b.name" (change)="updateSelectedBlock({ name: $any($event.target).value })" />
+          </label>
+          <label>{{ 'ticketingVenues.editor.kind' | t }}
+            <select [value]="b.kind" (change)="setBlockKind($any($event.target).value)">
+              <option value="seatedNumbered">{{ 'ticketingVenues.kind.seatedNumbered' | t }}</option>
+              <option value="seatedUnnumbered">{{ 'ticketingVenues.kind.seatedUnnumbered' | t }}</option>
+              <option value="standing">{{ 'ticketingVenues.kind.standing' | t }}</option>
+            </select>
+          </label>
+          @if (b.kind !== 'seatedNumbered') {
+            <label>{{ 'ticketingVenues.editor.capacity' | t }}
+              <input type="number" min="1" [value]="b.capacity" (change)="updateSelectedBlock({ capacity: number($any($event.target).value) })" />
+            </label>
+          }
+          <label>{{ 'ticketingVenues.editor.category' | t }}
+            <select [value]="b.category ?? ''" (change)="updateSelectedBlock({ category: $any($event.target).value || null })">
+              <option value="">—</option>
+              @for (c of plan().categories; track c.key) { <option [value]="c.key">{{ c.name }}</option> }
+            </select>
+          </label>
+          <button type="button" class="btn btn-sm btn-outline-danger" (click)="deleteSelection()">{{ 'ticketingVenues.editor.delete' | t }}</button>
+        </fieldset>
+
+        @if (b.kind === 'seatedNumbered') {
+          <fieldset>
+            <legend>{{ 'ticketingVenues.editor.generate' | t }}</legend>
+            <div class="spark-layout-editor-grid">
+              <label>{{ 'ticketingVenues.editor.rows' | t }}<input type="number" min="1" [value]="generator().rows" (change)="setGenerator('rows', number($any($event.target).value))" /></label>
+              <label>{{ 'ticketingVenues.editor.seatsPerRow' | t }}<input type="number" min="1" [value]="generator().seatsPerRow" (change)="setGenerator('seatsPerRow', number($any($event.target).value))" /></label>
+              <label>{{ 'ticketingVenues.editor.seatSpacing' | t }}<input type="number" min="1" [value]="generator().seatSpacing" (change)="setGenerator('seatSpacing', number($any($event.target).value))" /></label>
+              <label>{{ 'ticketingVenues.editor.rowSpacing' | t }}<input type="number" min="1" [value]="generator().rowSpacing" (change)="setGenerator('rowSpacing', number($any($event.target).value))" /></label>
+              <label>{{ 'ticketingVenues.editor.originX' | t }}<input type="number" [value]="generator().originX" (change)="setGenerator('originX', number($any($event.target).value))" /></label>
+              <label>{{ 'ticketingVenues.editor.originY' | t }}<input type="number" [value]="generator().originY" (change)="setGenerator('originY', number($any($event.target).value))" /></label>
+              <label>{{ 'ticketingVenues.editor.shape' | t }}
+                <select [value]="generator().shape" (change)="setGenerator('shape', $any($event.target).value)">
+                  <option value="straight">{{ 'ticketingVenues.shape.straight' | t }}</option>
+                  <option value="angled">{{ 'ticketingVenues.shape.angled' | t }}</option>
+                  <option value="curved">{{ 'ticketingVenues.shape.curved' | t }}</option>
+                </select>
+              </label>
+              <label>{{ 'ticketingVenues.editor.angle' | t }}<input type="number" [value]="generator().angle" (change)="setGenerator('angle', number($any($event.target).value))" /></label>
+              <label>{{ 'ticketingVenues.editor.radius' | t }}<input type="number" min="1" [value]="generator().radius" (change)="setGenerator('radius', number($any($event.target).value))" /></label>
+              <label>{{ 'ticketingVenues.editor.widenBy' | t }}<input type="number" step="0.5" [value]="generator().widenBy" (change)="setGenerator('widenBy', number($any($event.target).value))" /></label>
+              <label>{{ 'ticketingVenues.editor.rowLabels' | t }}
+                <select [value]="generator().rowLabels" (change)="setGenerator('rowLabels', $any($event.target).value)">
+                  <option value="letters">A, B, C</option>
+                  <option value="numbers">1, 2, 3</option>
+                </select>
+              </label>
+              <label>{{ 'ticketingVenues.editor.seatLabels' | t }}
+                <select [value]="generator().seatLabels" (change)="setGenerator('seatLabels', $any($event.target).value)">
+                  <option value="numbers">1, 2, 3</option>
+                  <option value="odd">1, 3, 5</option>
+                  <option value="even">2, 4, 6</option>
+                </select>
+              </label>
+              <label>{{ 'ticketingVenues.editor.seatStart' | t }}<input type="number" min="0" [value]="generator().seatStart" (change)="setGenerator('seatStart', number($any($event.target).value))" /></label>
+              <label class="check"><input type="checkbox" [checked]="generator().rowsFromBack" (change)="setGenerator('rowsFromBack', $any($event.target).checked)" />{{ 'ticketingVenues.editor.rowsFromBack' | t }}</label>
+              <label class="check"><input type="checkbox" [checked]="generator().seatsFromRight" (change)="setGenerator('seatsFromRight', $any($event.target).checked)" />{{ 'ticketingVenues.editor.seatsFromRight' | t }}</label>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-secondary" (click)="originFromBlock()">{{ 'ticketingVenues.editor.originFromBlock' | t }}</button>
+            <button type="button" class="btn btn-sm btn-primary" (click)="generateSeats()">{{ 'ticketingVenues.editor.generateSeats' | t }}</button>
+          </fieldset>
+        }
+      }
+
+      @if (selectedSeats().size > 0) {
+        <fieldset>
+          <legend>{{ selectedSeats().size }} {{ 'ticketingVenues.editor.selectedSeats' | t }}</legend>
+          <label class="check"><input type="checkbox" [checked]="selectionHasTag(tags.accessible)" (change)="toggleTag(tags.accessible, $any($event.target).checked)" />{{ 'ticketingVenues.tag.accessible' | t }}</label>
+          <label class="check"><input type="checkbox" [checked]="selectionHasTag(tags.companion)" (change)="toggleTag(tags.companion, $any($event.target).checked)" />{{ 'ticketingVenues.tag.companion' | t }}</label>
+          <label class="check"><input type="checkbox" [checked]="selectionHasTag(tags.restrictedView)" (change)="toggleTag(tags.restrictedView, $any($event.target).checked)" />{{ 'ticketingVenues.tag.restrictedView' | t }}</label>
+          <label>{{ 'ticketingVenues.editor.category' | t }}
+            <select (change)="setSelectionCategory($any($event.target).value)">
+              <option value="">{{ 'ticketingVenues.editor.blockCategory' | t }}</option>
+              @for (c of plan().categories; track c.key) { <option [value]="c.key">{{ c.name }}</option> }
+            </select>
+          </label>
+          <button type="button" class="btn btn-sm btn-outline-danger" (click)="deleteSelection()">{{ 'ticketingVenues.editor.delete' | t }}</button>
+        </fieldset>
+      }
+
+      <fieldset>
+        <legend>{{ 'ticketingVenues.editor.categories' | t }}</legend>
+        @for (c of plan().categories; track c.key) {
+          <div class="spark-layout-editor-row">
+            <input type="color" [value]="c.color" (change)="updateCategory(c.key, { color: $any($event.target).value })" [attr.aria-label]="c.name" />
+            <input type="text" [value]="c.name" (change)="updateCategory(c.key, { name: $any($event.target).value })" [attr.aria-label]="'ticketingVenues.editor.name' | t" />
+            <button type="button" class="btn btn-sm btn-link" (click)="removeCategory(c.key)">{{ 'ticketingVenues.editor.remove' | t }}</button>
+          </div>
+        }
+        <button type="button" class="btn btn-sm btn-outline-secondary" (click)="addCategory()">{{ 'ticketingVenues.editor.addCategory' | t }}</button>
+      </fieldset>
+
+      <fieldset>
+        <legend>{{ 'ticketingVenues.editor.chains' | t }}</legend>
+        <p class="spark-layout-editor-hint">{{ 'ticketingVenues.editor.chainsHelp' | t }}</p>
+        @for (chain of plan().chains; track chain.key) {
+          <div class="spark-layout-editor-chain">
+            <div class="spark-layout-editor-row">
+              <input type="text" [value]="chain.name" (change)="updateChain(chain.key, { name: $any($event.target).value })" [attr.aria-label]="'ticketingVenues.editor.name' | t" />
+              <button type="button" class="btn btn-sm btn-link" (click)="removeChain(chain.key)">{{ 'ticketingVenues.editor.remove' | t }}</button>
+            </div>
+            <ol>
+              @for (entry of chain.blocks; track entry.blockKey; let i = $index; let last = $last) {
+                <li draggable="true" (dragstart)="chainDragStart(chain.key, i, $event)" (dragover)="$event.preventDefault()" (drop)="chainDrop(chain.key, i, $event)">
+                  <span>{{ blockName(entry.blockKey) }}</span>
+                  <label class="check"><input type="checkbox" [checked]="entry.backToFront" (change)="setChainBlock(chain.key, i, { backToFront: $any($event.target).checked })" />{{ 'ticketingVenues.editor.backToFront' | t }}</label>
+                  <label class="check"><input type="checkbox" [checked]="entry.reverseSeats" (change)="setChainBlock(chain.key, i, { reverseSeats: $any($event.target).checked })" />{{ 'ticketingVenues.editor.reverseSeats' | t }}</label>
+                  <button type="button" class="btn btn-sm btn-link" [disabled]="i === 0" (click)="moveInChain(chain.key, i, i - 1)" [attr.aria-label]="'ticketingVenues.editor.moveUp' | t">↑</button>
+                  <button type="button" class="btn btn-sm btn-link" [disabled]="last" (click)="moveInChain(chain.key, i, i + 1)" [attr.aria-label]="'ticketingVenues.editor.moveDown' | t">↓</button>
+                  <button type="button" class="btn btn-sm btn-link" (click)="removeFromChain(chain.key, i)">{{ 'ticketingVenues.editor.remove' | t }}</button>
+                </li>
+              }
+            </ol>
+            <button type="button" class="btn btn-sm btn-outline-secondary" [disabled]="block()?.kind !== 'seatedNumbered'" (click)="addSelectedBlockToChain(chain.key)">
+              {{ 'ticketingVenues.editor.addBlockToChain' | t }}
+            </button>
+          </div>
+        }
+        <button type="button" class="btn btn-sm btn-outline-secondary" (click)="addChain()">{{ 'ticketingVenues.editor.addChain' | t }}</button>
+      </fieldset>
+
+      <fieldset>
+        <legend>{{ 'ticketingVenues.editor.file' | t }}</legend>
+        <label>{{ 'ticketingVenues.editor.planSize' | t }}
+          <span class="spark-layout-editor-row">
+            <input type="number" min="1" [value]="plan().width" (change)="setPlanSize(number($any($event.target).value), plan().height)" [attr.aria-label]="'ticketingVenues.editor.width' | t" />
+            <input type="number" min="1" [value]="plan().height" (change)="setPlanSize(plan().width, number($any($event.target).value))" [attr.aria-label]="'ticketingVenues.editor.height' | t" />
+          </span>
+        </label>
+        <button type="button" class="btn btn-sm btn-outline-secondary" (click)="exportCsv()">{{ 'ticketingVenues.editor.exportCsv' | t }}</button>
+        <label class="btn btn-sm btn-outline-secondary">
+          {{ 'ticketingVenues.editor.importCsv' | t }}
+          <input type="file" accept=".csv,text/csv" class="visually-hidden" (change)="importCsvFile($event)" />
+        </label>
+        <label class="btn btn-sm btn-outline-secondary">
+          {{ 'ticketingVenues.editor.background' | t }}
+          <input type="file" accept="image/png,image/jpeg,image/webp" class="visually-hidden" (change)="uploadBackground($event)" />
+        </label>
+        @if (plan().background; as bg) {
+          <label>{{ 'ticketingVenues.editor.opacity' | t }}
+            <input type="range" min="0" max="1" step="0.05" [value]="bg.opacity" (change)="setBackgroundOpacity($any($event.target).value)" />
+          </label>
+          <button type="button" class="btn btn-sm btn-link" (click)="removeBackground()">{{ 'ticketingVenues.editor.removeBackground' | t }}</button>
+        }
+      </fieldset>
+    </aside>
+  </div>
+</section>

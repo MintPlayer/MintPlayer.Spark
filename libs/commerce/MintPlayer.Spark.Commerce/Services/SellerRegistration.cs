@@ -68,12 +68,12 @@ internal sealed class SellerRegistration(
             dac7.RemindersSent = profile.Dac7.RemindersSent;
             dac7.LastReminderAt = profile.Dac7.LastReminderAt;
             profile.Dac7 = dac7;
-            if (profile.PayoutsBlocked && dac7.Missing().Count == 0)
+            if (profile.SalesBlocked && dac7.Missing().Count == 0)
             {
-                profile.PayoutsBlocked = false;
+                profile.SalesBlocked = false;
                 await audit.RecordAsync(session, new CommerceAuditEntry
                 {
-                    Action = CommerceAuditActions.PayoutBlock, SubjectId = profile.Id!, OrganizationId = organizationId, Reason = "dac7-complete: payouts unblocked",
+                    Action = CommerceAuditActions.Dac7SalesBlock, SubjectId = profile.Id!, OrganizationId = organizationId, Reason = "dac7-complete: sales reopened",
                 }, ct);
             }
         }

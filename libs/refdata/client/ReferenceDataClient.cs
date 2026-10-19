@@ -19,7 +19,10 @@ public sealed class SparkReferenceDataClientOptions : ISparkConfigurationSection
     /// </summary>
     public Uri? BaseAddress { get; set; }
 
-    /// <summary>The instance's release-signing public key (RD-DEF 5). Verification waits for spike RS17.</summary>
+    /// <summary>
+    /// The instance's release-signing public key (RD-DEF 5): base64 of the 32-byte Ed25519 key (RS17). Set, every release
+    /// must carry a <c>manifest.sig</c> that verifies against it, or the sync refuses it; unset, signatures are not checked.
+    /// </summary>
     public string? PublicKey { get; set; }
 
     public ReferenceDataSyncOptions Sync { get; set; } = new();

@@ -1,0 +1,71 @@
+:host {
+  display: block;
+}
+
+.spark-checkout-refusal {
+  color: var(--bs-danger, #dc3545);
+}
+
+.spark-checkout-withdrawal {
+  margin: 1rem 0;
+  padding: 0.75rem;
+  border: 1px solid var(--bs-border-color, #dee2e6);
+  border-radius: 0.375rem;
+}
+
+.spark-checkout-withdrawal-until {
+  display: block;
+  margin-top: 0.25rem;
+}
+
+.spark-checkout-withdrawal-line,
+.spark-checkout-withdrawal-field {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin: 0.25rem 0;
+}
+
+.spark-checkout-withdrawal-field {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.spark-checkout-withdrawal-line input {
+  width: 4.5rem;
+}
+
+.spark-checkout-withdrawal-outside {
+  color: var(--bs-secondary-color, #6c757d);
+}
+
+.spark-checkout-withdrawal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.spark-checkout-aftercare-lines,
+.spark-checkout-aftercare-refunds {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.spark-checkout-aftercare-lines li,
+.spark-checkout-aftercare-refunds li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.25rem 0;
+}
+
+.spark-checkout-reschedule {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin: 0.5rem 0;
+}

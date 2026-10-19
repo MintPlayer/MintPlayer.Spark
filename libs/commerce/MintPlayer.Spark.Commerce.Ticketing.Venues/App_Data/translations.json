@@ -1,0 +1,903 @@
+{
+  "$schema": "../../../../schemas/translations.schema.json",
+  "ticketingVenues": {
+    "background": {
+      "tooLarge": {
+        "en": "The image is too large.",
+        "fr": "L'image est trop grande.",
+        "nl": "De afbeelding is te groot."
+      },
+      "type": {
+        "en": "Upload a PNG, JPEG or WebP image.",
+        "fr": "Chargez une image PNG, JPEG ou WebP.",
+        "nl": "Laad een PNG-, JPEG- of WebP-afbeelding op."
+      }
+    },
+    "csv": {
+      "header": {
+        "en": "The first line must be: block,row,seat,x,y,category,tags,companion_of,key.",
+        "fr": "La première ligne doit être : block,row,seat,x,y,category,tags,companion_of,key.",
+        "nl": "De eerste regel moet zijn: block,row,seat,x,y,category,tags,companion_of,key."
+      },
+      "missing": {
+        "en": "Block, row and seat are required.",
+        "fr": "Le bloc, le rang et le siège sont obligatoires.",
+        "nl": "Blok, rij en stoel zijn verplicht."
+      },
+      "notNumbered": {
+        "en": "Seats can only be imported into a numbered block.",
+        "fr": "Les sièges ne peuvent être importés que dans un bloc numéroté.",
+        "nl": "Stoelen kunnen alleen in een genummerd blok worden ingelezen."
+      },
+      "position": {
+        "en": "x and y must be numbers.",
+        "fr": "x et y doivent être des nombres.",
+        "nl": "x en y moeten getallen zijn."
+      },
+      "tag": {
+        "en": "Unknown tag (accessible, companion, restricted-view).",
+        "fr": "Étiquette inconnue (accessible, companion, restricted-view).",
+        "nl": "Onbekende tag (accessible, companion, restricted-view)."
+      }
+    },
+    "editor": {
+      "addBlockToChain": {
+        "en": "Add the selected block",
+        "fr": "Ajouter le bloc sélectionné",
+        "nl": "Geselecteerd blok toevoegen"
+      },
+      "addCategory": {
+        "en": "Add a category",
+        "fr": "Ajouter une catégorie",
+        "nl": "Categorie toevoegen"
+      },
+      "addChain": {
+        "en": "Add a chain",
+        "fr": "Ajouter une chaîne",
+        "nl": "Keten toevoegen"
+      },
+      "angle": {
+        "en": "Angle (°)",
+        "fr": "Angle (°)",
+        "nl": "Hoek (°)"
+      },
+      "backToFront": {
+        "en": "Back row first",
+        "fr": "Dernier rang d'abord",
+        "nl": "Achterste rij eerst"
+      },
+      "background": {
+        "en": "Background image",
+        "fr": "Image d'arrière-plan",
+        "nl": "Achtergrondafbeelding"
+      },
+      "backgroundFailed": {
+        "en": "The image could not be uploaded.",
+        "fr": "L'image n'a pas pu être chargée.",
+        "nl": "De afbeelding kon niet worden opgeladen."
+      },
+      "block": {
+        "en": "Block",
+        "fr": "Bloc",
+        "nl": "Blok"
+      },
+      "blockCategory": {
+        "en": "The block's category",
+        "fr": "Catégorie du bloc",
+        "nl": "Categorie van het blok"
+      },
+      "canvas": {
+        "en": "Layout editor",
+        "fr": "Éditeur de plan de salle",
+        "nl": "Zaalplan-editor"
+      },
+      "capacity": {
+        "en": "Capacity",
+        "fr": "Capacité",
+        "nl": "Capaciteit"
+      },
+      "categories": {
+        "en": "Price categories",
+        "fr": "Catégories de prix",
+        "nl": "Prijscategorieën"
+      },
+      "category": {
+        "en": "Price category",
+        "fr": "Catégorie de prix",
+        "nl": "Prijscategorie"
+      },
+      "chains": {
+        "en": "Fill chains (best available)",
+        "fr": "Chaînes de remplissage (meilleures places)",
+        "nl": "Vulketens (beste plaatsen)"
+      },
+      "chainsHelp": {
+        "en": "Best available fills each chain block by block in this order. Drag blocks to reorder them.",
+        "fr": "Les meilleures places remplissent chaque chaîne bloc par bloc dans cet ordre. Faites glisser les blocs pour les réordonner.",
+        "nl": "Beste plaatsen vult elke keten blok per blok in deze volgorde. Sleep blokken om de volgorde te wijzigen."
+      },
+      "closeShape": {
+        "en": "Close the shape",
+        "fr": "Fermer la forme",
+        "nl": "Vorm sluiten"
+      },
+      "conflict": {
+        "en": "The layout changed elsewhere. Reload it before saving.",
+        "fr": "Le plan a été modifié ailleurs. Rechargez-le avant d’enregistrer.",
+        "nl": "Het zaalplan werd elders gewijzigd. Laad het opnieuw voor u opslaat."
+      },
+      "delete": {
+        "en": "Delete",
+        "fr": "Supprimer",
+        "nl": "Verwijderen"
+      },
+      "exportCsv": {
+        "en": "Export CSV",
+        "fr": "Exporter en CSV",
+        "nl": "CSV exporteren"
+      },
+      "failed": {
+        "en": "Something went wrong. Try again.",
+        "fr": "Une erreur est survenue. Réessayez.",
+        "nl": "Er ging iets mis. Probeer opnieuw."
+      },
+      "file": {
+        "en": "Plan and files",
+        "fr": "Plan et fichiers",
+        "nl": "Plan en bestanden"
+      },
+      "generate": {
+        "en": "Generate seats",
+        "fr": "Générer des sièges",
+        "nl": "Stoelen genereren"
+      },
+      "generateSeats": {
+        "en": "Generate (replaces the rows)",
+        "fr": "Générer (remplace les rangs)",
+        "nl": "Genereren (vervangt de rijen)"
+      },
+      "height": {
+        "en": "Height",
+        "fr": "Hauteur",
+        "nl": "Hoogte"
+      },
+      "help": {
+        "en": "Drag to pan, wheel or pinch to zoom. Click a seat to select it; Shift-click adds, Shift-drag selects an area. Arrow keys move the selection, Delete removes it, Ctrl+Z and Ctrl+Y undo and redo. With a drawing tool, click to add points and press Enter to close the shape.",
+        "fr": "Faites glisser pour déplacer, molette ou pincement pour zoomer. Cliquez sur un siège pour le sélectionner ; Maj+clic ajoute, Maj+glisser sélectionne une zone. Les flèches déplacent la sélection, Suppr la supprime, Ctrl+Z et Ctrl+Y annulent et rétablissent. Avec un outil de dessin, cliquez pour ajouter des points et appuyez sur Entrée pour fermer la forme.",
+        "nl": "Sleep om te verschuiven, scroll of knijp om te zoomen. Klik op een stoel om hem te selecteren; Shift-klik voegt toe, Shift-slepen selecteert een gebied. De pijltjestoetsen verplaatsen de selectie, Delete verwijdert ze, Ctrl+Z en Ctrl+Y maken ongedaan en opnieuw. Met een tekentool klikt u om punten toe te voegen en drukt u op Enter om de vorm te sluiten."
+      },
+      "importCsv": {
+        "en": "Import CSV",
+        "fr": "Importer un CSV",
+        "nl": "CSV inlezen"
+      },
+      "imported": {
+        "en": "The seats were imported. Save to keep them.",
+        "fr": "Les sièges ont été importés. Enregistrez pour les conserver.",
+        "nl": "De stoelen werden ingelezen. Sla op om ze te bewaren."
+      },
+      "invalid": {
+        "en": "The layout has problems; see the list.",
+        "fr": "Le plan comporte des problèmes ; voir la liste.",
+        "nl": "Het zaalplan heeft problemen; zie de lijst."
+      },
+      "kind": {
+        "en": "Kind",
+        "fr": "Type",
+        "nl": "Soort"
+      },
+      "moveDown": {
+        "en": "Move down",
+        "fr": "Descendre",
+        "nl": "Omlaag"
+      },
+      "moveUp": {
+        "en": "Move up",
+        "fr": "Monter",
+        "nl": "Omhoog"
+      },
+      "name": {
+        "en": "Name",
+        "fr": "Nom",
+        "nl": "Naam"
+      },
+      "notFound": {
+        "en": "This layout does not exist or is not yours.",
+        "fr": "Ce plan n'existe pas ou ne vous appartient pas.",
+        "nl": "Dit zaalplan bestaat niet of is niet van u."
+      },
+      "opacity": {
+        "en": "Opacity",
+        "fr": "Opacité",
+        "nl": "Doorzichtigheid"
+      },
+      "originFromBlock": {
+        "en": "Start at the block's corner",
+        "fr": "Commencer au coin du bloc",
+        "nl": "Beginnen in de hoek van het blok"
+      },
+      "originX": {
+        "en": "First seat x",
+        "fr": "x du premier siège",
+        "nl": "x van de eerste stoel"
+      },
+      "originY": {
+        "en": "First seat y",
+        "fr": "y du premier siège",
+        "nl": "y van de eerste stoel"
+      },
+      "planSize": {
+        "en": "Plan size",
+        "fr": "Taille du plan",
+        "nl": "Grootte van het plan"
+      },
+      "publish": {
+        "en": "Publish",
+        "fr": "Publier",
+        "nl": "Publiceren"
+      },
+      "publishPending": {
+        "en": "The publication waits for an approver.",
+        "fr": "La publication attend l'approbation.",
+        "nl": "De publicatie wacht op goedkeuring."
+      },
+      "publishedNow": {
+        "en": "The layout is published.",
+        "fr": "Le plan est publié.",
+        "nl": "Het zaalplan is gepubliceerd."
+      },
+      "radius": {
+        "en": "Radius (curved)",
+        "fr": "Rayon (courbe)",
+        "nl": "Straal (gebogen)"
+      },
+      "redo": {
+        "en": "Redo",
+        "fr": "Rétablir",
+        "nl": "Opnieuw"
+      },
+      "rejected": {
+        "en": "The last publication was rejected:",
+        "fr": "La dernière publication a été refusée :",
+        "nl": "De laatste publicatie werd geweigerd:"
+      },
+      "remove": {
+        "en": "Remove",
+        "fr": "Retirer",
+        "nl": "Verwijderen"
+      },
+      "removeBackground": {
+        "en": "Remove the background",
+        "fr": "Retirer l'arrière-plan",
+        "nl": "Achtergrond verwijderen"
+      },
+      "reverseSeats": {
+        "en": "Last seat first",
+        "fr": "Dernier siège d'abord",
+        "nl": "Laatste stoel eerst"
+      },
+      "rowLabels": {
+        "en": "Row labels",
+        "fr": "Libellés des rangs",
+        "nl": "Rijlabels"
+      },
+      "rowSpacing": {
+        "en": "Row spacing",
+        "fr": "Espacement des rangs",
+        "nl": "Rijafstand"
+      },
+      "rows": {
+        "en": "Rows",
+        "fr": "Rangs",
+        "nl": "Rijen"
+      },
+      "rowsFromBack": {
+        "en": "Label rows from the back",
+        "fr": "Numéroter les rangs depuis l'arrière",
+        "nl": "Rijen van achteren nummeren"
+      },
+      "save": {
+        "en": "Save draft",
+        "fr": "Enregistrer le brouillon",
+        "nl": "Concept opslaan"
+      },
+      "saved": {
+        "en": "Saved.",
+        "fr": "Enregistré.",
+        "nl": "Opgeslagen."
+      },
+      "seatLabels": {
+        "en": "Seat numbers",
+        "fr": "Numéros des sièges",
+        "nl": "Stoelnummers"
+      },
+      "seatSpacing": {
+        "en": "Seat spacing",
+        "fr": "Espacement des sièges",
+        "nl": "Stoelafstand"
+      },
+      "seatStart": {
+        "en": "First number",
+        "fr": "Premier numéro",
+        "nl": "Eerste nummer"
+      },
+      "seats": {
+        "en": "seats",
+        "fr": "sièges",
+        "nl": "stoelen"
+      },
+      "seatsFromRight": {
+        "en": "Number seats from the right",
+        "fr": "Numéroter depuis la droite",
+        "nl": "Stoelen van rechts nummeren"
+      },
+      "seatsPerRow": {
+        "en": "Seats per row",
+        "fr": "Sièges par rang",
+        "nl": "Stoelen per rij"
+      },
+      "selectedSeats": {
+        "en": "seats selected",
+        "fr": "sièges sélectionnés",
+        "nl": "stoelen geselecteerd"
+      },
+      "shape": {
+        "en": "Row shape",
+        "fr": "Forme des rangs",
+        "nl": "Vorm van de rijen"
+      },
+      "snap": {
+        "en": "Snap",
+        "fr": "Grille",
+        "nl": "Raster"
+      },
+      "textLabel": {
+        "en": "Text",
+        "fr": "Texte",
+        "nl": "Tekst"
+      },
+      "tool": {
+        "block": {
+          "en": "Seated block",
+          "fr": "Bloc assis",
+          "nl": "Zitblok"
+        },
+        "decor": {
+          "en": "Decor",
+          "fr": "Décor",
+          "nl": "Decor"
+        },
+        "select": {
+          "en": "Select",
+          "fr": "Sélectionner",
+          "nl": "Selecteren"
+        },
+        "stage": {
+          "en": "Stage",
+          "fr": "Scène",
+          "nl": "Podium"
+        },
+        "standing": {
+          "en": "Standing area",
+          "fr": "Zone debout",
+          "nl": "Staanplaatsen"
+        },
+        "text": {
+          "en": "Text",
+          "fr": "Texte",
+          "nl": "Tekst"
+        }
+      },
+      "tools": {
+        "en": "Layout tools",
+        "fr": "Outils du plan",
+        "nl": "Gereedschap"
+      },
+      "undo": {
+        "en": "Undo",
+        "fr": "Annuler",
+        "nl": "Ongedaan maken"
+      },
+      "widenBy": {
+        "en": "Extra seats per row",
+        "fr": "Sièges en plus par rang",
+        "nl": "Extra stoelen per rij"
+      },
+      "width": {
+        "en": "Width",
+        "fr": "Largeur",
+        "nl": "Breedte"
+      }
+    },
+    "kind": {
+      "seatedNumbered": {
+        "en": "Numbered seats",
+        "fr": "Places numérotées",
+        "nl": "Genummerde plaatsen"
+      },
+      "seatedUnnumbered": {
+        "en": "Unnumbered seats",
+        "fr": "Places non numérotées",
+        "nl": "Vrije zitplaatsen"
+      },
+      "standing": {
+        "en": "Standing",
+        "fr": "Debout",
+        "nl": "Staanplaatsen"
+      }
+    },
+    "map": {
+      "fit": {
+        "en": "Show everything",
+        "fr": "Tout afficher",
+        "nl": "Alles tonen"
+      },
+      "help": {
+        "en": "Drag or use the arrow keys to move the map; use the wheel, a pinch or + and − to zoom, and 0 to show everything. Click a free seat to pick it. The list view offers the same seats without the map.",
+        "fr": "Faites glisser ou utilisez les flèches pour déplacer le plan ; molette, pincement ou + et − pour zoomer, 0 pour tout afficher. Cliquez sur un siège libre pour le choisir. La vue en liste propose les mêmes places sans le plan.",
+        "nl": "Sleep of gebruik de pijltjestoetsen om het plan te verschuiven; scroll, knijp of + en − om te zoomen, 0 om alles te tonen. Klik op een vrije stoel om hem te kiezen. De lijstweergave biedt dezelfde plaatsen zonder plan."
+      },
+      "label": {
+        "en": "Seat map",
+        "fr": "Plan de salle",
+        "nl": "Zaalplan"
+      },
+      "unavailable": {
+        "en": "The seat map is not available.",
+        "fr": "Le plan de salle n'est pas disponible.",
+        "nl": "Het zaalplan is niet beschikbaar."
+      },
+      "zoom": {
+        "en": "Zoom",
+        "fr": "Zoom",
+        "nl": "Zoom"
+      },
+      "zoomIn": {
+        "en": "Zoom in",
+        "fr": "Zoom avant",
+        "nl": "Inzoomen"
+      },
+      "zoomOut": {
+        "en": "Zoom out",
+        "fr": "Zoom arrière",
+        "nl": "Uitzoomen"
+      }
+    },
+    "picker": {
+      "action": {
+        "en": "Action",
+        "fr": "Action",
+        "nl": "Actie"
+      },
+      "addPlaces": {
+        "en": "Add places",
+        "fr": "Ajouter des places",
+        "nl": "Plaatsen toevoegen"
+      },
+      "available": {
+        "en": "Available",
+        "fr": "Disponibles",
+        "nl": "Beschikbaar"
+      },
+      "bestAvailable": {
+        "en": "Best available",
+        "fr": "Meilleures places",
+        "nl": "Beste plaatsen"
+      },
+      "block": {
+        "en": "Block",
+        "fr": "Bloc",
+        "nl": "Blok"
+      },
+      "list": {
+        "en": "List",
+        "fr": "Liste",
+        "nl": "Lijst"
+      },
+      "listCaption": {
+        "en": "Choose a block and how many places; you get the best seats together.",
+        "fr": "Choisissez un bloc et le nombre de places ; vous recevez les meilleures places côte à côte.",
+        "nl": "Kies een blok en het aantal plaatsen; u krijgt de beste plaatsen naast elkaar."
+      },
+      "map": {
+        "en": "Map",
+        "fr": "Plan",
+        "nl": "Plan"
+      },
+      "none": {
+        "en": "Nothing is available.",
+        "fr": "Rien n'est disponible.",
+        "nl": "Niets is beschikbaar."
+      },
+      "picked": {
+        "en": "Your seats",
+        "fr": "Vos places",
+        "nl": "Uw plaatsen"
+      },
+      "quantity": {
+        "en": "Number of places",
+        "fr": "Nombre de places",
+        "nl": "Aantal plaatsen"
+      },
+      "remove": {
+        "en": "Remove",
+        "fr": "Retirer",
+        "nl": "Verwijderen"
+      },
+      "view": {
+        "en": "How to choose",
+        "fr": "Comment choisir",
+        "nl": "Hoe kiezen"
+      }
+    },
+    "problem": {
+      "background": {
+        "en": "The background image is missing or its position is invalid.",
+        "fr": "L'image d'arrière-plan manque ou sa position est invalide.",
+        "nl": "De achtergrondafbeelding ontbreekt of de positie is ongeldig."
+      },
+      "capacity": {
+        "en": "A standing or unnumbered block needs a capacity.",
+        "fr": "Un bloc debout ou non numéroté doit avoir une capacité.",
+        "nl": "Een blok staanplaatsen of vrije zitplaatsen heeft een capaciteit nodig."
+      },
+      "category": {
+        "en": "Unknown price category.",
+        "fr": "Catégorie de prix inconnue.",
+        "nl": "Onbekende prijscategorie."
+      },
+      "chainBlock": {
+        "en": "A chain can only hold numbered blocks of this layout.",
+        "fr": "Une chaîne ne peut contenir que des blocs numérotés de ce plan.",
+        "nl": "Een keten kan alleen genummerde blokken van dit plan bevatten."
+      },
+      "chainedTwice": {
+        "en": "A block can be in one chain only.",
+        "fr": "Un bloc ne peut être que dans une seule chaîne.",
+        "nl": "Een blok kan maar in één keten zitten."
+      },
+      "color": {
+        "en": "Colours are #rrggbb.",
+        "fr": "Les couleurs sont au format #rrggbb.",
+        "nl": "Kleuren zijn #rrggbb."
+      },
+      "companion": {
+        "en": "A companion seat must sit in the same row as its wheelchair space.",
+        "fr": "Un siège accompagnateur doit être dans le même rang que son emplacement fauteuil roulant.",
+        "nl": "Een begeleidersstoel moet in dezelfde rij staan als zijn rolstoelplaats."
+      },
+      "empty": {
+        "en": "The layout has no blocks.",
+        "fr": "Le plan n'a aucun bloc.",
+        "nl": "Het zaalplan heeft geen blokken."
+      },
+      "emptyChain": {
+        "en": "The chain has no blocks.",
+        "fr": "La chaîne n'a aucun bloc.",
+        "nl": "De keten heeft geen blokken."
+      },
+      "emptyRow": {
+        "en": "The row has no seats.",
+        "fr": "Le rang n'a aucun siège.",
+        "nl": "De rij heeft geen stoelen."
+      },
+      "key": {
+        "en": "Keys must be unique and use letters, digits, _ . - only.",
+        "fr": "Les clés doivent être uniques et n’utiliser que lettres, chiffres, _ . -.",
+        "nl": "Sleutels moeten uniek zijn en enkel letters, cijfers, _ . - bevatten."
+      },
+      "label": {
+        "en": "A label is required (at most 32 characters).",
+        "fr": "Un libellé est requis (32 caractères au plus).",
+        "nl": "Een label is verplicht (hoogstens 32 tekens)."
+      },
+      "name": {
+        "en": "A name is required (at most 120 characters).",
+        "fr": "Un nom est requis (120 caractères au plus).",
+        "nl": "Een naam is verplicht (hoogstens 120 tekens)."
+      },
+      "noRows": {
+        "en": "A numbered block needs rows of seats.",
+        "fr": "Un bloc numéroté doit avoir des rangs de sièges.",
+        "nl": "Een genummerd blok heeft rijen stoelen nodig."
+      },
+      "polygon": {
+        "en": "A shape needs at least three points.",
+        "fr": "Une forme doit avoir au moins trois points.",
+        "nl": "Een vorm heeft minstens drie punten nodig."
+      },
+      "position": {
+        "en": "The seat has no valid position.",
+        "fr": "Le siège n'a pas de position valide.",
+        "nl": "De stoel heeft geen geldige positie."
+      },
+      "rowsInUnnumbered": {
+        "en": "Only a numbered block has rows.",
+        "fr": "Seul un bloc numéroté a des rangs.",
+        "nl": "Alleen een genummerd blok heeft rijen."
+      },
+      "size": {
+        "en": "The plan size is invalid.",
+        "fr": "La taille du plan est invalide.",
+        "nl": "De grootte van het plan is ongeldig."
+      },
+      "tags": {
+        "en": "Unknown seat tag.",
+        "fr": "Étiquette de siège inconnue.",
+        "nl": "Onbekende stoeltag."
+      },
+      "tooManyBlocks": {
+        "en": "The layout has too many blocks.",
+        "fr": "Le plan a trop de blocs.",
+        "nl": "Het zaalplan heeft te veel blokken."
+      },
+      "tooManySeats": {
+        "en": "The layout has too many seats.",
+        "fr": "Le plan a trop de sièges.",
+        "nl": "Het zaalplan heeft te veel stoelen."
+      }
+    },
+    "publish": {
+      "pending": {
+        "en": "A publication of this layout is already waiting for approval.",
+        "fr": "Une publication de ce plan attend déjà une approbation.",
+        "nl": "Een publicatie van dit zaalplan wacht al op goedkeuring."
+      }
+    },
+    "review": {
+      "added": {
+        "en": "Seats added",
+        "fr": "Sièges ajoutés",
+        "nl": "Stoelen toegevoegd"
+      },
+      "blocks": {
+        "en": "Blocks changed",
+        "fr": "Blocs modifiés",
+        "nl": "Blokken gewijzigd"
+      },
+      "canvas": {
+        "en": "The proposed layout, with changed seats outlined",
+        "fr": "Le plan proposé, sièges modifiés entourés",
+        "nl": "Het voorgestelde zaalplan, gewijzigde stoelen omcirkeld"
+      },
+      "chains": {
+        "en": "Chains changed",
+        "fr": "Chaînes modifiées",
+        "nl": "Ketens gewijzigd"
+      },
+      "changed": {
+        "en": "Seats retagged or relabelled",
+        "fr": "Sièges réétiquetés ou renommés",
+        "nl": "Stoelen hertagd of hernoemd"
+      },
+      "moved": {
+        "en": "Seats moved",
+        "fr": "Sièges déplacés",
+        "nl": "Stoelen verplaatst"
+      },
+      "removed": {
+        "en": "Seats removed",
+        "fr": "Sièges supprimés",
+        "nl": "Stoelen verwijderd"
+      }
+    },
+    "shape": {
+      "angled": {
+        "en": "Angled",
+        "fr": "En angle",
+        "nl": "Hoekig"
+      },
+      "curved": {
+        "en": "Curved",
+        "fr": "Courbe",
+        "nl": "Gebogen"
+      },
+      "straight": {
+        "en": "Straight",
+        "fr": "Droit",
+        "nl": "Recht"
+      }
+    },
+    "state": {
+      "free": {
+        "en": "Free",
+        "fr": "Libre",
+        "nl": "Vrij"
+      },
+      "held": {
+        "en": "Being booked",
+        "fr": "En cours de réservation",
+        "nl": "Wordt geboekt"
+      },
+      "selected": {
+        "en": "Your choice",
+        "fr": "Votre choix",
+        "nl": "Uw keuze"
+      },
+      "sold": {
+        "en": "Sold",
+        "fr": "Vendu",
+        "nl": "Verkocht"
+      }
+    },
+    "tag": {
+      "accessible": {
+        "en": "Wheelchair space",
+        "fr": "Emplacement fauteuil roulant",
+        "nl": "Rolstoelplaats"
+      },
+      "companion": {
+        "en": "Companion seat",
+        "fr": "Siège accompagnateur",
+        "nl": "Begeleidersstoel"
+      },
+      "restrictedView": {
+        "en": "Restricted view",
+        "fr": "Visibilité réduite",
+        "nl": "Beperkt zicht"
+      }
+    }
+  },
+  "queries": {
+    "Venues": {
+      "label": {
+        "en": "Venues",
+        "fr": "Lieux",
+        "nl": "Locaties"
+      }
+    },
+    "VenueLayouts": {
+      "label": {
+        "en": "Seating layouts",
+        "fr": "Plans de salle",
+        "nl": "Zaalplannen"
+      }
+    }
+  },
+  "model": {
+    "Venue": {
+      "label": {
+        "en": "Venue",
+        "fr": "Lieu",
+        "nl": "Locatie"
+      },
+      "attributes": {
+        "Name": {
+          "label": {
+            "en": "Name",
+            "fr": "Nom",
+            "nl": "Naam"
+          }
+        },
+        "Address": {
+          "label": {
+            "en": "Address",
+            "fr": "Adresse",
+            "nl": "Adres"
+          }
+        },
+        "Description": {
+          "label": {
+            "en": "Description",
+            "fr": "Description",
+            "nl": "Beschrijving"
+          }
+        },
+        "TimeZone": {
+          "label": {
+            "en": "Time zone",
+            "fr": "Fuseau horaire",
+            "nl": "Tijdzone"
+          }
+        },
+        "CreatedBy": {
+          "label": {
+            "en": "Proposed by",
+            "fr": "Proposé par",
+            "nl": "Voorgesteld door"
+          }
+        },
+        "CreatedAtUtc": {
+          "label": {
+            "en": "Created",
+            "fr": "Créé",
+            "nl": "Aangemaakt"
+          }
+        }
+      }
+    },
+    "VenueLayout": {
+      "label": {
+        "en": "Seating layout",
+        "fr": "Plan de salle",
+        "nl": "Zaalplan"
+      },
+      "attributes": {
+        "Name": {
+          "label": {
+            "en": "Name",
+            "fr": "Nom",
+            "nl": "Naam"
+          }
+        },
+        "VenueId": {
+          "label": {
+            "en": "Venue",
+            "fr": "Lieu",
+            "nl": "Locatie"
+          }
+        },
+        "State": {
+          "label": {
+            "en": "State",
+            "fr": "État",
+            "nl": "Status"
+          }
+        },
+        "PublishedVersion": {
+          "label": {
+            "en": "Published version",
+            "fr": "Version publiée",
+            "nl": "Gepubliceerde versie"
+          }
+        },
+        "SeatCount": {
+          "label": {
+            "en": "Numbered seats",
+            "fr": "Places numérotées",
+            "nl": "Genummerde plaatsen"
+          }
+        },
+        "UnnumberedCapacity": {
+          "label": {
+            "en": "Standing and free seating",
+            "fr": "Debout et placement libre",
+            "nl": "Staan- en vrije zitplaatsen"
+          }
+        },
+        "BlockCount": {
+          "label": {
+            "en": "Blocks",
+            "fr": "Blocs",
+            "nl": "Blokken"
+          }
+        },
+        "OwnerId": {
+          "label": {
+            "en": "Owner",
+            "fr": "Propriétaire",
+            "nl": "Eigenaar"
+          }
+        },
+        "CopiedFromId": {
+          "label": {
+            "en": "Copied from",
+            "fr": "Copié de",
+            "nl": "Gekopieerd van"
+          }
+        },
+        "LastRejection": {
+          "label": {
+            "en": "Last rejection",
+            "fr": "Dernier refus",
+            "nl": "Laatste weigering"
+          }
+        },
+        "UpdatedAtUtc": {
+          "label": {
+            "en": "Updated",
+            "fr": "Mis à jour",
+            "nl": "Bijgewerkt"
+          }
+        }
+      }
+    },
+    "VenueAddress": {
+      "label": {
+        "en": "Address",
+        "fr": "Adresse",
+        "nl": "Adres"
+      }
+    }
+  }
+}

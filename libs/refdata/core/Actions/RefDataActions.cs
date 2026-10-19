@@ -13,27 +13,8 @@ namespace MintPlayer.Spark.ReferenceData.Actions;
 
 // The admin pages (PRD §4.16, plan R4 "Admin pages through the generic Spark UI"): one query per reference type. The
 // types are read-only (no New/Edit/Delete right ships in App_Data/security.json): imports and the seed write them.
-
-public partial class RefCountryActions : DefaultPersistentObjectActions<RefCountry>
-{
-    [Inject] private readonly IAsyncDocumentSession session;
-
-    public IRavenQueryable<RefCountry> RefCountries() => session.Query<RefCountry>();
-}
-
-public partial class RefPlaceActions : DefaultPersistentObjectActions<RefPlace>
-{
-    [Inject] private readonly IAsyncDocumentSession session;
-
-    public IRavenQueryable<RefPlace> RefPlaces() => session.Query<RefPlace>();
-}
-
-public partial class RefPostalCodeActions : DefaultPersistentObjectActions<RefPostalCode>
-{
-    [Inject] private readonly IAsyncDocumentSession session;
-
-    public IRavenQueryable<RefPostalCode> RefPostalCodes() => session.Query<RefPostalCode>();
-}
+// Countries, places and postal codes are declared by MintPlayer.Spark.ReferenceData.Client's layer (the consumer's
+// read-only local copies, plan R10), which this package references, so a host never composes them twice.
 
 public partial class RefStreetActions : DefaultPersistentObjectActions<RefStreet>
 {
@@ -57,7 +38,7 @@ public partial class RefImportRunActions : DefaultPersistentObjectActions<RefImp
 }
 
 /// <summary>
-/// "Import now" (PRD §4.5 step 3): queues the same message a changed source queues. The run fetches every registered
+/// "Import now" (PRD §4.5 step 3): queues the same message a changed source queues. The run fetches every enabled
 /// source's current version; a run of unchanged versions writes nothing (RS2).
 /// </summary>
 internal sealed partial class RefDataImportNowAction : ICustomAction

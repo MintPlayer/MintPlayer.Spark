@@ -30,6 +30,12 @@ public sealed class RefDataBuild(RefLedger ledger)
     /// <summary>The valid IANA zone ids (tzdata <c>zone.tab</c>), when a source supplied them; assignments are checked against it.</summary>
     public HashSet<string> KnownTimeZones { get; } = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// The countries a registered country adapter owns (<see cref="IReferenceDataMapper.IsCountryAdapter"/>), whether or
+    /// not its input is part of this build: the global baseline writes no profile or units for them.
+    /// </summary>
+    public HashSet<string> AdapterCountries { get; } = new(StringComparer.OrdinalIgnoreCase);
+
     public RefPlace Place(string id) => GetOrAdd(Places, id, () => new RefPlace { Id = id, Country = RefIds.CountryOf(id) ?? string.Empty });
 
     public RefPostalCode PostalCode(string id, string country, string code)
@@ -55,7 +61,7 @@ public sealed class RefDataBuild(RefLedger ledger)
             Sha256 = input.Sha256,
             Licence = licence.Licence,
             LicenceUrl = licence.LicenceUrl,
-            Attribution = licence.Attribution,
+            Attribution = input.Attribution ?? licence.Attribution,
         };
 
     /// <summary>Every document of the build (for the release writer and the importer).</summary>

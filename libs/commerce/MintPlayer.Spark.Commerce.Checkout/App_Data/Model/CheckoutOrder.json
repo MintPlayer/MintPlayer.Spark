@@ -1,0 +1,182 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "CheckoutOrder, an order (docs/commerce_PRD.md §4.4). Written by checkout only (ordinary sessions); read-only here:",
+    "the buyer sees their own, a seller's Owners/Admins/finance/box-office members the seller's, the platform organization",
+    "every one (OrderAccess). Lines, payments, acceptances (GA2), the age attestation (GB12) and the decision log stay on the",
+    "document; the buyer's view is GET /spark/commerce/checkout/order.",
+    "",
+    "HAND-AUTHORED. Ids are UUIDv5 of 'commerce-checkout:CheckoutOrder[...]', written by 'npm run stamp:library-model-ids'."
+  ],
+  "persistentObject": {
+    "id": "a00d70d4-3a16-5e0a-9f43-ca9ae5a0e38d",
+    "name": "CheckoutOrder",
+    "clrType": "MintPlayer.Spark.Commerce.Checkout.Models.CheckoutOrder",
+    "alias": "checkout-order",
+    "breadcrumb": "{Number} {State}",
+    "live": true,
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "e6a356cf-93a5-591e-a7ba-f283179390da",
+        "name": "Number",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "0578c565-8410-526a-977e-57bd4c47c59f",
+        "name": "State",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "6e466377-b3d6-53ab-b682-ee8836ffa114",
+        "name": "Origin",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "db820ab7-faaa-5540-8a68-916701042a7e",
+        "name": "Total",
+        "dataType": "Money",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "b34c5a18-e862-5385-ada8-48bb178b30ab",
+        "name": "AmountRefunded",
+        "dataType": "Money",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "6aeefa15-33e8-550b-9950-78db67235226",
+        "name": "BuyerEmail",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "24014a22-77ef-5bd8-ab1e-b124e8f83569",
+        "name": "BuyerName",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "f2e0248d-c8ec-588e-b371-b523f76169fe",
+        "name": "GuestList",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "e2fe1aed-9780-5c22-a17e-63df2d6f9cf2",
+        "name": "ExcludedFromRevenue",
+        "dataType": "boolean",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 9,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "322dd008-e260-5687-886a-2bfebb06565f",
+        "name": "MixedSellers",
+        "dataType": "boolean",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 10,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "d5ff38c6-eda1-5e80-bca9-664c5bc94be7",
+        "name": "CreatedAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 11,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "9e36bab4-f6de-5aff-b526-549c8e895f6d",
+        "name": "ConfirmedAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 12,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "50fc6204-2015-5d4c-a4b4-d6f0c181da18",
+        "name": "PaymentPendingUntil",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 13,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      }
+    ]
+  },
+  "queries": [
+    {
+      "id": "7f0938ca-a52d-5839-8b64-1672a72a03e3",
+      "name": "CheckoutOrders",
+      "source": "Custom.CheckoutOrders",
+      "alias": "checkout-orders",
+      "sortColumns": [
+        {
+          "property": "CreatedAt",
+          "direction": "desc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "CheckoutOrder"
+    }
+  ]
+}

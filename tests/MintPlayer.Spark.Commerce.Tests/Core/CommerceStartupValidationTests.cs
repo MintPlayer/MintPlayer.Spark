@@ -57,13 +57,30 @@ public class CommerceStartupValidationTests
         result.Warnings.Should().Contain(w => w.Contains("PerBuyerLimit"));
     }
 
+    /// <summary>D41 (owner, 2026-10-19): "Allow via split, opt-in".</summary>
     [Fact]
-    public void Mixing_sellers_with_a_provider_that_cannot_split_is_refused()
+    public void Mixing_sellers_needs_the_merchant_of_record_opt_in_and_a_provider_that_splits()
     {
-        var options = Options(o => { o.Merchant = MerchantMode.ConnectedSellers; o.Basket.MixSellers = true; });
+        var optedIn = Options(o => { o.Merchant = MerchantMode.ConnectedSellers; o.Basket.MixSellers = true; o.Basket.AcknowledgeSplitMerchantOfRecord = true; });
+        var notOptedIn = Options(o => { o.Merchant = MerchantMode.ConnectedSellers; o.Basket.MixSellers = true; });
 
-        Evaluate(options, [new TestProvider("mollie", true), new TestProvider("test", false)]).Errors.Should().ContainSingle();
-        Evaluate(options, [new TestProvider("stripe", true)]).Errors.Should().BeEmpty();
+        Evaluate(optedIn, [new TestProvider("stripe", true)]).Errors.Should().BeEmpty();
+        // One split-capable provider is enough; the other's methods are never offered to a mixed basket (warned).
+        var mixed = Evaluate(optedIn, [new TestProvider("mollie", true), new TestProvider("test", false)]);
+        mixed.Errors.Should().BeEmpty();
+        mixed.Warnings.Should().Contain(w => w.Contains("'test' cannot split"));
+        Evaluate(optedIn, [new TestProvider("test", false)]).Errors.Should().ContainSingle(e => e.Contains("none of the payment providers"));
+
+        Evaluate(notOptedIn, [new TestProvider("stripe", true)]).Errors.Should().ContainSingle(e => e.Contains("AcknowledgeSplitMerchantOfRecord"));
+        Evaluate(notOptedIn, [new TestProvider("test", false)]).Errors.Should().HaveCount(2);
+    }
+
+    [Fact]
+    public void Mixing_sellers_is_off_by_default()
+    {
+        var defaults = new SparkCommerceOptions();
+        defaults.Basket.MixSellers.Should().BeFalse();
+        defaults.Basket.AcknowledgeSplitMerchantOfRecord.Should().BeFalse();
     }
 
     [Theory]

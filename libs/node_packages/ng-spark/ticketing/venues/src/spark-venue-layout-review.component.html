@@ -1,0 +1,19 @@
+<section class="spark-layout-review">
+  @if (plan(); as p) {
+    <h2 class="h5">{{ p.name }}</h2>
+  }
+  @if (diff(); as d) {
+    <dl class="spark-layout-review-counts">
+      <div><dt>{{ 'ticketingVenues.review.added' | t }}</dt><dd>{{ d.addedCount }}</dd></div>
+      <div><dt>{{ 'ticketingVenues.review.removed' | t }}</dt><dd>{{ d.removedCount }}</dd></div>
+      <div><dt>{{ 'ticketingVenues.review.moved' | t }}</dt><dd>{{ d.movedCount }}</dd></div>
+      <div><dt>{{ 'ticketingVenues.review.changed' | t }}</dt><dd>{{ d.changedCount }}</dd></div>
+      <div><dt>{{ 'ticketingVenues.review.blocks' | t }}</dt><dd>{{ d.changedBlocks.join(', ') || '—' }}</dd></div>
+      <div><dt>{{ 'ticketingVenues.review.chains' | t }}</dt><dd>{{ d.changedChains.join(', ') || '—' }}</dd></div>
+    </dl>
+  }
+  @if (failed()) {
+    <p role="alert">{{ 'ticketingVenues.map.unavailable' | t }}</p>
+  }
+  <canvas #canvas class="spark-layout-review-canvas" tabindex="0" role="img" [attr.aria-label]="'ticketingVenues.review.canvas' | t"></canvas>
+</section>

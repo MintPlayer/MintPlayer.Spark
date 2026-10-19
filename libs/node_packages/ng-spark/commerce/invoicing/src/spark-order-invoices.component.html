@@ -1,0 +1,20 @@
+@if (documents(); as list) {
+  <section class="spark-order-invoices">
+    <h3>{{ 'commerceInvoicing.documents' | t }}</h3>
+    @if (list.length === 0) {
+      <p class="spark-order-invoices-empty">{{ 'commerceInvoicing.noDocuments' | t }}</p>
+    } @else {
+      <ul>
+        @for (document of list; track document.id) {
+          <li [attr.data-kind]="document.kind">
+            <span class="spark-order-invoices-kind">{{ kindKey(document.kind) | t }}</span>
+            <span class="spark-order-invoices-number">{{ document.number }}</span>
+            <span class="spark-order-invoices-date">{{ document.issueDate }}</span>
+            <span class="spark-order-invoices-total">{{ amount(document) }}</span>
+            <a [href]="document.pdfUrl" target="_blank" rel="noopener">{{ 'commerceInvoicing.download' | t }}</a>
+          </li>
+        }
+      </ul>
+    }
+  </section>
+}

@@ -49,8 +49,15 @@ rights and no anonymous rights: the public contract is `/api/v1`, never `/spark`
 }
 ```
 
-A source runs on a schedule only when `Enabled` (full imports are manual local runs, RD2). A configured source id that
-no adapter registers refuses startup; so does `Sign: true` without an `IReleaseSigner` (spike RS17 picks Ed25519).
+A source is scheduled **and imported** only when `Enabled` (full imports are manual local runs, RD2): an instance can
+register every adapter and import a few countries, and "Import now" imports the enabled sources only. A configured
+source id that no adapter registers refuses startup; so does `Sign: true` without a valid `SigningKey`.
+
+**Signing (RD-DEF 5, RS17).** Ed25519 over `manifest.json`, written as `manifest.sig` (`ed25519 {base64}`), with
+BouncyCastle.Cryptography (MIT, managed; .NET 11 has no standalone Ed25519). The private key is a secret: create one
+with `dotnet run -- --refdata-generate-signing-key <file>` (it writes the key to the file and prints only the public
+key), put it in user-secrets as `Spark:ReferenceData:Releases:SigningKey`, delete the file, and give consumers the
+public key. The committed seed release is unsigned.
 
 ---
 
@@ -65,13 +72,19 @@ no adapter registers refuses startup; so does `Sign: true` without an `IReleaseS
 5. **Build:** every mapper maps its sources; every id goes through the **ledger**. A conflict refuses the whole run,
    nothing written (§4.3, RS3).
 6. **Derive:** lineage edges, lifetimes, segments cut at every ancestor change, integer date keys, search keys, rank, hash.
-7. **Write:** a document whose `Hash` matches is skipped (a rerun writes nothing, RS2); a changed one gets the new
-   release stamp. A stored document the sources no longer list is kept and counted (retire, never delete); a run that
-   would leave more than `Releases:MaxRetiredShare` of a collection absent is refused as a broken download.
-8. **Release:** a run that changed anything writes a release (`{yyyy}.{MM}.{n}`) under `Releases:Directory`.
+7. **Write:** a still-empty collection is loaded through BulkInsert (explicit ids, `SkipOverwriteIfUnchanged`); after
+   that a document whose `Hash` matches is skipped (a rerun writes nothing, RS2) and a changed one gets the new release
+   stamp, in chunks. A stored document of the run's countries that the sources no longer list is kept and counted
+   (retire, never delete); a run that would leave more than `Releases:MaxRetiredShare` of a collection absent is refused
+   as a broken download.
+8. **Release:** a run that changed anything writes a release (`{yyyy}.{MM}.{n}`) of the instance's **whole** state under
+   `Releases:Directory`, with deltas from the last `Releases:DeltaDepth` releases and, when signing is on, `manifest.sig`;
+   `refdata/state` is written last, so `/api/v1/releases/latest` and the ETags move only then.
 
-Not built yet: resuming from a partition cursor (a run is idempotent and reruns whole), BulkInsert for the first load,
-deltas, and signing.
+**Resuming.** The run is a checkpointed recipient. Downloads go to `Import:WorkDirectory/{run}` with a marker per
+source, and the write pass saves its chunk cursor. After a restart or a failure the queue retries the message with the
+checkpoint: the same run document (`Resumed` counts it), the files already fetched, the same release id, and the chunks
+after the cursor. The build is deterministic and recomputed in memory. The work folder is deleted when the run ends.
 
 ---
 
@@ -129,9 +142,15 @@ is a 304 without a query. Caps: `q` 1–64 folded characters, at most 5 words, t
 ## Release format (schema version 1)
 
 ```
-{release}/{cc}/{Collection}.ndjson     one canonical document per line, sorted by id (ordinal)
-{release}/manifest.json                schema version, release, previous, builder, KeyVersion, sources, files
+{release}/{cc}/{Collection}.ndjson                 one canonical document per line, sorted by id (ordinal)
+{release}/deltas/{from}/{cc}/{Collection}.ndjson   every document whose Hash changed since {from}
+{release}/manifest.json                            schema version, release, previous, builder, KeyVersion, sources, files, deltas
+{release}/manifest.sig                             optional: "ed25519 {base64 signature of manifest.json}"
 ```
+
+`dotnet run -- --refdata-verify-release <directory>` reads a release as a consumer would (hashes, counts, digests, every
+document's own hash, every delta, and the signature when `Spark:ReferenceData:Client:PublicKey` is set) and exits 3 on
+a refusal. No database is needed.
 
 - Canonical bytes: UTF-8 without BOM, LF, properties sorted by ordinal name at every level, every property written,
   strings NFC, dates `yyyy-MM-dd`, set-like arrays sorted by the builder, `@metadata` with only `@collection` and

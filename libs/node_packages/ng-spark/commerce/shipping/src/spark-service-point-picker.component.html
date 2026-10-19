@@ -1,0 +1,28 @@
+<section class="spark-service-point-picker" [attr.aria-busy]="points() === null">
+  <p class="spark-service-point-picker-title">{{ 'commerceShipping.pickServicePoint' | t }}</p>
+  @if (error()) {
+    <p class="spark-service-point-picker-error" role="alert">{{ 'commerceShipping.servicePointsFailed' | t }}</p>
+  }
+  @if (points(); as list) {
+    @if (list.length === 0 && !error()) {
+      <p class="spark-service-point-picker-empty" role="status">{{ 'commerceShipping.noServicePoints' | t }}</p>
+    }
+    <ul class="spark-service-point-picker-list" role="radiogroup">
+      @for (point of list; track point.id) {
+        <li class="spark-service-point-picker-item" [class.selected]="selected()?.id === point.id" [attr.data-kind]="point.kind">
+          <label>
+            <input type="radio" name="spark-service-point" [value]="point.id" [checked]="selected()?.id === point.id" (change)="pick(point)" />
+            <span class="spark-service-point-picker-name">{{ point.name }}</span>
+            <span class="spark-service-point-picker-kind">{{ kindKey(point) | t }}</span>
+            <span class="spark-service-point-picker-address">
+              {{ point.address.street }} {{ point.address.houseNumber }}, {{ point.address.postalCode }} {{ point.address.city }}
+            </span>
+            @if (distance(point.distanceMetres); as d) {
+              <span class="spark-service-point-picker-distance">{{ d }}</span>
+            }
+          </label>
+        </li>
+      }
+    </ul>
+  }
+</section>

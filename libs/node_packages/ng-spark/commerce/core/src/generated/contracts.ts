@@ -95,7 +95,7 @@ export interface CommerceSellerProfileView {
   dac7: CommerceDac7View;
   traderVerified: boolean;
   kyc: string;
-  payoutsBlocked: boolean;
+  salesBlocked: boolean;
   missing: string[];
   sellGateReasons: string[];
 }

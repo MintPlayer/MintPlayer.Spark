@@ -1,0 +1,14 @@
+{
+  "$schema": "../../../../schemas/security.schema.json",
+  "_comment": [
+    "The checkout package's rights, shipped as a library layer (docs/commerce_PRD.md §4.4). They name only its own type",
+    "and only @authenticated: no slot, so no application has to bind anything. Every row is narrowed by OrderAccess (the",
+    "buyer's own orders; a seller's Owners, Admins, finance and box-office members the seller's; the platform organization's",
+    "every one), so the right alone shows nothing. Orders are written by checkout only: only QueryRead and Read are granted.",
+    "The basket and the back-office actions are endpoints (/spark/commerce/checkout/*) with their own checks.",
+    "Opt out of all of these with \"libraries\": { \"commerce-checkout\": false }."
+  ],
+  "rights": [
+    { "key": "orders", "resource": "QueryRead/CheckoutOrder", "groupId": "@authenticated" }
+  ]
+}

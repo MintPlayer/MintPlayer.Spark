@@ -1,0 +1,22 @@
+@if (offer(); as current) {
+  <section class="spark-challenge" [attr.aria-busy]="state() === 'working'">
+    <h2 class="spark-challenge-title">{{ 'challenges.title' | t }}</h2>
+    @if (current.consentFallback) {
+      <p class="spark-challenge-note">{{ 'challenges.consentFallback' | t }}</p>
+    }
+    <!-- Polite: the visitor is told what happens without being interrupted (WCAG 4.1.3 status messages). -->
+    <p class="spark-challenge-status" role="status" aria-live="polite">
+      @switch (state()) {
+        @case ('working') { @if (current.provider === 'altcha') { {{ 'challenges.working' | t }} } }
+        @case ('done') { {{ 'challenges.done' | t }} }
+        @case ('failed') { {{ 'challenges.failed' | t }} }
+      }
+    </p>
+    @if (current.provider !== 'altcha') {
+      <div #widget class="spark-challenge-widget"></div>
+    }
+    @if (state() === 'failed') {
+      <button type="button" class="spark-challenge-retry" (click)="retry()">{{ 'challenges.retry' | t }}</button>
+    }
+  </section>
+}

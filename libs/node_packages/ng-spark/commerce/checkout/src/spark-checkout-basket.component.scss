@@ -1,0 +1,66 @@
+:host {
+  display: block;
+}
+
+.spark-checkout-refusal {
+  color: var(--bs-danger, #dc3545);
+}
+
+.spark-checkout-basket-pending {
+  margin-bottom: 1rem;
+}
+
+.spark-checkout-basket-countdown {
+  font-weight: 600;
+}
+
+.spark-checkout-basket-lines {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+}
+
+.spark-checkout-basket-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--bs-border-color, #dee2e6);
+}
+
+.spark-checkout-basket-addon {
+  padding-left: 1.5rem;
+}
+
+.spark-checkout-basket-line-main {
+  display: flex;
+  flex: 1 1 12rem;
+  flex-direction: column;
+}
+
+.spark-checkout-basket-hold-lapsed {
+  color: var(--bs-danger, #dc3545);
+}
+
+.spark-checkout-basket-quantity {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.spark-checkout-basket-quantity-value {
+  min-width: 2ch;
+  text-align: center;
+}
+
+.spark-checkout-basket-line-total {
+  min-width: 6rem;
+  text-align: right;
+}
+
+.spark-checkout-basket-total {
+  display: flex;
+  justify-content: space-between;
+  font-size: 1.125rem;
+}

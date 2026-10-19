@@ -1,0 +1,169 @@
+{
+  "$schema": "../../../../schemas/translations.schema.json",
+  "referenceData": {
+    "address": {
+      "country": { "en": "Country", "fr": "Pays", "nl": "Land", "de": "Land" },
+      "locality": { "en": "Postal code or place", "fr": "Code postal ou localité", "nl": "Postcode of plaats", "de": "Postleitzahl oder Ort" },
+      "street": { "en": "Street", "fr": "Rue", "nl": "Straat", "de": "Straße" },
+      "postalCode": { "en": "Postal code", "fr": "Code postal", "nl": "Postcode", "de": "Postleitzahl" },
+      "place": { "en": "Place", "fr": "Localité", "nl": "Plaats", "de": "Ort" },
+      "houseNumber": { "en": "House number", "fr": "Numéro", "nl": "Huisnummer", "de": "Hausnummer" },
+      "box": { "en": "Box", "fr": "Boîte", "nl": "Bus", "de": "Briefkasten" },
+      "notListed": { "en": "My address is not listed (free text)", "fr": "Mon adresse ne figure pas dans la liste (texte libre)", "nl": "Mijn adres staat er niet tussen (vrije tekst)", "de": "Meine Adresse ist nicht aufgeführt (Freitext)" },
+      "unverified": { "en": "unverified", "fr": "non vérifiée", "nl": "niet geverifieerd", "de": "nicht geprüft" },
+      "ended": { "en": "ended", "fr": "disparue", "nl": "opgeheven", "de": "aufgelöst" },
+      "loading": { "en": "Searching…", "fr": "Recherche…", "nl": "Zoeken…", "de": "Suche…" },
+      "noSuggestions": { "en": "No match: type the address as free text", "fr": "Aucun résultat : saisissez l'adresse en texte libre", "nl": "Geen resultaat: typ het adres als vrije tekst", "de": "Kein Treffer: Adresse als Freitext eingeben" }
+    }
+  },
+  "queries": {
+    "RefCountries": {
+      "label": {
+        "en": "Countries",
+        "fr": "Pays",
+        "nl": "Landen"
+      }
+    },
+    "RefPlaces": {
+      "label": {
+        "en": "Places",
+        "fr": "Lieux",
+        "nl": "Plaatsen"
+      }
+    },
+    "RefPostalCodes": {
+      "label": {
+        "en": "Postal codes",
+        "fr": "Codes postaux",
+        "nl": "Postcodes"
+      }
+    }
+  },
+  "model": {
+    "RefCountry": {
+      "label": {
+        "en": "Country",
+        "fr": "Pays",
+        "nl": "Land"
+      },
+      "attributes": {
+        "Code": {
+          "label": {
+            "en": "Code",
+            "fr": "Code",
+            "nl": "Code"
+          }
+        },
+        "Alpha3": {
+          "label": {
+            "en": "Alpha-3",
+            "fr": "Alpha-3",
+            "nl": "Alfa-3"
+          }
+        },
+        "Numeric": {
+          "label": {
+            "en": "Numeric",
+            "fr": "Numérique",
+            "nl": "Numeriek"
+          }
+        },
+        "Place": {
+          "label": {
+            "en": "Place",
+            "fr": "Lieu",
+            "nl": "Plaats"
+          }
+        },
+        "Hash": {
+          "label": {
+            "en": "Hash",
+            "fr": "Empreinte",
+            "nl": "Hash"
+          }
+        }
+      }
+    },
+    "RefPlace": {
+      "label": {
+        "en": "Place",
+        "fr": "Lieu",
+        "nl": "Plaats"
+      },
+      "attributes": {
+        "Names": {
+          "label": {
+            "en": "Names",
+            "fr": "Noms",
+            "nl": "Namen"
+          }
+        },
+        "Country": {
+          "label": {
+            "en": "Country",
+            "fr": "Pays",
+            "nl": "Land"
+          }
+        },
+        "TimeZone": {
+          "label": {
+            "en": "Time zone",
+            "fr": "Fuseau horaire",
+            "nl": "Tijdzone"
+          }
+        },
+        "Rank": {
+          "label": {
+            "en": "Rank",
+            "fr": "Rang",
+            "nl": "Rang"
+          }
+        },
+        "LineageUnresolved": {
+          "label": {
+            "en": "Lineage unresolved",
+            "fr": "Filiation non résolue",
+            "nl": "Herkomst onopgelost"
+          }
+        },
+        "Hash": {
+          "label": {
+            "en": "Hash",
+            "fr": "Empreinte",
+            "nl": "Hash"
+          }
+        }
+      }
+    },
+    "RefPostalCode": {
+      "label": {
+        "en": "Postal code",
+        "fr": "Code postal",
+        "nl": "Postcode"
+      },
+      "attributes": {
+        "Code": {
+          "label": {
+            "en": "Code",
+            "fr": "Code",
+            "nl": "Code"
+          }
+        },
+        "Country": {
+          "label": {
+            "en": "Country",
+            "fr": "Pays",
+            "nl": "Land"
+          }
+        },
+        "Hash": {
+          "label": {
+            "en": "Hash",
+            "fr": "Empreinte",
+            "nl": "Hash"
+          }
+        }
+      }
+    }
+  }
+}

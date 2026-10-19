@@ -71,9 +71,9 @@ See [TranslatedString & i18n](guide-translated-strings.md) for how the per-langu
 
 ## Searchability is not `[Search]`
 
-`[Search]` marks a field for RavenDB's analyzer — it tokenizes the value and gives the field a `*Sort`
-companion so it stays sortable (see
-[Sorting on searchable text](guide-queries-and-sorting.md#sorting-on-searchable-text--why-sort-fields-exist)).
+`[Search]` gives a field an analyzed `{Name}Search` companion that the generated index tokenizes; the field
+itself stays a single un-tokenized term, so it stays sortable and exact-matchable, and only the search path
+reads the companion (`IndexNaming.SearchCompanion`; `QueryExecutor.ApplySearch`).
 It is easy to assume `[Search]` is also what makes a field searchable. **It is not.**
 
 A field with no `[Search]` keeps RavenDB's default indexing, which lower-cases the value but does not tokenize

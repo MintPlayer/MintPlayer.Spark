@@ -273,8 +273,17 @@ public sealed class CommerceBasketOptions
     public bool MixChannels { get; set; }
 
     /// <summary>Whether a basket may hold lines of several sellers in <see cref="MerchantMode.ConnectedSellers"/> mode.
-    /// Refused at startup unless every registered payment provider reports split capability. Default <c>false</c>.</summary>
+    /// Refused at startup unless <see cref="AcknowledgeSplitMerchantOfRecord"/> is set and at least one registered payment
+    /// provider reports split capability (D41). Default <c>false</c>.</summary>
     public bool MixSellers { get; set; }
+
+    /// <summary>
+    /// The host's opt-in to mixed-seller orders (D41). Both split mechanisms (Mollie routing, Stripe separate charges and
+    /// transfers) take the buyer's money into the platform's account first, so the platform is the merchant of record
+    /// for such an order and holds third-party funds for a while, an exception to D5 with licensing and KYC consequences
+    /// for the host (see the commerce guide). Required for <see cref="MixSellers"/>. Default <c>false</c>.
+    /// </summary>
+    public bool AcknowledgeSplitMerchantOfRecord { get; set; }
 
     /// <summary>What a failed <see cref="AllocationMode.OnPayment"/> line does to the order.</summary>
     public BasketLineFailurePolicy OnLineFailure { get; set; } = BasketLineFailurePolicy.RefundLine;
@@ -324,13 +333,14 @@ public sealed class CommerceDac7Options
     /// <summary>The interval between reminders for missing data. Default 14 days.</summary>
     public TimeSpan ReminderInterval { get; set; } = TimeSpan.FromDays(14);
 
-    /// <summary>The reminders sent before payouts are blocked. Default 2: Directive (EU) 2021/514 makes the platform
-    /// close the account or withhold the consideration once a seller has not answered two reminders after the first
-    /// request (Annex V, effective-implementation rules; the minimum 60-day wait is <see cref="MinimumWaitBeforeBlock"/>).
-    /// Confirm the paragraph and the national transposition (D37).</summary>
+    /// <summary>The reminders sent before the seller's sales close (D43: selling is blocked; payouts at the provider are
+    /// not touched). Default 2: Directive (EU) 2021/514 makes the platform close the account or withhold the
+    /// consideration once a seller has not answered two reminders after the first request (Annex V,
+    /// effective-implementation rules; the minimum 60-day wait is <see cref="MinimumWaitBeforeBlock"/>). Confirm the
+    /// paragraph and the national transposition (D37).</summary>
     public int RemindersBeforeBlock { get; set; } = 2;
 
-    /// <summary>The shortest time between the first request and the payout block. Default 60 days (confirm, D37).</summary>
+    /// <summary>The shortest time between the first request and the sales block. Default 60 days (confirm, D37).</summary>
     public TimeSpan MinimumWaitBeforeBlock { get; set; } = TimeSpan.FromDays(60);
 }
 

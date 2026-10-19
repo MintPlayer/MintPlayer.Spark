@@ -5,6 +5,9 @@
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
 		<OutputType>Library</OutputType>
+		<!-- Names this library's App_Data layer (Q-R14): the read-only local copies (countries, places, postal codes) and the
+		     address-input texts. Permanent: it seeds the model ids it ships. -->
+		<SparkLibraryAlias>reference-data-client</SparkLibraryAlias>
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.ReferenceData.Client</PackageId>

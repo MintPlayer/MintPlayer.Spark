@@ -12,7 +12,7 @@ namespace MintPlayer.Spark.ReferenceData;
 /// <c>. , / ( ) &amp;</c> → space);</item>
 /// <item><c>ToLowerInvariant()</c> plus explicit İ/ı → i, ß/ẞ → ss, ς → σ (.NET has no full case folding);</item>
 /// <item>non-Latin text keeps its native key (combining marks are never stripped there: が = か + U+3099). Machine
-/// transliteration for true alphabets waits for RS21 and is not done;</item>
+/// <b>plus</b> a machine Latin key for true alphabets (<see cref="Transliterate"/>, RS21; KeyVersion 2);</item>
 /// <item>fold Latin: NFD, drop marks only after a Latin letter or digit, NFC; map ø, ł, đ/ð, æ, œ, þ; extra keys for
 /// de ä/ö/ü → ae/oe/ue and da/nb/sv å → aa;</item>
 /// <item>tokenize on space, <c>'</c> and <c>-</c>;</item>
@@ -23,7 +23,7 @@ namespace MintPlayer.Spark.ReferenceData;
 /// </summary>
 public static class RefSearchKeys
 {
-    public const int KeyVersion = 1;
+    public const int KeyVersion = 2;
 
     private static readonly HashSet<string> Articles = new(StringComparer.Ordinal)
     {
@@ -102,6 +102,8 @@ public static class RefSearchKeys
                  {
                      lowered.Replace("ä", "ae").Replace("ö", "oe").Replace("ü", "ue"),
                      lowered.Replace("å", "aa").Replace("ø", "oe").Replace("æ", "ae"),
+                     // RS21: a Latin key for true alphabets (Cyrillic, Greek, Armenian, Georgian), never displayed.
+                     Transliterate(lowered),
                  })
         {
             var folded = Fold(variant);
@@ -184,6 +186,67 @@ public static class RefSearchKeys
             });
         }
         return builder.ToString().Normalize(NormalizationForm.FormC);
+    }
+
+    /// <summary>
+    /// Machine transliteration for search keys only (PRD §4.9, Q-R11: never displayed), for true alphabets: Cyrillic
+    /// (BGN/PCGN-style, with the Ukrainian, Belarusian, Serbian and Macedonian letters), Greek (ELOT 743-style, accents
+    /// dropped first), Armenian and Georgian (the national romanizations). Kanji and abjads are left alone.
+    /// <para>
+    /// <b>RS21 (desk, 2026-10-19):</b> own tables, chosen over ICU (P/Invoke differs between Windows' and Linux' ICU builds,
+    /// which RS10 forbids) and AnyAscii (ISC, but a dependency whose tables move with its releases). Ordinal, table-driven,
+    /// so Windows and Linux give the same bytes; pinned in <see cref="KeyVersion"/> 2.
+    /// </para>
+    /// </summary>
+    public static string Transliterate(string lowered)
+    {
+        if (!lowered.Any(c => c is >= 'Ͱ' and <= 'Ͽ' or >= 'Ѐ' and <= 'ӿ' or >= '԰' and <= '֏' or >= 'ა' and <= 'ჿ'))
+            return lowered;
+        // Letter by letter on the composed text, so ї, й, ѓ and ќ keep their own mapping; any other accented letter
+        // (Greek tonos, dialytika) maps through its base letter with the marks dropped.
+        var builder = new StringBuilder(lowered.Length * 2);
+        foreach (var c in lowered.Normalize(NormalizationForm.FormC))
+        {
+            if (TransliterationTable.TryGetValue(c, out var latin))
+            {
+                builder.Append(latin);
+                continue;
+            }
+            var parts = c.ToString().Normalize(NormalizationForm.FormD);
+            if (parts.Length > 1 && TransliterationTable.TryGetValue(parts[0], out var baseLatin)
+                && parts.Skip(1).All(m => CharUnicodeInfo.GetUnicodeCategory(m) == UnicodeCategory.NonSpacingMark))
+                builder.Append(baseLatin);
+            else
+                builder.Append(c);
+        }
+        return builder.ToString().Normalize(NormalizationForm.FormC);
+    }
+
+    private static readonly Dictionary<char, string> TransliterationTable = BuildTransliterationTable();
+
+    private static Dictionary<char, string> BuildTransliterationTable()
+    {
+        var table = new Dictionary<char, string>();
+        void Add(string letters, params string[] latin)
+        {
+            for (var i = 0; i < letters.Length; i++) table[letters[i]] = latin[i];
+        }
+        // Cyrillic (ё maps through е).
+        table['й'] = "y";
+        Add("абвгдежзиклмнопрстуфхцчшщъыьэюя",
+            "a", "b", "v", "g", "d", "e", "zh", "z", "i", "k", "l", "m", "n", "o", "p", "r", "s", "t", "u", "f", "kh", "ts", "ch", "sh", "shch", "", "y", "", "e", "yu", "ya");
+        Add("іїєґўјљњћђџѓќѕ", "i", "yi", "ye", "g", "u", "j", "lj", "nj", "c", "dj", "dz", "gj", "kj", "dz");
+        // Greek (σ after the ς → σ case fold).
+        Add("αβγδεζηθικλμνξοπρστυφχψω",
+            "a", "v", "g", "d", "e", "z", "i", "th", "i", "k", "l", "m", "n", "x", "o", "p", "r", "s", "t", "y", "f", "ch", "ps", "o");
+        // Armenian.
+        Add("աբգդեզէըթժիլխծկհձղճմյնշոչպջռսվտրցւփքօֆ",
+            "a", "b", "g", "d", "e", "z", "e", "y", "t", "zh", "i", "l", "kh", "ts", "k", "h", "dz", "gh", "ch", "m", "y", "n", "sh", "o", "ch", "p", "j", "r", "s", "v", "t", "r", "ts", "w", "p", "k", "o", "f");
+        table['և'] = "ev";
+        // Georgian (Mkhedruli, the 2002 national system without apostrophes).
+        Add("აბგდევზთიკლმნოპჟრსტუფქღყშჩცძწჭხჯჰ",
+            "a", "b", "g", "d", "e", "v", "z", "t", "i", "k", "l", "m", "n", "o", "p", "zh", "r", "s", "t", "u", "p", "k", "gh", "q", "sh", "ch", "ts", "dz", "ts", "ch", "kh", "j", "h");
+        return table;
     }
 
     private static bool IsLatinLetterOrDigit(char c)

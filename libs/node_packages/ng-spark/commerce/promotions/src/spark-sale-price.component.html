@@ -1,0 +1,16 @@
+@if (current(); as d) {
+  <span class="spark-sale-price" [class.on-sale]="announced()">
+    <span class="spark-sale-price-now">{{ price() }}</span>
+    @if (announced()) {
+      @if (was()) {
+        <s class="spark-sale-price-was">{{ was() }}</s>
+      }
+      @if (percent()) {
+        <span class="spark-sale-price-badge">{{ percent() }}</span>
+      }
+      @if (prior()) {
+        <span class="spark-sale-price-prior">{{ prior() }}</span>
+      }
+    }
+  </span>
+}

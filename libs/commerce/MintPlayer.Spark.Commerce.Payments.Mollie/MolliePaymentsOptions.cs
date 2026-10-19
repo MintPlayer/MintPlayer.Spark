@@ -40,6 +40,9 @@ public sealed class MolliePaymentsOptions : ISparkConfigurationSection
     /// Split payments (D40) through Mollie's routing (<c>routing[]</c> on the payment, to connected organizations).
     /// Off by default: it needs Mollie to enable "split payments" on the platform's account, and it must be confirmed
     /// against the host's Mollie contract (D37). On, the card, iDEAL and Bancontact methods report <c>supportsSplit</c>.
+    /// The payment is created on the platform's account, so the platform is the merchant of record for a split order,
+    /// the opt-in exception to D5 (D41): a split is only made when <c>Spark:Commerce:Basket:MixSellers</c> and
+    /// <c>AcknowledgeSplitMerchantOfRecord</c> are on as well.
     /// </summary>
     public bool SplitPayments { get; set; }
 

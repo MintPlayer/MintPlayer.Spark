@@ -83,7 +83,8 @@ A seller is an Organizations organization with a `SellerProfiles/{organizationId
 
 `ISparkSellers.CanSellAsync(organizationId, channel)` is the **open-sale gate**: approved, not suspended, trader status
 declared, trader data verified (traders), KYC verified (connected mode, through `ISellerKycSource` from Payments),
-and the channel's required legal documents published. `CanReceivePayoutsAsync` adds the DAC7 payout block.
+sales not closed for DAC7 (`commerce.seller.dac7Blocked`, D43), and the channel's required legal documents published.
+`CanReceivePayoutsAsync` answers KYC verified and not suspended; the DAC7 block is not a payout reason (D43).
 
 - **Trader traceability (DSA Reg. (EU) 2022/2065 Art. 30).** Name, address, phone, e-mail, identity document
   (attachment, downloadable only with `ViewTraderData/Commerce`, every download audited), payment account, trade
@@ -99,7 +100,10 @@ and the channel's required legal documents published. `CanReceivePayoutsAsync` a
   `AcknowledgeP2BSmallEnterprise` switches complaints off (Art. 11(5)).
 - **DAC7** (Directive (EU) 2021/514, Annex V): TIN and country, VAT id, birth date (individuals), primary address,
   business registration number (entities), IBAN and holder. A daily job reminds; after two reminders and at least
-  60 days payouts are blocked (audited). Paragraph and national transposition to confirm.
+  60 days the seller's **sales close** (D43, owner 2026-10-19): `CanSellAsync` refuses with `commerce.seller.dac7Blocked`
+  until the data is complete, and completing it reopens them; both steps are audited (`commerce.dac7-sales-block`) and
+  the seller is notified (`sales-blocked`). Payouts at the provider are not touched: under Connect the provider pays
+  the seller out directly. Paragraph and national transposition to confirm.
 - **Data roles (GB14).** Connected sellers are controllers of their buyers' data, the platform a processor (GDPR
   Art. 28): the DPA is a legal document accepted at registration. `GET /spark/commerce/sellers/export?kind=buyers`
   serves an `ISellerExportSource`'s rows as CSV (formula cells defused) to Admin/Owner or the `finance`/`seller-admin`
@@ -144,13 +148,44 @@ the invoicing package deletes them whole when the floor ends.
 
 Refused: `Open` registration with `Platform` merchant unless acknowledged; `RandomizedPreQueue`/`Ballot` without
 sign-in unless `WaitingRoom:AllowWithoutSignIn`; an enabled deceptive measure without a trigger; a consent-requiring
-feature without the consent primitive (GA9); `Basket:MixSellers` with a provider that cannot split (D40); a
+feature without the consent primitive (GA9); `Basket:MixSellers` without `Basket:AcknowledgeSplitMerchantOfRecord`,
+or when no registered provider can split (D41; see "Mixed-seller baskets" below); a
 country-keyed rule on nationality, residence, card-issuing country or IP country that refuses, redirects or changes
 conditions (Geo-blocking Reg. (EU) 2018/302 Art. 3–5; delivery-address zones allowed; configuration only, custom code is
 not judged) (GA11); trader traceability or complaint handling off without the acknowledgement; a retention period
 below its floor; invalid bounds; duplicate fee codes; an unknown currency.
 Warned: a per-buyer limit where guests may buy; connected mode without a KYC source; a channel without its legal
-documents; no accessibility statement.
+documents; no accessibility statement; with `MixSellers`, a registered provider that cannot split (its methods are
+never offered to a mixed-seller basket).
+
+### Mixed-seller baskets (D40, D41)
+
+In `ConnectedSellers` mode every single-seller order is a direct charge on the seller's own provider account, and the
+platform never holds the seller's money (D5). A basket with lines of **several** sellers can only be paid once by
+splitting that payment, and both split mechanisms route the money through the platform: Mollie routing creates the
+payment on the platform's account and routes shares to the connected organizations, and Stripe separate charges and
+transfers charge the platform's account and transfer each seller's share afterwards. For such an order the
+**platform is the merchant of record**.
+
+It is therefore off by default and takes two settings plus a split-capable provider:
+
+```json
+"Spark": { "Commerce": {
+  "Merchant": "ConnectedSellers",
+  "Basket": { "MixSellers": true, "AcknowledgeSplitMerchantOfRecord": true }
+} }
+```
+
+and `Spark:Commerce:Payments:Mollie:SplitPayments` or `Spark:Commerce:Payments:Stripe:SeparateChargesAndTransfers` on
+(see the payments guide, §9).
+
+> ⚠️ **Licensing and KYC.** Collecting money on behalf of other sellers is a regulated activity in the EU (payment
+> services under PSD2, Directive (EU) 2015/2366, whose commercial-agent exclusion in Art. 3(b) is narrow; confirm
+> against EUR-Lex) and brings anti-money-laundering duties. Before switching this on, the host's counsel confirms that the platform qualifies for an
+> exemption or that the provider's contract (Mollie split payments, Stripe Connect separate charges) covers it, and that
+> the host's own KYC with the provider is at the level the provider demands for holding funds. As merchant of record the
+> platform also answers to the buyer for the order: refunds and chargebacks of a split payment start on the platform's
+> account. Confirm per country (D37).
 
 ## Consent seam (X21, minimal)
 

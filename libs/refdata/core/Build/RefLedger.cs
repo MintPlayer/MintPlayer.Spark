@@ -14,7 +14,19 @@ namespace MintPlayer.Spark.ReferenceData.Build;
 /// </summary>
 public sealed class RefLedger
 {
+    // Keyed by (country of the id, identity): a source identity is unique within its country's code spaces, and
+    // adapters share generic schemes ("postcode:7000" is both an Austrian and a Swiss postal code).
     private readonly Dictionary<string, LedgerEntry> byIdentity = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, List<LedgerEntry>> byBareIdentity = new(StringComparer.OrdinalIgnoreCase);
+
+    private static string KeyOf(string identity, string id) => (RefIds.CountryOf(id) ?? "_") + "|" + identity;
+
+    private void Index(LedgerEntry entry)
+    {
+        byIdentity[KeyOf(entry.Identity, entry.Id)] = entry;
+        if (!byBareIdentity.TryGetValue(entry.Identity, out var list)) byBareIdentity[entry.Identity] = list = [];
+        list.Add(entry);
+    }
     private readonly Dictionary<string, LedgerEntry> byId = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<LedgerEntry> added = [];
     private readonly List<LedgerConflict> conflicts = [];
@@ -23,13 +35,13 @@ public sealed class RefLedger
     {
         foreach (var entry in known)
         {
-            if (byIdentity.TryGetValue(entry.Identity, out var existing))
+            if (byIdentity.TryGetValue(KeyOf(entry.Identity, entry.Id), out var existing))
             {
                 if (!string.Equals(existing.Id, entry.Id, StringComparison.OrdinalIgnoreCase))
                     conflicts.Add(new(entry.Source, entry.Identity, existing.Id, entry.Id, "the ledger itself maps one identity to two ids"));
                 continue;
             }
-            byIdentity[entry.Identity] = entry;
+            Index(entry);
             byId.TryAdd(entry.Id, entry);
         }
     }
@@ -49,7 +61,7 @@ public sealed class RefLedger
     /// </summary>
     public string Mint(string source, string identity, string ruleId)
     {
-        if (byIdentity.TryGetValue(identity, out var known))
+        if (byIdentity.TryGetValue(KeyOf(identity, ruleId), out var known))
         {
             if (!string.Equals(known.Id, ruleId, StringComparison.OrdinalIgnoreCase))
                 conflicts.Add(new(source, identity, known.Id, ruleId, "the rule derives another id than the ledger holds"));
@@ -61,7 +73,7 @@ public sealed class RefLedger
             return ruleId;
         }
         var entry = new LedgerEntry(identity, ruleId, source);
-        byIdentity[identity] = entry;
+        Index(entry);
         byId[ruleId] = entry;
         added.Add(entry);
         return ruleId;
@@ -74,20 +86,25 @@ public sealed class RefLedger
     /// </summary>
     public string Alias(string source, string identity, string id)
     {
-        if (byIdentity.TryGetValue(identity, out var known))
+        if (byIdentity.TryGetValue(KeyOf(identity, id), out var known))
         {
             if (!string.Equals(known.Id, id, StringComparison.OrdinalIgnoreCase))
                 conflicts.Add(new(source, identity, known.Id, id, "the ledger maps this identity to another id"));
             return known.Id;
         }
         var entry = new LedgerEntry(identity, id, source);
-        byIdentity[identity] = entry;
+        Index(entry);
         added.Add(entry);
         return id;
     }
 
     /// <summary>The id a known identity minted, or <see langword="null"/> (lookups that must not mint).</summary>
-    public string? Find(string identity) => byIdentity.TryGetValue(identity, out var e) ? e.Id : null;
+    /// <remarks>An identity known in several countries is ambiguous here: <see langword="null"/>; pass the country.</remarks>
+    public string? Find(string identity, string? country = null)
+        => byBareIdentity.TryGetValue(identity, out var entries)
+            ? (country is null ? (entries.Count == 1 ? entries[0].Id : null)
+                : entries.FirstOrDefault(e => string.Equals(RefIds.CountryOf(e.Id), country, StringComparison.OrdinalIgnoreCase))?.Id)
+            : null;
 }
 
 /// <summary>A ledger conflict: shown on the import run; the source's import stops.</summary>

@@ -1,0 +1,8 @@
+{
+  "_fixture": {
+    "source": "https://api.postnl.nl/shipment/v1_1/barcode/swagger.json (200 response example)",
+    "derived": "public documentation example",
+    "recorded": false
+  },
+  "Barcode": "3SDEVC903942795"
+}

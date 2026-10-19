@@ -31,6 +31,13 @@ public static class SparkLibraryContracts
         typeof(MintPlayer.Spark.ReferenceData.Contracts.SuggestResponse).Assembly, // MintPlayer.Spark.ReferenceData.Abstractions
         typeof(MintPlayer.Spark.Commerce.Contracts.CommerceListingInfo).Assembly, // MintPlayer.Spark.Commerce
         typeof(MintPlayer.Spark.Commerce.Payments.Contracts.SparkPaymentMethod).Assembly, // MintPlayer.Spark.Commerce.Payments
+        typeof(MintPlayer.Spark.Commerce.Checkout.Contracts.SparkBasket).Assembly, // MintPlayer.Spark.Commerce.Checkout
+        typeof(MintPlayer.Spark.Commerce.Promotions.Contracts.SparkSalePriceDisplay).Assembly, // MintPlayer.Spark.Commerce.Promotions
+        typeof(MintPlayer.Spark.Commerce.Shipping.Contracts.SparkShippingRate).Assembly, // MintPlayer.Spark.Commerce.Shipping
+        typeof(MintPlayer.Spark.Commerce.Ticketing.Venues.Contracts.SeatMapPayload).Assembly, // MintPlayer.Spark.Commerce.Ticketing.Venues
+        typeof(MintPlayer.Spark.Commerce.Ticketing.Events.Contracts.SparkPublicEvent).Assembly, // MintPlayer.Spark.Commerce.Ticketing.Events
+        typeof(MintPlayer.Spark.Challenges.Contracts.SparkChallengeOffer).Assembly, // MintPlayer.Spark.Challenges
+        typeof(MintPlayer.Spark.WaitingRoom.Contracts.WaitingRoomInfo).Assembly, // MintPlayer.Spark.WaitingRoom
     ];
 
     /// <summary>Every library module, generated in memory.</summary>

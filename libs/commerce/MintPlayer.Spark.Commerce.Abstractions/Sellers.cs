@@ -5,7 +5,8 @@ namespace MintPlayer.Spark.Commerce;
 /// <summary>
 /// The sellers of a commerce host (D21, §4.19): which organizations may sell, and why not. A seller is an
 /// Organizations organization with a seller profile. Checkout asks <see cref="CanSellAsync"/> before a sale opens and
-/// before an order is placed; Payments asks <see cref="CanReceivePayoutsAsync"/> before a payout.
+/// before an order is placed; Payments asks <see cref="CanReceivePayoutsAsync"/> before a payout. The DAC7 block (D43)
+/// closes selling only: it is a <see cref="CanSellAsync"/> reason, never a payout one.
 /// </summary>
 public interface ISparkSellers
 {
@@ -13,13 +14,14 @@ public interface ISparkSellers
     Task<SellerStanding?> GetStandingAsync(string organizationId, CancellationToken cancellationToken = default);
 
     /// <summary>Whether the organization may sell in <paramref name="channel"/> now: approved (D21), KYC verified in
-    /// connected mode, trader data verified (GA5), and the channel's required legal documents published (GA2). In
+    /// connected mode, trader data verified (GA5), sales not closed for missing DAC7 data after the reminders
+    /// (<c>commerce.seller.dac7Blocked</c>, GA6/D43), and the channel's required legal documents published (GA2). In
     /// <see cref="MerchantMode.Platform"/> mode with no seller (<paramref name="organizationId"/> null) it is the
     /// platform's own legal documents that count.</summary>
     Task<SellerGate> CanSellAsync(string? organizationId, string channel, CancellationToken cancellationToken = default);
 
-    /// <summary>Whether payouts to the organization may be released: KYC verified and, under DAC7, no data missing
-    /// after the reminders (GA6).</summary>
+    /// <summary>Whether payouts to the organization may be released: KYC verified and not suspended. The DAC7 block
+    /// does not apply here: it closes selling instead, and provider payouts are not touched (D43).</summary>
     Task<SellerGate> CanReceivePayoutsAsync(string organizationId, CancellationToken cancellationToken = default);
 }
 
@@ -31,7 +33,7 @@ public interface ISparkSellers
 /// <param name="TraderStatus">Trader or not, shown on every listing.</param>
 /// <param name="TraderVerified">The best-effort trader verification (DSA Art. 30(2)) passed.</param>
 /// <param name="Dac7Complete">All DAC7 data is present.</param>
-/// <param name="PayoutsBlocked">Payouts are blocked for missing DAC7 data.</param>
+/// <param name="SalesBlocked">Sales are closed for DAC7 data still missing after the reminders (D43).</param>
 public sealed record SellerStanding(
     string OrganizationId,
     bool Approved,
@@ -40,7 +42,7 @@ public sealed record SellerStanding(
     TraderStatus TraderStatus,
     bool TraderVerified,
     bool Dac7Complete,
-    bool PayoutsBlocked);
+    bool SalesBlocked);
 
 /// <summary>The answer of a seller gate: allowed, or the reasons (translation keys) why not.</summary>
 /// <param name="Allowed">Whether the action may go ahead.</param>
@@ -71,7 +73,8 @@ public interface ISellerKycSource
 
 /// <summary>
 /// A payment provider's capabilities Commerce validates at startup. Registered by each payments adapter
-/// (<c>TryAddEnumerable</c>). D40: <c>Basket:MixSellers</c> is refused unless every registered provider can split.
+/// (<c>TryAddEnumerable</c>). D41: <c>Basket:MixSellers</c> is refused unless the host opted in
+/// (<c>Basket:AcknowledgeSplitMerchantOfRecord</c>) and at least one registered provider can split.
 /// </summary>
 public interface ICommercePaymentCapabilities
 {

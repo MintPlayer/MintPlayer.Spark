@@ -1,0 +1,175 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "TicketSalePhase (docs/commerce_PRD.md §4.11, D17): a sale window with its offered ticket types and prices per price",
+    "category, an optional presale code (write-only: stored as a hash), queue settings (§4.12) and the PreSelect switch",
+    "(D25). OrganizationId is copied from the event on every save; price changes go into the price history (GA3).",
+    "",
+    "HAND-AUTHORED. Ids are UUIDv5 of 'ticketing-events:TicketSalePhase[...]', written by 'npm run stamp:library-model-ids'."
+  ],
+  "persistentObject": {
+    "id": "2ccc511e-44dc-549a-86b7-81d644c05475",
+    "name": "TicketSalePhase",
+    "clrType": "MintPlayer.Spark.Commerce.Ticketing.Events.Models.TicketSalePhase",
+    "alias": "ticketsalephase",
+    "breadcrumb": "{Name}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "366304f7-ef0a-531c-a9f1-7aa90f4fe2cf",
+        "name": "EventId",
+        "dataType": "Reference",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 1,
+        "query": "TicketEvents",
+        "referenceType": "MintPlayer.Spark.Commerce.Ticketing.Events.Models.TicketEvent",
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "ff80c1c0-41ce-5982-8272-a0fe38da734b",
+        "name": "Name",
+        "dataType": "TranslatedString",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "a4f5ab54-d1fd-5a02-b4c3-24c96a84cbdf",
+        "name": "StartsAt",
+        "dataType": "datetime",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "0dc6505c-6b02-5e7c-8b8e-4895962fdc22",
+        "name": "EndsAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "a13b3c74-1ab9-5fe6-a07a-e4f69b45b2d2",
+        "name": "DateIds",
+        "dataType": "Reference",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 5,
+        "query": "TicketEventDates",
+        "referenceType": "MintPlayer.Spark.Commerce.Ticketing.Events.Models.TicketEventDate",
+        "isArray": true,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "2e7c0e02-699b-5aa4-93f4-bc9420d2fb08",
+        "name": "Prices",
+        "dataType": "AsDetail",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 6,
+        "asDetailType": "MintPlayer.Spark.Commerce.Ticketing.Events.Models.TicketPhasePrice",
+        "isArray": true,
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "dcb276dc-9f36-5fb9-bbfe-7908170a4463",
+        "name": "CapacityPerDate",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "1c2f91e1-92c4-5284-ab9c-9e8fa79d3377",
+        "name": "PresaleCode",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "b5298a3d-782a-58e8-bff1-dfde173b596f",
+        "name": "QueueEnabled",
+        "dataType": "boolean",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 9,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "1ff91bb1-83da-5b81-951f-2ea27b3a59f0",
+        "name": "QueueOpensAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 10,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "c628cca3-9014-58c7-97eb-24e8a1490d99",
+        "name": "PreSelect",
+        "dataType": "boolean",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 11,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "3b21994a-4f32-585a-8dfd-09531ccee328",
+        "name": "SortOrder",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 12,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      }
+    ]
+  },
+  "queries": [
+    {
+      "id": "daa5c47d-dab5-53b1-a6f0-e5fff7b14b3f",
+      "name": "TicketSalePhases",
+      "source": "Custom.TicketSalePhases",
+      "alias": "ticketsalephases",
+      "sortColumns": [
+        {
+          "property": "StartsAt",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "TicketSalePhase"
+    }
+  ]
+}

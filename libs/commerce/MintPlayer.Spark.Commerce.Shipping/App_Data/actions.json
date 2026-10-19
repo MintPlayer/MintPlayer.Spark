@@ -1,0 +1,26 @@
+{
+  "$schema": "../../../../schemas/actions.schema.json",
+  "_comment": [
+    "The custom actions of Shipment (docs/commerce_PRD.md §4.9, GB5), shipped as a library layer. The classes are",
+    "CustomActions/ShipmentCustomActions.cs; their rights are in this library's security.json. Labels are",
+    "actions.<Name>.* in translations.json. Each is offered per row only where it would succeed (ShipmentActions.cs)."
+  ],
+  "ShipmentVoidLabel": {
+    "icon": "x-octagon",
+    "showedOn": "detail",
+    "selectionRule": "=0",
+    "variant": "danger"
+  },
+  "ShipmentCreateReturnLabel": {
+    "icon": "arrow-return-left",
+    "showedOn": "detail",
+    "selectionRule": "=0",
+    "variant": "secondary"
+  },
+  "ShipmentAddParcel": {
+    "icon": "box-seam",
+    "showedOn": "detail",
+    "selectionRule": "=0",
+    "variant": "secondary"
+  }
+}

@@ -14,7 +14,7 @@ spark.AddStripePayments();
   "ConnectWebhookSecret": "whsec_…",  // Connect endpoint /spark/webhooks/payments-stripe-connect
   "ApiVersion": "…",                  // pin it in production
   "ConnectAccountType": "standard",
-  "SeparateChargesAndTransfers": false // D40 split; passes money through the platform (see D5)
+  "SeparateChargesAndTransfers": false // D40/D41 split; platform becomes merchant of record; needs Basket:AcknowledgeSplitMerchantOfRecord
 } } } }
 ```
 

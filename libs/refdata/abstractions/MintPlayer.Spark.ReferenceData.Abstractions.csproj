@@ -33,6 +33,8 @@
 	<ItemGroup>
 		<!-- ReleaseApplier: the instance's seeder and the client's sync write releases the same way. No ASP.NET Core. -->
 		<PackageReference Include="RavenDB.Client" Version="7.2.6" />
+		<!-- Release signing (RD-DEF 5, spike RS17): Ed25519, managed, MIT licence. The BCL has no standalone Ed25519. -->
+		<PackageReference Include="BouncyCastle.Cryptography" Version="2.7.0" />
 	</ItemGroup>
 
 	<ItemGroup>

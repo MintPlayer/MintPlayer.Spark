@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<tns:municipalityResponseBySource xmlns:com="http://fsb.belgium.be/data/common" xmlns:tns="http://fsb.belgium.be/mappingservices/FullDownload/v1_00" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+ <tns:source>wallonia</tns:source>
+ <tns:timestamp>2026-10-16T21:00:12</tns:timestamp>
+ <tns:municipality>
+  <com:code>
+   <com:namespace>geodata.wallonie.be/id/Municipality</com:namespace>
+   <com:objectIdentifier>58001</com:objectIdentifier>
+   <com:versionIdentifier>7</com:versionIdentifier>
+  </com:code>
+  <com:name>
+   <com:language>fr</com:language>
+   <com:spelling>La Louvière</com:spelling>
+  </com:name>
+  <com:name>
+   <com:language>de</com:language>
+   <com:spelling>La Louvière</com:spelling>
+  </com:name>
+  <com:name>
+   <com:language>nl</com:language>
+   <com:spelling>La Louvière</com:spelling>
+  </com:name>
+ </tns:municipality>
+ <tns:municipality>
+  <com:code>
+   <com:namespace>geodata.wallonie.be/id/Municipality</com:namespace>
+   <com:objectIdentifier>82039</com:objectIdentifier>
+   <com:versionIdentifier>2</com:versionIdentifier>
+  </com:code>
+  <com:name>
+   <com:language>fr</com:language>
+   <com:spelling>Bastogne</com:spelling>
+  </com:name>
+  <com:name>
+   <com:language>de</com:language>
+   <com:spelling>Bastogne</com:spelling>
+  </com:name>
+  <com:name>
+   <com:language>nl</com:language>
+   <com:spelling>Bastenaken</com:spelling>
+  </com:name>
+ </tns:municipality>
+ <tns:municipality>
+  <com:code>
+   <com:namespace>geodata.wallonie.be/id/Municipality</com:namespace>
+   <com:objectIdentifier>92137</com:objectIdentifier>
+   <com:versionIdentifier>7</com:versionIdentifier>
+  </com:code>
+  <com:name>
+   <com:language>fr</com:language>
+   <com:spelling>Sambreville</com:spelling>
+  </com:name>
+  <com:name>
+   <com:language>de</com:language>
+   <com:spelling>Sambreville</com:spelling>
+  </com:name>
+  <com:name>
+   <com:language>nl</com:language>
+   <com:spelling>Sambreville</com:spelling>
+  </com:name>
+ </tns:municipality>
+</tns:municipalityResponseBySource>

@@ -58,8 +58,8 @@ public static class CommerceAuditActions
     /// <summary>A channel fee rule changed (configuration reload).</summary>
     public const string FeeChanged = "commerce.fee-changed";
 
-    /// <summary>A seller's payout block was set or lifted (DAC7).</summary>
-    public const string PayoutBlock = "commerce.payout-block";
+    /// <summary>A seller's sales were closed or reopened for DAC7 data (GA6, D43).</summary>
+    public const string Dac7SalesBlock = "commerce.dac7-sales-block";
 
     /// <summary>A seller exported buyer or attendee data (GB14). Not a money movement, audited all the same.</summary>
     public const string SellerExport = "commerce.seller-export";

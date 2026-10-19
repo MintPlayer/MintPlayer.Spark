@@ -62,6 +62,17 @@ public static class SparkReferenceDataClientExtensions
             throw new InvalidOperationException("Spark:ReferenceData:Client:BaseAddress must be an absolute http(s) URL (or unset for free-text mode).");
         if (options.Sync.Enabled && options.BaseAddress is null)
             throw new InvalidOperationException("Spark:ReferenceData:Client:Sync:Enabled needs a BaseAddress.");
+        if (options.PublicKey is { Length: > 0 } key)
+        {
+            try
+            {
+                Releases.ReleaseSignatures.DecodeKey(key, "Spark:ReferenceData:Client:PublicKey");
+            }
+            catch (FormatException ex)
+            {
+                throw new InvalidOperationException(ex.Message);
+            }
+        }
     }
 
     private sealed class ReferenceDataClientMarker;

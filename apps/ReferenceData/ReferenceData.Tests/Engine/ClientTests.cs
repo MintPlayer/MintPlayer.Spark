@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using MintPlayer.Spark.ReferenceData;
 using MintPlayer.Spark.ReferenceData.Client;
 using MintPlayer.Spark.ReferenceData.Sources.Belgium;
+using MintPlayer.Spark.ReferenceData.Sources.France;
 using MintPlayer.Spark.ReferenceData.Sources.Global;
 
 namespace ReferenceData.Tests.Engine;
@@ -21,7 +22,7 @@ public class ClientTests
     [Fact]
     public void French_lines_put_the_number_first()
     {
-        var fr = BaselineProfiles.All().Single(p => p.Code == "fr").Profile;
+        var fr = FranceProfile.Create();
         var address = new Address { StreetName = "rue de Rivoli", HouseNumber = "8", Box = "bis", PostalCode = "75004", LocalityName = "Paris" };
         AddressLines.Render(address, fr.AddressLines).Should().Equal("8 bis rue de Rivoli", "75004 Paris");
     }
@@ -36,7 +37,7 @@ public class ClientTests
     [Fact]
     public void VAT_territories_match_their_postcodes()
     {
-        var fr = BaselineProfiles.All().Single(p => p.Code == "fr").Profile.VatTerritories;
+        var fr = FranceProfile.Create().VatTerritories;
         fr.Single(t => t.Code == "FR-GP").PostcodePattern.Should().NotBeNull();
         Regex.IsMatch("97110", fr.Single(t => t.Code == "FR-GP").PostcodePattern!).Should().BeTrue();
         Regex.IsMatch("97150", fr.Single(t => t.Code == "FR-GP").PostcodePattern!).Should().BeFalse();   // Saint-Martin

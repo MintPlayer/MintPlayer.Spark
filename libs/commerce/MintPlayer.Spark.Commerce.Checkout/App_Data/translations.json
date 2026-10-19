@@ -1,0 +1,664 @@
+{
+  "$schema": "../../../../schemas/translations.schema.json",
+  "commerceCheckout": {
+    "orderWithObligationToPay": {
+      "en": "Order with obligation to pay",
+      "fr": "Commande avec obligation de paiement",
+      "nl": "Bestelling met betalingsverplichting"
+    },
+    "basket": {
+      "en": "Basket",
+      "fr": "Panier",
+      "nl": "Winkelmandje"
+    },
+    "basketEmpty": {
+      "en": "Your basket is empty.",
+      "fr": "Votre panier est vide.",
+      "nl": "Je winkelmandje is leeg."
+    },
+    "checkout": {
+      "en": "Checkout",
+      "fr": "Commander",
+      "nl": "Afrekenen"
+    },
+    "total": {
+      "en": "Total",
+      "fr": "Total",
+      "nl": "Totaal"
+    },
+    "remove": {
+      "en": "Remove",
+      "fr": "Retirer",
+      "nl": "Verwijderen"
+    },
+    "heldUntil": {
+      "en": "Reserved until {0}",
+      "fr": "Réservé jusqu'à {0}",
+      "nl": "Gereserveerd tot {0}"
+    },
+    "holdLapsed": {
+      "en": "Your reservation expired.",
+      "fr": "Votre réservation a expiré.",
+      "nl": "Je reservering is verlopen."
+    },
+    "minimumAge": {
+      "en": "Only for buyers aged {0} or older",
+      "fr": "Réservé aux acheteurs de {0} ans ou plus",
+      "nl": "Enkel voor kopers van {0} jaar of ouder"
+    },
+    "attestAge": {
+      "en": "I am at least {0} years old",
+      "fr": "J'ai au moins {0} ans",
+      "nl": "Ik ben minstens {0} jaar oud"
+    },
+    "idCheck": {
+      "en": "ID check at the entrance or pickup",
+      "fr": "Contrôle d'identité à l'entrée ou au retrait",
+      "nl": "ID-controle aan de ingang of bij afhaling"
+    },
+    "acceptDocument": {
+      "en": "I accept the {0} (version {1})",
+      "fr": "J'accepte les {0} (version {1})",
+      "nl": "Ik aanvaard de {0} (versie {1})"
+    },
+    "documents": {
+      "en": "Terms and information",
+      "fr": "Conditions et informations",
+      "nl": "Voorwaarden en informatie"
+    },
+    "seller": {
+      "en": "Sold by",
+      "fr": "Vendu par",
+      "nl": "Verkocht door"
+    },
+    "email": {
+      "en": "E-mail address",
+      "fr": "Adresse e-mail",
+      "nl": "E-mailadres"
+    },
+    "name": {
+      "en": "Name",
+      "fr": "Nom",
+      "nl": "Naam"
+    },
+    "softOptIn": {
+      "en": "Send me news about similar products from this seller. I can unsubscribe at any time.",
+      "fr": "Envoyez-moi des nouvelles sur des produits similaires de ce vendeur. Je peux me désinscrire à tout moment.",
+      "nl": "Stuur me nieuws over gelijkaardige producten van deze verkoper. Ik kan me altijd uitschrijven."
+    },
+    "paymentMethod": {
+      "en": "Payment method",
+      "fr": "Moyen de paiement",
+      "nl": "Betaalmethode"
+    },
+    "paymentWindow": {
+      "en": "Complete the payment within {0} minutes.",
+      "fr": "Effectuez le paiement dans les {0} minutes.",
+      "nl": "Rond de betaling af binnen {0} minuten."
+    },
+    "donation": {
+      "en": "Donation",
+      "fr": "Don",
+      "nl": "Donatie"
+    },
+    "donationTo": {
+      "en": "Add a donation to {0}",
+      "fr": "Ajouter un don à {0}",
+      "nl": "Voeg een donatie toe aan {0}"
+    },
+    "donationRoundUp": {
+      "en": "Round up",
+      "fr": "Arrondir",
+      "nl": "Afronden"
+    },
+    "insurance": {
+      "en": "Cancellation insurance",
+      "fr": "Assurance annulation",
+      "nl": "Annuleringsverzekering"
+    },
+    "insuranceOffer": {
+      "en": "Add cancellation insurance for {0}",
+      "fr": "Ajouter une assurance annulation pour {0}",
+      "nl": "Voeg een annuleringsverzekering toe voor {0}"
+    },
+    "orderNumber": {
+      "en": "Order {0}",
+      "fr": "Commande {0}",
+      "nl": "Bestelling {0}"
+    },
+    "cancelPayment": {
+      "en": "Cancel the payment",
+      "fr": "Annuler le paiement",
+      "nl": "Betaling annuleren"
+    },
+    "payNow": {
+      "en": "Pay now",
+      "fr": "Payer maintenant",
+      "nl": "Nu betalen"
+    },
+    "holdCountdown": {
+      "en": "Your reservation ends in {0}",
+      "fr": "Votre réservation se termine dans {0}",
+      "nl": "Je reservering loopt af over {0}"
+    },
+    "decreaseQuantity": {
+      "en": "Fewer",
+      "fr": "Moins",
+      "nl": "Minder"
+    },
+    "increaseQuantity": {
+      "en": "More",
+      "fr": "Plus",
+      "nl": "Meer"
+    },
+    "donationNone": {
+      "en": "No donation",
+      "fr": "Pas de don",
+      "nl": "Geen donatie"
+    },
+    "refunded": {
+      "en": "Refunded",
+      "fr": "Remboursé",
+      "nl": "Terugbetaald"
+    },
+    "state": {
+      "PaymentPending": {
+        "en": "Awaiting payment",
+        "fr": "En attente de paiement",
+        "nl": "Wacht op betaling"
+      },
+      "Confirmed": {
+        "en": "Confirmed",
+        "fr": "Confirmée",
+        "nl": "Bevestigd"
+      },
+      "Cancelled": {
+        "en": "Cancelled",
+        "fr": "Annulée",
+        "nl": "Geannuleerd"
+      },
+      "Expired": {
+        "en": "Expired",
+        "fr": "Expirée",
+        "nl": "Verlopen"
+      },
+      "Voided": {
+        "en": "Voided",
+        "fr": "Annulée",
+        "nl": "Vervallen"
+      },
+      "Refunding": {
+        "en": "Being refunded",
+        "fr": "Remboursement en cours",
+        "nl": "Wordt terugbetaald"
+      },
+      "Refunded": {
+        "en": "Refunded",
+        "fr": "Remboursée",
+        "nl": "Terugbetaald"
+      },
+      "PartiallyRefunded": {
+        "en": "Partially refunded",
+        "fr": "Partiellement remboursée",
+        "nl": "Gedeeltelijk terugbetaald"
+      },
+      "Disputed": {
+        "en": "Disputed",
+        "fr": "Contestée",
+        "nl": "Betwist"
+      },
+      "DisputeWon": {
+        "en": "Dispute closed",
+        "fr": "Litige clôturé",
+        "nl": "Geschil afgesloten"
+      },
+      "DisputeLost": {
+        "en": "Charged back",
+        "fr": "Rétrofacturée",
+        "nl": "Teruggeboekt"
+      }
+    },
+    "refusal": {
+      "basketEmpty": {
+        "en": "Your basket is empty.",
+        "fr": "Votre panier est vide.",
+        "nl": "Je winkelmandje is leeg."
+      },
+      "itemNotFound": {
+        "en": "This item is no longer on sale.",
+        "fr": "Cet article n'est plus en vente.",
+        "nl": "Dit artikel is niet meer te koop."
+      },
+      "unknownChannel": {
+        "en": "This item cannot be sold here.",
+        "fr": "Cet article ne peut pas être vendu ici.",
+        "nl": "Dit artikel kan hier niet verkocht worden."
+      },
+      "currencyMismatch": {
+        "en": "Items in another currency cannot share a basket.",
+        "fr": "Des articles dans une autre devise ne peuvent pas partager un panier.",
+        "nl": "Artikelen in een andere munt kunnen niet in hetzelfde mandje."
+      },
+      "negativeTotal": {
+        "en": "The total cannot be negative.",
+        "fr": "Le total ne peut pas être négatif.",
+        "nl": "Het totaal kan niet negatief zijn."
+      },
+      "invalidQuantity": {
+        "en": "Choose a valid quantity.",
+        "fr": "Choisissez une quantité valide.",
+        "nl": "Kies een geldig aantal."
+      },
+      "channelMismatch": {
+        "en": "This item must be bought in a separate order.",
+        "fr": "Cet article doit être acheté dans une commande séparée.",
+        "nl": "Dit artikel moet in een aparte bestelling gekocht worden."
+      },
+      "sellerMismatch": {
+        "en": "Items of another seller must be bought in a separate order.",
+        "fr": "Les articles d'un autre vendeur doivent être achetés séparément.",
+        "nl": "Artikelen van een andere verkoper moeten apart besteld worden."
+      },
+      "signInRequired": {
+        "en": "Sign in to buy this item.",
+        "fr": "Connectez-vous pour acheter cet article.",
+        "nl": "Meld je aan om dit artikel te kopen."
+      },
+      "admissionRequired": {
+        "en": "Wait for your turn in the waiting room to buy this item.",
+        "fr": "Attendez votre tour dans la file d'attente pour acheter cet article.",
+        "nl": "Wacht op je beurt in de wachtrij om dit artikel te kopen."
+      },
+      "parentRequired": {
+        "en": "This add-on can only be bought with its main item.",
+        "fr": "Cette option ne peut être achetée qu'avec l'article principal.",
+        "nl": "Deze optie kan enkel samen met het hoofdartikel gekocht worden."
+      },
+      "soldOut": {
+        "en": "Sold out.",
+        "fr": "Épuisé.",
+        "nl": "Uitverkocht."
+      },
+      "unitTaken": {
+        "en": "That seat was just taken.",
+        "fr": "Cette place vient d'être prise.",
+        "nl": "Die plaats is net ingenomen."
+      },
+      "limitExceeded": {
+        "en": "You have reached the maximum for this sale.",
+        "fr": "Vous avez atteint le maximum pour cette vente.",
+        "nl": "Je hebt het maximum voor deze verkoop bereikt."
+      },
+      "notTogether": {
+        "en": "Not enough seats side by side.",
+        "fr": "Pas assez de places côte à côte.",
+        "nl": "Niet genoeg plaatsen naast elkaar."
+      },
+      "leavesSingleSeat": {
+        "en": "Your choice would leave a single empty seat.",
+        "fr": "Votre choix laisserait une place isolée vide.",
+        "nl": "Je keuze laat een losse lege plaats achter."
+      },
+      "holdExpired": {
+        "en": "Your reservation expired.",
+        "fr": "Votre réservation a expiré.",
+        "nl": "Je reservering is verlopen."
+      },
+      "conflict": {
+        "en": "Please try again.",
+        "fr": "Veuillez réessayer.",
+        "nl": "Probeer het opnieuw."
+      },
+      "lineNotFound": {
+        "en": "This line is no longer in your basket.",
+        "fr": "Cette ligne n'est plus dans votre panier.",
+        "nl": "Deze regel staat niet meer in je mandje."
+      },
+      "termsNotAccepted": {
+        "en": "Accept the terms to order.",
+        "fr": "Acceptez les conditions pour commander.",
+        "nl": "Aanvaard de voorwaarden om te bestellen."
+      },
+      "termsChanged": {
+        "en": "The terms changed. Review and accept the new version.",
+        "fr": "Les conditions ont changé. Relisez et acceptez la nouvelle version.",
+        "nl": "De voorwaarden zijn gewijzigd. Lees en aanvaard de nieuwe versie."
+      },
+      "termsMissing": {
+        "en": "This seller cannot sell yet: its terms are missing.",
+        "fr": "Ce vendeur ne peut pas encore vendre : ses conditions manquent.",
+        "nl": "Deze verkoper kan nog niet verkopen: de voorwaarden ontbreken."
+      },
+      "ageAttestationRequired": {
+        "en": "Confirm that you are old enough to buy these items.",
+        "fr": "Confirmez que vous avez l'âge requis pour ces articles.",
+        "nl": "Bevestig dat je oud genoeg bent voor deze artikelen."
+      },
+      "methodNotOffered": {
+        "en": "This payment method is not available for this order.",
+        "fr": "Ce moyen de paiement n'est pas disponible pour cette commande.",
+        "nl": "Deze betaalmethode is niet beschikbaar voor deze bestelling."
+      },
+      "noMethod": {
+        "en": "No payment method can pay for this order.",
+        "fr": "Aucun moyen de paiement ne convient à cette commande.",
+        "nl": "Geen enkele betaalmethode past bij deze bestelling."
+      },
+      "emailRequired": {
+        "en": "Enter your e-mail address.",
+        "fr": "Saisissez votre adresse e-mail.",
+        "nl": "Vul je e-mailadres in."
+      },
+      "pendingOrder": {
+        "en": "Finish or cancel the payment of your order first.",
+        "fr": "Terminez ou annulez d'abord le paiement de votre commande.",
+        "nl": "Rond eerst de betaling van je bestelling af of annuleer ze."
+      },
+      "donationInvalid": {
+        "en": "Choose one of the donation amounts.",
+        "fr": "Choisissez un des montants de don.",
+        "nl": "Kies een van de donatiebedragen."
+      },
+      "insuranceUnavailable": {
+        "en": "The insurance is not available for this order.",
+        "fr": "L'assurance n'est pas disponible pour cette commande.",
+        "nl": "De verzekering is niet beschikbaar voor deze bestelling."
+      },
+      "sellerCannotSell": {
+        "en": "This seller cannot sell right now.",
+        "fr": "Ce vendeur ne peut pas vendre pour le moment.",
+        "nl": "Deze verkoper kan nu niet verkopen."
+      },
+      "orderNotFound": {
+        "en": "Order not found.",
+        "fr": "Commande introuvable.",
+        "nl": "Bestelling niet gevonden."
+      },
+      "invalidState": {
+        "en": "This is not possible for the order in its current state.",
+        "fr": "Ce n'est pas possible pour la commande dans son état actuel.",
+        "nl": "Dit kan niet voor de bestelling in haar huidige staat."
+      },
+      "forbidden": {
+        "en": "You may not do this.",
+        "fr": "Vous n'êtes pas autorisé à faire ceci.",
+        "nl": "Je mag dit niet doen."
+      },
+      "noCancellation": {
+        "en": "The seller's conditions allow no cancellation of this item.",
+        "fr": "Les conditions du vendeur ne permettent pas d'annuler cet article.",
+        "nl": "De voorwaarden van de verkoper laten geen annulering van dit artikel toe."
+      },
+      "cancellationClosed": {
+        "en": "The cancellation period of this item has ended.",
+        "fr": "Le délai d'annulation de cet article est écoulé.",
+        "nl": "De annuleringstermijn van dit artikel is verstreken."
+      },
+      "servicePassed": {
+        "en": "The date of this item has passed.",
+        "fr": "La date de cet article est passée.",
+        "nl": "De datum van dit artikel is voorbij."
+      },
+      "deductionTooHigh": {
+        "en": "The deduction is larger than the line's share.",
+        "fr": "La déduction dépasse la part de la ligne.",
+        "nl": "De inhouding is groter dan het aandeel van de lijn."
+      },
+      "amountTooHigh": {
+        "en": "The amount is larger than what is left to refund.",
+        "fr": "Le montant dépasse ce qui reste à rembourser.",
+        "nl": "Het bedrag is groter dan wat nog terugbetaald kan worden."
+      },
+      "noWithdrawalRight": {
+        "en": "No item of this order can still be withdrawn from.",
+        "fr": "Aucun article de cette commande ne peut encore faire l'objet d'une rétractation.",
+        "nl": "Voor geen enkel artikel van deze bestelling kan je nog herroepen."
+      },
+      "nothingLeft": {
+        "en": "Nothing of this is left to return.",
+        "fr": "Il ne reste rien à retourner.",
+        "nl": "Hiervan valt niets meer terug te geven."
+      },
+      "groundRequired": {
+        "en": "A price reduction or refund needs a legal ground (Directive 2019/771 Art. 13(4)).",
+        "fr": "Une réduction de prix ou un remboursement exige un motif légal (directive 2019/771, art. 13, par. 4).",
+        "nl": "Een prijsvermindering of terugbetaling vereist een wettelijke grond (richtlijn 2019/771, art. 13, lid 4)."
+      },
+      "windowClosed": {
+        "en": "The period to choose has ended.",
+        "fr": "Le délai pour choisir est écoulé.",
+        "nl": "De termijn om te kiezen is verstreken."
+      },
+      "refundState": {
+        "en": "This refund cannot be changed now.",
+        "fr": "Ce remboursement ne peut pas être modifié maintenant.",
+        "nl": "Deze terugbetaling kan nu niet gewijzigd worden."
+      },
+      "contactRequired": {
+        "en": "Give your name and e-mail address so we can send you the acknowledgement.",
+        "fr": "Indiquez votre nom et votre adresse e-mail pour recevoir l'accusé de réception.",
+        "nl": "Geef je naam en e-mailadres zodat we je de ontvangstbevestiging kunnen sturen."
+      }
+    },
+    "withdrawal": {
+      "button": {
+        "en": "Withdraw from contract here",
+        "fr": "Se rétracter du contrat ici",
+        "nl": "Herroep hier de overeenkomst"
+      },
+      "confirm": {
+        "en": "Confirm withdrawal",
+        "fr": "Confirmer la rétractation",
+        "nl": "Herroeping bevestigen"
+      },
+      "title": {
+        "en": "Withdraw from your order",
+        "fr": "Se rétracter de votre commande",
+        "nl": "Herroep je bestelling"
+      },
+      "intro": {
+        "en": "Choose what you withdraw from. You do not need to give a reason.",
+        "fr": "Choisissez ce dont vous vous rétractez. Vous n'avez pas à donner de motif.",
+        "nl": "Kies waarvoor je herroept. Je hoeft geen reden op te geven."
+      },
+      "reason": {
+        "en": "Reason (optional)",
+        "fr": "Motif (facultatif)",
+        "nl": "Reden (optioneel)"
+      },
+      "review": {
+        "en": "Review your withdrawal",
+        "fr": "Vérifiez votre rétractation",
+        "nl": "Controleer je herroeping"
+      },
+      "outsideRight": {
+        "en": "Outside the withdrawal right",
+        "fr": "Hors du droit de rétractation",
+        "nl": "Buiten het herroepingsrecht"
+      },
+      "received": {
+        "en": "We received your withdrawal on {0}. A confirmation is on its way by e-mail.",
+        "fr": "Nous avons reçu votre rétractation le {0}. Une confirmation vous est envoyée par e-mail.",
+        "nl": "We ontvingen je herroeping op {0}. Een bevestiging is per e-mail onderweg."
+      },
+      "withheld": {
+        "en": "Send the goods back: we refund as soon as we receive them or you prove you sent them.",
+        "fr": "Renvoyez les biens : nous remboursons dès leur réception ou dès que vous prouvez leur envoi.",
+        "nl": "Stuur de goederen terug: we betalen terug zodra we ze ontvangen of je bewijst dat je ze verstuurde."
+      },
+      "until": {
+        "en": "You can withdraw until {0}.",
+        "fr": "Vous pouvez vous rétracter jusqu'au {0}.",
+        "nl": "Je kan herroepen tot {0}."
+      },
+      "back": {
+        "en": "Back",
+        "fr": "Retour",
+        "nl": "Terug"
+      },
+      "next": {
+        "en": "Continue",
+        "fr": "Continuer",
+        "nl": "Verder"
+      }
+    },
+    "aftercare": {
+      "cancel": {
+        "en": "Cancel",
+        "fr": "Annuler",
+        "nl": "Annuleren"
+      },
+      "cancelFee": {
+        "en": "A cancellation fee of {0}% is kept.",
+        "fr": "Des frais d'annulation de {0} % sont retenus.",
+        "nl": "Er wordt {0}% annuleringskosten ingehouden."
+      },
+      "claim": {
+        "en": "Report a defect (legal guarantee)",
+        "fr": "Signaler un défaut (garantie légale)",
+        "nl": "Een gebrek melden (wettelijke garantie)"
+      },
+      "claimDescription": {
+        "en": "What is wrong?",
+        "fr": "Quel est le problème ?",
+        "nl": "Wat is er mis?"
+      },
+      "refunds": {
+        "en": "Refunds",
+        "fr": "Remboursements",
+        "nl": "Terugbetalingen"
+      },
+      "returns": {
+        "en": "Returns",
+        "fr": "Retours",
+        "nl": "Retouren"
+      },
+      "rescheduled": {
+        "en": "The date changed. Keep your order or ask for a refund until {0}.",
+        "fr": "La date a changé. Gardez votre commande ou demandez un remboursement jusqu'au {0}.",
+        "nl": "De datum is gewijzigd. Behoud je bestelling of vraag een terugbetaling tot {0}."
+      },
+      "keep": {
+        "en": "Keep",
+        "fr": "Garder",
+        "nl": "Behouden"
+      },
+      "refund": {
+        "en": "Refund",
+        "fr": "Rembourser",
+        "nl": "Terugbetalen"
+      }
+    }
+  },
+  "queries": {
+    "CheckoutOrders": {
+      "label": {
+        "en": "Orders",
+        "fr": "Commandes",
+        "nl": "Bestellingen"
+      }
+    }
+  },
+  "model": {
+    "CheckoutOrder": {
+      "label": {
+        "en": "Order",
+        "fr": "Commande",
+        "nl": "Bestelling"
+      },
+      "attributes": {
+        "Number": {
+          "label": {
+            "en": "Number",
+            "fr": "Numéro",
+            "nl": "Nummer"
+          }
+        },
+        "State": {
+          "label": {
+            "en": "State",
+            "fr": "État",
+            "nl": "Status"
+          }
+        },
+        "Origin": {
+          "label": {
+            "en": "Origin",
+            "fr": "Origine",
+            "nl": "Herkomst"
+          }
+        },
+        "Total": {
+          "label": {
+            "en": "Total",
+            "fr": "Total",
+            "nl": "Totaal"
+          }
+        },
+        "AmountRefunded": {
+          "label": {
+            "en": "Refunded",
+            "fr": "Remboursé",
+            "nl": "Terugbetaald"
+          }
+        },
+        "BuyerEmail": {
+          "label": {
+            "en": "Buyer e-mail",
+            "fr": "E-mail de l'acheteur",
+            "nl": "E-mail koper"
+          }
+        },
+        "BuyerName": {
+          "label": {
+            "en": "Buyer",
+            "fr": "Acheteur",
+            "nl": "Koper"
+          }
+        },
+        "GuestList": {
+          "label": {
+            "en": "Guest list",
+            "fr": "Liste d'invités",
+            "nl": "Gastenlijst"
+          }
+        },
+        "ExcludedFromRevenue": {
+          "label": {
+            "en": "Excluded from revenue",
+            "fr": "Exclu du chiffre d'affaires",
+            "nl": "Uitgesloten van omzet"
+          }
+        },
+        "MixedSellers": {
+          "label": {
+            "en": "Several sellers",
+            "fr": "Plusieurs vendeurs",
+            "nl": "Meerdere verkopers"
+          }
+        },
+        "CreatedAt": {
+          "label": {
+            "en": "Placed",
+            "fr": "Passée le",
+            "nl": "Geplaatst"
+          }
+        },
+        "ConfirmedAt": {
+          "label": {
+            "en": "Confirmed",
+            "fr": "Confirmée le",
+            "nl": "Bevestigd"
+          }
+        },
+        "PaymentPendingUntil": {
+          "label": {
+            "en": "Pay before",
+            "fr": "Payer avant",
+            "nl": "Betalen voor"
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,93 @@
+@if (questionnaire(); as q) {
+  @if (q.lines.length > 0) {
+    <section class="spark-attendee-answers">
+      <h2>{{ 'ticketingEvents.answers.title' | t }}</h2>
+      @if (refusal(); as key) {
+        <p class="spark-attendee-answers-refusal" role="alert">{{ key | t }}</p>
+      }
+      @for (line of q.lines; track line.lineId) {
+        <fieldset class="spark-attendee-answers-line" [disabled]="!line.open">
+          <legend>{{ line.title | resolveTranslation }}</legend>
+          <p class="spark-attendee-answers-deadline">
+            {{ 'ticketingEvents.answers.deadline' | t }} <spark-date-time [value]="line.deadline" />
+          </p>
+          @for (position of line.positions; track position.position) {
+            <form class="spark-attendee-answers-position" (submit)="$event.preventDefault(); save(line, position.position)">
+              <h3>{{ ('ticketingEvents.answers.ticket' | t).replace('{position}', '' + position.position) }}</h3>
+              @for (question of line.questions; track question.key) {
+                <div class="spark-attendee-answers-question" [class.invalid]="!!error(line, position.position, question)">
+                  @switch (question.kind) {
+                    @case ('Choice') {
+                      <label>
+                        {{ question.label | resolveTranslation }}@if (question.required) {<span aria-hidden="true"> *</span>}
+                        <select [required]="question.required" [value]="value(line, position.position, question)"
+                                (change)="set(line, position.position, question, $any($event.target).value)">
+                          <option value=""></option>
+                          @for (choice of question.choices; track choice.key) {
+                            <option [value]="choice.key" [selected]="isChosen(line, position.position, question, choice.key)">{{ choice.label | resolveTranslation }}</option>
+                          }
+                        </select>
+                      </label>
+                    }
+                    @case ('MultipleChoice') {
+                      <fieldset>
+                        <legend>{{ question.label | resolveTranslation }}@if (question.required) {<span aria-hidden="true"> *</span>}</legend>
+                        @for (choice of question.choices; track choice.key) {
+                          <label>
+                            <input type="checkbox" [checked]="isChosen(line, position.position, question, choice.key)"
+                                   (change)="toggleChoice(line, position.position, question, choice.key, $any($event.target).checked)" />
+                            {{ choice.label | resolveTranslation }}
+                          </label>
+                        }
+                      </fieldset>
+                    }
+                    @case ('Checkbox') {
+                      <label>
+                        <input type="checkbox" [checked]="value(line, position.position, question) === 'true'"
+                               (change)="set(line, position.position, question, $any($event.target).checked ? 'true' : '')" />
+                        {{ question.label | resolveTranslation }}@if (question.required) {<span aria-hidden="true"> *</span>}
+                      </label>
+                    }
+                    @case ('MultilineText') {
+                      <label>
+                        {{ question.label | resolveTranslation }}@if (question.required) {<span aria-hidden="true"> *</span>}
+                        <textarea [required]="question.required" maxlength="2000" [value]="value(line, position.position, question)"
+                                  (input)="set(line, position.position, question, $any($event.target).value)"></textarea>
+                      </label>
+                    }
+                    @default {
+                      <label>
+                        {{ question.label | resolveTranslation }}@if (question.required) {<span aria-hidden="true"> *</span>}
+                        <input [type]="question.kind === 'Date' ? 'date' : 'text'" [required]="question.required" maxlength="2000"
+                               [value]="value(line, position.position, question)"
+                               (input)="set(line, position.position, question, $any($event.target).value)" />
+                      </label>
+                    }
+                  }
+                  @if (question.sensitive) {
+                    <label class="spark-attendee-answers-consent">
+                      <input type="checkbox" [checked]="consent(line, position.position, question)"
+                             (change)="setConsent(line, position.position, question, $any($event.target).checked)" />
+                      @if (question.consentText) {
+                        {{ question.consentText | resolveTranslation }}
+                      } @else {
+                        {{ 'ticketingEvents.answers.consent' | t }}
+                      }
+                    </label>
+                  }
+                  @if (error(line, position.position, question); as key) {
+                    <small class="spark-attendee-answers-error" role="alert">{{ key | t }}</small>
+                  }
+                </div>
+              }
+              <button type="submit" [disabled]="busy() === key(line, position.position) || !line.open">{{ 'ticketingEvents.answers.save' | t }}</button>
+              @if (saved()[key(line, position.position)]) {
+                <span class="spark-attendee-answers-saved" role="status">{{ 'ticketingEvents.answers.saved' | t }}</span>
+              }
+            </form>
+          }
+        </fieldset>
+      }
+    </section>
+  }
+}

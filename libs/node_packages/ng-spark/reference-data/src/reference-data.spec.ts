@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { describe, expect, it } from 'vitest';
 import { firstValueFrom } from 'rxjs';
+import { TestScheduler } from 'rxjs/testing';
 import { countryChoices, isEmptyAddress, renderAddressLines } from './address';
 import { ISO_3166_1_ALPHA_2 } from './iso-regions';
 import { displayPlaceName } from './place-names';
@@ -103,5 +104,43 @@ describe('configuration', () => {
   it('fails loudly without provideReferenceData (no default URL)', () => {
     TestBed.configureTestingModule({ providers: [] });
     expect(() => TestBed.inject(ReferenceDataApi)).toThrow(/REFERENCE_DATA_CONFIG|NG0201/);
+  });
+});
+
+describe('the typeahead feed (debounce and cancellation in the service layer, RX5)', () => {
+  const api = () => {
+    TestBed.configureTestingModule({ providers: [provideReferenceData({ baseUrl: null })] });
+    return TestBed.inject(ReferenceDataApi);
+  };
+  const scheduler = () => new TestScheduler((actual, expected) => expect(actual).toEqual(expected));
+
+  it('answers a too-short query with an empty list, without searching', () => {
+    const feed = api();
+    scheduler().run(({ hot, expectObservable }) => {
+      let searched = 0;
+      const queries = hot('a', { a: ' k ' });
+      expectObservable(feed.typeahead(queries, q => { searched++; throw new Error(q); }))
+        .toBe('200ms a', { a: [] });
+      expect(searched).toBe(0);
+    });
+  });
+
+  it('waits for typing to settle and lets a newer query cancel the request of an older one', () => {
+    const feed = api();
+    scheduler().run(({ cold, hot, expectObservable }) => {
+      // 'kru' is replaced within the debounce; 'krui' settles at 551 and its 500 ms request is still running when
+      // 'kruish' settles at 851, so only 'kruish' is answered (at 1351).
+      const queries = hot('a 299ms b 50ms c 299ms d', { a: 'k', b: 'kru', c: 'krui', d: 'kruish' });
+      const search = (q: string) => cold('500ms (x|)', { x: [q] });
+      expectObservable(feed.typeahead(queries, search)).toBe('200ms a 1150ms b', { a: [], b: ['kruish'] });
+    });
+  });
+
+  it('turns an unreachable instance (null) into an empty list, so a searching box always ends', () => {
+    const feed = api();
+    scheduler().run(({ cold, hot, expectObservable }) => {
+      const queries = hot('a', { a: 'kruish' });
+      expectObservable(feed.typeahead(queries, () => cold('(x|)', { x: null }), { debounceMs: 10 })).toBe('10ms a', { a: [] });
+    });
   });
 });

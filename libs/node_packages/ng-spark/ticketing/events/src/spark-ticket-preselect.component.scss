@@ -1,0 +1,43 @@
+:host {
+  display: block;
+}
+
+.spark-ticket-preselect-lines {
+  padding-left: 1.25rem;
+
+  > li {
+    margin-bottom: 1rem;
+  }
+}
+
+.spark-ticket-preselect-alternatives {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 0.5rem;
+
+  > li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.25rem;
+  }
+
+  input[type='number'] {
+    width: 4.5rem;
+  }
+}
+
+.spark-ticket-preselect-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.spark-ticket-preselect-held {
+  color: var(--bs-success, #198754);
+}
+
+.spark-ticket-preselect-refusal,
+.spark-ticket-preselect-none {
+  color: var(--bs-danger, #dc3545);
+}

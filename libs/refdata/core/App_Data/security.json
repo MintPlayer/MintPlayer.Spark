@@ -7,12 +7,11 @@
     "Read only: reference types are written by imports and the seed, never through the generic UI, so no New, Edit or",
     "Delete right exists. No anonymous right either: /spark/* answers Access-Control-Allow-Origin: * by default, so an",
     "anonymous grant here would be a second, unversioned public API. The public contract is /api/v1.",
-    "Opt out with \"libraries\": { \"reference-data\": false }."
+    "Opt out with \"libraries\": { \"reference-data\": false }.",
+    "Countries, places and postal codes are declared by MintPlayer.Spark.ReferenceData.Client (the read-only local copies,",
+    "plan R10), so a library may not grant on them here (guard rail): the application grants their QueryRead itself."
   ],
   "rights": [
-    { "key": "countries", "resource": "QueryRead/RefCountry", "groupId": "reference-data:administrators" },
-    { "key": "places", "resource": "QueryRead/RefPlace", "groupId": "reference-data:administrators" },
-    { "key": "postal-codes", "resource": "QueryRead/RefPostalCode", "groupId": "reference-data:administrators" },
     { "key": "streets", "resource": "QueryRead/RefStreet", "groupId": "reference-data:administrators" },
     { "key": "lineage", "resource": "QueryRead/RefLineageEvent", "groupId": "reference-data:administrators" },
     { "key": "import-runs", "resource": "QueryRead/RefImportRun", "groupId": "reference-data:administrators" },

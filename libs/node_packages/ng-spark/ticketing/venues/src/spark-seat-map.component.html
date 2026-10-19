@@ -1,0 +1,22 @@
+<div class="spark-seat-map">
+  <canvas #canvas class="spark-seat-map-canvas" tabindex="0" role="application"
+          [attr.aria-label]="'ticketingVenues.map.label' | t"
+          aria-describedby="spark-seat-map-help"></canvas>
+  <p id="spark-seat-map-help" class="visually-hidden">{{ 'ticketingVenues.map.help' | t }}</p>
+  <div class="spark-seat-map-zoom" role="group" [attr.aria-label]="'ticketingVenues.map.zoom' | t">
+    <button type="button" class="btn btn-sm btn-light" (click)="zoomIn()" [attr.aria-label]="'ticketingVenues.map.zoomIn' | t">+</button>
+    <button type="button" class="btn btn-sm btn-light" (click)="zoomOut()" [attr.aria-label]="'ticketingVenues.map.zoomOut' | t">−</button>
+    <button type="button" class="btn btn-sm btn-light" (click)="fit()" [attr.aria-label]="'ticketingVenues.map.fit' | t">⤢</button>
+  </div>
+  <ul class="spark-seat-map-legend">
+    <li><span class="swatch free"></span>{{ 'ticketingVenues.state.free' | t }}</li>
+    <li><span class="swatch held"></span>{{ 'ticketingVenues.state.held' | t }}</li>
+    <li><span class="swatch sold"></span>{{ 'ticketingVenues.state.sold' | t }}</li>
+    <li><span class="swatch accessible"></span>{{ 'ticketingVenues.tag.accessible' | t }}</li>
+    <li><span class="swatch selected"></span>{{ 'ticketingVenues.state.selected' | t }}</li>
+  </ul>
+  @if (failed()) {
+    <p class="spark-seat-map-error" role="alert">{{ 'ticketingVenues.map.unavailable' | t }}</p>
+  }
+  <p class="visually-hidden" aria-live="polite">{{ announcement() }}</p>
+</div>

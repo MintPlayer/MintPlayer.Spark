@@ -749,17 +749,33 @@ Content-Type: application/json
 
 **Request**:
 ```http
-GET /spark/queries/e5c2f1a8-9f0d-4b2e-8a1f-3c0b5d9a2e1c/execute?skip=0&take=10&sortColumns=name:asc,age:desc HTTP/1.1
+POST /spark/queries/execute HTTP/1.1
+Content-Type: application/json
+
+{
+  "queryId": "e5c2f1a8-9f0d-4b2e-8a1f-3c0b5d9a2e1c",
+  "skip": 0,
+  "take": 10,
+  "sortColumns": [
+    { "property": "Name", "direction": "asc" },
+    { "property": "Age", "direction": "desc" }
+  ]
+}
 ```
 
-**Response (`200 OK`)**:
+A read, so no `X-XSRF-TOKEN` header. `sortColumns` is an array (the old `name:asc,age:desc` query-string form is gone; see `POST /spark/queries/execute` above).
+
+**Response (`200 OK`)**, the bare query result `{ columns, items, totalItems, skip, take }` (abridged: columns and items carry more fields):
 ```json
 {
+  "columns": [ { "name": "Name" }, { "name": "Age" } ],
   "items": [
-    { "id": "persons/1", "name": "Alice", "age": 30 },
-    { "id": "persons/2", "name": "Bob", "age": 28 }
+    { "id": "persons/1", "breadcrumb": "Alice", "values": { "Name": "Alice", "Age": 30 } },
+    { "id": "persons/2", "breadcrumb": "Bob", "values": { "Name": "Bob", "Age": 28 } }
   ],
-  "totalCount": 2
+  "totalItems": 2,
+  "skip": 0,
+  "take": 10
 }
 ```
 

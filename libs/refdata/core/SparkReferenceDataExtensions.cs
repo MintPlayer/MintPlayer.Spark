@@ -66,6 +66,8 @@ public static class SparkReferenceDataExtensions
         services.TryAddSingleton<RefDataCurrentRelease>();
         services.TryAddSingleton<RefApiService>();
         services.AddHostedService<RefDataSeeder>();
+        if (registrationTime.Releases.Sign)
+            services.TryAddSingleton<IReleaseSigner, Ed25519ReleaseSigner>();
 
         // Downloads (RD1 step 4): one named client, refusing every host no registered source declares.
         services.TryAddTransient<RefDataHostAllowListHandler>();
@@ -135,7 +137,19 @@ public static class SparkReferenceDataExtensions
         var options = services.GetRequiredService<IOptions<SparkReferenceDataOptions>>().Value;
         var problems = new List<string>();
         if (options.Releases.Sign && services.GetService<IReleaseSigner>() is null)
-            problems.Add("Spark:ReferenceData:Releases:Sign is on, but no IReleaseSigner is registered (the algorithm choice is spike RS17).");
+            problems.Add("Spark:ReferenceData:Releases:Sign is on, but no IReleaseSigner is registered.");
+        if (options.Releases.Sign && services.GetService<IReleaseSigner>() is Ed25519ReleaseSigner)
+        {
+            try
+            {
+                ReleaseSignatures.DecodeKey(options.Releases.SigningKey ?? string.Empty, "Spark:ReferenceData:Releases:SigningKey");
+            }
+            catch (FormatException ex)
+            {
+                // The message names the setting and the length only, never the value.
+                problems.Add(ex.Message + " Set it in user-secrets (--refdata-generate-signing-key <file> writes a new one).");
+            }
+        }
         var known = services.GetServices<IReferenceDataSource>().Select(s => s.Id).ToHashSet(StringComparer.Ordinal);
         foreach (var configured in options.Sources.Keys.Where(k => !known.Contains(k)))
             problems.Add($"Spark:ReferenceData:Sources names '{configured}', which no registered adapter provides.");
@@ -181,8 +195,19 @@ public sealed class ReferenceDataBuilder(ISparkBuilder spark)
     }
 }
 
-/// <summary>Signs a release manifest (RD-DEF 5). No implementation ships until spike RS17 picks the Ed25519 library.</summary>
+/// <summary>Signs a release manifest (RD-DEF 5): the detached signature <c>manifest.sig</c> carries.</summary>
 public interface IReleaseSigner
 {
     byte[] Sign(byte[] manifest);
+}
+
+/// <summary>
+/// The shipped signer (RS17): Ed25519 with <c>Spark:ReferenceData:Releases:SigningKey</c>. Registered when
+/// <c>Releases:Sign</c> is on and the host registered no signer of its own. The key is read when first needed and never
+/// logged; startup refuses a missing or malformed key without echoing it.
+/// </summary>
+internal sealed class Ed25519ReleaseSigner(IOptions<SparkReferenceDataOptions> options) : IReleaseSigner
+{
+    public byte[] Sign(byte[] manifest)
+        => ReleaseSignatures.Sign(ReleaseSignatures.DecodeKey(options.Value.Releases.SigningKey ?? string.Empty, "Spark:ReferenceData:Releases:SigningKey"), manifest);
 }

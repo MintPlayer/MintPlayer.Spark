@@ -83,7 +83,7 @@ public sealed record CommerceSellerProfileView(
     CommerceDac7View Dac7,
     bool TraderVerified,
     string Kyc,
-    bool PayoutsBlocked,
+    bool SalesBlocked,
     IReadOnlyList<string> Missing,
     IReadOnlyList<string> SellGateReasons);
 

@@ -81,6 +81,11 @@
       "fr": "Un paiement ne peut être réparti qu'entre vendeurs connectés.",
       "nl": "Een betaling kan alleen tussen gekoppelde verkopers worden verdeeld."
     },
+    "splitNotEnabled": {
+      "en": "This shop does not take one payment for several sellers.",
+      "fr": "Cette boutique n'accepte pas un seul paiement pour plusieurs vendeurs.",
+      "nl": "Deze winkel neemt geen enkele betaling voor meerdere verkopers aan."
+    },
     "splitUnsupported": {
       "en": "This payment method cannot be split between sellers.",
       "fr": "Ce moyen de paiement ne peut pas être réparti entre vendeurs.",

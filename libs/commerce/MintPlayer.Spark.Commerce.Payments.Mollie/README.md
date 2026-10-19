@@ -13,7 +13,7 @@ spark.AddMolliePayments();
   "OrganizationToken": "access_…", // the platform's own settlements (the Settlements API takes no API key)
   "ClientId": "app_…",             // Mollie Connect (ConnectedSellers mode)
   "ClientSecret": "…",
-  "SplitPayments": false            // D40 routing; only once Mollie enabled it on the account
+  "SplitPayments": false            // D40/D41 routing; only once Mollie enabled it, plus Basket:MixSellers + AcknowledgeSplitMerchantOfRecord
 } } } }
 ```
 
@@ -23,7 +23,7 @@ spark.AddMolliePayments();
   `{public base}/spark/commerce/payments/connect/callback`. Access tokens are renewed with the refresh token and stored
   encrypted (Data Protection). Verification is Mollie's onboarding status, polled every 15 minutes.
 - **Chargebacks** are disputes without a deadline and without an evidence API: the evidence pack is a download for
-  Mollie's dashboard. One not reversed after `Spark:Commerce:Payments:Disputes:ChargebackFinalAfter` is closed as lost.
+  Mollie's dashboard. One not reversed after `Spark:Commerce:Payments:Disputes:ChargebackFinalAfter` is closed as lost (default 120 days, the owner's decision D42).
 - **Settlements:** paid-out settlements with their payments, refunds, chargebacks and costs.
 
 Tests use fixtures derived from Mollie's public documentation (`tests/MintPlayer.Spark.Commerce.Tests/Payments/Fixtures/Mollie`),

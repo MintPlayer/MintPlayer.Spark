@@ -1,6 +1,6 @@
 import { HttpBackend, HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { Observable, catchError, firstValueFrom, map, of, shareReplay } from 'rxjs';
+import { Observable, catchError, debounceTime, firstValueFrom, map, of, shareReplay, switchMap } from 'rxjs';
 import { REFERENCE_DATA_CONFIG } from './reference-data.token';
 import {
   CountryProfileResponse,
@@ -15,6 +15,14 @@ export interface SuggestOptions {
   /** The viewer's local calendar date (`yyyy-MM-dd`); the server defaults to the UTC date. No zone arithmetic (K10). */
   asOf?: string | null;
   limit?: number;
+}
+
+/** How a typeahead box queries (see {@link ReferenceDataApi.typeahead}). */
+export interface TypeaheadOptions {
+  /** Quiet time before a query is sent; every keystroke inside it restarts the wait. Default 200 ms. */
+  debounceMs?: number;
+  /** Shorter queries answer an empty list without a request. Default 2 (the API's own minimum). */
+  minLength?: number;
 }
 
 export interface StreetOptions {
@@ -48,6 +56,22 @@ export class ReferenceDataApi {
     return this.get<StreetSuggestResponse>('streets/suggest', {
       q, municipality: options.municipality, postalCode: options.postalCode, lang: options.lang, limit: options.limit,
     });
+  }
+
+  /**
+   * A typeahead feed (PRD §4.15, RX5): `queries` is what the viewer types; the result is the suggestions for the latest
+   * settled query. Debounced, and a newer query cancels the request of an older one (`switchMap` unsubscribes, which
+   * aborts the HTTP request), so a slow answer to "kru" never overwrites the answer to "kruish". Every settled query
+   * emits, an empty list included, so a box showing "searching" always ends. An unreachable instance answers an empty
+   * list: free text stays possible.
+   */
+  typeahead<T>(queries: Observable<string>, search: (q: string) => Observable<readonly T[] | null | undefined>, options: TypeaheadOptions = {}): Observable<T[]> {
+    const minLength = options.minLength ?? 2;
+    return queries.pipe(
+      map(q => q.trim()),
+      debounceTime(options.debounceMs ?? 200),
+      switchMap(q => q.length < minLength ? of([] as T[]) : search(q).pipe(map(items => [...(items ?? [])]))),
+    );
   }
 
   /** A country's profile, fetched once per session. */

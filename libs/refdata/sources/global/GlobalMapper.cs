@@ -84,7 +84,8 @@ internal sealed partial class GlobalMapper : IReferenceDataMapper
             }
         }
 
-        foreach (var profile in BaselineProfiles.All())
+        // A country with its own adapter (Belgium, a tier-1 register) gets its profile and units from it (PRD §3.2).
+        foreach (var profile in BaselineProfiles.All().Where(p => !build.AdapterCountries.Contains(p.Code)))
         {
             var country = build.Country(profile.Code);
             country.Alpha3 = profile.Alpha3;
@@ -152,7 +153,7 @@ internal sealed partial class GlobalMapper : IReferenceDataMapper
         var geonameId = f[0];
         var cc = f[8].ToLowerInvariant();
         var profile = BaselineProfiles.All().FirstOrDefault(p => p.Code == cc);
-        if (profile is null) return;
+        if (profile is null || build.AdapterCountries.Contains(cc)) return;
         var id = build.Ledger.Mint(GeoNamesSource.SourceId, "geonames:" + geonameId, RefIds.Place(cc, "geonames", geonameId));
         var place = build.Place(id);
         var isCountry = f[7] == "PCLI";

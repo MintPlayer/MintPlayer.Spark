@@ -4,6 +4,7 @@ using Raven.Client.Documents;
 using SeoTester.Entities;
 using SeoTester.LookupReferences;
 using SeoTester.Reports;
+using MintPlayer.AspNetCore.SpaServices.Xsrf;
 
 namespace SeoTester.Catalogue;
 
@@ -20,6 +21,10 @@ internal sealed partial class CatalogueEndpoint : IGetEndpoint
     public const string Route = "/seotester/catalogue";
 
     public static string Path => Route;
+
+    // FR1: shared-cacheable (Cache-Control: public), so no per-visitor XSRF cookie: the cookie generator would force
+    // the response private (SparkMiddleware, UseAntiforgeryGenerator).
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => builder.SkipXsrfToken();
 
     [QueryParam] public string? Culture { get; set; }
 

@@ -19,12 +19,18 @@ internal sealed class HttpReleaseFileStore(HttpClient http, Uri baseAddress, str
 }
 
 /// <summary>
-/// The consumer's release sync (PRD §4.7, RD6): the same RD1 mechanism pointed at the instance's manifest. A conditional
-/// check on <c>/api/v1/releases/latest</c>; an unchanged release ends the run. Otherwise the release is read and
-/// verified (file hashes, digests, every document's own hash), refused when it drops an id the database holds, and
-/// applied with skip-if-unchanged, so re-applying a release writes nothing. <c>refdata/state</c> is written last.
+/// The consumer's release sync (PRD §4.7, RD6): the same RD1 mechanism pointed at the instance's manifest.
+/// <list type="number">
+/// <item>The manifest of <c>/api/v1/releases/latest</c>, its signature verified when a public key is configured (RS17).</item>
+/// <item>A new release: the delta from the release this database holds when the manifest carries one, else the full
+/// files; a full release that drops an id the database holds is refused. Applied with skip-if-unchanged (a first load
+/// through BulkInsert), so re-applying writes nothing.</item>
+/// <item>The <b>periodic per-collection checksum</b>, on every run: the digest of what the database holds per release
+/// file is compared with the manifest; a mismatch (a delta that did not reproduce the target, a document edited behind
+/// the sync's back) re-imports that file in full.</item>
+/// <item><c>refdata/state</c> last.</item>
+/// </list>
 /// </summary>
-/// <remarks>Not built: deltas (full files are always read), the periodic per-collection checksum, and signature verification (RS17).</remarks>
 public sealed class ReleaseSyncService(
     IHttpClientFactory httpClients,
     IDocumentStore store,
@@ -37,6 +43,7 @@ public sealed class ReleaseSyncService(
         if (settings.BaseAddress is not { } baseAddress)
             return null;
         var http = httpClients.CreateClient(ReferenceDataClient.HttpClientName);
+        var verify = ReleaseSignatures.Verifier(settings.PublicKey is { Length: > 0 } key ? ReleaseSignatures.DecodeKey(key, "release public key") : null);
 
         using var manifestResponse = await http.GetAsync(new Uri(baseAddress, "api/v1/releases/latest"), cancellationToken);
         if (!manifestResponse.IsSuccessStatusCode)
@@ -45,31 +52,55 @@ public sealed class ReleaseSyncService(
         if (latest is null)
             return null;
 
+        var files = new HttpReleaseFileStore(http, baseAddress, latest);
+        var countries = settings.Sync.Countries.Select(c => c.ToLowerInvariant()).ToHashSet(StringComparer.Ordinal);
+        var collections = settings.Sync.Collections.ToHashSet(StringComparer.Ordinal);
+        bool Include(ReleaseFile file) => (countries.Count == 0 || countries.Contains(file.Country) || file.Country == "_") && collections.Contains(file.Collection);
+
         RefDataState? state;
         using (var session = store.OpenAsyncSession())
             state = await session.LoadAsync<RefDataState>(RefDataState.DocumentId, cancellationToken);
-        if (state?.Release == latest)
-            return new ReleaseApplyResult(0, 0, 0);
 
-        var countries = settings.Sync.Countries.Select(c => c.ToLowerInvariant()).ToHashSet(StringComparer.Ordinal);
-        var collections = settings.Sync.Collections.ToHashSet(StringComparer.Ordinal);
-        var release = await ReleaseReader.ReadAsync(new HttpReleaseFileStore(http, baseAddress, latest), cancellationToken,
-            include: file => (countries.Count == 0 || countries.Contains(file.Country) || file.Country == "_") && collections.Contains(file.Collection));
-
-        // Never delete (§4.6): a release whose id set lacks an id this database holds is refused.
-        var held = new List<string>();
-        using (var session = store.OpenAsyncSession())
-            foreach (var collection in ReleaseFormat.Collections.Where(c => collections.Contains(c.Name)))
+        var result = new ReleaseApplyResult(0, 0, 0);
+        if (state?.Release != latest)
+        {
+            var release = await ReleaseReader.ReadAsync(files, cancellationToken, verify, Include, deltaFrom: state?.Release);
+            if (release.DeltaFrom is null)
             {
-                var ids = await session.Advanced.AsyncRawQuery<IdOnly>($"from {MintPlayer.Spark.Abstractions.RqlIdentifier.Collection(collection.Name)} select id() as Id")
-                    .Take(int.MaxValue).ToListAsync(cancellationToken);
-                held.AddRange(ids.Select(i => i.Id).Where(id => countries.Count == 0 || RefIds.CountryOf(id) is not { } cc || countries.Contains(cc)));
+                // Never delete (§4.6): a full release whose id set lacks an id this database holds is refused.
+                ReleaseReader.RefuseDroppedIds(await HeldIdsAsync(countries, collections, cancellationToken), release);
             }
-        ReleaseReader.RefuseDroppedIds(held, release);
+            result = await ReleaseApplier.ApplyAsync(store, release, ReleaseOverwrite.Always, cancellationToken);
+            logger.LogInformation("Reference data synced to {Release} ({Mode}): {Added} added, {Updated} updated, {Skipped} unchanged.",
+                latest, release.DeltaFrom is null ? "full" : "delta from " + release.DeltaFrom, result.Added, result.Updated, result.Skipped);
+        }
 
-        var result = await ReleaseApplier.ApplyAsync(store, release, ReleaseOverwrite.Always, cancellationToken);
-        logger.LogInformation("Reference data synced to {Release}: {Added} added, {Updated} updated, {Skipped} unchanged.", latest, result.Added, result.Updated, result.Skipped);
+        // The periodic per-collection checksum (§4.7, RS7): every file's local digest against the manifest's.
+        var manifest = await ReleaseReader.ReadManifestAsync(files, cancellationToken, verify);
+        var included = manifest.Files.Where(Include).ToList();
+        var local = await ReleaseApplier.LocalFileDigestsAsync(store, included, cancellationToken);
+        var stale = included.Where(f => !string.Equals(local.GetValueOrDefault(f.Path), f.Digest, StringComparison.Ordinal)).ToList();
+        if (stale.Count > 0)
+        {
+            logger.LogWarning("Reference data: {Files} differ from release {Release}; re-importing them in full.", string.Join(", ", stale.Select(f => f.Path)), latest);
+            var documents = await ReleaseReader.ReadFilesAsync(files, stale, null, cancellationToken);
+            var repair = await ReleaseApplier.ApplyAsync(store, new ReleaseContent { Manifest = manifest, Documents = documents }, ReleaseOverwrite.Always, cancellationToken);
+            result = new ReleaseApplyResult(result.Added + repair.Added, result.Updated + repair.Updated, result.Skipped + repair.Skipped);
+        }
         return result;
+    }
+
+    private async Task<List<string>> HeldIdsAsync(HashSet<string> countries, HashSet<string> collections, CancellationToken cancellationToken)
+    {
+        var held = new List<string>();
+        using var session = store.OpenAsyncSession();
+        foreach (var collection in ReleaseFormat.Collections.Where(c => collections.Contains(c.Name)))
+        {
+            var ids = await session.Advanced.AsyncRawQuery<IdOnly>($"from {MintPlayer.Spark.Abstractions.RqlIdentifier.Collection(collection.Name)} select id() as Id")
+                .Take(int.MaxValue).ToListAsync(cancellationToken);
+            held.AddRange(ids.Select(i => i.Id).Where(id => countries.Count == 0 || RefIds.CountryOf(id) is not { } cc || countries.Contains(cc)));
+        }
+        return held;
     }
 
     private sealed class IdOnly

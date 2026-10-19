@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<tns:postalInfoResponseBySource xmlns:com="http://fsb.belgium.be/data/common" xmlns:tns="http://fsb.belgium.be/mappingservices/FullDownload/v1_00" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+ <tns:source>wallonia</tns:source>
+ <tns:timestamp>2026-10-16T21:00:12</tns:timestamp>
+ <tns:postalInfo>
+  <com:code>
+   <com:namespace>geodata.wallonie.be/id/PostalInfo</com:namespace>
+   <com:objectIdentifier>7100</com:objectIdentifier>
+   <com:versionIdentifier>1</com:versionIdentifier>
+  </com:code>
+ </tns:postalInfo>
+ <tns:postalInfo>
+  <com:code>
+   <com:namespace>geodata.wallonie.be/id/PostalInfo</com:namespace>
+   <com:objectIdentifier>5060</com:objectIdentifier>
+   <com:versionIdentifier>1</com:versionIdentifier>
+  </com:code>
+ </tns:postalInfo>
+ <tns:postalInfo>
+  <com:code>
+   <com:namespace>geodata.wallonie.be/id/PostalInfo</com:namespace>
+   <com:objectIdentifier>6687</com:objectIdentifier>
+   <com:versionIdentifier>1</com:versionIdentifier>
+  </com:code>
+ </tns:postalInfo>
+ <tns:postalInfo>
+  <com:code>
+   <com:namespace>geodata.wallonie.be/id/PostalInfo</com:namespace>
+   <com:objectIdentifier>6600</com:objectIdentifier>
+   <com:versionIdentifier>1</com:versionIdentifier>
+  </com:code>
+ </tns:postalInfo>
+</tns:postalInfoResponseBySource>

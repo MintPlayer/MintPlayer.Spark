@@ -26,7 +26,7 @@ spark.AddCommerce();   // binds Spark:Commerce; adds Organizations, Approvals an
 | Trader traceability | DSA Art. 30 data, identity document (attachment, `ViewTraderData/Commerce` only, audited), best-effort check through Approvals, public trader page, 6-month retention | GA5 |
 | Ranking, P2B | `GET /spark/commerce/ranking-parameters` from `IRankingParameterSource`; platform terms accepted at registration; complaints as Approvals requests | GA5 |
 | Notice and action | `POST /spark/commerce/notices` (anyone), decisions by Moderation's reviewers or `DecideNotices/Commerce`, statements of reasons, transparency report | GA5 |
-| DAC7 | seller tax data, reminders, payout block | GA6 |
+| DAC7 | seller tax data, reminders, sales block (`CanSellAsync`; payouts untouched) | GA6, D43 |
 | Legal documents | versioned, immutable once published, PDF, in force per seller/platform, acceptance records; sale refused without required documents | GA2 |
 | Data roles | DPA accepted at registration; audited seller CSV exports through `ISellerExportSource` | GB14 |
 | Audit, retention | `ICommerceAudit` (append-only), retention per type with legal floors (unconfirmed per country) | default 8, §4.15 |

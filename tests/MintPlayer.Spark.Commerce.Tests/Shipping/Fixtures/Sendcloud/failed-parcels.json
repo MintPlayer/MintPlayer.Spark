@@ -1,0 +1,14 @@
+{
+  "_fixture": {
+    "source": "https://sendcloud.dev/api/v2/parcels/create-a-parcel-or-parcels (200 response schema: failed_parcels)",
+    "derived": "built from the documented schema ({\"failed_parcels\":[{\"parcel\":{...},\"errors\":{...}}]}); the error text is illustrative",
+    "recorded": false
+  },
+  "parcels": [],
+  "failed_parcels": [
+    {
+      "parcel": { "name": "John Doe", "address": "Stadhuisplein", "city": "Eindhoven", "postal_code": "5611 EM", "country": "NL" },
+      "errors": { "house_number": [ "This field is required for the selected carrier." ] }
+    }
+  ]
+}

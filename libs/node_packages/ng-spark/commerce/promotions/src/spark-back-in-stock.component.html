@@ -1,0 +1,22 @@
+<form class="spark-back-in-stock" (submit)="subscribe($event)">
+  @switch (state()) {
+    @case ('subscribed') {
+      <p class="spark-back-in-stock-done" role="status">{{ 'commercePromotions.notifySubscribed' | t }}</p>
+    }
+    @case ('confirm') {
+      <p class="spark-back-in-stock-done" role="status">{{ 'commercePromotions.notifyConfirmSent' | t }}</p>
+    }
+    @default {
+      @if (!signedIn()) {
+        <label class="spark-back-in-stock-email">
+          <span>{{ 'commercePromotions.notifyEmail' | t }}</span>
+          <input type="email" autocomplete="email" required [value]="email()" (input)="setEmail($event)" />
+        </label>
+      }
+      <button type="submit" [disabled]="busy()">{{ 'commercePromotions.notifyMe' | t }}</button>
+      @if (state() === 'error') {
+        <p class="spark-back-in-stock-error" role="alert">{{ errorKey() | t }}</p>
+      }
+    }
+  }
+</form>

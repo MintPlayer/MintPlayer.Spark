@@ -64,16 +64,26 @@ public static class CommerceStartupValidation
         if (options.Merchant == MerchantMode.ConnectedSellers && !hasKycSource)
             warnings.Add($"{root}:Merchant=ConnectedSellers but no payments package reports seller KYC (ISellerKycSource): no seller can sell until one is added (D21).");
 
-        // D40: one payment across sellers needs a provider that splits.
+        // D40/D41: one payment across sellers needs the host's opt-in (the platform becomes the merchant of record for
+        // that order) and a provider that splits.
         if (options.Basket.MixSellers)
         {
             if (options.Merchant != MerchantMode.ConnectedSellers)
                 warnings.Add($"{root}:Basket:MixSellers only applies with Merchant=ConnectedSellers; it is ignored.");
-            else if (payments.Count == 0)
-                warnings.Add($"{root}:Basket:MixSellers=true but no payment provider is registered yet; it is checked again when one is (D40).");
             else
-                foreach (var provider in payments.Where(p => !p.SupportsSplit))
-                    errors.Add($"{root}:Basket:MixSellers=true, but the payment provider '{provider.Provider}' cannot split one payment across sellers (D40).");
+            {
+                if (!options.Basket.AcknowledgeSplitMerchantOfRecord)
+                    errors.Add($"{root}:Basket:MixSellers=true needs {root}:Basket:AcknowledgeSplitMerchantOfRecord=true: a split payment passes through "
+                        + "the platform's account, which makes the platform the merchant of record for that order (licensing and KYC consequences; D41).");
+                if (payments.Count == 0)
+                    warnings.Add($"{root}:Basket:MixSellers=true but no payment provider is registered yet; it is checked again when one is (D40).");
+                else if (!payments.Any(p => p.SupportsSplit))
+                    errors.Add($"{root}:Basket:MixSellers=true, but none of the payment providers ({string.Join(", ", payments.Select(p => p.Provider))}) "
+                        + "can split one payment across sellers (D41).");
+                else
+                    foreach (var provider in payments.Where(p => !p.SupportsSplit))
+                        warnings.Add($"{root}:Basket:MixSellers=true: the payment provider '{provider.Provider}' cannot split, so a mixed-seller basket is never offered its methods (D41).");
+            }
         }
 
         if (options.Channels.Count == 0)

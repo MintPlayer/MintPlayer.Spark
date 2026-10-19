@@ -1,4 +1,6 @@
 using Raven.Client.Documents;
+using Raven.Client.Documents.BulkInsert;
+using Raven.Client.Documents.Operations;
 using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.ReferenceData.Releases;
@@ -18,8 +20,9 @@ public enum ReleaseOverwrite
 
 /// <summary>
 /// Writes a release into a database (§4.7): a document whose <c>Hash</c> already matches is skipped, so re-applying a
-/// release writes <b>0 documents</b> (no re-indexing, no subscription wake-up, no change-vector churn). Documents are
-/// never deleted; <c>refdata/state</c> is written last, and only when something changed.
+/// release writes <b>0 documents</b> (no re-indexing, no subscription wake-up, no change-vector churn). A first load into
+/// an empty collection goes through BulkInsert with explicit ids and <c>SkipOverwriteIfUnchanged</c> (RD-DEF 12).
+/// Documents are never deleted; <c>refdata/state</c> is written last, and only when something changed.
 /// </summary>
 public static class ReleaseApplier
 {
@@ -28,9 +31,22 @@ public static class ReleaseApplier
     public static async Task<ReleaseApplyResult> ApplyAsync(IDocumentStore store, ReleaseContent release, ReleaseOverwrite overwrite, CancellationToken cancellationToken)
     {
         int added = 0, updated = 0, skipped = 0;
-        var byType = release.Documents.Values.GroupBy(d => d.GetType());
-        foreach (var group in byType)
+        var counts = await CollectionCountsAsync(store, cancellationToken);
+        foreach (var group in release.Documents.Values.GroupBy(d => d.GetType()))
         {
+            var collection = ReleaseFormat.CollectionOf(group.Key).Name;
+            if (counts.GetValueOrDefault(collection) == 0)
+            {
+                // The first load (§4.5 step 7, §4.7): nothing to compare against, so stream it in.
+                await using var bulk = store.BulkInsert(new BulkInsertOptions { SkipOverwriteIfUnchanged = true }, cancellationToken);
+                foreach (var document in group)
+                {
+                    await bulk.StoreAsync(document, ReleaseWriter.IdOf(document));
+                    added++;
+                }
+                continue;
+            }
+
             foreach (var chunk in group.Chunk(Chunk))
             {
                 using var session = store.OpenAsyncSession();
@@ -69,13 +85,8 @@ public static class ReleaseApplier
             }
         }
 
-        var digests = release.Manifest.Files
-            .GroupBy(f => f.Collection)
-            .ToDictionary(g => g.Key, g => ReleaseCanonical.Digest(g.SelectMany(f => release.Documents.Values
-                .Where(d => ReleaseFormat.CollectionOf(d.GetType()).Name == f.Collection
-                            && string.Equals(RefIds.CountryOf(ReleaseWriter.IdOf(d)) ?? f.Country, f.Country, StringComparison.OrdinalIgnoreCase))
-                .Select(d => (ReleaseWriter.IdOf(d), ReleaseWriter.HashOf(d))))), StringComparer.Ordinal);
-
+        // refdata/state last (§4.7): the release and, per collection, the digest of what the database now holds.
+        var digests = await LocalDigestsAsync(store, release.Manifest.Files.Select(f => f.Collection).Distinct(StringComparer.Ordinal), cancellationToken);
         using (var session = store.OpenAsyncSession())
         {
             var state = await session.LoadAsync<RefDataState>(RefDataState.DocumentId, cancellationToken);
@@ -97,6 +108,56 @@ public static class ReleaseApplier
         return new ReleaseApplyResult(added, updated, skipped);
     }
 
+    /// <summary>Per collection: the digest over (id, Hash) of every document the database holds (§4.7).</summary>
+    public static async Task<Dictionary<string, string>> LocalDigestsAsync(IDocumentStore store, IEnumerable<string> collections, CancellationToken cancellationToken)
+    {
+        var digests = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var collection in collections)
+            digests[collection] = ReleaseCanonical.Digest((await StampsAsync(store, collection, cancellationToken)).Select(s => (s.Id, s.Hash ?? string.Empty)));
+        return digests;
+    }
+
+    /// <summary>
+    /// Per release file: the digest over (id, Hash) of the documents the database holds for that file's country and
+    /// collection. The periodic checksum (§4.7) compares it with the manifest; a mismatch re-imports the file in full.
+    /// </summary>
+    public static async Task<Dictionary<string, string>> LocalFileDigestsAsync(IDocumentStore store, IEnumerable<ReleaseFile> files, CancellationToken cancellationToken)
+    {
+        var digests = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var collection in files.GroupBy(f => f.Collection, StringComparer.Ordinal))
+        {
+            var stamps = await StampsAsync(store, collection.Key, cancellationToken);
+            foreach (var file in collection)
+                digests[file.Path] = ReleaseCanonical.Digest(stamps
+                    .Where(s => string.Equals(RefIds.CountryOf(s.Id) ?? (s.Country is { Length: > 0 } c ? c.ToLowerInvariant() : "_"), file.Country, StringComparison.Ordinal))
+                    .Select(s => (s.Id, s.Hash ?? string.Empty)));
+        }
+        return digests;
+    }
+
+    /// <summary>The number of documents per collection (one maintenance call).</summary>
+    public static async Task<IReadOnlyDictionary<string, long>> CollectionCountsAsync(IDocumentStore store, CancellationToken cancellationToken)
+    {
+        var statistics = await store.Maintenance.SendAsync(new GetCollectionStatisticsOperation(), cancellationToken);
+        return statistics.Collections.ToDictionary(c => c.Key, c => c.Value, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static async Task<List<Stamp>> StampsAsync(IDocumentStore store, string collection, CancellationToken cancellationToken)
+    {
+        using var session = store.OpenAsyncSession();
+        return await session.Advanced.AsyncRawQuery<Stamp>($"from {CollectionIdentifier(collection)} select id() as Id, Hash, Country")
+            .Take(int.MaxValue).ToListAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Only the release format's own collection names reach RQL (repo rule: identifiers are validated, never spliced
+    /// raw). This package has no ASP.NET Core, so it checks against <see cref="ReleaseFormat.Collections"/> itself.
+    /// </summary>
+    private static string CollectionIdentifier(string collection)
+        => ReleaseFormat.CollectionNamed(collection) is not null && collection.All(char.IsAsciiLetter)
+            ? collection
+            : throw new ArgumentException($"'{collection}' is not a release collection.", nameof(collection));
+
     private static async Task<IReadOnlyDictionary<string, object?>> LoadAsync(IAsyncDocumentSession session, Type type, List<string> ids, CancellationToken cancellationToken)
     {
         // A typed load per collection: the stored documents come back as the same CLR types the release holds.
@@ -115,6 +176,13 @@ public static class ReleaseApplier
 
     private static string? ReleaseChangedOf(object document)
         => (document.GetType().GetProperty("Release")?.GetValue(document) as ReleaseStamp)?.Changed;
+
+    private sealed class Stamp
+    {
+        public string Id { get; set; } = string.Empty;
+        public string? Hash { get; set; }
+        public string? Country { get; set; }
+    }
 }
 
 /// <param name="Added">Documents the database did not hold.</param>

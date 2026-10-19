@@ -29,10 +29,29 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     // Spark's own budget keeps metering /spark. /api stays out of PathPrefixes (they replace the defaults).
     spark.AddRateLimiter();
 
-    // The instance: model, ledger, imports, releases, /api/v1, the seed. One line per adapter package (K7).
+    // The instance: model, ledger, imports, releases, /api/v1, the seed. One line per adapter package (K7). Every
+    // adapter is registered, so "Import now" can import any country locally (a source imports only when
+    // Spark:ReferenceData:Sources:{id}:Enabled); the seed stays the basic set of Spark:ReferenceData:Seed:Countries (D39).
     spark.AddReferenceData()
         .AddGlobalBaseline()
         .AddBelgium()
+        .AddNetherlands()
+        .AddFrance()
+        .AddLuxembourg()
+        .AddSwitzerland()
+        .AddLiechtenstein()
+        .AddAustria()
+        .AddDenmark()
+        .AddNorway()
+        .AddFinland()
+        .AddEstonia()
+        .AddLatvia()
+        .AddSpain()
+        .AddPoland()
+        .AddCzechia()
+        .AddSlovenia()
+        .AddUnitedStates()
+        .AddAustralia()
         .AddTedbVatRates()
         .AddStatutoryHolidays();
 

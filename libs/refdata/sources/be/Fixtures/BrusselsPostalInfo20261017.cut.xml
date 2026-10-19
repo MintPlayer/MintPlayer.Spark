@@ -1,0 +1,19 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<tns:postalInfoResponseBySource xmlns:com="http://fsb.belgium.be/data/common" xmlns:tns="http://fsb.belgium.be/mappingservices/FullDownload/v1_00" xmlns:xs="http://www.w3.org/2001/XMLSchema">
+	<tns:source>brussels</tns:source>
+	<tns:timestamp>2026-10-17T05:16:18.081336874Z</tns:timestamp>
+	<tns:postalInfo>
+		<com:code>
+			<com:namespace>https://databrussels.be/id/postalinfo</com:namespace>
+			<com:objectIdentifier>1000</com:objectIdentifier>
+			<com:versionIdentifier>1</com:versionIdentifier>
+		</com:code>
+	</tns:postalInfo>
+	<tns:postalInfo>
+		<com:code>
+			<com:namespace>https://databrussels.be/id/postalinfo</com:namespace>
+			<com:objectIdentifier>1020</com:objectIdentifier>
+			<com:versionIdentifier>1</com:versionIdentifier>
+		</com:code>
+	</tns:postalInfo>
+</tns:postalInfoResponseBySource>

@@ -1,0 +1,39 @@
+{
+  "$schema": "../../../../schemas/translations.schema.json",
+  "commercePromotions": {
+    "discount": { "en": "Discount", "fr": "Réduction", "nl": "Korting" },
+    "sale": { "en": "Sale price", "fr": "Prix soldé", "nl": "Actieprijs" },
+    "code": { "en": "Promotion code", "fr": "Code promo", "nl": "Kortingscode" },
+    "applyCode": { "en": "Apply", "fr": "Appliquer", "nl": "Toepassen" },
+    "removeCode": { "en": "Remove code", "fr": "Retirer le code", "nl": "Code verwijderen" },
+    "priorPrice": { "en": "Lowest price in the previous 30 days: {0}", "fr": "Prix le plus bas des 30 derniers jours : {0}", "nl": "Laagste prijs van de voorbije 30 dagen: {0}" },
+    "reduction": { "en": "−{0} %", "fr": "−{0} %", "nl": "−{0} %" },
+    "saleEnds": { "en": "Sale ends {0}", "fr": "Fin des soldes {0}", "nl": "Actie loopt tot {0}" },
+    "notifyMe": { "en": "Notify me when it is back in stock", "fr": "Prévenez-moi quand il est de nouveau disponible", "nl": "Laat me weten wanneer het terug op voorraad is" },
+    "notifyEmail": { "en": "Your e-mail address", "fr": "Votre adresse e-mail", "nl": "Je e-mailadres" },
+    "notifyConfirmSent": { "en": "Check your mailbox to confirm.", "fr": "Consultez votre boîte mail pour confirmer.", "nl": "Bevestig via de mail die we je stuurden." },
+    "notifySubscribed": { "en": "We will mail you when it is available again. Nothing is reserved: the first to pay gets it.", "fr": "Nous vous écrirons dès qu'il sera disponible. Rien n'est réservé : le premier à payer l'obtient.", "nl": "We mailen je zodra het weer beschikbaar is. Er wordt niets gereserveerd: wie eerst betaalt, krijgt het." },
+    "joinWaitingList": { "en": "Join the waiting list", "fr": "Rejoindre la liste d'attente", "nl": "Op de wachtlijst" },
+    "leaveWaitingList": { "en": "Leave the waiting list", "fr": "Quitter la liste d'attente", "nl": "Wachtlijst verlaten" },
+    "waitingPosition": { "en": "You are number {0} on the waiting list.", "fr": "Vous êtes numéro {0} sur la liste d'attente.", "nl": "Je staat op plaats {0} van de wachtlijst." },
+    "offerOpen": { "en": "Tickets are reserved for you until {0}.", "fr": "Des billets vous sont réservés jusqu'au {0}.", "nl": "Er zijn tickets voor je gereserveerd tot {0}." },
+    "refusal": {
+      "promotionCodeInvalid": { "en": "This code is not valid.", "fr": "Ce code n'est pas valable.", "nl": "Deze code is niet geldig." },
+      "promotionCodeNotApplicable": { "en": "This code does not apply to your basket.", "fr": "Ce code ne s'applique pas à votre panier.", "nl": "Deze code is niet van toepassing op je winkelmandje." },
+      "promotionCodeExhausted": { "en": "This code has been used up.", "fr": "Ce code a été entièrement utilisé.", "nl": "Deze code is opgebruikt." },
+      "promotionCodeAlreadyUsed": { "en": "You have already used this code.", "fr": "Vous avez déjà utilisé ce code.", "nl": "Je hebt deze code al gebruikt." },
+      "promotionSignInRequired": { "en": "Sign in to use this code.", "fr": "Connectez-vous pour utiliser ce code.", "nl": "Meld je aan om deze code te gebruiken." },
+      "promotionMinimumNotReached": { "en": "Your basket does not reach this code's minimum.", "fr": "Votre panier n'atteint pas le minimum de ce code.", "nl": "Je winkelmandje haalt het minimum van deze code niet." },
+      "promotionQuantityExceeded": { "en": "This code covers fewer items.", "fr": "Ce code couvre moins d'articles.", "nl": "Deze code geldt voor minder stuks." },
+      "promotionCodeNotYours": { "en": "This code is personal.", "fr": "Ce code est personnel.", "nl": "Deze code is persoonlijk." },
+      "promotionCodeTaken": { "en": "This code already exists.", "fr": "Ce code existe déjà.", "nl": "Deze code bestaat al." },
+      "promotionInvalidRequest": { "en": "The request is not valid.", "fr": "La demande n'est pas valable.", "nl": "De aanvraag is niet geldig." },
+      "promotionNotAReduction": { "en": "A sale price must be lower than the current price.", "fr": "Un prix soldé doit être inférieur au prix actuel.", "nl": "Een actieprijs moet lager zijn dan de huidige prijs." },
+      "promotionSaleOverlaps": { "en": "Another sale of this item overlaps these dates.", "fr": "Une autre promotion de cet article chevauche ces dates.", "nl": "Een andere actie voor dit artikel overlapt deze data." },
+      "promotionItemNotFound": { "en": "This item is not on sale.", "fr": "Cet article n'est pas en vente.", "nl": "Dit artikel is niet te koop." },
+      "promotionNumberedUnits": { "en": "Seats cannot be blocked with a code.", "fr": "Les places numérotées ne peuvent pas être bloquées par un code.", "nl": "Genummerde plaatsen kunnen niet met een code geblokkeerd worden." },
+      "promotionSoldOut": { "en": "Not enough units left to block.", "fr": "Il ne reste pas assez d'unités à bloquer.", "nl": "Er zijn niet genoeg stuks meer om te blokkeren." },
+      "promotionListClosed": { "en": "This waiting list is closed.", "fr": "Cette liste d'attente est fermée.", "nl": "Deze wachtlijst is gesloten." }
+    }
+  }
+}

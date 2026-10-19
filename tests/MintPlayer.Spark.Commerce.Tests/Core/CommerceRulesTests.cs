@@ -66,7 +66,7 @@ public class CommerceRulesTests
     }
 
     [Fact]
-    public void Dac7_reminds_twice_then_blocks_payouts_after_60_days()
+    public void Dac7_reminds_twice_then_blocks_sales_after_60_days()
     {
         var options = new CommerceDac7Options();
         var data = new Dac7Data();
@@ -100,6 +100,20 @@ public class CommerceRulesTests
         SparkSellers.SellReasons(ok with { Approved = false }, options).Should().Contain("commerce.seller.notApproved");
         // A private seller needs no trader verification.
         SparkSellers.SellReasons(ok with { TraderStatus = TraderStatus.NonTrader, TraderVerified = false }, options).Should().BeEmpty();
+    }
+
+    /// <summary>D43 (owner, 2026-10-19): "Block selling". The DAC7 block closes sales and leaves payouts alone.</summary>
+    [Fact]
+    public void D43_the_dac7_block_closes_sales_and_does_not_touch_payouts()
+    {
+        var options = Options(o => o.Merchant = MerchantMode.ConnectedSellers);
+        var blocked = new SellerStanding("Organizations/a", true, false, KycStatus.Verified, TraderStatus.Trader, true, false, SalesBlocked: true);
+
+        SparkSellers.SellReasons(blocked, options).Should().Equal("commerce.seller.dac7Blocked");
+        SparkSellers.PayoutReasons(blocked).Should().BeEmpty();
+        SparkSellers.SellReasons(blocked with { SalesBlocked = false }, options).Should().BeEmpty();
+        // Missing data alone (reminders still running) does not close sales yet.
+        SparkSellers.SellReasons(blocked with { SalesBlocked = false, Dac7Complete = false }, options).Should().BeEmpty();
     }
 
     [Fact]
