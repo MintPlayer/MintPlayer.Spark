@@ -1,7 +1,7 @@
 # Plan — Polyglot migration
 
 **PRD:** [polyglot_migration_PRD.md](polyglot_migration_PRD.md)
-**Branch:** `feat/polyglot-migration` off `master` (`e39b16de`). It holds docs only so far.
+**Branch:** `feat/polyglot-migration` off `master` (`e39b16de`), PR [#528](https://github.com/MintPlayer/MintPlayer.Spark/pull/528), with green checks.
 **One PR** on the Spark side: the GS1 library, the TS twin, CI and docs land together, after the upstream milestones.
 
 ## Status
@@ -12,7 +12,7 @@
 | U1: P40 decisions accepted with Spark's terms; acceptance checklist posted | ✅ 2026-10-17 ([6233584472](https://github.com/MintPlayer/MintPlayer.Polyglot/issues/73#issuecomment-6233584472), [6233861572](https://github.com/MintPlayer/MintPlayer.Polyglot/issues/73#issuecomment-6233861572)) |
 | U2: review rounds on PR [#75](https://github.com/MintPlayer/MintPlayer.Polyglot/pull/75) | ✅ ten rounds; approved `629b0c2` ([6258506901](https://github.com/MintPlayer/MintPlayer.Polyglot/issues/73#issuecomment-6258506901)) with two non-gating items, fixed in `3e9a2f5` |
 | U3: **approval comment** on #73 | ✅ 2026-10-19: approval 6258506901, confirmation of `3e9a2f5` [6262383457](https://github.com/MintPlayer/MintPlayer.Polyglot/issues/73#issuecomment-6262383457) |
-| U4: a Polyglot release carrying #73 (`MintPlayer.Polyglot.MSBuild`) | ✅ 0.10.2, 2026-10-19 (GitHub Packages 08:12Z, nuget.org ~08:24Z). `nuget.config` maps `MintPlayer.*` to the GitHub feed (`GH_PKG_USER`/`GH_PKG_TOKEN`; CI passes `github.actor` and `GITHUB_TOKEN`) |
+| U4: a Polyglot release carrying #73 (`MintPlayer.Polyglot.MSBuild`) | ✅ 0.10.2, 2026-10-19 (GitHub Packages 08:12Z, nuget.org ~08:24Z). Spark is on **0.10.3**, which fixes [#76](https://github.com/MintPlayer/MintPlayer.Polyglot/issues/76) (PR #77), found while building S3. CI builds on SDK 11.0.100-rc.2 (PRD §4, constraint 12). `nuget.config` maps `MintPlayer.*` to the GitHub feed (`GH_PKG_USER`/`GH_PKG_TOKEN`; CI passes `github.actor` and `GITHUB_TOKEN`) |
 | S1: `libs/gs1` project with the package, `PolyglotTargets=csharp`, internal access, its own namespace, the facade | ✅ `libs/gs1/MintPlayer.Spark.Gs1` (namespace `MintPlayer.Spark.Gs1.Core`, class `Gs1Core`, internal); facades `Gs1CheckDigit`, `Gs1Barcode`, `Gs1Sscc` |
 | S2: TS twin routed into ng-spark `scanning`, `.gitattributes` `eol=lf`, CI `polyglot build --check --only typescript` from the config dir, barrel outside the owned folder | ✅ new entry point `@mintplayer/ng-spark/scanning` (22.42.0); owned folder `scanning/src/gs1/`; CI step in `pull-request.yml` with the package's linux-x64 CLI |
 | S3: GS1 core in `.pg` (check digits, SSCC, element strings, Digital Link, AI linters), with the AI tables from the `tools/` script (Q-W16) and Syntax Engine vectors run against both outputs | ✅ `tools/gs1/generate-ai-table.mjs` emits the vendored Syntax Dictionary as `pg/aitable.pg` (one table, transpiled to both targets); `pg/` holds element strings (symbology identifiers, GS/FNC1, bracketed, `ex=` pairs, repeats), Digital Link, SSCC and all 39 linters (5683/5683 GS1 unit vectors on C# and TS). **W12:** `libs/gs1/corpus/gs1-corpus.json`, 2995 cases from `tools/gs1/build-corpus.mjs` (Syntax Engine 1.4.1 WASM, RequisiteAIs off), every dictionary AI covered; `tests/MintPlayer.Spark.Gs1.Tests` and `scanning/src/gs1-corpus.spec.ts` agree on all of them |
@@ -27,6 +27,12 @@
 | `281314c` | 2026-10-18 | round 3: 7 gating | [part 1](https://github.com/MintPlayer/MintPlayer.Polyglot/issues/73#issuecomment-6242657697), [part 2](https://github.com/MintPlayer/MintPlayer.Polyglot/issues/73#issuecomment-6242658042) |
 | `f00dd24` | 2026-10-18 | round 4: 22 gating; bar narrowed | [part 1](https://github.com/MintPlayer/MintPlayer.Polyglot/issues/73#issuecomment-6244347379), [part 2](https://github.com/MintPlayer/MintPlayer.Polyglot/issues/73#issuecomment-6244347721) |
 | `c436aae` | 2026-10-18 | round 5: 24 gating (8 R, 9 H, 7 O); bar narrowed to silent miscompiles | [part 1](https://github.com/MintPlayer/MintPlayer.Polyglot/issues/73#issuecomment-6245914322), [part 2](https://github.com/MintPlayer/MintPlayer.Polyglot/issues/73#issuecomment-6245915312) |
+| `e4360b3` | 2026-10-18 | round 6: 10 gating, two class-closing rules (every body kind; `this` in subclassable constructors) | [part 1](https://github.com/MintPlayer/MintPlayer.Polyglot/issues/73#issuecomment-6249032420), [part 2](https://github.com/MintPlayer/MintPlayer.Polyglot/issues/73#issuecomment-6249034114) |
+| `6713b69` | 2026-10-18 | round 7: 1 gating (item-5 regression, `r5_h_field*`) | [part 1](https://github.com/MintPlayer/MintPlayer.Polyglot/issues/73#issuecomment-6251864520), [part 2](https://github.com/MintPlayer/MintPlayer.Polyglot/issues/73#issuecomment-6251865870) |
+| `be5140d` | 2026-10-18 | round 8: 1 gating (an `--out` root typed in another case broke `dotnet build -c debug`) | [6254428042](https://github.com/MintPlayer/MintPlayer.Polyglot/issues/73#issuecomment-6254428042) |
+| `22b56f5` | 2026-10-18 | round 9: 1 gating (H4 escaped beside a typed `--out`/`--build-owned` root) | [6256322496](https://github.com/MintPlayer/MintPlayer.Polyglot/issues/73#issuecomment-6256322496) |
+| `629b0c2` | 2026-10-19 | **approved**; two non-gating items: an order-dependent false "conflicting output", and the `--out proj` H4 gap | [6258506901](https://github.com/MintPlayer/MintPlayer.Polyglot/issues/73#issuecomment-6258506901) |
+| `3e9a2f5` | 2026-10-19 | **confirmed for merge**; both items fixed | [6262383457](https://github.com/MintPlayer/MintPlayer.Polyglot/issues/73#issuecomment-6262383457) |
 
 **What each round found:**
 - **`612e2fe`:**
@@ -55,7 +61,9 @@
 - Polyglot's own conformance runner gives 169/169, the library gate is green over 166 programs, and the floor gate's canary now fails with TWAE off;
 - Spark's D3 workflow works with the packaged exe, and D17 and incrementality hold, including `PolyglotEntryPoint` and `PolyglotOutDir` flips.
 
-## Round 5 gating items, and how to re-verify each one
+## Round 5 gating items, and how to re-verify each one (historical)
+
+*The review is closed; this section and "How to resume" below record how it was run.*
 
 Repro paths are relative to the session scratchpad, `%TEMP%\claude\C--Repos-MintPlayer-Spark\73183653-24bf-47a7-b375-6516bae73e6d\scratchpad\`. Tags: [R] regression against `f00dd24`, [H] hole in a round-4 fix, [O] older than #75.
 
@@ -107,7 +115,7 @@ Repro paths are relative to the session scratchpad, `%TEMP%\claude\C--Repos-Mint
   - CS8981 for all-lowercase class names;
   - two hint nits.
 
-## How to resume after a Polyglot push
+## How to resume after a Polyglot push (historical)
 
 1. **Watcher.** `pg73_watch2.sh <known_ids> <known_xrefs> <event> "false open false" <head_sha>` runs in the background. It exits on `NEW_COMMENTS`, `PR75_HEAD_MOVED`, `PR75_STATE_CHANGED`, `ISSUE_CLOSED`, `NEW_CROSS_REFERENCE`, `WATCH_FAILING` or `WATCH_TIMEOUT`, and writes the reason to `pg73_event.txt`.
    - Never edit the script while it runs.

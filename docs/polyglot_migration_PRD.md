@@ -3,14 +3,15 @@
 **Upstream:**
 - [MintPlayer.Polyglot#73](https://github.com/MintPlayer/MintPlayer.Polyglot/issues/73): library-grade output, filed for Spark.
 - [#74](https://github.com/MintPlayer/MintPlayer.Polyglot/issues/74): feature requests for more shared logic.
-- PR [#75](https://github.com/MintPlayer/MintPlayer.Polyglot/pull/75), branch `issue-73-library-grade`.
+- PR [#75](https://github.com/MintPlayer/MintPlayer.Polyglot/pull/75), branch `issue-73-library-grade`: merged, released as `MintPlayer.Polyglot.MSBuild` 0.10.2.
+- [#76](https://github.com/MintPlayer/MintPlayer.Polyglot/issues/76): temporaries numbered across the whole build, found while building the GS1 core. Fixed by PR [#77](https://github.com/MintPlayer/MintPlayer.Polyglot/pull/77), released as 0.10.3.
 
 **Spark context:** [#521](https://github.com/MintPlayer/MintPlayer.Spark/issues/521). Its warehouse-picking PRD (WM2, WX5, Q-W16) and commerce PRD ("TS contracts and Polyglot") decided where Polyglot is used. Those documents live on the unpushed branch `feat/issue521-commerce-suite` (`b34a2e47`), not on master.
 **Plan:** [polyglot_migration_plan.md](polyglot_migration_plan.md)
-**Status (2026-10-18):**
-- Polyglot PR #75 is in review. Round 5 requested changes on head `c436aae` (24 gating items), and the Polyglot session is fixing them for one push.
-- This (Spark) session owes the **approval comment** on #73 once a push passes the bar in §6.
-- No Spark code exists yet. Spark work starts after a Polyglot release ships #73.
+**Status (2026-10-19):**
+- #73 is done. After ten review rounds the Spark session approved `629b0c2` and confirmed `3e9a2f5`. It shipped as 0.10.2, and Spark now uses 0.10.3.
+- The GS1 core (S1–S3) is in Spark PR [#528](https://github.com/MintPlayer/MintPlayer.Spark/pull/528), branch `feat/polyglot-migration`, and its checks are green.
+- S4's commerce consumer waits for the commerce code (#521).
 
 **One PR** on the Spark side: the GS1 library, the TS twin, the CI check and the docs land together.
 
@@ -32,8 +33,8 @@ That is Polyglot's stated sweet spot (Polyglot `docs/prd/POLYGLOT_PRD.md:27-30`:
 
 | Use | Decision |
 |---|---|
-| GS1 core: element strings, Digital Link, AI linters, check digits | **Yes**, written once in `.pg`. This holds **only if** a Polyglot release fixing #73 ships before warehouse WM2. Otherwise both parsers are hand-written against the Syntax Engine vectors. |
-| GS1 tables (the AI dictionary) | Come from one `tools/` script that emits C# (`MintPlayer.Spark.Gs1`) and TS (`ng-spark/scanning`), per Q-W16 |
+| GS1 core: element strings, Digital Link, AI linters, check digits | **Yes**, written once in `.pg`. This held only if a Polyglot release fixing #73 shipped before warehouse WM2. 0.10.2 did, so the hand-written fallback isn't needed. |
+| GS1 tables (the AI dictionary) | Come from one `tools/` script, per Q-W16. Built: `tools/gs1/generate-ai-table.mjs` emits the vendored Syntax Dictionary as `.pg` data (`pg/aitable.pg`), and Polyglot turns that one table into the C# and the TS |
 | Polyglot's C# surface | Stays **internal** behind a hand-written facade, and its types never cross the wire |
 | CLI delivery | The `MintPlayer.Polyglot.MSBuild` NuGet restore. No global tool. |
 | TS contracts (`ng-spark/<entry>/src/generated/contracts.ts`) | **Not** Polyglot. They come from Spark's C#→TS tool. |
@@ -72,9 +73,15 @@ Polyglot's investigation (milestone P40, 17 decisions; [6233455059](https://gith
 
 The last step is re-running the v0.10.1 probes (the GS1 core, the culture matrix, two libraries, ng-spark's flag set). The review rounds since then also hold every finding to the bar in §6.
 
-## 4. How Spark will consume Polyglot
+## 4. How Spark consumes Polyglot
 
-**Shape:**
+**As built (PR #528):**
+- **Project:** `libs/gs1/MintPlayer.Spark.Gs1/MintPlayer.Spark.Gs1.csproj` (package `MintPlayer.Spark.Gs1`), with `pg/*.pg` and `pgconfig.json` beside it. The generated C# is in namespace `MintPlayer.Spark.Gs1.Core`, class `Gs1Core`, `access: internal`, and the public facades are `Gs1CheckDigit`, `Gs1Barcode` and `Gs1Sscc`.
+- **Twin:** routed with `owned: true` into `libs/node_packages/ng-spark/scanning/src/gs1/`. The barrel is `scanning/src/index.ts`, and the entry point is `@mintplayer/ng-spark/scanning`.
+- **Package source:** `nuget.config` maps `MintPlayer.*` to `nuget.pkg.github.com/MintPlayer`, where releases appear minutes before nuget.org. Credentials come from `GH_PKG_USER`/`GH_PKG_TOKEN`; CI sets them to `github.actor` and `GITHUB_TOKEN` with `packages: read`.
+- **Agreement with GS1:** `libs/gs1/corpus/gs1-corpus.json` holds 2,995 cases, with the Syntax Engine 1.4.1 WASM as the reference (`tools/gs1/build-corpus.mjs`). `tests/MintPlayer.Spark.Gs1.Tests` and `scanning/src/gs1-corpus.spec.ts` run it on both targets.
+
+**Shape (as designed):**
 - `libs/gs1/MintPlayer.Spark.Gs1.csproj` holds the `.pg` sources and a `pgconfig.json` beside the project. It references `MintPlayer.Polyglot.MSBuild` and sets `PolyglotTargets=csharp`, so the C# is generated into `obj/` on every build, with D17 cleanup.
 - `targetOptions.csharp` gives the library its own `namespace` and `access: internal`. A hand-written public facade wraps it.
 - The **TS twin** is committed and routed from the GS1 project's config into the ng-spark `scanning` entry point. The route leaves the config folder, like `../…/ng-spark/…/scanning/src/gs1/%(RecursiveDir)%(Filename)`.
@@ -91,6 +98,9 @@ The last step is re-running the v0.10.1 probes (the GS1 core, the culture matrix
 8. **One distinct `targetOptions.csharp.namespace` per Polyglot library,** and never import two generated namespaces into one C# file (CS0104).
 9. **`Map` needs .NET 9** (`OrderedDictionary`). Spark targets net11, so this is fine. The test floor (net8) hits CS0234 for programs that use `Map`.
 10. **A3, case-only renames:** until round 5 item 1 is fixed, a case-only rename of a source folder isn't detected for a route that leaves the config folder, which is exactly this layout. After such a rename, run the git hint by hand, or avoid the rename.
+11. **Avoid temporaries numbered across the build on 0.10.2** (#76): a range ending on a call, or `!` on a call, could make a module come out differently depending on which input reached it. 0.10.3 numbers them per body. The GS1 `.pg` still avoids both shapes, which is harmless.
+12. **SDK 11.0.100-rc.2** injects dotnet-watch's browser JS module into Debug builds of Web-SDK libraries, and they fail with "scoped css bundles do not have matching endpoints". `Directory.Build.targets` turns `EnableHotReloadInRuntimeConfigDevFile` off for those libraries.
+13. **Round-5 items fixed in #75:** link-name mangling (constraint 6) and the A3 case (constraint 10) were gating in round 5, so they are fixed in 0.10.2. The same goes for the "avoid until fixed" list in the language rules below. The rules stay as written, because the GS1 code was written against them.
 
 **Language rules (as of `c436aae`) that the GS1 `.pg` code must respect:**
 - **Null handling:**
@@ -127,7 +137,9 @@ The last step is re-running the v0.10.1 probes (the GS1 core, the culture matrix
   - **[O] older:** the defect predates #75.
   - **Silent** (exit 0, clean compile, wrong output) weighs more than **loud** (a compile error, refusal or crash). Python- or PHP-only behaviour older than #75 never gates.
 
-## 6. The approval bar (as posted in round 5)
+## 6. The approval bar (as posted in round 5; used until approval)
+
+Round 6 added two class-closing rules (follow every body kind; `this` in a subclassable constructor). From then on, a finding gated only if it was a regression, the current round's repro still failing, or a silent C#/TS miscompile. Everything else had to be fixed or documented without gating. A "regression" also required that the earlier head was right: a pass that came from a bug a later round removed doesn't count.
 
 A new finding gates approval only if it is one of these:
 - a regression against `c436aae`, or against behaviour verified in an earlier round;
@@ -143,12 +155,12 @@ A newly found compile error or refusal that isn't a regression doesn't gate; it 
   - Polyglot comments start with "Polyglot session → Spark session" and end with the Claude Code footer.
 - The Polyglot session pushes **once per round**, after its full gate and the POSIX leg are green, and posts the head SHA in #73.
 - The Spark session acknowledges, re-verifies, then posts either the **approval** or the remaining gaps. Gaps go in two parts: part 1 gating, part 2 non-gating (to be fixed or documented in the same PR).
-- After approval the Polyglot session squash-merges PR #75 ("Closes #73").
+- After approval the Polyglot session squash-merges PR #75 ("Closes #73"). That happened on 2026-10-19, after confirmation on `3e9a2f5`.
 
 ## 8. Out of scope / open
 
 - **Out of scope until #74 ships:** money and pricing, Unicode folding, patterns, consumer tests, data embedding (§1).
-- **Open:**
-  - which Polyglot release carries #73, and whether it lands before warehouse WM2 (otherwise the hand-written fallback in §1 applies);
-  - the exact twin path inside ng-spark `scanning`;
-  - whether the twin folder uses `owned: true`.
+- **Resolved:**
+  - #73 shipped in 0.10.2 before WM2, so there's no fallback;
+  - the twin path is `scanning/src/gs1/`, with `owned: true`.
+- **Open:** S4, which wires GTIN validation into commerce once #521's commerce code exists.
