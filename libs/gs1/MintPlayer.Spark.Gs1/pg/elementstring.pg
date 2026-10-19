@@ -13,11 +13,6 @@ record Gs1ParseResult(error: string, errorAi: string, elements: List<Gs1Element>
 
 // These parsers follow GS1's Barcode Syntax Engine (https://github.com/gs1/gs1-syntax-engine); libs/gs1/corpus holds
 // the engine's verdicts that the tests hold them to.
-//
-// Polyglot note: in this module and digitallink.pg a range loop ends on a variable or a literal, and `!` applies to a
-// variable. A range ending on a call, or `!` on a call, takes a temporary whose number is counted across the whole
-// build, so the module would be emitted differently depending on which module the build reached it from, and
-// `polyglot build` refuses such conflicting outputs.
 
 let gs1Table: List<Gs1AiEntry> = gs1AiTable()
 
