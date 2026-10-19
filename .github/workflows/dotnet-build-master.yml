@@ -63,7 +63,7 @@ jobs:
     - name: Setup .NET Core
       uses: actions/setup-dotnet@v6
       with:
-        dotnet-version: 11.0.100-rc.1.26425.128
+        dotnet-version: 11.0.100-rc.2.26504.105
 
     # The generator references only MintPlayer.Spark.Abstractions; the schemas depend on nothing
     # but the C# types, so a Debug build is enough. Its own after-build target also writes
@@ -265,7 +265,7 @@ jobs:
     - name: Setup .NET Core
       uses: actions/setup-dotnet@v6
       with:
-        dotnet-version: 11.0.100-rc.1.26425.128
+        dotnet-version: 11.0.100-rc.2.26504.105
         # Authenticates packages to push to GPR
         source-url: https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json
       env:
