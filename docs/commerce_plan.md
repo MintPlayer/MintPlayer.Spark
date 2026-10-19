@@ -274,20 +274,20 @@ The order of work for [commerce_PRD.md](commerce_PRD.md). The PRD carries the de
 
 ### M20 — Warehouse plugin
 
-- [x] Per `docs/warehouse_picking_PRD.md` and `docs/warehouse_picking_plan.md` (WM0–WM13) ~~(to be written after its research and grilling)~~ (written 2026-10-17)
-- [x] Round 5 — recall trace lot → shipment → buyer (GA7), return reasons in `expected-returns` (GA8), dangerous-goods flags (GC9): warehouse plan WM3, WM4, WM7
-- [x] Replication defects F12–F19, red test first (F19: ETL deploy endpoint lets the caller choose TargetDatabase/TargetUrls — suspected security) (refused write-back recorded as Completed; non-durable dispatch; retry budget; stale overwrite; ETL script reads beyond its grant; attribute rights in module sync; ETL task cleanup and licence check)
-- [x] Cross-app transport per the warehouse PRD (push + reconcile proposed)
+- [ ] Per `docs/warehouse_picking_PRD.md` and `docs/warehouse_picking_plan.md` (WM0–WM13) ~~(to be written after its research and grilling)~~ (written 2026-10-17)
+- [ ] Round 5 — recall trace lot → shipment → buyer (GA7), return reasons in `expected-returns` (GA8), dangerous-goods flags (GC9): warehouse plan WM3, WM4, WM7
+- [ ] Replication defects F12–F19, red test first (F19: ETL deploy endpoint lets the caller choose TargetDatabase/TargetUrls — suspected security) (refused write-back recorded as Completed; non-durable dispatch; retry budget; stale overwrite; ETL script reads beyond its grant; attribute rights in module sync; ETL task cleanup and licence check)
+- [ ] Cross-app transport per the warehouse PRD (push + reconcile proposed)
 
 ### M21 — Documentation
 
-- [x] A guide per package (`docs/guide-commerce-*.md`, `guide-approvals.md`, `guide-waiting-room.md`, `guide-challenges.md`, …) + READMEs
-- [x] Update `guide-library-layers.md` for `$extends` and renames; `guide-live-updates.md` for topics
-- [x] Round 5 — `guide-commerce-compliance.md`: every GA item with the EUR-Lex article it was checked against, member-state options, unconfirmed points, and the host's responsibilities (accessibility statement, environmental claims, legal texts); `guide-consent.md` (X21); `guide-search.md` updated for fuzzy by default (D38)
+- [ ] A guide per package (`docs/guide-commerce-*.md`, `guide-approvals.md`, `guide-waiting-room.md`, `guide-challenges.md`, …) + READMEs
+- [ ] Update `guide-library-layers.md` for `$extends` and renames; `guide-live-updates.md` for topics
+- [ ] Round 5 — `guide-commerce-compliance.md`: every GA item with the EUR-Lex article it was checked against, member-state options, unconfirmed points, and the host's responsibilities (accessibility statement, environmental claims, legal texts); `guide-consent.md` (X21); `guide-search.md` updated for fuzzy by default (D38)
 
 ### M22 — Sweep, verification, release
 
-- [x] `npm run test:affected` with the Developer licence (raw log), fix and re-run single failing classes only
-- [x] Browser verification through the Playwright MCP tools (storefront, editor, waiting room, scanner)
-- [x] Version bumps (preview numbers; ng-spark minor)
-- [x] VPS checklist (PRD §8) prepared for the owner's deploy, starting with periodic RavenDB backups and a tested restore; round 5: free disk checked for the D38 side-by-side search-index rebuilds, and a post-deploy search check per production app
+- [ ] `npm run test:affected` with the Developer licence (raw log), fix and re-run single failing classes only
+- [ ] Browser verification through the Playwright MCP tools (storefront, editor, waiting room, scanner)
+- [ ] Version bumps (preview numbers; ng-spark minor)
+- [ ] VPS checklist (PRD §8) prepared for the owner's deploy, starting with periodic RavenDB backups and a tested restore; round 5: free disk checked for the D38 side-by-side search-index rebuilds, and a post-deploy search check per production app
