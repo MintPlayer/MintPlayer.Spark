@@ -114,6 +114,72 @@ public class FuzzyQueryAnalyzerTests
         diagnostics.Should().BeEmpty();
     }
 
+    /// <summary>Fuzzy by default (2026-10-19): a searchable field alone puts a hand-written index on Lucene.</summary>
+    [Fact]
+    public async Task A_hand_written_searchable_field_marks_the_index()
+    {
+        var diagnostics = await Analyze(
+            """return session.Advanced.DocumentQuery<Place, Places_Searchable>().WhereEquals("Name", "brusels").Fuzzy(0.8m).ToList();""",
+            DefaultTypes + """
+
+            public class Places_Searchable : AbstractIndexCreationTask<Place>
+            {
+                public Places_Searchable()
+                {
+                    Map = places => from p in places select new { p.Name };
+                    Index(x => x.Name, FieldIndexing.Search);
+                }
+            }
+            """);
+
+        diagnostics.Should().BeEmpty();
+    }
+
+    /// <summary>Spark keeps a Corax pin on an index that is only searchable, so a fuzzy query on it still throws.</summary>
+    [Fact]
+    public async Task A_searchable_index_pinned_to_Corax_is_flagged()
+    {
+        var diagnostics = await Analyze(
+            """return session.Advanced.DocumentQuery<Place, Places_SearchableCorax>().WhereEquals("Name", "brusels").Fuzzy(0.8m).ToList();""",
+            DefaultTypes + """
+
+            public class Places_SearchableCorax : AbstractIndexCreationTask<Place>
+            {
+                public Places_SearchableCorax()
+                {
+                    Map = places => from p in places select new { p.Name };
+                    Index(x => x.Name, FieldIndexing.Search);
+                    SearchEngineType = Raven.Client.Documents.Indexes.SearchEngineType.Corax;
+                }
+            }
+            """);
+
+        diagnostics.Should().ContainSingle(d => d.Id == "SPARK063")
+            .Which.GetMessage().Should().Contain("index 'Places_SearchableCorax'");
+    }
+
+    /// <summary><c>[Fuzzy(false)]</c> is the per-field opt-out of Spark's search; it never puts an index on Lucene.</summary>
+    [Fact]
+    public async Task An_opt_out_does_not_mark_the_index()
+    {
+        var diagnostics = await Analyze(
+            """return session.Advanced.DocumentQuery<Place, Places_ByName>().WhereEquals("Name", "brusels").Fuzzy(0.8m).ToList();""",
+            """
+            public class Place
+            {
+                public string? Id { get; set; }
+                [Fuzzy(false)] public string Name { get; set; } = string.Empty;
+            }
+
+            public class Places_ByName : AbstractIndexCreationTask<Place>
+            {
+                public Places_ByName() { Map = places => from p in places select new { p.Name }; }
+            }
+            """);
+
+        diagnostics.Should().ContainSingle(d => d.Id == "SPARK063");
+    }
+
     [Fact]
     public async Task A_dynamic_fuzzy_query_runs_on_an_auto_index_and_is_flagged()
     {

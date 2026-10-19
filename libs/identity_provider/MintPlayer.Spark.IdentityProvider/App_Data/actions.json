@@ -5,18 +5,6 @@
     "library layer. The classes are CustomActions/*Action.cs in this library; their rights are in this",
     "library's security.json. Labels and confirmations are actions.<Name>.* in translations.json."
   ],
-  "ApproveDeveloper": {
-    "icon": "check-lg",
-    "showedOn": "query",
-    "selectionRule": ">0",
-    "variant": "success"
-  },
-  "RejectDeveloper": {
-    "icon": "x-lg",
-    "showedOn": "query",
-    "selectionRule": ">0",
-    "variant": "danger"
-  },
   "InviteMember": {
     "icon": "person-plus",
     "showedOn": "detail",
@@ -40,30 +28,6 @@
   },
   "RemoveMember": {
     "icon": "person-dash",
-    "showedOn": "query",
-    "selectionRule": ">0",
-    "variant": "danger"
-  },
-  "ApproveScope": {
-    "icon": "check-lg",
-    "showedOn": "query",
-    "selectionRule": ">0",
-    "variant": "success"
-  },
-  "RejectScope": {
-    "icon": "x-lg",
-    "showedOn": "query",
-    "selectionRule": ">0",
-    "variant": "danger"
-  },
-  "ApproveGoLive": {
-    "icon": "check-lg",
-    "showedOn": "query",
-    "selectionRule": ">0",
-    "variant": "success"
-  },
-  "RejectGoLive": {
-    "icon": "x-lg",
     "showedOn": "query",
     "selectionRule": ">0",
     "variant": "danger"

@@ -19,6 +19,8 @@ export * from './live';
 export * from './datetime-local';
 export * from './as-detail-conversions';
 export * from './comparable-value';
+export * from './revision-diff';
+export * from './type-hints';
 export * from './query-actions';
 export * from './selection-rule';
 export * from './selection-mode';

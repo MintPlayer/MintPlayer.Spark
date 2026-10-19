@@ -31,23 +31,11 @@
         "rules": []
       },
       {
-        "id": "37668b99-e231-548a-a99f-7481d13ce8fb",
-        "name": "Review",
-        "dataType": "AsDetail",
-        "isRequired": false,
-        "isReadOnly": true,
-        "order": 4,
-        "asDetailType": "MintPlayer.Spark.IdentityProvider.Models.OidcReviewDecision",
-        "isArray": false,
-        "showedOn": "Query, PersistentObject",
-        "rules": []
-      },
-      {
         "id": "d619ed20-03b1-5621-80e0-221da983cc7f",
         "name": "Status",
         "dataType": "string",
         "isRequired": false,
-        "isReadOnly": false,
+        "isReadOnly": true,
         "order": 3,
         "isArray": false,
         "showedOn": "Query, PersistentObject",

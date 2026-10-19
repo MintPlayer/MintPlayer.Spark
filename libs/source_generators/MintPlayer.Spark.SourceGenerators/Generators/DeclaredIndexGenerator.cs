@@ -131,12 +131,14 @@ public class DeclaredIndexGenerator : IncrementalGenerator
         if (resultType is INamedTypeSymbol namedResult)
         {
             var properties = namedResult.GetSparkProperties().ToList();
-            info.UsesLucene = properties.Any(GenerateIndexGenerator.IsFuzzy);
             info.SearchFields = properties
                 .Where(p => p.GetAttributes().Any(a => a.AttributeClass?.ToDisplayString() == SearchAttributeFullName))
                 .Select(p => p.Name)
                 .OrderBy(n => n, System.StringComparer.Ordinal)
                 .ToList();
+            // Commerce X18, fuzzy by default: a searchable field (Spark's search is typo-tolerant on it) or an
+            // explicit [Fuzzy] one puts the index on Lucene.
+            info.UsesLucene = info.SearchFields.Count > 0 || properties.Any(GenerateIndexGenerator.IsFuzzy);
         }
 
         return info;

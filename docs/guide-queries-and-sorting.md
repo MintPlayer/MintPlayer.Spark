@@ -595,9 +595,10 @@ Points that matter in practice:
 - **A `record` entity works like a class.** The generator matches `class` and `record` (`record class`)
   declarations; a `record struct` is not an entity. Before commerce X20 it matched `class` only, so turning an
   entity into a record silently stopped generating its index.
-- **`[Fuzzy]` puts the index on Lucene** (commerce X18): the generated constructor sets
-  `SearchEngineType = SearchEngineType.Lucene`, because Corax refuses fuzzy queries. Indexes without it keep the
-  server default. See [Search](guide-search.md#no-fuzzy-matching-in-the-grid-search).
+- **A `[Search]` or `[Fuzzy]` field puts the index on Lucene** (commerce X18, fuzzy by default): the generated
+  constructor sets `SearchEngineType = SearchEngineType.Lucene`, because Spark's search is typo-tolerant on
+  searchable fields and Corax refuses fuzzy queries. `[Fuzzy(false)]` opts a field out of the fuzzy matching, not out
+  of Lucene. Indexes with neither keep the server default. See [Search](guide-search.md#fuzzy-by-default).
 - **`Money` gets `{Name}Amount` / `{Name}Currency` companions** ([Money](guide-money.md)). A `Quantity` type does not
   exist yet (warehouse WX8); its companions land with it.
 
@@ -974,7 +975,8 @@ Two things a database search cannot match, both of which used to work when filte
 not an index term — denormalize it into the index, as `OwnerFullName` does above).
 
 > Full details — wildcard handling, multi-language fields, the composition order with row-level security, the
-> in-memory fallbacks, and why fuzzy matching is not offered — are in **[Full-Text Search](guide-search.md)**.
+> in-memory fallbacks, and the typo-tolerant (fuzzy) matching on searchable fields — are in
+> **[Full-Text Search](guide-search.md)**.
 
 ## Rendering a query in the frontend
 
@@ -1192,7 +1194,7 @@ public static class TypeaheadIndexes
 public class TypeaheadEntry
 {
     [Fuzzy] public string Token { get; set; } = string.Empty;   // the index runs on Lucene
-    [Search] public string Label { get; set; } = string.Empty;  // declared FieldIndexing.Search
+    [Search] public string Label { get; set; } = string.Empty;  // declared FieldIndexing.Search (Lucene on its own too)
 }
 ```
 

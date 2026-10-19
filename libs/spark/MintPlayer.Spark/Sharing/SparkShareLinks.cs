@@ -18,6 +18,11 @@ namespace MintPlayer.Spark.Sharing;
 /// one is the application's rights (<c>ShareLink/{Type}</c>, <c>RevokeShareLink/{Type}</c>) and row rules (with
 /// organizations: <c>[RequiresOrganizationRole("ShareLink", OrganizationRole.Admin)]</c>); this service only does it.
 /// </summary>
+/// <remarks>
+/// Every <c>typeName</c> names the shareable type by its model id, alias or name, or by its CLR class's simple name
+/// (<c>nameof(Site)</c>); the model type is found by <c>clrType</c>, so an application rename (D28) changes nothing.
+/// Links carry the model id.
+/// </remarks>
 public interface ISparkShareLinks
 {
     /// <summary>Whether links to <paramref name="typeName"/> may be made and read now (<c>Spark:Share:Enabled</c> and every <see cref="ISparkShareGate"/>).</summary>
@@ -69,23 +74,26 @@ internal sealed class SparkShareLinks(
     IConfiguration? configuration = null,
     IHostEnvironment? environment = null) : ISparkShareLinks
 {
-    public async ValueTask<bool> IsEnabledAsync(string typeName, CancellationToken cancellationToken = default)
+    public ValueTask<bool> IsEnabledAsync(string typeName, CancellationToken cancellationToken = default)
+        => Find(typeName) is { } target ? IsEnabledAsync(target, cancellationToken) : ValueTask.FromResult(false);
+
+    private async ValueTask<bool> IsEnabledAsync(Target target, CancellationToken cancellationToken)
     {
-        if (!options.Value.Enabled || !options.Value.Types.ContainsKey(typeName))
+        if (!options.Value.Enabled)
             return false;
         foreach (var gate in gates)
-            if (!await gate.IsEnabledAsync(typeName, cancellationToken))
+            if (!await gate.IsEnabledAsync(target.EntityType.Name, cancellationToken))
                 return false;
         return true;
     }
 
     public async ValueTask<bool> IsEnabledAsync(string typeName, string id, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrEmpty(id) || !await IsEnabledAsync(typeName, cancellationToken) || Definition(typeName) is not { } definition)
+        if (string.IsNullOrEmpty(id) || Find(typeName) is not { } target || !await IsEnabledAsync(target, cancellationToken))
             return false;
         using var session = store.OpenAsyncSession();
-        return await LoadAsync(session, definition.ClrType, id, cancellationToken) is { } entity
-            && await IsEnabledForAsync(definition.TypeName, entity, cancellationToken);
+        return await LoadAsync(session, target.Definition.ClrType, id, cancellationToken) is { } entity
+            && await IsEnabledForAsync(target.EntityType.Name, entity, cancellationToken);
     }
 
     private async ValueTask<bool> IsEnabledForAsync(string typeName, object entity, CancellationToken cancellationToken)
@@ -98,22 +106,25 @@ internal sealed class SparkShareLinks(
 
     public async Task<string> CreateAsync(string typeName, string id, CancellationToken cancellationToken = default)
     {
-        var definition = Definition(typeName) ?? throw new InvalidOperationException($"'{typeName}' is not shareable: declare it with spark.AddShareLinks(o => o.Share<…>(…)).");
+        var target = Find(typeName) ?? throw new InvalidOperationException($"'{typeName}' is not shareable: declare it with spark.AddShareLinks(o => o.Share<…>(…)).");
         var token = Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(32));
-        await SetHashAsync(definition, id, Hash(token), cancellationToken);
+        await SetHashAsync(target, id, Hash(token), cancellationToken);
         return token;
     }
 
     public async Task RevokeAsync(string typeName, string id, CancellationToken cancellationToken = default)
     {
-        var definition = Definition(typeName) ?? throw new InvalidOperationException($"'{typeName}' is not shareable.");
-        await SetHashAsync(definition, id, null, cancellationToken);
+        var target = Find(typeName) ?? throw new InvalidOperationException($"'{typeName}' is not shareable.");
+        await SetHashAsync(target, id, null, cancellationToken);
     }
 
     public string LinkFor(string typeName, string id, string token, HttpContext? context)
     {
+        // The type travels by its model id (D28): an application rename changes the name and a derived alias, never
+        // the id, and a recipient holds the link for as long as it is not revoked.
+        var type = Find(typeName)?.EntityType.Id.ToString("D") ?? typeName;
         var path = options.Value.LinkPath.StartsWith('/') ? options.Value.LinkPath : "/" + options.Value.LinkPath;
-        var relative = $"{path.TrimEnd('/')}/{Uri.EscapeDataString(typeName)}/{Uri.EscapeDataString(token)}?id={Uri.EscapeDataString(id)}";
+        var relative = $"{path.TrimEnd('/')}/{Uri.EscapeDataString(type)}/{Uri.EscapeDataString(token)}?id={Uri.EscapeDataString(id)}";
         // The link is shown to its creator only (never mailed by Spark), so outside Development the request's own
         // origin is an acceptable fallback when no public base URL is configured: a forged Host fools only its sender.
         var origin = SparkPublicBaseUrl.Resolve(options.Value.PublicBaseUrl, configuration, environment, context)
@@ -130,7 +141,7 @@ internal sealed class SparkShareLinks(
         if (await ResolveAsync(typeName, id, token, cancellationToken) is not { } shared)
             return null;
 
-        return await AsShareAsync(shared.Definition, context, async services =>
+        return await AsShareAsync(shared, context, async services =>
         {
             var readPath = services.GetRequiredService<IPersistentObjectReadPath>();
             var po = await readPath.LoadAsync(new PersistentObjectReferenceRequest { ObjectTypeId = shared.EntityType.Id.ToString(), Id = id }, cancellationToken);
@@ -149,7 +160,7 @@ internal sealed class SparkShareLinks(
             }
             return new SharedObject(
                 id,
-                shared.Definition.TypeName,
+                shared.EntityType.Name,
                 shared.EntityType.Label,
                 po.Attributes.Where(a => shared.Definition.Attributes.Contains(a.Name)).ToList(),
                 queries,
@@ -162,37 +173,62 @@ internal sealed class SparkShareLinks(
     {
         if (await ResolveAsync(typeName, id, token, cancellationToken) is not { } shared || !shared.Definition.Queries.ContainsKey(queryName))
             return null;
-        return await AsShareAsync(shared.Definition, context, services => RunChildAsync(services, shared, queryName, Math.Max(0, skip), Math.Clamp(take, 1, options.Value.MaxTake), sort, cancellationToken));
+        return await AsShareAsync(shared, context, services => RunChildAsync(services, shared, queryName, Math.Max(0, skip), Math.Clamp(take, 1, options.Value.MaxTake), sort, cancellationToken));
     }
 
+    /// <summary>A shareable type: what its links show, and its persistent-object type in this application's model.</summary>
+    private sealed record Target(SparkShareDefinition Definition, EntityTypeDefinition EntityType);
+
     private sealed record Shared(SparkShareDefinition Definition, EntityTypeDefinition EntityType, string Id);
+
+    /// <summary>
+    /// The shareable type <paramref name="type"/> names (D28): its model id (what a link carries), alias or name, else
+    /// the CLR class's simple name, which is what links made before D28 carry (<c>/shared/Site/…</c>) and what an
+    /// application passes as <c>nameof(Site)</c>. The model type is found by <c>clrType</c>, never by assuming it is
+    /// named like the class. <see langword="null"/> when the type is not declared with <c>AddShareLinks</c>.
+    /// </summary>
+    private Target? Find(string? type)
+    {
+        if (string.IsNullOrEmpty(type))
+            return null;
+
+        if (modelLoader.ResolveEntityType(type) is { ClrType: { } clrType } entityType
+            && options.Value.Types.Values.FirstOrDefault(d => d.ClrType.FullName == clrType) is { } definition)
+            return new Target(definition, entityType);
+
+        var legacy = options.Value.Types.Values.FirstOrDefault(d => string.Equals(d.ClrType.Name, type, StringComparison.OrdinalIgnoreCase));
+        return legacy is not null && modelLoader.GetEntityTypeByClrType(legacy.ClrType.FullName ?? legacy.ClrType.Name) is { } legacyType
+            ? new Target(legacy, legacyType)
+            : null;
+    }
 
     /// <summary>The token check: the type declared and enabled, the object stored with this token's hash.</summary>
     private async Task<Shared?> ResolveAsync(string typeName, string id, string token, CancellationToken cancellationToken)
     {
         if (string.IsNullOrEmpty(id) || string.IsNullOrEmpty(token) || token.Length > 128
-            || Definition(typeName) is not { } definition || !await IsEnabledAsync(definition.TypeName, cancellationToken)
-            || modelLoader.GetEntityTypeByName(definition.TypeName) is not { } entityType)
+            || Find(typeName) is not { } target || !await IsEnabledAsync(target, cancellationToken))
             return null;
 
         using var session = store.OpenAsyncSession();
-        var loaded = await LoadAsync(session, definition.ClrType, id, cancellationToken);
+        var loaded = await LoadAsync(session, target.Definition.ClrType, id, cancellationToken);
         if (loaded is not ISparkShareable shareable || shareable.ShareTokenHash is not { Length: > 0 } stored)
             return null;
-        if (!await IsEnabledForAsync(definition.TypeName, loaded, cancellationToken))
+        if (!await IsEnabledForAsync(target.EntityType.Name, loaded, cancellationToken))
             return null;
         var presented = Encoding.ASCII.GetBytes(Hash(token));
         var expected = Encoding.ASCII.GetBytes(stored);
-        return CryptographicOperations.FixedTimeEquals(presented, expected) ? new Shared(definition, entityType, id) : null;
+        return CryptographicOperations.FixedTimeEquals(presented, expected) ? new Shared(target.Definition, target.EntityType, id) : null;
     }
 
     /// <summary>
     /// Runs <paramref name="read"/> in a fresh scope whose permission service answers only the share's rights,
     /// under a system principal (row policies that bypass the system context are skipped; expiration is not).
     /// </summary>
-    private async Task<T?> AsShareAsync<T>(SparkShareDefinition definition, HttpContext context, Func<IServiceProvider, Task<T?>> read) where T : class
+    private async Task<T?> AsShareAsync<T>(Shared shared, HttpContext context, Func<IServiceProvider, Task<T?>> read) where T : class
     {
-        var resources = new List<string> { "Read/" + definition.TypeName };
+        // Rights name the type as this application's model does, which need not be the CLR class's name (D28).
+        var definition = shared.Definition;
+        var resources = new List<string> { "Read/" + shared.EntityType.Name };
         foreach (var name in definition.Queries.Keys)
             if (queryLoader.ResolveQuery(name) is { EntityType: { } entityType })
                 resources.Add("Query/" + entityType);
@@ -223,7 +259,7 @@ internal sealed class SparkShareLinks(
         {
             QueryId = query.Id.ToString(),
             ParentId = shared.Id,
-            ParentType = shared.Definition.TypeName,
+            ParentType = shared.EntityType.Id.ToString(),
             Skip = skip,
             Take = take,
             SortColumns = sort,
@@ -253,15 +289,12 @@ internal sealed class SparkShareLinks(
 
 
 
-    private SparkShareDefinition? Definition(string typeName)
-        => options.Value.Types.TryGetValue(typeName ?? "", out var definition) ? definition : null;
-
-    private async Task SetHashAsync(SparkShareDefinition definition, string id, string? hash, CancellationToken cancellationToken)
+    private async Task SetHashAsync(Target target, string id, string? hash, CancellationToken cancellationToken)
     {
         using var session = store.OpenAsyncSession();
-        var loaded = await LoadAsync(session, definition.ClrType, id, cancellationToken);
+        var loaded = await LoadAsync(session, target.Definition.ClrType, id, cancellationToken);
         if (loaded is not ISparkShareable shareable)
-            throw new InvalidOperationException($"No {definition.TypeName} '{id}'.");
+            throw new InvalidOperationException($"No {target.EntityType.Name} '{id}'.");
         shareable.ShareTokenHash = hash;
         await session.SaveChangesAsync(cancellationToken);
     }

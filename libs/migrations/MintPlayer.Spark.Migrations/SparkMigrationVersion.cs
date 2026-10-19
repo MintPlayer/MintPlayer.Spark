@@ -5,7 +5,7 @@ namespace MintPlayer.Spark.Migrations;
 
 /// <summary>
 /// A migration's version, read from its class name: <c>M_{yyyyMMddHHmm}_{Name}</c>, e.g.
-/// <c>M_202610191200_TranslatedStringEntries</c> → <c>202610191200</c> (X20 item 9).
+/// <c>M_202610191205_TranslatedStringEntries</c> → <c>202610191205</c> (X20 item 9).
 /// </summary>
 /// <remarks>
 /// The name and a hand-written <c>Version</c> used to say the same thing twice, and nothing checked that

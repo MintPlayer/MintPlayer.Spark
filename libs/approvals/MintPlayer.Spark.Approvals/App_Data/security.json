@@ -1,0 +1,19 @@
+{
+  "$schema": "../../../../schemas/security.schema.json",
+  "_comment": [
+    "The approvals package's rights, shipped as a library layer (docs/commerce_PRD.md §4.13). They name only its own",
+    "ApprovalRequest type and only @authenticated: no slot, so no application has to bind anything, even one that",
+    "gets this layer through the identity provider or the organizations package (an unbound slot would refuse its",
+    "startup). Every request is narrowed per row (ApprovalRequestActions: requester, deciders, VisibleTo) and every",
+    "decision asks the kind's live gate, so the rights alone promise nothing. ApproveProposal/<Type> is the",
+    "application's to grant, per type listed under Spark:Approvals:Types.",
+    "Opt out of all of these with \"libraries\": { \"approvals\": false }."
+  ],
+  "rights": [
+    { "key": "requests", "resource": "QueryRead/ApprovalRequest", "groupId": "@authenticated" },
+    { "key": "approve", "resource": "ApprovalApprove/ApprovalRequest", "groupId": "@authenticated" },
+    { "key": "reject", "resource": "ApprovalReject/ApprovalRequest", "groupId": "@authenticated" },
+    { "key": "withdraw", "resource": "ApprovalWithdraw/ApprovalRequest", "groupId": "@authenticated" },
+    { "key": "revoke", "resource": "ApprovalRevoke/ApprovalRequest", "groupId": "@authenticated" }
+  ]
+}

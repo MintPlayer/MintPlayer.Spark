@@ -69,6 +69,8 @@ public static class SparkNotificationsExtensions
         services.TryAddScoped<SparkNotifier>();
         services.TryAddScoped<ISparkNotifier>(sp => sp.GetRequiredService<SparkNotifier>());
         services.TryAddScoped<NotificationInbox>();
+        // Approval notices become notifications (in-app, mail, push by preference) instead of Approvals' own mail.
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<MintPlayer.Spark.Approvals.IApprovalNotifier, NotificationsApprovalNotifier>());
 
         services.Configure<SparkMessagingOptions>(messaging =>
         {

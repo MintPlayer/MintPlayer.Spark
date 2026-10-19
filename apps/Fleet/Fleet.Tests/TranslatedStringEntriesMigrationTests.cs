@@ -6,7 +6,7 @@ using MintPlayer.Spark.Testing;
 namespace Fleet.Tests;
 
 /// <summary>
-/// <see cref="M_202610191200_TranslatedStringEntries"/> (commerce X17, S24 M2 + M3): <c>Cars.Description</c>
+/// <see cref="M_202610191205_TranslatedStringEntries"/> (commerce X17, S24 M2 + M3): <c>Cars.Description</c>
 /// and the dynamic lookup values move from the shapes RavenDB held before X17 to the one
 /// <c>TranslatedString</c> shape, <c>{"Entries":[{"Tag":"en","Value":"…"}]}</c>.
 /// </summary>
@@ -97,7 +97,7 @@ public class TranslatedStringEntriesMigrationTests : SparkTestDriver
     {
         await SeedLegacyAsync();
 
-        await new M_202610191200_TranslatedStringEntries(Store).UpAsync(CancellationToken.None);
+        await new M_202610191205_TranslatedStringEntries(Store).UpAsync(CancellationToken.None);
 
         (await RawAsync("Cars/legacy-1"))["Description"]!.ToJsonString()
             .Should().Be("""{"Entries":[{"Tag":"en","Value":"A fast car"},{"Tag":"nl","Value":"Een snelle auto"}]}""");
@@ -119,7 +119,7 @@ public class TranslatedStringEntriesMigrationTests : SparkTestDriver
     public async Task A_second_run_changes_nothing()
     {
         await SeedLegacyAsync();
-        var migration = new M_202610191200_TranslatedStringEntries(Store);
+        var migration = new M_202610191205_TranslatedStringEntries(Store);
         await migration.UpAsync(CancellationToken.None);
         var car = (await RawAsync("Cars/legacy-1")).ToJsonString();
         var lookup = (await RawAsync("LookupReferences/CarBrand")).ToJsonString();

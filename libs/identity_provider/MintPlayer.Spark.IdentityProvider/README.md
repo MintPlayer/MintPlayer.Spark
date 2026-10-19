@@ -141,6 +141,12 @@ The layer's `security.json` grants rights to two slots. The host binds them to i
 - **Administrators** see and manage every application and resource (`ManageAll/IdentityProvider`),
   decide developer requests, scope approvals and go-live reviews, see the audit trail and every grant,
   and rotate keys.
+- The decisions are approval requests (`MintPlayer.Spark.Approvals`, which the provider adds itself; see
+  `docs/guide-approvals.md`). The kinds are `identity-provider.developer`, `identity-provider.scope` and
+  `identity-provider.go-live`.
+  - Administrators decide all three. An API's owners also decide the scope requests for that API.
+  - Every decider works through the Approvals inbox (`pending-approvals`), which the provider's menu links to.
+  - A rejection or a revocation needs a reason. A developer's reason is shown on `/developers`.
 - **Developers** are users whose developer request was approved (or who were made developers). They
   see the applications they are a member of and the API resources they own.
 
@@ -300,7 +306,8 @@ rotates at once (administrators only).
   token's `aud`.
 
 An application lists its scopes with a required flag. A scope owned by someone else stays *Pending*
-until its owner approves it.
+until its owner approves it, through an `identity-provider.scope` approval request raised with the save.
+The status is the server's: a save keeps every existing scope's stored status.
 
 Claims come only from the granted scopes' `ClaimTypes`. The `claims` parameter never widens consent.
 

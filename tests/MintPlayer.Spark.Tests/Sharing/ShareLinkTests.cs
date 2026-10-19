@@ -265,6 +265,21 @@ public class ShareLinkTests : OrganizationsTestHost
         (await LoadSharedAsync(link)).Status.Should().Be(HttpStatusCode.OK);
     }
 
+    /// <summary>
+    /// D28: a link names the type by its model id, which no rename changes; a link made before (it carries the type's
+    /// name, the CLR class's) still reads.
+    /// </summary>
+    [Fact]
+    public async Task A_link_carries_the_type_id_and_a_link_with_the_type_name_still_reads()
+    {
+        var (ann, _, _, note, _) = await SeedAsync();
+        var link = await ShareAsync(note.Id!, ann.Id!);
+
+        link.Type.Should().Be(NoteTypeId.ToString("D"));
+        (await LoadSharedAsync(link)).Status.Should().Be(HttpStatusCode.OK);
+        (await LoadSharedAsync(link with { Type = "ShNote" })).Status.Should().Be(HttpStatusCode.OK, "links made before D28 carry the name");
+    }
+
     [Fact]
     public async Task Share_reads_are_rate_limited_per_address()
     {

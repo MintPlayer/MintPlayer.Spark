@@ -257,7 +257,7 @@ internal sealed class SparkComposition
 /// <item>Objects merge per property; the first spelling of a key is kept.</item>
 /// <item>Arrays the <see cref="KindSpec"/> keys merge per element; <c>{"&lt;key&gt;": "…", "$remove": true}</c> removes one. Other arrays are replaced whole.</item>
 /// <item><c>null</c> removes what the layers below state. Removed and later set again, a member is appended.</item>
-/// <item><c>$schema</c> (root) and <c>_</c>-prefixed keys are annotations, never data.</item>
+/// <item><c>$schema</c> and <c>$extends</c> (root) and <c>_</c>-prefixed keys are annotations, never data.</item>
 /// <item>Two libraries stating a leaf differently is a conflict (the later wins); the application wins silently.</item>
 /// </list>
 /// </remarks>
@@ -365,8 +365,14 @@ internal static class SparkLayers
         return builder.ToString();
     }
 
+    /// <summary>
+    /// The root directive anchoring a model delta on the library type it changes:
+    /// <c>"$extends": "alias:DeclaredName"</c> (D28). Read by <see cref="SparkModelLayers"/>, never data.
+    /// </summary>
+    internal const string ExtendsDirective = "$extends";
+
     internal static bool IsAnnotation(string key, bool isRoot)
-        => key.StartsWith("_", StringComparison.Ordinal) || (isRoot && key == "$schema");
+        => key.StartsWith("_", StringComparison.Ordinal) || (isRoot && (key == "$schema" || key == ExtendsDirective));
 
     private sealed class State(KindSpec spec)
     {

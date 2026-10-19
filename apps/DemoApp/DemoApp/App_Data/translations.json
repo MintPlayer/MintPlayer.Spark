@@ -31,6 +31,11 @@
   },
   "lookup": {
     "ECarStatus": {
+      "InMaintenance": {
+        "en": "In maintenance",
+        "fr": "En maintenance",
+        "nl": "In onderhoud"
+      },
       "InUse": {
         "en": "In use",
         "fr": "En usage",
@@ -40,11 +45,6 @@
         "en": "In parking lot",
         "fr": "Dans le parking",
         "nl": "Op parking"
-      },
-      "InMaintenance": {
-        "en": "In maintenance",
-        "fr": "En maintenance",
-        "nl": "In onderhoud"
       },
       "Stolen": {
         "en": "Stolen",

@@ -76,7 +76,7 @@ internal sealed class McpAgentRestriction(IHttpContextAccessor httpContextAccess
 
         return ValueTask.FromResult(
             (type.AgentPermissions & layer) == layer
-            && (state.Grant is null || (state.Grant.For(type.Name) & layer) == layer));
+            && (state.Grant is null || (state.Grant.For(type.Id.ToString("D")) & layer) == layer)); // the grant names types by id (D28)
     }
 
     /// <summary>The agent permission an action needs.</summary>

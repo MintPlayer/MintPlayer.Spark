@@ -54,7 +54,7 @@ public class FuzzyIndexEngineTests
     }
 
     [Fact]
-    public void An_index_without_a_fuzzy_field_keeps_the_server_default_engine()
+    public void An_index_without_a_searchable_or_fuzzy_field_keeps_the_server_default_engine()
     {
         var generated = Run("""
             using MintPlayer.Spark.Abstractions;
@@ -65,11 +65,85 @@ public class FuzzyIndexEngineTests
             public class Place
             {
                 public string? Id { get; set; }
-                [Search] public string Name { get; set; } = string.Empty;
+                public string Name { get; set; } = string.Empty;
             }
             """).GeneratedSources.Single().Source;
 
         // No pin at all: pinning Corax would change every existing index's definition and rebuild it.
+        generated.Should().NotContain("SearchEngineType");
+    }
+
+    /// <summary>Fuzzy by default (owner, 2026-10-19): a searchable field alone puts the index on Lucene.</summary>
+    [Fact]
+    public void A_searchable_field_sets_Lucene_on_the_generated_index()
+    {
+        var result = Run("""
+            using MintPlayer.Spark.Abstractions;
+
+            namespace TestApp.Entities;
+
+            [GenerateIndex]
+            public class Place
+            {
+                public string? Id { get; set; }
+                [Search] public string Name { get; set; } = string.Empty;
+            }
+            """);
+
+        var (hintName, generated) = result.GeneratedSources.Single();
+        generated.Should().Contain("SearchEngineType = global::Raven.Client.Documents.Indexes.SearchEngineType.Lucene;");
+        ErrorsIn(result, hintName).Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// <c>[Fuzzy(false)]</c> opts the field out of Spark's fuzzy search, not out of Lucene: the index stays on Lucene,
+    /// and the opt-out travels to the projection and the <c>{Name}Search</c> companion, where the runtime reads it.
+    /// </summary>
+    [Fact]
+    public void A_fuzzy_opt_out_keeps_Lucene_and_travels_to_the_projection()
+    {
+        var result = Run("""
+            using MintPlayer.Spark.Abstractions;
+
+            namespace TestApp.Entities;
+
+            [GenerateIndex]
+            public class Place
+            {
+                public string? Id { get; set; }
+                [Search, Fuzzy(false)] public string Code { get; set; } = string.Empty;
+            }
+            """);
+
+        var (hintName, generated) = result.GeneratedSources.Single();
+        generated.Should().Contain("SearchEngineType.Lucene");
+        var lines = generated.Split('\n').Select(l => l.Trim()).ToList();
+        foreach (var field in new[] { "Code", "CodeSearch" })
+        {
+            var declaration = lines.FindIndex(l => l.StartsWith("public ", StringComparison.Ordinal) && l.Contains($" {field} {{", StringComparison.Ordinal));
+            declaration.Should().BeGreaterThan(0, field);
+            lines.Take(declaration).Reverse().TakeWhile(l => l.StartsWith('[')).Should()
+                .Contain("[global::MintPlayer.Spark.Abstractions.FuzzyAttribute(false)]", field);
+        }
+        ErrorsIn(result, hintName).Should().BeEmpty();
+    }
+
+    [Fact]
+    public void A_fuzzy_opt_out_on_a_plain_field_does_not_set_Lucene()
+    {
+        var generated = Run("""
+            using MintPlayer.Spark.Abstractions;
+
+            namespace TestApp.Entities;
+
+            [GenerateIndex]
+            public class Place
+            {
+                public string? Id { get; set; }
+                [Fuzzy(false)] public string Code { get; set; } = string.Empty;
+            }
+            """).GeneratedSources.Single().Source;
+
         generated.Should().NotContain("SearchEngineType");
     }
 

@@ -196,7 +196,7 @@ The pre-X17 store held `{"Translations":{"en":"…"},"Key":null}`. These migrati
 - `M_202610191200_OidcResourceTextEntries` in the identity provider library handles `OidcResources`
   display names and descriptions, scopes included. The MCP seeding runs the same rewrite before it
   loads them, because its startup hook can run before the migrations.
-- Fleet's `M_202610191200_TranslatedStringEntries` handles `Cars.Description` and the dynamic lookup
+- Fleet's `M_202610191205_TranslatedStringEntries` handles `Cars.Description` and the dynamic lookup
   values. A dynamic lookup value now stores its label as a `TranslatedString` (`Values`).
 
 The old shape is not read (no backward compatibility).

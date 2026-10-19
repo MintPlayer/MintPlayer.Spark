@@ -56,8 +56,15 @@
     </div>
     <h2>
       {{ currentItem.breadcrumb || currentItem.name }}
-      @if (isDeletedView()) {
-        <bs-badge [type]="colors.secondary" class="align-middle ms-2 spark-deleted-badge">{{ 'softDelete.deleted' | t }}</bs-badge>
+      <!-- Title badges (SPARK_DETAIL_TITLE_BADGES): core's "Deleted", add-ons' (Approvals' "Approval pending"). -->
+      @for (badge of titleBadges(); track badge.id) {
+        @if (badge.link) {
+          <a [routerLink]="badge.link" class="align-middle ms-2 text-decoration-none spark-title-badge-link">
+            <bs-badge [type]="badge.colorValue" [class]="'spark-title-badge ' + (badge.cssClass ?? '')">{{ badge.labelKey | t }}</bs-badge>
+          </a>
+        } @else {
+          <bs-badge [type]="badge.colorValue" [class]="'align-middle ms-2 spark-title-badge ' + (badge.cssClass ?? '')">{{ badge.labelKey | t }}</bs-badge>
+        }
       }
     </h2>
 

@@ -38,11 +38,11 @@ public class IdentityProviderJourneyTests
 
     private SparkIdTestHost SparkId => _fixture.SparkId;
 
-    // From the library's App_Data/Model (OidcApplication.json, OidcApplicationScope.json, OidcDeveloperRequest.json).
+    // From the libraries' App_Data/Model (OidcApplication.json, OidcApplicationScope.json; Approvals' ApprovalRequest.json).
     private static readonly Guid ApplicationTypeId = Guid.Parse("d0d0db0e-d372-52af-8bab-7c6b7e249347");
     private static readonly Guid ApplicationScopeTypeId = Guid.Parse("eb861551-4fd7-52e0-a491-100f7e928ab8");
-    private static readonly Guid DeveloperRequestTypeId = Guid.Parse("8366dd7e-a4c2-5457-b8a5-fd8d329490e1");
-    private const string DeveloperRequestsQueryId = "d78fc79d-0079-53f8-a9f7-5222f251ad87";
+    private static readonly Guid ApprovalRequestTypeId = Guid.Parse("9806961f-9bd8-5f1b-bc4b-90e609ef0272");
+    private const string PendingApprovalsQueryId = "f359cfc6-e319-50b3-9763-264d92b7c541";
 
     /// <summary>Never contacted: the flow stops at the redirect, which is where a real client would take over.</summary>
     private const string RedirectUri = "https://journey-client.example.test/signin-oidc";
@@ -90,11 +90,16 @@ public class IdentityProviderJourneyTests
         var denied = await TryAsync(() => developer.NewPersistentObjectAsync(ApplicationTypeId));
         denied.Should().NotBeNull("an unapproved requester must not be able to create an application");
 
-        var requestRow = await WaitForQueryRowAsync(admin, "oidc-developer-requests", developerId);
-        requestRow.Should().BeTrue("the administrator's queue lists the pending request");
+        // The request is an approval request (commerce D26): the requester sees it among their own requests, the
+        // administrator in the pending-approvals inbox, and approves it with the Approvals library's action.
+        var requestId = await WaitForOnlyRowAsync(developer, "my-approval-requests");
+        requestId.Should().NotBeNull("the requester's own requests list the pending developer request");
 
-        var approval = await admin.ExecuteActionAsync(DeveloperRequestTypeId, "ApproveDeveloper",
-            selectedItemIds: [developerId], queryId: DeveloperRequestsQueryId);
+        var requestRow = await WaitForQueryRowAsync(admin, "pending-approvals", requestId!);
+        requestRow.Should().BeTrue("the administrator's inbox lists the pending request");
+
+        var approval = await admin.ExecuteActionAsync(ApprovalRequestTypeId, "ApprovalApprove",
+            selectedItemIds: [requestId!], queryId: PendingApprovalsQueryId);
         approval.IsRetry.Should().BeFalse();
 
         var approved = await GetJsonAsync<DeveloperStatus>(developer, "/spark/identity-provider/developer");
@@ -434,9 +439,29 @@ public class IdentityProviderJourneyTests
     }
 
     /// <summary>
-    /// Whether <paramref name="id"/> is a row of the query. The developer-requests query reads the user
-    /// collection through an index, which is eventually consistent; waiting on indexing between attempts
-    /// is the failure bound, never a fixed sleep.
+    /// The id of the query's only row, once it has one (null after the attempts). For a fresh user's
+    /// <c>my-approval-requests</c>, that is the request they just raised; the query is eventually consistent.
+    /// </summary>
+    private async Task<string?> WaitForOnlyRowAsync(SparkClient client, string queryAlias)
+    {
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            QueryResult result;
+            try { result = await client.ExecuteQueryAsync(queryAlias); }
+            catch (SparkClientException ex)
+            {
+                throw new InvalidOperationException($"Query {queryAlias} failed: {ex.Message}\n--- SparkId log ---\n{SparkId.RecentLog(60)}", ex);
+            }
+            if (result.Items.Count == 1)
+                return result.Items[0].Id;
+            await SparkId.WaitForIndexingAsync();
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Whether <paramref name="id"/> is a row of the query. The queries read through indexes, which are
+    /// eventually consistent; waiting on indexing between attempts is the failure bound, never a fixed sleep.
     /// </summary>
     private async Task<bool> WaitForQueryRowAsync(SparkClient client, string queryAlias, string id)
     {

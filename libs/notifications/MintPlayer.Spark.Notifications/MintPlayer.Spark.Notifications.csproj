@@ -51,6 +51,9 @@
 		<ProjectReference Include="..\..\messaging\MintPlayer.Spark.Messaging\MintPlayer.Spark.Messaging.csproj" />
 		<!-- The hand-rolled RFC 8291/8292 library (docs/seo_analyzer_PRD.md D38). -->
 		<ProjectReference Include="..\..\webpush\MintPlayer.Spark.WebPush\MintPlayer.Spark.WebPush.csproj" />
+		<!-- The approval-notice port (IApprovalNotifier) it implements. The contracts only: no App_Data layer, so an
+		     app with Notifications but without Approvals gets no ApprovalRequest type. -->
+		<ProjectReference Include="..\..\approvals\MintPlayer.Spark.Approvals.Abstractions\MintPlayer.Spark.Approvals.Abstractions.csproj" />
 		<!-- Spark's generators (the library layers, attribute descriptions) and analyzers (SPARK045). Analyzer ProjectReferences are not transitive. -->
 		<ProjectReference Include="..\..\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
 	</ItemGroup>

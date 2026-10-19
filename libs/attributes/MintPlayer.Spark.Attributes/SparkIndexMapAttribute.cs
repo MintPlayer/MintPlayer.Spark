@@ -28,7 +28,8 @@ namespace MintPlayer.Spark.Abstractions;
 /// <para>
 /// Field options come from <c>TResult</c>: <see cref="SearchAttribute"/> declares that field
 /// <c>FieldIndexing.Search</c> (the map is hand-written, so there is no generated companion; map a second, plain
-/// field to sort on), and <see cref="FuzzyAttribute"/> deploys the index on Lucene. The emitted class is
+/// field to sort on); a <see cref="SearchAttribute"/> or <see cref="FuzzyAttribute"/> field deploys the index on
+/// Lucene, where Spark's search is typo-tolerant (commerce X18). The emitted class is
 /// <c>partial</c> and calls <c>partial void OnInitialize()</c>, for host-specific additions.
 /// </para>
 /// <para>

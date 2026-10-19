@@ -1,0 +1,6 @@
+@if (count() > 0) {
+  <a class="spark-approvals-inbox-link" [class]="linkClass()" [routerLink]="link">
+    {{ 'approvals.inbox' | t }}
+    <span class="spark-approvals-inbox-count">{{ count() }}</span>
+  </a>
+}

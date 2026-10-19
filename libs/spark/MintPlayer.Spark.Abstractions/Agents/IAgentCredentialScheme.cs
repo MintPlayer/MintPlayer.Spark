@@ -71,16 +71,16 @@ public sealed record AgentCredential(AgentInformation Agent, AgentGrantScope Gra
 /// <param name="Permissions">The grant's cap: <see cref="EAgentPermission.Read"/>, or read + <see cref="EAgentPermission.Write"/> ("changes").</param>
 /// <param name="Types">
 /// <see langword="null"/>: every type the application makes available to agents, including types exposed
-/// later. Otherwise the chosen types by entity type name (ordinal), each with its own permission, capped by
+/// later. Otherwise the chosen types by entity type id (<c>"D"</c>, D28), each with its own permission, capped by
 /// <paramref name="Permissions"/>; a type not listed gets nothing.
 /// </param>
 public sealed record AgentGrantScope(string Id, EAgentPermission Permissions, IReadOnlyDictionary<string, EAgentPermission>? Types)
 {
-    /// <summary>What the grant allows on the entity type <paramref name="typeName"/>.</summary>
-    public EAgentPermission For(string typeName)
+    /// <summary>What the grant allows on the entity type whose id is <paramref name="typeId"/> (<c>"D"</c>).</summary>
+    public EAgentPermission For(string typeId)
         => Types is null
             ? Permissions
-            : Types.TryGetValue(typeName, out var permission) ? permission & Permissions : EAgentPermission.None;
+            : Types.TryGetValue(typeId, out var permission) ? permission & Permissions : EAgentPermission.None;
 }
 
 /// <summary>
@@ -112,8 +112,9 @@ public interface IAgentExposure
 }
 
 /// <summary>An entity type agents may use.</summary>
-/// <param name="Name">The entity type name, as grants store it.</param>
+/// <param name="Id">The entity type's id (<c>"D"</c>), as grants store it (D28: never the name, which a rename changes).</param>
+/// <param name="Name">The entity type's name in this application.</param>
 /// <param name="Label">The type's label in the request's language, or the name.</param>
 /// <param name="Permissions">The type's <c>agentPermissions</c>.</param>
 /// <param name="Queries">The labels of the type's queries, shown under it ("with their queries underneath", PRD §4.6).</param>
-public sealed record AgentExposedType(string Name, string Label, EAgentPermission Permissions, IReadOnlyList<string> Queries);
+public sealed record AgentExposedType(string Id, string Name, string Label, EAgentPermission Permissions, IReadOnlyList<string> Queries);

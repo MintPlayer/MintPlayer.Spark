@@ -52,4 +52,13 @@ public sealed class OidcDevelopers(IDocumentStore store, SparkIdentityProviderOp
             Values = { ["developer"] = developer },
         }));
     }
+
+    /// <summary>Defers removing the developer status from the user document (a request withdrawn or expired); the caller's SaveChanges commits it.</summary>
+    public static void Clear(IAsyncDocumentSession session, string userId)
+    {
+        session.Advanced.Defer(new PatchCommandData(userId, null, new PatchRequest
+        {
+            Script = $"delete this.{OidcDeveloper.FieldName};",
+        }));
+    }
 }

@@ -12,6 +12,7 @@ import { SPARK_CONFIG } from '@mintplayer/ng-spark';
 import { SparkService, SparkLanguageService, SparkLiveService, canonicalJson } from '@mintplayer/ng-spark/services';
 import { SparkPoFormComponent } from '@mintplayer/ng-spark/po-form';
 import { TranslateKeyPipe, ResolveTranslationPipe } from '@mintplayer/ng-spark/pipes';
+import { SPARK_SAVE_SUBMITTED_HANDLERS, sparkSaveSubmittedRoute } from '@mintplayer/ng-spark/panels';
 import {
   EntityType,
   PersistentObject,
@@ -62,6 +63,7 @@ export class SparkPoEditComponent {
   private readonly live = inject(SparkLiveService);
   private readonly language = inject(SparkLanguageService);
   private readonly notifications = inject(SparkNotificationService);
+  private readonly submittedHandlers = inject(SPARK_SAVE_SUBMITTED_HANDLERS, { optional: true });
   /** `SparkConfig.conflictDialog.showChangedBy`: whether the conflict notice may name a user at all. */
   private readonly showChangedBy = inject(SPARK_CONFIG, { optional: true })?.conflictDialog?.showChangedBy === true;
 
@@ -470,7 +472,10 @@ export class SparkPoEditComponent {
       if (isSaveSubmitted(result)) {
         this.notifications.show(this.language.t('common.submittedForApproval'), NotificationKind.Info, 8000);
         this.submitted.emit(result);
-        this.router.navigate(['/po', this.type, this.id]);
+        // A registered handler (SPARK_SAVE_SUBMITTED_HANDLERS) may name where to go instead; by default the
+        // detail page, which shows Approvals' "Approval pending" title badge when that add-on is present.
+        const route = sparkSaveSubmittedRoute(this.submittedHandlers, { operation: 'update', type: this.type, id: this.id, submitted: result });
+        this.router.navigate(route ?? ['/po', this.type, this.id]);
         return;
       }
       this.saved.emit(result);

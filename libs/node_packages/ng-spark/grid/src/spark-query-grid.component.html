@@ -119,7 +119,8 @@
     <ng-container *bsRowTemplate="let item">
       @let row = $any(item);
       @for (col of allColumns(); track col.name; let first = $first) {
-        <td>
+        <!-- Row and cell typeHints as `spark-hint-*` classes (commerce #521). -->
+        <td [class]="hintClassesFor(row, col)">
           @if (row) {
             <!-- The first column links to the row's detail page. Two things about this are
                  routinely misread:

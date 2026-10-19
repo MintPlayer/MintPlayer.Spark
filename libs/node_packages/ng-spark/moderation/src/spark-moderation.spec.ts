@@ -255,9 +255,9 @@ describe('moderation entry point (#460)', () => {
 
   it('the review queue names each case by its post and links to it', async () => {
     spark.postEnvelope.mockResolvedValue([
-      { id: 'ModerationCases/flag/questions/1', kind: 'flag', status: 'open', targetId: 'questions/1', targetType: 'Question', accountIds: [], flagCount: 1, voteCount: 0, summary: 'Spam', openedAtUtc: '2026-09-29T05:00:00Z' },
+      { id: 'ModerationCases/flag/questions/1', kind: 'flag', status: 'open', targetId: 'questions/1', targetType: 'qt', accountIds: [], flagCount: 1, voteCount: 0, summary: 'Spam', openedAtUtc: '2026-09-29T05:00:00Z' },
     ]);
-    (spark as any).getEntityTypes = vi.fn().mockResolvedValue([{ id: 'qt', name: 'Question', alias: 'question' }]);
+    (spark as any).getEntityTypes = vi.fn().mockResolvedValue([{ id: 'qt', name: 'RenamedQuestion', alias: 'question' }]);
     (spark as any).get = vi.fn().mockResolvedValue({ id: 'questions/1', name: 'Question', breadcrumb: 'How do I revert?' });
     const fixture = TestBed.createComponent(SparkReviewQueueComponent);
     fixture.detectChanges();

@@ -456,8 +456,14 @@ public class GenerateIndexGenerator : IncrementalGenerator
                 }
             }
 
-            // Commerce X18: one [Fuzzy] field puts the whole index on Lucene. A non-text field still does (the
-            // marker says what the author queries), but is reported: edit distance means nothing on it.
+            // Commerce X18 ("fuzzy by default", 2026-10-19): a searchable field puts the whole index on Lucene,
+            // because Spark's search is typo-tolerant on it and Corax refuses fuzzy queries. [Fuzzy(false)] opts a
+            // field out of the fuzzy matching only; the index still runs Lucene. An explicit [Fuzzy] on a field
+            // that is not searchable does too (the marker says what the author queries); a non-text one is
+            // reported, since edit distance means nothing on it.
+            if (searchable && !isComplex && searchKind is SearchKind.Text or SearchKind.Translated)
+                usesLucene = true;
+
             if (IsFuzzy(property))
             {
                 usesLucene = true;
@@ -578,9 +584,13 @@ public class GenerateIndexGenerator : IncrementalGenerator
         };
     }
 
-    /// <summary>Whether <paramref name="property"/> carries <c>[Fuzzy]</c> (commerce X18).</summary>
+    /// <summary>
+    /// Whether <paramref name="property"/> opts in with <c>[Fuzzy]</c> (commerce X18). <c>[Fuzzy(false)]</c> is the
+    /// opt-out of Spark's default fuzzy search and does not count.
+    /// </summary>
     internal static bool IsFuzzy(IPropertySymbol property)
-        => property.GetAttributes().Any(a => a.AttributeClass?.ToDisplayString() == FuzzyAttributeFullName);
+        => property.GetAttributes().Any(a => a.AttributeClass?.ToDisplayString() == FuzzyAttributeFullName
+            && !(a.ConstructorArguments.Length == 1 && a.ConstructorArguments[0].Value is false));
 
     /// <summary>
     /// Describes the app's <c>SparkContext</c>, or <c>null</c> when the class is not one.

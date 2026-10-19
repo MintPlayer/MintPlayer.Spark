@@ -24,6 +24,13 @@ export interface SparkAttributeRendererRegistration {
    */
   rowComponent?: Type<any>;
   /**
+   * Optional component for a **diff** of this attribute between two reads of an object (Approvals'
+   * proposal diff, commerce #521): drawn once per changed attribute, given both sides. Must implement
+   * {@link SparkAttributeDiffRenderer}. When omitted, the generic before → after view is used (each side
+   * drawn as a grid cell, so `columnComponent` still applies to each side on its own).
+   */
+  diffComponent?: Type<any>;
+  /**
    * Relabels this column's values in a filter panel (#431).
    *
    * A renderer is a component that paints arbitrary DOM, and a distinct value has no row, so it

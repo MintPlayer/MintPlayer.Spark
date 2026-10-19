@@ -36,8 +36,32 @@ internal partial class ModelSynchronizer : IModelSynchronizer
     /// <summary>Description seeds collected during the run, written into translations.json at its end (#467, D5).</summary>
     private readonly List<(string Key, string Text)> seeds = new();
 
-    /// <summary>The library model types (composition D6): never copied into the application, only their delta written.</summary>
-    private Dictionary<string, (string Library, SparkJsonObject Layer)> libraryTypes = new(StringComparer.Ordinal);
+    /// <summary>A library model type as the synchronizer compares against it (composition D6, D28).</summary>
+    private sealed record LibraryModelType(string Library, string Identity, string Name, string? ClrType, SparkJsonObject Layer);
+
+    /// <summary>The library model types by effective name, ignoring case (composition D6): never copied into the application, only their delta written.</summary>
+    private Dictionary<string, LibraryModelType> libraryTypes = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The library model types by CLR type (F7, D28): an application class is the library's type only when it IS
+    /// the library's class. Matching by name made an application <c>Order</c> a delta on a library <c>Order</c>.
+    /// </summary>
+    private Dictionary<string, LibraryModelType> libraryTypesByClrType = new(StringComparer.Ordinal);
+
+    /// <summary>The application's own CLR types named by <c>[assembly: PersistentObjectName&lt;T&gt;]</c> (D28): CLR full name → name.</summary>
+    private Dictionary<string, string> applicationNames = new(StringComparer.Ordinal);
+
+    /// <summary>The application file each existing type was read from, by id: a renamed type's file moves (D28).</summary>
+    private Dictionary<Guid, string> existingFiles = new();
+
+    /// <summary>Types whose name this run changes (D28): their translations and rights move with them at the end.</summary>
+    private readonly List<(string OldName, string NewName)> renamedTypes = new();
+
+    /// <summary>
+    /// The renames the application states; <see langword="null"/>: those on the context type's assembly. Set by tests.
+    /// Library types arrive renamed already (<see cref="SparkLayerCatalog"/>); this names the application's own CLR types.
+    /// </summary>
+    internal IReadOnlyList<PersistentObjectNameAttribute>? Renames { get; init; }
 
     /// <summary>Each library query's own <c>columnOrder</c> (#284 D16): a list the application has not changed is left to its library.</summary>
     private IReadOnlyDictionary<string, string[]> libraryColumnOrders = new Dictionary<string, string[]>(StringComparer.Ordinal);
@@ -68,14 +92,28 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         Directory.CreateDirectory(modelPath);
 
         // Load existing entity types and their inline queries: the composed model, library types included
-        libraryTypes = LoadLibraryTypes();
+        LoadLibraryTypes();
+        applicationNames = (Renames ?? SparkLayerCatalog.RenamesOf(contextType.Assembly))
+            .Where(r => r.EntityType is { } type && !libraryTypesByClrType.ContainsKey(type.FullName ?? type.Name))
+            .GroupBy(r => r.EntityType!.FullName ?? r.EntityType!.Name, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.First().Name, StringComparer.Ordinal);
         libraryColumnOrders = ColumnOrderMaintenance.LibraryColumnOrders(Libraries ?? SparkLayerCatalog.Libraries);
+        MoveStaleDeltas(modelPath);
         var (existingEntityTypes, existingQueries) = LoadExistingEntityTypeFiles();
 
         // Find all IRavenQueryable<T> properties on the SparkContext
         var queryableProperties = contextType.GetCachedProperties()
             .Where(p => IsRavenQueryable(p.PropertyType))
             .ToList();
+
+        // F7, before anything is written: an application class whose name a library type already has would have
+        // become a delta on it (the library's id and rights over the application's documents, without the library's
+        // row policies, which follow the CLR type). Refused, pointing at the remedies.
+        RefuseNameCollisions(queryableProperties
+            .Select(p => GetQueryableEntityType(p.PropertyType))
+            .OfType<Type>()
+            .Where(t => !t.IsSparkProjection())
+            .Distinct());
 
         // Track types to process (including embedded types)
         var processedTypes = new HashSet<string>();
@@ -121,8 +159,8 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         var queriesByType = new Dictionary<Type, List<SparkQuery>>();
         foreach (var group in rootsByEntityType)
         {
-            var queriesForType = CollectQueriesFor(existingQueries, group.Key.Name);
-            RetargetRenamedDatabaseQueries(queriesForType, group.Select(x => x.Property.Name).ToList(), group.Key.Name);
+            var queriesForType = CollectQueriesFor(existingQueries, group.Key, existingEntityTypes);
+            RetargetRenamedDatabaseQueries(queriesForType, group.Select(x => x.Property.Name).ToList(), NameOf(group.Key));
             queriesByType[group.Key] = queriesForType;
         }
 
@@ -131,7 +169,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         // Satellites (below) mint queries too, so they are planned in the same pass: a library-named satellite query
         // (a contributions query, say) and a minted root query must not take each other's name or alias either.
         var satellites = CollectSatellites(rootsByEntityType);
-        var satelliteQueriesByType = satellites.ToDictionary(s => s.ModelType, s => CollectQueriesFor(existingQueries, s.ModelType.Name));
+        var satelliteQueriesByType = satellites.ToDictionary(s => s.ModelType, s => CollectQueriesFor(existingQueries, s.ModelType, existingEntityTypes));
         var (rootQueries, satelliteQueryPlans) = PlanRootQueries(rootsByEntityType, queriesByType, satellites, satelliteQueriesByType, existingQueries);
         var referenceQueries = ResolveReferenceQueries(contextType, rootsByEntityType, rootQueries);
 
@@ -214,7 +252,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                     // the next read. Leaving it null made synchronization non-idempotent: the first
                     // run omitted the field, the second read it back, populated it and wrote it out,
                     // so two consecutive runs produced different bytes.
-                    EntityType = entityType.Name,
+                    EntityType = entityTypeDef.Name,
                     Source = $"Database.{property.Name}",
                     // Stamped at mint (#279): the query declares its index instead of relying on
                     // an ambient default. Null when the entity has no projection-bearing index.
@@ -223,7 +261,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                         ? [new SortColumn { Property = sortProp, Direction = "asc" }]
                         : []
                 });
-                Console.WriteLine($"Created query: {queryName} (inline in {entityType.Name}.json)");
+                Console.WriteLine($"Created query: {queryName} (inline in {entityTypeDef.Name}.json)");
                 if (plan.Name != $"Get{property.Name}")
                     Console.WriteLine($"  Named it '{plan.Name}': 'Get{property.Name}' is another query's name.");
                 if (plan.Alias is not null)
@@ -231,7 +269,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             }
 
             // Save the entity type file with inline queries
-            var fileName = Path.Combine(modelPath, $"{entityType.Name}.json");
+            var fileName = Path.Combine(modelPath, $"{entityTypeDef.Name}.json");
             var entityTypeFile = new EntityTypeFile
             {
                 PersistentObject = entityTypeDef,
@@ -242,6 +280,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                     .ThenBy(q => q.Name, StringComparer.Ordinal)]
             };
             WriteModelFile(fileName, entityTypeFile);
+            MoveRenamedFile(fileName, entityTypeDef);
             writtenFiles.Add(fileName);
             processedTypes.Add(clrType);
 
@@ -250,11 +289,11 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             {
                 var projectionClrType = projectionType.FullName ?? projectionType.Name;
                 processedTypes.Add(projectionClrType);
-                Console.WriteLine($"Synchronized model: {entityType.Name} (merged with {projectionType.Name}) -> {fileName}");
+                Console.WriteLine($"Synchronized model: {entityTypeDef.Name} (merged with {projectionType.Name}) -> {fileName}");
             }
             else
             {
-                Console.WriteLine($"Synchronized model: {entityType.Name} -> {fileName}");
+                Console.WriteLine($"Synchronized model: {entityTypeDef.Name} -> {fileName}");
             }
 
             // Collect embedded types from this entity
@@ -292,13 +331,13 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                     Name = plan.Name,
                     // As for a root (D11): null unless the derived alias was taken.
                     Alias = plan.Alias,
-                    EntityType = satelliteType.Name,
+                    EntityType = entityTypeDef.Name,
                     Source = minted.Source,
                     SortColumns = minted.SortProperty is { } sort
                         ? [new SortColumn { Property = sort, Direction = minted.SortDirection }]
                         : [],
                 });
-                Console.WriteLine($"Created query: {plan.Name} (inline in {satelliteType.Name}.json)");
+                Console.WriteLine($"Created query: {plan.Name} (inline in {entityTypeDef.Name}.json)");
                 // A library names its satellite query because something addresses it by that name or its derived
                 // alias (the contributions page reads 'contributionsQuery', ContributionDescriptor). Stepping aside
                 // keeps the model loadable, but that contract no longer holds: say so loudly.
@@ -310,7 +349,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                                       "Whatever addresses it by the derived alias will not find it; rename the other query.");
             }
 
-            var fileName = Path.Combine(modelPath, $"{satelliteType.Name}.json");
+            var fileName = Path.Combine(modelPath, $"{entityTypeDef.Name}.json");
             var entityTypeFile = new EntityTypeFile
             {
                 PersistentObject = entityTypeDef,
@@ -319,9 +358,10 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                     .ThenBy(q => q.Name, StringComparer.Ordinal)]
             };
             WriteModelFile(fileName, entityTypeFile);
+            MoveRenamedFile(fileName, entityTypeDef);
             writtenFiles.Add(fileName);
             processedTypes.Add(clrType);
-            Console.WriteLine($"Synchronized model (satellite of {satellite.OwnerType.Name}): {satelliteType.Name} -> {fileName}");
+            Console.WriteLine($"Synchronized model (satellite of {satellite.OwnerType.Name}): {entityTypeDef.Name} -> {fileName}");
 
             CollectEmbeddedTypes(satelliteType, entityTypeDef, typesToProcess, processedTypes);
         }
@@ -340,10 +380,10 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             ApplyRendererSeeds(entityTypeDef, embeddedType);
 
             // Preserve any existing inline queries for this embedded type
-            var embeddedQueries = CollectQueriesFor(existingQueries, embeddedType.Name).ToArray();
+            var embeddedQueries = CollectQueriesFor(existingQueries, embeddedType, existingEntityTypes).ToArray();
             MaintainColumnOrders(entityTypeDef, embeddedQueries);
 
-            var fileName = Path.Combine(modelPath, $"{embeddedType.Name}.json");
+            var fileName = Path.Combine(modelPath, $"{entityTypeDef.Name}.json");
             var entityTypeFile = new EntityTypeFile
             {
                 PersistentObject = entityTypeDef,
@@ -352,10 +392,11 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                     .ThenBy(q => q.Name, StringComparer.Ordinal)]
             };
             WriteModelFile(fileName, entityTypeFile);
+            MoveRenamedFile(fileName, entityTypeDef);
             writtenFiles.Add(fileName);
             processedTypes.Add(clrType);
 
-            Console.WriteLine($"Synchronized model (embedded): {embeddedType.Name} -> {fileName}");
+            Console.WriteLine($"Synchronized model (embedded): {entityTypeDef.Name} -> {fileName}");
 
             // Recursively collect embedded types from this type
             CollectEmbeddedTypes(embeddedType, entityTypeDef, typesToProcess, processedTypes);
@@ -381,6 +422,18 @@ internal partial class ModelSynchronizer : IModelSynchronizer
 
             File.Delete(staleModelFile);
             Console.WriteLine($"Removed stale projection model file: {entry.ProjectionType.Name}.json");
+        }
+
+        // D28: a type renamed in this run takes its translations and the application's rights along. Rights move only
+        // while the old name is free; when another type now has it, the rights are listed for re-targeting by hand.
+        if (renamedTypes.Count > 0)
+        {
+            var names = SparkModelFiles.ComposeLenient(Libraries ?? SparkLayerCatalog.Libraries, modelPath).Types
+                .Select(t => t.Name)
+                .OfType<string>()
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            if (!ModelRenameMigration.Apply(hostEnvironment.ContentRootPath, renamedTypes, names))
+                Environment.ExitCode = 2;
         }
 
         TranslationsSeeder.Apply(hostEnvironment.ContentRootPath, seeds);
@@ -567,6 +620,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             ConfigFiles = configHashes.Count > 0 ? configHashes : null,
             Libraries = libraries.Count > 0 ? libraries : null,
             Layers = layers.Count > 0 ? layers : null,
+            Names = ModelHashFile.ComputeNames(contentRootPath) is { Count: > 0 } names ? names : null,
             Entities = new SortedDictionary<string, string>(perEntity.ToDictionary(e => e.Key, e => e.Value), StringComparer.Ordinal),
         };
     }
@@ -657,6 +711,22 @@ internal partial class ModelSynchronizer : IModelSynchronizer
     /// surfacing rather than silently resolving.
     /// </para>
     /// </summary>
+    /// <remarks>
+    /// The queries are found under the name the type has on disk (its definition is found by CLR type), so a type
+    /// renamed in this run (D28) keeps them; their <c>entityType</c> is moved to the new name.
+    /// </remarks>
+    private List<SparkQuery> CollectQueriesFor(List<SparkQuery> existingQueries, Type type, Dictionary<Guid, EntityTypeDefinition> existingEntityTypes)
+    {
+        var clrType = type.FullName ?? type.Name;
+        var name = NameOf(type);
+        var onDisk = existingEntityTypes.Values.FirstOrDefault(e => e.ClrType == clrType)?.Name ?? name;
+        var queries = CollectQueriesFor(existingQueries, onDisk);
+        if (!string.Equals(onDisk, name, StringComparison.Ordinal))
+            foreach (var query in queries)
+                query.EntityType = name;
+        return queries;
+    }
+
     private static List<SparkQuery> CollectQueriesFor(List<SparkQuery> existingQueries, string entityTypeName)
     {
         var seenIds = new HashSet<Guid>();
@@ -721,6 +791,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                 {
                     var entityType = entityTypeFile.PersistentObject;
                     entityTypes[entityType.Id] = entityType;
+                    if (file.AppFile is { } appFile) existingFiles[entityType.Id] = appFile;
 
                     // Extract inline queries, auto-populating EntityType from the containing file
                     foreach (var query in entityTypeFile.Queries)
@@ -749,32 +820,84 @@ internal partial class ModelSynchronizer : IModelSynchronizer
     /// The library model types by name, each as this synchronizer would serialize it, so that a
     /// delta compares like with like: a default the library leaves out is not a difference (D6).
     /// </summary>
-    private Dictionary<string, (string Library, SparkJsonObject Layer)> LoadLibraryTypes()
+    private void LoadLibraryTypes()
     {
-        var result = new Dictionary<string, (string, SparkJsonObject)>(StringComparer.Ordinal);
+        libraryTypes = new Dictionary<string, LibraryModelType>(StringComparer.OrdinalIgnoreCase);
+        libraryTypesByClrType = new Dictionary<string, LibraryModelType>(StringComparer.Ordinal);
         var jsonOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
         foreach (var type in SparkModelFiles.LibraryTypes(Libraries ?? SparkLayerCatalog.Libraries))
         {
-            if (type.Name is null || type.Library is null) continue;
+            if (type.Name is null || type.Library is null || type.Identity is null) continue;
             var file = JsonSerializer.Deserialize<EntityTypeFile>(type.Json, jsonOptions);
             if (file?.PersistentObject is null) continue;
-            result[type.Name] = (type.Library, (SparkJsonObject)SparkJson.Parse(JsonSerializer.Serialize(file, JsonOptions)));
+            var library = new LibraryModelType(
+                type.Library,
+                type.Identity,
+                type.Name,
+                file.PersistentObject.ClrType,
+                (SparkJsonObject)SparkJson.Parse(JsonSerializer.Serialize(file, JsonOptions)));
+            libraryTypes[type.Name] = library;
+            if (library.ClrType is { } clrType) libraryTypesByClrType[clrType] = library;
         }
-        return result;
+    }
+
+    /// <summary>
+    /// The name a CLR type has in the model (D28): a library's class keeps the library type's (effective) name,
+    /// an application class the name <c>[assembly: PersistentObjectName&lt;T&gt;]</c> gives it, else its class name.
+    /// </summary>
+    private string NameOf(Type type)
+    {
+        var clrType = type.FullName ?? type.Name;
+        if (libraryTypesByClrType.TryGetValue(clrType, out var library)) return library.Name;
+        return applicationNames.TryGetValue(clrType, out var name) ? name : type.Name;
+    }
+
+    /// <summary>
+    /// F7: an application class whose model name a library type already has (ignoring case, as rights and lookups
+    /// do) used to become a delta on that type; the hijack is refused before anything is written.
+    /// </summary>
+    private void RefuseNameCollisions(IEnumerable<Type> types)
+    {
+        var problems = new List<string>();
+        foreach (var type in types)
+        {
+            var clrType = type.FullName ?? type.Name;
+            if (libraryTypesByClrType.ContainsKey(clrType)) continue;
+            var name = NameOf(type);
+            if (libraryTypes.TryGetValue(name, out var library))
+            {
+                problems.Add(
+                    $"'{clrType}' would be named '{name}', the name of {library.Library}'s type '{library.Identity}'" +
+                    (library.ClrType is null ? "" : $" ({library.ClrType})") + ". " +
+                    $"Name yours with [assembly: PersistentObjectName<{clrType}>(\"<NewName>\")], or rename the library's with " +
+                    $"[assembly: PersistentObjectName(\"{library.Identity.Split(':')[0]}\", \"{library.Identity.Split(':')[1]}\", \"<NewName>\")] (SPARK058).");
+            }
+        }
+
+        if (problems.Count > 0)
+        {
+            throw new InvalidOperationException(
+                "Model synchronization stopped before writing anything: an application type would take a library type's name (F7)."
+                + Environment.NewLine + string.Join(Environment.NewLine, problems.Select(p => "  - " + p)));
+        }
     }
 
     /// <summary>
     /// Writes a type's model file (composition D6). A type the application owns is written whole. A
-    /// library type is written as the delta against the library's layer: only what differs, never an
-    /// id the library states; nothing at all when nothing differs, in which case no file is created.
+    /// library type is written as the delta against the library's layer, anchored on it with
+    /// <c>"$extends": "alias:DeclaredName"</c> (D28): only what differs, never an id the library states;
+    /// nothing at all when nothing differs, in which case no file is created.
     /// </summary>
+    /// <remarks>
+    /// The library type is found by CLR type, never by name (F7): only the library's own class is its type.
+    /// </remarks>
     /// <returns>Whether a file was written.</returns>
     private bool WriteModelFile(string fileName, EntityTypeFile entityTypeFile)
     {
         var json = JsonSerializer.Serialize(entityTypeFile, JsonOptions);
-        if (libraryTypes.TryGetValue(entityTypeFile.PersistentObject.Name, out var library))
+        if (entityTypeFile.PersistentObject.ClrType is { } clrType && libraryTypesByClrType.TryGetValue(clrType, out var library))
         {
-            var delta = SparkModelLayers.Delta(library.Layer, (SparkJsonObject)SparkJson.Parse(json));
+            var delta = SparkModelLayers.Delta(library.Layer, (SparkJsonObject)SparkJson.Parse(json), library.Identity);
             if (delta is null)
             {
                 Console.WriteLine($"Library model: {entityTypeFile.PersistentObject.Name} is {library.Library}'s and nothing differs; no file written.");
@@ -788,21 +911,119 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         return true;
     }
 
+    /// <summary>
+    /// After a type's file is written under its (new) name, removes the file it was read from when that is another
+    /// file (D28: a rename moves the file and keeps the id), and records the rename so its translations and
+    /// rights follow at the end of the run.
+    /// </summary>
+    private void MoveRenamedFile(string fileName, EntityTypeDefinition definition)
+    {
+        if (!existingFiles.TryGetValue(definition.Id, out var previous)) return;
+        if (string.Equals(Path.GetFullPath(previous), Path.GetFullPath(fileName), StringComparison.OrdinalIgnoreCase)) return;
+
+        if (File.Exists(previous))
+        {
+            File.Delete(previous);
+            Console.WriteLine($"Moved {Path.GetFileName(previous)} -> {Path.GetFileName(fileName)} (the type is now named '{definition.Name}'; its id is kept).");
+        }
+        existingFiles[definition.Id] = fileName;
+    }
+
+    /// <summary>
+    /// D28: a delta whose <c>$extends</c> anchors on a library type that the application has since renamed is
+    /// stale; the composer refuses it, so it is repaired here, before the model is read: its <c>name</c>, its
+    /// queries' <c>entityType</c> and its file name follow the type's current name.
+    /// </summary>
+    private void MoveStaleDeltas(string modelPath)
+    {
+        if (!Directory.Exists(modelPath)) return;
+        var byIdentity = libraryTypes.Values.ToDictionary(t => t.Identity, StringComparer.Ordinal);
+
+        foreach (var path in Directory.GetFiles(modelPath, "*.json").OrderBy(p => p, StringComparer.Ordinal))
+        {
+            if (string.Equals(Path.GetFileName(path), ModelHashFile.FileName, StringComparison.OrdinalIgnoreCase)) continue;
+
+            SparkJsonObject root;
+            try
+            {
+                if (SparkJson.Parse(File.ReadAllText(path)) is not SparkJsonObject parsed) continue;
+                root = parsed;
+            }
+            catch (SparkJsonException)
+            {
+                continue; // The composer reports it in its own words.
+            }
+
+            if (SparkModelLayers.ExtendsOf(root) is null
+                && SparkModelLayers.NameOf(root) is { } bareName
+                && libraryTypes.TryGetValue(bareName, out var named)
+                && root["persistentObject"] is SparkJsonObject po && po["id"] is null
+                && (SparkModelLayers.ClrTypeOf(root) is not { } stated || stated == named.ClrType))
+            {
+                // A delta written before $extends (D28): id-less and naming the library's own class (or none), so it
+                // was the library's type all along; anchoring it changes nothing it means. A file mapping another
+                // class is the F7 hijack and is left for the composer to refuse.
+                var anchored = new SparkJsonObject(root.Comparer);
+                foreach (var member in root.Members)
+                {
+                    anchored.Set(member.Key, member.Value);
+                    if (member.Key == "$schema") anchored.Set(SparkLayers.ExtendsDirective, new SparkJsonString(named.Identity));
+                }
+                if (anchored[SparkLayers.ExtendsDirective] is null)
+                {
+                    var first = new SparkJsonObject(root.Comparer);
+                    first.Set(SparkLayers.ExtendsDirective, new SparkJsonString(named.Identity));
+                    foreach (var member in anchored.Members) first.Set(member.Key, member.Value);
+                    anchored = first;
+                }
+                File.WriteAllText(path, SparkJson.Write(anchored, indented: true));
+                Console.WriteLine($"Anchored the delta {Path.GetFileName(path)} on '{named.Identity}' (\"$extends\", D28).");
+                root = anchored;
+            }
+
+            if (SparkModelLayers.ExtendsOf(root) is not { } identity || !byIdentity.TryGetValue(identity, out var library)) continue;
+            if (SparkModelLayers.NameOf(root) is not { } name || name == library.Name) continue;
+
+            var map = new Dictionary<string, string>(StringComparer.Ordinal) { [name] = library.Name };
+            var json = SparkRenames.Rewrite(SparkLayerKinds.Model, SparkJson.Write(root), map);
+            var target = Path.Combine(modelPath, library.Name + ".json");
+            var samePath = string.Equals(Path.GetFullPath(target), Path.GetFullPath(path), StringComparison.OrdinalIgnoreCase);
+            if (!samePath && File.Exists(target))
+            {
+                throw new InvalidOperationException(
+                    $"{path} extends '{identity}', now named '{library.Name}', but {target} already exists. Merge the two files by hand, then run the command again.");
+            }
+
+            File.WriteAllText(target, SparkSchemaReference.CarryOver(path, json));
+            if (!samePath) File.Delete(path);
+            renamedTypes.Add((name, library.Name));
+            Console.WriteLine($"Moved the delta {Path.GetFileName(path)} -> {Path.GetFileName(target)}: '{identity}' is now named '{library.Name}' (was '{name}').");
+        }
+    }
+
     /// <param name="querySurface">
     /// For a viewless default index, the fields its maps emit: a new attribute outside it is minted with
     /// <c>canSort</c>/<c>canFilter</c> false. Null when there is no such restriction.
     /// </param>
     private EntityTypeDefinition CreateOrUpdateEntityTypeDefinition(Type entityType, Type? projectionType, string? indexName, EntityTypeDefinition? existing, ReferenceQueries? referenceQueries = null, IReadOnlySet<string>? querySurface = null)
     {
+        var name = NameOf(entityType);
         var entityTypeDef = existing ?? new EntityTypeDefinition
         {
             Id = Guid.NewGuid(),
-            Name = entityType.Name,
+            Name = name,
             ClrType = entityType.FullName ?? entityType.Name,
         };
 
-        // Update basic info
-        entityTypeDef.Name = entityType.Name;
+        // Update basic info. A changed name (D28: [assembly: PersistentObjectName<T>] added, changed or removed) keeps
+        // the id, which the synchronizer found by CLR type; the file moves and the type's translations and rights follow.
+        if (existing is not null && !string.Equals(existing.Name, name, StringComparison.Ordinal)
+            && !libraryTypesByClrType.ContainsKey(entityTypeDef.ClrType ?? string.Empty))
+        {
+            renamedTypes.Add((existing.Name, name));
+            Console.WriteLine($"Renamed type '{existing.Name}' -> '{name}' (id {existing.Id} kept).");
+        }
+        entityTypeDef.Name = name;
         entityTypeDef.ClrType = entityType.FullName ?? entityType.Name;
 
         // Preserve manually-defined tabs and groups

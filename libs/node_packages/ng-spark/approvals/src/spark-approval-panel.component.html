@@ -1,0 +1,63 @@
+@if (visible()) {
+  <bs-card class="d-block spark-approval-panel">
+    <bs-card-header>{{ 'approvals.panelTitle' | t }}</bs-card-header>
+    <div class="p-3">
+      @if (loading() && !proposal()) {
+        <div class="text-center p-2"><bs-spinner /></div>
+      }
+
+      @if (proposal(); as p) {
+        @if (p.isStale) {
+          <bs-alert [type]="colors.warning" class="spark-approval-stale">{{ 'approvals.staleWarning' | t }}</bs-alert>
+        }
+        <h6 class="spark-approval-proposal-title">
+          {{ (isCreate() ? 'approvals.proposedCreate' : 'approvals.proposedChange') | t }}
+        </h6>
+        @if (changes().length === 0) {
+          <p class="text-muted spark-approval-nochanges">{{ 'approvals.noChanges' | t }}</p>
+        } @else {
+          <spark-po-diff
+            [changes]="changes()"
+            [before]="p.current"
+            [after]="p.proposed"
+            [showBefore]="!isCreate()"
+            [fieldLabel]="'approvals.field' | t"
+            [beforeLabel]="'approvals.before' | t"
+            [afterLabel]="'approvals.after' | t" />
+        }
+      }
+
+      @if (error(); as message) {
+        <bs-alert [type]="colors.danger" class="spark-approval-error">{{ message }}</bs-alert>
+      }
+
+      @if (rejecting()) {
+        <bs-form class="d-block spark-approval-reject-form">
+          <label for="spark-approval-reason" class="form-label">{{ 'approvals.rejectReason' | t }}</label>
+          <textarea id="spark-approval-reason" rows="3" required [value]="reason()" (input)="onReasonInput($event)"></textarea>
+        </bs-form>
+        <div class="spark-approval-buttons">
+          <button type="button" class="btn btn-danger spark-approval-reject-confirm"
+                  [disabled]="busy() || !reason().trim()" (click)="reject()">{{ 'approvals.rejectButton' | t }}</button>
+          <button type="button" class="btn btn-outline-secondary spark-approval-reject-cancel"
+                  [disabled]="busy()" (click)="cancelReject()">{{ 'common.cancel' | t }}</button>
+        </div>
+      } @else if (canApprove() || canReject() || canWithdraw()) {
+        <div class="spark-approval-buttons">
+          @if (canApprove()) {
+            <button type="button" class="btn btn-success spark-approval-approve"
+                    [disabled]="busy() || proposal()?.isStale" (click)="approve()">{{ 'approvals.approveButton' | t }}</button>
+          }
+          @if (canReject()) {
+            <button type="button" class="btn btn-outline-danger spark-approval-reject"
+                    [disabled]="busy()" (click)="openReject()">{{ 'approvals.rejectButton' | t }}</button>
+          }
+          @if (canWithdraw()) {
+            <button type="button" class="btn btn-outline-secondary spark-approval-withdraw"
+                    [disabled]="busy()" (click)="withdraw()">{{ 'approvals.withdrawButton' | t }}</button>
+          }
+        </div>
+      }
+    </div>
+  </bs-card>
+}

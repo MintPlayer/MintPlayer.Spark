@@ -1191,7 +1191,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
     private async Task<PersistentObject?> LoadVirtualObjectViaActionsAsync(
         EntityTypeDefinition entityTypeDefinition, string id)
     {
-        var actions = actionsResolver.ResolveByEntityName(entityTypeDefinition.Name);
+        var actions = actionsResolver.ResolveVirtual(entityTypeDefinition);
         if (actions is null)
             return null;
 

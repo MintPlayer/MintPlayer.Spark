@@ -1,9 +1,13 @@
 using System.Net;
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 using MintPlayer.Spark.Testing;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
+using MintPlayer.Spark.Approvals;
+using MintPlayer.Spark.Approvals.Models;
 using MintPlayer.Spark.Organizations;
+using MintPlayer.Spark.Organizations.Migrations;
 using MintPlayer.Spark.Organizations.Models;
 using MintPlayer.Spark.Organizations.Services;
 
@@ -11,8 +15,8 @@ namespace MintPlayer.Spark.Tests.Organizations;
 
 /// <summary>
 /// X11 (<c>docs/seo_analyzer_PRD.md</c> D18, D21–D23, D26) through <see cref="ISparkOrganizations"/> on a
-/// booted host: personal organizations, creation, invitations and join requests with their mailed
-/// single-use links, the role rules, ownership transfer and the cascade.
+/// booted host: personal organizations, creation, invitations with their mailed single-use links, join
+/// requests decided in-app through Approvals (D26), the role rules, ownership transfer and the cascade.
 /// </summary>
 public class OrganizationServiceTests : OrganizationsTestHost
 {
@@ -152,10 +156,10 @@ public class OrganizationServiceTests : OrganizationsTestHost
         Mailer.Sent.Should().ContainSingle();
     }
 
-    // ---- join requests -------------------------------------------------------------------------------
+    // ---- join requests: approval requests of kind organizations.join (D26) ---------------------------
 
     [Fact]
-    public async Task A_join_request_mails_every_Owner_and_an_Owner_or_Admin_lets_the_requester_in()
+    public async Task A_join_request_is_an_approval_request_every_Owner_and_Admin_is_told_of()
     {
         var ann = await SeedUserAsync("ann");
         var ole = await SeedUserAsync("ole");
@@ -166,23 +170,132 @@ public class OrganizationServiceTests : OrganizationsTestHost
 
         (await Organizations().RequestToJoinAsync(acme.Id!, rex.Id!)).Should().BeTrue();
 
-        Mailer.Sent.Select(m => m.To).OrderBy(t => t).Should().Equal("ann@test.local", "ole@test.local");
-        var (requestId, token, mail) = LastLink("ann@test.local");
-        mail.Template.Should().Be(OrganizationMailTemplates.JoinRequest);
-        var data = JsonSerializer.SerializeToNode(mail.Data)!;
-        data["requester"]!.GetValue<string>().Should().Be("rex");
-        data["requester_email"]!.GetValue<string>().Should().Be("rex@test.local");
+        var request = (await PendingJoinRequestsAsync(acme.Id!)).Should().ContainSingle().Which;
+        request.RequestedBy.Should().Be(rex.Id);
+        request.Subject.Should().Be(new ApprovalSubject("Organization", acme.Id!, rex.Id));
+        request.Title.Should().Be("rex asks to join Acme");
+        request.Summary.Should().Be("rex (rex@test.local) asks to join Acme as Member.");
+        // Owners and Admins decide; before D26 only the Owners were mailed.
+        (await LoadAsync<ApprovalRequest>(request.Id))!.DeciderIds.Should().BeEquivalentTo([ann.Id!, ole.Id!, ada.Id!]);
+        Mailer.Sent.Where(m => m.Template == SubmittedMail).Select(m => m.To).OrderBy(t => t)
+            .Should().Equal("ada@test.local", "ann@test.local", "ole@test.local");
+        var link = JsonSerializer.SerializeToNode(Mailer.Sent.Last(m => m.To == "ada@test.local").Data)!["link"]!.GetValue<string>();
+        link.Should().Be(PublicBaseUrl + "/po/approval-request/" + Uri.EscapeDataString(request.Id), "the deciders open the request in-app");
+        (await InvitationsAsync(acme.Id!)).Should().BeEmpty("a join request is no invitation any more");
+    }
 
-        // A Member holding the link cannot let anyone in, nor can the requester let themselves in.
-        (await Organizations().AcceptAsync(requestId, token, max.Id!)).Should().Be(OrganizationAcceptance.Invalid);
-        (await Organizations().AcceptAsync(requestId, token, rex.Id!)).Should().Be(OrganizationAcceptance.Invalid);
+    [Fact]
+    public async Task An_Owner_approves_a_join_request_in_app_and_the_requester_is_told()
+    {
+        var ann = await SeedUserAsync("ann");
+        var rex = await SeedUserAsync("rex");
+        var acme = await SeedOrganizationAsync("Acme", ann);
+        await Organizations().RequestToJoinAsync(acme.Id!, rex.Id!);
+        var requestId = (await PendingJoinRequestsAsync(acme.Id!)).Single().Id;
 
-        var outcome = await Organizations().AcceptAsync(requestId, token, ada.Id!);
+        var (status, _) = await DecideAsync(requestId, "approve", null, ann.Id!);
 
-        outcome.Accepted.Should().BeTrue();
+        status.Should().Be(HttpStatusCode.OK);
         (await Organizations().GetRoleAsync(acme.Id!, rex.Id!)).Should().Be(OrganizationRole.Member);
+        var stored = (await LoadAsync<ApprovalRequest>(requestId))!;
+        stored.Status.Should().Be(ApprovalStatuses.Approved);
+        stored.DecidedBy.Should().Be(ann.Id);
+        Mailer.Sent.Should().Contain(m => m.Template == DecidedMail && m.To == "rex@test.local", "the requester is told the decision");
+        (await DecideAsync(requestId, "approve", null, ann.Id!)).Status.Should().Be(HttpStatusCode.Conflict, "a request is decided once");
+    }
+
+    [Fact]
+    public async Task An_Admin_approves_a_join_request_in_app_and_stays_Admin()
+    {
+        var ann = await SeedUserAsync("ann");
+        var ada = await SeedUserAsync("ada");
+        var rex = await SeedUserAsync("rex");
+        var acme = await SeedOrganizationAsync("Acme", ann, (ada, OrganizationRole.Admin));
+        await Organizations().RequestToJoinAsync(acme.Id!, rex.Id!, OrganizationRole.Viewer);
+        var requestId = (await PendingJoinRequestsAsync(acme.Id!)).Single().Id;
+
+        (await DecideAsync(requestId, "approve", null, ada.Id!)).Status.Should().Be(HttpStatusCode.OK);
+
+        (await Organizations().GetRoleAsync(acme.Id!, rex.Id!)).Should().Be(OrganizationRole.Viewer, "the role asked for");
         (await Organizations().GetRoleAsync(acme.Id!, ada.Id!)).Should().Be(OrganizationRole.Admin, "the approver does not change");
-        (await Organizations().AcceptAsync(requestId, token, ann.Id!)).Should().Be(OrganizationAcceptance.Invalid, "the link is spent");
+    }
+
+    [Fact]
+    public async Task A_join_request_is_declined_with_a_reason_and_the_requester_is_told()
+    {
+        var ann = await SeedUserAsync("ann");
+        var rex = await SeedUserAsync("rex");
+        var acme = await SeedOrganizationAsync("Acme", ann);
+        await Organizations().RequestToJoinAsync(acme.Id!, rex.Id!);
+        var requestId = (await PendingJoinRequestsAsync(acme.Id!)).Single().Id;
+
+        (await DecideAsync(requestId, "reject", "  ", ann.Id!)).Status.Should().Be(HttpStatusCode.BadRequest, "a decline needs a reason");
+        (await DecideAsync(requestId, "reject", "We only take staff.", ann.Id!)).Status.Should().Be(HttpStatusCode.OK);
+
+        var stored = (await LoadAsync<ApprovalRequest>(requestId))!;
+        stored.Status.Should().Be(ApprovalStatuses.Rejected);
+        stored.Reason.Should().Be("We only take staff.");
+        (await Organizations().GetRoleAsync(acme.Id!, rex.Id!)).HasValue.Should().BeFalse();
+        var mail = Mailer.Sent.Last(m => m.Template == DecidedMail && m.To == "rex@test.local");
+        JsonSerializer.SerializeToNode(mail.Data)!["reason"]!.GetValue<string>().Should().Be("We only take staff.");
+    }
+
+    [Fact]
+    public async Task A_Member_cannot_decide_a_join_request_nor_can_the_requester_approve_their_own()
+    {
+        var ann = await SeedUserAsync("ann");
+        var max = await SeedUserAsync("max");
+        var rex = await SeedUserAsync("rex");
+        var eve = await SeedUserAsync("eve");
+        var acme = await SeedOrganizationAsync("Acme", ann, (max, OrganizationRole.Member));
+        await Organizations().RequestToJoinAsync(acme.Id!, rex.Id!);
+        var requestId = (await PendingJoinRequestsAsync(acme.Id!)).Single().Id;
+
+        // One refusal for all: a Member, the requester, an outsider (the uniform 404).
+        (await DecideAsync(requestId, "approve", null, max.Id!)).Status.Should().Be(HttpStatusCode.NotFound);
+        (await DecideAsync(requestId, "approve", null, rex.Id!)).Status.Should().Be(HttpStatusCode.NotFound, "no self-approval");
+        (await DecideAsync(requestId, "approve", null, eve.Id!)).Status.Should().Be(HttpStatusCode.NotFound);
+
+        (await LoadAsync<ApprovalRequest>(requestId))!.Status.Should().Be(ApprovalStatuses.Pending);
+        (await Organizations().GetRoleAsync(acme.Id!, rex.Id!)).HasValue.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task A_decider_demoted_after_the_request_was_raised_cannot_decide_it()
+    {
+        var ann = await SeedUserAsync("ann");
+        var ada = await SeedUserAsync("ada");
+        var rex = await SeedUserAsync("rex");
+        var acme = await SeedOrganizationAsync("Acme", ann, (ada, OrganizationRole.Admin));
+        await Organizations().RequestToJoinAsync(acme.Id!, rex.Id!);
+        var requestId = (await PendingJoinRequestsAsync(acme.Id!)).Single().Id;
+        using (var session = Store.OpenAsyncSession())
+        {
+            (await session.LoadAsync<OrganizationMembership>(OrganizationMembership.IdFor(ada.Id!, acme.Id!))).Role = OrganizationRole.Member;
+            await session.SaveChangesAsync();
+        }
+
+        (await DecideAsync(requestId, "approve", null, ada.Id!)).Status.Should().Be(HttpStatusCode.NotFound, "the gate reads the role at decision time");
+        (await Organizations().GetRoleAsync(acme.Id!, rex.Id!)).HasValue.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task A_new_join_request_replaces_the_requesters_pending_one_and_nobody_elses()
+    {
+        var ann = await SeedUserAsync("ann");
+        var rex = await SeedUserAsync("rex");
+        var sam = await SeedUserAsync("sam");
+        var acme = await SeedOrganizationAsync("Acme", ann);
+
+        await Organizations().RequestToJoinAsync(acme.Id!, rex.Id!);
+        var first = (await PendingJoinRequestsAsync(acme.Id!)).Single().Id;
+        await Organizations().RequestToJoinAsync(acme.Id!, sam.Id!);
+        await Organizations().RequestToJoinAsync(acme.Id!, rex.Id!, OrganizationRole.Admin);
+
+        var pending = await PendingJoinRequestsAsync(acme.Id!);
+        pending.Select(r => r.RequestedBy).OrderBy(r => r).Should().Equal(rex.Id, sam.Id);
+        pending.Single(r => r.RequestedBy == rex.Id).Data["role"].Should().Be("Admin");
+        (await LoadAsync<ApprovalRequest>(first))!.Status.Should().Be(ApprovalStatuses.Withdrawn);
     }
 
     [Fact]
@@ -194,13 +307,14 @@ public class OrganizationServiceTests : OrganizationsTestHost
 
         (await Organizations().RequestToJoinAsync(acme.Id!, max.Id!)).Should().BeFalse();
         Mailer.Sent.Should().BeEmpty();
+        (await PendingJoinRequestsAsync(acme.Id!)).Should().BeEmpty();
     }
 
     [Fact]
-    public async Task A_join_request_needs_the_requesters_address_confirmed_but_not_the_approvers()
+    public async Task A_join_request_needs_the_requesters_address_confirmed_but_not_the_deciders()
     {
-        // D43 (owner correction 2026-10-10): the Owners are mailed the requester's address on the
-        // requester's behalf, so it must be confirmed, as an inviter's. The approver mails nobody.
+        // D43 (owner correction 2026-10-10): the deciders see the requester's address with the request, so it
+        // must be confirmed, as an inviter's. The decider mails nobody.
         var ann = await SeedUserAsync("ann");
         var ada = await SeedUserAsync("ada", emailConfirmed: false);
         var rex = await SeedUserAsync("rex", emailConfirmed: false);
@@ -209,15 +323,75 @@ public class OrganizationServiceTests : OrganizationsTestHost
         var unconfirmed = () => Organizations().RequestToJoinAsync(acme.Id!, rex.Id!);
         await unconfirmed.Should().ThrowAsync<SparkValidationException>().WithMessage(SparkOrganizations.RequesterUnconfirmedProblem);
         Mailer.Sent.Should().BeEmpty();
-        (await InvitationsAsync(acme.Id!)).Should().BeEmpty();
+        (await PendingJoinRequestsAsync(acme.Id!)).Should().BeEmpty();
 
         await ConfirmEmailAsync(rex.Id!);
         (await Organizations().RequestToJoinAsync(acme.Id!, rex.Id!)).Should().BeTrue();
-        var (requestId, token, _) = LastLink("ann@test.local");
+        var requestId = (await PendingJoinRequestsAsync(acme.Id!)).Single().Id;
 
-        (await Organizations().AcceptAsync(requestId, token, ada.Id!)).Accepted.Should().BeTrue();
+        (await DecideAsync(requestId, "approve", null, ada.Id!)).Status.Should().Be(HttpStatusCode.OK);
         (await Organizations().GetRoleAsync(acme.Id!, rex.Id!)).Should().Be(OrganizationRole.Member);
     }
+
+    [Fact]
+    public async Task Deleting_an_organization_closes_its_pending_join_requests()
+    {
+        var ann = await SeedUserAsync("ann");
+        var rex = await SeedUserAsync("rex");
+        var acme = await SeedOrganizationAsync("Acme", ann);
+        await Organizations().RequestToJoinAsync(acme.Id!, rex.Id!);
+        var requestId = (await PendingJoinRequestsAsync(acme.Id!)).Single().Id;
+
+        await Organizations().DeleteAsync(acme.Id!, ann.Id!);
+
+        (await LoadAsync<ApprovalRequest>(requestId))!.Status.Should().Be(ApprovalStatuses.Withdrawn, "nobody can decide it any more");
+        (await PendingJoinRequestsAsync(acme.Id!)).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task A_join_request_link_mailed_before_the_migration_opens_the_approval_request_it_became()
+    {
+        // S22/§8: the Owners hold mailed links of join requests raised before D26. The migration keeps the token's
+        // hash; the accept endpoint answers a matching link with the request's page, and a forged one learns nothing.
+        var ann = await SeedUserAsync("ann");
+        var rex = await SeedUserAsync("rex");
+        var acme = await SeedOrganizationAsync("Acme", ann);
+        const string invitationId = "OrganizationInvitations/0a5e00000000400080000000000000aa";
+        await OrganizationJoinRequestMigrationTests.PutLegacyJoinRequestAsync(Store, invitationId, acme.Id!, "rex", DateTime.UtcNow.AddDays(-1), DateTime.UtcNow.AddDays(13));
+        await OrganizationJoinRequestUpgrade.RunAsync(Store, DateTime.UtcNow, TimeSpan.FromDays(365));
+        var requestId = OrganizationJoinRequestUpgrade.RequestIdFor(invitationId);
+
+        var (status, body) = await SendAsync("/spark/organizations/accept", new { invitationId, token = OrganizationJoinRequestMigrationTests.LegacyToken }, ann.Id);
+        var (_, forged) = await SendAsync("/spark/organizations/accept", new { invitationId, token = OrganizationJoinRequestMigrationTests.LegacyToken + "x" }, ann.Id);
+
+        status.Should().Be(HttpStatusCode.OK);
+        body.GetProperty("accepted").GetBoolean().Should().BeFalse("nothing is accepted by the link any more");
+        body.GetProperty("approvalRequestUrl").GetString().Should().Be("/po/approval-request/" + Uri.EscapeDataString(requestId));
+        ApprovalRequestUrlOf(forged).Should().BeNull();
+        forged.GetProperty("reason").GetString().Should().Be(OrganizationAcceptance.InvalidReason, "the one refusal");
+        (await Organizations().AcceptAsync(invitationId, OrganizationJoinRequestMigrationTests.LegacyToken + "x", ann.Id!)).Should().Be(OrganizationAcceptance.Invalid);
+
+        (await DecideAsync(requestId, "approve", null, ann.Id!)).Status.Should().Be(HttpStatusCode.OK, "the Owner decides it on the request page");
+        (await Organizations().GetRoleAsync(acme.Id!, rex.Id!)).Should().Be(OrganizationRole.Member);
+    }
+
+    private const string SubmittedMail = "SparkApprovals/Submitted";
+    private const string DecidedMail = "SparkApprovals/Decided";
+
+    /// <summary>The pending join requests about <paramref name="organizationId"/>, as server code reads them.</summary>
+    private async Task<IReadOnlyList<ApprovalRequestInfo>> PendingJoinRequestsAsync(string organizationId)
+    {
+        using var scope = Factory.CreateScope();
+        return await scope.ServiceProvider.GetRequiredService<ISparkApprovals>()
+            .GetPendingAsync<OrganizationJoinApproval>(new ApprovalSubject("Organization", organizationId));
+    }
+
+    /// <summary>Approves or rejects in-app, as the request page's buttons do (<c>POST /spark/approvals/decide</c>).</summary>
+    private Task<(HttpStatusCode Status, JsonElement Body)> DecideAsync(string requestId, string decision, string? reason, string userId)
+        => SendAsync("/spark/approvals/decide", new { id = requestId, decision, reason }, userId);
+
+    private static string? ApprovalRequestUrlOf(JsonElement body)
+        => body.TryGetProperty("approvalRequestUrl", out var url) && url.ValueKind == JsonValueKind.String ? url.GetString() : null;
 
     // ---- invitations bind to their address (D43) -----------------------------------------------------
 
@@ -420,11 +594,11 @@ public class OrganizationServiceTests : OrganizationsTestHost
         (await Organizations().AcceptAsync(invitationId, invitationToken, bob.Id!)).Accepted.Should().BeTrue();
 
         // F3: a second user verifying a site held in someone's personal organization asks to join it, and
-        // its owner gets the acceptance-link mail.
+        // its owner is told and approves it in-app (D26).
         (await Organizations().RequestToJoinAsync(personal.Id!, rex.Id!)).Should().BeTrue();
-        var (requestId, requestToken, mail) = LastLink("ann@test.local");
-        mail.Template.Should().Be(OrganizationMailTemplates.JoinRequest);
-        (await Organizations().AcceptAsync(requestId, requestToken, ann.Id!)).Accepted.Should().BeTrue();
+        Mailer.Sent.Should().Contain(m => m.Template == SubmittedMail && m.To == "ann@test.local");
+        var requestId = (await PendingJoinRequestsAsync(personal.Id!)).Single().Id;
+        (await DecideAsync(requestId, "approve", null, ann.Id!)).Status.Should().Be(HttpStatusCode.OK);
 
         (await Organizations().GetRoleAsync(personal.Id!, bob.Id!)).Should().Be(OrganizationRole.Member);
         (await Organizations().GetRoleAsync(personal.Id!, rex.Id!)).Should().Be(OrganizationRole.Member);

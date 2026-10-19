@@ -55,6 +55,10 @@
     <Project Path="libs/all_features/MintPlayer.Spark.AllFeatures.SourceGenerators/MintPlayer.Spark.AllFeatures.SourceGenerators.csproj" />
     <Project Path="libs/all_features/MintPlayer.Spark.AllFeatures/MintPlayer.Spark.AllFeatures.csproj" />
   </Folder>
+  <Folder Name="/libs/approvals/">
+    <Project Path="libs/approvals/MintPlayer.Spark.Approvals.Abstractions/MintPlayer.Spark.Approvals.Abstractions.csproj" />
+    <Project Path="libs/approvals/MintPlayer.Spark.Approvals/MintPlayer.Spark.Approvals.csproj" />
+  </Folder>
   <Folder Name="/libs/attributes/">
     <Project Path="libs/attributes/MintPlayer.Spark.Attributes/MintPlayer.Spark.Attributes.csproj" />
   </Folder>

@@ -137,7 +137,7 @@ public class DeclaredIndexProducer : Producer, IDiagnosticReporter
                 if (plan.Maps.Any(m => m.StoreAllFields))
                     writer.WriteLine($"StoreAllFields({RavenIndexes}.FieldStorage.Yes);");
 
-                // Commerce X18: a [Fuzzy] field on the result type needs Lucene; Corax refuses fuzzy queries.
+                // Commerce X18: a [Search] or [Fuzzy] field on the result type needs Lucene; Corax refuses fuzzy queries.
                 if (plan.Maps.Any(m => m.UsesLucene))
                     writer.WriteLine($"SearchEngineType = {RavenIndexes}.SearchEngineType.Lucene;");
 

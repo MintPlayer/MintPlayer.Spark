@@ -1,6 +1,8 @@
 using System.Net;
 using Microsoft.Extensions.DependencyInjection;
-using MintPlayer.Spark.Organizations.Models;
+using MintPlayer.Spark.Approvals;
+using MintPlayer.Spark.Approvals.Models;
+using MintPlayer.Spark.Organizations;
 using Raven.Client.Documents;
 using SeoTester.Entities;
 using SeoTester.Settings;
@@ -82,8 +84,9 @@ public class VerificationTests(SeoTesterHostFixture host)
     }
 
     /// <summary>
-    /// D18/D42: Globex holds the host verified. Ann proves control from Acme: Globex's Owner is asked by mail to let her
-    /// in (a join request), and Acme's site stays unverified, so two organizations never both hold one site verified.
+    /// D18/D42: Globex holds the host verified. Ann proves control from Acme: Globex's Owners and Admins are asked to let
+    /// her in (a join request, an approval request they decide in-app since D26), and Acme's site stays unverified, so two
+    /// organizations never both hold one site verified.
     /// </summary>
     [Fact]
     public async Task Verifying_a_site_another_organization_holds_sends_that_organization_a_join_request()
@@ -98,11 +101,11 @@ public class VerificationTests(SeoTesterHostFixture host)
         body.GetProperty("result").GetProperty("outcome").GetString().Should().Be("ClaimRequested");
         (await LoadDocumentAsync<Site>(host, site.Id!))!.IsVerified.Should().BeFalse();
         using var session = host.Database.OpenAsyncSession();
-        var requests = await session.Query<OrganizationInvitation>()
+        var requests = await session.Query<ApprovalRequest>()
             .Customize(c => c.WaitForNonStaleResults())
-            .Where(i => i.OrganizationId == Globex)
+            .Where(r => r.Kind == OrganizationJoinApproval.Name && r.SubjectId == Globex)
             .ToListAsync();
-        requests.Should().Contain(i => i.Kind == OrganizationInvitationKind.JoinRequest && i.UserId == Ann);
+        requests.Should().Contain(r => r.RequestedBy == Ann && r.Status == ApprovalStatuses.Pending);
         (await LogKindsAsync(site.Id!)).Should().Contain(AuditLogKinds.SiteClaimRequested);
     }
 

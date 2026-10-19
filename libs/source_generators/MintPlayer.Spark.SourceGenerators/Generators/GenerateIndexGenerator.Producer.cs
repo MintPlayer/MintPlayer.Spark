@@ -300,7 +300,8 @@ public class GenerateIndexProducer : Producer, IDiagnosticReporter
                 // empty values. It is the likeliest way a generated index appears broken.
                 writer.WriteLine($"StoreAllFields({RavenIndexes}.FieldStorage.Yes);");
 
-                // Commerce X18: a [Fuzzy] field needs Lucene, because Corax refuses fuzzy queries. Set here rather
+                // Commerce X18: a searchable or [Fuzzy] field needs Lucene, because Spark's search is typo-tolerant
+                // there and Corax refuses fuzzy queries. Set here rather
                 // than left to Spark's registration so every deployment path (a test helper, index.Execute) agrees.
                 // Before OnInitialize, so a hand-written partial has the last word.
                 if (info.UsesLucene)

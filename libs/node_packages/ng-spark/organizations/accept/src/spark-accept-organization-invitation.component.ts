@@ -1,6 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
@@ -16,14 +16,20 @@ export interface SparkOrganizationAcceptance {
   problem: string | null;
   /** Which refusal: `invalid` (any unknown, used or expired link) or `otherAddress` (D43). */
   reason?: 'invalid' | 'otherAddress' | null;
+  /**
+   * Set only for a join-request link mailed before join requests became approval requests (D26) whose token
+   * matches: the app-relative page of that request, where an Owner or Admin decides it. The page goes there.
+   */
+  approvalRequestUrl?: string | null;
 }
 
 /**
- * The target of a mailed organization invitation or join request
+ * The target of a mailed organization invitation
  * (`/organizations/accept/:token?id=<invitationId>`, `docs/seo_analyzer_PRD.md` D18). Accepting is an
  * explicit click, never a side effect of opening the link (mail scanners open links). An invitation
- * makes the signed-in account a member; a join request lets its requester in and needs an Owner or
- * Admin. Every failure reads the same, except a valid invitation opened by an account that does not own
+ * makes the signed-in account a member. A join-request link mailed before D26 (join requests are approval
+ * requests now) goes on to the approval request it became, where an Owner or Admin decides it. Every failure
+ * reads the same, except a valid invitation opened by an account that does not own
  * the invited address (D43): the page says so, so the user can sign in with the right account.
  */
 @Component({
@@ -31,9 +37,10 @@ export interface SparkOrganizationAcceptance {
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [RouterLink, BsAlertComponent, BsCardComponent, BsCardHeaderComponent, BsSpinnerComponent],
+  styleUrl: './spark-accept-organization-invitation.component.scss',
   template: `
     <div class="d-flex justify-content-center">
-      <bs-card style="width: 100%; max-width: 640px;">
+      <bs-card class="spark-organization-accept-card">
         <bs-card-header><h3 class="mb-0">{{ t('title') }}</h3></bs-card-header>
         <div class="p-4">
           @if (joined(); as joined) {
@@ -56,6 +63,7 @@ export interface SparkOrganizationAcceptance {
 export class SparkAcceptOrganizationInvitationComponent {
   private readonly http = inject(HttpClient);
   private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
   private readonly translations = inject(SparkAuthTranslationService);
   protected readonly colors = Color;
 
@@ -84,6 +92,10 @@ export class SparkAcceptOrganizationInvitationComponent {
         invitationId: this.invitationId,
         token: this.token,
       }));
+      if (result.approvalRequestUrl?.startsWith('/') && !result.approvalRequestUrl.startsWith('//')) {
+        await this.router.navigateByUrl(result.approvalRequestUrl);
+        return;
+      }
       if (result.accepted) this.joined.set(result);
       else {
         this.reason.set(result.reason === 'otherAddress' ? 'otherAddress' : 'invalid');

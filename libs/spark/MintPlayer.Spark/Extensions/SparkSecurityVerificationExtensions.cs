@@ -221,7 +221,7 @@ public static class SparkSecurityVerificationExtensions
         var builder = new StringBuilder();
         builder.Append("# Spark security posture: every effective right and the layer it comes from.\n");
         builder.Append($"# {SynchronizeFlag} writes this file; {VerifyFlag} fails when it drifts.\n");
-        builder.Append("# Rows: group | effect | resource | key | layer\n");
+        builder.Append("# Rows: group | effect | resource | key | layer | type (alias:Name for a library type, the id for the application's own, - for none)\n");
 
         // Each library's identity (composition D7): an update that changes what it ships changes its
         // line here even before a row moves, and the drift message names it.
@@ -241,7 +241,7 @@ public static class SparkSecurityVerificationExtensions
         AppendLines(builder, (posture.Inert ?? []).Select(Line));
         return builder.ToString();
 
-        static string Line(SecurityPostureRow r) => $"{r.Group} | {r.Effect} | {r.Resource} | {r.Key} | {r.Layer}";
+        static string Line(SecurityPostureRow r) => $"{r.Group} | {r.Effect} | {r.Resource} | {r.Key} | {r.Layer} | {r.Type}";
     }
 
     private const string AnonymousHeader = "## Reachable without signing in (expanded)";

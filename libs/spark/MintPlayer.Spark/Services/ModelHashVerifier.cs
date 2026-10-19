@@ -154,7 +154,8 @@ public static class ModelHashVerifier
         // Layers is null in a version 1 file: there is nothing to say which layer moved.
         var compareLayers = expected.Version >= 2;
 
-        foreach (var line in Compare(expected.Entities, actual.Entities, "entity", static key => key, null, null)
+        foreach (var line in (expected.Version >= 3 ? DescribeRenames(expected, actual) : Enumerable.Empty<string>())
+                     .Concat(Compare(expected.Entities, actual.Entities, "entity", static key => key, null, null))
                      .Concat(Compare(expected.Files, actual.Files, "file", ModelFileShape.LayerKey, expected, actual))
                      .Concat(compareConfig
                          ? Compare(expected.ConfigFiles!, actual.ConfigFiles!, "config", static key => key, expected, actual)
@@ -171,7 +172,7 @@ public static class ModelHashVerifier
         }
 
         if (reported == 0 && expected.Version < actual.Version)
-            yield return $"{ModelHashFile.FileName} is version {expected.Version}, written before the hash recorded the layers each entry came from (version {actual.Version}); synchronize once to record them";
+            yield return $"{ModelHashFile.FileName} is version {expected.Version}, written before the hash recorded what version {actual.Version} records (the layers each entry came from, the types' names by id); synchronize once to record them";
         else if (reported == 0)
             yield return $"model  expected {Short(expected.ModelHash)}  actual {Short(actual.ModelHash)}";
     }
@@ -201,6 +202,20 @@ public static class ModelHashVerifier
     }
 
     /// <summary>A composed entry whose layers moved while the composed structure did not: a library now states what the application's delta already did, or the other way round.</summary>
+    /// <summary>
+    /// D28: a type whose id is in both files under another name was renamed (<c>type … was 'Order', is now
+    /// 'WebshopOrder'</c>). Said first, because the file drifts that follow are its consequences.
+    /// </summary>
+    internal static IEnumerable<string> DescribeRenames(ModelHashFile expected, ModelHashFile actual)
+    {
+        if (expected.Names is not { } was || actual.Names is not { } now) yield break;
+        foreach (var (id, oldName) in was)
+        {
+            if (now.TryGetValue(id, out var newName) && !string.Equals(oldName, newName, StringComparison.Ordinal))
+                yield return $"type {id} was '{oldName}', is now '{newName}' (renamed: run --spark-synchronize-model, which moves the type's files, translations and rights, then review the diff)";
+        }
+    }
+
     private static IEnumerable<string> DescribeLayerOnlyDrift(ModelHashFile expected, ModelHashFile actual)
     {
         var expectedLayers = expected.Layers ?? [];

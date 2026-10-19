@@ -59,9 +59,11 @@ import {
   SPARK_DETAIL_ACTIONS,
   SPARK_DETAIL_LAYOUTS,
   SPARK_DETAIL_PANELS,
+  SPARK_DETAIL_TITLE_BADGES,
   SparkDetailContext,
   orderSparkExtensions,
   parseSparkDeletedParam,
+  sparkTitleBadgesFor,
 } from '@mintplayer/ng-spark/panels';
 import { Subscription, combineLatest } from 'rxjs';
 import { SparkTranslatedStringComponent } from '@mintplayer/ng-spark/translated-string';
@@ -180,6 +182,18 @@ export class SparkPoDetailComponent {
       reload: () => this.load(),
     };
   });
+
+  private readonly titleBadgeRegistrations = inject(SPARK_DETAIL_TITLE_BADGES, { optional: true });
+
+  /**
+   * The badges after the title (commerce #521, `SPARK_DETAIL_TITLE_BADGES`): core's "Deleted" in the
+   * recycle bin, plus what add-ons register (Approvals' "Approval pending").
+   */
+  protected readonly titleBadges = computed(() =>
+    sparkTitleBadgesFor(this.titleBadgeRegistrations, this.detailContext()).map(b => ({
+      ...b,
+      colorValue: (Color as unknown as Record<string, Color>)[b.color ?? 'secondary'] ?? Color.secondary,
+    })));
 
   /** The registered layout that draws this object's attributes instead of the tabs (#504), if one matches. */
   protected readonly detailLayout = computed(() => {

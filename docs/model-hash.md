@@ -94,6 +94,21 @@ library authorization (MintPlayer.Spark.Authorization): no longer states a layer
 A layer is `changed`, `added` or `removed`. A version 1 file has no layers to compare; when nothing
 else differs, the message says so and asks for one synchronize to record them.
 
+## Version 3: renames (D28)
+
+Version 3 adds **`names`**: every composed type's name keyed by its id, with a library type's identity
+beside it (`"0d3faefa-…": "SparkUser (authorization:SparkUser)"`). A rename keeps the id, so a drift
+reports it as one, before the file drifts it causes:
+
+```
+type 0d3faefa-… was 'SparkUser (authorization:SparkUser)', is now 'Member (authorization:SparkUser)' (renamed: run --spark-synchronize-model, …)
+```
+
+`names` is not rolled into `modelHash` (the name is structural in the file hashes already), so a
+version 2 file stays valid until the next synchronize writes version 3. A library layer's hash is over
+the text the library **shipped**, before an application's `PersistentObjectName` renames it: a rename is
+never reported as "the library changed". See [library layers](guide-library-layers.md#renaming-a-type-persistentobjectname-d28).
+
 ## Regenerating
 
 ```bash

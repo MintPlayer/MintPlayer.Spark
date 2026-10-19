@@ -95,7 +95,7 @@ public static class ModelFileShape
 
             var layers = new SortedDictionary<string, string>(StringComparer.Ordinal);
             foreach (var input in inputs)
-                layers[input.IsLibrary ? SparkLayerProvenance.AliasOf(list, input.Layer) : SparkLayerProvenance.App] = Sha256Hex(DescribeJson(input.Json));
+                layers[input.IsLibrary ? SparkLayerProvenance.AliasOf(list, input.Layer) : SparkLayerProvenance.App] = Sha256Hex(DescribeJson(input.IsLibrary ? input.ShippedJson : input.Json));
             result[LayerKey(type.FileName)] = layers;
         }
 

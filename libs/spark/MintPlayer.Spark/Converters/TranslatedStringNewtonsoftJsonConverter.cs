@@ -20,7 +20,7 @@ namespace MintPlayer.Spark.Converters;
 /// <para>
 /// The pre-X17 form is not read (no backward compatibility, K3): the data migrations rewrite it
 /// (IdentityProvider <c>M_202610191200_OidcResourceTextEntries</c>, Fleet
-/// <c>M_202610191200_TranslatedStringEntries</c>). No collection holding the type has revisions
+/// <c>M_202610191205_TranslatedStringEntries</c>). No collection holding the type has revisions
 /// enabled, so no immutable copy of the old form remains to be read.
 /// </para>
 /// </summary>

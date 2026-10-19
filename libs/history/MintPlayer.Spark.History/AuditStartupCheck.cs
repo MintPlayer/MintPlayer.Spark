@@ -24,6 +24,8 @@ internal static class AuditStartupCheck
         (typeof(IAuditCreated), nameof(IAuditCreated.CreatedAt), typeof(DateTimeOffset?)),
         (typeof(IAuditModified), nameof(IAuditModified.ModifiedBy), typeof(string)),
         (typeof(IAuditModified), nameof(IAuditModified.ModifiedAt), typeof(DateTimeOffset?)),
+        (typeof(IAuditApproved), nameof(IAuditApproved.ApprovedBy), typeof(string)),
+        (typeof(IAuditApproved), nameof(IAuditApproved.ApprovedAt), typeof(DateTimeOffset?)),
     ];
 
     public static void Run(IServiceProvider services)

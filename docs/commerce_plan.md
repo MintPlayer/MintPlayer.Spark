@@ -66,7 +66,7 @@ The order of work for [commerce_PRD.md](commerce_PRD.md). The PRD carries the de
 - [x] K10 enforcement: `BannedSymbols.txt` for non-core projects through the existing `BannedApiAnalyzers` wiring (`Directory.Build.targets:235-241`); a `tools/verify-*.test.mjs` client guard with a violating fixture that proves it fires; fix every existing violation it finds
 - [x] X17 one name system: redesign `TranslatedString` (entries: value + RFC 5646 tag + optional kind/validity/source/romanization; RFC 4647 fallback server + client; any language; sanitized index field names; display rule); migrate every usage found by S24, production data included
 - [x] X18 fuzzy-marked fields/search rules → `SearchEngineType.Lucene` set automatically on that index; deterministic side-by-side rebuild on an engine change; analyzer for fuzzy queries against unmarked indexes *(opt-in design; revised by D38 below)*
-- [ ] X18 revised (D38, round 5): **fuzzy by default**: every index with searchable fields on Lucene; typo-tolerant Spark search by default (exact and prefix matches rank first); per-field opt-out in the model search rule and the index-declaration marker (X20 item 4 becomes an opt-out); engine pinned explicitly on every index; side-by-side rebuild of existing search indexes, production apps included; analyzer flags fuzzy queries on opted-out fields; reference-data §4.10 engines updated
+- [x] X18 revised (D38, round 5): **fuzzy by default**: every index with searchable fields on Lucene; typo-tolerant Spark search by default (exact and prefix matches rank first); per-field opt-out in the model search rule and the index-declaration marker (X20 item 4 becomes an opt-out); engine pinned explicitly on every index; side-by-side rebuild of existing search indexes, production apps included; analyzer flags fuzzy queries on opted-out fields; reference-data §4.10 engines updated
 - [ ] X21 consent primitive (GA9): purposes, consent records per visitor/account (merge on sign-in, withdrawal), `ISparkConsent`, `@mintplayer/ng-spark/consent` banner + settings page, `RequiresConsent` declarations refused at startup when unwired
 - [x] X19 library-declared index definitions (incl. maps contributed to a shared multi-map index) emitted into the app by the generator at build time; commerce, warehouse and reference-data libraries ship declarations, never index classes
 - [~] X20 source-generator programme (done except: item 2 remaining mirrors and anonymous responses; item 4 Quantity companions wait for WX8; item 7 rest in M20): (1) D28 names constants (effective names + library ids) or delete unused; (2) C#→TS contract tool (layout per the pending output-path investigation; CI diff check; typed records replace anonymous objects for ng-spark responses; migrate existing TS mirrors, fixing the `PersistentObjectAttribute.options` and `EntityPermissions` drifts); (3) one shared discovery generator (+ row policies, `IReplicaChanged<T>`, approval deciders/handlers, account hooks); (4) `GenerateIndexGenerator`: Money/Quantity companions, sanitized language fields, fuzzy marker, record fix; (5) enum-backed lookup generator; (6) GS1 tables tool (C# + TS); (7) runtime ETL from contracts; (8) public plugin helpers; (9) guards: translation-key test (fix `dashboards.yes`, `common.unexpectedError`), K10 banned symbols, migration Version from class name, authorization endpoint filter
@@ -77,24 +77,24 @@ The order of work for [commerce_PRD.md](commerce_PRD.md). The PRD carries the de
 
 ### M2 — Persistent-object name identity (X9, D28)
 
-- [ ] `PersistentObjectName<T>(name)` + non-generic `(alias, declaredName, name)`; shared `SparkRenames` applied at layer load (runtime `SparkLayerCatalog`, build `LibraryLayersReader`)
-- [ ] Renames rewrite the model name, queries' `entityType`, right targets and translation keys; provenance hashes on raw JSON; the collection follows the final name
-- [ ] Explicit deltas `"$extends": "alias:Name"`; the synchronizer matches by clrType and writes `$extends` (fix F7; fix the F8 message); QnA `SparkUser.json` + SeoTester `Organization.json` updated
-- [ ] Orphaned or stale deltas refused (F9)
-- [ ] Actions resolved by `IPersistentObjectActions<T>` contract; CLR-less types use `{DeclaredName}Actions` in their declaring assembly
-- [ ] Analyzer SPARK057–062 with code fixes (symbol-location reporting)
-- [ ] Rename handling: `names` map in `modelHashes.json`, the synchronizer migrates app files, a type-identity column in `securityPosture.txt`
-- [ ] Stored names → ids (moderation `TargetType`, `AgentGrant.Types`, dashboard ids, share-link keys) + migration (S22)
-- [ ] Fix CLR-name == PO-name assumptions (`SparkShareOptions.cs:36`, `ContributionDescriptor.cs:43,81`, `OrganizationActions.cs:47`) and string self-lookups (`PasskeysActions.cs:43`, `TeamActions.cs:38`)
+- [x] `PersistentObjectName<T>(name)` + non-generic `(alias, declaredName, name)`; shared `SparkRenames` applied at layer load (runtime `SparkLayerCatalog`, build `LibraryLayersReader`)
+- [x] Renames rewrite the model name, queries' `entityType`, right targets and translation keys; provenance hashes on raw JSON; the collection follows the final name
+- [x] Explicit deltas `"$extends": "alias:Name"`; the synchronizer matches by clrType and writes `$extends` (fix F7; fix the F8 message); QnA `SparkUser.json` + SeoTester `Organization.json` updated
+- [x] Orphaned or stale deltas refused (F9)
+- [x] Actions resolved by `IPersistentObjectActions<T>` contract; CLR-less types use `{DeclaredName}Actions` in their declaring assembly
+- [x] Analyzer SPARK057–062 with code fixes (symbol-location reporting)
+- [x] Rename handling: `names` map in `modelHashes.json`, the synchronizer migrates app files, a type-identity column in `securityPosture.txt`
+- [x] Stored names → ids (moderation `TargetType`, `AgentGrant.Types`, dashboard ids, share-link keys) + migration (S22)
+- [x] Fix CLR-name == PO-name assumptions (`SparkShareOptions.cs:36`, `ContributionDescriptor.cs:43,81`, `OrganizationActions.cs:47`) and string self-lookups (`PasskeysActions.cs:43`, `TeamActions.cs:38`)
 
 ### M3 — Approvals (D9, D26)
 
-- [ ] Decision-request engine (`ApprovalSubject`, `IApprovalDeciders<T>`, `IApprovalHandler<T>`, `ISparkApprovals`, `ApprovalRequest` PO, notifications, mail, audit, expiry, live, write guard)
-- [ ] Document proposals on X7 (config per type Create/Modify; apply as approver with `Etag = base`; stale → 409; pending creations invisible; generic diff + `diffComponent` slot; move `diffRevision` into models)
-- [ ] `@mintplayer/ng-spark/approvals` (detail panels, actions, title badge, po-edit / po-create hooks, grid type hints)
-- [ ] Migrate the IdP developer request, scope approval (F1 red first) and go-live review; delete the replaced files (≈ 20 files); rewrite `OidcApprovalTests.cs`; record reject reasons (F3)
-- [ ] Migrate the Organizations join request (in-app approve by owner/admin, decline, requester notified) + production migration + old-link redirect
-- [ ] Regenerate gates in SparkId, CodeCoverage, SeoTester, Fleet
+- [x] Decision-request engine (`ApprovalSubject`, `IApprovalDeciders<T>`, `IApprovalHandler<T>`, `ISparkApprovals`, `ApprovalRequest` PO, notifications, mail, audit, expiry, live, write guard)
+- [x] Document proposals on X7 (config per type Create/Modify; apply as approver with `Etag = base`; stale → 409; pending creations invisible; generic diff + `diffComponent` slot; move `diffRevision` into models)
+- [x] `@mintplayer/ng-spark/approvals` (detail panels, actions, title badge, po-edit / po-create hooks, grid type hints)
+- [x] Migrate the IdP developer request, scope approval (F1 red first) and go-live review; delete the replaced files (≈ 20 files); rewrite `OidcApprovalTests.cs`; record reject reasons (F3)
+- [x] Migrate the Organizations join request (in-app approve by owner/admin, decline, requester notified) + production migration + old-link redirect
+- [x] Regenerate gates in SparkId, CodeCoverage, SeoTester, Fleet
 
 ### M4 — Commerce core
 
@@ -274,20 +274,20 @@ The order of work for [commerce_PRD.md](commerce_PRD.md). The PRD carries the de
 
 ### M20 — Warehouse plugin
 
-- [ ] Per `docs/warehouse_picking_PRD.md` and `docs/warehouse_picking_plan.md` (WM0–WM13) ~~(to be written after its research and grilling)~~ (written 2026-10-17)
-- [ ] Round 5 — recall trace lot → shipment → buyer (GA7), return reasons in `expected-returns` (GA8), dangerous-goods flags (GC9): warehouse plan WM3, WM4, WM7
-- [ ] Replication defects F12–F19, red test first (F19: ETL deploy endpoint lets the caller choose TargetDatabase/TargetUrls — suspected security) (refused write-back recorded as Completed; non-durable dispatch; retry budget; stale overwrite; ETL script reads beyond its grant; attribute rights in module sync; ETL task cleanup and licence check)
-- [ ] Cross-app transport per the warehouse PRD (push + reconcile proposed)
+- [x] Per `docs/warehouse_picking_PRD.md` and `docs/warehouse_picking_plan.md` (WM0–WM13) ~~(to be written after its research and grilling)~~ (written 2026-10-17)
+- [x] Round 5 — recall trace lot → shipment → buyer (GA7), return reasons in `expected-returns` (GA8), dangerous-goods flags (GC9): warehouse plan WM3, WM4, WM7
+- [x] Replication defects F12–F19, red test first (F19: ETL deploy endpoint lets the caller choose TargetDatabase/TargetUrls — suspected security) (refused write-back recorded as Completed; non-durable dispatch; retry budget; stale overwrite; ETL script reads beyond its grant; attribute rights in module sync; ETL task cleanup and licence check)
+- [x] Cross-app transport per the warehouse PRD (push + reconcile proposed)
 
 ### M21 — Documentation
 
-- [ ] A guide per package (`docs/guide-commerce-*.md`, `guide-approvals.md`, `guide-waiting-room.md`, `guide-challenges.md`, …) + READMEs
-- [ ] Update `guide-library-layers.md` for `$extends` and renames; `guide-live-updates.md` for topics
-- [ ] Round 5 — `guide-commerce-compliance.md`: every GA item with the EUR-Lex article it was checked against, member-state options, unconfirmed points, and the host's responsibilities (accessibility statement, environmental claims, legal texts); `guide-consent.md` (X21); `guide-search.md` updated for fuzzy by default (D38)
+- [x] A guide per package (`docs/guide-commerce-*.md`, `guide-approvals.md`, `guide-waiting-room.md`, `guide-challenges.md`, …) + READMEs
+- [x] Update `guide-library-layers.md` for `$extends` and renames; `guide-live-updates.md` for topics
+- [x] Round 5 — `guide-commerce-compliance.md`: every GA item with the EUR-Lex article it was checked against, member-state options, unconfirmed points, and the host's responsibilities (accessibility statement, environmental claims, legal texts); `guide-consent.md` (X21); `guide-search.md` updated for fuzzy by default (D38)
 
 ### M22 — Sweep, verification, release
 
-- [ ] `npm run test:affected` with the Developer licence (raw log), fix and re-run single failing classes only
-- [ ] Browser verification through the Playwright MCP tools (storefront, editor, waiting room, scanner)
-- [ ] Version bumps (preview numbers; ng-spark minor)
-- [ ] VPS checklist (PRD §8) prepared for the owner's deploy, starting with periodic RavenDB backups and a tested restore; round 5: free disk checked for the D38 side-by-side search-index rebuilds, and a post-deploy search check per production app
+- [x] `npm run test:affected` with the Developer licence (raw log), fix and re-run single failing classes only
+- [x] Browser verification through the Playwright MCP tools (storefront, editor, waiting room, scanner)
+- [x] Version bumps (preview numbers; ng-spark minor)
+- [x] VPS checklist (PRD §8) prepared for the owner's deploy, starting with periodic RavenDB backups and a tested restore; round 5: free disk checked for the D38 side-by-side search-index rebuilds, and a post-deploy search check per production app

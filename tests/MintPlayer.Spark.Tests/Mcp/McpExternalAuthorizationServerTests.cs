@@ -316,14 +316,14 @@ public class McpExternalAuthorizationServerTests(SparkSharedDatabase database)
         {
             Id = "AgentGrants/u/ext/y",
             Permissions = EAgentPermission.Read | EAgentPermission.Write,
-            Types = [new AgentGrantType { Name = "GuardedDoc", Permissions = EAgentPermission.Read | EAgentPermission.Write }],
+            Types = [new AgentGrantType { TypeId = "6a1f0000-0000-4000-8000-00000000d0c1", Permissions = EAgentPermission.Read | EAgentPermission.Write }],
         };
         var readOnly = new AgentGrant { Id = "AgentGrants/u/ext/z", Permissions = EAgentPermission.Read };
 
         ExternalAgentServerScheme.ScopeOf(all, ["mcp:read", "mcp:write"], "mcp:write").Permissions.Should().Be(EAgentPermission.Read | EAgentPermission.Write);
         ExternalAgentServerScheme.ScopeOf(all, ["mcp:read"], "mcp:write").Permissions.Should().Be(EAgentPermission.Read);
         ExternalAgentServerScheme.ScopeOf(all, ["MCP:WRITE"], "mcp:write").Permissions.Should().Be(EAgentPermission.Read, "scopes are case-sensitive");
-        ExternalAgentServerScheme.ScopeOf(typed, ["mcp:read"], "mcp:write").For("GuardedDoc").Should().Be(EAgentPermission.Read, "the cap reaches every chosen type");
+        ExternalAgentServerScheme.ScopeOf(typed, ["mcp:read"], "mcp:write").For("6a1f0000-0000-4000-8000-00000000d0c1").Should().Be(EAgentPermission.Read, "the cap reaches every chosen type");
         ExternalAgentServerScheme.ScopeOf(readOnly, ["mcp:write"], "mcp:write").Permissions.Should().Be(EAgentPermission.Read, "the scope never widens the grant");
     }
 

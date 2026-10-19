@@ -723,7 +723,8 @@ public class McpPlanTests(SparkSharedDatabase database)
         {
             var permissions = principal.FindFirst("perm")?.Value == "rw" ? EAgentPermission.Read | EAgentPermission.Write : EAgentPermission.Read;
             IReadOnlyDictionary<string, EAgentPermission>? types = principal.FindFirst("types")?.Value == "car-r"
-                ? new Dictionary<string, EAgentPermission> { ["McpWtCar"] = EAgentPermission.Read, ["McpWtDriver"] = EAgentPermission.Read }
+                // By type id (D28): a grant names a type by its id, never by its name.
+                ? new Dictionary<string, EAgentPermission> { ["4c9d0000-00b1-4000-8000-0000000000b1"] = EAgentPermission.Read, ["4c9d0000-00b2-4000-8000-0000000000b2"] = EAgentPermission.Read }
                 : null;
             var grant = principal.FindFirst("grant")!.Value;
             return ValueTask.FromResult<AgentCredential?>(new(

@@ -64,7 +64,7 @@ Import from the entry point, not from the package root; each one is a separate c
 | `/po-form` | `<spark-po-form>`, `<spark-reference-picker>`, `<spark-lookup-picker>` |
 | `/renderers` | `provideSparkAttributeRenderers([...])`, `SPARK_ATTRIBUTE_RENDERERS` (with the core `paragraph` renderer built in), `withDeclaredInputs` ([guide](https://github.com/MintPlayer/MintPlayer.Spark/blob/master/docs/guide-custom-attribute-renderers.md)) |
 | `/score-renderers` | `provideSparkScoreRenderers([...])` — the `spark-gauge`, `spark-threshold-bar`, `spark-trend` and `spark-delta` renderers, their components, bands and grade presets ([guide](https://github.com/MintPlayer/MintPlayer.Spark/blob/master/docs/guide-score-renderers.md)) |
-| `/panels` | `provideSparkDetailPanels(...)`, `provideSparkDetailActions(...)`, `provideSparkQueryListActions(...)` — how add-ons put components on the routed pages |
+| `/panels` | `provideSparkDetailPanels(...)`, `provideSparkDetailActions(...)`, `provideSparkQueryListActions(...)`, `provideSparkDetailTitleBadges(...)` (badges after the detail title; core's "Deleted" is one), `provideSparkSaveSubmittedHandlers(...)` (where the create/edit pages go after a save diverted for approval) — how add-ons put components on the routed pages |
 | `/client-operations` | `provideSparkClientOperations()` — notify, navigate and refresh operations from server-side action code; the toast container |
 | `/retry-action-modal` | The modal that answers a server's retry action ([guide](https://github.com/MintPlayer/MintPlayer.Spark/blob/master/docs/guide-manager-retry-actions.md)) |
 | `/attribute-description` | The [i] tooltip for attribute help text ([guide](https://github.com/MintPlayer/MintPlayer.Spark/blob/master/docs/guide-attribute-descriptions.md)) |
@@ -74,6 +74,7 @@ Import from the entry point, not from the package root; each one is a separate c
 | `/soft-delete` | `provideSparkSoftDelete()` — the Deleted toggle on query lists, the recycle bin, Restore / Purge |
 | `/history` | `provideSparkHistory()` — `<spark-po-history>`: revision list, read-only view, diff, Revert |
 | `/moderation` | `provideSparkModeration()`, `sparkModerationRoutes()`, `sparkModerationRenderers` — vote widget, flag button, review queue, reputation badge, moderator panel |
+| `/approvals` | `provideSparkApprovals()`, `sparkApprovalsRenderers`, `<spark-approvals-inbox-link>` — the decision panel on an approval request (proposal diff, Approve / Reject with a reason / Withdraw), the `approval-status` pill, the "Approval pending" title badge on governed rows, the inbox link with its live count — the client of MintPlayer.Spark.Approvals |
 | `/organizations` | `withOrganizationRoutes()` for `sparkAuthRoutes(...)`: the page a mailed organization invitation or join request opens (`organizations/accept/:token`), accepting on an explicit click; `<spark-organization-switcher>`: the current organization in the top bar, which lists of organization-owned rows and new rows follow ([guide](https://github.com/MintPlayer/MintPlayer.Spark/blob/master/docs/guide-organizations.md)) |
 | `/pwa` | `provideSparkServiceWorker()` — Angular's service worker with Spark's update policy (`SparkServiceWorkerUpdates`) and in-app navigation for a clicked push notification (`SparkNotificationClicks`) |
 | `/share` | `withShareRoutes(options?)` — the anonymous page a share link opens (`shared/:type/:token?id=…`); `SparkSharedObject` (the `/spark/share/load` answer). The page itself is `SparkSharedObjectComponent` in `/share/page`, lazy-loaded |
@@ -202,6 +203,31 @@ Each needs its server package: [SoftDelete](https://github.com/MintPlayer/MintPl
 [History](https://github.com/MintPlayer/MintPlayer.Spark/blob/master/libs/history/MintPlayer.Spark.History/README.md),
 [Moderation](https://github.com/MintPlayer/MintPlayer.Spark/blob/master/libs/moderation/MintPlayer.Spark.Moderation/README.md)
 ([guide](https://github.com/MintPlayer/MintPlayer.Spark/blob/master/docs/guide-moderation.md)). `apps/QnA` uses all three.
+
+### Approvals
+
+```ts
+import { provideSparkApprovals, sparkApprovalsRenderers } from '@mintplayer/ng-spark/approvals';
+
+providers: [
+  provideSparkApprovals(),
+  provideSparkAttributeRenderers([...sparkApprovalsRenderers]),
+]
+// shell: <spark-approvals-inbox-link linkClass="btn btn-sm btn-link" />
+```
+
+- An `ApprovalRequest`'s detail page gets a decision card: for a document proposal, the attribute diff
+  (`<spark-po-diff>` from `/grid`; a creation lists the proposed values, a modification what changes, now →
+  proposed) and a warning when the row changed since; then Approve, Reject (with a required reason) and
+  Withdraw (the requester), as the server offers them on the row.
+- A governed row with a pending proposal the caller made or may decide (`metadata.approval`) shows an
+  "Approval pending" badge after its title, linking to the request.
+- A creation diverted for approval opens its request rather than the object, which does not exist yet.
+- The inbox link shows how many requests await the caller (the `pending-approvals` query), live.
+- A renderer may register a `diffComponent` to draw its attribute in the diff; without one each side is
+  drawn as a grid cell.
+
+Needs the server package [Approvals](https://github.com/MintPlayer/MintPlayer.Spark/blob/master/libs/approvals/MintPlayer.Spark.Approvals/README.md).
 
 ### Contributions (preview)
 

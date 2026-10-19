@@ -26,7 +26,7 @@ public partial class DeclaredIndexMapInfo
     /// <summary>The map's result type, the index's <c>TReduceResult</c>, <c>global::</c>-qualified.</summary>
     public string ResultTypeFullName { get; set; } = string.Empty;
 
-    /// <summary>Whether the result type marks a property <c>[Fuzzy]</c> (commerce X18): the index then runs Lucene.</summary>
+    /// <summary>Whether the result type marks a property <c>[Search]</c> or <c>[Fuzzy]</c> (commerce X18): the index then runs Lucene.</summary>
     public bool UsesLucene { get; set; }
 
     /// <summary>Result-type properties marked <c>[Search]</c>, declared <c>FieldIndexing.Search</c>. Ordinal order.</summary>

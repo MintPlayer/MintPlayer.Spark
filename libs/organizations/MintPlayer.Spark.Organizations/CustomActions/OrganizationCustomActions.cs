@@ -18,8 +18,8 @@ namespace MintPlayer.Spark.Organizations.CustomActions;
 /// </summary>
 internal sealed partial class InviteOrganizationMemberAction : ICustomAction
 {
-    /// <summary>The prompt's form (<c>App_Data/Model/OrganizationInvite.json</c>), never stored.</summary>
-    internal const string PromptType = "OrganizationInvite";
+    /// <summary>The prompt's form (<c>App_Data/Model/OrganizationInvite.json</c>), never stored; by id (D28).</summary>
+    internal static readonly Guid PromptType = OrganizationTypeIds.OrganizationInvite;
 
     [Inject] private readonly IManager manager;
     [Inject] private readonly ISparkOrganizations organizations;
@@ -123,7 +123,7 @@ public static class OrganizationQueryAliases
     /// <summary>An organization's members (sub-query).</summary>
     public const string Members = "organization-members";
 
-    /// <summary>An organization's pending invitations and join requests (sub-query).</summary>
+    /// <summary>An organization's pending invitations (sub-query).</summary>
     public const string Invitations = "organization-invitations";
 }
 

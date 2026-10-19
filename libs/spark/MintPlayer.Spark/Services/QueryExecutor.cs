@@ -505,7 +505,7 @@ internal partial class QueryExecutor : IQueryExecutor
 
             actionsInstance = clrType is not null
                 ? actionsResolver.ResolveForType(clrType)
-                : (definition is not null ? actionsResolver.ResolveByEntityName(definition.Name) : null);
+                : (definition is not null ? actionsResolver.ResolveVirtual(definition) : null);
         }
         catch
         {
@@ -786,7 +786,7 @@ internal sealed record DatabasePage(int TotalItems);
 
         var actions = entityType is not null
             ? actionsResolver.ResolveForType(entityType)
-            : actionsResolver.ResolveByEntityName(definition.Name);
+            : actionsResolver.ResolveVirtual(definition);
         if (actions is null) return false;
 
         var method = actions.GetType().GetMethod(methodName, BindingFlags.Public | BindingFlags.Instance);
@@ -1026,7 +1026,8 @@ internal sealed record DatabasePage(int TotalItems);
         var searchPushedDown = false;
         if (searchTerm != null)
         {
-            (queryable, searchPushedDown) = ApplySearch(queryable, sortType, searchTerm, ResolveIndexedSearchFields(queryable), surface);
+            (queryable, searchPushedDown) = ApplySearch(queryable, sortType, searchTerm, ResolveIndexedSearchFields(queryable), surface,
+                await ResolveFuzzySearchFieldsAsync(queryable, cancellationToken));
         }
 
         if (restrictToIds is { Count: > 0 })
@@ -1197,10 +1198,10 @@ internal sealed record DatabasePage(int TotalItems);
         // Resolve the Actions class — by type where there is one, by name where there is not.
         var actionsInstance = entityType is not null
             ? actionsResolver.ResolveForType(entityType)
-            : actionsResolver.ResolveByEntityName(entityTypeDefinition.Name)
+            : actionsResolver.ResolveVirtual(entityTypeDefinition)
                 ?? throw new InvalidOperationException(
                     $"Query '{query.Name}' is a composed query on '{entityTypeDefinition.Name}', a type with no " +
-                    $"clrType, but no '{entityTypeDefinition.Name}Actions' class exists to serve it. A composed " +
+                    $"clrType, but no '{entityTypeDefinition.DeclaredName ?? entityTypeDefinition.Name}Actions' class exists to serve it. A composed " +
                     $"type has no document behind it, so its actions class is the only thing that can produce " +
                     $"rows; without one the query has no source at all.");
 
@@ -1396,7 +1397,8 @@ internal sealed record DatabasePage(int TotalItems);
         var searchPushedDown = false;
         if (searchTerm != null && isRavenQueryable)
         {
-            (result, searchPushedDown) = ApplySearch(result, methodInfo.ResultElementType, searchTerm, indexedFields, surface);
+            (result, searchPushedDown) = ApplySearch(result, methodInfo.ResultElementType, searchTerm, indexedFields, surface,
+                await ResolveFuzzySearchFieldsAsync(result, cancellationToken));
         }
 
         // Apply sorting if the result is IQueryable
@@ -2207,9 +2209,15 @@ internal sealed record DatabasePage(int TotalItems);
     /// searched either.
     /// </para>
     /// </summary>
+    /// <remarks>
+    /// <b>Typo-tolerant on searchable fields</b> (commerce X18, fuzzy by default): every searched property that is in
+    /// <paramref name="fuzzyFields"/> also matches each word by edit distance (<see cref="SparkFuzzySearch"/>). The
+    /// set is empty unless the bound index declares the field <c>FieldIndexing.Search</c>, has not opted it out with
+    /// <c>[Fuzzy(false)]</c>, and runs Lucene on the server (<see cref="ResolveFuzzySearchFieldsAsync"/>).
+    /// </remarks>
     private static (object Queryable, bool Applied) ApplySearch(
         object queryable, Type elementType, string term, IReadOnlySet<string>? indexedFields,
-        EntityTypeDefinition surface)
+        EntityTypeDefinition surface, IReadOnlySet<string> fuzzyFields)
     {
         var properties = ResolveSearchableProperties(elementType)
             .Where(p => IsOnSearchSurface(surface, p.Base))
@@ -2261,7 +2269,40 @@ internal sealed record DatabasePage(int TotalItems);
                 [queryable, lambda, term, 1m, SearchOptions.Guess, Raven.Client.Documents.Queries.SearchOperator.And])!;
         }
 
+        // Only the fields actually searched above: the rewrite matches their search(...) clauses by name.
+        var fuzzy = properties.Select(p => p.Name).Where(fuzzyFields.Contains).ToHashSet(StringComparer.Ordinal);
+        if (fuzzy.Count > 0)
+            queryable = SparkFuzzySearch.Apply(queryable, term, fuzzy);
+
         return (queryable, true);
+    }
+
+    /// <summary>
+    /// The fields of <paramref name="queryable"/>'s bound index that Spark's search matches fuzzily (commerce X18):
+    /// declared <c>FieldIndexing.Search</c>, not opted out with <c>[Fuzzy(false)]</c>, on an index the server
+    /// confirms running Lucene. Empty for a dynamic query (its auto index takes the server default engine), an index
+    /// outside the catalog, or one still on another engine — a fuzzy clause on Corax would fail the whole query,
+    /// which is exactly the state an existing index is in while its side-by-side Lucene rebuild runs after a deploy.
+    /// </summary>
+    private async Task<IReadOnlySet<string>> ResolveFuzzySearchFieldsAsync(object queryable, CancellationToken cancellationToken)
+    {
+        if (queryable is not IRavenQueryInspector inspector) return EmptyFieldSet;
+
+        var indexName = inspector.IndexName;
+        if (string.IsNullOrEmpty(indexName) || indexName.StartsWith("Auto/", StringComparison.Ordinal)) return EmptyFieldSet;
+
+        var entry = indexCatalog.GetByIndexName(indexName.Replace('/', '_'));
+        if (entry is null) return EmptyFieldSet;
+
+        var fields = ReflectionCache.GetOrAdd<(string Op, Type Index, Type? Projection), IReadOnlySet<string>>(
+            ("QueryExecutor.FuzzySearchFields", entry.IndexType, entry.ProjectionType),
+            static k => SparkSearchEngine.FuzzySearchFields(k.Index, k.Projection));
+        if (fields.Count == 0) return EmptyFieldSet;
+
+        var session = inspector.Session;
+        return await SparkSearchEngine.RunsLuceneAsync(session.DocumentStore, session.DatabaseName, indexName, cancellationToken)
+            ? fields
+            : EmptyFieldSet;
     }
 
     /// <summary>

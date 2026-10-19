@@ -137,6 +137,104 @@ public class SynchronizeLibraryDeltaTests : IDisposable
 
         File.ReadAllText(ModelFile).Should().Be(first);
     }
+
+    // ── D28: identity, not name (F7) ───────────────────────────────────────────────────────────
+
+    [Fact]
+    public void The_delta_is_anchored_on_the_library_type_with_extends()
+    {
+        var library = LibraryFromOwnOutput(root =>
+        {
+            ((JsonArray)root["persistentObject"]!["attributes"]!).Clear();
+            return root;
+        });
+
+        Synchronize([library]);
+
+        var delta = (JsonObject)JsonNode.Parse(File.ReadAllText(ModelFile))!;
+        delta["$extends"]!.GetValue<string>().Should().Be("gadgets:LibGadget");
+        delta.Select(m => m.Key).First(k => k != "$schema").Should().Be("$extends", "the anchor is the first thing a reader sees");
+    }
+
+    [Fact]
+    public void An_application_class_named_like_a_library_type_of_another_class_is_refused_before_anything_is_written()
+    {
+        // F7 (red before the fix): the synchronizer found the library type by NAME and wrote a delta on it, so the
+        // application's LibGadget took the library's id and rights while the library's row policies (keyed by CLR
+        // type) stopped applying to it.
+        var library = LibraryFromOwnOutput(root =>
+        {
+            root["persistentObject"]!["clrType"] = "Other.Library.LibGadget";
+            return root;
+        });
+
+        var act = () => Synchronize([library]);
+
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("*LibGadget*gadgets:LibGadget*PersistentObjectName<*LibGadget>*");
+        File.Exists(ModelFile).Should().BeFalse("the refusal comes before any write");
+    }
+
+    [Fact]
+    public void A_delta_written_before_extends_is_anchored_by_the_synchronizer()
+    {
+        var library = LibraryFromOwnOutput(root =>
+        {
+            ((JsonArray)root["persistentObject"]!["attributes"]!).Clear();
+            return root;
+        });
+        Directory.CreateDirectory(Path.GetDirectoryName(ModelFile)!);
+        File.WriteAllText(ModelFile, """{ "persistentObject": { "name": "LibGadget", "attributes": [ { "name": "Name", "dataType": "string" } ] } }""");
+
+        Synchronize([library]);
+
+        JsonNode.Parse(File.ReadAllText(ModelFile))!["$extends"]!.GetValue<string>().Should().Be("gadgets:LibGadget");
+    }
+
+    [Fact]
+    public void Renaming_an_application_type_moves_its_file_queries_translations_and_rights_and_keeps_its_id()
+    {
+        Synchronize([]);
+        var before = (JsonObject)JsonNode.Parse(File.ReadAllText(ModelFile))!;
+        var id = before["persistentObject"]!["id"]!.GetValue<string>();
+        File.WriteAllText(Path.Combine(contentRoot, "App_Data", "translations.json"),
+            """{ "model": { "LibGadget": { "label": { "en": "Gadget" } } } }""");
+        File.WriteAllText(Path.Combine(contentRoot, "App_Data", "security.json"),
+            """{ "rights": [ { "key": "r1", "resource": "QueryRead/LibGadget", "groupId": "00000000-0000-0000-0000-000000000001" }, { "key": "r2", "resource": "Edit/LibGadget/Name", "groupId": "00000000-0000-0000-0000-000000000001" } ] }""");
+
+        new ModelSynchronizer(hostEnvironment, indexCatalog)
+        {
+            Libraries = [],
+            Renames = [new PersistentObjectNameAttribute<LibGadget>("Gizmo")],
+        }.SynchronizeModels(typeof(LibGadgetContext));
+
+        var moved = Path.Combine(contentRoot, "App_Data", "Model", "Gizmo.json");
+        File.Exists(ModelFile).Should().BeFalse("the file moves with the name");
+        var after = (JsonObject)JsonNode.Parse(File.ReadAllText(moved))!;
+        after["persistentObject"]!["name"]!.GetValue<string>().Should().Be("Gizmo");
+        after["persistentObject"]!["id"]!.GetValue<string>().Should().Be(id, "a rename keeps the id");
+        after["queries"]!.AsArray().Select(q => q!["entityType"]!.GetValue<string>()).Should().OnlyContain(t => t == "Gizmo");
+        var translations = File.ReadAllText(Path.Combine(contentRoot, "App_Data", "translations.json"));
+        translations.Should().Contain("\"Gizmo\"").And.NotContain("\"LibGadget\"");
+        var security = File.ReadAllText(Path.Combine(contentRoot, "App_Data", "security.json"));
+        security.Should().Contain("QueryRead/Gizmo").And.Contain("Edit/Gizmo/Name").And.NotContain("LibGadget");
+    }
+
+    [Fact]
+    public void Rights_on_an_old_name_another_type_now_has_are_listed_and_never_rewritten()
+    {
+        var path = Path.Combine(contentRoot, "security.json");
+        const string Security = """{ "rights": [ { "key": "r1", "resource": "QueryRead/Order", "groupId": "00000000-0000-0000-0000-000000000001" } ] }""";
+        File.WriteAllText(path, Security);
+
+        var moved = ModelRenameMigration.RetargetRights(
+            path,
+            new Dictionary<string, string> { ["Order"] = "WebshopOrder" },
+            new HashSet<string>(["Order", "WebshopOrder"], StringComparer.OrdinalIgnoreCase));
+
+        moved.Should().BeFalse("a right on 'Order' would silently cover the new type that took the name");
+        File.ReadAllText(path).Should().Be(Security);
+    }
 }
 
 public sealed class LibGadget

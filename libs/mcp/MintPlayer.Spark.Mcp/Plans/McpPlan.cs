@@ -69,7 +69,7 @@ internal sealed class McpPlanOperation
     /// <summary><c>create</c>, <c>update</c>, <c>delete</c> or <c>action</c>.</summary>
     public required string Kind { get; set; }
 
-    /// <summary>The entity type's name.</summary>
+    /// <summary>The entity type as the agent named it; its id (<c>"D"</c>) once proposed (D28), so applying resolves the proposed type.</summary>
     public required string Type { get; set; }
 
     /// <summary>The object's id (update, delete; the object a custom action runs on).</summary>

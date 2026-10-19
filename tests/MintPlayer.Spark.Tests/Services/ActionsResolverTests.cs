@@ -7,9 +7,11 @@ namespace MintPlayer.Spark.Tests.Services;
 
 /// <summary>
 /// ActionsResolver decides which <see cref="IPersistentObjectActions{T}"/> instance handles a
-/// given entity. The 3-tier resolution (entity-specific class → registered interface →
-/// DefaultPersistentObjectActions) is the framework's hot-path dispatcher; a regression
-/// silently routes operations to the wrong handler.
+/// given entity. The 3-tier resolution (registered interface → the class implementing the contract
+/// for exactly T → DefaultPersistentObjectActions) is the framework's hot-path dispatcher; a regression
+/// silently routes operations to the wrong handler. Never by simple name (D28, X9): two libraries'
+/// <c>OrderActions</c> for two <c>Order</c> types are not ambiguous, and a JSON-only library type binds
+/// its actions inside its declaring assembly only.
 /// </summary>
 public class ActionsResolverTests
 {
@@ -168,9 +170,140 @@ public class ActionsResolverTests
         secondA.Should().BeOfType<ResolverFixtureAActions>();
         firstC.Should().BeOfType<DefaultPersistentObjectActions<ResolverFixtureC>>();
     }
+
+    // --- D28 (X9): by contract, never by simple name ---------------------------------------------
+
+    [Fact]
+    public void Two_actions_classes_with_one_simple_name_for_two_types_resolve_each_to_its_own()
+    {
+        // Research §8.2 trap 5: both are 'ResolverOrderActions'. Resolution by simple name threw on the
+        // first request for either type; by contract each type gets the class written for it.
+        var resolver = new ActionsResolver(BaseServices().BuildServiceProvider());
+
+        resolver.Resolve<ResolverContractOne.ResolverOrder>().Should().BeOfType<ResolverContractOne.ResolverOrderActions>();
+        resolver.Resolve<ResolverContractTwo.ResolverOrder>().Should().BeOfType<ResolverContractTwo.ResolverOrderActions>();
+    }
+
+    [Fact]
+    public void The_most_derived_actions_class_wins_when_it_derives_from_every_other()
+    {
+        var resolver = new ActionsResolver(BaseServices().BuildServiceProvider());
+
+        resolver.Resolve<ResolverFixtureF>().Should().BeOfType<ResolverFixtureFOverrideActions>();
+    }
+
+    [Fact]
+    public void Two_unrelated_actions_classes_for_one_type_are_refused_naming_both()
+    {
+        var resolver = new ActionsResolver(BaseServices().BuildServiceProvider());
+
+        var act = () => resolver.Resolve<ResolverFixtureG>();
+
+        var message = act.Should().Throw<InvalidOperationException>().Which.Message;
+        message.Should().Contain(nameof(ResolverFixtureGFirstActions));
+        message.Should().Contain(nameof(ResolverFixtureGSecondActions));
+    }
+
+    [Fact]
+    public void Two_unrelated_actions_classes_for_one_type_fail_the_startup_check_unless_a_registration_settles_it()
+    {
+        var definition = new MintPlayer.Spark.Abstractions.EntityTypeDefinition
+        {
+            Id = Guid.NewGuid(),
+            Name = nameof(ResolverFixtureG),
+            ClrType = typeof(ResolverFixtureG).FullName,
+        };
+
+        var unregistered = () => ActionsResolver.VerifyActionsClasses([definition]);
+        unregistered.Should().Throw<InvalidOperationException>().Which.Message.Should().Contain(nameof(ResolverFixtureGFirstActions));
+
+        var registered = () => ActionsResolver.VerifyActionsClasses([definition], entity => entity == typeof(ResolverFixtureG));
+        registered.Should().NotThrow("a registration of IPersistentObjectActions<T> wins, so nothing is ambiguous");
+    }
+
+    [Fact]
+    public void A_registration_settles_two_unrelated_actions_classes()
+    {
+        var services = BaseServices();
+        var registered = new ResolverFixtureGSecondActions(Substitute.For<IEntityMapper>());
+        services.AddSingleton<IPersistentObjectActions<ResolverFixtureG>>(registered);
+
+        new ActionsResolver(services.BuildServiceProvider()).Resolve<ResolverFixtureG>().Should().BeSameAs(registered);
+    }
+
+    [Fact]
+    public void A_library_virtual_type_binds_its_declared_actions_class_in_its_own_assembly_even_when_renamed()
+    {
+        // The application renamed Authorization's 'Passkeys' to 'MyPasskeys' and declares a class named
+        // 'PasskeysActions' of its own (below). Neither may change which class serves the library's page.
+        var authorization = System.Reflection.Assembly.Load("MintPlayer.Spark.Authorization");
+        var definition = new MintPlayer.Spark.Abstractions.EntityTypeDefinition
+        {
+            Id = Guid.NewGuid(),
+            Name = "MyPasskeys",
+            DeclaredName = "Passkeys",
+            DeclaringAssembly = authorization.GetName().Name,
+            LibraryAlias = "authorization",
+        };
+
+        var actionsType = ActionsResolver.FindVirtualActionsType(definition, [definition]);
+
+        actionsType.Should().NotBeNull();
+        actionsType!.Assembly.Should().BeSameAs(authorization);
+        actionsType.Should().NotBe(typeof(PasskeysActions));
+    }
+
+    [Fact]
+    public void An_application_virtual_type_does_not_pick_the_actions_class_of_a_library_type_of_that_name()
+    {
+        // Authorization ships the virtual 'Passkeys'; an application type renamed into that name would
+        // otherwise be served by the library's actions class.
+        var library = new MintPlayer.Spark.Abstractions.EntityTypeDefinition
+        {
+            Id = Guid.NewGuid(),
+            Name = "LibraryPasskeys",
+            DeclaredName = "Passkeys",
+            DeclaringAssembly = "MintPlayer.Spark.Authorization",
+        };
+        var application = new MintPlayer.Spark.Abstractions.EntityTypeDefinition { Id = Guid.NewGuid(), Name = "Passkeys" };
+        System.Reflection.Assembly.Load("MintPlayer.Spark.Authorization");
+
+        ActionsResolver.FindVirtualActionsType(application, [library, application])
+            .Should().Be(typeof(PasskeysActions), "the application's own class serves the application's type");
+    }
 }
 
-// Top-level fixtures so FindActionsType can match by Type.Name.
+// Top-level fixtures for the contract scan.
 public class ResolverFixtureA { }
 public class ResolverFixtureB { }
 public class ResolverFixtureC { }
+public class ResolverFixtureF { }
+public class ResolverFixtureG { }
+
+public class ResolverFixtureFActions(IEntityMapper mapper) : DefaultPersistentObjectActions<ResolverFixtureF>(mapper);
+
+/// <summary>Overrides <see cref="ResolverFixtureFActions"/> by deriving from it: the explicit way to replace a library's actions class.</summary>
+public class ResolverFixtureFOverrideActions(IEntityMapper mapper) : ResolverFixtureFActions(mapper);
+
+public class ResolverFixtureGFirstActions(IEntityMapper mapper) : DefaultPersistentObjectActions<ResolverFixtureG>(mapper);
+
+public class ResolverFixtureGSecondActions(IEntityMapper mapper) : DefaultPersistentObjectActions<ResolverFixtureG>(mapper);
+
+/// <summary>An application class named like Authorization's virtual-type actions class.</summary>
+public class PasskeysActions;
+
+/// <summary>One of two libraries shipping an entity and its actions class under the same simple names.</summary>
+public static class ResolverContractOne
+{
+    public class ResolverOrder { }
+
+    public class ResolverOrderActions(IEntityMapper mapper) : DefaultPersistentObjectActions<ResolverOrder>(mapper);
+}
+
+/// <summary>The other library: same simple names, a different entity.</summary>
+public static class ResolverContractTwo
+{
+    public class ResolverOrder { }
+
+    public class ResolverOrderActions(IEntityMapper mapper) : DefaultPersistentObjectActions<ResolverOrder>(mapper);
+}

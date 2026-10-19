@@ -1,6 +1,7 @@
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Approvals;
 using MintPlayer.Spark.IdentityProvider.Endpoints.Oidc;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
@@ -35,6 +36,7 @@ internal sealed partial class OidcRegisterClient : IPostEndpoint<OidcClientMetad
     [Inject] private readonly Configuration.SparkIdentityProviderOptions options;
     [Inject] private readonly Mcp.OidcAgentDynamicRegistration agentRegistration;
     [Inject] private readonly OidcSurface surface;
+    [Inject] private readonly ISparkApprovals approvals;
 
     protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure)
         => new(Results.Json(new { error = "invalid_client_metadata", error_description = failure?.Message }, statusCode: 400));
@@ -92,7 +94,8 @@ internal sealed partial class OidcRegisterClient : IPostEndpoint<OidcClientMetad
             app.Secrets.Add(new ClientSecret { SecretId = Guid.NewGuid().ToString("N")[..12], Hash = ClientSecretHasher.Hash(secret), CreatedAt = DateTime.UtcNow, Description = "Dynamic registration" });
         }
 
-        await Interceptors.OidcApplicationInterceptors.MarkCrossOwnerScopesAsync(session, app, app.Scopes, initial.Subject);
+        // One request per cross-owner scope, committed with the application (the registration's own session).
+        await OidcApprovalRequests.RaiseScopeRequestsAsync(approvals, session, app, app.Scopes, initial.Subject, ct);
         await OidcClientIdReservation.ReserveAsync(session, app);
         await session.StoreAsync(app, ct);
 
@@ -164,6 +167,7 @@ internal sealed partial class OidcUpdateClientRegistration : IPutEndpoint<OidcCl
     [Inject] private readonly OidcAudit audit;
     [Inject] private readonly OidcIssuer oidcIssuer;
     [Inject] private readonly IHttpContextAccessor httpContextAccessor;
+    [Inject] private readonly ISparkApprovals approvals;
 
     public override async Task<IResult> HandleAsync(OidcClientMetadata metadata, CancellationToken ct)
     {
@@ -172,10 +176,15 @@ internal sealed partial class OidcUpdateClientRegistration : IPutEndpoint<OidcCl
         if (await OidcRegistrationAccess.LoadAsync(session, http, ClientId) is not { } app)
             return OidcRegistrationAccess.Unauthorized(http);
 
-        var before = app.Scopes.Select(s => s.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var before = app.Scopes.ToList();
         try { registration.Apply(app, metadata); }
         catch (SparkValidationException ex) { return OidcRegisterClient.Invalid(ex.Message); }
-        await Interceptors.OidcApplicationInterceptors.MarkCrossOwnerScopesAsync(session, app, app.Scopes.Where(s => !before.Contains(s.Name)), app.CreatedBy);
+        // Kept scopes keep their decided status (Apply); a dropped one's pending request is withdrawn, and each new
+        // cross-owner scope raises one, all in this session.
+        await OidcApprovalRequests.ClosePendingScopeRequestsAsync(approvals, session, app.Id!,
+            before.Where(b => !app.Scopes.Any(s => string.Equals(s.Name, b.Name, StringComparison.OrdinalIgnoreCase))), ct);
+        await OidcApprovalRequests.RaiseScopeRequestsAsync(approvals, session, app,
+            app.Scopes.Where(s => !before.Any(b => string.Equals(b.Name, s.Name, StringComparison.OrdinalIgnoreCase))), app.CreatedBy, ct);
 
         await audit.RecordAsync(session, OidcAuditKinds.ApplicationChanged, app.CreatedBy, app.Id, ipAddress: http.Connection.RemoteIpAddress?.ToString(),
             details: new Dictionary<string, string> { ["via"] = "registration" }, ct: ct);
@@ -196,6 +205,7 @@ internal sealed partial class OidcDeleteClientRegistration : IDeleteEndpoint
 
     [Inject] private readonly IDocumentStore store;
     [Inject] private readonly OidcAudit audit;
+    [Inject] private readonly ISparkApprovals approvals;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
@@ -204,6 +214,9 @@ internal sealed partial class OidcDeleteClientRegistration : IDeleteEndpoint
         if (await OidcRegistrationAccess.LoadAsync(session, httpContext, ClientId) is not { } app)
             return OidcRegistrationAccess.Unauthorized(httpContext);
 
+        // The client's pending scope and go-live requests go with it (as on the PO delete, OidcApplicationInterceptors).
+        await approvals.ClosePendingAsync<OidcScopeApprovalKind>(session, OidcApprovalRequests.ApplicationSubject(app.Id!), ct);
+        await approvals.ClosePendingAsync<OidcGoLiveApprovalKind>(session, OidcApprovalRequests.ApplicationSubject(app.Id!), ct);
         session.Delete(app);
         await audit.RecordAsync(session, OidcAuditKinds.ApplicationDeleted, app.CreatedBy, app.Id, ipAddress: httpContext.Connection.RemoteIpAddress?.ToString(), ct: ct);
         await session.SaveChangesAsync(ct);

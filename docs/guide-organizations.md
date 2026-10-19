@@ -203,8 +203,9 @@ policy. New creates one; its creator becomes the Owner in the same commit. An or
   only an Owner gives or takes the Owner role, and the last Owner can be neither demoted nor removed.
   **Make Owner** (`TransferOrganizationOwnership`, one selected row, Owners) makes that member Owner and
   the caller Admin.
-- **Invitations and join requests** (`organization-invitations`, Admins): pending links with their
-  expiry; deleting one revokes it.
+- **Invitations** (`organization-invitations`, Admins): pending links with their expiry; deleting one
+  revokes it. Join requests are approval requests (below): each Owner and Admin finds them in their
+  approvals inbox.
 - **Invite** (`InviteOrganizationMember`, Admins): an address and a role (never Owner). The answer is
   "Invitation sent" whether or not the address has an account.
 - **Leave** (`LeaveOrganization`, any member but the last Owner).
@@ -249,15 +250,15 @@ one marked), and renders nothing for a user in one organization.
 - After a choice the component reloads the page (`[reloadOnChange]="false"` to opt out), so every grid and
   live list reads the new scope.
 
-## Invitations and join requests (D18)
+## Invitations (D18) and join requests (D26)
 
 ```csharp
 await organizations.InviteAsync(organizationId, "bob@example.com", OrganizationRole.Member, inviterId);
 await organizations.RequestToJoinAsync(organizationId, requesterId);   // e.g. a site already held by that organization
 ```
 
-- The mail (`SparkOrganizations/Invitation`, `SparkOrganizations/JoinRequest`, en + nl, overridable by
-  file name in `Templates/Mail`) carries `{PublicBaseUrl}/organizations/accept/{token}?id={invitationId}`.
+- The invitation mail (`SparkOrganizations/Invitation`, en + nl, overridable by file name in
+  `Templates/Mail`) carries `{PublicBaseUrl}/organizations/accept/{token}?id={invitationId}`.
   The token is 256 random bits; **only its SHA-256 is stored**. The mail is queued `Sensitive` and
   expires with the invitation.
 - The page posts both values to `POST /spark/organizations/accept` on an explicit click: mail scanners
@@ -265,22 +266,40 @@ await organizations.RequestToJoinAsync(organizationId, requesterId);   // e.g. a
 - **The sender's address must be confirmed** (PRD D43). An invitation is mailed on the inviter's behalf,
   so `InviteAsync` refuses, with a `SparkValidationException` and nothing stored or sent, when the
   inviting account has no confirmed email address. The *Invite* action says so (translated) before it
-  asks for an address. A join request mails the requester's address to the Owners on the requester's
-  behalf, so `RequestToJoinAsync` applies the same rule to the requester.
+  asks for an address. A join request shows the requester's address to the deciders, so
+  `RequestToJoinAsync` applies the same rule to the requester.
 - **An invitation** makes the signed-in account a member with the invited role, **only when that
   account's address is the invited one** (PRD D43), compared the way ASP.NET Identity normalizes it. The
   invitee's address need not be confirmed: they may not even have had an account when invited. Any other
   account gets `reason: "otherAddress"`, and the accept page says the invitation was sent to another
   address and to sign in with the account that uses it. That refusal does not spend the link, so the
   right account can still use it.
-- **A join request** is mailed to every Owner. It makes its requester a member, and needs an Owner or
-  Admin to accept it; the requester cannot accept their own. The approver's address plays no part.
+- **A join request** is an approval request of kind `organizations.join` (`OrganizationJoinApproval`,
+  [Approvals](guide-approvals.md), commerce PRD D26), not a mailed link. `AddOrganizations()` adds
+  Approvals itself.
+  - **Who decides:** every Owner and Admin of the organization is told (Approvals' notice, or its mail
+    `SparkApprovals/Submitted` without Notifications) and sees it in their approvals inbox. Any of them
+    approves or declines it on the request page, `/po/approval-request/{id}`. Their role is read from
+    storage at decision time, so a demoted Admin can no longer decide.
+  - **Approve** makes the requester a member with the role asked for (never Owner). The request goes stale
+    instead when the organization or the requester is gone, or the requester is already a member.
+  - **Decline** needs a reason, which is kept on the request. Either way the requester is told the decision.
+  - **Refusals:** the requester cannot decide their own request, and a Member or outsider gets the
+    uniform 404. A new request from the same user replaces their pending one, and the deciders have
+    14 days.
+  - **Deletion:** deleting the organization closes its pending join requests. Deleting the requester's
+    account is handled by Approvals.
+  - **Old links:** a join-request link mailed before D26 still opens: the migration
+    `M_202610191700_OrganizationJoinRequestsToApprovals` turned each pending join request into an approval
+    request and kept its token's hash. The accept page posts the link as before, and a matching token
+    answers `approvalRequestUrl`, the request's page, where the page goes. Nothing else is revealed: any
+    other token gets the one refusal.
 - **Single use**: accepting deletes the invitation, with optimistic concurrency, so of two concurrent
   accepts one fails. A second invitation to the same address replaces the first.
 - **Expiry**: `OrganizationInvitation` is `IExpiring` with `expiresAfter` 14 days in the library's
   model. Change it in your own model layer. An expired one is hidden everywhere and refused on accept
   (X1: RavenDB deletes it at its next sweep, up to 36 h later).
-- Every refusal (unknown, forged, used, expired, someone else's join request) answers the same words,
+- Every refusal (unknown, forged, used, expired) answers the same words,
   `reason: "invalid"`. The one exception is the wrong account for a valid invitation (above): it needs
   the link's token, so it tells its holder nothing they did not know.
 

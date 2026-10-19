@@ -155,7 +155,7 @@ internal sealed class AgentConsent(
         sb.Append("<div class=\"types\">");
         foreach (var type in types)
         {
-            sb.Append("<label><input type=\"checkbox\" name=\"types\" value=\"").Append(Encode(type.Name)).Append("\"> <strong>")
+            sb.Append("<label><input type=\"checkbox\" name=\"types\" value=\"").Append(Encode(type.Id)).Append("\"> <strong>")
               .Append(Encode(type.Label)).Append("</strong>");
             if (type.Queries.Count > 0)
                 sb.Append(" <span class=\"muted\">").Append(Encode(text["consentAgentQueries", string.Join(", ", type.Queries)])).Append("</span>");
@@ -213,13 +213,14 @@ internal sealed class AgentConsent(
 
             if (choice.TypesMode == "chosen")
             {
-                var exposed = offered.ToDictionary(t => t.Name, StringComparer.Ordinal);
+                // The form posts type ids (D28): a grant stores the id, which a rename never changes.
+                var exposed = offered.ToDictionary(t => t.Id, StringComparer.OrdinalIgnoreCase);
                 types = [];
-                foreach (var name in choice.Types.Distinct(StringComparer.Ordinal))
+                foreach (var typeId in choice.Types.Distinct(StringComparer.OrdinalIgnoreCase))
                 {
-                    if (!exposed.TryGetValue(name, out var type))
+                    if (!exposed.TryGetValue(typeId, out var type))
                         return ConnectResults.ErrorPage(context, text, options.Branding, StatusCodes.Status400BadRequest, "errorAgentChoice");
-                    types.Add(new AgentGrantType { Name = name, Permissions = (type.Permissions & permissions) | EAgentPermission.Read });
+                    types.Add(new AgentGrantType { TypeId = type.Id, Permissions = (type.Permissions & permissions) | EAgentPermission.Read });
                 }
                 if (types.Count == 0)
                     return ConnectResults.ErrorPage(context, text, options.Branding, StatusCodes.Status400BadRequest, "errorAgentChoice");
@@ -258,7 +259,7 @@ internal sealed class AgentConsent(
                 ["agent"] = OidcAgentClients.KindOf(app).ToString(),
                 ["resource"] = endpoint.Audience,
                 ["permissions"] = permissions.ToString(),
-                ["types"] = types is null ? "*" : string.Join(',', types.Select(t => t.Name)),
+                ["types"] = types is null ? "*" : string.Join(",", types.Select(t => t.TypeId)),
             }, ct);
 
         return await OidcAuthorizationFlow.IssueCodeResponseAsync(session, request, issuer, ct);

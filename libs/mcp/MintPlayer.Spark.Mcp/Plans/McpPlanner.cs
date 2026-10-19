@@ -350,6 +350,10 @@ internal sealed class McpPlanner(
         var number = index + 1;
         var entityType = modelLoader.ResolveEntityType(operation.Type)
             ?? throw new McpPlanRefusal($"Operation {number}: {SparkMcpResult.NotFoundMessage}");
+        // D28: the stored plan names the type by its id from here on, so applying it resolves the very type that was
+        // proposed. The name an agent passed is resolved alias first, and could name another type at apply time.
+        if (proposing)
+            operation.Type = entityType.Id.ToString("D");
 
         // The type-level right first, as the web endpoints ask it before anything else: a caller who may not create,
         // edit or delete this type learns nothing about its attributes, and the application's OnNewAsync hook never
@@ -363,7 +367,7 @@ internal sealed class McpPlanner(
         if (operation.Id is not null)
         {
             loaded = await Guarded(index, () => objectReadPath.LoadAsync(
-                new PersistentObjectReferenceRequest { ObjectTypeId = entityType.Name, Id = operation.Id }, cancellationToken))
+                new PersistentObjectReferenceRequest { ObjectTypeId = entityType.Id.ToString("D"), Id = operation.Id }, cancellationToken))
                 ?? throw new McpPlanRefusal($"Operation {number}: {SparkMcpResult.NotFoundMessage}");
 
             if (proposing)

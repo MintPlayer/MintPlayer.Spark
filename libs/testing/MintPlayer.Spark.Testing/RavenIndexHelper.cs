@@ -56,8 +56,9 @@ public static class RavenIndexHelper
         ArgumentNullException.ThrowIfNull(store);
         if (assemblies.Length == 0) return;
 
-        // The engine choice SparkMiddleware makes (commerce X18): a hand-written index whose projection marks a
-        // field [Fuzzy] deploys on Lucene here too, or a test would query a Corax index the app never deploys.
+        // The engine choice SparkMiddleware makes (commerce X18): a hand-written index with a searchable field, or
+        // whose projection opts a field in with [Fuzzy], deploys on Lucene here too, or a test would query a Corax
+        // index the app never deploys.
         var fuzzyIndexTypes = SparkSearchEngine.FuzzyIndexTypes(assemblies.SelectMany(a => a.GetTypes()));
 
         foreach (var assembly in assemblies)

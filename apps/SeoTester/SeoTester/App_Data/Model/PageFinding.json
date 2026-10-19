@@ -1,5 +1,5 @@
 {
-  "$schema": "https://schemas.spark.mintplayer.com/v4/model.schema.json",
+  "$schema": "https://schemas.spark.mintplayer.com/v7/model.schema.json",
   "persistentObject": {
     "id": "d180799e-7b0d-454c-b0b8-baa5e5240f6a",
     "name": "PageFinding",

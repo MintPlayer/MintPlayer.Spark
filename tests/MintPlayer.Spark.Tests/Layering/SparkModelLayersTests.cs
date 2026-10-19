@@ -56,7 +56,7 @@ public class SparkModelLayersTests : IDisposable
     private static readonly SparkLibrary Authorization = Library("MintPlayer.Spark.Authorization", "authorization", LibrarySparkUser);
 
     private const string QnADelta = """
-        { "persistentObject": { "name": "SparkUser", "attributes": [ { "name": "UserName", "showedOn": "PersistentObject" } ] } }
+        { "$extends": "authorization:SparkUser", "persistentObject": { "name": "SparkUser", "attributes": [ { "name": "UserName", "showedOn": "PersistentObject" } ] } }
         """;
 
     private const string Car = """
@@ -154,22 +154,23 @@ public class SparkModelLayersTests : IDisposable
     [Fact]
     public void An_application_file_that_changes_a_library_id_is_refused()
     {
-        AppFile("SparkUser.json", """{ "persistentObject": { "id": "4e13c0de-0000-4000-8000-000000000001", "name": "SparkUser" } }""");
+        AppFile("SparkUser.json", """{ "$extends": "authorization:SparkUser", "persistentObject": { "id": "4e13c0de-0000-4000-8000-000000000001", "name": "SparkUser" } }""");
 
         var act = () => SparkModelFiles.Compose([Authorization], ModelDir);
 
         act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*persistentObject.id*cannot be changed*delta*");
+            .WithMessage("*persistentObject.id*cannot be changed*$extends*");
     }
 
     [Fact]
-    public void Two_unrelated_libraries_shipping_a_type_differently_are_refused_and_a_dependent_one_may_override()
+    public void Two_unrelated_libraries_shipping_one_name_are_refused_with_the_rename_remedy_and_a_dependent_one_may_override()
     {
         var other = Library("Other.Lib", "other", LibrarySparkUser.Replace("\"order\": 1", "\"order\": 5"));
         var dependent = Library("Other.Lib", "other", LibrarySparkUser.Replace("\"order\": 1", "\"order\": 5"), "MintPlayer.Spark.Authorization");
 
         var conflicting = () => SparkModelFiles.Compose([Authorization, other], ModelDir);
-        conflicting.Should().Throw<InvalidOperationException>().WithMessage("*MintPlayer.Spark.Authorization*Other.Lib*SparkUser*order*");
+        conflicting.Should().Throw<InvalidOperationException>()
+            .WithMessage("*MintPlayer.Spark.Authorization*Other.Lib*SparkUser*SPARK057*PersistentObjectName(\"other\", \"SparkUser\"*");
 
         var type = SparkModelFiles.Compose([Authorization, dependent], ModelDir).Should().ContainSingle().Which;
         Po(type)["attributes"]![0]!["order"]!.GetValue<int>().Should().Be(5);
@@ -197,6 +198,159 @@ public class SparkModelLayersTests : IDisposable
         AppFile("B.json", Car.Replace("27768be5", "37768be5"));
 
         SparkModelFiles.Compose([], ModelDir).Should().HaveCount(2);
+    }
+
+    // ── Name identity (D28): $extends, F7, F8, F9 ──────────────────────────────────────────────
+
+    [Fact]
+    public void An_application_type_named_like_a_library_type_is_refused_instead_of_becoming_its_delta()
+    {
+        // F7 (red before the fix): an application's own SparkUser (its own id and class) joined the library type by
+        // name, so the library's rights covered the application's documents while its row policies did not.
+        AppFile("SparkUser.json", """
+            { "persistentObject": { "id": "4e13c0de-0000-4000-8000-000000000001", "name": "SparkUser", "clrType": "QnA.Entities.SparkUser", "attributes": [] } }
+            """);
+
+        var act = () => SparkModelFiles.Compose([Authorization], ModelDir);
+
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("*names 'SparkUser'*authorization:SparkUser*without \"$extends\"*PersistentObjectName(\"authorization\", \"SparkUser\"*");
+    }
+
+    [Fact]
+    public void The_refusal_never_advises_removing_an_own_types_id()
+    {
+        // F8 (red before the fix): the message advised "state only what differs, and never an id" for every
+        // problem, which turned an application's own colliding type into a delta on the library's (F7).
+        AppFile("SparkUser.json", """{ "persistentObject": { "id": "4e13c0de-0000-4000-8000-000000000001", "name": "SparkUser" } }""");
+
+        var act = () => SparkModelFiles.Compose([Authorization], ModelDir);
+
+        act.Should().Throw<InvalidOperationException>()
+            .Which.Message.Should().Contain("\"$extends\"").And.Contain("PersistentObjectName").And.Contain("Never remove an own type's id");
+    }
+
+    [Fact]
+    public void An_orphaned_delta_is_refused_instead_of_skipped()
+    {
+        // F9 (red before the fix): the loader skipped the file with a console line and served the library type
+        // without the delta's restrictions.
+        AppFile("Gone.json", """{ "$extends": "authorization:Gone", "persistentObject": { "name": "Gone", "showedOn": "None" } }""");
+
+        var act = () => SparkModelFiles.Compose([Authorization], ModelDir);
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*extends 'authorization:Gone'*orphaned delta*");
+    }
+
+    [Fact]
+    public void An_id_less_file_that_extends_nothing_is_refused()
+    {
+        // F9: the shape a delta is left in once its library type is gone or renamed and it never stated $extends.
+        AppFile("SparkUser.json", """{ "persistentObject": { "name": "FormerlySparkUser", "attributes": [ { "name": "UserName", "showedOn": "None" } ] } }""");
+
+        var act = () => SparkModelFiles.Compose([Authorization], ModelDir);
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*states no persistentObject.id*");
+    }
+
+    [Fact]
+    public void A_stale_delta_names_the_type_it_extends_by_its_old_name_and_is_refused()
+    {
+        var renamed = SparkLayerCatalog.Rename([Authorization], [new PersistentObjectNameAttribute("authorization", "SparkUser", "Member")]);
+        AppFile("SparkUser.json", QnADelta);
+
+        var act = () => SparkModelFiles.Compose(renamed, ModelDir);
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*'SparkUser'*named 'Member'*stale delta*--spark-synchronize-model*");
+    }
+
+    [Fact]
+    public void A_delta_cannot_change_the_types_clr_class()
+    {
+        AppFile("SparkUser.json", """{ "$extends": "authorization:SparkUser", "persistentObject": { "name": "SparkUser", "clrType": "QnA.Entities.SparkUser" } }""");
+
+        var act = () => SparkModelFiles.Compose([Authorization], ModelDir);
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*maps 'QnA.Entities.SparkUser'*CLR class*");
+    }
+
+    [Fact]
+    public void A_renamed_library_type_frees_its_old_name_for_an_application_type_and_keeps_its_id()
+    {
+        var renamed = SparkLayerCatalog.Rename([Authorization], [new PersistentObjectNameAttribute("authorization", "SparkUser", "Member")]);
+        AppFile("Member.json", QnADelta.Replace("\"name\": \"SparkUser\"", "\"name\": \"Member\""));
+        AppFile("SparkUser.json", """{ "persistentObject": { "id": "4e13c0de-0000-4000-8000-000000000001", "name": "SparkUser", "clrType": "QnA.Entities.SparkUser", "attributes": [] } }""");
+
+        var types = SparkModelFiles.Compose(renamed, ModelDir);
+
+        var member = types.Single(t => t.Name == "Member");
+        member.Identity.Should().Be("authorization:SparkUser");
+        member.DeclaredName.Should().Be("SparkUser");
+        Po(member)["id"]!.GetValue<string>().Should().Be(SparkUserId, "a library id derives from alias:DeclaredName, which a rename leaves alone");
+        Po(member)["attributes"]![0]!["showedOn"]!.GetValue<string>().Should().Be("PersistentObject", "the delta applies under the new name");
+        types.Single(t => t.Name == "SparkUser").Library.Should().BeNull("the old name is the application's own type now");
+    }
+
+    [Fact]
+    public void A_rename_rewrites_the_librarys_rights_queries_and_translations_and_keeps_the_shipped_text()
+    {
+        var withQuery = (JsonObject)JsonNode.Parse(LibrarySparkUser)!;
+        withQuery["queries"] = JsonNode.Parse("""[ { "id": "aaaaaaaa-0000-4000-8000-000000000002", "name": "GetUsers", "entityType": "SparkUser", "source": "Database.Users" } ]""");
+        var library = new SparkLibrary("authorization", "MintPlayer.Spark.Authorization", [],
+        [
+            new SparkLibraryLayer("model", "Model/SparkUser.json", withQuery.ToJsonString()),
+            new SparkLibraryLayer("security", "security.json", """{ "rights": [ { "key": "read", "resource": "QueryRead/SparkUser", "groupId": "@authenticated" }, { "key": "name", "resource": "Edit/SparkUser/UserName", "groupId": "@authenticated" } ] }"""),
+            new SparkLibraryLayer("translations", "translations.json", """{ "model": { "SparkUser": { "label": { "en": "User" } } }, "queries": { "GetUsers": { "label": { "en": "Users" } } } }"""),
+        ]);
+
+        var renamed = SparkLayerCatalog.Rename([library], [new PersistentObjectNameAttribute("authorization", "SparkUser", "Member")]).Single();
+
+        var model = renamed.Layers.Single(l => l.Kind == "model");
+        var po = JsonNode.Parse(model.Json)!;
+        po["persistentObject"]!["name"]!.GetValue<string>().Should().Be("Member");
+        po["queries"]![0]!["entityType"]!.GetValue<string>().Should().Be("Member");
+        model.Shipped.Should().Be(library.Layers[0].Json, "provenance hashes are over what the library ships");
+        renamed.Layers.Single(l => l.Kind == "security").Json.Should().Contain("QueryRead/Member").And.Contain("Edit/Member/UserName").And.NotContain("/SparkUser");
+        var translations = renamed.Layers.Single(l => l.Kind == "translations").Json;
+        translations.Should().Contain("model.Member.label").And.NotContain("model.SparkUser").And.Contain("queries.GetUsers.label");
+        renamed.Renames.Should().Equal(new SparkTypeRename("SparkUser", "Member"));
+    }
+
+    [Fact]
+    public void A_rename_changes_no_layer_hash()
+    {
+        AppFile("SparkUser.json", QnADelta);
+        var before = ModelFileShape.ComputeLayerHashes([Authorization], ModelDir);
+        File.Delete(Path.Combine(ModelDir, "SparkUser.json"));
+        AppFile("Member.json", QnADelta.Replace("\"name\": \"SparkUser\"", "\"name\": \"Member\""));
+        var renamed = SparkLayerCatalog.Rename([Authorization], [new PersistentObjectNameAttribute("authorization", "SparkUser", "Member")]);
+
+        var after = ModelFileShape.ComputeLayerHashes(renamed, ModelDir);
+
+        after["Model/SparkUser.json"]["authorization"].Should().Be(before["Model/SparkUser.json"]["authorization"],
+            "the library layer is hashed as shipped; the rename is reported by the names map instead");
+    }
+
+    [Theory]
+    [InlineData("authorization", "Nope", "Member", "*ships no persistent-object type named 'Nope'*")]
+    [InlineData("nolib", "SparkUser", "Member", "*no referenced library has the alias 'nolib'*")]
+    [InlineData("authorization", "SparkUser", "Mem.ber", "*not a valid persistent-object name*")]
+    public void A_rename_that_cannot_be_honoured_refuses_startup(string library, string declared, string name, string message)
+    {
+        var act = () => SparkLayerCatalog.Rename([Authorization], [new PersistentObjectNameAttribute(library, declared, name)]);
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*SPARK061*" + message);
+    }
+
+    [Fact]
+    public void A_rename_onto_another_types_name_is_refused_ignoring_case()
+    {
+        var other = new SparkLibrary("other", "Other.Lib", [], [new SparkLibraryLayer("model", "Model/Member.json",
+            """{ "persistentObject": { "id": "bbbbbbbb-0000-4000-8000-000000000001", "name": "Member", "attributes": [] } }""")]);
+
+        var act = () => SparkLayerCatalog.Rename([Authorization, other], [new PersistentObjectNameAttribute("authorization", "SparkUser", "member")]);
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*'member' is already the name of*other:Member*");
     }
 
     // ── Hashes and the server's loader ─────────────────────────────────────────────────────────

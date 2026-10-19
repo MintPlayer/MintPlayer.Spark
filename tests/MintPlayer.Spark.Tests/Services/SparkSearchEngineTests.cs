@@ -7,9 +7,10 @@ using Raven.Client.Documents.Operations.Indexes;
 namespace MintPlayer.Spark.Tests.Services;
 
 /// <summary>
-/// Commerce X18: Spark chooses each index's search engine from its declarations. A <c>[Fuzzy]</c> field puts the
-/// index on Lucene, because Corax refuses fuzzy queries at runtime; every other index keeps the server default; and
-/// an engine change on an existing index is rebuilt side by side, verified after deployment.
+/// Commerce X18: Spark chooses each index's search engine from its declarations. A searchable field (fuzzy by
+/// default, 2026-10-19) or a <c>[Fuzzy]</c> opt-in puts the index on Lucene, because Corax refuses fuzzy queries at
+/// runtime; every other index keeps the server default; and an engine change on an existing index is rebuilt side by
+/// side, verified after deployment.
 /// </summary>
 public class SparkSearchEngineTests : SparkTestDriver
 {
@@ -96,7 +97,50 @@ public class SparkSearchEngineTests : SparkTestDriver
         [Fuzzy] public string Name { get; set; } = string.Empty;
     }
 
+    /// <summary>Fuzzy by default: a hand-written searchable field alone puts the index on Lucene.</summary>
+    public class Places_Searchable : AbstractIndexCreationTask<Place>
+    {
+        public Places_Searchable()
+        {
+            Map = places => from p in places select new { p.Name };
+            Index(x => x.Name, FieldIndexing.Search);
+        }
+    }
+
+    /// <summary>Searchable, pinned to Corax: the author's index-level opt-out, kept.</summary>
+    public class Places_SearchableCorax : AbstractIndexCreationTask<Place>
+    {
+        public Places_SearchableCorax()
+        {
+            Map = places => from p in places select new { p.Name };
+            Index(x => x.Name, FieldIndexing.Search);
+            SearchEngineType = Raven.Client.Documents.Indexes.SearchEngineType.Corax;
+        }
+    }
+
     private static readonly Type[] Projections = [typeof(VFuzzyPlace), typeof(VPinnedPlace), typeof(VTypeahead), typeof(Place)];
+
+    [Fact]
+    public void A_searchable_index_is_put_on_Lucene_and_a_pinned_one_keeps_its_pin()
+    {
+        var searchable = new Places_Searchable();
+        var pinned = new Places_SearchableCorax();
+        var conventions = searchable.Conventions;
+
+        SparkSearchEngine.Apply([searchable, pinned], SparkSearchEngine.FuzzyIndexTypes(Projections));
+
+        searchable.SearchEngineType.Should().Be(SearchEngineType.Lucene);
+        pinned.SearchEngineType.Should().Be(SearchEngineType.Corax);
+        // Reading the definition must not leave default conventions behind for deployment to use.
+        ReferenceEquals(searchable.Conventions, conventions).Should().BeTrue();
+    }
+
+    [Fact]
+    public void The_searchable_fields_come_from_the_index_definition()
+    {
+        SparkSearchEngine.SearchableFields(new Places_Searchable()).Should().Equal("Name");
+        SparkSearchEngine.SearchableFields(new Places_Plain()).Should().BeEmpty();
+    }
 
     [Fact]
     public void Only_marked_indexes_are_put_on_Lucene()

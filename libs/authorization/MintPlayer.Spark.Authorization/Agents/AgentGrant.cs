@@ -86,14 +86,18 @@ public sealed class AgentGrant
 
     /// <summary>The grant as the permission layer applies it.</summary>
     public AgentGrantScope ToScope()
-        => new(Id!, Permissions, Types?.GroupBy(t => t.Name, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First().Permissions, StringComparer.Ordinal));
+        => new(Id!, Permissions, Types?.GroupBy(t => t.TypeId, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.First().Permissions, StringComparer.OrdinalIgnoreCase));
 }
 
 /// <summary>One chosen type of an <see cref="AgentGrant"/>.</summary>
 public sealed class AgentGrantType
 {
-    /// <summary>The entity type name.</summary>
-    public string Name { get; set; } = string.Empty;
+    /// <summary>
+    /// The entity type's id (<c>"D"</c>). Never its name (D28): an application rename would point a stored grant at
+    /// nothing, or at another type that took the name. Grants written with the name are moved by
+    /// <c>M_202610191530_AgentGrantTypesById</c>.
+    /// </summary>
+    public string TypeId { get; set; } = string.Empty;
 
     /// <summary>Read, or read + changes, for this type.</summary>
     public EAgentPermission Permissions { get; set; } = EAgentPermission.Read;

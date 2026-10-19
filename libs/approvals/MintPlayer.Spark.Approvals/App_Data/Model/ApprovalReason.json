@@ -1,0 +1,36 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "ApprovalReason, the form ApprovalReject and ApprovalRevoke prompt with through a retry, shipped by",
+    "MintPlayer.Spark.Approvals. A virtual prompt type: no clrType, no documents, no rights needed, never a page of",
+    "its own. The engine refuses an empty reason whatever the form let through.",
+    "",
+    "HAND-AUTHORED. The ids are UUIDv5 of 'approvals:ApprovalReason[.attributes.<Name>]' (D5), verified by SPARK045."
+  ],
+  "persistentObject": {
+    "id": "8f87890f-0d22-53dd-b5c8-04fb3dda7272",
+    "name": "ApprovalReason",
+    "breadcrumb": "{Reason}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "5bab0ec7-a3a6-54ca-b1f1-a875a41f5346",
+        "name": "Reason",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [
+          {
+            "type": "maxLength",
+            "value": 2000
+          }
+        ]
+      }
+    ]
+  },
+  "queries": []
+}

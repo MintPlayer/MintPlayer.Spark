@@ -45,6 +45,8 @@ public static class OidcAuditKinds
     public const string DeveloperRequested = "developer.requested";
     public const string DeveloperApproved = "developer.approved";
     public const string DeveloperRejected = "developer.rejected";
+    /// <summary>An administrator took an approved developer status back (an <c>identity-provider.developer</c> request revoked).</summary>
+    public const string DeveloperRevoked = "developer.revoked";
     public const string ConsentGranted = "consent.granted";
     public const string ConsentNarrowed = "consent.narrowed";
     public const string ConsentWithdrawn = "consent.withdrawn";

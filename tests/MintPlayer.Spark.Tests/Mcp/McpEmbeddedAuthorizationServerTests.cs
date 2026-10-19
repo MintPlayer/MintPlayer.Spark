@@ -354,7 +354,7 @@ public class McpEmbeddedAuthorizationServerTests(SparkSharedDatabase database)
         await agent.SignInAsync(user.Email!);
         var (html, requestId, _) = await agent.ConsentPageAsync();
 
-        var consent = await agent.PostConsentAsync(html, requestId, typesMode: "chosen", types: "FilteredDoc");
+        var consent = await agent.PostConsentAsync(html, requestId, typesMode: "chosen", types: McpTestHost.FilteredDocTypeId.ToString("D")); // ids, never names (D28)
         consent.StatusCode.Should().Be(HttpStatusCode.Redirect, await consent.Content.ReadAsStringAsync());
         var (status, tokens) = await agent.RedeemAsync(System.Web.HttpUtility.ParseQueryString(consent.Headers.Location!.Query)["code"]!);
         status.Should().Be(HttpStatusCode.OK, tokens.ToJsonString());

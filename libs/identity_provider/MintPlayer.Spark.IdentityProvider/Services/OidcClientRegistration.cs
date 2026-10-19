@@ -117,7 +117,7 @@ internal sealed class OidcClientRegistration(Configuration.SparkIdentityProvider
         app.FrontChannelLogoutSessionRequired = metadata.FrontchannelLogoutSessionRequired ?? false;
 
         var requested = (metadata.Scope ?? "openid").Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        // Kept scopes keep their decided status; new ones are decided by MarkCrossOwnerScopesAsync.
+        // Kept scopes keep their decided status; new ones are decided by OidcApprovalRequests.RaiseScopeRequestsAsync.
         app.Scopes = requested
             .Select(name => app.Scopes.FirstOrDefault(s => string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase))
                 ?? new OidcApplicationScope { Name = name, Required = name == "openid" })

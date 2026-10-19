@@ -1,6 +1,6 @@
 # Spark security posture: every effective right and the layer it comes from.
 # --spark-synchronize-security writes this file; --spark-verify-security fails when it drifts.
-# Rows: group | effect | resource | key | layer
+# Rows: group | effect | resource | key | layer | type (alias:Name for a library type, the id for the application's own, - for none)
 
 ## Layers: libraries that ship rights (alias | assembly | hash)
 (nothing)
@@ -41,28 +41,28 @@ Read/Person
 Read/StartPage
 
 ## Granted to @anonymous
-Anonymous visitors | grant | CopyCarsToCompany/Car | d0000001-0000-0000-0000-000000000008 | app
-Anonymous visitors | grant | Query/Address | d0000001-0000-0000-0000-000000000005 | app
-Anonymous visitors | grant | Query/Stock | d0000001-0000-0000-0000-000000000004 | app
-Anonymous visitors | grant | QueryReadEditNewDelete/Bicycle | d0000001-0000-0000-0000-000000000009 | app
-Anonymous visitors | grant | QueryReadEditNewDelete/Car | d0000001-0000-0000-0000-000000000003 | app
-Anonymous visitors | grant | QueryReadEditNewDelete/Company | d0000001-0000-0000-0000-000000000002 | app
-Anonymous visitors | grant | QueryReadEditNewDelete/Motorcycle | d0000001-0000-0000-0000-00000000000a | app
-Anonymous visitors | grant | QueryReadEditNewDelete/Person | d0000001-0000-0000-0000-000000000001 | app
-Anonymous visitors | grant | Read/StartPage | d0000001-0000-0000-0000-000000000007 | app
-Anonymous visitors | grant | ReadEdit/LookupReferences | d0000001-0000-0000-0000-000000000006 | app
+Anonymous visitors | grant | CopyCarsToCompany/Car | d0000001-0000-0000-0000-000000000008 | app | 27768be5-2ff5-4782-8b22-c0e8d163050e
+Anonymous visitors | grant | Query/Address | d0000001-0000-0000-0000-000000000005 | app | e9b59b38-ab69-4915-8e16-1acb8fcab7a3
+Anonymous visitors | grant | Query/Stock | d0000001-0000-0000-0000-000000000004 | app | 770e8400-e29b-41d4-a716-446655440000
+Anonymous visitors | grant | QueryReadEditNewDelete/Bicycle | d0000001-0000-0000-0000-000000000009 | app | 86fa2120-c5c2-44e0-8b93-0493896aad6c
+Anonymous visitors | grant | QueryReadEditNewDelete/Car | d0000001-0000-0000-0000-000000000003 | app | 27768be5-2ff5-4782-8b22-c0e8d163050e
+Anonymous visitors | grant | QueryReadEditNewDelete/Company | d0000001-0000-0000-0000-000000000002 | app | 660e8400-e29b-41d4-a716-446655440000
+Anonymous visitors | grant | QueryReadEditNewDelete/Motorcycle | d0000001-0000-0000-0000-00000000000a | app | 0e17b1e5-4e59-4944-8bdb-7b3ab4da3618
+Anonymous visitors | grant | QueryReadEditNewDelete/Person | d0000001-0000-0000-0000-000000000001 | app | 550e8400-e29b-41d4-a716-446655440000
+Anonymous visitors | grant | Read/StartPage | d0000001-0000-0000-0000-000000000007 | app | 7f3a5b21-9c4e-4d6a-b8f2-1e5d7a9c3b60
+Anonymous visitors | grant | ReadEdit/LookupReferences | d0000001-0000-0000-0000-000000000006 | app | -
 
 ## Rights
-Signed-in users | grant | CopyCarsToCompany/Car | d000000f-0000-0000-0000-000000000008 | app
-Signed-in users | grant | Query/Address | d000000f-0000-0000-0000-000000000005 | app
-Signed-in users | grant | Query/Stock | d000000f-0000-0000-0000-000000000004 | app
-Signed-in users | grant | QueryReadEditNewDelete/Bicycle | d000000f-0000-0000-0000-000000000009 | app
-Signed-in users | grant | QueryReadEditNewDelete/Car | d000000f-0000-0000-0000-000000000003 | app
-Signed-in users | grant | QueryReadEditNewDelete/Company | d000000f-0000-0000-0000-000000000002 | app
-Signed-in users | grant | QueryReadEditNewDelete/Motorcycle | d000000f-0000-0000-0000-00000000000a | app
-Signed-in users | grant | QueryReadEditNewDelete/Person | d000000f-0000-0000-0000-000000000001 | app
-Signed-in users | grant | Read/StartPage | d000000f-0000-0000-0000-000000000007 | app
-Signed-in users | grant | ReadEdit/LookupReferences | d000000f-0000-0000-0000-000000000006 | app
+Signed-in users | grant | CopyCarsToCompany/Car | d000000f-0000-0000-0000-000000000008 | app | 27768be5-2ff5-4782-8b22-c0e8d163050e
+Signed-in users | grant | Query/Address | d000000f-0000-0000-0000-000000000005 | app | e9b59b38-ab69-4915-8e16-1acb8fcab7a3
+Signed-in users | grant | Query/Stock | d000000f-0000-0000-0000-000000000004 | app | 770e8400-e29b-41d4-a716-446655440000
+Signed-in users | grant | QueryReadEditNewDelete/Bicycle | d000000f-0000-0000-0000-000000000009 | app | 86fa2120-c5c2-44e0-8b93-0493896aad6c
+Signed-in users | grant | QueryReadEditNewDelete/Car | d000000f-0000-0000-0000-000000000003 | app | 27768be5-2ff5-4782-8b22-c0e8d163050e
+Signed-in users | grant | QueryReadEditNewDelete/Company | d000000f-0000-0000-0000-000000000002 | app | 660e8400-e29b-41d4-a716-446655440000
+Signed-in users | grant | QueryReadEditNewDelete/Motorcycle | d000000f-0000-0000-0000-00000000000a | app | 0e17b1e5-4e59-4944-8bdb-7b3ab4da3618
+Signed-in users | grant | QueryReadEditNewDelete/Person | d000000f-0000-0000-0000-000000000001 | app | 550e8400-e29b-41d4-a716-446655440000
+Signed-in users | grant | Read/StartPage | d000000f-0000-0000-0000-000000000007 | app | 7f3a5b21-9c4e-4d6a-b8f2-1e5d7a9c3b60
+Signed-in users | grant | ReadEdit/LookupReferences | d000000f-0000-0000-0000-000000000006 | app | -
 
 ## Inert: libraries switched off in "libraries"
 (nothing)

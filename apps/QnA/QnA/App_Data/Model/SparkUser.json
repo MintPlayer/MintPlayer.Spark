@@ -1,9 +1,10 @@
 {
   "$schema": "../../../../../schemas/model.schema.json",
+  "$extends": "authorization:SparkUser",
   "_comment": [
-    "A DELTA on SparkUser, which MintPlayer.Spark.Authorization ships (composition D6): it states only",
-    "what QnA changes, and never an id. The type itself (breadcrumb {UserName}, the one UserName",
-    "attribute) is the library's.",
+    "A DELTA on SparkUser, which MintPlayer.Spark.Authorization ships (composition D6), anchored by",
+    "$extends (D28): it states only what QnA changes, and never an id. The type itself (breadcrumb",
+    "{UserName}, the one UserName attribute) is the library's.",
     "",
     "QnA shows UserName on the form only: Question/Answer CreatedBy and ModifiedBy render the user name",
     "through the breadcrumb, and no query lists users.",

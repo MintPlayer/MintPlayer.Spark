@@ -18,9 +18,7 @@ import {
 
 /** The library's queues and records, in the order an administrator works through them. */
 const QUEUES: { label: string; alias: string }[] = [
-  { label: 'query.DeveloperRequests', alias: SPARK_IDENTITY_PROVIDER_QUERIES.developerRequests },
-  { label: 'query.ScopeApprovals', alias: SPARK_IDENTITY_PROVIDER_QUERIES.scopeApprovals },
-  { label: 'query.GoLiveReviews', alias: SPARK_IDENTITY_PROVIDER_QUERIES.goLiveReviews },
+  { label: 'query.Approvals', alias: SPARK_IDENTITY_PROVIDER_QUERIES.approvals },
   { label: 'query.Applications', alias: SPARK_IDENTITY_PROVIDER_QUERIES.applications },
   { label: 'query.Resources', alias: SPARK_IDENTITY_PROVIDER_QUERIES.resources },
   { label: 'query.Grants', alias: SPARK_IDENTITY_PROVIDER_QUERIES.grants },
@@ -30,8 +28,8 @@ const QUEUES: { label: string; alias: string }[] = [
 /**
  * The identity provider's management page (`identity-provider/admin`, PRD D9), for its
  * administrators (`ManageAll/IdentityProvider`): the signing keys with a rotate-now action, and links
- * to the library's queues (developer requests, scope approvals, go-live reviews) and records (grants,
- * the audit trail) in the generic query page. The server answers 403 to anyone else, and the page
+ * to the decision queue (the Approvals library's pending requests: developer requests, scope approvals,
+ * go-live reviews) and the library's records (grants, the audit trail) in the generic query page. The server answers 403 to anyone else, and the page
  * then says so instead of rendering an empty administration screen.
  */
 @Component({

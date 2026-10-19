@@ -1,11 +1,12 @@
 # Spark security posture: every effective right and the layer it comes from.
 # --spark-synchronize-security writes this file; --spark-verify-security fails when it drifts.
-# Rows: group | effect | resource | key | layer
+# Rows: group | effect | resource | key | layer | type (alias:Name for a library type, the id for the application's own, - for none)
 
 ## Layers: libraries that ship rights (alias | assembly | hash)
 authorization | MintPlayer.Spark.Authorization | 45c4fc153e9d
+approvals | MintPlayer.Spark.Approvals | 4430466488dc
 dashboards | MintPlayer.Spark.Dashboards | 4684f577b028
-identity-provider | MintPlayer.Spark.IdentityProvider | a47cb40caae8 | switched off
+identity-provider | MintPlayer.Spark.IdentityProvider | fe2406070da9 | switched off
 
 ## Reachable without signing in (expanded)
 Browse/Coverage
@@ -21,106 +22,97 @@ Read/Home
 Read/Repository
 
 ## Granted to @anonymous
-Anonymous visitors | grant | Browse/Coverage | c0e5a9e1-0000-4000-8000-000000000021 | app
-Anonymous visitors | grant | QueryRead/Account | c0e5a9e1-0000-4000-8000-000000000001 | app
-Anonymous visitors | deny | QueryRead/Account/OwnerKey | c0e5a9e1-0000-4000-8000-000000000081 | app
-Anonymous visitors | grant | QueryRead/Build | c0e5a9e1-0000-4000-8000-000000000004 | app
-Anonymous visitors | grant | QueryRead/Commit | c0e5a9e1-0000-4000-8000-000000000003 | app
-Anonymous visitors | deny | QueryRead/Home/AccountCount | c0e5a9e1-0000-4000-8000-000000000088 | app
-Anonymous visitors | deny | QueryRead/Home/RepoCount | c0e5a9e1-0000-4000-8000-000000000089 | app
-Anonymous visitors | grant | QueryRead/Repository | c0e5a9e1-0000-4000-8000-000000000002 | app
-Anonymous visitors | deny | QueryRead/Repository/OwnerKey | c0e5a9e1-0000-4000-8000-000000000083 | app
-Anonymous visitors | deny | QueryRead/Repository/PreviousFullNames | c0e5a9e1-0000-4000-8000-000000000085 | app
-Anonymous visitors | grant | Read/Home | c0e5a9e1-0000-4000-8000-000000000041 | app
+Anonymous visitors | grant | Browse/Coverage | c0e5a9e1-0000-4000-8000-000000000021 | app | -
+Anonymous visitors | grant | QueryRead/Account | c0e5a9e1-0000-4000-8000-000000000001 | app | a6c9a501-43a6-44f2-acf1-bafcfb2698cb
+Anonymous visitors | deny | QueryRead/Account/OwnerKey | c0e5a9e1-0000-4000-8000-000000000081 | app | a6c9a501-43a6-44f2-acf1-bafcfb2698cb
+Anonymous visitors | grant | QueryRead/Build | c0e5a9e1-0000-4000-8000-000000000004 | app | 2487903b-6dc7-4540-a99c-fc94c5d92551
+Anonymous visitors | grant | QueryRead/Commit | c0e5a9e1-0000-4000-8000-000000000003 | app | ec83c3f7-45d7-44e8-928a-2daf9a4b3ffe
+Anonymous visitors | deny | QueryRead/Home/AccountCount | c0e5a9e1-0000-4000-8000-000000000088 | app | 149ab426-ae90-4c96-ae26-3fdde3554754
+Anonymous visitors | deny | QueryRead/Home/RepoCount | c0e5a9e1-0000-4000-8000-000000000089 | app | 149ab426-ae90-4c96-ae26-3fdde3554754
+Anonymous visitors | grant | QueryRead/Repository | c0e5a9e1-0000-4000-8000-000000000002 | app | 22880468-80f5-4fd2-9472-4f87842ce4ff
+Anonymous visitors | deny | QueryRead/Repository/OwnerKey | c0e5a9e1-0000-4000-8000-000000000083 | app | 22880468-80f5-4fd2-9472-4f87842ce4ff
+Anonymous visitors | deny | QueryRead/Repository/PreviousFullNames | c0e5a9e1-0000-4000-8000-000000000085 | app | 22880468-80f5-4fd2-9472-4f87842ce4ff
+Anonymous visitors | grant | Read/Home | c0e5a9e1-0000-4000-8000-000000000041 | app | 149ab426-ae90-4c96-ae26-3fdde3554754
 
 ## Rights
-Administrators | grant | QueryRead/RepositoryGraphState | c0e5a9e1-0000-4000-8000-000000000092 | app
-Administrators | grant | ReadSettings/Account | c0e5a9e1-0000-4000-8000-000000000096 | app
-Administrators | grant | ReadSettings/Repository | c0e5a9e1-0000-4000-8000-000000000097 | app
-Administrators (dashboards:administrators) | grant | Read/DatabaseStatistics | dashboards:administrators | dashboards
-Administrators (dashboards:administrators) | grant | Read/HostMetrics | c0e5a9e1-0000-4000-8000-000000000091 | app
-Signed-in users | grant | Browse/Coverage | c0e5a9e1-0000-4000-8000-000000000022 | app
-Signed-in users | grant | DeleteData/Repository | c0e5a9e1-0000-4000-8000-000000000061 | app
-Signed-in users | grant | Edit/Account | c0e5a9e1-0000-4000-8000-00000000006b | app
-Signed-in users | grant | Edit/GitHubProject | c0e5a9e1-0000-4000-8000-000000000063 | app
-Signed-in users | grant | Edit/Repository | c0e5a9e1-0000-4000-8000-00000000006c | app
-Signed-in users | grant | EnableDependencyUpdates/DependencyOnboardingRow | c0e5a9e1-0000-4000-8000-0000000000a1 | app
-Signed-in users | grant | Manage/RepoSettings | c0e5a9e1-0000-4000-8000-000000000032 | app
-Signed-in users | grant | Query/DependencyOnboardingRow | c0e5a9e1-0000-4000-8000-0000000000a3 | app
-Signed-in users | grant | Query/MyAccountRow | c0e5a9e1-0000-4000-8000-000000000051 | app
-Signed-in users | grant | QueryRead/Account | c0e5a9e1-0000-4000-8000-000000000011 | app
-Signed-in users | deny | QueryRead/Account/OwnerKey | c0e5a9e1-0000-4000-8000-000000000082 | app
-Signed-in users | grant | QueryRead/Build | c0e5a9e1-0000-4000-8000-000000000014 | app
-Signed-in users | grant | QueryRead/Commit | c0e5a9e1-0000-4000-8000-000000000013 | app
-Signed-in users | grant | QueryRead/ForgeCheck | c0e5a9e1-0000-4000-8000-000000000093 | app
-Signed-in users | grant | QueryRead/GitHubProject | c0e5a9e1-0000-4000-8000-000000000062 | app
-Signed-in users | grant | QueryRead/ProjectColumn | c0e5a9e1-0000-4000-8000-000000000065 | app
-Signed-in users | grant | QueryRead/Repository | c0e5a9e1-0000-4000-8000-000000000012 | app
-Signed-in users | deny | QueryRead/Repository/OwnerKey | c0e5a9e1-0000-4000-8000-000000000084 | app
-Signed-in users | deny | QueryRead/Repository/PreviousFullNames | c0e5a9e1-0000-4000-8000-000000000086 | app
-Signed-in users | grant | QueryReadEditNew/ApiToken | c0e5a9e1-0000-4000-8000-000000000069 | app
-Signed-in users | grant | QueryReadEditNewDelete/DependencyRule | c0e5a9e1-0000-4000-8000-000000000094 | app
-Signed-in users | grant | QueryReadEditNewDelete/EventColumnMapping | c0e5a9e1-0000-4000-8000-000000000066 | app
-Signed-in users | grant | Read/DependencyOnboardingScope | c0e5a9e1-0000-4000-8000-0000000000a4 | app
-Signed-in users | grant | Read/ForgeAccounts | c0e5a9e1-0000-4000-8000-000000000053 | app
-Signed-in users | deny | Read/ForgeAccounts/Provider | c0e5a9e1-0000-4000-8000-000000000087 | app
-Signed-in users | grant | Read/Home | c0e5a9e1-0000-4000-8000-000000000042 | app
-Signed-in users | grant | Read/LookupReferences | c0e5a9e1-0000-4000-8000-000000000068 | app
-Signed-in users | grant | Resync/Home | c0e5a9e1-0000-4000-8000-000000000052 | app
-Signed-in users | grant | Revoke/ApiToken | c0e5a9e1-0000-4000-8000-00000000006a | app
-Signed-in users | grant | RunScheduledSlotNow/Repository | c0e5a9e1-0000-4000-8000-0000000000a2 | app
-Signed-in users | grant | SyncColumns/GitHubProject | c0e5a9e1-0000-4000-8000-000000000064 | app
-Signed-in users | grant | Upload/Coverage | c0e5a9e1-0000-4000-8000-000000000033 | app
-Signed-in users (@authenticated) | grant | AddPasskey/Passkeys | authorization:passkeys-add | authorization
-Signed-in users (@authenticated) | grant | Query/PasskeyRow | authorization:passkey-rows-query | authorization
-Signed-in users (@authenticated) | grant | Read/Passkeys | authorization:passkeys-read | authorization
-Signed-in users (@authenticated) | grant | RemovePasskey/PasskeyRow | authorization:passkey-rows-remove | authorization
-Signed-in users (@authenticated) | grant | RenamePasskey/PasskeyRow | authorization:passkey-rows-rename | authorization
+Administrators | grant | QueryRead/RepositoryGraphState | c0e5a9e1-0000-4000-8000-000000000092 | app | fd3ef336-2a02-4c15-8821-f67da3f65eba
+Administrators | grant | ReadSettings/Account | c0e5a9e1-0000-4000-8000-000000000096 | app | a6c9a501-43a6-44f2-acf1-bafcfb2698cb
+Administrators | grant | ReadSettings/Repository | c0e5a9e1-0000-4000-8000-000000000097 | app | 22880468-80f5-4fd2-9472-4f87842ce4ff
+Administrators (dashboards:administrators) | grant | Read/DatabaseStatistics | dashboards:administrators | dashboards | dashboards:DatabaseStatistics
+Administrators (dashboards:administrators) | grant | Read/HostMetrics | c0e5a9e1-0000-4000-8000-000000000091 | app | c0e5da5b-0000-4000-8000-000000000001
+Signed-in users | grant | Browse/Coverage | c0e5a9e1-0000-4000-8000-000000000022 | app | -
+Signed-in users | grant | DeleteData/Repository | c0e5a9e1-0000-4000-8000-000000000061 | app | 22880468-80f5-4fd2-9472-4f87842ce4ff
+Signed-in users | grant | Edit/Account | c0e5a9e1-0000-4000-8000-00000000006b | app | a6c9a501-43a6-44f2-acf1-bafcfb2698cb
+Signed-in users | grant | Edit/GitHubProject | c0e5a9e1-0000-4000-8000-000000000063 | app | 44ddbb76-0656-49a8-ac54-80db0134067a
+Signed-in users | grant | Edit/Repository | c0e5a9e1-0000-4000-8000-00000000006c | app | 22880468-80f5-4fd2-9472-4f87842ce4ff
+Signed-in users | grant | EnableDependencyUpdates/DependencyOnboardingRow | c0e5a9e1-0000-4000-8000-0000000000a1 | app | 4832e68c-b6c1-464e-af34-9d8ceb013c34
+Signed-in users | grant | Manage/RepoSettings | c0e5a9e1-0000-4000-8000-000000000032 | app | -
+Signed-in users | grant | Query/DependencyOnboardingRow | c0e5a9e1-0000-4000-8000-0000000000a3 | app | 4832e68c-b6c1-464e-af34-9d8ceb013c34
+Signed-in users | grant | Query/MyAccountRow | c0e5a9e1-0000-4000-8000-000000000051 | app | 6b35f39f-15cc-4fee-9fb9-fc91567f5b29
+Signed-in users | grant | QueryRead/Account | c0e5a9e1-0000-4000-8000-000000000011 | app | a6c9a501-43a6-44f2-acf1-bafcfb2698cb
+Signed-in users | deny | QueryRead/Account/OwnerKey | c0e5a9e1-0000-4000-8000-000000000082 | app | a6c9a501-43a6-44f2-acf1-bafcfb2698cb
+Signed-in users | grant | QueryRead/Build | c0e5a9e1-0000-4000-8000-000000000014 | app | 2487903b-6dc7-4540-a99c-fc94c5d92551
+Signed-in users | grant | QueryRead/Commit | c0e5a9e1-0000-4000-8000-000000000013 | app | ec83c3f7-45d7-44e8-928a-2daf9a4b3ffe
+Signed-in users | grant | QueryRead/ForgeCheck | c0e5a9e1-0000-4000-8000-000000000093 | app | 78d2126d-47e8-468b-bae5-ec52a02325f4
+Signed-in users | grant | QueryRead/GitHubProject | c0e5a9e1-0000-4000-8000-000000000062 | app | 44ddbb76-0656-49a8-ac54-80db0134067a
+Signed-in users | grant | QueryRead/ProjectColumn | c0e5a9e1-0000-4000-8000-000000000065 | app | 07b6abbf-ac76-4337-93e0-0d50d28f1e1e
+Signed-in users | grant | QueryRead/Repository | c0e5a9e1-0000-4000-8000-000000000012 | app | 22880468-80f5-4fd2-9472-4f87842ce4ff
+Signed-in users | deny | QueryRead/Repository/OwnerKey | c0e5a9e1-0000-4000-8000-000000000084 | app | 22880468-80f5-4fd2-9472-4f87842ce4ff
+Signed-in users | deny | QueryRead/Repository/PreviousFullNames | c0e5a9e1-0000-4000-8000-000000000086 | app | 22880468-80f5-4fd2-9472-4f87842ce4ff
+Signed-in users | grant | QueryReadEditNew/ApiToken | c0e5a9e1-0000-4000-8000-000000000069 | app | c312f028-5d74-4d1f-9026-ed07d53e9be0
+Signed-in users | grant | QueryReadEditNewDelete/DependencyRule | c0e5a9e1-0000-4000-8000-000000000094 | app | 6dd82acf-7ee7-4427-b8d0-57710ddb8944
+Signed-in users | grant | QueryReadEditNewDelete/EventColumnMapping | c0e5a9e1-0000-4000-8000-000000000066 | app | f5ddda9f-8c61-43f0-bea5-4b5b34c10e4a
+Signed-in users | grant | Read/DependencyOnboardingScope | c0e5a9e1-0000-4000-8000-0000000000a4 | app | 1eb9db36-2af3-462a-9522-7dbaf83a5707
+Signed-in users | grant | Read/ForgeAccounts | c0e5a9e1-0000-4000-8000-000000000053 | app | 2d6f4b10-9c27-4e83-b5a1-7f0c8e3d6a94
+Signed-in users | deny | Read/ForgeAccounts/Provider | c0e5a9e1-0000-4000-8000-000000000087 | app | 2d6f4b10-9c27-4e83-b5a1-7f0c8e3d6a94
+Signed-in users | grant | Read/Home | c0e5a9e1-0000-4000-8000-000000000042 | app | 149ab426-ae90-4c96-ae26-3fdde3554754
+Signed-in users | grant | Read/LookupReferences | c0e5a9e1-0000-4000-8000-000000000068 | app | -
+Signed-in users | grant | Resync/Home | c0e5a9e1-0000-4000-8000-000000000052 | app | 149ab426-ae90-4c96-ae26-3fdde3554754
+Signed-in users | grant | Revoke/ApiToken | c0e5a9e1-0000-4000-8000-00000000006a | app | c312f028-5d74-4d1f-9026-ed07d53e9be0
+Signed-in users | grant | RunScheduledSlotNow/Repository | c0e5a9e1-0000-4000-8000-0000000000a2 | app | 22880468-80f5-4fd2-9472-4f87842ce4ff
+Signed-in users | grant | SyncColumns/GitHubProject | c0e5a9e1-0000-4000-8000-000000000064 | app | 44ddbb76-0656-49a8-ac54-80db0134067a
+Signed-in users | grant | Upload/Coverage | c0e5a9e1-0000-4000-8000-000000000033 | app | -
+Signed-in users (@authenticated) | grant | AddPasskey/Passkeys | authorization:passkeys-add | authorization | authorization:Passkeys
+Signed-in users (@authenticated) | grant | ApprovalApprove/ApprovalRequest | approvals:approve | approvals | approvals:ApprovalRequest
+Signed-in users (@authenticated) | grant | ApprovalReject/ApprovalRequest | approvals:reject | approvals | approvals:ApprovalRequest
+Signed-in users (@authenticated) | grant | ApprovalRevoke/ApprovalRequest | approvals:revoke | approvals | approvals:ApprovalRequest
+Signed-in users (@authenticated) | grant | ApprovalWithdraw/ApprovalRequest | approvals:withdraw | approvals | approvals:ApprovalRequest
+Signed-in users (@authenticated) | grant | Query/PasskeyRow | authorization:passkey-rows-query | authorization | authorization:PasskeyRow
+Signed-in users (@authenticated) | grant | QueryRead/ApprovalRequest | approvals:requests | approvals | approvals:ApprovalRequest
+Signed-in users (@authenticated) | grant | Read/Passkeys | authorization:passkeys-read | authorization | authorization:Passkeys
+Signed-in users (@authenticated) | grant | RemovePasskey/PasskeyRow | authorization:passkey-rows-remove | authorization | authorization:PasskeyRow
+Signed-in users (@authenticated) | grant | RenamePasskey/PasskeyRow | authorization:passkey-rows-rename | authorization | authorization:PasskeyRow
 
 ## Inert: libraries switched off in "libraries"
-identity-provider:administrators | grant | ApproveDeveloper/OidcDeveloperRequest | identity-provider:developer-requests-approve | identity-provider
-identity-provider:administrators | grant | ApproveGoLive/OidcGoLiveReview | identity-provider:golive-approve | identity-provider
-identity-provider:administrators | grant | ApproveScope/OidcScopeApproval | identity-provider:scope-approvals-approve-administrators | identity-provider
-identity-provider:administrators | grant | GenerateSecret/OidcApplication | identity-provider:application-secret-administrators | identity-provider
-identity-provider:administrators | grant | InviteMember/OidcApplication | identity-provider:application-team-administrators | identity-provider
-identity-provider:administrators | grant | ManageAll/IdentityProvider | identity-provider:manage-all | identity-provider
-identity-provider:administrators | grant | Query/OidcApplicationMemberRow | identity-provider:members-query-administrators | identity-provider
-identity-provider:administrators | grant | Query/OidcApplicationSecretRow | identity-provider:secrets-query-administrators | identity-provider
-identity-provider:administrators | grant | Query/OidcDeveloperRequest | identity-provider:developer-requests-query | identity-provider
-identity-provider:administrators | grant | Query/OidcGoLiveReview | identity-provider:golive-query | identity-provider
-identity-provider:administrators | grant | Query/OidcScopeApproval | identity-provider:scope-approvals-query-administrators | identity-provider
-identity-provider:administrators | grant | QueryRead/OidcAuditEvent | identity-provider:audit-administrators | identity-provider
-identity-provider:administrators | grant | QueryRead/OidcGrant | identity-provider:grants-administrators | identity-provider
-identity-provider:administrators | grant | QueryReadEditNewDelete/OidcApplication | identity-provider:applications-administrators | identity-provider
-identity-provider:administrators | grant | QueryReadEditNewDelete/OidcResource | identity-provider:resources-administrators | identity-provider
-identity-provider:administrators | grant | Read/OidcReviewDecision | identity-provider:review-decisions-administrators | identity-provider
-identity-provider:administrators | grant | ReadEditNewDelete/ClientClaim | identity-provider:application-claims-administrators | identity-provider
-identity-provider:administrators | grant | ReadEditNewDelete/OidcApiScope | identity-provider:api-scopes-administrators | identity-provider
-identity-provider:administrators | grant | ReadEditNewDelete/OidcApplicationScope | identity-provider:application-scopes-administrators | identity-provider
-identity-provider:administrators | grant | RejectDeveloper/OidcDeveloperRequest | identity-provider:developer-requests-reject | identity-provider
-identity-provider:administrators | grant | RejectGoLive/OidcGoLiveReview | identity-provider:golive-reject | identity-provider
-identity-provider:administrators | grant | RejectScope/OidcScopeApproval | identity-provider:scope-approvals-reject-administrators | identity-provider
-identity-provider:administrators | grant | RemoveMember/OidcApplicationMemberRow | identity-provider:members-remove-administrators | identity-provider
-identity-provider:administrators | grant | ResendInvitation/OidcApplicationMemberRow | identity-provider:members-resend-administrators | identity-provider
-identity-provider:administrators | grant | RevokeGrant/OidcGrant | identity-provider:grants-revoke | identity-provider
-identity-provider:administrators | grant | RevokeSecret/OidcApplicationSecretRow | identity-provider:secrets-revoke-administrators | identity-provider
-identity-provider:administrators | grant | SwitchToDevelopment/OidcApplication | identity-provider:application-development-administrators | identity-provider
-identity-provider:administrators | grant | SwitchToLive/OidcApplication | identity-provider:application-live-administrators | identity-provider
-identity-provider:developers | grant | ApproveScope/OidcScopeApproval | identity-provider:scope-approvals-approve-developers | identity-provider
-identity-provider:developers | grant | GenerateSecret/OidcApplication | identity-provider:application-secret-developers | identity-provider
-identity-provider:developers | grant | InviteMember/OidcApplication | identity-provider:application-team-developers | identity-provider
-identity-provider:developers | grant | Query/OidcApplicationMemberRow | identity-provider:members-query-developers | identity-provider
-identity-provider:developers | grant | Query/OidcApplicationSecretRow | identity-provider:secrets-query-developers | identity-provider
-identity-provider:developers | grant | Query/OidcScopeApproval | identity-provider:scope-approvals-query-developers | identity-provider
-identity-provider:developers | grant | QueryRead/OidcAuditEvent | identity-provider:audit-developers | identity-provider
-identity-provider:developers | grant | QueryReadEditNewDelete/OidcApplication | identity-provider:applications-developers | identity-provider
-identity-provider:developers | grant | QueryReadEditNewDelete/OidcResource | identity-provider:resources-developers | identity-provider
-identity-provider:developers | grant | Read/OidcReviewDecision | identity-provider:review-decisions-developers | identity-provider
-identity-provider:developers | grant | ReadEditNewDelete/OidcApiScope | identity-provider:api-scopes-developers | identity-provider
-identity-provider:developers | grant | ReadEditNewDelete/OidcApplicationScope | identity-provider:application-scopes-developers | identity-provider
-identity-provider:developers | grant | RejectScope/OidcScopeApproval | identity-provider:scope-approvals-reject-developers | identity-provider
-identity-provider:developers | grant | RemoveMember/OidcApplicationMemberRow | identity-provider:members-remove-developers | identity-provider
-identity-provider:developers | grant | ResendInvitation/OidcApplicationMemberRow | identity-provider:members-resend-developers | identity-provider
-identity-provider:developers | grant | RevokeSecret/OidcApplicationSecretRow | identity-provider:secrets-revoke-developers | identity-provider
-identity-provider:developers | grant | SwitchToDevelopment/OidcApplication | identity-provider:application-development-developers | identity-provider
-identity-provider:developers | grant | SwitchToLive/OidcApplication | identity-provider:application-live-developers | identity-provider
+identity-provider:administrators | grant | GenerateSecret/OidcApplication | identity-provider:application-secret-administrators | identity-provider | identity-provider:OidcApplication
+identity-provider:administrators | grant | InviteMember/OidcApplication | identity-provider:application-team-administrators | identity-provider | identity-provider:OidcApplication
+identity-provider:administrators | grant | ManageAll/IdentityProvider | identity-provider:manage-all | identity-provider | -
+identity-provider:administrators | grant | Query/OidcApplicationMemberRow | identity-provider:members-query-administrators | identity-provider | identity-provider:OidcApplicationMemberRow
+identity-provider:administrators | grant | Query/OidcApplicationSecretRow | identity-provider:secrets-query-administrators | identity-provider | identity-provider:OidcApplicationSecretRow
+identity-provider:administrators | grant | QueryRead/OidcAuditEvent | identity-provider:audit-administrators | identity-provider | identity-provider:OidcAuditEvent
+identity-provider:administrators | grant | QueryRead/OidcGrant | identity-provider:grants-administrators | identity-provider | identity-provider:OidcGrant
+identity-provider:administrators | grant | QueryReadEditNewDelete/OidcApplication | identity-provider:applications-administrators | identity-provider | identity-provider:OidcApplication
+identity-provider:administrators | grant | QueryReadEditNewDelete/OidcResource | identity-provider:resources-administrators | identity-provider | identity-provider:OidcResource
+identity-provider:administrators | grant | ReadEditNewDelete/ClientClaim | identity-provider:application-claims-administrators | identity-provider | identity-provider:ClientClaim
+identity-provider:administrators | grant | ReadEditNewDelete/OidcApiScope | identity-provider:api-scopes-administrators | identity-provider | identity-provider:OidcApiScope
+identity-provider:administrators | grant | ReadEditNewDelete/OidcApplicationScope | identity-provider:application-scopes-administrators | identity-provider | identity-provider:OidcApplicationScope
+identity-provider:administrators | grant | RemoveMember/OidcApplicationMemberRow | identity-provider:members-remove-administrators | identity-provider | identity-provider:OidcApplicationMemberRow
+identity-provider:administrators | grant | ResendInvitation/OidcApplicationMemberRow | identity-provider:members-resend-administrators | identity-provider | identity-provider:OidcApplicationMemberRow
+identity-provider:administrators | grant | RevokeGrant/OidcGrant | identity-provider:grants-revoke | identity-provider | identity-provider:OidcGrant
+identity-provider:administrators | grant | RevokeSecret/OidcApplicationSecretRow | identity-provider:secrets-revoke-administrators | identity-provider | identity-provider:OidcApplicationSecretRow
+identity-provider:administrators | grant | SwitchToDevelopment/OidcApplication | identity-provider:application-development-administrators | identity-provider | identity-provider:OidcApplication
+identity-provider:administrators | grant | SwitchToLive/OidcApplication | identity-provider:application-live-administrators | identity-provider | identity-provider:OidcApplication
+identity-provider:developers | grant | GenerateSecret/OidcApplication | identity-provider:application-secret-developers | identity-provider | identity-provider:OidcApplication
+identity-provider:developers | grant | InviteMember/OidcApplication | identity-provider:application-team-developers | identity-provider | identity-provider:OidcApplication
+identity-provider:developers | grant | Query/OidcApplicationMemberRow | identity-provider:members-query-developers | identity-provider | identity-provider:OidcApplicationMemberRow
+identity-provider:developers | grant | Query/OidcApplicationSecretRow | identity-provider:secrets-query-developers | identity-provider | identity-provider:OidcApplicationSecretRow
+identity-provider:developers | grant | QueryRead/OidcAuditEvent | identity-provider:audit-developers | identity-provider | identity-provider:OidcAuditEvent
+identity-provider:developers | grant | QueryReadEditNewDelete/OidcApplication | identity-provider:applications-developers | identity-provider | identity-provider:OidcApplication
+identity-provider:developers | grant | QueryReadEditNewDelete/OidcResource | identity-provider:resources-developers | identity-provider | identity-provider:OidcResource
+identity-provider:developers | grant | ReadEditNewDelete/OidcApiScope | identity-provider:api-scopes-developers | identity-provider | identity-provider:OidcApiScope
+identity-provider:developers | grant | ReadEditNewDelete/OidcApplicationScope | identity-provider:application-scopes-developers | identity-provider | identity-provider:OidcApplicationScope
+identity-provider:developers | grant | RemoveMember/OidcApplicationMemberRow | identity-provider:members-remove-developers | identity-provider | identity-provider:OidcApplicationMemberRow
+identity-provider:developers | grant | ResendInvitation/OidcApplicationMemberRow | identity-provider:members-resend-developers | identity-provider | identity-provider:OidcApplicationMemberRow
+identity-provider:developers | grant | RevokeSecret/OidcApplicationSecretRow | identity-provider:secrets-revoke-developers | identity-provider | identity-provider:OidcApplicationSecretRow
+identity-provider:developers | grant | SwitchToDevelopment/OidcApplication | identity-provider:application-development-developers | identity-provider | identity-provider:OidcApplication
+identity-provider:developers | grant | SwitchToLive/OidcApplication | identity-provider:application-live-developers | identity-provider | identity-provider:OidcApplication

@@ -37,6 +37,12 @@ public class Answer : IModeratable, ISoftDeletable
 }
 ```
 
+Moderation's documents (votes, reputation events, flags, review cases, locks, the audit log) store the
+target's type as its persistent-object **id** in `TargetType`, never its name: an application's
+`[assembly: PersistentObjectName]` rename (D28) changes a name, never an id. Rights are still checked by the
+type's current name (`Lock/Answer`). Documents written by name before D28 are moved by the migration
+`M_202610191545_ModerationTargetTypesById`; a name the model no longer knows is left as it is and logged.
+
 ## 2. Privileges are groups
 
 The library ships its own `App_Data/moderation.json` as a [library layer](guide-library-layers.md):

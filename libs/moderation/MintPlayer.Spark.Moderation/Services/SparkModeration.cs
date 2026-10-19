@@ -130,7 +130,7 @@ internal sealed partial class SparkModeration : ISparkModeration
         vote.Revision++;
         vote.Direction = direction;
         vote.EventIds = [];
-        vote.TargetType = target.TypeName;
+        vote.TargetType = target.TypeId;
         vote.AuthorId = authorId;
         vote.TargetPostedAtUtc = target.PostedAtUtc;
         vote.CastAtUtc = now;
@@ -221,7 +221,7 @@ internal sealed partial class SparkModeration : ISparkModeration
         VoterId = voterId,
         VoteId = voteId,
         TargetId = target.Id,
-        TargetType = target.TypeName,
+        TargetType = target.TypeId,
         CreatedAtUtc = now,
         Day = day,
         // Fraud measure 5: nothing a vote earns counts until the crediting job has passed this.
@@ -319,7 +319,7 @@ internal sealed partial class SparkModeration : ISparkModeration
 
                 if (reviewCase is null)
                 {
-                    reviewCase = new ReviewCase { Kind = "flag", TargetId = target.Id, TargetType = target.TypeName, OpenedAtUtc = now };
+                    reviewCase = new ReviewCase { Kind = "flag", TargetId = target.Id, TargetType = target.TypeId, OpenedAtUtc = now };
                     if (target.AuthorId is { } author)
                         reviewCase.AccountIds.Add(author);
                     await session.StoreAsync(reviewCase, string.Empty, caseId, cancellationToken);
@@ -339,7 +339,7 @@ internal sealed partial class SparkModeration : ISparkModeration
 
                 if (flag is null)
                 {
-                    flag = new ModerationFlag { FlaggerId = flaggerId, TargetId = target.Id, TargetType = target.TypeName };
+                    flag = new ModerationFlag { FlaggerId = flaggerId, TargetId = target.Id, TargetType = target.TypeId };
                     await session.StoreAsync(flag, string.Empty, flagId, cancellationToken);
                 }
                 flag.Reason = reviewCase.Summary;
@@ -367,13 +367,13 @@ internal sealed partial class SparkModeration : ISparkModeration
         await session.StoreAsync(new ModerationLock
         {
             TargetId = target.Id,
-            TargetType = target.TypeName,
+            TargetType = target.TypeId,
             Reason = reason,
             LockedBy = actor,
             LockedAtUtc = UtcNow,
         }, ModerationIds.Lock(target.Id), cancellationToken);
         await session.SaveChangesAsync(cancellationToken);
-        await audit.WriteAsync("lock", target.Id, target.TypeName, target.AuthorId, reason: reason, cancellationToken: cancellationToken);
+        await audit.WriteAsync("lock", target.Id, target.TypeId, target.AuthorId, reason: reason, cancellationToken: cancellationToken);
     }
 
     public async Task UnlockAsync(Guid objectTypeId, string id, CancellationToken cancellationToken = default)
@@ -385,7 +385,7 @@ internal sealed partial class SparkModeration : ISparkModeration
         using var session = documentStore.OpenAsyncSession();
         session.Delete(ModerationIds.Lock(target.Id));
         await session.SaveChangesAsync(cancellationToken);
-        await audit.WriteAsync("unlock", target.Id, target.TypeName, target.AuthorId, cancellationToken: cancellationToken);
+        await audit.WriteAsync("unlock", target.Id, target.TypeId, target.AuthorId, cancellationToken: cancellationToken);
     }
 
     internal async Task<bool> IsLockedAsync(string targetId, CancellationToken cancellationToken = default)

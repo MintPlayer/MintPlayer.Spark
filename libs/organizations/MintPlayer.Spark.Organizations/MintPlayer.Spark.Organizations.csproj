@@ -17,7 +17,7 @@
 		<Version>11.0.0-preview.105</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
-		<Description>Organizations for MintPlayer.Spark: an implicit personal organization per user, organizations with Owner/Admin/Member/Viewer memberships, invitations and join requests by mail with an acceptance link, ownership transfer, cascade delete and export hooks, and a row policy that limits any type carrying OrganizationId to the members of its organization.</Description>
+		<Description>Organizations for MintPlayer.Spark: an implicit personal organization per user, organizations with Owner/Admin/Member/Viewer memberships, invitations by mail with an acceptance link, join requests decided in-app by Owners and Admins, ownership transfer, cascade delete and export hooks, and a row policy that limits any type carrying OrganizationId to the members of its organization.</Description>
 		<PackageTags>organizations;teams;tenancy;membership;invitations;row-security;ravendb;spark</PackageTags>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
@@ -30,7 +30,7 @@
 		<None Include="README.md" Pack="true" PackagePath="\" />
 	</ItemGroup>
 
-	<!-- The invitation and join-request mails' default MJML templates (SparkOrganizations/*), read by
+	<!-- The invitation mail's default MJML templates (SparkOrganizations/*), read by
 	     MailManager. An app overrides one by placing a file with the same name in its Templates/Mail folder. -->
 	<ItemGroup>
 		<EmbeddedResource Include="Mail\**\*.mjml" LogicalName="SparkMail/%(RecursiveDir)%(Filename)%(Extension)" WithCulture="false" />
@@ -51,6 +51,8 @@
 		<!-- The only package dependency (docs/seo_analyzer_PRD.md D25): SparkUser, the account hooks
 		     (sign-in, deletion, personal data), the public base URL for mailed links and the security slot. -->
 		<ProjectReference Include="..\..\authorization\MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj" />
+		<!-- Join requests are decision requests (docs/commerce_PRD.md §4.13, D26): kind organizations.join. -->
+		<ProjectReference Include="..\..\approvals\MintPlayer.Spark.Approvals\MintPlayer.Spark.Approvals.csproj" />
 		<!-- Spark's generators (the library layers, attribute descriptions) and analyzers (SPARK045). Analyzer ProjectReferences are not transitive. -->
 		<ProjectReference Include="..\..\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
 	</ItemGroup>

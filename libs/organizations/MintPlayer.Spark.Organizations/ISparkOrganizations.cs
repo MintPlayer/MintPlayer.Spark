@@ -48,20 +48,22 @@ public interface ISparkOrganizations
     Task InviteAsync(string organizationId, string email, OrganizationRole role, string inviterUserId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Asks the Owners of <paramref name="organizationId"/>, by mail, to let <paramref name="requesterUserId"/>
-    /// in as <paramref name="role"/> (D18), a personal organization's too (D42). A member already: nothing happens.
-    /// A request from the same user replaces their pending one. Returns whether a request was made. The mail
-    /// carries the requester's address on their behalf, so like an inviter the requester needs a confirmed
-    /// email address (D43); without one the call throws a <see cref="MintPlayer.Spark.Abstractions.SparkValidationException"/>.
+    /// Asks the Owners and Admins of <paramref name="organizationId"/> to let <paramref name="requesterUserId"/>
+    /// in as <paramref name="role"/> (D18), a personal organization's too (D42): a decision request of kind
+    /// <see cref="OrganizationJoinApproval"/> (D26). Approvals tells every Owner and Admin, any of whom approves or
+    /// declines it in-app (a decline with a reason); the requester is told the decision. A member already: nothing
+    /// happens. A request from the same user replaces their pending one. Returns whether a request was made. The
+    /// deciders see the requester's address, so like an inviter the requester needs a confirmed email address (D43);
+    /// without one the call throws a <see cref="MintPlayer.Spark.Abstractions.SparkValidationException"/>.
     /// </summary>
     Task<bool> RequestToJoinAsync(string organizationId, string requesterUserId, OrganizationRole role = OrganizationRole.Member, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Redeems a mailed link as <paramref name="userId"/>. An invitation makes the signed-in user a
-    /// member, and only when that account's address is the invited one (D43; it need not be confirmed, the
-    /// inviter's is); a join request makes
-    /// its requester one, and needs an Owner or Admin to open it, whatever their address. The token is
-    /// single-use and expires; every refusal reads the same, except the wrong account for a valid invitation.
+    /// Redeems a mailed invitation link as <paramref name="userId"/>: it makes the signed-in user a member, and
+    /// only when that account's address is the invited one (D43; it need not be confirmed, the inviter's is). The
+    /// token is single-use and expires; every refusal reads the same, except the wrong account for a valid
+    /// invitation. A join-request link mailed before D26 whose token matches answers
+    /// <see cref="OrganizationAcceptance.ApprovalRequestUrl"/>, the migrated request's page.
     /// </summary>
     Task<OrganizationAcceptance> AcceptAsync(string invitationId, string token, string userId, CancellationToken cancellationToken = default);
 
@@ -98,6 +100,14 @@ public interface ISparkOrganizations
 /// </remarks>
 public sealed record OrganizationAcceptance(bool Accepted, string? OrganizationId, string? OrganizationName, string? Problem, string? Reason = null)
 {
+    /// <summary>
+    /// Set only for a join-request link mailed before D26 whose token matches: the app-relative page of the approval
+    /// request it became (<c>/po/approval-request/…</c>), where an Owner or Admin decides it. Nothing was accepted.
+    /// </summary>
+    public string? ApprovalRequestUrl { get; init; }
+
+    internal static OrganizationAcceptance ForApprovalRequest(string url) => new(false, null, null, null) { ApprovalRequestUrl = url };
+
     /// <summary>The one refusal for a link that is unknown, forged, used, expired or not the caller's to accept.</summary>
     public const string InvalidProblem = "This link is not valid. It may have expired, been used already, or be meant for someone else.";
 

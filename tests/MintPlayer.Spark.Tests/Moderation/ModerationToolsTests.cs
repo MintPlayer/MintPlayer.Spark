@@ -210,7 +210,10 @@ public class ModerationToolsTests : SparkTestDriver
 
         var (_, audit) = await host.ModeratorAsync("/spark/moderation/audit", new { take = 10 });
         audit.GetProperty("result").EnumerateArray().Should().Contain(e =>
-            e.GetProperty("action").GetString() == "lock" && e.GetProperty("targetId").GetString() == post && e.GetProperty("actorId").GetString() == "users/mod");
+            e.GetProperty("action").GetString() == "lock" && e.GetProperty("targetId").GetString() == post && e.GetProperty("actorId").GetString() == "users/mod"
+            // D28: the type is stored by id, never by its name, which an application rename changes.
+            && e.GetProperty("targetType").GetString() == MoHost.PostTypeId.ToString("D"));
+        (await host.LoadAsync<ModerationLock>(ModerationIds.Lock(post)))!.TargetType.Should().Be(MoHost.PostTypeId.ToString("D"));
         (await host.SendAsync("/spark/moderation/audit", new { take = 10 }, Bob)).Status.Should().Be(HttpStatusCode.NotFound);
     }
 
@@ -230,7 +233,10 @@ public class ModerationToolsTests : SparkTestDriver
         (await host.SendAsync("/spark/moderation/flag", Wire.Typed(MoHost.PostTypeId, new { reason = "" }, post), Carol)).Status.Should().Be(HttpStatusCode.BadRequest);
 
         var caseId = ModerationIds.FlagCase(post);
-        (await host.LoadAsync<ReviewCase>(caseId))!.FlagCount.Should().Be(2, "one open flag per user and post");
+        var opened = (await host.LoadAsync<ReviewCase>(caseId))!;
+        opened.FlagCount.Should().Be(2, "one open flag per user and post");
+        opened.TargetType.Should().Be(MoHost.PostTypeId.ToString("D"), "a case names its type by id (D28)");
+        (await host.LoadAsync<ModerationFlag>(ModerationIds.Flag(Bob, post)))!.TargetType.Should().Be(MoHost.PostTypeId.ToString("D"));
 
         (await host.SendAsync("/spark/moderation/cases", new { }, Bob)).Status.Should().Be(HttpStatusCode.NotFound, "no Review right");
         var (_, queue) = await host.ModeratorAsync("/spark/moderation/cases", new { });

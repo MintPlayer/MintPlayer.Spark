@@ -10,8 +10,9 @@ public sealed class EntityTypeDefinition
     public required Guid Id { get; set; }
 
     /// <summary>
-    /// The type's name, its identity across layers: an application file with the name of a type a
-    /// library ships is a delta on that type. Also the key prefix of its translations (<c>model.{name}.label</c>).
+    /// The type's name: the target of its rights (Verb/Name), the key prefix of its translations (model.{name}.label) and
+    /// the join from its queries (entityType). A library type's name can be changed by the application with
+    /// [assembly: PersistentObjectName] (D28); its identity across layers is alias:DeclaredName, which a delta states as $extends.
     /// </summary>
     public required string Name { get; set; }
     /// <summary>
@@ -23,8 +24,9 @@ public sealed class EntityTypeDefinition
     /// The CLR type this definition maps to — the anchor of the entity pipeline (load, query,
     /// save, row security). <see langword="null"/> for a JSON-only virtual type: a page that
     /// exists in the model but not in the database, served exclusively through
-    /// <c>OnLoadAsync(id, parent)</c> on a <c>{Name}Actions</c> class (resolved by name, and
-    /// scaffolding its object via <c>IManager.GetPersistentObjectAsync</c> instead of loading one).
+    /// <c>OnLoadAsync(id, parent)</c> on a <c>{DeclaredName}Actions</c> class (inside the declaring library for a
+    /// library type, so an application rename changes nothing; <c>{Name}Actions</c> for the application's own),
+    /// which scaffolds its object via <c>IManager.GetPersistentObjectAsync</c> instead of loading one.
     /// Everything document-shaped 404s for such a type.
     /// </summary>
     public string? ClrType { get; set; }
@@ -34,6 +36,24 @@ public sealed class EntityTypeDefinition
     /// If not set, auto-generated from Name by lowercasing.
     /// </summary>
     public string? Alias { get; set; }
+
+    /// <summary>
+    /// Where the type comes from (D28), set by the model loader and never read from or written to a file:
+    /// the declaring library's assembly, alias and the name it declares the type under, or all
+    /// <see langword="null"/> for a type the application owns. A JSON-only library type binds its actions
+    /// as <c>{DeclaredName}Actions</c> inside <see cref="DeclaringAssembly"/>, so an application rename
+    /// changes nothing there.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? DeclaringAssembly { get; set; }
+
+    /// <inheritdoc cref="DeclaringAssembly"/>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? LibraryAlias { get; set; }
+
+    /// <inheritdoc cref="DeclaringAssembly"/>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? DeclaredName { get; set; }
 
     /// <summary>
     /// Whether the current caller may open a single object of this type — the <c>Read</c> right,

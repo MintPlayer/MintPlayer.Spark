@@ -241,10 +241,26 @@ public class SparkSecurityVerificationExtensionsTests : IDisposable
 
         var anonymousRow = "Anonymous visitors (@anonymous) | grant | QueryRead/Car | authorization:cars-read | authorization";
         text.IndexOf(anonymousRow, StringComparison.Ordinal).Should().BeInRange(anonymous, rights, "an anonymous grant is listed in its own section");
-        text.Should().Contain("Admins | deny important | Delete/Car | a2 | app\n");
+        text.Should().Contain("Admins | deny important | Delete/Car | a2 | app | -\n");
         text.IndexOf("moderation:moderators | grant | Review/Moderation | moderation:review | moderation", StringComparison.Ordinal)
             .Should().BeGreaterThan(inert, "an opted-out library's rights stay visible, as inert");
         text.Split('\n').Count(l => l.Contains(" | QueryRead/Car | ")).Should().Be(1, "a row appears once");
+    }
+
+    [Fact]
+    public void A_right_whose_name_comes_to_mean_another_type_is_a_drift_although_its_resource_string_is_unchanged()
+    {
+        // D28: a library's Order renamed while the application adds its own Order. "QueryRead/Order" reads the same;
+        // the type-identity column is what shows it now covers another type.
+        var before = TablePosture with { Rights = [new("Admins", "grant", "QueryRead/Order", "o1", "app", Type: "commerce:Order")] };
+        var after = TablePosture with { Rights = [new("Admins", "grant", "QueryRead/Order", "o1", "app", Type: "0b6a4f3e-2c1d-4e5f-8a9b-1c2d3e4f5a6b")] };
+
+        var (removed, added, _) = SparkSecurityVerificationExtensions.Diff(
+            SparkSecurityVerificationExtensions.Render(before),
+            SparkSecurityVerificationExtensions.Render(after));
+
+        removed.Should().ContainSingle().Which.Should().EndWith("| QueryRead/Order | o1 | app | commerce:Order");
+        added.Should().ContainSingle().Which.Should().EndWith("| app | 0b6a4f3e-2c1d-4e5f-8a9b-1c2d3e4f5a6b");
     }
 
     [Fact]

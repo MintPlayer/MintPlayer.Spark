@@ -17,9 +17,9 @@
     },
     "OrganizationInvitations": {
       "label": {
-        "en": "Invitations and join requests",
-        "fr": "Invitations et demandes d'adhésion",
-        "nl": "Uitnodigingen en aanvragen"
+        "en": "Invitations",
+        "fr": "Invitations",
+        "nl": "Uitnodigingen"
       }
     }
   },
@@ -118,20 +118,6 @@
             "en": "Email",
             "fr": "E-mail",
             "nl": "E-mail"
-          }
-        },
-        "Kind": {
-          "label": {
-            "en": "Kind",
-            "fr": "Type",
-            "nl": "Soort"
-          }
-        },
-        "UserName": {
-          "label": {
-            "en": "Requested by",
-            "fr": "Demandé par",
-            "nl": "Aangevraagd door"
           }
         },
         "Role": {

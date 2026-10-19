@@ -1,5 +1,5 @@
 {
-  "$schema": "https://schemas.spark.mintplayer.com/v4/model.schema.json",
+  "$schema": "https://schemas.spark.mintplayer.com/v7/model.schema.json",
   "persistentObject": {
     "id": "b474d13d-5d55-4abb-806f-bfd72d7382de",
     "name": "CheckDefinition",

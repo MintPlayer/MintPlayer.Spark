@@ -151,7 +151,7 @@ internal sealed partial class AgentGrantsAccount(
             grant.SecurityStamp = user.SecurityStamp ?? string.Empty;
         }
         await grants.SaveAsync(grant, cancellationToken);
-        LogGrantChanged(logger, userId, grant.Id!, grant.Permissions.ToString(), grant.Types is null ? "all" : string.Join(",", grant.Types.Select(t => t.Name)));
+        LogGrantChanged(logger, userId, grant.Id!, grant.Permissions.ToString(), grant.Types is null ? "all" : string.Join(",", grant.Types.Select(t => t.TypeId)));
         return AgentResult<bool>.Ok(true);
     }
 
@@ -204,10 +204,11 @@ internal sealed partial class AgentGrantsAccount(
         if (types.Count == 0)
             return "agent_no_types";
 
-        var exposed = (await exposure.ListTypesAsync(cancellationToken)).ToDictionary(t => t.Name, StringComparer.Ordinal);
+        // By id (D28): the page sends the ids the overview listed, and a grant stores them.
+        var exposed = (await exposure.ListTypesAsync(cancellationToken)).ToDictionary(t => t.Id, StringComparer.OrdinalIgnoreCase);
         foreach (var type in types)
         {
-            if (!exposed.TryGetValue(type.Name ?? string.Empty, out var offered))
+            if (!exposed.TryGetValue(type.TypeId ?? string.Empty, out var offered))
                 return "agent_unknown_type";
             if (!type.Permissions.HasFlag(EAgentPermission.Read)
                 || (type.Permissions & ~(EAgentPermission.Read | EAgentPermission.Write)) != 0
@@ -220,7 +221,7 @@ internal sealed partial class AgentGrantsAccount(
     }
 
     private static List<AgentGrantType>? Normalize(List<AgentGrantType>? types)
-        => types?.GroupBy(t => t.Name, StringComparer.Ordinal).Select(g => new AgentGrantType { Name = g.Key, Permissions = g.First().Permissions }).ToList();
+        => types?.GroupBy(t => Guid.TryParse(t.TypeId, out var id) ? id.ToString("D") : t.TypeId, StringComparer.Ordinal).Select(g => new AgentGrantType { TypeId = g.Key, Permissions = g.First().Permissions }).ToList();
 
     private static AgentInformation TokenAgent(ClaimsPrincipal principal, string? tokenId, string? name)
         => new(EAgentKind.PersonalAccessToken, tokenId, null, name, principal);

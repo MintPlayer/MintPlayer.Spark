@@ -35,7 +35,7 @@ public static class SparkSecurityFiles
     /// </summary>
     public static IReadOnlyList<(string Alias, string Assembly, string Hash)> Layers(IEnumerable<SparkLibrary>? libraries = null)
         => SparkLayerCatalog.Of(libraries ?? SparkLayerCatalog.Libraries, SparkLayerKinds.Security)
-            .Select(x => (x.Library.Alias, x.Library.AssemblyName, Model.SparkLayerProvenance.Sha256Hex(Canonical(x.Layer.Json))[..12]))
+            .Select(x => (x.Library.Alias, x.Library.AssemblyName, Model.SparkLayerProvenance.Sha256Hex(Canonical(x.Layer.Shipped))[..12]))
             .ToList();
 
     private static string Canonical(string json)

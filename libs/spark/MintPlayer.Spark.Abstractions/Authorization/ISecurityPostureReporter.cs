@@ -65,7 +65,11 @@ public sealed record SecurityPosture(
 /// <param name="Key">The right's key in the composed set.</param>
 /// <param name="Layer"><c>app</c>, or the alias of the library that ships it.</param>
 /// <param name="Anonymous">Granted to the anonymous group: the posture file lists these in their own section.</param>
-public sealed record SecurityPostureRow(string Group, string Effect, string Resource, string Key, string Layer, bool Anonymous = false);
+/// <param name="Type">
+/// The identity of the type the resource targets (D28): <c>alias:DeclaredName</c> for a library type, the id for an
+/// application type, <c>-</c> for none. A right whose name comes to mean another type (a rename) changes this column.
+/// </param>
+public sealed record SecurityPostureRow(string Group, string Effect, string Resource, string Key, string Layer, bool Anonymous = false, string Type = "-");
 
 /// <summary>A library that ships rights, as the posture table names it (composition D7).</summary>
 /// <param name="Alias">Its alias: the layer column of its rows.</param>

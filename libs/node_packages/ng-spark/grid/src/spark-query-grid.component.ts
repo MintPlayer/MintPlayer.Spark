@@ -46,6 +46,7 @@ import {
   selectionModeFor,
   valueFor,
   translated,
+  sparkTypeHintClasses,
 } from '@mintplayer/ng-spark/models';
 import { SPARK_GRID_PAGE_SIZES, initialGridSettings, isVirtualScrollingQuery } from './spark-grid-columns';
 import { applicablePresetFilters } from './preset-filters';
@@ -1362,6 +1363,15 @@ export class SparkQueryGridComponent {
    */
   rendererValueFor(item: QueryResultItem, column: QueryColumn): unknown {
     return cellValue(valueFor(item, column.name));
+  }
+
+  /**
+   * The row's and the cell's `typeHints` as classes on the cell (commerce #521; see
+   * `sparkTypeHintClasses`). On every cell rather than the row, because the datatable owns the `<tr>`.
+   */
+  hintClassesFor(item: QueryResultItem | null | undefined, column: QueryColumn): string {
+    if (!item) return '';
+    return sparkTypeHintClasses(item.typeHints, valueFor(item, column.name)?.typeHints);
   }
 
   getColumnRendererComponent(column: QueryColumn): Type<any> | null {

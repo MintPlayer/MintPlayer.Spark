@@ -18,7 +18,9 @@ import {
 } from '@mintplayer/ng-spark/identity-provider/core';
 
 /**
- * The developer portal's landing page (`/developers`, PRD D2/D7): the user's developer status, the
+ * The developer portal's landing page (`/developers`, PRD D2/D7): the user's developer status (with the
+ * administrator's reason after a rejection or a revocation, and a link to the pending request, which is an
+ * Approvals request since commerce D26), the
  * terms to accept to request it (again, when they were raised), and for an active developer a link to
  * their applications (the generic query page, members-only filtered) and a one-time registration
  * token for dynamic client registration (RFC 7591), shown in the same dialog as `showSecret`.
@@ -51,6 +53,9 @@ import {
             @if (s.decidedAt) { <small class="text-muted d-block">{{ 'dev.decidedAt' | idp: (s.decidedAt | sparkDateTime:'viewer':'medium') }}</small> }
             @if (s.note) {
               <p class="mt-2 mb-0 spark-developer-note"><span class="text-muted">{{ 'dev.note' | idp }}</span> {{ s.note }}</p>
+            }
+            @if (s.status === 'Requested') {
+              <p class="mt-2 mb-0"><a class="spark-developer-my-requests" [routerLink]="myRequestsLink">{{ 'dev.myRequests' | idp }}</a></p>
             }
 
             @if (canRequest()) {
@@ -98,6 +103,8 @@ export class SparkDevelopersComponent {
   private readonly secrets = inject(SparkSecretDialogService);
   protected readonly colors = Color;
   protected readonly applicationsLink = identityProviderQueryLink(SPARK_IDENTITY_PROVIDER_QUERIES.applications);
+  /** The user's own approval requests (the Approvals library): where a pending request can be followed or withdrawn. */
+  protected readonly myRequestsLink = identityProviderQueryLink(SPARK_IDENTITY_PROVIDER_QUERIES.myApprovalRequests);
 
   readonly loading = signal(true);
   readonly busy = signal(false);

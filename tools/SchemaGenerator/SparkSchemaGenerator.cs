@@ -185,6 +185,8 @@ public static class SparkSchemaGenerator
                     obj["properties"] = properties;
                 }
                 properties["$schema"] = SchemaProperty();
+                if (type == typeof(EntityTypeFile))
+                    properties["$extends"] = ExtendsProperty();
                 obj["patternProperties"] ??= new JsonObject { [CommentPattern] = new JsonObject() };
             }
         }
@@ -239,6 +241,14 @@ public static class SparkSchemaGenerator
     {
         ["type"] = "string",
         ["description"] = "The JSON schema this file is validated against; editors read it for completion and hover help.",
+    };
+
+    /// <summary>The model file's <c>$extends</c> directive (D28): the anchor of a delta on a library type.</summary>
+    private static JsonObject ExtendsProperty() => new()
+    {
+        ["type"] = "string",
+        ["pattern"] = "^[^:]+:[^:]+$",
+        ["description"] = "Makes this file a delta on a type a library ships: \"alias:DeclaredName\", the library's alias and the name it declares the type under (e.g. \"authorization:SparkUser\"). The file then states only what differs, never an id. Without it, a file naming a library type is refused (F7).",
     };
 
     /// <summary>The model elements whose <c>id</c> a delta on a library type leaves out.</summary>

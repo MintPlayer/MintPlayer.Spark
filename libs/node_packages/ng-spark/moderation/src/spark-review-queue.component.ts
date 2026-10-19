@@ -167,7 +167,7 @@ export class SparkReviewQueueComponent implements OnInit {
 
   /**
    * Names each case's post: its title (the object's breadcrumb) and a link to it. A case carries only
-   * the target's id and type name; without this the queue listed "flag · Spam" with no way to tell
+   * the target's id and type id; without this the queue listed "flag · Spam" with no way to tell
    * which post it was about. A target the caller cannot open (purged, hidden) keeps just its id.
    */
   private async resolveTargets(cases: ModerationCaseSummary[]): Promise<void> {
@@ -180,7 +180,8 @@ export class SparkReviewQueueComponent implements OnInit {
       return;
     }
     await Promise.all(pending.map(async c => {
-      const type = types.find(t => t.name === c.targetType || t.id === c.targetType || t.alias === c.targetType);
+      // The type is stored by id (D28): a name changes with an application's rename, an id never does.
+      const type = types.find(t => t.id === c.targetType);
       const route = type ? type.alias || type.id : null;
       let title: string | null = null;
       if (route) {

@@ -3,7 +3,10 @@ import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SparkLanguageService, SparkService } from '@mintplayer/ng-spark/services';
-import { EntityType, PersistentObject, ShowedOn } from '@mintplayer/ng-spark/models';
+import {
+  EntityType, PersistentObject, ShowedOn,
+  comparableValue as modelsComparableValue, diffRevision as modelsDiffRevision,
+} from '@mintplayer/ng-spark/models';
 import { SPARK_DETAIL_PANELS } from '@mintplayer/ng-spark/panels';
 import { SparkHistoryService, SparkRevision } from './spark-history.service';
 import { SparkPoHistoryComponent } from './spark-po-history.component';
@@ -33,20 +36,11 @@ const revisions: SparkRevision[] = [
   { changeVector: 'A:1', isDeleteRevision: true },
 ];
 
-describe('revision diff', () => {
-  it('reports only shown attributes whose content differs', () => {
-    const changes = diffRevision(entityType, po({ Title: 'old', Body: 'same', Hidden: 'x' }), po({ Title: 'new', Body: 'same', Hidden: 'y' }));
-    expect(changes.map(c => c.attribute.name)).toEqual(['Title']);
-  });
-
-  it('compares nested rows by their values, not their envelopes', () => {
-    const row = (value: string, etag: string) => ({ id: 'r', etag, breadcrumb: etag, attributes: [{ name: 'Qty', value }] });
-    const a = { name: 'Lines', objects: [row('1', 'e1')] } as any;
-    const b = { name: 'Lines', objects: [row('1', 'e2')] } as any;
-    const c = { name: 'Lines', objects: [row('2', 'e1')] } as any;
-    expect(comparableValue(a)).toBe(comparableValue(b));
-    expect(comparableValue(a)).not.toBe(comparableValue(c));
-    expect(comparableValue(undefined)).not.toBe(comparableValue({ name: 'x', value: null } as any));
+// The diff itself moved to models (revision-diff.spec.ts there); History only re-exports it.
+describe('revision diff re-export', () => {
+  it('is the models implementation', () => {
+    expect(diffRevision).toBe(modelsDiffRevision);
+    expect(comparableValue).toBe(modelsComparableValue);
   });
 });
 

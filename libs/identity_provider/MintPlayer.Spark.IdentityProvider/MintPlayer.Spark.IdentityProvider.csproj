@@ -40,6 +40,8 @@
 		<ProjectReference Include="..\..\authorization\MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj" />
 		<!-- Ships M_202610090900_OidcDataModel (PRD I1); the app's generated AddSparkDiscovered() registers it. -->
 		<ProjectReference Include="..\..\migrations\MintPlayer.Spark.Migrations\MintPlayer.Spark.Migrations.csproj" />
+		<!-- Developer requests, cross-owner scope requests and go-live reviews are approval requests (commerce D26). -->
+		<ProjectReference Include="..\..\approvals\MintPlayer.Spark.Approvals\MintPlayer.Spark.Approvals.csproj" />
 		<!-- Runs AttributeDescriptionsGenerator here, where the /// summaries live (#348). Analyzer ProjectReferences are not transitive. -->
 		<ProjectReference Include="..\..\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
 		<!-- Keys the [ValueObject] types declared here. Analyzer ProjectReferences are not transitive. -->

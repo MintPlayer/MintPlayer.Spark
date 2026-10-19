@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "modelHash": "9509219f6e8595afe3ac5b5ac509d39a2a4681bd2a125455faf296dcccf8e91c",
   "contextRoots": "9099816a4937704d31a0f5356772deaed6e16029fadfd929187179bfb8f7d560",
   "modelFiles": "2babe6f796db98de94454a53165b25a8c7382dcb031815e8b1315d777cd580d3",
@@ -48,5 +48,17 @@
       "authorization": "fb0d34fa66e732b157e4e222fb9c357e4219cf6d85177473103874e8c1090427",
       "spark": "5974b38c8164cafbfb22c012c52fb46dd27264181d772b9f004de1829d1838e6"
     }
+  },
+  "names": {
+    "0d3faefa-624c-5135-bca7-652aa9053e0e": "SparkUser (authorization:SparkUser)",
+    "39342297-cb55-4adb-b132-3c5e9b9fddcf": "Answer",
+    "40b97e47-51cc-4b9e-bb72-f288dbdaea7b": "Question",
+    "63e045da-399a-4b6e-88e6-e6a85d690891": "QuestionTranslationsCurrent",
+    "6c1d2e8a-5f47-4b3e-9a16-d84e0b7c3f52": "DeleteReason",
+    "bc7a3a73-5852-5111-974d-ea0c7ab290e0": "PasskeyRow (authorization:PasskeyRow)",
+    "cd8a0767-2a18-5c73-a608-14cf9efe99ac": "Passkeys (authorization:Passkeys)",
+    "d363f757-1d6a-46d1-a1a9-2ed1c4acbcb4": "QuestionTranslation",
+    "da8a90fd-91ae-593a-8b48-0ad102082412": "PasskeyRename (authorization:PasskeyRename)",
+    "dd6ae74a-5a3b-4090-908c-254a56617f80": "QuestionTranslationsContribution"
   }
 }

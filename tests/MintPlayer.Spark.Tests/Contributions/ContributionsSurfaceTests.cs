@@ -494,7 +494,7 @@ public class ContributionsSurfaceTests : SparkTestDriver
         var options = ContributionDescriptor.AttributionRendererOptions(CoSongLyricsContributionMetadata.Instance);
 
         options["contributionsQuery"].Should().Be("cosonglyricscontributions");
-        options["targetType"].Should().Be("CoSong");
+        options["targetType"].Should().Be(typeof(CoSong).FullName);
         options["property"].Should().Be("Lyrics");
         ((string[])options["slots"]).Should().Equal("Language", "Script");
         ((string[])options["attribution"]).Should().Equal("ContributorName", "UpdatedAt", "ContributionCount");

@@ -768,7 +768,7 @@ public class ExecuteCustomActionTests
         public Task<IReadOnlyDictionary<string, object>> LoadEntitiesAsync(Type entityType, IReadOnlyCollection<string> ids)
             => Task.FromResult<IReadOnlyDictionary<string, object>>(new Dictionary<string, object>());
 
-        public object? ResolveActions(Type? clrType, string entityName) => null;
+        public object? ResolveActions(Type? clrType, EntityTypeDefinition definition) => null;
     }
 
     private static DefaultHttpContext NewContext(

@@ -29,7 +29,7 @@ public abstract class ContributionDescriptor
     /// <summary>
     /// The <c>rendererOptions</c> written with <see cref="AttributionRenderingHint"/> on each attribution
     /// attribute of the element (contributions M5b; the client contract is in the library README):
-    /// <c>contributionsQuery</c> (the generated query's alias), <c>targetType</c> (the target's model
+    /// <c>contributionsQuery</c> (the generated query's alias), <c>targetType</c> (the target's CLR type, resolved like a model
     /// name, the query's <c>parentType</c>), <c>property</c>, <c>slots</c> (the slot attribute names, in
     /// id order — the history link's column filters) and <c>attribution</c> (the attribution attribute
     /// names the row carries).
@@ -40,12 +40,20 @@ public abstract class ContributionDescriptor
         return new Dictionary<string, object>(StringComparer.Ordinal)
         {
             ["contributionsQuery"] = global::MintPlayer.Spark.Abstractions.SparkQueryAliases.Derive(descriptor.ContributionsQueryName),
-            ["targetType"] = descriptor.TargetType.Name,
+            ["targetType"] = TypeReference(descriptor),
             ["property"] = descriptor.PropertyName,
             ["slots"] = descriptor.SlotNames.ToArray(),
             ["attribution"] = descriptor.AttributionAttributeNames.ToArray(),
         };
     }
+
+    /// <summary>
+    /// How the options name the target's persistent-object type: its CLR type's full name, which the server's
+    /// <c>ResolveEntityType</c> and the client resolve like an id, alias or name (D28). The model name is not known
+    /// when the options are seeded, and it is not the CLR class's name once the application renames the type.
+    /// </summary>
+    private static string TypeReference(ContributionDescriptor descriptor)
+        => descriptor.TargetType.FullName ?? descriptor.TargetType.Name;
 
     /// <summary>
     /// The rendering hint seeded on the contribution type's string value attributes (<c>Text</c>):
@@ -61,7 +69,7 @@ public abstract class ContributionDescriptor
     /// The <c>rendererOptions</c> of <see cref="LineDiffRenderingHint"/> on <paramref name="valueName"/>
     /// (contributions M5b client): compare against the <b>target's</b> row of the same slot, whose value is
     /// the current version, so a reader of the history needs no right on the current type.
-    /// <c>compareType</c> (the target's model name), <c>compareIdPattern</c>/<c>compareIdReplacement</c>
+    /// <c>compareType</c> (the target's CLR type, resolved like a model name), <c>compareIdPattern</c>/<c>compareIdReplacement</c>
     /// (a regular expression and replacement deriving the target id from the contribution id),
     /// <c>compareAttribute</c> (the property), and for a collection
     /// <c>compareRowKeyPattern</c>/<c>compareRowKeyReplacement</c> (deriving the row key, the slot tuple)
@@ -78,7 +86,7 @@ public abstract class ContributionDescriptor
         var pattern = "^(.+?)/" + System.Text.RegularExpressions.Regex.Escape(descriptor.PropertyName) + "Contributions/" + slots + "User/.+$";
         var options = new Dictionary<string, object>(StringComparer.Ordinal)
         {
-            ["compareType"] = descriptor.TargetType.Name,
+            ["compareType"] = TypeReference(descriptor),
             ["compareIdPattern"] = pattern,
             ["compareIdReplacement"] = "$1",
             ["compareAttribute"] = descriptor.PropertyName,

@@ -60,7 +60,8 @@ ships model, translations.`
   (SPARK036 for actions, SPARK_TRANS_005 for translations) and a warning at startup. The later one
   wins. Your file decides by stating the value.
 - **Strict JSON in every layer.** No comments, no trailing commas and no duplicate keys.
-  `_`-prefixed keys (`"_comment"`) and `$schema` are annotations, ignored by the engine.
+  `_`-prefixed keys (`"_comment"`) and `$schema` are annotations, ignored by the engine. A model
+  file's `$extends` is a directive (below), never data.
 - **Library layers are compiled in**, so they change only with a rebuild. The application's files
   reload on save (below).
 
@@ -69,7 +70,7 @@ ships model, translations.`
 | Kind | Keyed by | Rules of its own |
 |---|---|---|
 | `actions.json` | action name, ignoring case | an action's properties are replaced whole, object-valued ones too; `"Edit": null` removes an action. See [custom actions](guide-custom-actions.md#layers-the-libraries-actionsjson-and-yours-467-d7) |
-| `Model/*.json` | `persistentObject.name`; `attributes`, `tabs`, `groups` and the file's root `queries` by `name` | **an application file naming a library type is a delta**; an `id` can never be changed by a later layer; the sub-query list `persistentObject.queries` is replaced whole |
+| `Model/*.json` | a library type by `alias:DeclaredName` (named by its effective `persistentObject.name`); `attributes`, `tabs`, `groups` and the file's root `queries` by `name` | **an application file is a delta on a library type only with `"$extends": "alias:DeclaredName"`**; one that names a library type without it is refused; an `id` can never be changed by a later layer; the sub-query list `persistentObject.queries` is replaced whole |
 | `translations.json` | dotted key, then language (ordinal) | each layer is flattened first, so `"a.b"` and `{ "a": { "b": … } }` meet; `"ns": null` removes a whole namespace; a language cannot be removed; your `""` means "not translated yet" and is ignored. See [translated strings](guide-translated-strings.md) |
 | `security.json` | each right's `key` | guard rails, tokens, bindings and the opt-out, [below](#rights) |
 | `programUnits.json` | groups and their units by `id`, ignoring case | `{ "id": "…", "$remove": true }` removes a group or unit |
@@ -81,11 +82,13 @@ Not layered: `modelHashes.json` and `securityPosture.txt` (gate outputs) and `oi
 
 ### Model deltas
 
-An application that wants a library type shown differently writes a file naming that type and
-states only what differs. QnA's whole `SparkUser.json`:
+An application that wants a library type shown differently writes a file that **says so** with
+`$extends` (the library's alias and the name it declares the type under), names the type, and states
+only what differs. QnA's `SparkUser.json`:
 
 ```json
 {
+  "$extends": "authorization:SparkUser",
   "persistentObject": {
     "name": "SparkUser",
     "attributes": [ { "name": "UserName", "showedOn": "PersistentObject" } ]
@@ -93,15 +96,66 @@ states only what differs. QnA's whole `SparkUser.json`:
 }
 ```
 
+- **A name match alone is never a delta (F7).** A file that names a library type without `$extends`,
+  or maps another `clrType` to it, is refused. Joining by name used to make an application's own
+  `Order` a delta on a library's `Order`: the library's id and rights then covered the application's
+  documents, while the library's row policies, which follow the CLR type, did not.
+- **Orphaned and stale deltas are refused (F9).** `$extends` naming a type no referenced library ships,
+  a `name` that is not the type's current name, and an application file without an `id` that extends
+  nothing all stop startup and `--spark-verify-model`; the delta's restrictions are never silently lost.
 - **Never copy a library type's file.** A copy is a delta that restates everything: it freezes the
   library's current values into your application, and the next library update no longer reaches you.
-- **Never state an `id`.** Library ids are derived (below). The composer refuses a changed one.
-- `--spark-synchronize-model` writes only the delta of a library type, never an id the library states
-  and never a removal, and no file at all when nothing differs. It seeds no description of a library
-  type into your `translations.json`.
+- **A delta never states an `id`.** Library ids are derived (below). The composer refuses a changed one.
+  Your *own* type keeps its own id: never remove it to make a collision go away; rename instead (below).
+- `--spark-synchronize-model` finds a library type by its **CLR type**, never by name, and writes only
+  its delta, anchored with `$extends`, never an id the library states and never a removal, and no file
+  at all when nothing differs. It anchors a delta written before `$extends` existed (id-less, naming the
+  library's own class), and refuses an application class that would take a library type's name. It
+  seeds no description of a library type into your `translations.json`.
 - `model.schema.json` does not require `id`, so a delta validates.
 - Remove an inherited attribute with `{ "name": "X", "$remove": true }`. The synchronizer never writes
   one: removal is always your decision (#253).
+
+### Renaming a type: `PersistentObjectName` (D28)
+
+A library type's name is the target of its rights, the prefix of its translations and the join from
+its queries, so two libraries (or a library and your application) shipping one natural name (`Order`,
+`Product`) cannot share an application. The application renames one, once:
+
+```csharp
+// A library type with a CLR class (refactor-safe):
+[assembly: PersistentObjectName<Commerce.Order>("WebshopOrder")]
+// A library type without one, by alias and declared name:
+[assembly: PersistentObjectName("authorization", "Passkeys", "MyPasskeys")]
+// One of your own CLR types, instead of its class name:
+[assembly: PersistentObjectName<MyApp.Order>("SalesOrder")]
+```
+
+- **Applied once, where the layers load** (`SparkLayerCatalog` at run time, the generators at build
+  time, the same code): the library's model name and its queries' `entityType`, the target of every
+  right it ships (`QueryRead/Order` → `QueryRead/WebshopOrder`, so its grants never silently cover a
+  new type of yours that takes the old name), and its `model.Order.*` translation keys. A library
+  stacked above it is rewritten too. The old name is then free.
+- **The id never changes**: it is derived from `alias:DeclaredName`. Your delta becomes
+  `{ "$extends": "commerce:Order", "persistentObject": { "name": "WebshopOrder", … } }`.
+- A virtual (CLR-less) library type keeps binding `{DeclaredName}Actions` inside its own library, so a
+  rename changes nothing there. Typed actions are found by `IPersistentObjectActions<T>`, never by
+  class name.
+- **Refused** (SPARK061 at build time, startup at run time): an unknown target, a type renamed twice, a
+  name that is not an identifier (it is spliced into `Verb/Name/Attr`, `model.Name.label` and generated
+  constants), a name another type has (ignoring case), and a rename stated in a library.
+- **Changing the string later** is a rename like any other: `--spark-synchronize-model` moves the files
+  your application owns and keeps the id. It moves a stale delta to the new name, moves your own type's
+  file, rewrites the queries' `entityType`, re-keys your `model.Old.*` translations, and re-targets your
+  `security.json` rights `*/Old` and `*/Old/*`, **but only while no type has the old name any more**.
+  When another type now has it, a right on the old name would silently cover that type, so nothing is
+  rewritten: the rights are listed to re-target by hand and the command fails. `modelHashes.json` reports
+  the rename as one (`type <id> was 'Order', is now 'WebshopOrder'`), and the posture's type column
+  shows a right that now covers another type even when its resource string is unchanged.
+- The analyzer reports collisions at build time: SPARK057 (two libraries, one name), SPARK058 (your
+  class would take a library type's name), SPARK059/060 (warnings: a model file without `$extends`, an
+  orphaned or stale delta), SPARK062 (two entity classes share a simple name, and so a RavenDB
+  collection). See [diagnostics](diagnostics.md).
 
 ### Rights
 
@@ -151,12 +205,14 @@ that ships rights (`SparkTestSecurity.LibraryRightsOff()`), so a fixture states 
 
 ## The gates name the layer that moved
 
-**`modelHashes.json`** (version 2) hashes the composed model and records, beside the hashes,
-`libraries` (alias to assembly) and `layers`: for each model file, `actions.json` and
-`programUnits.json` a library states, the structural hash of what each layer alone states. A drift
-message says which layer moved:
+**`modelHashes.json`** (version 3) hashes the composed model and records, beside the hashes,
+`libraries` (alias to assembly), `layers` (for each model file, `actions.json` and
+`programUnits.json` a library states, the structural hash of what each layer alone states, as the
+library shipped it, before any rename) and `names` (every type's name by id). A drift message says
+which layer moved, and names a rename first:
 
 ```
+type 0d3faefa-… was 'SparkUser (authorization:SparkUser)', is now 'Member (authorization:SparkUser)' (renamed: …)
 file SparkUser.json: expected … actual … — layer library 'authorization' (MintPlayer.Spark.Authorization) changed
 file SparkUser.json: shipped by library 'authorization' (MintPlayer.Spark.Authorization) but not in modelHashes.json
 layers of Model/X.json: the composed structure is unchanged, but the layers stating it moved: …
@@ -170,7 +226,9 @@ version, so a version bump alone changes nothing. A version 1 file says it preda
 **`securityPosture.txt`** is a committed text table of every effective right:
 `## Reachable without signing in (expanded)`, `## Granted to @anonymous`, `## Rights`,
 `## Inert: libraries switched off` and `## Layers: libraries that ship rights`, one row
-`group | effect | resource | key | layer` each. `--spark-verify-security` prints the changed lines
+`group | effect | resource | key | layer | type` each. The type column is the identity of the type the
+resource targets (`authorization:SparkUser` for a library type, the id for your own, `-` for a query or
+reserved target), so a right whose name comes to mean another type is a diff (D28). `--spark-verify-security` prints the changed lines
 (`-`/`+`) and `Changed by layer: <alias> (<assembly>)`, exits 3 on any drift, and adds a
 `::warning::` annotation when an anonymous section moved. Adding a library that ships rights, or a
 library update that changes them, is a diff in that file in the same pull request.
@@ -298,7 +356,8 @@ Both come from the model files, never from class names, so a virtual type withou
 `Home`) has constants, a library type has them without a copy in the application, and a type the
 model drops stops compiling at every place that named it. A library compilation gets neither: only an
 application composes the model. Attribute names have no generated constants; use
-`nameof(Entity.Property)`.
+`nameof(Entity.Property)`. A rename (`PersistentObjectName`) changes the name constant and keeps the
+id, so code still using the old name stops compiling, which is the point.
 
 ---
 

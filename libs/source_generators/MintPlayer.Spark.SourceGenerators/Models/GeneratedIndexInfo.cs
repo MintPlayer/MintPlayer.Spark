@@ -86,8 +86,9 @@ public partial class GeneratedIndexInfo
     public List<InvalidSearchInfo> BreadcrumbRejections { get; set; } = new();
 
     /// <summary>
-    /// Whether an indexed property carries <c>[Fuzzy]</c> (commerce X18): the generated index then sets
-    /// <c>SearchEngineType = SearchEngineType.Lucene</c>, since Corax refuses fuzzy queries.
+    /// Whether an indexed property is searchable (<c>[Search]</c>) or carries <c>[Fuzzy]</c> (commerce X18): the
+    /// generated index then sets <c>SearchEngineType = SearchEngineType.Lucene</c>, since Spark's search is
+    /// typo-tolerant on searchable fields and Corax refuses fuzzy queries.
     /// </summary>
     public bool UsesLucene { get; set; }
 

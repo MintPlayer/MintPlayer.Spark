@@ -51,8 +51,13 @@ public class Site : IOrganizationOwned, ISparkShareable { … }
 ```
 
 `ShareLink` makes a new token (replacing the old one) and shows the link once, in the secret dialog:
-`{origin}/shared/{type}/{token}?id={id}`. The origin is `Spark:Share:PublicBaseUrl`, else `Spark:Auth:PublicBaseUrl`,
-else the request's own (the link is shown only to its creator). Code can do the same through `ISparkShareLinks`
+`{origin}/shared/{typeId}/{token}?id={id}`. The origin is `Spark:Share:PublicBaseUrl`, else `Spark:Auth:PublicBaseUrl`,
+else the request's own (the link is shown only to its creator). The type travels as its **model id** (D28): an
+application rename (`[assembly: PersistentObjectName]`) changes a type's name and derived alias, never its id, and a
+recipient keeps the link as long as it is not revoked. Links made earlier carry the CLR class's name and still read.
+`Share<T>` finds the persistent-object type by `clrType`, so it may be named otherwise than `T`; the rights it reads
+under (`Read/{Type}`) use the model's name. Wherever `ISparkShareLinks` takes a type, it accepts the model id, alias
+or name, or the class's simple name (`nameof(Site)`); a gate receives the model name. Code can do the same through `ISparkShareLinks`
 (`CreateAsync`, `RevokeAsync`, `LinkFor`). `IsValidAsync(type, id, token)` makes the share page's own check (declared
 type, switch, gates, fixed-time compare) for an app's own anonymous surface on a link, such as SeoTester's SVG badge
 (`/seotester/badge.svg?site=…&token=…`): it answers yes only for the object's current token while the link may be read.

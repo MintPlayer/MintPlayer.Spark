@@ -82,9 +82,62 @@ public class LibraryModelCompositionTests
     {
         var result = RunApp(
             AuthorizationLibrary(SparkUser()),
-            ("App_Data/Model/SparkUser.json", """{ "persistentObject": { "name": "SparkUser", "attributes": [ { "name": "UserName", "showedOn": "PersistentObject" } ] } }"""));
+            ("App_Data/Model/SparkUser.json", """{ "$extends": "authorization:SparkUser", "persistentObject": { "name": "SparkUser", "attributes": [ { "name": "UserName", "showedOn": "PersistentObject" } ] } }"""));
 
         Generated(result, "PersistentObjectIds.g.cs").Should().Contain($"public const string SparkUser = \"{SparkUserId}\";");
+    }
+
+    // ── D28: renames flow into the constants (X20 item 1) ───────────────────────────────────────
+
+    [Fact]
+    public void A_renamed_library_type_gets_its_new_name_and_keeps_its_id()
+    {
+        var result = GeneratorHarness.Run(
+            NamesGenerator,
+            [KnowsSparkSource, """[assembly: MintPlayer.Spark.Abstractions.PersistentObjectName("authorization", "SparkUser", "Member")]"""],
+            referenceTypes: [typeof(SparkLayerAttribute), typeof(PersistentObjectNameAttribute)],
+            rootNamespace: "TestApp",
+            outputKind: OutputKind.ConsoleApplication,
+            additionalReferences: [AuthorizationLibrary(SparkUser())]);
+
+        var ids = Generated(result, "PersistentObjectIds.g.cs");
+        ids.Should().Contain($"public const string Member = \"{SparkUserId}\";", "an id is derived from alias:DeclaredName, never from the effective name");
+        ids.Should().NotContain("SparkUser =");
+        Generated(result, "PersistentObjectNames.g.cs").Should().Contain("public const string Member = \"Member\";")
+            .And.NotContain("\"SparkUser\"");
+    }
+
+    [Fact]
+    public void A_generic_rename_names_the_library_type_by_its_clr_class()
+    {
+        var library = AuthorizationLibrary("""
+            { "persistentObject": { "id": "0d3faefa-624c-5135-bca7-652aa9053e0e", "name": "SparkUser", "clrType": "Lib.Identity.SparkUser" } }
+            """);
+        var userClass = GeneratorHarness.CompileToMetadataReference("Lib.Identity", ["namespace Lib.Identity { public class SparkUser { } }"]);
+
+        var result = GeneratorHarness.Run(
+            NamesGenerator,
+            [KnowsSparkSource, """[assembly: MintPlayer.Spark.Abstractions.PersistentObjectName<Lib.Identity.SparkUser>("Member")]"""],
+            referenceTypes: [typeof(SparkLayerAttribute), typeof(PersistentObjectNameAttribute)],
+            rootNamespace: "TestApp",
+            outputKind: OutputKind.ConsoleApplication,
+            additionalReferences: [library, userClass]);
+
+        Generated(result, "PersistentObjectIds.g.cs").Should().Contain($"public const string Member = \"{SparkUserId}\";");
+    }
+
+    [Fact]
+    public void A_library_compilation_applies_no_renames()
+    {
+        var result = GeneratorHarness.Run(
+            NamesGenerator,
+            [KnowsSparkSource, """[assembly: MintPlayer.Spark.Abstractions.PersistentObjectName("authorization", "SparkUser", "Member")]"""],
+            referenceTypes: [typeof(SparkLayerAttribute), typeof(PersistentObjectNameAttribute)],
+            rootNamespace: "TestLib",
+            additionalReferences: [AuthorizationLibrary(SparkUser())]);
+
+        result.GeneratedSources.Where(s => s.HintName == "PersistentObjectNames.g.cs")
+            .Should().OnlyContain(s => !s.Source.Contains("Member"));
     }
 
     [Fact]

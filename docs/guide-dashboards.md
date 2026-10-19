@@ -128,7 +128,8 @@ The package's own **DatabaseStatistics** dashboard uses the first, with the hist
 `.History("Name", …)` keeps a time series of each named value (D14, D29):
 
 - **Sampled every `Spark:Dashboards:SampleInterval` (60 s)** into one **single-valued** RavenDB time series per value,
-  named after it, on the document `SparkDashboards/{dashboard}`. Only a number, or a meter's `value`, is written; a
+  named after it, on the document `SparkDashboards/{dashboard}` (the declared name, which an application rename of the
+  type never changes, D28). Only a number, or a meter's `value`, is written; a
   table or text is skipped with a warning. Six values per entry silently disabled RavenDB's rollup and retention in
   S11, so there is no multi-valued form.
 - **One host per slot.** A slot is `floor(utcNow / interval)`; a host appends only after a compare-exchange

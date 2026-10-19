@@ -11,6 +11,7 @@ import { SparkService, SparkLanguageService } from '@mintplayer/ng-spark/service
 import { NotificationKind, SparkNotificationService } from '@mintplayer/ng-spark/client-operations';
 import { SparkPoFormComponent } from '@mintplayer/ng-spark/po-form';
 import { TranslateKeyPipe, ResolveTranslationPipe } from '@mintplayer/ng-spark/pipes';
+import { SPARK_SAVE_SUBMITTED_HANDLERS, sparkSaveSubmittedRoute } from '@mintplayer/ng-spark/panels';
 import {
   EntityType,
   PersistentObject,
@@ -44,6 +45,7 @@ export class SparkPoCreateComponent {
   private readonly sparkService = inject(SparkService);
   private readonly language = inject(SparkLanguageService);
   private readonly notifications = inject(SparkNotificationService);
+  private readonly submittedHandlers = inject(SPARK_SAVE_SUBMITTED_HANDLERS, { optional: true });
 
   saved = output<PersistentObject>();
   /** The create was diverted for approval (commerce X7): nothing was created yet. */
@@ -237,10 +239,14 @@ export class SparkPoCreateComponent {
       if (!result) return;
       // Diverted for approval (202, commerce X7): accepted, not created yet — a notice, never an error. There is
       // no object to open, so the page goes back to where the New was started from.
+      // A registered handler (SPARK_SAVE_SUBMITTED_HANDLERS) may name where to go instead: Approvals opens the
+      // approval request, since the object itself does not exist yet (opening /po/:type/:id would 404).
       if (isSaveSubmitted(result)) {
         this.notifications.show(this.language.t('common.submittedForApproval'), NotificationKind.Info, 8000);
         this.submitted.emit(result);
-        window.history.back();
+        const route = sparkSaveSubmittedRoute(this.submittedHandlers, { operation: 'create', type: this.type(), submitted: result });
+        if (route) this.router.navigate(route);
+        else window.history.back();
         return;
       }
       this.saved.emit(result);

@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<OutputType>Library</OutputType>
+
+		<!-- NuGet Package Metadata -->
+		<PackageId>MintPlayer.Spark.Approvals.Abstractions</PackageId>
+		<Version>11.0.0-preview.1</Version>
+		<Authors>MintPlayer</Authors>
+		<Company>MintPlayer</Company>
+		<Description>Contracts for MintPlayer.Spark approvals: approval kinds, their deciders and handlers, ISparkApprovals and the notifier port. Reference this from a library that raises or decides approval requests, or that delivers their notices; the host references MintPlayer.Spark.Approvals.</Description>
+		<PackageTags>approvals;workflow;decisions;proposals;ravendb;spark</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="..\MintPlayer.Spark.Approvals\README.md" Pack="true" PackagePath="\" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- The decision runs in a RavenDB session the handler writes to. -->
+		<PackageReference Include="RavenDB.Client" Version="7.2.6" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- [SparkDiscoverable] (deciders, handlers, notifiers) and SparkReservedActions (ApprovalRights). No App_Data
+		     layer here: a package that only delivers notices (Notifications) references these contracts without
+		     bringing the ApprovalRequest type into its apps. -->
+		<ProjectReference Include="..\..\spark\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
+	</ItemGroup>
+
+</Project>

@@ -132,6 +132,61 @@ public class AuditStampingTests
         note.ModifiedAt.Should().Be(Earlier);
     }
 
+    private static SaveContext Applied(object entity, PersistentObjectOperation operation, string proposer, object? before = null)
+        => new()
+        {
+            EntityType = entity.GetType(),
+            Operation = operation,
+            PersistentObject = new PersistentObject { Name = entity.GetType().Name, ObjectTypeId = Guid.NewGuid() },
+            Entity = entity,
+            Before = before,
+            Session = new object(),
+            IsReplacedSaveApply = true,
+            OnBehalfOf = proposer,
+        };
+
+    /// <summary>
+    /// Commerce D9: an approved creation is applied by the approver on the proposer's behalf. The proposer wrote it,
+    /// so they are its author and last modifier; the approver is recorded as the approver.
+    /// </summary>
+    [Fact]
+    public async Task An_applied_proposal_names_the_proposer_as_author_and_the_applier_as_approver()
+    {
+        var note = new StApprovedNote();
+
+        await Interceptor("users/approver").OnBeforeSaveAsync(Applied(note, PersistentObjectOperation.New, "users/proposer"));
+
+        note.CreatedBy.Should().Be("users/proposer");
+        note.ModifiedBy.Should().Be("users/proposer");
+        note.ApprovedBy.Should().Be("users/approver");
+        note.ApprovedAt.Should().Be(Now);
+    }
+
+    [Fact]
+    public async Task An_applied_edit_keeps_the_stored_author_and_names_the_proposer_as_modifier()
+    {
+        var note = new StApprovedNote();
+        var stored = new StApprovedNote { CreatedBy = "users/alice", CreatedAt = Earlier };
+
+        await Interceptor("users/approver").OnBeforeSaveAsync(Applied(note, PersistentObjectOperation.Save, "users/proposer", stored));
+
+        note.CreatedBy.Should().Be("users/alice");
+        note.ModifiedBy.Should().Be("users/proposer");
+        note.ApprovedBy.Should().Be("users/approver");
+    }
+
+    [Fact]
+    public async Task A_direct_save_clears_the_approver_its_change_was_approved_by_nobody()
+    {
+        var note = new StApprovedNote { ApprovedBy = "users/approver", ApprovedAt = Earlier };
+
+        await Interceptor("users/bob").OnBeforeSaveAsync(Save(note, PersistentObjectOperation.Save, new StApprovedNote()));
+
+        note.ModifiedBy.Should().Be("users/bob");
+        note.ApprovedBy.Should().BeNull();
+        note.ApprovedAt.HasValue.Should().BeFalse();
+    }
+
     [Fact]
     public void The_startup_check_refuses_an_explicit_implementation()
     {
@@ -178,6 +233,16 @@ public class StNote : IAuditable
     public DateTimeOffset? CreatedAt { get; set; }
     public string? ModifiedBy { get; set; }
     public DateTimeOffset? ModifiedAt { get; set; }
+}
+
+public class StApprovedNote : IAuditable, IAuditApproved
+{
+    public string? CreatedBy { get; set; }
+    public DateTimeOffset? CreatedAt { get; set; }
+    public string? ModifiedBy { get; set; }
+    public DateTimeOffset? ModifiedAt { get; set; }
+    public string? ApprovedBy { get; set; }
+    public DateTimeOffset? ApprovedAt { get; set; }
 }
 
 public class StExplicit : IAuditCreated

@@ -1,0 +1,110 @@
+{
+  "$schema": "../../../../schemas/translations.schema.json",
+  "approvals": {
+    "confirm": { "en": "Confirm", "fr": "Confirmer", "nl": "Bevestigen" },
+    "rejectTitle": { "en": "Why is this rejected?", "fr": "Pourquoi est-ce refusé ?", "nl": "Waarom wordt dit geweigerd?" },
+    "revokeTitle": { "en": "Why is this approval revoked?", "fr": "Pourquoi cette approbation est-elle révoquée ?", "nl": "Waarom wordt deze goedkeuring ingetrokken?" },
+    "reasonRequired": { "en": "A reason is required.", "fr": "Une raison est requise.", "nl": "Een reden is verplicht." },
+    "approvedNotice": { "en": "{0} approved.", "fr": "{0} approuvé(s).", "nl": "{0} goedgekeurd." },
+    "rejectedNotice": { "en": "{0} rejected.", "fr": "{0} refusé(s).", "nl": "{0} geweigerd." },
+    "withdrawnNotice": { "en": "{0} withdrawn.", "fr": "{0} retiré(s).", "nl": "{0} ingetrokken." },
+    "revokedNotice": { "en": "{0} revoked.", "fr": "{0} révoqué(s).", "nl": "{0} herroepen." },
+    "notPending": { "en": "{0} already decided.", "fr": "{0} déjà décidé(s).", "nl": "{0} al beslist." },
+    "stale": {
+      "en": "{0} could not be applied: the item changed since it was proposed.",
+      "fr": "{0} n'a pas pu être appliqué : l'élément a changé depuis la proposition.",
+      "nl": "{0} kon niet worden toegepast: het item is gewijzigd sinds het voorstel."
+    },
+    "unwritable": {
+      "en": "{0} sets fields you may not change; ask someone who may.",
+      "fr": "{0} modifie des champs que vous ne pouvez pas changer ; demandez à quelqu'un qui le peut.",
+      "nl": "{0} wijzigt velden die u niet mag wijzigen; vraag het iemand die dat wel mag."
+    },
+    "invalid": { "en": "{0} is no longer valid.", "fr": "{0} n'est plus valide.", "nl": "{0} is niet meer geldig." },
+    "cancelled": { "en": "{0} was cancelled by a rule.", "fr": "{0} a été annulé par une règle.", "nl": "{0} werd geannuleerd door een regel." },
+    "gone": { "en": "{0} could not be found.", "fr": "{0} introuvable(s).", "nl": "{0} niet gevonden." },
+    "proposalNew": { "en": "New {0}", "fr": "Nouveau {0}", "nl": "Nieuw(e) {0}" },
+    "proposalEdit": { "en": "Change to {0} {1}", "fr": "Modification de {0} {1}", "nl": "Wijziging van {0} {1}" },
+    "noticeSubmitted": { "en": "Approval requested: {0}", "fr": "Approbation demandée : {0}", "nl": "Goedkeuring gevraagd: {0}" },
+    "noticeApproved": { "en": "Approved: {0}", "fr": "Approuvé : {0}", "nl": "Goedgekeurd: {0}" },
+    "noticeRejected": { "en": "Rejected: {0}", "fr": "Refusé : {0}", "nl": "Geweigerd: {0}" },
+    "noticeRevoked": { "en": "Approval revoked: {0}", "fr": "Approbation révoquée : {0}", "nl": "Goedkeuring herroepen: {0}" },
+    "noticeExpired": { "en": "Expired without a decision: {0}", "fr": "Expiré sans décision : {0}", "nl": "Verlopen zonder beslissing: {0}" },
+    "noticeStale": { "en": "Could not be applied: {0}", "fr": "N'a pas pu être appliqué : {0}", "nl": "Kon niet worden toegepast: {0}" },
+    "noticeWithdrawn": { "en": "Withdrawn: {0}", "fr": "Retiré : {0}", "nl": "Ingetrokken: {0}" },
+    "panelTitle": { "en": "Decision", "fr": "Décision", "nl": "Beslissing" },
+    "proposedCreate": { "en": "Proposed new item", "fr": "Nouvel élément proposé", "nl": "Voorgesteld nieuw item" },
+    "proposedChange": { "en": "Proposed change", "fr": "Modification proposée", "nl": "Voorgestelde wijziging" },
+    "noChanges": { "en": "The proposal changes nothing you can see.", "fr": "La proposition ne change rien de visible pour vous.", "nl": "Het voorstel wijzigt niets wat u kunt zien." },
+    "field": { "en": "Field", "fr": "Champ", "nl": "Veld" },
+    "before": { "en": "Now", "fr": "Actuel", "nl": "Nu" },
+    "after": { "en": "Proposed", "fr": "Proposé", "nl": "Voorgesteld" },
+    "staleWarning": {
+      "en": "The item changed since this was proposed, so it can no longer be approved. Reject it, or ask for a new proposal.",
+      "fr": "L'élément a changé depuis cette proposition, qui ne peut donc plus être approuvée. Refusez-la ou demandez une nouvelle proposition.",
+      "nl": "Het item is gewijzigd sinds dit voorstel, dat dus niet meer kan worden goedgekeurd. Weiger het, of vraag een nieuw voorstel."
+    },
+    "approveButton": { "en": "Approve", "fr": "Approuver", "nl": "Goedkeuren" },
+    "rejectButton": { "en": "Reject", "fr": "Refuser", "nl": "Weigeren" },
+    "withdrawButton": { "en": "Withdraw", "fr": "Retirer", "nl": "Intrekken" },
+    "rejectReason": { "en": "Why is this rejected? The requester sees this reason.", "fr": "Pourquoi est-ce refusé ? Le demandeur voit cette raison.", "nl": "Waarom wordt dit geweigerd? De aanvrager ziet deze reden." },
+    "unavailable": { "en": "This request is not available to you.", "fr": "Cette demande ne vous est pas accessible.", "nl": "Deze aanvraag is niet beschikbaar voor u." },
+    "outcomeNotPending": { "en": "This request was already decided.", "fr": "Cette demande a déjà été décidée.", "nl": "Over deze aanvraag is al beslist." },
+    "outcomeStale": { "en": "The item changed since it was proposed; the proposal can no longer be applied.", "fr": "L'élément a changé depuis la proposition ; elle ne peut plus être appliquée.", "nl": "Het item is gewijzigd sinds het voorstel; het kan niet meer worden toegepast." },
+    "outcomeUnwritable": { "en": "This proposal sets fields you may not change; ask someone who may.", "fr": "Cette proposition modifie des champs que vous ne pouvez pas changer ; demandez à quelqu'un qui le peut.", "nl": "Dit voorstel wijzigt velden die u niet mag wijzigen; vraag het iemand die dat wel mag." },
+    "outcomeCancelled": { "en": "A rule cancelled the change.", "fr": "Une règle a annulé la modification.", "nl": "Een regel heeft de wijziging geannuleerd." },
+    "outcomeInvalid": { "en": "This request is no longer valid.", "fr": "Cette demande n'est plus valide.", "nl": "Deze aanvraag is niet meer geldig." },
+    "pendingBadge": { "en": "Approval pending", "fr": "Approbation en attente", "nl": "Goedkeuring in behandeling" },
+    "inbox": { "en": "Approvals", "fr": "Approbations", "nl": "Goedkeuringen" },
+    "statusPending": { "en": "Pending", "fr": "En attente", "nl": "In behandeling" },
+    "statusApproved": { "en": "Approved", "fr": "Approuvée", "nl": "Goedgekeurd" },
+    "statusRejected": { "en": "Rejected", "fr": "Refusée", "nl": "Geweigerd" },
+    "statusWithdrawn": { "en": "Withdrawn", "fr": "Retirée", "nl": "Ingetrokken" },
+    "statusExpired": { "en": "Expired", "fr": "Expirée", "nl": "Verlopen" },
+    "statusStale": { "en": "Outdated", "fr": "Obsolète", "nl": "Verouderd" },
+    "statusRevoked": { "en": "Revoked", "fr": "Révoquée", "nl": "Herroepen" }
+  },
+  "actions": {
+    "ApprovalApprove": { "label": { "en": "Approve", "fr": "Approuver", "nl": "Goedkeuren" } },
+    "ApprovalReject": { "label": { "en": "Reject", "fr": "Refuser", "nl": "Weigeren" } },
+    "ApprovalWithdraw": {
+      "label": { "en": "Withdraw", "fr": "Retirer", "nl": "Intrekken" },
+      "confirmation": { "en": "Withdraw this request?", "fr": "Retirer cette demande ?", "nl": "Deze aanvraag intrekken?" }
+    },
+    "ApprovalRevoke": { "label": { "en": "Revoke approval", "fr": "Révoquer l'approbation", "nl": "Goedkeuring herroepen" } }
+  },
+  "queries": {
+    "Approvals": { "label": { "en": "Approvals", "fr": "Approbations", "nl": "Goedkeuringen" } },
+    "PendingApprovals": { "label": { "en": "Awaiting my decision", "fr": "En attente de ma décision", "nl": "Wacht op mijn beslissing" } },
+    "MyApprovalRequests": { "label": { "en": "My requests", "fr": "Mes demandes", "nl": "Mijn aanvragen" } }
+  },
+  "model": {
+    "ApprovalRequest": {
+      "label": { "en": "Approval request", "fr": "Demande d'approbation", "nl": "Goedkeuringsaanvraag" },
+      "attributes": {
+        "Title": { "label": { "en": "Request", "fr": "Demande", "nl": "Aanvraag" } },
+        "Status": { "label": { "en": "Status", "fr": "Statut", "nl": "Status" } },
+        "SubjectType": { "label": { "en": "About", "fr": "Concerne", "nl": "Over" } },
+        "Summary": { "label": { "en": "Details", "fr": "Détails", "nl": "Details" } },
+        "Url": { "label": { "en": "Link", "fr": "Lien", "nl": "Link" } },
+        "RequestedAtUtc": { "label": { "en": "Requested", "fr": "Demandée", "nl": "Aangevraagd" } },
+        "DecideByUtc": { "label": { "en": "Decide by", "fr": "Décider avant", "nl": "Beslissen voor" } },
+        "DecidedAtUtc": { "label": { "en": "Decided", "fr": "Décidée", "nl": "Beslist" } },
+        "Reason": { "label": { "en": "Reason", "fr": "Raison", "nl": "Reden" } }
+      }
+    },
+    "ApprovalReason": {
+      "label": { "en": "Reason", "fr": "Raison", "nl": "Reden" },
+      "attributes": {
+        "Reason": {
+          "label": { "en": "Reason", "fr": "Raison", "nl": "Reden" },
+          "description": {
+            "en": "The requester sees this reason.",
+            "fr": "Le demandeur voit cette raison.",
+            "nl": "De aanvrager ziet deze reden."
+          }
+        }
+      }
+    }
+  }
+}

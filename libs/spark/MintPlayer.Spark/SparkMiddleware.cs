@@ -506,8 +506,13 @@ public static class SparkExtensions
 
         VerifySparkReservedActions();
 
-        // Commerce F10: an ambiguous or contract-less {Entity}Actions class fails here, not at the first request.
-        ActionsResolver.VerifyActionsClasses(app.ApplicationServices.GetRequiredService<IModelLoader>().GetEntityTypes());
+        // Commerce F10, D28: an ambiguous actions class (two unrelated IPersistentObjectActions<T> for one entity
+        // that no registration settles, or a virtual type's {Name}Actions declared twice) fails here, not at the
+        // first request.
+        var isService = app.ApplicationServices.GetService<IServiceProviderIsService>();
+        ActionsResolver.VerifyActionsClasses(
+            app.ApplicationServices.GetRequiredService<IModelLoader>().GetEntityTypes(),
+            entity => isService?.IsService(typeof(Actions.IPersistentObjectActions<>).MakeGenericType(entity)) == true);
 
         // MCP PRD D6: a type's "agentPermissions" must not grant Write without Read. Checked whether or not
         // the MCP package is installed, so a model is valid before the package that reads it arrives.
@@ -848,7 +853,7 @@ public static class SparkExtensions
                 && rowSecurity.GetRowRuleKinds(clr).DecidesVisibility(),
             type => ResolveClrType(type) is { } clr
                 ? TryResolve(() => actionsResolver.ResolveForType(clr))
-                : TryResolve(() => actionsResolver.ResolveByEntityName(type.Name)));
+                : TryResolve(() => actionsResolver.ResolveVirtual(type)));
 
         if (problems.Count > 0)
             throw new Services.SparkSecurityConfigurationException(
@@ -974,8 +979,9 @@ public static class SparkExtensions
                 continue;
             }
 
-            // Outside the catch on purpose: a fuzzy index pinned to another engine is a declaration error, and
-            // swallowing it here would deploy an index whose every fuzzy query throws.
+            // Every index with a searchable field (or an explicit [Fuzzy] opt-in) goes on Lucene: Spark's search is
+            // fuzzy by default (X18). Outside the catch on purpose: an explicit [Fuzzy] index pinned to another engine
+            // is a declaration error, and swallowing it here would deploy an index whose every fuzzy query throws.
             SparkSearchEngine.Apply(tasks, fuzzyIndexTypes);
 
             try

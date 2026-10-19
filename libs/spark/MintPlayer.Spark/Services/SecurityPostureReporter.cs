@@ -31,8 +31,8 @@ internal partial class SecurityPostureReporter : ISecurityPostureReporter
 
         // The whole effective table (composition D4), not only the anonymous surface: the review point
         // for a library's rights is this table changing in the pull request that adds or updates it.
-        var table = config.Rights.Select(r => Row(config, r, inert: false, anonymousGroupId)).OrderBy(r => r, RowOrder.Instance).ToList();
-        var inert = config.InertRights.Select(r => Row(config, r, inert: true, null)).OrderBy(r => r, RowOrder.Instance).ToList();
+        var table = config.Rights.Select(r => Row(config, r, inert: false, anonymousGroupId, TypeIdentityOf)).OrderBy(r => r, RowOrder.Instance).ToList();
+        var inert = config.InertRights.Select(r => Row(config, r, inert: true, null, TypeIdentityOf)).OrderBy(r => r, RowOrder.Instance).ToList();
 
         // Each library that ships rights, with the hash of what it states (composition D7): an update
         // that changes them changes its line, and the drift message names it. The loader composes over
@@ -85,8 +85,23 @@ internal partial class SecurityPostureReporter : ISecurityPostureReporter
             layers);
     }
 
+    /// <summary>
+    /// The identity of the persistent-object type a right's resource targets (D28): <c>alias:DeclaredName</c> for a
+    /// library type, the id for an application type, <c>-</c> for a target that is no type (a query, a reserved
+    /// target). The resource string names the type by name, which a rename moves: with this column, a right whose
+    /// name now means another type shows as a diff even when its resource string does not change.
+    /// </summary>
+    private string TypeIdentityOf(string resource)
+    {
+        var segments = resource.Split('/');
+        if (segments.Length < 2 || modelLoader.GetEntityTypeByName(segments[1]) is not { } type) return "-";
+        return type.LibraryAlias is { } alias && type.DeclaredName is { } declared
+            ? $"{alias}:{declared}"
+            : type.Id.ToString("D");
+    }
+
     /// <summary>One right as a table row. An inert right never resolved, so it shows its token.</summary>
-    private static SecurityPostureRow Row(SecurityConfiguration config, Right right, bool inert, Guid? anonymousGroupId)
+    private static SecurityPostureRow Row(SecurityConfiguration config, Right right, bool inert, Guid? anonymousGroupId, Func<string, string> typeOf)
     {
         var token = right.Group is { } g && !Guid.TryParse(g, out _) ? g : null;
         string group;
@@ -100,7 +115,7 @@ internal partial class SecurityPostureReporter : ISecurityPostureReporter
         }
 
         var effect = (right.IsDenied ? "deny" : "grant") + (right.IsImportant ? " important" : "");
-        return new SecurityPostureRow(group, effect, right.Resource, right.Key, right.Layer ?? "app", !inert && right.GroupId == anonymousGroupId);
+        return new SecurityPostureRow(group, effect, right.Resource, right.Key, right.Layer ?? "app", !inert && right.GroupId == anonymousGroupId, typeOf(right.Resource));
     }
 
     /// <summary>Group, resource, effect, key, layer: a reordering of security.json never reads as drift.</summary>

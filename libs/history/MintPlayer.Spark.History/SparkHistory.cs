@@ -146,6 +146,7 @@ internal sealed partial class SparkHistory : ISparkHistory
     private static readonly HashSet<string> AuditFields = new(StringComparer.Ordinal)
     {
         nameof(IAuditCreated.CreatedBy), nameof(IAuditCreated.CreatedAt), nameof(IAuditModified.ModifiedBy), nameof(IAuditModified.ModifiedAt),
+        nameof(IAuditApproved.ApprovedBy), nameof(IAuditApproved.ApprovedAt),
     };
 
     /// <summary>

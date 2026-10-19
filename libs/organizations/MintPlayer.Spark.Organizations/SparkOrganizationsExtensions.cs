@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using MintPlayer.Spark.Abstractions.Builder;
 using MintPlayer.Spark.Abstractions.Interceptors;
+using MintPlayer.Spark.Approvals;
 using MintPlayer.Spark.Authorization.Identity;
 using MintPlayer.Spark.Extensions;
 using MintPlayer.Spark.Organizations.Endpoints;
@@ -31,8 +32,9 @@ public static class SparkOrganizationsExtensions
     /// <summary>
     /// Registers the organization model and its rules: the row policy for <see cref="IOrganizationOwned"/>
     /// types and <see cref="Models.Organization"/>, <see cref="ISparkOrganizations"/>, the personal
-    /// organization on sign-in, the account deletion and export hooks, the invitation mails and
-    /// <c>POST /spark/organizations/accept</c>. Needs <c>AddAuthentication&lt;TUser&gt;()</c>, in either order.
+    /// organization on sign-in, the account deletion and export hooks, the invitation mails,
+    /// <c>POST /spark/organizations/accept</c> and Approvals with the join-request kind
+    /// (<see cref="OrganizationJoinApproval"/>). Needs <c>AddAuthentication&lt;TUser&gt;()</c>, in either order.
     /// </summary>
     public static ISparkBuilder AddOrganizations(this ISparkBuilder builder, Action<SparkOrganizationsOptions>? configure = null)
     {
@@ -55,6 +57,13 @@ public static class SparkOrganizationsExtensions
         services.TryAddScoped<SparkOrganizations>();
         services.TryAddScoped<ISparkOrganizations>(sp => sp.GetRequiredService<SparkOrganizations>());
         services.TryAddScoped<OrganizationMail>();
+
+        // D26: a join request is a decision request (kind organizations.join), decided in-app by the organization's
+        // Owners and Admins. Approvals keeps the request, tells the deciders and the requester, and closes it with
+        // the requester's account.
+        builder.AddApprovals();
+        services.TryAddScoped<IApprovalDeciders<OrganizationJoinApproval>, OrganizationJoinDeciders>();
+        services.TryAddScoped<IApprovalHandler<OrganizationJoinApproval>, OrganizationJoinHandler>();
         // The embedded SparkOrganizations/* templates (MailManager reads them; an app's own file of the same name wins).
         MintPlayer.Spark.MailManager.SparkMailTemplateServiceCollectionExtensions.AddSparkMailTemplates(
             services, typeof(OrganizationMailTemplates).Assembly, "SparkMail/");

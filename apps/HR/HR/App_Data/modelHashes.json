@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "modelHash": "71ffec6dcb496309c8c85a775aee3bc879d1a48a63929f78f774f8e44b843d3f",
   "contextRoots": "24c37fe33e4d7c7f9e131cb5248f3acb7dedbb20985be4bbbee1e5841cba5fc3",
   "modelFiles": "ce6ff5eb762b511adbbd16dd729e05e2c7ca2dc64e567de7166fa2b2f5a82f37",
@@ -49,5 +49,18 @@
       "authorization": "fb0d34fa66e732b157e4e222fb9c357e4219cf6d85177473103874e8c1090427",
       "spark": "5974b38c8164cafbfb22c012c52fb46dd27264181d772b9f004de1829d1838e6"
     }
+  },
+  "names": {
+    "0d3faefa-624c-5135-bca7-652aa9053e0e": "SparkUser (authorization:SparkUser)",
+    "1efb3727-d67a-43f2-a457-5b8ede02bc2f": "Profession",
+    "2a34a658-1768-4c82-8724-884b2f99f4e0": "Person",
+    "5a4c2d4c-ce91-41bd-af40-15e4a0ff3a2b": "AddressDescription",
+    "5a990917-387b-4f1e-8434-befc64da1958": "Company",
+    "8317d070-b79e-40c6-825e-1e245142daf9": "Car",
+    "a1c8e3f0-9d2b-4f6a-b5e7-3c4d8f2a1b0e": "Address",
+    "bc7a3a73-5852-5111-974d-ea0c7ab290e0": "PasskeyRow (authorization:PasskeyRow)",
+    "cd8a0767-2a18-5c73-a608-14cf9efe99ac": "Passkeys (authorization:Passkeys)",
+    "da8a90fd-91ae-593a-8b48-0ad102082412": "PasskeyRename (authorization:PasskeyRename)",
+    "dcbc8be1-049f-40ba-acb5-09af16af2d57": "CarreerJob"
   }
 }

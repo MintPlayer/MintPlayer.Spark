@@ -32,6 +32,18 @@ public sealed class SparkComposedType
     /// <summary>The assembly of the library that declares the type; <see langword="null"/> when the application owns it.</summary>
     public string? Library => entry.Library?.Layer;
 
+    /// <summary>The alias of the library that declares the type; <see langword="null"/> when the application owns it.</summary>
+    public string? LibraryAlias => entry.Library is { } library ? library.Alias ?? library.Layer : null;
+
+    /// <summary>The name the declaring library gives the type, before the application's renames (D28); <see cref="Name"/> for an application type.</summary>
+    public string? DeclaredName => entry.DeclaredName;
+
+    /// <summary>
+    /// The type's identity across renames (D28): <c>alias:DeclaredName</c> for a library type (the target of
+    /// <c>$extends</c> and the seed of its id), <see langword="null"/> for an application type (its id is its identity).
+    /// </summary>
+    public string? Identity => entry.Identity;
+
     /// <summary>The type and where it came from, for messages: <c>SparkUser.json</c> or <c>SparkUser (MintPlayer.Spark.Authorization)</c>.</summary>
     public string Source => Library is { } library
         ? $"{Name} ({library}{(AppFile is null ? string.Empty : $" + {Path.GetFileName(AppFile)}")})"
@@ -81,8 +93,12 @@ public static class SparkModelFiles
             throw new InvalidOperationException(
                 "The model cannot be composed:" + Environment.NewLine
                 + string.Join(Environment.NewLine, problems.Select(p => "  - " + p.Message)) + Environment.NewLine
-                + $"An application file in {SparkAppData.Relative("Model")} that names a library type is a delta on it: "
-                + "state only what differs, and never an id (a library's ids are fixed, composition D5).");
+                // F8: this used to advise "never state an id" for every problem, which turned an application's
+                // own type that collided with a library type into a delta on it (F7).
+                + $"An application file in {SparkAppData.Relative("Model")} changes a library type only when it says so, with "
+                + "\"$extends\": \"alias:DeclaredName\"; it then states only what differs (a library's ids are fixed, D5). "
+                + "A type of the application's own keeps its own id and needs a name no library type has: rename it, or rename "
+                + "the library's type with [assembly: PersistentObjectName(...)] (D28). Never remove an own type's id to make it fit.");
         }
         return types;
     }
@@ -91,7 +107,15 @@ public static class SparkModelFiles
     internal static (IReadOnlyList<SparkComposedType> Types, IReadOnlyList<SparkLayerError> Problems) ComposeLenient(IEnumerable<SparkLibrary> libraries, string? modelDirectory)
     {
         var libraryInputs = SparkLayerCatalog.Of(libraries, SparkLayerKinds.Model)
-            .Select(x => new SparkModelInput(x.Library.AssemblyName, System.IO.Path.GetFileName(x.Layer.Path), x.Layer.Json, isLibrary: true, x.Library.DependsOn))
+            .Select(x => new SparkModelInput(
+                x.Library.AssemblyName,
+                System.IO.Path.GetFileName(x.Layer.Path),
+                x.Layer.Json,
+                isLibrary: true,
+                x.Library.DependsOn,
+                x.Library.Alias,
+                DeclaredNameOf(x.Layer.Shipped),
+                x.Layer.Shipped))
             .ToList();
 
         var appInputs = new List<SparkModelInput>();
@@ -126,4 +150,17 @@ public static class SparkModelFiles
     /// <summary>The library model types alone, as a writer compares the application's against them (D6).</summary>
     internal static IReadOnlyList<SparkComposedType> LibraryTypes(IEnumerable<SparkLibrary> libraries)
         => ComposeLenient(libraries, modelDirectory: null).Types;
+
+    /// <summary><c>persistentObject.name</c> as a library file ships it, or <see langword="null"/> when it cannot be read (the composer reports that).</summary>
+    private static string? DeclaredNameOf(string json)
+    {
+        try
+        {
+            return SparkJson.Parse(json) is SparkJsonObject root ? SparkModelLayers.NameOf(root) : null;
+        }
+        catch (SparkJsonException)
+        {
+            return null;
+        }
+    }
 }
