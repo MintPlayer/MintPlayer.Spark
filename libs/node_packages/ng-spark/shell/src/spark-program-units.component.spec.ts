@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SparkProgramUnitsComponent } from './spark-program-units.component';
 import { SPARK_AUTH_STATE } from '@mintplayer/ng-spark';
 import { SparkLanguageService, SparkService } from '@mintplayer/ng-spark/services';
-import { ProgramUnitsConfiguration } from '@mintplayer/ng-spark/models';
+import { ProgramUnitsConfiguration, translated } from '@mintplayer/ng-spark/models';
 import { settle, StubComponent } from '../../src/test-utils';
 
 /**
@@ -18,16 +18,16 @@ import { settle, StubComponent } from '../../src/test-utils';
 const config: ProgramUnitsConfiguration = {
   programUnitGroups: [
     {
-      id: 'g2', name: { en: 'Second' }, order: 2,
+      id: 'g2', name: translated({ en: 'Second' }), order: 2,
       programUnits: [
-        { id: 'u-url', name: { en: 'Status' }, type: 'url', url: 'https://status.example.com', order: 1 },
+        { id: 'u-url', name: translated({ en: 'Status' }), type: 'url', url: 'https://status.example.com', order: 1 },
       ],
     },
     {
-      id: 'g1', name: { en: 'First' }, order: 1,
+      id: 'g1', name: translated({ en: 'First' }), order: 1,
       programUnits: [
-        { id: 'u-b', name: { en: 'B' }, type: 'query', queryId: 'q-b', alias: 'bees', order: 2 },
-        { id: 'u-a', name: { en: 'A' }, type: 'persistentObject', persistentObjectId: 'po-a', alias: 'start-page', objectId: 'start', order: 1 },
+        { id: 'u-b', name: translated({ en: 'B' }), type: 'query', queryId: 'q-b', alias: 'bees', order: 2 },
+        { id: 'u-a', name: translated({ en: 'A' }), type: 'persistentObject', persistentObjectId: 'po-a', alias: 'start-page', objectId: 'start', order: 1 },
       ],
     },
   ],
@@ -40,15 +40,15 @@ const config: ProgramUnitsConfiguration = {
 const urlConfig = (): ProgramUnitsConfiguration => ({
   programUnitGroups: [
     {
-      id: 'g', name: { en: 'Links' }, order: 1,
+      id: 'g', name: translated({ en: 'Links' }), order: 1,
       programUnits: [
-        { id: 'u-setup', name: { en: 'Setup' }, type: 'url', url: '/merge-queue/setup?provider=github#permissions', order: 1 },
-        { id: 'u-history', name: { en: 'History' }, type: 'url', url: `${location.origin}/merge-queue/history/`, order: 2 },
-        { id: 'u-status', name: { en: 'Status' }, type: 'url', url: 'https://status.example.com', order: 3 },
-        { id: 'u-script', name: { en: 'Script' }, type: 'url', url: 'javascript:alert(1)', order: 4 },
-        { id: 'u-tab', name: { en: 'Tab' }, type: 'url', url: 'java\tscript:alert(1)', order: 5 },
-        { id: 'u-data', name: { en: 'Data' }, type: 'url', url: 'data:text/html,<b>x</b>', order: 6 },
-        { id: 'u-cars', name: { en: 'Cars' }, type: 'query', queryId: 'q-cars', alias: 'cars', order: 7 },
+        { id: 'u-setup', name: translated({ en: 'Setup' }), type: 'url', url: '/merge-queue/setup?provider=github#permissions', order: 1 },
+        { id: 'u-history', name: translated({ en: 'History' }), type: 'url', url: `${location.origin}/merge-queue/history/`, order: 2 },
+        { id: 'u-status', name: translated({ en: 'Status' }), type: 'url', url: 'https://status.example.com', order: 3 },
+        { id: 'u-script', name: translated({ en: 'Script' }), type: 'url', url: 'javascript:alert(1)', order: 4 },
+        { id: 'u-tab', name: translated({ en: 'Tab' }), type: 'url', url: 'java\tscript:alert(1)', order: 5 },
+        { id: 'u-data', name: translated({ en: 'Data' }), type: 'url', url: 'data:text/html,<b>x</b>', order: 6 },
+        { id: 'u-cars', name: translated({ en: 'Cars' }), type: 'query', queryId: 'q-cars', alias: 'cars', order: 7 },
       ],
     },
   ],
@@ -112,8 +112,8 @@ describe('SparkProgramUnitsComponent', () => {
   it('marks a url unit to another site that has its own icon with the external mark after its name, hidden from a screen reader', async () => {
     getProgramUnits.mockResolvedValueOnce({
       programUnitGroups: [{
-        id: 'g', name: { en: 'Links' }, order: 1,
-        programUnits: [{ id: 'u-docs', name: { en: 'Docs' }, icon: 'bi-book', type: 'url', url: 'https://docs.example.com', order: 1 }],
+        id: 'g', name: translated({ en: 'Links' }), order: 1,
+        programUnits: [{ id: 'u-docs', name: translated({ en: 'Docs' }), icon: 'bi-book', type: 'url', url: 'https://docs.example.com', order: 1 }],
       }],
     });
     const el = await render();

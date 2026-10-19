@@ -246,4 +246,26 @@
 		</PackageReference>
 		<AdditionalFiles Include="$(MSBuildThisFileDirectory)BannedSymbols.Tests.txt" />
 	</ItemGroup>
+
+	<!--
+	  Time zones are handled in one place (commerce PRD K10, X16). Outside the core framework
+	  (MintPlayer.Spark, which owns IRequestTimeZoneResolver, SparkTimeZones, ISparkDateTimeFormatter and
+	  ISparkRecipientLocale), no project converts or looks up zones, or reads the machine's local clock:
+	  BannedSymbols.TimeZones.txt bans TimeZoneInfo.ConvertTime*/FindSystemTimeZoneById, DateTime.ToLocalTime,
+	  DateTime.Now and DateTimeOffset.Now, each with a message naming the built-in to use. An error, like the
+	  test projects' Assert ban, so a new call fails the build instead of starting a second implementation.
+
+	  Test projects are exempt: they set up zones to assert the built-ins' behaviour (and keep their own ban
+	  above). Only C# projects: the .esproj JavaScript projects import this file too.
+	-->
+	<ItemGroup Condition="'$(MSBuildProjectExtension)' == '.csproj' and '$(MSBuildProjectName)' != 'MintPlayer.Spark' and '$(MSBuildProjectName.EndsWith(`.Tests`))' != 'true'">
+		<PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="5.6.0">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+		<AdditionalFiles Include="$(MSBuildThisFileDirectory)BannedSymbols.TimeZones.txt" />
+	</ItemGroup>
+	<PropertyGroup Condition="'$(MSBuildProjectExtension)' == '.csproj' and '$(MSBuildProjectName)' != 'MintPlayer.Spark' and '$(MSBuildProjectName.EndsWith(`.Tests`))' != 'true'">
+		<WarningsAsErrors>$(WarningsAsErrors);RS0030</WarningsAsErrors>
+	</PropertyGroup>
 </Project>

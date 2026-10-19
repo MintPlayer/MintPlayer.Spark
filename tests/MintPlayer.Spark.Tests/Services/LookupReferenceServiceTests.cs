@@ -82,7 +82,7 @@ public class LookupReferenceServiceTests : SparkTestDriver
     private static LookupReferenceValueDto NewValue(string key, string en) => new()
     {
         Key = key,
-        Values = TranslatedString.Create(en),
+        Values = TranslatedString.Of("en", en),
         IsActive = true,
     };
 
@@ -96,7 +96,8 @@ public class LookupReferenceServiceTests : SparkTestDriver
             Values = values.Select(v => new
             {
                 v.Key,
-                Translations = new Dictionary<string, string> { ["en"] = v.En },
+                // The X17 shape: the label is a TranslatedString, stored as {"Entries":[…]}.
+                Values = TranslatedString.Of("en", v.En),
                 IsActive = true,
                 Extra = (Dictionary<string, object>?)null,
             }).ToList(),
@@ -316,7 +317,7 @@ public class LookupReferenceServiceTests : SparkTestDriver
         var update = new LookupReferenceValueDto
         {
             Key = "BMW",
-            Values = TranslatedString.Create("Bayerische Motoren Werke"),
+            Values = TranslatedString.Of("en", "Bayerische Motoren Werke"),
             IsActive = false,
         };
 
@@ -324,7 +325,7 @@ public class LookupReferenceServiceTests : SparkTestDriver
 
         var dto = await service.GetAsync("CarBrand");
         var bmw = dto!.Values.Single();
-        bmw.Values.GetDefaultValue().Should().Be("Bayerische Motoren Werke");
+        bmw.Values.GetValue(TranslatedString.DefaultLanguage).Should().Be("Bayerische Motoren Werke");
         bmw.IsActive.Should().BeFalse();
     }
 
@@ -338,7 +339,7 @@ public class LookupReferenceServiceTests : SparkTestDriver
         await service.UpdateValueAsync("CarBrand", "BMW", new LookupReferenceValueDto
         {
             Key = "BMW-AG",
-            Values = TranslatedString.Create("BMW AG"),
+            Values = TranslatedString.Of("en", "BMW AG"),
         });
 
         var dto = await service.GetAsync("CarBrand");
@@ -353,7 +354,7 @@ public class LookupReferenceServiceTests : SparkTestDriver
 
         var service = CreateService();
         var act = async () => await service.UpdateValueAsync("CarBrand", "BMW",
-            new LookupReferenceValueDto { Key = "Audi", Values = TranslatedString.Create("BMW") });
+            new LookupReferenceValueDto { Key = "Audi", Values = TranslatedString.Of("en", "BMW") });
 
         await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*Audi*already*");
     }

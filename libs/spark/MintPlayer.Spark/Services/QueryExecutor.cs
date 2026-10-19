@@ -1954,22 +1954,31 @@ internal sealed record DatabasePage(int TotalItems);
             }
 
             var isDescending = string.Equals(col.Direction, "desc", StringComparison.OrdinalIgnoreCase);
-            var methodName = !ordered
-                ? (isDescending ? "OrderByDescending" : "OrderBy")
-                : (isDescending ? "ThenByDescending" : "ThenBy");
-            ordered = true;
-
             var parameter = System.Linq.Expressions.Expression.Parameter(entityType, "x");
-            var propertyAccess = System.Linq.Expressions.Expression.Property(parameter, propertyInfo);
-            var lambda = System.Linq.Expressions.Expression.Lambda(propertyAccess, parameter);
 
-            var orderMethod = ReflectionCache.GetOrAdd<(string Op, string Method, Type Entity, Type Prop), MethodInfo>(
-                ("QueryExecutor.QueryableOrder", methodName, entityType, propertyInfo.PropertyType),
-                static k => typeof(Queryable).GetMethods()
-                    .First(m => m.Name == k.Method && m.GetParameters().Length == 2)
-                    .MakeGenericMethod(k.Entity, k.Prop));
+            // A Money column is an object RavenDB cannot order by: it sorts by currency, then amount
+            // (MoneyQueryFields, commerce X4). Every other column is one key, the property itself.
+            System.Linq.Expressions.Expression[] keys = MoneyQueryFields.IsMoney(propertyInfo)
+                ? MoneyQueryFields.SortKeys(parameter, propertyInfo, inMemory: queryable is not IRavenQueryInspector)
+                : [System.Linq.Expressions.Expression.Property(parameter, propertyInfo)];
 
-            queryable = orderMethod.Invoke(null, [queryable, lambda])!;
+            foreach (var key in keys)
+            {
+                var methodName = !ordered
+                    ? (isDescending ? "OrderByDescending" : "OrderBy")
+                    : (isDescending ? "ThenByDescending" : "ThenBy");
+                ordered = true;
+
+                var lambda = System.Linq.Expressions.Expression.Lambda(key, parameter);
+
+                var orderMethod = ReflectionCache.GetOrAdd<(string Op, string Method, Type Entity, Type Prop), MethodInfo>(
+                    ("QueryExecutor.QueryableOrder", methodName, entityType, key.Type),
+                    static k => typeof(Queryable).GetMethods()
+                        .First(m => m.Name == k.Method && m.GetParameters().Length == 2)
+                        .MakeGenericMethod(k.Entity, k.Prop));
+
+                queryable = orderMethod.Invoke(null, [queryable, lambda])!;
+            }
         }
         return queryable;
     }
@@ -2060,7 +2069,7 @@ internal sealed record DatabasePage(int TotalItems);
     /// because <c>search(id(), …)</c> was measured to match nothing — a dead clause.
     /// </para>
     /// <para>
-    /// A <c>TranslatedString</c> needs no special handling: it fans out to <c>{Prop}_{lang}</c> string fields
+    /// A <c>TranslatedString</c> needs no special handling: it fans out to <c>{Prop}_{lang}</c> string fields (<c>-</c> in a tag as <c>_</c>, see <see cref="IsOnSearchSurface"/>)
     /// on the projection, so every language is searched, with no dependency on the request's culture.
     /// </para>
     /// <para>
@@ -2161,9 +2170,17 @@ internal sealed record DatabasePage(int TotalItems);
         if (ColumnCapabilities.FindQuerySurfaceAttribute(surface, field) is not null)
             return true;
 
-        var underscore = field.LastIndexOf('_');
-        return underscore > 0
-            && ColumnCapabilities.FindQuerySurfaceAttribute(surface, field[..underscore]) is { DataType: "TranslatedString" };
+        // {Prop}_{tag with '-' as '_'} (IndexNaming.LanguageField): Description_nl, Description_zh_Hant.
+        // A tag never contains '_', but a property name may, so every '_' is tried as the separator:
+        // the prefix must be a TranslatedString attribute and the rest a well-formed tag once '_' is
+        // turned back into '-'. Splitting on the last '_' made zh_Hant resolve to "Description_zh".
+        for (var underscore = field.IndexOf('_'); underscore > 0; underscore = field.IndexOf('_', underscore + 1))
+        {
+            if (ColumnCapabilities.FindQuerySurfaceAttribute(surface, field[..underscore]) is { DataType: "TranslatedString" }
+                && LanguageTag.IsWellFormed(field[(underscore + 1)..].Replace('_', '-')))
+                return true;
+        }
+        return false;
     }
 
     /// <summary>Kept in lockstep with <c>IndexNaming.SearchCompanion</c>.</summary>
@@ -2340,12 +2357,18 @@ internal sealed record DatabasePage(int TotalItems);
             var parameter = Expression.Parameter(sortType, "x");
             var member = Expression.Property(parameter, property);
 
+            // A Money column compares currency and amount, never the stored object (commerce X4).
+            var inMemory = queryable is not IRavenQueryInspector;
+            Expression? AnyMatch(object?[] values) => MoneyQueryFields.IsMoney(property)
+                ? AnyMoneyEquals(parameter, property, values, inMemory)
+                : AnyEquals(member, values, property.PropertyType);
+
             Expression? predicate = null;
             var matchesNothing = false;
 
             if (filter.Includes is { Length: > 0 } includes)
             {
-                predicate = AnyEquals(member, includes, property.PropertyType);
+                predicate = AnyMatch(includes);
 
                 // Not one requested value is representable on this column, so no stored value can
                 // equal any of them. That is an empty result, NOT an absent filter — treating it as
@@ -2357,7 +2380,7 @@ internal sealed record DatabasePage(int TotalItems);
             {
                 // The mirror image: a value that cannot exist on this column excludes nothing, so an
                 // empty chain here means "exclude nothing" rather than "exclude everything".
-                if (AnyEquals(member, excludes, property.PropertyType) is { } any)
+                if (AnyMatch(excludes) is { } any)
                 {
                     var none = Expression.Not(any);
                     predicate = predicate is null ? none : Expression.AndAlso(predicate, none);
@@ -2444,6 +2467,27 @@ internal sealed record DatabasePage(int TotalItems);
                 continue;
 
             var equals = Expression.Equal(member, Expression.Constant(value, propertyType));
+            any = any is null ? equals : Expression.OrElse(any, equals);
+        }
+
+        return any;
+    }
+
+    /// <summary>
+    /// The <see cref="Money"/> form of <see cref="AnyEquals"/>: each value matches on currency AND amount
+    /// (<see cref="MoneyQueryFields.EqualsValue"/>). Same contract: a value that does not convert is
+    /// dropped, and <see langword="null"/> means "no row can match".
+    /// </summary>
+    private static Expression? AnyMoneyEquals(ParameterExpression row, PropertyInfo property, object?[] values, bool inMemory)
+    {
+        Expression? any = null;
+
+        foreach (var raw in values)
+        {
+            if (!TryConvertFilterValue(raw, property.PropertyType, out var value))
+                continue;
+
+            var equals = MoneyQueryFields.EqualsValue(row, property, value as Money, inMemory);
             any = any is null ? equals : Expression.OrElse(any, equals);
         }
 

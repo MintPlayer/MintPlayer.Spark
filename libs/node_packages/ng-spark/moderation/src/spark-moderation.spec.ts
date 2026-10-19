@@ -12,6 +12,7 @@ import { provideSparkModeration, sparkModerationRenderers, sparkModerationRoutes
 import { SparkReviewQueueComponent } from './spark-review-queue.component';
 import { SparkReputationBadgeComponent } from './spark-reputation-badge.component';
 import { SparkReviewQueueLinkComponent } from './spark-review-queue-link.component';
+import { translated } from '@mintplayer/ng-spark/models';
 
 function detailContext(overrides: Partial<SparkDetailContext> = {}): SparkDetailContext {
   return {
@@ -274,7 +275,7 @@ describe('moderation entry point (#460)', () => {
   });
 
   it('describes a validation refusal, a quota and a plain error', () => {
-    expect(describeModerationError({ error: { result: { errors: [{ errorMessage: { en: 'This post is locked.' } }] } } })).toBe('This post is locked.');
+    expect(describeModerationError({ error: { result: { errors: [{ errorMessage: translated({ en: 'This post is locked.' }) }] } } })).toBe('This post is locked.');
     expect(describeModerationError({ error: { result: { error: 'You have cast 30 votes today.', retryAfterSeconds: 60 } } })).toBe('You have cast 30 votes today.');
     expect(describeModerationError({ message: 'boom' })).toBe('boom');
   });

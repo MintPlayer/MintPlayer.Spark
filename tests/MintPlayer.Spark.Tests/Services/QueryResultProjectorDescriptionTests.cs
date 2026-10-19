@@ -1,5 +1,6 @@
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Services;
+using MintPlayer.Spark.Tests._Infrastructure;
 using System.Text.Json;
 
 namespace MintPlayer.Spark.Tests.Services;
@@ -27,7 +28,7 @@ public class QueryResultProjectorDescriptionTests
             {
                 Id = Guid.Parse("dddd4444-4444-4444-4444-dddd44444444"),
                 Name = "Title",
-                Label = TranslatedString.Create("Title"),
+                Label = TranslatedString.Of("en", "Title"),
                 Description = description,
                 ShowedOn = EShowedOn.Query | EShowedOn.PersistentObject,
             },
@@ -37,7 +38,7 @@ public class QueryResultProjectorDescriptionTests
     [Fact]
     public void Column_carries_the_attributes_description()
     {
-        var description = TranslatedString.Create("What the title is for.", nl: "Waarvoor de titel dient.");
+        var description = TranslatedString.Of(("en", "What the title is for."), ("nl", "Waarvoor de titel dient."));
 
         var column = QueryResultProjector.BuildColumns(Definition(description)).Single();
 
@@ -58,12 +59,12 @@ public class QueryResultProjectorDescriptionTests
     public void Column_description_serialises_as_a_translated_string()
     {
         var column = QueryResultProjector.BuildColumns(
-            Definition(TranslatedString.Create("Help", nl: "Hulp"))).Single();
+            Definition(TranslatedString.Of(("en", "Help"), ("nl", "Hulp")))).Single();
 
         using var json = JsonDocument.Parse(JsonSerializer.Serialize(column, WireOptions));
         var description = json.RootElement.GetProperty("description");
 
-        description.GetProperty("en").GetString().Should().Be("Help");
-        description.GetProperty("nl").GetString().Should().Be("Hulp");
+        description.Text("en").Should().Be("Help");
+        description.Text("nl").Should().Be("Hulp");
     }
 }

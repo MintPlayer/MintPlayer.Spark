@@ -1,0 +1,31 @@
+// The CDK drag placeholder is a clone of the dragged row (so it keeps the exact row height). Hide its
+// contents but keep it occupying space, so the drop gap is blank and the surrounding rows don't shift.
+// ::ng-deep because the cloned node is styled by CDK.
+:host ::ng-deep .cdk-drag-placeholder {
+  visibility: hidden;
+}
+
+// A single embedded object edited in place (X15): its fields sit in a bordered box under the label, so
+// they read as one value of the parent rather than as fields of the parent itself.
+.spark-inline-detail {
+  border: var(--bs-border-width, 1px) solid var(--bs-border-color, #dee2e6);
+  border-radius: var(--bs-border-radius, 0.375rem);
+
+  &.is-invalid {
+    border-color: var(--bs-form-invalid-border-color, #dc3545);
+  }
+}
+
+.spark-inline-detail-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 1rem 1rem;
+}
+
+.spark-inline-detail-empty {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.375rem 0.75rem;
+}

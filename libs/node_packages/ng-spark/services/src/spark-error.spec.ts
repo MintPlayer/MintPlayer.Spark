@@ -1,6 +1,7 @@
 import { HttpErrorResponse, HttpHeaders } from '@angular/common/http';
 import { describe, expect, it } from 'vitest';
 import { describeSparkError, formatSparkWait, sparkRetryAfterSeconds } from './spark-error';
+import { resolveTranslation, translated, type TranslatedString } from '@mintplayer/ng-spark/models';
 
 const dutch: Record<string, string> = {
   'spark.tryAgainIn': 'Probeer opnieuw over {0}.',
@@ -12,8 +13,8 @@ const dutch: Record<string, string> = {
   'spark.wait.day': '1 dag',
   'spark.wait.days': '{0} dagen',
 };
-const english = { t: (_key: string, fallback?: string) => fallback ?? _key, resolve: (ts?: Record<string, string>) => ts?.['en'] ?? '' };
-const nl = { t: (key: string, fallback?: string) => dutch[key] ?? fallback ?? key, resolve: (ts?: Record<string, string>) => ts?.['nl'] ?? '' };
+const english = { t: (_key: string, fallback?: string) => fallback ?? _key, resolve: (ts?: TranslatedString) => resolveTranslation(ts, 'en') };
+const nl = { t: (key: string, fallback?: string) => dutch[key] ?? fallback ?? key, resolve: (ts?: TranslatedString) => resolveTranslation(ts, 'nl', { defaultLanguage: null }) };
 
 function refusal(status: number, body: unknown, headers?: Record<string, string>): HttpErrorResponse {
   return new HttpErrorResponse({ status, error: body, headers: headers ? new HttpHeaders(headers) : undefined, url: '/spark/actions/execute' });
@@ -37,7 +38,7 @@ describe('describeSparkError', () => {
   });
 
   it('prefers the first validation message, translated, then a bare error, then the fallback', () => {
-    expect(describeSparkError(refusal(400, { result: { errors: [{ errorMessage: { en: 'Name is required', nl: 'Naam is verplicht' } }] } }), nl, 'x')).toBe('Naam is verplicht');
+    expect(describeSparkError(refusal(400, { result: { errors: [{ errorMessage: translated({ en: 'Name is required', nl: 'Naam is verplicht' }) }] } }), nl, 'x')).toBe('Naam is verplicht');
     expect(describeSparkError(refusal(404, { error: 'Not found' }), english, 'x')).toBe('Not found');
     expect(describeSparkError(refusal(500, null), english, 'Action failed')).toBe('Action failed');
     expect(describeSparkError(new Error('boom'), english, 'Action failed')).toBe('Action failed');

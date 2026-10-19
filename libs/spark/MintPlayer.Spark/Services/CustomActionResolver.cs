@@ -70,7 +70,7 @@ internal partial class CustomActionResolver : ICustomActionResolver
 
     private static Dictionary<string, Type> DiscoverActionTypes()
     {
-        var result = new Dictionary<string, Type>(StringComparer.OrdinalIgnoreCase);
+        var found = new List<Type>();
 
         foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
         {
@@ -84,12 +84,7 @@ internal partial class CustomActionResolver : ICustomActionResolver
                     if (!typeof(ICustomAction).IsAssignableFrom(type))
                         continue;
 
-                    // Derive action name: strip optional "Action" suffix
-                    var name = type.Name;
-                    if (name.EndsWith("Action", StringComparison.Ordinal))
-                        name = name[..^6];
-
-                    result.TryAdd(name, type);
+                    found.Add(type);
                 }
             }
             catch (ReflectionTypeLoadException)
@@ -97,6 +92,37 @@ internal partial class CustomActionResolver : ICustomActionResolver
                 // Skip assemblies that can't be loaded
             }
         }
+
+        return IndexByName(found);
+    }
+
+    /// <summary>The action name a class serves: its simple name without an optional <c>Action</c> suffix.</summary>
+    internal static string ActionNameOf(Type type)
+        => type.Name.EndsWith("Action", StringComparison.Ordinal) ? type.Name[..^6] : type.Name;
+
+    /// <summary>
+    /// Indexes custom action classes by action name, refusing two classes that serve the same name (commerce
+    /// F11). The first one loaded used to win silently, so which class ran — and whose rights and confirmation
+    /// it carried — depended on assembly load order. The startup reserved-verb check reads the index, so a
+    /// duplicate stops the app from starting and names both classes.
+    /// </summary>
+    internal static Dictionary<string, Type> IndexByName(IEnumerable<Type> actionTypes)
+    {
+        var result = new Dictionary<string, Type>(StringComparer.OrdinalIgnoreCase);
+        var duplicates = new List<string>();
+
+        foreach (var type in actionTypes)
+        {
+            var name = ActionNameOf(type);
+            if (!result.TryAdd(name, type) && result[name] != type)
+                duplicates.Add($"'{name}' is served by both '{result[name].FullName}' ({result[name].Assembly.GetName().Name}) " +
+                    $"and '{type.FullName}' ({type.Assembly.GetName().Name})");
+        }
+
+        if (duplicates.Count > 0)
+            throw new InvalidOperationException(
+                "Custom action names must be unique across every loaded assembly: " + string.Join("; ", duplicates) +
+                ". Rename all but one of each.");
 
         return result;
     }

@@ -177,13 +177,7 @@ internal sealed partial class HistoryInterceptor : IBeforeSave, IBeforeDelete
             : ValueAt(rest, value);
     }
 
-    private static TranslatedString Copy(TranslatedString value)
-    {
-        var copy = new TranslatedString();
-        foreach (var (language, text) in value.Translations)
-            copy.Translations[language] = text;
-        return copy;
-    }
+    private static TranslatedString Copy(TranslatedString value) => new() { Entries = [.. value.Entries] };
 
     private bool RevisionsEnabled(Type entityType)
         => modelLoader.GetEntityTypeByClrType(entityType.FullName ?? entityType.Name)?.Revisions?.Enabled == true;

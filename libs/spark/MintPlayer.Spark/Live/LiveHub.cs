@@ -17,7 +17,8 @@ internal readonly record struct LiveChange(string? DocumentId, string? Collectio
 /// <summary>
 /// The process-wide side of live updates (X4): which subscription watches which document or collection,
 /// the RavenDB Changes watches those need (ref-counted, one multiplexed connection), de-duplication of the
-/// two sources under <c>Both</c> (D33), and the per-user socket count (D36).
+/// two sources under <c>Both</c> (D33), the per-identity socket count (D36), and the topics' subscribers and
+/// retained values (commerce PRD X2).
 /// </summary>
 /// <remarks>
 /// A change only marks subscriptions dirty. Each one re-runs the HTTP read path under its own viewer's
@@ -41,16 +42,22 @@ internal sealed class LiveHub : ISparkLiveNotifier, IDisposable
     private readonly Dictionary<string, IDisposable> watches = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, long> seen = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, int> sockets = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, HashSet<LiveTopicSubscription>> byTopic = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, LiveRetainedTopic> retained = new(StringComparer.Ordinal);
+    private readonly ISparkLiveTopicPolicy[] policies;
     private IDatabaseChanges? changes;
     private IDisposable? actionsSource;
-    private long published, deduplicated;
+    private long published, deduplicated, topicSeq;
+    private int sweepPrivateAt = 4096;
 
-    public LiveHub(IDocumentStore store, IOptionsMonitor<SparkLiveOptions> options, ILogger<LiveHub> logger, TimeProvider? time = null)
+    public LiveHub(IDocumentStore store, IOptionsMonitor<SparkLiveOptions> options, ILogger<LiveHub> logger, TimeProvider? time = null, IEnumerable<ISparkLiveTopicPolicy>? policies = null)
     {
         this.store = store;
         this.options = options;
         this.logger = logger;
         this.time = time ?? TimeProvider.System;
+        // Longest prefix first: the most specific policy decides.
+        this.policies = [.. (policies ?? []).OrderByDescending(p => p.Prefix.Length)];
     }
 
     /// <summary>Changes dispatched, and changes dropped as the other source's echo (for the spike numbers).</summary>
@@ -159,6 +166,12 @@ internal sealed class LiveHub : ISparkLiveNotifier, IDisposable
         lock (gate)
         {
             all.Add(subscription);
+            if (subscription is LiveTopicSubscription topic)
+            {
+                if (!byTopic.TryGetValue(topic.HubKey, out var set))
+                    byTopic[topic.HubKey] = set = [];
+                set.Add(topic);
+            }
             foreach (var id in subscription.Documents)
                 Add(byDocument, id, subscription, "doc:", confirmations);
             foreach (var collection in subscription.Collections)
@@ -183,6 +196,9 @@ internal sealed class LiveHub : ISparkLiveNotifier, IDisposable
         {
             if (!all.Remove(subscription))
                 return;
+            if (subscription is LiveTopicSubscription topic
+                && byTopic.TryGetValue(topic.HubKey, out var set) && set.Remove(topic) && set.Count == 0)
+                byTopic.Remove(topic.HubKey);
             foreach (var id in subscription.Documents)
                 Remove(byDocument, id, subscription, "doc:");
             foreach (var collection in subscription.Collections)
@@ -261,11 +277,83 @@ internal sealed class LiveHub : ISparkLiveNotifier, IDisposable
         public void OnCompleted() { }
     }
 
-    // ---- sockets per user (D36) -------------------------------------------------------------------------------
+    // ---- topics (commerce PRD X2) -----------------------------------------------------------------------------
 
+    /// <summary>
+    /// Retains <paramref name="data"/> as the latest value under <paramref name="hubKey"/> and marks its
+    /// subscribers dirty. Each one's worker sends the retained bytes, without a scope or a read.
+    /// </summary>
+    internal void PublishTopic(string hubKey, byte[] data, bool isPrivate)
+    {
+        List<LiveTopicSubscription> touched;
+        lock (gate)
+        {
+            retained[hubKey] = new LiveRetainedTopic(++topicSeq, data, time.GetTimestamp(), isPrivate);
+            if (isPrivate && retained.Count >= sweepPrivateAt)
+                SweepPrivateTopics();
+            touched = byTopic.TryGetValue(hubKey, out var set) ? [.. set] : [];
+        }
+        foreach (var subscription in touched)
+            subscription.MarkDirty(null);
+    }
+
+    /// <summary>The latest value under <paramref name="hubKey"/>, if one was published (and, if private, has not expired).</summary>
+    internal LiveRetainedTopic? Retained(string hubKey)
+    {
+        lock (gate)
+        {
+            if (!retained.TryGetValue(hubKey, out var value))
+                return null;
+            return value.IsPrivate && time.GetElapsedTime(value.At) >= options.CurrentValue.PrivateTopicRetention ? null : value;
+        }
+    }
+
+    /// <summary>
+    /// Whether <paramref name="viewer"/> may follow <paramref name="topic"/>: the policy with the longest matching
+    /// prefix decides, and a topic no policy claims is refused. A policy that throws refuses (logged).
+    /// </summary>
+    internal bool CanSubscribe(string topic, bool isPrivate, SparkLiveViewer viewer)
+    {
+        if (isPrivate && viewer.IsAddressOnly)
+            return false;
+        foreach (var policy in policies)
+        {
+            if (!topic.StartsWith(policy.Prefix, StringComparison.Ordinal))
+                continue;
+            try
+            {
+                return isPrivate ? policy.CanSubscribePrivate(topic, viewer) : policy.CanSubscribe(topic, viewer);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Live topic policy {Policy} failed for {Topic}; the subscription is refused", policy.GetType().FullName, topic);
+                return false;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>Drops expired private values nobody follows; under <c>gate</c>. Amortized: the next sweep waits for the map to double.</summary>
+    private void SweepPrivateTopics()
+    {
+        var retention = options.CurrentValue.PrivateTopicRetention;
+        foreach (var key in retained.Where(p => p.Value.IsPrivate && time.GetElapsedTime(p.Value.At) >= retention && !byTopic.ContainsKey(p.Key)).Select(p => p.Key).ToList())
+            retained.Remove(key);
+        sweepPrivateAt = Math.Max(4096, retained.Count * 2);
+    }
+
+    // ---- sockets per identity (D36, commerce PRD X2) -----------------------------------------------------------
+
+    /// <summary>
+    /// Counts one more socket for <paramref name="userKey"/> (<c>user:</c>, <c>visitor:</c> or <c>ip:</c>, see
+    /// <see cref="SparkLiveViewer.IdentityKey"/>); false when it already holds its maximum. An address key gets
+    /// <see cref="SparkLiveOptions.MaxSocketsPerAddress"/>, every other key <see cref="SparkLiveOptions.MaxSocketsPerUser"/>.
+    /// </summary>
     public bool TryAcquireSocket(string userKey)
     {
-        var max = options.CurrentValue.MaxSocketsPerUser;
+        var max = userKey.StartsWith("ip:", StringComparison.Ordinal)
+            ? options.CurrentValue.MaxSocketsPerAddress
+            : options.CurrentValue.MaxSocketsPerUser;
         while (true)
         {
             var current = sockets.GetOrAdd(userKey, 0);

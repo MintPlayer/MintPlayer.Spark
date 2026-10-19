@@ -489,67 +489,125 @@ internal sealed partial class SparkModeration : ISparkModeration
         if (string.IsNullOrEmpty(caseId) || !caseId.StartsWith("ModerationCases/", StringComparison.Ordinal))
             throw new SparkRowLevelAccessDeniedException("Review/Moderation");
 
-        ReviewCase? reviewCase;
-        using (var read = documentStore.OpenAsyncSession())
-            reviewCase = await read.LoadAsync<ReviewCase>(caseId, cancellationToken);
-        if (reviewCase is null)
-            throw new SparkRowLevelAccessDeniedException("Review/Moderation");
-        if (reviewCase.Status != ModerationCaseStatus.Open)
-            throw new SparkValidationException($"This case was already decided ({reviewCase.Status}).");
-
         decision = decision?.Trim().ToLowerInvariant() ?? string.Empty;
         var now = UtcNow;
+
+        // Commerce F2: the decision is CLAIMED before any side effect. The check ("still open?") and the status
+        // write used to run in two sessions with the side effects between them, so two moderators deciding at
+        // once both passed the check and both reversed the votes, suspended the account or credited the
+        // flaggers. Now the open → decided transition is one optimistic-concurrency write of the version the
+        // check read: exactly one decider commits it, and only that one runs the side effects. A side effect that
+        // fails reopens the case (guarded by the claimed version), so the decision can be retried; every side
+        // effect is safe to repeat (votes already reversed stay reversed, settled flags are skipped, the
+        // suspension document is stored by id).
+        ReviewCase reviewCase;
         string status;
+        string claimedVersion;
+        using (var claim = documentStore.OpenAsyncSession())
+        {
+            claim.Advanced.OptimisticConcurrencyMode = OptimisticConcurrencyMode.Writes;
+            reviewCase = await claim.LoadAsync<ReviewCase>(caseId, cancellationToken)
+                ?? throw new SparkRowLevelAccessDeniedException("Review/Moderation");
+            if (reviewCase.Status != ModerationCaseStatus.Open)
+                throw new SparkValidationException($"This case was already decided ({reviewCase.Status}).");
+
+            status = StatusFor(reviewCase, decision, accountId, actor);
+            reviewCase.Status = status;
+            reviewCase.Decision = decision;
+            reviewCase.DecidedAtUtc = now;
+            reviewCase.DecidedBy = actor;
+            try
+            {
+                await claim.SaveChangesAsync(cancellationToken);
+            }
+            catch (Raven.Client.Exceptions.ConcurrencyException)
+            {
+                throw new SparkValidationException("This case was already decided by another moderator.");
+            }
+            claimedVersion = claim.Advanced.GetChangeVectorFor(reviewCase);
+        }
+
+        try
+        {
+            if (reviewCase.Kind == "flag")
+                await SettleFlagsAsync(reviewCase, caseId, status, now, cancellationToken);
+            else if (decision == "reverse")
+                await ledger.ReverseVotesAsync(reviewCase.VoteIds, "moderator", caseId, cancellationToken);
+            else if (decision == "merge")
+                await MergeAccountsAsync(accountId!, reviewCase.AccountIds.First(a => a != accountId), caseId, cancellationToken);
+            else if (decision == "suspend")
+                await SuspendAsync(accountId!, null, reason ?? "Escalated from review", caseId, cancellationToken);
+        }
+        catch
+        {
+            await ReopenAsync(caseId, claimedVersion);
+            throw;
+        }
+
+        await audit.WriteAsync("decide:" + decision, reviewCase.TargetId, reviewCase.TargetType, accountId, caseId, reason, reviewCase.Kind, cancellationToken);
+    }
+
+    /// <summary>
+    /// The status a decision gives a case, or the validation refusal. Pure: judged before the case is claimed, so
+    /// a refused decision never touches the case.
+    /// </summary>
+    private static string StatusFor(ReviewCase reviewCase, string decision, string? accountId, string actor)
+    {
         if (reviewCase.Kind == "flag")
         {
-            status = decision switch
+            return decision switch
             {
                 "uphold" => ModerationCaseStatus.Upheld,
                 "decline" => ModerationCaseStatus.Declined,
                 _ => throw new SparkValidationException("A flag case is upheld or declined.", "decision"),
             };
-            await SettleFlagsAsync(reviewCase, caseId, status, now, cancellationToken);
-        }
-        else
-        {
-            switch (decision)
-            {
-                case "dismiss":
-                    status = ModerationCaseStatus.Dismissed;
-                    break;
-                case "reverse":
-                    status = ModerationCaseStatus.Reversed;
-                    await ledger.ReverseVotesAsync(reviewCase.VoteIds, "moderator", caseId, cancellationToken);
-                    break;
-                case "merge":
-                    status = ModerationCaseStatus.Merged;
-                    var into = reviewCase.AccountIds.FirstOrDefault(a => a != accountId);
-                    if (accountId is null || into is null || !reviewCase.AccountIds.Contains(accountId))
-                        throw new SparkValidationException("Name the duplicate account (one of the case's accounts).", "accountId");
-                    await MergeAccountsAsync(accountId, into, caseId, cancellationToken);
-                    break;
-                case "suspend":
-                    status = ModerationCaseStatus.Suspended;
-                    if (accountId is null || !reviewCase.AccountIds.Contains(accountId))
-                        throw new SparkValidationException("Name the account to suspend (one of the case's accounts).", "accountId");
-                    await SuspendAsync(accountId, null, reason ?? "Escalated from review", caseId, cancellationToken);
-                    break;
-                default:
-                    throw new SparkValidationException("A fraud case is dismissed, reversed, merged or escalated to a suspension.", "decision");
-            }
         }
 
-        using (var write = documentStore.OpenAsyncSession())
+        switch (decision)
         {
-            write.Advanced.OptimisticConcurrencyMode = OptimisticConcurrencyMode.Writes;
-            var stored = await write.LoadAsync<ReviewCase>(caseId, cancellationToken);
-            stored!.Status = status;
-            stored.Decision = decision;
-            stored.DecidedAtUtc = now;
-            stored.DecidedBy = actor;
-            await write.SaveChangesAsync(cancellationToken);
+            case "dismiss":
+                return ModerationCaseStatus.Dismissed;
+            case "reverse":
+                return ModerationCaseStatus.Reversed;
+            case "merge":
+                if (accountId is null || !reviewCase.AccountIds.Contains(accountId) || !reviewCase.AccountIds.Any(a => a != accountId))
+                    throw new SparkValidationException("Name the duplicate account (one of the case's accounts).", "accountId");
+                return ModerationCaseStatus.Merged;
+            case "suspend":
+                if (accountId is null || !reviewCase.AccountIds.Contains(accountId))
+                    throw new SparkValidationException("Name the account to suspend (one of the case's accounts).", "accountId");
+                if (accountId == actor)
+                    throw new SparkValidationException("You cannot suspend yourself.");
+                return ModerationCaseStatus.Suspended;
+            default:
+                throw new SparkValidationException("A fraud case is dismissed, reversed, merged or escalated to a suspension.", "decision");
         }
-        await audit.WriteAsync("decide:" + decision, reviewCase.TargetId, reviewCase.TargetType, accountId, caseId, reason, reviewCase.Kind, cancellationToken);
+    }
+
+    /// <summary>
+    /// Takes back a claimed decision whose side effects failed, so it can be decided again. Guarded by the claimed
+    /// version: a case changed since (by nobody, today) is left as it is. Not cancellable: the request may be
+    /// the thing that was cancelled.
+    /// </summary>
+    private async Task ReopenAsync(string caseId, string claimedVersion)
+    {
+        try
+        {
+            using var session = documentStore.OpenAsyncSession();
+            session.Advanced.OptimisticConcurrencyMode = OptimisticConcurrencyMode.Writes;
+            var stored = await session.LoadAsync<ReviewCase>(caseId);
+            if (stored is null || session.Advanced.GetChangeVectorFor(stored) != claimedVersion)
+                return;
+            stored.Status = ModerationCaseStatus.Open;
+            stored.Decision = null;
+            stored.DecidedAtUtc = null;
+            stored.DecidedBy = null;
+            await session.SaveChangesAsync();
+        }
+        catch (Raven.Client.Exceptions.ConcurrencyException)
+        {
+            // Changed since the claim: whatever changed it owns the case now.
+        }
     }
 
     private async Task SettleFlagsAsync(ReviewCase reviewCase, string caseId, string status, DateTime now, CancellationToken cancellationToken)

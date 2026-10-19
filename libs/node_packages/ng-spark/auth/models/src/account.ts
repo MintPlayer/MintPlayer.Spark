@@ -8,6 +8,8 @@ export interface SparkAccountProfile {
   fields: Record<string, unknown>;
   /** The culture account mail is written in (`SparkUser.PreferredCulture`); null = the app default. */
   preferredCulture: string | null;
+  /** The IANA zone mails and documents are written in (`SparkUser.PreferredTimeZone`, X14); null = the app default. */
+  preferredTimeZone?: string | null;
 }
 
 /** The body of `POST /spark/auth/manage/profile`. Absent keeps a value; `preferredCulture: null` clears it. */
@@ -15,6 +17,7 @@ export interface SparkAccountProfileUpdate {
   userName?: string | null;
   fields?: Record<string, unknown>;
   preferredCulture?: string | null;
+  preferredTimeZone?: string | null;
 }
 
 /** `GET /spark/auth/manage/info` / answer of `POST manage/info`. */

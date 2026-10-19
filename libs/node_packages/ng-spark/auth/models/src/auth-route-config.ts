@@ -1,4 +1,5 @@
 import { InjectionToken, Type } from '@angular/core';
+import type { TranslatedString } from '@mintplayer/ng-spark/models';
 
 export type SparkAuthRouteEntry = string | { path: string; component?: Type<unknown> };
 
@@ -63,8 +64,8 @@ export interface SparkAccountOverviewLink {
   key: string;
   /** The absolute router path, e.g. `/account/applications`. */
   path: string;
-  /** The link text per language code; resolved in the app's current language. */
-  label: Record<string, string>;
+  /** The link text, e.g. `translated({ en: 'Connected applications', nl: '…' })`; resolved in the app's current language. */
+  label: TranslatedString;
 }
 
 /**

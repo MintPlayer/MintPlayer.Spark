@@ -11,6 +11,8 @@ export interface SparkOrganizationChoice {
   id: string;
   name: string;
   isPersonal: boolean;
+  /** The host-declared custom roles the caller holds in this organization (e.g. `scanner`, `finance`). */
+  customRoles: string[];
 }
 
 /** What `/spark/organizations/current` answers: the chosen organization (`null`: all of them) and the caller's organizations. */

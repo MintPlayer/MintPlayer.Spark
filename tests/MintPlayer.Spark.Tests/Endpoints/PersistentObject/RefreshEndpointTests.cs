@@ -274,8 +274,8 @@ public class RefreshTestCarActions : DefaultPersistentObjectActions<RefreshTestC
         obj["Garage"].Options = maintenance
             ?
             [
-                new PersistentObjectAttributeOption { Key = "garages/1", Label = TranslatedString.Create("North") },
-                new PersistentObjectAttributeOption { Key = "garages/2", Label = TranslatedString.Create("South") },
+                new PersistentObjectAttributeOption { Key = "garages/1", Label = TranslatedString.Of("en", "North") },
+                new PersistentObjectAttributeOption { Key = "garages/2", Label = TranslatedString.Of("en", "South") },
             ]
             : null;
 

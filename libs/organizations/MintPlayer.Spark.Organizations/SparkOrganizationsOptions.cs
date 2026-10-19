@@ -17,4 +17,12 @@ public sealed class SparkOrganizationsOptions
     /// application that creates it elsewhere calls <see cref="ISparkOrganizations.EnsurePersonalOrganizationAsync"/>.
     /// </summary>
     public bool CreatePersonalOrganizationOnSignIn { get; set; } = true;
+
+    /// <summary>
+    /// The custom roles a membership may carry beside its built-in role (<c>docs/commerce_PRD.md</c> X8), name →
+    /// description: <c>scanner</c>, <c>finance</c>. Declared by the host (here or in configuration,
+    /// <c>Spark:Organizations:CustomRoles:scanner</c>) or by a library (<c>spark.AddOrganizationRole</c>). Names
+    /// match case-insensitively and follow <see cref="OrganizationCustomRoles.IsValidName"/>.
+    /// </summary>
+    public Dictionary<string, string> CustomRoles { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }

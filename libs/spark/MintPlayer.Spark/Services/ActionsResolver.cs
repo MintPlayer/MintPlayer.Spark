@@ -118,6 +118,43 @@ internal partial class ActionsResolver : IActionsResolver
     /// </summary>
     internal static Type? FindActionsTypeFor(Type entityType) => FindActionsType($"{entityType.Name}Actions");
 
+    /// <summary>
+    /// The startup half of the checks <see cref="Resolve{T}"/> makes on first use (commerce F10): for every model
+    /// type, a <c>{Entity}Actions</c> name declared by more than one loaded assembly, or a class named for a CLR
+    /// entity that does not implement <see cref="IPersistentObjectActions{T}"/> for it. Both used to surface only
+    /// at the first request that resolved the type, because the startup checks that resolve actions classes
+    /// swallow construction failures. Throws one <see cref="InvalidOperationException"/> naming every offender.
+    /// </summary>
+    internal static void VerifyActionsClasses(IEnumerable<Abstractions.EntityTypeDefinition> entityTypes)
+    {
+        var problems = new List<string>();
+        foreach (var type in entityTypes)
+        {
+            var clr = string.IsNullOrEmpty(type.ClrType) ? null : SparkTypeResolver.ResolveClrType(type.ClrType);
+            var name = clr?.Name ?? type.Name;
+            try
+            {
+                if (FindActionsType($"{name}Actions") is { } actionsType
+                    && clr is not null
+                    && !typeof(IPersistentObjectActions<>).MakeGenericType(clr).IsAssignableFrom(actionsType))
+                {
+                    problems.Add(
+                        $"'{actionsType.FullName}' is named for entity '{name}' but does not implement " +
+                        $"'IPersistentObjectActions<{name}>'. Derive it from 'DefaultPersistentObjectActions<{name}>', " +
+                        "or rename it so it no longer claims to be that entity's actions class.");
+                }
+            }
+            catch (InvalidOperationException ex)
+            {
+                problems.Add(ex.Message);
+            }
+        }
+
+        if (problems.Count > 0)
+            throw new InvalidOperationException(
+                "Invalid actions classes: " + string.Join(Environment.NewLine, problems.Distinct(StringComparer.Ordinal)));
+    }
+
     private static Type? FindActionsType(string typeName)
     {
         // Negative caching matters here: when no Actions class exists for an entity, the

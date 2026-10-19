@@ -113,8 +113,8 @@ public class LDSTestStatus : TransientLookupReference<int>
 
     public static IReadOnlyList<LDSTestStatus> Items { get; } = new List<LDSTestStatus>
     {
-        new() { Key = 1, Values = TranslatedString.Create("Active") },
-        new() { Key = 2, Values = TranslatedString.Create("Inactive") },
+        new() { Key = 1, Values = TranslatedString.Of("en", "Active") },
+        new() { Key = 2, Values = TranslatedString.Of("en", "Inactive") },
     };
 }
 

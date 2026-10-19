@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Microsoft.Extensions.Options;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Abstractions.Interceptors;
@@ -65,7 +66,7 @@ internal sealed class OrganizationInterceptors(SparkOrganizations organizations,
 }
 
 /// <summary>The membership half of <see cref="OrganizationInterceptors"/>: role edits and removals.</summary>
-internal sealed class OrganizationMembershipInterceptors(OrganizationMembershipReader reader)
+internal sealed class OrganizationMembershipInterceptors(OrganizationMembershipReader reader, IOptions<SparkOrganizationsOptions> options)
     : IBeforeSave<OrganizationMembership>, IBeforeDelete<OrganizationMembership>
 {
 
@@ -85,6 +86,18 @@ internal sealed class OrganizationMembershipInterceptors(OrganizationMembershipR
         entity.JoinedAtUtc = stored.JoinedAtUtc;
         if (!Enum.IsDefined(entity.Role))
             throw new SparkValidationException("Choose a role.", nameof(OrganizationMembership.Role));
+
+        // Custom roles (X8): only declared ones, stored in their declared spelling. Admins edit memberships
+        // (the row policy's Edit role), so Admins give and take them.
+        // A name the host no longer declares is dropped quietly when it was already stored, so a role edit
+        // still saves; only a newly posted unknown name is refused.
+        entity.CustomRoles = OrganizationCustomRoles.Normalize(entity.CustomRoles, options.Value.CustomRoles, out var undeclared);
+        undeclared.RemoveAll(name => (stored.CustomRoles ?? []).Contains(name, StringComparer.OrdinalIgnoreCase));
+        if (undeclared.Count > 0)
+            throw new SparkValidationException("Unknown role: " + string.Join(", ", undeclared) + ".", nameof(OrganizationMembership.CustomRoles));
+        if (!entity.CustomRoles.SequenceEqual(stored.CustomRoles ?? [], StringComparer.OrdinalIgnoreCase))
+            reader.Invalidate(stored.UserId);
+
         if (entity.Role == stored.Role)
             return;
 

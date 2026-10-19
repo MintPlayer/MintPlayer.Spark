@@ -599,7 +599,7 @@ public sealed class CoValidator : IContributionValidator<CoLyrics>
 {
     public ValueTask<IReadOnlyList<ValidationError>> ValidateAsync(string targetId, CoLyrics element, CancellationToken cancellationToken = default)
         => ValueTask.FromResult<IReadOnlyList<ValidationError>>(element.Text.Contains("forbidden")
-            ? [new ValidationError { AttributeName = "Text", ErrorMessage = TranslatedString.Create("That text is not allowed."), RuleType = "Custom" }]
+            ? [new ValidationError { AttributeName = "Text", ErrorMessage = TranslatedString.Of("en", "That text is not allowed."), RuleType = "Custom" }]
             : []);
 }
 

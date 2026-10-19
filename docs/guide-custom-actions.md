@@ -580,6 +580,15 @@ The `CustomActionResolver` discovers action classes at startup by scanning all l
 
 Name matching is case-insensitive.
 
+Each name must be served by **one** class across every loaded assembly. Two classes that resolve to
+the same name (`ExportAction` in two namespaces, or `Export` beside `ExportAction`) stop `UseSpark()`
+at startup with a message naming both. Discovery used to keep whichever loaded first and drop the
+other silently (commerce F11).
+
+The same holds for persistent-object actions: a model type with two `{Entity}Actions` classes, or one
+named for the entity that does not implement `IPersistentObjectActions<{Entity}>`, fails at startup
+rather than on the first request for that type (commerce F10).
+
 The resolved name may not be a reserved verb (`Edit`, `Delete`, `Restore`, `RevertContribution`, …):
 the action would share that verb's right. SPARK023 refuses it at build time and `UseSpark()` at
 startup; see [reserved verbs](guide-authorization.md#reserved-verbs).

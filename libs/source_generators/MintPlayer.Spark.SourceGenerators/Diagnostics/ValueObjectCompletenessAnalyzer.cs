@@ -340,6 +340,8 @@ public sealed partial class ValueObjectCompletenessAnalyzer : DiagnosticAnalyzer
         return current is INamedTypeSymbol { TypeKind: TypeKind.Class, IsAbstract: false } named
             && named.SpecialType == SpecialType.None
             && !named.IsSparkScalarLike()
+            // Money is one value with its own serializer (commerce X4), not an embedded object.
+            && !named.IsMoney()
             && named.GetMembers().OfType<IPropertySymbol>().Any(p => p.DeclaredAccessibility == Accessibility.Public)
             ? named
             : null;

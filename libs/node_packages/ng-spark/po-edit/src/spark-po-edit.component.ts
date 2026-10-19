@@ -28,6 +28,7 @@ import {
   wireDatesEqual,
   RefreshOverlay,
   applyOverlay,
+  translated,
 } from '@mintplayer/ng-spark/models';
 import { ConflictSide, ContributionNotice, MergeResult, MergeSchema, TheirChange, mergeThreeWay } from './conflict-merge';
 import { SparkPoConflictDialogComponent } from './spark-po-conflict-dialog.component';
@@ -180,7 +181,7 @@ export class SparkPoEditComponent {
         this.liveTheirs.set(null);
         this.validationErrors.set([{
           attributeName: '',
-          errorMessage: { en: this.language.t('common.deletedByAnotherUser') },
+          errorMessage: translated({ en: this.language.t('common.deletedByAnotherUser') }),
           ruleType: 'error'
         }]);
       } else {
@@ -261,7 +262,7 @@ export class SparkPoEditComponent {
       const error = e as HttpErrorResponse;
       this.validationErrors.set([{
         attributeName: '',
-        errorMessage: { en: error.error?.error || error.message || 'An unexpected error occurred' },
+        errorMessage: translated({ en: error.error?.error || error.message || 'An unexpected error occurred' }),
         ruleType: 'error'
       }]);
     }
@@ -475,7 +476,7 @@ export class SparkPoEditComponent {
         // The form keeps its values, so the user can copy what they typed.
         this.validationErrors.set([{
           attributeName: '',
-          errorMessage: { en: this.language.t('common.deletedByAnotherUser') },
+          errorMessage: translated({ en: this.language.t('common.deletedByAnotherUser') }),
           ruleType: 'error'
         }]);
       } else if (error.status === 409) {
@@ -486,7 +487,7 @@ export class SparkPoEditComponent {
         // conflict is resolved (a failed re-fetch or a cancelled dialog leaves it there).
         this.validationErrors.set([{
           attributeName: '',
-          errorMessage: { en: this.language.t('common.concurrencyConflict') },
+          errorMessage: translated({ en: this.language.t('common.concurrencyConflict') }),
           ruleType: 'error'
         }]);
         await this.resolveConcurrencyConflict();
@@ -496,7 +497,7 @@ export class SparkPoEditComponent {
           // Prefer the server's own message, as the load path already does. A refusal arrives as
           // 404 by design (an anti-oracle measure), and `error.message` renders that as
           // "Http failure response for /spark/po/...: 404 Not Found" inside the validation summary.
-          errorMessage: { en: error.error?.result?.error || error.error?.error || error.message || 'An unexpected error occurred' },
+          errorMessage: translated({ en: error.error?.result?.error || error.error?.error || error.message || 'An unexpected error occurred' }),
           ruleType: 'error'
         }]);
       }

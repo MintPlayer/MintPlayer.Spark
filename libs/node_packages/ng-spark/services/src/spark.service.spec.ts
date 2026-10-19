@@ -10,6 +10,7 @@ import { SparkService } from './spark.service';
 import { RetryActionService } from './retry-action.service';
 import { SparkClientOperationDispatcher, provideSparkClientMethods, type SparkClientMethodMap } from '@mintplayer/ng-spark/client-operations';
 import { SPARK_CONFIG } from '@mintplayer/ng-spark';
+import { translated } from '@mintplayer/ng-spark/models';
 
 /**
  * HTTP-shape tests for SparkService. The service is a thin client over a fixed
@@ -564,7 +565,7 @@ describe('SparkService', () => {
   });
 
   describe('lookup references', () => {
-    const value = { key: 'k', values: { en: 'K' }, isActive: true };
+    const value = { key: 'k', values: translated({ en: 'K' }), isActive: true };
 
     it('getLookupReferences GETs the list', async () => {
       const promise = service.getLookupReferences();

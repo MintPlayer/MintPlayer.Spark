@@ -18,6 +18,8 @@ import {
   SparkAccountResult,
 } from '@mintplayer/ng-spark/auth/models';
 import { TranslateKeyPipe } from '@mintplayer/ng-spark/auth/pipes';
+import { resolveTranslation, type TranslatedString } from '@mintplayer/ng-spark/models';
+import { sparkTimeZoneIds, sparkViewerTimeZone } from '@mintplayer/ng-spark/date-time';
 import { accountMessages, fieldMessages } from './account-messages';
 
 interface CultureOption {
@@ -74,6 +76,20 @@ interface CultureOption {
                   </bs-select>
                   <small class="text-muted">{{ 'auth.preferredCultureHint' | t }}</small>
                   @for (message of fieldErrors('PreferredCulture'); track message) {
+                    <div class="text-danger small">{{ message | t }}</div>
+                  }
+                </div>
+
+                <div class="mb-3">
+                  <label for="preferredTimeZone" class="form-label">{{ 'auth.preferredTimeZone' | t }}</label>
+                  <bs-select id="preferredTimeZone" formControlName="preferredTimeZone" class="w-100">
+                    <option [ngValue]="''">{{ 'auth.preferredTimeZoneDefault' | t }}</option>
+                    @for (zone of timeZoneOptions(); track zone) {
+                      <option [ngValue]="zone">{{ zone }}</option>
+                    }
+                  </bs-select>
+                  <small class="text-muted">{{ 'auth.preferredTimeZoneHint' | t }}</small>
+                  @for (message of fieldErrors('PreferredTimeZone'); track message) {
                     <div class="text-danger small">{{ message | t }}</div>
                   }
                 </div>
@@ -172,6 +188,7 @@ export class SparkAccountProfileComponent {
   readonly form = new FormGroup({
     userName: new FormControl('', { nonNullable: true }),
     preferredCulture: new FormControl<string>('', { nonNullable: true }),
+    preferredTimeZone: new FormControl<string>('', { nonNullable: true }),
     fields: new FormGroup<Record<string, FormControl<unknown>>>({}),
   });
   readonly emailForm = new FormGroup({ newEmail: new FormControl('', { nonNullable: true }) });
@@ -200,6 +217,20 @@ export class SparkAccountProfileComponent {
       : options;
   });
 
+  private readonly storedTimeZone = signal<string | null>(null);
+
+  /**
+   * The browser's IANA zones (X14), the viewer's own first; a stored zone the browser does not list (a
+   * rename) is kept as an option so opening the page never changes it.
+   */
+  readonly timeZoneOptions = computed(() => {
+    const viewer = sparkViewerTimeZone();
+    const zones = sparkTimeZoneIds();
+    const stored = this.storedTimeZone();
+    const ordered = viewer ? [viewer, ...zones.filter(z => z !== viewer)] : zones;
+    return stored && !ordered.includes(stored) ? [stored, ...ordered] : ordered;
+  });
+
   readonly userNameErrors = computed(() => {
     const result = this.lastResult();
     if (!result?.errors) return [];
@@ -218,6 +249,7 @@ export class SparkAccountProfileComponent {
   private isInlineError(key: string): boolean {
     const lowered = key.toLowerCase();
     return lowered === 'preferredculture'
+      || lowered === 'preferredtimezone'
       || lowered.includes('username')
       || this.profileFields.some(f => f.name.toLowerCase() === lowered);
   }
@@ -252,11 +284,11 @@ export class SparkAccountProfileComponent {
 
   private async loadLanguages(): Promise<void> {
     try {
-      const culture = await firstValueFrom(this.http.get<{ languages: Record<string, Record<string, string>> }>('/spark/culture'));
+      const culture = await firstValueFrom(this.http.get<{ languages: Record<string, TranslatedString> }>('/spark/culture'));
       const lang = (globalThis as { __sparkCurrentLanguage?: () => string }).__sparkCurrentLanguage?.() ?? 'en';
       this.languages.set(Object.entries(culture.languages ?? {}).map(([value, label]) => ({
         value,
-        label: label?.[lang] ?? label?.['en'] ?? Object.values(label ?? {})[0] ?? value,
+        label: resolveTranslation(label, lang) || value,
       })));
     } catch {
       // No culture endpoint: only "default" and the stored value are offered.
@@ -267,6 +299,8 @@ export class SparkAccountProfileComponent {
     this.storedCulture.set(profile.preferredCulture);
     this.form.controls.userName.setValue(profile.userName ?? '');
     this.form.controls.preferredCulture.setValue(profile.preferredCulture ?? '');
+    this.storedTimeZone.set(profile.preferredTimeZone ?? null);
+    this.form.controls.preferredTimeZone.setValue(profile.preferredTimeZone ?? '');
     for (const field of this.profileFields) {
       const key = Object.keys(profile.fields ?? {}).find(k => k.toLowerCase() === field.name.toLowerCase());
       const value = key ? profile.fields[key] : null;
@@ -284,6 +318,7 @@ export class SparkAccountProfileComponent {
       const result = await this.auth.updateProfile({
         userName: value.userName.trim() || null,
         preferredCulture: value.preferredCulture || null,
+        preferredTimeZone: value.preferredTimeZone || null,
         ...(this.profileFields.length ? { fields: { ...value.fields } } : {}),
       });
       this.lastResult.set(result);

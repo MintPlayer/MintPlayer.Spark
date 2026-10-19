@@ -11,10 +11,11 @@ public abstract class TransientLookupReference
     public abstract ELookupDisplayType DisplayType { get; }
 
     /// <summary>
-    /// Helper method to create TranslatedString inline
+    /// A lookup label inline, one plain entry per language, each tagged explicitly so the languages
+    /// cannot silently swap: <c>_TS(("en", "Active"), ("fr", "Actif"), ("nl", "Actief"))</c>.
     /// </summary>
-    protected static TranslatedString _TS(string en, string? fr = null, string? nl = null)
-        => TranslatedString.Create(en, fr, nl);
+    protected static TranslatedString _TS(params ReadOnlySpan<(string Tag, string Value)> texts)
+        => TranslatedString.Of(texts);
 }
 
 public abstract class TransientLookupReference<TKey> : TransientLookupReference

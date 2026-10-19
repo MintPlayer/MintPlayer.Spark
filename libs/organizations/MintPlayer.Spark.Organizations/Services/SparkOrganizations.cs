@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Authorization.Identity;
@@ -23,6 +24,7 @@ internal sealed class SparkOrganizations(
     IEnumerable<IOrganizationDataHandler> dataHandlers,
     IModelLoader modelLoader,
     TimeProvider timeProvider,
+    IOptions<SparkOrganizationsOptions> options,
     ILogger<SparkOrganizations> logger) : ISparkOrganizations
 {
     /// <summary>The invitation lifetime when the model states no <c>expiresAfter</c> (D18: 14 days).</summary>
@@ -316,6 +318,29 @@ internal sealed class SparkOrganizations(
         await session.SaveChangesAsync(cancellationToken);
         reader.Invalidate(fromUserId);
         reader.Invalidate(toUserId);
+    }
+
+    public async Task<IReadOnlyList<string>> GetCustomRolesAsync(string organizationId, string userId, CancellationToken cancellationToken = default)
+        => (await reader.GetCustomRolesAsync(Require(userId, nameof(userId)), cancellationToken)).GetValueOrDefault(organizationId) ?? [];
+
+    public async Task SetCustomRolesAsync(string organizationId, string userId, IEnumerable<string> customRoles, string actingUserId, CancellationToken cancellationToken = default)
+    {
+        Require(userId, nameof(userId));
+        Require(actingUserId, nameof(actingUserId));
+        var roles = OrganizationCustomRoles.Normalize(customRoles, options.Value.CustomRoles, out var undeclared);
+        if (undeclared.Count > 0)
+            throw new SparkValidationException("Unknown role: " + string.Join(", ", undeclared) + ".", nameof(OrganizationMembership.CustomRoles));
+
+        using var session = store.OpenAsyncSession();
+        session.Advanced.OptimisticConcurrencyMode = OptimisticConcurrencyMode.Writes;
+        var organization = await LoadOrganizationAsync(session, organizationId, cancellationToken);
+        await RequireRoleAsync(session, organization.Id!, actingUserId, OrganizationRole.Admin, cancellationToken);
+        var membership = await session.LoadAsync<OrganizationMembership>(OrganizationMembership.IdFor(userId, organization.Id!), cancellationToken)
+            ?? throw new SparkValidationException("Only a member can be given a role. Invite them first.");
+
+        membership.CustomRoles = roles;
+        await session.SaveChangesAsync(cancellationToken);
+        reader.Invalidate(userId);
     }
 
     public async Task DeleteAsync(string organizationId, string actingUserId, CancellationToken cancellationToken = default)

@@ -221,6 +221,7 @@ public static class SparkDevelopmentExtensions
         // fixed and CI was run again. Two round trips for one commit's worth of problems.
         VerifyQueryAliasesAreUnique(contentRoot);
         VerifyRefreshTriggersAreImplemented(contentRoot);
+        VerifyDateTimeDisplays(contentRoot);
         VerifyComposedQueriesAreUsable(contentRoot);
         VerifyCustomQueryMethodsExist(builder.Services, contentRoot);
         VerifySubQueriesCanBeParentScoped(contentRoot);
@@ -333,6 +334,65 @@ public static class SparkDevelopmentExtensions
     /// <c>ActionsResolver</c> uses, because there is no service provider in the builder phase.
     /// </para>
     /// </remarks>
+    private static void VerifyDateTimeDisplays(string contentRootPath)
+    {
+        var errors = new List<string>();
+        var warnings = new List<string>();
+
+        foreach (var file in SparkModelFiles.Compose(contentRootPath))
+        {
+            EntityTypeFile? model;
+            try
+            {
+                model = System.Text.Json.JsonSerializer.Deserialize<EntityTypeFile>(
+                    file.Json,
+                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            }
+            catch (System.Text.Json.JsonException ex)
+            {
+                // A malformed dateTimeDisplay is a JsonException from its converter; anything else is the hash check's business.
+                if (ex.Message.Contains("dateTimeDisplay:", StringComparison.Ordinal))
+                    errors.Add($"{file.Source}: {ex.Message}");
+                continue;
+            }
+
+            var definition = model?.PersistentObject;
+            if (definition is null)
+                continue;
+
+            var names = definition.Attributes.Select(a => a.Name).ToHashSet(StringComparer.Ordinal);
+            foreach (var attribute in definition.Attributes.Where(a => a.DateTimeDisplay is not null))
+            {
+                var where = $"{definition.Name}.{attribute.Name}";
+                if (attribute.DataType != "datetime")
+                    warnings.Add($"{where}: dateTimeDisplay on a \"{attribute.DataType}\" attribute does nothing; only \"datetime\" renders it.");
+
+                foreach (var spec in new[] { attribute.DateTimeDisplay!.Primary, attribute.DateTimeDisplay.Hint })
+                {
+                    if (spec?.ZoneFrom is { } zoneFrom && !names.Contains(zoneFrom))
+                        errors.Add($"{where}: zoneFrom \"{zoneFrom}\" names no attribute of {definition.Name}.");
+                    if (spec?.Zone is { } zone)
+                    {
+                        if (!Abstractions.DateTimes.SparkTimeZoneIds.IsWellFormed(zone))
+                            errors.Add($"{where}: \"{zone}\" is not an IANA time zone id (for example \"Europe/Brussels\").");
+                        else if (!SparkTimeZones.IsKnown(zone))
+                            warnings.Add($"{where}: \"{zone}\" is unknown to this machine's time-zone data; the server renders it as the recipient's zone.");
+                    }
+                }
+            }
+        }
+
+        foreach (var warning in warnings)
+            Console.Error.WriteLine("Spark model warning: " + warning);
+        if (errors.Count == 0)
+            return;
+
+        Console.Error.WriteLine("Spark model declares a dateTimeDisplay that cannot be rendered (commerce PRD X16):");
+        foreach (var error in errors)
+            Console.Error.WriteLine("  " + error);
+        Environment.ExitCode = ExitDrift;
+    }
+
     private static void VerifyRefreshTriggersAreImplemented(string contentRootPath)
     {
         var offenders = new List<string>();
@@ -1323,7 +1383,7 @@ public static class SparkDevelopmentExtensions
             if (unit.Alias is not { Length: > 0 } alias)
                 continue;
 
-            var name = unit.Name?.Translations?.Values.FirstOrDefault() ?? unit.Id.ToString();
+            var name = (unit.Name is { IsEmpty: false } unitName ? unitName.GetValue(TranslatedString.DefaultLanguage) : null) ?? unit.Id.ToString();
 
             if (string.Equals(unit.Type, "query", StringComparison.OrdinalIgnoreCase))
             {

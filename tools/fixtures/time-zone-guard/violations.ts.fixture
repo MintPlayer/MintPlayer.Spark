@@ -1,0 +1,25 @@
+// Every line below must trip tools/verify-time-zones.test.mjs. It is a fixture, never compiled.
+import { Component, inject } from '@angular/core';
+import { DATE_PIPE_DEFAULT_OPTIONS, DatePipe, formatDate } from '@angular/common';
+
+const DATE_TIME = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+const tokyo = new Date().toLocaleString('en', { timeZone: 'Asia/Tokyo' });
+export const provider = { provide: DATE_PIPE_DEFAULT_OPTIONS, useValue: { timezone: '+0200' } };
+
+@Component({
+  selector: 'fixture-violations',
+  template: `<span>{{ at | date:'short':'UTC' }}</span>`,
+})
+export class FixtureViolations {
+  private readonly datePipe = inject(DatePipe);
+  at = new Date();
+
+  render(): string[] {
+    return [
+      formatDate(this.at, 'short', 'en', '+0200'),
+      this.datePipe.transform(this.at, 'short', 'Europe/Brussels') ?? '',
+      DATE_TIME.format(this.at),
+      tokyo,
+    ];
+  }
+}

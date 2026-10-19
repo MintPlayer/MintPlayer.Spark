@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { SparkPoCreateComponent } from './spark-po-create.component';
 import { SparkService, SparkLanguageService } from '@mintplayer/ng-spark/services';
-import { EntityType, ShowedOn } from '@mintplayer/ng-spark/models';
+import { EntityType, ShowedOn, translated } from '@mintplayer/ng-spark/models';
 import { nextNavigationEnd, StubComponent } from '../../src/test-utils';
 
 const personType: EntityType = {
@@ -153,7 +153,7 @@ describe('SparkPoCreateComponent', () => {
   it('onSave 400 error populates validationErrors from the server payload', async () => {
     const error = new HttpErrorResponse({
       status: 400,
-      error: { errors: [{ attributeName: 'FirstName', errorMessage: { en: 'Required' }, ruleType: 'required' }] },
+      error: { errors: [{ attributeName: 'FirstName', errorMessage: translated({ en: 'Required' }), ruleType: 'required' }] },
     });
     const { harness } = await setup({ create: vi.fn().mockRejectedValue(error) });
     const c = await harness.navigateByUrl('/po/person/new', SparkPoCreateComponent);
@@ -171,7 +171,7 @@ describe('SparkPoCreateComponent', () => {
     // suspended author, a closed question) carries its reason in result.errors.
     const error = new HttpErrorResponse({
       status: 400,
-      error: { result: { errors: [{ attributeName: '', errorMessage: { en: 'Your account is suspended.' }, ruleType: 'custom' }] }, operations: [] },
+      error: { result: { errors: [{ attributeName: '', errorMessage: translated({ en: 'Your account is suspended.' }), ruleType: 'custom' }] }, operations: [] },
     });
     const { harness } = await setup({ create: vi.fn().mockRejectedValue(error) });
     const c = await harness.navigateByUrl('/po/person/new', SparkPoCreateComponent);
@@ -180,7 +180,7 @@ describe('SparkPoCreateComponent', () => {
     await c.onSave();
 
     expect(c.validationErrors()).toHaveLength(1);
-    expect(c.validationErrors()[0].errorMessage).toEqual({ en: 'Your account is suspended.' });
+    expect(c.validationErrors()[0].errorMessage).toEqual(translated({ en: 'Your account is suspended.' }));
     expect(c.generalErrors()).toHaveLength(1);
   });
 
@@ -197,7 +197,7 @@ describe('SparkPoCreateComponent', () => {
     } as EntityType;
     const error = new HttpErrorResponse({
       status: 400,
-      error: { result: { errors: [{ attributeName: 'Code', errorMessage: { en: 'Code is required.' }, ruleType: 'required' }] }, operations: [] },
+      error: { result: { errors: [{ attributeName: 'Code', errorMessage: translated({ en: 'Code is required.' }), ruleType: 'required' }] }, operations: [] },
     });
     const { harness } = await setup({ getEntityTypes: vi.fn().mockResolvedValue([withUndrawn]), create: vi.fn().mockRejectedValue(error) });
     const c = await harness.navigateByUrl('/po/person/new', SparkPoCreateComponent);

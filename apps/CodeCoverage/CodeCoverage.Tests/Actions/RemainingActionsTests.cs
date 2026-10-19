@@ -78,7 +78,7 @@ public class RemainingActionsTests : CoverageRavenTest
         var loader = Substitute.For<ITranslationsLoader>();
         loader.Resolve(Arg.Any<string>()).Returns((TranslatedString?)null);
         foreach (var (key, english) in entries)
-            loader.Resolve(key).Returns(TranslatedString.Create(english));
+            loader.Resolve(key).Returns(TranslatedString.Of("en", english));
         return loader;
     }
 

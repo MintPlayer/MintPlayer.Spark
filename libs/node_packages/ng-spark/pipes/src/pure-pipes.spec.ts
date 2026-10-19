@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AS_DETAIL_ROW_KEY } from '@mintplayer/ng-spark/models';
+import { AS_DETAIL_ROW_KEY, translated } from '@mintplayer/ng-spark/models';
 import { ArrayValuePipe } from './array-value.pipe';
 import { AsDetailCellValuePipe } from './as-detail-cell-value.pipe';
 import { AsDetailColumnsPipe } from './as-detail-columns.pipe';
@@ -341,7 +341,7 @@ describe('AttributeValuePipe', () => {
     const item = { attributes: [{ name: 'Status', value: 'active' }] } as any;
     const entityType = { attributes: [{ name: 'Status', lookupReferenceType: 'StatusRef' }] } as any;
     const lookupRefOptions = {
-      StatusRef: { values: [{ key: 'active', values: { en: 'Active', fr: 'Actif' } }] },
+      StatusRef: { values: [{ key: 'active', values: translated({ en: 'Active', fr: 'Actif' }) }] },
     } as any;
     expect(pipe.transform('Status', item, entityType, lookupRefOptions, [])).toBe('Active');
   });
@@ -415,7 +415,7 @@ describe('CanEditDetailRowPipe', () => {
 describe('ErrorForAttributePipe', () => {
   const pipe = new ErrorForAttributePipe();
   it('returns the resolved error message for the attribute', () => {
-    const errors = [{ attributeName: 'Email', errorMessage: { en: 'Invalid email' } } as any];
+    const errors = [{ attributeName: 'Email', errorMessage: translated({ en: 'Invalid email' }) } as any];
     expect(pipe.transform('Email', errors)).toBe('Invalid email');
   });
   it('returns null when no error matches', () => {
@@ -481,7 +481,7 @@ describe('LookupDisplayValuePipe', () => {
   const pipe = new LookupDisplayValuePipe();
   it('returns the resolved translation for the selected key', () => {
     const opts = {
-      StatusRef: { values: [{ key: 'active', isActive: true, values: { en: 'Active' } }] },
+      StatusRef: { values: [{ key: 'active', isActive: true, values: translated({ en: 'Active' }) }] },
     } as any;
     expect(pipe.transform({ name: 'Status', lookupReferenceType: 'StatusRef' } as any, { Status: 'active' }, opts)).toBe('Active');
   });
@@ -595,7 +595,7 @@ describe('ReferenceLinkRoutePipe', () => {
 describe('ResolveTranslationPipe', () => {
   const pipe = new ResolveTranslationPipe();
   it('resolves a TranslatedString', () => {
-    expect(pipe.transform({ en: 'Hello' } as any)).toBe('Hello');
+    expect(pipe.transform(translated({ en: 'Hello' }) as any)).toBe('Hello');
   });
   it('returns the fallback when value is undefined', () => {
     expect(pipe.transform(undefined, 'fallback')).toBe('fallback');

@@ -79,31 +79,31 @@ public sealed class WebhookEventType : TransientLookupReference<EWebhookEventTyp
     public static IReadOnlyCollection<WebhookEventType> Items { get; } =
     [
         // Issues
-        new() { Key = EWebhookEventType.IssuesOpened,     EventName = "issues", ActionValue = "opened",     Values = _TS("Issue opened") },
-        new() { Key = EWebhookEventType.IssuesClosed,     EventName = "issues", ActionValue = "closed",     Values = _TS("Issue closed") },
-        new() { Key = EWebhookEventType.IssuesReopened,   EventName = "issues", ActionValue = "reopened",   Values = _TS("Issue reopened") },
-        new() { Key = EWebhookEventType.IssuesLabeled,    EventName = "issues", ActionValue = "labeled",    Values = _TS("Issue labeled") },
-        new() { Key = EWebhookEventType.IssuesUnlabeled,  EventName = "issues", ActionValue = "unlabeled",  Values = _TS("Issue unlabeled") },
-        new() { Key = EWebhookEventType.IssuesAssigned,   EventName = "issues", ActionValue = "assigned",   Values = _TS("Issue assigned") },
-        new() { Key = EWebhookEventType.IssuesUnassigned, EventName = "issues", ActionValue = "unassigned", Values = _TS("Issue unassigned") },
+        new() { Key = EWebhookEventType.IssuesOpened,     EventName = "issues", ActionValue = "opened",     Values = _TS(("en", "Issue opened")) },
+        new() { Key = EWebhookEventType.IssuesClosed,     EventName = "issues", ActionValue = "closed",     Values = _TS(("en", "Issue closed")) },
+        new() { Key = EWebhookEventType.IssuesReopened,   EventName = "issues", ActionValue = "reopened",   Values = _TS(("en", "Issue reopened")) },
+        new() { Key = EWebhookEventType.IssuesLabeled,    EventName = "issues", ActionValue = "labeled",    Values = _TS(("en", "Issue labeled")) },
+        new() { Key = EWebhookEventType.IssuesUnlabeled,  EventName = "issues", ActionValue = "unlabeled",  Values = _TS(("en", "Issue unlabeled")) },
+        new() { Key = EWebhookEventType.IssuesAssigned,   EventName = "issues", ActionValue = "assigned",   Values = _TS(("en", "Issue assigned")) },
+        new() { Key = EWebhookEventType.IssuesUnassigned, EventName = "issues", ActionValue = "unassigned", Values = _TS(("en", "Issue unassigned")) },
 
         // Pull Requests. Closed and Merged deliberately share event+action; see the class remarks.
-        new() { Key = EWebhookEventType.PullRequestOpened,           EventName = "pull_request", ActionValue = "opened",             Values = _TS("Pull request opened") },
-        new() { Key = EWebhookEventType.PullRequestClosed,           EventName = "pull_request", ActionValue = "closed",             Values = _TS("Pull request closed without merging") },
-        new() { Key = EWebhookEventType.PullRequestMerged,           EventName = "pull_request", ActionValue = "closed",             Values = _TS("Pull request merged") },
-        new() { Key = EWebhookEventType.PullRequestReadyForReview,   EventName = "pull_request", ActionValue = "ready_for_review",   Values = _TS("PR ready for review") },
-        new() { Key = EWebhookEventType.PullRequestConvertedToDraft, EventName = "pull_request", ActionValue = "converted_to_draft", Values = _TS("PR converted to draft") },
-        new() { Key = EWebhookEventType.PullRequestReviewRequested,  EventName = "pull_request", ActionValue = "review_requested",   Values = _TS("PR review requested") },
+        new() { Key = EWebhookEventType.PullRequestOpened,           EventName = "pull_request", ActionValue = "opened",             Values = _TS(("en", "Pull request opened")) },
+        new() { Key = EWebhookEventType.PullRequestClosed,           EventName = "pull_request", ActionValue = "closed",             Values = _TS(("en", "Pull request closed without merging")) },
+        new() { Key = EWebhookEventType.PullRequestMerged,           EventName = "pull_request", ActionValue = "closed",             Values = _TS(("en", "Pull request merged")) },
+        new() { Key = EWebhookEventType.PullRequestReadyForReview,   EventName = "pull_request", ActionValue = "ready_for_review",   Values = _TS(("en", "PR ready for review")) },
+        new() { Key = EWebhookEventType.PullRequestConvertedToDraft, EventName = "pull_request", ActionValue = "converted_to_draft", Values = _TS(("en", "PR converted to draft")) },
+        new() { Key = EWebhookEventType.PullRequestReviewRequested,  EventName = "pull_request", ActionValue = "review_requested",   Values = _TS(("en", "PR review requested")) },
 
         // Pull Request Reviews. Approved and ChangesRequested share event+action; see the remarks.
-        new() { Key = EWebhookEventType.PullRequestReviewApproved,         EventName = "pull_request_review", ActionValue = "submitted", Values = _TS("PR review: approved") },
-        new() { Key = EWebhookEventType.PullRequestReviewChangesRequested, EventName = "pull_request_review", ActionValue = "submitted", Values = _TS("PR review: changes requested") },
-        new() { Key = EWebhookEventType.PullRequestReviewDismissed,        EventName = "pull_request_review", ActionValue = "dismissed", Values = _TS("PR review dismissed") },
+        new() { Key = EWebhookEventType.PullRequestReviewApproved,         EventName = "pull_request_review", ActionValue = "submitted", Values = _TS(("en", "PR review: approved")) },
+        new() { Key = EWebhookEventType.PullRequestReviewChangesRequested, EventName = "pull_request_review", ActionValue = "submitted", Values = _TS(("en", "PR review: changes requested")) },
+        new() { Key = EWebhookEventType.PullRequestReviewDismissed,        EventName = "pull_request_review", ActionValue = "dismissed", Values = _TS(("en", "PR review dismissed")) },
 
         // Check Runs
-        new() { Key = EWebhookEventType.CheckRunCompleted, EventName = "check_run", ActionValue = "completed", Values = _TS("Check run completed") },
+        new() { Key = EWebhookEventType.CheckRunCompleted, EventName = "check_run", ActionValue = "completed", Values = _TS(("en", "Check run completed")) },
 
         // Issue Comments
-        new() { Key = EWebhookEventType.IssueCommentCreated, EventName = "issue_comment", ActionValue = "created", Values = _TS("Issue comment created") },
+        new() { Key = EWebhookEventType.IssueCommentCreated, EventName = "issue_comment", ActionValue = "created", Values = _TS(("en", "Issue comment created")) },
     ];
 }

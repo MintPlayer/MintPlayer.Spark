@@ -6,6 +6,10 @@ organization, with the role each action needs. Depends on `MintPlayer.Spark.Auth
 
 - **Roles** `Owner > Admin > Member > Viewer`, ordered. What each may do is declared per type with
   `[RequiresOrganizationRole(action, role)]`; defaults: Viewer reads, Member creates and edits, Admin deletes.
+- **Custom roles** (`scanner`, `finance`, …) declared with `spark.AddOrganizationRole(name, description)`,
+  held beside the built-in role and named in rights: `[RequiresOrganizationRole("Scan", "scanner")]`.
+- **Published rows**: an `IOrganizationPublishable` row with `IsPublished = true` is listed and read by
+  everyone, anonymous included; every other action stays with members, and every other policy still applies.
 - **Every user has a personal organization**, created on first sign-in: their default, owned by them for
   good. Others join it like any other organization (D42); its Owner role never changes hands.
 - **Invitations by email** (Admin and up) and **join requests** raised by application code

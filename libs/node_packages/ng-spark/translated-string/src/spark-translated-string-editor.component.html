@@ -1,0 +1,61 @@
+@if (readonly()) {
+  <!-- Read-only (the attribute rights deny Edit): every language stays readable. -->
+  @for (row of rows(); track row.tag) {
+    @if (row.text) {
+      <div class="spark-translated-string-row">
+        <abbr class="spark-translated-string-tag" [title]="row.label">{{ row.tag }}</abbr>
+        <span [attr.lang]="row.tag">{{ row.text }}</span>
+      </div>
+    }
+  } @empty {
+    <span class="text-muted">-</span>
+  }
+} @else {
+  @for (row of rows(); track row.tag; let i = $index) {
+    <bs-input-group class="spark-translated-string-row">
+      <span class="input-group-text spark-translated-string-tag" [title]="row.label">{{ row.tag }}</span>
+      <input
+        type="text"
+        [attr.id]="i === 0 ? inputId() : null"
+        [attr.lang]="row.tag"
+        [attr.aria-label]="row.label"
+        [value]="row.text"
+        [class.is-invalid]="isInvalid()"
+        (input)="onInput(row.tag, $event)"
+        (blur)="fieldBlur.emit()">
+    </bs-input-group>
+  }
+  <bs-input-group class="spark-translated-string-add">
+    <input
+      type="text"
+      [attr.aria-label]="'spark.translatedString.languageTag' | t"
+      [placeholder]="'spark.translatedString.languageTag' | t"
+      [value]="newTag()"
+      [class.is-invalid]="newTagInvalid()"
+      (input)="onNewTagInput($event)"
+      (keydown.enter)="$event.preventDefault(); addLanguage()">
+    <button type="button" bsInputGroupBtn [color]="colors.secondary" (click)="addLanguage()">
+      <spark-icon name="plus" /> {{ 'spark.translatedString.addLanguage' | t }}
+    </button>
+  </bs-input-group>
+  @if (newTagInvalid()) {
+    <div class="text-danger small">{{ 'spark.translatedString.invalidTag' | t }}</div>
+  }
+}
+@if (names().length) {
+  <div class="spark-translated-string-names">
+    <div class="small text-muted">{{ 'spark.translatedString.otherNames' | t }}</div>
+    @for (name of names(); track $index) {
+      <div class="spark-translated-string-row">
+        <abbr class="spark-translated-string-tag" [title]="name.Tag">{{ name.Tag }}</abbr>
+        <span [attr.lang]="name.Tag">{{ name.Value }}</span>
+        @if (name.Kind) {
+          <span class="spark-chip">{{ 'spark.translatedString.kind.' + name.Kind | t }}</span>
+        }
+        @if (name.ValidFrom || name.ValidTo) {
+          <span class="text-muted">{{ name.ValidFrom ?? '…' }} – {{ name.ValidTo ?? '…' }}</span>
+        }
+      </div>
+    }
+  </div>
+}

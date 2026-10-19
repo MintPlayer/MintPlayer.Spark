@@ -46,29 +46,29 @@ The order of work for [commerce_PRD.md](commerce_PRD.md). The PRD carries the de
 
 ### M1 — Framework additions and core defects
 
-- [ ] X1 visitor identity (`ISparkVisitor`, Data Protection cookie, merge on sign-in, antiforgery on anonymous POSTs)
-- [ ] X2 live broadcast topics, server time in frames, private per-identity stream, identity-keyed socket caps
-- [ ] X3 atomic natural-id create, with takeover of expired `IExpiring` documents (F6)
-- [ ] X4 `Money` value type + model attribute type + ng-spark renderer + index companions
-- [ ] X5 `MintPlayer.Spark.Webhooks`; GitHub webhooks re-pointed onto it
-- [ ] X6 server-side meta tags for SPA routes
+- [x] X1 visitor identity (`ISparkVisitor`, Data Protection cookie, merge on sign-in, antiforgery on anonymous POSTs)
+- [x] X2 live broadcast topics, server time in frames, private per-identity stream, identity-keyed socket caps
+- [x] X3 atomic natural-id create, with takeover of expired `IExpiring` documents (F6)
+- [x] X4 `Money` value type + model attribute type + ng-spark renderer + index companions
+- [x] X5 `MintPlayer.Spark.Webhooks`; GitHub webhooks re-pointed onto it
+- [x] X6 server-side meta tags for SPA routes
 - [ ] X7 `ISaveReplacement` + on-behalf-of seam (F4: MCP "Applied" fix)
-- [ ] X8 Organizations publishable OR mode + custom roles (`scanner`, `finance`)
-- [ ] X10 rate limiter: identity partitions + IPv6 /64 grouping (F5)
-- [ ] X11 `SparkUser.CreatedAtUtc`
-- [ ] X12 generic claims primitive + cluster-wide multi-key unit of work
-- [ ] X13 phone verification on `MintPlayer.Spark.Sms` (+ adapters per Q-O1, + test adapter)
-- [ ] X16 date-time display facility: model rule `dateTimeDisplay` (viewer | stored | zone | zoneFrom + hint); ng-spark `<spark-date-time [value] [alsoIn] [mode]>` component + pipe (`Intl.DateTimeFormat`; second rendering auto-hidden when the wall clocks match at that instant; translated IANA city label) (D35); generic grids and detail pages use it; .NET `ISparkDateTimeFormatter` twin; fold in the identity provider's private date pipe (D34)
-- [ ] D36 `ISparkTimeZoneNames` (server + client) with fallback chain: reference-data provider (registered by the reference-data client package, M19) → platform-localized generic name → IANA-derived city; cache per (zone, language); non-blocking render; S23 decides step 2 per platform
-- [ ] K10 enforcement: `BannedSymbols.txt` for non-core projects through the existing `BannedApiAnalyzers` wiring (`Directory.Build.targets:235-241`); a `tools/verify-*.test.mjs` client guard with a violating fixture that proves it fires; fix every existing violation it finds
-- [ ] X17 one name system: redesign `TranslatedString` (entries: value + RFC 5646 tag + optional kind/validity/source/romanization; RFC 4647 fallback server + client; any language; sanitized index field names; display rule); migrate every usage found by S24, production data included
+- [x] X8 Organizations publishable OR mode + custom roles (`scanner`, `finance`)
+- [x] X10 rate limiter: identity partitions + IPv6 /64 grouping (F5)
+- [x] X11 `SparkUser.CreatedAtUtc`
+- [x] X12 generic claims primitive + cluster-wide multi-key unit of work
+- [x] X13 phone verification on `MintPlayer.Spark.Sms` (+ adapters per Q-O1, + test adapter)
+- [x] X16 date-time display facility: model rule `dateTimeDisplay` (viewer | stored | zone | zoneFrom + hint); ng-spark `<spark-date-time [value] [alsoIn] [mode]>` component + pipe (`Intl.DateTimeFormat`; second rendering auto-hidden when the wall clocks match at that instant; translated IANA city label) (D35); generic grids and detail pages use it; .NET `ISparkDateTimeFormatter` twin; fold in the identity provider's private date pipe (D34)
+- [x] D36 `ISparkTimeZoneNames` (server + client) with fallback chain: reference-data provider (registered by the reference-data client package, M19) → platform-localized generic name → IANA-derived city; cache per (zone, language); non-blocking render; S23 decides step 2 per platform
+- [x] K10 enforcement: `BannedSymbols.txt` for non-core projects through the existing `BannedApiAnalyzers` wiring (`Directory.Build.targets:235-241`); a `tools/verify-*.test.mjs` client guard with a violating fixture that proves it fires; fix every existing violation it finds
+- [x] X17 one name system: redesign `TranslatedString` (entries: value + RFC 5646 tag + optional kind/validity/source/romanization; RFC 4647 fallback server + client; any language; sanitized index field names; display rule); migrate every usage found by S24, production data included
 - [ ] X18 fuzzy-marked fields/search rules → `SearchEngineType.Lucene` set automatically on that index; deterministic side-by-side rebuild on an engine change; analyzer for fuzzy queries against unmarked indexes
 - [ ] X19 library-declared index definitions (incl. maps contributed to a shared multi-map index) emitted into the app by the generator at build time; commerce, warehouse and reference-data libraries ship declarations, never index classes
 - [ ] X20 source-generator programme: (1) D28 names constants (effective names + library ids) or delete unused; (2) C#→TS contract tool (layout per the pending output-path investigation; CI diff check; typed records replace anonymous objects for ng-spark responses; migrate existing TS mirrors, fixing the `PersistentObjectAttribute.options` and `EntityPermissions` drifts); (3) one shared discovery generator (+ row policies, `IReplicaChanged<T>`, approval deciders/handlers, account hooks); (4) `GenerateIndexGenerator`: Money/Quantity companions, sanitized language fields, fuzzy marker, record fix; (5) enum-backed lookup generator; (6) GS1 tables tool (C# + TS); (7) runtime ETL from contracts; (8) public plugin helpers; (9) guards: translation-key test (fix `dashboards.yes`, `common.unexpectedError`), K10 banned symbols, migration Version from class name, authorization endpoint filter
-- [ ] X15 po-form edit renderer for a single AsDetail value object (`spark-po-form.component.html:381-398`)
-- [ ] X14 recipient locale: time zone + culture on the account (preference) and captured onto orders at checkout; `ISparkRecipientLocale` used by mails, PDFs and background jobs (D33)
-- [ ] F10 duplicate actions fail at startup; F11 same-name custom actions fail at startup
-- [ ] F2 moderation decide race (one session, red test first)
+- [x] X15 po-form edit renderer for a single AsDetail value object (`spark-po-form.component.html:381-398`)
+- [x] X14 recipient locale: time zone + culture on the account (preference) and captured onto orders at checkout; `ISparkRecipientLocale` used by mails, PDFs and background jobs (D33)
+- [x] F10 duplicate actions fail at startup; F11 same-name custom actions fail at startup
+- [x] F2 moderation decide race (one session, red test first)
 
 ### M2 — Persistent-object name identity (X9, D28)
 

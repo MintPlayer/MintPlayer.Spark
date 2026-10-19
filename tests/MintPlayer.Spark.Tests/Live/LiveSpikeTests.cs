@@ -220,7 +220,7 @@ public class LiveSpikeTests(ITestOutputHelper output) : SparkTestDriver
         var socket = new StuckWebSocket();
 
         var clock = Stopwatch.StartNew();
-        var connection = new LiveConnection(socket, scope.ServiceProvider, DateTimeOffset.UtcNow.AddHours(1));
+        var connection = new LiveConnection(socket, scope.ServiceProvider, DateTimeOffset.UtcNow.AddHours(1), new MintPlayer.Spark.Abstractions.Live.SparkLiveViewer("ip:127.0.0.1", null, null));
         await connection.RunAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10));
         clock.Stop();
 

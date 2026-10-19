@@ -47,8 +47,14 @@ export interface LiveSubscribeQueryOp { op: 'subscribe'; sub: string; query: Liv
 /** The same query subscription with a new page, sort, search or filters; the server keeps the sub. */
 export interface LiveUpdateOp { op: 'update'; sub: string; query: LiveQueryRequest }
 export interface LiveUnsubscribeOp { op: 'unsubscribe'; sub: string }
+/** A broadcast topic (commerce PRD X2): one value for every subscriber, the latest one retained. */
+export interface LiveSubscribeTopicOp { op: 'subscribe'; sub: string; topic: string }
+/** This socket's identity's own stream on a topic (a signed-in user or a visitor; never an address). */
+export interface LiveSubscribePrivateOp { op: 'subscribe'; sub: string; private: string }
 
-export type LiveClientOp = LiveSubscribePoOp | LiveSubscribeQueryOp | LiveUpdateOp | LiveUnsubscribeOp;
+export type LiveClientOp =
+  | LiveSubscribePoOp | LiveSubscribeQueryOp | LiveSubscribeTopicOp | LiveSubscribePrivateOp
+  | LiveUpdateOp | LiveUnsubscribeOp;
 
 // --- server → client ------------------------------------------------------------------------------
 
@@ -83,13 +89,21 @@ export interface LiveResultFrame { type: 'result'; sub: string; result: QueryRes
 export interface LivePatchFrame { type: 'patch'; sub: string; patch: LiveQueryPatch }
 /** The subscription has ended. Without `sub` it answers an unparseable frame. */
 export interface LiveErrorFrame { type: 'error'; sub?: string; code: LiveErrorCode; message: string }
-/** Heartbeat. Nothing to answer. */
-export interface LivePingFrame { type: 'ping' }
+/** Heartbeat, with the server's clock (Unix ms). Nothing to answer. */
+export interface LivePingFrame { type: 'ping'; serverTime?: number }
+/** The first frame on every socket: the server's clock (Unix ms), so a countdown is right from the start. */
+export interface LiveHelloFrame { type: 'hello'; serverTime: number }
+/**
+ * A topic's latest value. `seq` grows with every publish; `serverTime` is the server's clock when it was sent.
+ * ⚠️ Topic payloads are public by construction: they skip row security and redaction.
+ */
+export interface LiveTopicFrame<T = unknown> { type: 'topic'; sub: string; seq: number; serverTime: number; data: T }
 
 export type LiveServerFrame =
   | LivePoFrame | LivePoPatchFrame | LiveGoneFrame
   | LiveResultFrame | LivePatchFrame
-  | LiveErrorFrame | LivePingFrame;
+  | LiveTopicFrame
+  | LiveErrorFrame | LivePingFrame | LiveHelloFrame;
 
 /** Close codes with a meaning of their own; any other code is reconnected with backoff. */
 export const LIVE_CLOSE_REAUTHENTICATE = 4401;
@@ -118,6 +132,14 @@ export type LivePoEvent =
 /** `result`: the page with every patch applied. `error` ends the stream (it completes after it). */
 export type LiveQueryEvent =
   | { type: 'result'; result: QueryResult }
+  | LiveErrorEvent;
+
+/**
+ * `topic`: the topic's latest value (a late joiner gets the held one at once). `error` ends the stream (it
+ * completes after it): an unknown topic and a refused one are the same `unavailable`.
+ */
+export type LiveTopicEvent<T = unknown> =
+  | { type: 'topic'; data: T; seq: number; serverTime: number }
   | LiveErrorEvent;
 
 // --- applying patches ---------------------------------------------------------------------------

@@ -10,6 +10,7 @@ import {
   EntityAttributeDefinition,
   EntityType,
   ShowedOn,
+  translated,
 } from '@mintplayer/ng-spark/models';
 
 /**
@@ -114,7 +115,7 @@ async function ready(fixture: any): Promise<void> {
 function refusal() {
   return {
     status: 400,
-    error: { result: { errors: [{ attributeName: 'ServiceEntries', errorMessage: { en: 'Already invoiced.' }, ruleType: 'custom' }] } },
+    error: { result: { errors: [{ attributeName: 'ServiceEntries', errorMessage: translated({ en: 'Already invoiced.' }), ruleType: 'custom' }] } },
   };
 }
 

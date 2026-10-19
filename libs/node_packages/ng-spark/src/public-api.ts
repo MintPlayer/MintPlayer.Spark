@@ -3,6 +3,7 @@
 //   @mintplayer/ng-spark/models             (PersistentObject, EntityType, SparkQuery, etc. + currentLanguage/resolveTranslation/ShowedOn/ELookupDisplayType)
 //   @mintplayer/ng-spark/services           (SparkService, SparkLiveService, SparkLanguageService, RetryActionService, SparkIconRegistry)
 //   @mintplayer/ng-spark/pipes              (all 22 pipes)
+//   @mintplayer/ng-spark/date-time          (<spark-date-time>, sparkDateTime pipe, formatSparkDateTime, SparkTimeZoneNames: the one date/zone facility, K10)
 //   @mintplayer/ng-spark/renderers          (SPARK_ATTRIBUTE_RENDERERS, provideSparkAttributeRenderers, renderer interfaces)
 //   @mintplayer/ng-spark/routes             (sparkRoutes, SparkRouteConfig)
 //   @mintplayer/ng-spark/po-form            (SparkPoFormComponent)

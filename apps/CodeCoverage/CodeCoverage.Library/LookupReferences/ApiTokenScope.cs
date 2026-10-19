@@ -29,13 +29,13 @@ public sealed class ApiTokenScope : TransientLookupReference<string>
         {
             Key = Account,
             Description = "Uploads for every repository of the account",
-            Values = _TS("All repositories of the account", "Tous les dépôts du compte", "Alle repositories van het account"),
+            Values = _TS(("en", "All repositories of the account"), ("fr", "Tous les dépôts du compte"), ("nl", "Alle repositories van het account")),
         },
         new ApiTokenScope
         {
             Key = Repository,
             Description = "Uploads only for the selected repositories",
-            Values = _TS("Selected repositories", "Dépôts sélectionnés", "Geselecteerde repositories"),
+            Values = _TS(("en", "Selected repositories"), ("fr", "Dépôts sélectionnés"), ("nl", "Geselecteerde repositories")),
         },
     ];
 }

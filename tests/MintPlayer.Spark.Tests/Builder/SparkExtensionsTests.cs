@@ -310,7 +310,7 @@ public class SparkExtensionsTests
     /// returns the id of the query it points at.
     /// </summary>
     /// <remarks>
-    /// <c>TranslatedString</c> serializes FLAT -- <c>{ "en": "..." }</c>, not
+    /// <c>TranslatedString</c> is read here in its FLAT shorthand -- <c>{ "en": "..." }</c>, not
     /// <c>{ "translations": { "en": "..." } }</c>. Getting that wrong makes the whole file
     /// unparseable, and the check under test deliberately swallows a JsonException (FR5, because
     /// ProgramUnitsLoader owns that error) -- so a malformed fixture presents as the check simply

@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { SparkDateTimePipe } from '@mintplayer/ng-spark/date-time';
 import { RouterLink } from '@angular/router';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
@@ -8,7 +9,6 @@ import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
 import {
   SPARK_IDENTITY_PROVIDER_QUERIES,
-  SparkIdentityProviderDatePipe,
   SparkIdentityProviderPortalService,
   SparkIdentityProviderTextPipe,
   SparkSigningKey,
@@ -40,7 +40,7 @@ const QUEUES: { label: string; alias: string }[] = [
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     RouterLink, BsAlertComponent, BsBadgeComponent, BsCardComponent, BsCardHeaderComponent, BsSpinnerComponent,
-    BsTableComponent, SparkIdentityProviderTextPipe, SparkIdentityProviderDatePipe,
+    BsTableComponent, SparkIdentityProviderTextPipe, SparkDateTimePipe,
   ],
   template: `
     <div class="d-flex justify-content-center">
@@ -86,9 +86,9 @@ const QUEUES: { label: string; alias: string }[] = [
                       <td class="font-monospace text-break">{{ key.kid }}</td>
                       <td>{{ key.algorithm }}</td>
                       <td><bs-badge [type]="stateColor(key.state)">{{ key.state }}</bs-badge></td>
-                      <td>{{ key.createdAt | idpDate }}</td>
-                      <td>{{ key.activatedAt | idpDate }}</td>
-                      <td>{{ key.retiredAt | idpDate }}</td>
+                      <td>{{ key.createdAt | sparkDateTime:'viewer':'medium' }}</td>
+                      <td>{{ key.activatedAt | sparkDateTime:'viewer':'medium' }}</td>
+                      <td>{{ key.retiredAt | sparkDateTime:'viewer':'medium' }}</td>
                     </tr>
                   }
                 </tbody>

@@ -426,7 +426,9 @@ public class GenerateIndexGenerator : IncrementalGenerator
                         Location = location,
                     });
                 }
-                else
+                // A Money is complex too (stored, FieldIndexing.No), but it is not left unfilterable: it
+                // gets its amount and currency companions below.
+                else if (!property.Type.IsMoney())
                 {
                     complexProperties.Add(new InvalidSearchInfo
                     {
@@ -494,6 +496,30 @@ public class GenerateIndexGenerator : IncrementalGenerator
 
             if (breadcrumbCompanion is not null)
                 properties.Add(breadcrumbCompanion);
+
+            // A Money (commerce X4) is an object a static index cannot sort or compare, so it gets two flat
+            // companions the query executor sorts and filters through (SparkMoney.AmountCompanion /
+            // CurrencyCompanion, MoneyQueryFields). A name already taken on the entity gets no companion:
+            // the column is then simply not sortable on this index, never wrongly sorted.
+            if (property.Type.IsMoney())
+            {
+                foreach (var (suffix, type) in new[] { ("Amount", "decimal?"), ("Currency", "string?") })
+                {
+                    var companionName = property.Name + suffix;
+                    if (entityPropertyNames.Contains(companionName)) continue;
+
+                    properties.Add(new IndexPropertyInfo
+                    {
+                        Name = companionName,
+                        TypeDisplay = type,
+                        // "!." is a C#-nullability silencer only: RavenDB evaluates the map over stored
+                        // JSON, where a missing Money yields null for both fields.
+                        MapExpression = $"{itemVariable}.{property.Name}!.{suffix}",
+                        FieldIndexing = null,
+                        IsSortCompanion = true,
+                    });
+                }
+            }
         }
 
         return new GeneratedIndexInfo

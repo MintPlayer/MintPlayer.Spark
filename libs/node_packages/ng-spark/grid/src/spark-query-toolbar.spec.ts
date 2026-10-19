@@ -11,7 +11,7 @@ import { SparkQueryGridComponent } from './spark-query-grid.component';
 import { SparkQueryCardComponent } from './spark-query-card.component';
 import { SparkService, SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { SPARK_ATTRIBUTE_RENDERERS } from '@mintplayer/ng-spark/renderers';
-import { CustomActionDefinition, EntityType, QueryResultItem, ShowedOn } from '@mintplayer/ng-spark/models';
+import { CustomActionDefinition, EntityType, QueryResultItem, ShowedOn, translated, resolveTranslation } from '@mintplayer/ng-spark/models';
 import { settle } from '../../src/test-utils';
 
 /**
@@ -29,7 +29,7 @@ const answerType: EntityType = {
 
 const answersQuery = {
   id: 'q-answers', name: 'Question_Answers', source: 'Custom.Question_Answers', alias: 'question-answers',
-  entityType: 'Answer', sortColumns: [], label: { en: 'Answers' },
+  entityType: 'Answer', sortColumns: [], label: translated({ en: 'Answers' }),
 } as any;
 
 const rows: QueryResultItem[] = [
@@ -41,26 +41,26 @@ const rows: QueryResultItem[] = [
 const columns = [{ name: 'Body', dataType: 'string', order: 1 } as any];
 
 const newAction = {
-  name: 'New', label: { en: 'New' }, icon: 'plus-lg', showedOn: 'query', offset: 0,
+  name: 'New', label: translated({ en: 'New' }), icon: 'plus-lg', showedOn: 'query', offset: 0,
   refreshOnCompleted: false, isDefault: true, variant: 'primary',
 } as CustomActionDefinition;
 const editAction = {
-  name: 'Edit', label: { en: 'Edit' }, icon: 'pencil', showedOn: 'both', selectionRule: '=1', offset: 0,
+  name: 'Edit', label: translated({ en: 'Edit' }), icon: 'pencil', showedOn: 'both', selectionRule: '=1', offset: 0,
   refreshOnCompleted: false, isDefault: true,
 } as CustomActionDefinition;
 const deleteAction = {
-  name: 'Delete', label: { en: 'Delete' }, icon: 'trash', showedOn: 'both', selectionRule: '>0', offset: 0,
-  refreshOnCompleted: false, isDefault: true, variant: 'danger', confirmation: { en: 'common.confirmDeleteSelected' },
+  name: 'Delete', label: translated({ en: 'Delete' }), icon: 'trash', showedOn: 'both', selectionRule: '>0', offset: 0,
+  refreshOnCompleted: false, isDefault: true, variant: 'danger', confirmation: translated({ en: 'common.confirmDeleteSelected' }),
 } as CustomActionDefinition;
 const duplicateAction = {
-  name: 'DuplicateAnswer', label: { en: 'Duplicate' }, showedOn: 'query', selectionRule: '=1', offset: 0,
+  name: 'DuplicateAnswer', label: translated({ en: 'Duplicate' }), showedOn: 'query', selectionRule: '=1', offset: 0,
   refreshOnCompleted: true,
 } as CustomActionDefinition;
 const exportAction = {
-  name: 'Export', label: { en: 'Export' }, showedOn: 'Both', offset: 1, refreshOnCompleted: false,
+  name: 'Export', label: translated({ en: 'Export' }), showedOn: 'Both', offset: 1, refreshOnCompleted: false,
 } as CustomActionDefinition;
 
-const langStub = { t: (k: string) => k, resolve: (v: any) => (typeof v === 'string' ? v : v?.en ?? '') };
+const langStub = { t: (k: string) => k, resolve: (v: any) => (typeof v === 'string' ? v : resolveTranslation(v, 'en')) };
 
 function makeService(actions: CustomActionDefinition[], overrides: Record<string, unknown> = {}) {
   return {
@@ -613,7 +613,7 @@ describe('query toolbar (#460 M15)', () => {
      * menu. A detail-only action stays off the card.
      */
     it('a sub-query card offers New, Delete and the query actions, enabled live, with the row menu', async () => {
-      const detailOnly = { name: 'CloseQuestion', label: { en: 'Close' }, showedOn: 'detail', offset: 0, refreshOnCompleted: false } as CustomActionDefinition;
+      const detailOnly = { name: 'CloseQuestion', label: translated({ en: 'Close' }), showedOn: 'detail', offset: 0, refreshOnCompleted: false } as CustomActionDefinition;
       const { fixture, el } = await card([newAction, deleteAction, duplicateAction, exportAction, detailOnly],
         { selectionMode: 'multiple', parentId: 'questions/1', parentType: 'Question' });
       const inner = fixture.debugElement.query(d => d.componentInstance instanceof SparkQueryGridComponent)

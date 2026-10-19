@@ -1,6 +1,7 @@
 import { DOCUMENT, isPlatformBrowser } from '@angular/common';
 import { HttpFeature, HttpFeatureKind, HttpInterceptorFn, withInterceptors } from '@angular/common/http';
 import { PLATFORM_ID, inject } from '@angular/core';
+import { sparkViewerTimeZone } from '@mintplayer/ng-spark/date-time';
 
 /**
  * The header carrying the viewer's IANA timezone id, e.g. `Europe/Brussels`.
@@ -37,13 +38,11 @@ const ZONE_ID_SHAPE = /^[A-Za-z][A-Za-z0-9_+\-]*(\/[A-Za-z0-9_+\-]+){0,2}$/;
  * An id is deliberately sent rather than a numeric offset: an offset is only valid at one instant,
  * so a server asked to render "next Tuesday at 09:00" from an offset captured today gets it wrong
  * across a DST boundary. A zone id carries the rules, not one sample of them.
+ *
+ * Read through the date-time entry point, which owns every `Intl.DateTimeFormat` in the client (K10).
  */
 export function resolveBrowserTimeZone(): string | null {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || null;
-  } catch {
-    return null;
-  }
+  return sparkViewerTimeZone();
 }
 
 /** The value of cookie `name` in `cookies` (`document.cookie`), or `null`. */

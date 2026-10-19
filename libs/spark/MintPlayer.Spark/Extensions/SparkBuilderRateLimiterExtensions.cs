@@ -16,7 +16,9 @@ namespace MintPlayer.Spark.Extensions;
 /// </code>
 /// or via <c>SparkFullOptions.RateLimiter</c> for AddSparkFull consumers.
 ///
-/// The limiter is partitioned by client IP and scoped to
+/// The limiter keeps two budgets per request (commerce PRD X10): one per caller — signed-in user, else visitor
+/// cookie, else network address — and a higher ceiling per network address shared by every caller behind it.
+/// An address is an IPv4 address or an IPv6 /64. It is scoped to
 /// <see cref="SparkRateLimiterOptions.PathPrefixes"/> — by default <c>/spark</c> and <c>/connect</c>,
 /// so static assets and app-specific routes remain unthrottled. Over-limit requests are rejected
 /// with HTTP 429.
@@ -39,6 +41,14 @@ public static class SparkBuilderRateLimiterExtensions
     /// authentication only protects the app from load it has already absorbed the expensive part of.
     /// Routing has already run at that point, so endpoint-attached <c>[EnableRateLimiting]</c> /
     /// <c>[DisableRateLimiting]</c> policies still resolve normally.
+    /// </para>
+    /// <para>
+    /// <b>One exception, by necessity.</b> A request that presents a credential (an <c>Authorization</c>
+    /// header, a client certificate, an authentication cookie) is one caller whose identity is known only
+    /// after authentication. Ahead of it, such a request spends only the address ceiling
+    /// (<see cref="SparkRateLimiterOptions.PermitLimitPerAddress"/>); its caller budget is taken at
+    /// <see cref="SparkMiddlewareStage.AfterSpark"/>, keyed on the user it turned out to be. A request with no
+    /// credential spends both budgets ahead of authentication.
     /// </para>
     /// <para>
     /// <b>Do not also call <c>app.UseRateLimiter()</c>.</b> This is not a style preference — it
@@ -92,47 +102,83 @@ public static class SparkBuilderRateLimiterExtensions
         // that would be a trap, not an interface.
         var prefixes = NormalizePrefixes(options.PathPrefixes);
 
+        var perAddress = options.PermitLimitPerAddress ?? (int)Math.Min(int.MaxValue, options.PermitLimit * 10L);
+        if (options.PermitLimit < 1 || perAddress < options.PermitLimit)
+            throw new ArgumentException(
+                $"{nameof(SparkRateLimiterOptions)}.{nameof(SparkRateLimiterOptions.PermitLimit)} must be at least 1, and "
+                + $"{nameof(SparkRateLimiterOptions.PermitLimitPerAddress)} at least {nameof(SparkRateLimiterOptions.PermitLimit)}: "
+                + "the address ceiling is shared by every caller behind one address.",
+                nameof(SparkRateLimiterOptions.PermitLimitPerAddress));
+
+        FixedWindowRateLimiterOptions Budget(int permits) => new()
+        {
+            PermitLimit = permits,
+            Window = options.Window,
+            QueueLimit = 0,
+        };
+
+        // Two budgets per request (commerce PRD X10), chained, so a request needs a permit from both:
+        //   * the CALLER's — per signed-in user, else per visitor cookie, else per address — so a hundred
+        //     fans behind one carrier NAT are not one caller;
+        //   * the ADDRESS ceiling (PermitLimitPerAddress), shared by every caller behind one address, which
+        //     bounds what one address can do with many visitor cookies or accounts.
+        // An address is an IPv4 address or an IPv6 /64 (F5): one IPv6 host owns a whole /64 and rotates the low
+        // half by itself, so the exact address was a fresh budget for the asking.
         builder.Services.AddRateLimiter(rl =>
         {
-            rl.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
-            {
-                // Only the configured prefixes are throttled. SPA static files, controllers, and any
-                // application endpoints outside them remain unmetered so the limiter never starves
-                // browser asset loads.
-                //
-                // /connect is in the defaults alongside /spark because it carries the interactive
-                // login, two-factor and consent pages. Scoping to /spark alone meant an app that
-                // opted into the limiter still shipped an unthrottled password endpoint, and lockout
-                // — which is per-account — does nothing against an attacker spreading attempts
-                // across many accounts.
-                var path = httpContext.Request.Path;
-                if (!MatchesAnyPrefix(path, prefixes))
-                    return RateLimitPartition.GetNoLimiter("no-limit");
-
-                // The partition key is the caller alone, so every metered prefix shares one bucket.
-                // The budget is a per-caller allowance rather than a per-route one; a route needing
-                // its own cost declares a named policy instead.
-                var clientKey = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-                return RateLimitPartition.GetFixedWindowLimiter(
-                    partitionKey: clientKey,
-                    factory: _ => new FixedWindowRateLimiterOptions
-                    {
-                        PermitLimit = options.PermitLimit,
-                        Window = options.Window,
-                        QueueLimit = 0,
-                    });
-            });
+            rl.GlobalLimiter = PartitionedRateLimiter.CreateChained(
+                PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
+                    SparkRateLimitIdentity.Of(httpContext) is { Metered: true, CallerKey: { } callerKey }
+                        ? RateLimitPartition.GetFixedWindowLimiter("caller|" + callerKey, _ => Budget(options.PermitLimit))
+                        : RateLimitPartition.GetNoLimiter("no-limit")),
+                PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
+                    SparkRateLimitIdentity.Of(httpContext) is { Metered: true } identity
+                        ? RateLimitPartition.GetFixedWindowLimiter("address|" + identity.AddressKey, _ => Budget(perAddress))
+                        : RateLimitPartition.GetNoLimiter("no-limit")));
             rl.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
         });
 
+        // Ahead of authentication: a flood is refused before any credential is validated (see the remarks).
         builder.Registry.AddMiddleware(
-            app => app.UseRateLimiter(),
+            app =>
+            {
+                app.Use(SparkRateLimitIdentity.Classify(prefixes));
+                app.UseRateLimiter();
+            },
             SparkMiddlewareStage.BeforeAuthentication);
+
+        // A request that presents a credential is the one caller budget that cannot be told apart before
+        // authentication: its user is known only once the credential is validated. Its caller budget is taken
+        // here instead, after authentication, keyed on the user it turned out to be (or on the visitor or the
+        // address when the credential did not authenticate). The address ceiling above already applied to it,
+        // so a junk credential buys at most the ceiling's worth of authentication work.
+        var callerLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
+            RateLimitPartition.GetFixedWindowLimiter(
+                "caller|" + Visitor.SparkVisitorFeature.For(httpContext).IdentityKey,
+                _ => Budget(options.PermitLimit)));
+        builder.Registry.AddMiddleware(
+            app => app.Use(async (context, next) =>
+            {
+                if (SparkRateLimitIdentity.Of(context) is { Metered: true, CallerKey: null }
+                    && context.GetEndpoint()?.Metadata.GetMetadata<DisableRateLimitingAttribute>() is null)
+                {
+                    using var lease = callerLimiter.AttemptAcquire(context);
+                    if (!lease.IsAcquired)
+                    {
+                        context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+                        return;
+                    }
+                    await next(context);
+                    return;
+                }
+                await next(context);
+            }),
+            SparkMiddlewareStage.AfterSpark);
 
         return builder;
     }
 
-    private static bool MatchesAnyPrefix(PathString path, PathString[] prefixes)
+    internal static bool MatchesAnyPrefix(PathString path, PathString[] prefixes)
     {
         foreach (var prefix in prefixes)
         {

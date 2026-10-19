@@ -203,11 +203,11 @@ public class OidcApprovalTests(OidcSharedHost host) : OidcTestHost(host), IClass
             Id = OidcScopeCatalog.ResourceId(ApiName),
             Kind = OidcResourceKinds.Api,
             Name = ApiName,
-            DisplayName = TranslatedString.Create(ApiName),
+            DisplayName = TranslatedString.Of("en", ApiName),
             Enabled = true,
             Owners = [owner],
             AutoApprove = autoApprove,
-            Scopes = [new OidcApiScope { Name = ApiName + ".read", DisplayName = TranslatedString.Create("read") }],
+            Scopes = [new OidcApiScope { Name = ApiName + ".read", DisplayName = TranslatedString.Of("en", "read") }],
         });
         await session.SaveChangesAsync();
     }

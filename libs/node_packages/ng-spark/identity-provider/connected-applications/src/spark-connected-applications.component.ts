@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { SparkDateTimePipe } from '@mintplayer/ng-spark/date-time';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
 import { BsBadgeComponent } from '@mintplayer/ng-bootstrap/badge';
@@ -10,7 +11,6 @@ import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
 import {
   SparkConnectedApplication,
   SparkConnectedScope,
-  SparkIdentityProviderDatePipe,
   SparkIdentityProviderPortalService,
   SparkIdentityProviderTextPipe,
   injectIdentityProviderText,
@@ -31,7 +31,7 @@ import {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     BsAlertComponent, BsBadgeComponent, BsCardComponent, BsCardHeaderComponent, BsCheckboxComponent, BsFormComponent,
-    BsSpinnerComponent, SparkIconComponent, SparkIdentityProviderTextPipe, SparkIdentityProviderDatePipe,
+    BsSpinnerComponent, SparkIconComponent, SparkIdentityProviderTextPipe, SparkDateTimePipe,
   ],
   template: `
     <div class="d-flex justify-content-center">
@@ -67,12 +67,12 @@ import {
                 </div>
 
                 <small class="text-muted d-block spark-connected-app-dates">
-                  {{ 'apps.firstGranted' | idp: (app.firstGrantedAt | idpDate) }} ·
-                  @if (app.lastUsedAt) { {{ 'apps.lastUsed' | idp: (app.lastUsedAt | idpDate) }} } @else { {{ 'apps.neverUsed' | idp }} }
+                  {{ 'apps.firstGranted' | idp: (app.firstGrantedAt | sparkDateTime:'viewer':'medium') }} ·
+                  @if (app.lastUsedAt) { {{ 'apps.lastUsed' | idp: (app.lastUsedAt | sparkDateTime:'viewer':'medium') }} } @else { {{ 'apps.neverUsed' | idp }} }
                 </small>
                 @if (app.remembered) {
                   <small class="text-muted d-block">
-                    @if (app.rememberedUntil) { {{ 'apps.rememberedUntil' | idp: (app.rememberedUntil | idpDate) }} } @else { {{ 'apps.remembered' | idp }} }
+                    @if (app.rememberedUntil) { {{ 'apps.rememberedUntil' | idp: (app.rememberedUntil | sparkDateTime:'viewer':'medium') }} } @else { {{ 'apps.remembered' | idp }} }
                   </small>
                 }
 

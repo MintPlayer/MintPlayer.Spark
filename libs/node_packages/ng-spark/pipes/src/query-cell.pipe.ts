@@ -3,6 +3,7 @@ import {
   LookupReference,
   QueryColumn,
   QueryResultItem,
+  isTranslatedString,
   resolveTranslation,
   resolvedBreadcrumb,
   valueFor,
@@ -52,6 +53,10 @@ export class QueryCellValuePipe implements PipeTransform {
       const option = lookupRef?.values.find(v => v.key === String(cell.value));
       if (option) return resolveTranslation(option.values) || option.key;
     }
+
+    // A TranslatedString cell (commerce X17) in the current language. A generated index projects one
+    // string field per language instead (Description_nl), which never reaches this branch.
+    if (column.dataType === 'TranslatedString') return isTranslatedString(cell.value) ? resolveTranslation(cell.value) : (cell.value ?? '');
 
     // Null rather than '' so the cell can tell "false" from "unset" and render an indeterminate
     // checkbox instead of an unchecked one.

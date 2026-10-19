@@ -376,8 +376,8 @@ public static class SparkSchemaGenerator
                     ["type"] = "object",
                     ["minProperties"] = 1,
                     ["anyOf"] = new JsonArray(
-                        Branch(new JsonObject { ["type"] = "string", ["description"] = "The text in this language (a code from culture.json)." },
-                            "A leaf: language code → text. A language missing here falls back to the first one."),
+                        Branch(new JsonObject { ["type"] = "string", ["description"] = "The text in this language (an RFC 5646 tag, normally one from culture.json)." },
+                            "A leaf: RFC 5646 language tag (en, nl-BE, zh-Hant) → text. A language missing here falls back through its RFC 4647 lookup chain (nl-BE → nl), then en, then the first text."),
                         Branch(NodeOrRemoval(), "A namespace: name → a nested namespace or leaf.")),
                 },
             },
@@ -393,7 +393,7 @@ public static class SparkSchemaGenerator
 /// </remarks>
 public sealed class CultureFile
 {
-    /// <summary>The language codes, e.g. <c>["en", "fr", "nl"]</c>. Each name is the translations.json key <c>culture.languages.{code}</c>.</summary>
+    /// <summary>The language codes, RFC 5646 tags, e.g. <c>["en", "fr", "nl"]</c> or <c>"zh-Hant"</c>. Each name is the translations.json key <c>culture.languages.{code}</c>.</summary>
     public string[]? Languages { get; set; }
 
     /// <summary>The language used when the user has not chosen one; one of <c>languages</c>.</summary>

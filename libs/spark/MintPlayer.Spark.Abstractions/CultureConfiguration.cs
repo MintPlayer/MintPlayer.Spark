@@ -9,7 +9,7 @@ public sealed class CultureConfiguration
 {
     public Dictionary<string, TranslatedString> Languages { get; set; } = new()
     {
-        ["en"] = TranslatedString.Create("English")
+        ["en"] = TranslatedString.Of("en", "English")
     };
     public string DefaultLanguage { get; set; } = "en";
 }

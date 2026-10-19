@@ -11,9 +11,9 @@ public sealed class OidcMemberRole : TransientLookupReference<string>
 
     public static IReadOnlyCollection<OidcMemberRole> Items { get; } =
     [
-        new OidcMemberRole { Key = OidcMemberRoles.Admin, Description = "Everything: members, secrets, delete, mode", Values = _TS("Admin", "Administrateur", "Beheerder") },
-        new OidcMemberRole { Key = OidcMemberRoles.Developer, Description = "Settings, URIs and scopes", Values = _TS("Developer", "Développeur", "Ontwikkelaar") },
-        new OidcMemberRole { Key = OidcMemberRoles.Tester, Description = "May sign in while the application is in development", Values = _TS("Tester", "Testeur", "Tester") },
+        new OidcMemberRole { Key = OidcMemberRoles.Admin, Description = "Everything: members, secrets, delete, mode", Values = _TS(("en", "Admin"), ("fr", "Administrateur"), ("nl", "Beheerder")) },
+        new OidcMemberRole { Key = OidcMemberRoles.Developer, Description = "Settings, URIs and scopes", Values = _TS(("en", "Developer"), ("fr", "Développeur"), ("nl", "Ontwikkelaar")) },
+        new OidcMemberRole { Key = OidcMemberRoles.Tester, Description = "May sign in while the application is in development", Values = _TS(("en", "Tester"), ("fr", "Testeur"), ("nl", "Tester")) },
     ];
 }
 
@@ -25,8 +25,8 @@ public sealed class OidcApplicationMode : TransientLookupReference<string>
 
     public static IReadOnlyCollection<OidcApplicationMode> Items { get; } =
     [
-        new OidcApplicationMode { Key = OidcApplicationModes.Development, Description = "Only the team can sign in", Values = _TS("Development", "Développement", "Ontwikkeling") },
-        new OidcApplicationMode { Key = OidcApplicationModes.Live, Description = "Anyone can sign in", Values = _TS("Live", "En ligne", "Live") },
+        new OidcApplicationMode { Key = OidcApplicationModes.Development, Description = "Only the team can sign in", Values = _TS(("en", "Development"), ("fr", "Développement"), ("nl", "Ontwikkeling")) },
+        new OidcApplicationMode { Key = OidcApplicationModes.Live, Description = "Anyone can sign in", Values = _TS(("en", "Live"), ("fr", "En ligne"), ("nl", "Live")) },
     ];
 }
 
@@ -38,8 +38,8 @@ public sealed class OidcResourceKind : TransientLookupReference<string>
 
     public static IReadOnlyCollection<OidcResourceKind> Items { get; } =
     [
-        new OidcResourceKind { Key = OidcResourceKinds.Identity, Description = "A scope of user claims", Values = _TS("Identity", "Identité", "Identiteit") },
-        new OidcResourceKind { Key = OidcResourceKinds.Api, Description = "A protected API, named by its audience", Values = _TS("API", "API", "API") },
+        new OidcResourceKind { Key = OidcResourceKinds.Identity, Description = "A scope of user claims", Values = _TS(("en", "Identity"), ("fr", "Identité"), ("nl", "Identiteit")) },
+        new OidcResourceKind { Key = OidcResourceKinds.Api, Description = "A protected API, named by its audience", Values = _TS(("en", "API"), ("fr", "API"), ("nl", "API")) },
     ];
 }
 
@@ -51,8 +51,8 @@ public sealed class OidcClientType : TransientLookupReference<string>
 
     public static IReadOnlyCollection<OidcClientType> Items { get; } =
     [
-        new OidcClientType { Key = "confidential", Description = "A server that can keep a secret", Values = _TS("Confidential", "Confidentiel", "Vertrouwelijk") },
-        new OidcClientType { Key = "public", Description = "A browser or mobile app that cannot keep a secret", Values = _TS("Public", "Public", "Publiek") },
+        new OidcClientType { Key = "confidential", Description = "A server that can keep a secret", Values = _TS(("en", "Confidential"), ("fr", "Confidentiel"), ("nl", "Vertrouwelijk")) },
+        new OidcClientType { Key = "public", Description = "A browser or mobile app that cannot keep a secret", Values = _TS(("en", "Public"), ("fr", "Public"), ("nl", "Publiek")) },
     ];
 }
 
@@ -64,7 +64,7 @@ public sealed class OidcConsentType : TransientLookupReference<string>
 
     public static IReadOnlyCollection<OidcConsentType> Items { get; } =
     [
-        new OidcConsentType { Key = "explicit", Description = "The user is asked on the consent screen", Values = _TS("Ask the user", "Demander à l'utilisateur", "De gebruiker vragen") },
-        new OidcConsentType { Key = "implicit", Description = "Granted automatically: first-party applications only", Values = _TS("Automatic", "Automatique", "Automatisch") },
+        new OidcConsentType { Key = "explicit", Description = "The user is asked on the consent screen", Values = _TS(("en", "Ask the user"), ("fr", "Demander à l'utilisateur"), ("nl", "De gebruiker vragen")) },
+        new OidcConsentType { Key = "implicit", Description = "Granted automatically: first-party applications only", Values = _TS(("en", "Automatic"), ("fr", "Automatique"), ("nl", "Automatisch")) },
     ];
 }

@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Identity;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Abstractions.DateTimes;
 using MintPlayer.Spark.Authorization.Extensions;
 using MintPlayer.Spark.Authorization.Identity;
 
@@ -61,6 +62,14 @@ internal sealed partial class UpdateProfile<TUser> : IPostEndpoint<SparkProfileR
         if (request.HasPreferredCulture && !SparkAccount.TryNormalizeCulture(request.PreferredCulture, out preferredCulture))
             errors.Add("PreferredCulture", "Not a known culture name (for example 'en', 'nl-BE').");
 
+        // Absent keeps it; null or "" clears it (back to Spark:TimeZone:DefaultRecipientTimeZone). A shape
+        // check, not a lookup: a zone newer than this server's tzdata is kept and reads as UTC until it knows it.
+        var preferredTimeZone = request.PreferredTimeZone?.Trim();
+        if (string.IsNullOrEmpty(preferredTimeZone))
+            preferredTimeZone = null;
+        else if (request.HasPreferredTimeZone && !SparkTimeZoneIds.IsWellFormed(preferredTimeZone))
+            errors.Add("PreferredTimeZone", "Not an IANA time zone id (for example 'Europe/Brussels').");
+
         if (errors.HasErrors)
             return TypedResults.ValidationProblem(errors.ToDictionary());
 
@@ -73,6 +82,8 @@ internal sealed partial class UpdateProfile<TUser> : IPostEndpoint<SparkProfileR
 
         if (request.HasPreferredCulture)
             user.PreferredCulture = preferredCulture;
+        if (request.HasPreferredTimeZone)
+            user.PreferredTimeZone = preferredTimeZone;
 
         foreach (var (contributor, values) in perContributor)
             await contributor.ApplyAsync(user, values, cancellationToken);

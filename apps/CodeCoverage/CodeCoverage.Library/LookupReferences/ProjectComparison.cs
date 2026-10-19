@@ -46,15 +46,15 @@ public sealed class ProjectComparison : TransientLookupReference<string>
             Key = Auto,
             Description = "Compare against the base commit and fail on a drop",
             Values = _TS(
-                "Ratchet against the base commit",
-                "Comparer au commit de base",
-                "Vergelijken met de basiscommit"),
+                ("en", "Ratchet against the base commit"),
+                ("fr", "Comparer au commit de base"),
+                ("nl", "Vergelijken met de basiscommit")),
         },
         new ProjectComparison
         {
             Key = Fixed,
             Description = "Compare against a fixed percentage target",
-            Values = _TS("Fixed target", "Cible fixe", "Vaste drempel"),
+            Values = _TS(("en", "Fixed target"), ("fr", "Cible fixe"), ("nl", "Vaste drempel")),
         },
     ];
 }

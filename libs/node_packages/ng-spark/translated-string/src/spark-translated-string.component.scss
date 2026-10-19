@@ -1,0 +1,33 @@
+:host {
+  display: block;
+}
+
+.spark-translated-string-entries {
+  margin: 0.25rem 0 0;
+  font-size: 0.875em;
+  opacity: 0.8;
+}
+
+.spark-translated-string-entry {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+
+  dt {
+    min-width: 3.5rem;
+    font-weight: normal;
+    font-family: var(--bs-font-monospace, monospace);
+  }
+
+  dd {
+    margin: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+    align-items: baseline;
+  }
+}
+
+.spark-translated-string-validity {
+  opacity: 0.8;
+}

@@ -132,6 +132,9 @@
   <Folder Name="/libs/settings/">
     <Project Path="libs/settings/MintPlayer.Spark.Settings/MintPlayer.Spark.Settings.csproj" />
   </Folder>
+  <Folder Name="/libs/sms/">
+    <Project Path="libs/sms/MintPlayer.Spark.Sms/MintPlayer.Spark.Sms.csproj" />
+  </Folder>
   <Folder Name="/libs/webpush/">
     <Project Path="libs/webpush/MintPlayer.Spark.WebPush/MintPlayer.Spark.WebPush.csproj" />
   </Folder>
@@ -161,6 +164,7 @@
   <Folder Name="/libs/webhooks/">
     <Project Path="libs/webhooks/MintPlayer.Spark.Webhooks.GitHub.DevTunnel/MintPlayer.Spark.Webhooks.GitHub.DevTunnel.csproj" />
     <Project Path="libs/webhooks/MintPlayer.Spark.Webhooks.GitHub/MintPlayer.Spark.Webhooks.GitHub.csproj" />
+    <Project Path="libs/webhooks/MintPlayer.Spark.Webhooks/MintPlayer.Spark.Webhooks.csproj" />
   </Folder>
   <Folder Name="/tools/">
     <Project Path="tools/SchemaGenerator/MintPlayer.Spark.SchemaGenerator.csproj" />

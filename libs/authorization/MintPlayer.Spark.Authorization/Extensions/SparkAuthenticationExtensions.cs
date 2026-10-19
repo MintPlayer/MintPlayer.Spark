@@ -76,6 +76,10 @@ internal static class SparkAuthenticationExtensions
         // so they reach the user through this seam, closed over TUser here.
         builder.Services.AddHttpContextAccessor();
         builder.Services.TryAddScoped<ISparkPasskeyAccount, SparkPasskeyAccount<TUser>>();
+        // Commerce PRD X14: the account's time zone and culture, for mails, PDFs and jobs (ISparkRecipientLocale).
+        builder.Services.TryAddScoped<MintPlayer.Spark.Abstractions.DateTimes.ISparkRecipientLocaleSource, SparkUserRecipientLocaleSource<TUser>>();
+        // Commerce PRD X1: a guest's basket and queue entry move onto the account on every fresh sign-in.
+        builder.Services.TryAddEnumerable(ServiceDescriptor.Scoped<ISparkSignedInHandler<TUser>, SparkVisitorSignedInHandler<TUser>>());
         // Not TryAdd-ed by the framework, and the linker's expiry window is the one thing tests
         // need to move. Registered rather than reading DateTimeOffset.UtcNow inline so that
         // "the link expired" is testable without waiting an hour for it.

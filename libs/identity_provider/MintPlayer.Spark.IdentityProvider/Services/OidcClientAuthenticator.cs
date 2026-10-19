@@ -277,8 +277,11 @@ internal sealed class OidcClientAuthenticator(
         if (certificate is null || string.IsNullOrWhiteSpace(app.TlsClientAuthSubjectDn))
             return false;
         var expected = new X500DistinguishedName(app.TlsClientAuthSubjectDn).Name;
+        // NotBefore/NotAfter are local times (DateTimeKind.Local); compared in UTC, never against the
+        // server's local clock (K10, BannedSymbols.TimeZones.txt).
+        var now = DateTime.UtcNow;
         return string.Equals(certificate.SubjectName.Name, expected, StringComparison.OrdinalIgnoreCase)
-            && certificate.NotAfter > DateTime.Now && certificate.NotBefore < DateTime.Now;
+            && certificate.NotAfter.ToUniversalTime() > now && certificate.NotBefore.ToUniversalTime() < now;
     }
 
     /// <summary><c>self_signed_tls_client_auth</c> (RFC 8705 §2.2): the certificate is one the client registered in its JWKS.</summary>

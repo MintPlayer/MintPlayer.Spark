@@ -258,7 +258,7 @@ internal sealed class ContributionHandler<TTarget, TElement, TContribution, TCur
                         var errors = await validator.ValidateAsync(targetId, afterByKey[key]);
                         if (errors is { Count: > 0 })
                             throw new SparkValidationException(
-                                string.Join(" ", errors.Select(e => e.ErrorMessage.GetDefaultValue())),
+                                string.Join(" ", errors.Select(e => e.ErrorMessage.GetValue(TranslatedString.DefaultLanguage))),
                                 errors[0].AttributeName is { Length: > 0 } name ? name : d.PropertyName);
                     }
             }

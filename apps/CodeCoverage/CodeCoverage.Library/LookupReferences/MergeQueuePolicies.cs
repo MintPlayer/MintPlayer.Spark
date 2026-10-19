@@ -99,19 +99,19 @@ public sealed class MergeQueueApprovalFloor : TransientLookupReference<EMergeQue
         {
             Key = EMergeQueueApprovalFloor.ExternalAuthors,
             Description = "A pull request by an author without write access needs an approval by a writer",
-            Values = _TS("Approval for external authors", "Approbation pour les auteurs externes", "Goedkeuring voor externe auteurs"),
+            Values = _TS(("en", "Approval for external authors"), ("fr", "Approbation pour les auteurs externes"), ("nl", "Goedkeuring voor externe auteurs")),
         },
         new MergeQueueApprovalFloor
         {
             Key = EMergeQueueApprovalFloor.RepositoryRules,
             Description = "No floor of the queue's own; the repository's rules decide",
-            Values = _TS("Repository rules only", "Règles du dépôt uniquement", "Alleen repositoryregels"),
+            Values = _TS(("en", "Repository rules only"), ("fr", "Règles du dépôt uniquement"), ("nl", "Alleen repositoryregels")),
         },
         new MergeQueueApprovalFloor
         {
             Key = EMergeQueueApprovalFloor.Always,
             Description = "Every pull request needs an approval by a writer other than its author",
-            Values = _TS("Always require an approval", "Toujours exiger une approbation", "Altijd een goedkeuring vereisen"),
+            Values = _TS(("en", "Always require an approval"), ("fr", "Toujours exiger une approbation"), ("nl", "Altijd een goedkeuring vereisen")),
         },
     ];
 }
@@ -129,25 +129,25 @@ public sealed class MergeQueueApprovalFloorPolicy : TransientLookupReference<EMe
         {
             Key = EMergeQueueApprovalFloorPolicy.Inherit,
             Description = "Use the account's approval floor",
-            Values = _TS("Use account setting", "Utiliser le paramètre du compte", "Accountinstelling gebruiken"),
+            Values = _TS(("en", "Use account setting"), ("fr", "Utiliser le paramètre du compte"), ("nl", "Accountinstelling gebruiken")),
         },
         new MergeQueueApprovalFloorPolicy
         {
             Key = EMergeQueueApprovalFloorPolicy.ExternalAuthors,
             Description = "A pull request by an author without write access needs an approval by a writer",
-            Values = _TS("Approval for external authors", "Approbation pour les auteurs externes", "Goedkeuring voor externe auteurs"),
+            Values = _TS(("en", "Approval for external authors"), ("fr", "Approbation pour les auteurs externes"), ("nl", "Goedkeuring voor externe auteurs")),
         },
         new MergeQueueApprovalFloorPolicy
         {
             Key = EMergeQueueApprovalFloorPolicy.RepositoryRules,
             Description = "No floor of the queue's own; the repository's rules decide",
-            Values = _TS("Repository rules only", "Règles du dépôt uniquement", "Alleen repositoryregels"),
+            Values = _TS(("en", "Repository rules only"), ("fr", "Règles du dépôt uniquement"), ("nl", "Alleen repositoryregels")),
         },
         new MergeQueueApprovalFloorPolicy
         {
             Key = EMergeQueueApprovalFloorPolicy.Always,
             Description = "Every pull request needs an approval by a writer other than its author",
-            Values = _TS("Always require an approval", "Toujours exiger une approbation", "Altijd een goedkeuring vereisen"),
+            Values = _TS(("en", "Always require an approval"), ("fr", "Toujours exiger une approbation"), ("nl", "Altijd een goedkeuring vereisen")),
         },
     ];
 }
@@ -165,19 +165,19 @@ public sealed class MergeQueueBypassRole : TransientLookupReference<EMergeQueueB
         {
             Key = EMergeQueueBypassRole.None,
             Description = "Nobody bypasses the merge queue's own rules",
-            Values = _TS("Nobody", "Personne", "Niemand"),
+            Values = _TS(("en", "Nobody"), ("fr", "Personne"), ("nl", "Niemand")),
         },
         new MergeQueueBypassRole
         {
             Key = EMergeQueueBypassRole.Maintain,
             Description = "Whoever queues with the maintain or admin role bypasses the approval floor and the .github eviction of a same-repository pull request",
-            Values = _TS("Maintain or admin role", "Rôle maintain ou admin", "Rol maintain of admin"),
+            Values = _TS(("en", "Maintain or admin role"), ("fr", "Rôle maintain ou admin"), ("nl", "Rol maintain of admin")),
         },
         new MergeQueueBypassRole
         {
             Key = EMergeQueueBypassRole.Admin,
             Description = "Whoever queues with the admin role bypasses the approval floor and the .github eviction of a same-repository pull request",
-            Values = _TS("Admin role only", "Rôle admin uniquement", "Alleen de rol admin"),
+            Values = _TS(("en", "Admin role only"), ("fr", "Rôle admin uniquement"), ("nl", "Alleen de rol admin")),
         },
     ];
 }
@@ -195,25 +195,25 @@ public sealed class MergeQueueBypassRolePolicy : TransientLookupReference<EMerge
         {
             Key = EMergeQueueBypassRolePolicy.Inherit,
             Description = "Use the account's bypass role",
-            Values = _TS("Use account setting", "Utiliser le paramètre du compte", "Accountinstelling gebruiken"),
+            Values = _TS(("en", "Use account setting"), ("fr", "Utiliser le paramètre du compte"), ("nl", "Accountinstelling gebruiken")),
         },
         new MergeQueueBypassRolePolicy
         {
             Key = EMergeQueueBypassRolePolicy.None,
             Description = "Nobody bypasses the merge queue's own rules",
-            Values = _TS("Nobody", "Personne", "Niemand"),
+            Values = _TS(("en", "Nobody"), ("fr", "Personne"), ("nl", "Niemand")),
         },
         new MergeQueueBypassRolePolicy
         {
             Key = EMergeQueueBypassRolePolicy.Maintain,
             Description = "Whoever queues with the maintain or admin role bypasses the approval floor and the .github eviction of a same-repository pull request",
-            Values = _TS("Maintain or admin role", "Rôle maintain ou admin", "Rol maintain of admin"),
+            Values = _TS(("en", "Maintain or admin role"), ("fr", "Rôle maintain ou admin"), ("nl", "Rol maintain of admin")),
         },
         new MergeQueueBypassRolePolicy
         {
             Key = EMergeQueueBypassRolePolicy.Admin,
             Description = "Whoever queues with the admin role bypasses the approval floor and the .github eviction of a same-repository pull request",
-            Values = _TS("Admin role only", "Rôle admin uniquement", "Alleen de rol admin"),
+            Values = _TS(("en", "Admin role only"), ("fr", "Rôle admin uniquement"), ("nl", "Alleen de rol admin")),
         },
     ];
 }
@@ -231,13 +231,13 @@ public sealed class MergeQueueCheckExclusionsPolicy : TransientLookupReference<E
         {
             Key = EMergeQueueCheckExclusionsPolicy.Inherit,
             Description = "Use the account's check exclusions",
-            Values = _TS("Use account setting", "Utiliser le paramètre du compte", "Accountinstelling gebruiken"),
+            Values = _TS(("en", "Use account setting"), ("fr", "Utiliser le paramètre du compte"), ("nl", "Accountinstelling gebruiken")),
         },
         new MergeQueueCheckExclusionsPolicy
         {
             Key = EMergeQueueCheckExclusionsPolicy.Override,
             Description = "Use this repository's own check exclusions",
-            Values = _TS("This repository's list", "La liste de ce dépôt", "De lijst van deze repository"),
+            Values = _TS(("en", "This repository's list"), ("fr", "La liste de ce dépôt"), ("nl", "De lijst van deze repository")),
         },
     ];
 }

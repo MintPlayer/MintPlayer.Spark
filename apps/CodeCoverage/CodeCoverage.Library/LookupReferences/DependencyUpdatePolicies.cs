@@ -145,19 +145,19 @@ public sealed class DependencyUpdatesPolicy : TransientLookupReference<EDependen
         {
             Key = EDependencyUpdatesPolicy.Inherit,
             Description = "Use the account's setting",
-            Values = _TS("Use account setting", "Utiliser le paramètre du compte", "Accountinstelling gebruiken"),
+            Values = _TS(("en", "Use account setting"), ("fr", "Utiliser le paramètre du compte"), ("nl", "Accountinstelling gebruiken")),
         },
         new DependencyUpdatesPolicy
         {
             Key = EDependencyUpdatesPolicy.Enabled,
             Description = "Keep a rolling dependency-update pull request in this repository",
-            Values = _TS("Enabled", "Activé", "Ingeschakeld"),
+            Values = _TS(("en", "Enabled"), ("fr", "Activé"), ("nl", "Ingeschakeld")),
         },
         new DependencyUpdatesPolicy
         {
             Key = EDependencyUpdatesPolicy.Disabled,
             Description = "No dependency updates in this repository, whatever the account setting says",
-            Values = _TS("Disabled", "Désactivé", "Uitgeschakeld"),
+            Values = _TS(("en", "Disabled"), ("fr", "Désactivé"), ("nl", "Uitgeschakeld")),
         },
     ];
 }
@@ -170,9 +170,9 @@ public sealed class DependencyScheduleFrequency : TransientLookupReference<EDepe
 
     public static IReadOnlyCollection<DependencyScheduleFrequency> Items { get; } =
     [
-        new DependencyScheduleFrequency { Key = EDependencyScheduleFrequency.Daily, Description = "Every day", Values = _TS("Daily", "Quotidien", "Dagelijks") },
-        new DependencyScheduleFrequency { Key = EDependencyScheduleFrequency.Weekly, Description = "Once a week, on the chosen weekday", Values = _TS("Weekly", "Hebdomadaire", "Wekelijks") },
-        new DependencyScheduleFrequency { Key = EDependencyScheduleFrequency.Monthly, Description = "Once a month, on the first chosen weekday", Values = _TS("Monthly", "Mensuel", "Maandelijks") },
+        new DependencyScheduleFrequency { Key = EDependencyScheduleFrequency.Daily, Description = "Every day", Values = _TS(("en", "Daily"), ("fr", "Quotidien"), ("nl", "Dagelijks")) },
+        new DependencyScheduleFrequency { Key = EDependencyScheduleFrequency.Weekly, Description = "Once a week, on the chosen weekday", Values = _TS(("en", "Weekly"), ("fr", "Hebdomadaire"), ("nl", "Wekelijks")) },
+        new DependencyScheduleFrequency { Key = EDependencyScheduleFrequency.Monthly, Description = "Once a month, on the first chosen weekday", Values = _TS(("en", "Monthly"), ("fr", "Mensuel"), ("nl", "Maandelijks")) },
     ];
 }
 
@@ -184,13 +184,13 @@ public sealed class DependencyWeekday : TransientLookupReference<EDependencyWeek
 
     public static IReadOnlyCollection<DependencyWeekday> Items { get; } =
     [
-        new DependencyWeekday { Key = EDependencyWeekday.Monday, Values = _TS("Monday", "Lundi", "Maandag") },
-        new DependencyWeekday { Key = EDependencyWeekday.Tuesday, Values = _TS("Tuesday", "Mardi", "Dinsdag") },
-        new DependencyWeekday { Key = EDependencyWeekday.Wednesday, Values = _TS("Wednesday", "Mercredi", "Woensdag") },
-        new DependencyWeekday { Key = EDependencyWeekday.Thursday, Values = _TS("Thursday", "Jeudi", "Donderdag") },
-        new DependencyWeekday { Key = EDependencyWeekday.Friday, Values = _TS("Friday", "Vendredi", "Vrijdag") },
-        new DependencyWeekday { Key = EDependencyWeekday.Saturday, Values = _TS("Saturday", "Samedi", "Zaterdag") },
-        new DependencyWeekday { Key = EDependencyWeekday.Sunday, Values = _TS("Sunday", "Dimanche", "Zondag") },
+        new DependencyWeekday { Key = EDependencyWeekday.Monday, Values = _TS(("en", "Monday"), ("fr", "Lundi"), ("nl", "Maandag")) },
+        new DependencyWeekday { Key = EDependencyWeekday.Tuesday, Values = _TS(("en", "Tuesday"), ("fr", "Mardi"), ("nl", "Dinsdag")) },
+        new DependencyWeekday { Key = EDependencyWeekday.Wednesday, Values = _TS(("en", "Wednesday"), ("fr", "Mercredi"), ("nl", "Woensdag")) },
+        new DependencyWeekday { Key = EDependencyWeekday.Thursday, Values = _TS(("en", "Thursday"), ("fr", "Jeudi"), ("nl", "Donderdag")) },
+        new DependencyWeekday { Key = EDependencyWeekday.Friday, Values = _TS(("en", "Friday"), ("fr", "Vendredi"), ("nl", "Vrijdag")) },
+        new DependencyWeekday { Key = EDependencyWeekday.Saturday, Values = _TS(("en", "Saturday"), ("fr", "Samedi"), ("nl", "Zaterdag")) },
+        new DependencyWeekday { Key = EDependencyWeekday.Sunday, Values = _TS(("en", "Sunday"), ("fr", "Dimanche"), ("nl", "Zondag")) },
     ];
 }
 
@@ -206,13 +206,13 @@ public sealed class DependencySchedulePolicy : TransientLookupReference<EDepende
         {
             Key = EDependencySchedulePolicy.Inherit,
             Description = "Use the account's schedule",
-            Values = _TS("Use account setting", "Utiliser le paramètre du compte", "Accountinstelling gebruiken"),
+            Values = _TS(("en", "Use account setting"), ("fr", "Utiliser le paramètre du compte"), ("nl", "Accountinstelling gebruiken")),
         },
         new DependencySchedulePolicy
         {
             Key = EDependencySchedulePolicy.Override,
             Description = "Use this repository's own frequency, weekday and hour",
-            Values = _TS("Own schedule", "Calendrier propre", "Eigen planning"),
+            Values = _TS(("en", "Own schedule"), ("fr", "Calendrier propre"), ("nl", "Eigen planning")),
         },
     ];
 }
@@ -225,10 +225,10 @@ public sealed class DependencyCooldown : TransientLookupReference<EDependencyCoo
 
     public static IReadOnlyCollection<DependencyCooldown> Items { get; } =
     [
-        new DependencyCooldown { Key = EDependencyCooldown.None, Description = "Plan a release as soon as it is seen", Values = _TS("None", "Aucun", "Geen") },
-        new DependencyCooldown { Key = EDependencyCooldown.OneDay, Description = "Wait one day after a release", Values = _TS("1 day", "1 jour", "1 dag") },
-        new DependencyCooldown { Key = EDependencyCooldown.ThreeDays, Description = "Wait three days after a release", Values = _TS("3 days", "3 jours", "3 dagen") },
-        new DependencyCooldown { Key = EDependencyCooldown.SevenDays, Description = "Wait seven days after a release", Values = _TS("7 days", "7 jours", "7 dagen") },
+        new DependencyCooldown { Key = EDependencyCooldown.None, Description = "Plan a release as soon as it is seen", Values = _TS(("en", "None"), ("fr", "Aucun"), ("nl", "Geen")) },
+        new DependencyCooldown { Key = EDependencyCooldown.OneDay, Description = "Wait one day after a release", Values = _TS(("en", "1 day"), ("fr", "1 jour"), ("nl", "1 dag")) },
+        new DependencyCooldown { Key = EDependencyCooldown.ThreeDays, Description = "Wait three days after a release", Values = _TS(("en", "3 days"), ("fr", "3 jours"), ("nl", "3 dagen")) },
+        new DependencyCooldown { Key = EDependencyCooldown.SevenDays, Description = "Wait seven days after a release", Values = _TS(("en", "7 days"), ("fr", "7 jours"), ("nl", "7 dagen")) },
     ];
 }
 
@@ -244,12 +244,12 @@ public sealed class DependencyCooldownPolicy : TransientLookupReference<EDepende
         {
             Key = EDependencyCooldownPolicy.Inherit,
             Description = "Use the account's cooldown",
-            Values = _TS("Use account setting", "Utiliser le paramètre du compte", "Accountinstelling gebruiken"),
+            Values = _TS(("en", "Use account setting"), ("fr", "Utiliser le paramètre du compte"), ("nl", "Accountinstelling gebruiken")),
         },
-        new DependencyCooldownPolicy { Key = EDependencyCooldownPolicy.None, Description = "Plan a release as soon as it is seen", Values = _TS("None", "Aucun", "Geen") },
-        new DependencyCooldownPolicy { Key = EDependencyCooldownPolicy.OneDay, Description = "Wait one day after a release", Values = _TS("1 day", "1 jour", "1 dag") },
-        new DependencyCooldownPolicy { Key = EDependencyCooldownPolicy.ThreeDays, Description = "Wait three days after a release", Values = _TS("3 days", "3 jours", "3 dagen") },
-        new DependencyCooldownPolicy { Key = EDependencyCooldownPolicy.SevenDays, Description = "Wait seven days after a release", Values = _TS("7 days", "7 jours", "7 dagen") },
+        new DependencyCooldownPolicy { Key = EDependencyCooldownPolicy.None, Description = "Plan a release as soon as it is seen", Values = _TS(("en", "None"), ("fr", "Aucun"), ("nl", "Geen")) },
+        new DependencyCooldownPolicy { Key = EDependencyCooldownPolicy.OneDay, Description = "Wait one day after a release", Values = _TS(("en", "1 day"), ("fr", "1 jour"), ("nl", "1 dag")) },
+        new DependencyCooldownPolicy { Key = EDependencyCooldownPolicy.ThreeDays, Description = "Wait three days after a release", Values = _TS(("en", "3 days"), ("fr", "3 jours"), ("nl", "3 dagen")) },
+        new DependencyCooldownPolicy { Key = EDependencyCooldownPolicy.SevenDays, Description = "Wait seven days after a release", Values = _TS(("en", "7 days"), ("fr", "7 jours"), ("nl", "7 dagen")) },
     ];
 }
 
@@ -261,11 +261,11 @@ public sealed class DependencyBisectBudget : TransientLookupReference<EDependenc
 
     public static IReadOnlyCollection<DependencyBisectBudget> Items { get; } =
     [
-        new DependencyBisectBudget { Key = EDependencyBisectBudget.Off, Description = "Never bisect a red pull request", Values = _TS("Off", "Désactivé", "Uit") },
-        new DependencyBisectBudget { Key = EDependencyBisectBudget.One, Description = "At most one CI run", Values = _TS("1 CI run", "1 exécution CI", "1 CI-run") },
-        new DependencyBisectBudget { Key = EDependencyBisectBudget.Two, Description = "At most two CI runs", Values = _TS("2 CI runs", "2 exécutions CI", "2 CI-runs") },
-        new DependencyBisectBudget { Key = EDependencyBisectBudget.Four, Description = "At most four CI runs", Values = _TS("4 CI runs", "4 exécutions CI", "4 CI-runs") },
-        new DependencyBisectBudget { Key = EDependencyBisectBudget.Eight, Description = "At most eight CI runs", Values = _TS("8 CI runs", "8 exécutions CI", "8 CI-runs") },
+        new DependencyBisectBudget { Key = EDependencyBisectBudget.Off, Description = "Never bisect a red pull request", Values = _TS(("en", "Off"), ("fr", "Désactivé"), ("nl", "Uit")) },
+        new DependencyBisectBudget { Key = EDependencyBisectBudget.One, Description = "At most one CI run", Values = _TS(("en", "1 CI run"), ("fr", "1 exécution CI"), ("nl", "1 CI-run")) },
+        new DependencyBisectBudget { Key = EDependencyBisectBudget.Two, Description = "At most two CI runs", Values = _TS(("en", "2 CI runs"), ("fr", "2 exécutions CI"), ("nl", "2 CI-runs")) },
+        new DependencyBisectBudget { Key = EDependencyBisectBudget.Four, Description = "At most four CI runs", Values = _TS(("en", "4 CI runs"), ("fr", "4 exécutions CI"), ("nl", "4 CI-runs")) },
+        new DependencyBisectBudget { Key = EDependencyBisectBudget.Eight, Description = "At most eight CI runs", Values = _TS(("en", "8 CI runs"), ("fr", "8 exécutions CI"), ("nl", "8 CI-runs")) },
     ];
 }
 
@@ -281,13 +281,13 @@ public sealed class DependencyBisectBudgetPolicy : TransientLookupReference<EDep
         {
             Key = EDependencyBisectBudgetPolicy.Inherit,
             Description = "Use the account's bisect budget",
-            Values = _TS("Use account setting", "Utiliser le paramètre du compte", "Accountinstelling gebruiken"),
+            Values = _TS(("en", "Use account setting"), ("fr", "Utiliser le paramètre du compte"), ("nl", "Accountinstelling gebruiken")),
         },
-        new DependencyBisectBudgetPolicy { Key = EDependencyBisectBudgetPolicy.Off, Description = "Never bisect a red pull request", Values = _TS("Off", "Désactivé", "Uit") },
-        new DependencyBisectBudgetPolicy { Key = EDependencyBisectBudgetPolicy.One, Description = "At most one CI run", Values = _TS("1 CI run", "1 exécution CI", "1 CI-run") },
-        new DependencyBisectBudgetPolicy { Key = EDependencyBisectBudgetPolicy.Two, Description = "At most two CI runs", Values = _TS("2 CI runs", "2 exécutions CI", "2 CI-runs") },
-        new DependencyBisectBudgetPolicy { Key = EDependencyBisectBudgetPolicy.Four, Description = "At most four CI runs", Values = _TS("4 CI runs", "4 exécutions CI", "4 CI-runs") },
-        new DependencyBisectBudgetPolicy { Key = EDependencyBisectBudgetPolicy.Eight, Description = "At most eight CI runs", Values = _TS("8 CI runs", "8 exécutions CI", "8 CI-runs") },
+        new DependencyBisectBudgetPolicy { Key = EDependencyBisectBudgetPolicy.Off, Description = "Never bisect a red pull request", Values = _TS(("en", "Off"), ("fr", "Désactivé"), ("nl", "Uit")) },
+        new DependencyBisectBudgetPolicy { Key = EDependencyBisectBudgetPolicy.One, Description = "At most one CI run", Values = _TS(("en", "1 CI run"), ("fr", "1 exécution CI"), ("nl", "1 CI-run")) },
+        new DependencyBisectBudgetPolicy { Key = EDependencyBisectBudgetPolicy.Two, Description = "At most two CI runs", Values = _TS(("en", "2 CI runs"), ("fr", "2 exécutions CI"), ("nl", "2 CI-runs")) },
+        new DependencyBisectBudgetPolicy { Key = EDependencyBisectBudgetPolicy.Four, Description = "At most four CI runs", Values = _TS(("en", "4 CI runs"), ("fr", "4 exécutions CI"), ("nl", "4 CI-runs")) },
+        new DependencyBisectBudgetPolicy { Key = EDependencyBisectBudgetPolicy.Eight, Description = "At most eight CI runs", Values = _TS(("en", "8 CI runs"), ("fr", "8 exécutions CI"), ("nl", "8 CI-runs")) },
     ];
 }
 
@@ -326,13 +326,13 @@ public sealed class DependencyOnboardingMergeQueue : TransientLookupReference<ED
         {
             Key = EDependencyOnboardingMergeQueue.Yes,
             Description = "The onboarding pull request turns the merge queue on in coverage.yml",
-            Values = _TS("Yes", "Oui", "Ja"),
+            Values = _TS(("en", "Yes"), ("fr", "Oui"), ("nl", "Ja")),
         },
         new DependencyOnboardingMergeQueue
         {
             Key = EDependencyOnboardingMergeQueue.No,
             Description = "The onboarding pull request leaves coverage.yml's merge queue as it is",
-            Values = _TS("No", "Non", "Nee"),
+            Values = _TS(("en", "No"), ("fr", "Non"), ("nl", "Nee")),
         },
     ];
 }
@@ -349,19 +349,19 @@ public sealed class DependencyOnboardingMergeQueuePolicy : TransientLookupRefere
         {
             Key = EDependencyOnboardingMergeQueuePolicy.Inherit,
             Description = "Use the account's setting",
-            Values = _TS("Use account setting", "Utiliser le paramètre du compte", "Accountinstelling gebruiken"),
+            Values = _TS(("en", "Use account setting"), ("fr", "Utiliser le paramètre du compte"), ("nl", "Accountinstelling gebruiken")),
         },
         new DependencyOnboardingMergeQueuePolicy
         {
             Key = EDependencyOnboardingMergeQueuePolicy.Yes,
             Description = "The onboarding pull request turns the merge queue on in coverage.yml",
-            Values = _TS("Yes", "Oui", "Ja"),
+            Values = _TS(("en", "Yes"), ("fr", "Oui"), ("nl", "Ja")),
         },
         new DependencyOnboardingMergeQueuePolicy
         {
             Key = EDependencyOnboardingMergeQueuePolicy.No,
             Description = "The onboarding pull request leaves coverage.yml's merge queue as it is",
-            Values = _TS("No", "Non", "Nee"),
+            Values = _TS(("en", "No"), ("fr", "Non"), ("nl", "Nee")),
         },
     ];
 }
@@ -374,9 +374,9 @@ public sealed class DependencyThreshold : TransientLookupReference<EDependencyTh
 
     public static IReadOnlyCollection<DependencyThreshold> Items { get; } =
     [
-        new DependencyThreshold { Key = EDependencyThreshold.Never, Description = "Every update needs an approval", Values = _TS("Never", "Jamais", "Nooit") },
-        new DependencyThreshold { Key = EDependencyThreshold.Patch, Description = "Patch updates at most", Values = _TS("Patch", "Correctif", "Patch") },
-        new DependencyThreshold { Key = EDependencyThreshold.Minor, Description = "Minor and patch updates", Values = _TS("Minor", "Mineure", "Minor") },
-        new DependencyThreshold { Key = EDependencyThreshold.Major, Description = "Any update, majors included", Values = _TS("Major", "Majeure", "Major") },
+        new DependencyThreshold { Key = EDependencyThreshold.Never, Description = "Every update needs an approval", Values = _TS(("en", "Never"), ("fr", "Jamais"), ("nl", "Nooit")) },
+        new DependencyThreshold { Key = EDependencyThreshold.Patch, Description = "Patch updates at most", Values = _TS(("en", "Patch"), ("fr", "Correctif"), ("nl", "Patch")) },
+        new DependencyThreshold { Key = EDependencyThreshold.Minor, Description = "Minor and patch updates", Values = _TS(("en", "Minor"), ("fr", "Mineure"), ("nl", "Minor")) },
+        new DependencyThreshold { Key = EDependencyThreshold.Major, Description = "Any update, majors included", Values = _TS(("en", "Major"), ("fr", "Majeure"), ("nl", "Major")) },
     ];
 }

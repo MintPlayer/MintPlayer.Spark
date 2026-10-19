@@ -22,6 +22,9 @@ internal sealed class LiveTestClient : IAsyncDisposable
     public int FramesReceived { get; private set; }
     public long BytesReceived { get; private set; }
 
+    /// <summary>The <c>serverTime</c> (Unix ms) of the last <c>hello</c> or <c>ping</c> read; null before one.</summary>
+    public long? LastServerTime { get; private set; }
+
     public static async Task<LiveTestClient> ConnectAsync(WebSocketClient client, Uri baseAddress, Action<HttpRequest>? configure = null)
     {
         if (configure is not null)
@@ -34,6 +37,8 @@ internal sealed class LiveTestClient : IAsyncDisposable
     public Task SubscribePoAsync(string sub, string objectTypeId, string id) => SendAsync(new { op = "subscribe", sub, po = new { objectTypeId, id } });
     public Task UpdateAsync(string sub, object query) => SendAsync(new { op = "update", sub, query });
     public Task UnsubscribeAsync(string sub) => SendAsync(new { op = "unsubscribe", sub });
+    public Task SubscribeTopicAsync(string sub, string topic) => SendAsync(new { op = "subscribe", sub, topic });
+    public Task SubscribePrivateAsync(string sub, string topic) => SendAsync(new { op = "subscribe", sub, @private = topic });
 
     public Task SendAsync(object operation)
         => socket.SendAsync(JsonSerializer.SerializeToUtf8Bytes(operation), WebSocketMessageType.Text, true, CancellationToken.None);
@@ -76,8 +81,13 @@ internal sealed class LiveTestClient : IAsyncDisposable
             FramesReceived++;
             BytesReceived += bytes.Length;
             var frame = JsonDocument.Parse(bytes).RootElement.Clone();
-            if (frame.GetProperty("type").GetString() == "ping")
+            if (frame.GetProperty("type").GetString() is "ping" or "hello")
+            {
+                // The socket's heartbeat and greeting carry the server's clock (commerce PRD X2), nothing else.
+                if (frame.TryGetProperty("serverTime", out var serverTime))
+                    LastServerTime = serverTime.GetInt64();
                 continue;
+            }
             return frame;
         }
     }

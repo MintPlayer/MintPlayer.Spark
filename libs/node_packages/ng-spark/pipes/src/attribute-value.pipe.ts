@@ -1,5 +1,5 @@
 import { Pipe, PipeTransform } from '@angular/core';
-import { EntityAttributeDefinition, EntityType, LookupReference, PersistentObject, isReservedAsDetailKey, nestedPoToDict, resolveTranslation, resolvedBreadcrumb } from '@mintplayer/ng-spark/models';
+import { EntityAttributeDefinition, EntityType, LookupReference, PersistentObject, isReservedAsDetailKey, isTranslatedString, nestedPoToDict, resolveTranslation, resolvedBreadcrumb } from '@mintplayer/ng-spark/models';
 import { applyFieldTemplate } from './apply-field-template';
 
 @Pipe({ name: 'attributeValue', standalone: true, pure: true })
@@ -35,6 +35,12 @@ export class AttributeValuePipe implements PipeTransform {
         if (resolved) return resolved;
         return this.formatAsDetailValue(attrDef, nestedPoToDict(attr.object), allEntityTypes);
       }
+    }
+
+    // A TranslatedString value (commerce X17) is shown in the current language, through the one
+    // fallback chain. It used to fall through to `attr.value` and print "[object Object]".
+    if (attrDef?.dataType === 'TranslatedString') {
+      return isTranslatedString(attr.value) ? resolveTranslation(attr.value) : '';
     }
 
     if (attrDef?.lookupReferenceType && attr.value != null && attr.value !== '') {

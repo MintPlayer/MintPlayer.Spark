@@ -267,9 +267,9 @@ public class ContributionsSurfaceTests : SparkTestDriver
 
         var notice = notices.Should().ContainSingle().Which;
         notice.Raw.TryGetProperty("translatedMessage", out var translations).Should().BeTrue("the client resolves the notice in the app-chosen language");
-        translations.GetProperty("en").GetString().Should().Be("Your version of en/Latn was withdrawn; Alice's version is shown now.");
-        translations.GetProperty("nl").GetString().Should().Be("Uw versie van en/Latn is ingetrokken; nu wordt de versie van Alice getoond.");
-        translations.GetProperty("fr").GetString().Should().Be("Votre version de en/Latn a été retirée ; la version de Alice est maintenant affichée.");
+        translations.Text("en").Should().Be("Your version of en/Latn was withdrawn; Alice's version is shown now.");
+        translations.Text("nl").Should().Be("Uw versie van en/Latn is ingetrokken; nu wordt de versie van Alice getoond.");
+        translations.Text("fr").Should().Be("Votre version de en/Latn a été retirée ; la version de Alice est maintenant affichée.");
     }
 
     // ---- Q3/Q4: remove a whole version --------------------------------------------------------------

@@ -130,8 +130,8 @@ internal partial class ProgramUnitsLoader : IProgramUnitsLoader, IDisposable
     private TranslatedString ResolveName(TranslatedString? name, string owner)
     {
         if (name?.Key is not { Length: > 0 } key)
-            throw new SparkProgramUnitsConfigurationException(name is { Translations.Count: > 0 }
-                ? $"{owner} embeds translated text in its 'name' (\"{name.GetDefaultValue()}\"). " +
+            throw new SparkProgramUnitsConfigurationException(name is { IsEmpty: false }
+                ? $"{owner} embeds translated text in its 'name' (\"{name.GetValue(TranslatedString.DefaultLanguage)}\"). " +
                   "Move it into translations.json and set 'name' to that key, e.g. \"programUnits.cars\"."
                 : $"{owner} has no 'name'. Set it to a translations.json key, e.g. \"programUnits.cars\".");
         return SparkText.Resolve(translationsLoader.GetAll(), name, key, key)!;

@@ -17,6 +17,7 @@ import {
   PersistentObject,
   ShowedOn,
   AS_DETAIL_ROW_KEY,
+  translated,
 } from '@mintplayer/ng-spark/models';
 import { AsDetailCellValuePipe } from '@mintplayer/ng-spark/pipes';
 
@@ -67,8 +68,8 @@ const rolesLookup: LookupReference = {
   isTransient: false,
   displayType: 0,
   values: [
-    { key: 'admin', values: { en: 'Admin' } as any, isActive: true },
-    { key: 'legacy', values: { en: 'Legacy' } as any, isActive: false },
+    { key: 'admin', values: translated({ en: 'Admin' }) as any, isActive: true },
+    { key: 'legacy', values: translated({ en: 'Legacy' }) as any, isActive: false },
   ] as LookupReferenceValue[],
 } as any;
 
@@ -529,7 +530,7 @@ describe('SparkPoFormComponent', () => {
     it('B5: per-cell errors are keyed by "{attr}[{row}].{col}"', async () => {
       const { fixture, component } = createComponent();
       fixture.componentRef.setInput('validationErrors', [
-        { attributeName: 'Items[1].Label', errorMessage: { en: 'Label required' } as any, ruleType: 'required' },
+        { attributeName: 'Items[1].Label', errorMessage: translated({ en: 'Label required' }) as any, ruleType: 'required' },
       ]);
       await setEntityType(fixture, personType);
 
@@ -743,7 +744,7 @@ describe('SparkPoFormComponent', () => {
     it('hasError returns true when validationErrors contain the given attribute', async () => {
       const { fixture, component } = createComponent();
       fixture.componentRef.setInput('validationErrors', [
-        { attributeName: 'FirstName', errorMessage: { en: 'Required' } as any, ruleType: 'required' },
+        { attributeName: 'FirstName', errorMessage: translated({ en: 'Required' }) as any, ruleType: 'required' },
       ]);
       await setEntityType(fixture, personType);
 
@@ -1033,7 +1034,7 @@ describe('SparkPoFormComponent', () => {
       const refresh = vi.fn().mockResolvedValue({
         id: undefined, name: 'Person', objectTypeId: 't-person',
         attributes: [
-          { name: 'Company', value: null, options: [{ key: 'companies/9', label: { en: 'Globex' } }, { key: 'companies/8' }] },
+          { name: 'Company', value: null, options: [{ key: 'companies/9', label: translated({ en: 'Globex' }) }, { key: 'companies/8' }] },
           // null = the hook did not touch it: the loaded set must stand.
           { name: 'Role', value: null, options: null },
         ],
@@ -1061,7 +1062,7 @@ describe('SparkPoFormComponent', () => {
     const describedType: EntityType = {
       ...personType,
       attributes: [
-        attr({ id: 'a-first', name: 'FirstName', order: 1, description: { en: 'Given name.', nl: 'Voornaam.' } }),
+        attr({ id: 'a-first', name: 'FirstName', order: 1, description: translated({ en: 'Given name.', nl: 'Voornaam.' }) }),
         attr({ id: 'a-last', name: 'LastName', order: 2 }),
       ],
       tabs: [],

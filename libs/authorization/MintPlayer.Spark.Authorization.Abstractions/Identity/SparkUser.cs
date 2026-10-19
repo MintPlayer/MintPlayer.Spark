@@ -58,6 +58,13 @@ public class SparkUser
     public string? PreferredCulture { get; set; }
 
     /// <summary>
+    /// The IANA time zone (<c>Europe/Brussels</c>) the user's mails, PDFs and other server-rendered dates
+    /// are written in (commerce PRD X14), or null for <c>Spark:TimeZone:DefaultRecipientTimeZone</c>.
+    /// Read through <c>ISparkRecipientLocale</c>; captured from the browser when unset.
+    /// </summary>
+    public string? PreferredTimeZone { get; set; }
+
+    /// <summary>
     /// The user chose to skip this application's two-factor step after an external sign-in (#490 D11). Honoured
     /// only while <c>Spark:Auth:ExternalLogin:TwoFactor:AllowUserBypass</c> is on; switching it on needs a valid code.
     /// </summary>

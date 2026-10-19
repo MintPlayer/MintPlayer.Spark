@@ -1,0 +1,13 @@
+M:System.TimeZoneInfo.ConvertTime(System.DateTime,System.TimeZoneInfo);Time zones are handled in the core (K10). Use SparkTimeZones.ToZone / ToInstant (MintPlayer.Spark.Services), or ISparkDateTimeFormatter for text.
+M:System.TimeZoneInfo.ConvertTime(System.DateTime,System.TimeZoneInfo,System.TimeZoneInfo);Time zones are handled in the core (K10). Use SparkTimeZones.ToZone / ToInstant (MintPlayer.Spark.Services), or ISparkDateTimeFormatter for text.
+M:System.TimeZoneInfo.ConvertTime(System.DateTimeOffset,System.TimeZoneInfo);Time zones are handled in the core (K10). Use SparkTimeZones.ToZone (MintPlayer.Spark.Services), or ISparkDateTimeFormatter for text.
+M:System.TimeZoneInfo.ConvertTimeBySystemTimeZoneId(System.DateTime,System.String);Time zones are handled in the core (K10). Use SparkTimeZones.Find + ToZone / ToInstant (MintPlayer.Spark.Services).
+M:System.TimeZoneInfo.ConvertTimeBySystemTimeZoneId(System.DateTime,System.String,System.String);Time zones are handled in the core (K10). Use SparkTimeZones.Find + ToZone / ToInstant (MintPlayer.Spark.Services).
+M:System.TimeZoneInfo.ConvertTimeBySystemTimeZoneId(System.DateTimeOffset,System.String);Time zones are handled in the core (K10). Use SparkTimeZones.Find + ToZone (MintPlayer.Spark.Services).
+M:System.TimeZoneInfo.ConvertTimeFromUtc(System.DateTime,System.TimeZoneInfo);Time zones are handled in the core (K10). Use SparkTimeZones.ToZone (MintPlayer.Spark.Services).
+M:System.TimeZoneInfo.ConvertTimeToUtc(System.DateTime);Time zones are handled in the core (K10). Use SparkTimeZones.ToInstant (MintPlayer.Spark.Services): it never throws in the spring gap and picks the browser's instant in the autumn fold.
+M:System.TimeZoneInfo.ConvertTimeToUtc(System.DateTime,System.TimeZoneInfo);Time zones are handled in the core (K10). Use SparkTimeZones.ToInstant (MintPlayer.Spark.Services): it never throws in the spring gap and picks the browser's instant in the autumn fold.
+M:System.TimeZoneInfo.FindSystemTimeZoneById(System.String);Time zones are handled in the core (K10). Use SparkTimeZones.Find / FindOrUtc (MintPlayer.Spark.Services): validated, with the alias table for zones newer than the server's tzdata.
+M:System.DateTime.ToLocalTime;The server's local zone is nobody's zone (K10). Use SparkTimeZones.ToZone with a resolved zone (IRequestTimeZoneResolver, ISparkRecipientLocale), or ISparkDateTimeFormatter for text.
+P:System.DateTime.Now;The server's local clock is nobody's zone (K10). Use an injected TimeProvider (GetUtcNow), or DateTime.UtcNow.
+P:System.DateTimeOffset.Now;The server's local clock is nobody's zone (K10). Use an injected TimeProvider (GetUtcNow), or DateTimeOffset.UtcNow.

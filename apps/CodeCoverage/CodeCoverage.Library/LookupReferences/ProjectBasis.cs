@@ -33,18 +33,18 @@ public sealed class ProjectBasis : TransientLookupReference<string>
             Key = Scoped,
             Description = "Compare only what this build measured",
             Values = _TS(
-                "Scoped baseline (like-for-like)",
-                "Référence restreinte (comparable)",
-                "Beperkte basislijn (gelijk om gelijk)"),
+                ("en", "Scoped baseline (like-for-like)"),
+                ("fr", "Référence restreinte (comparable)"),
+                ("nl", "Beperkte basislijn (gelijk om gelijk)")),
         },
         new ProjectBasis
         {
             Key = Projection,
             Description = "Project the patch across the whole workspace",
             Values = _TS(
-                "Patched projection (whole workspace)",
-                "Projection corrigée (espace de travail complet)",
-                "Geprojecteerde dekking (volledige workspace)"),
+                ("en", "Patched projection (whole workspace)"),
+                ("fr", "Projection corrigée (espace de travail complet)"),
+                ("nl", "Geprojecteerde dekking (volledige workspace)")),
         },
     ];
 }

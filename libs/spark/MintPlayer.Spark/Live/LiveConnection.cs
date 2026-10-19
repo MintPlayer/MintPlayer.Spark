@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Live;
 using MintPlayer.Spark.Endpoints.PersistentObject;
 using MintPlayer.Spark.Endpoints.Queries;
 using MintPlayer.Spark.Exceptions;
@@ -50,10 +51,11 @@ internal sealed class LiveConnection
     private readonly CancellationTokenSource lifetime = new();
     private long lastSend;
 
-    public LiveConnection(WebSocket socket, IServiceProvider services, DateTimeOffset deadline)
+    public LiveConnection(WebSocket socket, IServiceProvider services, DateTimeOffset deadline, SparkLiveViewer viewer)
     {
         this.socket = socket;
         this.deadline = deadline;
+        Viewer = viewer;
         hub = services.GetRequiredService<LiveHub>();
         options = services.GetRequiredService<Microsoft.Extensions.Options.IOptions<SparkLiveOptions>>().Value;
         queryLoader = services.GetRequiredService<IQueryLoader>();
@@ -71,6 +73,12 @@ internal sealed class LiveConnection
     public IServiceScopeFactory Scopes { get; }
     public ILogger Logger { get; }
     public CancellationToken Aborted => lifetime.Token;
+
+    /// <summary>
+    /// Who the socket belongs to, frozen at the handshake (commerce PRD X2): what app-stream methods and topic
+    /// policies are told, and the identity a private stream is keyed on.
+    /// </summary>
+    public SparkLiveViewer Viewer { get; }
 
     /// <summary>Evaluations run and their total time, process-wide (spike S8 numbers).</summary>
     internal static long Evaluations, EvaluationTicks, FramesSent, BytesSent;
@@ -262,7 +270,25 @@ internal sealed class LiveConnection
                 : new LiveQuerySubscription(this, sub, request, LiveQueryCollections.Resolve(query, modelLoader, indexCatalog, store));
         }
 
+        // Topics (commerce PRD X2): "topic" follows a broadcast, "private" this socket's identity's own stream.
+        if (root.TryGetProperty("topic", out var topicElement) && topicElement.ValueKind == JsonValueKind.String)
+            return Topic(sub, topicElement.GetString(), isPrivate: false);
+        if (root.TryGetProperty("private", out var privateElement) && privateElement.ValueKind == JsonValueKind.String)
+            return Topic(sub, privateElement.GetString(), isPrivate: true);
+
         throw new JsonException();
+    }
+
+    private LiveTopicSubscription? Topic(string sub, string? topic, bool isPrivate)
+    {
+        if (!LiveTopicSubscription.IsValidName(topic))
+            throw new JsonException();
+        // An address is shared by everyone behind one NAT: never a private stream. Refused like an unknown topic.
+        if (isPrivate && Viewer.IsAddressOnly)
+            return null;
+        if (!hub.CanSubscribe(topic, isPrivate, Viewer))
+            return null;
+        return new LiveTopicSubscription(this, sub, topic, isPrivate);
     }
 
     private ExecuteQueryRequest Query(JsonElement element)
@@ -301,6 +327,9 @@ internal sealed class LiveConnection
         var revalidateAt = time.GetUtcNow() + options.Revalidate;
         try
         {
+            // The server's clock, at once: a client counts down against it (commerce PRD X2) from the first frame.
+            await SendAsync(new JsonObject { ["type"] = "hello", ["serverTime"] = ServerTime() }, cancellationToken);
+
             while (!cancellationToken.IsCancellationRequested)
             {
                 if (time.GetUtcNow() >= deadline)
@@ -319,7 +348,9 @@ internal sealed class LiveConnection
                 }
 
                 TimeSpan? nextDue = null;
-                foreach (var subscription in Snapshot())
+                // Topics first: they cost one send each, while a socket's query evaluations can take a while,
+                // and a countdown or an admission should not wait behind them.
+                foreach (var subscription in Snapshot().OrderBy(s => s is LiveTopicSubscription ? 0 : 1))
                 {
                     if (subscription.StaleRetryAt is { } retryAt)
                     {
@@ -351,7 +382,7 @@ internal sealed class LiveConnection
                 var silence = time.GetElapsedTime(Interlocked.Read(ref lastSend));
                 if (silence >= options.Heartbeat)
                 {
-                    await SendAsync(new JsonObject { ["type"] = "ping" }, cancellationToken);
+                    await SendAsync(new JsonObject { ["type"] = "ping", ["serverTime"] = ServerTime() }, cancellationToken);
                     silence = TimeSpan.Zero;
                 }
 
@@ -381,8 +412,44 @@ internal sealed class LiveConnection
             return [.. subscriptions.Values];
     }
 
+    /// <summary>The server's clock as Unix milliseconds, the <c>serverTime</c> of <c>hello</c>, <c>ping</c> and <c>topic</c> frames.</summary>
+    private long ServerTime() => time.GetUtcNow().ToUnixTimeMilliseconds();
+
+    /// <summary>
+    /// A topic's turn: no scope, no read (commerce PRD X2). The policy is asked again (this is also how
+    /// <see cref="SparkLiveOptions.Revalidate"/> reaches a topic), then the retained value is sent if it is newer
+    /// than the one the client holds.
+    /// </summary>
+    private async Task EvaluateTopicAsync(LiveTopicSubscription topic, CancellationToken cancellationToken)
+    {
+        topic.TakeDirty();
+        topic.LastRun = time.GetTimestamp();
+        if (!hub.CanSubscribe(topic.Topic, topic.IsPrivate, Viewer))
+        {
+            await SendAsync(ErrorFrame(topic.Id, LiveCodes.Unavailable, LiveCodes.UnavailableMessage), cancellationToken);
+            lock (subscriptions)
+            {
+                if (subscriptions.TryGetValue(topic.Id, out var current) && ReferenceEquals(current, topic))
+                    subscriptions.Remove(topic.Id);
+            }
+            await EndAsync(topic, removed: true);
+            return;
+        }
+
+        if (hub.Retained(topic.HubKey) is not { } value || value.Seq <= topic.LastSentSeq)
+            return;
+        topic.LastSentSeq = value.Seq;
+        await SendBytesAsync(topic.Frame(value, ServerTime()), cancellationToken);
+    }
+
     private async Task EvaluateAsync(LiveSubscription subscription, CancellationToken cancellationToken)
     {
+        if (subscription is LiveTopicSubscription topic)
+        {
+            await EvaluateTopicAsync(topic, cancellationToken);
+            return;
+        }
+
         var collections = subscription.TakeDirty();
         subscription.LastRun = time.GetTimestamp();
         var started = Stopwatch.GetTimestamp();
@@ -481,9 +548,11 @@ internal sealed class LiveConnection
     private static JsonObject ErrorFrame(string sub, string code, string message)
         => new() { ["type"] = "error", ["sub"] = sub, ["code"] = code, ["message"] = message };
 
-    private async Task SendAsync(JsonObject frame, CancellationToken cancellationToken)
+    private Task SendAsync(JsonObject frame, CancellationToken cancellationToken)
+        => SendBytesAsync(Encoding.UTF8.GetBytes(frame.ToJsonString(Json)), cancellationToken);
+
+    private async Task SendBytesAsync(byte[] bytes, CancellationToken cancellationToken)
     {
-        var bytes = Encoding.UTF8.GetBytes(frame.ToJsonString(Json));
         await sendLock.WaitAsync(cancellationToken);
         try
         {

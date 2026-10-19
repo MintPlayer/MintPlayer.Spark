@@ -91,7 +91,7 @@ public class ManagerTests
     public void GetMessage_returns_template_for_requested_language_with_format_arguments_applied()
     {
         _translations.Resolve("validation.required").Returns(
-            new TranslatedString { Translations = { ["en"] = "{0} is required", ["nl"] = "{0} is verplicht" } });
+            TranslatedString.Of(("en", "{0} is required"), ("nl", "{0} is verplicht")));
 
         CreateManager().GetMessage("validation.required", "nl", "Email")
             .Should().Be("Email is verplicht");
@@ -101,7 +101,7 @@ public class ManagerTests
     public void GetMessage_with_no_format_arguments_returns_the_raw_template()
     {
         _translations.Resolve("greeting").Returns(
-            new TranslatedString { Translations = { ["en"] = "Hello, world" } });
+            TranslatedString.Of("en", "Hello, world"));
 
         CreateManager().GetMessage("greeting", "en").Should().Be("Hello, world");
     }
@@ -119,7 +119,7 @@ public class ManagerTests
     {
         _culture.GetCurrentCulture().Returns("nl");
         _translations.Resolve("validation.required").Returns(
-            new TranslatedString { Translations = { ["en"] = "{0} is required", ["nl"] = "{0} is verplicht" } });
+            TranslatedString.Of(("en", "{0} is required"), ("nl", "{0} is verplicht")));
 
         CreateManager().GetTranslatedMessage("validation.required", "Email")
             .Should().Be("Email is verplicht");

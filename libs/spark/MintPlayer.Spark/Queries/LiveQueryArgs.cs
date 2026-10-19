@@ -1,4 +1,5 @@
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Live;
 using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.Queries;
@@ -22,6 +23,12 @@ public sealed class LiveQueryArgs
 {
     /// <summary>The query being watched.</summary>
     public required SparkQuery Query { get; init; }
+
+    /// <summary>
+    /// Who is watching, frozen when the socket connected (commerce PRD X2): the identity key, user and visitor.
+    /// There is no <c>HttpContext</c> on a stream; this is what a method may key per-viewer output on.
+    /// </summary>
+    public required SparkLiveViewer Viewer { get; init; }
 
     /// <summary>The object whose detail page a sub-query is shown on, resolved and authorized like <c>/execute</c>'s.</summary>
     public PersistentObject? Parent { get; init; }

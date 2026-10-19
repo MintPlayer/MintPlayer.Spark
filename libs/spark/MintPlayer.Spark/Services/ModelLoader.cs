@@ -108,6 +108,11 @@ internal partial class ModelLoader : IModelLoader, IDisposable
                     $"Model file {file}: '{ex.Path}' must be one of \"None\", \"Auto\", \"ValueChanged\" or \"Blur\". " +
                     "The boolean form was removed; replace true with \"Auto\".", ex);
             }
+            catch (JsonException ex) when (ex.Message.Contains("dateTimeDisplay:", StringComparison.Ordinal))
+            {
+                // Same reasoning: a malformed display rule (X16) must not drop the whole type.
+                throw new InvalidOperationException($"Model file {file}: {ex.Message}", ex);
+            }
             catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
             {
                 // Narrow on purpose. This used to catch everything, which quietly defeated the

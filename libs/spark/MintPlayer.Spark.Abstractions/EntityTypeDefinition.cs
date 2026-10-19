@@ -270,7 +270,7 @@ public sealed class EntityAttributeDefinition
     /// <summary>
     /// The value's kind, which picks the editor and renderer: <c>string</c>, <c>MultiLineString</c>,
     /// <c>number</c>, <c>decimal</c>, <c>boolean</c>, <c>date</c>, <c>datetime</c>, <c>color</c>,
-    /// <c>image</c>, <c>TranslatedString</c>, <c>Reference</c> or <c>AsDetail</c>.
+    /// <c>image</c>, <c>TranslatedString</c>, <c>Money</c>, <c>Reference</c> or <c>AsDetail</c>.
     /// </summary>
     public string DataType { get; set; } = "string";
 
@@ -299,8 +299,9 @@ public sealed class EntityAttributeDefinition
     /// </summary>
     public bool IsArray { get; set; }
     /// <summary>
-    /// For array AsDetail attributes, controls how items are edited.
-    /// "modal" (default) opens a dialog; "inline" edits directly in the table row.
+    /// For AsDetail attributes, controls how the value is edited. "modal" (default) opens a dialog;
+    /// "inline" edits a collection directly in the table row, and a single object in place, its
+    /// fields rendered inside the parent form.
     /// </summary>
     public string? EditMode { get; set; }
     /// <summary>
@@ -418,6 +419,12 @@ public sealed class EntityAttributeDefinition
     /// Example: { "width": 480, "height": 270, "autoplay": false }
     /// </summary>
     public Dictionary<string, object>? RendererOptions { get; set; }
+    /// <summary>
+    /// For <c>datetime</c> attributes: which zone the value is shown in, and an optional second
+    /// rendering in another zone (commerce PRD X16). Absent means the viewer's zone, no hint.
+    /// Hand-set in the model JSON and preserved across synchronize (like <see cref="EditMode"/>).
+    /// </summary>
+    public SparkDateTimeDisplay? DateTimeDisplay { get; set; }
 
     /// <summary>
     /// A member-wise copy, for a per-caller view of the attribute (attribute rights mark an

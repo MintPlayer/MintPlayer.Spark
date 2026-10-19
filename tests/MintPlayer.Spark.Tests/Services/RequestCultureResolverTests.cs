@@ -42,7 +42,7 @@ public class RequestCultureResolverTests
     }
 
     private static Dictionary<string, TranslatedString> Cultures(params string[] keys) =>
-        keys.ToDictionary(k => k, k => TranslatedString.Create(k));
+        keys.ToDictionary(k => k, k => TranslatedString.Of("en", k));
 
     [Fact]
     public void Returns_default_when_no_HttpContext()
@@ -123,6 +123,32 @@ public class RequestCultureResolverTests
         var resolver = CreateResolver(
             Cultures("en", "nl"),
             acceptLanguage: "fr;q=1.0, nl;q=0.9, en;q=0.8");
+
+        resolver.GetCurrentCulture().Should().Be("nl");
+    }
+
+    [Fact]
+    public void Truncates_through_the_RFC_4647_lookup_chain_not_just_to_the_first_subtag()
+    {
+        // X17: zh-Hant-TW → zh-Hant → zh. Splitting on the first '-' jumped straight to "zh" and missed
+        // the configured zh-Hant.
+        var resolver = CreateResolver(Cultures("en", "zh-Hant", "zh"), acceptLanguage: "zh-Hant-TW");
+
+        resolver.GetCurrentCulture().Should().Be("zh-Hant");
+    }
+
+    [Fact]
+    public void Matches_tags_case_insensitively_and_returns_the_configured_spelling()
+    {
+        var resolver = CreateResolver(Cultures("en", "nl-BE"), acceptLanguage: "NL-be");
+
+        resolver.GetCurrentCulture().Should().Be("nl-BE");
+    }
+
+    [Fact]
+    public void The_wildcard_range_matches_nothing_and_falls_to_the_default()
+    {
+        var resolver = CreateResolver(Cultures("en", "nl"), acceptLanguage: "*", defaultLanguage: "nl");
 
         resolver.GetCurrentCulture().Should().Be("nl");
     }

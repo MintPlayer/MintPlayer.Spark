@@ -10,7 +10,7 @@ import { Subject } from 'rxjs';
 import { SparkPoDetailComponent } from './spark-po-detail.component';
 import { SparkService, SparkLanguageService, SparkLiveService } from '@mintplayer/ng-spark/services';
 import { SPARK_ATTRIBUTE_RENDERERS } from '@mintplayer/ng-spark/renderers';
-import { CustomActionDefinition, EntityType, PersistentObject, ShowedOn } from '@mintplayer/ng-spark/models';
+import { CustomActionDefinition, EntityType, PersistentObject, ShowedOn, translated, resolveTranslation } from '@mintplayer/ng-spark/models';
 import { settle, StubComponent } from '../../src/test-utils';
 
 /** `spark-po-detail` on a live type (X4): it follows the object it shows. SparkLiveService is stubbed. */
@@ -29,10 +29,10 @@ const run = (etag: string, done: number, extra: Partial<PersistentObject> = {}):
 } as any);
 
 const builtInEdit: CustomActionDefinition = {
-  name: 'Edit', label: { en: 'Edit' }, showedOn: 'both', selectionRule: '=1', refreshOnCompleted: false, offset: 0, isDefault: true,
+  name: 'Edit', label: translated({ en: 'Edit' }), showedOn: 'both', selectionRule: '=1', refreshOnCompleted: false, offset: 0, isDefault: true,
 } as any;
 const builtInDelete: CustomActionDefinition = {
-  name: 'Delete', label: { en: 'Delete' }, showedOn: 'both', selectionRule: '>0', refreshOnCompleted: false, offset: 0, isDefault: true,
+  name: 'Delete', label: translated({ en: 'Delete' }), showedOn: 'both', selectionRule: '>0', refreshOnCompleted: false, offset: 0, isDefault: true,
 } as any;
 
 const routes: Routes = [
@@ -58,7 +58,7 @@ async function setup(type: EntityType = liveType) {
       provideHttpClientTesting(),
       { provide: SparkService, useValue: service },
       { provide: SparkLiveService, useValue: live },
-      { provide: SparkLanguageService, useValue: { t: (k: string) => k, resolve: (v: any) => v?.en ?? '' } },
+      { provide: SparkLanguageService, useValue: { t: (k: string) => k, resolve: (v: any) => resolveTranslation(v, 'en') } },
       { provide: SPARK_ATTRIBUTE_RENDERERS, useValue: [] },
     ],
   });

@@ -114,9 +114,15 @@ public static class SparkExtensions
         // SparkServiceWorkerCacheHeaders.
         services.AddSparkServiceWorkerCacheHeaders();
 
+        // Server-side meta tags for public SPA routes (commerce PRD X6): idle until a provider is registered.
+        PageMeta.SparkPageMetaInjection.AddSparkPageMeta(services);
+
         // Data Protection (#460, D5) — always on, key ring persisted per Spark:DataProtection; an
         // unpersisted ring outside Development is refused by UseSpark(). See SparkDataProtectionOptions.
         services.AddSparkDataProtection();
+
+        // Visitor identity (commerce PRD X1): a guest's Data Protection cookie, issued only by an action.
+        Visitor.SparkVisitorMiddleware.AddSparkVisitor(services);
 
         // Viewer timezone (#460, item 7): header, then the spark-timezone cookie, then UTC.
         services.AddSparkConfigurationSection<SparkTimeZoneOptions>(SparkTimeZoneOptions.SectionName);
@@ -145,6 +151,8 @@ public static class SparkExtensions
         services.AddSparkConfigurationSection<Live.SparkLiveOptions>(Live.SparkLiveOptions.SectionName);
         services.AddSingleton<Live.LiveHub>();
         services.AddSingleton<Abstractions.Live.ISparkLiveNotifier>(sp => sp.GetRequiredService<Live.LiveHub>());
+        // Broadcast topics and private per-identity streams (commerce PRD X2); policies are the app's singletons.
+        services.AddSingleton<Abstractions.Live.ISparkLiveTopics, Live.LiveTopics>();
         services.AddSparkRowPolicy<Expiration.ExpirationRowPolicy>();
         // ExpiresAtUtc is the framework's on pipeline writes (D41): a client can neither extend nor clear it.
         Abstractions.Interceptors.SparkBuilderInterceptorExtensions.AddSparkInterceptor<Expiration.ExpirationInterceptor>(services);
@@ -360,6 +368,12 @@ public static class SparkExtensions
 
         app.UseAuthorization();
 
+        // Visitor identity (commerce PRD X1): reads the visitor cookie into the request's ISparkVisitor and
+        // merges a visitor into the account of a signed-in request that still carries one. After
+        // authentication (it needs the user) and BEFORE UseSparkAntiforgery, which holds an anonymous request
+        // with a valid visitor cookie to the token check.
+        Visitor.SparkVisitorMiddleware.UseSparkVisitor(app);
+
         // XSRF-TOKEN cookie on every response, for Angular's HttpClient to echo back in X-XSRF-TOKEN
         // (#452). The package's defaults are exactly the flags Spark used to write itself: script-
         // readable (HttpOnly=false), SameSite=Strict, Secure when the request is HTTPS, Path=/.
@@ -491,6 +505,9 @@ public static class SparkExtensions
         VerifySparkSecurityConfiguration(app);
 
         VerifySparkReservedActions();
+
+        // Commerce F10: an ambiguous or contract-less {Entity}Actions class fails here, not at the first request.
+        ActionsResolver.VerifyActionsClasses(app.ApplicationServices.GetRequiredService<IModelLoader>().GetEntityTypes());
 
         // MCP PRD D6: a type's "agentPermissions" must not grant Write without Read. Checked whether or not
         // the MCP package is installed, so a model is valid before the package that reads it arrives.

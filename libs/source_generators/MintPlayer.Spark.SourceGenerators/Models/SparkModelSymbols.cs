@@ -159,9 +159,9 @@ internal static class SparkModelSymbols
     /// <summary>
     /// Whether <paramref name="type"/> is <c>TranslatedString</c>, which fans out into one index field per
     /// language instead of being indexed whole.
-    /// <para>Its flat <c>{"en":..,"nl":..}</c> shape is a System.Text.Json concern and applies only on the
-    /// wire. RavenDB persists it through Newtonsoft as <c>Description.Translations.nl</c>, so the CLR path
-    /// <c>Description.Translations["nl"]</c> is what an index must map — measured, not assumed.</para>
+    /// <para>The API and RavenDB share one shape, <c>{"Entries":[{"Tag":"nl","Value":"…"}]}</c> (commerce X17;
+    /// a Newtonsoft converter writes what the System.Text.Json one does), so an index maps the CLR path
+    /// <c>Description.Entries</c> filtered on <c>Tag</c>.</para>
     /// </summary>
     /// <remarks>
     /// Matched on name plus namespace rather than a rendered display string: <c>ToDisplayString()</c> includes
@@ -170,6 +170,15 @@ internal static class SparkModelSymbols
     /// </remarks>
     public static bool IsTranslatedString(this ITypeSymbol? type)
         => type is INamedTypeSymbol { Name: TranslatedStringTypeName } named
+        && named.ContainingNamespace?.ToDisplayString() == SparkAbstractionsNamespace;
+
+    /// <summary>
+    /// Whether <paramref name="type"/> is Spark's <c>Money</c> (or <c>Money?</c>): one value with its own
+    /// serializer, never an embedded object a library marks <c>[ValueObject]</c>, and indexed through its
+    /// amount and currency companions (commerce X4).
+    /// </summary>
+    public static bool IsMoney(this ITypeSymbol? type)
+        => type?.UnwrapNullable() is INamedTypeSymbol { Name: "Money" } named
         && named.ContainingNamespace?.ToDisplayString() == SparkAbstractionsNamespace;
 
     /// <summary>

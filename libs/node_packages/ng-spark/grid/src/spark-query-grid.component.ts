@@ -45,6 +45,7 @@ import {
   parseSelectionRule,
   selectionModeFor,
   valueFor,
+  translated,
 } from '@mintplayer/ng-spark/models';
 import { SPARK_GRID_PAGE_SIZES, initialGridSettings, isVirtualScrollingQuery } from './spark-grid-columns';
 import { applicablePresetFilters } from './preset-filters';
@@ -471,7 +472,7 @@ export class SparkQueryGridComponent {
         actions.push({
           kind: 'addon', name: addon.id, addon, priority,
           // The menu renders a definition's display name; an add-on has only a translation key.
-          definition: { name: addon.id, label: { en: this.lang.t(addon.labelKey) }, showedOn: 'query', refreshOnCompleted: true, offset: priority },
+          definition: { name: addon.id, label: translated({ en: this.lang.t(addon.labelKey) }), showedOn: 'query', refreshOnCompleted: true, offset: priority },
         });
       }
     }

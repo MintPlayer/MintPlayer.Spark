@@ -96,6 +96,9 @@ public sealed class QueryColumn
     public string? Renderer { get; init; }
     public Dictionary<string, object>? RendererOptions { get; init; }
 
+    /// <summary>The attribute's <see cref="EntityAttributeDefinition.DateTimeDisplay"/>, for a <c>datetime</c> column (X16).</summary>
+    public SparkDateTimeDisplay? DateTimeDisplay { get; init; }
+
     /// <summary>Presentation hints for every cell in this column. See <see cref="QueryResultItem"/>.</summary>
     public IReadOnlyDictionary<string, string>? TypeHints { get; init; }
 }

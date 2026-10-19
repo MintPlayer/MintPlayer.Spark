@@ -33,6 +33,7 @@ COPY ["libs/history/MintPlayer.Spark.History.Abstractions/MintPlayer.Spark.Histo
 COPY ["libs/identity_provider/MintPlayer.Spark.IdentityProvider/MintPlayer.Spark.IdentityProvider.csproj", "libs/identity_provider/MintPlayer.Spark.IdentityProvider/"]
 COPY ["libs/mail/MintPlayer.Spark.MailManager/MintPlayer.Spark.MailManager.csproj", "libs/mail/MintPlayer.Spark.MailManager/"]
 COPY ["libs/mail/MintPlayer.Spark.MailManager.Abstractions/MintPlayer.Spark.MailManager.Abstractions.csproj", "libs/mail/MintPlayer.Spark.MailManager.Abstractions/"]
+COPY ["libs/sms/MintPlayer.Spark.Sms/MintPlayer.Spark.Sms.csproj", "libs/sms/MintPlayer.Spark.Sms/"]
 COPY ["libs/mcp/MintPlayer.Spark.Mcp/MintPlayer.Spark.Mcp.csproj", "libs/mcp/MintPlayer.Spark.Mcp/"]
 COPY ["libs/messaging/MintPlayer.Spark.Messaging/MintPlayer.Spark.Messaging.csproj", "libs/messaging/MintPlayer.Spark.Messaging/"]
 COPY ["libs/messaging/MintPlayer.Spark.Messaging.Abstractions/MintPlayer.Spark.Messaging.Abstractions.csproj", "libs/messaging/MintPlayer.Spark.Messaging.Abstractions/"]

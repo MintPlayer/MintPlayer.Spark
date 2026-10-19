@@ -47,19 +47,19 @@ public sealed class DeleteBranchPolicy : TransientLookupReference<EDeleteBranchP
         {
             Key = EDeleteBranchPolicy.Inherit,
             Description = "Use the account's setting",
-            Values = _TS("Use account setting", "Utiliser le paramètre du compte", "Accountinstelling gebruiken"),
+            Values = _TS(("en", "Use account setting"), ("fr", "Utiliser le paramètre du compte"), ("nl", "Accountinstelling gebruiken")),
         },
         new DeleteBranchPolicy
         {
             Key = EDeleteBranchPolicy.Enabled,
             Description = "Always delete the branch of a merged pull request",
-            Values = _TS("Always delete", "Toujours supprimer", "Altijd verwijderen"),
+            Values = _TS(("en", "Always delete"), ("fr", "Toujours supprimer"), ("nl", "Altijd verwijderen")),
         },
         new DeleteBranchPolicy
         {
             Key = EDeleteBranchPolicy.Disabled,
             Description = "Never delete, whatever the account setting says",
-            Values = _TS("Never delete", "Ne jamais supprimer", "Nooit verwijderen"),
+            Values = _TS(("en", "Never delete"), ("fr", "Ne jamais supprimer"), ("nl", "Nooit verwijderen")),
         },
     ];
 }

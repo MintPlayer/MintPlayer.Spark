@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { EvaluableAttribute, evaluateRules } from './rule-evaluation';
 import { ValidationRule } from './validation-rule';
+import { translated } from './translated-string';
 
 /**
  * The browser-side mirror of the server's `ValidationService`. The contract that matters is parity:
@@ -46,12 +47,12 @@ describe('evaluateRules', () => {
 
   describe('label', () => {
     it('uses the English label when there is one', () => {
-      const a = attr({ isRequired: true, label: { en: 'Book title', nl: 'Boektitel' } });
+      const a = attr({ isRequired: true, label: translated({ en: 'Book title', nl: 'Boektitel' }) });
       expect(evaluateRules(a, '')[0].message).toBe('Book title is required');
     });
 
     it('falls back to the attribute name when the label has no English text', () => {
-      const a = attr({ isRequired: true, label: { nl: 'Boektitel' } });
+      const a = attr({ isRequired: true, label: translated({ nl: 'Boektitel' }) });
       expect(evaluateRules(a, '')[0].message).toBe('Title is required');
     });
   });
@@ -173,12 +174,12 @@ describe('evaluateRules', () => {
   });
 
   it('prefers the rule\'s own English message over the default text', () => {
-    const rule: ValidationRule = { type: 'maxLength', value: 1, message: { en: 'Too long!', nl: 'Te lang!' } };
+    const rule: ValidationRule = { type: 'maxLength', value: 1, message: translated({ en: 'Too long!', nl: 'Te lang!' }) };
     expect(evaluateRules(withRule(rule), 'ab')[0].message).toBe('Too long!');
   });
 
   it('falls back to the default text when the custom message has no English entry', () => {
-    const rule: ValidationRule = { type: 'maxLength', value: 1, message: { nl: 'Te lang!' } };
+    const rule: ValidationRule = { type: 'maxLength', value: 1, message: translated({ nl: 'Te lang!' }) };
     expect(evaluateRules(withRule(rule), 'ab')[0].message).toBe('Title must be at most 1 characters');
   });
 

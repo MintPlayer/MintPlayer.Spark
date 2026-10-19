@@ -51,10 +51,13 @@ public class GenerateIndexProducer : Producer, IDiagnosticReporter
     /// The fields actually emitted for an entity: its properties, with every <c>TranslatedString</c> expanded
     /// into one field per language.
     /// <para>
-    /// A <c>TranslatedString</c> is a dictionary, and RavenDB cannot usefully sort or search one. It persists
-    /// nested — <c>Description.Translations.nl</c> — so a per-language field maps
-    /// <c>car.Description!.Translations["nl"]</c>, which RavenDB evaluates natively against the stored
-    /// document. A missing key or a null property both index to null with no error.
+    /// A <c>TranslatedString</c> is a list of tagged entries, and RavenDB cannot usefully sort or search one. It
+    /// persists as <c>{"Entries":[{"Tag":"nl","Value":"…"}]}</c> (commerce X17), so a per-language field maps
+    /// <c>car.Description!.Entries.Where(e =&gt; e.Tag == "nl").Select(e =&gt; e.Value).FirstOrDefault()</c>: the
+    /// first entry of exactly that tag, which RavenDB evaluates natively against the stored document. Tags are
+    /// stored in canonical case, so the map uses <see cref="IndexNaming.CanonicalLanguageTag"/>. A missing tag
+    /// or a null property both index to null with no error. The field name sanitizes the tag
+    /// (<c>Description_zh_Hant</c>, <see cref="IndexNaming.LanguageField"/>).
     /// </para>
     /// <para>
     /// The whole-object field is replaced rather than kept alongside: emitting a <c>string?</c> named
@@ -79,7 +82,7 @@ public class GenerateIndexProducer : Producer, IDiagnosticReporter
                     Name = IndexNaming.LanguageField(property.Name, language),
                     TypeDisplay = "string?",
                     NeedsDefaultInitializer = false,
-                    MapExpression = $"{info.ItemVariable}.{property.Name}!.Translations[{Quote(language)}]",
+                    MapExpression = $"{info.ItemVariable}.{property.Name}!.Entries.Where(__entry => __entry.Tag == {Quote(IndexNaming.CanonicalLanguageTag(language))}).Select(__entry => __entry.Value).FirstOrDefault()",
                     // Plain, like every other base field: the analyzed copy is the companion below.
                     FieldIndexing = null,
                     Attributes = property.Attributes,

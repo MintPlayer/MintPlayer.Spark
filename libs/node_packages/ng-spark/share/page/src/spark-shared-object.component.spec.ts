@@ -9,6 +9,7 @@ import { SPARK_ATTRIBUTE_RENDERERS } from '@mintplayer/ng-spark/renderers';
 import { SparkLanguageService, SparkService } from '@mintplayer/ng-spark/services';
 import { withShareRoutes } from '@mintplayer/ng-spark/share';
 import { SparkSharedObjectComponent } from './spark-shared-object.component';
+import { translated } from '@mintplayer/ng-spark/models';
 
 @Component({ selector: 'spec-score', standalone: true, template: '<b class="spec-score">score {{ value() }}</b>' })
 class SpecScoreComponent {
@@ -25,12 +26,12 @@ const loaded = {
   id: 'Sites/1',
   type: 'Site',
   attributes: [
-    { id: 'a2', name: 'Score', label: { en: 'Score' }, value: 87, dataType: 'number', order: 2, renderer: 'spec-score', isRequired: false, isReadOnly: true, rules: [] },
-    { id: 'a1', name: 'Host', label: { en: 'Host' }, value: 'example.com', dataType: 'string', order: 1, isRequired: false, isReadOnly: true, rules: [] },
+    { id: 'a2', name: 'Score', label: translated({ en: 'Score' }), value: 87, dataType: 'number', order: 2, renderer: 'spec-score', isRequired: false, isReadOnly: true, rules: [] },
+    { id: 'a1', name: 'Host', label: translated({ en: 'Host' }), value: 'example.com', dataType: 'string', order: 1, isRequired: false, isReadOnly: true, rules: [] },
   ],
   queries: {
     Runs: {
-      columns: [{ name: 'Started', label: { en: 'Started' }, dataType: 'string', order: 1 }],
+      columns: [{ name: 'Started', label: translated({ en: 'Started' }), dataType: 'string', order: 1 }],
       items: [{ id: 'Runs/1', values: [{ key: 'Started', value: 'monday' }] }, { id: 'Runs/2', values: [{ key: 'Started', value: 'tuesday' }] }],
       totalItems: 3,
       skip: 0,
@@ -94,7 +95,7 @@ describe('SparkSharedObjectComponent', () => {
   // renderer undefined, so SeoTester's shared run showed "no results" for a run with 99 (M11).
   it('hands an AsDetail array attribute its rows, as the detail page does', async () => {
     const withRows = { ...loaded, attributes: [...loaded.attributes, {
-      id: 'a3', name: 'Results', label: { en: 'Results' }, dataType: 'AsDetail', isArray: true, order: 3, renderer: 'spec-rows',
+      id: 'a3', name: 'Results', label: translated({ en: 'Results' }), dataType: 'AsDetail', isArray: true, order: 3, renderer: 'spec-rows',
       objects: [{ id: 'r1', name: 'Row', attributes: [] }, { id: 'r2', name: 'Row', attributes: [] }], isRequired: false, isReadOnly: true, rules: [],
     }] };
     const { fixture } = render(() => of(withRows));
@@ -118,7 +119,7 @@ describe('SparkSharedObjectComponent', () => {
   });
 
   it('heads the object with its type label and each table with its query label', async () => {
-    const { fixture } = render(() => of({ ...loaded, label: { en: 'Website', nl: 'Website (nl)' }, queryLabels: { Runs: { en: 'Audit runs' } } }));
+    const { fixture } = render(() => of({ ...loaded, label: translated({ en: 'Website', nl: 'Website (nl)' }), queryLabels: { Runs: translated({ en: 'Audit runs' }) } }));
     await settle(fixture);
     const element: HTMLElement = fixture.nativeElement;
 

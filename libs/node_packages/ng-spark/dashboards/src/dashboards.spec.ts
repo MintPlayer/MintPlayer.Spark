@@ -1,7 +1,7 @@
 import { Component, input, Type } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { EntityType, PersistentObject, ShowedOn } from '@mintplayer/ng-spark/models';
+import { EntityType, PersistentObject, ShowedOn, translated } from '@mintplayer/ng-spark/models';
 import { SPARK_DETAIL_LAYOUTS, SparkDetailContext } from '@mintplayer/ng-spark/panels';
 import { SPARK_ATTRIBUTE_RENDERERS } from '@mintplayer/ng-spark/renderers';
 import { SparkLanguageService } from '@mintplayer/ng-spark/services';
@@ -136,10 +136,10 @@ class TestRenderer {
 describe('spark-dashboard (tile layout)', () => {
   const entityType: EntityType = {
     id: 't-dash', name: 'OpsDashboard', live: true,
-    groups: [{ id: 'g-db', name: 'Database', label: { en: 'Database' }, order: 2 }],
+    groups: [{ id: 'g-db', name: 'Database', label: translated({ en: 'Database' }), order: 2 }],
     attributes: [
-      { id: 'a1', name: 'Users', label: { en: 'Users' }, dataType: 'number', order: 1, showedOn: ShowedOn.PersistentObject, renderer: 'test' },
-      { id: 'a2', name: 'Size', label: { en: 'Size' }, dataType: 'number', order: 2, group: 'g-db' },
+      { id: 'a1', name: 'Users', label: translated({ en: 'Users' }), dataType: 'number', order: 1, showedOn: ShowedOn.PersistentObject, renderer: 'test' },
+      { id: 'a2', name: 'Size', label: translated({ en: 'Size' }), dataType: 'number', order: 2, group: 'g-db' },
       { id: 'a3', name: 'Collections', dataType: 'string', order: 3, group: 'g-db', renderer: 'spark-dashboard-table' },
       { id: 'a4', name: 'Hidden', dataType: 'number', order: 4 },
       { id: 'a5', name: 'QueryOnly', dataType: 'number', order: 5, showedOn: ShowedOn.Query },

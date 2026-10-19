@@ -26,6 +26,7 @@ import {
   RefreshOverlay,
   applyOverlay,
   overlayFromResponse,
+  translated,
 } from '@mintplayer/ng-spark/models';
 
 @Component({
@@ -129,7 +130,7 @@ export class SparkPoCreateComponent {
       const errors = error.error?.result?.errors ?? error.error?.errors;
       this.validationErrors.set(errors ?? [{
         attributeName: '',
-        errorMessage: { en: error.message || 'The new item could not be prepared.' },
+        errorMessage: translated({ en: error.message || 'The new item could not be prepared.' }),
         ruleType: 'error'
       }]);
     }
@@ -241,7 +242,7 @@ export class SparkPoCreateComponent {
       } else {
         this.validationErrors.set([{
           attributeName: '',
-          errorMessage: { en: error.message || 'An unexpected error occurred' },
+          errorMessage: translated({ en: error.message || 'An unexpected error occurred' }),
           ruleType: 'error'
         }]);
       }

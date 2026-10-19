@@ -84,12 +84,24 @@ internal partial class CultureLoader : ICultureLoader, IDisposable
         }
     }
 
-    private CultureConfiguration Build(IEnumerable<string> codes, string defaultLanguage) => new()
+    private CultureConfiguration Build(IEnumerable<string> codes, string defaultLanguage)
+    {
+        // Any language, as an RFC 5646 tag (commerce X17): an ill-formed code matches no text and,
+        // in a generated index, no field. A warning, not a failure, so a typo does not take the app down.
+        foreach (var code in codes.Append(defaultLanguage).Where(c => !LanguageTag.IsWellFormed(c)))
+            logger.LogWarning(
+                "{File}: '{Code}' is not a well-formed RFC 5646 language tag (e.g. 'en', 'nl-BE', 'zh-Hant'); texts in it will not be found.",
+                SparkAppData.Relative("culture.json"), code);
+
+        return BuildConfiguration(codes, defaultLanguage);
+    }
+
+    private CultureConfiguration BuildConfiguration(IEnumerable<string> codes, string defaultLanguage) => new()
     {
         Languages = codes.ToDictionary(
             code => code,
             // An untranslated language shows its code as-is ("pt"), not humanized.
-            code => SparkText.Lookup(translationsLoader.GetAll(), $"culture.languages.{code}") ?? TranslatedString.Create(code)),
+            code => SparkText.Lookup(translationsLoader.GetAll(), $"culture.languages.{code}") ?? TranslatedString.Of("en", code)),
         DefaultLanguage = defaultLanguage,
     };
 

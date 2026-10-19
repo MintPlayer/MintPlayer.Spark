@@ -187,6 +187,18 @@
     "unavailable":   { "en": "This page could not be loaded. Try again later.", "fr": "Cette page n'a pas pu être chargée. Réessayez plus tard.", "nl": "Deze pagina kon niet geladen worden. Probeer het later opnieuw." }
   },
   "spark": {
+    "translatedString": {
+      "addLanguage": { "en": "Add a language", "fr": "Ajouter une langue", "nl": "Een taal toevoegen" },
+      "languageTag": { "en": "Language tag, e.g. de or zh-Hant", "fr": "Code de langue, p. ex. de ou zh-Hant", "nl": "Taalcode, bv. de of zh-Hant" },
+      "invalidTag": { "en": "Not a valid language tag.", "fr": "Code de langue non valide.", "nl": "Geen geldige taalcode." },
+      "otherNames": { "en": "Other names", "fr": "Autres noms", "nl": "Andere namen" },
+      "kind": {
+        "official": { "en": "official", "fr": "officiel", "nl": "officieel" },
+        "common": { "en": "common", "fr": "usuel", "nl": "gangbaar" },
+        "exonym": { "en": "exonym", "fr": "exonyme", "nl": "exoniem" },
+        "historic": { "en": "historic", "fr": "historique", "nl": "historisch" }
+      }
+    },
     "tryAgainIn": { "en": "Try again in {0}.", "fr": "Réessayez dans {0}.", "nl": "Probeer opnieuw over {0}." },
     "wait": {
       "fewSeconds": { "en": "a few seconds", "fr": "quelques secondes", "nl": "enkele seconden" },

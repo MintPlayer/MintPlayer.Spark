@@ -26,9 +26,9 @@ public partial class M_202610091100_StandardIdentityResources : ISparkMigration
 
     public async Task UpAsync(CancellationToken cancellationToken)
     {
-        await EnsureAsync("openid", TranslatedString.Create("Your identity", "Votre identité", "Je identiteit"), ["sub"], required: true, cancellationToken);
-        await EnsureAsync("profile", TranslatedString.Create("Your profile", "Votre profil", "Je profiel"), ["name", "preferred_username", "given_name", "family_name"], required: false, cancellationToken);
-        await EnsureAsync("email", TranslatedString.Create("Your email address", "Votre adresse e-mail", "Je e-mailadres"), ["email", "email_verified"], required: false, cancellationToken);
+        await EnsureAsync("openid", TranslatedString.Of(("en", "Your identity"), ("fr", "Votre identité"), ("nl", "Je identiteit")), ["sub"], required: true, cancellationToken);
+        await EnsureAsync("profile", TranslatedString.Of(("en", "Your profile"), ("fr", "Votre profil"), ("nl", "Je profiel")), ["name", "preferred_username", "given_name", "family_name"], required: false, cancellationToken);
+        await EnsureAsync("email", TranslatedString.Of(("en", "Your email address"), ("fr", "Votre adresse e-mail"), ("nl", "Je e-mailadres")), ["email", "email_verified"], required: false, cancellationToken);
         await session.SaveChangesAsync(cancellationToken);
     }
 

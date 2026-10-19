@@ -556,4 +556,105 @@ describe('SparkLiveService', () => {
       expect(TestBed.inject(Injector)).toBeTruthy();
     });
   });
+
+  describe('topics (commerce PRD X2)', () => {
+    it('subscribes a broadcast as `topic` and a private stream as `private`', () => {
+      const live = configure();
+      collect(live.watchTopic('waitingroom:R1'));
+      collect(live.watchPrivate('waitingroom:R1'));
+      lastSocket().open();
+
+      expect(lastSocket().ops('subscribe')).toEqual([
+        { op: 'subscribe', sub: 's1', topic: 'waitingroom:R1' },
+        { op: 'subscribe', sub: 's2', private: 'waitingroom:R1' },
+      ]);
+    });
+
+    it('emits every topic value; two watchers share one subscription and a late joiner gets the latest at once', () => {
+      const live = configure();
+      const a = collect<any>(live.watchTopic('waitingroom:R1'));
+      lastSocket().open();
+      lastSocket().frame({ type: 'topic', sub: 's1', seq: 1, serverTime: Date.now(), data: { servedUpTo: 10 } });
+      lastSocket().frame({ type: 'topic', sub: 's1', seq: 2, serverTime: Date.now(), data: { servedUpTo: 20 } });
+
+      const b = collect<any>(live.watchTopic('waitingroom:R1'));
+
+      expect(a.events.map(e => e.data.servedUpTo)).toEqual([10, 20]);
+      expect(b.events.map(e => e.data.servedUpTo)).toEqual([20]);
+      expect(lastSocket().ops('subscribe')).toHaveLength(1);
+    });
+
+    it('an unavailable topic ends its stream', () => {
+      const live = configure();
+      const watch = collect<any>(live.watchPrivate('waitingroom:R1'));
+      lastSocket().open();
+      lastSocket().frame({ type: 'error', sub: 's1', code: 'unavailable', message: 'Not available for live updates' });
+
+      expect(watch.events).toEqual([{ type: 'error', code: 'unavailable', message: 'Not available for live updates' }]);
+      expect(watch.completed).toBe(true);
+    });
+
+    it('liveTopic follows the topic name and holds the latest value', () => {
+      const live = configure();
+      const name = signal<string | null>('availability:E1');
+      const value = live.liveTopic<{ left: number }>(name, { injector: TestBed.inject(Injector) });
+      TestBed.tick();
+      lastSocket().open();
+      lastSocket().frame({ type: 'topic', sub: 's1', seq: 4, serverTime: Date.now(), data: { left: 3 } });
+      expect(value()).toEqual({ left: 3 });
+
+      name.set(null);
+      TestBed.tick();
+      expect(value()).toBeNull();
+      expect(lastSocket().ops('unsubscribe')).toEqual([{ op: 'unsubscribe', sub: 's1' }]);
+    });
+
+    it('measures the server clock from hello, ping and topic frames, keeping the largest sample', () => {
+      vi.setSystemTime(1_000_000);
+      const live = configure();
+      collect(live.watchTopic('t'));
+      lastSocket().open();
+      expect(live.serverTimeOffset()).toBe(0);
+
+      // The server is 5 s ahead; the hello took 40 ms to arrive.
+      lastSocket().frame({ type: 'hello', serverTime: 1_000_000 + 5_000 - 40 });
+      expect(live.serverTimeOffset()).toBe(4_960);
+
+      // A faster frame is a better estimate; a slower one does not lower it.
+      lastSocket().frame({ type: 'ping', serverTime: 1_000_000 + 5_000 - 5 });
+      lastSocket().frame({ type: 'topic', sub: 's1', seq: 1, serverTime: 1_000_000 + 5_000 - 900, data: 1 });
+      expect(live.serverTimeOffset()).toBe(4_995);
+      expect(live.serverNow()).toBe(1_000_000 + 4_995);
+
+      // A new socket's hello starts over (the server may have been replaced).
+      lastSocket().serverClose(1006);
+      vi.advanceTimersByTime(MAX_BACKOFF_MS);
+      lastSocket().open();
+      lastSocket().frame({ type: 'hello', serverTime: Date.now() - 2_000 });
+      expect(live.serverTimeOffset()).toBe(-2_000);
+    });
+
+    it('reconnect() opens a fresh socket and resubscribes everything (a sign-in changes the identity)', () => {
+      const live = configure();
+      collect(live.watchPrivate('waitingroom:R1'));
+      lastSocket().open();
+      const first = lastSocket();
+
+      live.reconnect();
+
+      expect(first.closeCalls).toHaveLength(1);
+      expect(sockets()).toHaveLength(2);
+      lastSocket().open();
+      expect(lastSocket().ops('subscribe')).toEqual([{ op: 'subscribe', sub: 's1', private: 'waitingroom:R1' }]);
+    });
+
+    it('reconnect() opens nothing when nothing is watched', () => {
+      const live = configure();
+      live.reconnect();
+      expect(sockets()).toHaveLength(0);
+    });
+  });
 });
+
+/** Longer than the largest first reconnect delay (1 s, jittered down only). */
+const MAX_BACKOFF_MS = 1_000;

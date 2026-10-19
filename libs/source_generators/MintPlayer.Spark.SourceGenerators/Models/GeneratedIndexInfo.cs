@@ -119,7 +119,7 @@ public partial class IndexPropertyInfo
 
     /// <summary>
     /// Expression the map assigns to this field, relative to the document range variable — e.g.
-    /// <c>car.Model</c>, or <c>car.Description!.Translations["nl"]</c> for a language field.
+    /// <c>car.Model</c>, or <c>car.Description!.Entries.Where(…Tag == "nl").Select(…Value).FirstOrDefault()</c> for a language field.
     /// </summary>
     public string MapExpression { get; set; } = string.Empty;
 

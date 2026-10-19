@@ -28,10 +28,10 @@ public sealed class OrganizationRoles : TransientLookupReference<OrganizationRol
 
     public static IReadOnlyCollection<OrganizationRoles> Items { get; } =
     [
-        new OrganizationRoles { Key = OrganizationRole.Viewer, Description = "Reads only", Values = _TS("Viewer", "Lecteur", "Lezer") },
-        new OrganizationRoles { Key = OrganizationRole.Member, Description = "Works with the organization's content", Values = _TS("Member", "Membre", "Lid") },
-        new OrganizationRoles { Key = OrganizationRole.Admin, Description = "Manages members, invitations and content", Values = _TS("Admin", "Administrateur", "Beheerder") },
-        new OrganizationRoles { Key = OrganizationRole.Owner, Description = "Everything, including deleting the organization", Values = _TS("Owner", "Propriétaire", "Eigenaar") },
+        new OrganizationRoles { Key = OrganizationRole.Viewer, Description = "Reads only", Values = _TS(("en", "Viewer"), ("fr", "Lecteur"), ("nl", "Lezer")) },
+        new OrganizationRoles { Key = OrganizationRole.Member, Description = "Works with the organization's content", Values = _TS(("en", "Member"), ("fr", "Membre"), ("nl", "Lid")) },
+        new OrganizationRoles { Key = OrganizationRole.Admin, Description = "Manages members, invitations and content", Values = _TS(("en", "Admin"), ("fr", "Administrateur"), ("nl", "Beheerder")) },
+        new OrganizationRoles { Key = OrganizationRole.Owner, Description = "Everything, including deleting the organization", Values = _TS(("en", "Owner"), ("fr", "Propriétaire"), ("nl", "Eigenaar")) },
     ];
 }
 
@@ -43,8 +43,8 @@ public sealed class OrganizationInviteRoles : TransientLookupReference<Organizat
 
     public static IReadOnlyCollection<OrganizationInviteRoles> Items { get; } =
     [
-        new OrganizationInviteRoles { Key = OrganizationRole.Viewer, Description = "Reads only", Values = _TS("Viewer", "Lecteur", "Lezer") },
-        new OrganizationInviteRoles { Key = OrganizationRole.Member, Description = "Works with the organization's content", Values = _TS("Member", "Membre", "Lid") },
-        new OrganizationInviteRoles { Key = OrganizationRole.Admin, Description = "Manages members, invitations and content", Values = _TS("Admin", "Administrateur", "Beheerder") },
+        new OrganizationInviteRoles { Key = OrganizationRole.Viewer, Description = "Reads only", Values = _TS(("en", "Viewer"), ("fr", "Lecteur"), ("nl", "Lezer")) },
+        new OrganizationInviteRoles { Key = OrganizationRole.Member, Description = "Works with the organization's content", Values = _TS(("en", "Member"), ("fr", "Membre"), ("nl", "Lid")) },
+        new OrganizationInviteRoles { Key = OrganizationRole.Admin, Description = "Manages members, invitations and content", Values = _TS(("en", "Admin"), ("fr", "Administrateur"), ("nl", "Beheerder")) },
     ];
 }

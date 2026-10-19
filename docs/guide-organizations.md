@@ -100,6 +100,81 @@ over 200 organizations: the membership read costs 0.3–2.8 ms for 1–100 organ
 7–14 ms end to end. A claim cached in the cookie was rejected: it is stale until the next sign-in, so a
 removed member would keep reading the organization's data. Details: PRD §12 "Spike S13".
 
+## Published rows: readable by everyone (commerce X8)
+
+A product on sale or an event's public page belongs to the seller's organization, yet every visitor must
+see it. Implement `IOrganizationPublishable` instead of `IOrganizationOwned`:
+
+```csharp
+[RequiresOrganizationRole("Publish", OrganizationRole.Admin)]   // optional: Publish follows Edit by default
+public class Product : IOrganizationPublishable
+{
+    public string? Id { get; set; }
+    public string? OrganizationId { get; set; }
+    public bool IsPublished { get; set; }
+    public string Name { get; set; } = "";
+}
+```
+
+- **`Query` and `Read` match published rows for everyone**, anonymous visitors included. The predicate
+  becomes `OrganizationId in (…) || IsPublished == true`, and just `IsPublished == true` for a non-member
+  or an anonymous caller. Every other action (`Edit`, `Delete`, custom actions) stays with the members.
+- **It never lifts another rule.** Row policies compose with AND ([row security](guide-row-security.md));
+  this is the one OR, and it sits *inside* the organization policy's own predicate. The type's
+  `GetRowFilterAsync`, expiration, soft deletion and moderation still AND with it: a published row that
+  expired, was deleted or is hidden stays hidden.
+- **Type rights come first.** Anonymous visitors reach a published row only when `security.json` gives
+  their group `QueryRead/Product`. The anonymous-readable startup check is satisfied by the organization
+  policy, which is a visibility decision.
+- **Publishing is its own right.** Flipping `IsPublished`, creating a row already published, or moving a
+  published row to another organization needs the `Publish` role in the row's organization (default: the
+  `Edit` role). A member without it gets a 400 on `IsPublished`. The system context is not limited.
+- **The switcher still narrows.** With an organization chosen, a member's list shows that organization's
+  rows only. Under "All organizations" it also shows other organizations' published rows. Loads are never
+  narrowed.
+- ⚠️ `IsPublished` is rebound by member name and must be a `bool`. A document without the field does not
+  match `IsPublished == true`, so it stays unpublished (the safe direction). A projection that does not
+  store `IsPublished` falls back to filtering after materialization.
+
+## Custom roles (commerce X8)
+
+Beside the ordered built-in role, a member can hold **custom roles** that the host or a library declares:
+door staff who only scan tickets, a finance team that refunds.
+
+```csharp
+builder.Services.AddSpark(builder.Configuration, spark =>
+{
+    spark.AddOrganizations();
+    spark.AddOrganizationRole("scanner", "Scans tickets at the door");
+    spark.AddOrganizationRole("finance", "Refunds and payouts");
+});
+```
+
+Configuration works too: `Spark:Organizations:CustomRoles:scanner = "Scans tickets at the door"`. A name
+is a letter, then letters, digits, `-` or `_` (at most 64), never `Viewer`/`Member`/`Admin`/`Owner`, and
+matches case-insensitively.
+
+Name it in rights next to, or instead of, a built-in role:
+
+```csharp
+[RequiresOrganizationRole("Scan", "scanner")]                 // holders of scanner, and Owners
+[RequiresOrganizationRole("Refund", OrganizationRole.Admin)]  // Admins...
+[RequiresOrganizationRole("Refund", "finance")]               // ...or holders of finance
+public class Ticket : IOrganizationOwned { … }
+```
+
+- The declarations of one action are **alternatives**: the built-in role or higher, or any named custom
+  role. An action that names only custom roles is open to their holders alone. An **Owner passes every
+  action**.
+- Custom roles are **not ordered**: holding `finance` says nothing about `scanner`.
+- **Who gives them:** Admins, on the member's form (**Extra roles**) or with
+  `ISparkOrganizations.SetCustomRolesAsync(organizationId, userId, roles, actingUserId)`. An undeclared name
+  is refused with a 400; stored names take the declared spelling. Read them back with
+  `GetCustomRolesAsync`. `GET /spark/organizations/current` lists them per organization (`customRoles`), so
+  a client can show the scanner page only to scanners. The personal-data export includes them.
+- Like the built-in role, they are read per request by id prefix, so a role given or taken counts on the
+  next request.
+
 ## Personal organizations
 
 Every user gets one on their first sign-in (`ISparkSignedInHandler<TUser>`, a hook in the Authorization
@@ -243,6 +318,7 @@ builder.Services.AddScoped<IOrganizationDataHandler, SiteData>();
 |---|---|---|
 | `Spark:Organizations:AcceptPath` | `/organizations/accept` | The SPA page the mailed link opens; keep it in step with `withOrganizationRoutes({ accept })`. |
 | `Spark:Organizations:CreatePersonalOrganizationOnSignIn` | `true` | Create the personal organization on sign-in. |
+| `Spark:Organizations:CustomRoles:{name}` | none | Declares a custom role (value: its description); same as `spark.AddOrganizationRole(name, description)`. |
 
 ## Testing
 

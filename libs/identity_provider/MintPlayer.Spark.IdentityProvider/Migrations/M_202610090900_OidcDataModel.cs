@@ -220,5 +220,5 @@ public partial class M_202610090900_OidcDataModel : ISparkMigration
     }
 
     private static TranslatedString? Translated(string? english)
-        => string.IsNullOrWhiteSpace(english) ? null : TranslatedString.Create(english);
+        => string.IsNullOrWhiteSpace(english) ? null : TranslatedString.Of("en", english);
 }

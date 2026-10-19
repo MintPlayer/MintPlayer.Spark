@@ -38,7 +38,7 @@ public class PersistentObjectAttributeOptionsSerializationTests
     {
         var original = WithOptions(
         [
-            new PersistentObjectAttributeOption { Key = "Stolen", Label = TranslatedString.Create("Stolen") },
+            new PersistentObjectAttributeOption { Key = "Stolen", Label = TranslatedString.Of("en", "Stolen") },
             new PersistentObjectAttributeOption { Key = "InUse" },
         ]);
 
@@ -47,7 +47,7 @@ public class PersistentObjectAttributeOptionsSerializationTests
         var options = roundTripped.Attributes[0].Options;
         options.Should().NotBeNull();
         options!.Select(o => o.Key).Should().Equal(["Stolen", "InUse"]);
-        options[0].Label!.GetDefaultValue().Should().Be("Stolen");
+        options[0].Label!.GetValue(TranslatedString.DefaultLanguage).Should().Be("Stolen");
         options[1].Label.Should().BeNull("a label is optional; the client falls back to the key");
     }
 

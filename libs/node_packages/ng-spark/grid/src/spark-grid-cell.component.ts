@@ -1,7 +1,8 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { CommonModule, NgComponentOutlet } from '@angular/common';
 import { RouterModule } from '@angular/router';
-import { EntityAttributeDefinition, SparkCellColumn } from '@mintplayer/ng-spark/models';
+import { EntityAttributeDefinition, SparkCellColumn, SparkRow } from '@mintplayer/ng-spark/models';
+import { SparkDateTimeComponent, SparkDateTimeDisplayPipe } from '@mintplayer/ng-spark/date-time';
 import { ReferenceChip } from '@mintplayer/ng-spark/pipes';
 import { SparkGridRenderers } from './spark-grid-renderers';
 
@@ -35,7 +36,7 @@ import { SparkGridRenderers } from './spark-grid-renderers';
  */
 @Component({
   selector: 'spark-grid-cell',
-  imports: [CommonModule, NgComponentOutlet, RouterModule],
+  imports: [CommonModule, NgComponentOutlet, RouterModule, SparkDateTimeComponent, SparkDateTimeDisplayPipe],
   templateUrl: './spark-grid-cell.component.html',
   styleUrl: './spark-grid-cell.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -101,5 +102,20 @@ export class SparkGridCellComponent {
   protected readonly dateValue = computed(() => {
     const value = this.display();
     return value instanceof Date && !Number.isNaN(value.getTime()) ? value : null;
+  });
+
+  /**
+   * The wire string behind {@link dateValue}, when the caller passed it as {@link rendererValue}: it keeps
+   * the offset the value was stored with, which a `stored` rendering (X16) needs and a `Date` has lost.
+   */
+  protected readonly wireDate = computed(() => {
+    const raw = this.rendererValue();
+    return typeof raw === 'string' && raw !== '' ? raw : null;
+  });
+
+  /** The row a `zoneFrom` rule reads its zone from, when it is one of the shapes `valueFor` understands. */
+  protected readonly rowForDisplay = computed(() => {
+    const item = this.item();
+    return item && typeof item === 'object' ? item as SparkRow : null;
   });
 }

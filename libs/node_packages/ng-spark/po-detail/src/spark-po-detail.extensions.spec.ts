@@ -11,7 +11,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { SparkPoDetailComponent } from './spark-po-detail.component';
 import { SparkService, SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { SPARK_ATTRIBUTE_RENDERERS } from '@mintplayer/ng-spark/renderers';
-import { EntityType, PersistentObject, ShowedOn } from '@mintplayer/ng-spark/models';
+import { EntityType, PersistentObject, ShowedOn, translated } from '@mintplayer/ng-spark/models';
 import { SparkDetailContext, provideSparkDetailActions, provideSparkDetailLayouts, provideSparkDetailPanels } from '@mintplayer/ng-spark/panels';
 import { SparkQueryCardComponent } from '@mintplayer/ng-spark/grid';
 import { settle, StubComponent } from '../../src/test-utils';
@@ -54,9 +54,9 @@ async function setup(permissions: Record<string, boolean> = {}, extra: Provider[
     get: vi.fn().mockResolvedValue(item),
     getPermissions: vi.fn().mockResolvedValue({ canQuery: true, canRead: true, canCreate: true, canEdit: true, canDelete: true, ...permissions }),
     getCustomActions: vi.fn().mockResolvedValue([
-      { name: 'Archive', label: { en: 'Archive' }, showedOn: 'detail', offset: 0 },
-      { name: 'Edit', label: { en: 'Edit' }, showedOn: 'both', selectionRule: '=1', offset: 0, isDefault: true },
-      { name: 'Delete', label: { en: 'Delete' }, showedOn: 'both', selectionRule: '>0', offset: 0, isDefault: true },
+      { name: 'Archive', label: translated({ en: 'Archive' }), showedOn: 'detail', offset: 0 },
+      { name: 'Edit', label: translated({ en: 'Edit' }), showedOn: 'both', selectionRule: '=1', offset: 0, isDefault: true },
+      { name: 'Delete', label: translated({ en: 'Delete' }), showedOn: 'both', selectionRule: '>0', offset: 0, isDefault: true },
     ]),
     getLookupReference: vi.fn(),
     executeQueryByName: vi.fn(),

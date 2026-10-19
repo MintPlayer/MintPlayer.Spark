@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { SparkDateTimePipe } from '@mintplayer/ng-spark/date-time';
 import { RouterLink } from '@angular/router';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
@@ -10,7 +11,6 @@ import { SparkSecretDialogService } from '@mintplayer/ng-spark/client-operations
 import {
   SPARK_IDENTITY_PROVIDER_QUERIES,
   SparkDeveloperStatus,
-  SparkIdentityProviderDatePipe,
   SparkIdentityProviderPortalService,
   SparkIdentityProviderTextPipe,
   identityProviderQueryLink,
@@ -29,7 +29,7 @@ import {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     RouterLink, BsAlertComponent, BsCardComponent, BsCardHeaderComponent, BsCheckboxComponent, BsFormComponent,
-    BsSpinnerComponent, SparkIdentityProviderTextPipe, SparkIdentityProviderDatePipe,
+    BsSpinnerComponent, SparkIdentityProviderTextPipe, SparkDateTimePipe,
   ],
   template: `
     <div class="d-flex justify-content-center">
@@ -47,8 +47,8 @@ import {
             <div class="text-center"><bs-spinner /></div>
           } @else if (status(); as s) {
             <p class="fw-semibold spark-developer-status" [attr.data-status]="s.status ?? 'none'">{{ statusKey() | idp }}</p>
-            @if (s.requestedAt) { <small class="text-muted d-block">{{ 'dev.requestedAt' | idp: (s.requestedAt | idpDate) }}</small> }
-            @if (s.decidedAt) { <small class="text-muted d-block">{{ 'dev.decidedAt' | idp: (s.decidedAt | idpDate) }}</small> }
+            @if (s.requestedAt) { <small class="text-muted d-block">{{ 'dev.requestedAt' | idp: (s.requestedAt | sparkDateTime:'viewer':'medium') }}</small> }
+            @if (s.decidedAt) { <small class="text-muted d-block">{{ 'dev.decidedAt' | idp: (s.decidedAt | sparkDateTime:'viewer':'medium') }}</small> }
             @if (s.note) {
               <p class="mt-2 mb-0 spark-developer-note"><span class="text-muted">{{ 'dev.note' | idp }}</span> {{ s.note }}</p>
             }

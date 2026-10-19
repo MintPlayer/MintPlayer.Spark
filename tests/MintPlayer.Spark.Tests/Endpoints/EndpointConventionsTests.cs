@@ -152,9 +152,9 @@ public class EndpointConventionsTests
     /// <summary>R3 exceptions: (file name, mapping call) → reason. PRD §5.</summary>
     private static readonly AllowedMapping[] MappingExceptions =
     [
-        new("SparkBuilderExtensions.cs", "MapGitHubWebhooks",
-            "PRD §5/D4: Octokit owns the request-level X-Hub-Signature-256 refusal for the GitHub webhook "
-            + "POST; see docs/endpoints_generator_webhooks_exception.md"),
+        // The GitHub webhook POST (PRD §5/D4) left this list in #521 X5: it is GitHubWebhookEndpoint,
+        // a source of MintPlayer.Spark.Webhooks; see docs/endpoints_generator_webhooks_exception.md.
+        // MapGitHubWebhooks stays in MappingMethods below, so Octokit's mapper cannot come back unseen.
         new("LocalCredentialEndpointFilter.cs", "MapIdentityApi",
             "PRD §5: Microsoft's monolithic MapIdentityApi<TUser>() is mapped onto a throwaway builder, "
             + "filtered, and republished through FixedEndpointDataSource"),

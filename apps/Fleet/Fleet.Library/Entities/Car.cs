@@ -99,8 +99,9 @@ public partial class Car : IAuditCreated
     /// </summary>
     /// <para>
     /// Also demonstrates the <c>TranslatedString</c> fan-out: the generated index cannot sort or search a
-    /// dictionary, so it emits one <c>Description_{lang}</c> field per language in
-    /// <c>App_Data/culture.json</c>, mapped from <c>Description.Translations["{lang}"]</c>.
+    /// list of tagged entries, so it emits one <c>Description_{lang}</c> field per language in
+    /// <c>App_Data/culture.json</c> (a hyphenated tag sanitized: <c>Description_zh_Hant</c>), mapped from the
+    /// first <c>Description.Entries</c> entry of that tag.
     /// </para>
     public TranslatedString? Description { get; set; }
 

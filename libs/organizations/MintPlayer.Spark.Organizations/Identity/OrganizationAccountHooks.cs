@@ -122,6 +122,7 @@ internal sealed class OrganizationPersonalData<TUser>(IDocumentStore store, IEnu
                 name = organization.Name,
                 isPersonal = organization.IsPersonal,
                 role = membership.Role.ToString(),
+                customRoles = membership.CustomRoles,
                 joinedAtUtc = membership.JoinedAtUtc,
                 data,
             });

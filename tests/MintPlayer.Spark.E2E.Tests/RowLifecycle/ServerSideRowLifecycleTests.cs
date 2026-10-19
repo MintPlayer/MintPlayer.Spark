@@ -297,7 +297,7 @@ public class ServerSideRowLifecycleTests
             "a hook's refusal must be a message the user can read, not a discarded save");
 
         body.GetProperty("result").GetProperty("errors")[0]
-            .GetProperty("errorMessage").GetProperty("en").GetString()
+            .GetProperty("errorMessage").GetProperty("Entries").EnumerateArray().Single(e => e.GetProperty("Tag").GetString() == "en").GetProperty("Value").GetString()
             .Should().Contain("already been invoiced");
     }
 

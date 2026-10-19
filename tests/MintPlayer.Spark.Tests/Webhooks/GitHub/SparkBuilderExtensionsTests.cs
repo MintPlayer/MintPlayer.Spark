@@ -131,7 +131,7 @@ public class SparkBuilderExtensionsTests
     }
 
     [Fact]
-    public void AddGithubWebhooks_registers_exactly_one_endpoint_action_with_the_module_registry()
+    public void AddGithubWebhooks_registers_its_endpoint_actions_with_the_module_registry()
     {
         var builder = NewBuilder();
         var endpoints = new RecordingEndpointBuilder();
@@ -143,9 +143,10 @@ public class SparkBuilderExtensionsTests
 
         builder.Registry.MapEndpoints(endpoints);
 
-        // The action invokes endpoints.MapGitHubWebhooks(...) which under the hood
-        // calls IEndpointRouteBuilder.DataSources/CreateApplicationBuilder; we don't
-        // assert on that — just that the registry-stored action runs.
+        // Two actions: the generic library's shared route (not mapped: GitHub keeps its own route)
+        // and the package's generator endpoints, which map GitHubWebhookEndpoint through
+        // IEndpointRouteBuilder.ServiceProvider/DataSources; we don't assert on that — just that the
+        // registry-stored actions run.
         endpoints.Invocations.Should().BeGreaterThan(0);
     }
 
@@ -153,7 +154,7 @@ public class SparkBuilderExtensionsTests
 
     /// <summary>
     /// Bare-bones <see cref="IEndpointRouteBuilder"/> stand-in. We need a real instance
-    /// because <see cref="Octokit.Webhooks.AspNetCore.EndpointRouteBuilderExtensions.MapGitHubWebhooks"/>
+    /// because the generated endpoint mapping
     /// pokes at <see cref="IEndpointRouteBuilder.ServiceProvider"/> and <see cref="IEndpointRouteBuilder.DataSources"/>;
     /// substitutes throw on the property reads. This implementation returns the empty
     /// minimum needed to let the registration code run end-to-end.

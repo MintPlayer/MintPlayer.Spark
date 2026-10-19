@@ -35,4 +35,10 @@ public sealed class SparkTimeZoneOptions
     /// (an environment variable set to an empty string does that); the header still works.
     /// </summary>
     public string? CookieName { get; set; } = DefaultCookieName;
+
+    /// <summary>
+    /// The zone server-rendered output uses for a recipient who stored none (X14,
+    /// <c>ISparkRecipientLocale</c>): an IANA id. Unknown or empty reads as UTC.
+    /// </summary>
+    public string? DefaultRecipientTimeZone { get; set; } = "UTC";
 }

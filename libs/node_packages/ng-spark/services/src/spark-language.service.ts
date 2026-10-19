@@ -2,7 +2,7 @@ import { Injectable, PLATFORM_ID, inject, signal } from '@angular/core';
 import { DOCUMENT, isPlatformBrowser } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
-import { TranslatedString, currentLanguage } from '@mintplayer/ng-spark/models';
+import { TranslatedString, currentLanguage, resolveTranslation } from '@mintplayer/ng-spark/models';
 import { SPARK_CONFIG } from '@mintplayer/ng-spark';
 
 /** One year, in seconds: the `spark-lang` cookie outlives sessions like the localStorage entry it mirrors. */
@@ -67,10 +67,9 @@ export class SparkLanguageService {
     this.writeCookie(lang);
   }
 
-  resolve(ts: TranslatedString | undefined): string {
-    if (!ts) return '';
-    const lang = this.currentLang();
-    return ts[lang] ?? ts['en'] ?? Object.values(ts)[0] ?? '';
+  /** The text in the current language, through the one fallback chain (`resolveTranslation`). */
+  resolve(ts: TranslatedString | null | undefined): string {
+    return resolveTranslation(ts, this.currentLang());
   }
 
   /**

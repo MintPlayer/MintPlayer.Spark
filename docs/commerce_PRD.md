@@ -758,4 +758,4 @@ The owner: "start with all spikes, then implement all milestones", with no full 
   - a mass refund with a mid-way failure and resume.
 - **Production migrations** (D26, D28) verified after deploy (§8).
 - **Browser checks** of the storefront, editor, waiting room and scanner through the Playwright MCP tools.
-- **Versions:** every touched `libs/` csproj gets a preview bump; new packages start at `11.0.0-preview.1`; `@mintplayer/ng-spark` gets a minor bump (22.41.1 → 22.42.0). No major changes (repo rule).
+- **Versions:** every touched `libs/` csproj gets a preview bump; new packages start at `11.0.0-preview.1`; `@mintplayer/ng-spark` gets a minor bump (22.42.0 → 22.43.0). No major changes (repo rule).

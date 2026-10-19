@@ -1,5 +1,7 @@
 using System.Net;
+using System.Security.Claims;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.RateLimiting;
@@ -294,6 +296,168 @@ public class SparkBuilderRateLimiterExtensionsTests
         }
 
         return codes;
+    }
+
+    // ── Who a caller is (commerce PRD X10, F5) ───────────────────────────────────────────────────
+
+    /// <summary>One request of a burst: from an address, optionally as a signed-in user or with a visitor cookie.</summary>
+    private sealed record Caller(string Ip, string? User = null, string? VisitorId = null, string? Authorization = null);
+
+    /// <summary>
+    /// Boots the limiter between a fake remote address (ahead of it) and a fake authentication (between its two
+    /// stages, where <c>UseAuthentication</c> sits in <c>UseSpark()</c>), and returns each request's status.
+    /// </summary>
+    private static async Task<List<HttpStatusCode>> MeasureCallersAsync(Action<SparkRateLimiterOptions> configure, params Caller[] callers)
+    {
+        var builder = new TestBuilder();
+        builder.Services.AddDataProtection().UseEphemeralDataProtectionProvider();
+        builder.AddRateLimiter(configure);
+
+        using var host = new HostBuilder()
+            .ConfigureWebHost(web =>
+            {
+                web.UseTestServer();
+                web.ConfigureServices(s =>
+                {
+                    foreach (var d in builder.Services) s.Add(d);
+                });
+                web.Configure(app =>
+                {
+                    app.Use((context, next) =>
+                    {
+                        context.Connection.RemoteIpAddress = IPAddress.Parse(context.Request.Headers["X-Test-Ip"].ToString());
+                        return next(context);
+                    });
+                    builder.Registry.ApplyMiddleware(app, SparkMiddlewareStage.BeforeAuthentication);
+                    app.Use((context, next) =>
+                    {
+                        if (context.Request.Headers["X-Test-User"].ToString() is { Length: > 0 } user)
+                            context.User = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, user)], "Test"));
+                        return next(context);
+                    });
+                    builder.Registry.ApplyMiddleware(app, SparkMiddlewareStage.AfterSpark);
+                    app.Run(context =>
+                    {
+                        context.Response.StatusCode = StatusCodes.Status200OK;
+                        return Task.CompletedTask;
+                    });
+                });
+            })
+            .Build();
+
+        await host.StartAsync();
+        try
+        {
+            var protector = host.Services.GetRequiredService<IDataProtectionProvider>().CreateProtector(MintPlayer.Spark.Visitor.SparkVisitorFeature.Purpose);
+            var client = host.GetTestClient();
+            var codes = new List<HttpStatusCode>();
+            foreach (var caller in callers)
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Get, "/spark/anything");
+                request.Headers.Add("X-Test-Ip", caller.Ip);
+                if (caller.User is not null)
+                {
+                    request.Headers.Add("X-Test-User", caller.User);
+                    // What a real signed-in request carries: a credential the limiter cannot read before authentication.
+                    request.Headers.TryAddWithoutValidation("Authorization", "Test " + caller.User);
+                }
+                if (caller.Authorization is not null)
+                    request.Headers.TryAddWithoutValidation("Authorization", caller.Authorization);
+                if (caller.VisitorId is not null)
+                    request.Headers.Add("Cookie", ".Spark.Visitor=" + protector.Protect(
+                        "{\"v\":\"" + caller.VisitorId + "\",\"iat\":" + DateTimeOffset.UtcNow.ToUnixTimeSeconds() + "}"));
+                using var response = await client.SendAsync(request);
+                codes.Add(response.StatusCode);
+            }
+            return codes;
+        }
+        finally
+        {
+            await host.StopAsync();
+        }
+    }
+
+    [Fact]
+    public async Task F5_addresses_in_one_IPv6_64_share_one_budget()
+    {
+        // Red before X10: the partition key was the exact address, so one host rotating its interface id
+        // (RFC 8981 does that by itself) got a fresh budget per address.
+        var codes = await MeasureCallersAsync(
+            o => o.PermitLimit = 1,
+            new Caller("2001:db8:0:1::1"),
+            new Caller("2001:db8:0:1:ffff:eeee:dddd:cccc"),
+            new Caller("2001:db8:0:2::1"));
+
+        codes.Should().Equal(HttpStatusCode.OK, HttpStatusCode.TooManyRequests, HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task Signed_in_users_behind_one_address_each_have_their_own_budget()
+    {
+        // A carrier NAT: everyone shares one address, and used to share one budget of PermitLimit.
+        var codes = await MeasureCallersAsync(
+            o => o.PermitLimit = 1,
+            new Caller("198.51.100.1", User: "ann"),
+            new Caller("198.51.100.1", User: "bob"),
+            new Caller("198.51.100.1", User: "ann"));
+
+        codes.Should().Equal(HttpStatusCode.OK, HttpStatusCode.OK, HttpStatusCode.TooManyRequests);
+    }
+
+    [Fact]
+    public async Task Visitors_behind_one_address_each_have_their_own_budget()
+    {
+        var one = Guid.NewGuid().ToString("N");
+        var two = Guid.NewGuid().ToString("N");
+        var codes = await MeasureCallersAsync(
+            o => o.PermitLimit = 1,
+            new Caller("198.51.100.1", VisitorId: one),
+            new Caller("198.51.100.1", VisitorId: two),
+            new Caller("198.51.100.1", VisitorId: one));
+
+        codes.Should().Equal(HttpStatusCode.OK, HttpStatusCode.OK, HttpStatusCode.TooManyRequests);
+    }
+
+    [Fact]
+    public async Task The_address_ceiling_bounds_every_caller_behind_one_address_together()
+    {
+        var codes = await MeasureCallersAsync(
+            o =>
+            {
+                o.PermitLimit = 1;
+                o.PermitLimitPerAddress = 2;
+            },
+            new Caller("198.51.100.1", User: "ann"),
+            new Caller("198.51.100.1", VisitorId: Guid.NewGuid().ToString("N")),
+            new Caller("198.51.100.1", User: "bob"),
+            new Caller("198.51.100.2", User: "carl"));
+
+        codes.Should().Equal(HttpStatusCode.OK, HttpStatusCode.OK, HttpStatusCode.TooManyRequests, HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task A_credential_that_does_not_authenticate_is_metered_as_its_address()
+    {
+        // A junk Authorization header defers the caller budget to after authentication; there it turns out to be
+        // nobody, and is keyed on its address like any anonymous caller — never a fresh budget per junk value.
+        var codes = await MeasureCallersAsync(
+            o => o.PermitLimit = 1,
+            new Caller("198.51.100.1", Authorization: "Bearer junk-1"),
+            new Caller("198.51.100.1", Authorization: "Bearer junk-2"));
+
+        codes.Should().Equal(HttpStatusCode.OK, HttpStatusCode.TooManyRequests);
+    }
+
+    [Fact]
+    public void An_address_ceiling_below_the_caller_budget_is_refused()
+    {
+        var act = () => new TestBuilder().AddRateLimiter(o =>
+        {
+            o.PermitLimit = 10;
+            o.PermitLimitPerAddress = 5;
+        });
+
+        act.Should().Throw<ArgumentException>().WithMessage("*PermitLimitPerAddress*");
     }
 
     // ── Configuration binding (Spark:RateLimiter) ────────────────────────────────────────────────

@@ -579,14 +579,24 @@ internal partial class ModelSynchronizer : IModelSynchronizer
     private static void ApplyRendererSeeds(EntityTypeDefinition definition, Type type)
     {
         var seeds = SparkModelSatellites.RendererSeedsFor(type);
-        if (seeds.Count == 0)
-            return;
         foreach (var attribute in definition.Attributes)
         {
-            if (!string.IsNullOrEmpty(attribute.Renderer) || !seeds.TryGetValue(attribute.Name, out var seed))
+            if (!string.IsNullOrEmpty(attribute.Renderer))
                 continue;
-            attribute.Renderer = seed.Renderer;
-            attribute.RendererOptions = seed.Options is null ? null : new Dictionary<string, object>(seed.Options);
+
+            if (seeds.TryGetValue(attribute.Name, out var seed))
+            {
+                attribute.Renderer = seed.Renderer;
+                attribute.RendererOptions = seed.Options is null ? null : new Dictionary<string, object>(seed.Options);
+            }
+            // A Money attribute (commerce X4) is an object on the wire, so without a renderer ng-spark has
+            // nothing to draw. The core `money` renderer is the default seed for every one of them, after
+            // a library's own seed, and on the same terms: only where none is set, and the model file owns
+            // it from then on.
+            else if (attribute.DataType == SparkMoney.DataType)
+            {
+                attribute.Renderer = SparkMoney.RendererName;
+            }
         }
     }
 
@@ -1667,7 +1677,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         {
             translations.TryGetValue(key, out var translated);
             var absent = languages
-                .Where(l => translated is null || !translated.Translations.TryGetValue(l, out var v) || string.IsNullOrWhiteSpace(v))
+                .Where(l => translated is null || string.IsNullOrWhiteSpace(translated[l]))
                 .ToList();
             if (absent.Count > 0)
                 lines.Add($"{key} [{string.Join(", ", absent)}]");

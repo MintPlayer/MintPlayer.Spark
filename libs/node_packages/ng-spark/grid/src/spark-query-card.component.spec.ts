@@ -17,7 +17,7 @@ import {
 } from './spark-query-slots';
 import { SparkService, SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { SPARK_ATTRIBUTE_RENDERERS } from '@mintplayer/ng-spark/renderers';
-import { EntityType, ShowedOn } from '@mintplayer/ng-spark/models';
+import { EntityType, ShowedOn, translated, resolveTranslation } from '@mintplayer/ng-spark/models';
 import { settle } from '../../src/test-utils';
 
 /**
@@ -45,15 +45,15 @@ const personType: EntityType = {
 const carsQuery = {
   id: 'q-cars', name: 'GetCars', source: 'Database.People', alias: 'cars',
   entityType: 'Person', sortColumns: [],
-  label: { en: 'All the cars' },
+  label: translated({ en: 'All the cars' }),
 } as any;
 
 const exportAction = {
-  name: 'Export', label: { en: 'Export' }, offset: 0,
+  name: 'Export', label: translated({ en: 'Export' }), offset: 0,
   showedOn: 'query', selectionRule: undefined, refreshOnCompleted: false,
 } as any;
 
-const langStub = { t: (k: string) => k, resolve: (v: any) => (typeof v === 'string' ? v : v?.en ?? '') };
+const langStub = { t: (k: string) => k, resolve: (v: any) => (typeof v === 'string' ? v : resolveTranslation(v, 'en')) };
 
 function configure(actions: unknown[] = []) {
   const service: any = {

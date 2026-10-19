@@ -31,6 +31,12 @@ public class OrganizationMembership : IOrganizationOwned
     /// <summary>The member's role.</summary>
     public OrganizationRole Role { get; set; } = OrganizationRole.Viewer;
 
+    /// <summary>
+    /// Custom roles the member holds beside <see cref="Role"/> (<c>docs/commerce_PRD.md</c> X8), each one declared by the
+    /// host or a library (<c>spark.AddOrganizationRole</c>). Given and taken by Admins; an undeclared name is refused.
+    /// </summary>
+    public List<string> CustomRoles { get; set; } = [];
+
     /// <summary>When the user joined.</summary>
     public DateTime? JoinedAtUtc { get; set; }
 

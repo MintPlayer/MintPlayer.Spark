@@ -179,7 +179,7 @@ internal partial class LookupReferenceService : ILookupReferenceService
             throw new InvalidOperationException($"Value with key '{key}' not found");
 
         // Update the value
-        existingValue.Translations = value.Values.Translations;
+        existingValue.Values = value.Values;
         existingValue.IsActive = value.IsActive;
         existingValue.Extra = value.Extra;
 
@@ -310,7 +310,8 @@ internal class DynamicLookupReferenceDocument
 internal class DynamicLookupReferenceValue
 {
     public required string Key { get; set; }
-    public Dictionary<string, string> Translations { get; set; } = new();
+    /// <summary>The label, in the one TranslatedString shape (commerce X17); stored as <c>{"Entries":[…]}</c>.</summary>
+    public TranslatedString Values { get; set; } = new();
     public bool IsActive { get; set; } = true;
     public Dictionary<string, object>? Extra { get; set; }
 
@@ -319,7 +320,7 @@ internal class DynamicLookupReferenceValue
         return new LookupReferenceValueDto
         {
             Key = Key,
-            Values = new TranslatedString { Translations = Translations },
+            Values = Values,
             IsActive = IsActive,
             Extra = Extra
         };
@@ -330,7 +331,7 @@ internal class DynamicLookupReferenceValue
         return new DynamicLookupReferenceValue
         {
             Key = dto.Key,
-            Translations = dto.Values.Translations,
+            Values = dto.Values,
             IsActive = dto.IsActive,
             Extra = dto.Extra
         };

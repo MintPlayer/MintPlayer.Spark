@@ -58,6 +58,23 @@ public sealed class SparkProfileRequest
     /// <summary>Whether the request carried <see cref="PreferredCulture"/> at all (an explicit null counts).</summary>
     [JsonIgnore]
     public bool HasPreferredCulture { get; private set; }
+
+    private string? preferredTimeZone;
+
+    /// <summary>
+    /// The IANA zone the user's mails and PDFs are written in (<see cref="SparkUser.PreferredTimeZone"/>, X14):
+    /// absent keeps it, <see langword="null"/> or empty clears it, otherwise an IANA-shaped id
+    /// (<c>Europe/Brussels</c>); anything else is a validation problem under <c>PreferredTimeZone</c>.
+    /// </summary>
+    public string? PreferredTimeZone
+    {
+        get => preferredTimeZone;
+        set { preferredTimeZone = value; HasPreferredTimeZone = true; }
+    }
+
+    /// <summary>Whether the request carried <see cref="PreferredTimeZone"/> at all (an explicit null counts).</summary>
+    [JsonIgnore]
+    public bool HasPreferredTimeZone { get; private set; }
 }
 
 /// <summary>Answer of <c>GET/POST /spark/auth/manage/profile</c>.</summary>
@@ -65,6 +82,9 @@ public sealed record SparkProfileResponse(string? UserName, string? Email, IRead
 {
     /// <summary><see cref="SparkUser.PreferredCulture"/>; <see langword="null"/> when unset (the mail default applies).</summary>
     public string? PreferredCulture { get; init; }
+
+    /// <summary><see cref="SparkUser.PreferredTimeZone"/>; <see langword="null"/> when unset (<c>Spark:TimeZone:DefaultRecipientTimeZone</c> applies).</summary>
+    public string? PreferredTimeZone { get; init; }
 }
 
 /// <summary>Answer of <c>GET /spark/auth/manage/2fa/authenticator-uri</c>.</summary>

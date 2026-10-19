@@ -6,7 +6,7 @@ import { ResolveTranslationPipe } from './resolve-translation.pipe';
 import { AsDetailDisplayValuePipe } from './as-detail-display-value.pipe';
 import { ReferenceDisplayValuePipe } from './reference-display-value.pipe';
 import { SparkLanguageService } from '@mintplayer/ng-spark/services';
-import { AS_DETAIL_SELF_BREADCRUMB_KEY } from '@mintplayer/ng-spark/models';
+import { AS_DETAIL_SELF_BREADCRUMB_KEY, translated } from '@mintplayer/ng-spark/models';
 
 class FakeLanguageService {
   t(key: string): string {
@@ -46,7 +46,7 @@ describe('TranslateKeyPipe', () => {
 describe('ResolveTranslationPipe (DI-free smoke)', () => {
   it('resolves nested translations directly', () => {
     const pipe = new ResolveTranslationPipe();
-    expect(pipe.transform({ en: 'Hello' } as any)).toBe('Hello');
+    expect(pipe.transform(translated({ en: 'Hello' }) as any)).toBe('Hello');
   });
 });
 

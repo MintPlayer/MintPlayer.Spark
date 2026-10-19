@@ -1,9 +1,9 @@
 using System.Net.WebSockets;
-using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Options;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Abstractions.Live;
 using MintPlayer.Spark.Live;
 
 namespace MintPlayer.Spark.Endpoints.Live;
@@ -50,12 +50,20 @@ internal sealed partial class LiveSocket : IEndpoint
             return Results.Json(new { error = "WebSocket connection required" }, statusCode: 400);
 
         // Before the upgrade: once the response has started, an authentication handler can no longer run.
-        var deadline = DateTimeOffset.UtcNow + options.Value.MaxSocketLifetime;
+        // The lifetime is drawn between 90 % and 100 % of the maximum (commerce PRD X2): sockets opened together
+        // at a sale's start would otherwise all reconnect in the same second when it runs out.
+        var deadline = DateTimeOffset.UtcNow + options.Value.MaxSocketLifetime * (0.9 + 0.1 * Random.Shared.NextDouble());
         if (await TicketExpiryAsync(httpContext) is { } expires && expires < deadline)
             deadline = expires;
 
+        // Who the socket belongs to, frozen now (commerce PRD X2): the signed-in user, else the visitor cookie,
+        // else the address (an IPv6 one grouped to its /64). A sign-in reconnects, so it is never older than the
+        // socket's lifetime.
+        var visitor = Visitor.SparkVisitorFeature.For(httpContext);
+        var viewer = new SparkLiveViewer(visitor.IdentityKey, visitor.UserId, visitor.VisitorId);
+
         using var socket = await httpContext.WebSockets.AcceptWebSocketAsync();
-        var userKey = UserKey(httpContext);
+        var userKey = viewer.IdentityKey;
         if (!hub.TryAcquireSocket(userKey))
         {
             await socket.CloseAsync((WebSocketCloseStatus)LiveCodes.CloseTooManySockets, "Too many live connections", CancellationToken.None);
@@ -64,7 +72,7 @@ internal sealed partial class LiveSocket : IEndpoint
 
         try
         {
-            await new LiveConnection(socket, services, deadline).RunAsync(httpContext.RequestAborted);
+            await new LiveConnection(socket, services, deadline, viewer).RunAsync(httpContext.RequestAborted);
         }
         finally
         {
@@ -84,10 +92,4 @@ internal sealed partial class LiveSocket : IEndpoint
         var result = await httpContext.AuthenticateAsync();
         return result.Succeeded ? result.Properties?.ExpiresUtc : null;
     }
-
-    /// <summary>The user the socket count is kept for: the signed-in user, else the remote address.</summary>
-    private static string UserKey(HttpContext httpContext)
-        => httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier) is { Length: > 0 } id
-            ? "user:" + id
-            : "ip:" + httpContext.Connection.RemoteIpAddress;
 }

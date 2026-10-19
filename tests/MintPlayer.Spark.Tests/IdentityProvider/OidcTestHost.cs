@@ -225,14 +225,14 @@ public abstract class OidcTestHost : SparkSharedTestDriver, IAsyncLifetime
                             Id = apiId,
                             Kind = OidcResourceKinds.Api,
                             Name = apiName,
-                            DisplayName = TranslatedString.Create(apiName),
+                            DisplayName = TranslatedString.Of("en", apiName),
                             Enabled = true,
                         };
                         await session.StoreAsync(api);
                     }
 
                     if (!api.Scopes.Any(s => string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase)))
-                        api.Scopes.Add(new OidcApiScope { Name = name, DisplayName = TranslatedString.Create(name) });
+                        api.Scopes.Add(new OidcApiScope { Name = name, DisplayName = TranslatedString.Of("en", name) });
                     continue;
                 }
 
@@ -245,7 +245,7 @@ public abstract class OidcTestHost : SparkSharedTestDriver, IAsyncLifetime
                     Id = id,
                     Kind = OidcResourceKinds.Identity,
                     Name = name,
-                    DisplayName = TranslatedString.Create(name),
+                    DisplayName = TranslatedString.Of("en", name),
                     Enabled = true,
                     Required = name == "openid",
                 });

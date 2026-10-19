@@ -171,9 +171,9 @@ fix passed while the pipeline was provably returning `08:00+00:00`.
 
 ## How to display one
 
-**Show it in the viewer's timezone.** That is the default and it needs no work: the grid hands the value
-to Angular's `DatePipe` with no timezone argument, which renders in the browser's own zone. Leave it
-alone.
+**Show it in the viewer's timezone.** That is the default and it needs no work: the grid and the detail
+page hand the value to `<spark-date-time>` (below), which renders in the browser's own zone and the
+app's current language. Leave it alone.
 
 This works because **the instant was never the thing that broke.** RavenDB flattened the offset but kept
 `UtcTicks`, so `2026-03-09T08:00:00Z` and `2026-03-09T10:00:00+02:00` are the same moment and render
@@ -202,9 +202,9 @@ So what is the offset for? Anything that needs the *originating* local time rath
 server-side business logic (`.Offset`, "which country's morning was this?"), an export that must reproduce
 the local wall clock, or writing the value back unchanged.
 
-**Every page agrees, and that is the point.** The grid and the detail page run the identical path — parse
-the wire value with `new Date(...)`, then format with `| date:'short'` and no timezone argument — so the
-same record renders as the same string on both, in the viewer's own zone.
+**Every page agrees, and that is the point.** The grid and the detail page run the identical path — the
+wire value goes to `<spark-date-time>` with the attribute's `dateTimeDisplay` — so the same record renders
+as the same string on both, in the viewer's own zone.
 
 <details>
 <summary>There was briefly a custom renderer in <code>apps/Fleet</code> that broke that. It was removed.</summary>
@@ -232,6 +232,110 @@ printed the wire value verbatim — `2026-12-31T23:59:00-08:00` in a definition 
 formatted the same document as `01/01/2027, 08:59`. Not a cosmetic difference: a value whose offset
 differs from the viewer's can disagree on the **date**, so the two pages named different days for one car.
 Both now parse through the same `parsedDate` pipe and format identically.
+
+### One facility: `<spark-date-time>` (commerce PRD X16)
+
+Three kinds of time, one component. It lives in `@mintplayer/ng-spark/date-time`, is built on
+`Intl.DateTimeFormat`, and is what the grids, the detail pages and the identity-provider pages use.
+
+```html
+<spark-date-time [value]="order.placedAt" />                              <!-- 7/4/26, 9:00 PM -->
+<spark-date-time [value]="event.startsAt" [alsoIn]="venue.timeZoneId" />  <!-- 9:00 PM (8:00 PM London) -->
+<spark-date-time [value]="audit.at" mode="stored" />                      <!-- 3/9/26, 10:00 AM UTC+02:00 -->
+<spark-date-time [value]="slot.opens" [mode]="{ zone: 'Asia/Tokyo' }" format="medium" />
+```
+
+| input | meaning |
+|---|---|
+| `value` | the wire value (keep the string: `stored` needs the offset a `Date` has lost), a `Date` or epoch ms |
+| `mode` | `'viewer'` (default) · `'stored'` (the wall clock it was written with, and its offset) · `{ zone }` |
+| `alsoIn` | an IANA zone (or `'stored'`) for a second rendering |
+| `format` | `'short'` (default, what grids always showed) · `'medium'` · `'long'` · `'date'` · `'time'` |
+
+- **The second rendering hides itself when both give the same wall clock at that instant.** The comparison
+  is by offset *on the value's own date*, never by zone name: a viewer in Paris sees one time for a
+  Brussels venue, and a London viewer sees one time for a Lisbon venue in summer and in winter.
+- **A named zone is labelled with its name**, never a browser abbreviation like "CEST". `SparkTimeZoneNames`
+  resolves it through a fallback chain (D36), cached per (zone, language) for the session:
+  1. a `SparkTimeZoneNameSource` when one is provided (`provideSparkTimeZoneNameSource`; the reference-data
+     client registers one): the translated city, "Brussel";
+  2. the browser's localized generic name (`Intl` `longGeneric`): "Midden-Europese tijd" (spike S23:
+     localized per call in Chromium, Firefox and Node; Safari not yet verified);
+  3. the English city from the IANA id: `America/Argentina/Buenos_Aires` → "Buenos Aires".
+
+  The text never waits for a label: step 2 or 3 renders first and the city replaces it when it arrives.
+- **A zone this browser does not know** renders in the viewer's zone rather than hiding the value, and a
+  value that is not a date prints as itself.
+
+For a plain string (a translation argument, a `title`), the pipe and the function give the main rendering:
+`{{ key.createdAt | sparkDateTime:'viewer':'medium' }}`, `formatSparkDateTime(value, 'viewer', 'date')`.
+
+**In the model.** A `datetime` attribute declares its zones with `dateTimeDisplay`, hand-set in the model
+JSON and kept by synchronize like `editMode`:
+
+```json
+{ "name": "StartsAt", "dataType": "datetime",
+  "dateTimeDisplay": { "primary": "viewer", "hint": { "zoneFrom": "VenueTimeZoneId" } } }
+```
+
+Each of `primary` (default `"viewer"`) and `hint` is `"viewer"`, `"stored"`, `{ "zone": "<IANA id>" }` or
+`{ "zoneFrom": "<attribute>" }`. A `zoneFrom` reads the named attribute **of the same row**, so a zone that
+lives on a referenced document (a venue's) is projected onto the row first, as a column. When the row has
+no value there, the main rendering is the viewer's and the hint is left out. `--spark-verify-model` fails a
+`zoneFrom` naming no attribute and a malformed zone id, and warns about a rule on a non-`datetime` attribute.
+
+### Server-rendered output: `ISparkDateTimeFormatter` and the recipient's locale (X14)
+
+Mails, PDFs and background jobs have no browser and no request, so they format in .NET with the
+**recipient's** zone and culture. The account stores both (`SparkUser.PreferredTimeZone`, an IANA id, and
+`PreferredCulture`), editable on the profile page; `ISparkRecipientLocale` resolves them:
+
+```csharp
+[Inject] private readonly ISparkRecipientLocale locales;
+[Inject] private readonly ISparkDateTimeFormatter dates;
+
+var recipient = await locales.ForUserAsync(order.UserId, ct);    // preference → defaults, never the request
+var text = await dates.FormatAsync(evt.StartsAt, recipient, new SparkDateTimeFormatOptions
+{
+    Hint = SparkDateTimeZone.InZone(venue.TimeZoneId),         // "04/07/2026 21:00 (04/07/2026 20:00 London)"
+    Style = ESparkDateTimeStyle.LongDateTime,
+}, ct);
+```
+
+- `ForUserAsync` reads the account part by part and completes it with `Spark:TimeZone:DefaultRecipientTimeZone`
+  (default `UTC`) and the app's default language. It never uses the current request: a job one person
+  triggers must not write another person's mail in the first one's zone.
+- `FromCurrentRequest()` is the viewer (header, cookie, then UTC; the request's culture): use it to
+  **capture** a locale, onto an order at checkout. `CaptureForUserAsync(userId)` stores it on the account
+  where a part is still unset, and never overwrites a choice.
+- The output has the component's shapes: the hint in parentheses, hidden when the wall clocks match; a
+  named zone labelled; `stored` with its offset. `SparkDateTimeFormatOptions.From(attribute.DateTimeDisplay,
+  zoneOf)` applies a model rule. Zone labels come from `ISparkTimeZoneNames`: a registered
+  `ISparkTimeZoneNameProvider` (the reference-data client's), else the English city. **The server has no
+  platform step**: `TimeZoneInfo`'s names are not localized per culture (the OS language on Windows; on Linux
+  the culture of the process's first use, then fixed, S23), so a job writing mails in several languages would
+  get them wrong.
+
+### Time zones are handled in one place (K10)
+
+Libraries and apps never convert zones or format instants themselves. Both halves are enforced:
+
+- **Server:** every C# project except `MintPlayer.Spark` and the test projects builds with
+  `BannedSymbols.TimeZones.txt` (`Directory.Build.targets`), as an error. Banned: `TimeZoneInfo.ConvertTime*`,
+  `FindSystemTimeZoneById`, `DateTime.ToLocalTime`, `DateTime.Now`, `DateTimeOffset.Now`. Use instead:
+
+  | instead of | use |
+  |---|---|
+  | `FindSystemTimeZoneById(id)` | `SparkTimeZones.Find(id)` / `FindOrUtc(id)`: validated, with the alias table |
+  | `ConvertTime(instant, zone)` | `SparkTimeZones.ToZone(instant, zone)` |
+  | `ConvertTimeToUtc(wallClock, zone)` | `SparkTimeZones.ToInstant(wallClock, zone)`: never throws in the gap, the browser's choice in the fold |
+  | `DateTime.Now`, `DateTimeOffset.Now` | an injected `TimeProvider`, or `UtcNow` |
+  | text for a person | `ISparkDateTimeFormatter` with `ISparkRecipientLocale` |
+
+- **Client:** `tools/verify-time-zones.test.mjs` (in `npm run test:tools`) fails on `Intl.DateTimeFormat`, a
+  `timeZone:` option, `DATE_PIPE_DEFAULT_OPTIONS`, or a `DatePipe` / `formatDate` zone argument anywhere in
+  ng-spark or an app's `ClientApp/src`, except in the date-time entry point. Its fixtures under
+  `tools/fixtures/time-zone-guard` prove every rule fires. Spec files are exempt (they mock `Intl`).
 
 ## How to edit one
 
@@ -281,9 +385,10 @@ definite instant. What you should know:
 - **A wall clock cannot round-trip losslessly through the fold**, on any platform. It names two instants
   and the form can only show one. This is not a bug to report; it is what a wall clock is. The offset in
   the document is what disambiguates, which is the read path the wrapper already fixes.
-- **Server-side, do not use `TimeZoneInfo.ConvertTimeToUtc`** on user input — it *throws* inside the gap.
-  Use `IRequestTimeZoneResolver.ToViewerDateTimeOffset`, which handles both cases and deliberately
-  reproduces the browser's choice so the two sides cannot disagree.
+- **Server-side, do not use `TimeZoneInfo.ConvertTimeToUtc`** on user input — it *throws* inside the gap
+  (and it is banned outside the core, K10). Use `IRequestTimeZoneResolver.ToViewerDateTimeOffset`, or
+  `SparkTimeZones.ToInstant` with a zone in hand, which handle both cases and deliberately reproduce the
+  browser's choice so the two sides cannot disagree.
 - ⚠️ **.NET's own default disagrees with the browser at the fold** — `GetUtcOffset` returns the *standard*
   offset where a browser returns the *daylight* one. Measured across four zones in both hemispheres. If
   you convert a wall clock yourself anywhere, you will land an hour off once a year.
@@ -340,11 +445,10 @@ honoured). Format such values in .NET with the resolved zone and pass them in th
 keep them out of the server render.
 
 **Mail.** MailManager renders in a queue worker, where there is no request and the resolver answers
-UTC. Resolve the zone while handling the request that queues the mail, convert the value there
-(`timeZones.ToViewerDateTimeOffset(...)` or `TimeZoneInfo.ConvertTime(instant, zone)`), and put the
-converted value in the template data. A date in template data renders as the clock time it was
-written with (Scriban's `date.to_string` cannot take a `DateTimeOffset`, S-M4), so an instant still
-in UTC renders in UTC.
+UTC. Format the value with `ISparkDateTimeFormatter` for the **recipient's** locale
+(`ISparkRecipientLocale.ForUserAsync`, see "Server-rendered output" above) and put the text in the
+template data. A date in template data renders as the clock time it was written with (Scriban's
+`date.to_string` cannot take a `DateTimeOffset`, S-M4), so an instant still in UTC renders in UTC.
 
 ```csharp
 [Inject] private readonly IRequestTimeZoneResolver timeZones;

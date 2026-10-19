@@ -2,6 +2,7 @@ import { EntityAttributeDefinition } from './entity-type';
 import { PersistentObject } from './persistent-object';
 import { ShowedOn } from './showed-on';
 import { ValidationRule } from './validation-rule';
+import { TranslatedString } from './translated-string';
 
 /**
  * One selectable value, as replaced by a refresh hook. Mirrors the server's
@@ -9,7 +10,7 @@ import { ValidationRule } from './validation-rule';
  */
 export interface RefreshedOption {
   key: string;
-  label?: Record<string, string>;
+  label?: TranslatedString;
 }
 
 /**

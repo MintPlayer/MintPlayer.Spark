@@ -84,6 +84,32 @@ describe('SparkGridCellComponent', () => {
       const f = setup({ column: col({ dataType: 'datetime' }), display: null });
       expect(html(f).textContent!.trim()).toBe('');
     });
+
+    /** X16: the column's `dateTimeDisplay`, resolved against the row, drives `<spark-date-time>`. */
+    it('adds the hint a zoneFrom rule reads from the row', () => {
+      const wire = '2026-07-04T19:00:00Z';
+      const f = setup({
+        column: col({ dataType: 'datetime', dateTimeDisplay: { primary: { zone: 'Europe/Brussels' }, hint: { zoneFrom: 'VenueTimeZoneId' } } }),
+        display: new Date(wire),
+        rendererValue: wire,
+        item: { id: 'r1', values: [{ key: 'VenueTimeZoneId', value: 'Asia/Tokyo' }] },
+      });
+      const hint = html(f).querySelector('.spark-date-time-hint');
+      expect(hint).not.toBeNull();
+      expect(hint!.textContent).toMatch(/4:00/);
+    });
+
+    it('shows the stored wall clock and offset from the wire value, which the Date has lost', () => {
+      const wire = '2026-03-09T10:00:00+02:00';
+      const f = setup({
+        column: col({ dataType: 'datetime', dateTimeDisplay: { primary: 'stored' } }),
+        display: new Date(wire),
+        rendererValue: wire,
+      });
+      const text = html(f).textContent!.trim();
+      expect(text).toContain('10:00');
+      expect(text.endsWith('UTC+02:00')).toBe(true);
+    });
   });
 
   describe('boolean', () => {

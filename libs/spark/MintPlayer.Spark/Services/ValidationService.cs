@@ -279,21 +279,19 @@ internal partial class ValidationService : IValidationService
 
         if (templateString is not null)
         {
-            var result = new TranslatedString();
-            foreach (var (language, template) in templateString.Translations)
+            return templateString.Map((language, template) =>
             {
                 var fieldName = label?.GetValue(language) ?? attributeName;
                 var formatArgs = new object[1 + extraParams.Length];
                 formatArgs[0] = fieldName;
                 Array.Copy(extraParams, 0, formatArgs, 1, extraParams.Length);
-                result.Translations[language] = string.Format(template, formatArgs);
-            }
-            return result;
+                return string.Format(template, formatArgs);
+            });
         }
 
         // Fallback: English-only message using attribute name
-        var fallbackLabel = label?.GetDefaultValue() ?? attributeName;
-        return TranslatedString.Create($"{fallbackLabel}: validation failed ({translationKey})");
+        var fallbackLabel = label?.GetValue(TranslatedString.DefaultLanguage) ?? attributeName;
+        return TranslatedString.Of("en", $"{fallbackLabel}: validation failed ({translationKey})");
     }
 
     /// <summary>

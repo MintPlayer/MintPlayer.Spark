@@ -68,7 +68,7 @@ public class LookupReferenceEndpointTests : SparkTestDriver
         stub.GetAsync("CarBrand").Returns(new LookupReferenceDto
         {
             Name = "CarBrand", IsTransient = false,
-            Values = [new LookupReferenceValueDto { Key = "BMW", Values = TranslatedString.Create("BMW") }],
+            Values = [new LookupReferenceValueDto { Key = "BMW", Values = TranslatedString.Of("en", "BMW") }],
         });
         await using var factory = CreateFactory(stub);
         using var client = factory.CreateClient();
@@ -183,7 +183,7 @@ public class LookupReferenceEndpointTests : SparkTestDriver
         await using var factory = CreateFactory(stub);
         using var client = new SparkClient(factory.CreateClient(), ownsClient: true);
 
-        var newValue = new LookupReferenceValueDto { Key = "Audi", Values = TranslatedString.Create("Audi") };
+        var newValue = new LookupReferenceValueDto { Key = "Audi", Values = TranslatedString.Of("en", "Audi") };
         var response = await client.SendAsync(HttpMethod.Post, "/spark/lookupref/CarBrand", JsonContent.Create(newValue, options: JsonOpts), requiresAntiforgery: true);
 
         response.StatusCode.Should().Be(HttpStatusCode.Created);
@@ -202,7 +202,7 @@ public class LookupReferenceEndpointTests : SparkTestDriver
 
         var response = await client.SendAsync(
             HttpMethod.Post, "/spark/lookupref/CarBrand",
-            JsonContent.Create(new LookupReferenceValueDto { Key = "Audi", Values = TranslatedString.Create("Audi") }, options: JsonOpts),
+            JsonContent.Create(new LookupReferenceValueDto { Key = "Audi", Values = TranslatedString.Of("en", "Audi") }, options: JsonOpts),
             requiresAntiforgery: true);
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
@@ -219,7 +219,7 @@ public class LookupReferenceEndpointTests : SparkTestDriver
         using var client = factory.CreateClient(); // no antiforgery cookie
 
         var response = await client.PostAsJsonAsync("/spark/lookupref/CarBrand",
-            new LookupReferenceValueDto { Key = "Audi", Values = TranslatedString.Create("Audi") });
+            new LookupReferenceValueDto { Key = "Audi", Values = TranslatedString.Of("en", "Audi") });
 
         // Antiforgery middleware blocks before the handler runs.
         response.StatusCode.Should().BeOneOf(HttpStatusCode.BadRequest, HttpStatusCode.Forbidden);
@@ -325,7 +325,7 @@ public class LookupReferenceEndpointTests : SparkTestDriver
         var update = new LookupReferenceValueDto
         {
             Key = "BMW",
-            Values = TranslatedString.Create("Bayerische Motoren Werke"),
+            Values = TranslatedString.Of("en", "Bayerische Motoren Werke"),
             IsActive = false,
         };
         var response = await client.SendAsync(HttpMethod.Put, "/spark/lookupref/CarBrand/BMW", JsonContent.Create(update, options: JsonOpts), requiresAntiforgery: true);
@@ -346,7 +346,7 @@ public class LookupReferenceEndpointTests : SparkTestDriver
 
         var response = await client.SendAsync(
             HttpMethod.Put, "/spark/lookupref/CarBrand/Ghost",
-            JsonContent.Create(new LookupReferenceValueDto { Key = "Ghost", Values = TranslatedString.Create("x") }, options: JsonOpts),
+            JsonContent.Create(new LookupReferenceValueDto { Key = "Ghost", Values = TranslatedString.Of("en", "x") }, options: JsonOpts),
             requiresAntiforgery: true);
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);

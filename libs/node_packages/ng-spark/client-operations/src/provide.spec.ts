@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
-import { currentLanguage } from '@mintplayer/ng-spark/models';
+import { currentLanguage, translated } from '@mintplayer/ng-spark/models';
 
 import { provideSparkClientOperations } from './provide';
 import { SparkNotificationService } from './notification.service';
@@ -158,7 +158,7 @@ describe('provideSparkClientOperations', () => {
       dispatcher.dispatch([{
         type: 'notify',
         message: 'Uw versie is ingetrokken.',
-        translatedMessage: { en: 'Your version was withdrawn.', nl: 'Uw versie is ingetrokken.' },
+        translatedMessage: translated({ en: 'Your version was withdrawn.', nl: 'Uw versie is ingetrokken.' }),
         kind: NotificationKind.Info,
       } as ClientOperation]);
 

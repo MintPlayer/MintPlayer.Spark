@@ -3,9 +3,10 @@ import { normalizeSubQuery, subQueriesOf } from './sub-query';
 import { selectionModeFor } from './selection-mode';
 import { defaultQueryActions, filterDetailActions, filterQueryActions } from './query-actions';
 import { CustomActionDefinition } from './custom-action';
+import { translated } from './translated-string';
 
 const action = (name: string, showedOn: string, selectionRule?: string, isDefault?: boolean) =>
-  ({ name, label: { en: name }, showedOn, selectionRule, refreshOnCompleted: false, offset: 0, isDefault }) as CustomActionDefinition;
+  ({ name, label: translated({ en: name }), showedOn, selectionRule, refreshOnCompleted: false, offset: 0, isDefault }) as CustomActionDefinition;
 
 describe('sub-query entries (#460 M15, D17)', () => {
   it('reads a bare alias and the object form alike', () => {

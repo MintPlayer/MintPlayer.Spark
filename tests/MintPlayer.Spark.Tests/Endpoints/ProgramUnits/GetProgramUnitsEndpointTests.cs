@@ -220,12 +220,12 @@ public class GetProgramUnitsEndpointTests(SparkSharedDatabase database)
             [
                 new ProgramUnitGroup
                 {
-                    Id = GroupAId, Name = TranslatedString.Create("CompaniesOnly"), Order = 0,
+                    Id = GroupAId, Name = TranslatedString.Of("en", "CompaniesOnly"), Order = 0,
                     ProgramUnits = [allowed],
                 },
                 new ProgramUnitGroup
                 {
-                    Id = GroupBId, Name = TranslatedString.Create("PeopleOnly"), Order = 1,
+                    Id = GroupBId, Name = TranslatedString.Of("en", "PeopleOnly"), Order = 1,
                     ProgramUnits = [denied],
                 },
             ],
@@ -249,7 +249,7 @@ public class GetProgramUnitsEndpointTests(SparkSharedDatabase database)
         var unit = new ProgramUnit
         {
             Id = Guid.NewGuid(),
-            Name = TranslatedString.Create("Status"),
+            Name = TranslatedString.Of("en", "Status"),
             Type = "url",
             Url = "https://status.example.com",
         };
@@ -293,7 +293,7 @@ public class GetProgramUnitsEndpointTests(SparkSharedDatabase database)
             new ProgramUnitGroup
             {
                 Id = GroupAId,
-                Name = TranslatedString.Create(name),
+                Name = TranslatedString.Of("en", name),
                 Order = 0,
                 ProgramUnits = units,
             }
@@ -303,7 +303,7 @@ public class GetProgramUnitsEndpointTests(SparkSharedDatabase database)
     private static ProgramUnit MakePoUnit(string name, Guid persistentObjectId) => new()
     {
         Id = Guid.NewGuid(),
-        Name = TranslatedString.Create(name),
+        Name = TranslatedString.Of("en", name),
         Type = "persistentObject",
         PersistentObjectId = persistentObjectId,
     };
@@ -311,7 +311,7 @@ public class GetProgramUnitsEndpointTests(SparkSharedDatabase database)
     private static ProgramUnit MakeQueryUnit(string name, Guid queryId) => new()
     {
         Id = Guid.NewGuid(),
-        Name = TranslatedString.Create(name),
+        Name = TranslatedString.Of("en", name),
         Type = "query",
         QueryId = queryId,
     };

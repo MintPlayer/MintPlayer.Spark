@@ -1,6 +1,7 @@
 import { TranslatedString } from './translated-string';
 import { PersistentObject } from './persistent-object';
 import { AS_DETAIL_BREADCRUMBS_KEY } from './as-detail-conversions';
+import { SparkDateTimeDisplay } from './date-time-display';
 
 /**
  * What a query returns: the column metadata once, then one lightweight row per result.
@@ -49,6 +50,8 @@ export interface SparkCellColumn {
   referenceType?: string;
   lookupReferenceType?: string;
   asDetailType?: string;
+  /** For a `datetime` column: its zones (X16). Absent = the viewer's zone. */
+  dateTimeDisplay?: SparkDateTimeDisplay | null;
 }
 
 /** One column of a query result, sent once rather than repeated on every row. */

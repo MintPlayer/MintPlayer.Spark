@@ -436,6 +436,12 @@ them. An app's own registration of the same name wins.
     "showedOn": "PersistentObject", "renderer": "paragraph" }
   ```
 
+- **`money`** — a `Money` value (amount + ISO 4217 currency): formatted with `Intl.NumberFormat` in the
+  viewer's locale on the detail page and in grid cells, edited as an amount input beside a currency
+  picker, and relabelled the same way in a filter panel. Model sync writes it on every `Money`
+  attribute that has no renderer, so it needs no JSON either. Options and details:
+  [guide-money.md](guide-money.md).
+
 A registration of your own can draw across the whole row too: `fullWidth: true`.
 
 ## Built-in renderers you register

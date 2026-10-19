@@ -18,25 +18,25 @@ public sealed class CarStatus : TransientLookupReference<string>
         {
             Key = InUse,
             Description = "Car is currently in use",
-            Values = _TS("In use", "En usage", "In gebruik"),
+            Values = _TS(("en", "In use"), ("fr", "En usage"), ("nl", "In gebruik")),
         },
         new CarStatus
         {
             Key = OnParking,
             Description = "Car is parked",
-            Values = _TS("On parking", "Au parking", "Op parking"),
+            Values = _TS(("en", "On parking"), ("fr", "Au parking"), ("nl", "Op parking")),
         },
         new CarStatus
         {
             Key = InMaintenance,
             Description = "Car is being maintained",
-            Values = _TS("In maintenance", "En maintenance", "In onderhoud"),
+            Values = _TS(("en", "In maintenance"), ("fr", "En maintenance"), ("nl", "In onderhoud")),
         },
         new CarStatus
         {
             Key = Stolen,
             Description = "Car has been stolen",
-            Values = _TS("Stolen", "Volé", "Gestolen"),
+            Values = _TS(("en", "Stolen"), ("fr", "Volé"), ("nl", "Gestolen")),
         },
     ];
 }

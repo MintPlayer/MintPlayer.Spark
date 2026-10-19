@@ -11,6 +11,7 @@ import { SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { SparkAuthBarComponent } from '@mintplayer/ng-spark/auth/auth-bar';
 import { settle } from '../../testing/test-utils';
 import { ShellComponent } from './shell.component';
+import { translated, type TranslatedString } from '@mintplayer/ng-spark/models';
 
 /*
  * The real frame is the `mp-shell` Lit element and the select is `mp-select`; jsdom hosts
@@ -49,7 +50,7 @@ class StubOption {
 class StubAuthBar {}
 
 describe('ShellComponent', () => {
-  async function setup(languages: Record<string, Record<string, string>>) {
+  async function setup(languages: Record<string, TranslatedString>) {
     const lang = {
       languages: signal(languages),
       language: signal('en'),
@@ -81,7 +82,7 @@ describe('ShellComponent', () => {
   }
 
   it('titles the frame with the translated app title and always mounts the auth bar', async () => {
-    const { fixture } = await setup({ en: { en: 'English' } });
+    const { fixture } = await setup({ en: translated({ en: 'English' }) });
 
     expect(fixture.debugElement.query(By.directive(StubSparkShell)).componentInstance.title()).toBe('app.title');
     expect(el(fixture).querySelector('spark-auth-bar')).not.toBeNull();
@@ -91,13 +92,13 @@ describe('ShellComponent', () => {
   // Replacing the topbar slot drops Spark's own selector, so the shell must redraw it — but only
   // when there is a choice to make.
   it('hides the language selector when there is only one language', async () => {
-    const { fixture } = await setup({ en: { en: 'English' } });
+    const { fixture } = await setup({ en: translated({ en: 'English' }) });
 
     expect(el(fixture).querySelector('bs-select')).toBeNull();
   });
 
   it('offers one option per language, labelled in the current language, and switches on change', async () => {
-    const { fixture, lang } = await setup({ en: { en: 'English', nl: 'Engels' }, nl: { en: 'Dutch', nl: 'Nederlands' } });
+    const { fixture, lang } = await setup({ en: translated({ en: 'English', nl: 'Engels' }), nl: translated({ en: 'Dutch', nl: 'Nederlands' }) });
 
     const select = fixture.debugElement.query(By.directive(StubSelect));
     expect(select.componentInstance.ngModel()).toBe('en');
@@ -110,7 +111,7 @@ describe('ShellComponent', () => {
   });
 
   it('shows a login error in the main header, and clears it when the alert is dismissed', async () => {
-    const { fixture } = await setup({ en: { en: 'English' } });
+    const { fixture } = await setup({ en: translated({ en: 'English' }) });
     expect(el(fixture).querySelector('bs-alert')).toBeNull();
 
     fixture.componentInstance.loginError.set('GitHub sign-in failed');
@@ -125,7 +126,7 @@ describe('ShellComponent', () => {
   });
 
   it('ignores the alert becoming visible', async () => {
-    const { fixture } = await setup({ en: { en: 'English' } });
+    const { fixture } = await setup({ en: translated({ en: 'English' }) });
     fixture.componentInstance.loginError.set('boom');
 
     fixture.componentInstance.onLoginAlertVisible(true);

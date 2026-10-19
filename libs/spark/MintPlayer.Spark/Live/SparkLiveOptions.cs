@@ -44,8 +44,24 @@ public sealed class SparkLiveOptions
     /// <summary>Subscriptions one socket may hold (D36: 50). The next one is refused with <c>limit</c>.</summary>
     public int MaxSubscriptionsPerSocket { get; set; } = 50;
 
-    /// <summary>Sockets one user may hold open at once (D36: 5); anonymous callers count per IP address.</summary>
+    /// <summary>
+    /// Sockets one identity may hold open at once (D36: 5): a signed-in user, else a visitor with a visitor
+    /// cookie (commerce PRD X1). The next one is closed with <c>4429</c>.
+    /// </summary>
     public int MaxSocketsPerUser { get; set; } = 5;
+
+    /// <summary>
+    /// Sockets one network address may hold open for callers known by nothing else (no sign-in, no visitor
+    /// cookie); an IPv6 address counts per /64. Higher than <see cref="MaxSocketsPerUser"/> because many people
+    /// share one address behind a carrier's NAT or an office (commerce PRD X2). Default 50.
+    /// </summary>
+    public int MaxSocketsPerAddress { get; set; } = 50;
+
+    /// <summary>
+    /// How long a private topic value (<c>ISparkLiveTopics.PublishPrivate</c>) is kept for a socket of that
+    /// identity that connects later, e.g. after the lifetime rotation. Default 10 minutes.
+    /// </summary>
+    public TimeSpan PrivateTopicRetention { get; set; } = TimeSpan.FromMinutes(10);
 
     /// <summary>A <c>ping</c> frame after this much silence, below nginx's default 60 s <c>proxy_read_timeout</c>.</summary>
     public TimeSpan Heartbeat { get; set; } = TimeSpan.FromSeconds(30);
@@ -63,6 +79,8 @@ public sealed class SparkLiveOptions
     /// The socket closes with <c>4401</c> at the login ticket's expiry or after this long, whichever is first,
     /// and the client reconnects with its current cookie: the principal a socket froze at its handshake is
     /// never older than this. 30 minutes is ASP.NET Identity's default security-stamp validation interval.
+    /// Each socket's lifetime is drawn between 90 % and 100 % of this, so the sockets opened together at a
+    /// sale's start do not all reconnect in the same second 30 minutes later.
     /// </summary>
     public TimeSpan MaxSocketLifetime { get; set; } = TimeSpan.FromMinutes(30);
 

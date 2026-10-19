@@ -1,4 +1,5 @@
 import { ShowedOn } from './showed-on';
+import { SparkDateTimeDisplay } from './date-time-display';
 import { TranslatedString } from './translated-string';
 import { ValidationRule } from './validation-rule';
 import { SparkSubQueryEntry } from './sub-query';
@@ -45,7 +46,10 @@ export interface EntityAttributeDefinition {
   asDetailType?: string;
   /** When true, the attribute represents an array/collection of AsDetail objects */
   isArray?: boolean;
-  /** For array AsDetail attributes: "modal" (default) or "inline" */
+  /**
+   * How an AsDetail attribute is edited: "modal" (default) or "inline". An inline collection is an
+   * editable table; an inline single object renders its fields in place, in the parent form.
+   */
   editMode?: 'inline' | 'modal';
   /**
    * For Reference attributes: 'Modal' renders the "…" + modal query-grid picker;
@@ -79,6 +83,8 @@ export interface EntityAttributeDefinition {
   renderer?: string;
   /** Options passed to the renderer component */
   rendererOptions?: Record<string, any>;
+  /** For `datetime` attributes: the zone it is shown in and an optional second rendering (X16). Absent = the viewer's zone. */
+  dateTimeDisplay?: SparkDateTimeDisplay | null;
 }
 
 export interface AttributeTab {

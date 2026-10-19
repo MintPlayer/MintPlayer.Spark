@@ -35,7 +35,7 @@ public class EntityMapperFactoryTests
                     Id = Guid.NewGuid(),
                     Name = "LicensePlate",
                     DataType = "string",
-                    Label = TranslatedString.Create("License plate"),
+                    Label = TranslatedString.Of("en", "License plate"),
                     IsRequired = true,
                     Order = 1,
                     Rules = [new ValidationRule { Type = "regex", Value = "^[A-Z]{3}-[0-9]{3}$" }],

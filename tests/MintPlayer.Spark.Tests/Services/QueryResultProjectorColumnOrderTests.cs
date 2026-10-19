@@ -22,7 +22,7 @@ public class QueryResultProjectorColumnOrderTests
     {
         Id = Guid.NewGuid(),
         Name = name,
-        Label = TranslatedString.Create(name),
+        Label = TranslatedString.Of("en", name),
         Order = order,
         ShowedOn = showedOn,
     };

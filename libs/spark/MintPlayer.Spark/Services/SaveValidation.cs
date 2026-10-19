@@ -156,10 +156,10 @@ internal sealed partial class SaveValidation : ISaveValidation
             {
                 AttributeName = attribute.Name,
                 RuleType = "referenceTargetUnreadable",
-                ErrorMessage = TranslatedString.Create(
-                    $"{attribute.Name} is required, but it refers to {target}, which you may not read. Ask an administrator for Read on {target}.",
-                    $"{attribute.Name} est obligatoire, mais fait référence à {target}, que vous ne pouvez pas lire. Demandez à un administrateur le droit Read sur {target}.",
-                    $"{attribute.Name} is verplicht, maar verwijst naar {target}, dat u niet mag lezen. Vraag een beheerder om Read op {target}."),
+                ErrorMessage = TranslatedString.Of(
+                    ("en", $"{attribute.Name} is required, but it refers to {target}, which you may not read. Ask an administrator for Read on {target}."),
+                    ("fr", $"{attribute.Name} est obligatoire, mais fait référence à {target}, que vous ne pouvez pas lire. Demandez à un administrateur le droit Read sur {target}."),
+                    ("nl", $"{attribute.Name} is verplicht, maar verwijst naar {target}, dat u niet mag lezen. Vraag een beheerder om Read op {target}.")),
             });
         }
     }

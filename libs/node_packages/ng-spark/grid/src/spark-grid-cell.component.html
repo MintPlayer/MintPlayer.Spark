@@ -15,9 +15,17 @@
     produced, which was the raw ISO string — `2026-09-07T13:25:57.3119825Z` in a table cell. Both
     cell pipes now hand over a real Date, and `date:` accepts a string too, so an unparseable value
     that fell back to text still renders as that text rather than blank.
+
+    <spark-date-time> (X16) gets the WIRE value when there is one, because a `stored` rendering needs
+    the offset that `new Date(...)` forgets, and the column's `dateTimeDisplay` resolved against the row.
   -->
   @if (dateValue(); as when) {
-    {{ when | date:(column().dataType === 'date' ? 'mediumDate' : 'short') }}
+    @let dtDisplay = column().dataType === 'datetime' ? (column().dateTimeDisplay | sparkDateTimeDisplay:rowForDisplay()) : null;
+    <spark-date-time
+      [value]="wireDate() ?? when"
+      [mode]="dtDisplay?.mode"
+      [alsoIn]="dtDisplay?.alsoIn"
+      [format]="column().dataType === 'date' ? 'date' : 'short'" />
   } @else {
     {{ display() }}
   }

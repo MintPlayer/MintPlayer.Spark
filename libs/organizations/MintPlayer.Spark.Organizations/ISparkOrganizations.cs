@@ -72,6 +72,19 @@ public interface ISparkOrganizations
     Task TransferOwnershipAsync(string organizationId, string fromUserId, string toUserId, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// <paramref name="userId"/>'s custom roles in <paramref name="organizationId"/> (<c>docs/commerce_PRD.md</c> X8);
+    /// empty when they hold none or are not a member. Read once per request, like <see cref="GetMembershipsAsync"/>.
+    /// </summary>
+    Task<IReadOnlyList<string>> GetCustomRolesAsync(string organizationId, string userId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Replaces member <paramref name="userId"/>'s custom roles with <paramref name="customRoles"/> (Admin and up). Every
+    /// name must be declared (<see cref="SparkOrganizationsOptions.CustomRoles"/>); an unknown one throws a
+    /// <see cref="MintPlayer.Spark.Abstractions.SparkValidationException"/> and nothing changes.
+    /// </summary>
+    Task SetCustomRolesAsync(string organizationId, string userId, IEnumerable<string> customRoles, string actingUserId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Deletes the organization (Owners only, never a personal one): every <see cref="IOrganizationDataHandler"/>
     /// first, then its memberships, invitations and the organization itself (D26).
     /// </summary>

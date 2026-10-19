@@ -1,0 +1,9 @@
+<!-- &ngsp; survives whitespace removal; the other line breaks here are whitespace-only and dropped. -->
+@if (mainText(); as text) {
+  <time class="spark-date-time-main" [attr.datetime]="iso()">{{ text }}</time>
+  @if (hintText(); as hint) {
+    &ngsp;<span class="spark-date-time-hint">({{ hint }})</span>
+  }
+} @else {
+  <span class="spark-date-time-text">{{ fallback() }}</span>
+}

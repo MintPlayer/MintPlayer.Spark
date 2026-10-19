@@ -134,6 +134,7 @@ MintPlayer.Spark/
 │   ├── controllers/
 │   │   └── MintPlayer.Spark.Controllers/         # Mount your own MVC controllers inside Spark's pipeline
 │   ├── webhooks/
+│   │   ├── MintPlayer.Spark.Webhooks/            # Generic signed / fetch-by-id webhooks, raw bytes, dedupe
 │   │   ├── MintPlayer.Spark.Webhooks.GitHub/     # GitHub webhook integration
 │   │   └── MintPlayer.Spark.Webhooks.GitHub.DevTunnel/  # Dev-only: smee.io tunnel + WebSocket client
 │   ├── client/
@@ -203,6 +204,7 @@ MintPlayer.Spark/
 | [Settings](docs/guide-settings.md) | Admin-changeable feature switches and limits: `SparkSetting<T>` declared in code, stored value over configuration over default, the `settings:administrators` slot, seeding, save validation and the 30 s cache ([package README](libs/settings/MintPlayer.Spark.Settings/README.md)) |
 | [Notifications & Web Push](docs/guide-notifications.md) | One `ISparkNotifier` call reaches a user in-app (live over `/spark/live`), by mail and by Web Push, through their channels per organization; the hand-rolled RFC 8291/8292 library, VAPID keys, the push-service allow-list, and the Angular bell and opt-in ([package README](libs/notifications/MintPlayer.Spark.Notifications/README.md), [Web Push README](libs/webpush/MintPlayer.Spark.WebPush/README.md)) |
 | [Dashboards](docs/guide-dashboards.md) | Administrator dashboards as live virtual pages: `IDashboardProvider`, the `dashboards:administrators` slot, built-in RavenDB statistics and host metrics, history on single-valued RavenDB time series, and ng-spark's tile layout with the meter, stat and table renderers ([package README](libs/dashboards/MintPlayer.Spark.Dashboards/README.md)) |
+| [Claims](docs/guide-claims.md) | One owner per key, cluster-wide: `ISparkClaims` reserve, convert and release over compare-exchange with lazy expiry and takeover, idempotent by owner, and a unit of work that commits several keys and documents together |
 | [Quotas](docs/guide-quotas.md) | Per-user limits on custom actions: `[SparkQuota]`, sliding windows whose limits are settings, 429 with `Retry-After`, `ISparkQuotas` for uses decided in code |
 | [Share links](docs/guide-share-links.md) | A revocable, anonymous, read-only link to one object: `ISparkShareable`, the declared attributes and child queries a link shows, `ShareLink`/`RevokeShareLink`, the global switch and gates, and ng-spark's shared page |
 | [Score renderers](docs/guide-score-renderers.md) | Gauge, threshold bar, trend and delta attribute renderers in ng-spark, configured by options; what CodeCoverage's coverage bar, sparkline and delta are built on |
@@ -216,6 +218,7 @@ MintPlayer.Spark/
 | [Cross-Module mTLS](docs/guide-replication-mtls.md) | Issuing and pinning the client certificates that authenticate one module to another |
 | [Subscription Workers](libs/subscription_worker/MintPlayer.Spark.SubscriptionWorker/README.md) | RavenDB subscription-based background processing with retry handling |
 | [Cron Jobs](libs/cron/MintPlayer.Spark.Cron/README.md) | Cron-scheduled background jobs, UTC schedules, schedule overrides, multi-node compare-exchange locking |
+| [Inbound Webhooks](docs/guide-webhooks.md) | Any provider's webhooks as a source: HMAC, Stripe and fetch-by-id verification over the exact bytes, deduplicated enqueue, one handler per source ([package README](libs/webhooks/MintPlayer.Spark.Webhooks/README.md)) |
 | [GitHub Webhooks](libs/webhooks/MintPlayer.Spark.Webhooks.GitHub/README.md) | React to GitHub events via typed messages, with smee.io and WebSocket dev tunneling |
 | [GitHub Webhooks — Dev Tunnel](libs/webhooks/MintPlayer.Spark.Webhooks.GitHub.DevTunnel/README.md) | Dev-only: receive real webhook deliveries on localhost via smee.io or WebSocket forwarding from production |
 | [Docker Deployment](docs/guide-docker-deployment.md) | Deploy with Docker Compose, RavenDB configuration, Traefik reverse proxy, and the forwarded-headers trust list Spark configures |

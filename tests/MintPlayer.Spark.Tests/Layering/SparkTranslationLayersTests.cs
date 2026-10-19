@@ -23,7 +23,7 @@ public class SparkTranslationLayersTests
     private static SparkTranslationsComposition Compose(params SparkTranslationsLayer[] layers) => SparkTranslations.Compose(layers);
 
     private static string Languages(SparkTranslationsComposition composition, string key)
-        => string.Join(", ", composition.All[key].Translations.Select(t => $"{t.Key}={t.Value}"));
+        => string.Join(", ", composition.All[key].Entries.Select(t => $"{t.Tag}={t.Value}"));
 
     /// <summary>The libraries QnA and CodeCoverage both reference that ship translations, in layer order.</summary>
     private static SparkTranslationsLayer[] Libraries() =>
@@ -73,7 +73,7 @@ public class SparkTranslationLayersTests
             Lib("Lib", """{ "save": { "en": "Save", "fr": "Enregistrer", "nl": "Opslaan" } }"""),
             App("""{ "save": { "es": "Guardar", "nl": "Bewaren" } }"""));
 
-        // Appended, never inserted: GetValue falls back to the first language.
+        // Appended, never inserted: GetValue falls back to the default language (en), then the first entry.
         Languages(composition, "save").Should().Be("en=Save, fr=Enregistrer, nl=Bewaren, es=Guardar");
         composition.All["save"].GetValue("de").Should().Be("Save");
     }
@@ -195,8 +195,8 @@ public class SparkTranslationLayersTests
         foreach (var (key, text) in composition.All.OrderBy(e => e.Key, StringComparer.Ordinal))
         {
             builder.Append(key);
-            foreach (var (language, value) in text.Translations)
-                builder.Append('\t').Append(language).Append('=').Append(JsonSerializer.Serialize(value, Relaxed));
+            foreach (var entry in text.Entries)
+                builder.Append('\t').Append(entry.Tag).Append('=').Append(JsonSerializer.Serialize(entry.Value, Relaxed));
             builder.Append('\n');
         }
         return builder.ToString();

@@ -11,7 +11,7 @@
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.Authorization</PackageId>
-		<Version>11.0.0-preview.107</Version>
+		<Version>11.0.0-preview.108</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>Optional authorization package for MintPlayer.Spark low-code framework. Provides group-based access control for PersistentObjects and Queries.</Description>
@@ -69,10 +69,14 @@
 		<PackageReference Include="QRCoder" Version="1.8.0" />
 		<PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="11.4.1-rc.0" />
 		<ProjectReference Include="..\..\spark\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
+		<!-- Commerce X12: the email reservations are claims on Spark's claims primitive (MintPlayer.Spark.Claims). -->
+		<ProjectReference Include="..\..\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
 		<ProjectReference Include="..\MintPlayer.Spark.Authorization.Abstractions\MintPlayer.Spark.Authorization.Abstractions.csproj" />
 		<!-- Ships M_202610041800 (#388); the app's generated AddMigrations() registers it. -->
 		<ProjectReference Include="..\..\migrations\MintPlayer.Spark.Migrations\MintPlayer.Spark.Migrations.csproj" />
 		<ProjectReference Include="..\..\mail\MintPlayer.Spark.MailManager.Abstractions\MintPlayer.Spark.MailManager.Abstractions.csproj" />
+		<!-- Phone verification (docs/commerce_PRD.md X13) sends its codes through ISparkSmsSender. -->
+		<ProjectReference Include="..\..\sms\MintPlayer.Spark.Sms\MintPlayer.Spark.Sms.csproj" />
 		<ProjectReference Include="..\..\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
 	</ItemGroup>
 

@@ -88,6 +88,12 @@ Spark__Moderation__Fraud__CreditDelayHours=24
 Spark__Moderation__NewAccounts__MaxPostsPerDay=3
 ```
 
+**A review case is decided once.** `/spark/moderation/case/decide` validates the decision, then claims
+the case: the open → decided transition is one optimistic-concurrency write. Of several moderators
+deciding at once, exactly one wins and runs the side effects (settle flags, reverse votes, merge,
+suspend); the others get a 400 "already decided" (commerce F2). If a side effect fails, the case is
+reopened so the decision can be retried.
+
 ## 4. Client
 
 ```ts

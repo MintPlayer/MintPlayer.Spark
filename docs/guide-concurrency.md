@@ -28,6 +28,13 @@ A create posts no etag. A create whose natural id another row already holds (`IH
 become an edit of that row; it is now a 409 `exists`, because an edit must say which version it
 overwrites and a create has none.
 
+The natural-id create is **atomic** (commerce X3/F6). The collision check runs before the write, so two
+creates of the same natural id could both pass it; the write itself is now create-only (RavenDB's empty
+"must not exist" change vector). Of two racing creates exactly one commits and the other is the same
+409 `exists`. An **expired** `IExpiring` row under the id does not collide: every read path already
+treats it as missing, and RavenDB may not sweep it for 36 hours. The create replaces it, expecting the
+expired row's change vector, so of two racing takeovers one wins and the other is a 409 `exists` too.
+
 An update of an object that was deleted — or soft-deleted, or is no longer one the caller may see —
 since it was loaded is a 409 `deleted`, never a resurrection (D15). One answer for all three, so it
 tells nothing a 404 would not.

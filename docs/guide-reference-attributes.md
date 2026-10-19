@@ -344,25 +344,25 @@ public sealed class CarStatus : TransientLookupReference<ECarStatus>
         {
             Key = ECarStatus.InUse,
             Description = "Car is in use",
-            Values = _TS("In use", "En usage", "In gebruik"),
+            Values = _TS(("en", "In use"), ("fr", "En usage"), ("nl", "In gebruik")),
         },
         new CarStatus()
         {
             Key = ECarStatus.OnParking,
             Description = "Car is parked",
-            Values = _TS("In parking lot", "Dans le parking", "Op parking"),
+            Values = _TS(("en", "In parking lot"), ("fr", "Dans le parking"), ("nl", "Op parking")),
         },
         new CarStatus()
         {
             Key = ECarStatus.InMaintenance,
             Description = "Car is being maintained",
-            Values = _TS("In maintenance", "En maintenance", "In onderhoud"),
+            Values = _TS(("en", "In maintenance"), ("fr", "En maintenance"), ("nl", "In onderhoud")),
         },
         new CarStatus()
         {
             Key = ECarStatus.Stolen,
             Description = "Car is stolen",
-            Values = _TS("Stolen", "Vole", "Gestolen"),
+            Values = _TS(("en", "Stolen"), ("fr", "Vole"), ("nl", "Gestolen")),
         },
     ];
 }
@@ -371,7 +371,7 @@ public sealed class CarStatus : TransientLookupReference<ECarStatus>
 Key points:
 - Extend `TransientLookupReference<TEnum>` where `TEnum` is your enum
 - Override `DisplayType` to control the UI: `Dropdown` renders a `<select>`, `Modal` renders a search modal
-- `_TS(en, fr, nl)` is a helper that creates a `TranslatedString` with values for each language
+- `_TS(("en", "…"), ("fr", "…"), ("nl", "…"))` is a helper that creates a `TranslatedString` with one tagged text per language (any RFC 5646 tag; see [Translated strings](guide-translated-strings.md))
 - The `Items` collection must be `static` and `IReadOnlyCollection<T>`
 
 #### Step 2: Apply to Entity Property

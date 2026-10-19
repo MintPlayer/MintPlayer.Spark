@@ -68,6 +68,7 @@ Import from the entry point, not from the package root; each one is a separate c
 | `/client-operations` | `provideSparkClientOperations()` — notify, navigate and refresh operations from server-side action code; the toast container |
 | `/retry-action-modal` | The modal that answers a server's retry action ([guide](https://github.com/MintPlayer/MintPlayer.Spark/blob/master/docs/guide-manager-retry-actions.md)) |
 | `/attribute-description` | The [i] tooltip for attribute help text ([guide](https://github.com/MintPlayer/MintPlayer.Spark/blob/master/docs/guide-attribute-descriptions.md)) |
+| `/translated-string` | `<spark-translated-string>` (detail view) and `<spark-translated-string-editor>` (one input per language) for a `TranslatedString` attribute ([guide](https://github.com/MintPlayer/MintPlayer.Spark/blob/master/docs/guide-translated-strings.md)) |
 | `/icon` | `<spark-icon>` |
 | `/pipes` | The pipes the pages use (attribute values, references, lookups, translations, router links) |
 | `/soft-delete` | `provideSparkSoftDelete()` — the Deleted toggle on query lists, the recycle bin, Restore / Purge |

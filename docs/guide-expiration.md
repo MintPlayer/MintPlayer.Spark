@@ -65,6 +65,10 @@ filter, not the sweep:
   stored before the type became `IExpiring` would vanish (measured in `ExpirationTests`).
 - An index projection over an expiring collection should carry `ExpiresAtUtc` in its Map and projection;
   without it the filter runs after materialization and pages come back short (startup warns).
+- A create of an `IHasNaturalId` type whose id an **expired** document still holds takes that id over: the
+  create replaces the expired document, expecting its change vector, so two racing takeovers cannot both win
+  (commerce X3, [guide-concurrency.md](guide-concurrency.md)). A hold that expired does not block the next
+  one for up to 36 hours.
 
 ## The database and the 36-hour floor
 

@@ -350,6 +350,21 @@
       "fr": "La langue des e-mails que cette application vous envoie.",
       "nl": "De taal van de e-mails die deze toepassing u stuurt."
     },
+    "preferredTimeZone": {
+      "en": "Time zone for emails and documents",
+      "fr": "Fuseau horaire des e-mails et documents",
+      "nl": "Tijdzone van e-mails en documenten"
+    },
+    "preferredTimeZoneDefault": {
+      "en": "Default",
+      "fr": "Par défaut",
+      "nl": "Standaard"
+    },
+    "preferredTimeZoneHint": {
+      "en": "Dates in the emails and documents this application sends you are written in this time zone. Pages always use your device's.",
+      "fr": "Les dates des e-mails et documents que cette application vous envoie sont écrites dans ce fuseau horaire. Les pages utilisent toujours celui de votre appareil.",
+      "nl": "Datums in de e-mails en documenten die deze toepassing u stuurt, staan in deze tijdzone. Pagina's gebruiken altijd die van uw toestel."
+    },
     "newEmail": {
       "en": "New email address",
       "fr": "Nouvelle adresse e-mail",

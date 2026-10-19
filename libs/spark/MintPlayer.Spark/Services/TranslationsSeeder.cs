@@ -117,8 +117,7 @@ internal static class TranslationsSeeder
     private static bool IsDefinedInEnglish(string key, IReadOnlyDictionary<string, TranslatedString> composed, JsonObject root)
     {
         if (composed.TryGetValue(key, out var compiled)
-            && compiled.Translations.TryGetValue("en", out var en)
-            && !string.IsNullOrWhiteSpace(en))
+            && !string.IsNullOrWhiteSpace(compiled["en"]))
             return true;
 
         return Find(root, key) is JsonObject leaf

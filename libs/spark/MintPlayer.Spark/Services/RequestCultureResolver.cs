@@ -1,4 +1,5 @@
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Abstractions;
 
 namespace MintPlayer.Spark.Services;
 
@@ -27,16 +28,12 @@ internal partial class RequestCultureResolver : IRequestCultureResolver
                 .OrderByDescending(e => e.Quality)
                 .Select(e => e.Language);
 
+            // RFC 4647 lookup, the chain TranslatedString resolves with (commerce X17):
+            // zh-Hant-TW → zh-Hant → zh; tags compare case-insensitively.
             foreach (var lang in languages)
-            {
-                if (supportedCultures.Contains(lang))
-                    return lang;
-
-                // Try base culture (e.g. "en" from "en-US")
-                var baseCulture = lang.Split('-')[0];
-                if (supportedCultures.Contains(baseCulture))
-                    return baseCulture;
-            }
+                foreach (var candidate in LanguageTag.LookupChain(lang))
+                    if (supportedCultures.FirstOrDefault(c => LanguageTag.AreEqual(c, candidate)) is { } supported)
+                        return supported;
         }
 
         return cultureConfig.DefaultLanguage;

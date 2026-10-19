@@ -1,5 +1,8 @@
 import { InjectionToken, Provider, Type } from '@angular/core';
 import { SparkParagraphRendererComponent } from './paragraph-renderer.component';
+import { SparkMoneyRendererComponent } from './money-renderer.component';
+import { SparkMoneyEditorComponent } from './money-editor.component';
+import { MONEY_RENDERER, formatMoney } from '@mintplayer/ng-spark/models';
 
 export interface SparkAttributeRendererRegistration {
   /** The renderer name (must match attr.renderer in model JSON) */
@@ -46,6 +49,14 @@ export interface SparkAttributeRendererRegistration {
  */
 export const sparkCoreRenderers: readonly SparkAttributeRendererRegistration[] = [
   { name: 'paragraph', detailComponent: SparkParagraphRendererComponent, fullWidth: true },
+  // Money (commerce X4): model sync writes this renderer on every Money attribute that has none.
+  {
+    name: MONEY_RENDERER,
+    detailComponent: SparkMoneyRendererComponent,
+    columnComponent: SparkMoneyRendererComponent,
+    editComponent: SparkMoneyEditorComponent,
+    filterLabel: value => formatMoney(value),
+  },
 ];
 
 export const SPARK_ATTRIBUTE_RENDERERS = new InjectionToken<SparkAttributeRendererRegistration[]>(

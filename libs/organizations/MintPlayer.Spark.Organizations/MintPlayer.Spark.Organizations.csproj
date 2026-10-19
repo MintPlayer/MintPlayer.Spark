@@ -14,7 +14,7 @@
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.Organizations</PackageId>
-		<Version>11.0.0-preview.104</Version>
+		<Version>11.0.0-preview.105</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>Organizations for MintPlayer.Spark: an implicit personal organization per user, organizations with Owner/Admin/Member/Viewer memberships, invitations and join requests by mail with an acceptance link, ownership transfer, cascade delete and export hooks, and a row policy that limits any type carrying OrganizationId to the members of its organization.</Description>

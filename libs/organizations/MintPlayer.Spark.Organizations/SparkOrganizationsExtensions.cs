@@ -67,6 +67,8 @@ public static class SparkOrganizationsExtensions
         builder.AddInterceptor<OrganizationInterceptors>();
         builder.AddInterceptor<OrganizationMembershipInterceptors>();
         builder.AddInterceptor<OrganizationOwnedDefaults>();
+        // After the defaults: a new row's organization is known when publishing it is judged (X8).
+        builder.AddInterceptor<OrganizationPublishGate>();
 
         // Open generics: they close over whichever user type AddAuthentication<TUser>() registered.
         services.TryAddEnumerable(ServiceDescriptor.Scoped(typeof(ISparkSignedInHandler<>), typeof(PersonalOrganizationOnSignIn<>)));
@@ -76,6 +78,25 @@ public static class SparkOrganizationsExtensions
         builder.Registry.AddEndpoints(endpoints => endpoints.MapSparkOrganizationsEndpoints());
 
         // Invitations carry @expires (X1); expiration is enabled by UseSpark() for any IExpiring model type.
+        return builder;
+    }
+
+    /// <summary>
+    /// Declares a custom organization role (<c>docs/commerce_PRD.md</c> X8) that Admins can give members and that
+    /// rights name with <c>[RequiresOrganizationRole(action, name)]</c>. For libraries (the commerce package's
+    /// <c>scanner</c>, <c>finance</c>) and hosts alike; declaring a name twice keeps the last description. Adds the
+    /// organizations package when it is not added yet.
+    /// </summary>
+    /// <exception cref="ArgumentException"><paramref name="name"/> fails <see cref="OrganizationCustomRoles.IsValidName"/>.</exception>
+    public static ISparkBuilder AddOrganizationRole(this ISparkBuilder builder, string name, string description)
+    {
+        if (!OrganizationCustomRoles.IsValidName(name))
+            throw new ArgumentException(
+                $"'{name}' is not a valid custom organization role: a letter, then letters, digits, '-' or '_' (at most 64), and not Viewer, Member, Admin or Owner.",
+                nameof(name));
+
+        builder.AddOrganizations();
+        builder.Services.Configure<SparkOrganizationsOptions>(options => options.CustomRoles[name] = description ?? string.Empty);
         return builder;
     }
 

@@ -5,6 +5,7 @@ using MintPlayer.Spark.Abstractions.Interceptors;
 using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Exceptions;
+using MintPlayer.Spark.Expiration;
 using Microsoft.Extensions.Logging;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Linq;
@@ -36,6 +37,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
     [Inject] private readonly ISaveValidation saveValidation;
     [Inject] private readonly Microsoft.AspNetCore.Http.IHttpContextAccessor? httpContextAccessor;
     [Inject] private readonly Microsoft.Extensions.Logging.ILogger<DatabaseAccess>? logger;
+    [Inject] private readonly TimeProvider? timeProvider;
 
     public async Task<T?> GetDocumentUncheckedAsync<T>(string id) where T : class
     {
@@ -247,7 +249,15 @@ internal partial class DatabaseAccess : IDatabaseAccess
         // existing document by replaying its natural key. Since #467 (D16) the collision never
         // writes: past the Edit gates it is a 409 "already exists", because an edit must carry the
         // etag of the version it overwrites and a create has none.
+        //
+        // The probe is the friendly answer, not the guarantee (commerce X3/F6): a create racing this one can
+        // store the same id after the probe found it free. The write itself is create-only (WriteSaveAsync
+        // stores with RavenDB's empty "must not exist" change vector), so exactly one racer wins and the
+        // other gets the same 409. An EXPIRED IExpiring row under the id is not a collision but a takeover:
+        // every read path already treats it as missing (#453), and the sweep may not delete it for 36 hours.
+        // The create replaces it, guarded by the expired row's change vector, so a racing takeover loses too.
         var naturalIdCollision = false;
+        NaturalIdTakeover? takeover = null;
         IReadOnlyList<string> refusedBeforeProbe = [];
         if (string.IsNullOrEmpty(persistentObject.Id)
             && typeof(IHasNaturalId).IsAssignableFrom(entityType))
@@ -268,7 +278,14 @@ internal partial class DatabaseAccess : IDatabaseAccess
             if (!string.IsNullOrEmpty(derivedId))
             {
                 using var probeSession = documentStore.OpenAsyncSession();
-                if (await probeSession.Advanced.ExistsAsync(derivedId))
+                var held = await LoadEntityAsync(probeSession, entityType, derivedId);
+                if (held is IExpiring { ExpiresAtUtc: { } expiresAt }
+                    && SparkExpiration.ToUtc(expiresAt) <= (timeProvider ?? TimeProvider.System).GetUtcNow().UtcDateTime
+                    && collectionGuard.BelongsToAuthorizedCollection(probeSession, held, entityType))
+                {
+                    takeover = new NaturalIdTakeover(derivedId, probeSession.Advanced.GetChangeVectorFor(held));
+                }
+                else if (held is not null)
                 {
                     persistentObject.Id = derivedId;
                     naturalIdCollision = true;
@@ -398,7 +415,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
         SaveContext saveContext;
         try
         {
-            saveContext = await WriteSaveAsync(entityType, persistentObject, operation, before, unwritable);
+            saveContext = await WriteSaveAsync(entityType, persistentObject, operation, before, unwritable, takeover);
             // Inside a write batch the batch commits, once, for every operation (ISparkWriteUnit).
             if (batch is null)
                 await CommitAsync();
@@ -415,8 +432,12 @@ internal partial class DatabaseAccess : IDatabaseAccess
             // The write found the document changed since it was loaded (contributions F7): the same
             // conflict the etag check above answers, caught one step later, so the same 409. RavenDB's
             // message carries change vectors; it stays in the inner exception, for logs only.
+            // A create (no id) is refused only by its create-only natural-id write (X3/F6): another create
+            // stored the id first, the same 409 "already exists" the probe gives.
             if (ex is Raven.Client.Exceptions.ConcurrencyException)
-                throw new SparkConcurrencyException(ex);
+                throw string.IsNullOrEmpty(persistentObject.Id) && typeof(IHasNaturalId).IsAssignableFrom(entityType)
+                    ? SparkConcurrencyException.AlreadyExists()
+                    : new SparkConcurrencyException(ex);
             throw;
         }
 
@@ -769,7 +790,8 @@ internal partial class DatabaseAccess : IDatabaseAccess
     /// Actions class or an interceptor.
     /// </summary>
     private async Task<SaveContext> WriteSaveAsync(
-        Type entityType, PersistentObject obj, PersistentObjectOperation operation, object? before, IReadOnlyList<string> unwritable)
+        Type entityType, PersistentObject obj, PersistentObjectOperation operation, object? before, IReadOnlyList<string> unwritable,
+        NaturalIdTakeover? takeover = null)
     {
         object? existing = null;
         // The change vector the write must still find (contributions F7): the client's etag when it
@@ -824,6 +846,17 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
         if (expectedChangeVector is not null)
             await session.StoreAsync(entity, expectedChangeVector, session.Advanced.GetDocumentId(entity));
+        else if (string.IsNullOrEmpty(obj.Id) && entity is IHasNaturalId natural && natural.GetId() is { Length: > 0 } naturalId
+            && (entityType.GetCachedProperty("Id") is not { CanRead: true } idProperty || string.IsNullOrEmpty(AccessorCache.GetGetter(idProperty)(entity)?.ToString())))
+        {
+            // Atomic natural-id create (commerce X3/F6): RavenDB's empty change vector means "must not exist",
+            // so of two creates racing for one id exactly one commits and the other is a ConcurrencyException
+            // (a 409 "already exists" in SaveCoreAsync). Taking over an expired row expects that row's version
+            // instead, so the replacement is atomic too. The id is the one the probe judged only if the
+            // interceptors left it unchanged; otherwise the create is plain create-only.
+            var mustFind = takeover is { } t && string.Equals(t.Id, naturalId, StringComparison.OrdinalIgnoreCase) ? t.ChangeVector ?? string.Empty : string.Empty;
+            await session.StoreAsync(entity, mustFind, naturalId);
+        }
         else
             await session.StoreAsync(entity);
 
@@ -1183,4 +1216,10 @@ internal partial class DatabaseAccess : IDatabaseAccess
                     $"Actions type '{k.Actions.FullName}' is missing required method '{k.Method}'."));
 
     #endregion
+
+    /// <summary>
+    /// A natural-id create that replaces an expired <see cref="IExpiring"/> row under the same id (commerce X3):
+    /// the write expects <paramref name="ChangeVector"/>, the version of the expired row the probe saw.
+    /// </summary>
+    private sealed record NaturalIdTakeover(string Id, string? ChangeVector);
 }

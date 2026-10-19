@@ -53,7 +53,7 @@ public class SyncActionHandlerBuildPersistentObjectTests
             ObjectTypeId = CarTypeId,
             Attributes =
             [
-                new PersistentObjectAttribute { Name = "LicensePlate", DataType = "string", Label = TranslatedString.Create("License plate") },
+                new PersistentObjectAttribute { Name = "LicensePlate", DataType = "string", Label = TranslatedString.Of("en", "License plate") },
                 new PersistentObjectAttribute { Name = "Year", DataType = "number" },
             ],
         };

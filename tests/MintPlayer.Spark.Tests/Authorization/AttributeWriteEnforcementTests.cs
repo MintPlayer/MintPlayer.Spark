@@ -195,7 +195,7 @@ public class AttributeWriteEnforcementTests : SparkTestDriver
         Code = "kode-stored",
         Pin = "p0-stored",
         Locked = locked,
-        Title = TranslatedString.Create("t0"),
+        Title = TranslatedString.Of("en", "t0"),
         Tag = "tags/1",
         Tags = ["tags/1"],
         Lines = [new WrLine { Id = "l1", Label = "a", Qty = 1 }],

@@ -51,6 +51,7 @@ internal sealed partial class PersonalData<TUser> : IGetEndpoint
                 createdAtUtc = user.CreatedAtUtc,
                 registrationMethod = user.RegistrationMethod,
                 preferredCulture = user.PreferredCulture,
+                preferredTimeZone = user.PreferredTimeZone,
                 roles = user.Roles,
                 claims = user.Claims.Select(c => new { type = c.ClaimType, value = c.ClaimValue }),
                 externalLogins = user.Logins.Select(l => new { provider = l.LoginProvider, displayName = l.ProviderDisplayName }),

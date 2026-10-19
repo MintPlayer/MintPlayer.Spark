@@ -13,6 +13,7 @@ using MintPlayer.Spark.Authorization.ResourceServer;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.IdentityProvider.Extensions;
 using MintPlayer.Spark.Mcp;
+using MintPlayer.Spark.Migrations;
 using MintPlayer.AspNetCore.SpaServices.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -70,6 +71,10 @@ builder.Services.AddSparkFull(builder.Configuration, options =>
         // #460 D6: registration needs somewhere to send account mail. Demo app: every mail is written
         // as an .eml file into Spark:Mail:PickupFolder (appsettings.json) instead of being sent.
         spark.AddMailManager();
+
+        // Fleet's own data migrations, by hand: the generated AddMigrations() would also run the identity
+        // provider's library migrations, which add identity resources an agents-only provider does not serve.
+        spark.AddMigrations(m => m.AddMigration<Fleet.Migrations.M_202610191200_TranslatedStringEntries>());
 
         // Stamps Car.CreatedBy / CreatedAt (IAuditCreated; the members are generated, #271). The row
         // filter in CarActions scopes users to the cars they created by that stamp.

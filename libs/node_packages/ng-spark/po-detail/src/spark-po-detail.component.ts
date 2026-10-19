@@ -31,9 +31,11 @@ import {
 } from '@mintplayer/ng-spark/pipes';
 import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
 import { SparkAttributeDescriptionComponent } from '@mintplayer/ng-spark/attribute-description';
+import { SparkDateTimeComponent, SparkDateTimeDisplayPipe } from '@mintplayer/ng-spark/date-time';
 import { SparkQueryCardComponent, SparkGridCellComponent } from '@mintplayer/ng-spark/grid';
 import { SPARK_ATTRIBUTE_RENDERERS, SparkResolvedRowRenderer, rendererValue, rowRendererInputs, withDeclaredInputs } from '@mintplayer/ng-spark/renderers';
 import {
+  translated,
   AttributeGroup,
   AttributeTab,
   CustomActionDefinition,
@@ -62,10 +64,11 @@ import {
   parseSparkDeletedParam,
 } from '@mintplayer/ng-spark/panels';
 import { Subscription, combineLatest } from 'rxjs';
+import { SparkTranslatedStringComponent } from '@mintplayer/ng-spark/translated-string';
 
 @Component({
   selector: 'spark-po-detail',
-  imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, RouterModule, BsAlertComponent, BsBadgeComponent,BsCardComponent, BsCardHeaderComponent, BsContainerComponent, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsPriorityNavComponent, BsPriorityNavItemDirective, BsTableComponent, BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective, BsSpinnerComponent, SparkIconComponent, SparkQueryCardComponent, SparkGridCellComponent, ResolveTranslationPipe, TranslateKeyPipe, AttributeValuePipe, OrDashPipe, RawAttributeValuePipe, AsDetailColumnsPipe, AsDetailRowRendererPipe, AsDetailCellValuePipe, ArrayValuePipe, ReferenceLinkRoutePipe, ReferenceChipsPipe, ParsedDatePipe, SparkAttributeDescriptionComponent],
+  imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, RouterModule, BsAlertComponent, BsBadgeComponent,BsCardComponent, BsCardHeaderComponent, BsContainerComponent, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsPriorityNavComponent, BsPriorityNavItemDirective, BsTableComponent, BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective, BsSpinnerComponent, SparkIconComponent, SparkQueryCardComponent, SparkGridCellComponent, ResolveTranslationPipe, TranslateKeyPipe, AttributeValuePipe, OrDashPipe, RawAttributeValuePipe, AsDetailColumnsPipe, AsDetailRowRendererPipe, AsDetailCellValuePipe, ArrayValuePipe, ReferenceLinkRoutePipe, ReferenceChipsPipe, ParsedDatePipe, SparkAttributeDescriptionComponent, SparkDateTimeComponent, SparkDateTimeDisplayPipe, SparkTranslatedStringComponent],
   templateUrl: './spark-po-detail.component.html',
   styleUrl: './spark-po-detail.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -447,7 +450,7 @@ export class SparkPoDetailComponent {
       .sort((a, b) => a.order - b.order) || [];
   });
 
-  private static readonly DEFAULT_TAB: AttributeTab = { id: '__default__', name: 'Algemeen', label: { nl: 'Algemeen', en: 'General' }, order: 0 };
+  private static readonly DEFAULT_TAB: AttributeTab = { id: '__default__', name: 'Algemeen', label: translated({ nl: 'Algemeen', en: 'General' }), order: 0 };
 
   ungroupedAttributes = computed(() => {
     const attrs = this.visibleAttributes();

@@ -23,7 +23,7 @@ import {
     BsModalHeaderDirective,
     BsModalHostComponent,
 } from '@mintplayer/ng-bootstrap/modal';
-import { resolveTranslation, type TranslatedString } from '@mintplayer/ng-spark/models';
+import { resolveTranslation, translated, type TranslatedString } from '@mintplayer/ng-spark/models';
 
 /** A value shown once: the `showSecret` operation's payload, or a value a page received itself. */
 export interface SparkSecret {
@@ -83,15 +83,15 @@ export class SparkSecretDialogService {
 }
 
 const TEXT: Record<'copy' | 'copied' | 'copyFailed' | 'close' | 'value', TranslatedString> = {
-    copy: { en: 'Copy', fr: 'Copier', nl: 'Kopiëren' },
-    copied: { en: 'Copied', fr: 'Copié', nl: 'Gekopieerd' },
-    copyFailed: {
+    copy: translated({ en: 'Copy', fr: 'Copier', nl: 'Kopiëren' }),
+    copied: translated({ en: 'Copied', fr: 'Copié', nl: 'Gekopieerd' }),
+    copyFailed: translated({
         en: 'Copying failed. Select the value and copy it yourself.',
         fr: 'La copie a échoué. Sélectionnez la valeur et copiez-la vous-même.',
         nl: 'Kopiëren mislukt. Selecteer de waarde en kopieer ze zelf.',
-    },
-    close: { en: 'Close', fr: 'Fermer', nl: 'Sluiten' },
-    value: { en: 'Value', fr: 'Valeur', nl: 'Waarde' },
+    }),
+    close: translated({ en: 'Close', fr: 'Fermer', nl: 'Sluiten' }),
+    value: translated({ en: 'Value', fr: 'Valeur', nl: 'Waarde' }),
 };
 
 /** The dialog behind {@link SparkSecretDialogService}; mounted by the service, not by applications. */

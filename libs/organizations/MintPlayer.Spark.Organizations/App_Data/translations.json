@@ -85,6 +85,18 @@
             "nl": "Lezer leest, Lid werkt met de inhoud, Beheerder beheert ook de leden, Eigenaar mag alles."
           }
         },
+        "CustomRoles": {
+          "label": {
+            "en": "Extra roles",
+            "fr": "Rôles supplémentaires",
+            "nl": "Extra rollen"
+          },
+          "description": {
+            "en": "Roles the application defines beside the role above, such as scanner or finance.",
+            "fr": "Rôles définis par l'application en plus du rôle ci-dessus, comme scanner ou finance.",
+            "nl": "Rollen die de toepassing naast de rol hierboven definieert, zoals scanner of finance."
+          }
+        },
         "JoinedAtUtc": {
           "label": {
             "en": "Joined",
