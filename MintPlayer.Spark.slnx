@@ -77,6 +77,9 @@
   <Folder Name="/libs/controllers/">
     <Project Path="libs/controllers/MintPlayer.Spark.Controllers/MintPlayer.Spark.Controllers.csproj" />
   </Folder>
+  <Folder Name="/libs/commerce/">
+    <Project Path="libs/commerce/MintPlayer.Spark.Commerce.Inventory/MintPlayer.Spark.Commerce.Inventory.csproj" />
+  </Folder>
   <Folder Name="/libs/cron/">
     <Project Path="libs/cron/MintPlayer.Spark.Cron/MintPlayer.Spark.Cron.csproj" />
   </Folder>
@@ -164,6 +167,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/MintPlayer.Spark.Client.Tests/MintPlayer.Spark.Client.Tests.csproj" />
+    <Project Path="tests/MintPlayer.Spark.Commerce.Tests/MintPlayer.Spark.Commerce.Tests.csproj" />
     <Project Path="tests/MintPlayer.Spark.E2E.Tests/MintPlayer.Spark.E2E.Tests.csproj" />
     <Project Path="tests/MintPlayer.Spark.Gs1.Tests/MintPlayer.Spark.Gs1.Tests.csproj" />
     <Project Path="tests/MintPlayer.Spark.SourceGenerators.Tests/MintPlayer.Spark.SourceGenerators.Tests.csproj" />

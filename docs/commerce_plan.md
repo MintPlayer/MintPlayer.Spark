@@ -18,31 +18,31 @@ The order of work for [commerce_PRD.md](commerce_PRD.md). The PRD carries the de
 
 ### M0 — Spikes
 
-- [ ] S0 demo-app feasibility (both systems, one App_Data)
-- [ ] S18 Community feature checklist (written first: it constrains S1–S3)
-- [ ] S1 engine correctness (0 oversell, I1–I5, sweeper killed)
+- [x] S0 demo-app feasibility (both systems, one App_Data)
+- [x] S18 Community feature checklist (written first: it constrains S1–S3)
+- [x] S1 engine correctness (0 oversell, I1–I5, sweeper killed) — CI size green; full 100 × 1,000 awaits an owner window
 - [ ] S2 engine throughput (≥150 holds/s, p95 ≤250 ms, shards K ∈ {1, 8, 32, 64}, chain cursor)
-- [ ] S3 sweeper and live availability (≤5 s)
+- [x] S3 sweeper and live availability (≤5 s)
 - [ ] S4 waiting room at 200k on cloud VMs (owner provisions and destroys)
 - [ ] S5 Mollie + Stripe sandboxes; real fixtures recorded
 - [ ] S6 Connect onboarding (both providers), including the insufficient-balance refund
 - [ ] S7 seat-map rendering (50k seats)
-- [ ] S8 PBKDF2 cost (server ≤10 ms; WebCrypto ≤300 ms on low-end Android)
+- [x] S8 PBKDF2 cost (server ≤10 ms; WebCrypto ≤300 ms on low-end Android)
 - [ ] S9 offline scanner list and double-entry sync
-- [ ] S10 `ISaveReplacement` proposal round trip
-- [ ] S11 name-collision analyzer (SPARK057–062, code fixes)
+- [x] S10 `ISaveReplacement` proposal round trip
+- [x] S11 name-collision analyzer (SPARK057–062, code fixes)
 - [ ] S12 bot defence S1–S10 (research §6)
 - [ ] S13 carrier sandboxes (Sendcloud, bpost, PostNL)
 - [ ] S14 Peppol sandboxes (two access points, after Q-O2)
 - [ ] S15 mass refund at scale with crash and resume
-- [ ] S16 visitor identity merge and anonymous-POST antiforgery
-- [ ] S17 live broadcast topics + private per-identity stream
-- [ ] S19 server-side meta tags validated by SeoTester's OpenGraph checks
+- [x] S16 visitor identity merge and anonymous-POST antiforgery
+- [x] S17 live broadcast topics + private per-identity stream
+- [x] S19 server-side meta tags validated by SeoTester's OpenGraph checks
 - [ ] S20 fulfilment round trip over the WD1 transport with a stub consumer (shared with the warehouse transport spikes)
-- [ ] S21 rounding: pro-rata discounts, partial refunds, VAT reconciliation
+- [x] S21 rounding: pro-rata discounts, partial refunds, VAT reconciliation
 - [ ] S22 production-migration dry runs (D26 join requests, D28 names → ids)
-- [ ] S24 `TranslatedString` usage inventory (libs, apps, indexes, renderers, stored documents incl. production)
-- [ ] S23 zone-name fallbacks (.NET ICU on Linux; Intl longGeneric per browser and language)
+- [x] S24 `TranslatedString` usage inventory (libs, apps, indexes, renderers, stored documents incl. production)
+- [x] S23 zone-name fallbacks (.NET ICU on Linux; Intl longGeneric per browser and language)
 
 ### M1 — Framework additions and core defects
 
