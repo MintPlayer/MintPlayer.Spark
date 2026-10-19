@@ -1,0 +1,28 @@
+{
+  "_fixture": {
+    "source": "https://docs.mollie.com/reference/create-payment (response example)",
+    "derived": "public documentation example; ids, amounts and metadata adapted",
+    "recorded": false
+  },
+  "resource": "payment",
+  "id": "tr_7UhSN1zuXS",
+  "mode": "test",
+  "status": "open",
+  "isCancelable": false,
+  "amount": { "value": "10.00", "currency": "EUR" },
+  "description": "Order 12345",
+  "method": "ideal",
+  "metadata": { "spark_reference": "orders/12345" },
+  "createdAt": "2026-10-19T09:13:37+00:00",
+  "expiresAt": "2026-10-19T09:28:37+00:00",
+  "profileId": "pfl_QkEhN94Ba",
+  "sequenceType": "oneoff",
+  "redirectUrl": "https://shop.example.org/orders/12345",
+  "webhookUrl": "https://shop.example.org/spark/webhooks/payments-mollie",
+  "_links": {
+    "self": { "href": "https://api.mollie.com/v2/payments/tr_7UhSN1zuXS", "type": "application/hal+json" },
+    "checkout": { "href": "https://www.mollie.com/checkout/select-method/7UhSN1zuXS", "type": "text/html" },
+    "dashboard": { "href": "https://www.mollie.com/dashboard/org_12345678/payments/tr_7UhSN1zuXS", "type": "text/html" },
+    "documentation": { "href": "https://docs.mollie.com/reference/create-payment", "type": "text/html" }
+  }
+}

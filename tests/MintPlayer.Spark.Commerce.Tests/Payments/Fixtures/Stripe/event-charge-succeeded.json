@@ -1,0 +1,42 @@
+{
+  "_fixture": {
+    "source": "https://docs.stripe.com/api/charges/object (payment_method_details.card.fingerprint, .funding; application_fee, application_fee_amount) and https://docs.stripe.com/api/events/types#event_types-charge.succeeded",
+    "derived": "Event envelope + Charge object of a direct charge on a connected account (event.account set); ids adapted",
+    "recorded": false
+  },
+  "id": "evt_1ChargeSucceeded",
+  "object": "event",
+  "account": "acct_1Seller",
+  "created": 1792400690,
+  "type": "charge.succeeded",
+  "data": {
+    "object": {
+      "id": "ch_3Qtest777",
+      "object": "charge",
+      "amount": 7500,
+      "amount_captured": 7500,
+      "amount_refunded": 0,
+      "application_fee": "fee_1Platform777",
+      "application_fee_amount": 375,
+      "captured": true,
+      "created": 1792400690,
+      "currency": "eur",
+      "metadata": { "spark_reference": "orders/777" },
+      "paid": true,
+      "payment_intent": "pi_3Qtest777",
+      "payment_method_details": {
+        "type": "card",
+        "card": {
+          "brand": "visa",
+          "country": "BE",
+          "exp_month": 12,
+          "exp_year": 2030,
+          "fingerprint": "Xt5EWLLDS7FJjR1c",
+          "funding": "credit",
+          "last4": "4242"
+        }
+      },
+      "status": "succeeded"
+    }
+  }
+}

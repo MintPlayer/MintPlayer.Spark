@@ -35,6 +35,9 @@
 		-->
 		<ProjectReference Include="..\..\libs\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
 		<ProjectReference Include="..\..\libs\authorization\MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj" />
+		<ProjectReference Include="..\..\libs\refdata\abstractions\MintPlayer.Spark.ReferenceData.Abstractions.csproj" />
+		<ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce\MintPlayer.Spark.Commerce.csproj" />
+		<ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce.Payments\MintPlayer.Spark.Commerce.Payments.csproj" />
 	</ItemGroup>
 
 	<!--

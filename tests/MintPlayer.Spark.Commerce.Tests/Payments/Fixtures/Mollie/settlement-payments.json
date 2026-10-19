@@ -1,0 +1,24 @@
+{
+  "_fixture": {
+    "source": "https://docs.mollie.com/reference/list-settlement-payments (response example: payment objects with settlementAmount)",
+    "derived": "public documentation example; one payment, ids and amounts adapted to the other fixtures",
+    "recorded": false
+  },
+  "count": 1,
+  "_embedded": {
+    "payments": [
+      {
+        "resource": "payment",
+        "id": "tr_WDqYK6vllg",
+        "status": "paid",
+        "amount": { "value": "75.00", "currency": "EUR" },
+        "settlementAmount": { "value": "75.00", "currency": "EUR" },
+        "description": "Festival ticket",
+        "method": "creditcard",
+        "createdAt": "2026-10-14T10:00:00+00:00",
+        "paidAt": "2026-10-14T10:02:11+00:00"
+      }
+    ]
+  },
+  "_links": { "next": null }
+}

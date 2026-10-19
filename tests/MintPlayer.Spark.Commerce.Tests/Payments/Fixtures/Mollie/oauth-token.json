@@ -1,0 +1,12 @@
+{
+  "_fixture": {
+    "source": "https://docs.mollie.com/reference/generate-tokens (response example)",
+    "derived": "public documentation example; token values replaced by obvious placeholders",
+    "recorded": false
+  },
+  "access_token": "access_placeholder_not_a_real_token",
+  "refresh_token": "refresh_placeholder_not_a_real_token",
+  "expires_in": 3600,
+  "token_type": "bearer",
+  "scope": "payments.read payments.write refunds.read refunds.write organizations.read profiles.read onboarding.read settlements.read balances.read"
+}

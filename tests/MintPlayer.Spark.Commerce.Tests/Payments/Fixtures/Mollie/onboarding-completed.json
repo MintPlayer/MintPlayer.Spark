@@ -1,0 +1,13 @@
+{
+  "_fixture": {
+    "source": "https://docs.mollie.com/reference/get-onboarding-status (response example, status completed)",
+    "derived": "public documentation example; name adapted",
+    "recorded": false
+  },
+  "resource": "onboarding",
+  "name": "Festival Seller BV",
+  "signedUpAt": "2026-10-01T12:00:00+00:00",
+  "status": "completed",
+  "canReceivePayments": true,
+  "canReceiveSettlements": true
+}

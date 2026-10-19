@@ -13,13 +13,19 @@ namespace MintPlayer.Spark.PageMeta;
 /// <param name="Type">The <c>og:type</c>.</param>
 /// <param name="Canonical">The canonical URL; <see langword="null"/> means the public origin plus the request path. Also <c>og:url</c>.</param>
 /// <param name="TwitterCard">The <c>twitter:card</c>.</param>
+/// <param name="StructuredData">schema.org JSON-LD blocks (X22: <see cref="SparkEventData"/>, <see cref="SparkProductData"/>),
+/// each written as a <c>&lt;script type="application/ld+json"&gt;</c>; the template's own JSON-LD is removed.</param>
+/// <param name="Alternates">The page's language versions (X22), including itself, written as
+/// <c>&lt;link rel="alternate" hreflang&gt;</c>; the template's own hreflang links are removed.</param>
 public sealed record SparkPageMeta(
     string Title,
     string Description,
     Uri? Image = null,
     string Type = "website",
     Uri? Canonical = null,
-    string TwitterCard = "summary_large_image");
+    string TwitterCard = "summary_large_image",
+    IReadOnlyList<SparkStructuredData>? StructuredData = null,
+    IReadOnlyList<SparkHreflang>? Alternates = null);
 
 /// <summary>What a <see cref="ISparkPageMetaProvider"/> is asked about: the request and the route values its pattern matched.</summary>
 public sealed class SparkPageMetaContext

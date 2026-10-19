@@ -1,0 +1,31 @@
+{
+  "_fixture": {
+    "source": "https://docs.stripe.com/api/events/object and https://docs.stripe.com/api/events/types#event_types-checkout.session.completed",
+    "derived": "Event envelope from the Event object docs, data.object a Checkout Session; ids adapted",
+    "recorded": false
+  },
+  "id": "evt_1SessionCompleted",
+  "object": "event",
+  "api_version": "2025-09-30.clover",
+  "created": 1792400700,
+  "livemode": false,
+  "pending_webhooks": 1,
+  "type": "checkout.session.completed",
+  "data": {
+    "object": {
+      "id": "cs_test_a1b2c3",
+      "object": "checkout.session",
+      "amount_total": 7500,
+      "currency": "eur",
+      "client_reference_id": "orders/777",
+      "created": 1792400400,
+      "expires_at": 1792402260,
+      "metadata": { "spark_reference": "orders/777" },
+      "mode": "payment",
+      "payment_intent": "pi_3Qtest777",
+      "payment_status": "paid",
+      "status": "complete",
+      "url": null
+    }
+  }
+}

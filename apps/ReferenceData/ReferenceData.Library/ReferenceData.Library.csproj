@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<IsPackable>false</IsPackable>
+		<SparkEntityLibrary>true</SparkEntityLibrary>
+		<GenerateDocumentationFile>true</GenerateDocumentationFile>
+		<NoWarn>$(NoWarn);CS1591</NoWarn>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<!-- Attributes (+ Model) only, never the Web-SDK Abstractions (SPARKLIB001); Address comes from the plain-SDK Abstractions (Q-R7). -->
+		<ProjectReference Include="..\..\..\libs\attributes\MintPlayer.Spark.Attributes\MintPlayer.Spark.Attributes.csproj" />
+		<ProjectReference Include="..\..\..\libs\model\MintPlayer.Spark.Model\MintPlayer.Spark.Model.csproj" />
+		<ProjectReference Include="..\..\..\libs\refdata\abstractions\MintPlayer.Spark.ReferenceData.Abstractions.csproj" />
+		<ProjectReference Include="..\..\..\libs\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+		<ProjectReference Include="..\..\..\libs\source_generators\MintPlayer.Spark.LibraryGenerators\MintPlayer.Spark.LibraryGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+	</ItemGroup>
+
+</Project>

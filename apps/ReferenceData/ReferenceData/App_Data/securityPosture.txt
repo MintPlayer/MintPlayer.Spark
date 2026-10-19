@@ -1,0 +1,31 @@
+# Spark security posture: every effective right and the layer it comes from.
+# --spark-synchronize-security writes this file; --spark-verify-security fails when it drifts.
+# Rows: group | effect | resource | key | layer | type (alias:Name for a library type, the id for the application's own, - for none)
+
+## Layers: libraries that ship rights (alias | assembly | hash)
+authorization | MintPlayer.Spark.Authorization | 45c4fc153e9d
+reference-data | MintPlayer.Spark.ReferenceData | a1c3d8b4f6a5
+
+## Reachable without signing in (expanded)
+(nothing)
+
+## Granted to @anonymous
+(nothing)
+
+## Rights
+Administrators (reference-data:administrators) | grant | QueryRead/RefCountry | reference-data:countries | reference-data | reference-data:RefCountry
+Administrators (reference-data:administrators) | grant | QueryRead/RefImportRun | reference-data:import-runs | reference-data | reference-data:RefImportRun
+Administrators (reference-data:administrators) | grant | QueryRead/RefLineageEvent | reference-data:lineage | reference-data | reference-data:RefLineageEvent
+Administrators (reference-data:administrators) | grant | QueryRead/RefPlace | reference-data:places | reference-data | reference-data:RefPlace
+Administrators (reference-data:administrators) | grant | QueryRead/RefPostalCode | reference-data:postal-codes | reference-data | reference-data:RefPostalCode
+Administrators (reference-data:administrators) | grant | QueryRead/RefStreet | reference-data:streets | reference-data | reference-data:RefStreet
+Administrators (reference-data:administrators) | grant | RefDataImportNow/RefImportRun | reference-data:import-now | reference-data | reference-data:RefImportRun
+Signed-in users | grant | QueryReadEditNewDelete/Venue | venues | app | b7d6b31b-e1fa-4ffc-856a-d7c9759545c4
+Signed-in users (@authenticated) | grant | AddPasskey/Passkeys | authorization:passkeys-add | authorization | authorization:Passkeys
+Signed-in users (@authenticated) | grant | Query/PasskeyRow | authorization:passkey-rows-query | authorization | authorization:PasskeyRow
+Signed-in users (@authenticated) | grant | Read/Passkeys | authorization:passkeys-read | authorization | authorization:Passkeys
+Signed-in users (@authenticated) | grant | RemovePasskey/PasskeyRow | authorization:passkey-rows-remove | authorization | authorization:PasskeyRow
+Signed-in users (@authenticated) | grant | RenamePasskey/PasskeyRow | authorization:passkey-rows-rename | authorization | authorization:PasskeyRow
+
+## Inert: libraries switched off in "libraries"
+(nothing)

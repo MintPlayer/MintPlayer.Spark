@@ -1,0 +1,13 @@
+.spark-commerce-legal-document + .spark-commerce-legal-document {
+  margin-top: 2rem;
+}
+
+.spark-commerce-legal-version {
+  display: flex;
+  gap: 1rem;
+  color: var(--bs-secondary-color);
+}
+
+.spark-commerce-legal-body {
+  white-space: pre-wrap;
+}

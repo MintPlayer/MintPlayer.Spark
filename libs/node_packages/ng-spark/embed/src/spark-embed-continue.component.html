@@ -1,0 +1,6 @@
+@if (embed.pendingLink(); as url) {
+  <div class="spark-embed-continue" role="status" aria-live="polite">
+    <p>{{ 'embed.continue.text' | t }}</p>
+    <a class="spark-embed-continue-link" [href]="url" target="_blank" rel="noopener" (click)="embed.pendingLink.set(null)">{{ 'embed.continue.button' | t }}</a>
+  </div>
+}

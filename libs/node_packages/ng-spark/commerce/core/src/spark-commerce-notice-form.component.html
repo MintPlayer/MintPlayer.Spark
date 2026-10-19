@@ -1,0 +1,40 @@
+@if (receipt()) {
+  <p class="spark-commerce-notice-received" role="status">{{ 'commerce.dsa.received' | t }}</p>
+} @else {
+  <form class="spark-commerce-notice-form" (ngSubmit)="send()">
+    <h2>{{ 'commerce.dsa.report' | t }}</h2>
+    <label>
+      {{ 'commerce.dsa.reason' | t }}
+      <select name="reason" [(ngModel)]="reason" required>
+        <option value="" disabled></option>
+        @for (r of reasons; track r) {
+          <option [value]="r">{{ ('commerce.dsa.reasons.' + r) | t }}</option>
+        }
+      </select>
+    </label>
+    <label>
+      {{ 'commerce.dsa.explanation' | t }}
+      <textarea name="explanation" rows="5" maxlength="10000" [(ngModel)]="explanation" required></textarea>
+    </label>
+    <label>
+      {{ 'commerce.dsa.location' | t }}
+      <input type="url" name="location" [(ngModel)]="location" />
+    </label>
+    <label>
+      {{ 'commerce.dsa.contactName' | t }}
+      <input type="text" name="contactName" autocomplete="name" [(ngModel)]="contactName" />
+    </label>
+    <label>
+      {{ 'commerce.dsa.contactEmail' | t }}
+      <input type="email" name="contactEmail" autocomplete="email" [(ngModel)]="contactEmail" />
+    </label>
+    <label class="spark-commerce-notice-good-faith">
+      <input type="checkbox" name="goodFaith" [(ngModel)]="goodFaith" required />
+      {{ 'commerce.dsa.goodFaith' | t }}
+    </label>
+    @if (error()) {
+      <p class="spark-commerce-notice-error" role="alert">{{ error() }}</p>
+    }
+    <button type="submit" [disabled]="!canSend">{{ 'commerce.dsa.send' | t }}</button>
+  </form>
+}

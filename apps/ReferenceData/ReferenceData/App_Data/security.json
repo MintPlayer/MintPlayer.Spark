@@ -1,0 +1,24 @@
+{
+  "$schema": "../../../../schemas/security.schema.json",
+  "_comment": [
+    "apps/ReferenceData (docs/reference_data_PRD.md §4.16). Administrators sign in with a local password and hold the",
+    "reference-data library's slot: its read-only admin pages (places, postal codes, streets, countries, lineage, import",
+    "runs) and the Import now action. Signed-in users manage the consumer page's venues. Nothing is granted anonymously:",
+    "the public reference-data contract is /api/v1 (anonymous by design, CORS-open, rate-limited), never /spark."
+  ],
+  "wellKnown": {
+    "anonymous": "00000000-0000-0000-0000-000000000000",
+    "authenticated": "7ef00000-0000-4000-8000-00000000000f"
+  },
+  "groups": {
+    "00000000-0000-0000-0000-000000000000": "Anonymous visitors",
+    "7ef00000-0000-4000-8000-00000000000f": "Signed-in users",
+    "7ef00000-0000-4000-8000-000000000001": "Administrators"
+  },
+  "bindings": {
+    "reference-data:administrators": [ "Administrators" ]
+  },
+  "rights": [
+    { "key": "venues", "resource": "QueryReadEditNewDelete/Venue", "groupId": "7ef00000-0000-4000-8000-00000000000f" }
+  ]
+}

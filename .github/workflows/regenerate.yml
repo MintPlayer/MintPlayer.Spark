@@ -59,3 +59,4 @@ jobs:
             apps/SparkId/SparkId/SparkId.csproj
             apps/CodeCoverage/CodeCoverage/CodeCoverage.csproj
             apps/SeoTester/SeoTester/SeoTester.csproj
+            apps/ReferenceData/ReferenceData/ReferenceData.csproj

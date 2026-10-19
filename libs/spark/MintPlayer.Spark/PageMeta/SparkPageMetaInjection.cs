@@ -171,9 +171,26 @@ internal static class SparkPageMetaInjection
         var canonical = Absolute(meta.Canonical, originUri)
             ?? (originUri is null ? null : new Uri(originUri, "./" + context.Request.Path.ToUriComponent().TrimStart('/')));
         var image = Absolute(meta.Image, originUri);
+        var alternates = ResolveAlternates(meta.Alternates, originUri);
 
         var template = Encoding.UTF8.GetString(buffer.GetBuffer(), 0, (int)buffer.Length);
-        return SparkPageMetaHtml.Rewrite(template, meta, canonical, image);
+        return SparkPageMetaHtml.Rewrite(template, meta, canonical, image, alternates);
+    }
+
+    /// <summary>The valid alternates (X22) with absolute http(s) URLs; an invalid tag or an unresolvable URL is left out.</summary>
+    internal static IReadOnlyList<(string Language, Uri Href)> ResolveAlternates(IReadOnlyList<SparkHreflang>? alternates, Uri? origin)
+    {
+        var resolved = new List<(string, Uri)>();
+        foreach (var alternate in alternates ?? [])
+        {
+            // A rooted path is Relative explicitly: RelativeOrAbsolute makes it file:///… on Linux.
+            var kind = alternate.Href.StartsWith('/') ? UriKind.Relative : UriKind.Absolute;
+            if (!alternate.IsValid || !Uri.TryCreate(alternate.Href, kind, out var href))
+                continue;
+            if (Absolute(href, origin) is { } absolute)
+                resolved.Add((alternate.Language, absolute));
+        }
+        return resolved;
     }
 
     /// <summary>

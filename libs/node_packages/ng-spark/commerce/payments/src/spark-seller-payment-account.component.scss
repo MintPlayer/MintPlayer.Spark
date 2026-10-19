@@ -1,0 +1,19 @@
+:host {
+  display: block;
+}
+
+.spark-seller-payment-account-state {
+  font-weight: 600;
+}
+
+.spark-seller-payment-account[data-kyc='verified'] .spark-seller-payment-account-state {
+  color: var(--bs-success, #198754);
+}
+
+.spark-seller-payment-account[data-kyc='rejected'] .spark-seller-payment-account-state {
+  color: var(--bs-danger, #dc3545);
+}
+
+.spark-seller-payment-account-requirements {
+  margin-bottom: 0.75rem;
+}

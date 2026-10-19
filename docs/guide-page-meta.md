@@ -97,3 +97,75 @@ fetched by its exact path, matches no pattern and is cached untouched, which is 
 event's tags for every page. The consequence is that a user of the installed app never sees the server's tags.
 Crawlers and preview bots don't run service workers, so previews are unaffected. For the tab title and in-app
 consistency, set the same title and tags in the Angular page through `Title` and `Meta`.
+
+## Sitemap, JSON-LD and hreflang (commerce X22)
+
+Meta tags cover link previews. Search engines also read three more things, and Spark writes all three
+(`docs/commerce_PRD.md` X22, GB9).
+
+### Structured data (schema.org JSON-LD)
+
+`SparkPageMeta` takes `StructuredData`. Each block is written as `<script type="application/ld+json" data-spark-meta>`
+right after `<head>`, and the template's own JSON-LD is removed.
+
+```csharp
+return new SparkPageMeta(ev.Name, ev.Summary,
+    StructuredData:
+    [
+        new SparkEventData(ev.Name, Start: startInVenueOffset,
+            Location: new SparkPlace(venue.Name, venue.Street, venue.City, venue.PostalCode, Country: "BE"),
+            Status: ev.Cancelled ? SparkEventStatus.Cancelled : SparkEventStatus.Scheduled,
+            Offers: [new SparkOffer(finalPrice, SparkAvailability.InStock, url)]),
+    ],
+    Alternates: [new("en", $"/en/events/{slug}"), new("nl", $"/nl/events/{slug}"), new(SparkHreflang.XDefault, $"/en/events/{slug}")]);
+```
+
+- `SparkEventData`: name, `startDate`/`endDate` **with the offset you pass** (pass the venue's offset, from the core
+  date-time facility, K10), `eventStatus`, `eventAttendanceMode`, `location` (a `Place` with a `PostalAddress`, or a
+  `VirtualLocation` for online events), offers, organizer, performers.
+- `SparkProductData`: name, images, `sku`, `gtin` (8, 12, 13 or 14 digits, else `ArgumentException`), `mpn`, brand,
+  offers.
+- `SparkOffer`: the price is a `Money`. Pass the price the buyer pays (`FinalPrice`, commerce §4.4), never a price
+  without mandatory fees.
+- Anything else: `SparkStructuredData.Raw(jsonObject)`.
+
+The JSON is written with the default JavaScript encoder, so `<`, `>` and `&` become `<` and so on. Seller text
+such as `</script>` cannot close the element.
+
+### hreflang
+
+`SparkPageMeta.Alternates` lists the page's language versions, **including the page itself**, and optionally
+`x-default`. Each one is written as `<link rel="alternate" hreflang="…" href="…">`. A path is resolved against the public
+origin. An invalid tag is left out. Every language version must list the same set (Google's rule).
+
+### `sitemap.xml`
+
+```csharp
+spark.AddSitemap(o => o.RobotsTxt = true);       // Spark:Sitemap
+spark.AddSitemapSource<EventSitemap>();          // ISparkSitemapSource, scoped
+```
+
+```csharp
+public sealed class EventSitemap(IAsyncDocumentSession session) : ISparkSitemapSource
+{
+    public string Name => "events";
+    public Task<int> CountAsync(SparkSitemapContext context, CancellationToken ct) => /* public events */;
+    public async Task<IReadOnlyList<SparkSitemapEntry>> GetEntriesAsync(SparkSitemapContext context, int skip, int take, CancellationToken ct)
+        => (await /* public events ordered by id, skip, take */)
+            .Select(e => new SparkSitemapEntry($"/en/events/{e.Slug}", e.ModifiedUtc,
+                [new("en", $"/en/events/{e.Slug}"), new("nl", $"/nl/events/{e.Slug}")]))
+            .ToList();
+}
+```
+
+- `MapSpark()` maps `/sitemap.xml` (a sitemap **index**) and `/sitemaps/{source}/{page}.xml` once a source is
+  registered. Each page holds `Spark:Sitemap:PageSize` URLs (default 10,000; the protocol allows 50,000 per file).
+- Entries follow the [sitemap protocol 0.9](https://www.sitemaps.org/protocol.html): `loc` (same origin only: a URL on
+  another host is left out), `lastmod` in UTC, optional `changefreq`/`priority`, and `xhtml:link` hreflang alternates.
+- Order entries by id: the index and the page requests must see the same slices.
+- The origin is `Spark:Sitemap:PublicOrigin`, then `Spark:PageMeta:PublicOrigin`, then `Spark:Auth:PublicBaseUrl`
+  (the request's origin in Development only). Without one, the sitemap answers 404.
+- `RobotsTxt = true` serves `/robots.txt` with `RobotsTxtBody` plus `Sitemap: https://…/sitemap.xml`. Remove a static
+  `robots.txt` from the SPA's assets, because the static-file middleware may answer first.
+- Tests validate the output against the protocol's schema (`tests/MintPlayer.Spark.Tests/Sitemap`). SeoTester's
+  checks can be pointed at a running app as well (S19 precedent).

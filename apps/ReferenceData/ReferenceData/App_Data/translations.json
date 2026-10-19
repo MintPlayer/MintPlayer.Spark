@@ -1,0 +1,203 @@
+{
+  "$schema": "../../../../schemas/translations.schema.json",
+  "app": {
+    "selectMenuItem": {
+      "en": "Select a menu item from the sidebar to get started.",
+      "fr": "Sélectionnez un élément du menu latéral pour commencer.",
+      "nl": "Kies een menu-item in de zijbalk om te beginnen."
+    },
+    "title": {
+      "en": "Reference data",
+      "fr": "Données de référence",
+      "nl": "Referentiegegevens"
+    }
+  },
+  "model": {
+    "Address": {
+      "attributes": {
+        "Box": {
+          "description": {
+            "en": "Box (bus/boîte), where the country has one."
+          }
+        },
+        "CountryCode": {
+          "description": {
+            "en": "ISO 3166-1 alpha-2 code of the country, upper case: BE."
+          }
+        },
+        "HouseNumber": {
+          "description": {
+            "en": "House number with its optional letter: 12, 12A."
+          }
+        },
+        "HouseNumberVerified": {
+          "description": {
+            "en": "The house number was confirmed by a validator (RD5); false when unchecked or when the validator was unreachable."
+          }
+        },
+        "Lines": {
+          "description": {
+            "en": "The rendered address lines (the legal snapshot an invoice keeps)."
+          }
+        },
+        "LocalityKey": {
+          "description": {
+            "en": "The postal locality's key within its code: kruishoutem."
+          }
+        },
+        "LocalityName": {
+          "description": {
+            "en": "Locality as written on the city line: Kruishoutem."
+          }
+        },
+        "LocalityPlaceId": {
+          "description": {
+            "en": "The section or locality place, where one exists."
+          }
+        },
+        "MunicipalityId": {
+          "description": {
+            "en": "The municipality (places/be/nis/45068)."
+          }
+        },
+        "MunicipalityName": {
+          "description": {
+            "en": "Municipality name: Kruisem."
+          }
+        },
+        "PostalCode": {
+          "description": {
+            "en": "Postal code as written: 9770."
+          }
+        },
+        "PostalCodeId": {
+          "description": {
+            "en": "The postal code in reference data (postalcodes/be/9770)."
+          }
+        },
+        "Release": {
+          "description": {
+            "en": "The reference-data release the ids were checked against."
+          }
+        },
+        "StreetId": {
+          "description": {
+            "en": "The street in reference data (streets/be/…), or empty for a free-text street."
+          }
+        },
+        "StreetName": {
+          "description": {
+            "en": "Street name as written: Kerkstraat."
+          }
+        },
+        "TimeZone": {
+          "description": {
+            "en": "IANA time zone of the municipality: Europe/Brussels (D33: a venue's zone comes from its address)."
+          }
+        },
+        "Verified": {
+          "description": {
+            "en": "The street, postal code and locality were picked from reference data."
+          }
+        }
+      }
+    },
+    "Venue": {
+      "attributes": {
+        "Address": {
+          "description": {
+            "en": "The venue's postal address; its time zone becomes the venue's (commerce D33)."
+          },
+          "label": {
+            "en": "Address",
+            "fr": "Adresse",
+            "nl": "Adres"
+          }
+        },
+        "Name": {
+          "description": {
+            "en": "The venue's name, as shown on tickets and event pages."
+          },
+          "label": {
+            "en": "Name",
+            "fr": "Nom",
+            "nl": "Naam"
+          }
+        }
+      },
+      "label": {
+        "en": "Venue",
+        "fr": "Lieu de rendez-vous",
+        "nl": "Locatie"
+      }
+    }
+  },
+  "programUnits": {
+    "addressForm": {
+      "en": "Address form",
+      "fr": "Formulaire d'adresse",
+      "nl": "Adresformulier"
+    },
+    "api": {
+      "en": "Public API",
+      "fr": "API publique",
+      "nl": "Publieke API"
+    },
+    "countries": {
+      "en": "Countries",
+      "fr": "Pays",
+      "nl": "Landen"
+    },
+    "groups": {
+      "consumer": {
+        "en": "Consumer",
+        "fr": "Consommateur",
+        "nl": "Consument"
+      },
+      "referenceData": {
+        "en": "Reference data",
+        "fr": "Données de référence",
+        "nl": "Referentiegegevens"
+      }
+    },
+    "importRuns": {
+      "en": "Import runs",
+      "fr": "Exécutions d'import",
+      "nl": "Importruns"
+    },
+    "lineage": {
+      "en": "Lineage events",
+      "fr": "Événements de filiation",
+      "nl": "Wijzigingen van gemeenten"
+    },
+    "places": {
+      "en": "Places",
+      "fr": "Lieux",
+      "nl": "Plaatsen"
+    },
+    "postalCodes": {
+      "en": "Postal codes",
+      "fr": "Codes postaux",
+      "nl": "Postcodes"
+    },
+    "streets": {
+      "en": "Streets",
+      "fr": "Rues",
+      "nl": "Straten"
+    },
+    "venues": {
+      "en": "Venues",
+      "fr": "Lieux de rendez-vous",
+      "nl": "Locaties"
+    }
+  },
+  "queries": {
+    "Venues": {
+      "label": {
+        "en": "Venues",
+        "fr": "Lieux de rendez-vous",
+        "nl": "Locaties"
+      }
+    }
+  }
+}

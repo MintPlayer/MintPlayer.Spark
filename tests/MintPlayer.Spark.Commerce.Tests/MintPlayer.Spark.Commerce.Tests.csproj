@@ -27,7 +27,17 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce\MintPlayer.Spark.Commerce.csproj" />
     <ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce.Inventory\MintPlayer.Spark.Commerce.Inventory.csproj" />
+    <ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce.Payments\MintPlayer.Spark.Commerce.Payments.csproj" />
+    <ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce.Payments.Mollie\MintPlayer.Spark.Commerce.Payments.Mollie.csproj" />
+    <ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce.Payments.Stripe\MintPlayer.Spark.Commerce.Payments.Stripe.csproj" />
+    <ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce.Payments.Test\MintPlayer.Spark.Commerce.Payments.Test.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Doc-derived provider fixtures (spikes S5/S6, round 4); see Payments/Fixtures/README.md. -->
+    <None Include="Payments\Fixtures\**\*.json" CopyToOutputDirectory="PreserveNewest" />
     <ProjectReference Include="..\..\libs\testing\MintPlayer.Spark.Testing\MintPlayer.Spark.Testing.csproj" />
   </ItemGroup>
 

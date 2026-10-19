@@ -117,6 +117,12 @@ public static class SparkExtensions
         // Server-side meta tags for public SPA routes (commerce PRD X6): idle until a provider is registered.
         PageMeta.SparkPageMetaInjection.AddSparkPageMeta(services);
 
+        // Commerce PRD X21–X23: the options sections of consent, the sitemap and embed mode are bound here, once, so the
+        // AddConsent / AddSitemap / AddEmbed code that configures them always runs after the section (code wins).
+        services.AddSparkConfigurationSection<Consent.SparkConsentOptions>();
+        services.AddSparkConfigurationSection<Sitemap.SparkSitemapOptions>();
+        Embed.SparkEmbed.AddSparkEmbed(services);
+
         // Data Protection (#460, D5) — always on, key ring persisted per Spark:DataProtection; an
         // unpersisted ring outside Development is refused by UseSpark(). See SparkDataProtectionOptions.
         services.AddSparkDataProtection();
@@ -315,6 +321,13 @@ public static class SparkExtensions
 
         // #482, D17: a durable after-commit interceptor with nothing to deliver it is refused at startup.
         Services.SparkCommittedInterceptorsStartupCheck.Run(app.ApplicationServices);
+
+        // Commerce PRD GA9/X21: a package that processes data only with consent (RequiresConsent) is refused unless the
+        // consent primitive is registered (spark.AddConsent()) and the purpose is declared.
+        Abstractions.Consent.SparkConsentRegistration.ValidateWired(app.ApplicationServices);
+
+        // Commerce PRD X23: embed origins are validated at startup (a bad entry would end up in a CSP header).
+        Embed.SparkEmbed.ValidateOptions(app.ApplicationServices);
 
         var registry = app.ApplicationServices.GetRequiredService<SparkModuleRegistry>();
 
@@ -576,6 +589,9 @@ public static class SparkExtensions
 
         // Map all core Spark endpoints (source-generated from endpoint classes)
         endpoints.MapSparkCoreEndpoints();
+
+        // Commerce PRD X22: /sitemap.xml (+ /robots.txt opted in), at the site root, once a sitemap source is registered.
+        Sitemap.SparkSitemapEndpoints.Map(endpoints);
 
         // Map module-specific endpoints (authorization, replication, etc.)
         registry.MapEndpoints(endpoints);

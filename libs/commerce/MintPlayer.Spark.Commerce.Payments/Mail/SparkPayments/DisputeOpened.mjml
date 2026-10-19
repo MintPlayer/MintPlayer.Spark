@@ -1,0 +1,29 @@
+<mjml>
+  <mj-head>
+    <mj-title>A payment was disputed: {{ reference }}</mj-title>
+    <mj-attributes>
+      <mj-all font-family="Segoe UI, Helvetica, Arial, sans-serif" />
+      <mj-text font-size="15px" line-height="22px" color="#111827" />
+      <mj-button background-color="#2563eb" color="#ffffff" border-radius="6px" font-size="15px" />
+    </mj-attributes>
+  </mj-head>
+  <mj-body background-color="#f3f4f6">
+    <mj-section background-color="#ffffff" padding="24px 0">
+      <mj-column>
+        <mj-text font-size="20px" font-weight="600">A buyer disputed a payment</mj-text>
+        <mj-text>Order {{ reference }}: {{ amount }} {{ currency }}.</mj-text>
+        {{ if reason }}<mj-text>Reason given: {{ reason }}</mj-text>{{ end }}
+        {{ if due_by }}<mj-text>Evidence is due by {{ due_by }}.</mj-text>{{ end }}
+        {{ if manual_only }}<mj-text>The provider takes evidence in its own dashboard: download the evidence pack from the dispute's page and upload it there.</mj-text>{{ else }}<mj-text>Review the evidence pack on the dispute's page and submit it from there.</mj-text>{{ end }}
+        {{ if link }}<mj-button href="{{ link }}">Open the dispute</mj-button>
+        <mj-text font-size="13px" color="#4b5563">If the button does not work, open this link: <a href="{{ link }}">{{ link }}</a></mj-text>{{ end }}
+      </mj-column>
+    </mj-section>
+    <mj-section padding="0 0 24px 0">
+      <mj-column>
+        <mj-divider border-width="1px" border-color="#e5e7eb" />
+        <mj-text font-size="12px" color="#6b7280">You receive this mail because you manage the payments of this seller.</mj-text>
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>

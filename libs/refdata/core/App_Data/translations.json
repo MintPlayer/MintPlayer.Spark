@@ -1,0 +1,348 @@
+{
+  "$schema": "../../../../schemas/translations.schema.json",
+  "referenceData": {
+    "importQueued": {
+      "en": "The import was queued; follow it in the import runs.",
+      "fr": "L'import a été mis en file ; suivez-le dans les exécutions d'import.",
+      "nl": "De import staat in de wachtrij; volg hem in de importruns."
+    }
+  },
+  "actions": {
+    "RefDataImportNow": {
+      "label": {
+        "en": "Import now",
+        "fr": "Importer maintenant",
+        "nl": "Nu importeren"
+      },
+      "confirmation": {
+        "en": "Fetch every configured source and import what changed?",
+        "fr": "Récupérer chaque source configurée et importer ce qui a changé ?",
+        "nl": "Elke ingestelde bron ophalen en importeren wat veranderd is?"
+      }
+    }
+  },
+  "queries": {
+    "RefCountries": {
+      "label": {
+        "en": "Countries",
+        "fr": "Pays",
+        "nl": "Landen"
+      }
+    },
+    "RefPlaces": {
+      "label": {
+        "en": "Places",
+        "fr": "Lieux",
+        "nl": "Plaatsen"
+      }
+    },
+    "RefPostalCodes": {
+      "label": {
+        "en": "Postal codes",
+        "fr": "Codes postaux",
+        "nl": "Postcodes"
+      }
+    },
+    "RefStreets": {
+      "label": {
+        "en": "Streets",
+        "fr": "Rues",
+        "nl": "Straten"
+      }
+    },
+    "RefLineageEvents": {
+      "label": {
+        "en": "Lineage events",
+        "fr": "Événements de filiation",
+        "nl": "Wijzigingen van gemeenten"
+      }
+    },
+    "RefImportRuns": {
+      "label": {
+        "en": "Import runs",
+        "fr": "Exécutions d'import",
+        "nl": "Importruns"
+      }
+    }
+  },
+  "model": {
+    "RefCountry": {
+      "label": {
+        "en": "Country",
+        "fr": "Pays",
+        "nl": "Land"
+      },
+      "attributes": {
+        "Code": {
+          "label": {
+            "en": "Code",
+            "fr": "Code",
+            "nl": "Code"
+          }
+        },
+        "Alpha3": {
+          "label": {
+            "en": "Alpha-3",
+            "fr": "Alpha-3",
+            "nl": "Alfa-3"
+          }
+        },
+        "Numeric": {
+          "label": {
+            "en": "Numeric",
+            "fr": "Numérique",
+            "nl": "Numeriek"
+          }
+        },
+        "Place": {
+          "label": {
+            "en": "Place",
+            "fr": "Lieu",
+            "nl": "Plaats"
+          }
+        },
+        "Hash": {
+          "label": {
+            "en": "Hash",
+            "fr": "Empreinte",
+            "nl": "Hash"
+          }
+        }
+      }
+    },
+    "RefPlace": {
+      "label": {
+        "en": "Place",
+        "fr": "Lieu",
+        "nl": "Plaats"
+      },
+      "attributes": {
+        "Names": {
+          "label": {
+            "en": "Names",
+            "fr": "Noms",
+            "nl": "Namen"
+          }
+        },
+        "Country": {
+          "label": {
+            "en": "Country",
+            "fr": "Pays",
+            "nl": "Land"
+          }
+        },
+        "TimeZone": {
+          "label": {
+            "en": "Time zone",
+            "fr": "Fuseau horaire",
+            "nl": "Tijdzone"
+          }
+        },
+        "Rank": {
+          "label": {
+            "en": "Rank",
+            "fr": "Rang",
+            "nl": "Rang"
+          }
+        },
+        "LineageUnresolved": {
+          "label": {
+            "en": "Lineage unresolved",
+            "fr": "Filiation non résolue",
+            "nl": "Herkomst onopgelost"
+          }
+        },
+        "Hash": {
+          "label": {
+            "en": "Hash",
+            "fr": "Empreinte",
+            "nl": "Hash"
+          }
+        }
+      }
+    },
+    "RefPostalCode": {
+      "label": {
+        "en": "Postal code",
+        "fr": "Code postal",
+        "nl": "Postcode"
+      },
+      "attributes": {
+        "Code": {
+          "label": {
+            "en": "Code",
+            "fr": "Code",
+            "nl": "Code"
+          }
+        },
+        "Country": {
+          "label": {
+            "en": "Country",
+            "fr": "Pays",
+            "nl": "Land"
+          }
+        },
+        "Hash": {
+          "label": {
+            "en": "Hash",
+            "fr": "Empreinte",
+            "nl": "Hash"
+          }
+        }
+      }
+    },
+    "RefStreet": {
+      "label": {
+        "en": "Street",
+        "fr": "Rue",
+        "nl": "Straat"
+      },
+      "attributes": {
+        "Names": {
+          "label": {
+            "en": "Names",
+            "fr": "Noms",
+            "nl": "Namen"
+          }
+        },
+        "Country": {
+          "label": {
+            "en": "Country",
+            "fr": "Pays",
+            "nl": "Land"
+          }
+        },
+        "Qualifier": {
+          "label": {
+            "en": "Qualifier",
+            "fr": "Complément",
+            "nl": "Toevoeging"
+          }
+        },
+        "Hash": {
+          "label": {
+            "en": "Hash",
+            "fr": "Empreinte",
+            "nl": "Hash"
+          }
+        }
+      }
+    },
+    "RefLineageEvent": {
+      "label": {
+        "en": "Lineage event",
+        "fr": "Événement de filiation",
+        "nl": "Wijziging"
+      },
+      "attributes": {
+        "Country": {
+          "label": {
+            "en": "Country",
+            "fr": "Pays",
+            "nl": "Land"
+          }
+        },
+        "Date": {
+          "label": {
+            "en": "Date",
+            "fr": "Date",
+            "nl": "Datum"
+          }
+        },
+        "Unresolved": {
+          "label": {
+            "en": "Unresolved",
+            "fr": "Non résolu",
+            "nl": "Onopgelost"
+          }
+        },
+        "Hash": {
+          "label": {
+            "en": "Hash",
+            "fr": "Empreinte",
+            "nl": "Hash"
+          }
+        }
+      }
+    },
+    "RefImportRun": {
+      "label": {
+        "en": "Import run",
+        "fr": "Exécution d'import",
+        "nl": "Importrun"
+      },
+      "attributes": {
+        "Trigger": {
+          "label": {
+            "en": "Trigger",
+            "fr": "Déclencheur",
+            "nl": "Aanleiding"
+          }
+        },
+        "Status": {
+          "label": {
+            "en": "Status",
+            "fr": "Statut",
+            "nl": "Status"
+          }
+        },
+        "StartedAtUtc": {
+          "label": {
+            "en": "Started",
+            "fr": "Démarré",
+            "nl": "Gestart"
+          }
+        },
+        "FinishedAtUtc": {
+          "label": {
+            "en": "Finished",
+            "fr": "Terminé",
+            "nl": "Klaar"
+          }
+        },
+        "Added": {
+          "label": {
+            "en": "Added",
+            "fr": "Ajoutés",
+            "nl": "Toegevoegd"
+          }
+        },
+        "Updated": {
+          "label": {
+            "en": "Updated",
+            "fr": "Mis à jour",
+            "nl": "Bijgewerkt"
+          }
+        },
+        "Unchanged": {
+          "label": {
+            "en": "Unchanged",
+            "fr": "Inchangés",
+            "nl": "Ongewijzigd"
+          }
+        },
+        "Absent": {
+          "label": {
+            "en": "Absent from sources",
+            "fr": "Absents des sources",
+            "nl": "Niet meer in bronnen"
+          }
+        },
+        "Release": {
+          "label": {
+            "en": "Release",
+            "fr": "Version",
+            "nl": "Release"
+          }
+        },
+        "Message": {
+          "label": {
+            "en": "Message",
+            "fr": "Message",
+            "nl": "Bericht"
+          }
+        }
+      }
+    }
+  }
+}

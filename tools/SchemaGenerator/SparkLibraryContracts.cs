@@ -28,6 +28,9 @@ public static class SparkLibraryContracts
         typeof(TranslatedString).Assembly,       // MintPlayer.Spark.Model
         typeof(SparkContractGenerator).Assembly, // MintPlayer.Spark
         typeof(SparkAuthUser).Assembly,          // MintPlayer.Spark.Authorization
+        typeof(MintPlayer.Spark.ReferenceData.Contracts.SuggestResponse).Assembly, // MintPlayer.Spark.ReferenceData.Abstractions
+        typeof(MintPlayer.Spark.Commerce.Contracts.CommerceListingInfo).Assembly, // MintPlayer.Spark.Commerce
+        typeof(MintPlayer.Spark.Commerce.Payments.Contracts.SparkPaymentMethod).Assembly, // MintPlayer.Spark.Commerce.Payments
     ];
 
     /// <summary>Every library module, generated in memory.</summary>

@@ -1,0 +1,23 @@
+{
+  "_fixture": {
+    "source": "https://docs.mollie.com/reference/list-settlement-refunds (response example: refund objects with settlementAmount)",
+    "derived": "public documentation example; one refund, ids and amounts adapted to the other fixtures",
+    "recorded": false
+  },
+  "count": 1,
+  "_embedded": {
+    "refunds": [
+      {
+        "resource": "refund",
+        "id": "re_4qqhO89gsT",
+        "amount": { "value": "25.00", "currency": "EUR" },
+        "settlementAmount": { "value": "-25.00", "currency": "EUR" },
+        "status": "refunded",
+        "description": "credit-notes/1",
+        "createdAt": "2026-10-14T11:00:00+00:00",
+        "paymentId": "tr_WDqYK6vllg"
+      }
+    ]
+  },
+  "_links": { "next": null }
+}

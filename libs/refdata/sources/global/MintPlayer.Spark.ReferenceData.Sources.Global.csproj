@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+
+		<!-- NuGet Package Metadata -->
+		<PackageId>MintPlayer.Spark.ReferenceData.Sources.Global</PackageId>
+		<Version>11.0.0-preview.1</Version>
+		<Authors>MintPlayer</Authors>
+		<Company>MintPlayer</Company>
+		<Description>The global reference-data baseline (docs/reference_data_PRD.md §4.4, §4.13): GeoNames first-level units with their per-feature time zones, Wikidata labels and ISO 3166-2 codes, Unicode CLDR time-zone exemplar cities, the tz database's zone list, and baseline country profiles (NL, FR, LU, DE) with their VAT territories.</Description>
+		<PackageTags>reference-data;geonames;wikidata;cldr;time-zones;spark</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="README.md" Pack="true" PackagePath="\" />
+		<EmbeddedResource Include="Fixtures\**\*" LogicalName="Fixtures/%(RecursiveDir)%(Filename)%(Extension)" WithCulture="false" />
+		<EmbeddedResource Include="Ledger\*.ndjson" LogicalName="Ledger/%(Filename)%(Extension)" WithCulture="false" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\..\core\MintPlayer.Spark.ReferenceData.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<InternalsVisibleTo Include="ReferenceData.Tests" />
+	</ItemGroup>
+
+</Project>

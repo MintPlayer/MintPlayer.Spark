@@ -1,0 +1,124 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "PlatformFeeEntry, one line of the platform-fee ledger (GB4): application fees, fee refunds, dispute debits.",
+    "Append-only: natural ids, only QueryRead granted.",
+    "",
+    "HAND-AUTHORED. Ids are UUIDv5 of 'commerce-payments:PlatformFeeEntry[...]', written by 'npm run stamp:library-model-ids'."
+  ],
+  "persistentObject": {
+    "id": "84a915b4-9a7e-55cd-96f1-5943ae54c780",
+    "name": "PlatformFeeEntry",
+    "clrType": "MintPlayer.Spark.Commerce.Payments.Models.PlatformFeeEntry",
+    "alias": "platform-fee-entry",
+    "breadcrumb": "{Kind} {SourceId}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "b3afd709-56c2-533e-8cba-7cf0b3c4911a",
+        "name": "Kind",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "d2a1ab20-73ea-57b6-ae41-d3c2f0d6a849",
+        "name": "Amount",
+        "dataType": "Money",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "de2fa168-905a-5cf6-9bc9-f17efd00aeb0",
+        "name": "SellerOrganizationId",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "56818324-081c-58a0-aadc-d86b15a75709",
+        "name": "Provider",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "4779ec8e-d0f8-57bb-96fa-891b5edba372",
+        "name": "SourceId",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "55072e34-c49f-5480-8447-a991f5c49bd4",
+        "name": "Reference",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "b2c66eb8-2a19-5d45-a687-331e504efae6",
+        "name": "OccurredAtUtc",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "9ea4da9f-6a3e-52f9-8f8a-0f62f1923f2f",
+        "name": "RecordedAtUtc",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      }
+    ]
+  },
+  "queries": [
+    {
+      "id": "db95c19d-236c-53cf-8693-43a8ad97bd20",
+      "name": "PlatformFeeLedger",
+      "source": "Custom.PlatformFeeLedger",
+      "alias": "platform-fee-ledger",
+      "sortColumns": [
+        {
+          "property": "OccurredAtUtc",
+          "direction": "desc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "PlatformFeeEntry"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "_fixture": {
+    "source": "https://docs.mollie.com/reference/list-settlement-chargebacks (response example)",
+    "derived": "public documentation example; empty list",
+    "recorded": false
+  },
+  "count": 0,
+  "_embedded": { "chargebacks": [] },
+  "_links": { "next": null }
+}

@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<OutputType>Library</OutputType>
+
+		<!-- NuGet Package Metadata -->
+		<PackageId>MintPlayer.Spark.ReferenceData.Client</PackageId>
+		<Version>11.0.0-preview.1</Version>
+		<Authors>MintPlayer</Authors>
+		<Company>MintPlayer</Company>
+		<Description>The reference-data consumer for MintPlayer.Spark (docs/reference_data_PRD.md §4.15): release sync into local read-only copies, a typed /api/v1 client, Address behaviour (validation and rendered lines from the country profile, free-text mode), the house-number validator hook with the BeST implementation, and the ISparkTimeZoneNameProvider that names time zones with CLDR exemplar cities (D36).</Description>
+		<PackageTags>reference-data;addresses;typeahead;time-zones;ravendb;spark</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="README.md" Pack="true" PackagePath="\" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="MintPlayer.SourceGenerators" Version="13.0.0">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="13.0.0" GeneratePathProperty="true" />
+		<PackageReference Include="RavenDB.Client" Version="7.2.6" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- Coupling rule (PRD §4.1): the client never references the instance package. -->
+		<ProjectReference Include="..\abstractions\MintPlayer.Spark.ReferenceData.Abstractions.csproj" />
+		<ProjectReference Include="..\..\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
+		<!-- The release sync schedule (RD6: the same RD1 mechanism, pointed at the instance's manifest). -->
+		<ProjectReference Include="..\..\cron\MintPlayer.Spark.Cron\MintPlayer.Spark.Cron.csproj" />
+		<ProjectReference Include="..\..\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<InternalsVisibleTo Include="ReferenceData.Tests" />
+	</ItemGroup>
+
+</Project>

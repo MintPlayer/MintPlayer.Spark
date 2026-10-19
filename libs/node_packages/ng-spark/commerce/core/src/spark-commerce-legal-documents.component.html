@@ -1,0 +1,12 @@
+@for (doc of documents(); track doc.id) {
+  <article class="spark-commerce-legal-document">
+    <h2>{{ doc.title | resolveTranslation: (('commerce.legal.kind.' + doc.kind) | t) }}</h2>
+    <p class="spark-commerce-legal-version">
+      {{ versionText(doc) }}
+      @if (doc.hasPdf) {
+        <a [href]="commerce.legalDocumentPdfUrl(doc.id)" target="_blank" rel="noopener">{{ 'commerce.legal.pdf' | t }}</a>
+      }
+    </p>
+    <div class="spark-commerce-legal-body">{{ doc.body | resolveTranslation }}</div>
+  </article>
+}

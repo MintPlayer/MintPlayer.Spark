@@ -159,6 +159,11 @@ public class SparkDiscoveryGenerator : IncrementalGenerator
         {
             var display = iface.ToDisplayString();
 
+            // An open generic or a private nested class cannot be named in the generated registrations (found by the
+            // reference-data source-check job, a private nested generic ISparkCronJob registered by hand).
+            if (!nameable && (display == CustomAction || display == CronJob || display == ReferencedMigrationsReader.MigrationInterfaceMetadataName))
+                continue;
+
             if (display == CustomAction)
             {
                 result.Add(new DiscoveredRegistration { Kind = DiscoveryKind.CustomAction, TypeName = typeName });

@@ -1,0 +1,324 @@
+{
+  "$schema": "../../../../schemas/translations.schema.json",
+  "commercePayments": {
+    "confirm": {
+      "en": "Confirm",
+      "fr": "Confirmer",
+      "nl": "Bevestigen"
+    },
+    "disputeAccepted": {
+      "en": "The dispute is closed as lost.",
+      "fr": "Le litige est clôturé comme perdu.",
+      "nl": "Het geschil is afgesloten als verloren."
+    },
+    "disputeClosed": {
+      "en": "This dispute is closed or already under review.",
+      "fr": "Ce litige est clôturé ou déjà en examen.",
+      "nl": "Dit geschil is afgesloten of wordt al beoordeeld."
+    },
+    "evidenceManualOnly": {
+      "en": "This provider takes evidence in its dashboard only: download the evidence pack and upload it there.",
+      "fr": "Ce prestataire n'accepte les preuves que dans son tableau de bord : téléchargez le dossier de preuves et chargez-le là-bas.",
+      "nl": "Deze provider aanvaardt bewijs alleen in zijn dashboard: download het bewijsdossier en laad het daar op."
+    },
+    "evidenceSubmitted": {
+      "en": "The evidence was submitted.",
+      "fr": "Les preuves ont été transmises.",
+      "nl": "Het bewijs is ingediend."
+    },
+    "noAuthorization": {
+      "en": "This payment method cannot authorize first and capture later.",
+      "fr": "Ce moyen de paiement ne permet pas d'autoriser puis de capturer.",
+      "nl": "Deze betaalmethode kan niet eerst autoriseren en later innen."
+    },
+    "noConnect": {
+      "en": "This payment provider cannot link seller accounts.",
+      "fr": "Ce prestataire de paiement ne peut pas lier de comptes vendeurs.",
+      "nl": "Deze betaalprovider kan geen verkopersaccounts koppelen."
+    },
+    "notConnectedMode": {
+      "en": "Sellers do not link their own payment accounts on this platform.",
+      "fr": "Les vendeurs ne lient pas leurs propres comptes de paiement sur cette plateforme.",
+      "nl": "Verkopers koppelen op dit platform geen eigen betaalaccounts."
+    },
+    "noteRequired": {
+      "en": "A note is required.",
+      "fr": "Une note est requise.",
+      "nl": "Een notitie is verplicht."
+    },
+    "notPaid": {
+      "en": "Only a paid payment can be refunded.",
+      "fr": "Seul un paiement payé peut être remboursé.",
+      "nl": "Alleen een betaalde betaling kan worden terugbetaald."
+    },
+    "refundExceedsPayment": {
+      "en": "The refunds would exceed the payment.",
+      "fr": "Les remboursements dépasseraient le paiement.",
+      "nl": "De terugbetalingen zouden de betaling overschrijden."
+    },
+    "resolvedNotice": {
+      "en": "{0} resolved.",
+      "fr": "{0} résolu(s).",
+      "nl": "{0} opgelost."
+    },
+    "resolveTitle": {
+      "en": "How was this resolved?",
+      "fr": "Comment cela a-t-il été résolu ?",
+      "nl": "Hoe werd dit opgelost?"
+    },
+    "sellerNotLinked": {
+      "en": "The seller has not linked a payment account yet.",
+      "fr": "Le vendeur n'a pas encore lié de compte de paiement.",
+      "nl": "De verkoper heeft nog geen betaalaccount gekoppeld."
+    },
+    "sellerNotVerified": {
+      "en": "The seller's payment account is not verified yet.",
+      "fr": "Le compte de paiement du vendeur n'est pas encore vérifié.",
+      "nl": "Het betaalaccount van de verkoper is nog niet geverifieerd."
+    },
+    "splitNeedsConnectedSellers": {
+      "en": "A payment can only be split between connected sellers.",
+      "fr": "Un paiement ne peut être réparti qu'entre vendeurs connectés.",
+      "nl": "Een betaling kan alleen tussen gekoppelde verkopers worden verdeeld."
+    },
+    "splitUnsupported": {
+      "en": "This payment method cannot be split between sellers.",
+      "fr": "Ce moyen de paiement ne peut pas être réparti entre vendeurs.",
+      "nl": "Deze betaalmethode kan niet tussen verkopers worden verdeeld."
+    },
+    "unknownMethod": {
+      "en": "This payment method is not available.",
+      "fr": "Ce moyen de paiement n'est pas disponible.",
+      "nl": "Deze betaalmethode is niet beschikbaar."
+    },
+    "connectStart": {
+      "en": "Link payment account",
+      "fr": "Lier le compte de paiement",
+      "nl": "Betaalaccount koppelen"
+    },
+    "connectPending": {
+      "en": "Verification in progress",
+      "fr": "Vérification en cours",
+      "nl": "Verificatie bezig"
+    },
+    "connectVerified": {
+      "en": "Verified",
+      "fr": "Vérifié",
+      "nl": "Geverifieerd"
+    },
+    "connectRejected": {
+      "en": "Rejected by the provider",
+      "fr": "Refusé par le prestataire",
+      "nl": "Geweigerd door de provider"
+    },
+    "connectNotStarted": {
+      "en": "No payment account linked",
+      "fr": "Aucun compte de paiement lié",
+      "nl": "Geen betaalaccount gekoppeld"
+    },
+    "connectRequirements": {
+      "en": "The provider still needs:",
+      "fr": "Le prestataire attend encore :",
+      "nl": "De provider heeft nog nodig:"
+    },
+    "downloadEvidence": {
+      "en": "Download evidence pack",
+      "fr": "Télécharger le dossier de preuves",
+      "nl": "Bewijsdossier downloaden"
+    },
+    "method": {
+      "card": {
+        "en": "Card",
+        "fr": "Carte",
+        "nl": "Kaart"
+      },
+      "ideal": {
+        "en": "iDEAL",
+        "fr": "iDEAL",
+        "nl": "iDEAL"
+      },
+      "bancontact": {
+        "en": "Bancontact",
+        "fr": "Bancontact",
+        "nl": "Bancontact"
+      },
+      "kbc": {
+        "en": "KBC/CBC Payment Button",
+        "fr": "Bouton de paiement KBC/CBC",
+        "nl": "KBC/CBC-betaalknop"
+      },
+      "belfius": {
+        "en": "Belfius Pay Button",
+        "fr": "Bouton de paiement Belfius",
+        "nl": "Belfius-betaalknop"
+      },
+      "paypal": {
+        "en": "PayPal",
+        "fr": "PayPal",
+        "nl": "PayPal"
+      },
+      "klarna": {
+        "en": "Klarna",
+        "fr": "Klarna",
+        "nl": "Klarna"
+      },
+      "banktransfer": {
+        "en": "Bank transfer",
+        "fr": "Virement bancaire",
+        "nl": "Overschrijving"
+      },
+      "sepadebit": {
+        "en": "SEPA Direct Debit",
+        "fr": "Prélèvement SEPA",
+        "nl": "SEPA-domiciliëring"
+      },
+      "applepay": {
+        "en": "Apple Pay",
+        "fr": "Apple Pay",
+        "nl": "Apple Pay"
+      },
+      "test": {
+        "en": "Test payment",
+        "fr": "Paiement de test",
+        "nl": "Testbetaling"
+      }
+    }
+  },
+  "actions": {
+    "PaymentDisputeSubmitEvidence": {
+      "label": {
+        "en": "Submit evidence",
+        "fr": "Transmettre les preuves",
+        "nl": "Bewijs indienen"
+      },
+      "confirmation": {
+        "en": "Submit the evidence pack to the provider now? It can be submitted once.",
+        "fr": "Transmettre maintenant le dossier de preuves au prestataire ? Il ne peut être transmis qu'une fois.",
+        "nl": "Het bewijsdossier nu bij de provider indienen? Dat kan maar één keer."
+      }
+    },
+    "PaymentDisputeAccept": {
+      "label": {
+        "en": "Accept as lost",
+        "fr": "Accepter comme perdu",
+        "nl": "Aanvaarden als verloren"
+      },
+      "confirmation": {
+        "en": "Accept this dispute as lost? The order's units are released and a credit note follows.",
+        "fr": "Accepter ce litige comme perdu ? Les unités de la commande sont libérées et une note de crédit suit.",
+        "nl": "Dit geschil aanvaarden als verloren? De eenheden van de bestelling komen vrij en er volgt een creditnota."
+      }
+    },
+    "PaymentReconciliationResolve": {
+      "label": {
+        "en": "Resolve",
+        "fr": "Résoudre",
+        "nl": "Oplossen"
+      }
+    }
+  },
+  "queries": {
+    "ProviderPayments": {
+      "label": {
+        "en": "Payments",
+        "fr": "Paiements",
+        "nl": "Betalingen"
+      }
+    },
+    "SellerPaymentAccounts": {
+      "label": {
+        "en": "Payment accounts",
+        "fr": "Comptes de paiement",
+        "nl": "Betaalaccounts"
+      }
+    },
+    "PaymentDisputes": {
+      "label": {
+        "en": "Disputes",
+        "fr": "Litiges",
+        "nl": "Geschillen"
+      }
+    },
+    "PlatformFeeLedger": {
+      "label": {
+        "en": "Platform fee ledger",
+        "fr": "Registre des frais de plateforme",
+        "nl": "Grootboek platformkosten"
+      }
+    },
+    "SettlementLines": {
+      "label": {
+        "en": "Settlement lines",
+        "fr": "Lignes de règlement",
+        "nl": "Uitbetalingsregels"
+      }
+    },
+    "ReconciliationQueue": {
+      "label": {
+        "en": "Reconciliation queue",
+        "fr": "File de rapprochement",
+        "nl": "Afstemmingswachtrij"
+      }
+    }
+  },
+  "model": {
+    "ProviderPayment": {
+      "label": {
+        "en": "Payment",
+        "fr": "Paiement",
+        "nl": "Betaling"
+      }
+    },
+    "SellerPaymentAccount": {
+      "label": {
+        "en": "Payment account",
+        "fr": "Compte de paiement",
+        "nl": "Betaalaccount"
+      }
+    },
+    "PaymentDispute": {
+      "label": {
+        "en": "Dispute",
+        "fr": "Litige",
+        "nl": "Geschil"
+      }
+    },
+    "PlatformFeeEntry": {
+      "label": {
+        "en": "Fee ledger entry",
+        "fr": "Écriture de frais",
+        "nl": "Kostenboeking"
+      }
+    },
+    "SettlementLine": {
+      "label": {
+        "en": "Settlement line",
+        "fr": "Ligne de règlement",
+        "nl": "Uitbetalingsregel"
+      }
+    },
+    "ReconciliationItem": {
+      "label": {
+        "en": "Reconciliation item",
+        "fr": "Élément de rapprochement",
+        "nl": "Afstemmingsitem"
+      }
+    },
+    "ReconciliationNote": {
+      "label": {
+        "en": "Resolution",
+        "fr": "Résolution",
+        "nl": "Oplossing"
+      },
+      "attributes": {
+        "Note": {
+          "label": {
+            "en": "Note",
+            "fr": "Note",
+            "nl": "Notitie"
+          }
+        }
+      }
+    }
+  }
+}

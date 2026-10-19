@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using MintPlayer.Spark.Claims;
 using MintPlayer.Spark.Commerce.Inventory;
 using MintPlayer.Spark.Testing;
 using Raven.Client.Documents;
@@ -118,8 +119,8 @@ public class EngineCorrectnessSpikeTests(ITestOutputHelper output) : SparkTestDr
 
         foreach (var quotaId in quotaIds)
         {
-            var quota = await session.LoadAsync<Quota>(quotaId);
-            var shards = (await session.LoadAsync<QuotaShard>(Enumerable.Range(0, quota.ShardCount).Select(k => InventoryEngine.ShardId(quotaId, k)))).Values.ToList();
+            var quota = await session.LoadAsync<InventoryQuota>(quotaId);
+            var shards = (await session.LoadAsync<InventoryQuotaShard>(Enumerable.Range(0, quota.ShardCount).Select(k => InventoryEngine.ShardId(quotaId, k)))).Values.ToList();
             shards.Sum(s => s!.CapacityShare).Should().Be(quota.Capacity);
             foreach (var shard in shards)
             {
@@ -142,18 +143,18 @@ public class EngineCorrectnessSpikeTests(ITestOutputHelper output) : SparkTestDr
 
         // Seats: a seat is held or sold by at most one claim, and that claim says so.
         var operations = Store.Operations;
-        var unitValues = await operations.SendAsync(new GetCompareExchangeValuesOperation<UnitHold>(seats.Select(InventoryEngine.UnitKey).ToArray()));
+        var unitValues = await operations.SendAsync(new GetCompareExchangeValuesOperation<SparkClaimHold>(seats.Select(InventoryEngine.UnitKey).ToArray()));
         foreach (var (key, value) in unitValues)
         {
             if (value?.Value is null) continue;
-            claims.TryGetValue(value.Value.ClaimId, out var owner).Should().BeTrue($"{key} names unknown claim {value.Value.ClaimId}");
+            claims.TryGetValue(value.Value.Owner, out var owner).Should().BeTrue($"{key} names unknown claim {value.Value.Owner}");
             owner!.Units.Select(InventoryEngine.UnitKey).Should().Contain(key);
             owner.State.Should().NotBe(ClaimState.Released, $"{key} still held by released claim {owner.Id}");
-            if (owner.State == ClaimState.Converted) value.Value.ExpiresAt.HasValue.Should().BeFalse($"{key} sold but still expiring");
+            if (owner.State == ClaimState.Converted) value.Value.ExpiresAtUtc.HasValue.Should().BeFalse($"{key} sold but still expiring");
         }
         foreach (var claim in claims.Values.Where(c => c.State == ClaimState.Converted))
             foreach (var unit in claim.Units)
-                unitValues[InventoryEngine.UnitKey(unit)].Value!.ClaimId.Should().Be(claim.Id, $"sold seat {unit} taken over");
+                unitValues[InventoryEngine.UnitKey(unit)].Value!.Owner.Should().Be(claim.Id, $"sold seat {unit} taken over");
         var soldSeats = claims.Values.Where(c => c.State == ClaimState.Converted).SelectMany(c => c.Units).ToList();
         soldSeats.Should().OnlyHaveUniqueItems();
 

@@ -1,0 +1,87 @@
+LVL_REFNIS|CD_REFNIS|CD_SUP_REFNIS|TX_REFNIS_DE|TX_REFNIS_FR|TX_REFNIS_NL|DT_VLDT_START|DT_VLDT_END
+1|02000|-|Flämische Region|Région flamande|Vlaams Gewest|01/01/1970|31/12/9999
+1|03000|-|Wallonische Region|Région wallonne|Waals Gewest|01/01/1970|31/12/9999
+1|04000|-|Region Brüssel-Hauptstadt|Région de Bruxelles-Capitale|Brussels Hoofdstedelijk Gewest|01/01/1970|31/12/9999
+2|10000|02000|Provinz Antwerpen|Province d’Anvers|Provincie Antwerpen|01/01/1970|31/12/9999
+2|20000|-|Provinz Brabant|Province de Brabant|Provincie Brabant|01/01/1970|31/12/1994
+2|20001|02000|Provinz Flämisch-Brabant|Province du Brabant flamand|Provincie Vlaams-Brabant|01/01/1995|31/12/9999
+2|20002|03000|Provinz Wallonisch-Brabant|Province du Brabant wallon|Provincie Waals-Brabant|01/01/1995|31/12/9999
+2|30000|02000|Provinz Westflandern|Province de Flandre occidentale|Provincie West-Vlaanderen|01/01/1970|31/12/9999
+2|40000|02000|Provinz Ostflandern|Province de Flandre orientale|Provincie Oost-Vlaanderen|01/01/1970|31/12/9999
+2|50000|03000|Provinz Hennegau|Province du Hainaut|Provincie Henegouwen|01/01/1970|31/12/9999
+2|60000|03000|Provinz Lüttich|Province de Liège|Provincie Luik|01/01/1970|31/12/9999
+2|70000|02000|Provinz Limburg|Province du Limbourg|Provincie Limburg|01/01/1970|31/12/9999
+2|80000|03000|Provinz Luxemburg|Province du Luxembourg|Provincie Luxemburg|01/01/1970|31/12/9999
+2|90000|03000|Provinz Namur|Province de Namur|Provincie Namen|01/01/1970|31/12/9999
+3|11000|10000|Bezirk Antwerpen|Arrondissement d’Anvers|Arrondissement Antwerpen|01/01/1970|31/12/9999
+3|21000|04000|Bezirk Brüssel-Hauptstadt|Arrondissement de Bruxelles-Capitale|Arrondissement Brussel-Hoofdstad|01/01/1970|31/12/9999
+3|44000|40000|Bezirk Gent|Arrondissement de Gand|Arrondissement Gent|01/01/1970|31/12/9999
+3|45000|40000|Bezirk Oudenaarde|Arrondissement d’Audenarde|Arrondissement Oudenaarde|01/01/1970|31/12/9999
+3|46000|40000|Bezirk Sint-Niklaas|Arrondissement de Saint-Nicolas|Arrondissement Sint-Niklaas|01/01/1970|31/12/9999
+3|55000|50000|Bezirk Soignies|Arrondissement de Soignies|Arrondissement Zinnik|01/01/1970|31/12/9999
+3|58000|50000|Bezirk La Louvière|Arrondissement de La Louvière|Arrondissement La Louvière|01/01/2019|31/12/9999
+3|71000|70000|Bezirk Hasselt|Arrondissement de Hasselt|Arrondissement Hasselt|01/01/1970|31/12/9999
+3|73000|70000|Bezirk Tongeren|Arrondissement de Tongres|Arrondissement Tongeren|01/01/1970|31/12/9999
+3|82000|80000|Bezirk Bastogne|Arrondissement de Bastogne|Arrondissement Bastenaken|01/01/1970|31/12/9999
+3|92000|90000|Bezirk Namur|Arrondissement de Namur|Arrondissement Namen|01/01/1970|31/12/9999
+4|11002|11000|Antwerpen|Anvers|Antwerpen|01/01/1970|31/12/9999
+4|11007|11000|Borsbeek|Borsbeek|Borsbeek|01/01/1970|31/12/2024
+4|11056|11000|Zwijndrecht|Zwijndrecht|Zwijndrecht|01/01/1970|31/12/2024
+4|21004|21000|Brüssel|Bruxelles|Brussel|01/01/1970|31/12/9999
+4|44002|44000|Afsnee|Afsnee|Afsnee|01/01/1970|31/12/1976
+4|44017|44000|Drongen|Tronchiennes|Drongen|01/01/1970|31/12/1976
+4|44021|44000|Gent|Gand|Gent|01/01/1970|31/12/9999
+4|44022|44000|Gentbrugge|Gentbrugge|Gentbrugge|01/01/1970|31/12/1976
+4|44032|44000|Ledeberg|Ledeberg|Ledeberg|01/01/1970|31/12/1976
+4|44038|44000|Mariakerke|Mariakerke|Mariakerke|01/01/1970|31/12/1976
+4|44051|44000|Oostakker|Oostakker|Oostakker|01/01/1970|31/12/1976
+4|44061|44000|Sint-Amandsberg|Sint-Amandsberg|Sint-Amandsberg|01/01/1970|31/12/1976
+4|44062|44000|Sint-Denijs-Westrem|Sint-Denijs-Westrem|Sint-Denijs-Westrem|01/01/1970|31/12/1976
+4|44074|44000|Wondelgem|Wondelgem|Wondelgem|01/01/1970|31/12/1976
+4|44082|44000|Zwijnaarde|Zwijnaarde|Zwijnaarde|01/01/1970|31/12/1976
+4|45015|45000|Huise|Huise|Huise|01/01/1970|31/12/1976
+4|45017|45000|Kruishoutem|Kruishoutem|Kruishoutem|01/01/1970|31/12/2018
+4|45026|45000|Mullem|Mullem|Mullem|01/01/1970|31/12/1976
+4|45031|45000|Nokere|Nokere|Nokere|01/01/1970|31/12/1976
+4|45033|45000|Ooike|Ooike|Ooike|01/01/1970|31/12/1976
+4|45035|45000|Oudenaarde|Audenarde|Oudenaarde|01/01/1970|31/12/9999
+4|45036|45000|Ouwegem|Ouwegem|Ouwegem|01/01/1970|31/12/1976
+4|45053|45000|Wannegem-Lede|Wannegem-Lede|Wannegem-Lede|01/01/1970|31/12/1976
+4|45057|45000|Zingem|Zingem|Zingem|01/01/1970|31/12/2018
+4|45061|45000|Wortegem-Petegem|Wortegem-Petegem|Wortegem-Petegem|01/01/1970|31/12/9999
+4|45068|45000|Kruisem|Kruisem|Kruisem|01/01/2019|31/12/9999
+4|46001|46000|Bazel|Bazel|Bazel|01/01/1970|31/12/1976
+4|46003|46000|Beveren (Sint-Niklaas)|Beveren (Saint-Nicolas)|Beveren (Sint-Niklaas)|01/01/1970|31/12/2024
+4|46006|46000|Doel|Doel|Doel|01/01/1970|31/12/1976
+4|46009|46000|Haasdonk|Haasdonk|Haasdonk|01/01/1970|31/12/1976
+4|46010|46000|Kallo|Kallo|Kallo|01/01/1970|31/12/1976
+4|46012|46000|Kieldrecht|Kieldrecht|Kieldrecht|01/01/1970|31/12/1976
+4|46013|46000|Kruibeke|Kruibeke|Kruibeke|01/01/1970|31/12/2024
+4|46016|46000|Melsele|Melsele|Melsele|01/01/1970|31/12/1976
+4|46018|46000|Rupelmonde|Rupelmonde|Rupelmonde|01/01/1970|31/12/1976
+4|46027|46000|Verrebroek|Verrebroek|Verrebroek|01/01/1970|31/12/1976
+4|46028|46000|Vrasene|Vrasene|Vrasene|01/01/1970|31/12/1976
+4|46030|46000|Beveren-Kruibeke-Zwijndrecht|Beveren-Kruibeke-Zwijndrecht|Beveren-Kruibeke-Zwijndrecht|01/01/2025|31/12/9999
+4|55022|55000|La Louvière|La Louvière|La Louvière|01/01/1970|31/12/2018
+4|58001|58000|La Louvière|La Louvière|La Louvière|01/01/2019|31/12/9999
+4|71022|71000|Hasselt|Hasselt|Hasselt|01/01/1970|31/12/2024
+4|71028|71000|Kermt|Kermt|Kermt|01/01/1970|31/12/1976
+4|71032|71000|Kuringen|Kuringen|Kuringen|01/01/1970|31/12/1976
+4|71052|71000|Sint-Lambrechts-Herk|Sint-Lambrechts-Herk|Sint-Lambrechts-Herk|01/01/1970|31/12/1976
+4|71055|71000|Stevoort|Stevoort|Stevoort|01/01/1970|31/12/1976
+4|71062|71000|Wimmertingen|Wimmertingen|Wimmertingen|01/01/1970|31/12/1976
+4|71072|71000|Hasselt|Hasselt|Hasselt|01/01/2025|31/12/9999
+4|73040|73000|Kortessem|Kortessem|Kortessem|01/01/1970|31/12/2024
+4|82003|82000|Bastnach|Bastogne|Bastenaken|01/01/1970|30/11/2024
+4|82005|82000|Bertogne|Bertogne|Bertogne|01/01/1970|30/11/2024
+4|82017|82000|Longvilly|Longvilly|Longvilly|01/01/1970|31/12/1976
+4|82024|82000|Noville|Noville|Noville|01/01/1970|31/12/1976
+4|82033|82000|Villers-la-Bonne-Eau|Villers-la-Bonne-Eau|Villers-la-Bonne-Eau|01/01/1970|31/12/1976
+4|82034|82000|Wardin|Wardin|Wardin|01/01/1970|31/12/1976
+4|82039|82000|Bastogne|Bastogne|Bastenaken|01/12/2024|31/12/9999
+4|92005|92000|Arsimont|Arsimont|Arsimont|01/01/1970|31/12/1976
+4|92007|92000|Auvelais|Auvelais|Auvelais|01/01/1970|31/12/1976
+4|92041|92000|Falisolle|Falisolle|Falisolle|01/01/1970|31/12/1976
+4|92121|92000|Tamines|Tamines|Tamines|01/01/1970|31/12/1976
+4|92137|92000|Sambreville|Sambreville|Sambreville|01/01/1979|31/12/9999
+4|92137|92000|Basse-Sambre|Basse-Sambre|Basse-Sambre|01/01/1977|31/12/1978

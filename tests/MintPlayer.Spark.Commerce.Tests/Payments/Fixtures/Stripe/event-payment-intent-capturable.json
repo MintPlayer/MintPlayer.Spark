@@ -1,0 +1,25 @@
+{
+  "_fixture": {
+    "source": "https://docs.stripe.com/api/events/types#event_types-payment_intent.amount_capturable_updated and https://docs.stripe.com/api/payment_intents/object",
+    "derived": "Event envelope + PaymentIntent object (status requires_capture, capture_method manual); ids adapted",
+    "recorded": false
+  },
+  "id": "evt_1Capturable",
+  "object": "event",
+  "created": 1792400650,
+  "type": "payment_intent.amount_capturable_updated",
+  "data": {
+    "object": {
+      "id": "pi_3Qtest888",
+      "object": "payment_intent",
+      "amount": 2000,
+      "amount_capturable": 2000,
+      "capture_method": "manual",
+      "created": 1792400600,
+      "currency": "eur",
+      "latest_charge": "ch_3Qtest888",
+      "metadata": { "spark_reference": "orders/888" },
+      "status": "requires_capture"
+    }
+  }
+}

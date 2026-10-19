@@ -1,0 +1,18 @@
+{
+  "_fixture": {
+    "source": "https://docs.mollie.com/reference/get-onboarding-status (response example; status values needs-data, in-review, completed)",
+    "derived": "public documentation example; name adapted",
+    "recorded": false
+  },
+  "resource": "onboarding",
+  "name": "Festival Seller BV",
+  "signedUpAt": "2026-10-01T12:00:00+00:00",
+  "status": "needs-data",
+  "canReceivePayments": false,
+  "canReceiveSettlements": false,
+  "_links": {
+    "self": { "href": "https://api.mollie.com/v2/onboarding/me", "type": "application/hal+json" },
+    "dashboard": { "href": "https://www.mollie.com/dashboard/onboarding", "type": "text/html" },
+    "organization": { "href": "https://api.mollie.com/v2/organization/org_12345", "type": "application/hal+json" }
+  }
+}

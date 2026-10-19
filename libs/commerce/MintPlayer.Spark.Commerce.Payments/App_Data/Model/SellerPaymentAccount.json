@@ -1,0 +1,148 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "SellerPaymentAccount, a seller's linked provider account and its KYC state (D5, D21).",
+    "Linked through POST /spark/commerce/payments/connect/start, never by a form. The encrypted OAuth tokens and the",
+    "pending onboarding state are never attributes.",
+    "",
+    "HAND-AUTHORED. Ids are UUIDv5 of 'commerce-payments:SellerPaymentAccount[...]', written by 'npm run stamp:library-model-ids'."
+  ],
+  "persistentObject": {
+    "id": "58257237-5f88-5ff9-ad4c-d8b6ef2b0359",
+    "name": "SellerPaymentAccount",
+    "clrType": "MintPlayer.Spark.Commerce.Payments.Models.SellerPaymentAccount",
+    "alias": "seller-payment-account",
+    "breadcrumb": "{Provider} {AccountId}",
+    "live": true,
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "384dacf5-977d-5a74-8845-cb7191409d94",
+        "name": "SellerOrganizationId",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "9378d376-1405-5957-84a9-f8197fde560f",
+        "name": "Provider",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "bed08719-fc1f-5a3c-8331-53db42cee0f9",
+        "name": "AccountId",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "ec2e8aac-3001-5636-ba63-cdfccdaf0f4e",
+        "name": "Kyc",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "f378c991-2a47-5287-876b-874e98ff2580",
+        "name": "ChargesEnabled",
+        "dataType": "boolean",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "efe84188-2d4a-58f8-9805-c9204dade446",
+        "name": "PayoutsEnabled",
+        "dataType": "boolean",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "2ab439cf-4d02-528a-af7b-95b7c895189b",
+        "name": "AccountName",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "7793ff9a-2bff-5c5e-b355-3797216596c4",
+        "name": "DisabledReason",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "09eea4dd-8bab-530c-bcfd-04b32b209f02",
+        "name": "LinkedAtUtc",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 9,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "d4770b94-d6b4-58a0-80fe-ffb2eb40d5aa",
+        "name": "UpdatedAtUtc",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 10,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      }
+    ]
+  },
+  "queries": [
+    {
+      "id": "70e85a64-39c4-5d0f-ac3c-2fc9ba02b3a3",
+      "name": "SellerPaymentAccounts",
+      "source": "Custom.SellerPaymentAccounts",
+      "alias": "seller-payment-accounts",
+      "sortColumns": [
+        {
+          "property": "UpdatedAtUtc",
+          "direction": "desc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "SellerPaymentAccount"
+    }
+  ]
+}

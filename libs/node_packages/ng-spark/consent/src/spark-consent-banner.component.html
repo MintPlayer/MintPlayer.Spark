@@ -1,0 +1,24 @@
+@if (consent.needsPrompt() || consent.settingsOpen()) {
+  <section class="spark-consent-banner" role="region" aria-labelledby="spark-consent-banner-title">
+    @if (consent.settingsOpen()) {
+      <spark-consent-settings source="banner" />
+    } @else {
+      <h2 id="spark-consent-banner-title" class="spark-consent-banner-title">{{ 'consent.banner.title' | t }}</h2>
+      <p class="spark-consent-banner-text">
+        {{ 'consent.banner.text' | t }}
+        @if (policyUrl() ?? consent.state()?.policyUrl; as url) {
+          <a [href]="url">{{ 'consent.policy' | t }}</a>
+        }
+      </p>
+      <div class="spark-consent-banner-actions">
+        <!-- Equal weight: the same class for both choices, in this order, with no default focus on either. -->
+        <button type="button" class="spark-consent-choice" data-choice="reject" [disabled]="busy()" (click)="rejectAll()">{{ 'consent.rejectAll' | t }}</button>
+        <button type="button" class="spark-consent-choice" data-choice="accept" [disabled]="busy()" (click)="acceptAll()">{{ 'consent.acceptAll' | t }}</button>
+        <button type="button" class="spark-consent-more" [disabled]="busy()" (click)="consent.openSettings()">{{ 'consent.choose' | t }}</button>
+      </div>
+    }
+    @if (error()) {
+      <p class="spark-consent-error" role="alert">{{ 'consent.error' | t }}</p>
+    }
+  </section>
+}

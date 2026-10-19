@@ -1,0 +1,16 @@
+<section class="spark-commerce-ranking">
+  <h2>{{ 'commerce.ranking.title' | t }}</h2>
+  @for (group of lists(); track group.list) {
+    <h3>{{ ('commerce.ranking.list.' + group.list) | t }}</h3>
+    <ol>
+      @for (p of group.items; track p.parameter) {
+        <li>
+          <strong>{{ p.parameter | t }}</strong>: {{ p.descriptionKey | t }}
+          @if (p.paidPlacement) {
+            <small class="spark-commerce-ranking-paid">{{ 'commerce.ranking.paid' | t }}</small>
+          }
+        </li>
+      }
+    </ol>
+  }
+</section>

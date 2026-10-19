@@ -39,6 +39,8 @@ export const APP_NAVIGATION_URLS = {
   CodeCoverage: ['!/api', '!/api/**', '!/badge', '!/badge/**', '!/health', '!/health/**'],
   // The crawler's page and the legal pages are the server's (Bot/, Legal/), never the cached index.html.
   SeoTester: ['!/bot', '!/privacy', '!/terms'],
+  // The public reference-data API (/api/v1) and the health check are the server's (docs/reference_data_PRD.md §4.16).
+  ReferenceData: ['!/api', '!/api/**', '!/health', '!/health/**'],
 };
 
 /** Every directory under apps/ named ClientApp that holds an Angular project.json. */
@@ -61,9 +63,9 @@ const appName = (clientApp) => path.relative(path.join(REPO, 'apps'), clientApp)
 
 const clientApps = findClientApps();
 
-test('finds the seven Spark apps', () => {
+test('finds the eight Spark apps', () => {
   const names = clientApps.map(appName);
-  for (const name of ['CodeCoverage', 'DemoApp', 'Fleet', 'HR', 'QnA', 'SeoTester', 'SparkId']) {
+  for (const name of ['CodeCoverage', 'DemoApp', 'Fleet', 'HR', 'QnA', 'ReferenceData', 'SeoTester', 'SparkId']) {
     assert.ok(names.includes(name), `no ClientApp found for ${name} (found: ${names.join(', ')})`);
   }
 });

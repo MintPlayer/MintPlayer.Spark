@@ -80,6 +80,9 @@ internal static class SparkAuthenticationExtensions
         builder.Services.TryAddScoped<MintPlayer.Spark.Abstractions.DateTimes.ISparkRecipientLocaleSource, SparkUserRecipientLocaleSource<TUser>>();
         // Commerce PRD X1: a guest's basket and queue entry move onto the account on every fresh sign-in.
         builder.Services.TryAddEnumerable(ServiceDescriptor.Scoped<ISparkSignedInHandler<TUser>, SparkVisitorSignedInHandler<TUser>>());
+        // Commerce PRD X21: consent records join the GDPR export and erasure (no-ops without spark.AddConsent()).
+        builder.Services.TryAddEnumerable(ServiceDescriptor.Scoped<ISparkPersonalDataContributor<TUser>, SparkConsentPersonalData<TUser>>());
+        builder.Services.TryAddEnumerable(ServiceDescriptor.Scoped<ISparkAccountDeletionHandler<TUser>, SparkConsentAccountDeletion<TUser>>());
         // Not TryAdd-ed by the framework, and the linker's expiry window is the one thing tests
         // need to move. Registered rather than reading DateTimeOffset.UtcNow inline so that
         // "the link expired" is testable without waiting an hour for it.

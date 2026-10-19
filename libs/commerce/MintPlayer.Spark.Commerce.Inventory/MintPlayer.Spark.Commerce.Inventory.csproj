@@ -1,18 +1,21 @@
-<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk.Web">
 
 	<PropertyGroup>
 		<TargetFramework>net11.0</TargetFramework>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
 		<OutputType>Library</OutputType>
+		<!-- The library's permanent alias (D31). It ships no App_Data layer: the engine's documents are no
+		     persistent-object types (S18, only cluster-wide sessions write them). -->
+		<SparkLibraryAlias>commerce-inventory</SparkLibraryAlias>
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.Commerce.Inventory</PackageId>
 		<Version>11.0.0-preview.1</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
-		<Description>The inventory engine of the MintPlayer.Spark commerce suite: sharded quotas, numbered units (seats), per-buyer limits and claims, held and released in one RavenDB cluster-wide transaction so nothing is ever oversold.</Description>
-		<PackageTags>commerce;inventory;ticketing;ravendb;spark</PackageTags>
+		<Description>The inventory engine of the MintPlayer.Spark commerce suite: sharded quotas with item mappings and bundle multipliers, numbered units (seats) with chain fill and pick-your-seat, per-buyer limits over linked identifiers, claims held, adjusted, converted, released and returned in one RavenDB cluster-wide transaction so nothing is ever oversold, a sweeper and live availability topics.</Description>
+		<PackageTags>commerce;inventory;ticketing;seating;ravendb;spark</PackageTags>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
 		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
@@ -26,6 +29,13 @@
 
 	<ItemGroup>
 		<PackageReference Include="RavenDB.Client" Version="7.2.6" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- The X12 claims unit of work (seats), live topics (X2), the model loader. -->
+		<ProjectReference Include="..\..\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
+		<!-- The sweeper. -->
+		<ProjectReference Include="..\..\cron\MintPlayer.Spark.Cron\MintPlayer.Spark.Cron.csproj" />
 	</ItemGroup>
 
 	<ItemGroup>

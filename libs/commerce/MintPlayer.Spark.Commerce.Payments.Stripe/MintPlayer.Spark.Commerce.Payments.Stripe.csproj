@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<OutputType>Library</OutputType>
+
+		<!-- NuGet Package Metadata -->
+		<PackageId>MintPlayer.Spark.Commerce.Payments.Stripe</PackageId>
+		<Version>11.0.0-preview.1</Version>
+		<Authors>MintPlayer</Authors>
+		<Company>MintPlayer</Company>
+		<Description>Stripe for the MintPlayer.Spark commerce suite: Checkout Sessions with an explicit expiry and active expiry for held flows, manual capture, refunds, signed webhooks (Stripe-Signature), Stripe Connect connected accounts with application fees and direct charges, disputes with evidence by API, and payouts with balance transactions for reconciliation. Written against Stripe's documented API.</Description>
+		<PackageTags>commerce;payments;stripe;connect;spark</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="README.md" Pack="true" PackagePath="\" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- IHttpClientFactory and the options binding come with the shared framework. -->
+		<FrameworkReference Include="Microsoft.AspNetCore.App" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\MintPlayer.Spark.Commerce.Payments\MintPlayer.Spark.Commerce.Payments.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<InternalsVisibleTo Include="MintPlayer.Spark.Commerce.Tests" />
+	</ItemGroup>
+
+</Project>

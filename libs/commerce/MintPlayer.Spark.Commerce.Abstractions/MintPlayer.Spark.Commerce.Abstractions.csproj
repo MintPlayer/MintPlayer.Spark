@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<OutputType>Library</OutputType>
+
+		<!-- NuGet Package Metadata -->
+		<PackageId>MintPlayer.Spark.Commerce.Abstractions</PackageId>
+		<Version>11.0.0-preview.1</Version>
+		<Authors>MintPlayer</Authors>
+		<Company>MintPlayer</Company>
+		<Description>Contracts of the MintPlayer.Spark commerce suite: the Spark:Commerce configuration (channels, bounds, fees, basket, sellers), the policy enums, the sellable-item and seller interfaces, IFinalPriceCalculator, the price history, legal documents, the money audit and the retention floors. Reference this from a commerce package or an app entity; the host references MintPlayer.Spark.Commerce.</Description>
+		<PackageTags>commerce;ticketing;webshop;marketplace;ravendb;spark</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="README.md" Pack="true" PackagePath="\" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- The price history and the money audit write inside the caller's RavenDB session. -->
+		<PackageReference Include="RavenDB.Client" Version="7.2.6" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- Money (X4) and TranslatedString (X17) come with it (MintPlayer.Spark.Model, namespace
+		     MintPlayer.Spark.Abstractions), as do [SparkDiscoverable] and ISparkConfigurationSection. No App_Data layer
+		     here: the persistent types live in MintPlayer.Spark.Commerce. -->
+		<ProjectReference Include="..\..\spark\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
+	</ItemGroup>
+
+</Project>

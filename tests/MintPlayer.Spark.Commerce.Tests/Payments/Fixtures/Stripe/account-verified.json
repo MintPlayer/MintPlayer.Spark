@@ -1,0 +1,15 @@
+{
+  "_fixture": {
+    "source": "https://docs.stripe.com/api/accounts/retrieve (response) and https://docs.stripe.com/api/accounts/object",
+    "derived": "Account object of a verified connected account; ids adapted",
+    "recorded": false
+  },
+  "id": "acct_1Seller",
+  "object": "account",
+  "business_profile": { "name": "Festival Seller BV" },
+  "charges_enabled": true,
+  "details_submitted": true,
+  "payouts_enabled": true,
+  "requirements": { "currently_due": [], "past_due": [], "disabled_reason": null },
+  "type": "standard"
+}

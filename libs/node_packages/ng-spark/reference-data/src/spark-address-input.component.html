@@ -1,0 +1,119 @@
+<div class="spark-address-input" [attr.id]="id">
+  <div class="spark-address-row">
+    <label class="spark-address-label" [attr.for]="id + '-country'">Country</label>
+    <select class="form-select" [id]="id + '-country'" [disabled]="disabled()"
+      (change)="setCountry($any($event.target).value)">
+      @for (choice of countries(); track choice.code) {
+        <option [value]="choice.code" [selected]="choice.code === country()">{{ choice.name }}</option>
+      }
+    </select>
+  </div>
+
+  @if (!freeText()) {
+    <div class="spark-address-row spark-address-combobox">
+      <label class="spark-address-label" [attr.for]="id + '-locality'">Postal code or place</label>
+      <input type="text" class="form-control" autocomplete="off" [id]="id + '-locality'" [disabled]="disabled()"
+        role="combobox" aria-autocomplete="list"
+        [attr.aria-expanded]="localityOpen()" [attr.aria-controls]="id + '-localities'"
+        [attr.aria-activedescendant]="localityActive() >= 0 ? id + '-locality-' + localityActive() : null"
+        [value]="localityText()"
+        (input)="onLocalityInput($any($event.target).value)"
+        (keydown)="onKey($event, 'locality')"
+        (blur)="close('locality')">
+      @if (localityOpen()) {
+        <ul class="spark-address-options" role="listbox" [id]="id + '-localities'">
+          @for (item of localities(); track item.type + item.label + $index; let i = $index) {
+            <li role="option" [id]="id + '-locality-' + i" [class.active]="i === localityActive()" [attr.aria-selected]="i === localityActive()"
+              (mousedown)="pickLocality(item)">
+              <span class="spark-address-option-label">{{ item.label }}</span>
+              @if (item.secondary) {
+                <small class="text-body-secondary ms-2">{{ item.secondary }}</small>
+              }
+              @if (item.status === 'ended') {
+                <small class="badge text-bg-warning ms-2">ended</small>
+              }
+            </li>
+          }
+        </ul>
+      }
+    </div>
+
+    <div class="spark-address-row spark-address-combobox">
+      <label class="spark-address-label" [attr.for]="id + '-street'">Street</label>
+      <input type="text" class="form-control" autocomplete="off" [id]="id + '-street'"
+        [disabled]="disabled() || (!value()?.MunicipalityId && !value()?.PostalCode)"
+        role="combobox" aria-autocomplete="list"
+        [attr.aria-expanded]="streetOpen()" [attr.aria-controls]="id + '-streets'"
+        [attr.aria-activedescendant]="streetActive() >= 0 ? id + '-street-' + streetActive() : null"
+        [value]="streetText()"
+        (input)="onStreetInput($any($event.target).value)"
+        (keydown)="onKey($event, 'street')"
+        (blur)="close('street')">
+      @if (streetOpen()) {
+        <ul class="spark-address-options" role="listbox" [id]="id + '-streets'">
+          @for (item of streets(); track item.id; let i = $index) {
+            <li role="option" [id]="id + '-street-' + i" [class.active]="i === streetActive()" [attr.aria-selected]="i === streetActive()"
+              (mousedown)="pickStreet(item)">
+              {{ item.label }}
+              @if (item.qualifier) {
+                <small class="text-body-secondary ms-2">{{ item.qualifier }}</small>
+              }
+            </li>
+          }
+        </ul>
+      }
+    </div>
+  } @else {
+    <div class="spark-address-row">
+      <label class="spark-address-label" [attr.for]="id + '-street-text'">Street</label>
+      <input type="text" class="form-control" [id]="id + '-street-text'" [disabled]="disabled()"
+        [value]="value()?.StreetName ?? ''" (input)="setField('StreetName', $any($event.target).value)">
+    </div>
+    <div class="spark-address-row spark-address-pair">
+      <div>
+        <label class="spark-address-label" [attr.for]="id + '-postal'">Postal code</label>
+        <input type="text" class="form-control" [id]="id + '-postal'" [disabled]="disabled()"
+          [value]="value()?.PostalCode ?? ''" (input)="setField('PostalCode', $any($event.target).value)">
+      </div>
+      <div>
+        <label class="spark-address-label" [attr.for]="id + '-place'">Place</label>
+        <input type="text" class="form-control" [id]="id + '-place'" [disabled]="disabled()"
+          [value]="value()?.LocalityName ?? ''" (input)="setField('LocalityName', $any($event.target).value)">
+      </div>
+    </div>
+  }
+
+  <div class="spark-address-row spark-address-pair">
+    <div>
+      <label class="spark-address-label" [attr.for]="id + '-number'">House number</label>
+      <input type="text" class="form-control" [id]="id + '-number'" [disabled]="disabled()"
+        [value]="value()?.HouseNumber ?? ''" (input)="setField('HouseNumber', $any($event.target).value)">
+    </div>
+    @if (hasBox()) {
+      <div>
+        <label class="spark-address-label" [attr.for]="id + '-box'">Box</label>
+        <input type="text" class="form-control" [id]="id + '-box'" [disabled]="disabled()"
+          [value]="value()?.Box ?? ''" (input)="setField('Box', $any($event.target).value)">
+      </div>
+    }
+  </div>
+
+  @if (enabled) {
+    <div class="form-check spark-address-row">
+      <input type="checkbox" class="form-check-input" [id]="id + '-free'" [checked]="freeText()" [disabled]="disabled()"
+        (change)="toggleFreeText($any($event.target).checked)">
+      <label class="form-check-label" [attr.for]="id + '-free'">My address is not listed (free text)</label>
+    </div>
+  }
+
+  @if (lines().length > 0) {
+    <div class="spark-address-preview" aria-live="polite">
+      @for (line of lines(); track $index) {
+        <div>{{ line }}</div>
+      }
+      @if (!value()?.Verified) {
+        <small class="badge text-bg-secondary">unverified</small>
+      }
+    </div>
+  }
+</div>

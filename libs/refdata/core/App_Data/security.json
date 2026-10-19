@@ -1,0 +1,21 @@
+{
+  "$schema": "../../../../schemas/security.schema.json",
+  "_comment": [
+    "The reference-data instance's rights, shipped as a library layer (docs/reference_data_PRD.md §4.11, §4.16). One slot",
+    "the application binds in its own security.json, or startup is refused:",
+    "  \"bindings\": { \"reference-data:administrators\": [ \"Administrators\" ] }",
+    "Read only: reference types are written by imports and the seed, never through the generic UI, so no New, Edit or",
+    "Delete right exists. No anonymous right either: /spark/* answers Access-Control-Allow-Origin: * by default, so an",
+    "anonymous grant here would be a second, unversioned public API. The public contract is /api/v1.",
+    "Opt out with \"libraries\": { \"reference-data\": false }."
+  ],
+  "rights": [
+    { "key": "countries", "resource": "QueryRead/RefCountry", "groupId": "reference-data:administrators" },
+    { "key": "places", "resource": "QueryRead/RefPlace", "groupId": "reference-data:administrators" },
+    { "key": "postal-codes", "resource": "QueryRead/RefPostalCode", "groupId": "reference-data:administrators" },
+    { "key": "streets", "resource": "QueryRead/RefStreet", "groupId": "reference-data:administrators" },
+    { "key": "lineage", "resource": "QueryRead/RefLineageEvent", "groupId": "reference-data:administrators" },
+    { "key": "import-runs", "resource": "QueryRead/RefImportRun", "groupId": "reference-data:administrators" },
+    { "key": "import-now", "resource": "RefDataImportNow/RefImportRun", "groupId": "reference-data:administrators" }
+  ]
+}

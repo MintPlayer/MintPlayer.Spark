@@ -1,0 +1,28 @@
+{
+  "cldrVersion": "48.2.3",
+  "source": "https://github.com/unicode-org/cldr-json/tree/48.2.3/cldr-json/cldr-dates-full",
+  "zones": {
+    "Europe/Amsterdam": {},
+    "Europe/Berlin": {
+      "nl": "Berlijn"
+    },
+    "Europe/Brussels": {
+      "de": "Brüssel",
+      "fr": "Bruxelles",
+      "nl": "Brussel"
+    },
+    "Europe/Busingen": {
+      "de": "Büsingen",
+      "en": "Büsingen",
+      "fr": "Büsingen",
+      "nl": "Büsingen"
+    },
+    "Europe/Luxembourg": {
+      "de": "Luxemburg",
+      "nl": "Luxemburg"
+    },
+    "Europe/Paris": {
+      "nl": "Parijs"
+    }
+  }
+}

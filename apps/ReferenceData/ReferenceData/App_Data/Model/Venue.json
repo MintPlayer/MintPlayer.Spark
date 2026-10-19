@@ -1,0 +1,53 @@
+{
+  "$schema": "https://schemas.spark.mintplayer.com/v7/model.schema.json",
+  "persistentObject": {
+    "id": "b7d6b31b-e1fa-4ffc-856a-d7c9759545c4",
+    "name": "Venue",
+    "clrType": "ReferenceData.Library.Entities.Venue",
+    "breadcrumb": "{Name}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "c0066f74-7eae-4cf5-9be6-e78cc7aed06f",
+        "name": "Address",
+        "dataType": "AsDetail",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 2,
+        "asDetailType": "MintPlayer.Spark.ReferenceData.Address",
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "renderer": "spark-address"
+      },
+      {
+        "id": "e801dd43-4917-4ef3-b5e7-0a76ba26a127",
+        "name": "Name",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": [
+    {
+      "id": "3426b69b-3bfe-41fd-a602-2757b6ffb7a8",
+      "name": "GetVenues",
+      "source": "Database.Venues",
+      "sortColumns": [
+        {
+          "property": "Name",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "Venue"
+    }
+  ]
+}

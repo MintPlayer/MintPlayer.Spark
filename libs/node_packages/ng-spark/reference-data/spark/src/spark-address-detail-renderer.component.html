@@ -1,0 +1,15 @@
+@if (lines().length > 0) {
+  <address class="spark-address-detail mb-0">
+    @for (line of lines(); track $index) {
+      <div>{{ line }}</div>
+    }
+  </address>
+  @if (timeZone(); as zone) {
+    <small class="text-body-secondary">{{ zone }}</small>
+  }
+  @if (unverified()) {
+    <small class="badge text-bg-secondary ms-2">unverified</small>
+  }
+} @else {
+  <span class="text-body-secondary">-</span>
+}

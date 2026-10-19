@@ -219,6 +219,42 @@
       "unavailable": { "en": "This item was deleted or is no longer available.", "fr": "Cet élément a été supprimé ou n'est plus disponible.", "nl": "Dit item is verwijderd of niet meer beschikbaar." }
     }
   },
+  "consent": {
+    "banner": {
+      "title": { "en": "Your privacy choices", "fr": "Vos choix de confidentialité", "nl": "Jouw privacykeuzes" },
+      "text": { "en": "We use what is strictly necessary to run this site. With your consent we also use the purposes below. You can change your choice at any time.", "fr": "Nous utilisons ce qui est strictement nécessaire au fonctionnement du site. Avec votre accord, nous utilisons aussi les finalités ci-dessous. Vous pouvez modifier votre choix à tout moment.", "nl": "We gebruiken wat strikt nodig is om deze site te laten werken. Met je toestemming gebruiken we ook de doeleinden hieronder. Je kunt je keuze altijd wijzigen." }
+    },
+    "acceptAll": { "en": "Accept all", "fr": "Tout accepter", "nl": "Alles aanvaarden" },
+    "rejectAll": { "en": "Reject all", "fr": "Tout refuser", "nl": "Alles weigeren" },
+    "choose": { "en": "Choose", "fr": "Choisir", "nl": "Kiezen" },
+    "save": { "en": "Save my choices", "fr": "Enregistrer mes choix", "nl": "Mijn keuzes opslaan" },
+    "saved": { "en": "Your choices were saved.", "fr": "Vos choix ont été enregistrés.", "nl": "Je keuzes zijn opgeslagen." },
+    "error": { "en": "Your choice could not be saved. Please try again.", "fr": "Votre choix n'a pas pu être enregistré. Veuillez réessayer.", "nl": "Je keuze kon niet worden opgeslagen. Probeer het opnieuw." },
+    "withdrawAll": { "en": "Withdraw all consent", "fr": "Retirer tout consentement", "nl": "Alle toestemming intrekken" },
+    "policy": { "en": "Privacy policy", "fr": "Politique de confidentialité", "nl": "Privacybeleid" },
+    "vendors": { "en": "Provided by", "fr": "Fourni par", "nl": "Aangeboden door" },
+    "settings": {
+      "title": { "en": "Privacy settings", "fr": "Paramètres de confidentialité", "nl": "Privacyinstellingen" },
+      "intro": { "en": "Choose per purpose. Nothing is switched on until you switch it on.", "fr": "Choisissez par finalité. Rien n'est activé tant que vous ne l'activez pas.", "nl": "Kies per doeleinde. Niets staat aan tot je het zelf aanzet." }
+    },
+    "necessary": {
+      "title": { "en": "Strictly necessary", "fr": "Strictement nécessaire", "nl": "Strikt noodzakelijk" },
+      "description": { "en": "Needed for the site to work (sign-in, basket, security, remembering this choice). Always on.", "fr": "Nécessaire au fonctionnement du site (connexion, panier, sécurité, mémorisation de ce choix). Toujours actif.", "nl": "Nodig om de site te laten werken (aanmelden, winkelmandje, beveiliging, deze keuze onthouden). Altijd aan." }
+    },
+    "unsubscribe": {
+      "title": { "en": "Unsubscribe", "fr": "Se désinscrire", "nl": "Afmelden" },
+      "text": { "en": "Stop receiving these e-mails at {0}?", "fr": "Ne plus recevoir ces e-mails à {0} ?", "nl": "Deze e-mails niet meer ontvangen op {0}?" },
+      "button": { "en": "Unsubscribe", "fr": "Se désinscrire", "nl": "Afmelden" },
+      "done": { "en": "You are unsubscribed. You will receive no more of these e-mails.", "fr": "Vous êtes désinscrit. Vous ne recevrez plus ces e-mails.", "nl": "Je bent afgemeld. Je ontvangt deze e-mails niet meer." },
+      "invalid": { "en": "This link is not valid.", "fr": "Ce lien n'est pas valide.", "nl": "Deze link is niet geldig." }
+    }
+  },
+  "embed": {
+    "continue": {
+      "text": { "en": "Continue in a new window to finish.", "fr": "Continuez dans une nouvelle fenêtre pour terminer.", "nl": "Ga verder in een nieuw venster om af te ronden." },
+      "button": { "en": "Continue", "fr": "Continuer", "nl": "Verder" }
+    }
+  },
   "culture": {
     "languages": {
       "en": { "en": "English", "fr": "Anglais",     "nl": "Engels" },

@@ -1,0 +1,58 @@
+:host {
+  display: block;
+}
+
+.spark-address-row {
+  margin-bottom: 0.5rem;
+}
+
+.spark-address-label {
+  display: block;
+  font-size: 0.875rem;
+  margin-bottom: 0.125rem;
+}
+
+.spark-address-pair {
+  display: flex;
+  gap: 0.5rem;
+
+  > div {
+    flex: 1 1 0;
+  }
+}
+
+.spark-address-combobox {
+  position: relative;
+}
+
+.spark-address-options {
+  position: absolute;
+  z-index: 1050;
+  left: 0;
+  right: 0;
+  max-height: 18rem;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0.25rem 0;
+  list-style: none;
+  background: var(--bs-body-bg);
+  border: 1px solid var(--bs-border-color);
+  border-radius: var(--bs-border-radius);
+  box-shadow: var(--bs-box-shadow-sm);
+
+  li {
+    padding: 0.25rem 0.75rem;
+    cursor: pointer;
+
+    &.active,
+    &:hover {
+      background: var(--bs-tertiary-bg);
+    }
+  }
+}
+
+.spark-address-preview {
+  padding: 0.5rem 0.75rem;
+  border-left: 3px solid var(--bs-border-color);
+  white-space: pre-line;
+}

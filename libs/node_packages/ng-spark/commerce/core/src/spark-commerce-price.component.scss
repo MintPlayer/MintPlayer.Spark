@@ -1,0 +1,25 @@
+.spark-commerce-price {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.spark-commerce-price-total {
+  font-weight: 600;
+  font-size: 1.125em;
+}
+
+.spark-commerce-price-note,
+.spark-commerce-price-fee,
+.spark-commerce-price-vat {
+  color: var(--bs-secondary-color);
+}
+
+.spark-commerce-price-prior {
+  color: var(--bs-body-color);
+}
+
+.spark-commerce-price-breakdown {
+  display: flex;
+  flex-direction: column;
+}

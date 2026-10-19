@@ -1,0 +1,54 @@
+{
+  "_fixture": {
+    "source": "https://docs.mollie.com/reference/get-payment (response example, embed=refunds) and https://docs.mollie.com/reference/extra-payment-parameters (credit card details: cardFingerprint, cardFunding)",
+    "derived": "public documentation examples combined; ids, amounts adapted; applicationFee per https://docs.mollie.com/reference/create-payment (OAuth parameters)",
+    "recorded": false
+  },
+  "resource": "payment",
+  "id": "tr_WDqYK6vllg",
+  "mode": "test",
+  "status": "paid",
+  "isCancelable": false,
+  "amount": { "value": "75.00", "currency": "EUR" },
+  "amountRefunded": { "value": "25.00", "currency": "EUR" },
+  "amountRemaining": { "value": "50.00", "currency": "EUR" },
+  "description": "Festival ticket",
+  "method": "creditcard",
+  "metadata": { "spark_reference": "orders/777" },
+  "details": {
+    "cardNumber": "6787",
+    "cardHolder": "T. TEST",
+    "cardAudience": "consumer",
+    "cardLabel": "Mastercard",
+    "cardCountryCode": "NL",
+    "cardSecurity": "normal",
+    "cardFingerprint": "8f8d1c4b4f6a0b0f5a9e",
+    "cardFunding": "prepaid",
+    "feeRegion": "intra-eu"
+  },
+  "applicationFee": {
+    "amount": { "value": "3.75", "currency": "EUR" },
+    "description": "Platform fee orders/777"
+  },
+  "createdAt": "2026-10-19T10:00:00+00:00",
+  "paidAt": "2026-10-19T10:02:11+00:00",
+  "profileId": "pfl_QkEhN94Ba",
+  "sequenceType": "oneoff",
+  "_embedded": {
+    "refunds": [
+      {
+        "resource": "refund",
+        "id": "re_4qqhO89gsT",
+        "amount": { "value": "25.00", "currency": "EUR" },
+        "status": "refunded",
+        "createdAt": "2026-10-19T11:00:00+00:00",
+        "description": "credit-notes/1",
+        "metadata": { "spark_reference": "credit-notes/1" },
+        "paymentId": "tr_WDqYK6vllg"
+      }
+    ]
+  },
+  "_links": {
+    "self": { "href": "https://api.mollie.com/v2/payments/tr_WDqYK6vllg", "type": "application/hal+json" }
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "$schema": "../../../../schemas/actions.schema.json",
+  "_comment": [
+    "The administrator's \"Import now\" (docs/reference_data_PRD.md §4.5 step 3): queues the same import message a",
+    "changed source queues, on the import-runs list. Its right is in this library's security.json; the label is",
+    "actions.RefDataImportNow.* in translations.json."
+  ],
+  "RefDataImportNow": {
+    "icon": "cloud-arrow-down",
+    "showedOn": "query",
+    "selectionRule": "=0"
+  }
+}

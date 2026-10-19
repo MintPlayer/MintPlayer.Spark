@@ -27,8 +27,8 @@ The order of work for [commerce_PRD.md](commerce_PRD.md). The PRD carries the de
 - [~] S2 engine throughput — dropped (owner, round 4: no stress tests); harness kept, env-gated
 - [x] S3 sweeper and live availability (≤5 s)
 - [~] S4 waiting room at 200k — dropped (owner, round 4: no cloud VMs)
-- [ ] S5 Mollie + Stripe: documented-API fixtures (round 4; sandbox recordings later); round 5: dispute/chargeback events (GB1), settlement/payout reports (GB4), split capability (D40)
-- [ ] S6 Connect onboarding (both providers), including the insufficient-balance refund
+- [x] S5 Mollie + Stripe: documented-API fixtures (round 4; sandbox recordings later); round 5: dispute/chargeback events (GB1), settlement/payout reports (GB4), split capability (D40)
+- [x] S6 Connect onboarding (both providers), including the insufficient-balance refund
 - [ ] S7 seat-map rendering (50k seats)
 - [x] S8 PBKDF2 cost (server ≤10 ms; ~~WebCrypto ≤300 ms on low-end Android~~ dropped, round 4)
 - [ ] S9 offline scanner list and double-entry sync
@@ -67,7 +67,7 @@ The order of work for [commerce_PRD.md](commerce_PRD.md). The PRD carries the de
 - [x] X17 one name system: redesign `TranslatedString` (entries: value + RFC 5646 tag + optional kind/validity/source/romanization; RFC 4647 fallback server + client; any language; sanitized index field names; display rule); migrate every usage found by S24, production data included
 - [x] X18 fuzzy-marked fields/search rules → `SearchEngineType.Lucene` set automatically on that index; deterministic side-by-side rebuild on an engine change; analyzer for fuzzy queries against unmarked indexes *(opt-in design; revised by D38 below)*
 - [x] X18 revised (D38, round 5): **fuzzy by default**: every index with searchable fields on Lucene; typo-tolerant Spark search by default (exact and prefix matches rank first); per-field opt-out in the model search rule and the index-declaration marker (X20 item 4 becomes an opt-out); engine pinned explicitly on every index; side-by-side rebuild of existing search indexes, production apps included; analyzer flags fuzzy queries on opted-out fields; reference-data §4.10 engines updated
-- [ ] X21 consent primitive (GA9): purposes, consent records per visitor/account (merge on sign-in, withdrawal), `ISparkConsent`, `@mintplayer/ng-spark/consent` banner + settings page, `RequiresConsent` declarations refused at startup when unwired
+- [x] X21 consent primitive (GA9): purposes, consent records per visitor/account (merge on sign-in, withdrawal), `ISparkConsent`, `@mintplayer/ng-spark/consent` banner + settings page, `RequiresConsent` declarations refused at startup when unwired
 - [x] X19 library-declared index definitions (incl. maps contributed to a shared multi-map index) emitted into the app by the generator at build time; commerce, warehouse and reference-data libraries ship declarations, never index classes
 - [~] X20 source-generator programme (done except: item 2 remaining mirrors and anonymous responses; item 4 Quantity companions wait for WX8; item 7 rest in M20): (1) D28 names constants (effective names + library ids) or delete unused; (2) C#→TS contract tool (layout per the pending output-path investigation; CI diff check; typed records replace anonymous objects for ng-spark responses; migrate existing TS mirrors, fixing the `PersistentObjectAttribute.options` and `EntityPermissions` drifts); (3) one shared discovery generator (+ row policies, `IReplicaChanged<T>`, approval deciders/handlers, account hooks); (4) `GenerateIndexGenerator`: Money/Quantity companions, sanitized language fields, fuzzy marker, record fix; (5) enum-backed lookup generator; (6) GS1 tables tool (C# + TS); (7) runtime ETL from contracts; (8) public plugin helpers; (9) guards: translation-key test (fix `dashboards.yes`, `common.unexpectedError`), K10 banned symbols, migration Version from class name, authorization endpoint filter
 - [x] X15 po-form edit renderer for a single AsDetail value object (`spark-po-form.component.html:381-398`)
@@ -98,40 +98,40 @@ The order of work for [commerce_PRD.md](commerce_PRD.md). The PRD carries the de
 
 ### M4 — Commerce core
 
-- [ ] `MintPlayer.Spark.Commerce.Abstractions` + `MintPlayer.Spark.Commerce` (alias `commerce`)
-- [ ] Channels, bounds and clamping; fee rules; price display incl. mandatory fees
-- [ ] Seller profile on Organizations; `Sellers:Registration`; Approvals wiring; KYC gate hook
-- [ ] Startup validation (refusals and warnings, PRD §4.2); config-wins precedence
-- [ ] Audit trail on money-moving changes; GDPR hooks
-- [ ] Round 5 — `FinalPrice` defined once (`IFinalPriceCalculator`) and an append-only price history per sellable item (GA3; feeds display, resale cap, Omnibus)
-- [ ] Round 5 — `LegalDocument` (kinds, owner platform/seller, language versions, versions + effective date, PDF); "open sale" refused without required documents; startup warning (GA2)
-- [ ] Round 5 — trader traceability at seller registration (data, ID document blob with restricted rights, best-effort verification via Approvals, 6-month retention, trader page); `AcknowledgeDsaArt29Exemption` (GA5)
-- [ ] Round 5 — trader/non-trader label per listing; generated ranking-parameters page; P2B platform terms + seller complaints as Approvals requests (GA5)
-- [ ] Round 5 — DSA notice-and-action on listings, events and reviews through Moderation; statements of reasons; transparency export (GA5)
-- [ ] Round 5 — DAC7 seller data (TIN, VAT id, birth date, address, IBAN), reminders, payout block (GA6)
-- [ ] Round 5 — controller/processor roles, DPA template accepted at registration, audited seller exports of buyers and attendees (GB14)
-- [ ] Round 5 — retention per document type with legal floors (confirm per country); invoices never altered (PRD §4.15)
-- [ ] Round 5 — startup validation: geo-blocking-forbidden rules refused (GA11), consent-requiring adapters without X21 refused (GA9), `MixSellers` without split refused (D40), missing accessibility statement warned (GA10)
+- [x] `MintPlayer.Spark.Commerce.Abstractions` + `MintPlayer.Spark.Commerce` (alias `commerce`)
+- [x] Channels, bounds and clamping; fee rules; price display incl. mandatory fees
+- [x] Seller profile on Organizations; `Sellers:Registration`; Approvals wiring; KYC gate hook
+- [x] Startup validation (refusals and warnings, PRD §4.2); config-wins precedence
+- [x] Audit trail on money-moving changes; GDPR hooks
+- [x] Round 5 — `FinalPrice` defined once (`IFinalPriceCalculator`) and an append-only price history per sellable item (GA3; feeds display, resale cap, Omnibus)
+- [x] Round 5 — `LegalDocument` (kinds, owner platform/seller, language versions, versions + effective date, PDF); "open sale" refused without required documents; startup warning (GA2)
+- [x] Round 5 — trader traceability at seller registration (data, ID document blob with restricted rights, best-effort verification via Approvals, 6-month retention, trader page); `AcknowledgeDsaArt29Exemption` (GA5)
+- [x] Round 5 — trader/non-trader label per listing; generated ranking-parameters page; P2B platform terms + seller complaints as Approvals requests (GA5)
+- [x] Round 5 — DSA notice-and-action on listings, events and reviews through Moderation; statements of reasons; transparency export (GA5)
+- [x] Round 5 — DAC7 seller data (TIN, VAT id, birth date, address, IBAN), reminders, payout block (GA6)
+- [x] Round 5 — controller/processor roles, DPA template accepted at registration, audited seller exports of buyers and attendees (GB14)
+- [x] Round 5 — retention per document type with legal floors (confirm per country); invoices never altered (PRD §4.15)
+- [x] Round 5 — startup validation: geo-blocking-forbidden rules refused (GA11), consent-requiring adapters without X21 refused (GA9), `MixSellers` without split refused (D40), missing accessibility statement warned (GA10)
 
 ### M5 — Inventory engine
 
-- [ ] Quotas, shards, item→quota mappings with multipliers
-- [ ] Claims: `TryClaim` / `Adjust` / `Extend` / `Convert` / `Release`, idempotent by claim id, cluster-wide transaction, I1–I5
-- [ ] Numbered units (compare-exchange seats, takeover after expiry + grace)
-- [ ] Chain-fill allocator (holes first, cursor run), pick-your-seat validation (no single empty seat)
-- [ ] Per-buyer and linked-identifier limit keys
-- [ ] Sweeper (cron, seconds), live availability topics
-- [ ] Scaled-down concurrency guard test kept in the regular suite (runs in M22)
+- [x] Quotas, shards, item→quota mappings with multipliers
+- [x] Claims: `TryClaim` / `Adjust` / `Extend` / `Convert` / `Release`, idempotent by claim id, cluster-wide transaction, I1–I5
+- [x] Numbered units (compare-exchange seats, takeover after expiry + grace)
+- [x] Chain-fill allocator (holes first, cursor run), pick-your-seat validation (no single empty seat)
+- [x] Per-buyer and linked-identifier limit keys
+- [x] Sweeper (cron, seconds), live availability topics
+- [x] Scaled-down concurrency guard test kept in the regular suite (runs in M22)
 
 ### M6 — Payments
 
-- [ ] Provider interface, method catalog (max expiry, authorization, fingerprint timing), idempotency
-- [ ] Merchant modes; Connect onboarding (OAuth / connected accounts), KYC status, application fees
-- [ ] `.Mollie` (fetch-by-id webhooks), `.Stripe` (signed webhooks; held-flow shape per S5), `.Test` (all simulated outcomes)
-- [ ] Recorded real fixtures; no live calls in CI
-- [ ] Round 5 — dispute events in the provider interface (Stripe `charge.dispute.*`, Mollie chargebacks), evidence pack, seller notification, Connect debit recorded (GB1)
-- [ ] Round 5 — `ISettlementSource` per adapter, reconciliation queue for `finance`, platform-fee ledger (GB4)
-- [ ] Round 5 — `supportsSplit` in the method catalog (D40); no method hidden by card-issuing country (GA11)
+- [x] Provider interface, method catalog (max expiry, authorization, fingerprint timing), idempotency
+- [x] Merchant modes; Connect onboarding (OAuth / connected accounts), KYC status, application fees
+- [x] `.Mollie` (fetch-by-id webhooks), `.Stripe` (signed webhooks; held-flow shape per S5), `.Test` (all simulated outcomes)
+- [x] Recorded real fixtures; no live calls in CI
+- [x] Round 5 — dispute events in the provider interface (Stripe `charge.dispute.*`, Mollie chargebacks), evidence pack, seller notification, Connect debit recorded (GB1)
+- [x] Round 5 — `ISettlementSource` per adapter, reconciliation queue for `finance`, platform-fee ledger (GB4)
+- [x] Round 5 — `supportsSplit` in the method catalog (D40); no method hidden by card-issuing country (GA11)
 
 ### M7 — Checkout
 
@@ -251,8 +251,8 @@ The order of work for [commerce_PRD.md](commerce_PRD.md). The PRD carries the de
 - [ ] Routed, replaceable pages for shop, events, waiting room, basket, checkout, orders, tickets; theme variables; translations; WCAG
 - [ ] `provideSparkCommerce(...)`, `withShopRoutes()`, `withTicketingRoutes()`, `withWaitingRoomRoutes()`
 - [ ] Server-side meta tags wired for public event and product routes
-- [ ] Round 5 — X22: `sitemap.xml`, JSON-LD `Event`/`Product`, `hreflang`; validated with SeoTester's checks (GB9)
-- [ ] Round 5 — X23 embed widget (web component + iframe), top-level hand-over for holds, sign-in and waiting rooms, `frame-ancestors` allow-list (GB8)
+- [x] Round 5 — X22: `sitemap.xml`, JSON-LD `Event`/`Product`, `hreflang`; validated with SeoTester's checks (GB9)
+- [x] Round 5 — X23 embed widget (web component + iframe), top-level hand-over for holds, sign-in and waiting rooms, `frame-ancestors` allow-list (GB8)
 - [ ] Round 5 — customer account area: orders, invoice/credit-note downloads, address book, tickets, withdrawals and claims, consent settings, back-in-stock subscriptions, attach guest orders (GB10)
 - [ ] Round 5 — hold timer: text deadline, polite announcements, ≥20 s "More time" up to `Hold:Max`, exception reasoning in the accessibility statement (GA10; confirm against W3C Understanding 2.2.1)
 - [ ] Round 5 — accessibility statement page from a template; legal pages (terms, privacy, withdrawal info + model form, trader page); consent banner and settings (GA2, GA5, GA9, GA10)

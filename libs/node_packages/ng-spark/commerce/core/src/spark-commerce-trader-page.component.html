@@ -1,0 +1,24 @@
+<section class="spark-commerce-trader-page">
+  <h2>{{ 'commerce.trader.page' | t }}</h2>
+  @if (page(); as p) {
+    <p class="spark-commerce-trader-status">{{ ('commerce.trader.' + p.traderStatus) | t }}</p>
+    @if (p.traderStatus === 'Trader') {
+      <dl>
+        @if (p.name) { <dt>{{ 'commerce.trader.name' | t }}</dt><dd>{{ p.name }}</dd> }
+        @if (p.address) { <dt>{{ 'commerce.trader.address' | t }}</dt><dd>{{ p.address }}</dd> }
+        @if (p.phone) { <dt>{{ 'commerce.trader.phone' | t }}</dt><dd><a [href]="'tel:' + p.phone">{{ p.phone }}</a></dd> }
+        @if (p.email) { <dt>{{ 'commerce.trader.email' | t }}</dt><dd><a [href]="'mailto:' + p.email">{{ p.email }}</a></dd> }
+        @if (p.tradeRegister) { <dt>{{ 'commerce.trader.tradeRegister' | t }}</dt><dd>{{ p.tradeRegister }} {{ p.registrationNumber }}</dd> }
+        @if (p.vatId) { <dt>{{ 'commerce.trader.vatId' | t }}</dt><dd>{{ p.vatId }}</dd> }
+      </dl>
+      @if (p.selfCertified) {
+        <p class="spark-commerce-trader-certification">{{ 'commerce.trader.selfCertification' | t }}</p>
+      }
+      @if (p.verified) {
+        <p class="spark-commerce-trader-verified">{{ 'commerce.trader.verified' | t }}</p>
+      }
+    }
+  } @else if (loaded()) {
+    <p>{{ 'commerce.seller.notRegistered' | t }}</p>
+  }
+</section>

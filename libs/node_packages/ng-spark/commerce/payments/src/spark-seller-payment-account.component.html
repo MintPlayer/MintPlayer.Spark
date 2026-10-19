@@ -1,0 +1,18 @@
+@if (status(); as s) {
+  <section class="spark-seller-payment-account" [attr.data-kyc]="s.kyc">
+    <p class="spark-seller-payment-account-state" role="status">{{ stateKey(s) | t }}</p>
+    @if (s.requirements.length > 0) {
+      <p>{{ 'commercePayments.connectRequirements' | t }}</p>
+      <ul class="spark-seller-payment-account-requirements">
+        @for (requirement of s.requirements; track requirement) {
+          <li>{{ requirement }}</li>
+        }
+      </ul>
+    }
+    @if (s.kyc !== 'verified') {
+      <button type="button" class="btn btn-primary" [disabled]="busy()" (click)="link()">
+        {{ 'commercePayments.connectStart' | t }}
+      </button>
+    }
+  </section>
+}

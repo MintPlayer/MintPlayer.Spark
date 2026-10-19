@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+
+		<!-- NuGet Package Metadata -->
+		<PackageId>MintPlayer.Spark.ReferenceData.Sources.Tedb</PackageId>
+		<Version>11.0.0-preview.1</Version>
+		<Authors>MintPlayer</Authors>
+		<Company>MintPlayer</Company>
+		<Description>EU VAT-rate suggestions for MintPlayer.Spark reference data (commerce GC10): the European Commission's TEDB (Taxes in Europe Database) VAT retrieval service, mapped to VatRateSuggestion documents. Suggestions only: commerce shows them, the host sets its own rates.</Description>
+		<PackageTags>reference-data;vat;tedb;commerce;spark</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="README.md" Pack="true" PackagePath="\" />
+		<EmbeddedResource Include="Fixtures\**\*" LogicalName="Fixtures/%(RecursiveDir)%(Filename)%(Extension)" WithCulture="false" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\..\core\MintPlayer.Spark.ReferenceData.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<InternalsVisibleTo Include="ReferenceData.Tests" />
+	</ItemGroup>
+
+</Project>

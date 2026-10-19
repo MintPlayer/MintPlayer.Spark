@@ -26,7 +26,8 @@ internal static partial class SparkPageMetaHtml
     /// <c>&lt;head&gt;</c> (then it is served untouched). <paramref name="canonical"/> and <paramref name="image"/> are
     /// absolute or <see langword="null"/>; a null one is left out.
     /// </summary>
-    internal static string? Rewrite(string html, SparkPageMeta meta, Uri? canonical, Uri? image)
+    internal static string? Rewrite(string html, SparkPageMeta meta, Uri? canonical, Uri? image,
+        IReadOnlyList<(string Language, Uri Href)>? alternates = null)
     {
         var head = HeadOpen().Match(html);
         if (!head.Success)
@@ -43,6 +44,10 @@ internal static partial class SparkPageMetaHtml
         headInner = Title().Replace(headInner, string.Empty, 1);
         headInner = ReplacedMeta().Replace(headInner, string.Empty);
         headInner = CanonicalLink().Replace(headInner, string.Empty);
+        if (alternates is { Count: > 0 })
+            headInner = HreflangLink().Replace(headInner, string.Empty);
+        if (meta.StructuredData is { Count: > 0 })
+            headInner = JsonLdScript().Replace(headInner, string.Empty);
 
         var tags = new StringBuilder();
         tags.Append('\n');
@@ -58,9 +63,28 @@ internal static partial class SparkPageMetaHtml
         Meta(tags, "name", "twitter:card", meta.TwitterCard);
         if (canonical is not null)
             tags.Append("<link rel=\"canonical\" href=\"").Append(Encoder.Encode(canonical.AbsoluteUri)).Append("\" ").Append(Marker).Append(">\n");
+        foreach (var (language, href) in alternates ?? [])
+            tags.Append("<link rel=\"alternate\" hreflang=\"").Append(Encoder.Encode(language)).Append("\" href=\"")
+                .Append(Encoder.Encode(href.AbsoluteUri)).Append("\" ").Append(Marker).Append(">\n");
+        foreach (var data in meta.StructuredData ?? [])
+            tags.Append("<script type=\"application/ld+json\" ").Append(Marker).Append('>')
+                .Append(JsonLd(data)).Append("</script>\n");
 
         return before + tags + headInner + rest;
     }
+
+    /// <summary>
+    /// The JSON-LD of <paramref name="data"/>, safe inside a <c>&lt;script&gt;</c> element: the default JavaScript encoder
+    /// escapes <c>&lt; &gt; &amp; ' "</c> as <c><</c> etc., so seller text such as <c>&lt;/script&gt;</c> cannot close
+    /// the element. Letters of every script stay readable.
+    /// </summary>
+    internal static string JsonLd(SparkStructuredData data)
+        => data.ToJsonLd().ToJsonString(JsonLdOptions);
+
+    private static readonly System.Text.Json.JsonSerializerOptions JsonLdOptions = new()
+    {
+        Encoder = JavaScriptEncoder.Create(UnicodeRanges.All),
+    };
 
     private static void Meta(StringBuilder tags, string kind, string key, string value)
         => tags.Append("<meta ").Append(kind).Append("=\"").Append(key).Append("\" content=\"").Append(Encoder.Encode(value))
@@ -82,4 +106,10 @@ internal static partial class SparkPageMetaHtml
 
     [GeneratedRegex(@"<link\b[^>]*\brel\s*=\s*[""']?canonical[""']?(?=[\s/>])[^>]*>\s*", RegexOptions.IgnoreCase)]
     private static partial Regex CanonicalLink();
+
+    [GeneratedRegex(@"<link\b(?=[^>]*\bhreflang\s*=)[^>]*>\s*", RegexOptions.IgnoreCase)]
+    private static partial Regex HreflangLink();
+
+    [GeneratedRegex(@"<script\b[^>]*\btype\s*=\s*[""']?application/ld\+json[""']?[^>]*>.*?</script\s*>\s*", RegexOptions.IgnoreCase | RegexOptions.Singleline)]
+    private static partial Regex JsonLdScript();
 }

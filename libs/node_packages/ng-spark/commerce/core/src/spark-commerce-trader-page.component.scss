@@ -1,0 +1,13 @@
+.spark-commerce-trader-page dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.25rem 1rem;
+}
+
+.spark-commerce-trader-page dd {
+  margin: 0;
+}
+
+.spark-commerce-trader-verified {
+  color: var(--bs-success-text-emphasis);
+}

@@ -39,6 +39,11 @@
     <Project Path="apps/QnA/QnA.Tests/QnA.Tests.csproj" />
     <Project Path="apps/QnA/QnA/QnA.csproj" />
   </Folder>
+  <Folder Name="/apps/ReferenceData/">
+    <Project Path="apps/ReferenceData/ReferenceData.Library/ReferenceData.Library.csproj" />
+    <Project Path="apps/ReferenceData/ReferenceData.Tests/ReferenceData.Tests.csproj" />
+    <Project Path="apps/ReferenceData/ReferenceData/ReferenceData.csproj" />
+  </Folder>
   <Folder Name="/apps/SeoTester/">
     <Project Path="apps/SeoTester/SeoTester.Fetcher/SeoTester.Fetcher.csproj" />
     <Project Path="apps/SeoTester/SeoTester.Fetching/SeoTester.Fetching.csproj" />
@@ -82,7 +87,13 @@
     <Project Path="libs/controllers/MintPlayer.Spark.Controllers/MintPlayer.Spark.Controllers.csproj" />
   </Folder>
   <Folder Name="/libs/commerce/">
+    <Project Path="libs/commerce/MintPlayer.Spark.Commerce.Abstractions/MintPlayer.Spark.Commerce.Abstractions.csproj" />
+    <Project Path="libs/commerce/MintPlayer.Spark.Commerce/MintPlayer.Spark.Commerce.csproj" />
     <Project Path="libs/commerce/MintPlayer.Spark.Commerce.Inventory/MintPlayer.Spark.Commerce.Inventory.csproj" />
+    <Project Path="libs/commerce/MintPlayer.Spark.Commerce.Payments/MintPlayer.Spark.Commerce.Payments.csproj" />
+    <Project Path="libs/commerce/MintPlayer.Spark.Commerce.Payments.Mollie/MintPlayer.Spark.Commerce.Payments.Mollie.csproj" />
+    <Project Path="libs/commerce/MintPlayer.Spark.Commerce.Payments.Stripe/MintPlayer.Spark.Commerce.Payments.Stripe.csproj" />
+    <Project Path="libs/commerce/MintPlayer.Spark.Commerce.Payments.Test/MintPlayer.Spark.Commerce.Payments.Test.csproj" />
   </Folder>
   <Folder Name="/libs/cron/">
     <Project Path="libs/cron/MintPlayer.Spark.Cron/MintPlayer.Spark.Cron.csproj" />
@@ -128,6 +139,15 @@
   </Folder>
   <Folder Name="/libs/organizations/">
     <Project Path="libs/organizations/MintPlayer.Spark.Organizations/MintPlayer.Spark.Organizations.csproj" />
+  </Folder>
+  <Folder Name="/libs/refdata/">
+    <Project Path="libs/refdata/abstractions/MintPlayer.Spark.ReferenceData.Abstractions.csproj" />
+    <Project Path="libs/refdata/client/MintPlayer.Spark.ReferenceData.Client.csproj" />
+    <Project Path="libs/refdata/core/MintPlayer.Spark.ReferenceData.csproj" />
+    <Project Path="libs/refdata/sources/be/MintPlayer.Spark.ReferenceData.Sources.Belgium.csproj" />
+    <Project Path="libs/refdata/sources/global/MintPlayer.Spark.ReferenceData.Sources.Global.csproj" />
+    <Project Path="libs/refdata/sources/holidays/MintPlayer.Spark.ReferenceData.Sources.Holidays.csproj" />
+    <Project Path="libs/refdata/sources/tedb/MintPlayer.Spark.ReferenceData.Sources.Tedb.csproj" />
   </Folder>
   <Folder Name="/libs/replication/">
     <Project Path="libs/replication/MintPlayer.Spark.Replication.Abstractions/MintPlayer.Spark.Replication.Abstractions.csproj" />
