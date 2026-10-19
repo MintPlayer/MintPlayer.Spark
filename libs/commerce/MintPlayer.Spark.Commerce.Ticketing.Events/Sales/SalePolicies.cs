@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using MintPlayer.Spark.Commerce.Inventory;
 using MintPlayer.Spark.Commerce.Ticketing.Events.Models;
+using MintPlayer.Spark.WaitingRoom;
 
 namespace MintPlayer.Spark.Commerce.Ticketing.Events.Sales;
 

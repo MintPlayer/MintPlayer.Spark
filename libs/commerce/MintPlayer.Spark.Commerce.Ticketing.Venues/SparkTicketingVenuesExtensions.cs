@@ -68,14 +68,10 @@ public static class SparkTicketingVenuesExtensions
         builder.AddInterceptor<VenueLayoutSaveInterceptor>();
 
         services.TryAddSingleton<VenueSeatMaps>();
-        services.TryAddSingleton<SeatStatePublishState>();
+        services.TryAddSingleton<SeatStatePusher>();
         services.TryAddEnumerable(ServiceDescriptor.Singleton<ISparkLiveTopicPolicy, VenueSeatTopicPolicy>());
-
-        // The schedule is read at registration (the Cron registry needs it now): code, then configuration.
-        var registrationTime = new SparkTicketingVenuesOptions();
-        configure?.Invoke(registrationTime);
-        builder.Configuration?.GetSection(SparkTicketingVenuesOptions.SectionName).Bind(registrationTime);
-        builder.AddCron(cron => cron.AddJob<SeatStatePublishJob>(registrationTime.LiveSchedule, "Ticketing.Venues.SeatStates"));
+        // Seat states are pushed after the inventory commits that touched them (no polling).
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<IInventoryCommitted, VenueSeatStateCommitted>());
 
         builder.Registry.AddEndpoints(endpoints => endpoints.MapSparkTicketingVenuesEndpoints());
         return builder;

@@ -115,6 +115,7 @@
     <Project Path="libs/commerce/MintPlayer.Spark.Commerce.Shipping.Test/MintPlayer.Spark.Commerce.Shipping.Test.csproj" />
     <Project Path="libs/commerce/MintPlayer.Spark.Commerce.Ticketing.Venues/MintPlayer.Spark.Commerce.Ticketing.Venues.csproj" />
     <Project Path="libs/commerce/MintPlayer.Spark.Commerce.Ticketing.Events/MintPlayer.Spark.Commerce.Ticketing.Events.csproj" />
+    <Project Path="libs/commerce/MintPlayer.Spark.Commerce.WaitingRoom/MintPlayer.Spark.Commerce.WaitingRoom.csproj" />
   </Folder>
   <Folder Name="/libs/cron/">
     <Project Path="libs/cron/MintPlayer.Spark.Cron/MintPlayer.Spark.Cron.csproj" />
@@ -225,6 +226,10 @@
   </Folder>
   <Folder Name="/libs/waiting_room/">
     <Project Path="libs/waiting_room/MintPlayer.Spark.WaitingRoom/MintPlayer.Spark.WaitingRoom.csproj" />
+    <Project Path="libs/waiting_room/MintPlayer.Spark.WaitingRoom.Abstractions/MintPlayer.Spark.WaitingRoom.Abstractions.csproj" />
+  </Folder>
+  <Folder Name="/libs/warehouse/">
+    <Project Path="libs/warehouse/abstractions/MintPlayer.Spark.Warehouse.Abstractions.csproj" />
   </Folder>
   <Folder Name="/libs/webhooks/">
     <Project Path="libs/webhooks/MintPlayer.Spark.Webhooks.GitHub.DevTunnel/MintPlayer.Spark.Webhooks.GitHub.DevTunnel.csproj" />

@@ -25,6 +25,7 @@ internal sealed class SparkMailHandler(
     SparkMailUnsubscribeTokens unsubscribeTokens,
     IOptions<SparkMailOptions> options,
     IHostEnvironment environment,
+    Raven.Client.Documents.IDocumentStore store,
     ILogger<SparkMailHandler> logger) : IRecipient<SparkMailMessage>
 {
     public async Task HandleAsync(SparkMailMessage message, CancellationToken cancellationToken = default)
@@ -41,6 +42,13 @@ internal sealed class SparkMailHandler(
         try
         {
             mime = await BuildAsync(message, cancellationToken);
+        }
+        catch (SparkMailAttachmentTooLargeException ex)
+        {
+            // The same files are read again on a retry: it cannot succeed.
+            logger.LogError("Mail {DeliveryId} ({Template}) not sent: {Reason}", message.DeliveryId, message.Template, ex.Message);
+            await deliveries.RecordAsync(message.DeliveryId, d => Fill(d, message, SparkMailDeliveryStatus.Failed, ex.Message), cancellationToken);
+            throw new NonRetryableException(ex.Message, ex);
         }
         catch (Exception ex) when (ex is SparkMailTemplateException or CryptographicException)
         {
@@ -109,7 +117,9 @@ internal sealed class SparkMailHandler(
         if (!string.IsNullOrEmpty(message.CampaignId))
             mime.Headers.Replace("X-Spark-Campaign", message.CampaignId);
 
-        if (message.ListUnsubscribe)
+        // A request's own List-Unsubscribe (the consent primitive's, X21) wins over the stream one.
+        var ownListUnsubscribe = message.Headers?.Keys.Any(k => string.Equals(k, "List-Unsubscribe", StringComparison.OrdinalIgnoreCase)) == true;
+        if (message.ListUnsubscribe && !ownListUnsubscribe)
         {
             if (unsubscribeTokens.Link(message.To, message.Stream) is { } link)
             {
@@ -121,9 +131,65 @@ internal sealed class SparkMailHandler(
                 logger.LogWarning("Mail {DeliveryId}: List-Unsubscribe requested but no public base URL is configured (Spark:Mail:PublicBaseUrl or Spark:Auth:PublicBaseUrl); header left out.", message.DeliveryId);
         }
 
+        if (message.Headers is { Count: > 0 } headers)
+            foreach (var (name, value) in headers)
+            {
+                // Validated at queue time; checked again because a queued message is a stored document.
+                if (SparkMailHeaders.Problem(name, value) is { } problem)
+                    throw new SparkMailTemplateException($"Header refused: {problem}.");
+                mime.Headers.Replace(name, value);
+            }
+
         var body = new BodyBuilder { HtmlBody = rendered.Html, TextBody = rendered.Text };
+        await AttachAsync(body, message, cancellationToken);
         mime.Body = body.ToMessageBody();
         return mime;
+    }
+
+    /// <summary>
+    /// Adds the attachments: inline content from the message, stored ones read from RavenDB now. A missing required
+    /// stored attachment throws (retryable: it may still be in the making); a missing optional one is left out.
+    /// </summary>
+    private async Task AttachAsync(BodyBuilder body, SparkMailMessage message, CancellationToken cancellationToken)
+    {
+        if (message.Attachments is not { Count: > 0 } attachments)
+            return;
+        var max = options.Value.Attachments.MaxTotalBytes;
+        long total = 0;
+        foreach (var attachment in attachments)
+        {
+            byte[]? bytes;
+            if (attachment.Content is { } content)
+                bytes = Convert.FromBase64String(protector.Unprotect(content)!);
+            else
+            {
+                bytes = await LoadStoredAsync(attachment.DocumentId!, attachment.AttachmentName!, cancellationToken);
+                if (bytes is null)
+                {
+                    if (attachment.Optional)
+                    {
+                        logger.LogWarning("Mail {DeliveryId}: optional attachment {Name} of {Document} is missing; sent without it.", message.DeliveryId, attachment.AttachmentName, attachment.DocumentId);
+                        continue;
+                    }
+                    throw new InvalidOperationException($"Mail {message.DeliveryId}: attachment '{attachment.AttachmentName}' of '{attachment.DocumentId}' does not exist (yet); the attempt is retried.");
+                }
+            }
+            total += bytes.LongLength;
+            if (total > max)
+                throw new SparkMailAttachmentTooLargeException($"the attachments exceed {max} bytes (Spark:Mail:Attachments:MaxTotalBytes).");
+            body.Attachments.Add(attachment.FileName, bytes, ContentType.Parse(attachment.ContentType));
+        }
+    }
+
+    private async Task<byte[]?> LoadStoredAsync(string documentId, string name, CancellationToken cancellationToken)
+    {
+        using var session = store.OpenAsyncSession();
+        using var result = await session.Advanced.Attachments.GetAsync(documentId, name, cancellationToken);
+        if (result is null)
+            return null;
+        using var buffer = new MemoryStream();
+        await result.Stream.CopyToAsync(buffer, cancellationToken);
+        return buffer.ToArray();
     }
 
     private static string MessageIdDomain(SparkMailOptions o)
@@ -133,6 +199,9 @@ internal sealed class SparkMailHandler(
         return at >= 0 ? from[(at + 1)..] : "spark.local";
     }
 }
+
+/// <summary>A mail's attachments are over <c>Spark:Mail:Attachments:MaxTotalBytes</c>: not retried.</summary>
+internal sealed class SparkMailAttachmentTooLargeException(string message) : Exception(message);
 
 /// <summary>Fans a campaign out into one bulk mail per recipient.</summary>
 internal sealed class SparkMailCampaignHandler(

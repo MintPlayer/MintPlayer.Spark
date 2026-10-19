@@ -56,6 +56,25 @@ if (!result.Succeeded) /* result.Status: SoldOut, UnitTaken, LimitExceeded, NotT
 | `ReleaseAsync` | a whole claim goes back | a held claim drops its holds; a converted one returns everything not returned yet |
 | `ReturnAsync` | part of a converted claim goes back | idempotent by `ReturnId` |
 | `RestockAsync` | shipped goods received back | puts a `ReturnStock: false` return's units back on sale, once |
+| `ExchangeAsync` | seat change, upgrade (GB7) | return + claim + convert in **one** transaction; see below |
+| `GetItemMappingAsync` | another package needs an item's quotas | the public read of `MapItemAsync`'s mapping; never load `InventoryItem` yourself |
+
+### Exchanges (seat change, upgrade)
+
+```csharp
+var result = await inventory.ExchangeAsync(new InventoryExchange(
+    ClaimId: "claims/checkout/line-1",
+    Return: new("change:7f3a", ReturnReason.Other),          // everything, or Items/Quotas/Units for part
+    Target: new ClaimRequest("claims/checkout/line-1/7f3a", "orders/12", now, [], Units: ["VenueLayoutSnapshots/…/A-12"])));
+```
+
+The return runs first, so what it frees is room for the target: an upgrade within one full quota succeeds. The target
+is claimed and **sold** in the same cluster-wide transaction; a refusal (sold out, seat taken, limit) leaves the
+original claim exactly as it was (I2). A seat the target names explicitly that the return gives back (a ticket type
+upgrade on the same seat) is **handed over**: its compare-exchange value changes owner, because a key deleted in a
+cluster-wide session cannot be created again in it. Seats given back are not offered to the target's chain fill in
+the same exchange; they become holes once the target is seated. Repeating a done exchange answers success with the
+target's seats. Checkout's back-office line change (`ChangeLineAsync`) uses it.
 
 ### Every return path, exactly once (I4)
 
@@ -118,6 +137,15 @@ The sweeper (cron, `Commerce.Inventory.Sweep`, every 5 seconds) releases lapsed 
 positions and limit holds early, and calls every `IInventoryClaimLapsed` (discovered, `[SparkDiscoverable]`): that
 is where checkout cancels an expired PaymentPending payment and promotions offer the units to the waiting list.
 **Correctness never depends on it** (I3): a lapsed hold stops counting on its own.
+
+The sweeper finds lapsed claims through the declared index `InventoryClaims/Lapsing` (X19,
+`InventoryIndexes.LapsingClaims` with `[SparkIndexMap]`): the application's source generator emits it, so the
+package ships no index class and no auto-index is created at run time. A stale result only delays a release.
+
+**Commit hook.** After every commit, each `IInventoryCommitted` (discovered, `[SparkDiscoverable]`, scoped) gets an
+`InventoryCommit`: the operation, the claim ids, the quotas whose availability changed and the **units whose state
+changed** (taken, given back, held turned sold). Ticketing.Venues pushes seat-map frames from it. It is called inline
+after the commit: keep it fast. An exception is logged; the commit stands.
 
 After every commit that changes a quota, its availability is published on the public live topic
 `commerce-inventory:{quotaId}` as `{ quotaId, available, soldOut }`, never the capacity or the sold count. Ticketing

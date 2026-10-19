@@ -64,6 +64,47 @@ public interface IShippingCarrier
 }
 
 /// <summary>
+/// Finds a booking the carrier already holds for one of our booking keys (<see cref="CarrierShipmentRequest.ShipmentId"/>,
+/// sent as the carrier's external reference). <see cref="ISparkShipping"/> asks before it books a pending booking again,
+/// so a booking whose answer was lost (a timeout, a crash between the carrier's answer and our save) is picked up
+/// instead of booked twice. A carrier implements it next to <see cref="IShippingCarrier"/> only when its API can look
+/// a booking up by our reference: Sendcloud (<c>external_reference_id</c>), bpost (the order reference) and the test
+/// carrier do; PostNL cannot, so an uncertain PostNL booking waits for staff
+/// (<see cref="ISparkShipping.ReleasePendingBookingAsync"/>).
+/// </summary>
+public interface IShippingBookingLookup
+{
+    /// <summary>
+    /// Looks up the booking made with <paramref name="request"/>'s <see cref="CarrierShipmentRequest.ShipmentId"/>.
+    /// Answers <see cref="CarrierBookingLookup.Found"/> with the labels (downloaded again), <see cref="CarrierBookingLookup.NotFound"/>
+    /// when the carrier holds none, or <see cref="CarrierBookingLookup.Unsupported"/> when this kind of booking (a
+    /// Sendcloud return) cannot be looked up.
+    /// </summary>
+    Task<CarrierBookingLookup> FindBookingAsync(CarrierShipmentRequest request, CancellationToken cancellationToken);
+}
+
+/// <summary>What <see cref="IShippingBookingLookup.FindBookingAsync"/> found.</summary>
+public sealed record CarrierBookingLookup(CarrierBookingLookupStatus Status, CarrierShipmentResult? Result = null)
+{
+    public static CarrierBookingLookup Found(CarrierShipmentResult result) => new(CarrierBookingLookupStatus.Found, result);
+
+    public static readonly CarrierBookingLookup NotFound = new(CarrierBookingLookupStatus.NotFound);
+
+    public static readonly CarrierBookingLookup Unsupported = new(CarrierBookingLookupStatus.Unsupported);
+}
+
+/// <summary>The outcome of a booking lookup.</summary>
+public enum CarrierBookingLookupStatus
+{
+    /// <summary>The carrier holds the booking: its labels are in the result.</summary>
+    Found,
+    /// <summary>The carrier holds no booking with this reference: booking it is safe.</summary>
+    NotFound,
+    /// <summary>The carrier cannot look this booking up: whether it exists is unknown.</summary>
+    Unsupported,
+}
+
+/// <summary>
 /// Searches a carrier's service points and parcel lockers near an address (GB5): bpost Pick-up points and
 /// parcel lockers, PostNL locations, Sendcloud's service-point API. The chosen point's id travels on the order and
 /// the label (<see cref="CarrierShipmentRequest.ServicePointId"/>).
@@ -85,6 +126,13 @@ public sealed record CarrierCapabilities
 
     /// <summary>A parcel's label can be voided before handover.</summary>
     public bool VoidLabel { get; init; }
+
+    /// <summary>
+    /// The carrier cancels a whole shipment, never one parcel of it (Sendcloud v3 <c>/shipments/{id}/cancel</c>, bpost's
+    /// order status). <see cref="ISparkShipping.VoidAsync"/> then voids every live parcel together with one call, and
+    /// refuses to void one parcel of several.
+    /// </summary>
+    public bool VoidsWholeShipment { get; init; }
 
     /// <summary>Return labels (GB5): a shipment from the buyer back to the seller.</summary>
     public bool ReturnLabels { get; init; }
@@ -172,7 +220,11 @@ public sealed record CarrierShipmentRequest
     /// <summary>Our reference: the order or fulfilment-order id; printed where the carrier allows.</summary>
     public required string Reference { get; init; }
 
-    /// <summary>Our shipment id; adapters that take an idempotency or external-reference key send it.</summary>
+    /// <summary>
+    /// The booking key: our shipment id (with <c>/{parcel number}</c> for a booking of part of it, and <c>-r{n}</c> after
+    /// the carrier refused an earlier attempt). Adapters that take an idempotency or external-reference key send it, and
+    /// <see cref="IShippingBookingLookup"/> finds the booking by it.
+    /// </summary>
     public required string ShipmentId { get; init; }
 
     /// <summary>The service's <see cref="CarrierService.Code"/>.</summary>
@@ -234,8 +286,8 @@ public sealed record CarrierDocument(byte[] Content, string MediaType, int? Dpi 
     public const string Png = "image/png";
 }
 
-/// <summary>Names one parcel at the carrier.</summary>
-public sealed record CarrierParcelReference(string CarrierParcelId, string TrackingNumber, string? Account, string? DestinationPostalCode = null, string? DestinationCountry = null);
+/// <summary>Names one parcel at the carrier, with the carrier's id of the booking (shipment) that labelled it.</summary>
+public sealed record CarrierParcelReference(string CarrierParcelId, string TrackingNumber, string? Account, string? DestinationPostalCode = null, string? DestinationCountry = null, string? CarrierShipmentId = null);
 
 /// <summary>
 /// One tracking event. Webhooks are at-least-once and unordered (warehouse §4.12): <see cref="EventId"/>

@@ -56,6 +56,8 @@
 		<ProjectReference Include="..\..\authorization\MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj" />
 		<!-- Memberships and custom roles: box-office, finance. -->
 		<ProjectReference Include="..\..\organizations\MintPlayer.Spark.Organizations\MintPlayer.Spark.Organizations.csproj" />
+		<!-- Optional: public holidays for refund periods (Reg. 1182/71 Art. 3(4)), RefIds only. -->
+		<ProjectReference Include="..\..\refdata\abstractions\MintPlayer.Spark.ReferenceData.Abstractions.csproj" />
 		<!-- The payment-pending sweep and the abandoned-basket reminder. -->
 		<ProjectReference Include="..\..\cron\MintPlayer.Spark.Cron\MintPlayer.Spark.Cron.csproj" />
 		<!-- Spark's generators (the library layers, SPARK045) and analyzers. Analyzer ProjectReferences are not transitive. -->

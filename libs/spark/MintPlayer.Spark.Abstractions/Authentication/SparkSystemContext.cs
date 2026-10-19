@@ -39,4 +39,23 @@ public static class SparkSystemContext
     /// </summary>
     public static bool IsSystemContext(IHttpContextAccessor? accessor)
         => IsSystemPrincipal(accessor?.HttpContext?.User);
+
+    /// <summary>The <see cref="ClaimType"/> value a module principal carries (module certificate, replication).</summary>
+    public const string ModuleOrigin = "module";
+
+    /// <summary>
+    /// Whether the principal is another Spark module (<see cref="ModuleOrigin"/>). A module is the system for
+    /// row-level security — there is no viewer to scope rows to — but <b>not</b> for attribute rights: an owner
+    /// limits what a granted module may write, field by field, exactly as for a person (warehouse F17).
+    /// </summary>
+    public static bool IsModulePrincipal(ClaimsPrincipal? principal)
+        => principal?.HasClaim(c => string.Equals(c.Type, ClaimType, StringComparison.Ordinal)
+                                    && string.Equals(c.Value, ModuleOrigin, StringComparison.Ordinal)) == true;
+
+    /// <summary>
+    /// System context that attribute rights exempt: a system principal that is not a module (see
+    /// <see cref="IsModulePrincipal"/>).
+    /// </summary>
+    public static bool IsAttributeRightsExempt(IHttpContextAccessor? accessor)
+        => IsSystemContext(accessor) && !IsModulePrincipal(accessor?.HttpContext?.User);
 }

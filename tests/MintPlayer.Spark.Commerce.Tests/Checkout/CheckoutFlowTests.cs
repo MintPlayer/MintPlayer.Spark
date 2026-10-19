@@ -212,7 +212,8 @@ public class CheckoutFlowTests : SparkTestDriver
     {
         var host = Host();
         await host.ItemAsync("tickets/gated", "tickets", 10m, admissionScope: "phases/presale");
-        (await Refused(() => host.Checkout.AddLineAsync(new CheckoutContracts.SparkBasketAddRequest("tickets/gated", 1, AdmissionToken: "t"))))
+        (await Refused(() => host.Checkout.AddLineAsync(new CheckoutContracts.SparkBasketAddRequest("tickets/gated", 1,
+            AdmissionTokens: new Dictionary<string, string> { ["phases/presale"] = "t" }))))
             .Code.Should().Be(CheckoutRefusals.AdmissionRequired);
         (await host.AvailableAsync("tickets/gated")).Should().Be(10);
     }

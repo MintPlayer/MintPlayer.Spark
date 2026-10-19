@@ -64,12 +64,15 @@ public static class SparkTicketingEventsExtensions
         services.TryAddScoped<TicketEventPublisher>();
         services.TryAddScoped<SparkTicketEvents>();
         services.TryAddScoped<ISparkTicketEvents>(sp => sp.GetRequiredService<SparkTicketEvents>());
-        services.TryAddScoped<IAttendeeAnswers, AttendeeAnswers>();
+        services.TryAddScoped<AttendeeAnswers>();
+        services.TryAddScoped<IAttendeeAnswers>(sp => sp.GetRequiredService<AttendeeAnswers>());
         services.TryAddScoped<IPreSelectOrders, PreSelectOrders>();
 
         // Checkout's extension points (PRD §4.1): ticket types are a capacity source; answers follow the order's fate.
         services.TryAddEnumerable(ServiceDescriptor.Scoped<ICheckoutCapacitySource, TicketCapacitySource>());
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IOrderEventRecipient, AttendeeAnswerOrderEvents>());
+        // GB3: required "at checkout" questions are answered before "Pay" and stored with the order.
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<ICheckoutPrePaymentCheck, AttendeeAnswersPrePaymentCheck>());
         // Commerce's: the seller's export (GB14), DSA notices (GA5), ranking transparency (GA5).
         services.TryAddEnumerable(ServiceDescriptor.Scoped<ISellerExportSource, AttendeeAnswerExport>());
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IDsaNoticeTargetResolver, EventDsaTargetResolver>());

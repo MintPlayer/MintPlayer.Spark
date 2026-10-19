@@ -22,8 +22,8 @@ Bind the staff slot in the application's `security.json`:
 "bindings": { "commerce-shipping:staff": ["Shipping"] }
 ```
 
-Members see the `Shipments` query, download labels and customs documents, and run *Void labels*, *Return label* and
-*Add parcel*. A marketplace narrows rows with an `IShipmentRowFilter` (a seller's staff see their own `Owner`'s).
+Members see the `Shipments` query, download labels and customs documents, and run *Void labels*, *Return label*,
+*Add parcel* and *Release booking* (section 5). A marketplace narrows rows with an `IShipmentRowFilter` (a seller's staff see their own `Owner`'s).
 
 ## 2. Configure methods, zones, dispatch
 
@@ -39,7 +39,7 @@ Members see the `Shipments` query, download labels and customs documents, and ru
     "world":   { "Countries": ["*"] }
   },
   "Methods": {
-    "standard": { "Carrier": "sendcloud", "Service": "8", "Rates": { "benelux": 4.95, "world": 19.95 }, "FreeFrom": { "benelux": 50 }, "TransitDays": { "Min": 1, "Max": 2 } },
+    "standard": { "Carrier": "sendcloud", "Service": "postnl:standard", "Rates": { "benelux": 4.95, "world": 19.95 }, "FreeFrom": { "benelux": 50 }, "TransitDays": { "Min": 1, "Max": 2 } },
     "locker":   { "Carrier": "bpost", "Service": "bpack 24/7", "Rates": { "benelux": 3.95 } },
     "pickup":   { "Kind": "Pickup", "Rates": { "benelux": 0 }, "PickupLocation": "Rue de la Loi 16, Brussels" }
   },
@@ -104,6 +104,26 @@ Labels are attachments of the shipment (`label-{n}.pdf|zpl`, `customs.pdf`), dow
 `GET /spark/commerce/shipping/label?id=…&parcel=n` (staff). A multi-parcel shipment with a carrier that cannot book
 several parcels at once is booked parcel by parcel; each parcel keeps its own tracking.
 
+**Booking idempotency.** Every carrier call is first recorded on the shipment as a `PendingBooking` (the parcels it
+covers and the reference the carrier sees: the shipment id, `/{n}` for a booking of part of it), and marked *in doubt*
+before the call. When the answer is lost (a timeout, a crash before the labels are saved), nothing is booked blindly
+again:
+
+- the next attempt (the same `IdempotencyKey`), and the `Shipping.BookingReconcile` job (every 10 minutes, for
+  bookings older than `BookingReconcileAfter`, default 10 minutes), first **look the booking up at the carrier** by
+  that reference (`IShippingBookingLookup`: Sendcloud `GET /shipments?external_reference_id=`, bpost's order, the
+  test carrier). Found: its labels are stored as if the answer had arrived. Not found (and old enough not to be in
+  flight): it is booked again. The job never books.
+- a carrier that cannot be asked (PostNL; Sendcloud returns) leaves it in doubt: the attempt throws
+  `ShipmentBookingInDoubtException`, and staff check the carrier's panel and run *Release booking*
+  (`ReleasePendingBookingAsync`), after which the next attempt books.
+- a refusal (a 4xx, or Sendcloud's `ANNOUNCEMENT_FAILED`) booked nothing: the next attempt books under a fresh
+  reference (`{reference}-r{n}`), since Sendcloud keeps a refused shipment's reference.
+
+An added parcel follows the same path; a refused one is removed again. Carriers that cancel whole bookings
+(`VoidsWholeShipment`: Sendcloud, bpost) void every live parcel of a booking with one call and refuse to void one
+parcel of several.
+
 **Customs (GB6).** Customs apply when either end is outside the EU customs territory (Regulation (EU) No 952/2013,
 Art. 4) or outside the VAT territory (Canary Islands, Åland, Mount Athos: a declaration for fiscal purposes). The
 postal-code exceptions in `Customs:TerritoryExceptions` are a starting point to confirm per country (D37). Every line
@@ -140,11 +160,11 @@ Wall-clock conversions go through the core (`SparkTimeZones`, K10).
 
 | Adapter | Labels | Tracking | Service points | Returns | Multi-parcel | Customs |
 |---|---|---|---|---|---|---|
-| Sendcloud (v2) | PDF (A6) | webhooks (`Sendcloud-Signature`) | service-point API | `is_return` | one batch entry per parcel | `parcel_items` + CN23 document |
+| Sendcloud (API v3) | PDF / ZPL / PNG | webhooks (`Sendcloud-Signature`) + pull | v3 service points | Returns API | one shipment, up to 15 parcels | `parcel_items` + customs declaration |
 | bpost | PDF | poll (order box status) | pick-up point locator | `bpack Easy Retour` | one box per parcel | `customsInfo` |
 | PostNL | PDF / ZPL | poll (Shippingstatus) | Locations API | product 3285 | `Groups` (multi-collo) | `Customs` + CN23 label |
 
-Voids: Sendcloud cancels a parcel, bpost cancels the whole order, PostNL has none.
+Voids: Sendcloud and bpost cancel a whole booking (`VoidsWholeShipment`: all its parcels together, never one of several), PostNL has none. Booking lookups (section 5): Sendcloud by `external_reference_id` (outbound only), bpost by order reference, the test carrier; PostNL has none.
 | Test | PDF / ZPL | webhooks + pull | built in | `test-return` | yes | yes |
 
 Each adapter's README lists its settings and what its fixtures could not confirm. Tests use fixtures derived from the

@@ -27,7 +27,12 @@ Every operation is one cluster-wide transaction, idempotent by claim id (or retu
 | I4 | every return path (expiry, payment failure, refund, cancellation, resale, late payment, withdrawal, refused line, lost dispute) returns each counter exactly once; `ReturnStock: false` keeps shipped units sold until `RestockAsync` |
 | I5 | a hold stays live until `ExpiresAt + Grace` |
 
-Live availability is published per quota on the public topic `commerce-inventory:{quotaId}` after every commit.
+`ExchangeAsync` returns, claims and sells in one transaction (seat change, upgrade); `GetItemMappingAsync` is the
+public read of an item's quota mapping.
+
+Live availability is published per quota on the public topic `commerce-inventory:{quotaId}` after every commit, and
+every `IInventoryCommitted` is told which quotas and units the commit touched. The sweeper's index is declared
+(`InventoryIndexes`, `[SparkIndexMap]`, X19) and emitted by the application's generator.
 
 The engine's documents are written only by the engine (S18): they are no persistent-object types (startup refuses
 one that maps them), their collections have revisions turned off at startup, and nothing patches them.

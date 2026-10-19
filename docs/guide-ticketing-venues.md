@@ -104,11 +104,15 @@ memory per snapshot. `GET /seatmap/state` and the public topic `ticketing-venues
 of **2 bits per seat** in the same order (0 free, 1 held, 2 sold; about 17 KB for 50k seats) plus what is left per block.
 Who holds a seat is never sent.
 
-The inventory publishes availability per quota after each commit, but nothing per seat. So
-`Ticketing.Venues.SeatStates` (cron, `LiveSchedule`, every 3 s) recomputes the frame of every live snapshot from
-`GetUnitStatesAsync` (batches of 1,024 compare-exchange reads) and republishes it when it changed; reads in between
-reuse a frame for `StateCacheDuration` (2 s). **What Inventory should add:** a commit hook naming the units a claim,
-conversion or release touched, so the frames are pushed after each commit instead of polled.
+The frames are **pushed, not polled**. After every commit the inventory tells its `IInventoryCommitted` listeners which
+units and quotas the commit touched (claim, adjust, convert, release, return, exchange, the sweeper's releases). Venues
+maps them to their snapshots (`{snapshotId}/{seatKey}`, `{snapshotId}/blocks/{key}`). For each snapshot that is live
+(`SetLiveAsync`) it schedules one push after `PushDelay` (250 ms). Commits on the same snapshot within that window
+share the push, so a hot sale computes at most one frame per snapshot per delay. A push recomputes the frame from
+`GetUnitStatesAsync` (batches of 1,024 compare-exchange reads) and publishes it when it changed. `SetLiveAsync` pushes
+the first frame. Reads of `/seatmap/state` reuse a frame for `StateCacheDuration` (2 s). A hold that lapses frees its
+seat without a commit until the inventory sweeper releases it; that release is a commit and is pushed. Topics are
+in-process, so each instance pushes the commits it made itself.
 
 ## The Angular side (`@mintplayer/ng-spark/ticketing/venues`)
 

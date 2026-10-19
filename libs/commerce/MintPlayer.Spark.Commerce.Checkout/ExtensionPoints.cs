@@ -50,6 +50,13 @@ public sealed record CheckoutItem : ISellableItem
     /// <summary>The channel (D2): its allocation mode, hold bounds, payment window, sign-in and refund rules apply to the line.</summary>
     public required string Channel { get; init; }
 
+    /// <summary>
+    /// D2: this sale's own hold time (a seller's per-sale value the source already clamped, e.g. Ticketing.Events'
+    /// <c>EffectiveSalePolicy.Hold</c>); null for the channel's default. Checkout clamps it to the channel's
+    /// <c>Hold</c> bounds again, so a source can never exceed them.
+    /// </summary>
+    public TimeSpan? HoldTime { get; init; }
+
     /// <summary>The seller organization; null for the platform's own sale.</summary>
     public string? OrganizationId { get; init; }
 
@@ -84,10 +91,13 @@ public sealed record CheckoutItem : ISellableItem
     public int? PerBuyerLimit { get; init; }
 
     /// <summary>
-    /// The waiting-room scope that gates this item (a sale phase id, §4.12). Lines of a gated item are claimed only with
-    /// an admission token that <see cref="ICheckoutAdmissionGate"/> accepts.
+    /// The admission scopes that gate this item (§4.6, §4.12), combined with AND: a waiting-room scope
+    /// (<c>ticketing-phase:{phaseId}</c>, <c>waiting-room:{gate}</c>), a presale or unlock code's scope
+    /// (<c>promotions:{scope}</c>), or both, as for a queued presale phase. Lines of a gated item are claimed only when
+    /// every scope's <see cref="ICheckoutAdmissionGate"/> accepts the token the buyer presented for that scope. Empty:
+    /// the item is not gated.
     /// </summary>
-    public string? AdmissionScope { get; init; }
+    public IReadOnlyList<string> AdmissionScopes { get; init; } = [];
 
     /// <summary>GB2 add-ons: the item may be bought only together with a line of one of these items, and is refunded with it.</summary>
     public IReadOnlyList<string> RequiresParentItemIds { get; init; } = [];
@@ -154,6 +164,15 @@ public sealed class CheckoutPricingContext
     /// <summary>The signed-in buyer, if any.</summary>
     public string? BuyerUserId { get; init; }
 
+    /// <summary>
+    /// A guest's e-mail address when known (given at the last step or kept on the basket), else null. With
+    /// <see cref="VisitorId"/> it identifies a guest for once-per-buyer rules; the order stores the same address.
+    /// </summary>
+    public string? BuyerEmail { get; init; }
+
+    /// <summary>The guest's visitor identity (X1), when not signed in.</summary>
+    public string? VisitorId { get; init; }
+
     /// <summary>Whether this is the final pricing of a placed order (false while quoting the basket).</summary>
     public bool Placing { get; init; }
 
@@ -176,6 +195,24 @@ public sealed class PricedLine
     public List<PriceAdjustment> Adjustments { get; } = [];
 
     public Money Total => Price.Total + Money.Sum(Adjustments.Select(a => a.Amount), Price.Total.Currency);
+
+    /// <summary>
+    /// The goods' net after every adjustment (S21): set once all pricing steps ran, from <see cref="Total"/> minus the
+    /// mandatory fees. Null while steps run (read <see cref="Price"/> there).
+    /// </summary>
+    public Money? Net { get; internal set; }
+
+    /// <summary>The VAT of the goods after every adjustment (S21), set with <see cref="Net"/>.</summary>
+    public Money? Vat { get; internal set; }
+}
+
+/// <summary>How Checkout rounds the VAT of adjusted order lines (S21; <c>Spark:Commerce:Checkout:VatRounding</c>).</summary>
+public enum CheckoutVatRounding
+{
+    /// <summary>Default: each adjusted line's VAT is extracted once from its own amount.</summary>
+    PerLine,
+    /// <summary>VAT is rounded once per rate group and split over the group's lines (largest remainder).</summary>
+    PerGroup,
 }
 
 /// <summary>A change to a line's total (a discount is negative).</summary>
@@ -277,25 +314,30 @@ public enum OrderEventKind
 // ---- waiting-room admission ---------------------------------------------------------------------------------------
 
 /// <summary>
-/// The admission-token check for waiting-room-gated phases (§4.4, §4.12): <c>TryClaim</c> of a line whose item names an
-/// <see cref="CheckoutItem.AdmissionScope"/> requires a token this gate accepts. <b>Implemented by
-/// <c>MintPlayer.Spark.WaitingRoom</c></b> (M16), which Checkout does not reference: the waiting room registers it
-/// (scoped, <c>TryAddEnumerable</c>). Without any gate registered, a gated line is refused (fail closed) and startup logs
-/// a warning.
+/// The admission check for gated items (§4.4, §4.6, §4.12): <c>TryClaim</c> of a line whose item names
+/// <see cref="CheckoutItem.AdmissionScopes"/> requires, for every scope, a token that the gate owning the scope accepts.
+/// Implemented outside Checkout, which references none of them: <c>MintPlayer.Spark.Commerce.WaitingRoom</c> for
+/// waiting-room scopes, <c>MintPlayer.Spark.Commerce.Promotions</c> for presale and unlock codes (scoped,
+/// <c>TryAddEnumerable</c>). A scope no gate owns is refused (fail closed); startup logs when no gate is registered.
 /// </summary>
-/// <remarks>The gate may consume the token (one admission, one claim) only when <see cref="AdmissionCheck.Consume"/> is set: a quote never consumes.</remarks>
+/// <remarks>
+/// The gate may consume the token (one admission, one claim) only when <see cref="AdmissionCheck.Consume"/> is set: a
+/// quote never consumes. With several scopes, checkout first checks every scope without consuming and consumes only when
+/// all admit, so a refused presale code does not spend the waiting-room token. Consuming must be idempotent for the
+/// same buyer and item (a retry, a second line of the same admission).
+/// </remarks>
 [SparkDiscoverable]
 public interface ICheckoutAdmissionGate
 {
-    /// <summary>Whether this gate owns <paramref name="scope"/> (a sale-phase id of its rooms).</summary>
+    /// <summary>Whether this gate owns <paramref name="scope"/> (one of an item's <see cref="CheckoutItem.AdmissionScopes"/>).</summary>
     bool Handles(string scope);
 
     Task<AdmissionDecision> CheckAsync(AdmissionCheck check, CancellationToken cancellationToken);
 }
 
 /// <summary>One admission question.</summary>
-/// <param name="Scope">The item's <see cref="CheckoutItem.AdmissionScope"/>.</param>
-/// <param name="Token">The token the client presented (from the waiting room's admission), or null.</param>
+/// <param name="Scope">One of the item's <see cref="CheckoutItem.AdmissionScopes"/>.</param>
+/// <param name="Token">The token the client presented for this scope (a waiting-room admission token, a presale code), or null.</param>
 /// <param name="UserId">The signed-in buyer.</param>
 /// <param name="VisitorId">The guest's visitor id (X1).</param>
 /// <param name="ItemId">The item.</param>

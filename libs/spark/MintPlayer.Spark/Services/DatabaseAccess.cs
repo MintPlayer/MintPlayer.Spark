@@ -58,38 +58,33 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
     public async Task<T> SaveDocumentUncheckedAsync<T>(T document) where T : class
     {
-        var interceptor = serviceProvider.GetService<ISyncActionInterceptor>();
-        var replicated = interceptor != null && interceptor.IsReplicated(typeof(T));
-        var idProperty = typeof(T).GetCachedProperty("Id");
-        string? ReadId() => idProperty is not null && idProperty.CanRead
-            ? AccessorCache.GetGetter(idProperty)(document)?.ToString()
-            : null;
-
-        // Insert or Update for the owner module (#467, D15), decided before the store assigns an id.
-        var idBefore = ReadId();
-        var isNew = replicated && (string.IsNullOrEmpty(idBefore) || !await session.Advanced.ExistsAsync(idBefore));
+        EnsureNotReplica(typeof(T));
 
         await session.StoreAsync(document);
         await CommitAsync();
-
-        // If this is a replicated entity, also broadcast the changes to the owner module
-        if (replicated)
-            await interceptor!.HandleSaveAsync(document, ReadId(), isNew);
 
         return document;
     }
 
     public async Task DeleteDocumentUncheckedAsync<T>(string id) where T : class
     {
+        EnsureNotReplica(typeof(T));
+
         session.Delete(id);
         await CommitAsync(deletedById: typeof(T));
+    }
 
-        // If this is a replicated entity, also notify the owner module
-        var interceptor = serviceProvider.GetService<ISyncActionInterceptor>();
-        if (interceptor != null && interceptor.IsReplicated(typeof(T)))
-        {
-            await interceptor.HandleDeleteAsync(typeof(T), id);
-        }
+    /// <summary>
+    /// A replica is written only by its source (warehouse WX2): a raw write here would diverge from the source
+    /// without anyone noticing until the next reconcile overwrote it. Edits go through the persistent-object
+    /// pipeline, where replication turns them into write-back requests.
+    /// </summary>
+    private void EnsureNotReplica(Type entityType)
+    {
+        if (serviceProvider.GetService<ISparkReplicaTypes>()?.IsReplica(entityType) == true)
+            throw new InvalidOperationException(
+                $"{entityType.Name} is a read-only replica of another module's contract; it cannot be written directly. " +
+                "Edit it through the persistent-object pipeline (a write-back request to its source) or change it at the source.");
     }
 
     // PersistentObject-specific methods that handle entity mapping

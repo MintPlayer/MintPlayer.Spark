@@ -72,27 +72,67 @@ public class SparkReplicationOptions
     /// </summary>
     public TimeSpan FallbackPollInterval { get; set; } = TimeSpan.FromSeconds(30);
 
-    /// <summary>Assemblies to scan for [Replicated] attributes. If empty, scans the entry assembly.</summary>
+    /// <summary>Assemblies to scan for <c>[Replica]</c> types. If empty, scans the entry assembly.</summary>
     public System.Reflection.Assembly[] AssembliesToScan { get; set; } = [];
+
+    /// <summary>
+    /// How this module, as an owner, delivers its contracts to consumers (warehouse WD1, WX1):
+    /// <see cref="ReplicationTransport.Auto"/> (default) reads the RavenDB licence at startup and uses
+    /// ETL when it has it, HTTP otherwise. Tests and demos pin <see cref="ReplicationTransport.Http"/>,
+    /// because local runs and CI hold the Developer licence, which has ETL (Q-W24).
+    /// </summary>
+    public ReplicationTransport Transport { get; set; } = ReplicationTransport.Auto;
+
+    /// <summary>
+    /// The contracts this module reads and where from, keyed by contract name:
+    /// <c>Spark:Replication:Consume:{contract}:Sources</c>. A replica type whose contract has no
+    /// sources here receives nothing, and startup says so.
+    /// </summary>
+    public Dictionary<string, ReplicationConsumeOptions> Consume { get; set; } = new(StringComparer.Ordinal);
+
+    /// <summary>The <c>SparkModules</c> registry: who may write it (WX4).</summary>
+    public ReplicationRegistryOptions Registry { get; set; } = new();
+
+    /// <summary>Delivery of pushes on the HTTP transport (owner side).</summary>
+    public ReplicationPushOptions Push { get; set; } = new();
+
+    /// <summary>The digest reconcile on the HTTP transport (consumer side).</summary>
+    public ReplicationReconcileOptions Reconcile { get; set; } = new();
+
+    /// <summary>
+    /// Published contracts that change on nearly every write (stock levels): instead of one push per save, a save marks
+    /// the document dirty in its own commit, and a flush every <see cref="ReplicationPushOptions.DirtySetFlushSchedule"/>
+    /// pushes the latest state of every dirty document once (warehouse §4.2, §4.4). The messaging outbox cannot
+    /// deduplicate (it refuses a <c>DeduplicationKey</c>), the dirty set can.
+    /// </summary>
+    public HashSet<string> DirtySetContracts { get; set; } = new(StringComparer.Ordinal);
+
+    /// <summary>Delivery of write-back requests to an owner (consumer side; F14).</summary>
+    public ReplicationWriteBackOptions WriteBack { get; set; } = new();
 
     private readonly List<ReplicationContract> contracts = [];
 
     /// <summary>
     /// The contracts this module publishes as an owner, in declaration order. Filled by
-    /// <see cref="Publish{TSource, TContract}"/>; code only, never bound from configuration.
+    /// <c>Publish</c>; code only, never bound from configuration.
     /// </summary>
     public IReadOnlyList<ReplicationContract> Contracts => contracts;
 
     /// <summary>
-    /// Publishes a replication contract: consumers that declare <c>[Replicated(Contract = …)]</c>
-    /// with this name and version receive <typeparamref name="TContract"/> records projected from
-    /// this module's <typeparamref name="TSource"/> documents.
+    /// Publishes a replication contract: consumers whose <c>[Replica]</c> type reads this name and
+    /// version receive <typeparamref name="TContract"/> records projected from this module's
+    /// <typeparamref name="TSource"/> documents.
     /// <para>
-    /// For the ETL transport the projection must be a plain field selection with optional renames:
+    /// On the HTTP transport the projection is compiled and may compute (Q-W17). The ETL transport
+    /// needs a plain field selection with optional renames:
     /// <c>s =&gt; new CarV1 { Plate = s.LicensePlate, Street = s.Address.Street }</c>, or a
-    /// positional record constructor whose arguments are member paths. The owner generates the ETL
-    /// transform from it. Anything else (method calls, arithmetic, conditionals, constants,
-    /// captured variables) is refused at startup.
+    /// positional record constructor whose arguments are member paths, from which the owner generates
+    /// the transform. A projection that needs code is HTTP-only: startup says so, and refuses when the
+    /// transport is pinned to <see cref="ReplicationTransport.Etl"/>.
+    /// </para>
+    /// <para>
+    /// Write-back maps a replica field back to the source property it was selected from; a field that
+    /// is computed or read from a nested path cannot be written back.
     /// </para>
     /// </summary>
     /// <param name="contract">Permanent lower-kebab name, e.g. <c>cars</c>. Never rename it once published.</param>
@@ -116,6 +156,21 @@ public class SparkReplicationOptions
 
         contracts.Add(new ReplicationContract(contract, version, typeof(TSource), typeof(TContract), projection));
         return this;
+    }
+
+    /// <summary>
+    /// Publishes <typeparamref name="TContract"/> under the name and version its
+    /// <see cref="ReplicationContractAttribute"/> states — the form to use with a shared contracts package.
+    /// </summary>
+    /// <exception cref="ArgumentException"><typeparamref name="TContract"/> carries no <see cref="ReplicationContractAttribute"/>.</exception>
+    public SparkReplicationOptions Publish<TSource, TContract>(
+        System.Linq.Expressions.Expression<Func<TSource, TContract>> projection)
+    {
+        var declared = ReplicationContractAttribute.Of(typeof(TContract))
+            ?? throw new ArgumentException(
+                $"{typeof(TContract).FullName} has no [ReplicationContract(name, version)]; name the contract explicitly or declare it on the record.",
+                nameof(projection));
+        return Publish(declared.Name, declared.Version, projection);
     }
 
     /// <summary>

@@ -50,12 +50,7 @@ internal sealed class SellerExports(IServiceProvider services, CommerceAccess ac
     }
 
     /// <summary>RFC 4180 quoting, plus a leading quote for cells a spreadsheet would run as a formula (CSV injection).</summary>
-    internal static string Escape(string? value)
-    {
-        if (string.IsNullOrEmpty(value)) return "";
-        if (value[0] is '=' or '+' or '-' or '@' or '\t' or '\r') value = "'" + value;
-        return value.IndexOfAny([',', '"', '\n', '\r']) >= 0 ? "\"" + value.Replace("\"", "\"\"") + "\"" : value;
-    }
+    internal static string Escape(string? value) => global::MintPlayer.Spark.Abstractions.Csv.SparkCsv.Field(value);
 }
 
 /// <summary>Saves and publishes legal documents (GA2) for the caller's organization or, for platform admins, the platform.</summary>

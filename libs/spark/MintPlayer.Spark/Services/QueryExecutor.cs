@@ -1958,10 +1958,10 @@ internal sealed record DatabasePage(int TotalItems);
             var isDescending = string.Equals(col.Direction, "desc", StringComparison.OrdinalIgnoreCase);
             var parameter = System.Linq.Expressions.Expression.Parameter(entityType, "x");
 
-            // A Money column is an object RavenDB cannot order by: it sorts by currency, then amount
-            // (MoneyQueryFields, commerce X4). Every other column is one key, the property itself.
-            System.Linq.Expressions.Expression[] keys = MoneyQueryFields.IsMoney(propertyInfo)
-                ? MoneyQueryFields.SortKeys(parameter, propertyInfo, inMemory: queryable is not IRavenQueryInspector)
+            // A Money or Quantity column is an object RavenDB cannot order by: it sorts by code, then amount
+            // (AmountQueryFields, commerce X4 / warehouse WX8). Every other column is one key, the property itself.
+            System.Linq.Expressions.Expression[] keys = AmountQueryFields.Handles(propertyInfo)
+                ? AmountQueryFields.SortKeys(parameter, propertyInfo, inMemory: queryable is not IRavenQueryInspector)
                 : [System.Linq.Expressions.Expression.Property(parameter, propertyInfo)];
 
             foreach (var key in keys)
@@ -2398,10 +2398,10 @@ internal sealed record DatabasePage(int TotalItems);
             var parameter = Expression.Parameter(sortType, "x");
             var member = Expression.Property(parameter, property);
 
-            // A Money column compares currency and amount, never the stored object (commerce X4).
+            // A Money or Quantity column compares code and amount, never the stored object (X4, WX8).
             var inMemory = queryable is not IRavenQueryInspector;
-            Expression? AnyMatch(object?[] values) => MoneyQueryFields.IsMoney(property)
-                ? AnyMoneyEquals(parameter, property, values, inMemory)
+            Expression? AnyMatch(object?[] values) => AmountQueryFields.Handles(property)
+                ? AnyAmountEquals(parameter, property, values, inMemory)
                 : AnyEquals(member, values, property.PropertyType);
 
             Expression? predicate = null;
@@ -2515,11 +2515,11 @@ internal sealed record DatabasePage(int TotalItems);
     }
 
     /// <summary>
-    /// The <see cref="Money"/> form of <see cref="AnyEquals"/>: each value matches on currency AND amount
-    /// (<see cref="MoneyQueryFields.EqualsValue"/>). Same contract: a value that does not convert is
+    /// The <see cref="Money"/> / <see cref="Quantity"/> form of <see cref="AnyEquals"/>: each value matches on code AND amount
+    /// (<see cref="AmountQueryFields.EqualsValue"/>). Same contract: a value that does not convert is
     /// dropped, and <see langword="null"/> means "no row can match".
     /// </summary>
-    private static Expression? AnyMoneyEquals(ParameterExpression row, PropertyInfo property, object?[] values, bool inMemory)
+    private static Expression? AnyAmountEquals(ParameterExpression row, PropertyInfo property, object?[] values, bool inMemory)
     {
         Expression? any = null;
 
@@ -2528,7 +2528,7 @@ internal sealed record DatabasePage(int TotalItems);
             if (!TryConvertFilterValue(raw, property.PropertyType, out var value))
                 continue;
 
-            var equals = MoneyQueryFields.EqualsValue(row, property, value as Money, inMemory);
+            var equals = AmountQueryFields.EqualsValue(row, property, value, inMemory);
             any = any is null ? equals : Expression.OrElse(any, equals);
         }
 

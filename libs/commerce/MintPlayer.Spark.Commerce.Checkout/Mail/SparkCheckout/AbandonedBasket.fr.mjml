@@ -1,0 +1,25 @@
+<mjml>
+  <mj-head>
+    <mj-title>Votre panier vous attend</mj-title>
+    <mj-attributes>
+      <mj-all font-family="Segoe UI, Helvetica, Arial, sans-serif" />
+      <mj-text font-size="15px" line-height="22px" color="#111827" />
+      <mj-button background-color="#2563eb" color="#ffffff" border-radius="6px" font-size="15px" />
+    </mj-attributes>
+  </mj-head>
+  <mj-body background-color="#f3f4f6">
+    <mj-section background-color="#ffffff" padding="24px 0">
+      <mj-column>
+        <mj-text font-size="20px" font-weight="600">{{ if buyer_name }}{{ buyer_name }}, v{{ else }}V{{ end }}ous avez laissé {{ lines }} article(s) dans votre panier</mj-text>
+        <mj-text>Rien n'est réservé pour vous : la disponibilité et les prix ont pu changer.</mj-text>
+        <mj-button href="{{ basket_url }}">Ouvrir votre panier</mj-button>
+      </mj-column>
+    </mj-section>
+    <mj-section padding="0 0 24px 0">
+      <mj-column>
+        <mj-divider border-width="1px" border-color="#e5e7eb" />
+        <mj-text font-size="12px" color="#6b7280">Vous recevez ce mail parce que vous avez accepté de recevoir nos nouvelles.{{ if unsubscribe_url }} <a href="{{ unsubscribe_url }}">Se désinscrire</a> en un clic.{{ end }}</mj-text>
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>

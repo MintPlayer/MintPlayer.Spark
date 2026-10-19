@@ -67,6 +67,67 @@ internal static partial class EtlTransformGenerator
     }
 
     /// <summary>
+    /// The fields <paramref name="contract"/>'s projection selects, or <see langword="null"/> with the reason
+    /// when the projection needs code: such a contract is HTTP-only (Q-W17).
+    /// </summary>
+    public static IReadOnlyList<EtlField>? TryTranslate(ReplicationContract contract, out string? refusal)
+    {
+        try
+        {
+            refusal = null;
+            return Translate(contract);
+        }
+        catch (InvalidOperationException ex)
+        {
+            refusal = ex.Message;
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// The contract fields write-back can map to a source property: those the projection selects as a plain,
+    /// top-level member of the source (<c>Plate = s.LicensePlate</c> → <c>Plate</c> writes <c>LicensePlate</c>).
+    /// A computed field, a nested path or a constant cannot be written back. Works on any projection, ETL-expressible or not.
+    /// </summary>
+    public static IReadOnlyDictionary<string, string> WritableFields(ReplicationContract contract)
+    {
+        var parameter = contract.Projection.Parameters.Single();
+        var writable = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        void Consider(string target, Expression value)
+        {
+            if (target != "Id" && TryPath(value, parameter, out var path, out _) && path.Count == 1)
+                writable[target] = path[0];
+        }
+
+        void ConsiderConstructor(NewExpression ctor)
+        {
+            var parameters = ctor.Constructor?.GetParameters() ?? [];
+            for (var i = 0; i < ctor.Arguments.Count; i++)
+            {
+                var target = ctor.Members?[i].Name
+                    ?? (i < parameters.Length ? MatchingProperty(contract.ContractType, parameters[i].Name) : null);
+                if (target is not null)
+                    Consider(target, ctor.Arguments[i]);
+            }
+        }
+
+        switch (contract.Projection.Body)
+        {
+            case MemberInitExpression init:
+                ConsiderConstructor(init.NewExpression);
+                foreach (var binding in init.Bindings.OfType<MemberAssignment>())
+                    Consider(binding.Member.Name, binding.Expression);
+                break;
+            case NewExpression ctor:
+                ConsiderConstructor(ctor);
+                break;
+        }
+
+        return writable;
+    }
+
+    /// <summary>
     /// The ETL transform script that loads <paramref name="fields"/> into
     /// <paramref name="targetCollection"/>.
     /// </summary>

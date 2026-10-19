@@ -651,6 +651,11 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             {
                 attribute.Renderer = SparkMoney.RendererName;
             }
+            // Quantity (warehouse WX8), on the same terms.
+            else if (attribute.DataType == SparkQuantity.DataType)
+            {
+                attribute.Renderer = SparkQuantity.RendererName;
+            }
         }
     }
 

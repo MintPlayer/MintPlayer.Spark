@@ -119,7 +119,7 @@ A third segment scopes a right to one attribute: `Edit/Song/Lyrics`, `QueryRead/
   (information) name it: *"Group 'X' restricts Edit on 2 of 3 attributes of 'Song'; 'Genre' is still
   editable through the type-level right — intended?"* Index-derived and projection columns are
   ordinary attributes and are denied the same way, one by one.
-- System context (module sync, replication) is not restricted by attribute rights.
+- System context is not restricted by attribute rights — except a **module** (a module certificate, replication write-back): its `Module:{Name}` group is evaluated like any other, so an owner can limit a granted module to, say, status fields (`Deny Edit/Order/Lines` for `Module:Shop`). Warehouse F17.
 
 Evaluated once per request per (type, verb) by `IAttributeRights`, then applied to every row — never
 asked per row.

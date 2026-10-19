@@ -49,6 +49,8 @@
     <ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce.Ticketing.Events\MintPlayer.Spark.Commerce.Ticketing.Events.csproj" />
     <!-- M16: waiting room and bot defence (generic packages, tested here with the commerce suite). -->
     <ProjectReference Include="..\..\libs\waiting_room\MintPlayer.Spark.WaitingRoom\MintPlayer.Spark.WaitingRoom.csproj" />
+    <!-- The bridges between the waiting room and Checkout, Promotions and Ticketing.Events (commerce-waiting-room). -->
+    <ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce.WaitingRoom\MintPlayer.Spark.Commerce.WaitingRoom.csproj" />
     <ProjectReference Include="..\..\libs\challenges\MintPlayer.Spark.Challenges\MintPlayer.Spark.Challenges.csproj" />
     <ProjectReference Include="..\..\libs\challenges\MintPlayer.Spark.Challenges.Turnstile\MintPlayer.Spark.Challenges.Turnstile.csproj" />
     <ProjectReference Include="..\..\libs\challenges\MintPlayer.Spark.Challenges.HCaptcha\MintPlayer.Spark.Challenges.HCaptcha.csproj" />

@@ -182,6 +182,14 @@ internal static class SparkModelSymbols
         && named.ContainingNamespace?.ToDisplayString() == SparkAbstractionsNamespace;
 
     /// <summary>
+    /// Whether <paramref name="type"/> is Spark's <c>Quantity</c> (or <c>Quantity?</c>): like <see cref="IsMoney"/>,
+    /// one value with its own serializer, indexed through its amount and unit companions (warehouse WX8).
+    /// </summary>
+    public static bool IsQuantity(this ITypeSymbol? type)
+        => type?.UnwrapNullable() is INamedTypeSymbol { Name: "Quantity" } named
+        && named.ContainingNamespace?.ToDisplayString() == SparkAbstractionsNamespace;
+
+    /// <summary>
     /// Every indexable property on <paramref name="type"/> and its base types, most-derived first, with
     /// members hidden by a more-derived declaration of the same name reported once.
     /// <para>Walking the hierarchy is deliberate: discovering only declared members silently drops

@@ -16,6 +16,7 @@ internal static class CheckoutRefundRegistration
         services.TryAddScoped<OrderLinks>();
         services.TryAddScoped<RefundEngine>();
         services.TryAddScoped<RefundMails>();
+        services.TryAddScoped<CheckoutHolidays>();
         services.TryAddScoped<RefundService>();
         services.TryAddScoped<ISparkCheckoutRefunds>(sp => sp.GetRequiredService<RefundService>());
         services.TryAddScoped<MassRefunds>();
@@ -25,5 +26,20 @@ internal static class CheckoutRefundRegistration
         builder.AddCron(cron => cron
             .AddJob<MassRefundJob>(registrationTime.Refunds.MassRefunds.Schedule, "Checkout.MassRefunds")
             .AddJob<RefundSweepJob>(registrationTime.Refunds.SweepSchedule, "Checkout.RefundSweep"));
+    }
+}
+
+/// <summary>Optional integrations of Checkout's refund periods.</summary>
+public static class CheckoutHolidayExtensions
+{
+    /// <summary>
+    /// Moves a withdrawal period's last day off the public holidays of <c>Spark:Commerce:Checkout:Refunds:HolidayCountry</c>
+    /// (Reg. 1182/71 Art. 3(4)), from the reference data's holiday calendar (GC11). The calendar is the reference-data
+    /// client's sync (<c>PublicHolidays</c>); without it, or without a country, only weekends move it.
+    /// </summary>
+    public static ISparkBuilder UseCheckoutReferenceDataHolidays(this ISparkBuilder builder)
+    {
+        builder.Services.TryAddEnumerable(ServiceDescriptor.Scoped<ICheckoutHolidayCalendar, ReferenceDataCheckoutHolidayCalendar>());
+        return builder;
     }
 }

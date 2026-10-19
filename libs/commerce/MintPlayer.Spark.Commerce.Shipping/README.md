@@ -16,6 +16,9 @@ spark.AddCommerceShipping()
   style and accepted dangerous-goods classes. A service that cannot take a parcel is never offered and never booked.
 - **Labels** (PDF or ZPL with its dpi) are attachments of the `Shipment` document; **multi-parcel** shipments,
   **return labels** and **voids** (GB5).
+- **Booking idempotency:** each carrier call is recorded as a pending booking before it is made; a booking whose
+  answer was lost is looked up at the carrier by its reference (`IShippingBookingLookup`) before it is booked again,
+  by the next attempt or the `Shipping.BookingReconcile` job. Carriers without a lookup wait for staff (*Release booking*).
 - **Service points and lockers** (GB5): `GET /spark/commerce/shipping/service-points`, and ng-spark's
   `<spark-service-point-picker>` (`@mintplayer/ng-spark/commerce/shipping`).
 - **Customs** (GB6): CN22/CN23 or a commercial invoice through the adapter for shipments leaving the EU customs

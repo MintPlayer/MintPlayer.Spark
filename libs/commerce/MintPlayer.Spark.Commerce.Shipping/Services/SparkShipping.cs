@@ -240,22 +240,42 @@ internal sealed partial class SparkShipping(
         if (problems.Count > 0)
             throw new ShippingRequestException(problems);
 
-        var number = shipment.Parcels.Count == 0 ? 1 : shipment.Parcels.Max(p => p.Number) + 1;
-        var added = NewParcel(parcel, number);
-        shipment.Parcels.Add(added); // in memory only: the booking reference then carries the parcel's number
-        var result = await carrier.CreateShipmentAsync(ToCarrierRequest(shipment, [added], options.CurrentValue.LabelFormat, isReturn: shipment.Direction == ShipmentDirection.Return), cancellationToken);
+        if (shipment.HasPendingBooking)
+            throw new ShippingRequestException(["The shipment has a booking in progress: wait for it, or release it."]);
+
+        // The parcel and its pending booking are stored before the carrier is called (carrier idempotency).
+        int number;
         using (var session = store.OpenAsyncSession())
         {
             session.Advanced.UseOptimisticConcurrency = true;
             var current = await session.LoadAsync<Shipment>(shipmentId, cancellationToken);
-            current.Parcels.Add(added);
-            ApplyResult(session, current, [added], result);
+            number = current.Parcels.Count == 0 ? 1 : current.Parcels.Max(p => p.Number) + 1;
+            current.Parcels.Add(NewParcel(parcel, number));
+            current.PendingBookings.Add(NewBooking($"{current.Id}/{number}", [number], options.CurrentValue.LabelFormat));
+            current.HasPendingBooking = true;
             current.UpdatedAtUtc = time.GetUtcNow().UtcDateTime;
             await session.SaveChangesAsync(cancellationToken);
-            shipment = current;
+        }
+        try
+        {
+            await ProcessBookingsAsync(shipmentId, carrier, lookupOnly: false, cancellationToken);
+        }
+        catch (CarrierException ex) when (IsRefusal(ex))
+        {
+            // The carrier booked nothing: the shipment is as it was.
+            using var session = store.OpenAsyncSession();
+            session.Advanced.UseOptimisticConcurrency = true;
+            var current = await session.LoadAsync<Shipment>(shipmentId, cancellationToken);
+            current.Parcels.RemoveAll(p => p.Number == number);
+            current.PendingBookings.RemoveAll(b => b.Parcels.Contains(number));
+            current.HasPendingBooking = current.PendingBookings.Count > 0;
+            Recompute(current);
+            await session.SaveChangesAsync(cancellationToken);
+            throw;
         }
         logger.LogInformation("Parcel {Number} added to shipment {Shipment} by {User}.", number, shipmentId, userId);
-        return shipment;
+        using (var session = store.OpenAsyncSession())
+            return await session.LoadAsync<Shipment>(shipmentId, cancellationToken);
     }
 
     public async Task<Shipment> CreateReturnLabelAsync(ReturnLabelRequest request, CancellationToken cancellationToken)
@@ -346,16 +366,41 @@ internal sealed partial class SparkShipping(
             return false;
 
         var all = true;
-        foreach (var parcel in shipment.Parcels.Where(p => !p.Voided && (parcelNumber is null || p.Number == parcelNumber)))
+        var asked = shipment.Parcels.Where(p => !p.Voided && (parcelNumber is null || p.Number == parcelNumber)).ToList();
+        if (carrier.Capabilities.VoidsWholeShipment)
         {
-            if (parcel.CarrierParcelId is not { } id || parcel.Status >= TrackingStatus.InTransit
-                || !await carrier.VoidAsync(new CarrierParcelReference(id, parcel.TrackingNumber ?? string.Empty, shipment.Account), cancellationToken))
+            // The carrier cancels a whole carrier shipment (one booking): void every live parcel of it with one call,
+            // and never one parcel of several, which would silently cancel its siblings.
+            foreach (var group in asked.GroupBy(p => p.CarrierShipmentId ?? shipment.CarrierShipmentId))
             {
-                all = false;
-                continue;
+                var booked = shipment.Parcels.Where(p => !p.Voided && (p.CarrierShipmentId ?? shipment.CarrierShipmentId) == group.Key).ToList();
+                var first = booked.FirstOrDefault(p => p.CarrierParcelId is not null);
+                if (booked.Count != group.Count() || first is null || booked.Any(p => p.Status >= TrackingStatus.InTransit)
+                    || !await carrier.VoidAsync(Reference(shipment, first), cancellationToken))
+                {
+                    all = false;
+                    continue;
+                }
+                foreach (var parcel in booked)
+                {
+                    parcel.Voided = true;
+                    parcel.Status = TrackingStatus.Cancelled;
+                }
             }
-            parcel.Voided = true;
-            parcel.Status = TrackingStatus.Cancelled;
+        }
+        else
+        {
+            foreach (var parcel in asked)
+            {
+                if (parcel.CarrierParcelId is null || parcel.Status >= TrackingStatus.InTransit
+                    || !await carrier.VoidAsync(Reference(shipment, parcel), cancellationToken))
+                {
+                    all = false;
+                    continue;
+                }
+                parcel.Voided = true;
+                parcel.Status = TrackingStatus.Cancelled;
+            }
         }
         var previous = shipment.Status;
         Recompute(shipment);
@@ -479,8 +524,7 @@ internal sealed partial class SparkShipping(
                 {
                     try
                     {
-                        var events = await carrier.GetTrackingAsync(new CarrierParcelReference(parcel.CarrierParcelId!, parcel.TrackingNumber ?? string.Empty,
-                            shipment.Account, shipment.ShipTo.PostalCode, shipment.ShipTo.Country), cancellationToken);
+                        var events = await carrier.GetTrackingAsync(Reference(shipment, parcel), cancellationToken);
                         if (events.Count > 0)
                             await RecordTrackingAsync(name, events, cancellationToken);
                     }
@@ -575,63 +619,235 @@ internal sealed partial class SparkShipping(
     };
 
     /// <summary>
-    /// Stores the shipment as Pending first (so a crash between the carrier's answer and our save leaves a trace staff
-    /// can see), books it, then stores the labels as attachments. Parcels go in one booking when the carrier takes
-    /// several; otherwise one booking per parcel. With an idempotency key, a labelled shipment of that key is answered
-    /// as it is.
+    /// Books a shipment idempotently towards the carrier. The shipment is stored first with one pending booking per
+    /// carrier call (parcels go in one call when the carrier takes several, otherwise one per parcel); each booking is
+    /// marked in doubt <i>before</i> its call, so an answer lost to a timeout or a crash is never booked blindly again:
+    /// the next attempt looks it up at the carrier (<see cref="IShippingBookingLookup"/>). With an idempotency key, a
+    /// labelled shipment of that key is answered as it is, and a pending one is resumed as it was first asked.
     /// </summary>
     private async Task<(Shipment Shipment, bool Fresh)> BookAsync(Shipment shipment, IShippingCarrier carrier, LabelFormat format, bool isReturn, CancellationToken cancellationToken)
     {
         var now = time.GetUtcNow().UtcDateTime;
+        string id;
         using (var session = store.OpenAsyncSession())
         {
-            if (shipment.Id is { } id && await session.LoadAsync<Shipment>(id, cancellationToken) is { } existing)
+            if (shipment.Id is { } key && await session.LoadAsync<Shipment>(key, cancellationToken) is { } existing)
             {
-                if (existing.Status != TrackingStatus.Pending)
+                if (!existing.HasPendingBooking)
                     return (existing, false);
-                // A Pending shipment of this key: the earlier attempt failed before the labels were stored. Book again.
-                logger.LogWarning("Shipment {Shipment} was left Pending by an earlier attempt; booking it again.", id);
-                session.Delete(existing);
-                await session.SaveChangesAsync(cancellationToken);
+                // An earlier attempt left bookings pending: resume them (the first request's content wins).
+                logger.LogWarning("Shipment {Shipment} has pending bookings from an earlier attempt; resuming them.", key);
+                id = key;
             }
-        }
-        using (var session = store.OpenAsyncSession())
-        {
-            shipment.CreatedAtUtc = now;
-            shipment.UpdatedAtUtc = now;
-            // An empty change vector: the key's document must not exist yet, so two concurrent first calls book once.
-            if (shipment.Id is { } key)
-                await session.StoreAsync(shipment, string.Empty, key, cancellationToken);
             else
-                await session.StoreAsync(shipment, cancellationToken);
-            await session.SaveChangesAsync(cancellationToken);
+            {
+                shipment.CreatedAtUtc = now;
+                shipment.UpdatedAtUtc = now;
+                var batches = shipment.Parcels.Count > 1 && !carrier.Capabilities.MultiParcel
+                    ? shipment.Parcels.Select(p => (IReadOnlyList<ShipmentParcel>)[p]).ToList()
+                    : [shipment.Parcels];
+                // Ids are needed for the keys: a shipment without an idempotency key gets its id from the store first.
+                if (shipment.Id is null)
+                {
+                    await session.StoreAsync(shipment, cancellationToken);
+                    shipment.PendingBookings = batches.Select(b => NewBooking(BookingKey(shipment, b), b.Select(p => p.Number).ToList(), format)).ToList();
+                    shipment.HasPendingBooking = true;
+                }
+                else
+                {
+                    shipment.PendingBookings = batches.Select(b => NewBooking(BookingKey(shipment, b), b.Select(p => p.Number).ToList(), format)).ToList();
+                    shipment.HasPendingBooking = true;
+                    // An empty change vector: the key's document must not exist yet, so two concurrent first calls book once.
+                    await session.StoreAsync(shipment, string.Empty, shipment.Id, cancellationToken);
+                }
+                await session.SaveChangesAsync(cancellationToken);
+                id = shipment.Id!;
+            }
         }
 
-        var batches = shipment.Parcels.Count > 1 && !carrier.Capabilities.MultiParcel
-            ? shipment.Parcels.Select(p => (IReadOnlyList<ShipmentParcel>)[p]).ToList()
-            : [shipment.Parcels];
-        var results = new List<(IReadOnlyList<ShipmentParcel> Parcels, CarrierShipmentResult Result)>();
-        foreach (var batch in batches)
-            results.Add((batch, await carrier.CreateShipmentAsync(ToCarrierRequest(shipment, batch, format, isReturn), cancellationToken)));
+        var labelled = await ProcessBookingsAsync(id, carrier, lookupOnly: false, cancellationToken);
+        return (labelled.Shipment, labelled.FirstLabels);
+    }
 
+    /// <summary>
+    /// Works through a shipment's pending bookings. An in-doubt booking is looked up first: found, its labels are
+    /// stored; not found, it is booked (unless <paramref name="lookupOnly"/>, or it is younger than
+    /// <see cref="SparkCommerceShippingOptions.BookingReconcileAfter"/> and may still be in flight); not answerable,
+    /// <see cref="ShipmentBookingInDoubtException"/>. A booking is saved as in doubt before the carrier is called; a
+    /// refusal (4xx) is saved as refused and rethrown, and the next attempt sends a fresh reference.
+    /// </summary>
+    private async Task<(Shipment Shipment, bool FirstLabels, int Resolved)> ProcessBookingsAsync(string shipmentId, IShippingCarrier carrier, bool lookupOnly, CancellationToken cancellationToken)
+    {
+        using var session = store.OpenAsyncSession();
+        session.Advanced.UseOptimisticConcurrency = true;
+        var shipment = await session.LoadAsync<Shipment>(shipmentId, cancellationToken)
+            ?? throw new ShippingRequestException([$"No shipment '{shipmentId}'."]);
+        var hadLabels = shipment.Parcels.Any(p => p.LabelAttachment is not null);
+        var settleBefore = time.GetUtcNow().UtcDateTime - options.CurrentValue.BookingReconcileAfter;
+        var resolved = 0;
+
+        foreach (var booking in shipment.PendingBookings.ToList())
+        {
+            var request = ToCarrierRequest(shipment, booking);
+            CarrierShipmentResult? result = null;
+            if (booking.State == PendingBookingState.InDoubt)
+            {
+                var lookup = carrier is IShippingBookingLookup finder
+                    ? await finder.FindBookingAsync(request, cancellationToken)
+                    : CarrierBookingLookup.Unsupported;
+                switch (lookup.Status)
+                {
+                    case CarrierBookingLookupStatus.Found:
+                        logger.LogInformation("Shipment {Shipment}: {Carrier} already held booking {Reference}; its labels are stored, nothing is booked again.",
+                            shipmentId, carrier.Name, booking.CarrierReference);
+                        result = lookup.Result;
+                        break;
+                    case CarrierBookingLookupStatus.NotFound when booking.LastAttemptAtUtc is { } last && last <= settleBefore:
+                        booking.State = PendingBookingState.NotAtCarrier;
+                        resolved++;
+                        await session.SaveChangesAsync(cancellationToken);
+                        break;
+                    case CarrierBookingLookupStatus.NotFound:
+                        // Not found yet, but the earlier call may still be in flight: booking now could book twice.
+                        if (lookupOnly)
+                            continue;
+                        throw new ShippingRequestException([$"Shipment {shipmentId}: an earlier {carrier.Name} booking is still in progress; try again in a few minutes."]);
+                    default:
+                        if (lookupOnly)
+                            continue;
+                        throw new ShipmentBookingInDoubtException(shipmentId, carrier.Name);
+                }
+            }
+
+            if (result is null)
+            {
+                if (lookupOnly)
+                    continue;
+                // Recorded before the call: a lost answer leaves the booking in doubt, never forgotten.
+                booking.State = PendingBookingState.InDoubt;
+                booking.Attempts++;
+                booking.LastAttemptAtUtc = time.GetUtcNow().UtcDateTime;
+                booking.Error = null;
+                shipment.UpdatedAtUtc = booking.LastAttemptAtUtc.Value;
+                await session.SaveChangesAsync(cancellationToken);
+                try
+                {
+                    result = await carrier.CreateShipmentAsync(request, cancellationToken);
+                }
+                catch (CarrierException ex) when (IsRefusal(ex))
+                {
+                    booking.State = PendingBookingState.Refused;
+                    booking.Generation++;
+                    booking.Error = ex.Message;
+                    await session.SaveChangesAsync(CancellationToken.None);
+                    throw;
+                }
+            }
+            else
+            {
+                resolved++;
+            }
+
+            var targets = booking.Parcels.Select(n => shipment.Parcels.First(p => p.Number == n)).ToList();
+            ApplyResult(session, shipment, targets, result!);
+            shipment.CarrierShipmentId ??= result!.CarrierShipmentId;
+            shipment.PendingBookings.Remove(booking);
+            shipment.HasPendingBooking = shipment.PendingBookings.Count > 0;
+            Recompute(shipment);
+            shipment.UpdatedAtUtc = time.GetUtcNow().UtcDateTime;
+            await session.SaveChangesAsync(cancellationToken);
+        }
+        return (shipment, !hadLabels && !shipment.HasPendingBooking && shipment.Parcels.Any(p => p.LabelAttachment is not null), resolved);
+    }
+
+    public async Task<int> ReconcilePendingBookingsAsync(CancellationToken cancellationToken)
+    {
+        var settleBefore = time.GetUtcNow().UtcDateTime - options.CurrentValue.BookingReconcileAfter;
+        List<Shipment> pending;
         using (var session = store.OpenAsyncSession())
         {
-            session.Advanced.UseOptimisticConcurrency = true;
-            var stored = await session.LoadAsync<Shipment>(shipment.Id, cancellationToken);
-            foreach (var (parcels, result) in results)
+            pending = await session.Query<Shipment>()
+                .Where(s => s.HasPendingBooking)
+                .Take(200)
+                .ToListAsync(cancellationToken);
+        }
+        var resolved = 0;
+        foreach (var shipment in pending)
+        {
+            if (!shipment.PendingBookings.Any(b => b.State == PendingBookingState.InDoubt && b.LastAttemptAtUtc <= settleBefore))
+                continue;
+            if (registry.Find(shipment.Carrier) is not { } carrier)
+                continue;
+            try
             {
-                var targets = parcels.Select(p => stored.Parcels.First(s => s.Number == p.Number)).ToList();
-                ApplyResult(session, stored, targets, result);
+                var outcome = await ProcessBookingsAsync(shipment.Id!, carrier, lookupOnly: true, cancellationToken);
+                resolved += outcome.Resolved;
+                if (outcome.FirstLabels)
+                    await NotifyLabelledAsync(outcome.Shipment, cancellationToken);
             }
-            stored.CarrierShipmentId = results[0].Result.CarrierShipmentId;
-            stored.PromisedFrom = shipment.PromisedFrom;
-            stored.PromisedBy = shipment.PromisedBy;
-            Recompute(stored);
-            stored.UpdatedAtUtc = time.GetUtcNow().UtcDateTime;
-            await session.SaveChangesAsync(cancellationToken);
-            return (stored, true);
+            catch (Exception ex) when (ex is CarrierException or HttpRequestException or Raven.Client.Exceptions.ConcurrencyException)
+            {
+                // One shipment's failure never stops the sweep; the next run tries again.
+                logger.LogWarning(ex, "Booking reconciliation failed for shipment {Shipment}.", shipment.Id);
+            }
+        }
+        return resolved;
+    }
+
+    public async Task<bool> ReleasePendingBookingAsync(string shipmentId, string? userId, CancellationToken cancellationToken)
+    {
+        using var session = store.OpenAsyncSession();
+        session.Advanced.UseOptimisticConcurrency = true;
+        var shipment = await session.LoadAsync<Shipment>(shipmentId, cancellationToken);
+        var inDoubt = shipment?.PendingBookings.Where(b => b.State == PendingBookingState.InDoubt).ToList() ?? [];
+        if (inDoubt.Count == 0)
+            return false;
+        foreach (var booking in inDoubt)
+            booking.State = PendingBookingState.NotAtCarrier;
+        shipment!.UpdatedAtUtc = time.GetUtcNow().UtcDateTime;
+        await session.SaveChangesAsync(cancellationToken);
+        logger.LogWarning("Shipment {Shipment}: {Count} in-doubt booking(s) released by {User}; the next attempt books again.", shipmentId, inDoubt.Count, userId);
+        return true;
+    }
+
+    private async Task NotifyLabelledAsync(Shipment shipment, CancellationToken cancellationToken)
+    {
+        foreach (var recipient in services.GetServices<IShipmentEventRecipient>())
+        {
+            if (shipment.Direction == ShipmentDirection.Return)
+                await recipient.OnReturnLabelCreatedAsync(shipment, cancellationToken);
+            else
+                await recipient.OnShipmentLabelledAsync(shipment, cancellationToken);
         }
     }
+
+    /// <summary>
+    /// A carrier's 4xx refusal booked nothing (except a timeout, conflict, too-early or rate limit, whose outcome is not
+    /// certain). Any other failure (5xx, a network error, an unreadable answer) leaves the booking in doubt.
+    /// </summary>
+    internal static bool IsRefusal(CarrierException exception)
+        => exception.StatusCode is >= 400 and < 500 and not (408 or 409 or 425 or 429);
+
+    private PendingBooking NewBooking(string key, List<int> parcels, LabelFormat format) => new()
+    {
+        Key = key,
+        Parcels = parcels,
+        LabelFormat = format,
+        State = PendingBookingState.New,
+        CreatedAtUtc = time.GetUtcNow().UtcDateTime,
+    };
+
+    /// <summary>
+    /// Unique per booking: a booking of part of the shipment (one parcel at a time, or an added parcel) gets the first
+    /// parcel's number, so carriers that key on our reference (bpost's order reference, Sendcloud's external reference)
+    /// never see it twice.
+    /// </summary>
+    private static string BookingKey(Shipment shipment, IReadOnlyList<ShipmentParcel> parcels)
+        => parcels.Count == shipment.Parcels.Count ? shipment.Id! : $"{shipment.Id}/{parcels[0].Number}";
+
+    private static CarrierParcelReference Reference(Shipment shipment, ShipmentParcel parcel)
+        => new(parcel.CarrierParcelId!, parcel.TrackingNumber ?? string.Empty, shipment.Account, shipment.ShipTo.PostalCode, shipment.ShipTo.Country,
+            parcel.CarrierShipmentId ?? shipment.CarrierShipmentId);
 
     private static void ApplyResult(IAsyncDocumentSession session, Shipment shipment, IReadOnlyList<ShipmentParcel> parcels, CarrierShipmentResult result)
     {
@@ -642,6 +858,7 @@ internal sealed partial class SparkShipping(
             var parcel = parcels[i];
             var labelled = result.Parcels[i];
             parcel.CarrierParcelId = labelled.CarrierParcelId;
+            parcel.CarrierShipmentId = result.CarrierShipmentId;
             parcel.TrackingNumber = labelled.TrackingNumber;
             parcel.TrackingUrl = labelled.TrackingUrl;
             parcel.LabelMediaType = labelled.Label.MediaType;
@@ -650,7 +867,7 @@ internal sealed partial class SparkShipping(
             parcel.Status = TrackingStatus.Labelled;
             session.Advanced.Attachments.Store(shipment, parcel.LabelAttachment, new MemoryStream(labelled.Label.Content), labelled.Label.MediaType);
         }
-        if (result.CustomsDocument is { } document && shipment.Customs is { } customs)
+        if (result.CustomsDocument is { } document && shipment.Customs is { } customs && customs.DocumentAttachment is null)
         {
             customs.DocumentAttachment = "customs" + Extension(document.MediaType);
             session.Advanced.Attachments.Store(shipment, customs.DocumentAttachment, new MemoryStream(document.Content), document.MediaType);
@@ -664,22 +881,23 @@ internal sealed partial class SparkShipping(
         _ => ".pdf",
     };
 
-    private static CarrierShipmentRequest ToCarrierRequest(Shipment shipment, IReadOnlyList<ShipmentParcel> parcels, LabelFormat format, bool isReturn) => new()
+    private static CarrierShipmentRequest ToCarrierRequest(Shipment shipment, PendingBooking booking) => new()
     {
         Reference = shipment.Reference,
-        // Unique per booking: a booking of part of the shipment (one parcel at a time, or an added parcel) gets the
-        // first parcel's number, so carriers that key on our reference (bpost's order reference) never see it twice.
-        ShipmentId = parcels.Count == shipment.Parcels.Count ? shipment.Id! : $"{shipment.Id}/{parcels[0].Number}",
+        ShipmentId = booking.CarrierReference,
         ServiceCode = shipment.ServiceCode,
         ShipFrom = shipment.ShipFrom,
         ShipTo = shipment.ShipTo,
         ServicePointId = shipment.ServicePoint?.Id,
         ServicePoint = shipment.ServicePoint,
-        Parcels = parcels.Select(p => new ParcelSpec(p.WeightGrams, p.LengthMm, p.WidthMm, p.HeightMm)).ToList(),
-        IsReturn = isReturn,
+        Parcels = booking.Parcels
+            .Select(n => shipment.Parcels.First(p => p.Number == n))
+            .Select(p => new ParcelSpec(p.WeightGrams, p.LengthMm, p.WidthMm, p.HeightMm))
+            .ToList(),
+        IsReturn = shipment.Direction == ShipmentDirection.Return,
         Customs = shipment.Customs,
         DangerousGoods = shipment.DangerousGoods,
-        LabelFormat = format,
+        LabelFormat = booking.LabelFormat,
         Account = shipment.Account,
     };
 

@@ -45,6 +45,10 @@
 		<ProjectReference Include="..\..\challenges\MintPlayer.Spark.Challenges\MintPlayer.Spark.Challenges.csproj" />
 		<!-- SparkUser: the verified phone (X13) and the account age (X11) of the opt-in join requirements. No web dependency. -->
 		<ProjectReference Include="..\..\authorization\MintPlayer.Spark.Authorization.Abstractions\MintPlayer.Spark.Authorization.Abstractions.csproj" />
+		<!-- WaitingRoomMode: one type, shared with the commerce configuration (no dependencies). -->
+		<ProjectReference Include="..\MintPlayer.Spark.WaitingRoom.Abstractions\MintPlayer.Spark.WaitingRoom.Abstractions.csproj" />
+		<!-- The personal-data export and account deletion hooks (GDPR Art. 15/17/20). -->
+		<ProjectReference Include="..\..\authorization\MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj" />
 		<!-- The admission worker. -->
 		<ProjectReference Include="..\..\cron\MintPlayer.Spark.Cron\MintPlayer.Spark.Cron.csproj" />
 		<!-- Spark's generators and analyzers. Analyzer ProjectReferences are not transitive. -->

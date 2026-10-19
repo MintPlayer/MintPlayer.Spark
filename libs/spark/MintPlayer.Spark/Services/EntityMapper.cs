@@ -1132,14 +1132,22 @@ internal partial class EntityMapper : IEntityMapper
     /// A wire value as <see cref="Money"/>: <see langword="null"/> (or a blank) clears it, a
     /// <see cref="Money"/> passes, and an object goes through <see cref="MoneyJsonConverter"/>.
     /// </summary>
-    internal static Money? ReadMoney(object? value, string attributeName)
+    internal static Money? ReadMoney(object? value, string attributeName) => ReadValue<Money>(value, attributeName);
+
+    /// <summary>
+    /// A wire value as <see cref="Quantity"/> (warehouse WX8), on the same terms as <see cref="ReadMoney"/>:
+    /// an object goes through <see cref="QuantityJsonConverter"/>, and an invalid unit is a 400 naming the attribute.
+    /// </summary>
+    internal static Quantity? ReadQuantity(object? value, string attributeName) => ReadValue<Quantity>(value, attributeName);
+
+    private static T? ReadValue<T>(object? value, string attributeName) where T : class
     {
         switch (value)
         {
             case null:
                 return null;
-            case Money money:
-                return money;
+            case T typed:
+                return typed;
             case JsonElement { ValueKind: JsonValueKind.Null or JsonValueKind.Undefined }:
                 return null;
             case string blank when string.IsNullOrWhiteSpace(blank):
@@ -1149,12 +1157,12 @@ internal partial class EntityMapper : IEntityMapper
         var json = value is JsonElement element ? element.GetRawText() : JsonSerializer.Serialize(value);
         try
         {
-            return JsonSerializer.Deserialize<Money>(json);
+            return JsonSerializer.Deserialize<T>(json);
         }
         catch (JsonException ex)
         {
             throw new SparkValidationException(
-                $"'{json}' is not a valid Money value for {attributeName}: {ex.Message}", attributeName);
+                $"'{json}' is not a valid {typeof(T).Name} value for {attributeName}: {ex.Message}", attributeName);
         }
     }
 
@@ -1169,6 +1177,13 @@ internal partial class EntityMapper : IEntityMapper
         if (targetType == typeof(Money))
         {
             setter(entity, ReadMoney(value, property.Name));
+            return;
+        }
+
+        // Quantity (warehouse WX8) is one value too, {"Amount","Unit"}; an invalid unit code is a 400.
+        if (targetType == typeof(Quantity))
+        {
+            setter(entity, ReadQuantity(value, property.Name));
             return;
         }
 

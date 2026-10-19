@@ -230,6 +230,7 @@ public static class SparkDevelopmentExtensions
         VerifyQueryAliasesAreUnique(contentRoot);
         VerifyRefreshTriggersAreImplemented(contentRoot);
         VerifyDateTimeDisplays(contentRoot);
+        VerifyReferenceTrees(contentRoot);
         VerifyComposedQueriesAreUsable(contentRoot);
         VerifyCustomQueryMethodsExist(builder.Services, contentRoot);
         VerifySubQueriesCanBeParentScoped(contentRoot);
@@ -399,6 +400,94 @@ public static class SparkDevelopmentExtensions
         foreach (var error in errors)
             Console.Error.WriteLine("  " + error);
         Environment.ExitCode = ExitDrift;
+    }
+
+    /// <summary>
+    /// Refuses a <c>referenceTree</c> (WX9) whose parent attribute the picker cannot filter on. A refused
+    /// column filter does not fail, it leaves the rows unnarrowed (see <c>QueryExecutor.ApplyColumnFilters</c>),
+    /// so every node of the picker would list the whole set as its children, endlessly nested.
+    /// </summary>
+    private static void VerifyReferenceTrees(string contentRootPath)
+    {
+        var definitions = new List<EntityTypeDefinition>();
+        foreach (var file in SparkModelFiles.Compose(contentRootPath))
+        {
+            try
+            {
+                var model = System.Text.Json.JsonSerializer.Deserialize<EntityTypeFile>(
+                    file.Json,
+                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                if (model?.PersistentObject is { } definition)
+                    definitions.Add(definition);
+            }
+            catch (System.Text.Json.JsonException)
+            {
+                // A malformed file is the hash check's business.
+            }
+        }
+
+        var (errors, warnings) = DescribeReferenceTreeProblems(definitions);
+        foreach (var warning in warnings)
+            Console.Error.WriteLine("Spark model warning: " + warning);
+        if (errors.Count == 0)
+            return;
+
+        Console.Error.WriteLine("Spark model declares a referenceTree the picker cannot walk (warehouse PRD WX9):");
+        foreach (var error in errors)
+            Console.Error.WriteLine("  " + error);
+        Environment.ExitCode = ExitDrift;
+    }
+
+    /// <summary>The checks behind <see cref="VerifyReferenceTrees"/>, over already-loaded definitions.</summary>
+    internal static (List<string> Errors, List<string> Warnings) DescribeReferenceTreeProblems(IReadOnlyList<EntityTypeDefinition> definitions)
+    {
+        var errors = new List<string>();
+        var warnings = new List<string>();
+
+        foreach (var definition in definitions)
+        {
+            foreach (var attribute in definition.Attributes.Where(a => a.ReferenceTree is not null))
+            {
+                var where = $"{definition.Name}.{attribute.Name}";
+                var tree = attribute.ReferenceTree!;
+                if (attribute.DataType != "Reference")
+                {
+                    warnings.Add($"{where}: referenceTree on a \"{attribute.DataType}\" attribute does nothing; only a Reference picker reads it.");
+                    continue;
+                }
+
+                var target = definitions.FirstOrDefault(d => NamesType(d, attribute.ReferenceType));
+                if (target is null)
+                {
+                    errors.Add($"{where}: referenceTree needs the referenced type, and \"{attribute.ReferenceType}\" names no model.");
+                    continue;
+                }
+
+                if (string.IsNullOrWhiteSpace(tree.ParentAttribute))
+                {
+                    errors.Add($"{where}: referenceTree.parentAttribute is empty.");
+                    continue;
+                }
+
+                var parent = ColumnCapabilities.FindQuerySurfaceAttribute(target, tree.ParentAttribute);
+                if (parent is null)
+                    errors.Add($"{where}: parentAttribute \"{tree.ParentAttribute}\" is not an attribute of {target.Name} shown on its queries.");
+                else if (!ColumnCapabilities.CanFilter(parent, null))
+                    errors.Add($"{where}: parentAttribute \"{tree.ParentAttribute}\" has canFilter: false on {target.Name}, so the picker cannot ask for one node's children.");
+                else if (parent.DataType != "Reference" || !NamesType(target, parent.ReferenceType))
+                    errors.Add($"{where}: parentAttribute \"{tree.ParentAttribute}\" must be a Reference from {target.Name} to {target.Name}.");
+
+                if (tree.ChildCountAttribute is { } childCount && ColumnCapabilities.FindQuerySurfaceAttribute(target, childCount) is null)
+                    errors.Add($"{where}: childCountAttribute \"{childCount}\" is not an attribute of {target.Name} shown on its queries.");
+            }
+        }
+
+        return (errors, warnings);
+
+        static bool NamesType(EntityTypeDefinition definition, string? referenceType)
+            => !string.IsNullOrEmpty(referenceType)
+               && (string.Equals(definition.ClrType, referenceType, StringComparison.Ordinal)
+                   || string.Equals(definition.Name, referenceType, StringComparison.Ordinal));
     }
 
     private static void VerifyRefreshTriggersAreImplemented(string contentRootPath)

@@ -84,7 +84,8 @@ internal sealed class SparkVenues(
     ISparkApprovals approvals,
     VenueAccess access,
     IOptionsMonitor<SparkTicketingVenuesOptions> options,
-    TimeProvider clock) : ISparkVenues
+    TimeProvider clock,
+    Live.SeatStatePusher? pusher = null) : ISparkVenues
 {
     private static readonly string[] ImageTypes = ["image/png", "image/jpeg", "image/webp"];
 
@@ -350,6 +351,8 @@ internal sealed class SparkVenues(
         }
         live.LiveUntilUtc = liveUntilUtc;
         await session.SaveChangesAsync(cancellationToken);
+        // The first frame now, so a retained topic has one before the next commit pushes again.
+        pusher?.Touch([snapshotId]);
     }
 
     // ---- shared ---------------------------------------------------------------------------------------------

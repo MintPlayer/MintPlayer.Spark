@@ -162,6 +162,7 @@ internal static class RefundHost
             services.AddScoped<OrderLinks>();
             services.AddScoped<RefundEngine>();
             services.AddScoped<RefundMails>();
+            services.AddScoped<CheckoutHolidays>();
             services.AddScoped<RefundService>();
             services.AddScoped<MassRefunds>();
             services.AddScoped<IOrderEventRecipient, RefundTermsRecipient>();

@@ -48,6 +48,34 @@ public sealed class SparkMailMessage
 
     /// <summary>The lane it was queued on (<see cref="SparkMailQueues"/>); null (a message queued by an older version) means transactional. Informational: handed to the transport as <see cref="Transports.SparkMailSendContext.Lane"/>.</summary>
     public string? Queue { get; set; }
+
+    /// <summary>The attachments (inline content is base64, or <c>sdp1:</c> + its ciphertext for a sensitive mail).</summary>
+    public List<SparkMailMessageAttachment>? Attachments { get; set; }
+
+    /// <summary>Extra headers (validated at queue time; a name MailManager also sets is replaced by this value).</summary>
+    public Dictionary<string, string>? Headers { get; set; }
+}
+
+/// <summary>An attachment on the wire.</summary>
+public sealed class SparkMailMessageAttachment
+{
+    /// <summary>The file name.</summary>
+    public string FileName { get; set; } = string.Empty;
+
+    /// <summary>The MIME type.</summary>
+    public string ContentType { get; set; } = "application/octet-stream";
+
+    /// <summary>Inline content: base64, or <c>sdp1:</c> + the Data Protection ciphertext of the base64 (sensitive mail).</summary>
+    public string? Content { get; set; }
+
+    /// <summary>The RavenDB document holding the attachment.</summary>
+    public string? DocumentId { get; set; }
+
+    /// <summary>The RavenDB attachment's name.</summary>
+    public string? AttachmentName { get; set; }
+
+    /// <summary>Left out (instead of failing the attempt) when missing at send.</summary>
+    public bool Optional { get; set; }
 }
 
 /// <summary>A queued campaign; its handler fans it out into one <see cref="SparkMailMessage"/> per recipient.</summary>

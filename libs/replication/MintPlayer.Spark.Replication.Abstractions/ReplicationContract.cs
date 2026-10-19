@@ -7,11 +7,11 @@ namespace MintPlayer.Spark.Replication.Abstractions;
 /// A replication contract the owning module publishes: a permanent lower-kebab name, a version, the
 /// source type it reads, the record consumers receive, and the C# projection from one to the other
 /// (warehouse WX2, commerce X20 item 7). Declared with
-/// <see cref="Configuration.SparkReplicationOptions.Publish{TSource, TContract}"/>.
+/// <see cref="Configuration.SparkReplicationOptions.Publish{TSource, TContract}(string, int, Expression{Func{TSource, TContract}})"/>.
 /// <para>
 /// The owner turns the projection into its RavenDB ETL transform itself. A consumer names only the
 /// contract and version it reads, so no consumer-written JavaScript ever runs on the owner's server
-/// (F16). A projection the ETL transform cannot express is refused at startup.
+/// (F16). A projection the ETL transform cannot express makes the contract HTTP-only (Q-W17).
 /// </para>
 /// </summary>
 public sealed partial class ReplicationContract

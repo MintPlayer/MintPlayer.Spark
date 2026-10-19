@@ -14,3 +14,7 @@ using MintPlayer.Spark.Abstractions;
 // Money (X4) is written by MoneyJsonConverter ({"amount":12.30,"currency":"EUR"}); its TypeScript is hand-written in
 // models/src/money.ts. Declared here so commerce contracts can carry prices (commerce M4).
 [assembly: SparkClientType(typeof(Money), "Money", "money")]
+
+// Quantity (warehouse WX8) is written by QuantityJsonConverter ({"Amount":12,"Unit":"EA"}); its TypeScript is hand-written
+// in models/src/quantity.ts.
+[assembly: SparkClientType(typeof(Quantity), "Quantity", "quantity")]

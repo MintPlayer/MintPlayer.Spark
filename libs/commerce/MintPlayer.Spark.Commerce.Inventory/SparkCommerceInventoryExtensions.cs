@@ -50,17 +50,18 @@ public static class SparkCommerceInventoryExtensions
 
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton<InventoryAvailabilityPublisher>();
+        services.TryAddSingleton<InventoryCommitDispatcher>();
         services.TryAddSingleton(sp =>
         {
             var options = sp.GetRequiredService<IOptions<SparkCommerceInventoryOptions>>().Value;
-            var publisher = sp.GetRequiredService<InventoryAvailabilityPublisher>();
+            var dispatcher = sp.GetRequiredService<InventoryCommitDispatcher>();
             InventoryEngine? engine = null;
             engine = new InventoryEngine(
                 sp.GetRequiredService<IDocumentStore>(),
                 database: null,
                 options.ToEngineOptions(),
                 sp.GetRequiredService<TimeProvider>(),
-                options.PublishOnCommit ? (quotas, ct) => publisher.PublishAsync(engine!, quotas, ct) : null);
+                (commit, ct) => dispatcher.DispatchAsync(engine!, commit, ct));
             return engine;
         });
         services.TryAddSingleton<ISparkInventory>(sp => sp.GetRequiredService<InventoryEngine>());

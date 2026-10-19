@@ -599,8 +599,8 @@ Points that matter in practice:
   constructor sets `SearchEngineType = SearchEngineType.Lucene`, because Spark's search is typo-tolerant on
   searchable fields and Corax refuses fuzzy queries. `[Fuzzy(false)]` opts a field out of the fuzzy matching, not out
   of Lucene. Indexes with neither keep the server default. See [Search](guide-search.md#fuzzy-by-default).
-- **`Money` gets `{Name}Amount` / `{Name}Currency` companions** ([Money](guide-money.md)). A `Quantity` type does not
-  exist yet (warehouse WX8); its companions land with it.
+- **`Money` gets `{Name}Amount` / `{Name}Currency` companions** ([Money](guide-money.md)), and **`Quantity` gets
+  `{Name}Amount` / `{Name}Unit`** ([Quantity](guide-quantity.md)).
 
 ### Keeping a hand-written index, without hand-writing the boilerplate
 
@@ -1222,6 +1222,15 @@ public partial class RefLocalities_Typeahead : SparkMultiMapIndexCreationTask<Ty
   referenced assembly or in the application, becomes one `AddMap` of a single multi-map index, ordered by member
   name. One shared multi-map per library family keeps the index count small. All maps of one index must produce
   the same result type (SPARK_INDEX_016); the first in member order wins and the others are skipped.
+- **Packages that cannot see each other compose one index** (warehouse WX16 / Q-W26). Put the result type in the
+  package family's core library and let each plugin package declare its maps against it: `Warehouse_Documents` maps
+  receipts and returns from Inbound, orders from Outbound and shipments from Packing, while core references none of
+  them. Only the application references them all, so only it can hold the multi-map class. The field set is the
+  shared result type's properties, so a new field is added there; a package that brings its own result type, even
+  one with the same class name and a field of another type, is a different type and gets SPARK_INDEX_016, which
+  fails the application build rather than deploying the index without that package's documents. `StoreAllFields`
+  and the Lucene engine apply to the whole index when any contributor asks for them. Declared indexes are map-only:
+  there is no declared reduce, so no reduce can conflict; an index that reduces is still written in the application.
 - **The map is the library's own expression**, type-checked where it is written. A generator cannot read a method
   body from a referenced assembly, so the emitted index calls the member, and RavenDB translates that expression
   tree into the definition. Index helpers that are instance members of an index class (`LoadDocument`,

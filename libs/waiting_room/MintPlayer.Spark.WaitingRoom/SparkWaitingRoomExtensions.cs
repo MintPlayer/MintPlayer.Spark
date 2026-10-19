@@ -7,6 +7,7 @@ using Microsoft.Extensions.Options;
 using MintPlayer.Spark.Abstractions.Builder;
 using MintPlayer.Spark.Abstractions.Live;
 using MintPlayer.Spark.Abstractions.Visitor;
+using MintPlayer.Spark.Authorization.Identity;
 using MintPlayer.Spark.Challenges;
 using MintPlayer.Spark.Cron;
 using MintPlayer.Spark.WaitingRoom.Admissions;
@@ -38,7 +39,8 @@ public static class SparkWaitingRoomExtensions
 {
     /// <summary>
     /// Registers <see cref="ISparkWaitingRooms"/>, <see cref="IWaitingRoomAdmissions"/>, the admission worker (cron), the live
-    /// topics <c>waiting-room:{key}</c>, the visitor merge, <c>/spark/waiting-room/*</c>, and the risk pipeline
+    /// topics <c>waiting-room:{key}</c>, the visitor merge, the GDPR account hooks (export and erasure of the account's
+    /// entries), <c>/spark/waiting-room/*</c>, and the risk pipeline
     /// (<c>AddChallenges()</c> without providers: no challenge is asked until the host picks one). Safe to call more than once.
     /// </summary>
     public static ISparkBuilder AddWaitingRoom(this ISparkBuilder builder, Action<SparkWaitingRoomOptions>? configure = null)
@@ -66,6 +68,9 @@ public static class SparkWaitingRoomExtensions
         services.TryAddScoped<IWaitingRoomAdmissions, WaitingRoomAdmissions>();
         services.TryAddEnumerable(ServiceDescriptor.Singleton<ISparkLiveTopicPolicy, WaitingRoomTopicPolicy>());
         services.TryAddEnumerable(ServiceDescriptor.Scoped<ISparkVisitorMergeHandler, WaitingRoomVisitorMerge>());
+        // GDPR Art. 15/17/20 through the account hooks: the export section "waiting-room" and the erasure.
+        services.TryAddEnumerable(ServiceDescriptor.Scoped(typeof(ISparkPersonalDataContributor<>), typeof(WaitingRoomPersonalData<>)));
+        services.TryAddEnumerable(ServiceDescriptor.Scoped(typeof(ISparkAccountDeletionHandler<>), typeof(WaitingRoomAccountDeletion<>)));
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, WaitingRoomSeeder>());
 
         // The schedule is read at registration (the Cron registry needs it now): code, then configuration.

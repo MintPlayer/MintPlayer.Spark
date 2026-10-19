@@ -213,6 +213,8 @@ public static class SparkModelShape
             // Same reason: Money is one value (amount + currency) with its own serializer, never a
             // nested detail object (commerce X4).
             _ when underlying == typeof(Money) => SparkMoney.DataType,
+            // And Quantity (warehouse WX8): amount + unit, one value.
+            _ when underlying == typeof(Quantity) => SparkQuantity.DataType,
             _ when IsComplexType(underlying) => "AsDetail",
             _ => "string"
         };
@@ -275,7 +277,7 @@ public static class SparkModelShape
         if (type == typeof(string) || type.IsValueType || type.IsEnum || type.IsPrimitive)
             return false;
 
-        if (type == typeof(TranslatedString) || type == typeof(Money))
+        if (type == typeof(TranslatedString) || type == typeof(Money) || type == typeof(Quantity))
             return false;
 
         return type.GetCachedProperties().Length > 0;

@@ -5,6 +5,7 @@ using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Consent;
 using MintPlayer.Spark.Abstractions.Visitor;
 using MintPlayer.Spark.Commerce.Checkout.Models;
+using MintPlayer.Spark.Commerce.Payments;
 using MintPlayer.Spark.Commerce.Promotions.Contracts;
 using MintPlayer.Spark.Commerce.Promotions.Models;
 using Raven.Client.Documents;
@@ -23,9 +24,13 @@ internal sealed class Tracking(
     IDocumentStore store,
     IServiceProvider services,
     ICommerceAudit audit,
+    ISparkPlatformFeeLedger ledger,
     TimeProvider clock,
     IOptionsMonitor<SparkCommercePromotionsOptions> options)
 {
+    /// <summary>The booker name of Promotions' commissions in the platform-fee ledger (the library alias).</summary>
+    internal const string LedgerBooker = "commerce-promotions";
+
     /// <summary>
     /// Records the current visitor's attribution to <paramref name="request"/>'s link. False (nothing stored) when tracking
     /// is off, the link is unknown or inactive, consent is required and missing, or an earlier attribution still counts.
@@ -118,23 +123,24 @@ internal sealed class Tracking(
         attribution.ConfirmedAt ??= clock.GetUtcNow();
         attribution.AttributedTotal = AttributedTotal(order, attribution.OrganizationId);
 
-        var commissionId = PromotionCommission.IdFor(order.Id!);
-        if (link is not null && await session.LoadAsync<PromotionCommission>(commissionId, cancellationToken) is null)
+        if (link is not null)
         {
             var amount = PromotionRules.Commission(link, attribution.AttributedTotal);
-            if (!amount.IsZero)
+            // Booked into Payments' platform-fee ledger (GB4) in this session, with the audit entry or not at all. The
+            // ledger's natural id makes a redelivered Confirmed event book nothing (null).
+            var booked = await ledger.BookCommissionAsync(session, new CommissionBooking
             {
-                await session.StoreAsync(new PromotionCommission
-                {
-                    Id = commissionId,
-                    OrderId = order.Id!,
-                    Ref = link.Ref,
-                    OrganizationId = link.OrganizationId,
-                    PromoterUserId = link.PromoterUserId,
-                    Amount = amount,
-                    Reason = "confirmed",
-                    BookedAt = clock.GetUtcNow(),
-                }, changeVector: string.Empty, commissionId, cancellationToken);
+                Booker = LedgerBooker,
+                SourceId = order.Id!,
+                Amount = amount,
+                SellerOrganizationId = link.OrganizationId,
+                Reference = order.Id,
+                BeneficiaryId = link.PromoterUserId,
+                AttributionRef = link.Ref,
+                OccurredAt = clock.GetUtcNow(),
+            }, cancellationToken);
+            if (booked is not null)
+            {
                 await audit.RecordAsync(session, new CommerceAuditEntry
                 {
                     Action = PromotionAuditActions.CommissionBooked,
@@ -155,43 +161,35 @@ internal sealed class Tracking(
     public async Task OnReversedAsync(CheckoutOrder order, string reference, bool full, CancellationToken cancellationToken)
     {
         using var session = store.OpenAsyncSession();
-        var commission = await session.LoadAsync<PromotionCommission>(PromotionCommission.IdFor(order.Id!), cancellationToken);
+        var commission = await ledger.GetCommissionAsync(session, LedgerBooker, order.Id!, cancellationToken);
         if (commission is null)
             return;
-        var reversalId = PromotionCommission.ReversalIdFor(order.Id!, reference);
-        if (await session.LoadAsync<PromotionCommission>(reversalId, cancellationToken) is not null)
-            return;
-        var earlier = (await session.Advanced.LoadStartingWithAsync<PromotionCommission>($"{PromotionCommission.IdFor(order.Id!)}/reversal/", pageSize: 1024, token: cancellationToken))
-            .Aggregate(Money.Zero(commission.Amount.Currency), (sum, r) => sum + r.Amount);
-        // Target: the share of the commission the refunded money stands for (all of it on a full return).
-        var target = full || order.Total.ToMinorUnits() <= 0
-            ? commission.Amount
-            : commission.Amount.Share(Math.Min(order.AmountRefunded?.ToMinorUnits() ?? 0, order.Total.ToMinorUnits()), order.Total.ToMinorUnits());
-        var delta = target + earlier; // earlier reversals are negative
+        // Target: the share of the commission the refunded money stands for (all of it on a full return). The ledger
+        // books only what earlier reversals have not taken back yet, once per reference.
+        var target = ReversalTarget(commission.Amount, order, full);
+        var delta = await ledger.ReverseCommissionAsync(session, LedgerBooker, order.Id!, reference, target, clock.GetUtcNow(), cancellationToken);
         if (delta.ToMinorUnits() <= 0)
             return;
-        await session.StoreAsync(new PromotionCommission
-        {
-            Id = reversalId,
-            OrderId = order.Id!,
-            Ref = commission.Ref,
-            OrganizationId = commission.OrganizationId,
-            PromoterUserId = commission.PromoterUserId,
-            Amount = -delta,
-            Reason = full ? "reversed" : "refund",
-            BookedAt = clock.GetUtcNow(),
-        }, changeVector: string.Empty, reversalId, cancellationToken);
         await audit.RecordAsync(session, new CommerceAuditEntry
         {
             Action = PromotionAuditActions.CommissionReversed,
             SubjectId = order.Id!,
-            OrganizationId = commission.OrganizationId,
+            OrganizationId = commission.SellerOrganizationId,
             After = -delta,
             Reason = reference,
-            Data = new Dictionary<string, string> { ["ref"] = commission.Ref },
+            Data = new Dictionary<string, string> { ["ref"] = commission.AttributionRef ?? "" },
         }, cancellationToken);
         await session.SaveChangesAsync(cancellationToken);
     }
+
+    /// <summary>
+    /// How much of <paramref name="commission"/> should be reversed in all after this event: everything on a full
+    /// return (or an order without a total), otherwise the refunded share of the order total (Money.Share, rounded once).
+    /// </summary>
+    internal static Money ReversalTarget(Money commission, CheckoutOrder order, bool full)
+        => full || order.Total.ToMinorUnits() <= 0
+            ? commission
+            : commission.Share(Math.Min(order.AmountRefunded?.ToMinorUnits() ?? 0, order.Total.ToMinorUnits()), order.Total.ToMinorUnits());
 
     /// <summary>An order that ended unpaid keeps its attribution as cancelled (the report counts placed vs confirmed).</summary>
     public async Task OnCancelledAsync(CheckoutOrder order, CancellationToken cancellationToken)
@@ -218,21 +216,13 @@ internal sealed class Tracking(
                 break;
             skip += page.Count;
         }
-        var commissions = new List<PromotionCommission>();
-        skip = 0;
-        while (true)
-        {
-            var page = await session.Query<PromotionCommission>().Where(c => c.Ref == reference).Skip(skip).Take(1024).ToListAsync(cancellationToken);
-            commissions.AddRange(page);
-            if (page.Count < 1024)
-                break;
-            skip += page.Count;
-        }
+        var commissions = await ledger.ListCommissionsAsync(session, reference, cancellationToken);
         var confirmed = attributions.Where(a => a.Status == PromotionOrderAttributionStatus.Confirmed).ToList();
         var sales = confirmed.GroupBy(a => a.AttributedTotal.Currency)
             .Select(g => Money.Sum(g.Select(a => a.AttributedTotal), g.Key)).ToList();
+        // Commissions minus their reversals, per currency (ledger amounts are positive; the kind gives the sign).
         var commissionTotals = commissions.GroupBy(c => c.Amount.Currency)
-            .Select(g => Money.Sum(g.Select(c => c.Amount), g.Key)).ToList();
+            .Select(g => Money.FromMinorUnits(g.Sum(c => c.SignedCommissionMinorUnits), g.Key)).ToList();
         return new SparkTrackingReport(reference, attributions.Count, confirmed.Count,
             attributions.Count(a => a.Status == PromotionOrderAttributionStatus.Cancelled), sales, commissionTotals,
             attributions.GroupBy(a => a.UtmSource ?? "").Select(g => new SparkTrackingSourceCount(g.Key, g.Count())).ToList());

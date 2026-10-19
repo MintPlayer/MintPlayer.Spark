@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using MintPlayer.Spark.Abstractions.Csv;
 
 namespace MintPlayer.Spark.Commerce.Invoicing.Exports;
 
@@ -41,10 +42,9 @@ internal sealed class Csv
             DateTimeOffset at => at.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture),
             DateTime at => DateTime.SpecifyKind(at, DateTimeKind.Utc).ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture),
             bool b => b ? "true" : "false",
-            _ => Guard(value.ToString() ?? ""),
+            _ => SparkCsv.Guard(value.ToString() ?? ""),
         };
-        return text.IndexOfAny([',', '"', '\r', '\n']) >= 0 ? "\"" + text.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"" : text;
+        // Quoting is the shared codec's (warehouse WX11); the guard above applies to text only, so numbers stay numbers.
+        return SparkCsv.Field(text, ',', guard: false);
     }
-
-    private static string Guard(string text) => text.Length > 0 && "=+-@\t\r".Contains(text[0]) ? "'" + text : text;
 }

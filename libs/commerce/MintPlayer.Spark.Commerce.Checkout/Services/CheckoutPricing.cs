@@ -14,10 +14,12 @@ internal sealed record PricingInput(string LineId, CheckoutItem Item, int Quanti
 internal sealed class CheckoutPricing(
     IFinalPriceCalculator calculator,
     IOptionsMonitor<SparkCommerceOptions> commerce,
-    IEnumerable<ICheckoutPricingStep> steps)
+    IEnumerable<ICheckoutPricingStep> steps,
+    IOptionsMonitor<SparkCommerceCheckoutOptions>? checkoutOptions = null)
 {
     public async Task<CheckoutPricingContext> PriceAsync(
-        IReadOnlyList<PricingInput> lines, IReadOnlyDictionary<string, string> choices, string? buyerUserId, bool placing, CancellationToken cancellationToken)
+        IReadOnlyList<PricingInput> lines, IReadOnlyDictionary<string, string> choices, string? buyerUserId, bool placing, CancellationToken cancellationToken,
+        string? buyerEmail = null, string? visitorId = null)
     {
         if (lines.Count == 0)
             throw CheckoutException.Of(CheckoutRefusals.BasketEmpty);
@@ -41,6 +43,8 @@ internal sealed class CheckoutPricing(
             Lines = priced,
             Choices = choices,
             BuyerUserId = buyerUserId,
+            BuyerEmail = buyerUserId is null && buyerEmail is { Length: > 0 } ? buyerEmail.Trim() : null,
+            VisitorId = buyerUserId is null ? visitorId : null,
             Placing = placing,
         };
         foreach (var step in steps.OrderBy(s => s.Order))
@@ -48,6 +52,8 @@ internal sealed class CheckoutPricing(
 
         if (context.Total.ToMinorUnits() < 0)
             throw CheckoutException.Of(CheckoutRefusals.NegativeTotal);
+        // S21: net and VAT from what the buyer pays, after every step's adjustment.
+        CheckoutLineVat.Apply(priced, checkoutOptions?.CurrentValue.VatRounding ?? CheckoutVatRounding.PerLine);
         return context;
     }
 

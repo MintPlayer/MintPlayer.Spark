@@ -2,6 +2,32 @@
 
 The order of work for [commerce_PRD.md](commerce_PRD.md). The PRD carries the decisions (§13); this file carries the checklists. Evidence lives in [commerce_research.md](commerce_research.md).
 
+## Status (2026-10-19, work paused by the owner)
+
+- **Done and compile-verified** (commits up to e0c542f9): M0 spikes (rounds 3–4), M1 (X1–X23), M2, M3, M4–M10, M11 except fulfilment, M13, M14, M16, M19. No test suite has run yet (M22).
+- **In progress, interrupted mid-edit; the last commit ("WIP") may not compile:**
+  - warehouse WM0–WM2: the replication redesign, `Fulfilment.Contracts` and `Quantity`. A build failure was seen in core `SyncActionHandler.cs` during this work.
+  - M12 Shop: stopped at the delivery step.
+  - M15 Tickets + scanner.
+  - The integration batch: see the scratchpad list mirrored below.
+- **Integration batch items** (from the M4–M16 reports):
+  - the Checkout VAT base on discounted lines (bug);
+  - an Inventory exchange operation, a quota-mapping read, a commit hook and a declared sweeper index;
+  - MailManager attachments and headers;
+  - Checkout pricing context, hold time, attendee-question hook, combined admission scopes, refusal-code fallback, single `RefundFailed`, fr/nl mails;
+  - a Payments commission kind;
+  - one `WaitingRoomMode`;
+  - a `Commerce.WaitingRoom` bridge package;
+  - WaitingRoom GDPR hooks;
+  - public holidays in refund periods;
+  - Events price history in-transaction;
+  - Sendcloud API v3 and carrier booking idempotency.
+- **Not started:** M11 fulfilment (shop side), WM3–WM9, M17, M18, M20 rest, M21, M22, the rest of X20 item 2 (remaining TS mirrors), EUR-Lex verification of every legal citation (EUR-Lex blocks automated fetches: use a real browser through Playwright).
+- **First step on resume:**
+  1. `dotnet build MintPlayer.Spark.slnx`, then fix the WIP compile errors.
+  2. Regenerate the contracts (`tools/SchemaGenerator contracts`).
+  3. Run the ng-spark build and the app `tsc` checks, plus the per-app verify gates.
+
 ## Rules for executing this plan
 
 - **One PR** for everything: commerce, the reference-data app (K8), the warehouse plugin (D13), every defect found along the way (§6).

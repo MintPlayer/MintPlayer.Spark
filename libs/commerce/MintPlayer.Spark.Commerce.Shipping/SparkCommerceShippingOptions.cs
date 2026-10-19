@@ -67,6 +67,15 @@ public sealed class SparkCommerceShippingOptions : ISparkConfigurationSection
     /// <summary>Parcels not final after this long stop being polled.</summary>
     public TimeSpan TrackingPollMaxAge { get; set; } = TimeSpan.FromDays(45);
 
+    /// <summary>How often in-doubt bookings are looked up at their carrier (NCrontab, UTC). Read at registration.</summary>
+    public string BookingReconcileSchedule { get; set; } = "*/10 * * * *";
+
+    /// <summary>
+    /// An in-doubt booking is reconciled only after this long, so a booking still in flight (another request, a
+    /// Sendcloud announcement) is not mistaken for a lost one.
+    /// </summary>
+    public TimeSpan BookingReconcileAfter { get; set; } = TimeSpan.FromMinutes(10);
+
     /// <summary>How long a service-point search is cached (anonymous endpoint; carriers rate-limit their APIs).</summary>
     public TimeSpan ServicePointCacheDuration { get; set; } = TimeSpan.FromMinutes(15);
 }

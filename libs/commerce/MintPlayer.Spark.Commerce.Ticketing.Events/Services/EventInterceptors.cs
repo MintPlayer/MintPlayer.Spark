@@ -134,34 +134,36 @@ internal sealed class TicketSalePhaseInterceptor(TicketEventPublisher publisher,
             throw new SparkValidationException("Every price of a phase uses one currency.", nameof(TicketSalePhase.Prices));
         if (ev.IsPublished && before is not null && before.CapacityPerDate != entity.CapacityPerDate)
             await ProvisionAsync(context.GetSession(), ev, replaced: entity);
+
+        await RecordPriceHistoryAsync(context.GetSession(), ev, entity, before);
     }
 
-    public async ValueTask OnAfterSaveAsync(TicketSalePhase entity, SaveContext context)
+    /// <summary>
+    /// GA3: every changed price of the phase goes into the price history (per phase × type × category), in the save's
+    /// own session, so the entries commit with the price change or not at all. A new phase has no id yet: storing it
+    /// here lets the session assign the id the pipeline then keeps (storing a tracked entity again is a no-op).
+    /// </summary>
+    private async Task RecordPriceHistoryAsync(IAsyncDocumentSession session, TicketEvent ev, TicketSalePhase entity, TicketSalePhase? before)
     {
-        // GA3: every changed price of the phase goes into the price history (per phase × type × category).
-        var session = context.GetSession();
-        var ev = await session.LoadAsync<TicketEvent>(entity.EventId);
-        if (ev is not null && !string.IsNullOrEmpty(entity.Id))
+        var changed = entity.Prices
+            .Select(price => (price, previous: before?.Prices.FirstOrDefault(p => p.TicketTypeId == price.TicketTypeId && (p.Category ?? "") == price.Category)))
+            .Where(c => c.previous is null || c.previous.Price != c.price.Price)
+            .ToList();
+        if (changed.Count == 0)
+            return;
+        if (string.IsNullOrEmpty(entity.Id))
+            await session.StoreAsync(entity);
+        foreach (var (price, previous) in changed)
         {
-            var before = context.Before as TicketSalePhase;
-            var recorded = false;
-            foreach (var price in entity.Prices)
-            {
-                var previous = before?.Prices.FirstOrDefault(p => p.TicketTypeId == price.TicketTypeId && (p.Category ?? "") == price.Category);
-                if (previous is not null && previous.Price == price.Price)
-                    continue;
-                var type = await session.LoadAsync<TicketType>(price.TicketTypeId);
-                Money? previousFinal = previous is null
-                    ? null
-                    : calculator.Calculate(FinalPriceRequest.For(TicketPriceItem.For(ev, entity, previous, type))).UnitTotal;
-                await priceHistory.RecordAsync(session, TicketPriceItem.For(ev, entity, price, type), previousFinal, previous is null ? "create" : "edit");
-                recorded = true;
-            }
-            if (recorded)
-                await session.SaveChangesAsync();
+            var type = await session.LoadAsync<TicketType>(price.TicketTypeId);
+            Money? previousFinal = previous is null
+                ? null
+                : calculator.Calculate(FinalPriceRequest.For(TicketPriceItem.For(ev, entity, previous, type))).UnitTotal;
+            await priceHistory.RecordAsync(session, TicketPriceItem.For(ev, entity, price, type), previousFinal, previous is null ? "create" : "edit");
         }
-        await ProvisionAfterAsync(context, entity.EventId);
     }
+
+    public ValueTask OnAfterSaveAsync(TicketSalePhase entity, SaveContext context) => ProvisionAfterAsync(context, entity.EventId);
 
     public ValueTask OnBeforeDeleteAsync(TicketSalePhase entity, DeleteContext context) => RefuseDeleteAsync(context, entity.EventId);
 }

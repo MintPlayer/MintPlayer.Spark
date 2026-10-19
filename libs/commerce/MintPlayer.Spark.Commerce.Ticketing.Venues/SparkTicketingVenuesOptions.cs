@@ -34,13 +34,10 @@ public sealed class SparkTicketingVenuesOptions : ISparkConfigurationSection
     public int ShardsPerBlockQuota { get; set; } = 16;
 
     /// <summary>
-    /// The live seat-state publisher's schedule: six fields = seconds (NCrontab, UTC). Default every 3 seconds. Read at
-    /// registration. Each run republishes the state of every snapshot that is live and changed.
+    /// How long after an inventory commit a live snapshot's seat states are pushed. Commits on the same snapshot within
+    /// it share one push, so a hot sale computes at most one frame per snapshot per delay. Default 250 ms.
     /// </summary>
-    public string LiveSchedule { get; set; } = "*/3 * * * * *";
-
-    /// <summary>How many live snapshots one publisher run covers at most. Default 50.</summary>
-    public int MaxLiveSnapshots { get; set; } = 50;
+    public TimeSpan PushDelay { get; set; } = TimeSpan.FromMilliseconds(250);
 
     /// <summary>How long a computed state frame is reused by <c>/seatmap/state</c> and the list alternative. Default 2 s.</summary>
     public TimeSpan StateCacheDuration { get; set; } = TimeSpan.FromSeconds(2);

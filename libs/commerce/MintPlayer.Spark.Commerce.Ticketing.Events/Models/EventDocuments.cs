@@ -1,6 +1,7 @@
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Commerce.Inventory;
 using MintPlayer.Spark.Organizations;
+using MintPlayer.Spark.WaitingRoom;
 
 namespace MintPlayer.Spark.Commerce.Ticketing.Events.Models;
 

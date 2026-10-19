@@ -1,122 +1,102 @@
 using System.Text.Json.Serialization;
-using System.Reflection;
-using MintPlayer.Spark.Abstractions;
 
 namespace MintPlayer.Spark.Replication.Abstractions.Models;
 
-// Accept both the string form ("Delete") and the numeric form over the wire. The
-// /spark/sync/apply endpoint reads the body before the mTLS/module check, so a body
-// that fails to bind would 400 ahead of the intended 403 for an unknown module.
-[JsonConverter(typeof(JsonStringEnumConverter<SyncActionType>))]
-public enum SyncActionType
-{
-    Insert,
-    Update,
-    Delete
-}
-
 /// <summary>
-/// Non-generic transport form used for JSON serialization over HTTP and RavenDB persistence.
+/// A write-back request: a consumer asks the owner of a replicated document to change it (warehouse WX3).
+/// It is an edit only — replicas are read-only, so no create or delete is ever requested. The owner
+/// applies it through its own pipeline, as the requesting module's principal, with that module's
+/// attribute rights (F17), and the new state returns to every consumer, the requester included,
+/// through the read path.
 /// </summary>
 public class SyncAction
 {
-    /// <summary>The type of operation to perform on the owner module.</summary>
-    public required SyncActionType ActionType { get; set; }
+    /// <summary>
+    /// The request's id, chosen by the requester. The owner applies an op id once (F15): a retry of an
+    /// applied request answers <see cref="SyncActionOutcome.Duplicate"/>.
+    /// </summary>
+    public required string OpId { get; set; }
 
-    /// <summary>The RavenDB collection name (e.g., "Cars").</summary>
-    public required string Collection { get; set; }
+    /// <summary>The contract the replica reads.</summary>
+    public required string Contract { get; set; }
+
+    /// <summary>The contract version the replica reads; the field names in <see cref="Data"/> are this version's.</summary>
+    public required int Version { get; set; }
+
+    /// <summary>The document id (the owner's).</summary>
+    public required string DocumentId { get; set; }
 
     /// <summary>
-    /// The document ID. Required for Update and Delete.
-    /// For Insert, can be null (owner generates the ID).
+    /// The requester's per-document order (F15): later edits carry higher numbers. The owner refuses a
+    /// request older than the last one it applied for the same document and requester, as
+    /// <see cref="SyncActionOutcome.Superseded"/>, so a retried old edit never overwrites a newer one.
     /// </summary>
-    public string? DocumentId { get; set; }
+    public required long Sequence { get; set; }
 
     /// <summary>
-    /// The entity data as a dictionary of property names to values.
-    /// Required for Insert and Update. Null for Delete.
-    /// Uses Dictionary instead of JsonElement to ensure compatibility with both
-    /// System.Text.Json (HTTP) and Newtonsoft.Json (RavenDB).
+    /// The changed contract fields and their values. Nested values keep their JSON structure (F18): the
+    /// requester sends objects and arrays as such, never as JSON text.
     /// </summary>
-    public Dictionary<string, object?>? Data { get; set; }
+    public required Dictionary<string, object?> Data { get; set; }
 
-    /// <summary>
-    /// Property names to update on the owner entity. When set, only these properties
-    /// are merged onto the existing entity (partial update). When null, all properties
-    /// from the data are applied.
-    /// Automatically populated from the replicated entity type's property names,
-    /// ensuring that only replicated fields are synced back to the owner.
-    /// </summary>
-    public string[]? Properties { get; set; }
-
-    /// <summary>
-    /// The user the replica made this edit for (its <c>ISparkCurrentUser.Id</c>), so the owner stamps
-    /// <c>ModifiedBy</c> with it (#271, F2). <see langword="null"/> for an anonymous or background write.
-    /// Used for stamping only, never for authorization.
-    /// </summary>
+    /// <summary>The user the edit was made for, for the owner's stamping only (#271), never for authorization.</summary>
     public string? InitiatorId { get; set; }
 }
 
-/// <summary>
-/// Strongly-typed sync action for type-safe construction.
-/// Call <see cref="ToTransport"/> to convert to the non-generic transport form.
-/// </summary>
-/// <typeparam name="T">The entity type</typeparam>
-public class SyncAction<T> where T : class
+/// <summary>The body of <c>POST /spark/sync/apply</c>.</summary>
+public class SyncActionRequest
 {
-    /// <summary>The type of operation to perform on the owner module.</summary>
-    public required SyncActionType ActionType { get; set; }
+    /// <summary>The requesting module. Must match the presented module certificate.</summary>
+    public required string RequestingModule { get; set; }
 
-    /// <summary>The RavenDB collection name (e.g., "Cars").</summary>
-    public required string Collection { get; set; }
+    public required List<SyncAction> Actions { get; set; }
+}
 
-    /// <summary>
-    /// The document ID. Required for Update and Delete.
-    /// For Insert, can be null (owner generates the ID).
-    /// </summary>
-    public string? DocumentId { get; set; }
+/// <summary>
+/// The owner's verdict on one write-back request (F12). Only <see cref="Conflict"/> and <see cref="Error"/>
+/// are retried; a refusal is final, recorded as refused with its reason, and reported to the initiator.
+/// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter<SyncActionOutcome>))]
+public enum SyncActionOutcome
+{
+    /// <summary>Applied in one commit with the owner's record of the op id.</summary>
+    Applied,
 
-    /// <summary>
-    /// The strongly-typed entity data. Required for Insert and Update.
-    /// </summary>
-    public T? Data { get; set; }
+    /// <summary>This op id was applied before; nothing was done again.</summary>
+    Duplicate,
 
-    /// <summary>
-    /// Property names to update on the owner entity. When set, only these properties
-    /// are merged onto the existing entity (partial update). When null, all properties
-    /// from the data are applied.
-    /// </summary>
-    public string[]? Properties { get; set; }
+    /// <summary>A newer request for the same document from the same module was applied already; this one is dropped.</summary>
+    Superseded,
 
     /// <summary>
-    /// Converts this strongly-typed sync action to the non-generic transport form
-    /// by converting the entity data to a property dictionary.
+    /// The owner refused it, finally: no right on the contract or its type, an attribute the module may not
+    /// write (F17), a field the contract cannot write back, a validation error, an action an interceptor
+    /// cancelled, or a document the owner no longer has.
     /// </summary>
-    public SyncAction ToTransport() => new()
-    {
-        ActionType = ActionType,
-        Collection = Collection,
-        DocumentId = DocumentId,
-        Data = Data != null ? EntityToDictionary(Data) : null,
-        Properties = Properties,
-    };
+    Refused,
 
-    /// <summary>
-    /// The readable public instance properties of <typeparamref name="T"/> that are part of the Spark
-    /// model, computed once per closed type. <c>[IgnoreProperty]</c> ones are excluded from the model, so
-    /// excluded from the transport payload too. Plain reflection rather than Abstractions' accessor
-    /// cache, so this package does not depend on the Web-SDK Abstractions (#388).
-    /// </summary>
-    private static readonly PropertyInfo[] TransportProperties = typeof(T)
-        .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-        .Where(p => p.CanRead && p.GetIndexParameters().Length == 0 && p.GetCustomAttribute<IgnorePropertyAttribute>() is null)
-        .ToArray();
+    /// <summary>The document changed while the request was applied. Transient: retried.</summary>
+    Conflict,
 
-    private static Dictionary<string, object?> EntityToDictionary(T entity)
-    {
-        var dict = new Dictionary<string, object?>();
-        foreach (var prop in TransportProperties)
-            dict[prop.Name] = prop.GetValue(entity);
-        return dict;
-    }
+    /// <summary>An unexpected failure at the owner. Transient: retried.</summary>
+    Error,
+}
+
+/// <summary>The owner's answer for one request.</summary>
+public class SyncActionResult
+{
+    public required string OpId { get; set; }
+    public SyncActionOutcome Outcome { get; set; }
+
+    /// <summary>Why, for every outcome but <see cref="SyncActionOutcome.Applied"/>.</summary>
+    public string? Reason { get; set; }
+
+    /// <summary>For an attribute-rights refusal: the fields the module may not write.</summary>
+    public List<string> Attributes { get; set; } = [];
+}
+
+/// <summary>The answer of <c>POST /spark/sync/apply</c>: always 200 once the module is authenticated, with one result per action.</summary>
+public class SyncActionResponse
+{
+    public List<SyncActionResult> Results { get; set; } = [];
 }

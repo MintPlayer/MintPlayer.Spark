@@ -32,7 +32,8 @@ internal sealed class CheckoutService(
     IOptionsMonitor<SparkCommerceOptions> commerce,
     IOptionsMonitor<SparkCommerceCheckoutOptions> options,
     IOptionsMonitor<SparkCommerceInventoryOptions> inventoryOptions,
-    TimeProvider clock) : ISparkCheckout
+    TimeProvider clock,
+    IEnumerable<ICheckoutPrePaymentCheck> prePaymentChecks) : ISparkCheckout
 {
     /// <summary>The pay button's translation key (CRD Art. 8(2): "order with obligation to pay" or an equally unambiguous text).</summary>
     public const string OrderButtonKey = "commerceCheckout.orderWithObligationToPay";
@@ -87,18 +88,20 @@ internal sealed class CheckoutService(
                 Picks = item.Capacity.Picks.ToList(),
                 Options = request.Options is null ? new(StringComparer.Ordinal) : new(request.Options, StringComparer.Ordinal),
                 ParentLineId = parent?.LineId,
-                AdmissionToken = request.AdmissionToken,
+                // Only the tokens of the item's own scopes are kept.
+                AdmissionTokens = new(CheckoutAdmission.Merge(null, request.AdmissionTokens)
+                    .Where(t => item.AdmissionScopes.Contains(t.Key, StringComparer.Ordinal)), StringComparer.Ordinal),
                 AddedAt = Now,
             };
             if (channel.Allocation == AllocationMode.HoldFromSelection && !item.Capacity.IsEmpty)
             {
-                await admission.RequireAsync(item, request.AdmissionToken, request.Quantity, consume: true, line.LineId, cancellationToken);
+                await admission.RequireAsync(item, line.AdmissionTokens, request.Quantity, consume: true, line.LineId, cancellationToken);
                 await HoldAsync(basket, line, item, channel, cancellationToken);
             }
             else
             {
                 // Early feedback only: the admission is used when the line is claimed (at "Pay" or at payment).
-                await admission.RequireAsync(item, request.AdmissionToken, request.Quantity, consume: false, line.LineId, cancellationToken);
+                await admission.RequireAsync(item, line.AdmissionTokens, request.Quantity, consume: false, line.LineId, cancellationToken);
             }
             basket.Currency ??= item.Price.Currency;
             basket.Lines.Add(line);
@@ -157,7 +160,7 @@ internal sealed class CheckoutService(
         var channel = Channel(item.Channel, line.LineId);
         if (line.ClaimId is { } claimId)
         {
-            var expiresAt = Now + channel.Hold.Clamp(null);
+            var expiresAt = Now + channel.Hold.Clamp(item.HoldTime);
             var result = await inventory.AdjustAsync(OrderClaims.Request(claimId, basket.Id!, expiresAt, CheckoutCapacitySnapshot.From(item.Capacity),
                 OrderClaims.Limits(item, channel, quantity, Identifiers())), cancellationToken);
             if (!result.Succeeded)
@@ -170,7 +173,7 @@ internal sealed class CheckoutService(
         }
         else if (channel.Allocation == AllocationMode.HoldFromSelection && !item.Capacity.IsEmpty)
         {
-            await admission.RequireAsync(item, line.AdmissionToken, quantity, consume: true, line.LineId, cancellationToken);
+            await admission.RequireAsync(item, line.AdmissionTokens, quantity, consume: true, line.LineId, cancellationToken);
             await HoldAsync(basket, line, item, channel, cancellationToken);
         }
     }
@@ -178,7 +181,7 @@ internal sealed class CheckoutService(
     private async Task HoldAsync(CheckoutBasket basket, CheckoutBasketLine line, CheckoutItem item, CommerceChannelOptions channel, CancellationToken cancellationToken)
     {
         var claimId = OrderClaims.ClaimIdFor(line.LineId);
-        var expiresAt = Now + channel.Hold.Clamp(null);
+        var expiresAt = Now + channel.Hold.Clamp(item.HoldTime);
         var result = await inventory.TryClaimAsync(OrderClaims.Request(claimId, basket.Id!, expiresAt, CheckoutCapacitySnapshot.From(item.Capacity),
             OrderClaims.Limits(item, channel, line.Quantity, Identifiers())), cancellationToken);
         if (!result.Succeeded)
@@ -240,7 +243,7 @@ internal sealed class CheckoutService(
             try
             {
                 priced = await pricing.PriceAsync(basket.Lines.Select(l => new PricingInput(l.LineId, resolved[l.LineId], l.Quantity)).ToList(),
-                    basket.Choices, buyer.UserId, placing: false, cancellationToken);
+                    basket.Choices, buyer.UserId, placing: false, cancellationToken, basket.Email, buyer.VisitorId);
             }
             catch (CheckoutException) { priced = null; }
         }
@@ -272,7 +275,7 @@ internal sealed class CheckoutService(
 
     private sealed record Prepared(CheckoutBasket Basket, List<(CheckoutBasketLine Line, CheckoutItem Item, CommerceChannelOptions Channel)> Lines, CheckoutPricingContext Priced);
 
-    private async Task<Prepared> PrepareAsync(CheckoutBasket? basket, bool placing, CancellationToken cancellationToken)
+    private async Task<Prepared> PrepareAsync(CheckoutBasket? basket, bool placing, CancellationToken cancellationToken, string? guestEmail = null)
     {
         if (basket is null || basket.Lines.Count == 0)
             throw CheckoutException.Of(CheckoutRefusals.BasketEmpty);
@@ -286,7 +289,7 @@ internal sealed class CheckoutService(
             lines.Add((line, item, channel));
         }
         var priced = await pricing.PriceAsync(lines.Select(l => new PricingInput(l.Item1.LineId, l.Item2, l.Item1.Quantity)).ToList(),
-            basket.Choices, buyer.UserId, placing, cancellationToken);
+            basket.Choices, buyer.UserId, placing, cancellationToken, guestEmail ?? basket.Email, buyer.VisitorId);
         return new Prepared(basket, lines, priced);
     }
 
@@ -369,7 +372,7 @@ internal sealed class CheckoutService(
 
     private static SparkCheckoutLine ToView(PricedLine line) => new(
         line.LineId, line.Item.ItemId, line.Item.Title, line.Item.Description, line.Item.Channel, line.Item.OrganizationId, line.Quantity,
-        line.Item.Capacity.Units, line.Item.Price, line.Price.Net, line.Price.Vat,
+        line.Item.Capacity.Units, line.Item.Price, line.Net ?? line.Price.Net, line.Vat ?? line.Price.Vat,
         line.Price.MandatoryFees.Select(f => new SparkCheckoutAmount(f.Code, f.Kind.ToString(), f.Amount, f.LabelKey)).ToList(),
         line.Adjustments.Select(a => new SparkCheckoutAmount(a.Code, a.Source, a.Amount, a.LabelKey)).ToList(),
         line.Total, line.Item.MinimumAge, line.Item.ServiceDate);
@@ -382,7 +385,8 @@ internal sealed class CheckoutService(
         var basket = await baskets.LoadCurrentAsync(cancellationToken);
         if (basket?.PendingOrderId is not null)
             throw CheckoutException.Of(CheckoutRefusals.PendingOrder);
-        var prepared = await PrepareAsync(basket, placing: true, cancellationToken);
+        // A guest's address is known before pricing, so once-per-buyer codes hold per address (the order stores the same).
+        var prepared = await PrepareAsync(basket, placing: true, cancellationToken, request.Email?.Trim() is { Length: > 0 } guestEmail ? guestEmail : null);
         var now = Now;
         var settings = commerce.CurrentValue;
 
@@ -442,6 +446,7 @@ internal sealed class CheckoutService(
 
         // Claims per mode (D1). A refusal undoes what this placement claimed; basket holds stay the basket's.
         var placedClaims = new List<string>();
+        CheckoutPrePaymentContext? prePayment = null;
         try
         {
             foreach (var (line, item, channel) in prepared.Lines)
@@ -449,11 +454,15 @@ internal sealed class CheckoutService(
                 var orderLine = order.Lines.First(l => l.LineId == line.LineId);
                 if (item.Capacity.IsEmpty || channel.Allocation == AllocationMode.OnPayment)
                 {
-                    if (channel.Allocation == AllocationMode.OnPayment && item.AdmissionScope is not null)
-                        await admission.RequireAsync(item, TokenFor(line, item, request), line.Quantity, consume: true, line.LineId, cancellationToken);
+                    // D1: OnPayment claims nothing here, but a line that is visibly gone is refused before paying.
+                    if (channel.Allocation == AllocationMode.OnPayment && !item.Capacity.IsEmpty
+                        && !await SoftAvailability.LooksAvailableAsync(inventory, orderLine.Capacity, cancellationToken))
+                        throw CheckoutException.Of(CheckoutRefusals.SoldOut, line.LineId);
+                    if (channel.Allocation == AllocationMode.OnPayment && item.AdmissionScopes.Count > 0)
+                        await admission.RequireAsync(item, TokensFor(line, request), line.Quantity, consume: true, line.LineId, cancellationToken);
                     continue;
                 }
-                var expiresAt = now + channel.Hold.Clamp(null);
+                var expiresAt = now + channel.Hold.Clamp(item.HoldTime);
                 var target = OrderClaims.Request(OrderClaims.ClaimIdFor(line.LineId), order.Id!, expiresAt, orderLine.Capacity, orderLine.Limits);
                 ClaimResult result;
                 if (channel.Allocation == AllocationMode.HoldFromSelection && line.ClaimId is not null)
@@ -463,7 +472,7 @@ internal sealed class CheckoutService(
                 }
                 else
                 {
-                    await admission.RequireAsync(item, TokenFor(line, item, request), line.Quantity, consume: true, line.LineId, cancellationToken);
+                    await admission.RequireAsync(item, TokensFor(line, request), line.Quantity, consume: true, line.LineId, cancellationToken);
                     result = await inventory.TryClaimAsync(target, cancellationToken);
                     if (result.Succeeded)
                         placedClaims.Add(target.ClaimId);
@@ -473,6 +482,16 @@ internal sealed class CheckoutService(
                 orderLine.ClaimId = target.ClaimId;
                 orderLine.Units = result.Units?.ToList() ?? orderLine.Units;
             }
+
+            // Pre-payment checks (required attendee questions, GB3, …): a refusal releases this placement's claims below.
+            prePayment = new CheckoutPrePaymentContext
+            {
+                Order = order,
+                Data = request.Data ?? new Dictionary<string, string>(),
+                Language = request.Language,
+            };
+            foreach (var check in prePaymentChecks.OrderBy(c => c.Order))
+                await check.CheckAsync(prePayment, cancellationToken);
 
             if (method is not null)
             {
@@ -515,6 +534,8 @@ internal sealed class CheckoutService(
         using (var session = store.OpenAsyncSession())
         {
             await session.StoreAsync(order, order.Id, cancellationToken);
+            foreach (var (document, documentId) in prePayment?.Documents ?? [])
+                await session.StoreAsync(document, documentId, cancellationToken);
             await audit.RecordAsync(session, new CommerceAuditEntry
             {
                 Action = CheckoutAuditActions.OrderPlaced, SubjectId = order.Id!, OrganizationId = order.Sellers.FirstOrDefault(),
@@ -546,8 +567,9 @@ internal sealed class CheckoutService(
         return new SparkPlaceOrderResult(order.Number, order.State.ToString(), order.Payment?.CheckoutUrl ?? mails.OrderPath(order));
     }
 
-    private static string? TokenFor(CheckoutBasketLine line, CheckoutItem item, SparkPlaceOrderRequest request)
-        => request.AdmissionTokens is { } tokens && item.AdmissionScope is { } scope && tokens.TryGetValue(scope, out var token) ? token : line.AdmissionToken;
+    /// <summary>The line's admission tokens, with the ones presented at placement winning per scope.</summary>
+    private static IReadOnlyDictionary<string, string> TokensFor(CheckoutBasketLine line, SparkPlaceOrderRequest request)
+        => CheckoutAdmission.Merge(line.AdmissionTokens, request.AdmissionTokens);
 
     private CheckoutOrder NewOrder(Prepared prepared, string email, string? name, DateTimeOffset now)
     {
@@ -591,8 +613,8 @@ internal sealed class CheckoutService(
             SellerOrganizationId = item.OrganizationId,
             Quantity = priced.Quantity,
             UnitPrice = item.Price,
-            Net = priced.Price.Net,
-            Vat = priced.Price.Vat,
+            Net = priced.Net ?? priced.Price.Net,
+            Vat = priced.Vat ?? priced.Price.Vat,
             VatRateBasisPoints = item.VatRateBasisPoints,
             VatCategory = item.VatCategory,
             Fees = priced.Price.MandatoryFees.Select(f => new CheckoutOrderFee { Code = f.Code, Kind = f.Kind.ToString(), Amount = f.Amount, LabelKey = f.LabelKey, Mandatory = true }).ToList(),

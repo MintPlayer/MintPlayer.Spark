@@ -90,7 +90,7 @@ public static class BpostShippingExtensions
 /// origin per line (GB6). Unconfirmed: the value unit (read as eurocents), the parcel-locker (<c>at247</c>) fields,
 /// and how a return product's addresses are read.
 /// </summary>
-internal sealed partial class BpostCarrier(IHttpClientFactory httpClients, IOptionsMonitor<BpostOptions> options, TimeProvider time) : IShippingCarrier, IServicePointProvider
+internal sealed partial class BpostCarrier(IHttpClientFactory httpClients, IOptionsMonitor<BpostOptions> options, TimeProvider time) : IShippingCarrier, IServicePointProvider, IShippingBookingLookup
 {
     public const string CarrierName = "bpost";
     public const string HttpClientName = "spark-commerce-shipping-bpost";
@@ -109,6 +109,8 @@ internal sealed partial class BpostCarrier(IHttpClientFactory httpClients, IOpti
     {
         LabelFormats = [LabelFormat.Pdf],
         VoidLabel = true,
+        // The Shipping Manager cancels per order: every box of the booking.
+        VoidsWholeShipment = true,
         ReturnLabels = true,
         MultiParcel = true,
         ServicePoints = true,
@@ -142,6 +144,30 @@ internal sealed partial class BpostCarrier(IHttpClientFactory httpClients, IOpti
         var labels = await SendAsync(HttpMethod.Post, $"{Uri.EscapeDataString(account.AccountId)}/orders/{Uri.EscapeDataString(reference)}/labels/{(settings.LabelSize == "A4" ? "A4" : "A6")}",
             null, "application/vnd.bpost.shm-labelRequest-v3+XML", "application/vnd.bpost.shm-label-pdf-v3.4+XML", account, cancellationToken);
         return ReadLabels(XDocument.Parse(labels), reference, request.Parcels.Count);
+    }
+
+    /// <summary>
+    /// The order of the booking's reference (<c>GET /{account}/orders/{reference}</c>): absent (404), nothing was booked;
+    /// present, its labels are created again from the stored order (the label call is repeatable), so a lost answer
+    /// never books a second order.
+    /// </summary>
+    public async Task<CarrierBookingLookup> FindBookingAsync(CarrierShipmentRequest request, CancellationToken cancellationToken)
+    {
+        var settings = options.CurrentValue;
+        var account = Account(settings, request.Account);
+        var reference = OrderReference(request.ShipmentId);
+        try
+        {
+            await SendAsync(HttpMethod.Get, $"{Uri.EscapeDataString(account.AccountId)}/orders/{Uri.EscapeDataString(reference)}", null, null,
+                "application/vnd.bpost.shm-order-v3.5+XML", account, cancellationToken);
+        }
+        catch (CarrierException ex) when (ex.StatusCode == 404)
+        {
+            return CarrierBookingLookup.NotFound;
+        }
+        var labels = await SendAsync(HttpMethod.Post, $"{Uri.EscapeDataString(account.AccountId)}/orders/{Uri.EscapeDataString(reference)}/labels/{(settings.LabelSize == "A4" ? "A4" : "A6")}",
+            null, "application/vnd.bpost.shm-labelRequest-v3+XML", "application/vnd.bpost.shm-label-pdf-v3.4+XML", account, cancellationToken);
+        return CarrierBookingLookup.Found(ReadLabels(XDocument.Parse(labels), reference, request.Parcels.Count));
     }
 
     /// <summary>Cancels the whole order (the Shipping Manager's status update works per order): every parcel of the shipment.</summary>

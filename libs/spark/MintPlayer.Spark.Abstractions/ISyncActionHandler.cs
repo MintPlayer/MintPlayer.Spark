@@ -1,42 +1,64 @@
 namespace MintPlayer.Spark.Abstractions;
 
 /// <summary>
-/// Processes incoming sync actions on the owner module by resolving the entity type
-/// from the collection name and running the operation through the actions pipeline.
-/// Implemented by MintPlayer.Spark; called by the sync endpoint in MintPlayer.Spark.Replication.
+/// Applies a write-back request on the owner module (warehouse WX3): an edit a consumer module asked for on a
+/// document this module owns. Implemented by MintPlayer.Spark; called by the sync endpoint in
+/// MintPlayer.Spark.Replication, with the requesting module's principal on the request.
 /// </summary>
 public interface ISyncActionHandler
 {
     /// <summary>
-    /// Saves (inserts or updates) an entity from a sync action.
-    /// Resolves the CLR type from the collection name, deserializes the JSON data,
-    /// and runs the save through the IPersistentObjectActions pipeline.
-    /// When <paramref name="properties"/> is set, performs a partial merge: loads the
-    /// existing entity and only updates the specified properties, preserving owner-only fields.
+    /// Applies <paramref name="edit"/> to the stored version of the document, through the same path an approved
+    /// change takes (<see cref="Interceptors.ISparkReplacedSaves"/>): the module's type right, its attribute rights
+    /// (an attribute it may not write refuses the whole edit, F17), validation and interceptors, in one commit with
+    /// <see cref="SyncEdit.Alongside"/>. A write landing between the read and the commit is a
+    /// <see cref="SyncEditOutcomeKind.Conflict"/>, never overwritten.
     /// </summary>
-    /// <param name="collection">The RavenDB collection name (e.g., "Cars")</param>
-    /// <param name="documentId">The document ID (null for inserts)</param>
-    /// <param name="data">The entity data as a dictionary of property names to values</param>
-    /// <param name="properties">Property names to update (null for full replacement)</param>
-    /// <param name="mustExist">
-    /// An Update from a replica (#467, D15): applied only to a row this module still has, at the
-    /// version it has now, so an edit of a row deleted here is refused instead of recreating it, and a
-    /// write landing meanwhile is a conflict rather than overwritten. An Insert passes false.
-    /// </param>
-    /// <param name="initiatorId">
-    /// The user the replica made the edit for (<c>SyncAction.InitiatorId</c>), exposed to the save's
-    /// interceptors through <see cref="Authentication.ISparkSyncInitiator"/> so the owner stamps
-    /// <c>ModifiedBy</c> with it (#271, F2). <see langword="null"/> when the replica stated none.
-    /// </param>
-    /// <returns>The document ID of the saved entity</returns>
-    Task<string?> HandleSaveAsync(string collection, string? documentId, Dictionary<string, object?> data, string[]? properties = null, bool mustExist = false, string? initiatorId = null);
+    Task<SyncEditOutcome> ApplyEditAsync(SyncEdit edit, CancellationToken cancellationToken = default);
+}
+
+/// <summary>A write-back edit to apply (see <see cref="ISyncActionHandler.ApplyEditAsync"/>).</summary>
+public sealed record SyncEdit
+{
+    /// <summary>The owner's CLR entity type.</summary>
+    public required Type EntityType { get; init; }
+
+    /// <summary>The document id.</summary>
+    public required string DocumentId { get; init; }
 
     /// <summary>
-    /// Deletes an entity from a sync action.
-    /// Resolves the CLR type from the collection name and runs the delete
-    /// through the IPersistentObjectActions pipeline.
+    /// The changed values, keyed by the owner's property names. Only these attributes are written; every other
+    /// keeps its stored value. Nested values are objects and arrays (a <c>JsonElement</c>, dictionaries, lists),
+    /// never JSON text.
     /// </summary>
-    /// <param name="collection">The RavenDB collection name (e.g., "Cars")</param>
-    /// <param name="documentId">The document ID to delete</param>
-    Task HandleDeleteAsync(string collection, string documentId);
+    public required IReadOnlyDictionary<string, object?> Values { get; init; }
+
+    /// <summary>The user the consumer made the edit for: stamping only (#271), never authorization.</summary>
+    public string? InitiatorId { get; init; }
+
+    /// <summary>
+    /// Writes that must commit with the edit or not at all (the owner's record of the op id, F15). Gets the
+    /// RavenDB <c>IAsyncDocumentSession</c> the edit commits through; store, do not save.
+    /// </summary>
+    public Func<object, Task>? Alongside { get; init; }
+}
+
+/// <summary>How a write-back edit ended.</summary>
+public enum SyncEditOutcomeKind
+{
+    /// <summary>Saved, with <see cref="SyncEdit.Alongside"/>, in one commit.</summary>
+    Applied,
+
+    /// <summary>Refused for good (<see cref="SyncEditOutcome.Reason"/>). Nothing was written.</summary>
+    Refused,
+
+    /// <summary>The document changed meanwhile. Nothing was written; the caller retries.</summary>
+    Conflict,
+}
+
+/// <summary>The result of <see cref="ISyncActionHandler.ApplyEditAsync"/>.</summary>
+public sealed record SyncEditOutcome(SyncEditOutcomeKind Kind, string? Reason = null)
+{
+    /// <summary>For an attribute-rights refusal: the attributes the module may not write.</summary>
+    public IReadOnlyList<string> Attributes { get; init; } = [];
 }

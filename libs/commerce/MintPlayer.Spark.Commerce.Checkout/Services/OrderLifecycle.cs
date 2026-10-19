@@ -357,8 +357,15 @@ internal sealed class OrderLifecycle(
             var refund = notice.Refund;
             if (refund.Status == ProviderRefundStatus.Failed)
             {
-                order.Log.Add(new CheckoutOrderLogEntry { At = Now, Event = "refund-failed", Detail = refund.Reference + " " + refund.FailureReason });
-                raised.Add(new OrderEvent(order, OrderEventKind.RefundFailed, null, refund.Reference));
+                // RefundFailed is raised once per refund: a ledger refund (M9) raises it on its own transition into
+                // Failed (RefundPaymentRecipient → RefundEngine); any other refund here, once, however often the notice comes.
+                var ledgerRefund = Refunds.RefundEngine.TryParseReference(refund.Reference, out _, out _);
+                var known = order.Log.Any(l => l.Event == "refund-failed" && l.Detail is { } d && d.StartsWith(refund.Reference + " ", StringComparison.Ordinal));
+                if (!ledgerRefund && !known)
+                {
+                    order.Log.Add(new CheckoutOrderLogEntry { At = Now, Event = "refund-failed", Detail = refund.Reference + " " + refund.FailureReason });
+                    raised.Add(new OrderEvent(order, OrderEventKind.RefundFailed, null, refund.Reference));
+                }
                 if (order.State == OrderState.Refunding && notice.Payment.AmountRefunded is { IsZero: false })
                     OrderStateMachine.TryMove(order, OrderState.PartiallyRefunded, Now, "refund failed (D20)");
                 return Task.CompletedTask;

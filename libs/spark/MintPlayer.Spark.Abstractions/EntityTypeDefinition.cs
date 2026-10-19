@@ -290,7 +290,7 @@ public sealed class EntityAttributeDefinition
     /// <summary>
     /// The value's kind, which picks the editor and renderer: <c>string</c>, <c>MultiLineString</c>,
     /// <c>number</c>, <c>decimal</c>, <c>boolean</c>, <c>date</c>, <c>datetime</c>, <c>color</c>,
-    /// <c>image</c>, <c>TranslatedString</c>, <c>Money</c>, <c>Reference</c> or <c>AsDetail</c>.
+    /// <c>image</c>, <c>TranslatedString</c>, <c>Money</c>, <c>Quantity</c>, <c>Reference</c> or <c>AsDetail</c>.
     /// </summary>
     public string DataType { get; set; } = "string";
 
@@ -332,6 +332,12 @@ public sealed class EntityAttributeDefinition
     /// (like <see cref="EditMode"/>). Only meaningful when <see cref="DataType"/> is "Reference".
     /// </summary>
     public EReferenceDisplayType? ReferenceDisplayType { get; set; }
+    /// <summary>
+    /// For Reference attributes whose candidates form a tree (WX9): which attribute of the referenced
+    /// type holds the parent, so the picker loads a node's children lazily. Hand-set in the model JSON
+    /// and preserved across synchronize (like <see cref="ReferenceDisplayType"/>). Absent: a flat picker.
+    /// </summary>
+    public SparkReferenceTree? ReferenceTree { get; set; }
     /// <summary>
     /// For array AsDetail attributes and lists of plain values, when true the rows / items can be
     /// drag-reordered in the PO-edit UI (order = array position). Set by <c>[Sortable]</c> via the

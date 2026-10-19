@@ -1,7 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using MintPlayer.Spark.Commerce.Checkout;
 using MintPlayer.Spark.Commerce.Inventory;
-using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.Commerce.Promotions.Services;
 
@@ -13,7 +12,7 @@ internal sealed record ItemAvailability(int Available, int Held);
 /// Ticketing, the host), never by loading app documents by id. Promotions' own block source is skipped, so a wrapped id
 /// never resolves to itself.
 /// </summary>
-internal sealed class PromotionItems(IServiceProvider services, ISparkInventory inventory, IDocumentStore store)
+internal sealed class PromotionItems(IServiceProvider services, ISparkInventory inventory)
 {
     /// <summary>The item as checkout would sell <paramref name="quantity"/> of it now, or null.</summary>
     public async Task<CheckoutItem?> ResolveAsync(string itemId, int quantity, CancellationToken cancellationToken)
@@ -37,16 +36,13 @@ internal sealed class PromotionItems(IServiceProvider services, ISparkInventory 
         var perUnit = new List<(string QuotaId, int N)>();
         foreach (var q in item.Capacity.Quotas)
             perUnit.Add((q.QuotaId, Math.Max(1, q.N)));
-        if (item.Capacity.Items.Count > 0)
+        // Item lines through the engine's public read of their mapping, never its documents (S18).
+        foreach (var line in item.Capacity.Items)
         {
-            using var session = store.OpenAsyncSession();
-            foreach (var line in item.Capacity.Items)
-            {
-                var mapping = await session.LoadAsync<InventoryItem>(InventoryEngine.ItemDocumentId(line.ItemId), cancellationToken);
-                if (mapping is null)
-                    return null;
-                perUnit.AddRange(mapping.Quotas.Select(m => (m.QuotaId, Math.Max(1, m.Multiplier))));
-            }
+            var mapping = await inventory.GetItemMappingAsync(line.ItemId, cancellationToken);
+            if (mapping is null)
+                return null;
+            perUnit.AddRange(mapping.Select(m => (m.QuotaId, Math.Max(1, m.Multiplier))));
         }
         if (perUnit.Count == 0)
             return null;

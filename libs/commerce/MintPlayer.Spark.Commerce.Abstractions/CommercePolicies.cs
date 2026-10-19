@@ -41,19 +41,8 @@ public enum SellerRegistrationMode
     Open,
 }
 
-/// <summary>A waiting-room admission mode (D10). The modes themselves live in MintPlayer.Spark.WaitingRoom.</summary>
-public enum WaitingRoomMode
-{
-    /// <summary>Everyone who arrives before the start is shuffled once, then admitted in that order. Needs sign-in
-    /// (one entry per identity) unless overridden.</summary>
-    RandomizedPreQueue,
-
-    /// <summary>Registration window, then a draw. Needs sign-in unless overridden.</summary>
-    Ballot,
-
-    /// <summary>First come, first served.</summary>
-    Fifo,
-}
+// The waiting-room mode (D10) is MintPlayer.Spark.WaitingRoom.WaitingRoomMode, from MintPlayer.Spark.WaitingRoom.Abstractions:
+// one type for the channel configuration and the waiting room.
 
 /// <summary>What happens to a multi-channel order when an <see cref="AllocationMode.OnPayment"/> line loses the race
 /// at confirmation (D40, <c>Basket:OnLineFailure</c>).</summary>

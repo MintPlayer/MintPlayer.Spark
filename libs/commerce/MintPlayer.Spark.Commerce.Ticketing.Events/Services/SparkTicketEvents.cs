@@ -268,11 +268,12 @@ internal sealed class SparkTicketEvents(
             phase.Prices.Add(new TicketPhasePrice { TicketTypeId = type.Id!, Category = quick.Category ?? "", Price = new Money(quick.Price, currency) });
         }
         await session.StoreAsync(phase, cancellationToken);
-        await session.SaveChangesAsync(cancellationToken);
 
-        // GA3: the documents were written outside the persistent-object pipeline, so their first prices are recorded here.
+        // GA3: the documents were written outside the persistent-object pipeline, so their first prices are recorded
+        // here, in the same transaction as the phase (StoreAsync assigned its id): both commit, or neither does.
         foreach (var price in phase.Prices)
             await priceHistory.RecordAsync(session, TicketPriceItem.For(ev, phase, price, types.First(t => t.Id == price.TicketTypeId)), null, "create", cancellationToken: cancellationToken);
+        await session.SaveChangesAsync(cancellationToken);
 
         if (request.Publish)
         {

@@ -10,7 +10,7 @@
 		<Version>11.0.0-preview.101</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
-		<Description>Abstractions for MintPlayer.Spark.Replication: ReplicatedAttribute, ModuleInformation, and ETL script models.</Description>
+		<Description>Abstractions for MintPlayer.Spark.Replication: replication contracts, [Replica], IReplicaChanged, the module registry entry and the wire models of the HTTP transport and write-back.</Description>
 		<PackageTags>replication;etl;ravendb;abstractions</PackageTags>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>

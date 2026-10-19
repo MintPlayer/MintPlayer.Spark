@@ -168,8 +168,10 @@ QuestPDF's community licence has revenue limits and headless Chromium is heavy (
   guests; `?id=` for signed-in readers under the row rule.
 - `GET /spark/commerce/invoicing/documents?number=` — an order's documents (`SparkInvoiceSummary[]`).
 - **GA2:** on `Placed`, each accepted legal-document version without a PDF gets one rendered and attached as Commerce's
-  `document.pdf` (`HasPdf`), so Checkout's confirmation mail links it. MailManager has no attachments, so PDFs travel as
-  links in the confirmation and the invoice mail (`SparkInvoicing/InvoiceIssued`).
+  `document.pdf` (`HasPdf`), so Checkout's confirmation mail attaches it. Invoicing's `ICheckoutMailAttachments`
+  contributor renders any that are still missing right before the confirmation is queued, and adds the withdrawal
+  receipt as a PDF (GA1). The invoice mail (`SparkInvoicing/InvoiceIssued`) attaches the document's PDF and keeps the
+  signed link for downloading it again.
 
 ## Exports
 

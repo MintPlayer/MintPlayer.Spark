@@ -70,10 +70,50 @@ refused (`Spent`) and recorded as deterministic evidence. A visitor's token stay
 ### The seam for checkout and hosts
 
 `IWaitingRoomAdmissions` (`IsGatedAsync(phase)`, `ValidateAsync`, `ConsumeAsync`) is what a hold or checkout uses to
-refuse requests that did not come through the room. Commerce.Checkout (M7) adapts it to its own admission check; a host
-route uses `.RequireWaitingRoomAdmission(http => phase, http => consumer)` (header `X-Spark-Admission`, 403 otherwise).
-The waiting room does not reference checkout or inventory: capacity comes in through `IWaitingRoomCapacity`
-(`[SparkDiscoverable]`), e.g. answered from `ISparkInventory.GetAvailabilityAsync`.
+refuse requests that did not come through the room. A host route uses
+`.RequireWaitingRoomAdmission(http => phase, http => consumer)` (header `X-Spark-Admission`, 403 otherwise). The waiting
+room does not reference checkout or inventory: capacity comes in through `IWaitingRoomCapacity` (`[SparkDiscoverable]`),
+e.g. answered from `ISparkInventory.GetAvailabilityAsync`.
+
+**The mode type.** `WaitingRoomMode` lives in `MintPlayer.Spark.WaitingRoom.Abstractions` (no dependencies). The
+commerce configuration (`Spark:Commerce:Channels:{name}:WaitingRoom:Modes`) and a ticket event's policy name the same
+type the room runs, so no mapping exists between them.
+
+### In the commerce suite: `MintPlayer.Spark.Commerce.WaitingRoom`
+
+Checkout, Promotions, Ticketing.Events and the waiting room reference none of each other (PRD §4.1). The bridge package
+(alias `commerce-waiting-room`) references all four and plugs in through their extension points:
+
+```csharp
+spark.AddCommerceWaitingRoom();   // Spark:Commerce:WaitingRoom; adds the waiting room, Checkout, Promotions, Events
+```
+
+| Bridge | Extension point | What it does |
+|-|-|-|
+| `WaitingRoomCheckoutGate` | Checkout's `ICheckoutAdmissionGate` | Owns the admission scopes `ticketing-phase:{phaseId}` (what Events puts on a queued phase's items) and `waiting-room:{gate}` (any other room). Admits a line when the buyer presents the token the room issued to them for that gate. The consumer is the buyer's identity, so one admission covers every line that person adds while it lives; anyone else is refused as spent (and recorded). |
+| `WaitingListQueueState` | Promotions' `IWaitingListQueueState` | A waiting list with `QueueScope = ticketing-phase:{id}` activates once the phase's room is sold out for good or closed. `may-return` is not closed. |
+| `TicketPhaseRooms` | `ISparkCommerceWaitingRooms` + after-save interceptors | Every phase with `QueueEnabled` gets the room `RoomKey(phaseId)` (gate = phase id), with the phase's schedule, the event's effective mode (seller's choice clamped to the channel's modes) and sign-in for the fair modes. Saving the phase or its event re-synchronizes it; switching the queue off ends the room. `Spark:Commerce:WaitingRoom:AutomaticPhaseRooms = false` leaves the rooms to the host. |
+| `TicketPhaseWaitingRoomCapacity` | `IWaitingRoomCapacity` | Capacity key `ticketing-phase:{id}`: the sum over the phase's dates of the smaller of the date quota and the phase's cap. A seated date answers unknown (the room never sells out by itself; use `MarkSoldOutAsync`). |
+
+**Combined admission (waiting room + presale code).** A checkout item carries `AdmissionScopes`, combined with AND. A
+queued phase whose items also need a Promotions presale code carries `ticketing-phase:{id}` and `promotions:{scope}`;
+the buyer sends one token per scope (`SparkBasketAddRequest.AdmissionTokens`, `SparkPlaceOrderRequest.AdmissionTokens`).
+Checkout asks every gate without consuming first and consumes only when all admit, so a wrong presale code never spends
+the waiting-room token. Events' own phase presale code (D17, the `presale` option) is checked when the item resolves.
+
+## Personal data (GDPR)
+
+`AddWaitingRoom()` registers the account hooks of Spark Authorization:
+
+- **Export** (Art. 15/20): the section `waiting-room` lists the account's entries (room, status, rank, pre-queue, arrival,
+  last seen, called/admitted times, misses). The admission token is left out: a bearer credential, not data about the
+  person.
+- **Erasure** (Art. 17): every entry of the account is anonymised in a cluster-wide transaction: the identity key
+  (`waitingroom/identities/…`) is released, the user and visitor ids and the token are removed, and an active entry
+  leaves the queue. The entry is not deleted: a published shuffle or draw proof lists the ranked entry ids, and removing
+  one would make the proof unverifiable; the anonymised entry keeps only its random id, rank and times and expires with
+  the room. Evidence the risk pipeline recorded against `user:{id}` is in memory only and lapses after
+  `Spark:Challenges:Risk:RecordedEvidenceLifetime`.
 
 ## Sold out (truthful)
 

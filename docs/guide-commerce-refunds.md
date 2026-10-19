@@ -81,6 +81,18 @@ A guest reaches the function from the **signed order link** in the confirmation 
   at the end of the last day, which moves off a weekend (Reg. 1182/71 Art. 3).
 - While goods are undelivered, the right is live (Art. 9(3)).
 - Days are counted in `Refunds:TimeZone`.
+- **Public holidays** (also Art. 3(4)) move the last day too, but only when a holiday calendar is registered and
+  `Refunds:HolidayCountry` (and, for regional holidays, `Refunds:HolidaySubdivision`) is set. **The default is
+  weekend-only.** The reference data's calendar (GC11) is one line, and needs the reference-data client's sync of
+  `PublicHolidays`; a host can register its own `ICheckoutHolidayCalendar` instead:
+
+  ```csharp
+  builder.AddSpark(spark => spark
+      .AddCommerceCheckout()
+      .UseCheckoutReferenceDataHolidays());   // + "Spark:Commerce:Checkout:Refunds:HolidayCountry": "BE"
+  ```
+
+  The guarantee period (Directive 2019/771) is never moved.
 
 **The refund:**
 
@@ -177,13 +189,13 @@ came back empty to the fetcher. Every rule therefore carries ⚠️ *confirm aga
 |---|---|
 | Withdrawal function: label, confirmation step, acknowledgement with date and time on a durable medium. Applies from 19 June 2026 | ⚠️ CRD Art. 11a, inserted by Directive (EU) 2023/2673. Confirm the exact wording and the date |
 | 14 days from receipt of the (last) goods; live before delivery | CRD Art. 9(2)(b), 9(3) |
-| Day counting | Reg. (EEC, Euratom) 1182/71 Art. 3 (CRD recital 41). ⚠️ Public holidays are not applied: no holiday calendar |
+| Day counting | Reg. (EEC, Euratom) 1182/71 Art. 3 (CRD recital 41). Public holidays (Art. 3(4)) only with a registered calendar and `Refunds:HolidayCountry`; default weekend-only. ⚠️ Art. 3(4) takes the holidays of the member state where the act is done: confirm per country which one applies (seller's vs buyer's) |
 | Refund within 14 days, standard delivery only, withholding until goods back or proof of dispatch | CRD Art. 13(1)–(3) |
 | Return cost and diminished value | CRD Art. 14(1)–(2) |
 | Exemptions (dated leisure services, …) | CRD Art. 16. ⚠️ An item-level exemption comes from `IRefundTermsSource` |
 | Partial withdrawal and delivery cost | ⚠️ Not settled by Art. 13. Confirm against the Commission's CRD guidance and national law; configurable |
 | Guarantee period of at least 2 years; remedies hierarchy; free of charge, seller takes back; termination refund after goods back | Directive (EU) 2019/771 Art. 10, 13, 14, 16. ⚠️ Confirm the national period (Art. 10(3)) per member state. Art. 13(5) (no termination for a minor lack of conformity) is staff judgement, not checked |
-| The mail body as a durable medium | ⚠️ MailManager has no attachments, so the receipt is a mail body, not a PDF (Q-O9) |
+| The mail body as a durable medium | The receipt is the mail body, with the same content attached as a PDF when Invoicing is installed (`ICheckoutMailAttachments`, Q-O9) |
 
 ## 10. Tests
 

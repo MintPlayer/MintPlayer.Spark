@@ -63,6 +63,7 @@ public static class SparkCommerceShippingExtensions
         configure?.Invoke(registrationTime);
         builder.Configuration?.GetSection(SparkCommerceShippingOptions.SectionName).Bind(registrationTime);
         builder.AddCron(cron => cron.AddJob<TrackingPollJob>(registrationTime.TrackingPollSchedule, "Shipping.TrackingPoll"));
+        builder.AddCron(cron => cron.AddJob<BookingReconcileJob>(registrationTime.BookingReconcileSchedule, "Shipping.BookingReconcile"));
 
         builder.Registry.AddMiddleware(app => ValidateStartup(app.ApplicationServices));
         builder.Registry.AddEndpoints(endpoints => endpoints.MapSparkCommerceShippingEndpoints());

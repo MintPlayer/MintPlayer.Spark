@@ -9,6 +9,7 @@ using MintPlayer.Spark.Commerce.Ticketing.Venues.Contracts;
 using MintPlayer.Spark.Commerce.Ticketing.Venues.Models;
 using MintPlayer.Spark.Commerce.Ticketing.Venues.Plans;
 using MintPlayer.Spark.Commerce.Ticketing.Venues.Services;
+using MintPlayer.Spark.WaitingRoom;
 
 namespace MintPlayer.Spark.Commerce.Tests.Events;
 

@@ -163,8 +163,13 @@ Answers are stored per ticket position (`attendee-answers/{orderId}/{lineId}/{po
   dispute; with the buyer's account (GDPR Art. 17); and on a transfer or resale, which Tickets (M15) does through
   `IAttendeeAnswers.EraseAsync`. The buyer's answers are in their personal-data export.
 
-⚠️ Checkout has no hook to refuse "Pay" while required checkout questions are unanswered; the order page asks them right
-after placing, and Tickets (M15) can hold back delivery while `Missing` is not empty.
+**At "Pay".** Events registers Checkout's `ICheckoutPrePaymentCheck`: a ticket line whose type asks **required**
+questions at checkout must carry valid answers for every position in `SparkPlaceOrderRequest.Data["attendeeAnswers"]`
+(JSON: `[{ "lineId", "position", "answers": [{ "questionKey", "value", "consent" }] }]`, plus `language` on the
+request for consent texts). Otherwise "Pay" is refused with `attendeeAnswersRequired` (subject
+`{position}:{questionKey}:{code}`, text `ticketingEvents.refusal.attendeeAnswersRequired`) and the placement's claims
+are released. Valid answers are stored with the order in its own transaction. Past the answer deadline nothing is
+required. ⚠️ The checkout step component does not collect the answers yet: the host's page passes them in `data`.
 
 ## 6. PreSelectOrder (D25)
 

@@ -22,5 +22,11 @@
     "showedOn": "detail",
     "selectionRule": "=0",
     "variant": "secondary"
+  },
+  "ShipmentReleaseBooking": {
+    "icon": "unlock",
+    "showedOn": "detail",
+    "selectionRule": "=0",
+    "variant": "warning"
   }
 }

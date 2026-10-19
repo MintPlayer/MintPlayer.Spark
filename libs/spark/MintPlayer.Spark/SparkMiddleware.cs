@@ -1019,6 +1019,11 @@ public static class SparkExtensions
                 Console.WriteLine($"Error creating RavenDB indexes from {assembly.GetName().Name}: {ex.Message}");
             }
         }
+
+        // The licence's index budget (warehouse WX13): a warning, never a refusal — the server refuses
+        // deployment beyond a cap itself. Off the startup path; it never throws.
+        if (app.ApplicationServices.GetService<Abstractions.Licensing.ISparkLicenseCapabilities>() is Services.SparkLicenseCapabilities capabilities)
+            _ = Task.Run(() => capabilities.WarnOnIndexBudgetAsync());
     }
 
     /// <summary>

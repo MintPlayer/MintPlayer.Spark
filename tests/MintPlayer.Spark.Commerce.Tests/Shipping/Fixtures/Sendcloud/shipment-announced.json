@@ -1,0 +1,39 @@
+{
+  "_fixture": {
+    "source": "https://sendcloud.dev/api/v3/shipments/create-and-announce-a-shipment-synchronously (201 response example, schema sync-shipment-response)",
+    "derived": "public documentation example (parcel 383707309, READY_TO_SEND, label document link, tracking 3SYZXG8498635, announced_at), trimmed; a second parcel (383707310) built from the schema for the multicollo case; shipment id kept as the documented placeholder string",
+    "recorded": false
+  },
+  "data": {
+    "id": "XXX-Shipment-id",
+    "order_number": "orders/12345",
+    "external_reference_id": "Shipments/orders/12345",
+    "parcels": [
+      {
+        "id": 383707309,
+        "status": { "code": "READY_TO_SEND", "message": "Ready to send" },
+        "documents": [
+          { "type": "label", "size": "a6", "link": "https://panel.sendcloud.sc/api/v3/parcels/383707309/documents/label" }
+        ],
+        "weight": { "value": "1.000", "unit": "kg" },
+        "tracking_number": "3SYZXG8498635",
+        "tracking_url": "https://tracking.eu-central-1-0.sendcloud.sc/forward?carrier=postnl&code=3SYZXG8498635&destination=CN&lang=en-us&source=NL&type=parcel",
+        "announced_at": "2024-06-06T17:11:14.712398Z"
+      },
+      {
+        "id": 383707310,
+        "status": { "code": "READY_TO_SEND", "message": "Ready to send" },
+        "documents": [
+          { "type": "label", "size": "a6", "link": "https://panel.sendcloud.sc/api/v3/parcels/383707310/documents/label" }
+        ],
+        "weight": { "value": "2.000", "unit": "kg" },
+        "tracking_number": "3SYZXG8498636",
+        "tracking_url": "https://tracking.eu-central-1-0.sendcloud.sc/forward?carrier=postnl&code=3SYZXG8498636&destination=CN&lang=en-us&source=NL&type=parcel",
+        "announced_at": "2024-06-06T17:11:14.712398Z"
+      }
+    ],
+    "ship_with": { "type": "shipping_option_code", "properties": { "shipping_option_code": "postnl:standard", "contract_id": 517 } },
+    "carrier": { "code": "postnl", "name": "PostNL" },
+    "errors": []
+  }
+}

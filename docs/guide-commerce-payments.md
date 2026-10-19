@@ -102,6 +102,16 @@ matched to a payment (amount equal), refund, dispute or ledger fee; unmatched li
 (`PaymentReconciliationResolve`). The `PlatformFeeLedger` query lists every application fee, fee refund, dispute debit,
 dispute fee and reversal per seller, append-only.
 
+**Commissions.** Other packages book into the same ledger through `ISparkPlatformFeeLedger` (registered by
+`AddCommercePayments()`): `BookCommissionAsync` books a `Commission` under `PlatformFeeEntries/Commission/{booker}/{source}`
+(the booker is the calling package's alias, the source its own key, e.g. the order id), `ReverseCommissionAsync` books
+`CommissionReversal`s up to a running total under a reversal key (a refund or dispute id), capped at the commission, and
+`ListCommissionsAsync` reads them back by attribution (`AttributionRef`). Every call works in the caller's session, so a
+booking is saved with the caller's other writes. A commission is owed to its beneficiary (`BeneficiaryId`, the
+promoter), not platform revenue: `PlatformFeeEntry.SignedMinorUnits` is 0 for both kinds, so the monthly fee invoice
+(Invoicing) ignores them; `SignedCommissionMinorUnits` gives their sign. The provider kinds (application fees, fee
+refunds, disputes) cannot be booked through this API. Promotions' tracking links (GC2) are the first booker.
+
 ## 8. The Stripe held-flow shape (spike S5, decided)
 
 Checkout Sessions (hosted, redirect: the same flow as Mollie, no Stripe.js) with `expires_at` = the hold's PaymentPending

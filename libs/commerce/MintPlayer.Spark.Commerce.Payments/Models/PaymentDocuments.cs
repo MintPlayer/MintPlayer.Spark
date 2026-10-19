@@ -241,12 +241,22 @@ public enum PlatformFeeEntryKind
 
     /// <summary>A won dispute gave the debited funds back.</summary>
     DisputeReversal,
+
+    /// <summary>
+    /// A commission a seller owes for a sale another party brought in (a promoter or affiliate tracking link, GC2),
+    /// booked through <see cref="ISparkPlatformFeeLedger"/>. Not platform fee revenue.
+    /// </summary>
+    Commission,
+
+    /// <summary>A commission (or part of it) taken back, because the order was refunded or reversed.</summary>
+    CommissionReversal,
 }
 
 /// <summary>
-/// One line of the platform-fee ledger (GB4): every application fee, refund of a fee and dispute debit per seller.
-/// Append-only: written by the payments package under a natural id (<c>PlatformFeeEntries/{kind}/{provider}/{source}</c>),
-/// so a redelivered webhook cannot book an entry twice; only <c>QueryRead</c> is granted.
+/// One line of the platform-fee ledger (GB4): every application fee, refund of a fee, dispute debit and commission per
+/// seller. Append-only: written under a natural id (<c>PlatformFeeEntries/{kind}/{provider}/{source}</c>), so a
+/// redelivered webhook or order event cannot book an entry twice; only <c>QueryRead</c> is granted. The payments
+/// package books the provider kinds; other packages book commissions through <see cref="ISparkPlatformFeeLedger"/>.
 /// </summary>
 public class PlatformFeeEntry
 {
@@ -261,11 +271,17 @@ public class PlatformFeeEntry
     /// <summary>Always positive; <see cref="Kind"/> says the direction.</summary>
     public Money Amount { get; set; } = Money.Zero("EUR");
 
-    /// <summary>The provider resource it books (payment, refund, dispute).</summary>
+    /// <summary>The resource it books (provider payment, refund or dispute; for a commission, the booker's own key).</summary>
     public string SourceId { get; set; } = string.Empty;
 
     /// <summary>Our order reference.</summary>
     public string? Reference { get; set; }
+
+    /// <summary>A commission's beneficiary (the promoter's user id); null for the provider kinds and platform links.</summary>
+    public string? BeneficiaryId { get; set; }
+
+    /// <summary>What a commission is attributed to (the tracking link's <c>ref</c>); null for the provider kinds.</summary>
+    public string? AttributionRef { get; set; }
 
     public DateTime OccurredAtUtc { get; set; }
 
@@ -273,11 +289,22 @@ public class PlatformFeeEntry
 
     public static string IdFor(PlatformFeeEntryKind kind, string provider, string sourceId) => $"PlatformFeeEntries/{kind}/{provider}/{sourceId}";
 
-    /// <summary>The entry's effect on the platform's fee revenue: + for a fee, − for a fee refund, 0 for seller debits.</summary>
+    /// <summary>
+    /// The entry's effect on the platform's fee revenue: + for a fee, − for a fee refund, 0 for seller debits and
+    /// commissions (a commission is owed to its beneficiary, so the monthly fee invoice never includes it).
+    /// </summary>
     public long SignedMinorUnits => Kind switch
     {
         PlatformFeeEntryKind.ApplicationFee => Amount.ToMinorUnits(),
         PlatformFeeEntryKind.ApplicationFeeRefund => -Amount.ToMinorUnits(),
+        _ => 0,
+    };
+
+    /// <summary>The entry's effect on the commission owed: + for a commission, − for a reversal, 0 for the other kinds.</summary>
+    public long SignedCommissionMinorUnits => Kind switch
+    {
+        PlatformFeeEntryKind.Commission => Amount.ToMinorUnits(),
+        PlatformFeeEntryKind.CommissionReversal => -Amount.ToMinorUnits(),
         _ => 0,
     };
 }

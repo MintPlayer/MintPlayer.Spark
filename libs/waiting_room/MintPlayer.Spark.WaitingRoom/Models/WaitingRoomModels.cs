@@ -2,21 +2,7 @@ using MintPlayer.Spark.Abstractions;
 
 namespace MintPlayer.Spark.WaitingRoom;
 
-/// <summary>How a room orders its queue (D10).</summary>
-public enum WaitingRoomMode
-{
-    /// <summary>
-    /// The default. Everyone who joins before the sale starts is shuffled at the start with a committed seed; later
-    /// arrivals queue first-come behind them. Arriving early buys nothing, so a script that floods at T−1 s gains nothing.
-    /// </summary>
-    RandomizedPreQueue,
-
-    /// <summary>Registration, then a provably fair draw (seed committed before registration closes, revealed after), then personal single-use purchase links in staged windows; unused places roll to the next group.</summary>
-    Ballot,
-
-    /// <summary>First come, first served, ordered by the server's commit time (<c>@last-modified</c>, captured once: 0 inversions measured, research §3.6).</summary>
-    Fifo,
-}
+// WaitingRoomMode lives in MintPlayer.Spark.WaitingRoom.Abstractions: one type, shared with the commerce configuration.
 
 /// <summary>
 /// A waiting room (commerce PRD §4.12): bound to a gate (a sale phase, or any route), with a schedule and a mode. Stored

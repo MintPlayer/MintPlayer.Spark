@@ -9,7 +9,7 @@ namespace MintPlayer.Spark.Tests.Model;
 /// <summary>
 /// <see cref="Money"/> through a real RavenDB store configured the way production is
 /// (<c>ApplySparkConventions</c>): the stored shape, the round trip, and the two query paths
-/// <c>MoneyQueryFields</c> relies on — nested members on a collection query, companions on a static index.
+/// <c>AmountQueryFields</c> relies on — nested members on a collection query, companions on a static index.
 /// </summary>
 public class MoneyRavenTests : SparkTestDriver
 {

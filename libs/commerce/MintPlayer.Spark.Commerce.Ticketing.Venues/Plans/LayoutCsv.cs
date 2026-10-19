@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using MintPlayer.Spark.Abstractions.Csv;
 using MintPlayer.Spark.Commerce.Ticketing.Venues.Models;
 
 namespace MintPlayer.Spark.Commerce.Ticketing.Venues.Plans;
@@ -137,53 +138,17 @@ public static class LayoutCsv
         return problems.Count > 0 ? (null, problems) : (result, []);
     }
 
-    /// <summary>RFC 4180 records: quoted fields may hold commas, quotes (doubled) and line breaks.</summary>
-    public static List<List<string>> Parse(string csv)
-    {
-        var records = new List<List<string>>();
-        var record = new List<string>();
-        var field = new StringBuilder();
-        var quoted = false;
-        var start = csv.Length > 0 && csv[0] == '﻿' ? 1 : 0;
-        for (var i = start; i < csv.Length; i++)
-        {
-            var c = csv[i];
-            if (quoted)
-            {
-                if (c == '"' && i + 1 < csv.Length && csv[i + 1] == '"') { field.Append('"'); i++; }
-                else if (c == '"') quoted = false;
-                else field.Append(c);
-            }
-            else if (c == '"') quoted = true;
-            else if (c == ',') { record.Add(field.ToString()); field.Clear(); }
-            else if (c == '\r' || c == '\n')
-            {
-                if (c == '\r' && i + 1 < csv.Length && csv[i + 1] == '\n') i++;
-                record.Add(field.ToString());
-                field.Clear();
-                records.Add(record);
-                record = [];
-            }
-            else field.Append(c);
-        }
-        if (field.Length > 0 || record.Count > 0)
-        {
-            record.Add(field.ToString());
-            records.Add(record);
-        }
-        return records;
-    }
+    /// <summary>
+    /// RFC 4180 records through the shared codec (<see cref="SparkCsv"/>, warehouse WX11): quoted fields may hold the
+    /// delimiter, quotes (doubled) and line breaks. The delimiter is detected, so a file Excel saved with <c>;</c>
+    /// (comma-decimal locales) imports too.
+    /// </summary>
+    public static List<List<string>> Parse(string csv) => SparkCsv.Parse(csv);
 
-    private static string Text(string value)
-    {
-        if (value.Length > 0 && value[0] is '=' or '+' or '-' or '@' or '\t' or '\r')
-            value = "'" + value;
-        return value.IndexOfAny([',', '"', '\r', '\n']) >= 0 ? "\"" + value.Replace("\"", "\"\"") + "\"" : value;
-    }
+    private static string Text(string value) => SparkCsv.Field(value);
 
     /// <summary>Undoes <see cref="Text"/>'s guard on the way back in.</summary>
-    private static string Unguard(string value)
-        => value.Length > 1 && value[0] == '\'' && value[1] is '=' or '+' or '-' or '@' or '\t' or '\r' ? value[1..] : value;
+    private static string Unguard(string value) => SparkCsv.Unguard(value);
 
     /// <summary>A key from free text: letters, digits, <c>_ . -</c>; everything else becomes <c>-</c>; at most 64 characters.</summary>
     public static string Slug(string text)

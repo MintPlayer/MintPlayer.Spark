@@ -96,7 +96,7 @@ internal sealed class PromotionOrderEvents(
             codes = (await session.LoadAsync<PromotionCode>(names.Select(PromotionCode.IdFor), cancellationToken))
                 .Where(p => p.Value is not null).ToDictionary(p => p.Key, p => p.Value);
         var owner = PromotionUsage.OwnerForLines(order.Lines.Select(l => l.LineId));
-        var buyer = PromotionUsage.BuyerKey(order.BuyerUserId);
+        var buyer = PromotionUsage.BuyerKey(order.BuyerUserId, order.BuyerEmail, order.VisitorId);
         foreach (var code in codes.Values)
         {
             try

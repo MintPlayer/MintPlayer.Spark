@@ -13,8 +13,8 @@ namespace MintPlayer.Spark.Commerce.Checkout.Refunds;
 /// <summary>
 /// The refund flows' mails through MailManager (optional; without it a warning is logged). The withdrawal receipt is the
 /// acknowledgement on a durable medium of CRD Art. 11a(3) (as inserted by Directive (EU) 2023/2673): it states the
-/// content of the withdrawal and the date and time it was received. ⚠️ MailManager has no attachments yet, so the
-/// receipt is the mail body, not a PDF (Q-O9, as for the confirmation); a mail is a durable medium in itself.
+/// content of the withdrawal and the date and time it was received. The mail body is the receipt (a durable medium in
+/// itself); an <see cref="ICheckoutMailAttachments"/> contributor adds it as a PDF too (Invoicing does, Q-O9).
 /// </summary>
 internal sealed class RefundMails(
     IServiceProvider services,
@@ -52,9 +52,12 @@ internal sealed class RefundMails(
         if (email is null)
             return;
         var language = culture is { Length: >= 2 } c ? c[..2].ToLowerInvariant() : TranslatedString.DefaultLanguage;
+        // GA1: the receipt as a PDF from a contributor (Invoicing renders it); the body stays the receipt as well.
+        var attachments = await checkoutMails.ContributedAttachmentsAsync(new CheckoutMailContext(CheckoutMailKind.WithdrawalReceipt, order, language, withdrawal), cancellationToken);
         await mailer.SendAsync(new SparkMailRequest
         {
             Template = Options.WithdrawalReceiptMailTemplate,
+            Attachments = attachments,
             To = email,
             ToName = name,
             Culture = culture,

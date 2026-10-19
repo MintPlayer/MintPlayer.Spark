@@ -9,6 +9,7 @@ using Microsoft.Extensions.Options;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Commerce.Invoicing.EInvoicing;
 using MintPlayer.Spark.Commerce.Invoicing.Models;
+using MintPlayer.Spark.Commerce.Invoicing.Pdf;
 using MintPlayer.Spark.Commerce.Payments;
 using MintPlayer.Spark.MailManager;
 using Raven.Client.Documents;
@@ -17,14 +18,15 @@ namespace MintPlayer.Spark.Commerce.Invoicing.Services;
 
 /// <summary>
 /// What follows an issued document: the money audit entry, the Peppol transmission for business documents, and the
-/// mail with a signed PDF link (MailManager has no attachments, Q-O9). Each step is idempotent (the transmission by its
-/// id, the mail by a deduplication key), so running it again for a document issued earlier sends nothing twice.
+/// mail with the PDF attached (Q-O9) and a signed link to download it again. Each step is idempotent (the transmission
+/// by its id, the mail by a deduplication key), so running it again for a document issued earlier sends nothing twice.
 /// </summary>
 internal sealed class InvoiceAfterIssue(
     IServiceProvider services,
     IDocumentStore store,
     EInvoiceDispatcher dispatcher,
     InvoiceLinks links,
+    IInvoicePdfRenderer pdfRenderer,
     ILogger<InvoiceAfterIssue> logger)
 {
     public const string AuditIssued = "commerce-invoicing.issued";
@@ -55,6 +57,8 @@ internal sealed class InvoiceAfterIssue(
         await mailer.SendAsync(new SparkMailRequest
         {
             Template = "SparkInvoicing/InvoiceIssued",
+            // The invoice itself, rendered now: a sent invoice must not change, and the issued document is immutable.
+            Attachments = PdfAttachment(invoice),
             To = recipientEmail,
             ToName = invoice.Buyer.Name is { Length: > 0 } n ? n : null,
             Culture = invoice.Language,
@@ -73,6 +77,23 @@ internal sealed class InvoiceAfterIssue(
             },
         }, cancellationToken);
     }
+
+    /// <summary>The PDF as an attachment; on a rendering failure the mail goes without it (the link still works).</summary>
+    internal IReadOnlyList<SparkMailAttachment>? PdfAttachment(Invoice invoice)
+    {
+        try
+        {
+            return [SparkMailAttachment.FromBytes(PdfFileName(invoice.Number), "application/pdf", pdfRenderer.Render(invoice))];
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "The PDF of {Invoice} could not be rendered for its mail; it is sent with the link only.", invoice.Number);
+            return null;
+        }
+    }
+
+    internal static string PdfFileName(string number)
+        => new string([.. number.Select(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_' ? c : '-')]) + ".pdf";
 }
 
 /// <summary>

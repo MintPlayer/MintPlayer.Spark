@@ -198,6 +198,11 @@
       }
     },
     "refusal": {
+      "attendeeAnswersRequired": {
+        "en": "Please answer the required questions for each ticket first.",
+        "fr": "Veuillez d'abord répondre aux questions obligatoires pour chaque billet.",
+        "nl": "Beantwoord eerst de verplichte vragen voor elk ticket."
+      },
       "eventNotFound": {
         "en": "This event does not exist.",
         "fr": "Cet événement n'existe pas.",

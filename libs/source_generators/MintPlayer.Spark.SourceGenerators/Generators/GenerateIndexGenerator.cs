@@ -444,8 +444,8 @@ public class GenerateIndexGenerator : IncrementalGenerator
                     });
                 }
                 // A Money is complex too (stored, FieldIndexing.No), but it is not left unfilterable: it
-                // gets its amount and currency companions below.
-                else if (!property.Type.IsMoney())
+                // gets its amount and currency companions below. A Quantity likewise (amount and unit).
+                else if (!property.Type.IsMoney() && !property.Type.IsQuantity())
                 {
                     complexProperties.Add(new InvalidSearchInfo
                     {
@@ -539,11 +539,14 @@ public class GenerateIndexGenerator : IncrementalGenerator
 
             // A Money (commerce X4) is an object a static index cannot sort or compare, so it gets two flat
             // companions the query executor sorts and filters through (SparkMoney.AmountCompanion /
-            // CurrencyCompanion, MoneyQueryFields). A name already taken on the entity gets no companion:
+            // CurrencyCompanion, AmountQueryFields). A name already taken on the entity gets no companion:
             // the column is then simply not sortable on this index, never wrongly sorted.
-            if (property.Type.IsMoney())
+            // A Quantity (warehouse WX8) gets the same pair, amount and unit (SparkQuantity.AmountCompanion /
+            // UnitCompanion), sorted and filtered through AmountQueryFields alike.
+            var codeSuffix = property.Type.IsMoney() ? "Currency" : property.Type.IsQuantity() ? "Unit" : null;
+            if (codeSuffix is not null)
             {
-                foreach (var (suffix, type) in new[] { ("Amount", "decimal?"), ("Currency", "string?") })
+                foreach (var (suffix, type) in new[] { ("Amount", "decimal?"), (codeSuffix, "string?") })
                 {
                     var companionName = property.Name + suffix;
                     if (entityPropertyNames.Contains(companionName)) continue;
@@ -553,7 +556,7 @@ public class GenerateIndexGenerator : IncrementalGenerator
                         Name = companionName,
                         TypeDisplay = type,
                         // "!." is a C#-nullability silencer only: RavenDB evaluates the map over stored
-                        // JSON, where a missing Money yields null for both fields.
+                        // JSON, where a missing Money or Quantity yields null for both fields.
                         MapExpression = $"{itemVariable}.{property.Name}!.{suffix}",
                         FieldIndexing = null,
                         IsSortCompanion = true,

@@ -100,6 +100,8 @@ public static class TicketItemResolver
         {
             ItemId = request.ItemId,
             Channel = ev.Channel,
+            // D2: the event's own hold time, clamped to the channel's bounds (Checkout clamps once more).
+            HoldTime = policy.Hold,
             OrganizationId = ev.OrganizationId,
             Price = price.Price,
             PriceBasis = PriceBasis.Gross,
@@ -111,7 +113,9 @@ public static class TicketItemResolver
             IsPhysicalGoods = false,
             LimitScope = TicketScopes.Limit(ev.Id!, phase.Id!, policy.LimitScope),
             PerBuyerLimit = policy.PerBuyerLimit,
-            AdmissionScope = phase.QueueEnabled ? TicketScopes.Admission(phase.Id!) : null,
+            // The waiting room's scope; the phase's own presale code was checked above (D17), so a queued presale phase
+            // needs both. A capacity source may add a promotions:{scope} for a code from Promotions (combined, AND).
+            AdmissionScopes = phase.QueueEnabled ? [TicketScopes.Admission(phase.Id!)] : [],
             RequiresParentItemIds = parents,
             Capacity = capacity,
         };

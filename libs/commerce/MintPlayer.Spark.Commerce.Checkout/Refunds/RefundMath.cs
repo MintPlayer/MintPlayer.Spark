@@ -326,14 +326,15 @@ internal static class RefundMath
     /// The end (exclusive) of a period of <paramref name="days"/> days counted from the day after <paramref name="from"/>,
     /// in <paramref name="zone"/>: Regulation (EEC, Euratom) No 1182/71 Art. 3(1) (the day of the event is not counted),
     /// 3(2)(b) (the period ends at the end of its last day) and 3(4) (a last day on a Saturday or Sunday moves to the next
-    /// working day). ⚠️ Public holidays (also Art. 3(4)) are not applied: Checkout knows no holiday calendar (D37: confirm).
+    /// working day). Public holidays (also Art. 3(4)) move it too when <paramref name="isHoliday"/> is given (the optional
+    /// holiday calendar, <see cref="ICheckoutHolidayCalendar"/>); without one, only weekends do.
     /// </summary>
-    public static DateTimeOffset PeriodEnd(DateTimeOffset from, int days, TimeZoneInfo zone, bool moveOffWeekend = true)
+    public static DateTimeOffset PeriodEnd(DateTimeOffset from, int days, TimeZoneInfo zone, bool moveOffWeekend = true, Func<DateOnly, bool>? isHoliday = null)
     {
         var local = SparkTimeZones.ToZone(from, zone).Date;
         var last = local.AddDays(days);
         if (moveOffWeekend)
-            while (last.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday)
+            while (last.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday || isHoliday?.Invoke(DateOnly.FromDateTime(last)) == true)
                 last = last.AddDays(1);
         return SparkTimeZones.ToInstant(DateTime.SpecifyKind(last.AddDays(1), DateTimeKind.Unspecified), zone);
     }

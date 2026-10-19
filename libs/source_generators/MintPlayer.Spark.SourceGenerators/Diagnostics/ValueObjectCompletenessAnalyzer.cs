@@ -342,6 +342,8 @@ public sealed partial class ValueObjectCompletenessAnalyzer : DiagnosticAnalyzer
             && !named.IsSparkScalarLike()
             // Money is one value with its own serializer (commerce X4), not an embedded object.
             && !named.IsMoney()
+            // Quantity likewise (warehouse WX8).
+            && !named.IsQuantity()
             && named.GetMembers().OfType<IPropertySymbol>().Any(p => p.DeclaredAccessibility == Accessibility.Public)
             ? named
             : null;

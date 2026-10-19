@@ -83,18 +83,63 @@ internal sealed class AttendeeAnswers(
 
         var id = AttendeeAnswerSet.IdFor(order.Id!, line.LineId, request.Position);
         var set = await session.LoadAsync<AttendeeAnswerSet>(id, cancellationToken) ?? new AttendeeAnswerSet { Id = id };
+        Fill(set, order, line, request.Position, context, inputs, request.Language, now);
+        await session.StoreAsync(set, cancellationToken);
+        await session.SaveChangesAsync(cancellationToken);
+        return await BuildAsync(session, order, cancellationToken);
+    }
+
+    /// <summary>
+    /// GB3 at "Pay" (Checkout's <see cref="ICheckoutPrePaymentCheck"/>): every position of a ticket line whose type asks
+    /// required questions at checkout must carry valid answers in <c>Data["attendeeAnswers"]</c>
+    /// (<c>[{ lineId, position, answers: [{ questionKey, value, consent }] }]</c>); otherwise "Pay" is refused with
+    /// <see cref="TicketingRefusals.AttendeeAnswersRequired"/>. Valid answers are stored with the order, in its transaction.
+    /// After the answer deadline nothing is required (the order page no longer asks either).
+    /// </summary>
+    public async Task CheckAsync(CheckoutPrePaymentContext context, CancellationToken cancellationToken)
+    {
+        var given = AttendeeCheckoutData.Parse(context.Data);
+        var order = context.Order;
+        var now = clock.GetUtcNow();
+        using var session = store.OpenAsyncSession();
+        foreach (var line in order.Lines.Where(l => l.Status == OrderLineStatus.Active))
+        {
+            if (TicketItemIds.Parse(line.ItemId) is not { } item || await LineContextAsync(session, item, cancellationToken) is not { } lineContext)
+                continue;
+            if (lineContext.Type.Questions.Count == 0 || now >= Deadline(lineContext))
+                continue;
+            var requiredNow = lineContext.Type.Questions.Any(q => q.Required && q.AskAt == EAttendeeQuestionTiming.Checkout);
+            for (var position = 1; position <= line.Quantity; position++)
+            {
+                var inputs = given.TryGetValue((line.LineId, position), out var answers) ? answers : [];
+                if (inputs.Count == 0 && !requiredNow)
+                    continue;
+                var errors = AttendeeQuestionRules.Validate(lineContext.Type.Questions, inputs, EAttendeeQuestionTiming.Checkout);
+                if (errors.Count > 0)
+                    throw CheckoutException.Of(TicketingRefusals.AttendeeAnswersRequired, line.LineId, $"{position}:{errors[0].QuestionKey}:{errors[0].Code}");
+                var id = AttendeeAnswerSet.IdFor(order.Id!, line.LineId, position);
+                var set = new AttendeeAnswerSet { Id = id };
+                Fill(set, order, line, position, lineContext, inputs, context.Language, now);
+                context.StoreWithOrder(set, id);
+            }
+        }
+    }
+
+    private void Fill(AttendeeAnswerSet set, CheckoutOrder order, CheckoutOrderLine line, int position, LineContext context,
+        IReadOnlyList<AttendeeAnswerInput> inputs, string? requestLanguage, DateTimeOffset now)
+    {
         set.EventId = context.Event.Id!;
         set.OrganizationId = context.Event.OrganizationId;
         set.OrderId = order.Id!;
         set.OrderNumber = order.Number;
         set.LineId = line.LineId;
-        set.Position = request.Position;
+        set.Position = position;
         set.TicketTypeId = context.Type.Id!;
         set.DateIds = context.Dates.Select(d => d.Id!).ToList();
         set.BuyerUserId = order.BuyerUserId;
         set.UpdatedAt = now;
         set.EraseAfter = EraseAfter(context);
-        var language = string.IsNullOrWhiteSpace(request.Language) ? TranslatedString.DefaultLanguage : request.Language!;
+        var language = string.IsNullOrWhiteSpace(requestLanguage) ? TranslatedString.DefaultLanguage : requestLanguage!;
         foreach (var input in inputs)
         {
             var question = context.Type.Questions.First(q => q.Key == input.QuestionKey);
@@ -115,9 +160,6 @@ internal sealed class AttendeeAnswers(
             }
             set.Answers.Add(answer);
         }
-        await session.StoreAsync(set, cancellationToken);
-        await session.SaveChangesAsync(cancellationToken);
-        return await BuildAsync(session, order, cancellationToken);
     }
 
     public async Task EraseAsync(string orderId, string lineId, int? position = null, CancellationToken cancellationToken = default)

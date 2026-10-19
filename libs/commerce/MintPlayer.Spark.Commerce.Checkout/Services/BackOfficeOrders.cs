@@ -243,10 +243,10 @@ internal sealed class BackOfficeOrders(
     }
 
     /// <summary>
-    /// A seat change or upgrade (GB7): the new units are claimed first, then the old ones returned (keyed by the change
-    /// id, I4), then the new claim converted; the price difference is refunded, or charged through a supplement payment
-    /// link. ⚠️ PRD §4.4 asks for one cluster-wide transaction; the inventory engine has no exchange operation, so this is
-    /// three idempotent steps: a failure after the claim leaves at most a hold that lapses (I3), never a double sale.
+    /// A seat change or upgrade (GB7): one inventory exchange (<see cref="ISparkInventory.ExchangeAsync"/>) returns the
+    /// old units (keyed by the change id, I4), claims the new ones and sells them in a single cluster-wide transaction
+    /// (§4.4), so a refused change leaves the line exactly as it was. A seat kept by an upgrade is handed over, not
+    /// re-claimed. The price difference is refunded, or charged through a supplement payment link.
     /// </summary>
     public async Task<SparkBackOfficeResult> ChangeLineAsync(SparkLineChangeRequest request, CancellationToken cancellationToken)
     {
@@ -274,12 +274,20 @@ internal sealed class BackOfficeOrders(
             var newClaim = OrderClaims.ClaimIdFor(line.LineId) + "/" + changeId;
             var capacity = CheckoutCapacitySnapshot.From(item.Capacity);
 
-            var claimed = await inventory.TryClaimAsync(OrderClaims.Request(newClaim, order.Id!, Now + options.CurrentValue.ConfirmationHold, capacity, line.Limits), cancellationToken);
-            if (!claimed.Succeeded)
-                throw OrderClaims.Refusal(claimed, line.LineId);
+            var target = OrderClaims.Request(newClaim, order.Id!, Now + options.CurrentValue.ConfirmationHold, capacity, line.Limits);
+            ClaimResult converted;
             if (line.ClaimId is { } oldClaim)
-                await inventory.ReturnAsync(oldClaim, new InventoryReturn("change:" + changeId, ReturnReason.Other), cancellationToken);
-            var converted = await inventory.ConvertAsync(newClaim, cancellationToken: cancellationToken);
+            {
+                // One cluster-wide transaction (§4.4): the old units back, the new ones claimed and sold, or nothing.
+                converted = await inventory.ExchangeAsync(new InventoryExchange(oldClaim, new InventoryReturn("change:" + changeId, ReturnReason.Other), target), cancellationToken);
+            }
+            else
+            {
+                // A line without a claim (nothing to give back): claim and sell the new units.
+                converted = await inventory.TryClaimAsync(target, cancellationToken);
+                if (converted.Succeeded)
+                    converted = await inventory.ConvertAsync(newClaim, cancellationToken: cancellationToken);
+            }
             if (!converted.Succeeded)
                 throw OrderClaims.Refusal(converted, line.LineId);
 
@@ -296,13 +304,13 @@ internal sealed class BackOfficeOrders(
             line.Allocation = channel.Allocation;
             line.UnitPrice = item.Price;
             line.ClaimId = newClaim;
-            line.Units = converted.Units?.ToList() ?? claimed.Units?.ToList() ?? [.. item.Capacity.Units];
+            line.Units = converted.Units?.ToList() ?? [.. item.Capacity.Units];
             line.Capacity = capacity;
             line.Total = newTotal;
             if (!comp)
             {
-                line.Net = repriced.Price.Net;
-                line.Vat = repriced.Price.Vat;
+                line.Net = repriced.Net ?? repriced.Price.Net;
+                line.Vat = repriced.Vat ?? repriced.Price.Vat;
                 line.Fees = repriced.Price.MandatoryFees.Select(f => new CheckoutOrderFee { Code = f.Code, Kind = f.Kind.ToString(), Amount = f.Amount, LabelKey = f.LabelKey, Mandatory = true }).ToList();
             }
             line.MinimumAge = item.MinimumAge;

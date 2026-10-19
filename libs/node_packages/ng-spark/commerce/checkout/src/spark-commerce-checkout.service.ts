@@ -37,9 +37,34 @@ export function refusalOf(error: unknown): SparkCheckoutRefusal | null {
     : null;
 }
 
-/** The translation key of a refusal code. */
-export function refusalKey(code: string): string {
-  return 'commerceCheckout.refusal.' + code;
+/**
+ * Where refusal texts live, tried in order: Checkout's own, then the packages that refuse through Checkout's seams
+ * (a promotion code in a pricing step, a sale phase or presale code at admission). A host may push its own namespace
+ * (`'myShop.refusal'`) for the codes of its own steps.
+ */
+export const SPARK_CHECKOUT_REFUSAL_NAMESPACES: string[] = [
+  'commerceCheckout.refusal',
+  'commercePromotions.refusal',
+  'ticketingEvents.refusal',
+  'commerceWaitingRoom.refusal',
+];
+
+/** The generic text shown for a code no namespace translates. */
+export const SPARK_CHECKOUT_REFUSAL_FALLBACK = 'commerceCheckout.refusal.conflict';
+
+/**
+ * The translation key of a refusal code. Without `lang` it is Checkout's own key. With `lang` it is the first key of
+ * {@link SPARK_CHECKOUT_REFUSAL_NAMESPACES} that has a text, else {@link SPARK_CHECKOUT_REFUSAL_FALLBACK}, so a code
+ * raised by another package (`promotionCodeInvalid`) never shows as a raw key.
+ */
+export function refusalKey(code: string, lang?: { t(key: string): string }): string {
+  const own = 'commerceCheckout.refusal.' + code;
+  if (!lang) return own;
+  for (const ns of SPARK_CHECKOUT_REFUSAL_NAMESPACES) {
+    const key = `${ns}.${code}`;
+    if (lang.t(key) !== key) return key;
+  }
+  return SPARK_CHECKOUT_REFUSAL_FALLBACK;
 }
 
 /**

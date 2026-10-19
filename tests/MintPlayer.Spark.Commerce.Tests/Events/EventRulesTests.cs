@@ -10,6 +10,7 @@ using MintPlayer.Spark.Commerce.Ticketing.Events.Services;
 using MintPlayer.Spark.Commerce.Ticketing.Venues.Models;
 using MintPlayer.Spark.Commerce.Ticketing.Venues.Plans;
 using MintPlayer.Spark.Commerce.Tests.Venues;
+using MintPlayer.Spark.WaitingRoom;
 using static MintPlayer.Spark.Commerce.Tests.Events.EventFixtures;
 
 namespace MintPlayer.Spark.Commerce.Tests.Events;
@@ -124,7 +125,7 @@ public class EventRulesTests
         item.OrganizationId.Should().Be("Organizations/seller");
         item.ServiceDate.Should().Be(date.StartsAt);
         item.MinimumAge.Should().Be(18);
-        item.AdmissionScope.Should().Be(TicketScopes.Admission("p"));
+        item.AdmissionScopes.Should().Equal(TicketScopes.Admission("p"));
         item.LimitScope.Should().Be("ticketing-event:TicketEvents/1-A");
         item.PerBuyerLimit.Should().Be(6);
         item.Title["en"].Should().Be("Summer Fest · t1");

@@ -35,8 +35,11 @@ seller's items) and every seller's.
 | `Unlock` | opens hidden items and **presale phases**: a presale access code is an unlock code of the phase's scope (D17) | `Scopes`, or `ItemIds` |
 | `CapacityBlock` | holds a quota of one item for the code's buyers | `ItemIds` (one item), `BlockQuantity`, `ValidUntil` (required) |
 
-Every code takes `ValidFrom`/`ValidUntil`, `MaxUses` (orders, or admissions for an unlock code), `OncePerBuyer` (needs
-a signed-in buyer) and `MinimumOrderTotal` (discounts).
+Every code takes `ValidFrom`/`ValidUntil`, `MaxUses` (orders, or admissions for an unlock code), `OncePerBuyer` (one use per
+buyer: the account when signed in, else the guest's e-mail address, else the guest's visitor identity; checkout passes
+them in `CheckoutPricingContext.BuyerEmail`/`VisitorId`) and `MinimumOrderTotal` (discounts). ⚠️ A guest key is only as
+strong as its identifier: a guest who uses a new address and clears cookies counts as a new buyer; require sign-in on
+the channel when that matters.
 
 ```http
 POST /spark/commerce/promotions/admin/codes/save
@@ -183,13 +186,15 @@ primitive, GA9/X21). A guest's attribution moves to the account at sign-in. The 
 when an order is placed it is copied onto a satellite of the order (`PromotionOrderAttributions/{orderId}`), so
 Checkout's order is untouched.
 
-On `Confirmed` the link's commission (percentage of the attributed goods, plus a fixed amount) is booked once
-(`PromotionCommissions/{orderId}`, audited `commerce-promotions.commission`); refunds reverse it in proportion to the
-amount refunded, a lost dispute in full. `GET …/admin/links/report?ref=` answers orders placed, confirmed and cancelled,
-sales and commissions per currency, and orders per UTM source; the seller's staff and the link's promoter may read it.
-
-⚠️ Payments' platform-fee ledger (GB4) has no commission kind and no public booking API, so commissions live in
-Promotions' own append-only ledger for now (reported to the lead).
+On `Confirmed` the link's commission (percentage of the attributed goods, plus a fixed amount) is booked once into
+Payments' platform-fee ledger (GB4) through `ISparkPlatformFeeLedger`: a `Commission` entry
+`PlatformFeeEntries/Commission/commerce-promotions/{orderId}` carrying the seller, the promoter (`BeneficiaryId`) and the
+link (`AttributionRef`), saved in the same session as its audit entry `commerce-promotions.commission`. Refunds reverse
+it in proportion to the amount refunded, a lost dispute in full, as `CommissionReversal` entries
+(`…/{orderId}/reversal/{reference}`, never more than was booked). Commissions are not platform revenue: the monthly fee
+invoice ignores them. `GET …/admin/links/report?ref=` answers orders placed, confirmed and cancelled, sales and
+commissions (net of reversals) per currency, and orders per UTM source; the seller's staff and the link's promoter may
+read it. The ledger rows are readable in the `PlatformFeeLedger` query by finance under its row rule.
 
 ## 6. Configuration (`Spark:Commerce:Promotions`)
 

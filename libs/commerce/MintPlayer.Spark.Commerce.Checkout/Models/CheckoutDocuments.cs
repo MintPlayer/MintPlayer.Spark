@@ -83,8 +83,8 @@ public sealed class CheckoutBasketLine
     /// <summary>The seats the claim holds (chain fill chose them).</summary>
     public List<string> HeldUnits { get; set; } = [];
 
-    /// <summary>The waiting-room token the line was admitted with (§4.12).</summary>
-    public string? AdmissionToken { get; set; }
+    /// <summary>The admission tokens the line was added with, by scope (§4.6, §4.12): a waiting-room token, a presale code.</summary>
+    public Dictionary<string, string> AdmissionTokens { get; set; } = new(StringComparer.Ordinal);
 
     public DateTimeOffset AddedAt { get; set; }
 }

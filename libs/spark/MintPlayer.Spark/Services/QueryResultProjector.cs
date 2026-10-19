@@ -146,10 +146,10 @@ internal static class QueryResultProjector
         var resolved = QueryExecutor.ResolveSortProperty(sortType, attribute.Name);
         if (sortType.GetCachedProperty(resolved) is not { } property) return false;
 
-        // A Money column is sorted and filtered through its currency and amount (commerce X4), which a
+        // A Money or Quantity column is sorted and filtered through its code and amount (X4, WX8), which a
         // static index offers only as companions.
-        if (MoneyQueryFields.IsMoney(property))
-            return MoneyQueryFields.IsBacked(sortType, property, indexedFields);
+        if (AmountQueryFields.Handles(property))
+            return AmountQueryFields.IsBacked(sortType, property, indexedFields);
 
         return indexedFields is null || indexedFields.Contains(resolved);
     }

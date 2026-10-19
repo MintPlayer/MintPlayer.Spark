@@ -36,6 +36,8 @@
 
 	<ItemGroup>
 		<ProjectReference Include="..\..\spark\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
+		<!-- Zone-aware schedules (warehouse WX14): the wall-clock and DST rules live in the core's SparkTimeZones (K10). -->
+		<ProjectReference Include="..\..\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
 	</ItemGroup>
 
 	<ItemGroup>

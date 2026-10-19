@@ -1,0 +1,14 @@
+{
+  "_fixture": {
+    "source": "https://sendcloud.dev/api/v3/parcel-tracking/retrieve-tracking-information-for-a-parcel (200: the parcel tracking object)",
+    "derived": "the documented example event (accepted, 2024-01-02T00:00:00Z) verbatim; the in_transit and delivered events built from the schema with the phases its description names",
+    "recorded": false
+  },
+  "announced_at": "2024-01-01T12:00:00Z",
+  "tracking_numbers": [ { "carrier_code": "postnl", "tracking_number": "3SYZXG8498635", "tracking_url": "https://tracking.example/3SYZXG8498635" } ],
+  "events": [
+    { "event_at": "2024-01-02T00:00:00Z", "event_type": "carrier", "phase": "accepted", "exception": "none", "sub_status": "none", "description": "Parcel has been accepted by the carrier.", "status_type": "success" },
+    { "event_at": "2024-01-02T09:30:00Z", "event_type": "carrier", "phase": "in_transit", "exception": "none", "sub_status": "not_home", "description": "Delivery attempt failed: recipient not home.", "status_type": "warning" },
+    { "event_at": "2024-01-03T11:15:00Z", "event_type": "carrier", "phase": "delivered", "exception": "none", "sub_status": "none", "description": "Parcel has been delivered.", "status_type": "success" }
+  ]
+}

@@ -12,10 +12,10 @@ namespace MintPlayer.Spark.Commerce.Invoicing.Pdf;
 /// GA2 (CRD Art. 8(7): the confirmation on a durable medium): every legal-document version a buyer accepted gets a PDF
 /// rendering. A version published without an uploaded PDF is rendered here (title and text, every language it has,
 /// version and effective date), attached as Commerce's <c>document.pdf</c> and marked <c>HasPdf</c>, so Checkout's
-/// confirmation mail links it (<c>/spark/commerce/legal/pdf</c>). Rendered once per version, when an order that accepted
-/// it is placed (before the confirmation is sent). The text itself is never changed: a published version stays as it
-/// was (§4.20); the rendering only adds its PDF. MailManager has no attachments, so the PDF travels as a link
-/// (Checkout's confirmation mail, Q-O9).
+/// confirmation mail attaches it (and still links <c>/spark/commerce/legal/pdf</c>). Rendered once per version, when an
+/// order that accepted it is placed, and again (a no-op when done) right before the confirmation is queued, through
+/// <see cref="InvoicingCheckoutMailAttachments"/>. The text itself is never changed: a published version stays as it
+/// was (§4.20); the rendering only adds its PDF.
 /// </summary>
 internal sealed class LegalDocumentPdfs(IDocumentStore store, ILogger<LegalDocumentPdfs> logger)
 {

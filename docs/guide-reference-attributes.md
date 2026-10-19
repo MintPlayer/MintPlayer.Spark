@@ -241,6 +241,7 @@ C# types, so anything it derives is overwritten:
 |---|---|---|
 | `editMode` (e.g. `"inline"`) | **Yes** | Hand-authored presentation |
 | `isReadOnly`, `showedOn` (including `"None"`) | **Yes** | Hand-authored presentation (`isVisible` no longer exists, #264) |
+| `referenceTree` | **Yes** | Hand-authored presentation (see [Hierarchical references](#hierarchical-references-a-lazy-tree-picker)) |
 | `lookupReferenceType` | **No — stripped** | Derived from `[LookupReference(typeof(...))]` |
 | `query`, `referenceType` | **No — stripped** | Derived from `[Reference(typeof(...), "...")]` |
 | An inline `queries` entry on an embedded type | **Yes** | Explicitly preserved by the synchronizer |
@@ -265,6 +266,60 @@ layout only: the value still reaches the client, so a secret needs `Exclude`.
 
 So a lookup or reference must be declared in C#. Adding `lookupReferenceType` to the JSON by hand
 appears to work until the next synchronization silently reverts the attribute to a free-text box.
+
+### Hierarchical references: a lazy tree picker
+
+When the candidates form a tree (warehouse locations site → zone → aisle → rack → level → bin, a
+venue's sections and blocks), declare `referenceTree` on the referencing attribute in the model JSON.
+The multi-reference picker (`<bs-tree-select>`) then lists the roots first and loads a node's children
+when it is expanded, instead of one flat list:
+
+```json
+{
+  "name": "Locations",
+  "dataType": "Reference",
+  "isArray": true,
+  "query": "GetLocations",
+  "referenceType": "Warehouse.Location",
+  "referenceTree": { "parentAttribute": "Parent", "childCountAttribute": "ChildCount" }
+}
+```
+
+- **`parentAttribute`** names the attribute of the **referenced** type that holds a row's parent id: a
+  Reference from that type to itself, empty on a root.
+- **`childCountAttribute`** (optional) names a column holding the number of children, or a boolean. A
+  row with `0` or `false` there is drawn as a leaf. Without it every node shows an expand chevron, and
+  one without children expands to nothing.
+
+**How the levels are read.** The picker runs the attribute's own query with the existing column filter
+(#431): `columns: [{ name: "Parent", includes: [null] }]` for the roots, `includes: [id]` for one node's
+children, paged like the flat list. Nothing new is exposed: the rows come back under the query's row
+security, and search stays flat (a hit is listed wherever it sits in the tree). The provider is
+`ReferenceQueryTreeSelectProvider` in `@mintplayer/ng-spark/po-form`; its third argument is the
+`referenceTree`.
+
+**Traps.**
+- The parent attribute must be **filterable** on the query: shown on it (`showedOn` includes `Query`)
+  and not `canFilter: false`. A refused filter does not fail, it returns the rows unnarrowed, so every
+  node would list the whole set as its children. `--spark-verify-model` refuses such a declaration.
+- `includes: [null]` matches a stored `null`. A document saved through the RavenDB client stores the
+  null; a document written without the field at all is not a root to this filter.
+
+**Materialized paths.** For subtree reads ("all stock under aisle A"), store the parent chain as a
+path string next to the parent reference. `MaterializedPath` (`MintPlayer.Spark.Abstractions.Hierarchy`)
+builds and takes apart paths (`Child`, `Parent`, `Ancestors`, `Depth`, `DescendantPrefix`, `Reparent`),
+and `MaterializedPathQueries` (`MintPlayer.Spark.Hierarchy`) does the RavenDB side:
+
+```csharp
+// Everything under BRU/A, never BRU/A10: the prefix is "BRU/A/", passed as a query parameter.
+var below = await session.Query<Location>().WhereDescendantOf(l => l.Path, "BRU/A").ToListAsync();
+
+// Move BRU/A (and its subtree) under BRU/B: one set-based patch, every path a parameter.
+await MaterializedPathQueries.MoveSubtreeAsync<Location>(store, l => l.Path, "BRU/A", "BRU/B");
+```
+
+The move rewrites only the paths. Setting the moved node's own parent reference is the caller's job,
+in the unit of work that decided the move; a move into the node's own subtree is refused.
 
 ### Including Reference Data in Index Projections
 

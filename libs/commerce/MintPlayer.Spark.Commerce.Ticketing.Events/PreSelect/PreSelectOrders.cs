@@ -164,7 +164,9 @@ internal sealed class PreSelectOrders(
             try
             {
                 var after = await checkout.AddLineAsync(new SparkBasketAddRequest(choice.ItemId, quantity,
-                    Options: choice.Options.Count == 0 ? null : new Dictionary<string, string>(choice.Options), AdmissionToken: request.AdmissionToken), cancellationToken);
+                    Options: choice.Options.Count == 0 ? null : new Dictionary<string, string>(choice.Options), AdmissionTokens: request.AdmissionToken is { Length: > 0 } token
+                        ? new Dictionary<string, string> { [TicketScopes.Admission(request.PhaseId)] = token }
+                        : null), cancellationToken);
                 // The new line, or (when checkout merged it into an equal line) the line whose quantity grew.
                 var line = after.Lines.FirstOrDefault(l => !before.Any(b => b.LineId == l.LineId))
                     ?? after.Lines.FirstOrDefault(l => before.Any(b => b.LineId == l.LineId && b.Quantity < l.Quantity));

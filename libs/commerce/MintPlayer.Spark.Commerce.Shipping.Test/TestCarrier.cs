@@ -35,7 +35,7 @@ public sealed class TestShippingOptions : ISparkConfigurationSection
 /// <item><c>test-return</c>: returns from anywhere.</item>
 /// </list>
 /// </summary>
-public sealed class TestCarrier(TestCarrierStore store, IOptionsMonitor<TestShippingOptions> options, TimeProvider time) : IShippingCarrier, IServicePointProvider
+public sealed class TestCarrier(TestCarrierStore store, IOptionsMonitor<TestShippingOptions> options, TimeProvider time) : IShippingCarrier, IServicePointProvider, IShippingBookingLookup
 {
     public const string CarrierName = "test";
 
@@ -115,8 +115,14 @@ public sealed class TestCarrier(TestCarrierStore store, IOptionsMonitor<TestShip
             customs = new CarrierDocument(TestDocuments.Pdf(lines), CarrierDocument.Pdf);
         }
         store.Requests.Add(request);
-        return Task.FromResult(new CarrierShipmentResult(shipmentId, parcels, customs));
+        var result = new CarrierShipmentResult(shipmentId, parcels, customs);
+        store.Bookings[request.ShipmentId] = result;
+        return Task.FromResult(result);
     }
+
+    /// <summary>The booking made with the request's reference, labels and all, like a carrier's lookup by external reference.</summary>
+    public Task<CarrierBookingLookup> FindBookingAsync(CarrierShipmentRequest request, CancellationToken cancellationToken)
+        => Task.FromResult(store.Bookings.TryGetValue(request.ShipmentId, out var booked) ? CarrierBookingLookup.Found(booked) : CarrierBookingLookup.NotFound);
 
     public Task<bool> VoidAsync(CarrierParcelReference parcel, CancellationToken cancellationToken)
     {
@@ -184,6 +190,9 @@ public sealed class TestCarrierStore
 
     /// <summary>Every booking the carrier received (tests read what Shipping sent).</summary>
     public ConcurrentBag<CarrierShipmentRequest> Requests { get; } = [];
+
+    /// <summary>Every booking by the reference it was made with (<see cref="CarrierShipmentRequest.ShipmentId"/>), for the lookup.</summary>
+    public ConcurrentDictionary<string, CarrierShipmentResult> Bookings { get; } = new(StringComparer.Ordinal);
 
     /// <summary>The per-process key the simulator signs its webhooks with (HMAC-SHA256).</summary>
     public string WebhookSecret { get; } = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(32));

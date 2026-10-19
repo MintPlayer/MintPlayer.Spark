@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Consent;
+using MintPlayer.Spark.WaitingRoom;
 using MintPlayer.Spark.Commerce.Retention;
 
 namespace MintPlayer.Spark.Commerce;

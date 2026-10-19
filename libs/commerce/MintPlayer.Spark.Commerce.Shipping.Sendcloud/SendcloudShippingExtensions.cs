@@ -13,9 +13,10 @@ public static class SendcloudShippingExtensions
     public const string SignatureHeader = "Sendcloud-Signature";
 
     /// <summary>
-    /// Adds Sendcloud (<c>sendcloud</c>): parcels and labels, service points, and the signed
-    /// <c>parcel_status_changed</c> webhook at <c>/spark/webhooks/shipping-sendcloud</c> (verified against the default
-    /// account's secret key and every named account's). Credentials: <c>Spark:Commerce:Shipping:Sendcloud</c> (user-secrets).
+    /// Adds Sendcloud (<c>sendcloud</c>) on API v3: shipments with labels, returns, service points, cancellation, the
+    /// booking lookup by external reference, and the signed <c>parcel_status_changed</c> webhook at
+    /// <c>/spark/webhooks/shipping-sendcloud</c> (verified against the default account's secret or webhook key and every
+    /// named account's). Credentials: <c>Spark:Commerce:Shipping:Sendcloud</c> (user-secrets).
     /// </summary>
     public static SparkShippingBuilder UseSendcloud(this SparkShippingBuilder shipping, Action<SendcloudOptions>? configure = null)
     {
@@ -40,8 +41,8 @@ public static class SendcloudShippingExtensions
     /// <summary>Accepts a delivery signed with any configured account's secret key; fail-closed when none is set.</summary>
     internal static IWebhookSignatureStrategy Verification(SendcloudOptions options)
     {
-        var secrets = new[] { options.SecretKey }
-            .Concat(options.Accounts.Values.Select(a => a.SecretKey))
+        var secrets = new[] { options.SecretKey, options.WebhookSignatureKey }
+            .Concat(options.Accounts.Values.SelectMany(a => new[] { a.SecretKey, a.WebhookSignatureKey }))
             .Where(s => s is { Length: > 0 })
             .Distinct(StringComparer.Ordinal)
             .ToList();

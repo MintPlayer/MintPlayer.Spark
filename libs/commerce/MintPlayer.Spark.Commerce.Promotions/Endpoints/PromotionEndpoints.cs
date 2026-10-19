@@ -95,7 +95,7 @@ internal sealed partial class GetSalePrice : IGetEndpoint
             var itemId = httpContext.Request.Query["itemId"].ToString();
             var item = itemId.Length == 0 ? null : await items.ResolveAsync(itemId, 1, httpContext.RequestAborted);
             // An item behind an unlock code is hidden: its price is not public either.
-            if (item is null || item.AdmissionScope?.StartsWith(PromotionItemIds.Prefix, StringComparison.Ordinal) == true)
+            if (item is null || item.AdmissionScopes.Any(s => s.StartsWith(PromotionItemIds.Prefix, StringComparison.Ordinal)))
                 return null;
             return await salePrices.DisplayAsync(item, httpContext.RequestAborted);
         });

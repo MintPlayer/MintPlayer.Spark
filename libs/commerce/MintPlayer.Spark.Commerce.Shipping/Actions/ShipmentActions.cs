@@ -38,8 +38,10 @@ public partial class ShipmentActions : DefaultPersistentObjectActions<Shipment>
             target.DisableActions(ShipmentActionNames.VoidLabel);
         if (capabilities is not { ReturnLabels: true } || shipment.Direction != ShipmentDirection.Outbound || shipment.Status == TrackingStatus.Cancelled)
             target.DisableActions(ShipmentActionNames.CreateReturnLabel);
-        if (!notLeft || shipment.Customs is not null)
+        if (!notLeft || shipment.Customs is not null || shipment.HasPendingBooking)
             target.DisableActions(ShipmentActionNames.AddParcel);
+        if (!shipment.PendingBookings.Any(b => b.State == PendingBookingState.InDoubt))
+            target.DisableActions(ShipmentActionNames.ReleaseBooking);
         return Task.CompletedTask;
     }
 }

@@ -48,6 +48,12 @@ public sealed class SparkCommerceCheckoutOptions : ISparkConfigurationSection
     /// <summary>The PaymentPending sweep (cron, six fields = seconds). Default every 30 seconds. Read at registration.</summary>
     public string SweepSchedule { get; set; } = "*/30 * * * * *";
 
+    /// <summary>
+    /// S21: how a line's net and VAT are recomputed from its adjusted total (a discount, a sale price). Default
+    /// <see cref="CheckoutVatRounding.PerLine"/>; Invoicing re-splits per rate group on its documents either way.
+    /// </summary>
+    public CheckoutVatRounding VatRounding { get; set; } = CheckoutVatRounding.PerLine;
+
     public CheckoutAbandonedBasketOptions AbandonedBaskets { get; set; } = new();
 
     public CheckoutDonationOptions Donation { get; set; } = new();

@@ -1,5 +1,6 @@
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Builder;
+using MintPlayer.Spark.WaitingRoom;
 
 namespace MintPlayer.Spark.Commerce;
 

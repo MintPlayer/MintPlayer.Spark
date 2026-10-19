@@ -34,6 +34,8 @@
 		     MintPlayer.Spark.Abstractions), as do [SparkDiscoverable] and ISparkConfigurationSection. No App_Data layer
 		     here: the persistent types live in MintPlayer.Spark.Commerce. -->
 		<ProjectReference Include="..\..\spark\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
+		<!-- WaitingRoomMode (D10): one type for the channel configuration and the waiting room. No dependencies. -->
+		<ProjectReference Include="..\..\waiting_room\MintPlayer.Spark.WaitingRoom.Abstractions\MintPlayer.Spark.WaitingRoom.Abstractions.csproj" />
 	</ItemGroup>
 
 </Project>

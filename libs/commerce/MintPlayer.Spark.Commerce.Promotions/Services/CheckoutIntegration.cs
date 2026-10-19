@@ -161,7 +161,7 @@ internal sealed class PromotionCodePricingStep(
         if (used.Count == 0)
             return;
         var owner = PromotionUsage.OwnerForLines(context.Lines.Select(l => l.LineId));
-        var buyerKey = PromotionUsage.BuyerKey(context.BuyerUserId);
+        var buyerKey = PromotionUsage.BuyerKey(context.BuyerUserId, context.BuyerEmail, context.VisitorId);
         foreach (var code in used.Where(c => c.MaxUses is not null || c.OncePerBuyer))
         {
             if (code.OncePerBuyer && buyerKey is null)
@@ -277,7 +277,7 @@ internal sealed class PromotionBlockCapacitySource(
         {
             ItemId = request.ItemId,
             Capacity = new CheckoutCapacity { Quotas = [new QuotaLine(block.QuotaId, request.Quantity)] },
-            AdmissionScope = null,
+            AdmissionScopes = [],
         };
     }
 }

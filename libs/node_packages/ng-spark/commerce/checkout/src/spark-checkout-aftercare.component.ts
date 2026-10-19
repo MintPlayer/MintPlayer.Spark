@@ -176,6 +176,6 @@ export class SparkCheckoutAftercareComponent {
 
   private showRefusal(error: unknown): void {
     const refusal = refusalOf(error);
-    this.refusal.set(refusalKey(refusal?.code ?? 'conflict'));
+    this.refusal.set(refusalKey(refusal?.code ?? 'conflict', this.lang));
   }
 }

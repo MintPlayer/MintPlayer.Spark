@@ -1,5 +1,6 @@
 using MintPlayer.Spark.Abstractions.Consent;
 using MintPlayer.Spark.Commerce.Retention;
+using MintPlayer.Spark.WaitingRoom;
 using static MintPlayer.Spark.Commerce.Tests.Core.CommerceFixtures;
 
 namespace MintPlayer.Spark.Commerce.Tests.Core;

@@ -11,7 +11,7 @@
 		<Version>11.0.0-preview.1</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
-		<Description>Sendcloud for the MintPlayer.Spark commerce suite: parcels with labels (multicollo), return parcels, service-point delivery and search, customs lines, label cancellation, and signed parcel-status webhooks. Written against Sendcloud's documented API.</Description>
+		<Description>Sendcloud (API v3) for the MintPlayer.Spark commerce suite: shipments with labels (multicollo), returns, service-point delivery and search, customs lines, shipment cancellation, booking lookup by external reference, and signed parcel-status webhooks. Written against Sendcloud's documented API v3.</Description>
 		<PackageTags>commerce;shipping;sendcloud;labels;spark</PackageTags>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>

@@ -76,6 +76,17 @@ describe('SparkCommerceCheckoutService', () => {
     ]);
   });
 
+  it('translates a refusal code through the first namespace that knows it, else the generic text', () => {
+    const texts: Record<string, string> = {
+      'commerceCheckout.refusal.soldOut': 'Sold out',
+      'commercePromotions.refusal.promotionCodeInvalid': 'This code is not valid.',
+    };
+    const lang = { t: (key: string) => texts[key] ?? key };
+    expect(refusalKey('soldOut', lang)).toBe('commerceCheckout.refusal.soldOut');
+    expect(refusalKey('promotionCodeInvalid', lang)).toBe('commercePromotions.refusal.promotionCodeInvalid');
+    expect(refusalKey('somethingNew', lang)).toBe('commerceCheckout.refusal.conflict');
+  });
+
   it('reads a refusal from a 409 and nothing from other errors', () => {
     const conflict = new HttpErrorResponse({ status: 409, error: { result: { code: 'soldOut', lineId: 'l1' } } });
     expect(refusalOf(conflict)).toEqual({ code: 'soldOut', lineId: 'l1' });

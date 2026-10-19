@@ -147,7 +147,7 @@ public sealed class EffectiveAttributeRights
     public static EffectiveAttributeRights Inherit(string entityType, string verb, bool typeAllowed)
         => new(entityType, verb, typeAllowed);
 
-    /// <summary>System context (sync, replication): everything allowed, attribute rights bypassed.</summary>
+    /// <summary>System context other than a module (background work, share links): everything allowed, attribute rights bypassed. A module principal is evaluated (F17).</summary>
     public static EffectiveAttributeRights Unrestricted(string entityType, string verb)
         => new(entityType, verb, typeAllowed: true, isUnrestricted: true);
 

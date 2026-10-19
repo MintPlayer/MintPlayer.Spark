@@ -9,7 +9,8 @@ namespace MintPlayer.Spark.Commerce.Inventory;
 /// </summary>
 /// <remarks>
 /// After each commit the availability of every quota it changed is published to the live topic
-/// <c>commerce-inventory:{quotaId}</c> (X2). Checkout calls this service; a host rarely does, except to define
+/// <c>commerce-inventory:{quotaId}</c> (X2), and every <see cref="IInventoryCommitted"/> is told which quotas and
+/// units the commit touched. Checkout calls this service; a host rarely does, except to define
 /// quotas, item mappings and chains.
 /// </remarks>
 public interface ISparkInventory
@@ -73,6 +74,14 @@ public interface ISparkInventory
     /// <summary>Puts the quota units of a return made with <c>ReturnStock = false</c> back on sale, exactly once (shipped goods received back, I4).</summary>
     Task<ClaimResult> RestockAsync(string claimId, string returnId, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Exchanges part of a converted claim for something else in one cluster-wide transaction (seat change, upgrade):
+    /// returns <see cref="InventoryExchange.Return"/>, claims <see cref="InventoryExchange.Target"/> and converts it. All or
+    /// nothing (I2): a refused target (sold out, seat taken, limit) leaves the original claim exactly as it was. The
+    /// result's <c>Units</c> are the target claim's seats. Idempotent: repeating a done exchange answers success.
+    /// </summary>
+    Task<ClaimResult> ExchangeAsync(InventoryExchange request, CancellationToken cancellationToken = default);
+
     // ---- reads ---------------------------------------------------------------------------------------------
 
     Task<QuotaAvailability> GetAvailabilityAsync(string quotaId, CancellationToken cancellationToken = default);
@@ -81,4 +90,11 @@ public interface ISparkInventory
     Task<IReadOnlyDictionary<string, UnitState>> GetUnitStatesAsync(IEnumerable<string> unitIds, CancellationToken cancellationToken = default);
 
     Task<InventoryClaim?> GetClaimAsync(string claimId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The quotas a sellable item counts against, with their multipliers (D15), as <see cref="MapItemAsync"/> stored
+    /// them; null when the item is not mapped. The public read of the mapping: callers never load the engine's
+    /// documents themselves (S18).
+    /// </summary>
+    Task<IReadOnlyList<ItemQuota>?> GetItemMappingAsync(string itemId, CancellationToken cancellationToken = default);
 }

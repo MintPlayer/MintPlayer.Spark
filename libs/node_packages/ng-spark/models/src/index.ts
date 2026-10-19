@@ -31,4 +31,5 @@ export * from './primitive-array';
 export * from './spark-app-url';
 export * from './date-time-display';
 export * from './money';
+export * from './quantity';
 export * from './save-submitted';

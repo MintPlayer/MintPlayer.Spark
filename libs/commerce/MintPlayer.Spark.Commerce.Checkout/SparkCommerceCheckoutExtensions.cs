@@ -127,7 +127,7 @@ public static class SparkCommerceCheckoutExtensions
         if (!sp.GetServices<ICheckoutCapacitySource>().Any())
             logger?.LogWarning("No ICheckoutCapacitySource is registered: nothing can be added to a basket. Shop, Ticketing.Events or the host register one.");
         if (!sp.GetServices<ICheckoutAdmissionGate>().Any())
-            logger?.LogInformation("No ICheckoutAdmissionGate is registered: an item with an AdmissionScope is refused (fail closed) until the waiting room is added.");
+            logger?.LogInformation("No ICheckoutAdmissionGate is registered: an item with AdmissionScopes is refused (fail closed) until a gate (commerce-waiting-room, commerce-promotions) is added.");
     }
 
     private sealed class CheckoutMarker;

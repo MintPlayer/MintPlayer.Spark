@@ -1,0 +1,24 @@
+<mjml>
+  <mj-head>
+    <mj-title>Nous avons reçu votre rétractation de la commande {{ number }}</mj-title>
+    <mj-attributes>
+      <mj-all font-family="Segoe UI, Helvetica, Arial, sans-serif" />
+      <mj-text font-size="15px" line-height="22px" color="#111827" />
+      <mj-button background-color="#2563eb" color="#ffffff" border-radius="6px" font-size="15px" />
+    </mj-attributes>
+  </mj-head>
+  <mj-body background-color="#f3f4f6">
+    <mj-section background-color="#ffffff" padding="24px 0">
+      <mj-column>
+        <mj-text font-size="20px" font-weight="600">{{ if buyer_name }}{{ buyer_name }}, n{{ else }}N{{ end }}ous avons reçu votre rétractation de la commande {{ number }}</mj-text>
+        <mj-text>Reçue le <strong>{{ received_at }}</strong>.</mj-text>
+        {{ for line in lines }}<mj-text>{{ line.quantity }} × {{ line.title }}{{ if !line.eligible }}<br /><em>Hors du droit de rétractation ({{ line.reason }}). Nous l'avons enregistrée ; le vendeur vous contactera.</em>{{ end }}</mj-text>{{ end }}
+        {{ if note }}<mj-text font-size="13px" color="#4b5563">Votre remarque : {{ note | html.escape }}</mj-text>{{ end }}
+        {{ if withheld }}<mj-text>Veuillez renvoyer les biens. Nous remboursons le prix et les frais de livraison standard dès que nous les recevons ou que vous nous fournissez la preuve de leur expédition, la date retenue étant celle du premier de ces faits{{ if refund_due_by }}, et au plus tard le {{ refund_due_by }} une fois cette condition remplie{{ end }}.</mj-text>{{ else }}<mj-text>Votre remboursement est en route vers le moyen de paiement que vous avez utilisé.</mj-text>{{ end }}
+        <mj-text font-size="13px" color="#4b5563">{{ if seller_pays_return }}Le vendeur prend en charge les frais de renvoi des biens.{{ else }}Les frais directs de renvoi des biens sont à votre charge.{{ end }}</mj-text>
+        {{ if link }}<mj-button href="{{ link }}">Voir votre commande</mj-button>{{ end }}
+        <mj-text font-size="12px" color="#6b7280">Ce mail est l'accusé de réception sur un support durable (directive 2011/83/UE, art. 11 bis). Conservez-le.</mj-text>
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>

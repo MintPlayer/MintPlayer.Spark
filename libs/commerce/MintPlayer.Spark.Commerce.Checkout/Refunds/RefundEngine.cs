@@ -308,9 +308,9 @@ internal sealed class RefundEngine(
         else if (to == RefundStatus.Failed)
         {
             order.Log.Add(new CheckoutOrderLogEntry { At = Now, Event = "refund-failed", Detail = refund.RefundId + " " + refund.FailureReason });
-            // From a refund notice, checkout's own payment recipient raises RefundFailed already (OrderLifecycle.OnRefundAsync).
-            if (moveOrder)
-                raised.Add(new OrderEvent(order, OrderEventKind.RefundFailed, null, refund.ProviderReference));
+            // The one raiser of RefundFailed for a ledger refund: on its transition into Failed, whether the provider
+            // answered synchronously or by notice (OrderLifecycle.OnRefundAsync leaves ledger references to this path).
+            raised.Add(new OrderEvent(order, OrderEventKind.RefundFailed, null, refund.ProviderReference));
         }
     }
 

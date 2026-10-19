@@ -29,6 +29,18 @@ export enum EReferenceDisplayType {
  */
 export type RefreshTrigger = 'None' | 'Auto' | 'ValueChanged' | 'Blur';
 
+/**
+ * An attribute's `referenceTree` (warehouse PRD WX9, mirrors the .NET `SparkReferenceTree`): which
+ * attribute of the referenced type holds a row's parent id, and optionally which one counts its
+ * children. Roots are read with `columns: [{ name: parentAttribute, includes: [null] }]`, children with
+ * `includes: [id]`.
+ */
+export interface SparkReferenceTree {
+  parentAttribute: string;
+  /** A row whose value here is `0` or `false` is drawn as a leaf. Absent: every node is expandable. */
+  childCountAttribute?: string | null;
+}
+
 export interface EntityAttributeDefinition {
   id: string;
   name: string;
@@ -56,6 +68,11 @@ export interface EntityAttributeDefinition {
    * 'Dropdown'/absent (default) renders a `<bs-select>`. Hand-set in the model JSON.
    */
   referenceDisplayType?: EReferenceDisplayType;
+  /**
+   * For Reference attributes whose candidates form a tree (WX9): the multi-reference picker lists the
+   * roots and loads a node's children on expand. Hand-set in the model JSON. Absent: a flat picker.
+   */
+  referenceTree?: SparkReferenceTree | null;
   /** For array AsDetail attributes: when true, rows can be drag-reordered (order = array position) */
   isSortable?: boolean;
   /**

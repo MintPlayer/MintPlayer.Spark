@@ -2,7 +2,9 @@ import { InjectionToken, Provider, Type } from '@angular/core';
 import { SparkParagraphRendererComponent } from './paragraph-renderer.component';
 import { SparkMoneyRendererComponent } from './money-renderer.component';
 import { SparkMoneyEditorComponent } from './money-editor.component';
-import { MONEY_RENDERER, formatMoney } from '@mintplayer/ng-spark/models';
+import { SparkQuantityRendererComponent } from './quantity-renderer.component';
+import { SparkQuantityEditorComponent } from './quantity-editor.component';
+import { MONEY_RENDERER, QUANTITY_RENDERER, formatMoney, formatQuantity } from '@mintplayer/ng-spark/models';
 
 export interface SparkAttributeRendererRegistration {
   /** The renderer name (must match attr.renderer in model JSON) */
@@ -63,6 +65,14 @@ export const sparkCoreRenderers: readonly SparkAttributeRendererRegistration[] =
     columnComponent: SparkMoneyRendererComponent,
     editComponent: SparkMoneyEditorComponent,
     filterLabel: value => formatMoney(value),
+  },
+  // Quantity (warehouse WX8): model sync writes this renderer on every Quantity attribute that has none.
+  {
+    name: QUANTITY_RENDERER,
+    detailComponent: SparkQuantityRendererComponent,
+    columnComponent: SparkQuantityRendererComponent,
+    editComponent: SparkQuantityEditorComponent,
+    filterLabel: value => formatQuantity(value),
   },
 ];
 

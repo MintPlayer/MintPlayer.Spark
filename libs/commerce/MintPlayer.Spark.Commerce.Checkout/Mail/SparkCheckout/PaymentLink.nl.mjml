@@ -1,0 +1,20 @@
+<mjml>
+  <mj-head>
+    <mj-title>Bestelling {{ number }} betalen</mj-title>
+    <mj-attributes>
+      <mj-all font-family="Segoe UI, Helvetica, Arial, sans-serif" />
+      <mj-text font-size="15px" line-height="22px" color="#111827" />
+      <mj-button background-color="#2563eb" color="#ffffff" border-radius="6px" font-size="15px" />
+    </mj-attributes>
+  </mj-head>
+  <mj-body background-color="#f3f4f6">
+    <mj-section background-color="#ffffff" padding="24px 0">
+      <mj-column>
+        <mj-text font-size="20px" font-weight="600">{{ if buyer_name }}{{ buyer_name }}, je{{ else }}Je{{ end }} bestelling {{ number }} wacht op betaling</mj-text>
+        <mj-text>Bedrag: {{ total }}. Je plaatsen blijven gereserveerd tot de betaaltermijn afloopt.</mj-text>
+        <mj-button href="{{ pay_url }}">Bestelling met betalingsverplichting</mj-button>
+        <mj-text font-size="13px" color="#4b5563">Werkt de knop niet? Open dan deze link: <a href="{{ pay_url }}">{{ pay_url }}</a></mj-text>
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>

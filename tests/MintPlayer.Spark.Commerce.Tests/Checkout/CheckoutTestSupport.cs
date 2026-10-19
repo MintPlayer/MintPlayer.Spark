@@ -265,7 +265,7 @@ internal sealed class CheckoutHost
 
     /// <summary>A sellable item; <paramref name="quota"/> maps it 1:1 onto a quota of <paramref name="capacity"/>.</summary>
     public async Task<CheckoutItem> ItemAsync(string itemId, string channel, decimal price, int? capacity = 10, string? seller = null, int? minimumAge = null,
-        int? perBuyerLimit = null, string? admissionScope = null, IReadOnlyList<string>? parents = null)
+        int? perBuyerLimit = null, string? admissionScope = null, IReadOnlyList<string>? parents = null, IReadOnlyList<string>? admissionScopes = null)
     {
         if (capacity is { } c)
         {
@@ -275,7 +275,8 @@ internal sealed class CheckoutHost
         var item = new CheckoutItem
         {
             ItemId = itemId, Channel = channel, OrganizationId = seller, Price = new Money(price, "EUR"),
-            Title = TranslatedString.Of("en", itemId), MinimumAge = minimumAge, PerBuyerLimit = perBuyerLimit, AdmissionScope = admissionScope,
+            Title = TranslatedString.Of("en", itemId), MinimumAge = minimumAge, PerBuyerLimit = perBuyerLimit,
+            AdmissionScopes = admissionScopes ?? (admissionScope is null ? [] : [admissionScope]),
             RequiresParentItemIds = parents ?? [],
             Capacity = capacity is null ? new CheckoutCapacity() : new CheckoutCapacity { Items = [new ItemLine(itemId, 1)] },
         };

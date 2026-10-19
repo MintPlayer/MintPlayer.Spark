@@ -27,6 +27,7 @@ internal sealed class RefundService(
     ISparkInventory inventory,
     ICommerceAudit audit,
     IOptionsMonitor<SparkCommerceCheckoutOptions> options,
+    CheckoutHolidays holidays,
     ILogger<RefundService> logger) : ISparkCheckoutRefunds
 {
     public const string WithdrawButtonKey = "commerceCheckout.withdrawal.button";
@@ -88,13 +89,14 @@ internal sealed class RefundService(
     {
         var ledger = await ReadLedgerAsync(order, cancellationToken);
         var now = Now;
-        var deadline = WithdrawalDeadline(order, ledger);
+        var holidayDays = await WithdrawalHolidaysAsync(order, ledger, cancellationToken);
+        var deadline = WithdrawalDeadline(order, ledger, holidayDays);
         var lines = new List<SparkAftercareLine>();
         foreach (var line in order.Lines.Where(l => l.Status != OrderLineStatus.Refused))
         {
             var ledgerLine = ledger.Lines.First(l => l.LineId == line.LineId);
             var free = RefundEngine.Free(line, ledgerLine);
-            var (withdrawable, _) = WithdrawalEligibility(order, line, ledgerLine, deadline, now);
+            var (withdrawable, _) = WithdrawalEligibility(order, line, ledgerLine, deadline, now, holidayDays);
             var refusal = RefundEngine.IsRefundable(order.State)
                 ? RefundMath.CancellationRefusal(ledgerLine.Policy, line.ServiceDate, now, out var fee) : CheckoutRefusals.InvalidState;
             var guaranteeUntil = GuaranteeEnd(line, ledgerLine);
@@ -134,11 +136,19 @@ internal sealed class RefundService(
     // ---- periods ------------------------------------------------------------------------------------------------------
 
     /// <summary>The end of the withdrawal period for goods (CRD Art. 9(2)(b)); null while a goods line is undelivered.</summary>
-    internal DateTimeOffset? WithdrawalDeadline(CheckoutOrder order, CheckoutRefundLedger ledger)
-        => RefundMath.WithdrawalPeriodStart(order, ledger) is { } start ? RefundMath.PeriodEnd(start, Math.Max(14, Options.Withdrawal.PeriodDays), engine.Zone) : null;
+    internal DateTimeOffset? WithdrawalDeadline(CheckoutOrder order, CheckoutRefundLedger ledger, Func<DateOnly, bool>? isHoliday = null)
+        => RefundMath.WithdrawalPeriodStart(order, ledger) is { } start ? RefundMath.PeriodEnd(start, Math.Max(14, Options.Withdrawal.PeriodDays), engine.Zone, isHoliday: isHoliday) : null;
+
+    /// <summary>
+    /// The public holidays (Reg. 1182/71 Art. 3(4)) that can end a withdrawal period of <paramref name="order"/>: from the
+    /// goods' delivery and from the conclusion of the contract. Null without a holiday calendar (weekend-only counting).
+    /// </summary>
+    internal Task<Func<DateOnly, bool>?> WithdrawalHolidaysAsync(CheckoutOrder order, CheckoutRefundLedger ledger, CancellationToken cancellationToken)
+        => holidays.ForPeriodsAsync([RefundMath.WithdrawalPeriodStart(order, ledger), order.ConfirmedAt ?? order.CreatedAt],
+            Math.Max(14, Options.Withdrawal.PeriodDays), engine.Zone, cancellationToken);
 
     /// <summary>Whether a line can be withdrawn now, and why not.</summary>
-    internal (bool Eligible, string? Reason) WithdrawalEligibility(CheckoutOrder order, CheckoutOrderLine line, RefundLedgerLine ledgerLine, DateTimeOffset? goodsDeadline, DateTimeOffset now)
+    internal (bool Eligible, string? Reason) WithdrawalEligibility(CheckoutOrder order, CheckoutOrderLine line, RefundLedgerLine ledgerLine, DateTimeOffset? goodsDeadline, DateTimeOffset now, Func<DateOnly, bool>? isHoliday = null)
     {
         if (!RefundEngine.IsRefundable(order.State))
             return (false, "state:" + order.State);
@@ -146,7 +156,7 @@ internal sealed class RefundService(
             return (false, "exempt:" + (ledgerLine.WithdrawalExemption ?? "none"));
         // Goods: from the (last) delivery, Art. 9(2)(b); a service: from the conclusion of the contract, Art. 9(2)(a).
         var deadline = line.IsPhysicalGoods ? goodsDeadline
-            : RefundMath.PeriodEnd(order.ConfirmedAt ?? order.CreatedAt, Math.Max(14, Options.Withdrawal.PeriodDays), engine.Zone);
+            : RefundMath.PeriodEnd(order.ConfirmedAt ?? order.CreatedAt, Math.Max(14, Options.Withdrawal.PeriodDays), engine.Zone, isHoliday: isHoliday);
         if (deadline is { } end && now >= end)
             return (false, "periodEnded");
         return (true, null);
@@ -173,7 +183,9 @@ internal sealed class RefundService(
     {
         if (!confirm)
         {
-            var preview = BuildWithdrawal(order, await ReadLedgerAsync(order, cancellationToken), lines, note, name, email, source, receivedAt, actorId, "preview");
+            var previewLedger = await ReadLedgerAsync(order, cancellationToken);
+            var preview = BuildWithdrawal(order, previewLedger, lines, note, name, email, source, receivedAt, actorId, "preview",
+                await WithdrawalHolidaysAsync(order, previewLedger, cancellationToken));
             return new SparkWithdrawalResult(false, null, null, LineViews(preview.Lines), null, preview.Lines.Any(l => l.Eligible && l.Shipped), null);
         }
         // CRD Art. 11a(2): the name and the address the acknowledgement goes to (an account has both).
@@ -185,7 +197,8 @@ internal sealed class RefundService(
         CheckoutRefund? refunded = null;
         var updated = await UpdateAsync(order.Id!, async (session, o, ledger, raised) =>
         {
-            var withdrawal = BuildWithdrawal(o, ledger, lines, note, name, email, source, receivedAt, actorId, RefundEngine.NewId("w"));
+            var withdrawal = BuildWithdrawal(o, ledger, lines, note, name, email, source, receivedAt, actorId, RefundEngine.NewId("w"),
+                await WithdrawalHolidaysAsync(o, ledger, cancellationToken));
             if (withdrawal.Lines.Count == 0)
                 throw CheckoutException.Of(RefundRefusals.NothingLeft);
             ledger.Returns.Add(withdrawal);
@@ -221,10 +234,10 @@ internal sealed class RefundService(
     }
 
     private CheckoutReturn BuildWithdrawal(CheckoutOrder order, CheckoutRefundLedger ledger, IReadOnlyList<SparkRefundLine>? lines, string? note, string? name, string? email,
-        ReturnSource source, DateTimeOffset receivedAt, string? actorId, string returnId)
+        ReturnSource source, DateTimeOffset receivedAt, string? actorId, string returnId, Func<DateOnly, bool>? isHoliday)
     {
         var now = Now;
-        var deadline = WithdrawalDeadline(order, ledger);
+        var deadline = WithdrawalDeadline(order, ledger, isHoliday);
         var requested = lines?.ToList();
         if (requested is null)
         {
@@ -252,7 +265,7 @@ internal sealed class RefundService(
             var free = RefundEngine.Free(line, ledgerLine);
             if (free == 0)
                 continue;
-            var (eligible, reason) = WithdrawalEligibility(order, line, ledgerLine, deadline, result.ReceivedAt);
+            var (eligible, reason) = WithdrawalEligibility(order, line, ledgerLine, deadline, result.ReceivedAt, isHoliday);
             result.Lines.Add(new CheckoutReturnLine
             {
                 LineId = line.LineId, Quantity = Math.Min(free, request.Quantity), Units = request.Units?.ToList() ?? [],

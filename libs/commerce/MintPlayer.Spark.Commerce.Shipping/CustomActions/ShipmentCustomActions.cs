@@ -14,6 +14,28 @@ public static class ShipmentActionNames
     public const string VoidLabel = "ShipmentVoidLabel";
     public const string CreateReturnLabel = "ShipmentCreateReturnLabel";
     public const string AddParcel = "ShipmentAddParcel";
+    public const string ReleaseBooking = "ShipmentReleaseBooking";
+}
+
+/// <summary>
+/// Staff confirm, after checking the carrier's own panel, that an in-doubt booking does not exist there (carriers
+/// that cannot look a booking up): the next attempt books again. Confirmation in actions.json.
+/// </summary>
+internal sealed partial class ShipmentReleaseBookingAction : ICustomAction
+{
+    [Inject] private readonly IManager manager;
+    [Inject] private readonly ISparkShipping shipping;
+    [Inject] private readonly ISparkCurrentUser currentUser;
+
+    public async Task ExecuteAsync(CustomActionArgs args, CancellationToken cancellationToken = default)
+    {
+        if (args.Parent?.Id is not { Length: > 0 } id)
+            return;
+        var released = await shipping.ReleasePendingBookingAsync(id, currentUser.Id, cancellationToken);
+        manager.Client.Notify(manager.GetTranslatedMessage(released ? "commerceShipping.bookingReleased" : "commerceShipping.bookingNotInDoubt"),
+            released ? NotificationKind.Success : NotificationKind.Warning);
+        manager.Client.RefreshQuery("shipments");
+    }
 }
 
 /// <summary>Voids every live parcel's label (before handover). Confirmation in actions.json.</summary>
@@ -75,6 +97,10 @@ internal sealed partial class ShipmentCreateReturnLabelAction : ICustomAction
         {
             manager.Client.Notify(string.Join(" ", ex.Problems), NotificationKind.Warning);
         }
+        catch (ShipmentBookingInDoubtException ex)
+        {
+            manager.Client.Notify(ex.Message, NotificationKind.Warning);
+        }
         catch (CarrierException ex)
         {
             manager.Client.Notify(ex.Message, NotificationKind.Error);
@@ -122,6 +148,10 @@ internal sealed partial class ShipmentAddParcelAction : ICustomAction
         catch (ShippingRequestException ex)
         {
             manager.Client.Notify(string.Join(" ", ex.Problems), NotificationKind.Warning);
+        }
+        catch (ShipmentBookingInDoubtException ex)
+        {
+            manager.Client.Notify(ex.Message, NotificationKind.Warning);
         }
         catch (CarrierException ex)
         {

@@ -3,67 +3,61 @@ using MintPlayer.Spark.Replication.Abstractions.Models;
 namespace MintPlayer.Spark.Replication.Models;
 
 /// <summary>
-/// RavenDB document that stores a pending sync action to be processed by the subscription worker.
-/// Replaces the message bus approach for sync action delivery.
+/// A write-back request on the consumer: stored in the edit's own commit (F13, through <c>ISaveReplacement</c>),
+/// then sent to the owner by the SyncAction subscription worker. One document per edit.
 /// </summary>
 public class SparkSyncAction
 {
     public string? Id { get; set; }
 
-    /// <summary>The name of the module that owns the entity and should receive the sync action.</summary>
+    /// <summary>The module that owns the document: the replica's source.</summary>
     public required string OwnerModuleName { get; set; }
 
-    /// <summary>The name of the module that initiated the sync action.</summary>
+    /// <summary>This module.</summary>
     public required string RequestingModule { get; set; }
 
-    /// <summary>The RavenDB collection name (e.g., "Cars").</summary>
-    public required string Collection { get; set; }
+    /// <summary>The edit.</summary>
+    public required SyncAction Action { get; set; }
 
-    /// <summary>The sync actions to apply on the owner module.</summary>
-    public required List<SyncAction> Actions { get; set; }
+    /// <summary>The replica's document id (copied from <see cref="Action"/> for the index: per-document ordering, F15).</summary>
+    public required string DocumentId { get; set; }
 
-    /// <summary>Processing status of this sync action document.</summary>
+    /// <summary>The per-document order (copied from <see cref="Action"/>).</summary>
+    public long Sequence { get; set; }
+
     public ESyncActionStatus Status { get; set; } = ESyncActionStatus.Pending;
 
-    /// <summary>When this document was created.</summary>
-    public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
+    /// <summary>The owner's last verdict (F12).</summary>
+    public SyncActionOutcome? Outcome { get; set; }
 
-    /// <summary>Last error message if processing failed.</summary>
+    /// <summary>The reason of a refusal, or the last transient error.</summary>
     public string? LastError { get; set; }
 
+    /// <summary>For an attribute-rights refusal (F17): the fields the module may not write.</summary>
+    public List<string> RefusedAttributes { get; set; } = [];
+
+    /// <summary>When the request was stored.</summary>
+    public DateTime CreatedAtUtc { get; set; }
+
+    /// <summary>When the owner's verdict arrived.</summary>
+    public DateTime? CompletedAtUtc { get; set; }
+
     /// <summary>
-    /// When the next processing attempt should occur. Null means deliver immediately.
-    /// Populated when a retry is scheduled.
+    /// When the next attempt is due; null means deliver immediately. Not readable by the subscription query —
+    /// see <see cref="WakeUp"/>.
     /// </summary>
-    /// <remarks>
-    /// This field is <b>not</b> readable by the subscription query — see <see cref="WakeUp"/>.
-    /// It is the sweeper's input, and the audit trail for when a retry became due.
-    /// </remarks>
     public DateTime? NextAttemptAtUtc { get; set; }
 
     /// <summary>
-    /// Set by <c>SyncActionRetrySweeper</c> once <see cref="NextAttemptAtUtc"/> has passed;
-    /// cleared by the worker on pickup and whenever the action is parked for another attempt.
-    /// This is the subscription-visible redelivery gate.
+    /// Set by <c>SyncActionRetrySweeper</c> once <see cref="NextAttemptAtUtc"/> has passed; cleared by the worker on
+    /// pickup. A subscription cannot evaluate time (<c>now()</c> is refused in subscription queries, RavenDB 7.2.5),
+    /// so the sweeper writes the verdict, and that write is also what makes the subscription look again (#258).
     /// </summary>
-    /// <remarks>
-    /// A subscription query cannot ask whether a backoff has elapsed. Subscriptions are
-    /// change-vector-driven — a document is tested against the query only when it is written — so a
-    /// time comparison is evaluated at the one moment it cannot be true and never again. RavenDB
-    /// 7.2.1 answered <c>NextAttemptAtUtc &lt;= now()</c> with a silent false; 7.2.5 rejects the
-    /// query outright (<c>'now()' function is not supported in filter or subscription
-    /// expressions</c>). Both are the same underlying fact.
-    /// <para>
-    /// So "the backoff has elapsed" is computed by something that can evaluate time and written down
-    /// as plain field state. The write is doing double duty: it makes the gate true, and it bumps the
-    /// change vector that causes the subscription to look at the document again at all.
-    /// </para>
-    /// <para>Mirrors <c>SparkMessage.WakeUp</c>, which solved this for messaging in #233.</para>
-    /// </remarks>
     public bool WakeUp { get; set; }
 
-    /// <summary>
-    /// When the sweeper last woke this action for redelivery. Informational only.
-    /// </summary>
+    /// <summary>When the sweeper last woke this request. Informational.</summary>
     public DateTime? LastWakeUpUtc { get; set; }
+
+    /// <summary>How often the request was re-driven after Failed (F14). Informational.</summary>
+    public int Redrives { get; set; }
 }

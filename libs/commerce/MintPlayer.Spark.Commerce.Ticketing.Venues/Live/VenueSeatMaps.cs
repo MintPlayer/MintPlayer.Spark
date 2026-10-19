@@ -18,9 +18,8 @@ namespace MintPlayer.Spark.Commerce.Ticketing.Venues.Live;
 /// and are computed at most once per <c>StateCacheDuration</c> per snapshot, however many buyers ask.
 /// </summary>
 /// <remarks>
-/// Inventory publishes availability per quota after each commit, but nothing per seat. Until it tells listeners which
-/// units a commit changed, the seat states are polled: <see cref="SeatStatePublishJob"/> republishes each live
-/// snapshot's frame every few seconds when it changed. A commit hook in Inventory would make that push-driven.
+/// Inventory names the units and quotas each commit touched (<see cref="IInventoryCommitted"/>), and
+/// <see cref="SeatStatePusher"/> pushes the frame of every live snapshot among them, coalesced per snapshot.
 /// </remarks>
 public sealed class VenueSeatMaps(
     IDocumentStore store,

@@ -244,7 +244,8 @@ public class InventoryEngineTests : SparkTestDriver
         (await engine.TryClaimAsync(Request("lapsing", chains: [new("chains/c", 2)], minutes: 1))).Succeeded.Should().BeTrue();
         (await engine.TryClaimAsync(Request("live", chains: [new("chains/c", 1)], minutes: 60))).Units.Should().BeEquivalentTo(new[] { "S3" });
 
-        await engine.ReleaseLapsedAsync(100); // creates the auto-index
+        // The declared index (X19) as the application's generator would emit it.
+        await new InventoryClaims_Lapsing().ExecuteAsync(Store);
         await WaitForIndexesAsync();
         clock.Advance(TimeSpan.FromMinutes(2));
         var released = await engine.ReleaseLapsedAsync(100);

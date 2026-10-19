@@ -334,7 +334,7 @@ public class MoneyTests
         var row = Expression.Parameter(typeof(Product), "x");
         IQueryable<Product> query = Products.AsQueryable();
 
-        var keys = MoneyQueryFields.SortKeys(row, PriceProperty, inMemory: true);
+        var keys = AmountQueryFields.SortKeys(row, PriceProperty, inMemory: true);
         var ordered = query.OrderBy((Expression<Func<Product, string?>>)Expression.Lambda(keys[0], row))
             .ThenBy((Expression<Func<Product, decimal?>>)Expression.Lambda(keys[1], row));
 
@@ -363,7 +363,7 @@ public class MoneyTests
     {
         var row = Expression.Parameter(typeof(Product), "x");
         Func<Product, bool> Matches(Money? value)
-            => ((Expression<Func<Product, bool>>)Expression.Lambda(MoneyQueryFields.EqualsValue(row, PriceProperty, value, inMemory: true), row)).Compile();
+            => ((Expression<Func<Product, bool>>)Expression.Lambda(AmountQueryFields.EqualsValue(row, PriceProperty, value, inMemory: true), row)).Compile();
 
         Products.Where(Matches(new Money(9m, "EUR"))).Select(p => p.Name).Should().Equal("b");
         Products.Where(Matches(new Money(9m, "USD"))).Should().BeEmpty();
@@ -376,14 +376,14 @@ public class MoneyTests
         var price = typeof(ProductRow).GetProperty(nameof(ProductRow.Price))!;
         var row = Expression.Parameter(typeof(ProductRow), "x");
 
-        var keys = MoneyQueryFields.SortKeys(row, price, inMemory: false);
+        var keys = AmountQueryFields.SortKeys(row, price, inMemory: false);
 
         keys.Select(k => ((MemberExpression)k).Member.Name).Should().Equal("PriceCurrency", "PriceAmount");
-        MoneyQueryFields.IsBacked(typeof(ProductRow), price, new HashSet<string> { "Price", "PriceAmount", "PriceCurrency" })
+        AmountQueryFields.IsBacked(typeof(ProductRow), price, new HashSet<string> { "Price", "PriceAmount", "PriceCurrency" })
             .Should().BeTrue();
         // A static index without the companions cannot sort a Money column; a dynamic one can.
-        MoneyQueryFields.IsBacked(typeof(Product), PriceProperty, new HashSet<string> { "Price" }).Should().BeFalse();
-        MoneyQueryFields.IsBacked(typeof(Product), PriceProperty, null).Should().BeTrue();
+        AmountQueryFields.IsBacked(typeof(Product), PriceProperty, new HashSet<string> { "Price" }).Should().BeFalse();
+        AmountQueryFields.IsBacked(typeof(Product), PriceProperty, null).Should().BeTrue();
         SparkMoney.AmountCompanion("Price").Should().Be("PriceAmount");
         SparkMoney.CurrencyCompanion("Price").Should().Be("PriceCurrency");
     }

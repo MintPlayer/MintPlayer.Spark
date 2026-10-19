@@ -59,8 +59,15 @@ internal sealed class PromotionUsage(ISparkClaims claims, TimeProvider clock, IO
     public static string OwnerForLines(IEnumerable<string> lineIds)
         => "lines:" + lineIds.Order(StringComparer.Ordinal).FirstOrDefault();
 
-    /// <summary>The once-per-buyer key of a signed-in buyer.</summary>
-    public static string? BuyerKey(string? userId) => userId is { Length: > 0 } ? "user:" + userId : null;
+    /// <summary>
+    /// The once-per-buyer key: the account when signed in; for a guest, the e-mail address when known (it survives a
+    /// cleared cookie and is what the order stores), else the visitor identity (X1). Null for an unknown buyer.
+    /// </summary>
+    public static string? BuyerKey(string? userId, string? email = null, string? visitorId = null)
+        => userId is { Length: > 0 } ? "user:" + userId
+            : email?.Trim() is { Length: > 0 } address ? "email:" + address.ToLowerInvariant()
+            : visitorId is { Length: > 0 } ? "visitor:" + visitorId
+            : null;
 
     /// <summary>Whether <paramref name="buyerKey"/> holds a live use of the code by another owner.</summary>
     public async Task<bool> UsedByBuyerAsync(PromotionCode code, string buyerKey, string? exceptOwner, CancellationToken cancellationToken)

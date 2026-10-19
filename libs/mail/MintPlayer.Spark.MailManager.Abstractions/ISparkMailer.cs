@@ -92,6 +92,89 @@ public sealed record SparkMailRequest
     /// transactional mail, on for bulk.
     /// </summary>
     public bool? ListUnsubscribe { get; init; }
+
+    /// <summary>
+    /// Files attached to the mail: inline bytes (<see cref="SparkMailAttachment.FromBytes"/>, for small generated files —
+    /// a receipt, an invoice, an <c>.ics</c>) or a RavenDB attachment read when the mail is sent
+    /// (<see cref="SparkMailAttachment.FromDocument"/>, for stored files such as a legal document's PDF). Inline bytes
+    /// travel in the queued message (protected and scrubbed like <see cref="Data"/> when <see cref="Sensitive"/>), so
+    /// they are capped by <c>Spark:Mail:Attachments:MaxInlineBytes</c>; the whole mail by
+    /// <c>Spark:Mail:Attachments:MaxTotalBytes</c>.
+    /// </summary>
+    public IReadOnlyList<SparkMailAttachment>? Attachments { get; init; }
+
+    /// <summary>
+    /// Extra headers, e.g. the <c>List-Unsubscribe</c> / <c>List-Unsubscribe-Post</c> pair of the consent primitive
+    /// (<c>ISparkConsentLinks.CreateListUnsubscribeHeaders</c>, RFC 2369 + RFC 8058) on a marketing mail. A header given
+    /// here replaces MailManager's own of the same name (so a consent <c>List-Unsubscribe</c> wins over the stream one
+    /// <see cref="ListUnsubscribe"/> adds). Refused at queue time: a name that is not an RFC 5322 field name, a value
+    /// with a line break (header injection), and the headers MailManager owns (<see cref="SparkMailHeaders.Reserved"/>).
+    /// </summary>
+    public IReadOnlyDictionary<string, string>? Headers { get; init; }
+}
+
+/// <summary>A file attached to a mail. Exactly one source: <see cref="Content"/> or <see cref="DocumentId"/> + <see cref="AttachmentName"/>.</summary>
+public sealed record SparkMailAttachment
+{
+    /// <summary>The file name the recipient sees (no path; line breaks and path separators are refused).</summary>
+    public required string FileName { get; init; }
+
+    /// <summary>The MIME type, e.g. <c>application/pdf</c>.</summary>
+    public string ContentType { get; init; } = "application/octet-stream";
+
+    /// <summary>Inline bytes, queued with the message.</summary>
+    public byte[]? Content { get; init; }
+
+    /// <summary>The RavenDB document holding the attachment; read when the mail is sent.</summary>
+    public string? DocumentId { get; init; }
+
+    /// <summary>The RavenDB attachment's name on <see cref="DocumentId"/>.</summary>
+    public string? AttachmentName { get; init; }
+
+    /// <summary>
+    /// A stored attachment that may be missing when the mail is sent: it is left out (logged) instead of failing the
+    /// send. A required one that is missing fails the attempt, so the queue retries it (the file may still be in the
+    /// making, e.g. a PDF rendered by another handler).
+    /// </summary>
+    public bool Optional { get; init; }
+
+    /// <summary>Inline bytes.</summary>
+    public static SparkMailAttachment FromBytes(string fileName, string contentType, byte[] content)
+        => new() { FileName = fileName, ContentType = contentType, Content = content };
+
+    /// <summary>A RavenDB attachment, read when the mail is sent.</summary>
+    public static SparkMailAttachment FromDocument(string documentId, string attachmentName, string fileName, string contentType = "application/pdf", bool optional = false)
+        => new() { FileName = fileName, ContentType = contentType, DocumentId = documentId, AttachmentName = attachmentName, Optional = optional };
+}
+
+/// <summary>Header rules for <see cref="SparkMailRequest.Headers"/>.</summary>
+public static class SparkMailHeaders
+{
+    /// <summary>The headers MailManager sets itself; a request cannot set them.</summary>
+    public static readonly IReadOnlySet<string> Reserved = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "From", "Sender", "To", "Cc", "Bcc", "Reply-To", "Subject", "Date", "Message-ID", "MIME-Version",
+        "Content-Type", "Content-Transfer-Encoding", "Content-Disposition", "Return-Path", "Received",
+        "X-Spark-Template", "X-Spark-Campaign", "X-Spark-Original-To",
+    };
+
+    /// <summary>Why <paramref name="name"/>: <paramref name="value"/> is refused, or null when it is accepted.</summary>
+    public static string? Problem(string? name, string? value)
+    {
+        if (string.IsNullOrEmpty(name))
+            return "a header name is empty";
+        // RFC 5322 §3.6.8: field-name = 1*ftext, ftext = %d33-57 / %d59-126 (printable ASCII except ':').
+        foreach (var c in name)
+            if (c < 33 || c > 126 || c == ':')
+                return $"'{name}' is not a header field name";
+        if (Reserved.Contains(name))
+            return $"'{name}' is set by MailManager";
+        if (value is null)
+            return $"'{name}' has no value";
+        if (value.AsSpan().IndexOfAny('\r', '\n', '\0') >= 0)
+            return $"the value of '{name}' contains a line break";
+        return null;
+    }
 }
 
 /// <summary>What queuing a mail produced.</summary>

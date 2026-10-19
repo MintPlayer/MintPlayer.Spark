@@ -418,8 +418,11 @@ export class SparkPoFormComponent {
         .map(referenceTreeNode)
         .filter((n): n is TreeNode => n !== null);
       const query = attr.query!;
+      // A `referenceTree` (WX9) makes the panel a lazy tree: roots first, children on expand.
       providers[attr.name] = new ReferenceQueryTreeSelectProvider(page =>
-        this.sparkService.executeQueryByName(query, { ...this.optionQueryParent(), ...page }));
+        this.sparkService.executeQueryByName(query, { ...this.optionQueryParent(), ...page }),
+        undefined,
+        attr.referenceTree);
       nodesByAttr[attr.name] = this.toRecord(nodes.map(n => [n.id, n] as [string, TreeNode]));
     }
     this.referenceProviders.set(providers);

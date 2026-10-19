@@ -74,6 +74,7 @@ public static class SparkCommerceInvoicingExtensions
             services.TryAddEnumerable(ServiceDescriptor.Singleton(typeof(IPlaceOfSupplyRule), rule.GetType()));
         // Checkout's extension point (§4.1 coupling rule): Checkout never references Invoicing.
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IOrderEventRecipient, InvoicingOrderEvents>());
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<ICheckoutMailAttachments, InvoicingCheckoutMailAttachments>());
 
         MintPlayer.Spark.MailManager.SparkMailTemplateServiceCollectionExtensions.AddSparkMailTemplates(
             services, typeof(SparkCommerceInvoicingExtensions).Assembly, "SparkMail/");

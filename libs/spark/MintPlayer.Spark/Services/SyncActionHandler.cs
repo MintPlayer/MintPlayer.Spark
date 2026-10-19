@@ -1,22 +1,20 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Authorization;
+using MintPlayer.Spark.Abstractions.Interceptors;
 using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Exceptions;
 using Raven.Client.Documents;
-using Raven.Client.Documents.Session;
-using System.Collections.Concurrent;
-using System.Reflection;
 using System.Text.Json;
 
 
 namespace MintPlayer.Spark.Services;
 
 /// <summary>
-/// Processes incoming sync actions on the owner module.
-/// Resolves the CLR entity type from the collection name and runs the operation
-/// through the IPersistentObjectActions pipeline (preserving lifecycle hooks).
-/// Constructs a PersistentObject from the incoming data dictionary with IsValueChanged
-/// metadata so the actions pipeline has full change tracking context.
+/// Applies write-back edits on the owner module (warehouse WX3). An edit is applied through
+/// <see cref="ISparkReplacedSaves"/> — the path an approved change takes — as the requesting module's principal:
+/// its type right, its attribute rights (F17; a module is evaluated like a person there), validation and the
+/// interceptors, against the version stored now, in one commit with the caller's own writes.
 /// </summary>
 [Register(typeof(ISyncActionHandler), ServiceLifetime.Scoped)]
 internal partial class SyncActionHandler : ISyncActionHandler
@@ -24,70 +22,104 @@ internal partial class SyncActionHandler : ISyncActionHandler
     [Inject] private readonly IDocumentStore documentStore;
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IEntityMapper entityMapper;
-    [Inject] private readonly IDatabaseAccess databaseAccess;
+    [Inject] private readonly ISparkReplacedSaves replacedSaves;
     [Inject] private readonly ILogger<SyncActionHandler> logger;
     [Inject] private readonly Abstractions.Authentication.ISparkSyncInitiator? syncInitiator = null;
 
-    // Cache: collection name → CLR entity type
-    private static readonly ConcurrentDictionary<string, Type?> _collectionTypeCache = new(StringComparer.OrdinalIgnoreCase);
-
-    public async Task<string?> HandleSaveAsync(string collection, string? documentId, Dictionary<string, object?> data, string[]? properties, bool mustExist = false, string? initiatorId = null)
+    public async Task<SyncEditOutcome> ApplyEditAsync(SyncEdit edit, CancellationToken cancellationToken = default)
     {
-        var entityType = ResolveEntityType(collection)
-            ?? throw new InvalidOperationException($"Cannot resolve entity type for collection '{collection}'.");
+        ArgumentNullException.ThrowIfNull(edit);
+        if (edit.Values.Count == 0)
+            return new SyncEditOutcome(SyncEditOutcomeKind.Refused, "The edit changes nothing.");
 
-        // Build a PersistentObject from the sync action data
-        var po = BuildPersistentObject(entityType, documentId, data, properties);
-        EnsureAuthorizable(po, collection);
+        var entityTypeDef = FindEntityTypeDefinition(edit.EntityType);
+        if (entityTypeDef is null)
+            return new SyncEditOutcome(SyncEditOutcomeKind.Refused, new SparkSyncNotAuthorizableException(edit.EntityType.Name).Message);
 
-        // An Update from a replica edits a row this module owns (#467, D15). The replica's change
-        // vector means nothing here, so the update is applied to the version stored now: a row deleted
-        // here is refused ("deleted"), never recreated from the replica's stale copy, and a write
-        // landing between this read and the save is a conflict, not overwritten.
-        if (mustExist && !string.IsNullOrEmpty(documentId))
+        // The version stored now is the base: the replica's own version means nothing to this module (#467, D15).
+        // A row deleted here is refused, never recreated from the replica's copy.
+        string? baseEtag;
+        using (var checkSession = documentStore.OpenAsyncSession())
         {
-            using var checkSession = documentStore.OpenAsyncSession();
-            var stored = await checkSession.LoadAsync<object>(documentId);
+            var stored = await checkSession.LoadAsync<object>(edit.DocumentId, cancellationToken);
             if (stored is null)
-                throw SparkConcurrencyException.DeletedSinceLoaded("sync");
-            po.Etag = checkSession.Advanced.GetChangeVectorFor(stored);
+                return new SyncEditOutcome(SyncEditOutcomeKind.Refused, "deleted");
+            baseEtag = checkSession.Advanced.GetChangeVectorFor(stored);
         }
 
-        // Through the same chokepoint as every other write (F4/M11). This path used to invoke the
-        // actions pipeline directly, so an authenticated module could insert, update or delete any
-        // document in any collection — the certificate proved *which* module was calling and
-        // nothing consulted what that module was allowed to touch.
-        // The replica's user, for the owner's stamping interceptors (#271, F2): the caller here is a
-        // module certificate, so ISparkCurrentUser has no id to give them.
-        using var initiator = (syncInitiator as SparkSyncInitiator)?.Begin(initiatorId);
-        var saved = await databaseAccess.SavePersistentObjectAsync(po, Abstractions.Interceptors.PersistentObjectOperation.Sync);
+        var data = new Dictionary<string, object?>(edit.Values, StringComparer.OrdinalIgnoreCase);
+        var po = BuildPersistentObject(edit.EntityType, edit.DocumentId, data, [.. edit.Values.Keys]);
+        EnsureAuthorizable(po, edit.EntityType.Name);
 
-        logger.LogInformation("Sync action: saved {Collection}/{DocumentId} ({PropertyMode})",
-            collection, saved.Id ?? documentId,
-            properties != null ? $"partial: {string.Join(", ", properties)}" : "full");
-        return saved.Id;
-    }
+        // A name the model does not know would be dropped silently by the partial build: refuse instead, so the
+        // requester learns the edit was not what it asked for.
+        var unknown = edit.Values.Keys.Where(k => !po.Attributes.Any(a => string.Equals(a.Name, k, StringComparison.OrdinalIgnoreCase))).ToList();
+        if (unknown.Count > 0)
+            return new SyncEditOutcome(SyncEditOutcomeKind.Refused, $"Unknown attribute(s) on {entityTypeDef.Name}: {string.Join(", ", unknown)}.") { Attributes = unknown };
 
-    public async Task HandleDeleteAsync(string collection, string documentId)
-    {
-        var entityType = ResolveEntityType(collection)
-            ?? throw new InvalidOperationException($"Cannot resolve entity type for collection '{collection}'.");
+        po.Etag = baseEtag;
 
-        var entityTypeDef = FindEntityTypeDefinition(entityType)
-            ?? throw new SparkSyncNotAuthorizableException(collection);
+        try
+        {
+            // The consumer's user, for the owner's stamping interceptors (#271, F2): the caller here is a
+            // module certificate, so ISparkCurrentUser has no id to give them.
+            using var initiator = (syncInitiator as SparkSyncInitiator)?.Begin(edit.InitiatorId);
+            var outcome = await replacedSaves.ApplyAsync(new ReplacedSave
+            {
+                ObjectTypeId = entityTypeDef.Id,
+                PersistentObjectJson = SparkReplacedSaves.Serialize(po),
+                BaseEtag = baseEtag,
+                OnBehalfOf = edit.InitiatorId,
+                Alongside = edit.Alongside,
+            }, cancellationToken);
 
-        await databaseAccess.DeletePersistentObjectAsync(entityTypeDef.Id, documentId, Abstractions.Interceptors.PersistentObjectOperation.Sync);
+            logger.LogInformation("Write-back on {Type}/{DocumentId} ({Attributes}): {Outcome}",
+                entityTypeDef.Name, edit.DocumentId, string.Join(", ", edit.Values.Keys), outcome.Kind);
 
-        logger.LogInformation("Sync action: deleted {Collection}/{DocumentId}", collection, documentId);
+            return outcome.Kind switch
+            {
+                ReplacedSaveOutcomeKind.Applied => new SyncEditOutcome(SyncEditOutcomeKind.Applied),
+                ReplacedSaveOutcomeKind.Conflict when outcome.ConflictReason == "deleted"
+                    => new SyncEditOutcome(SyncEditOutcomeKind.Refused, "deleted"),
+                ReplacedSaveOutcomeKind.Conflict => new SyncEditOutcome(SyncEditOutcomeKind.Conflict, outcome.ConflictReason ?? "changed"),
+                ReplacedSaveOutcomeKind.Unwritable => new SyncEditOutcome(SyncEditOutcomeKind.Refused,
+                    $"The module may not write {string.Join(", ", outcome.Attributes)}.") { Attributes = outcome.Attributes },
+                ReplacedSaveOutcomeKind.Invalid => new SyncEditOutcome(SyncEditOutcomeKind.Refused,
+                    "Invalid: " + string.Join(", ", outcome.Errors.Select(e => $"{e.AttributeName} ({e.RuleType})"))) { Attributes = [.. outcome.Errors.Select(e => e.AttributeName)] },
+                ReplacedSaveOutcomeKind.Cancelled => new SyncEditOutcome(SyncEditOutcomeKind.Refused, "cancelled by the owner"),
+                _ => new SyncEditOutcome(SyncEditOutcomeKind.Refused, outcome.Kind.ToString()),
+            };
+        }
+        catch (SparkConcurrencyException ex)
+        {
+            return ex.Reason == "deleted"
+                ? new SyncEditOutcome(SyncEditOutcomeKind.Refused, "deleted")
+                : new SyncEditOutcome(SyncEditOutcomeKind.Conflict, ex.Reason);
+        }
+        catch (SparkRowLevelAccessDeniedException)
+        {
+            // Uniform with the HTTP path: a row the module may not edit is "not found" to it.
+            return new SyncEditOutcome(SyncEditOutcomeKind.Refused, "not found");
+        }
+        catch (SparkAccessDeniedException ex)
+        {
+            return new SyncEditOutcome(SyncEditOutcomeKind.Refused, $"Forbidden: {ex.Resource}");
+        }
+        catch (SparkActionDisabledException ex)
+        {
+            return new SyncEditOutcome(SyncEditOutcomeKind.Refused, ex.Message);
+        }
+        catch (SparkValidationException ex)
+        {
+            return new SyncEditOutcome(SyncEditOutcomeKind.Refused, ex.Message);
+        }
     }
 
     /// <summary>
     /// Refuses a sync action against a type with no registered <see cref="EntityTypeDefinition"/>.
     /// <para>
     /// Such a type has no name for <c>security.json</c> to grant rights on, so no authorization
-    /// decision can be made about it — and this path previously wrote it anyway, through the CLR
-    /// reflection fallback. Writing what cannot be authorized is the failure this milestone exists
-    /// to remove, so it fails closed: <b>unevaluable is not permitted</b>.
+    /// decision can be made about it. It fails closed: <b>unevaluable is not permitted</b>.
     /// </para>
     /// <para>
     /// The fix for an app that hits this is to register the entity (add it to the app's
@@ -99,6 +131,8 @@ internal partial class SyncActionHandler : ISyncActionHandler
     {
         if (po.ObjectTypeId == Guid.Empty)
             throw new SparkSyncNotAuthorizableException(collection);
+    }
+
     }
 
     /// <summary>
@@ -251,39 +285,12 @@ internal partial class SyncActionHandler : ISyncActionHandler
                 JsonValueKind.False => false,
                 JsonValueKind.Null => null,
                 JsonValueKind.Undefined => null,
-                _ => element.ToString()
+                // Objects and arrays keep their JSON structure (F18): the save path binds them as it binds a posted object.
+                _ => element.Clone()
             };
         }
 
         // Already a .NET primitive (from Newtonsoft/RavenDB deserialization or direct assignment)
         return value;
-    }
-
-    private Type? ResolveEntityType(string collection)
-    {
-        // R2-H15: don't cache unresolved (null) entries — the cache is keyed on
-        // request-controlled strings, so caching every miss lets an attacker
-        // grow the static dictionary without bound (memory DoS). Resolved
-        // (non-null) entries are bounded by the schema and safe to cache.
-        if (_collectionTypeCache.TryGetValue(collection, out var cached))
-            return cached;
-
-        Type? resolved = null;
-        foreach (var entityTypeDef in modelLoader.GetEntityTypes())
-        {
-            var clrType = SparkTypeResolver.ResolveClrType(entityTypeDef.ClrType);
-            if (clrType == null) continue;
-
-            var collectionName = documentStore.Conventions.FindCollectionName(clrType);
-            if (string.Equals(collectionName, collection, StringComparison.OrdinalIgnoreCase))
-            {
-                resolved = clrType;
-                break;
-            }
-        }
-
-        if (resolved is not null)
-            _collectionTypeCache[collection] = resolved;
-        return resolved;
     }
 }

@@ -2,8 +2,8 @@ namespace MintPlayer.Spark.WaitingRoom;
 
 /// <summary>
 /// The admission-token seam (commerce PRD §4.12 "Admission token"; research §6.10 item 1): what a hold, a checkout or any
-/// host route uses to refuse requests that did not come through the waiting room. Checkout (M7) adapts it to its own
-/// admission check; a host route uses <see cref="WaitingRoomEndpointExtensions.RequireWaitingRoomAdmission"/>.
+/// host route uses to refuse requests that did not come through the waiting room. <c>MintPlayer.Spark.Commerce.WaitingRoom</c>
+/// adapts it to Checkout's admission gate; a host route uses <see cref="WaitingRoomEndpointExtensions.RequireWaitingRoomAdmission"/>.
 /// </summary>
 /// <remarks>
 /// <para>

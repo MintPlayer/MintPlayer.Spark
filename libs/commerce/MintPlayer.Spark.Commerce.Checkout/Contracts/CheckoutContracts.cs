@@ -40,7 +40,10 @@ public sealed record SparkBasket(
     string? PendingOrderNumber);
 
 /// <summary><c>POST /spark/commerce/checkout/basket/add</c>.</summary>
-/// <param name="AdmissionToken">The waiting room's admission token for a gated phase (§4.12).</param>
+/// <param name="AdmissionTokens">
+/// §4.6, §4.12: the admission tokens by scope, one per scope the item is gated by: the waiting room's admission token for
+/// <c>ticketing-phase:{phaseId}</c> or <c>waiting-room:{gate}</c>, a presale code for <c>promotions:{scope}</c>.
+/// </param>
 /// <param name="ParentLineId">GB2: the line an add-on belongs to.</param>
 [SparkContract]
 public sealed record SparkBasketAddRequest(
@@ -49,7 +52,7 @@ public sealed record SparkBasketAddRequest(
     IReadOnlyList<string>? Units = null,
     Dictionary<string, string>? Options = null,
     string? ParentLineId = null,
-    string? AdmissionToken = null);
+    Dictionary<string, string>? AdmissionTokens = null);
 
 /// <summary><c>POST /spark/commerce/checkout/basket/quantity</c>: 0 removes the line.</summary>
 [SparkContract]
@@ -132,7 +135,9 @@ public sealed record SparkCheckoutSummary(
 /// <param name="AcceptedDocumentIds">GA2: the ids of the documents accepted; must equal every required one in force.</param>
 /// <param name="AttestedMinimumAge">GB12: the age the buyer attests to (≥ the summary's minimum age).</param>
 /// <param name="MarketingOptIn">GA9: the soft opt-in checkbox (ePrivacy Art. 13(2)); recorded as a consent record.</param>
-/// <param name="AdmissionTokens">§4.12: admission tokens by waiting-room scope.</param>
+/// <param name="AdmissionTokens">§4.6, §4.12: admission tokens by scope; they win over the ones the lines were added with.</param>
+/// <param name="Data">Data for the pre-payment checks (<see cref="ICheckoutPrePaymentCheck"/>), by key: Ticketing.Events reads <c>attendeeAnswers</c>.</param>
+/// <param name="Language">The buyer's language, for the consent texts the checks record.</param>
 [SparkContract]
 public sealed record SparkPlaceOrderRequest(
     IReadOnlyList<string> AcceptedDocumentIds,
@@ -141,7 +146,9 @@ public sealed record SparkPlaceOrderRequest(
     string? Name = null,
     bool MarketingOptIn = false,
     string? Method = null,
-    Dictionary<string, string>? AdmissionTokens = null);
+    Dictionary<string, string>? AdmissionTokens = null,
+    Dictionary<string, string>? Data = null,
+    string? Language = null);
 
 /// <summary>What placing answers: go to <paramref name="RedirectUrl"/> (the provider) or straight to the order page.</summary>
 [SparkContract]

@@ -456,36 +456,6 @@ public sealed class PromotionOrderAttribution
     public static string IdFor(string orderId) => "PromotionOrderAttributions/" + orderId;
 }
 
-/// <summary>
-/// A commission booked for a tracking link (GC2), or its reversal. Append-only under a natural id, so a redelivered
-/// order event books it once. ⚠️ Payments' platform-fee ledger (GB4) has no commission kind and no public booking API:
-/// these entries are the commission ledger until it has (reported to the lead).
-/// </summary>
-public sealed class PromotionCommission
-{
-    /// <summary><c>PromotionCommissions/{orderId}</c> for the commission, <c>…/reversal/{reference}</c> for a reversal.</summary>
-    public string? Id { get; set; }
-
-    public string OrderId { get; set; } = "";
-
-    public string Ref { get; set; } = "";
-
-    public string? OrganizationId { get; set; }
-
-    public string? PromoterUserId { get; set; }
-
-    /// <summary>Positive for a commission, negative for a reversal.</summary>
-    public Money Amount { get; set; } = Money.Zero("EUR");
-
-    public string Reason { get; set; } = "";
-
-    public DateTimeOffset BookedAt { get; set; }
-
-    public static string IdFor(string orderId) => "PromotionCommissions/" + orderId;
-
-    public static string ReversalIdFor(string orderId, string reference) => $"PromotionCommissions/{orderId}/reversal/{reference}";
-}
-
 /// <summary>Hashes for natural ids that must not carry personal data in clear (an address, a user id).</summary>
 public static class PromotionHashes
 {

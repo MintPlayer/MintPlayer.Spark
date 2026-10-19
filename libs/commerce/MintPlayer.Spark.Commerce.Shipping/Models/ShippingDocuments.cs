@@ -109,6 +109,63 @@ public class Shipment
 
     /// <summary>The first live parcel's tracking number, for the query.</summary>
     public string? TrackingNumber => Parcels.FirstOrDefault(p => !p.Voided)?.TrackingNumber;
+
+    /// <summary>
+    /// Bookings recorded before the carrier was called and not yet answered (carrier idempotency). An entry stays when
+    /// the carrier's answer was lost; the next attempt and <c>Shipping.BookingReconcile</c> look it up at the carrier
+    /// before booking it again.
+    /// </summary>
+    public List<PendingBooking> PendingBookings { get; set; } = [];
+
+    /// <summary>A booking is pending; stored for the reconciliation's query.</summary>
+    public bool HasPendingBooking { get; set; }
+}
+
+/// <summary>
+/// One booking recorded before the carrier is called (carrier idempotency): which parcels it covers and the key the
+/// carrier saw. Removed once the carrier's labels are stored.
+/// </summary>
+public sealed class PendingBooking
+{
+    /// <summary>The booking key without the retry suffix: the shipment id, or <c>{id}/{first parcel number}</c>.</summary>
+    public string Key { get; set; } = string.Empty;
+
+    /// <summary>Raised each time the carrier refused an attempt, so the next attempt sends a fresh reference (<c>{Key}-r{n}</c>).</summary>
+    public int Generation { get; set; }
+
+    /// <summary>The parcels (<see cref="ShipmentParcel.Number"/>) this booking labels.</summary>
+    public List<int> Parcels { get; set; } = [];
+
+    /// <summary>How many times the carrier was called for it.</summary>
+    public int Attempts { get; set; }
+
+    /// <summary>The label format asked (kept for a booking resumed later).</summary>
+    public LabelFormat LabelFormat { get; set; }
+
+    public PendingBookingState State { get; set; }
+
+    public DateTime CreatedAtUtc { get; set; }
+
+    public DateTime? LastAttemptAtUtc { get; set; }
+
+    /// <summary>The carrier's last message, when it refused or failed.</summary>
+    public string? Error { get; set; }
+
+    /// <summary>The reference the carrier saw for the current generation.</summary>
+    public string CarrierReference => Generation == 0 ? Key : $"{Key}-r{Generation}";
+}
+
+/// <summary>What is known about a pending booking at the carrier.</summary>
+public enum PendingBookingState
+{
+    /// <summary>Recorded, the carrier not called yet: booking it is safe.</summary>
+    New,
+    /// <summary>The carrier was called and its answer was lost: it may hold the booking. Look it up before booking again.</summary>
+    InDoubt,
+    /// <summary>The carrier refused it (a 4xx answer): nothing was booked, the next attempt books under a fresh reference.</summary>
+    Refused,
+    /// <summary>A lookup found nothing at the carrier, or staff confirmed so: booking it again is safe.</summary>
+    NotAtCarrier,
 }
 
 /// <summary>Outbound to the buyer, or a return label from the buyer (GB5).</summary>
@@ -145,6 +202,9 @@ public sealed class ShipmentParcel
     public int HeightMm { get; set; }
 
     public string? CarrierParcelId { get; set; }
+
+    /// <summary>The carrier's id of the booking that labelled this parcel (an added parcel is its own booking).</summary>
+    public string? CarrierShipmentId { get; set; }
 
     public string? TrackingNumber { get; set; }
 

@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<OutputType>Library</OutputType>
+
+		<!-- NuGet Package Metadata -->
+		<PackageId>MintPlayer.Spark.Warehouse.Abstractions</PackageId>
+		<Version>11.0.0-preview.1</Version>
+		<Authors>MintPlayer</Authors>
+		<Company>MintPlayer</Company>
+		<Description>Strategy interfaces of the MintPlayer.Spark warehouse (IAllocationRule, IPutawayRule, IPickStrategy, IPickRouter, ICartonizer, IBarcodeResolutionStep, ISiteRouter) and the value types they exchange. No persistent objects: reference this to plug a custom rule into MintPlayer.Spark.Warehouse.</Description>
+		<PackageTags>warehouse;wms;picking;allocation;putaway;spark</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="README.md" Pack="true" PackagePath="\" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- Package map (docs/warehouse_picking_PRD.md §4.1): Abstractions only. No RavenDB, no Gs1: the barcode steps
+		     exchange GS1 data as plain values (ScannedBarcode), so a custom rule needs nothing else. -->
+		<ProjectReference Include="..\..\spark\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
+	</ItemGroup>
+
+</Project>

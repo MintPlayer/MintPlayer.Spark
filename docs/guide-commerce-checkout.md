@@ -22,7 +22,7 @@ claims the item, and `ResolveAsync` answers a `CheckoutItem` with these fields:
 - the channel, the seller (`OrganizationId`), the price, the price basis and the VAT rate;
 - the title and description, which are the main characteristics shown at the last step;
 - `MinimumAge`, `IsPhysicalGoods`, `ServiceDate`, the per-buyer limit and its scope;
-- `AdmissionScope`, the waiting-room gate;
+- `AdmissionScopes`, the gates (AND): a waiting-room scope, a presale or unlock code scope, or both;
 - the add-on parents (`RequiresParentItemIds`);
 - `Capacity`, the claim shape: items through their quota mappings, quotas, seats, best-available chains and picks.
 
@@ -38,7 +38,7 @@ are not persistent-object types. The endpoints read and write them:
 | Endpoint | Does |
 |---|---|
 | `GET /spark/commerce/checkout/basket` | the basket, priced (FinalPrice per line), with the earliest hold deadline |
-| `POST …/basket/add` | `{ itemId, quantity, units?, options?, parentLineId?, admissionToken? }` |
+| `POST …/basket/add` | `{ itemId, quantity, units?, options?, parentLineId?, admissionTokens? }` (`admissionTokens`: one token per admission scope) |
 | `POST …/basket/quantity` | `{ lineId, quantity }`; 0 removes the line and its add-ons |
 | `POST …/basket/choices` | donation, insurance and promotion choices, and a guest's e-mail address |
 
@@ -46,7 +46,12 @@ Each line keeps its own channel's rules (D40). Each line gets **its own inventor
 
 - in a `HoldFromSelection` channel, the units are held when the line is added;
 - in `HoldFromCheckout`, they are held at "Pay";
-- in `OnPayment`, they are claimed only when the payment is confirmed (D1).
+- in `OnPayment`, they are claimed only when the payment is confirmed (D1). At "Pay" a **soft availability check**
+  refuses a line whose quotas or units are visibly gone (`soldOut`), so the buyer is not sent to pay for it. Nothing is
+  held: the line can still lose the race at confirmation.
+
+A hold lasts the channel's `Hold:Default`, or the sale's own `CheckoutItem.HoldTime` when the capacity source sets one
+(Ticketing.Events sets the event policy's clamped hold, D2). Checkout clamps it to the channel's `Hold` bounds again.
 
 **Purity and mixing.** A basket holds one channel unless `Spark:Commerce:Basket:MixChannels=true`.
 
@@ -64,7 +69,10 @@ mix freely.
 - **GB2 add-ons** need their parent line, and go with it when the parent is removed or refused.
 
 Refusals answer HTTP 409 with `SparkCheckoutRefusal { code, lineId, subject }`. The client translates
-`commerceCheckout.refusal.{code}` (`CheckoutRefusals`).
+`commerceCheckout.refusal.{code}` (`CheckoutRefusals`). A code raised by another package through Checkout's seams falls
+back through `SPARK_CHECKOUT_REFUSAL_NAMESPACES` (`commercePromotions.refusal.*`, `ticketingEvents.refusal.*`, …; a host
+may add its own) and finally to the generic `commerceCheckout.refusal.conflict`: `refusalKey(code, lang)` never shows a
+raw key.
 
 ## 3. The last step and placing the order (GA2)
 
@@ -97,8 +105,11 @@ Refusals answer HTTP 409 with `SparkCheckoutRefusal { code, lineId, subject }`. 
    still have to be confirmed against EUR-Lex (D37).
 
 The **confirmation** is mailed through MailManager (`SparkCheckout/OrderConfirmation`). This mail is the durable medium
-of CRD Art. 8(7). It carries the accepted documents in its body, title and text in the buyer's language, plus PDF
-links. ⚠️ MailManager has no attachments yet, so the PDFs are linked rather than attached (Q-O9).
+of CRD Art. 8(7). It carries the accepted documents in its body, title and text in the buyer's language, and
+**attaches their PDFs** (Q-O9): each accepted version's stored `document.pdf`, read by MailManager when the mail is
+sent. `ICheckoutMailAttachments` contributors run before the mail is queued (Invoicing renders the PDF a version
+lacks there), so a version with a PDF is a required attachment and one still without is optional. The withdrawal
+receipt (GA1) gets its PDF the same way. The PDF links stay in the body.
 
 ## 4. The order state machine
 
@@ -150,9 +161,31 @@ Refunds, cancellations, the withdrawal function (GA1), guarantee claims (GA8) an
 | Interface | Who registers it | Called |
 |---|---|---|
 | `ICheckoutCapacitySource` | Shop, Ticketing.Events, the host | when an item is added and at "Pay" |
-| `ICheckoutPricingStep` (`Order`) | Promotions (~100); checkout's donation (900) and insurance (950) steps | every quote, side-effect free |
+| `ICheckoutPricingStep` (`Order`) | Promotions (~100); checkout's donation (900) and insurance (950) steps | every quote; side-effect free while quoting, see "reservations" below |
+| `ICheckoutPrePaymentCheck` (`Order`) | Ticketing.Events (required attendee questions, GB3) | at "Pay", after the lines are claimed and before the payment is created; a refusal releases the placement's claims |
 | `IOrderEventRecipient` | Tickets, Invoicing, Fulfilment, Promotions | after each stored change (`Placed`, `Confirmed`, `LineRefused`, `Refunded`, `Disputed`, …); must be idempotent |
-| `ICheckoutAdmissionGate` | the waiting room (M16) | when a line with an `AdmissionScope` is claimed; `Consume` marks the claim that uses the admission |
+| `ICheckoutAdmissionGate` | `commerce-waiting-room`, `commerce-promotions` | when a line with `AdmissionScopes` is claimed: every scope is checked without consuming first, then consumed only when all admit; `Consume` marks the claim that uses the admission |
+
+**What a pricing step sees.** `CheckoutPricingContext` carries the lines, the choices, `BuyerUserId`, and for a guest
+`BuyerEmail` (given at the last step, else the basket's) and `VisitorId` (X1), so once-per-buyer rules work for guests
+too (Promotions keys them by account, else address, else visitor). After every step ran, each line's `Net` and `Vat`
+are recomputed from its adjusted total (S21): the goods' amount is the line total minus its mandatory fees, its VAT is
+extracted once with `Money.RoundDiv` (a Net-priced item prefers the net whose VAT adds up exactly), per line or, with
+`VatRounding: PerGroup`, once per rate group split by largest remainder. An unadjusted line keeps the calculator's
+split. The order line stores these figures; Invoicing re-splits the paid amounts per group on its documents (strategy H
+mirrors them on credit notes).
+
+**Reservations a step makes, and how they lapse.** A step is side-effect free while quoting (`Placing` false). When
+`Placing` is true it may reserve something, as Promotions reserves a code use. Such a reservation must **lapse on its
+own**: give it an expiry (Promotions: `UsageReservation`), because a placement can still fail after the step ran (a
+refused claim, a pre-payment check, the provider) and nothing calls the step back. On `Placed` the step's
+`IOrderEventRecipient` extends it to the order's payment deadline; on `Confirmed` it becomes permanent; on `Expired`,
+`Cancelled` or `Voided` it is released. A retried placement reuses the same owner (the order's line ids), so it never
+reserves twice.
+
+**Pre-payment checks.** An `ICheckoutPrePaymentCheck` reads `SparkPlaceOrderRequest.Data` (by key; Events reads
+`attendeeAnswers`) and refuses with a `CheckoutException`, or saves documents with `StoreWithOrder(document, id)`: they
+are stored in the order's own session, so they exist exactly when the order does.
 
 **The admission gate is a seam.** Checkout defines `ICheckoutAdmissionGate` and the waiting room implements it. Checkout
 does not reference the waiting room. While no gate is registered, a gated item is refused (`admissionRequired`):
@@ -168,11 +201,11 @@ and Admins, or the same people of the platform organization.
 | `POST …/box-office/orders` | `origin`: `phone` (a payment link is mailed), `manual` (marked paid later), `comp` or `guestList`. Comp and guest-list orders have a zero total, count against quotas and per-buyer limits, and are flagged `ExcludedFromRevenue` |
 | `POST …/box-office/mark-paid` | the `finance` role only. Audited (`commerce-checkout.order-marked-paid`) with the payment reference |
 | `POST …/box-office/resend` | re-sends the confirmation. Tickets re-sends its tickets on `ConfirmationResent` |
-| `POST …/box-office/change-line` | a seat change or an upgrade, in three idempotent steps: claim the new units, return the old ones, convert. A lower price is refunded; a higher one is charged through a supplement payment link |
+| `POST …/box-office/change-line` | a seat change or an upgrade, as one inventory exchange: the old units go back, the new ones are claimed and sold. A lower price is refunded; a higher one is charged through a supplement payment link |
 
-⚠️ PRD §4.4 asks for the seat change to happen in one cluster-wide transaction. The inventory engine has no exchange
-operation, so it is done in steps instead. A failure leaves at most a hold that lapses on its own; it never causes a
-double sale.
+The seat change is one cluster-wide transaction (PRD §4.4, `ISparkInventory.ExchangeAsync`): either the line moves to
+its new units or nothing changes. A seat the upgrade keeps (same seat, other ticket type) is handed over rather than
+given back and claimed again.
 
 ## 7. Abandoned baskets, donations, insurance
 
@@ -200,7 +233,10 @@ checkout can therefore refuse a buyer, or treat one differently, on those ground
 
 `PaymentGrace`, `ConfirmationHold`, `RequiredAcceptance`, `LinkedDocuments`, `Channels:{name}` (`ExcludedMethods`,
 `AuthorizeThenCapture`, `AbandonedBasketReminder`), `OrderPagePath`, the mail templates, `BackOfficeRole`,
-`MarkPaidRole`, `SweepSchedule`, `AbandonedBaskets`, `Donation`, `Insurance`. Startup refuses:
+`MarkPaidRole`, `SweepSchedule`, `AbandonedBaskets`, `Donation`, `Insurance`, `VatRounding` (`PerLine` default,
+`PerGroup`), `Refunds:HolidayCountry` / `Refunds:HolidaySubdivision` (public holidays in refund periods, see the refunds
+guide). The mail templates ship in English (neutral), French and Dutch (`SparkCheckout/*.fr.mjml`, `*.nl.mjml`); the
+recipient's `PreferredCulture` picks one. Startup refuses:
 
 - an unknown channel name in this section;
 - an insurance provider that is not registered;

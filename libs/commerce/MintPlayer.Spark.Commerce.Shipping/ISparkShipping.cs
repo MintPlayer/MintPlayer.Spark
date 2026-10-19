@@ -60,6 +60,35 @@ public interface ISparkShipping
 
     /// <summary>Polls the carriers that push no webhooks for the parcels still moving.</summary>
     Task PollTrackingAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Reconciles bookings whose carrier answer was lost (<see cref="PendingBookingState.InDoubt"/>, older than
+    /// <see cref="SparkCommerceShippingOptions.BookingReconcileAfter"/>): each is looked up at the carrier
+    /// (<see cref="IShippingBookingLookup"/>) and, when found, its labels are stored as if the answer had arrived; when
+    /// not found it becomes safe to book again. Never books. Run by <c>Shipping.BookingReconcile</c>. Answers how many
+    /// bookings were resolved.
+    /// </summary>
+    Task<int> ReconcilePendingBookingsAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Staff confirm that the carrier holds none of a shipment's in-doubt bookings (checked in the carrier's own
+    /// panel), for carriers that cannot look a booking up (PostNL, Sendcloud returns): the next attempt books again.
+    /// Answers false when the shipment has no in-doubt booking.
+    /// </summary>
+    Task<bool> ReleasePendingBookingAsync(string shipmentId, string? userId, CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// A booking may exist at the carrier but cannot be confirmed (its answer was lost and the carrier cannot be asked).
+/// Booking again could pay twice: staff check the carrier's panel and then call
+/// <see cref="ISparkShipping.ReleasePendingBookingAsync"/>, or void it there.
+/// </summary>
+public sealed class ShipmentBookingInDoubtException(string shipmentId, string carrier)
+    : Exception($"Shipment {shipmentId}: an earlier {carrier} booking may exist at the carrier and cannot be looked up. Check the carrier's panel, then release the pending booking to book again.")
+{
+    public string ShipmentId { get; } = shipmentId;
+
+    public string Carrier { get; } = carrier;
 }
 
 /// <summary>What a rate is asked for.</summary>

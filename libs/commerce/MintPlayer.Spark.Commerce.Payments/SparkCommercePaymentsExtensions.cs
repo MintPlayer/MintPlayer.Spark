@@ -55,6 +55,8 @@ public static class SparkCommercePaymentsExtensions
         services.TryAddScoped<PaymentUrls>();
         services.TryAddScoped<IPaymentMerchantResolver, PaymentMerchantResolver>();
         services.TryAddScoped<PlatformFeeLedger>();
+        // The public booking API for commissions (GC2): Promotions' tracking links book into the same ledger.
+        services.TryAddScoped<ISparkPlatformFeeLedger>(sp => sp.GetRequiredService<PlatformFeeLedger>());
         services.TryAddScoped<PaymentNotices>();
         services.TryAddScoped<PaymentEventProcessor>();
         services.TryAddScoped<SparkPayments>();

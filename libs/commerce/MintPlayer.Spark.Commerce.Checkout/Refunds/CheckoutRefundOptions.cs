@@ -13,6 +13,18 @@ public sealed class CheckoutRefundOptions
     /// </summary>
     public string TimeZone { get; set; } = "UTC";
 
+    /// <summary>
+    /// The country (ISO 3166-1 alpha-2) whose public holidays move a period's last day to the next working day
+    /// (Regulation 1182/71 Art. 3(4)). Only applied when a holiday calendar is registered
+    /// (<c>UseReferenceDataHolidays()</c>, or your own <see cref="ICheckoutHolidayCalendar"/>). Unset or without a
+    /// calendar: only Saturdays and Sundays move it. ⚠️ Art. 3(4) means the holidays of the member state where the act is
+    /// to be done (the seller's, D37: confirm per country).
+    /// </summary>
+    public string? HolidayCountry { get; set; }
+
+    /// <summary>The ISO 3166-2 subdivision (<c>BE-VLG</c>) for regional holidays, when one applies.</summary>
+    public string? HolidaySubdivision { get; set; }
+
     public CheckoutWithdrawalOptions Withdrawal { get; set; } = new();
 
     public CheckoutGuaranteeOptions Guarantee { get; set; } = new();

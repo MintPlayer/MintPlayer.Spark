@@ -125,19 +125,55 @@ internal sealed class CheckoutItems(IEnumerable<ICheckoutCapacitySource> sources
             line.Picks.Count > 0 ? line.Picks : null, line.Options, parentItemId), line.LineId, cancellationToken);
 }
 
-/// <summary>The waiting-room admission check (§4.12) over the registered gates; fail closed without one.</summary>
+/// <summary>
+/// The admission check (§4.6, §4.12) over the registered gates: every one of an item's
+/// <see cref="CheckoutItem.AdmissionScopes"/> must admit (a queued presale phase needs the waiting-room token and the
+/// presale code); a scope no gate owns, or one without a token, is refused (fail closed).
+/// </summary>
 internal sealed class CheckoutAdmission(IEnumerable<ICheckoutAdmissionGate> gates, ICheckoutBuyer buyer)
 {
-    public async Task RequireAsync(CheckoutItem item, string? token, int quantity, bool consume, string? lineId, CancellationToken cancellationToken)
+    /// <param name="tokens">The tokens the buyer presented, by scope.</param>
+    public async Task RequireAsync(CheckoutItem item, IReadOnlyDictionary<string, string>? tokens, int quantity, bool consume, string? lineId, CancellationToken cancellationToken)
     {
-        if (item.AdmissionScope is not { Length: > 0 } scope)
+        var scopes = item.AdmissionScopes.Where(s => s is { Length: > 0 }).Distinct(StringComparer.Ordinal).ToList();
+        if (scopes.Count == 0)
             return;
-        var gate = gates.FirstOrDefault(g => g.Handles(scope));
-        if (gate is null || token is not { Length: > 0 })
-            throw CheckoutException.Of(CheckoutRefusals.AdmissionRequired, lineId, scope);
-        var decision = await gate.CheckAsync(new AdmissionCheck(scope, token, buyer.UserId, buyer.VisitorId, item.ItemId, quantity, consume), cancellationToken);
+        var checks = new List<(ICheckoutAdmissionGate Gate, AdmissionCheck Check)>(scopes.Count);
+        foreach (var scope in scopes)
+        {
+            var gate = gates.FirstOrDefault(g => g.Handles(scope));
+            var token = tokens is not null && tokens.TryGetValue(scope, out var presented) ? presented : null;
+            if (gate is null || token is not { Length: > 0 })
+                throw CheckoutException.Of(CheckoutRefusals.AdmissionRequired, lineId, scope);
+            checks.Add((gate, new AdmissionCheck(scope, token, buyer.UserId, buyer.VisitorId, item.ItemId, quantity, Consume: false)));
+        }
+
+        // Every scope first without consuming: a refused second scope must not spend the first one's token.
+        foreach (var (gate, check) in checks)
+            await DecideAsync(gate, check, lineId, cancellationToken);
+        if (!consume)
+            return;
+        foreach (var (gate, check) in checks)
+            await DecideAsync(gate, check with { Consume = true }, lineId, cancellationToken);
+    }
+
+    /// <summary>Merges the tokens of a later request over the ones a line was added with (a later one wins per scope).</summary>
+    public static IReadOnlyDictionary<string, string> Merge(IReadOnlyDictionary<string, string>? stored, IReadOnlyDictionary<string, string>? presented)
+    {
+        var merged = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var source in new[] { stored, presented })
+            if (source is not null)
+                foreach (var (scope, token) in source)
+                    if (token is { Length: > 0 })
+                        merged[scope] = token;
+        return merged;
+    }
+
+    private static async Task DecideAsync(ICheckoutAdmissionGate gate, AdmissionCheck check, string? lineId, CancellationToken cancellationToken)
+    {
+        var decision = await gate.CheckAsync(check, cancellationToken);
         if (!decision.Admitted)
-            throw CheckoutException.Of(CheckoutRefusals.AdmissionRequired, lineId, decision.Reason ?? scope);
+            throw CheckoutException.Of(CheckoutRefusals.AdmissionRequired, lineId, decision.Reason ?? check.Scope);
     }
 }
 

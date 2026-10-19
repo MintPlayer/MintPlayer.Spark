@@ -89,7 +89,7 @@ public class EventFlowTests : SparkTestDriver
 
         var item = await Source().ResolveAsync(new CheckoutItemRequest(seeded.ItemId, 2), CancellationToken.None);
         item.Should().NotBeNull();
-        item!.AdmissionScope.Should().Be(TicketScopes.Admission(seeded.PhaseId));
+        item!.AdmissionScopes.Should().Equal(TicketScopes.Admission(seeded.PhaseId));
 
         var claim = await engine.TryClaimAsync(new ClaimRequest("claims/test/1", "baskets/1", TimeProvider.System.GetUtcNow().AddMinutes(10), item.Capacity.Quotas));
         claim.Succeeded.Should().BeTrue();

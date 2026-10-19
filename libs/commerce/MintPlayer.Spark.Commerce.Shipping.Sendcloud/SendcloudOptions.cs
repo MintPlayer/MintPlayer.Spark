@@ -17,32 +17,49 @@ public sealed class SendcloudOptions : ISparkConfigurationSection
     public string? SecretKey { get; set; }
 
     /// <summary>
+    /// The integration's webhook signature key, when Sendcloud shows one apart from the secret key; webhooks are then
+    /// accepted when signed with either.
+    /// </summary>
+    public string? WebhookSignatureKey { get; set; }
+
+    /// <summary>
     /// Further Sendcloud accounts by name (warehouse WD8: a carrier account per owner). A shipment's
     /// <c>Account</c> picks one; the keys above are the default account.
     /// </summary>
     public Dictionary<string, SendcloudAccount> Accounts { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
-    /// The shipping methods the account books, by Sendcloud shipping-method id (<c>GET /shipping_methods</c>), with
-    /// what each accepts. Sendcloud's methods depend on the account's carrier contracts, so none is shipped: the host
-    /// lists the ones it offers. A method with <c>ServicePoint</c> delivers to a service point (<c>to_service_point</c>).
+    /// The shipping options the account books, by Sendcloud <c>shipping_option_code</c> (<c>postnl:standard</c>,
+    /// <c>dpd:home</c>; listed by <c>POST /api/v3/shipping-options</c>), with what each accepts. They depend on the
+    /// account's carrier contracts, so none is shipped: the host lists the ones it offers. An option with
+    /// <c>ServicePoint</c> delivers to a service point (<c>to_service_point</c>); one with <c>Return</c> books through
+    /// the Returns API.
     /// </summary>
     public Dictionary<string, CarrierServiceOptions> Services { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>The sender address id configured in Sendcloud (<c>sender_address</c>), when the account uses one.</summary>
+    /// <summary>
+    /// The carrier contract to book a shipping option under (<c>ship_with.properties.contract_id</c>), by option code,
+    /// when the account has several contracts for its carrier. Absent: Sendcloud picks the account's default.
+    /// </summary>
+    public Dictionary<string, long> ContractIds { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The sender address id configured in Sendcloud. When set, outbound shipments send
+    /// <c>from_address: {"sender_address_id": …}</c> instead of the ship-from address.
+    /// </summary>
     public long? SenderAddressId { get; set; }
 
-    /// <summary>The carriers whose service points are searched (<c>postnl</c>, <c>bpost</c>, <c>dpd</c>, …); all enabled ones when empty.</summary>
+    /// <summary>The carriers whose service points are searched (<c>postnl</c>, <c>bpost</c>, <c>dpd</c>, …); the integration's enabled carriers when empty.</summary>
     public List<string> ServicePointCarriers { get; set; } = [];
 
-    /// <summary>The label size to download: <c>label_printer</c> (A6) or <c>normal_printer</c> (A4 with up to four labels).</summary>
-    public string LabelPrinter { get; set; } = "label_printer";
+    /// <summary>The paper size labels are downloaded at: <c>A6</c> (label printers) or <c>A4</c>.</summary>
+    public string PaperSize { get; set; } = "A6";
 
-    /// <summary>The panel API base; overridable for tests only.</summary>
-    public string ApiBaseUrl { get; set; } = "https://panel.sendcloud.sc/api/v2/";
+    /// <summary>The resolution of a ZPL label (Sendcloud accepts 203, 300 or 600).</summary>
+    public int ZplDpi { get; set; } = 203;
 
-    /// <summary>The service-point API base.</summary>
-    public string ServicePointsBaseUrl { get; set; } = "https://servicepoints.sendcloud.sc/api/v2/";
+    /// <summary>The API v3 base (shipments, returns, parcel documents, tracking, service points); overridable for tests only.</summary>
+    public string ApiBaseUrl { get; set; } = "https://panel.sendcloud.sc/api/v3/";
 }
 
 /// <summary>One Sendcloud account's keys.</summary>
@@ -51,4 +68,7 @@ public sealed class SendcloudAccount
     public string? PublicKey { get; set; }
 
     public string? SecretKey { get; set; }
+
+    /// <summary>The account's webhook signature key, when it differs from the secret key.</summary>
+    public string? WebhookSignatureKey { get; set; }
 }

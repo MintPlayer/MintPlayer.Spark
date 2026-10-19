@@ -1,4 +1,5 @@
 using MintPlayer.Spark.Claims;
+using MintPlayer.Spark.Commerce.Inventory.Indexes;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Operations.CompareExchange;
 using Raven.Client.Documents.Session;
@@ -43,19 +44,19 @@ public sealed class InventoryEngine : ISparkInventory
     private readonly TimeProvider clock;
     private readonly SparkClaims claims;
     private readonly SparkClaimKind<SparkClaimHold> unitKind;
-    private readonly Func<IReadOnlyCollection<string>, CancellationToken, Task>? committed;
+    private readonly Func<InventoryCommit, CancellationToken, Task>? committed;
 
     /// <param name="store">The store.</param>
     /// <param name="database">The database; default the store's.</param>
     /// <param name="options">Grace, attempts, the single-seat rule.</param>
     /// <param name="clock">The clock expiry is judged by.</param>
-    /// <param name="committed">Called after a commit with the quotas whose availability it changed (live topics, X2).</param>
+    /// <param name="committed">Called after a commit with the quotas and units it changed (live topics, X2; <see cref="IInventoryCommitted"/>).</param>
     public InventoryEngine(
         IDocumentStore store,
         string? database = null,
         InventoryEngineOptions? options = null,
         TimeProvider? clock = null,
-        Func<IReadOnlyCollection<string>, CancellationToken, Task>? committed = null)
+        Func<InventoryCommit, CancellationToken, Task>? committed = null)
     {
         this.store = store;
         this.database = database;
@@ -213,6 +214,17 @@ public sealed class InventoryEngine : ISparkInventory
     public Task<ClaimResult> RestockAsync(string claimId, string returnId, CancellationToken cancellationToken = default)
         => RetryAsync(_ => RestockOnceAsync(claimId, returnId, cancellationToken), cancellationToken);
 
+    public Task<ClaimResult> ExchangeAsync(InventoryExchange request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentException.ThrowIfNullOrEmpty(request.ClaimId);
+        ArgumentException.ThrowIfNullOrEmpty(request.Return.ReturnId);
+        Validate(request.Target);
+        if (string.Equals(request.ClaimId, request.Target.ClaimId, StringComparison.Ordinal))
+            throw new ArgumentException("The replacement is a claim of its own: give it another id than the claim it replaces.", nameof(request));
+        return RetryAsync(attempt => ExchangeOnceAsync(request, attempt, cancellationToken), cancellationToken);
+    }
+
     /// <summary>Prunes the quota's lapsed holds. Only display and housekeeping depend on it, never correctness (I3).</summary>
     public Task<ClaimResult> SweepAsync(string quotaId, CancellationToken cancellationToken = default)
         => RetryAsync(_ => PruneOnceAsync(quotaId, cancellationToken), cancellationToken);
@@ -228,12 +240,14 @@ public sealed class InventoryEngine : ISparkInventory
         List<string> ids;
         using (var session = OpenReadSession())
         {
-            // An auto-index over State and ExpiresAt; a stale result only delays the release (I3).
-            ids = await session.Query<InventoryClaim>()
-                .Where(c => c.State == ClaimState.Held && c.ExpiresAt < cutoff)
+            // The declared index InventoryClaims/Lapsing (X19, emitted in the application); a stale result only delays
+            // the release (I3). Values are parameters; the index is named, never typed.
+            var lapsed = await session.Advanced.AsyncDocumentQuery<InventoryClaim>(InventoryIndexes.Lapsing)
+                .WhereEquals(nameof(LapsingClaimEntry.State), ClaimState.Held)
+                .AndAlso().WhereLessThan(nameof(LapsingClaimEntry.ExpiresAt), cutoff)
                 .Take(max)
-                .Select(c => c.Id!)
                 .ToListAsync(cancellationToken);
+            ids = lapsed.Select(c => c.Id!).ToList();
         }
 
         var released = new List<InventoryClaim>();
@@ -289,6 +303,14 @@ public sealed class InventoryEngine : ISparkInventory
         return await session.LoadAsync<InventoryClaim>(claimId, cancellationToken);
     }
 
+    public async Task<IReadOnlyList<ItemQuota>?> GetItemMappingAsync(string itemId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(itemId);
+        using var session = OpenReadSession();
+        var item = await session.LoadAsync<InventoryItem>(ItemDocumentId(itemId), cancellationToken);
+        return item is null || item.Quotas.Count == 0 ? null : item.Quotas.Select(q => new ItemQuota(q.QuotaId, q.Multiplier)).ToList();
+    }
+
     // ---- plumbing ------------------------------------------------------------------------------------------
 
     private async Task<ClaimResult> RetryAsync(Func<int, Task<ClaimResult>> operation, CancellationToken cancellationToken)
@@ -311,13 +333,20 @@ public sealed class InventoryEngine : ISparkInventory
         }
     }
 
-    private async Task<ClaimResult> CommitAsync(ISparkClaimsUnitOfWork uow, ClaimResult ok, IEnumerable<string> touchedQuotas, CancellationToken cancellationToken)
+    private Task<ClaimResult> CommitAsync(ISparkClaimsUnitOfWork uow, ClaimResult ok, IEnumerable<string> touchedQuotas, CancellationToken cancellationToken)
+        => CommitAsync(uow, ok, InventoryOperations.Define, [], touchedQuotas, [], cancellationToken);
+
+    /// <summary>Commits; on success tells <see cref="committed"/> what changed (when anything did).</summary>
+    private async Task<ClaimResult> CommitAsync(
+        ISparkClaimsUnitOfWork uow, ClaimResult ok, string operation, IReadOnlyList<string> claimIds,
+        IEnumerable<string> touchedQuotas, IEnumerable<string> touchedUnits, CancellationToken cancellationToken)
     {
         if (!await uow.CommitAsync(cancellationToken))
             return ConflictResult;
-        var touched = touchedQuotas.Distinct(StringComparer.Ordinal).ToList();
-        if (committed is not null && touched.Count > 0)
-            await committed(touched, cancellationToken);
+        var quotas = touchedQuotas.Distinct(StringComparer.Ordinal).ToList();
+        var units = touchedUnits.Distinct(StringComparer.Ordinal).ToList();
+        if (committed is not null && (quotas.Count > 0 || units.Count > 0))
+            await committed(new InventoryCommit(operation, claimIds, quotas, units), cancellationToken);
         return ok;
     }
 
@@ -353,7 +382,8 @@ public sealed class InventoryEngine : ISparkInventory
         if (refused is not null) return refused;
 
         await session.StoreAsync(claim, cancellationToken);
-        return await CommitAsync(uow, ClaimResult.Ok with { Units = claim.Units.ToList() }, claim.Allocations.Select(a => a.QuotaId), cancellationToken);
+        return await CommitAsync(uow, ClaimResult.Ok with { Units = claim.Units.ToList() }, InventoryOperations.Claim, [claim.Id!],
+            claim.Allocations.Select(a => a.QuotaId), claim.Units, cancellationToken);
     }
 
     private async Task<ClaimResult> AdjustOnceAsync(ClaimRequest target, int attempt, CancellationToken cancellationToken)
@@ -366,6 +396,7 @@ public sealed class InventoryEngine : ISparkInventory
 
         var expiresAt = target.ExpiresAt.ToUniversalTime();
         var touched = claim.Allocations.Select(a => a.QuotaId).ToList();
+        var unitsBefore = claim.Units.ToList();
 
         // Quota units and limits: drop the claim's holds, then take the target's.
         foreach (var shardId in claim.Allocations.Select(a => a.ShardId).Distinct())
@@ -409,7 +440,9 @@ public sealed class InventoryEngine : ISparkInventory
         if (refused is not null) return refused;
 
         touched.AddRange(claim.Allocations.Select(a => a.QuotaId));
-        return await CommitAsync(uow, ClaimResult.Ok with { Units = claim.Units.ToList() }, touched, cancellationToken);
+        // Kept seats only moved their deadline: the states that changed are the seats given back and the seats taken.
+        var unitsChanged = unitsBefore.Except(claim.Units, StringComparer.Ordinal).Concat(claim.Units.Except(unitsBefore, StringComparer.Ordinal));
+        return await CommitAsync(uow, ClaimResult.Ok with { Units = claim.Units.ToList() }, InventoryOperations.Adjust, [claim.Id!], touched, unitsChanged, cancellationToken);
     }
 
     private static IEnumerable<string> ExplicitUnits(ClaimRequest request)
@@ -639,6 +672,16 @@ public sealed class InventoryEngine : ISparkInventory
         if (claim.State != ClaimState.Held) return new ClaimResult(ClaimStatus.InvalidState, claimId);
         if (!IsLive(claim.ExpiresAt)) return new ClaimResult(ClaimStatus.Expired, claimId);
 
+        var refused = await ConvertInPlaceAsync(uow, claim, lateLimits, cancellationToken);
+        if (refused is not null) return refused;
+        // Held to sold: availability is unchanged, the seats' states are not.
+        return await CommitAsync(uow, ClaimResult.Ok with { Units = claim.Units.ToList() }, InventoryOperations.Convert, [claim.Id!], [], claim.Units, cancellationToken);
+    }
+
+    /// <summary>Makes a held claim sold inside <paramref name="uow"/>. Returns the refusal, or null on success.</summary>
+    private async Task<ClaimResult?> ConvertInPlaceAsync(ISparkClaimsUnitOfWork uow, InventoryClaim claim, IReadOnlyList<LimitLine> lateLimits, CancellationToken cancellationToken)
+    {
+        var session = uow.Session;
         var refused = await VisitHoldsAsync(uow, claim,
             (hold, owner) => owner.Remove(hold),
             hold => hold with { ExpiresAtUtc = null },
@@ -666,7 +709,7 @@ public sealed class InventoryEngine : ISparkInventory
 
         claim.State = ClaimState.Converted;
         claim.ExpiresAt = null;
-        return await CommitAsync(uow, ClaimResult.Ok with { Units = claim.Units.ToList() }, [], cancellationToken);
+        return null;
     }
 
     /// <summary>
@@ -718,6 +761,7 @@ public sealed class InventoryEngine : ISparkInventory
         if (claim.State == ClaimState.Released) return ClaimResult.Ok;
 
         var touched = claim.Allocations.Select(a => a.QuotaId).ToList();
+        var units = claim.Units.ToList();
         if (claim.State == ClaimState.Held)
         {
             // A lapsed hold may already be gone (pruned or taken over); whatever is still ours is dropped.
@@ -742,7 +786,8 @@ public sealed class InventoryEngine : ISparkInventory
         claim.State = ClaimState.Released;
         claim.ReleaseReason = reason;
         claim.ExpiresAt = null;
-        return await CommitAsync(uow, ClaimResult.Ok, touched, cancellationToken);
+        return await CommitAsync(uow, ClaimResult.Ok, reason == ReturnReason.Expired ? InventoryOperations.Sweep : InventoryOperations.Release, [claimId],
+            touched, units, cancellationToken);
     }
 
     /// <summary>The return id a whole-claim release records on a converted claim.</summary>
@@ -766,10 +811,10 @@ public sealed class InventoryEngine : ISparkInventory
             claim.ReleaseReason = request.Reason;
         }
         var touched = request.ReturnStock ? claim.Returns[^1].Allocations.Select(a => a.QuotaId) : [];
-        return await CommitAsync(uow, ClaimResult.Ok, touched, cancellationToken);
+        return await CommitAsync(uow, ClaimResult.Ok, InventoryOperations.Return, [claimId], touched, claim.Returns[^1].Units, cancellationToken);
     }
 
-    private async Task<ClaimResult?> ApplyReturnAsync(ISparkClaimsUnitOfWork uow, InventoryClaim claim, InventoryReturn request, CancellationToken cancellationToken)
+    private async Task<ClaimResult?> ApplyReturnAsync(ISparkClaimsUnitOfWork uow, InventoryClaim claim, InventoryReturn request, CancellationToken cancellationToken, ExchangeHandOver? handOver = null)
     {
         var session = uow.Session;
         var remaining = Remaining(claim);
@@ -830,7 +875,10 @@ public sealed class InventoryEngine : ISparkInventory
             }
 
         // The claim's unit list keeps sold seats until they come back; a returned seat leaves it and its chain position.
-        await ReleaseUnitsAsync(uow, claim, units, cancellationToken);
+        if (handOver is null)
+            await ReleaseUnitsAsync(uow, claim, units, cancellationToken);
+        else if (await HandOverUnitsAsync(uow, claim, units, handOver, cancellationToken) is { } refusedUnit)
+            return refusedUnit;
         record.Units.AddRange(units);
 
         foreach (var limit in limits.Where(l => l.N > 0))
@@ -861,7 +909,136 @@ public sealed class InventoryEngine : ISparkInventory
             shard.Sold -= allocation.N;
         }
         record.StockReturned = true;
-        return await CommitAsync(uow, ClaimResult.Ok, record.Allocations.Select(a => a.QuotaId), cancellationToken);
+        return await CommitAsync(uow, ClaimResult.Ok, InventoryOperations.Restock, [claimId], record.Allocations.Select(a => a.QuotaId), [], cancellationToken);
+    }
+
+    // ---- exchange ------------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// Return, claim and convert in one unit of work. The return runs first, so what it gives back is room for the
+    /// target (an upgrade within one quota never fails for want of the units it frees). Any refusal disposes the unit of
+    /// work uncommitted: the original claim keeps everything.
+    /// </summary>
+    private async Task<ClaimResult> ExchangeOnceAsync(InventoryExchange request, int attempt, CancellationToken cancellationToken)
+    {
+        using var uow = claims.BeginUnitOfWork();
+        var session = uow.Session;
+        var original = await session.LoadAsync<InventoryClaim>(request.ClaimId, cancellationToken);
+        if (original is null) return new ClaimResult(ClaimStatus.NotFound, request.ClaimId);
+
+        var replacement = await session.LoadAsync<InventoryClaim>(request.Target.ClaimId, cancellationToken);
+        var returned = original.Returns.Any(r => r.Id == request.Return.ReturnId);
+        if (replacement is not null || returned)
+        {
+            // Done before (idempotent), or the ids belong to something else.
+            return replacement is { State: ClaimState.Converted } && returned
+                ? ClaimResult.Ok with { Units = replacement.Units.ToList() }
+                : new ClaimResult(ClaimStatus.InvalidState, replacement is null ? request.ClaimId : request.Target.ClaimId);
+        }
+        if (original.State != ClaimState.Converted) return new ClaimResult(ClaimStatus.InvalidState, request.ClaimId);
+
+        var unitsBefore = original.Units.ToList();
+        // A seat both given back and named again by the target (a type upgrade on the same seat) is handed over, never
+        // deleted and re-created: a compare-exchange key deleted in a cluster-wide session cannot be created again in it.
+        var expiresAt = Now.AddMinutes(1);
+        var handOver = new ExchangeHandOver(request.Target.ClaimId, ExplicitUnits(request.Target).ToHashSet(StringComparer.Ordinal), expiresAt);
+        var refused = await ApplyReturnAsync(uow, original, request.Return, cancellationToken, handOver);
+        if (refused is not null) return refused;
+        if (Remaining(original).Shards.Values.All(n => n == 0) && RemainingUnits(original).Count == 0)
+        {
+            original.State = ClaimState.Released;
+            original.ReleaseReason = request.Return.Reason;
+        }
+
+        // The replacement is held for the length of this transaction only, then sold. It starts with the seats handed over.
+        var claim = new InventoryClaim
+        {
+            Id = request.Target.ClaimId, Owner = request.Target.Owner, State = ClaimState.Held, ExpiresAt = expiresAt,
+            Units = handOver.Kept.ToList(), Chains = handOver.Chains,
+        };
+        refused = await ApplyAsync(uow, request.Target, claim, attempt, cancellationToken);
+        if (refused is not null) return refused;
+
+        // Seats given back become chain holes only now, so chain fill above never proposed a key deleted in this session.
+        foreach (var (chainId, positions) in handOver.Holes)
+            if (await session.LoadAsync<InventoryChain>(chainId, cancellationToken) is { } chain)
+                ChainFill.Return(chain, positions);
+
+        refused = await ConvertInPlaceAsync(uow, claim, request.LateLimits ?? [], cancellationToken);
+        if (refused is not null) return refused;
+        await session.StoreAsync(claim, cancellationToken);
+
+        var quotas = (request.Return.ReturnStock ? original.Returns[^1].Allocations.Select(a => a.QuotaId) : [])
+            .Concat(claim.Allocations.Select(a => a.QuotaId));
+        var units = unitsBefore.Except(original.Units, StringComparer.Ordinal).Concat(claim.Units);
+        return await CommitAsync(uow, ClaimResult.Ok with { Units = claim.Units.ToList() }, InventoryOperations.Exchange,
+            [original.Id!, claim.Id!], quotas, units, cancellationToken);
+    }
+
+    /// <summary>What an exchange's return hands to the replacement claim instead of releasing.</summary>
+    private sealed class ExchangeHandOver(string targetId, HashSet<string> wanted, DateTimeOffset expiresAt)
+    {
+        public string TargetId { get; } = targetId;
+        public HashSet<string> Wanted { get; } = wanted;
+        public DateTimeOffset ExpiresAt { get; } = expiresAt;
+        /// <summary>Seats the replacement takes over as they are (owner changed, key kept).</summary>
+        public List<string> Kept { get; } = [];
+        /// <summary>The chain positions of the kept seats, moved to the replacement so its release returns them.</summary>
+        public List<ChainAllocation> Chains { get; } = [];
+        /// <summary>Chain positions of the seats really given back, returned as holes after the replacement is seated.</summary>
+        public List<(string ChainId, List<int> Positions)> Holes { get; } = [];
+    }
+
+    /// <summary>
+    /// The exchange's variant of <see cref="ReleaseUnitsAsync"/>: a seat the replacement names is handed over (its
+    /// compare-exchange value changes owner), the others are released with their chain holes deferred. Returns the
+    /// refusal, or null.
+    /// </summary>
+    private async Task<ClaimResult?> HandOverUnitsAsync(ISparkClaimsUnitOfWork uow, InventoryClaim claim, IReadOnlyCollection<string> units, ExchangeHandOver handOver, CancellationToken cancellationToken)
+    {
+        var gone = units.ToHashSet(StringComparer.Ordinal);
+        var released = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var unitId in units)
+        {
+            var key = unitKind.Key(unitId);
+            if (handOver.Wanted.Contains(unitId))
+            {
+                var moved = await uow.UpdateAsync(unitKind, key, claim.Id!, hold => hold with { Owner = handOver.TargetId, ExpiresAtUtc = handOver.ExpiresAt.UtcDateTime }, cancellationToken);
+                if (!moved.Holds) return new ClaimResult(ClaimStatus.InvalidState, unitId);
+                handOver.Kept.Add(unitId);
+            }
+            else if ((await uow.ReleaseAsync(unitKind, key, claim.Id!, cancellationToken)).Status == SparkClaimStatus.Released)
+            {
+                released.Add(unitId);
+            }
+        }
+
+        foreach (var allocation in claim.Chains)
+        {
+            var holes = new List<int>();
+            for (var i = allocation.Units.Count - 1; i >= 0; i--)
+            {
+                var unitId = allocation.Units[i];
+                if (!gone.Contains(unitId)) continue;
+                if (handOver.Wanted.Contains(unitId))
+                {
+                    var target = handOver.Chains.FirstOrDefault(c => c.ChainId == allocation.ChainId);
+                    if (target is null) handOver.Chains.Add(target = new ChainAllocation { ChainId = allocation.ChainId });
+                    target.Units.Add(unitId);
+                    target.Positions.Add(allocation.Positions[i]);
+                }
+                else if (released.Contains(unitId))
+                {
+                    holes.Add(allocation.Positions[i]);
+                }
+                allocation.Units.RemoveAt(i);
+                allocation.Positions.RemoveAt(i);
+            }
+            if (holes.Count > 0) handOver.Holes.Add((allocation.ChainId, holes));
+        }
+        claim.Chains.RemoveAll(c => c.Units.Count == 0);
+        claim.Units.RemoveAll(gone.Contains);
+        return null;
     }
 
     /// <summary>The quota units a converted claim still has sold, per shard.</summary>
@@ -892,6 +1069,6 @@ public sealed class InventoryEngine : ISparkInventory
         var pruned = 0;
         foreach (var shard in await LoadShardsAsync(uow.Session, quota, cancellationToken))
             pruned += shard.Holds.RemoveAll(h => !IsLive(h.ExpiresAt));
-        return pruned > 0 ? await CommitAsync(uow, ClaimResult.Ok, [quotaId], cancellationToken) : ClaimResult.Ok;
+        return pruned > 0 ? await CommitAsync(uow, ClaimResult.Ok, InventoryOperations.Sweep, [], [quotaId], [], cancellationToken) : ClaimResult.Ok;
     }
 }
