@@ -1,0 +1,20 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<tns:municipalityResponseBySource xmlns:com="http://fsb.belgium.be/data/common" xmlns:tns="http://fsb.belgium.be/mappingservices/FullDownload/v1_00" xmlns:xs="http://www.w3.org/2001/XMLSchema">
+	<tns:source>brussels</tns:source>
+	<tns:timestamp>2026-10-17T05:15:23.354190282Z</tns:timestamp>
+	<tns:municipality>
+		<com:code>
+			<com:namespace>https://databrussels.be/id/municipality</com:namespace>
+			<com:objectIdentifier>21004</com:objectIdentifier>
+			<com:versionIdentifier>7</com:versionIdentifier>
+		</com:code>
+		<com:name>
+			<com:language>fr</com:language>
+			<com:spelling>Bruxelles</com:spelling>
+		</com:name>
+		<com:name>
+			<com:language>nl</com:language>
+			<com:spelling>Brussel</com:spelling>
+		</com:name>
+	</tns:municipality>
+</tns:municipalityResponseBySource>

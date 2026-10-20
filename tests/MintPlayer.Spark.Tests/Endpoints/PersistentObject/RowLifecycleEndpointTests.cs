@@ -402,7 +402,7 @@ public class RowLifecycleEndpointTests : SparkTestDriver
 
         status.Should().Be(HttpStatusCode.BadRequest);
         body.GetProperty("result").GetProperty("errors")[0]
-            .GetProperty("errorMessage").GetProperty("en").GetString()
+            .GetProperty("errorMessage").Text("en")
             .Should().Be("This line has been settled.");
     }
 

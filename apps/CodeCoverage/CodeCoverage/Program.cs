@@ -83,7 +83,7 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     // non-managers. Writes stay denied at the type level
     // (no Edit/New/Delete right exists), so the generic UI is read-only.
     // The /api controllers remain the primary read surface for the vanity pages.
-    spark.AddActions();
+    // The Actions classes are registered by spark.AddSparkDiscovered() below.
 
     // The six /api controllers mount through Spark rather than through a bare
     // MapControllers(): they then run at the pipeline stage Spark chose, behind
@@ -283,9 +283,6 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     spark.AddMessaging();
     if (mailConfigured)
         spark.AddMailManager();
-    spark.AddCustomActions();
-    spark.AddRecipients();
-    spark.AddCronJobs();
     // The commit-graph avatar cache (#504, D28) writes @expires by hand, so the database must reap it.
     spark.AddExpiration();
 
@@ -302,7 +299,18 @@ builder.Services.AddSpark(builder.Configuration, spark =>
             .History("HostDiskUsedPercent")
             .ObjectId(CodeCoverage.CommitGraph.HostMetricsActions.ObjectId)));
 
-    // ⚠ The four calls above are source-generated over THIS assembly only, so they do not see
+    // Source-generated (X20): registers this assembly's Actions classes, custom actions, recipients,
+    // cron jobs and migrations. Placed after AddDashboards and before AddGithubIntegration, so the
+    // order of the startup middleware (dashboards verify, then migrations) and of the recipients
+    // (this app's before the GitHub integration's) is what it was with the separate calls.
+    // Pending ISparkMigration classes run inside UseSpark(), after indexes are
+    // created and before the app serves — once per database, in Version order,
+    // under a cluster-wide lock. Committed and replayed automatically, so a
+    // restored backup or a fresh environment can't miss one the way a hand-run
+    // patch in Raven Studio can.
+    spark.AddSparkDiscovered();
+
+    // ⚠ The call above is source-generated over THIS assembly only, so it does not see
     // anything in CodeCoverage.GithubIntegration. Its own entry point has to be called explicitly,
     // or every GitHub service and recipient silently fails to register - the app would still start
     // and still serve pages, it would just stop publishing pull-request comments and handling
@@ -311,12 +319,6 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     // One line per forge. When GitLab and Bitbucket gain implementations, they are added here
     // beside this, and nothing else in the composition root changes.
     spark.AddGithubIntegration();
-    // Pending ISparkMigration classes run inside UseSpark(), after indexes are
-    // created and before the app serves — once per database, in Version order,
-    // under a cluster-wide lock. Committed and replayed automatically, so a
-    // restored backup or a fresh environment can't miss one the way a hand-run
-    // patch in Raven Studio can.
-    spark.AddMigrations();
     spark.AddGithubWebhooks(options =>
     {
         options.WebhookSecret = builder.Configuration["GitHub:WebhookSecret"] ?? string.Empty;

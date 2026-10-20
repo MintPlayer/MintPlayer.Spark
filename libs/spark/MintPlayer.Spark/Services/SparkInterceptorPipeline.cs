@@ -102,6 +102,13 @@ internal sealed partial class SparkInterceptorPipeline : ISparkInterceptorPipeli
                 $"More than one {nameof(IDeleteReplacement)} governs '{entityType.FullName}': " +
                 string.Join(", ", result.Select(h => h.GetType().FullName)) + ". At most one may decide whether its deletes are replaced.");
 
+        // Likewise a diverted save (commerce X7): two replacements would each record the change, and only one
+        // receipt can answer the caller.
+        if (typeof(TInterceptor) == typeof(ISaveReplacement) && result.Count > 1)
+            throw new InvalidOperationException(
+                $"More than one {nameof(ISaveReplacement)} governs '{entityType.FullName}': " +
+                string.Join(", ", result.Select(h => h.GetType().FullName)) + ". At most one may decide whether its saves are diverted.");
+
         forType[(typeof(TInterceptor), entityType, sync)] = result;
         return result;
     }

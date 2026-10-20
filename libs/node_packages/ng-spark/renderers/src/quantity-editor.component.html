@@ -1,0 +1,20 @@
+<div class="input-group spark-quantity-editor">
+  <input type="number"
+    class="form-control"
+    inputmode="decimal"
+    step="any"
+    [value]="amountText()"
+    [attr.aria-label]="attribute()?.name"
+    (input)="onAmountInput($event)">
+  @if (fixedUnit()) {
+    <span class="input-group-text">{{ unit() }}</span>
+  } @else {
+    <select class="form-select spark-quantity-unit"
+      [attr.aria-label]="attribute()?.name"
+      (change)="onUnitChange($event)">
+      @for (code of choices(); track code) {
+        <option [value]="code" [selected]="code === unit()">{{ code }}</option>
+      }
+    </select>
+  }
+</div>

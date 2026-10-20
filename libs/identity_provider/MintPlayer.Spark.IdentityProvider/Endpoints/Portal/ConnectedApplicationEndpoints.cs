@@ -11,9 +11,11 @@ using Raven.Client.Documents.Session;
 namespace MintPlayer.Spark.IdentityProvider.Endpoints.Portal;
 
 /// <summary>One granted scope on the connected-applications page, in the user's language.</summary>
+[MintPlayer.Spark.Abstractions.SparkContract("SparkConnectedScope")]
 public sealed record ConnectedScope(string Name, string DisplayName, string? Description, bool Required);
 
 /// <summary>One application the user granted access to (D6).</summary>
+[MintPlayer.Spark.Abstractions.SparkContract("SparkConnectedApplication")]
 public sealed record ConnectedApplication(
     string ApplicationId,
     string DisplayName,
@@ -28,6 +30,7 @@ public sealed record ConnectedApplication(
 
 /// <summary>The body of <c>POST /spark/identity-provider/applications/withdraw</c>.</summary>
 /// <param name="Scopes">The scopes to withdraw; null or empty withdraws the whole grant.</param>
+[MintPlayer.Spark.Abstractions.SparkContract("SparkWithdrawAccessRequest")]
 public sealed record WithdrawAccessBody(string ApplicationId, string[]? Scopes);
 
 /// <summary>The signed-in user's connected applications, for the SPA's <c>account/applications</c> page (D6, D7).</summary>

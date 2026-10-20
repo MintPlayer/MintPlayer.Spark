@@ -1,5 +1,6 @@
 import type { CanActivateFn } from '@angular/router';
 import { sparkAuthGuard } from '@mintplayer/ng-spark/auth/guards';
+import { translated } from '@mintplayer/ng-spark/models';
 import type { SparkAuthRouteEntry, SparkAuthRoutePaths, SparkAccountOverviewLink } from '@mintplayer/ng-spark/auth/models';
 import type { SparkAuthRoutesFeature } from '@mintplayer/ng-spark/auth/routes';
 
@@ -78,7 +79,7 @@ export function withConnectedApplications(
   const path = entryPath(options?.connectedApplications, 'account/applications');
   return {
     paths: { connectedApplications: '/' + path },
-    accountLinks: [{ key: 'connectedApplications', path: '/' + path, label: { en: 'Connected applications', fr: 'Applications connectées', nl: 'Verbonden applicaties' } }],
+    accountLinks: [{ key: 'connectedApplications', path: '/' + path, label: translated({ en: 'Connected applications', fr: 'Applications connectées', nl: 'Verbonden applicaties' }) }],
     children: [
       child(options?.connectedApplications, path,
         () => import('@mintplayer/ng-spark/identity-provider/connected-applications').then(m => m.SparkConnectedApplicationsComponent),

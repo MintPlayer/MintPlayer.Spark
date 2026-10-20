@@ -6,7 +6,7 @@ namespace MintPlayer.Spark.Abstractions.Interceptors;
 /// What every persistence interceptor is (#482): a DI-registered service that governs the entity types it
 /// claims. An interceptor implements one or more phase interfaces — <see cref="IBeforeSave"/>,
 /// <see cref="IAfterSave"/>, <see cref="IBeforeDelete"/>, <see cref="IAfterDelete"/>,
-/// <see cref="IDeleteReplacement"/>, <see cref="IAfterMaterialize"/>, <see cref="IAfterLoad"/>,
+/// <see cref="IDeleteReplacement"/>, <see cref="ISaveReplacement"/>, <see cref="IAfterMaterialize"/>, <see cref="IAfterLoad"/>,
 /// <see cref="INaturalIdCollision"/>, and the durable <see cref="IAfterSaveCommitted"/> /
 /// <see cref="IAfterDeleteCommitted"/> — and is registered once with <c>spark.AddInterceptor&lt;T&gt;()</c>
 /// (scoped), or found by the interceptor registration generator. Before #482 an interceptor
@@ -21,7 +21,9 @@ namespace MintPlayer.Spark.Abstractions.Interceptors;
 /// <para>
 /// <b>The framework owns persistence.</b> It loads, maps (<c>MapAsync</c> on the Actions class), runs
 /// the interceptors, checks the row (WITH CHECK), writes with the expected change vector and commits once.
-/// An interceptor cannot skip any of that, and neither can an Actions class.
+/// An interceptor cannot skip any of that, and neither can an Actions class. The one way not to write is
+/// <see cref="ISaveReplacement"/>, asked before any of it: it diverts the whole save (to a proposal awaiting
+/// approval), so none of it runs until the change is applied.
 /// </para>
 /// <para>
 /// <b>Order:</b> there is no numeric order. Within a phase interceptors run in registration order, which
@@ -296,6 +298,19 @@ public sealed class SaveContext : SparkInterceptorContext
 
     /// <summary>Whether this save creates the entity.</summary>
     public bool IsNew => Operation == PersistentObjectOperation.New;
+
+    /// <summary>
+    /// Whether this save applies a change an <see cref="ISaveReplacement"/> diverted earlier (an approved proposal,
+    /// commerce X7). The caller is the one who applies it; <see cref="OnBehalfOf"/> is who made it.
+    /// </summary>
+    public bool IsReplacedSaveApply { get; init; }
+
+    /// <summary>
+    /// When <see cref="IsReplacedSaveApply"/>: the user who made the change (the proposer), as the applier named
+    /// them. Also in <see cref="SparkInterceptorContext.Facts"/> as <see cref="SparkFacts.OnBehalfOf"/>. An
+    /// interceptor that records authorship decides which of the two it means.
+    /// </summary>
+    public string? OnBehalfOf { get; init; }
 }
 
 /// <summary>A delete through <c>IDatabaseAccess.DeletePersistentObjectAsync</c> or a bulk delete.</summary>

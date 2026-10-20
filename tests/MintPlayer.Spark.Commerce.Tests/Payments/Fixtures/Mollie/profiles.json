@@ -1,0 +1,21 @@
+{
+  "_fixture": {
+    "source": "https://docs.mollie.com/reference/list-profiles (response example)",
+    "derived": "public documentation example; trimmed to one profile",
+    "recorded": false
+  },
+  "count": 1,
+  "_embedded": {
+    "profiles": [
+      {
+        "resource": "profile",
+        "id": "pfl_QkEhN94Ba",
+        "mode": "live",
+        "name": "Festival Seller",
+        "website": "https://seller.example.org",
+        "status": "verified"
+      }
+    ]
+  },
+  "_links": { "next": null }
+}

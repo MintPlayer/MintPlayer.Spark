@@ -10,6 +10,7 @@ import { SparkService } from './spark.service';
 import { RetryActionService } from './retry-action.service';
 import { SparkClientOperationDispatcher, provideSparkClientMethods, type SparkClientMethodMap } from '@mintplayer/ng-spark/client-operations';
 import { SPARK_CONFIG } from '@mintplayer/ng-spark';
+import { isSaveSubmitted, translated } from '@mintplayer/ng-spark/models';
 
 /**
  * HTTP-shape tests for SparkService. The service is a thin client over a fixed
@@ -205,6 +206,18 @@ describe('SparkService', () => {
 
     req.flush({ result: { id: 'p/1', name: 'Bob' }, operations: [] });
     await expect(promise).resolves.toMatchObject({ id: 'p/1' });
+  });
+
+  it('a save the server diverted for approval (202) resolves to the receipt, not an error (commerce X7)', async () => {
+    const promise = service.update('Person', 'p/1', { name: 'Bob', etag: 'A:1' });
+
+    httpTesting.expectOne('/spark/po/update').flush(
+      { result: { submitted: { kind: 'approval', referenceId: 'approvals/1' } }, operations: [] },
+      { status: 202, statusText: 'Accepted' });
+
+    const result = await promise;
+    expect(isSaveSubmitted(result)).toBe(true);
+    expect(result).toEqual({ submitted: { kind: 'approval', referenceId: 'approvals/1' } });
   });
 
   it('delete names its target in the body like every other call', async () => {
@@ -564,7 +577,7 @@ describe('SparkService', () => {
   });
 
   describe('lookup references', () => {
-    const value = { key: 'k', values: { en: 'K' }, isActive: true };
+    const value = { key: 'k', values: translated({ en: 'K' }), isActive: true };
 
     it('getLookupReferences GETs the list', async () => {
       const promise = service.getLookupReferences();

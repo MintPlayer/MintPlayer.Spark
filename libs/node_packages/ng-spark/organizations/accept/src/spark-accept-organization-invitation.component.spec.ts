@@ -1,7 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { TestBed } from '@angular/core/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
-import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
+import { ActivatedRoute, Router, convertToParamMap, provideRouter } from '@angular/router';
 import { of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -69,6 +69,28 @@ describe('SparkAcceptOrganizationInvitationComponent', () => {
     await invalid.componentInstance.accept();
     invalid.detectChanges();
     expect((invalid.nativeElement as HTMLElement).querySelector('.spark-organization-invalid')?.textContent?.trim()).toBe('organizations.spa.invalid');
+  });
+
+  it('goes on to the approval request a join-request link mailed before D26 became', async () => {
+    const url = '/po/approval-request/ApprovalRequests%2F1';
+    const fixture = configure(vi.fn().mockReturnValue(of({ accepted: false, organizationId: null, organization: null, problem: null, reason: null, approvalRequestUrl: url })));
+    const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
+
+    await fixture.componentInstance.accept();
+
+    expect(navigate).toHaveBeenCalledWith(url);
+    expect(fixture.componentInstance.failed()).toBe(false);
+    expect(fixture.componentInstance.joined()).toBeNull();
+  });
+
+  it('never follows an approval-request url that leaves the app', async () => {
+    const fixture = configure(vi.fn().mockReturnValue(of({ accepted: false, organizationId: null, organization: null, problem: 'x', approvalRequestUrl: '//evil.example/x' })));
+    const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
+
+    await fixture.componentInstance.accept();
+
+    expect(navigate).not.toHaveBeenCalled();
+    expect(fixture.componentInstance.failed()).toBe(true);
   });
 
   it('does not post a link without a token', async () => {

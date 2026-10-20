@@ -5,6 +5,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { withSparkTimezone } from '@mintplayer/ng-spark/services';
 import { provideAnimations } from '@angular/platform-browser/animations';
 import { provideSparkAuth, withSparkAuth } from '@mintplayer/ng-spark/auth';
+import { provideSparkReplication } from '@mintplayer/ng-spark/replication';
 
 import { routes } from './app.routes';
 
@@ -16,6 +17,8 @@ export const appConfig: ApplicationConfig = {
     provideHttpClient(...withSparkAuth(), ...withSparkTimezone()),
     provideAnimations(),
     provideSparkAuth(),
+    // The pending badge on replica rows whose change waits at the owning module (warehouse §4.2.5).
+    provideSparkReplication(),
     provideZonelessChangeDetection()
   ]
 };

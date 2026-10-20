@@ -1,0 +1,61 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<OutputType>Library</OutputType>
+		<!-- Names this library's App_Data layers (composition D16). Permanent: it is part of the right keys, the slot
+		     names and the model ids the library ships (commerce PRD §4.1, D31). -->
+		<SparkLibraryAlias>commerce-shipping</SparkLibraryAlias>
+
+		<!-- NuGet Package Metadata -->
+		<PackageId>MintPlayer.Spark.Commerce.Shipping</PackageId>
+		<Version>11.0.0-preview.1</Version>
+		<Authors>MintPlayer</Authors>
+		<Company>MintPlayer</Company>
+		<Description>Shipping for the MintPlayer.Spark commerce suite and the warehouse pack station: shipping methods and zones from configuration (flat rate, free-shipping threshold, pickup), IShippingRateProvider, a carrier capability catalog, labels (PDF or ZPL) with multi-parcel shipments and return labels, service points and parcel lockers, customs documents (CN22/CN23 or commercial invoice, DAP/DDP per zone), dangerous-goods service restrictions, dispatch cut-offs and delivery promises that skip public holidays, and tracking through MintPlayer.Spark.Webhooks or polling. No Checkout dependency. Carrier adapters: MintPlayer.Spark.Commerce.Shipping.Sendcloud, .Bpost, .PostNL and .Test.</Description>
+		<PackageTags>commerce;shipping;carriers;labels;tracking;sendcloud;bpost;postnl;spark</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="README.md" Pack="true" PackagePath="\" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="11.4.1-rc.0" />
+		<PackageReference Include="MintPlayer.SourceGenerators" Version="13.0.0">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="13.0.0" GeneratePathProperty="true" />
+		<PackageReference Include="RavenDB.Client" Version="7.2.6" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- PRD §4.1: Shipping depends on core and Webhooks only (X5: carrier tracking webhooks). No Checkout and no
+		     Commerce reference, because the warehouse's pack station uses it too (warehouse WX12, W8). -->
+		<ProjectReference Include="..\..\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
+		<ProjectReference Include="..\..\webhooks\MintPlayer.Spark.Webhooks\MintPlayer.Spark.Webhooks.csproj" />
+		<!-- The tracking poll for carriers that push no webhooks (bpost, PostNL). -->
+		<ProjectReference Include="..\..\cron\MintPlayer.Spark.Cron\MintPlayer.Spark.Cron.csproj" />
+		<!-- RefIds only: the optional holiday calendar (GC11) reads the reference data's synced PublicHolidays by id. -->
+		<ProjectReference Include="..\..\refdata\abstractions\MintPlayer.Spark.ReferenceData.Abstractions.csproj" />
+		<!-- Spark's generators (the library layers) and analyzers. Analyzer ProjectReferences are not transitive. -->
+		<ProjectReference Include="..\..\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<InternalsVisibleTo Include="MintPlayer.Spark.Commerce.Tests" />
+		<InternalsVisibleTo Include="MintPlayer.Spark.Commerce.Shipping.Sendcloud" />
+		<InternalsVisibleTo Include="MintPlayer.Spark.Commerce.Shipping.Bpost" />
+		<InternalsVisibleTo Include="MintPlayer.Spark.Commerce.Shipping.PostNL" />
+		<InternalsVisibleTo Include="MintPlayer.Spark.Commerce.Shipping.Test" />
+	</ItemGroup>
+
+</Project>

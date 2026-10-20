@@ -1,0 +1,21 @@
+<mjml>
+  <mj-head>
+    <mj-title>{{ title }}: {{ status }}</mj-title>
+    <mj-attributes>
+      <mj-all font-family="Segoe UI, Helvetica, Arial, sans-serif" />
+      <mj-text font-size="15px" line-height="22px" color="#111827" />
+      <mj-button background-color="#2563eb" color="#ffffff" border-radius="6px" font-size="15px" />
+    </mj-attributes>
+  </mj-head>
+  <mj-body background-color="#f3f4f6">
+    <mj-section background-color="#ffffff" padding="24px 0">
+      <mj-column>
+        <mj-text font-size="20px" font-weight="600">{{ if status == "Approved" }}Your request was approved{{ else if status == "Rejected" }}Your request was rejected{{ else if status == "Revoked" }}An approval of yours was revoked{{ else if status == "Expired" }}Your request expired without a decision{{ else if status == "Stale" }}Your request could not be applied{{ else }}Your request was closed{{ end }}</mj-text>
+        <mj-text>{{ title }}</mj-text>
+        {{ if reason }}<mj-text><strong>Reason:</strong> {{ reason }}</mj-text>{{ end }}
+        {{ if link }}<mj-button href="{{ link }}">Open the request</mj-button>
+        <mj-text font-size="13px" color="#4b5563">If the button does not work, open this link: <a href="{{ link }}">{{ link }}</a></mj-text>{{ end }}
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>

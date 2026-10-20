@@ -88,7 +88,7 @@ public class TranslatedStringMergeTests
                 {
                     Name = "Description",
                     DataType = "TranslatedString",
-                    Value = entries.ToDictionary(e => e.Lang, e => e.Value),
+                    Value = TranslatedString.Of(entries),
                 },
             ],
         };
@@ -109,7 +109,7 @@ public class TranslatedStringMergeTests
             {
                 Name = "Description",
                 DataType = "TranslatedString",
-                Value = entries.ToDictionary(e => e.Lang, e => e.Value),
+                Value = TranslatedString.Of(entries),
                 IsValueChanged = true,
             })
             .ToArray();
@@ -130,27 +130,20 @@ public class TranslatedStringMergeTests
         attr.Value.Should().NotBeNull("Description value must round-trip on the wire");
         var translations = ParseTranslations(attr.Value!);
         foreach (var (lang, value) in expected)
-            translations.Should().ContainKey(lang).Which.Should().Be(value, $"language '{lang}' should be preserved");
+            translations[lang].Should().Be(value, $"language '{lang}' should be preserved");
     }
 
-    private static Dictionary<string, string> ParseTranslations(object value)
+    private static TranslatedString ParseTranslations(object value)
     {
-        // The server sends TranslatedString as a flat JSON object. Depending on where we
-        // are in the client stack it may arrive as a JsonElement, a dict, or a string.
+        // The server sends TranslatedString in its one shape, {"Entries":[{"Tag":..,"Value":..}]} (X17).
+        // Depending on where we are in the client stack it may arrive as a JsonElement or already typed.
+        if (value is TranslatedString typed)
+            return typed;
         if (value is JsonElement je && je.ValueKind == JsonValueKind.Object)
         {
-            var result = new Dictionary<string, string>();
-            foreach (var prop in je.EnumerateObject())
-            {
-                if (prop.Value.ValueKind == JsonValueKind.String)
-                    result[prop.Name] = prop.Value.GetString()!;
-            }
-            return result;
+            je.TryGetProperty("Entries", out _).Should().BeTrue("the wire shape is {\"Entries\":[…]}, not the flat {\"en\":…}");
+            return je.Deserialize<TranslatedString>()!;
         }
-        if (value is IDictionary<string, string> dict)
-            return new Dictionary<string, string>(dict);
-        if (value is IDictionary<string, object> objDict)
-            return objDict.ToDictionary(kv => kv.Key, kv => kv.Value?.ToString() ?? string.Empty);
         throw new InvalidOperationException($"Unexpected Description wire shape: {value.GetType().FullName}");
     }
 }

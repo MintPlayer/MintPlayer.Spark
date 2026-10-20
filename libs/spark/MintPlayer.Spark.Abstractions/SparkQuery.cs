@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 namespace MintPlayer.Spark.Abstractions;
 
 /// <summary>A query: a list of rows from a source, shown as a grid, a program unit's target or a sub-query.</summary>
+[SparkContract]
 public sealed class SparkQuery
 {
     /// <summary>The query's stable id. Fixed by a library for what it ships; an application file cannot override it.</summary>

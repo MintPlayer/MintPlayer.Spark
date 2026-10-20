@@ -1,0 +1,19 @@
+<mjml>
+  <mj-head>
+    <mj-title>Your change could not be delivered to {{ owner }}</mj-title>
+    <mj-attributes>
+      <mj-all font-family="Segoe UI, Helvetica, Arial, sans-serif" />
+      <mj-text font-size="15px" line-height="22px" color="#111827" />
+    </mj-attributes>
+  </mj-head>
+  <mj-body background-color="#f3f4f6">
+    <mj-section background-color="#ffffff" padding="24px 0">
+      <mj-column>
+        <mj-text font-size="20px" font-weight="600">Your change could not be delivered</mj-text>
+        <mj-text>{{ module }} tried to send your change of {{ collection }} {{ document }} ({{ changes }}) to {{ owner }}, but {{ owner }} could not be reached. The change was not applied.</mj-text>
+        {{ if reason }}<mj-text><strong>Details:</strong> {{ reason }}</mj-text>{{ end }}
+        <mj-text>Open "My pending changes" in {{ module }} to send it again, or make the change again later.</mj-text>
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>

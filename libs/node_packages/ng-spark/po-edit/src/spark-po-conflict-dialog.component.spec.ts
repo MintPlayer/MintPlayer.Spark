@@ -3,7 +3,7 @@ import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SparkLanguageService, SparkService } from '@mintplayer/ng-spark/services';
-import { AS_DETAIL_ROW_KEY, EntityAttributeDefinition, EntityType, ShowedOn } from '@mintplayer/ng-spark/models';
+import { AS_DETAIL_ROW_KEY, EntityAttributeDefinition, EntityType, ShowedOn, resolveTranslation } from '@mintplayer/ng-spark/models';
 import { MergeConflict, mergeThreeWay } from './conflict-merge';
 import { SparkPoConflictDialogComponent } from './spark-po-conflict-dialog.component';
 import { addReferenceLabelsOf, addReferenceLabelsOfOptions } from './reference-labels';
@@ -33,7 +33,7 @@ describe('SparkPoConflictDialogComponent', () => {
       providers: [
         provideNoopAnimations(),
         { provide: SparkService, useValue: { getLookupReference: vi.fn() } },
-        { provide: SparkLanguageService, useValue: { t: (k: string) => k, resolve: (ts: any) => ts?.en ?? '' } },
+        { provide: SparkLanguageService, useValue: { t: (k: string) => k, resolve: (ts: any) => resolveTranslation(ts, 'en') } },
       ],
     });
   });

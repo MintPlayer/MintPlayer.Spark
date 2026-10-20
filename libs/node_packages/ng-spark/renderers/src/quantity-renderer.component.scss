@@ -1,0 +1,5 @@
+// Quantities line up in a column: same-width digits, and a value never wraps between its number and unit.
+:host {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}

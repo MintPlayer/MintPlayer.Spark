@@ -89,7 +89,7 @@ public sealed class SparkDescribeCommandTests : IDisposable
     [Fact]
     public void Model_shows_a_library_type_with_the_application_delta_on_top()
     {
-        WriteApp(Path.Combine("Model", "Gadget.json"), """{ "persistentObject": { "name": "Gadget", "attributes": [ { "name": "Serial", "showedOn": "PersistentObject" } ] } }""");
+        WriteApp(Path.Combine("Model", "Gadget.json"), """{ "$extends": "gadgets:Gadget", "persistentObject": { "name": "Gadget", "attributes": [ { "name": "Serial", "showedOn": "PersistentObject" } ] } }""");
 
         var layered = Describe("model", "Gadget", layers: true);
 

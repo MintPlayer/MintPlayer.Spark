@@ -7,9 +7,13 @@ export const SPARK_IDENTITY_PROVIDER_QUERIES = {
   /** `OidcApplication`: the caller's applications (members-only filter), or all of them for an administrator. */
   applications: 'oidc-applications',
   resources: 'oidc-resources',
-  developerRequests: 'oidc-developer-requests',
-  scopeApprovals: 'oidc-scope-approvals',
-  goLiveReviews: 'oidc-golive-reviews',
+  /**
+   * The Approvals library's inbox (`ApprovalRequest`, MintPlayer.Spark.Approvals): the pending requests the caller may
+   * decide. Developer requests, cross-owner scope requests and go-live reviews are approval requests (commerce D26).
+   */
+  approvals: 'pending-approvals',
+  /** The Approvals library's list of the caller's own requests, which the requester may withdraw. */
+  myApprovalRequests: 'my-approval-requests',
   grants: 'oidc-grants',
   auditEvents: 'oidc-audit-events',
 } as const;

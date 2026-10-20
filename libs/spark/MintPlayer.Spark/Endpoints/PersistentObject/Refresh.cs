@@ -37,6 +37,7 @@ internal sealed partial class RefreshPersistentObject : IPostEndpoint<RefreshPer
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
     {
         builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
+        builder.RefuseDeniedInEnvelope();
     }
 
     [Inject] private readonly IModelLoader modelLoader;
@@ -82,15 +83,10 @@ internal sealed partial class RefreshPersistentObject : IPostEndpoint<RefreshPer
         // Vidyano maps a refresh onto New for a new object and Read for an existing one, and that is
         // the right vocabulary: a refresh reveals what the form would look like, which is a read of
         // the model, not a write. Introducing a "Refresh" verb would mean every application's
-        // security.json had to grow a right before the feature worked at all.
-        try
-        {
-            await permissionService.EnsureAuthorizedAsync(isNew ? "New" : "Read", typeName);
-        }
-        catch (SparkAccessDeniedException)
-        {
-            return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
-        }
+        // security.json had to grow a right before the feature worked at all. A denial is answered by
+        // the endpoint filter (Configure).
+        await permissionService.EnsureAuthorizedAsync(isNew ? "New" : "Read", typeName);
+
         // Answers from a previous attempt, so a hook that prompted last time re-enters with
         // Retry.Result populated and takes its "the user said yes" branch instead of asking again.
         RetryScope.Accept(retryAccessor, request);

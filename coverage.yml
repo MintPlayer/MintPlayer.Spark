@@ -21,6 +21,9 @@ mergeQueue:
     - "**/App_Data/translations.json"
     - "**/App_Data/security.json"
     - "**/App_Data/Model/*.json"
+    # The TypeScript contracts (commerce X20, docs/guide-typescript-contracts.md): ng-spark's entry points
+    # (libs/node_packages/ng-spark/<entry>/src/generated/contracts.ts) and each app's ClientApp/src/app/generated/contracts.ts.
+    - "**/generated/contracts.ts"
   # take-base for the wholly generated files (O1, O19): a conflict anywhere in them takes the base side and
   # the regenerate step rewrites them. These explicit rules come first; after them, keepBothDefaults (on
   # unless set to false, O35/O36) adds keep-both for **/*.json (json-no-duplicate-keys), ignore files,
@@ -30,4 +33,6 @@ mergeQueue:
     - path: "**/App_Data/modelHashes.json"
       strategy: take-base
     - path: "**/App_Data/securityPosture.txt"
+      strategy: take-base
+    - path: "**/generated/contracts.ts"
       strategy: take-base

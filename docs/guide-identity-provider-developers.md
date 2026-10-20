@@ -9,8 +9,13 @@ The design and its decisions are in [identity_provider_platform_PRD.md](identity
 
 Sign in and open **Developers** (`/developers`):
 - Accept the current terms and request developer access.
-- Where the operator requires approval (the default), an administrator decides, and you get a mail
-  either way.
+- Where the operator requires approval (the default), your request waits for an administrator.
+  - It is an approval request ([guide-approvals.md](guide-approvals.md)): the administrators are told,
+    and you can follow it, or withdraw it, under **My approval requests**.
+  - You are told the decision either way. A rejection carries the administrator's reason, which the
+    **Developers** page shows. After a rejection you can ask again.
+- An administrator can later **revoke** an approval, also with a reason. A revoked account cannot ask
+  again; contact an administrator.
 - If the terms change, you accept them again.
 
 Once you are active, the **Applications** query lists the applications you are a member of, and you can
@@ -67,6 +72,12 @@ List the scopes your application may ask for, each **required** or optional:
   - Someone else's API scope is **Pending** until that resource's owner, or an administrator,
     approves it, unless the resource auto-approves. Until then it is granted only to your team
     members.
+  - Adding such a scope raises one approval request per scope, for that resource's owners. Your
+    team's Admins and Developers can follow it. A rejection's reason stays on the request.
+  - Nobody on your team can decide it, and a scope's status cannot be edited on the application:
+    saving keeps the status the server stored.
+  - Removing a pending scope withdraws its request. If nobody decides before the deadline (30 days by
+    default), the scope is removed again; add it again to ask again.
 
 To publish your own API, create an **API resource** (you become its owner) and define its scopes.
 Validate the tokens in your API with `spark.AddSparkResourceServer(authority, "<resource>")` and
@@ -96,7 +107,8 @@ An application always keeps at least one Admin.
 - **Development** (the default): only members can sign in to the application, and nothing needs
   approval. Use it while building.
 - **Live:** anyone can sign in. Switch with **Switch to Live**. Where the operator requires a go-live
-  review, an administrator approves the switch first. **Switch to Development** takes it back.
+  review, the switch is an approval request that an administrator decides; clicking again while it is
+  pending does not raise a second one. **Switch to Development** takes it back.
 
 ## 6. Protocol options
 

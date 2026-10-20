@@ -1,0 +1,35 @@
+<bs-table [isResponsive]="true" class="spark-po-diff">
+  <thead>
+    <tr>
+      <th>{{ fieldLabel() }}</th>
+      @if (showBefore()) {
+        <th>{{ beforeLabel() }}</th>
+      }
+      <th>{{ afterLabel() }}</th>
+    </tr>
+  </thead>
+  <tbody>
+    @for (row of rows(); track row.change.attribute.name) {
+      <tr class="spark-po-diff-change" [attr.data-attribute]="row.change.attribute.name">
+        <th scope="row">{{ row.change.attribute.label | resolveTranslation:row.change.attribute.name }}</th>
+        @if (row.component) {
+          <!-- The attribute's renderer registered a diff component: it draws both sides itself. -->
+          <td class="spark-po-diff-custom" [attr.colspan]="showBefore() ? 2 : 1">
+            <ng-container *ngComponentOutlet="row.component; inputs: row.inputs" />
+          </td>
+        } @else {
+          @if (showBefore()) {
+            <td class="spark-po-diff-before">
+              <spark-grid-cell [column]="row.before.column" [display]="row.before.display" [rendererValue]="row.before.rendererValue"
+                               [item]="before()" [chips]="row.before.chips" />
+            </td>
+          }
+          <td class="spark-po-diff-after">
+            <spark-grid-cell [column]="row.after.column" [display]="row.after.display" [rendererValue]="row.after.rendererValue"
+                             [item]="after()" [chips]="row.after.chips" />
+          </td>
+        }
+      </tr>
+    }
+  </tbody>
+</bs-table>

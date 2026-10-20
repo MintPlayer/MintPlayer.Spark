@@ -1,0 +1,124 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "SparkSyncAction, one write-back queued because the owner did not answer within the save (warehouse §4.2.5, owner",
+    "decisions 2026-10-20), and the durable per-user record of how it ended. Shipped by MintPlayer.Spark.Replication;",
+    "written only by the library, so every attribute is read-only. Each row is its initiator's alone (the Actions",
+    "class's row rule); MyPendingChanges lists the caller's waiting and failed changes until dismissed. Changes, OpId",
+    "and the timing fields are not attributes.",
+    "",
+    "HAND-AUTHORED. Ids are UUIDv5 of 'replication:SparkSyncAction[...]', written by 'npm run stamp:library-model-ids'."
+  ],
+  "persistentObject": {
+    "id": "45c8870d-15c8-51ca-ba62-e5f13a8c3e4f",
+    "name": "SparkSyncAction",
+    "clrType": "MintPlayer.Spark.Replication.Models.SparkSyncAction",
+    "alias": "pending-change",
+    "breadcrumb": "{TargetCollection} {DocumentId}",
+    "live": true,
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "da882c09-ccb8-5e42-a149-7ca8d71a6a1a",
+        "name": "OwnerModule",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "2ca03c67-c10d-51e9-a4b3-9a96251d9dec",
+        "name": "TargetCollection",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "5217e4ea-7227-5917-a1a2-b5344db687b1",
+        "name": "DocumentId",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "cb864434-6a4b-50e5-9cc4-78abf9707936",
+        "name": "Summary",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "a4e5d64f-4766-5c04-9995-c70d0fb3141b",
+        "name": "Status",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "b83fdbb3-4de3-5413-92cf-dd22979f6bdd",
+        "name": "Reason",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "3b06c694-a1d5-5a42-b728-b2777ce3a072",
+        "name": "CreatedAtUtc",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "78e94c26-aa72-5acf-b8a2-d68aa66b5bee",
+        "name": "CompletedAtUtc",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": [
+    {
+      "id": "121f1d22-5929-523d-bb9a-f0535abe51a1",
+      "name": "MyPendingChanges",
+      "source": "Custom.MyPendingChanges",
+      "alias": "my-pending-changes",
+      "renderMode": "Pagination",
+      "entityType": "SparkSyncAction",
+      "live": true
+    }
+  ]
+}

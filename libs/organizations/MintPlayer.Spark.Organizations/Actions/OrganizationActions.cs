@@ -2,6 +2,7 @@ using System.Linq.Expressions;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Queries;
+using MintPlayer.Spark.Services;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Organizations.Models;
 using Raven.Client.Documents;
@@ -39,12 +40,22 @@ public partial class OrganizationMembershipActions : DefaultPersistentObjectActi
 
     /// <summary>The parent organization's members. The parent was authorized by the query endpoint; the rows by the row policy.</summary>
     public IQueryable<OrganizationMembership> OrganizationMembers(CustomQueryArgs args)
-        => ParentId(args) is { } organizationId
+        => ParentId(args, services) is { } organizationId
             ? session.Query<OrganizationMembership>().Where(m => m.OrganizationId == organizationId)
             : Enumerable.Empty<OrganizationMembership>().AsQueryable();
 
-    internal static string? ParentId(CustomQueryArgs args)
-        => args.Parent?.Id is { Length: > 0 } id && string.Equals(args.ParentType, nameof(Organization), StringComparison.OrdinalIgnoreCase) ? id : null;
+    /// <summary>
+    /// The parent's id when the parent is an <see cref="Organization"/>. Matched by the parent's type id against the model
+    /// type whose <c>clrType</c> is <see cref="Organization"/> (D28): <c>ParentType</c> is the type's name in the
+    /// application, which an application rename changes, so comparing it to <c>nameof(Organization)</c> scoped nothing.
+    /// </summary>
+    internal static string? ParentId(CustomQueryArgs args, IServiceProvider services)
+        => args.Parent is { Id: { Length: > 0 } id } parent
+           && services.GetService(typeof(IModelLoader)) is IModelLoader modelLoader
+           && modelLoader.GetEntityTypeByClrType(typeof(Organization).FullName!) is { } organization
+           && parent.ObjectTypeId == organization.Id
+            ? id
+            : null;
 }
 
 /// <summary>Backs <c>Custom.OrganizationInvitations</c>, the pending invitations and join requests on an organization's page (Admins and up).</summary>
@@ -58,7 +69,7 @@ public partial class OrganizationInvitationActions : DefaultPersistentObjectActi
 
     /// <summary>The parent organization's pending invitations and join requests; expired ones are hidden by the expiration policy.</summary>
     public IQueryable<OrganizationInvitation> OrganizationInvitations(CustomQueryArgs args)
-        => OrganizationMembershipActions.ParentId(args) is { } organizationId
+        => OrganizationMembershipActions.ParentId(args, services) is { } organizationId
             ? session.Query<OrganizationInvitation>().Where(i => i.OrganizationId == organizationId)
             : Enumerable.Empty<OrganizationInvitation>().AsQueryable();
 }

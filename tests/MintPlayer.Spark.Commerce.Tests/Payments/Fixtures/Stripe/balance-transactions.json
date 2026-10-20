@@ -1,0 +1,17 @@
+{
+  "_fixture": {
+    "source": "https://docs.stripe.com/api/balance_transactions/list (payout filter) and https://docs.stripe.com/reports/reporting-categories (reporting_category values)",
+    "derived": "list envelope; one charge, one refund, one Stripe fee, one unknown charge and the payout itself; ids and amounts adapted",
+    "recorded": false
+  },
+  "object": "list",
+  "url": "/v1/balance_transactions",
+  "has_more": false,
+  "data": [
+    { "id": "txn_1Charge", "object": "balance_transaction", "amount": 7500, "created": 1792400690, "currency": "eur", "description": "orders/777", "fee": 158, "net": 7342, "reporting_category": "charge", "source": "ch_3Qtest777", "type": "charge" },
+    { "id": "txn_1Refund", "object": "balance_transaction", "amount": -2500, "created": 1792487000, "currency": "eur", "description": "credit-notes/1", "fee": 0, "net": -2500, "reporting_category": "refund", "source": "re_3QtestRefund2", "type": "refund" },
+    { "id": "txn_1StripeFee", "object": "balance_transaction", "amount": -100, "created": 1792500000, "currency": "eur", "description": "Billing", "fee": 0, "net": -100, "reporting_category": "fee", "source": null, "type": "stripe_fee" },
+    { "id": "txn_1Unknown", "object": "balance_transaction", "amount": 1000, "created": 1792500100, "currency": "eur", "description": "Not ours", "fee": 30, "net": 970, "reporting_category": "charge", "source": "ch_3QnotOurs", "type": "charge" },
+    { "id": "txn_1Payout", "object": "balance_transaction", "amount": -5712, "created": 1792700000, "currency": "eur", "description": "STRIPE PAYOUT", "fee": 0, "net": -5712, "reporting_category": "payout", "source": "po_1QtestPayout", "type": "payout" }
+  ]
+}

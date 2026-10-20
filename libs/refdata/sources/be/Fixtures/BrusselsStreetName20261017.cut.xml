@@ -1,0 +1,530 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<tns:streetNameResponseBySource xmlns:com="http://fsb.belgium.be/data/common" xmlns:tns="http://fsb.belgium.be/mappingservices/FullDownload/v1_00" xmlns:xs="http://www.w3.org/2001/XMLSchema">
+	<tns:source>brussels</tns:source>
+	<tns:timestamp>2026-10-17T05:17:34.172925278Z</tns:timestamp>
+	<tns:streetName beginLifeSpanVersion="2025-07-23T09:31:36Z">
+		<com:code>
+			<com:namespace>https://databrussels.be/id/streetname</com:namespace>
+			<com:objectIdentifier>1509</com:objectIdentifier>
+			<com:versionIdentifier>1</com:versionIdentifier>
+		</com:code>
+		<com:name>
+			<com:language>fr</com:language>
+			<com:spelling>Rue Hoorickx</com:spelling>
+		</com:name>
+		<com:name>
+			<com:language>nl</com:language>
+			<com:spelling>Hoorickxstraat</com:spelling>
+		</com:name>
+		<com:streetNameStatus>
+			<com:status>current</com:status>
+			<com:validFrom>2020-01-01T00:00:00Z</com:validFrom>
+		</com:streetNameStatus>
+		<com:type>streetname</com:type>
+		<com:isAssignedByMunicipality>
+			<com:namespace>https://databrussels.be/id/municipality</com:namespace>
+			<com:objectIdentifier>21001</com:objectIdentifier>
+			<com:versionIdentifier>4</com:versionIdentifier>
+		</com:isAssignedByMunicipality>
+	</tns:streetName>
+	<tns:streetName beginLifeSpanVersion="2025-07-23T09:31:36Z">
+		<com:code>
+			<com:namespace>https://databrussels.be/id/streetname</com:namespace>
+			<com:objectIdentifier>3681</com:objectIdentifier>
+			<com:versionIdentifier>1</com:versionIdentifier>
+		</com:code>
+		<com:name>
+			<com:language>fr</com:language>
+			<com:spelling>Rond-Point Henri Nestlé</com:spelling>
+		</com:name>
+		<com:name>
+			<com:language>nl</com:language>
+			<com:spelling>Henri Nestléplein</com:spelling>
+		</com:name>
+		<com:streetNameStatus>
+			<com:status>current</com:status>
+			<com:validFrom>2020-01-01T00:00:00Z</com:validFrom>
+		</com:streetNameStatus>
+		<com:type>streetname</com:type>
+		<com:isAssignedByMunicipality>
+			<com:namespace>https://databrussels.be/id/municipality</com:namespace>
+			<com:objectIdentifier>21001</com:objectIdentifier>
+			<com:versionIdentifier>4</com:versionIdentifier>
+		</com:isAssignedByMunicipality>
+	</tns:streetName>
+	<tns:streetName beginLifeSpanVersion="2025-07-23T09:31:36Z">
+		<com:code>
+			<com:namespace>https://databrussels.be/id/streetname</com:namespace>
+			<com:objectIdentifier>203</com:objectIdentifier>
+			<com:versionIdentifier>1</com:versionIdentifier>
+		</com:code>
+		<com:name>
+			<com:language>fr</com:language>
+			<com:spelling>Avenue Jules Génicot</com:spelling>
+		</com:name>
+		<com:name>
+			<com:language>nl</com:language>
+			<com:spelling>Jules Génicotlaan</com:spelling>
+		</com:name>
+		<com:streetNameStatus>
+			<com:status>current</com:status>
+			<com:validFrom>2020-01-01T00:00:00Z</com:validFrom>
+		</com:streetNameStatus>
+		<com:type>streetname</com:type>
+		<com:isAssignedByMunicipality>
+			<com:namespace>https://databrussels.be/id/municipality</com:namespace>
+			<com:objectIdentifier>21002</com:objectIdentifier>
+			<com:versionIdentifier>3</com:versionIdentifier>
+		</com:isAssignedByMunicipality>
+	</tns:streetName>
+	<tns:streetName beginLifeSpanVersion="2025-07-23T09:31:36Z">
+		<com:code>
+			<com:namespace>https://databrussels.be/id/streetname</com:namespace>
+			<com:objectIdentifier>244</com:objectIdentifier>
+			<com:versionIdentifier>1</com:versionIdentifier>
+		</com:code>
+		<com:name>
+			<com:language>fr</com:language>
+			<com:spelling>Rue du Patinage</com:spelling>
+		</com:name>
+		<com:name>
+			<com:language>nl</com:language>
+			<com:spelling>Schaatsstraat</com:spelling>
+		</com:name>
+		<com:streetNameStatus>
+			<com:status>current</com:status>
+			<com:validFrom>2020-01-01T00:00:00Z</com:validFrom>
+		</com:streetNameStatus>
+		<com:type>streetname</com:type>
+		<com:isAssignedByMunicipality>
+			<com:namespace>https://databrussels.be/id/municipality</com:namespace>
+			<com:objectIdentifier>21007</com:objectIdentifier>
+			<com:versionIdentifier>4</com:versionIdentifier>
+		</com:isAssignedByMunicipality>
+	</tns:streetName>
+	<tns:streetName beginLifeSpanVersion="2025-07-23T09:31:36Z">
+		<com:code>
+			<com:namespace>https://databrussels.be/id/streetname</com:namespace>
+			<com:objectIdentifier>147</com:objectIdentifier>
+			<com:versionIdentifier>1</com:versionIdentifier>
+		</com:code>
+		<com:name>
+			<com:language>fr</com:language>
+			<com:spelling>Rue Joseph Verhasselt</com:spelling>
+		</com:name>
+		<com:name>
+			<com:language>nl</com:language>
+			<com:spelling>Joseph Verhasseltstraat</com:spelling>
+		</com:name>
+		<com:streetNameStatus>
+			<com:status>current</com:status>
+			<com:validFrom>2020-01-01T00:00:00Z</com:validFrom>
+		</com:streetNameStatus>
+		<com:type>streetname</com:type>
+		<com:isAssignedByMunicipality>
+			<com:namespace>https://databrussels.be/id/municipality</com:namespace>
+			<com:objectIdentifier>21008</com:objectIdentifier>
+			<com:versionIdentifier>3</com:versionIdentifier>
+		</com:isAssignedByMunicipality>
+	</tns:streetName>
+	<tns:streetName beginLifeSpanVersion="2025-07-23T09:31:36Z">
+		<com:code>
+			<com:namespace>https://databrussels.be/id/streetname</com:namespace>
+			<com:objectIdentifier>123</com:objectIdentifier>
+			<com:versionIdentifier>1</com:versionIdentifier>
+		</com:code>
+		<com:name>
+			<com:language>fr</com:language>
+			<com:spelling>Rue Mayelle</com:spelling>
+		</com:name>
+		<com:name>
+			<com:language>nl</com:language>
+			<com:spelling>Mayellestraat</com:spelling>
+		</com:name>
+		<com:streetNameStatus>
+			<com:status>current</com:status>
+			<com:validFrom>2020-01-01T00:00:00Z</com:validFrom>
+		</com:streetNameStatus>
+		<com:type>streetname</com:type>
+		<com:isAssignedByMunicipality>
+			<com:namespace>https://databrussels.be/id/municipality</com:namespace>
+			<com:objectIdentifier>21010</com:objectIdentifier>
+			<com:versionIdentifier>5</com:versionIdentifier>
+		</com:isAssignedByMunicipality>
+	</tns:streetName>
+	<tns:streetName beginLifeSpanVersion="2025-07-23T09:31:36Z">
+		<com:code>
+			<com:namespace>https://databrussels.be/id/streetname</com:namespace>
+			<com:objectIdentifier>138</com:objectIdentifier>
+			<com:versionIdentifier>1</com:versionIdentifier>
+		</com:code>
+		<com:name>
+			<com:language>fr</com:language>
+			<com:spelling>Drève de Rivieren</com:spelling>
+		</com:name>
+		<com:name>
+			<com:language>nl</com:language>
+			<com:spelling>de Rivierendreef</com:spelling>
+		</com:name>
+		<com:streetNameStatus>
+			<com:status>current</com:status>
+			<com:validFrom>2020-01-01T00:00:00Z</com:validFrom>
+		</com:streetNameStatus>
+		<com:type>streetname</com:type>
+		<com:isAssignedByMunicipality>
+			<com:namespace>https://databrussels.be/id/municipality</com:namespace>
+			<com:objectIdentifier>21010</com:objectIdentifier>
+			<com:versionIdentifier>5</com:versionIdentifier>
+		</com:isAssignedByMunicipality>
+	</tns:streetName>
+	<tns:streetName beginLifeSpanVersion="2025-07-23T09:31:36Z">
+		<com:code>
+			<com:namespace>https://databrussels.be/id/streetname</com:namespace>
+			<com:objectIdentifier>3679</com:objectIdentifier>
+			<com:versionIdentifier>1</com:versionIdentifier>
+		</com:code>
+		<com:name>
+			<com:language>fr</com:language>
+			<com:spelling>Rue Vervloesem</com:spelling>
+		</com:name>
+		<com:name>
+			<com:language>nl</com:language>
+			<com:spelling>Vervloesemstraat</com:spelling>
+		</com:name>
+		<com:streetNameStatus>
+			<com:status>current</com:status>
+			<com:validFrom>2020-01-01T00:00:00Z</com:validFrom>
+		</com:streetNameStatus>
+		<com:type>streetname</com:type>
+		<com:isAssignedByMunicipality>
+			<com:namespace>https://databrussels.be/id/municipality</com:namespace>
+			<com:objectIdentifier>21018</com:objectIdentifier>
+			<com:versionIdentifier>5</com:versionIdentifier>
+		</com:isAssignedByMunicipality>
+	</tns:streetName>
+	<tns:streetName beginLifeSpanVersion="2025-07-23T09:31:36Z">
+		<com:code>
+			<com:namespace>https://databrussels.be/id/streetname</com:namespace>
+			<com:objectIdentifier>1052</com:objectIdentifier>
+			<com:versionIdentifier>1</com:versionIdentifier>
+		</com:code>
+		<com:name>
+			<com:language>fr</com:language>
+			<com:spelling>Rue Armand De Neuter</com:spelling>
+		</com:name>
+		<com:name>
+			<com:language>nl</com:language>
+			<com:spelling>Armand De Neuterstraat</com:spelling>
+		</com:name>
+		<com:streetNameStatus>
+			<com:status>current</com:status>
+			<com:validFrom>2020-01-01T00:00:00Z</com:validFrom>
+		</com:streetNameStatus>
+		<com:type>streetname</com:type>
+		<com:isAssignedByMunicipality>
+			<com:namespace>https://databrussels.be/id/municipality</com:namespace>
+			<com:objectIdentifier>21003</com:objectIdentifier>
+			<com:versionIdentifier>5</com:versionIdentifier>
+		</com:isAssignedByMunicipality>
+	</tns:streetName>
+	<tns:streetName beginLifeSpanVersion="2025-07-23T09:31:36Z">
+		<com:code>
+			<com:namespace>https://databrussels.be/id/streetname</com:namespace>
+			<com:objectIdentifier>799</com:objectIdentifier>
+			<com:versionIdentifier>1</com:versionIdentifier>
+		</com:code>
+		<com:name>
+			<com:language>fr</com:language>
+			<com:spelling>Rue du Remblai</com:spelling>
+		</com:name>
+		<com:name>
+			<com:language>nl</com:language>
+			<com:spelling>Aanaardingsstraat</com:spelling>
+		</com:name>
+		<com:streetNameStatus>
+			<com:status>current</com:status>
+			<com:validFrom>2020-01-01T00:00:00Z</com:validFrom>
+		</com:streetNameStatus>
+		<com:type>streetname</com:type>
+		<com:isAssignedByMunicipality>
+			<com:namespace>https://databrussels.be/id/municipality</com:namespace>
+			<com:objectIdentifier>21004</com:objectIdentifier>
+			<com:versionIdentifier>7</com:versionIdentifier>
+		</com:isAssignedByMunicipality>
+	</tns:streetName>
+	<tns:streetName beginLifeSpanVersion="2025-07-23T09:31:36Z">
+		<com:code>
+			<com:namespace>https://databrussels.be/id/streetname</com:namespace>
+			<com:objectIdentifier>134</com:objectIdentifier>
+			<com:versionIdentifier>1</com:versionIdentifier>
+		</com:code>
+		<com:name>
+			<com:language>fr</com:language>
+			<com:spelling>Avenue Laënnec</com:spelling>
+		</com:name>
+		<com:name>
+			<com:language>nl</com:language>
+			<com:spelling>Laënneclaan</com:spelling>
+		</com:name>
+		<com:streetNameStatus>
+			<com:status>current</com:status>
+			<com:validFrom>2020-01-01T00:00:00Z</com:validFrom>
+		</com:streetNameStatus>
+		<com:type>streetname</com:type>
+		<com:isAssignedByMunicipality>
+			<com:namespace>https://databrussels.be/id/municipality</com:namespace>
+			<com:objectIdentifier>21004</com:objectIdentifier>
+			<com:versionIdentifier>7</com:versionIdentifier>
+		</com:isAssignedByMunicipality>
+	</tns:streetName>
+	<tns:streetName beginLifeSpanVersion="2025-07-23T09:31:36Z">
+		<com:code>
+			<com:namespace>https://databrussels.be/id/streetname</com:namespace>
+			<com:objectIdentifier>143</com:objectIdentifier>
+			<com:versionIdentifier>1</com:versionIdentifier>
+		</com:code>
+		<com:name>
+			<com:language>fr</com:language>
+			<com:spelling>Rue du Verregat</com:spelling>
+		</com:name>
+		<com:name>
+			<com:language>nl</com:language>
+			<com:spelling>Verregatstraat</com:spelling>
+		</com:name>
+		<com:streetNameStatus>
+			<com:status>current</com:status>
+			<com:validFrom>2020-01-01T00:00:00Z</com:validFrom>
+		</com:streetNameStatus>
+		<com:type>streetname</com:type>
+		<com:isAssignedByMunicipality>
+			<com:namespace>https://databrussels.be/id/municipality</com:namespace>
+			<com:objectIdentifier>21004</com:objectIdentifier>
+			<com:versionIdentifier>7</com:versionIdentifier>
+		</com:isAssignedByMunicipality>
+	</tns:streetName>
+	<tns:streetName beginLifeSpanVersion="2025-07-23T09:31:36Z">
+		<com:code>
+			<com:namespace>https://databrussels.be/id/streetname</com:namespace>
+			<com:objectIdentifier>2289</com:objectIdentifier>
+			<com:versionIdentifier>1</com:versionIdentifier>
+		</com:code>
+		<com:name>
+			<com:language>fr</com:language>
+			<com:spelling>Avenue des Trembles</com:spelling>
+		</com:name>
+		<com:name>
+			<com:language>nl</com:language>
+			<com:spelling>Abelenlaan</com:spelling>
+		</com:name>
+		<com:streetNameStatus>
+			<com:status>current</com:status>
+			<com:validFrom>2020-01-01T00:00:00Z</com:validFrom>
+		</com:streetNameStatus>
+		<com:type>streetname</com:type>
+		<com:isAssignedByMunicipality>
+			<com:namespace>https://databrussels.be/id/municipality</com:namespace>
+			<com:objectIdentifier>21004</com:objectIdentifier>
+			<com:versionIdentifier>7</com:versionIdentifier>
+		</com:isAssignedByMunicipality>
+	</tns:streetName>
+	<tns:streetName beginLifeSpanVersion="2025-07-23T09:31:36Z">
+		<com:code>
+			<com:namespace>https://databrussels.be/id/streetname</com:namespace>
+			<com:objectIdentifier>1709</com:objectIdentifier>
+			<com:versionIdentifier>1</com:versionIdentifier>
+		</com:code>
+		<com:name>
+			<com:language>fr</com:language>
+			<com:spelling>Avenue Adrien Bayet</com:spelling>
+		</com:name>
+		<com:name>
+			<com:language>nl</com:language>
+			<com:spelling>Adrien Bayetlaan</com:spelling>
+		</com:name>
+		<com:streetNameStatus>
+			<com:status>current</com:status>
+			<com:validFrom>2020-01-01T00:00:00Z</com:validFrom>
+		</com:streetNameStatus>
+		<com:type>streetname</com:type>
+		<com:isAssignedByMunicipality>
+			<com:namespace>https://databrussels.be/id/municipality</com:namespace>
+			<com:objectIdentifier>21004</com:objectIdentifier>
+			<com:versionIdentifier>7</com:versionIdentifier>
+		</com:isAssignedByMunicipality>
+	</tns:streetName>
+	<tns:streetName beginLifeSpanVersion="2025-07-23T09:31:36Z">
+		<com:code>
+			<com:namespace>https://databrussels.be/id/streetname</com:namespace>
+			<com:objectIdentifier>987</com:objectIdentifier>
+			<com:versionIdentifier>1</com:versionIdentifier>
+		</com:code>
+		<com:name>
+			<com:language>fr</com:language>
+			<com:spelling>Rue des Deux Eglises</com:spelling>
+		</com:name>
+		<com:name>
+			<com:language>nl</com:language>
+			<com:spelling>Tweekerkenstraat</com:spelling>
+		</com:name>
+		<com:streetNameStatus>
+			<com:status>current</com:status>
+			<com:validFrom>2020-01-01T00:00:00Z</com:validFrom>
+		</com:streetNameStatus>
+		<com:type>streetname</com:type>
+		<com:isAssignedByMunicipality>
+			<com:namespace>https://databrussels.be/id/municipality</com:namespace>
+			<com:objectIdentifier>21004</com:objectIdentifier>
+			<com:versionIdentifier>7</com:versionIdentifier>
+		</com:isAssignedByMunicipality>
+	</tns:streetName>
+	<tns:streetName beginLifeSpanVersion="2025-07-23T09:31:36Z">
+		<com:code>
+			<com:namespace>https://databrussels.be/id/streetname</com:namespace>
+			<com:objectIdentifier>1262</com:objectIdentifier>
+			<com:versionIdentifier>1</com:versionIdentifier>
+		</com:code>
+		<com:name>
+			<com:language>fr</com:language>
+			<com:spelling>Impasse des Groseilles</com:spelling>
+		</com:name>
+		<com:name>
+			<com:language>nl</com:language>
+			<com:spelling>Aalbessengang</com:spelling>
+		</com:name>
+		<com:streetNameStatus>
+			<com:status>current</com:status>
+			<com:validFrom>2020-01-01T00:00:00Z</com:validFrom>
+		</com:streetNameStatus>
+		<com:type>streetname</com:type>
+		<com:isAssignedByMunicipality>
+			<com:namespace>https://databrussels.be/id/municipality</com:namespace>
+			<com:objectIdentifier>21004</com:objectIdentifier>
+			<com:versionIdentifier>7</com:versionIdentifier>
+		</com:isAssignedByMunicipality>
+	</tns:streetName>
+	<tns:streetName beginLifeSpanVersion="2025-07-23T09:31:36Z">
+		<com:code>
+			<com:namespace>https://databrussels.be/id/streetname</com:namespace>
+			<com:objectIdentifier>4272</com:objectIdentifier>
+			<com:versionIdentifier>1</com:versionIdentifier>
+		</com:code>
+		<com:name>
+			<com:language>fr</com:language>
+			<com:spelling>Rue d'Alost</com:spelling>
+		</com:name>
+		<com:name>
+			<com:language>nl</com:language>
+			<com:spelling>Aalststraat</com:spelling>
+		</com:name>
+		<com:streetNameStatus>
+			<com:status>current</com:status>
+			<com:validFrom>2020-01-01T00:00:00Z</com:validFrom>
+		</com:streetNameStatus>
+		<com:type>streetname</com:type>
+		<com:isAssignedByMunicipality>
+			<com:namespace>https://databrussels.be/id/municipality</com:namespace>
+			<com:objectIdentifier>21004</com:objectIdentifier>
+			<com:versionIdentifier>7</com:versionIdentifier>
+		</com:isAssignedByMunicipality>
+	</tns:streetName>
+	<tns:streetName beginLifeSpanVersion="2025-07-23T09:31:36Z">
+		<com:code>
+			<com:namespace>https://databrussels.be/id/streetname</com:namespace>
+			<com:objectIdentifier>3359</com:objectIdentifier>
+			<com:versionIdentifier>1</com:versionIdentifier>
+		</com:code>
+		<com:name>
+			<com:language>fr</com:language>
+			<com:spelling>Rue du Champ de l'Eglise</com:spelling>
+		</com:name>
+		<com:name>
+			<com:language>nl</com:language>
+			<com:spelling>Kerkeveldstraat</com:spelling>
+		</com:name>
+		<com:streetNameStatus>
+			<com:status>current</com:status>
+			<com:validFrom>2020-01-01T00:00:00Z</com:validFrom>
+		</com:streetNameStatus>
+		<com:type>streetname</com:type>
+		<com:isAssignedByMunicipality>
+			<com:namespace>https://databrussels.be/id/municipality</com:namespace>
+			<com:objectIdentifier>21004</com:objectIdentifier>
+			<com:versionIdentifier>7</com:versionIdentifier>
+		</com:isAssignedByMunicipality>
+	</tns:streetName>
+	<tns:streetName beginLifeSpanVersion="2025-07-23T09:31:36Z">
+		<com:code>
+			<com:namespace>https://databrussels.be/id/streetname</com:namespace>
+			<com:objectIdentifier>5782</com:objectIdentifier>
+			<com:versionIdentifier>1</com:versionIdentifier>
+		</com:code>
+		<com:name>
+			<com:language>fr</com:language>
+			<com:spelling>Avenue Albert Brachet</com:spelling>
+		</com:name>
+		<com:name>
+			<com:language>nl</com:language>
+			<com:spelling>Albert Brachetlaan</com:spelling>
+		</com:name>
+		<com:streetNameStatus>
+			<com:status>current</com:status>
+			<com:validFrom>2020-01-01T00:00:00Z</com:validFrom>
+		</com:streetNameStatus>
+		<com:type>streetname</com:type>
+		<com:isAssignedByMunicipality>
+			<com:namespace>https://databrussels.be/id/municipality</com:namespace>
+			<com:objectIdentifier>21004</com:objectIdentifier>
+			<com:versionIdentifier>7</com:versionIdentifier>
+		</com:isAssignedByMunicipality>
+	</tns:streetName>
+	<tns:streetName beginLifeSpanVersion="2025-07-23T09:31:36Z">
+		<com:code>
+			<com:namespace>https://databrussels.be/id/streetname</com:namespace>
+			<com:objectIdentifier>135</com:objectIdentifier>
+			<com:versionIdentifier>1</com:versionIdentifier>
+		</com:code>
+		<com:name>
+			<com:language>fr</com:language>
+			<com:spelling>Rue Eugène Laermans</com:spelling>
+		</com:name>
+		<com:name>
+			<com:language>nl</com:language>
+			<com:spelling>Eugène Laermansstraat</com:spelling>
+		</com:name>
+		<com:streetNameStatus>
+			<com:status>current</com:status>
+			<com:validFrom>2020-01-01T00:00:00Z</com:validFrom>
+		</com:streetNameStatus>
+		<com:type>streetname</com:type>
+		<com:isAssignedByMunicipality>
+			<com:namespace>https://databrussels.be/id/municipality</com:namespace>
+			<com:objectIdentifier>21012</com:objectIdentifier>
+			<com:versionIdentifier>5</com:versionIdentifier>
+		</com:isAssignedByMunicipality>
+	</tns:streetName>
+	<tns:streetName beginLifeSpanVersion="2025-07-23T09:31:36Z">
+		<com:code>
+			<com:namespace>https://databrussels.be/id/streetname</com:namespace>
+			<com:objectIdentifier>202</com:objectIdentifier>
+			<com:versionIdentifier>1</com:versionIdentifier>
+		</com:code>
+		<com:name>
+			<com:language>fr</com:language>
+			<com:spelling>Rue de l'Idylle</com:spelling>
+		</com:name>
+		<com:name>
+			<com:language>nl</com:language>
+			<com:spelling>Idyllestraat</com:spelling>
+		</com:name>
+		<com:streetNameStatus>
+			<com:status>current</com:status>
+			<com:validFrom>2020-01-01T00:00:00Z</com:validFrom>
+		</com:streetNameStatus>
+		<com:type>streetname</com:type>
+		<com:isAssignedByMunicipality>
+			<com:namespace>https://databrussels.be/id/municipality</com:namespace>
+			<com:objectIdentifier>21012</com:objectIdentifier>
+			<com:versionIdentifier>5</com:versionIdentifier>
+		</com:isAssignedByMunicipality>
+	</tns:streetName>
+</tns:streetNameResponseBySource>

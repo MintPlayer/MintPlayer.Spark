@@ -39,13 +39,10 @@ builder.Services.AddSpark(builder.Configuration, spark =>
 {
     spark.UseContext<SeoContext>();
     // Generated over this assembly: the Actions classes (Actions/), the custom actions (CustomActions/), the
-    // interceptors that keep a site's server-owned fields (Interceptors/) and the re-verification sweep (cron).
-    spark.AddActions();
-    spark.AddCustomActions();
-    spark.AddInterceptors();
-    spark.AddCronJobs();
-    // Runs the migrations the referenced packages ship (Authorization's SparkUser/SparkRole, …) once at startup.
-    spark.AddMigrations();
+    // interceptors that keep a site's server-owned fields (Interceptors/), the re-verification sweep (cron), the
+    // crawl pipeline's recipients (see AddMessaging below), and the migrations the referenced packages ship
+    // (Authorization's SparkUser/SparkRole, …), run once at startup.
+    spark.AddSparkDiscovered();
 
     // External sign-in only (D2): no passwords, no registration form. A user signs in with Microsoft, GitHub, X or
     // Google; a second provider with the same verified address is linked only after a mailed confirmation (D7).
@@ -80,7 +77,6 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     // recipients of probe, crawl and aggregate are Crawler/ (M9), render Rendering/, PSI PageSpeed/ and PDF Reports/
     // (M10). Web Push deliveries ride the same outbox.
     spark.AddMessaging();
-    spark.AddRecipients();
     spark.AddHistory();
 
     // X2: every fetch of a user-chosen URL goes through an SSRF-safe client (Spark:SafeHttp), and in Production only in

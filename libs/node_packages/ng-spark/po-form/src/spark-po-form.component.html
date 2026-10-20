@@ -95,6 +95,18 @@
               (ngModelChange)="onReferenceTreeChange(attr, $event)"
               [ngModelOptions]="{ standalone: true }">
             </bs-tree-select>
+          } @else if (attr.dataType === 'Reference' && isTreeReference(attr)) {
+            <!-- A hierarchical single reference (WX9): roots first, a node's children on expand. -->
+            <bs-tree-select
+              mode="single"
+              variant="textbox"
+              [showClear]="true"
+              [placeholder]="'common.search' | t"
+              [provider]="getReferenceProvider(attr)"
+              [ngModel]="(referenceTreeValues()[attr.name] || [])[0] ?? null"
+              (ngModelChange)="onReferenceTreeChange(attr, $event)"
+              [ngModelOptions]="{ standalone: true }">
+            </bs-tree-select>
           } @else if (attr.dataType === 'Reference') {
             <spark-reference-picker
               [value]="formData()[attr.name]"
@@ -378,6 +390,48 @@
                 <spark-icon name="plus" /> {{ 'common.add' | t }}
               </button>
             }
+          } @else if (attr.dataType === 'AsDetail' && getEditRendererComponent(attr); as editComp) {
+            <!-- A single embedded object with a renderer of its own (an address typeahead, X15): the
+                 renderer owns the whole object. Before this, the AsDetail branch below swallowed it and
+                 the renderer was unreachable. -->
+            <ng-container *ngComponentOutlet="editComp; inputs: getEditRendererInputs(editComp, attr)"></ng-container>
+          } @else if (isInlineAsDetailObject(attr)) {
+            <!-- A single embedded object edited in place (`editMode: "inline"`, X15): the recursive form
+                 renders its fields, bound straight to formData. No value yet: an Add button, so an
+                 optional object the user never touched stays null instead of an empty object. -->
+            <div class="spark-inline-detail" [class.is-invalid]="hasError(attr.name)" [id]="attr.name">
+              @if (formData()[attr.name]; as detail) {
+                <spark-po-form
+                  [entityType]="attr | asDetailType:asDetailTypes()"
+                  [formData]="detail"
+                  (formDataChange)="onInlineAsDetailChange(attr, $event)"
+                  [validationErrors]="inlineAsDetailErrors()[attr.name] ?? []"
+                  [loadedObject]="inlineAsDetailLoadedObject(attr)"
+                  [parentId]="parentId()"
+                  [parentType]="parentType()"
+                  [referenceParentId]="referenceParentId()"
+                  [referenceParentType]="referenceParentType()"
+                  [triggerPathPrefix]="attr.name"
+                  (nestedTriggerRequested)="onInlineAsDetailTrigger(attr.name, $event)"
+                  (nestedTriggerBlurred)="onEmbeddedTriggerBlur($event)"
+                  (referencePicked)="rememberPickedRowReference(attr.name, $event.attribute, $event.item)">
+                </spark-po-form>
+                @if (!attr.isRequired) {
+                  <div class="spark-inline-detail-actions">
+                    <button type="button" class="btn btn-sm btn-outline-danger" (click)="clearInlineAsDetail(attr)">
+                      <spark-icon name="trash" /> {{ 'common.delete' | t }}
+                    </button>
+                  </div>
+                }
+              } @else {
+                <div class="spark-inline-detail-empty">
+                  <span class="text-muted">{{ 'common.notSet' | t }}</span>
+                  <button type="button" class="btn btn-sm btn-outline-primary" (click)="startInlineAsDetail(attr)">
+                    <spark-icon name="plus" /> {{ 'common.add' | t }}
+                  </button>
+                </div>
+              }
+            </div>
           } @else if (attr.dataType === 'AsDetail') {
             <bs-input-group>
               <input
@@ -396,6 +450,17 @@
             </bs-input-group>
           } @else if (getEditRendererComponent(attr); as editComp) {
             <ng-container *ngComponentOutlet="editComp; inputs: getEditRendererInputs(editComp, attr)"></ng-container>
+          } @else if (attr.dataType === 'TranslatedString') {
+            <!-- A TranslatedString (commerce X17): one input per language. It used to fall through to the
+                 single textbox below, which showed "[object Object]" and posted a plain string. -->
+            <spark-translated-string-editor
+              [value]="formData()[attr.name]"
+              [readonly]="attr.isReadOnly"
+              [inputId]="attr.name"
+              [isInvalid]="hasError(attr.name)"
+              (valueChange)="formData()[attr.name] = $event; onFieldChange(attr)"
+              (fieldBlur)="onFieldBlur(attr)">
+            </spark-translated-string-editor>
           } @else if (isPrimitiveList(attr)) {
             <!-- A list of plain values (List<string>, int[]): one input per item. Before this it fell
                  through to the single textbox below, which showed the items comma-joined and posted

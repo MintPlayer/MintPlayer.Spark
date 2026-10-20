@@ -1,0 +1,15 @@
+{
+  "_fixture": {
+    "source": "https://docs.mollie.com/reference/get-current-organization (response example)",
+    "derived": "public documentation example; id and name adapted",
+    "recorded": false
+  },
+  "resource": "organization",
+  "id": "org_12345",
+  "name": "Festival Seller BV",
+  "email": "finance@seller.example.org",
+  "locale": "nl_BE",
+  "address": { "streetAndNumber": "Teststraat 1", "postalCode": "1000", "city": "Brussel", "country": "BE" },
+  "registrationNumber": "0123456789",
+  "vatNumber": "BE0123456789"
+}

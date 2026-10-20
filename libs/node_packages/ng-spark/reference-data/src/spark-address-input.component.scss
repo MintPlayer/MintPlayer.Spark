@@ -1,0 +1,34 @@
+:host {
+  display: block;
+}
+
+.spark-address-row {
+  margin-bottom: 0.5rem;
+}
+
+.spark-address-label {
+  display: block;
+  font-size: 0.875rem;
+  margin-bottom: 0.125rem;
+}
+
+.spark-address-pair {
+  display: flex;
+  gap: 0.5rem;
+
+  > div {
+    flex: 1 1 0;
+  }
+}
+
+// A box that cannot be used yet (the street before a locality is picked, or a disabled form). bs-typeahead has no
+// disabled input in 22.25 (RX5), so the row is inert and dimmed.
+.spark-address-blocked {
+  opacity: 0.6;
+}
+
+.spark-address-preview {
+  padding: 0.5rem 0.75rem;
+  border-left: 3px solid var(--bs-border-color);
+  white-space: pre-line;
+}

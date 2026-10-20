@@ -1,0 +1,81 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "A zone of a site (PRD §4.5) with its mixing rules.",
+    "",
+    "HAND-AUTHORED. Ids are UUIDv5 of 'warehouse:WarehouseZone[...]', written by 'npm run stamp:library-model-ids'."
+  ],
+  "persistentObject": {
+    "id": "50abebe7-74ff-52c9-9cb9-d0bf62d4ad34",
+    "name": "WarehouseZone",
+    "clrType": "MintPlayer.Spark.Warehouse.Models.WarehouseZone",
+    "alias": "warehouse-zone",
+    "breadcrumb": "{Code} {Name}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "fa40283f-a2d3-59b6-af4a-e4ac979a0fb3",
+        "name": "SiteId",
+        "dataType": "Reference",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "query": "WarehouseSites",
+        "referenceType": "MintPlayer.Spark.Warehouse.Models.WarehouseSite"
+      },
+      {
+        "id": "881b0556-6375-5b0d-b398-c832ca9f6557",
+        "name": "Code",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "0d6cf9b1-32b5-53d3-94c7-cedf1ff2119a",
+        "name": "Name",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "fff7a0cf-bc9b-5c2d-b89e-7db0300da44c",
+        "name": "Kind",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ]
+  },
+  "queries": [
+    {
+      "id": "e0fa5ab8-f4a7-5e83-8003-e6f428a6a4b0",
+      "name": "WarehouseZones",
+      "source": "Custom.WarehouseZones",
+      "alias": "warehouse-zones",
+      "sortColumns": [
+        {
+          "property": "Code",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "WarehouseZone"
+    }
+  ]
+}

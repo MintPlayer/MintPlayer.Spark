@@ -275,7 +275,7 @@ public class McpPersonalAccessTokenTests(SparkSharedDatabase database)
         await using var _f = factory;
 
         using var write = await browser.PostTokenAsync(new { name = "w", permissions = "Read, Write" });
-        using var unknown = await browser.PostTokenAsync(new { name = "u", permissions = "Read", types = new[] { new { name = "NoSuchType", permissions = "Read" } } });
+        using var unknown = await browser.PostTokenAsync(new { name = "u", permissions = "Read", types = new[] { new { typeId = "NoSuchType", permissions = "Read" } } });
         var overview = await browser.AgentsAsync();
 
         write.StatusCode.Should().Be(HttpStatusCode.BadRequest);

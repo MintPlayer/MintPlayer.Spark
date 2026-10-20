@@ -1,0 +1,19 @@
+@if (price()) {
+  <span class="spark-commerce-price">
+    <span class="spark-commerce-price-total">{{ total() }}</span>
+    <small class="spark-commerce-price-note">{{ 'commerce.price.includesFees' | t }}</small>
+    @if (prior()) {
+      <small class="spark-commerce-price-prior">{{ prior() }}</small>
+    }
+    @if (breakdown()) {
+      <span class="spark-commerce-price-breakdown">
+        @for (fee of fees(); track fee.label) {
+          <small class="spark-commerce-price-fee">{{ fee.label }}: {{ fee.amount }}</small>
+        }
+        @if (vat()) {
+          <small class="spark-commerce-price-vat">{{ vat() }}</small>
+        }
+      </span>
+    }
+  </span>
+}

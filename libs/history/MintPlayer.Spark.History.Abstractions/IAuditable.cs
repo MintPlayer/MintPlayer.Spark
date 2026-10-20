@@ -56,3 +56,21 @@ public interface IAuditModified
     /// <summary>When it was saved last.</summary>
     DateTimeOffset? ModifiedAt { get; set; }
 }
+
+/// <summary>
+/// An entity that records who approved its last change, when that change was a proposal (commerce X7, D9): the
+/// proposer is the author (<see cref="IAuditCreated.CreatedBy"/> / <see cref="IAuditModified.ModifiedBy"/>), the
+/// approver who applied it is <see cref="ApprovedBy"/>.
+/// </summary>
+/// <remarks>
+/// Stamped by the History package on every write: the approver on an applied proposal, cleared on a direct save (that
+/// change was approved by nobody). Implement the members as public read/write properties.
+/// </remarks>
+public interface IAuditApproved
+{
+    /// <summary>The id of the user who approved the last change; <see langword="null"/> when it was saved directly.</summary>
+    string? ApprovedBy { get; set; }
+
+    /// <summary>When the last change was approved.</summary>
+    DateTimeOffset? ApprovedAt { get; set; }
+}

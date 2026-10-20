@@ -141,7 +141,7 @@ public class McpRemoteResourceTests(SparkSharedDatabase database, McpRemoteSecon
             .Should().Be(HttpStatusCode.BadRequest, "a forged POST cannot widen the choice");
 
         (html, requestId) = await agent.ConsentPageAsync();
-        (await agent.Agent.PostConsentAsync(html, requestId, "read", "chosen", "GuardedDoc")).StatusCode
+        (await agent.Agent.PostConsentAsync(html, requestId, "read", "chosen", McpTestHost.GuardedDocTypeId.ToString("D"))).StatusCode
             .Should().Be(HttpStatusCode.BadRequest, "no types are offered for another application's endpoint, so none can be posted");
     }
 

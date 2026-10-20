@@ -26,7 +26,7 @@ public sealed class SparkValidationException : Exception
     public ValidationError ToError() => new()
     {
         AttributeName = AttributeName ?? string.Empty,
-        ErrorMessage = TranslatedString.Create(Message),
+        ErrorMessage = TranslatedString.Of("en", Message),
         RuleType = "custom",
     };
 }

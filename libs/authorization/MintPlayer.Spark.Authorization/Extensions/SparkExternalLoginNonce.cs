@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Authorization.Contracts;
 using System.Text.RegularExpressions;
 using ExternalLoginErrors = MintPlayer.Spark.Authorization.Extensions.SparkAuthenticationExtensions.ExternalLoginErrors;
 
@@ -31,7 +32,7 @@ internal static partial class SparkExternalLoginNonce
     public static IResult? Reject(string? nonce)
         => string.IsNullOrEmpty(nonce) || IsValid(nonce)
             ? null
-            : Results.BadRequest(new { error = ExternalLoginErrors.InvalidNonce });
+            : Results.BadRequest(new SparkAuthError(ExternalLoginErrors.InvalidNonce));
 
     /// <summary>
     /// Callback side: the nonce when it has the accepted shape, otherwise <see langword="null"/>.

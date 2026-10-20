@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 import { RouterLink } from '@angular/router';
 import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
 import { SparkAuthService } from '@mintplayer/ng-spark/auth/core';
-import { currentLanguage } from '@mintplayer/ng-spark/models';
+import { currentLanguage, resolveTranslation } from '@mintplayer/ng-spark/models';
 import {
   SPARK_ACCOUNT_OVERVIEW_LINKS,
   SPARK_AUTH_ROUTE_PATHS,
@@ -99,7 +99,7 @@ export class SparkAccountOverviewComponent {
     return this.accountLinks.map(link => ({
       key: link.key,
       path: link.path,
-      label: link.label[lang] ?? link.label['en'] ?? Object.values(link.label)[0] ?? link.key,
+      label: resolveTranslation(link.label, lang) || link.key,
     }));
   });
 

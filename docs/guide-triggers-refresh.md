@@ -71,7 +71,7 @@ Replacing options:
 
 ```csharp
 obj[nameof(Car.Garage)].Options = maintenance
-    ? [ new PersistentObjectAttributeOption { Key = "garages/1", Label = TranslatedString.Create("North") } ]
+    ? [ new PersistentObjectAttributeOption { Key = "garages/1", Label = TranslatedString.Of("en", "North") } ]
     : null;
 ```
 

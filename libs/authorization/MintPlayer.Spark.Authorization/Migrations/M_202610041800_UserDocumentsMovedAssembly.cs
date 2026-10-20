@@ -21,11 +21,10 @@ namespace MintPlayer.Spark.Authorization.Migrations;
 ///
 /// Only the exact old value is rewritten, so an application's own subclass (<c>AppUser : SparkUser</c>,
 /// recorded under the app's assembly) is left alone, and a second run changes nothing. Shipped by the
-/// package and registered by each application's generated <c>AddMigrations()</c>.
+/// package and registered by each application's generated <c>AddSparkDiscovered()</c>.
 /// </summary>
 public partial class M_202610041800_UserDocumentsMovedAssembly : ISparkMigration
 {
-    public static long Version => 202610041800;
     public static string? Description => "SparkUser/SparkRole moved to MintPlayer.Spark.Authorization.Abstractions: rewrite Raven-Clr-Type";
 
     private const string OldAssembly = "MintPlayer.Spark.Authorization";

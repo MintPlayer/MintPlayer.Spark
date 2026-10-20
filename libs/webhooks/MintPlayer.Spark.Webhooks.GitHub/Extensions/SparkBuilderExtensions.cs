@@ -1,8 +1,6 @@
 using MintPlayer.Spark.Abstractions.Builder;
 using MintPlayer.Spark.Webhooks.GitHub.Configuration;
 using MintPlayer.Spark.Webhooks.GitHub.Services;
-using Octokit.Webhooks;
-using Octokit.Webhooks.AspNetCore;
 
 namespace MintPlayer.Spark.Webhooks.GitHub.Extensions;
 
@@ -43,20 +41,15 @@ public static class SparkBuilderExtensions
         // Apply deferred registrations from dev-tunnel extension methods
         options.ApplyRegistrations(builder.Services);
 
-        // Register endpoint mapping via SparkModuleRegistry
-        builder.Registry.AddEndpoints(endpoints =>
-        {
-            // Map the Octokit webhook endpoint with signature validation
-            // DisableAntiforgery: GitHub POSTs webhooks without XSRF tokens
-            // It stays hand-mapped: Octokit owns the request-level X-Hub-Signature-256 refusal
-            // (docs/endpoints_generator_webhooks_exception.md).
-            endpoints.MapGitHubWebhooks(options.WebhookPath, options.WebhookSecret)
-                .DisableAntiforgery();
+        // GitHub is a source of MintPlayer.Spark.Webhooks: the generic receiver reads the exact body,
+        // refuses a bad X-Hub-Signature-256 with 401 at the request, and hands the delivery to the
+        // processor inline. Its route is its own (WebhookPath), not /spark/webhooks/github.
+        builder.AddWebhookSource(GitHubWebhookSource.Name, GitHubWebhookSource.Configure);
 
-            // Generator endpoints: the dev WebSocket (DevWebSocketEndpoint), which maps itself only
-            // when DevelopmentAppId is set and at the configured DevWebSocketPath.
-            endpoints.MapSparkWebhooksGitHubEndpoints();
-        });
+        // Generator endpoints, both reading IOptions<GitHubWebhooksOptions> at map time: the webhook
+        // POST (GitHubWebhookEndpoint, at WebhookPath) and the dev WebSocket (DevWebSocketEndpoint),
+        // which maps itself only when DevelopmentAppId is set and at the configured DevWebSocketPath.
+        builder.Registry.AddEndpoints(endpoints => endpoints.MapSparkWebhooksGitHubEndpoints());
 
         return builder;
     }

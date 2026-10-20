@@ -24,11 +24,11 @@ If you also use the Spark source generators (for auto-registration), ensure the
 A cron job is a unit of recurring work scheduled by a cron expression. The scheduler:
 
 - Runs one independent loop per registered job.
-- Computes the next occurrence (in **UTC**) using [NCrontab](https://github.com/atifaziz/NCrontab).
+- Computes the next occurrence using [NCrontab](https://github.com/atifaziz/NCrontab): in **UTC** by default, or on a job's IANA time zone's local wall clock.
 - Resolves a fresh instance of the job from a DI scope for every run, so `[Inject]` dependencies work like any scoped service.
 - Claims each occurrence cluster-wide via a RavenDB compare-exchange key, so the job runs on exactly one node.
 
-> **Time zone:** schedules are always interpreted in UTC. NCrontab is not DST-aware, so there is intentionally no per-job time zone. To run at a local wall-clock time, write the UTC equivalent in the expression.
+> **Time zone:** schedules are UTC unless a job names an IANA zone (see [Time zones](#time-zones)). Across DST, a wall clock the zone skips fires at the first valid instant after the gap, and one it repeats fires once.
 
 ## Defining a job
 
@@ -63,14 +63,53 @@ read it.
 
 ### Cron Expression Format
 
-`CronSchedule` is an NCrontab expression, always interpreted in **UTC**. The number of fields is
+`CronSchedule` is an NCrontab expression, interpreted in **UTC** unless the job has a
+[time zone](#time-zones). The number of fields is
 auto-detected:
 
 - **Five fields** (`m h dom mon dow`) — minute precision, e.g. `0 0 * * *` (daily at midnight), `*/15 * * * *` (every 15 minutes).
 - **Six fields** (`s m h dom mon dow`) — second precision, e.g. `*/30 * * * * *` (every 30 seconds).
 
-For a job that should run at a local wall-clock time, write the UTC equivalent. (UTC schedules do
-not auto-shift across daylight-saving transitions.)
+A UTC schedule does not shift across daylight-saving transitions. For a local wall-clock time, give
+the job a time zone instead of writing the UTC equivalent.
+
+### Time zones
+
+A schedule can be evaluated on an IANA zone's local wall clock (warehouse WX14), so "15:00 in Ghent"
+stays 15:00 all year. Three places can set it, the later winning:
+
+```csharp
+public sealed partial class WaveCutoffJob : ISparkCronJob
+{
+    public static string CronSchedule => "0 15 * * 1-5";
+    public static string? TimeZone => "Europe/Brussels";   // 1. the job's default (null = UTC)
+    public Task RunAsync(CancellationToken ct) => ...;
+}
+
+spark.AddCron(cron => cron
+    .AddJob<WaveCutoffJob>("0 17 * * 1-5", "waves-nyc", "America/New_York")); // 2. the registration
+```
+
+```jsonc
+// 3. configuration, keyed by registration name; an entry overrides only what it sets
+"Spark": { "Cron": { "Jobs": {
+  "waves-nyc": { "Schedule": "30 16 * * 1-5", "TimeZone": "America/New_York" }
+} } }
+```
+
+An unknown zone throws at `AddJob`; an unknown zone, a bad expression, or a key that names no registered
+job (keys are case-sensitive registration names) in configuration fails host startup. `"UTC"` (or no zone) keeps the plain UTC path. Zones are resolved by the core's
+`SparkTimeZones` (K10), so Windows ids and the newer-tzdata aliases work as they do for viewers.
+
+Daylight-saving transitions are defined (Q-W1):
+
+| Case | Rule | Example |
+|---|---|---|
+| **Gap** (spring forward): the wall clock never happens | Fires at the **first valid instant after the gap**, the transition itself. Several skipped wall clocks (every 15 minutes, say) collapse into that one run | `30 2 * * *` in Europe/Brussels on 29 March 2026 fires at 03:00 CEST (01:00Z) |
+| **Fold** (fall back): the wall clock happens twice | Fires **once**, at its first occurrence (the pre-transition offset) | `30 1 * * *` in America/New_York on 1 November 2026 fires at 01:30 EDT (05:30Z), not again at 01:30 EST. An hourly job skips the repeated hour |
+
+Occurrences are always UTC instants, so the cluster-wide claim below is unchanged and unambiguous
+across a fold.
 
 ### Concurrency
 
@@ -99,13 +138,13 @@ semantics.
 ### Option A: Source-Generated Registration (Recommended)
 
 If your project references `MintPlayer.Spark.SourceGenerators`, a source generator discovers all
-`ISparkCronJob` implementers and generates an `AddCronJobs()` extension on `ISparkBuilder`:
+`ISparkCronJob` implementers and registers them in the generated `AddSparkDiscovered()` extension on `ISparkBuilder`:
 
 ```csharp
 builder.Services.AddSpark(builder.Configuration, spark =>
 {
     spark.UseContext<MyContext>();
-    spark.AddCronJobs(); // source-generated — registers every discovered job with its default schedule
+    spark.AddSparkDiscovered(); // source-generated — registers every discovered job with its default schedule
 });
 ```
 
@@ -122,7 +161,7 @@ builder.Services.AddSpark(builder.Configuration, spark =>
 });
 ```
 
-`AddCron` and `AddCronJobs` both register the scheduler exactly once, so they compose freely — call
+`AddCron` and `AddSparkDiscovered` both register the scheduler exactly once, so they compose freely — call
 both if you want auto-discovery plus an extra manual registration.
 
 ### Overriding the Schedule
@@ -149,15 +188,15 @@ Registering the same type twice without a distinct name throws an `InvalidOperat
 ### AllFeatures
 
 Apps that use `AddSparkFull` (the `MintPlayer.Spark.AllFeatures` package) get cron jobs wired
-automatically — the AllFeatures generator detects `ISparkCronJob` implementers and emits the
-`AddCronJobs()` call into `AddSparkFull`. No explicit registration is needed.
+automatically — `AddSparkFull` calls the generated `AddSparkDiscovered()`, which registers every
+`ISparkCronJob` implementer. No explicit registration is needed.
 
 ## How Scheduling Works
 
 Each registered job runs its own loop inside the `SparkCronScheduler` background service:
 
 1. Parse the cron expression once. A malformed expression is rejected at **registration** (`AddJob` throws), so it cannot reach the scheduler. A syntactically-valid but never-occurring expression (e.g. `0 0 30 2 *` — 30 February) is detected here, logged at warning level, and only *that* job's loop is disabled — other jobs are unaffected. The resolved precision (minute vs. second) and the first computed run time are logged at startup so a precision misread (a five- vs. six-field mix-up) is visible.
-2. Compute the next occurrence after `DateTime.UtcNow`.
+2. Compute the next occurrence after `DateTime.UtcNow` (on the job's zone's wall clock when it has one, as a UTC instant either way). A `Spark:Cron:Jobs:{name}` entry is applied first.
 3. Wait until that time. Waits are capped at one hour and re-evaluated, which absorbs long delays and host clock corrections.
 4. Attempt to **claim** the occurrence cluster-wide (see below).
 5. If claimed, resolve the job from a fresh DI scope and run it. Non-concurrent jobs are awaited before the loop computes the next occurrence; concurrent jobs are dispatched fire-and-forget (bounded — see [Concurrency](#concurrency)).
@@ -225,6 +264,6 @@ See the following files for working implementations:
 - `SparkCronScheduler.cs` — the background service: per-job loop + compare-exchange claim
 - `ISparkCronBuilder.cs` — `AddJob` registration (default, override, multi-schedule)
 - `SparkCronExtensions.cs` — `AddCron` DI registration
-- `../MintPlayer.Spark.SourceGenerators/Generators/CronJobRegistrationGenerator.cs` — source generator for auto-registration
-- `../apps/DemoApp/DemoApp/Jobs/HeartbeatJob.cs` — explicit `AddCronJobs()` registration
+- `../MintPlayer.Spark.SourceGenerators/Generators/SparkDiscoveryGenerator.cs` — source generator for auto-registration
+- `../apps/DemoApp/DemoApp/Jobs/HeartbeatJob.cs` — registration via the generated `AddSparkDiscovered()`
 - `../apps/Fleet/Fleet/Jobs/FleetHeartbeatJob.cs` — zero-config registration via `AddSparkFull`

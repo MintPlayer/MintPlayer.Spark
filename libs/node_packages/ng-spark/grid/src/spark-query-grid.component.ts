@@ -45,6 +45,8 @@ import {
   parseSelectionRule,
   selectionModeFor,
   valueFor,
+  translated,
+  sparkTypeHintClasses,
 } from '@mintplayer/ng-spark/models';
 import { SPARK_GRID_PAGE_SIZES, initialGridSettings, isVirtualScrollingQuery } from './spark-grid-columns';
 import { applicablePresetFilters } from './preset-filters';
@@ -471,7 +473,7 @@ export class SparkQueryGridComponent {
         actions.push({
           kind: 'addon', name: addon.id, addon, priority,
           // The menu renders a definition's display name; an add-on has only a translation key.
-          definition: { name: addon.id, label: { en: this.lang.t(addon.labelKey) }, showedOn: 'query', refreshOnCompleted: true, offset: priority },
+          definition: { name: addon.id, label: translated({ en: this.lang.t(addon.labelKey) }), showedOn: 'query', refreshOnCompleted: true, offset: priority },
         });
       }
     }
@@ -1361,6 +1363,15 @@ export class SparkQueryGridComponent {
    */
   rendererValueFor(item: QueryResultItem, column: QueryColumn): unknown {
     return cellValue(valueFor(item, column.name));
+  }
+
+  /**
+   * The row's and the cell's `typeHints` as classes on the cell (commerce #521; see
+   * `sparkTypeHintClasses`). On every cell rather than the row, because the datatable owns the `<tr>`.
+   */
+  hintClassesFor(item: QueryResultItem | null | undefined, column: QueryColumn): string {
+    if (!item) return '';
+    return sparkTypeHintClasses(item.typeHints, valueFor(item, column.name)?.typeHints);
   }
 
   getColumnRendererComponent(column: QueryColumn): Type<any> | null {

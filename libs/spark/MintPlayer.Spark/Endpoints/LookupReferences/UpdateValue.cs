@@ -15,6 +15,7 @@ internal sealed partial class UpdateLookupReferenceValue : IPutEndpoint<LookupRe
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
     {
         builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
+        builder.RefuseDeniedAsJson();
     }
 
     [RouteParam] public string Name { get; set; } = "";
@@ -23,15 +24,11 @@ internal sealed partial class UpdateLookupReferenceValue : IPutEndpoint<LookupRe
     [Inject] private readonly ILookupReferenceService lookupReferenceService;
     [Inject] private readonly IPermissionService permissionService;
     [Inject] private readonly ILogger<UpdateLookupReferenceValue> logger;
-    [Inject] private readonly IHttpContextAccessor httpContextAccessor;
-
     protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure)
         => LookupReferenceBodies.BindFailedAsync(context, permissionService, failure);
 
     public override async Task<IResult> HandleAsync(LookupReferenceValueDto value, CancellationToken cancellationToken)
     {
-        var httpContext = httpContextAccessor.HttpContext!;
-
         try
         {
             await permissionService.EnsureAuthorizedAsync("Edit", "LookupReferences"); // R2-H4
@@ -39,15 +36,11 @@ internal sealed partial class UpdateLookupReferenceValue : IPutEndpoint<LookupRe
             var result = await lookupReferenceService.UpdateValueAsync(Name, Key, value);
             return Results.Json(result);
         }
-        catch (SparkAccessDeniedException)
-        {
-            return SparkDenial.RefuseJson(httpContext);
-        }
         catch (InvalidOperationException ex)
         {
             // R2-M1: don't leak Raven-internal strings — log server-side.
             logger.LogWarning(ex, "UpdateLookupReferenceValue failed");
-            return Results.Json(new { error = "Operation failed" }, statusCode: 400);
+            return Results.Json(new Abstractions.SparkErrorResponse("Operation failed"), statusCode: 400);
         }
     }
 }

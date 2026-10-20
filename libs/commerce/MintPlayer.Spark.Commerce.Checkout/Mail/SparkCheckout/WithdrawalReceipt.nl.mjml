@@ -1,0 +1,24 @@
+<mjml>
+  <mj-head>
+    <mj-title>We hebben je herroeping van bestelling {{ number }} ontvangen</mj-title>
+    <mj-attributes>
+      <mj-all font-family="Segoe UI, Helvetica, Arial, sans-serif" />
+      <mj-text font-size="15px" line-height="22px" color="#111827" />
+      <mj-button background-color="#2563eb" color="#ffffff" border-radius="6px" font-size="15px" />
+    </mj-attributes>
+  </mj-head>
+  <mj-body background-color="#f3f4f6">
+    <mj-section background-color="#ffffff" padding="24px 0">
+      <mj-column>
+        <mj-text font-size="20px" font-weight="600">{{ if buyer_name }}{{ buyer_name }}, we{{ else }}We{{ end }} hebben je herroeping van bestelling {{ number }} ontvangen</mj-text>
+        <mj-text>Ontvangen op <strong>{{ received_at }}</strong>.</mj-text>
+        {{ for line in lines }}<mj-text>{{ line.quantity }} × {{ line.title }}{{ if !line.eligible }}<br /><em>Buiten het herroepingsrecht ({{ line.reason }}). We hebben het genoteerd; de verkoper neemt contact met je op.</em>{{ end }}</mj-text>{{ end }}
+        {{ if note }}<mj-text font-size="13px" color="#4b5563">Je opmerking: {{ note | html.escape }}</mj-text>{{ end }}
+        {{ if withheld }}<mj-text>Stuur de goederen terug. We betalen de prijs en de standaard leveringskosten terug zodra we ze ontvangen of zodra je ons bewijst dat je ze verzonden hebt, naargelang wat het eerst gebeurt{{ if refund_due_by }}, en uiterlijk op {{ refund_due_by }} zodra aan die voorwaarde voldaan is{{ end }}.</mj-text>{{ else }}<mj-text>Je terugbetaling is onderweg naar het betaalmiddel dat je gebruikte.</mj-text>{{ end }}
+        <mj-text font-size="13px" color="#4b5563">{{ if seller_pays_return }}De verkoper draagt de kosten van het terugzenden van de goederen.{{ else }}Jij draagt de rechtstreekse kosten van het terugzenden van de goederen.{{ end }}</mj-text>
+        {{ if link }}<mj-button href="{{ link }}">Je bestelling bekijken</mj-button>{{ end }}
+        <mj-text font-size="12px" color="#6b7280">Deze mail is de ontvangstbevestiging op een duurzame gegevensdrager (Richtlijn 2011/83/EU art. 11 bis). Bewaar hem.</mj-text>
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 
 namespace MintPlayer.Spark.SourceGenerators.Naming;
 
@@ -88,8 +89,46 @@ internal static class IndexNaming
     /// </summary>
     public static string WrapperCompanion(string propertyName) => $"{propertyName}Raw";
 
-    /// <summary>A per-language flattened field name, e.g. <c>Description</c> + <c>nl</c>.</summary>
-    public static string LanguageField(string propertyName, string language) => $"{propertyName}_{language}";
+    /// <summary>
+    /// A per-language flattened field name: <c>Description</c> + <c>nl</c> → <c>Description_nl</c>,
+    /// <c>Description</c> + <c>zh-Hant</c> → <c>Description_zh_Hant</c> (commerce X17).
+    /// <para>
+    /// A tag's <c>-</c> becomes <c>_</c> so the name is a C# identifier on the generated view class. The
+    /// scheme is reversible because a language tag never contains <c>_</c>: the runtime
+    /// (<c>QueryExecutor.IsOnSearchSurface</c>) matches the known attribute name as the prefix and turns
+    /// the rest back into a tag. Keep the two in lockstep.
+    /// </para>
+    /// </summary>
+    public static string LanguageField(string propertyName, string language)
+        => $"{propertyName}_{CanonicalLanguageTag(language).Replace('-', '_')}";
+
+    /// <summary>
+    /// The RFC 5646 §2.1.1 case of a tag, as <c>LanguageTag.Canonicalize</c> (MintPlayer.Spark.Model) stores
+    /// it: language lowercase, a 4-letter script titlecase, a 2-letter region uppercase, the rest — and
+    /// everything after a singleton — lowercase. The generated map compares stored tags with
+    /// <c>==</c>, so it has to use the stored case. A generator cannot reference the runtime assembly,
+    /// hence the copy; <c>culture.json</c> codes that are not well-formed are reported by
+    /// <c>CultureLoader</c> at run time.
+    /// </summary>
+    public static string CanonicalLanguageTag(string tag)
+    {
+        var parts = tag.Trim().Split('-');
+        var afterSingleton = false;
+        for (var i = 0; i < parts.Length; i++)
+        {
+            var part = parts[i];
+            var letters = part.Length > 0 && part.All(char.IsLetter);
+            if (i > 0 && !afterSingleton && part.Length == 4 && letters)
+                parts[i] = char.ToUpperInvariant(part[0]) + part.Substring(1).ToLowerInvariant();
+            else if (i > 0 && !afterSingleton && part.Length == 2 && letters)
+                parts[i] = part.ToUpperInvariant();
+            else
+                parts[i] = part.ToLowerInvariant();
+
+            if (part.Length == 1) afterSingleton = true;
+        }
+        return string.Join("-", parts);
+    }
 
     public static string Pluralize(string name)
     {

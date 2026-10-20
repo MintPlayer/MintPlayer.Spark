@@ -30,6 +30,7 @@ internal sealed class McpAgentExposure(
             .Where(t => (t.AgentPermissions & EAgentPermission.Read) != 0)
             .OrderBy(t => t.Name, StringComparer.Ordinal)
             .Select(t => new AgentExposedType(
+                t.Id.ToString("D"),
                 t.Name,
                 SparkMcpResult.Label(t.Label) ?? t.Name,
                 t.AgentPermissions,

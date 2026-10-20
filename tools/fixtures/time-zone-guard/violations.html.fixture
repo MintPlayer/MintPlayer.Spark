@@ -1,0 +1,3 @@
+<!-- Both bindings below must trip tools/verify-time-zones.test.mjs: a DatePipe zone argument. -->
+<td>{{ row.createdAt | date:'HH:mm':'+0100' }}</td>
+<time [attr.title]="row.createdAt | date:'medium':viewerZone">{{ row.createdAt | date:'short' }}</time>

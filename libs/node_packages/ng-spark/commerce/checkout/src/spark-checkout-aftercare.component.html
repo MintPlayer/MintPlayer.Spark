@@ -1,0 +1,139 @@
+@if (aftercare(); as a) {
+  <section class="spark-checkout-aftercare" [attr.data-state]="a.state">
+    @if (refusal(); as key) {
+      <p class="spark-checkout-refusal" role="alert">{{ key | t }}</p>
+    }
+
+    <!-- GA1, CRD Art. 11a: shown permanently while a withdrawal right is live, clearly labelled. -->
+    @if (a.withdrawal.available || step() === 'done') {
+      <div class="spark-checkout-withdrawal" aria-live="polite">
+        @switch (step()) {
+          @case ('idle') {
+            <button type="button" class="btn btn-outline-danger spark-checkout-withdrawal-button" (click)="open()">
+              {{ a.withdrawal.buttonKey | t }}
+            </button>
+            @if (a.withdrawal.deadline) {
+              <small class="spark-checkout-withdrawal-until">{{ text('commerceCheckout.withdrawal.until', date(a.withdrawal.deadline)) }}</small>
+            }
+          }
+          @case ('form') {
+            <form class="spark-checkout-withdrawal-form" (submit)="$event.preventDefault(); review()">
+              <h3>{{ 'commerceCheckout.withdrawal.title' | t }}</h3>
+              <p>{{ 'commerceCheckout.withdrawal.intro' | t }}</p>
+              @for (line of withdrawable(); track line.lineId) {
+                <label class="spark-checkout-withdrawal-line">
+                  <input type="number" min="0" [max]="line.free" [value]="chosen()[line.lineId] ?? 0"
+                         (change)="setUnits(line, $any($event.target).value)" />
+                  <span>× {{ line.title | resolveTranslation }}</span>
+                </label>
+              }
+              <label class="spark-checkout-withdrawal-field">
+                <span>{{ 'commerceCheckout.withdrawal.reason' | t }}</span>
+                <textarea rows="2" [value]="note()" (input)="note.set($any($event.target).value)"></textarea>
+              </label>
+              @if (guest()) {
+                <label class="spark-checkout-withdrawal-field">
+                  <span>{{ 'commerceCheckout.name' | t }}</span>
+                  <input type="text" autocomplete="name" [value]="name()" (input)="name.set($any($event.target).value)" />
+                </label>
+                <label class="spark-checkout-withdrawal-field">
+                  <span>{{ 'commerceCheckout.email' | t }}</span>
+                  <input type="email" autocomplete="email" [value]="email()" (input)="email.set($any($event.target).value)" />
+                </label>
+              }
+              <div class="spark-checkout-withdrawal-actions">
+                <button type="button" class="btn btn-outline-secondary" (click)="step.set('idle')">{{ 'commerceCheckout.withdrawal.back' | t }}</button>
+                <button type="submit" class="btn btn-primary" [disabled]="busy()">{{ 'commerceCheckout.withdrawal.next' | t }}</button>
+              </div>
+            </form>
+          }
+          @case ('review') {
+            <div class="spark-checkout-withdrawal-review">
+              <h3>{{ 'commerceCheckout.withdrawal.review' | t }}</h3>
+              <ul>
+                @for (line of preview()?.lines ?? []; track line.lineId) {
+                  <li [class.spark-checkout-withdrawal-outside]="!line.eligible">
+                    {{ line.quantity }} × {{ line.lineId }}
+                    @if (!line.eligible) {
+                      <small>{{ 'commerceCheckout.withdrawal.outsideRight' | t }} ({{ line.ineligibleReason }})</small>
+                    }
+                  </li>
+                }
+              </ul>
+              @if (preview()?.withheld) {
+                <p>{{ 'commerceCheckout.withdrawal.withheld' | t }}</p>
+              }
+              <div class="spark-checkout-withdrawal-actions">
+                <button type="button" class="btn btn-outline-secondary" (click)="step.set('form')">{{ 'commerceCheckout.withdrawal.back' | t }}</button>
+                <button type="button" class="btn btn-danger spark-checkout-withdrawal-confirm" [disabled]="busy()" (click)="confirm()">
+                  {{ a.withdrawal.confirmKey | t }}
+                </button>
+              </div>
+            </div>
+          }
+          @case ('done') {
+            <p class="spark-checkout-withdrawal-receipt" role="status">
+              {{ text('commerceCheckout.withdrawal.received', date(receipt()?.receivedAt)) }}
+            </p>
+            @if (receipt()?.withheld) {
+              <p>{{ 'commerceCheckout.withdrawal.withheld' | t }}</p>
+            }
+          }
+        }
+      </div>
+    }
+
+    @for (offer of a.rescheduleOffers; track offer.windowId) {
+      <div class="spark-checkout-reschedule">
+        <p>{{ text('commerceCheckout.aftercare.rescheduled', date(offer.closesAt)) }}</p>
+        @if (offer.choice !== 'refund') {
+          <button type="button" class="btn btn-outline-secondary" [disabled]="busy()" (click)="choose(offer.windowId, 'keep')">{{ 'commerceCheckout.aftercare.keep' | t }}</button>
+          <button type="button" class="btn btn-outline-danger" [disabled]="busy()" (click)="choose(offer.windowId, 'refund')">{{ 'commerceCheckout.aftercare.refund' | t }}</button>
+        }
+      </div>
+    }
+
+    <ul class="spark-checkout-aftercare-lines">
+      @for (line of a.lines; track line.lineId) {
+        @if (line.free > 0 && !line.cancellationRefusal) {
+          <li>
+            <span>{{ line.title | resolveTranslation }}</span>
+            @if (line.cancellationFeeBasisPoints) {
+              <small>{{ text('commerceCheckout.aftercare.cancelFee', '' + line.cancellationFeeBasisPoints / 100) }}</small>
+            }
+            <button type="button" class="btn btn-sm btn-outline-secondary" [disabled]="busy()" (click)="cancel(line)">{{ 'commerceCheckout.aftercare.cancel' | t }}</button>
+          </li>
+        }
+      }
+    </ul>
+    @if (cancelled(); as amount) {
+      <p role="status">{{ 'commerceCheckout.refunded' | t }} {{ amount }}</p>
+    }
+
+    @if (claimable().length > 0) {
+      <form class="spark-checkout-claim" (submit)="$event.preventDefault(); claim()">
+        <h3>{{ 'commerceCheckout.aftercare.claim' | t }}</h3>
+        <select [value]="claimLine() ?? ''" (change)="claimLine.set($any($event.target).value || null)">
+          <option value=""></option>
+          @for (line of claimable(); track line.lineId) {
+            <option [value]="line.lineId">{{ line.title | resolveTranslation }}</option>
+          }
+        </select>
+        <label class="spark-checkout-withdrawal-field">
+          <span>{{ 'commerceCheckout.aftercare.claimDescription' | t }}</span>
+          <textarea rows="3" [value]="claimText()" (input)="claimText.set($any($event.target).value)"></textarea>
+        </label>
+        <button type="submit" class="btn btn-outline-primary" [disabled]="busy() || !claimLine() || !claimText().trim()">{{ 'commerceCheckout.aftercare.claim' | t }}</button>
+      </form>
+    }
+
+    @if (a.refunds.length > 0) {
+      <h3>{{ 'commerceCheckout.aftercare.refunds' | t }}</h3>
+      <ul class="spark-checkout-aftercare-refunds">
+        @for (refund of a.refunds; track refund.refundId) {
+          <li [attr.data-status]="refund.status"><span>{{ date(refund.createdAt) }}</span><span>{{ money(refund.amount) }}</span></li>
+        }
+      </ul>
+    }
+  </section>
+}

@@ -1,0 +1,27 @@
+:host {
+  display: block;
+}
+
+.spark-order-invoices ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.spark-order-invoices li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: baseline;
+  padding: 0.25rem 0;
+}
+
+.spark-order-invoices-number {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.spark-order-invoices-total {
+  margin-inline-start: auto;
+  font-variant-numeric: tabular-nums;
+}

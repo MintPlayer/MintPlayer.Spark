@@ -1,0 +1,124 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "TicketAttendeeQuestion: GB3, a question asked per ticket of a ticket type (a detail of TicketType). A sensitive question",
+    "needs a consent text (GA9) and is left out of exports unless IncludeInExport. Named TicketAttendeeQuestion so it cannot",
+    "clash with an application's own type.",
+    "",
+    "HAND-AUTHORED. Ids are UUIDv5 of 'ticketing-events:TicketAttendeeQuestion[...]', written by 'npm run stamp:library-model-ids'."
+  ],
+  "persistentObject": {
+    "id": "9ace6e80-b4d5-57bc-aee8-a30b56d3418c",
+    "name": "TicketAttendeeQuestion",
+    "clrType": "MintPlayer.Spark.Commerce.Ticketing.Events.Models.AttendeeQuestion",
+    "breadcrumb": "{Label}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "134be23e-4b70-56aa-a3e5-11249a86c80a",
+        "name": "Key",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "ef8fe933-476f-5213-acee-72b185e73279",
+        "name": "Label",
+        "dataType": "TranslatedString",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "aa55ab3d-681e-5252-a60d-2a0a2cd7f731",
+        "name": "Kind",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "lookupReferenceType": "AttendeeQuestionKind"
+      },
+      {
+        "id": "89f6b89f-bc7e-5c51-bd45-c11061b4c20e",
+        "name": "Choices",
+        "dataType": "AsDetail",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 4,
+        "asDetailType": "MintPlayer.Spark.Commerce.Ticketing.Events.Models.AttendeeQuestionChoice",
+        "isArray": true,
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "1e6a134d-2b7f-5161-8ca5-c89a66b161a1",
+        "name": "Required",
+        "dataType": "boolean",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "f9eec5bd-525a-56ba-8a49-a5c2981d6cea",
+        "name": "AskAt",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "lookupReferenceType": "AttendeeQuestionTiming"
+      },
+      {
+        "id": "e1c38011-cfa4-59fb-b9af-5036a4ded289",
+        "name": "Sensitive",
+        "dataType": "boolean",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "9d1fb25a-5d99-59dd-b52f-372e0baa68a5",
+        "name": "ConsentText",
+        "dataType": "TranslatedString",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "2260e6bc-ff62-5cdc-b7a4-5c5997b3464c",
+        "name": "IncludeInExport",
+        "dataType": "boolean",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 9,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      }
+    ]
+  },
+  "queries": []
+}

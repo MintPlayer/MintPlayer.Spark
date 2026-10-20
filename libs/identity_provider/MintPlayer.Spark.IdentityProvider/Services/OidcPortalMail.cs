@@ -8,11 +8,7 @@ namespace MintPlayer.Spark.IdentityProvider.Services;
 /// <summary>The developer portal's mails (<c>Mail/SparkIdentityProvider/*.mjml</c>, embedded; an application overrides one by file name).</summary>
 public static class OidcPortalMailTemplates
 {
-    public const string DeveloperApproved = "SparkIdentityProvider/DeveloperApproved";
-    public const string DeveloperRejected = "SparkIdentityProvider/DeveloperRejected";
     public const string Invitation = "SparkIdentityProvider/Invitation";
-    public const string ScopeApprovalDecided = "SparkIdentityProvider/ScopeApprovalDecided";
-    public const string GoLiveDecided = "SparkIdentityProvider/GoLiveDecided";
 }
 
 /// <summary>

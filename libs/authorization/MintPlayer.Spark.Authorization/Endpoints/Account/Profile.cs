@@ -35,6 +35,6 @@ internal sealed partial class Profile<TUser> : IGetEndpoint
                 fields[name] = value;
         }
 
-        return new SparkProfileResponse(user.UserName, user.Email, fields) { PreferredCulture = user.PreferredCulture };
+        return new SparkProfileResponse(user.UserName, user.Email, fields) { PreferredCulture = user.PreferredCulture, PreferredTimeZone = user.PreferredTimeZone };
     }
 }

@@ -96,30 +96,30 @@ internal static class ContributionMessages
 
     internal static readonly IReadOnlyDictionary<string, TranslatedString> BuiltIn = new Dictionary<string, TranslatedString>(StringComparer.Ordinal)
     {
-        [Reverted] = TranslatedString.Create(
-            "This version is current again; {0} newer version(s) were hidden.",
-            "Cette version est de nouveau la version actuelle ; {0} version(s) plus récente(s) ont été masquées.",
-            "Deze versie is opnieuw de huidige; {0} nieuwere versie(s) werden verborgen."),
-        [WithdrawnNowShowing] = TranslatedString.Create(
-            "Your version of {0} was withdrawn; {1}'s version is shown now.",
-            "Votre version de {0} a été retirée ; la version de {1} est maintenant affichée.",
-            "Uw versie van {0} is ingetrokken; nu wordt de versie van {1} getoond."),
-        [WithdrawnNowShowingAnother] = TranslatedString.Create(
-            "Your version of {0} was withdrawn; another contributor's version is shown now.",
-            "Votre version de {0} a été retirée ; la version d'un autre contributeur est maintenant affichée.",
-            "Uw versie van {0} is ingetrokken; nu wordt de versie van een andere bijdrager getoond."),
-        [WithdrawnNoneLeft] = TranslatedString.Create(
-            "Your version of {0} was withdrawn; no version of it is left.",
-            "Votre version de {0} a été retirée ; il n'en reste aucune version.",
-            "Uw versie van {0} is ingetrokken; er is geen versie meer over."),
-        [NotYoursStays] = TranslatedString.Create(
-            "{0} shows {1}'s version, which only its author or a moderator can remove: it stays.",
-            "{0} affiche la version de {1}, que seuls son auteur ou un modérateur peuvent retirer : elle reste.",
-            "{0} toont de versie van {1}, die alleen de auteur of een moderator kan verwijderen: die blijft staan."),
-        [NotYoursStaysAnother] = TranslatedString.Create(
-            "{0} shows another contributor's version, which only its author or a moderator can remove: it stays.",
-            "{0} affiche la version d'un autre contributeur, que seuls son auteur ou un modérateur peuvent retirer : elle reste.",
-            "{0} toont de versie van een andere bijdrager, die alleen de auteur of een moderator kan verwijderen: die blijft staan."),
+        [Reverted] = TranslatedString.Of(
+            ("en", "This version is current again; {0} newer version(s) were hidden."),
+            ("fr", "Cette version est de nouveau la version actuelle ; {0} version(s) plus récente(s) ont été masquées."),
+            ("nl", "Deze versie is opnieuw de huidige; {0} nieuwere versie(s) werden verborgen.")),
+        [WithdrawnNowShowing] = TranslatedString.Of(
+            ("en", "Your version of {0} was withdrawn; {1}'s version is shown now."),
+            ("fr", "Votre version de {0} a été retirée ; la version de {1} est maintenant affichée."),
+            ("nl", "Uw versie van {0} is ingetrokken; nu wordt de versie van {1} getoond.")),
+        [WithdrawnNowShowingAnother] = TranslatedString.Of(
+            ("en", "Your version of {0} was withdrawn; another contributor's version is shown now."),
+            ("fr", "Votre version de {0} a été retirée ; la version d'un autre contributeur est maintenant affichée."),
+            ("nl", "Uw versie van {0} is ingetrokken; nu wordt de versie van een andere bijdrager getoond.")),
+        [WithdrawnNoneLeft] = TranslatedString.Of(
+            ("en", "Your version of {0} was withdrawn; no version of it is left."),
+            ("fr", "Votre version de {0} a été retirée ; il n'en reste aucune version."),
+            ("nl", "Uw versie van {0} is ingetrokken; er is geen versie meer over.")),
+        [NotYoursStays] = TranslatedString.Of(
+            ("en", "{0} shows {1}'s version, which only its author or a moderator can remove: it stays."),
+            ("fr", "{0} affiche la version de {1}, que seuls son auteur ou un modérateur peuvent retirer : elle reste."),
+            ("nl", "{0} toont de versie van {1}, die alleen de auteur of een moderator kan verwijderen: die blijft staan.")),
+        [NotYoursStaysAnother] = TranslatedString.Of(
+            ("en", "{0} shows another contributor's version, which only its author or a moderator can remove: it stays."),
+            ("fr", "{0} affiche la version d'un autre contributeur, que seuls son auteur ou un modérateur peuvent retirer : elle reste."),
+            ("nl", "{0} toont de versie van een andere bijdrager, die alleen de auteur of een moderator kan verwijderen: die blijft staan.")),
     };
 
     /// <summary>
@@ -130,15 +130,12 @@ internal static class ContributionMessages
     /// </summary>
     public static TranslatedString Format(IServiceProvider services, string key, params object[] arguments)
     {
-        var templates = new Dictionary<string, string>(BuiltIn[key].Translations, StringComparer.Ordinal);
+        var templates = BuiltIn[key].Clone();
         if (services.GetService<ITranslationsLoader>()?.Resolve(key) is { } app)
-            foreach (var (language, text) in app.Translations)
-                if (!string.IsNullOrEmpty(text))
-                    templates[language] = text;
+            foreach (var entry in app.Entries)
+                if (!string.IsNullOrEmpty(entry.Value))
+                    templates.Set(entry.Tag, entry.Value);
 
-        var formatted = new TranslatedString();
-        foreach (var (language, text) in templates)
-            formatted.Translations[language] = string.Format(System.Globalization.CultureInfo.InvariantCulture, text, arguments);
-        return formatted;
+        return templates.Map((_, text) => string.Format(System.Globalization.CultureInfo.InvariantCulture, text, arguments));
     }
 }

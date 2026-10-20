@@ -1,9 +1,11 @@
+using MintPlayer.Spark.Abstractions.Builder;
+
 namespace MintPlayer.Spark.Notifications;
 
 /// <summary><c>Spark:Notifications</c> (<c>docs/seo_analyzer_PRD.md</c> X10). Code given to <c>AddNotifications(o => …)</c> runs after the section.</summary>
-public sealed class SparkNotificationsOptions
+public sealed class SparkNotificationsOptions : ISparkConfigurationSection
 {
-    public const string SectionName = "Spark:Notifications";
+    public static string SectionName => "Spark:Notifications";
 
     /// <summary>Web Push. Off until all three VAPID values are set.</summary>
     public SparkWebPushOptions WebPush { get; set; } = new();

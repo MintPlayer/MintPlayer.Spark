@@ -1,0 +1,36 @@
+:host {
+  display: inline-block;
+}
+
+.spark-sale-price {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5em;
+}
+
+.spark-sale-price-now {
+  font-weight: 600;
+}
+
+.on-sale .spark-sale-price-now {
+  color: var(--bs-danger, #b91c1c);
+}
+
+.spark-sale-price-was {
+  color: var(--bs-secondary-color, #6b7280);
+}
+
+.spark-sale-price-badge {
+  font-size: 0.85em;
+  padding: 0 0.4em;
+  border-radius: 0.25em;
+  background: var(--bs-danger-bg-subtle, #fee2e2);
+  color: var(--bs-danger-text-emphasis, #7f1d1d);
+}
+
+.spark-sale-price-prior {
+  flex-basis: 100%;
+  font-size: 0.85em;
+  color: var(--bs-secondary-color, #6b7280);
+}

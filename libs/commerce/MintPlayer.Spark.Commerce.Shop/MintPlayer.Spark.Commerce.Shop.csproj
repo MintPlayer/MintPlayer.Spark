@@ -1,0 +1,73 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<OutputType>Library</OutputType>
+		<!-- Names this library's App_Data layers (composition D16). Permanent: it is part of the right keys and the
+		     model ids the library ships (commerce PRD §4.1, D31). -->
+		<SparkLibraryAlias>commerce-shop</SparkLibraryAlias>
+
+		<!-- NuGet Package Metadata -->
+		<PackageId>MintPlayer.Spark.Commerce.Shop</PackageId>
+		<Version>11.0.0-preview.1</Version>
+		<Authors>MintPlayer</Authors>
+		<Company>MintPlayer</Company>
+		<Description>The shop of the MintPlayer.Spark commerce suite: products with variants (SKU and GS1-checked GTIN, each variant its own quota), categories, typo-tolerant catalogue search with facet counts, galleries with per-variant images, unit prices (PID), GPSR product information, legal-guarantee and durability information, HS code and origin, age-restricted items, the checkout delivery step over Shipping (rates, service points), Paid → Shipped → Delivered with the withdrawal and guarantee periods started on delivery, returns with their disposition, verified-purchase reviews moderated through Moderation, Google Merchant and Meta product feeds, and the public product pages (meta tags, schema.org Product, sitemap).</Description>
+		<PackageTags>commerce;shop;webshop;products;variants;checkout;shipping;ravendb;spark</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="README.md" Pack="true" PackagePath="\" />
+	</ItemGroup>
+
+	<!-- The default MJML templates (SparkShop/*), read by MailManager. An app overrides one by placing a file with the
+	     same name in its Templates/Mail folder. -->
+	<ItemGroup>
+		<EmbeddedResource Include="Mail\**\*.mjml" LogicalName="SparkMail/%(RecursiveDir)%(Filename)%(Extension)" WithCulture="false" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="11.4.1-rc.0" />
+		<PackageReference Include="MintPlayer.SourceGenerators" Version="13.0.0">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="13.0.0" GeneratePathProperty="true" />
+		<PackageReference Include="RavenDB.Client" Version="7.2.6" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- PRD §4.1: Shop depends on Checkout (which brings Inventory, Payments and Commerce) and Shipping. It plugs into
+		     Checkout through its extension points only: a capacity source for variants, the delivery pricing step, the
+		     refund terms and standard delivery cost, and an order-event recipient. Checkout never references Shop. -->
+		<ProjectReference Include="..\MintPlayer.Spark.Commerce.Checkout\MintPlayer.Spark.Commerce.Checkout.csproj" />
+		<ProjectReference Include="..\MintPlayer.Spark.Commerce.Shipping\MintPlayer.Spark.Commerce.Shipping.csproj" />
+		<!-- Fulfilment (D13): the warehouse's shop side (Commerce.Fulfilment over Fulfilment.Contracts) is built beside this
+		     package; Shop exposes ISparkShopOrders / ISparkShopStock for it and never books shipments in Warehouse mode. -->
+		<ProjectReference Include="..\..\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
+		<!-- SparkUser: the personal-data export and account deletion hooks (reviews). -->
+		<ProjectReference Include="..\..\authorization\MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj" />
+		<!-- Products are organization-owned and publishable (X8). -->
+		<ProjectReference Include="..\..\organizations\MintPlayer.Spark.Organizations\MintPlayer.Spark.Organizations.csproj" />
+		<!-- GC5: reviews are moderatable (IModeratable) and decided by Moderation's reviewers. -->
+		<ProjectReference Include="..\..\moderation\MintPlayer.Spark.Moderation.Abstractions\MintPlayer.Spark.Moderation.Abstractions.csproj" />
+		<!-- The return-label mail (GB5). -->
+		<ProjectReference Include="..\..\mail\MintPlayer.Spark.MailManager.Abstractions\MintPlayer.Spark.MailManager.Abstractions.csproj" />
+		<!-- GTIN check digits (GS1 General Specifications §7.9). -->
+		<ProjectReference Include="..\..\gs1\MintPlayer.Spark.Gs1\MintPlayer.Spark.Gs1.csproj" />
+		<!-- Spark's generators (the library layers, SPARK045, lookups) and analyzers. Analyzer ProjectReferences are not transitive. -->
+		<ProjectReference Include="..\..\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<InternalsVisibleTo Include="MintPlayer.Spark.Commerce.Tests" />
+	</ItemGroup>
+
+</Project>

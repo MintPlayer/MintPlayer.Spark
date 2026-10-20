@@ -1,0 +1,176 @@
+{
+  "$schema": "../../../../schemas/translations.schema.json",
+  "commerce": {
+    "fee": {
+      "Service": { "en": "Service fee", "fr": "Frais de service", "nl": "Servicekosten" },
+      "Booking": { "en": "Booking fee", "fr": "Frais de réservation", "nl": "Boekingskosten" },
+      "Platform": { "en": "Platform fee", "fr": "Frais de plateforme", "nl": "Platformkosten" },
+      "Other": { "en": "Other charges", "fr": "Autres frais", "nl": "Overige kosten" }
+    },
+    "price": {
+      "includesFees": { "en": "incl. VAT and all mandatory fees", "fr": "TVA et tous les frais obligatoires compris", "nl": "incl. btw en alle verplichte kosten" },
+      "priorPrice": { "en": "Lowest price in the last 30 days: {0}", "fr": "Prix le plus bas des 30 derniers jours : {0}", "nl": "Laagste prijs van de afgelopen 30 dagen: {0}" },
+      "vatIncluded": { "en": "of which VAT {0}", "fr": "dont TVA {0}", "nl": "waarvan btw {0}" }
+    },
+    "trader": {
+      "Trader": { "en": "Sold by a professional seller", "fr": "Vendu par un vendeur professionnel", "nl": "Verkocht door een professionele verkoper" },
+      "NonTrader": {
+        "en": "Sold by a private individual: EU consumer-protection rights do not apply to this purchase.",
+        "fr": "Vendu par un particulier : les droits européens de protection des consommateurs ne s'appliquent pas à cet achat.",
+        "nl": "Verkocht door een particulier: de Europese consumentenbescherming is niet van toepassing op deze aankoop."
+      },
+      "Undeclared": { "en": "Seller status not declared", "fr": "Statut du vendeur non déclaré", "nl": "Status van de verkoper niet opgegeven" },
+      "page": { "en": "About the seller", "fr": "À propos du vendeur", "nl": "Over de verkoper" },
+      "status": { "en": "Trader status", "fr": "Statut de professionnel", "nl": "Handelaarsstatus" },
+      "name": { "en": "Name", "fr": "Nom", "nl": "Naam" },
+      "address": { "en": "Address", "fr": "Adresse", "nl": "Adres" },
+      "phone": { "en": "Phone", "fr": "Téléphone", "nl": "Telefoon" },
+      "email": { "en": "E-mail", "fr": "E-mail", "nl": "E-mail" },
+      "identityDocument": { "en": "Identity document", "fr": "Pièce d'identité", "nl": "Identiteitsdocument" },
+      "paymentAccount": { "en": "Payment account", "fr": "Compte de paiement", "nl": "Betaalrekening" },
+      "tradeRegister": { "en": "Trade register", "fr": "Registre du commerce", "nl": "Handelsregister" },
+      "registrationNumber": { "en": "Registration number", "fr": "Numéro d'enregistrement", "nl": "Registratienummer" },
+      "vatId": { "en": "VAT number", "fr": "Numéro de TVA", "nl": "Btw-nummer" },
+      "selfCertification": {
+        "en": "I certify that I only offer products or services that comply with EU law.",
+        "fr": "Je certifie n'offrir que des produits ou services conformes au droit de l'Union.",
+        "nl": "Ik verklaar enkel producten of diensten aan te bieden die aan het Unierecht voldoen."
+      },
+      "verified": { "en": "Verified by the platform", "fr": "Vérifié par la plateforme", "nl": "Geverifieerd door het platform" }
+    },
+    "seller": {
+      "notRegistered": { "en": "The seller is not registered.", "fr": "Le vendeur n'est pas enregistré.", "nl": "De verkoper is niet geregistreerd." },
+      "required": { "en": "A seller is required on this platform.", "fr": "Un vendeur est requis sur cette plateforme.", "nl": "Op dit platform is een verkoper vereist." },
+      "notApproved": { "en": "The seller registration is not approved yet.", "fr": "L'inscription du vendeur n'est pas encore approuvée.", "nl": "De registratie van de verkoper is nog niet goedgekeurd." },
+      "suspended": { "en": "The seller is suspended.", "fr": "Le vendeur est suspendu.", "nl": "De verkoper is geschorst." },
+      "traderStatusUndeclared": { "en": "Declare whether you sell as a trader.", "fr": "Indiquez si vous vendez en tant que professionnel.", "nl": "Geef aan of u als handelaar verkoopt." },
+      "traderNotVerified": { "en": "The trader data is not verified yet.", "fr": "Les données du professionnel ne sont pas encore vérifiées.", "nl": "De handelaarsgegevens zijn nog niet geverifieerd." },
+      "kycNotVerified": { "en": "The payment provider has not verified the seller yet.", "fr": "Le prestataire de paiement n'a pas encore vérifié le vendeur.", "nl": "De betaalprovider heeft de verkoper nog niet geverifieerd." },
+      "dac7Blocked": { "en": "Sales are closed until the tax data is complete.", "fr": "Les ventes sont fermées jusqu'à ce que les données fiscales soient complètes.", "nl": "De verkoop is gesloten tot de fiscale gegevens volledig zijn." },
+      "profile": { "en": "Seller profile", "fr": "Profil vendeur", "nl": "Verkopersprofiel" },
+      "submit": { "en": "Submit registration", "fr": "Soumettre l'inscription", "nl": "Registratie indienen" }
+    },
+    "dac7": {
+      "tin": { "en": "Tax identification number", "fr": "Numéro d'identification fiscale", "nl": "Fiscaal identificatienummer" },
+      "tinCountry": { "en": "Issuing country", "fr": "Pays d'émission", "nl": "Land van uitgifte" },
+      "primaryAddress": { "en": "Primary address", "fr": "Adresse principale", "nl": "Hoofdadres" },
+      "iban": { "en": "IBAN", "fr": "IBAN", "nl": "IBAN" },
+      "accountHolder": { "en": "Account holder", "fr": "Titulaire du compte", "nl": "Rekeninghouder" },
+      "businessRegistrationNumber": { "en": "Business registration number", "fr": "Numéro d'entreprise", "nl": "Ondernemingsnummer" },
+      "birthDate": { "en": "Date of birth", "fr": "Date de naissance", "nl": "Geboortedatum" }
+    },
+    "legal": {
+      "kind": {
+        "terms-of-sale": { "en": "Terms of sale", "fr": "Conditions de vente", "nl": "Verkoopvoorwaarden" },
+        "privacy-policy": { "en": "Privacy policy", "fr": "Politique de confidentialité", "nl": "Privacybeleid" },
+        "withdrawal-information": { "en": "Right of withdrawal", "fr": "Droit de rétractation", "nl": "Herroepingsrecht" },
+        "platform-terms": { "en": "Platform terms for sellers", "fr": "Conditions de la plateforme pour les vendeurs", "nl": "Platformvoorwaarden voor verkopers" },
+        "dpa": { "en": "Data processing agreement", "fr": "Accord de traitement des données", "nl": "Verwerkersovereenkomst" },
+        "accessibility-statement": { "en": "Accessibility statement", "fr": "Déclaration d'accessibilité", "nl": "Toegankelijkheidsverklaring" },
+        "cookie-policy": { "en": "Cookie policy", "fr": "Politique en matière de cookies", "nl": "Cookiebeleid" }
+      },
+      "version": { "en": "Version {0}, in force from {1}", "fr": "Version {0}, en vigueur depuis le {1}", "nl": "Versie {0}, van kracht sinds {1}" },
+      "pdf": { "en": "Download PDF", "fr": "Télécharger le PDF", "nl": "PDF downloaden" }
+    },
+    "ranking": {
+      "title": { "en": "How we rank results", "fr": "Comment nous classons les résultats", "nl": "Hoe we resultaten rangschikken" },
+      "paid": { "en": "Sellers can pay to influence this.", "fr": "Les vendeurs peuvent payer pour influencer ce critère.", "nl": "Verkopers kunnen betalen om dit te beïnvloeden." }
+    },
+    "dsa": {
+      "report": { "en": "Report illegal content", "fr": "Signaler un contenu illicite", "nl": "Illegale inhoud melden" },
+      "reason": { "en": "Reason", "fr": "Motif", "nl": "Reden" },
+      "explanation": { "en": "Why is this content illegal?", "fr": "Pourquoi ce contenu est-il illicite ?", "nl": "Waarom is deze inhoud illegaal?" },
+      "location": { "en": "Exact location (URL)", "fr": "Emplacement exact (URL)", "nl": "Exacte locatie (URL)" },
+      "contactName": { "en": "Your name (optional)", "fr": "Votre nom (facultatif)", "nl": "Uw naam (optioneel)" },
+      "contactEmail": { "en": "Your e-mail (optional, for the decision)", "fr": "Votre e-mail (facultatif, pour la décision)", "nl": "Uw e-mail (optioneel, voor de beslissing)" },
+      "goodFaith": {
+        "en": "I believe in good faith that the information and allegations in this notice are accurate and complete.",
+        "fr": "Je déclare de bonne foi que les informations et allégations contenues dans cette notification sont exactes et complètes.",
+        "nl": "Ik verklaar te goeder trouw dat de informatie en beweringen in deze melding juist en volledig zijn."
+      },
+      "send": { "en": "Send notice", "fr": "Envoyer la notification", "nl": "Melding versturen" },
+      "received": { "en": "Your notice was received.", "fr": "Votre notification a été reçue.", "nl": "Uw melding is ontvangen." },
+      "redress": {
+        "internalComplaint": { "en": "You can contest this decision through our complaint system.", "fr": "Vous pouvez contester cette décision via notre système de réclamation.", "nl": "U kunt deze beslissing betwisten via ons klachtensysteem." },
+        "outOfCourt": { "en": "You can refer the dispute to a certified out-of-court dispute settlement body.", "fr": "Vous pouvez soumettre le litige à un organe certifié de règlement extrajudiciaire.", "nl": "U kunt het geschil voorleggen aan een gecertificeerde buitengerechtelijke geschillenbeslechtingsinstantie." },
+        "judicial": { "en": "You can go to court.", "fr": "Vous pouvez saisir la justice.", "nl": "U kunt naar de rechter stappen." }
+      },
+      "reasons": {
+        "illegal-speech": { "en": "Illegal or harmful speech", "fr": "Discours illicite ou préjudiciable", "nl": "Illegale of schadelijke uitingen" },
+        "consumer-information": { "en": "Consumer information infringement", "fr": "Infraction à l'information des consommateurs", "nl": "Inbreuk op consumenteninformatie" },
+        "intellectual-property": { "en": "Intellectual property infringement", "fr": "Atteinte à la propriété intellectuelle", "nl": "Inbreuk op intellectuele eigendom" },
+        "unsafe-products": { "en": "Unsafe or non-compliant product", "fr": "Produit dangereux ou non conforme", "nl": "Onveilig of niet-conform product" },
+        "scams-and-fraud": { "en": "Scam or fraud", "fr": "Arnaque ou fraude", "nl": "Oplichting of fraude" },
+        "data-protection": { "en": "Data protection or privacy violation", "fr": "Violation de la protection des données", "nl": "Schending van gegevensbescherming" },
+        "protection-of-minors": { "en": "Protection of minors", "fr": "Protection des mineurs", "nl": "Bescherming van minderjarigen" },
+        "terms-violation": { "en": "Violation of the platform terms", "fr": "Violation des conditions de la plateforme", "nl": "Schending van de platformvoorwaarden" },
+        "other": { "en": "Other", "fr": "Autre", "nl": "Andere" }
+      }
+    }
+  },
+  "commerceStorefront": {
+    "backInStock": {
+      "busy": { "en": "One moment…", "fr": "Un instant…", "nl": "Even geduld…" },
+      "confirm": { "en": "Your alert is confirmed: we will e-mail you when the item is back.", "fr": "Votre alerte est confirmée : nous vous enverrons un e-mail quand l'article sera de retour.", "nl": "Je melding is bevestigd: we mailen je zodra het artikel terug is." },
+      "unsubscribe": { "en": "Your alert has been stopped.", "fr": "Votre alerte a été arrêtée.", "nl": "Je melding is gestopt." },
+      "invalid": { "en": "This link is no longer valid.", "fr": "Ce lien n'est plus valide.", "nl": "Deze link is niet meer geldig." }
+    },
+    "skipToContent": { "en": "Skip to content", "fr": "Aller au contenu", "nl": "Naar de inhoud" },
+    "notFound": { "en": "This page does not exist.", "fr": "Cette page n'existe pas.", "nl": "Deze pagina bestaat niet." },
+    "cancel": { "en": "Cancel", "fr": "Annuler", "nl": "Annuleren" },
+    "nav": {
+      "label": { "en": "Main", "fr": "Principal", "nl": "Hoofdmenu" },
+      "shop": { "en": "Shop", "fr": "Boutique", "nl": "Winkel" },
+      "events": { "en": "Events", "fr": "Événements", "nl": "Evenementen" },
+      "tickets": { "en": "My tickets", "fr": "Mes billets", "nl": "Mijn tickets" },
+      "basket": { "en": "Basket", "fr": "Panier", "nl": "Winkelmandje" },
+      "account": { "en": "My account", "fr": "Mon compte", "nl": "Mijn account" }
+    },
+    "footer": {
+      "label": { "en": "Legal information", "fr": "Informations légales", "nl": "Juridische informatie" }
+    },
+    "legal": {
+      "terms": { "en": "Terms of sale", "fr": "Conditions de vente", "nl": "Verkoopvoorwaarden" },
+      "privacy": { "en": "Privacy policy", "fr": "Politique de confidentialité", "nl": "Privacybeleid" },
+      "withdrawal": { "en": "Right of withdrawal", "fr": "Droit de rétractation", "nl": "Herroepingsrecht" },
+      "cookies": { "en": "Cookie policy", "fr": "Politique en matière de cookies", "nl": "Cookiebeleid" },
+      "consent": { "en": "Cookie and consent settings", "fr": "Paramètres des cookies et du consentement", "nl": "Cookie- en toestemmingsinstellingen" },
+      "accessibility": { "en": "Accessibility", "fr": "Accessibilité", "nl": "Toegankelijkheid" },
+      "ranking": { "en": "How we rank results", "fr": "Comment nous classons les résultats", "nl": "Hoe we resultaten rangschikken" },
+      "notPublished": { "en": "This document has not been published yet.", "fr": "Ce document n'a pas encore été publié.", "nl": "Dit document is nog niet gepubliceerd." },
+      "withdrawFunction": { "en": "Withdraw from a purchase", "fr": "Se rétracter d'un achat", "nl": "Een aankoop herroepen" },
+      "withdrawFunctionText": {
+        "en": "You can withdraw from an order on its page, under your account or through the link in your order confirmation. No form is needed.",
+        "fr": "Vous pouvez vous rétracter d'une commande sur sa page, dans votre compte ou via le lien de votre confirmation de commande. Aucun formulaire n'est nécessaire.",
+        "nl": "Je kunt een bestelling herroepen op haar pagina, in je account of via de link in je bestelbevestiging. Een formulier is niet nodig."
+      }
+    },
+    "event": {
+      "chooseSeats": { "en": "Choose your seats", "fr": "Choisissez vos places", "nl": "Kies je plaatsen" },
+      "addSeats": { "en": "Add seats to basket", "fr": "Ajouter les places au panier", "nl": "Plaatsen in winkelmandje" }
+    },
+    "account": {
+      "signInLink": { "en": "Sign in", "fr": "Se connecter", "nl": "Aanmelden" },
+      "signIn": { "en": "Sign in to see your orders, tickets and settings.", "fr": "Connectez-vous pour voir vos commandes, billets et paramètres.", "nl": "Meld je aan om je bestellingen, tickets en instellingen te zien." },
+      "orders": { "en": "My orders", "fr": "Mes commandes", "nl": "Mijn bestellingen" },
+      "noOrders": { "en": "You have no orders yet.", "fr": "Vous n'avez pas encore de commandes.", "nl": "Je hebt nog geen bestellingen." },
+      "documentsAndReturns": { "en": "Invoices, withdrawal and claims", "fr": "Factures, rétractation et réclamations", "nl": "Facturen, herroeping en klachten" },
+      "moreOrders": { "en": "More orders", "fr": "Plus de commandes", "nl": "Meer bestellingen" },
+      "guestOrders": { "en": "Orders placed without an account", "fr": "Commandes passées sans compte", "nl": "Bestellingen zonder account" },
+      "confirmEmailFirst": {
+        "en": "Confirm your e-mail address to add the orders you placed as a guest with it.",
+        "fr": "Confirmez votre adresse e-mail pour ajouter les commandes passées en tant qu'invité avec cette adresse.",
+        "nl": "Bevestig je e-mailadres om de bestellingen die je er als gast mee plaatste toe te voegen."
+      },
+      "noGuestOrders": { "en": "No guest orders were placed with your e-mail address.", "fr": "Aucune commande d'invité n'a été passée avec votre adresse e-mail.", "nl": "Er zijn geen gastbestellingen met je e-mailadres geplaatst." },
+      "guestOrdersFound": { "en": "Guest orders with your e-mail address:", "fr": "Commandes d'invité avec votre adresse e-mail :", "nl": "Gastbestellingen met je e-mailadres:" },
+      "attachGuestOrders": { "en": "Add them to my account", "fr": "Les ajouter à mon compte", "nl": "Aan mijn account toevoegen" },
+      "attached": { "en": "{0} orders were added to your account.", "fr": "{0} commandes ont été ajoutées à votre compte.", "nl": "{0} bestellingen werden aan je account toegevoegd." },
+      "backInStock": { "en": "Back-in-stock alerts", "fr": "Alertes de retour en stock", "nl": "Meldingen bij nieuwe voorraad" },
+      "noBackInStock": { "en": "You have no back-in-stock alerts.", "fr": "Vous n'avez aucune alerte de retour en stock.", "nl": "Je hebt geen meldingen bij nieuwe voorraad." },
+      "notified": { "en": "notified", "fr": "notifié", "nl": "gemeld" },
+      "unsubscribe": { "en": "Stop alert", "fr": "Arrêter l'alerte", "nl": "Melding stoppen" },
+      "backInStockRemoved": { "en": "Alert stopped.", "fr": "Alerte arrêtée.", "nl": "Melding gestopt." }
+    }
+  }
+}

@@ -44,8 +44,8 @@ internal interface IDisabledActionsEvaluator
     /// <summary>The stored entities behind <paramref name="ids"/> — one batched, session-cached load.</summary>
     Task<IReadOnlyDictionary<string, object>> LoadEntitiesAsync(Type entityType, IReadOnlyCollection<string> ids);
 
-    /// <summary>The actions class for a type — by CLR type, or by name for a type without documents.</summary>
-    object? ResolveActions(Type? clrType, string entityName);
+    /// <summary>The actions class for a type — by CLR type, or by its declared name for a type without documents (D28).</summary>
+    object? ResolveActions(Type? clrType, EntityTypeDefinition definition);
 }
 
 /// <summary>The framework's own <see cref="IDisablable"/>: a set of names and nothing else.</summary>
@@ -84,7 +84,7 @@ internal partial class DisabledActionsEvaluator : IDisabledActionsEvaluator
             return;
 
         var clrType = typeResolver.Resolve(definition.ClrType);
-        var actions = ResolveActions(clrType, definition.Name);
+        var actions = ResolveActions(clrType, definition);
         if (actions is null)
             return;
 
@@ -204,10 +204,10 @@ internal partial class DisabledActionsEvaluator : IDisabledActionsEvaluator
     public async Task<IReadOnlyDictionary<string, object>> LoadEntitiesAsync(Type entityType, IReadOnlyCollection<string> ids)
         => await RowSecurity.LoadBaseDocumentsAsync(session, entityType, ids);
 
-    public object? ResolveActions(Type? clrType, string entityName)
+    public object? ResolveActions(Type? clrType, EntityTypeDefinition definition)
         => clrType is not null
             ? actionsResolver.ResolveForType(clrType)
-            : actionsResolver.ResolveByEntityName(entityName);
+            : actionsResolver.ResolveVirtual(definition);
 
     /// <summary>
     /// The interface's batched hook, invoked through the interface so a class that declares neither

@@ -1,0 +1,209 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "VenueAddress: the reference-data Address value object (MintPlayer.Spark.ReferenceData.Address, docs/commerce_PRD.md §4.18)",
+    "as a venue edits it (AsDetail, the spark-address renderer). Named VenueAddress so it cannot clash with an application's own",
+    "\"Address\" type; its fields are the value object's, in the order the reference-data app declares them.",
+    "One persistent-object type per CLR type (SparkModelLayers refuses a second library mapping this class): another library",
+    "that edits an Address points its asDetailType at the class and gets this type; an application changes it with \"$extends\".",
+    "",
+    "HAND-AUTHORED. Ids are UUIDv5 of 'ticketing-venues:VenueAddress[...]', written by 'npm run stamp:library-model-ids'."
+  ],
+  "persistentObject": {
+    "id": "31d10ccb-51cf-5edd-a5a7-4f53aa8b6514",
+    "name": "VenueAddress",
+    "clrType": "MintPlayer.Spark.ReferenceData.Address",
+    "breadcrumb": "{StreetName} {HouseNumber}, {PostalCode} {LocalityName}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "0ed8b160-8408-562b-b252-fee74e330387",
+        "name": "CountryCode",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "fd53b923-2857-5288-8048-41a69fb09ac7",
+        "name": "StreetId",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "fd0ef8a6-d130-52e1-b853-042aeec3259a",
+        "name": "StreetName",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "a0c977ac-e86e-5f37-873b-8179a6bc7e1b",
+        "name": "HouseNumber",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "19bac944-6512-527f-b0a6-6557af2c13b7",
+        "name": "Box",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "d3ef1ec1-8238-5c02-95ae-cf73c4f3d984",
+        "name": "PostalCodeId",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "d7240c62-7f95-55d6-809e-e3b5191c44c7",
+        "name": "PostalCode",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "f2d595c7-18e1-5741-8a26-140d02c8a5e5",
+        "name": "LocalityKey",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "c711dddb-5e77-5db5-853b-4d7810739ab1",
+        "name": "LocalityName",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 9,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "5db9cf46-0c29-5b03-b6da-9aced28c16d2",
+        "name": "LocalityPlaceId",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 10,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "356e5644-3aa8-55be-8037-6276b7805723",
+        "name": "MunicipalityId",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 11,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "bef83eaa-d1d3-5f1b-a96b-99e297912613",
+        "name": "MunicipalityName",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 12,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "bb917fc5-c150-54c6-b6de-8cfd0f193b49",
+        "name": "TimeZone",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 13,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "c21df9c7-9b6d-567b-8f3b-32876008758b",
+        "name": "Lines",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 14,
+        "isArray": true,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "3039f1ee-b029-570f-9b3a-f6cc51426e03",
+        "name": "Release",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 15,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "df4e358b-6c9b-5fae-b69d-2655fca10e96",
+        "name": "Verified",
+        "dataType": "boolean",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 16,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "3d6a13cc-07d6-5be6-99f4-bce72606058a",
+        "name": "HouseNumberVerified",
+        "dataType": "boolean",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 17,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ]
+  }
+}

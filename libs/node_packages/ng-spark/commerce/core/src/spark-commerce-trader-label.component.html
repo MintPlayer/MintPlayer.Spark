@@ -1,0 +1,11 @@
+@if (seller(); as s) {
+  <span class="spark-commerce-trader-label" [class.spark-commerce-trader-label-private]="nonTrader()">
+    @if (s.name) {
+      <span class="spark-commerce-trader-name">{{ s.name }}</span>
+    }
+    <small>{{ statusKey() | t }}</small>
+    @if (link(); as l) {
+      <a class="spark-commerce-trader-link" [routerLink]="l">{{ 'commerce.trader.page' | t }}</a>
+    }
+  </span>
+}

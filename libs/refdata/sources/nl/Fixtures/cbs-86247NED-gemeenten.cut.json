@@ -1,0 +1,9 @@
+{
+  "odata.metadata":"https://opendata.cbs.nl/ODataApi/OData/86247NED/$metadata#Cbs.OData.WebAPI.TypedDataSet&$select=RegioS,Code_1,Naam_2,Code_28,Naam_29","value":[
+    {
+      "RegioS":"GM1979    ","Code_1":"GM1979    ","Naam_2":"Eemsdelta                                         ","Code_28":"PV20      ","Naam_29":"Groningen                                         "
+    },{
+      "RegioS":"GM0014    ","Code_1":"GM0014    ","Naam_2":"Groningen                                         ","Code_28":"PV20      ","Naam_29":"Groningen                                         "
+    }
+  ]
+}

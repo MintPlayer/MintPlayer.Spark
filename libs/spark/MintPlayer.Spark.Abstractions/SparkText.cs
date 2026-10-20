@@ -22,7 +22,7 @@ public static class SparkText
         var key = value?.Key ?? conventionKey;
         if (Lookup(translations, key) is { } translated)
             return translated;
-        return fallbackName is null ? null : TranslatedString.Create(Humanize(fallbackName));
+        return fallbackName is null ? null : TranslatedString.Of("en", Humanize(fallbackName));
     }
 
     /// <summary>
@@ -31,8 +31,8 @@ public static class SparkText
     /// </summary>
     /// <param name="translations">The composed translations (the host's <c>ITranslationsLoader</c> snapshot).</param>
     public static TranslatedString? Lookup(IReadOnlyDictionary<string, TranslatedString> translations, string key)
-        => translations.TryGetValue(key, out var ts) && ts.Translations.Count > 0
-            ? new TranslatedString { Translations = new Dictionary<string, string>(ts.Translations) }
+        => translations.TryGetValue(key, out var ts) && !ts.IsEmpty
+            ? new TranslatedString { Entries = [.. ts.Entries] }
             : null;
 
     /// <summary>
@@ -41,10 +41,10 @@ public static class SparkText
     /// </summary>
     public static void RejectInlineText(TranslatedString? value, string conventionKey)
     {
-        if (value is null || value.Key is not null || value.Translations.Count == 0) return;
+        if (value is null || value.Key is not null || value.IsEmpty) return;
         throw new InvalidOperationException(
             $"Translated text is embedded in an App_Data file where '{conventionKey}' belongs " +
-            $"(\"{value.GetDefaultValue()}\"). Move it into translations.json under '{conventionKey}' and " +
+            $"(\"{value.GetValue(TranslatedString.DefaultLanguage)}\"). Move it into translations.json under '{conventionKey}' and " +
             "remove it from the file, or replace it with the translation key it should use.");
     }
 

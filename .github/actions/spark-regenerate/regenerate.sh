@@ -10,6 +10,10 @@
 #   PATCH_PATH     where the patch is written. Default: $RUNNER_TEMP/merge-queue.patch.
 #   LOCKFILES      optional. Ecosystems for ../lockfile-regenerate/lockfiles.sh, run before the build. Empty: skipped.
 #   PR_HEAD, MERGE_BASE  optional, for lockfiles.sh (../lockfile-regenerate/fetch-pr-head.sh writes them).
+#   CONTRACTS      "true" also runs --spark-synchronize-contracts per app (the app's ClientApp/src/app/generated/contracts.ts,
+#                  commerce X20). Default false: an app on a Spark release without the flag would fail on it.
+#   LIBRARY_CONTRACTS_PROJECT  optional. A tool .csproj whose `contracts` command writes library contracts
+#                  (this repository: tools/SchemaGenerator). Built with the apps, run after them. Empty: skipped.
 #
 # Exit codes: 0 patch written (possibly empty), 1 any failure. Nothing is ever committed or pushed: the
 # patch is the whole output, and the queue validates and applies it (D4, T4).
@@ -22,6 +26,8 @@ fail() { echo "::error::$*" >&2; exit 1; }
 CONFIGURATION="${CONFIGURATION:-Debug}"
 BUILD_ARGS="${BUILD_ARGS:-}"
 SKIP_BUILD="${SKIP_BUILD:-false}"
+CONTRACTS="${CONTRACTS:-false}"
+LIBRARY_CONTRACTS_PROJECT="${LIBRARY_CONTRACTS_PROJECT:-}"
 PATCH_PATH="${PATCH_PATH:-${RUNNER_TEMP:-$(mktemp -d)}/merge-queue.patch}"
 
 # 1. The checkout is the commit the queue prepared (D14). A full SHA only: an abbreviation can become
@@ -42,6 +48,11 @@ mapfile -t projects < <(printf '%s\n' "$PROJECTS" | sed -e 's/#.*//' -e 's/^[[:s
 for p in "${projects[@]}"; do
   [ -f "$p" ] || fail "Project '$p' does not exist at $head."
 done
+if [ -n "$LIBRARY_CONTRACTS_PROJECT" ]; then
+  [ -f "$LIBRARY_CONTRACTS_PROJECT" ] || fail "Library contracts project '$LIBRARY_CONTRACTS_PROJECT' does not exist at $head."
+fi
+sync_flags=(--spark-synchronize-model --spark-synchronize-security)
+[ "$CONTRACTS" = "true" ] && sync_flags+=(--spark-synchronize-contracts)
 
 # The patch is taken through a throwaway index, so new files (a new Model/<Entity>.json) are included
 # and the caller's real index is never touched.
@@ -74,21 +85,31 @@ if [ "$SKIP_BUILD" != "true" ]; then
     dotnet build "$p" -c "$CONFIGURATION" $BUILD_ARGS || fail "dotnet build failed for $p."
     echo "::endgroup::"
   done
+  if [ -n "$LIBRARY_CONTRACTS_PROJECT" ]; then
+    echo "::group::dotnet build $LIBRARY_CONTRACTS_PROJECT"
+    dotnet build "$LIBRARY_CONTRACTS_PROJECT" -c "$CONFIGURATION" || fail "dotnet build failed for $LIBRARY_CONTRACTS_PROJECT."
+    echo "::endgroup::"
+  fi
 fi
 built=$SECONDS
 
-# 4. Synchronize every project, model first (it seeds translations.json), then security. The same
-#    `dotnet run --no-build -c <config>` form as the repository's verify step, so the regenerated files
-#    are the ones verify accepts.
+# 4. Synchronize every project, model first (it seeds translations.json), then security, then (CONTRACTS) the app's
+#    TypeScript contracts; then the library contracts. The same `dotnet run --no-build -c <config>` form as the
+#    repository's verify step, so the regenerated files are the ones verify accepts.
 synchronize() {
   local p flag
   for p in "${projects[@]}"; do
-    for flag in --spark-synchronize-model --spark-synchronize-security; do
+    for flag in "${sync_flags[@]}"; do
       echo "::group::$flag $p (pass $1)"
       dotnet run --project "$p" --no-build -c "$CONFIGURATION" -- "$flag" || fail "$flag exited $? for $p (pass $1)."
       echo "::endgroup::"
     done
   done
+  if [ -n "$LIBRARY_CONTRACTS_PROJECT" ]; then
+    echo "::group::contracts $LIBRARY_CONTRACTS_PROJECT (pass $1)"
+    dotnet run --project "$LIBRARY_CONTRACTS_PROJECT" --no-build -c "$CONFIGURATION" -- contracts || fail "contracts exited $? for $LIBRARY_CONTRACTS_PROJECT (pass $1)."
+    echo "::endgroup::"
+  fi
 }
 
 synchronize 1

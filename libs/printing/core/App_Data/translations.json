@@ -1,0 +1,9 @@
+{
+  "$schema": "../../../../schemas/translations.schema.json",
+  "printing": {
+    "reprinted": { "en": "{0} job(s) queued again.", "fr": "{0} tâche(s) remise(s) en file d'impression.", "nl": "{0} afdruktaak/-taken opnieuw in de wachtrij." }
+  },
+  "actions": {
+    "PrintingReprint": { "label": { "en": "Reprint", "fr": "Réimprimer", "nl": "Opnieuw afdrukken" } }
+  }
+}

@@ -1,0 +1,64 @@
+<section class="spark-checkout-order">
+  <h2>{{ title() }}</h2>
+
+  @if (refusal(); as key) {
+    <p class="spark-checkout-refusal" role="alert">{{ key | t }}</p>
+  }
+
+  @if (order(); as o) {
+    <p class="spark-checkout-order-state" [attr.data-state]="o.state" role="status">{{ stateKey(o.state) | t }}</p>
+
+    <ul class="spark-checkout-order-lines">
+      @for (line of o.lines; track line.lineId) {
+        <li class="spark-checkout-order-line">
+          <div class="spark-checkout-order-line-head">
+            <span>{{ line.quantity }} × {{ line.title | resolveTranslation }}</span>
+            <span>{{ money(line.total) }}</span>
+          </div>
+          @if (line.units.length > 0) {
+            <small class="spark-checkout-order-units">{{ line.units.join(', ') }}</small>
+          }
+          @if (line.idCheckRequired) {
+            <small class="spark-checkout-order-id-check">{{ 'commerceCheckout.idCheck' | t }}</small>
+          }
+        </li>
+      }
+    </ul>
+
+    @if (o.extras.length > 0) {
+      <ul class="spark-checkout-order-extras">
+        @for (extra of o.extras; track extra.code) {
+          <li><span>{{ extra.labelKey | t }}</span><span>{{ money(extra.amount) }}</span></li>
+        }
+      </ul>
+    }
+
+    <p class="spark-checkout-order-total">
+      <span>{{ 'commerceCheckout.total' | t }}</span>
+      <strong>{{ money(o.total) }}</strong>
+    </p>
+
+    @if (o.amountRefunded) {
+      <p class="spark-checkout-order-refunded">
+        <span>{{ 'commerceCheckout.refunded' | t }}</span>
+        <span>{{ money(o.amountRefunded) }}</span>
+      </p>
+    }
+
+    @if (canPay()) {
+      <!-- GA10: the provider's payment window, shown like a hold (no "More time": the limit is the provider's, D3). -->
+      <spark-checkout-hold-timer [deadline]="o.paymentPendingUntil" deadlineKey="commerceCheckout.holdTimer.payBefore" />
+      <div class="spark-checkout-order-actions">
+        <a class="btn btn-primary spark-checkout-order-pay" [href]="o.paymentUrl">{{ 'commerceCheckout.payNow' | t }}</a>
+        <button type="button" class="btn btn-outline-secondary spark-checkout-order-cancel" [disabled]="busy()" (click)="cancelPayment()">
+          {{ 'commerceCheckout.cancelPayment' | t }}
+        </button>
+      </div>
+    }
+  } @else if (loaded() && !refusal() && !access()) {
+    <p class="spark-checkout-refusal" role="alert">{{ 'commerceCheckout.refusal.orderNotFound' | t }}</p>
+  }
+
+  <!-- M9: withdrawal function (GA1), cancellation, reschedule choice, guarantee claim, refunds. -->
+  <spark-checkout-aftercare [number]="number()" [access]="access()" />
+</section>

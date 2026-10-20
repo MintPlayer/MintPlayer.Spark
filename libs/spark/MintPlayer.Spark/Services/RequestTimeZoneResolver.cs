@@ -1,5 +1,4 @@
 using System.Diagnostics.CodeAnalysis;
-using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using MintPlayer.SourceGenerators.Attributes;
@@ -55,7 +54,7 @@ internal partial class RequestTimeZoneResolver : IRequestTimeZoneResolver
     public const string HeaderName = "X-Spark-Timezone";
 
     /// <summary>The longest id accepted from a header or cookie (the longest id a browser reports is 30, S-TZ4).</summary>
-    internal const int MaxIdLength = 64;
+    internal const int MaxIdLength = Abstractions.DateTimes.SparkTimeZoneIds.MaxLength;
 
     [Inject] private readonly IHttpContextAccessor httpContextAccessor;
     [Inject] private readonly IOptions<SparkTimeZoneOptions> options;
@@ -65,20 +64,11 @@ internal partial class RequestTimeZoneResolver : IRequestTimeZoneResolver
     private TimeZoneInfo? resolved;
 
     /// <summary>
-    /// An IANA-shaped zone id: a letter, then up to three <c>/</c>-separated segments of letters,
-    /// digits, <c>_</c>, <c>+</c> and <c>-</c>. No dots, spaces, backslashes or empty segments, so
-    /// nothing path-like reaches <see cref="TimeZoneInfo.FindSystemTimeZoneById"/> (S-TZ1: on Linux
-    /// that call reads a file under <c>/usr/share/zoneinfo</c>, and resolves <c>Europe//Brussels</c>).
-    /// </summary>
-    [GeneratedRegex(@"^[A-Za-z][A-Za-z0-9_+\-]*(/[A-Za-z0-9_+\-]+){0,2}$", RegexOptions.CultureInvariant)]
-    private static partial Regex ZoneIdShape();
-
-    /// <summary>
     /// Whether <paramref name="id"/> passes the validation applied before any lookup: at most
-    /// <see cref="MaxIdLength"/> characters and IANA-shaped (<see cref="ZoneIdShape"/>).
+    /// <see cref="MaxIdLength"/> characters and IANA-shaped (<see cref="Abstractions.DateTimes.SparkTimeZoneIds.IsWellFormed"/>,
+    /// shared with the account preference, X14).
     /// </summary>
-    internal static bool IsWellFormedZoneId(string? id)
-        => !string.IsNullOrEmpty(id) && id.Length <= MaxIdLength && ZoneIdShape().IsMatch(id);
+    internal static bool IsWellFormedZoneId(string? id) => Abstractions.DateTimes.SparkTimeZoneIds.IsWellFormed(id);
 
     public TimeZoneInfo GetViewerTimeZone()
     {
@@ -114,6 +104,13 @@ internal partial class RequestTimeZoneResolver : IRequestTimeZoneResolver
         => ToViewerDateTimeOffset(wallClock, GetViewerTimeZone());
 
     public DateTimeOffset ToViewerDateTimeOffset(DateTime wallClock, TimeZoneInfo zone)
+        => ToInstant(wallClock, zone, logger);
+
+    /// <summary>
+    /// The conversion behind <see cref="ToViewerDateTimeOffset(DateTime, TimeZoneInfo)"/> and
+    /// <see cref="SparkTimeZones.ToInstant"/>: one implementation of the browser's fold and gap rules.
+    /// </summary>
+    internal static DateTimeOffset ToInstant(DateTime wallClock, TimeZoneInfo zone, ILogger? logger)
     {
         // A DateTime that already carries a kind is not a wall clock in the viewer's zone, so honour it
         // rather than reinterpreting it.

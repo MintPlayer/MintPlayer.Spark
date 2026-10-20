@@ -16,6 +16,7 @@ import {
   EntityType,
   PersistentObject,
   ShowedOn,
+  translated,
 } from '@mintplayer/ng-spark/models';
 import { SparkAttributeRefreshService, SparkQueryRefreshService } from '@mintplayer/ng-spark/client-operations';
 import { nextNavigationEnd, settle, StubComponent } from '../../src/test-utils';
@@ -53,7 +54,7 @@ const existingItem: PersistentObject = {
 
 const customAction: CustomActionDefinition = {
   name: 'Archive',
-  label: { en: 'Archive' } as any,
+  label: translated({ en: 'Archive' }) as any,
   showedOn: 'detail',
   refreshOnCompleted: false,
   offset: 0,
@@ -62,7 +63,7 @@ const customAction: CustomActionDefinition = {
 const customActionWithConfirm: CustomActionDefinition = {
   ...customAction,
   name: 'Delete',
-  confirmation: { en: 'confirmDelete' },
+  confirmation: translated({ en: 'confirmDelete' }),
 };
 
 const customActionRefresh: CustomActionDefinition = {
@@ -73,12 +74,12 @@ const customActionRefresh: CustomActionDefinition = {
 
 /** The core catalogue's Edit and Delete (#467 D7/D8), as `/spark/actions/list` lists them for a caller with the rights. */
 const builtInEdit: CustomActionDefinition = {
-  name: 'Edit', label: { en: 'Edit' }, icon: 'pencil', showedOn: 'both', selectionRule: '=1',
+  name: 'Edit', label: translated({ en: 'Edit' }), icon: 'pencil', showedOn: 'both', selectionRule: '=1',
   refreshOnCompleted: false, offset: 0, isDefault: true,
 };
 const builtInDelete: CustomActionDefinition = {
-  name: 'Delete', label: { en: 'Delete' }, icon: 'trash', showedOn: 'both', selectionRule: '>0', variant: 'danger',
-  confirmation: { en: 'Delete {count} item(s)?' }, refreshOnCompleted: false, offset: 0, isDefault: true,
+  name: 'Delete', label: translated({ en: 'Delete' }), icon: 'trash', showedOn: 'both', selectionRule: '>0', variant: 'danger',
+  confirmation: translated({ en: 'Delete {count} item(s)?' }), refreshOnCompleted: false, offset: 0, isDefault: true,
 };
 
 const routes: Routes = [
@@ -228,13 +229,13 @@ describe('SparkPoDetailComponent', () => {
 
   it("renders Edit and Delete with the catalogue's label and icon", async () => {
     const { harness } = await setup({
-      getCustomActions: vi.fn().mockResolvedValue([{ ...builtInEdit, label: { en: 'Modify' } }, builtInDelete]),
+      getCustomActions: vi.fn().mockResolvedValue([{ ...builtInEdit, label: translated({ en: 'Modify' }) }, builtInDelete]),
     } as Partial<SparkService>);
     const c = await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
     await harness.fixture.whenStable();
     harness.fixture.detectChanges();
 
-    expect(c.editAction()?.label).toEqual({ en: 'Modify' });
+    expect(c.editAction()?.label).toEqual(translated({ en: 'Modify' }));
     expect(harness.fixture.nativeElement.textContent).toContain('Modify');
   });
 
@@ -332,7 +333,7 @@ describe('SparkPoDetailComponent', () => {
     const describedType: EntityType = {
       ...personType,
       attributes: [
-        { ...personType.attributes[0], description: { en: 'Given name.' } },
+        { ...personType.attributes[0], description: translated({ en: 'Given name.' }) },
         {
           id: 'a-last', name: 'LastName', dataType: 'string',
           isRequired: false, isReadOnly: false,
@@ -828,7 +829,7 @@ describe('SparkPoDetailComponent', () => {
         { id: 'a-alt', name: 'AltRole', dataType: 'string', lookupReferenceType: 'Roles', order: 3, showedOn: ShowedOn.PersistentObject } as any,
       ],
     } as any;
-    const statuses = { name: 'Statuses', values: [{ key: 'on', values: { en: 'On' }, isActive: true }] } as any;
+    const statuses = { name: 'Statuses', values: [{ key: 'on', values: translated({ en: 'On' }), isActive: true }] } as any;
 
     it('a failed lookup costs only its own labels: the others still load and the page does not error', async () => {
       const getLookupReference = vi.fn((name: string) =>

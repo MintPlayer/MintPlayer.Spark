@@ -2,6 +2,7 @@
   <!-- Replaces the topbar's trailing default (the bare language selector) to put the auth bar
        next to it. The menu itself is fully server-driven — see programUnits.json. -->
   <ng-container *sparkShellTopbarEnd>
+    <spark-pending-changes-link linkClass="btn btn-sm btn-link" />
     <spark-language-selector />
     <spark-auth-bar />
   </ng-container>

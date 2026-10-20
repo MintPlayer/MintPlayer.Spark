@@ -65,7 +65,7 @@ public sealed class LayerProvenanceGateTests : IDisposable
     [Fact]
     public void The_hash_file_records_each_library_by_alias_and_assembly_and_each_layer_of_a_composed_type()
     {
-        WriteApp(Path.Combine("Model", "Gadget.json"), """{ "persistentObject": { "name": "Gadget", "attributes": [ { "name": "Serial", "showedOn": "PersistentObject" } ] } }""");
+        WriteApp(Path.Combine("Model", "Gadget.json"), """{ "$extends": "gadgets:Gadget", "persistentObject": { "name": "Gadget", "attributes": [ { "name": "Serial", "showedOn": "PersistentObject" } ] } }""");
 
         var hashes = Hashes(Library());
 
@@ -98,9 +98,9 @@ public sealed class LayerProvenanceGateTests : IDisposable
     [Fact]
     public void The_application_editing_its_delta_names_the_application_not_the_library()
     {
-        WriteApp(Path.Combine("Model", "Gadget.json"), """{ "persistentObject": { "name": "Gadget", "attributes": [ { "name": "Serial" } ] } }""");
+        WriteApp(Path.Combine("Model", "Gadget.json"), """{ "$extends": "gadgets:Gadget", "persistentObject": { "name": "Gadget", "attributes": [ { "name": "Serial" } ] } }""");
         var before = Hashes(Library());
-        WriteApp(Path.Combine("Model", "Gadget.json"), """{ "persistentObject": { "name": "Gadget", "attributes": [ { "name": "Serial", "isReadOnly": true } ] } }""");
+        WriteApp(Path.Combine("Model", "Gadget.json"), """{ "$extends": "gadgets:Gadget", "persistentObject": { "name": "Gadget", "attributes": [ { "name": "Serial", "isReadOnly": true } ] } }""");
         var after = Hashes(Library());
 
         var line = ModelHashVerifier.DescribeDrift(before, after).Should().ContainSingle(l => l.StartsWith("file Gadget.json:")).Which;
@@ -122,7 +122,7 @@ public sealed class LayerProvenanceGateTests : IDisposable
     public void A_layer_that_moves_while_the_composed_structure_stays_still_fails_and_says_so()
     {
         // The application states isRequired; then the library ships the same value: composed alike.
-        WriteApp(Path.Combine("Model", "Gadget.json"), """{ "persistentObject": { "name": "Gadget", "attributes": [ { "name": "Serial", "isRequired": true } ] } }""");
+        WriteApp(Path.Combine("Model", "Gadget.json"), """{ "$extends": "gadgets:Gadget", "persistentObject": { "name": "Gadget", "attributes": [ { "name": "Serial", "isRequired": true } ] } }""");
         var before = Hashes(Library());
         var after = Hashes(Library(serial: """, "isRequired": true"""));
 
@@ -150,6 +150,18 @@ public sealed class LayerProvenanceGateTests : IDisposable
         var remove = ConfigFileShape.DescribeLayerActions("""{ "Edit": null }""");
 
         remove.Should().NotBe(keep).And.Contain("removed");
+    }
+
+    [Fact]
+    public void A_rename_is_reported_as_one_by_the_names_map()
+    {
+        // D28: the id stays, the name moves; the drift says so first instead of a file removed and one added.
+        var expected = new ModelHashFile { Names = new(StringComparer.Ordinal) { ["0d3faefa-624c-5135-bca7-652aa9053e0e"] = "SparkUser (authorization:SparkUser)" } };
+        var actual = new ModelHashFile { Names = new(StringComparer.Ordinal) { ["0d3faefa-624c-5135-bca7-652aa9053e0e"] = "Member (authorization:SparkUser)" } };
+
+        ModelHashVerifier.DescribeDrift(expected, actual).First()
+            .Should().Be("type 0d3faefa-624c-5135-bca7-652aa9053e0e was 'SparkUser (authorization:SparkUser)', is now 'Member (authorization:SparkUser)' " +
+                         "(renamed: run --spark-synchronize-model, which moves the type's files, translations and rights, then review the diff)");
     }
 
     // ---------- rights: the posture table ----------

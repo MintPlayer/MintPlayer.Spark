@@ -1,10 +1,12 @@
+using MintPlayer.Spark.Abstractions.Builder;
+
 namespace MintPlayer.Spark.Dashboards;
 
 /// <summary>Options of the dashboards package, bound from <c>Spark:Dashboards</c>, then code.</summary>
-public sealed class SparkDashboardsOptions
+public sealed class SparkDashboardsOptions : ISparkConfigurationSection
 {
     /// <summary>The configuration section the options are bound from.</summary>
-    public const string SectionName = "Spark:Dashboards";
+    public static string SectionName => "Spark:Dashboards";
 
     /// <summary>
     /// How often every dashboard is pushed to its viewers over <c>/spark/live</c>

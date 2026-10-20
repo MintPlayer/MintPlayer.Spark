@@ -101,18 +101,18 @@ protected override string SubscriptionName => "MyCustomSubscription";
 
 #### Option A: Source-Generated Registration (Recommended)
 
-If your project references `MintPlayer.Spark.SourceGenerators`, a source generator discovers all `SparkSubscriptionWorker<T>` subclasses in your project and generates an `AddSubscriptionWorkers()` extension on `ISparkBuilder`:
+If your project references `MintPlayer.Spark.SourceGenerators`, a source generator discovers all `SparkSubscriptionWorker<T>` subclasses in your project and registers them in the generated `AddSparkDiscovered()` extension on `ISparkBuilder`:
 
 ```csharp
 // Program.cs
 builder.Services.AddSparkSubscriptions();
 builder.Services.AddSpark(builder.Configuration, spark =>
 {
-    spark.AddSubscriptionWorkers();   // source-generated
+    spark.AddSparkDiscovered();   // source-generated
 });
 ```
 
-The generated code calls `AddSubscriptionWorker<T>()` for each worker class found, registering each as a hosted service. It is emitted by `SubscriptionWorkerRegistrationGenerator` into your own root namespace, so it is only visible from your assembly.
+The generated code calls `AddSubscriptionWorker<T>()` for each worker class found, registering each as a hosted service. It is emitted by `SparkDiscoveryGenerator` into your own root namespace, so it is only visible from your assembly.
 
 #### Option B: Manual Registration
 
@@ -386,20 +386,21 @@ Two things in that query are worth copying, because both were learned the hard w
 
 | Method | Description |
 |--------|-------------|
-| `spark.AddSubscriptionWorkers()` | Auto-registers all `SparkSubscriptionWorker<T>` subclasses in your project |
+| `spark.AddSparkDiscovered()` | Auto-registers all `SparkSubscriptionWorker<T>` subclasses in your project (among the other discovered kinds) |
 
 ### Source Generator Details
 
-The `SubscriptionWorkerRegistrationGenerator` source generator scans your project for all non-abstract classes that inherit from `SparkSubscriptionWorker<T>` (at any depth in the inheritance chain). It generates a static extension method:
+The `SparkDiscoveryGenerator` source generator scans your project for all non-abstract classes that inherit from `SparkSubscriptionWorker<T>` (at any depth in the inheritance chain), when the project references this package, and registers them in the one generated extension method:
 
 ```csharp
-// Auto-generated: SparkSubscriptionWorkerRegistrations.g.cs
+// Auto-generated: SparkDiscoveryRegistrations.g.cs (other discovered kinds omitted)
 namespace YourProject
 {
-    internal static class SparkSubscriptionWorkersBuilderExtensions
+    internal static class SparkDiscoveryBuilderExtensions
     {
-        internal static ISparkBuilder AddSubscriptionWorkers(this ISparkBuilder builder)
+        internal static ISparkBuilder AddSparkDiscovered(this ISparkBuilder builder)
         {
+            // Subscription workers
             SparkSubscriptionExtensions.AddSubscriptionWorker<OrderProcessingWorker>(builder.Services);
             SparkSubscriptionExtensions.AddSubscriptionWorker<CompanyChangeWorker>(builder.Services);
             return builder;
@@ -424,7 +425,7 @@ See the following files for working implementations:
 - `RetryNumerator.cs` -- per-document retry tracking
 - `SparkSubscriptionExtensions.cs` -- DI registration helpers
 - `../MintPlayer.Spark.Messaging/Services/MessageSubscriptionWorker.cs` -- real-world usage in the messaging package
-- `../MintPlayer.Spark.SourceGenerators/Generators/SubscriptionWorkerRegistrationGenerator.cs` -- source generator for auto-registration
+- `../MintPlayer.Spark.SourceGenerators/Generators/SparkDiscoveryGenerator.cs` -- source generator for auto-registration
 
 ## License
 

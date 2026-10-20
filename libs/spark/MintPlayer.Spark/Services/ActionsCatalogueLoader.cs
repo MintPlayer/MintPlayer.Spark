@@ -198,7 +198,7 @@ internal partial class ActionsCatalogueLoader : IActionsCatalogueLoader, IDispos
             var confirmationKey = Text("confirmation");
             confirmation = SparkText.Lookup(translations, confirmationKey ?? $"actions.{name}.confirmation")
                 // An explicit key asks for a confirmation even before somebody translates it.
-                ?? (confirmationKey is null ? null : SparkText.Lookup(translations, "common.areYouSure") ?? TranslatedString.Create("Are you sure?"));
+                ?? (confirmationKey is null ? null : SparkText.Lookup(translations, "common.areYouSure") ?? TranslatedString.Of("en", "Are you sure?"));
         }
 
         return new ActionDefinition

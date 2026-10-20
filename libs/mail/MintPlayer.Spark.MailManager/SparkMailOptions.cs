@@ -49,6 +49,9 @@ public sealed class SparkMailOptions
 
     /// <summary>How long a <c>SparkMailDeliveries/{id}</c> record is kept (RavenDB <c>@expires</c>). Default 30 days.</summary>
     public int DeliveryRetentionDays { get; set; } = 30;
+
+    /// <summary>Attachment limits (<c>Spark:Mail:Attachments</c>).</summary>
+    public SparkMailAttachmentOptions Attachments { get; set; } = new();
 }
 
 /// <summary>An address with an optional display name.</summary>
@@ -161,6 +164,22 @@ public sealed class SparkMailTemplateOptions
     /// <c>Templates/Mail</c>. A file here wins over an embedded default with the same name and culture.
     /// </summary>
     public string Path { get; set; } = "Templates/Mail";
+}
+
+/// <summary><c>Spark:Mail:Attachments</c>.</summary>
+public sealed class SparkMailAttachmentOptions
+{
+    /// <summary>
+    /// The most inline bytes one queued mail may carry (they live in the queued message document). Default 2 MiB;
+    /// a larger file belongs in a RavenDB attachment referenced by <see cref="SparkMailAttachment.FromDocument"/>.
+    /// </summary>
+    public int MaxInlineBytes { get; set; } = 2 * 1024 * 1024;
+
+    /// <summary>
+    /// The most attachment bytes one sent mail may carry, inline and stored together. Default 10 MiB (common relays
+    /// refuse 10–25 MB messages, and base64 adds a third). A mail over it fails without retry.
+    /// </summary>
+    public long MaxTotalBytes { get; set; } = 10L * 1024 * 1024;
 }
 
 /// <summary><c>Spark:Mail:Development</c>.</summary>

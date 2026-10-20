@@ -1,0 +1,416 @@
+{
+  "$schema": "../../../../schemas/translations.schema.json",
+  "ticketingEvents": {
+    "phase": {
+      "default": {
+        "en": "Tickets",
+        "fr": "Billets",
+        "nl": "Tickets"
+      }
+    },
+    "buy": {
+      "en": "Buy tickets",
+      "fr": "Acheter des billets",
+      "nl": "Tickets kopen"
+    },
+    "soldOut": {
+      "en": "Sold out",
+      "fr": "Complet",
+      "nl": "Uitverkocht"
+    },
+    "mayComeBack": {
+      "en": "Sold out for now: tickets held by other buyers may come back.",
+      "fr": "Complet pour l'instant : des billets réservés par d'autres acheteurs peuvent se libérer.",
+      "nl": "Nu uitverkocht: tickets die andere kopers vasthouden, kunnen terugkomen."
+    },
+    "placesLeft": {
+      "en": "{count} left",
+      "fr": "Plus que {count}",
+      "nl": "Nog {count}"
+    },
+    "notYetOnSale": {
+      "en": "On sale from",
+      "fr": "En vente à partir du",
+      "nl": "In verkoop vanaf"
+    },
+    "saleEnded": {
+      "en": "Sale ended",
+      "fr": "Vente terminée",
+      "nl": "Verkoop afgelopen"
+    },
+    "doors": {
+      "en": "Doors open",
+      "fr": "Ouverture des portes",
+      "nl": "Deuren open"
+    },
+    "addToCalendar": {
+      "en": "Add to calendar",
+      "fr": "Ajouter au calendrier",
+      "nl": "Toevoegen aan agenda"
+    },
+    "presaleCode": {
+      "en": "Presale code",
+      "fr": "Code de prévente",
+      "nl": "Voorverkoopcode"
+    },
+    "queued": {
+      "en": "This sale opens through a waiting room.",
+      "fr": "Cette vente s'ouvre via une file d'attente.",
+      "nl": "Deze verkoop opent via een wachtrij."
+    },
+    "minimumAge": {
+      "en": "From {age} years",
+      "fr": "À partir de {age} ans",
+      "nl": "Vanaf {age} jaar"
+    },
+    "addOn": {
+      "en": "Add-on: bought with a ticket",
+      "fr": "Option : achetée avec un billet",
+      "nl": "Extra: te koop bij een ticket"
+    },
+    "pass": {
+      "en": "Valid on several days",
+      "fr": "Valable plusieurs jours",
+      "nl": "Geldig op meerdere dagen"
+    },
+    "quantity": {
+      "en": "Quantity",
+      "fr": "Quantité",
+      "nl": "Aantal"
+    },
+    "addToBasket": {
+      "en": "Add to basket",
+      "fr": "Ajouter au panier",
+      "nl": "In winkelmand"
+    },
+    "chooseDate": {
+      "en": "Choose a date",
+      "fr": "Choisissez une date",
+      "nl": "Kies een datum"
+    },
+    "preselect": {
+      "title": {
+        "en": "Your choice, ready for when it is your turn",
+        "fr": "Votre choix, prêt pour votre tour",
+        "nl": "Je keuze, klaar voor wanneer het je beurt is"
+      },
+      "explain": {
+        "en": "When the waiting room lets you in, we hold your first choice that is still available, with fewer tickets if needed.",
+        "fr": "Quand la file d'attente vous laisse entrer, nous réservons votre premier choix encore disponible, avec moins de billets si nécessaire.",
+        "nl": "Wanneer de wachtrij je binnenlaat, houden we je eerste keuze vast die nog beschikbaar is, zo nodig met minder tickets."
+      },
+      "alternative": {
+        "en": "Alternative",
+        "fr": "Alternative",
+        "nl": "Alternatief"
+      },
+      "addLine": {
+        "en": "Add a line",
+        "fr": "Ajouter une ligne",
+        "nl": "Regel toevoegen"
+      },
+      "addAlternative": {
+        "en": "Add an alternative",
+        "fr": "Ajouter une alternative",
+        "nl": "Alternatief toevoegen"
+      },
+      "save": {
+        "en": "Save my choice",
+        "fr": "Enregistrer mon choix",
+        "nl": "Mijn keuze bewaren"
+      },
+      "held": {
+        "en": "Held for you",
+        "fr": "Réservé pour vous",
+        "nl": "Voor je vastgehouden"
+      },
+      "notHeld": {
+        "en": "None of the alternatives was available.",
+        "fr": "Aucune alternative n'était disponible.",
+        "nl": "Geen enkel alternatief was beschikbaar."
+      },
+      "release": {
+        "en": "Release everything",
+        "fr": "Tout libérer",
+        "nl": "Alles vrijgeven"
+      }
+    },
+    "answers": {
+      "title": {
+        "en": "Attendee details",
+        "fr": "Informations des participants",
+        "nl": "Gegevens van de deelnemers"
+      },
+      "ticket": {
+        "en": "Ticket {position}",
+        "fr": "Billet {position}",
+        "nl": "Ticket {position}"
+      },
+      "deadline": {
+        "en": "You can change these answers until",
+        "fr": "Vous pouvez modifier ces réponses jusqu'au",
+        "nl": "Je kunt deze antwoorden wijzigen tot"
+      },
+      "save": {
+        "en": "Save answers",
+        "fr": "Enregistrer les réponses",
+        "nl": "Antwoorden bewaren"
+      },
+      "saved": {
+        "en": "Saved.",
+        "fr": "Enregistré.",
+        "nl": "Bewaard."
+      },
+      "consent": {
+        "en": "I explicitly consent to this information being processed for the purpose stated above.",
+        "fr": "Je consens explicitement au traitement de ces informations pour la finalité indiquée ci-dessus.",
+        "nl": "Ik geef uitdrukkelijk toestemming om deze gegevens te verwerken voor het hierboven vermelde doel."
+      },
+      "required": {
+        "en": "Please answer this question.",
+        "fr": "Veuillez répondre à cette question.",
+        "nl": "Beantwoord deze vraag."
+      },
+      "unknownQuestion": {
+        "en": "This question does not exist.",
+        "fr": "Cette question n'existe pas.",
+        "nl": "Deze vraag bestaat niet."
+      },
+      "unknownChoice": {
+        "en": "Choose one of the options.",
+        "fr": "Choisissez l'une des options.",
+        "nl": "Kies een van de opties."
+      },
+      "invalidDate": {
+        "en": "Enter a valid date.",
+        "fr": "Saisissez une date valide.",
+        "nl": "Geef een geldige datum in."
+      },
+      "tooLong": {
+        "en": "This answer is too long.",
+        "fr": "Cette réponse est trop longue.",
+        "nl": "Dit antwoord is te lang."
+      },
+      "consentRequired": {
+        "en": "This answer needs your explicit consent.",
+        "fr": "Cette réponse nécessite votre consentement explicite.",
+        "nl": "Dit antwoord vraagt je uitdrukkelijke toestemming."
+      }
+    },
+    "refusal": {
+      "attendeeAnswersRequired": {
+        "en": "Please answer the required questions for each ticket first.",
+        "fr": "Veuillez d'abord répondre aux questions obligatoires pour chaque billet.",
+        "nl": "Beantwoord eerst de verplichte vragen voor elk ticket."
+      },
+      "eventNotFound": {
+        "en": "This event does not exist.",
+        "fr": "Cet événement n'existe pas.",
+        "nl": "Dit evenement bestaat niet."
+      },
+      "unknownChannel": {
+        "en": "This sales channel is not configured.",
+        "fr": "Ce canal de vente n'est pas configuré.",
+        "nl": "Dit verkoopkanaal is niet ingesteld."
+      },
+      "invalidEvent": {
+        "en": "The event is incomplete: check its name, capacity and ticket types.",
+        "fr": "L'événement est incomplet : vérifiez son nom, sa capacité et ses types de billets.",
+        "nl": "Het evenement is onvolledig: controleer de naam, de capaciteit en de tickettypes."
+      },
+      "notPublishable": {
+        "en": "The event cannot be published yet.",
+        "fr": "L'événement ne peut pas encore être publié.",
+        "nl": "Het evenement kan nog niet gepubliceerd worden."
+      },
+      "forbidden": {
+        "en": "You may not do this for this organization.",
+        "fr": "Vous ne pouvez pas faire cela pour cette organisation.",
+        "nl": "Dat mag je niet voor deze organisatie."
+      },
+      "answersRefused": {
+        "en": "Some answers need your attention.",
+        "fr": "Certaines réponses demandent votre attention.",
+        "nl": "Sommige antwoorden vragen je aandacht."
+      },
+      "answersClosed": {
+        "en": "The answers can no longer be changed.",
+        "fr": "Les réponses ne peuvent plus être modifiées.",
+        "nl": "De antwoorden kunnen niet meer gewijzigd worden."
+      }
+    },
+    "ranking": {
+      "nextDate": {
+        "en": "Next date",
+        "fr": "Prochaine date",
+        "nl": "Volgende datum"
+      },
+      "nextDateDescription": {
+        "en": "Events are listed by the start of their next date, soonest first. This is the main parameter. No seller can pay to rank higher.",
+        "fr": "Les événements sont classés selon le début de leur prochaine date, le plus proche d'abord. C'est le paramètre principal. Aucun vendeur ne peut payer pour être mieux classé.",
+        "nl": "Evenementen staan gerangschikt volgens het begin van hun volgende datum, de vroegste eerst. Dit is de belangrijkste parameter. Geen verkoper kan betalen om hoger te staan."
+      },
+      "name": {
+        "en": "Name",
+        "fr": "Nom",
+        "nl": "Naam"
+      },
+      "nameDescription": {
+        "en": "Events with the same next date are listed by name.",
+        "fr": "Les événements ayant la même prochaine date sont classés par nom.",
+        "nl": "Evenementen met dezelfde volgende datum staan op naam."
+      }
+    },
+    "list": {
+      "title": {
+        "en": "Events",
+        "fr": "Événements",
+        "nl": "Evenementen"
+      },
+      "empty": {
+        "en": "No events are on sale right now.",
+        "fr": "Aucun événement n'est en vente pour le moment.",
+        "nl": "Er zijn momenteel geen evenementen te koop."
+      },
+      "more": {
+        "en": "More events",
+        "fr": "Plus d'événements",
+        "nl": "Meer evenementen"
+      },
+      "moreDates": {
+        "en": "more dates",
+        "fr": "autres dates",
+        "nl": "meer data"
+      },
+      "past": {
+        "en": "Past event",
+        "fr": "Événement passé",
+        "nl": "Voorbij evenement"
+      }
+    },
+    "status": {
+      "Scheduled": {
+        "en": "Scheduled",
+        "fr": "Programmé",
+        "nl": "Gepland"
+      },
+      "Postponed": {
+        "en": "Postponed",
+        "fr": "Reporté",
+        "nl": "Uitgesteld"
+      },
+      "Rescheduled": {
+        "en": "New date",
+        "fr": "Nouvelle date",
+        "nl": "Nieuwe datum"
+      },
+      "Cancelled": {
+        "en": "Cancelled",
+        "fr": "Annulé",
+        "nl": "Geannuleerd"
+      }
+    },
+    "joinQueue": {
+      "en": "Join the queue",
+      "fr": "Rejoindre la file d'attente",
+      "nl": "In de wachtrij gaan"
+    }
+  },
+  "lookup": {
+    "ETicketEventStatus": {
+      "Scheduled": {
+        "en": "Scheduled",
+        "fr": "Programmé",
+        "nl": "Gepland"
+      },
+      "Postponed": {
+        "en": "Postponed",
+        "fr": "Reporté",
+        "nl": "Uitgesteld"
+      },
+      "Rescheduled": {
+        "en": "Rescheduled",
+        "fr": "Reprogrammé",
+        "nl": "Verplaatst"
+      },
+      "Cancelled": {
+        "en": "Cancelled",
+        "fr": "Annulé",
+        "nl": "Geannuleerd"
+      }
+    },
+    "ETicketTypeKind": {
+      "Admission": {
+        "en": "Admission",
+        "fr": "Entrée",
+        "nl": "Toegang"
+      },
+      "Pass": {
+        "en": "Multi-day pass",
+        "fr": "Pass plusieurs jours",
+        "nl": "Meerdagenpas"
+      },
+      "AddOn": {
+        "en": "Add-on",
+        "fr": "Option",
+        "nl": "Extra"
+      }
+    },
+    "ETicketLimitScope": {
+      "Event": {
+        "en": "Whole event",
+        "fr": "Tout l'événement",
+        "nl": "Heel het evenement"
+      },
+      "Phase": {
+        "en": "Per sale phase",
+        "fr": "Par phase de vente",
+        "nl": "Per verkoopfase"
+      }
+    },
+    "EAttendeeQuestionKind": {
+      "Text": {
+        "en": "Text",
+        "fr": "Texte",
+        "nl": "Tekst"
+      },
+      "MultilineText": {
+        "en": "Long text",
+        "fr": "Texte long",
+        "nl": "Lange tekst"
+      },
+      "Choice": {
+        "en": "One choice",
+        "fr": "Un choix",
+        "nl": "Eén keuze"
+      },
+      "MultipleChoice": {
+        "en": "Several choices",
+        "fr": "Plusieurs choix",
+        "nl": "Meerdere keuzes"
+      },
+      "Date": {
+        "en": "Date",
+        "fr": "Date",
+        "nl": "Datum"
+      },
+      "Checkbox": {
+        "en": "Checkbox",
+        "fr": "Case à cocher",
+        "nl": "Selectievakje"
+      }
+    },
+    "EAttendeeQuestionTiming": {
+      "Checkout": {
+        "en": "At checkout",
+        "fr": "Lors de la commande",
+        "nl": "Bij het bestellen"
+      },
+      "Later": {
+        "en": "Later, on the ticket page",
+        "fr": "Plus tard, sur la page du billet",
+        "nl": "Later, op de ticketpagina"
+      }
+    }
+  }
+}

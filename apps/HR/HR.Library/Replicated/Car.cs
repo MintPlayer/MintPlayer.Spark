@@ -4,24 +4,12 @@ using System.Drawing;
 namespace HR.Replicated;
 
 /// <summary>
-/// A read-only copy of Cars from the Fleet module.
-/// The ETL script defines which fields are replicated.
+/// A read-only copy of Fleet's cars (warehouse §4.2.1): this class is the only declaration of what HR reads. The
+/// replication generator renders the manifest, the script and the hash from it; Fleet re-renders and approves them.
+/// An edit here is written back to Fleet (per-property compare-and-set) and arrives back with Fleet's push.
 /// </summary>
-[Replicated(
-    SourceModule = "Fleet",
-    SourceCollection = "Cars",
-    EtlScript = """
-        loadToCars({
-            LicensePlate: this.LicensePlate,
-            Model: this.Model,
-            Year: this.Year,
-            Color: this.Color,
-            '@metadata': {
-                '@collection': 'Cars'
-            }
-        });
-    """)]
-public class Car
+[Replicated(SourceCollection = "Cars", SourceModule = "Fleet", WriteBack = true)]
+public partial class Car
 {
     /// <summary>Identifier of the car, replicated read-only from the Fleet app.</summary>
     public string? Id { get; set; }

@@ -5,6 +5,7 @@ using MintPlayer.Spark.Abstractions.Interceptors;
 using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Exceptions;
+using MintPlayer.Spark.Expiration;
 using Microsoft.Extensions.Logging;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Linq;
@@ -36,6 +37,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
     [Inject] private readonly ISaveValidation saveValidation;
     [Inject] private readonly Microsoft.AspNetCore.Http.IHttpContextAccessor? httpContextAccessor;
     [Inject] private readonly Microsoft.Extensions.Logging.ILogger<DatabaseAccess>? logger;
+    [Inject] private readonly TimeProvider? timeProvider;
 
     public async Task<T?> GetDocumentUncheckedAsync<T>(string id) where T : class
     {
@@ -56,38 +58,33 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
     public async Task<T> SaveDocumentUncheckedAsync<T>(T document) where T : class
     {
-        var interceptor = serviceProvider.GetService<ISyncActionInterceptor>();
-        var replicated = interceptor != null && interceptor.IsReplicated(typeof(T));
-        var idProperty = typeof(T).GetCachedProperty("Id");
-        string? ReadId() => idProperty is not null && idProperty.CanRead
-            ? AccessorCache.GetGetter(idProperty)(document)?.ToString()
-            : null;
-
-        // Insert or Update for the owner module (#467, D15), decided before the store assigns an id.
-        var idBefore = ReadId();
-        var isNew = replicated && (string.IsNullOrEmpty(idBefore) || !await session.Advanced.ExistsAsync(idBefore));
+        EnsureNotReplica(typeof(T));
 
         await session.StoreAsync(document);
         await CommitAsync();
-
-        // If this is a replicated entity, also broadcast the changes to the owner module
-        if (replicated)
-            await interceptor!.HandleSaveAsync(document, ReadId(), isNew);
 
         return document;
     }
 
     public async Task DeleteDocumentUncheckedAsync<T>(string id) where T : class
     {
+        EnsureNotReplica(typeof(T));
+
         session.Delete(id);
         await CommitAsync(deletedById: typeof(T));
+    }
 
-        // If this is a replicated entity, also notify the owner module
-        var interceptor = serviceProvider.GetService<ISyncActionInterceptor>();
-        if (interceptor != null && interceptor.IsReplicated(typeof(T)))
-        {
-            await interceptor.HandleDeleteAsync(typeof(T), id);
-        }
+    /// <summary>
+    /// A replica is written only by its source (warehouse WX2): a raw write here would diverge from the source
+    /// without anyone noticing until the next reconcile overwrote it. Edits go through the persistent-object
+    /// pipeline, where replication turns them into write-back requests.
+    /// </summary>
+    private void EnsureNotReplica(Type entityType)
+    {
+        if (serviceProvider.GetService<ISparkReplicaTypes>()?.IsReplica(entityType) == true)
+            throw new InvalidOperationException(
+                $"{entityType.Name} is a read-only replica of another module's contract; it cannot be written directly. " +
+                "Edit it through the persistent-object pipeline (a write-back request to its source) or change it at the source.");
     }
 
     // PersistentObject-specific methods that handle entity mapping
@@ -247,7 +244,15 @@ internal partial class DatabaseAccess : IDatabaseAccess
         // existing document by replaying its natural key. Since #467 (D16) the collision never
         // writes: past the Edit gates it is a 409 "already exists", because an edit must carry the
         // etag of the version it overwrites and a create has none.
+        //
+        // The probe is the friendly answer, not the guarantee (commerce X3/F6): a create racing this one can
+        // store the same id after the probe found it free. The write itself is create-only (WriteSaveAsync
+        // stores with RavenDB's empty "must not exist" change vector), so exactly one racer wins and the
+        // other gets the same 409. An EXPIRED IExpiring row under the id is not a collision but a takeover:
+        // every read path already treats it as missing (#453), and the sweep may not delete it for 36 hours.
+        // The create replaces it, guarded by the expired row's change vector, so a racing takeover loses too.
         var naturalIdCollision = false;
+        NaturalIdTakeover? takeover = null;
         IReadOnlyList<string> refusedBeforeProbe = [];
         if (string.IsNullOrEmpty(persistentObject.Id)
             && typeof(IHasNaturalId).IsAssignableFrom(entityType))
@@ -268,7 +273,14 @@ internal partial class DatabaseAccess : IDatabaseAccess
             if (!string.IsNullOrEmpty(derivedId))
             {
                 using var probeSession = documentStore.OpenAsyncSession();
-                if (await probeSession.Advanced.ExistsAsync(derivedId))
+                var held = await LoadEntityAsync(probeSession, entityType, derivedId);
+                if (held is IExpiring { ExpiresAtUtc: { } expiresAt }
+                    && SparkExpiration.ToUtc(expiresAt) <= (timeProvider ?? TimeProvider.System).GetUtcNow().UtcDateTime
+                    && collectionGuard.BelongsToAuthorizedCollection(probeSession, held, entityType))
+                {
+                    takeover = new NaturalIdTakeover(derivedId, probeSession.Advanced.GetChangeVectorFor(held));
+                }
+                else if (held is not null)
                 {
                     persistentObject.Id = derivedId;
                     naturalIdCollision = true;
@@ -294,6 +306,8 @@ internal partial class DatabaseAccess : IDatabaseAccess
         if (operation is PersistentObjectOperation.Save or PersistentObjectOperation.New)
             operation = string.IsNullOrEmpty(persistentObject.Id) ? PersistentObjectOperation.New : PersistentObjectOperation.Save;
         object? before = null;
+        // The stored row's change vector, read with `before`: the base a diverted save is applied against (X7).
+        string? storedChangeVector = null;
 
         // Row-level Edit gate (R2-H2): for an update against an existing entity, the
         // Actions class's IsAllowedAsync(Edit, entity) hook decides whether THIS caller
@@ -364,6 +378,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
                     throw SparkConcurrencyException.AlreadyExists();
 
                 before = existing;
+                storedChangeVector = checkSession.Advanced.GetChangeVectorFor(existing);
             }
         }
 
@@ -390,6 +405,16 @@ internal partial class DatabaseAccess : IDatabaseAccess
         if (checkOnly)
             return persistentObject;
 
+        // A diverted save (commerce X7, S10): every gate the caller must pass has passed, the base version is
+        // verified, and nothing is mapped or loaded into the request session yet — so no before-interceptor or
+        // Actions hook has run with side effects a proposal would commit. Those run once, when the change is
+        // applied. Never while applying one: an approved proposal must not propose itself again.
+        if (await ReplaceSaveAsync(entityType, persistentObject, operation, before, storedChangeVector, unwritable) is { } receipt)
+        {
+            persistentObject.Replacement = receipt;
+            return persistentObject;
+        }
+
         // The framework owns the write (#482): interceptors only ever see a save the caller was allowed to make,
         // and nothing an Actions class or an interceptor does can skip WITH CHECK, the expected change vector or
         // the single commit. Everything the request session tracks before the interceptors run is recorded, so
@@ -398,7 +423,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
         SaveContext saveContext;
         try
         {
-            saveContext = await WriteSaveAsync(entityType, persistentObject, operation, before, unwritable);
+            saveContext = await WriteSaveAsync(entityType, persistentObject, operation, before, unwritable, takeover);
             // Inside a write batch the batch commits, once, for every operation (ISparkWriteUnit).
             if (batch is null)
                 await CommitAsync();
@@ -415,8 +440,12 @@ internal partial class DatabaseAccess : IDatabaseAccess
             // The write found the document changed since it was loaded (contributions F7): the same
             // conflict the etag check above answers, caught one step later, so the same 409. RavenDB's
             // message carries change vectors; it stays in the inner exception, for logs only.
+            // A create (no id) is refused only by its create-only natural-id write (X3/F6): another create
+            // stored the id first, the same 409 "already exists" the probe gives.
             if (ex is Raven.Client.Exceptions.ConcurrencyException)
-                throw new SparkConcurrencyException(ex);
+                throw string.IsNullOrEmpty(persistentObject.Id) && typeof(IHasNaturalId).IsAssignableFrom(entityType)
+                    ? SparkConcurrencyException.AlreadyExists()
+                    : new SparkConcurrencyException(ex);
             throw;
         }
 
@@ -763,13 +792,61 @@ internal partial class DatabaseAccess : IDatabaseAccess
     }
 
     /// <summary>
+    /// Asks the type's <see cref="ISaveReplacement"/>, if any, whether it diverts this save, and commits what it
+    /// recorded (in a batch, the batch commits it). The receipt, or <see langword="null"/> to save normally.
+    /// </summary>
+    /// <remarks>
+    /// A receipt, never an exception, diverts: a thrown exception is a refusal, and like any refusal it takes
+    /// back what the replacement stored in the request session.
+    /// </remarks>
+    private async Task<SaveReplacementReceipt?> ReplaceSaveAsync(
+        Type entityType, PersistentObject persistentObject, PersistentObjectOperation operation, object? before,
+        string? storedChangeVector, IReadOnlyList<string> unwritable)
+    {
+        if (Applying(persistentObject) is not null || interceptors.For<ISaveReplacement>(entityType, operation) is not [var replacement])
+            return null;
+
+        var context = new SaveReplacementContext
+        {
+            EntityType = entityType,
+            Operation = operation,
+            PersistentObject = persistentObject,
+            // Wire JSON, never the object itself: a RavenDB field loses the AsDetail type split (S10).
+            PersistentObjectJson = SparkReplacedSaves.Serialize(persistentObject),
+            BaseEtag = before is null ? null : storedChangeVector,
+            Id = before is null ? null : persistentObject.Id,
+            Before = before,
+            UnwritableAttributes = unwritable,
+            Session = session,
+            User = interceptors.User,
+            IsSystemContext = interceptors.IsSystemContext,
+        };
+
+        var sessionBefore = SessionWriteSnapshot.Take(session);
+        try
+        {
+            var receipt = await replacement.ReplaceAsync(context);
+            // Inside a write batch the batch commits, once, for every operation (ISparkWriteUnit).
+            if (receipt is not null && batch is null)
+                await CommitAsync();
+            return receipt;
+        }
+        catch
+        {
+            sessionBefore.EvictWrittenSince();
+            throw;
+        }
+    }
+
+    /// <summary>
     /// The framework's half of a save (#482), after every gate and before the commit: load (or not),
     /// hydrate, map through the Actions class's <c>MapAsync</c>, run the before-save interceptors, WITH CHECK,
     /// and store with the expected change vector. The caller commits. Nothing here can be skipped by an
     /// Actions class or an interceptor.
     /// </summary>
     private async Task<SaveContext> WriteSaveAsync(
-        Type entityType, PersistentObject obj, PersistentObjectOperation operation, object? before, IReadOnlyList<string> unwritable)
+        Type entityType, PersistentObject obj, PersistentObjectOperation operation, object? before, IReadOnlyList<string> unwritable,
+        NaturalIdTakeover? takeover = null)
     {
         object? existing = null;
         // The change vector the write must still find (contributions F7): the client's etag when it
@@ -809,7 +886,11 @@ internal partial class DatabaseAccess : IDatabaseAccess
             Session = session,
             User = interceptors.User,
             IsSystemContext = interceptors.IsSystemContext,
+            IsReplacedSaveApply = Applying(obj) is not null,
+            OnBehalfOf = Applying(obj)?.OnBehalfOf,
         };
+        if (Applying(obj)?.OnBehalfOf is { Length: > 0 } onBehalfOf)
+            context.Facts[SparkFacts.OnBehalfOf] = onBehalfOf;
 
         foreach (var interceptor in interceptors.For<IBeforeSave>(entityType, operation))
             await interceptor.OnBeforeSaveAsync(context);
@@ -824,6 +905,17 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
         if (expectedChangeVector is not null)
             await session.StoreAsync(entity, expectedChangeVector, session.Advanced.GetDocumentId(entity));
+        else if (string.IsNullOrEmpty(obj.Id) && entity is IHasNaturalId natural && natural.GetId() is { Length: > 0 } naturalId
+            && (entityType.GetCachedProperty("Id") is not { CanRead: true } idProperty || string.IsNullOrEmpty(AccessorCache.GetGetter(idProperty)(entity)?.ToString())))
+        {
+            // Atomic natural-id create (commerce X3/F6): RavenDB's empty change vector means "must not exist",
+            // so of two creates racing for one id exactly one commits and the other is a ConcurrencyException
+            // (a 409 "already exists" in SaveCoreAsync). Taking over an expired row expects that row's version
+            // instead, so the replacement is atomic too. The id is the one the probe judged only if the
+            // interceptors left it unchanged; otherwise the create is plain create-only.
+            var mustFind = takeover is { } t && string.Equals(t.Id, naturalId, StringComparison.OrdinalIgnoreCase) ? t.ChangeVector ?? string.Empty : string.Empty;
+            await session.StoreAsync(entity, mustFind, naturalId);
+        }
         else
             await session.StoreAsync(entity);
 
@@ -1094,7 +1186,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
     private async Task<PersistentObject?> LoadVirtualObjectViaActionsAsync(
         EntityTypeDefinition entityTypeDefinition, string id)
     {
-        var actions = actionsResolver.ResolveByEntityName(entityTypeDefinition.Name);
+        var actions = actionsResolver.ResolveVirtual(entityTypeDefinition);
         if (actions is null)
             return null;
 
@@ -1183,4 +1275,10 @@ internal partial class DatabaseAccess : IDatabaseAccess
                     $"Actions type '{k.Actions.FullName}' is missing required method '{k.Method}'."));
 
     #endregion
+
+    /// <summary>
+    /// A natural-id create that replaces an expired <see cref="IExpiring"/> row under the same id (commerce X3):
+    /// the write expects <paramref name="ChangeVector"/>, the version of the expired row the probe saw.
+    /// </summary>
+    private sealed record NaturalIdTakeover(string Id, string? ChangeVector);
 }

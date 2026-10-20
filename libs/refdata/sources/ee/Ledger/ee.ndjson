@@ -1,0 +1,16 @@
+{"Identity":"ads:LP01000001","Id":"streets/ee/ads/LP01000001","Source":"ee-ads"}
+{"Identity":"ads:LP01000002","Id":"streets/ee/ads/LP01000002","Source":"ee-ads"}
+{"Identity":"ads:LP01000003","Id":"streets/ee/ads/LP01000003","Source":"ee-ads"}
+{"Identity":"ads:LP07000001","Id":"streets/ee/ads/LP07000001","Source":"ee-ads"}
+{"Identity":"ads:LP07000002","Id":"streets/ee/ads/LP07000002","Source":"ee-ads"}
+{"Identity":"ehak:0037","Id":"places/ee/ehak/0037","Source":"ee-ehak"}
+{"Identity":"ehak:0074","Id":"places/ee/ehak/0074","Source":"ee-ehak"}
+{"Identity":"ehak:0176","Id":"places/ee/ehak/0176","Source":"ee-ehak"}
+{"Identity":"ehak:0298","Id":"places/ee/ehak/0298","Source":"ee-ehak"}
+{"Identity":"ehak:0349","Id":"places/ee/ehak/0349","Source":"ee-ads"}
+{"Identity":"ehak:0714","Id":"places/ee/ehak/0714","Source":"ee-ehak"}
+{"Identity":"ehak:0784","Id":"places/ee/ehak/0784","Source":"ee-ehak"}
+{"Identity":"ehak:1313","Id":"places/ee/ehak/1313","Source":"ee-ehak"}
+{"Identity":"ehak:3655","Id":"places/ee/ehak/0349","Source":"ee-ehak"}
+{"Identity":"ehak:5725","Id":"places/ee/ehak/5725","Source":"ee-ehak"}
+{"Identity":"iso3166:EE","Id":"places/ee/iso3166/EE","Source":"ee-ehak"}

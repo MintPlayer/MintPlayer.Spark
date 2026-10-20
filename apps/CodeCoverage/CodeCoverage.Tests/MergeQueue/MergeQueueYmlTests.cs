@@ -31,9 +31,10 @@ public class MergeQueueYmlTests
         section.PostRebaseTimeoutMinutes.Should().Be(20);
         section.PostRebaseWhen.Should().Be(EPostRebaseWhen.AutoResolved);
         var own = section.AutoResolve.Where(r => r.Source == MergeQueueYml.Source).ToList();
-        own.Select(r => r.Path).Should().Equal(["**/App_Data/modelHashes.json", "**/App_Data/securityPosture.txt"]);
+        own.Select(r => r.Path).Should().Equal(["**/App_Data/modelHashes.json", "**/App_Data/securityPosture.txt", "**/generated/contracts.ts"]);
         own.Should().AllSatisfy(r => r.Keys.Should().BeEmpty("O19: these files resolve on any line"));
         section.RegeneratedPaths.Should().Contain("**/App_Data/security.json");
+        section.RegeneratedPaths.Should().Contain("**/generated/contracts.ts", "the regenerate step rewrites the TypeScript contracts (commerce X20)");
     }
 
     [Fact]

@@ -76,6 +76,7 @@ internal static class QueryResultProjector
                 AsDetailType = a.AsDetailType,
                 Renderer = a.Renderer,
                 RendererOptions = a.RendererOptions,
+                DateTimeDisplay = a.DateTimeDisplay,
             })];
 
     /// <summary>
@@ -143,7 +144,12 @@ internal static class QueryResultProjector
         if (sortType is null) return true;
 
         var resolved = QueryExecutor.ResolveSortProperty(sortType, attribute.Name);
-        if (sortType.GetCachedProperty(resolved) is null) return false;
+        if (sortType.GetCachedProperty(resolved) is not { } property) return false;
+
+        // A Money or Quantity column is sorted and filtered through its code and amount (X4, WX8), which a
+        // static index offers only as companions.
+        if (AmountQueryFields.Handles(property))
+            return AmountQueryFields.IsBacked(sortType, property, indexedFields);
 
         return indexedFields is null || indexedFields.Contains(resolved);
     }

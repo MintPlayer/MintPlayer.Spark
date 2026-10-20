@@ -149,7 +149,7 @@ public static class SparkMailManagerExtensions
     /// <summary>Explicit registration wins over the configuration fallback; a second one is a startup error.</summary>
     private static ISparkBuilder RegisterMailTransport<TTransport>(this ISparkBuilder builder, string name) where TTransport : class, ISparkMailTransport
     {
-        builder.Services.Replace(ServiceDescriptor.Singleton<ISparkMailTransport, TTransport>());
+        builder.Services.UseSparkProvider<ISparkMailTransport, TTransport>(ServiceLifetime.Singleton);
         builder.Services.AddSingleton(new SparkMailTransportRegistration(name));
         return builder;
     }
@@ -157,7 +157,7 @@ public static class SparkMailManagerExtensions
     /// <summary>A bounce parser for another report format (the secret check stays in the framework).</summary>
     public static ISparkBuilder AddMailBounceParser<TParser>(this ISparkBuilder builder) where TParser : class, ISparkMailBounceParser
     {
-        builder.Services.Replace(ServiceDescriptor.Singleton<ISparkMailBounceParser, TParser>());
+        builder.Services.UseSparkProvider<ISparkMailBounceParser, TParser>(ServiceLifetime.Singleton);
         return builder;
     }
 

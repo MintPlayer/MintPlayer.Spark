@@ -162,6 +162,7 @@ internal sealed class LiveAppStreamSubscription(LiveConnection connection, strin
         var args = new LiveQueryArgs
         {
             Query = query,
+            Viewer = Connection.Viewer,
             Parent = parent,
             Search = request.Search,
             Skip = Math.Max(0, request.Skip ?? 0),

@@ -1,0 +1,20 @@
+<mjml>
+  <mj-head>
+    <mj-title>Veiligheidsterugroeping: {{ product }}</mj-title>
+    <mj-attributes>
+      <mj-all font-family="Segoe UI, Helvetica, Arial, sans-serif" />
+      <mj-text font-size="15px" line-height="22px" color="#111827" />
+    </mj-attributes>
+  </mj-head>
+  <mj-body background-color="#f3f4f6">
+    <mj-section background-color="#ffffff" padding="24px 0">
+      <mj-column>
+        <mj-text font-size="20px" font-weight="600" color="#b91c1c">Veiligheidsterugroeping: {{ product }}</mj-text>
+        <mj-text>{{ if buyer_name }}{{ buyer_name }}, u{{ else }}U{{ end }}w bestelling {{ number }} bevatte {{ units }} stuk(s) {{ product }} (artikel {{ sku }}) uit partij {{ lot }}, die wordt teruggeroepen.</mj-text>
+        {{ if hazard }}<mj-text><strong>Het risico:</strong> {{ hazard }}</mj-text>{{ end }}
+        {{ if action }}<mj-text><strong>Wat u moet doen:</strong> {{ action }}</mj-text>{{ else }}<mj-text><strong>Wat u moet doen:</strong> gebruik het product niet meer en bewaar het buiten bereik tot u van ons hoort.</mj-text>{{ end }}
+        {{ if contact }}<mj-text font-size="13px" color="#4b5563">Meer informatie: {{ contact }}</mj-text>{{ end }}
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>

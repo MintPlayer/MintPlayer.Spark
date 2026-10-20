@@ -60,6 +60,8 @@ internal sealed class SparkMailer(
             Stream = stream,
             ListUnsubscribe = request.ListUnsubscribe ?? queue == SparkMailQueues.Bulk,
             Queue = queue,
+            Attachments = MapAttachments(request.Attachments, request.Sensitive),
+            Headers = MapHeaders(request.Headers),
         };
 
         await bus.BroadcastAsync(message, new BroadcastOptions
@@ -132,6 +134,67 @@ internal sealed class SparkMailer(
             logger.LogWarning("Ignoring unknown mail culture '{Culture}'.", culture);
             return null;
         }
+    }
+
+    /// <summary>Validates and maps the attachments; refuses a bad one at queue time, where the caller can still react.</summary>
+    internal List<SparkMailMessageAttachment>? MapAttachments(IReadOnlyList<SparkMailAttachment>? attachments, bool sensitive)
+    {
+        if (attachments is not { Count: > 0 })
+            return null;
+        var result = new List<SparkMailMessageAttachment>(attachments.Count);
+        long inline = 0;
+        foreach (var attachment in attachments)
+        {
+            ArgumentNullException.ThrowIfNull(attachment);
+            if (AttachmentProblem(attachment) is { } problem)
+                throw new ArgumentException($"Mail attachment refused: {problem}.", nameof(attachments));
+            if (attachment.Content is { } bytes)
+            {
+                inline += bytes.LongLength;
+                if (inline > options.Value.Attachments.MaxInlineBytes)
+                    throw new ArgumentException($"Mail attachments refused: more than {options.Value.Attachments.MaxInlineBytes} inline bytes (Spark:Mail:Attachments:MaxInlineBytes); store large files as RavenDB attachments and use SparkMailAttachment.FromDocument.", nameof(attachments));
+            }
+            result.Add(new SparkMailMessageAttachment
+            {
+                FileName = attachment.FileName,
+                ContentType = attachment.ContentType,
+                Content = attachment.Content is { } content ? protector.Protect(Convert.ToBase64String(content), sensitive) : null,
+                DocumentId = attachment.DocumentId,
+                AttachmentName = attachment.AttachmentName,
+                Optional = attachment.Optional,
+            });
+        }
+        return result;
+    }
+
+    internal static string? AttachmentProblem(SparkMailAttachment attachment)
+    {
+        if (string.IsNullOrWhiteSpace(attachment.FileName))
+            return "no file name";
+        if (attachment.FileName.AsSpan().IndexOfAny("\r\n\0/\\\"") >= 0 || attachment.FileName.Length > 200)
+            return $"'{attachment.FileName}' is not a plain file name";
+        if (!MimeKit.ContentType.TryParse(attachment.ContentType ?? string.Empty, out _))
+            return $"'{attachment.ContentType}' is not a MIME type";
+        var stored = attachment.DocumentId is not null || attachment.AttachmentName is not null;
+        if (attachment.Content is not null == stored)
+            return $"'{attachment.FileName}' needs exactly one source: Content, or DocumentId + AttachmentName";
+        if (stored && (string.IsNullOrWhiteSpace(attachment.DocumentId) || string.IsNullOrWhiteSpace(attachment.AttachmentName)))
+            return $"'{attachment.FileName}' names a stored attachment without both DocumentId and AttachmentName";
+        return null;
+    }
+
+    internal static Dictionary<string, string>? MapHeaders(IReadOnlyDictionary<string, string>? headers)
+    {
+        if (headers is not { Count: > 0 })
+            return null;
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (name, value) in headers)
+        {
+            if (SparkMailHeaders.Problem(name, value) is { } problem)
+                throw new ArgumentException($"Mail header refused: {problem}.", nameof(headers));
+            result[name] = value;
+        }
+        return result;
     }
 
     internal static string? SerializeData(object? data) => data switch

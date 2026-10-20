@@ -11,7 +11,7 @@
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.Gs1</PackageId>
-		<Version>11.0.0-preview.1</Version>
+		<Version>11.0.0-preview.2</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>GS1 logic for MintPlayer.Spark (check digits first), written once in Polyglot and shared by .NET and @mintplayer/ng-spark.</Description>

@@ -25,6 +25,7 @@
     "confirmDelete":     { "en": "Are you sure you want to delete this item?", "fr": "Êtes-vous sûr de vouloir supprimer cet élément ?", "nl": "Weet u zeker dat u dit item wilt verwijderen?" },
     "concurrencyConflict": { "en": "Somebody else changed this record while you were editing it. Reload the page to see their version.", "fr": "Quelqu'un d'autre a modifié cet enregistrement pendant que vous le modifiiez. Rechargez la page pour voir sa version.", "nl": "Iemand anders heeft dit record gewijzigd terwijl u het aan het bewerken was. Herlaad de pagina om hun versie te zien." },
     "deletedByAnotherUser": { "en": "Somebody else deleted this record while you were editing it. Your changes have not been saved.", "fr": "Quelqu'un d'autre a supprimé cet enregistrement pendant que vous le modifiiez. Vos modifications n'ont pas été enregistrées.", "nl": "Iemand anders heeft dit record verwijderd terwijl u het aan het bewerken was. Uw wijzigingen zijn niet opgeslagen." },
+    "submittedForApproval": { "en": "Submitted for approval. Your change takes effect once it is approved.", "fr": "Soumis pour approbation. Votre modification prend effet une fois approuvée.", "nl": "Ingediend ter goedkeuring. Uw wijziging gaat in zodra ze is goedgekeurd." },
     "liveChanged": { "en": "Changed by someone else while you edit.", "fr": "Modifié par quelqu'un d'autre pendant votre modification.", "nl": "Gewijzigd door iemand anders terwijl u bewerkt." },
     "liveReview": { "en": "Review", "fr": "Vérifier", "nl": "Bekijken" },
     "conflictTitle":       { "en": "Conflicting changes", "fr": "Modifications en conflit", "nl": "Conflicterende wijzigingen" },
@@ -69,7 +70,9 @@
     "diffIdentical":     { "en": "Identical to the current version.", "fr": "Identique à la version actuelle.", "nl": "Gelijk aan de huidige versie." },
     "diffAdded":         { "en": "Added",          "fr": "Ajouté",           "nl": "Toegevoegd" },
     "diffRemoved":       { "en": "Removed",        "fr": "Supprimé",         "nl": "Verwijderd" },
-    "opensInNewTab":     { "en": "(opens in a new tab)", "fr": "(s'ouvre dans un nouvel onglet)", "nl": "(opent in een nieuw tabblad)" }
+    "opensInNewTab":     { "en": "(opens in a new tab)", "fr": "(s'ouvre dans un nouvel onglet)", "nl": "(opent in een nieuw tabblad)" },
+    "unexpectedError":   { "en": "An unexpected error occurred", "fr": "Une erreur inattendue s'est produite", "nl": "Er is een onverwachte fout opgetreden" },
+    "close":             { "en": "Close",          "fr": "Fermer",           "nl": "Sluiten" }
   },
   "contributions": {
     "by":            { "en": "by {name}",      "fr": "par {name}",        "nl": "door {name}" },
@@ -187,6 +190,18 @@
     "unavailable":   { "en": "This page could not be loaded. Try again later.", "fr": "Cette page n'a pas pu être chargée. Réessayez plus tard.", "nl": "Deze pagina kon niet geladen worden. Probeer het later opnieuw." }
   },
   "spark": {
+    "translatedString": {
+      "addLanguage": { "en": "Add a language", "fr": "Ajouter une langue", "nl": "Een taal toevoegen" },
+      "languageTag": { "en": "Language tag, e.g. de or zh-Hant", "fr": "Code de langue, p. ex. de ou zh-Hant", "nl": "Taalcode, bv. de of zh-Hant" },
+      "invalidTag": { "en": "Not a valid language tag.", "fr": "Code de langue non valide.", "nl": "Geen geldige taalcode." },
+      "otherNames": { "en": "Other names", "fr": "Autres noms", "nl": "Andere namen" },
+      "kind": {
+        "official": { "en": "official", "fr": "officiel", "nl": "officieel" },
+        "common": { "en": "common", "fr": "usuel", "nl": "gangbaar" },
+        "exonym": { "en": "exonym", "fr": "exonyme", "nl": "exoniem" },
+        "historic": { "en": "historic", "fr": "historique", "nl": "historisch" }
+      }
+    },
     "tryAgainIn": { "en": "Try again in {0}.", "fr": "Réessayez dans {0}.", "nl": "Probeer opnieuw over {0}." },
     "wait": {
       "fewSeconds": { "en": "a few seconds", "fr": "quelques secondes", "nl": "enkele seconden" },
@@ -202,6 +217,42 @@
     },
     "po": {
       "unavailable": { "en": "This item was deleted or is no longer available.", "fr": "Cet élément a été supprimé ou n'est plus disponible.", "nl": "Dit item is verwijderd of niet meer beschikbaar." }
+    }
+  },
+  "consent": {
+    "banner": {
+      "title": { "en": "Your privacy choices", "fr": "Vos choix de confidentialité", "nl": "Jouw privacykeuzes" },
+      "text": { "en": "We use what is strictly necessary to run this site. With your consent we also use the purposes below. You can change your choice at any time.", "fr": "Nous utilisons ce qui est strictement nécessaire au fonctionnement du site. Avec votre accord, nous utilisons aussi les finalités ci-dessous. Vous pouvez modifier votre choix à tout moment.", "nl": "We gebruiken wat strikt nodig is om deze site te laten werken. Met je toestemming gebruiken we ook de doeleinden hieronder. Je kunt je keuze altijd wijzigen." }
+    },
+    "acceptAll": { "en": "Accept all", "fr": "Tout accepter", "nl": "Alles aanvaarden" },
+    "rejectAll": { "en": "Reject all", "fr": "Tout refuser", "nl": "Alles weigeren" },
+    "choose": { "en": "Choose", "fr": "Choisir", "nl": "Kiezen" },
+    "save": { "en": "Save my choices", "fr": "Enregistrer mes choix", "nl": "Mijn keuzes opslaan" },
+    "saved": { "en": "Your choices were saved.", "fr": "Vos choix ont été enregistrés.", "nl": "Je keuzes zijn opgeslagen." },
+    "error": { "en": "Your choice could not be saved. Please try again.", "fr": "Votre choix n'a pas pu être enregistré. Veuillez réessayer.", "nl": "Je keuze kon niet worden opgeslagen. Probeer het opnieuw." },
+    "withdrawAll": { "en": "Withdraw all consent", "fr": "Retirer tout consentement", "nl": "Alle toestemming intrekken" },
+    "policy": { "en": "Privacy policy", "fr": "Politique de confidentialité", "nl": "Privacybeleid" },
+    "vendors": { "en": "Provided by", "fr": "Fourni par", "nl": "Aangeboden door" },
+    "settings": {
+      "title": { "en": "Privacy settings", "fr": "Paramètres de confidentialité", "nl": "Privacyinstellingen" },
+      "intro": { "en": "Choose per purpose. Nothing is switched on until you switch it on.", "fr": "Choisissez par finalité. Rien n'est activé tant que vous ne l'activez pas.", "nl": "Kies per doeleinde. Niets staat aan tot je het zelf aanzet." }
+    },
+    "necessary": {
+      "title": { "en": "Strictly necessary", "fr": "Strictement nécessaire", "nl": "Strikt noodzakelijk" },
+      "description": { "en": "Needed for the site to work (sign-in, basket, security, remembering this choice). Always on.", "fr": "Nécessaire au fonctionnement du site (connexion, panier, sécurité, mémorisation de ce choix). Toujours actif.", "nl": "Nodig om de site te laten werken (aanmelden, winkelmandje, beveiliging, deze keuze onthouden). Altijd aan." }
+    },
+    "unsubscribe": {
+      "title": { "en": "Unsubscribe", "fr": "Se désinscrire", "nl": "Afmelden" },
+      "text": { "en": "Stop receiving these e-mails at {0}?", "fr": "Ne plus recevoir ces e-mails à {0} ?", "nl": "Deze e-mails niet meer ontvangen op {0}?" },
+      "button": { "en": "Unsubscribe", "fr": "Se désinscrire", "nl": "Afmelden" },
+      "done": { "en": "You are unsubscribed. You will receive no more of these e-mails.", "fr": "Vous êtes désinscrit. Vous ne recevrez plus ces e-mails.", "nl": "Je bent afgemeld. Je ontvangt deze e-mails niet meer." },
+      "invalid": { "en": "This link is not valid.", "fr": "Ce lien n'est pas valide.", "nl": "Deze link is niet geldig." }
+    }
+  },
+  "embed": {
+    "continue": {
+      "text": { "en": "Continue in a new window to finish.", "fr": "Continuez dans une nouvelle fenêtre pour terminer.", "nl": "Ga verder in een nieuw venster om af te ronden." },
+      "button": { "en": "Continue", "fr": "Continuer", "nl": "Verder" }
     }
   },
   "culture": {

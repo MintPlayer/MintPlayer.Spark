@@ -1,0 +1,14 @@
+{
+  "_fixture": {
+    "source": "https://docs.mollie.com/reference/handling-errors (error format) and https://docs.mollie.com/reference/create-refund (422 on a refund that cannot be made)",
+    "derived": "error FORMAT from the docs; the 'detail' wording for an insufficient balance is NOT documented and is illustrative. Status 422.",
+    "recorded": false
+  },
+  "status": 422,
+  "title": "Unprocessable Entity",
+  "detail": "The refund amount exceeds the balance available on the organization's account",
+  "field": "amount",
+  "_links": {
+    "documentation": { "href": "https://docs.mollie.com/reference/handling-errors", "type": "text/html" }
+  }
+}

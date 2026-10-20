@@ -1,6 +1,6 @@
 # MintPlayer.Spark.Model
 
-The model vocabulary an entity library uses besides attributes: `TranslatedString`,
+The model vocabulary an entity library uses besides attributes: `TranslatedString`, `Money`,
 `TransientLookupReference` / `DynamicLookupReference` / `ELookupDisplayType`, `EShowedOn`,
 `IHasNaturalId`, `ValidationError`, the reserved action names (`SparkCoreActions`,
 `SparkCombinedActions`, `[SparkReservedActions]`), and the small registries that generated code in a

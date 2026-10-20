@@ -11,7 +11,12 @@ namespace MintPlayer.Spark.Moderation.Services;
 /// <summary>A moderatable row the caller can see.</summary>
 internal sealed record ModerationTarget(string Id, EntityTypeDefinition Definition, Type ClrType, IModeratable Entity)
 {
+    /// <summary>The name rights are checked against (<c>Verb/Name</c>): the effective name, after the application's renames.</summary>
     public string TypeName => Definition.Name;
+
+    /// <summary>What a moderation document stores as <c>TargetType</c>: the type's id ("D"), never its name, which a rename changes (D28).</summary>
+    public string TypeId => ModerationTypeIds.Of(Definition);
+
     public string? AuthorId => Entity.AuthorId;
     public DateTime? PostedAtUtc => Entity.PostedAt?.UtcDateTime;
 }

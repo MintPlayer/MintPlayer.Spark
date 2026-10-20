@@ -1,0 +1,25 @@
+{
+  "PostnummerList": [
+    { "id_lokalId": "7a0c2f44-0003-4b1e-9c11-1620aaaaaaaa", "postnr": "1620", "navn": "København V", "status": "3", "virkningFra": "2018-07-01T00:00:00.000000+02:00", "virkningTil": null, "registreringFra": "2018-07-01T00:00:00.000000+02:00", "registreringTil": null },
+    { "id_lokalId": "7a0c2f44-0003-4b1e-9c11-1850aaaaaaaa", "postnr": "1850", "navn": "Frederiksberg C", "status": "3", "virkningFra": "2018-07-01T00:00:00.000000+02:00", "virkningTil": null, "registreringFra": "2018-07-01T00:00:00.000000+02:00", "registreringTil": null },
+    { "id_lokalId": "7a0c2f44-0003-4b1e-9c11-5000aaaaaaaa", "postnr": "5000", "navn": "Odense C", "status": "3", "virkningFra": "2018-07-01T00:00:00.000000+02:00", "virkningTil": null, "registreringFra": "2018-07-01T00:00:00.000000+02:00", "registreringTil": null }
+  ],
+  "NavngivenVejList": [
+    { "id_lokalId": "b1d8e6f2-0004-4a7c-8e55-000000000001", "vejnavn": "Vesterbrogade", "vejadresseringsnavn": "Vesterbrogade", "status": "3", "virkningFra": "2018-07-01T00:00:00.000000+02:00", "virkningTil": null, "registreringFra": "2018-07-01T00:00:00.000000+02:00", "registreringTil": null },
+    { "id_lokalId": "b1d8e6f2-0004-4a7c-8e55-000000000002", "vejnavn": "Frederiksberg Allé", "vejadresseringsnavn": "Frederiksberg Allé", "status": "3", "virkningFra": "2018-07-01T00:00:00.000000+02:00", "virkningTil": null, "registreringFra": "2018-07-01T00:00:00.000000+02:00", "registreringTil": null },
+    { "id_lokalId": "b1d8e6f2-0004-4a7c-8e55-000000000003", "vejnavn": "Vestergade", "vejadresseringsnavn": "Vestergade", "status": "3", "virkningFra": "2018-07-01T00:00:00.000000+02:00", "virkningTil": null, "registreringFra": "2018-07-01T00:00:00.000000+02:00", "registreringTil": null },
+    { "id_lokalId": "b1d8e6f2-0004-4a7c-8e55-000000000003", "vejnavn": "Vester Gade", "vejadresseringsnavn": "Vester Gade", "status": "3", "virkningFra": "2018-07-01T00:00:00.000000+02:00", "virkningTil": null, "registreringFra": "2018-07-01T00:00:00.000000+02:00", "registreringTil": "2019-02-11T10:00:00.000000+01:00" }
+  ],
+  "NavngivenVejKommunedelList": [
+    { "id_lokalId": "c2e9f703-0005-4b8d-9f66-000000000001", "navngivenVej": "b1d8e6f2-0004-4a7c-8e55-000000000001", "kommune": "0101", "vejkode": "0814", "status": "3", "virkningFra": "2018-07-01T00:00:00.000000+02:00", "virkningTil": null, "registreringFra": "2018-07-01T00:00:00.000000+02:00", "registreringTil": null },
+    { "id_lokalId": "c2e9f703-0005-4b8d-9f66-000000000002", "navngivenVej": "b1d8e6f2-0004-4a7c-8e55-000000000001", "kommune": "0147", "vejkode": "0790", "status": "3", "virkningFra": "2018-07-01T00:00:00.000000+02:00", "virkningTil": null, "registreringFra": "2018-07-01T00:00:00.000000+02:00", "registreringTil": null },
+    { "id_lokalId": "c2e9f703-0005-4b8d-9f66-000000000003", "navngivenVej": "b1d8e6f2-0004-4a7c-8e55-000000000002", "kommune": "0147", "vejkode": "0228", "status": "3", "virkningFra": "2018-07-01T00:00:00.000000+02:00", "virkningTil": null, "registreringFra": "2018-07-01T00:00:00.000000+02:00", "registreringTil": null },
+    { "id_lokalId": "c2e9f703-0005-4b8d-9f66-000000000004", "navngivenVej": "b1d8e6f2-0004-4a7c-8e55-000000000003", "kommune": "0461", "vejkode": "8120", "status": "3", "virkningFra": "2018-07-01T00:00:00.000000+02:00", "virkningTil": null, "registreringFra": "2018-07-01T00:00:00.000000+02:00", "registreringTil": null }
+  ],
+  "NavngivenVejPostnummerList": [
+    { "id_lokalId": "d3fa0814-0006-4c9e-8a77-000000000001", "navngivenVej": "b1d8e6f2-0004-4a7c-8e55-000000000001", "postnummer": "7a0c2f44-0003-4b1e-9c11-1620aaaaaaaa", "status": "3", "virkningFra": "2018-07-01T00:00:00.000000+02:00", "virkningTil": null, "registreringFra": "2018-07-01T00:00:00.000000+02:00", "registreringTil": null },
+    { "id_lokalId": "d3fa0814-0006-4c9e-8a77-000000000002", "navngivenVej": "b1d8e6f2-0004-4a7c-8e55-000000000001", "postnummer": "7a0c2f44-0003-4b1e-9c11-1850aaaaaaaa", "status": "3", "virkningFra": "2018-07-01T00:00:00.000000+02:00", "virkningTil": null, "registreringFra": "2018-07-01T00:00:00.000000+02:00", "registreringTil": null },
+    { "id_lokalId": "d3fa0814-0006-4c9e-8a77-000000000003", "navngivenVej": "b1d8e6f2-0004-4a7c-8e55-000000000002", "postnummer": "7a0c2f44-0003-4b1e-9c11-1850aaaaaaaa", "status": "3", "virkningFra": "2018-07-01T00:00:00.000000+02:00", "virkningTil": null, "registreringFra": "2018-07-01T00:00:00.000000+02:00", "registreringTil": null },
+    { "id_lokalId": "d3fa0814-0006-4c9e-8a77-000000000004", "navngivenVej": "b1d8e6f2-0004-4a7c-8e55-000000000003", "postnummer": "7a0c2f44-0003-4b1e-9c11-5000aaaaaaaa", "status": "3", "virkningFra": "2018-07-01T00:00:00.000000+02:00", "virkningTil": null, "registreringFra": "2018-07-01T00:00:00.000000+02:00", "registreringTil": null }
+  ]
+}

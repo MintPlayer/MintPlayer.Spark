@@ -1,0 +1,104 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "RefPlace, shipped by MintPlayer.Spark.ReferenceData.Client (docs/reference_data_PRD.md §4.7, plan R10): a read-only local copy",
+    "in the model: only the release sync, imports and the seed write it (no New/Edit/Delete right ships), and it is not live",
+    "(a bulk import must not set off re-query storms, FR8). The admin pages show the flat fields; nested history",
+    "(periods, segments, codes) is served by /api/v1.",
+    "",
+    "HAND-AUTHORED. The ids are UUIDv5 of 'reference-data-client:RefPlace[.attributes.<Name>]' (D5), verified by SPARK045."
+  ],
+  "persistentObject": {
+    "id": "1093fbd5-9938-5f73-b38f-414c2af039cc",
+    "name": "RefPlace",
+    "clrType": "MintPlayer.Spark.ReferenceData.RefPlace",
+    "alias": "ref-place",
+    "breadcrumb": "{Names}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "6839a6cd-120b-5c08-a94c-f78d1c3ce518",
+        "name": "Names",
+        "dataType": "TranslatedString",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "f0056cfd-a31f-5032-ac9c-2b23f3689131",
+        "name": "Country",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "130ac108-ed02-55e6-97e0-969981ecc5bc",
+        "name": "TimeZone",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "59adfa55-50ff-521d-af59-42209821c3d8",
+        "name": "Rank",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "e4379ddd-a78b-5693-8ea1-d95453e00987",
+        "name": "LineageUnresolved",
+        "dataType": "boolean",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "e1d9c093-5868-504d-8ff1-50f8a81fdaa8",
+        "name": "Hash",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      }
+    ]
+  },
+  "queries": [
+    {
+      "id": "c1644535-0d49-540a-a0dc-5dcc46812cb1",
+      "name": "RefPlaces",
+      "source": "Custom.RefPlaces",
+      "alias": "ref-places",
+      "sortColumns": [
+        {
+          "property": "Rank",
+          "direction": "desc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "RefPlace"
+    }
+  ]
+}

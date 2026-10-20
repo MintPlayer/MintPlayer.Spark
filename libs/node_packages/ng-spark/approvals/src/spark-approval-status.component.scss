@@ -1,0 +1,39 @@
+.spark-approval-status {
+  display: inline-block;
+  padding: 0.2em 0.6em;
+  border-radius: 999px;
+  font-size: 0.8em;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  color: var(--bs-emphasis-color);
+  background-color: var(--bs-secondary-bg);
+}
+
+.spark-approval-status-pending {
+  color: var(--bs-warning-text-emphasis);
+  background-color: var(--bs-warning-bg-subtle);
+}
+
+.spark-approval-status-approved {
+  color: var(--bs-success-text-emphasis);
+  background-color: var(--bs-success-bg-subtle);
+}
+
+.spark-approval-status-rejected,
+.spark-approval-status-revoked {
+  color: var(--bs-danger-text-emphasis);
+  background-color: var(--bs-danger-bg-subtle);
+}
+
+.spark-approval-status-stale {
+  color: var(--bs-info-text-emphasis);
+  background-color: var(--bs-info-bg-subtle);
+}
+
+.spark-approval-status-withdrawn,
+.spark-approval-status-expired,
+.spark-approval-status-unknown {
+  color: var(--bs-secondary-color);
+  background-color: var(--bs-tertiary-bg);
+}

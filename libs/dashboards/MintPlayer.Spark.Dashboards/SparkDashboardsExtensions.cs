@@ -32,6 +32,9 @@ public static class SparkDashboardsExtensions
     /// <summary>The package's own dashboard: the RavenDB statistics, with the history of its size and document count.</summary>
     public const string DatabaseStatistics = "DatabaseStatistics";
 
+    /// <summary>This package's <c>SparkLibraryAlias</c>: the library half of its model types' identity (D28).</summary>
+    internal const string LibraryAlias = "dashboards";
+
     /// <summary>
     /// Registers the dashboards package: the shipped <c>DatabaseStatistics</c> dashboard, the live notifier, the read
     /// cache and the history sampler, then the application's dashboards from <paramref name="configure"/>. Call it
@@ -41,16 +44,10 @@ public static class SparkDashboardsExtensions
     public static ISparkBuilder AddDashboards(this ISparkBuilder builder, Action<SparkDashboardsBuilder>? configure = null)
     {
         var services = builder.Services;
-        var catalog = services.FirstOrDefault(d => d.ServiceType == typeof(DashboardCatalog))?.ImplementationInstance as DashboardCatalog;
-        if (catalog is null)
+        var catalog = services.GetOrAddSparkSingleton(() => new DashboardCatalog(), out var created);
+        if (created)
         {
-            catalog = new DashboardCatalog();
-            services.AddSingleton(catalog);
-
-            services.AddOptions<SparkDashboardsOptions>();
-            services.AddSingleton<IConfigureOptions<SparkDashboardsOptions>>(sp => new ConfigureNamedOptions<SparkDashboardsOptions>(
-                Options.DefaultName,
-                options => sp.GetService<IConfiguration>()?.GetSection(SparkDashboardsOptions.SectionName).Bind(options)));
+            services.AddSparkConfigurationSection<SparkDashboardsOptions>();
 
             services.TryAddSingleton(TimeProvider.System);
             services.TryAddSingleton<SparkCpuUsage>();
@@ -62,6 +59,8 @@ public static class SparkDashboardsExtensions
             services.AddHostedService<DashboardNotifier>();
             builder.Registry.AddMiddleware(app => DashboardStartup.Verify(app.ApplicationServices, catalog));
 
+            // The package's own type (Model/DatabaseStatistics.json): found by its identity, whatever an application renames it to (D28).
+            catalog.GetOrAdd(DatabaseStatistics, LibraryAlias);
             new SparkDashboardsBuilder(catalog).Add(DatabaseStatistics, d => d
                 .DatabaseStatistics()
                 .History("DatabaseSize", "DocumentCount"));
@@ -109,7 +108,7 @@ internal static class DashboardStartup
         var actionsResolver = scope.ServiceProvider.GetRequiredService<IActionsResolver>();
         foreach (var dashboard in catalog.All)
         {
-            var type = modelLoader.GetEntityTypeByName(dashboard.Name);
+            var type = dashboard.TypeOf(modelLoader);
             if (type is null)
             {
                 problems.Add($"Dashboard '{dashboard.Name}' has no model type: add App_Data/Model/{dashboard.Name}.json with \"live\": true and no clrType.");
@@ -119,7 +118,7 @@ internal static class DashboardStartup
                 problems.Add($"Dashboard '{dashboard.Name}': its model type has a clrType; a dashboard is a virtual type (remove \"clrType\").");
             if (!type.Live)
                 problems.Add($"Dashboard '{dashboard.Name}': its model type is not live; add \"live\": true so viewers follow it over /spark/live.");
-            if (actionsResolver.ResolveByEntityName(dashboard.Name) is not SparkDashboardActions)
+            if (actionsResolver.ResolveVirtual(type) is not SparkDashboardActions)
                 problems.Add($"Dashboard '{dashboard.Name}' has no actions class: add 'public sealed class {dashboard.Name}Actions(IServiceProvider services) : SparkDashboardActions(services);'.");
         }
 

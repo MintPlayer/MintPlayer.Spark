@@ -1,0 +1,21 @@
+{
+  "$schema": "../../../../schemas/security.schema.json",
+  "_comment": [
+    "The payments package's rights, shipped as a library layer (docs/commerce_PRD.md §4.5). They name only its own types",
+    "and only @authenticated: no slot, so no application has to bind anything. Every row is narrowed by FinanceAccess",
+    "(the seller's Owners, Admins and finance members; Spark:Commerce:Payments:PlatformOrganizationId's for every row), so",
+    "the rights alone show nothing. Nothing is written by a form: only QueryRead and the custom actions are granted.",
+    "Opt out of all of these with \"libraries\": { \"commerce-payments\": false }."
+  ],
+  "rights": [
+    { "key": "payments", "resource": "QueryRead/ProviderPayment", "groupId": "@authenticated" },
+    { "key": "accounts", "resource": "QueryRead/SellerPaymentAccount", "groupId": "@authenticated" },
+    { "key": "disputes", "resource": "QueryRead/PaymentDispute", "groupId": "@authenticated" },
+    { "key": "submit-evidence", "resource": "PaymentDisputeSubmitEvidence/PaymentDispute", "groupId": "@authenticated" },
+    { "key": "accept-dispute", "resource": "PaymentDisputeAccept/PaymentDispute", "groupId": "@authenticated" },
+    { "key": "fee-ledger", "resource": "QueryRead/PlatformFeeEntry", "groupId": "@authenticated" },
+    { "key": "settlement-lines", "resource": "QueryRead/SettlementLine", "groupId": "@authenticated" },
+    { "key": "reconciliation", "resource": "QueryRead/ReconciliationItem", "groupId": "@authenticated" },
+    { "key": "resolve-reconciliation", "resource": "PaymentReconciliationResolve/ReconciliationItem", "groupId": "@authenticated" }
+  ]
+}

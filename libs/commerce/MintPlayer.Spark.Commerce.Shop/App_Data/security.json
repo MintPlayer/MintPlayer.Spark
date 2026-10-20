@@ -1,0 +1,20 @@
+{
+  "$schema": "../../../../schemas/security.schema.json",
+  "_comment": [
+    "The shop package's rights, shipped as a library layer (docs/commerce_PRD.md §4.10). They name only its own types and",
+    "only @authenticated: no slot, so no application has to bind anything. Products, variants and shop orders are",
+    "organization-owned (X8): Organizations' row rule narrows each right to the members of the owning organization (Viewer",
+    "reads, Member creates and edits, Admin deletes and publishes), so the right alone shows a signed-in user nothing of",
+    "another seller. Categories are edited by platform admins only (ManageSellers/Commerce, ShopCategoryInterceptor). Shop",
+    "orders are read-only: the shop writes them from order and shipment events. Reviews are NOT granted here (they are not",
+    "organization-owned): an application grants QueryRead/ShopProductReview to its moderators if it wants them in the",
+    "generic pages; buyers and moderators use /spark/commerce/shop/reviews*. The storefront reads published products through",
+    "/spark/commerce/shop/products and /catalog (anonymous). Opt out of all of these with \"libraries\": { \"commerce-shop\": false }."
+  ],
+  "rights": [
+    { "key": "products", "resource": "QueryReadEditNewDelete/ShopProduct", "groupId": "@authenticated" },
+    { "key": "variants", "resource": "QueryReadEditNewDelete/ShopVariant", "groupId": "@authenticated" },
+    { "key": "categories", "resource": "QueryReadEditNewDelete/ShopCategory", "groupId": "@authenticated" },
+    { "key": "orders", "resource": "QueryRead/ShopOrder", "groupId": "@authenticated" }
+  ]
+}

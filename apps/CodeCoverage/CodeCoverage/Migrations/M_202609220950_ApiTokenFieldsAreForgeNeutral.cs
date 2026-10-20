@@ -66,7 +66,6 @@ namespace CodeCoverage.Migrations;
 /// </remarks>
 public partial class M_202609220950_ApiTokenFieldsAreForgeNeutral : ISparkMigration
 {
-    public static long Version => 202609220950;
     public static string? Description => "ApiToken fields carry a forge instead of naming one";
 
     [Inject] private readonly IDocumentStore store;

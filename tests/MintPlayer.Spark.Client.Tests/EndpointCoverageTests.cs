@@ -191,12 +191,12 @@ public class EndpointCoverageTests
     public async Task Adding_a_lookup_value_puts_the_value_in_the_body_unwrapped()
     {
         var (client, handler) = NewClientWithWarmup();
-        handler.Enqueue(Json("""{"key":"Audi","values":{"en":"Audi"},"isActive":true}""", HttpStatusCode.Created));
+        handler.Enqueue(Json("""{"key":"Audi","values":{"Entries":[{"Tag":"en","Value":"Audi"}]},"isActive":true}""", HttpStatusCode.Created));
 
         using (client)
         {
             var created = await client.AddLookupReferenceValueAsync(
-                "CarBrand", new LookupReferenceValueDto { Key = "Audi", Values = TranslatedString.Create("Audi") });
+                "CarBrand", new LookupReferenceValueDto { Key = "Audi", Values = TranslatedString.Of("en", "Audi") });
             created.Key.Should().Be("Audi");
         }
 
@@ -214,7 +214,7 @@ public class EndpointCoverageTests
     {
         var handler = new ScriptedHttpHandler();
         handler.Enqueue(Json(
-            """[{"name":"MarkStolen","label":{"en":"Mark stolen"},"confirmation":{"en":"Mark {count} car(s) stolen?"},"showedOn":"both","variant":"danger","offset":10}]"""));
+            """[{"name":"MarkStolen","label":{"Entries":[{"Tag":"en","Value":"Mark stolen"}]},"confirmation":{"Entries":[{"Tag":"en","Value":"Mark {count} car(s) stolen?"}]},"showedOn":"both","variant":"danger","offset":10}]"""));
 
         using (var client = NewClient(handler))
         {
@@ -252,8 +252,8 @@ public class EndpointCoverageTests
     public async Task Culture_translations_and_program_units_read_their_own_shapes()
     {
         var handler = new ScriptedHttpHandler();
-        handler.Enqueue(Json("""{"languages":{"en":{"en":"English"},"nl":{"en":"Dutch"}},"defaultLanguage":"en"}"""));
-        handler.Enqueue(Json("""{"common.save":{"en":"Save","nl":"Bewaren"}}"""));
+        handler.Enqueue(Json("""{"languages":{"en":{"Entries":[{"Tag":"en","Value":"English"}]},"nl":{"Entries":[{"Tag":"en","Value":"Dutch"}]}},"defaultLanguage":"en"}"""));
+        handler.Enqueue(Json("""{"common.save":{"Entries":[{"Tag":"en","Value":"Save"},{"Tag":"nl","Value":"Bewaren"}]}}"""));
         handler.Enqueue(Json("""{"programUnitGroups":[]}"""));
 
         using var client = NewClient(handler);
@@ -284,7 +284,7 @@ public class EndpointCoverageTests
     public async Task Neither_viewer_header_is_sent_by_default()
     {
         var handler = new ScriptedHttpHandler();
-        handler.Enqueue(Json("""{"languages":{"en":{"en":"English"}},"defaultLanguage":"en"}"""));
+        handler.Enqueue(Json("""{"languages":{"en":{"Entries":[{"Tag":"en","Value":"English"}]}},"defaultLanguage":"en"}"""));
 
         using var client = NewClient(handler);
         await client.GetCultureAsync();
@@ -299,7 +299,7 @@ public class EndpointCoverageTests
     public async Task The_viewer_headers_are_sent_when_set()
     {
         var handler = new ScriptedHttpHandler();
-        handler.Enqueue(Json("""{"languages":{"en":{"en":"English"},"nl":{"en":"Dutch"}},"defaultLanguage":"en"}"""));
+        handler.Enqueue(Json("""{"languages":{"en":{"Entries":[{"Tag":"en","Value":"English"}]},"nl":{"Entries":[{"Tag":"en","Value":"Dutch"}]}},"defaultLanguage":"en"}"""));
 
         using var client = NewClient(handler);
         client.TimeZoneId = "Europe/Brussels";
@@ -346,7 +346,7 @@ public class EndpointCoverageTests
         // S-TZ4 (#460): the server refuses anything that is not IANA-shaped, and 134 of 141 Windows
         // ids contain a space or a parenthesis. Converting here keeps such a caller working.
         var handler = new ScriptedHttpHandler();
-        handler.Enqueue(Json("""{"languages":{"en":{"en":"English"}},"defaultLanguage":"en"}"""));
+        handler.Enqueue(Json("""{"languages":{"en":{"Entries":[{"Tag":"en","Value":"English"}]}},"defaultLanguage":"en"}"""));
 
         using var client = NewClient(handler);
         client.TimeZoneId = configured;

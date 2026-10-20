@@ -114,12 +114,24 @@ public static class SparkExtensions
         // SparkServiceWorkerCacheHeaders.
         services.AddSparkServiceWorkerCacheHeaders();
 
+        // Server-side meta tags for public SPA routes (commerce PRD X6): idle until a provider is registered.
+        PageMeta.SparkPageMetaInjection.AddSparkPageMeta(services);
+
+        // Commerce PRD X21–X23: the options sections of consent, the sitemap and embed mode are bound here, once, so the
+        // AddConsent / AddSitemap / AddEmbed code that configures them always runs after the section (code wins).
+        services.AddSparkConfigurationSection<Consent.SparkConsentOptions>();
+        services.AddSparkConfigurationSection<Sitemap.SparkSitemapOptions>();
+        Embed.SparkEmbed.AddSparkEmbed(services);
+
         // Data Protection (#460, D5) — always on, key ring persisted per Spark:DataProtection; an
         // unpersisted ring outside Development is refused by UseSpark(). See SparkDataProtectionOptions.
         services.AddSparkDataProtection();
 
+        // Visitor identity (commerce PRD X1): a guest's Data Protection cookie, issued only by an action.
+        Visitor.SparkVisitorMiddleware.AddSparkVisitor(services);
+
         // Viewer timezone (#460, item 7): header, then the spark-timezone cookie, then UTC.
-        services.AddSparkConfigurationSection<SparkTimeZoneOptions>(SparkTimeZoneOptions.SectionName);
+        services.AddSparkConfigurationSection<SparkTimeZoneOptions>();
 
         // Register the Spark services
         services.AddSparkServices();
@@ -137,21 +149,23 @@ public static class SparkExtensions
         // Document expiration (seo_analyzer_PRD X1): always on, because an IExpiring type whose expired
         // rows stayed visible until someone remembered to opt in would be a silent leak. The policy
         // applies only to IExpiring types; the database is configured by UseSpark() when needed.
-        services.AddSparkConfigurationSection<Expiration.SparkExpirationOptions>(Expiration.SparkExpirationOptions.SectionName);
+        services.AddSparkConfigurationSection<Expiration.SparkExpirationOptions>();
 
         // Live updates (seo_analyzer_PRD X4): always available, opt-in per type and query in the model
         // ("live": true). The hub is the notifier, so an app's explicit calls and the change sources meet in
         // one place.
-        services.AddSparkConfigurationSection<Live.SparkLiveOptions>(Live.SparkLiveOptions.SectionName);
+        services.AddSparkConfigurationSection<Live.SparkLiveOptions>();
         services.AddSingleton<Live.LiveHub>();
         services.AddSingleton<Abstractions.Live.ISparkLiveNotifier>(sp => sp.GetRequiredService<Live.LiveHub>());
+        // Broadcast topics and private per-identity streams (commerce PRD X2); policies are the app's singletons.
+        services.AddSingleton<Abstractions.Live.ISparkLiveTopics, Live.LiveTopics>();
         services.AddSparkRowPolicy<Expiration.ExpirationRowPolicy>();
         // ExpiresAtUtc is the framework's on pipeline writes (D41): a client can neither extend nor clear it.
         Abstractions.Interceptors.SparkBuilderInterceptorExtensions.AddSparkInterceptor<Expiration.ExpirationInterceptor>(services);
 
         // Share links (seo_analyzer_PRD X6): always available, nothing shareable until AddShareLinks declares a
         // type. ShareTokenHash is the framework's on pipeline writes, like ExpiresAtUtc.
-        services.AddSparkConfigurationSection<Sharing.SparkShareOptions>(Sharing.SparkShareOptions.SectionName);
+        services.AddSparkConfigurationSection<Sharing.SparkShareOptions>();
         services.AddScoped<Sharing.SparkShareGrant>();
         services.AddScoped<Sharing.SparkShareLinks>();
         services.AddScoped<Sharing.ISparkShareLinks>(sp => sp.GetRequiredService<Sharing.SparkShareLinks>());
@@ -308,6 +322,13 @@ public static class SparkExtensions
         // #482, D17: a durable after-commit interceptor with nothing to deliver it is refused at startup.
         Services.SparkCommittedInterceptorsStartupCheck.Run(app.ApplicationServices);
 
+        // Commerce PRD GA9/X21: a package that processes data only with consent (RequiresConsent) is refused unless the
+        // consent primitive is registered (spark.AddConsent()) and the purpose is declared.
+        Abstractions.Consent.SparkConsentRegistration.ValidateWired(app.ApplicationServices);
+
+        // Commerce PRD X23: embed origins are validated at startup (a bad entry would end up in a CSP header).
+        Embed.SparkEmbed.ValidateOptions(app.ApplicationServices);
+
         var registry = app.ApplicationServices.GetRequiredService<SparkModuleRegistry>();
 
         // Middleware that must reject a request before the cost of authenticating it is paid — a rate
@@ -359,6 +380,12 @@ public static class SparkExtensions
         }
 
         app.UseAuthorization();
+
+        // Visitor identity (commerce PRD X1): reads the visitor cookie into the request's ISparkVisitor and
+        // merges a visitor into the account of a signed-in request that still carries one. After
+        // authentication (it needs the user) and BEFORE UseSparkAntiforgery, which holds an anonymous request
+        // with a valid visitor cookie to the token check.
+        Visitor.SparkVisitorMiddleware.UseSparkVisitor(app);
 
         // XSRF-TOKEN cookie on every response, for Angular's HttpClient to echo back in X-XSRF-TOKEN
         // (#452). The package's defaults are exactly the flags Spark used to write itself: script-
@@ -492,6 +519,14 @@ public static class SparkExtensions
 
         VerifySparkReservedActions();
 
+        // Commerce F10, D28: an ambiguous actions class (two unrelated IPersistentObjectActions<T> for one entity
+        // that no registration settles, or a virtual type's {Name}Actions declared twice) fails here, not at the
+        // first request.
+        var isService = app.ApplicationServices.GetService<IServiceProviderIsService>();
+        ActionsResolver.VerifyActionsClasses(
+            app.ApplicationServices.GetRequiredService<IModelLoader>().GetEntityTypes(),
+            entity => isService?.IsService(typeof(Actions.IPersistentObjectActions<>).MakeGenericType(entity)) == true);
+
         // MCP PRD D6: a type's "agentPermissions" must not grant Write without Read. Checked whether or not
         // the MCP package is installed, so a model is valid before the package that reads it arrives.
         AgentPermissionsCheck.Verify(app.ApplicationServices.GetRequiredService<IModelLoader>());
@@ -525,7 +560,7 @@ public static class SparkExtensions
         // gate placed at VerifySparkModelHash's site would refuse startup on the very run that
         // would have fixed the data — permanently, since the fix can then never run. Calling it
         // inline here is ordered by construction, unlike registering another AfterSpark action,
-        // which would depend on whether the app called AddMigrations() before or after.
+        // which would depend on whether the app called AddSparkDiscovered() before or after.
         VerifySparkValueObjectKeys(app);
 
         return app;
@@ -554,6 +589,9 @@ public static class SparkExtensions
 
         // Map all core Spark endpoints (source-generated from endpoint classes)
         endpoints.MapSparkCoreEndpoints();
+
+        // Commerce PRD X22: /sitemap.xml (+ /robots.txt opted in), at the site root, once a sitemap source is registered.
+        Sitemap.SparkSitemapEndpoints.Map(endpoints);
 
         // Map module-specific endpoints (authorization, replication, etc.)
         registry.MapEndpoints(endpoints);
@@ -831,7 +869,7 @@ public static class SparkExtensions
                 && rowSecurity.GetRowRuleKinds(clr).DecidesVisibility(),
             type => ResolveClrType(type) is { } clr
                 ? TryResolve(() => actionsResolver.ResolveForType(clr))
-                : TryResolve(() => actionsResolver.ResolveByEntityName(type.Name)));
+                : TryResolve(() => actionsResolver.ResolveVirtual(type)));
 
         if (problems.Count > 0)
             throw new Services.SparkSecurityConfigurationException(
@@ -934,34 +972,58 @@ public static class SparkExtensions
         // A deployment filter (SparkModuleRegistry.IndexDeploymentFilter, set by test hosts) narrows
         // only this loop. The catalog above was populated from every index regardless, so the model
         // hash and query resolution mean the same thing with or without it.
+        //
+        // Every task is instantiated here (the same set IndexCreation.CreateIndexes(assembly, store) would
+        // build) so the search engine can be chosen before deployment (commerce X18, SparkSearchEngine).
+        var fuzzyIndexTypes = SparkSearchEngine.FuzzyIndexTypes(assemblies.SelectMany(GetLoadableTypes));
+
         foreach (var assembly in assemblies)
         {
+            IReadOnlyList<Type> candidates;
+            List<IAbstractIndexCreationTask> tasks;
             try
             {
-                if (deploymentFilter is null)
-                {
-                    IndexCreation.CreateIndexes(assembly, documentStore);
-                    Console.WriteLine($"RavenDB indexes created/updated from assembly: {assembly.GetName().Name}");
-                    continue;
-                }
-
-                var candidates = DeployableIndexTypes(assembly);
-                var tasks = candidates
-                    .Where(deploymentFilter)
+                candidates = DeployableIndexTypes(assembly);
+                tasks = candidates
+                    .Where(t => deploymentFilter is null || deploymentFilter(t))
                     .Select(t => (IAbstractIndexCreationTask)Activator.CreateInstance(t)!)
                     .ToList();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error creating RavenDB indexes from {assembly.GetName().Name}: {ex.Message}");
+                continue;
+            }
 
+            // Every index with a searchable field (or an explicit [Fuzzy] opt-in) goes on Lucene: Spark's search is
+            // fuzzy by default (X18). Outside the catch on purpose: an explicit [Fuzzy] index pinned to another engine
+            // is a declaration error, and swallowing it here would deploy an index whose every fuzzy query throws.
+            SparkSearchEngine.Apply(tasks, fuzzyIndexTypes);
+
+            try
+            {
                 if (tasks.Count > 0)
+                {
                     IndexCreation.CreateIndexes(tasks, documentStore);
-                Console.WriteLine(
-                    $"RavenDB indexes created/updated from assembly: {assembly.GetName().Name} " +
-                    $"({tasks.Count} of {candidates.Count}, deployment filter set)");
+                    foreach (var reset in SparkSearchEngine.Reconcile(documentStore, tasks))
+                        Console.WriteLine($"RavenDB index {reset} still ran another engine than Lucene; reset side by side.");
+                }
+
+                Console.WriteLine(deploymentFilter is null
+                    ? $"RavenDB indexes created/updated from assembly: {assembly.GetName().Name}"
+                    : $"RavenDB indexes created/updated from assembly: {assembly.GetName().Name} " +
+                      $"({tasks.Count} of {candidates.Count}, deployment filter set)");
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"Error creating RavenDB indexes from {assembly.GetName().Name}: {ex.Message}");
             }
         }
+
+        // The licence's index budget (warehouse WX13): a warning, never a refusal — the server refuses
+        // deployment beyond a cap itself. Off the startup path; it never throws.
+        if (app.ApplicationServices.GetService<Abstractions.Licensing.ISparkLicenseCapabilities>() is Services.SparkLicenseCapabilities capabilities)
+            _ = Task.Run(() => capabilities.WarnOnIndexBudgetAsync());
     }
 
     /// <summary>

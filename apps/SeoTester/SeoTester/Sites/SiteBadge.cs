@@ -9,6 +9,7 @@ using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Sharing;
 using Raven.Client.Documents;
 using SeoTester.Entities;
+using MintPlayer.AspNetCore.SpaServices.Xsrf;
 
 namespace SeoTester.Sites;
 
@@ -24,6 +25,10 @@ internal sealed partial class SiteBadgeEndpoint : IGetEndpoint
     public const string Route = "/seotester/badge.svg";
 
     public static string Path => Route;
+
+    // FR1: shared-cacheable (Cache-Control: public), so no per-visitor XSRF cookie: the cookie generator would force
+    // the response private (SparkMiddleware, UseAntiforgeryGenerator).
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => builder.SkipXsrfToken();
 
     [QueryParam("site")] public string? SiteId { get; set; }
     [QueryParam] public string? Token { get; set; }

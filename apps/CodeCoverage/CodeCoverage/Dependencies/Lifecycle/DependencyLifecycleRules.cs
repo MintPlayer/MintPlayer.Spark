@@ -84,7 +84,7 @@ public static class DependencySlots
     public static (bool Due, string Key) Due(DependencySchedule schedule, DateTimeOffset nowUtc, string repositoryId)
     {
         var zone = Zone(schedule.TimeZone);
-        var local = TimeZoneInfo.ConvertTime(nowUtc, zone);
+        var local = MintPlayer.Spark.Services.SparkTimeZones.ToZone(nowUtc, zone);
         var key = $"dependency-slot:{repositoryId}:{local:yyyy-MM-dd}";
         return (IsSlotDay(schedule, local.DateTime) && local.Hour == schedule.Hour && local.Minute >= SpreadMinute(repositoryId), key);
     }
@@ -119,7 +119,7 @@ public static class DependencySlots
     {
         var zone = Zone(schedule.TimeZone);
         var minute = SpreadMinute(repositoryId);
-        var local = TimeZoneInfo.ConvertTime(fromUtc, zone).DateTime;
+        var local = MintPlayer.Spark.Services.SparkTimeZones.ToZone(fromUtc, zone).DateTime;
         var hour = new DateTime(local.Year, local.Month, local.Day, local.Hour, 0, 0, DateTimeKind.Unspecified);
         for (var i = 0; i < horizonDays * 24; i++)
         {
@@ -130,8 +130,9 @@ public static class DependencySlots
             var closes = h.AddHours(1);
             if (zone.IsInvalidTime(opens) || zone.IsInvalidTime(closes))
                 continue;
-            var opensUtc = new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(opens, zone));
-            var closesUtc = new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(closes, zone));
+            // The browser's instant in the autumn fold (the first 02:xx), the hour Due() already reports as the slot.
+            var opensUtc = MintPlayer.Spark.Services.SparkTimeZones.ToInstant(opens, zone).ToUniversalTime();
+            var closesUtc = MintPlayer.Spark.Services.SparkTimeZones.ToInstant(closes, zone).ToUniversalTime();
             if (closesUtc <= fromUtc)
                 continue;
             return opensUtc > fromUtc ? opensUtc : fromUtc;
@@ -150,20 +151,8 @@ public static class DependencySlots
         _ => local.DayOfWeek == DayOfWeek.Sunday,
     };
 
-    /// <summary>An IANA id; an unknown one reads as UTC (D-P16).</summary>
-    public static TimeZoneInfo Zone(string? id)
-    {
-        if (string.IsNullOrWhiteSpace(id))
-            return TimeZoneInfo.Utc;
-        try
-        {
-            return TimeZoneInfo.FindSystemTimeZoneById(id);
-        }
-        catch (Exception ex) when (ex is TimeZoneNotFoundException or InvalidTimeZoneException)
-        {
-            return TimeZoneInfo.Utc;
-        }
-    }
+    /// <summary>An IANA id; an unknown one reads as UTC (D-P16). Through the core lookup (K10).</summary>
+    public static TimeZoneInfo Zone(string? id) => MintPlayer.Spark.Services.SparkTimeZones.FindOrUtc(id);
 }
 
 public enum ECoverageGate

@@ -505,7 +505,7 @@ internal partial class QueryExecutor : IQueryExecutor
 
             actionsInstance = clrType is not null
                 ? actionsResolver.ResolveForType(clrType)
-                : (definition is not null ? actionsResolver.ResolveByEntityName(definition.Name) : null);
+                : (definition is not null ? actionsResolver.ResolveVirtual(definition) : null);
         }
         catch
         {
@@ -786,7 +786,7 @@ internal sealed record DatabasePage(int TotalItems);
 
         var actions = entityType is not null
             ? actionsResolver.ResolveForType(entityType)
-            : actionsResolver.ResolveByEntityName(definition.Name);
+            : actionsResolver.ResolveVirtual(definition);
         if (actions is null) return false;
 
         var method = actions.GetType().GetMethod(methodName, BindingFlags.Public | BindingFlags.Instance);
@@ -1026,7 +1026,8 @@ internal sealed record DatabasePage(int TotalItems);
         var searchPushedDown = false;
         if (searchTerm != null)
         {
-            (queryable, searchPushedDown) = ApplySearch(queryable, sortType, searchTerm, ResolveIndexedSearchFields(queryable), surface);
+            (queryable, searchPushedDown) = ApplySearch(queryable, sortType, searchTerm, ResolveIndexedSearchFields(queryable), surface,
+                await ResolveFuzzySearchFieldsAsync(queryable, cancellationToken));
         }
 
         if (restrictToIds is { Count: > 0 })
@@ -1197,10 +1198,10 @@ internal sealed record DatabasePage(int TotalItems);
         // Resolve the Actions class — by type where there is one, by name where there is not.
         var actionsInstance = entityType is not null
             ? actionsResolver.ResolveForType(entityType)
-            : actionsResolver.ResolveByEntityName(entityTypeDefinition.Name)
+            : actionsResolver.ResolveVirtual(entityTypeDefinition)
                 ?? throw new InvalidOperationException(
                     $"Query '{query.Name}' is a composed query on '{entityTypeDefinition.Name}', a type with no " +
-                    $"clrType, but no '{entityTypeDefinition.Name}Actions' class exists to serve it. A composed " +
+                    $"clrType, but no '{entityTypeDefinition.DeclaredName ?? entityTypeDefinition.Name}Actions' class exists to serve it. A composed " +
                     $"type has no document behind it, so its actions class is the only thing that can produce " +
                     $"rows; without one the query has no source at all.");
 
@@ -1396,7 +1397,8 @@ internal sealed record DatabasePage(int TotalItems);
         var searchPushedDown = false;
         if (searchTerm != null && isRavenQueryable)
         {
-            (result, searchPushedDown) = ApplySearch(result, methodInfo.ResultElementType, searchTerm, indexedFields, surface);
+            (result, searchPushedDown) = ApplySearch(result, methodInfo.ResultElementType, searchTerm, indexedFields, surface,
+                await ResolveFuzzySearchFieldsAsync(result, cancellationToken));
         }
 
         // Apply sorting if the result is IQueryable
@@ -1954,22 +1956,31 @@ internal sealed record DatabasePage(int TotalItems);
             }
 
             var isDescending = string.Equals(col.Direction, "desc", StringComparison.OrdinalIgnoreCase);
-            var methodName = !ordered
-                ? (isDescending ? "OrderByDescending" : "OrderBy")
-                : (isDescending ? "ThenByDescending" : "ThenBy");
-            ordered = true;
-
             var parameter = System.Linq.Expressions.Expression.Parameter(entityType, "x");
-            var propertyAccess = System.Linq.Expressions.Expression.Property(parameter, propertyInfo);
-            var lambda = System.Linq.Expressions.Expression.Lambda(propertyAccess, parameter);
 
-            var orderMethod = ReflectionCache.GetOrAdd<(string Op, string Method, Type Entity, Type Prop), MethodInfo>(
-                ("QueryExecutor.QueryableOrder", methodName, entityType, propertyInfo.PropertyType),
-                static k => typeof(Queryable).GetMethods()
-                    .First(m => m.Name == k.Method && m.GetParameters().Length == 2)
-                    .MakeGenericMethod(k.Entity, k.Prop));
+            // A Money or Quantity column is an object RavenDB cannot order by: it sorts by code, then amount
+            // (AmountQueryFields, commerce X4 / warehouse WX8). Every other column is one key, the property itself.
+            System.Linq.Expressions.Expression[] keys = AmountQueryFields.Handles(propertyInfo)
+                ? AmountQueryFields.SortKeys(parameter, propertyInfo, inMemory: queryable is not IRavenQueryInspector)
+                : [System.Linq.Expressions.Expression.Property(parameter, propertyInfo)];
 
-            queryable = orderMethod.Invoke(null, [queryable, lambda])!;
+            foreach (var key in keys)
+            {
+                var methodName = !ordered
+                    ? (isDescending ? "OrderByDescending" : "OrderBy")
+                    : (isDescending ? "ThenByDescending" : "ThenBy");
+                ordered = true;
+
+                var lambda = System.Linq.Expressions.Expression.Lambda(key, parameter);
+
+                var orderMethod = ReflectionCache.GetOrAdd<(string Op, string Method, Type Entity, Type Prop), MethodInfo>(
+                    ("QueryExecutor.QueryableOrder", methodName, entityType, key.Type),
+                    static k => typeof(Queryable).GetMethods()
+                        .First(m => m.Name == k.Method && m.GetParameters().Length == 2)
+                        .MakeGenericMethod(k.Entity, k.Prop));
+
+                queryable = orderMethod.Invoke(null, [queryable, lambda])!;
+            }
         }
         return queryable;
     }
@@ -2060,7 +2071,7 @@ internal sealed record DatabasePage(int TotalItems);
     /// because <c>search(id(), …)</c> was measured to match nothing — a dead clause.
     /// </para>
     /// <para>
-    /// A <c>TranslatedString</c> needs no special handling: it fans out to <c>{Prop}_{lang}</c> string fields
+    /// A <c>TranslatedString</c> needs no special handling: it fans out to <c>{Prop}_{lang}</c> string fields (<c>-</c> in a tag as <c>_</c>, see <see cref="IsOnSearchSurface"/>)
     /// on the projection, so every language is searched, with no dependency on the request's culture.
     /// </para>
     /// <para>
@@ -2161,9 +2172,17 @@ internal sealed record DatabasePage(int TotalItems);
         if (ColumnCapabilities.FindQuerySurfaceAttribute(surface, field) is not null)
             return true;
 
-        var underscore = field.LastIndexOf('_');
-        return underscore > 0
-            && ColumnCapabilities.FindQuerySurfaceAttribute(surface, field[..underscore]) is { DataType: "TranslatedString" };
+        // {Prop}_{tag with '-' as '_'} (IndexNaming.LanguageField): Description_nl, Description_zh_Hant.
+        // A tag never contains '_', but a property name may, so every '_' is tried as the separator:
+        // the prefix must be a TranslatedString attribute and the rest a well-formed tag once '_' is
+        // turned back into '-'. Splitting on the last '_' made zh_Hant resolve to "Description_zh".
+        for (var underscore = field.IndexOf('_'); underscore > 0; underscore = field.IndexOf('_', underscore + 1))
+        {
+            if (ColumnCapabilities.FindQuerySurfaceAttribute(surface, field[..underscore]) is { DataType: "TranslatedString" }
+                && LanguageTag.IsWellFormed(field[(underscore + 1)..].Replace('_', '-')))
+                return true;
+        }
+        return false;
     }
 
     /// <summary>Kept in lockstep with <c>IndexNaming.SearchCompanion</c>.</summary>
@@ -2190,9 +2209,15 @@ internal sealed record DatabasePage(int TotalItems);
     /// searched either.
     /// </para>
     /// </summary>
+    /// <remarks>
+    /// <b>Typo-tolerant on searchable fields</b> (commerce X18, fuzzy by default): every searched property that is in
+    /// <paramref name="fuzzyFields"/> also matches each word by edit distance (<see cref="SparkFuzzySearch"/>). The
+    /// set is empty unless the bound index declares the field <c>FieldIndexing.Search</c>, has not opted it out with
+    /// <c>[Fuzzy(false)]</c>, and runs Lucene on the server (<see cref="ResolveFuzzySearchFieldsAsync"/>).
+    /// </remarks>
     private static (object Queryable, bool Applied) ApplySearch(
         object queryable, Type elementType, string term, IReadOnlySet<string>? indexedFields,
-        EntityTypeDefinition surface)
+        EntityTypeDefinition surface, IReadOnlySet<string> fuzzyFields)
     {
         var properties = ResolveSearchableProperties(elementType)
             .Where(p => IsOnSearchSurface(surface, p.Base))
@@ -2244,7 +2269,40 @@ internal sealed record DatabasePage(int TotalItems);
                 [queryable, lambda, term, 1m, SearchOptions.Guess, Raven.Client.Documents.Queries.SearchOperator.And])!;
         }
 
+        // Only the fields actually searched above: the rewrite matches their search(...) clauses by name.
+        var fuzzy = properties.Select(p => p.Name).Where(fuzzyFields.Contains).ToHashSet(StringComparer.Ordinal);
+        if (fuzzy.Count > 0)
+            queryable = SparkFuzzySearch.Apply(queryable, term, fuzzy);
+
         return (queryable, true);
+    }
+
+    /// <summary>
+    /// The fields of <paramref name="queryable"/>'s bound index that Spark's search matches fuzzily (commerce X18):
+    /// declared <c>FieldIndexing.Search</c>, not opted out with <c>[Fuzzy(false)]</c>, on an index the server
+    /// confirms running Lucene. Empty for a dynamic query (its auto index takes the server default engine), an index
+    /// outside the catalog, or one still on another engine — a fuzzy clause on Corax would fail the whole query,
+    /// which is exactly the state an existing index is in while its side-by-side Lucene rebuild runs after a deploy.
+    /// </summary>
+    private async Task<IReadOnlySet<string>> ResolveFuzzySearchFieldsAsync(object queryable, CancellationToken cancellationToken)
+    {
+        if (queryable is not IRavenQueryInspector inspector) return EmptyFieldSet;
+
+        var indexName = inspector.IndexName;
+        if (string.IsNullOrEmpty(indexName) || indexName.StartsWith("Auto/", StringComparison.Ordinal)) return EmptyFieldSet;
+
+        var entry = indexCatalog.GetByIndexName(indexName.Replace('/', '_'));
+        if (entry is null) return EmptyFieldSet;
+
+        var fields = ReflectionCache.GetOrAdd<(string Op, Type Index, Type? Projection), IReadOnlySet<string>>(
+            ("QueryExecutor.FuzzySearchFields", entry.IndexType, entry.ProjectionType),
+            static k => SparkSearchEngine.FuzzySearchFields(k.Index, k.Projection));
+        if (fields.Count == 0) return EmptyFieldSet;
+
+        var session = inspector.Session;
+        return await SparkSearchEngine.RunsLuceneAsync(session.DocumentStore, session.DatabaseName, indexName, cancellationToken)
+            ? fields
+            : EmptyFieldSet;
     }
 
     /// <summary>
@@ -2340,12 +2398,18 @@ internal sealed record DatabasePage(int TotalItems);
             var parameter = Expression.Parameter(sortType, "x");
             var member = Expression.Property(parameter, property);
 
+            // A Money or Quantity column compares code and amount, never the stored object (X4, WX8).
+            var inMemory = queryable is not IRavenQueryInspector;
+            Expression? AnyMatch(object?[] values) => AmountQueryFields.Handles(property)
+                ? AnyAmountEquals(parameter, property, values, inMemory)
+                : AnyEquals(member, values, property.PropertyType);
+
             Expression? predicate = null;
             var matchesNothing = false;
 
             if (filter.Includes is { Length: > 0 } includes)
             {
-                predicate = AnyEquals(member, includes, property.PropertyType);
+                predicate = AnyMatch(includes);
 
                 // Not one requested value is representable on this column, so no stored value can
                 // equal any of them. That is an empty result, NOT an absent filter — treating it as
@@ -2357,7 +2421,7 @@ internal sealed record DatabasePage(int TotalItems);
             {
                 // The mirror image: a value that cannot exist on this column excludes nothing, so an
                 // empty chain here means "exclude nothing" rather than "exclude everything".
-                if (AnyEquals(member, excludes, property.PropertyType) is { } any)
+                if (AnyMatch(excludes) is { } any)
                 {
                     var none = Expression.Not(any);
                     predicate = predicate is null ? none : Expression.AndAlso(predicate, none);
@@ -2444,6 +2508,27 @@ internal sealed record DatabasePage(int TotalItems);
                 continue;
 
             var equals = Expression.Equal(member, Expression.Constant(value, propertyType));
+            any = any is null ? equals : Expression.OrElse(any, equals);
+        }
+
+        return any;
+    }
+
+    /// <summary>
+    /// The <see cref="Money"/> / <see cref="Quantity"/> form of <see cref="AnyEquals"/>: each value matches on code AND amount
+    /// (<see cref="AmountQueryFields.EqualsValue"/>). Same contract: a value that does not convert is
+    /// dropped, and <see langword="null"/> means "no row can match".
+    /// </summary>
+    private static Expression? AnyAmountEquals(ParameterExpression row, PropertyInfo property, object?[] values, bool inMemory)
+    {
+        Expression? any = null;
+
+        foreach (var raw in values)
+        {
+            if (!TryConvertFilterValue(raw, property.PropertyType, out var value))
+                continue;
+
+            var equals = AmountQueryFields.EqualsValue(row, property, value, inMemory);
             any = any is null ? equals : Expression.OrElse(any, equals);
         }
 

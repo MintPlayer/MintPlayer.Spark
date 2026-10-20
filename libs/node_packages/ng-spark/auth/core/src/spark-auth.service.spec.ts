@@ -6,7 +6,7 @@ import {
 import { provideHttpClient } from '@angular/common/http';
 import { describe, expect, it, beforeEach } from 'vitest';
 
-import { SparkAuthService } from './spark-auth.service';
+import { SPARK_IDENTITY_CHANGED_EVENT, SparkAuthService } from './spark-auth.service';
 import { SPARK_AUTH_CONFIG, defaultSparkAuthConfig } from '@mintplayer/ng-spark/auth/models';
 
 /** Microtask flush — let pending awaited Promises resolve before the next HTTP expectation. */
@@ -190,6 +190,36 @@ describe('SparkAuthService', () => {
 
     expect(service.isAuthenticated()).toBe(false);
     expect(service.user()).toBeNull();
+  });
+
+  it('raises spark-identity-changed on sign-in and on sign-out, so SparkLiveService reconnects (X1/X2)', async () => {
+    const raised: Event[] = [];
+    const listener = (event: Event) => raised.push(event);
+    globalThis.addEventListener(SPARK_IDENTITY_CHANGED_EVENT, listener);
+    try {
+      TestBed.tick();
+      expect(raised.length).toBe(0); // the first identity seen is not a change
+
+      const loginPromise = service.login('user@x', 'pw');
+      http.expectOne('/spark/auth/login?useCookies=true').flush(null);
+      await flush();
+      http.expectOne('/spark/auth/csrf-refresh').flush(null);
+      await flush();
+      http.expectOne('/spark/auth/me').flush({ isAuthenticated: true, userName: 'u', email: 'u@x', roles: [] });
+      await loginPromise;
+      TestBed.tick();
+      expect(raised.length).toBe(1);
+
+      const logoutPromise = service.logout();
+      http.expectOne('/spark/auth/logout').flush(null);
+      await flush();
+      http.expectOne('/spark/auth/csrf-refresh').flush(null);
+      await logoutPromise;
+      TestBed.tick();
+      expect(raised.length).toBe(2);
+    } finally {
+      globalThis.removeEventListener(SPARK_IDENTITY_CHANGED_EVENT, listener);
+    }
   });
 
   it('checkAuth sets the user on a successful /me response', async () => {

@@ -11,7 +11,7 @@
 
         <!-- NuGet Package Metadata -->
         <PackageId>MintPlayer.Spark.LibraryGenerators</PackageId>
-		<Version>11.0.0-preview.101</Version>
+		<Version>11.0.0-preview.102</Version>
 		<Authors>MintPlayer</Authors>
         <Company>MintPlayer</Company>
         <Description>Source generators for a MintPlayer.Spark entity library: generates row keys for [ValueObject] types and registers them. Carries none of the index, actions or DI generators, which are application concerns.</Description>
@@ -42,6 +42,16 @@
     -->
     <ItemGroup>
       <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.9.0" PrivateAssets="all" ExcludeAssets="runtime" />
+    </ItemGroup>
+
+    <!--
+    The [Replicated] generator renders manifests and scripts with the SAME source files the replication
+    owner uses at runtime (warehouse PRD §4.2.1), so the owner can re-render a posted manifest byte for
+    byte. Linked, not referenced: Replication.Abstractions targets net11.0 and an analyzer cannot load it.
+    -->
+    <ItemGroup>
+      <Compile Include="..\..\replication\MintPlayer.Spark.Replication.Abstractions\Rendering\*.cs" Link="Replication\Rendering\%(Filename)%(Extension)" />
+      <Compile Include="..\..\replication\MintPlayer.Spark.Replication.Abstractions\ReplicaMetadata.cs" Link="Replication\ReplicaMetadata.cs" />
     </ItemGroup>
 
     <ItemGroup>

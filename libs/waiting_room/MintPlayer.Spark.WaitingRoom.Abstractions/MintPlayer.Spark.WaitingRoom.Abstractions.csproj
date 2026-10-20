@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+
+		<!-- NuGet Package Metadata -->
+		<PackageId>MintPlayer.Spark.WaitingRoom.Abstractions</PackageId>
+		<Version>11.0.0-preview.1</Version>
+		<Authors>MintPlayer</Authors>
+		<Company>MintPlayer</Company>
+		<Description>Abstractions for MintPlayer.Spark.WaitingRoom: the one WaitingRoomMode (randomized pre-queue, ballot, FIFO) that the waiting room runs and the commerce configuration allows per channel. No dependencies, so the commerce contracts name the mode without taking the waiting room itself.</Description>
+		<PackageTags>waiting-room;queue;abstractions;spark</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="..\MintPlayer.Spark.WaitingRoom\README.md" Pack="true" PackagePath="\" />
+	</ItemGroup>
+
+</Project>

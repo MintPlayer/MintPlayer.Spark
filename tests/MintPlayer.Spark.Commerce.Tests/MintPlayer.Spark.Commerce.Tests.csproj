@@ -1,0 +1,75 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="10.1.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="MintPlayer.Assertions" Version="11.0.0-rc.6" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="4.0.1">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+    <Using Include="MintPlayer.Assertions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce\MintPlayer.Spark.Commerce.csproj" />
+    <ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce.Inventory\MintPlayer.Spark.Commerce.Inventory.csproj" />
+    <ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce.Payments\MintPlayer.Spark.Commerce.Payments.csproj" />
+    <ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce.Payments.Mollie\MintPlayer.Spark.Commerce.Payments.Mollie.csproj" />
+    <ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce.Payments.Stripe\MintPlayer.Spark.Commerce.Payments.Stripe.csproj" />
+    <ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce.Payments.Test\MintPlayer.Spark.Commerce.Payments.Test.csproj" />
+    <ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce.Checkout\MintPlayer.Spark.Commerce.Checkout.csproj" />
+    <ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce.Checkout.Test\MintPlayer.Spark.Commerce.Checkout.Test.csproj" />
+    <ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce.Promotions\MintPlayer.Spark.Commerce.Promotions.csproj" />
+    <ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce.Invoicing\MintPlayer.Spark.Commerce.Invoicing.csproj" />
+    <ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce.Invoicing.Peppol.Storecove\MintPlayer.Spark.Commerce.Invoicing.Peppol.Storecove.csproj" />
+    <ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce.Invoicing.Peppol.Billit\MintPlayer.Spark.Commerce.Invoicing.Peppol.Billit.csproj" />
+    <ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce.Invoicing.Peppol.Test\MintPlayer.Spark.Commerce.Invoicing.Peppol.Test.csproj" />
+    <ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce.Shipping\MintPlayer.Spark.Commerce.Shipping.csproj" />
+    <ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce.Shipping.Sendcloud\MintPlayer.Spark.Commerce.Shipping.Sendcloud.csproj" />
+    <ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce.Shipping.Bpost\MintPlayer.Spark.Commerce.Shipping.Bpost.csproj" />
+    <ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce.Shipping.PostNL\MintPlayer.Spark.Commerce.Shipping.PostNL.csproj" />
+    <ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce.Shipping.Test\MintPlayer.Spark.Commerce.Shipping.Test.csproj" />
+    <ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce.Shop\MintPlayer.Spark.Commerce.Shop.csproj" />
+    <!-- M11 / warehouse WM10: the shop side of the fulfilment contracts. -->
+    <ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce.Fulfilment\MintPlayer.Spark.Commerce.Fulfilment.csproj" />
+    <ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce.Ticketing.Venues\MintPlayer.Spark.Commerce.Ticketing.Venues.csproj" />
+    <ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce.Ticketing.Events\MintPlayer.Spark.Commerce.Ticketing.Events.csproj" />
+    <ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce.Ticketing.Tickets\MintPlayer.Spark.Commerce.Ticketing.Tickets.csproj" />
+    <!-- M16: waiting room and bot defence (generic packages, tested here with the commerce suite). -->
+    <ProjectReference Include="..\..\libs\waiting_room\MintPlayer.Spark.WaitingRoom\MintPlayer.Spark.WaitingRoom.csproj" />
+    <!-- The bridges between the waiting room and Checkout, Promotions and Ticketing.Events (commerce-waiting-room). -->
+    <ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce.WaitingRoom\MintPlayer.Spark.Commerce.WaitingRoom.csproj" />
+    <ProjectReference Include="..\..\libs\challenges\MintPlayer.Spark.Challenges\MintPlayer.Spark.Challenges.csproj" />
+    <ProjectReference Include="..\..\libs\challenges\MintPlayer.Spark.Challenges.Turnstile\MintPlayer.Spark.Challenges.Turnstile.csproj" />
+    <ProjectReference Include="..\..\libs\challenges\MintPlayer.Spark.Challenges.HCaptcha\MintPlayer.Spark.Challenges.HCaptcha.csproj" />
+    <ProjectReference Include="..\..\libs\challenges\MintPlayer.Spark.Challenges.Recaptcha\MintPlayer.Spark.Challenges.Recaptcha.csproj" />
+    <ProjectReference Include="..\..\libs\challenges\MintPlayer.Spark.Challenges.FriendlyCaptcha\MintPlayer.Spark.Challenges.FriendlyCaptcha.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Doc-derived provider fixtures (spikes S5/S6, round 4); see Payments/Fixtures/README.md. -->
+    <None Include="Payments\Fixtures\**\*.json" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Doc-derived carrier fixtures (spike S13, round 4/5); see Shipping/Fixtures/README.md. -->
+    <None Include="Shipping\Fixtures\**\*.json;Shipping\Fixtures\**\*.xml" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Doc-derived VIES and Peppol access-point fixtures (spike S14, round 4); see Invoicing/Fixtures/README.md. -->
+    <None Include="Invoicing\Fixtures\**\*.json" CopyToOutputDirectory="PreserveNewest" />
+    <ProjectReference Include="..\..\libs\testing\MintPlayer.Spark.Testing\MintPlayer.Spark.Testing.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -4,6 +4,7 @@ using Raven.Client.Documents;
 using SeoTester.Entities;
 using SeoTester.LookupReferences;
 using SeoTester.Reports;
+using MintPlayer.AspNetCore.SpaServices.Xsrf;
 
 namespace SeoTester.Catalogue;
 
@@ -21,10 +22,15 @@ internal sealed partial class CatalogueEndpoint : IGetEndpoint
 
     public static string Path => Route;
 
+    // FR1: shared-cacheable (Cache-Control: public), so no per-visitor XSRF cookie: the cookie generator would force
+    // the response private (SparkMiddleware, UseAntiforgeryGenerator).
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => builder.SkipXsrfToken();
+
     [QueryParam] public string? Culture { get; set; }
 
     [Inject] private readonly IDocumentStore store;
     [Inject] private readonly MintPlayer.Spark.Services.IRequestCultureResolver cultures;
+    [Inject] private readonly MintPlayer.Spark.Services.ITranslationsLoader translations;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
@@ -56,11 +62,17 @@ internal sealed partial class CatalogueEndpoint : IGetEndpoint
         return Results.Json(new
         {
             culture,
-            categories = CheckCategoryLookup.Items.Select(i => new { key = i.Key, label = i.Values.GetValue(culture) }),
-            severities = CheckSeverityLookup.Items.Select(i => new { key = i.Key, label = i.Values.GetValue(culture) }),
+            categories = CheckCategoryLookup.Items.Select(i => new { key = i.Key, label = Label(i.Values, culture) }),
+            severities = CheckSeverityLookup.Items.Select(i => new { key = i.Key, label = Label(i.Values, culture) }),
             checks,
         });
     }
+
+    /// <summary>A lookup label, which is a <c>translations.json</c> key (commerce X20 item 5), in <paramref name="culture"/>.</summary>
+    private string Label(MintPlayer.Spark.Abstractions.TranslatedString label, string culture)
+        => label.Key is { } key
+            ? MintPlayer.Spark.Abstractions.SparkText.Lookup(translations.GetAll(), key)?.GetValue(culture) ?? MintPlayer.Spark.Abstractions.SparkText.Humanize(key)
+            : label.GetValue(culture);
 
     private static Dictionary<string, string>? Snippets(CheckDefinition d)
     {

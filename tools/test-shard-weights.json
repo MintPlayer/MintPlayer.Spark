@@ -345,7 +345,7 @@
   "MintPlayer.Spark.Tests.Reflection.ReflectedTypeExtensionsTests": 0.01,
   "MintPlayer.Spark.Tests.Reflection.ReflectionCacheTests": 0.05,
   "MintPlayer.Spark.Tests.Replication.EtlDeployEndpointTests": 0.03,
-  "MintPlayer.Spark.Tests.Replication.EtlScriptCollectorTests": 0.01,
+  "MintPlayer.Spark.Tests.Replication.ReplicaContractCollectorTests": 0.01,
   "MintPlayer.Spark.Tests.Replication.EtlScriptDeploymentRecipientTests": 0.12,
   "MintPlayer.Spark.Tests.Replication.EtlTaskManagerDeploymentTests": 0.17,
   "MintPlayer.Spark.Tests.Replication.EtlTaskManagerTests": 0.02,

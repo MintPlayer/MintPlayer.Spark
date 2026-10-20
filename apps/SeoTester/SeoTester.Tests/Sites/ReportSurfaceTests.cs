@@ -64,6 +64,9 @@ public class ReportSurfaceTests(SeoTesterHostFixture host)
         var svg = await client.GetAsync(badge.PathAndQuery);
         svg.StatusCode.Should().Be(HttpStatusCode.OK);
         svg.Content.Headers.ContentType!.MediaType.Should().Be("image/svg+xml");
+        // FR1: embedded in READMEs through image proxies, so it must stay shared-cacheable: no per-visitor cookie.
+        svg.Headers.Contains("Set-Cookie").Should().BeFalse("an XSRF cookie would force Cache-Control: private");
+        svg.Headers.CacheControl!.Public.Should().BeTrue();
         (await svg.Content.ReadAsStringAsync()).Should().Contain("87 B").And.Contain("#1a7f37");
 
         (await client.GetAsync(badge.PathAndQuery.Replace("token=", "token=x"))).StatusCode.Should().Be(HttpStatusCode.NotFound);

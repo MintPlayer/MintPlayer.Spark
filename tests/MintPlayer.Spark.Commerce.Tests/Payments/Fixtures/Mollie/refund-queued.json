@@ -1,0 +1,19 @@
+{
+  "_fixture": {
+    "source": "https://docs.mollie.com/reference/create-refund (response example)",
+    "derived": "public documentation example; ids and amounts adapted",
+    "recorded": false
+  },
+  "resource": "refund",
+  "id": "re_4qqhO89gsT",
+  "amount": { "currency": "EUR", "value": "5.95" },
+  "status": "queued",
+  "createdAt": "2026-10-19T12:00:00+00:00",
+  "description": "credit-notes/2",
+  "metadata": { "spark_reference": "credit-notes/2" },
+  "paymentId": "tr_WDqYK6vllg",
+  "_links": {
+    "self": { "href": "https://api.mollie.com/v2/payments/tr_WDqYK6vllg/refunds/re_4qqhO89gsT", "type": "application/hal+json" },
+    "payment": { "href": "https://api.mollie.com/v2/payments/tr_WDqYK6vllg", "type": "application/hal+json" }
+  }
+}

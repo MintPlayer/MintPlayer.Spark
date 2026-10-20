@@ -1,0 +1,10 @@
+:host {
+  display: block;
+}
+
+// Unit codes are short; keep the picker from taking the amount's width.
+.spark-quantity-unit {
+  flex: 0 0 auto;
+  width: auto;
+  max-width: 8rem;
+}

@@ -1,0 +1,141 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "ShopOrderReturn: goods expected back on a ShopOrder (GA1/GA8) and what became of them: the carrier's first scan is the",
+    "buyer's proof of dispatch (CRD Art. 13(3)), the delivery to the seller the receipt, then the inspection.",
+    "",
+    "HAND-AUTHORED. Ids are UUIDv5 of 'commerce-shop:ShopOrderReturn[...]', written by 'npm run stamp:library-model-ids'."
+  ],
+  "persistentObject": {
+    "id": "582cd15b-572c-5eb9-b628-87cb5311abfa",
+    "name": "ShopOrderReturn",
+    "clrType": "MintPlayer.Spark.Commerce.Shop.Models.ShopOrderReturn",
+    "breadcrumb": "{ReturnId}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "d5469eca-7e97-587b-9d23-6b3897ec92c6",
+        "name": "ReturnId",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "4fadf815-b65c-5a85-90fd-fc268ac1de95",
+        "name": "Reason",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "e2bdbb9c-3548-5792-8e8e-befbf88874b5",
+        "name": "SellerPaysReturnShipping",
+        "dataType": "boolean",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "b9b007cd-b7a6-5953-b1d6-10b36b4d11ec",
+        "name": "ReturnShipmentId",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "17449cd3-1b9b-51b6-8fdb-78420ee69d8a",
+        "name": "LabelMailedAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "1a69bca5-d73c-5e62-a66a-a0f200ce4585",
+        "name": "ProofOfDispatchAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "a00d855c-a46a-542a-a65b-2f5e6d670c4a",
+        "name": "ArrivedAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "05bec59b-6a6c-57af-a1ee-9f06cb022f9f",
+        "name": "ReceivedAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "09f74871-3c8c-5433-bf42-19df2d5f9a07",
+        "name": "Disposition",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 9,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "3feab48a-fc09-5d6a-94ef-eefb508e9a82",
+        "name": "InspectedAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 10,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "a00935a4-0161-5830-9e3a-115ffbd29bce",
+        "name": "InspectionNote",
+        "dataType": "MultiLineString",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 11,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ]
+  },
+  "queries": []
+}

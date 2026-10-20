@@ -1,0 +1,145 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "PromotionTrackingLink, a promoter or affiliate link (GC2). Written by the promotions package only; read-only here under PromotionsAccess. The per-link report is GET /spark/commerce/promotions/admin/links/report.",
+    "",
+    "HAND-AUTHORED. Ids are UUIDv5 of 'commerce-promotions:PromotionTrackingLink[...]', written by 'npm run stamp:library-model-ids'."
+  ],
+  "persistentObject": {
+    "id": "cda06e6f-2898-5da1-b33e-8546ad72fe9d",
+    "name": "PromotionTrackingLink",
+    "clrType": "MintPlayer.Spark.Commerce.Promotions.Models.PromotionTrackingLink",
+    "alias": "promotion-tracking-link",
+    "breadcrumb": "{Ref} {Name}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "259db31f-d4e0-5352-ae6c-53cba5f75c6f",
+        "name": "Ref",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "919bda68-765d-5564-8c23-10cb9e4e333b",
+        "name": "Name",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "dccd494a-1023-5047-9153-35ecccebac2c",
+        "name": "OrganizationId",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "0dca53c9-2ecb-5e59-9737-63a8289c41f9",
+        "name": "UtmSource",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "bc27318f-977e-5a16-b748-f6f876e30480",
+        "name": "UtmMedium",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "cf88cdda-edae-504d-baf2-517bc20075f5",
+        "name": "UtmCampaign",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "a0ad6396-3709-51be-8241-f1a3f654381c",
+        "name": "CommissionBasisPoints",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "45eb6bd9-8570-521d-afa3-b34f6ec1c5b6",
+        "name": "CommissionFixed",
+        "dataType": "Money",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "c3e37b85-7262-5491-97c0-6cef0c99f678",
+        "name": "Active",
+        "dataType": "boolean",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 9,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "9ecd8769-8e2f-551d-98b0-d03a4e454da3",
+        "name": "CreatedAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 10,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      }
+    ]
+  },
+  "queries": [
+    {
+      "id": "c2e0b6ad-9a39-5555-b322-013a0ad4c7b5",
+      "name": "PromotionTrackingLinks",
+      "source": "Custom.PromotionTrackingLinks",
+      "alias": "promotion-tracking-links",
+      "sortColumns": [
+        {
+          "property": "CreatedAt",
+          "direction": "desc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "PromotionTrackingLink"
+    }
+  ]
+}

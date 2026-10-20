@@ -21,8 +21,10 @@ That is the whole opt-in. No `app.UseRateLimiter()` call — see [Do not also ca
 
 | | |
 |---|---|
-| Budget | 150 requests per 10 seconds |
-| Partition | client IP |
+| Budget | 150 requests per 10 seconds, per caller |
+| Caller | the signed-in user, else the visitor cookie, else the network address |
+| Address ceiling | 1500 requests per 10 seconds (10 × the budget), shared by every caller behind one address |
+| Address | an IPv4 address, or an IPv6 address's **/64** |
 | Scope | `/spark` and `/connect` |
 | Over limit | HTTP 429 |
 
@@ -67,11 +69,42 @@ options.PathPrefixes = ["/api"];   // explicit, and impossible to misread
 
 A `"/"` alongside a real prefix is simply ignored, since it adds nothing to the scope.
 
+### Who a caller is
+
+Every request spends two budgets, and needs a permit from both (commerce PRD X10):
+
+| Budget | Keyed on | Size |
+|---|---|---|
+| The caller's | `user:{id}` when signed in, else `visitor:{id}` for a valid [visitor cookie](guide-controllers.md#visitors), else `ip:{address}` | `PermitLimit` |
+| The address ceiling | the network address | `PermitLimitPerAddress`, default 10 × `PermitLimit` |
+
+Many people share one address behind a carrier's NAT, a campus or an office. Keyed on the address
+alone, a hundred fans waiting for the same sale were one caller with one budget. The ceiling still
+bounds what one address can do with many accounts or many visitor cookies.
+
+An **address** is an IPv4 address, or the **/64** of an IPv6 address. One IPv6 subscriber is given a
+whole /64 (often a /56 or a /48), and privacy extensions (RFC 8981) rotate the low 64 bits on their
+own. Keyed on the exact address, one host could walk through as many budgets as it liked without
+changing networks (defect F5). An IPv4-mapped IPv6 address (`::ffff:203.0.113.7`) counts as the IPv4
+address it carries. The key is `SparkClientAddress.Key(IPAddress)`, public in
+`MintPlayer.Spark.Abstractions.Visitor`, for any other per-address limit an app keeps.
+
+```csharp
+spark.AddRateLimiter(options =>
+{
+    options.PermitLimit = 150;              // per user, visitor or bare address
+    options.PermitLimitPerAddress = 3000;   // everyone behind one address together
+});
+```
+
+A `PermitLimitPerAddress` below `PermitLimit` throws at startup: the ceiling is shared by every caller
+behind the address, so it cannot be smaller than one caller's budget.
+
 ### One bucket per caller, not per route
 
-Every metered prefix draws on the same per-IP bucket. The budget is a per-caller allowance, so an app
-with `["/spark", "/api/browse"]` and a limit of 150 gives each IP 150 requests across both, not 150
-each.
+Every metered prefix draws on the same per-caller bucket. The budget is a per-caller allowance, so an
+app with `["/spark", "/api/browse"]` and a limit of 150 gives each caller 150 requests across both,
+not 150 each.
 
 For a distinct budget on one route, declare a named ASP.NET policy and attach it to that endpoint:
 
@@ -100,6 +133,15 @@ had already absorbed the expensive part of. Rejecting first is the point.
 
 Routing has already run at that stage, so `[EnableRateLimiting]` / `[DisableRateLimiting]` on an
 endpoint still resolve normally.
+
+**One part runs after authentication, by necessity.** Who a caller is cannot be known before the
+credential is validated. So a request that **presents a credential** (an `Authorization` header, a
+client certificate, or the cookie of a cookie authentication scheme) spends only the address ceiling
+ahead of authentication. Its caller budget is taken at `SparkMiddlewareStage.AfterSpark`, keyed on the
+user it turned out to be, or on its visitor cookie or address when the credential did not
+authenticate. A junk credential therefore buys at most the address ceiling's worth of authentication
+work, never a fresh budget. A request with no credential (an anonymous visitor, a guest with a visitor
+cookie) spends both budgets ahead of authentication, as before.
 
 The mechanism is `SparkMiddlewareStage.BeforeAuthentication` on the Spark module registry. A module
 or app with a genuinely similar need — reject before authenticating — can register there too:
@@ -176,8 +218,9 @@ your own paths, both are now configuration — delete the manual call.
 
 ## Testing a limiter
 
-A fixed window partitioned by IP means every test in a shared collection draws on the same bucket
-(`127.0.0.1`).
+A fixed window partitioned by caller means every anonymous test in a shared collection draws on the
+same bucket (`127.0.0.1`), and every test signed in as the same user on the same one. Tests signed in
+as different users no longer share a bucket, but they all share the address ceiling.
 
 ⚠ **Do not solve this with a cooldown. It does not work, and this guide used to recommend it.**
 Letting the window roll over after a saturating test protects only the *next* test; everything

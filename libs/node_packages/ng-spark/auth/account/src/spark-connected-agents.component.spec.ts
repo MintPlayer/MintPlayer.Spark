@@ -18,8 +18,8 @@ function overview(extra: Partial<SparkAgentGrantsOverview> = {}): SparkAgentGran
     maxTokenLifetimeDays: 365,
     tokenPermissions: 'Read, Write',
     types: [
-      { name: 'Contract', label: 'Contracts', permissions: 'Read, Write', queries: ['All contracts'] },
-      { name: 'Customer', label: 'Customers', permissions: 'Read', queries: [] },
+      { id: 'c0000000-0000-4000-8000-00000000c001', name: 'Contract', label: 'Contracts', permissions: 'Read, Write', queries: ['All contracts'] },
+      { id: 'c0000000-0000-4000-8000-00000000c002', name: 'Customer', label: 'Customers', permissions: 'Read', queries: [] },
     ],
     grants: [{
       key: 'pat/0123456789abcdef0123456789abcdef',
@@ -28,7 +28,7 @@ function overview(extra: Partial<SparkAgentGrantsOverview> = {}): SparkAgentGran
       clientId: null,
       verifiedHost: null,
       permissions: 'Read',
-      types: [{ name: 'Contract', permissions: 'Read' }],
+      types: [{ typeId: 'c0000000-0000-4000-8000-00000000c001', permissions: 'Read' }],
       maxPermissions: 'Read, Write',
       createdAt: '2026-10-01T10:00:00Z',
       expiresAt: '2026-12-30T10:00:00Z',
@@ -88,7 +88,7 @@ describe('SparkConnectedAgentsComponent', () => {
     expect(grant.querySelector('.spark-agent-revoke')).toBeNull();
     (grant.querySelector('.spark-agent-edit') as HTMLButtonElement).click();
     await fixture.componentInstance.save(fixture.componentInstance.overview()!.grants[0]);
-    expect(updateAgentGrant).toHaveBeenCalledWith({ key: 'ext/0123456789abcdef0123456789abcdef', permissions: 'Read', types: [{ name: 'Contract', permissions: 'Read' }] });
+    expect(updateAgentGrant).toHaveBeenCalledWith({ key: 'ext/0123456789abcdef0123456789abcdef', permissions: 'Read', types: [{ typeId: 'c0000000-0000-4000-8000-00000000c001', permissions: 'Read' }] });
   });
 
   it('creates a token and shows it once', async () => {
@@ -105,7 +105,7 @@ describe('SparkConnectedAgentsComponent', () => {
     await component.createToken();
     fixture.detectChanges();
 
-    expect(createAgentToken).toHaveBeenCalledWith({ name: 'laptop', expiresInDays: 90, permissions: 'Read', types: [{ name: 'Customer', permissions: 'Read' }] });
+    expect(createAgentToken).toHaveBeenCalledWith({ name: 'laptop', expiresInDays: 90, permissions: 'Read', types: [{ typeId: 'c0000000-0000-4000-8000-00000000c002', permissions: 'Read' }] });
     expect(element(fixture).querySelector('.spark-agent-token')?.textContent).toContain('spat_secret');
 
     await component.load();
@@ -130,7 +130,7 @@ describe('SparkConnectedAgentsComponent', () => {
     expect(updateAgentGrant).toHaveBeenLastCalledWith({
       key: grant.key,
       permissions: 'Read, Write',
-      types: [{ name: 'Contract', permissions: 'Read, Write' }, { name: 'Customer', permissions: 'Read' }],
+      types: [{ typeId: 'c0000000-0000-4000-8000-00000000c001', permissions: 'Read, Write' }, { typeId: 'c0000000-0000-4000-8000-00000000c002', permissions: 'Read' }],
     });
 
     component.edit(grant);

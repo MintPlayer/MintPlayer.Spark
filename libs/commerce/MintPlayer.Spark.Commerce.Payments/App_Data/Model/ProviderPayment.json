@@ -1,0 +1,170 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "ProviderPayment, one payment created at a provider (docs/commerce_PRD.md §4.5), shipped by MintPlayer.Spark.Commerce.Payments.",
+    "Written only by ISparkPayments; only QueryRead is granted. Read under FinanceAccess's row rule. The payer fingerprint,",
+    "the related ids, the refunds and the idempotency key are deliberately not attributes.",
+    "",
+    "HAND-AUTHORED. Ids are UUIDv5 of 'commerce-payments:ProviderPayment[...]', written by 'npm run stamp:library-model-ids'."
+  ],
+  "persistentObject": {
+    "id": "f32a885a-f72c-55a6-9c47-02d0ecadbb57",
+    "name": "ProviderPayment",
+    "clrType": "MintPlayer.Spark.Commerce.Payments.Models.ProviderPayment",
+    "alias": "provider-payment",
+    "breadcrumb": "{Reference}",
+    "live": true,
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "006f996c-fa96-5497-bf1e-263cfc871d87",
+        "name": "Reference",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "1b5fd490-4384-5e28-875d-679c49234484",
+        "name": "Provider",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "d38a704d-434c-53f1-983d-2c13deda5157",
+        "name": "ProviderPaymentId",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "00e919bb-17fd-59c9-ac24-485960eb83c8",
+        "name": "Status",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "730c07b1-8672-559b-ab57-83a77d91819c",
+        "name": "Amount",
+        "dataType": "Money",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "ebbfc2b4-5685-5d36-a676-030888dcb245",
+        "name": "AmountRefunded",
+        "dataType": "Money",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "29064e9a-c1cf-5785-9829-3ecf95c92754",
+        "name": "ApplicationFee",
+        "dataType": "Money",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "52043266-94b7-5646-925d-e9c9cf0c3117",
+        "name": "Method",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "1af7338c-f0e4-55ee-bfc4-fd46e3de3e42",
+        "name": "SellerOrganizationId",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 9,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "4fb1284c-bd99-5731-b203-5ae6c7b81c71",
+        "name": "CreatedAtUtc",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 10,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "23a799b9-82f1-5ebb-aa27-feb7acf51b9f",
+        "name": "PaidAtUtc",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 11,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "094863c3-c912-5c3d-8f13-81730878442e",
+        "name": "ExpiresAtUtc",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 12,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      }
+    ]
+  },
+  "queries": [
+    {
+      "id": "86b98614-3164-5e5d-84d2-3f8709d5c433",
+      "name": "ProviderPayments",
+      "source": "Custom.ProviderPayments",
+      "alias": "provider-payments",
+      "sortColumns": [
+        {
+          "property": "CreatedAtUtc",
+          "direction": "desc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "ProviderPayment"
+    }
+  ]
+}

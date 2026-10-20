@@ -49,7 +49,6 @@ namespace CodeCoverage.Migrations;
 /// </remarks>
 public partial class M_202609230900_DisconnectedReasonsStopNamingGitHub : ISparkMigration
 {
-    public static long Version => 202609230900;
     public static string? Description => "DisconnectedReason values stop naming GitHub";
 
     [Inject] private readonly IDocumentStore store;

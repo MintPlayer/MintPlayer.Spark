@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Identity;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Authorization.Contracts;
 using MintPlayer.Spark.Authorization.Identity;
 
 namespace MintPlayer.Spark.Authorization.Endpoints.Account;
@@ -34,29 +35,30 @@ internal sealed partial class PersonalData<TUser> : IGetEndpoint
         httpContext.Response.Headers.ContentDisposition = "attachment; filename=\"personal-data.json\"";
 
         // What the account holds about the person — never credentials, hashes, keys or tokens.
-        return Results.Ok(new
-        {
-            account = new
-            {
-                id = user.Id,
-                userName = user.UserName,
-                email = user.Email,
-                emailConfirmed = user.EmailConfirmed,
-                phoneNumber = user.PhoneNumber,
-                phoneNumberConfirmed = user.PhoneNumberConfirmed,
-                twoFactorEnabled = user.TwoFactorEnabled,
-                // Whether a password exists — never the hash. The deletion form asks for the password
-                // only when there is one, and otherwise explains the recent-sign-in rule.
-                hasPassword = await userManager.HasPasswordAsync(user),
-                createdAtUtc = user.CreatedAtUtc,
-                registrationMethod = user.RegistrationMethod,
-                preferredCulture = user.PreferredCulture,
-                roles = user.Roles,
-                claims = user.Claims.Select(c => new { type = c.ClaimType, value = c.ClaimValue }),
-                externalLogins = user.Logins.Select(l => new { provider = l.LoginProvider, displayName = l.ProviderDisplayName }),
-                passkeys = user.Passkeys.Select(p => new { name = p.Name, createdAt = p.CreatedAt }),
-            },
-            data = contributions,
-        });
+        // Whether a password exists — never the hash. The deletion form asks for the password only when
+        // there is one, and otherwise explains the recent-sign-in rule.
+        return Results.Ok(Describe(user, await userManager.HasPasswordAsync(user), contributions));
     }
+
+    /// <summary>The response for <paramref name="user"/> (the shape test's seam).</summary>
+    internal static SparkPersonalData Describe(TUser user, bool hasPassword, IReadOnlyDictionary<string, object?> contributions)
+        => new(
+            new SparkPersonalDataAccount(
+                user.Id,
+                user.UserName,
+                user.Email,
+                user.EmailConfirmed,
+                user.PhoneNumber,
+                user.PhoneNumberConfirmed,
+                user.TwoFactorEnabled,
+                hasPassword,
+                user.CreatedAtUtc,
+                user.RegistrationMethod,
+                user.PreferredCulture,
+                user.PreferredTimeZone,
+                user.Roles,
+                [.. user.Claims.Select(c => new SparkPersonalDataClaim(c.ClaimType, c.ClaimValue))],
+                [.. user.Logins.Select(l => new SparkPersonalDataExternalLogin(l.LoginProvider, l.ProviderDisplayName))],
+                [.. user.Passkeys.Select(p => new SparkPersonalDataPasskey(p.Name, p.CreatedAt))]),
+            contributions);
 }

@@ -16,10 +16,16 @@ namespace CodeCoverage.LookupReferences;
 /// branch — and it is the better model anyway: each state has a name and a translated label the
 /// user reads, and a migration can name <see cref="Inherit"/> where it could not name an absence.
 /// </para>
+/// <para>
+/// <c>[SparkLookup]</c> generates the <c>DeleteBranchPolicy</c> lookup, rendered as a dropdown; its labels are the
+/// <c>translations.json</c> keys <c>lookup.EDeleteBranchPolicy.*</c>. No registration:
+/// <c>LookupReferenceDiscoveryService</c> scans loaded assemblies by base type.
+/// </para>
 /// </remarks>
+[SparkLookup]
 public enum EDeleteBranchPolicy
 {
-    /// <summary>Defer to the owning account's setting. The default for every repository.</summary>
+    /// <summary>Defer to the owning account's setting. The default for every repository. Lookup: use the account's setting.</summary>
     Inherit,
 
     /// <summary>Always delete the head branch of a merged pull request in this repository.</summary>
@@ -27,39 +33,4 @@ public enum EDeleteBranchPolicy
 
     /// <summary>Never delete, whatever the account says.</summary>
     Disabled,
-}
-
-/// <summary>
-/// The selectable values of <see cref="EDeleteBranchPolicy"/>, rendered as a dropdown.
-/// </summary>
-/// <remarks>
-/// No registration: <c>LookupReferenceDiscoveryService</c> scans loaded assemblies by base type.
-/// </remarks>
-public sealed class DeleteBranchPolicy : TransientLookupReference<EDeleteBranchPolicy>
-{
-    private DeleteBranchPolicy() { }
-
-    public override ELookupDisplayType DisplayType => ELookupDisplayType.Dropdown;
-
-    public static IReadOnlyCollection<DeleteBranchPolicy> Items { get; } =
-    [
-        new DeleteBranchPolicy
-        {
-            Key = EDeleteBranchPolicy.Inherit,
-            Description = "Use the account's setting",
-            Values = _TS("Use account setting", "Utiliser le paramètre du compte", "Accountinstelling gebruiken"),
-        },
-        new DeleteBranchPolicy
-        {
-            Key = EDeleteBranchPolicy.Enabled,
-            Description = "Always delete the branch of a merged pull request",
-            Values = _TS("Always delete", "Toujours supprimer", "Altijd verwijderen"),
-        },
-        new DeleteBranchPolicy
-        {
-            Key = EDeleteBranchPolicy.Disabled,
-            Description = "Never delete, whatever the account setting says",
-            Values = _TS("Never delete", "Ne jamais supprimer", "Nooit verwijderen"),
-        },
-    ];
 }

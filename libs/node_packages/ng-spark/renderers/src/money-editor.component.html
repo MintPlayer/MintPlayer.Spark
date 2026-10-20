@@ -1,0 +1,22 @@
+<div class="input-group spark-money-editor">
+  <input type="number"
+    class="form-control"
+    inputmode="decimal"
+    [class.is-invalid]="tooPrecise()"
+    [attr.aria-invalid]="tooPrecise()"
+    [step]="step()"
+    [value]="amountText()"
+    [attr.aria-label]="attribute()?.name"
+    (input)="onAmountInput($event)">
+  @if (fixedCurrency()) {
+    <span class="input-group-text">{{ currency() }}</span>
+  } @else {
+    <select class="form-select spark-money-currency"
+      [attr.aria-label]="attribute()?.name"
+      (change)="onCurrencyChange($event)">
+      @for (choice of choices(); track choice.code) {
+        <option [value]="choice.code" [selected]="choice.code === currency()">{{ choice.label }}</option>
+      }
+    </select>
+  }
+</div>

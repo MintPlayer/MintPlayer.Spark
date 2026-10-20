@@ -1,0 +1,20 @@
+<mjml>
+  <mj-head>
+    <mj-title>A ticket for {{ event_name }} is waiting for you</mj-title>
+    <mj-attributes>
+      <mj-all font-family="Segoe UI, Helvetica, Arial, sans-serif" />
+      <mj-text font-size="15px" line-height="22px" color="#111827" />
+      <mj-button background-color="#2563eb" color="#ffffff" border-radius="6px" font-size="15px" />
+    </mj-attributes>
+  </mj-head>
+  <mj-body background-color="#f3f4f6">
+    <mj-section background-color="#ffffff" padding="24px 0">
+      <mj-column>
+        <mj-text font-size="20px" font-weight="600">{{ if recipient_name }}{{ recipient_name }}, someone{{ else }}Someone{{ end }} is giving you a ticket for {{ event_name }}</mj-text>
+        <mj-text><strong>{{ ticket_type }}</strong>{{ if seat }} · {{ seat }}{{ end }}</mj-text>
+        <mj-text>Accept it before {{ expires }}. The ticket is then issued in your name with a new QR code.</mj-text>
+        <mj-button href="{{ accept_url }}">Accept the ticket</mj-button>
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>

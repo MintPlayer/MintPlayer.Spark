@@ -1,8 +1,8 @@
 {
-  "version": 2,
-  "modelHash": "71ffec6dcb496309c8c85a775aee3bc879d1a48a63929f78f774f8e44b843d3f",
+  "version": 3,
+  "modelHash": "84512cd0f4b3d1721a51d6cb9cafa2f9173fdbb9fbb4b552cdc9ee755b8c86d4",
   "contextRoots": "24c37fe33e4d7c7f9e131cb5248f3acb7dedbb20985be4bbbee1e5841cba5fc3",
-  "modelFiles": "ce6ff5eb762b511adbbd16dd729e05e2c7ca2dc64e567de7166fa2b2f5a82f37",
+  "modelFiles": "f049946c28ed61267ead35cd763e65c2c555d05965ea3865e4d3b86dc51694d6",
   "files": {
     "Address.json": "4ecd730f0f1ba35c64263d97f1874f4bf85f16e5aaa753162520c6adfc314cf9",
     "AddressDescription.json": "81762682ba0098d7393fd08e758ec8673cf94951a5a353f5e76a1ac350821ce4",
@@ -14,6 +14,8 @@
     "Passkeys.json": "738742f13217adeeb4724f72f968923099f7d7210cee1133dfd6707eb55856ce",
     "Person.json": "b00375bbaab62bfe740fae5178e8684a520cbaed159c623f72536292df337e3d",
     "Profession.json": "90b8d7c255d299acf3f0b85e26c0474b25dbc02fee62bb08ed6cd30ddddd95e5",
+    "SparkReplicationRequest.json": "0fb7d1e4ce64347f0d515a59bea514bbbef07142161758ad165ab866df81e1fb",
+    "SparkSyncAction.json": "1fdf458095327f420118e19d3785cfd2bac05eac41862785e716e5c469016f44",
     "SparkUser.json": "81d5e4fe403e329fc20404f35c3b9944aa11c17374981df5a4073ddf08fcdb69"
   },
   "entities": {
@@ -26,10 +28,11 @@
     "Profession": "7d42f51e1104969ffc1c69a832e829c45b7feb16f946de0644c580a89abd0d43"
   },
   "configFiles": {
-    "actions.json": "32cc41b3dafef21b94b7ca75ac82dfed573e43b1207fe4902a16d9e3e9572b4d"
+    "actions.json": "965c78d33cdebe1cc359d7d82c87c5ad691b031015ee3f5590a9739062d1fa18"
   },
   "libraries": {
     "authorization": "MintPlayer.Spark.Authorization",
+    "replication": "MintPlayer.Spark.Replication",
     "spark": "MintPlayer.Spark"
   },
   "layers": {
@@ -42,12 +45,38 @@
     "Model/Passkeys.json": {
       "authorization": "738742f13217adeeb4724f72f968923099f7d7210cee1133dfd6707eb55856ce"
     },
+    "Model/SparkReplicationRequest.json": {
+      "replication": "0fb7d1e4ce64347f0d515a59bea514bbbef07142161758ad165ab866df81e1fb"
+    },
+    "Model/SparkSyncAction.json": {
+      "replication": "1fdf458095327f420118e19d3785cfd2bac05eac41862785e716e5c469016f44"
+    },
     "Model/SparkUser.json": {
       "authorization": "81d5e4fe403e329fc20404f35c3b9944aa11c17374981df5a4073ddf08fcdb69"
     },
     "actions.json": {
       "authorization": "fb0d34fa66e732b157e4e222fb9c357e4219cf6d85177473103874e8c1090427",
+      "replication": "62dbc1068c51ef923aefda60b2a897656583e0512c034f9f29ed8f958fbe41c2",
       "spark": "5974b38c8164cafbfb22c012c52fb46dd27264181d772b9f004de1829d1838e6"
+    },
+    "programUnits.json": {
+      "app": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "replication": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     }
+  },
+  "names": {
+    "0d3faefa-624c-5135-bca7-652aa9053e0e": "SparkUser (authorization:SparkUser)",
+    "1efb3727-d67a-43f2-a457-5b8ede02bc2f": "Profession",
+    "2a34a658-1768-4c82-8724-884b2f99f4e0": "Person",
+    "45c8870d-15c8-51ca-ba62-e5f13a8c3e4f": "SparkSyncAction (replication:SparkSyncAction)",
+    "5063ba37-cc73-507c-8371-42564ea75663": "SparkReplicationRequest (replication:SparkReplicationRequest)",
+    "5a4c2d4c-ce91-41bd-af40-15e4a0ff3a2b": "AddressDescription",
+    "5a990917-387b-4f1e-8434-befc64da1958": "Company",
+    "8317d070-b79e-40c6-825e-1e245142daf9": "Car",
+    "a1c8e3f0-9d2b-4f6a-b5e7-3c4d8f2a1b0e": "Address",
+    "bc7a3a73-5852-5111-974d-ea0c7ab290e0": "PasskeyRow (authorization:PasskeyRow)",
+    "cd8a0767-2a18-5c73-a608-14cf9efe99ac": "Passkeys (authorization:Passkeys)",
+    "da8a90fd-91ae-593a-8b48-0ad102082412": "PasskeyRename (authorization:PasskeyRename)",
+    "dcbc8be1-049f-40ba-acb5-09af16af2d57": "CarreerJob"
   }
 }

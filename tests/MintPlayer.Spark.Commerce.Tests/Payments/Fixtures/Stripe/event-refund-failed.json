@@ -1,0 +1,26 @@
+{
+  "_fixture": {
+    "source": "https://docs.stripe.com/api/refunds/object (status failed, failure_reason insufficient_funds) and https://docs.stripe.com/api/events/types#event_types-refund.failed",
+    "derived": "Event envelope + Refund object assembled from the object docs (see Fixtures/README.md); ids adapted",
+    "recorded": false
+  },
+  "id": "evt_1RefundFailed",
+  "object": "event",
+  "account": "acct_1Seller",
+  "created": 1792487100,
+  "type": "refund.failed",
+  "data": {
+    "object": {
+      "id": "re_3QtestRefund1",
+      "object": "refund",
+      "amount": 2500,
+      "charge": "ch_3Qtest777",
+      "created": 1792487000,
+      "currency": "eur",
+      "failure_reason": "insufficient_funds",
+      "metadata": { "spark_reference": "credit-notes/9" },
+      "payment_intent": "pi_3Qtest777",
+      "status": "failed"
+    }
+  }
+}

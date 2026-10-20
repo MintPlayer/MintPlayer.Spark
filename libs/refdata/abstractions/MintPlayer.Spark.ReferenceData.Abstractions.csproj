@@ -1,0 +1,53 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<!-- A plain SDK library (SPARKLIB001): consumers declare Address properties in their entity libraries (Q-R7). -->
+		<SparkEntityLibrary>true</SparkEntityLibrary>
+		<GenerateDocumentationFile>true</GenerateDocumentationFile>
+		<NoWarn>$(NoWarn);CS1591;CS1573</NoWarn>
+
+		<!-- NuGet Package Metadata -->
+		<PackageId>MintPlayer.Spark.ReferenceData.Abstractions</PackageId>
+		<Version>11.0.0-preview.1</Version>
+		<Authors>MintPlayer</Authors>
+		<Company>MintPlayer</Company>
+		<Description>Reference data for MintPlayer.Spark (docs/reference_data_PRD.md): the document types (countries with their profiles, places with dated history, postal codes, streets, lineage events, time-zone names, holidays, VAT-rate suggestions), the id grammar, as-of resolution, the display rule, the canonical release format and the Address value. No ASP.NET Core: an entity library can reference it.</Description>
+		<PackageTags>reference-data;addresses;places;postal-codes;ravendb;spark</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="README.md" Pack="true" PackagePath="\" />
+		<!-- Q-R18: the pinned CLDR territory-name subset, with the Unicode licence it ships under. -->
+		<EmbeddedResource Include="Cldr\territories.json" LogicalName="Cldr/territories.json" />
+		<None Include="Cldr\CLDR-LICENSE.txt" Pack="true" PackagePath="licenses\" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- ReleaseApplier: the instance's seeder and the client's sync write releases the same way. No ASP.NET Core. -->
+		<PackageReference Include="RavenDB.Client" Version="7.2.6" />
+		<!-- Release signing (RD-DEF 5, spike RS17): Ed25519, managed, MIT licence. The BCL has no standalone Ed25519. -->
+		<PackageReference Include="BouncyCastle.Cryptography" Version="2.7.0" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\..\attributes\MintPlayer.Spark.Attributes\MintPlayer.Spark.Attributes.csproj" />
+		<ProjectReference Include="..\..\model\MintPlayer.Spark.Model\MintPlayer.Spark.Model.csproj" />
+		<!-- The generator itself, so Address's [ValueObject] key is generated here (PRD §4.1). -->
+		<ProjectReference Include="..\..\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<InternalsVisibleTo Include="MintPlayer.Spark.ReferenceData" />
+		<InternalsVisibleTo Include="MintPlayer.Spark.ReferenceData.Client" />
+		<InternalsVisibleTo Include="ReferenceData.Tests" />
+	</ItemGroup>
+
+</Project>

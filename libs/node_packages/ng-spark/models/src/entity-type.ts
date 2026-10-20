@@ -1,6 +1,9 @@
 import { ShowedOn } from './showed-on';
+import { SparkDateTimeDisplay } from './date-time-display';
 import { TranslatedString } from './translated-string';
-import { ValidationRule } from './validation-rule';
+import type { EntityRevisionsDefinition, SparkReferenceTree, ValidationRule } from './generated/contracts';
+import type * as Wire from './generated/contracts';
+import type { AssertNone, MissingMembers } from './contract-mirror';
 import { SparkSubQueryEntry } from './sub-query';
 
 /**
@@ -28,6 +31,15 @@ export enum EReferenceDisplayType {
  */
 export type RefreshTrigger = 'None' | 'Auto' | 'ValueChanged' | 'Blur';
 
+/**
+ * An attribute's `referenceTree` (warehouse PRD WX9, mirrors the .NET `SparkReferenceTree`): which
+ * attribute of the referenced type holds a row's parent id, and optionally which one counts its
+ * children. Roots are read with `columns: [{ name: parentAttribute, includes: [null] }]`, children with
+ * `includes: [id]`.
+ */
+// SparkReferenceTree itself is generated (./generated/contracts): `childCountAttribute` names the attribute whose `0` or
+// `false` draws a row as a leaf; absent, every node is expandable.
+
 export interface EntityAttributeDefinition {
   id: string;
   name: string;
@@ -45,15 +57,30 @@ export interface EntityAttributeDefinition {
   asDetailType?: string;
   /** When true, the attribute represents an array/collection of AsDetail objects */
   isArray?: boolean;
-  /** For array AsDetail attributes: "modal" (default) or "inline" */
+  /**
+   * How an AsDetail attribute is edited: "modal" (default) or "inline". An inline collection is an
+   * editable table; an inline single object renders its fields in place, in the parent form.
+   */
   editMode?: 'inline' | 'modal';
   /**
    * For Reference attributes: 'Modal' renders the "…" + modal query-grid picker;
    * 'Dropdown'/absent (default) renders a `<bs-select>`. Hand-set in the model JSON.
    */
   referenceDisplayType?: EReferenceDisplayType;
+  /**
+   * For Reference attributes whose candidates form a tree (WX9): the multi-reference picker lists the
+   * roots and loads a node's children on expand. Hand-set in the model JSON. Absent: a flat picker.
+   */
+  referenceTree?: SparkReferenceTree | null;
   /** For array AsDetail attributes: when true, rows can be drag-reordered (order = array position) */
   isSortable?: boolean;
+  /** The model's sort/filter/distinct switches for this attribute's column (server-side; the query result's column carries the effective value). */
+  canSort?: boolean | null;
+  canFilter?: boolean | null;
+  canListDistincts?: boolean | null;
+  /** Whether the attribute is projected into the collection type / the query type (server-side). */
+  inCollectionType?: boolean | null;
+  inQueryType?: boolean | null;
   /**
    * When set (and not `'None'`), changing this attribute's value posts the in-progress object to
    * `/spark/po/{objectTypeId}/refresh` and applies the reshaped result as an overlay; the value
@@ -79,6 +106,8 @@ export interface EntityAttributeDefinition {
   renderer?: string;
   /** Options passed to the renderer component */
   rendererOptions?: Record<string, any>;
+  /** For `datetime` attributes: the zone it is shown in and an optional second rendering (X16). Absent = the viewer's zone. */
+  dateTimeDisplay?: SparkDateTimeDisplay | null;
 }
 
 export interface AttributeTab {
@@ -122,6 +151,15 @@ export interface EntityType {
    */
   canRead?: boolean;
   alias?: string;
+  /** The CLR type of the query projection and the index the type's queries read (server-side). */
+  queryType?: string | null;
+  indexName?: string | null;
+  /** The type's revision settings, when it declares any. */
+  revisions?: EntityRevisionsDefinition;
+  /** How long an object of this type lives before RavenDB expires it (a TimeSpan string), when set. */
+  expiresAfter?: string;
+  /** The most an AI agent may do with this type (`'Read'`, `'Read, Write'`); absent is none. */
+  agentPermissions?: string;
   /**
    * Whether an object of this type is followed over `/spark/live` (X4): `spark-po-detail` replaces the
    * shown object when it changes and shows the unavailable state when it is deleted, and `spark-po-edit`
@@ -178,3 +216,14 @@ export interface EntityType {
    */
   serverSideRowLifecycle?: boolean;
 }
+
+// The hand-written mirrors are checked against the generated wire types (docs/guide-typescript-contracts.md, "Hand-written
+// mirrors"): a member the server adds fails this build until the mirror carries it. The mirrors stay hand-written because
+// the client reads narrower members (`showedOn` as `ShowedOn`, `queries` normalized by `subQueriesOf`).
+export type EntityTypeMirrorsContract = AssertNone<MissingMembers<Wire.EntityTypeDefinition, EntityType>>;
+export type EntityAttributeDefinitionMirrorsContract = AssertNone<MissingMembers<Wire.EntityAttributeDefinition, EntityAttributeDefinition>>;
+export type AttributeTabMirrorsContract = AssertNone<MissingMembers<Wire.AttributeTab, AttributeTab>>;
+export type AttributeGroupMirrorsContract = AssertNone<MissingMembers<Wire.AttributeGroup, AttributeGroup>>;
+/** Every value the server writes is a member of the enum, and the reverse. */
+export type EReferenceDisplayTypeMirrorsContract = AssertNone<Exclude<Wire.EReferenceDisplayType, `${EReferenceDisplayType}`> | Exclude<`${EReferenceDisplayType}`, Wire.EReferenceDisplayType>>;
+export type RefreshTriggerMirrorsContract = AssertNone<Exclude<Wire.ERefreshTrigger, RefreshTrigger> | Exclude<RefreshTrigger, Wire.ERefreshTrigger>>;

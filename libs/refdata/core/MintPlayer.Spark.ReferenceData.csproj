@@ -1,0 +1,57 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<OutputType>Library</OutputType>
+		<!-- Names this library's App_Data layers (composition D16, Q-R14). Permanent: it is part of the right keys and the
+		     model ids the library ships. -->
+		<SparkLibraryAlias>reference-data</SparkLibraryAlias>
+
+		<!-- NuGet Package Metadata -->
+		<PackageId>MintPlayer.Spark.ReferenceData</PackageId>
+		<Version>11.0.0-preview.1</Version>
+		<Authors>MintPlayer</Authors>
+		<Company>MintPlayer</Company>
+		<Description>A reference-data instance for MintPlayer.Spark (docs/reference_data_PRD.md): the id ledger, the lineage engine and derived fields, the search-key pipeline, the scheduled change-checked import pipeline, deterministic releases, the anonymous /api/v1 typeahead API, and the admin pages. Country adapters plug in as MintPlayer.Spark.ReferenceData.Sources.* packages.</Description>
+		<PackageTags>reference-data;addresses;places;postal-codes;typeahead;ravendb;spark</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="README.md" Pack="true" PackagePath="\" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="11.4.1-rc.0" />
+		<PackageReference Include="MintPlayer.SourceGenerators" Version="13.0.0">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="13.0.0" GeneratePathProperty="true" />
+		<PackageReference Include="RavenDB.Client" Version="7.2.6" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\abstractions\MintPlayer.Spark.ReferenceData.Abstractions.csproj" />
+		<!-- Plan R10: the client's layer declares the read-only types both sides hold (countries, places, postal codes), so
+		     an instance that is also a consumer composes each of them once. The reverse reference never exists (PRD §4.1). -->
+		<ProjectReference Include="..\client\MintPlayer.Spark.ReferenceData.Client.csproj" />
+		<ProjectReference Include="..\..\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
+		<!-- The import queue (RD1 step 3) and the per-source schedules (RD1 step 1). -->
+		<ProjectReference Include="..\..\messaging\MintPlayer.Spark.Messaging\MintPlayer.Spark.Messaging.csproj" />
+		<ProjectReference Include="..\..\cron\MintPlayer.Spark.Cron\MintPlayer.Spark.Cron.csproj" />
+		<!-- Spark's generators (the library layers) and analyzers. Analyzer ProjectReferences are not transitive. -->
+		<ProjectReference Include="..\..\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<InternalsVisibleTo Include="ReferenceData.Tests" />
+	</ItemGroup>
+
+</Project>

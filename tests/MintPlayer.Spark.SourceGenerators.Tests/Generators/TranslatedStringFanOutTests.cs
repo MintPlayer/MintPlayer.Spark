@@ -4,14 +4,16 @@ using MintPlayer.Spark.SourceGenerators.Tests._Infrastructure;
 namespace MintPlayer.Spark.SourceGenerators.Tests.Generators;
 
 /// <summary>
-/// A <c>TranslatedString</c> is a dictionary, and RavenDB cannot usefully sort or search one, so it fans out
-/// into one index field per language.
+/// A <c>TranslatedString</c> is a list of tagged entries, and RavenDB cannot usefully sort or search one, so it
+/// fans out into one index field per language.
 /// <para>
-/// It persists <em>nested</em> — <c>Description.Translations.nl</c> — because its flat
-/// <c>{"en":..,"nl":..}</c> converter is System.Text.Json and applies only on the wire, while RavenDB persists
-/// through Newtonsoft. So <c>car.Description!.Translations["nl"]</c> is the correct map expression, measured
-/// against a live server rather than assumed.
+/// It persists as <c>{"Entries":[{"Tag":"nl","Value":"…"}]}</c>, the API's shape too (commerce X17), so the
+/// map reads the first entry of exactly that tag:
+/// <c>car.Description!.Entries.Where(__entry =&gt; __entry.Tag == "nl").Select(__entry =&gt; __entry.Value).FirstOrDefault()</c>.
+/// <c>TranslatedStringPersistedShapeTests</c> runs that path against a live server.
 /// </para>
+/// <para>A hyphenated tag (<c>zh-Hant</c>) gives the C# identifier <c>Description_zh_Hant</c>; the map compares the
+/// tag in canonical case, the case it is stored in.</para>
 /// <para>The language set cannot come from DI — a generator has none — so it arrives as an
 /// <c>App_Data/culture.json</c> AdditionalFile.</para>
 /// </summary>
@@ -60,17 +62,43 @@ public class TranslatedStringFanOutTests
         generated.Should().Contain("public string? Description_nl { get; set; }");
     }
 
+    private const string NlMap = "car.Description!.Entries.Where(__entry => __entry.Tag == \"nl\").Select(__entry => __entry.Value).FirstOrDefault()";
+
     /// <summary>
-    /// The CLR path and the stored JSON path agree here — the dictionary indexer is what RavenDB evaluates
-    /// natively. <c>GetValue("nl")</c> would deploy happily and return null forever.
+    /// The CLR path and the stored JSON path agree here — <c>Entries</c>, <c>Tag</c> and <c>Value</c> are the
+    /// stored member names, which RavenDB evaluates natively. <c>GetValue("nl")</c> would deploy happily and
+    /// return null forever.
     /// </summary>
     [Fact]
-    public void Each_language_field_maps_through_the_dictionary_indexer()
+    public void Each_language_field_maps_through_the_entries_of_its_tag()
     {
         var generated = Run(TranslatedCar).GeneratedSources[0].Source;
 
-        generated.Should().Contain("Description_nl = car.Description!.Translations[\"nl\"],");
+        generated.Should().Contain($"Description_nl = {NlMap},");
         generated.Should().NotContain("GetValue(");
+        generated.Should().NotContain("Translations[");
+    }
+
+    /// <summary>
+    /// X17: <c>zh-Hant</c> used to give <c>Description_zh-Hant</c>, which is not a C# identifier. The field name
+    /// turns <c>-</c> into <c>_</c>; the map keeps the real tag, canonicalized (<c>zh-hant</c> → <c>zh-Hant</c>)
+    /// because stored tags are canonical and the map compares with <c>==</c>.
+    /// </summary>
+    [Fact]
+    public void A_hyphenated_tag_gives_a_sanitized_field_and_maps_the_canonical_tag()
+    {
+        var generated = Run(TranslatedCar, cultureJson: """
+            {
+              "languages": ["en", "zh-hant", "sr-latn-rs"]
+            }
+            """).GeneratedSources[0].Source;
+
+        generated.Should().Contain("public string? Description_zh_Hant { get; set; }");
+        generated.Should().Contain("Description_zh_Hant = car.Description!.Entries.Where(__entry => __entry.Tag == \"zh-Hant\").Select(__entry => __entry.Value).FirstOrDefault(),");
+        generated.Should().Contain("public string? Description_sr_Latn_RS { get; set; }");
+        generated.Should().Contain("__entry.Tag == \"sr-Latn-RS\"");
+        generated.Should().Contain("public string? Description_zh_HantSearch { get; set; }");
+        generated.Should().NotContain("Description_zh-");
     }
 
     [Fact]
@@ -80,7 +108,7 @@ public class TranslatedStringFanOutTests
 
         generated.Should().Contain("Index(nameof(VCar.Description_nlSearch), global::Raven.Client.Documents.Indexes.FieldIndexing.Search);");
         generated.Should().Contain("public string? Description_nlSearch { get; set; }");
-        generated.Should().Contain("Description_nlSearch = car.Description!.Translations[\"nl\"],");
+        generated.Should().Contain($"Description_nlSearch = {NlMap},");
     }
 
     /// <summary>Matches the shape issue #210 asks for: <c>Name_nl</c> visible, <c>Name_nlSearch</c> ignored.</summary>

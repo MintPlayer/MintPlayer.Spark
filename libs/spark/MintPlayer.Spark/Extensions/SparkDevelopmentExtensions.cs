@@ -62,6 +62,8 @@ public static class SparkDevelopmentExtensions
     /// <item><c>--spark-synchronize-model</c> regenerates <c>App_Data/Model</c> and the hash file.</item>
     /// <item><c>--spark-verify-model</c> writes nothing and exits 3 if the model has drifted — the
     /// merge-queue gate.</item>
+    /// <item><c>--spark-synchronize-contracts</c> / <c>--spark-verify-contracts</c> write or check the application's
+    /// generated TypeScript contracts (<see cref="SparkContractCommands"/>).</item>
     /// </list>
     /// <para>
     /// The entity context type is taken from the registration made by
@@ -91,6 +93,9 @@ public static class SparkDevelopmentExtensions
         if (DescribeIfRequested(builder, args))
             return true;
 
+        if (SparkContractCommands.RunIfRequested(builder, args))
+            return true;
+
         var verifyOnly = args.Contains(VerifyFlag);
         if (!verifyOnly && !args.Contains(SynchronizeFlag))
             return false;
@@ -118,6 +123,9 @@ public static class SparkDevelopmentExtensions
         ArgumentNullException.ThrowIfNull(args);
 
         if (DescribeIfRequested(builder, args))
+            return true;
+
+        if (SparkContractCommands.RunIfRequested(builder, args))
             return true;
 
         var verifyOnly = args.Contains(VerifyFlag);
@@ -221,6 +229,8 @@ public static class SparkDevelopmentExtensions
         // fixed and CI was run again. Two round trips for one commit's worth of problems.
         VerifyQueryAliasesAreUnique(contentRoot);
         VerifyRefreshTriggersAreImplemented(contentRoot);
+        VerifyDateTimeDisplays(contentRoot);
+        VerifyReferenceTrees(contentRoot);
         VerifyComposedQueriesAreUsable(contentRoot);
         VerifyCustomQueryMethodsExist(builder.Services, contentRoot);
         VerifySubQueriesCanBeParentScoped(contentRoot);
@@ -333,6 +343,153 @@ public static class SparkDevelopmentExtensions
     /// <c>ActionsResolver</c> uses, because there is no service provider in the builder phase.
     /// </para>
     /// </remarks>
+    private static void VerifyDateTimeDisplays(string contentRootPath)
+    {
+        var errors = new List<string>();
+        var warnings = new List<string>();
+
+        foreach (var file in SparkModelFiles.Compose(contentRootPath))
+        {
+            EntityTypeFile? model;
+            try
+            {
+                model = System.Text.Json.JsonSerializer.Deserialize<EntityTypeFile>(
+                    file.Json,
+                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            }
+            catch (System.Text.Json.JsonException ex)
+            {
+                // A malformed dateTimeDisplay is a JsonException from its converter; anything else is the hash check's business.
+                if (ex.Message.Contains("dateTimeDisplay:", StringComparison.Ordinal))
+                    errors.Add($"{file.Source}: {ex.Message}");
+                continue;
+            }
+
+            var definition = model?.PersistentObject;
+            if (definition is null)
+                continue;
+
+            var names = definition.Attributes.Select(a => a.Name).ToHashSet(StringComparer.Ordinal);
+            foreach (var attribute in definition.Attributes.Where(a => a.DateTimeDisplay is not null))
+            {
+                var where = $"{definition.Name}.{attribute.Name}";
+                if (attribute.DataType != "datetime")
+                    warnings.Add($"{where}: dateTimeDisplay on a \"{attribute.DataType}\" attribute does nothing; only \"datetime\" renders it.");
+
+                foreach (var spec in new[] { attribute.DateTimeDisplay!.Primary, attribute.DateTimeDisplay.Hint })
+                {
+                    if (spec?.ZoneFrom is { } zoneFrom && !names.Contains(zoneFrom))
+                        errors.Add($"{where}: zoneFrom \"{zoneFrom}\" names no attribute of {definition.Name}.");
+                    if (spec?.Zone is { } zone)
+                    {
+                        if (!Abstractions.DateTimes.SparkTimeZoneIds.IsWellFormed(zone))
+                            errors.Add($"{where}: \"{zone}\" is not an IANA time zone id (for example \"Europe/Brussels\").");
+                        else if (!SparkTimeZones.IsKnown(zone))
+                            warnings.Add($"{where}: \"{zone}\" is unknown to this machine's time-zone data; the server renders it as the recipient's zone.");
+                    }
+                }
+            }
+        }
+
+        foreach (var warning in warnings)
+            Console.Error.WriteLine("Spark model warning: " + warning);
+        if (errors.Count == 0)
+            return;
+
+        Console.Error.WriteLine("Spark model declares a dateTimeDisplay that cannot be rendered (commerce PRD X16):");
+        foreach (var error in errors)
+            Console.Error.WriteLine("  " + error);
+        Environment.ExitCode = ExitDrift;
+    }
+
+    /// <summary>
+    /// Refuses a <c>referenceTree</c> (WX9) whose parent attribute the picker cannot filter on. A refused
+    /// column filter does not fail, it leaves the rows unnarrowed (see <c>QueryExecutor.ApplyColumnFilters</c>),
+    /// so every node of the picker would list the whole set as its children, endlessly nested.
+    /// </summary>
+    private static void VerifyReferenceTrees(string contentRootPath)
+    {
+        var definitions = new List<EntityTypeDefinition>();
+        foreach (var file in SparkModelFiles.Compose(contentRootPath))
+        {
+            try
+            {
+                var model = System.Text.Json.JsonSerializer.Deserialize<EntityTypeFile>(
+                    file.Json,
+                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                if (model?.PersistentObject is { } definition)
+                    definitions.Add(definition);
+            }
+            catch (System.Text.Json.JsonException)
+            {
+                // A malformed file is the hash check's business.
+            }
+        }
+
+        var (errors, warnings) = DescribeReferenceTreeProblems(definitions);
+        foreach (var warning in warnings)
+            Console.Error.WriteLine("Spark model warning: " + warning);
+        if (errors.Count == 0)
+            return;
+
+        Console.Error.WriteLine("Spark model declares a referenceTree the picker cannot walk (warehouse PRD WX9):");
+        foreach (var error in errors)
+            Console.Error.WriteLine("  " + error);
+        Environment.ExitCode = ExitDrift;
+    }
+
+    /// <summary>The checks behind <see cref="VerifyReferenceTrees"/>, over already-loaded definitions.</summary>
+    internal static (List<string> Errors, List<string> Warnings) DescribeReferenceTreeProblems(IReadOnlyList<EntityTypeDefinition> definitions)
+    {
+        var errors = new List<string>();
+        var warnings = new List<string>();
+
+        foreach (var definition in definitions)
+        {
+            foreach (var attribute in definition.Attributes.Where(a => a.ReferenceTree is not null))
+            {
+                var where = $"{definition.Name}.{attribute.Name}";
+                var tree = attribute.ReferenceTree!;
+                if (attribute.DataType != "Reference")
+                {
+                    warnings.Add($"{where}: referenceTree on a \"{attribute.DataType}\" attribute does nothing; only a Reference picker reads it.");
+                    continue;
+                }
+
+                var target = definitions.FirstOrDefault(d => NamesType(d, attribute.ReferenceType));
+                if (target is null)
+                {
+                    errors.Add($"{where}: referenceTree needs the referenced type, and \"{attribute.ReferenceType}\" names no model.");
+                    continue;
+                }
+
+                if (string.IsNullOrWhiteSpace(tree.ParentAttribute))
+                {
+                    errors.Add($"{where}: referenceTree.parentAttribute is empty.");
+                    continue;
+                }
+
+                var parent = ColumnCapabilities.FindQuerySurfaceAttribute(target, tree.ParentAttribute);
+                if (parent is null)
+                    errors.Add($"{where}: parentAttribute \"{tree.ParentAttribute}\" is not an attribute of {target.Name} shown on its queries.");
+                else if (!ColumnCapabilities.CanFilter(parent, null))
+                    errors.Add($"{where}: parentAttribute \"{tree.ParentAttribute}\" has canFilter: false on {target.Name}, so the picker cannot ask for one node's children.");
+                else if (parent.DataType != "Reference" || !NamesType(target, parent.ReferenceType))
+                    errors.Add($"{where}: parentAttribute \"{tree.ParentAttribute}\" must be a Reference from {target.Name} to {target.Name}.");
+
+                if (tree.ChildCountAttribute is { } childCount && ColumnCapabilities.FindQuerySurfaceAttribute(target, childCount) is null)
+                    errors.Add($"{where}: childCountAttribute \"{childCount}\" is not an attribute of {target.Name} shown on its queries.");
+            }
+        }
+
+        return (errors, warnings);
+
+        static bool NamesType(EntityTypeDefinition definition, string? referenceType)
+            => !string.IsNullOrEmpty(referenceType)
+               && (string.Equals(definition.ClrType, referenceType, StringComparison.Ordinal)
+                   || string.Equals(definition.Name, referenceType, StringComparison.Ordinal));
+    }
+
     private static void VerifyRefreshTriggersAreImplemented(string contentRootPath)
     {
         var offenders = new List<string>();
@@ -1323,7 +1480,7 @@ public static class SparkDevelopmentExtensions
             if (unit.Alias is not { Length: > 0 } alias)
                 continue;
 
-            var name = unit.Name?.Translations?.Values.FirstOrDefault() ?? unit.Id.ToString();
+            var name = (unit.Name is { IsEmpty: false } unitName ? unitName.GetValue(TranslatedString.DefaultLanguage) : null) ?? unit.Id.ToString();
 
             if (string.Equals(unit.Type, "query", StringComparison.OrdinalIgnoreCase))
             {

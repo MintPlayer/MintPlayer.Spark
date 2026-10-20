@@ -49,7 +49,6 @@ namespace CodeCoverage.Migrations;
 /// </remarks>
 public partial class M_202609092200_BackfillGitHubProjectRowKeys : ISparkMigration
 {
-    public static long Version => 202609092200;
 
     public static string? Description =>
         "Give stored GitHubProject EventMappings/Columns rows their derived key";

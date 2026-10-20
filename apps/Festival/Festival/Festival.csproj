@@ -1,0 +1,58 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+	<!--
+	  apps/Festival (commerce #521 M18, docs/commerce_PRD.md §3.2, §4.16, D22): the festival demo. One app with both
+	  systems hooked up: a ticket channel and a shop channel in ConnectedSellers mode, one basket and one payment
+	  (Basket:MixChannels, D40), the test payment provider, the test carrier and the test Peppol access point. Local and
+	  E2E only: not deployed, no Dockerfile. https 5015 / http 5016.
+	-->
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<IsPackable>false</IsPackable>
+		<UserSecretsId>3c1e8f42-7a5d-4b96-a0e1-5d2f9b7c4e18</UserSecretsId>
+		<SpaRoot>ClientApp\</SpaRoot>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="11.4.1-rc.0" />
+		<PackageReference Include="MintPlayer.AspNetCore.SpaServices" Version="11.0.0-rc.3" />
+		<PackageReference Include="MintPlayer.SourceGenerators" Version="13.0.0">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\..\..\libs\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
+		<ProjectReference Include="..\..\..\libs\authorization\MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj" />
+		<ProjectReference Include="..\..\..\libs\messaging\MintPlayer.Spark.Messaging\MintPlayer.Spark.Messaging.csproj" />
+		<ProjectReference Include="..\..\..\libs\mail\MintPlayer.Spark.MailManager\MintPlayer.Spark.MailManager.csproj" />
+		<ProjectReference Include="..\..\..\libs\cron\MintPlayer.Spark.Cron\MintPlayer.Spark.Cron.csproj" />
+		<ProjectReference Include="..\..\..\libs\organizations\MintPlayer.Spark.Organizations\MintPlayer.Spark.Organizations.csproj" />
+		<ProjectReference Include="..\..\..\libs\approvals\MintPlayer.Spark.Approvals\MintPlayer.Spark.Approvals.csproj" />
+		<ProjectReference Include="..\..\..\libs\waiting_room\MintPlayer.Spark.WaitingRoom\MintPlayer.Spark.WaitingRoom.csproj" />
+		<ProjectReference Include="..\..\..\libs\challenges\MintPlayer.Spark.Challenges\MintPlayer.Spark.Challenges.csproj" />
+		<ProjectReference Include="..\..\..\libs\challenges\MintPlayer.Spark.Challenges.Turnstile\MintPlayer.Spark.Challenges.Turnstile.csproj" />
+		<ProjectReference Include="..\..\..\libs\refdata\client\MintPlayer.Spark.ReferenceData.Client.csproj" />
+		<ProjectReference Include="..\..\..\libs\commerce\MintPlayer.Spark.Commerce\MintPlayer.Spark.Commerce.csproj" />
+		<ProjectReference Include="..\..\..\libs\commerce\MintPlayer.Spark.Commerce.Inventory\MintPlayer.Spark.Commerce.Inventory.csproj" />
+		<ProjectReference Include="..\..\..\libs\commerce\MintPlayer.Spark.Commerce.Payments\MintPlayer.Spark.Commerce.Payments.csproj" />
+		<ProjectReference Include="..\..\..\libs\commerce\MintPlayer.Spark.Commerce.Payments.Test\MintPlayer.Spark.Commerce.Payments.Test.csproj" />
+		<ProjectReference Include="..\..\..\libs\commerce\MintPlayer.Spark.Commerce.Checkout\MintPlayer.Spark.Commerce.Checkout.csproj" />
+		<ProjectReference Include="..\..\..\libs\commerce\MintPlayer.Spark.Commerce.Promotions\MintPlayer.Spark.Commerce.Promotions.csproj" />
+		<ProjectReference Include="..\..\..\libs\commerce\MintPlayer.Spark.Commerce.Invoicing\MintPlayer.Spark.Commerce.Invoicing.csproj" />
+		<ProjectReference Include="..\..\..\libs\commerce\MintPlayer.Spark.Commerce.Invoicing.Peppol.Test\MintPlayer.Spark.Commerce.Invoicing.Peppol.Test.csproj" />
+		<ProjectReference Include="..\..\..\libs\commerce\MintPlayer.Spark.Commerce.Shipping\MintPlayer.Spark.Commerce.Shipping.csproj" />
+		<ProjectReference Include="..\..\..\libs\commerce\MintPlayer.Spark.Commerce.Shipping.Test\MintPlayer.Spark.Commerce.Shipping.Test.csproj" />
+		<ProjectReference Include="..\..\..\libs\commerce\MintPlayer.Spark.Commerce.Fulfilment\MintPlayer.Spark.Commerce.Fulfilment.csproj" />
+		<ProjectReference Include="..\..\..\libs\commerce\MintPlayer.Spark.Commerce.Shop\MintPlayer.Spark.Commerce.Shop.csproj" />
+		<ProjectReference Include="..\..\..\libs\commerce\MintPlayer.Spark.Commerce.Ticketing.Venues\MintPlayer.Spark.Commerce.Ticketing.Venues.csproj" />
+		<ProjectReference Include="..\..\..\libs\commerce\MintPlayer.Spark.Commerce.Ticketing.Events\MintPlayer.Spark.Commerce.Ticketing.Events.csproj" />
+		<ProjectReference Include="..\..\..\libs\commerce\MintPlayer.Spark.Commerce.Ticketing.Tickets\MintPlayer.Spark.Commerce.Ticketing.Tickets.csproj" />
+		<ProjectReference Include="..\..\..\libs\commerce\MintPlayer.Spark.Commerce.WaitingRoom\MintPlayer.Spark.Commerce.WaitingRoom.csproj" />
+		<ProjectReference Include="..\..\..\libs\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+		<ProjectReference Include="..\..\..\libs\source_generators\MintPlayer.Spark.LibraryGenerators\MintPlayer.Spark.LibraryGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+	</ItemGroup>
+
+</Project>

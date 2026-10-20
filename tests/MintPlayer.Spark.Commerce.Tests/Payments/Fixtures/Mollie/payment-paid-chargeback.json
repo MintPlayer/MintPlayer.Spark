@@ -1,0 +1,42 @@
+{
+  "_fixture": {
+    "source": "https://docs.mollie.com/reference/get-payment (embed=chargebacks) and https://docs.mollie.com/reference/get-chargeback (chargeback object: amount, settlementAmount, reason.code/description, reversedAt)",
+    "derived": "public documentation examples combined; ids and amounts adapted. A payment's status stays 'paid' when charged back.",
+    "recorded": false
+  },
+  "resource": "payment",
+  "id": "tr_44aKxzEbr8",
+  "mode": "test",
+  "status": "paid",
+  "amount": { "value": "35.07", "currency": "EUR" },
+  "description": "Order 99",
+  "method": "creditcard",
+  "metadata": { "spark_reference": "orders/99" },
+  "details": { "cardFingerprint": "aa11bb22cc33", "cardFunding": "credit" },
+  "createdAt": "2026-10-10T08:00:00+00:00",
+  "paidAt": "2026-10-10T08:01:00+00:00",
+  "_embedded": {
+    "chargebacks": [
+      {
+        "resource": "chargeback",
+        "id": "chb_xFzwUN4ci8HAmSGUACS4J",
+        "amount": { "value": "35.07", "currency": "EUR" },
+        "settlementAmount": { "value": "-50.07", "currency": "EUR" },
+        "createdAt": "2026-10-18T14:00:00+00:00",
+        "reason": { "code": "AC01", "description": "Account identifier incorrect (i.e. invalid IBAN)" },
+        "reversedAt": null,
+        "paymentId": "tr_44aKxzEbr8"
+      },
+      {
+        "resource": "chargeback",
+        "id": "chb_reversed01",
+        "amount": { "value": "10.00", "currency": "EUR" },
+        "settlementAmount": { "value": "-10.00", "currency": "EUR" },
+        "createdAt": "2026-10-12T09:00:00+00:00",
+        "reason": { "code": "MD06", "description": "Refund request by end customer" },
+        "reversedAt": "2026-10-15T09:00:00+00:00",
+        "paymentId": "tr_44aKxzEbr8"
+      }
+    ]
+  }
+}

@@ -29,12 +29,10 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSpark(builder.Configuration, spark =>
 {
     spark.UseContext<QnAContext>();
-    spark.AddActions();
-    spark.AddInterceptors();
-    spark.AddCustomActions();
-    // Generated: runs the migrations referenced packages ship once at startup. QnA has none of its
-    // own; Authorization migrates stored SparkUser/SparkRole documents (#388).
-    spark.AddMigrations();
+    // Generated: the Actions classes, interceptors, custom actions and row policy, plus the migrations
+    // referenced packages ship, run once at startup. QnA has no migration of its own; Authorization
+    // migrates stored SparkUser/SparkRole documents (#388).
+    spark.AddSparkDiscovered();
 
     // Password accounts, and every account must confirm its email before it can sign in (D6). The
     // confirmation link points at the SPA's confirm-email page (withAccount(), D16).
@@ -69,7 +67,7 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     // Translator names come from QnAUserNames through AddHistoryUserNameResolver above.
     spark.AddContributions();
 
-    // QnA's own rules through the core seams — a row policy and four interceptors (AddInterceptors above
+    // QnA's own rules through the core seams — a row policy and four interceptors (AddSparkDiscovered above
     // registers them too; listed here so the setup reads in one place).
     spark.AddSparkRowPolicy<DraftQuestionPolicy>();
     spark.AddInterceptor<QuestionTagsInterceptor>();

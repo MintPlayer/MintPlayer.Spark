@@ -221,18 +221,6 @@
         "rules": []
       },
       {
-        "id": "cd11d969-10b5-5694-8798-be7135fe9304",
-        "name": "GoLiveReview",
-        "dataType": "AsDetail",
-        "isRequired": false,
-        "isReadOnly": true,
-        "order": 7,
-        "asDetailType": "MintPlayer.Spark.IdentityProvider.Models.OidcReviewDecision",
-        "isArray": false,
-        "showedOn": "PersistentObject",
-        "rules": []
-      },
-      {
         "id": "25568327-3e50-572e-945b-8af0b202b64c",
         "name": "HomepageUrl",
         "dataType": "string",

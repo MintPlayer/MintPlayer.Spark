@@ -11,7 +11,6 @@ public class SparkMigrationRegistryTests
 {
     private sealed class Dummy : ISparkMigration
     {
-        public static long Version => 0;
         public Task UpAsync(CancellationToken ct) => Task.CompletedTask;
     }
 

@@ -982,14 +982,30 @@ internal partial class EntityMapper : IEntityMapper
         var existing = AccessorCache.GetGetter(property)(entity) as TranslatedString;
         if (existing is null)
         {
-            AccessorCache.GetSetter(property)(entity, incoming);
+            incoming.Entries.RemoveAll(e => e.Value.Length == 0);
+            AccessorCache.GetSetter(property)(entity, incoming.IsEmpty ? null : incoming);
             return;
         }
 
-        // Merge: incoming languages overwrite; languages absent from the incoming dict
-        // survive on the existing entity.
-        foreach (var (lang, value) in incoming.Translations)
-            existing.Translations[lang] = value;
+        // Merge per tag: a tag the client sent replaces every existing entry of that tag (at the
+        // position of its first one, so the author order holds); tags it did not send survive.
+        // A tag sent with an empty text removes it: that is how an editor clears one language
+        // without the others (resolving would otherwise match the empty text and stop there).
+        var sent = new HashSet<string>(incoming.Tags, StringComparer.OrdinalIgnoreCase);
+        var placed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var merged = new List<TranslatedStringEntry>();
+        foreach (var entry in existing.Entries)
+        {
+            if (!sent.Contains(entry.Tag))
+                merged.Add(entry);
+            else if (placed.Add(entry.Tag))
+                merged.AddRange(incoming.Entries.Where(e => LanguageTag.AreEqual(e.Tag, entry.Tag)));
+        }
+        foreach (var tag in incoming.Tags)
+            if (placed.Add(tag))
+                merged.AddRange(incoming.Entries.Where(e => LanguageTag.AreEqual(e.Tag, tag)));
+        merged.RemoveAll(e => e.Value.Length == 0);
+        existing.Entries = merged;
     }
 
     private static TranslatedString? ParseTranslatedString(object? raw)
@@ -1002,51 +1018,32 @@ internal partial class EntityMapper : IEntityMapper
             if (je.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined) return null;
             if (je.ValueKind == JsonValueKind.Object)
             {
-                var parsed = new TranslatedString();
-                foreach (var prop in je.EnumerateObject())
-                {
-                    var text = prop.Value.ValueKind == JsonValueKind.String
-                        ? prop.Value.GetString()
-                        : prop.Value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined
-                            ? null
-                            : prop.Value.ToString();
-                    if (text is not null) parsed.Translations[prop.Name] = text;
-                }
-                return parsed.Translations.Count == 0 ? null : parsed;
+                // The one converter reads both the {"Entries":[…]} shape and the flat {"en":"…"}
+                // shorthand, and rejects an ill-formed language tag.
+                var parsed = je.Deserialize<TranslatedString>();
+                return parsed is null || parsed.IsEmpty ? null : parsed;
             }
             return null;
         }
 
-        if (raw is IDictionary<string, string> stringDict)
-        {
-            if (stringDict.Count == 0) return null;
-            var parsed = new TranslatedString();
-            foreach (var (k, v) in stringDict) parsed.Translations[k] = v;
-            return parsed;
-        }
-
-        if (raw is IDictionary<string, object?> objDict)
-        {
-            var parsed = new TranslatedString();
-            foreach (var (k, v) in objDict)
-            {
-                if (v is null) continue;
-                parsed.Translations[k] = v is string s ? s : v.ToString()!;
-            }
-            return parsed.Translations.Count == 0 ? null : parsed;
-        }
+        if (raw is IDictionary<string, string> or IDictionary<string, object?>)
+            return ParseTranslatedString(JsonSerializer.SerializeToElement(raw));
 
         if (raw is string json && !string.IsNullOrWhiteSpace(json))
         {
+            // Only the parse may fail quietly (not JSON: no value); the converter's refusals of an
+            // ill-formed tag or a non-string text must surface, as they do for a JsonElement.
+            JsonElement root;
             try
             {
                 using var doc = JsonDocument.Parse(json);
-                return ParseTranslatedString(doc.RootElement.Clone());
+                root = doc.RootElement.Clone();
             }
             catch (JsonException)
             {
                 return null;
             }
+            return ParseTranslatedString(root);
         }
 
         return null;
@@ -1131,10 +1128,64 @@ internal partial class EntityMapper : IEntityMapper
         },
     };
 
+    /// <summary>
+    /// A wire value as <see cref="Money"/>: <see langword="null"/> (or a blank) clears it, a
+    /// <see cref="Money"/> passes, and an object goes through <see cref="MoneyJsonConverter"/>.
+    /// </summary>
+    internal static Money? ReadMoney(object? value, string attributeName) => ReadValue<Money>(value, attributeName);
+
+    /// <summary>
+    /// A wire value as <see cref="Quantity"/> (warehouse WX8), on the same terms as <see cref="ReadMoney"/>:
+    /// an object goes through <see cref="QuantityJsonConverter"/>, and an invalid unit is a 400 naming the attribute.
+    /// </summary>
+    internal static Quantity? ReadQuantity(object? value, string attributeName) => ReadValue<Quantity>(value, attributeName);
+
+    private static T? ReadValue<T>(object? value, string attributeName) where T : class
+    {
+        switch (value)
+        {
+            case null:
+                return null;
+            case T typed:
+                return typed;
+            case JsonElement { ValueKind: JsonValueKind.Null or JsonValueKind.Undefined }:
+                return null;
+            case string blank when string.IsNullOrWhiteSpace(blank):
+                return null;
+        }
+
+        var json = value is JsonElement element ? element.GetRawText() : JsonSerializer.Serialize(value);
+        try
+        {
+            return JsonSerializer.Deserialize<T>(json);
+        }
+        catch (JsonException ex)
+        {
+            throw new SparkValidationException(
+                $"'{json}' is not a valid {typeof(T).Name} value for {attributeName}: {ex.Message}", attributeName);
+        }
+    }
+
     private void SetPropertyValue(PropertyInfo property, object entity, object? value)
     {
         var targetType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
         var setter = AccessorCache.GetSetter(property);
+
+        // Money (commerce X4) is one value, {"Amount","Currency"}, read through its own converter. An amount
+        // more precise than the currency, or an unknown currency, is the user's input being wrong: a 400
+        // naming the attribute, never a silent skip and never a silent rounding.
+        if (targetType == typeof(Money))
+        {
+            setter(entity, ReadMoney(value, property.Name));
+            return;
+        }
+
+        // Quantity (warehouse WX8) is one value too, {"Amount","Unit"}; an invalid unit code is a 400.
+        if (targetType == typeof(Quantity))
+        {
+            setter(entity, ReadQuantity(value, property.Name));
+            return;
+        }
 
         // Handle JsonElement - either extract simple value or deserialize complex types
         if (value is JsonElement je)

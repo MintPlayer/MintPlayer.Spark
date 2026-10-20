@@ -30,7 +30,7 @@ public abstract class SparkDashboardActions(IServiceProvider services)
 
     private const string Suffix = "Actions";
 
-    /// <summary>The dashboard's model type name: this class's name without <c>Actions</c>.</summary>
+    /// <summary>The dashboard's declared name: this class's name without <c>Actions</c>, the name its model file declares (an application rename changes neither, D28).</summary>
     protected string DashboardName
     {
         get
@@ -48,7 +48,11 @@ public abstract class SparkDashboardActions(IServiceProvider services)
             || !string.Equals(id, dashboard.ObjectId, StringComparison.Ordinal))
             return null;
 
-        var obj = await services.GetRequiredService<IManager>().GetPersistentObjectAsync(DashboardName);
+        // The model type by identity, not by the name the application gives it (D28).
+        if (dashboard.TypeOf(services.GetRequiredService<IModelLoader>()) is not { } type)
+            return null;
+
+        var obj = await services.GetRequiredService<IManager>().GetPersistentObjectAsync(type.Id);
         var snapshot = await services.GetRequiredService<DashboardReader>().ReadAsync(dashboard, CancellationToken.None);
         foreach (var (name, value) in snapshot.Values)
         {
@@ -58,7 +62,7 @@ public abstract class SparkDashboardActions(IServiceProvider services)
         }
 
         obj.Id = id;
-        obj.Breadcrumb ??= Title();
+        obj.Breadcrumb ??= Title(type);
         obj.Can = new PersistentObjectPermissions { Edit = false, Delete = false };
         obj.Metadata ??= new Dictionary<string, object?>();
         obj.Metadata[MetadataKey] = new Dictionary<string, object?> { ["generatedAtUtc"] = snapshot.GeneratedAtUtc };
@@ -66,12 +70,11 @@ public abstract class SparkDashboardActions(IServiceProvider services)
     }
 
     /// <summary>The type's label in the request's language, else its name.</summary>
-    private string Title()
+    private string Title(EntityTypeDefinition definition)
     {
-        var definition = services.GetRequiredService<IModelLoader>().GetEntityTypeByName(DashboardName);
         var culture = services.GetService<IRequestCultureResolver>()?.GetCurrentCulture();
-        return definition?.Label is { } label && culture is not null && label.GetValue(culture) is { Length: > 0 } text
+        return definition.Label is { } label && culture is not null && label.GetValue(culture) is { Length: > 0 } text
             ? text
-            : DashboardName;
+            : definition.Name;
     }
 }

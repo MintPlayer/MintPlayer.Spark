@@ -1,0 +1,26 @@
+{
+  "_fixture": {
+    "source": "https://sendcloud.dev/api/v3/shipments/retrieve-shipments (200: a data array of shipment objects; pagination in the Link header)",
+    "retrieved": "2026-10-20",
+    "derived": "built from the schema: one shipment as in shipment-announced.json (one parcel), found by external_reference_id",
+    "recorded": false
+  },
+  "data": [
+    {
+      "id": "XXX-Shipment-id",
+      "external_reference_id": "Shipments/orders/12345",
+      "parcels": [
+        {
+          "id": 383707309,
+          "status": { "code": "READY_TO_SEND", "message": "Ready to send" },
+          "documents": [
+            { "type": "label", "size": "a6", "link": "https://panel.sendcloud.sc/api/v3/parcels/383707309/documents/label" }
+          ],
+          "tracking_number": "3SYZXG8498635",
+          "tracking_url": "https://tracking.eu-central-1-0.sendcloud.sc/forward?carrier=postnl&code=3SYZXG8498635&destination=NL&lang=en-us&source=NL&type=parcel"
+        }
+      ],
+      "errors": []
+    }
+  ]
+}

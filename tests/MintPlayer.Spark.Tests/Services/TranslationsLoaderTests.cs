@@ -41,7 +41,7 @@ public sealed class TranslationsLoaderTests : IDisposable
         File.WriteAllText(_appFile, """{ "save": { "nl": "Bewaren" }, "app": { "title": { "en": "App" } } }""");
         using var loader = Loader();
 
-        loader.Resolve("save")!.Translations.Select(t => $"{t.Key}={t.Value}").Should().Equal("en=Save", "nl=Bewaren");
+        loader.Resolve("save")!.Entries.Select(t => $"{t.Tag}={t.Value}").Should().Equal("en=Save", "nl=Bewaren");
         loader.Resolve("app.title")!.GetValue("en").Should().Be("App");
         loader.Resolve("cancel")!.GetValue("en").Should().Be("Cancel");
         loader.Resolve("__definitely_not_a_real_translation_key__").Should().BeNull();

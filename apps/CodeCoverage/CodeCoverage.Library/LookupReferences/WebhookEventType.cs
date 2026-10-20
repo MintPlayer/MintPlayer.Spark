@@ -3,8 +3,11 @@ using MintPlayer.Spark.Abstractions;
 namespace CodeCoverage.LookupReferences;
 
 /// <summary>
-/// The GitHub events a board automation rule can react to.
+/// The GitHub events a board automation rule can react to. <c>[SparkLookup]</c> generates the
+/// <see cref="WebhookEventType"/> lookup; its labels are the <c>translations.json</c> keys
+/// <c>lookup.EWebhookEventType.*</c>.
 /// </summary>
+[SparkLookup]
 public enum EWebhookEventType
 {
     // Issues
@@ -38,7 +41,8 @@ public enum EWebhookEventType
 
 /// <summary>
 /// The closed set of GitHub events a board rule may fire on, with the wire values needed to match a
-/// delivery against it.
+/// delivery against it. The items themselves are generated from <see cref="EWebhookEventType"/>; this
+/// part adds the wire values.
 /// <para>
 /// A lookup rather than a free-text field because the set is closed and a typo would produce a rule
 /// that silently never fires — indistinguishable, from the UI, from a rule that fires and does
@@ -56,54 +60,55 @@ public enum EWebhookEventType
 /// keys on (event, action) alone maps a merge onto the "closed" rule and drops the "merged" one —
 /// see <c>ProjectAutomationRecipient</c>, which disambiguates on the payload.
 /// </para>
+/// <para>
+/// <b>Eighteen</b> entries — the PRD and plan for this feature both said nineteen, which was simply a
+/// miscount of this same list and is corrected here.
+/// </para>
 /// </summary>
-public sealed class WebhookEventType : TransientLookupReference<EWebhookEventType>
+public sealed partial class WebhookEventType
 {
-    private WebhookEventType() { }
-
-    public override ELookupDisplayType DisplayType => ELookupDisplayType.Dropdown;
-
     /// <summary>The GitHub event name, as sent in <c>X-GitHub-Event</c> and recorded on the message envelope.</summary>
-    public string EventName { get; init; } = string.Empty;
+    public string EventName { get; private set; } = string.Empty;
 
     /// <summary>
     /// The payload's <c>action</c> value. Null would mean "any action"; every entry here has one,
     /// because every event in this set carries a sub-action.
     /// </summary>
-    public string? ActionValue { get; init; }
+    public string? ActionValue { get; private set; }
 
-    /// <summary>
-    /// Every event a rule may target. <b>Eighteen</b> entries — the PRD and plan for this feature
-    /// both said nineteen, which was simply a miscount of this same list and is corrected here.
-    /// </summary>
-    public static IReadOnlyCollection<WebhookEventType> Items { get; } =
-    [
-        // Issues
-        new() { Key = EWebhookEventType.IssuesOpened,     EventName = "issues", ActionValue = "opened",     Values = _TS("Issue opened") },
-        new() { Key = EWebhookEventType.IssuesClosed,     EventName = "issues", ActionValue = "closed",     Values = _TS("Issue closed") },
-        new() { Key = EWebhookEventType.IssuesReopened,   EventName = "issues", ActionValue = "reopened",   Values = _TS("Issue reopened") },
-        new() { Key = EWebhookEventType.IssuesLabeled,    EventName = "issues", ActionValue = "labeled",    Values = _TS("Issue labeled") },
-        new() { Key = EWebhookEventType.IssuesUnlabeled,  EventName = "issues", ActionValue = "unlabeled",  Values = _TS("Issue unlabeled") },
-        new() { Key = EWebhookEventType.IssuesAssigned,   EventName = "issues", ActionValue = "assigned",   Values = _TS("Issue assigned") },
-        new() { Key = EWebhookEventType.IssuesUnassigned, EventName = "issues", ActionValue = "unassigned", Values = _TS("Issue unassigned") },
+    static partial void Initialize(WebhookEventType item)
+    {
+        (item.EventName, item.ActionValue) = item.Key switch
+        {
+            // Issues
+            EWebhookEventType.IssuesOpened => ("issues", "opened"),
+            EWebhookEventType.IssuesClosed => ("issues", "closed"),
+            EWebhookEventType.IssuesReopened => ("issues", "reopened"),
+            EWebhookEventType.IssuesLabeled => ("issues", "labeled"),
+            EWebhookEventType.IssuesUnlabeled => ("issues", "unlabeled"),
+            EWebhookEventType.IssuesAssigned => ("issues", "assigned"),
+            EWebhookEventType.IssuesUnassigned => ("issues", "unassigned"),
 
-        // Pull Requests. Closed and Merged deliberately share event+action; see the class remarks.
-        new() { Key = EWebhookEventType.PullRequestOpened,           EventName = "pull_request", ActionValue = "opened",             Values = _TS("Pull request opened") },
-        new() { Key = EWebhookEventType.PullRequestClosed,           EventName = "pull_request", ActionValue = "closed",             Values = _TS("Pull request closed without merging") },
-        new() { Key = EWebhookEventType.PullRequestMerged,           EventName = "pull_request", ActionValue = "closed",             Values = _TS("Pull request merged") },
-        new() { Key = EWebhookEventType.PullRequestReadyForReview,   EventName = "pull_request", ActionValue = "ready_for_review",   Values = _TS("PR ready for review") },
-        new() { Key = EWebhookEventType.PullRequestConvertedToDraft, EventName = "pull_request", ActionValue = "converted_to_draft", Values = _TS("PR converted to draft") },
-        new() { Key = EWebhookEventType.PullRequestReviewRequested,  EventName = "pull_request", ActionValue = "review_requested",   Values = _TS("PR review requested") },
+            // Pull Requests. Closed and Merged deliberately share event+action; see the class remarks.
+            EWebhookEventType.PullRequestOpened => ("pull_request", "opened"),
+            EWebhookEventType.PullRequestClosed => ("pull_request", "closed"),
+            EWebhookEventType.PullRequestMerged => ("pull_request", "closed"),
+            EWebhookEventType.PullRequestReadyForReview => ("pull_request", "ready_for_review"),
+            EWebhookEventType.PullRequestConvertedToDraft => ("pull_request", "converted_to_draft"),
+            EWebhookEventType.PullRequestReviewRequested => ("pull_request", "review_requested"),
 
-        // Pull Request Reviews. Approved and ChangesRequested share event+action; see the remarks.
-        new() { Key = EWebhookEventType.PullRequestReviewApproved,         EventName = "pull_request_review", ActionValue = "submitted", Values = _TS("PR review: approved") },
-        new() { Key = EWebhookEventType.PullRequestReviewChangesRequested, EventName = "pull_request_review", ActionValue = "submitted", Values = _TS("PR review: changes requested") },
-        new() { Key = EWebhookEventType.PullRequestReviewDismissed,        EventName = "pull_request_review", ActionValue = "dismissed", Values = _TS("PR review dismissed") },
+            // Pull Request Reviews. Approved and ChangesRequested share event+action; see the remarks.
+            EWebhookEventType.PullRequestReviewApproved => ("pull_request_review", "submitted"),
+            EWebhookEventType.PullRequestReviewChangesRequested => ("pull_request_review", "submitted"),
+            EWebhookEventType.PullRequestReviewDismissed => ("pull_request_review", "dismissed"),
 
-        // Check Runs
-        new() { Key = EWebhookEventType.CheckRunCompleted, EventName = "check_run", ActionValue = "completed", Values = _TS("Check run completed") },
+            // Check Runs
+            EWebhookEventType.CheckRunCompleted => ("check_run", "completed"),
 
-        // Issue Comments
-        new() { Key = EWebhookEventType.IssueCommentCreated, EventName = "issue_comment", ActionValue = "created", Values = _TS("Issue comment created") },
-    ];
+            // Issue Comments
+            EWebhookEventType.IssueCommentCreated => ("issue_comment", "created"),
+
+            _ => throw new System.ArgumentOutOfRangeException(nameof(item), item.Key, "An EWebhookEventType member without its GitHub event and action."),
+        };
+    }
 }

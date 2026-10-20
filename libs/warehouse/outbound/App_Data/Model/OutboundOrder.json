@@ -1,0 +1,318 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "The warehouse working document of a fulfilment order (PRD §4.5 OutboundOrder): read-only; changed through the outbound services and custom actions.",
+    "",
+    "HAND-AUTHORED. Ids are UUIDv5 of 'warehouse-outbound:OutboundOrder[...]', written by 'npm run stamp:library-model-ids'."
+  ],
+  "persistentObject": {
+    "id": "d7e6c1ce-5a9e-57b1-af8b-e7a41047059d",
+    "name": "OutboundOrder",
+    "clrType": "MintPlayer.Spark.Warehouse.Outbound.Models.OutboundOrder",
+    "alias": "warehouse-outbound-order",
+    "breadcrumb": "{OrderNumber} {State}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "a5b228f3-04bf-5d7d-80bb-b453227a63a1",
+        "name": "OrderNumber",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "19f3d30f-2c57-57aa-a74f-4e5db4992e14",
+        "name": "FulfilmentOrderId",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "d133b2e6-77a5-5cbc-bdc9-2e4c95d7f969",
+        "name": "State",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "bbf9a263-aecf-5204-ac2e-19e673390b4a",
+        "name": "SiteId",
+        "dataType": "Reference",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "query": "WarehouseSites",
+        "referenceType": "MintPlayer.Spark.Warehouse.Models.WarehouseSite"
+      },
+      {
+        "id": "191b75ae-1c12-5ffc-91ed-1b0e3bb43e68",
+        "name": "Channel",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "3d789259-4c34-5be8-ba05-6f8118745049",
+        "name": "ExternalOwnerId",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "1800029f-9cf8-51e3-8a37-654db8c96124",
+        "name": "SourceModule",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "c8bfd84d-bc90-5efa-bdd2-ffbc0bd51221",
+        "name": "PlacedAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "2eec8666-8c6d-549c-a4df-1f4e94e52189",
+        "name": "Priority",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 9,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "9db80828-e838-5666-812a-feb6cfda9c76",
+        "name": "ShipComplete",
+        "dataType": "boolean",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 10,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "cf8160dd-270f-5643-a4e8-7efbec59f058",
+        "name": "ShipNotBefore",
+        "dataType": "date",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 11,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "aa614db2-4ca2-578f-954d-4c1c967e4de6",
+        "name": "ManualHold",
+        "dataType": "boolean",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 12,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "4cb1f343-33c5-5401-bae2-47d158a95947",
+        "name": "HoldReason",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 13,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "194cea51-2c61-5d90-9f58-31b9b0d3330b",
+        "name": "RejectionReason",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 14,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "b907bd0d-2191-5509-8832-8d7288d0b3c6",
+        "name": "RejectionDetail",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 15,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "1544f416-c4b2-5898-b5cb-7c1e579cd5df",
+        "name": "CarrierCode",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 16,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "5492f041-aa63-59e4-9632-57ab6905895d",
+        "name": "ServiceCode",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 17,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "ae519d8b-2550-5bcc-a669-92aa076065ae",
+        "name": "WaveId",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 18,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "a7ea36c4-8ebd-5770-a758-26bfe511f4c4",
+        "name": "ConsolidationSlotId",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 19,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "3c436eee-a739-5faa-8717-971686d0e745",
+        "name": "CancellationRequested",
+        "dataType": "boolean",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 20,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "e56edef4-fbb7-58c7-8daa-845ecfa34049",
+        "name": "CancellationAnswer",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 21,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "9239c502-19bf-53c8-9e00-d0a081129f53",
+        "name": "CancellationRefusalReason",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 22,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "f35b3aca-bc3a-5ae2-9a69-2aae8f746477",
+        "name": "ShipmentCount",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 23,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "bfb2db03-0254-5c3a-9ee1-fe402de82b06",
+        "name": "AcceptedAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 24,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "29977c0b-99cd-5f14-8e39-9c18638b8459",
+        "name": "ReleasedAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 25,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "06a44f76-a706-5d13-9429-7951aa16f9b9",
+        "name": "ShippedAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 26,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      }
+    ]
+  },
+  "queries": [
+    {
+      "id": "54b29914-f5c1-5e8f-b242-945f84e70b5f",
+      "name": "OutboundOrders",
+      "source": "Custom.OutboundOrders",
+      "alias": "outbound-orders",
+      "sortColumns": [],
+      "renderMode": "Pagination",
+      "entityType": "OutboundOrder"
+    }
+  ]
+}

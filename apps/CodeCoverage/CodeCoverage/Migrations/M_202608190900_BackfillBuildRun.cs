@@ -22,7 +22,6 @@ namespace CodeCoverage.Migrations;
 /// </summary>
 public partial class M_202608190900_BackfillBuildRun : ISparkMigration
 {
-    public static long Version => 202608190900;
     public static string? Description => "Backfill Build.Run, now stored rather than computed";
 
     [Inject] private readonly IDocumentStore store;

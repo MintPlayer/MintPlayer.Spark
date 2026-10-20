@@ -1,0 +1,34 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "ReconciliationNote, the form PaymentReconciliationResolve prompts with through a retry. A virtual prompt type.",
+    "",
+    "HAND-AUTHORED. Ids are UUIDv5 of 'commerce-payments:ReconciliationNote[...]', written by 'npm run stamp:library-model-ids'."
+  ],
+  "persistentObject": {
+    "id": "7ab2e2b5-552c-594a-8148-8a56705ba17e",
+    "name": "ReconciliationNote",
+    "breadcrumb": "{Note}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "565bc57d-e122-53f2-864b-5247e497ca92",
+        "name": "Note",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [
+          {
+            "type": "maxLength",
+            "value": 2000
+          }
+        ]
+      }
+    ]
+  },
+  "queries": []
+}

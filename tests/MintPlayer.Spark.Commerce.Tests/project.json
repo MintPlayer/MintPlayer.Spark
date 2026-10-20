@@ -1,0 +1,18 @@
+{
+  "name": "MintPlayer.Spark.Commerce.Tests",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "targets": {
+    "test": {
+      "options": {
+        "cwd": "tests/MintPlayer.Spark.Commerce.Tests",
+        "command": "dotnet test --no-build --no-restore --settings ../../coverlet.runsettings --collect:\"XPlat Code Coverage\" --results-directory coverage",
+        "args": []
+      },
+      "configurations": {
+        "local": {
+          "command": "dotnet test --no-build --no-restore"
+        }
+      }
+    }
+  }
+}

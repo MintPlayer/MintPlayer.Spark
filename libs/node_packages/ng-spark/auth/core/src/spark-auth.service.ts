@@ -1,4 +1,4 @@
-import { computed, inject, Injectable, Injector, NgZone, signal } from '@angular/core';
+import { computed, effect, inject, Injectable, Injector, NgZone, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
@@ -22,6 +22,8 @@ import {
   sparkExternalLoginNonce,
   sparkExternalLoginStorageKey,
   SparkExternalLogins,
+  SparkExternalLoginUnlinked,
+  SparkPersonalData,
   SparkPasskeyError,
   SparkPasskeyResult,
   passkeysSupported,
@@ -43,6 +45,9 @@ import {
 
 /** How often the popup is checked for a manual close. */
 const POPUP_CLOSE_POLL_MS = 400;
+
+/** The window event SparkAuthService raises when the signed-in identity changes (sign-in, sign-out, account deletion). */
+export const SPARK_IDENTITY_CHANGED_EVENT = 'spark-identity-changed';
 
 @Injectable({ providedIn: 'root' })
 export class SparkAuthService {
@@ -75,6 +80,16 @@ export class SparkAuthService {
 
   constructor() {
     this.checkAuth();
+    // Announces sign-in and sign-out to the rest of the app without a package dependency: the live socket
+    // (SparkLiveService) reconnects on it, because a socket's identity is fixed when it connects.
+    let identity: string | null | undefined;
+    effect(() => {
+      const user = this.currentUser();
+      const next = user?.isAuthenticated ? user.userName : null;
+      if (identity !== undefined && next !== identity && typeof globalThis.dispatchEvent === 'function')
+        globalThis.dispatchEvent(new CustomEvent(SPARK_IDENTITY_CHANGED_EVENT));
+      identity = next;
+    });
   }
 
   /**
@@ -230,7 +245,7 @@ export class SparkAuthService {
       + `?provider=${encodeURIComponent(provider)}`
       + `&providerKey=${encodeURIComponent(providerKey)}`;
     try {
-      await firstValueFrom(this.http.post<{ unlinked: boolean }>(url, {}));
+      await firstValueFrom(this.http.post<SparkExternalLoginUnlinked>(url, {}));
       await this.checkAuth();
       return { success: true };
     } catch (response: unknown) {
@@ -541,8 +556,8 @@ export class SparkAuthService {
   }
 
   /** `GET /manage/personal-data` — the account and every contributor's data, as JSON. */
-  personalData(): Promise<SparkAccountResult<unknown>> {
-    return this.accountCall(() => firstValueFrom(this.http.get<unknown>(`${this.config.apiBasePath}/manage/personal-data`)));
+  personalData(): Promise<SparkAccountResult<SparkPersonalData>> {
+    return this.accountCall(() => firstValueFrom(this.http.get<SparkPersonalData>(`${this.config.apiBasePath}/manage/personal-data`)));
   }
 
   /**

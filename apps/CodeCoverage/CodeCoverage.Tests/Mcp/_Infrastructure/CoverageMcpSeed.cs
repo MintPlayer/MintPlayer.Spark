@@ -28,6 +28,9 @@ internal static class CoverageMcpSeed
 {
     public const long OpenId = 9101, SecretId = 9102, VaultId = 9103, SprawlId = 9104;
 
+    /// <summary>Commit's id in the model (App_Data/Model/Commit.json): a grant names its types by id, never by name (D28).</summary>
+    public const string CommitTypeId = "ec83c3f7-45d7-44e8-928a-2daf9a4b3ffe";
+
     public const string OpenParent = "1111111111111111111111111111111111111111";
     public const string OpenHead = "2222222222222222222222222222222222222222";
     public const string OpenPullRequestHead = "3333333333333333333333333333333333333333";
@@ -101,7 +104,7 @@ internal static class CoverageMcpSeed
 
         // The users: GitHub-linked, as the website signs them in. acme-dev's installations reach acme.
         var devToken = await StoreUserAsync(session, DevUserId, "acme-dev", 7001, gitHub, organisations: [(8001, "acme")]);
-        var devCommitsOnlyToken = await StoreTokenAsync(session, DevUserId, "stamp-acme-dev", types: [new AgentGrantType { Name = nameof(Commit) }]);
+        var devCommitsOnlyToken = await StoreTokenAsync(session, DevUserId, "stamp-acme-dev", types: [new AgentGrantType { TypeId = CommitTypeId }]);
         var outsiderToken = await StoreUserAsync(session, OutsiderUserId, "outsider", 7002, gitHub, organisations: []);
 
         // An upload token of acme's: a valid covt_ credential, for its own endpoints only (D23).

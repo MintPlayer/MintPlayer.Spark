@@ -67,7 +67,7 @@ public class QueryHookReachTests
         modelLoader.GetEntityTypeByClrType(typeof(HookedDoc).FullName!).Returns(definition);
         modelLoader.GetEntityTypeByName("HookedDoc").Returns(definition);
         actionsResolver.ResolveForType(typeof(HookedDoc)).Returns(actions);
-        actionsResolver.ResolveByEntityName("HookedDoc").Returns(actions);
+        actionsResolver.ResolveVirtual(Arg.Is<EntityTypeDefinition>(d => d.Name == "HookedDoc")).Returns(actions);
         contextResolver.ResolveContext(Arg.Any<IAsyncDocumentSession>()).Returns(new HookedContext());
 
         var entityMapper = Substitute.For<IEntityMapper>();

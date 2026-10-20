@@ -2,6 +2,7 @@ import { Component, input, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { BsCodeSnippetComponent } from '@mintplayer/ng-bootstrap/code-snippet';
+import { resolveTranslation, type TranslatedString } from '@mintplayer/ng-spark/models';
 import { SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { SeoCheckResultsComponent } from './renderers/check-results.component';
 import { SeoCatalogue, SeoCatalogueCheck, SeoCatalogueService } from './seo-catalogue.service';
@@ -35,7 +36,7 @@ export function catalogueStub(catalogue: SeoCatalogue | null = SPEC_CATALOGUE) {
 export const languageStub = {
   language: signal('en'),
   t: (key: string, fallback?: string) => fallback ?? key,
-  resolve: (ts?: Record<string, string>) => ts?.['en'] ?? '',
+  resolve: (ts?: TranslatedString) => resolveTranslation(ts, 'en'),
   translationsMap: signal({}),
 };
 

@@ -1,0 +1,19 @@
+{
+  "$schema": "../../../../schemas/security.schema.json",
+  "_comment": [
+    "Commerce's rights, shipped as a library layer. They name only the 'Commerce' pseudo-type this library reserves,",
+    "and only its own slots, which the application binds in its security.json:",
+    "  \"bindings\": { \"commerce:platform-admins\": [\"Administrators\"], \"commerce:finance\": [\"Finance\"], \"commerce:notice-reviewers\": [\"Moderators\"] }",
+    "An unbound slot refuses startup. Moderation's reviewers (Review/Moderation) may decide DSA notices too.",
+    "Seller staff are checked by their organization role (Admin/Owner, or the 'finance'/'seller-admin' custom roles), not here.",
+    "Opt out of all of these with \"libraries\": { \"commerce\": false }."
+  ],
+  "reservedTargets": [ "Commerce" ],
+  "rights": [
+    { "key": "platform-admins-manage-sellers", "resource": "ManageSellers/Commerce", "groupId": "commerce:platform-admins" },
+    { "key": "platform-admins-view-trader-data", "resource": "ViewTraderData/Commerce", "groupId": "commerce:platform-admins" },
+    { "key": "finance-view-trader-data", "resource": "ViewTraderData/Commerce", "groupId": "commerce:finance" },
+    { "key": "platform-admins-decide-notices", "resource": "DecideNotices/Commerce", "groupId": "commerce:platform-admins" },
+    { "key": "notice-reviewers-decide-notices", "resource": "DecideNotices/Commerce", "groupId": "commerce:notice-reviewers" }
+  ]
+}

@@ -14,7 +14,7 @@ import { Observable, Subject } from 'rxjs';
 import { SPARK_ATTRIBUTE_RENDERERS } from '@mintplayer/ng-spark/renderers';
 import { SparkClientMethodRegistry, SparkQueryRefreshService } from '@mintplayer/ng-spark/client-operations';
 import { SparkQueryRowAction, provideSparkQueryRowActions } from '@mintplayer/ng-spark/panels';
-import { EntityType, QueryResultItem, ShowedOn, SparkQuery } from '@mintplayer/ng-spark/models';
+import { EntityType, QueryResultItem, ShowedOn, SparkQuery, resolveTranslation, translated } from '@mintplayer/ng-spark/models';
 import { settle } from '../../src/test-utils';
 
 /**
@@ -72,7 +72,7 @@ const samplePage = {
  * The real SparkLanguageService fetches `/spark/culture` on construction, and vitest rejects
  * unhandled requests.
  */
-const langStub = { t: (k: string) => k, resolve: (v: any) => (typeof v === 'string' ? v : v?.en ?? '') };
+const langStub = { t: (k: string) => k, resolve: (v: any) => (typeof v === 'string' ? v : resolveTranslation(v, 'en')) };
 
 function makeService(overrides: Partial<Record<string, unknown>> = {}) {
   return {
@@ -423,7 +423,7 @@ describe('SparkQueryGridComponent', () => {
       try {
         const { fixture } = await setup({}, {
           data: [{ id: 'r/1', values: [{ key: 'Created', value: '2026-10-07' }] }],
-          columns: [{ name: 'Created', label: { en: 'Added' }, dataType: 'string', order: 1 }, { name: 'Plain', dataType: 'string', order: 2 }] as any,
+          columns: [{ name: 'Created', label: translated({ en: 'Added' }), dataType: 'string', order: 1 }, { name: 'Plain', dataType: 'string', order: 2 }] as any,
         });
         const columns = (fixture.debugElement.query(By.directive(BsDatatableComponent)).componentInstance as BsDatatableComponent<unknown>).columnDirectives();
         expect(columns.map(c => [c.name(), c.label()])).toEqual([['Created', 'Added'], ['Plain', 'Plain']]);
@@ -553,7 +553,7 @@ describe('SparkQueryGridComponent', () => {
 
     const copyAction = {
       name: 'CopyCarsToCompany',
-      label: { en: 'Copy' },
+      label: translated({ en: 'Copy' }),
       showedOn: 'both',
       selectionRule: '>=1',
       refreshOnCompleted: false,
@@ -709,13 +709,13 @@ describe('SparkQueryGridComponent', () => {
       const page = {
         ...samplePage,
         columns: [
-          { name: 'FirstName', dataType: 'string', order: 1, description: { en: 'Given name.' } } as any,
+          { name: 'FirstName', dataType: 'string', order: 1, description: translated({ en: 'Given name.' }) } as any,
           { name: 'LastName', dataType: 'string', order: 2 } as any,
         ],
       };
       const { c } = await setup({ executeQuery: vi.fn().mockResolvedValue(page) });
 
-      expect(c.allColumns().map(col => col.description?.['en'])).toEqual(['Given name.', undefined]);
+      expect(c.allColumns().map(col => col.description && resolveTranslation(col.description, 'en'))).toEqual(['Given name.', undefined]);
     });
   });
 
@@ -1008,7 +1008,7 @@ describe('SparkQueryGridComponent', () => {
   });
 
   describe('custom actions', () => {
-    const archive = { name: 'Archive', label: { en: 'Archive' }, showedOn: 'query', refreshOnCompleted: false } as any;
+    const archive = { name: 'Archive', label: translated({ en: 'Archive' }), showedOn: 'query', refreshOnCompleted: false } as any;
     const other = { ...archive, name: 'Other' };
 
     it('withholds the actions the result disabled, case-insensitively, re-read per page', async () => {
@@ -1039,7 +1039,7 @@ describe('SparkQueryGridComponent', () => {
       try {
         const { c, service } = await setup({ getCustomActions: vi.fn().mockResolvedValue([archive]) });
 
-        await c.onCustomAction({ ...archive, confirmation: { en: 'confirm.archive' } });
+        await c.onCustomAction({ ...archive, confirmation: translated({ en: 'confirm.archive' }) });
 
         expect(confirmSpy).toHaveBeenCalledWith('confirm.archive');
         expect(service.executeCustomAction).not.toHaveBeenCalled();
@@ -1056,7 +1056,7 @@ describe('SparkQueryGridComponent', () => {
         c.customActionExecuted.subscribe(executed);
         const tableReload = vi.spyOn((c as any).datatable(), 'reload');
 
-        await c.onCustomAction({ ...archive, confirmation: { en: 'confirm.archive' }, refreshOnCompleted: true });
+        await c.onCustomAction({ ...archive, confirmation: translated({ en: 'confirm.archive' }), refreshOnCompleted: true });
 
         expect(service.executeCustomAction).toHaveBeenCalledTimes(1);
         expect(executed).toHaveBeenCalledTimes(1);
@@ -1308,7 +1308,7 @@ describe('SparkQueryGridComponent preset filters and add-on row actions', () => 
     expect(actionsColumn.label()).toBe('common.actions');
     expect(actionsColumn.resizable()).toBe(false);
     expect(actions[0].kind).toBe('addon');
-    expect(actions[0].definition.label).toEqual({ en: 'addon.label' });
+    expect(actions[0].definition.label).toEqual(translated({ en: 'addon.label' }));
 
     const fetches = service.executeQuery.mock.calls.length;
     await c.runRowAction(actions[0], { id: 'people/1' } as any);
@@ -1321,7 +1321,7 @@ describe('SparkQueryGridComponent preset filters and add-on row actions', () => 
   it("shows an add-on's failure in the grid's alert", async () => {
     const failing: SparkQueryRowAction = {
       id: 'failing', labelKey: 'x', isOffered: () => true,
-      run: async () => { throw { status: 400, error: { result: { errors: [{ errorMessage: { en: 'Restore it first.' } }] } } }; },
+      run: async () => { throw { status: 400, error: { result: { errors: [{ errorMessage: translated({ en: 'Restore it first.' }) }] } } }; },
     };
     const { c } = await setupWith([failing]);
     await c.runRowAction(c.rowActions()[0], { id: 'people/1' } as any);

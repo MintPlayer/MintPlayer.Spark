@@ -1,0 +1,23 @@
+@if (text()) {
+  <span class="spark-translated-string-text">{{ text() }}</span>
+} @else {
+  -
+}
+@if (listed().length) {
+  <dl class="spark-translated-string-entries">
+    @for (entry of listed(); track $index) {
+      <div class="spark-translated-string-entry">
+        <dt><abbr [title]="languageName(entry.Tag)">{{ entry.Tag }}</abbr></dt>
+        <dd>
+          <span [attr.lang]="entry.Tag">{{ entry.Value }}</span>
+          @if (entry.Kind) {
+            <span class="spark-chip">{{ 'spark.translatedString.kind.' + entry.Kind | t }}</span>
+          }
+          @if (entry.ValidFrom || entry.ValidTo) {
+            <span class="spark-translated-string-validity">{{ entry.ValidFrom ?? '…' }} – {{ entry.ValidTo ?? '…' }}</span>
+          }
+        </dd>
+      </div>
+    }
+  </dl>
+}

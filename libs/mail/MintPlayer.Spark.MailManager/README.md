@@ -276,6 +276,20 @@ One-click unsubscribe (RFC 8058): with `ListUnsubscribe` (default on for bulk), 
 names the address and stream (default: the template name). `POST /spark/mail/unsubscribe` is
 **explicitly** exempt from antiforgery — mail providers post it without a browser session.
 
+A request's own `Headers` replace MailManager's of the same name. A marketing mail passes the consent
+primitive's pair (`ISparkConsentLinks.CreateListUnsubscribeHeaders`), so the one-click POST withdraws
+the consent record, not just the stream. Refused at queue time: a name that is not an RFC 5322 field
+name, the headers MailManager sets (`SparkMailHeaders.Reserved`), and a value with a line break.
+
+## Attachments
+
+`SparkMailRequest.Attachments`: `SparkMailAttachment.FromBytes(fileName, contentType, bytes)` (inline,
+queued with the message; protected and scrubbed with a `Sensitive` mail) or
+`SparkMailAttachment.FromDocument(documentId, attachmentName, fileName)` (a RavenDB attachment read at
+send). Limits: `Spark:Mail:Attachments:MaxInlineBytes` (2 MiB, refused at queue time) and
+`MaxTotalBytes` (10 MiB, the send fails without retry). A missing stored attachment fails the attempt
+(retried, it may still be in the making) unless it is `Optional`, then it is left out with a warning.
+
 ## Bounces (opt-in)
 
 - `Spark:Mail:Bounces:VerpDomain` → the envelope sender of each mail is

@@ -1,95 +1,94 @@
 # Spark security posture: every effective right and the layer it comes from.
 # --spark-synchronize-security writes this file; --spark-verify-security fails when it drifts.
-# Rows: group | effect | resource | key | layer
+# Rows: group | effect | resource | key | layer | type (alias:Name for a library type, the id for the application's own, - for none)
 
 ## Layers: libraries that ship rights (alias | assembly | hash)
 authorization | MintPlayer.Spark.Authorization | 45c4fc153e9d
-identity-provider | MintPlayer.Spark.IdentityProvider | a47cb40caae8 | switched off
+approvals | MintPlayer.Spark.Approvals | 4430466488dc
+identity-provider | MintPlayer.Spark.IdentityProvider | fe2406070da9 | switched off
+replication | MintPlayer.Spark.Replication | cd2efb39295a
 
 ## Reachable without signing in (expanded)
 Query/Company
 Read/Company
 
 ## Granted to @anonymous
-Anonymous visitors | grant | QueryRead/Company | 00000000-0000-0000-0000-000000000001 | app
+Anonymous visitors | grant | QueryRead/Company | 00000000-0000-0000-0000-000000000001 | app | f0f91878-bc14-4f33-bb42-2e4c6eabe88c
 
 ## Rights
-Administrators | grant | CarCopy/Car | ca000001-0000-0000-0000-000000000001 | app
-Administrators | grant | Edit/LookupReferences | f0000009-0000-0000-0000-000000000002 | app
-Administrators | grant | QueryRead/SparkMailDelivery | f0000001-0000-0000-0000-000000000006 | app
-Administrators | grant | QueryReadEditNewDelete/Car | f0000001-0000-0000-0000-000000000001 | app
-Administrators | grant | QueryReadEditNewDelete/CarBrand | f0000001-0000-0000-0000-000000000002 | app
-Administrators | grant | QueryReadEditNewDelete/CarStatus | f0000001-0000-0000-0000-000000000003 | app
-Administrators | grant | QueryReadEditNewDelete/Person | f0000001-0000-0000-0000-000000000004 | app
-Administrators | grant | QueryReadEditNewDelete/ServiceEntry | f0000001-0000-0000-0000-000000000005 | app
-Administrators | grant | ScatterRegistrationOffsets/Car | ca000002-0000-0000-0000-000000000001 | app
-Fleet managers | grant | CarCopy/Car | ca000001-0000-0000-0000-000000000002 | app
-Fleet managers | grant | QueryRead/CarBrand | f0000002-0000-0000-0000-000000000002 | app
-Fleet managers | grant | QueryRead/CarStatus | f0000002-0000-0000-0000-000000000003 | app
-Fleet managers | grant | QueryRead/Person | f0000002-0000-0000-0000-000000000004 | app
-Fleet managers | grant | QueryReadEditNew/Car | f0000002-0000-0000-0000-000000000001 | app
-Fleet managers | grant | ReadEdit/ServiceEntry | f0000002-0000-0000-0000-000000000005 | app
-Fleet managers | grant | ScatterRegistrationOffsets/Car | ca000002-0000-0000-0000-000000000002 | app
-Machine:FleetApi | grant | ReadEditNew/Car | b0000002-0000-0000-0000-000000000011 | app
-Module:HR | grant | ReadEditNew/Car | b0000001-0000-0000-0000-000000000012 | app
-Module:HR | grant | Replicate/Cars | b0000001-0000-0000-0000-000000000011 | app
-Signed-in users | grant | QueryRead/Company | 00000000-0000-0000-0000-00000000000f | app
-Signed-in users | grant | Read/LookupReferences | f0000009-0000-0000-0000-000000000001 | app
-Signed-in users (@authenticated) | grant | AddPasskey/Passkeys | authorization:passkeys-add | authorization
-Signed-in users (@authenticated) | grant | Query/PasskeyRow | authorization:passkey-rows-query | authorization
-Signed-in users (@authenticated) | grant | Read/Passkeys | authorization:passkeys-read | authorization
-Signed-in users (@authenticated) | grant | RemovePasskey/PasskeyRow | authorization:passkey-rows-remove | authorization
-Signed-in users (@authenticated) | grant | RenamePasskey/PasskeyRow | authorization:passkey-rows-rename | authorization
-Viewers | grant | QueryRead/Car | f0000003-0000-0000-0000-000000000001 | app
-Viewers | grant | QueryRead/CarBrand | f0000003-0000-0000-0000-000000000002 | app
-Viewers | grant | QueryRead/CarStatus | f0000003-0000-0000-0000-000000000003 | app
-Viewers | grant | QueryRead/Person | f0000003-0000-0000-0000-000000000004 | app
-Viewers | grant | Read/ServiceEntry | f0000003-0000-0000-0000-000000000005 | app
+Administrators | grant | CarCopy/Car | ca000001-0000-0000-0000-000000000001 | app | facb6829-f2a1-4ae2-a046-6ba506e8c0ce
+Administrators | grant | Edit/LookupReferences | f0000009-0000-0000-0000-000000000002 | app | -
+Administrators | grant | QueryRead/SparkMailDelivery | f0000001-0000-0000-0000-000000000006 | app | 1950fd1b-cbd6-4fcb-a637-62ea7d9d9a07
+Administrators | grant | QueryReadEditNewDelete/Car | f0000001-0000-0000-0000-000000000001 | app | facb6829-f2a1-4ae2-a046-6ba506e8c0ce
+Administrators | grant | QueryReadEditNewDelete/CarBrand | f0000001-0000-0000-0000-000000000002 | app | -
+Administrators | grant | QueryReadEditNewDelete/CarStatus | f0000001-0000-0000-0000-000000000003 | app | -
+Administrators | grant | QueryReadEditNewDelete/Person | f0000001-0000-0000-0000-000000000004 | app | ff87918c-1e9f-4467-a47e-831d49c81f25
+Administrators | grant | QueryReadEditNewDelete/ServiceEntry | f0000001-0000-0000-0000-000000000005 | app | 256f4a27-f8e4-46d6-99c1-8fa4b8756aee
+Administrators | grant | ScatterRegistrationOffsets/Car | ca000002-0000-0000-0000-000000000001 | app | facb6829-f2a1-4ae2-a046-6ba506e8c0ce
+Administrators (replication:approvers) | grant | ApproveReplication/SparkReplicationRequest | replication:approve | replication | replication:SparkReplicationRequest
+Administrators (replication:approvers) | grant | QueryRead/SparkReplicationRequest | replication:requests | replication | replication:SparkReplicationRequest
+Administrators (replication:approvers) | grant | RejectReplication/SparkReplicationRequest | replication:reject | replication | replication:SparkReplicationRequest
+Fleet managers | grant | CarCopy/Car | ca000001-0000-0000-0000-000000000002 | app | facb6829-f2a1-4ae2-a046-6ba506e8c0ce
+Fleet managers | grant | QueryRead/CarBrand | f0000002-0000-0000-0000-000000000002 | app | -
+Fleet managers | grant | QueryRead/CarStatus | f0000002-0000-0000-0000-000000000003 | app | -
+Fleet managers | grant | QueryRead/Person | f0000002-0000-0000-0000-000000000004 | app | ff87918c-1e9f-4467-a47e-831d49c81f25
+Fleet managers | grant | QueryReadEditNew/Car | f0000002-0000-0000-0000-000000000001 | app | facb6829-f2a1-4ae2-a046-6ba506e8c0ce
+Fleet managers | grant | ReadEdit/ServiceEntry | f0000002-0000-0000-0000-000000000005 | app | 256f4a27-f8e4-46d6-99c1-8fa4b8756aee
+Fleet managers | grant | ScatterRegistrationOffsets/Car | ca000002-0000-0000-0000-000000000002 | app | facb6829-f2a1-4ae2-a046-6ba506e8c0ce
+Machine:FleetApi | grant | ReadEditNew/Car | b0000002-0000-0000-0000-000000000011 | app | facb6829-f2a1-4ae2-a046-6ba506e8c0ce
+Module:HR | grant | ReadEditNew/Car | b0000001-0000-0000-0000-000000000012 | app | facb6829-f2a1-4ae2-a046-6ba506e8c0ce
+Module:HR | grant | Replicate/Cars | b0000001-0000-0000-0000-000000000011 | app | -
+Signed-in users | grant | QueryRead/Company | 00000000-0000-0000-0000-00000000000f | app | f0f91878-bc14-4f33-bb42-2e4c6eabe88c
+Signed-in users | grant | Read/LookupReferences | f0000009-0000-0000-0000-000000000001 | app | -
+Signed-in users (@authenticated) | grant | AddPasskey/Passkeys | authorization:passkeys-add | authorization | authorization:Passkeys
+Signed-in users (@authenticated) | grant | ApprovalApprove/ApprovalRequest | approvals:approve | approvals | approvals:ApprovalRequest
+Signed-in users (@authenticated) | grant | ApprovalReject/ApprovalRequest | approvals:reject | approvals | approvals:ApprovalRequest
+Signed-in users (@authenticated) | grant | ApprovalRevoke/ApprovalRequest | approvals:revoke | approvals | approvals:ApprovalRequest
+Signed-in users (@authenticated) | grant | ApprovalWithdraw/ApprovalRequest | approvals:withdraw | approvals | approvals:ApprovalRequest
+Signed-in users (@authenticated) | grant | DismissSyncAction/SparkSyncAction | replication:dismiss | replication | replication:SparkSyncAction
+Signed-in users (@authenticated) | grant | Query/PasskeyRow | authorization:passkey-rows-query | authorization | authorization:PasskeyRow
+Signed-in users (@authenticated) | grant | QueryRead/ApprovalRequest | approvals:requests | approvals | approvals:ApprovalRequest
+Signed-in users (@authenticated) | grant | QueryRead/SparkSyncAction | replication:pending-changes | replication | replication:SparkSyncAction
+Signed-in users (@authenticated) | grant | Read/Passkeys | authorization:passkeys-read | authorization | authorization:Passkeys
+Signed-in users (@authenticated) | grant | RemovePasskey/PasskeyRow | authorization:passkey-rows-remove | authorization | authorization:PasskeyRow
+Signed-in users (@authenticated) | grant | RenamePasskey/PasskeyRow | authorization:passkey-rows-rename | authorization | authorization:PasskeyRow
+Signed-in users (@authenticated) | grant | RetrySyncAction/SparkSyncAction | replication:retry | replication | replication:SparkSyncAction
+Viewers | grant | QueryRead/Car | f0000003-0000-0000-0000-000000000001 | app | facb6829-f2a1-4ae2-a046-6ba506e8c0ce
+Viewers | grant | QueryRead/CarBrand | f0000003-0000-0000-0000-000000000002 | app | -
+Viewers | grant | QueryRead/CarStatus | f0000003-0000-0000-0000-000000000003 | app | -
+Viewers | grant | QueryRead/Person | f0000003-0000-0000-0000-000000000004 | app | ff87918c-1e9f-4467-a47e-831d49c81f25
+Viewers | grant | Read/ServiceEntry | f0000003-0000-0000-0000-000000000005 | app | 256f4a27-f8e4-46d6-99c1-8fa4b8756aee
 
 ## Inert: libraries switched off in "libraries"
-identity-provider:administrators | grant | ApproveDeveloper/OidcDeveloperRequest | identity-provider:developer-requests-approve | identity-provider
-identity-provider:administrators | grant | ApproveGoLive/OidcGoLiveReview | identity-provider:golive-approve | identity-provider
-identity-provider:administrators | grant | ApproveScope/OidcScopeApproval | identity-provider:scope-approvals-approve-administrators | identity-provider
-identity-provider:administrators | grant | GenerateSecret/OidcApplication | identity-provider:application-secret-administrators | identity-provider
-identity-provider:administrators | grant | InviteMember/OidcApplication | identity-provider:application-team-administrators | identity-provider
-identity-provider:administrators | grant | ManageAll/IdentityProvider | identity-provider:manage-all | identity-provider
-identity-provider:administrators | grant | Query/OidcApplicationMemberRow | identity-provider:members-query-administrators | identity-provider
-identity-provider:administrators | grant | Query/OidcApplicationSecretRow | identity-provider:secrets-query-administrators | identity-provider
-identity-provider:administrators | grant | Query/OidcDeveloperRequest | identity-provider:developer-requests-query | identity-provider
-identity-provider:administrators | grant | Query/OidcGoLiveReview | identity-provider:golive-query | identity-provider
-identity-provider:administrators | grant | Query/OidcScopeApproval | identity-provider:scope-approvals-query-administrators | identity-provider
-identity-provider:administrators | grant | QueryRead/OidcAuditEvent | identity-provider:audit-administrators | identity-provider
-identity-provider:administrators | grant | QueryRead/OidcGrant | identity-provider:grants-administrators | identity-provider
-identity-provider:administrators | grant | QueryReadEditNewDelete/OidcApplication | identity-provider:applications-administrators | identity-provider
-identity-provider:administrators | grant | QueryReadEditNewDelete/OidcResource | identity-provider:resources-administrators | identity-provider
-identity-provider:administrators | grant | Read/OidcReviewDecision | identity-provider:review-decisions-administrators | identity-provider
-identity-provider:administrators | grant | ReadEditNewDelete/ClientClaim | identity-provider:application-claims-administrators | identity-provider
-identity-provider:administrators | grant | ReadEditNewDelete/OidcApiScope | identity-provider:api-scopes-administrators | identity-provider
-identity-provider:administrators | grant | ReadEditNewDelete/OidcApplicationScope | identity-provider:application-scopes-administrators | identity-provider
-identity-provider:administrators | grant | RejectDeveloper/OidcDeveloperRequest | identity-provider:developer-requests-reject | identity-provider
-identity-provider:administrators | grant | RejectGoLive/OidcGoLiveReview | identity-provider:golive-reject | identity-provider
-identity-provider:administrators | grant | RejectScope/OidcScopeApproval | identity-provider:scope-approvals-reject-administrators | identity-provider
-identity-provider:administrators | grant | RemoveMember/OidcApplicationMemberRow | identity-provider:members-remove-administrators | identity-provider
-identity-provider:administrators | grant | ResendInvitation/OidcApplicationMemberRow | identity-provider:members-resend-administrators | identity-provider
-identity-provider:administrators | grant | RevokeGrant/OidcGrant | identity-provider:grants-revoke | identity-provider
-identity-provider:administrators | grant | RevokeSecret/OidcApplicationSecretRow | identity-provider:secrets-revoke-administrators | identity-provider
-identity-provider:administrators | grant | SwitchToDevelopment/OidcApplication | identity-provider:application-development-administrators | identity-provider
-identity-provider:administrators | grant | SwitchToLive/OidcApplication | identity-provider:application-live-administrators | identity-provider
-identity-provider:developers | grant | ApproveScope/OidcScopeApproval | identity-provider:scope-approvals-approve-developers | identity-provider
-identity-provider:developers | grant | GenerateSecret/OidcApplication | identity-provider:application-secret-developers | identity-provider
-identity-provider:developers | grant | InviteMember/OidcApplication | identity-provider:application-team-developers | identity-provider
-identity-provider:developers | grant | Query/OidcApplicationMemberRow | identity-provider:members-query-developers | identity-provider
-identity-provider:developers | grant | Query/OidcApplicationSecretRow | identity-provider:secrets-query-developers | identity-provider
-identity-provider:developers | grant | Query/OidcScopeApproval | identity-provider:scope-approvals-query-developers | identity-provider
-identity-provider:developers | grant | QueryRead/OidcAuditEvent | identity-provider:audit-developers | identity-provider
-identity-provider:developers | grant | QueryReadEditNewDelete/OidcApplication | identity-provider:applications-developers | identity-provider
-identity-provider:developers | grant | QueryReadEditNewDelete/OidcResource | identity-provider:resources-developers | identity-provider
-identity-provider:developers | grant | Read/OidcReviewDecision | identity-provider:review-decisions-developers | identity-provider
-identity-provider:developers | grant | ReadEditNewDelete/OidcApiScope | identity-provider:api-scopes-developers | identity-provider
-identity-provider:developers | grant | ReadEditNewDelete/OidcApplicationScope | identity-provider:application-scopes-developers | identity-provider
-identity-provider:developers | grant | RejectScope/OidcScopeApproval | identity-provider:scope-approvals-reject-developers | identity-provider
-identity-provider:developers | grant | RemoveMember/OidcApplicationMemberRow | identity-provider:members-remove-developers | identity-provider
-identity-provider:developers | grant | ResendInvitation/OidcApplicationMemberRow | identity-provider:members-resend-developers | identity-provider
-identity-provider:developers | grant | RevokeSecret/OidcApplicationSecretRow | identity-provider:secrets-revoke-developers | identity-provider
-identity-provider:developers | grant | SwitchToDevelopment/OidcApplication | identity-provider:application-development-developers | identity-provider
-identity-provider:developers | grant | SwitchToLive/OidcApplication | identity-provider:application-live-developers | identity-provider
+identity-provider:administrators | grant | GenerateSecret/OidcApplication | identity-provider:application-secret-administrators | identity-provider | identity-provider:OidcApplication
+identity-provider:administrators | grant | InviteMember/OidcApplication | identity-provider:application-team-administrators | identity-provider | identity-provider:OidcApplication
+identity-provider:administrators | grant | ManageAll/IdentityProvider | identity-provider:manage-all | identity-provider | -
+identity-provider:administrators | grant | Query/OidcApplicationMemberRow | identity-provider:members-query-administrators | identity-provider | identity-provider:OidcApplicationMemberRow
+identity-provider:administrators | grant | Query/OidcApplicationSecretRow | identity-provider:secrets-query-administrators | identity-provider | identity-provider:OidcApplicationSecretRow
+identity-provider:administrators | grant | QueryRead/OidcAuditEvent | identity-provider:audit-administrators | identity-provider | identity-provider:OidcAuditEvent
+identity-provider:administrators | grant | QueryRead/OidcGrant | identity-provider:grants-administrators | identity-provider | identity-provider:OidcGrant
+identity-provider:administrators | grant | QueryReadEditNewDelete/OidcApplication | identity-provider:applications-administrators | identity-provider | identity-provider:OidcApplication
+identity-provider:administrators | grant | QueryReadEditNewDelete/OidcResource | identity-provider:resources-administrators | identity-provider | identity-provider:OidcResource
+identity-provider:administrators | grant | ReadEditNewDelete/ClientClaim | identity-provider:application-claims-administrators | identity-provider | identity-provider:ClientClaim
+identity-provider:administrators | grant | ReadEditNewDelete/OidcApiScope | identity-provider:api-scopes-administrators | identity-provider | identity-provider:OidcApiScope
+identity-provider:administrators | grant | ReadEditNewDelete/OidcApplicationScope | identity-provider:application-scopes-administrators | identity-provider | identity-provider:OidcApplicationScope
+identity-provider:administrators | grant | RemoveMember/OidcApplicationMemberRow | identity-provider:members-remove-administrators | identity-provider | identity-provider:OidcApplicationMemberRow
+identity-provider:administrators | grant | ResendInvitation/OidcApplicationMemberRow | identity-provider:members-resend-administrators | identity-provider | identity-provider:OidcApplicationMemberRow
+identity-provider:administrators | grant | RevokeGrant/OidcGrant | identity-provider:grants-revoke | identity-provider | identity-provider:OidcGrant
+identity-provider:administrators | grant | RevokeSecret/OidcApplicationSecretRow | identity-provider:secrets-revoke-administrators | identity-provider | identity-provider:OidcApplicationSecretRow
+identity-provider:administrators | grant | SwitchToDevelopment/OidcApplication | identity-provider:application-development-administrators | identity-provider | identity-provider:OidcApplication
+identity-provider:administrators | grant | SwitchToLive/OidcApplication | identity-provider:application-live-administrators | identity-provider | identity-provider:OidcApplication
+identity-provider:developers | grant | GenerateSecret/OidcApplication | identity-provider:application-secret-developers | identity-provider | identity-provider:OidcApplication
+identity-provider:developers | grant | InviteMember/OidcApplication | identity-provider:application-team-developers | identity-provider | identity-provider:OidcApplication
+identity-provider:developers | grant | Query/OidcApplicationMemberRow | identity-provider:members-query-developers | identity-provider | identity-provider:OidcApplicationMemberRow
+identity-provider:developers | grant | Query/OidcApplicationSecretRow | identity-provider:secrets-query-developers | identity-provider | identity-provider:OidcApplicationSecretRow
+identity-provider:developers | grant | QueryRead/OidcAuditEvent | identity-provider:audit-developers | identity-provider | identity-provider:OidcAuditEvent
+identity-provider:developers | grant | QueryReadEditNewDelete/OidcApplication | identity-provider:applications-developers | identity-provider | identity-provider:OidcApplication
+identity-provider:developers | grant | QueryReadEditNewDelete/OidcResource | identity-provider:resources-developers | identity-provider | identity-provider:OidcResource
+identity-provider:developers | grant | ReadEditNewDelete/OidcApiScope | identity-provider:api-scopes-developers | identity-provider | identity-provider:OidcApiScope
+identity-provider:developers | grant | ReadEditNewDelete/OidcApplicationScope | identity-provider:application-scopes-developers | identity-provider | identity-provider:OidcApplicationScope
+identity-provider:developers | grant | RemoveMember/OidcApplicationMemberRow | identity-provider:members-remove-developers | identity-provider | identity-provider:OidcApplicationMemberRow
+identity-provider:developers | grant | ResendInvitation/OidcApplicationMemberRow | identity-provider:members-resend-developers | identity-provider | identity-provider:OidcApplicationMemberRow
+identity-provider:developers | grant | RevokeSecret/OidcApplicationSecretRow | identity-provider:secrets-revoke-developers | identity-provider | identity-provider:OidcApplicationSecretRow
+identity-provider:developers | grant | SwitchToDevelopment/OidcApplication | identity-provider:application-development-developers | identity-provider | identity-provider:OidcApplication
+identity-provider:developers | grant | SwitchToLive/OidcApplication | identity-provider:application-live-developers | identity-provider | identity-provider:OidcApplication

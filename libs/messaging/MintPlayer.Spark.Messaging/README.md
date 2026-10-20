@@ -111,7 +111,7 @@ The checkpoint is a free-form string -- use an index, offset, cursor, or any ser
 builder.Services.AddSpark(builder.Configuration, spark =>
 {
     spark.AddMessaging();     // MessageBus, MessageProcessor, RecipientRegistry
-    spark.AddRecipients();    // Source-generated: auto-discovers all IRecipient<T> classes
+    spark.AddSparkDiscovered(); // Source-generated: auto-discovers all IRecipient<T> classes (and more)
 });
 ```
 
@@ -119,9 +119,9 @@ builder.Services.AddSpark(builder.Configuration, spark =>
 deploys the `SparkMessages/ByQueue` index for you — there is nothing to call after `Build()`. It
 does not depend on any Spark CRUD types.
 
-`AddRecipients()` is generated at compile time by the `RecipientRegistrationGenerator` source
-generator. It discovers all `IRecipient<T>` implementations in your project and registers them
-automatically.
+`AddSparkDiscovered()` is generated at compile time by the `SparkDiscoveryGenerator` source
+generator. Among the other kinds it discovers, it registers every `IRecipient<T>` implementation in
+your project (and `ICheckpointRecipient<T>` where implemented).
 
 ### 4. Broadcast Messages
 
@@ -706,7 +706,7 @@ You can query message status directly in RavenDB Studio for observability. Compl
 
 | Method | Description |
 |--------|-------------|
-| `spark.AddRecipients()` | Auto-registers all `IRecipient<T>` implementations in your project |
+| `spark.AddSparkDiscovered()` | Auto-registers all `IRecipient<T>` implementations in your project (among the other discovered kinds) |
 
 ## Complete Example
 

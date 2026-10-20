@@ -122,6 +122,9 @@ public class LiveAppStreamTests : SparkTestDriver
         }
         LsTickerActions.Starts.Should().Be(2, "an update restarts the app stream with the new page, sort and search");
         LsTickerActions.LastArgs!.Search.Should().Be("a");
+        // Commerce PRD X2: the method is told who watches, frozen at the handshake (anonymous here: an address).
+        LsTickerActions.LastArgs.Viewer.IdentityKey.Should().StartWith("ip:");
+        LsTickerActions.LastArgs.Viewer.UserId.Should().BeNull();
     }
 
     [Fact]

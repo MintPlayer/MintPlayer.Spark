@@ -1,6 +1,7 @@
 namespace MintPlayer.Spark.Abstractions;
 
 /// <summary>The application's navigation menu (<c>App_Data/programUnits.json</c>): groups of menu entries.</summary>
+[SparkContract]
 public sealed class ProgramUnitsConfiguration
 {
     /// <summary>The menu's groups, matched across layers by <c>id</c>.</summary>

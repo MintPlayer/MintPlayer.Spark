@@ -1,0 +1,30 @@
+{
+  "_fixture": {
+    "source": "https://docs.stripe.com/api/disputes/object and https://docs.stripe.com/api/events/types#event_types-charge.dispute.closed",
+    "derived": "Event envelope + Dispute object (status won; reinstatement balance transaction); ids adapted",
+    "recorded": false
+  },
+  "id": "evt_1DisputeClosed",
+  "object": "event",
+  "account": "acct_1Seller",
+  "created": 1794000000,
+  "type": "charge.dispute.closed",
+  "data": {
+    "object": {
+      "id": "dp_1QtestDispute",
+      "object": "dispute",
+      "amount": 7500,
+      "balance_transactions": [
+        { "id": "txn_1DisputeDebit", "amount": -7500, "currency": "eur", "fee": 1500, "net": -9000, "type": "adjustment", "reporting_category": "dispute" },
+        { "id": "txn_1DisputeReinstated", "amount": 7500, "currency": "eur", "fee": 0, "net": 7500, "type": "adjustment", "reporting_category": "dispute_reversal" }
+      ],
+      "charge": "ch_3Qtest777",
+      "created": 1793000000,
+      "currency": "eur",
+      "evidence_details": { "due_by": 1793604800, "has_evidence": true, "submission_count": 1 },
+      "payment_intent": "pi_3Qtest777",
+      "reason": "fraudulent",
+      "status": "won"
+    }
+  }
+}

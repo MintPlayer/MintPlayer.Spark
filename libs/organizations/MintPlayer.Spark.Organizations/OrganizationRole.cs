@@ -12,30 +12,26 @@ namespace MintPlayer.Spark.Organizations;
 /// and transferring ownership; <see cref="Admin"/> manages members, invitations, join requests and the
 /// organization's content; <see cref="Member"/> works with the content; <see cref="Viewer"/> reads only.
 /// </remarks>
+[SparkLookup("OrganizationRoles")]
 public enum OrganizationRole
 {
+    /// <summary>Reads only.</summary>
     Viewer = 1,
+    /// <summary>Works with the organization's content.</summary>
     Member = 2,
+    /// <summary>Manages members, invitations and content.</summary>
     Admin = 3,
+    /// <summary>Everything, including deleting the organization.</summary>
     Owner = 4,
 }
 
-/// <summary>The role dropdown of the membership and invitation forms.</summary>
-public sealed class OrganizationRoles : TransientLookupReference<OrganizationRole>
-{
-    public override ELookupDisplayType DisplayType => ELookupDisplayType.Dropdown;
-    private OrganizationRoles() { }
+// The role dropdown of the membership and invitation forms is the generated OrganizationRoles; the labels are the
+// translations.json keys lookup.OrganizationRole.{Member} (commerce X20 item 5).
 
-    public static IReadOnlyCollection<OrganizationRoles> Items { get; } =
-    [
-        new OrganizationRoles { Key = OrganizationRole.Viewer, Description = "Reads only", Values = _TS("Viewer", "Lecteur", "Lezer") },
-        new OrganizationRoles { Key = OrganizationRole.Member, Description = "Works with the organization's content", Values = _TS("Member", "Membre", "Lid") },
-        new OrganizationRoles { Key = OrganizationRole.Admin, Description = "Manages members, invitations and content", Values = _TS("Admin", "Administrateur", "Beheerder") },
-        new OrganizationRoles { Key = OrganizationRole.Owner, Description = "Everything, including deleting the organization", Values = _TS("Owner", "Propriétaire", "Eigenaar") },
-    ];
-}
-
-/// <summary>The role dropdown of the invite form: every role but Owner, which is transferred, never mailed.</summary>
+/// <summary>
+/// The role dropdown of the invite form: every role but Owner, which is transferred, never mailed. A subset of
+/// <see cref="OrganizationRoles"/>, with its labels.
+/// </summary>
 public sealed class OrganizationInviteRoles : TransientLookupReference<OrganizationRole>
 {
     public override ELookupDisplayType DisplayType => ELookupDisplayType.Dropdown;
@@ -43,8 +39,8 @@ public sealed class OrganizationInviteRoles : TransientLookupReference<Organizat
 
     public static IReadOnlyCollection<OrganizationInviteRoles> Items { get; } =
     [
-        new OrganizationInviteRoles { Key = OrganizationRole.Viewer, Description = "Reads only", Values = _TS("Viewer", "Lecteur", "Lezer") },
-        new OrganizationInviteRoles { Key = OrganizationRole.Member, Description = "Works with the organization's content", Values = _TS("Member", "Membre", "Lid") },
-        new OrganizationInviteRoles { Key = OrganizationRole.Admin, Description = "Manages members, invitations and content", Values = _TS("Admin", "Administrateur", "Beheerder") },
+        new OrganizationInviteRoles { Key = OrganizationRole.Viewer, Values = TranslatedString.FromKey("lookup.OrganizationRole.Viewer") },
+        new OrganizationInviteRoles { Key = OrganizationRole.Member, Values = TranslatedString.FromKey("lookup.OrganizationRole.Member") },
+        new OrganizationInviteRoles { Key = OrganizationRole.Admin, Values = TranslatedString.FromKey("lookup.OrganizationRole.Admin") },
     ];
 }

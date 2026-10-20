@@ -237,7 +237,7 @@ public class PersistentObjectAttributeCloneAndAddTests
         plate = new PersistentObjectAttribute
         {
             Name = "LicensePlate",
-            Label = TranslatedString.Create("License plate"),
+            Label = TranslatedString.Of("en", "License plate"),
             Value = "ABC-123",
             DataType = "String",
             IsRequired = true,
@@ -296,7 +296,7 @@ public class PersistentObjectAttributeCloneAndAddTests
     public void CloneAndAdd_OverridesLabel_WhenProvided()
     {
         BuildCarWithLicensePlate(out var plate);
-        var newLabel = TranslatedString.Create("Type the plate to confirm");
+        var newLabel = TranslatedString.Of("en", "Type the plate to confirm");
 
         var clone = plate.CloneAndAdd("Confirmation", newLabel);
 

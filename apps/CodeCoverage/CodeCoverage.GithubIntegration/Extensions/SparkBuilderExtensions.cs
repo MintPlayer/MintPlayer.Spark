@@ -11,10 +11,10 @@ namespace CodeCoverage.GithubIntegration.Extensions;
 /// <remarks>
 /// <para>
 /// ⚠️ <b>This exists because the generated registrations are per-compilation and
-/// <c>internal</c>.</b> <c>AddCodeCoverageGithubIntegration()</c> and <c>AddRecipients()</c> are
+/// <c>internal</c>.</b> <c>AddCodeCoverageGithubIntegration()</c> and <c>AddSparkDiscovered()</c> are
 /// emitted into <em>this</em> assembly and cover only the <c>[Register]</c> and
 /// <c>IRecipient&lt;T&gt;</c> types declared here. The application's own
-/// <c>AddCodeCoverage()</c> / <c>spark.AddRecipients()</c> cannot see them, so without this method
+/// <c>AddCodeCoverage()</c> / <c>spark.AddSparkDiscovered()</c> cannot see them, so without this method
 /// every service in this project would simply not be registered — and nothing would say so. The
 /// app would start, serve pages, and quietly stop publishing pull-request comments and handling
 /// GitHub webhooks.
@@ -43,9 +43,9 @@ public static class SparkBuilderExtensions
         // The [Register] attributes in this assembly.
         builder.Services.AddCodeCoverageGithubIntegration();
 
-        // The IRecipient<T> implementations in this assembly. Generated internal, which is why the
-        // call has to happen from inside it.
-        builder.AddRecipients();
+        // Everything discovered in this assembly (today: its IRecipient<T> implementations). Generated
+        // internal, which is why the call has to happen from inside it.
+        builder.AddSparkDiscovered();
 
         return builder;
     }

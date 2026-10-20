@@ -42,6 +42,7 @@ import {
   loadedRowReferencesOf,
 } from '@mintplayer/ng-spark/pipes';
 import {
+  translated,
   AttributeGroup,
   AttributeTab,
   ELookupDisplayType,
@@ -74,6 +75,7 @@ import { SPARK_ATTRIBUTE_RENDERERS, SparkResolvedRowRenderer, rowRendererInputs,
 import { SparkReferencePickerComponent } from './spark-reference-picker.component';
 import { SparkLookupPickerComponent } from './spark-lookup-picker.component';
 import { SparkPrimitiveListEditorComponent } from './spark-primitive-list-editor.component';
+import { SparkTranslatedStringEditorComponent } from '@mintplayer/ng-spark/translated-string';
 import { ReferenceQueryTreeSelectProvider, referenceTreeNode } from './reference-query-tree-select-provider';
 import { RefreshCoordinator, RefreshDispatch, effectiveTrigger, refreshDispatch } from './refresh-coordinator';
 
@@ -90,14 +92,20 @@ export interface NestedTriggerRequest {
   dispatch: RefreshDispatch;
 }
 
+/**
+ * Which embedded target an in-flight refresh belongs to: a row of a detail grid, the single object the
+ * modal edits (its working copy), or a single object edited inline (X15), which lives in `formData`.
+ */
+type NestedTarget =
+  | { kind: 'row'; attribute: string; rowIndex: number }
+  | { kind: 'object'; attribute: string }
+  | { kind: 'inline'; attribute: string };
+
 @Component({
   selector: 'spark-po-form',
-  imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, FormsModule, CdkDropList, CdkDrag, CdkDragHandle, CdkDragPreview, BsCardComponent, BsCardHeaderComponent, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsGridColDirective, BsColFormLabelDirective, BsButtonTypeDirective, BsInputGroupComponent, BsSelectComponent, BsSelectOption, BsTreeSelectComponent, BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective, BsTableComponent, BsCheckboxComponent, BsSpinnerComponent, BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective, SparkIconComponent, SparkPoFormComponent, SparkReferencePickerComponent, SparkLookupPickerComponent, SparkPrimitiveListEditorComponent, TranslateKeyPipe, ResolveTranslationPipe, InputTypePipe, LookupDisplayTypePipe, LookupOptionsPipe, AsDetailDisplayValuePipe, AsDetailTypePipe, AsDetailColumnsPipe, AsDetailRowRendererPipe, AsDetailCellValuePipe, CanCreateDetailRowPipe, CanDeleteDetailRowPipe, CanEditDetailRowPipe, InlineRefOptionsPipe, ErrorForAttributePipe, SparkAttributeDescriptionComponent],
+  imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, FormsModule, CdkDropList, CdkDrag, CdkDragHandle, CdkDragPreview, BsCardComponent, BsCardHeaderComponent, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsGridColDirective, BsColFormLabelDirective, BsButtonTypeDirective, BsInputGroupComponent, BsSelectComponent, BsSelectOption, BsTreeSelectComponent, BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective, BsTableComponent, BsCheckboxComponent, BsSpinnerComponent, BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective, SparkIconComponent, SparkPoFormComponent, SparkReferencePickerComponent, SparkLookupPickerComponent, SparkPrimitiveListEditorComponent, SparkTranslatedStringEditorComponent, TranslateKeyPipe, ResolveTranslationPipe, InputTypePipe, LookupDisplayTypePipe, LookupOptionsPipe, AsDetailDisplayValuePipe, AsDetailTypePipe, AsDetailColumnsPipe, AsDetailRowRendererPipe, AsDetailCellValuePipe, CanCreateDetailRowPipe, CanDeleteDetailRowPipe, CanEditDetailRowPipe, InlineRefOptionsPipe, ErrorForAttributePipe, SparkAttributeDescriptionComponent],
   templateUrl: './spark-po-form.component.html',
-  // The CDK drag placeholder is a clone of the dragged row (so it keeps the exact row
-  // height). Hide its contents but keep it occupying space, so the drop gap is blank and
-  // the surrounding rows don't shift. ::ng-deep because the cloned node is styled by CDK.
-  styles: [`:host ::ng-deep .cdk-drag-placeholder { visibility: hidden; }`],
+  styleUrl: './spark-po-form.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class SparkPoFormComponent {
@@ -329,7 +337,7 @@ export class SparkPoFormComponent {
       .sort((a, b) => a.order - b.order) || [];
   });
 
-  private static readonly DEFAULT_TAB: AttributeTab = { id: '__default__', name: 'Algemeen', label: { nl: 'Algemeen', en: 'General' }, order: 0 };
+  private static readonly DEFAULT_TAB: AttributeTab = { id: '__default__', name: 'Algemeen', label: translated({ nl: 'Algemeen', en: 'General' }), order: 0 };
 
   ungroupedAttributes = computed(() => {
     const attrs = this.editableAttributes();
@@ -401,17 +409,21 @@ export class SparkPoFormComponent {
     // For multi-reference attributes (Reference && isArray): a <bs-tree-select> provider over the
     // query itself, so "load more" and search reach every row and not just this first page (the
     // in-memory provider it replaced stopped at the 50 rows loaded here), and a by-id node map of
-    // this page for the chips of the current selection.
+    // this page for the chips of the current selection. A single reference gets one too when it
+    // declares a `referenceTree` (WX9): it then picks from the lazy tree instead of the flat modal.
     const providers: Record<string, TreeSelectProvider> = {};
     const nodesByAttr: Record<string, Record<string, TreeNode>> = {};
     for (const attr of refAttrs) {
-      if (!attr.isArray) continue;
+      if (!attr.isArray && !attr.referenceTree) continue;
       const nodes = (optionsByAttr[attr.name] || [])
         .map(referenceTreeNode)
         .filter((n): n is TreeNode => n !== null);
       const query = attr.query!;
+      // A `referenceTree` (WX9) makes the panel a lazy tree: roots first, children on expand.
       providers[attr.name] = new ReferenceQueryTreeSelectProvider(page =>
-        this.sparkService.executeQueryByName(query, { ...this.optionQueryParent(), ...page }));
+        this.sparkService.executeQueryByName(query, { ...this.optionQueryParent(), ...page }),
+        undefined,
+        attr.referenceTree);
       nodesByAttr[attr.name] = this.toRecord(nodes.map(n => [n.id, n] as [string, TreeNode]));
     }
     this.referenceProviders.set(providers);
@@ -432,8 +444,11 @@ export class SparkPoFormComponent {
     const loaded = this.loadedReferences();
     const result: Record<string, TreeNode[]> = {};
     for (const attr of this.editableAttributes()) {
-      if (attr.dataType !== 'Reference' || !attr.isArray) continue;
-      const ids: string[] = Array.isArray(fd[attr.name]) ? fd[attr.name] : [];
+      if (attr.dataType !== 'Reference' || (!attr.isArray && !attr.referenceTree)) continue;
+      // A single tree reference (WX9) holds one id, or none.
+      const ids: string[] = attr.isArray
+        ? (Array.isArray(fd[attr.name]) ? fd[attr.name] : [])
+        : (typeof fd[attr.name] === 'string' && fd[attr.name] ? [fd[attr.name]] : []);
       const nodeMap = nodesByAttr[attr.name] || {};
       result[attr.name] = ids.map(id => {
         const server = loadedReferenceLabel(id, loaded[attr.name]);
@@ -463,10 +478,25 @@ export class SparkPoFormComponent {
       }));
     }
     const data = { ...this.formData() };
-    data[attr.name] = nodes.map(n => n.id);
+    // A single tree reference (WX9) stores one id or null, as the flat picker does.
+    data[attr.name] = attr.isArray ? nodes.map(n => n.id) : (nodes[0]?.id ?? null);
     this.formData.set(data);
+    if (!attr.isArray && nodes[0]) {
+      // As the flat picker's rowPicked: the picked row joins the options, which label the value.
+      const item: QueryResultItem = { id: nodes[0].id, breadcrumb: nodes[0].label, values: [] };
+      this.referenceOptions.update(prev => withOption(prev, attr.name, item));
+      this.referencePicked.emit({ attribute: attr.name, item });
+    }
     // A picked value is a discrete change: triggersRefresh fires now, as for a checkbox or a select.
     this.noteChange(attr);
+  }
+
+  /**
+   * Whether a single Reference picks from a lazy tree (WX9): it declares a `referenceTree`, and no
+   * refresh hook replaced its options (a hook's list is flat, so the flat picker shows it).
+   */
+  isTreeReference(attr: EntityAttributeDefinition): boolean {
+    return !attr.isArray && !!attr.referenceTree && !this.hookReplacedReferences().has(attr.name);
   }
 
   async loadAsDetailTypes(): Promise<void> {
@@ -650,8 +680,27 @@ export class SparkPoFormComponent {
    */
   clientRuleFailures = computed<RuleFailure[]>(() => {
     const values = this.formData();
-    return this.editableAttributes().flatMap(attr => evaluateRules(attr, values[attr.name]));
+    const detailTypes = this.asDetailTypes();
+    return this.editableAttributes().flatMap(attr => [
+      ...evaluateRules(attr, values[attr.name]),
+      ...this.inlineAsDetailRuleFailures(attr, values[attr.name], detailTypes),
+    ]);
   });
+
+  /**
+   * The rules of an inline embedded object's own fields (X15), addressed `Address.Street` as the server
+   * addresses them. The embedded form shows them on its fields; they are counted here so this form's
+   * save stops on them, as it does on its own. A null object has no fields to judge: whether it may be
+   * null is the attribute's own `required` rule.
+   */
+  private inlineAsDetailRuleFailures(attr: EntityAttributeDefinition, value: unknown, detailTypes: Record<string, EntityType>): RuleFailure[] {
+    if (!this.isInlineAsDetailObject(attr) || !value || typeof value !== 'object') return [];
+    const record = value as Record<string, any>;
+    return (detailTypes[attr.name]?.attributes ?? [])
+      .filter(col => !col.isReadOnly && hasShowedOnFlag(col.showedOn, ShowedOn.PersistentObject))
+      .flatMap(col => evaluateRules(col, record[col.name]))
+      .map(failure => ({ ...failure, attributeName: `${attr.name}.${failure.attributeName}` }));
+  }
 
   hasError(attrName: string): boolean {
     return this.clientRuleFailures().some(f => f.attributeName === attrName)
@@ -721,10 +770,7 @@ export class SparkPoFormComponent {
    * to be absent is not the same statement as "this attribute holds one object". With a nullable
    * index, a row refresh carrying a bad index would fall silently into the object arm.
    */
-  private pendingNestedTrigger:
-    | { kind: 'row'; attribute: string; rowIndex: number }
-    | { kind: 'object'; attribute: string }
-    | null = null;
+  private pendingNestedTrigger: NestedTarget | null = null;
 
   /**
    * A trigger inside a single embedded AsDetail object, raised by the modal's recursive form.
@@ -761,10 +807,7 @@ export class SparkPoFormComponent {
    * ⚠️ The row array is mutated in place rather than replaced. Rows are tracked by index, so handing
    * the template a new array destroys and rebuilds every row's DOM and takes focus with it, mid-edit.
    */
-  private applyNestedResponse(
-    nested: { kind: 'row'; attribute: string; rowIndex: number } | { kind: 'object'; attribute: string },
-    response: PersistentObject,
-  ): void {
+  private applyNestedResponse(nested: NestedTarget, response: PersistentObject): void {
     this.pendingNestedTrigger = null;
 
     if (nested.kind === 'row') {
@@ -776,6 +819,18 @@ export class SparkPoFormComponent {
         }
         // The array identity is unchanged; this only tells the signal graph the contents moved.
         this.formData.set({ ...this.formData() });
+      }
+    } else if (nested.kind === 'inline') {
+      // An inline object (X15) has no working copy: formData holds it, and the embedded form renders
+      // from it. A new object, so that form sees the change. Gone meanwhile (cleared mid-flight):
+      // nothing to write, rather than resurrecting it.
+      const current = this.formData()[nested.attribute];
+      if (current && typeof current === 'object') {
+        const next = { ...current };
+        for (const attribute of response.attributes ?? []) {
+          next[attribute.name] = attribute.value ?? null;
+        }
+        this.formData.set({ ...this.formData(), [nested.attribute]: next });
       }
     } else {
       // ⚠️ The modal's working copy, never `formData`. `openAsDetailEditor` copies the embedded dict
@@ -938,7 +993,7 @@ export class SparkPoFormComponent {
         if (!attr?.lookupReferenceType) continue;
         next[attr.lookupReferenceType] = {
           ...(next[attr.lookupReferenceType] ?? { name: attr.lookupReferenceType, isTransient: true, displayType: ELookupDisplayType.Dropdown }),
-          values: (options ?? []).map(o => ({ key: o.key, values: o.label ?? { en: o.key }, isActive: true })),
+          values: (options ?? []).map(o => ({ key: o.key, values: o.label ?? translated({ en: o.key }), isActive: true })),
         } as LookupReference;
       }
       return next;
@@ -994,6 +1049,10 @@ export class SparkPoFormComponent {
     // object before it goes, or the server enforces rules the user was never shown.
     await this.flushPendingRefresh();
 
+    // An optional inline object left with every field blank is no object (X15): it is saved as null,
+    // and its fields' rules no longer apply. Before the rule check below, which must not stop on them.
+    this.dropBlankInlineAsDetails();
+
     // Evaluated AFTER the flush: the refresh may be what imposes the rule being checked.
     if (this.clientRuleFailures().length > 0) return;
 
@@ -1002,6 +1061,75 @@ export class SparkPoFormComponent {
 
   onCancel(): void {
     this.cancel.emit();
+  }
+
+  // ---- A single AsDetail object edited inline (X15) -----------------------------------------
+  //
+  // `editMode: "inline"` on a single (non-collection) AsDetail attribute renders the object's fields
+  // in place, through the recursive form, instead of a summary box and a modal. There is no working
+  // copy: the embedded form edits `formData[attr.name]` itself, so the object saves with the parent
+  // and there is nothing to confirm or cancel.
+
+  /** A single embedded object (not a collection) whose model asks to edit it in place. */
+  isInlineAsDetailObject(attr: EntityAttributeDefinition): boolean {
+    return attr.dataType === 'AsDetail' && !attr.isArray && attr.editMode === 'inline';
+  }
+
+  /**
+   * The server's errors about an inline object's fields, per attribute, with the attribute's prefix
+   * removed: the server names them `Address.Street`, the embedded form knows its field as `Street`.
+   */
+  protected readonly inlineAsDetailErrors = computed<Record<string, ValidationError[]>>(() => {
+    const result: Record<string, ValidationError[]> = {};
+    for (const error of this.validationErrors()) {
+      const dot = error.attributeName?.indexOf('.') ?? -1;
+      if (dot <= 0) continue;
+      const attribute = error.attributeName.slice(0, dot);
+      (result[attribute] ??= []).push({ ...error, attributeName: error.attributeName.slice(dot + 1) });
+    }
+    return result;
+  });
+
+  /** The inline object as loaded, so its Reference pickers show their server labels (D10). */
+  inlineAsDetailLoadedObject(attr: EntityAttributeDefinition): PersistentObject | null {
+    return this.loadedObject()?.attributes.find(a => a.name === attr.name)?.object ?? null;
+  }
+
+  /** An edit inside the inline object: written like any edit, so the host sees the new value. */
+  onInlineAsDetailChange(attr: EntityAttributeDefinition, value: Record<string, any>): void {
+    this.formData.set({ ...this.formData(), [attr.name]: value });
+  }
+
+  /** {@link onEmbeddedTrigger} for an inline object: the response is written into `formData`, not a working copy. */
+  onInlineAsDetailTrigger(attributeName: string, event: NestedTriggerRequest): void {
+    if (!this.objectTypeId()) return;
+    this.pendingNestedTrigger = { kind: 'inline', attribute: attributeName };
+    void this.refreshCoordinator.dispatch(event.path, event.dispatch);
+  }
+
+  /** "Add": an empty object to fill in. Not before, so an optional object nobody touched stays null. */
+  startInlineAsDetail(attr: EntityAttributeDefinition): void {
+    this.formData.set({ ...this.formData(), [attr.name]: {} });
+    this.noteChange(attr);
+  }
+
+  /** "Delete": the object is gone, saved as null. Offered only when the attribute is not required. */
+  clearInlineAsDetail(attr: EntityAttributeDefinition): void {
+    this.formData.set({ ...this.formData(), [attr.name]: null });
+    this.noteChange(attr);
+  }
+
+  /** Sets every optional inline object whose fields are all blank to null (see {@link onSave}). */
+  private dropBlankInlineAsDetails(): void {
+    const values = this.formData();
+    const blank = this.editableAttributes()
+      .filter(attr => this.isInlineAsDetailObject(attr) && !attr.isRequired)
+      .filter(attr => isBlankObject(values[attr.name]));
+    if (blank.length === 0) return;
+
+    const next = { ...values };
+    for (const attr of blank) next[attr.name] = null;
+    this.formData.set(next);
   }
 
   // AsDetail object modal methods
@@ -1158,7 +1286,7 @@ export class SparkPoFormComponent {
       ? errors
       : [{
           attributeName: '',
-          errorMessage: { en: error?.error?.result?.error || error?.error?.error || error?.message || 'The server refused this change.' },
+          errorMessage: translated({ en: error?.error?.result?.error || error?.error?.error || error?.message || 'The server refused this change.' }),
           ruleType: 'error',
         }];
     this.rowLifecycleErrors.update(prev => ({ ...prev, [attrName]: resolved }));
@@ -1217,6 +1345,26 @@ export class SparkPoFormComponent {
     data[attr.name] = arr;
     this.formData.set(data);
   }
+}
+
+/**
+ * An embedded object with nothing filled in: `{}`, or every field null, blank text or an empty list.
+ * Its row key (`__sparkRowKey`) is bookkeeping, not a value. `false` and `0` are values: a user can
+ * mean them. Null itself is not "blank", there is nothing to drop.
+ */
+function isBlankObject(value: unknown): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  return Object.entries(value as Record<string, unknown>)
+    .filter(([key]) => key !== AS_DETAIL_ROW_KEY)
+    .every(([, field]) => isBlankField(field));
+}
+
+function isBlankField(value: unknown): boolean {
+  if (value === null || value === undefined) return true;
+  if (typeof value === 'string') return value.trim() === '';
+  if (Array.isArray(value)) return value.length === 0;
+  if (typeof value === 'object') return isBlankObject(value);
+  return false;
 }
 
 /** `options` with `item` added to the list under `key`, unless a row with its id is already there. */

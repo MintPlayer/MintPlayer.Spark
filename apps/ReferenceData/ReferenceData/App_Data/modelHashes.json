@@ -1,0 +1,85 @@
+{
+  "version": 3,
+  "modelHash": "fdc7f0adcd22a4afeb736bffadc011e7ca9653d99700e5ec924786c4528908d0",
+  "contextRoots": "aea1b15df626f337de5eb359dd6f7651b9f25a39ddb515b6ab765e1167456d87",
+  "modelFiles": "e7cb1996057db0d9d008db4991b0c7aed8b39998deef44848dfb5add61a938fa",
+  "files": {
+    "Address.json": "699937019c8347a1a1ca3352830c98b46dee61c2d1409478c9aef2d9aaa47d0c",
+    "PasskeyRename.json": "efd6a49e2c20d8420f48f546557fe7605a0553d3f4ce50ec8ae62876ce86714e",
+    "PasskeyRow.json": "902d6e7e53ac01ab224b90bdd486b9ba3f4ee27273fe667c907312aac3541b33",
+    "Passkeys.json": "738742f13217adeeb4724f72f968923099f7d7210cee1133dfd6707eb55856ce",
+    "RefCountry.json": "533e57ba156e465494250d9f903e567a7e7906831cce8928ceff382631abb821",
+    "RefImportRun.json": "b33e01ab5f504021830dbc2fec85fe591ed4802f1d506f9c2783f174a31205cc",
+    "RefLineageEvent.json": "18363794b4477ef24a88d28d2419d95deafc8320254cc7ae7abab2fdf81dcba5",
+    "RefPlace.json": "cb9a0f52a204772587672f74045931e14d4e61767f5c272e18204d26bfc6bafd",
+    "RefPostalCode.json": "17c102000874bbe8be161c214bb45320ebaacb4e130c834fe2b5c0fcce666ec0",
+    "RefStreet.json": "de093146f36e8295d1088a818caa510fe5a1f47a1bad2a6a87f17ec7e8d75443",
+    "SparkUser.json": "81d5e4fe403e329fc20404f35c3b9944aa11c17374981df5a4073ddf08fcdb69",
+    "Venue.json": "88abf0a5ca3e4e6873c4fc4edc7a7765e73b9716e78b9d9d43e362766a605a23"
+  },
+  "entities": {
+    "Address": "d441d2d6359a675c3e9a9d7b93598b07def6ee92fc612e88ca77c3161dacfc53",
+    "Venue": "01d2f4eeef3c7ea1955302b3a839f1aed7b367edde6bfdd1f95a49de209b1031"
+  },
+  "configFiles": {
+    "actions.json": "7cb4318c1030a0204ed991e09356707fd94a4c335f246d4f46cd1cde40f706f8",
+    "programUnits.json": "0727fef375ef918c4784623fd59d51aa67a079939ba000479e6e826b74da3ad5"
+  },
+  "libraries": {
+    "authorization": "MintPlayer.Spark.Authorization",
+    "reference-data": "MintPlayer.Spark.ReferenceData",
+    "reference-data-client": "MintPlayer.Spark.ReferenceData.Client",
+    "spark": "MintPlayer.Spark"
+  },
+  "layers": {
+    "Model/PasskeyRename.json": {
+      "authorization": "efd6a49e2c20d8420f48f546557fe7605a0553d3f4ce50ec8ae62876ce86714e"
+    },
+    "Model/PasskeyRow.json": {
+      "authorization": "902d6e7e53ac01ab224b90bdd486b9ba3f4ee27273fe667c907312aac3541b33"
+    },
+    "Model/Passkeys.json": {
+      "authorization": "738742f13217adeeb4724f72f968923099f7d7210cee1133dfd6707eb55856ce"
+    },
+    "Model/RefCountry.json": {
+      "reference-data-client": "533e57ba156e465494250d9f903e567a7e7906831cce8928ceff382631abb821"
+    },
+    "Model/RefImportRun.json": {
+      "reference-data": "b33e01ab5f504021830dbc2fec85fe591ed4802f1d506f9c2783f174a31205cc"
+    },
+    "Model/RefLineageEvent.json": {
+      "reference-data": "18363794b4477ef24a88d28d2419d95deafc8320254cc7ae7abab2fdf81dcba5"
+    },
+    "Model/RefPlace.json": {
+      "reference-data-client": "cb9a0f52a204772587672f74045931e14d4e61767f5c272e18204d26bfc6bafd"
+    },
+    "Model/RefPostalCode.json": {
+      "reference-data-client": "17c102000874bbe8be161c214bb45320ebaacb4e130c834fe2b5c0fcce666ec0"
+    },
+    "Model/RefStreet.json": {
+      "reference-data": "de093146f36e8295d1088a818caa510fe5a1f47a1bad2a6a87f17ec7e8d75443"
+    },
+    "Model/SparkUser.json": {
+      "authorization": "81d5e4fe403e329fc20404f35c3b9944aa11c17374981df5a4073ddf08fcdb69"
+    },
+    "actions.json": {
+      "authorization": "fb0d34fa66e732b157e4e222fb9c357e4219cf6d85177473103874e8c1090427",
+      "reference-data": "bdd7e82c21ab6917036c884ce270db86eafab63ba2bcff8d07453a5deff00b66",
+      "spark": "5974b38c8164cafbfb22c012c52fb46dd27264181d772b9f004de1829d1838e6"
+    }
+  },
+  "names": {
+    "09fef399-13b0-4de4-9d88-e8f624dddbc5": "Address",
+    "0d3faefa-624c-5135-bca7-652aa9053e0e": "SparkUser (authorization:SparkUser)",
+    "1093fbd5-9938-5f73-b38f-414c2af039cc": "RefPlace (reference-data-client:RefPlace)",
+    "18e3683b-deea-5064-84ca-2620745ba064": "RefImportRun (reference-data:RefImportRun)",
+    "562be46d-570a-53ab-88b2-cd83b4596c89": "RefPostalCode (reference-data-client:RefPostalCode)",
+    "56ff129c-fe1e-5b7a-9012-c7a685f7970a": "RefStreet (reference-data:RefStreet)",
+    "b7d6b31b-e1fa-4ffc-856a-d7c9759545c4": "Venue",
+    "bc7a3a73-5852-5111-974d-ea0c7ab290e0": "PasskeyRow (authorization:PasskeyRow)",
+    "cd8a0767-2a18-5c73-a608-14cf9efe99ac": "Passkeys (authorization:Passkeys)",
+    "da8a90fd-91ae-593a-8b48-0ad102082412": "PasskeyRename (authorization:PasskeyRename)",
+    "e72c212e-68e6-552f-8e1a-191189ac5cf1": "RefCountry (reference-data-client:RefCountry)",
+    "f147a09a-b58b-59e6-aaa5-d40e1f2efe5b": "RefLineageEvent (reference-data:RefLineageEvent)"
+  }
+}

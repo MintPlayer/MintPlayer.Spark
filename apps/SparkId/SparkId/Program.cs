@@ -15,7 +15,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSpark(builder.Configuration, spark =>
 {
     spark.UseContext<SparkIdContext>();
-    spark.AddMigrations(); // generated: discovers ISparkMigration classes, runs them once at startup
+    spark.AddSparkDiscovered(); // generated: discovers ISparkMigration classes, runs them once at startup
 
     // SparkId is the demo identity provider (docs/identity_provider_platform_PRD.md R1): HR, Fleet and
     // QnA sign in here. Its own users sign in with a password or a passkey, so both are on.

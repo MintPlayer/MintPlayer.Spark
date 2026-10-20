@@ -5,8 +5,8 @@ namespace Fleet.Jobs;
 
 /// <summary>
 /// Demonstrates a cron job in an <c>AddSparkFull</c> app: with no explicit registration call,
-/// the AllFeatures generator detects <see cref="ISparkCronJob"/> implementers and wires
-/// <c>spark.AddCronJobs()</c> automatically.
+/// the generated <c>AddSparkDiscovered()</c>, which <c>AddSparkFull</c> calls, registers every
+/// <see cref="ISparkCronJob"/> implementer.
 /// </summary>
 public partial class FleetHeartbeatJob : ISparkCronJob
 {

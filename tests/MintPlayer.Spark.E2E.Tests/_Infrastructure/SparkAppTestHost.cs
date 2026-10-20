@@ -392,6 +392,21 @@ public abstract class SparkAppTestHost : IAsyncLifetime
     }
 
     /// <summary>
+    /// Stores a document of the app's type <paramref name="clrType"/> (assembly-qualified, without version) in
+    /// <paramref name="collection"/>, bypassing the app: the test project does not reference the app's entity classes.
+    /// </summary>
+    public async Task StoreRawAsync(string documentId, Dictionary<string, object?> fields, string collection, string clrType)
+    {
+        using var appStore = OpenAppStore();
+        using var session = appStore.OpenAsyncSession();
+        await session.StoreAsync(fields, documentId);
+        var metadata = session.Advanced.GetMetadataFor(fields);
+        metadata[Raven.Client.Constants.Documents.Metadata.Collection] = collection;
+        metadata[Raven.Client.Constants.Documents.Metadata.RavenClrType] = clrType;
+        await session.SaveChangesAsync();
+    }
+
+    /// <summary>
     /// Seeds the app database from RavenDB query-result-format JSON files through
     /// <see cref="MintPlayer.Spark.Testing.JsonFixtureImporter"/>, and waits for indexing so the next query sees them.
     /// Re-importing overwrites the same ids, so a test can reseed to reset the rows it changes.

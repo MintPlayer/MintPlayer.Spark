@@ -15,32 +15,11 @@
         "nl": "Resources"
       }
     },
-    "DeveloperRequests": {
-      "label": {
-        "en": "Developer requests",
-        "fr": "Demandes de développeur",
-        "nl": "Ontwikkelaarsaanvragen"
-      }
-    },
     "Members": {
       "label": {
         "en": "Team",
         "fr": "Équipe",
         "nl": "Team"
-      }
-    },
-    "ScopeApprovals": {
-      "label": {
-        "en": "Scope approvals",
-        "fr": "Approbations de scopes",
-        "nl": "Scopegoedkeuringen"
-      }
-    },
-    "GoLiveReviews": {
-      "label": {
-        "en": "Go-live reviews",
-        "fr": "Mises en ligne à approuver",
-        "nl": "Livegangen ter goedkeuring"
       }
     },
     "Secrets": {
@@ -506,18 +485,6 @@
             "en": "The page the logout page loads in an iframe when the user signs out (front-channel logout).",
             "fr": "La page que la page de déconnexion charge dans un iframe lorsque l'utilisateur se déconnecte (déconnexion front-channel).",
             "nl": "De pagina die de afmeldpagina in een iframe laadt wanneer de gebruiker zich afmeldt (front-channel-afmelding)."
-          }
-        },
-        "GoLiveReview": {
-          "label": {
-            "en": "Go-live review",
-            "fr": "Revue de mise en production",
-            "nl": "Go-live-beoordeling"
-          },
-          "description": {
-            "en": "The pending or decided request to switch to Live, when an administrator has to review it.",
-            "fr": "La demande, en attente ou tranchée, de passage en Live, lorsqu'un administrateur doit l'examiner.",
-            "nl": "De openstaande of besliste aanvraag om naar Live over te schakelen, wanneer een beheerder ze moet beoordelen."
           }
         },
         "HomepageUrl": {
@@ -1066,18 +1033,6 @@
             "nl": "Of de gebruiker ze moet verlenen. Een optionele scope kan op het toestemmingsscherm uitgevinkt worden."
           }
         },
-        "Review": {
-          "label": {
-            "en": "Review",
-            "fr": "Revue",
-            "nl": "Beoordeling"
-          },
-          "description": {
-            "en": "Who approved or rejected the scope, and when.",
-            "fr": "Qui a approuvé ou rejeté le scope, et quand.",
-            "nl": "Wie de scope goedgekeurd of afgewezen heeft, en wanneer."
-          }
-        },
         "Status": {
           "label": {
             "en": "Status",
@@ -1269,114 +1224,6 @@
         }
       }
     },
-    "OidcReviewDecision": {
-      "label": {
-        "en": "Review decision",
-        "fr": "Décision de revue",
-        "nl": "Beoordelingsbeslissing"
-      },
-      "attributes": {
-        "DecidedAt": {
-          "label": {
-            "en": "Decided at",
-            "fr": "Décidé le",
-            "nl": "Beslist op"
-          }
-        },
-        "DecidedBy": {
-          "label": {
-            "en": "Decided by",
-            "fr": "Décidé par",
-            "nl": "Beslist door"
-          },
-          "description": {
-            "en": "Who decided, and when, in UTC.",
-            "fr": "Qui a décidé, et quand, en UTC.",
-            "nl": "Wie beslist heeft, en wanneer, in UTC."
-          }
-        },
-        "Note": {
-          "label": {
-            "en": "Note",
-            "fr": "Note",
-            "nl": "Notitie"
-          },
-          "description": {
-            "en": "The reason given with the decision.",
-            "fr": "La raison donnée avec la décision.",
-            "nl": "De reden die bij de beslissing gegeven werd."
-          }
-        },
-        "RequestedAt": {
-          "label": {
-            "en": "Requested at",
-            "fr": "Demandé le",
-            "nl": "Aangevraagd op"
-          }
-        },
-        "RequestedBy": {
-          "label": {
-            "en": "Requested by",
-            "fr": "Demandé par",
-            "nl": "Aangevraagd door"
-          },
-          "description": {
-            "en": "Who asked, and when, in UTC.",
-            "fr": "Qui a fait la demande, et quand, en UTC.",
-            "nl": "Wie het aangevraagd heeft, en wanneer, in UTC."
-          }
-        },
-        "Status": {
-          "label": {
-            "en": "Status",
-            "fr": "Statut",
-            "nl": "Status"
-          },
-          "description": {
-            "en": "Pending, Approved or Rejected.",
-            "fr": "Pending, Approved ou Rejected.",
-            "nl": "Pending, Approved of Rejected."
-          }
-        }
-      }
-    },
-    "OidcDeveloperRequest": {
-      "label": {
-        "en": "Developer request",
-        "fr": "Demande de développeur",
-        "nl": "Ontwikkelaarsaanvraag"
-      },
-      "attributes": {
-        "UserName": {
-          "label": {
-            "en": "User name",
-            "fr": "Nom d'utilisateur",
-            "nl": "Gebruikersnaam"
-          }
-        },
-        "Email": {
-          "label": {
-            "en": "Email",
-            "fr": "E-mail",
-            "nl": "E-mail"
-          }
-        },
-        "RequestedAt": {
-          "label": {
-            "en": "Requested",
-            "fr": "Demandée le",
-            "nl": "Aangevraagd"
-          }
-        },
-        "TermsVersion": {
-          "label": {
-            "en": "Terms version",
-            "fr": "Version des conditions",
-            "nl": "Versie van de voorwaarden"
-          }
-        }
-      }
-    },
     "OidcInvitation": {
       "label": {
         "en": "Invitation",
@@ -1440,73 +1287,6 @@
             "en": "Joined",
             "fr": "Rejoint le",
             "nl": "Toegetreden"
-          }
-        }
-      }
-    },
-    "OidcScopeApproval": {
-      "label": {
-        "en": "Scope approval",
-        "fr": "Approbation de scope",
-        "nl": "Scopegoedkeuring"
-      },
-      "attributes": {
-        "Application": {
-          "label": {
-            "en": "Application",
-            "fr": "Application",
-            "nl": "Applicatie"
-          }
-        },
-        "Scope": {
-          "label": {
-            "en": "Scope",
-            "fr": "Scope",
-            "nl": "Scope"
-          }
-        },
-        "Resource": {
-          "label": {
-            "en": "API",
-            "fr": "API",
-            "nl": "API"
-          }
-        },
-        "RequestedAt": {
-          "label": {
-            "en": "Requested",
-            "fr": "Demandé le",
-            "nl": "Aangevraagd"
-          }
-        }
-      }
-    },
-    "OidcGoLiveReview": {
-      "label": {
-        "en": "Go-live review",
-        "fr": "Mise en ligne à approuver",
-        "nl": "Livegang ter goedkeuring"
-      },
-      "attributes": {
-        "Application": {
-          "label": {
-            "en": "Application",
-            "fr": "Application",
-            "nl": "Applicatie"
-          }
-        },
-        "ClientId": {
-          "label": {
-            "en": "Client id",
-            "fr": "Identifiant client",
-            "nl": "Client-id"
-          }
-        },
-        "RequestedAt": {
-          "label": {
-            "en": "Requested",
-            "fr": "Demandé le",
-            "nl": "Aangevraagd"
           }
         }
       }
@@ -1711,20 +1491,10 @@
       "fr": "Ressources",
       "nl": "Resources"
     },
-    "oidcDeveloperRequests": {
-      "en": "Developer requests",
-      "fr": "Demandes de développeur",
-      "nl": "Ontwikkelaarsaanvragen"
-    },
-    "oidcScopeApprovals": {
-      "en": "Scope approvals",
-      "fr": "Approbations de scopes",
-      "nl": "Scopegoedkeuringen"
-    },
-    "oidcGoLiveReviews": {
-      "en": "Go-live reviews",
-      "fr": "Mises en ligne à approuver",
-      "nl": "Livegangen ter goedkeuring"
+    "identityProviderApprovals": {
+      "en": "Approvals",
+      "fr": "Approbations",
+      "nl": "Goedkeuringen"
     },
     "oidcAuditEvents": {
       "en": "Audit trail",
@@ -1738,30 +1508,6 @@
     }
   },
   "actions": {
-    "ApproveDeveloper": {
-      "label": {
-        "en": "Approve",
-        "fr": "Approuver",
-        "nl": "Goedkeuren"
-      },
-      "confirmation": {
-        "en": "Approve the selected developer requests? They get access to the developer portal.",
-        "fr": "Approuver les demandes sélectionnées ? Ces utilisateurs accèdent alors au portail des développeurs.",
-        "nl": "De geselecteerde aanvragen goedkeuren? Deze gebruikers krijgen dan toegang tot het ontwikkelaarsportaal."
-      }
-    },
-    "RejectDeveloper": {
-      "label": {
-        "en": "Reject",
-        "fr": "Refuser",
-        "nl": "Weigeren"
-      },
-      "confirmation": {
-        "en": "Reject the selected developer requests?",
-        "fr": "Refuser les demandes sélectionnées ?",
-        "nl": "De geselecteerde aanvragen weigeren?"
-      }
-    },
     "InviteMember": {
       "label": {
         "en": "Invite",
@@ -1812,44 +1558,6 @@
         "nl": "De geselecteerde leden en uitnodigingen verwijderen?"
       }
     },
-    "ApproveScope": {
-      "label": {
-        "en": "Approve",
-        "fr": "Approuver",
-        "nl": "Goedkeuren"
-      }
-    },
-    "RejectScope": {
-      "label": {
-        "en": "Reject",
-        "fr": "Refuser",
-        "nl": "Weigeren"
-      },
-      "confirmation": {
-        "en": "Reject the selected scope requests?",
-        "fr": "Refuser les demandes de scope sélectionnées ?",
-        "nl": "De geselecteerde scopeaanvragen weigeren?"
-      }
-    },
-    "ApproveGoLive": {
-      "label": {
-        "en": "Approve",
-        "fr": "Approuver",
-        "nl": "Goedkeuren"
-      }
-    },
-    "RejectGoLive": {
-      "label": {
-        "en": "Reject",
-        "fr": "Refuser",
-        "nl": "Weigeren"
-      },
-      "confirmation": {
-        "en": "Keep the selected applications in development?",
-        "fr": "Garder les applications sélectionnées en développement ?",
-        "nl": "De geselecteerde applicaties in ontwikkeling houden?"
-      }
-    },
     "GenerateSecret": {
       "label": {
         "en": "Generate secret",
@@ -1883,21 +1591,6 @@
     }
   },
   "identityProvider": {
-    "developerApprovedNotice": {
-      "en": "The developer requests were approved.",
-      "fr": "Les demandes ont été approuvées.",
-      "nl": "De aanvragen zijn goedgekeurd."
-    },
-    "developerRejectedNotice": {
-      "en": "The developer requests were rejected.",
-      "fr": "Les demandes ont été refusées.",
-      "nl": "De aanvragen zijn geweigerd."
-    },
-    "developerRequestGone": {
-      "en": "These requests were already decided.",
-      "fr": "Ces demandes ont déjà été traitées.",
-      "nl": "Over deze aanvragen is al beslist."
-    },
     "adminOnly": {
       "en": "Only an Admin of this application can do that.",
       "fr": "Seul un administrateur de cette application peut le faire.",
@@ -1932,6 +1625,11 @@
       "en": "Going live was requested. An administrator decides.",
       "fr": "La mise en ligne a été demandée. Un administrateur décidera.",
       "nl": "De livegang is aangevraagd. Een beheerder beslist."
+    },
+    "goLivePending": {
+      "en": "Going live was already requested. An administrator decides.",
+      "fr": "La mise en ligne a déjà été demandée. Un administrateur décidera.",
+      "nl": "De livegang is al aangevraagd. Een beheerder beslist."
     },
     "nowLive": {
       "en": "The application is live.",
@@ -2717,9 +2415,14 @@
           "nl": "Beslist op {0}"
         },
         "note": {
-          "en": "Note from the administrator:",
-          "fr": "Note de l'administrateur :",
-          "nl": "Opmerking van de beheerder:"
+          "en": "The administrator's reason:",
+          "fr": "Motif de l'administrateur :",
+          "nl": "Reden van de beheerder:"
+        },
+        "myRequests": {
+          "en": "Follow or withdraw your request",
+          "fr": "Suivre ou retirer votre demande",
+          "nl": "Je aanvraag opvolgen of intrekken"
         },
         "termsChanged": {
           "en": "The developer terms changed. Read and accept the new version.",
@@ -2917,20 +2620,10 @@
           "fr": "Ressources",
           "nl": "Resources"
         },
-        "DeveloperRequests": {
-          "en": "Developer requests",
-          "fr": "Demandes de développeur",
-          "nl": "Ontwikkelaarsaanvragen"
-        },
-        "ScopeApprovals": {
-          "en": "Scope approvals",
-          "fr": "Approbations de scopes",
-          "nl": "Scopegoedkeuringen"
-        },
-        "GoLiveReviews": {
-          "en": "Go-live reviews",
-          "fr": "Mises en ligne à approuver",
-          "nl": "Livegangen ter goedkeuring"
+        "Approvals": {
+          "en": "Approvals",
+          "fr": "Approbations",
+          "nl": "Goedkeuringen"
         },
         "AuditEvents": {
           "en": "Audit trail",
@@ -2942,6 +2635,73 @@
           "fr": "Autorisations",
           "nl": "Toestemmingen"
         }
+      }
+    }
+  },
+  "lookup": {
+    "EOidcMemberRole": {
+      "Admin": {
+        "en": "Admin",
+        "fr": "Administrateur",
+        "nl": "Beheerder"
+      },
+      "Developer": {
+        "en": "Developer",
+        "fr": "Développeur",
+        "nl": "Ontwikkelaar"
+      },
+      "Tester": {
+        "en": "Tester",
+        "fr": "Testeur",
+        "nl": "Tester"
+      }
+    },
+    "EOidcApplicationMode": {
+      "Development": {
+        "en": "Development",
+        "fr": "Développement",
+        "nl": "Ontwikkeling"
+      },
+      "Live": {
+        "en": "Live",
+        "fr": "En ligne",
+        "nl": "Live"
+      }
+    },
+    "EOidcResourceKind": {
+      "Identity": {
+        "en": "Identity",
+        "fr": "Identité",
+        "nl": "Identiteit"
+      },
+      "Api": {
+        "en": "API",
+        "fr": "API",
+        "nl": "API"
+      }
+    },
+    "EOidcClientType": {
+      "Confidential": {
+        "en": "Confidential",
+        "fr": "Confidentiel",
+        "nl": "Vertrouwelijk"
+      },
+      "Public": {
+        "en": "Public",
+        "fr": "Public",
+        "nl": "Publiek"
+      }
+    },
+    "EOidcConsentType": {
+      "Explicit": {
+        "en": "Ask the user",
+        "fr": "Demander à l'utilisateur",
+        "nl": "De gebruiker vragen"
+      },
+      "Implicit": {
+        "en": "Automatic",
+        "fr": "Automatique",
+        "nl": "Automatisch"
       }
     }
   }

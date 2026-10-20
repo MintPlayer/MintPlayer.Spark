@@ -1,25 +1,23 @@
 {
-  "version": 2,
-  "modelHash": "738a86d860e040178e8c1bcc27b48213db817128b299a5fc4fa9d5c404fe313e",
+  "version": 3,
+  "modelHash": "237cb610a79e7ceb80c00c8531fde10e80b0540e7d68aaad7f6254d560641bc4",
   "contextRoots": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "modelFiles": "e721fe87ced9c8d805b2134897a3d5b9cc24f5c0f496ee36ea83e35c66503ccd",
+  "modelFiles": "09d67f8ccb656dfdfe25c16342260a1c8bdcfb507ab145e756693cdeaa1e0705",
   "files": {
+    "ApprovalReason.json": "737f374d52ab7694edaaf65c072acb1e9429e7a33483ed48e1237bd610f71473",
+    "ApprovalRequest.json": "a7376e4c77b2677ceb4fe7823b705c98aebbc6422572788b89aa58a7471319a8",
     "ClientClaim.json": "94bb0ad62af0b10712bbf1f88d98534addafb037ea693b691b2ca893fb8f437d",
     "ClientSecret.json": "a6fa599f79e5819c7e231c99e036645618d9686a291613b1275cfc3ff1a4ad33",
     "OidcApiScope.json": "2a1e2a01feaa390b07bbb761fdfedb6f07fee8646586b8c14851cbf0c98b16fc",
-    "OidcApplication.json": "eb095d7621543951867e435be6d20b65691276e078bb12a39e6e39d8d819e34c",
+    "OidcApplication.json": "2604c6734e291ecb470ea73afdf3413938be0e877aaf0f26d17ce22dd4206c50",
     "OidcApplicationMember.json": "a80e1870ed16dd1bba0c536318d15ddc624edcd31d30b76b6b1086ffe85a502c",
     "OidcApplicationMemberRow.json": "f75aba6d425cba5553bc0b70a9b42b4003eaea2cd152578df06e8f074674fa37",
-    "OidcApplicationScope.json": "9ac27a9706e0d17d1c736dfc8163e4238bd956b6f53a519a21659e45cf549150",
+    "OidcApplicationScope.json": "0273e02339d98f44c559f9da381bde4a3cc8d072edba62acfbe32582792615fd",
     "OidcApplicationSecretRow.json": "d69b0ffc08c1020218482e7c581a5a46aa21d3728b0325b45eb87cb46986745d",
     "OidcAuditEvent.json": "0bde83462b4f4c399e64e0d8794e267b65bb51e2b37707e5a21ee21f5abe009d",
-    "OidcDeveloperRequest.json": "ef09fd8e81cf2e4f08ef03244f16fcd0b371bcb0020336cdb3a6ffd5bbdb76c7",
-    "OidcGoLiveReview.json": "63cc0b475f513ff0e2272e446fb3faa92dd82fac87be98c0e01be2370ba54982",
     "OidcGrant.json": "2032a1e42a5270a4f6c7aa84c15531ee431922452d274870e10315879a0a0b36",
     "OidcInvitation.json": "e24279356c96c98cf1689dc127f3b93210f1959966a2c27b6b8d773d2001afe1",
     "OidcResource.json": "43d72632cb47e38c35e3db60db0cf07069088f02ca31b864b40c633055d36840",
-    "OidcReviewDecision.json": "db313ab9a1716de50e7756acf412ae11535fc9ce6bbf31b5a79607ad03105e83",
-    "OidcScopeApproval.json": "6013b35064771788ca07869bff4b3b28209b43f3d75e761b7bd8f9e5cc3e071f",
     "PasskeyRename.json": "efd6a49e2c20d8420f48f546557fe7605a0553d3f4ce50ec8ae62876ce86714e",
     "PasskeyRow.json": "902d6e7e53ac01ab224b90bdd486b9ba3f4ee27273fe667c907312aac3541b33",
     "Passkeys.json": "738742f13217adeeb4724f72f968923099f7d7210cee1133dfd6707eb55856ce",
@@ -27,14 +25,21 @@
   },
   "entities": {},
   "configFiles": {
-    "actions.json": "79049e88b60c2e61a6fe02095dffdc9077c7f63894ee38a4c87f65c45d426f6c"
+    "actions.json": "3ac858368eb6da3e6ccb304420b09170ce74cb9ff4d918c7fdc9e9dc7ae967c1"
   },
   "libraries": {
+    "approvals": "MintPlayer.Spark.Approvals",
     "authorization": "MintPlayer.Spark.Authorization",
     "identity-provider": "MintPlayer.Spark.IdentityProvider",
     "spark": "MintPlayer.Spark"
   },
   "layers": {
+    "Model/ApprovalReason.json": {
+      "approvals": "737f374d52ab7694edaaf65c072acb1e9429e7a33483ed48e1237bd610f71473"
+    },
+    "Model/ApprovalRequest.json": {
+      "approvals": "a7376e4c77b2677ceb4fe7823b705c98aebbc6422572788b89aa58a7471319a8"
+    },
     "Model/ClientClaim.json": {
       "identity-provider": "94bb0ad62af0b10712bbf1f88d98534addafb037ea693b691b2ca893fb8f437d"
     },
@@ -45,7 +50,7 @@
       "identity-provider": "2a1e2a01feaa390b07bbb761fdfedb6f07fee8646586b8c14851cbf0c98b16fc"
     },
     "Model/OidcApplication.json": {
-      "identity-provider": "eb095d7621543951867e435be6d20b65691276e078bb12a39e6e39d8d819e34c"
+      "identity-provider": "2604c6734e291ecb470ea73afdf3413938be0e877aaf0f26d17ce22dd4206c50"
     },
     "Model/OidcApplicationMember.json": {
       "identity-provider": "a80e1870ed16dd1bba0c536318d15ddc624edcd31d30b76b6b1086ffe85a502c"
@@ -54,19 +59,13 @@
       "identity-provider": "f75aba6d425cba5553bc0b70a9b42b4003eaea2cd152578df06e8f074674fa37"
     },
     "Model/OidcApplicationScope.json": {
-      "identity-provider": "9ac27a9706e0d17d1c736dfc8163e4238bd956b6f53a519a21659e45cf549150"
+      "identity-provider": "0273e02339d98f44c559f9da381bde4a3cc8d072edba62acfbe32582792615fd"
     },
     "Model/OidcApplicationSecretRow.json": {
       "identity-provider": "d69b0ffc08c1020218482e7c581a5a46aa21d3728b0325b45eb87cb46986745d"
     },
     "Model/OidcAuditEvent.json": {
       "identity-provider": "0bde83462b4f4c399e64e0d8794e267b65bb51e2b37707e5a21ee21f5abe009d"
-    },
-    "Model/OidcDeveloperRequest.json": {
-      "identity-provider": "ef09fd8e81cf2e4f08ef03244f16fcd0b371bcb0020336cdb3a6ffd5bbdb76c7"
-    },
-    "Model/OidcGoLiveReview.json": {
-      "identity-provider": "63cc0b475f513ff0e2272e446fb3faa92dd82fac87be98c0e01be2370ba54982"
     },
     "Model/OidcGrant.json": {
       "identity-provider": "2032a1e42a5270a4f6c7aa84c15531ee431922452d274870e10315879a0a0b36"
@@ -76,12 +75,6 @@
     },
     "Model/OidcResource.json": {
       "identity-provider": "43d72632cb47e38c35e3db60db0cf07069088f02ca31b864b40c633055d36840"
-    },
-    "Model/OidcReviewDecision.json": {
-      "identity-provider": "db313ab9a1716de50e7756acf412ae11535fc9ce6bbf31b5a79607ad03105e83"
-    },
-    "Model/OidcScopeApproval.json": {
-      "identity-provider": "6013b35064771788ca07869bff4b3b28209b43f3d75e761b7bd8f9e5cc3e071f"
     },
     "Model/PasskeyRename.json": {
       "authorization": "efd6a49e2c20d8420f48f546557fe7605a0553d3f4ce50ec8ae62876ce86714e"
@@ -96,12 +89,33 @@
       "authorization": "81d5e4fe403e329fc20404f35c3b9944aa11c17374981df5a4073ddf08fcdb69"
     },
     "actions.json": {
+      "approvals": "3644a0387d86076bd48137bee65ed032a1ae7646febe3f9995afdbd392952813",
       "authorization": "fb0d34fa66e732b157e4e222fb9c357e4219cf6d85177473103874e8c1090427",
-      "identity-provider": "06f7de305383ac57955571ab5c16d3aed1b802a7c2159b49d23634d241d33b15",
+      "identity-provider": "b0cf6785f290ce92d425518100f6fb84d5831785f9492bcccb9aaba0068709af",
       "spark": "5974b38c8164cafbfb22c012c52fb46dd27264181d772b9f004de1829d1838e6"
     },
     "programUnits.json": {
       "identity-provider": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     }
+  },
+  "names": {
+    "0295e3c2-0487-59ad-9b50-a53240d31f76": "OidcGrant (identity-provider:OidcGrant)",
+    "069707aa-93e9-5ebd-a5ed-df73eadfe9b4": "OidcInvitation (identity-provider:OidcInvitation)",
+    "0d3faefa-624c-5135-bca7-652aa9053e0e": "SparkUser (authorization:SparkUser)",
+    "2e662d0c-c4b7-579d-88b0-a23c9f2c7f2f": "OidcApplicationMember (identity-provider:OidcApplicationMember)",
+    "34ee96f8-869e-578f-a03b-ab77fbb4d7b5": "OidcAuditEvent (identity-provider:OidcAuditEvent)",
+    "59e1ca22-4cb3-5d6b-91ea-52dad25d8ce7": "ClientSecret (identity-provider:ClientSecret)",
+    "745c8cfe-13bd-56c0-a4f7-7a46c1e1a2d9": "OidcApiScope (identity-provider:OidcApiScope)",
+    "86356a6e-211d-531b-994b-a185dc398ba2": "ClientClaim (identity-provider:ClientClaim)",
+    "8f87890f-0d22-53dd-b5c8-04fb3dda7272": "ApprovalReason (approvals:ApprovalReason)",
+    "9806961f-9bd8-5f1b-bc4b-90e609ef0272": "ApprovalRequest (approvals:ApprovalRequest)",
+    "b2fb419f-1522-56b0-ad68-4c0abebdda11": "OidcApplicationSecretRow (identity-provider:OidcApplicationSecretRow)",
+    "bc7a3a73-5852-5111-974d-ea0c7ab290e0": "PasskeyRow (authorization:PasskeyRow)",
+    "bdac87b9-c715-5aca-8ffd-ab9a671d633f": "OidcApplicationMemberRow (identity-provider:OidcApplicationMemberRow)",
+    "c8de3d61-dd3f-5e13-8b06-9823253644e6": "OidcResource (identity-provider:OidcResource)",
+    "cd8a0767-2a18-5c73-a608-14cf9efe99ac": "Passkeys (authorization:Passkeys)",
+    "d0d0db0e-d372-52af-8bab-7c6b7e249347": "OidcApplication (identity-provider:OidcApplication)",
+    "da8a90fd-91ae-593a-8b48-0ad102082412": "PasskeyRename (authorization:PasskeyRename)",
+    "eb861551-4fd7-52e0-a491-100f7e928ab8": "OidcApplicationScope (identity-provider:OidcApplicationScope)"
   }
 }

@@ -1,10 +1,14 @@
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
+using MintPlayer.Spark.Approvals;
+using MintPlayer.Spark.Approvals.Models;
 using MintPlayer.Spark.Authorization.Identity;
 using MintPlayer.Spark.Organizations.Identity;
+using MintPlayer.Spark.Organizations.Migrations;
 using MintPlayer.Spark.Organizations.Models;
 using MintPlayer.Spark.Services;
 using Raven.Client.Documents;
@@ -23,6 +27,8 @@ internal sealed class SparkOrganizations(
     IEnumerable<IOrganizationDataHandler> dataHandlers,
     IModelLoader modelLoader,
     TimeProvider timeProvider,
+    IOptions<SparkOrganizationsOptions> options,
+    ISparkApprovals approvals,
     ILogger<SparkOrganizations> logger) : ISparkOrganizations
 {
     /// <summary>The invitation lifetime when the model states no <c>expiresAfter</c> (D18: 14 days).</summary>
@@ -35,7 +41,7 @@ internal sealed class SparkOrganizations(
     internal const string PersonalOwnerProblem = "A personal organization belongs to its user: its Owner role cannot change hands.";
     internal const string LastOwnerProblem = "An organization needs an Owner. Make another member Owner first.";
     internal const string InviterUnconfirmedProblem = "Confirm your email address before you invite anyone: an invitation is sent on your behalf.";
-    internal const string RequesterUnconfirmedProblem = "Confirm your email address before you ask to join: the request is mailed to the owners on your behalf.";
+    internal const string RequesterUnconfirmedProblem = "Confirm your email address before you ask to join: the organization's Owners and Admins see your address with the request.";
 
     private DateTime Now => timeProvider.GetUtcNow().UtcDateTime;
 
@@ -123,7 +129,7 @@ internal sealed class SparkOrganizations(
             throw new SparkValidationException(InviterUnconfirmedProblem);
 
         // One live link per address: a new invitation replaces the pending one.
-        foreach (var pending in await PendingAsync(session, organization.Id!, OrganizationInvitationKind.Invitation, i => i.Email == email, cancellationToken))
+        foreach (var pending in await PendingAsync(session, organization.Id!, i => i.Email == email, cancellationToken))
             session.Delete(pending);
 
         var token = NewToken();
@@ -131,7 +137,6 @@ internal sealed class SparkOrganizations(
         {
             Id = OrganizationInvitation.NewId(),
             OrganizationId = organization.Id,
-            Kind = OrganizationInvitationKind.Invitation,
             Email = email,
             Role = role,
             TokenHash = Hash(token),
@@ -158,53 +163,27 @@ internal sealed class SparkOrganizations(
         if (role is OrganizationRole.Owner || !Enum.IsDefined(role))
             throw new SparkValidationException("A join request asks for the Viewer, Member or Admin role.", nameof(OrganizationInvitation.Role));
 
-        using var session = store.OpenAsyncSession();
-        var organization = await session.LoadAsync<Organization>(Require(organizationId, nameof(organizationId)), cancellationToken)
-            ?? throw new SparkRowLevelAccessDeniedException("Organization");
-        if (await session.LoadAsync<OrganizationMembership>(OrganizationMembership.IdFor(requesterUserId, organization.Id!), cancellationToken) is not null)
-            return false;
-
-        var requester = await session.LoadAsync<SparkUser>(requesterUserId, cancellationToken)
-            ?? throw new InvalidOperationException($"User '{requesterUserId}' does not exist.");
-        // D43 (owner correction 2026-10-10): the Owners are mailed the requester's address on their
-        // behalf, so, like an inviter's, it must be confirmed.
-        if (!OrganizationEmail.HasConfirmedAddress(requester))
-            throw new SparkValidationException(RequesterUnconfirmedProblem);
-
-        foreach (var pending in await PendingAsync(session, organization.Id!, OrganizationInvitationKind.JoinRequest, i => i.UserId == requesterUserId, cancellationToken))
-            session.Delete(pending);
-
-        var token = NewToken();
-        var request = new OrganizationInvitation
+        Organization organization;
+        SparkUser requester;
+        using (var session = store.OpenAsyncSession())
         {
-            Id = OrganizationInvitation.NewId(),
-            OrganizationId = organization.Id,
-            Kind = OrganizationInvitationKind.JoinRequest,
-            Email = requester.Email,
-            UserId = requesterUserId,
-            UserName = requester.UserName,
-            Role = role,
-            TokenHash = Hash(token),
-            CreatedBy = requesterUserId,
-            CreatedAtUtc = Now,
-            ExpiresAtUtc = Now + InvitationLifetime,
-        };
-        await session.StoreAsync(request, request.Id, cancellationToken);
-        await session.SaveChangesAsync(cancellationToken);
+            organization = await session.LoadAsync<Organization>(Require(organizationId, nameof(organizationId)), cancellationToken)
+                ?? throw new SparkRowLevelAccessDeniedException("Organization");
+            if (await session.LoadAsync<OrganizationMembership>(OrganizationMembership.IdFor(requesterUserId, organization.Id!), cancellationToken) is not null)
+                return false;
 
-        // Every Owner gets the same link; the first who accepts spends it.
-        foreach (var owner in await OwnersAsync(session, organization.Id!, cancellationToken))
-        {
-            if (await session.LoadAsync<SparkUser>(owner.UserId, cancellationToken) is not { Email: { Length: > 0 } ownerEmail } ownerUser)
-                continue;
-            await mail.SendAsync(OrganizationMailTemplates.JoinRequest, ownerEmail, ownerUser.UserName, ownerUser.PreferredCulture, request, token, new
-            {
-                organization = organization.Name,
-                role = role.ToString(),
-                requester = requester.UserName ?? "",
-                requester_email = requester.Email ?? "",
-            }, cancellationToken);
+            requester = await session.LoadAsync<SparkUser>(requesterUserId, cancellationToken)
+                ?? throw new InvalidOperationException($"User '{requesterUserId}' does not exist.");
+            // D43 (owner correction 2026-10-10): the deciders are shown the requester's address with the request,
+            // so, like an inviter's, it must be confirmed.
+            if (!OrganizationEmail.HasConfirmedAddress(requester))
+                throw new SparkValidationException(RequesterUnconfirmedProblem);
         }
+
+        // D26: a decision request of kind organizations.join. Approvals tells every Owner and Admin, who approve or
+        // decline in-app (OrganizationJoinDeciders, OrganizationJoinHandler); the requester's pending one is replaced.
+        await approvals.SubmitAsync<OrganizationJoinApproval>(
+            OrganizationJoinRequests.Submission(organization, requester, role, InvitationLifetime), cancellationToken);
         return true;
     }
 
@@ -219,8 +198,10 @@ internal sealed class SparkOrganizations(
         session.Advanced.OptimisticConcurrencyMode = OptimisticConcurrencyMode.Writes;
 
         var invitation = await session.LoadAsync<OrganizationInvitation>(invitationId, cancellationToken);
-        if (invitation?.TokenHash is null
-            || !CryptographicOperations.FixedTimeEquals(Encoding.ASCII.GetBytes(invitation.TokenHash), Encoding.ASCII.GetBytes(Hash(token)))
+        if (invitation is null)
+            return await MigratedJoinRequestAsync(session, invitationId, token, cancellationToken) ?? OrganizationAcceptance.Invalid;
+        if (invitation.TokenHash is null
+            || !HashMatches(invitation.TokenHash, token)
             // Raw loads are not row-filtered: an expired invitation lingers until the 36 h sweep (X1).
             || invitation.ExpiresAtUtc is not { } expires || expires <= Now
             || invitation.OrganizationId is null)
@@ -230,34 +211,17 @@ internal sealed class SparkOrganizations(
         if (organization is null)
             return OrganizationAcceptance.Invalid;
 
-        string memberUserId;
-        if (invitation.Kind == OrganizationInvitationKind.JoinRequest)
-        {
-            // Read from storage, not the request's cache: the decision is about who may let people in now.
-            // No address rule here (D43): an Owner or Admin decides, and the requester signed in to ask.
-            var approver = await session.LoadAsync<OrganizationMembership>(OrganizationMembership.IdFor(userId, organization.Id!), cancellationToken);
-            if (approver is null || approver.Role < OrganizationRole.Admin || invitation.UserId is null)
-                return OrganizationAcceptance.Invalid;
-            memberUserId = invitation.UserId;
-        }
-        else
-        {
-            // D43: an invitation is for the mailbox it was sent to. The signed-in account's address must be
-            // the invited one; it need not be confirmed (owner correction 2026-10-10: the inviter's is).
-            // Refused before anything is written, so the link stays live for the right account. The token
-            // was valid, so the holder already knows the invitation exists: saying why discloses nothing (#453).
-            if (await session.LoadAsync<SparkUser>(userId, cancellationToken) is not { } account
-                || !OrganizationEmail.IsAddressOf(account, invitation.Email))
-                return OrganizationAcceptance.OtherAddress;
-            memberUserId = userId;
-        }
-
-        var membershipId = OrganizationMembership.IdFor(memberUserId, organization.Id!);
+        // D43: an invitation is for the mailbox it was sent to. The signed-in account's address must be
+        // the invited one; it need not be confirmed (owner correction 2026-10-10: the inviter's is).
+        // Refused before anything is written, so the link stays live for the right account. The token
+        // was valid, so the holder already knows the invitation exists: saying why discloses nothing (#453).
+        if (await session.LoadAsync<SparkUser>(userId, cancellationToken) is not { } account
+            || !OrganizationEmail.IsAddressOf(account, invitation.Email))
+            return OrganizationAcceptance.OtherAddress;
+        var membershipId = OrganizationMembership.IdFor(userId, organization.Id!);
         if (await session.LoadAsync<OrganizationMembership>(membershipId, cancellationToken) is null)
         {
-            if (await session.LoadAsync<SparkUser>(memberUserId, cancellationToken) is not { } member)
-                return OrganizationAcceptance.Invalid;
-            var membership = NewMembership(organization.Id!, member, invitation.Role is OrganizationRole.Owner ? OrganizationRole.Admin : invitation.Role, Now);
+            var membership = NewMembership(organization.Id!, account, invitation.Role is OrganizationRole.Owner ? OrganizationRole.Admin : invitation.Role, Now);
             await session.StoreAsync(membership, string.Empty, membershipId, cancellationToken);
         }
 
@@ -271,11 +235,31 @@ internal sealed class SparkOrganizations(
             return OrganizationAcceptance.Invalid;
         }
 
-        reader.Invalidate(memberUserId);
-        logger.LogInformation("{Kind} {InvitationId} accepted by {UserId}: {MemberId} joined {OrganizationId}.",
-            invitation.Kind, invitationId, userId, memberUserId, organization.Id);
+        reader.Invalidate(userId);
+        logger.LogInformation("Invitation {InvitationId} accepted: {UserId} joined {OrganizationId}.", invitationId, userId, organization.Id);
         return new OrganizationAcceptance(true, organization.Id, organization.Name, null);
     }
+
+    /// <summary>
+    /// D26: a join request mailed before the migration (<see cref="OrganizationJoinRequestUpgrade"/>) is an
+    /// approval request now, under the invitation's guid. When the link's token matches the hash the request kept, the
+    /// answer is the request's page (sign-in and the deciders' rule apply there); anything else is null, the one
+    /// refusal, so a token that does not match learns nothing.
+    /// </summary>
+    private async Task<OrganizationAcceptance?> MigratedJoinRequestAsync(IAsyncDocumentSession session, string invitationId, string token, CancellationToken cancellationToken)
+    {
+        var requestId = OrganizationJoinRequestUpgrade.RequestIdFor(invitationId);
+        var request = await session.LoadAsync<ApprovalRequest>(requestId, cancellationToken);
+        if (request is null || request.Kind != OrganizationJoinApproval.Name
+            || !request.Data.TryGetValue(OrganizationJoinRequests.LegacyTokenHashKey, out var legacyHash) || legacyHash is null
+            || !HashMatches(legacyHash, token))
+            return null;
+        return OrganizationAcceptance.ForApprovalRequest(OrganizationJoinRequests.PageOf(requestId));
+    }
+
+    /// <summary>Whether <paramref name="token"/> hashes to <paramref name="storedHash"/>, compared in fixed time.</summary>
+    private static bool HashMatches(string storedHash, string token)
+        => CryptographicOperations.FixedTimeEquals(Encoding.ASCII.GetBytes(storedHash), Encoding.ASCII.GetBytes(Hash(token)));
 
     public async Task LeaveAsync(string organizationId, string userId, CancellationToken cancellationToken = default)
     {
@@ -318,6 +302,29 @@ internal sealed class SparkOrganizations(
         reader.Invalidate(toUserId);
     }
 
+    public async Task<IReadOnlyList<string>> GetCustomRolesAsync(string organizationId, string userId, CancellationToken cancellationToken = default)
+        => (await reader.GetCustomRolesAsync(Require(userId, nameof(userId)), cancellationToken)).GetValueOrDefault(organizationId) ?? [];
+
+    public async Task SetCustomRolesAsync(string organizationId, string userId, IEnumerable<string> customRoles, string actingUserId, CancellationToken cancellationToken = default)
+    {
+        Require(userId, nameof(userId));
+        Require(actingUserId, nameof(actingUserId));
+        var roles = OrganizationCustomRoles.Normalize(customRoles, options.Value.CustomRoles, out var undeclared);
+        if (undeclared.Count > 0)
+            throw new SparkValidationException("Unknown role: " + string.Join(", ", undeclared) + ".", nameof(OrganizationMembership.CustomRoles));
+
+        using var session = store.OpenAsyncSession();
+        session.Advanced.OptimisticConcurrencyMode = OptimisticConcurrencyMode.Writes;
+        var organization = await LoadOrganizationAsync(session, organizationId, cancellationToken);
+        await RequireRoleAsync(session, organization.Id!, actingUserId, OrganizationRole.Admin, cancellationToken);
+        var membership = await session.LoadAsync<OrganizationMembership>(OrganizationMembership.IdFor(userId, organization.Id!), cancellationToken)
+            ?? throw new SparkValidationException("Only a member can be given a role. Invite them first.");
+
+        membership.CustomRoles = roles;
+        await session.SaveChangesAsync(cancellationToken);
+        reader.Invalidate(userId);
+    }
+
     public async Task DeleteAsync(string organizationId, string actingUserId, CancellationToken cancellationToken = default)
     {
         Require(actingUserId, nameof(actingUserId));
@@ -337,7 +344,8 @@ internal sealed class SparkOrganizations(
 
     /// <summary>
     /// D26's cascade, written into <paramref name="session"/> (the caller saves): every
-    /// <see cref="IOrganizationDataHandler"/> first, then the organization's memberships and invitations.
+    /// <see cref="IOrganizationDataHandler"/> first, then the organization's memberships and invitations, and its
+    /// pending join requests are closed.
     /// </summary>
     internal async Task DeleteDependentsAsync(IAsyncDocumentSession session, Organization organization, CancellationToken cancellationToken)
     {
@@ -348,6 +356,8 @@ internal sealed class SparkOrganizations(
             session.Delete(id);
         foreach (var id in await IdsAsync<OrganizationInvitation>(session, organization.Id!, cancellationToken))
             session.Delete(id);
+        // D26: its pending join requests close (Withdrawn) in the same commit; nobody can decide them any more.
+        await approvals.ClosePendingAsync<OrganizationJoinApproval>(session, new ApprovalSubject(OrganizationJoinRequests.SubjectType, organization.Id!), cancellationToken);
     }
 
     /// <summary>Whether an Owner other than <paramref name="userId"/> exists.</summary>
@@ -392,12 +402,12 @@ internal sealed class SparkOrganizations(
     }
 
     private static async Task<List<OrganizationInvitation>> PendingAsync(
-        IAsyncDocumentSession session, string organizationId, OrganizationInvitationKind kind,
+        IAsyncDocumentSession session, string organizationId,
         System.Linq.Expressions.Expression<Func<OrganizationInvitation, bool>> match, CancellationToken cancellationToken)
         => await session.Query<OrganizationInvitation>()
             // Waited on: a pending link the index has not seen yet would stay live beside its replacement.
             .Customize(c => c.WaitForNonStaleResults(TimeSpan.FromSeconds(15)))
-            .Where(i => i.OrganizationId == organizationId && i.Kind == kind)
+            .Where(i => i.OrganizationId == organizationId)
             .Where(match)
             .ToListAsync(cancellationToken);
 

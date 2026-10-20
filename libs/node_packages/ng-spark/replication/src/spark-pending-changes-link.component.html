@@ -1,0 +1,7 @@
+@if (count() > 0) {
+  <a class="spark-pending-changes-link" [class]="linkClass()" [class.spark-pending-changes-failed]="lastOutcome() !== null"
+     [routerLink]="link" (click)="opened()" [attr.title]="lastOutcome()?.reason ?? null">
+    {{ 'replication.pendingChanges' | t }}
+    <span class="spark-pending-changes-count">{{ count() }}</span>
+  </a>
+}

@@ -28,6 +28,27 @@
 
 	<ItemGroup>
 		<ProjectReference Include="..\..\libs\spark\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
+		<!--
+		  The `contracts` command (commerce X20 item 2): the TypeScript contracts generator lives in MintPlayer.Spark (an
+		  application's binary runs it too), and every library that declares [SparkContract] types is referenced here
+		  so its types can be reflected over. SparkLibraryContracts.Libraries lists them.
+		-->
+		<ProjectReference Include="..\..\libs\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
+		<ProjectReference Include="..\..\libs\authorization\MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj" />
+		<ProjectReference Include="..\..\libs\refdata\abstractions\MintPlayer.Spark.ReferenceData.Abstractions.csproj" />
+		<ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce\MintPlayer.Spark.Commerce.csproj" />
+		<ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce.Payments\MintPlayer.Spark.Commerce.Payments.csproj" />
+		<ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce.Checkout\MintPlayer.Spark.Commerce.Checkout.csproj" />
+		<ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce.Promotions\MintPlayer.Spark.Commerce.Promotions.csproj" />
+		<ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce.Shipping\MintPlayer.Spark.Commerce.Shipping.csproj" />
+		<ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce.Ticketing.Venues\MintPlayer.Spark.Commerce.Ticketing.Venues.csproj" />
+		<ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce.Ticketing.Events\MintPlayer.Spark.Commerce.Ticketing.Events.csproj" />
+		<ProjectReference Include="..\..\libs\challenges\MintPlayer.Spark.Challenges\MintPlayer.Spark.Challenges.csproj" />
+		<ProjectReference Include="..\..\libs\waiting_room\MintPlayer.Spark.WaitingRoom\MintPlayer.Spark.WaitingRoom.csproj" />
+		<ProjectReference Include="..\..\libs\identity_provider\MintPlayer.Spark.IdentityProvider\MintPlayer.Spark.IdentityProvider.csproj" />
+		<ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce.Invoicing\MintPlayer.Spark.Commerce.Invoicing.csproj" />
+		<ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce.Shop\MintPlayer.Spark.Commerce.Shop.csproj" />
+		<ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce.Ticketing.Tickets\MintPlayer.Spark.Commerce.Ticketing.Tickets.csproj" />
 	</ItemGroup>
 
 	<!--

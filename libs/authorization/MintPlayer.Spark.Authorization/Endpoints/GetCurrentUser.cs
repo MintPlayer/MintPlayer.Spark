@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Identity;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Authorization.Contracts;
 using MintPlayer.Spark.Authorization.Identity;
 
 namespace MintPlayer.Spark.Authorization.Endpoints;
@@ -33,14 +34,13 @@ internal sealed partial class GetCurrentUser<TUser> : IGetEndpoint
             : null;
 
         if (user is null)
-            return Results.Ok(new { isAuthenticated = false });
+            return Results.Ok(SparkAuthUser.Anonymous);
 
-        return Results.Ok(new
-        {
-            isAuthenticated = true,
-            userName = await userManager.GetUserNameAsync(user),
-            email = await userManager.GetEmailAsync(user),
-            roles = await userManager.GetRolesAsync(user),
-        });
+        // A typed record (commerce X20): ng-spark's AuthUser is generated from it.
+        return Results.Ok(new SparkAuthUser(
+            IsAuthenticated: true,
+            UserName: await userManager.GetUserNameAsync(user),
+            Email: await userManager.GetEmailAsync(user),
+            Roles: [.. await userManager.GetRolesAsync(user)]));
     }
 }

@@ -35,7 +35,6 @@ namespace CodeCoverage.Migrations;
 /// </remarks>
 public partial class M_202609091300_ApiTokenIdIsNoLongerTheHash : ISparkMigration
 {
-    public static long Version => 202609091300;
     public static string? Description => "Give upload tokens ids that do not contain their hash";
 
     [Inject] private readonly IDocumentStore store;

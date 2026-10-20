@@ -77,10 +77,18 @@ public static class SparkTranslations
         var all = new Dictionary<string, TranslatedString>(StringComparer.Ordinal);
         foreach (var (key, languages) in result.Entries)
         {
-            var translations = new Dictionary<string, string>(languages.Count, StringComparer.Ordinal);
+            var translated = new TranslatedString();
             foreach (var (language, text) in languages)
-                translations[language] = text;
-            all[key] = new TranslatedString { Translations = translations };
+            {
+                // Any language, but a real one (commerce X17): an ill-formed tag would never match a
+                // request's language, so it is a mistake in the file rather than a text nobody sees.
+                if (!LanguageTag.IsWellFormed(language))
+                    throw new InvalidOperationException(
+                        $"translations.json key '{key}' has the language '{language}', which is not a well-formed " +
+                        "RFC 5646 language tag (e.g. 'en', 'nl-BE', 'zh-Hant').");
+                translated.Set(language, text);
+            }
+            all[key] = translated;
         }
 
         return new SparkTranslationsComposition(

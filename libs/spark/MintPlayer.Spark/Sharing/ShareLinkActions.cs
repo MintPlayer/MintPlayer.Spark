@@ -20,8 +20,10 @@ internal sealed partial class ShareLinkAction : ICustomAction
 
     public async Task ExecuteAsync(CustomActionArgs args, CancellationToken cancellationToken = default)
     {
-        if (args.Parent is not { Id: { Length: > 0 } id, Name: var typeName })
+        if (args.Parent is not { Id: { Length: > 0 } id } parent)
             return;
+        // The type by its id (D28): the share registration matches it by CLR type, whatever the model calls it.
+        var typeName = parent.ObjectTypeId != Guid.Empty ? parent.ObjectTypeId.ToString() : parent.Name;
         if (!await links.IsEnabledAsync(typeName, id, cancellationToken))
         {
             manager.Client.Notify(manager.GetTranslatedMessage("share.disabled"), NotificationKind.Error);
@@ -44,9 +46,9 @@ internal sealed partial class RevokeShareLinkAction : ICustomAction
 
     public async Task ExecuteAsync(CustomActionArgs args, CancellationToken cancellationToken = default)
     {
-        if (args.Parent is not { Id: { Length: > 0 } id, Name: var typeName })
+        if (args.Parent is not { Id: { Length: > 0 } id } parent)
             return;
-        await links.RevokeAsync(typeName, id, cancellationToken);
+        await links.RevokeAsync(parent.ObjectTypeId != Guid.Empty ? parent.ObjectTypeId.ToString() : parent.Name, id, cancellationToken);
         manager.Client.Notify(manager.GetTranslatedMessage("share.revoked"), NotificationKind.Success);
     }
 }

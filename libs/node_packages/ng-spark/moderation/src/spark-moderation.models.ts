@@ -32,6 +32,7 @@ export interface ModerationReputationLine {
   kind: string;
   points: number;
   targetId?: string | null;
+  /** The target's persistent-object type id (D28: never its name, which a rename changes). */
   targetType?: string | null;
   atUtc: string;
   pending: boolean;
@@ -56,6 +57,7 @@ export interface ModerationCaseSummary {
   kind: string;
   status: string;
   targetId?: string | null;
+  /** The target's persistent-object type id (D28: never its name, which a rename changes). */
   targetType?: string | null;
   accountIds: string[];
   flagCount: number;
@@ -96,6 +98,7 @@ export interface ModerationAuditEntry {
   actorId?: string | null;
   action: string;
   targetId?: string | null;
+  /** The target's persistent-object type id (D28: never its name, which a rename changes). */
   targetType?: string | null;
   subjectUserId?: string | null;
   caseId?: string | null;

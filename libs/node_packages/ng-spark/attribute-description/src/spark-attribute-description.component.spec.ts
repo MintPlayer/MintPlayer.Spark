@@ -3,7 +3,7 @@ import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { SparkAttributeDescriptionComponent } from './spark-attribute-description.component';
-import { currentLanguage, TranslatedString } from '@mintplayer/ng-spark/models';
+import { currentLanguage, TranslatedString, translated } from '@mintplayer/ng-spark/models';
 
 /**
  * #348 — the [i] beside an attribute label. The tooltip mechanics belong to ng-bootstrap; what is
@@ -29,13 +29,13 @@ describe('SparkAttributeDescriptionComponent', () => {
   });
 
   it('renders nothing for a description that is empty in every language', () => {
-    const fixture = create({ en: '   ' });
+    const fixture = create(translated({ en: '   ' }));
 
     expect(fixture.nativeElement.querySelector('button')).toBeNull();
   });
 
   it('renders a focusable button named by the description, with the info icon', () => {
-    const fixture = create({ en: 'What this field is for.' });
+    const fixture = create(translated({ en: 'What this field is for.' }));
 
     const button: HTMLButtonElement = fixture.nativeElement.querySelector('button');
     expect(button).not.toBeNull();
@@ -46,7 +46,7 @@ describe('SparkAttributeDescriptionComponent', () => {
   });
 
   it('does not let a click bubble to the header or label that contains it', () => {
-    const fixture = create({ en: 'Help' });
+    const fixture = create(translated({ en: 'Help' }));
     const outerClick = vi.fn();
     fixture.nativeElement.addEventListener('click', outerClick);
 
@@ -59,7 +59,7 @@ describe('SparkAttributeDescriptionComponent', () => {
   });
 
   it('follows the current language, falling back to en', () => {
-    const fixture = create({ en: 'Help', nl: 'Hulp' });
+    const fixture = create(translated({ en: 'Help', nl: 'Hulp' }));
     expect(fixture.componentInstance.text()).toBe('Help');
 
     currentLanguage.set('nl');

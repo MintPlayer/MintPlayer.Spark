@@ -1,0 +1,32 @@
+<mjml>
+  <mj-head>
+    <mj-title>Commande {{ number }} confirmée</mj-title>
+    <mj-attributes>
+      <mj-all font-family="Segoe UI, Helvetica, Arial, sans-serif" />
+      <mj-text font-size="15px" line-height="22px" color="#111827" />
+      <mj-button background-color="#2563eb" color="#ffffff" border-radius="6px" font-size="15px" />
+    </mj-attributes>
+  </mj-head>
+  <mj-body background-color="#f3f4f6">
+    <mj-section background-color="#ffffff" padding="24px 0">
+      <mj-column>
+        <mj-text font-size="20px" font-weight="600">Merci{{ if buyer_name }}, {{ buyer_name }}{{ end }} : la commande {{ number }} est confirmée</mj-text>
+        {{ for line in lines }}<mj-text>{{ line.quantity }} × {{ line.title }}{{ if line.units != "" }} ({{ line.units }}){{ end }} : {{ line.total }}{{ if line.id_check }}<br /><strong>Contrôle d'identité : vous devez avoir au moins {{ line.minimum_age }} ans.</strong>{{ end }}</mj-text>{{ end }}
+        {{ for extra in extras }}<mj-text>{{ extra.label_key }} : {{ extra.amount }}</mj-text>{{ end }}
+        <mj-text font-weight="600">Total : {{ total }}</mj-text>
+        {{ if link }}<mj-button href="{{ link }}">Voir votre commande</mj-button>{{ end }}
+        {{ if withdrawal_link }}<mj-text font-size="13px" color="#4b5563">Se rétracter du contrat ici : <a href="{{ withdrawal_link }}">{{ withdrawal_link }}</a> (lorsque le droit de rétractation s'applique ; directive 2011/83/UE, art. 11 bis).</mj-text>{{ end }}
+      </mj-column>
+    </mj-section>
+    {{ if documents.size > 0 }}<mj-section background-color="#ffffff" padding="0 0 24px 0">
+      <mj-column>
+        <mj-divider border-width="1px" border-color="#e5e7eb" />
+        <mj-text font-size="16px" font-weight="600">Les conditions que vous avez acceptées et vos informations sur la rétractation</mj-text>
+        <mj-text font-size="13px" color="#4b5563">Ce mail est votre copie sur un support durable (directive 2011/83/UE, art. 8, par. 7). Conservez-le.</mj-text>
+        {{ for document in documents }}<mj-text font-weight="600">{{ document.title }} (version {{ document.version }})</mj-text>
+        {{ if document.body }}<mj-text font-size="13px">{{ document.body | html.escape | string.replace "\n" "<br />" }}</mj-text>{{ end }}
+        {{ if document.pdf }}<mj-text font-size="13px"><a href="{{ document.pdf }}">PDF</a></mj-text>{{ end }}{{ end }}
+      </mj-column>
+    </mj-section>{{ end }}
+  </mj-body>
+</mjml>

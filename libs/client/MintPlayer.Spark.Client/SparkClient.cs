@@ -306,6 +306,11 @@ public partial class SparkClient : IDisposable
     /// 204 with nothing created; this method then throws <see cref="SparkClientException"/> with
     /// <c>StatusCode = HttpStatusCode.NoContent</c>.
     /// </para>
+    /// <para>
+    /// A create (or an update) the server diverted for approval (commerce X7) is answered 202 with nothing written;
+    /// this method then throws <see cref="SparkClientException"/> with <c>StatusCode = HttpStatusCode.Accepted</c>
+    /// and the receipt <c>{ "submitted": { "kind", "referenceId" } }</c> as its <c>ResponseBody</c>.
+    /// </para>
     /// </remarks>
     public Task<PersistentObject> CreatePersistentObjectAsync(
         PersistentObject obj, CancellationToken cancellationToken = default, SparkRetryHandler? onRetry = null, SparkOperationHandler? onOperation = null)
@@ -970,6 +975,13 @@ public partial class SparkClient : IDisposable
             async (response, ct) =>
             {
                 await SparkClientException.ThrowIfNotSuccessAsync(response, ct);
+                // Diverted for approval (commerce X7): 202 with { submitted: { kind, referenceId } } — nothing written yet,
+                // so there is no object to return. The receipt is the exception's ResponseBody.
+                if (response.StatusCode == HttpStatusCode.Accepted)
+                {
+                    var receipt = await ReadEnvelopeResultAsync<JsonElement>(response, onOperation, ct);
+                    throw new SparkClientException(response.StatusCode, receipt.GetRawText(), "Submitted for approval: the server diverted the save; nothing was written yet.");
+                }
                 var result = await ReadEnvelopeResultAsync<PersistentObject>(response, onOperation, ct);
                 // A server interceptor cancelled the create (#482, SparkCancelException): nothing was created.
                 if (result is null && response.StatusCode == System.Net.HttpStatusCode.NoContent)

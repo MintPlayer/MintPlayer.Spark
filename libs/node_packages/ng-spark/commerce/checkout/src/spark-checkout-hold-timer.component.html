@@ -1,0 +1,22 @@
+@if (deadline()) {
+  <div class="spark-checkout-hold-timer" [class.spark-checkout-hold-timer-urgent]="state().canExtend">
+    @if (state().lapsed) {
+      <p class="spark-checkout-hold-timer-lapsed" role="alert">{{ 'commerceCheckout.holdLapsed' | t }}</p>
+    } @else {
+      <p class="spark-checkout-hold-timer-deadline">{{ deadlineText() }}</p>
+      <!-- The running clock is visual only: screen readers get the deadline above and the polite announcements below. -->
+      <p class="spark-checkout-hold-timer-clock" aria-hidden="true">{{ state().clock }}</p>
+      @if (state().canExtend) {
+        <button type="button" class="btn btn-outline-primary btn-sm spark-checkout-hold-timer-more" [disabled]="busy()"
+                [attr.aria-describedby]="'spark-checkout-hold-timer-more-hint'" (click)="moreTime()">
+          {{ 'commerceCheckout.holdTimer.moreTime' | t }}
+        </button>
+        <small id="spark-checkout-hold-timer-more-hint" class="spark-checkout-hold-timer-hint">{{ extendText() }}</small>
+      }
+    }
+    @if (refusal(); as key) {
+      <p class="spark-checkout-refusal" role="alert">{{ key | t }}</p>
+    }
+    <p class="visually-hidden" aria-live="polite" aria-atomic="true">{{ announcement() }}</p>
+  </div>
+}

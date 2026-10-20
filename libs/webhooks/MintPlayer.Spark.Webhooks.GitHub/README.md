@@ -158,7 +158,7 @@ builder.Services.AddSpark(builder.Configuration, spark =>
 {
     spark.UseContext<MySparkContext>();
     spark.AddMessaging();
-    spark.AddRecipients();
+    spark.AddSparkDiscovered();
     spark.AddGithubWebhooks(options =>
     {
         options.WebhookSecret = builder.Configuration["GitHub:WebhookSecret"] ?? string.Empty;
@@ -358,7 +358,7 @@ environment:
 
 | Option | Default | Description |
 |---|---|---|
-| `WebhookSecret` | `""` | Webhook secret from your GitHub App settings. Used for HMAC-SHA256 signature validation. |
+| `WebhookSecret` | `""` | Webhook secret from your GitHub App settings. Used for HMAC-SHA256 signature validation. Empty refuses every delivery with `401`. |
 | `WebhookPath` | `"/api/github/webhooks"` | Endpoint path for receiving webhooks. |
 | `ProductionAppId` | `null` | GitHub App ID for the production app. |
 | `DevelopmentAppId` | `null` | GitHub App ID for the dev app. When set, webhooks from this app are forwarded to dev clients instead of being processed locally. |
@@ -378,7 +378,7 @@ builder.Services.AddSpark(builder.Configuration, spark =>
 {
     spark.UseContext<MySparkContext>();
     spark.AddMessaging();
-    spark.AddRecipients();
+    spark.AddSparkDiscovered();
     spark.AddGithubWebhooks(options =>
     {
         options.WebhookSecret = builder.Configuration["GitHub:WebhookSecret"] ?? string.Empty;
@@ -421,7 +421,7 @@ spark.AddGithubWebhooks(options =>
 });
 ```
 
-The `SmeeBackgroundService` connects to the smee.io channel via Server-Sent Events, re-minimizes the JSON body (required for correct signature validation), and feeds it into your local webhook processor.
+The `SmeeBackgroundService` connects to the smee.io channel via Server-Sent Events, captures the body's exact text from the raw SSE frame (never a re-serialized object, which would break the signature), and feeds it into your local webhook processor.
 
 ### Option B: WebSocket forwarding from production
 
@@ -492,9 +492,14 @@ The WebSocket handshake validates the developer's GitHub token against the GitHu
 
 ## Signature validation
 
-All webhook payloads are validated using the `X-Hub-Signature-256` HMAC-SHA256 header. This happens in the `SparkWebhookEventProcessor` regardless of how the webhook was received (direct HTTP, smee.io, or WebSocket).
+GitHub is a source of [`MintPlayer.Spark.Webhooks`](../MintPlayer.Spark.Webhooks/README.md) (`GitHubWebhookSource`, name `github`). Its signature is an instance of the generic HMAC strategy, `GitHubWebhookSignature`: `X-Hub-Signature-256: sha256={lower-case hex HMAC-SHA256}`, keyed with `WebhookSecret`.
 
-When webhooks arrive through smee.io, the JSON body may be reformatted during SSE relay. The `SmeeBackgroundService` re-minimizes the JSON before forwarding to ensure the signature matches what GitHub originally signed.
+- **At the request.** `POST {WebhookPath}` (`GitHubWebhookEndpoint`, a generator endpoint) reads the body as raw bytes, never re-serialized, and the generic receiver checks the signature over exactly those bytes. A mismatch, a missing header or an **empty secret** answers `401` and nothing is processed. A body that is not `application/json` answers `415`; one over 25 MB (GitHub's own cap) answers `413`.
+- **In the processor.** `SparkWebhookEventProcessor` checks the signature a second time, fail-closed, because the dev-tunnel clients (smee.io, WebSocket) call it directly without a request.
+
+When webhooks arrive through smee.io, the signed bytes must be captured from the raw SSE frame, never rebuilt from a parsed object: `SmeeBodyReader` takes the body's original text span, so the signature matches what GitHub signed.
+
+The route used to be Octokit's hand-mapped `MapGitHubWebhooks`; see `docs/endpoints_generator_webhooks_exception.md` for why that exception is closed.
 
 ## Supported events
 
@@ -673,10 +678,14 @@ long enough for in-flight message handlers to finish rather than being killed mi
 ## Architecture
 
 ```
-GitHub ──POST──▶ /api/github/webhooks
+GitHub ──POST──▶ /api/github/webhooks  (GitHubWebhookEndpoint)
                        │
-                SparkWebhookEventProcessor
-                  ├── Verify HMAC-SHA256 signature
+                IWebhookReceiver (MintPlayer.Spark.Webhooks)
+                  ├── Read the exact body bytes (413 over 25 MB, 415 if not JSON)
+                  ├── Verify X-Hub-Signature-256 over those bytes ──▶ 401 on mismatch
+                       │
+                SparkWebhookEventProcessor (inline, before the 200)
+                  ├── Verify HMAC-SHA256 signature again (the dev tunnels' entry point)
                   ├── Dev-app webhook? ──▶ Forward via WebSocket to dev clients
                   └── Production webhook:
                        ├── Broadcast GitHubWebhookMessage<TEvent> ──▶ typed queue
@@ -707,7 +716,7 @@ GitHub ──POST──▶ Production server
 GitHub ──POST──▶ smee.io channel
                        │ (SSE)
                  SmeeBackgroundService
-                 (re-minimizes JSON)
+                 (captures the signed bytes)
                        │
                 SparkWebhookEventProcessor
                 (processes locally)

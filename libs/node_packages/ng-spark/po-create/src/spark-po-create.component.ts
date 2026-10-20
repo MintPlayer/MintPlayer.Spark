@@ -7,9 +7,11 @@ import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
 import { BsContainerComponent } from '@mintplayer/ng-bootstrap/container';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
-import { SparkService } from '@mintplayer/ng-spark/services';
+import { SparkService, SparkLanguageService } from '@mintplayer/ng-spark/services';
+import { NotificationKind, SparkNotificationService } from '@mintplayer/ng-spark/client-operations';
 import { SparkPoFormComponent } from '@mintplayer/ng-spark/po-form';
 import { TranslateKeyPipe, ResolveTranslationPipe } from '@mintplayer/ng-spark/pipes';
+import { SPARK_SAVE_SUBMITTED_HANDLERS, sparkSaveSubmittedRoute } from '@mintplayer/ng-spark/panels';
 import {
   EntityType,
   PersistentObject,
@@ -26,6 +28,9 @@ import {
   RefreshOverlay,
   applyOverlay,
   overlayFromResponse,
+  translated,
+  isSaveSubmitted,
+  SparkSaveSubmitted,
 } from '@mintplayer/ng-spark/models';
 
 @Component({
@@ -38,8 +43,13 @@ export class SparkPoCreateComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly sparkService = inject(SparkService);
+  private readonly language = inject(SparkLanguageService);
+  private readonly notifications = inject(SparkNotificationService);
+  private readonly submittedHandlers = inject(SPARK_SAVE_SUBMITTED_HANDLERS, { optional: true });
 
   saved = output<PersistentObject>();
+  /** The create was diverted for approval (commerce X7): nothing was created yet. */
+  submitted = output<SparkSaveSubmitted>();
   cancelled = output<void>();
 
   colors = Color;
@@ -129,7 +139,7 @@ export class SparkPoCreateComponent {
       const errors = error.error?.result?.errors ?? error.error?.errors;
       this.validationErrors.set(errors ?? [{
         attributeName: '',
-        errorMessage: { en: error.message || 'The new item could not be prepared.' },
+        errorMessage: translated({ en: error.message || 'The new item could not be prepared.' }),
         ruleType: 'error'
       }]);
     }
@@ -227,6 +237,18 @@ export class SparkPoCreateComponent {
       // A server interceptor cancelled the create (the user answered its prompt with Cancel): nothing was
       // created, so the form stays as it is.
       if (!result) return;
+      // Diverted for approval (202, commerce X7): accepted, not created yet — a notice, never an error. There is
+      // no object to open, so the page goes back to where the New was started from.
+      // A registered handler (SPARK_SAVE_SUBMITTED_HANDLERS) may name where to go instead: Approvals opens the
+      // approval request, since the object itself does not exist yet (opening /po/:type/:id would 404).
+      if (isSaveSubmitted(result)) {
+        this.notifications.show(this.language.t('common.submittedForApproval'), NotificationKind.Info, 8000);
+        this.submitted.emit(result);
+        const route = sparkSaveSubmittedRoute(this.submittedHandlers, { operation: 'create', type: this.type(), submitted: result });
+        if (route) this.router.navigate(route);
+        else window.history.back();
+        return;
+      }
       this.saved.emit(result);
       this.router.navigate(['/po', this.type(), result.id]);
     } catch (e) {
@@ -241,7 +263,7 @@ export class SparkPoCreateComponent {
       } else {
         this.validationErrors.set([{
           attributeName: '',
-          errorMessage: { en: error.message || 'An unexpected error occurred' },
+          errorMessage: translated({ en: error.message || 'An unexpected error occurred' }),
           ruleType: 'error'
         }]);
       }

@@ -8,7 +8,7 @@ import { Subject } from 'rxjs';
 
 import { SparkPoEditComponent } from './spark-po-edit.component';
 import { SparkService, SparkLanguageService, SparkLiveService } from '@mintplayer/ng-spark/services';
-import { EntityType, PersistentObject, ShowedOn } from '@mintplayer/ng-spark/models';
+import { EntityType, PersistentObject, ShowedOn, resolveTranslation } from '@mintplayer/ng-spark/models';
 import { settle, StubComponent } from '../../src/test-utils';
 
 /**
@@ -53,7 +53,7 @@ async function setup(type: EntityType = personType, overrides: Record<string, un
       provideRouter(routes),
       { provide: SparkService, useValue: service },
       { provide: SparkLiveService, useValue: live },
-      { provide: SparkLanguageService, useValue: { t: (k: string) => k, resolve: (ts: any) => ts?.en ?? '' } },
+      { provide: SparkLanguageService, useValue: { t: (k: string) => k, resolve: (ts: any) => resolveTranslation(ts, 'en') } },
     ],
   });
   const harness = await RouterTestingHarness.create();
@@ -159,7 +159,7 @@ describe('SparkPoEditComponent live', () => {
     events.next({ type: 'gone' });
     await settle(harness.fixture);
 
-    expect(c.validationErrors().map(e => e.errorMessage.en)).toEqual(['common.deletedByAnotherUser']);
+    expect(c.validationErrors().map(e => e.errorMessage.Entries[0].Value)).toEqual(['common.deletedByAnotherUser']);
   });
 
   it('sets a push aside during a save and looks again when the save fails', async () => {

@@ -1,0 +1,21 @@
+<mjml>
+  <mj-head>
+    <mj-title>Bestelling {{ number }}: de datum is gewijzigd</mj-title>
+    <mj-attributes>
+      <mj-all font-family="Segoe UI, Helvetica, Arial, sans-serif" />
+      <mj-text font-size="15px" line-height="22px" color="#111827" />
+      <mj-button background-color="#2563eb" color="#ffffff" border-radius="6px" font-size="15px" />
+    </mj-attributes>
+  </mj-head>
+  <mj-body background-color="#f3f4f6">
+    <mj-section background-color="#ffffff" padding="24px 0">
+      <mj-column>
+        <mj-text font-size="20px" font-weight="600">{{ if buyer_name }}{{ buyer_name }}, het{{ else }}Het{{ end }} evenement van bestelling {{ number }} is verplaatst</mj-text>
+        {{ if new_date }}<mj-text>Nieuwe datum: <strong>{{ new_date }}</strong>.</mj-text>{{ end }}
+        {{ if note }}<mj-text>{{ note | html.escape }}</mj-text>{{ end }}
+        <mj-text>Je tickets blijven geldig voor de nieuwe datum. Kun je niet komen, dan kun je tot <strong>{{ closes_at }}</strong> een volledige terugbetaling vragen.</mj-text>
+        {{ if link }}<mj-button href="{{ link }}">Behouden of terugbetalen</mj-button>{{ end }}
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>

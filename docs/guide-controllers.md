@@ -75,8 +75,13 @@ with no per-endpoint annotation.
 |---|---|
 | Cookie-authenticated `POST` | yes |
 | Bearer / API-token `POST` | no — CSRF is an attack on ambient authority, and such a caller has no `XSRF-TOKEN` cookie to echo |
-| Anonymous `POST` | no — there is no authority to ride |
+| Anonymous `POST` with a valid [visitor cookie](#visitors) | **yes** — the cookie is a guest's basket and queue entry, and a cross-site page can make the browser send it |
+| Anonymous `POST` without one (or with junk in its place) | no — there is no authority to ride |
 | Anything with explicit metadata | whatever the metadata says, in both directions |
+
+The visitor test reads a cookie that *unprotected*, never the raw header, so attaching junk can neither
+switch the check on nor off. An anonymous browser already holds an `XSRF-TOKEN` (it is minted on every
+response) and Angular's `HttpClient` echoes it, so a guest's calls pass without any client change.
 
 ⚠️ **`RequireAntiforgery` defaults to `true` as of 11.0.0.** It was `false` through the 10.x line, so
 on upgrade a mutating request you map yourself inside those prefixes starts being checked. If that
@@ -101,6 +106,74 @@ startup** on .NET 11, and keeping to one vocabulary is how you avoid meeting tha
 This inverts a default rather than stamping metadata because no MVC convention reaches a minimal-API
 `MapPost` you wrote. A metadata-based design would cover controllers and leave the rest silently
 open, which is the shape of the problem rather than its fix.
+
+## Visitors
+
+A guest's state has to survive a refresh before anyone signs in: a basket, a place in a waiting room
+(commerce PRD X1). Spark gives every request an `ISparkVisitor`, injected or read from
+`HttpContext.Features`:
+
+```csharp
+app.MapPost("/api/basket/lines", async (AddLine line, ISparkVisitor visitor, Baskets baskets) =>
+{
+    var owner = visitor.UserId is { } userId
+        ? "user:" + userId
+        : "visitor:" + await visitor.EnsureAsync();   // issues the cookie on the first action
+    await baskets.AddAsync(owner, line);
+    return Results.Ok();
+});
+```
+
+| Member | |
+|---|---|
+| `VisitorId` | the id from a visitor cookie that unprotected; `null` otherwise |
+| `UserId` | the signed-in user, if any |
+| `IdentityKey` | `user:{id}`, else `visitor:{id}`, else `ip:{address}` (IPv6 grouped to its /64) — what per-identity limits key on |
+| `EnsureAsync()` | the visitor id, issuing the cookie first if there is none |
+
+- **The cookie** `.Spark.Visitor` is HttpOnly, `SameSite=Lax`, `Path=/`, Secure on HTTPS, and lives
+  `Spark:Visitor:Lifetime` (180 days). Its value is protected by Spark's Data Protection key ring
+  (purpose `MintPlayer.Spark.Visitor.v1`), so it survives a redeploy with the ring, and a forged,
+  tampered or expired value is simply no visitor.
+- **Only an action issues it.** `EnsureAsync()` throws on `GET`, `HEAD` and `OPTIONS`: it is a
+  strictly necessary cookie, set when the guest does something that needs it, never by visiting a
+  page. It also throws for a signed-in request, which already has `UserId`.
+- **It is not an identity.** A visitor stays anonymous to every authorization rule, the
+  `[SparkAuthorize]` default and the live socket's ticket expiry. It is ambient authority over the
+  guest's own state, though, which is why an anonymous `POST` that carries it is
+  [checked for CSRF](#csrf).
+- **Payment-provider return URLs** that `POST` cross-site do not carry a `Lax` cookie. Identify those
+  callers with a signed order token, not the visitor.
+
+### Merging into the account on sign-in
+
+Implement `ISparkVisitorMergeHandler` to move what a guest built up onto the account it signs in to,
+and register it (`services.AddScoped<ISparkVisitorMergeHandler, BasketMerge>()`; several may be
+registered):
+
+```csharp
+internal sealed class BasketMerge : ISparkVisitorMergeHandler
+{
+    public async Task MergeAsync(string visitorId, string userId, IAsyncDocumentSession session, CancellationToken ct)
+    {
+        // Load both baskets through `session`, keep the union of lines, store. Do not SaveChanges.
+    }
+}
+```
+
+- **When:** on every fresh sign-in, from Authorization's sign-in hook (password, second factor,
+  recovery code, external login, passkey), which then deletes the visitor cookie. A hook failure never
+  refuses a sign-in, so Spark also merges **on sight**: the first signed-in request that still carries
+  a visitor cookie merges it, then deletes the cookie.
+- **Exactly once:** the handlers write through one **cluster-wide** session that also creates the
+  compare-exchange value `visitor-merge/{visitorId}`. When the hook and the next request race, the
+  first commit wins and the other's writes never land. The record expires after the cookie's
+  lifetime.
+- **What the session allows:** documents and compare-exchange values
+  (`session.Advanced.ClusterTransaction`); a cluster-wide session refuses patches, counters,
+  attachments and time series. Do not call `SaveChangesAsync`.
+- A handler that throws leaves nothing recorded and keeps the cookie, so the next signed-in request
+  tries again. Keep handlers idempotent all the same.
 
 ## Authorizing against `security.json`
 

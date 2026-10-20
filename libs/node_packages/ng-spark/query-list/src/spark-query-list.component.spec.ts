@@ -10,7 +10,7 @@ import { Subject } from 'rxjs';
 import { SparkQueryListComponent } from './spark-query-list.component';
 import { SparkService, SparkLiveService, SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { SPARK_ATTRIBUTE_RENDERERS } from '@mintplayer/ng-spark/renderers';
-import { EntityType, ShowedOn, SparkQuery } from '@mintplayer/ng-spark/models';
+import { EntityType, ShowedOn, SparkQuery, translated, resolveTranslation } from '@mintplayer/ng-spark/models';
 import { StubComponent, nextNavigationEnd, settle } from '../../src/test-utils';
 
 /**
@@ -51,7 +51,7 @@ const routes: Routes = [
   { path: 'po/:type/new', component: StubComponent },
 ];
 
-const langStub = { t: (k: string) => k, resolve: (v: any) => (typeof v === 'string' ? v : v?.en ?? '') };
+const langStub = { t: (k: string) => k, resolve: (v: any) => (typeof v === 'string' ? v : resolveTranslation(v, 'en')) };
 
 async function setup(serviceOverrides: Record<string, unknown> = {}) {
   const service: any = {
@@ -226,9 +226,9 @@ describe('SparkQueryListComponent', () => {
 
     it('the recycle bin (?deleted=only) renders none of New, Delete or the custom actions (#460)', async () => {
       const actions = [
-        { name: 'New', label: { en: 'New' }, showedOn: 'both', offset: 0, isDefault: true },
-        { name: 'Delete', label: { en: 'Delete' }, showedOn: 'both', selectionRule: '>0', offset: 0, isDefault: true },
-        { name: 'Archive', label: { en: 'Archive' }, showedOn: 'query', selectionRule: '>0', offset: 0 },
+        { name: 'New', label: translated({ en: 'New' }), showedOn: 'both', offset: 0, isDefault: true },
+        { name: 'Delete', label: translated({ en: 'Delete' }), showedOn: 'both', selectionRule: '>0', offset: 0, isDefault: true },
+        { name: 'Archive', label: translated({ en: 'Archive' }), showedOn: 'query', selectionRule: '>0', offset: 0 },
       ];
       const shown = () => [...harness.fixture.nativeElement.querySelectorAll('.spark-actionbar [data-action]')]
         .map((b: Element) => b.getAttribute('data-action'));
@@ -246,7 +246,7 @@ describe('SparkQueryListComponent', () => {
 
     it('shows the caption from the resolved query', async () => {
       const { harness } = await setup({
-        getQuery: vi.fn().mockResolvedValue({ ...allPeopleQuery, label: { en: 'Everyone' } }),
+        getQuery: vi.fn().mockResolvedValue({ ...allPeopleQuery, label: translated({ en: 'Everyone' }) }),
       });
       await navigate(harness, '/query/q-all');
 
@@ -295,7 +295,7 @@ describe('SparkQueryListComponent', () => {
     });
 
     it('delegates custom actions and their enabled state to the grid, which holds the selection', async () => {
-      const action = { name: 'Archive', label: { en: 'Archive' }, showedOn: 'query', selectionRule: '=1', offset: 0 } as any;
+      const action = { name: 'Archive', label: translated({ en: 'Archive' }), showedOn: 'query', selectionRule: '=1', offset: 0 } as any;
       const { harness, service } = await setup({ getCustomActions: vi.fn().mockResolvedValue([action]) });
       const c = await navigate(harness, '/query/q-all');
 

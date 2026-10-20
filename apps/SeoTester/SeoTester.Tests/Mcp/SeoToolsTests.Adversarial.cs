@@ -21,14 +21,17 @@ public partial class SeoToolsTests
     /// <summary>PageResult's id in the model (App_Data/Model/PageResult.json).</summary>
     private const string PageResultTypeId = "c7e5d8d7-f1c9-4dec-9492-ead5186dd59e";
 
+    /// <summary>CheckDefinition's id in the model (App_Data/Model/CheckDefinition.json).</summary>
+    private const string CheckDefinitionTypeId = "b474d13d-5d55-4abb-806f-bfd72d7382de";
+
     [Fact]
     public async Task A_grant_of_chosen_types_narrows_the_seotester_tools_and_a_scan_reads_its_checks_as_part_of_the_scan()
     {
         var site = await SeedSiteAsync(host, Acme);
         var run = await SeedRunAsync(site, DateTime.UtcNow.AddHours(-1), ("seo.title-present", "Fail", 1, [site.Origin + "/a"]));
         await SeedPageAsync(run, site.Origin + "/a", "A", new PageFinding { CheckId = "seo.title-present", Status = "Fail", Detail = "The page has no title." });
-        var scansOnly = await TypedTokenAsync(Ann, "Site", "AuditRun");
-        var catalogueOnly = await TypedTokenAsync(Ann, "CheckDefinition");
+        var scansOnly = await TypedTokenAsync(Ann, SiteTypeId, AuditRunTypeId);
+        var catalogueOnly = await TypedTokenAsync(Ann, CheckDefinitionTypeId);
         using var client = host.CreateClient();
 
         // The scan's checks are part of the scan: their titles and severities come along without CheckDefinition in the
@@ -158,8 +161,8 @@ public partial class SeoToolsTests
         (await LoadAsync(host, SiteTypeId, site.Id!, user)).Status.Should().Be(HttpStatusCode.NotFound, "the web agrees");
     }
 
-    /// <summary>A personal access token of <paramref name="user"/> for the chosen <paramref name="types"/> only, read only.</summary>
-    private async Task<string> TypedTokenAsync(string user, params string[] types)
+    /// <summary>A personal access token of <paramref name="user"/> for the chosen <paramref name="typeIds"/> only, read only. A grant names types by id (D28).</summary>
+    private async Task<string> TypedTokenAsync(string user, params string[] typeIds)
     {
         using var client = host.CreateClient();
         var (status, body, raw) = await SeoRequests.PostAsync(client, "/spark/auth/manage/agents/tokens", new
@@ -167,7 +170,7 @@ public partial class SeoToolsTests
             name = "types " + Guid.NewGuid().ToString("N")[..8],
             permissions = "Read",
             expiresInDays = 7,
-            types = types.Select(t => new { name = t, permissions = "Read" }).ToArray(),
+            types = typeIds.Select(t => new { typeId = t, permissions = "Read" }).ToArray(),
         }, user);
         status.Should().Be(HttpStatusCode.OK, raw);
         return body.GetProperty("token").GetString()!;

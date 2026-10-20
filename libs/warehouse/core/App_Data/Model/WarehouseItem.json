@@ -1,0 +1,208 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "The warehouse item (PRD §4.5, WD9): (owner, SKU) unique, pre-items, policies, dangerous goods (GC9).",
+    "",
+    "HAND-AUTHORED. Ids are UUIDv5 of 'warehouse:WarehouseItem[...]', written by 'npm run stamp:library-model-ids'."
+  ],
+  "persistentObject": {
+    "id": "e46db4cc-1952-56aa-9b8b-40fc62cac531",
+    "name": "WarehouseItem",
+    "clrType": "MintPlayer.Spark.Warehouse.Models.WarehouseItem",
+    "alias": "warehouse-item",
+    "breadcrumb": "{Sku} {Name}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "faf30217-ddfe-5157-a95b-12e94be8f194",
+        "name": "OrganizationId",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "f12f26b2-714d-54cf-96ff-8b46fe95acfc",
+        "name": "Sku",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "84b3191b-aa3f-5add-baaa-3d21d41be33e",
+        "name": "Name",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "bee08c5e-cde5-5edf-9b0a-07e4dde05a72",
+        "name": "CatalogItemId",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "866d7ced-e860-5572-b290-7c629d442103",
+        "name": "IsPreItem",
+        "dataType": "boolean",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "321490dc-b01d-58f3-acdc-18f5fd55f3d4",
+        "name": "CatalogItemRemoved",
+        "dataType": "boolean",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "3c2c006b-721f-5f26-9fae-903bc787c6c2",
+        "name": "LengthMm",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "17beb5c4-7359-5ae6-9a8f-22a39c8237e7",
+        "name": "WidthMm",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "92bf8250-d8a1-52c2-bc6e-e4da9a1d53ec",
+        "name": "HeightMm",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 9,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "21c96ce9-e7f4-5482-8a82-fa075645f49b",
+        "name": "WeightGrams",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 10,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "f4476511-8252-5060-a132-11c00fbe889d",
+        "name": "StorageRequirements",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 11,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "08c14672-f685-58aa-bbb4-64dff168f85c",
+        "name": "Tracking",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 12,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "fd685f33-c74a-5bac-b35d-75c4820f32b8",
+        "name": "MinimumShelfLifeDays",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 13,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "b4551930-cf3b-57b9-85cc-0a2a64e8352f",
+        "name": "RemovalRule",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 14,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "0f72189b-d2ef-5009-8731-f028a64a570b",
+        "name": "DefaultLocationId",
+        "dataType": "Reference",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 15,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "query": "WarehouseLocations",
+        "referenceType": "MintPlayer.Spark.Warehouse.Models.WarehouseLocation"
+      },
+      {
+        "id": "3c2670bd-17b8-5b11-b3b1-8d1fa3803e81",
+        "name": "Active",
+        "dataType": "boolean",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 16,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ]
+  },
+  "queries": [
+    {
+      "id": "b881020e-bd8c-5743-9d70-32f7bd1ef531",
+      "name": "WarehouseItems",
+      "source": "Custom.WarehouseItems",
+      "alias": "warehouse-items",
+      "sortColumns": [],
+      "renderMode": "Pagination",
+      "entityType": "WarehouseItem"
+    }
+  ]
+}

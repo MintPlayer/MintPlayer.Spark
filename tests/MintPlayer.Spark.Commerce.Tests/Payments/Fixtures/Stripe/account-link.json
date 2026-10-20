@@ -1,0 +1,11 @@
+{
+  "_fixture": {
+    "source": "https://docs.stripe.com/api/account_links/create (response)",
+    "derived": "public documentation example; url adapted",
+    "recorded": false
+  },
+  "object": "account_link",
+  "created": 1792300000,
+  "expires_at": 1792300300,
+  "url": "https://connect.stripe.com/setup/s/acct_1Seller/placeholder"
+}

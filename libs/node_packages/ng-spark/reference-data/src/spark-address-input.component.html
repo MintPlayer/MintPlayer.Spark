@@ -1,0 +1,93 @@
+<div class="spark-address-input" [attr.id]="id">
+  <div class="spark-address-row">
+    <label class="spark-address-label" [attr.for]="id + '-country'">{{ 'referenceData.address.country' | t }}</label>
+    <select class="form-select" [id]="id + '-country'" [disabled]="disabled()"
+      (change)="setCountry($any($event.target).value)">
+      @for (choice of countries(); track choice.code) {
+        <option [value]="choice.code" [selected]="choice.code === country()">{{ choice.name }}</option>
+      }
+    </select>
+  </div>
+
+  @if (!freeText()) {
+    <div class="spark-address-row" [class.spark-address-blocked]="disabled()" [attr.inert]="disabled() ? '' : null">
+      <span class="spark-address-label" aria-hidden="true">{{ 'referenceData.address.locality' | t }}</span>
+      <bs-typeahead
+        [inputLabel]="'referenceData.address.locality' | t"
+        [searchterm]="localityText()"
+        (searchtermChange)="onLocalityText($event)"
+        [suggestions]="localities()"
+        (provideSuggestions)="searchLocality($event)"
+        (suggestionSelected)="pickLocality($event)"
+        [isLoadingText]="'referenceData.address.loading' | t"
+        [noSuggestionsText]="'referenceData.address.noSuggestions' | t">
+      </bs-typeahead>
+    </div>
+
+    <div class="spark-address-row" [class.spark-address-blocked]="streetBlocked()" [attr.inert]="streetBlocked() ? '' : null">
+      <span class="spark-address-label" aria-hidden="true">{{ 'referenceData.address.street' | t }}</span>
+      <bs-typeahead
+        [inputLabel]="'referenceData.address.street' | t"
+        [searchterm]="streetText()"
+        (searchtermChange)="onStreetText($event)"
+        [suggestions]="streets()"
+        (provideSuggestions)="searchStreet($event)"
+        (suggestionSelected)="pickStreet($event)"
+        [isLoadingText]="'referenceData.address.loading' | t"
+        [noSuggestionsText]="'referenceData.address.noSuggestions' | t">
+      </bs-typeahead>
+    </div>
+  } @else {
+    <div class="spark-address-row">
+      <label class="spark-address-label" [attr.for]="id + '-street-text'">{{ 'referenceData.address.street' | t }}</label>
+      <input type="text" class="form-control" [id]="id + '-street-text'" [disabled]="disabled()"
+        [value]="value()?.StreetName ?? ''" (input)="setField('StreetName', $any($event.target).value)">
+    </div>
+    <div class="spark-address-row spark-address-pair">
+      <div>
+        <label class="spark-address-label" [attr.for]="id + '-postal'">{{ 'referenceData.address.postalCode' | t }}</label>
+        <input type="text" class="form-control" [id]="id + '-postal'" [disabled]="disabled()"
+          [value]="value()?.PostalCode ?? ''" (input)="setField('PostalCode', $any($event.target).value)">
+      </div>
+      <div>
+        <label class="spark-address-label" [attr.for]="id + '-place'">{{ 'referenceData.address.place' | t }}</label>
+        <input type="text" class="form-control" [id]="id + '-place'" [disabled]="disabled()"
+          [value]="value()?.LocalityName ?? ''" (input)="setField('LocalityName', $any($event.target).value)">
+      </div>
+    </div>
+  }
+
+  <div class="spark-address-row spark-address-pair">
+    <div>
+      <label class="spark-address-label" [attr.for]="id + '-number'">{{ 'referenceData.address.houseNumber' | t }}</label>
+      <input type="text" class="form-control" [id]="id + '-number'" [disabled]="disabled()"
+        [value]="value()?.HouseNumber ?? ''" (input)="setField('HouseNumber', $any($event.target).value)">
+    </div>
+    @if (hasBox()) {
+      <div>
+        <label class="spark-address-label" [attr.for]="id + '-box'">{{ 'referenceData.address.box' | t }}</label>
+        <input type="text" class="form-control" [id]="id + '-box'" [disabled]="disabled()"
+          [value]="value()?.Box ?? ''" (input)="setField('Box', $any($event.target).value)">
+      </div>
+    }
+  </div>
+
+  @if (enabled) {
+    <div class="form-check spark-address-row">
+      <input type="checkbox" class="form-check-input" [id]="id + '-free'" [checked]="freeText()" [disabled]="disabled()"
+        (change)="toggleFreeText($any($event.target).checked)">
+      <label class="form-check-label" [attr.for]="id + '-free'">{{ 'referenceData.address.notListed' | t }}</label>
+    </div>
+  }
+
+  @if (lines().length > 0) {
+    <div class="spark-address-preview" aria-live="polite">
+      @for (line of lines(); track $index) {
+        <div>{{ line }}</div>
+      }
+      @if (!value()?.Verified) {
+        <small class="badge text-bg-secondary">{{ 'referenceData.address.unverified' | t }}</small>
+      }
+    </div>
+  }
+</div>

@@ -11,6 +11,7 @@ namespace MintPlayer.Spark.Abstractions;
 /// offers, not what the server accepts — every action that takes rows still enforces its own
 /// selection rule and the row gate at submit.
 /// </remarks>
+[SparkContract("SparkSelectionModeSetting")]
 [JsonConverter(typeof(JsonStringEnumConverter<SparkSelectionMode>))]
 public enum SparkSelectionMode
 {

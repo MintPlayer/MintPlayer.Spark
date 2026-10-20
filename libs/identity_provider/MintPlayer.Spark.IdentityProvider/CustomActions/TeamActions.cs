@@ -3,6 +3,7 @@ using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Actions;
 using MintPlayer.Spark.Abstractions.ClientOperations;
 using MintPlayer.Spark.Abstractions.Retry;
+using MintPlayer.Spark.Approvals;
 using MintPlayer.Spark.IdentityProvider.Actions;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
@@ -35,7 +36,7 @@ internal sealed partial class InviteMemberAction : ICustomAction
             return;
         }
 
-        var prompt = await manager.GetPersistentObjectAsync("OidcInvitation", cancellationToken: cancellationToken);
+        var prompt = await manager.GetPersistentObjectAsync(IdentityProviderTypeIds.OidcInvitation, cancellationToken: cancellationToken);
         prompt["Role"].Value = OidcMemberRoles.Developer;
         var send = manager.GetTranslatedMessage("identityProvider.invite");
         manager.Retry.Action(
@@ -164,6 +165,7 @@ internal sealed partial class SwitchToLiveAction : ICustomAction
     [Inject] private readonly OidcPortalAccess access;
     [Inject] private readonly OidcAudit audit;
     [Inject] private readonly Configuration.SparkIdentityProviderOptions options;
+    [Inject] private readonly ISparkApprovals approvals;
 
     public async Task ExecuteAsync(CustomActionArgs args, CancellationToken cancellationToken = default)
     {
@@ -177,15 +179,24 @@ internal sealed partial class SwitchToLiveAction : ICustomAction
 
         if (options.Apps.RequireReviewToGoLive && !await access.IsAdministratorAsync())
         {
-            app.GoLiveReview = new OidcReviewDecision { Status = OidcScopeStatuses.Pending, RequestedAt = DateTime.UtcNow, RequestedBy = access.UserId };
-            await audit.RecordAsync(session, OidcAuditKinds.GoLiveRequested, access.UserId, app.Id, ipAddress: access.IpAddress, ct: cancellationToken);
-            await session.SaveChangesAsync(cancellationToken);
-            manager.Client.Notify(manager.GetTranslatedMessage("identityProvider.goLiveRequested"), NotificationKind.Info);
+            // An identity-provider.go-live approval request (commerce D26), raised with its audit event in one commit.
+            // A request already pending is answered instead of a second one (the engine's dedupe).
+            var submitted = await approvals.SubmitAsync<OidcGoLiveApprovalKind>(session,
+                OidcApprovalRequests.GoLive(app, access.UserId!), cancellationToken);
+            if (submitted.Created)
+            {
+                await audit.RecordAsync(session, OidcAuditKinds.GoLiveRequested, access.UserId, app.Id, ipAddress: access.IpAddress, ct: cancellationToken);
+                await session.SaveChangesAsync(cancellationToken);
+            }
+            manager.Client.Notify(
+                manager.GetTranslatedMessage(submitted.Created ? "identityProvider.goLiveRequested" : "identityProvider.goLivePending"),
+                NotificationKind.Info);
         }
         else
         {
             app.Mode = OidcApplicationModes.Live;
-            app.GoLiveReview = null;
+            // The switch is the decision: a request still pending has nothing left to decide.
+            await approvals.ClosePendingAsync<OidcGoLiveApprovalKind>(session, OidcApprovalRequests.ApplicationSubject(app.Id!), cancellationToken);
             await audit.RecordAsync(session, OidcAuditKinds.ApplicationModeSwitched, access.UserId, app.Id, ipAddress: access.IpAddress,
                 details: new Dictionary<string, string> { ["mode"] = app.Mode }, ct: cancellationToken);
             await session.SaveChangesAsync(cancellationToken);

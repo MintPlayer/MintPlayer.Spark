@@ -1,0 +1,20 @@
+{
+  "$schema": "../../../../schemas/security.schema.json",
+  "_comment": [
+    "Printing's rights (docs/warehouse_picking_PRD.md §4.11, §4.15; Q-W14), shipped as a library layer.",
+    "Two slots the application must bind: printing:operators (the people at stations: read jobs, take and acknowledge",
+    "station jobs and PDF fallbacks through /spark/printing/station/*, which checks Read/PrintJob; reprint) and",
+    "printing:administrators (the agents' monitoring list as well).",
+    "Agents get no right here: an agent is a principal whose personal access token reaches only /spark/printing/agent/*,",
+    "and those endpoints serve only the printers configured for that agent (Spark:Printing:Agents, least privilege).",
+    "Opt out of all of these with \"libraries\": { \"printing\": false }."
+  ],
+  "rights": [
+    { "key": "jobs-operators", "resource": "QueryRead/PrintJob", "groupId": "printing:operators" },
+    { "key": "reprint-operators", "resource": "PrintingReprint/PrintJob", "groupId": "printing:operators" },
+
+    { "key": "jobs", "resource": "QueryRead/PrintJob", "groupId": "printing:administrators" },
+    { "key": "reprint", "resource": "PrintingReprint/PrintJob", "groupId": "printing:administrators" },
+    { "key": "agents", "resource": "QueryRead/PrintAgentStatus", "groupId": "printing:administrators" }
+  ]
+}

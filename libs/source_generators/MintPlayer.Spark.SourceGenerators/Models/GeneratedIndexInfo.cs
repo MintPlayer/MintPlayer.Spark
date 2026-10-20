@@ -85,6 +85,16 @@ public partial class GeneratedIndexInfo
     /// </summary>
     public List<InvalidSearchInfo> BreadcrumbRejections { get; set; } = new();
 
+    /// <summary>
+    /// Whether an indexed property is searchable (<c>[Search]</c>) or carries <c>[Fuzzy]</c> (commerce X18): the
+    /// generated index then sets <c>SearchEngineType = SearchEngineType.Lucene</c>, since Spark's search is
+    /// typo-tolerant on searchable fields and Corax refuses fuzzy queries.
+    /// </summary>
+    public bool UsesLucene { get; set; }
+
+    /// <summary><c>[Fuzzy]</c> on a property that is not text. SPARK_INDEX_014.</summary>
+    public List<InvalidSearchInfo> InvalidFuzzyProperties { get; set; } = new();
+
     /// <summary>Where to anchor diagnostics about this entity.</summary>
     public LocationKey? Location { get; set; }
 }
@@ -119,7 +129,7 @@ public partial class IndexPropertyInfo
 
     /// <summary>
     /// Expression the map assigns to this field, relative to the document range variable — e.g.
-    /// <c>car.Model</c>, or <c>car.Description!.Translations["nl"]</c> for a language field.
+    /// <c>car.Model</c>, or <c>car.Description!.Entries.Where(…Tag == "nl").Select(…Value).FirstOrDefault()</c> for a language field.
     /// </summary>
     public string MapExpression { get; set; } = string.Empty;
 

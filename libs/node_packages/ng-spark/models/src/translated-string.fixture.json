@@ -1,0 +1,114 @@
+{
+  "$comment": "Shared by TranslatedStringFallbackParityTests (C#, tests/MintPlayer.Spark.Tests) and translated-string.spec.ts (ng-spark): the server and the client resolve every case to the same text. 'ranges' are the requested languages in order; 'defaultLanguage' absent means 'en', null means none; 'asOf' is yyyy-MM-dd. 'chains' pins the RFC 4647 lookup chain.",
+  "chains": [
+    { "range": "en", "chain": ["en"] },
+    { "range": "nl-BE", "chain": ["nl-BE", "nl"] },
+    { "range": "zh-Hant-TW", "chain": ["zh-Hant-TW", "zh-Hant", "zh"] },
+    { "range": "zh-Hant-CN-x-private1-private2", "chain": ["zh-Hant-CN-x-private1-private2", "zh-Hant-CN-x-private1", "zh-Hant-CN", "zh-Hant", "zh"] },
+    { "range": "de-a-ext-x-y", "chain": ["de-a-ext-x-y", "de-a-ext", "de"] },
+    { "range": "*", "chain": [] },
+    { "range": "", "chain": [] }
+  ],
+  "cases": [
+    {
+      "name": "exact tag",
+      "value": { "Entries": [{ "Tag": "en", "Value": "Save" }, { "Tag": "nl", "Value": "Opslaan" }] },
+      "ranges": ["nl"],
+      "expected": "Opslaan"
+    },
+    {
+      "name": "tags compare case-insensitively",
+      "value": { "Entries": [{ "Tag": "en", "Value": "Save" }, { "Tag": "nl-BE", "Value": "Bewaren" }] },
+      "ranges": ["NL-be"],
+      "expected": "Bewaren"
+    },
+    {
+      "name": "RFC 4647 truncation: nl-BE falls back to nl",
+      "value": { "Entries": [{ "Tag": "en", "Value": "Save" }, { "Tag": "nl", "Value": "Opslaan" }] },
+      "ranges": ["nl-BE"],
+      "expected": "Opslaan"
+    },
+    {
+      "name": "hyphenated script tag, truncated from a region",
+      "value": { "Entries": [{ "Tag": "en", "Value": "Taipei" }, { "Tag": "zh-Hant", "Value": "臺北" }, { "Tag": "zh-Hans", "Value": "台北" }] },
+      "ranges": ["zh-Hant-TW"],
+      "expected": "臺北"
+    },
+    {
+      "name": "lookup never widens: zh does not match zh-Hant, falls to the default",
+      "value": { "Entries": [{ "Tag": "en", "Value": "Taipei" }, { "Tag": "zh-Hant", "Value": "臺北" }] },
+      "ranges": ["zh"],
+      "expected": "Taipei"
+    },
+    {
+      "name": "unknown language falls to the default language, not the first entry",
+      "value": { "Entries": [{ "Tag": "nl", "Value": "Opslaan" }, { "Tag": "en", "Value": "Save" }] },
+      "ranges": ["de"],
+      "expected": "Save"
+    },
+    {
+      "name": "no default language entry: the first current entry",
+      "value": { "Entries": [{ "Tag": "nl", "Value": "Opslaan" }, { "Tag": "fr", "Value": "Enregistrer" }] },
+      "ranges": ["de"],
+      "expected": "Opslaan"
+    },
+    {
+      "name": "several ranges in priority order",
+      "value": { "Entries": [{ "Tag": "en", "Value": "Save" }, { "Tag": "fr", "Value": "Enregistrer" }] },
+      "ranges": ["de-CH", "fr-BE"],
+      "expected": "Enregistrer"
+    },
+    {
+      "name": "a custom default language",
+      "value": { "Entries": [{ "Tag": "en", "Value": "Save" }, { "Tag": "fr", "Value": "Enregistrer" }] },
+      "ranges": ["de"],
+      "defaultLanguage": "fr",
+      "expected": "Enregistrer"
+    },
+    {
+      "name": "no default language at all: the first current entry",
+      "value": { "Entries": [{ "Tag": "fr", "Value": "Enregistrer" }, { "Tag": "en", "Value": "Save" }] },
+      "ranges": ["de"],
+      "defaultLanguage": null,
+      "expected": "Enregistrer"
+    },
+    {
+      "name": "within a tag the first current entry wins",
+      "value": { "Entries": [{ "Tag": "nl", "Value": "'s-Gravenhage", "Kind": "official" }, { "Tag": "nl", "Value": "Den Haag", "Kind": "common" }] },
+      "ranges": ["nl"],
+      "expected": "'s-Gravenhage"
+    },
+    {
+      "name": "a historic name is never current",
+      "value": { "Entries": [{ "Tag": "nl", "Value": "Oude naam", "Kind": "historic" }, { "Tag": "nl", "Value": "Nieuwe naam", "Kind": "official" }] },
+      "ranges": ["nl"],
+      "expected": "Nieuwe naam"
+    },
+    {
+      "name": "validity window: ValidTo is exclusive",
+      "value": { "Entries": [{ "Tag": "nl", "Value": "Oud", "Kind": "official", "ValidTo": "2025-01-01" }, { "Tag": "nl", "Value": "Nieuw", "Kind": "official", "ValidFrom": "2025-01-01" }] },
+      "ranges": ["nl"],
+      "asOf": "2025-01-01",
+      "expected": "Nieuw"
+    },
+    {
+      "name": "validity window: the day before the rename",
+      "value": { "Entries": [{ "Tag": "nl", "Value": "Oud", "Kind": "official", "ValidTo": "2025-01-01" }, { "Tag": "nl", "Value": "Nieuw", "Kind": "official", "ValidFrom": "2025-01-01" }] },
+      "ranges": ["nl"],
+      "asOf": "2024-12-31",
+      "expected": "Oud"
+    },
+    {
+      "name": "only historic names: the first entry",
+      "value": { "Entries": [{ "Tag": "nl", "Value": "Oud", "Kind": "historic" }, { "Tag": "fr", "Value": "Ancien", "Kind": "historic" }] },
+      "ranges": ["fr"],
+      "expected": "Oud"
+    },
+    {
+      "name": "empty value",
+      "value": { "Entries": [] },
+      "ranges": ["en"],
+      "expected": ""
+    }
+  ]
+}

@@ -48,7 +48,8 @@ internal partial class AttributeRights : IAttributeRights
             return cached;
 
         EffectiveAttributeRights result;
-        if (Abstractions.Authentication.SparkSystemContext.IsSystemContext(httpContextAccessor))
+        // Modules are evaluated like people here (F17): a granted module writes only the attributes its group may.
+        if (Abstractions.Authentication.SparkSystemContext.IsAttributeRightsExempt(httpContextAccessor))
         {
             result = EffectiveAttributeRights.Unrestricted(entityTypeName, verb);
         }

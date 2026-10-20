@@ -1,0 +1,20 @@
+{
+  "$schema": "../../../../schemas/translations.schema.json",
+  "challenges": {
+    "title": { "en": "Quick check", "fr": "Vérification rapide", "nl": "Snelle controle" },
+    "working": {
+      "en": "Checking your browser. This takes a few seconds and needs nothing from you.",
+      "fr": "Vérification de votre navigateur. Cela prend quelques secondes et ne vous demande rien.",
+      "nl": "Uw browser wordt gecontroleerd. Dit duurt enkele seconden en vraagt niets van u."
+    },
+    "done": { "en": "Check complete.", "fr": "Vérification terminée.", "nl": "Controle voltooid." },
+    "failed": { "en": "The check did not succeed. Please try again.", "fr": "La vérification a échoué. Veuillez réessayer.", "nl": "De controle is niet gelukt. Probeer het opnieuw." },
+    "retry": { "en": "Try again", "fr": "Réessayer", "nl": "Opnieuw proberen" },
+    "cancel": { "en": "Cancel", "fr": "Annuler", "nl": "Annuleren" },
+    "consentFallback": {
+      "en": "You did not allow third-party checks, so a check that runs only in your browser is used instead.",
+      "fr": "Vous n'avez pas autorisé les vérifications tierces : une vérification exécutée uniquement dans votre navigateur est utilisée.",
+      "nl": "U hebt controles door derden niet toegestaan, dus wordt een controle gebruikt die alleen in uw browser draait."
+    }
+  }
+}

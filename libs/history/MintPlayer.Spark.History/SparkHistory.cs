@@ -30,10 +30,10 @@ internal sealed partial class SparkHistory : ISparkHistory
 
     /// <summary>The warning a partial revert answers with (contributions M2c-2b).</summary>
     /// <summary>Every language travels; ng-spark shows the one its user picked (not the browser's).</summary>
-    internal static readonly TranslatedString PartialRevertMessage = TranslatedString.Create(
-        "Reverted partially: some attributes you may not edit kept their current values.",
-        "Restauration partielle : certains attributs que vous ne pouvez pas modifier ont gardé leur valeur actuelle.",
-        "Gedeeltelijk teruggezet: sommige attributen die u niet mag bewerken, behielden hun huidige waarde.");
+    internal static readonly TranslatedString PartialRevertMessage = TranslatedString.Of(
+        ("en", "Reverted partially: some attributes you may not edit kept their current values."),
+        ("fr", "Restauration partielle : certains attributs que vous ne pouvez pas modifier ont gardé leur valeur actuelle."),
+        ("nl", "Gedeeltelijk teruggezet: sommige attributen die u niet mag bewerken, behielden hun huidige waarde."));
 
     public async Task<IReadOnlyList<SparkRevision>> ListAsync(Guid objectTypeId, string id, int skip = 0, int take = 50, CancellationToken cancellationToken = default)
     {
@@ -146,6 +146,7 @@ internal sealed partial class SparkHistory : ISparkHistory
     private static readonly HashSet<string> AuditFields = new(StringComparer.Ordinal)
     {
         nameof(IAuditCreated.CreatedBy), nameof(IAuditCreated.CreatedAt), nameof(IAuditModified.ModifiedBy), nameof(IAuditModified.ModifiedAt),
+        nameof(IAuditApproved.ApprovedBy), nameof(IAuditApproved.ApprovedAt),
     };
 
     /// <summary>

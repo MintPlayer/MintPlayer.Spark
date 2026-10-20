@@ -35,8 +35,11 @@ runbook.
    - a file `https://<host>/.well-known/seotester-verification.txt` containing that line;
    - `<meta name="seotester-site-verification" content="<token>">` in the home page's `<head>`.
 
-   If another organization already holds the site verified, its Owners get a mail asking to let the user in, and this
-   organization's site stays unverified. Verified sites are re-checked daily; three failed re-checks in a row withdraw
+   If another organization already holds the site verified, the user asks to join it: a join request (an approval
+   request since commerce D26) that its Owners and Admins are told about and approve or decline in-app, on the request
+   page (`/po/approval-request/{id}`, sign-in required; a decline carries a reason, and the user is told either way).
+   This organization's site stays unverified. A join-request mail sent before D26 still works: its link opens that
+   request page (migration `M_202610191700_OrganizationJoinRequestsToApprovals`). Verified sites are re-checked daily; three failed re-checks in a row withdraw
    the verification (`SeoTester:Verification:*`).
 3. **Run an audit** (action *Run audit*, Members). It joins an audit of the same site already running in one of the
    user's organizations; otherwise it counts against the user's quota (`audits` 5/day unverified, `verified-audits`

@@ -1,0 +1,61 @@
+{
+  "$schema": "../../../../schemas/programUnits.schema.json",
+  "programUnitGroups": [
+    {
+      "id": "8d0f6f0e-3b1d-5f0a-9b7e-2f6c1a0e5101",
+      "name": "programUnits.groups.storefront",
+      "icon": "bi-shop",
+      "order": 0,
+      "programUnits": [
+        {
+          "id": "8d0f6f0e-3b1d-5f0a-9b7e-2f6c1a0e5102",
+          "name": "programUnits.events",
+          "icon": "bi-ticket-perforated",
+          "type": "url",
+          "url": "/events",
+          "order": 1
+        },
+        {
+          "id": "8d0f6f0e-3b1d-5f0a-9b7e-2f6c1a0e5103",
+          "name": "programUnits.shop",
+          "icon": "bi-bag",
+          "type": "url",
+          "url": "/shop",
+          "order": 2
+        },
+        {
+          "id": "8d0f6f0e-3b1d-5f0a-9b7e-2f6c1a0e5104",
+          "name": "programUnits.basket",
+          "icon": "bi-basket",
+          "type": "url",
+          "url": "/checkout/basket",
+          "order": 3
+        },
+        {
+          "id": "8d0f6f0e-3b1d-5f0a-9b7e-2f6c1a0e5105",
+          "name": "programUnits.account",
+          "icon": "bi-person",
+          "type": "url",
+          "url": "/account",
+          "order": 4
+        }
+      ]
+    },
+    {
+      "id": "8d0f6f0e-3b1d-5f0a-9b7e-2f6c1a0e5201",
+      "name": "programUnits.groups.door",
+      "icon": "bi-qr-code-scan",
+      "order": 1,
+      "programUnits": [
+        {
+          "id": "8d0f6f0e-3b1d-5f0a-9b7e-2f6c1a0e5202",
+          "name": "programUnits.scanner",
+          "icon": "bi-upc-scan",
+          "type": "url",
+          "url": "/scanner",
+          "order": 1
+        }
+      ]
+    }
+  ]
+}

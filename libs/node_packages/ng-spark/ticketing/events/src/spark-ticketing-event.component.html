@@ -1,0 +1,129 @@
+@if (event(); as ev) {
+  <article class="spark-ticketing-event" [attr.data-status]="ev.status">
+    <header>
+      <h1>{{ ev.name | resolveTranslation }}</h1>
+      @if (ev.organizerName) {
+        <p class="spark-ticketing-event-organizer">{{ ev.organizerName }}</p>
+      }
+      @if (ev.minimumAge) {
+        <p class="spark-ticketing-event-age">{{ ('ticketingEvents.minimumAge' | t).replace('{age}', '' + ev.minimumAge) }}</p>
+      }
+    </header>
+
+    @if (ev.imageUrl) {
+      <img class="spark-ticketing-event-image" [src]="ev.imageUrl" alt="" />
+    }
+    @if (ev.description) {
+      <p class="spark-ticketing-event-description">{{ ev.description | resolveTranslation }}</p>
+    }
+
+    @if (ev.dates.length > 1) {
+      <fieldset class="spark-ticketing-event-dates">
+        <legend>{{ 'ticketingEvents.chooseDate' | t }}</legend>
+        @for (date of ev.dates; track date.id) {
+          <label class="spark-ticketing-event-date" [class.selected]="date.id === selectedDate()?.id">
+            <input type="radio" name="spark-ticketing-date" [value]="date.id" [checked]="date.id === selectedDate()?.id" (change)="selectDate(date.id)" />
+            <spark-date-time [value]="date.startsAt" [alsoIn]="date.venueTimeZoneId" />
+            @if (date.name) {
+              <span> · {{ date.name | resolveTranslation }}</span>
+            }
+            @if (soldOut(date.id).soldOut) {
+              <small class="spark-ticketing-event-soldout">{{ 'ticketingEvents.soldOut' | t }}</small>
+            }
+          </label>
+        }
+      </fieldset>
+    }
+
+    @if (selectedDate(); as date) {
+      <section class="spark-ticketing-event-when">
+        <p>
+          <spark-date-time [value]="date.startsAt" [alsoIn]="date.venueTimeZoneId" format="long" />
+        </p>
+        @if (date.doorsOpenAt) {
+          <p>{{ 'ticketingEvents.doors' | t }}: <spark-date-time [value]="date.doorsOpenAt" [alsoIn]="date.venueTimeZoneId" format="time" /></p>
+        }
+        @if (date.venueName) {
+          <address>
+            <strong>{{ date.venueName }}</strong>
+            @for (line of date.venueAddressLines; track $index) {
+              <br />{{ line }}
+            }
+          </address>
+        }
+        @if (calendarUrl(); as url) {
+          <a class="spark-ticketing-event-ics" [href]="url" download>{{ 'ticketingEvents.addToCalendar' | t }}</a>
+        }
+        @if (placesLeft(date.id); as left) {
+          <p class="spark-ticketing-event-left">{{ ('ticketingEvents.placesLeft' | t).replace('{count}', '' + left) }}</p>
+        }
+        @if (soldOut(date.id); as state) {
+          @if (state.soldOut) {
+            <p class="spark-ticketing-event-soldout" role="status">{{ (state.mayComeBack ? 'ticketingEvents.mayComeBack' : 'ticketingEvents.soldOut') | t }}</p>
+          }
+        }
+      </section>
+
+      @for (phase of phases(); track phase.id) {
+        <section class="spark-ticketing-event-phase" [class.closed]="!phase.open">
+          <h2>{{ phase.name | resolveTranslation }}</h2>
+          @if (!phase.open) {
+            <p>{{ 'ticketingEvents.notYetOnSale' | t }} <spark-date-time [value]="phase.startsAt" /></p>
+          }
+          @if (phase.queued) {
+            <p class="spark-ticketing-event-queued">{{ 'ticketingEvents.queued' | t }}</p>
+            @if (!admissionTokens()[phase.admissionScope ?? '']) {
+              <button type="button" class="btn btn-outline-primary btn-sm" (click)="queueRequested.emit(phase)">{{ 'ticketingEvents.joinQueue' | t }}</button>
+            }
+          }
+          @if (phase.presaleCodeRequired && phase.open) {
+            <label class="spark-ticketing-event-presale">
+              {{ 'ticketingEvents.presaleCode' | t }}
+              <input type="text" autocomplete="off" [value]="presaleCode()" (input)="setPresaleCode($any($event.target).value)" />
+            </label>
+          }
+          <ul class="spark-ticketing-event-offers">
+            @for (row of rows(phase); track row.key) {
+              <li class="spark-ticketing-event-offer">
+                <div class="spark-ticketing-event-offer-name">
+                  <strong>{{ row.type.name | resolveTranslation }}</strong>
+                  @if (row.price.category) {
+                    <small> · {{ row.price.category }}</small>
+                  }
+                  @if (row.type.kind === 'Pass') {
+                    <small class="spark-ticketing-event-pass">{{ 'ticketingEvents.pass' | t }}</small>
+                  }
+                  @if (row.type.kind === 'AddOn') {
+                    <small class="spark-ticketing-event-addon">{{ 'ticketingEvents.addOn' | t }}</small>
+                  }
+                  @if (row.type.description) {
+                    <small class="spark-ticketing-event-offer-description">{{ row.type.description | resolveTranslation }}</small>
+                  }
+                </div>
+                <strong class="spark-ticketing-event-price">{{ money(row.price.finalPrice) }}</strong>
+                @if (phase.open && row.type.kind !== 'AddOn') {
+                  @if (!row.seated) {
+                    <label class="spark-ticketing-event-quantity">
+                      <span class="visually-hidden">{{ 'ticketingEvents.quantity' | t }}</span>
+                      <input type="number" min="1" max="50" [value]="quantity(row.key)" (change)="setQuantity(row.key, $any($event.target).value)" />
+                    </label>
+                  }
+                  <button type="button" [disabled]="busy()" (click)="add(phase, row)">{{ 'ticketingEvents.addToBasket' | t }}</button>
+                }
+              </li>
+            }
+          </ul>
+        </section>
+      }
+    }
+
+    @if (refusal(); as key) {
+      <p class="spark-ticketing-event-refusal" role="alert">{{ key | t }}</p>
+    }
+    @if (message(); as key) {
+      <p class="spark-ticketing-event-message" role="status">{{ key | t }} ✓</p>
+    }
+  </article>
+} @else if (loaded()) {
+  <p class="spark-ticketing-event-missing" role="status">{{ 'ticketingEvents.refusal.eventNotFound' | t }}</p>
+}

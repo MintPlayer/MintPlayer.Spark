@@ -209,9 +209,9 @@ public class OidcDynamicRegistrationTests(OidcSharedHost host) : OidcTestHost(ho
             Id = OidcScopeCatalog.ResourceId(api),
             Kind = OidcResourceKinds.Api,
             Name = api,
-            DisplayName = MintPlayer.Spark.Abstractions.TranslatedString.Create(api),
+            DisplayName = MintPlayer.Spark.Abstractions.TranslatedString.Of("en", api),
             Enabled = true,
-            Scopes = [new OidcApiScope { Name = api + ".read", DisplayName = MintPlayer.Spark.Abstractions.TranslatedString.Create(api + ".read") }],
+            Scopes = [new OidcApiScope { Name = api + ".read", DisplayName = MintPlayer.Spark.Abstractions.TranslatedString.Of("en", api + ".read") }],
         }));
         var developerId = await SeedDeveloperAsync("dev");
 

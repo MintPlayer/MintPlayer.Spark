@@ -12,6 +12,7 @@ namespace MintPlayer.Spark.IdentityProvider.Endpoints.Portal;
 public sealed record OidcAcceptInvitationBody(string ApplicationId, string Token);
 
 /// <summary>What accepting answers: the application joined, or why not.</summary>
+[MintPlayer.Spark.Abstractions.SparkContract("SparkInvitationOutcome")]
 public sealed record OidcAcceptInvitationResponse(bool Accepted, string? Application, string? Problem);
 
 /// <summary>

@@ -1,0 +1,67 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<OutputType>Library</OutputType>
+		<!-- Names this library's App_Data layers (composition D16). Permanent: it is part of the right keys and the
+		     model ids the library ships (commerce PRD §4.1, D31). -->
+		<SparkLibraryAlias>ticketing-tickets</SparkLibraryAlias>
+
+		<!-- NuGet Package Metadata -->
+		<PackageId>MintPlayer.Spark.Commerce.Ticketing.Tickets</PackageId>
+		<Version>11.0.0-preview.1</Version>
+		<Authors>MintPlayer</Authors>
+		<Company>MintPlayer</Company>
+		<Description>Tickets for the MintPlayer.Spark ticketing suite: issuance on confirmed orders with PBKDF2-hashed 128-bit secrets (QR = ticket code + secret), the seller's delivery lead time, the ticket page and the e-mailed PDF with per-event templates and an .ics, named tickets, transfer and the official face-value resale with reissue (the previous holder's data erased), revocation on refunds and lost disputes, the dispute freeze, check-in lists per gate, day or zone with multi-day passes and re-entry, and the door scanner: event-scoped device tokens, online atomic check-in, an offline hashed list and sync with double-entry flags.</Description>
+		<PackageTags>commerce;ticketing;tickets;scanner;check-in;qr;ravendb;spark</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="README.md" Pack="true" PackagePath="\" />
+	</ItemGroup>
+
+	<!-- The default MJML templates (SparkTickets/*), read by MailManager. An app overrides one by placing a file with
+	     the same name in its Templates/Mail folder. -->
+	<ItemGroup>
+		<EmbeddedResource Include="Mail\**\*.mjml" LogicalName="SparkMail/%(RecursiveDir)%(Filename)%(Extension)" WithCulture="false" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="11.4.1-rc.0" />
+		<PackageReference Include="MintPlayer.SourceGenerators" Version="13.0.0">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="13.0.0" GeneratePathProperty="true" />
+		<PackageReference Include="RavenDB.Client" Version="7.2.6" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- PRD §4.1: Tickets depends on Events and Checkout. It plugs in through Checkout's extension points: an
+		     order-event recipient (issue on Confirmed, revoke on TicketsRevoked, freeze on Disputed, reissue on
+		     LineChanged, re-send on ConfirmationResent) and a capacity source (the resale exchange and transfer fees). -->
+		<ProjectReference Include="..\MintPlayer.Spark.Commerce.Ticketing.Events\MintPlayer.Spark.Commerce.Ticketing.Events.csproj" />
+		<ProjectReference Include="..\MintPlayer.Spark.Commerce.Checkout\MintPlayer.Spark.Commerce.Checkout.csproj" />
+		<ProjectReference Include="..\..\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
+		<!-- SparkUser (holder personal data export and erasure) and SparkQrCodeRenderer. -->
+		<ProjectReference Include="..\..\authorization\MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj" />
+		<!-- Check-in lists, settings and devices are organization-owned; door staff hold the "scanner" custom role (X8). -->
+		<ProjectReference Include="..\..\organizations\MintPlayer.Spark.Organizations\MintPlayer.Spark.Organizations.csproj" />
+		<!-- Delivery at the seller's lead time and the holder-data retention. -->
+		<ProjectReference Include="..\..\cron\MintPlayer.Spark.Cron\MintPlayer.Spark.Cron.csproj" />
+		<!-- Spark's generators (the library layers, SPARK045, lookups) and analyzers. Analyzer ProjectReferences are not transitive. -->
+		<ProjectReference Include="..\..\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<InternalsVisibleTo Include="MintPlayer.Spark.Commerce.Tests" />
+	</ItemGroup>
+
+</Project>

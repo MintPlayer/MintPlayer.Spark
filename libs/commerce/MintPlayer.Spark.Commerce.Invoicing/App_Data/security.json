@@ -1,0 +1,14 @@
+{
+  "$schema": "../../../../schemas/security.schema.json",
+  "_comment": [
+    "The invoicing package's rights, shipped as a library layer (docs/commerce_PRD.md §4.8). They name only its own types",
+    "and only @authenticated: no slot, so no application has to bind anything. Every row is narrowed by InvoicingAccess",
+    "(the buyer's own documents; a seller's Owners, Admins and finance members its documents; the platform organization",
+    "every row), so the rights alone show nothing. Invoices are never altered (§4.15): only QueryRead is granted.",
+    "Opt out of all of these with \"libraries\": { \"commerce-invoicing\": false }."
+  ],
+  "rights": [
+    { "key": "invoices", "resource": "QueryRead/Invoice", "groupId": "@authenticated" },
+    { "key": "transmissions", "resource": "QueryRead/InvoiceTransmission", "groupId": "@authenticated" }
+  ]
+}

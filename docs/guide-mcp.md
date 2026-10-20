@@ -325,6 +325,11 @@ Every connected agent has a grant (`AgentGrant`, stored by the Authorization pac
 read + changes, when it was last used. The grant is read on every call, so a user's edit or revocation
 applies to the agent's next call without signing in again.
 
+A grant names its chosen types by **id** (`Types[i].TypeId`), never by name: an application's
+`[assembly: PersistentObjectName]` rename (D28) changes a name, so a stored name would grant nothing after it,
+or grant another type that took the name. Grants stored by name before D28 are moved by the migration
+`M_202610191530_AgentGrantTypesById`; a name the model no longer knows is left as it is and grants nothing.
+
 Users manage grants under **Account → Connected applications**, and create **personal access tokens**
 there for agents that can't open a browser (CI jobs). Tokens start with `spat_`, are shown once, are stored
 hashed, and expire after 90 days by default (at most a year). A password change, a removed sign-in method

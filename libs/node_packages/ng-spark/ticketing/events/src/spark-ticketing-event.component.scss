@@ -1,0 +1,83 @@
+:host {
+  display: block;
+}
+
+.spark-ticketing-event-image {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.5rem;
+}
+
+.spark-ticketing-event-dates {
+  border: 0;
+  padding: 0;
+  margin: 1rem 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.spark-ticketing-event-date {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--bs-border-color, #dee2e6);
+  border-radius: 0.375rem;
+  cursor: pointer;
+
+  &.selected {
+    border-color: var(--bs-primary, #0d6efd);
+  }
+}
+
+.spark-ticketing-event-phase {
+  margin-top: 1.5rem;
+
+  &.closed {
+    opacity: 0.75;
+  }
+}
+
+.spark-ticketing-event-offers {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.spark-ticketing-event-offer {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--bs-border-color, #dee2e6);
+}
+
+.spark-ticketing-event-offer-name {
+  display: flex;
+  flex-direction: column;
+}
+
+.spark-ticketing-event-quantity input {
+  width: 4.5rem;
+}
+
+.spark-ticketing-event-soldout,
+.spark-ticketing-event-refusal {
+  color: var(--bs-danger, #dc3545);
+}
+
+.spark-ticketing-event-message {
+  color: var(--bs-success, #198754);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

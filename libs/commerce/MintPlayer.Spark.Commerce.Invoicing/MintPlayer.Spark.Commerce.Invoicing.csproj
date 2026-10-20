@@ -1,0 +1,72 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<OutputType>Library</OutputType>
+		<!-- Names this library's App_Data layers (composition D16). Permanent: it is part of the right keys and the
+		     model ids the library ships (commerce PRD §4.1, D31). -->
+		<SparkLibraryAlias>commerce-invoicing</SparkLibraryAlias>
+
+		<!-- NuGet Package Metadata -->
+		<PackageId>MintPlayer.Spark.Commerce.Invoicing</PackageId>
+		<Version>11.0.0-preview.1</Version>
+		<Authors>MintPlayer</Authors>
+		<Company>MintPlayer</Company>
+		<Description>Invoicing for the MintPlayer.Spark commerce suite: gap-free numbering per issuer and year, receipts, invoices, credit notes mirroring the invoice lines, platform-fee invoices, host-defined VAT categories and rates, VIES checks, place-of-supply rules (distance sales threshold, admission, reverse charge, VAT territories, exports), PDFs, EN 16931 / Peppol BIS Billing 3 UBL with access-point adapters, OSS/IOSS returns, the DAC7 report, accounting exports and retention floors.</Description>
+		<PackageTags>commerce;invoicing;vat;peppol;ubl;en16931;oss;dac7;ravendb;spark</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="README.md" Pack="true" PackagePath="\" />
+	</ItemGroup>
+
+	<!-- The default MJML templates (SparkInvoicing/*), read by MailManager. An app overrides one by placing a file with
+	     the same name in its Templates/Mail folder. -->
+	<ItemGroup>
+		<EmbeddedResource Include="Mail\**\*.mjml" LogicalName="SparkMail/%(RecursiveDir)%(Filename)%(Extension)" WithCulture="false" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="11.4.1-rc.0" />
+		<PackageReference Include="MintPlayer.SourceGenerators" Version="13.0.0">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="13.0.0" GeneratePathProperty="true" />
+		<PackageReference Include="RavenDB.Client" Version="7.2.6" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- PRD §4.1: Invoicing depends on Checkout (orders, IOrderEventRecipient), which brings Payments (the fee ledger,
+		     settlement lines) and Commerce (sellers, retention, audit). Checkout never references Invoicing. -->
+		<ProjectReference Include="..\MintPlayer.Spark.Commerce.Abstractions\MintPlayer.Spark.Commerce.Abstractions.csproj" />
+		<ProjectReference Include="..\MintPlayer.Spark.Commerce\MintPlayer.Spark.Commerce.csproj" />
+		<ProjectReference Include="..\MintPlayer.Spark.Commerce.Payments\MintPlayer.Spark.Commerce.Payments.csproj" />
+		<ProjectReference Include="..\MintPlayer.Spark.Commerce.Checkout\MintPlayer.Spark.Commerce.Checkout.csproj" />
+		<ProjectReference Include="..\..\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
+		<ProjectReference Include="..\..\authorization\MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj" />
+		<ProjectReference Include="..\..\organizations\MintPlayer.Spark.Organizations\MintPlayer.Spark.Organizations.csproj" />
+		<!-- Fee invoices, the e-invoice retry and the retention sweep. -->
+		<ProjectReference Include="..\..\cron\MintPlayer.Spark.Cron\MintPlayer.Spark.Cron.csproj" />
+		<!-- GC10 / GA4: the TEDB rate suggestions and the VAT territories the reference-data client syncs (optional, read by
+		     document shape only; UseReferenceDataVat()). -->
+		<ProjectReference Include="..\..\refdata\abstractions\MintPlayer.Spark.ReferenceData.Abstractions.csproj" />
+		<!-- Spark's generators (the library layers, SPARK045) and analyzers. Analyzer ProjectReferences are not transitive. -->
+		<ProjectReference Include="..\..\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<InternalsVisibleTo Include="MintPlayer.Spark.Commerce.Tests" />
+		<InternalsVisibleTo Include="MintPlayer.Spark.Commerce.Invoicing.Peppol.Storecove" />
+		<InternalsVisibleTo Include="MintPlayer.Spark.Commerce.Invoicing.Peppol.Billit" />
+		<InternalsVisibleTo Include="MintPlayer.Spark.Commerce.Invoicing.Peppol.Test" />
+	</ItemGroup>
+
+</Project>

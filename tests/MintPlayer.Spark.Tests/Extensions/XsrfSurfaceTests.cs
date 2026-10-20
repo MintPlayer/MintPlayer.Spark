@@ -61,6 +61,8 @@ public class XsrfSurfaceTests(XsrfSurfaceHosts hosts) : SparkSharedTestDriver(ho
         // #460 M15 (D18): the bulk delete of a grid selection — state-changing, so a token.
         "POST /spark/po/delete-many",
         "POST /spark/po/delete-row",
+        // Warehouse WX11: the CSV import writes rows.
+        "POST /spark/po/import-csv",
         "POST /spark/po/new",
         "POST /spark/po/refresh",
         "POST /spark/po/update",
@@ -93,6 +95,8 @@ public class XsrfSurfaceTests(XsrfSurfaceHosts hosts) : SparkSharedTestDriver(ho
         "POST /spark/po/load",
         "POST /spark/queries/distinct-values",
         "POST /spark/queries/execute",
+        // Warehouse WX11: the CSV export is /spark/queries/execute written as a file.
+        "POST /spark/queries/export-csv",
         "POST /spark/queries/get",
         // X6 share-link reads: anonymous by design (the token in the body is the credential), no side effect.
         "POST /spark/share/load",

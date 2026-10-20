@@ -10,7 +10,7 @@ namespace MintPlayer.Spark.SourceGenerators.Diagnostics;
 /// SPARK037: a library declares an <c>ISparkMigration</c> that is not <c>public</c> (#388).
 /// </summary>
 /// <remarks>
-/// A library's migrations are registered by the application's generated <c>AddMigrations()</c>,
+/// A library's migrations are registered by the application's generated <c>AddSparkDiscovered()</c>,
 /// which names each class. A non-public one cannot be named there, so it would be skipped without a
 /// word and never run. Only libraries are checked: an application registers its own migrations from
 /// source and can see internal ones.
@@ -21,7 +21,7 @@ public sealed class LibraryMigrationVisibilityAnalyzer : DiagnosticAnalyzer
     internal static readonly DiagnosticDescriptor NonPublicRule = new(
         id: "SPARK037",
         title: "A library's migration must be public",
-        messageFormat: "Migration '{0}' is declared in a library but is not public. The application's generated AddMigrations() cannot register it, so it would never run. Make it (and any containing type) public.",
+        messageFormat: "Migration '{0}' is declared in a library but is not public. The application's generated AddSparkDiscovered() cannot register it, so it would never run. Make it (and any containing type) public.",
         category: "Spark",
         defaultSeverity: DiagnosticSeverity.Warning,
         isEnabledByDefault: true);

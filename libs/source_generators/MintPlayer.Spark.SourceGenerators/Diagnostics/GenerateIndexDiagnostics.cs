@@ -162,6 +162,43 @@ internal static class GenerateIndexDiagnostics
         defaultSeverity: DiagnosticSeverity.Info,
         isEnabledByDefault: true);
 
+    /// <summary>
+    /// Commerce X18: <c>[Fuzzy]</c> still deploys the index on Lucene, but a fuzzy query matches terms by edit
+    /// distance, which only means something on text. On a number, date or object the marker switches the engine
+    /// for nothing.
+    /// </summary>
+    public static readonly DiagnosticDescriptor FuzzyOnUnsupportedType = new(
+        id: "SPARK_INDEX_014",
+        title: "[Fuzzy] on a type that is not text",
+        messageFormat: "Property '{0}' is marked [Fuzzy] but its type '{1}' is not text. A fuzzy query matches terms by edit distance; [Fuzzy] applies to string, a collection of strings, or TranslatedString.",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Warning,
+        isEnabledByDefault: true);
+
+    /// <summary>
+    /// Commerce X19: a <c>[SparkIndexMap]</c> member the application's generator cannot call. Reported, never
+    /// skipped quietly: a missing map is an index that deploys without one of its collections.
+    /// </summary>
+    public static readonly DiagnosticDescriptor InvalidIndexMapDeclaration = new(
+        id: "SPARK_INDEX_015",
+        title: "[SparkIndexMap] declaration cannot be emitted",
+        messageFormat: "'{0}' is marked [SparkIndexMap(\"{1}\")] but {2}. No map was emitted for it.",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
+    /// <summary>
+    /// Commerce X19: the maps of one multi-map index must produce one result type, which is the index's
+    /// <c>TReduceResult</c>.
+    /// </summary>
+    public static readonly DiagnosticDescriptor IndexMapResultTypeMismatch = new(
+        id: "SPARK_INDEX_016",
+        title: "Maps of one declared index disagree on the result type",
+        messageFormat: "Index '{0}': map '{1}' produces '{2}' but map '{3}' produces '{4}'. Every [SparkIndexMap] of one index must produce the same result type; '{1}' was skipped.",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
     // SPARK_INDEX_004 ("Entity already has a hand-written index") was removed in #272: it was
     // declared but never reported, and its premise died when IIndexRegistry started retaining
     // every registration per collection type. Multiple indexes over one entity now coexist; the

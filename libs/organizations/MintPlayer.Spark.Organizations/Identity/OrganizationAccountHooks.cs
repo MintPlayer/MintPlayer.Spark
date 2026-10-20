@@ -4,7 +4,6 @@ using MintPlayer.Spark.Authorization.Identity;
 using MintPlayer.Spark.Organizations.Models;
 using MintPlayer.Spark.Organizations.Services;
 using Raven.Client.Documents;
-using Raven.Client.Documents.Linq;
 
 namespace MintPlayer.Spark.Organizations.Identity;
 
@@ -69,14 +68,7 @@ internal sealed class OrganizationAccountDeletion<TUser>(IDocumentStore store, S
         foreach (var membership in memberships.Where(m => m.OrganizationId is null || !deleted.Contains(m.OrganizationId)))
             session.Delete(membership);
 
-        // The user's own pending join requests go with them.
-        var requests = await session.Query<OrganizationInvitation>()
-            .Customize(c => c.WaitForNonStaleResults(TimeSpan.FromSeconds(15)))
-            .Where(i => i.UserId == userId && i.Kind == OrganizationInvitationKind.JoinRequest)
-            .ToListAsync(cancellationToken);
-        foreach (var request in requests)
-            session.Delete(request);
-
+        // The user's own join requests are approval requests (D26): Approvals' own account-deletion hook handles them.
         await session.SaveChangesAsync(cancellationToken);
         reader.Invalidate();
     }
@@ -122,6 +114,7 @@ internal sealed class OrganizationPersonalData<TUser>(IDocumentStore store, IEnu
                 name = organization.Name,
                 isPersonal = organization.IsPersonal,
                 role = membership.Role.ToString(),
+                customRoles = membership.CustomRoles,
                 joinedAtUtc = membership.JoinedAtUtc,
                 data,
             });

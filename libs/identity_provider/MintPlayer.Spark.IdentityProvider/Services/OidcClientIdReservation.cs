@@ -1,7 +1,7 @@
 using System.Security.Cryptography;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.IdentityProvider.Models;
-using Raven.Client.Documents.Operations.CompareExchange;
+using MintPlayer.Spark.Claims;
 using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.IdentityProvider.Services;
@@ -27,50 +27,40 @@ internal static class OidcClientIdReservation
 
     public static string Key(string clientId) => KeyPrefix + clientId.ToLowerInvariant();
 
+    /// <summary>
+    /// The claim family (commerce X12): the value is the owning application's document id, never expires, and is
+    /// abandoned once that document is gone — the owner was never saved, or was deleted without releasing.
+    /// </summary>
+    private static SparkClaimKind<string> Kind(IAsyncDocumentSession session) => new(KeyPrefix, owner => owner)
+    {
+        OwnerComparer = StringComparer.OrdinalIgnoreCase,
+        IsAbandonedAsync = async (claim, _) => !string.IsNullOrEmpty(claim.Value) && !await session.Advanced.ExistsAsync(claim.Value),
+    };
+
+    private static SparkClaims ClaimStore(IAsyncDocumentSession session)
+        => new(session.Advanced.DocumentStore, database: session.Advanced.DocumentStore.Database);
+
     /// <summary>Reserves <paramref name="entity"/>'s client id for its document, or throws when another application holds it.</summary>
     public static async Task ReserveAsync(IAsyncDocumentSession session, OidcApplication entity)
     {
         if (string.IsNullOrEmpty(entity.Id))
             return; // An edit of an application stored before reservations existed and never loaded with an id; nothing to name.
 
-        var operations = session.Advanced.DocumentStore.Operations.ForDatabase(session.Advanced.DocumentStore.Database);
-        var key = Key(entity.ClientId);
-
-        // Two attempts: the second only after taking over a reservation whose owner is gone.
-        for (var attempt = 0; attempt < 2; attempt++)
-        {
-            var existing = await operations.SendAsync(new GetCompareExchangeValueOperation<string>(key));
-            if (existing is null)
-            {
-                var created = await operations.SendAsync(new PutCompareExchangeValueOperation<string>(key, entity.Id, 0));
-                if (created.Successful || string.Equals(created.Value, entity.Id, StringComparison.OrdinalIgnoreCase))
-                    return;
-                continue;
-            }
-
-            if (string.Equals(existing.Value, entity.Id, StringComparison.OrdinalIgnoreCase))
-                return;
-
-            if (await session.Advanced.ExistsAsync(existing.Value))
-                throw Taken(entity);
-
-            // The owner was never saved, or was deleted without releasing: take it over, but only
-            // if nobody else did in the meantime (the index is the compare).
-            var takenOver = await operations.SendAsync(new PutCompareExchangeValueOperation<string>(key, entity.Id, existing.Index));
-            if (takenOver.Successful)
-                return;
-        }
-
-        throw Taken(entity);
+        var kind = Kind(session);
+        var owner = entity.Id;
+        // A takeover of an abandoned reservation is guarded by the index it read, so nobody else took it meanwhile.
+        var result = await ClaimStore(session).ReserveAsync(kind, kind.Key(entity.ClientId.ToLowerInvariant()), owner, _ => owner);
+        if (!result.Holds)
+            throw Taken(entity);
     }
 
     /// <summary>Releases the reservation of a deleted application.</summary>
     public static async Task ReleaseAsync(IAsyncDocumentSession session, OidcApplication entity)
     {
-        var operations = session.Advanced.DocumentStore.Operations.ForDatabase(session.Advanced.DocumentStore.Database);
-        var existing = await operations.SendAsync(new GetCompareExchangeValueOperation<string>(Key(entity.ClientId)));
-        if (existing is not null && string.Equals(existing.Value, entity.Id, StringComparison.OrdinalIgnoreCase))
-            await operations.SendAsync(new DeleteCompareExchangeValueOperation<string>(Key(entity.ClientId), existing.Index));
+        if (string.IsNullOrEmpty(entity.Id))
+            return;
+        var kind = Kind(session);
+        await ClaimStore(session).ReleaseAsync(kind, kind.Key(entity.ClientId.ToLowerInvariant()), entity.Id);
     }
 
     private static SparkValidationException Taken(OidcApplication entity) => new(

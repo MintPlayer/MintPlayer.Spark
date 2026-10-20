@@ -1,0 +1,62 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<OutputType>Library</OutputType>
+		<!-- The library's permanent alias (D31). It ships no App_Data layer: rooms, their state and the entries are
+		     written in cluster-wide sessions by the room service and the admission worker only (as the inventory engine's
+		     documents, S18), never through the persistent-object pipeline. -->
+		<SparkLibraryAlias>waiting-room</SparkLibraryAlias>
+
+		<!-- NuGet Package Metadata -->
+		<PackageId>MintPlayer.Spark.WaitingRoom</PackageId>
+		<Version>11.0.0-preview.1</Version>
+		<Authors>MintPlayer</Authors>
+		<Company>MintPlayer</Company>
+		<Description>A waiting room for MintPlayer.Spark: rooms bound to a gate with a schedule, three modes (a randomized pre-queue with a committed seed, a provably fair ballot with staged single-use links, FIFO by server time), one entry per identity, dense ranks from a single ranker, a public progress topic and a private admission stream, an admission worker under a lease (max active, rate, projected capacity), a presence check that never costs the place (WCAG 2.2.1), signed single-use admission tokens and truthful sold-out handling.</Description>
+		<PackageTags>waiting-room;queue;ticketing;fairness;bot;ravendb;spark</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="README.md" Pack="true" PackagePath="\" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="11.4.1-rc.0" />
+		<PackageReference Include="MintPlayer.SourceGenerators" Version="13.0.0">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="13.0.0" GeneratePathProperty="true" />
+		<PackageReference Include="RavenDB.Client" Version="7.2.6" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- Visitor identity and merge (X1), live topics (X2), claims (X12), Data Protection. -->
+		<ProjectReference Include="..\..\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
+		<!-- The risk pipeline, the join challenge and the deceptive measures (used only when the host registers them). -->
+		<ProjectReference Include="..\..\challenges\MintPlayer.Spark.Challenges\MintPlayer.Spark.Challenges.csproj" />
+		<!-- SparkUser: the verified phone (X13) and the account age (X11) of the opt-in join requirements. No web dependency. -->
+		<ProjectReference Include="..\..\authorization\MintPlayer.Spark.Authorization.Abstractions\MintPlayer.Spark.Authorization.Abstractions.csproj" />
+		<!-- WaitingRoomMode: one type, shared with the commerce configuration (no dependencies). -->
+		<ProjectReference Include="..\MintPlayer.Spark.WaitingRoom.Abstractions\MintPlayer.Spark.WaitingRoom.Abstractions.csproj" />
+		<!-- The personal-data export and account deletion hooks (GDPR Art. 15/17/20). -->
+		<ProjectReference Include="..\..\authorization\MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj" />
+		<!-- The admission worker. -->
+		<ProjectReference Include="..\..\cron\MintPlayer.Spark.Cron\MintPlayer.Spark.Cron.csproj" />
+		<!-- Spark's generators and analyzers. Analyzer ProjectReferences are not transitive. -->
+		<ProjectReference Include="..\..\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<InternalsVisibleTo Include="MintPlayer.Spark.Commerce.Tests" />
+	</ItemGroup>
+
+</Project>

@@ -1,3 +1,5 @@
+using MintPlayer.Spark.Abstractions.Builder;
+
 namespace MintPlayer.Spark.Configuration;
 
 /// <summary>
@@ -25,10 +27,10 @@ namespace MintPlayer.Spark.Configuration;
 /// <c>X-Forwarded-Host</c> is opt-in through <see cref="ForwardHost"/>.
 /// </para>
 /// </remarks>
-public sealed class SparkForwardedHeadersOptions
+public sealed class SparkForwardedHeadersOptions : ISparkConfigurationSection
 {
     /// <summary>The configuration section these options are bound from.</summary>
-    public const string SectionName = "Spark:ForwardedHeaders";
+    public static string SectionName => "Spark:ForwardedHeaders";
 
     /// <summary>
     /// Trusted proxy networks in CIDR form (<c>10.0.0.0/8</c>). Setting this or

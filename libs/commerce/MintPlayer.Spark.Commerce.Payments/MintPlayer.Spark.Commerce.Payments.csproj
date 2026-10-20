@@ -1,0 +1,70 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<OutputType>Library</OutputType>
+		<!-- Names this library's App_Data layers (composition D16). Permanent: it is part of the right keys and the
+		     model ids the library ships (commerce PRD §4.1, D31). -->
+		<SparkLibraryAlias>commerce-payments</SparkLibraryAlias>
+
+		<!-- NuGet Package Metadata -->
+		<PackageId>MintPlayer.Spark.Commerce.Payments</PackageId>
+		<Version>11.0.0-preview.1</Version>
+		<Authors>MintPlayer</Authors>
+		<Company>MintPlayer</Company>
+		<Description>Payments for the MintPlayer.Spark commerce suite: the provider interface and method catalog (expiry, authorization, fingerprint timing, split capability), idempotency keys, merchant modes with Connect onboarding and KYC, application fees, refunds (including from a seller's balance), webhooks through MintPlayer.Spark.Webhooks, disputes with evidence packs, settlement reconciliation and the platform-fee ledger. Provider adapters: MintPlayer.Spark.Commerce.Payments.Mollie, .Stripe and .Test.</Description>
+		<PackageTags>commerce;payments;mollie;stripe;connect;webhooks;ravendb;spark</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="README.md" Pack="true" PackagePath="\" />
+	</ItemGroup>
+
+	<!-- The dispute notice's default MJML templates (SparkPayments/*), read by MailManager. An app overrides one by
+	     placing a file with the same name in its Templates/Mail folder. -->
+	<ItemGroup>
+		<EmbeddedResource Include="Mail\**\*.mjml" LogicalName="SparkMail/%(RecursiveDir)%(Filename)%(Extension)" WithCulture="false" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="11.4.1-rc.0" />
+		<PackageReference Include="MintPlayer.SourceGenerators" Version="13.0.0">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="13.0.0" GeneratePathProperty="true" />
+		<PackageReference Include="RavenDB.Client" Version="7.2.6" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- PRD §4.1: Payments depends on Commerce (sellers, the KYC gate hook, the merchant mode, the finance role) and
+		     on Webhooks (X5: Stripe's signed scheme, Mollie's fetch-by-id). -->
+		<ProjectReference Include="..\MintPlayer.Spark.Commerce.Abstractions\MintPlayer.Spark.Commerce.Abstractions.csproj" />
+		<ProjectReference Include="..\MintPlayer.Spark.Commerce\MintPlayer.Spark.Commerce.csproj" />
+		<ProjectReference Include="..\..\webhooks\MintPlayer.Spark.Webhooks\MintPlayer.Spark.Webhooks.csproj" />
+		<ProjectReference Include="..\..\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
+		<!-- SparkUser (the dispute mail's addresses) and the public base URL. -->
+		<ProjectReference Include="..\..\authorization\MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj" />
+		<!-- Memberships and custom roles: who of a seller holds `finance`. -->
+		<ProjectReference Include="..\..\organizations\MintPlayer.Spark.Organizations\MintPlayer.Spark.Organizations.csproj" />
+		<!-- The settlement import, the KYC refresh and the chargeback finality sweep. -->
+		<ProjectReference Include="..\..\cron\MintPlayer.Spark.Cron\MintPlayer.Spark.Cron.csproj" />
+		<!-- Spark's generators (the library layers) and analyzers. Analyzer ProjectReferences are not transitive. -->
+		<ProjectReference Include="..\..\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<InternalsVisibleTo Include="MintPlayer.Spark.Commerce.Tests" />
+		<InternalsVisibleTo Include="MintPlayer.Spark.Commerce.Payments.Mollie" />
+		<InternalsVisibleTo Include="MintPlayer.Spark.Commerce.Payments.Stripe" />
+		<InternalsVisibleTo Include="MintPlayer.Spark.Commerce.Payments.Test" />
+	</ItemGroup>
+
+</Project>

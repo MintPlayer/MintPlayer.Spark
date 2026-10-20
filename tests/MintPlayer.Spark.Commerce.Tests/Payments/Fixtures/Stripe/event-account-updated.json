@@ -1,0 +1,28 @@
+{
+  "_fixture": {
+    "source": "https://docs.stripe.com/api/accounts/object (charges_enabled, payouts_enabled, requirements.currently_due, requirements.disabled_reason) and https://docs.stripe.com/api/events/types#event_types-account.updated",
+    "derived": "Event envelope + Account object of a connected account still missing data; ids adapted",
+    "recorded": false
+  },
+  "id": "evt_1AccountUpdated",
+  "object": "event",
+  "account": "acct_1Seller",
+  "created": 1792300000,
+  "type": "account.updated",
+  "data": {
+    "object": {
+      "id": "acct_1Seller",
+      "object": "account",
+      "business_profile": { "name": "Festival Seller BV" },
+      "charges_enabled": false,
+      "details_submitted": true,
+      "payouts_enabled": false,
+      "requirements": {
+        "currently_due": ["individual.verification.document"],
+        "past_due": ["individual.verification.document", "external_account"],
+        "disabled_reason": "requirements.past_due"
+      },
+      "type": "standard"
+    }
+  }
+}

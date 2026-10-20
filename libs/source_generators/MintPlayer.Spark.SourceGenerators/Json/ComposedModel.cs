@@ -30,8 +30,32 @@ internal static class ComposedModel
                     FileName = FileNameOf(f.Path),
                     Json = f.Json,
                     DependsOn = l.DependsOn.ToList(),
+                    Alias = l.Alias,
+                    DeclaredName = DeclaredNameOf(f.ShippedJson),
+                    ShippedJson = f.ShippedJson,
                 }))
             .ToList();
+
+    /// <summary>The library inputs as the shared composer takes them (alias, declared name and shipped text included, D28).</summary>
+    public static IEnumerable<SparkModelInput> Inputs(IEnumerable<LibraryModelFileInfo> libraries)
+        => libraries.Select(l => new SparkModelInput(
+            l.Assembly, l.FileName, l.Json, isLibrary: true, l.DependsOn,
+            string.IsNullOrEmpty(l.Alias) ? null : l.Alias,
+            l.DeclaredName,
+            string.IsNullOrEmpty(l.ShippedJson) ? null : l.ShippedJson));
+
+    /// <summary>The application's model files as the shared composer takes them, in the order they compose.</summary>
+    public static IEnumerable<SparkModelInput> Inputs(IEnumerable<AppModelFileInfo> application)
+        => application
+            .OrderBy(a => a.Path, StringComparer.Ordinal)
+            .Select(a => new SparkModelInput(a.Path, FileNameOf(a.Path), a.Text, isLibrary: false));
+
+    /// <summary><c>persistentObject.name</c> as shipped, or <see langword="null"/>.</summary>
+    private static string? DeclaredNameOf(string json)
+    {
+        try { return SparkJson.Parse(json) is SparkJsonObject root ? SparkModelLayers.NameOf(root) : null; }
+        catch (SparkJsonException) { return null; }
+    }
 
     /// <summary>
     /// The composed files' text, one per type. An application file the engine cannot read is passed
@@ -40,24 +64,9 @@ internal static class ComposedModel
     /// </summary>
     public static IReadOnlyList<string> Compose(IEnumerable<LibraryModelFileInfo> libraries, IEnumerable<AppModelFileInfo> application)
     {
-        var composition = SparkModelLayers.Compose(
-            libraries.Select(l => new SparkModelInput(l.Assembly, l.FileName, l.Json, isLibrary: true, l.DependsOn)),
-            application
-                .OrderBy(a => a.Path, StringComparer.Ordinal)
-                .Select(a => new SparkModelInput(a.Path, FileNameOf(a.Path), a.Text, isLibrary: false)));
+        var composition = SparkModelLayers.Compose(Inputs(libraries), Inputs(application));
         return composition.Types.Select(t => t.Json).ToList();
     }
-
-    /// <summary>The type names the libraries alone declare, for <c>PersistentObjectNames</c>.</summary>
-    public static IReadOnlyList<string> LibraryTypeNames(IEnumerable<LibraryModelFileInfo> libraries)
-        => SparkModelLayers.Compose(
-                libraries.Select(l => new SparkModelInput(l.Assembly, l.FileName, l.Json, isLibrary: true, l.DependsOn)),
-                Array.Empty<SparkModelInput>())
-            .Types
-            .Select(t => t.Name)
-            .OfType<string>()
-            .Where(IsIdentifier)
-            .ToList();
 
     private static string FileNameOf(string path)
     {

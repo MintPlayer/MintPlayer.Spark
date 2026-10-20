@@ -90,6 +90,12 @@ public static class SparkFacts
 
     /// <summary>The top-level attributes an edit changed, comma-separated (filled by History for the types it governs).</summary>
     public const string ChangedAttributes = "ChangedAttributes";
+
+    /// <summary>
+    /// The user a save was made on behalf of: the proposer of a change an <see cref="ISaveReplacement"/> diverted
+    /// and someone else applied (<see cref="SaveContext.OnBehalfOf"/>, commerce X7).
+    /// </summary>
+    public const string OnBehalfOf = "OnBehalfOf";
 }
 
 /// <summary>

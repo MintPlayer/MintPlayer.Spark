@@ -1,0 +1,12 @@
+:host {
+  display: block;
+}
+
+.spark-po-diff-before {
+  text-decoration: line-through;
+  color: var(--bs-secondary-color);
+}
+
+.spark-po-diff-after {
+  font-weight: 500;
+}

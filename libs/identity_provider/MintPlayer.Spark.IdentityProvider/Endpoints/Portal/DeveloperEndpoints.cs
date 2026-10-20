@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Antiforgery;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Approvals;
 using MintPlayer.Spark.IdentityProvider.Configuration;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
@@ -22,6 +23,7 @@ internal class IdentityProviderPortalGroup : IEndpointGroup
 }
 
 /// <summary>What <c>GET /spark/identity-provider/developer</c> answers.</summary>
+[MintPlayer.Spark.Abstractions.SparkContract("SparkDeveloperStatus")]
 public sealed record OidcDeveloperStatusResponse(
     string? Status,
     int? AcceptedTermsVersion,
@@ -35,6 +37,11 @@ public sealed record OidcDeveloperStatusResponse(
 
 /// <summary>The body of <c>POST /spark/identity-provider/developer</c>.</summary>
 public sealed record OidcDeveloperRequestBody(int TermsVersion);
+
+/// <summary>What <c>POST /spark/identity-provider/developer/registration-token</c> answers: an RFC 7591 initial access token, shown once.</summary>
+/// <param name="ExpiresIn">Seconds until the token stops working.</param>
+[MintPlayer.Spark.Abstractions.SparkContract("SparkRegistrationToken")]
+public sealed record OidcRegistrationTokenResponse(string InitialAccessToken, int ExpiresIn);
 
 /// <summary>
 /// Issues an initial access token for dynamic client registration (RFC 7591, D8), shown once. Approved
@@ -62,7 +69,7 @@ internal sealed partial class IssueRegistrationToken : IPostEndpoint
         var token = await OidcClientRegistration.IssueInitialAccessTokenAsync(session, userId, httpContext.RequestAborted);
         await session.SaveChangesAsync(httpContext.RequestAborted);
         httpContext.Response.Headers.CacheControl = "no-store";
-        return TypedResults.Ok(new { initialAccessToken = token, expiresIn = (int)OidcClientRegistration.InitialTokenLifetime.TotalSeconds });
+        return TypedResults.Ok(new OidcRegistrationTokenResponse(token, (int)OidcClientRegistration.InitialTokenLifetime.TotalSeconds));
     }
 }
 
@@ -99,7 +106,9 @@ internal sealed partial class GetDeveloperStatus : IGetEndpoint
 
 /// <summary>
 /// Requests developer status by accepting the current terms (D2), or accepts raised terms again.
-/// Without <c>RequireApproval</c> the user is a developer at once.
+/// Without <c>RequireApproval</c> the user is a developer at once; with it, the request is an
+/// <c>identity-provider.developer</c> approval request (commerce D26) that an administrator decides, raised in
+/// the same commit as the <c>Requested</c> status. Asking again while a request is pending finds that request.
 /// </summary>
 [MemberOf<IdentityProviderPortalGroup>]
 internal sealed partial class RequestDeveloperStatus : IPostEndpoint<OidcDeveloperRequestBody>
@@ -116,6 +125,7 @@ internal sealed partial class RequestDeveloperStatus : IPostEndpoint<OidcDevelop
     [Inject] private readonly SparkIdentityProviderOptions options;
     [Inject] private readonly IAsyncDocumentSession session;
     [Inject] private readonly IHttpContextAccessor httpContextAccessor;
+    [Inject] private readonly ISparkApprovals approvals;
 
     public override async Task<IResult> HandleAsync(OidcDeveloperRequestBody request, CancellationToken cancellationToken)
     {
@@ -141,12 +151,15 @@ internal sealed partial class RequestDeveloperStatus : IPostEndpoint<OidcDevelop
                 break;
             case OidcDeveloperStatuses.Requested:
                 developer.TermsVersion = request.TermsVersion;
+                // The pending request is found (the engine's dedupe), or raised again for a status stored before
+                // requests were approval requests.
+                await SubmitAsync(userId, http, request.TermsVersion, cancellationToken);
                 break;
             case OidcDeveloperStatuses.Revoked:
                 // An administrator took developer status away; asking again does not undo that.
                 return TypedResults.Problem("Your developer status was revoked. Contact an administrator.", statusCode: StatusCodes.Status403Forbidden);
             default:
-                // First request, or a new one after a rejection.
+                // First request, or a new one after a rejection (the rejected request stays, as history).
                 developer = new OidcDeveloper
                 {
                     Status = options.Developers.RequireApproval ? OidcDeveloperStatuses.Requested : OidcDeveloperStatuses.Approved,
@@ -158,6 +171,8 @@ internal sealed partial class RequestDeveloperStatus : IPostEndpoint<OidcDevelop
                     ipAddress: http.Connection.RemoteIpAddress?.ToString(),
                     details: new Dictionary<string, string> { ["autoApproved"] = (!options.Developers.RequireApproval).ToString() },
                     ct: cancellationToken);
+                if (options.Developers.RequireApproval)
+                    await SubmitAsync(userId, http, request.TermsVersion, cancellationToken);
                 break;
         }
 
@@ -168,4 +183,9 @@ internal sealed partial class RequestDeveloperStatus : IPostEndpoint<OidcDevelop
             developer.Status, developer.TermsVersion, options.Developers.TermsVersion, options.Developers.TermsUrl,
             options.Developers.RequireApproval, developers.IsActive(developer), developer.RequestedAt, developer.DecidedAt, developer.Note));
     }
+
+    /// <summary>Raises the request inside the endpoint's session: it commits with the <c>Requested</c> status or not at all.</summary>
+    private Task<ApprovalSubmitResult> SubmitAsync(string userId, HttpContext http, int termsVersion, CancellationToken cancellationToken)
+        => approvals.SubmitAsync<OidcDeveloperApprovalKind>(session, OidcApprovalRequests.Developer(
+            userId, http.User.FindFirstValue(ClaimTypes.Name), http.User.FindFirstValue(ClaimTypes.Email), termsVersion), cancellationToken);
 }

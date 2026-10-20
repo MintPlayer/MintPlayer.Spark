@@ -13,7 +13,7 @@ export interface SparkShareRoutesOptions {
 }
 
 /**
- * The page a share link opens (`docs/seo_analyzer_PRD.md` X6, D31): `{origin}/shared/{type}/{token}?id={id}`.
+ * The page a share link opens (`docs/seo_analyzer_PRD.md` X6, D31): `{origin}/shared/{type}/{token}?id={id}` (`{type}` is the model id since D28; older links carry the type name, and both resolve).
  * Anonymous by design (the token is the credential), so it carries no guard; put it where no app chrome
  * assumes a signed-in user:
  *

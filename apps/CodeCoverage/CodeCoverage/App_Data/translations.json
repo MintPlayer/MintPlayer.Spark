@@ -385,6 +385,449 @@
       "nl": "Alleen organisatie-eigenaars en repository-admins kunnen dependency-updates inschakelen."
     }
   },
+  "lookup": {
+    "EApiTokenScope": {
+      "Account": {
+        "en": "All repositories of the account",
+        "fr": "Tous les dépôts du compte",
+        "nl": "Alle repositories van het account"
+      },
+      "Repository": {
+        "en": "Selected repositories",
+        "fr": "Dépôts sélectionnés",
+        "nl": "Geselecteerde repositories"
+      }
+    },
+    "EDeleteBranchPolicy": {
+      "Disabled": {
+        "en": "Never delete",
+        "fr": "Ne jamais supprimer",
+        "nl": "Nooit verwijderen"
+      },
+      "Enabled": {
+        "en": "Always delete",
+        "fr": "Toujours supprimer",
+        "nl": "Altijd verwijderen"
+      },
+      "Inherit": {
+        "en": "Use account setting",
+        "fr": "Utiliser le paramètre du compte",
+        "nl": "Accountinstelling gebruiken"
+      }
+    },
+    "EDependencyBisectBudget": {
+      "Eight": {
+        "en": "8 CI runs",
+        "fr": "8 exécutions CI",
+        "nl": "8 CI-runs"
+      },
+      "Four": {
+        "en": "4 CI runs",
+        "fr": "4 exécutions CI",
+        "nl": "4 CI-runs"
+      },
+      "Off": {
+        "en": "Off",
+        "fr": "Désactivé",
+        "nl": "Uit"
+      },
+      "One": {
+        "en": "1 CI run",
+        "fr": "1 exécution CI",
+        "nl": "1 CI-run"
+      },
+      "Two": {
+        "en": "2 CI runs",
+        "fr": "2 exécutions CI",
+        "nl": "2 CI-runs"
+      }
+    },
+    "EDependencyBisectBudgetPolicy": {
+      "Eight": {
+        "en": "8 CI runs",
+        "fr": "8 exécutions CI",
+        "nl": "8 CI-runs"
+      },
+      "Four": {
+        "en": "4 CI runs",
+        "fr": "4 exécutions CI",
+        "nl": "4 CI-runs"
+      },
+      "Inherit": {
+        "en": "Use account setting",
+        "fr": "Utiliser le paramètre du compte",
+        "nl": "Accountinstelling gebruiken"
+      },
+      "Off": {
+        "en": "Off",
+        "fr": "Désactivé",
+        "nl": "Uit"
+      },
+      "One": {
+        "en": "1 CI run",
+        "fr": "1 exécution CI",
+        "nl": "1 CI-run"
+      },
+      "Two": {
+        "en": "2 CI runs",
+        "fr": "2 exécutions CI",
+        "nl": "2 CI-runs"
+      }
+    },
+    "EDependencyCooldown": {
+      "None": {
+        "en": "None",
+        "fr": "Aucun",
+        "nl": "Geen"
+      },
+      "OneDay": {
+        "en": "1 day",
+        "fr": "1 jour",
+        "nl": "1 dag"
+      },
+      "SevenDays": {
+        "en": "7 days",
+        "fr": "7 jours",
+        "nl": "7 dagen"
+      },
+      "ThreeDays": {
+        "en": "3 days",
+        "fr": "3 jours",
+        "nl": "3 dagen"
+      }
+    },
+    "EDependencyCooldownPolicy": {
+      "Inherit": {
+        "en": "Use account setting",
+        "fr": "Utiliser le paramètre du compte",
+        "nl": "Accountinstelling gebruiken"
+      },
+      "None": {
+        "en": "None",
+        "fr": "Aucun",
+        "nl": "Geen"
+      },
+      "OneDay": {
+        "en": "1 day",
+        "fr": "1 jour",
+        "nl": "1 dag"
+      },
+      "SevenDays": {
+        "en": "7 days",
+        "fr": "7 jours",
+        "nl": "7 dagen"
+      },
+      "ThreeDays": {
+        "en": "3 days",
+        "fr": "3 jours",
+        "nl": "3 dagen"
+      }
+    },
+    "EDependencyOnboardingMergeQueue": {
+      "No": {
+        "en": "No",
+        "fr": "Non",
+        "nl": "Nee"
+      },
+      "Yes": {
+        "en": "Yes",
+        "fr": "Oui",
+        "nl": "Ja"
+      }
+    },
+    "EDependencyOnboardingMergeQueuePolicy": {
+      "Inherit": {
+        "en": "Use account setting",
+        "fr": "Utiliser le paramètre du compte",
+        "nl": "Accountinstelling gebruiken"
+      },
+      "No": {
+        "en": "No",
+        "fr": "Non",
+        "nl": "Nee"
+      },
+      "Yes": {
+        "en": "Yes",
+        "fr": "Oui",
+        "nl": "Ja"
+      }
+    },
+    "EDependencyScheduleFrequency": {
+      "Daily": {
+        "en": "Daily",
+        "fr": "Quotidien",
+        "nl": "Dagelijks"
+      },
+      "Monthly": {
+        "en": "Monthly",
+        "fr": "Mensuel",
+        "nl": "Maandelijks"
+      },
+      "Weekly": {
+        "en": "Weekly",
+        "fr": "Hebdomadaire",
+        "nl": "Wekelijks"
+      }
+    },
+    "EDependencySchedulePolicy": {
+      "Inherit": {
+        "en": "Use account setting",
+        "fr": "Utiliser le paramètre du compte",
+        "nl": "Accountinstelling gebruiken"
+      },
+      "Override": {
+        "en": "Own schedule",
+        "fr": "Calendrier propre",
+        "nl": "Eigen planning"
+      }
+    },
+    "EDependencyThreshold": {
+      "Major": {
+        "en": "Major",
+        "fr": "Majeure",
+        "nl": "Major"
+      },
+      "Minor": {
+        "en": "Minor",
+        "fr": "Mineure",
+        "nl": "Minor"
+      },
+      "Never": {
+        "en": "Never",
+        "fr": "Jamais",
+        "nl": "Nooit"
+      },
+      "Patch": {
+        "en": "Patch",
+        "fr": "Correctif",
+        "nl": "Patch"
+      }
+    },
+    "EDependencyUpdatesPolicy": {
+      "Disabled": {
+        "en": "Disabled",
+        "fr": "Désactivé",
+        "nl": "Uitgeschakeld"
+      },
+      "Enabled": {
+        "en": "Enabled",
+        "fr": "Activé",
+        "nl": "Ingeschakeld"
+      },
+      "Inherit": {
+        "en": "Use account setting",
+        "fr": "Utiliser le paramètre du compte",
+        "nl": "Accountinstelling gebruiken"
+      }
+    },
+    "EDependencyWeekday": {
+      "Friday": {
+        "en": "Friday",
+        "fr": "Vendredi",
+        "nl": "Vrijdag"
+      },
+      "Monday": {
+        "en": "Monday",
+        "fr": "Lundi",
+        "nl": "Maandag"
+      },
+      "Saturday": {
+        "en": "Saturday",
+        "fr": "Samedi",
+        "nl": "Zaterdag"
+      },
+      "Sunday": {
+        "en": "Sunday",
+        "fr": "Dimanche",
+        "nl": "Zondag"
+      },
+      "Thursday": {
+        "en": "Thursday",
+        "fr": "Jeudi",
+        "nl": "Donderdag"
+      },
+      "Tuesday": {
+        "en": "Tuesday",
+        "fr": "Mardi",
+        "nl": "Dinsdag"
+      },
+      "Wednesday": {
+        "en": "Wednesday",
+        "fr": "Mercredi",
+        "nl": "Woensdag"
+      }
+    },
+    "EMergeQueueApprovalFloor": {
+      "Always": {
+        "en": "Always require an approval",
+        "fr": "Toujours exiger une approbation",
+        "nl": "Altijd een goedkeuring vereisen"
+      },
+      "ExternalAuthors": {
+        "en": "Approval for external authors",
+        "fr": "Approbation pour les auteurs externes",
+        "nl": "Goedkeuring voor externe auteurs"
+      },
+      "RepositoryRules": {
+        "en": "Repository rules only",
+        "fr": "Règles du dépôt uniquement",
+        "nl": "Alleen repositoryregels"
+      }
+    },
+    "EMergeQueueApprovalFloorPolicy": {
+      "Always": {
+        "en": "Always require an approval",
+        "fr": "Toujours exiger une approbation",
+        "nl": "Altijd een goedkeuring vereisen"
+      },
+      "ExternalAuthors": {
+        "en": "Approval for external authors",
+        "fr": "Approbation pour les auteurs externes",
+        "nl": "Goedkeuring voor externe auteurs"
+      },
+      "Inherit": {
+        "en": "Use account setting",
+        "fr": "Utiliser le paramètre du compte",
+        "nl": "Accountinstelling gebruiken"
+      },
+      "RepositoryRules": {
+        "en": "Repository rules only",
+        "fr": "Règles du dépôt uniquement",
+        "nl": "Alleen repositoryregels"
+      }
+    },
+    "EMergeQueueBypassRole": {
+      "Admin": {
+        "en": "Admin role only",
+        "fr": "Rôle admin uniquement",
+        "nl": "Alleen de rol admin"
+      },
+      "Maintain": {
+        "en": "Maintain or admin role",
+        "fr": "Rôle maintain ou admin",
+        "nl": "Rol maintain of admin"
+      },
+      "None": {
+        "en": "Nobody",
+        "fr": "Personne",
+        "nl": "Niemand"
+      }
+    },
+    "EMergeQueueBypassRolePolicy": {
+      "Admin": {
+        "en": "Admin role only",
+        "fr": "Rôle admin uniquement",
+        "nl": "Alleen de rol admin"
+      },
+      "Inherit": {
+        "en": "Use account setting",
+        "fr": "Utiliser le paramètre du compte",
+        "nl": "Accountinstelling gebruiken"
+      },
+      "Maintain": {
+        "en": "Maintain or admin role",
+        "fr": "Rôle maintain ou admin",
+        "nl": "Rol maintain of admin"
+      },
+      "None": {
+        "en": "Nobody",
+        "fr": "Personne",
+        "nl": "Niemand"
+      }
+    },
+    "EMergeQueueCheckExclusionsPolicy": {
+      "Inherit": {
+        "en": "Use account setting",
+        "fr": "Utiliser le paramètre du compte",
+        "nl": "Accountinstelling gebruiken"
+      },
+      "Override": {
+        "en": "This repository's list",
+        "fr": "La liste de ce dépôt",
+        "nl": "De lijst van deze repository"
+      }
+    },
+    "EProjectBasis": {
+      "Projection": {
+        "en": "Patched projection (whole workspace)",
+        "fr": "Projection corrigée (espace de travail complet)",
+        "nl": "Geprojecteerde dekking (volledige workspace)"
+      },
+      "Scoped": {
+        "en": "Scoped baseline (like-for-like)",
+        "fr": "Référence restreinte (comparable)",
+        "nl": "Beperkte basislijn (gelijk om gelijk)"
+      }
+    },
+    "EProjectComparison": {
+      "Auto": {
+        "en": "Ratchet against the base commit",
+        "fr": "Comparer au commit de base",
+        "nl": "Vergelijken met de basiscommit"
+      },
+      "Fixed": {
+        "en": "Fixed target",
+        "fr": "Cible fixe",
+        "nl": "Vaste drempel"
+      }
+    },
+    "EWebhookEventType": {
+      "CheckRunCompleted": {
+        "en": "Check run completed"
+      },
+      "IssueCommentCreated": {
+        "en": "Issue comment created"
+      },
+      "IssuesAssigned": {
+        "en": "Issue assigned"
+      },
+      "IssuesClosed": {
+        "en": "Issue closed"
+      },
+      "IssuesLabeled": {
+        "en": "Issue labeled"
+      },
+      "IssuesOpened": {
+        "en": "Issue opened"
+      },
+      "IssuesReopened": {
+        "en": "Issue reopened"
+      },
+      "IssuesUnassigned": {
+        "en": "Issue unassigned"
+      },
+      "IssuesUnlabeled": {
+        "en": "Issue unlabeled"
+      },
+      "PullRequestClosed": {
+        "en": "Pull request closed without merging"
+      },
+      "PullRequestConvertedToDraft": {
+        "en": "PR converted to draft"
+      },
+      "PullRequestMerged": {
+        "en": "Pull request merged"
+      },
+      "PullRequestOpened": {
+        "en": "Pull request opened"
+      },
+      "PullRequestReadyForReview": {
+        "en": "PR ready for review"
+      },
+      "PullRequestReviewApproved": {
+        "en": "PR review: approved"
+      },
+      "PullRequestReviewChangesRequested": {
+        "en": "PR review: changes requested"
+      },
+      "PullRequestReviewDismissed": {
+        "en": "PR review dismissed"
+      },
+      "PullRequestReviewRequested": {
+        "en": "PR review requested"
+      }
+    }
+  },
   "mcpUi": {
     "addressTitle": {
       "en": "Server address",

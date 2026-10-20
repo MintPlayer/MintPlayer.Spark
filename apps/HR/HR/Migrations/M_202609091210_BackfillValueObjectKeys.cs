@@ -42,7 +42,6 @@ namespace HR.Migrations;
 /// </remarks>
 public partial class M_202609091210_BackfillValueObjectKeys : ISparkMigration
 {
-    public static long Version => 202609091210;
     public static string? Description => "Give stored CarreerJob, ClientSecret and ClientClaim rows a key";
 
     [Inject] private readonly IDocumentStore store;

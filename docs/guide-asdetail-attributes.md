@@ -132,7 +132,7 @@ Key properties:
 | `dataType` | Always `"AsDetail"` |
 | `asDetailType` | The full CLR type name of the nested class. Spark uses this to look up the nested type's model JSON for its attributes. |
 | `isArray` | `false` for single objects, `true` for arrays/collections |
-| `editMode` | For arrays: `"inline"` (editable table) or `"modal"` (default, opens a modal per item) |
+| `editMode` | `"modal"` (default): a modal per item, or for the single object. `"inline"`: an array is an editable table, a single object's fields render in the parent form (see [Single Object (Inline)](#edit-view----single-object-inline)) |
 
 ## Step 4: Model JSON for the Nested Type
 
@@ -396,6 +396,28 @@ When editing a parent entity, clicking on a single AsDetail attribute opens a **
 ```
 
 This means the nested object gets the same form rendering as any top-level entity, including validation rules, translated labels, and support for nested References.
+
+### Edit View -- Single Object (Inline)
+
+With `"editMode": "inline"` on a single (`isArray: false`) attribute, the object's fields render in place, in a bordered box under the attribute's label, instead of a summary box and a modal ([commerce_PRD.md](commerce_PRD.md) X15). An address on a venue, a seller profile or an order is the case it was made for:
+
+```json
+{
+  "name": "Address",
+  "dataType": "AsDetail",
+  "asDetailType": "Commerce.Entities.Address",
+  "isArray": false,
+  "editMode": "inline",
+  "showedOn": "PersistentObject"
+}
+```
+
+- **No working copy.** The recursive form edits `formData.Address` itself, so the object saves with the parent; there is no OK/Cancel of its own.
+- **Validation.** The object's field rules run in the browser like the parent's, addressed `Address.Street`, and the parent's Save stops on them. The server's errors on `Address.Street` are shown under the embedded `Street` field.
+- **Null and empty.** A null object shows *(not set)* and an **Add** button; Add starts an empty object. An optional object has a **Delete** button that sets it back to null, and one saved with every field blank is saved as null, without judging its fields' rules. A required object has no Delete; null fails its `required` rule, and a blank one is kept, so its fields' rules apply.
+- **Refresh triggers** inside the object (`triggersRefresh`) are sent by the parent, addressed `Address.Street`, as for the modal; the response is written into the object in `formData`.
+
+**A renderer for the whole object.** An `editComponent` registered for the attribute's `renderer` (an address typeahead from the reference-data client, say) is used for a single AsDetail attribute too, whatever its `editMode`: it receives the object as `value` and writes a new object with `valueChange`. Before X15 the AsDetail branch came first, and such a renderer was never reached.
 
 ### Edit View -- Array (Inline Table)
 

@@ -1,0 +1,28 @@
+{
+  "$schema": "../../../../schemas/translations.schema.json",
+  "warehouse": {
+    "commandIncomplete": { "en": "Fill in the stock command first.", "fr": "Complétez d'abord la commande de stock.", "nl": "Vul eerst de voorraadopdracht in." },
+    "stockApplied": { "en": "Stock updated.", "fr": "Stock mis à jour.", "nl": "Voorraad bijgewerkt." },
+    "refusal": {
+      "UnknownLocation": { "en": "Unknown location: {0}", "fr": "Emplacement inconnu : {0}", "nl": "Onbekende locatie: {0}" },
+      "InactiveLocation": { "en": "The location {0} is deactivated.", "fr": "L'emplacement {0} est désactivé.", "nl": "De locatie {0} is gedeactiveerd." },
+      "UnknownItem": { "en": "Unknown item: {0}", "fr": "Article inconnu : {0}", "nl": "Onbekend artikel: {0}" },
+      "UnknownBalance": { "en": "There is no such stock: {0}", "fr": "Ce stock n'existe pas : {0}", "nl": "Deze voorraad bestaat niet: {0}" },
+      "InsufficientStock": { "en": "Not enough stock ({0}).", "fr": "Stock insuffisant ({0}).", "nl": "Onvoldoende voorraad ({0})." },
+      "InsufficientAvailable": { "en": "Not enough unallocated stock ({0}).", "fr": "Stock non réservé insuffisant ({0}).", "nl": "Onvoldoende niet-gereserveerde voorraad ({0})." },
+      "LotBlocked": { "en": "The lot is blocked: {0}", "fr": "Le lot est bloqué : {0}", "nl": "Het lot is geblokkeerd: {0}" },
+      "ReasonRequired": { "en": "An adjustment needs a valid reason code ({0}).", "fr": "Un ajustement exige un code motif valide ({0}).", "nl": "Een correctie vraagt een geldige redencode ({0})." },
+      "LotMismatch": { "en": "{0}", "fr": "{0}", "nl": "{0}" },
+      "InvalidQuantity": { "en": "{0}", "fr": "{0}", "nl": "{0}" },
+      "OpIdReused": { "en": "{0}", "fr": "{0}", "nl": "{0}" },
+      "Declined": { "en": "{0}", "fr": "{0}", "nl": "{0}" }
+    }
+  },
+  "actions": {
+    "WarehouseMoveStock": { "label": { "en": "Move stock", "fr": "Déplacer le stock", "nl": "Voorraad verplaatsen" } },
+    "WarehouseAdjustStock": { "label": { "en": "Adjust stock", "fr": "Ajuster le stock", "nl": "Voorraad corrigeren" } },
+    "WarehouseRecallLot": { "label": { "en": "Recall lot", "fr": "Rappeler le lot", "nl": "Lot terugroepen" } },
+    "WarehouseQuarantineLot": { "label": { "en": "Quarantine lot", "fr": "Mettre le lot en quarantaine", "nl": "Lot in quarantaine" } },
+    "WarehouseReleaseLot": { "label": { "en": "Release lot", "fr": "Libérer le lot", "nl": "Lot vrijgeven" } }
+  }
+}

@@ -1,0 +1,31 @@
+<div class="address-form">
+  <h1 class="h3">Address form</h1>
+  <p class="text-body-secondary">
+    Reference data served by this instance at <code>/api/v1</code>
+    @if (sources(); as s) { (release <code>{{ s.release }}</code>) }.
+    Type a postal code or a place ("kruish", "9770", "Oudenarde"), then a street.
+  </p>
+
+  <section class="mb-4">
+    <h2 class="h5">Against this instance</h2>
+    <bs-form>
+      <spark-address-input [(value)]="address" lang="nl" />
+    </bs-form>
+    @if (address()?.TimeZone; as zone) {
+      <p class="mt-2 mb-0">Now, shown in the viewer's zone and in the address's: <spark-date-time [value]="now" [alsoIn]="zone" /></p>
+    }
+    <pre class="address-json mt-2">{{ json() }}</pre>
+  </section>
+
+  @if (sources(); as s) {
+    <section>
+      <h2 class="h5">Sources</h2>
+      <ul class="small">
+        @for (source of s.sources; track source.id) {
+          <li><strong>{{ source.name }}</strong> ({{ source.licence }}): {{ source.attribution }}</li>
+        }
+      </ul>
+      <p class="small text-body-secondary">{{ s.terms }}</p>
+    </section>
+  }
+</div>

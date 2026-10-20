@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
-import { EntityAttributeDefinition, PersistentObject, QueryResultItem, SparkCellColumn } from '@mintplayer/ng-spark/models';
+import { EntityAttributeDefinition, PersistentObject, QueryResultItem, SparkCellColumn, TranslatedString, resolveTranslation } from '@mintplayer/ng-spark/models';
 import { TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
 import { SparkModerationService } from './spark-moderation.service';
 import { ModerationVoteState } from './spark-moderation.models';
@@ -92,8 +92,8 @@ export function describeModerationError(e: unknown): string {
   const first = body?.result?.errors?.[0]?.errorMessage;
   if (typeof first === 'string') return first;
   if (first && typeof first === 'object') {
-    const values = Object.values(first as Record<string, string>);
-    if (values.length) return values[0];
+    const text = resolveTranslation(first as TranslatedString);
+    if (text) return text;
   }
   return body?.result?.error ?? err?.message ?? 'Failed';
 }

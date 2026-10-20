@@ -1,5 +1,10 @@
 import { InjectionToken, Provider, Type } from '@angular/core';
 import { SparkParagraphRendererComponent } from './paragraph-renderer.component';
+import { SparkMoneyRendererComponent } from './money-renderer.component';
+import { SparkMoneyEditorComponent } from './money-editor.component';
+import { SparkQuantityRendererComponent } from './quantity-renderer.component';
+import { SparkQuantityEditorComponent } from './quantity-editor.component';
+import { MONEY_RENDERER, QUANTITY_RENDERER, formatMoney, formatQuantity } from '@mintplayer/ng-spark/models';
 
 export interface SparkAttributeRendererRegistration {
   /** The renderer name (must match attr.renderer in model JSON) */
@@ -20,6 +25,13 @@ export interface SparkAttributeRendererRegistration {
    * the first such attribute (a library writes the same options on each).
    */
   rowComponent?: Type<any>;
+  /**
+   * Optional component for a **diff** of this attribute between two reads of an object (Approvals'
+   * proposal diff, commerce #521): drawn once per changed attribute, given both sides. Must implement
+   * {@link SparkAttributeDiffRenderer}. When omitted, the generic before → after view is used (each side
+   * drawn as a grid cell, so `columnComponent` still applies to each side on its own).
+   */
+  diffComponent?: Type<any>;
   /**
    * Relabels this column's values in a filter panel (#431).
    *
@@ -46,6 +58,22 @@ export interface SparkAttributeRendererRegistration {
  */
 export const sparkCoreRenderers: readonly SparkAttributeRendererRegistration[] = [
   { name: 'paragraph', detailComponent: SparkParagraphRendererComponent, fullWidth: true },
+  // Money (commerce X4): model sync writes this renderer on every Money attribute that has none.
+  {
+    name: MONEY_RENDERER,
+    detailComponent: SparkMoneyRendererComponent,
+    columnComponent: SparkMoneyRendererComponent,
+    editComponent: SparkMoneyEditorComponent,
+    filterLabel: value => formatMoney(value),
+  },
+  // Quantity (warehouse WX8): model sync writes this renderer on every Quantity attribute that has none.
+  {
+    name: QUANTITY_RENDERER,
+    detailComponent: SparkQuantityRendererComponent,
+    columnComponent: SparkQuantityRendererComponent,
+    editComponent: SparkQuantityEditorComponent,
+    filterLabel: value => formatQuantity(value),
+  },
 ];
 
 export const SPARK_ATTRIBUTE_RENDERERS = new InjectionToken<SparkAttributeRendererRegistration[]>(

@@ -1,0 +1,45 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "ShipmentReturnInput, the form ShipmentCreateReturnLabel prompts with through a retry (GB5). A virtual prompt type.",
+    "",
+    "HAND-AUTHORED. Ids are UUIDv5 of 'commerce-shipping:ShipmentReturnInput[...]', written by 'npm run stamp:library-model-ids'."
+  ],
+  "persistentObject": {
+    "id": "7aa8b05d-fc43-547d-92ff-48321b9eafd1",
+    "name": "ShipmentReturnInput",
+    "breadcrumb": "{Reason}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "c98269d0-aa1f-5180-81de-961c058ae840",
+        "name": "Reason",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [
+          {
+            "type": "maxLength",
+            "value": 200
+          }
+        ]
+      },
+      {
+        "id": "75e41b41-8492-57b5-a3c3-3192b0141e96",
+        "name": "WeightGrams",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      }
+    ]
+  },
+  "queries": []
+}

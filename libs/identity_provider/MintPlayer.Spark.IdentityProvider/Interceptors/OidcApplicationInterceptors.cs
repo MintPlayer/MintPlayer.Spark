@@ -2,6 +2,7 @@ using System.Security.Claims;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Interceptors;
+using MintPlayer.Spark.Approvals;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
 using Raven.Client.Documents;
@@ -36,6 +37,7 @@ public sealed partial class OidcApplicationInterceptors : IBeforeSave<OidcApplic
     [Inject] private readonly MintPlayer.Spark.Abstractions.Authorization.IAccessControl accessControl;
     [Inject] private readonly Configuration.SparkIdentityProviderOptions options;
     [Inject] private readonly OidcAudit audit;
+    [Inject] private readonly ISparkApprovals approvals;
 
     public async ValueTask OnBeforeSaveAsync(OidcApplication entity, SaveContext context)
     {
@@ -161,50 +163,50 @@ public sealed partial class OidcApplicationInterceptors : IBeforeSave<OidcApplic
 
     /// <summary>
     /// D4: an API scope from a resource none of the application's members owns starts as
-    /// <c>Pending</c> until an owner (or an identity-provider administrator) approves it. Identity
-    /// scopes, the team's own APIs and <c>AutoApprove</c> resources are approved at once. A scope the
-    /// application already had keeps its status: editing the application never re-opens a decision.
-    /// An administrator adding a scope is the approval.
+    /// <c>Pending</c>, with an <c>identity-provider.scope</c> approval request raised in this save's session,
+    /// until an owner (or an identity-provider administrator) decides it. Identity scopes, the team's own APIs
+    /// and <c>AutoApprove</c> resources are approved at once. An administrator adding a scope is the approval.
+    /// <para>
+    /// Statuses are the server's: a value posted for a new scope means nothing, and a scope the application
+    /// already had keeps its <b>stored</b> status (F1). Before that restore, a team Developer (who holds Edit on
+    /// the scope rows) could post <c>"Approved"</c> on its own pending or rejected cross-owner scope and serve it
+    /// to everyone. A removed scope's pending request is withdrawn with the save.
+    /// </para>
     /// </summary>
     private async Task ApplyScopeApprovalsAsync(IAsyncDocumentSession session, OidcApplication entity, SaveContext context)
     {
         var before = (context.Before as OidcApplication)?.Scopes ?? [];
+        var privileged = context.IsSystemContext || await accessControl.IsAllowedAsync(Actions.OidcApplicationActions.ManageAllResource);
+
+        if (!privileged)
+        {
+            foreach (var scope in entity.Scopes)
+            {
+                if (before.FirstOrDefault(b => string.Equals(b.Name, scope.Name, StringComparison.OrdinalIgnoreCase)) is { } stored)
+                    scope.Status = stored.Status;
+            }
+        }
+
+        if (entity.Id is { Length: > 0 } applicationId)
+        {
+            var removed = before.Where(b => !entity.Scopes.Any(s => string.Equals(s.Name, b.Name, StringComparison.OrdinalIgnoreCase)));
+            await OidcApprovalRequests.ClosePendingScopeRequestsAsync(approvals, session, applicationId, removed);
+        }
+
         var added = entity.Scopes
             .Where(s => !before.Any(b => string.Equals(b.Name, s.Name, StringComparison.OrdinalIgnoreCase)))
             .ToList();
         if (added.Count == 0)
             return;
 
-        // Statuses are the server's to decide: a value posted for a new scope means nothing.
         foreach (var scope in added)
             scope.Status = OidcScopeStatuses.Approved;
 
-        if (context.IsSystemContext || await accessControl.IsAllowedAsync(Actions.OidcApplicationActions.ManageAllResource))
+        if (privileged)
             return;
 
-        await MarkCrossOwnerScopesAsync(session, entity, added, context.User?.FindFirstValue(ClaimTypes.NameIdentifier));
-    }
-
-    /// <summary>D4: marks the <paramref name="added"/> API scopes whose API the team does not own as Pending.</summary>
-    internal static async Task MarkCrossOwnerScopesAsync(IAsyncDocumentSession session, OidcApplication entity, IEnumerable<OidcApplicationScope> added, string? requestedBy)
-    {
-        var team = entity.Members.Where(m => m.Status == OidcMemberStatuses.Active && m.UserId is not null)
-            .Select(m => m.UserId!).ToHashSet(StringComparer.Ordinal);
-        foreach (var scope in added)
-        {
-            if (OidcScopeCatalog.ApiResourceNameOf(scope.Name) is not { } apiName)
-                continue; // identity scope
-            var api = await session.LoadAsync<OidcResource>(OidcScopeCatalog.ResourceId(apiName));
-            if (api is null || api.Kind != OidcResourceKinds.Api || api.AutoApprove || api.Owners.Any(team.Contains))
-                continue;
-            scope.Status = OidcScopeStatuses.Pending;
-            scope.Review = new OidcReviewDecision
-            {
-                Status = OidcScopeStatuses.Pending,
-                RequestedAt = DateTime.UtcNow,
-                RequestedBy = requestedBy,
-            };
-        }
+        await OidcApprovalRequests.RaiseScopeRequestsAsync(approvals, session, entity, added,
+            context.User?.FindFirstValue(ClaimTypes.NameIdentifier));
     }
 
     private static void ValidateMode(OidcApplication entity)
@@ -410,12 +412,19 @@ public sealed partial class OidcApplicationInterceptors : IBeforeSave<OidcApplic
     /// </summary>
     public async ValueTask OnBeforeDeleteAsync(OidcApplication entity, DeleteContext context)
     {
-        if (context.IsSystemContext || await accessControl.IsAllowedAsync(Actions.OidcApplicationActions.ManageAllResource))
-            return;
+        if (!context.IsSystemContext && !await accessControl.IsAllowedAsync(Actions.OidcApplicationActions.ManageAllResource))
+        {
+            var userId = context.User?.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (entity.ActiveMember(userId) is not { Role: OidcMemberRoles.Admin })
+                throw new SparkValidationException("Only an Admin of this application can delete it.", nameof(entity.Members));
+        }
 
-        var userId = context.User?.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (entity.ActiveMember(userId) is not { Role: OidcMemberRoles.Admin })
-            throw new SparkValidationException("Only an Admin of this application can delete it.", nameof(entity.Members));
+        // The application's pending scope and go-live requests go with it, in the delete's own commit.
+        if (context.Session is IAsyncDocumentSession session && !context.IsReplaced)
+        {
+            await approvals.ClosePendingAsync<OidcScopeApprovalKind>(session, OidcApprovalRequests.ApplicationSubject(context.Id));
+            await approvals.ClosePendingAsync<OidcGoLiveApprovalKind>(session, OidcApprovalRequests.ApplicationSubject(context.Id));
+        }
     }
 
     /// <summary>Frees the client id of a deleted application, and its CORS origins.</summary>

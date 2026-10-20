@@ -9,7 +9,7 @@
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.Messaging</PackageId>
-		<Version>11.0.0-preview.99</Version>
+		<Version>11.0.0-preview.100</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>Durable message bus for MintPlayer.Spark with RavenDB persistence, scoped recipients, queue isolation, and retry logic.</Description>
@@ -31,6 +31,8 @@
 
 	<ItemGroup>
 		<ProjectReference Include="..\..\spark\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
+		<!-- Commerce X12: the messaging lease is a claim on Spark's claims primitive (MintPlayer.Spark.Claims). -->
+		<ProjectReference Include="..\..\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
 		<ProjectReference Include="..\MintPlayer.Spark.Messaging.Abstractions\MintPlayer.Spark.Messaging.Abstractions.csproj" />
 		<ProjectReference Include="..\..\subscription_worker\MintPlayer.Spark.SubscriptionWorker.Abstractions\MintPlayer.Spark.SubscriptionWorker.Abstractions.csproj" />
 	</ItemGroup>

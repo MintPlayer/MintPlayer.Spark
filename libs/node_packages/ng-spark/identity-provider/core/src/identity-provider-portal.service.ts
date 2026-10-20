@@ -6,11 +6,11 @@ import type {
   SparkDeveloperStatus,
   SparkInvitationOutcome,
   SparkKeyRotation,
-  SparkPortalResult,
   SparkRegistrationToken,
   SparkSigningKey,
   SparkWithdrawAccessRequest,
-} from './models';
+} from './generated/contracts';
+import type { SparkPortalResult } from './models';
 
 /** The portal API's prefix (`IdentityProviderPortalGroup.Prefix` on the server). */
 export const SPARK_IDENTITY_PROVIDER_API = '/spark/identity-provider';

@@ -81,9 +81,8 @@ If you only need a subset of features, use the individual packages directly:
 builder.Services.AddSpark(builder.Configuration, spark =>
 {
     spark.UseContext<MySparkContext>();
-    spark.AddActions();
     spark.AddMessaging();
-    spark.AddRecipients();
+    spark.AddSparkDiscovered(); // generated: Actions classes, recipients, custom actions, cron jobs, migrations, …
 });
 
 app.UseRouting();
@@ -134,6 +133,7 @@ MintPlayer.Spark/
 │   ├── controllers/
 │   │   └── MintPlayer.Spark.Controllers/         # Mount your own MVC controllers inside Spark's pipeline
 │   ├── webhooks/
+│   │   ├── MintPlayer.Spark.Webhooks/            # Generic signed / fetch-by-id webhooks, raw bytes, dedupe
 │   │   ├── MintPlayer.Spark.Webhooks.GitHub/     # GitHub webhook integration
 │   │   └── MintPlayer.Spark.Webhooks.GitHub.DevTunnel/  # Dev-only: smee.io tunnel + WebSocket client
 │   ├── client/
@@ -150,12 +150,14 @@ MintPlayer.Spark/
 │   │   └── MintPlayer.Dotnet.SocketExtensions/   # WebSocket read/write helpers
 │   └── node_packages/                            # Angular libraries (@mintplayer/ng-spark, auth entries under ng-spark/auth)
 ├── tests/                                        # Test projects (unit, source-generator, client, E2E)
-├── apps/                                         # Applications: the demos, and CodeCoverage
+├── apps/                                         # Applications: the demos, and the production apps CodeCoverage and SeoTester
 │   ├── CodeCoverage/                             # The coverage server behind coverage.mintplayer.com (a product, not a demo)
 │   ├── DemoApp/                                  # The minimal Spark app: core only, no Authorization, no identity provider
 │   ├── Fleet/                                    # Fleet management demo (auth, messaging, replication)
 │   ├── HR/                                       # HR demo (auth, messaging, replication)
 │   ├── QnA/                                      # Q&A demo (#460: moderation, soft delete, history, mail, account pages)
+│   ├── ReferenceData/                            # A reference-data instance with a basic seed set (local only, https 5017)
+│   ├── SeoTester/                                # The SEO analyzer behind seotester.mintplayer.com (a product, not a demo)
 │   └── SparkId/                                  # The demo identity provider (HR, Fleet and QnA sign in here)
 └── docs/                                         # Documentation (guides, prd/, code-coverage/, codecov/)
 ```
@@ -174,6 +176,7 @@ MintPlayer.Spark/
 | [Full-Text Search](docs/guide-search.md) | What a search term matches, why `[Search]` is not the gate, the breadcrumb narrowing, and why fuzzy search is not offered |
 | [The model hash](docs/model-hash.md) | Why a deployed app refuses to start on a stale model, verifying in CI, merge conflicts, the override, and which library layer moved |
 | [JSON schemas](docs/guide-json-schemas.md) | Validation, completion and hover descriptions for the six `App_Data` files, the managed `$schema`, `_` comments, and regenerating them in this repository |
+| [TypeScript contracts](docs/guide-typescript-contracts.md) | `[SparkContract]` records generated into committed `contracts.ts` files, the wire rules (camelCase, enums, `long`, nullability), and the CI verify step |
 | [Library layers](docs/guide-library-layers.md) | What a referenced library ships in `App_Data` (model, actions, rights, translations, program units) and how your files override it: merge rules, keyed rights and `bindings`, the `libraries` opt-out, `--spark-describe`, the gates |
 | [Attribute Grouping](docs/guide-attribute-grouping.md) | Two-level Tabs and Groups layout for entity forms and detail pages |
 | [Custom Attribute Renderers](docs/guide-custom-attribute-renderers.md) | Replace default attribute display/editing with custom Angular components |
@@ -203,10 +206,11 @@ MintPlayer.Spark/
 | [Settings](docs/guide-settings.md) | Admin-changeable feature switches and limits: `SparkSetting<T>` declared in code, stored value over configuration over default, the `settings:administrators` slot, seeding, save validation and the 30 s cache ([package README](libs/settings/MintPlayer.Spark.Settings/README.md)) |
 | [Notifications & Web Push](docs/guide-notifications.md) | One `ISparkNotifier` call reaches a user in-app (live over `/spark/live`), by mail and by Web Push, through their channels per organization; the hand-rolled RFC 8291/8292 library, VAPID keys, the push-service allow-list, and the Angular bell and opt-in ([package README](libs/notifications/MintPlayer.Spark.Notifications/README.md), [Web Push README](libs/webpush/MintPlayer.Spark.WebPush/README.md)) |
 | [Dashboards](docs/guide-dashboards.md) | Administrator dashboards as live virtual pages: `IDashboardProvider`, the `dashboards:administrators` slot, built-in RavenDB statistics and host metrics, history on single-valued RavenDB time series, and ng-spark's tile layout with the meter, stat and table renderers ([package README](libs/dashboards/MintPlayer.Spark.Dashboards/README.md)) |
+| [Claims](docs/guide-claims.md) | One owner per key, cluster-wide: `ISparkClaims` reserve, convert and release over compare-exchange with lazy expiry and takeover, idempotent by owner, and a unit of work that commits several keys and documents together |
 | [Quotas](docs/guide-quotas.md) | Per-user limits on custom actions: `[SparkQuota]`, sliding windows whose limits are settings, 429 with `Retry-After`, `ISparkQuotas` for uses decided in code |
 | [Share links](docs/guide-share-links.md) | A revocable, anonymous, read-only link to one object: `ISparkShareable`, the declared attributes and child queries a link shows, `ShareLink`/`RevokeShareLink`, the global switch and gates, and ng-spark's shared page |
 | [Score renderers](docs/guide-score-renderers.md) | Gauge, threshold bar, trend and delta attribute renderers in ng-spark, configured by options; what CodeCoverage's coverage bar, sparkline and delta are built on |
-| [Organizations](docs/guide-organizations.md) | Users in organizations with Owner/Admin/Member/Viewer roles, a personal organization per user, invitations and join requests by mail, and `IOrganizationOwned`: rows reached only by members with the role the action needs; cascade delete and export hooks ([package README](libs/organizations/MintPlayer.Spark.Organizations/README.md)) |
+| [Organizations](docs/guide-organizations.md) | Users in organizations with Owner/Admin/Member/Viewer roles, a personal organization per user, invitations by mail, join requests decided in-app by Owners and Admins (Approvals), and `IOrganizationOwned`: rows reached only by members with the role the action needs; cascade delete and export hooks ([package README](libs/organizations/MintPlayer.Spark.Organizations/README.md)) |
 | [Soft Delete](libs/soft_delete/MintPlayer.Spark.SoftDelete/README.md) | `ISoftDeletable`: a delete becomes a mark, deleted rows hidden on every path, restore and purge, the recycle bin |
 | [History](libs/history/MintPlayer.Spark.History/README.md) | RavenDB revisions from the model, audit stamping, revision reads and revert through the save pipeline, licence limits |
 | [Audit fields](docs/guide-auditing.md) | `IAuditCreated` / `IAuditModified` / `IAuditable`, `ISoftDeletable`, `IModeratable`: declare the interface and the members are generated; who stamps them, and which writes are not stamped |
@@ -216,6 +220,7 @@ MintPlayer.Spark/
 | [Cross-Module mTLS](docs/guide-replication-mtls.md) | Issuing and pinning the client certificates that authenticate one module to another |
 | [Subscription Workers](libs/subscription_worker/MintPlayer.Spark.SubscriptionWorker/README.md) | RavenDB subscription-based background processing with retry handling |
 | [Cron Jobs](libs/cron/MintPlayer.Spark.Cron/README.md) | Cron-scheduled background jobs, UTC schedules, schedule overrides, multi-node compare-exchange locking |
+| [Inbound Webhooks](docs/guide-webhooks.md) | Any provider's webhooks as a source: HMAC, Stripe and fetch-by-id verification over the exact bytes, deduplicated enqueue, one handler per source ([package README](libs/webhooks/MintPlayer.Spark.Webhooks/README.md)) |
 | [GitHub Webhooks](libs/webhooks/MintPlayer.Spark.Webhooks.GitHub/README.md) | React to GitHub events via typed messages, with smee.io and WebSocket dev tunneling |
 | [GitHub Webhooks — Dev Tunnel](libs/webhooks/MintPlayer.Spark.Webhooks.GitHub.DevTunnel/README.md) | Dev-only: receive real webhook deliveries on localhost via smee.io or WebSocket forwarding from production |
 | [Docker Deployment](docs/guide-docker-deployment.md) | Deploy with Docker Compose, RavenDB configuration, Traefik reverse proxy, and the forwarded-headers trust list Spark configures |
@@ -414,9 +419,9 @@ Two things to know:
   `App_Data/Model/`, not by a runtime attribute check. If you add `[IgnoreProperty]` to a
   property that was already in the model and don't re-run synchronize, the old attribute is
   still there and still writable. Re-synchronize and commit the result.
-- **It does not filter your ETL script.** `[Replicated(EtlScript = "…")]` is developer-authored
-  JavaScript that Spark copies verbatim to RavenDB — nothing derives it from your properties. If
-  a field must not leave the source module, leave it out of the script yourself.
+- **It does not filter a replication contract.** The owner's ETL transform is generated from its
+  published contract projection (`Publish<TSource, TContract>(…)`), not from `[IgnoreProperty]`. If
+  a field must not leave the source module, leave it out of the projection.
 
 Note that `[JsonIgnore]` does **not** do this — model synchronization does not read serialization
 attributes.

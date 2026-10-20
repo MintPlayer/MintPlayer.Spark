@@ -104,7 +104,7 @@ public class FailOpenRegressionTests
         modelLoader.GetEntityTypeByName("PagedDoc").Returns(definition);
         modelLoader.GetEntityTypeByClrType(Arg.Any<string>()).Returns(definition);
         var pagedActions = new PagedDocActions(Substitute.For<IEntityMapper>());
-        actionsResolver.ResolveByEntityName("PagedDoc").Returns(pagedActions);
+        actionsResolver.ResolveVirtual(Arg.Is<EntityTypeDefinition>(d => d.Name == "PagedDoc")).Returns(pagedActions);
         actionsResolver.ResolveForType(typeof(PagedDoc)).Returns(pagedActions);
 
         // The condition under test: this type carries a row rule.

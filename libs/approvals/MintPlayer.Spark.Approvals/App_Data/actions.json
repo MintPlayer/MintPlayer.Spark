@@ -1,0 +1,29 @@
+{
+  "$schema": "../../../../schemas/actions.schema.json",
+  "_comment": [
+    "The decision actions on ApprovalRequest (docs/commerce_PRD.md §4.13), shipped as a library layer. The classes",
+    "are CustomActions/ApprovalDecisionActions.cs; their rights are in this library's security.json. Labels are",
+    "actions.<Name>.* in translations.json. Each is offered per row only where it would succeed",
+    "(ApprovalRequestActions.OnDisableActionsAsync)."
+  ],
+  "ApprovalApprove": {
+    "icon": "check-lg",
+    "showedOn": "both",
+    "variant": "success"
+  },
+  "ApprovalReject": {
+    "icon": "x-lg",
+    "showedOn": "both",
+    "variant": "danger"
+  },
+  "ApprovalWithdraw": {
+    "icon": "arrow-counterclockwise",
+    "showedOn": "both"
+  },
+  "ApprovalRevoke": {
+    "icon": "slash-circle",
+    "showedOn": "detail",
+    "selectionRule": "=0",
+    "variant": "danger"
+  }
+}

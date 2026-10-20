@@ -6,7 +6,7 @@ namespace DemoApp.Jobs;
 /// <summary>
 /// Demonstrates a Spark cron job: writes a heartbeat log line every minute. The schedule lives
 /// on the job via the static abstract <see cref="CronSchedule"/> member, and the job is picked up
-/// automatically by <c>spark.AddCronJobs()</c>.
+/// automatically by <c>spark.AddSparkDiscovered()</c>.
 /// </summary>
 public partial class HeartbeatJob : ISparkCronJob
 {

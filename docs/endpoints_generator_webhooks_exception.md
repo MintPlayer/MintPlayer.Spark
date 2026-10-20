@@ -1,57 +1,73 @@
-# Why the GitHub webhook POST stays hand-mapped
+# The GitHub webhook POST: no longer an exception
 
-Every endpoint Spark serves is a generator endpoint class, with one exception in
-`MintPlayer.Spark.Webhooks.GitHub`: the GitHub webhook POST. This records why, so that the question
-is not reopened as an oversight. It is decision **D4** of
-[`endpoints_generator_completion_PRD.md`](endpoints_generator_completion_PRD.md).
+**Status (2026-10-19, #521 X5): closed.** Every endpoint Spark serves is now a generator endpoint
+class. The GitHub webhook POST was the last exception (decision **D4** of
+[`endpoints_generator_completion_PRD.md`](endpoints_generator_completion_PRD.md)); it became
+`GitHubWebhookEndpoint`, a source of the generic `MintPlayer.Spark.Webhooks` library. The text below
+records what the exception was, why it existed, and what removed it, so the question is not
+reopened.
 
-`libs/webhooks/MintPlayer.Spark.Webhooks.GitHub/Extensions/SparkBuilderExtensions.cs`:
+`libs/webhooks/MintPlayer.Spark.Webhooks.GitHub`:
 
 | Route | Shape |
 |---|---|
-| `options.WebhookPath` (default `/api/github/webhooks`) | `MapGitHubWebhooks(path, secret).DisableAntiforgery()`: Octokit, **hand-mapped** |
-| `options.DevWebSocketPath` (default `/spark/github/dev-ws`) | `DevWebSocketEndpoint`: a **generator endpoint**, mapped by `MapSparkWebhooksGitHubEndpoints()` |
+| `options.WebhookPath` (default `/api/github/webhooks`) | `GitHubWebhookEndpoint`: a **generator endpoint** (`IPostEndpoint<WebhookRequest>`), mapped by `MapSparkWebhooksGitHubEndpoints()` |
+| `options.DevWebSocketPath` (default `/spark/github/dev-ws`) | `DevWebSocketEndpoint`: a **generator endpoint**, mapped by the same method |
 
-## The blocker: Octokit owns the signature check
+## What the exception was
 
-`MapGitHubWebhooks` is a **third-party** extension (`Octokit.Webhooks.AspNetCore`). It maps its own
-route and installs a `RequestDelegate` that owns the HTTP side of a delivery: it reads the raw body,
-validates the `X-Hub-Signature-256` HMAC over it with the configured secret, refuses a request that
-fails with an error status, and only then hands the body to the registered `WebhookEventProcessor`
-(`SparkWebhookEventProcessor`). The signature check is internal to that delegate; Octokit does not
-expose it as something an endpoint class could call.
+The POST was `MapGitHubWebhooks(path, secret).DisableAntiforgery()`, a **third-party** extension
+(`Octokit.Webhooks.AspNetCore`). It mapped its own route and installed a `RequestDelegate` that owned
+the HTTP side of a delivery: it read the raw body, validated `X-Hub-Signature-256` with the
+configured secret, refused a failing request, and only then handed the body to the registered
+`WebhookEventProcessor` (`SparkWebhookEventProcessor`). Octokit did not expose that check as
+something an endpoint class could call. D4 kept the route on Octokit rather than replace its
+request handling on the one route where a mistake means accepting forged deliveries.
 
-Two facts limit how strong this blocker is, and they are stated here so the decision stays honest:
-- **Dispatch is not the blocker.** `WebhookEventProcessor.ProcessWebhookAsync(headers, body)` is
-  public, and Spark already calls it directly from both dev-tunnel clients
-  (`SmeeBackgroundService.cs:87`, `WebSocketDevClientService.cs:113`).
-- **Spark checks the signature a second time.** `SparkWebhookEventProcessor.ProcessWebhookAsync`
-  verifies `X-Hub-Signature-256` again through its own `ISignatureService`, fail-closed on an empty
-  secret and on a mismatch (`SparkWebhookEventProcessor.cs:45-56`). That check runs inside dispatch,
-  so it can only drop the event; the request-level refusal is Octokit's.
+The document named what would change this: "a decision to make Spark's own `ISignatureService` the
+request-level check."
 
-So a generator endpoint *could* read the body and call the processor without accepting forged
-deliveries. Converting would still replace Octokit's request handling (body reading, the refusal
-status, its error handling) with Spark's own on the one route where a mistake means accepting forged
-deliveries, for no gain in metadata: the route needs `DisableAntiforgery()` and nothing else. **D4
-keeps it on Octokit.**
+## What removed it
 
-**The path is not the blocker.** It used to be: `Path` was static and received no
-`IServiceProvider`, so a configurable route could not be expressed. MintPlayer.AspNetCore.Endpoints
-11.4.0-rc.0 added `IEndpointBase.GetPath(IServiceProvider)` (upstream #37), and the dev WebSocket below
-uses it. That change does nothing for the webhook POST, because Octokit owns the signature check
-whatever the path is. The path is also really configurable, not a leftover:
-`tests/MintPlayer.Spark.Tests/Webhooks/GitHub/SparkBuilderExtensionsTests.cs` sets it to `/custom/hook`.
+That decision is #521 X5. `MintPlayer.Spark.Webhooks` owns the request side of every webhook route:
 
-**The POST reads the local options copy, and that is part of this exception** (plan M7, 2026-10-08).
-`MapGitHubWebhooks(options.WebhookPath, options.WebhookSecret)` takes the path and the secret from the
-`GitHubWebhooksOptions` instance passed to `AddGithubWebhooks`, captured when the mapping callback is
-registered, not from `IOptions<GitHubWebhooksOptions>`. A value an app sets only through
-`Configure<GitHubWebhooksOptions>()` therefore reaches the processor and the dev WebSocket but not
-this route. The dev WebSocket had the same divergence and lost it by becoming an endpoint class
-(`GetPath` and `IsEnabled` read `IOptions`); the POST keeps it because it stays on Octokit's mapper,
-which takes plain values at map time. Set `WebhookPath` and `WebhookSecret` in the `AddGithubWebhooks`
-callback.
+- **The body is read raw** in the endpoint's `BindRequestAsync` override (the endpoint library's
+  typed-binding hook, which the convention test's R1 allows), under the source's size cap: 25 MB for
+  GitHub, GitHub's own limit. The bytes are never parsed and re-serialized.
+- **The signature is checked over those bytes** by `IWebhookReceiver`, with the source's strategy.
+  GitHub's strategy is `GitHubWebhookSignature`, an instance of the generic `HmacSignatureStrategy`
+  (`X-Hub-Signature-256`, HMAC-SHA256, lower-case hex, prefix `sha256=`). The old internal
+  `SignatureService` now delegates to it. A failure answers `401` before the processor runs.
+- **The processor runs inline**, before the `200`, exactly as before: it forwards development-app
+  deliveries to the dev tunnel and otherwise broadcasts the catch-all envelope once per
+  `X-GitHub-Delivery` (`BroadcastOnceAsync`). It still checks the signature a second time, because the
+  dev-tunnel clients (`SmeeBackgroundService`, `WebSocketDevClientService`) call it directly.
+
+## Behaviour changes, deliberately
+
+| Case | Before (Octokit) | Now |
+|---|---|---|
+| `WebhookSecret` empty | Octokit skipped its check; the processor dropped the delivery after a `200` | `401` at the request, and an error is logged. Fail closed at the edge |
+| Bad or missing signature | Octokit's refusal | `401`, nothing processed |
+| Body not `application/json` | Octokit's content-type refusal | `415` |
+| Body over 25 MB | Kestrel's limit | `413` before a byte is read (declared length) or as soon as the running total passes it |
+| `WebhookPath` set through `Configure<GitHubWebhooksOptions>()` | Ignored: Octokit's mapper took the value passed to `AddGithubWebhooks` | Honoured: `GetPath` reads `IOptions` at map time, as the dev WebSocket already did |
+| `WebhookSecret` set through `Configure<>()` | Ignored by the route | Honoured: read per delivery |
+
+The route table snapshots (`tests/MintPlayer.Spark.Tests/Endpoints/RouteSnapshots/webhooks*.txt`)
+are unchanged: `POST /api/github/webhooks | antiforgery=not-required`. The package reference moved
+from `Octokit.Webhooks.AspNetCore` to `Octokit.Webhooks`: only the event model and the processor
+base class are used now.
+
+## The regression guard
+
+`EndpointConventionsTests.MappingExceptions` no longer lists `MapGitHubWebhooks`, and
+`MappingMethods` still detects it, so a reintroduced Octokit mapping fails R3.
+
+Tests: `GitHubWebhookEndpointTests` (the route: exact body to the processor, 401 on a tampered or
+unsigned delivery and on an empty secret, 415, a configured path, not served by the shared route),
+`WebhookSignatureStrategyTests`, `WebhookReceiverTests`, `ReceiveWebhookEndpointTests`, and the
+unchanged `SignatureServiceTests` and `SmeeSignatureFidelityTests`.
 
 ## The dev WebSocket is a generator endpoint
 
@@ -66,24 +82,15 @@ class:
   value an app sets through `Configure<GitHubWebhooksOptions>()` counts too. `IDevWebSocketService` is
   registered unconditionally (a plain singleton that starts no work). A mapped endpoint can therefore
   always be activated, and a disabled one is never mapped, never activated, and never builds the
-  service. It used to be registered from the options passed to `AddGithubWebhooks`, which diverged
-  from `IsEnabled` when `DevelopmentAppId` came from `Configure`: the endpoint was mapped and failed
-  to activate (`SparkBuilderExtensionsTests`, red before the change).
+  service.
 - `[Inject]` brings in `IGitHubClientFactory`, `IOptions<GitHubWebhooksOptions>` and
   `IDevWebSocketService`. Nothing is pulled from `RequestServices`.
-- It stays a GET, with no antiforgery or authorization metadata (the route table snapshot
-  `tests/MintPlayer.Spark.Tests/Endpoints/RouteSnapshots/webhooks-dev-app.txt` is unchanged). Spark's
-  same-origin guard on WebSocket upgrades (`SparkMiddleware`, after `UseWebSockets()`) still refuses
-  a cross-origin handshake before the endpoint runs.
+- It stays a GET, with no antiforgery or authorization metadata. Spark's same-origin guard on
+  WebSocket upgrades (`SparkMiddleware`, after `UseWebSockets()`) still refuses a cross-origin
+  handshake before the endpoint runs.
 
 The price of `GetPath` is MPEP034 (Info): the endpoint gets no typed link and no client contract.
-Neither matters for a WebSocket upgrade.
+Neither matters for a WebSocket upgrade or a webhook POST, so `GitHubWebhookEndpoint` pays it too.
 
 Tests: `DevWebSocketEndpointTests` (behaviour), `DevWebSocketEndpointMappingTests` (gate, configured
 path, startup check) and `DevWebSocketOriginGuardTests` (the guard on Spark's real pipeline).
-
-## What would change this
-
-Octokit, or a package next to it, exposing its request-level signature validation as something an
-endpoint can call, or a decision to make Spark's own `ISignatureService` the request-level check. Until then the webhook POST stays on `MapGitHubWebhooks`, and the regression guard
-(plan M8) lists it in its allow-list with this document as the reason.

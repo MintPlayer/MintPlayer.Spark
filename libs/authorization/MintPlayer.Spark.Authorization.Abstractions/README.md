@@ -19,4 +19,4 @@ split, so no consuming code changes.
 RavenDB records a document's CLR type as `Namespace.Type, Assembly` in `@metadata.Raven-Clr-Type`.
 Users and roles stored before this package existed name the old assembly. `MintPlayer.Spark.Authorization`
 ships the migration `M_202610041800_UserDocumentsMovedAssembly`, which rewrites that value; an
-application's generated `spark.AddMigrations()` registers it automatically.
+application's generated `spark.AddSparkDiscovered()` registers it automatically.

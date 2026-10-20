@@ -9,7 +9,7 @@ using GeneratorRunResult = MintPlayer.Spark.SourceGenerators.Tests._Infrastructu
 namespace MintPlayer.Spark.SourceGenerators.Tests.Snapshots;
 
 /// <summary>
-/// Verify-based golden-file snapshots of the four highest-traffic generators. The structural
+/// Verify-based golden-file snapshots of the highest-traffic generators. The structural
 /// "Should().Contain(...)" tests in the sibling Generators/ folder catch shape regressions;
 /// these snapshots additionally pin the <em>exact</em> emitted source so that any unintended
 /// drift (renamed helpers, dropped translation keys, attribute name mismatches) shows up as
@@ -32,9 +32,9 @@ public class SourceGeneratorSnapshots
     }
 
     [Fact]
-    public Task ActionsRegistrationGenerator_emits_AddActions_for_two_actions_classes()
+    public Task SparkDiscoveryGenerator_emits_AddSparkDiscovered_for_actions_and_a_custom_action()
     {
-        var source = """
+        var actions = """
             using MintPlayer.Spark.Abstractions;
             using MintPlayer.Spark.Actions;
 
@@ -54,19 +54,7 @@ public class SourceGeneratorSnapshots
             public class Person : PersistentObject { }
             """;
 
-        var result = GeneratorHarness.Run(
-            "ActionsRegistrationGenerator",
-            [source],
-            referenceTypes: [typeof(PersistentObject), typeof(DefaultPersistentObjectActions<>)],
-            rootNamespace: "TestApp");
-
-        return Verifier.Verify(Render(result));
-    }
-
-    [Fact]
-    public Task CustomActionsRegistrationGenerator_emits_AddCustomActions_for_one_action()
-    {
-        var source = """
+        var customAction = """
             using System.Threading;
             using System.Threading.Tasks;
             using MintPlayer.Spark.Abstractions.Actions;
@@ -81,9 +69,9 @@ public class SourceGeneratorSnapshots
             """;
 
         var result = GeneratorHarness.Run(
-            "CustomActionsRegistrationGenerator",
-            [source],
-            referenceTypes: [typeof(ICustomAction)],
+            "SparkDiscoveryGenerator",
+            [actions, customAction],
+            referenceTypes: [typeof(PersistentObject), typeof(DefaultPersistentObjectActions<>), typeof(ICustomAction)],
             rootNamespace: "TestApp");
 
         return Verifier.Verify(Render(result));
@@ -248,6 +236,39 @@ public class SourceGeneratorSnapshots
             referenceTypes: [typeof(GenerateIndexAttribute), typeof(Raven.Client.Documents.Indexes.AbstractIndexCreationTask)],
             rootNamespace: "TestApp",
             outputKind: OutputKind.ConsoleApplication);
+
+        return Verifier.Verify(Render(result));
+    }
+
+    /// <summary>
+    /// Pins the replica constants (warehouse PRD §4.2.1) byte for byte. The hash in the snapshot is the
+    /// contract with the owner: it re-renders the manifest at runtime, so any drift here is a redeploy of
+    /// every replica's ETL task.
+    /// </summary>
+    [Fact]
+    public Task Replicated_car()
+    {
+        var car = """
+            using MintPlayer.Spark.Replication.Abstractions;
+
+            namespace TestLib;
+
+            [Replicated(SourceCollection = "Cars", SourceModule = "Fleet", WriteBack = true)]
+            public partial class Car
+            {
+                public string? Id { get; set; }
+                public string LicensePlate { get; set; } = "";
+                public string Model { get; set; } = "";
+                [ReplicatedFrom("Owner.Name")] public string? OwnerName { get; set; }
+            }
+            """;
+
+        var result = GeneratorHarness.Run(
+            "ReplicatedGenerator",
+            [car],
+            referenceTypes: [typeof(MintPlayer.Spark.Replication.Abstractions.ReplicatedAttribute)],
+            rootNamespace: "TestLib",
+            generatorAssemblyName: "MintPlayer.Spark.LibraryGenerators");
 
         return Verifier.Verify(Render(result));
     }

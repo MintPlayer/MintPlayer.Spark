@@ -5,6 +5,7 @@ using System.Text.Json.Serialization;
 
 namespace MintPlayer.Spark.Abstractions;
 
+[SparkContract]
 public sealed class PersistentObject : IDisablable
 {
     private readonly List<PersistentObjectAttribute> _attributes = [];
@@ -103,6 +104,15 @@ public sealed class PersistentObject : IDisablable
     /// Null on create and when the caller doesn't opt in.
     /// </summary>
     public string? Etag { get; set; }
+
+    /// <summary>
+    /// Set on the object <c>IDatabaseAccess.SavePersistentObjectAsync</c> returns when an
+    /// <see cref="Interceptors.ISaveReplacement"/> diverted the save (commerce X7): nothing of this object was
+    /// written — it waits for approval under <see cref="Interceptors.SaveReplacementReceipt.ReferenceId"/>. Null
+    /// for a save that happened. Never on the wire: endpoints answer the receipt itself (HTTP 202).
+    /// </summary>
+    [JsonIgnore]
+    public Interceptors.SaveReplacementReceipt? Replacement { get; internal set; }
 
     /// <summary>
     /// The attributes on this PersistentObject. Read-only after construction —
@@ -217,6 +227,9 @@ public sealed class PersistentObjectPermissions
     public bool Delete { get; set; }
 }
 
+// [SparkContract] states that the converter writes exactly these properties (the contracts generator
+// refuses a converter-backed type otherwise); the AsDetail subclass adds its own.
+[SparkContract]
 [JsonConverter(typeof(PersistentObjectAttributeJsonConverter))]
 public class PersistentObjectAttribute
 {
@@ -389,6 +402,7 @@ public class PersistentObjectAttribute
 /// The nested PO carries the full attribute metadata — Rules, Renderer, Label, DataType —
 /// so UIs can render a proper form per detail row rather than guessing from a flat dict.
 /// </summary>
+[SparkContract]
 public sealed class PersistentObjectAttributeAsDetail : PersistentObjectAttribute
 {
     /// <summary>

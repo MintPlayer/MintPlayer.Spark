@@ -69,6 +69,9 @@ internal partial class ModelLoader : IModelLoader, IDisposable
                 if (entityTypeFile?.PersistentObject != null)
                 {
                     var entityType = entityTypeFile.PersistentObject;
+                    entityType.DeclaringAssembly = type.Library;
+                    entityType.LibraryAlias = type.LibraryAlias;
+                    entityType.DeclaredName = type.Library is null ? null : type.DeclaredName;
                     ResolveText(translationsLoader.GetAll(), entityType, entityTypeFile.Queries);
 
                     // Auto-generate alias from Name if not explicitly set
@@ -107,6 +110,19 @@ internal partial class ModelLoader : IModelLoader, IDisposable
                 throw new InvalidOperationException(
                     $"Model file {file}: '{ex.Path}' must be one of \"None\", \"Auto\", \"ValueChanged\" or \"Blur\". " +
                     "The boolean form was removed; replace true with \"Auto\".", ex);
+            }
+            catch (JsonException ex) when (ex.Message.Contains("dateTimeDisplay:", StringComparison.Ordinal))
+            {
+                // Same reasoning: a malformed display rule (X16) must not drop the whole type.
+                throw new InvalidOperationException($"Model file {file}: {ex.Message}", ex);
+            }
+            catch (JsonException ex) when (type.Library is not null || type.Name is not null)
+            {
+                // F9: a file that composed (it has a name) but does not bind is not a file "that cannot be
+                // read": skipping it served the library type without the application's delta, so its
+                // restrictions (showedOn: None, isReadOnly) were silently lost. The composer refuses an
+                // orphaned or stale delta already; whatever else breaks binding stops the process too.
+                throw new InvalidOperationException($"Model file {file} cannot be loaded: {ex.Message}", ex);
             }
             catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
             {
@@ -274,7 +290,10 @@ internal partial class ModelLoader : IModelLoader, IDisposable
         if (Guid.TryParse(idOrAlias, out var guid))
             return GetEntityType(guid);
 
-        return GetEntityTypeByAlias(idOrAlias) ?? GetEntityTypeByName(idOrAlias);
+        // Last, the CLR type's full name (D28): what a library seeds where the model name is not known yet and may
+        // be renamed (Contributions' targetType/compareType). A name or alias never holds a '.', so it cannot shadow one.
+        return GetEntityTypeByAlias(idOrAlias) ?? GetEntityTypeByName(idOrAlias)
+            ?? (idOrAlias.Contains('.') ? GetEntityTypeByClrType(idOrAlias) : null);
     }
 
     public IEnumerable<SparkQuery> GetQueries()

@@ -39,6 +39,7 @@ internal sealed partial class DeleteManyPersistentObjects : IPostEndpoint<Delete
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
     {
         builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
+        builder.RefuseDeniedInEnvelope();
     }
 
     [Inject] private readonly IDatabaseAccess databaseAccess;
@@ -167,7 +168,7 @@ internal sealed partial class DeleteManyPersistentObjects : IPostEndpoint<Delete
             // An interceptor cancelled one row's delete (#482), which cancels the batch: nothing was deleted.
             return ClientResult.Envelope(clientAccessor, null, StatusCodes.Status204NoContent);
         }
-        catch (SparkConcurrencyException ex)
+        catch (Abstractions.SparkConflictException ex)
         {
             // A row changed since the list loaded (#467, D14): named in the message (D18). Or a write in
             // the batch met a concurrent edit; the batch is atomic, so nothing was written
@@ -178,17 +179,9 @@ internal sealed partial class DeleteManyPersistentObjects : IPostEndpoint<Delete
         {
             return ClientResult.Envelope(clientAccessor, new { errors = new[] { ex.ToError() } }, StatusCodes.Status400BadRequest);
         }
-        catch (SparkRowLevelAccessDeniedException)
-        {
-            return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
-        }
         catch (SparkActionDisabledException ex)
         {
             return ClientResult.ActionDisabled(clientAccessor, ex);
-        }
-        catch (SparkAccessDeniedException)
-        {
-            return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
         }
         catch (SparkThrottledException ex)
         {

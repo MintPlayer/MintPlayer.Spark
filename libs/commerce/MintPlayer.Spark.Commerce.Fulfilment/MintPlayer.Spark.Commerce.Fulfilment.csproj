@@ -1,0 +1,61 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<OutputType>Library</OutputType>
+		<!-- Names this library's App_Data layers (composition D16). Permanent: it is part of the right keys and the
+		     model ids the library ships (commerce PRD §4.1, D31). -->
+		<SparkLibraryAlias>commerce-fulfilment</SparkLibraryAlias>
+
+		<!-- NuGet Package Metadata -->
+		<PackageId>MintPlayer.Spark.Commerce.Fulfilment</PackageId>
+		<Version>11.0.0-preview.1</Version>
+		<Authors>MintPlayer</Authors>
+		<Company>MintPlayer</Company>
+		<Description>The shop side of the MintPlayer.Spark fulfilment contracts: publishes the shop's orders, catalog items and expected returns (with the return reason per line) to a warehouse, and derives shipping, delivery, refunds on receipt, stock capacity and recall notices from the warehouse's status, shipments, stock levels and return receipts. One owner per fact; cancellation is a handshake and an edit is a cancellation plus a new order.</Description>
+		<PackageTags>commerce;shop;fulfilment;warehouse;wms;replication;stock;returns;recall;ravendb;spark</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="README.md" Pack="true" PackagePath="\" />
+	</ItemGroup>
+
+	<!-- The default MJML templates (SparkFulfilment/*), read by MailManager. An app overrides one by placing a file with
+	     the same name in its Templates/Mail folder. -->
+	<ItemGroup>
+		<EmbeddedResource Include="Mail\**\*.mjml" LogicalName="SparkMail/%(RecursiveDir)%(Filename)%(Extension)" WithCulture="false" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="RavenDB.Client" Version="7.2.6" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- Commerce PRD §4.1 / warehouse PRD §4.1: the shop side of the contracts. Shop (which brings Checkout, Shipping,
+		     Inventory) exposes its fulfilment seam (ISparkShopOrders, ISparkShopStock); Checkout's ICheckoutStockFeed and
+		     ISparkCheckoutRefunds carry the stock and refund rules. Checkout and Shop never reference this package. -->
+		<ProjectReference Include="..\MintPlayer.Spark.Commerce.Shop\MintPlayer.Spark.Commerce.Shop.csproj" />
+		<!-- The contracts the shop and the warehouse meet in (the only shared library, warehouse §4.1). -->
+		<ProjectReference Include="..\..\fulfilment\contracts\MintPlayer.Spark.Fulfilment.Contracts.csproj" />
+		<!-- IReplicaChanged<T> (consumer side) and IReplicaPublisher (owner side). The host calls AddMessaging() and
+		     AddReplication(); startup refuses without them. -->
+		<ProjectReference Include="..\..\replication\MintPlayer.Spark.Replication.Abstractions\MintPlayer.Spark.Replication.Abstractions.csproj" />
+		<ProjectReference Include="..\..\cron\MintPlayer.Spark.Cron\MintPlayer.Spark.Cron.csproj" />
+		<!-- The recall notice (GA7). -->
+		<ProjectReference Include="..\..\mail\MintPlayer.Spark.MailManager.Abstractions\MintPlayer.Spark.MailManager.Abstractions.csproj" />
+		<!-- Spark's generators (the library layers, SPARK045) and analyzers. Analyzer ProjectReferences are not transitive. -->
+		<ProjectReference Include="..\..\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<InternalsVisibleTo Include="MintPlayer.Spark.Commerce.Tests" />
+	</ItemGroup>
+
+</Project>

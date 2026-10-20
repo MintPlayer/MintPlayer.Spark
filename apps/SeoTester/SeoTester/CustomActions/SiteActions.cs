@@ -44,7 +44,8 @@ public partial class StartFullCrawlAction : SparkCustomAction
 
 /// <summary>
 /// <c>VerifySite</c> (F3, Admins): looks for the organization's token in DNS, the well-known file and the home page's
-/// meta tag. A site another organization holds verified sends that organization's Owners a join request (D18, D42).
+/// meta tag. A site another organization holds verified sends that organization's Owners and Admins a join request
+/// (D18, D42), which they approve or decline in-app (an approval request since D26).
 /// The result is <c>{ outcome, method }</c>.
 /// </summary>
 public partial class VerifySiteAction : SparkCustomAction

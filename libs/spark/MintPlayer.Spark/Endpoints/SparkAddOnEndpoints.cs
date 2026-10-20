@@ -121,7 +121,7 @@ internal sealed partial class SparkAddOnEndpoints : ISparkAddOnEndpoints
     public IResult Throttled(HttpContext httpContext, SparkThrottledException exception)
         => ClientResult.Throttled(client, httpContext, exception);
 
-    public bool IsConcurrencyConflict(Exception exception) => exception is SparkConcurrencyException;
+    public bool IsConcurrencyConflict(Exception exception) => exception is Abstractions.SparkConflictException;
 
     public IResult ConcurrencyConflict(Exception? exception = null)
         => ClientResult.ConcurrencyConflict(client, exception);

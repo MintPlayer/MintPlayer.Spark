@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Authorization.Configuration;
+using MintPlayer.Spark.Authorization.Contracts;
 using MintPlayer.Spark.Authorization.Identity;
 
 namespace MintPlayer.Spark.Authorization.Endpoints.ExternalLogin;
@@ -54,20 +55,19 @@ internal sealed partial class ListExternalLogins<TUser> : IGetEndpoint
             (await userManager.GetPasskeysAsync(user)).Count, options.Value.Passkeys);
 
         var external = await schemes.GetAllSchemesAsync();
-        var linked = logins.Select(l => l.LoginProvider).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        return Results.Ok(new
-        {
-            linked = logins.Select(l => new
-            {
-                provider = l.LoginProvider,
-                providerKey = l.ProviderKey,
-                displayName = l.ProviderDisplayName ?? l.LoginProvider,
-                canUnlink,
-            }),
-            available = external
+        return Results.Ok(Describe(logins, canUnlink, external));
+    }
+
+    /// <summary>The response, from the user's logins and the registered schemes (the shape test's seam).</summary>
+    internal static SparkExternalLogins Describe(IEnumerable<UserLoginInfo> logins, bool canUnlink, IEnumerable<AuthenticationScheme> external)
+    {
+        var list = logins.ToList();
+        var linked = list.Select(l => l.LoginProvider).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return new SparkExternalLogins(
+            [.. list.Select(l => new SparkLinkedExternalLogin(l.LoginProvider, l.ProviderKey, l.ProviderDisplayName ?? l.LoginProvider, canUnlink))],
+            [.. external
                 .Where(scheme => scheme.DisplayName is not null && !linked.Contains(scheme.Name))
-                .Select(scheme => new { provider = scheme.Name, displayName = scheme.DisplayName }),
-        });
+                .Select(scheme => new SparkAvailableExternalProvider(scheme.Name, scheme.DisplayName!))]);
     }
 }

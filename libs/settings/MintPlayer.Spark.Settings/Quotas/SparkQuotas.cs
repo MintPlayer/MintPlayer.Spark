@@ -24,11 +24,11 @@ public interface ISparkQuotas
     /// <summary>Uses counted in the current window, without counting one.</summary>
     Task<int> GetUsedAsync(SparkQuota quota, string key, CancellationToken cancellationToken = default);
 
-    /// <summary>The default key of a caller: the signed-in user's id, else <c>ip:{address}</c>.</summary>
+    /// <summary>The default key of a caller: the signed-in user's id, else <c>ip:{address}</c> with an IPv6 address grouped to its /64 (F5).</summary>
     static string KeyFor(HttpContext context)
         => context.User.FindFirstValue(ClaimTypes.NameIdentifier) is { Length: > 0 } userId
             ? userId
-            : "ip:" + (context.Connection.RemoteIpAddress?.ToString() ?? "unknown");
+            : "ip:" + MintPlayer.Spark.Abstractions.Visitor.SparkClientAddress.Key(context.Connection.RemoteIpAddress);
 }
 
 internal sealed class SparkQuotas(IDocumentStore store, ISparkSettings settings, SparkQuotaCatalog catalog, TimeProvider timeProvider, ILogger<SparkQuotas> logger) : ISparkQuotas

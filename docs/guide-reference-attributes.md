@@ -224,7 +224,7 @@ them, because only one can vary its options per object:
 
 | Need | Use | Why |
 |---|---|---|
-| A fixed set, known at compile time | `[LookupReference]` + `TransientLookupReference<TKey>` | Values are C#; no storage, no query |
+| A fixed set, known at compile time | `[LookupReference]` + a `[SparkLookup]` enum | Values are C#, labels in `translations.json`; no storage, no query |
 | A user-managed set, shared app-wide | `[LookupReference]` + `DynamicLookupReference<TValue>` | Persisted and runtime-editable, but **one global set per lookup name** — a single `LookupReferences/{Name}` document |
 | Options that depend on **which object** you are editing | `[Reference(typeof(X), "CustomQuery")]` | The only shape whose option source receives the parent |
 
@@ -241,6 +241,7 @@ C# types, so anything it derives is overwritten:
 |---|---|---|
 | `editMode` (e.g. `"inline"`) | **Yes** | Hand-authored presentation |
 | `isReadOnly`, `showedOn` (including `"None"`) | **Yes** | Hand-authored presentation (`isVisible` no longer exists, #264) |
+| `referenceTree` | **Yes** | Hand-authored presentation (see [Hierarchical references](#hierarchical-references-a-lazy-tree-picker)) |
 | `lookupReferenceType` | **No — stripped** | Derived from `[LookupReference(typeof(...))]` |
 | `query`, `referenceType` | **No — stripped** | Derived from `[Reference(typeof(...), "...")]` |
 | An inline `queries` entry on an embedded type | **Yes** | Explicitly preserved by the synchronizer |
@@ -265,6 +266,60 @@ layout only: the value still reaches the client, so a secret needs `Exclude`.
 
 So a lookup or reference must be declared in C#. Adding `lookupReferenceType` to the JSON by hand
 appears to work until the next synchronization silently reverts the attribute to a free-text box.
+
+### Hierarchical references: a lazy tree picker
+
+When the candidates form a tree (warehouse locations site → zone → aisle → rack → level → bin, a
+venue's sections and blocks), declare `referenceTree` on the referencing attribute in the model JSON.
+The multi-reference picker (`<bs-tree-select>`) then lists the roots first and loads a node's children
+when it is expanded, instead of one flat list:
+
+```json
+{
+  "name": "Locations",
+  "dataType": "Reference",
+  "isArray": true,
+  "query": "GetLocations",
+  "referenceType": "Warehouse.Location",
+  "referenceTree": { "parentAttribute": "Parent", "childCountAttribute": "ChildCount" }
+}
+```
+
+- **`parentAttribute`** names the attribute of the **referenced** type that holds a row's parent id: a
+  Reference from that type to itself, empty on a root.
+- **`childCountAttribute`** (optional) names a column holding the number of children, or a boolean. A
+  row with `0` or `false` there is drawn as a leaf. Without it every node shows an expand chevron, and
+  one without children expands to nothing.
+
+**How the levels are read.** The picker runs the attribute's own query with the existing column filter
+(#431): `columns: [{ name: "Parent", includes: [null] }]` for the roots, `includes: [id]` for one node's
+children, paged like the flat list. Nothing new is exposed: the rows come back under the query's row
+security, and search stays flat (a hit is listed wherever it sits in the tree). The provider is
+`ReferenceQueryTreeSelectProvider` in `@mintplayer/ng-spark/po-form`; its third argument is the
+`referenceTree`.
+
+**Traps.**
+- The parent attribute must be **filterable** on the query: shown on it (`showedOn` includes `Query`)
+  and not `canFilter: false`. A refused filter does not fail, it returns the rows unnarrowed, so every
+  node would list the whole set as its children. `--spark-verify-model` refuses such a declaration.
+- `includes: [null]` matches a stored `null`. A document saved through the RavenDB client stores the
+  null; a document written without the field at all is not a root to this filter.
+
+**Materialized paths.** For subtree reads ("all stock under aisle A"), store the parent chain as a
+path string next to the parent reference. `MaterializedPath` (`MintPlayer.Spark.Abstractions.Hierarchy`)
+builds and takes apart paths (`Child`, `Parent`, `Ancestors`, `Depth`, `DescendantPrefix`, `Reparent`),
+and `MaterializedPathQueries` (`MintPlayer.Spark.Hierarchy`) does the RavenDB side:
+
+```csharp
+// Everything under BRU/A, never BRU/A10: the prefix is "BRU/A/", passed as a query parameter.
+var below = await session.Query<Location>().WhereDescendantOf(l => l.Path, "BRU/A").ToListAsync();
+
+// Move BRU/A (and its subtree) under BRU/B: one set-based patch, every path a parameter.
+await MaterializedPathQueries.MoveSubtreeAsync<Location>(store, l => l.Path, "BRU/A", "BRU/B");
+```
+
+The move rewrites only the paths. Setting the moved node's own parent reference is the caller's job,
+in the unit of work that decided the move; a move into the node's own subtree is refused.
 
 ### Including Reference Data in Index Projections
 
@@ -317,62 +372,87 @@ LookupReferences are used for attributes that should be selected from a predefin
 
 A transient lookup reference defines its values in C# code. Values are not stored in RavenDB -- they are compiled into the application.
 
-#### Step 1: Define the Enum and Lookup Class
+#### Step 1: Declare the Enum
+
+Mark the enum `[SparkLookup]`. The source generator (`SparkLookupGenerator`, in
+`MintPlayer.Spark.SourceGenerators`) emits the lookup class: one item per member, keyed by the member,
+labelled by the `translations.json` key `lookup.{Enum}.{Member}`.
 
 ```csharp
 using MintPlayer.Spark.Abstractions;
 
 namespace MyApp.Library.LookupReferences;
 
+[SparkLookup]
 public enum ECarStatus
 {
+    /// <summary>Car is in use.</summary>
     InUse,
+    /// <summary>Car is parked.</summary>
     OnParking,
     InMaintenance,
     Stolen
 }
+// generated: public sealed partial class CarStatus : TransientLookupReference<ECarStatus>
+```
 
-public sealed class CarStatus : TransientLookupReference<ECarStatus>
-{
-    private CarStatus() { }
+The labels live with the app's other texts, in the declaring project's `App_Data/translations.json`
+(for a library, the library's own layer; an app may override any of them in its layer):
 
-    public override ELookupDisplayType DisplayType => ELookupDisplayType.Dropdown;
-
-    public static IReadOnlyCollection<CarStatus> Items { get; } =
-    [
-        new CarStatus()
-        {
-            Key = ECarStatus.InUse,
-            Description = "Car is in use",
-            Values = _TS("In use", "En usage", "In gebruik"),
-        },
-        new CarStatus()
-        {
-            Key = ECarStatus.OnParking,
-            Description = "Car is parked",
-            Values = _TS("In parking lot", "Dans le parking", "Op parking"),
-        },
-        new CarStatus()
-        {
-            Key = ECarStatus.InMaintenance,
-            Description = "Car is being maintained",
-            Values = _TS("In maintenance", "En maintenance", "In onderhoud"),
-        },
-        new CarStatus()
-        {
-            Key = ECarStatus.Stolen,
-            Description = "Car is stolen",
-            Values = _TS("Stolen", "Vole", "Gestolen"),
-        },
-    ];
+```json
+"lookup": {
+  "ECarStatus": {
+    "InUse":         { "en": "In use",         "fr": "En usage",        "nl": "In gebruik" },
+    "OnParking":     { "en": "In parking lot", "fr": "Dans le parking", "nl": "Op parking" },
+    "InMaintenance": { "en": "In maintenance", "fr": "En maintenance",  "nl": "In onderhoud" },
+    "Stolen":        { "en": "Stolen",         "fr": "Volé",            "nl": "Gestolen" }
+  }
 }
 ```
 
 Key points:
-- Extend `TransientLookupReference<TEnum>` where `TEnum` is your enum
-- Override `DisplayType` to control the UI: `Dropdown` renders a `<select>`, `Modal` renders a search modal
-- `_TS(en, fr, nl)` is a helper that creates a `TranslatedString` with values for each language
-- The `Items` collection must be `static` and `IReadOnlyCollection<T>`
+- The lookup's name (the generated class, and what model files put in `lookupReferenceType`) is the
+  enum's name without its `E` prefix; pass one when it has none: `[SparkLookup("OrganizationRoles")] enum OrganizationRole`
+- `[SparkLookup(DisplayType = ELookupDisplayType.Modal)]` renders a search modal instead of a `<select>`
+- Items follow the declaration order; `[SparkLookupOrder(n)]` on members reorders them when the zero
+  value (the stored default) is not the first to show
+- The endpoint (`GET /spark/lookupref/{name}`) resolves each key through the composed translation layers;
+  a key no layer defines shows the humanized member name (`InMaintenance` → `In Maintenance`)
+- `tools/verify-translation-keys.test.mjs` (`npm run test:tools`, run by CI) fails when a member's label is
+  missing, or when a `lookup.*` key labels no member any more
+- An enum the generator cannot emit a class for (nested in a type, no `E` prefix and no name, aliased
+  values, ...) is error **SPARK064**
+
+**Keys stored as strings.** For a property that stores the key as a `string`, set `StringKeys = true`:
+the class derives from `TransientLookupReference<string>` and carries a `const string` per member. A
+member whose stored key differs from its name says so with `[SparkLookupKey]`:
+
+```csharp
+[SparkLookup(StringKeys = true)]
+public enum EProjectBasis
+{
+    [SparkLookupKey("scoped")] Scoped,
+    [SparkLookupKey("projection")] Projection,
+}
+// generated: ProjectBasis.Scoped == "scoped"; the label key stays lookup.EProjectBasis.Scoped
+```
+
+**Extra data per item.** Declare the extra properties in a partial of the generated class, with a private
+setter, and fill them in `Initialize`, which runs once per item. The lookup endpoint sends every extra
+public property in the value's `extra` dictionary:
+
+```csharp
+public sealed partial class CarStatus
+{
+    public bool AllowOnCarNotes { get; private set; }
+
+    static partial void Initialize(CarStatus item) => item.AllowOnCarNotes = item.Key != ECarStatus.OnParking;
+}
+```
+
+A lookup that one enum cannot express (a subset of another lookup's members) stays a hand-written
+`TransientLookupReference<TKey>` subclass; give its items `TranslatedString.FromKey("lookup.{Enum}.{Member}")`
+labels, never inline text.
 
 #### Step 2: Apply to Entity Property
 

@@ -2,6 +2,7 @@ using System.Net;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.Options;
 using MintPlayer.Spark.Configuration;
+using MintPlayer.Spark.Abstractions.Builder;
 using MintPlayer.Spark.Extensions;
 
 namespace MintPlayer.Spark.Services;
@@ -33,7 +34,7 @@ internal static class SparkForwardedHeaders
 
     public static IServiceCollection AddSparkForwardedHeaders(this IServiceCollection services)
     {
-        services.AddSparkConfigurationSection<SparkForwardedHeadersOptions>(SparkForwardedHeadersOptions.SectionName);
+        services.AddSparkConfigurationSection<SparkForwardedHeadersOptions>();
         services.AddSingleton<IConfigureOptions<ForwardedHeadersOptions>, ConfigureForwardedHeaders>();
         services.AddTransient<IStartupFilter, StartupFilter>();
         return services;

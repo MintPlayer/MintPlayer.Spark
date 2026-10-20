@@ -1,0 +1,79 @@
+@if (info(); as room) {
+  <section class="spark-waiting-room" aria-labelledby="spark-waiting-room-title">
+    <h1 id="spark-waiting-room-title" class="spark-waiting-room-title">
+      @if (room.title) { <spark-translated-string [value]="room.title" [showEntries]="false" /> } @else { {{ 'waitingRoom.title' | t }} }
+    </h1>
+
+    <!-- The room's state, in words (WCAG 4.1.3: a status message, polite). -->
+    <p class="spark-waiting-room-status" role="status" aria-live="polite">
+      @switch (status()) {
+        @case ('scheduled') { {{ ('waitingRoom.status.scheduled' | t).replace('{0}', (room.opensAt | sparkDateTime)) }} }
+        @case ('pre-queue') {
+          @if (entry()) { {{ (scheduleText() | t).replace('{0}', (room.startsAt | sparkDateTime)) }} }
+        }
+        @case ('may-return') { {{ 'waitingRoom.status.mayReturn' | t }} }
+        @case ('sold-out') { {{ 'waitingRoom.status.soldOut' | t }} }
+        @case ('closed') { {{ 'waitingRoom.status.closed' | t }} }
+      }
+    </p>
+
+    @if (entry(); as mine) {
+      @switch (mine.status) {
+        @case ('called') {
+          <div class="spark-waiting-room-turn" role="alert">
+            <p>{{ ('waitingRoom.presencePrompt' | t).replace('{0}', (mine.presenceDeadline | sparkDateTime:'viewer':'medium')) }}</p>
+            <button type="button" class="spark-waiting-room-here" (click)="present()">{{ 'waitingRoom.imHere' | t }}</button>
+          </div>
+        }
+        @case ('missed') {
+          <div class="spark-waiting-room-turn">
+            <p>{{ 'waitingRoom.missed' | t }}</p>
+            <button type="button" class="spark-waiting-room-here" (click)="present()">{{ 'waitingRoom.imHere' | t }}</button>
+          </div>
+        }
+        @case ('admitted') {
+          <div class="spark-waiting-room-admitted">
+            <p>{{ ('waitingRoom.admitted' | t).replace('{0}', (mine.admissionExpiresAt | sparkDateTime)) }}</p>
+            @if (mine.admittedUrl) {
+              <a class="spark-waiting-room-continue" [href]="mine.admittedUrl">{{ 'waitingRoom.continue' | t }}</a>
+            }
+          </div>
+        }
+        @case ('lost') { <p>{{ 'waitingRoom.lost' | t }}</p> }
+        @default {
+          @if (ahead() === null) {
+            <p class="spark-waiting-room-position">{{ 'waitingRoom.placeAtStart' | t }}</p>
+          } @else {
+            <p class="spark-waiting-room-position" aria-hidden="true">
+              {{ ahead() === 0 ? ('waitingRoom.aheadNone' | t) : ('waitingRoom.ahead' | t).replace('{0}', '' + ahead()) }}
+            </p>
+          }
+        }
+      }
+      <!-- The position, announced only at meaningful steps. -->
+      <p class="spark-waiting-room-sr" aria-live="polite">{{ announcement() }}</p>
+      @if (mine.status === 'waiting' || mine.status === 'missed') {
+        <button type="button" class="spark-waiting-room-leave" (click)="leave()">{{ 'waitingRoom.leave' | t }}</button>
+      }
+    } @else if (status() === 'pre-queue' || status() === 'open' || status() === 'may-return') {
+      @if (challenge(); as offer) {
+        <spark-challenge [offer]="offer" (solved)="join($event)" (failed)="challenge.set(null)" />
+      } @else {
+        <form class="spark-waiting-room-join" (submit)="$event.preventDefault(); join()">
+          <!-- A honeypot: hidden from people and assistive technology; a filled value is weak evidence of a script. -->
+          <div class="spark-waiting-room-hp" aria-hidden="true">
+            <label>Website <input type="text" name="website" tabindex="-1" autocomplete="off" [value]="honeypot()" (input)="honeypot.set($any($event.target).value)" /></label>
+          </div>
+          <button type="submit" [disabled]="busy()">{{ (room.mode === 'Ballot' ? 'waitingRoom.register' : 'waitingRoom.join') | t }}</button>
+        </form>
+      }
+      @if (outcome(); as message) { <p class="spark-waiting-room-outcome" role="alert">{{ message }}</p> }
+    }
+
+    @if (room.mode !== 'Fifo' && room.seedCommitment) {
+      <p class="spark-waiting-room-fairness">
+        {{ ('waitingRoom.fairness' | t).replace('{0}', room.seedCommitment.slice(0, 16) + '…') }}
+      </p>
+    }
+  </section>
+}

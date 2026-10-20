@@ -52,11 +52,24 @@ internal sealed class SparkWriteTools(McpPlanner planner, SparkMcpOptions option
         {
             var application = await planner.ApplyAsync(planId, changes, cancellationToken);
             SparkMcpResult.Track(application.Changes.Count);
+            // An operation the application diverted for approval (commerce X7) is committed as a proposal, not saved:
+            // the answer says so rather than claim every operation was saved.
+            var headline = application.Submitted.Count == 0
+                ? $"Applied: all {application.Changes.Count} operation(s) were saved.\n"
+                : $"Applied: {application.Changes.Count - application.Submitted.Count} operation(s) were saved; " +
+                  $"operation(s) {string.Join(", ", application.Submitted.Select(s => s.Operation))} were submitted for approval " +
+                  "and are not saved until someone approves them.\n";
             return SparkMcpResult.Text(
-                $"Applied: all {application.Changes.Count} operation(s) were saved.\n" +
+                headline +
                 // Through Spark's options: a custom action's result may be a persistent object (the redaction net, D10).
                 SparkMcpResult.Untrusted(SparkMcpResult.Serialize(
-                    new { planId = application.PlanId, ids = application.ResultIds, result = application.ActionResult })));
+                    new
+                    {
+                        planId = application.PlanId,
+                        ids = application.ResultIds,
+                        result = application.ActionResult,
+                        submitted = application.Submitted.Count == 0 ? null : application.Submitted,
+                    })));
         }
         catch (McpAnonymousPlanException)
         {

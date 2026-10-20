@@ -43,7 +43,7 @@ internal sealed partial class HistoryInterceptor : IBeforeSave, IBeforeDelete
 
     public bool AppliesTo(Type entityType)
         => typeof(IAuditCreated).IsAssignableFrom(entityType) || typeof(IAuditModified).IsAssignableFrom(entityType)
-            || RevisionsEnabled(entityType);
+            || typeof(IAuditApproved).IsAssignableFrom(entityType) || RevisionsEnabled(entityType);
 
     public ValueTask OnBeforeSaveAsync(SaveContext context)
     {
@@ -84,12 +84,18 @@ internal sealed partial class HistoryInterceptor : IBeforeSave, IBeforeDelete
         // Asked of the session before stamping, so the stamp itself is not the change it detects.
         var created = context.Entity as IAuditCreated;
         var modified = context.Entity as IAuditModified;
-        if (created is null && modified is null)
+        var approved = context.Entity as IAuditApproved;
+        if (created is null && modified is null && approved is null)
             return;
 
         if (context.Operation is PersistentObjectOperation.Save or PersistentObjectOperation.Sync
             && context.Before is not null && !HasChanged(context.Entity))
             return;
+
+        // An approved proposal (commerce X7, D9) is applied by the approver on the proposer's behalf: the proposer
+        // wrote the change, so they are its author (the revision list names them); the approver is IAuditApproved's.
+        var applied = context.IsReplacedSaveApply;
+        var author = applied && context.OnBehalfOf is { Length: > 0 } proposer ? proposer : userId;
 
         if (created is not null)
         {
@@ -102,15 +108,22 @@ internal sealed partial class HistoryInterceptor : IBeforeSave, IBeforeDelete
             }
             else
             {
-                created.CreatedBy = userId;
+                created.CreatedBy = author;
                 created.CreatedAt = Now;
             }
         }
 
         if (modified is not null)
         {
-            modified.ModifiedBy = userId;
+            modified.ModifiedBy = author;
             modified.ModifiedAt = Now;
+        }
+
+        // The approver of an applied proposal; a direct save was approved by nobody, so it clears the stamp.
+        if (approved is not null)
+        {
+            approved.ApprovedBy = applied ? userId : null;
+            approved.ApprovedAt = applied ? Now : null;
         }
     }
 
@@ -177,13 +190,7 @@ internal sealed partial class HistoryInterceptor : IBeforeSave, IBeforeDelete
             : ValueAt(rest, value);
     }
 
-    private static TranslatedString Copy(TranslatedString value)
-    {
-        var copy = new TranslatedString();
-        foreach (var (language, text) in value.Translations)
-            copy.Translations[language] = text;
-        return copy;
-    }
+    private static TranslatedString Copy(TranslatedString value) => new() { Entries = [.. value.Entries] };
 
     private bool RevisionsEnabled(Type entityType)
         => modelLoader.GetEntityTypeByClrType(entityType.FullName ?? entityType.Name)?.Revisions?.Enabled == true;

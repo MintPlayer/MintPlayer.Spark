@@ -429,7 +429,7 @@ internal sealed partial class CustomActionExecution : ICustomActionExecution
         string? queryParentTypeName,
         IReadOnlyList<QueryResultItem> selectedItems)
     {
-        var actions = disabledActions.ResolveActions(clrType, entityType.Name);
+        var actions = disabledActions.ResolveActions(clrType, entityType);
         if (actions is null)
             return new HashSet<string>();
 

@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Logging;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions.Authorization;
+using MintPlayer.Spark.Claims;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Operations.CompareExchange;
 using Raven.Client.Documents.Session;
@@ -200,25 +201,21 @@ public partial class UserStore<TUser> :
         // The document and its email reservation go in one cluster-wide transaction: deleted
         // separately, a user removed without its reservation blocked the address for good
         // (MCP live checks, round 1: "account could not be created" on every external sign-in).
-        using (var clusterSession = documentStore.OpenAsyncSession(new Raven.Client.Documents.Session.SessionOptions
+        // Users are written by ordinary sessions, so they carry no atomic guard to check.
+        using (var unitOfWork = ClaimStore.BeginUnitOfWork(atomicDocumentWrites: false))
         {
-            Database = DatabaseName,
-            TransactionMode = TransactionMode.ClusterWide,
-            // Users are written by ordinary sessions, so they carry no atomic guard to check.
-            DisableAtomicDocumentWritesInClusterWideTransaction = true,
-        }))
-        {
-            clusterSession.Delete(user.Id!);
+            unitOfWork.Session.Delete(user.Id!);
             if (user.NormalizedEmail != null)
             {
-                var key = CompareExchangeKeyFor(user.NormalizedEmail);
-                var reservation = await clusterSession.Advanced.ClusterTransaction
-                    .GetCompareExchangeValueAsync<string>(key, cancellationToken);
-                // Only the user's own reservation: another account's must never be released by this one.
-                if (reservation != null && (reservation.Value == user.Id || string.IsNullOrEmpty(reservation.Value)))
-                    clusterSession.Advanced.ClusterTransaction.DeleteCompareExchangeValue(key, reservation.Index);
+                // Only the user's own reservation: another account's must never be released by this one. An empty
+                // value (a creation in flight under the old protocol) is released with it.
+                var released = await unitOfWork.ReleaseAsync(EmailKind, EmailKey(user.NormalizedEmail), user.Id!, cancellationToken);
+                if (released is { Status: SparkClaimStatus.NotYours, Claim.Value: "" })
+                    await unitOfWork.ReleaseAsync(EmailKind, EmailKey(user.NormalizedEmail), string.Empty, cancellationToken);
             }
-            await clusterSession.SaveChangesAsync(cancellationToken);
+            // A reservation changed since it was read here is the one thing that refuses the commit.
+            if (!await unitOfWork.CommitAsync(cancellationToken))
+                throw new Raven.Client.Exceptions.ConcurrencyException("The user's email reservation changed while the user was being deleted.");
         }
 
         if (Session.Advanced.IsLoaded(user.Id!))
@@ -307,17 +304,14 @@ public partial class UserStore<TUser> :
         ThrowIfDisposed();
 
         // Use compare/exchange for consistent read (no stale index issues)
-        var key = CompareExchangeKeyFor(normalizedEmail);
-        var operations = documentStore.Operations.ForDatabase(DatabaseName);
-        var result = await operations.SendAsync(
-            new GetCompareExchangeValueOperation<string>(key), token: cancellationToken);
+        var reservation = await ClaimStore.GetAsync(EmailKind, EmailKey(normalizedEmail), cancellationToken);
 
-        if (result?.Value == null || string.IsNullOrEmpty(result.Value))
+        if (string.IsNullOrEmpty(reservation?.Value))
         {
             return null;
         }
 
-        return await Session.LoadAsync<TUser>(result.Value, cancellationToken);
+        return await Session.LoadAsync<TUser>(reservation!.Value, cancellationToken);
     }
 
     public Task<string?> GetNormalizedEmailAsync(TUser user, CancellationToken cancellationToken)
@@ -696,59 +690,40 @@ public partial class UserStore<TUser> :
     private static string CompareExchangeKeyFor(string normalizedEmail)
         => EmailReservationKeyPrefix + normalizedEmail.ToLowerInvariant();
 
-    private async Task<bool> CreateEmailReservationAsync(string normalizedEmail, string userId, CancellationToken cancellationToken)
+    private SparkClaims? claims;
+    private SparkClaimKind<string>? emailKind;
+
+    /// <summary>Spark's claims primitive (commerce X12), on this store's database.</summary>
+    private SparkClaims ClaimStore => claims ??= new SparkClaims(documentStore, timeProvider, DatabaseName);
+
+    /// <summary>
+    /// Email reservations as a claim family: the value is the user's document id and never expires. Self-healing: a
+    /// reservation whose user document no longer exists is stale (the user was removed without releasing it) and is
+    /// taken over — atomically, against the index just read, so two claimants cannot both win. Never while the user
+    /// it names exists. An empty value is a creation in flight under the old protocol and is left alone.
+    /// </summary>
+    private SparkClaimKind<string> EmailKind => emailKind ??= new SparkClaimKind<string>(EmailReservationKeyPrefix, owner => owner)
     {
-        var key = CompareExchangeKeyFor(normalizedEmail);
-        var operations = documentStore.Operations.ForDatabase(DatabaseName);
-        var result = await operations.SendAsync(
-            new PutCompareExchangeValueOperation<string>(key, userId, 0),
-            token: cancellationToken);
-        if (result.Successful)
-            return true;
-
-        // Self-healing: a reservation whose user document no longer exists is stale (the user was
-        // removed without releasing it) and is taken over — atomically, against the index just read,
-        // so two claimants cannot both win. Never while the user it names exists. An empty value is a
-        // creation in flight under the old protocol and is left alone.
-        var existing = await operations.SendAsync(
-            new GetCompareExchangeValueOperation<string>(key), token: cancellationToken);
-        if (existing is null)
-            return (await operations.SendAsync(
-                new PutCompareExchangeValueOperation<string>(key, userId, 0), token: cancellationToken)).Successful;
-        if (existing.Value == userId)
-            return true;
-        if (string.IsNullOrEmpty(existing.Value))
-            return false;
-
-        using (var probe = documentStore.OpenAsyncSession(DatabaseName))
+        IsAbandonedAsync = async (claim, cancellationToken) =>
         {
-            if (await probe.Advanced.ExistsAsync(existing.Value, cancellationToken))
+            if (string.IsNullOrEmpty(claim.Value))
                 return false;
-        }
+            using var probe = documentStore.OpenAsyncSession(DatabaseName);
+            if (await probe.Advanced.ExistsAsync(claim.Value, cancellationToken))
+                return false;
+            logger?.LogWarning("Taking over a stale email reservation whose user document no longer exists.");
+            return true;
+        },
+    };
 
-        logger?.LogWarning("Taking over a stale email reservation whose user document no longer exists.");
-        var takeover = await operations.SendAsync(
-            new PutCompareExchangeValueOperation<string>(key, userId, existing.Index),
-            token: cancellationToken);
-        return takeover.Successful;
-    }
+    private SparkClaimKey EmailKey(string normalizedEmail) => EmailKind.Key(normalizedEmail.ToLowerInvariant());
+
+    private async Task<bool> CreateEmailReservationAsync(string normalizedEmail, string userId, CancellationToken cancellationToken)
+        => (await ClaimStore.ReserveAsync(EmailKind, EmailKey(normalizedEmail), userId, _ => userId, cancellationToken: cancellationToken)).Holds;
 
     /// <summary>Releases <paramref name="normalizedEmail"/>'s reservation, but only while it is <paramref name="userId"/>'s.</summary>
-    private async Task DeleteEmailReservationAsync(string normalizedEmail, string userId, CancellationToken cancellationToken)
-    {
-        var key = CompareExchangeKeyFor(normalizedEmail);
-        var operations = documentStore.Operations.ForDatabase(DatabaseName);
-        var existing = await operations.SendAsync(
-            new GetCompareExchangeValueOperation<string>(key),
-            token: cancellationToken);
-
-        if (existing != null && existing.Value == userId)
-        {
-            await operations.SendAsync(
-                new DeleteCompareExchangeValueOperation<string>(key, existing.Index),
-                token: cancellationToken);
-        }
-    }
+    private Task DeleteEmailReservationAsync(string normalizedEmail, string userId, CancellationToken cancellationToken)
+        => ClaimStore.ReleaseAsync(EmailKind, EmailKey(normalizedEmail), userId, cancellationToken);
 
     #endregion
 

@@ -1,5 +1,5 @@
 {
-  "$schema": "https://schemas.spark.mintplayer.com/v4/model.schema.json",
+  "$schema": "https://schemas.spark.mintplayer.com/v7/model.schema.json",
   "persistentObject": {
     "id": "12bffa36-f420-426d-8497-be4aadc499ad",
     "name": "RunCategoryScore",

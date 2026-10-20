@@ -32,6 +32,8 @@ public class GenerateIndexGenerator : IncrementalGenerator
 
     private const string FromIndexAttributeFullName = "MintPlayer.Spark.Abstractions.FromIndexAttribute";
 
+    internal const string FuzzyAttributeFullName = "MintPlayer.Spark.Abstractions.FuzzyAttribute";
+
     /// <summary>The Spark index base classes, which supply the call site for the generated override.</summary>
     private const string SparkIndexCreationTaskFullName = "MintPlayer.Spark.SparkIndexCreationTask<TDocument>";
     private const string SparkMultiMapIndexCreationTaskFullName = "MintPlayer.Spark.SparkMultiMapIndexCreationTask<TReduceResult>";
@@ -67,15 +69,18 @@ public class GenerateIndexGenerator : IncrementalGenerator
         IncrementalGeneratorInitializationContext context,
         IncrementalValueProvider<Settings> settingsProvider)
     {
+        // A record entity is a RecordDeclarationSyntax, which is not a ClassDeclarationSyntax (both derive from
+        // TypeDeclarationSyntax). Matching only classes made converting an entity to a record silently stop
+        // generating its index (commerce X20 item 4). A record struct is excluded: an entity is a reference type.
         var entitiesProvider = context.SyntaxProvider
             .CreateSyntaxProvider(
-                predicate: static (node, ct) => node is ClassDeclarationSyntax { AttributeLists.Count: > 0 },
+                predicate: static (node, ct) => IsClassOrRecordClass(node),
                 transform: static (ctx, ct) =>
                 {
-                    if (ctx.Node is not ClassDeclarationSyntax classDeclaration)
+                    if (ctx.Node is not TypeDeclarationSyntax typeDeclaration)
                         return default;
 
-                    if (ctx.SemanticModel.GetDeclaredSymbol(classDeclaration, ct) is not INamedTypeSymbol entity)
+                    if (ctx.SemanticModel.GetDeclaredSymbol(typeDeclaration, ct) is not INamedTypeSymbol entity)
                         return default;
 
                     if (!entity.HasGenerateIndex())
@@ -318,6 +323,16 @@ public class GenerateIndexGenerator : IncrementalGenerator
             contextSourceProvider.Select(static IDiagnosticReporter (producer, ct) => (IDiagnosticReporter)producer));
     }
 
+    /// <summary>A class or a record class carrying attributes: the declarations a <c>[GenerateIndex]</c> entity can be.</summary>
+    private static bool IsClassOrRecordClass(SyntaxNode node)
+        => node switch
+        {
+            ClassDeclarationSyntax { AttributeLists.Count: > 0 } => true,
+            RecordDeclarationSyntax { AttributeLists.Count: > 0 } record
+                => !record.ClassOrStructKeyword.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.StructKeyword),
+            _ => false,
+        };
+
     /// <summary>
     /// Builds the emission model for one entity, or <c>null</c> when it must not be generated. Every
     /// <c>null</c> here is paired with a diagnostic from <see cref="Collect"/> — see
@@ -339,6 +354,8 @@ public class GenerateIndexGenerator : IncrementalGenerator
         var complexProperties = new List<InvalidSearchInfo>();
         var breadcrumbAmbiguities = new List<InvalidSearchInfo>();
         var breadcrumbRejections = new List<InvalidSearchInfo>();
+        var invalidFuzzies = new List<InvalidSearchInfo>();
+        var usesLucene = false;
         var entityPropertyNames = new HashSet<string>(
             entity.GetSparkProperties().Select(p => p.Name), System.StringComparer.Ordinal);
 
@@ -426,7 +443,9 @@ public class GenerateIndexGenerator : IncrementalGenerator
                         Location = location,
                     });
                 }
-                else
+                // A Money is complex too (stored, FieldIndexing.No), but it is not left unfilterable: it
+                // gets its amount and currency companions below. A Quantity likewise (amount and unit).
+                else if (!property.Type.IsMoney() && !property.Type.IsQuantity())
                 {
                     complexProperties.Add(new InvalidSearchInfo
                     {
@@ -437,10 +456,33 @@ public class GenerateIndexGenerator : IncrementalGenerator
                 }
             }
 
+            // Commerce X18 ("fuzzy by default", 2026-10-19): a searchable field puts the whole index on Lucene,
+            // because Spark's search is typo-tolerant on it and Corax refuses fuzzy queries. [Fuzzy(false)] opts a
+            // field out of the fuzzy matching only; the index still runs Lucene. An explicit [Fuzzy] on a field
+            // that is not searchable does too (the marker says what the author queries); a non-text one is
+            // reported, since edit distance means nothing on it.
+            if (searchable && !isComplex && searchKind is SearchKind.Text or SearchKind.Translated)
+                usesLucene = true;
+
+            if (IsFuzzy(property))
+            {
+                usesLucene = true;
+                if (searchKind == SearchKind.Unsupported)
+                {
+                    invalidFuzzies.Add(new InvalidSearchInfo
+                    {
+                        PropertyName = property.Name,
+                        TypeDisplay = property.Type.ToDisplayString(TypeFormat),
+                        Location = property.Locations.FirstOrDefault(l => l.IsInSource).AsKey(),
+                    });
+                }
+            }
+
             var isSearchableText = !isComplex && searchable && searchKind == SearchKind.Text;
 
-            // A DateTimeOffset is indexed Exact and gets a companion with no attribute at all. DateTime gets
-            // neither -- see SparkModelSymbols.IsDateTimeOffset for why that asymmetry is deliberate.
+            // A DateTimeOffset base field is declared nothing (FieldIndexing null, see below) and gets a
+            // {Name}Raw wrapper companion. DateTime gets neither -- see SparkModelSymbols.IsDateTimeOffset for
+            // why that asymmetry is deliberate.
             var isDateTimeOffset = property.Type.IsDateTimeOffset();
 
             var (fieldAttributes, unrenderable) = AttributeRenderer.ForField(property);
@@ -494,6 +536,33 @@ public class GenerateIndexGenerator : IncrementalGenerator
 
             if (breadcrumbCompanion is not null)
                 properties.Add(breadcrumbCompanion);
+
+            // A Money (commerce X4) is an object a static index cannot sort or compare, so it gets two flat
+            // companions the query executor sorts and filters through (SparkMoney.AmountCompanion /
+            // CurrencyCompanion, AmountQueryFields). A name already taken on the entity gets no companion:
+            // the column is then simply not sortable on this index, never wrongly sorted.
+            // A Quantity (warehouse WX8) gets the same pair, amount and unit (SparkQuantity.AmountCompanion /
+            // UnitCompanion), sorted and filtered through AmountQueryFields alike.
+            var codeSuffix = property.Type.IsMoney() ? "Currency" : property.Type.IsQuantity() ? "Unit" : null;
+            if (codeSuffix is not null)
+            {
+                foreach (var (suffix, type) in new[] { ("Amount", "decimal?"), (codeSuffix, "string?") })
+                {
+                    var companionName = property.Name + suffix;
+                    if (entityPropertyNames.Contains(companionName)) continue;
+
+                    properties.Add(new IndexPropertyInfo
+                    {
+                        Name = companionName,
+                        TypeDisplay = type,
+                        // "!." is a C#-nullability silencer only: RavenDB evaluates the map over stored
+                        // JSON, where a missing Money or Quantity yields null for both fields.
+                        MapExpression = $"{itemVariable}.{property.Name}!.{suffix}",
+                        FieldIndexing = null,
+                        IsSortCompanion = true,
+                    });
+                }
+            }
         }
 
         return new GeneratedIndexInfo
@@ -512,9 +581,19 @@ public class GenerateIndexGenerator : IncrementalGenerator
             ComplexProperties = complexProperties,
             BreadcrumbAmbiguities = breadcrumbAmbiguities,
             BreadcrumbRejections = breadcrumbRejections,
+            UsesLucene = usesLucene,
+            InvalidFuzzyProperties = invalidFuzzies,
             Location = entity.Locations.FirstOrDefault(l => l.IsInSource).AsKey(),
         };
     }
+
+    /// <summary>
+    /// Whether <paramref name="property"/> opts in with <c>[Fuzzy]</c> (commerce X18). <c>[Fuzzy(false)]</c> is the
+    /// opt-out of Spark's default fuzzy search and does not count.
+    /// </summary>
+    internal static bool IsFuzzy(IPropertySymbol property)
+        => property.GetAttributes().Any(a => a.AttributeClass?.ToDisplayString() == FuzzyAttributeFullName
+            && !(a.ConstructorArguments.Length == 1 && a.ConstructorArguments[0].Value is false));
 
     /// <summary>
     /// Describes the app's <c>SparkContext</c>, or <c>null</c> when the class is not one.

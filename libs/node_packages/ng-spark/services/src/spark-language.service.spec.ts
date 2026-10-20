@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { currentLanguage } from '@mintplayer/ng-spark/models';
+import { currentLanguage, translated, type TranslatedString } from '@mintplayer/ng-spark/models';
 import { SPARK_CONFIG } from '@mintplayer/ng-spark';
 import { SparkLanguageService } from './spark-language.service';
 
@@ -13,7 +13,7 @@ import { SparkLanguageService } from './spark-language.service';
 describe('SparkLanguageService', () => {
   let httpTesting: HttpTestingController;
 
-  const culture = { languages: { en: { en: 'English' }, nl: { en: 'Dutch' } }, defaultLanguage: 'nl' };
+  const culture = { languages: { en: translated({ en: 'English' }), nl: translated({ en: 'Dutch' }) }, defaultLanguage: 'nl' };
 
   const create = (providers: unknown[] = []) => {
     TestBed.configureTestingModule({
@@ -24,7 +24,7 @@ describe('SparkLanguageService', () => {
   };
 
   /** Answers both constructor requests and lets their awaits run. */
-  const load = async (base = '/spark', translations: Record<string, Record<string, string>> = {}) => {
+  const load = async (base = '/spark', translations: Record<string, TranslatedString> = {}) => {
     httpTesting.expectOne(`${base}/culture`).flush(culture);
     httpTesting.expectOne(`${base}/translations`).flush(translations);
     await new Promise(resolve => setTimeout(resolve, 0));
@@ -94,25 +94,34 @@ describe('SparkLanguageService', () => {
       const service = create();
       await load(); // current language: nl
 
-      expect(service.resolve({ nl: 'Hallo', en: 'Hello' })).toBe('Hallo');
-      expect(service.resolve({ fr: 'Bonjour', en: 'Hello' })).toBe('Hello');
-      expect(service.resolve({ fr: 'Bonjour' })).toBe('Bonjour');
-      expect(service.resolve({})).toBe('');
+      expect(service.resolve(translated({ nl: 'Hallo', en: 'Hello' }))).toBe('Hallo');
+      expect(service.resolve(translated({ fr: 'Bonjour', en: 'Hello' }))).toBe('Hello');
+      expect(service.resolve(translated({ fr: 'Bonjour' }))).toBe('Bonjour');
+      expect(service.resolve({ Entries: [] })).toBe('');
       expect(service.resolve(undefined)).toBe('');
+    });
+
+    it('follows the RFC 4647 lookup chain of the current language (X17)', async () => {
+      const service = create();
+      await load();
+      service.setLanguage('nl-BE');
+
+      expect(service.resolve(translated({ en: 'Save', nl: 'Opslaan' }))).toBe('Opslaan');
+      expect(service.resolve(translated({ en: 'Save', 'nl-BE': 'Bewaren', nl: 'Opslaan' }))).toBe('Bewaren');
     });
   });
 
   describe('t', () => {
     it('translates a known key into the current language', async () => {
       const service = create();
-      await load('/spark', { save: { en: 'Save', nl: 'Opslaan' } });
+      await load('/spark', { save: translated({ en: 'Save', nl: 'Opslaan' }) });
 
       expect(service.t('save')).toBe('Opslaan');
     });
 
     it('returns the key itself when it is unknown or translates to empty text', async () => {
       const service = create();
-      await load('/spark', { blank: { nl: '' } });
+      await load('/spark', { blank: translated({ nl: '' }) });
 
       expect(service.t('missing')).toBe('missing');
       expect(service.t('blank')).toBe('blank');
@@ -132,7 +141,7 @@ describe('SparkLanguageService', () => {
     it('returns the fallback instead of the key when the text is missing, and the text when it is there', async () => {
       const service = create();
       expect(service.t('spark.query.unavailable', 'This list is not available.')).toBe('This list is not available.');
-      await load('/spark', { 'spark.query.unavailable': { nl: 'Deze lijst is niet beschikbaar.' }, blank: { nl: '' } });
+      await load('/spark', { 'spark.query.unavailable': translated({ nl: 'Deze lijst is niet beschikbaar.' }), blank: translated({ nl: '' }) });
 
       expect(service.t('spark.query.unavailable', 'This list is not available.')).toBe('Deze lijst is niet beschikbaar.');
       expect(service.t('blank', 'Fallback')).toBe('Fallback');

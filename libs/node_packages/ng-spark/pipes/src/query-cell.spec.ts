@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { QueryCellValuePipe, QueryReferenceChipsPipe } from './query-cell.pipe';
-import { QueryColumn, QueryResultItem } from '@mintplayer/ng-spark/models';
+import { QueryColumn, QueryResultItem, translated } from '@mintplayer/ng-spark/models';
 
 /**
  * How one query-grid cell resolves its display text — specifically, which server-sent breadcrumbs
@@ -82,7 +82,7 @@ describe('QueryCellValuePipe — value kinds', () => {
   describe('lookup columns', () => {
     const lookups = {
       Colors: { name: 'Colors', isTransient: true, displayType: 0, values: [
-        { key: '1', values: { en: 'Red' }, isActive: true },
+        { key: '1', values: translated({ en: 'Red' }), isActive: true },
         { key: '2', values: {}, isActive: true },
       ] },
     } as any;

@@ -1,0 +1,120 @@
+{
+  "$schema": "../../../../schemas/translations.schema.json",
+  "commerceShipping": {
+    "confirm": {
+      "en": "Confirm",
+      "fr": "Confirmer",
+      "nl": "Bevestigen"
+    },
+    "labelVoided": {
+      "en": "The labels were voided.",
+      "fr": "Les étiquettes ont été annulées.",
+      "nl": "De labels zijn geannuleerd."
+    },
+    "labelNotVoided": {
+      "en": "Not every label could be voided: the carrier already has the parcel, or does not allow it.",
+      "fr": "Toutes les étiquettes n'ont pas pu être annulées : le transporteur a déjà le colis, ou ne le permet pas.",
+      "nl": "Niet elk label kon geannuleerd worden: de vervoerder heeft het pakket al, of laat het niet toe."
+    },
+    "returnTitle": {
+      "en": "Create a return label",
+      "fr": "Créer une étiquette de retour",
+      "nl": "Retourlabel aanmaken"
+    },
+    "returnCreated": {
+      "en": "The return label was created.",
+      "fr": "L'étiquette de retour a été créée.",
+      "nl": "Het retourlabel is aangemaakt."
+    },
+    "addParcelTitle": {
+      "en": "Add a parcel",
+      "fr": "Ajouter un colis",
+      "nl": "Pakket toevoegen"
+    },
+    "parcelAdded": {
+      "en": "The parcel was added with its own label.",
+      "fr": "Le colis a été ajouté avec sa propre étiquette.",
+      "nl": "Het pakket is toegevoegd met een eigen label."
+    },
+    "pickServicePoint": {
+      "en": "Choose a pick-up point or parcel locker",
+      "fr": "Choisissez un point relais ou un distributeur de colis",
+      "nl": "Kies een afhaalpunt of pakketautomaat"
+    },
+    "noServicePoints": {
+      "en": "No pick-up point or locker was found near this address.",
+      "fr": "Aucun point relais ni distributeur de colis n'a été trouvé près de cette adresse.",
+      "nl": "Er is geen afhaalpunt of pakketautomaat gevonden in de buurt van dit adres."
+    },
+    "servicePointsFailed": {
+      "en": "The pick-up points could not be loaded. Try again.",
+      "fr": "Les points relais n'ont pas pu être chargés. Réessayez.",
+      "nl": "De afhaalpunten konden niet geladen worden. Probeer opnieuw."
+    },
+    "pickupPoint": {
+      "en": "Pick-up point",
+      "fr": "Point relais",
+      "nl": "Afhaalpunt"
+    },
+    "parcelLocker": {
+      "en": "Parcel locker",
+      "fr": "Distributeur de colis",
+      "nl": "Pakketautomaat"
+    },
+    "bookingReleased": {
+      "en": "The booking was released: the next attempt books it again.",
+      "fr": "La réservation a été libérée : la prochaine tentative la réserve à nouveau.",
+      "nl": "De boeking is vrijgegeven: de volgende poging boekt ze opnieuw."
+    },
+    "bookingNotInDoubt": {
+      "en": "This shipment has no booking in doubt.",
+      "fr": "Cet envoi n'a aucune réservation incertaine.",
+      "nl": "Deze zending heeft geen onzekere boeking."
+    },
+    "weightRequired": {
+      "en": "Enter the parcel's weight in grams.",
+      "fr": "Indiquez le poids du colis en grammes.",
+      "nl": "Geef het gewicht van het pakket in gram."
+    }
+  },
+  "actions": {
+    "ShipmentVoidLabel": {
+      "label": { "en": "Void labels", "fr": "Annuler les étiquettes", "nl": "Labels annuleren" },
+      "confirmation": {
+        "en": "Void every label of this shipment? Parcels the carrier already has cannot be voided.",
+        "fr": "Annuler toutes les étiquettes de cet envoi ? Les colis déjà pris en charge ne peuvent pas être annulés.",
+        "nl": "Alle labels van deze zending annuleren? Pakketten die de vervoerder al heeft, kunnen niet geannuleerd worden."
+      }
+    },
+    "ShipmentCreateReturnLabel": {
+      "label": { "en": "Return label", "fr": "Étiquette de retour", "nl": "Retourlabel" }
+    },
+    "ShipmentAddParcel": {
+      "label": { "en": "Add parcel", "fr": "Ajouter un colis", "nl": "Pakket toevoegen" }
+    },
+    "ShipmentReleaseBooking": {
+      "label": { "en": "Release booking", "fr": "Libérer la réservation", "nl": "Boeking vrijgeven" },
+      "confirmation": {
+        "en": "Did you check in the carrier's own panel that this booking does not exist there (or void it there)? The next attempt books it again.",
+        "fr": "Avez-vous vérifié dans le portail du transporteur que cette réservation n'y existe pas (ou l'y avez-vous annulée) ? La prochaine tentative la réserve à nouveau.",
+        "nl": "Hebt u in het portaal van de vervoerder nagekeken dat deze boeking daar niet bestaat (of ze daar geannuleerd)? De volgende poging boekt ze opnieuw."
+      }
+    }
+  },
+  "queries": {
+    "Shipments": {
+      "label": { "en": "Shipments", "fr": "Envois", "nl": "Zendingen" }
+    }
+  },
+  "model": {
+    "Shipment": {
+      "label": { "en": "Shipment", "fr": "Envoi", "nl": "Zending" }
+    },
+    "ShipmentParcelInput": {
+      "label": { "en": "Parcel", "fr": "Colis", "nl": "Pakket" }
+    },
+    "ShipmentReturnInput": {
+      "label": { "en": "Return", "fr": "Retour", "nl": "Retour" }
+    }
+  }
+}

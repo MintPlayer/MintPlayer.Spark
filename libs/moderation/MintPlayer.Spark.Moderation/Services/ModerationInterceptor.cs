@@ -56,7 +56,11 @@ internal sealed partial class ModerationInterceptor : IBeforeSave, IAfterSave, I
 
         if (context.Operation == PersistentObjectOperation.New)
         {
-            entity.AuthorId = currentUser.IsAuthenticated ? currentUser.Id : null;
+            // An approved creation (commerce X7, D9) is the proposer's post, applied by the approver: the
+            // proposer earns its reputation, never the approver.
+            entity.AuthorId = context.IsReplacedSaveApply && context.OnBehalfOf is { Length: > 0 } proposer
+                ? proposer
+                : currentUser.IsAuthenticated ? currentUser.Id : null;
             entity.PostedAt = timeProvider.GetUtcNow();
             await ThrottleNewAccountAsync();
             return;
@@ -100,7 +104,7 @@ internal sealed partial class ModerationInterceptor : IBeforeSave, IAfterSave, I
         if (context.Operation is PersistentObjectOperation.Revert or PersistentObjectOperation.Restore)
         {
             await audit.WriteAsync(context.Operation.ToString().ToLowerInvariant(), context.PersistentObject.Id,
-                TypeName(context.EntityType), entity.AuthorId);
+                TypeId(context.EntityType), entity.AuthorId);
         }
     }
 
@@ -114,8 +118,8 @@ internal sealed partial class ModerationInterceptor : IBeforeSave, IAfterSave, I
         if (!byOther && !context.IsPurge)
             return;
 
-        var typeName = TypeName(context.EntityType);
-        await audit.WriteAsync(context.IsPurge ? "purge" : "delete", context.Id, typeName, entity.AuthorId);
+        var typeId = TypeId(context.EntityType);
+        await audit.WriteAsync(context.IsPurge ? "purge" : "delete", context.Id, typeId, entity.AuthorId);
     }
 
     public async ValueTask OnAfterLoadAsync(LoadContext context)
@@ -160,8 +164,9 @@ internal sealed partial class ModerationInterceptor : IBeforeSave, IAfterSave, I
         using var check = documentStore.OpenAsyncSession();
         if (!await check.Advanced.ExistsAsync(ModerationIds.Lock(id)))
             return false;
-        // Moderators of the type are exempt.
-        return !await permissions.IsAllowedAsync(ModerationRights.Lock, TypeName(entityType));
+        // Moderators of the type are exempt. A class the model does not know has no moderators: the lock binds everyone.
+        return Definition(entityType) is not { } definition
+            || !await permissions.IsAllowedAsync(ModerationRights.Lock, definition.Name);
     }
 
     /// <summary>New-account throttle (§3.12): 429 once an account younger than AccountAgeDays created MaxPostsPerDay posts today.</summary>
@@ -185,6 +190,13 @@ internal sealed partial class ModerationInterceptor : IBeforeSave, IAfterSave, I
         session.Advanced.GetMetadataFor(counter)["@expires"] = now.Date.AddDays(2).ToString("O");
     }
 
-    private string TypeName(Type entityType)
-        => modelLoader.GetEntityTypeByClrType(entityType.FullName!)?.Name ?? entityType.Name;
+    // D28: this used to fall back to the CLR simple name, assuming it equals the persistent-object name.
+    // A renamed type (or another type that took the class's name) then got the wrong rights and the
+    // wrong stored type. The model is the only authority on a class's type.
+    private EntityTypeDefinition? Definition(Type entityType)
+        => modelLoader.GetEntityTypeByClrType(entityType.FullName!);
+
+    /// <summary>What the audit stores as the target's type: its id (<see cref="ModerationTypeIds"/>), or null for a class the model does not know.</summary>
+    private string? TypeId(Type entityType)
+        => Definition(entityType) is { } definition ? ModerationTypeIds.Of(definition) : null;
 }

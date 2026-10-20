@@ -154,6 +154,7 @@ public class McpPlanTests(SparkSharedDatabase database)
                 spark.Services.AddAuthentication().AddScheme<AuthenticationSchemeOptions, PlanBearerHandler>(Scheme, _ => { });
                 spark.Services.AddSingleton<IAgentCredentialScheme, PlanAgentScheme>();
                 spark.AddInterceptor<McpWtRaceInterceptor>();
+                spark.AddInterceptor<McpWtCancelInterceptor>();
                 spark.AddMcp(mcp =>
                 {
                     mcp.ServerName = "Acme Test";
@@ -417,6 +418,29 @@ public class McpPlanTests(SparkSharedDatabase database)
         first.Note.Should().Be("raced");
         (await LoadCarAsync(CarId("2")))!.Name.Should().Be("Bravo", "one commit: the second operation is not saved either");
         (await LoadPlanAsync(planId)).Status.Should().Be(McpPlanStatus.Failed, "the plan's applied record was in the same commit");
+    }
+
+    [Fact]
+    public async Task An_update_an_interceptor_cancels_fails_the_plan_instead_of_reporting_it_applied()
+    {
+        // Commerce F4. The save path answers a cancelled update with the row as stored — the web's 200 no-op — and
+        // apply_changes read that as saved: "Applied: all 2 operation(s) were saved", with the first operation
+        // committed and the second silently not. A cancelled create already failed the plan; an update must too.
+        await using var factory = await StartAsync();
+        var client = factory.CreateClient();
+        var alice = As("alice");
+        var (planId, changes, _) = await ProposeAsync(client, alice,
+            Update(CarId("2"), new { Name = "Bravo 2" }),
+            Update(CarId("1"), new { Note = McpWtCancelInterceptor.CancelledNote }));
+
+        var reply = await ApplyAsync(client, alice, planId, changes);
+
+        reply.IsToolError.Should().BeTrue(reply.ToolText);
+        reply.ToolText.Should().Contain("Operation 2: the application cancelled it. Nothing was saved.");
+        reply.ToolText.Should().NotContain("Applied");
+        (await LoadCarAsync(CarId("2")))!.Name.Should().Be("Bravo", "one commit: the first operation is not saved either");
+        (await LoadCarAsync(CarId("1")))!.Note.Should().Be("first");
+        (await LoadPlanAsync(planId)).Status.Should().Be(McpPlanStatus.Failed);
     }
 
     [Fact]
@@ -699,7 +723,8 @@ public class McpPlanTests(SparkSharedDatabase database)
         {
             var permissions = principal.FindFirst("perm")?.Value == "rw" ? EAgentPermission.Read | EAgentPermission.Write : EAgentPermission.Read;
             IReadOnlyDictionary<string, EAgentPermission>? types = principal.FindFirst("types")?.Value == "car-r"
-                ? new Dictionary<string, EAgentPermission> { ["McpWtCar"] = EAgentPermission.Read, ["McpWtDriver"] = EAgentPermission.Read }
+                // By type id (D28): a grant names a type by its id, never by its name.
+                ? new Dictionary<string, EAgentPermission> { ["4c9d0000-00b1-4000-8000-0000000000b1"] = EAgentPermission.Read, ["4c9d0000-00b2-4000-8000-0000000000b2"] = EAgentPermission.Read }
                 : null;
             var grant = principal.FindFirst("grant")!.Value;
             return ValueTask.FromResult<AgentCredential?>(new(
@@ -802,6 +827,17 @@ public sealed class McpWtRaceInterceptor(McpWtRace race) : IBeforeSave
     public bool AppliesTo(Type entityType) => entityType == typeof(McpWtCar);
 
     public async ValueTask OnBeforeSaveAsync(SaveContext context) => await race.FireIfArmedAsync(context.PersistentObject.Id);
+}
+
+/// <summary>Cancels (#482) the save of a car whose note asks for it — the web's silent no-op.</summary>
+public sealed class McpWtCancelInterceptor : IBeforeSave
+{
+    public const string CancelledNote = "cancel me";
+
+    public bool AppliesTo(Type entityType) => entityType == typeof(McpWtCar);
+
+    public ValueTask OnBeforeSaveAsync(SaveContext context)
+        => ((McpWtCar)context.Entity).Note == CancelledNote ? throw new SparkCancelException() : ValueTask.CompletedTask;
 }
 
 /// <summary>Every log line, for the audit assertions.</summary>

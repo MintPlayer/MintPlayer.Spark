@@ -2,8 +2,6 @@ using MintPlayer.Spark;
 using MintPlayer.Spark.Abstractions.Actions;
 using MintPlayer.Spark.Authorization.Identity;
 using MintPlayer.Spark.Cron;
-using MintPlayer.Spark.Messaging.Abstractions;
-using MintPlayer.Spark.Migrations;
 using MintPlayer.Spark.SourceGenerators.Tests._Infrastructure;
 
 namespace MintPlayer.Spark.SourceGenerators.Tests.Generators;
@@ -114,18 +112,33 @@ public class SparkFullGeneratorTests
         combined.Should().NotContain("AddAuthentication");
     }
 
+    /// <summary>
+    /// X20 item 3: the bundle no longer scans for Actions classes, custom actions, recipients, cron jobs,
+    /// migrations or interceptors itself. It calls the one entry point SparkDiscoveryGenerator emits, always,
+    /// right after the context: the discovery generator emits that method whenever AllFeatures is referenced.
+    /// </summary>
     [Fact]
-    public void Cron_job_is_wired_into_AddSparkFull_via_fully_qualified_call()
+    public void AddSparkDiscovered_is_called_fully_qualified_right_after_the_context()
     {
         var source = """
             using System.Threading;
             using System.Threading.Tasks;
             using MintPlayer.Spark;
+            using MintPlayer.Spark.Actions;
+            using MintPlayer.Spark.Abstractions.Actions;
             using MintPlayer.Spark.Cron;
 
             namespace TestApp;
 
             public class AppContext : SparkContext { }
+
+            public class Car { public string? Id { get; set; } }
+            public class CarActions : DefaultPersistentObjectActions<Car> { }
+
+            public class ExportAction : ICustomAction
+            {
+                public Task ExecuteAsync(CustomActionArgs args, CancellationToken cancellationToken = default) => Task.CompletedTask;
+            }
 
             public class NightlyCleanup : ISparkCronJob
             {
@@ -137,100 +150,41 @@ public class SparkFullGeneratorTests
         var result = GeneratorHarness.Run(
             GeneratorName,
             [source],
-            referenceTypes: [typeof(SparkContext), typeof(ISparkCronJob)],
+            referenceTypes: [typeof(SparkContext), typeof(MintPlayer.Spark.Actions.DefaultPersistentObjectActions<>), typeof(ICustomAction), typeof(ISparkCronJob)],
             rootNamespace: "TestApp",
             generatorAssemblyName: GeneratorAssembly);
 
         var combined = string.Join("\n", result.GeneratedSources.Select(s => s.Source));
         // Emitted as a fully-qualified static call (not extension-method syntax) to avoid collisions.
-        combined.Should().Contain("global::TestApp.SparkCronJobsBuilderExtensions.AddCronJobs(spark)");
+        var context = combined.IndexOf("UseContext<global::TestApp.AppContext>(spark);", StringComparison.Ordinal);
+        var discovered = combined.IndexOf("global::TestApp.SparkDiscoveryBuilderExtensions.AddSparkDiscovered(spark);", StringComparison.Ordinal);
+        context.Should().BeGreaterThan(-1);
+        discovered.Should().BeGreaterThan(context);
+        // The former per-kind calls are gone: the discovery generator owns every registration.
+        combined.Should().NotContain("AddActions(");
+        combined.Should().NotContain("AddCustomActions(");
+        combined.Should().NotContain("AddCronJobs(");
+        combined.Should().NotContain("AddMigrations(");
     }
 
     [Fact]
-    public void Migration_is_wired_into_AddSparkFull_via_fully_qualified_call()
+    public void AddSparkDiscovered_is_called_even_when_the_app_declares_nothing_to_discover()
     {
         var source = """
-            using System.Threading;
-            using System.Threading.Tasks;
             using MintPlayer.Spark;
-            using MintPlayer.Spark.Migrations;
-
             namespace TestApp;
-
             public class AppContext : SparkContext { }
-
-            public class AddInitialData : ISparkMigration
-            {
-                public static long Version => 202606081200;
-                public Task UpAsync(CancellationToken cancellationToken) => Task.CompletedTask;
-            }
             """;
 
         var result = GeneratorHarness.Run(
             GeneratorName,
             [source],
-            referenceTypes: [typeof(SparkContext), typeof(ISparkMigration)],
+            referenceTypes: [typeof(SparkContext)],
             rootNamespace: "TestApp",
             generatorAssemblyName: GeneratorAssembly);
 
-        var combined = string.Join("\n", result.GeneratedSources.Select(s => s.Source));
-        // Emitted as a fully-qualified static call (not extension-method syntax) to avoid collisions.
-        combined.Should().Contain("global::TestApp.SparkMigrationsBuilderExtensions.AddMigrations(spark)");
-    }
-
-    [Fact]
-    public void Actions_custom_actions_and_recipients_are_each_wired_in()
-    {
-        var source = """
-            using System.Threading;
-            using System.Threading.Tasks;
-            using MintPlayer.Spark;
-            using MintPlayer.Spark.Actions;
-            using MintPlayer.Spark.Abstractions.Actions;
-            using MintPlayer.Spark.Messaging.Abstractions;
-
-            namespace TestApp;
-
-            public class AppContext : SparkContext { }
-
-            public class Car { public string? Id { get; set; } }
-
-            // Found through the base-type walk, one level removed.
-            public class VehicleActions<T> : DefaultPersistentObjectActions<T> where T : class { }
-            public class CarActions : VehicleActions<Car> { }
-
-            public class ExportAction : ICustomAction
-            {
-                public Task ExecuteAsync(CustomActionArgs args, CancellationToken cancellationToken = default) => Task.CompletedTask;
-            }
-
-            public record CarSold(string Plate);
-            public class CarSoldRecipient : IRecipient<CarSold>
-            {
-                public Task HandleAsync(CarSold message, CancellationToken cancellationToken = default) => Task.CompletedTask;
-            }
-
-            // Neither is anything the bundle wires: an abstract base and an unrelated derived class.
-            public abstract class BaseAction : ICustomAction
-            {
-                public abstract Task ExecuteAsync(CustomActionArgs args, CancellationToken cancellationToken = default);
-            }
-            public class Unrelated : System.Exception { }
-            """;
-
-        var result = GeneratorHarness.Run(
-            GeneratorName,
-            [source],
-            referenceTypes: [typeof(SparkContext), typeof(MintPlayer.Spark.Actions.DefaultPersistentObjectActions<>), typeof(ICustomAction), typeof(IRecipient<>)],
-            rootNamespace: "TestApp",
-            generatorAssemblyName: GeneratorAssembly);
-
-        var combined = string.Join("\n", result.GeneratedSources.Select(s => s.Source));
-        combined.Should().Contain("global::TestApp.SparkActionsBuilderExtensions.AddActions(spark)");
-        combined.Should().Contain("global::TestApp.SparkCustomActionsBuilderExtensions.AddCustomActions(spark)");
-        combined.Should().Contain("global::TestApp.SparkRecipientsBuilderExtensions.AddRecipients(spark)");
-        combined.Should().NotContain("AddCronJobs");
-        combined.Should().NotContain("AddMigrations");
+        string.Join("\n", result.GeneratedSources.Select(s => s.Source))
+            .Should().Contain("global::TestApp.SparkDiscoveryBuilderExtensions.AddSparkDiscovered(spark);");
     }
 
     /// <summary>

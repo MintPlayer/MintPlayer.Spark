@@ -1,0 +1,20 @@
+<mjml>
+  <mj-head>
+    <mj-title>Un billet pour {{ event_name }} vous attend</mj-title>
+    <mj-attributes>
+      <mj-all font-family="Segoe UI, Helvetica, Arial, sans-serif" />
+      <mj-text font-size="15px" line-height="22px" color="#111827" />
+      <mj-button background-color="#2563eb" color="#ffffff" border-radius="6px" font-size="15px" />
+    </mj-attributes>
+  </mj-head>
+  <mj-body background-color="#f3f4f6">
+    <mj-section background-color="#ffffff" padding="24px 0">
+      <mj-column>
+        <mj-text font-size="20px" font-weight="600">{{ if recipient_name }}{{ recipient_name }}, quelqu'un{{ else }}Quelqu'un{{ end }} vous donne un billet pour {{ event_name }}</mj-text>
+        <mj-text><strong>{{ ticket_type }}</strong>{{ if seat }} · {{ seat }}{{ end }}</mj-text>
+        <mj-text>Acceptez-le avant le {{ expires }}. Le billet est alors réémis à votre nom avec un nouveau code QR.</mj-text>
+        <mj-button href="{{ accept_url }}">Accepter le billet</mj-button>
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>

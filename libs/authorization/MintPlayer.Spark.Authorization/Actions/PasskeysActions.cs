@@ -20,8 +20,8 @@ internal static class SparkPasskeysPage
 /// <c>ForgeAccountsActions</c>.
 /// </summary>
 /// <remarks>
-/// ⚠️ <b>No application may declare a class of this name</b> (nor <c>PasskeyRowActions</c>): resolution
-/// by name refuses a duplicate simple name across loaded assemblies (PRD §9 S2).
+/// Resolved as <c>{DeclaredName}Actions</c> inside this assembly (D28), so an application class of the same
+/// name is never picked, and an application rename of <c>Passkeys</c> changes nothing here.
 /// </remarks>
 internal sealed partial class PasskeysActions
 {
@@ -40,7 +40,7 @@ internal sealed partial class PasskeysActions
         if (!await passkeys.IsAvailableAsync())
             return null;
 
-        var obj = await manager.GetPersistentObjectAsync("Passkeys");
+        var obj = await manager.GetPersistentObjectAsync(AuthorizationTypeIds.Passkeys);
         obj.Id = SparkPasskeysPage.ObjectId;
         obj.Breadcrumb = manager.GetTranslatedMessage("auth.passkeysTitle");
         obj["Description"].Value = manager.GetTranslatedMessage("auth.passkeysDescription");

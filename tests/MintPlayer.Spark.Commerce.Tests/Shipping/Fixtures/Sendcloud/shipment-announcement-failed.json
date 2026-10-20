@@ -1,0 +1,22 @@
+{
+  "_fixture": {
+    "source": "https://sendcloud.dev/api/v3/shipments/create-and-announce-a-shipment-synchronously (201 response, failed-announcement example)",
+    "retrieved": "2026-10-20",
+    "derived": "public documentation: a failed announcement still answers 201, the parcel's status is ANNOUNCEMENT_FAILED and errors holds code parcel_announcement_error with status '500'; trimmed, detail text paraphrased from the example",
+    "recorded": false
+  },
+  "data": {
+    "id": "XXX-Shipment-id",
+    "parcels": [
+      {
+        "id": 383707311,
+        "status": { "code": "ANNOUNCEMENT_FAILED", "message": "Announcement Failed" },
+        "documents": [],
+        "tracking_number": null
+      }
+    ],
+    "errors": [
+      { "status": "500", "code": "parcel_announcement_error", "detail": "The carrier rejected the shipment: postal code is invalid." }
+    ]
+  }
+}

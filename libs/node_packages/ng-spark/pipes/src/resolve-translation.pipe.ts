@@ -3,7 +3,7 @@ import { TranslatedString, resolveTranslation } from '@mintplayer/ng-spark/model
 
 @Pipe({ name: 'resolveTranslation', standalone: true, pure: false })
 export class ResolveTranslationPipe implements PipeTransform {
-  transform(value: TranslatedString | undefined, fallback?: string): string {
+  transform(value: TranslatedString | null | undefined, fallback?: string): string {
     return resolveTranslation(value) || fallback || '';
   }
 }

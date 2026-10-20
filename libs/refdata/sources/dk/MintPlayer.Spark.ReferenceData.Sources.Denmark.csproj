@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+
+		<!-- NuGet Package Metadata -->
+		<PackageId>MintPlayer.Spark.ReferenceData.Sources.Denmark</PackageId>
+		<Version>11.0.0-preview.1</Version>
+		<Authors>MintPlayer</Authors>
+		<Company>MintPlayer</Company>
+		<Description>The Danish reference-data adapter (docs/reference_data_PRD.md §4.4): DAR (streets, postcodes) and DAGI (regions, kommuner) through Datafordeleren file downloads with a host-configured API key, the Danish country profile, the id ledger and fixtures.</Description>
+		<PackageTags>reference-data;denmark;dar;dagi;datafordeler;spark</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="README.md" Pack="true" PackagePath="\" />
+		<!-- Sample fixtures (RS8; provenance in README.md) and the id ledger (Q-R5). -->
+		<EmbeddedResource Include="Fixtures\**\*" LogicalName="Fixtures/%(RecursiveDir)%(Filename)%(Extension)" WithCulture="false" />
+		<EmbeddedResource Include="Ledger\*.ndjson" LogicalName="Ledger/%(Filename)%(Extension)" WithCulture="false" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\..\core\MintPlayer.Spark.ReferenceData.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<InternalsVisibleTo Include="ReferenceData.Tests" />
+	</ItemGroup>
+
+</Project>

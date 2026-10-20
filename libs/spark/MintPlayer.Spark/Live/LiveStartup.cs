@@ -67,10 +67,13 @@ internal static class LiveStartup
             problems.Add($"{SparkLiveOptions.SectionName}:MaxSubscriptionsPerSocket must be at least 1.");
         if (options.MaxSocketsPerUser < 1)
             problems.Add($"{SparkLiveOptions.SectionName}:MaxSocketsPerUser must be at least 1.");
+        if (options.MaxSocketsPerAddress < 1)
+            problems.Add($"{SparkLiveOptions.SectionName}:MaxSocketsPerAddress must be at least 1.");
         foreach (var (name, value) in new[]
                  {
                      ("Heartbeat", options.Heartbeat), ("SendTimeout", options.SendTimeout), ("Revalidate", options.Revalidate),
                      ("MaxSocketLifetime", options.MaxSocketLifetime), ("IndexWait", options.IndexWait),
+                     ("PrivateTopicRetention", options.PrivateTopicRetention),
                  })
         {
             if (value <= TimeSpan.Zero)

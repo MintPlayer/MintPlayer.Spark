@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.DataProtection.KeyManagement;
 using Microsoft.AspNetCore.DataProtection.Repositories;
 using Microsoft.Extensions.Options;
 using MintPlayer.Spark.Configuration;
+using MintPlayer.Spark.Abstractions.Builder;
 using MintPlayer.Spark.Extensions;
 using Raven.Client.Documents;
 
@@ -24,7 +25,7 @@ internal static class SparkDataProtection
 {
     public static IServiceCollection AddSparkDataProtection(this IServiceCollection services)
     {
-        services.AddSparkConfigurationSection<SparkDataProtectionOptions>(SparkDataProtectionOptions.SectionName);
+        services.AddSparkConfigurationSection<SparkDataProtectionOptions>();
         services.AddDataProtection();
         services.AddSingleton<IConfigureOptions<DataProtectionOptions>, ConfigureApplicationName>();
         services.AddSingleton<IConfigureOptions<KeyManagementOptions>, ConfigureKeyRing>();

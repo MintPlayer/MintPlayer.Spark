@@ -1,0 +1,6 @@
+[
+  {
+    "source": "document",
+    "details": "BR-CO-15: Invoice total amount with VAT = Invoice total amount without VAT + Invoice total VAT amount."
+  }
+]

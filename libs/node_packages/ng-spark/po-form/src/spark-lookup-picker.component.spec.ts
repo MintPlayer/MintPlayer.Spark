@@ -3,11 +3,11 @@ import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { describe, expect, it, vi } from 'vitest';
 
 import { SparkLookupPickerComponent } from './spark-lookup-picker.component';
-import { LookupReferenceValue } from '@mintplayer/ng-spark/models';
+import { LookupReferenceValue, translated } from '@mintplayer/ng-spark/models';
 
 const roles: LookupReferenceValue[] = [
-  { key: 'admin', values: { en: 'Administrator' } as any, isActive: true },
-  { key: 'user', values: { en: 'Standard User' } as any, isActive: true },
+  { key: 'admin', values: translated({ en: 'Administrator' }) as any, isActive: true },
+  { key: 'user', values: translated({ en: 'Standard User' }) as any, isActive: true },
 ];
 
 function createComponent() {

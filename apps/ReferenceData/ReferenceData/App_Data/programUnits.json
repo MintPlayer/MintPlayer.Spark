@@ -1,0 +1,100 @@
+{
+  "$schema": "../../../../schemas/programUnits.schema.json",
+  "programUnitGroups": [
+    {
+      "id": "5b475f71-0028-5b0f-a996-155992ac7e33",
+      "name": "programUnits.groups.consumer",
+      "icon": "bi-geo-alt",
+      "order": 0,
+      "programUnits": [
+        {
+          "id": "e3f41b5e-7b12-5ad6-81a4-deb84ecf3c4d",
+          "name": "programUnits.venues",
+          "icon": "bi-building",
+          "type": "query",
+          "queryId": "3426b69b-3bfe-41fd-a602-2757b6ffb7a8",
+          "alias": "venues",
+          "order": 1
+        },
+        {
+          "id": "67bc2761-de19-531a-b938-6ec16d19779b",
+          "name": "programUnits.addressForm",
+          "icon": "bi-signpost",
+          "type": "url",
+          "url": "/address-form",
+          "order": 2
+        },
+        {
+          "id": "e1dd581f-bf9a-5a79-bcc8-72c7c3ef36ad",
+          "name": "programUnits.api",
+          "icon": "bi-code-slash",
+          "type": "url",
+          "url": "/api/v1/sources",
+          "order": 3
+        }
+      ]
+    },
+    {
+      "id": "bc6f9842-be80-5326-b20c-33a3ef6fd182",
+      "name": "programUnits.groups.referenceData",
+      "icon": "bi-database",
+      "order": 1,
+      "programUnits": [
+        {
+          "id": "4a2a9111-b9e2-5d54-bf42-800254709550",
+          "name": "programUnits.places",
+          "icon": "bi-pin-map",
+          "type": "query",
+          "queryId": "c1644535-0d49-540a-a0dc-5dcc46812cb1",
+          "alias": "ref-places",
+          "order": 1
+        },
+        {
+          "id": "52a50250-cab8-5fd1-b1c2-574c59818b9c",
+          "name": "programUnits.postalCodes",
+          "icon": "bi-mailbox",
+          "type": "query",
+          "queryId": "d8aac699-066a-58d9-8d65-d184c91c2dbe",
+          "alias": "ref-postal-codes",
+          "order": 2
+        },
+        {
+          "id": "a95271cb-0b4b-58d4-8453-4e8841f63fb7",
+          "name": "programUnits.streets",
+          "icon": "bi-signpost-split",
+          "type": "query",
+          "queryId": "63ccfa0f-f49a-5c96-b82a-481a37cbbcc9",
+          "alias": "ref-streets",
+          "order": 3
+        },
+        {
+          "id": "cf875122-6b1c-5224-95ca-2266d8e97024",
+          "name": "programUnits.countries",
+          "icon": "bi-globe",
+          "type": "query",
+          "queryId": "e5859bea-27ab-554b-9f33-66e920cd4699",
+          "alias": "ref-countries",
+          "order": 4
+        },
+        {
+          "id": "3d5162d7-04af-5319-9519-b2e71b2167e8",
+          "name": "programUnits.lineage",
+          "icon": "bi-diagram-3",
+          "type": "query",
+          "queryId": "b91e6d56-ddb4-5dac-8226-2a1bb651a298",
+          "alias": "ref-lineage-events",
+          "order": 5
+        },
+        {
+          "id": "2a5335f3-dd8c-57d1-8493-6e63ec3e7473",
+          "name": "programUnits.importRuns",
+          "icon": "bi-cloud-arrow-down",
+          "type": "query",
+          "queryId": "c0078223-c91d-5a9c-b8ed-0827b73b6a4b",
+          "alias": "ref-import-runs",
+          "order": 6
+        }
+      ]
+    }
+  ]
+}

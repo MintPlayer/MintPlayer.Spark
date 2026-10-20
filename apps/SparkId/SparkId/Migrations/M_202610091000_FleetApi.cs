@@ -24,7 +24,6 @@ namespace SparkId.Migrations;
 /// </remarks>
 public partial class M_202610091000_FleetApi : ISparkMigration
 {
-    public static long Version => 202610091000;
     public static string? Description => "Development: seed the fleet API resource (fleet.read) and offer it to HR";
 
     [Inject] private readonly IAsyncDocumentSession session;
@@ -43,7 +42,7 @@ public partial class M_202610091000_FleetApi : ISparkMigration
                 Id = id,
                 Kind = OidcResourceKinds.Api,
                 Name = "fleet",
-                DisplayName = TranslatedString.Create("Spark Fleet", "Spark Fleet", "Spark Fleet"),
+                DisplayName = TranslatedString.Of(("en", "Spark Fleet"), ("fr", "Spark Fleet"), ("nl", "Spark Fleet")),
                 Enabled = true,
                 ShowInDiscoveryDocument = true,
                 Scopes =
@@ -51,7 +50,7 @@ public partial class M_202610091000_FleetApi : ISparkMigration
                     new OidcApiScope
                     {
                         Name = "fleet.read",
-                        DisplayName = TranslatedString.Create("Read the fleet's cars", "Lire les voitures de la flotte", "De auto's van de vloot lezen"),
+                        DisplayName = TranslatedString.Of(("en", "Read the fleet's cars"), ("fr", "Lire les voitures de la flotte"), ("nl", "De auto's van de vloot lezen")),
                         Enabled = true,
                     },
                 ],

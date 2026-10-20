@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Interceptors;
 using MintPlayer.Spark.Services;
 using NSubstitute;
 using Raven.Client.Documents;
@@ -20,11 +21,12 @@ public class SyncActionHandlerBuildPersistentObjectTests
     private readonly IDocumentStore _documentStore = Substitute.For<IDocumentStore>();
     private readonly IModelLoader _modelLoader = Substitute.For<IModelLoader>();
     private readonly IEntityMapper _entityMapper = Substitute.For<IEntityMapper>();
+    private readonly ISparkReplacedSaves _replacedSaves = Substitute.For<ISparkReplacedSaves>();
     private readonly IDatabaseAccess _databaseAccess = Substitute.For<IDatabaseAccess>();
     private readonly ILogger<SyncActionHandler> _logger = Substitute.For<ILogger<SyncActionHandler>>();
 
     private SyncActionHandler CreateHandler()
-        => new(_documentStore, _modelLoader, _entityMapper, _databaseAccess, _logger);
+        => new(_documentStore, _modelLoader, _entityMapper, _replacedSaves, _databaseAccess, _logger);
 
     private sealed class TestCar { public string? Id { get; set; } public string? LicensePlate { get; set; } public int Year { get; set; } }
     private sealed class UnregisteredEntity { public string? Id { get; set; } public string? Name { get; set; } }
@@ -53,7 +55,7 @@ public class SyncActionHandlerBuildPersistentObjectTests
             ObjectTypeId = CarTypeId,
             Attributes =
             [
-                new PersistentObjectAttribute { Name = "LicensePlate", DataType = "string", Label = TranslatedString.Create("License plate") },
+                new PersistentObjectAttribute { Name = "LicensePlate", DataType = "string", Label = TranslatedString.Of("en", "License plate") },
                 new PersistentObjectAttribute { Name = "Year", DataType = "number" },
             ],
         };

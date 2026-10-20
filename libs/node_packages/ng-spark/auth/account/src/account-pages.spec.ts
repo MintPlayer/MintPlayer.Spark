@@ -23,6 +23,7 @@ import { SparkChangePasswordComponent } from './spark-change-password.component'
 import { SparkTwoFactorSetupComponent } from './spark-two-factor-setup.component';
 import { SparkExternalLoginsComponent } from './spark-external-logins.component';
 import { SparkPersonalDataComponent } from './spark-personal-data.component';
+import { translated } from '@mintplayer/ng-spark/models';
 
 const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
@@ -154,7 +155,7 @@ describe('SparkAccountProfileComponent', () => {
   it('loads the profile, the app fields in order, and keeps a stored culture not in the language list', async () => {
     const { fixture, http } = setup();
     await flush();
-    http.expectOne('/spark/culture').flush({ languages: { en: { en: 'English' }, nl: { en: 'Dutch' } }, defaultLanguage: 'en' });
+    http.expectOne('/spark/culture').flush({ languages: { en: translated({ en: 'English' }), nl: translated({ en: 'Dutch' }) }, defaultLanguage: 'en' });
     await render(fixture);
     const c = fixture.componentInstance;
 
@@ -180,9 +181,27 @@ describe('SparkAccountProfileComponent', () => {
     expect(auth.updateProfile).toHaveBeenCalledWith({
       userName: 'jane',
       preferredCulture: null,
+      preferredTimeZone: null,
       fields: { Bio: 'hello', Newsletter: true },
     });
     expect(c.saved()).toBe(true);
+  });
+
+  it('saves the time zone for mails and documents (X14), and keeps a stored zone as an option', async () => {
+    const { fixture, auth, http } = setup({
+      profile: vi.fn().mockResolvedValue({ success: true, value: { ...profile, preferredTimeZone: 'America/Nuuk_Renamed' } }),
+    });
+    await flush();
+    http.expectOne('/spark/culture').flush({ languages: {}, defaultLanguage: 'en' });
+    await render(fixture);
+    const c = fixture.componentInstance;
+
+    expect(c.form.controls.preferredTimeZone.value).toBe('America/Nuuk_Renamed');
+    expect(c.timeZoneOptions()).toContain('America/Nuuk_Renamed');
+
+    c.form.controls.preferredTimeZone.setValue('Europe/Brussels');
+    await c.save();
+    expect(auth.updateProfile).toHaveBeenCalledWith(expect.objectContaining({ preferredTimeZone: 'Europe/Brussels' }));
   });
 
   it('shows field errors next to their control and the rest in the banner', async () => {
@@ -521,7 +540,7 @@ describe('SparkAccountOverviewComponent', () => {
   it('lists the links other route features contribute, after its own pages, in the current language', async () => {
     const extra = {
       provide: SPARK_ACCOUNT_OVERVIEW_LINKS,
-      useValue: [{ key: 'connectedApplications', path: '/account/applications', label: { en: 'Connected applications', nl: 'Verbonden applicaties' } }],
+      useValue: [{ key: 'connectedApplications', path: '/account/applications', label: translated({ en: 'Connected applications', nl: 'Verbonden applicaties' }) }],
     };
     configure({ capabilities: capabilities('Full') }, [extra]);
     const fixture = await render(TestBed.createComponent(SparkAccountOverviewComponent));

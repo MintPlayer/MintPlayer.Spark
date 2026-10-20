@@ -28,10 +28,10 @@ public class McpQueryRowShapeTests
                 {
                     Name = "Street",
                     Value = "Main Street 1",
-                    Label = TranslatedString.Create("Straatnaam-label"),
+                    Label = TranslatedString.Of("en", "Straatnaam-label"),
                     Rules = [new ValidationRule { Type = "maxLength", Value = 120 }],
                 },
-                new PersistentObjectAttribute { Name = "City", Value = "Springfield", Label = TranslatedString.Create("Gemeente-label") },
+                new PersistentObjectAttribute { Name = "City", Value = "Springfield", Label = TranslatedString.Of("en", "Gemeente-label") },
             ],
         };
         var result = new QueryResult

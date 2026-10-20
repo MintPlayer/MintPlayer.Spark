@@ -1,0 +1,24 @@
+{
+  "$schema": "../../../../schemas/actions.schema.json",
+  "_comment": [
+    "Warehouse Outbound's custom actions (docs/warehouse_picking_PRD.md §4.7). Classes: CustomActions/OutboundCustomActions.cs;",
+    "rights in this library's security.json; labels are actions.<Name>.* in translations.json."
+  ],
+  "WarehouseReleaseOrder": {
+    "icon": "play-circle",
+    "showedOn": "both",
+    "variant": "primary"
+  },
+  "WarehouseHoldOrder": {
+    "icon": "pause-circle",
+    "showedOn": "both"
+  },
+  "WarehouseUnholdOrder": {
+    "icon": "play",
+    "showedOn": "both"
+  },
+  "WarehouseTakeOverBatches": {
+    "icon": "person-check",
+    "showedOn": "detail"
+  }
+}

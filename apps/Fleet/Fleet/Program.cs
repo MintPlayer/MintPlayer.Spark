@@ -13,6 +13,7 @@ using MintPlayer.Spark.Authorization.ResourceServer;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.IdentityProvider.Extensions;
 using MintPlayer.Spark.Mcp;
+using MintPlayer.Spark.Migrations;
 using MintPlayer.AspNetCore.SpaServices.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -48,9 +49,10 @@ builder.WebHost.ConfigureKestrel(kestrel =>
 
 builder.Services.AddSparkFull(builder.Configuration, options =>
 {
-    // Everything else comes from the `Spark:Replication` section, bound by AddReplication.
-    // Assemblies are the one setting configuration cannot express.
-    options.Replication = opt => opt.AssembliesToScan = [typeof(Fleet.Replicated.Person).Assembly];
+    // Everything comes from the `Spark:Replication` section, bound by AddReplication. Fleet reads HR's people and
+    // companies through its [Replicated] classes (Fleet.Replicated); what Fleet owns (cars) other modules read through
+    // their own classes, which Fleet approves under "Replication requests" (automatically while Fleet runs in Development).
+    options.Replication = _ => { };
     options.RateLimiter = _ => { };
 
     // Explicit since preview.60: LocalCredentials now defaults to Disabled, matching the client's

@@ -3,7 +3,7 @@
   "_comment": [
     "The identity provider's rights, shipped as a library layer (docs/identity_provider_platform_PRD.md D2,",
     "spike S1). Two slots the application binds in its own security.json:",
-    "  identity-provider:administrators - every application and resource, developer requests, reviews",
+    "  identity-provider:administrators - every application and resource",
     "  identity-provider:developers     - the developer portal: their own applications and APIs",
     "Membership of the developers group comes from the provider itself (approved developer requests),",
     "never from seeding. Which rows a developer reaches is OidcApplicationActions / OidcResourceActions",
@@ -12,7 +12,10 @@
     "\"libraries\": { \"identity-provider\": false }.",
     "AsDetail rows are judged by their own row type's rights (EntityMapper): without New/OidcApplicationScope",
     "no application could be saved with a scope. ClientClaim rows are the administrators' only: a claim such",
-    "as group=... on a client's tokens is a grant at every resource server, not a developer's to set."
+    "as group=... on a client's tokens is a grant at every resource server, not a developer's to set.",
+    "Developer requests, cross-owner scope requests and go-live reviews are ApprovalRequests (MintPlayer.Spark.Approvals,",
+    "kinds identity-provider.developer/.scope/.go-live): that library's own rights name @authenticated, and each",
+    "decision asks the kind's live gate (administrators; an API's owners for its scopes), so no right is granted here."
   ],
   "reservedTargets": [
     "IdentityProvider"
@@ -69,31 +72,6 @@
       "groupId": "identity-provider:developers"
     },
     {
-      "key": "review-decisions-administrators",
-      "resource": "Read/OidcReviewDecision",
-      "groupId": "identity-provider:administrators"
-    },
-    {
-      "key": "review-decisions-developers",
-      "resource": "Read/OidcReviewDecision",
-      "groupId": "identity-provider:developers"
-    },
-    {
-      "key": "developer-requests-query",
-      "resource": "Query/OidcDeveloperRequest",
-      "groupId": "identity-provider:administrators"
-    },
-    {
-      "key": "developer-requests-approve",
-      "resource": "ApproveDeveloper/OidcDeveloperRequest",
-      "groupId": "identity-provider:administrators"
-    },
-    {
-      "key": "developer-requests-reject",
-      "resource": "RejectDeveloper/OidcDeveloperRequest",
-      "groupId": "identity-provider:administrators"
-    },
-    {
       "key": "application-team-administrators",
       "resource": "InviteMember/OidcApplication",
       "groupId": "identity-provider:administrators"
@@ -121,21 +99,6 @@
     {
       "key": "members-remove-administrators",
       "resource": "RemoveMember/OidcApplicationMemberRow",
-      "groupId": "identity-provider:administrators"
-    },
-    {
-      "key": "scope-approvals-query-administrators",
-      "resource": "Query/OidcScopeApproval",
-      "groupId": "identity-provider:administrators"
-    },
-    {
-      "key": "scope-approvals-approve-administrators",
-      "resource": "ApproveScope/OidcScopeApproval",
-      "groupId": "identity-provider:administrators"
-    },
-    {
-      "key": "scope-approvals-reject-administrators",
-      "resource": "RejectScope/OidcScopeApproval",
       "groupId": "identity-provider:administrators"
     },
     {
@@ -167,36 +130,6 @@
       "key": "members-remove-developers",
       "resource": "RemoveMember/OidcApplicationMemberRow",
       "groupId": "identity-provider:developers"
-    },
-    {
-      "key": "scope-approvals-query-developers",
-      "resource": "Query/OidcScopeApproval",
-      "groupId": "identity-provider:developers"
-    },
-    {
-      "key": "scope-approvals-approve-developers",
-      "resource": "ApproveScope/OidcScopeApproval",
-      "groupId": "identity-provider:developers"
-    },
-    {
-      "key": "scope-approvals-reject-developers",
-      "resource": "RejectScope/OidcScopeApproval",
-      "groupId": "identity-provider:developers"
-    },
-    {
-      "key": "golive-query",
-      "resource": "Query/OidcGoLiveReview",
-      "groupId": "identity-provider:administrators"
-    },
-    {
-      "key": "golive-approve",
-      "resource": "ApproveGoLive/OidcGoLiveReview",
-      "groupId": "identity-provider:administrators"
-    },
-    {
-      "key": "golive-reject",
-      "resource": "RejectGoLive/OidcGoLiveReview",
-      "groupId": "identity-provider:administrators"
     },
     {
       "key": "application-secret-administrators",

@@ -21,7 +21,7 @@ internal static class GeneratorHarness
     private static readonly Lazy<Assembly> _generatorAssembly = new(() => LoadGeneratorAssembly(DefaultAssemblyName));
 
     /// <summary>
-    /// Runs the generator whose concrete type has the given name (e.g. <c>ActionsRegistrationGenerator</c>)
+    /// Runs the generator whose concrete type has the given name (e.g. <c>SparkDiscoveryGenerator</c>)
     /// against a compilation built from <paramref name="sources"/> plus any type references in
     /// <paramref name="referenceTypes"/>. Returns (diagnostics, generatedSources).
     /// </summary>
@@ -321,9 +321,10 @@ internal static class GeneratorHarness
     public static MetadataReference CompileToMetadataReference(
         string assemblyName,
         IEnumerable<string> sources,
-        IEnumerable<Type>? referenceTypes = null)
+        IEnumerable<Type>? referenceTypes = null,
+        IEnumerable<MetadataReference>? additionalReferences = null)
     {
-        var compilation = BuildCompilation(sources, referenceTypes ?? Array.Empty<Type>())
+        var compilation = BuildCompilation(sources, referenceTypes ?? Array.Empty<Type>(), additionalReferences: additionalReferences)
             .WithAssemblyName(assemblyName);
 
         using var stream = new MemoryStream();

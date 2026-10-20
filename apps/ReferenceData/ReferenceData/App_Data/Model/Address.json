@@ -1,0 +1,202 @@
+{
+  "$schema": "https://schemas.spark.mintplayer.com/v7/model.schema.json",
+  "persistentObject": {
+    "id": "09fef399-13b0-4de4-9d88-e8f624dddbc5",
+    "name": "Address",
+    "clrType": "MintPlayer.Spark.ReferenceData.Address",
+    "breadcrumb": "{CountryCode}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "689fcbb0-0ce6-4e66-b816-953ac81ccacd",
+        "name": "Box",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "ea7508c3-6d7d-4093-8e7a-25177efb0741",
+        "name": "CountryCode",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "36e7cd59-3595-4a8a-af46-4bca7db51712",
+        "name": "HouseNumber",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "570e2d2c-a133-4ee0-b5b8-14674c6c2a48",
+        "name": "HouseNumberVerified",
+        "dataType": "boolean",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 17,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "805ca512-dea5-4ce9-892b-8665eb5e6464",
+        "name": "Lines",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 14,
+        "isArray": true,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "50447e89-0ebb-45a5-acdc-2bab16b4cd5f",
+        "name": "LocalityKey",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "43bf815e-f0ad-4eac-98e9-74606ea32cce",
+        "name": "LocalityName",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 9,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "d5cee096-17f5-4f8b-a280-5174c4cc615c",
+        "name": "LocalityPlaceId",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 10,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "fca8ded3-23a7-4c05-8c02-eaec68994394",
+        "name": "MunicipalityId",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 11,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "79f65c22-9974-40e7-b0b3-88d9f8a1b934",
+        "name": "MunicipalityName",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 12,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "924e571a-eaab-461c-80ad-b8b014b73988",
+        "name": "PostalCode",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "24b96a72-d998-46e5-b15e-665f84542df3",
+        "name": "PostalCodeId",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "e196d2dd-56bf-4889-9b03-d03417eb76b6",
+        "name": "Release",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 15,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "6fbd8bc3-1036-4405-9ee5-b18f279507b1",
+        "name": "StreetId",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "7523bde5-5581-4054-97a2-ca638b6f78c7",
+        "name": "StreetName",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "6b26050c-2a77-45b2-a1f9-89da2532a6d7",
+        "name": "TimeZone",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 13,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "0d7acd3d-adbf-44c6-9ec6-4ff2c9b89b08",
+        "name": "Verified",
+        "dataType": "boolean",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 16,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": []
+}

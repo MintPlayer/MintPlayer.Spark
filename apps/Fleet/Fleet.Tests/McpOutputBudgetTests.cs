@@ -149,7 +149,7 @@ public class McpOutputBudgetTests(ITestOutputHelper output) : SparkTestDriver
                 PromoVideoUrl = $"https://video.example/{Text(60)}",
                 PoliceReportNumber = $"PR-{Text(20)}",
                 Manager = $"People/budget-{i % 200:D3}",
-                Description = TranslatedString.Create(Text(300), Text(300), Text(300)),
+                Description = TranslatedString.Of(("en", Text(300)), ("fr", Text(300)), ("nl", Text(300))),
                 CreatedBy = userId,
                 CreatedAt = DateTimeOffset.UtcNow,
                 ServiceEntries = i == 0

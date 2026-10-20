@@ -1,0 +1,26 @@
+{
+  "$schema": "../../../../schemas/translations.schema.json",
+  "app": {
+    "selectMenuItem": {
+      "en": "Select a menu item from the sidebar to get started.",
+      "fr": "Sélectionnez un élément du menu latéral pour commencer.",
+      "nl": "Kies een menu-item in de zijbalk om te beginnen."
+    },
+    "title": {
+      "en": "Spark Festival",
+      "fr": "Festival Spark",
+      "nl": "Spark Festival"
+    }
+  },
+  "programUnits": {
+    "groups": {
+      "storefront": { "en": "Storefront", "fr": "Boutique", "nl": "Winkel" },
+      "door": { "en": "Door", "fr": "Entrée", "nl": "Ingang" }
+    },
+    "events": { "en": "Events", "fr": "Événements", "nl": "Evenementen" },
+    "shop": { "en": "Shop", "fr": "Boutique", "nl": "Winkel" },
+    "basket": { "en": "Basket", "fr": "Panier", "nl": "Winkelmandje" },
+    "account": { "en": "My account", "fr": "Mon compte", "nl": "Mijn account" },
+    "scanner": { "en": "Scanner", "fr": "Scanner", "nl": "Scanner" }
+  }
+}

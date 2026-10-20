@@ -1,5 +1,5 @@
-import { ValidationRule } from './validation-rule';
-import { TranslatedString } from './translated-string';
+import { ValidationRule } from './generated/contracts';
+import { DEFAULT_LANGUAGE, TranslatedString, isCurrentEntry } from './translated-string';
 
 /** One rule failure, in the shape the form already renders per field. */
 export interface RuleFailure {
@@ -45,7 +45,7 @@ function isRuleItem(value: any): boolean {
  */
 export function evaluateRules(attr: EvaluableAttribute, value: any): RuleFailure[] {
   const failures: RuleFailure[] = [];
-  const label = attr.label?.['en'] ?? attr.name;
+  const label = defaultLanguageText(attr.label) ?? attr.name;
 
   if (attr.isRequired && isEmpty(value)) {
     return [{ attributeName: attr.name, ruleType: 'required', message: `${label} is required` }];
@@ -80,7 +80,7 @@ function evaluateRule(
   value: any,
   text: string,
 ): RuleFailure | null {
-  const message = rule.message?.['en'];
+  const message = defaultLanguageText(rule.message);
 
   switch (rule.type?.toLowerCase()) {
     case 'maxlength': {
@@ -140,4 +140,14 @@ function toInt(value: any): number | null {
 function toNumber(value: any): number | null {
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * The English (default-language) text only, never another language: these messages are composed in
+ * English, so a label or message without an English entry falls back to the attribute name or the
+ * default text rather than mixing languages into one sentence.
+ */
+function defaultLanguageText(ts: TranslatedString | null | undefined): string | undefined {
+  const day = new Date().toISOString().substring(0, 10);
+  return ts?.Entries?.find(e => e.Tag.toLowerCase() === DEFAULT_LANGUAGE && isCurrentEntry(e, day))?.Value;
 }

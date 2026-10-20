@@ -40,7 +40,6 @@ namespace CodeCoverage.Migrations;
 /// </summary>
 public partial class M_202609081200_RenameAddLinkedIfMissing : ISparkMigration
 {
-    public static long Version => 202609081200;
     public static string? Description => "Rename EventColumnMapping.AddLinkedIfMissing to AutoAddToBoard and backfill both booleans to true";
 
     [Inject] private readonly IDocumentStore store;

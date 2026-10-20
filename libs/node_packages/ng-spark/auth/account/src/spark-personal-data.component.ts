@@ -95,7 +95,8 @@ export class SparkPersonalDataComponent implements OnInit {
   async ngOnInit(): Promise<void> {
     try {
       const result = await this.auth.personalData();
-      const flag = result.success ? (result.value as { account?: { hasPassword?: unknown } } | null)?.account?.hasPassword : undefined;
+      // Read defensively: an older server may send no `account.hasPassword`.
+      const flag: unknown = result.success ? result.value?.account?.hasPassword : undefined;
       this.hasPassword.set(typeof flag === 'boolean' ? flag : null);
     } catch {
       this.hasPassword.set(null);

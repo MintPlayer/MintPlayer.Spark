@@ -1,0 +1,3 @@
+@if (status()) {
+  <span [class]="cssClass()">{{ known() ? (('approvals.status' + status()) | t) : status() }}</span>
+}

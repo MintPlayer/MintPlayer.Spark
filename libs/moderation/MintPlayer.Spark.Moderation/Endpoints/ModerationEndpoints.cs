@@ -58,9 +58,14 @@ internal sealed class ModerationRequest
 
 internal static class ModerationEndpoint
 {
-    public static void Configure(RouteHandlerBuilder builder) => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
+    /// <summary>Antiforgery on every one, and a denial answered as the standard refusal by the endpoint filter.</summary>
+    public static void Configure(RouteHandlerBuilder builder)
+        => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true)).RefuseDeniedInEnvelope();
 
-    /// <summary>Runs <paramref name="operation"/> and maps Spark's refusals onto the envelope.</summary>
+    /// <summary>
+    /// Runs <paramref name="operation"/> and maps Spark's refusals onto the envelope. A denial passes
+    /// through to the endpoint filter <see cref="Configure"/> installs.
+    /// </summary>
     public static async Task<IResult> RunAsync(HttpContext httpContext, ISparkAddOnEndpoints addOn, Func<Task<object?>> operation, int status = StatusCodes.Status200OK)
     {
         try
@@ -75,10 +80,6 @@ internal static class ModerationEndpoint
         catch (SparkThrottledException ex)
         {
             return addOn.Throttled(httpContext, ex);
-        }
-        catch (SparkAccessDeniedException)
-        {
-            return addOn.Refusal(httpContext);
         }
     }
 

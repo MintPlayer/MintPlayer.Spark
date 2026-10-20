@@ -1,0 +1,12 @@
+{"Identity":"dar-vej:b1d8e6f2-0004-4a7c-8e55-000000000001","Id":"streets/dk/dar/b1d8e6f2-0004-4a7c-8e55-000000000001","Source":"dk-dar"}
+{"Identity":"dar-vej:b1d8e6f2-0004-4a7c-8e55-000000000002","Id":"streets/dk/dar/b1d8e6f2-0004-4a7c-8e55-000000000002","Source":"dk-dar"}
+{"Identity":"dar-vej:b1d8e6f2-0004-4a7c-8e55-000000000003","Id":"streets/dk/dar/b1d8e6f2-0004-4a7c-8e55-000000000003","Source":"dk-dar"}
+{"Identity":"iso3166:DK","Id":"places/dk/iso3166/DK","Source":"dk-dagi"}
+{"Identity":"kommune:0101","Id":"places/dk/kommune/0101","Source":"dk-dagi"}
+{"Identity":"kommune:0147","Id":"places/dk/kommune/0147","Source":"dk-dagi"}
+{"Identity":"kommune:0461","Id":"places/dk/kommune/0461","Source":"dk-dagi"}
+{"Identity":"postnr:1620","Id":"postalcodes/dk/1620","Source":"dk-dar"}
+{"Identity":"postnr:1850","Id":"postalcodes/dk/1850","Source":"dk-dar"}
+{"Identity":"postnr:5000","Id":"postalcodes/dk/5000","Source":"dk-dar"}
+{"Identity":"region:1083","Id":"places/dk/region/1083","Source":"dk-dagi"}
+{"Identity":"region:1084","Id":"places/dk/region/1084","Source":"dk-dagi"}

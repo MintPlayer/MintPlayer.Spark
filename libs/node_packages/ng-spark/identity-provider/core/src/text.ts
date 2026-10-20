@@ -1,5 +1,4 @@
 import { Pipe, type PipeTransform, inject } from '@angular/core';
-import { currentLanguage } from '@mintplayer/ng-spark/models';
 import { SparkAuthTranslationService } from '@mintplayer/ng-spark/auth/core';
 
 /** Where the pages' texts live: `identityProvider.spa.*` in the identity-provider library's `translations.json`. */
@@ -34,25 +33,5 @@ export class SparkIdentityProviderTextPipe implements PipeTransform {
   }
 }
 
-/**
- * A server date (ISO string) as a date and time in the app's current language; empty for null.
- * `Intl` rather than Angular's `DatePipe`, which needs locale data registered for every language.
- */
-export function identityProviderDate(value: string | null | undefined): string {
-  if (!value) return '';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  try {
-    return new Intl.DateTimeFormat(currentLanguage(), { dateStyle: 'medium', timeStyle: 'short' }).format(date);
-  } catch {
-    return date.toLocaleString();
-  }
-}
-
-/** `{{ app.firstGrantedAt | idpDate }}`. Impure: follows the language signal. */
-@Pipe({ name: 'idpDate', pure: false, standalone: true })
-export class SparkIdentityProviderDatePipe implements PipeTransform {
-  transform(value: string | null | undefined): string {
-    return identityProviderDate(value);
-  }
-}
+// Dates: the core `sparkDateTime` pipe from `@mintplayer/ng-spark/date-time` (X16 folded the private
+// `idpDate` pipe in; K10 keeps date formatting in one place).

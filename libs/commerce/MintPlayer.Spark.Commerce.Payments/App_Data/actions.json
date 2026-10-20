@@ -1,0 +1,25 @@
+{
+  "$schema": "../../../../schemas/actions.schema.json",
+  "_comment": [
+    "The custom actions of the payments types (docs/commerce_PRD.md §4.5, GB1, GB4), shipped as a library layer. The",
+    "classes are CustomActions/PaymentCustomActions.cs; their rights are in this library's security.json. Labels are",
+    "actions.<Name>.* in translations.json. Each is offered per row only where it would succeed (PaymentActions.cs)."
+  ],
+  "PaymentDisputeSubmitEvidence": {
+    "icon": "send",
+    "showedOn": "detail",
+    "selectionRule": "=0",
+    "variant": "primary"
+  },
+  "PaymentDisputeAccept": {
+    "icon": "flag",
+    "showedOn": "detail",
+    "selectionRule": "=0",
+    "variant": "danger"
+  },
+  "PaymentReconciliationResolve": {
+    "icon": "check2-square",
+    "showedOn": "both",
+    "variant": "success"
+  }
+}

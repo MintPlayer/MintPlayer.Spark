@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using MintPlayer.Spark.Abstractions.Builder;
 using MintPlayer.Spark.Abstractions.Interceptors;
+using MintPlayer.Spark.Approvals;
 using MintPlayer.Spark.Extensions;
 using MintPlayer.Spark.Http;
 using MintPlayer.Spark.Authorization.Configuration;
@@ -97,13 +98,25 @@ public static class SparkIdentityProviderExtensions
         // The portal mails' default templates (Mail/SparkIdentityProvider/*.mjml, embedded as SparkMail/…);
         // an app's Templates/Mail/SparkIdentityProvider/*.mjml overrides them. Never declared before, so every
         // portal mail (invitations, developer and review decisions) was dead-lettered with "No mail template
-        // 'SparkIdentityProvider/…'" (found by the E2E journey). Anchored on a type of this assembly.
+        // 'SparkIdentityProvider/…'" (found by the E2E journey). Anchored on a type of this assembly. The decision
+        // mails are the Approvals library's since commerce D26.
         MintPlayer.Spark.MailManager.SparkMailTemplateServiceCollectionExtensions.AddSparkMailTemplates(
             builder.Services, typeof(OidcPortalMailTemplates).Assembly, "SparkMail/");
         builder.Services.AddSingleton<OidcPortalLinks>();
         builder.Services.AddSingleton<OidcInvitations>();
         builder.Services.AddSingleton<OidcTeamMail>();
         builder.Services.AddScoped<OidcPortalAccess>();
+
+        // The portal's decisions (developer requests, cross-owner scopes, going Live) are approval requests
+        // (commerce D26): the Approvals library holds the queue, the decision, the reason, the notices and the
+        // history; these say who decides each kind and what a decision does.
+        builder.AddApprovals();
+        builder.Services.TryAddScoped<IApprovalDeciders<OidcDeveloperApprovalKind>, OidcDeveloperApprovalDeciders>();
+        builder.Services.TryAddScoped<IApprovalHandler<OidcDeveloperApprovalKind>, OidcDeveloperApprovalHandler>();
+        builder.Services.TryAddScoped<IApprovalDeciders<OidcScopeApprovalKind>, OidcScopeApprovalDeciders>();
+        builder.Services.TryAddScoped<IApprovalHandler<OidcScopeApprovalKind>, OidcScopeApprovalHandler>();
+        builder.Services.TryAddScoped<IApprovalDeciders<OidcGoLiveApprovalKind>, OidcGoLiveApprovalDeciders>();
+        builder.Services.TryAddScoped<IApprovalHandler<OidcGoLiveApprovalKind>, OidcGoLiveApprovalHandler>();
         builder.Services.AddScoped<ConnectText>();
         builder.Services.AddSingleton<OidcGrantWithdrawal>();
 

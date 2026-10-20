@@ -1,0 +1,17 @@
+<section class="spark-consent-unsubscribe" aria-labelledby="spark-consent-unsubscribe-title">
+  <h1 id="spark-consent-unsubscribe-title">{{ 'consent.unsubscribe.title' | t }}</h1>
+  <div role="status" aria-live="polite">
+    @switch (status()) {
+      @case ('ready') {
+        <p>{{ question() }}</p>
+        <button type="button" class="spark-consent-choice" [disabled]="busy()" (click)="unsubscribe()">{{ 'consent.unsubscribe.button' | t }}</button>
+      }
+      @case ('done') {
+        <p>{{ 'consent.unsubscribe.done' | t }}</p>
+      }
+      @case ('invalid') {
+        <p>{{ 'consent.unsubscribe.invalid' | t }}</p>
+      }
+    }
+  </div>
+</section>

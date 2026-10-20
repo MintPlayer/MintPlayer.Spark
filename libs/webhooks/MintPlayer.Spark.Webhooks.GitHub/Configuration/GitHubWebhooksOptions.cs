@@ -4,11 +4,18 @@ public class GitHubWebhooksOptions
 {
     private readonly List<Action<IServiceCollection>> _serviceActions = [];
 
-    /// <summary>Webhook secret configured in the GitHub App settings.</summary>
+    /// <summary>
+    /// Webhook secret configured in the GitHub App settings. Read per delivery. Empty refuses every
+    /// delivery with 401 (fail closed) and logs an error.
+    /// </summary>
     public string WebhookSecret { get; set; } = string.Empty;
 
-    /// <summary>Webhook endpoint path. Defaults to "/api/github/webhooks".</summary>
-    public string WebhookPath { get; set; } = "/api/github/webhooks";
+    /// <summary>
+    /// Webhook endpoint path. Defaults to "/api/github/webhooks". Read once, when the routes are
+    /// mapped, from <c>IOptions</c>, so a value set through <c>Configure&lt;GitHubWebhooksOptions&gt;()</c>
+    /// counts too. It must have no route parameters.
+    /// </summary>
+    public string WebhookPath { get; set; } = Endpoints.GitHubWebhookEndpoint.DefaultPath;
 
     /// <summary>GitHub App ID for the production app.</summary>
     public long? ProductionAppId { get; set; }

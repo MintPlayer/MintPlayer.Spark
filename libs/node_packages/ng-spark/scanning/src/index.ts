@@ -4,3 +4,5 @@ export { gs1CheckDigit, gs1HasValidCheckDigit } from './gs1/checkdigit';
 export { Gs1Element, Gs1ParseResult, gs1ParseElementString, gs1ElementValue } from './gs1/elementstring';
 export { gs1ParseDigitalLink, gs1ParseScan } from './gs1/digitallink';
 export { gs1Sscc } from './gs1/sscc';
+// Camera scanning on the standard BarcodeDetector (WX5; commerce M15's door scanner).
+export * from './camera/barcode-camera';

@@ -592,6 +592,15 @@ Points that matter in practice:
   The `Condition` is not optional: an `AdditionalFiles` item naming a file that does not exist fails the build.
 - **Extending a generated index**: implement `partial void OnInitialize()` on a hand-written partial half. It
   is called at the end of the generated constructor.
+- **A `record` entity works like a class.** The generator matches `class` and `record` (`record class`)
+  declarations; a `record struct` is not an entity. Before commerce X20 it matched `class` only, so turning an
+  entity into a record silently stopped generating its index.
+- **A `[Search]` or `[Fuzzy]` field puts the index on Lucene** (commerce X18, fuzzy by default): the generated
+  constructor sets `SearchEngineType = SearchEngineType.Lucene`, because Spark's search is typo-tolerant on
+  searchable fields and Corax refuses fuzzy queries. `[Fuzzy(false)]` opts a field out of the fuzzy matching, not out
+  of Lucene. Indexes with neither keep the server default. See [Search](guide-search.md#fuzzy-by-default).
+- **`Money` gets `{Name}Amount` / `{Name}Currency` companions** ([Money](guide-money.md)), and **`Quantity` gets
+  `{Name}Amount` / `{Name}Unit`** ([Quantity](guide-quantity.md)).
 
 ### Keeping a hand-written index, without hand-writing the boilerplate
 
@@ -966,7 +975,8 @@ Two things a database search cannot match, both of which used to work when filte
 not an index term — denormalize it into the index, as `OwnerFullName` does above).
 
 > Full details — wildcard handling, multi-language fields, the composition order with row-level security, the
-> in-memory fallbacks, and why fuzzy matching is not offered — are in **[Full-Text Search](guide-search.md)**.
+> in-memory fallbacks, and the typo-tolerant (fuzzy) matching on searchable fields — are in
+> **[Full-Text Search](guide-search.md)**.
 
 ## Rendering a query in the frontend
 
@@ -1163,6 +1173,74 @@ See also:
 - `Demo/DemoApp/DemoApp/Indexes/Cars_Overview.cs` -- index with cross-document `LoadDocument`
 - `Demo/DemoApp/DemoApp/Data/VCar.cs` -- projection with `[LookupReference]`
 - `MintPlayer.Spark/Services/QueryExecutor.cs` -- query execution with sorting and projection
+
+### Indexes declared by a library (`[SparkIndexMap]`)
+
+Index classes always live in the application. A reusable library that needs an index ships its **maps** instead,
+and the application's generator emits the index class at build time (commerce X19, reference-data Q-R6), so every
+host gets the same index without copying code:
+
+```csharp
+// In the library: no index class, no RavenDB index base type.
+public static class TypeaheadIndexes
+{
+    [SparkIndexMap("RefLocalities_Typeahead", StoreAllFields = true)]
+    public static Expression<Func<IEnumerable<Place>, IEnumerable<TypeaheadEntry>>> Places { get; } =
+        places => from place in places
+                  from key in place.Keys
+                  select new TypeaheadEntry { Token = key, Label = place.Name };
+}
+
+public class TypeaheadEntry
+{
+    [Fuzzy] public string Token { get; set; } = string.Empty;   // the index runs on Lucene
+    [Search] public string Label { get; set; } = string.Empty;  // declared FieldIndexing.Search (Lucene on its own too)
+}
+```
+
+The application (OutputKind Exe) then contains:
+
+```csharp
+namespace MyApp.Indexes;
+
+public partial class RefLocalities_Typeahead : SparkMultiMapIndexCreationTask<TypeaheadEntry>
+{
+    public RefLocalities_Typeahead()
+    {
+        AddMap<Place>(SparkIndexMaps.Widen(TypeaheadIndexes.Places));
+        Index(nameof(TypeaheadEntry.Label), FieldIndexing.Search);
+        StoreAllFields(FieldStorage.Yes);
+        SearchEngineType = SearchEngineType.Lucene;
+        OnInitialize();
+    }
+
+    partial void OnInitialize();
+}
+```
+
+- **Several libraries can contribute to one index.** Every `[SparkIndexMap]` naming the same index, in any
+  referenced assembly or in the application, becomes one `AddMap` of a single multi-map index, ordered by member
+  name. One shared multi-map per library family keeps the index count small. All maps of one index must produce
+  the same result type (SPARK_INDEX_016); the first in member order wins and the others are skipped.
+- **Packages that cannot see each other compose one index** (warehouse WX16 / Q-W26). Put the result type in the
+  package family's core library and let each plugin package declare its maps against it: `Warehouse_Documents` maps
+  receipts and returns from Inbound, orders from Outbound and shipments from Packing, while core references none of
+  them. Only the application references them all, so only it can hold the multi-map class. The field set is the
+  shared result type's properties, so a new field is added there; a package that brings its own result type, even
+  one with the same class name and a field of another type, is a different type and gets SPARK_INDEX_016, which
+  fails the application build rather than deploying the index without that package's documents. `StoreAllFields`
+  and the Lucene engine apply to the whole index when any contributor asks for them. Declared indexes are map-only:
+  there is no declared reduce, so no reduce can conflict; an index that reduces is still written in the application.
+- **The map is the library's own expression**, type-checked where it is written. A generator cannot read a method
+  body from a referenced assembly, so the emitted index calls the member, and RavenDB translates that expression
+  tree into the definition. Index helpers that are instance members of an index class (`LoadDocument`,
+  `MetadataFor`, `CreateField`) are therefore out of reach in a declared map.
+- **The member** must be `static`, readable, typed `Expression<Func<IEnumerable<TSource>, IEnumerable<TResult>>>`,
+  and public on a public type when it is in a library. Anything else is SPARK_INDEX_015 and no map is emitted.
+- **Query it by name**, since the library cannot see the application's class:
+  `session.Query<TypeaheadEntry>("RefLocalities/Typeahead")`. The index is in Spark's catalog under that name, with
+  no collection type, so it is never an entity's default index.
+- **Class libraries emit nothing**, the same rule as `[GenerateIndex]`.
 
 ## Per-column sort and filter capabilities (#431)
 

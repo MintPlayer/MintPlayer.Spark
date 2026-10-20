@@ -6,7 +6,7 @@ import { SparkLanguageService } from '@mintplayer/ng-spark/services';
 export interface SparkContributionAttributionOptions {
   /** The generated contributions query's alias (`songlyricscontributions`). */
   contributionsQuery: string;
-  /** The target's model name: the query's `parentType` (`Song`). */
+  /** The target's type, the query's `parentType`: Contributions seeds its CLR type (`Acme.Song`), which the server resolves like a name (D28). */
   targetType: string;
   /** The `[Contribution]` property (`Lyrics`). */
   property: string;

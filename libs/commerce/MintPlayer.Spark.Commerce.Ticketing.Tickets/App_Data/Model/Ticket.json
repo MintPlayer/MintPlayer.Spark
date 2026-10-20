@@ -1,0 +1,263 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "Ticket (docs/commerce_PRD.md §4.11): one unit of a confirmed order line. READ-ONLY here: this package's services write",
+    "it. The seller sees the CURRENT holder only (round 5): a transfer or resale erases the previous holder from the ticket.",
+    "The secret's verifier (SecretSalt/SecretHash) and the presence history are deliberately NOT declared, so no generic",
+    "page or export shows them; RavenDB keeps the undeclared fields.",
+    "",
+    "HAND-AUTHORED. Ids are UUIDv5 of 'ticketing-tickets:Ticket[...]', written by 'npm run stamp:library-model-ids'."
+  ],
+  "persistentObject": {
+    "id": "7ccf86dc-3145-5747-9377-296c8380a2c0",
+    "name": "Ticket",
+    "clrType": "MintPlayer.Spark.Commerce.Ticketing.Tickets.Models.Ticket",
+    "alias": "ticket",
+    "breadcrumb": "{Code}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "b4fa6908-80bb-5d92-a7ad-e5e3cb773b3c",
+        "name": "Code",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "fc0c65bd-b501-5418-97b1-29e3ebd548da",
+        "name": "EventId",
+        "dataType": "Reference",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "query": "TicketEvents",
+        "referenceType": "MintPlayer.Spark.Commerce.Ticketing.Events.Models.TicketEvent"
+      },
+      {
+        "id": "b5ea1355-6d51-5c8c-b107-f7810061f5a0",
+        "name": "DateIds",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 3,
+        "isArray": true,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "a495dfed-7352-5fe6-8b7e-2c8e87d4da7c",
+        "name": "TicketTypeId",
+        "dataType": "Reference",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "query": "TicketTypes",
+        "referenceType": "MintPlayer.Spark.Commerce.Ticketing.Events.Models.TicketType"
+      },
+      {
+        "id": "374fe0d0-45a7-59db-8761-7c766ea318b9",
+        "name": "Title",
+        "dataType": "TranslatedString",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "275645ad-9ab1-53ca-a43c-67e04b25cb5e",
+        "name": "OrderNumber",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "519bd3ee-4f91-57ad-9a48-cebf29309e5c",
+        "name": "SeatLabel",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "d1232f2b-d1c0-556c-bc97-7537ebb2e730",
+        "name": "Status",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "lookupReferenceType": "TicketStatus"
+      },
+      {
+        "id": "f62f2a8f-c3d1-5796-9c8e-03faf9a5e9e5",
+        "name": "StatusReason",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 9,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "cc798521-4d05-5fa2-b7ee-6e9297452590",
+        "name": "MinimumAge",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 10,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "ce18d62d-11f4-5555-a355-671500f43465",
+        "name": "GuestList",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 11,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "8fe3618c-1da2-5a7c-bc49-f407f53156b7",
+        "name": "HolderName",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 12,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "7ba9cc37-94fa-59d8-a94d-406a0a02dbf0",
+        "name": "HolderEmail",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 13,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "0931f002-6527-50c4-9e82-a5cff987fbcb",
+        "name": "AcquiredThrough",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 14,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "8b623e2d-bd2c-5125-8970-29a6fe537e9e",
+        "name": "Generation",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 15,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "1ee59301-c8db-5ba5-9cd3-8bf1f44eeec1",
+        "name": "AvailableFrom",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 16,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "1f2e3df7-94a5-5968-bf1f-cebf677de5d5",
+        "name": "DeliveredAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 17,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "5d26c326-04d8-5da4-a2c8-3ee1905c972b",
+        "name": "FreezeAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 18,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "a76b24de-e900-5269-b4c1-1abb4566eb13",
+        "name": "IssuedAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 19,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "196eee37-4f0f-5a34-beb5-810f31a1cdb0",
+        "name": "UpdatedAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 20,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      }
+    ]
+  },
+  "queries": [
+    {
+      "id": "bf86ef77-28bf-5b89-9f3c-e54cf2e8fc5a",
+      "name": "Tickets",
+      "source": "Custom.Tickets",
+      "alias": "tickets",
+      "sortColumns": [
+        {
+          "property": "IssuedAt",
+          "direction": "desc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "Ticket"
+    }
+  ]
+}

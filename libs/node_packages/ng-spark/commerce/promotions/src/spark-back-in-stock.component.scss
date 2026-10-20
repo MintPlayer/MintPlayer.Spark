@@ -1,0 +1,26 @@
+:host {
+  display: block;
+}
+
+.spark-back-in-stock {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+
+.spark-back-in-stock-email {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.spark-back-in-stock-done,
+.spark-back-in-stock-error {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+.spark-back-in-stock-error {
+  color: var(--bs-danger, #b91c1c);
+}

@@ -1,0 +1,32 @@
+// Nothing below may trip tools/verify-time-zones.test.mjs. It is a fixture, never compiled.
+// A comment that mentions Intl.DateTimeFormat or { timeZone: 'UTC' } is not a use of either.
+import { Component } from '@angular/core';
+import { formatDate } from '@angular/common';
+import { formatSparkDateTime } from '@mintplayer/ng-spark/date-time';
+
+/* Nor is a block comment: new Intl.DateTimeFormat('en', { timeZone: 'Asia/Tokyo' }) */
+export interface Settings {
+  timeZoneId: string;
+  options: Intl.DateTimeFormatOptions;
+}
+
+@Component({
+  selector: 'fixture-clean',
+  template: `
+    <!-- {{ at | date:'short':'UTC' }} in an HTML comment -->
+    <span>{{ at | date:'HH:mm' }}</span>
+    <span [title]="at | date:'yyyy-MM-dd HH:mm:ss'">{{ (at | date:'short') ?? '' }}</span>
+    <a href="https://example.test/x">link</a>
+  `,
+})
+export class FixtureClean {
+  at = new Date();
+
+  render(): string[] {
+    return [
+      formatSparkDateTime(this.at, 'viewer', 'medium'),
+      formatDate(this.at, 'short', 'en'),
+      this.at.toLocaleDateString('nl'),
+    ];
+  }
+}

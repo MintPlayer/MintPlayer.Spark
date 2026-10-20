@@ -1,0 +1,28 @@
+<mjml>
+  <mj-head>
+    <mj-title>Vos billets pour {{ event_name }}</mj-title>
+    <mj-attributes>
+      <mj-all font-family="Segoe UI, Helvetica, Arial, sans-serif" />
+      <mj-text font-size="15px" line-height="22px" color="#111827" />
+      <mj-button background-color="#2563eb" color="#ffffff" border-radius="6px" font-size="15px" />
+    </mj-attributes>
+  </mj-head>
+  <mj-body background-color="#f3f4f6">
+    <mj-section background-color="#ffffff" padding="24px 0">
+      <mj-column>
+        <mj-text font-size="20px" font-weight="600">{{ if holder_name }}{{ holder_name }}, v{{ else }}V{{ end }}{{ if count == 1 }}oici votre billet{{ else }}oici vos {{ count }} billets{{ end }} pour {{ event_name }}</mj-text>
+        <mj-text>Commande {{ order_number }}. Le PDF est joint, avec un fichier de calendrier par date. Présentez le code QR à l'entrée, sur papier ou sur votre téléphone.</mj-text>
+        {{ for ticket in tickets }}
+        <mj-text><strong>{{ ticket.title }}</strong>{{ if ticket.seat }} · {{ ticket.seat }}{{ end }}{{ if ticket.holder }} · {{ ticket.holder }}{{ end }}<br />{{ ticket.dates }}</mj-text>
+        <mj-button href="{{ ticket.link }}">Ouvrir le billet</mj-button>
+        {{ end }}
+      </mj-column>
+    </mj-section>
+    <mj-section padding="0 0 24px 0">
+      <mj-column>
+        <mj-divider border-width="1px" border-color="#e5e7eb" />
+        <mj-text font-size="12px" color="#6b7280">Gardez ce mail pour vous : toute personne disposant du lien ou du code QR peut utiliser le billet. Si vous le donnez via la page du billet, il est réémis et cette copie ne fonctionne plus.</mj-text>
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>

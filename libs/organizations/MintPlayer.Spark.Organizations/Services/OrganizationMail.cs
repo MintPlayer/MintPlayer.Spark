@@ -15,14 +15,11 @@ public static class OrganizationMailTemplates
 {
     /// <summary>An address is invited (<c>link</c>, <c>organization</c>, <c>role</c>, <c>inviter</c>, <c>valid_for_days</c>).</summary>
     public const string Invitation = "SparkOrganizations/Invitation";
-
-    /// <summary>An Owner is asked to let a user in (<c>link</c>, <c>organization</c>, <c>role</c>, <c>requester</c>, <c>requester_email</c>, <c>valid_for_days</c>).</summary>
-    public const string JoinRequest = "SparkOrganizations/JoinRequest";
 }
 
 /// <summary>
-/// Builds the acceptance link and queues the invitation and join-request mails through MailManager
-/// (<c>docs/seo_analyzer_PRD.md</c> D18).
+/// Builds the acceptance link and queues the invitation mail through MailManager (<c>docs/seo_analyzer_PRD.md</c>
+/// D18). A join request is an approval request since D26: Approvals tells its deciders.
 /// </summary>
 /// <remarks>
 /// <para>

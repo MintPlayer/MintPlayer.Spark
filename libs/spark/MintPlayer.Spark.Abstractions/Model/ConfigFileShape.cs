@@ -112,7 +112,7 @@ public static class ConfigFileShape
 
             var layers = new SortedDictionary<string, string>(StringComparer.Ordinal);
             foreach (var (library, layer) in shipped)
-                layers[library.Alias] = Sha256Hex(describe(layer.Json) ?? "unparseable\n");
+                layers[library.Alias] = Sha256Hex(describe(layer.Shipped) ?? "unparseable\n");
 
             var path = Path.Combine(appDataPath, fileName);
             if (File.Exists(path))

@@ -10,6 +10,7 @@ namespace MintPlayer.Spark.Abstractions;
 /// references only Abstractions. A client-side mirror would be a second declaration of one contract,
 /// free to drift silently — the failure mode being a field that quietly stops arriving.
 /// </remarks>
+[SparkContract]
 public class LookupReferenceListItem
 {
     public required string Name { get; set; }
@@ -19,6 +20,7 @@ public class LookupReferenceListItem
 }
 
 /// <summary>One lookup reference with its values — <c>GET /spark/lookupref/{name}</c>.</summary>
+[SparkContract]
 public class LookupReferenceDto
 {
     public required string Name { get; set; }

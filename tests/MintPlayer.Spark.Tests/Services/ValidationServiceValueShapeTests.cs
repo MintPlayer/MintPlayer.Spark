@@ -156,7 +156,7 @@ public class ValidationServiceValueShapeTests
     [MemberData(nameof(RulesWithMessages))]
     public void A_rule_message_replaces_the_generated_one(ValidationRule rule, object value)
     {
-        rule.Message = TranslatedString.Create("Custom text");
+        rule.Message = TranslatedString.Of("en", "Custom text");
 
         var error = Validate(value, rules: rule).Errors.Single();
 

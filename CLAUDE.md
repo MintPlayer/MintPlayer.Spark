@@ -13,6 +13,9 @@ deployed beside CodeCoverage on the same VPS. Treat changes to it as production 
 - **`apps/SparkId`** is the demo identity provider (https 5011). HR, Fleet and QnA sign in against it,
   and Fleet validates the machine tokens it issues. Identity-provider work lands there, not in HR
   (`docs/identity_provider_platform_PRD.md`).
+- **`apps/ReferenceData`** is the reference-data app (https 5017; `docs/reference_data_PRD.md`): countries,
+  regions, places, streets and time zones from a small seed set (`ReferenceData/Seed`, rebuilt with
+  `--refdata-build-seed`). It runs locally only and is not deployed (K8).
 - **`apps/DemoApp`** is the minimal Spark app: core only, no Authorization, no identity provider. It
   is the guides' running example and the only app on plain `AddSpark` (SPARK030). New features don't
   land there.

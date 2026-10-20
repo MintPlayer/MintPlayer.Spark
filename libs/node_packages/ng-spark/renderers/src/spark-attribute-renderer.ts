@@ -88,3 +88,19 @@ export interface SparkAttributeEditRenderer {
    */
   valueChange?: InputSignal<(value: any) => void>;
 }
+
+/**
+ * Contract for diff renderers (`diffComponent` of a registration): one changed attribute between two
+ * reads of an object, e.g. the current row and a proposed edit (Approvals, commerce #521). Values are
+ * renderer-facing (`rendererValue`): the flat value, or the nested PersistentObject(s) of an AsDetail.
+ */
+export interface SparkAttributeDiffRenderer {
+  /** The value before; `undefined` when the attribute is absent on that side (a creation). */
+  before?: InputSignal<any>;
+  /** The value after. */
+  after?: InputSignal<any>;
+  /** The attribute definition metadata */
+  attribute?: InputSignal<EntityAttributeDefinition | undefined>;
+  /** Renderer-specific options from rendererOptions */
+  options?: InputSignal<Record<string, any> | undefined>;
+}

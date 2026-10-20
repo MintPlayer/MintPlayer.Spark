@@ -7,7 +7,7 @@ import { SparkLanguageService, SparkService } from '@mintplayer/ng-spark/service
 import { SPARK_DETAIL_ACTIONS, SPARK_QUERY_ROW_ACTIONS, SparkDetailContext, SparkQueryRowActionScope } from '@mintplayer/ng-spark/panels';
 import { resolveRowRenderer, isRowRendered } from '@mintplayer/ng-spark/renderers';
 import { AsDetailColumnsPipe } from '@mintplayer/ng-spark/pipes';
-import { EntityType, PersistentObject } from '@mintplayer/ng-spark/models';
+import { EntityType, PersistentObject, resolveTranslation } from '@mintplayer/ng-spark/models';
 import { diffHasChanges, lineDiff, splitLines } from './line-diff';
 import { lineDiffSourceOf, lineDiffTextOf, SparkLineDiffComponent } from './spark-line-diff.component';
 import { SparkContributionAttributionComponent, contributionHistoryLink, relativeTime } from './spark-contribution-attribution.component';
@@ -176,7 +176,7 @@ describe('revert', () => {
       providers: [
         provideRouter([]),
         { provide: SparkService, useValue: spark },
-        { provide: SparkLanguageService, useValue: { t: (k: string) => k, resolve: (t: any) => t?.en ?? '' } },
+        { provide: SparkLanguageService, useValue: { t: (k: string) => k, resolve: (t: any) => resolveTranslation(t, 'en') } },
         provideSparkContributions(),
       ],
     });

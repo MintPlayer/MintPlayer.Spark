@@ -1,0 +1,24 @@
+:host {
+  display: block;
+}
+
+.spark-translated-string-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  margin-bottom: 0.25rem;
+}
+
+bs-input-group.spark-translated-string-row,
+.spark-translated-string-add {
+  display: block;
+}
+
+.spark-translated-string-tag {
+  min-width: 3.5rem;
+  font-family: var(--bs-font-monospace, monospace);
+}
+
+.spark-translated-string-names {
+  margin-top: 0.5rem;
+}

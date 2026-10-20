@@ -1,0 +1,107 @@
+<h1>{{ 'commerceStorefront.nav.account' | t }}</h1>
+
+@if (signedIn() === false) {
+  <p role="status">{{ 'commerceStorefront.account.signIn' | t }}</p>
+  @if (signInLink; as href) {
+    <a class="btn btn-primary" [href]="href">{{ 'commerceStorefront.account.signInLink' | t }}</a>
+  }
+} @else if (signedIn()) {
+  @if (refusal(); as key) {
+    <p class="spark-storefront-page-refusal" role="alert">{{ key | t }}</p>
+  }
+  <p class="visually-hidden" role="status">{{ status() }}</p>
+
+  @for (section of sections; track section) {
+    @switch (section) {
+      @case ('orders') {
+        <section class="spark-storefront-account-section" aria-labelledby="spark-account-orders">
+          <h2 id="spark-account-orders">{{ 'commerceStorefront.account.orders' | t }}</h2>
+          @if (orders().length === 0) {
+            <p class="spark-storefront-page-muted">{{ 'commerceStorefront.account.noOrders' | t }}</p>
+          }
+          <ul class="spark-storefront-account-orders">
+            @for (order of orders(); track order.number) {
+              <li class="spark-storefront-account-order" [attr.data-state]="order.state">
+                <div class="spark-storefront-account-order-head">
+                  <a [href]="orderUrl(order)">{{ order.number }}</a>
+                  <spark-date-time [value]="order.createdAt" format="date" />
+                  <span>{{ ('commerceCheckout.state.' + order.state) | t }}</span>
+                  <strong>{{ money(order.total) }}</strong>
+                </div>
+                <p class="spark-storefront-page-muted">
+                  @for (title of order.titles; track $index) {
+                    @if ($index > 0) { · }{{ title | resolveTranslation }}
+                  }
+                  @if (order.lineCount > order.titles.length) { · … }
+                </p>
+                <button type="button" class="btn btn-link btn-sm" [attr.aria-expanded]="expanded().has(order.number)"
+                        [attr.aria-controls]="'spark-account-order-' + order.number" (click)="toggle(order.number)">
+                  {{ 'commerceStorefront.account.documentsAndReturns' | t }}
+                </button>
+                @if (expanded().has(order.number)) {
+                  <div [id]="'spark-account-order-' + order.number" class="spark-storefront-account-order-details">
+                    <spark-order-invoices [orderNumber]="order.number" />
+                    <spark-checkout-aftercare [number]="order.number" />
+                  </div>
+                }
+              </li>
+            }
+          </ul>
+          @if (hasMore()) {
+            <button type="button" class="btn btn-outline-primary" (click)="more()">{{ 'commerceStorefront.account.moreOrders' | t }}</button>
+          }
+        </section>
+      }
+      @case ('guestOrders') {
+        @if (guest(); as info) {
+          <section class="spark-storefront-account-section" aria-labelledby="spark-account-guest">
+            <h2 id="spark-account-guest">{{ 'commerceStorefront.account.guestOrders' | t }}</h2>
+            @if (!info.emailConfirmed) {
+              <p>{{ 'commerceStorefront.account.confirmEmailFirst' | t }}</p>
+            } @else if (info.numbers.length === 0) {
+              <p class="spark-storefront-page-muted">{{ 'commerceStorefront.account.noGuestOrders' | t }}</p>
+            } @else {
+              <p>{{ 'commerceStorefront.account.guestOrdersFound' | t }} {{ info.numbers.join(', ') }}</p>
+              <button type="button" class="btn btn-primary" [disabled]="busy()" (click)="attachGuestOrders()">
+                {{ 'commerceStorefront.account.attachGuestOrders' | t }}
+              </button>
+            }
+          </section>
+        }
+      }
+      @case ('tickets') {
+        <spark-my-tickets class="spark-storefront-account-section" [ticketPath]="ticketPath" />
+      }
+      @case ('addresses') {
+        <spark-shop-address-book class="spark-storefront-account-section" />
+      }
+      @case ('backInStock') {
+        <section class="spark-storefront-account-section" aria-labelledby="spark-account-bis">
+          <h2 id="spark-account-bis">{{ 'commerceStorefront.account.backInStock' | t }}</h2>
+          @if (backInStock().length === 0) {
+            <p class="spark-storefront-page-muted">{{ 'commerceStorefront.account.noBackInStock' | t }}</p>
+          }
+          <ul class="spark-storefront-account-list">
+            @for (entry of backInStock(); track entry.id) {
+              <li>
+                <span>{{ entry.title | resolveTranslation: entry.itemId }}</span>
+                @if (entry.notified) {
+                  <small> · {{ 'commerceStorefront.account.notified' | t }}</small>
+                }
+                <button type="button" class="btn btn-link btn-sm" [disabled]="busy()" (click)="unsubscribe(entry)">
+                  {{ 'commerceStorefront.account.unsubscribe' | t }}
+                </button>
+              </li>
+            }
+          </ul>
+        </section>
+      }
+      @case ('consent') {
+        <section class="spark-storefront-account-section" aria-labelledby="spark-account-consent">
+          <h2 id="spark-account-consent">{{ 'commerceStorefront.legal.consent' | t }}</h2>
+          <spark-consent-settings />
+        </section>
+      }
+    }
+  }
+}

@@ -1,0 +1,79 @@
+{
+  "$schema": "../../../../schemas/translations.schema.json",
+  "replication": {
+    "pendingBadge": { "en": "Pending at the owner", "fr": "En attente chez le propriétaire", "nl": "Wacht bij de eigenaar" },
+    "pendingChanges": { "en": "My pending changes", "fr": "Mes modifications en attente", "nl": "Mijn wachtende wijzigingen" },
+    "approvedNotice": { "en": "{0} approved.", "fr": "{0} approuvée(s).", "nl": "{0} goedgekeurd." },
+    "rejectedNotice": { "en": "{0} rejected.", "fr": "{0} refusée(s).", "nl": "{0} geweigerd." },
+    "notPending": { "en": "{0} already decided.", "fr": "{0} déjà décidée(s).", "nl": "{0} al beslist." },
+    "notGranted": {
+      "en": "{0} suspended: the module no longer holds the rights it needs.",
+      "fr": "{0} suspendue(s) : le module n'a plus les droits nécessaires.",
+      "nl": "{0} opgeschort: de module heeft de nodige rechten niet meer."
+    },
+    "gone": { "en": "{0} could not be found.", "fr": "{0} introuvable(s).", "nl": "{0} niet gevonden." },
+    "retriedNotice": { "en": "{0} sent again.", "fr": "{0} renvoyée(s).", "nl": "{0} opnieuw verstuurd." },
+    "retryBlocked": {
+      "en": "{0} not sent again: a newer change of the same row is pending.",
+      "fr": "{0} non renvoyée(s) : une modification plus récente de la même ligne est en attente.",
+      "nl": "{0} niet opnieuw verstuurd: een nieuwere wijziging van dezelfde rij wacht al."
+    }
+  },
+  "programUnits": {
+    "groups": {
+      "replication": { "en": "Replication", "fr": "Réplication", "nl": "Replicatie" }
+    },
+    "replicationRequests": { "en": "Replication requests", "fr": "Demandes de réplication", "nl": "Replicatieaanvragen" },
+    "myPendingChanges": { "en": "My pending changes", "fr": "Mes modifications en attente", "nl": "Mijn wachtende wijzigingen" }
+  },
+  "actions": {
+    "ApproveReplication": { "label": { "en": "Approve", "fr": "Approuver", "nl": "Goedkeuren" } },
+    "RejectReplication": {
+      "label": { "en": "Reject", "fr": "Refuser", "nl": "Weigeren" },
+      "confirmation": {
+        "en": "Reject this request? The module stops receiving this data.",
+        "fr": "Refuser cette demande ? Le module ne reçoit plus ces données.",
+        "nl": "Deze aanvraag weigeren? De module ontvangt deze gegevens niet meer."
+      }
+    },
+    "RetrySyncAction": { "label": { "en": "Send again", "fr": "Renvoyer", "nl": "Opnieuw versturen" } },
+    "DismissSyncAction": { "label": { "en": "Dismiss", "fr": "Ignorer", "nl": "Verbergen" } }
+  },
+  "queries": {
+    "ReplicationRequests": { "label": { "en": "Replication requests", "fr": "Demandes de réplication", "nl": "Replicatieaanvragen" } },
+    "MyPendingChanges": { "label": { "en": "My pending changes", "fr": "Mes modifications en attente", "nl": "Mijn wachtende wijzigingen" } }
+  },
+  "model": {
+    "SparkReplicationRequest": {
+      "label": { "en": "Replication request", "fr": "Demande de réplication", "nl": "Replicatieaanvraag" },
+      "attributes": {
+        "ConsumerModule": { "label": { "en": "Module", "fr": "Module", "nl": "Module" } },
+        "SourceCollection": { "label": { "en": "Reads", "fr": "Lit", "nl": "Leest" } },
+        "TargetCollection": { "label": { "en": "Into", "fr": "Vers", "nl": "Naar" } },
+        "Status": { "label": { "en": "Status", "fr": "Statut", "nl": "Status" } },
+        "AutoApproved": { "label": { "en": "Auto-approved", "fr": "Approuvée automatiquement", "nl": "Automatisch goedgekeurd" } },
+        "RequestedAtUtc": { "label": { "en": "Requested", "fr": "Demandée", "nl": "Aangevraagd" } },
+        "Diff": { "label": { "en": "Changes", "fr": "Modifications", "nl": "Wijzigingen" } },
+        "Hash": { "label": { "en": "Requested hash", "fr": "Empreinte demandée", "nl": "Gevraagde hash" } },
+        "ApprovedHash": { "label": { "en": "Approved hash", "fr": "Empreinte approuvée", "nl": "Goedgekeurde hash" } },
+        "DecidedBy": { "label": { "en": "Decided by", "fr": "Décidée par", "nl": "Beslist door" } },
+        "DecidedAtUtc": { "label": { "en": "Decided", "fr": "Décidée", "nl": "Beslist" } },
+        "Reason": { "label": { "en": "Reason", "fr": "Raison", "nl": "Reden" } },
+        "Manifest": { "label": { "en": "Manifest", "fr": "Manifeste", "nl": "Manifest" } }
+      }
+    },
+    "SparkSyncAction": {
+      "label": { "en": "Pending change", "fr": "Modification en attente", "nl": "Wachtende wijziging" },
+      "attributes": {
+        "OwnerModule": { "label": { "en": "Owner", "fr": "Propriétaire", "nl": "Eigenaar" } },
+        "TargetCollection": { "label": { "en": "Of", "fr": "De", "nl": "Van" } },
+        "DocumentId": { "label": { "en": "Row", "fr": "Ligne", "nl": "Rij" } },
+        "Summary": { "label": { "en": "Changes", "fr": "Modifications", "nl": "Wijzigingen" } },
+        "Status": { "label": { "en": "Status", "fr": "Statut", "nl": "Status" } },
+        "Reason": { "label": { "en": "Reason", "fr": "Raison", "nl": "Reden" } },
+        "CreatedAtUtc": { "label": { "en": "Made", "fr": "Faite", "nl": "Gemaakt" } },
+        "CompletedAtUtc": { "label": { "en": "Ended", "fr": "Terminée", "nl": "Afgelopen" } }
+      }
+    }
+  }
+}

@@ -1,19 +1,15 @@
+using System.Text.Json;
 using MintPlayer.Spark.Abstractions;
-using MintPlayer.Spark.Services;
 using MintPlayer.Spark.Testing;
 using MintPlayer.Spark.Tests._Infrastructure;
 
 namespace MintPlayer.Spark.Tests.Services;
 
 /// <summary>
-/// Integration tests for <see cref="ISyncActionHandler"/> covering the reflective
-/// dispatch chain that the ReflectionCache migration touched: collection name →
-/// CLR type resolution, "Id" PropertyInfo extraction, and the actions-pipeline
-/// MethodInfo lookups (OnSaveAsync / OnDeleteAsync). Existing
-/// <see cref="SyncActionHandlerBuildPersistentObjectTests"/> covers the
-/// PersistentObject construction step in isolation; this file exercises the
-/// full HandleSaveAsync / HandleDeleteAsync flows against a real document store
-/// through <see cref="SparkEndpointFactory{TContext}"/>.
+/// <see cref="ISyncActionHandler"/> against a real store (warehouse §4.2.5, owner decision 2026-10-20: write-back is a
+/// per-property compare-and-set inside the owner's normal save path). Red on the working tree before WM1: the handler
+/// applied an edit on top of the version stored NOW (<c>SyncActionHandler.cs:39-47,60</c>), so a stale replica edit
+/// silently overwrote a newer owner change.
 /// </summary>
 public class SyncActionHandlerIntegrationTests : SparkTestDriver
 {
@@ -43,77 +39,105 @@ public class SyncActionHandlerIntegrationTests : SparkTestDriver
         return doc.Id!;
     }
 
-    // --- HandleSaveAsync: insert path ----------------------------------------
-
-    [Fact]
-    public async Task HandleSaveAsync_with_null_documentId_creates_a_new_document_and_returns_generated_Id()
+    private async Task<GuardedDoc?> LoadAsync(string id)
     {
-        var data = new Dictionary<string, object?>
-        {
-            ["Name"] = "from-sync",
-            ["IsVisible"] = true,
-        };
-
-        var generatedId = await _handler.HandleSaveAsync("GuardedDocs", documentId: null, data, properties: null);
-
-        generatedId.Should().NotBeNullOrEmpty(
-            "the insert path should reflect the generated Id off the saved entity via cached PropertyInfo");
-
         using var session = Store.OpenAsyncSession();
-        var loaded = await session.LoadAsync<GuardedDoc>(generatedId);
-        loaded.Should().NotBeNull();
-        loaded!.Name.Should().Be("from-sync");
-        loaded.IsVisible.Should().BeTrue();
+        return await session.LoadAsync<GuardedDoc>(id);
     }
 
-    // --- HandleSaveAsync: update path ----------------------------------------
+    private static JsonElement Json(object? value) => JsonSerializer.SerializeToElement(value);
+
+    private static SyncEdit Edit(string id, string property, object? baseValue, object? newValue) => new()
+    {
+        EntityType = typeof(GuardedDoc),
+        DocumentId = id,
+        Values = new Dictionary<string, JsonElement> { [property] = Json(newValue) },
+        BaseValues = new Dictionary<string, JsonElement> { [property] = Json(baseValue) },
+    };
 
     [Fact]
-    public async Task HandleSaveAsync_partial_update_leaves_unnamed_fields_at_their_stored_values()
+    public async Task An_edit_whose_base_is_current_is_applied()
     {
-        // The regression this pins, end to end: a partial sync used to blank every model attribute
-        // it did not mention, because the PO carried them all with a null value and the write path
-        // does not consult IsValueChanged. Here IsVisible must survive a sync that only sends Name
-        // — and it is load-bearing on this fixture, since IsVisible false would also lock the row
-        // out of its own IsAllowedAsync gate on any later sync.
+        var id = await SeedAsync(new GuardedDoc { Name = "before", IsVisible = true });
+
+        var outcome = await _handler.ApplyEditAsync(Edit(id, "Name", "before", "after"));
+
+        outcome.Kind.Should().Be(SyncEditOutcomeKind.Applied, outcome.Reason ?? "");
+        (await LoadAsync(id))!.Name.Should().Be("after");
+    }
+
+    /// <summary>
+    /// WD18 red→green: the owner changed Name after the replica was built; the edit started from the old Name. Today
+    /// the edit overwrote the newer value; now it is a conflict naming Name, and the owner's value stands.
+    /// </summary>
+    [Fact]
+    public async Task A_stale_edit_is_a_conflict_naming_the_property_and_writes_nothing()
+    {
+        var id = await SeedAsync(new GuardedDoc { Name = "changed-at-owner", IsVisible = true });
+
+        var outcome = await _handler.ApplyEditAsync(Edit(id, "Name", "seen-on-replica", "edited-on-replica"));
+
+        outcome.Kind.Should().Be(SyncEditOutcomeKind.Conflict);
+        outcome.Reason.Should().Be(SparkConflictException.Changed);
+        outcome.Attributes.Should().BeEquivalentTo(["Name"]);
+        (await LoadAsync(id))!.Name.Should().Be("changed-at-owner");
+    }
+
+    /// <summary>An unlisted property never conflicts: the owner changed another field, this edit still applies.</summary>
+    [Fact]
+    public async Task A_change_of_an_unlisted_property_does_not_conflict()
+    {
+        var id = await SeedAsync(new GuardedDoc { Name = "same", IsVisible = true });
+        using (var session = Store.OpenAsyncSession())
+        {
+            // The owner changes the document (a new change vector) without touching Name.
+            var doc = await session.LoadAsync<GuardedDoc>(id);
+            session.Advanced.GetMetadataFor(doc)["Touched"] = "yes";
+            await session.SaveChangesAsync();
+        }
+
+        var outcome = await _handler.ApplyEditAsync(Edit(id, "Name", "same", "edited"));
+
+        outcome.Kind.Should().Be(SyncEditOutcomeKind.Applied, outcome.Reason ?? "");
+        (await LoadAsync(id))!.Name.Should().Be("edited");
+    }
+
+    /// <summary>No partial apply: one stale property refuses the whole edit.</summary>
+    [Fact]
+    public async Task One_stale_property_refuses_the_whole_edit()
+    {
+        var id = await SeedAsync(new GuardedDoc { Name = "owner-name", IsVisible = true });
+
+        var outcome = await _handler.ApplyEditAsync(new SyncEdit
+        {
+            EntityType = typeof(GuardedDoc),
+            DocumentId = id,
+            Values = new Dictionary<string, JsonElement> { ["Name"] = Json("replica-name"), ["IsVisible"] = Json(true) },
+            BaseValues = new Dictionary<string, JsonElement> { ["Name"] = Json("old-name"), ["IsVisible"] = Json(true) },
+        });
+
+        outcome.Kind.Should().Be(SyncEditOutcomeKind.Conflict);
+        outcome.Attributes.Should().BeEquivalentTo(["Name"]);
+        (await LoadAsync(id))!.Name.Should().Be("owner-name");
+    }
+
+    /// <summary>A partial edit leaves every unnamed field at its stored value.</summary>
+    [Fact]
+    public async Task A_partial_edit_leaves_unnamed_fields_at_their_stored_values()
+    {
         var id = await SeedAsync(new GuardedDoc { Name = "before-sync", IsVisible = true });
 
-        await _handler.HandleSaveAsync(
-            "GuardedDocs", id,
-            new Dictionary<string, object?> { ["Name"] = "after-sync" },
-            properties: ["Name"]);
+        var outcome = await _handler.ApplyEditAsync(Edit(id, "Name", "before-sync", "after-sync"));
 
-        using var session = Store.OpenAsyncSession();
-        var doc = await session.LoadAsync<GuardedDoc>(id);
-
-        doc.Name.Should().Be("after-sync");
-        doc.IsVisible.Should().BeTrue("a partial sync must not overwrite a field it never sent");
+        outcome.Kind.Should().Be(SyncEditOutcomeKind.Applied, outcome.Reason ?? "");
+        var doc = await LoadAsync(id);
+        doc!.Name.Should().Be("after-sync");
+        doc.IsVisible.Should().BeTrue("a partial edit must not overwrite a field it never sent");
     }
 
+    /// <summary>#467 D15: an edit of a row deleted at the owner is a conflict (deleted), never a resurrection.</summary>
     [Fact]
-    public async Task HandleSaveAsync_with_existing_documentId_updates_the_document()
-    {
-        var id = await SeedAsync(new GuardedDoc { Name = "before-sync", IsVisible = true });
-
-        var data = new Dictionary<string, object?>
-        {
-            ["Name"] = "after-sync",
-            ["IsVisible"] = true,
-        };
-
-        var resultId = await _handler.HandleSaveAsync("GuardedDocs", id, data, properties: ["Name"]);
-
-        resultId.Should().Be(id);
-
-        using var session = Store.OpenAsyncSession();
-        var loaded = await session.LoadAsync<GuardedDoc>(id);
-        loaded!.Name.Should().Be("after-sync");
-    }
-
-    // #467, D15: a replica's Update of a row this (owner) module deleted meanwhile — the ETL delete
-    // had not reached the replica yet — is refused, never recreated from the replica's stale copy.
-    [Fact]
-    public async Task HandleSaveAsync_update_of_a_row_deleted_here_is_refused_and_not_recreated()
+    public async Task An_edit_of_a_row_deleted_here_is_a_deleted_conflict_and_not_recreated()
     {
         var id = await SeedAsync(new GuardedDoc { Name = "owned", IsVisible = true });
         using (var delete = Store.OpenAsyncSession())
@@ -122,106 +146,82 @@ public class SyncActionHandlerIntegrationTests : SparkTestDriver
             await delete.SaveChangesAsync();
         }
 
-        var data = new Dictionary<string, object?> { ["Name"] = "edited-on-replica", ["IsVisible"] = true };
-        var act = () => _handler.HandleSaveAsync("GuardedDocs", id, data, properties: ["Name"], mustExist: true);
+        var outcome = await _handler.ApplyEditAsync(Edit(id, "Name", "owned", "edited-on-replica"));
 
-        await act.Should().ThrowAsync<MintPlayer.Spark.Exceptions.SparkConcurrencyException>();
-        using var session = Store.OpenAsyncSession();
-        (await session.LoadAsync<GuardedDoc>(id)).Should().BeNull("the owner's delete stands");
-    }
-
-    // An Insert under the replica's id still creates (mustExist: false).
-    [Fact]
-    public async Task HandleSaveAsync_insert_under_a_replica_id_creates()
-    {
-        const string id = "GuardedDocs/from-replica";
-        var data = new Dictionary<string, object?> { ["Name"] = "created-on-replica", ["IsVisible"] = true };
-
-        (await _handler.HandleSaveAsync("GuardedDocs", id, data, properties: null)).Should().Be(id);
-
-        using var session = Store.OpenAsyncSession();
-        (await session.LoadAsync<GuardedDoc>(id))!.Name.Should().Be("created-on-replica");
-    }
-
-    // --- Collection name resolution ------------------------------------------
-
-    [Fact]
-    public async Task HandleSaveAsync_throws_when_collection_does_not_resolve_to_any_entity_type()
-    {
-        // ResolveEntityType walks every registered EntityTypeDefinition, looks up the CLR
-        // type via cached resolution, and asks the document store's convention for the
-        // collection name. An unknown collection should surface as an InvalidOperationException
-        // rather than silently no-oping.
-        var data = new Dictionary<string, object?> { ["Name"] = "x" };
-
-        var act = () => _handler.HandleSaveAsync("DefinitelyNotARealCollectionName", null, data, null);
-
-        await act.Should().ThrowAsync<InvalidOperationException>()
-            .Where(e => e.Message.Contains("DefinitelyNotARealCollectionName"));
+        outcome.Kind.Should().Be(SyncEditOutcomeKind.Conflict);
+        outcome.Reason.Should().Be(SparkConflictException.Deleted);
+        (await LoadAsync(id)).Should().BeNull("the owner's delete stands");
     }
 
     [Fact]
-    public async Task HandleSaveAsync_collection_name_lookup_is_case_insensitive()
+    public async Task An_edit_without_a_base_for_a_value_is_refused()
     {
-        // The collection cache uses StringComparer.OrdinalIgnoreCase explicitly — pinned
-        // because the new ReflectionCache primitive is case-sensitive, so we deliberately
-        // kept the local cache for collection-name lookups.
-        var data = new Dictionary<string, object?>
+        var id = await SeedAsync(new GuardedDoc { Name = "x", IsVisible = true });
+
+        var outcome = await _handler.ApplyEditAsync(new SyncEdit
         {
-            ["Name"] = "case-test",
-            ["IsVisible"] = true,
-        };
+            EntityType = typeof(GuardedDoc),
+            DocumentId = id,
+            Values = new Dictionary<string, JsonElement> { ["Name"] = Json("y") },
+            BaseValues = new Dictionary<string, JsonElement>(),
+        });
 
-        // Lowercase variant must still resolve.
-        var generatedId = await _handler.HandleSaveAsync("guardeddocs", documentId: null, data, properties: null);
-
-        generatedId.Should().NotBeNullOrEmpty();
+        outcome.Kind.Should().Be(SyncEditOutcomeKind.Refused);
+        (await LoadAsync(id))!.Name.Should().Be("x");
     }
 
-    // --- HandleDeleteAsync ----------------------------------------------------
+    /// <summary>A row the module may not edit (the row rule) is refused as "not found", uniform with the HTTP path.</summary>
+    [Fact]
+    public async Task An_edit_of_a_row_the_row_rule_hides_is_refused_as_forbidden()
+    {
+        var id = await SeedAsync(new GuardedDoc { Name = "hidden", IsVisible = false });
+
+        var outcome = await _handler.ApplyEditAsync(Edit(id, "Name", "hidden", "edited"));
+
+        outcome.Kind.Should().Be(SyncEditOutcomeKind.Refused);
+        outcome.Refusal.Should().Be(SyncEditRefusal.Forbidden);
+        (await LoadAsync(id))!.Name.Should().Be("hidden");
+    }
 
     [Fact]
-    public async Task HandleDeleteAsync_removes_the_document_through_the_actions_pipeline()
+    public async Task A_delete_whose_bases_are_current_removes_the_document()
     {
         var id = await SeedAsync(new GuardedDoc { Name = "to-delete", IsVisible = true });
 
-        await _handler.HandleDeleteAsync("GuardedDocs", id);
+        var outcome = await _handler.ApplyDeleteAsync(new SyncDelete
+        {
+            EntityType = typeof(GuardedDoc),
+            DocumentId = id,
+            BaseValues = new Dictionary<string, JsonElement> { ["Name"] = Json("to-delete") },
+        });
 
-        using var session = Store.OpenAsyncSession();
-        var loaded = await session.LoadAsync<GuardedDoc>(id);
-        loaded.Should().BeNull();
+        outcome.Kind.Should().Be(SyncEditOutcomeKind.Applied, outcome.Reason ?? "");
+        (await LoadAsync(id)).Should().BeNull();
     }
 
     [Fact]
-    public async Task HandleDeleteAsync_throws_when_collection_is_unknown()
+    public async Task A_delete_of_a_row_changed_since_is_a_conflict()
     {
-        var act = () => _handler.HandleDeleteAsync("DefinitelyNotARealCollectionName", "docs/anything");
+        var id = await SeedAsync(new GuardedDoc { Name = "renamed-at-owner", IsVisible = true });
 
-        await act.Should().ThrowAsync<InvalidOperationException>();
+        var outcome = await _handler.ApplyDeleteAsync(new SyncDelete
+        {
+            EntityType = typeof(GuardedDoc),
+            DocumentId = id,
+            BaseValues = new Dictionary<string, JsonElement> { ["Name"] = Json("as-seen") },
+        });
+
+        outcome.Kind.Should().Be(SyncEditOutcomeKind.Conflict);
+        (await LoadAsync(id)).Should().NotBeNull();
     }
 
-    // --- Repeat-call cache stability -----------------------------------------
-
+    /// <summary>The JSON comparison treats an absent stored value as equal to a null base, and nothing else.</summary>
     [Fact]
-    public async Task Repeat_HandleSaveAsync_calls_for_the_same_collection_succeed_consistently()
+    public void Absent_and_null_compare_equal_and_values_compare_structurally()
     {
-        // The collection-name cache and the ResolveType cache (now backed by ReflectionCache)
-        // should make the second call see the cached resolution. Verify both calls succeed
-        // and produce documents of the right shape.
-        var data1 = new Dictionary<string, object?> { ["Name"] = "first", ["IsVisible"] = true };
-        var data2 = new Dictionary<string, object?> { ["Name"] = "second", ["IsVisible"] = true };
-
-        var id1 = await _handler.HandleSaveAsync("GuardedDocs", null, data1, null);
-        var id2 = await _handler.HandleSaveAsync("GuardedDocs", null, data2, null);
-
-        id1.Should().NotBeNullOrEmpty();
-        id2.Should().NotBeNullOrEmpty();
-        id1.Should().NotBe(id2);
-
-        using var session = Store.OpenAsyncSession();
-        var doc1 = await session.LoadAsync<GuardedDoc>(id1);
-        var doc2 = await session.LoadAsync<GuardedDoc>(id2);
-        doc1!.Name.Should().Be("first");
-        doc2!.Name.Should().Be("second");
+        MintPlayer.Spark.Services.SyncActionHandler.SameValue(default, Json(null)).Should().BeTrue();
+        MintPlayer.Spark.Services.SyncActionHandler.SameValue(Json(new[] { 1, 2 }), Json(new[] { 1, 2 })).Should().BeTrue();
+        MintPlayer.Spark.Services.SyncActionHandler.SameValue(Json(new[] { 1, 2 }), Json(new[] { 2, 1 })).Should().BeFalse();
+        MintPlayer.Spark.Services.SyncActionHandler.SameValue(Json("a"), Json(null)).Should().BeFalse();
     }
 }

@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+
+		<!-- NuGet Package Metadata -->
+		<PackageId>MintPlayer.Spark.ReferenceData.Sources.Slovenia</PackageId>
+		<Version>11.0.0-preview.1</Version>
+		<Authors>MintPlayer</Authors>
+		<Company>MintPlayer</Company>
+		<Description>The Slovenian reference-data adapter (docs/reference_data_PRD.md §4.4): GURS's Register of Spatial Units (statistical regions, municipalities, settlements, streets, postal areas) and Register of Addresses through the free WFS (no bulk URL exists), with Italian and Hungarian names in the bilingual areas, the Slovenian country profile, the id ledger and real sample fixtures.</Description>
+		<PackageTags>reference-data;slovenia;gurs;rpe;register-naslovov;spark</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="README.md" Pack="true" PackagePath="\" />
+		<!-- Real sample fixtures cut from real WFS responses (RS8), and the id ledger (Q-R5). -->
+		<EmbeddedResource Include="Fixtures\**\*" LogicalName="Fixtures/%(RecursiveDir)%(Filename)%(Extension)" WithCulture="false" />
+		<EmbeddedResource Include="Ledger\*.ndjson" LogicalName="Ledger/%(Filename)%(Extension)" WithCulture="false" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\..\core\MintPlayer.Spark.ReferenceData.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<InternalsVisibleTo Include="ReferenceData.Tests" />
+	</ItemGroup>
+
+</Project>

@@ -1,0 +1,164 @@
+@if (product(); as p) {
+  <article class="spark-shop-product">
+    <div class="spark-shop-product-gallery">
+      @for (image of gallery(); track image.url; let first = $first) {
+        <img [src]="image.url" [alt]="image.alt | resolveTranslation" [class.spark-shop-product-main]="first" [attr.loading]="first ? null : 'lazy'" />
+      }
+    </div>
+
+    <div class="spark-shop-product-info">
+      <h1>{{ p.name | resolveTranslation }}</h1>
+      @if (p.brand) {
+        <p class="spark-shop-product-brand">{{ p.brand }}</p>
+      }
+      @if (p.sellerName) {
+        <p class="spark-shop-product-seller">{{ text('commerceShop.product.soldBy', { seller: p.sellerName }) }}</p>
+      }
+
+      @if (p.variants.length > 1) {
+        <fieldset class="spark-shop-product-variants">
+          <legend>{{ 'commerceShop.product.variant' | t }}</legend>
+          @for (v of p.variants; track v.id) {
+            <label>
+              <input type="radio" name="spark-shop-variant" [value]="v.id" [checked]="v.id === chosen()?.id" (change)="chosenId.set(v.id)" />
+              {{ optionLabel(v) }}
+            </label>
+          }
+        </fieldset>
+      }
+
+      @if (chosen(); as v) {
+        <p class="spark-shop-product-price">
+          <strong>{{ money(v.finalPrice) }}</strong>
+          @if (v.unitPrice) {
+            <span class="spark-shop-product-unit-price">{{ unitPrice(v) }}</span>
+          }
+        </p>
+        <p class="spark-shop-product-includes">{{ 'commerceShop.product.priceIncludes' | t }}</p>
+        <p class="spark-shop-product-availability" [attr.data-availability]="v.availability">{{ availability(v) }}</p>
+
+        <div class="spark-shop-product-buy">
+          <label>
+            {{ 'commerceShop.product.quantity' | t }}
+            <input type="number" min="1" [value]="quantity()" (change)="setQuantity($any($event.target).value)" />
+          </label>
+          <button type="button" [disabled]="busy() || v.availability === 'OutOfStock'" (click)="addToBasket()">{{ 'commerceShop.product.addToBasket' | t }}</button>
+        </div>
+        @if (message(); as key) {
+          <p role="status">{{ key | t }}</p>
+        }
+        @if (refusal(); as key) {
+          <p role="alert">{{ key | t }}</p>
+        }
+      }
+
+      @if (p.minimumAge) {
+        <p class="spark-shop-product-age">{{ text('commerceShop.product.minimumAge', { age: p.minimumAge }) }}</p>
+      }
+
+      @if (p.description) {
+        <div class="spark-shop-product-description">{{ p.description | resolveTranslation }}</div>
+      }
+
+      @if (p.attributes.length > 0) {
+        <section>
+          <h2>{{ 'commerceShop.product.attributes' | t }}</h2>
+          <dl class="spark-shop-product-attributes">
+            @for (a of p.attributes; track a.name) {
+              <dt>{{ a.name }}</dt><dd>{{ a.value }}</dd>
+            }
+          </dl>
+        </section>
+      }
+
+      @if (p.kind === 'Goods') {
+        <section class="spark-shop-product-guarantee">
+          <h2>{{ 'commerceShop.guarantee.title' | t }}</h2>
+          @if (p.guaranteeNotice) {
+            <p>{{ p.guaranteeNotice | resolveTranslation }}</p>
+          } @else {
+            <p>{{ text('commerceShop.guarantee.notice', { months: p.legalGuaranteeMonths }) }}</p>
+          }
+          @if (p.durability; as d) {
+            <p>
+              {{ text('commerceShop.guarantee.durability', { months: d.months }) }}
+              @if (d.guarantor) { {{ text('commerceShop.guarantee.by', { guarantor: d.guarantor }) }} }
+            </p>
+            @if (d.terms) {
+              <p class="spark-shop-product-terms">{{ d.terms | resolveTranslation }}</p>
+            }
+          }
+        </section>
+      }
+
+      @if (p.withdrawalExemption) {
+        <p class="spark-shop-product-exempt">{{ text('commerceShop.product.withdrawalExempt', { point: p.withdrawalExemption }) }}</p>
+      }
+
+      @if (p.safety; as s) {
+        <section class="spark-shop-product-safety">
+          <h2>{{ 'commerceShop.safety.title' | t }}</h2>
+          <dl>
+            <dt>{{ 'commerceShop.safety.manufacturer' | t }}</dt>
+            <dd>
+              {{ s.manufacturerName }}
+              @if (s.manufacturerAddress) { <br />{{ s.manufacturerAddress }} }
+              @if (s.manufacturerContact) { <br />{{ s.manufacturerContact }} }
+            </dd>
+            @if (s.responsiblePersonName) {
+              <dt>{{ 'commerceShop.safety.responsiblePerson' | t }}</dt>
+              <dd>
+                {{ s.responsiblePersonName }}
+                @if (s.responsiblePersonAddress) { <br />{{ s.responsiblePersonAddress }} }
+                @if (s.responsiblePersonContact) { <br />{{ s.responsiblePersonContact }} }
+              </dd>
+            }
+            @if (s.identifier || s.gtins.length > 0) {
+              <dt>{{ 'commerceShop.safety.identifier' | t }}</dt>
+              <dd>{{ s.identifier }}@if (s.identifier && s.gtins.length > 0) {, }{{ s.gtins.join(', ') }}</dd>
+            }
+            @if (s.warnings) {
+              <dt>{{ 'commerceShop.safety.warnings' | t }}</dt>
+              <dd>{{ s.warnings | resolveTranslation }}</dd>
+            }
+          </dl>
+        </section>
+      }
+    </div>
+
+    @if (p.reviewsEnabled) {
+      <section class="spark-shop-product-reviews">
+        <h2>{{ 'commerceShop.reviews.title' | t }}</h2>
+        <p class="spark-shop-reviews-verification">{{ 'commerceShop.reviews.verification' | t }}</p>
+        @if (reviews()?.preModerated) {
+          <p class="spark-shop-reviews-verification">{{ 'commerceShop.reviews.preModerated' | t }}</p>
+        }
+        @if (reviews(); as page) {
+          @if (page.count > 0) {
+            <p>{{ text('commerceShop.reviews.count', { count: page.count, average: page.average ?? '' }) }}</p>
+            <ul class="spark-shop-reviews">
+              @for (r of page.reviews; track r.id) {
+                <li [attr.lang]="r.language">
+                  <span class="spark-shop-stars" [attr.aria-label]="r.rating + '/5'">{{ stars(r.rating) }}</span>
+                  @if (r.title) { <strong>{{ r.title }}</strong> }
+                  <p>{{ r.body }}</p>
+                  <small>
+                    {{ r.displayName }}
+                    @if (r.verified) { · {{ 'commerceShop.reviews.verified' | t }} }
+                  </small>
+                  @if (r.incentivised) {
+                    <small class="spark-shop-incentivised">{{ 'commerceShop.reviews.incentivised' | t }}</small>
+                  }
+                </li>
+              }
+            </ul>
+          } @else {
+            <p>{{ 'commerceShop.reviews.none' | t }}</p>
+          }
+        }
+      </section>
+    }
+  </article>
+} @else if (loaded()) {
+  <p role="alert">{{ 'commerceShop.product.notFound' | t }}</p>
+}

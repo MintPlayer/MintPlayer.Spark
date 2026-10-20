@@ -6,6 +6,7 @@ import {
   SparkDeletedFilter,
   QueryResultItem,
   SparkQuery,
+  SparkSaveSubmitted,
 } from '@mintplayer/ng-spark/models';
 
 /**
@@ -24,7 +25,7 @@ export interface SparkDetailContext {
   entityType: EntityType;
   /**
    * Type-level rights (`/spark/permissions/{type}`). `null` while they load — treat as "not allowed".
-   * The optional add-on flags (`canRestore`, `canViewHistory`, …) are absent on an older server.
+   * Every flag, the add-ons' (`canRestore`, `canViewHistory`, …) included, is always sent.
    */
   permissions: EntityPermissions | null;
   /**
@@ -158,6 +159,104 @@ export const SPARK_DETAIL_LAYOUTS = new InjectionToken<SparkDetailLayout[]>('Spa
 /** Registers detail layouts (multi — every call adds). */
 export function provideSparkDetailLayouts(...layouts: SparkDetailLayout[]): Provider[] {
   return layouts.map(layout => ({ provide: SPARK_DETAIL_LAYOUTS, useValue: layout, multi: true }));
+}
+
+/** What a {@link SparkDetailTitleBadge} draws: a badge after the routed detail page's title. */
+export interface SparkTitleBadgeView {
+  /** Translation key of the badge text. */
+  labelKey: string;
+  /** A bootstrap colour name (`secondary`, `warning`, `info`, …); defaults to `secondary`. */
+  color?: string;
+  /** Extra classes on the badge, for tests and styling. */
+  cssClass?: string;
+  /** A router link: the badge becomes a link (e.g. to the pending approval request). */
+  link?: unknown[];
+}
+
+/**
+ * A badge after the title of the routed detail page (commerce #521): core's "Deleted" in the recycle
+ * bin, Approvals' "Approval pending". `badge` is called whenever the page's context changes and answers
+ * `null` when it does not apply, so keep it cheap.
+ */
+export interface SparkDetailTitleBadge {
+  /** Unique name; a second registration with the same id replaces the first (`spark-deleted` is core's). */
+  id: string;
+  /** Ascending; badges without an order come last, in registration order. */
+  order?: number;
+  badge(context: SparkDetailContext): SparkTitleBadgeView | null;
+}
+
+/** Multi-provider: badges after the routed detail page's title. */
+export const SPARK_DETAIL_TITLE_BADGES = new InjectionToken<SparkDetailTitleBadge[]>('SparkDetailTitleBadges');
+
+/** Registers detail title badges (multi — every call adds). */
+export function provideSparkDetailTitleBadges(...badges: SparkDetailTitleBadge[]): Provider[] {
+  return badges.map(badge => ({ provide: SPARK_DETAIL_TITLE_BADGES, useValue: badge, multi: true }));
+}
+
+/**
+ * The badges every detail page draws without registration: "Deleted" on a row opened from the recycle bin.
+ * An app (or add-on) registering the same id replaces it.
+ */
+export const sparkCoreTitleBadges: readonly SparkDetailTitleBadge[] = [
+  {
+    id: 'spark-deleted',
+    order: 0,
+    badge: context => context.deleted === 'only'
+      ? { labelKey: 'softDelete.deleted', color: 'secondary', cssClass: 'spark-deleted-badge' }
+      : null,
+  },
+];
+
+/** The title badges that apply to `context`, core's first, each id once, in order. */
+export function sparkTitleBadgesFor(
+  registered: readonly SparkDetailTitleBadge[] | null | undefined,
+  context: SparkDetailContext | null,
+): (SparkTitleBadgeView & { id: string })[] {
+  if (!context) return [];
+  return orderSparkExtensions([...sparkCoreTitleBadges, ...(registered ?? [])], b => b.order)
+    .map(b => {
+      const view = b.badge(context);
+      return view ? { ...view, id: b.id } : null;
+    })
+    .filter((v): v is SparkTitleBadgeView & { id: string } => v !== null);
+}
+
+/**
+ * What a create or edit page does after a save the server diverted (202, commerce X7): asked in
+ * registration order; the first non-null route wins, and `null` from every handler keeps the page's own
+ * behaviour (create: back to where the New started; edit: the detail page). Approvals sends a diverted
+ * creation to its approval request, since the object itself does not exist yet (opening it would 404).
+ */
+export interface SparkSaveSubmittedContext {
+  operation: 'create' | 'update';
+  /** The entity type id or alias from the route. */
+  type: string;
+  /** The object id, for an update. */
+  id?: string;
+  submitted: SparkSaveSubmitted;
+}
+
+export type SparkSaveSubmittedHandler = (context: SparkSaveSubmittedContext) => unknown[] | null;
+
+/** Multi-provider: where to go after a diverted save. See {@link SparkSaveSubmittedContext}. */
+export const SPARK_SAVE_SUBMITTED_HANDLERS = new InjectionToken<SparkSaveSubmittedHandler[]>('SparkSaveSubmittedHandlers');
+
+/** Registers diverted-save handlers (multi — every call adds). */
+export function provideSparkSaveSubmittedHandlers(...handlers: SparkSaveSubmittedHandler[]): Provider[] {
+  return handlers.map(handler => ({ provide: SPARK_SAVE_SUBMITTED_HANDLERS, useValue: handler, multi: true }));
+}
+
+/** The route the first handler answers for `context`, or null to keep the page's own behaviour. */
+export function sparkSaveSubmittedRoute(
+  handlers: readonly SparkSaveSubmittedHandler[] | null | undefined,
+  context: SparkSaveSubmittedContext,
+): unknown[] | null {
+  for (const handler of handlers ?? []) {
+    const route = handler(context);
+    if (route) return route;
+  }
+  return null;
 }
 
 /** Multi-provider: panels under the attributes of the routed detail page. */

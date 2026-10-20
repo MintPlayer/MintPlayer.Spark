@@ -23,7 +23,7 @@ import { accountMessages } from './account-messages';
 /** A choice of what an agent may do: read or read + changes, and every exposed type or a chosen list. */
 interface GrantChoice {
   changes: boolean;
-  /** `null`: everything the application makes available to agents (including types exposed later). */
+  /** `null`: everything the application makes available to agents (including types exposed later); otherwise type ids (D28). */
   types: string[] | null;
 }
 
@@ -174,9 +174,9 @@ interface GrantChoice {
               <bs-checkbox [type]="'checkbox'" [name]="'everything'" [isToggled]="draft().types === null"
                            (isToggledChange)="setEverything($event === true)">{{ 'auth.agentEverything' | t }}</bs-checkbox>
               @if (draft().types !== null) {
-                @for (type of overview()?.types ?? []; track type.name) {
+                @for (type of overview()?.types ?? []; track type.id) {
                   <div class="ms-4 spark-agent-type" [attr.data-type]="type.name">
-                    <bs-checkbox [type]="'checkbox'" [name]="'type-' + type.name" [isToggled]="draft().types!.includes(type.name)"
+                    <bs-checkbox [type]="'checkbox'" [name]="'type-' + type.name" [isToggled]="draft().types!.includes(type.id)"
                                  (isToggledChange)="setType(type, $event === true)">{{ type.label }}</bs-checkbox>
                     @if (type.queries.length) { <small class="text-muted d-block ms-4">{{ type.queries.join(', ') }}</small> }
                   </div>
@@ -237,7 +237,7 @@ export class SparkConnectedAgentsComponent implements OnInit {
   edit(grant: SparkAgentGrant): void {
     this.creating.set(false);
     this.messages.set([]);
-    this.draft.set({ changes: sparkAgentCanWrite(grant.permissions), types: grant.types?.map(t => t.name) ?? null });
+    this.draft.set({ changes: sparkAgentCanWrite(grant.permissions), types: grant.types?.map(t => t.typeId) ?? null });
     this.editing.set(grant.key);
   }
 
@@ -261,8 +261,8 @@ export class SparkConnectedAgentsComponent implements OnInit {
 
   setType(type: SparkAgentExposedType, chosen: boolean): void {
     this.draft.update(d => {
-      const types = (d.types ?? []).filter(name => name !== type.name);
-      return { ...d, types: chosen ? [...types, type.name] : types };
+      const types = (d.types ?? []).filter(id => id !== type.id);
+      return { ...d, types: chosen ? [...types, type.id] : types };
     });
   }
 
@@ -306,8 +306,8 @@ export class SparkConnectedAgentsComponent implements OnInit {
   }
 
   protected typeLabels(types: SparkAgentGrantType[]): string {
-    const labels = new Map((this.overview()?.types ?? []).map(t => [t.name, t.label] as const));
-    return types.map(t => labels.get(t.name) ?? t.name).join(', ');
+    const labels = new Map((this.overview()?.types ?? []).map(t => [t.id, t.label] as const));
+    return types.map(t => labels.get(t.typeId) ?? t.typeId).join(', ');
   }
 
   protected date(iso: string | null): string {
@@ -329,10 +329,10 @@ export class SparkConnectedAgentsComponent implements OnInit {
   /** Each chosen type gets what the grant gets, within what the type itself allows. */
   private types(choice: GrantChoice): SparkAgentGrantType[] | null {
     if (choice.types === null) return null;
-    const exposed = new Map((this.overview()?.types ?? []).map(t => [t.name, t] as const));
-    return choice.types.map(name => ({
-      name,
-      permissions: choice.changes && sparkAgentCanWrite(exposed.get(name)?.permissions) ? 'Read, Write' : 'Read',
+    const exposed = new Map((this.overview()?.types ?? []).map(t => [t.id, t] as const));
+    return choice.types.map(typeId => ({
+      typeId,
+      permissions: choice.changes && sparkAgentCanWrite(exposed.get(typeId)?.permissions) ? 'Read, Write' : 'Read',
     }));
   }
 

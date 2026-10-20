@@ -19,7 +19,6 @@ namespace CodeCoverage.Migrations;
 /// </remarks>
 public partial class M_202610091400_BackfillRepositoryManifestScans : ISparkMigration
 {
-    public static long Version => 202610091400;
     public static string? Description => "Queue a first dependency-manifest scan for every connected repository";
 
     [Inject] private readonly IDocumentStore store;

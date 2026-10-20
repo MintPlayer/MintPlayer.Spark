@@ -1,0 +1,31 @@
+{
+  "$schema": "../../../../schemas/security.schema.json",
+  "_comment": [
+    "apps/Festival (commerce #521 M18). The festival demo has no entities of its own: every right comes from the commerce",
+    "libraries' layers. They grant their buyer and seller types to @authenticated and narrow every row through the",
+    "organizations row policy (a seller's members) or their own access rules (a buyer's orders, tickets, invoices), so the",
+    "application only binds the libraries' slots. Administrators are the platform: seller approvals, trader data, DSA",
+    "notices (Commerce), shipping staff (Shipping), moderation (Moderation, which Commerce uses for notice and action).",
+    "Nothing is granted anonymously through /spark/po or /spark/queries: the public storefront reads published events and",
+    "products through the libraries' own public endpoints."
+  ],
+  "wellKnown": {
+    "anonymous": "00000000-0000-0000-0000-000000000000",
+    "authenticated": "f3570000-0000-4000-8000-00000000000f"
+  },
+  "groups": {
+    "00000000-0000-0000-0000-000000000000": "Anonymous visitors",
+    "f3570000-0000-4000-8000-00000000000f": "Signed-in users",
+    "f3570000-0000-4000-8000-000000000001": "Administrators"
+  },
+  "bindings": {
+    "organizations:users": [ "Signed-in users" ],
+    "commerce:platform-admins": [ "Administrators" ],
+    "commerce:finance": [ "Administrators" ],
+    "commerce:notice-reviewers": [ "Administrators" ],
+    "commerce-shipping:staff": [ "Administrators" ],
+    "moderation:moderators": [ "Administrators" ],
+    "moderation:reviewers": [ "Administrators" ]
+  },
+  "rights": []
+}

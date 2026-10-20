@@ -1,5 +1,6 @@
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Services;
 
@@ -34,12 +35,7 @@ internal sealed partial class GetPermissions : IGetEndpoint
             // its half of the existence oracle the other way: an unknown type answers
             // exactly what a fully denied one answers -- every right false -- rather than
             // 404. A 401 here would break the boot path for anonymous visitors.
-            return Results.Json(new
-            {
-                canQuery = false, canRead = false, canCreate = false, canEdit = false, canDelete = false,
-                canRestore = false, canPurge = false, canViewDeleted = false, canViewHistory = false, canRevert = false,
-                canRevertContribution = false,
-            });
+            return Results.Json(EntityPermissions.None);
         }
 
         var target = entityType.Name;
@@ -68,10 +64,9 @@ internal sealed partial class GetPermissions : IGetEndpoint
         // generated contribution type; the client offers it only there.
         var canRevertContribution = await permissionService.IsAllowedAsync("RevertContribution", target);
 
-        return Results.Json(new
-        {
+        // A typed record (commerce X20): the TypeScript EntityPermissions is generated from it.
+        return Results.Json(new EntityPermissions(
             canQuery, canRead, canCreate, canEdit, canDelete,
-            canRestore, canPurge, canViewDeleted, canViewHistory, canRevert, canRevertContribution,
-        });
+            canRestore, canPurge, canViewDeleted, canViewHistory, canRevert, canRevertContribution));
     }
 }

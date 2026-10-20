@@ -1,0 +1,21 @@
+<mjml>
+  <mj-head>
+    <mj-title>Commande {{ number }} : la date a changé</mj-title>
+    <mj-attributes>
+      <mj-all font-family="Segoe UI, Helvetica, Arial, sans-serif" />
+      <mj-text font-size="15px" line-height="22px" color="#111827" />
+      <mj-button background-color="#2563eb" color="#ffffff" border-radius="6px" font-size="15px" />
+    </mj-attributes>
+  </mj-head>
+  <mj-body background-color="#f3f4f6">
+    <mj-section background-color="#ffffff" padding="24px 0">
+      <mj-column>
+        <mj-text font-size="20px" font-weight="600">{{ if buyer_name }}{{ buyer_name }}, l{{ else }}L{{ end }}'événement de la commande {{ number }} a été reporté</mj-text>
+        {{ if new_date }}<mj-text>Nouvelle date : <strong>{{ new_date }}</strong>.</mj-text>{{ end }}
+        {{ if note }}<mj-text>{{ note | html.escape }}</mj-text>{{ end }}
+        <mj-text>Vos billets restent valables pour la nouvelle date. Si vous ne pouvez pas venir, vous pouvez demander un remboursement intégral jusqu'au <strong>{{ closes_at }}</strong>.</mj-text>
+        {{ if link }}<mj-button href="{{ link }}">Garder ou rembourser</mj-button>{{ end }}
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>

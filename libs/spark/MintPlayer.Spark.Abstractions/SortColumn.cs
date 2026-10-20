@@ -1,6 +1,7 @@
 namespace MintPlayer.Spark.Abstractions;
 
 /// <summary>One column of a query's sort order.</summary>
+[SparkContract("SparkQuerySortColumn")]
 public sealed class SortColumn
 {
     /// <summary>The attribute to sort by.</summary>

@@ -1,0 +1,180 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "SparkReplicationRequest, one consumer asking to read one of this module's collections in one shape (warehouse §4.2.2,",
+    "owner decisions 2026-10-20). Shipped by MintPlayer.Spark.Replication; written only by the library (registration,",
+    "ApproveReplication, RejectReplication), so every attribute is read-only and only QueryRead plus the two decisions",
+    "are granted, to the replication:approvers slot. The ReplicationRequests query lists pending requests first;",
+    "Diff is the readable difference against the shape delivered when the request arrived. IsPending is stored for the",
+    "sort and is not an attribute.",
+    "",
+    "HAND-AUTHORED. Ids are UUIDv5 of 'replication:SparkReplicationRequest[...]', written by 'npm run stamp:library-model-ids'."
+  ],
+  "persistentObject": {
+    "id": "5063ba37-cc73-507c-8371-42564ea75663",
+    "name": "SparkReplicationRequest",
+    "clrType": "MintPlayer.Spark.Replication.Models.SparkReplicationRequest",
+    "alias": "replication-request",
+    "breadcrumb": "{ConsumerModule}: {TargetCollection}",
+    "live": true,
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "2cae3b8e-1c39-5d6e-94f6-2f76ce2c7eed",
+        "name": "ConsumerModule",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "464c0260-9167-59b0-b19a-72b606b4ae9a",
+        "name": "SourceCollection",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "5006e156-c25a-57dd-8a6c-00e714a496e3",
+        "name": "TargetCollection",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "a658d465-3e56-52d0-8e87-6f8de02e933c",
+        "name": "Status",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "3bc8bdff-91ff-598c-8eb0-33fb094838f7",
+        "name": "AutoApproved",
+        "dataType": "boolean",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "6284066c-cebb-59b3-b337-5184da403540",
+        "name": "RequestedAtUtc",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "a47bc350-0edf-565d-8074-328b930ebda8",
+        "name": "Diff",
+        "dataType": "MultiLineString",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "b5378658-ab91-5ad1-9da2-748fabdbf53b",
+        "name": "Hash",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "168506bd-aefc-5983-8339-bde2074f1749",
+        "name": "ApprovedHash",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 9,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "f74c6918-48d2-5311-be6d-57b0a2cec51a",
+        "name": "DecidedBy",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 10,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "7557ecfa-91e9-52df-a177-4a27b1a7f33a",
+        "name": "DecidedAtUtc",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 11,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "879468f7-4560-51fc-804d-9c68a0c337fe",
+        "name": "Reason",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 12,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "871b6677-aaf0-527b-8545-df361a225670",
+        "name": "Manifest",
+        "dataType": "MultiLineString",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 13,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": [
+    {
+      "id": "7fcbe877-8c50-53a7-9bac-c685f79382e6",
+      "name": "ReplicationRequests",
+      "source": "Custom.ReplicationRequests",
+      "alias": "replication-requests",
+      "renderMode": "Pagination",
+      "entityType": "SparkReplicationRequest",
+      "live": true
+    }
+  ]
+}

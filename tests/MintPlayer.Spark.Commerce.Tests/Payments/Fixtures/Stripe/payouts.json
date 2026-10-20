@@ -1,0 +1,23 @@
+{
+  "_fixture": {
+    "source": "https://docs.stripe.com/api/payouts/list (response; payout object)",
+    "derived": "list envelope with one paid payout; ids and amounts adapted",
+    "recorded": false
+  },
+  "object": "list",
+  "url": "/v1/payouts",
+  "has_more": false,
+  "data": [
+    {
+      "id": "po_1QtestPayout",
+      "object": "payout",
+      "amount": 4842,
+      "arrival_date": 1792800000,
+      "created": 1792700000,
+      "currency": "eur",
+      "statement_descriptor": "SPARK PAYOUT",
+      "status": "paid",
+      "type": "bank_account"
+    }
+  ]
+}

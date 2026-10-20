@@ -3,8 +3,8 @@ using System.Globalization;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using MintPlayer.SourceGenerators.Attributes;
-using NCrontab;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Operations.CompareExchange;
 
@@ -12,9 +12,10 @@ namespace MintPlayer.Spark.Cron;
 
 /// <summary>
 /// Hosted service that runs one loop per registered cron job. Each loop computes the next
-/// occurrence (in UTC) via NCrontab, waits for it, and runs the job — but only after winning
-/// a cluster-wide RavenDB compare-exchange claim for that occurrence, so a job fires exactly
-/// once across all nodes.
+/// occurrence via NCrontab (in UTC, or on the job's time zone's wall clock, WX14), waits for it,
+/// and runs the job — but only after winning a cluster-wide RavenDB compare-exchange claim for that
+/// occurrence, so a job fires exactly once across all nodes. Occurrences are always UTC instants, so the
+/// claim stays unambiguous across a DST fold.
 /// </summary>
 internal sealed partial class SparkCronScheduler : BackgroundService
 {
@@ -22,17 +23,12 @@ internal sealed partial class SparkCronScheduler : BackgroundService
     [Inject] private readonly IServiceProvider serviceProvider;
     [Inject] private readonly IDocumentStore documentStore;
     [Inject] private readonly ILoggerFactory loggerFactory;
+    [Inject] private readonly IOptions<SparkCronOptions>? options;
 
     private ILogger logger = null!;
 
     /// <summary>Cap on a single wait so long delays and host clock corrections are re-evaluated.</summary>
     private static readonly TimeSpan MaxSleep = TimeSpan.FromHours(1);
-
-    /// <summary>
-    /// A computed next occurrence at or beyond this point is treated as "no future occurrence"
-    /// (NCrontab returns the end sentinel for never-occurring expressions like 30 February).
-    /// </summary>
-    private static readonly DateTime NoOccurrenceThreshold = DateTime.MaxValue.AddDays(-2);
 
     /// <summary>
     /// Clock-skew tolerance for the stored claim value. A legitimate claim value can never be more
@@ -63,8 +59,11 @@ internal sealed partial class SparkCronScheduler : BackgroundService
         await Task.WhenAll(jobs.Select(j => RunJobLoopAsync(j, stoppingToken)));
     }
 
-    private async Task RunJobLoopAsync(CronJobDescriptor descriptor, CancellationToken stoppingToken)
+    private async Task RunJobLoopAsync(CronJobDescriptor registered, CancellationToken stoppingToken)
     {
+        // Spark:Cron:Jobs:{name} may move the job to another schedule or zone (validated on start).
+        var descriptor = options?.Value.Apply(registered) ?? registered;
+
         if (!CronScheduleParser.TryParse(descriptor.CronSchedule, out var schedule, out var includesSeconds))
         {
             // Unreachable via AddJob (which validates), but defends a hand-built descriptor.
@@ -73,7 +72,15 @@ internal sealed partial class SparkCronScheduler : BackgroundService
             return;
         }
 
-        var firstOccurrence = NextOccurrenceUtc(schedule, DateTime.UtcNow);
+        if (!CronScheduleParser.TryResolveTimeZone(descriptor.TimeZone, out var zone))
+        {
+            // Likewise unreachable via AddJob or validated configuration.
+            logger.LogWarning("Unknown time zone '{TimeZone}' for cron job '{Job}'; the job will not run.",
+                descriptor.TimeZone, descriptor.Name);
+            return;
+        }
+
+        var firstOccurrence = CronScheduleParser.NextOccurrenceUtc(schedule, zone, DateTime.UtcNow);
         if (firstOccurrence is null)
         {
             // Syntactically valid but never occurs (e.g. "0 0 30 2 *"). Don't enter an indefinite
@@ -85,9 +92,9 @@ internal sealed partial class SparkCronScheduler : BackgroundService
         }
 
         logger.LogInformation(
-            "Cron job '{Job}' scheduled with {Precision} expression '{Cron}'; first run at {Next:o} (UTC).",
+            "Cron job '{Job}' scheduled with {Precision} expression '{Cron}' in {TimeZone}; first run at {Next:o} (UTC).",
             descriptor.Name, includesSeconds ? "second-precision" : "minute-precision",
-            descriptor.CronSchedule, firstOccurrence.Value);
+            descriptor.CronSchedule, zone?.Id ?? "UTC", firstOccurrence.Value);
 
         // Concurrent jobs are dispatched fire-and-forget; bound their fan-out and track outstanding
         // runs so shutdown can drain them. Non-concurrent jobs never use these.
@@ -99,7 +106,7 @@ internal sealed partial class SparkCronScheduler : BackgroundService
         while (!stoppingToken.IsCancellationRequested)
         {
             var nowUtc = DateTime.UtcNow;
-            var next = NextOccurrenceUtc(schedule, nowUtc);
+            var next = CronScheduleParser.NextOccurrenceUtc(schedule, zone, nowUtc);
             if (next is null)
             {
                 logger.LogWarning("Cron job '{Job}' no longer has a future occurrence; stopping its loop.",
@@ -204,31 +211,13 @@ internal sealed partial class SparkCronScheduler : BackgroundService
         }
     }
 
-    /// <summary>Computes the next occurrence after <paramref name="fromUtc"/>, or
-    /// <see langword="null"/> if the expression has no future occurrence.</summary>
-    private static DateTime? NextOccurrenceUtc(CrontabSchedule schedule, DateTime fromUtc)
-    {
-        DateTime next;
-        try
-        {
-            next = schedule.GetNextOccurrence(fromUtc);
-        }
-        catch
-        {
-            return null;
-        }
-
-        // NCrontab returns its end sentinel (≈ DateTime.MaxValue) when no occurrence exists.
-        if (next >= NoOccurrenceThreshold)
-            return null;
-
-        return DateTime.SpecifyKind(next, DateTimeKind.Utc);
-    }
-
     /// <summary>
     /// Claims a single occurrence cluster-wide using one compare-exchange key per job. The key's
     /// value is the latest claimed occurrence (ISO-8601 UTC, which sorts lexically), so this both
-    /// dedups the current occurrence and rejects stale ones. The stored value is treated as
+    /// dedups the current occurrence and rejects stale ones. For a zone schedule the occurrence is
+    /// still the UTC instant (<see cref="CronScheduleParser.NextOccurrenceUtc"/>), never the local wall
+    /// clock, so the two passes of a DST fold can never share or swap a key, and wall clocks a gap
+    /// collapses into one instant are one claim. The stored value is treated as
     /// untrusted: an unparseable or implausibly-far-future value (e.g. a poisoned <c>cron/{job}</c>
     /// key that would otherwise suppress the job forever) is logged and reclaimed instead of being
     /// honored. Returns <see langword="true"/> only for the node that wins the atomic compare-and-swap.

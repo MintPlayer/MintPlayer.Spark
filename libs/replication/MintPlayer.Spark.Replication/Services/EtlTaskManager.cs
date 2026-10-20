@@ -1,128 +1,171 @@
 using MintPlayer.SourceGenerators.Attributes;
-using MintPlayer.Spark.Replication.Abstractions.Models;
+using MintPlayer.Spark.Abstractions.Licensing;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Operations.ConnectionStrings;
 using Raven.Client.Documents.Operations.ETL;
 using Raven.Client.Documents.Operations.OngoingTasks;
+using Raven.Client.Exceptions.Commercial;
 
 namespace MintPlayer.Spark.Replication.Services;
 
+/// <summary>One ETL transform: an approved replica subscription.</summary>
+/// <param name="Name">The transform name, unique within the task.</param>
+/// <param name="SourceCollection">The owner's collection it reads.</param>
+/// <param name="Script">The approved manifest rendered by this module (<c>ReplicaScriptRenderer.RenderEtlScript</c>).</param>
+internal sealed record EtlTransformScript(string Name, string SourceCollection, string Script);
+
 /// <summary>
-/// Creates, updates, and removes RavenDB ETL tasks to replicate data to requesting modules.
+/// What the owner deploys for one consumer. Every part of it is the owner's own: the destination from the
+/// consumer's registry entry (F19), the transforms from the owner's contracts (F16).
 /// </summary>
-internal partial class EtlTaskManager
+internal sealed record EtlDeployment(
+    string RequestingModule,
+    string TargetDatabase,
+    string[] TargetUrls,
+    IReadOnlyList<EtlTransformScript> Transforms)
+{
+    /// <summary>
+    /// Transforms to reset after an update (their row scope changed, warehouse §4.2.3 "Row filter"): RavenDB then
+    /// reprocesses the source collection, loading rows that entered the scope and removing rows that left it.
+    /// </summary>
+    public IReadOnlyCollection<string> ResetTransforms { get; init; } = [];
+}
+
+/// <summary>How an ETL task change ended.</summary>
+internal sealed record EtlTaskResult(bool Success, string? Error = null, int Created = 0, int Updated = 0, int Removed = 0)
+{
+    /// <summary><see cref="Error"/> when the licence has no ETL (Community, F18).</summary>
+    public const string NotLicensedError = "ETL_NOT_LICENSED";
+}
+
+internal interface IEtlTaskManager
+{
+    /// <summary>Creates or updates the consumer's ETL task: one per consumer per owner. Idempotent.</summary>
+    Task<EtlTaskResult> DeployAsync(EtlDeployment deployment, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Removes the consumer's ETL task and its connection string, when there is one (F18: a withdrawn subscription or a
+    /// revoked grant must stop the data flow). Idempotent; a licence without ETL has nothing to remove.
+    /// </summary>
+    Task<EtlTaskResult> RemoveAsync(string consumerModule, CancellationToken cancellationToken = default);
+}
+
+/// <summary>Creates, updates and removes the RavenDB ETL tasks that deliver contracts to consumers.</summary>
+internal partial class EtlTaskManager : IEtlTaskManager
 {
     [Inject] private readonly IDocumentStore documentStore;
     [Inject] private readonly ILogger<EtlTaskManager> logger;
+    [Inject] private readonly ISparkLicenseCapabilities licence;
 
-    /// <summary>
-    /// Deploys ETL scripts by creating/updating RavenDB ETL tasks.
-    /// This operation is idempotent.
-    /// </summary>
-    public Task<EtlDeploymentResult> DeployAsync(EtlScriptRequest request)
+    internal static string TaskName(string module) => $"spark-etl-{module}";
+
+    public async Task<EtlTaskResult> DeployAsync(EtlDeployment deployment, CancellationToken cancellationToken = default)
     {
-        var result = new EtlDeploymentResult { Success = true };
-        var connectionStringName = $"spark-etl-{request.RequestingModule}";
-        var taskName = $"spark-etl-{request.RequestingModule}";
+        var name = TaskName(deployment.RequestingModule);
 
         try
         {
-            // Refuse to create an ETL task whose source and target are the same database —
-            // that would cause an infinite write loop (every applied transform re-triggers
-            // the source). Only the requesting module is supposed to invoke this, on the
-            // source module's store; if the two collapse to the same DB, the message bus
-            // routed the deployment to the wrong recipient (e.g. stale moduleInformations
-            // URL pointing back at the requester).
-            if (string.Equals(request.TargetDatabase, documentStore.Database, StringComparison.OrdinalIgnoreCase))
+            // Source and target the same database would loop for ever (each load re-triggers the source). The target is
+            // the consumer's registry entry, so the two meet only when that entry names this module's own database.
+            if (string.Equals(deployment.TargetDatabase, documentStore.Database, StringComparison.OrdinalIgnoreCase))
             {
-                // Known, expected failure — return it directly so callers can
-                // distinguish self-loop config errors from generic ETL_DEPLOY_FAILED
-                // failures that the R2-L6 catch returns. We keep the human-readable
-                // string here because the caller is a trusted module (per R2-C1
-                // mTLS gate); only fully-generic ex.Message round-trips were the leak.
                 logger.LogWarning("Refusing self-loop ETL deployment for module '{Module}' (target db = local db '{Db}')",
-                    request.RequestingModule, documentStore.Database);
-                return Task.FromResult(new EtlDeploymentResult
+                    deployment.RequestingModule, documentStore.Database);
+                return new EtlTaskResult(false, $"self-loop refused: source and target are both '{documentStore.Database}'");
+            }
+
+            // F18: no ETL in the licence is said as such, not as a generic failure retried for ever.
+            if ((await licence.GetAsync(cancellationToken))?.HasRavenEtl == false)
+                return NotLicensed(deployment.RequestingModule);
+
+            documentStore.Maintenance.Send(new PutConnectionStringOperation<RavenConnectionString>(new RavenConnectionString
+            {
+                Name = name,
+                Database = deployment.TargetDatabase,
+                TopologyDiscoveryUrls = deployment.TargetUrls,
+            }));
+
+            var configuration = new RavenEtlConfiguration
+            {
+                ConnectionStringName = name,
+                Name = name,
+                Transforms = deployment.Transforms.Select(transform => new Transformation
                 {
-                    Success = false,
-                    Error = $"self-loop refused: source and target are both '{documentStore.Database}'",
-                });
-            }
-
-            // Step 1: Create/update connection string to the requesting module's database
-            var connectionString = new RavenConnectionString
-            {
-                Name = connectionStringName,
-                Database = request.TargetDatabase,
-                TopologyDiscoveryUrls = request.TargetUrls,
+                    Name = transform.Name,
+                    Collections = { transform.SourceCollection },
+                    Script = transform.Script,
+                }).ToList(),
             };
 
-            documentStore.Maintenance.Send(new PutConnectionStringOperation<RavenConnectionString>(connectionString));
-            logger.LogDebug("Connection string '{ConnectionStringName}' created/updated for database '{Database}'",
-                connectionStringName, request.TargetDatabase);
-
-            // Step 2: Build the ETL configuration with transformations
-            var transforms = request.Scripts.Select(script => new Transformation
+            if (FindExistingEtlTaskId(name) is { } existing)
             {
-                Name = script.SourceCollection,
-                Collections = { script.SourceCollection },
-                Script = script.Script,
-            }).ToList();
-
-            var etlConfig = new RavenEtlConfiguration
-            {
-                ConnectionStringName = connectionStringName,
-                Name = taskName,
-                Transforms = transforms,
-            };
-
-            // Step 3: Try to find an existing ETL task by name and update it, or create new
-            var existingTaskId = FindExistingEtlTaskId(taskName);
-
-            if (existingTaskId.HasValue)
-            {
-                documentStore.Maintenance.Send(
-                    new UpdateEtlOperation<RavenConnectionString>(existingTaskId.Value, etlConfig));
-                result.TasksUpdated = 1;
-                logger.LogInformation("Updated ETL task '{TaskName}' with {ScriptCount} transformation(s) for module '{Module}'",
-                    taskName, transforms.Count, request.RequestingModule);
+                documentStore.Maintenance.Send(new UpdateEtlOperation<RavenConnectionString>(existing, configuration));
+                foreach (var transform in deployment.ResetTransforms.Where(r => configuration.Transforms.Any(t => t.Name == r)))
+                    documentStore.Maintenance.Send(new ResetEtlOperation(name, transform));
+                logger.LogInformation("Updated ETL task '{TaskName}' with {Count} transformation(s) for module '{Module}'",
+                    name, configuration.Transforms.Count, deployment.RequestingModule);
+                return new EtlTaskResult(true, Updated: 1);
             }
-            else
-            {
-                documentStore.Maintenance.Send(new AddEtlOperation<RavenConnectionString>(etlConfig));
-                result.TasksCreated = 1;
-                logger.LogInformation("Created ETL task '{TaskName}' with {ScriptCount} transformation(s) for module '{Module}'",
-                    taskName, transforms.Count, request.RequestingModule);
-            }
+
+            documentStore.Maintenance.Send(new AddEtlOperation<RavenConnectionString>(configuration));
+            logger.LogInformation("Created ETL task '{TaskName}' with {Count} transformation(s) for module '{Module}'",
+                name, configuration.Transforms.Count, deployment.RequestingModule);
+            return new EtlTaskResult(true, Created: 1);
+        }
+        catch (LicenseLimitException ex)
+        {
+            logger.LogError(ex, "ETL deployment for module '{Module}' refused by the RavenDB licence", deployment.RequestingModule);
+            return NotLicensed(deployment.RequestingModule);
         }
         catch (Exception ex)
         {
-            // R2-L6: log full exception server-side; surface a generic message
-            // to the caller. RavenDB maintenance exceptions often contain
-            // connection-string detail useful for recon.
-            logger.LogError(ex, "Failed to deploy ETL scripts for module '{Module}'", request.RequestingModule);
-            result.Success = false;
-            result.Error = "ETL_DEPLOY_FAILED";
+            // R2-L6: the full exception stays in the log; maintenance exceptions carry connection-string detail.
+            logger.LogError(ex, "Failed to deploy ETL transforms for module '{Module}'", deployment.RequestingModule);
+            return new EtlTaskResult(false, "ETL_DEPLOY_FAILED");
         }
+    }
 
-        return Task.FromResult(result);
+    public async Task<EtlTaskResult> RemoveAsync(string consumerModule, CancellationToken cancellationToken = default)
+    {
+        var name = TaskName(consumerModule);
+        try
+        {
+            if ((await licence.GetAsync(cancellationToken))?.HasRavenEtl == false)
+                return new EtlTaskResult(true);
+
+            var removed = 0;
+            if (FindExistingEtlTaskId(name) is { } existing)
+            {
+                documentStore.Maintenance.Send(new DeleteOngoingTaskOperation(existing, OngoingTaskType.RavenEtl));
+                removed = 1;
+                logger.LogInformation("Removed ETL task '{TaskName}' (module '{Module}' no longer subscribed)", name, consumerModule);
+            }
+
+            var strings = documentStore.Maintenance.Send(new GetConnectionStringsOperation(name, ConnectionStringType.Raven));
+            if (strings?.RavenConnectionStrings?.ContainsKey(name) == true)
+                documentStore.Maintenance.Send(new RemoveConnectionStringOperation<RavenConnectionString>(strings.RavenConnectionStrings[name]));
+
+            return new EtlTaskResult(true, Removed: removed);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to remove the ETL task for module '{Module}'", consumerModule);
+            return new EtlTaskResult(false, "ETL_REMOVE_FAILED");
+        }
+    }
+
+    private EtlTaskResult NotLicensed(string module)
+    {
+        logger.LogError(
+            "ETL deployment for module '{Module}' refused: this RavenDB licence has no ETL (Community). " +
+            "Set Spark:Replication:Transport to 'Http' or 'Auto', or use a licence with RavenDB ETL.", module);
+        return new EtlTaskResult(false, EtlTaskResult.NotLicensedError);
     }
 
     /// <summary>
-    /// Finds an existing RavenDB ETL task by name and returns its task ID, or <c>null</c> when
-    /// there is none.
-    /// <para>
-    /// A missing task comes back as a <c>null</c> result, not an exception, so nothing here is
-    /// caught. It used to swallow every exception as "task doesn't exist": a transient failure on
-    /// this one request then sent an add for a task that already existed, and the deployment
-    /// failed on the duplicate — logging the duplicate, not the fault that caused it. A failure
-    /// now reaches the caller's catch, which reports it as what it is.
-    /// </para>
+    /// The task id of the ETL task named <paramref name="taskName"/>, or <c>null</c>. A missing task is a <c>null</c>
+    /// result, not an exception, so nothing is caught here: a transient failure must not read as "no task".
     /// </summary>
     private long? FindExistingEtlTaskId(string taskName)
-    {
-        var result = documentStore.Maintenance.Send(
-            new GetOngoingTaskInfoOperation(taskName, OngoingTaskType.RavenEtl));
-        return result?.TaskId;
-    }
+        => documentStore.Maintenance.Send(new GetOngoingTaskInfoOperation(taskName, OngoingTaskType.RavenEtl))?.TaskId;
 }

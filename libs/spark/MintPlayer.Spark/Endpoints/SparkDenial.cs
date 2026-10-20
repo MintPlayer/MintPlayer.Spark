@@ -64,6 +64,9 @@ public static class SparkDenial
     /// </remarks>
     public const string NotFoundMessage = "Not found";
 
+    /// <summary>The message of the uniform 401 an anonymous caller gets.</summary>
+    public const string AuthenticationRequiredMessage = "Authentication required";
+
     /// <summary>
     /// What an access endpoint returns when it will not serve the request — because the caller
     /// is denied, because the entity type or query does not exist, or because the row does not.
@@ -72,9 +75,9 @@ public static class SparkDenial
     public static (object Body, int StatusCode) Refuse(HttpContext httpContext)
     {
         if (httpContext.User.Identity?.IsAuthenticated == true || !AuthenticatingWouldHelp(httpContext))
-            return (new { error = NotFoundMessage }, StatusCodes.Status404NotFound);
+            return (new Abstractions.SparkErrorResponse(NotFoundMessage), StatusCodes.Status404NotFound);
 
-        return (new { error = "Authentication required" }, StatusCodes.Status401Unauthorized);
+        return (new Abstractions.SparkErrorResponse(AuthenticationRequiredMessage), StatusCodes.Status401Unauthorized);
     }
 
     /// <summary>
@@ -128,6 +131,7 @@ public static class SparkDenial
         var (body, status) = Refuse(httpContext);
         return status == StatusCodes.Status401Unauthorized
             ? Results.Json(body, statusCode: status)
-            : Results.Json(new { error }, statusCode: StatusCodes.Status404NotFound);
+            // A null message is written as "error":null, as the anonymous object did.
+            : Results.Json(new Abstractions.SparkErrorResponse(error!), statusCode: StatusCodes.Status404NotFound);
     }
 }

@@ -185,6 +185,8 @@ public static class SparkSchemaGenerator
                     obj["properties"] = properties;
                 }
                 properties["$schema"] = SchemaProperty();
+                if (type == typeof(EntityTypeFile))
+                    properties["$extends"] = ExtendsProperty();
                 obj["patternProperties"] ??= new JsonObject { [CommentPattern] = new JsonObject() };
             }
         }
@@ -239,6 +241,14 @@ public static class SparkSchemaGenerator
     {
         ["type"] = "string",
         ["description"] = "The JSON schema this file is validated against; editors read it for completion and hover help.",
+    };
+
+    /// <summary>The model file's <c>$extends</c> directive (D28): the anchor of a delta on a library type.</summary>
+    private static JsonObject ExtendsProperty() => new()
+    {
+        ["type"] = "string",
+        ["pattern"] = "^[^:]+:[^:]+$",
+        ["description"] = "Makes this file a delta on a type a library ships: \"alias:DeclaredName\", the library's alias and the name it declares the type under (e.g. \"authorization:SparkUser\"). The file then states only what differs, never an id. Without it, a file naming a library type is refused (F7).",
     };
 
     /// <summary>The model elements whose <c>id</c> a delta on a library type leaves out.</summary>
@@ -376,8 +386,8 @@ public static class SparkSchemaGenerator
                     ["type"] = "object",
                     ["minProperties"] = 1,
                     ["anyOf"] = new JsonArray(
-                        Branch(new JsonObject { ["type"] = "string", ["description"] = "The text in this language (a code from culture.json)." },
-                            "A leaf: language code → text. A language missing here falls back to the first one."),
+                        Branch(new JsonObject { ["type"] = "string", ["description"] = "The text in this language (an RFC 5646 tag, normally one from culture.json)." },
+                            "A leaf: RFC 5646 language tag (en, nl-BE, zh-Hant) → text. A language missing here falls back through its RFC 4647 lookup chain (nl-BE → nl), then en, then the first text."),
                         Branch(NodeOrRemoval(), "A namespace: name → a nested namespace or leaf.")),
                 },
             },
@@ -393,7 +403,7 @@ public static class SparkSchemaGenerator
 /// </remarks>
 public sealed class CultureFile
 {
-    /// <summary>The language codes, e.g. <c>["en", "fr", "nl"]</c>. Each name is the translations.json key <c>culture.languages.{code}</c>.</summary>
+    /// <summary>The language codes, RFC 5646 tags, e.g. <c>["en", "fr", "nl"]</c> or <c>"zh-Hant"</c>. Each name is the translations.json key <c>culture.languages.{code}</c>.</summary>
     public string[]? Languages { get; set; }
 
     /// <summary>The language used when the user has not chosen one; one of <c>languages</c>.</summary>

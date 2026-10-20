@@ -1,0 +1,86 @@
+@if (needsDelivery()) {
+  <section class="spark-shop-delivery">
+    <h2>{{ 'commerceShop.delivery.title' | t }}</h2>
+
+    <fieldset class="spark-shop-delivery-address">
+      <legend>{{ 'commerceShop.delivery.address' | t }}</legend>
+      @if (saved().length > 0) {
+        <label>{{ 'commerceShop.addressBook.useSaved' | t }}
+          <select (change)="useSaved($any($event.target).value)">
+            <option value="">{{ 'commerceShop.addressBook.choose' | t }}</option>
+            @for (entry of saved(); track entry.entryId) {
+              <option [value]="entry.entryId">{{ entry.label || (entry.address.street + ' ' + (entry.address.houseNumber ?? '') + ', ' + entry.address.city) }}</option>
+            }
+          </select>
+        </label>
+      }
+      <label>{{ 'commerceShop.delivery.name' | t }}
+        <input autocomplete="name" required [value]="address().name" (input)="set('name', $any($event.target).value)" /></label>
+      <label>{{ 'commerceShop.delivery.street' | t }}
+        <input autocomplete="address-line1" required [value]="address().street" (input)="set('street', $any($event.target).value)" /></label>
+      <label>{{ 'commerceShop.delivery.houseNumber' | t }}
+        <input [value]="address().houseNumber ?? ''" (input)="set('houseNumber', $any($event.target).value)" /></label>
+      <label>{{ 'commerceShop.delivery.postalCode' | t }}
+        <input autocomplete="postal-code" required [value]="address().postalCode" (input)="set('postalCode', $any($event.target).value)" /></label>
+      <label>{{ 'commerceShop.delivery.city' | t }}
+        <input autocomplete="address-level2" required [value]="address().city" (input)="set('city', $any($event.target).value)" /></label>
+      <label>{{ 'commerceShop.delivery.country' | t }}
+        <input autocomplete="country" maxlength="2" required [value]="address().country" (input)="set('country', $any($event.target).value)" /></label>
+      <label>{{ 'commerceShop.delivery.email' | t }}
+        <input type="email" autocomplete="email" [value]="address().email ?? ''" (input)="set('email', $any($event.target).value)" /></label>
+      <button type="button" [disabled]="busy()" (click)="showRates()">{{ 'commerceShop.delivery.showRates' | t }}</button>
+    </fieldset>
+
+    @if (rates(); as list) {
+      @if (list.length === 0) {
+        <p role="alert">{{ 'commerceShop.delivery.none' | t }}</p>
+      } @else {
+        <fieldset class="spark-shop-delivery-rates">
+          <legend>{{ 'commerceShop.delivery.title' | t }}</legend>
+          @for (r of list; track r.method) {
+            <label class="spark-shop-delivery-rate">
+              <input type="radio" name="spark-shop-delivery-method" [value]="r.method" [checked]="r.method === method()" (change)="selectMethod(r.method)" />
+              <span class="spark-shop-delivery-method">{{ methodLabel(r.method) }}</span>
+              <strong>{{ price(r) }}</strong>
+              @if (r.freeFrom && !r.free) {
+                <small>{{ text('commerceShop.delivery.freeFrom', 'amount', money(r.freeFrom)) }}</small>
+              }
+              @if (r.promisedBy) {
+                <small>{{ text('commerceShop.delivery.promise', 'date', r.promisedBy) }}</small>
+              }
+              @if (r.customs !== 'None' && r.incoterm) {
+                <small>{{ text('commerceShop.delivery.customs', 'incoterm', ('commerceShop.delivery.incoterm.' + r.incoterm) | t) }}</small>
+              }
+              @if (r.pickupLocation) {
+                <small>{{ r.pickupLocation }}</small>
+              }
+            </label>
+          }
+        </fieldset>
+
+        @if (rate()?.servicePoint) {
+          <spark-service-point-picker
+            [country]="address().country"
+            [postalCode]="address().postalCode"
+            [carrier]="rate()?.carrier ?? ''"
+            [street]="address().street"
+            [houseNumber]="address().houseNumber ?? ''"
+            [selected]="point()"
+            (selectedChange)="point.set($event)" />
+        }
+
+        <button type="button" [disabled]="busy() || !canChoose()" (click)="choose()">{{ 'commerceShop.delivery.choose' | t }}</button>
+      }
+    }
+
+    @if (choice(); as c) {
+      <p role="status" class="spark-shop-delivery-chosen">
+        {{ text('commerceShop.delivery.chosen', 'method', methodLabel(c.method)) }}
+        @if (c.servicePointName) { · {{ c.servicePointName }} }
+      </p>
+    }
+    @if (refusal(); as key) {
+      <p role="alert">{{ key | t }}</p>
+    }
+  </section>
+}

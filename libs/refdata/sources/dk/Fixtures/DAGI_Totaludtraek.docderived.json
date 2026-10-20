@@ -1,0 +1,12 @@
+{
+  "RegionsinddelingList": [
+    { "id_lokalId": "3c1a4b8e-0001-4c6e-9b3e-1084aaaaaaaa", "regionskode": "1084", "navn": "Region Hovedstaden", "status": "3", "virkningFra": "2007-01-01T00:00:00.000000+01:00", "virkningTil": null, "registreringFra": "2018-06-01T09:00:00.000000+02:00", "registreringTil": null },
+    { "id_lokalId": "3c1a4b8e-0001-4c6e-9b3e-1083aaaaaaaa", "regionskode": "1083", "navn": "Region Syddanmark", "status": "3", "virkningFra": "2007-01-01T00:00:00.000000+01:00", "virkningTil": null, "registreringFra": "2018-06-01T09:00:00.000000+02:00", "registreringTil": null }
+  ],
+  "KommuneinddelingList": [
+    { "id_lokalId": "5e2b7d10-0002-4d5f-8a21-0101aaaaaaaa", "kommunekode": "0101", "navn": "København", "regionskode": "1084", "status": "3", "virkningFra": "2007-01-01T00:00:00.000000+01:00", "virkningTil": null, "registreringFra": "2018-06-01T09:00:00.000000+02:00", "registreringTil": null },
+    { "id_lokalId": "5e2b7d10-0002-4d5f-8a21-0147aaaaaaaa", "kommunekode": "0147", "navn": "Frederiksberg", "regionskode": "1084", "status": "3", "virkningFra": "2007-01-01T00:00:00.000000+01:00", "virkningTil": null, "registreringFra": "2018-06-01T09:00:00.000000+02:00", "registreringTil": null },
+    { "id_lokalId": "5e2b7d10-0002-4d5f-8a21-0461aaaaaaaa", "kommunekode": "0461", "navn": "Odense", "regionskode": "1083", "status": "3", "virkningFra": "2007-01-01T00:00:00.000000+01:00", "virkningTil": null, "registreringFra": "2018-06-01T09:00:00.000000+02:00", "registreringTil": null },
+    { "id_lokalId": "5e2b7d10-0002-4d5f-8a21-0461aaaaaaaa", "kommunekode": "0461", "navn": "Odense Kommune", "regionskode": "1083", "status": "3", "virkningFra": "2007-01-01T00:00:00.000000+01:00", "virkningTil": null, "registreringFra": "2016-01-01T09:00:00.000000+01:00", "registreringTil": "2018-06-01T09:00:00.000000+02:00" }
+  ]
+}

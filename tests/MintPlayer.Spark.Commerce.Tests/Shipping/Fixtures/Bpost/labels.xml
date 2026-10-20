@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- SDK-derived, not official: the label response of Antidot-be/bpost-api-library (tests/Bpost/LabelsTest.php),
+     bytes replaced by a short base64 PDF. One label holds both boxes' barcodes (one PDF for the order). Not recorded. -->
+<labels xmlns="http://schema.post.be/shm/deepintegration/v3/" xmlns:ns2="http://schema.post.be/shm/deepintegration/v3/common" xmlns:ns3="http://schema.post.be/shm/deepintegration/v3/national" xmlns:ns4="http://schema.post.be/shm/deepintegration/v3/international">
+  <label>
+    <barcodeWithReference>
+      <barcode>323299901059912015292030</barcode>
+      <reference>test_barcode_with_reference</reference>
+    </barcodeWithReference>
+    <barcodeWithReference>
+      <barcode>323299901059912015293050</barcode>
+      <reference>test_barcode_with_reference</reference>
+    </barcodeWithReference>
+    <mimeType>application/pdf</mimeType>
+    <bytes>JVBERi0xLjMKJSVFT0YK</bytes>
+  </label>
+</labels>

@@ -1,0 +1,219 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "TicketEvent (docs/commerce_PRD.md §4.11, D17): an organization-owned, publishable event (X8). Its dates, ticket types",
+    "and sale phases are their own types. Publishing (IsPublished) needs the organization's Publish role (Admin) and is",
+    "refused while the event cannot sell; it provisions every date (TicketEventInterceptor). Policy holds the per-sale",
+    "values within the channel's bounds (D2).",
+    "",
+    "HAND-AUTHORED. Ids are UUIDv5 of 'ticketing-events:TicketEvent[...]', written by 'npm run stamp:library-model-ids'."
+  ],
+  "persistentObject": {
+    "id": "176b9e9c-01b7-5112-a15f-85795cf847e0",
+    "name": "TicketEvent",
+    "clrType": "MintPlayer.Spark.Commerce.Ticketing.Events.Models.TicketEvent",
+    "alias": "ticketevent",
+    "breadcrumb": "{Name}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "f9eef8a7-003e-5190-a5a0-73536b26d30d",
+        "name": "Name",
+        "dataType": "TranslatedString",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "8ed88b42-1904-5043-9f6f-47b0a8946016",
+        "name": "Slug",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "bbbf2eeb-b636-530e-85b1-74e42b3a53e5",
+        "name": "OrganizationId",
+        "dataType": "Reference",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 3,
+        "query": "GetOrganizations",
+        "referenceType": "MintPlayer.Spark.Organizations.Models.Organization",
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "f3ca7307-479a-5935-97a5-923488b4fc36",
+        "name": "Channel",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "e1489c23-c9b3-588a-b5fd-4b99b6fc96cf",
+        "name": "Status",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "lookupReferenceType": "TicketEventStatus"
+      },
+      {
+        "id": "04886010-0b35-5480-8ffd-dad99d0d6f7b",
+        "name": "IsPublished",
+        "dataType": "boolean",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "5e4bbed9-84f9-52d8-a74a-3cbe6022da0c",
+        "name": "Description",
+        "dataType": "TranslatedString",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "898adfe7-a6a6-5805-951c-b34d5e85de4d",
+        "name": "ImageUrl",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "d1d91004-3e09-51b5-b440-363087049558",
+        "name": "MinimumAge",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 9,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "9adef22e-7d86-572c-b296-e2e992782f07",
+        "name": "Performers",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 10,
+        "isArray": true,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "deb1e0d7-6a9c-5978-aa75-6199eaa885e2",
+        "name": "Policy",
+        "dataType": "AsDetail",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 11,
+        "asDetailType": "MintPlayer.Spark.Commerce.Ticketing.Events.Models.TicketSalePolicy",
+        "isArray": false,
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "2a1761a0-02d1-5510-85ec-94584fecf31a",
+        "name": "AnswerRetentionDays",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 12,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "0fc821b1-85f7-5a4b-aff2-c8604b7fe610",
+        "name": "AnswerDeadlineHours",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 13,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "7a5f76fc-ec16-507e-815b-d2c8886ae840",
+        "name": "PublishedAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 14,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "b199b0ce-5644-5219-a5d6-2840b5c12003",
+        "name": "CreatedAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 15,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "36bf872d-ff44-54eb-ae04-de139217b783",
+        "name": "UpdatedAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 16,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ]
+  },
+  "queries": [
+    {
+      "id": "77c2ab2e-b0bd-5830-b6e0-f39ad23a929c",
+      "name": "TicketEvents",
+      "source": "Custom.TicketEvents",
+      "alias": "ticketevents",
+      "sortColumns": [
+        {
+          "property": "UpdatedAt",
+          "direction": "desc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "TicketEvent"
+    }
+  ]
+}

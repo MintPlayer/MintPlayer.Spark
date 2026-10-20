@@ -205,7 +205,15 @@ public class MaterializeInterceptorTests : SparkTestDriver
         using (var scope = host.Factory.CreateScope())
         {
             var handler = scope.ServiceProvider.GetRequiredService<ISyncActionHandler>();
-            await handler.HandleSaveAsync("MzSongs", SongId, new Dictionary<string, object?> { ["Title"] = "synced" }, properties: null);
+            // A write-back carries only its changed properties (warehouse §4.2.5), never the satellite.
+            var outcome = await handler.ApplyEditAsync(new SyncEdit
+            {
+                EntityType = typeof(MzSong),
+                DocumentId = SongId,
+                Values = new Dictionary<string, JsonElement> { ["Title"] = JsonSerializer.SerializeToElement("synced") },
+                BaseValues = new Dictionary<string, JsonElement> { ["Title"] = JsonSerializer.SerializeToElement("v1") },
+            });
+            outcome.Kind.Should().Be(SyncEditOutcomeKind.Applied, outcome.Reason ?? "");
         }
 
         using (var session = Store.OpenAsyncSession())

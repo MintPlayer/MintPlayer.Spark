@@ -1,0 +1,9 @@
+:host {
+  display: inline;
+}
+
+// The second rendering reads as an aside, and stays on one line with its label.
+.spark-date-time-hint {
+  opacity: 0.75;
+  white-space: nowrap;
+}

@@ -73,7 +73,8 @@ public class OidcOperationsTests(OidcSharedHost host) : OidcTestHost(host), ICla
         corsOrigins: new OidcCorsOrigins(),
         accessControl: Substitute.For<MintPlayer.Spark.Abstractions.Authorization.IAccessControl>(),
         options: new SparkIdentityProviderOptions(),
-        audit: new OidcAudit(new SparkIdentityProviderOptions()));
+        audit: new OidcAudit(new SparkIdentityProviderOptions()),
+        approvals: Substitute.For<MintPlayer.Spark.Approvals.ISparkApprovals>());
 
     private async Task<OidcGrant?> GrantAsync(Issued issued)
     {

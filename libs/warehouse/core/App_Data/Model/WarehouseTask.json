@@ -1,0 +1,186 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "The task envelope (PRD §4.5): one collection for every kind; leases; op ids.",
+    "",
+    "HAND-AUTHORED. Ids are UUIDv5 of 'warehouse:WarehouseTask[...]', written by 'npm run stamp:library-model-ids'."
+  ],
+  "persistentObject": {
+    "id": "9e149546-a4c7-526b-98c9-3ed2b5995aeb",
+    "name": "WarehouseTask",
+    "clrType": "MintPlayer.Spark.Warehouse.Models.WarehouseTask",
+    "alias": "warehouse-task",
+    "breadcrumb": "{Kind} {LocationId}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "4ba49be6-496f-5553-aa2f-c53c02cc6b75",
+        "name": "Kind",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "6e312cb4-e614-58bf-b71e-ac11501ccb72",
+        "name": "State",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "43913ab9-4988-5549-8bea-a9c92d9d7ee2",
+        "name": "SiteId",
+        "dataType": "Reference",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "query": "WarehouseSites",
+        "referenceType": "MintPlayer.Spark.Warehouse.Models.WarehouseSite"
+      },
+      {
+        "id": "171c130e-e1cc-5de1-81b0-5bd7161373c5",
+        "name": "LocationId",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "f163aa48-d7c1-551a-81a1-5642a487191c",
+        "name": "TargetLocationId",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "41681243-ac64-5111-9500-5d31899b5df7",
+        "name": "ItemId",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "3cb19fbc-e9fd-597a-84b2-fa842ac2d00c",
+        "name": "LotCode",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "c57247b9-2665-5f66-9e84-72036ff2a867",
+        "name": "Quantity",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "9882bbae-21d4-5697-81d5-1b484d064225",
+        "name": "Confirmed",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 9,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "f1ff1da6-6456-5afb-b127-9e3e9c403087",
+        "name": "AssignedTo",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 10,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "fdeddbf9-b8d9-56b8-aa4e-a45cab0b7b19",
+        "name": "LeaseUntil",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 11,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "2cfa4d45-526c-500e-913c-bb080c719562",
+        "name": "Priority",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 12,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "c2686fa5-5af2-540d-853a-4caa103e4732",
+        "name": "CreatedAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 13,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "f60f757a-3600-5797-a2c4-f0f19dd53406",
+        "name": "CompletedAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 14,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      }
+    ]
+  },
+  "queries": [
+    {
+      "id": "7981a930-cff8-5c54-bbc3-4dc9a0af6740",
+      "name": "WarehouseTasks",
+      "source": "Custom.WarehouseTasks",
+      "alias": "warehouse-tasks",
+      "sortColumns": [],
+      "renderMode": "Pagination",
+      "entityType": "WarehouseTask"
+    }
+  ]
+}

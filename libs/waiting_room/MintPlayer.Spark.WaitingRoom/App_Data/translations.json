@@ -1,0 +1,70 @@
+{
+  "$schema": "../../../../schemas/translations.schema.json",
+  "waitingRoom": {
+    "title": { "en": "Waiting room", "fr": "Salle d'attente", "nl": "Wachtruimte" },
+    "status": {
+      "scheduled": { "en": "The waiting room opens at {0}.", "fr": "La salle d'attente ouvre à {0}.", "nl": "De wachtruimte opent om {0}." },
+      "preQueue": {
+        "en": "You are in. The sale starts at {0}. Everyone who joins before then gets a random place at the start, so joining early gives no advantage.",
+        "fr": "Vous êtes inscrit. La vente commence à {0}. Toutes les personnes inscrites avant reçoivent une place tirée au sort au début : arriver tôt ne donne aucun avantage.",
+        "nl": "U staat in de wachtrij. De verkoop start om {0}. Iedereen die zich daarvoor aanmeldt, krijgt bij de start een willekeurige plaats; vroeg komen geeft geen voordeel."
+      },
+      "preQueueFifo": { "en": "You are in the queue. The sale starts at {0}.", "fr": "Vous êtes dans la file. La vente commence à {0}.", "nl": "U staat in de wachtrij. De verkoop start om {0}." },
+      "ballot": {
+        "en": "You are registered for the draw at {0}. If you are drawn, you get a personal link valid for a limited time.",
+        "fr": "Vous êtes inscrit au tirage de {0}. Si vous êtes tiré au sort, vous recevez un lien personnel valable un temps limité.",
+        "nl": "U bent ingeschreven voor de loting van {0}. Wordt u getrokken, dan krijgt u een persoonlijke link die beperkt geldig is."
+      },
+      "open": { "en": "The sale is open.", "fr": "La vente est ouverte.", "nl": "De verkoop is open." },
+      "mayReturn": {
+        "en": "Sold out for now. Reservations that are not paid are released, so tickets may come back. Keep this page open.",
+        "fr": "Épuisé pour le moment. Les réservations non payées sont libérées : des billets peuvent revenir. Gardez cette page ouverte.",
+        "nl": "Momenteel uitverkocht. Niet-betaalde reservaties komen vrij, dus er kunnen tickets terugkomen. Laat deze pagina open."
+      },
+      "soldOut": { "en": "Sold out.", "fr": "Épuisé.", "nl": "Uitverkocht." },
+      "closed": { "en": "The sale has ended.", "fr": "La vente est terminée.", "nl": "De verkoop is afgelopen." }
+    },
+    "ahead": { "en": "{0} people ahead of you.", "fr": "{0} personnes devant vous.", "nl": "{0} mensen voor u." },
+    "aheadNone": { "en": "You are next.", "fr": "Vous êtes le prochain.", "nl": "U bent de volgende." },
+    "placeAtStart": { "en": "Your place is decided at the start.", "fr": "Votre place est décidée au début.", "nl": "Uw plaats wordt bij de start bepaald." },
+    "presencePrompt": {
+      "en": "It's your turn. Press \"I'm here\" to continue. You have until {0}; if you miss it, you keep your place.",
+      "fr": "C'est votre tour. Appuyez sur « Je suis là » pour continuer. Vous avez jusqu'à {0} ; si vous le manquez, vous gardez votre place.",
+      "nl": "U bent aan de beurt. Druk op \"Ik ben er\" om verder te gaan. U hebt tot {0}; mist u het, dan behoudt u uw plaats."
+    },
+    "imHere": { "en": "I'm here", "fr": "Je suis là", "nl": "Ik ben er" },
+    "missed": {
+      "en": "You missed your turn, but you keep your place. Press \"I'm here\" and you are next.",
+      "fr": "Vous avez manqué votre tour, mais vous gardez votre place. Appuyez sur « Je suis là » et vous êtes le prochain.",
+      "nl": "U hebt uw beurt gemist, maar u behoudt uw plaats. Druk op \"Ik ben er\" en u bent de volgende."
+    },
+    "admitted": { "en": "You may go to the sale now, until {0}.", "fr": "Vous pouvez accéder à la vente jusqu'à {0}.", "nl": "U kunt nu naar de verkoop, tot {0}." },
+    "continue": { "en": "Continue to the sale", "fr": "Continuer vers la vente", "nl": "Verder naar de verkoop" },
+    "lost": { "en": "You were not drawn this time.", "fr": "Vous n'avez pas été tiré au sort cette fois.", "nl": "U bent deze keer niet getrokken." },
+    "join": { "en": "Join the queue", "fr": "Rejoindre la file", "nl": "In de wachtrij gaan" },
+    "register": { "en": "Register for the draw", "fr": "S'inscrire au tirage", "nl": "Inschrijven voor de loting" },
+    "leave": { "en": "Leave the queue", "fr": "Quitter la file", "nl": "De wachtrij verlaten" },
+    "otherTab": { "en": "This queue is open in another tab; your place is the same there.", "fr": "Cette file est ouverte dans un autre onglet ; votre place y est la même.", "nl": "Deze wachtrij is open in een ander tabblad; uw plaats is daar dezelfde." },
+    "outcome": {
+      "sign-in-required": { "en": "Please sign in to join.", "fr": "Connectez-vous pour rejoindre la file.", "nl": "Meld u aan om in de wachtrij te gaan." },
+      "phone-verification-required": { "en": "Please verify your phone number to join.", "fr": "Vérifiez votre numéro de téléphone pour rejoindre la file.", "nl": "Bevestig uw telefoonnummer om in de wachtrij te gaan." },
+      "account-too-new": { "en": "Your account is too new to join this sale.", "fr": "Votre compte est trop récent pour cette vente.", "nl": "Uw account is te nieuw voor deze verkoop." },
+      "not-open": { "en": "The waiting room is not open yet.", "fr": "La salle d'attente n'est pas encore ouverte.", "nl": "De wachtruimte is nog niet open." },
+      "registration-closed": { "en": "Registration for the draw has closed.", "fr": "Les inscriptions au tirage sont closes.", "nl": "De inschrijving voor de loting is gesloten." },
+      "sold-out": { "en": "Sold out.", "fr": "Épuisé.", "nl": "Uitverkocht." },
+      "closed": { "en": "The sale has ended.", "fr": "La vente est terminée.", "nl": "De verkoop is afgelopen." },
+      "slow-down": { "en": "Too many attempts. Please try again in {0} seconds.", "fr": "Trop de tentatives. Réessayez dans {0} secondes.", "nl": "Te veel pogingen. Probeer het over {0} seconden opnieuw." },
+      "refused": {
+        "en": "We could not let you join. If you think this is a mistake, contact us and quote reference {0}; a person will review it.",
+        "fr": "Nous n'avons pas pu vous inscrire. Si vous pensez qu'il s'agit d'une erreur, contactez-nous avec la référence {0} ; une personne l'examinera.",
+        "nl": "We konden u niet laten aansluiten. Denkt u dat dit een vergissing is, neem dan contact op met referentie {0}; een medewerker bekijkt het."
+      }
+    },
+    "fairness": {
+      "en": "How the order is decided: at the start, everyone who joined before is shuffled with a random seed that was published in advance as {0}. After the start you can check the draw.",
+      "fr": "Comment l'ordre est décidé : au début, toutes les personnes inscrites sont mélangées avec une graine aléatoire publiée à l'avance sous la forme {0}. Après le début, vous pouvez vérifier le tirage.",
+      "nl": "Hoe de volgorde wordt bepaald: bij de start wordt iedereen die zich vooraf aanmeldde geschud met een willekeurige sleutel, vooraf gepubliceerd als {0}. Na de start kunt u de trekking controleren."
+    },
+    "checkDraw": { "en": "Check the draw", "fr": "Vérifier le tirage", "nl": "De trekking controleren" }
+  }
+}

@@ -44,7 +44,7 @@ public static class SparkBuilderExtensions
         ArgumentNullException.ThrowIfNull(builder);
 
         // Nothing to register yet. When there is, it is the generated
-        // builder.Services.AddCodeCoverageGitlabIntegration() plus builder.AddRecipients(),
+        // builder.Services.AddCodeCoverageGitlabIntegration() plus builder.AddSparkDiscovered(),
         // exactly as the GitHub project does — both are internal to their own assembly, which is
         // the whole reason this method has to exist here rather than in the app.
         return builder;

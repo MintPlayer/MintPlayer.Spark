@@ -34,6 +34,19 @@ inputs:
     description: Extra arguments for every `dotnet build`, split on whitespace.
     required: false
     default: ''
+  contracts:
+    description: >
+      'true' also runs --spark-synchronize-contracts per app, rewriting its ClientApp/src/app/generated/contracts.ts (the
+      TypeScript contracts, commerce X20). Default 'false': an app on a Spark release without the flag would fail on it.
+    required: false
+    default: 'false'
+  library-contracts-project:
+    description: >
+      Optional. A tool .csproj whose `contracts` command writes library TypeScript contracts (this repository:
+      tools/SchemaGenerator/MintPlayer.Spark.SchemaGenerator.csproj). Built with the apps and run after their synchronize.
+      Empty (the default) skips it.
+    required: false
+    default: ''
   lockfiles:
     description: >
       Opt-in. Lockfile ecosystems to regenerate before the build, one per line - npm, pnpm, yarn, nuget - with the
@@ -99,6 +112,8 @@ runs:
         CONFIGURATION: ${{ inputs.configuration }}
         BUILD_ARGS: ${{ inputs.skip-spa-build == 'true' && '-p:EnableSpaBuilder=false ' || '' }}${{ inputs.extra-build-args }}
         LOCKFILES: ${{ inputs.lockfiles }}
+        CONTRACTS: ${{ inputs.contracts }}
+        LIBRARY_CONTRACTS_PROJECT: ${{ inputs.library-contracts-project }}
         PR_HEAD: ${{ steps.pr.outputs.pr-head }}
         MERGE_BASE: ${{ steps.pr.outputs.merge-base }}
         COREPACK_ENABLE_DOWNLOAD_PROMPT: '0'

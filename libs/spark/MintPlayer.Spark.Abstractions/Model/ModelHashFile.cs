@@ -34,8 +34,11 @@ public sealed class ModelHashFile
     };
 
     /// <summary>Format version, so a future change to the canonical text can be detected rather than misread.</summary>
-    /// <remarks>2: the composed hashes carry their layers (<see cref="Libraries"/>, <see cref="Layers"/>; composition D7).</remarks>
-    public int Version { get; set; } = 2;
+    /// <remarks>
+    /// 2: the composed hashes carry their layers (<see cref="Libraries"/>, <see cref="Layers"/>; composition D7).
+    /// 3: the types' names by id (<see cref="Names"/>; D28), so a rename is reported as one.
+    /// </remarks>
+    public int Version { get; set; } = 3;
 
     /// <summary>Roll-up over <see cref="Entities"/> and <see cref="ContextRoots"/>.</summary>
     public string ModelHash { get; set; } = string.Empty;
@@ -114,6 +117,46 @@ public sealed class ModelHashFile
     /// </para>
     /// </remarks>
     public SortedDictionary<string, SortedDictionary<string, string>>? Layers { get; set; }
+
+    /// <summary>
+    /// Every type's name, keyed by its id (D28): <c>{ "&lt;id&gt;": "&lt;name&gt;" }</c>. A rename keeps the id, so
+    /// a drift names it as a rename (<c>type … was 'Order', is now 'WebshopOrder'</c>) rather than as one file
+    /// removed and another added.
+    /// </summary>
+    /// <remarks>
+    /// Not part of <see cref="ModelHash"/>: a name is structural in the file hashes already (<see cref="Files"/>),
+    /// so this only explains a drift those report.
+    /// </remarks>
+    public SortedDictionary<string, string>? Names { get; set; }
+
+    /// <summary>The composed model's names by id (<see cref="Names"/>).</summary>
+    public static SortedDictionary<string, string> ComputeNames(string contentRootPath)
+        => ComputeNames(SparkLayerCatalog.Libraries, contentRootPath);
+
+    /// <summary>As <see cref="ComputeNames(string)"/>, over chosen libraries.</summary>
+    public static SortedDictionary<string, string> ComputeNames(IReadOnlyList<SparkLibrary> libraries, string contentRootPath)
+    {
+        var names = new SortedDictionary<string, string>(StringComparer.Ordinal);
+        foreach (var type in SparkModelFiles.ComposeLenient(libraries, ModelDirectoryFor(contentRootPath)).Types)
+        {
+            if (type.Name is null) continue;
+            try
+            {
+                using var document = JsonDocument.Parse(type.Json);
+                if (document.RootElement.TryGetProperty("persistentObject", out var po)
+                    && po.ValueKind == JsonValueKind.Object
+                    && po.TryGetProperty("id", out var id)
+                    && id.ValueKind == JsonValueKind.String
+                    && Guid.TryParse(id.GetString(), out var guid))
+                    names[guid.ToString("D")] = type.Identity is { } identity ? $"{type.Name} ({identity})" : type.Name;
+            }
+            catch (JsonException)
+            {
+                // The file hashes report a file that cannot be read.
+            }
+        }
+        return names;
+    }
 
     /// <summary>Absolute path of the hash file for a given content root.</summary>
     public static string PathFor(string contentRootPath)

@@ -1,3 +1,4 @@
+import { Provider } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router, Routes } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
@@ -7,7 +8,9 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { SparkPoCreateComponent } from './spark-po-create.component';
 import { SparkService, SparkLanguageService } from '@mintplayer/ng-spark/services';
-import { EntityType, ShowedOn } from '@mintplayer/ng-spark/models';
+import { SparkNotificationService } from '@mintplayer/ng-spark/client-operations';
+import { EntityType, ShowedOn, translated } from '@mintplayer/ng-spark/models';
+import { SparkSaveSubmittedContext, provideSparkSaveSubmittedHandlers } from '@mintplayer/ng-spark/panels';
 import { nextNavigationEnd, StubComponent } from '../../src/test-utils';
 
 const personType: EntityType = {
@@ -45,7 +48,7 @@ const routes: Routes = [
   { path: 'po/:type/:id', component: StubComponent },
 ];
 
-async function setup(serviceOverrides: Partial<SparkService> = {}) {
+async function setup(serviceOverrides: Partial<SparkService> = {}, extraProviders: Provider[] = []) {
   const service: any = {
     getEntityTypes: vi.fn().mockResolvedValue([personType]),
     create: vi.fn().mockResolvedValue({ id: 'people/new-1', name: 'Created' }),
@@ -62,6 +65,7 @@ async function setup(serviceOverrides: Partial<SparkService> = {}) {
       provideNoopAnimations(),
       { provide: SparkService, useValue: service },
       { provide: SparkLanguageService, useValue: { t: (k: string) => k } },
+      ...extraProviders,
     ],
   });
   const harness = await RouterTestingHarness.create();
@@ -132,6 +136,67 @@ describe('SparkPoCreateComponent', () => {
     expect(c.isSaving()).toBe(false);
   });
 
+  // Commerce X7: a 202 is a create the server diverted for approval. Accepted, not created: a notice, no
+  // navigation to an object that does not exist, no error in the form.
+  it('a create submitted for approval shows a notice, emits submitted and never saved', async () => {
+    const receipt = { submitted: { kind: 'approval', referenceId: 'approvals/1' } };
+    const { harness } = await setup({ create: vi.fn().mockResolvedValue(receipt) });
+    const c = await harness.navigateByUrl('/po/person/new', SparkPoCreateComponent);
+    await harness.fixture.whenStable();
+    c.formData.set({ ...c.formData(), FirstName: 'Alice' });
+
+    const saved = vi.fn();
+    const submitted = vi.fn();
+    c.saved.subscribe(saved);
+    c.submitted.subscribe(submitted);
+    const back = vi.spyOn(window.history, 'back').mockImplementation(() => undefined);
+
+    await c.onSave();
+
+    expect(submitted).toHaveBeenCalledWith(receipt);
+    expect(saved).not.toHaveBeenCalled();
+    expect(back).toHaveBeenCalledOnce();
+    expect(c.validationErrors()).toEqual([]);
+    expect(TestBed.inject(SparkNotificationService).toasts().map(t => t.message)).toEqual(['common.submittedForApproval']);
+    back.mockRestore();
+  });
+
+  // Commerce #521 M3: an add-on (Approvals) names where a diverted create goes: the request, never the object
+  // (a hidden pending creation is a 404). The handler is told what was submitted.
+  it('a diverted create goes where a registered SPARK_SAVE_SUBMITTED_HANDLERS entry says', async () => {
+    const receipt = { submitted: { kind: 'approval', referenceId: 'approvals/1' } };
+    const handler = vi.fn((ctx: SparkSaveSubmittedContext) =>
+      ctx.submitted.submitted.kind === 'approval' ? ['/po', 'approval-request', ctx.submitted.submitted.referenceId] : null);
+    const { harness } = await setup({ create: vi.fn().mockResolvedValue(receipt) }, provideSparkSaveSubmittedHandlers(handler));
+    const c = await harness.navigateByUrl('/po/person/new', SparkPoCreateComponent);
+    await harness.fixture.whenStable();
+    c.formData.set({ ...c.formData(), FirstName: 'Alice' });
+    const back = vi.spyOn(window.history, 'back').mockImplementation(() => undefined);
+
+    const navigated = nextNavigationEnd();
+    await c.onSave();
+    await navigated;
+
+    expect(handler).toHaveBeenCalledWith({ operation: 'create', type: 'person', submitted: receipt });
+    expect(back).not.toHaveBeenCalled();
+    expect(TestBed.inject(Router).url).toBe('/po/approval-request/approvals%2F1');
+    back.mockRestore();
+  });
+
+  it('a handler answering null keeps the default (back to where the New started)', async () => {
+    const receipt = { submitted: { kind: 'other', referenceId: 'x/1' } };
+    const { harness } = await setup({ create: vi.fn().mockResolvedValue(receipt) }, provideSparkSaveSubmittedHandlers(() => null));
+    const c = await harness.navigateByUrl('/po/person/new', SparkPoCreateComponent);
+    await harness.fixture.whenStable();
+    c.formData.set({ ...c.formData(), FirstName: 'Alice' });
+    const back = vi.spyOn(window.history, 'back').mockImplementation(() => undefined);
+
+    await c.onSave();
+
+    expect(back).toHaveBeenCalledOnce();
+    back.mockRestore();
+  });
+
   // Worse here than on the edit page: this list is the ONLY source of the create payload, so an
   // attribute a refresh revealed was not sent stale — it was absent from the new object entirely.
   it('includes an attribute a refresh revealed', async () => {
@@ -153,7 +218,7 @@ describe('SparkPoCreateComponent', () => {
   it('onSave 400 error populates validationErrors from the server payload', async () => {
     const error = new HttpErrorResponse({
       status: 400,
-      error: { errors: [{ attributeName: 'FirstName', errorMessage: { en: 'Required' }, ruleType: 'required' }] },
+      error: { errors: [{ attributeName: 'FirstName', errorMessage: translated({ en: 'Required' }), ruleType: 'required' }] },
     });
     const { harness } = await setup({ create: vi.fn().mockRejectedValue(error) });
     const c = await harness.navigateByUrl('/po/person/new', SparkPoCreateComponent);
@@ -171,7 +236,7 @@ describe('SparkPoCreateComponent', () => {
     // suspended author, a closed question) carries its reason in result.errors.
     const error = new HttpErrorResponse({
       status: 400,
-      error: { result: { errors: [{ attributeName: '', errorMessage: { en: 'Your account is suspended.' }, ruleType: 'custom' }] }, operations: [] },
+      error: { result: { errors: [{ attributeName: '', errorMessage: translated({ en: 'Your account is suspended.' }), ruleType: 'custom' }] }, operations: [] },
     });
     const { harness } = await setup({ create: vi.fn().mockRejectedValue(error) });
     const c = await harness.navigateByUrl('/po/person/new', SparkPoCreateComponent);
@@ -180,7 +245,7 @@ describe('SparkPoCreateComponent', () => {
     await c.onSave();
 
     expect(c.validationErrors()).toHaveLength(1);
-    expect(c.validationErrors()[0].errorMessage).toEqual({ en: 'Your account is suspended.' });
+    expect(c.validationErrors()[0].errorMessage).toEqual(translated({ en: 'Your account is suspended.' }));
     expect(c.generalErrors()).toHaveLength(1);
   });
 
@@ -197,7 +262,7 @@ describe('SparkPoCreateComponent', () => {
     } as EntityType;
     const error = new HttpErrorResponse({
       status: 400,
-      error: { result: { errors: [{ attributeName: 'Code', errorMessage: { en: 'Code is required.' }, ruleType: 'required' }] }, operations: [] },
+      error: { result: { errors: [{ attributeName: 'Code', errorMessage: translated({ en: 'Code is required.' }), ruleType: 'required' }] }, operations: [] },
     });
     const { harness } = await setup({ getEntityTypes: vi.fn().mockResolvedValue([withUndrawn]), create: vi.fn().mockRejectedValue(error) });
     const c = await harness.navigateByUrl('/po/person/new', SparkPoCreateComponent);

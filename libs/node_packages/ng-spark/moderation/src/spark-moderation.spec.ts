@@ -12,6 +12,7 @@ import { provideSparkModeration, sparkModerationRenderers, sparkModerationRoutes
 import { SparkReviewQueueComponent } from './spark-review-queue.component';
 import { SparkReputationBadgeComponent } from './spark-reputation-badge.component';
 import { SparkReviewQueueLinkComponent } from './spark-review-queue-link.component';
+import { translated } from '@mintplayer/ng-spark/models';
 
 function detailContext(overrides: Partial<SparkDetailContext> = {}): SparkDetailContext {
   return {
@@ -254,9 +255,9 @@ describe('moderation entry point (#460)', () => {
 
   it('the review queue names each case by its post and links to it', async () => {
     spark.postEnvelope.mockResolvedValue([
-      { id: 'ModerationCases/flag/questions/1', kind: 'flag', status: 'open', targetId: 'questions/1', targetType: 'Question', accountIds: [], flagCount: 1, voteCount: 0, summary: 'Spam', openedAtUtc: '2026-09-29T05:00:00Z' },
+      { id: 'ModerationCases/flag/questions/1', kind: 'flag', status: 'open', targetId: 'questions/1', targetType: 'qt', accountIds: [], flagCount: 1, voteCount: 0, summary: 'Spam', openedAtUtc: '2026-09-29T05:00:00Z' },
     ]);
-    (spark as any).getEntityTypes = vi.fn().mockResolvedValue([{ id: 'qt', name: 'Question', alias: 'question' }]);
+    (spark as any).getEntityTypes = vi.fn().mockResolvedValue([{ id: 'qt', name: 'RenamedQuestion', alias: 'question' }]);
     (spark as any).get = vi.fn().mockResolvedValue({ id: 'questions/1', name: 'Question', breadcrumb: 'How do I revert?' });
     const fixture = TestBed.createComponent(SparkReviewQueueComponent);
     fixture.detectChanges();
@@ -274,7 +275,7 @@ describe('moderation entry point (#460)', () => {
   });
 
   it('describes a validation refusal, a quota and a plain error', () => {
-    expect(describeModerationError({ error: { result: { errors: [{ errorMessage: { en: 'This post is locked.' } }] } } })).toBe('This post is locked.');
+    expect(describeModerationError({ error: { result: { errors: [{ errorMessage: translated({ en: 'This post is locked.' }) }] } } })).toBe('This post is locked.');
     expect(describeModerationError({ error: { result: { error: 'You have cast 30 votes today.', retryAfterSeconds: 60 } } })).toBe('You have cast 30 votes today.');
     expect(describeModerationError({ message: 'boom' })).toBe('boom');
   });

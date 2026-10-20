@@ -48,7 +48,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSpark(builder.Configuration, spark =>
 {
     spark.UseContext<MySparkContext>();
-    spark.AddActions();
+    spark.AddSparkDiscovered();
     spark.AddAuthentication<SparkUser>();
 });
 
@@ -324,6 +324,14 @@ refresh) runs each registered `ISparkSignedInHandler<TUser>` before the ticket i
 throws is logged and the sign-in still succeeds, so make it idempotent and cheap (a load by id). The
 Organizations package uses it to create a user's personal organization on first sign-in
 (`docs/guide-organizations.md`).
+
+#### Phone verification (opt-in)
+
+`spark.AddPhoneVerification()` sends a one-time code by SMS through `ISparkSmsSender`
+(`MintPlayer.Spark.Sms`; `services.AddSparkTestSms()` for tests and development) and marks the number
+verified on the user (`PhoneNumber` in E.164, `PhoneNumberConfirmed`). Routes `GET /spark/auth/manage/phone`,
+`POST …/phone/send` and `POST …/phone/verify`; hashed single-use codes, expiry, an attempt cap and send limits
+per account and per number. See `docs/guide-phone-verification.md`.
 
 #### Custom Group Membership Provider
 

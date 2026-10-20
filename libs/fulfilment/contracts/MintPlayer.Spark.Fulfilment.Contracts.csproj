@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<OutputType>Library</OutputType>
+
+		<!-- NuGet Package Metadata -->
+		<PackageId>MintPlayer.Spark.Fulfilment.Contracts</PackageId>
+		<Version>11.0.0-preview.1</Version>
+		<Authors>MintPlayer</Authors>
+		<Company>MintPlayer</Company>
+		<Description>The fulfilment contracts between a shop and a warehouse built on MintPlayer.Spark (orders, catalog items, expected returns and receipts one way; status, shipments, stock levels and return receipts the other): one [Replicated] class per contract, stored by its owner and replicated read-only to the host that binds it.</Description>
+		<PackageTags>fulfilment;warehouse;wms;shop;replication;contracts;spark</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="README.md" Pack="true" PackagePath="\" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- Package map (docs/warehouse_picking_PRD.md §4.1): Replication.Abstractions only. No Checkout, no warehouse
+		     package: both apps reference this library and meet only here. -->
+		<ProjectReference Include="..\..\replication\MintPlayer.Spark.Replication.Abstractions\MintPlayer.Spark.Replication.Abstractions.csproj" />
+		<!-- Generates each [Replicated] class's manifest, script and hash (WD14). Analyzer references are not transitive. -->
+		<ProjectReference Include="..\..\source_generators\MintPlayer.Spark.LibraryGenerators\MintPlayer.Spark.LibraryGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+	</ItemGroup>
+
+</Project>

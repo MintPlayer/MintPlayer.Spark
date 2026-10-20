@@ -67,14 +67,35 @@ internal static class ClientResult
     /// </summary>
     public static IResult ConcurrencyConflict(IClientAccessor client, Exception? exception = null)
     {
-        var conflict = exception as SparkConcurrencyException;
+        // The public base: an add-on's conflict (a refused write-back, warehouse §4.2.5) answers the same.
+        var conflict = exception as Abstractions.SparkConflictException;
         return Envelope(client, new
         {
             error = "Concurrency conflict",
-            reason = conflict?.Reason ?? SparkConcurrencyException.Changed,
+            reason = conflict?.Reason ?? Abstractions.SparkConflictException.Changed,
             message = conflict?.UserMessage,
+            attributes = conflict is { Attributes.Count: > 0 } ? conflict.Attributes : null,
         }, StatusCodes.Status409Conflict);
     }
+
+    /// <summary>
+    /// A save an <c>ISaveReplacement</c> diverted (commerce X7): <c>202 Accepted</c>, with what it became —
+    /// <c>{ submitted: { kind, referenceId } }</c>. Not an error: nothing went wrong, the change waits for
+    /// approval. Never the posted object.
+    /// </summary>
+    public static IResult Submitted(IClientAccessor client, Abstractions.Interceptors.SaveReplacementReceipt receipt)
+        => Envelope(client, new { submitted = new { kind = receipt.Kind, referenceId = receipt.ReferenceId } }, StatusCodes.Status202Accepted);
+
+    /// <summary>The answer to a create or an update through <see cref="IPersistentObjectSavePath"/>.</summary>
+    /// <param name="savedStatus">201 for a create, 200 for an update.</param>
+    public static IResult Saved(IClientAccessor client, SaveOutcome outcome, int savedStatus) => outcome.Kind switch
+    {
+        SaveOutcomeKind.Submitted => Submitted(client, outcome.Receipt!),
+        // A cancelled create wrote nothing to show (#482); a cancelled update answers the row as stored.
+        SaveOutcomeKind.Cancelled when outcome.Object is null => Envelope(client, null, StatusCodes.Status204NoContent),
+        SaveOutcomeKind.Cancelled => Envelope(client, outcome.Object, StatusCodes.Status200OK),
+        _ => Envelope(client, outcome.Object, savedStatus),
+    };
 
     public static IResult Retry(IClientAccessor client, SparkRetryActionException ex)
     {

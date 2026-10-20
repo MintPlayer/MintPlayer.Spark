@@ -117,6 +117,10 @@ internal sealed class OidcMcpResources(SparkIdentityProviderOptions options)
         if (options.Mcp is not { } mcp)
             return;
 
+        // This hook can run before the migrations (or in a host without them), and it loads OidcResources:
+        // bring their texts to the X17 shape first, or the load of an old document fails startup.
+        await Migrations.OidcResourceTextUpgrade.RunAsync(store);
+
         var endpoints = new List<OidcMcpEndpoint>();
         using var session = store.OpenAsyncSession();
 
@@ -136,11 +140,11 @@ internal sealed class OidcMcpResources(SparkIdentityProviderOptions options)
             if (resource is null)
             {
                 resource = NewResource(id, OidcAgentClients.ResourceName,
-                    TranslatedString.Create("AI agents", "Agents IA", "AI-agents"),
-                    TranslatedString.Create(
-                        "What an AI agent may do in this application on your behalf.",
-                        "Ce qu'un agent IA peut faire dans cette application en votre nom.",
-                        "Wat een AI-agent namens jou in deze toepassing mag doen."));
+                    TranslatedString.Of(("en", "AI agents"), ("fr", "Agents IA"), ("nl", "AI-agents")),
+                    TranslatedString.Of(
+                        ("en", "What an AI agent may do in this application on your behalf."),
+                        ("fr", "Ce qu'un agent IA peut faire dans cette application en votre nom."),
+                        ("nl", "Wat een AI-agent namens jou in deze toepassing mag doen.")));
                 await session.StoreAsync(resource);
             }
             Complete(resource, audience);
@@ -161,10 +165,10 @@ internal sealed class OidcMcpResources(SparkIdentityProviderOptions options)
             var resource = await session.LoadAsync<OidcResource>(id);
             if (resource is null)
             {
-                resource = NewResource(id, name, TranslatedString.Create(displayName, displayName, displayName), TranslatedString.Create(
-                    $"What an AI agent may do in {displayName} on your behalf.",
-                    $"Ce qu'un agent IA peut faire dans {displayName} en votre nom.",
-                    $"Wat een AI-agent namens jou in {displayName} mag doen."));
+                resource = NewResource(id, name, TranslatedString.Of(("en", displayName), ("fr", displayName), ("nl", displayName)), TranslatedString.Of(
+                    ("en", $"What an AI agent may do in {displayName} on your behalf."),
+                    ("fr", $"Ce qu'un agent IA peut faire dans {displayName} en votre nom."),
+                    ("nl", $"Wat een AI-agent namens jou in {displayName} mag doen.")));
                 await session.StoreAsync(resource);
             }
             Complete(resource, audience);
@@ -183,7 +187,7 @@ internal sealed class OidcMcpResources(SparkIdentityProviderOptions options)
                 Id = offline,
                 Kind = OidcResourceKinds.Identity,
                 Name = OidcAgentClients.OfflineAccess,
-                DisplayName = TranslatedString.Create("Stay signed in", "Rester connecté", "Aangemeld blijven"),
+                DisplayName = TranslatedString.Of(("en", "Stay signed in"), ("fr", "Rester connecté"), ("nl", "Aangemeld blijven")),
                 ShowInDiscoveryDocument = true,
                 Enabled = true,
             });
@@ -211,8 +215,8 @@ internal sealed class OidcMcpResources(SparkIdentityProviderOptions options)
     private static void Complete(OidcResource resource, string audience)
     {
         resource.Audience = audience;
-        Ensure(resource, OidcAgentClients.ReadScope, TranslatedString.Create("Read your data", "Lire vos données", "Je gegevens lezen"));
-        Ensure(resource, OidcAgentClients.WriteScope, TranslatedString.Create("Propose and make changes", "Proposer et effectuer des modifications", "Wijzigingen voorstellen en uitvoeren"));
+        Ensure(resource, OidcAgentClients.ReadScope, TranslatedString.Of(("en", "Read your data"), ("fr", "Lire vos données"), ("nl", "Je gegevens lezen")));
+        Ensure(resource, OidcAgentClients.WriteScope, TranslatedString.Of(("en", "Propose and make changes"), ("fr", "Proposer et effectuer des modifications"), ("nl", "Wijzigingen voorstellen en uitvoeren")));
     }
 
     private static void Ensure(OidcResource resource, string name, TranslatedString displayName)

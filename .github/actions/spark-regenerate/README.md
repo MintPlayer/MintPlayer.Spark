@@ -44,6 +44,8 @@ binary (T4); the verify checks then run on the final commit.
 | `configuration` | `Debug` | Keep it equal to the verify step's configuration. |
 | `skip-spa-build` | `true` | Passes `-p:EnableSpaBuilder=false`. |
 | `extra-build-args` | `''` | Appended to every `dotnet build`. |
+| `contracts` | `false` | `true` also runs `--spark-synchronize-contracts` per app (its `ClientApp/src/app/generated/contracts.ts`, commerce X20). Off by default: a Spark release without the flag fails on it. `coverage.yml`'s `regeneratedPaths` must list `**/generated/contracts.ts`. |
+| `library-contracts-project` | `''` | A tool `.csproj` whose `contracts` command writes library contracts (here `tools/SchemaGenerator`); built with the apps, run after their synchronize, in both passes. |
 | `lockfiles` | `''` | Opt-in: ecosystems whose lockfiles to regenerate first (`npm`, `pnpm`, `yarn`, `nuget`), below. |
 | `pr_number` | `''` | With `lockfiles`: the dispatch's `pr_number`, for the marker rebuild and two-sided provenance. |
 | `token` | `${{ github.token }}` | With `lockfiles` and `pr_number`: fetches `refs/pull/<n>/head` of a private repository. |

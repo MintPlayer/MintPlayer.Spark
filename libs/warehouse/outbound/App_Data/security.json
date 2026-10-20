@@ -1,0 +1,26 @@
+{
+  "$schema": "../../../../schemas/security.schema.json",
+  "_comment": [
+    "Warehouse Outbound's rights (docs/warehouse_picking_PRD.md §4.7, §4.15; Q-W11), shipped as a library layer.",
+    "Two slots the application must bind (an unbound slot refuses startup): warehouse-outbound:pickers (read orders and",
+    "slots) and warehouse-outbound:supervisors (manual release, holds, batch takeover, consolidation slots).",
+    "Orders are read-only everywhere: the outbound services write them; the custom actions change them.",
+    "Owner-organization members read their own orders (@authenticated, narrowed by Organizations' row policy: WD3, WI5).",
+    "Opt out of all of these with \"libraries\": { \"warehouse-outbound\": false }."
+  ],
+  "rights": [
+    { "key": "orders-pickers", "resource": "QueryRead/OutboundOrder", "groupId": "warehouse-outbound:pickers" },
+    { "key": "slots-pickers", "resource": "QueryRead/ConsolidationSlot", "groupId": "warehouse-outbound:pickers" },
+    { "key": "all-orders-pickers", "resource": "AllOrganizations/OutboundOrder", "groupId": "warehouse-outbound:pickers" },
+
+    { "key": "orders", "resource": "QueryRead/OutboundOrder", "groupId": "warehouse-outbound:supervisors" },
+    { "key": "all-orders", "resource": "AllOrganizations/OutboundOrder", "groupId": "warehouse-outbound:supervisors" },
+    { "key": "slots", "resource": "QueryReadEditNewDelete/ConsolidationSlot", "groupId": "warehouse-outbound:supervisors" },
+    { "key": "release", "resource": "WarehouseReleaseOrder/OutboundOrder", "groupId": "warehouse-outbound:supervisors" },
+    { "key": "hold", "resource": "WarehouseHoldOrder/OutboundOrder", "groupId": "warehouse-outbound:supervisors" },
+    { "key": "unhold", "resource": "WarehouseUnholdOrder/OutboundOrder", "groupId": "warehouse-outbound:supervisors" },
+    { "key": "take-over", "resource": "WarehouseTakeOverBatches/OutboundOrder", "groupId": "warehouse-outbound:supervisors" },
+
+    { "key": "orders-owners", "resource": "QueryRead/OutboundOrder", "groupId": "@authenticated" }
+  ]
+}

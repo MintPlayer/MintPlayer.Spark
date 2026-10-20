@@ -1,5 +1,4 @@
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 using MintPlayer.Spark.SourceGenerators.Json;
 using MintPlayer.Spark.SourceGenerators.Models;
 using MintPlayer.SourceGenerators.Tools;
@@ -7,6 +6,20 @@ using System.IO;
 
 namespace MintPlayer.Spark.SourceGenerators.Generators;
 
+/// <summary>
+/// Emits <c>PersistentObjectNames</c> and <c>PersistentObjectIds</c> for every persistent object of the
+/// composed model (composition D6): the referenced libraries' model layers, then the application's own
+/// <c>&lt;SparkAppDataDir&gt;/Model/*.json</c> on top.
+/// </summary>
+/// <remarks>
+/// Both come from the one composition, so a name and its id always agree, a library type has both in the
+/// application without a copy of its own, and a CLR-less type (a virtual <c>Home</c>) has both too. The
+/// CLR class names are never consulted: they are not the model's names (X20 item 1, D28).
+/// <para>
+/// The <c>AttributeNames</c> constants this generator used to emit are gone (X20 item 1): nothing used
+/// them, and <c>nameof(Entity.Property)</c> already names an attribute with compile-time checking.
+/// </para>
+/// </remarks>
 [Generator(LanguageNames.CSharp)]
 public class PersistentObjectNamesGenerator : IncrementalGenerator
 {
@@ -14,75 +27,6 @@ public class PersistentObjectNamesGenerator : IncrementalGenerator
         IncrementalGeneratorInitializationContext context,
         IncrementalValueProvider<Settings> settingsProvider)
     {
-        // Find all classes that inherit from DefaultPersistentObjectActions<T> and extract the
-        // entity type + its public read/write instance properties (minus "Id").
-        var persistentObjectsProvider = context.SyntaxProvider
-            .CreateSyntaxProvider(
-                predicate: static (node, ct) => node is ClassDeclarationSyntax classDecl &&
-                    classDecl.BaseList != null &&
-                    classDecl.BaseList.Types.Count > 0,
-                transform: static (ctx, ct) =>
-                {
-                    if (ctx.Node is not ClassDeclarationSyntax classDeclaration)
-                        return default;
-
-                    var classSymbol = ctx.SemanticModel.GetDeclaredSymbol(classDeclaration, ct) as INamedTypeSymbol;
-                    if (classSymbol == null || classSymbol.IsAbstract)
-                        return default;
-
-                    var baseType = classSymbol.BaseType;
-                    while (baseType != null)
-                    {
-                        if (baseType.IsGenericType &&
-                            baseType.ConstructedFrom.ToDisplayString() == "MintPlayer.Spark.Actions.DefaultPersistentObjectActions<T>")
-                        {
-                            if (baseType.TypeArguments.FirstOrDefault() is not INamedTypeSymbol entityType)
-                                return default;
-
-                            var attributeNames = new List<string>();
-                            var seen = new HashSet<string>(StringComparer.Ordinal);
-                            var current = entityType;
-                            while (current != null && current.SpecialType != SpecialType.System_Object)
-                            {
-                                foreach (var member in current.GetMembers())
-                                {
-                                    if (member is not IPropertySymbol property)
-                                        continue;
-                                    if (property.IsStatic || property.IsIndexer)
-                                        continue;
-                                    if (property.DeclaredAccessibility != Accessibility.Public)
-                                        continue;
-                                    if (property.GetMethod == null || property.SetMethod == null)
-                                        continue;
-                                    if (property.Name == "Id")
-                                        continue;
-                                    // Excluded from the model, so there is no attribute for a
-                                    // constant to name.
-                                    if (property.IsIgnoredForSparkModel())
-                                        continue;
-                                    if (!seen.Add(property.Name))
-                                        continue;
-
-                                    attributeNames.Add(property.Name);
-                                }
-                                current = current.BaseType;
-                            }
-
-                            return new PersistentObjectInfo
-                            {
-                                EntityName = entityType.Name,
-                                EntityFullName = entityType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-                                AttributeNames = attributeNames,
-                            };
-                        }
-                        baseType = baseType.BaseType;
-                    }
-
-                    return default;
-                })
-            .Where(static x => x != null)
-            .Collect();
-
         // Only emit when the project actually references MintPlayer.Spark.
         var knowsSparkProvider = context.CompilationProvider
             .Select((compilation, ct) =>
@@ -96,40 +40,6 @@ public class PersistentObjectNamesGenerator : IncrementalGenerator
                 ? ComposedModel.LibraryFiles(compilation)
                 : new List<LibraryModelFileInfo>())
             .WithComparer(SequenceComparer<LibraryModelFileInfo>.Instance);
-
-        var combinedProvider = persistentObjectsProvider
-            .Combine(knowsSparkProvider)
-            .Combine(settingsProvider);
-
-        var namesProvider = combinedProvider
-            .Combine(libraryModelFilesProvider)
-            .Select(static (p, ct) =>
-            {
-                var providers = p.Left;
-                var persistentObjects = providers.Left.Left;
-                var knowsSpark = providers.Left.Right;
-                var settings = providers.Right;
-                var libraryTypes = ComposedModel.LibraryTypeNames(p.Right)
-                    .Select(name => new PersistentObjectInfo { EntityName = name, EntityFullName = name });
-
-                return (Producer)new PersistentObjectNamesProducer(
-                    persistentObjects.Where(x => x != null).Cast<PersistentObjectInfo>().Concat(libraryTypes),
-                    knowsSpark,
-                    settings.RootNamespace ?? "GeneratedCode");
-            });
-
-        var attributeNamesProvider = combinedProvider
-            .Select(static (providers, ct) =>
-            {
-                var persistentObjects = providers.Left.Left;
-                var knowsSpark = providers.Left.Right;
-                var settings = providers.Right;
-
-                return (Producer)new AttributeNamesProducer(
-                    persistentObjects.Where(x => x != null).Cast<PersistentObjectInfo>(),
-                    knowsSpark,
-                    settings.RootNamespace ?? "GeneratedCode");
-            });
 
         // Harvest PersistentObjectIdInfo from the composed model (composition D6): the referenced
         // libraries' model layers, then <SparkAppDataDir>/Model/*.json AdditionalFiles on top, so a
@@ -174,9 +84,24 @@ public class PersistentObjectNamesGenerator : IncrementalGenerator
                 return ids;
             });
 
-        var idsSourceProvider = idsProvider
+        var composedProvider = idsProvider
             .Combine(knowsSparkProvider)
-            .Combine(settingsProvider)
+            .Combine(settingsProvider);
+
+        var namesSourceProvider = composedProvider
+            .Select(static (providers, ct) =>
+            {
+                var ids = providers.Left.Left;
+                var knowsSpark = providers.Left.Right;
+                var settings = providers.Right;
+
+                return (Producer)new PersistentObjectNamesProducer(
+                    ids.Select(i => i.Name),
+                    knowsSpark,
+                    settings.RootNamespace ?? "GeneratedCode");
+            });
+
+        var idsSourceProvider = composedProvider
             .Select(static (providers, ct) =>
             {
                 var ids = providers.Left.Left;
@@ -189,6 +114,6 @@ public class PersistentObjectNamesGenerator : IncrementalGenerator
                     settings.RootNamespace ?? "GeneratedCode");
             });
 
-        context.ProduceCode(namesProvider, attributeNamesProvider, idsSourceProvider);
+        context.ProduceCode(namesSourceProvider, idsSourceProvider);
     }
 }

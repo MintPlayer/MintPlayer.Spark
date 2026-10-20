@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SparkQueryActionsService } from './spark-query-actions.service';
 import { SparkService } from './spark.service';
+import { translated } from '@mintplayer/ng-spark/models';
 
 /**
  * #327 §9.7. A query's custom actions used to be obtainable only by rendering
@@ -17,7 +18,7 @@ const carsQuery = { id: 'q-cars', name: 'AllCars', source: 'Database.Cars', enti
 const carType = { id: 'type-car', name: 'Car', alias: 'car', attributes: [] } as any;
 const personType = { id: 'type-person', name: 'Person', alias: 'person', attributes: [] } as any;
 
-const action = (name: string, showedOn: string) => ({ name, label: { en: name }, showedOn } as any);
+const action = (name: string, showedOn: string) => ({ name, label: translated({ en: name }), showedOn } as any);
 
 function setup(overrides: Record<string, unknown> = {}) {
   const service = {

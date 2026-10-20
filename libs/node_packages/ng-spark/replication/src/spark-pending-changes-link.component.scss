@@ -1,0 +1,17 @@
+.spark-pending-changes-count {
+  display: inline-block;
+  min-width: 1.5em;
+  margin-left: 0.25em;
+  padding: 0.1em 0.45em;
+  border-radius: 999px;
+  font-size: 0.8em;
+  font-weight: 600;
+  text-align: center;
+  color: var(--bs-info-text-emphasis);
+  background-color: var(--bs-info-bg-subtle);
+}
+
+.spark-pending-changes-failed .spark-pending-changes-count {
+  color: var(--bs-danger-text-emphasis);
+  background-color: var(--bs-danger-bg-subtle);
+}

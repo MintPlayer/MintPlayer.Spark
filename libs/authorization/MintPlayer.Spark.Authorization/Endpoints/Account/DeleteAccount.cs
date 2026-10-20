@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using MintPlayer.Spark.Authorization.Contracts;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Authorization.Configuration;
@@ -56,12 +57,12 @@ internal sealed partial class DeleteAccount<TUser> : IDeleteEndpoint
             }
             catch (Exception ex) when (ex is JsonException or InvalidOperationException)
             {
-                return Results.Json(new { error = "invalid_request" }, statusCode: StatusCodes.Status400BadRequest);
+                return Results.Json(new SparkAuthError("invalid_request"), statusCode: StatusCodes.Status400BadRequest);
             }
         }
 
         if (!await IsReauthenticatedAsync(user, request?.Password))
-            return Results.Json(new { error = "reauthentication_required" }, statusCode: StatusCodes.Status403Forbidden);
+            return Results.Json(new SparkAuthError("reauthentication_required"), statusCode: StatusCodes.Status403Forbidden);
 
         // Handlers first, the account last: a failing handler leaves the account intact and the
         // request retryable (D8).
@@ -74,7 +75,7 @@ internal sealed partial class DeleteAccount<TUser> : IDeleteEndpoint
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 logger.LogError(ex, "Account deletion of user {UserId} stopped: {Handler} failed. The account is intact.", user.Id, handler.GetType().FullName);
-                return Results.Json(new { error = "deletion_failed" }, statusCode: StatusCodes.Status500InternalServerError);
+                return Results.Json(new SparkAuthError("deletion_failed"), statusCode: StatusCodes.Status500InternalServerError);
             }
         }
 
@@ -82,7 +83,7 @@ internal sealed partial class DeleteAccount<TUser> : IDeleteEndpoint
         if (!deleted.Succeeded)
         {
             logger.LogError("Account deletion of user {UserId} failed in the store: {Errors}", user.Id, string.Join("; ", deleted.Errors.Select(e => e.Code)));
-            return Results.Json(new { error = "deletion_failed" }, statusCode: StatusCodes.Status500InternalServerError);
+            return Results.Json(new SparkAuthError("deletion_failed"), statusCode: StatusCodes.Status500InternalServerError);
         }
 
         // The deletion is committed: only now may anything act on it (a goodbye mail). A failure here

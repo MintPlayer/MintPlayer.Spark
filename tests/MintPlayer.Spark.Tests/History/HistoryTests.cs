@@ -281,7 +281,7 @@ public class HistoryTests(ITestOutputHelper output) : SparkTestDriver
         var original = new HiNote
         {
             Title = "v1",
-            Label = new TranslatedString { Translations = { ["en"] = "one" } },
+            Label = TranslatedString.Of("en", "one"),
             DueAt = new DateTimeOffset(2026, 1, 1, 10, 0, 0, TimeSpan.FromHours(2)),
             Lines = [new HiLine { Text = "a", Quantity = 1 }, new HiLine { Text = "b", Quantity = 2 }],
             CreatedBy = Alice,
@@ -295,7 +295,7 @@ public class HistoryTests(ITestOutputHelper output) : SparkTestDriver
         await UpdateRawAsync(original.Id!, n =>
         {
             n.Title = "v2";
-            n.Label = new TranslatedString { Translations = { ["en"] = "two", ["nl"] = "twee" } };
+            n.Label = TranslatedString.Of(("en", "two"), ("nl", "twee"));
             n.DueAt = new DateTimeOffset(2026, 6, 1, 8, 30, 0, TimeSpan.FromHours(-5));
             n.Lines = [new HiLine { Text = "b", Quantity = 5 }, new HiLine { Text = "c", Quantity = 3 }];
         });
@@ -304,20 +304,20 @@ public class HistoryTests(ITestOutputHelper output) : SparkTestDriver
         // Without the History package's fix: the base save merges TranslatedString per language.
         await SaveRevisionContentAsPlainEditAsync(host, original.Id!, v1);
         var plainEdit = await LoadAsync<HiNote>(original.Id!);
-        output.WriteLine($"plain edit of v1's values: Label={JsonSerializer.Serialize(plainEdit!.Label?.Translations)}");
-        await UpdateRawAsync(original.Id!, n => n.Label = new TranslatedString { Translations = { ["en"] = "two", ["nl"] = "twee" } });
+        output.WriteLine($"plain edit of v1's values: Label={JsonSerializer.Serialize(plainEdit!.Label?.Entries)}");
+        await UpdateRawAsync(original.Id!, n => n.Label = TranslatedString.Of(("en", "two"), ("nl", "twee")));
 
         var (status, body) = await host.SendAsync("/spark/po/revert", Wire.Typed(NoteTypeId, new { changeVector = v1 }, original.Id));
 
         status.Should().Be(HttpStatusCode.OK);
         var reverted = await LoadAsync<HiNote>(original.Id!);
         var undeclared = await LoadAsync<HiNoteWithLegacy>(original.Id!);
-        output.WriteLine($"reverted: Title={reverted!.Title} Label={JsonSerializer.Serialize(reverted.Label?.Translations)} DueAt={reverted.DueAt:O} Lines={JsonSerializer.Serialize(reverted.Lines)} Legacy={undeclared!.Legacy} CreatedBy={reverted.CreatedBy} ModifiedBy={reverted.ModifiedBy}");
+        output.WriteLine($"reverted: Title={reverted!.Title} Label={JsonSerializer.Serialize(reverted.Label?.Entries)} DueAt={reverted.DueAt:O} Lines={JsonSerializer.Serialize(reverted.Lines)} Legacy={undeclared!.Legacy} CreatedBy={reverted.CreatedBy} ModifiedBy={reverted.ModifiedBy}");
 
-        plainEdit.Label!.Translations.Should().ContainKey("nl", "the base save merges languages — a plain edit cannot remove one");
+        plainEdit.Label!.Tags.Should().Contain("nl", "the base save merges languages — a plain edit cannot remove one");
         reverted.Title.Should().Be("v1");
-        reverted.Label!.Translations.Keys.Should().Equal(["en"], "a revert makes a TranslatedString exact");
-        reverted.Label.Translations["en"].Should().Be("one");
+        reverted.Label!.Tags.Should().Equal(["en"], "a revert makes a TranslatedString exact");
+        reverted.Label["en"].Should().Be("one");
         reverted.DueAt!.Value.Should().Be(original.DueAt!.Value);
         reverted.DueAt!.Value.Offset.Should().Be(TimeSpan.FromHours(2), "the offset survives");
         reverted.Lines.Select(l => (l.Text, l.Quantity)).Should().Equal(("a", 1), ("b", 2));
@@ -370,8 +370,8 @@ public class HistoryTests(ITestOutputHelper output) : SparkTestDriver
         // Every language travels, so ng-spark shows the one its user picked, not the browser's.
         var notice = body.GetProperty("operations").EnumerateArray().Single(o => o.GetProperty("type").GetString() == "notify");
         notice.TryGetProperty("translatedMessage", out var translations).Should().BeTrue("the client resolves the notice in the app-chosen language");
-        translations.GetProperty("en").GetString().Should().Contain("partially");
-        translations.GetProperty("nl").GetString().Should().StartWith("Gedeeltelijk teruggezet");
+        translations.Text("en").Should().Contain("partially");
+        translations.Text("nl").Should().StartWith("Gedeeltelijk teruggezet");
 
         // Back to v2's Title: Secret is s2 in both, so nothing was held back.
         await UpdateRawAsync(note.Id!, n => n.Title = "v3");

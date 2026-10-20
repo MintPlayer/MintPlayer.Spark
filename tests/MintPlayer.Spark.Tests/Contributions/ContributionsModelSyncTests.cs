@@ -82,7 +82,7 @@ public class ContributionsModelSyncTests : IDisposable
             attribute.GetProperty("renderer").GetString().Should().Be(ContributionDescriptor.AttributionRenderingHint);
             var options = attribute.GetProperty("rendererOptions");
             options.GetProperty("contributionsQuery").GetString().Should().Be("cosonglyricscontributions");
-            options.GetProperty("targetType").GetString().Should().Be("CoSong");
+            options.GetProperty("targetType").GetString().Should().Be(typeof(CoSong).FullName, "D28: the CLR type, never assumed to be the model name");
             options.GetProperty("slots").EnumerateArray().Select(s => s.GetString()).Should().Equal("Language", "Script");
         }
         Attribute(lyrics, "Text").TryGetProperty("renderer", out _).Should().BeFalse();
@@ -103,7 +103,7 @@ public class ContributionsModelSyncTests : IDisposable
         var text = Attribute(contribution, "Text");
         text.GetProperty("renderer").GetString().Should().Be(ContributionDescriptor.LineDiffRenderingHint);
         var options = text.GetProperty("rendererOptions");
-        options.GetProperty("compareType").GetString().Should().Be("CoSong");
+        options.GetProperty("compareType").GetString().Should().Be(typeof(CoSong).FullName, "D28: the CLR type, never assumed to be the model name");
         options.GetProperty("compareAttribute").GetString().Should().Be("Lyrics");
         options.GetProperty("compareRowAttribute").GetString().Should().Be("Text");
         Attribute(contribution, "Language").TryGetProperty("renderer", out _).Should().BeFalse("only value attributes are diffed");

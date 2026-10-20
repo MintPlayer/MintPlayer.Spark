@@ -1,0 +1,174 @@
+@if (summary(); as s) {
+  <section class="spark-checkout-step">
+    @if (refusal(); as key) {
+      <p class="spark-checkout-refusal" role="alert">{{ key | t }}</p>
+    }
+
+    <ul class="spark-checkout-step-lines">
+      @for (line of s.lines; track line.lineId) {
+        <li class="spark-checkout-step-line">
+          <div class="spark-checkout-step-line-head">
+            <strong class="spark-checkout-step-title">{{ line.quantity }} × {{ line.title | resolveTranslation: line.itemId }}</strong>
+            <span class="spark-checkout-step-line-total">{{ money(line.total) }}</span>
+          </div>
+          @if (line.description) {
+            <p class="spark-checkout-step-description">{{ line.description | resolveTranslation }}</p>
+          }
+          @if (line.units.length > 0) {
+            <small class="spark-checkout-step-units">{{ line.units.join(', ') }}</small>
+          }
+          @if (line.serviceDate) {
+            <small class="spark-checkout-step-service-date">{{ serviceDate(line.serviceDate) }}</small>
+          }
+          @if (line.minimumAge != null) {
+            <small class="spark-checkout-step-age">{{ format('commerceCheckout.minimumAge', line.minimumAge) }}</small>
+          }
+          <ul class="spark-checkout-step-breakdown">
+            @for (fee of line.fees; track fee.code) {
+              <li class="spark-checkout-step-fee"><span>{{ fee.labelKey | t }}</span><span>{{ money(fee.amount) }}</span></li>
+            }
+            @for (adjustment of line.adjustments; track adjustment.code) {
+              <li class="spark-checkout-step-adjustment"><span>{{ adjustment.labelKey | t }}</span><span>{{ money(adjustment.amount) }}</span></li>
+            }
+          </ul>
+        </li>
+      }
+    </ul>
+
+    @if (s.extras.length > 0) {
+      <ul class="spark-checkout-step-extras">
+        @for (extra of s.extras; track extra.code) {
+          <li class="spark-checkout-step-extra" [attr.data-code]="extra.code"><span>{{ extra.labelKey | t }}</span><span>{{ money(extra.amount) }}</span></li>
+        }
+      </ul>
+    }
+
+    @if (s.donation; as offer) {
+      <fieldset class="spark-checkout-step-donation">
+        <legend>{{ offer.beneficiary ? format('commerceCheckout.donationTo', offer.beneficiary) : ('commerceCheckout.donation' | t) }}</legend>
+        <label>
+          <input type="radio" name="spark-checkout-donation" [checked]="donation() === null" [disabled]="busy()" (change)="chooseDonation(null)" />
+          {{ 'commerceCheckout.donationNone' | t }}
+        </label>
+        @for (amount of offer.amounts; track amount) {
+          <label>
+            <input type="radio" name="spark-checkout-donation" [checked]="donation() === '' + amount" [disabled]="busy()" (change)="chooseDonation('' + amount)" />
+            {{ donationAmount(amount) }}
+          </label>
+        }
+        @if (offer.roundUp) {
+          <label>
+            <input type="radio" name="spark-checkout-donation" [checked]="donation() === 'roundup'" [disabled]="busy()" (change)="chooseDonation('roundup')" />
+            {{ 'commerceCheckout.donationRoundUp' | t }}
+          </label>
+        }
+      </fieldset>
+    }
+
+    <p class="spark-checkout-step-total">
+      <span>{{ 'commerceCheckout.total' | t }}</span>
+      <strong>{{ total() }}</strong>
+    </p>
+
+    @if (s.insurance; as offer) {
+      <div class="spark-checkout-step-insurance">
+        <label>
+          <input type="checkbox" class="spark-checkout-insurance" [checked]="insurance()" [disabled]="busy()" (change)="chooseInsurance(checked($event))" />
+          {{ format('commerceCheckout.insuranceOffer', money(offer.premium)) }}
+        </label>
+        @if (offer.description) {
+          <small>{{ offer.description | resolveTranslation }}</small>
+        }
+        @if (offer.termsUrl) {
+          <a [href]="offer.termsUrl" target="_blank" rel="noopener">{{ 'commerceCheckout.insurance' | t }}</a>
+        }
+      </div>
+    }
+
+    @if (sellers().length > 0) {
+      <div class="spark-checkout-step-sellers">
+        <h3>{{ 'commerceCheckout.seller' | t }}</h3>
+        @for (seller of sellers(); track seller.organizationId) {
+          <div class="spark-checkout-step-seller">
+            @if (seller.label) {
+              <spark-commerce-trader-label [seller]="seller.label" [traderPageRoute]="traderPageRoute()" />
+            } @else {
+              <span>{{ seller.organizationId }}</span>
+            }
+          </div>
+        }
+      </div>
+    }
+
+    @if (documents().length > 0) {
+      <div class="spark-checkout-step-documents">
+        <h3>{{ 'commerceCheckout.documents' | t }}</h3>
+        <ul>
+          @for (doc of documents(); track doc.id) {
+            <li>
+              @if (doc.hasPdf) {
+                <a [href]="pdfUrl(doc)" target="_blank" rel="noopener">{{ documentTitle(doc) }}</a>
+              } @else {
+                <span>{{ documentTitle(doc) }}</span>
+              }
+            </li>
+          }
+        </ul>
+        @for (doc of required(); track doc.id) {
+          <label class="spark-checkout-step-accept">
+            <input type="checkbox" class="spark-checkout-accept" [attr.data-document-id]="doc.id"
+                   [checked]="accepted().has(doc.id)" (change)="toggleDocument(doc.id, checked($event))" />
+            {{ acceptText(doc) }}
+          </label>
+        }
+      </div>
+    }
+
+    @if (s.minimumAge != null) {
+      <label class="spark-checkout-step-attest">
+        <input type="checkbox" class="spark-checkout-age" [checked]="ageAttested()" (change)="ageAttested.set(checked($event))" />
+        {{ format('commerceCheckout.attestAge', s.minimumAge) }}
+      </label>
+    }
+
+    @if (s.needsEmail) {
+      <div class="spark-checkout-step-contact">
+        <label>
+          {{ 'commerceCheckout.email' | t }}
+          <input type="email" name="email" autocomplete="email" required [value]="email()" (input)="email.set(value($event))" />
+        </label>
+        <label>
+          {{ 'commerceCheckout.name' | t }}
+          <input type="text" name="name" autocomplete="name" [value]="name()" (input)="name.set(value($event))" />
+        </label>
+      </div>
+    }
+
+    @if (s.methods.length > 0) {
+      <fieldset class="spark-checkout-step-methods">
+        <legend>{{ 'commerceCheckout.paymentMethod' | t }}</legend>
+        @for (m of s.methods; track m.id) {
+          <label>
+            <input type="radio" name="spark-checkout-method" [value]="m.id" [checked]="method() === m.id" (change)="method.set(m.id)" />
+            {{ m.id }}
+          </label>
+        }
+      </fieldset>
+    }
+
+    @if (s.paymentWindowMinutes != null) {
+      <p class="spark-checkout-step-window">{{ format('commerceCheckout.paymentWindow', s.paymentWindowMinutes) }}</p>
+    }
+
+    @if (s.softOptInOffered) {
+      <label class="spark-checkout-step-opt-in">
+        <input type="checkbox" class="spark-checkout-opt-in" [checked]="optIn()" (change)="optIn.set(checked($event))" />
+        {{ 'commerceCheckout.softOptIn' | t }}
+      </label>
+    }
+
+    <button type="button" class="btn btn-primary spark-checkout-pay" [disabled]="!canPlace()" (click)="place()">{{ orderButtonText() }}</button>
+  </section>
+} @else if (refusal(); as key) {
+  <p class="spark-checkout-refusal" role="alert">{{ key | t }}</p>
+}

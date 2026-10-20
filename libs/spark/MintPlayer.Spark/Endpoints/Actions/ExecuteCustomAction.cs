@@ -18,6 +18,7 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint<CustomActionRe
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
     {
         builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
+        builder.RefuseDeniedInEnvelope();
     }
 
     [Inject] private readonly IModelLoader modelLoader;
@@ -72,10 +73,6 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint<CustomActionRe
                 _ => ClientResult.EnvelopeRefusal(clientAccessor, httpContext),
             };
         }
-        catch (SparkAccessDeniedException)
-        {
-            return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
-        }
         catch (SparkActionDisabledException ex)
         {
             // Raised by a write the action made through IDatabaseAccess, on an object whose own hook
@@ -98,7 +95,8 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint<CustomActionRe
         // a 449. Every other retry-capable endpoint catches only specific exception types, so the
         // exception simply propagates; this one has a catch-all, which would swallow the prompt and
         // answer 500 instead. `RetryFromEveryHookTests` is what fails if this filter is removed.
-        catch (Exception ex) when (ex is not SparkRetryActionException)
+        // A denial passes through the same way, to the endpoint filter's refusal (Configure).
+        catch (Exception ex) when (ex is not (SparkRetryActionException or SparkAccessDeniedException))
         {
             // R2-M1: server-side log with full detail, generic public response.
             logger.LogError(ex, "Custom action '{ActionName}' failed for entity type '{EntityType}'", actionName, entityType.Name);

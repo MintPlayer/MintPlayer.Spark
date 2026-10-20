@@ -1,0 +1,10 @@
+:host {
+  display: block;
+}
+
+// The picker shows "EUR · Euro"; keep it from taking the amount's width.
+.spark-money-currency {
+  flex: 0 0 auto;
+  width: auto;
+  max-width: 14rem;
+}

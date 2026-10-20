@@ -16,6 +16,7 @@ namespace MintPlayer.Spark.Abstractions;
 /// is why row ids can be treated as hostile input without an integrity token on the wire.
 /// </para>
 /// </remarks>
+[SparkContract]
 public sealed class QueryResult
 {
     /// <summary>The column metadata for every row in <see cref="Items"/>, sent once.</summary>
@@ -95,6 +96,9 @@ public sealed class QueryColumn
     /// <summary>A registered custom renderer's name, and whatever configuration it declared.</summary>
     public string? Renderer { get; init; }
     public Dictionary<string, object>? RendererOptions { get; init; }
+
+    /// <summary>The attribute's <see cref="EntityAttributeDefinition.DateTimeDisplay"/>, for a <c>datetime</c> column (X16).</summary>
+    public SparkDateTimeDisplay? DateTimeDisplay { get; init; }
 
     /// <summary>Presentation hints for every cell in this column. See <see cref="QueryResultItem"/>.</summary>
     public IReadOnlyDictionary<string, string>? TypeHints { get; init; }

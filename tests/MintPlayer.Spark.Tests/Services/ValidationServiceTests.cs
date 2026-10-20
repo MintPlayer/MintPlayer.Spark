@@ -301,20 +301,12 @@ public class ValidationServiceTests
     {
         // Drives FormatTranslatedMessage's "templateString is not null" branch (lines 209-219).
         // Provides a multilingual template that uses {0} (label) and {1} (extra param).
-        var template = new TranslatedString
-        {
-            Translations =
-            {
-                ["en"] = "{0} must be at most {1} chars",
-                ["nl"] = "{0} mag maximaal {1} tekens zijn",
-            }
-        };
+        var template = TranslatedString.Of(
+            ("en", "{0} must be at most {1} chars"),
+            ("nl", "{0} mag maximaal {1} tekens zijn"));
         _translations.Resolve("validation.maxLength").Returns(template);
 
-        var label = new TranslatedString
-        {
-            Translations = { ["en"] = "Surname", ["nl"] = "Achternaam" }
-        };
+        var label = TranslatedString.Of(("en", "Surname"), ("nl", "Achternaam"));
 
         var attr = new EntityAttributeDefinition
         {
@@ -328,11 +320,8 @@ public class ValidationServiceTests
         var service = new ValidationService(_modelLoader, _translations);
         var result = service.Validate(Po(("LastName", "TooLongName")));
 
-        ((object)result.Errors.Should().ContainSingle().Which.ErrorMessage.Translations)
-            .Should().BeEquivalentTo(new Dictionary<string, string>
-            {
-                ["en"] = "Surname must be at most 5 chars",
-                ["nl"] = "Achternaam mag maximaal 5 tekens zijn",
-            });
+        result.Errors.Should().ContainSingle().Which.ErrorMessage.Should().Be(TranslatedString.Of(
+            ("en", "Surname must be at most 5 chars"),
+            ("nl", "Achternaam mag maximaal 5 tekens zijn")));
     }
 }

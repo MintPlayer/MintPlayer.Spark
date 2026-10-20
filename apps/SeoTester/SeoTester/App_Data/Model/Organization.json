@@ -1,5 +1,6 @@
 {
-  "$schema": "https://schemas.spark.mintplayer.com/v4/model.schema.json",
+  "$schema": "https://schemas.spark.mintplayer.com/v7/model.schema.json",
+  "$extends": "organizations:Organization",
   "persistentObject": {
     "name": "Organization",
     "attributes": [

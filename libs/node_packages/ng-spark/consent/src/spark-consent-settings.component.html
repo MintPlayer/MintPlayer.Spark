@@ -1,0 +1,62 @@
+<div class="spark-consent-settings">
+  <h2 class="spark-consent-settings-title">{{ 'consent.settings.title' | t }}</h2>
+  <p>{{ 'consent.settings.intro' | t }}</p>
+
+  <ul class="spark-consent-purposes">
+    <li class="spark-consent-purpose">
+      <label class="spark-consent-switch">
+        <input type="checkbox" checked disabled aria-describedby="spark-consent-necessary-description" />
+        <span class="spark-consent-purpose-title">{{ 'consent.necessary.title' | t }}</span>
+      </label>
+      <p id="spark-consent-necessary-description" class="spark-consent-purpose-description">{{ 'consent.necessary.description' | t }}</p>
+    </li>
+    @for (purpose of purposes(); track purpose.name) {
+      <li class="spark-consent-purpose">
+        <label class="spark-consent-switch">
+          <input
+            type="checkbox"
+            [attr.data-purpose]="purpose.name"
+            [checked]="draft()[purpose.name] === true"
+            [disabled]="busy()"
+            [attr.aria-describedby]="'spark-consent-' + purpose.name + '-description'"
+            (change)="toggle(purpose.name, $any($event.target).checked)" />
+          <span class="spark-consent-purpose-title">{{ purpose.title | resolveTranslation }}</span>
+        </label>
+        <p [id]="'spark-consent-' + purpose.name + '-description'" class="spark-consent-purpose-description">
+          {{ purpose.description | resolveTranslation }}
+          @if (purpose.vendors.length) {
+            <span class="spark-consent-vendors">
+              {{ 'consent.vendors' | t }}:
+              @for (vendor of purpose.vendors; track vendor.name; let last = $last) {
+                @if (vendor.privacyPolicyUrl) {
+                  <a [href]="vendor.privacyPolicyUrl" target="_blank" rel="noopener">{{ vendor.name }}</a>
+                } @else {
+                  {{ vendor.name }}
+                }
+                @if (!last) {, }
+              }
+            </span>
+          }
+        </p>
+      </li>
+    }
+  </ul>
+
+  <div class="spark-consent-settings-actions">
+    <button type="button" class="spark-consent-choice" data-choice="reject" [disabled]="busy()" (click)="rejectAll()">{{ 'consent.rejectAll' | t }}</button>
+    <button type="button" class="spark-consent-choice" data-choice="accept" [disabled]="busy()" (click)="acceptAll()">{{ 'consent.acceptAll' | t }}</button>
+    <button type="button" class="spark-consent-choice" data-choice="save" [disabled]="busy()" (click)="save()">{{ 'consent.save' | t }}</button>
+    @if (anyGranted() && source() === 'settings') {
+      <button type="button" class="spark-consent-more" [disabled]="busy()" (click)="withdrawAll()">{{ 'consent.withdrawAll' | t }}</button>
+    }
+  </div>
+
+  <p class="spark-consent-status" role="status" aria-live="polite">
+    @if (saved()) {
+      {{ 'consent.saved' | t }}
+    }
+    @if (error()) {
+      {{ 'consent.error' | t }}
+    }
+  </p>
+</div>

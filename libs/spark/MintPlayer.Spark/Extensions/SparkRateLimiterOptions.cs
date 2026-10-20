@@ -3,14 +3,25 @@ namespace MintPlayer.Spark.Extensions;
 /// <summary>
 /// Configures the fixed-window rate limiter wired by
 /// <see cref="SparkBuilderRateLimiterExtensions.AddRateLimiter"/>. Apps that want
-/// the default (150 requests / 10 seconds per client IP, scoped to <c>/spark</c> and
+/// the default (150 requests / 10 seconds per caller, scoped to <c>/spark</c> and
 /// <c>/connect</c>) can pass <c>_ =&gt; { }</c> — any unset property falls back to the
 /// documented default.
 /// </summary>
 public class SparkRateLimiterOptions
 {
-    /// <summary>Requests allowed per window, per client IP. Defaults to 150.</summary>
+    /// <summary>
+    /// Requests allowed per window, per caller (commerce PRD X10): per signed-in user, else per visitor
+    /// cookie, else per network address — an IPv4 address, or an IPv6 address's /64. Defaults to 150.
+    /// </summary>
     public int PermitLimit { get; set; } = 150;
+
+    /// <summary>
+    /// Requests allowed per window from one network address (an IPv4 address or an IPv6 /64) across every
+    /// caller behind it, the ceiling over <see cref="PermitLimit"/>. Many people share one address behind a
+    /// carrier's NAT or an office, so it is higher; it bounds what one address can do with many visitor
+    /// cookies or accounts. <see langword="null"/> (the default) means 10 × <see cref="PermitLimit"/>.
+    /// </summary>
+    public int? PermitLimitPerAddress { get; set; }
 
     /// <summary>Window length. Defaults to 10 seconds.</summary>
     public TimeSpan Window { get; set; } = TimeSpan.FromSeconds(10);

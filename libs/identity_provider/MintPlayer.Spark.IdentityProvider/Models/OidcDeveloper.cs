@@ -20,7 +20,7 @@ public class OidcDeveloper
     public DateTime? DecidedAt { get; set; }
     /// <summary>The administrator who approved or rejected the request; null when no approval was required.</summary>
     public string? DecidedBy { get; set; }
-    /// <summary>The reason given with a rejection.</summary>
+    /// <summary>The reason given with a rejection or a revocation (the decision's <c>identity-provider.developer</c> approval request keeps it too).</summary>
     public string? Note { get; set; }
 }
 

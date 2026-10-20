@@ -43,18 +43,14 @@ public static class SparkNotificationsExtensions
     public static ISparkBuilder AddNotifications(this ISparkBuilder builder, Action<SparkNotificationsOptions>? configure = null)
     {
         var services = builder.Services;
-        if (services.Any(d => d.ServiceType == typeof(NotificationsMarker)))
+        if (!services.TryAddSparkMarker<NotificationsMarker>())
         {
             if (configure is not null)
                 services.Configure(configure);
             return builder;
         }
-        services.AddSingleton<NotificationsMarker>();
 
-        services.AddOptions<SparkNotificationsOptions>();
-        services.AddSingleton<IConfigureOptions<SparkNotificationsOptions>>(sp => new ConfigureNamedOptions<SparkNotificationsOptions>(
-            Options.DefaultName,
-            options => sp.GetService<IConfiguration>()?.GetSection(SparkNotificationsOptions.SectionName).Bind(options)));
+        services.AddSparkConfigurationSection<SparkNotificationsOptions>();
         if (configure is not null)
             services.Configure(configure);
 
@@ -73,6 +69,8 @@ public static class SparkNotificationsExtensions
         services.TryAddScoped<SparkNotifier>();
         services.TryAddScoped<ISparkNotifier>(sp => sp.GetRequiredService<SparkNotifier>());
         services.TryAddScoped<NotificationInbox>();
+        // Approval notices become notifications (in-app, mail, push by preference) instead of Approvals' own mail.
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<MintPlayer.Spark.Approvals.IApprovalNotifier, NotificationsApprovalNotifier>());
 
         services.Configure<SparkMessagingOptions>(messaging =>
         {

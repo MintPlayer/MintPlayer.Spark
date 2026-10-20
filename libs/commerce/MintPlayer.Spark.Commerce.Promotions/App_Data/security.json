@@ -1,0 +1,17 @@
+{
+  "$schema": "../../../../schemas/security.schema.json",
+  "_comment": [
+    "The promotions package's rights, shipped as a library layer (docs/commerce_PRD.md §4.6). They name only its own types",
+    "and only @authenticated: no slot, so no application has to bind anything. Every row is narrowed by PromotionsAccess",
+    "(the seller's Owners, Admins and 'promotions' members; platform admins, ManageSellers/Commerce, every row), so the",
+    "rights alone show nothing. Nothing is written by a form: only QueryRead is granted; the admin endpoints",
+    "(/spark/commerce/promotions/admin/*) write, with the same check.",
+    "Opt out of all of these with \"libraries\": { \"commerce-promotions\": false }."
+  ],
+  "rights": [
+    { "key": "codes", "resource": "QueryRead/PromotionCode", "groupId": "@authenticated" },
+    { "key": "sale-prices", "resource": "QueryRead/PromotionSalePrice", "groupId": "@authenticated" },
+    { "key": "waiting-lists", "resource": "QueryRead/PromotionWaitingList", "groupId": "@authenticated" },
+    { "key": "tracking-links", "resource": "QueryRead/PromotionTrackingLink", "groupId": "@authenticated" }
+  ]
+}

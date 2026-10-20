@@ -7,7 +7,7 @@ import { SparkDiffLine, diffHasChanges, lineDiff } from './line-diff';
 /**
  * Where the `lineDiff` renderer finds the text to compare with — its `rendererOptions`:
  *
- * - `compareType`: the model name (or alias, or id) of the object to load;
+ * - `compareType`: the model name (or alias, or id, or CLR type: what Contributions seeds, D28) of the type to load;
  * - its id: `compareIdAttribute` (an attribute of this object holding it), or
  *   `compareIdPattern` + `compareIdReplacement` (a regular expression and replacement applied to this
  *   object's id);
@@ -181,9 +181,9 @@ export class SparkLineDiffComponent {
     }
   }
 
-  /** The entity type id for a model name or alias (the load endpoint is keyed by the type's id). */
+  /** The entity type id for a model name, alias or CLR type (D28; the load endpoint is keyed by the type's id). */
   private async typeIdOf(type: string): Promise<string> {
     const types = await this.spark.getEntityTypes();
-    return types.find(t => t.name === type || t.alias === type || t.id === type)?.id ?? type;
+    return types.find(t => t.id === type || t.alias === type || t.name === type || t.clrType === type)?.id ?? type;
   }
 }

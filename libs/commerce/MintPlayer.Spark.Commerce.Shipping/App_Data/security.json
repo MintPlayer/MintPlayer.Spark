@@ -1,0 +1,19 @@
+{
+  "$schema": "../../../../schemas/security.schema.json",
+  "_comment": [
+    "The shipping package's rights, shipped as a library layer (docs/commerce_PRD.md §4.9). They name only its own types,",
+    "granted to this library's one slot, which the application binds in its security.json:",
+    "  \"bindings\": { \"commerce-shipping:staff\": [\"Shipping\"] }",
+    "An unbound slot refuses startup. Rows are narrowed by the IShipmentRowFilters the application or Shop registers (a",
+    "seller's staff see their own shipments); without one, every member of the slot sees every shipment. Nothing is",
+    "written by a form: only QueryRead and the custom actions are granted. The label and customs-document downloads need",
+    "Read/Shipment too. Opt out of all of these with \"libraries\": { \"commerce-shipping\": false }."
+  ],
+  "rights": [
+    { "key": "shipments", "resource": "QueryRead/Shipment", "groupId": "commerce-shipping:staff" },
+    { "key": "void-label", "resource": "ShipmentVoidLabel/Shipment", "groupId": "commerce-shipping:staff" },
+    { "key": "return-label", "resource": "ShipmentCreateReturnLabel/Shipment", "groupId": "commerce-shipping:staff" },
+    { "key": "add-parcel", "resource": "ShipmentAddParcel/Shipment", "groupId": "commerce-shipping:staff" },
+    { "key": "release-booking", "resource": "ShipmentReleaseBooking/Shipment", "groupId": "commerce-shipping:staff" }
+  ]
+}

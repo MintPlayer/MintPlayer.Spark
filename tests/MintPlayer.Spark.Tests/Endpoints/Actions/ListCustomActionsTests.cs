@@ -105,14 +105,14 @@ public class ListCustomActionsTests
         var first = doc.RootElement.EnumerateArray().Single(e => !IsDefault(e));
         first.GetProperty("name").GetString().Should().Be("ArchiveCar");
         first.TryGetProperty("isDefault", out _).Should().BeFalse();
-        first.GetProperty("label").GetProperty("en").GetString().Should().Be("Archive Car");
+        first.GetProperty("label").Text("en").Should().Be("Archive Car");
         first.GetProperty("icon").GetString().Should().Be("archive");
         (first.TryGetProperty("description", out var description) ? description.ValueKind : JsonValueKind.Null)
             .Should().Be(JsonValueKind.Null);
         first.GetProperty("showedOn").GetString().Should().Be("detail");
         first.GetProperty("selectionRule").GetString().Should().Be("=1");
         first.GetProperty("refreshOnCompleted").GetBoolean().Should().BeTrue();
-        first.GetProperty("confirmation").GetProperty("en").GetString().Should().NotBeNullOrEmpty();
+        first.GetProperty("confirmation").Text("en").Should().NotBeNullOrEmpty();
         first.GetProperty("variant").GetString().Should().Be("warning");
         first.GetProperty("offset").GetInt32().Should().Be(42);
         first.TryGetProperty("requiresClient", out _).Should().BeFalse();

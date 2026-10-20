@@ -156,7 +156,7 @@ Additions beyond the issue: broken links, redirect chains, duplicate titles and 
 ### 4.1 App
 
 - **Projects:** `apps/SeoTester/SeoTester` (host + ClientApp), `SeoTester.Library` (entities, check implementations, catalogue seed JSON), `SeoTester.Tests`, plus (D54) `SeoTester.Fetching` (`ISeoFetcher`: the SSRF-safe clients, TLS probes, DNS and the fetcher protocol; no database) and `SeoTester.Fetcher` (the `seo-fetcher` container: that code behind an internal API with a shared secret). Every request to a target goes through `ISeoFetcher`: in process outside Production, the fetcher container in Production. Ports 5013/5014 (the next free pair).
-- **Hand-maintained lists to update:** root `package.json` workspaces, `MintPlayer.Spark.slnx`, `.github/workflows/pull-request.yml` (137, 148, 173), `tools/verify-ngsw-config.test.mjs:64`, `tools/test-local.mjs:33` (if E2E), Dockerfile, and a deploy workflow modelled on `code-coverage-deploy.yml:20-40`.
+- **Hand-maintained lists to update:** root `package.json` workspaces, `MintPlayer.Spark.slnx`, `.github/workflows/pull-request.yml` (the `nx run-many --target=build` project list and the `--spark-verify-model` and `--spark-verify-security` app loops; cited by content, because line numbers drift), `tools/verify-ngsw-config.test.mjs:64`, `tools/test-local.mjs:33` (if E2E), Dockerfile, and a deploy workflow modelled on `code-coverage-deploy.yml:20-40`.
 - **Composition:**
 
   ```

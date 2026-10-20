@@ -1,0 +1,13 @@
+{
+  "_fixture": {
+    "source": "https://docs.stripe.com/error-codes#balance-insufficient and https://docs.stripe.com/api/errors (error object: type, code, message)",
+    "derived": "error object from the docs; message text illustrative. HTTP 400.",
+    "recorded": false
+  },
+  "error": {
+    "code": "balance_insufficient",
+    "doc_url": "https://docs.stripe.com/error-codes/balance-insufficient",
+    "message": "You have insufficient funds in your Stripe account for this transfer.",
+    "type": "invalid_request_error"
+  }
+}

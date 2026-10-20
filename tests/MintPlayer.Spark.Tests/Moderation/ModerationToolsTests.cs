@@ -210,7 +210,10 @@ public class ModerationToolsTests : SparkTestDriver
 
         var (_, audit) = await host.ModeratorAsync("/spark/moderation/audit", new { take = 10 });
         audit.GetProperty("result").EnumerateArray().Should().Contain(e =>
-            e.GetProperty("action").GetString() == "lock" && e.GetProperty("targetId").GetString() == post && e.GetProperty("actorId").GetString() == "users/mod");
+            e.GetProperty("action").GetString() == "lock" && e.GetProperty("targetId").GetString() == post && e.GetProperty("actorId").GetString() == "users/mod"
+            // D28: the type is stored by id, never by its name, which an application rename changes.
+            && e.GetProperty("targetType").GetString() == MoHost.PostTypeId.ToString("D"));
+        (await host.LoadAsync<ModerationLock>(ModerationIds.Lock(post)))!.TargetType.Should().Be(MoHost.PostTypeId.ToString("D"));
         (await host.SendAsync("/spark/moderation/audit", new { take = 10 }, Bob)).Status.Should().Be(HttpStatusCode.NotFound);
     }
 
@@ -230,7 +233,10 @@ public class ModerationToolsTests : SparkTestDriver
         (await host.SendAsync("/spark/moderation/flag", Wire.Typed(MoHost.PostTypeId, new { reason = "" }, post), Carol)).Status.Should().Be(HttpStatusCode.BadRequest);
 
         var caseId = ModerationIds.FlagCase(post);
-        (await host.LoadAsync<ReviewCase>(caseId))!.FlagCount.Should().Be(2, "one open flag per user and post");
+        var opened = (await host.LoadAsync<ReviewCase>(caseId))!;
+        opened.FlagCount.Should().Be(2, "one open flag per user and post");
+        opened.TargetType.Should().Be(MoHost.PostTypeId.ToString("D"), "a case names its type by id (D28)");
+        (await host.LoadAsync<ModerationFlag>(ModerationIds.Flag(Bob, post)))!.TargetType.Should().Be(MoHost.PostTypeId.ToString("D"));
 
         (await host.SendAsync("/spark/moderation/cases", new { }, Bob)).Status.Should().Be(HttpStatusCode.NotFound, "no Review right");
         var (_, queue) = await host.ModeratorAsync("/spark/moderation/cases", new { });
@@ -242,6 +248,51 @@ public class ModerationToolsTests : SparkTestDriver
         (await host.SummaryAsync(Bob)).Total.Should().Be(2, "flag upheld: +2, credited at once");
         (await host.SummaryAsync(Carol)).Total.Should().Be(2, "one upheld (+2), one declined (0)");
         (await host.LoadAsync<ModerationFlag>(ModerationIds.Flag(Carol, other)))!.Status.Should().Be(ModerationCaseStatus.Declined);
+    }
+
+    [Fact]
+    public async Task Concurrent_decisions_on_one_case_yield_one_decision_and_one_set_of_side_effects()
+    {
+        // Commerce F2. The "still open?" check and the status write ran in two sessions with the side effects
+        // between them, and settling the flags waits for a non-stale index, so moderators deciding at once all
+        // passed the check: each settled the flags and credited the flaggers (or failed half-way on a duplicate
+        // event id). The decision is now claimed first, in one optimistic-concurrency write of the version the
+        // check read: exactly one decider wins and runs the side effects, every other one is the "already
+        // decided" 400.
+        await using var host = await StartAsync();
+        var post = await host.SeedPostAsync(Alice);
+        (await host.SendAsync("/spark/moderation/flag", Wire.Typed(MoHost.PostTypeId, new { reason = "spam" }, post), Bob)).Status.Should().Be(HttpStatusCode.OK);
+        (await host.SendAsync("/spark/moderation/flag", Wire.Typed(MoHost.PostTypeId, new { reason = "rude" }, post), Carol)).Status.Should().Be(HttpStatusCode.OK);
+        var caseId = ModerationIds.FlagCase(post);
+
+        var responses = await Task.WhenAll(Enumerable.Range(0, 4).Select(async _ =>
+        {
+            await Task.Yield();
+            return (await host.ModeratorAsync("/spark/moderation/case/decide", new { caseId, decision = "uphold" })).Status;
+        }));
+
+        responses.Count(s => s == HttpStatusCode.OK).Should().Be(1, "one decision");
+        responses.Where(s => s != HttpStatusCode.OK).Should().OnlyContain(s => s == HttpStatusCode.BadRequest, "the others were already decided, not a 500");
+        (await host.SummaryAsync(Bob)).Total.Should().Be(2, "the flag upheld is credited once (+2), not once per decider");
+        (await host.SummaryAsync(Carol)).Total.Should().Be(2);
+        var decided = await host.LoadAsync<ReviewCase>(caseId);
+        decided!.Status.Should().Be(ModerationCaseStatus.Upheld);
+        decided.DecidedBy.Should().Be("users/mod");
+    }
+
+    [Fact]
+    public async Task A_refused_decision_leaves_the_case_open()
+    {
+        // The decision is validated before the case is claimed: a refusal must not close the case.
+        await using var host = await StartAsync();
+        var post = await host.SeedPostAsync(Alice);
+        await host.SendAsync("/spark/moderation/flag", Wire.Typed(MoHost.PostTypeId, new { reason = "spam" }, post), Bob);
+        var caseId = ModerationIds.FlagCase(post);
+
+        (await host.ModeratorAsync("/spark/moderation/case/decide", new { caseId, decision = "reverse" })).Status.Should().Be(HttpStatusCode.BadRequest, "a flag case is upheld or declined");
+
+        (await host.LoadAsync<ReviewCase>(caseId))!.Status.Should().Be(ModerationCaseStatus.Open);
+        (await host.ModeratorAsync("/spark/moderation/case/decide", new { caseId, decision = "decline" })).Status.Should().Be(HttpStatusCode.OK);
     }
 
     // ---- suspensions -----------------------------------------------------------------------------

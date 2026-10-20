@@ -25,8 +25,7 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     spark.UseControllers();
 
     spark.UseContext<HRContext>();
-    spark.AddActions();
-    spark.AddMigrations(); // generated: discovers ISparkMigration classes, runs them once at startup
+    spark.AddSparkDiscovered(); // generated: the Actions classes and the ISparkMigration classes (run once at startup)
 
     // Explicit since preview.60: the default is now Disabled, matching the client's opt-in
     // routes. HR mounts the full password family, so it says so.
@@ -80,9 +79,10 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     // as an .eml file into Spark:Mail:PickupFolder (appsettings.json) instead of being sent.
     spark.AddMailManager();
 
-    // Everything else comes from the `Spark:Replication` section, bound by AddReplication.
-    // Assemblies are the one setting configuration cannot express.
-    spark.AddReplication(opt => opt.AssembliesToScan = [typeof(HR.Replicated.Car).Assembly]);
+    // Everything comes from the `Spark:Replication` section, bound by AddReplication. HR reads Fleet's cars through
+    // its [Replicated] class (HR.Replicated.Car); what HR owns (people, companies) other modules read through their own
+    // classes, which HR approves under "Replication requests" (automatically while HR runs in Development).
+    spark.AddReplication();
 });
 
 // For /api/hr/fleet-cars (the I12 demo).

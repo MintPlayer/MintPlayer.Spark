@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.Routing.Patterns;
 using Microsoft.Extensions.DependencyInjection;
+using MintPlayer.AspNetCore.SpaServices.Xsrf;
 
 namespace MintPlayer.Spark.Testing;
 
@@ -25,8 +26,8 @@ namespace MintPlayer.Spark.Testing;
 /// ⚠️ What it records is deliberately narrow. Only metadata whose meaning survives a change of
 /// <em>how</em> an endpoint is declared (a lambda becoming a class, a group moving): authorization
 /// (<see cref="IAuthorizeData"/>, <see cref="AuthorizationPolicy"/>, <see cref="IAllowAnonymous"/>),
-/// antiforgery, rate limiting, CORS, request size limits, response and output caching, and the
-/// accepted content types. Display names, handler types, endpoint-type markers and order are
+/// antiforgery, the XSRF-cookie skip (<see cref="ISkipXsrfTokenMetadata"/>, RX2), rate limiting, CORS,
+/// request size limits, response and output caching, and the accepted content types. Display names, handler types, endpoint-type markers and order are
 /// excluded on purpose: they legitimately change in such a refactor and would bury the real diff.
 /// </para>
 /// <para>
@@ -154,6 +155,12 @@ public static class RouteTableSnapshot
         if (metadata.GetMetadata<IAntiforgeryMetadata>() is { } antiforgery)
             facts.Add(antiforgery.RequiresValidation ? "antiforgery=required" : "antiforgery=not-required");
 
+        // RX2 / FR5: whether the XSRF cookie generator skips this route (last one wins, as the generator
+        // reads it). A public endpoint that keeps minting the per-user cookie has its Cache-Control forced
+        // to private (SparkMiddleware's UseAntiforgeryGenerator), so the skip is security-relevant review data.
+        if (metadata.GetMetadata<ISkipXsrfTokenMetadata>() is { Skip: true })
+            facts.Add("xsrf-token=skipped");
+
         if (metadata.GetMetadata<DisableRateLimitingAttribute>() is not null)
             facts.Add("rate-limit=disabled");
         else if (metadata.GetMetadata<EnableRateLimitingAttribute>() is { } rateLimit)
@@ -199,7 +206,7 @@ public static class RouteTableSnapshot
     /// always, no doubled or trailing slash. A group prefix and an endpoint path concatenated by a
     /// generator and by <c>MapGroup</c> differ in exactly these ways and match the same requests.
     /// </summary>
-    private static string NormalizePattern(RoutePattern pattern)
+    internal static string NormalizePattern(RoutePattern pattern)
     {
         var raw = pattern.RawText ?? string.Join("/", pattern.PathSegments.Select(SegmentText));
         var normalized = "/" + string.Join("/", raw.Split('/', StringSplitOptions.RemoveEmptyEntries));

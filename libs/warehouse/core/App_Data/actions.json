@@ -1,0 +1,30 @@
+{
+  "$schema": "../../../../schemas/actions.schema.json",
+  "_comment": [
+    "The warehouse core's custom actions (docs/warehouse_picking_PRD.md §4.5). Classes: CustomActions/WarehouseStockActions.cs;",
+    "rights in this library's security.json; labels are actions.<Name>.* in translations.json."
+  ],
+  "WarehouseMoveStock": {
+    "icon": "arrow-left-right",
+    "showedOn": "detail",
+    "variant": "primary"
+  },
+  "WarehouseAdjustStock": {
+    "icon": "plus-slash-minus",
+    "showedOn": "detail"
+  },
+  "WarehouseRecallLot": {
+    "icon": "exclamation-octagon",
+    "showedOn": "both",
+    "variant": "danger"
+  },
+  "WarehouseQuarantineLot": {
+    "icon": "shield-exclamation",
+    "showedOn": "both"
+  },
+  "WarehouseReleaseLot": {
+    "icon": "check-circle",
+    "showedOn": "both",
+    "variant": "success"
+  }
+}

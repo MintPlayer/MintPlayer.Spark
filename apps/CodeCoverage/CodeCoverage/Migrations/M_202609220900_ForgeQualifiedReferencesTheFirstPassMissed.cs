@@ -52,7 +52,6 @@ namespace CodeCoverage.Migrations;
 /// </remarks>
 public partial class M_202609220900_ForgeQualifiedReferencesTheFirstPassMissed : ISparkMigration
 {
-    public static long Version => 202609220900;
     public static string? Description => "Reference fields the forge-qualifying pass missed";
 
     [Inject] private readonly IDocumentStore store;

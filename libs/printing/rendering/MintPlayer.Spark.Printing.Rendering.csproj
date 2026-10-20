@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<OutputType>Library</OutputType>
+
+		<!-- NuGet Package Metadata -->
+		<PackageId>MintPlayer.Spark.Printing.Rendering</PackageId>
+		<Version>11.0.0-preview.1</Version>
+		<Authors>MintPlayer</Authors>
+		<Company>MintPlayer</Company>
+		<Description>Document and label rendering for MintPlayer.Spark (WX6): Code 128, GS1-128, EAN-13, DataMatrix (ECC 200) and QR barcodes; a dependency-free PDF writer (any page size, Helvetica, vector barcodes, JPEG); ZPL II output at 203 and 300 dpi; label templates that draw once and render to both ZPL and PDF. No Spark, no RavenDB: commerce (invoices, tickets) and the warehouse share it.</Description>
+		<PackageTags>pdf;zpl;labels;barcode;code128;gs1-128;ean13;datamatrix;qr;spark</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="README.md" Pack="true" PackagePath="\" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- QR only (MIT, no dependencies), as Authorization's SparkQrCodeRenderer uses it. The other symbologies and the
+		     PDF writer are in-house (W17, docs/warehouse_picking_PRD.md §13). -->
+		<PackageReference Include="QRCoder" Version="1.8.0" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<InternalsVisibleTo Include="MintPlayer.Spark.Warehouse.Tests" />
+	</ItemGroup>
+
+</Project>

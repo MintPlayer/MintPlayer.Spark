@@ -12,6 +12,7 @@ import {
 import { inject } from '@angular/core';
 import { Router, type CanActivateFn } from '@angular/router';
 import { sparkAuthGuard } from '@mintplayer/ng-spark/auth/guards';
+import { translated } from '@mintplayer/ng-spark/models';
 
 type Loader = () => Promise<any>;
 
@@ -344,7 +345,7 @@ export function withConnectedAgents(options?: SparkConnectedAgentsRouteOptions):
     accountLinks: [{
       key: 'agents',
       path: '/' + path,
-      label: { en: 'Connected applications', fr: 'Applications connectées', nl: 'Gekoppelde toepassingen' },
+      label: translated({ en: 'Connected applications', fr: 'Applications connectées', nl: 'Gekoppelde toepassingen' }),
     }],
   };
 }

@@ -1,0 +1,19 @@
+<mjml>
+  <mj-head>
+    <mj-title>Commande {{ number }} : votre étiquette de retour</mj-title>
+    <mj-attributes>
+      <mj-all font-family="Segoe UI, Helvetica, Arial, sans-serif" />
+      <mj-text font-size="15px" line-height="22px" color="#111827" />
+    </mj-attributes>
+  </mj-head>
+  <mj-body background-color="#f3f4f6">
+    <mj-section background-color="#ffffff" padding="24px 0">
+      <mj-column>
+        <mj-text font-size="20px" font-weight="600">{{ if buyer_name }}{{ buyer_name }}, v{{ else }}V{{ end }}otre étiquette de retour pour la commande {{ number }}</mj-text>
+        <mj-text>L'étiquette est jointe. Imprimez-la, collez-la sur le colis et remettez-le à {{ if carrier }}{{ carrier }}{{ else }}le transporteur{{ end }}.{{ if tracking_number }} Numéro de suivi : {{ tracking_number }}.{{ end }}</mj-text>
+        {{ if seller_pays_return }}<mj-text>Les frais de retour sont à la charge du vendeur.</mj-text>{{ else }}<mj-text>Les frais de retour sont à votre charge, comme indiqué dans les informations sur la rétractation.</mj-text>{{ end }}
+        {{ if reason == "Withdrawal" }}<mj-text font-size="13px" color="#4b5563">Votre remboursement est effectué dans les 14 jours suivant votre rétractation ; il peut attendre la réception des biens ou la preuve de leur expédition, selon ce qui survient en premier (directive 2011/83/UE, art. 13, par. 3). Le scan de ce colis par le transporteur vaut preuve.</mj-text>{{ end }}
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>

@@ -1,0 +1,20 @@
+<mjml>
+  <mj-head>
+    <mj-title>Safety recall: {{ product }}</mj-title>
+    <mj-attributes>
+      <mj-all font-family="Segoe UI, Helvetica, Arial, sans-serif" />
+      <mj-text font-size="15px" line-height="22px" color="#111827" />
+    </mj-attributes>
+  </mj-head>
+  <mj-body background-color="#f3f4f6">
+    <mj-section background-color="#ffffff" padding="24px 0">
+      <mj-column>
+        <mj-text font-size="20px" font-weight="600" color="#b91c1c">Safety recall: {{ product }}</mj-text>
+        <mj-text>{{ if buyer_name }}{{ buyer_name }}, y{{ else }}Y{{ end }}our order {{ number }} contained {{ units }} unit(s) of {{ product }} (article {{ sku }}) from batch {{ lot }}, which is being recalled.</mj-text>
+        {{ if hazard }}<mj-text><strong>The risk:</strong> {{ hazard }}</mj-text>{{ end }}
+        {{ if action }}<mj-text><strong>What to do:</strong> {{ action }}</mj-text>{{ else }}<mj-text><strong>What to do:</strong> stop using the product and keep it out of reach until you hear from us.</mj-text>{{ end }}
+        {{ if contact }}<mj-text font-size="13px" color="#4b5563">More information: {{ contact }}</mj-text>{{ end }}
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>

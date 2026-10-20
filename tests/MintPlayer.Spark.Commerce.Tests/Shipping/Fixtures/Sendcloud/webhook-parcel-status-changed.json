@@ -1,0 +1,39 @@
+{
+  "_fixture": {
+    "source": "https://sendcloud.dev/api/v3/webhooks/parcel-status-changed (payload example)",
+    "retrieved": "2026-10-20",
+    "derived": "public documentation example, trimmed; timestamps (documented as 123) set to unix milliseconds of 2026-10-22T09:00:00Z, status set to 11 Delivered (the cancel page names 11 delivered)",
+    "recorded": false
+  },
+  "action": "parcel_status_changed",
+  "timestamp": 1792659600000,
+  "carrier_status_change_timestamp": 1792659600000,
+  "parcel": {
+    "id": 1,
+    "name": "Mr Bob",
+    "company_name": "Sendcloud",
+    "address": "Stadhuisplein 10",
+    "address_divided": { "street": "Stadhuisplein", "house_number": 10 },
+    "city": "Eindhoven",
+    "postal_code": "5611 EM",
+    "date_created": "03-02-2019 06:48:07",
+    "tracking_number": "3SYZXG132912330",
+    "weight": "2.000",
+    "label": {
+      "normal_printer": [ "https://panel.sendcloud.sc/api/v2/label/normal_printer/3172?start_from=0&hash=bbfd669ee9ebb19408b85b33d181a50040fd9bc4" ],
+      "label_printer": "https://panel.sendcloud.sc/api/v2/label/label_printer/3172?hash=bbfd669ee9ebb19408b85b33d181a50040fd9bc4"
+    },
+    "customs_declaration": {},
+    "status": { "id": 11, "message": "Delivered" },
+    "data": {},
+    "country": { "iso_3": "NLD", "iso_2": "NL", "name": "Netherlands" },
+    "shipment": { "id": 1, "name": "PostNL Standard" },
+    "order_number": "ORD12334",
+    "tracking_url": "https://tracking.eu-central-1-0.sendcloud.sc/forward?carrier=postnl&code=3SYZXG132912330&destination=NL&lang=en-us&source=NL&type=parcel&verification=5611+AB",
+    "carrier": { "id": null, "code": "postnl", "name": "PostNL", "servicepoints_carrier_code": "postnl" },
+    "is_return": false,
+    "colli_uuid": "d451ccef-1f1a-43a9-afd1-34bb13004700",
+    "collo_nr": 0,
+    "collo_count": 1
+  }
+}

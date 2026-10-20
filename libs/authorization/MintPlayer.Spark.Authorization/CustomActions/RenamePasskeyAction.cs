@@ -36,7 +36,7 @@ internal sealed partial class RenamePasskeyAction : ICustomAction
             return;
         }
 
-        var prompt = await manager.GetPersistentObjectAsync("PasskeyRename", cancellationToken: cancellationToken);
+        var prompt = await manager.GetPersistentObjectAsync(AuthorizationTypeIds.PasskeyRename, cancellationToken: cancellationToken);
         prompt["Name"].Value = passkey.Name;
 
         // Cancel is the client's own, translated button (cancellable), answered as RetryResult.CancelOption.

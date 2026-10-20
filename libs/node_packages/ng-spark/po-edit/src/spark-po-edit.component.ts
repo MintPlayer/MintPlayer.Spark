@@ -12,6 +12,7 @@ import { SPARK_CONFIG } from '@mintplayer/ng-spark';
 import { SparkService, SparkLanguageService, SparkLiveService, canonicalJson } from '@mintplayer/ng-spark/services';
 import { SparkPoFormComponent } from '@mintplayer/ng-spark/po-form';
 import { TranslateKeyPipe, ResolveTranslationPipe } from '@mintplayer/ng-spark/pipes';
+import { SPARK_SAVE_SUBMITTED_HANDLERS, sparkSaveSubmittedRoute } from '@mintplayer/ng-spark/panels';
 import {
   EntityType,
   PersistentObject,
@@ -28,7 +29,11 @@ import {
   wireDatesEqual,
   RefreshOverlay,
   applyOverlay,
+  translated,
+  isSaveSubmitted,
+  SparkSaveSubmitted,
 } from '@mintplayer/ng-spark/models';
+import { NotificationKind, SparkNotificationService } from '@mintplayer/ng-spark/client-operations';
 import { ConflictSide, ContributionNotice, MergeResult, MergeSchema, TheirChange, mergeThreeWay } from './conflict-merge';
 import { SparkPoConflictDialogComponent } from './spark-po-conflict-dialog.component';
 import { ReferenceLabels, addReferenceLabelsOf, addReferenceLabelsOfOptions } from './reference-labels';
@@ -57,10 +62,14 @@ export class SparkPoEditComponent {
   private readonly sparkService = inject(SparkService);
   private readonly live = inject(SparkLiveService);
   private readonly language = inject(SparkLanguageService);
+  private readonly notifications = inject(SparkNotificationService);
+  private readonly submittedHandlers = inject(SPARK_SAVE_SUBMITTED_HANDLERS, { optional: true });
   /** `SparkConfig.conflictDialog.showChangedBy`: whether the conflict notice may name a user at all. */
   private readonly showChangedBy = inject(SPARK_CONFIG, { optional: true })?.conflictDialog?.showChangedBy === true;
 
   saved = output<PersistentObject>();
+  /** The edit was diverted for approval (commerce X7): nothing was written yet. */
+  submitted = output<SparkSaveSubmitted>();
   cancelled = output<void>();
 
   colors = Color;
@@ -180,7 +189,7 @@ export class SparkPoEditComponent {
         this.liveTheirs.set(null);
         this.validationErrors.set([{
           attributeName: '',
-          errorMessage: { en: this.language.t('common.deletedByAnotherUser') },
+          errorMessage: translated({ en: this.language.t('common.deletedByAnotherUser') }),
           ruleType: 'error'
         }]);
       } else {
@@ -261,7 +270,7 @@ export class SparkPoEditComponent {
       const error = e as HttpErrorResponse;
       this.validationErrors.set([{
         attributeName: '',
-        errorMessage: { en: error.error?.error || error.message || 'An unexpected error occurred' },
+        errorMessage: translated({ en: error.error?.error || error.message || 'An unexpected error occurred' }),
         ruleType: 'error'
       }]);
     }
@@ -458,7 +467,18 @@ export class SparkPoEditComponent {
     try {
       const result = await this.sparkService.update(this.type, this.id, po);
       this.isSaving.set(false);
-      this.saved.emit(result as PersistentObject);
+      // Diverted for approval (202, commerce X7): accepted, not written yet — a notice, never an error. The detail
+      // page shows the object as stored, which is still the truth until someone approves.
+      if (isSaveSubmitted(result)) {
+        this.notifications.show(this.language.t('common.submittedForApproval'), NotificationKind.Info, 8000);
+        this.submitted.emit(result);
+        // A registered handler (SPARK_SAVE_SUBMITTED_HANDLERS) may name where to go instead; by default the
+        // detail page, which shows Approvals' "Approval pending" title badge when that add-on is present.
+        const route = sparkSaveSubmittedRoute(this.submittedHandlers, { operation: 'update', type: this.type, id: this.id, submitted: result });
+        this.router.navigate(route ?? ['/po', this.type, this.id]);
+        return;
+      }
+      this.saved.emit(result);
       this.router.navigate(['/po', this.type, this.id]);
     } catch (e) {
       this.isSaving.set(false);
@@ -475,7 +495,7 @@ export class SparkPoEditComponent {
         // The form keeps its values, so the user can copy what they typed.
         this.validationErrors.set([{
           attributeName: '',
-          errorMessage: { en: this.language.t('common.deletedByAnotherUser') },
+          errorMessage: translated({ en: this.language.t('common.deletedByAnotherUser') }),
           ruleType: 'error'
         }]);
       } else if (error.status === 409) {
@@ -486,7 +506,7 @@ export class SparkPoEditComponent {
         // conflict is resolved (a failed re-fetch or a cancelled dialog leaves it there).
         this.validationErrors.set([{
           attributeName: '',
-          errorMessage: { en: this.language.t('common.concurrencyConflict') },
+          errorMessage: translated({ en: this.language.t('common.concurrencyConflict') }),
           ruleType: 'error'
         }]);
         await this.resolveConcurrencyConflict();
@@ -496,7 +516,7 @@ export class SparkPoEditComponent {
           // Prefer the server's own message, as the load path already does. A refusal arrives as
           // 404 by design (an anti-oracle measure), and `error.message` renders that as
           // "Http failure response for /spark/po/...: 404 Not Found" inside the validation summary.
-          errorMessage: { en: error.error?.result?.error || error.error?.error || error.message || 'An unexpected error occurred' },
+          errorMessage: translated({ en: error.error?.result?.error || error.error?.error || error.message || 'An unexpected error occurred' }),
           ruleType: 'error'
         }]);
       }

@@ -1,0 +1,157 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "Stock per (location, item, lot) (PRD §4.5, WD4): read-only; written only by the stock engine.",
+    "",
+    "HAND-AUTHORED. Ids are UUIDv5 of 'warehouse:StockBalance[...]', written by 'npm run stamp:library-model-ids'."
+  ],
+  "persistentObject": {
+    "id": "c31d5098-1ec5-5ee8-ae01-f7ac76367790",
+    "name": "StockBalance",
+    "clrType": "MintPlayer.Spark.Warehouse.Models.StockBalance",
+    "alias": "warehouse-stock-balance",
+    "breadcrumb": "{LocationId} {ItemId} {LotCode}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "61ba0892-80bc-5828-83d6-06a1effb7ab4",
+        "name": "SiteId",
+        "dataType": "Reference",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "query": "WarehouseSites",
+        "referenceType": "MintPlayer.Spark.Warehouse.Models.WarehouseSite"
+      },
+      {
+        "id": "115e511e-a845-56c7-bc46-d748a13b49c6",
+        "name": "LocationId",
+        "dataType": "Reference",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "query": "WarehouseLocations",
+        "referenceType": "MintPlayer.Spark.Warehouse.Models.WarehouseLocation"
+      },
+      {
+        "id": "3084661c-6270-5528-9e5b-00eca7b5f2ca",
+        "name": "ItemId",
+        "dataType": "Reference",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "query": "WarehouseItems",
+        "referenceType": "MintPlayer.Spark.Warehouse.Models.WarehouseItem"
+      },
+      {
+        "id": "a64441d1-6384-5ded-a30c-e9a759a5552b",
+        "name": "LotCode",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "24c4827e-6631-56e6-a262-1800566fa2f1",
+        "name": "Expiry",
+        "dataType": "date",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "3a62eb72-dd47-50a3-9c12-b585e83299b9",
+        "name": "OnHand",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "a0b2bb47-f7ba-5927-8c52-9937d2172902",
+        "name": "Allocated",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "1ea901ad-0c01-5ac0-98bf-f18c3dc8941a",
+        "name": "Sellable",
+        "dataType": "boolean",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "6f8c89a9-6fbe-5253-80b5-a0b6ddaefcec",
+        "name": "OrganizationId",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 9,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "43f31c2e-5b53-5e8e-945f-540e2c0edb4d",
+        "name": "ReceivedAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 10,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "d4671b33-6b5a-519c-8ae8-52b5f04e66d6",
+        "name": "UpdatedAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 11,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ]
+  },
+  "queries": [
+    {
+      "id": "5589c397-0f6a-5834-bf43-da39b6fe6d69",
+      "name": "StockBalances",
+      "source": "Custom.StockBalances",
+      "alias": "stock-balances",
+      "sortColumns": [],
+      "renderMode": "Pagination",
+      "entityType": "StockBalance"
+    }
+  ]
+}

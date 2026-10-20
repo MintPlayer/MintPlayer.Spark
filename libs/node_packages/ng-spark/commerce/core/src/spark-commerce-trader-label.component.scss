@@ -1,0 +1,14 @@
+.spark-commerce-trader-label {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.5rem;
+  align-items: baseline;
+}
+
+.spark-commerce-trader-name {
+  font-weight: 600;
+}
+
+.spark-commerce-trader-label-private small {
+  color: var(--bs-warning-text-emphasis);
+}

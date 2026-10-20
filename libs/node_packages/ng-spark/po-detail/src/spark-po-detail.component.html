@@ -56,8 +56,15 @@
     </div>
     <h2>
       {{ currentItem.breadcrumb || currentItem.name }}
-      @if (isDeletedView()) {
-        <bs-badge [type]="colors.secondary" class="align-middle ms-2 spark-deleted-badge">{{ 'softDelete.deleted' | t }}</bs-badge>
+      <!-- Title badges (SPARK_DETAIL_TITLE_BADGES): core's "Deleted", add-ons' (Approvals' "Approval pending"). -->
+      @for (badge of titleBadges(); track badge.id) {
+        @if (badge.link) {
+          <a [routerLink]="badge.link" class="align-middle ms-2 text-decoration-none spark-title-badge-link">
+            <bs-badge [type]="badge.colorValue" [class]="'spark-title-badge ' + (badge.cssClass ?? '')">{{ badge.labelKey | t }}</bs-badge>
+          </a>
+        } @else {
+          <bs-badge [type]="badge.colorValue" [class]="'align-middle ms-2 spark-title-badge ' + (badge.cssClass ?? '')">{{ badge.labelKey | t }}</bs-badge>
+        }
       }
     </h2>
 
@@ -172,6 +179,9 @@
                     }
                   </tbody>
                 </bs-table>
+              } @else if (attr.dataType === 'TranslatedString') {
+                <!-- Commerce X17: the text in the current language, and every language's entry below it. -->
+                <spark-translated-string [value]="attr.name | rawAttributeValue:item()" />
               } @else if (isPrimitiveList(attr)) {
                 <!-- A list of plain values (List<string>): one chip per item, as a reference array
                      shows one per id. It used to print the array's comma-joined toString(). Before the
@@ -255,9 +265,13 @@
                   for code that needs it — server-side logic, exports, "which country's morning was
                   this?" — it simply is not what a viewer is shown by default.
                 -->
-                @let when = (attr.name | rawAttributeValue:item()) | parsedDate;
+                @let raw = attr.name | rawAttributeValue:item();
+                @let when = raw | parsedDate;
                 @if (when) {
-                  {{ when | date:(attr.dataType === 'date' ? 'mediumDate' : 'short') }}
+                  <!-- The same component as the grid (X16): the wire value keeps its offset for a `stored` rule. -->
+                  @let dtDisplay = attr.dataType === 'datetime' ? (attr.dateTimeDisplay | sparkDateTimeDisplay:item()) : null;
+                  <spark-date-time [value]="raw" [mode]="dtDisplay?.mode" [alsoIn]="dtDisplay?.alsoIn"
+                                   [format]="attr.dataType === 'date' ? 'date' : 'short'" />
                 } @else {
                   {{ (attr.name | attributeValue:item():entityType():lookupReferenceOptions():allEntityTypes()) | orDash }}
                 }

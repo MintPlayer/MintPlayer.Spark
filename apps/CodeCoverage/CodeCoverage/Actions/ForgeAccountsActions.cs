@@ -45,7 +45,7 @@ public partial class ForgeAccountsActions
         if (!ForgeProviders.TryParse(id, out var provider))
             return null;
 
-        var obj = await manager.GetPersistentObjectAsync("ForgeAccounts");
+        var obj = await manager.GetPersistentObjectAsync(PersistentObjectNames.ForgeAccounts);
         var canonical = provider.ToCanonicalString();
 
         // The page's id is its forge, as the route says, and that is what MyAccountRowActions scopes the

@@ -1,0 +1,58 @@
+{
+  "_fixture": {
+    "source": "https://docs.mollie.com/reference/list-settlements (response example; settlement object with periods.{year}.{month}.revenue/costs)",
+    "derived": "public documentation example; two settlements (one paid out, one still open) with adapted ids and amounts",
+    "recorded": false
+  },
+  "count": 2,
+  "_embedded": {
+    "settlements": [
+      {
+        "resource": "settlement",
+        "id": "stl_open00001",
+        "reference": "9999999.2610.02",
+        "createdAt": "2026-10-18T04:00:00+00:00",
+        "settledAt": null,
+        "status": "open",
+        "amount": { "value": "12.00", "currency": "EUR" }
+      },
+      {
+        "resource": "settlement",
+        "id": "stl_jDk30akdN",
+        "reference": "1234567.1804.03",
+        "createdAt": "2026-10-15T04:00:00+00:00",
+        "settledAt": "2026-10-16T09:41:44+00:00",
+        "status": "paidout",
+        "amount": { "value": "73.42", "currency": "EUR" },
+        "periods": {
+          "2026": {
+            "10": {
+              "revenue": [
+                {
+                  "description": "Creditcard",
+                  "method": "creditcard",
+                  "count": 1,
+                  "amountNet": { "value": "75.00", "currency": "EUR" },
+                  "amountVat": null,
+                  "amountGross": { "value": "75.00", "currency": "EUR" }
+                }
+              ],
+              "costs": [
+                {
+                  "description": "Creditcard",
+                  "method": "creditcard",
+                  "count": 1,
+                  "rate": { "fixed": { "value": "0.25", "currency": "EUR" }, "percentage": "1.80" },
+                  "amountNet": { "value": "1.30", "currency": "EUR" },
+                  "amountVat": { "value": "0.28", "currency": "EUR" },
+                  "amountGross": { "value": "1.58", "currency": "EUR" }
+                }
+              ]
+            }
+          }
+        }
+      }
+    ]
+  },
+  "_links": { "next": null }
+}

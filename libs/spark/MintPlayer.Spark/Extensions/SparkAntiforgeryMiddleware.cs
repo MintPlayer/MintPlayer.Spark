@@ -150,11 +150,17 @@ internal static class SparkAntiforgeryMiddleware
     /// never authenticated with confers no authority, and keying on the header would let an attacker
     /// turn the check off by attaching junk.
     /// </para>
+    /// <para>
+    /// A <b>visitor cookie</b> is ambient authority too (commerce PRD X1): it is what a guest's basket and queue
+    /// entry hang on, and a cross-site page can make the browser send it. So an anonymous request that carries
+    /// one is checked like a signed-in one. The test is a cookie that <i>unprotected</i>, not the header: junk
+    /// confers nothing, so attaching it cannot switch the check on or off in a way that matters.
+    /// </para>
     /// </summary>
     private static bool HasAmbientCredential(HttpContext context)
     {
         if (context.User.Identity?.IsAuthenticated != true)
-            return false;
+            return Visitor.SparkVisitorFeature.For(context).HasVisitorCookie;
 
         // A scheme that recorded itself is authoritative about its own shape. Nothing recorded means
         // the principal came from somewhere Spark did not wire — ASP.NET Core Identity's own cookie

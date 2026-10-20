@@ -108,6 +108,143 @@
       "nl": "Welkom bij SeoTester"
     }
   },
+  "lookup": {
+    "EAuditRunStatus": {
+      "Blocked": {
+        "en": "Blocked by robots.txt",
+        "fr": "Bloqué par robots.txt",
+        "nl": "Geblokkeerd door robots.txt"
+      },
+      "Cancelled": {
+        "en": "Cancelled",
+        "fr": "Annulé",
+        "nl": "Geannuleerd"
+      },
+      "Completed": {
+        "en": "Completed",
+        "fr": "Terminé",
+        "nl": "Klaar"
+      },
+      "Failed": {
+        "en": "Failed",
+        "fr": "Échoué",
+        "nl": "Mislukt"
+      },
+      "Queued": {
+        "en": "Queued",
+        "fr": "En attente",
+        "nl": "In de wachtrij"
+      },
+      "Running": {
+        "en": "Running",
+        "fr": "En cours",
+        "nl": "Bezig"
+      }
+    },
+    "ECheckCategoryLookup": {
+      "Accessibility": {
+        "en": "Accessibility",
+        "fr": "Accessibilité",
+        "nl": "Toegankelijkheid"
+      },
+      "Domain": {
+        "en": "Domain/DNS",
+        "fr": "Domaine/DNS",
+        "nl": "Domein/DNS"
+      },
+      "Mobile": {
+        "en": "Mobile/PWA",
+        "fr": "Mobile/PWA",
+        "nl": "Mobiel/PWA"
+      },
+      "Performance": {
+        "en": "Performance",
+        "fr": "Performance",
+        "nl": "Prestaties"
+      },
+      "Security": {
+        "en": "Security",
+        "fr": "Sécurité",
+        "nl": "Beveiliging"
+      },
+      "Seo": {
+        "en": "SEO",
+        "fr": "SEO",
+        "nl": "SEO"
+      },
+      "Social": {
+        "en": "Social",
+        "fr": "Réseaux sociaux",
+        "nl": "Sociaal"
+      },
+      "Technical": {
+        "en": "Technical",
+        "fr": "Technique",
+        "nl": "Technisch"
+      }
+    },
+    "ECheckSeverityLookup": {
+      "Critical": {
+        "en": "Critical",
+        "fr": "Critique",
+        "nl": "Kritiek"
+      },
+      "High": {
+        "en": "High",
+        "fr": "Élevée",
+        "nl": "Hoog"
+      },
+      "Info": {
+        "en": "Info",
+        "fr": "Info",
+        "nl": "Info"
+      },
+      "Low": {
+        "en": "Low",
+        "fr": "Faible",
+        "nl": "Laag"
+      },
+      "Medium": {
+        "en": "Medium",
+        "fr": "Moyenne",
+        "nl": "Gemiddeld"
+      }
+    },
+    "EMonitoringSchedule": {
+      "Monthly": {
+        "en": "Monthly",
+        "fr": "Mensuel",
+        "nl": "Maandelijks"
+      },
+      "Off": {
+        "en": "Off",
+        "fr": "Désactivé",
+        "nl": "Uit"
+      },
+      "Weekly": {
+        "en": "Weekly",
+        "fr": "Hebdomadaire",
+        "nl": "Wekelijks"
+      }
+    },
+    "EVerificationMethod": {
+      "Dns": {
+        "en": "DNS TXT record",
+        "fr": "Enregistrement DNS TXT",
+        "nl": "DNS TXT-record"
+      },
+      "MetaTag": {
+        "en": "Meta tag",
+        "fr": "Balise meta",
+        "nl": "Metatag"
+      },
+      "WellKnownFile": {
+        "en": "File in /.well-known/",
+        "fr": "Fichier dans /.well-known/",
+        "nl": "Bestand in /.well-known/"
+      }
+    }
+  },
   "mcpUi": {
     "addressTitle": {
       "en": "Server address",

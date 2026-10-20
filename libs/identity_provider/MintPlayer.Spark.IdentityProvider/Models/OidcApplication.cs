@@ -28,8 +28,6 @@ public class OidcApplication
     public List<OidcApplicationMember> Members { get; set; } = [];
     /// <summary><c>Development</c>: only members can authorize the application. <c>Live</c>: anyone can.</summary>
     public string Mode { get; set; } = OidcApplicationModes.Development;
-    /// <summary>The pending or decided request to switch to Live, when an administrator has to review it.</summary>
-    public OidcReviewDecision? GoLiveReview { get; set; }
     /// <summary>The user who registered the application.</summary>
     public string? CreatedBy { get; set; }
     /// <summary>Moment the application was registered, in UTC.</summary>
@@ -249,10 +247,10 @@ public partial class OidcApplicationScope
     public string Name { get; set; } = string.Empty;
     /// <summary>Whether the user must grant it. An optional scope can be unticked on the consent screen.</summary>
     public bool Required { get; set; }
+    // The server's to set (read-only in the model; the save interceptor restores a kept row's value). The request,
+    // its decider and its reason are an identity-provider.scope ApprovalRequest (OidcScopeApprovalKind).
     /// <summary><c>Approved</c>, or <c>Pending</c> while the owner of a cross-owner API scope has not approved it, or <c>Rejected</c>.</summary>
     public string Status { get; set; } = OidcScopeStatuses.Approved;
-    /// <summary>Who approved or rejected the scope, and when.</summary>
-    public OidcReviewDecision? Review { get; set; }
 }
 
 /// <summary>The values of <see cref="OidcApplicationScope.Status"/>.</summary>
@@ -304,20 +302,4 @@ public static class OidcMemberStatuses
     public const string Invited = "Invited";
     public const string Active = "Active";
     public const string Revoked = "Revoked";
-}
-
-/// <summary>A request that someone decides on: a go-live review, a scope approval, a developer request.</summary>
-[ValueObject]
-public partial class OidcReviewDecision
-{
-    /// <summary><c>Pending</c>, <c>Approved</c> or <c>Rejected</c>.</summary>
-    public string Status { get; set; } = OidcScopeStatuses.Pending;
-    /// <summary>Who asked, and when, in UTC.</summary>
-    public string? RequestedBy { get; set; }
-    public DateTime? RequestedAt { get; set; }
-    /// <summary>Who decided, and when, in UTC.</summary>
-    public string? DecidedBy { get; set; }
-    public DateTime? DecidedAt { get; set; }
-    /// <summary>The reason given with the decision.</summary>
-    public string? Note { get; set; }
 }

@@ -1,16 +1,20 @@
 using MintPlayer.Spark.Abstractions.Sharing;
+using MintPlayer.Spark.Abstractions.Builder;
 
 namespace MintPlayer.Spark.Sharing;
 
 /// <summary><c>Spark:Share</c> (<c>docs/seo_analyzer_PRD.md</c> X6). Code given to <c>AddShareLinks</c> runs after the section.</summary>
-public sealed class SparkShareOptions
+public sealed class SparkShareOptions : ISparkConfigurationSection
 {
-    public const string SectionName = "Spark:Share";
+    public static string SectionName => "Spark:Share";
 
     /// <summary>The global switch (D31). Off: no new link is made and every existing link reads as unknown.</summary>
     public bool Enabled { get; set; } = true;
 
-    /// <summary>The SPA page a link opens: <c>{PublicBaseUrl}{LinkPath}/{type}/{token}?id={id}</c>. Keep it in step with ng-spark's <c>withShareRoutes()</c>.</summary>
+    /// <summary>
+    /// The SPA page a link opens: <c>{PublicBaseUrl}{LinkPath}/{typeId}/{token}?id={id}</c>, the type by its model id so
+    /// a rename (D28) never breaks a link a recipient holds. Keep it in step with ng-spark's <c>withShareRoutes()</c>.
+    /// </summary>
     public string LinkPath { get; set; } = "/shared";
 
     /// <summary>The origin of the links; null means <c>Spark:Auth:PublicBaseUrl</c>, else (the link is shown to its creator only) the request's origin.</summary>
@@ -22,28 +26,30 @@ public sealed class SparkShareOptions
     /// <summary>The largest page of a child query a share read returns.</summary>
     public int MaxTake { get; set; } = 100;
 
-    internal Dictionary<string, SparkShareDefinition> Types { get; } = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>
+    /// The shareable types by CLR type (D28): the persistent-object type is looked up by its <c>clrType</c>, never
+    /// assumed to be named like the class, so an application's <c>[assembly: PersistentObjectName]</c> changes nothing here.
+    /// </summary>
+    internal Dictionary<Type, SparkShareDefinition> Types { get; } = new();
 
     /// <summary>
     /// Makes <typeparamref name="T"/> shareable: a link shows exactly <paramref name="attributes"/> of the object,
     /// and the child queries in <paramref name="queries"/> (query name → the child columns shown), each run with the
     /// shared object as its parent. Nothing else of the object or its children is ever sent.
     /// </summary>
-    /// <param name="typeName">The model type name, when it differs from the CLR type's name.</param>
-    public SparkShareOptions Share<T>(IEnumerable<string> attributes, IReadOnlyDictionary<string, string[]>? queries = null, string? typeName = null)
+    /// <remarks>The model type is the one whose <c>clrType</c> is <typeparamref name="T"/>, whatever it is named.</remarks>
+    public SparkShareOptions Share<T>(IEnumerable<string> attributes, IReadOnlyDictionary<string, string[]>? queries = null)
         where T : class, ISparkShareable
     {
-        var name = typeName ?? typeof(T).Name;
-        Types[name] = new SparkShareDefinition(name, typeof(T),
+        Types[typeof(T)] = new SparkShareDefinition(typeof(T),
             new HashSet<string>(attributes, StringComparer.Ordinal),
             (queries ?? new Dictionary<string, string[]>()).ToDictionary(q => q.Key, q => (IReadOnlySet<string>)new HashSet<string>(q.Value, StringComparer.Ordinal), StringComparer.OrdinalIgnoreCase));
         return this;
     }
 }
 
-/// <summary>What a link to an object of <see cref="TypeName"/> shows.</summary>
+/// <summary>What a link to an object of <see cref="ClrType"/> shows.</summary>
 internal sealed record SparkShareDefinition(
-    string TypeName,
     Type ClrType,
     IReadOnlySet<string> Attributes,
     IReadOnlyDictionary<string, IReadOnlySet<string>> Queries);
@@ -52,6 +58,7 @@ internal sealed record SparkShareDefinition(
 /// A gate an application adds to decide at runtime whether sharing is on (e.g. a settings switch, D31). Every
 /// registered gate must say yes, on top of <see cref="SparkShareOptions.Enabled"/>.
 /// </summary>
+/// <remarks>The <c>typeName</c> both methods receive is the type's persistent-object name in this application.</remarks>
 public interface ISparkShareGate
 {
     ValueTask<bool> IsEnabledAsync(string typeName, CancellationToken cancellationToken);

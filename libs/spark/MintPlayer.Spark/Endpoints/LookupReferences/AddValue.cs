@@ -15,6 +15,7 @@ internal sealed partial class AddLookupReferenceValue : IPostEndpoint<LookupRefe
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
     {
         builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
+        builder.RefuseDeniedAsJson();
     }
 
     [RouteParam] public string Name { get; set; } = "";
@@ -22,15 +23,11 @@ internal sealed partial class AddLookupReferenceValue : IPostEndpoint<LookupRefe
     [Inject] private readonly ILookupReferenceService lookupReferenceService;
     [Inject] private readonly IPermissionService permissionService;
     [Inject] private readonly ILogger<AddLookupReferenceValue> logger;
-    [Inject] private readonly IHttpContextAccessor httpContextAccessor;
-
     protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure)
         => LookupReferenceBodies.BindFailedAsync(context, permissionService, failure);
 
     public override async Task<IResult> HandleAsync(LookupReferenceValueDto value, CancellationToken cancellationToken)
     {
-        var httpContext = httpContextAccessor.HttpContext!;
-
         try
         {
             // R2-H4: gate mutations behind Edit/LookupReferences. Round 1's route
@@ -41,16 +38,12 @@ internal sealed partial class AddLookupReferenceValue : IPostEndpoint<LookupRefe
             var result = await lookupReferenceService.AddValueAsync(Name, value);
             return Results.Json(result, statusCode: 201);
         }
-        catch (SparkAccessDeniedException)
-        {
-            return SparkDenial.RefuseJson(httpContext);
-        }
         catch (InvalidOperationException ex)
         {
             // R2-M1: don't echo ex.Message — leaks RavenDB-internal strings,
             // index/collection names, etc. Log server-side with correlation ID.
             logger.LogWarning(ex, "AddLookupReferenceValue failed");
-            return Results.Json(new { error = "Operation failed" }, statusCode: 400);
+            return Results.Json(new Abstractions.SparkErrorResponse("Operation failed"), statusCode: 400);
         }
     }
 }
@@ -64,18 +57,15 @@ internal static class LookupReferenceBodies
     /// permission check used to run before the body was read; a JSON <c>null</c> is "Invalid request
     /// body"; anything else is "Operation failed". The one change: an empty or malformed JSON body used
     /// to escape as an unhandled <c>JsonException</c> (a 500), and is now that same 400.
+    /// <para>
+    /// The refusal is the endpoint filter's (<see cref="SparkDenialFilters.RefuseDeniedAsJson"/>): this runs
+    /// inside the endpoint's <c>HandleAsync(HttpContext)</c>, so a denial raised here reaches it.
+    /// </para>
     /// </summary>
     public static async ValueTask<IResult> BindFailedAsync(HttpContext context, IPermissionService permissionService, EndpointBindingException? failure)
     {
-        try
-        {
-            await permissionService.EnsureAuthorizedAsync("Edit", "LookupReferences");
-        }
-        catch (SparkAccessDeniedException)
-        {
-            return SparkDenial.RefuseJson(context);
-        }
+        await permissionService.EnsureAuthorizedAsync("Edit", "LookupReferences");
 
-        return Results.Json(new { error = failure is null ? "Invalid request body" : "Operation failed" }, statusCode: 400);
+        return Results.Json(new Abstractions.SparkErrorResponse(failure is null ? "Invalid request body" : "Operation failed"), statusCode: 400);
     }
 }

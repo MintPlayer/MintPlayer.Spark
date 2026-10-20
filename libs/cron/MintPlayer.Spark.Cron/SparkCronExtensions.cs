@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 using MintPlayer.Spark.Abstractions.Builder;
 
 namespace MintPlayer.Spark.Cron;
@@ -15,7 +16,7 @@ public static class SparkCronExtensions
     /// builder.Services.AddSpark(builder.Configuration, spark =>
     /// {
     ///     spark.AddCron(cron => cron.AddJob&lt;NightlyCleanup&gt;());
-    ///     // or rely on the generated spark.AddCronJobs(); for auto-discovery
+    ///     // or rely on the generated spark.AddSparkDiscovered(); for auto-discovery
     /// });
     /// </code>
     /// </example>
@@ -45,6 +46,13 @@ public static class SparkCronExtensions
 
             var registry = new SparkCronJobRegistry();
             services.AddSingleton(registry);
+
+            // Spark:Cron:Jobs:{name} overrides a registration's schedule or time zone (WX14). Checked when
+            // the host starts, so a typo in a zone or an expression fails startup instead of never running.
+            services.AddSparkConfigurationSection<SparkCronOptions>();
+            services.AddSingleton<IValidateOptions<SparkCronOptions>, SparkCronOptionsValidator>();
+            services.AddOptions<SparkCronOptions>().ValidateOnStart();
+
             services.AddHostedService<SparkCronScheduler>();
             return registry;
         }

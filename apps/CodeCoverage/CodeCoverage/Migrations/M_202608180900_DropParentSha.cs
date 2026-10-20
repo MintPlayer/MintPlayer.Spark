@@ -25,7 +25,6 @@ namespace CodeCoverage.Migrations;
 /// </summary>
 public partial class M_202608180900_DropParentSha : ISparkMigration
 {
-    public static long Version => 202608180900;
     public static string? Description => "Drop Commit.ParentSha: two writers left an unclassifiable mixture";
 
     [Inject] private readonly IDocumentStore store;

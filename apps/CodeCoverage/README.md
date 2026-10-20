@@ -772,9 +772,11 @@ Nothing in this repository schedules a backup, and a manual procedure only runs 
 remembers. Pick at least one of these, and preferably a database-level one *and* a host-level one:
 
 - **A RavenDB periodic backup task** on the `Coverage` database (Studio → *Tasks → Backups*, or the
-  `/admin/periodic-backup` API), writing to a directory that is itself copied off the host. Check
-  first that your licence tier offers the destination you want: `/license/status` lists the
-  features it grants.
+  `/admin/periodic-backup` API), writing to a directory that is itself copied off the host.
+  ⚠️ **Not available on production today:** its Community licence reports `HasPeriodicBackup: false`
+  in `/license/status` (see `docs/seo_analyzer_PRD.md`, the backup section), so on this VPS use the
+  scheduled export or the volume snapshot below. The task is an option only on a tier whose
+  `/license/status` grants it.
 - **The export above, on a schedule** — a cron entry or systemd timer running the two `curl`
   commands, followed by an off-host copy. It is the procedure already verified end to end.
 - **A volume snapshot** of `code-coverage_raven-data`. Stop `coverage-raven` for the copy, or the

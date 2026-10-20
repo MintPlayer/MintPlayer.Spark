@@ -31,9 +31,11 @@ import {
 } from '@mintplayer/ng-spark/pipes';
 import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
 import { SparkAttributeDescriptionComponent } from '@mintplayer/ng-spark/attribute-description';
+import { SparkDateTimeComponent, SparkDateTimeDisplayPipe } from '@mintplayer/ng-spark/date-time';
 import { SparkQueryCardComponent, SparkGridCellComponent } from '@mintplayer/ng-spark/grid';
 import { SPARK_ATTRIBUTE_RENDERERS, SparkResolvedRowRenderer, rendererValue, rowRendererInputs, withDeclaredInputs } from '@mintplayer/ng-spark/renderers';
 import {
+  translated,
   AttributeGroup,
   AttributeTab,
   CustomActionDefinition,
@@ -57,15 +59,18 @@ import {
   SPARK_DETAIL_ACTIONS,
   SPARK_DETAIL_LAYOUTS,
   SPARK_DETAIL_PANELS,
+  SPARK_DETAIL_TITLE_BADGES,
   SparkDetailContext,
   orderSparkExtensions,
   parseSparkDeletedParam,
+  sparkTitleBadgesFor,
 } from '@mintplayer/ng-spark/panels';
 import { Subscription, combineLatest } from 'rxjs';
+import { SparkTranslatedStringComponent } from '@mintplayer/ng-spark/translated-string';
 
 @Component({
   selector: 'spark-po-detail',
-  imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, RouterModule, BsAlertComponent, BsBadgeComponent,BsCardComponent, BsCardHeaderComponent, BsContainerComponent, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsPriorityNavComponent, BsPriorityNavItemDirective, BsTableComponent, BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective, BsSpinnerComponent, SparkIconComponent, SparkQueryCardComponent, SparkGridCellComponent, ResolveTranslationPipe, TranslateKeyPipe, AttributeValuePipe, OrDashPipe, RawAttributeValuePipe, AsDetailColumnsPipe, AsDetailRowRendererPipe, AsDetailCellValuePipe, ArrayValuePipe, ReferenceLinkRoutePipe, ReferenceChipsPipe, ParsedDatePipe, SparkAttributeDescriptionComponent],
+  imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, RouterModule, BsAlertComponent, BsBadgeComponent,BsCardComponent, BsCardHeaderComponent, BsContainerComponent, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsPriorityNavComponent, BsPriorityNavItemDirective, BsTableComponent, BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective, BsSpinnerComponent, SparkIconComponent, SparkQueryCardComponent, SparkGridCellComponent, ResolveTranslationPipe, TranslateKeyPipe, AttributeValuePipe, OrDashPipe, RawAttributeValuePipe, AsDetailColumnsPipe, AsDetailRowRendererPipe, AsDetailCellValuePipe, ArrayValuePipe, ReferenceLinkRoutePipe, ReferenceChipsPipe, ParsedDatePipe, SparkAttributeDescriptionComponent, SparkDateTimeComponent, SparkDateTimeDisplayPipe, SparkTranslatedStringComponent],
   templateUrl: './spark-po-detail.component.html',
   styleUrl: './spark-po-detail.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -177,6 +182,18 @@ export class SparkPoDetailComponent {
       reload: () => this.load(),
     };
   });
+
+  private readonly titleBadgeRegistrations = inject(SPARK_DETAIL_TITLE_BADGES, { optional: true });
+
+  /**
+   * The badges after the title (commerce #521, `SPARK_DETAIL_TITLE_BADGES`): core's "Deleted" in the
+   * recycle bin, plus what add-ons register (Approvals' "Approval pending").
+   */
+  protected readonly titleBadges = computed(() =>
+    sparkTitleBadgesFor(this.titleBadgeRegistrations, this.detailContext()).map(b => ({
+      ...b,
+      colorValue: (Color as unknown as Record<string, Color>)[b.color ?? 'secondary'] ?? Color.secondary,
+    })));
 
   /** The registered layout that draws this object's attributes instead of the tabs (#504), if one matches. */
   protected readonly detailLayout = computed(() => {
@@ -447,7 +464,7 @@ export class SparkPoDetailComponent {
       .sort((a, b) => a.order - b.order) || [];
   });
 
-  private static readonly DEFAULT_TAB: AttributeTab = { id: '__default__', name: 'Algemeen', label: { nl: 'Algemeen', en: 'General' }, order: 0 };
+  private static readonly DEFAULT_TAB: AttributeTab = { id: '__default__', name: 'Algemeen', label: translated({ nl: 'Algemeen', en: 'General' }), order: 0 };
 
   ungroupedAttributes = computed(() => {
     const attrs = this.visibleAttributes();

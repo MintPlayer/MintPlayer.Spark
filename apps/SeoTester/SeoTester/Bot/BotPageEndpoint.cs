@@ -6,6 +6,7 @@ using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Settings;
 using SeoTester.Pages;
 using SeoTester.Settings;
+using MintPlayer.AspNetCore.SpaServices.Xsrf;
 
 namespace SeoTester.Bot;
 
@@ -19,6 +20,10 @@ namespace SeoTester.Bot;
 internal sealed partial class BotPageEndpoint : IGetEndpoint
 {
     public static string Path => SeoTesterBot.PagePath;
+
+    // FR1: shared-cacheable (Cache-Control: public), so no per-visitor XSRF cookie: the cookie generator would force
+    // the response private (SparkMiddleware, UseAntiforgeryGenerator).
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => builder.SkipXsrfToken();
 
     [Inject] private readonly ISparkSettings settings;
 

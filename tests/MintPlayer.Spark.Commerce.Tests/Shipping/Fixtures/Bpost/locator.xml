@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- Recorded from the public pick-up point locator (https://pudo.bpost.be/Locator?Function=search&Zone=1000&Type=3&Limit=1,
+     dummy partner id 999999, 2026-10-19), no account. A second Poi (a bpack 24/7 locker, Type 4) is added by hand. -->
+<TaxipostLocator version="1.0" type="TaxipostLocatorList">
+  <Query><Zone>1000</Zone><Street></Street><Number></Number><Language>NL</Language><Type>3</Type><Limit>1</Limit></Query>
+  <PoiList>
+    <Poi>
+      <Record><Id>100472</Id><Type>2</Type><Name>RELAY CENTRAAL STATION</Name><Street>EUROPAKRUISPUNT</Street><Number>2</Number><Zip>1000</Zip><City>BRUSSEL</City><Country>BE</Country><X>149119</X><Y>170580</Y><Longitude>4.35625</Longitude><Latitude>50.84563</Latitude></Record>
+      <Distance>336.24</Distance>
+      <Info ServiceRef="https://pudo.bpost.be/Locator?Function=info&amp;Partner=999999&amp;Id=100472&amp;Type=2&amp;Language=NL"/>
+    </Poi>
+    <Poi>
+      <Record><Id>14472</Id><Type>4</Type><Name>bpack 24/7 Brussel Centraal</Name><Street>KANTERSTEEN</Street><Number>10</Number><Zip>1000</Zip><City>BRUSSEL</City><Country>BE</Country><Longitude>4.3571</Longitude><Latitude>50.8455</Latitude></Record>
+      <Distance>512.9</Distance>
+    </Poi>
+  </PoiList>
+</TaxipostLocator>

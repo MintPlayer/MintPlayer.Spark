@@ -1,0 +1,64 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+	<!--
+	  apps/ReferenceData (docs/reference_data_PRD.md §4.16, commerce M19): a reference-data instance with the basic seed
+	  set, and a consumer page that uses the client packages against the instance itself. Local only (K8 revised): not
+	  deployed by us, no Dockerfile.
+	-->
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<IsPackable>false</IsPackable>
+		<UserSecretsId>5f0c7a51-2b7d-4e0f-9d83-1a6c2e4b9f17</UserSecretsId>
+		<SpaRoot>ClientApp\</SpaRoot>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="MintPlayer.AspNetCore.SpaServices" Version="11.0.0-rc.3" />
+		<PackageReference Include="MintPlayer.SourceGenerators" Version="13.0.0">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- The basic seed set (RD9): a release written by the refdata-build-seed command and checked by refdata-verify-seed. -->
+		<Content Update="Seed\**\*" CopyToOutputDirectory="PreserveNewest" />
+		<None Update="Seed\**\*" CopyToOutputDirectory="PreserveNewest" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\ReferenceData.Library\ReferenceData.Library.csproj" />
+		<ProjectReference Include="..\..\..\libs\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
+		<ProjectReference Include="..\..\..\libs\authorization\MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj" />
+		<ProjectReference Include="..\..\..\libs\messaging\MintPlayer.Spark.Messaging\MintPlayer.Spark.Messaging.csproj" />
+		<ProjectReference Include="..\..\..\libs\cron\MintPlayer.Spark.Cron\MintPlayer.Spark.Cron.csproj" />
+		<ProjectReference Include="..\..\..\libs\migrations\MintPlayer.Spark.Migrations\MintPlayer.Spark.Migrations.csproj" />
+		<ProjectReference Include="..\..\..\libs\refdata\core\MintPlayer.Spark.ReferenceData.csproj" />
+		<ProjectReference Include="..\..\..\libs\refdata\client\MintPlayer.Spark.ReferenceData.Client.csproj" />
+		<ProjectReference Include="..\..\..\libs\refdata\sources\be\MintPlayer.Spark.ReferenceData.Sources.Belgium.csproj" />
+		<ProjectReference Include="..\..\..\libs\refdata\sources\at\MintPlayer.Spark.ReferenceData.Sources.Austria.csproj" />
+		<ProjectReference Include="..\..\..\libs\refdata\sources\au\MintPlayer.Spark.ReferenceData.Sources.Australia.csproj" />
+		<ProjectReference Include="..\..\..\libs\refdata\sources\ch\MintPlayer.Spark.ReferenceData.Sources.Switzerland.csproj" />
+		<ProjectReference Include="..\..\..\libs\refdata\sources\cz\MintPlayer.Spark.ReferenceData.Sources.Czechia.csproj" />
+		<ProjectReference Include="..\..\..\libs\refdata\sources\dk\MintPlayer.Spark.ReferenceData.Sources.Denmark.csproj" />
+		<ProjectReference Include="..\..\..\libs\refdata\sources\ee\MintPlayer.Spark.ReferenceData.Sources.Estonia.csproj" />
+		<ProjectReference Include="..\..\..\libs\refdata\sources\es\MintPlayer.Spark.ReferenceData.Sources.Spain.csproj" />
+		<ProjectReference Include="..\..\..\libs\refdata\sources\fi\MintPlayer.Spark.ReferenceData.Sources.Finland.csproj" />
+		<ProjectReference Include="..\..\..\libs\refdata\sources\fr\MintPlayer.Spark.ReferenceData.Sources.France.csproj" />
+		<ProjectReference Include="..\..\..\libs\refdata\sources\li\MintPlayer.Spark.ReferenceData.Sources.Liechtenstein.csproj" />
+		<ProjectReference Include="..\..\..\libs\refdata\sources\lu\MintPlayer.Spark.ReferenceData.Sources.Luxembourg.csproj" />
+		<ProjectReference Include="..\..\..\libs\refdata\sources\lv\MintPlayer.Spark.ReferenceData.Sources.Latvia.csproj" />
+		<ProjectReference Include="..\..\..\libs\refdata\sources\nl\MintPlayer.Spark.ReferenceData.Sources.Netherlands.csproj" />
+		<ProjectReference Include="..\..\..\libs\refdata\sources\no\MintPlayer.Spark.ReferenceData.Sources.Norway.csproj" />
+		<ProjectReference Include="..\..\..\libs\refdata\sources\pl\MintPlayer.Spark.ReferenceData.Sources.Poland.csproj" />
+		<ProjectReference Include="..\..\..\libs\refdata\sources\si\MintPlayer.Spark.ReferenceData.Sources.Slovenia.csproj" />
+		<ProjectReference Include="..\..\..\libs\refdata\sources\us\MintPlayer.Spark.ReferenceData.Sources.UnitedStates.csproj" />
+		<ProjectReference Include="..\..\..\libs\refdata\sources\global\MintPlayer.Spark.ReferenceData.Sources.Global.csproj" />
+		<ProjectReference Include="..\..\..\libs\refdata\sources\tedb\MintPlayer.Spark.ReferenceData.Sources.Tedb.csproj" />
+		<ProjectReference Include="..\..\..\libs\refdata\sources\holidays\MintPlayer.Spark.ReferenceData.Sources.Holidays.csproj" />
+		<ProjectReference Include="..\..\..\libs\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+		<ProjectReference Include="..\..\..\libs\source_generators\MintPlayer.Spark.LibraryGenerators\MintPlayer.Spark.LibraryGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+	</ItemGroup>
+
+</Project>

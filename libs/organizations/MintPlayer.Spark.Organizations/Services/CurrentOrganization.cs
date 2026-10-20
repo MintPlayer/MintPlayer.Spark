@@ -47,8 +47,7 @@ internal sealed class CurrentOrganization(IHttpContextAccessor httpContextAccess
     {
         if (await GetIdAsync(cancellationToken) is { } chosen)
         {
-            var roles = await memberships.GetAsync(userId, cancellationToken);
-            if (roles.TryGetValue(chosen, out var role) && role >= RequiresOrganizationRoleAttribute.For(entityType, "New"))
+            if (await memberships.MeetsAsync(userId, chosen, RequiresOrganizationRoleAttribute.For(entityType, "New"), cancellationToken))
                 return chosen;
         }
         return Organization.PersonalIdFor(userId);
@@ -58,6 +57,7 @@ internal sealed class CurrentOrganization(IHttpContextAccessor httpContextAccess
     public async Task<CurrentOrganizationResponse> DescribeAsync(string userId, CancellationToken cancellationToken = default)
     {
         var roles = await memberships.GetAsync(userId, cancellationToken);
+        var customRoles = await memberships.GetCustomRolesAsync(userId, cancellationToken);
         using var session = store.OpenAsyncSession();
         var organizations = roles.Count == 0
             ? new Dictionary<string, Organization>()
@@ -65,7 +65,7 @@ internal sealed class CurrentOrganization(IHttpContextAccessor httpContextAccess
 
         var choices = organizations.Values
             .Where(o => o?.Id is not null)
-            .Select(o => new OrganizationChoice(o!.Id!, o.Name, o.IsPersonal, roles[o.Id!]))
+            .Select(o => new OrganizationChoice(o!.Id!, o.Name, o.IsPersonal, roles[o.Id!], customRoles.GetValueOrDefault(o.Id!) ?? []))
             .OrderByDescending(o => o.IsPersonal)
             .ThenBy(o => o.Name, StringComparer.CurrentCultureIgnoreCase)
             .ToArray();
@@ -96,8 +96,8 @@ internal sealed class CurrentOrganization(IHttpContextAccessor httpContextAccess
     public bool HasCookie(HttpContext http) => http.Request.Cookies.ContainsKey(CookieName);
 }
 
-/// <summary>One organization the switcher offers.</summary>
-public sealed record OrganizationChoice(string Id, string Name, bool IsPersonal, OrganizationRole Role);
+/// <summary>One organization the switcher offers, with the caller's built-in role and custom roles (X8) in it.</summary>
+public sealed record OrganizationChoice(string Id, string Name, bool IsPersonal, OrganizationRole Role, IReadOnlyList<string> CustomRoles);
 
 /// <summary>
 /// What <c>GET /spark/organizations/current</c> answers: the chosen organization (null = all of them) and the

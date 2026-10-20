@@ -23,6 +23,7 @@ internal partial class LookupReferenceService : ILookupReferenceService
 {
     [Inject] private readonly ILookupReferenceDiscoveryService discoveryService;
     [Inject] private readonly IDocumentStore documentStore;
+    [Inject] private readonly ITranslationsLoader translations;
 
     /// <summary>
     /// R2-L8: refuse LookupReference names that aren't standard identifiers.
@@ -179,7 +180,7 @@ internal partial class LookupReferenceService : ILookupReferenceService
             throw new InvalidOperationException($"Value with key '{key}' not found");
 
         // Update the value
-        existingValue.Translations = value.Values.Translations;
+        existingValue.Values = value.Values;
         existingValue.IsActive = value.IsActive;
         existingValue.Extra = value.Extra;
 
@@ -283,11 +284,22 @@ internal partial class LookupReferenceService : ILookupReferenceService
         return new LookupReferenceValueDto
         {
             Key = key,
-            Values = item.Values,
+            Values = ResolveLabel(item.Values),
             IsActive = true,
             Extra = extraProps.Count > 0 ? extraProps : null
         };
     }
+
+    /// <summary>
+    /// A transient item's label as the client shows it. A <c>[SparkLookup]</c> item carries the
+    /// <c>translations.json</c> key <c>lookup.{Enum}.{Member}</c> (commerce X20 item 5); it is resolved
+    /// through the composed layers, and a key no layer defines shows its humanized member name rather
+    /// than the raw key. Inline text is served as it is.
+    /// </summary>
+    private TranslatedString ResolveLabel(TranslatedString label)
+        => label.Key is { } key && label.IsEmpty
+            ? SparkText.Lookup(translations.GetAll(), key) ?? TranslatedString.Of(TranslatedString.DefaultLanguage, SparkText.Humanize(key))
+            : label;
 
     private static string ToCamelCase(string str)
     {
@@ -310,7 +322,8 @@ internal class DynamicLookupReferenceDocument
 internal class DynamicLookupReferenceValue
 {
     public required string Key { get; set; }
-    public Dictionary<string, string> Translations { get; set; } = new();
+    /// <summary>The label, in the one TranslatedString shape (commerce X17); stored as <c>{"Entries":[…]}</c>.</summary>
+    public TranslatedString Values { get; set; } = new();
     public bool IsActive { get; set; } = true;
     public Dictionary<string, object>? Extra { get; set; }
 
@@ -319,7 +332,7 @@ internal class DynamicLookupReferenceValue
         return new LookupReferenceValueDto
         {
             Key = Key,
-            Values = new TranslatedString { Translations = Translations },
+            Values = Values,
             IsActive = IsActive,
             Extra = Extra
         };
@@ -330,7 +343,7 @@ internal class DynamicLookupReferenceValue
         return new DynamicLookupReferenceValue
         {
             Key = dto.Key,
-            Translations = dto.Values.Translations,
+            Values = dto.Values,
             IsActive = dto.IsActive,
             Extra = dto.Extra
         };

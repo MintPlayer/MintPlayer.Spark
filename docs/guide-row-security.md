@@ -80,7 +80,7 @@ When a query returns an **index projection** (e.g. `VCar` from a `Cars_Overview`
 
 ## Row policies — one rule for many types (#460)
 
-A rule that is not about any one entity — soft deletion, tenancy, a moderation lock — is a **row policy**: written once, applied to every type it claims, ANDed with each type's own rule. Register it with `AddSparkRowPolicy<T>()` (scoped):
+A rule that is not about any one entity — soft deletion, tenancy, a moderation lock — is a **row policy**: written once, applied to every type it claims, ANDed with each type's own rule. Register it with `AddSparkRowPolicy<T>()` (scoped). In an application the generated `spark.AddSparkDiscovered()` registers every non-abstract, non-generic policy class of the project for you; the explicit call is idempotent, and a library calls it in its own `AddXxx()`:
 
 ```csharp
 public sealed class HideDeleted : RowFilterPolicy<ISoftDeletable>   // covers every implementer
@@ -98,6 +98,10 @@ builder.Services.AddSpark(builder.Configuration, spark => spark.AddSparkRowPolic
 - **`AppliesTo(Type)`** decides which types a policy governs. The helpers use `typeof(T).IsAssignableFrom`, so an interface covers every implementer. The answer must depend on the type alone — it is cached process-wide.
 - **How it composes.** Effective filter = the Actions class's `GetRowFilterAsync` AND every applicable filter policy, joined by rebinding each predicate onto one parameter and `AndAlso` (never `Expression.Invoke`, which RavenDB does not translate). A constant `false` from anyone short-circuits; a constant `true` is dropped. The combined filter goes where the Actions filter always went — before column filters and search — and is memoized per (type, action) per request exactly like it. Measured (#460 spike S1, Lucene and Corax): `where ((Owner = $p0 and IsDeleted != $p1)) and (Category = $p2) and (search(Title, $p3) or search(Body, $p4))`. Per-row rule = compiled filter AND `IsAllowedAsync` AND every check policy.
 - **Rebinding is by member name.** A predicate over `ISoftDeletable` reads `x.IsDeleted`; it is rebound as `row.IsDeleted` on each entity (and on an index projection, #285). Every member it reads must exist on the target with the same type, or composing throws — at the first request that needs it — rather than silently dropping the predicate.
+- **Composition is AND-only; an OR lives inside one policy.** No policy can widen what another allows. A rule
+  that must widen reading (the organizations package's published rows, commerce X8:
+  `OrganizationId in (…) || IsPublished == true`) puts the OR inside its own predicate, so every other policy
+  still ANDs with the result. See [organizations](guide-organizations.md#published-rows-readable-by-everyone-commerce-x8).
 - **A policy returns a predicate, never a query.** It is not handed the `IQueryable` — RavenDB groups adjacent `Search` clauses and a policy-placed `Where` could be OR-ed into the search group.
 - **Absent fields.** `x.IsDeleted != true` matches a document with no `IsDeleted` field; `!x.IsDeleted` / `== false` does **not** — measured on both engines, collection and static index (#460 spike S3). In memory the two agree, which is exactly why the database-side difference is a trap.
 - **`RowPolicyContext`** carries the entity type, the action (including custom action names), the request's `Deleted` mode (the `deleted: exclude|include|only` field of a query request — core only carries it), `IsSystemContext` and the `User`.
@@ -109,7 +113,7 @@ builder.Services.AddSpark(builder.Configuration, spark => spark.AddSparkRowPolic
 
 ## Persistence interceptors (#460, #482)
 
-Cross-cutting write behaviour — stamping, soft deletion, locks — is a persistence interceptor: a DI service implementing one interface per phase, registered with `spark.AddInterceptor<T>()` (or found by the generated `AddInterceptors()`). The framework runs interceptors only after every gate passed. See the [interceptors guide](guide-interceptors.md) for the whole sequence; in short:
+Cross-cutting write behaviour — stamping, soft deletion, locks — is a persistence interceptor: a DI service implementing one interface per phase, registered with `spark.AddInterceptor<T>()` (or found by the generated `AddSparkDiscovered()`). The framework runs interceptors only after every gate passed. See the [interceptors guide](guide-interceptors.md) for the whole sequence; in short:
 
 | Hook | When |
 |---|---|

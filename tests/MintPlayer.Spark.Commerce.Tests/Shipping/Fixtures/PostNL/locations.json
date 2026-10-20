@@ -1,0 +1,34 @@
+{
+  "_fixture": {
+    "source": "https://api.postnl.nl/shipment/v2_1/locations/swagger.json (GetLocationsResult schema of /locations/nearest)",
+    "derived": "built from the schema and its field examples (the documented response example is a placeholder); the second location is a parcel locker (DeliveryOptions PA only)",
+    "recorded": false
+  },
+  "GetLocationsResult": {
+    "ResponseLocation": [
+      {
+        "Address": { "City": "Utrecht", "Countrycode": "NL", "HouseNr": 12, "HouseNrExt": {}, "Remark": {}, "Street": "Biltstraat", "Zipcode": "3572AE" },
+        "DeliveryOptions": { "string": [ "RETA", "DO", "PG", "RT" ] },
+        "Distance": 102,
+        "Latitude": 52.10223388,
+        "Longitude": 5.13634192,
+        "LocationCode": 163043,
+        "Name": "Tonys Tabakszaak",
+        "OpeningHours": { "Monday": { "string": "08:00-18:00" }, "Saturday": { "string": [ "09:00-12:00", "13:00-17:00" ] }, "Sunday": {} },
+        "PartnerName": "PostNL",
+        "RetailNetworkID": "PNPNL-01"
+      },
+      {
+        "Address": { "City": "Utrecht", "Countrycode": "NL", "HouseNr": 3, "Street": "Biltstraat", "Zipcode": "3572AE" },
+        "DeliveryOptions": { "string": [ "PA" ] },
+        "Distance": 240,
+        "Latitude": 52.1025,
+        "Longitude": 5.137,
+        "LocationCode": 201001,
+        "Name": "PostNL pakketautomaat",
+        "PartnerName": "PostNL",
+        "RetailNetworkID": "PNPNL-01"
+      }
+    ]
+  }
+}

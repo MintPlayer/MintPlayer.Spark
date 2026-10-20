@@ -19,7 +19,6 @@ namespace CodeCoverage.Migrations;
 /// </remarks>
 public partial class M_202610151200_BackfillRepositoryKnownChecks : ISparkMigration
 {
-    public static long Version => 202610151200;
     public static string? Description => "Queue a first read of the checks that reported on every connected repository";
 
     [Inject] private readonly IDocumentStore store;

@@ -1,0 +1,52 @@
+:host {
+  display: block;
+}
+
+.spark-attendee-answers-line {
+  border: 1px solid var(--bs-border-color, #dee2e6);
+  border-radius: 0.5rem;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.spark-attendee-answers-position {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.spark-attendee-answers-question {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+
+  label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  &.invalid {
+    input,
+    select,
+    textarea {
+      border-color: var(--bs-danger, #dc3545);
+    }
+  }
+}
+
+.spark-attendee-answers-consent {
+  flex-direction: row !important;
+  align-items: flex-start;
+  font-size: 0.875rem;
+}
+
+.spark-attendee-answers-error,
+.spark-attendee-answers-refusal {
+  color: var(--bs-danger, #dc3545);
+}
+
+.spark-attendee-answers-saved {
+  color: var(--bs-success, #198754);
+}

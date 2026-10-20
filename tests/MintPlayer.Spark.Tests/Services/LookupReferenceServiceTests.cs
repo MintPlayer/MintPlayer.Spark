@@ -17,7 +17,12 @@ public class LookupReferenceServiceTests : SparkTestDriver
 {
     private readonly ILookupReferenceDiscoveryService _discovery = Substitute.For<ILookupReferenceDiscoveryService>();
 
-    private LookupReferenceService CreateService() => new(_discovery, Store);
+    private readonly ITranslationsLoader _translations = Substitute.For<ITranslationsLoader>();
+
+    public LookupReferenceServiceTests()
+        => _translations.GetAll().Returns(new Dictionary<string, TranslatedString>());
+
+    private LookupReferenceService CreateService() => new(_discovery, Store, _translations);
 
     /// <summary>
     /// R2-L8 — LookupReferenceService.ValidateName rejects names whose shape would
@@ -82,7 +87,7 @@ public class LookupReferenceServiceTests : SparkTestDriver
     private static LookupReferenceValueDto NewValue(string key, string en) => new()
     {
         Key = key,
-        Values = TranslatedString.Create(en),
+        Values = TranslatedString.Of("en", en),
         IsActive = true,
     };
 
@@ -96,7 +101,8 @@ public class LookupReferenceServiceTests : SparkTestDriver
             Values = values.Select(v => new
             {
                 v.Key,
-                Translations = new Dictionary<string, string> { ["en"] = v.En },
+                // The X17 shape: the label is a TranslatedString, stored as {"Entries":[…]}.
+                Values = TranslatedString.Of("en", v.En),
                 IsActive = true,
                 Extra = (Dictionary<string, object>?)null,
             }).ToList(),
@@ -180,6 +186,49 @@ public class LookupReferenceServiceTests : SparkTestDriver
         dto.Values.Should().HaveCount(2);
         dto.Values.Select(v => v.Key).Should().BeEquivalentTo(["1", "2"]);
     }
+
+    /// <summary>
+    /// Commerce X20 item 5: a [SparkLookup] item's label is the translations.json key
+    /// <c>lookup.{Enum}.{Member}</c>. The served label is the composed layers' text, never the key.
+    /// </summary>
+    [Fact]
+    public async Task GetAsync_resolves_a_keyed_transient_label_through_translations()
+    {
+        _translations.GetAll().Returns(new Dictionary<string, TranslatedString>
+        {
+            ["lookup.ELDSKeyedStatus.InUse"] = TranslatedString.Of(("en", "In use"), ("nl", "In gebruik")),
+        });
+        _discovery.GetLookupReference(nameof(LDSKeyedStatus)).Returns(KeyedInfo());
+
+        var dto = await CreateService().GetAsync(nameof(LDSKeyedStatus));
+
+        var inUse = dto!.Values.Single(v => v.Key == "InUse").Values;
+        inUse.Key.Should().BeNull();
+        inUse["en"].Should().Be("In use");
+        inUse["nl"].Should().Be("In gebruik");
+    }
+
+    /// <summary>A key no layer defines shows the humanized member name, never the raw key.</summary>
+    [Fact]
+    public async Task GetAsync_shows_the_humanized_member_name_for_an_undefined_label_key()
+    {
+        _discovery.GetLookupReference(nameof(LDSKeyedStatus)).Returns(KeyedInfo());
+
+        var dto = await CreateService().GetAsync(nameof(LDSKeyedStatus));
+
+        var onParking = dto!.Values.Single(v => v.Key == "OnParking").Values;
+        onParking.Key.Should().BeNull();
+        onParking["en"].Should().Be("On Parking");
+    }
+
+    private static LookupReferenceInfo KeyedInfo() => new()
+    {
+        Name = nameof(LDSKeyedStatus),
+        Type = typeof(LDSKeyedStatus),
+        IsTransient = true,
+        KeyType = typeof(string),
+        DisplayType = ELookupDisplayType.Dropdown,
+    };
 
     [Fact]
     public async Task GetAsync_returns_dynamic_values_from_persisted_document()
@@ -316,7 +365,7 @@ public class LookupReferenceServiceTests : SparkTestDriver
         var update = new LookupReferenceValueDto
         {
             Key = "BMW",
-            Values = TranslatedString.Create("Bayerische Motoren Werke"),
+            Values = TranslatedString.Of("en", "Bayerische Motoren Werke"),
             IsActive = false,
         };
 
@@ -324,7 +373,7 @@ public class LookupReferenceServiceTests : SparkTestDriver
 
         var dto = await service.GetAsync("CarBrand");
         var bmw = dto!.Values.Single();
-        bmw.Values.GetDefaultValue().Should().Be("Bayerische Motoren Werke");
+        bmw.Values.GetValue(TranslatedString.DefaultLanguage).Should().Be("Bayerische Motoren Werke");
         bmw.IsActive.Should().BeFalse();
     }
 
@@ -338,7 +387,7 @@ public class LookupReferenceServiceTests : SparkTestDriver
         await service.UpdateValueAsync("CarBrand", "BMW", new LookupReferenceValueDto
         {
             Key = "BMW-AG",
-            Values = TranslatedString.Create("BMW AG"),
+            Values = TranslatedString.Of("en", "BMW AG"),
         });
 
         var dto = await service.GetAsync("CarBrand");
@@ -353,7 +402,7 @@ public class LookupReferenceServiceTests : SparkTestDriver
 
         var service = CreateService();
         var act = async () => await service.UpdateValueAsync("CarBrand", "BMW",
-            new LookupReferenceValueDto { Key = "Audi", Values = TranslatedString.Create("BMW") });
+            new LookupReferenceValueDto { Key = "Audi", Values = TranslatedString.Of("en", "BMW") });
 
         await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*Audi*already*");
     }
@@ -421,4 +470,21 @@ public class LookupReferenceServiceTests : SparkTestDriver
     }
 
     #endregion
+}
+
+/// <summary>
+/// The shape <c>SparkLookupGenerator</c> emits for <c>[SparkLookup(StringKeys = true)] enum ELDSKeyedStatus</c>:
+/// labels are translation keys, not text. Written out because this project does not run the generator.
+/// </summary>
+public sealed class LDSKeyedStatus : TransientLookupReference<string>
+{
+    private LDSKeyedStatus() { }
+
+    public override ELookupDisplayType DisplayType => ELookupDisplayType.Dropdown;
+
+    public static IReadOnlyCollection<LDSKeyedStatus> Items { get; } =
+    [
+        new LDSKeyedStatus { Key = "InUse", Values = TranslatedString.FromKey("lookup.ELDSKeyedStatus.InUse") },
+        new LDSKeyedStatus { Key = "OnParking", Values = TranslatedString.FromKey("lookup.ELDSKeyedStatus.OnParking") },
+    ];
 }

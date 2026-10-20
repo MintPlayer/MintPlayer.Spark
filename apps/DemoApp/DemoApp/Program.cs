@@ -19,10 +19,8 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     spark.AddControllers();
     spark.UseControllers();
 
-    spark.AddActions();
     spark.AddMessaging();
-    spark.AddRecipients();
-    spark.AddCronJobs();
+    spark.AddSparkDiscovered(); // generated: Actions classes, custom actions, recipients and cron jobs
 });
 
 // Configure SPA static files

@@ -119,7 +119,7 @@ A third segment scopes a right to one attribute: `Edit/Song/Lyrics`, `QueryRead/
   (information) name it: *"Group 'X' restricts Edit on 2 of 3 attributes of 'Song'; 'Genre' is still
   editable through the type-level right — intended?"* Index-derived and projection columns are
   ordinary attributes and are denied the same way, one by one.
-- System context (module sync, replication) is not restricted by attribute rights.
+- System context is not restricted by attribute rights — except a **module** (a module certificate, replication write-back): its `Module:{Name}` group is evaluated like any other, so an owner can limit a granted module to, say, status fields (`Deny Edit/Order/Lines` for `Module:Shop`). Warehouse F17.
 
 Evaluated once per request per (type, verb) by `IAttributeRights`, then applied to every row — never
 asked per row.
@@ -402,6 +402,38 @@ fails to load, rather than failing the page.
 decided by the same rights, `anonymous` grants included (since #453; before, ASP.NET Core's default
 policy refused every anonymous caller first). A host that configures authorization without `AddSpark`
 must call `SparkAuthorizeAttribute.AddPolicy`.
+
+### Refusing from your own endpoint
+
+An endpoint that checks a right in code (an add-on package's, or an application's under `/spark/*`)
+calls `EnsureAuthorizedAsync` and lets the `SparkAccessDeniedException` propagate. The endpoint
+filter it installs in `Configure` turns the denial into the refusal above:
+
+```csharp
+static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
+    => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true)).RefuseDeniedInEnvelope();
+
+public override async Task<IResult> HandleAsync(MyRequest request, CancellationToken ct)
+{
+    await permissionService.EnsureAuthorizedAsync("Publish", entityType.Name);   // denied → 401/404
+    // ...
+}
+```
+
+- `RefuseDeniedInEnvelope()` answers in the `{ result, operations }` envelope, as `/spark/po/*`,
+  `/spark/actions/execute` and the add-on endpoints do (`ISparkAddOnEndpoints.Refusal`). Notifications
+  the request queued before the denial stay in it.
+- `RefuseDeniedAsJson()` answers the bare `{ error }` body, as `/spark/lookupref/*` does.
+- Both live in `MintPlayer.Spark.Endpoints.SparkDenialFilters` and also catch
+  `SparkRowLevelAccessDeniedException`, which derives from it.
+- Install them **per endpoint**, never on a route group: an endpoint that answers a denial differently
+  on purpose (`/spark/queries/distinct` answers a 404 naming the query) would change.
+- A handler with a catch-all must exclude the denial
+  (`catch (Exception ex) when (ex is not SparkAccessDeniedException)`), or it answers 500 first.
+
+Before #521 every access endpoint carried its own `try { … } catch (SparkAccessDeniedException) {
+return refusal; }`. `DenialCatchGuardTests` now fails on a new one, unless the catch maps the denial to
+a domain outcome (an MCP refusal, a `null` row) and is listed there with its reason.
 
 Catalogue endpoints (`/spark/types`, `/spark/queries`, `/spark/aliases`, `/spark/program-units`,
 `/spark/actions/list`, `/spark/permissions/{type}`) are the exception. The client shell loads

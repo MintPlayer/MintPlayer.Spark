@@ -63,6 +63,8 @@
     <ProjectReference Include="..\..\libs\socket_extensions\MintPlayer.Dotnet.SocketExtensions\MintPlayer.Dotnet.SocketExtensions.csproj" />
     <ProjectReference Include="..\..\libs\messaging\MintPlayer.Spark.Messaging\MintPlayer.Spark.Messaging.csproj" />
     <ProjectReference Include="..\..\libs\replication\MintPlayer.Spark.Replication\MintPlayer.Spark.Replication.csproj" />
+    <!-- The generic contract library (warehouse §4.3): its classes bind through Spark:Replication:Sources. -->
+    <ProjectReference Include="..\..\libs\fulfilment\contracts\MintPlayer.Spark.Fulfilment.Contracts.csproj" />
     <ProjectReference Include="..\..\libs\identity_provider\MintPlayer.Spark.IdentityProvider\MintPlayer.Spark.IdentityProvider.csproj" />
     <ProjectReference Include="..\..\libs\subscription_worker\MintPlayer.Spark.SubscriptionWorker.Abstractions\MintPlayer.Spark.SubscriptionWorker.Abstractions.csproj" />
     <!-- The shipping worker package. Referenced so it is MEASURED at all: without this it appears in no coverage report. -->
@@ -77,6 +79,7 @@
     <ProjectReference Include="..\..\libs\organizations\MintPlayer.Spark.Organizations\MintPlayer.Spark.Organizations.csproj" />
     <ProjectReference Include="..\..\libs\webpush\MintPlayer.Spark.WebPush\MintPlayer.Spark.WebPush.csproj" />
     <ProjectReference Include="..\..\libs\notifications\MintPlayer.Spark.Notifications\MintPlayer.Spark.Notifications.csproj" />
+    <ProjectReference Include="..\..\libs\approvals\MintPlayer.Spark.Approvals\MintPlayer.Spark.Approvals.csproj" />
     <!-- Contributions M5: the runtime, plus its generator through the targets imported below. -->
     <ProjectReference Include="..\..\libs\contributions\MintPlayer.Spark.Contributions\MintPlayer.Spark.Contributions.csproj" />
     <ProjectReference Include="..\..\libs\mail\MintPlayer.Spark.MailManager\MintPlayer.Spark.MailManager.csproj" />

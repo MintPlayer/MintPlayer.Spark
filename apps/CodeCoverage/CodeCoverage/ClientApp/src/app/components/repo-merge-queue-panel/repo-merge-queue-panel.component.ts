@@ -8,6 +8,7 @@ import { BsCardBodyComponent, BsCardComponent, BsCardHeaderComponent } from '@mi
 import { BsSelectComponent, BsSelectOption } from '@mintplayer/ng-bootstrap/select';
 import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
 import { BrowseService, MergeQueueCandidates, MergeQueueCommandAccepted, MergeQueueEntry, MergeQueueView } from '../../services/browse.service';
+import { formatSparkDateTime } from '@mintplayer/ng-spark/date-time';
 
 /** GitHub's repository roles, weakest first; queueing needs `write` (merge-queue PRD O9). */
 const ROLES = ['none', 'read', 'triage', 'write', 'maintain', 'admin'];
@@ -36,7 +37,6 @@ function chip(color: string): string {
   return `mq-state bg-${color}-subtle text-${color}-emphasis border border-${color}-subtle`;
 }
 
-const DATE_TIME = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 
 /** The queue answers a command asynchronously; the panel looks again after this long. */
 export const RELOAD_AFTER_COMMAND_MS = 2500;
@@ -341,7 +341,7 @@ export class RepoMergeQueuePanelComponent {
   /** The server's times are UTC; one without a zone designator is read as UTC rather than as local time. */
   time(utc: string): string {
     const date = new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(utc) ? utc : `${utc}Z`);
-    return Number.isNaN(date.getTime()) ? utc : DATE_TIME.format(date);
+    return Number.isNaN(date.getTime()) ? utc : formatSparkDateTime(date, 'viewer', 'medium');
   }
 
   private async send(call: () => Promise<MergeQueueCommandAccepted>, success: (accepted: MergeQueueCommandAccepted) => string): Promise<boolean> {

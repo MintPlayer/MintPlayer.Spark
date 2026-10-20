@@ -13,7 +13,7 @@ public static class SparkMigrationsExtensions
     /// single time and each call may add more migrations.
     /// </summary>
     /// <remarks>
-    /// Prefer the generated <c>spark.AddMigrations()</c> (no argument), which auto-discovers every
+    /// Prefer the generated <c>spark.AddSparkDiscovered()</c>, which auto-discovers every
     /// <see cref="ISparkMigration"/> in the project. This overload is the manual escape hatch.
     /// </remarks>
     public static ISparkBuilder AddMigrations(this ISparkBuilder builder, Action<ISparkMigrationsBuilder> configure)
@@ -29,15 +29,9 @@ public static class SparkMigrationsExtensions
     {
         lock (infrastructureGate)
         {
-            var existing = builder.Services
-                .FirstOrDefault(d => d.ServiceType == typeof(SparkMigrationRegistry))?
-                .ImplementationInstance as SparkMigrationRegistry;
-
-            if (existing is not null)
-                return existing;
-
-            var registry = new SparkMigrationRegistry();
-            builder.Services.AddSingleton(registry);
+            var registry = builder.Services.GetOrAddSparkSingleton(() => new SparkMigrationRegistry(), out var created);
+            if (!created)
+                return registry;
 
             // Run pending migrations once at startup. Registry middleware actions execute during
             // UseSpark, after CreateSparkIndexes and before the request pipeline serves traffic —

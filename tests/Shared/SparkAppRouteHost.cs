@@ -47,10 +47,24 @@ public sealed class SparkAppRouteHost<TAppType>(
         IDocumentStore store,
         IReadOnlyDictionary<string, string?> settings,
         string fixture)
+        => await AssertSnapshotAsync(appDirectory, store, settings, fixture, anonymousSurface: null);
+
+    /// <summary>
+    /// Boots the app once and asserts both its route table (<paramref name="fixture"/>) and, when given,
+    /// its exact anonymous surface (<paramref name="anonymousSurface"/>, RX3: see <see cref="AnonymousSurface"/>).
+    /// </summary>
+    public static async Task AssertSnapshotAsync(
+        string appDirectory,
+        IDocumentStore store,
+        IReadOnlyDictionary<string, string?> settings,
+        string fixture,
+        IEnumerable<string>? anonymousSurface)
     {
         await using var host = new SparkAppRouteHost<TAppType>(appDirectory, store, settings);
 
         RouteTableSnapshot.AssertMatchesFixture(RouteTableSnapshot.Capture(host.Services), fixture);
+        if (anonymousSurface is not null)
+            AnonymousSurface.AssertExactly(AnonymousSurface.Capture(host.Services), anonymousSurface);
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)

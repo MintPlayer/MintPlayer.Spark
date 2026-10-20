@@ -1,0 +1,41 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "TicketAttendeeQuestionChoice: an option of a choice question (GB3), a detail of TicketAttendeeQuestion.",
+    "",
+    "HAND-AUTHORED. Ids are UUIDv5 of 'ticketing-events:TicketAttendeeQuestionChoice[...]', written by 'npm run stamp:library-model-ids'."
+  ],
+  "persistentObject": {
+    "id": "8339287f-1c50-5b4f-9375-fd1ed11c59a9",
+    "name": "TicketAttendeeQuestionChoice",
+    "clrType": "MintPlayer.Spark.Commerce.Ticketing.Events.Models.AttendeeQuestionChoice",
+    "breadcrumb": "{Label}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "4350244d-e4f6-5bd8-b49d-2fde736a13b4",
+        "name": "Key",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "36c54306-6e1b-52d1-a7fe-abc51bf8f209",
+        "name": "Label",
+        "dataType": "TranslatedString",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ]
+  },
+  "queries": []
+}

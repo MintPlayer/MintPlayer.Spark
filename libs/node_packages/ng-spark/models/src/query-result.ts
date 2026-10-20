@@ -1,6 +1,9 @@
 import { TranslatedString } from './translated-string';
 import { PersistentObject } from './persistent-object';
 import { AS_DETAIL_BREADCRUMBS_KEY } from './as-detail-conversions';
+import { SparkDateTimeDisplay } from './date-time-display';
+import type * as Wire from './generated/contracts';
+import type { AssertNone, MissingMembers } from './contract-mirror';
 
 /**
  * What a query returns: the column metadata once, then one lightweight row per result.
@@ -49,6 +52,8 @@ export interface SparkCellColumn {
   referenceType?: string;
   lookupReferenceType?: string;
   asDetailType?: string;
+  /** For a `datetime` column: its zones (X16). Absent = the viewer's zone. */
+  dateTimeDisplay?: SparkDateTimeDisplay | null;
 }
 
 /** One column of a query result, sent once rather than repeated on every row. */
@@ -76,6 +81,8 @@ export interface QueryColumn extends SparkCellColumn {
   canListDistincts?: boolean;
   /** The query backing a Reference column, by name — the client's option source. */
   query?: string;
+  /** Server-side type hints for the column (`QueryColumn.TypeHints`). */
+  typeHints?: Record<string, string>;
 }
 
 /**
@@ -245,3 +252,10 @@ export interface DistinctValuesResult {
   remaining: DistinctValue[];
   hasMore: boolean;
 }
+
+// The hand-written mirrors are checked against the generated wire types (docs/guide-typescript-contracts.md): a member
+// the server adds fails this build until the mirror carries it.
+export type QueryResultMirrorsContract = AssertNone<MissingMembers<Wire.QueryResult, QueryResult>>;
+export type QueryColumnMirrorsContract = AssertNone<MissingMembers<Wire.QueryColumn, QueryColumn>>;
+export type QueryResultItemMirrorsContract = AssertNone<MissingMembers<Wire.QueryResultItem, QueryResultItem>>;
+export type QueryResultItemValueMirrorsContract = AssertNone<MissingMembers<Wire.QueryResultItemValue, QueryResultItemValue>>;

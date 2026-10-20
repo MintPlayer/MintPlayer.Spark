@@ -39,7 +39,6 @@ namespace CodeCoverage.Migrations;
 /// </remarks>
 public partial class M_202609092100_ApiTokenRepositoryIdBecomesAList : ISparkMigration
 {
-    public static long Version => 202609092100;
 
     public static string? Description =>
         "Move ApiToken.RepositoryGitHubId into the GithubRepositories document-id list";

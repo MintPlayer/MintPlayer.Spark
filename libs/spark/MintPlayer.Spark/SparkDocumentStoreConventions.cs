@@ -30,6 +30,12 @@ public static class SparkStoreConfiguration
             CustomizeJsonSerializer = serializer =>
             {
                 serializer.Converters.Add(new Converters.ColorNewtonsoftJsonConverter());
+                // One TranslatedString shape for the API and the store (commerce X17).
+                serializer.Converters.Add(new Converters.TranslatedStringNewtonsoftJsonConverter());
+                // One Money shape for the API and the store (commerce X4).
+                serializer.Converters.Add(new Converters.MoneyNewtonsoftJsonConverter());
+                // One Quantity shape for the API and the store (warehouse WX8).
+                serializer.Converters.Add(new Converters.QuantityNewtonsoftJsonConverter());
             }
         };
 

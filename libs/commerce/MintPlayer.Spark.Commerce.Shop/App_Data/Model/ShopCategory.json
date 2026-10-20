@@ -1,0 +1,104 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "ShopCategory (docs/commerce_PRD.md §4.10): a platform category for navigation and the category facet. Edited by platform",
+    "admins only (ManageSellers/Commerce, ShopCategoryInterceptor).",
+    "",
+    "HAND-AUTHORED. Ids are UUIDv5 of 'commerce-shop:ShopCategory[...]', written by 'npm run stamp:library-model-ids'."
+  ],
+  "persistentObject": {
+    "id": "6b39b36a-2775-5ac4-8c2d-59ccff064eec",
+    "name": "ShopCategory",
+    "clrType": "MintPlayer.Spark.Commerce.Shop.Models.ShopCategory",
+    "alias": "shopcategory",
+    "breadcrumb": "{Name}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "a255b183-d912-53f5-a677-1dcf441f6b50",
+        "name": "Name",
+        "dataType": "TranslatedString",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "d3acb918-8dd9-54b8-a2a1-8e23b1b92d1f",
+        "name": "Slug",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "6b402b60-b348-5e85-93bd-a52e5e593e9b",
+        "name": "Description",
+        "dataType": "TranslatedString",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "3e73ef35-87de-55d2-bffc-30bbc7bf3ba5",
+        "name": "ParentId",
+        "dataType": "Reference",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 4,
+        "query": "ShopCategories",
+        "referenceType": "MintPlayer.Spark.Commerce.Shop.Models.ShopCategory",
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "20b21060-16af-55ca-968c-aff5cbd35a6d",
+        "name": "FacetKeys",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 5,
+        "isArray": true,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "42e824dd-da16-5233-b0cb-074e21842804",
+        "name": "SortOrder",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ]
+  },
+  "queries": [
+    {
+      "id": "49e08382-5f30-5c41-b325-70872f6b16b5",
+      "name": "ShopCategories",
+      "source": "Custom.ShopCategories",
+      "alias": "shopcategories",
+      "sortColumns": [
+        {
+          "property": "SortOrder",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "ShopCategory"
+    }
+  ]
+}

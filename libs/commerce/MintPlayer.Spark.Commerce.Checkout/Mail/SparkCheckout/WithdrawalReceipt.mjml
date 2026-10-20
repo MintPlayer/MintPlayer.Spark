@@ -1,0 +1,24 @@
+<mjml>
+  <mj-head>
+    <mj-title>We received your withdrawal from order {{ number }}</mj-title>
+    <mj-attributes>
+      <mj-all font-family="Segoe UI, Helvetica, Arial, sans-serif" />
+      <mj-text font-size="15px" line-height="22px" color="#111827" />
+      <mj-button background-color="#2563eb" color="#ffffff" border-radius="6px" font-size="15px" />
+    </mj-attributes>
+  </mj-head>
+  <mj-body background-color="#f3f4f6">
+    <mj-section background-color="#ffffff" padding="24px 0">
+      <mj-column>
+        <mj-text font-size="20px" font-weight="600">{{ if buyer_name }}{{ buyer_name }}, w{{ else }}W{{ end }}e received your withdrawal from order {{ number }}</mj-text>
+        <mj-text>Received on <strong>{{ received_at }}</strong>.</mj-text>
+        {{ for line in lines }}<mj-text>{{ line.quantity }} × {{ line.title }}{{ if !line.eligible }}<br /><em>Outside the withdrawal right ({{ line.reason }}). We recorded it; the seller will contact you.</em>{{ end }}</mj-text>{{ end }}
+        {{ if note }}<mj-text font-size="13px" color="#4b5563">Your note: {{ note | html.escape }}</mj-text>{{ end }}
+        {{ if withheld }}<mj-text>Please send the goods back. We refund the price and the standard delivery cost as soon as we receive them or you send us proof that you sent them, whichever comes first{{ if refund_due_by }}, and no later than {{ refund_due_by }} once that condition is met{{ end }}.</mj-text>{{ else }}<mj-text>Your refund is on its way to the payment method you used.</mj-text>{{ end }}
+        <mj-text font-size="13px" color="#4b5563">{{ if seller_pays_return }}The seller bears the cost of returning the goods.{{ else }}You bear the direct cost of returning the goods.{{ end }}</mj-text>
+        {{ if link }}<mj-button href="{{ link }}">View your order</mj-button>{{ end }}
+        <mj-text font-size="12px" color="#6b7280">This mail is the acknowledgement of receipt on a durable medium (Directive 2011/83/EU Art. 11a). Keep it.</mj-text>
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>

@@ -1,0 +1,10 @@
+rk	ufi	uni	full_name	nt	lat_dd	long_dd	efctv_dt	term_dt_f	term_dt_n	desig_cd	fc	cc_ft	adm1	ft_link	name_rank	lang_cd	transl_cd	script_cd	name_link	cc_nm	generic	full_nm_nd	sort_gen	sort_name	lat_dms	long_dms	mgrs	mod_dt_ft	mod_dt_nm	dialect_cd	display	gis_notes
+1	-1001	-2001	Bayern	N	48.5	11.5				ADM1	A	GM	02			ger		latin		GM		Bayern		BAYERN							1,2,3,4,5,6,7,8,9	
+2	-1001	-2002	Bavaria	C	48.5	11.5				ADM1	A	GM	02			eng		latin		GM		Bavaria		BAVARIA							1,2,3,4,5,6,7,8,9	
+3	-1002	-2003	Niedersachsen	N	52.5	9.5				ADM1	A	GM	06			ger		latin		GM		Niedersachsen		NIEDERSACHSEN							1,2,3,4,5,6,7,8,9	
+4	-1002	-2004	Lower Saxony	C	52.5	9.5				ADM1	A	GM	06			eng		latin		GM		Lower Saxony		LOWERSAXONY							1,2,3,4,5,6,7,8,9	
+5	-1003	-2005	Antwerpen	N	51.25	4.75				ADM1	A	BE	01			dut		latin		BE		Antwerpen		ANTWERPEN							1,2,3,4,5,6,7,8,9	
+6	-1003	-2006	Antwerp	C	51.25	4.75				ADM1	A	BE	01			eng		latin		BE		Antwerp		ANTWERP							1,2,3,4,5,6,7,8,9	
+7	-1004	-2007	Oost-Vlaanderen	N	51.0	3.75				ADM1	A	BE	08			dut		latin		BE		Oost-Vlaanderen		OOSTVLAANDEREN							1,2,3,4,5,6,7,8,9	
+8	-1004	-2008	East Flanders	C	51.0	3.75				ADM1	A	BE	08			eng		latin		BE		East Flanders		EASTFLANDERS							1,2,3,4,5,6,7,8,9	
+9	-1004	-2009	Flandre-Orientale	V	51.0	3.75				ADM1	A	BE	08			fre		latin		BE		Flandre-Orientale		FLANDREORIENTALE							1,2,3,4,5,6,7,8,9	

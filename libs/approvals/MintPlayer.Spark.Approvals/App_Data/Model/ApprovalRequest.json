@@ -1,0 +1,174 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "ApprovalRequest, one decision request (docs/commerce_PRD.md §4.13, D9), shipped by MintPlayer.Spark.Approvals.",
+    "Written only by ISparkApprovals, never by a form: every attribute is read-only and only QueryRead is granted.",
+    "Read by its requester, its deciders and VisibleTo (ApprovalRequestActions' row rule). The decision actions",
+    "(ApprovalApprove, ApprovalReject, ApprovalWithdraw, ApprovalRevoke) are offered per row by OnDisableActionsAsync.",
+    "\"live\": true is how a decision reaches an open page; expiresAfter is only a fallback: the engine sets the",
+    "retention itself (Spark:Approvals:Retention). Kind, SubjectId, the decider lists and the proposal are not attributes.",
+    "",
+    "HAND-AUTHORED. Ids are UUIDv5 of 'approvals:ApprovalRequest[...]', written by 'npm run stamp:library-model-ids'."
+  ],
+  "persistentObject": {
+    "id": "9806961f-9bd8-5f1b-bc4b-90e609ef0272",
+    "name": "ApprovalRequest",
+    "clrType": "MintPlayer.Spark.Approvals.Models.ApprovalRequest",
+    "alias": "approval-request",
+    "breadcrumb": "{Title}",
+    "expiresAfter": "400.00:00:00",
+    "live": true,
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "3bf75e7e-3904-5fd8-bfb5-88317c189a30",
+        "name": "Title",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "55d4466c-f417-511c-929b-deeb4f440d4e",
+        "name": "Status",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "renderer": "approval-status",
+        "rules": []
+      },
+      {
+        "id": "4b862cb1-c335-5b6d-9a06-8bf5d7c4b4cf",
+        "name": "SubjectType",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "d7928c2c-1d1c-57e3-8e29-b019d46d15d4",
+        "name": "Summary",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "9d12f353-7b2f-59c4-a065-94871e7014dc",
+        "name": "Url",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "42f6b025-b507-578f-925d-241a676ad40e",
+        "name": "RequestedAtUtc",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "624a2f1e-89c3-5a02-bd54-324715460901",
+        "name": "DecideByUtc",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "5d103dd4-c9c9-53c4-85d2-1894e15043cd",
+        "name": "DecidedAtUtc",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "ac89942d-c848-5846-8090-d07c1c00c52c",
+        "name": "Reason",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 9,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": [
+    {
+      "id": "eac64678-8516-55c2-9170-ef1c680dd18a",
+      "name": "Approvals",
+      "source": "Custom.Approvals",
+      "alias": "approvals",
+      "sortColumns": [
+        {
+          "property": "RequestedAtUtc",
+          "direction": "desc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "ApprovalRequest",
+      "live": true
+    },
+    {
+      "id": "f359cfc6-e319-50b3-9763-264d92b7c541",
+      "name": "PendingApprovals",
+      "source": "Custom.PendingApprovals",
+      "alias": "pending-approvals",
+      "sortColumns": [
+        {
+          "property": "RequestedAtUtc",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "ApprovalRequest",
+      "live": true
+    },
+    {
+      "id": "1ab8aade-effb-566a-9101-32c8579c3703",
+      "name": "MyApprovalRequests",
+      "source": "Custom.MyApprovalRequests",
+      "alias": "my-approval-requests",
+      "sortColumns": [
+        {
+          "property": "RequestedAtUtc",
+          "direction": "desc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "ApprovalRequest",
+      "live": true
+    }
+  ]
+}

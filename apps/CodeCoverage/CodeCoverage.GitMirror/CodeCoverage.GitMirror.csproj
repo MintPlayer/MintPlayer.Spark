@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+<Project Sdk="Microsoft.NET.Sdk">
 
 	<!--
 	  The coverage-git sidecar (docs/coverage_commit_graph_PRD.md D1, D3, D24): the only process that runs git. It keeps one
@@ -9,6 +9,10 @@
 	  this assembly's references and fails if one appears.
 	-->
 	<PropertyGroup>
+		<!-- A plain SDK, not Microsoft.NET.Sdk.Web: IDE tooling gives every Web-SDK project a launchSettings.json with
+		     random ports, and this sidecar is only ever started by its container. The shared framework and the Web SDK's
+		     implicit usings are added below. -->
+		<OutputType>Exe</OutputType>
 		<TargetFramework>net11.0</TargetFramework>
 		<Nullable>enable</Nullable>
 		<ImplicitUsings>enable</ImplicitUsings>
@@ -37,6 +41,24 @@
 
 	<ItemGroup>
 		<InternalsVisibleTo Include="CodeCoverage.GitMirror.Tests" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<FrameworkReference Include="Microsoft.AspNetCore.App" />
+		<Using Include="System.Net.Http.Json" />
+		<Using Include="Microsoft.AspNetCore.Builder" />
+		<Using Include="Microsoft.AspNetCore.Hosting" />
+		<Using Include="Microsoft.AspNetCore.Http" />
+		<Using Include="Microsoft.AspNetCore.Routing" />
+		<Using Include="Microsoft.Extensions.Configuration" />
+		<Using Include="Microsoft.Extensions.DependencyInjection" />
+		<Using Include="Microsoft.Extensions.Hosting" />
+		<Using Include="Microsoft.Extensions.Logging" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<None Remove="appsettings*.json" />
+		<Content Include="appsettings*.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
 	</ItemGroup>
 
 </Project>

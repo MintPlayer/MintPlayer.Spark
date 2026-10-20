@@ -66,14 +66,40 @@ public class SparkReplicationOptions
     public string SparkModulesDatabase { get; set; } = "SparkModules";
 
     /// <summary>
-    /// How often <c>SyncActionRetrySweeper</c> wakes sync actions whose retry backoff has elapsed.
-    /// This is the granularity of retry redelivery, not of first delivery — a new action is
-    /// delivered immediately by the subscription and never waits for a sweep.
+    /// How this module, as an owner, delivers approved replicas to consumers (warehouse WD17):
+    /// <see cref="ReplicationTransport.Auto"/> (default) reads the RavenDB licence at startup and uses ETL when it
+    /// has RavenDB ETL, HTTP otherwise (and when the licence cannot be read). A consumer needs no setting: it always
+    /// exposes the apply endpoint, and ETL writes into its database directly.
     /// </summary>
-    public TimeSpan FallbackPollInterval { get; set; } = TimeSpan.FromSeconds(30);
+    public ReplicationTransport Transport { get; set; } = ReplicationTransport.Auto;
 
-    /// <summary>Assemblies to scan for [Replicated] attributes. If empty, scans the entry assembly.</summary>
-    public System.Reflection.Assembly[] AssembliesToScan { get; set; } = [];
+    /// <summary>
+    /// The owner modules of a replica collection whose <c>[Replicated]</c> class names none (a generic library such
+    /// as <c>Fulfilment.Contracts</c>): <c>Spark:Replication:Sources:{TargetCollection}</c> = one or more module
+    /// names. Ids must be unique across them: an id held by another source is refused as poison. A replica class
+    /// that names its <c>SourceModule</c> ignores this; startup refuses a replica that neither names.
+    /// </summary>
+    public Dictionary<string, string[]> Sources { get; set; } = new(StringComparer.Ordinal);
+
+    /// <summary>The <c>SparkModules</c> registry (WX4): <c>Spark:Replication:Registry</c>.</summary>
+    public ReplicationRegistryOptions Registry { get; set; } = new();
+
+    /// <summary>Owner-side push delivery on the HTTP transport: <c>Spark:Replication:Push</c>.</summary>
+    public ReplicationPushOptions Push { get; set; } = new();
+
+    /// <summary>The owner's reconcile on the HTTP transport: <c>Spark:Replication:Reconcile</c>.</summary>
+    public ReplicationReconcileOptions Reconcile { get; set; } = new();
+
+    /// <summary>Consumer-side write-back: <c>Spark:Replication:WriteBack</c>.</summary>
+    public ReplicationWriteBackOptions WriteBack { get; set; } = new();
+
+    /// <summary>
+    /// Source collections of this module (as an owner) whose changes are pushed through the dirty set: every change
+    /// overwrites one marker per document, and a cron job pushes the latest state every
+    /// <see cref="ReplicationPushOptions.DirtySetFlushSchedule"/>. For high-churn collections (stock levels).
+    /// The outbox refuses deduplication keys, so this is how a burst becomes one push.
+    /// </summary>
+    public HashSet<string> DirtySetCollections { get; set; } = new(StringComparer.Ordinal);
 
     /// <summary>
     /// Cross-module mTLS configuration (R2-C1 / R2-C2 / R2-H7). Each module deploys

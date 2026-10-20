@@ -187,19 +187,66 @@ public class EntityMapperInverseTests
     {
         var profession = new TestProfession
         {
-            Label = new TranslatedString
-            {
-                Translations = new() { ["en"] = "Doctor", ["fr"] = "Médecin", ["nl"] = "Dokter" }
-            }
+            Label = TranslatedString.Of(("en", "Doctor"), ("fr", "Médecin"), ("nl", "Dokter"))
         };
         var po = PoWith([("Label", TranslatedStringElement(("en", "Physician"))
 , "TranslatedString")]);
 
         _mapper.PopulateObjectValues(po, profession);
 
-        profession.Label!.Translations["en"].Should().Be("Physician", "incoming language overwrites");
-        profession.Label.Translations["fr"].Should().Be("Médecin", "absent from incoming → survives");
-        profession.Label.Translations["nl"].Should().Be("Dokter", "absent from incoming → survives");
+        profession.Label!["en"].Should().Be("Physician", "incoming language overwrites");
+        profession.Label["fr"].Should().Be("Médecin", "absent from incoming → survives");
+        profession.Label["nl"].Should().Be("Dokter", "absent from incoming → survives");
+        profession.Label.Entries.Select(e => e.Tag).Should().Equal(["en", "fr", "nl"], "a replaced tag keeps its place");
+    }
+
+    [Fact]
+    public void PopulateObjectValues_TranslatedString_MergeReplacesEveryEntryOfASentTag()
+    {
+        // X17: the merge is per TAG. Two names in nl (official + common) are replaced by what the
+        // client sent for nl; the fr name it did not send survives untouched, kind included.
+        var profession = new TestProfession
+        {
+            Label = new TranslatedString
+            {
+                Entries =
+                [
+                    new TranslatedStringEntry("nl", "'s-Gravenhage") { Kind = TranslatedStringKind.Official },
+                    new TranslatedStringEntry("fr", "La Haye") { Kind = TranslatedStringKind.Exonym },
+                    new TranslatedStringEntry("nl", "Den Haag") { Kind = TranslatedStringKind.Common },
+                ]
+            }
+        };
+        var incoming = new TranslatedString
+        {
+            Entries = [new TranslatedStringEntry("nl", "Den Haag") { Kind = TranslatedStringKind.Official }]
+        };
+        var po = PoWith([("Label", (object?)JsonSerializer.SerializeToElement(incoming), "TranslatedString")]);
+
+        _mapper.PopulateObjectValues(po, profession);
+
+        profession.Label!.Entries.Should().Equal(
+        [
+            new TranslatedStringEntry("nl", "Den Haag") { Kind = TranslatedStringKind.Official },
+            new TranslatedStringEntry("fr", "La Haye") { Kind = TranslatedStringKind.Exonym },
+        ]);
+    }
+
+    [Fact]
+    public void PopulateObjectValues_TranslatedString_FlatShorthandIsReadAndNonStringTextIsRefused()
+    {
+        var profession = new TestProfession();
+        var flat = JsonDocument.Parse("""{"en":"Nurse","nl-be":"Verpleger"}""").RootElement.Clone();
+
+        _mapper.PopulateObjectValues(PoWith([("Label", (object?)flat, "TranslatedString")]), profession);
+
+        profession.Label!.Entries.Select(e => $"{e.Tag}={e.Value}").Should().Equal(["en=Nurse", "nl-BE=Verpleger"],
+            "the flat {tag:text} object is an accepted input, tags stored in canonical case");
+
+        // X17: a number is not a text. It used to be ToString'ed into the value; now the one converter refuses it.
+        var numeric = JsonDocument.Parse("""{"en":42}""").RootElement.Clone();
+        var act = () => _mapper.PopulateObjectValues(PoWith([("Label", (object?)numeric, "TranslatedString")]), new TestProfession());
+        act.Should().Throw<JsonException>();
     }
 
     [Fact]
@@ -211,8 +258,8 @@ public class EntityMapperInverseTests
         _mapper.PopulateObjectValues(po, profession);
 
         profession.Label.Should().NotBeNull();
-        profession.Label!.Translations.Should().ContainKey("en").Which.Should().Be("Doctor");
-        profession.Label.Translations.Should().ContainKey("fr").Which.Should().Be("Médecin");
+        profession.Label!["en"].Should().Be("Doctor");
+        profession.Label["fr"].Should().Be("Médecin");
     }
 
     [Fact]
@@ -220,7 +267,7 @@ public class EntityMapperInverseTests
     {
         var profession = new TestProfession
         {
-            Label = new TranslatedString { Translations = new() { ["en"] = "Doctor" } }
+            Label = TranslatedString.Of("en", "Doctor")
         };
         var po = PoWith([("Label", (object?)null, "TranslatedString")]);
 
@@ -233,12 +280,12 @@ public class EntityMapperInverseTests
     public void PopulateObjectValues_TranslatedString_AcceptsAlreadyMaterializedInstance()
     {
         var profession = new TestProfession();
-        var incoming = new TranslatedString { Translations = new() { ["en"] = "Nurse" } };
+        var incoming = TranslatedString.Of("en", "Nurse");
         var po = PoWith([("Label", (object?)incoming, "TranslatedString")]);
 
         _mapper.PopulateObjectValues(po, profession);
 
-        profession.Label!.Translations["en"].Should().Be("Nurse");
+        profession.Label!["en"].Should().Be("Nurse");
     }
 
     // --- Reference resolution --------------------------------------------
@@ -357,21 +404,9 @@ public class EntityMapperInverseTests
         };
     }
 
-    /// <summary>Builds a JsonElement shaped like the wire value for a TranslatedString.</summary>
+    /// <summary>Builds a JsonElement shaped like the wire value for a TranslatedString: {"Entries":[…]} (X17).</summary>
     private static JsonElement TranslatedStringElement(params (string Lang, string Value)[] entries)
-    {
-        using var stream = new MemoryStream();
-        using (var writer = new Utf8JsonWriter(stream))
-        {
-            writer.WriteStartObject();
-            foreach (var (lang, value) in entries)
-                writer.WriteString(lang, value);
-            writer.WriteEndObject();
-        }
-        stream.Position = 0;
-        using var doc = JsonDocument.Parse(stream);
-        return doc.RootElement.Clone();
-    }
+        => JsonSerializer.SerializeToElement(TranslatedString.Of(entries));
 
     private sealed class TestPerson
     {

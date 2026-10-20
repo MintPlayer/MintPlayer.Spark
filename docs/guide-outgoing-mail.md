@@ -306,6 +306,18 @@ MJML + Scriban files in the app's repository, one per culture with a fallback ch
 (`Name.nl-BE.mjml` → `Name.nl.mjml` → `Name.mjml`). The account mails ship as embedded defaults in
 `en` and `nl`; an app overrides one by adding a file with the same name under `Templates/Mail/`.
 
+**Attachments and extra headers.** `SparkMailRequest.Attachments` takes inline bytes
+(`SparkMailAttachment.FromBytes`, for small generated files: a receipt, an invoice, an `.ics`) or a
+RavenDB attachment read when the mail is sent (`SparkMailAttachment.FromDocument(documentId, name, fileName)`,
+for stored files such as a legal document's PDF). Inline bytes travel in the queued message, protected and
+scrubbed like the data of a `Sensitive` mail, and are capped by `Spark:Mail:Attachments:MaxInlineBytes`
+(2 MiB). The whole mail is capped by `MaxTotalBytes` (10 MiB); a mail over it fails without retry. A missing
+stored attachment fails the attempt, so the queue retries it, unless it is marked `Optional`.
+`SparkMailRequest.Headers` adds headers. Names MailManager sets itself (`From`, `To`, `Subject`,
+`Message-ID`, …) are refused, and so is a value with a line break. A marketing mail passes the consent
+primitive's pair, `ISparkConsentLinks.CreateListUnsubscribeHeaders(subject)` (RFC 2369 + RFC 8058
+one-click), which replaces the stream header `ListUnsubscribe` would add.
+
 ### 8.2 Bulk mail and pacing
 
 Campaigns go through `ISparkMailer.SendCampaignAsync`: one message per recipient on the `mail-bulk`

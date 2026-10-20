@@ -19,6 +19,7 @@ import { isDarkBackground, LANE_PALETTE } from './commit-graph-palette';
 import {
   branchCoverageSeries, derivePage, firstParentPath, GraphRowView, LANE_WIDTH, PathHighlight, pieWedge, ROW_HEIGHT,
 } from './commit-graph-rows';
+import { formatSparkDateTime } from '@mintplayer/ng-spark/date-time';
 
 /** Rows per request: the endpoint's cap (PRD §4.4). */
 export const GRAPH_PAGE_SIZE = 200;
@@ -56,7 +57,6 @@ interface RowUi {
 
 type PanelRow = GraphRowView & { ui: RowUi };
 
-const DATE_FORMAT = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 
 const UNAVAILABLE_REASONS: Record<string, string> = {
   disabled: 'The commit graph is not enabled on this server.',
@@ -829,7 +829,7 @@ export class RepoCommitGraphPanelComponent {
 
   formatDate(iso: string): string {
     const d = new Date(iso);
-    return isNaN(d.getTime()) ? iso : DATE_FORMAT.format(d);
+    return isNaN(d.getTime()) ? iso : formatSparkDateTime(d, 'viewer', 'date');
   }
 
   private rowUi(v: GraphRowView): RowUi {

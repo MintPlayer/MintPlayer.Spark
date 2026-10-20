@@ -1,3 +1,5 @@
+using MintPlayer.Spark.Abstractions.Builder;
+
 namespace MintPlayer.Spark.Configuration;
 
 /// <summary>
@@ -19,10 +21,10 @@ namespace MintPlayer.Spark.Configuration;
 /// the keys next to the rest of the application's state instead.
 /// </para>
 /// </remarks>
-public sealed class SparkDataProtectionOptions
+public sealed class SparkDataProtectionOptions : ISparkConfigurationSection
 {
     /// <summary>The configuration section these options are bound from.</summary>
-    public const string SectionName = "Spark:DataProtection";
+    public static string SectionName => "Spark:DataProtection";
 
     /// <summary>
     /// The application discriminator: payloads protected under one name cannot be read under

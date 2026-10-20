@@ -12,8 +12,10 @@ public class SparkFullGenerator : IncrementalGenerator
         IncrementalGeneratorInitializationContext context,
         IncrementalValueProvider<Settings> settingsProvider)
     {
-        // Discover SparkContext subclasses, SparkUser subclasses, and existence of
-        // Actions / CustomAction / Recipient classes in user source code.
+        // Discover the SparkContext and SparkUser subclasses. Everything else the bundle registers
+        // (Actions, custom actions, recipients, cron jobs, migrations, interceptors, …) is found by
+        // MintPlayer.Spark.SourceGenerators' SparkDiscoveryGenerator, whose AddSparkDiscovered()
+        // AddSparkFull calls: one scan, not two (X20 item 3).
         var discoveryProvider = context.SyntaxProvider
             .CreateSyntaxProvider(
                 predicate: static (node, ct) => node is ClassDeclarationSyntax classDecl &&
@@ -51,70 +53,7 @@ public class SparkFullGenerator : IncrementalGenerator
                             };
                         }
 
-                        if (baseType.IsGenericType &&
-                            baseType.ConstructedFrom.ToDisplayString() == "MintPlayer.Spark.Actions.DefaultPersistentObjectActions<T>")
-                        {
-                            return new SparkFullDiscoveredType
-                            {
-                                Kind = "Actions",
-                                TypeName = string.Empty
-                            };
-                        }
-
                         baseType = baseType.BaseType;
-                    }
-
-                    // Check interfaces for ICustomAction and IRecipient<T>
-                    foreach (var iface in classSymbol.AllInterfaces)
-                    {
-                        if (iface.ToDisplayString() == "MintPlayer.Spark.Abstractions.Actions.ICustomAction")
-                        {
-                            return new SparkFullDiscoveredType
-                            {
-                                Kind = "CustomAction",
-                                TypeName = string.Empty
-                            };
-                        }
-
-                        if (iface.IsGenericType &&
-                            iface.ConstructedFrom.ToDisplayString() == "MintPlayer.Spark.Messaging.Abstractions.IRecipient<TMessage>")
-                        {
-                            return new SparkFullDiscoveredType
-                            {
-                                Kind = "Recipient",
-                                TypeName = string.Empty
-                            };
-                        }
-
-                        if (iface.ToDisplayString() == "MintPlayer.Spark.Cron.ISparkCronJob")
-                        {
-                            return new SparkFullDiscoveredType
-                            {
-                                Kind = "CronJob",
-                                TypeName = string.Empty
-                            };
-                        }
-
-                        if (iface.ToDisplayString() == "MintPlayer.Spark.Migrations.ISparkMigration")
-                        {
-                            return new SparkFullDiscoveredType
-                            {
-                                Kind = "Migration",
-                                TypeName = string.Empty
-                            };
-                        }
-
-                        // The same filter as InterceptorRegistrationGenerator, or AddInterceptors would be called and not exist.
-                        if (iface.ToDisplayString() == "MintPlayer.Spark.Abstractions.Interceptors.ISparkInterceptor"
-                            && !classSymbol.IsGenericType && classSymbol.DeclaredAccessibility != Accessibility.Private
-                            && !classSymbol.AllInterfaces.Any(i => i.OriginalDefinition.ToDisplayString() == "MintPlayer.Spark.Actions.IPersistentObjectActions<T>"))
-                        {
-                            return new SparkFullDiscoveredType
-                            {
-                                Kind = "Interceptor",
-                                TypeName = string.Empty
-                            };
-                        }
                     }
 
                     return default;
@@ -130,7 +69,6 @@ public class SparkFullGenerator : IncrementalGenerator
                 HasAuthorization = compilation.GetTypeByMetadataName("MintPlayer.Spark.Authorization.Extensions.SparkBuilderAuthorizationExtensions") != null,
                 HasMessaging = compilation.GetTypeByMetadataName("MintPlayer.Spark.Messaging.SparkBuilderMessagingExtensions") != null,
                 HasReplication = compilation.GetTypeByMetadataName("MintPlayer.Spark.Replication.SparkBuilderReplicationExtensions") != null,
-                HasReferencedMigrations = global::MintPlayer.Spark.SourceGenerators.Generators.ReferencedMigrationsReader.Read(compilation, ct).Migrations.Count > 0,
             });
 
         // Combine all providers and produce source

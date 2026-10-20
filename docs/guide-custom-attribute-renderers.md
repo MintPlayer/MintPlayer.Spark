@@ -418,6 +418,21 @@ provideSparkAttributeRenderers([
 ])
 ```
 
+## Diff renderers (`diffComponent`)
+
+A registration can also carry a `diffComponent` (contract `SparkAttributeDiffRenderer`): how the
+attribute is drawn in a diff of two reads of an object, such as Approvals' proposal diff
+(`<spark-po-diff>` in `@mintplayer/ng-spark/grid`). It is drawn once per changed attribute, across the
+"before" and "after" columns. Its inputs (all optional, filtered to what it declares): `before` and
+`after` (renderer-facing values; `before` is `undefined` for a creation), `attribute` and `options`.
+Without one, each side is drawn as a grid cell, so a `columnComponent` still applies per side.
+
+```ts
+provideSparkAttributeRenderers([
+  { name: 'price', columnComponent: PriceCellComponent, diffComponent: PriceDiffComponent },
+])
+```
+
 ## Core renderers (no registration)
 
 ng-spark ships these in `SPARK_ATTRIBUTE_RENDERERS` itself (`sparkCoreRenderers`), so every app has
@@ -435,6 +450,12 @@ them. An app's own registration of the same name wins.
   { "name": "Description", "dataType": "string", "isReadOnly": true,
     "showedOn": "PersistentObject", "renderer": "paragraph" }
   ```
+
+- **`money`** — a `Money` value (amount + ISO 4217 currency): formatted with `Intl.NumberFormat` in the
+  viewer's locale on the detail page and in grid cells, edited as an amount input beside a currency
+  picker, and relabelled the same way in a filter panel. Model sync writes it on every `Money`
+  attribute that has no renderer, so it needs no JSON either. Options and details:
+  [guide-money.md](guide-money.md).
 
 A registration of your own can draw across the whole row too: `fullWidth: true`.
 

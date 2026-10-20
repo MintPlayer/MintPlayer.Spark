@@ -18,6 +18,7 @@ internal sealed partial class CreatePersistentObject : IPostEndpoint<PersistentO
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
     {
         builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
+        builder.RefuseDeniedInEnvelope();
     }
 
     [Inject] private readonly IDatabaseAccess databaseAccess;
@@ -51,15 +52,8 @@ internal sealed partial class CreatePersistentObject : IPostEndpoint<PersistentO
         }
 
         // Still in addition to the check EnsureSaveAuthorizedAsync makes below, and still free: the
-        // permission service memoises per request.
-        try
-        {
-            await permissionService.EnsureAuthorizedAsync("New", entityType.Name);
-        }
-        catch (SparkAccessDeniedException)
-        {
-            return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
-        }
+        // permission service memoises per request. A denial is answered by the endpoint filter.
+        await permissionService.EnsureAuthorizedAsync("New", entityType.Name);
 
         // A body without the object is malformed: refused like one, not a 500.
         if (request.PersistentObject is not { } obj)
@@ -84,14 +78,13 @@ internal sealed partial class CreatePersistentObject : IPostEndpoint<PersistentO
         {
             // Authorize, validate, save and present: the shared sequence the MCP tools run too (MCP PRD
             // D9). It forces the id to null and the type to the resolved one (R2-M18).
-            var presented = await savePath.CreateAsync(entityType, obj, resolved?.Parent, httpContext.RequestAborted);
+            var outcome = await savePath.CreateAsync(entityType, obj, resolved?.Parent, httpContext.RequestAborted);
 
-            // An interceptor cancelled the create (#482): nothing was created, and nothing went wrong.
-            return presented is null
-                ? ClientResult.Envelope(clientAccessor, null, 204)
-                : ClientResult.Envelope(clientAccessor, presented, 201);
+            // 201 created; 204 when an interceptor cancelled it (#482: nothing was created, and nothing went
+            // wrong); 202 when an ISaveReplacement diverted it for approval (X7).
+            return ClientResult.Saved(clientAccessor, outcome, 201);
         }
-        catch (SparkConcurrencyException ex)
+        catch (Abstractions.SparkConflictException ex)
         {
             // A creation whose natural id is already held by a row the caller may edit: "exists"
             // (#467, D16), never an overwrite. Generic body, as in Update (R2-M1).
@@ -114,10 +107,6 @@ internal sealed partial class CreatePersistentObject : IPostEndpoint<PersistentO
         {
             // A business quota (Moderation's new-account throttle, #460 M12): 429, not 404 or 400.
             return ClientResult.Throttled(clientAccessor, httpContext, ex);
-        }
-        catch (SparkAccessDeniedException)
-        {
-            return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
         }
     }
 }

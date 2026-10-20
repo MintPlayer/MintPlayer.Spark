@@ -34,6 +34,20 @@ export class SparkGridRenderers {
     return this.registry.find(r => r.name === column.renderer)?.columnComponent ?? null;
   }
 
+  /**
+   * The registered diff component for an attribute (`diffComponent`, commerce #521), or null to draw
+   * the generic before → after cells.
+   */
+  diffComponentFor(column: { renderer?: string }): Type<any> | null {
+    if (!column.renderer) return null;
+    return this.registry.find(r => r.name === column.renderer)?.diffComponent ?? null;
+  }
+
+  /** Inputs for a diff renderer, filtered to what the component declares (see {@link cellInputsFor}). */
+  diffInputsFor(component: Type<any>, before: unknown, after: unknown, attribute: EntityAttributeDefinition): Record<string, any> {
+    return withDeclaredInputs(component, { before, after, attribute, options: attribute.rendererOptions });
+  }
+
   /** The registered filter-label function for a column, or null to use the server-computed text. */
   filterLabelFor(column: SparkCellColumn): ((value: unknown) => string) | null {
     if (!column.renderer) return null;

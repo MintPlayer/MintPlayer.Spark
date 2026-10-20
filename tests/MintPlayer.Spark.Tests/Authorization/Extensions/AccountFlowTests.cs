@@ -395,6 +395,45 @@ public class AccountFlowTests : SparkTestDriver
         (await Stored()).Should().BeNull("an explicit null clears it too");
     }
 
+    /// <summary>
+    /// Commerce PRD X14: the zone mails and PDFs are written in. A shape check, not a lookup: a well-formed
+    /// zone this server does not know is kept (it reads as the default where it is used).
+    /// </summary>
+    [Fact]
+    public async Task The_profile_reads_and_writes_the_preferred_time_zone()
+    {
+        await using var host = await AccountTestHost.StartAsync(Store);
+        await host.CreateUserAsync("traveller", "traveller@example.com");
+        using var client = host.Client();
+        var cookie = await host.CookieSignInAsync(client, "traveller@example.com");
+
+        async Task<HttpResponseMessage> Post(object body) => await AccountTestHost.SendAsync(client, HttpMethod.Post, "/spark/auth/manage/profile", cookie, body);
+        async Task<string?> Stored() => (await host.FindByEmailAsync("traveller@example.com"))!.PreferredTimeZone;
+
+        var initial = await AccountTestHost.SendAsync(client, HttpMethod.Get, "/spark/auth/manage/profile", cookie);
+        using (var json = JsonDocument.Parse(await initial.Content.ReadAsStringAsync()))
+            json.RootElement.GetProperty("preferredTimeZone").ValueKind.Should().Be(JsonValueKind.Null);
+
+        var set = await Post(new { preferredTimeZone = " Europe/Brussels " });
+        set.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await set.Content.ReadAsStringAsync()).Should().Contain("\"preferredTimeZone\":\"Europe/Brussels\"");
+        (await Stored()).Should().Be("Europe/Brussels");
+
+        foreach (var malformed in new[] { "Romance Standard Time", "../etc/passwd", "Europe//Brussels" })
+        {
+            var invalid = await Post(new { preferredTimeZone = malformed });
+            invalid.StatusCode.Should().Be(HttpStatusCode.BadRequest, malformed);
+            (await invalid.Content.ReadAsStringAsync()).Should().Contain("PreferredTimeZone");
+        }
+        (await Stored()).Should().Be("Europe/Brussels", "a refused save writes nothing");
+
+        (await Post(new { preferredCulture = "fr" })).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await Stored()).Should().Be("Europe/Brussels", "an absent field keeps the value");
+
+        (await Post(new { preferredTimeZone = "" })).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await Stored()).Should().BeNull("empty clears it, back to Spark:TimeZone:DefaultRecipientTimeZone");
+    }
+
     [Theory]
     [InlineData("en", true, "en")]
     [InlineData("nl-be", true, "nl-BE")]

@@ -1,0 +1,40 @@
+<section class="spark-ticketing-event-list" aria-labelledby="spark-ticketing-event-list-title" [attr.aria-busy]="busy()">
+  <h1 id="spark-ticketing-event-list-title">{{ 'ticketingEvents.list.title' | t }}</h1>
+
+  @if (loaded() && list().length === 0) {
+    <p class="spark-ticketing-event-list-empty">{{ 'ticketingEvents.list.empty' | t }}</p>
+  }
+
+  <ul class="spark-ticketing-event-list-items">
+    @for (event of list(); track event.id) {
+      <li class="spark-ticketing-event-list-item" [class.spark-ticketing-event-list-past]="!event.nextStartsAt">
+        <a class="spark-ticketing-event-list-link" [href]="href(event)" (click)="open(event, $event)">
+          @if (event.imageUrl) {
+            <img class="spark-ticketing-event-list-image" [src]="event.imageUrl" alt="" loading="lazy" />
+          }
+          <span class="spark-ticketing-event-list-name">{{ event.name | resolveTranslation: event.slug }}</span>
+        </a>
+        @if (event.nextStartsAt) {
+          <p class="spark-ticketing-event-list-date">
+            <spark-date-time [value]="event.nextStartsAt" [alsoIn]="event.nextTimeZoneId" />
+            @if (event.dateCount > 1) {
+              <small> · {{ 'ticketingEvents.list.moreDates' | t }}</small>
+            }
+          </p>
+        } @else {
+          <p class="spark-ticketing-event-list-date">{{ 'ticketingEvents.list.past' | t }}</p>
+        }
+        @if (event.status !== 'Scheduled') {
+          <p class="spark-ticketing-event-list-status">{{ ('ticketingEvents.status.' + event.status) | t }}</p>
+        }
+        @if (event.minimumAge != null) {
+          <small class="spark-ticketing-event-list-age">{{ event.minimumAge }}+</small>
+        }
+      </li>
+    }
+  </ul>
+
+  @if (hasMore()) {
+    <button type="button" class="btn btn-outline-primary" [disabled]="busy()" (click)="more()">{{ 'ticketingEvents.list.more' | t }}</button>
+  }
+</section>

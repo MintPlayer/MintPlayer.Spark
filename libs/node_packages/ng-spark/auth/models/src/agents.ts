@@ -11,12 +11,15 @@ export function sparkAgentCanWrite(permission: SparkAgentPermission | null | und
 
 /** One chosen type of a grant. */
 export interface SparkAgentGrantType {
-  name: string;
+  /** The entity type's id: a grant names a type by id, never by its name, which a rename changes (D28). */
+  typeId: string;
   permissions: SparkAgentPermission;
 }
 
 /** An entity type the application makes available to agents and the user may see, with its own most. */
 export interface SparkAgentExposedType {
+  /** The entity type's id, as a grant stores it (D28). */
+  id: string;
   name: string;
   label: string;
   permissions: SparkAgentPermission;

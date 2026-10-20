@@ -11,6 +11,7 @@ import {
   LookupReference,
   PersistentObject,
   ShowedOn,
+  translated,
 } from '@mintplayer/ng-spark/models';
 
 function attr(partial: Partial<EntityAttributeDefinition>): EntityAttributeDefinition {
@@ -48,8 +49,8 @@ const statusLookup: LookupReference = {
   isTransient: true,
   displayType: 0,
   values: [
-    { key: 'InUse', values: { en: 'In use' } as any, isActive: true },
-    { key: 'Stolen', values: { en: 'Stolen' } as any, isActive: true },
+    { key: 'InUse', values: translated({ en: 'In use' }) as any, isActive: true },
+    { key: 'Stolen', values: translated({ en: 'Stolen' }) as any, isActive: true },
   ],
 } as any;
 
@@ -181,7 +182,7 @@ describe('spark-po-form — TriggersRefresh', () => {
     it('replaces a lookup attribute’s options from the response', async () => {
       const { fixture, component } = createComponent({
         refresh: vi.fn().mockResolvedValue(response({
-          Status: { options: [{ key: 'Scrapped', label: { en: 'Scrapped' } }] },
+          Status: { options: [{ key: 'Scrapped', label: translated({ en: 'Scrapped' }) }] },
         })),
       } as any);
       await mount(fixture, { Status: 'Stolen' });

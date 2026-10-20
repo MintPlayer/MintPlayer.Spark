@@ -1,0 +1,51 @@
+<section class="spark-scanner-devices">
+  <h2>{{ 'ticketingTickets.scanner.devices.title' | t }}</h2>
+
+  <form class="spark-scanner-devices-form" (submit)="$event.preventDefault(); register()">
+    <label>
+      {{ 'ticketingTickets.scanner.devices.name' | t }}
+      <input type="text" maxlength="100" [value]="name()" (input)="name.set($any($event.target).value)" />
+    </label>
+    @if (lists().length > 0) {
+      <label>
+        {{ 'ticketingTickets.scanner.devices.list' | t }}
+        <select [value]="listId()" (change)="listId.set($any($event.target).value)">
+          <option value="">{{ 'ticketingTickets.scanner.devices.defaultList' | t }}</option>
+          @for (list of lists(); track list.id) {
+            <option [value]="list.id">{{ list.name }}</option>
+          }
+        </select>
+      </label>
+    }
+    @if (dates().length > 0) {
+      <label>
+        {{ 'ticketingTickets.scanner.devices.date' | t }}
+        <select [value]="dateId()" (change)="dateId.set($any($event.target).value)">
+          <option value="">{{ 'ticketingTickets.scanner.devices.everyDate' | t }}</option>
+          @for (date of dates(); track date.id) {
+            <option [value]="date.id">{{ date.name }}</option>
+          }
+        </select>
+      </label>
+    }
+    <button type="submit" class="btn btn-primary" [disabled]="!canRegister()">{{ 'ticketingTickets.scanner.devices.register' | t }}</button>
+  </form>
+
+  @if (refusal(); as key) {
+    <p class="spark-scanner-devices-refusal" role="alert">{{ key | t }}</p>
+  }
+
+  @if (registered(); as device) {
+    <div class="spark-scanner-devices-key" role="status">
+      <p>{{ 'ticketingTickets.scanner.devices.shownOnce' | t }}</p>
+      <code>{{ credential(device) }}</code>
+      <p>{{ 'ticketingTickets.scanner.devices.expires' | t }} <spark-date-time [value]="device.expiresAt" /></p>
+      <button type="button" class="btn btn-outline-secondary" (click)="copy(device)">{{ 'ticketingTickets.scanner.devices.copy' | t }}</button>
+      <button type="button" class="btn btn-outline-danger" [disabled]="busy()" (click)="revoke()">{{ 'ticketingTickets.scanner.devices.revoke' | t }}</button>
+    </div>
+  }
+
+  @if (revoked()) {
+    <p class="spark-scanner-devices-notice" role="status">{{ 'ticketingTickets.scanner.devices.revoked' | t }}</p>
+  }
+</section>

@@ -1,0 +1,53 @@
+{
+  "_fixture": {
+    "source": "https://sendcloud.dev/api/v3/service-points/retrieve-a-list-of-service-points (200: data.results + data.geocoding)",
+    "retrieved": "2026-10-20",
+    "derived": "built from the schema (field names and opening_times shape as documented); values adapted from the v2 documentation example (Eindhoven); the locker and the expired point added to cover general_shop_type and is_expired",
+    "recorded": false
+  },
+  "data": {
+    "results": [
+      {
+        "id": 10875349,
+        "name": "Primera Sanders",
+        "carrier": { "code": "postnl", "name": "PostNL" },
+        "carrier_service_point_id": "217165",
+        "carrier_shop_type": null,
+        "general_shop_type": "servicepoint",
+        "address": { "street": "Kastanjelaan", "house_number": "1", "postal_code": "5616LZ", "city": "Eindhoven", "country_code": "NL" },
+        "position": { "latitude": 51.441444, "longitude": 5.466173 },
+        "opening_times": {
+          "monday": [ { "start_time": "10:00", "end_time": "20:00" } ],
+          "tuesday": [ { "start_time": "08:00", "end_time": "12:00" }, { "start_time": "13:00", "end_time": "18:00" } ],
+          "sunday": null
+        },
+        "is_open_tomorrow": true,
+        "is_expired": false,
+        "distance": 381
+      },
+      {
+        "id": 10875350,
+        "name": "PostNL Pakketautomaat",
+        "carrier": { "code": "postnl", "name": "PostNL" },
+        "carrier_service_point_id": "217166",
+        "general_shop_type": "locker",
+        "address": { "street": "Stationsplein", "house_number": "17", "postal_code": "5611AC", "city": "Eindhoven", "country_code": "NL" },
+        "position": { "latitude": 51.443, "longitude": 5.479 },
+        "opening_times": { "monday": [ { "start_time": "00:00", "end_time": "23:59" } ] },
+        "is_expired": false,
+        "distance": 920
+      },
+      {
+        "id": 10875351,
+        "name": "Closed shop",
+        "carrier": { "code": "postnl", "name": "PostNL" },
+        "general_shop_type": "servicepoint",
+        "address": { "street": "Markt", "house_number": "2", "postal_code": "5611EB", "city": "Eindhoven", "country_code": "NL" },
+        "position": { "latitude": 51.438, "longitude": 5.478 },
+        "is_expired": true,
+        "distance": 1200
+      }
+    ],
+    "geocoding": { "status": "matched", "precision": "postal_code", "formatted_address": "5611 AG Eindhoven, Netherlands" }
+  }
+}

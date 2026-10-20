@@ -8,7 +8,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { SPARK_CONFIG, SparkConfig } from '@mintplayer/ng-spark';
 import { SparkPoEditComponent } from './spark-po-edit.component';
 import { SparkService, SparkLanguageService } from '@mintplayer/ng-spark/services';
-import { EntityType, PersistentObject, ShowedOn } from '@mintplayer/ng-spark/models';
+import { EntityType, PersistentObject, ShowedOn, translated, resolveTranslation } from '@mintplayer/ng-spark/models';
 import { nextNavigationEnd, StubComponent } from '../../src/test-utils';
 
 const personType: EntityType = {
@@ -68,7 +68,7 @@ async function setup(serviceOverrides: Partial<SparkService> = {}, config?: Spar
       provideRouter(routes),
       { provide: SparkService, useValue: service },
       // Echoes the key; the "changed by"/"changed at" keys also {user} and {time} slots so tests can see who and whether a time was shown.
-      { provide: SparkLanguageService, useValue: { t: (k: string) => k === 'common.conflictChangedByAt' ? `${k}({user}|{time})` : k.startsWith('common.conflictChangedBy') ? `${k}({user})` : k === 'common.conflictChangedAt' ? `${k}({time})` : k, resolve: (ts: any) => ts?.en ?? '' } },
+      { provide: SparkLanguageService, useValue: { t: (k: string) => k === 'common.conflictChangedByAt' ? `${k}({user}|{time})` : k.startsWith('common.conflictChangedBy') ? `${k}({user})` : k === 'common.conflictChangedAt' ? `${k}({time})` : k, resolve: (ts: any) => resolveTranslation(ts, 'en') } },
       ...(config ? [{ provide: SPARK_CONFIG, useValue: config }] : []),
     ],
   });
@@ -180,7 +180,7 @@ describe('SparkPoEditComponent', () => {
   it('onSave 400 error populates validationErrors from the server payload', async () => {
     const error = new HttpErrorResponse({
       status: 400,
-      error: { errors: [{ attributeName: 'FirstName', errorMessage: { en: 'Required' }, ruleType: 'required' }] },
+      error: { errors: [{ attributeName: 'FirstName', errorMessage: translated({ en: 'Required' }), ruleType: 'required' }] },
     });
     const { harness } = await setup({ update: vi.fn().mockRejectedValue(error) });
     const c = await harness.navigateByUrl('/po/person/people%2F1/edit', SparkPoEditComponent);
@@ -264,7 +264,7 @@ describe('SparkPoEditComponent', () => {
     } as EntityType;
     const error = new HttpErrorResponse({
       status: 400,
-      error: { result: { errors: [{ attributeName: 'Code', errorMessage: { en: 'Code is required.' }, ruleType: 'required' }] }, operations: [] },
+      error: { result: { errors: [{ attributeName: 'Code', errorMessage: translated({ en: 'Code is required.' }), ruleType: 'required' }] }, operations: [] },
     });
     const { harness } = await setup({ getEntityTypes: vi.fn().mockResolvedValue([withUndrawn]), update: vi.fn().mockRejectedValue(error) });
     const c = await harness.navigateByUrl('/po/person/people%2F1/edit', SparkPoEditComponent);
@@ -290,7 +290,7 @@ describe('SparkPoEditComponent', () => {
 
     await c.onSave();
 
-    expect(c.validationErrors()[0].errorMessage.en).toBe('common.deletedByAnotherUser');
+    expect(c.validationErrors()[0].errorMessage.Entries[0].Value).toBe('common.deletedByAnotherUser');
     expect(get).not.toHaveBeenCalled();
     expect(c.isSaving()).toBe(false);
   });
@@ -335,7 +335,7 @@ describe('SparkPoEditComponent', () => {
 
     // The stub language service echoes the key, so this asserts the key was looked up rather than
     // the server's own untranslated wording being shown.
-    expect(c.validationErrors()[0].errorMessage.en).toBe('common.concurrencyConflict');
+    expect(c.validationErrors()[0].errorMessage.Entries[0].Value).toBe('common.concurrencyConflict');
     expect(c.validationErrors()[0].attributeName).toBe('');
     // The typing is not thrown away — the user can retry or copy their values out.
     expect(c.formData()['FirstName']).toBe('Alice');
@@ -409,7 +409,7 @@ describe('SparkPoEditComponent', () => {
       expect(pending?.result.conflicts.map(x => x.path)).toEqual(['FirstName']);
       // Until the user decides, nothing moves: the form is as typed and the message stays.
       expect(c.formData()['FirstName']).toBe('Alicia');
-      expect(c.validationErrors()[0].errorMessage.en).toBe('common.concurrencyConflict');
+      expect(c.validationErrors()[0].errorMessage.Entries[0].Value).toBe('common.concurrencyConflict');
 
       c.onConflictResolved({ FirstName: 'mine' });
 
@@ -442,7 +442,7 @@ describe('SparkPoEditComponent', () => {
       expect(c.pendingConflict()).toBeNull();
       expect(c.formData()['FirstName']).toBe('Alicia');
       expect(c.item()?.etag).toBe('A:12-abc');
-      expect(c.validationErrors()[0].errorMessage.en).toBe('common.concurrencyConflict');
+      expect(c.validationErrors()[0].errorMessage.Entries[0].Value).toBe('common.concurrencyConflict');
     });
 
     it('by default names no user and asks History nothing, but still shows the time', async () => {

@@ -1,6 +1,6 @@
 using MintPlayer.SourceGenerators.Attributes;
 using Raven.Client.Documents;
-using Raven.Client.Documents.Operations.CompareExchange;
+using MintPlayer.Spark.Claims;
 
 namespace MintPlayer.Spark.Messaging.Services;
 
@@ -70,40 +70,33 @@ internal sealed partial class MessagingLeaseManager
     public async Task<bool> TryAcquireAsync(CancellationToken cancellationToken)
     {
         var now = DateTime.UtcNow;
-        var current = await GetAsync(cancellationToken);
+        MessagingLease? previous = null;
 
-        if (current is null)
+        // A free key is created (index 0: only if it does not exist yet); an expired lease is taken over, guarded on
+        // the index read, so only one contender wins (commerce X12: Spark's claims primitive).
+        var result = await Claims.ReserveAsync(Kind, ClaimKey, MessageClaims.NodeId,
+            current =>
+            {
+                previous = current?.Value;
+                return new MessagingLease(MessageClaims.NodeId, now, now + Ttl, (current?.Value.Fence ?? 0) + 1);
+            },
+            now, cancellationToken);
+
+        switch (result.Status)
         {
-            // index 0: succeeds only if the key does not exist yet.
-            var lease = new MessagingLease(MessageClaims.NodeId, now, now + Ttl, 1);
-            var put = await documentStore.Operations.SendAsync(
-                new PutCompareExchangeValueOperation<MessagingLease>(LeaseKey, lease, 0), token: cancellationToken);
-
-            if (put.Successful)
-                logger.LogInformation("Acquired the messaging lease (fence {Fence})", lease.Fence);
-
-            return put.Successful;
+            case SparkClaimStatus.Reserved when previous is null:
+                logger.LogInformation("Acquired the messaging lease (fence {Fence})", result.Claim!.Value.Fence);
+                return true;
+            case SparkClaimStatus.Reserved:
+                logger.LogInformation(
+                    "Took over the messaging lease from {PreviousNode}, whose lease expired at {ExpiredAt} (fence {Fence})",
+                    previous!.NodeId, previous.ExpiresAtUtc, result.Claim!.Value.Fence);
+                return true;
+            case SparkClaimStatus.AlreadyYours:
+                return await TryRenewAsync(cancellationToken);
+            default:
+                return false; // Someone else holds a live lease, or won the race for it.
         }
-
-        if (current.Value.NodeId == MessageClaims.NodeId)
-            return await TryRenewAsync(cancellationToken);
-
-        if (current.Value.ExpiresAtUtc > now)
-            return false; // Someone else holds a live lease.
-
-        // Expired — take over, guarded on the index we read, so only one contender wins.
-        var takeover = new MessagingLease(MessageClaims.NodeId, now, now + Ttl, current.Value.Fence + 1);
-        var result = await documentStore.Operations.SendAsync(
-            new PutCompareExchangeValueOperation<MessagingLease>(LeaseKey, takeover, current.Index), token: cancellationToken);
-
-        if (result.Successful)
-        {
-            logger.LogInformation(
-                "Took over the messaging lease from {PreviousNode}, whose lease expired at {ExpiredAt} (fence {Fence})",
-                current.Value.NodeId, current.Value.ExpiresAtUtc, takeover.Fence);
-        }
-
-        return result.Successful;
     }
 
     /// <summary>
@@ -112,25 +105,19 @@ internal sealed partial class MessagingLeaseManager
     /// </summary>
     public async Task<bool> TryRenewAsync(CancellationToken cancellationToken)
     {
-        var current = await GetAsync(cancellationToken);
-        if (current is null)
-            return false;
-
         // Guarded on holder identity as well as index. Without the NodeId check a renewal could
         // extend a lease another host had legitimately taken over, giving two hosts a lease that
         // each believes is theirs.
-        if (current.Value.NodeId != MessageClaims.NodeId)
+        var result = await Claims.UpdateAsync(Kind, ClaimKey, MessageClaims.NodeId,
+            lease => lease with { ExpiresAtUtc = DateTime.UtcNow + Ttl }, cancellationToken);
+
+        if (result.Status == SparkClaimStatus.NotYours && result.Claim is { } other)
         {
             logger.LogWarning(
-                "The messaging lease is now held by {Holder}; this host has been evicted", current.Value.NodeId);
-            return false;
+                "The messaging lease is now held by {Holder}; this host has been evicted", other.Value.NodeId);
         }
 
-        var renewed = current.Value with { ExpiresAtUtc = DateTime.UtcNow + Ttl };
-        var result = await documentStore.Operations.SendAsync(
-            new PutCompareExchangeValueOperation<MessagingLease>(LeaseKey, renewed, current.Index), token: cancellationToken);
-
-        return result.Successful;
+        return result.Status == SparkClaimStatus.Updated;
     }
 
     /// <summary>
@@ -167,20 +154,14 @@ internal sealed partial class MessagingLeaseManager
         using var bound = new CancellationTokenSource(ReleaseTimeout);
         try
         {
-            var current = await GetAsync(bound.Token);
-
             // Guarded on identity: an unconditional delete would drop a lease another host had already
             // taken over, which is the bug the migration runner's release has.
-            if (current is null || current.Value.NodeId != MessageClaims.NodeId)
-                return false;
+            var released = await Claims.ReleaseAsync(Kind, ClaimKey, MessageClaims.NodeId, bound.Token);
 
-            var deleted = await documentStore.Operations.SendAsync(
-                new DeleteCompareExchangeValueOperation<MessagingLease>(LeaseKey, current.Index), token: bound.Token);
+            if (released.Status == SparkClaimStatus.Released)
+                logger.LogInformation("Released the messaging lease (fence {Fence})", released.Claim!.Value.Fence);
 
-            if (deleted.Successful)
-                logger.LogInformation("Released the messaging lease (fence {Fence})", current.Value.Fence);
-
-            return deleted.Successful;
+            return released.Status == SparkClaimStatus.Released;
         }
         catch (Exception ex) when (documentStore.WasDisposed && ex is OperationCanceledException or ObjectDisposedException)
         {
@@ -196,7 +177,19 @@ internal sealed partial class MessagingLeaseManager
         }
     }
 
-    private async Task<CompareExchangeValue<MessagingLease>?> GetAsync(CancellationToken cancellationToken)
-        => await documentStore.Operations.SendAsync(
-            new GetCompareExchangeValueOperation<MessagingLease>(LeaseKey), token: cancellationToken);
+    /// <summary>
+    /// The claim family (commerce X12): one key, owned by a node, live until the lease's <c>ExpiresAtUtc</c>. The value
+    /// keeps its shape, so the stored lease needs no migration.
+    /// </summary>
+    private static readonly SparkClaimKind<MessagingLease> Kind = new("spark/messaging/", lease => lease.NodeId)
+    {
+        ExpiresAtUtcOf = lease => lease.ExpiresAtUtc,
+    };
+
+    private static readonly SparkClaimKey ClaimKey = Kind.Key("leader");
+
+    private SparkClaims? claims;
+
+    // Judged against the wall clock, as the lease values are written with it (never a test's fake TimeProvider).
+    private SparkClaims Claims => claims ??= new SparkClaims(documentStore, TimeProvider.System);
 }

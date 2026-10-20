@@ -1,85 +1,146 @@
 # Translated Strings & Internationalization
 
-Spark has built-in support for multilingual content using the `TranslatedString` class. Labels, descriptions, validation messages, menu items, and UI strings can all be translated without any external i18n library.
+Spark has built-in support for multilingual content using the `TranslatedString` class. Labels, descriptions, validation messages, menu items, UI strings, and the names of places can all be translated without any external i18n library.
 
 ## Overview
 
-A `TranslatedString` is a flat JSON object mapping language codes to their translated values:
+`TranslatedString` is Spark's **one name system** (commerce X17, reference data RD7). A value is an
+ordered list of **entries**. Each entry is a text and an [RFC 5646](https://www.rfc-editor.org/rfc/rfc5646)
+language tag. A name can add a kind, a validity window, a source and a romanization origin:
 
 ```json
-{"en": "First Name", "fr": "Prenom", "nl": "Voornaam"}
+{
+  "Entries": [
+    { "Tag": "en", "Value": "The Hague" },
+    { "Tag": "nl", "Value": "'s-Gravenhage", "Kind": "official" },
+    { "Tag": "nl", "Value": "Den Haag", "Kind": "common" },
+    { "Tag": "zh-Hant", "Value": "海牙" }
+  ]
+}
 ```
 
-This format is used across the entire Spark data model: entity descriptions, attribute labels, validation rule messages, program unit names, security group names, query descriptions, and application-level UI translations.
+The shape is the same wherever it appears:
+- the HTTP API (System.Text.Json);
+- the stored RavenDB document (Newtonsoft);
+- the Angular client.
+
+An app text is the simple case: one plain entry per language.
+
+Any language works, `zh-Hant`, `sr-Latn` and `nl-BE` included. A tag is checked for well-formedness
+(RFC 5646 §2.1) and stored in canonical case (`zh-Hant`, `nl-BE`).
 
 ## The TranslatedString Class (C#)
 
 The C# class lives in the `MintPlayer.Spark.Model` package, in namespace `MintPlayer.Spark.Abstractions`,
-so an entity library can use it without referencing ASP.NET Core (#388):
+so an entity library can use it without referencing ASP.NET Core (#388). The members you use:
 
 ```csharp
-[JsonConverter(typeof(TranslatedStringJsonConverter))]
-public class TranslatedString
-{
-    public Dictionary<string, string> Translations { get; set; } = new();
+// App texts: one line, any language, each text tagged explicitly.
+var save = TranslatedString.Of(("en", "Save"), ("fr", "Enregistrer"), ("nl", "Opslaan"));
+var only = TranslatedString.Of("en", "Save");
 
-    public string GetValue(string culture)
-    {
-        if (Translations.TryGetValue(culture, out var value))
-            return value;
+// Read in a language, through the fallback chain below.
+string text = save.GetValue("nl-BE");                 // "Opslaan"
+string first = save.Resolve(["de-CH", "fr"]);         // several languages in priority order
 
-        // Fallback: try base culture (e.g., "en" from "en-US")
-        var baseCulture = culture.Split('-')[0];
-        if (Translations.TryGetValue(baseCulture, out value))
-            return value;
+// Edit a language's plain text in place; null removes it.
+save["de"] = "Speichern";
+save.Set("es", "Guardar");
 
-        // Fallback: return first available or empty
-        return Translations.Values.FirstOrDefault() ?? string.Empty;
-    }
-
-    public static TranslatedString Create(string en, string? fr = null, string? nl = null)
-    {
-        var ts = new TranslatedString();
-        ts.Translations["en"] = en;
-        if (fr != null) ts.Translations["fr"] = fr;
-        if (nl != null) ts.Translations["nl"] = nl;
-        return ts;
-    }
-}
+// Names: entries with a kind and a validity window.
+var hague = new TranslatedString { Entries =
+[
+    new("nl", "'s-Gravenhage") { Kind = TranslatedStringKind.Official },
+    new("nl", "Den Haag") { Kind = TranslatedStringKind.Common },
+    new("fr", "La Haye") { Kind = TranslatedStringKind.Exonym },
+] };
 ```
 
-Key behaviors:
-- `GetValue(culture)` returns the best match using a fallback chain: exact match, base culture (e.g. `"en"` from `"en-US"`), then first available value.
-- `GetDefaultValue()` returns the first available translation (useful when no specific culture is needed).
-- `Create()` is a convenience factory for building instances in code.
+Each text names its language, so the languages cannot silently swap. The old positional
+`Create(en, fr, nl)` could swap them. Code-defined lookup labels carry no text at all: a
+`[SparkLookup]` enum's labels are the keys `lookup.{Enum}.{Member}` in `translations.json` (see
+[Reference attributes](guide-reference-attributes.md#transient-lookup-references-code-defined)).
 
-## Custom JSON Serialization
+| Member | What |
+|---|---|
+| `Entries` | `List<TranslatedStringEntry>`, in author order: within one tag the first current entry wins |
+| `TranslatedStringEntry` | `Tag`, `Value`, and for names `Kind` (`Official`, `Common`, `Exonym`, `Historic`), `ValidFrom` (inclusive) / `ValidTo` (exclusive) as `DateOnly`, `Source`, `Romanization` (`Authoritative`, `Generated`) |
+| `Of(tag, value)` / `Of((tag, value), …)` | A new app text |
+| `this[tag]`, `Set(tag, value)` | A language's plain text (no fallback); `Set` replaces it in place |
+| `GetValue(language)` / `Resolve(ranges, defaultLanguage = "en", asOf = today)` | The fallback chain |
+| `Map((tag, text) => …)` | The same entries with every text transformed, e.g. formatted with arguments |
+| `Equals` / `GetHashCode` | Value equality: the same key and the same entries in the same order |
+| `Key` | A `translations.json` key in an App_Data file (see below); never stored |
+| `LanguageTag.IsWellFormed`, `.Canonicalize`, `.LookupChain` | The tag rules the class uses |
 
-The `TranslatedStringJsonConverter` serializes `TranslatedString` as a **flat JSON object** rather than a wrapper with a `Translations` property. This means the wire format is compact and human-readable:
+### The fallback chain
 
-```json
-{"en": "Street", "fr": "Rue", "nl": "Straat"}
-```
+Server and client resolve with one rule. The server is `TranslatedString.Resolve` and the client is
+`resolveTranslation`. The shared fixture `libs/node_packages/ng-spark/models/src/translated-string.fixture.json`
+drives the tests on both sides, so the two cannot drift apart.
 
-Not:
+1. For each requested language in order, then the default language (`en`), walk its RFC 4647 §3.4
+   lookup chain: `zh-Hant-TW` → `zh-Hant` → `zh`. For each tag in the chain, take the first
+   **current** entry with that tag. Tags compare case-insensitively.
+2. Otherwise, take the first current entry.
+3. Otherwise, take the first entry. If there is none, the result is `""`.
 
-```json
-{"translations": {"en": "Street", "fr": "Rue", "nl": "Straat"}}
-```
+An entry is **current** when it is not `historic` and today (or `asOf`) falls in `[ValidFrom, ValidTo)`.
+Lookup never widens. A request for `zh` does not match a `zh-Hant` entry; it falls through to the
+default language.
 
-The converter handles both reading and writing. On the read side, it iterates property names as language codes and property values as translated text. On the write side, it writes a flat object with each `Translations` entry as a property.
+The display rule for places is built on these entries and lives in the reference-data app; see
+`docs/reference_data_PRD.md` §4.9. It covers the local official name, the name in the UI language,
+the exonym and the Latin romanization.
+
+## JSON serialization: one shape
+
+`TranslatedStringJsonConverter` (System.Text.Json) and `TranslatedStringNewtonsoftJsonConverter`
+(RavenDB, registered by `ApplySparkConventions`) share one field codec, `TranslatedStringJson`. They
+write the same JSON: `{"Entries":[{"Tag":"en","Value":"…"}]}`.
+- Optional members are omitted when null.
+- `Kind` and `Romanization` are lowercase strings.
+- Dates are `yyyy-MM-dd`.
+
+**The member names are the C# names on purpose.** RavenDB's LINQ translator addresses stored JSON by
+CLR member name. A generated index maps `x.Description.Entries.Where(e => e.Tag == "nl")`, and that
+only matches when the stored names are exactly `Entries`, `Tag` and `Value`. A camel-cased store
+would index every language field as null. It would do so silently: no deploy failure, no index error,
+correct row counts, empty values. `TranslatedStringPersistedShapeTests` pins the stored shape, and
+pins that it equals the API's.
+
+The reader accepts two input-only shorthands. Neither is ever written:
+- **A JSON string is a key.** App_Data files refer to `translations.json` by key (`"label": "common.name"`).
+- **A flat object is plain entries.** `{"en": "Street", "nl": "Straat"}` is the leaf form of
+  `translations.json`, and the form an API client may post.
+
+It refuses:
+- a member that is not a well-formed tag;
+- a mix of both shapes;
+- an unknown entry member.
 
 ## Where TranslatedString Is Used
 
 Since #467 (D1), the `App_Data` configuration files carry **keys**, never text: model labels,
 attribute help texts, validation messages, query labels, program units, action texts, security group
 labels and language names all come from `translations.json` (see
-[Application Translations](#application-translations-translationsjson) for the keys). The wire still
-carries a resolved `TranslatedString`, so a client sees the same shape as before.
+[Application Translations](#application-translations-translationsjson) for the keys). The wire
+carries the resolved `TranslatedString`.
 
-`TranslatedString` remains the type for **data**: an entity property of type `TranslatedString`
-(a product name in three languages, say) is stored, edited and indexed as one, as the sections below
-describe.
+`TranslatedString` is also the type for **data**. An entity property of type `TranslatedString` (a
+product name in three languages, say) is stored, edited and indexed as one, as the sections below
+describe. On a detail page, ng-spark shows it in the current language and lists every entry below
+it (`<spark-translated-string>`). The edit form draws one input per language
+(`<spark-translated-string-editor>`, from `@mintplayer/ng-spark/translated-string`):
+- one row for each language in `culture.json`;
+- one row for each other language the value already has;
+- an "Add a language" field that accepts any RFC 5646 tag.
+
+Names with a kind or a validity window are listed in the editor, and they survive every save. The
+editor itself never changes them.
+
+A save **merges per tag**. Each language the client sends replaces that language's entries. Languages
+it does not send stay as they are. A language sent with an empty text is removed.
 
 ### Labels and help texts are yours to edit
 
@@ -94,8 +155,8 @@ describe.
 
 ## Indexing and sorting a TranslatedString
 
-RavenDB cannot usefully sort or search a dictionary, so a `TranslatedString` is not indexed whole. A generated
-index fans it out into one field per configured language:
+RavenDB cannot usefully sort or search a list of tagged entries, so a `TranslatedString` is not indexed
+whole. A generated index fans it out into one field per configured language:
 
 ```csharp
 [GenerateIndex]
@@ -105,35 +166,40 @@ public class Car
 }
 ```
 
-emits `Description_en`, `Description_fr`, `Description_nl` on the index entity — each mapped from
-`car.Description!.Translations["<lang>"]` — plus a `Description_{lang}Sort` companion per language when
-`[Search]` is present. The languages come from `App_Data/culture.json`, which must be an `AdditionalFiles` item
-because a source generator has no DI and cannot ask `CultureLoader`.
+This emits `Description_en`, `Description_fr` and `Description_nl` on the index entity. Each one maps
+the first entry of exactly that tag:
+`car.Description!.Entries.Where(e => e.Tag == "<tag>").Select(e => e.Value).FirstOrDefault()`. With
+`[Search]`, each language also gets a `Description_{lang}Search` companion.
+
+The languages come from `App_Data/culture.json`. That file must be an `AdditionalFiles` item, because
+a source generator has no DI and cannot ask `CultureLoader`.
+
+**A hyphenated tag is sanitized in the field name.** `zh-Hant` gives `Description_zh_Hant`, a valid C#
+identifier on the view class.
+- The map compares the tag in canonical case, so `zh-hant` in `culture.json` still matches stored
+  `zh-Hant`.
+- The query search surface reverses the name. It matches the known attribute name as the prefix and
+  turns the rest back into a tag. A tag never contains `_`, but a property name may.
 
 The whole-object field is **replaced**, not kept alongside: a `string?` named `Description` next to the entity's
 `TranslatedString Description` is a type mismatch the model merge rejects. Grids therefore bind a specific
-language column rather than the dictionary.
+language column rather than the whole value.
 
-### The mapping depends on the persisted shape, which is not the wire shape
+Two related notes:
+- `GetValue("nl")` cannot be used in a map. The server has no `TranslatedString` type and would return
+  null forever.
+- A missing tag and a null property both index to `null` harmlessly.
 
-This is the one trap worth internalising. `TranslatedStringJsonConverter` writes the flat form
-`{"en":"…","nl":"…"}`, but it is a **System.Text.Json** converter and applies only at the HTTP /
-`PersistentObject` boundary. RavenDB persists through **Newtonsoft**, where no converter is registered for the
-type, so the stored document is nested:
+### Migrating stored values (X17)
 
-```json
-{ "Description": { "Translations": { "en": "…", "nl": "…" } } }
-```
+The pre-X17 store held `{"Translations":{"en":"…"},"Key":null}`. These migrations rewrite it:
+- `M_202610191200_OidcResourceTextEntries` in the identity provider library handles `OidcResources`
+  display names and descriptions, scopes included. The MCP seeding runs the same rewrite before it
+  loads them, because its startup hook can run before the migrations.
+- Fleet's `M_202610191205_TranslatedStringEntries` handles `Cars.Description` and the dynamic lookup
+  values. A dynamic lookup value now stores its label as a `TranslatedString` (`Values`).
 
-which is exactly why the index maps `Description.Translations["nl"]`.
-
-**Do not add a Newtonsoft converter to make persistence "consistent with the API".** Every generated
-per-language index field would silently become null: no deploy failure, no index error, index state healthy,
-correct row counts, empty values. The model hash would not move and `--spark-verify-model` would still pass.
-A test asserts the stored JSON is nested precisely so that change fails loudly instead.
-
-Two related notes: `GetValue("nl")` cannot be used in a map — the server has no `TranslatedString` type and
-would return null forever — and a missing language key or a null property both index to `null` harmlessly.
+The old shape is not read (no backward compatibility).
 
 ## Culture Configuration
 
@@ -157,7 +223,7 @@ public sealed class CultureConfiguration
 {
     public Dictionary<string, TranslatedString> Languages { get; set; } = new()
     {
-        ["en"] = TranslatedString.Create("English")
+        ["en"] = TranslatedString.Of("en", "English")
     };
     public string DefaultLanguage { get; set; } = "en";
 }
@@ -215,6 +281,14 @@ A model element finds its text without naming a key (D4):
 | Action label / confirmation / description | `actions.{Name}.label` / `.confirmation` / `.description` |
 | Security group | `security.groups.{name}.label` (the group's untranslated name stays its identity for claims, D24) |
 | Language name | `culture.languages.{code}` |
+| Lookup value (`[SparkLookup]` enum member) | `lookup.{Enum}.{Member}` (resolved when `/spark/lookupref/{name}` serves it) |
+
+**The key guard.** `tools/verify-translation-keys.test.mjs` (`npm run test:tools`, run by CI) fails when
+the ng-spark library or an app's `ClientApp` asks for a literal key (`lang.t('common.save', …)`,
+`'auth.logout' | t`, a component's prefixed `t('title')` helper) that no layer defines, when a
+`[SparkLookup]` member has no label in its project's layer, and when a `lookup.*` key labels no member.
+Keys built at runtime (`'x.' + name`) are not checked. A key a library's client code needs belongs in
+that library's layer; an app's, in its own or a library's.
 
 A model file may instead name a key to reuse one (`"label": "common.name"`). An element whose key no
 layer translates shows its humanized name (`CreatedBy` → `Created By`); a help text shows nothing.
@@ -272,82 +346,59 @@ Spark exposes `GET /spark/translations` which returns the full translations dict
 
 ### TranslatedString Type
 
-On the Angular side, `TranslatedString` is a simple type alias:
+The Angular type is the wire shape (`@mintplayer/ng-spark/models`):
 
 ```typescript
-export type TranslatedString = Record<string, string>;
+export interface TranslatedString {
+  Entries: TranslatedStringEntry[];
+}
+
+export interface TranslatedStringEntry {
+  Tag: string;
+  Value: string;
+  Kind?: 'official' | 'common' | 'exonym' | 'historic';
+  ValidFrom?: string; // yyyy-MM-dd, inclusive
+  ValidTo?: string;   // yyyy-MM-dd, exclusive
+  Source?: string;
+  Romanization?: 'authoritative' | 'generated';
+}
+```
+
+Build an app text in code with `translated`, the client's one-liner:
+
+```typescript
+const copy = translated({ en: 'Copy', fr: 'Copier', nl: 'Kopiëren' });
 ```
 
 ### resolveTranslation Function
 
-The `resolveTranslation` helper picks the right translation for the current user:
+`resolveTranslation` applies [the fallback chain](#the-fallback-chain), the same one as the server's
+`TranslatedString.Resolve`:
 
 ```typescript
-export function resolveTranslation(ts: TranslatedString | undefined, lang?: string): string {
-  if (!ts) return '';
-  const language = lang ?? localStorage.getItem('spark-lang') ?? navigator.language?.split('-')[0] ?? 'en';
-  return ts[language] ?? ts['en'] ?? Object.values(ts)[0] ?? '';
-}
+resolveTranslation(ts);                                // the current language (the global signal)
+resolveTranslation(ts, 'nl-BE');                       // nl-BE → nl → en → first current entry
+resolveTranslation(ts, ['de-CH', 'fr'], { defaultLanguage: null, asOf: '2025-01-01' });
 ```
 
-Resolution order:
-1. Explicit `lang` parameter
-2. `spark-lang` value from `localStorage` (set by a language picker)
-3. Browser language (`navigator.language`, base code only)
-4. English (`en`) as final fallback
-5. First available value if none of the above match
+`lookupChain(range)` and `isCurrentEntry(entry, day)` are exported as well. Use the
+`resolveTranslation` pipe in templates:
 
-Use it in components to display attribute labels, entity descriptions, and other translated model data:
-
-```typescript
-// In a component class
-import { resolveTranslation } from '../core/models';
-
-resolveTranslation = resolveTranslation;
-
-// In the template
-{{ resolveTranslation(attr.label) || attr.name }}
-{{ resolveTranslation(entityType.description) || entityType.name }}
+```html
+{{ attr.label | resolveTranslation }}
+{{ entityType.description | resolveTranslation: entityType.name }}
 ```
 
 ### SparkLanguageService
 
-The `SparkLanguageService` loads both `culture.json` and `translations.json` from the server. It provides a `t(key)` method for keyed lookups and a `resolve(ts)` method for inline `TranslatedString` values:
-
-```typescript
-@Injectable({ providedIn: 'root' })
-export class SparkLanguageService {
-  private readonly http = inject(HttpClient);
-  private readonly currentLang = signal('en');
-  private readonly translationsMap = signal<Record<string, TranslatedString>>({});
-
-  readonly language = this.currentLang.asReadonly();
-  readonly languages = signal<Record<string, TranslatedString>>({});
-
-  constructor() {
-    this.loadCulture();
-    this.loadTranslations();
-  }
-
-  setLanguage(lang: string) {
-    this.currentLang.set(lang);
-    localStorage.setItem('spark-lang', lang);
-  }
-
-  resolve(ts: TranslatedString | undefined): string {
-    if (!ts) return '';
-    const lang = this.currentLang();
-    return ts[lang] ?? ts['en'] ?? Object.values(ts)[0] ?? '';
-  }
-
-  t(key: string): string {
-    const ts = this.translationsMap()[key];
-    return this.resolve(ts) || key;
-  }
-}
-```
-
-If a key is not found, the key itself is returned as a fallback. The service also persists the user's language choice in `localStorage`.
+The `SparkLanguageService` loads both the culture (`GET /spark/culture`) and the translations
+(`GET /spark/translations`) from the server. Its members:
+- `language`, a signal holding the current language;
+- `languages`, a signal holding the app's languages and their names;
+- `setLanguage(lang)`, which stores the choice in `localStorage` and in the `spark-lang` cookie;
+- `resolve(ts)`, which is `resolveTranslation(ts, language())`;
+- `t(key, fallback?)`, which looks up a key and returns the fallback, or the key itself, when nothing
+  is found.
 
 ### TranslateKeyPipe
 
@@ -395,7 +446,7 @@ server, the second looks a key up in the browser.
 
 ## Adding a New Language
 
-1. Add the code to `App_Data/culture.json`: `"languages": ["en", "de"]`.
+1. Add the code to `App_Data/culture.json`: `"languages": ["en", "de"]`. Any well-formed RFC 5646 tag works (`zh-Hant`, `nl-BE`); an ill-formed one is logged as a warning at startup.
 2. Add the `de` value to the keys in the app's `App_Data/translations.json`. Composition is per
    language, so adding `de` to a library key keeps the library's other languages.
 3. Run synchronize: its Info list names the label keys still missing `de`.
@@ -411,4 +462,5 @@ See the demo apps for working examples:
 - `libs/node_packages/ng-spark/models/src/translated-string.ts` -- Angular type and resolver
 - `libs/node_packages/ng-spark/services/src/spark-language.service.ts` -- SparkLanguageService
 - `libs/node_packages/ng-spark/pipes/src/translate-key.pipe.ts` -- TranslateKeyPipe
-- `libs/model/MintPlayer.Spark.Model/TranslatedString.cs` -- C# TranslatedString class with JSON converter
+- `libs/model/MintPlayer.Spark.Model/TranslatedString.cs` -- C# TranslatedString class with JSON converter (and `LanguageTag.cs`)
+- `libs/node_packages/ng-spark/translated-string/` -- the detail view and editor for a TranslatedString attribute

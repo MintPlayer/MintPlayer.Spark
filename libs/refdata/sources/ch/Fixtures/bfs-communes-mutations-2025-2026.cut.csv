@@ -1,0 +1,12 @@
+MutationNumber,MutationDate,InitialHistoricalCode,InitialCode,InitialName,InitialParentHistoricalCode,InitialParentName,InitialStep,TerminalHistoricalCode,TerminalCode,TerminalName,TerminalParentHistoricalCode,TerminalParentName,TerminalStep
+3989,01.01.2025,16050,3932,Tschiertschen-Praden,10314,Region Plessur,29,16658,3901,Chur,10314,Region Plessur,26
+3989,01.01.2025,16599,3901,Chur,10314,Region Plessur,26,16658,3901,Chur,10314,Region Plessur,26
+3991,01.01.2025,11444,2066,Chapelle (Glâne),10106,District de la Glâne,29,16660,2097,Rue,10106,District de la Glâne,26
+3991,01.01.2025,11680,2061,Auboranges,10106,District de la Glâne,29,16660,2097,Rue,10106,District de la Glâne,26
+3991,01.01.2025,13211,2072,Ecublens (FR),10106,District de la Glâne,29,16660,2097,Rue,10106,District de la Glâne,26
+3991,01.01.2025,14140,2097,Rue,10106,District de la Glâne,26,16660,2097,Rue,10106,District de la Glâne,26
+3993,01.01.2025,13662,2217,Ponthaux,10104,District de la Sarine,29,16662,2239,Grolley-Ponthaux,10104,District de la Sarine,21
+3993,01.01.2025,14129,2200,Grolley,10104,District de la Sarine,29,16662,2239,Grolley-Ponthaux,10104,District de la Sarine,21
+3998,01.01.2025,13706,2404,Neuendorf,10230,Bezirk Gäu,26,16668,2404,Neuendorf,10230,Bezirk Gäu,26
+3998,01.01.2025,13708,2406,Oberbuchsiten,10230,Bezirk Gäu,26,16667,2406,Oberbuchsiten,10230,Bezirk Gäu,26
+3999,01.01.2026,15218,700,Moutier,10283,Arrondissement administratif Jura bernois,24,16669,6831,Moutier,10321,District de Moutier,24

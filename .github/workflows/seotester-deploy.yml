@@ -26,6 +26,7 @@ on:
       - 'libs/identity_provider/MintPlayer.Spark.IdentityProvider/**'
       - 'libs/mail/MintPlayer.Spark.MailManager/**'
       - 'libs/mail/MintPlayer.Spark.MailManager.Abstractions/**'
+      - 'libs/sms/MintPlayer.Spark.Sms/**'
       - 'libs/mcp/MintPlayer.Spark.Mcp/**'
       - 'libs/messaging/MintPlayer.Spark.Messaging/**'
       - 'libs/messaging/MintPlayer.Spark.Messaging.Abstractions/**'

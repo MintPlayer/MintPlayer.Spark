@@ -34,7 +34,7 @@ field. So the behaviour is substring matching, word by word:
 | `olf GT` | yes | each word matched independently |
 | `volks octavia` | no | every word must match |
 | `VOLKSWAGEN` | yes | case-insensitive in both directions |
-| `volkswagon` | no | no fuzzy matching — see [below](#no-fuzzy-matching) |
+| `volkswagon` | yes, when the field is searchable | typo-tolerant — see [Fuzzy by default](#fuzzy-by-default) |
 
 Two consequences worth internalising:
 
@@ -71,9 +71,9 @@ See [TranslatedString & i18n](guide-translated-strings.md) for how the per-langu
 
 ## Searchability is not `[Search]`
 
-`[Search]` marks a field for RavenDB's analyzer — it tokenizes the value and gives the field a `*Sort`
-companion so it stays sortable (see
-[Sorting on searchable text](guide-queries-and-sorting.md#sorting-on-searchable-text--why-sort-fields-exist)).
+`[Search]` gives a field an analyzed `{Name}Search` companion that the generated index tokenizes; the field
+itself stays a single un-tokenized term, so it stays sortable and exact-matchable, and only the search path
+reads the companion (`IndexNaming.SearchCompanion`; `QueryExecutor.ApplySearch`).
 It is easy to assume `[Search]` is also what makes a field searchable. **It is not.**
 
 A field with no `[Search]` keeps RavenDB's default indexing, which lower-cases the value but does not tokenize
@@ -87,8 +87,8 @@ it — the whole value stays a single term. That has a counter-intuitive consequ
 Because Spark always wraps terms in wildcards, search works on every text field regardless of how it is indexed.
 Scoping search to `[Search]` fields would narrow what users can find for no benefit, so the framework does not.
 
-`[Search]` still earns its place — it enables token-level matching, analyzer behaviour, and relevance — it just
-is not the gate for search.
+`[Search]` still earns its place — it enables token-level matching, analyzer behaviour, relevance and
+**typo tolerance** ([Fuzzy by default](#fuzzy-by-default)) — it just is not the gate for search.
 
 ## What is not searchable
 
@@ -159,15 +159,98 @@ materialization:
 The fallback is correct but reads the whole result set, so prefer an index-backed query for anything large. It is
 also the only path that still matches breadcrumb text, since it runs after mapping.
 
+## Fuzzy by default
+
+Search is **typo-tolerant** on searchable fields (commerce X18; owner decision 2026-10-19): `volkswagon` finds
+`Volkswagen`, `brusels` finds `Brussels`. Nothing needs declaring.
+
+- **Which fields.** A *searchable* field is one its index declares `FieldIndexing.Search`: a `[Search]` property
+  (its generated `{Name}Search` companion), each per-language companion of a `[Search]` `TranslatedString`, a
+  library-declared index's `[Search]` result property, or a hand-written `Index(x => x.F, FieldIndexing.Search)`.
+  Other text fields keep the substring matching above only.
+- **How a word matches.** Each word still matches as a substring (`*word*`), **or** within an edit budget: one edit
+  for words of four to seven letters, two from eight. Words shorter than four letters match by substring only, since
+  one edit on three letters matches noise. Every word must still match the same field, either way. Wildcards and
+  fuzzy cannot share a term (a `*` counts as edits), so they are separate arms of one clause:
+
+  ```
+  where (boost(search(ModelSearch, $sparkWildcard0), 2) or fuzzy(ModelSearch = $sparkFuzzy0, 0.74))
+  ```
+
+  The substring arm is boosted so an exact or substring hit outranks a typo match wherever results are ordered by
+  score. The grid orders by its sort columns, so there the boost changes nothing (see
+  [No relevance ranking](#no-relevance-ranking)). The user's words travel as query parameters only.
+- **The engine follows.** Corax, the default on Community and Developer servers, refuses fuzzy queries
+  (`Method 'Fuzzy' is not supported`), so **every index with a searchable field runs on Lucene**, which every
+  licence allows per index. A generated index (`[GenerateIndex]`, or a library-declared `[SparkIndexMap]` one) sets
+  `SearchEngineType = SearchEngineType.Lucene` in its constructor; a hand-written one gets it from Spark's index
+  registration (`UseSpark`, and `RavenIndexHelper` in tests). Indexes without a searchable field keep the server
+  default: nothing is pinned to Corax.
+- **Never on Corax.** Spark adds the fuzzy arm only to an index the server *confirms* running Lucene (index
+  statistics, remembered once confirmed, asked again after 30 s otherwise). A dynamic query's auto index, an index
+  that pins Corax, and an index whose Lucene rebuild has not swapped in yet are searched by substring only, never
+  with an error. The in-memory [fallback](#fallbacks) is substring-only too.
+
+### Opting a field out: `[Fuzzy(false)]`
+
+A field where a near miss is wrong (a code, a licence plate, a SKU) opts out per field:
+
+```csharp
+[GenerateIndex]
+public class Car
+{
+    public string? Id { get; set; }
+    [Search] public string Model { get; set; } = string.Empty;           // typo-tolerant
+    [Search, Fuzzy(false)] public string LicensePlate { get; set; } = string.Empty; // substring only
+}
+```
+
+The opt-out goes on the entity property of a `[GenerateIndex]` entity (the generator copies it onto the projection
+and the companion), or on a hand-written index's `[FromIndex]` projection or mapped document. On `Name` it covers the
+`NameSearch` companion and every `Name_{lang}` field. It changes the search only: the index still runs Lucene. There
+is no search configuration in the model JSON, so the attribute is the only place to say it. To keep a whole index on
+Corax, pin `SearchEngineType = SearchEngineType.Corax` in a hand-written index's constructor; Spark keeps the pin,
+and its search on that index is substring-only.
+
+### Your own fuzzy queries: `[Fuzzy]`
+
+`Fuzzy(...)` in your own document queries works on any index Spark deploys on Lucene, so on every searchable one. To
+use it on a field that is *not* searchable (a whole-value fuzzy match on a plain field), opt the field in with
+`[Fuzzy]`; the index then runs Lucene too:
+
+```csharp
+[GenerateIndex]
+public class Place
+{
+    public string? Id { get; set; }
+    [Fuzzy] public string Name { get; set; } = string.Empty;
+}
+
+var hits = session.Advanced.DocumentQuery<Place, Places_Overview>()
+    .WhereEquals(nameof(Place.Name), "brusels")
+    .Fuzzy(0.8m)
+    .ToList();
+```
+
+- A hand-written index that pins `SearchEngineType.Corax` while a field of it is `[Fuzzy]` **stops startup**: every
+  fuzzy query on it would fail.
+- **SPARK063** flags `Fuzzy(...)` on a `DocumentQuery<T, TIndex>()` (or `DocumentQuery<T>("Index/Name")`) whose
+  index has no searchable or `[Fuzzy]` field, or pins Corax, and on a dynamic query, which runs on an auto index. It
+  follows one fluent chain only; a query passed in from elsewhere is not followed, and raw RQL is not inspected.
+- `[Fuzzy]` on a non-text property still switches the engine but is reported (SPARK_INDEX_014): edit distance means
+  nothing on a number.
+
+### Upgrading: search indexes rebuild once
+
+Moving an index to Lucene changes its definition. On the first deploy of this version, **every existing index with
+a searchable field rebuilds side by side, production apps included**: RavenDB builds `ReplacementOf/{name}` while the
+old index keeps serving, and swaps it in when it catches up. RavenDB applies an engine only to a new or reset index,
+so after deployment Spark reads each Lucene-declared index's statistics and, if it still runs another engine with no
+replacement under way, resets it side by side (`SparkSearchEngine.Reconcile`). Until the swap, search on that index
+stays substring-only; nothing fails. Expect indexing load proportional to the collections behind those indexes,
+once.
+
 ## Known limits
-
-### No fuzzy matching
-
-`volkswagon` does not find `Volkswagen`. This was measured and deliberately not implemented: RavenDB's `Fuzzy`
-is **unsupported by Corax**, the default search engine and the one generated indexes use — it fails server-side
-with `Method 'Fuzzy' is not supported`. It is therefore an index-definition decision (`SearchEngineType.Lucene`)
-rather than a query feature. It is also mutually exclusive with the wildcard wrapping above, because wildcards
-count as literal edits and silently consume the edit-distance budget.
 
 ### No relevance ranking
 

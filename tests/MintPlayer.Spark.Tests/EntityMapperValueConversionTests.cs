@@ -198,11 +198,31 @@ public class EntityMapperValueConversionTests
     public static TheoryData<object?, string?> TranslatedInputs() => new()
     {
         { new Dictionary<string, string> { ["en"] = "Hello", ["nl"] = "Hallo" }, "Hello|Hallo" },
-        { new Dictionary<string, object?> { ["en"] = "Hello", ["nl"] = 5, ["fr"] = null }, "Hello|5" },
+        { new Dictionary<string, object?> { ["en"] = "Hello", ["nl"] = "Hallo", ["fr"] = null }, "Hello|Hallo" },
         { """{ "en": "Hello", "nl": "Hallo" }""", "Hello|Hallo" },
-        { Json("""{ "en": "Hello", "nl": 5, "fr": null }"""), "Hello|5" },
-        { TranslatedString.Create("Hello"), "Hello|" },
+        { Json("""{ "en": "Hello", "nl": "Hallo", "fr": null }"""), "Hello|Hallo" },
+        { Json("""{ "Entries": [{ "Tag": "en", "Value": "Hello" }, { "Tag": "nl", "Value": "Hallo" }] }"""), "Hello|Hallo" },
+        { TranslatedString.Of("en", "Hello"), "Hello|" },
     };
+
+    public static TheoryData<object?> RefusedTranslatedInputs() => new()
+    {
+        // X17: one converter reads every shape, and a text is a string. A number used to be
+        // ToString'ed into the value ("5"); an ill-formed tag used to be stored as a language.
+        new Dictionary<string, object?> { ["en"] = "Hello", ["nl"] = 5 },
+        Json("""{ "en": "Hello", "nl": 5 }"""),
+        Json("""{ "en_US": "Hello" }"""),
+        Json("""{ "Entries": [{ "Tag": "en", "Value": "Hello", "Colour": "red" }] }"""),
+    };
+
+    [Theory]
+    [MemberData(nameof(RefusedTranslatedInputs))]
+    public void A_translated_string_that_is_not_text_in_a_well_formed_language_is_refused(object? raw)
+    {
+        var act = () => Write(nameof(Sample.Title), raw, dataType: "TranslatedString");
+
+        act.Should().Throw<System.Text.Json.JsonException>();
+    }
 
     [Theory]
     [MemberData(nameof(TranslatedInputs))]
@@ -212,10 +232,10 @@ public class EntityMapperValueConversionTests
 
         title.Should().NotBeNull();
         var parts = expected.Split('|');
-        title!.Translations["en"].Should().Be(parts[0]);
+        title!["en"].Should().Be(parts[0]);
         if (parts[1].Length > 0)
-            title.Translations["nl"].Should().Be(parts[1]);
-        title.Translations.Should().NotContainKey("fr", "a null language is absent, not an empty string");
+            title["nl"].Should().Be(parts[1]);
+        title.Tags.Should().NotContain("fr", "a null language is absent, not an empty string");
     }
 
     public static TheoryData<object?> ClearingInputs() => new()
@@ -235,7 +255,7 @@ public class EntityMapperValueConversionTests
     [MemberData(nameof(ClearingInputs))]
     public void A_translated_string_with_nothing_readable_clears_the_property(object? raw)
     {
-        var sample = new Sample { Title = TranslatedString.Create("Old") };
+        var sample = new Sample { Title = TranslatedString.Of("en", "Old") };
 
         Write(nameof(Sample.Title), raw, dataType: "TranslatedString", into: sample).Title.Should().BeNull();
     }
@@ -243,15 +263,13 @@ public class EntityMapperValueConversionTests
     [Fact]
     public void Languages_absent_from_the_incoming_value_survive_on_the_entity()
     {
-        var existing = new TranslatedString();
-        existing.Translations["en"] = "Old";
-        existing.Translations["fr"] = "Ancien";
+        var existing = TranslatedString.Of(("en", "Old"), ("fr", "Ancien"));
 
         var title = Write(nameof(Sample.Title), """{ "en": "New" }""", dataType: "TranslatedString",
             into: new Sample { Title = existing }).Title!;
 
-        title.Translations["en"].Should().Be("New");
-        title.Translations["fr"].Should().Be("Ancien");
+        title["en"].Should().Be("New");
+        title["fr"].Should().Be("Ancien");
     }
 
     // --- collections -------------------------------------------------------------

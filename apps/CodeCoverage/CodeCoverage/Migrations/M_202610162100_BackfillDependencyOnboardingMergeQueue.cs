@@ -17,7 +17,6 @@ namespace CodeCoverage.Migrations;
 /// </remarks>
 public partial class M_202610162100_BackfillDependencyOnboardingMergeQueue : ISparkMigration
 {
-    public static long Version => 202610162100;
 
     public static string? Description =>
         "Accounts and repositories get the onboarding merge-queue setting with its default, so they can be queried";

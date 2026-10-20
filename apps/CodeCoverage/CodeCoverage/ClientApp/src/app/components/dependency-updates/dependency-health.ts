@@ -1,4 +1,5 @@
 import type { DependencyHealth } from '../../services/browse.service';
+import { formatSparkDateTime } from '@mintplayer/ng-spark/date-time';
 
 /** Each health word as a reader would say it, with the theme colour of its chip (dependency-updates PRD D-N5). */
 export const HEALTH: Record<DependencyHealth, { label: string; color: string }> = {
@@ -35,13 +36,11 @@ export function chip(color: string): string {
   return `du-state bg-${color}-subtle text-${color}-emphasis border border-${color}-subtle`;
 }
 
-const DATE_TIME = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' });
-
 /** The server's times are UTC; one without a zone designator is read as UTC rather than as local time. */
 export function time(utc: string | null | undefined): string {
   if (!utc) return '—';
   const date = new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(utc) ? utc : `${utc}Z`);
-  return Number.isNaN(date.getTime()) ? utc : DATE_TIME.format(date);
+  return Number.isNaN(date.getTime()) ? utc : formatSparkDateTime(date, 'viewer', 'medium');
 }
 
 /** The vanity URL of a repository's page, from its full name. */
