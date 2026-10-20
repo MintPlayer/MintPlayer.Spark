@@ -49,7 +49,7 @@ public sealed record SparkAftercareLine(
     DateTimeOffset? GuaranteeUntil);
 
 /// <summary>A return (withdrawal, guarantee termination, seller return).</summary>
-/// <param name="ReceivedAt">When the withdrawal was received: the receipt states it (CRD Art. 11a(3)).</param>
+/// <param name="ReceivedAt">When the withdrawal was received: the receipt states it (CRD Art. 11a(4)).</param>
 [SparkContract]
 public sealed record SparkAftercareReturn(string ReturnId, string Reason, string Status, DateTimeOffset ReceivedAt, IReadOnlyList<SparkReturnLineView> Lines, DateTimeOffset? RefundDueBy);
 

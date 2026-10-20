@@ -6,11 +6,12 @@
  * itself: unfilled placeholders on a public page would be worse than no statement (startup warns when none is
  * published; microenterprises providing services are exempt, so it is a warning, not a refusal).
  *
- * ⚠️ D37, unconfirmed: the structure follows the PRD's reading of Annex V (a general description of the service, the
- * explanations needed to use it, how the Annex I requirements are met) and of Art. 13 (information in the general terms,
- * or another clearly visible way). The EUR-Lex text and the national transposition (for the enforcement authority to
- * name) were **not** re-read for this template. The WCAG 2.2.1 reasoning follows the normative SC text; W3C's
- * *Understanding SC 2.2.1* was **not** re-read either. Have both checked before relying on the wording.
+ * D37, checked against EUR-Lex 32019L0882 on 2026-10-20: Annex V point 1 puts the information "in the general terms and
+ * conditions, or equivalent document" ((a) a general description of the service in accessible formats, (b) the
+ * explanations needed to understand its operation, (c) how the Annex I requirements are met), and Art. 13(2) makes it
+ * public "in written and oral format". Microenterprises providing services are exempt (Art. 4(5)). The national
+ * transposition (the enforcement authority to name) was not checked. The WCAG 2.2.1 reasoning was checked against W3C's
+ * *Understanding SC 2.2.1* (Essential Exception for ticket holds).
  *
  * Placeholders: `{organisation}`, `{service}`, `{contact}`, `{date}`, `{authority}`, `{holdDefault}`, `{holdExtension}`,
  * `{holdMax}`.

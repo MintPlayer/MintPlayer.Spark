@@ -57,8 +57,7 @@ address stored); `ISparkRiskDecisionLog.ForIdentityAsync` / `EraseAsync` serve a
 
 **GA11 (Regulation (EU) 2018/302, Art. 3–5).** Startup refuses a signal whose `Basis` includes `Nationality`,
 `Residence` or `CardIssuingCountry`. Evidence marked `CountryBased` (geo-IP) is never deterministic and can never by
-itself move a decision past Flag. *EUR-Lex could not be fetched by the agent on 2026-10-19 (empty response); the article
-references are to be confirmed against https://eur-lex.europa.eu/eli/reg/2018/302/oj (D37).*
+itself move a decision past Flag. *Checked against EUR-Lex 32018R0302 (Art. 3–5) on 2026-10-20 (D37).*
 
 ## Deceptive measures (D29)
 
@@ -76,4 +75,4 @@ measure without one and warns while any is on. Every application is logged with 
 
 ⚠️ Legal exposure: deceiving a visitor who is in fact human may be a misleading commercial practice (Directive
 2005/29/EC, Art. 6–7) and an automated decision (GDPR Art. 22). Hence deterministic triggers by default, logging, and
-a human appeal path (the decision id is shown to a refused visitor). Texts to be confirmed against EUR-Lex (D37).
+a human appeal path (the decision id is shown to a refused visitor). Both texts checked against EUR-Lex (02005L0029-20260927, 32016R0679) on 2026-10-20 (D37).

@@ -114,13 +114,38 @@ public class PromotionRulesTests
     }
 
     [Fact]
-    public void A_progressive_reduction_keeps_the_start_of_its_first_step()
+    public void A_progressive_reduction_keeps_the_start_of_its_first_step_where_the_member_state_adopted_art_6a5()
     {
         var first = new PromotionSalePrice { ValidFrom = Now, ValidUntil = Now.AddDays(7), SeriesStart = Now, SalePrice = Eur(80m) };
-        PromotionRules.SeriesStart(first, Now.AddDays(7), Eur(60m)).Should().Be(Now);              // follows on, lower again
-        PromotionRules.SeriesStart(first, Now.AddDays(8), Eur(60m)).Should().Be(Now.AddDays(8));   // a gap: a new reduction
-        PromotionRules.SeriesStart(first, Now.AddDays(7), Eur(90m)).Should().Be(Now.AddDays(7));   // higher: not a further step
-        PromotionRules.SeriesStart(null, Now, Eur(60m)).Should().Be(Now);
+        PromotionRules.SeriesStart(first, Now.AddDays(7), Eur(60m), progressive: true).Should().Be(Now);              // follows on, lower again
+        PromotionRules.SeriesStart(first, Now.AddDays(8), Eur(60m), progressive: true).Should().Be(Now.AddDays(8));   // a gap: a new reduction
+        PromotionRules.SeriesStart(first, Now.AddDays(7), Eur(90m), progressive: true).Should().Be(Now.AddDays(7));   // higher: not a further step
+        PromotionRules.SeriesStart(null, Now, Eur(60m), progressive: true).Should().Be(Now);
+    }
+
+    /// <summary>
+    /// F5 (EUR-Lex check 2026-10-20): PID Art. 6a(5) is a member-state option ("Member States may provide that, when the
+    /// price reduction is progressively increased, the prior price is the price without the price reduction before the
+    /// first application"). Without it every step is a reduction of its own (Art. 6a(1)-(2)). Red before the fix: the
+    /// series was kept everywhere.
+    /// </summary>
+    [Fact]
+    public void Without_art_6a5_every_step_of_a_progressive_reduction_starts_its_own_reference()
+    {
+        var first = new PromotionSalePrice { ValidFrom = Now, ValidUntil = Now.AddDays(7), SeriesStart = Now, SalePrice = Eur(80m) };
+        PromotionRules.SeriesStart(first, Now.AddDays(7), Eur(60m), progressive: false).Should().Be(Now.AddDays(7));
+    }
+
+    [Fact]
+    public void The_progressive_rule_is_keyed_by_the_sellers_member_state_and_off_by_default()
+    {
+        new SalePriceOptions().ProgressiveReductionStates.Should().BeEmpty();
+        string[] adopted = ["NL"];
+        PromotionRules.ProgressiveReductionApplies("NL", "BE", adopted).Should().BeTrue();
+        PromotionRules.ProgressiveReductionApplies("nl", "BE", adopted).Should().BeTrue();
+        PromotionRules.ProgressiveReductionApplies("DE", "NL", adopted).Should().BeFalse();   // the seller's state, not the platform's
+        PromotionRules.ProgressiveReductionApplies(null, "NL", adopted).Should().BeTrue();    // no seller country: the platform's
+        PromotionRules.ProgressiveReductionApplies("NL", "BE", []).Should().BeFalse();
     }
 
     [Fact]

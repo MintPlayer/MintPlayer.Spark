@@ -374,6 +374,8 @@ internal sealed partial class WarehouseStock : IWarehouseStock
             var refusal = await body(context, movement);
             if (refusal is { } refused)
                 return new StockResult(StockOutcome.Refused, movementId, refused.Refusal, refused.Detail, attempt);
+            if (op.InSession is { } participant && await participant(session, cancellationToken) is { } declined)
+                return new StockResult(StockOutcome.Refused, movementId, StockRefusal.Declined, declined, attempt);
 
             await context.StoreNewAsync(movement, movementId);
             if (BeforeSaveForTests is { } hook)

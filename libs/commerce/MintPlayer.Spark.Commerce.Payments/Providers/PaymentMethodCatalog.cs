@@ -66,8 +66,8 @@ public sealed record PaymentMethodQuery
 /// a trader accepts, no different conditions for a payment transaction for reasons of the customer's nationality,
 /// residence or establishment, the location of the payment account, the payment service provider's establishment or
 /// the place of issue of the payment instrument within the Union, for card, credit-transfer and direct-debit payments in
-/// an accepted currency). ⚠️ Paraphrase from the secondary research: the EUR-Lex text (CELEX 32018R0302) could not be
-/// fetched when this was written; confirm the wording (D37). Prepaid-card refusal (D29) is decided per method by
+/// an accepted currency). Checked against EUR-Lex 32018R0302 (Art. 5(1)(a)–(c)) on
+/// 2026-10-20. Prepaid-card refusal (D29) is decided per method by
 /// Checkout, never per country.
 /// </summary>
 public static class PaymentMethodCatalog

@@ -24,7 +24,8 @@ public static class SparkDeceptiveMeasureNames
 /// consumer (Directive 2005/29/EC Art. 6–7), and refusing service by automated processing alone touches GDPR Art. 22.
 /// That is why the default trigger is deterministic evidence (a forged or replayed token, a honeypot or decoy hit), why a
 /// score trigger must be chosen explicitly, and why every application is logged (<see cref="ISparkRiskDecisionLog"/>).
-/// The texts are to be confirmed against EUR-Lex (D37); see <c>docs/guide-challenges.md</c>.
+/// Both texts were checked against EUR-Lex (02005L0029-20260927, 32016R0679) on 2026-10-20; see
+/// <c>docs/guide-challenges.md</c>.
 /// </remarks>
 public interface ISparkDeceptiveMeasures
 {

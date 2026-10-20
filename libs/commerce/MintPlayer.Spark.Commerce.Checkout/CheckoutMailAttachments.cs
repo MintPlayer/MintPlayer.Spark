@@ -13,7 +13,7 @@ namespace MintPlayer.Spark.Commerce.Checkout;
 /// <remarks>
 /// Invoicing registers one: on <see cref="CheckoutMailKind.Confirmation"/> it renders the accepted legal-document
 /// versions that have no PDF yet (GA2), which Checkout then attaches itself; on
-/// <see cref="CheckoutMailKind.WithdrawalReceipt"/> it returns the receipt as a PDF (GA1, CRD Art. 11a(3)). Discovered
+/// <see cref="CheckoutMailKind.WithdrawalReceipt"/> it returns the receipt as a PDF (GA1, CRD Art. 11a(4)). Discovered
 /// in an application (<c>[SparkDiscoverable]</c>); a library registers its own (scoped, <c>TryAddEnumerable</c>).
 /// </remarks>
 [SparkDiscoverable]
@@ -29,7 +29,7 @@ public enum CheckoutMailKind
     /// <summary>The order confirmation (GA2, CRD Art. 8(7)).</summary>
     Confirmation,
 
-    /// <summary>The acknowledgement of a withdrawal (GA1, CRD Art. 11a(3)).</summary>
+    /// <summary>The acknowledgement of a withdrawal (GA1, CRD Art. 11a(4)).</summary>
     WithdrawalReceipt,
 }
 

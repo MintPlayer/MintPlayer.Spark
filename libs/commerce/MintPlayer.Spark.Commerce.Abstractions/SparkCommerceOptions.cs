@@ -362,12 +362,13 @@ public sealed class CommerceDac7Options
 
     /// <summary>The reminders sent before the seller's sales close (D43: selling is blocked; payouts at the provider are
     /// not touched). Default 2: Directive (EU) 2021/514 makes the platform close the account or withhold the
-    /// consideration once a seller has not answered two reminders after the first request (Annex V,
-    /// effective-implementation rules; the minimum 60-day wait is <see cref="MinimumWaitBeforeBlock"/>). Confirm the
-    /// paragraph and the national transposition (D37).</summary>
+    /// consideration once a seller has not answered two reminders after the first request (Annex V
+    /// Section IV A(2): "after two reminders following the initial request … but not prior to the expiration of 60 days";
+    /// the wait is <see cref="MinimumWaitBeforeBlock"/>). Checked against EUR-Lex 02011L0016-20260101 on 2026-10-20;
+    /// national transposition not checked (D37).</summary>
     public int RemindersBeforeBlock { get; set; } = 2;
 
-    /// <summary>The shortest time between the first request and the sales block. Default 60 days (confirm, D37).</summary>
+    /// <summary>The shortest time between the first request and the sales block. Default 60 days (Annex V Section IV A(2), checked 2026-10-20).</summary>
     public TimeSpan MinimumWaitBeforeBlock { get; set; } = TimeSpan.FromDays(60);
 }
 

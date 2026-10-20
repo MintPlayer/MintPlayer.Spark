@@ -5,10 +5,12 @@ receipts, invoices and credit notes for Checkout's orders, computes VAT per line
 produces the periodic exports (OSS/IOSS, DAC7, accounting). PRD: `docs/commerce_PRD.md` §4.8, D19, §13 round 3 (S21) and
 rounds 5–6.
 
-> **Liability.** Every rule is configurable and nothing here is tax advice (§4.8). Rules marked **confirm (D37)** follow the
-> article numbering of Council Directive 2006/112/EC (consolidated 2025-01-01, CELEX 02006L0112-20250101) but could not be
-> read on EUR-Lex by this build (EUR-Lex answers automated requests with an empty page, 2026-10-19). Have them checked
-> against the official text and your member state's transposition before production.
+> **Liability.** Every rule is configurable and nothing here is tax advice (§4.8). The articles cited were checked against
+> Council Directive 2006/112/EC on EUR-Lex (consolidated 2025-04-14, CELEX 02006L0112-20250414) and Implementing
+> Regulation 282/2011 (02011R0282-20250414) on 2026-10-20 (D37). Your member state's transposition and options were
+> not checked: have them checked before production. Not modelled: admission to an event attended **virtually** is taxed
+> where the customer is (Art. 53 second paragraph, Art. 54(1) second subparagraph), and **Monaco** counts as France
+> (Art. 7(2)); add a rule for either if you need it.
 
 ## Setup
 
@@ -88,7 +90,7 @@ changed.
 `IPlaceOfSupplyRule` per line; the first rule that answers wins. A host adds its own (an electronic-service rule under
 Art. 58, a domestic reverse charge under Art. 194) by registering one.
 
-| Order | Rule | Result | Basis (confirm, D37) |
+| Order | Rule | Result | Basis (checked 2026-10-20) |
 |---|---|---|---|
 | 100 | Category `Exempt` / `OutsideScope` | `E` / `O` with the category's reason | host configuration; Art. 226(11) |
 | 200 | Admission (`Kind: Admission`) | Taxed where the event takes place, B2C and B2B; outside the EU: `O` | Art. 53 (B2B), Art. 54(1) (B2C) |
@@ -103,7 +105,7 @@ Art. 58, a domestic reverse charge under Art. 194) by registering one.
 - **VIES.** A B2B VAT id is checked through VIES' REST API (`POST /check-vat-number`), positive answers cached 7 days, the
   consultation number kept on the invoice. An unavailable member state (`MS_UNAVAILABLE`) is no answer: the id stays
   unverified and VAT is charged (Implementing Regulation 282/2011 Art. 18 lets a supplier treat an unverified customer as a
-  non-taxable person; confirm, D37).
+  non-taxable person, Art. 18(2); checked 2026-10-20).
 - **The €10,000 threshold** is tracked per issuer and calendar year (`InvoiceDistanceSales`, updated in the numbering unit
   of work, so each document counts once; credit notes reduce it). Only EUR orders count; a non-EUR seller's conversion
   (Art. 91(2)) is not done.
@@ -181,7 +183,7 @@ All read issued documents only, so every figure traces to a document number. Not
 |---|---|---|
 | Union OSS (GA4) | `GET /exports/oss?issuer=&year=&quarter=` | CSV `MemberStateOfConsumption, SupplyType, VatRatePercent, TaxableAmount, VatAmount, Currency, CorrectionOfPeriod`: B2C supplies taxed in another member state (Art. 369f quarterly, Art. 369g content). Credit notes on an earlier quarter are separate rows with `CorrectionOfPeriod` (Implementing Regulation 282/2011 Art. 61) |
 | IOSS (GC8) | `…/exports/oss?…&ioss=true&quarter=` or `&month=` | Same columns for IOSS documents; the IOSS return is **monthly** (Art. 369s) |
-| DAC7 (GA6) | `GET /exports/dac7?year=&format=csv\|xml` (platform only) | Per seller: TIN, VAT id, birth date, address, IBAN, consideration / activities / fees **per quarter**; excluded sellers (< 30 activities and ≤ €2,000, Annex V Section I A(4)(d)) **marked, not dropped**; ticket sales flagged "probably out of scope" unless `Dac7:TicketSalesInScope` (D37). XML in the shape of the OECD DPI XML Schema v1.0 (`urn:oecd:ties:dpi:v1`); validate against your member state's XSD before filing (confirm, D37) |
+| DAC7 (GA6) | `GET /exports/dac7?year=&format=csv\|xml` (platform only) | Per seller: TIN, VAT id, birth date, address, IBAN, consideration / activities / fees **per quarter**; excluded sellers (< 30 activities and ≤ €2,000, Annex V Section I B(4)(d)) **marked, not dropped**; ticket sales flagged "probably out of scope" unless `Dac7:TicketSalesInScope` (D37). XML in the shape of the OECD DPI XML Schema v1.0 (`urn:oecd:ties:dpi:v1`); validate against your member state's XSD before filing (confirm, D37) |
 | Accounting (GB4) | `GET /exports/accounting?issuer=&from=&to=` | Zip: `sales-journal.csv` (`Date, Number, Kind, Order, CreditedNumber, Buyer, BuyerVatId, BuyerCountry, VatCode, VatRatePercent, TaxCountry, TaxableAmount, VatAmount, GrossAmount, Currency, PlaceOfSupplyRule`; credit notes negative), `payments-journal.csv` (the settlement lines of §4.5: `Date, Provider, SettlementId, SettlementReference, LineId, Kind, SourceId, Gross, Fee, Net, Currency, Match, MatchedDocumentId`), `ubl/{number}.xml` |
 
 CSV: comma, CRLF, UTF-8 with BOM, invariant numbers; text cells starting with `= + - @` are prefixed with `'` (CSV
@@ -196,7 +198,7 @@ rate of the same category. **Suggestions only:** nothing changes a configured ra
 ## Retention (§4.8, §4.15)
 
 Documents are kept for Commerce's `invoices` period, never below its legal floor (Belgium: 10 years per the research;
-confirm per country, D37), counted from issue. The daily retention job then **deletes them whole** (with their credit state,
+the national period was not checked, D37: VAT Directive Art. 247(1) leaves it to each member state), counted from issue. The daily retention job then **deletes them whole** (with their credit state,
 transmission and billing details); until then they are never anonymised or changed.
 
 ## Access

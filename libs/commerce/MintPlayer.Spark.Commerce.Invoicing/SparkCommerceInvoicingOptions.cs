@@ -172,7 +172,7 @@ public sealed class VatCategoryOptions
     /// <summary>The VATEX code (BT-121), e.g. <c>VATEX-EU-132-1N</c>.</summary>
     public string? ExemptionReasonCode { get; set; }
 
-    /// <summary>Whether this category may count toward a DAC7 "personal service" (Annex V Section I A(9)); goods always count.</summary>
+    /// <summary>Whether this category may count toward a DAC7 "personal service" (Annex V Section I A(11)); goods always count.</summary>
     public bool PersonalService { get; set; }
 }
 

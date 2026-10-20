@@ -105,6 +105,15 @@ public sealed class SalePriceOptions
     /// </summary>
     public bool ApplyInPricingStep { get; set; } = true;
 
+    /// <summary>
+    /// The member states (ISO 3166-1 alpha-2) that adopted the progressive-reduction option of PID Art. 6a(5) ("Member
+    /// States may provide …"): there a sale that follows the previous one without a gap and goes lower again keeps the
+    /// prior price from before the first step. Keyed by the seller's country (its trader data; the platform's
+    /// <c>Spark:Commerce:Country</c> for its own items). Empty by default: every step is a reduction of its own with its
+    /// own 30-day prior price (Art. 6a(1)–(2)). ⚠️ List a state only after checking its transposition (D37).
+    /// </summary>
+    public List<string> ProgressiveReductionStates { get; set; } = [];
+
     /// <summary>Recording sale starts and ends in the price history (six fields = seconds). Default every minute.</summary>
     public string Schedule { get; set; } = "0 * * * * *";
 }

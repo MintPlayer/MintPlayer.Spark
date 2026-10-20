@@ -17,8 +17,9 @@ public sealed class CheckoutRefundOptions
     /// The country (ISO 3166-1 alpha-2) whose public holidays move a period's last day to the next working day
     /// (Regulation 1182/71 Art. 3(4)). Only applied when a holiday calendar is registered
     /// (<c>UseCheckoutReferenceDataHolidays()</c>, or your own <see cref="ICheckoutHolidayCalendar"/>). Unset or without a
-    /// calendar: only Saturdays and Sundays move it. ⚠️ Art. 3(4) means the holidays of the member state where the act is
-    /// to be done (the seller's, D37: confirm per country).
+    /// calendar: only Saturdays and Sundays move it. ⚠️ Art. 2(1) defines public holidays as the days designated "in the
+    /// Member State … in which action is to be taken" (checked against EUR-Lex 31971R1182, 2026-10-20). A withdrawal is the
+    /// consumer's act, so one seller-side country is a simplification (docs/guide-commerce-compliance.md).
     /// </summary>
     public string? HolidayCountry { get; set; }
 
@@ -90,7 +91,10 @@ public sealed class CheckoutGuaranteeOptions
 {
     /// <summary>
     /// The guarantee period from delivery (Art. 10(1): at least two years; member states may set a longer one, Art. 10(3)).
-    /// Default 730 days. ⚠️ Set per deployment for the buyers' member state; confirm per country (D37).
+    /// Default 730 days. ⚠️ Set per deployment for the buyers' member state (national periods not
+    /// checked, D37). Art. 10(1) says "two years", which is 731 days across a 29 February, and Art. 10(2a) (Directive
+    /// (EU) 2024/1799) extends the period once by 12 months after a repair; neither is modelled here (checked against
+    /// EUR-Lex 02019L0771-20260731, 2026-10-20).
     /// </summary>
     public int PeriodDays { get; set; } = 730;
 

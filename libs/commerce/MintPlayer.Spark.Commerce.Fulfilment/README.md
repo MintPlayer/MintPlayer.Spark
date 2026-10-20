@@ -65,7 +65,7 @@ types of this library (so replication can capture and authorize them); no right 
   warehouse line's units sold; they go back on sale when they can no longer ship. A unit that shipped anyway stays sold.
 - **Undeliverable units are refunded automatically** (commerce PRD D45): units the warehouse cancels on its own are
   refunded at their charged amount (order discount and fees included), and the whole delivery cost once no goods of the
-  order remain; the buyer gets the refund mail. CRD Art. 18(2)–(3) and Art. 13(1), *unconfirmed* against EUR-Lex. Only a
+  order remain; the buyer gets the refund mail. CRD Art. 18(2)–(3) ("all sums paid under the contract"), checked against EUR-Lex 02011L0083-20260927 on 2026-10-20. Only a
   refund Checkout refuses or the provider fails is flagged for staff.
 - **One epoch** (rule 2): `SetBaselineAsync(variantId, units)` at onboarding adds back what the shop shipped itself.
 - **Bundles** (rule 3) sell through inventory quota multipliers over their components' variant quotas, which the feed sets.

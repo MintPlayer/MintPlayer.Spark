@@ -3,9 +3,9 @@
 The base of the commerce suite (#521, PRD `docs/commerce_PRD.md` §4.1, §4.2, §4.15, §4.19, §4.20). Inventory,
 Payments, Checkout, Shop and Ticketing build on it. Contracts are in `MintPlayer.Spark.Commerce.Abstractions`.
 
-> ⚠️ **Not legal advice.** The rules below cite the EU texts the PRD's gap analysis named. They were written on
-> 2026-10-19 without access to EUR-Lex from the build environment, so **every citation and every retention floor is
-> marked "to confirm" (D37)** until someone re-reads the official text and the host's national transposition.
+> ⚠️ **Not legal advice.** The rules below cite the EU texts the PRD's gap analysis named. Every EU citation was
+> **checked against the official text on EUR-Lex on 2026-10-20** (D37); the compliance table in [guide-commerce-compliance.md](guide-commerce-compliance.md) lists the article, the consolidated
+> version read, the member-state options and the points still open. National transpositions were not checked.
 
 ## Setup
 
@@ -68,8 +68,8 @@ Every price change of an `ISellableItem` saved through Spark is appended to `Com
 with an audit entry, in the same commit (an interceptor; a new item gets its first entry right after its commit).
 `ISparkPriceHistory.GetLowestFinalPriceAsync(itemId, before)` is the lowest final price in force during the 30 days
 before a reduction (PID Art. 6a(2), inserted by Directive (EU) 2019/2161; window `Pricing:PriorPriceWindow`). For
-progressive reductions pass the start of the first step. Perishable-goods exemptions are a member-state option: to
-confirm per country.
+progressive reductions pass the start of the first step. Perishable-goods exemptions (Art. 6a(3)) and progressive
+reductions (Art. 6a(5)) are member-state options (checked against EUR-Lex 2026-10-20); the national texts were not checked.
 
 ## Sellers (D21, GA5, GA6, GB14)
 
@@ -90,7 +90,7 @@ sales not closed for DAC7 (`commerce.seller.dac7Blocked`, D43), and the channel'
   (attachment, downloadable only with `ViewTraderData/Commerce`, every download audited), payment account, trade
   register and number, self-certification (Art. 30(1)(a)–(e)); best-effort verification (Art. 30(2)) through
   Approvals; public trader page `GET /spark/commerce/traders?organizationId=` (Art. 30(7)); data erased 6 months after
-  the relationship ends (Art. 30(3)), when the organization is deleted. Switching it off needs
+  the relationship ends (Art. 30(5)), when the organization is deleted. Switching it off needs
   `AcknowledgeDsaArt29Exemption` (Art. 29, contested).
 - **Trader status** on every listing (CRD Art. 6a(1)(b)); `<spark-commerce-trader-label>`.
 - **Ranking parameters** (CRD Art. 6a(1)(a); P2B Reg. (EU) 2019/1150 Art. 5): storefront packages register
@@ -137,7 +137,7 @@ Every money-moving package uses it. Retention per document type (`Retention:Peri
 |---|---|---|
 | invoices, orders, payments, money-audit | 10 years | BE: VAT Code art. 60 §3, Code of Economic Law art. III.86; elsewhere VAT Directive Art. 247 leaves it to the member state |
 | dac7-records | 5 years | DAC7 Annex V: at least 5, at most 10 years (startup warns above 10) |
-| trader-data | 6 months after the relationship | DSA Art. 30(3) |
+| trader-data | 6 months after the relationship | DSA Art. 30(5) |
 | dsa-notices, seller-exports | 1 year | no statutory floor found; one transparency-report year |
 | price-history | 30 days | PID Art. 6a(2) |
 
@@ -180,8 +180,8 @@ and `Spark:Commerce:Payments:Mollie:SplitPayments` or `Spark:Commerce:Payments:S
 (see the payments guide, §9).
 
 > ⚠️ **Licensing and KYC.** Collecting money on behalf of other sellers is a regulated activity in the EU (payment
-> services under PSD2, Directive (EU) 2015/2366, whose commercial-agent exclusion in Art. 3(b) is narrow; confirm
-> against EUR-Lex) and brings anti-money-laundering duties. Before switching this on, the host's counsel confirms that the platform qualifies for an
+> services under PSD2, Directive (EU) 2015/2366, whose commercial-agent exclusion in Art. 3(b) covers only an agent
+> "authorised … on behalf of only the payer or only the payee"; checked against EUR-Lex 02015L2366-20250117, 2026-10-20) and brings anti-money-laundering duties. Before switching this on, the host's counsel confirms that the platform qualifies for an
 > exemption or that the provider's contract (Mollie split payments, Stripe Connect separate charges) covers it, and that
 > the host's own KYC with the provider is at the level the provider demands for holding funds. As merchant of record the
 > platform also answers to the buyer for the order: refunds and chargebacks of a split payment start on the platform's

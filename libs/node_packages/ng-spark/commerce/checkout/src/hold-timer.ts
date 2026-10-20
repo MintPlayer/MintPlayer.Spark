@@ -8,8 +8,10 @@
  * - "More time" is offered from {@link HOLD_MORE_TIME_FROM} seconds before the deadline, so the buyer always has well over
  *   the 20 s SC 2.2.1 asks for, and as long as the server says a step is left (`extendableUntil`, capped at `Hold:Max`).
  *
- * ⚠️ The SC 2.2.1 reading (20 s, "simple action", the real-time/essential exception beyond `Hold:Max`) follows the
- * normative SC text; W3C's *Understanding SC 2.2.1* was **not** re-read for this implementation (D37: unconfirmed).
+ * The SC 2.2.1 reading was checked against W3C's *Understanding SC 2.2.1* on 2026-10-20: "Extend" needs a warning, at
+ * least 20 seconds and a simple action, and at least ten extensions; beyond `Hold:Max` the hold relies on the Essential
+ * Exception, which the Understanding document applies to "an on-line ticket-purchasing site" whose seats return to the
+ * pool ("this is a case in which the timing is essential").
  */
 
 /** The seconds-left marks the live region announces (descending). */

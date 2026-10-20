@@ -10,7 +10,16 @@ namespace MintPlayer.Spark.Warehouse.Stock;
 /// <param name="UserId">The person, stamped explicitly (raw writes are not audit-stamped).</param>
 /// <param name="DeviceTime">The device's clock: recorded, never used for ordering (§4.14).</param>
 /// <param name="Reference">What the command serves: a task, an order line, a shipment line, a receipt.</param>
-public sealed record StockOp(string OpId, string? UserId = null, string? DeviceId = null, DateTimeOffset? DeviceTime = null, string? Reference = null);
+public sealed record StockOp(string OpId, string? UserId = null, string? DeviceId = null, DateTimeOffset? DeviceTime = null, string? Reference = null)
+{
+    /// <summary>
+    /// The caller's own writes, made in the command's session so they commit with the movement or not at all (PRD §4.7
+    /// Allocation: "in the same session as the order's allocation rows"; WM5/WM7): it runs after the engine's checks passed,
+    /// before the commit, and again on every concurrency retry (with fresh reads). Answer a non-null text to refuse the
+    /// whole command (<see cref="StockRefusal.Declined"/>). Not run for a replayed op id: its writes committed with it.
+    /// </summary>
+    public Func<Raven.Client.Documents.Session.IAsyncDocumentSession, CancellationToken, Task<string?>>? InSession { get; init; }
+}
 
 /// <summary>Stock arrives at a location (receipt, blind receipt, restocked return). The first put-away creates the balance.</summary>
 public sealed record ReceiveStock(StockOp Op, string LocationId, string ItemId, decimal Quantity, string? LotCode = null, DateOnly? Expiry = null);
@@ -64,6 +73,8 @@ public enum StockRefusal
     InvalidQuantity,
     /// <summary>The op id was used before for a different command.</summary>
     OpIdReused,
+    /// <summary>The caller's <see cref="StockOp.InSession"/> refused (the order changed meanwhile, the task is no longer the caller's).</summary>
+    Declined,
 }
 
 /// <summary>The answer to a stock command.</summary>

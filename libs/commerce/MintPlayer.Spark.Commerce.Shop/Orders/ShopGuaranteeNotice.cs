@@ -17,11 +17,13 @@ namespace MintPlayer.Spark.Commerce.Shop.Orders;
 /// through Checkout's <see cref="ICheckoutMailAttachments"/>, so Checkout never references Shop.
 /// <para><b>Legal basis.</b> The legal guarantee: Directive (EU) 2019/771 Art. 10(1) (the seller is liable for a lack of
 /// conformity that exists at delivery and becomes apparent within two years; member states may set longer periods,
-/// Art. 10(3)). The information duty: CRD Art. 6(1)(l) and the commercial durability guarantee Art. 6(1)(m), as amended
-/// by the ECGT Directive (EU) 2024/825 Art. 2, applying from 27 September 2026. The harmonised notice and label of
-/// Art. 22a CRD are set by a Commission implementing act; until a host replaces the text with it, the default below is
-/// the library's wording. All three citations are <b>unconfirmed</b> against EUR-Lex (automated fetches are blocked;
-/// the lead verifies, D37), as is the per-country period (<c>LegalGuaranteeMonths</c>, default 24).</para>
+/// Art. 10(3)). The information duty: CRD Art. 6(1)(l) (the harmonised notice) and, for a commercial guarantee of durability,
+/// Art. 6(1)(la) (the harmonised label), as amended and inserted by the ECGT Directive (EU) 2024/825 Art. 2, applying
+/// from 27 September 2026. Commission Implementing Regulation (EU) 2025/1960 fixes both (applies from 27 September 2026;
+/// "None of the elements of the harmonised notice can be edited"). ⚠️ The default below is the library's own wording,
+/// not that notice: a host replaces it through <c>GuaranteeNotice</c>. Checked against EUR-Lex 02011L0083-20260927,
+/// 02019L0771-20260731 and 32025R1960 on 2026-10-20; the national period (<c>LegalGuaranteeMonths</c>, default 24,
+/// Art. 10(3)) was not checked.</para>
 /// </summary>
 internal sealed class ShopGuaranteeNotice(
     IDocumentStore store,

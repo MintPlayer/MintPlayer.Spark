@@ -16,11 +16,11 @@ namespace MintPlayer.Spark.Commerce.Shop.Reviews;
 /// <c>Reviews:Window</c> of the delivery. While <c>Reviews:PreModeration</c> is on (default), a review waits for one of
 /// Moderation's reviewers (<c>Review/Moderation</c>) before it is shown; flags and locks are Moderation's own
 /// (<see cref="ShopProductReview"/> is <c>IModeratable</c>).
-/// <para><b>The verification statement (UCPD Annex I point 23b, inserted by Directive (EU) 2019/2161 Art. 3(7);
-/// unconfirmed against EUR-Lex, D37).</b> The storefront states that and how reviews are verified: the
+/// <para><b>The verification statement (UCPD Art. 7(6), and Annex I point 23b, inserted by Directive (EU) 2019/2161
+/// Art. 3(4) and 3(7); checked against EUR-Lex 02005L0029-20260927, 2026-10-20).</b> The storefront states that and how reviews are verified: the
 /// <see cref="SparkShopReviewPage.PreModerated"/> flag and <c>commerceShop.reviews.verification</c> say so. Every published
 /// review comes from a delivered order line (<see cref="SparkShopReview.Verified"/> is always true); no review is
-/// published or refused because of its rating (point 23c, unconfirmed), and a review written for a benefit says so
+/// published or refused because of its rating (point 23c, "misrepresenting consumer reviews"), and a review written for a benefit says so
 /// (<see cref="ShopProductReview.Incentivised"/>).</para>
 /// </summary>
 public interface ISparkShopReviews
@@ -187,7 +187,7 @@ internal sealed class ShopReviews(
         EShopReviewRejection? reason = null;
         if (!decision.Publish)
         {
-            // Only the listed reasons, never the rating or a negative tone (UCPD Art. 7(2) and Annex I point 23c; unconfirmed, D37).
+            // Only the listed reasons, never the rating or a negative tone (UCPD Annex I point 23c; checked against EUR-Lex 2026-10-20).
             if (!Enum.TryParse<EShopReviewRejection>(decision.Reason, ignoreCase: false, out var parsed) || !Enum.IsDefined(parsed))
                 throw ShopException.Of(ShopRefusals.ReasonRequired, decision.Reason);
             reason = parsed;

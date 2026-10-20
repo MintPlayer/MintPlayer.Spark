@@ -595,7 +595,7 @@ These apply in `ConnectedSellers` mode, except notice-and-action, which every ho
   - a **record** per visitor (X1) or account: purpose, granted or refused, policy version, timestamp, source (banner, settings page, checkout checkbox); merged on sign-in like the basket; withdrawable at any time, as easily as it was given;
   - `ISparkConsent.Has(purpose)` on the server and a client service in `@mintplayer/ng-spark/consent` with a banner and a settings page (both replaceable, WCAG-checked, equal-weight accept and refuse buttons);
   - packages declare `RequiresConsent(purpose)`; startup refuses a package that requires consent when the primitive is not wired (§4.2).
-- **Marketing e-mail (GA9).** Opt-in, or the **soft opt-in** checkbox at checkout for similar products of the same seller (ePrivacy Art. 13(2), confirm, D37), stored as a consent record; **every marketing mail carries an unsubscribe link** (one click, no sign-in) and a `List-Unsubscribe` header. Service mails (order, tickets, withdrawal receipts, back-in-stock requested by the buyer) need no consent.
+- **Marketing e-mail (GA9).** Opt-in, or the **soft opt-in** checkbox at checkout for similar products of the same seller (a box the buyer ticks is consent under ePrivacy Art. 13(1), stricter than the 13(2) soft opt-in; checked against EUR-Lex 2026-10-20), stored as a consent record; **every marketing mail carries an unsubscribe link** (one click, no sign-in) and a `List-Unsubscribe` header. Service mails (order, tickets, withdrawal receipts, back-in-stock requested by the buyer) need no consent.
 - **Analytics and pixels.** The library ships none; a host that adds them declares the purpose and loads them only after consent.
 
 ### 4.21 Round-5 items: index (D37)
@@ -963,6 +963,35 @@ Three questions the M6 Payments work raised.
 - **S9 offline scanner (M15, 2026-10-20; fixture/CI size per round 4, tests written, not run until M22):** **feasible, design kept.** *Size (desk, Node 24.15):* a 50,000-ticket list in the `SparkScannerEntry` wire shape is **297 B/ticket, 14.2 MiB raw, 3.4 MiB gzipped**, in 10 pages of 5,000 (`Scanner:ListPageSize`); the device stores it in IndexedDB (`ng-spark/offline`, `navigator.storage.persist()` requested), a `structuredClone` of all 50k entries took 310 ms. One WebCrypto verification at the production 50,000 PBKDF2 iterations took **20.5 ms** on this (busy) desktop (S8 measured 10.9 ms idle), so an offline scan stays far below a gate's pace. *Double entry:* the server recomputes each ticket's presence per list and date **in time order over every device's scans** (`CheckInRules.Recompute`), so a ticket admitted on two offline devices is recorded twice and the **later** entry is flagged, **whichever device syncs first**; earlier gate-log rows are re-flagged when an older scan arrives; a re-sent scan id changes nothing; device clocks ahead of the server by more than `Scanner:MaxClockSkew` (5 min) are clamped. Changes after the download (revocations, freezes, reissues, other devices' entries) reach a device through `since`-cursor syncs (truncated pages answer the last change's instant), every 30 s, on reconnect, and at once through the public live topic `ticketing-scanner:{eventId}` (a timestamp only, X2). A revoked or expired device (409 `deviceRevoked`) and a device past `WipeAfter` delete their list, queue and session. **Not measured:** a real 50k download over a gate's network and on a phone (round 4: no device labs). *Evidence:* `libs/commerce/MintPlayer.Spark.Commerce.Ticketing.Tickets/CheckIn/TicketCheckIns.cs`, `CheckIn/CheckInRules.cs:83-140`; client twin `libs/node_packages/ng-spark/ticketing/tickets/src/check-in-rules.ts`, engine `src/scanner/ticket-scanner.ts`; tests `TicketCheckInFlowTests.S9_a_double_entry_across_two_offline_devices_is_flagged_whichever_syncs_first`, `CheckInRulesTests.Two_offline_devices_give_the_same_flags_whichever_syncs_first`, `OfflineListSpikeTests` (2,000 tickets by default; `SPARK_SPIKE_S9_TICKETS=50000` for the full list), vitest `ticket-scanner.spec.ts` ("S9: stores a 50,000-ticket list in pages and wipes it"); desk script scratchpad `m15/s9.mjs`.
 - **D45 (undeliverable goods; lead decision 2026-10-20, the owner delegated design decisions):** units a warehouse cancels on its own (a cancelled remainder, warehouse §4.3) are **refunded automatically**, not left to staff. `Commerce.Fulfilment` calls Checkout's `ISparkCheckoutUndelivered.RefundUndeliveredAsync` (idempotent per the line's cumulative cancelled count): the units' charged amounts (their order-discount share through `CheckoutOrderLineAmounts.Charged()`, fees included) through the normal refund path, and the **full delivery cost once no goods of the order remain** (RefundMath's complete-goods rule); the buyer gets the existing refund mail when it is paid. No restock by Checkout: a stock-feed line's units are put back on sale by the feed once nothing can ship them (warehouse §4.4 rule 1). The attention flag stays only for a refund Checkout refuses or the provider fails. Legal basis: CRD Art. 18(2)–(3) (reimbursement of all sums paid on non-delivery) and Art. 13(1) (delivery costs), **unconfirmed** against EUR-Lex (D37). *Evidence:* `RefundService.RefundUndeliveredAsync`, `FulfilmentSync.RefundUndeliverableAsync`; tests `RefundStockFeedTests.Undelivered_units_are_refunded_at_their_charged_amount_and_kept_sold_for_the_feed`, `…When_nothing_of_the_order_ships_the_delivery_cost_is_refunded_too`, `FulfilmentStubConsumerTests.Units_the_warehouse_cancels_on_its_own_are_refunded_automatically_then_put_back_on_sale` (written, not run).
 - **M15 PDF library (Q-O9 still open):** tickets render with the package's own minimal PDF writer (`Pdf/TicketPdfWriter.cs`: text, rectangles, QR modules, JPEG), as Invoicing does (`MinimalPdf.cs`); no third-party PDF library is referenced. When W17 picks a library, `ITicketPdfRenderer` is the seam. *Evidence:* `libs/commerce/MintPlayer.Spark.Commerce.Ticketing.Tickets/Pdf/`.
+
+### D37 verification against EUR-Lex (2026-10-20)
+
+Every legal citation of the suite was read against the official text on EUR-Lex in a browser (scripted fetches get
+`202` and an empty body); the latest consolidated versions were used (CRD `02011L0083-20260927`, SGD
+`02019L0771-20260731`, GPSR `02023R0988-20260529`, UCPD `02005L0029-20260927`, DAC `02011L0016-20260101`, VAT
+`02006L0112-20250414`, …). The full table, the member-state options and the host's duties are in
+`docs/guide-commerce-compliance.md`. National transpositions were **not** checked.
+
+- **Citation fixes (comments and guides only):** withdrawal acknowledgement is CRD Art. 11a(**4**) (11a(3) is the
+  confirmation function); trader-data deletion is DSA Art. 30(**5**) (30(3) is correction and suspension); the
+  durability guarantee is CRD Art. 6(1)(**la**), not (m); undelivered goods are refunded under CRD Art. 18(3) "all sums
+  paid under the contract", not Art. 13(1); DAC7 excluded seller is Annex V Section I **B**(4)(d), personal service
+  I A(**11**), the quarterly figures III B(2)(**e)–(f)**, reminders IV A(2), records IV B(1); pre-ticked extras rest on
+  CRD Art. 22 (UCPD Annex I point 29 is inertia selling); review verification adds UCPD Art. 7(6) and drops "Art. 7(2)";
+  the PID has no annex of units; the checkout marketing box is consent under ePrivacy Art. 13(1), stricter than the
+  13(2) soft opt-in. Every "unconfirmed" marker on an EU article now reads "checked against EUR-Lex <CELEX>, 2026-10-20".
+- **Findings where the code's rule differs from the article (logic not changed, each needs a decision):** F1 the
+  harmonised guarantee notice (Implementing Regulation (EU) 2025/1960, applies from 27 September 2026, not editable)
+  replaces the library's default wording; F2 CRD Art. 8(2) now requires the Art. 6(1)(la) durability label at the last
+  step, and a durability guarantee must exceed two years; F3 SGD Art. 10(2a) extends the guarantee 12 months after a
+  repair, and "two years" is not 730 days across a 29 February; F4 the recall notice lacks GPSR Art. 36(2) elements;
+  F5 PID Art. 6a(5) (progressive reductions) is a member-state option but is applied everywhere; F6 DAC7 Annex V IV A(2)
+  requires closing the account (and preventing re-registration) or withholding payment, D43 only blocks sales; F7
+  Reg. 1182/71 Art. 2(1) takes the holidays of the state "in which action is to be taken" (the consumer's, for a
+  withdrawal); F8 virtual event attendance is taxed where the customer is (VAT Art. 53, 54(1)); F9 Monaco is in the EU
+  customs territory (UCC Art. 4(2)(a)) and counts as France for VAT (Art. 7(2)), but both default lists leave it out.
+- **Also confirmed:** W3C *Understanding SC 2.2.1* treats a ticket hold as the Essential Exception, so the hold timer's
+  reading stands.
 
 ---
 

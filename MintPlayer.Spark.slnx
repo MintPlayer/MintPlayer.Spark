@@ -24,6 +24,10 @@
     <Project Path="apps/DemoApp/DemoApp.Tests/DemoApp.Tests.csproj" />
     <Project Path="apps/DemoApp/DemoApp/DemoApp.csproj" />
   </Folder>
+  <Folder Name="/apps/Festival/">
+    <Project Path="apps/Festival/Festival.Tests/Festival.Tests.csproj" />
+    <Project Path="apps/Festival/Festival/Festival.csproj" />
+  </Folder>
   <Folder Name="/apps/Fleet/">
     <Project Path="apps/Fleet/Fleet.Library/Fleet.Library.csproj" />
     <Project Path="apps/Fleet/Fleet.Tests/Fleet.Tests.csproj" />

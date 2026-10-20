@@ -15,8 +15,12 @@ namespace MintPlayer.Spark.Commerce.Fulfilment.Services;
 /// <summary>
 /// GA7: the shop's half of a recall trace (warehouse WM7 traces lot → shipment). The shop holds the warehouse's
 /// <c>shipments</c> replicas with their lots, so it resolves a lot to its fulfilment orders, those to its own orders and
-/// buyers, and mails each buyer the recall notice once (Regulation (EU) 2023/988 Art. 35–36: the economic operator informs
-/// the affected consumers directly where it can identify them; ⚠️ confirm the notice's required content against EUR-Lex, D37).
+/// buyers, and mails each buyer the recall notice once (Regulation (EU) 2023/988 Art. 35(1): "all affected consumers that
+/// can be identified are notified directly and without undue delay"; checked against EUR-Lex 02023R0988-20260529,
+/// 2026-10-20). ⚠️ Art. 36(2) fixes the notice's content: the headline "Product safety recall", a picture, name and
+/// brand, identification numbers, when, where and by whom it was sold, the hazard, the action (including to stop using
+/// it), the Art. 37 remedies, a free phone number or online service, and encouragement to share. The host's mail
+/// template must carry all of it; <see cref="FulfilmentRecallNotice"/> does not hold every element.
 /// </summary>
 internal sealed class FulfilmentRecalls(
     IDocumentStore store,

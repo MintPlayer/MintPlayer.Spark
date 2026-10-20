@@ -1,0 +1,195 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "Print jobs (PRD §4.11): queued idempotently by key, delivered to an agent or a station, acknowledged once. Read-only; a reprint is the PrintingReprint action.",
+    "",
+    "HAND-AUTHORED. Ids are UUIDv5 of 'printing:PrintJob[...]', written by 'npm run stamp:library-model-ids'."
+  ],
+  "persistentObject": {
+    "id": "24297d16-8537-53cd-8b36-f5c285b9f6ab",
+    "name": "PrintJob",
+    "clrType": "MintPlayer.Spark.Printing.Models.PrintJob",
+    "alias": "print-job",
+    "breadcrumb": "{Title}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "c1f7bd9c-99f4-5661-bb72-7d9e31d378b5",
+        "name": "Title",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "d50f7e51-e253-57b4-9bda-658d6b92c391",
+        "name": "Kind",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "03674651-9196-57f8-8de0-ce97852cf99c",
+        "name": "Printer",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "88b9a773-02bb-51a6-b501-5aaad0cb5aa9",
+        "name": "Adapter",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "8a9f16f1-c773-55cd-9e4f-fb88ff51abfd",
+        "name": "Station",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "77782676-3839-5a9c-9151-1595bf21e671",
+        "name": "State",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "0cbe0f04-65a8-5a2f-9fd9-095527172726",
+        "name": "ContentType",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "c3204d29-1e17-5a1e-949d-0335ea5acee6",
+        "name": "Deliveries",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "246574d0-0a0a-5946-bee6-ffed3fbddb1e",
+        "name": "CreatedAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 9,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "b64a8c0a-f0a0-5187-b46c-27b52827a20d",
+        "name": "DeliveredAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 10,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "348612d9-e0a5-53a8-b0ac-714388b08b1c",
+        "name": "PrintedAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 11,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "55532020-16ba-583d-a812-bbe721f4a404",
+        "name": "PrintedVia",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 12,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "a59d38bd-4f3e-508e-b1ac-afe4545b791a",
+        "name": "FailureReason",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 13,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "21ecffc9-e2d3-50e0-80a7-abce28e1d373",
+        "name": "ReprintOf",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 14,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "50c7fa8e-3cf9-54ad-a785-2a23225a9f29",
+        "name": "FallbackTakenAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 15,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      }
+    ]
+  },
+  "queries": [
+    {
+      "id": "f0bca52b-c3c0-5503-b6ec-b37102418658",
+      "name": "PrintJobs",
+      "source": "Custom.PrintJobs",
+      "alias": "print-jobs",
+      "sortColumns": [],
+      "renderMode": "Pagination",
+      "entityType": "PrintJob"
+    }
+  ]
+}

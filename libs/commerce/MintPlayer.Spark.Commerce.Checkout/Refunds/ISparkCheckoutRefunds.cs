@@ -25,8 +25,9 @@ public interface ISparkCheckoutRefunds
 /// <summary>
 /// Refunds goods the seller cannot deliver (lead decision 2026-10-20, commerce PRD §13): a warehouse cancelled units on its
 /// own (a cancelled remainder, warehouse §4.3). Registered scoped by <c>AddCommerceCheckout()</c>; Commerce.Fulfilment
-/// calls it. CRD Art. 18(2)–(3): where the trader fails to deliver, the consumer is reimbursed all sums paid without undue
-/// delay; Art. 13(1): including the costs of delivery (⚠️ both unconfirmed against EUR-Lex, D37).
+/// calls it. CRD Art. 18(2)–(3): where the trader fails to deliver and the contract is terminated, the trader reimburses "all
+/// sums paid under the contract" without undue delay, delivery costs included (checked against EUR-Lex
+/// 02011L0083-20260927, 2026-10-20).
 /// </summary>
 public interface ISparkCheckoutUndelivered
 {

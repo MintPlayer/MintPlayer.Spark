@@ -54,10 +54,11 @@ internal sealed class RefundService(
                 .Where(r => r.Quantity > 0).ToList();
             if (requests.Count == 0)
                 return;
-            // CRD Art. 18(2)–(3) (unconfirmed, D37): all sums paid for the undelivered units, fees included (the seller's
-            // failure), their order-discount share through the line's charged amount (CheckoutOrderLineAmounts.Charged).
-            // CRD Art. 13(1) (unconfirmed): the delivery cost in full once no goods of the order remain (RefundMath's
-            // completesGoods rule); a partly delivered order keeps it.
+            // CRD Art. 18(3) ("all sums paid under the contract"; checked against EUR-Lex 02011L0083-20260927, 2026-10-20):
+            // the undelivered units, fees included (the seller's failure), their order-discount share through the line's
+            // charged amount (CheckoutOrderLineAmounts.Charged), and the delivery cost in full once no goods of the order
+            // remain (RefundMath's completesGoods rule). A partly delivered order keeps it: Art. 18 does not settle a
+            // partial termination.
             var spec = new RefundSpec(RefundKind.Cancellation, ReturnReasonCode.Other, requests, RefundFees: true, Delivery: DeliveryRefund.Full);
             var refund = await engine.RefundAsync(session, o, ledger, spec, new RefundMeta(refundId, Note: "undelivered " + request.Reference), raised, cancellationToken);
             done = refund?.RefundId;

@@ -12,7 +12,7 @@ namespace MintPlayer.Spark.Commerce.Invoicing.Pdf;
 /// <item><see cref="CheckoutMailKind.Confirmation"/>: renders the PDF of every accepted legal-document version that has
 /// none yet (GA2), so Checkout attaches it as a required file instead of racing the <c>Placed</c> recipient. Returns
 /// nothing itself: Checkout attaches the stored PDFs.</item>
-/// <item><see cref="CheckoutMailKind.WithdrawalReceipt"/>: the receipt as a PDF (GA1, CRD Art. 11a(3) as inserted by
+/// <item><see cref="CheckoutMailKind.WithdrawalReceipt"/>: the receipt as a PDF (GA1, CRD Art. 11a(4) as inserted by
 /// Directive (EU) 2023/2673: the content of the withdrawal and the date and time of its receipt).</item>
 /// </list>
 /// </summary>

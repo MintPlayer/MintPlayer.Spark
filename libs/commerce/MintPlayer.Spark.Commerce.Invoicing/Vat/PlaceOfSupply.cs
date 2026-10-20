@@ -3,9 +3,10 @@ using MintPlayer.Spark.Abstractions;
 namespace MintPlayer.Spark.Commerce.Invoicing.Vat;
 
 // GA4 (PRD §4.8): which member state's VAT applies to a line, and how. Every rule cites Council Directive 2006/112/EC
-// (the VAT Directive). ⚠️ D37: the article texts could not be fetched from EUR-Lex by this build (the site answers
-// automated requests with an empty page, 2026-10-19); the rules follow the directive's article numbering as consolidated
-// on 2025-01-01 (CELEX 02006L0112-20250101) and are marked "confirm" in the guide until a person checks them. Member-state
+// (the VAT Directive). D37: the articles cited were checked against EUR-Lex 02006L0112-20250414 on
+// 2026-10-20; national transpositions were not. Admission to an event attended virtually is taxed where the customer is
+// (Art. 53 second paragraph, Art. 54(1) second subparagraph), and Monaco counts as France (Art. 7(2)); no rule here
+// models either (docs/guide-commerce-compliance.md). Member-state
 // options (Art. 59c(3) election, Art. 194 domestic reverse charge, simplified invoices under Art. 220a/238) are host
 // configuration, never decided here.
 

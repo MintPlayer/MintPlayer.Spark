@@ -29,7 +29,7 @@ spark.AddCommerce();   // binds Spark:Commerce; adds Organizations, Approvals an
 | DAC7 | seller tax data, reminders, sales block (`CanSellAsync`; payouts untouched) | GA6, D43 |
 | Legal documents | versioned, immutable once published, PDF, in force per seller/platform, acceptance records; sale refused without required documents | GA2 |
 | Data roles | DPA accepted at registration; audited seller CSV exports through `ISellerExportSource` | GB14 |
-| Audit, retention | `ICommerceAudit` (append-only), retention per type with legal floors (unconfirmed per country) | default 8, §4.15 |
+| Audit, retention | `ICommerceAudit` (append-only), retention per type with legal floors (EU texts checked against EUR-Lex 2026-10-20; national periods not checked) | default 8, §4.15 |
 | Startup validation | refusals and warnings of §4.2, incl. GA9, GA10, GA11, D40 | §4.2 |
 
 Endpoints are under `/spark/commerce` (public), `/spark/commerce/sellers` and `/spark/commerce/admin` (signed in).

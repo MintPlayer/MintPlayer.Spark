@@ -100,9 +100,10 @@ raw key.
    deadline: the method's expiry plus `PaymentGrace`, capped by the window.
 5. **The payment.** Checkout creates the payment and redirects to the provider. A **zero total** confirms at once,
    without any provider (D6).
-6. **GA9 soft opt-in.** When the buyer ticks the checkbox (`marketingOptIn`), it is recorded as a consent record with
-   `ISparkConsent.RecordAsync` (purpose `marketing-mail`, source `checkout`). ⚠️ The ePrivacy Art. 13(2) conditions
-   still have to be confirmed against EUR-Lex (D37).
+6. **GA9 marketing opt-in.** When the buyer ticks the checkbox (`marketingOptIn`), it is recorded as a consent record with
+   `ISparkConsent.RecordAsync` (purpose `marketing-mail`, source `checkout`). An unticked box the buyer ticks is prior
+   consent (ePrivacy Art. 13(1)); that is stricter than the soft opt-in of Art. 13(2), which only requires a free and easy
+   objection at collection and in every message (checked against EUR-Lex 02002L0058-20091219, 2026-10-20).
 
 The **confirmation** is mailed through MailManager (`SparkCheckout/OrderConfirmation`). This mail is the durable medium
 of CRD Art. 8(7). It carries the accepted documents in its body, title and text in the buyer's language, and
@@ -226,14 +227,16 @@ given back and claimed again.
 - **GC3: donations.** Configure `Donation:Enabled`, `Beneficiary`, `FixedAmounts` per currency and `RoundUp`. The
   buyer's choice is `donation=5` or `donation=roundup`. VAT category `outside-scope` (configurable).
 - **GC4: insurance.** An `IInsuranceProvider` quotes after the main price. The offer is never pre-ticked: the buyer
-  chooses `insurance=accept`. The cover is bound at confirmation. ⚠️ The UCPD and CRD Art. 22 rules on pre-ticked
-  boxes are still to be confirmed against EUR-Lex (D37).
+  chooses `insurance=accept`. The cover is bound at confirmation. CRD Art. 22: an extra payment needs the buyer's
+  express consent, and one inferred from a default the buyer must reject is to be reimbursed (checked against EUR-Lex
+  02011L0083-20260927, 2026-10-20).
 
 ## 8. Geo-blocking (GA11)
 
 No checkout input carries a country, nationality, residence or card-issuing country, and a test guards this. No rule in
 checkout can therefore refuse a buyer, or treat one differently, on those grounds (Regulation (EU) 2018/302 Art. 3–5).
-⚠️ The wording is still to be confirmed against EUR-Lex (D37). Delivery zones belong to Shipping.
+Checked against EUR-Lex 32018R0302 on 2026-10-20. Delivery zones belong to Shipping (Art. 4(1)(a): a buyer from
+any member state may buy for delivery wherever the trader offers delivery, or collect where it offers collection).
 
 ## 9. Configuration (`Spark:Commerce:Checkout`)
 

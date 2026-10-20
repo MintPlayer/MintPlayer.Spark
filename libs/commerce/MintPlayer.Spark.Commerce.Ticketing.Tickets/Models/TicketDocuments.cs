@@ -477,7 +477,7 @@ public sealed class TicketResaleListing
     /// <summary>The asking price before the channel's fees.</summary>
     public Money Price { get; set; } = Money.Zero("EUR");
 
-    /// <summary>The cap: what the seller's ticket cost, as a FinalPrice (§4.4; Belgian Act of 30 July 2013, confirm, D37).</summary>
+    /// <summary>The cap: what the seller's ticket cost, as a FinalPrice (§4.4; Belgian Act of 30 July 2013; national text not checked, D37).</summary>
     public Money Cap { get; set; } = Money.Zero("EUR");
 
     public string? SellerUserId { get; set; }

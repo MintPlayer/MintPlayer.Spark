@@ -228,4 +228,7 @@ public sealed class WarehouseDocumentEntry
     public string? State { get; set; }
     public string? Number { get; set; }
     public DateTimeOffset At { get; set; }
+
+    /// <summary>A package's own marker beside <see cref="State"/>, e.g. Outbound's <c>Backorder</c> (open quantity waiting for stock), or null.</summary>
+    public string? Flag { get; set; }
 }

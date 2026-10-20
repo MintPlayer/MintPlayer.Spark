@@ -160,16 +160,17 @@ POST /spark/commerce/promotions/admin/sale-prices/schedule
 - **Display.** `GET /spark/commerce/promotions/sale-price?itemId=` (or `ISparkSalePrices.DisplayAsync(item)`) answers
   the final price, and whether the reduction may be **announced**. It may be announced only with the **prior price**:
   the lowest final price of the 30 days before the reduction started (PID Art. 6a(1)–(2)). A progressive reduction
-  (a sale that follows another without a gap and goes lower) keeps the reference of its first step (Art. 6a(5)). The
+  (a sale that follows another without a gap and goes lower) keeps the reference of its first step (Art. 6a(5), a **member-state option**: see below). The
   percentage is computed on the prior price and rounded down. Without a prior price (no history in the window), the
   sale price is shown as the plain price: no strike-through, no badge, no percentage. `<spark-sale-price>` renders
   exactly that.
 - **Perishable goods** (Art. 6a(3), a member-state option): `perishableExempt` per sale; no prior price is shown.
 - **Codes the buyer enters** are personal discounts, not announced reductions, and carry no prior price.
 
-⚠️ **D37.** Art. 6a's text, the member-state options (6a(3) perishables, 6a(4) goods on the market for less than 30
-days) and the Commission guidance (2021/C 526/02) on percentages and progressive reductions must be confirmed against
-EUR-Lex and the national transpositions. The agent that wrote this could not fetch EUR-Lex.
+⚠️ **D37.** Art. 6a was checked against EUR-Lex (01998L0006-20220528) on 2026-10-20. Paragraphs 3 (perishables),
+4 (goods on the market for less than 30 days) and 5 (progressive reductions) all begin "Member States may provide":
+the progressive-reduction rule above is right only where the buyers' member state adopted Art. 6a(5), and the library
+applies it everywhere. The national transpositions and the Commission guidance (2021/C 526/02) were not checked.
 
 ## 5. Tracking links (GC2)
 

@@ -12,10 +12,10 @@ marketing mail all use it, and so can any app. It has four parts:
 
 ## The legal rules it encodes
 
-D37 requires each rule to be checked against the official text. On 2026-10-19 the EUR-Lex pages came back empty to
-the agent's fetch, so the articles below were **not re-read** for this implementation. **Confirm them** against
+D37 requires each rule to be checked against the official text. The articles below were **checked on EUR-Lex on
+2026-10-20** (GDPR 32016R0679, ePrivacy 02002L0058-20091219); the national points further down were not. Sources:
 [Regulation (EU) 2016/679 (GDPR)](https://eur-lex.europa.eu/eli/reg/2016/679/oj) and
-[Directive 2002/58/EC (ePrivacy)](https://eur-lex.europa.eu/eli/dir/2002/58/oj) before relying on them.
+[Directive 2002/58/EC (ePrivacy)](https://eur-lex.europa.eu/eli/dir/2002/58/oj).
 
 | Rule | Source | What Spark does |
 |---|---|---|
@@ -28,7 +28,7 @@ the agent's fetch, so the articles below were **not re-read** for this implement
 | An objection to direct marketing ends that processing | GDPR Art. 21(2)–(3) | The unsubscribe link records a refusal at once. A withdrawal is honoured even for a purpose that is no longer declared. |
 | Access, portability, erasure | GDPR Art. 15, 17, 20 | Authorization's personal-data export has a `consent` section, and account deletion erases the account's records and its address's records. |
 
-**Per-country points (⚠️ confirm, D37):**
+**Per-country points (⚠️ not checked, D37):**
 
 - **Validity.** `ConsentValidity` defaults to 13 months and `RefusalValidity` to 6 months. These follow the CNIL's
   guidance (délibération n° 2020-091), which is French and not EU law. Other authorities differ.

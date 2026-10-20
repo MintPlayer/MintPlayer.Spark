@@ -1,0 +1,25 @@
+{
+  "$schema": "../../../../schemas/translations.schema.json",
+  "warehouseOutbound": {
+    "released": { "en": "{0} order(s) released.", "fr": "{0} commande(s) libérée(s).", "nl": "{0} order(s) vrijgegeven." },
+    "notReleased": { "en": "Not released: {0}", "fr": "Non libérée : {0}", "nl": "Niet vrijgegeven: {0}" },
+    "held": { "en": "Order held.", "fr": "Commande bloquée.", "nl": "Order geblokkeerd." },
+    "unheld": { "en": "Hold lifted.", "fr": "Blocage levé.", "nl": "Blokkering opgeheven." },
+    "takenOver": { "en": "{0} pick batch(es) taken over.", "fr": "{0} lot(s) de prélèvement repris.", "nl": "{0} pickbatch(es) overgenomen." },
+    "block": {
+      "ShopHold": { "en": "held by the shop", "fr": "bloquée par la boutique", "nl": "geblokkeerd door de winkel" },
+      "ManualHold": { "en": "held by a supervisor", "fr": "bloquée par un superviseur", "nl": "geblokkeerd door een supervisor" },
+      "NotBefore": { "en": "not to ship before its date", "fr": "à ne pas expédier avant sa date", "nl": "niet te verzenden vóór de datum" },
+      "ShipComplete": { "en": "ships complete and stock is short", "fr": "expédition complète et stock insuffisant", "nl": "volledig te verzenden en voorraad ontoereikend" },
+      "CancellationRequested": { "en": "a cancellation is pending", "fr": "une annulation est en cours", "nl": "een annulering is in behandeling" },
+      "NotReleasable": { "en": "not releasable in its state", "fr": "non libérable dans cet état", "nl": "niet vrij te geven in deze status" },
+      "NoDropLocation": { "en": "the site has no staging, pack-station or consolidation location", "fr": "le site n'a pas d'emplacement de préparation, d'emballage ou de consolidation", "nl": "de site heeft geen staging-, inpak- of consolidatielocatie" }
+    }
+  },
+  "actions": {
+    "WarehouseReleaseOrder": { "label": { "en": "Release", "fr": "Libérer", "nl": "Vrijgeven" } },
+    "WarehouseHoldOrder": { "label": { "en": "Hold", "fr": "Bloquer", "nl": "Blokkeren" } },
+    "WarehouseUnholdOrder": { "label": { "en": "Lift hold", "fr": "Lever le blocage", "nl": "Blokkering opheffen" } },
+    "WarehouseTakeOverBatches": { "label": { "en": "Take over picking", "fr": "Reprendre le prélèvement", "nl": "Picken overnemen" } }
+  }
+}

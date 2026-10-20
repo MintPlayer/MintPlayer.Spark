@@ -102,7 +102,7 @@ public sealed class ShopProduct : IOrganizationPublishable
     /// <summary>Warnings and safety information, per language (Art. 19(d): in a language easily understood by consumers of the member state).</summary>
     public TranslatedString? SafetyWarnings { get; set; }
 
-    // ---- GA8: commercial durability guarantee (Directive (EU) 2024/825, CRD Art. 6(1)(m) as amended) ----------------
+    // ---- GA8: commercial durability guarantee (Directive (EU) 2024/825, CRD Art. 6(1)(la) as inserted) -------------
 
     /// <summary>A producer's commercial guarantee of durability, in months, when it gives one for the whole product beyond two years.</summary>
     public int? DurabilityGuaranteeMonths { get; set; }
@@ -532,7 +532,7 @@ public sealed class ShopProductReview : IModeratable
 
     public string? DecidedBy { get; set; }
 
-    /// <summary>Why a review was rejected: never because it is negative (UCPD Art. 7(2), Annex I point 23c).</summary>
+    /// <summary>Why a review was rejected: never because it is negative (UCPD Annex I point 23c: "misrepresenting consumer reviews").</summary>
     public EShopReviewRejection? RejectionReason { get; set; }
 }
 
@@ -549,7 +549,7 @@ public enum EShopProductKind
     Service,
 }
 
-/// <summary>GA3: the units of measure a unit price is shown in (PID Art. 2(b), Annex: kg, l, m, m², m³, or per item).</summary>
+/// <summary>GA3: the units of measure a unit price is shown in (PID Art. 2(b): kg, l, m, m², m³, or a customary single unit such as per item).</summary>
 [SparkLookup("ShopUnitOfMeasure")]
 public enum EUnitOfMeasure
 {

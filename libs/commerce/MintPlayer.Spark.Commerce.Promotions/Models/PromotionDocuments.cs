@@ -187,14 +187,14 @@ public sealed class PromotionSalePrice
     public DateTimeOffset ValidUntil { get; set; }
 
     /// <summary>
-    /// The start of the first step of a progressive reduction (PID Art. 6a(5)): the prior price stays the one before it.
+    /// The start of the first step of a progressive reduction (PID Art. 6a(5), a member-state option): the prior price stays the one before it.
     /// Equal to <see cref="ValidFrom"/> for a standalone sale.
     /// </summary>
     public DateTimeOffset SeriesStart { get; set; }
 
     /// <summary>
     /// Goods liable to deteriorate or expire rapidly (PID Art. 6a(3), a member-state option): the host exempts the item
-    /// and no prior price is shown. ⚠️ Confirm per member state (D37).
+    /// and no prior price is shown. ⚠️ National transposition not checked (D37).
     /// </summary>
     public bool PerishableExempt { get; set; }
 

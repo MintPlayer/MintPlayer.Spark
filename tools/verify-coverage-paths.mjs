@@ -40,8 +40,8 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 // One slug per app the E2E suite hosts (SparkAppDescriptor.CoverageSlug): Fleet, QnA since #460 M13, HR since #264,
-// SparkId since the identity-provider platform (docs/identity_provider_platform_PRD.md I0).
-const E2E_HOST_REPORT = /^tests\/MintPlayer\.Spark\.E2E\.Tests\/coverage\/(fleet|qna|hr|sparkid)-host-[^/]+\/coverage\.cobertura\.xml$/;
+// SparkId since the identity-provider platform (docs/identity_provider_platform_PRD.md I0), Festival since commerce M18.
+const E2E_HOST_REPORT = /^tests\/MintPlayer\.Spark\.E2E\.Tests\/coverage\/(fleet|qna|hr|sparkid|festival)-host-[^/]+\/coverage\.cobertura\.xml$/;
 
 /**
  * The marker SparkAppTestHost writes into a host's report directory before it starts the app under
@@ -122,6 +122,13 @@ export const EXPECTED_REPORTS = [
     glob: 'tests/MintPlayer.Spark.E2E.Tests/coverage/sparkid-host-*/coverage.cobertura.xml',
     match: E2E_HOST_REPORT,
     required: hostReportRequired('sparkid'),
+  },
+  // The Festival host (FestivalTestHost, commerce #521 M18), the same shape.
+  {
+    name: 'E2E Festival host subprocess coverage',
+    glob: 'tests/MintPlayer.Spark.E2E.Tests/coverage/festival-host-*/coverage.cobertura.xml',
+    match: E2E_HOST_REPORT,
+    required: hostReportRequired('festival'),
   },
   { name: 'MintPlayer.Spark.SourceGenerators.Tests', glob: 'tests/MintPlayer.Spark.SourceGenerators.Tests/coverage/**/coverage.cobertura.xml' },
   { name: 'MintPlayer.Spark.Client.Tests', glob: 'tests/MintPlayer.Spark.Client.Tests/coverage/**/coverage.cobertura.xml' },

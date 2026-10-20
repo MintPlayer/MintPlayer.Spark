@@ -20,6 +20,7 @@
     "apps/CodeCoverage/CodeCoverage/ClientApp",
     "apps/SeoTester/SeoTester/ClientApp",
     "apps/ReferenceData/ReferenceData/ClientApp",
+    "apps/Festival/Festival/ClientApp",
     "apps/CodeCoverage/action",
     "apps/CodeCoverage/dependency-action"
   ],

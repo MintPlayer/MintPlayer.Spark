@@ -34,7 +34,9 @@ internal sealed class LoggingSellerNotifier(ILogger<LoggingSellerNotifier> logge
 /// <summary>
 /// DAC7 (GA6): reminds sellers with missing data every <c>ReminderInterval</c>, and closes their sales once
 /// <c>RemindersBeforeBlock</c> reminders went unanswered and <c>MinimumWaitBeforeBlock</c> passed since the first
-/// request (Directive (EU) 2021/514 Annex V; confirm, D37). D43: the block feeds <see cref="ISparkSellers.CanSellAsync"/>;
+/// request (Directive 2011/16/EU Annex V Section IV A(2), inserted by Directive (EU) 2021/514; checked against EUR-Lex
+/// 02011L0016-20260101, 2026-10-20: the text says "close the account … and prevent the Seller from re-registering … or
+/// withhold the payment of the Consideration"; see the finding in docs/guide-commerce-compliance.md). D43: the block feeds <see cref="ISparkSellers.CanSellAsync"/>;
 /// provider payouts are not touched. Completing the data reopens sales (<c>SellerRegistration</c>). Connected mode
 /// only. Idempotent per run.
 /// </summary>
@@ -99,7 +101,7 @@ internal sealed partial class Dac7ReminderJob : ISparkCronJob
 
 /// <summary>
 /// Retention (§4.15) for Commerce's own document types: trader data erased once its period after the end of the
-/// relationship passed (DSA Art. 30(3)); decided DSA notices and statements past their period deleted. The price
+/// relationship passed (DSA Art. 30(5)); decided DSA notices and statements past their period deleted. The price
 /// history and the money audit are kept (their floors are minimums and they back the accounts). Other packages sweep
 /// their own types with <see cref="ICommerceRetention.GetPeriod"/>; invoices are never altered, only deleted whole.
 /// </summary>

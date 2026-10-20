@@ -12,7 +12,7 @@ namespace MintPlayer.Spark.Commerce.Checkout.Refunds;
 
 /// <summary>
 /// The refund flows' mails through MailManager (optional; without it a warning is logged). The withdrawal receipt is the
-/// acknowledgement on a durable medium of CRD Art. 11a(3) (as inserted by Directive (EU) 2023/2673): it states the
+/// acknowledgement on a durable medium of CRD Art. 11a(4) (as inserted by Directive (EU) 2023/2673): it states the
 /// content of the withdrawal and the date and time it was received. The mail body is the receipt (a durable medium in
 /// itself); an <see cref="ICheckoutMailAttachments"/> contributor adds it as a PDF too (Invoicing does, Q-O9).
 /// </summary>

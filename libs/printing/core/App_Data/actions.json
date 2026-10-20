@@ -1,0 +1,11 @@
+{
+  "$schema": "../../../../schemas/actions.schema.json",
+  "_comment": [
+    "Printing's custom actions (docs/warehouse_picking_PRD.md §4.11). Class: Actions/PrintingActions.cs; rights in this",
+    "library's security.json; labels are actions.<Name>.* in translations.json."
+  ],
+  "PrintingReprint": {
+    "icon": "printer",
+    "showedOn": "both"
+  }
+}

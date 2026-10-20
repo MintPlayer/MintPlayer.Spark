@@ -18,7 +18,8 @@ public sealed record AttendeeAnswerError(string QuestionKey, string Code);
 /// The attendee-question rules (GB3, PRD §4.11). Pure. Text, choice, date and checkbox questions (no files); required or
 /// optional; a sensitive question (health, dietary needs) is answered only with explicit consent to its text
 /// (GDPR Art. 9(2)(a) for special categories, Art. 7(1) proof of consent; the consent text is stored as a hash with the
-/// answer). ⚠️ The Art. 9 wording is to be confirmed against EUR-Lex (D37).
+/// answer). Art. 9(2)(a) ("explicit consent … for one or more specified purposes") and Art. 7(1) checked against
+/// EUR-Lex 32016R0679 on 2026-10-20; national Art. 9(4) conditions not checked.
 /// </summary>
 public static class AttendeeQuestionRules
 {

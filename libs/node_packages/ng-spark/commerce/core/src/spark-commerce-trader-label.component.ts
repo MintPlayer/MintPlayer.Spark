@@ -4,7 +4,7 @@ import { TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
 import { CommerceSellerLabel } from './generated/contracts';
 
 /**
- * The seller label every listing shows (commerce #521 M4, GA5; CRD Art. 6a(1)(b)): whether the seller is
+ * The seller label every listing shows (commerce #521 M4, GA5; CRD Art. 6a(1)(b)–(c)): whether the seller is
  * a trader — for a private seller, that EU consumer-protection rights do not apply — linked to the
  * public trader page (`traderPageRoute` + organization id).
  */

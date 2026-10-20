@@ -113,8 +113,8 @@ public static class CommerceDocumentTypes
 
 /// <summary>
 /// The legal minimum a document type must be kept (§4.15). Commerce ships floors for its known types; a package that
-/// owns another type registers an <see cref="IRetentionFloorSource"/>. ⚠️ Floors are taken from the research and are
-/// to be confirmed per country (D37); a host's counsel overrides them with
+/// owns another type registers an <see cref="IRetentionFloorSource"/>. ⚠️ The EU-level floors were checked against EUR-Lex on
+/// 2026-10-20; national periods were not (D37); a host's counsel overrides them with
 /// <c>Spark:Commerce:Retention:ConfirmedFloors</c>.
 /// </summary>
 /// <param name="DocumentType">A <see cref="CommerceDocumentTypes"/> value or a package's own.</param>

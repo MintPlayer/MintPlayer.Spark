@@ -1,0 +1,55 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<OutputType>Library</OutputType>
+		<!-- The library's permanent alias (D31): part of its right keys and of the model ids it ships. -->
+		<SparkLibraryAlias>warehouse-outbound</SparkLibraryAlias>
+
+		<!-- NuGet Package Metadata -->
+		<PackageId>MintPlayer.Spark.Warehouse.Outbound</PackageId>
+		<Version>11.0.0-preview.1</Version>
+		<Authors>MintPlayer</Authors>
+		<Company>MintPlayer</Company>
+		<Description>Outbound for the MintPlayer.Spark warehouse: fulfilment-order intake with accept or reject and site routing; release (immediate, by waves at local cut-offs, or manual) respecting the shop's holds; FIFO, FEFO or closest allocation claimed under optimistic concurrency; discrete, batch, cluster and zone pick work routed by walk sequence; scan-to-confirm with batch leases and supervisor takeover; short picks with re-allocation and backorders; the cancellation handshake with put-backs; put-wall and consolidation-station bookkeeping; the fulfilment-status publication.</Description>
+		<PackageTags>warehouse;wms;outbound;picking;allocation;fefo;waves;consolidation;spark</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="README.md" Pack="true" PackagePath="\" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="MintPlayer.SourceGenerators" Version="13.0.0">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="13.0.0" GeneratePathProperty="true" />
+		<PackageReference Include="RavenDB.Client" Version="7.2.6" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- Package map (docs/warehouse_picking_PRD.md §4.1): the warehouse core (stock engine, tasks, owner links), its
+		     abstractions (strategies), Cron (waves) and Fulfilment.Contracts. No commerce package (coupling rule, W8). -->
+		<ProjectReference Include="..\core\MintPlayer.Spark.Warehouse.csproj" />
+		<ProjectReference Include="..\abstractions\MintPlayer.Spark.Warehouse.Abstractions.csproj" />
+		<ProjectReference Include="..\..\cron\MintPlayer.Spark.Cron\MintPlayer.Spark.Cron.csproj" />
+		<ProjectReference Include="..\..\fulfilment\contracts\MintPlayer.Spark.Fulfilment.Contracts.csproj" />
+		<ProjectReference Include="..\..\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
+		<!-- Spark's generators (the library layers) and analyzers. Analyzer ProjectReferences are not transitive. -->
+		<ProjectReference Include="..\..\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<InternalsVisibleTo Include="MintPlayer.Spark.Warehouse.Tests" />
+		<InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
+	</ItemGroup>
+
+</Project>

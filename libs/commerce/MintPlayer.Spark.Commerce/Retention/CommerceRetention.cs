@@ -3,10 +3,9 @@ using Microsoft.Extensions.Options;
 namespace MintPlayer.Spark.Commerce.Retention;
 
 /// <summary>
-/// Commerce's built-in retention floors (§4.15). ⚠️ None of these is legal advice, and each is marked unconfirmed until
-/// checked against the official text for the host's country (D37). The EUR-Lex pages could not be fetched from the
-/// environment this was written in (2026-10-19); the citations below are to the articles the gap analysis named and
-/// must be re-read before release. A host's counsel sets <c>Spark:Commerce:Retention:ConfirmedFloors</c>.
+/// Commerce's built-in retention floors (§4.15). ⚠️ None of these is legal advice. The EU citations below were checked
+/// against EUR-Lex on 2026-10-20 (D37; docs/guide-commerce-compliance.md); the national periods (the Belgian VAT Code,
+/// a member state's Art. 247 period, its DAC7 period within 5–10 years) were not. A host's counsel sets <c>Spark:Commerce:Retention:ConfirmedFloors</c>.
 /// </summary>
 internal sealed class CommerceRetentionFloors : IRetentionFloorSource
 {
@@ -29,14 +28,14 @@ internal sealed class CommerceRetentionFloors : IRetentionFloorSource
         yield return new(CommerceDocumentTypes.PriceHistory, TimeSpan.FromDays(30),
             "Price Indication Directive 98/6/EC Art. 6a(2): the prior price looks back at least 30 days", null, false);
 
-        // DAC7: records kept at least 5 and at most 10 years after the end of the reportable period (Directive (EU)
-        // 2021/514, Annex V). The PRD's "10 years" is the maximum; the floor is the minimum.
+        // DAC7: records kept at least 5 and at most 10 years after the end of the reportable period (Directive
+        // 2011/16/EU Annex V Section IV B(1), inserted by Directive (EU) 2021/514; checked against EUR-Lex 02011L0016-20260101). The PRD's "10 years" is the maximum; the floor is the minimum.
         yield return new(CommerceDocumentTypes.Dac7Records, TimeSpan.FromDays(1827),
-            "Directive (EU) 2021/514 (DAC7) Annex V: at least 5, at most 10 years after the reportable period", null, false);
+            "Directive (EU) 2021/514 (DAC7), Annex V Section IV B(1): at least 5, at most 10 years after the reportable period", null, false);
 
-        // DSA Art. 30(3): trader data kept for six months after the end of the contractual relationship, then deleted.
+        // DSA Art. 30(5) (checked against EUR-Lex 32022R2065, 2026-10-20): trader data kept for six months after the end of the contractual relationship, then deleted.
         yield return new(CommerceDocumentTypes.TraderData, TimeSpan.FromDays(183),
-            "Regulation (EU) 2022/2065 (DSA) Art. 30(3): 6 months after the relationship ends", null, false);
+            "Regulation (EU) 2022/2065 (DSA) Art. 30(5): 6 months after the relationship ends", null, false);
 
         // No statutory floor found for these; kept for the transparency report period (DSA Art. 15 and 24: yearly).
         yield return new(CommerceDocumentTypes.DsaNotices, TimeSpan.FromDays(366),

@@ -1,0 +1,6 @@
+# Spark security posture: every effective right and the layer it comes from.
+# --spark-synchronize-security writes this file; --spark-verify-security fails when it drifts.
+# Rows: group | effect | resource | key | layer | type (alias:Name for a library type, the id for the application's own, - for none)
+#
+# PLACEHOLDER (commerce M18, 2026-10-20): apps/Festival is new and its posture has not been generated yet. M22 runs
+# --spark-synchronize-security once and commits the real table; until then --spark-verify-security fails here by design.

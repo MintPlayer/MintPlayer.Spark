@@ -49,9 +49,8 @@ return Results.Redirect(payment.CheckoutUrl!);
   `CancelAsync(paymentId)`.
 - **Authorize-then-capture:** `Capture = PaymentCaptureMode.Manual`, then `CaptureAsync` or `VoidAsync`.
 - **GA11.** Nothing in this API takes a country: no method is hidden and no payment refused for the card's issuing
-  country, residence or nationality (Regulation (EU) 2018/302 Art. 5). A test guards it structurally. ⚠️ The EUR-Lex text
-  could not be fetched when this was written; the article's wording is quoted from the research and must be confirmed
-  (D37).
+  country, residence or nationality (Regulation (EU) 2018/302 Art. 5(1)). A test guards it structurally. Checked against EUR-Lex 32018R0302 on
+  2026-10-20.
 
 ## 3. Hear what happened
 

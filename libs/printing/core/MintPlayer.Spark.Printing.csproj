@@ -1,0 +1,55 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<OutputType>Library</OutputType>
+		<!-- The library's permanent alias (D31): part of its right keys and of the model ids it ships. -->
+		<SparkLibraryAlias>printing</SparkLibraryAlias>
+
+		<!-- NuGet Package Metadata -->
+		<PackageId>MintPlayer.Spark.Printing</PackageId>
+		<Version>11.0.0-preview.1</Version>
+		<Authors>MintPlayer</Authors>
+		<Company>MintPlayer</Company>
+		<Description>Printing for MintPlayer.Spark: printers from configuration, print jobs with idempotent ids and states (queued, delivered, printed, failed), routing by label kind, site and station, delivery to the browser's PDF print dialog, the on-site agent's endpoints (pull, acknowledge, heartbeat, scale readings) with exactly-once acknowledgement, a PDF fallback when an agent is offline, and the Printing_Jobs index. Label and document rendering come from MintPlayer.Spark.Printing.Rendering.</Description>
+		<PackageTags>printing;labels;zpl;pdf;print-agent;spark</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="README.md" Pack="true" PackagePath="\" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="11.4.1-rc.0" />
+		<PackageReference Include="MintPlayer.SourceGenerators" Version="13.0.0">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="13.0.0" GeneratePathProperty="true" />
+		<PackageReference Include="RavenDB.Client" Version="7.2.6" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- Generic (PRD §4.1): no warehouse and no commerce package. The agent authenticates with a Spark personal access
+		     token (Q-W14), by scheme name from configuration, so Authorization is not referenced either. -->
+		<ProjectReference Include="..\rendering\MintPlayer.Spark.Printing.Rendering.csproj" />
+		<ProjectReference Include="..\..\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
+		<!-- Spark's generators (the library layers) and analyzers. Analyzer ProjectReferences are not transitive. -->
+		<ProjectReference Include="..\..\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<InternalsVisibleTo Include="MintPlayer.Spark.Warehouse.Tests" />
+		<InternalsVisibleTo Include="MintPlayer.Spark.Printing.QzTray" />
+		<InternalsVisibleTo Include="MintPlayer.Spark.Printing.ZebraBrowserPrint" />
+		<InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
+	</ItemGroup>
+
+</Project>

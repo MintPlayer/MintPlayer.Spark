@@ -139,7 +139,7 @@ public sealed record SparkCheckoutSummary(
 /// <summary><c>POST /spark/commerce/checkout/place</c>: press "Order with obligation to pay".</summary>
 /// <param name="AcceptedDocumentIds">GA2: the ids of the documents accepted; must equal every required one in force.</param>
 /// <param name="AttestedMinimumAge">GB12: the age the buyer attests to (≥ the summary's minimum age).</param>
-/// <param name="MarketingOptIn">GA9: the soft opt-in checkbox (ePrivacy Art. 13(2)); recorded as a consent record.</param>
+/// <param name="MarketingOptIn">GA9: the marketing opt-in checkbox: consent (ePrivacy Art. 13(1)), stricter than the soft opt-in of Art. 13(2); recorded as a consent record.</param>
 /// <param name="AdmissionTokens">§4.6, §4.12: admission tokens by scope; they win over the ones the lines were added with.</param>
 /// <param name="Data">Data for the pre-payment checks (<see cref="ICheckoutPrePaymentCheck"/>), by key: Ticketing.Events reads <c>attendeeAnswers</c>.</param>
 /// <param name="Language">The buyer's language, for the consent texts the checks record.</param>

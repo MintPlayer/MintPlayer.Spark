@@ -149,14 +149,29 @@ public static partial class PromotionRules
         => quantity <= 0 ? [] : adjustment.Allocate(Enumerable.Repeat(1L, quantity).ToArray());
 
     /// <summary>
-    /// The start of the reduction a new sale belongs to (PID Art. 6a(5)): a sale that follows a previous one without a gap
-    /// and goes lower again continues its series, so the prior price stays the one before the first step. Otherwise it
-    /// starts a series of its own.
+    /// The start of the reduction a new sale belongs to. Where the member state adopted PID Art. 6a(5)
+    /// (<paramref name="progressive"/>, see <see cref="ProgressiveReductionApplies"/>), a sale that follows a previous
+    /// one without a gap and goes lower again continues its series, so the prior price stays the one before the first
+    /// step. Otherwise (the strict rule of Art. 6a(1)–(2), the default) every sale starts a series of its own.
     /// </summary>
-    public static DateTimeOffset SeriesStart(PromotionSalePrice? previous, DateTimeOffset validFrom, Money salePrice)
-        => previous is { Cancelled: false } p && p.ValidUntil >= validFrom && p.ValidFrom < validFrom && salePrice <= p.SalePrice
+    public static DateTimeOffset SeriesStart(PromotionSalePrice? previous, DateTimeOffset validFrom, Money salePrice, bool progressive)
+        => progressive && previous is { Cancelled: false } p && p.ValidUntil >= validFrom && p.ValidFrom < validFrom && salePrice <= p.SalePrice
             ? p.SeriesStart
             : validFrom;
+
+    /// <summary>
+    /// Whether the progressive-reduction rule of PID Art. 6a(5) applies to a seller (F5, EUR-Lex 01998L0006-20220528
+    /// checked 2026-10-20: "Member States may provide that, when the price reduction is progressively increased, the
+    /// prior price is the price without the price reduction before the first application of the price reduction"). It
+    /// is a member-state option, so it applies only where <paramref name="sellerCountry"/> (the offer's member state;
+    /// the platform's <paramref name="platformCountry"/> for its own items or a seller without a country) is listed in
+    /// <paramref name="adoptingStates"/> (<see cref="SalePriceOptions.ProgressiveReductionStates"/>, empty by default).
+    /// </summary>
+    public static bool ProgressiveReductionApplies(string? sellerCountry, string platformCountry, IEnumerable<string> adoptingStates)
+    {
+        var country = string.IsNullOrWhiteSpace(sellerCountry) ? platformCountry : sellerCountry.Trim();
+        return adoptingStates.Any(s => string.Equals(s?.Trim(), country, StringComparison.OrdinalIgnoreCase));
+    }
 
     /// <summary>
     /// The reduction announced against the prior price, in whole percent rounded down (so it never overstates): the

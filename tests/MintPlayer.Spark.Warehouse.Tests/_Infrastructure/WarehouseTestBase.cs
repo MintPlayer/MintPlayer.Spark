@@ -116,7 +116,13 @@ public abstract class WarehouseTestBase : SparkTestDriver
         services.AddScoped<IBarcodeResolutionStep, RegistryBarcodeStep>();
         services.AddScoped<IWarehouseTasks, WarehouseTasks>();
         services.AddScoped<IWarehouseReplenishment, WarehouseReplenishment>();
+        AddServices(services);
         return services.BuildServiceProvider();
+    }
+
+    /// <summary>A package's tests add its services here (WM4+: Inbound, Outbound, Packing, Counting), after the core's.</summary>
+    protected virtual void AddServices(IServiceCollection services)
+    {
     }
 
     // --- seeding -------------------------------------------------------------------------------------------------

@@ -84,7 +84,7 @@ public sealed class SellerProfile
     public string? AcceptedPlatformTermsId { get; set; }
 
     /// <summary>When the relationship with the platform ended (the organization was deleted or the seller left). Trader
-    /// data is deleted 6 months later (DSA Art. 30(3)).</summary>
+    /// data is deleted 6 months later (DSA Art. 30(5)).</summary>
     public DateTimeOffset? RelationshipEndedAt { get; set; }
 
     /// <summary>When the trader data was erased by the retention sweep.</summary>
@@ -145,7 +145,7 @@ public sealed class TraderData
     }
 }
 
-/// <summary>DAC7 seller data (Directive (EU) 2021/514, Annex V, Section II; confirm per member state, D37).</summary>
+/// <summary>DAC7 seller data (Directive 2011/16/EU Annex V Section II, inserted by Directive (EU) 2021/514; checked against EUR-Lex 02011L0016-20260101, 2026-10-20; national transposition not checked).</summary>
 public sealed class Dac7Data
 {
     /// <summary>Whether the seller is an entity (true) or an individual.</summary>

@@ -396,8 +396,9 @@ public sealed record AdmissionDecision(bool Admitted, string? Reason = null)
 /// A ticket-insurance adapter (GC4): offers a cancellation cover as an optional line. The insurer, not the seller,
 /// handles claims. Registered by an adapter package (<c>AddTestInsurance()</c> in <c>MintPlayer.Spark.Commerce.Checkout.Test</c>);
 /// <c>Spark:Commerce:Checkout:Insurance:Provider</c> picks one when several are registered. Never pre-ticked and shown
-/// only after the main price (UCPD Directive 2005/29/EC Annex I point 29 / Art. 6–7 and CRD Art. 22 on pre-ticked
-/// boxes: an additional payment needs the consumer's express consent; ⚠️ confirm against EUR-Lex, D37).
+/// only after the main price (CRD Art. 22: an extra payment needs the consumer's express consent, and one inferred from
+/// a default the consumer must reject is to be reimbursed; checked against EUR-Lex 02011L0083-20260927, 2026-10-20;
+/// UCPD Art. 6–7 for how the offer is presented).
 /// </summary>
 public interface IInsuranceProvider
 {

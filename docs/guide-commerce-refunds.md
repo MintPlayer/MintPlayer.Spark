@@ -182,19 +182,20 @@ there returns everything paid for those lines, fees included.
 
 ## 9. Legal rules and what is still to confirm (D37)
 
-The rules follow the texts below. **EUR-Lex could not be read from the build environment on 2026-10-19:** the page
-came back empty to the fetcher. Every rule therefore carries ⚠️ *confirm against EUR-Lex*.
+The rules follow the texts below, **checked against EUR-Lex on 2026-10-20** (CRD 02011L0083-20260927, Directive
+(EU) 2019/771 02019L0771-20260731, Regulation 1182/71 31971R1182). National transpositions were not checked; see
+the compliance table in [guide-commerce-compliance.md](guide-commerce-compliance.md).
 
 | Rule | Source |
 |---|---|
-| Withdrawal function: label, confirmation step, acknowledgement with date and time on a durable medium. Applies from 19 June 2026 | ⚠️ CRD Art. 11a, inserted by Directive (EU) 2023/2673. Confirm the exact wording and the date |
-| 14 days from receipt of the (last) goods; live before delivery | CRD Art. 9(2)(b), 9(3) |
-| Day counting | Reg. (EEC, Euratom) 1182/71 Art. 3 (CRD recital 41). Public holidays (Art. 3(4)) only with a registered calendar and `Refunds:HolidayCountry`; default weekend-only. ⚠️ Art. 3(4) takes the holidays of the member state where the act is done: confirm per country which one applies (seller's vs buyer's) |
+| Withdrawal function: label, confirmation step, acknowledgement with date and time on a durable medium. Applies from 19 June 2026 | CRD Art. 11a(1)–(5), inserted by Directive (EU) 2023/2673 (applies from 19 June 2026, its Art. 2(1)). The acknowledgement is Art. 11a(4); 11a(3) is the confirmation function ("confirm withdrawal") |
+| 14 days from receipt of the (last) goods; live before delivery | CRD Art. 9(1), 9(2)(b)(i)–(ii). Withdrawing before delivery is not in Art. 9's text (Art. 9(3) only lets the parties perform during the period); the library allows it |
+| Day counting | Reg. (EEC, Euratom) 1182/71 Art. 3 (CRD recital 41). Public holidays (Art. 3(4)) only with a registered calendar and `Refunds:HolidayCountry`; default weekend-only. ⚠️ Art. 2(1): the holidays "in the Member State … in which action is to be taken". The withdrawal is the buyer's act, so the buyer's member state's holidays arguably apply; the single `HolidayCountry` is a simplification |
 | Refund within 14 days, standard delivery only, withholding until goods back or proof of dispatch | CRD Art. 13(1)–(3) |
 | Return cost and diminished value | CRD Art. 14(1)–(2) |
 | Exemptions (dated leisure services, …) | CRD Art. 16. ⚠️ An item-level exemption comes from `IRefundTermsSource` |
 | Partial withdrawal and delivery cost | ⚠️ Not settled by Art. 13. Confirm against the Commission's CRD guidance and national law; configurable |
-| Guarantee period of at least 2 years; remedies hierarchy; free of charge, seller takes back; termination refund after goods back | Directive (EU) 2019/771 Art. 10, 13, 14, 16. ⚠️ Confirm the national period (Art. 10(3)) per member state. Art. 13(5) (no termination for a minor lack of conformity) is staff judgement, not checked |
+| Guarantee period of at least 2 years; remedies hierarchy; free of charge, seller takes back; termination refund after goods back | Directive (EU) 2019/771 Art. 10, 13, 14, 16. ⚠️ The national period (Art. 10(3)) was not checked. Not modelled: Art. 10(2a) (Directive (EU) 2024/1799) extends the period once by 12 months after a repair, and "two years" is 731 days across a 29 February while the default is 730 days. Art. 13(5) (no termination for a minor lack of conformity) is staff judgement, not checked |
 | The mail body as a durable medium | The receipt is the mail body, with the same content attached as a PDF when Invoicing is installed (`ICheckoutMailAttachments`, Q-O9) |
 
 ## 10. Tests

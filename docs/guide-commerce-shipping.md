@@ -127,8 +127,10 @@ An added parcel follows the same path; a refused one is removed again. Carriers 
 parcel of several.
 
 **Customs (GB6).** Customs apply when either end is outside the EU customs territory (Regulation (EU) No 952/2013,
-Art. 4) or outside the VAT territory (Canary Islands, Åland, Mount Athos: a declaration for fiscal purposes). The
-postal-code exceptions in `Customs:TerritoryExceptions` are a starting point to confirm per country (D37). Every line
+Art. 4) or outside the VAT territory (Canary Islands, Åland, Mount Athos: a declaration for fiscal purposes). Art. 4
+was checked against EUR-Lex 32013R0952 on 2026-10-20: **Monaco** (Art. 4(2)(a)) and the UK Sovereign Base Areas in
+Cyprus are part of the customs territory but missing from the default list; add `MC` to `Customs:CustomsTerritory` if
+you ship there. The postal-code exceptions in `Customs:TerritoryExceptions` were not checked per country. Every line
 needs an HS code (6, 8 or 10 digits), a country of origin, a value and a weight (Shop stores them per product or
 variant, M12); commercial goods need an invoice number. The document follows the service: letter post CN22 up to
 `Cn22MaxValue` (the UPU limit is 300 SDR; the default 300 EUR stays below it) and CN23 above, postal parcels CN23,

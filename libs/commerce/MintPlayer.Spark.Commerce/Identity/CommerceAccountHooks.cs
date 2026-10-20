@@ -53,7 +53,7 @@ internal sealed class CommerceAccountDeletion<TUser>(IDocumentStore store) : ISp
 
 /// <summary>
 /// An organization's deletion ends its relationship with the platform: the seller profile is kept, with
-/// <see cref="SellerProfile.RelationshipEndedAt"/> set, so the trader data survives the 6 months DSA Art. 30(3)
+/// <see cref="SellerProfile.RelationshipEndedAt"/> set, so the trader data survives the 6 months DSA Art. 30(5)
 /// requires and DAC7 records their floor; the retention job erases it after. Export returns the profile without the
 /// identity document.
 /// </summary>

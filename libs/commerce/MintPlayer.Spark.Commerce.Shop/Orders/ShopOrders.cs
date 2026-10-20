@@ -338,7 +338,7 @@ internal sealed class ShopOrders(
             // (a line split over parcels is also "multiple lots or pieces", Art. 9(2)(b)(ii)); Checkout starts the
             // period at the latest delivery of every goods line of the whole order, across sellers
             // (RefundMath.WithdrawalPeriodStart; decision D44 in commerce_PRD §13). The legal guarantee runs per line
-            // from its delivery (Directive (EU) 2019/771 Art. 10(1)). Both citations unconfirmed against EUR-Lex (D37).
+            // from its delivery (Directive (EU) 2019/771 Art. 10(1)). Both checked against EUR-Lex 2026-10-20.
             await refunds.MarkDeliveredAsync(shopOrder.OrderId, line.LineId, at, cancellationToken);
         }
         if (shopOrder.Lines.Where(l => !l.Cancelled).All(l => l.DeliveredAt is not null))

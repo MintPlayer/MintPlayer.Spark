@@ -134,7 +134,7 @@ public static class SparkCommerceShopExtensions
             problems.Add($"{root}:ShardsPerQuota must be at least 1.");
         if (options.LowStockThreshold < 0)
             problems.Add($"{root}:LowStockThreshold cannot be negative.");
-        // Directive (EU) 2019/771 Art. 10(1): at least two years (a member state may set longer, Art. 10(3); unconfirmed, D37).
+        // Directive (EU) 2019/771 Art. 10(1): at least two years (a member state may set longer, Art. 10(3); checked against EUR-Lex 02019L0771-20260731, 2026-10-20).
         if (options.LegalGuaranteeMonths < 24)
             problems.Add($"{root}:LegalGuaranteeMonths must be at least 24 (Directive (EU) 2019/771 Art. 10(1)).");
         if (options.Delivery.ChoiceLifetime <= TimeSpan.Zero)

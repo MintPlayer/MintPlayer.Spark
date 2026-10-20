@@ -106,7 +106,7 @@ public enum RefundPolicyKind
     WithFee,
 }
 
-/// <summary>Whether a seller acts as a trader (CRD Art. 6a(1)(b), as inserted by Directive (EU) 2019/2161). Shown on
+/// <summary>Whether a seller acts as a trader (CRD Art. 6a(1)(b)–(c), as inserted by Directive (EU) 2019/2161). Shown on
 /// every listing (GA5): consumer-protection law does not apply to a consumer-to-consumer sale.</summary>
 public enum TraderStatus
 {

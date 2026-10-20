@@ -16,8 +16,8 @@ public sealed record CommerceValidationResult(IReadOnlyList<string> Errors, IRea
 /// pattern): a refusal throws before the app serves a request, so a misconfigured scenario never sells.
 /// </summary>
 /// <remarks>
-/// Legal citations are to the articles the gap analysis named; each is to be re-read against EUR-Lex before release
-/// (D37). The geo-blocking check validates configuration only; it does not judge custom code.
+/// Legal citations were checked against EUR-Lex on 2026-10-20 (D37; the table is in docs/guide-commerce-compliance.md).
+/// The geo-blocking check validates configuration only; it does not judge custom code.
 /// </remarks>
 public static class CommerceStartupValidation
 {

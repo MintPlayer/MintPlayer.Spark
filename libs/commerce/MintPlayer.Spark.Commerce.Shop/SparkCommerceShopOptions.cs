@@ -37,7 +37,8 @@ public sealed class SparkCommerceShopOptions : ISparkConfigurationSection
     /// <summary>
     /// GA8: the legal-guarantee notice per language (<c>{ "en": "…", "nl": "…" }</c>) shown on product pages and attached
     /// to the order confirmation; null takes the library's text. Replace it with the Commission's harmonised notice
-    /// (CRD Art. 22a as inserted by Directive (EU) 2024/825; unconfirmed, D37) once published.
+    /// (CRD Art. 6(1)(l) and 22a as amended by Directive (EU) 2024/825; published as Implementing Regulation (EU) 2025/1960,
+    /// applying from 27 September 2026; checked against EUR-Lex 2026-10-20).
     /// </summary>
     public Dictionary<string, string>? GuaranteeNotice { get; set; }
 

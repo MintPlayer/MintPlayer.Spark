@@ -41,6 +41,8 @@ export const APP_NAVIGATION_URLS = {
   SeoTester: ['!/bot', '!/privacy', '!/terms'],
   // The public reference-data API (/api/v1) and the health check are the server's (docs/reference_data_PRD.md §4.16).
   ReferenceData: ['!/api', '!/api/**', '!/health', '!/health/**'],
+  // The festival demo (commerce M18): its health check is the server's.
+  Festival: ['!/health', '!/health/**'],
 };
 
 /** Every directory under apps/ named ClientApp that holds an Angular project.json. */
@@ -63,9 +65,9 @@ const appName = (clientApp) => path.relative(path.join(REPO, 'apps'), clientApp)
 
 const clientApps = findClientApps();
 
-test('finds the eight Spark apps', () => {
+test('finds the nine Spark apps', () => {
   const names = clientApps.map(appName);
-  for (const name of ['CodeCoverage', 'DemoApp', 'Fleet', 'HR', 'QnA', 'ReferenceData', 'SeoTester', 'SparkId']) {
+  for (const name of ['CodeCoverage', 'DemoApp', 'Festival', 'Fleet', 'HR', 'QnA', 'ReferenceData', 'SeoTester', 'SparkId']) {
     assert.ok(names.includes(name), `no ClientApp found for ${name} (found: ${names.join(', ')})`);
   }
 });

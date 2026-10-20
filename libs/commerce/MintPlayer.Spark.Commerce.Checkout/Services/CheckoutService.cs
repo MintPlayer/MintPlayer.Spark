@@ -624,7 +624,9 @@ internal sealed class CheckoutService(
                 b.PendingOrderId = order.Id;
         }, cancellationToken);
 
-        // GA9: the soft opt-in, recorded as a consent record (ePrivacy Art. 13(2); ⚠️ confirm against EUR-Lex, D37).
+        // GA9: an unticked opt-in box, recorded as a consent record. That is prior consent (ePrivacy Art. 13(1)), stricter
+        // than the soft opt-in of Art. 13(2), which only needs a free and easy objection at collection and in every message
+        // (checked against EUR-Lex 02002L0058-20091219, 2026-10-20).
         if (request.MarketingOptIn && services.GetService<ISparkConsent>() is { } consent)
         {
             var subject = buyer.UserId is { } account ? SparkConsentSubject.Account(account) : SparkConsentSubject.Email(email);

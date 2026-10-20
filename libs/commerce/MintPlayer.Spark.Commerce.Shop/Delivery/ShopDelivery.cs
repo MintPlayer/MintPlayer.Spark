@@ -164,7 +164,7 @@ internal sealed class ShopDeliveryPricingStep(
                 rate.Price,
                 "commerceShop.delivery.extra",
                 ShopChoices.Source,
-                VatCategory: null, // ancillary to the goods: Invoicing follows the principal supply (VAT Directive Art. 78(b); confirm per case, D37)
+                VatCategory: null, // ancillary to the goods: Invoicing follows the principal supply (VAT Directive Art. 78(b): transport costs charged to the customer belong to the taxable amount; checked 2026-10-20)
                 Reference: choice.Id));
         }
     }

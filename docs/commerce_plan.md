@@ -34,6 +34,7 @@ The order of work for [commerce_PRD.md](commerce_PRD.md). The PRD carries the de
   - [x] PRD §13: S7, S12–S15 rows and D44 (CRD Art. 9(2)(b)(i)).
 - **Not started:** M11 fulfilment (shop side), WM3–WM9, M17, M18, M20 rest, M21, M22, EUR-Lex verification of every legal citation (EUR-Lex blocks automated fetches: use a real browser through Playwright).
 - **Done on resume (2026-10-20):** the WIP compile errors are fixed and WM1 (the replication redesign) is committed. The contracts regenerate, ng-spark build, app `tsc` and per-app verify gates run only in M22 (owner, 2026-10-20: no interim build or test runs).
+- **PAUSED 2026-10-20 (owner out of tokens).** Committed locally, not pushed: 13cd1a59 (WM1), 58c976a1 (M12, M15, S9, integration batch, WM2), c5568474 (M11 fulfilment, M17, WM3, X20.2, row filter). Uncommitted and interrupted mid-edit (may not compile): warehouse WM4/WM6/WM8 (printing packages QzTray/Zebra were being written), WM5/WM7 (separate packages warehouse-outbound and warehouse-packing), M18 demo app, and the fixes for the EUR-Lex findings F1–F9 (docs/guide-commerce-compliance.md; F9 extended: model EU VAT territory and customs territory/customs union separately, enclaves by postcode — Livigno, Campione, Büsingen, Heligoland, Mount Athos, Ceuta/Melilla, Canaries, French DOMs, Åland; Monaco as FR, San Marino customs union, Vatican outside both). Remaining after those: WM9, WM11, WM12/M21 docs, national transpositions, M22 sweep.
 
 ## Rules for executing this plan
 

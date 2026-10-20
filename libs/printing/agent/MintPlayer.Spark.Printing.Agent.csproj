@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<OutputType>Exe</OutputType>
+		<RootNamespace>MintPlayer.Spark.Printing.Agent</RootNamespace>
+
+		<!-- Distributed as a dotnet tool that installs itself as a Windows service or a systemd unit (Q-W14). -->
+		<PackAsTool>true</PackAsTool>
+		<ToolCommandName>spark-print-agent</ToolCommandName>
+
+		<!-- NuGet Package Metadata -->
+		<PackageId>MintPlayer.Spark.Printing.Agent</PackageId>
+		<Version>11.0.0-preview.1</Version>
+		<Authors>MintPlayer</Authors>
+		<Company>MintPlayer</Company>
+		<Description>The on-site print agent for MintPlayer.Spark.Printing: connects out to the app with a personal access token, pulls its printers' jobs, sends ZPL or raw data to LAN printers on TCP 9100, keeps a local journal so each job id prints once and is acknowledged exactly once, reads a network scale, sends heartbeats and checks for updates. Install with `dotnet tool install -g MintPlayer.Spark.Printing.Agent`, then `spark-print-agent install`.</Description>
+		<PackageTags>printing;print-agent;zpl;raw-tcp;9100;labels;spark</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="README.md" Pack="true" PackagePath="\" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- Hosting, configuration, logging and HttpClient come with the ASP.NET Core shared framework; the agent references
+		     no Spark or RavenDB package: it speaks to the app over HTTP only (PRD §4.1: "client of Printing"). -->
+		<FrameworkReference Include="Microsoft.AspNetCore.App" />
+		<PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.11" />
+		<PackageReference Include="Microsoft.Extensions.Hosting.Systemd" Version="10.0.11" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<InternalsVisibleTo Include="MintPlayer.Spark.Warehouse.Tests" />
+	</ItemGroup>
+
+</Project>

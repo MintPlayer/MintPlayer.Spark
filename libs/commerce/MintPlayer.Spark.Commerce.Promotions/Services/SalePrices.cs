@@ -16,9 +16,11 @@ public sealed record SalePriceRequest(string ItemId, Money SalePrice, DateTimeOf
 /// Art. 6a, inserted by Directive (EU) 2019/2161 Art. 2). A sale is a price change, not a code: its start and end are
 /// appended to Commerce's price history (<see cref="ISparkPriceHistory"/>), and whenever a storefront announces the
 /// reduction it shows the lowest final price of the 30 days before it (Art. 6a(1)–(2)); a progressive reduction keeps
-/// the reference of its first step (Art. 6a(5)); perishable goods may be exempted per item (Art. 6a(3), a member-state
-/// option). ⚠️ Confirm Art. 6a's wording and the Commission guidance (2021/C 526/02) against EUR-Lex, and the
-/// member-state options per country (D37): this agent could not fetch EUR-Lex.
+/// the reference of its first step only where the seller's member state adopted Art. 6a(5)
+/// (<see cref="SalePriceOptions.ProgressiveReductionStates"/>, empty by default); perishable goods may be exempted per
+/// item (Art. 6a(3), a member-state option). Art. 6a checked against EUR-Lex 01998L0006-20220528 on 2026-10-20.
+/// ⚠️ Art. 6a(3), (4) and (5) are member-state options ("Member States may provide"). National texts and the
+/// Commission guidance (2021/C 526/02) were not checked (D37).
 /// </summary>
 public interface ISparkSalePrices
 {
@@ -54,6 +56,8 @@ internal sealed class SalePrices(
     Services.PromotionItems items,
     IFinalPriceCalculator calculator,
     ICommercePriceDisplay display,
+    Microsoft.Extensions.Options.IOptionsMonitor<SparkCommercePromotionsOptions> promotionOptions,
+    Microsoft.Extensions.Options.IOptions<SparkCommerceOptions> commerceOptions,
     TimeProvider clock) : ISparkSalePrices
 {
     public async Task<PromotionSalePrice> ScheduleAsync(SalePriceRequest request, string? actorId, CancellationToken cancellationToken = default)
@@ -71,6 +75,11 @@ internal sealed class SalePrices(
         if (existing.Any(s => !s.Cancelled && s.ValidFrom < request.ValidUntil && request.ValidFrom < s.ValidUntil))
             throw new PromotionException(PromotionRefusals.SaleOverlaps, request.ItemId);
         var previous = existing.Where(s => !s.Cancelled && s.ValidUntil <= request.ValidFrom).MaxBy(s => s.ValidUntil);
+        // PID Art. 6a(5) is a member-state option: keyed by the seller's country (the platform's for its own items).
+        var sellerCountry = item.OrganizationId is { } organizationId
+            ? (await session.LoadAsync<Commerce.Models.SellerProfile>(Commerce.Models.SellerProfile.IdFor(organizationId), cancellationToken))?.Trader.Country
+            : null;
+        var progressive = PromotionRules.ProgressiveReductionApplies(sellerCountry, commerceOptions.Value.Country, promotionOptions.CurrentValue.SalePrices.ProgressiveReductionStates);
 
         var sale = new PromotionSalePrice
         {
@@ -84,7 +93,7 @@ internal sealed class SalePrices(
             VatRateBasisPoints = item.VatRateBasisPoints,
             ValidFrom = request.ValidFrom,
             ValidUntil = request.ValidUntil,
-            SeriesStart = PromotionRules.SeriesStart(previous, request.ValidFrom, request.SalePrice),
+            SeriesStart = PromotionRules.SeriesStart(previous, request.ValidFrom, request.SalePrice, progressive),
             PerishableExempt = request.PerishableExempt,
             CreatedBy = actorId,
             CreatedAt = clock.GetUtcNow(),

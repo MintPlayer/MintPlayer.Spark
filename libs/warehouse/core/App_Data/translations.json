@@ -14,7 +14,8 @@
       "ReasonRequired": { "en": "An adjustment needs a valid reason code ({0}).", "fr": "Un ajustement exige un code motif valide ({0}).", "nl": "Een correctie vraagt een geldige redencode ({0})." },
       "LotMismatch": { "en": "{0}", "fr": "{0}", "nl": "{0}" },
       "InvalidQuantity": { "en": "{0}", "fr": "{0}", "nl": "{0}" },
-      "OpIdReused": { "en": "{0}", "fr": "{0}", "nl": "{0}" }
+      "OpIdReused": { "en": "{0}", "fr": "{0}", "nl": "{0}" },
+      "Declined": { "en": "{0}", "fr": "{0}", "nl": "{0}" }
     }
   },
   "actions": {

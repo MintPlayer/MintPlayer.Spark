@@ -151,8 +151,8 @@ internal sealed class FulfilmentSync(
         var address = link.ShipToOverride ?? FulfilmentContractBuilder.Address(shopOrder);
         var plan = FulfilmentPlanner.Plan(lines, views, address is null ? null : FulfilmentPlanner.AddressKey(address), now);
 
-        // Units the warehouse cancelled on its own are refunded at once (lead decision 2026-10-20; CRD Art. 18, Art. 13 for
-        // the delivery cost, both unconfirmed, D37). The refund keeps them sold in Checkout (a stock-feed line); they are
+        // Units the warehouse cancelled on its own are refunded at once (lead decision 2026-10-20; CRD Art. 18(3), "all sums
+        // paid under the contract", delivery included; checked against EUR-Lex 02011L0083-20260927, 2026-10-20). The refund keeps them sold in Checkout (a stock-feed line); they are
         // restocked below like any unshipped refund, once nothing can ship them (§4.4 rule 1). Only a refused refund is
         // left to staff (the attention flag).
         if (plan.Lines.Any(l => l.Value.Undeliverable > 0)

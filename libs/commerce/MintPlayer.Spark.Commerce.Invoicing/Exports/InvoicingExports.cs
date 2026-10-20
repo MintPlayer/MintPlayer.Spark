@@ -113,10 +113,10 @@ internal sealed class InvoicingExports(
     /// <summary>
     /// The DAC7 figures of every seller for <paramref name="year"/> (only meaningful in <c>ConnectedSellers</c> mode):
     /// consideration (gross paid, net of credit notes), number of relevant activities (lines sold) and the platform's
-    /// fees per quarter (Annex V Section III B(2)(a)(iii)–(iv)). Sale of goods and the categories the host marks
+    /// fees per quarter (Annex V Section III B(2)(e)–(f)). Sale of goods and the categories the host marks
     /// <see cref="VatCategoryOptions.PersonalService"/> count; ticket sales are flagged "probably out of scope" until
     /// <see cref="Dac7ReportOptions.TicketSalesInScope"/> (D37). An excluded seller (fewer than 30 activities and at most
-    /// EUR 2 000 consideration, Annex V Section I A(4)(d)) is marked, not dropped (§4.8).
+    /// EUR 2 000 consideration, Annex V Section I B(4)(d)) is marked, not dropped (§4.8).
     /// </summary>
     public async Task<IReadOnlyList<Dac7SellerRow>> Dac7Async(int year, CancellationToken cancellationToken)
     {
