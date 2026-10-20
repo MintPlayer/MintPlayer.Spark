@@ -171,8 +171,14 @@ Refunds, cancellations, the withdrawal function (GA1), guarantee claims (GA8) an
 too (Promotions keys them by account, else address, else visitor). After every step ran, each line's `Net` and `Vat`
 are recomputed from its adjusted total (S21): the goods' amount is the line total minus its mandatory fees, its VAT is
 extracted once with `Money.RoundDiv` (a Net-priced item prefers the net whose VAT adds up exactly), per line or, with
-`VatRounding: PerGroup`, once per rate group split by largest remainder. An unadjusted line keeps the calculator's
-split. The order line stores these figures; Invoicing re-splits the paid amounts per group on its documents (strategy H
+`VatRounding: PerGroup`, once per rate group split by largest remainder. An order-level discount (a `Discount` extra)
+is first spread over the lines' goods amounts by largest remainder (`Money.Allocate`, the same split Invoicing makes);
+each line's VAT base is its goods amount plus that share (`PricedLine.OrderDiscount`). A line with neither an
+adjustment nor a share keeps the calculator's split. The order line stores these figures, the share included
+(`CheckoutOrderLine.OrderDiscount`, so `Net + Vat = Total − fees + OrderDiscount`); every reader of line amounts goes
+through `CheckoutOrderLineAmounts` (`Charged()`, `ChargedGoods()`): refunds and withdrawals, a refused line's refund
+(its share leaves with it), payment splits, the buyers export, affiliate attribution, the resale cap, and Invoicing,
+which puts each line's stored share on the invoice instead of spreading the discount again. Invoicing re-splits the paid amounts per group on its documents (strategy H
 mirrors them on credit notes).
 
 **Reservations a step makes, and how they lapse.** A step is side-effect free while quoting (`Placing` false). When

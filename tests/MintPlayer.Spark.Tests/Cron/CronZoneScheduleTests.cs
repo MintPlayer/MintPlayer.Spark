@@ -306,12 +306,25 @@ public class CronZoneScheduleTests
     public void Configuration_with_valid_entries_passes_validation()
     {
         var builder = new TestBuilder();
-        builder.AddCron();
+        builder.AddCron(cron => cron.AddJob<UtcJob>("0 0 * * *", "waves"));
         builder.Services.Configure<SparkCronOptions>(o =>
             o.Jobs["waves"] = new SparkCronJobOptions { Schedule = "0 15 * * 1-5", TimeZone = "Europe/Brussels" });
 
         builder.Services.BuildServiceProvider().GetRequiredService<IOptions<SparkCronOptions>>().Value
             .Jobs["waves"].TimeZone.Should().Be("Europe/Brussels");
+    }
+
+    [Fact]
+    public void Configuration_naming_no_registered_job_fails_validation()
+    {
+        var builder = new TestBuilder();
+        builder.AddCron(cron => cron.AddJob<UtcJob>("0 0 * * *", "waves"));
+        builder.Services.Configure<SparkCronOptions>(o =>
+            o.Jobs["Waves"] = new SparkCronJobOptions { TimeZone = "Europe/Brussels" });
+
+        var act = () => builder.Services.BuildServiceProvider().GetRequiredService<IOptions<SparkCronOptions>>().Value;
+
+        act.Should().Throw<OptionsValidationException>().WithMessage("*Spark:Cron:Jobs:Waves names no registered cron job*");
     }
 }
 

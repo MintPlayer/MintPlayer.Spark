@@ -884,6 +884,66 @@ describe('SparkPoFormComponent', () => {
     });
   });
 
+  describe('hierarchical single reference (referenceTree, WX9)', () => {
+    const locationAttr = attr({
+      id: 'a-location', name: 'Location', dataType: 'Reference', query: 'LocationQuery', referenceType: 'Test.Location', order: 1,
+      referenceTree: { parentAttribute: 'Parent', childCountAttribute: 'ChildCount' },
+    });
+    const flatAttr = attr({ id: 'a-owner', name: 'Owner', dataType: 'Reference', query: 'OwnerQuery', order: 2 });
+    const stockType: EntityType = {
+      id: 't-stock', name: 'Stock', clrType: 'Test.Stock',
+      attributes: [locationAttr, flatAttr],
+      tabs: [], groups: [],
+    };
+    const locations = [{ id: 'locations/A', breadcrumb: 'Aisle A', values: [{ key: 'ChildCount', value: 3 }] }] as any[];
+
+    async function mounted() {
+      const result = createComponent({
+        executeQueryByName: vi.fn((name: string) => Promise.resolve({ columns: [], items: name === 'LocationQuery' ? locations : [], totalItems: 1 })),
+      } as any);
+      await setEntityType(result.fixture, stockType);
+      return result;
+    }
+
+    it('gets a lazy tree provider; a single reference without referenceTree keeps the flat picker', async () => {
+      const { component } = await mounted();
+
+      expect(component.isTreeReference(locationAttr)).toBe(true);
+      expect(component.isTreeReference(flatAttr)).toBe(false);
+      expect(component.getReferenceProvider(locationAttr)).toBeDefined();
+      expect(component.getReferenceProvider(flatAttr)).toBeUndefined();
+    });
+
+    it('loads the roots with the parent filter and children on expand', async () => {
+      const { component, service } = await mounted();
+      const signal = new AbortController().signal;
+      const provider = component.getReferenceProvider(locationAttr)!;
+
+      const roots = await provider.loadRoots({ offset: 0, signal });
+      expect(service.executeQueryByName).toHaveBeenLastCalledWith('LocationQuery', expect.objectContaining({
+        columns: [{ name: 'Parent', includes: [null] }],
+      }));
+      expect(roots.nodes).toEqual([{ id: 'locations/A', label: 'Aisle A', lazy: true }]);
+
+      await provider.loadChildren!('locations/A', { offset: 0, signal });
+      expect(service.executeQueryByName).toHaveBeenLastCalledWith('LocationQuery', expect.objectContaining({
+        columns: [{ name: 'Parent', includes: ['locations/A'] }],
+      }));
+    });
+
+    it('stores one id (or null) and resolves it back to one node', async () => {
+      const { component } = await mounted();
+
+      component.onReferenceTreeChange(locationAttr, { id: 'locations/A/01', label: 'A-01' } as any);
+      expect(component.formData()['Location']).toBe('locations/A/01');
+      expect(component.referenceTreeValues()['Location']).toEqual([{ id: 'locations/A/01', label: 'A-01' }]);
+
+      component.onReferenceTreeChange(locationAttr, null);
+      expect(component.formData()['Location']).toBeNull();
+      expect(component.referenceTreeValues()['Location']).toEqual([]);
+    });
+  });
+
   describe('a row picked past the first options page', () => {
     const picked = { id: 'companies/77', breadcrumb: 'Umbrella', values: [] } as any;
 

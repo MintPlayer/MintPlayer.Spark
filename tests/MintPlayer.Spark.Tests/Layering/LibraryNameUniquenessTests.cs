@@ -52,6 +52,20 @@ public class LibraryNameUniquenessTests
         duplicates.Should().BeEmpty("two classes with one simple name share a RavenDB collection, ids included");
     }
 
+    [Fact]
+    public void Each_clr_type_is_mapped_by_one_library_type()
+    {
+        var duplicates = LibraryTypes()
+            .Select(t => (t.Library, t.Name, ClrType: JsonNode.Parse(t.Json)?["persistentObject"]?["clrType"]?.GetValue<string>()))
+            .Where(t => t.ClrType is not null)
+            .GroupBy(t => t.ClrType!, StringComparer.Ordinal)
+            .Where(g => g.Count() > 1)
+            .Select(g => $"{g.Key}: {string.Join(", ", g.Select(t => $"{t.Name} ({t.Library})"))}")
+            .ToList();
+
+        duplicates.Should().BeEmpty("Spark resolves AsDetail rows, references and mapping by CLR type, first match wins");
+    }
+
     private static string SimpleName(string clrType)
     {
         var name = clrType[(clrType.LastIndexOf('.') + 1)..];

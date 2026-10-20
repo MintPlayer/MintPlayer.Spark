@@ -1,0 +1,121 @@
+@if (ticket(); as t) {
+  <article class="spark-ticket" [attr.data-status]="t.status" [style]="style()">
+    <header class="spark-ticket-header" [style.background-image]="t.template.backgroundUrl ? 'url(' + t.template.backgroundUrl + ')' : null">
+      @if (t.template.logoUrl) {
+        <img class="spark-ticket-logo" [src]="t.template.logoUrl" alt="" />
+      }
+      <h1>{{ t.eventName | resolveTranslation }}</h1>
+      <p class="spark-ticket-type">{{ t.ticketTypeName | resolveTranslation }}</p>
+    </header>
+
+    @if (t.status === 'OnHold') {
+      <p class="spark-ticket-state spark-ticket-onhold" role="status">{{ 'ticketingTickets.onHold' | t }}</p>
+    } @else if (t.status === 'Revoked') {
+      <p class="spark-ticket-state spark-ticket-revoked" role="status">{{ 'ticketingTickets.revoked' | t }}</p>
+    }
+
+    <section class="spark-ticket-code">
+      @if (qr(); as code) {
+        <div class="spark-ticket-qr" role="img" [attr.aria-label]="t.code" [innerHTML]="code"></div>
+        <p class="spark-ticket-number">{{ t.code }}</p>
+      } @else if (!t.available && t.availableFrom) {
+        <p class="spark-ticket-available-from">
+          {{ 'ticketingTickets.availableFrom' | t }} <spark-date-time [value]="t.availableFrom" />
+        </p>
+      }
+    </section>
+
+    <dl class="spark-ticket-details">
+      @for (date of t.dates; track date.id) {
+        <div>
+          <dt>{{ date.name ? (date.name | resolveTranslation) : (t.eventName | resolveTranslation) }}</dt>
+          <dd>
+            <spark-date-time [value]="date.startsAt" [alsoIn]="date.venueTimeZoneId" />
+            @if (date.doorsOpenAt) {
+              <span> · {{ 'ticketingTickets.doors' | t }} <spark-date-time [value]="date.doorsOpenAt" [alsoIn]="date.venueTimeZoneId" format="time" /></span>
+            }
+            @if (date.venueName) {
+              <span> · {{ date.venueName }}</span>
+            }
+          </dd>
+        </div>
+      }
+      @if (t.seatLabel) {
+        <div><dt>{{ 'ticketingTickets.seat' | t }}</dt><dd>{{ t.seatLabel }}</dd></div>
+      }
+      @if (t.holderName) {
+        <div><dt>{{ 'ticketingTickets.holder' | t }}</dt><dd>{{ t.holderName }}</dd></div>
+      }
+      <div><dt>{{ 'ticketingTickets.order' | t }}</dt><dd>{{ t.orderNumber }}</dd></div>
+    </dl>
+
+    @if (t.minimumAge) {
+      <p class="spark-ticket-age">{{ ('ticketingTickets.idCheck' | t).replace('{age}', '' + t.minimumAge) }}</p>
+    }
+    @if (t.template.extraText) {
+      <p class="spark-ticket-extra">{{ t.template.extraText | resolveTranslation }}</p>
+    }
+
+    @if (t.available) {
+      <button type="button" class="btn btn-outline-primary" [disabled]="busy()" (click)="downloadPdf()">{{ 'ticketingTickets.downloadPdf' | t }}</button>
+    }
+
+    @if (t.namedTickets && t.status === 'Valid') {
+      <form class="spark-ticket-form" (submit)="$event.preventDefault(); saveHolder()">
+        <label>
+          {{ 'ticketingTickets.nameHolder' | t }}
+          <input type="text" autocomplete="name" maxlength="120" [value]="holderName()" (input)="holderName.set($any($event.target).value)" />
+        </label>
+        <button type="submit" class="btn btn-primary" [disabled]="busy() || !holderName().trim()">{{ 'ticketingTickets.save' | t }}</button>
+      </form>
+    }
+
+    @if (t.transfer; as transfer) {
+      <section class="spark-ticket-exchange">
+        @if (transfer.status === 'AwaitingFee') {
+          <p>{{ 'ticketingTickets.transfer.fee' | t }}: {{ money(transfer.fee) }}</p>
+        } @else {
+          <p>{{ 'ticketingTickets.transfer.pending' | t }} <spark-date-time [value]="transfer.expiresAt" /></p>
+        }
+        <button type="button" class="btn btn-outline-secondary" [disabled]="busy()" (click)="cancelTransfer()">{{ 'ticketingTickets.transfer.cancel' | t }}</button>
+      </section>
+    } @else if (t.canTransfer) {
+      <form class="spark-ticket-form spark-ticket-exchange" (submit)="$event.preventDefault(); startTransfer()">
+        <h2>{{ 'ticketingTickets.transfer.title' | t }}</h2>
+        <label>
+          {{ 'ticketingTickets.transfer.email' | t }}
+          <input type="email" autocomplete="off" required [value]="transferEmail()" (input)="transferEmail.set($any($event.target).value)" />
+        </label>
+        <label>
+          {{ 'ticketingTickets.transfer.name' | t }}
+          <input type="text" autocomplete="off" [value]="transferName()" (input)="transferName.set($any($event.target).value)" />
+        </label>
+        <button type="submit" class="btn btn-primary" [disabled]="busy() || !transferEmail().includes('@')">{{ 'ticketingTickets.transfer.send' | t }}</button>
+      </form>
+    }
+
+    @if (t.resale; as resale) {
+      <section class="spark-ticket-exchange">
+        <p>{{ 'ticketingTickets.resale.listed' | t }}: {{ money(resale.price) }}</p>
+        <button type="button" class="btn btn-outline-secondary" [disabled]="busy()" (click)="withdrawResale()">{{ 'ticketingTickets.resale.withdraw' | t }}</button>
+      </section>
+    } @else if (t.canResell) {
+      <form class="spark-ticket-form spark-ticket-exchange" (submit)="$event.preventDefault(); resell()">
+        <h2>{{ 'ticketingTickets.resale.title' | t }}</h2>
+        <label>
+          {{ 'ticketingTickets.resale.price' | t }}
+          <input type="text" inputmode="decimal" [value]="resalePrice()" (input)="resalePrice.set($any($event.target).value)" />
+        </label>
+        <small>{{ 'ticketingTickets.resale.cap' | t }}@if (t.resaleCap; as cap) { <span>: {{ money(cap) }}</span> }</small>
+        <button type="submit" class="btn btn-primary" [disabled]="busy() || !resalePrice() || !t.resaleCap">{{ 'ticketingTickets.resale.list' | t }}</button>
+      </form>
+    }
+
+    @if (t.freezeAt && (t.canTransfer || t.canResell)) {
+      <p class="spark-ticket-freeze">{{ 'ticketingTickets.frozenFrom' | t }} <spark-date-time [value]="t.freezeAt" /></p>
+    }
+  </article>
+}
+@if (refusal(); as key) {
+  <p class="spark-ticket-refusal" role="alert">{{ key | t }}</p>
+}

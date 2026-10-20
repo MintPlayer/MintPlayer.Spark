@@ -21,7 +21,8 @@ Gs1Gtin.Normalize("96385074");           // "00000096385074": registries store G
 LocationCheckDigits.Compute("A-01-02-3", siteSecret);   // two spoken digits for a location label
 
 // SSCC allocation: one sequence per (extension digit, company prefix). ISsccSerialSource is the seam; the
-// production source is a RavenDB compare-exchange counter in MintPlayer.Spark.Warehouse.
+// production source is Spark core's compare-exchange sequence (ISparkSequences, MintPlayer.Spark.Sequences).
+var serialSource = new DelegateSsccSerialSource((key, ct) => new(sequences.NextAsync(key, 0, ct)));
 var allocator = new SsccAllocator(serialSource, extensionDigit: 0, companyPrefix: "9521234");
 var sscc = await allocator.AllocateAsync();
 ```

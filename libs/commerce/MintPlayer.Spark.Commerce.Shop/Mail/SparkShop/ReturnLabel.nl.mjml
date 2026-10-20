@@ -1,0 +1,19 @@
+<mjml>
+  <mj-head>
+    <mj-title>Bestelling {{ number }}: uw retourlabel</mj-title>
+    <mj-attributes>
+      <mj-all font-family="Segoe UI, Helvetica, Arial, sans-serif" />
+      <mj-text font-size="15px" line-height="22px" color="#111827" />
+    </mj-attributes>
+  </mj-head>
+  <mj-body background-color="#f3f4f6">
+    <mj-section background-color="#ffffff" padding="24px 0">
+      <mj-column>
+        <mj-text font-size="20px" font-weight="600">{{ if buyer_name }}{{ buyer_name }}, u{{ else }}U{{ end }}w retourlabel voor bestelling {{ number }}</mj-text>
+        <mj-text>Het label zit in de bijlage. Druk het af, kleef het op het pakket en geef het af bij {{ if carrier }}{{ carrier }}{{ else }}de vervoerder{{ end }}.{{ if tracking_number }} Trackingnummer: {{ tracking_number }}.{{ end }}</mj-text>
+        {{ if seller_pays_return }}<mj-text>De retourkosten zijn voor de verkoper.</mj-text>{{ else }}<mj-text>De retourkosten zijn voor uw rekening, zoals vermeld in de informatie over de herroeping.</mj-text>{{ end }}
+        {{ if reason == "Withdrawal" }}<mj-text font-size="13px" color="#4b5563">Uw terugbetaling volgt binnen 14 dagen na uw herroeping; ze mag wachten tot de goederen terug zijn of u aantoont dat u ze hebt teruggestuurd, naargelang wat eerst komt (Richtlijn 2011/83/EU art. 13, lid 3). De scan van dit pakket door de vervoerder geldt als dat bewijs.</mj-text>{{ end }}
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>

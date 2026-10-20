@@ -13,6 +13,7 @@ namespace MintPlayer.Spark.Commerce.Shop.Contracts;
 /// <param name="UnitOfMeasure">GA3: <c>None</c>, <c>Kilogram</c>, <c>Litre</c>, <c>Metre</c>, <c>SquareMetre</c>, <c>CubicMetre</c> or <c>Piece</c>.</param>
 /// <param name="UnitSymbol">GA3: what a unit price is per (<c>kg</c>, <c>l</c>, …); empty without a unit of measure.</param>
 /// <param name="LegalGuaranteeMonths">GA8: the legal guarantee the notice states (Directive (EU) 2019/771 Art. 10).</param>
+/// <param name="GuaranteeNotice">GA8: the host's notice text (<c>GuaranteeNotice</c>); null shows the translation <c>commerceShop.guarantee.notice</c>.</param>
 /// <param name="WithdrawalExemption">The CRD Art. 16 point that exempts the product from the withdrawal right, or null.</param>
 [SparkContract]
 public sealed record SparkShopProduct(
@@ -37,6 +38,7 @@ public sealed record SparkShopProduct(
     decimal? UnitPriceReference,
     SparkShopSafety? Safety,
     int LegalGuaranteeMonths,
+    TranslatedString? GuaranteeNotice,
     SparkShopDurability? Durability,
     string? WithdrawalExemption,
     bool ReviewsEnabled,
@@ -244,6 +246,10 @@ public sealed record SparkShopInspectRequest(string OrderId, string? Organizatio
 
 [SparkContract]
 public sealed record SparkShopDeduction(string LineId, Money Amount, string Reason);
+
+/// <summary>What an inspection recorded.</summary>
+[SparkContract]
+public sealed record SparkShopInspectResult(string ReturnId, string Disposition);
 
 /// <summary><c>POST /spark/commerce/shop/staff/return-label</c>: a return label for a return Checkout expects (GB5).</summary>
 [SparkContract]

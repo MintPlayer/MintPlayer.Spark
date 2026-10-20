@@ -1,0 +1,28 @@
+<mjml>
+  <mj-head>
+    <mj-title>Je tickets voor {{ event_name }}</mj-title>
+    <mj-attributes>
+      <mj-all font-family="Segoe UI, Helvetica, Arial, sans-serif" />
+      <mj-text font-size="15px" line-height="22px" color="#111827" />
+      <mj-button background-color="#2563eb" color="#ffffff" border-radius="6px" font-size="15px" />
+    </mj-attributes>
+  </mj-head>
+  <mj-body background-color="#f3f4f6">
+    <mj-section background-color="#ffffff" padding="24px 0">
+      <mj-column>
+        <mj-text font-size="20px" font-weight="600">{{ if holder_name }}{{ holder_name }}, h{{ else }}H{{ end }}ier {{ if count == 1 }}is je ticket{{ else }}zijn je {{ count }} tickets{{ end }} voor {{ event_name }}</mj-text>
+        <mj-text>Bestelling {{ order_number }}. De PDF zit in bijlage, met een agendabestand per datum. Toon de QR-code aan de ingang, op papier of op je telefoon.</mj-text>
+        {{ for ticket in tickets }}
+        <mj-text><strong>{{ ticket.title }}</strong>{{ if ticket.seat }} · {{ ticket.seat }}{{ end }}{{ if ticket.holder }} · {{ ticket.holder }}{{ end }}<br />{{ ticket.dates }}</mj-text>
+        <mj-button href="{{ ticket.link }}">Ticket openen</mj-button>
+        {{ end }}
+      </mj-column>
+    </mj-section>
+    <mj-section padding="0 0 24px 0">
+      <mj-column>
+        <mj-divider border-width="1px" border-color="#e5e7eb" />
+        <mj-text font-size="12px" color="#6b7280">Hou deze mail voor jezelf: wie de ticketlink of QR-code heeft, kan het ticket gebruiken. Geef je het ticket door via de ticketpagina, dan wordt het opnieuw uitgegeven en werkt dit exemplaar niet meer.</mj-text>
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>

@@ -95,6 +95,18 @@
               (ngModelChange)="onReferenceTreeChange(attr, $event)"
               [ngModelOptions]="{ standalone: true }">
             </bs-tree-select>
+          } @else if (attr.dataType === 'Reference' && isTreeReference(attr)) {
+            <!-- A hierarchical single reference (WX9): roots first, a node's children on expand. -->
+            <bs-tree-select
+              mode="single"
+              variant="textbox"
+              [showClear]="true"
+              [placeholder]="'common.search' | t"
+              [provider]="getReferenceProvider(attr)"
+              [ngModel]="(referenceTreeValues()[attr.name] || [])[0] ?? null"
+              (ngModelChange)="onReferenceTreeChange(attr, $event)"
+              [ngModelOptions]="{ standalone: true }">
+            </bs-tree-select>
           } @else if (attr.dataType === 'Reference') {
             <spark-reference-picker
               [value]="formData()[attr.name]"

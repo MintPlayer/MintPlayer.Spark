@@ -1,0 +1,644 @@
+{
+  "$schema": "../../../../schemas/translations.schema.json",
+  "commerceShop": {
+    "catalog": {
+      "title": {
+        "en": "Shop",
+        "fr": "Boutique",
+        "nl": "Winkel"
+      },
+      "search": {
+        "en": "Search products",
+        "fr": "Rechercher des produits",
+        "nl": "Producten zoeken"
+      },
+      "results": {
+        "en": "{count} products",
+        "fr": "{count} produits",
+        "nl": "{count} producten"
+      },
+      "empty": {
+        "en": "No products match.",
+        "fr": "Aucun produit ne correspond.",
+        "nl": "Geen producten gevonden."
+      },
+      "more": {
+        "en": "Show more",
+        "fr": "Afficher plus",
+        "nl": "Meer tonen"
+      },
+      "filters": {
+        "en": "Filters",
+        "fr": "Filtres",
+        "nl": "Filters"
+      },
+      "price": {
+        "en": "Price",
+        "fr": "Prix",
+        "nl": "Prijs"
+      },
+      "priceFrom": {
+        "en": "from {price}",
+        "fr": "à partir de {price}",
+        "nl": "vanaf {price}"
+      },
+      "sortBy": {
+        "en": "Sort by",
+        "fr": "Trier par",
+        "nl": "Sorteren op"
+      },
+      "sort": {
+        "relevance": {
+          "en": "Relevance",
+          "fr": "Pertinence",
+          "nl": "Relevantie"
+        },
+        "newest": {
+          "en": "Newest",
+          "fr": "Nouveautés",
+          "nl": "Nieuwste"
+        },
+        "price-asc": {
+          "en": "Price, low to high",
+          "fr": "Prix croissant",
+          "nl": "Prijs, laag naar hoog"
+        },
+        "price-desc": {
+          "en": "Price, high to low",
+          "fr": "Prix décroissant",
+          "nl": "Prijs, hoog naar laag"
+        },
+        "rating": {
+          "en": "Rating",
+          "fr": "Évaluation",
+          "nl": "Beoordeling"
+        }
+      },
+      "ranking": {
+        "en": "How results are ranked: with search words by relevance, otherwise newest first. You can change the order. No position is paid for.",
+        "fr": "Classement des résultats : avec des mots de recherche par pertinence, sinon les plus récents d'abord. Vous pouvez changer l'ordre. Aucune position n'est payée.",
+        "nl": "Hoe resultaten gerangschikt worden: met zoekwoorden op relevantie, anders nieuwste eerst. U kunt de volgorde wijzigen. Geen enkele plaats is betaald."
+      }
+    },
+    "facet": {
+      "brand": {
+        "en": "Brand",
+        "fr": "Marque",
+        "nl": "Merk"
+      },
+      "colour": {
+        "en": "Colour",
+        "fr": "Couleur",
+        "nl": "Kleur"
+      },
+      "size": {
+        "en": "Size",
+        "fr": "Taille",
+        "nl": "Maat"
+      }
+    },
+    "product": {
+      "addToBasket": {
+        "en": "Add to basket",
+        "fr": "Ajouter au panier",
+        "nl": "In winkelmand"
+      },
+      "added": {
+        "en": "Added to your basket.",
+        "fr": "Ajouté à votre panier.",
+        "nl": "Toegevoegd aan uw winkelmand."
+      },
+      "quantity": {
+        "en": "Quantity",
+        "fr": "Quantité",
+        "nl": "Aantal"
+      },
+      "variant": {
+        "en": "Choose",
+        "fr": "Choisir",
+        "nl": "Kies"
+      },
+      "unitPrice": {
+        "en": "{price} per {unit}",
+        "fr": "{price} par {unit}",
+        "nl": "{price} per {unit}"
+      },
+      "priceIncludes": {
+        "en": "Price including VAT and every mandatory fee.",
+        "fr": "Prix TVA et frais obligatoires compris.",
+        "nl": "Prijs inclusief btw en alle verplichte kosten."
+      },
+      "minimumAge": {
+        "en": "Sold only to buyers aged {age} or over; an ID may be checked at delivery.",
+        "fr": "Vendu uniquement aux acheteurs de {age} ans ou plus ; une pièce d'identité peut être vérifiée à la livraison.",
+        "nl": "Enkel verkocht aan kopers van {age} jaar of ouder; bij levering kan een identiteitsbewijs gevraagd worden."
+      },
+      "soldBy": {
+        "en": "Sold by {seller}",
+        "fr": "Vendu par {seller}",
+        "nl": "Verkocht door {seller}"
+      },
+      "notFound": {
+        "en": "This product is not available.",
+        "fr": "Ce produit n'est pas disponible.",
+        "nl": "Dit product is niet beschikbaar."
+      },
+      "attributes": {
+        "en": "Details",
+        "fr": "Détails",
+        "nl": "Details"
+      },
+      "withdrawalExempt": {
+        "en": "No right of withdrawal for this product ({point}, Directive 2011/83/EU Art. 16).",
+        "fr": "Pas de droit de rétractation pour ce produit ({point}, directive 2011/83/UE, art. 16).",
+        "nl": "Geen herroepingsrecht voor dit product ({point}, Richtlijn 2011/83/EU art. 16)."
+      }
+    },
+    "availability": {
+      "InStock": {
+        "en": "In stock",
+        "fr": "En stock",
+        "nl": "Op voorraad"
+      },
+      "LimitedAvailability": {
+        "en": "Only {count} left",
+        "fr": "Plus que {count}",
+        "nl": "Nog {count}"
+      },
+      "OutOfStock": {
+        "en": "Out of stock",
+        "fr": "Épuisé",
+        "nl": "Uitverkocht"
+      }
+    },
+    "unit": {
+      "kg": {
+        "en": "kg",
+        "fr": "kg",
+        "nl": "kg"
+      },
+      "l": {
+        "en": "l",
+        "fr": "l",
+        "nl": "l"
+      },
+      "m": {
+        "en": "m",
+        "fr": "m",
+        "nl": "m"
+      },
+      "m²": {
+        "en": "m²",
+        "fr": "m²",
+        "nl": "m²"
+      },
+      "m³": {
+        "en": "m³",
+        "fr": "m³",
+        "nl": "m³"
+      },
+      "item": {
+        "en": "item",
+        "fr": "pièce",
+        "nl": "stuk"
+      }
+    },
+    "safety": {
+      "title": {
+        "en": "Product safety",
+        "fr": "Sécurité du produit",
+        "nl": "Productveiligheid"
+      },
+      "manufacturer": {
+        "en": "Manufacturer",
+        "fr": "Fabricant",
+        "nl": "Fabrikant"
+      },
+      "responsiblePerson": {
+        "en": "Responsible person in the EU",
+        "fr": "Personne responsable dans l'UE",
+        "nl": "Verantwoordelijke persoon in de EU"
+      },
+      "identifier": {
+        "en": "Product identifier",
+        "fr": "Identifiant du produit",
+        "nl": "Productidentificatie"
+      },
+      "warnings": {
+        "en": "Warnings and safety information",
+        "fr": "Avertissements et informations de sécurité",
+        "nl": "Waarschuwingen en veiligheidsinformatie"
+      }
+    },
+    "guarantee": {
+      "title": {
+        "en": "Guarantee",
+        "fr": "Garantie",
+        "nl": "Garantie"
+      },
+      "notice": {
+        "en": "Legal guarantee: as a consumer you have a legal guarantee of at least {months} months from delivery for any lack of conformity (Directive (EU) 2019/771). It applies in addition to any commercial guarantee.",
+        "fr": "Garantie légale : en tant que consommateur, vous bénéficiez d'une garantie légale d'au moins {months} mois à compter de la livraison pour tout défaut de conformité (directive (UE) 2019/771). Elle s'applique en plus de toute garantie commerciale.",
+        "nl": "Wettelijke garantie: als consument hebt u een wettelijke garantie van ten minste {months} maanden vanaf de levering voor elk conformiteitsgebrek (Richtlijn (EU) 2019/771). Ze geldt naast elke commerciële garantie."
+      },
+      "durability": {
+        "en": "Commercial guarantee of durability: {months} months",
+        "fr": "Garantie commerciale de durabilité : {months} mois",
+        "nl": "Commerciële duurzaamheidsgarantie: {months} maanden"
+      },
+      "by": {
+        "en": "given by {guarantor}",
+        "fr": "donnée par {guarantor}",
+        "nl": "gegeven door {guarantor}"
+      }
+    },
+    "reviews": {
+      "title": {
+        "en": "Reviews",
+        "fr": "Avis",
+        "nl": "Beoordelingen"
+      },
+      "count": {
+        "en": "{count} reviews, average {average} of 5",
+        "fr": "{count} avis, moyenne {average} sur 5",
+        "nl": "{count} beoordelingen, gemiddeld {average} op 5"
+      },
+      "none": {
+        "en": "No reviews yet.",
+        "fr": "Pas encore d'avis.",
+        "nl": "Nog geen beoordelingen."
+      },
+      "verification": {
+        "en": "Only buyers who received this product can review it: every review is linked to a delivered order. Reviews are not removed for being negative.",
+        "fr": "Seuls les acheteurs ayant reçu ce produit peuvent l'évaluer : chaque avis est lié à une commande livrée. Un avis n'est pas retiré parce qu'il est négatif.",
+        "nl": "Enkel kopers die dit product ontvingen, kunnen het beoordelen: elke beoordeling hoort bij een geleverde bestelling. Beoordelingen worden niet verwijderd omdat ze negatief zijn."
+      },
+      "preModerated": {
+        "en": "Reviews are checked by a moderator before they are shown.",
+        "fr": "Les avis sont vérifiés par un modérateur avant d'être publiés.",
+        "nl": "Beoordelingen worden door een moderator nagekeken voor ze verschijnen."
+      },
+      "verified": {
+        "en": "Verified purchase",
+        "fr": "Achat vérifié",
+        "nl": "Geverifieerde aankoop"
+      },
+      "incentivised": {
+        "en": "The reviewer received a benefit for this review.",
+        "fr": "L'auteur a reçu un avantage pour cet avis.",
+        "nl": "De schrijver kreeg een voordeel voor deze beoordeling."
+      }
+    },
+    "delivery": {
+      "title": {
+        "en": "Delivery",
+        "fr": "Livraison",
+        "nl": "Levering"
+      },
+      "extra": {
+        "en": "Delivery",
+        "fr": "Livraison",
+        "nl": "Levering"
+      },
+      "address": {
+        "en": "Delivery address",
+        "fr": "Adresse de livraison",
+        "nl": "Leveringsadres"
+      },
+      "name": {
+        "en": "Name",
+        "fr": "Nom",
+        "nl": "Naam"
+      },
+      "street": {
+        "en": "Street",
+        "fr": "Rue",
+        "nl": "Straat"
+      },
+      "houseNumber": {
+        "en": "Number",
+        "fr": "Numéro",
+        "nl": "Nummer"
+      },
+      "postalCode": {
+        "en": "Postal code",
+        "fr": "Code postal",
+        "nl": "Postcode"
+      },
+      "city": {
+        "en": "City",
+        "fr": "Localité",
+        "nl": "Gemeente"
+      },
+      "country": {
+        "en": "Country",
+        "fr": "Pays",
+        "nl": "Land"
+      },
+      "email": {
+        "en": "E-mail",
+        "fr": "E-mail",
+        "nl": "E-mail"
+      },
+      "showRates": {
+        "en": "Show delivery options",
+        "fr": "Afficher les options de livraison",
+        "nl": "Leveringsopties tonen"
+      },
+      "choose": {
+        "en": "Use this delivery",
+        "fr": "Choisir cette livraison",
+        "nl": "Deze levering kiezen"
+      },
+      "chosen": {
+        "en": "Delivery chosen: {method}",
+        "fr": "Livraison choisie : {method}",
+        "nl": "Gekozen levering: {method}"
+      },
+      "free": {
+        "en": "Free",
+        "fr": "Gratuit",
+        "nl": "Gratis"
+      },
+      "freeFrom": {
+        "en": "Free from {amount}",
+        "fr": "Gratuit à partir de {amount}",
+        "nl": "Gratis vanaf {amount}"
+      },
+      "promise": {
+        "en": "Expected by {date}",
+        "fr": "Prévu pour le {date}",
+        "nl": "Verwacht tegen {date}"
+      },
+      "customs": {
+        "en": "Customs apply ({incoterm}).",
+        "fr": "Des formalités douanières s'appliquent ({incoterm}).",
+        "nl": "Er zijn douaneformaliteiten ({incoterm})."
+      },
+      "incoterm": {
+        "Dap": {
+          "en": "import duties and taxes are paid by you on delivery",
+          "fr": "droits et taxes à l'importation payés par vous à la livraison",
+          "nl": "invoerrechten en belastingen betaalt u bij levering"
+        },
+        "Ddp": {
+          "en": "import duties and taxes are included",
+          "fr": "droits et taxes à l'importation inclus",
+          "nl": "invoerrechten en belastingen inbegrepen"
+        }
+      },
+      "none": {
+        "en": "No delivery method serves this address.",
+        "fr": "Aucun mode de livraison ne dessert cette adresse.",
+        "nl": "Geen enkele leveringswijze bedient dit adres."
+      }
+    },
+    "order": {
+      "state": {
+        "AwaitingPayment": {
+          "en": "Awaiting payment",
+          "fr": "En attente de paiement",
+          "nl": "Wacht op betaling"
+        },
+        "Paid": {
+          "en": "Paid",
+          "fr": "Payée",
+          "nl": "Betaald"
+        },
+        "PartiallyShipped": {
+          "en": "Partly shipped",
+          "fr": "Expédiée en partie",
+          "nl": "Deels verzonden"
+        },
+        "Shipped": {
+          "en": "Shipped",
+          "fr": "Expédiée",
+          "nl": "Verzonden"
+        },
+        "Delivered": {
+          "en": "Delivered",
+          "fr": "Livrée",
+          "nl": "Geleverd"
+        },
+        "Cancelled": {
+          "en": "Cancelled",
+          "fr": "Annulée",
+          "nl": "Geannuleerd"
+        }
+      },
+      "track": {
+        "en": "Track parcel {number}",
+        "fr": "Suivre le colis {number}",
+        "nl": "Pakket {number} volgen"
+      },
+      "review": {
+        "en": "Write a review",
+        "fr": "Écrire un avis",
+        "nl": "Beoordeling schrijven"
+      }
+    },
+    "refusal": {
+      "productNotFound": {
+        "en": "This product is not available.",
+        "fr": "Ce produit n'est pas disponible.",
+        "nl": "Dit product is niet beschikbaar."
+      },
+      "orderNotFound": {
+        "en": "Order not found.",
+        "fr": "Commande introuvable.",
+        "nl": "Bestelling niet gevonden."
+      },
+      "forbidden": {
+        "en": "You may not do this.",
+        "fr": "Vous ne pouvez pas faire cela.",
+        "nl": "Dit mag u niet doen."
+      },
+      "invalidAddress": {
+        "en": "Check the address.",
+        "fr": "Vérifiez l'adresse.",
+        "nl": "Controleer het adres."
+      },
+      "methodNotOffered": {
+        "en": "This delivery method is not offered for your basket.",
+        "fr": "Ce mode de livraison n'est pas proposé pour votre panier.",
+        "nl": "Deze leveringswijze wordt niet aangeboden voor uw winkelmand."
+      },
+      "servicePointRequired": {
+        "en": "Choose a pick-up point.",
+        "fr": "Choisissez un point relais.",
+        "nl": "Kies een afhaalpunt."
+      },
+      "nothingToShip": {
+        "en": "Nothing left to ship.",
+        "fr": "Plus rien à expédier.",
+        "nl": "Niets meer te verzenden."
+      },
+      "warehouseShips": {
+        "en": "The warehouse ships this order.",
+        "fr": "L'entrepôt expédie cette commande.",
+        "nl": "Het magazijn verzendt deze bestelling."
+      },
+      "returnNotFound": {
+        "en": "Return not found.",
+        "fr": "Retour introuvable.",
+        "nl": "Retour niet gevonden."
+      },
+      "reviewsClosed": {
+        "en": "Reviews are closed for this product.",
+        "fr": "Les avis sont fermés pour ce produit.",
+        "nl": "Beoordelingen zijn gesloten voor dit product."
+      },
+      "notVerified": {
+        "en": "Only a delivered purchase can be reviewed.",
+        "fr": "Seul un achat livré peut être évalué.",
+        "nl": "Enkel een geleverde aankoop kan beoordeeld worden."
+      },
+      "alreadyReviewed": {
+        "en": "You already reviewed this purchase.",
+        "fr": "Vous avez déjà évalué cet achat.",
+        "nl": "U beoordeelde deze aankoop al."
+      },
+      "invalidReview": {
+        "en": "Check the rating and the text.",
+        "fr": "Vérifiez la note et le texte.",
+        "nl": "Controleer de score en de tekst."
+      },
+      "reasonRequired": {
+        "en": "Give a reason.",
+        "fr": "Indiquez un motif.",
+        "nl": "Geef een reden."
+      },
+      "shippingRefused": {
+        "en": "The shipment could not be booked.",
+        "fr": "L'envoi n'a pas pu être réservé.",
+        "nl": "De zending kon niet geboekt worden."
+      },
+      "carrierFailed": {
+        "en": "The carrier did not answer; try again.",
+        "fr": "Le transporteur n'a pas répondu ; réessayez.",
+        "nl": "De vervoerder antwoordde niet; probeer opnieuw."
+      }
+    },
+    "ranking": {
+      "relevance": {
+        "en": "Relevance",
+        "fr": "Pertinence",
+        "nl": "Relevantie"
+      },
+      "relevanceDescription": {
+        "en": "With search words, how well a product matches them (typo-tolerant).",
+        "fr": "Avec des mots de recherche, la correspondance du produit (tolérante aux fautes).",
+        "nl": "Met zoekwoorden: hoe goed een product overeenkomt (fouttolerant)."
+      },
+      "newest": {
+        "en": "Newest",
+        "fr": "Nouveautés",
+        "nl": "Nieuwste"
+      },
+      "newestDescription": {
+        "en": "Without search words, the most recently published products first.",
+        "fr": "Sans mots de recherche, les produits publiés le plus récemment d'abord.",
+        "nl": "Zonder zoekwoorden eerst de laatst gepubliceerde producten."
+      },
+      "buyerSort": {
+        "en": "Your choice",
+        "fr": "Votre choix",
+        "nl": "Uw keuze"
+      },
+      "buyerSortDescription": {
+        "en": "You can sort by price or rating instead. No position is paid for.",
+        "fr": "Vous pouvez trier par prix ou par évaluation. Aucune position n'est payée.",
+        "nl": "U kunt in de plaats sorteren op prijs of beoordeling. Geen enkele plaats is betaald."
+      }
+    }
+  },
+  "commerceCheckout": {
+    "refusal": {
+      "deliveryRequired": {
+        "en": "Choose a delivery for the goods in your basket.",
+        "fr": "Choisissez une livraison pour les biens de votre panier.",
+        "nl": "Kies een levering voor de goederen in uw winkelmand."
+      }
+    }
+  },
+  "model": {
+    "ShopProduct": {
+      "groups": {
+        "General": {
+          "label": {
+            "en": "General",
+            "fr": "Général",
+            "nl": "Algemeen"
+          }
+        },
+        "Pricing": {
+          "label": {
+            "en": "Price",
+            "fr": "Prix",
+            "nl": "Prijs"
+          }
+        },
+        "ProductSafety": {
+          "label": {
+            "en": "Product safety (GPSR)",
+            "fr": "Sécurité du produit (RSGP)",
+            "nl": "Productveiligheid (GPSR)"
+          }
+        },
+        "Guarantee": {
+          "label": {
+            "en": "Durability guarantee",
+            "fr": "Garantie de durabilité",
+            "nl": "Duurzaamheidsgarantie"
+          }
+        },
+        "Customs": {
+          "label": {
+            "en": "Customs and transport",
+            "fr": "Douane et transport",
+            "nl": "Douane en transport"
+          }
+        },
+        "Media": {
+          "label": {
+            "en": "Images and attributes",
+            "fr": "Images et attributs",
+            "nl": "Afbeeldingen en kenmerken"
+          }
+        },
+        "Maintained": {
+          "label": {
+            "en": "Summary",
+            "fr": "Résumé",
+            "nl": "Samenvatting"
+          }
+        }
+      }
+    },
+    "ShopOrder": {
+      "groups": {
+        "Order": {
+          "label": {
+            "en": "Order",
+            "fr": "Commande",
+            "nl": "Bestelling"
+          }
+        },
+        "Lines": {
+          "label": {
+            "en": "Lines",
+            "fr": "Lignes",
+            "nl": "Lijnen"
+          }
+        },
+        "Returns": {
+          "label": {
+            "en": "Returns",
+            "fr": "Retours",
+            "nl": "Retours"
+          }
+        }
+      }
+    }
+  }
+}

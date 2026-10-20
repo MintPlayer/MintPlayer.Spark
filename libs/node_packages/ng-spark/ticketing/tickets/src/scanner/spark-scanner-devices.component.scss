@@ -1,0 +1,50 @@
+:host {
+  display: block;
+}
+
+.spark-scanner-devices {
+  max-width: 32rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+
+  h2 {
+    font-size: 1.125rem;
+    margin: 0;
+  }
+}
+
+.spark-scanner-devices-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+
+  label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+}
+
+.spark-scanner-devices-key {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border: 1px solid currentColor;
+  border-radius: 0.25rem;
+
+  code {
+    word-break: break-all;
+    user-select: all;
+  }
+
+  p {
+    margin: 0;
+  }
+}
+
+.spark-scanner-devices-refusal,
+.spark-scanner-devices-notice {
+  margin: 0;
+}

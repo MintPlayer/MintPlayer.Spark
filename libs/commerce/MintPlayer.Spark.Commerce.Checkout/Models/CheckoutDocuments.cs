@@ -86,6 +86,13 @@ public sealed class CheckoutBasketLine
     /// <summary>The admission tokens the line was added with, by scope (§4.6, §4.12): a waiting-room token, a presale code.</summary>
     public Dictionary<string, string> AdmissionTokens { get; set; } = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// D16 + X1: the guest visitor id this line was chosen under, stamped when a guest basket moves onto an account at
+    /// sign-in. Every later claim of the line (a quantity change, the re-assert at "Pay", the order's limit lines) keeps
+    /// the visitor limit key beside the account's, so signing in never resets what the guest already counted.
+    /// </summary>
+    public string? LimitVisitorId { get; set; }
+
     public DateTimeOffset AddedAt { get; set; }
 }
 
@@ -260,8 +267,16 @@ public sealed class CheckoutOrderLine
 
     public List<CheckoutOrderFee> Adjustments { get; set; } = [];
 
-    /// <summary>What the buyer pays for the line: FinalPrice plus adjustments.</summary>
+    /// <summary>What the line costs before the order-level discount: FinalPrice plus adjustments.</summary>
     public Money Total { get; set; } = Money.Zero("EUR");
+
+    /// <summary>
+    /// The line's share of the order-level discounts (S21, <see cref="PricedLine.OrderDiscount"/>; zero or negative):
+    /// spread over the lines' goods amounts by largest remainder at pricing, the split Invoicing uses too.
+    /// <see cref="Net"/> + <see cref="Vat"/> = <see cref="Total"/> − fees + this share. Read the charged amounts through
+    /// <see cref="CheckoutOrderLineAmounts"/>.
+    /// </summary>
+    public Money OrderDiscount { get; set; } = Money.Zero("EUR");
 
     public string? ClaimId { get; set; }
 
@@ -297,6 +312,22 @@ public sealed class CheckoutOrderLine
     public OrderLineStatus Status { get; set; }
 
     public string? StatusReason { get; set; }
+}
+
+/// <summary>
+/// What the buyer was charged for an order line (S21): every reader of line amounts (refunds, refused-line refunds,
+/// payment splits, invoices, exports) goes through these, so the order-discount share is counted exactly once.
+/// </summary>
+public static class CheckoutOrderLineAmounts
+{
+    /// <summary>What the buyer pays for the line: <see cref="CheckoutOrderLine.Total"/> + its order-discount share.</summary>
+    public static Money Charged(this CheckoutOrderLine line) => line.Total + line.OrderDiscount;
+
+    /// <summary>The fees of the line (as sold).</summary>
+    public static Money FeeTotal(this CheckoutOrderLine line) => Money.Sum(line.Fees.Select(f => f.Amount), line.Total.Currency);
+
+    /// <summary>What the buyer pays for the goods (VAT base): <see cref="Charged"/> − fees = <c>Net + Vat</c>.</summary>
+    public static Money ChargedGoods(this CheckoutOrderLine line) => line.Charged() - line.FeeTotal();
 }
 
 /// <summary>A fee or adjustment, as sold.</summary>

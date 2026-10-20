@@ -89,7 +89,7 @@ export interface SparkBasketAddRequest {
   units?: string[] | null;
   options?: Record<string, string> | null;
   parentLineId?: string | null;
-  admissionToken?: string | null;
+  admissionTokens?: Record<string, string> | null;
 }
 
 export interface SparkBasketChoicesRequest {
@@ -333,6 +333,8 @@ export interface SparkPlaceOrderRequest {
   marketingOptIn: boolean;
   method?: string | null;
   admissionTokens?: Record<string, string> | null;
+  data?: Record<string, string> | null;
+  language?: string | null;
 }
 
 export interface SparkPlaceOrderResult {

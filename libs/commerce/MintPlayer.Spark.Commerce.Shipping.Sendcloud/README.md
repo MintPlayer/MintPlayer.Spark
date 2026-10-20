@@ -35,7 +35,9 @@ spark.AddCommerceShipping().UseSendcloud();
   (`application/pdf`, `application/zpl`, `image/png`; `label_details` asks the carrier for the same).
 - **Idempotency:** Sendcloud keeps `external_reference_id` unique per account: a repeated announce answers **409 with
   the existing shipment**, read as the booking. A booking whose answer was lost is found with
-  `GET /api/v3/shipments?external_reference_id=` (`IShippingBookingLookup`). A failed announcement (201 with
+  `GET /api/v3/shipments?external_reference_id=` (`IShippingBookingLookup`); only a shipment whose
+  `external_reference_id` equals ours exactly counts, since the reference does not say the filter matches exactly. v3
+  documents no `Idempotency-Key` header: the external reference is the idempotency key. A failed announcement (201 with
   `ANNOUNCEMENT_FAILED` / `parcel_announcement_error`) is a refusal (422): Shipping retries under a fresh reference.
 - **Returns:** `POST /api/v3/returns/announce-synchronously` from the buyer to the seller (`external_reference`,
   `export_reason: returned_goods`), then `GET /api/v3/returns/{id}` for tracking and the parcel's label document. One
@@ -59,7 +61,9 @@ spark.AddCommerceShipping().UseSendcloud();
   states it, unlike the shipments page's `properties`.
 - The webhook payload is documented as "the parcel as retrieved"; this adapter reads the v2-style example
   (`action`, `timestamp`, `parcel.status.id`) and also accepts a v3 `status.code`. The timestamp unit is not stated
-  (read as milliseconds above 10^11).
+  (read as milliseconds above 10^11). v3 also has event subscriptions (`parcels.event.created`, `data.event`,
+  `data.parcel.source_id`), but their reference page gives no payload example or signature header, so this adapter
+  does not parse them yet.
 - `price.value` of customs lines is sent as a decimal string, as the examples show; the schema's type is not stated.
 - Dangerous goods: `parcel_items[].dangerous_goods` needs IATA/ADR fields Shipping does not hold, so none are sent.
 

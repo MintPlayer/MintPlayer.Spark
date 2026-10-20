@@ -70,13 +70,56 @@ public class RefundRulesTests
     }
 
     [Fact]
-    public void An_order_discount_is_allocated_into_the_line_prices_by_largest_remainder()
+    public void An_order_discount_enters_the_line_prices_through_the_share_stored_on_each_line()
     {
-        var order = Order(Line("a", 1, 10.00m), Line("b", 1, 20.00m));
+        // Checkout stored Money.Allocate(-100, [1000, 2000]) = -33 / -67 on the lines at pricing (S21).
+        var a = Line("a", 1, 10.00m);
+        a.OrderDiscount = Eur(-0.33m);
+        var b = Line("b", 1, 20.00m);
+        b.OrderDiscount = Eur(-0.67m);
+        var order = Order(a, b);
         order.Extras.Add(new CheckoutOrderExtra { Code = "promo", Kind = PricedExtraKind.Discount, Amount = Eur(-1.00m) });
         var components = RefundMath.Components(order);
         components.Single(c => c.Key == RefundMath.PriceKey("a")).Gross.Should().Be(Eur(9.67m));
         components.Single(c => c.Key == RefundMath.PriceKey("b")).Gross.Should().Be(Eur(19.33m));
+    }
+
+    /// <summary>
+    /// Red before the fix: the refund re-spread the discount over the lines left after a refused line, so the remaining
+    /// lines' price parts took the refused line's share too and a full refund paid back less than was charged for them.
+    /// </summary>
+    [Fact]
+    public void A_refused_lines_discount_share_leaves_with_it_and_a_full_refund_returns_what_the_rest_was_charged()
+    {
+        var a = Line("a", 2, 20.00m, fee: 2.00m);
+        a.OrderDiscount = Eur(-1.50m);
+        var b = Line("b", 1, 10.00m);
+        b.OrderDiscount = Eur(-0.50m);
+        b.Status = OrderLineStatus.Refused;
+        var order = Order(a, b);
+        order.Extras.Add(new CheckoutOrderExtra { Code = "promo", Kind = PricedExtraKind.Discount, Amount = Eur(-2.00m) });
+        order.Total = Eur(28.00m);
+        var ledger = Ledger(order);
+        ledger.Components.Single(c => c.Key == RefundMath.PriceKey("a")).Gross.Should().Be(Eur(16.50m)); // 20.00 − 2.00 fee − 1.50
+
+        var plan = Step(order, ledger, new RefundSpec(RefundKind.Cancellation, null, [new RefundLineRequest("a", 2)], RefundFees: true));
+        // Charged for a: 20.00 − 1.50 = 18.50; b's 9.50 went back at confirmation (OrderLifecycle refunds line.Charged()).
+        plan.Amount.Should().Be(a.Charged());
+        (plan.Amount + b.Charged()).Should().Be(order.Total);
+    }
+
+    [Fact]
+    public void A_partial_line_refund_takes_its_cumulative_share_of_the_discounted_price()
+    {
+        var a = Line("a", 3, 30.00m);
+        a.OrderDiscount = Eur(-3.00m);
+        var order = Order(a);
+        order.Extras.Add(new CheckoutOrderExtra { Code = "promo", Kind = PricedExtraKind.Discount, Amount = Eur(-3.00m) });
+        var ledger = Ledger(order);
+        var first = Step(order, ledger, new RefundSpec(RefundKind.Cancellation, null, [new RefundLineRequest("a", 1)]));
+        first.Amount.Should().Be(Eur(9.00m)); // (30.00 − 3.00) / 3, not 10.00
+        var rest = Step(order, ledger, new RefundSpec(RefundKind.Cancellation, null, [new RefundLineRequest("a", 2)]));
+        (first.Amount + rest.Amount).Should().Be(a.Charged());
     }
 
     [Fact]

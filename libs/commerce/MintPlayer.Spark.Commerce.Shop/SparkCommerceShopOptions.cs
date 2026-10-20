@@ -34,6 +34,13 @@ public sealed class SparkCommerceShopOptions : ISparkConfigurationSection
     /// <summary>The legal guarantee period shown in the notice (GA8; Directive (EU) 2019/771 Art. 10(1): at least two years). Default 24.</summary>
     public int LegalGuaranteeMonths { get; set; } = 24;
 
+    /// <summary>
+    /// GA8: the legal-guarantee notice per language (<c>{ "en": "…", "nl": "…" }</c>) shown on product pages and attached
+    /// to the order confirmation; null takes the library's text. Replace it with the Commission's harmonised notice
+    /// (CRD Art. 22a as inserted by Directive (EU) 2024/825; unconfirmed, D37) once published.
+    /// </summary>
+    public Dictionary<string, string>? GuaranteeNotice { get; set; }
+
     /// <summary>The checkout delivery step.</summary>
     public ShopDeliveryOptions Delivery { get; set; } = new();
 

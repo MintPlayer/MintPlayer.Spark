@@ -64,8 +64,8 @@ that keep the `0` internationally. Whether the number is real is proven by the c
 - **Attempt cap.** `MaxAttemptsPerCode` (5) wrong guesses; the last one voids the code. Each guess is
   written under optimistic concurrency, so parallel guesses commit one at a time and cannot slip past the cap.
 - **One account per number** (`RequireUniqueNumber`, on by default): a number another account verified
-  answers `numberInUse`. The number is reserved through compare-exchange (`spark-phone/{e164}` → user id),
-  so two accounts verifying one number at the same instant cannot both win. A reservation whose account no
+  answers `numberInUse`. The number is reserved as a Spark claim (`ISparkClaims`, commerce X12: compare-exchange
+  `spark-phone/{e164}` → user id, no index query and so no wait on a stale index), so two accounts verifying one number at the same instant cannot both win. A reservation whose account no
   longer holds the number (deleted, or verified another number since) is taken over; changing number releases
   the old reservation.
 

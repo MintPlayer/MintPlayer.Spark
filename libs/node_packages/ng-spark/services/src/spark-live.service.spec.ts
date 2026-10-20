@@ -648,6 +648,20 @@ describe('SparkLiveService', () => {
       expect(lastSocket().ops('subscribe')).toEqual([{ op: 'subscribe', sub: 's1', private: 'waitingroom:R1' }]);
     });
 
+    it('reconnects on spark-identity-changed, the event the auth entry point raises on sign-in and sign-out', () => {
+      const live = configure();
+      collect(live.watchPrivate('waitingroom:R1'));
+      lastSocket().open();
+      const first = lastSocket();
+
+      globalThis.dispatchEvent(new CustomEvent('spark-identity-changed'));
+
+      expect(first.closeCalls).toHaveLength(1);
+      expect(sockets()).toHaveLength(2);
+      lastSocket().open();
+      expect(lastSocket().ops('subscribe')).toEqual([{ op: 'subscribe', sub: 's1', private: 'waitingroom:R1' }]);
+    });
+
     it('reconnect() opens nothing when nothing is watched', () => {
       const live = configure();
       live.reconnect();

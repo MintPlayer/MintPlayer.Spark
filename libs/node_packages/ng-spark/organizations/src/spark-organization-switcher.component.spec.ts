@@ -10,8 +10,8 @@ import { SparkCurrentOrganization, SparkOrganizationSwitcherComponent } from './
 const two: SparkCurrentOrganization = {
   current: null,
   organizations: [
-    { id: 'Organizations/personal/u1', name: 'Ann', isPersonal: true },
-    { id: 'Organizations/a', name: 'Acme', isPersonal: false },
+    { id: 'Organizations/personal/u1', name: 'Ann', isPersonal: true, role: 4, customRoles: [] },
+    { id: 'Organizations/a', name: 'Acme', isPersonal: false, role: 2, customRoles: ['scanner'] },
   ],
 };
 

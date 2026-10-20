@@ -53,7 +53,7 @@ internal sealed class CheckoutPricing(
         if (context.Total.ToMinorUnits() < 0)
             throw CheckoutException.Of(CheckoutRefusals.NegativeTotal);
         // S21: net and VAT from what the buyer pays, after every step's adjustment.
-        CheckoutLineVat.Apply(priced, checkoutOptions?.CurrentValue.VatRounding ?? CheckoutVatRounding.PerLine);
+        CheckoutLineVat.Apply(priced, context.Extras, checkoutOptions?.CurrentValue.VatRounding ?? CheckoutVatRounding.PerLine);
         return context;
     }
 

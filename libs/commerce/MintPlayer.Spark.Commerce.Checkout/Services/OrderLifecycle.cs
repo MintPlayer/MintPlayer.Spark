@@ -175,7 +175,8 @@ internal sealed class OrderLifecycle(
             line.Status = OrderLineStatus.Refused;
             if (line.ClaimId is { } claimId)
                 await inventory.ReturnAsync(claimId, new InventoryReturn(order.Id + ":refused:" + line.LineId, ReturnReason.RefusedLine), cancellationToken);
-            refundForLines += line.Total;
+            // S21: what was charged for it, i.e. after its order-discount share (the discount goes with the line).
+            refundForLines += line.Charged();
         }
 
         // Capture what is sold, or refund the refused lines (RefundLine, the default; donations stay: GC3).

@@ -1,6 +1,7 @@
 {
   "_fixture": {
     "source": "https://sendcloud.dev/api/v3/parcel-tracking/retrieve-tracking-information-for-a-parcel (200: the parcel tracking object)",
+    "retrieved": "2026-10-20",
     "derived": "the documented example event (accepted, 2024-01-02T00:00:00Z) verbatim; the in_transit and delivered events built from the schema with the phases its description names",
     "recorded": false
   },

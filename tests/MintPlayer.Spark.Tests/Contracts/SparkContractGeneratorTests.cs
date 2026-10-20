@@ -170,6 +170,19 @@ public sealed class SparkContractGeneratorTests
             permissions.Should().Contain($"  {flag}: boolean;\n");
     }
 
+    /// <summary>
+    /// <see cref="PersistentObject.Replacement"/> (commerce X7) is server-side only and <c>[JsonIgnore]</c>: the
+    /// endpoints answer the receipt itself, so neither the member nor its type reaches the TypeScript.
+    /// </summary>
+    [Fact]
+    public void The_json_ignored_save_replacement_receipt_is_not_a_contract()
+    {
+        var models = SparkLibraryContracts.Generate().Single(m => m.Module == "@mintplayer/ng-spark/models").Content;
+
+        Block(models, "export interface PersistentObject").Should().NotContain("replacement");
+        models.Should().NotContain(nameof(MintPlayer.Spark.Abstractions.Interceptors.SaveReplacementReceipt));
+    }
+
     [Fact]
     public void Verify_fails_on_a_drifted_file_and_leaves_it_alone()
     {

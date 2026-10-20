@@ -71,6 +71,31 @@ export interface PersistentObjectPermissions {
   delete: boolean;
 }
 
+export interface SparkCsvImportResult {
+  dryRun: boolean;
+  created: number;
+  updated: number;
+  submitted: number;
+  skipped: number;
+  refused: number;
+  rows: SparkCsvImportRow[];
+  error?: string | null;
+}
+
+export interface SparkCsvImportRow {
+  line: number;
+  status: SparkCsvRowStatus;
+  id?: string | null;
+  errors: SparkCsvRowError[];
+}
+
+export interface SparkCsvRowError {
+  attribute?: string | null;
+  message: string;
+}
+
+export type SparkCsvRowStatus = 'Created' | 'Updated' | 'Submitted' | 'Skipped' | 'Refused';
+
 export interface ValidationRule {
   type: string;
   value?: any;

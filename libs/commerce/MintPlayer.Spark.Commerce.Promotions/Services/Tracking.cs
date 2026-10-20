@@ -260,7 +260,7 @@ internal sealed class Tracking(
     internal static Money AttributedTotal(CheckoutOrder order, string? organizationId)
         => Money.Sum(order.Lines
             .Where(l => l.Status == OrderLineStatus.Active && (organizationId is null || string.Equals(l.SellerOrganizationId, organizationId, StringComparison.Ordinal)))
-            .Select(l => l.Total), order.Currency);
+            .Select(l => l.Charged()), order.Currency); // S21: after the line's order-discount share
 
     private static string? Clip(string? value) => value is null ? null : value.Length <= 128 ? value : value[..128];
 }

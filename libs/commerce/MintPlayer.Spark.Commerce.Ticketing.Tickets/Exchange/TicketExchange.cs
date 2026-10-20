@@ -199,13 +199,20 @@ internal sealed class TicketExchange(
     }
 
     /// <summary>What one ticket cost its first buyer, every mandatory fee included: the share of its source line's total.</summary>
-    private static async Task<Money?> PaidPerUnitAsync(IAsyncDocumentSession session, Ticket ticket, CancellationToken cancellationToken)
+    /// <summary>
+    /// What this ticket cost (the resale cap, D30), in the currency the event's order was paid in: the line's charged
+    /// amount (after its order-discount share, S21) split over its units by largest remainder. Null without the line.
+    /// </summary>
+    internal static async Task<Money?> PaidPerUnitAsync(IAsyncDocumentSession session, Ticket ticket, CancellationToken cancellationToken)
     {
         var order = await session.LoadAsync<CheckoutOrder>(ticket.SourceOrderId, cancellationToken);
         var line = order?.Lines.FirstOrDefault(l => l.LineId == ticket.SourceLineId);
         if (line is null || line.Quantity < 1)
             return null;
-        var shares = line.Total.Allocate(Enumerable.Repeat(1L, line.Quantity).ToList());
+        var paid = line.Charged();
+        if (paid.ToMinorUnits() <= 0)
+            return Money.Zero(paid.Currency);
+        var shares = paid.Allocate(Enumerable.Repeat(1L, line.Quantity).ToList());
         return shares[Math.Clamp(ticket.SourcePosition - 1, 0, shares.Length - 1)];
     }
 
@@ -247,7 +254,7 @@ internal sealed class TicketExchange(
             Money? fee = null;
             if (settings?.TransferFeeBasisPoints is > 0 and var bp && await PaidPerUnitAsync(session, ticket, cancellationToken) is { } paid)
             {
-                var share = paid.Share(Math.Min(bp.Value, options.CurrentValue.Exchange.MaxTransferFeeBasisPoints), 10_000);
+                var share = paid.Share(Math.Min(bp, options.CurrentValue.Exchange.MaxTransferFeeBasisPoints), 10_000);
                 fee = share.IsZero ? null : share;
             }
             var now = Now;

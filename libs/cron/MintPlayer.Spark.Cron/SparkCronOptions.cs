@@ -47,14 +47,20 @@ public sealed class SparkCronJobOptions
     public string? TimeZone { get; set; }
 }
 
-/// <summary>Fails startup on a <c>Spark:Cron:Jobs</c> entry with an invalid expression or an unknown zone.</summary>
-internal sealed class SparkCronOptionsValidator : IValidateOptions<SparkCronOptions>
+/// <summary>
+/// Fails startup on a <c>Spark:Cron:Jobs</c> entry with an invalid expression or an unknown zone, or one whose key names
+/// no registered job (a typo there would otherwise leave the job on its registered schedule without a word).
+/// </summary>
+internal sealed class SparkCronOptionsValidator(SparkCronJobRegistry? registry = null) : IValidateOptions<SparkCronOptions>
 {
     public ValidateOptionsResult Validate(string? name, SparkCronOptions options)
     {
         var failures = new List<string>();
+        var registered = registry?.Jobs.Select(j => j.Name).ToHashSet(StringComparer.Ordinal);
         foreach (var (job, entry) in options.Jobs)
         {
+            if (registered is not null && !registered.Contains(job))
+                failures.Add($"Spark:Cron:Jobs:{job} names no registered cron job (names are case-sensitive; registered: {string.Join(", ", registered.Order(StringComparer.Ordinal))}).");
             if (entry is null)
                 continue;
             if (!string.IsNullOrWhiteSpace(entry.Schedule) && !CronScheduleParser.TryParse(entry.Schedule, out _, out _))

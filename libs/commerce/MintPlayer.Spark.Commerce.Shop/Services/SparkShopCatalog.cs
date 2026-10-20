@@ -99,11 +99,23 @@ internal sealed class SparkShopCatalog(
             product.UnitOfMeasure.ToString(), ProductRules.UnitSymbol(product.UnitOfMeasure), product.UnitPriceReference,
             safety,
             settings.LegalGuaranteeMonths,
-            product.DurabilityGuaranteeMonths is > 0 and var months ? new SparkShopDurability(months.Value, product.DurabilityGuarantor, product.DurabilityGuaranteeTerms) : null,
+            GuaranteeNotice(settings),
+            product.DurabilityGuaranteeMonths is > 0 and var months ? new SparkShopDurability(months, product.DurabilityGuarantor, product.DurabilityGuaranteeTerms) : null,
             product.WithdrawalExemption,
             product.ReviewsEnabled && settings.Reviews.Enabled,
             product.ReviewCount,
             product.RatingAverage);
+    }
+
+    /// <summary>GA8: the host's legal-guarantee notice, or null for the client's translation.</summary>
+    internal static TranslatedString? GuaranteeNotice(SparkCommerceShopOptions settings)
+    {
+        if (settings.GuaranteeNotice is not { Count: > 0 } texts)
+            return null;
+        var notice = new TranslatedString();
+        foreach (var (tag, text) in texts.Where(t => !string.IsNullOrWhiteSpace(t.Key) && !string.IsNullOrWhiteSpace(t.Value)))
+            notice.Set(tag, text);
+        return notice.IsEmpty ? null : notice;
     }
 
     /// <summary>A published product by its slug (tracked by <paramref name="session"/>).</summary>
@@ -185,7 +197,7 @@ internal sealed class SparkShopCatalog(
 
         return new SparkShopCatalogPage(
             items,
-            statistics.TotalResults,
+            (int)statistics.TotalResults,
             CatalogSearch.Facets(facetResults, selected),
             CatalogSearch.PriceRanges(facetResults, ranges, query.PriceRange),
             typo);
@@ -315,7 +327,7 @@ internal static class CatalogSearch
         "price-desc" => query.OrderByDescending(PriceField),
         "rating" => query.OrderByDescending(nameof(ShopCatalogEntry.Rating)),
         "newest" => query.OrderByDescending(nameof(ShopCatalogEntry.PublishedAt)),
-        _ when searching => query.OrderByScore().ThenByDescending(nameof(ShopCatalogEntry.PublishedAt)),
+        _ when searching => query.OrderByScore().OrderByDescending(nameof(ShopCatalogEntry.PublishedAt)),
         _ => query.OrderByDescending(nameof(ShopCatalogEntry.PublishedAt)),
     };
 

@@ -1,0 +1,170 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "TicketScan (S9): the gate log, one row per scan with its outcome and double-entry flag. READ-ONLY here.",
+    "",
+    "HAND-AUTHORED. Ids are UUIDv5 of 'ticketing-tickets:TicketScan[...]', written by 'npm run stamp:library-model-ids'."
+  ],
+  "persistentObject": {
+    "id": "cea2d7dc-f34d-5055-a3b2-5b3660bc2fa3",
+    "name": "TicketScan",
+    "clrType": "MintPlayer.Spark.Commerce.Ticketing.Tickets.Models.TicketScan",
+    "alias": "ticketscan",
+    "breadcrumb": "{TicketCode}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "edc929f4-de98-5dcb-9f79-72a5d174c966",
+        "name": "TicketCode",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "4f509fca-47a5-5fce-b52b-9bc8f506dc2e",
+        "name": "EventId",
+        "dataType": "Reference",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "query": "TicketEvents",
+        "referenceType": "MintPlayer.Spark.Commerce.Ticketing.Events.Models.TicketEvent"
+      },
+      {
+        "id": "bd9206f1-d250-5529-8391-67fd7dd4ae35",
+        "name": "ListId",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "275f3286-fe57-5e1e-b4c0-bc84afd57e56",
+        "name": "DateId",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "38daa60b-4b95-52e4-a1f9-86a51470e6ce",
+        "name": "DeviceId",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "7c2b41a1-6ce7-5988-9609-a3fb3d567623",
+        "name": "Direction",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "lookupReferenceType": "TicketScanDirection"
+      },
+      {
+        "id": "81340a87-6f0e-50b0-afbe-5839ab64cd35",
+        "name": "Result",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "41e61991-f051-516c-9807-067818aff0e8",
+        "name": "At",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "d3c4f6d8-4443-5e5b-a7ea-22b0b89a4ef9",
+        "name": "ReceivedAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 9,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "97c41ce6-306c-5b05-a37e-7afafcd8bcbe",
+        "name": "Offline",
+        "dataType": "boolean",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 10,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "49a592cf-315c-593d-bc5e-c580e7076f1b",
+        "name": "DoubleEntry",
+        "dataType": "boolean",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 11,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "e29bcfcb-3429-5f76-a51d-c779cd35671b",
+        "name": "ConflictScanId",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 12,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      }
+    ]
+  },
+  "queries": [
+    {
+      "id": "5ca95d16-41c6-5324-909f-f11bbb506ea9",
+      "name": "TicketScans",
+      "source": "Custom.TicketScans",
+      "alias": "ticketscans",
+      "sortColumns": [
+        {
+          "property": "At",
+          "direction": "desc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "TicketScan"
+    }
+  ]
+}

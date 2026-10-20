@@ -111,6 +111,9 @@ public class SparkCsvTests
     [InlineData("-2+3", "'-2+3")]
     [InlineData("@cmd", "'@cmd")]
     [InlineData("\tx", "'\tx")]
+    [InlineData("\rx", "'\rx")]
+    [InlineData("'=1+1", "''=1+1")]
+    [InlineData("'plain", "'plain")]
     [InlineData("plain", "plain")]
     [InlineData("", "")]
     public void Text_starting_like_a_formula_is_guarded(string value, string expected)

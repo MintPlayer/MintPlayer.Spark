@@ -177,6 +177,20 @@ public class SparkModelLayersTests : IDisposable
     }
 
     [Fact]
+    public void Two_libraries_mapping_one_clr_type_under_different_names_are_refused()
+    {
+        // The commerce case: a shared value object (the reference-data Address) mapped by one library as VenueAddress;
+        // a second library mapping it again would make every resolution by CLR type depend on the layer order.
+        var other = new SparkLibrary("other", "Other.Lib", [], [new SparkLibraryLayer("model", "Model/Member.json",
+            """{ "persistentObject": { "id": "bbbbbbbb-0000-4000-8000-000000000001", "name": "Member", "clrType": "MintPlayer.Spark.Authorization.Identity.SparkUser", "attributes": [] } }""")]);
+
+        var act = () => SparkModelFiles.Compose([Authorization, other], ModelDir);
+
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("*MintPlayer.Spark.Authorization*Other.Lib*both map the CLR type 'MintPlayer.Spark.Authorization.Identity.SparkUser'*'SparkUser' and 'Member'*");
+    }
+
+    [Fact]
     public void Application_files_that_do_not_compose_pass_through_as_written()
     {
         AppFile("Broken.json", """{ "persistentObject": { "name": "Broken", } }""");

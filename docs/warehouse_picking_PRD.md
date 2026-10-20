@@ -258,7 +258,7 @@ Generic packages are flat (D31):
 
 | Package | Alias | Folder | Purpose | Depends on | ng entry point |
 |---|---|---|---|---|---|
-| `MintPlayer.Spark.Fulfilment.Contracts` | — | `libs/fulfilment/contracts/` | The versioned contract records both apps reference (§4.3). No persistent objects, no Checkout | Replication.Abstractions | — |
+| `MintPlayer.Spark.Fulfilment.Contracts` | — | `libs/fulfilment/contracts/` | ~~The versioned contract records both apps reference (§4.3).~~ One `[Replicated]` class per contract, stored by its owner and replicated to the host that binds it (§4.3, WM2 2026-10-20). No persistent objects, no Checkout | Replication.Abstractions | — |
 | `MintPlayer.Spark.Gs1` | — | `libs/gs1/` | • GTIN and SSCC check digits<br>• SSCC allocation<br>• AI element-string and Digital Link parsing, with the AI dictionary as data<br>Generic: commerce validates GTINs with it | — | parser twin in `scanning` |
 | `MintPlayer.Spark.Warehouse.Abstractions` | — | `libs/warehouse/abstractions/` | • Strategy interfaces: `IAllocationRule`, `IPutawayRule`, `IPickStrategy`, `IPickRouter`, `ICartonizer`, `IBarcodeResolutionStep`, `ISiteRouter`<br>• Value types | Abstractions | — |
 | `MintPlayer.Spark.Warehouse` | `warehouse` | `libs/warehouse/core/` | • Sites, zones, locations<br>• Item extensions and pre-items<br>• The barcode registry and resolution<br>• The stock engine: balances, ledger, adjustments, moves, invariants<br>• Min/max replenishment<br>• Stock levels and the stock feed<br>• The task envelope<br>• Productivity events | Abstractions, Gs1, Organizations, Messaging, Cron, Replication, Fulfilment.Contracts | `warehouse` |
@@ -526,7 +526,7 @@ replica edit ─ ISaveReplacement ─► SparkSyncAction {OpId, BaseEtag = repli
 
 **Fleet and HR** are migrated (WM1, 2026-10-20): `partial` replica classes `[Replicated(SourceCollection = …, SourceModule = …, WriteBack = true)]` (`apps/HR/HR.Library/Replicated/Car.cs`, `apps/Fleet/Fleet.Library/Replicated/{Person,Company}.cs`); the contract records and `Publish` are deleted; `Program.cs` calls `AddReplication()` with no code options; `appsettings.json` sets `Transport: Http` (Q-W24); grants stay `Replicate/Cars`, `Replicate/People`, `Replicate/Companies`; both bind `replication:approvers` to `Administrators` (both own something). The demos run Development, so they auto-approve; the ng-spark shell shows `<spark-pending-changes-link>` and `provideSparkReplication()`.
 
-**§4.3 terminology.** The contract names in §4.3 (`fulfilment-orders`, …) become `[Replicated]` replica classes in `Fulfilment.Contracts` without `SourceModule` (the host names the source in `Spark:Replication:Sources`); "v1" becomes the class and target collection name.
+**§4.3 terminology.** The contract names in §4.3 (`fulfilment-orders`, …) become `[Replicated]` replica classes in `Fulfilment.Contracts` without `SourceModule` (the host names the source in `Spark:Replication:Sources`); "v1" becomes the class and target collection name. As built (WM2): see §4.3 "Contracts as replica classes".
 
 **Reference data** (WD1): the reference-data app is an owner like any other; consumers declare replica classes.
 
@@ -551,15 +551,23 @@ Owner decision WD2:
 
 Each side reacts to the other's replicas through `IReplicaChanged<T>`.
 
-| Contract (v1) | Owner | Consumer | Content |
-|---|---|---|---|
-| `fulfilment-orders` | shop | warehouse | • Id, unique across shops; owner; channel<br>• Lines (line id, SKU, quantity); ship-to address<br>• Carrier and service chosen at checkout<br>• `ShipNotBefore`, `ShipComplete`, `BackorderPolicy` (`Allow` \| `CancelRemainder`), priority, hold flags<br>• `CancellationRequested`, with an optional line subset |
-| `catalog-items` | shop | warehouse | Owner, SKU, name, GTINs, variant, discontinued (WD9) |
-| `expected-returns` | shop | warehouse | Return id, order and line references, quantities |
-| `fulfilment-status` | warehouse | shop | • Per order: `Accepted` \| `Rejected(reason)`, then picking, picked, packed, shipped<br>• Per line: shipped, backordered and cancelled quantities<br>• `CancellationAccepted` \| `CancellationRefused(reason)` |
-| `shipments` | warehouse | shop | • Id `{fulfilmentOrderId}/shipments/{n}`<br>• Lines with lots and serials<br>• Packages: carton, weight, dimensions, SSCC, tracking number, label reference<br>• Carrier, service, shipped-at, tracking state |
-| `stock-levels` | warehouse | shop | Per owner, SKU and channel: `OnHandSellable`, `ReservedOtherChannels`, `ShippedTotal`, version (§4.4) |
-| `return-receipts` | warehouse | shop | Return reference, lines received, a disposition per line, received-at |
+| Contract ~~(v1)~~ | Class = collection (WM2) | Owner | Consumer | Content |
+|---|---|---|---|---|
+| `fulfilment-orders` | `FulfilmentOrder` = `FulfilmentOrders` | shop | warehouse | • Id, unique across shops; owner; channel; order number, placed-at<br>• Lines (line id, SKU, quantity, name, required lot); ship-to address (`FulfilmentAddress`, plain text incl. service point)<br>• Carrier and service chosen at checkout<br>• `ShipNotBefore`, `ShipComplete`, `BackorderPolicy` (`Allow` \| `CancelRemainder`), priority, hold codes<br>• `CancellationRequested`, with an optional line subset |
+| `catalog-items` | `FulfilmentCatalogItem` = `FulfilmentCatalogItems` | shop | warehouse | Owner, SKU, name, GTINs, variant, discontinued (WD9) |
+| `expected-returns` | `FulfilmentExpectedReturn` = `FulfilmentExpectedReturns` | shop | warehouse | Return id and number, order and line references, quantities, a reason per line (GA8) |
+| `expected-receipts` (Q-W9) | `FulfilmentExpectedReceipt` = `FulfilmentExpectedReceipts` | shop or ERP | warehouse | Owner, ASN reference, supplier, site code, expected day; lines (SKU, quantity, lot, expiry) |
+| `fulfilment-status` | `FulfilmentOrderStatus` = `FulfilmentOrderStatuses` | warehouse | shop | • Id `{fulfilmentOrderId}/status`; owner<br>• Per order: `Accepted` \| `Rejected(reason)`, then picking, picked, packed, shipped (and `Cancelled`)<br>• Per line: shipped, backordered and cancelled quantities<br>• `Cancellation`: `Accepted` \| `Refused(reason)` |
+| `shipments` | `FulfilmentShipment` = `FulfilmentShipments` | warehouse | shop | • Id `{fulfilmentOrderId}/shipments/{n}`; owner<br>• Lines with lots and serials<br>• Packages: carton, weight (g), dimensions (mm), SSCC, tracking number and URL, label reference<br>• Carrier, service, shipped-at, tracking state |
+| `stock-levels` | `FulfilmentStockLevel` = `FulfilmentStockLevels` | warehouse | shop | Per owner and SKU: `OnHandSellable`, and per channel `ReservedOtherChannels` and `ShippedTotal`; version (§4.4) |
+| `return-receipts` | `FulfilmentReturnReceipt` = `FulfilmentReturnReceipts` | warehouse | shop | Return reference (null: blind), order, owner, lines received, a disposition per line (+ override reason), received-at |
+
+**Contracts as replica classes (WM2, 2026-10-20; supersedes "versioned contract records").** After WD13 a contract is not a record beside the replica: it **is** one `partial` class with `[Replicated(SourceCollection = …)]` and no `SourceModule`, in `MintPlayer.Spark.Fulfilment.Contracts` (`libs/fulfilment/contracts/`; files `ShopToWarehouse.cs`, `WarehouseToShop.cs`, `FulfilmentContracts.cs`).
+- **Both sides store the same class.** The owner writes it as its own published document (projected from its internal state in the same session, e.g. the warehouse's `OutboundOrder` → `FulfilmentOrderStatus`), so the generated `SourceCollection` equals the generated `TargetCollection` (the class's plural, `FulfilmentCollections.*`), and the manifest's field paths exist on the source by construction. No `OriginalType` is needed and nothing can drift: renaming a member changes both sides and the hash. Internal documents stay private.
+- **Binding.** Both apps reference the library, so each host sees all eight classes. The assembly is marked `[assembly: SparkReplicaContracts]` (new, `libs/replication/MintPlayer.Spark.Replication.Abstractions/SparkReplicaContractsAttribute.cs`): a class of such a library is consumed only when the host binds `Spark:Replication:Sources:{TargetCollection}` to one or more owner modules (`"FulfilmentOrders": [ "ShopA", "ShopB" ]`); unbound it is **inert** in that host — not a replica, not registered with an owner, writable as an ordinary document — so the owner's own contracts never trip "names no source module" (`ReplicaCatalog.Discover`). Outside a marked library the startup refusal stays.
+- **Owner obligations.** Store the class unrenamed (a store convention that renames the collection breaks it), grant each consumer `Replicate/{collection}`, use natural ids unique across sources (`FulfilmentOrders/{shop}/{orderNumber}`), cumulative counters, forward-only states. `WriteBack` is off on all of them (WD2: no app writes the other's documents).
+- **Versions.** A changed shape is a new class and collection (`FulfilmentShipmentV2`), beside the old one until every consumer moved.
+- ⚠️ **Open (multi-shop warehouse):** replication sends every document of an approved collection to every approved consumer; it has no per-consumer row filter. A warehouse serving several shops would publish shop A's status, shipments, stock levels and return receipts to shop B. Each warehouse-owned contract carries `OwnerId` so a filter can key on it (Q-W23: "the link also filters which stock levels a module receives"); the filter itself is not built (owner-side manifest filter, or one collection per consumer). Single-shop hosts are unaffected.
 
 Mapped to EDI X12 (research §6): fulfilment order ≈ 940, shipment ≈ 945, stock level ≈ 846, return ≈ 180.
 

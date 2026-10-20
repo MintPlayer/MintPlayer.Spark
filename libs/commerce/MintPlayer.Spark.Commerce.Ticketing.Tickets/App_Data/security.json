@@ -1,0 +1,19 @@
+{
+  "$schema": "../../../../schemas/security.schema.json",
+  "_comment": [
+    "The ticketing-tickets package's rights, shipped as a library layer (docs/commerce_PRD.md §4.11). They name only its",
+    "own types and only @authenticated: no slot, so no application has to bind anything. Every type is organization-owned",
+    "(X8): Organizations' row rule narrows each right to the members of the seller organization, so the right alone shows",
+    "a signed-in user nothing of another seller.",
+    "Tickets, devices and scans are read-only here: this package's services write them. Holders reach their own tickets",
+    "through /spark/ticketing/tickets (secret or holding account), door devices through their event-scoped token.",
+    "Opt out of all of these with \"libraries\": { \"ticketing-tickets\": false }."
+  ],
+  "rights": [
+    { "key": "tickets", "resource": "QueryRead/Ticket", "groupId": "@authenticated" },
+    { "key": "settings", "resource": "QueryReadEditNewDelete/TicketEventSettings", "groupId": "@authenticated" },
+    { "key": "lists", "resource": "QueryReadEditNewDelete/TicketCheckInList", "groupId": "@authenticated" },
+    { "key": "devices", "resource": "QueryRead/TicketScannerDevice", "groupId": "@authenticated" },
+    { "key": "scans", "resource": "QueryRead/TicketScan", "groupId": "@authenticated" }
+  ]
+}

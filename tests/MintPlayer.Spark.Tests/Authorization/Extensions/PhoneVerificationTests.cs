@@ -201,6 +201,38 @@ public class PhoneVerificationTests : SparkTestDriver
         (await host.FindByEmailAsync("other@example.com"))!.PhoneNumberConfirmed.Should().BeFalse();
     }
 
+    /// <summary>
+    /// Uniqueness is an X12 claim (compare-exchange, no index query): the claim names the verified account, and a
+    /// number its account gave up is released, so another account may verify it.
+    /// </summary>
+    [Fact]
+    public async Task The_number_is_a_claim_that_a_change_of_number_releases()
+    {
+        const string next = "+32470123457";
+        await using var host = await StartAsync();
+        using var client = host.Client();
+        var (owner, ownerCookie) = await SignedInAsync(host, client, "mover");
+        var (_, otherCookie) = await SignedInAsync(host, client, "successor");
+
+        await Send(client, ownerCookie, Number);
+        (await Verify(client, ownerCookie, CodeIn(Sms(host).LastTo(Number)!))).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await ClaimHolderAsync(Number)).Should().Be(owner.Id);
+
+        clock.Now += TimeSpan.FromHours(1);
+        await Send(client, ownerCookie, next);
+        (await Verify(client, ownerCookie, CodeIn(Sms(host).LastTo(next)!))).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await ClaimHolderAsync(next)).Should().Be(owner.Id);
+        (await ClaimHolderAsync(Number)).Should().BeNull("the account no longer holds its old number");
+
+        await Send(client, otherCookie, Number);
+        (await Verify(client, otherCookie, CodeIn(Sms(host).LastTo(Number)!))).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await host.FindByEmailAsync("successor@example.com"))!.PhoneNumber.Should().Be(Number);
+    }
+
+    private async Task<string?> ClaimHolderAsync(string e164)
+        => (await Store.Operations.SendAsync(
+            new Raven.Client.Documents.Operations.CompareExchange.GetCompareExchangeValueOperation<string>("spark-phone/" + e164)))?.Value;
+
     [Fact]
     public async Task Numbers_that_are_not_phone_numbers_or_outside_the_allowed_countries_get_no_message()
     {

@@ -11,6 +11,8 @@ export interface SparkOrganizationChoice {
   id: string;
   name: string;
   isPersonal: boolean;
+  /** The caller's built-in role in this organization, as the server writes `OrganizationRole`: 1 Viewer, 2 Member, 3 Admin, 4 Owner. */
+  role: number;
   /** The host-declared custom roles the caller holds in this organization (e.g. `scanner`, `finance`). */
   customRoles: string[];
 }

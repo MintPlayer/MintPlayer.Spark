@@ -181,6 +181,97 @@ public class InvoicingFlowTests : SparkTestDriver
         (note.TotalNet + final.TotalNet).Should().Be(invoice.TotalNet);
     }
 
+    /// <summary>
+    /// A discounted order as Checkout stores it (S21): each line carries its share of the order discount, and
+    /// Net + Vat = Total − fees + OrderDiscount. Goods 2 × 12.10 and 12.10 less a 3.63 discount: Money.Allocate(363,
+    /// [2420, 1210]) = 242 / 121, so the VAT bases are 21.78 and 10.89 and the buyer paid 32.67.
+    /// </summary>
+    private static CheckoutOrder DiscountedOrder(string id)
+    {
+        var order = InvoicingHost.Order(id, ("tickets/a", 24.20m, 2, false, "standard"), ("tickets/b", 12.10m, 1, false, "standard"));
+        order.Extras.Add(new CheckoutOrderExtra { Code = "basket10", Kind = PricedExtraKind.Discount, Amount = new Money(-3.63m, "EUR"), LabelKey = "promo", Source = "test" });
+        foreach (var (line, share) in order.Lines.Zip(new[] { -242L, -121L }))
+        {
+            line.OrderDiscount = Money.FromMinorUnits(share, "EUR");
+            var gross = line.Total.ToMinorUnits() + share;
+            var vat = Money.RoundDiv(gross * 2100, 12_100);
+            line.VatRateBasisPoints = 2100;
+            line.Net = Money.FromMinorUnits(gross - vat, "EUR");
+            line.Vat = Money.FromMinorUnits(vat, "EUR");
+        }
+        order.Total = Money.Sum(order.Lines.Select(l => l.Total).Concat(order.Extras.Select(e => e.Amount)), "EUR");
+        return order;
+    }
+
+    /// <summary>A refund planned by Checkout's own arithmetic and turned into the payload Invoicing credits.</summary>
+    private static OrderRefundIssued PlannedRefund(string id, CheckoutOrder order, CheckoutRefundLedger ledger, params RefundLineRequest[] lines)
+    {
+        var plan = RefundMath.Plan(order, ledger, new RefundSpec(RefundKind.Cancellation, null, lines));
+        var refund = new CheckoutRefund
+        {
+            RefundId = id, Kind = RefundKind.Cancellation, Status = RefundStatus.Succeeded, Amount = plan.Amount, Deducted = plan.Deducted,
+            Parts = [.. plan.Parts], Lines = [.. plan.Lines], IssuedAt = DateTimeOffset.Parse("2026-10-20T10:00:00Z"),
+        };
+        var issued = RefundEngine.Issued(order, ledger, refund);
+        RefundMath.Apply(ledger, plan);
+        return issued;
+    }
+
+    private static CheckoutRefundLedger LedgerOf(CheckoutOrder order) => new()
+    {
+        OrderId = order.Id!, Components = RefundMath.Components(order),
+        Lines = order.Lines.Select(l => new RefundLedgerLine { LineId = l.LineId, ItemId = l.ItemId }).ToList(),
+    };
+
+    /// <summary>
+    /// Red before the fix: the order line did not store its order-discount share, so Checkout's refund parts and
+    /// Invoicing's invoice lines each re-spread the discount on their own; a full refund now credits exactly what the
+    /// invoice declared (gross and VAT), which is exactly what was charged.
+    /// </summary>
+    [Fact]
+    public async Task A_full_refund_of_a_discounted_order_credits_exactly_the_invoiced_gross_and_VAT()
+    {
+        var host = Host();
+        var order = DiscountedOrder("CheckoutOrders/RD1");
+        var invoice = (await host.Invoicing.IssueForOrderAsync(order)).Single();
+        invoice.TotalGross.Should().Be(order.Total);
+        invoice.Lines.Where(l => l.Source == InvoiceLineSource.Item).Select(l => l.Gross.ToMinorUnits()).Should().Equal(2178L, 1089L);
+
+        var ledger = LedgerOf(order);
+        var refund = PlannedRefund("refunds/rd1", order, ledger, new RefundLineRequest("l1", 2), new RefundLineRequest("l2", 1));
+        refund.Amount.Should().Be(order.Total);
+        foreach (var line in refund.Lines)
+        {
+            var orderLine = order.Lines.Single(l => l.LineId == line.LineId);
+            line.PriceGross.Should().Be(orderLine.Net + orderLine.Vat);
+        }
+
+        var note = (await host.Invoicing.CreditRefundAsync(order, refund)).Single();
+        note.TotalGross.Should().Be(invoice.TotalGross);
+        note.TotalVat.Should().Be(invoice.TotalVat);
+        note.TotalNet.Should().Be(invoice.TotalNet);
+    }
+
+    /// <summary>A partial line refund refunds and credits its discounted share: 1 of 2 units of a 21.78 base is 10.89.</summary>
+    [Fact]
+    public async Task A_partial_line_refund_of_a_discounted_order_refunds_its_discounted_share()
+    {
+        var host = Host();
+        var order = DiscountedOrder("CheckoutOrders/RD2");
+        var invoice = (await host.Invoicing.IssueForOrderAsync(order)).Single();
+        var ledger = LedgerOf(order);
+
+        var refund = PlannedRefund("refunds/rd2", order, ledger, new RefundLineRequest("l1", 1));
+        refund.Amount.Should().Be(new Money(10.89m, "EUR"));
+        var note = (await host.Invoicing.CreditRefundAsync(order, refund)).Single();
+        note.TotalGross.Should().Be(new Money(10.89m, "EUR"));
+
+        var rest = PlannedRefund("refunds/rd3", order, ledger, new RefundLineRequest("l1", 1), new RefundLineRequest("l2", 1));
+        (refund.Amount + rest.Amount).Should().Be(order.Total);
+        var final = (await host.Invoicing.CreditRefundAsync(order, rest)).Single();
+        (note.TotalVat + final.TotalVat).Should().Be(invoice.TotalVat);
+    }
+
     [Fact]
     public async Task A_lost_dispute_credits_what_the_chargeback_took()
     {
@@ -193,6 +284,41 @@ public class InvoicingFlowTests : SparkTestDriver
         note.TotalGross.Should().Be(invoice.TotalGross);
         note.TotalVat.Should().Be(invoice.TotalVat);
         (await host.Invoicing.CreditForOrderAsync(order, "dispute:dp_1")).Single().Number.Should().Be(note.Number);
+    }
+
+    /// <summary>
+    /// <c>LineRefused</c> after the invoice (S21 strategy H): the refused line is credited in full, mirroring the invoice
+    /// line, keyed by the line id (a redelivered event issues nothing new); the other line is left alone.
+    /// </summary>
+    [Fact]
+    public async Task A_line_refused_after_invoicing_is_credited_in_full_once()
+    {
+        var host = Host();
+        var order = InvoicingHost.Order("CheckoutOrders/LR1", ("tickets/a", 30m, 2, false, "standard"), ("shop/mug", 9.99m, 1, true, "standard"));
+        var invoice = (await host.Invoicing.IssueForOrderAsync(order)).Single();
+        order.Lines[1].Status = OrderLineStatus.Refused;
+
+        var note = (await host.Invoicing.CreditRefusedLineAsync(order, "l2")).Single();
+
+        note.Kind.Should().Be(InvoiceKind.CreditNote);
+        note.CreditedInvoiceNumber.Should().Be(invoice.Number);
+        note.SourceKey.Should().Contain("line-refused:l2");
+        note.TotalGross.Should().Be(new Money(9.99m, "EUR"));
+        note.TotalVat.Should().Be(invoice.Lines.Where(l => l.SourceLineId == "l2").Select(l => l.Vat).Single());
+        (await host.Invoicing.CreditRefusedLineAsync(order, "l2")).Single().Number.Should().Be(note.Number); // idempotent
+    }
+
+    /// <summary>A line refused before the invoice is never on it, so its refusal credits nothing.</summary>
+    [Fact]
+    public async Task A_line_refused_before_invoicing_is_left_off_and_credits_nothing()
+    {
+        var host = Host();
+        var order = InvoicingHost.Order("CheckoutOrders/LR2", ("tickets/a", 30m, 2, false, "standard"), ("shop/mug", 9.99m, 1, true, "standard"));
+        order.Lines[1].Status = OrderLineStatus.Refused;
+        var invoice = (await host.Invoicing.IssueForOrderAsync(order)).Single();
+        invoice.Lines.Should().NotContain(l => l.SourceLineId == "l2");
+
+        (await host.Invoicing.CreditRefusedLineAsync(order, "l2")).Should().BeEmpty();
     }
 
     [Fact]

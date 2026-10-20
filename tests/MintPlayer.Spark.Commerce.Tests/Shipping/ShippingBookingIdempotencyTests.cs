@@ -170,6 +170,47 @@ public class ShippingBookingIdempotencyTests : SparkTestDriver
     }
 
     [Fact]
+    public async Task A_crash_between_the_carrier_answer_and_the_save_never_books_twice()
+    {
+        // The carrier answers, then the save of its labels fails (the process dies in between): the booking is at the
+        // carrier, our shipment still says "in doubt". The retry must find it there, never book a second label.
+        var host = Build();
+        var crashes = 1;
+        void Crash(object? sender, Raven.Client.Documents.Session.BeforeStoreEventArgs e)
+        {
+            if (crashes > 0 && e.Entity is Shipment s && s.Parcels.Any(p => p.LabelAttachment is not null))
+            {
+                crashes--;
+                throw new InvalidOperationException("The process died before the labels were saved.");
+            }
+        }
+        Store.OnBeforeStore += Crash;
+        try
+        {
+            var first = async () => await host.Shipping.CreateShipmentAsync(Request(), default);
+            await first.Should().ThrowAsync<InvalidOperationException>();
+        }
+        finally
+        {
+            Store.OnBeforeStore -= Crash;
+        }
+        host.Carrier.Bookings.Should().HaveCount(1, "the carrier booked before the save failed");
+        var pending = await LoadAsync("Shipments/orders/7/outbound");
+        pending.Parcels.Single().LabelAttachment.Should().BeNull();
+        pending.PendingBookings.Single().State.Should().Be(PendingBookingState.InDoubt);
+
+        var shipment = await host.Shipping.CreateShipmentAsync(Request(), default);
+
+        host.Carrier.Requests.Should().HaveCount(1, "the retry looked the booking up instead of booking again");
+        host.Carrier.Bookings.Should().HaveCount(1);
+        host.Plan.Lookups.Should().Be(1);
+        shipment.Status.Should().Be(TrackingStatus.Labelled);
+        shipment.HasPendingBooking.Should().BeFalse();
+        shipment.Parcels.Single().TrackingNumber.Should().Be(host.Carrier.Parcels.Values.Single().TrackingNumber);
+        (await host.Shipping.GetLabelAsync(shipment.Id!, 1, default)).Should().NotBeNull();
+    }
+
+    [Fact]
     public async Task The_reconciliation_stores_the_labels_of_a_lost_answer_without_booking()
     {
         var host = Build(new Plan { LoseAnswers = 1 });

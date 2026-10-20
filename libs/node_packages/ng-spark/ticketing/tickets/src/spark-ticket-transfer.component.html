@@ -1,0 +1,30 @@
+@if (offer(); as o) {
+  <article class="spark-ticket-transfer">
+    <h1>{{ o.eventName | resolveTranslation }}</h1>
+    <p>
+      {{ o.ticketTypeName | resolveTranslation }}
+      @if (o.seatLabel) {
+        <span> · {{ o.seatLabel }}</span>
+      }
+    </p>
+    <ul>
+      @for (date of o.dates; track date.id) {
+        <li><spark-date-time [value]="date.startsAt" [alsoIn]="date.venueTimeZoneId" /></li>
+      }
+    </ul>
+    <p class="spark-ticket-transfer-note">{{ 'ticketingTickets.transfer.erased' | t }}</p>
+    @if (o.status === 'Pending') {
+      <form (submit)="$event.preventDefault(); accept()">
+        <label>
+          {{ 'ticketingTickets.transfer.name' | t }}
+          <input type="text" autocomplete="name" maxlength="120" [required]="o.nameRequired" [value]="name()" (input)="name.set($any($event.target).value)" />
+        </label>
+        <button type="submit" class="btn btn-primary" [disabled]="busy() || (o.nameRequired && !name().trim())">{{ 'ticketingTickets.transfer.accept' | t }}</button>
+      </form>
+      <p><small>{{ 'ticketingTickets.transfer.pending' | t }} <spark-date-time [value]="o.expiresAt" /></small></p>
+    }
+  </article>
+}
+@if (refusal(); as key) {
+  <p class="spark-ticket-transfer-refusal" role="alert">{{ key | t }}</p>
+}

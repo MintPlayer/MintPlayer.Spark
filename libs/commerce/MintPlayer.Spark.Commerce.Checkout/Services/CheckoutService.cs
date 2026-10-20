@@ -48,6 +48,10 @@ internal sealed class CheckoutService(
 
     private BuyerIdentifiers Identifiers(string? email = null) => new(AccountId: buyer.UserId, VisitorId: buyer.UserId is null ? buyer.VisitorId : null, Email: email);
 
+    /// <summary>The identifiers a line's limits count against: the buyer's, plus the guest visitor a merged line was chosen under (D16).</summary>
+    private BuyerIdentifiers LineIdentifiers(CheckoutBasketLine? line, string? email = null)
+        => Identifiers(email) is var own && own.VisitorId is null && line?.LimitVisitorId is { Length: > 0 } visitor ? own with { VisitorId = visitor } : own;
+
     // ---- basket ---------------------------------------------------------------------------------------------------
 
     public async Task<SparkBasket> GetBasketAsync(CancellationToken cancellationToken = default)
@@ -162,7 +166,7 @@ internal sealed class CheckoutService(
         {
             var expiresAt = Now + channel.Hold.Clamp(item.HoldTime);
             var result = await inventory.AdjustAsync(OrderClaims.Request(claimId, basket.Id!, expiresAt, CheckoutCapacitySnapshot.From(item.Capacity),
-                OrderClaims.Limits(item, channel, quantity, Identifiers())), cancellationToken);
+                OrderClaims.Limits(item, channel, quantity, LineIdentifiers(line))), cancellationToken);
             if (!result.Succeeded)
             {
                 line.Quantity = previous;
@@ -183,7 +187,7 @@ internal sealed class CheckoutService(
         var claimId = OrderClaims.ClaimIdFor(line.LineId);
         var expiresAt = Now + channel.Hold.Clamp(item.HoldTime);
         var result = await inventory.TryClaimAsync(OrderClaims.Request(claimId, basket.Id!, expiresAt, CheckoutCapacitySnapshot.From(item.Capacity),
-            OrderClaims.Limits(item, channel, line.Quantity, Identifiers())), cancellationToken);
+            OrderClaims.Limits(item, channel, line.Quantity, LineIdentifiers(line))), cancellationToken);
         if (!result.Succeeded)
             throw OrderClaims.Refusal(result, line.LineId);
         line.ClaimId = claimId;
@@ -574,7 +578,6 @@ internal sealed class CheckoutService(
     private CheckoutOrder NewOrder(Prepared prepared, string email, string? name, DateTimeOffset now)
     {
         var id = "CheckoutOrders/" + Guid.NewGuid().ToString("N");
-        var identifiers = Identifiers(email);
         var order = new CheckoutOrder
         {
             Id = id,
@@ -595,7 +598,7 @@ internal sealed class CheckoutService(
         foreach (var priced in prepared.Priced.Lines)
         {
             var (line, item, channel) = prepared.Lines.First(l => l.Line.LineId == priced.LineId);
-            order.Lines.Add(ToOrderLine(priced, item, channel, line, identifiers));
+            order.Lines.Add(ToOrderLine(priced, item, channel, line, LineIdentifiers(line, email)));
         }
         order.Extras = prepared.Priced.Extras.Select(ToOrderExtra).ToList();
         order.Log.Add(new CheckoutOrderLogEntry { At = now, Event = "placed", ActorId = buyer.UserId, Detail = buyer.VisitorId is { } v ? "visitor " + v : null });
@@ -620,6 +623,8 @@ internal sealed class CheckoutService(
             Fees = priced.Price.MandatoryFees.Select(f => new CheckoutOrderFee { Code = f.Code, Kind = f.Kind.ToString(), Amount = f.Amount, LabelKey = f.LabelKey, Mandatory = true }).ToList(),
             Adjustments = priced.Adjustments.Select(a => new CheckoutOrderFee { Code = a.Code, Kind = a.Source, Amount = a.Amount, LabelKey = a.LabelKey }).ToList(),
             Total = priced.Total,
+            // S21: the line's share of the order discount, stored so Net + Vat = Total − fees + OrderDiscount holds on the order.
+            OrderDiscount = priced.OrderDiscount ?? Money.Zero(priced.Total.Currency),
             ClaimId = basketLine?.ClaimId,
             Units = basketLine?.HeldUnits.Count > 0 ? [.. basketLine.HeldUnits] : [.. item.Capacity.Units],
             Capacity = CheckoutCapacitySnapshot.From(item.Capacity),
@@ -646,7 +651,7 @@ internal sealed class CheckoutService(
         var sellerIds = order.Lines.Select(l => l.SellerOrganizationId).Distinct().ToList();
         var splits = split
             ? order.Lines.Where(l => l.SellerOrganizationId is not null).GroupBy(l => l.SellerOrganizationId!)
-                .Select(g => new PaymentSplitRequest(g.Key, Money.Sum(g.Select(l => l.Total), order.Currency))).ToList()
+                .Select(g => new PaymentSplitRequest(g.Key, Money.Sum(g.Select(l => l.Charged()), order.Currency))).ToList()
             : [];
         var attempt = order.Payments.Count;
         var payment = await payments.CreatePaymentAsync(new PaymentCreation

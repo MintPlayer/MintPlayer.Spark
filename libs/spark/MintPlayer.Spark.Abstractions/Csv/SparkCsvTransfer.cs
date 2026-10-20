@@ -115,8 +115,9 @@ public sealed class SparkCsvImportRequest
     /// <summary>
     /// Header → attribute name, for a file whose headers are not the attribute names. A header mapped to
     /// <see langword="null"/> or an empty name is ignored. Unmapped headers must be attribute names (case-insensitive)
-    /// or a reserved column (<see cref="SparkCsvColumns"/>); any other header refuses the file, so a typo never
-    /// silently drops a column.
+    /// or a reserved column (<see cref="SparkCsvColumns"/>). An unknown <c>@…</c> header refuses the file; any other
+    /// unknown header refuses each row that has a value in it, with the answer an attribute the caller may not set gets
+    /// (so the file learns nothing about hidden attributes), and a typo never silently drops a value.
     /// </summary>
     public Dictionary<string, string?>? Mapping { get; set; }
 }

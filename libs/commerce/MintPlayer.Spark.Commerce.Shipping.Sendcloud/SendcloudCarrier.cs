@@ -75,12 +75,12 @@ internal sealed class SendcloudCarrier(SendcloudApi api) : IShippingCarrier, ISe
         if (request.IsReturn)
             return CarrierBookingLookup.Unsupported;
         var response = await api.GetAsync(api.Api("shipments?external_reference_id=" + Uri.EscapeDataString(request.ShipmentId)), request.Account, cancellationToken);
-        if (!response.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array || data.GetArrayLength() == 0)
+        if (MatchByReference(response, request.ShipmentId) is not { } match)
             return CarrierBookingLookup.NotFound;
         SendcloudShipment shipment;
         try
         {
-            shipment = ReadShipment(data[0]);
+            shipment = ReadShipment(match);
         }
         catch (CarrierException ex) when (ex.StatusCode == 422)
         {
@@ -131,6 +131,23 @@ internal sealed class SendcloudCarrier(SendcloudApi api) : IShippingCarrier, ISe
     {
         var response = await api.GetAsync(api.Api("service-points?" + ServicePointQueryString(query, api.Options)), query.Account, cancellationToken);
         return ReadServicePoints(response).Take(query.Limit).ToList();
+    }
+
+    /// <summary>
+    /// The shipment of <c>GET /shipments?external_reference_id=</c> that carries exactly our reference. The reference
+    /// page does not say whether the filter matches exactly, so a shipment of another reference (a prefix match, or
+    /// <c>{key}</c> against <c>{key}-r1</c>) is never taken for ours.
+    /// </summary>
+    internal static JsonElement? MatchByReference(JsonElement response, string reference)
+    {
+        if (response.ValueKind != JsonValueKind.Object || !response.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array)
+            return null;
+        foreach (var shipment in data.EnumerateArray())
+        {
+            if (string.Equals(Text(shipment, "external_reference_id"), reference, StringComparison.Ordinal))
+                return shipment;
+        }
+        return null;
     }
 
     // ---- Booking ---------------------------------------------------------------------------------------------------

@@ -1,5 +1,6 @@
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Commerce.Checkout;
+using MintPlayer.Spark.Commerce.Checkout.Models;
 using MintPlayer.Spark.Commerce.Checkout.Services;
 using MintPlayer.Spark.Commerce.Inventory;
 using MintPlayer.Spark.Commerce.Pricing;
@@ -22,6 +23,18 @@ public class CheckoutLineVatTests
         {
             foreach (var line in context.Lines)
                 line.Adjustments.Add(new PriceAdjustment("promo", new Money(-amount, context.Currency), "promo", "test"));
+            return Task.CompletedTask;
+        }
+    }
+
+    /// <summary>An order-level discount (what Promotions adds for a basket-wide code): an extra, not a line adjustment.</summary>
+    private sealed class OrderDiscount(decimal amount) : ICheckoutPricingStep
+    {
+        public int Order => 100;
+
+        public Task ApplyAsync(CheckoutPricingContext context, CancellationToken cancellationToken)
+        {
+            context.Extras.Add(new PricedExtra("basket10", PricedExtraKind.Discount, new Money(-amount, context.Currency), "promo", "test", null, null));
             return Task.CompletedTask;
         }
     }
@@ -94,6 +107,85 @@ public class CheckoutLineVatTests
         priced.Lines.Sum(l => l.Vat!.ToMinorUnits()).Should().Be(groupVat);
         foreach (var line in priced.Lines)
             (line.Net!.ToMinorUnits() + line.Vat!.ToMinorUnits()).Should().Be(CheckoutLineVat.Goods(line));
+    }
+
+    /// <summary>
+    /// Red before the fix: an order-level discount (a <see cref="PricedExtraKind.Discount"/> extra) never reached the
+    /// lines, so each line kept the VAT of its undiscounted 12.10 (2.10) while the buyer paid 2.42 less in total.
+    /// </summary>
+    [Theory]
+    [InlineData(CheckoutVatRounding.PerLine)]
+    [InlineData(CheckoutVatRounding.PerGroup)]
+    public async Task An_order_discount_lowers_each_lines_VAT_base_pro_rata(CheckoutVatRounding rounding)
+    {
+        var (pricing, _) = Pricing(rounding, new OrderDiscount(2.42m));
+        var priced = await pricing.PriceAsync(
+            [new PricingInput("a", Item("x", 12.10m), 1), new PricingInput("b", Item("y", 12.10m), 1)],
+            new Dictionary<string, string>(), null, false, default);
+
+        // Goods 12.10 + 12.10; the 2.42 discount splits 1.21 / 1.21 (largest remainder); each base 10.89 contains
+        // RoundDiv(1089 × 2100, 12100) = 1.89 VAT. Before the fix: 2.10 / 10.00 per line.
+        foreach (var line in priced.Lines)
+        {
+            line.OrderDiscount.Should().Be(new Money(-1.21m, "EUR"));
+            line.Vat.Should().Be(new Money(1.89m, "EUR"));
+            line.Net.Should().Be(new Money(9.00m, "EUR"));
+        }
+    }
+
+    [Fact]
+    public async Task An_uneven_order_discount_splits_by_largest_remainder_and_the_bases_sum_to_what_is_paid()
+    {
+        var (pricing, _) = Pricing(CheckoutVatRounding.PerLine, new OrderDiscount(1.00m));
+        var priced = await pricing.PriceAsync(
+            [new PricingInput("a", Item("x", 3.33m), 1), new PricingInput("b", Item("y", 3.33m), 1), new PricingInput("c", Item("z", 3.34m), 1)],
+            new Dictionary<string, string>(), null, false, default);
+
+        // Money.Allocate(100, [333, 333, 334]) = 33 / 33 / 34: every base becomes 3.00, VAT RoundDiv(300 × 2100, 12100) = 52.
+        priced.Lines.Select(l => l.OrderDiscount!.ToMinorUnits()).Should().Equal(-33L, -33L, -34L);
+        foreach (var line in priced.Lines)
+        {
+            line.Vat.Should().Be(new Money(0.52m, "EUR"));
+            line.Net.Should().Be(new Money(2.48m, "EUR"));
+        }
+        var bases = priced.Lines.Sum(l => l.Net!.ToMinorUnits() + l.Vat!.ToMinorUnits());
+        bases.Should().Be(priced.Lines.Sum(CheckoutLineVat.Goods) - 100);
+    }
+
+    /// <summary>
+    /// Red before the fix: the order line dropped the share, so its Net + Vat (10.89) no longer equalled Total − fees
+    /// (12.10) and refunds and credit notes reading the line used the undiscounted amount.
+    /// </summary>
+    [Fact]
+    public async Task The_order_line_stores_its_order_discount_share_and_its_amounts_add_up()
+    {
+        var (pricing, channel) = Pricing(CheckoutVatRounding.PerLine, new OrderDiscount(2.42m));
+        var items = new[] { Item("x", 12.10m), Item("y", 12.10m) };
+        var priced = await pricing.PriceAsync(
+            [new PricingInput("a", items[0], 1), new PricingInput("b", items[1], 1)],
+            new Dictionary<string, string>(), null, true, default);
+
+        var lines = priced.Lines.Select((p, i) => CheckoutService.ToOrderLine(p, items[i], channel, null, new BuyerIdentifiers())).ToList();
+        foreach (var line in lines)
+        {
+            line.OrderDiscount.Should().Be(new Money(-1.21m, "EUR"));
+            (line.Net + line.Vat).Should().Be(line.ChargedGoods());
+            line.ChargedGoods().Should().Be(new Money(10.89m, "EUR"));
+            line.Charged().Should().Be(line.Total + line.OrderDiscount);
+        }
+        // What the buyer pays = every line as charged (the discount extra is exactly the lines' shares).
+        Money.Sum(lines.Select(l => l.Charged()), "EUR").Should().Be(priced.Total);
+    }
+
+    [Fact]
+    public async Task A_net_priced_line_with_an_order_discount_stays_BR_CO_17_exact()
+    {
+        var (pricing, _) = Pricing(CheckoutVatRounding.PerLine, new OrderDiscount(1.00m));
+        var priced = await pricing.PriceAsync([new PricingInput("a", Item("x", 10.00m, basis: PriceBasis.Net), 1)], new Dictionary<string, string>(), null, false, default);
+        var line = priced.Lines[0];
+        // Goods paid: 12.10 − 1.00 = 11.10, the same base as a 1.00 line discount: net 9.17 + 1.93.
+        line.Net.Should().Be(new Money(9.17m, "EUR"));
+        line.Vat.Should().Be(new Money(1.93m, "EUR"));
     }
 
     [Fact]

@@ -1,6 +1,7 @@
 {
   "_fixture": {
     "source": "https://sendcloud.dev/api/v3/webhooks/parcel-status-changed (payload example)",
+    "retrieved": "2026-10-20",
     "derived": "public documentation example, trimmed; timestamps (documented as 123) set to unix milliseconds of 2026-10-22T09:00:00Z, status set to 11 Delivered (the cancel page names 11 delivered)",
     "recorded": false
   },

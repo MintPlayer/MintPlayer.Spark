@@ -112,7 +112,9 @@ again:
 - the next attempt (the same `IdempotencyKey`), and the `Shipping.BookingReconcile` job (every 10 minutes, for
   bookings older than `BookingReconcileAfter`, default 10 minutes), first **look the booking up at the carrier** by
   that reference (`IShippingBookingLookup`: Sendcloud `GET /shipments?external_reference_id=`, bpost's order, the
-  test carrier). Found: its labels are stored as if the answer had arrived. Not found (and old enough not to be in
+  test carrier; Sendcloud v3 has no `Idempotency-Key` header, and a repeated announce with the same
+  `external_reference_id` answers 409 with the shipment it holds, so even a blind retry books nothing twice). Found:
+  its labels are stored as if the answer had arrived. Not found (and old enough not to be in
   flight): it is booked again. The job never books.
 - a carrier that cannot be asked (PostNL; Sendcloud returns) leaves it in doubt: the attempt throws
   `ShipmentBookingInDoubtException`, and staff check the carrier's panel and run *Release booking*

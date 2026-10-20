@@ -1,0 +1,41 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "ShopProductAttribute: a declared attribute of a ShopProduct (GB13): shown on the page and a facet {Name}:{Value}.",
+    "",
+    "HAND-AUTHORED. Ids are UUIDv5 of 'commerce-shop:ShopProductAttribute[...]', written by 'npm run stamp:library-model-ids'."
+  ],
+  "persistentObject": {
+    "id": "553eca30-8e4b-5a1d-8ce9-7fbbf4532aef",
+    "name": "ShopProductAttribute",
+    "clrType": "MintPlayer.Spark.Commerce.Shop.Models.ShopProductAttribute",
+    "breadcrumb": "{Name}: {Value}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "6b07ddc6-7014-5154-8f9e-57b18a46b242",
+        "name": "Name",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "3ac89c80-8441-5016-bf34-bcd54a8d4b48",
+        "name": "Value",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ]
+  },
+  "queries": []
+}

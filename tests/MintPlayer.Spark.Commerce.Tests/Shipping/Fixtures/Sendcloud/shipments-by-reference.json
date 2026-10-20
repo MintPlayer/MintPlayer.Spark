@@ -1,6 +1,7 @@
 {
   "_fixture": {
     "source": "https://sendcloud.dev/api/v3/shipments/retrieve-shipments (200: a data array of shipment objects; pagination in the Link header)",
+    "retrieved": "2026-10-20",
     "derived": "built from the schema: one shipment as in shipment-announced.json (one parcel), found by external_reference_id",
     "recorded": false
   },

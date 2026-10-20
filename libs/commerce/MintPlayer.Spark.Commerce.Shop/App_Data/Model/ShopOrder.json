@@ -1,0 +1,240 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "ShopOrder (docs/commerce_PRD.md §4.10): the shop's side of a checkout order for one seller (Paid -> Shipped -> Delivered),",
+    "written by the shop only (order and shipment events, the staff endpoints). Read-only here: staff ship, label returns and",
+    "inspect through /spark/commerce/shop/staff/*.",
+    "",
+    "HAND-AUTHORED. Ids are UUIDv5 of 'commerce-shop:ShopOrder[...]', written by 'npm run stamp:library-model-ids'."
+  ],
+  "persistentObject": {
+    "id": "2540ab9d-3af6-5d2f-8593-f1dea930f79d",
+    "name": "ShopOrder",
+    "clrType": "MintPlayer.Spark.Commerce.Shop.Models.ShopOrder",
+    "alias": "shoporder",
+    "breadcrumb": "{OrderNumber}",
+    "tabs": [],
+    "groups": [
+      {
+        "id": "a51c28c9-c6ad-5880-a28a-ad55b3824dfd",
+        "name": "Order",
+        "order": 1
+      },
+      {
+        "id": "6cee7bb0-f0af-5a3a-ae52-dd5685b7b978",
+        "name": "Lines",
+        "order": 2
+      },
+      {
+        "id": "9f97d9df-aec2-5f01-b569-458ca94da3c1",
+        "name": "Returns",
+        "order": 3
+      }
+    ],
+    "attributes": [
+      {
+        "id": "059e6a2b-4bf1-5114-bd5b-5f7d920b2548",
+        "name": "OrderNumber",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "group": "a51c28c9-c6ad-5880-a28a-ad55b3824dfd"
+      },
+      {
+        "id": "c368d42e-a602-54c0-8b55-218075f77c83",
+        "name": "OrganizationId",
+        "dataType": "Reference",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 2,
+        "query": "GetOrganizations",
+        "referenceType": "MintPlayer.Spark.Organizations.Models.Organization",
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "group": "a51c28c9-c6ad-5880-a28a-ad55b3824dfd"
+      },
+      {
+        "id": "c7ebde58-f52b-5078-89a5-d91317ea8481",
+        "name": "State",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "lookupReferenceType": "ShopOrderState",
+        "group": "a51c28c9-c6ad-5880-a28a-ad55b3824dfd"
+      },
+      {
+        "id": "09967256-0c31-5334-a4e8-1ee4b790eb3b",
+        "name": "Fulfilment",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "a51c28c9-c6ad-5880-a28a-ad55b3824dfd"
+      },
+      {
+        "id": "d9fe8f22-4132-53c7-8e2c-0bdb9389e913",
+        "name": "Method",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "group": "a51c28c9-c6ad-5880-a28a-ad55b3824dfd"
+      },
+      {
+        "id": "b0f531e3-b344-544f-a774-7a3cfa97ad95",
+        "name": "Carrier",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "a51c28c9-c6ad-5880-a28a-ad55b3824dfd"
+      },
+      {
+        "id": "a6e559cc-abe2-574c-a8db-81021d1c1cb4",
+        "name": "DeliveryCost",
+        "dataType": "Money",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "a51c28c9-c6ad-5880-a28a-ad55b3824dfd"
+      },
+      {
+        "id": "3d7cf143-6dcd-563e-9269-ca1ad4f812c9",
+        "name": "StandardDeliveryCost",
+        "dataType": "Money",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "a51c28c9-c6ad-5880-a28a-ad55b3824dfd"
+      },
+      {
+        "id": "14f609a6-32ee-5b0d-9ec9-64efb29e5e15",
+        "name": "MinimumAge",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 9,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "a51c28c9-c6ad-5880-a28a-ad55b3824dfd"
+      },
+      {
+        "id": "8006cf02-0708-595e-bfba-ed807bc1ae0d",
+        "name": "PaidAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 10,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "group": "a51c28c9-c6ad-5880-a28a-ad55b3824dfd"
+      },
+      {
+        "id": "6663ad8e-74e7-5992-8051-58a54d140741",
+        "name": "ShippedAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 11,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "group": "a51c28c9-c6ad-5880-a28a-ad55b3824dfd"
+      },
+      {
+        "id": "72e4429e-938c-5b5a-9af0-963b8933b3e3",
+        "name": "DeliveredAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 12,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "group": "a51c28c9-c6ad-5880-a28a-ad55b3824dfd"
+      },
+      {
+        "id": "259d238c-db84-5a8f-b97f-034e55f8ad9f",
+        "name": "CreatedAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 13,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "a51c28c9-c6ad-5880-a28a-ad55b3824dfd"
+      },
+      {
+        "id": "36e149ce-c169-578d-ab3e-3abf85fbbb0e",
+        "name": "Lines",
+        "dataType": "AsDetail",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 14,
+        "asDetailType": "MintPlayer.Spark.Commerce.Shop.Models.ShopOrderLine",
+        "isArray": true,
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "6cee7bb0-f0af-5a3a-ae52-dd5685b7b978"
+      },
+      {
+        "id": "442f2d77-5f97-565b-9c42-cd20946fd022",
+        "name": "Returns",
+        "dataType": "AsDetail",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 15,
+        "asDetailType": "MintPlayer.Spark.Commerce.Shop.Models.ShopOrderReturn",
+        "isArray": true,
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "9f97d9df-aec2-5f01-b569-458ca94da3c1"
+      }
+    ]
+  },
+  "queries": [
+    {
+      "id": "1bda86d8-cc1d-5cad-ac2e-d3b2398b00d7",
+      "name": "ShopOrders",
+      "source": "Custom.ShopOrders",
+      "alias": "shoporders",
+      "sortColumns": [
+        {
+          "property": "CreatedAt",
+          "direction": "desc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "ShopOrder"
+    }
+  ]
+}

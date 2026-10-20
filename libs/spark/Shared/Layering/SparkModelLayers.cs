@@ -206,10 +206,24 @@ internal static class SparkModelLayers
             libraryTypes.Add(type);
         }
 
-        var byClrType = libraryTypes
-            .Where(t => t.ClrType is not null)
-            .GroupBy(t => t.ClrType!, StringComparer.Ordinal)
-            .ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
+        // One persistent-object type per CLR type: Spark resolves a type by its CLR type (AsDetail rows, references,
+        // entity mapping, row policies), first match wins. Two libraries mapping one class (a shared value object such as
+        // the reference-data Address) would make that resolution depend on the layer order, so it is refused.
+        var byClrType = new Dictionary<string, LibraryType>(StringComparer.Ordinal);
+        foreach (var type in libraryTypes)
+        {
+            if (type.ClrType is not { } clrType)
+                continue;
+            if (byClrType.TryGetValue(clrType, out var first))
+            {
+                problems.Add(new SparkLayerError(type.Declarer.FileName, type.Declarer.Layer,
+                    $"libraries '{first.Declarer.Layer}' and '{type.Declarer.Layer}' both map the CLR type '{clrType}' " +
+                    $"('{first.Name}' and '{type.Name}'). A CLR type has one persistent-object type: keep '{first.Name}' and " +
+                    $"point the other library's attributes at it (asDetailType/referenceType resolve by CLR type)."));
+                continue;
+            }
+            byClrType[clrType] = type;
+        }
 
         var appOwned = new List<SparkModelEntry>();
         foreach (var input in application)

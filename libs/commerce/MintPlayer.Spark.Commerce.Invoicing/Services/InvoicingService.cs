@@ -76,7 +76,6 @@ internal sealed class InvoicingService(
         // Lines per issuer; extras (donation, insurance, other) go to the platform's document when there is one (it
         // collected them), else to the first; an order-level discount is spread over the item lines pro rata (§4.6).
         var drafts = new Dictionary<string, List<InvoiceDraftLine>>(StringComparer.Ordinal);
-        var itemDrafts = new List<(string Issuer, int Index)>();
         foreach (var line in active)
         {
             var facts = await FactsAsync(order, line, cancellationToken);
@@ -87,8 +86,8 @@ internal sealed class InvoicingService(
             var title = line.Title?.GetValue(language) is { Length: > 0 } t ? t : line.ItemId;
             var supplyDate = facts?.SupplyDate ?? (line.ServiceDate is { } sd ? IssueDay(sd) : null);
             var isGoods = facts?.IsGoods ?? line.IsPhysicalGoods;
-            itemDrafts.Add((key, list.Count));
-            list.Add(new InvoiceDraftLine(line.LineId, InvoiceLineSource.Item, title, line.Quantity, line.Total.ToMinorUnits() - feeTotal,
+            // S21: the goods' gross after the line's order-discount share, stored by Checkout at pricing (= the line's Net + Vat).
+            list.Add(new InvoiceDraftLine(line.LineId, InvoiceLineSource.Item, title, line.Quantity, line.Total.ToMinorUnits() - feeTotal + line.OrderDiscount.ToMinorUnits(),
                 facts?.VatCategory ?? line.VatCategory, isGoods, facts?.EventCountry, line.Channel, supplyDate, line.VatRateBasisPoints));
             foreach (var fee in line.Fees.Where(f => f.Mandatory && !f.Amount.IsZero))
                 list.Add(new InvoiceDraftLine(line.LineId + "#" + fee.Code, InvoiceLineSource.Fee, title + " — " + fee.Code, 1, fee.Amount.ToMinorUnits(),
@@ -96,17 +95,9 @@ internal sealed class InvoicingService(
         }
 
         var extrasTarget = drafts.ContainsKey(InvoiceIssuers.PlatformKey) ? InvoiceIssuers.PlatformKey : drafts.Keys.First();
-        var discount = order.Extras.Where(e => e.Kind == PricedExtraKind.Discount).Sum(e => e.Amount.ToMinorUnits());
-        if (discount != 0)
-        {
-            var weights = itemDrafts.Select(d => drafts[d.Issuer][d.Index].Gross).ToList();
-            var parts = VatMath.Spread(discount, weights);
-            for (var k = 0; k < itemDrafts.Count; k++)
-            {
-                var (issuer, index) = itemDrafts[k];
-                drafts[issuer][index] = drafts[issuer][index] with { Gross = drafts[issuer][index].Gross + parts[k] };
-            }
-        }
+        // The order-level discount is already on the item lines: Checkout spread it at pricing and stored each line's
+        // share (CheckoutOrderLine.OrderDiscount), so the invoice declares exactly the VAT base the order line carries, a
+        // refused line's share left with that line's refund, and refunds credit the same discounted amounts.
         var outsideScopeNotes = new List<string>();
         foreach (var extra in order.Extras.Where(e => e.Kind != PricedExtraKind.Discount && !e.Amount.IsZero))
         {
@@ -351,7 +342,7 @@ internal sealed class InvoicingService(
 
         // What the buyer got back that belongs to invoiced lines: refunds and lost disputes, less the refused lines
         // (refunded without ever being invoiced, D1/D3/D40).
-        var refused = order.Lines.Where(l => l.Status == OrderLineStatus.Refused).Sum(l => l.Total.ToMinorUnits());
+        var refused = order.Lines.Where(l => l.Status == OrderLineStatus.Refused).Sum(l => l.Charged().ToMinorUnits());
         var invoicedGross = documents.Sum(d => d.TotalGross.ToMinorUnits());
         long refunded = order.State == OrderState.Refunded
             ? order.Total.ToMinorUnits()

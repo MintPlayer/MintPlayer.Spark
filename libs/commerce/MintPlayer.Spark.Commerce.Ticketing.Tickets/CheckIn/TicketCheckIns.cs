@@ -25,7 +25,8 @@ namespace MintPlayer.Spark.Commerce.Ticketing.Tickets.CheckIn;
 internal sealed class TicketCheckIns(
     IDocumentStore store,
     IOptionsMonitor<SparkTicketingTicketsOptions> options,
-    TimeProvider clock)
+    TimeProvider clock,
+    TicketChangeFeed? feed = null)
 {
     private DateTimeOffset Now => clock.GetUtcNow();
 
@@ -108,7 +109,7 @@ internal sealed class TicketCheckIns(
         var direction = Direction(request.Direction);
         if (!TicketSecrets.TryParse(request.Payload, out var code, out var secret))
             return Unknown(scanId, null);
-        return await TicketSessions.RetryAsync(store, async session =>
+        var result = await TicketSessions.RetryAsync(store, async session =>
         {
             var ticket = await session.LoadAsync<Ticket>(Ticket.IdFor(code), cancellationToken);
             if (ticket is null || ticket.EventId != device.EventId || !TicketSecrets.Verify(ticket, secret))
@@ -119,6 +120,9 @@ internal sealed class TicketCheckIns(
             var dates = await EventDatesAsync(session, device.EventId, cancellationToken);
             return await ApplyAsync(session, device, list, dates, ticket, scanId, direction, Now, request.DateId, offline: false, cancellationToken);
         }, cancellationToken);
+        if (result.Result != TicketScanResults.Unknown)
+            feed?.Changed(device.EventId);
+        return result;
     }
 
     // ---- sync (S9) --------------------------------------------------------------------------------------------
@@ -168,18 +172,27 @@ internal sealed class TicketCheckIns(
                 doubleEntries.Add(id);
         }
 
-        // The list's changes since the device's cursor: reissues, revocations, freezes, other devices' presence.
+        if (scans.Count > 0)
+            feed?.Changed(device.EventId);
+
+        // The list's changes since the device's cursor: reissues, revocations, freezes, other devices' presence. A
+        // truncated page answers the last change's instant as the cursor, so the device asks again (it upserts).
         var changes = new List<SparkScannerEntry>();
+        var cursor = Cursor(now);
         if (ParseCursor(request.Since) is { } since)
         {
             using var session = store.OpenAsyncSession();
             var eventId = device.EventId;
+            var pageSize = Math.Clamp(o.ListPageSize, 100, 20_000);
             var changed = await session.Query<Ticket>()
                 .Customize(c => c.WaitForNonStaleResults())
                 .Where(t => t.EventId == eventId && t.UpdatedAt > since)
-                .Take(o.ListPageSize)
+                .OrderBy(t => t.UpdatedAt)
+                .Take(pageSize)
                 .ToListAsync(cancellationToken);
             changes.AddRange(changed.Select(t => Entry(t, device.ListId)));
+            if (changed.Count == pageSize)
+                cursor = Cursor(changed[^1].UpdatedAt.AddTicks(-1));
         }
 
         using (var session = store.OpenAsyncSession())
@@ -190,7 +203,7 @@ internal sealed class TicketCheckIns(
                 await session.SaveChangesAsync(cancellationToken);
             }
         }
-        return new SparkScannerSyncResult(results, doubleEntries.ToList(), changes, Cursor(now), now);
+        return new SparkScannerSyncResult(results, doubleEntries.ToList(), changes, cursor, now);
     }
 
     // ---- shared ---------------------------------------------------------------------------------------------

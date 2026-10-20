@@ -4,6 +4,8 @@
     "VenueAddress: the reference-data Address value object (MintPlayer.Spark.ReferenceData.Address, docs/commerce_PRD.md §4.18)",
     "as a venue edits it (AsDetail, the spark-address renderer). Named VenueAddress so it cannot clash with an application's own",
     "\"Address\" type; its fields are the value object's, in the order the reference-data app declares them.",
+    "One persistent-object type per CLR type (SparkModelLayers refuses a second library mapping this class): another library",
+    "that edits an Address points its asDetailType at the class and gets this type; an application changes it with \"$extends\".",
     "",
     "HAND-AUTHORED. Ids are UUIDv5 of 'ticketing-venues:VenueAddress[...]', written by 'npm run stamp:library-model-ids'."
   ],

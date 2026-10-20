@@ -1,0 +1,127 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "TicketCheckInList (GB3): a gate, day or zone with the dates and ticket types it admits (empty = all; a zone names its",
+    "types), and re-entry. An event without lists checks in on one implicit list. OrganizationId is copied from the event.",
+    "",
+    "HAND-AUTHORED. Ids are UUIDv5 of 'ticketing-tickets:TicketCheckInList[...]', written by 'npm run stamp:library-model-ids'."
+  ],
+  "persistentObject": {
+    "id": "b225bff1-bbde-50c2-a274-397de2807f3e",
+    "name": "TicketCheckInList",
+    "clrType": "MintPlayer.Spark.Commerce.Ticketing.Tickets.Models.TicketCheckInList",
+    "alias": "ticketcheckinlist",
+    "breadcrumb": "{Name}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "1b616d3f-7a3f-54c7-b14b-1df248437d02",
+        "name": "EventId",
+        "dataType": "Reference",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "query": "TicketEvents",
+        "referenceType": "MintPlayer.Spark.Commerce.Ticketing.Events.Models.TicketEvent"
+      },
+      {
+        "id": "697805cc-b063-5581-a9f8-78b5867c646b",
+        "name": "Name",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "2f1de672-cd32-5fc3-ab1c-1b949354296b",
+        "name": "Kind",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "lookupReferenceType": "TicketCheckInListKind"
+      },
+      {
+        "id": "9934d7e6-2fcd-5115-b89b-74ce93af95b7",
+        "name": "DateIds",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 4,
+        "isArray": true,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "32c534c1-e0ec-5729-8306-3c29371aabc2",
+        "name": "TicketTypeIds",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 5,
+        "isArray": true,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "b48ca900-681f-5a43-97f3-29c505f492f6",
+        "name": "AllowReentry",
+        "dataType": "boolean",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "08bf3a18-3445-577d-b16c-1663db2e05b7",
+        "name": "IsActive",
+        "dataType": "boolean",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "5faca14a-88fb-5168-8279-b6ee889060e1",
+        "name": "SortOrder",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      }
+    ]
+  },
+  "queries": [
+    {
+      "id": "bda99824-6e7a-5955-bfa7-f223f912ac26",
+      "name": "TicketCheckInLists",
+      "source": "Custom.TicketCheckInLists",
+      "alias": "ticketcheckinlists",
+      "sortColumns": [
+        {
+          "property": "SortOrder",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "TicketCheckInList"
+    }
+  ]
+}

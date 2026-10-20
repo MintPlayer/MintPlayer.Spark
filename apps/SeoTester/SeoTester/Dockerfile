@@ -31,6 +31,8 @@ COPY ["libs/dashboards/MintPlayer.Spark.Dashboards/MintPlayer.Spark.Dashboards.c
 COPY ["libs/history/MintPlayer.Spark.History/MintPlayer.Spark.History.csproj", "libs/history/MintPlayer.Spark.History/"]
 COPY ["libs/history/MintPlayer.Spark.History.Abstractions/MintPlayer.Spark.History.Abstractions.csproj", "libs/history/MintPlayer.Spark.History.Abstractions/"]
 COPY ["libs/identity_provider/MintPlayer.Spark.IdentityProvider/MintPlayer.Spark.IdentityProvider.csproj", "libs/identity_provider/MintPlayer.Spark.IdentityProvider/"]
+COPY ["libs/approvals/MintPlayer.Spark.Approvals/MintPlayer.Spark.Approvals.csproj", "libs/approvals/MintPlayer.Spark.Approvals/"]
+COPY ["libs/approvals/MintPlayer.Spark.Approvals.Abstractions/MintPlayer.Spark.Approvals.Abstractions.csproj", "libs/approvals/MintPlayer.Spark.Approvals.Abstractions/"]
 COPY ["libs/mail/MintPlayer.Spark.MailManager/MintPlayer.Spark.MailManager.csproj", "libs/mail/MintPlayer.Spark.MailManager/"]
 COPY ["libs/mail/MintPlayer.Spark.MailManager.Abstractions/MintPlayer.Spark.MailManager.Abstractions.csproj", "libs/mail/MintPlayer.Spark.MailManager.Abstractions/"]
 COPY ["libs/sms/MintPlayer.Spark.Sms/MintPlayer.Spark.Sms.csproj", "libs/sms/MintPlayer.Spark.Sms/"]

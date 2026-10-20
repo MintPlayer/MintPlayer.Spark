@@ -1,0 +1,82 @@
+<section class="spark-shop-catalog">
+  <form class="spark-shop-catalog-search" role="search" (submit)="$event.preventDefault(); onSearch(query.value)">
+    <label class="spark-shop-visually-hidden" for="spark-shop-q">{{ 'commerceShop.catalog.search' | t }}</label>
+    <input #query id="spark-shop-q" type="search" [value]="words()" [attr.placeholder]="'commerceShop.catalog.search' | t" />
+    <button type="submit">{{ 'commerceShop.catalog.search' | t }}</button>
+  </form>
+
+  <div class="spark-shop-catalog-body">
+    <aside class="spark-shop-catalog-filters" [attr.aria-label]="'commerceShop.catalog.filters' | t">
+      @for (facet of page()?.facets ?? []; track facet.key) {
+        <fieldset class="spark-shop-facet">
+          <legend>{{ facetLabel(facet.key) }}</legend>
+          @for (value of facet.values; track value.term) {
+            <label>
+              <input type="checkbox" [checked]="value.selected" (change)="toggleFacet(value.term)" />
+              {{ value.value }} <span class="spark-shop-count">({{ value.count }})</span>
+            </label>
+          }
+        </fieldset>
+      }
+      @if ((page()?.priceRanges ?? []).length > 0) {
+        <fieldset class="spark-shop-facet">
+          <legend>{{ 'commerceShop.catalog.price' | t }}</legend>
+          @for (range of page()!.priceRanges; track range.index) {
+            @if (range.count > 0 || range.selected) {
+              <label>
+                <input type="checkbox" [checked]="range.selected" (change)="setPrice(range)" />
+                {{ rangeLabel(range) }} <span class="spark-shop-count">({{ range.count }})</span>
+              </label>
+            }
+          }
+        </fieldset>
+      }
+    </aside>
+
+    <div class="spark-shop-catalog-results">
+      <div class="spark-shop-catalog-toolbar">
+        <p role="status" aria-live="polite">{{ resultsText() }}</p>
+        <label>
+          {{ 'commerceShop.catalog.sortBy' | t }}
+          <select [value]="sort()" (change)="setSort($any($event.target).value)">
+            <option value=""></option>
+            @for (s of sorts; track s) {
+              <option [value]="s">{{ 'commerceShop.catalog.sort.' + s | t }}</option>
+            }
+          </select>
+        </label>
+      </div>
+      <p class="spark-shop-ranking">{{ 'commerceShop.catalog.ranking' | t }}</p>
+
+      @if (failed()) {
+        <p role="alert">{{ 'commerceCheckout.refusal.conflict' | t }}</p>
+      } @else if (!loading() && items().length === 0) {
+        <p>{{ 'commerceShop.catalog.empty' | t }}</p>
+      }
+
+      <ul class="spark-shop-catalog-items">
+        @for (item of items(); track item.id) {
+          <li class="spark-shop-card">
+            <a [href]="link(item)" (click)="opened.emit(item)">
+              @if (item.imageUrl) {
+                <img [src]="item.imageUrl" [alt]="item.imageAlt | resolveTranslation" loading="lazy" />
+              }
+              <span class="spark-shop-card-name">{{ item.name | resolveTranslation }}</span>
+            </a>
+            @if (item.brand) {
+              <small class="spark-shop-card-brand">{{ item.brand }}</small>
+            }
+            <strong class="spark-shop-card-price">{{ priceFrom(item) }}</strong>
+            @if (item.reviewCount > 0) {
+              <small class="spark-shop-card-rating">★ {{ item.ratingAverage }} ({{ item.reviewCount }})</small>
+            }
+          </li>
+        }
+      </ul>
+
+      @if (canLoadMore()) {
+        <button type="button" class="spark-shop-more" [disabled]="loading()" (click)="loadMore()">{{ 'commerceShop.catalog.more' | t }}</button>
+      }
+    </div>
+  </div>
+</section>

@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+<Project Sdk="Microsoft.NET.Sdk">
 
 	<!--
 	  The seo-fetcher container (docs/seo_analyzer_PRD.md D54): the only process that connects to the websites SeoTester
@@ -8,6 +8,10 @@
 	  project's restore graph and fails the build's tests if one appears.
 	-->
 	<PropertyGroup>
+		<!-- A plain SDK, not Microsoft.NET.Sdk.Web: IDE tooling gives every Web-SDK project a launchSettings.json with
+		     random ports, and this sidecar is only ever started by its container. The shared framework and the Web SDK's
+		     implicit usings are added below. -->
+		<OutputType>Exe</OutputType>
 		<TargetFramework>net11.0</TargetFramework>
 		<Nullable>enable</Nullable>
 		<ImplicitUsings>enable</ImplicitUsings>
@@ -35,6 +39,19 @@
 
 	<ItemGroup>
 		<InternalsVisibleTo Include="SeoTester.Tests" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<FrameworkReference Include="Microsoft.AspNetCore.App" />
+		<Using Include="System.Net.Http.Json" />
+		<Using Include="Microsoft.AspNetCore.Builder" />
+		<Using Include="Microsoft.AspNetCore.Hosting" />
+		<Using Include="Microsoft.AspNetCore.Http" />
+		<Using Include="Microsoft.AspNetCore.Routing" />
+		<Using Include="Microsoft.Extensions.Configuration" />
+		<Using Include="Microsoft.Extensions.DependencyInjection" />
+		<Using Include="Microsoft.Extensions.Hosting" />
+		<Using Include="Microsoft.Extensions.Logging" />
 	</ItemGroup>
 
 </Project>

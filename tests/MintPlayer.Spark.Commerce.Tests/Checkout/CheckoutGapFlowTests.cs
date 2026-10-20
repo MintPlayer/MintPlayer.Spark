@@ -1,10 +1,13 @@
 using Microsoft.Extensions.DependencyInjection;
 using MintPlayer.Spark.Commerce.Checkout;
 using MintPlayer.Spark.Commerce.Checkout.Models;
+using MintPlayer.Spark.Commerce.Checkout.Services;
+using MintPlayer.Spark.Commerce.Tests.Payments;
 using MintPlayer.Spark.Commerce.Inventory;
 using MintPlayer.Spark.Commerce.Promotions.Services;
 using MintPlayer.Spark.Testing;
 using Raven.Client.Documents;
+using Raven.Client.Documents.Session;
 using CheckoutContracts = MintPlayer.Spark.Commerce.Checkout.Contracts;
 
 namespace MintPlayer.Spark.Commerce.Tests.Checkout;
@@ -127,5 +130,34 @@ public class CheckoutGapFlowTests : SparkTestDriver
         var note = await session.LoadAsync<PrePaymentNote>("notes/" + order.Id!.Split('/')[1]);
         note.Should().NotBeNull();
         note!.Value.Should().Be("42");
+    }
+
+    /// <summary>Item 10 (D16 + X1): a line chosen as a guest keeps counting against the visitor's limit key after sign-in.</summary>
+    [Fact]
+    public async Task A_merged_guest_line_keeps_the_visitor_limit_key()
+    {
+        var host = CheckoutHost.Build(Store);
+        var item = await host.ItemAsync("tickets/m", "tickets", 10m);
+        host.Catalog.Items["tickets/m"] = item with { PerBuyerLimit = 4 };
+        var visitor = host.Buyer.VisitorId!;
+        await host.Checkout.AddLineAsync(new CheckoutContracts.SparkBasketAddRequest("tickets/m", 2));
+
+        using (var session = Store.OpenAsyncSession(new SessionOptions { TransactionMode = TransactionMode.ClusterWide }))
+        {
+            await new CheckoutBasketMerge(new StaticOptionsMonitor<SparkCommerceOptions>(host.Commerce), host.Clock)
+                .MergeAsync(visitor, "users/merged", session, default);
+            await session.SaveChangesAsync();
+        }
+        host.Buyer.UserId = "users/merged";
+
+        var placed = await host.PlaceAsync();
+
+        using var read = Store.OpenAsyncSession();
+        var order = await read.Query<CheckoutOrder>().Customize(c => c.WaitForNonStaleResults()).Where(o => o.Number == placed.Number).SingleAsync();
+        var scope = OrderClaims.LimitScope(host.Catalog.Items["tickets/m"]);
+        var visitorKey = InventoryLimitKeys.For(scope, 4, 2, new BuyerIdentifiers(VisitorId: visitor)).Single().Key;
+        var accountKey = InventoryLimitKeys.For(scope, 4, 2, new BuyerIdentifiers(AccountId: "users/merged")).Single().Key;
+        order.Lines.Single().Limits.Select(l => l.Key).Should().Contain(k => k == visitorKey);
+        order.Lines.Single().Limits.Select(l => l.Key).Should().Contain(k => k == accountKey);
     }
 }

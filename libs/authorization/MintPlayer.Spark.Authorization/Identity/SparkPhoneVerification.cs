@@ -7,7 +7,7 @@ using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.Sms;
 using Raven.Client;
 using Raven.Client.Documents;
-using Raven.Client.Documents.Operations.CompareExchange;
+using MintPlayer.Spark.Claims;
 using Raven.Client.Documents.Session;
 using Raven.Client.Exceptions;
 
@@ -308,39 +308,37 @@ internal sealed class SparkPhoneVerification<TUser>(
         return new(SparkPhoneVerificationStatus.Verified, e164);
     }
 
-    internal static string ReservationKey(string e164) => "spark-phone/" + e164;
+    /// <summary>The compare-exchange key prefix of the phone-number claims (commerce X12/X13).</summary>
+    internal const string ReservationKeyPrefix = "spark-phone/";
+
+    internal static string ReservationKey(string e164) => ReservationKeyPrefix + e164;
+
+    private SparkClaims? claims;
+    private SparkClaimKind<string>? numberKind;
+
+    /// <summary>Spark's claims primitive (commerce X12), on the store's database.</summary>
+    private SparkClaims Claims => claims ??= new SparkClaims(store, timeProvider);
 
     /// <summary>
-    /// Reserves <paramref name="e164"/> for <paramref name="userId"/> through compare-exchange, so two accounts
-    /// verifying one number at the same instant cannot both win. A reservation whose account no longer holds the
-    /// number as its verified number is stale (the account was deleted or changed number) and is taken over,
-    /// atomically against the index just read.
+    /// Verified numbers as a claim family (X12): the value is the user id and never expires. A claim whose account no
+    /// longer holds the number as its verified number is abandoned (the account was deleted or changed number) and is
+    /// taken over, guarded by the compare-exchange index just read. No index query, so nothing waits on staleness.
+    /// </summary>
+    private SparkClaimKind<string> NumberKind => numberKind ??= new SparkClaimKind<string>(ReservationKeyPrefix, owner => owner)
+    {
+        IsAbandonedAsync = async (claim, _) => !await IsVerifiedNumberOfAsync(claim.Value, claim.Key.Value[ReservationKeyPrefix.Length..]),
+    };
+
+    /// <summary>
+    /// Reserves <paramref name="e164"/> for <paramref name="userId"/> through an X12 claim, so two accounts verifying
+    /// one number at the same instant cannot both win.
     /// </summary>
     private async Task<bool> ReserveNumberAsync(string e164, string userId, CancellationToken cancellationToken)
-    {
-        var key = ReservationKey(e164);
-        var operations = store.Operations;
-        if ((await operations.SendAsync(new PutCompareExchangeValueOperation<string>(key, userId, 0), token: cancellationToken)).Successful)
-            return true;
+        => (await Claims.ReserveAsync(NumberKind, NumberKind.Key(e164), userId, _ => userId, cancellationToken: cancellationToken)).Holds;
 
-        var existing = await operations.SendAsync(new GetCompareExchangeValueOperation<string>(key), token: cancellationToken);
-        if (existing is null)
-            return (await operations.SendAsync(new PutCompareExchangeValueOperation<string>(key, userId, 0), token: cancellationToken)).Successful;
-        if (existing.Value == userId)
-            return true;
-        if (await IsVerifiedNumberOfAsync(existing.Value, e164))
-            return false;
-        return (await operations.SendAsync(new PutCompareExchangeValueOperation<string>(key, userId, existing.Index), token: cancellationToken)).Successful;
-    }
-
-    /// <summary>Releases <paramref name="e164"/>'s reservation, but only while it is <paramref name="userId"/>'s.</summary>
-    private async Task ReleaseNumberAsync(string e164, string userId, CancellationToken cancellationToken)
-    {
-        var key = ReservationKey(e164);
-        var existing = await store.Operations.SendAsync(new GetCompareExchangeValueOperation<string>(key), token: cancellationToken);
-        if (existing is not null && existing.Value == userId)
-            await store.Operations.SendAsync(new DeleteCompareExchangeValueOperation<string>(key, existing.Index), token: cancellationToken);
-    }
+    /// <summary>Releases <paramref name="e164"/>'s claim, but only while it is <paramref name="userId"/>'s.</summary>
+    private Task ReleaseNumberAsync(string e164, string userId, CancellationToken cancellationToken)
+        => Claims.ReleaseAsync(NumberKind, NumberKind.Key(e164), userId, cancellationToken);
 
     private async Task<bool> IsVerifiedNumberOfAsync(string? holderId, string e164)
         => !string.IsNullOrEmpty(holderId)

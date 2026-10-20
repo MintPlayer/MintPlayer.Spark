@@ -16,7 +16,7 @@ public sealed class CheckoutRefundOptions
     /// <summary>
     /// The country (ISO 3166-1 alpha-2) whose public holidays move a period's last day to the next working day
     /// (Regulation 1182/71 Art. 3(4)). Only applied when a holiday calendar is registered
-    /// (<c>UseReferenceDataHolidays()</c>, or your own <see cref="ICheckoutHolidayCalendar"/>). Unset or without a
+    /// (<c>UseCheckoutReferenceDataHolidays()</c>, or your own <see cref="ICheckoutHolidayCalendar"/>). Unset or without a
     /// calendar: only Saturdays and Sundays move it. ⚠️ Art. 3(4) means the holidays of the member state where the act is
     /// to be done (the seller's, D37: confirm per country).
     /// </summary>

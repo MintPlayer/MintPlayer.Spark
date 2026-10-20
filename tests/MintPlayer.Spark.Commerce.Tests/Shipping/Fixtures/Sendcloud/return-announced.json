@@ -1,6 +1,7 @@
 {
   "_fixture": {
     "source": "https://sendcloud.dev/api/v3/returns/create-a-return-synchronously (201 response example)",
+    "retrieved": "2026-10-20",
     "derived": "public documentation example, verbatim values",
     "recorded": false
   },

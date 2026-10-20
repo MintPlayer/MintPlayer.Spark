@@ -23,6 +23,7 @@ internal sealed class TicketOrderEvents(
     TicketIssuer issuer,
     TicketExchange exchange,
     TicketDelivery delivery,
+    TicketChangeFeed feed,
     TimeProvider clock) : IOrderEventRecipient
 {
     public async Task OnOrderEventAsync(OrderEvent orderEvent, CancellationToken cancellationToken)
@@ -65,8 +66,19 @@ internal sealed class TicketOrderEvents(
 
             case OrderEventKind.ConfirmationResent:
                 await delivery.ResendAsync(order.Id, null, cancellationToken);
-                break;
+                return;
+
+            default:
+                return;
         }
+
+        // The door devices of the events concerned sync at once (S9): a revocation, a freeze or a reissue must reach
+        // them before the next scan of the ticket, not at their next interval.
+        var orderId = order.Id!;
+        using var session = store.OpenAsyncSession();
+        var eventIds = await session.Query<Ticket>().Where(t => t.OrderId == orderId).Select(t => t.EventId).Take(256).ToListAsync(cancellationToken);
+        foreach (var eventId in eventIds.Distinct(StringComparer.Ordinal))
+            feed.Changed(eventId);
     }
 
     /// <summary>Delivers the order's tickets that are due now (the rest wait for their lead time, D11).</summary>

@@ -1,6 +1,7 @@
 {
   "_fixture": {
     "source": "https://sendcloud.dev/api/v3/service-points/retrieve-a-list-of-service-points (200: data.results + data.geocoding)",
+    "retrieved": "2026-10-20",
     "derived": "built from the schema (field names and opening_times shape as documented); values adapted from the v2 documentation example (Eindhoven); the locker and the expired point added to cover general_shop_type and is_expired",
     "recorded": false
   },

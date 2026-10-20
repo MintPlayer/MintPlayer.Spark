@@ -1,0 +1,19 @@
+<mjml>
+  <mj-head>
+    <mj-title>Order {{ number }}: your return label</mj-title>
+    <mj-attributes>
+      <mj-all font-family="Segoe UI, Helvetica, Arial, sans-serif" />
+      <mj-text font-size="15px" line-height="22px" color="#111827" />
+    </mj-attributes>
+  </mj-head>
+  <mj-body background-color="#f3f4f6">
+    <mj-section background-color="#ffffff" padding="24px 0">
+      <mj-column>
+        <mj-text font-size="20px" font-weight="600">{{ if buyer_name }}{{ buyer_name }}, y{{ else }}Y{{ end }}our return label for order {{ number }}</mj-text>
+        <mj-text>The label is attached. Print it, stick it on the parcel and hand it to {{ if carrier }}{{ carrier }}{{ else }}the carrier{{ end }}.{{ if tracking_number }} Tracking number: {{ tracking_number }}.{{ end }}</mj-text>
+        {{ if seller_pays_return }}<mj-text>The return shipping is paid by the seller.</mj-text>{{ else }}<mj-text>The return shipping is at your cost, as stated in the withdrawal information.</mj-text>{{ end }}
+        {{ if reason == "Withdrawal" }}<mj-text font-size="13px" color="#4b5563">Your refund is paid within 14 days of your withdrawal; it may wait until the goods are back or you have shown that you sent them, whichever comes first (Directive 2011/83/EU Art. 13(3)). The carrier's scan of this parcel counts as that proof.</mj-text>{{ end }}
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>

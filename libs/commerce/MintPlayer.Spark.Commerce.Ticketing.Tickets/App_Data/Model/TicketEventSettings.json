@@ -1,0 +1,171 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "TicketEventSettings (§4.11): an event's delivery lead time (D11), named tickets and transfer fee (D30), freeze before",
+    "doors, dispute behaviour (GB1) and ticket template (GC7). One per event; OrganizationId is copied from the event.",
+    "HasLogo/HasBackground are set by POST /spark/ticketing/tickets/template-image, which stores the JPEG.",
+    "",
+    "HAND-AUTHORED. Ids are UUIDv5 of 'ticketing-tickets:TicketEventSettings[...]', written by 'npm run stamp:library-model-ids'."
+  ],
+  "persistentObject": {
+    "id": "a964bd90-835d-569f-bc15-f189bf3706e8",
+    "name": "TicketEventSettings",
+    "clrType": "MintPlayer.Spark.Commerce.Ticketing.Tickets.Models.TicketEventSettings",
+    "alias": "ticketeventsettings",
+    "breadcrumb": "{EventId}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "f46244f2-0370-52fe-bcf3-db3fe25afa2e",
+        "name": "EventId",
+        "dataType": "Reference",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "query": "TicketEvents",
+        "referenceType": "MintPlayer.Spark.Commerce.Ticketing.Events.Models.TicketEvent"
+      },
+      {
+        "id": "9b27c866-3b24-5613-8261-b89af1812f8d",
+        "name": "DeliveryLeadTimeHours",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "491b6433-85c4-5051-a3f1-a5e6f5cf41b9",
+        "name": "NamedTickets",
+        "dataType": "boolean",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "08bb27e5-e823-5643-8e12-492a7b2175e0",
+        "name": "TransferFeeBasisPoints",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "2fd1bb8c-5ab5-5364-93a6-304f6fbfcfcd",
+        "name": "FreezeBeforeDoorsMinutes",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "0409534a-b40c-5385-8df0-58f9d8b553b4",
+        "name": "RevokeOnDisputeBeforeDecision",
+        "dataType": "boolean",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "05318002-3f68-527d-8d3d-a1b61ad1ff1c",
+        "name": "TemplateAccentColor",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "acba7ccf-4c15-5b19-99fc-7e9d8c0560cd",
+        "name": "TemplateAccentTextColor",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "d057c125-c9a5-5155-920f-7c9490d2a42c",
+        "name": "TemplateExtraText",
+        "dataType": "TranslatedString",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 9,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "41ea472c-aa30-526d-ba9a-81b66415612a",
+        "name": "HasLogo",
+        "dataType": "boolean",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 10,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "f5e6c555-c12c-5039-aa78-fafde7a36429",
+        "name": "HasBackground",
+        "dataType": "boolean",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 11,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "9151110c-5c41-5d2e-8e4a-ff8260861443",
+        "name": "UpdatedAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 12,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ]
+  },
+  "queries": [
+    {
+      "id": "30d01fc5-17e3-5e93-a073-7a641cbb55ca",
+      "name": "TicketEventSettings",
+      "source": "Custom.TicketEventSettings",
+      "alias": "ticketeventsettings",
+      "sortColumns": [
+        {
+          "property": "UpdatedAt",
+          "direction": "desc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "TicketEventSettings"
+    }
+  ]
+}

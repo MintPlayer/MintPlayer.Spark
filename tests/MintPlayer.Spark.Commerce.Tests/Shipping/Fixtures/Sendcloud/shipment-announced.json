@@ -1,6 +1,7 @@
 {
   "_fixture": {
     "source": "https://sendcloud.dev/api/v3/shipments/create-and-announce-a-shipment-synchronously (201 response example, schema sync-shipment-response)",
+    "retrieved": "2026-10-20",
     "derived": "public documentation example (parcel 383707309, READY_TO_SEND, label document link, tracking 3SYZXG8498635, announced_at), trimmed; a second parcel (383707310) built from the schema for the multicollo case; shipment id kept as the documented placeholder string",
     "recorded": false
   },

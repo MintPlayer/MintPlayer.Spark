@@ -1,6 +1,7 @@
 {
   "_fixture": {
     "source": "https://sendcloud.dev/api/v3/shipments/create-and-announce-a-shipment-synchronously (400 response example)",
+    "retrieved": "2026-10-20",
     "derived": "public documentation example, verbatim fields (detail, status, source.pointer, code)",
     "recorded": false
   },

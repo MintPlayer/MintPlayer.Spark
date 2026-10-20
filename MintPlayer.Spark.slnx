@@ -113,8 +113,10 @@
     <Project Path="libs/commerce/MintPlayer.Spark.Commerce.Shipping.Bpost/MintPlayer.Spark.Commerce.Shipping.Bpost.csproj" />
     <Project Path="libs/commerce/MintPlayer.Spark.Commerce.Shipping.PostNL/MintPlayer.Spark.Commerce.Shipping.PostNL.csproj" />
     <Project Path="libs/commerce/MintPlayer.Spark.Commerce.Shipping.Test/MintPlayer.Spark.Commerce.Shipping.Test.csproj" />
+    <Project Path="libs/commerce/MintPlayer.Spark.Commerce.Shop/MintPlayer.Spark.Commerce.Shop.csproj" />
     <Project Path="libs/commerce/MintPlayer.Spark.Commerce.Ticketing.Venues/MintPlayer.Spark.Commerce.Ticketing.Venues.csproj" />
     <Project Path="libs/commerce/MintPlayer.Spark.Commerce.Ticketing.Events/MintPlayer.Spark.Commerce.Ticketing.Events.csproj" />
+    <Project Path="libs/commerce/MintPlayer.Spark.Commerce.Ticketing.Tickets/MintPlayer.Spark.Commerce.Ticketing.Tickets.csproj" />
     <Project Path="libs/commerce/MintPlayer.Spark.Commerce.WaitingRoom/MintPlayer.Spark.Commerce.WaitingRoom.csproj" />
   </Folder>
   <Folder Name="/libs/cron/">
@@ -122,6 +124,9 @@
   </Folder>
   <Folder Name="/libs/dashboards/">
     <Project Path="libs/dashboards/MintPlayer.Spark.Dashboards/MintPlayer.Spark.Dashboards.csproj" />
+  </Folder>
+  <Folder Name="/libs/fulfilment/">
+    <Project Path="libs/fulfilment/contracts/MintPlayer.Spark.Fulfilment.Contracts.csproj" />
   </Folder>
   <Folder Name="/libs/gs1/">
     <Project Path="libs/gs1/MintPlayer.Spark.Gs1/MintPlayer.Spark.Gs1.csproj" />

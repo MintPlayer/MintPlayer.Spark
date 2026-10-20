@@ -9,7 +9,7 @@ namespace MintPlayer.Spark.Commerce.Checkout.Refunds;
 /// <summary>
 /// Public holidays for counting refund periods (Regulation (EEC, Euratom) No 1182/71 Art. 3(4): a period whose last day
 /// is a public holiday, a Saturday or a Sunday ends at the end of the next working day). None is registered by default:
-/// without one, only weekends move a period's end. <c>UseReferenceDataHolidays()</c> registers the reference data's
+/// without one, only weekends move a period's end. <c>UseCheckoutReferenceDataHolidays()</c> registers the reference data's
 /// calendar; a host may register its own. Several calendars combine: a day is a holiday when any of them says so.
 /// </summary>
 public interface ICheckoutHolidayCalendar

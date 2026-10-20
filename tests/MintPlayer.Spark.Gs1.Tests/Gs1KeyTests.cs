@@ -105,4 +105,18 @@ public class Gs1KeyTests
     public void Sscc_allocator_rejects_an_invalid_prefix_or_extension_digit(int extensionDigit, string prefix)
         => ((Action)(() => new SsccAllocator(new InMemorySsccSerialSource(), extensionDigit, prefix)))
             .Should().Throw<ArgumentException>();
+
+    [Fact]
+    public async Task Sscc_allocator_asks_a_delegate_source_by_its_sequence_key()
+    {
+        // The production wiring: the delegate forwards to Spark's compare-exchange sequence under this key.
+        var asked = new List<string>();
+        var source = new DelegateSsccSerialSource((key, _) => { asked.Add(key); return ValueTask.FromResult(7L); });
+        var allocator = new SsccAllocator(source, 0, "9521234");
+
+        var sscc = await allocator.AllocateAsync();
+
+        asked.Should().Equal("gs1/sscc/09521234");
+        sscc.Should().Be(Gs1Sscc.Create(0, "9521234", 7));
+    }
 }

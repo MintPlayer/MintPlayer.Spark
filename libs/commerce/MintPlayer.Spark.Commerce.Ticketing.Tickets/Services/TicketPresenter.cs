@@ -54,6 +54,9 @@ internal sealed class TicketPresenter(
         SparkTicketResaleInfo? resale = null;
         if (ticket.ResaleListingId is { } listingId && await session.LoadAsync<TicketResaleListing>(listingId, cancellationToken) is { Status: ETicketResaleStatus.Open } l)
             resale = new SparkTicketResaleInfo(l.Id!, l.Status.ToString(), l.Price, l.Cap);
+        var canResell = open && policy?.FaceValueResale == true && ticket.TransferId is null;
+        // The resale form's currency and ceiling before any listing exists: what the ticket cost, in the order's currency.
+        var resaleCap = resale?.Cap ?? (canResell && resale is null ? await Exchange.TicketExchange.PaidPerUnitAsync(session, ticket, cancellationToken) : null);
 
         return new SparkTicketView(
             ticket.Code,
@@ -77,9 +80,10 @@ internal sealed class TicketPresenter(
             payload is null ? null : qr.RenderSvg(payload),
             ticket.FreezeAt,
             open && policy?.Transfer == true && ticket.ResaleListingId is null,
-            open && policy?.FaceValueResale == true && ticket.TransferId is null,
+            canResell,
             transfer,
             resale,
+            resaleCap,
             Template(settings));
     }
 

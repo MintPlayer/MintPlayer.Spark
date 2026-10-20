@@ -1,0 +1,45 @@
+:host {
+  display: block;
+}
+
+.spark-shop-delivery fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0 0 1rem;
+
+  legend {
+    font-weight: 600;
+  }
+}
+
+.spark-shop-delivery-address {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+  gap: 0.5rem 1rem;
+
+  label {
+    display: flex;
+    flex-direction: column;
+  }
+
+  button {
+    align-self: end;
+  }
+}
+
+.spark-shop-delivery-rate {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.75rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--spark-border-color, #e5e7eb);
+
+  small {
+    color: var(--spark-muted-color, #6b7280);
+  }
+}
+
+.spark-shop-delivery-method {
+  flex: 1;
+}

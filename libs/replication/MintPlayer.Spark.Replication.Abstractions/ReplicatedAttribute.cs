@@ -32,7 +32,8 @@ public sealed class ReplicatedAttribute : Attribute
     /// <summary>
     /// The module that owns the original documents. A generic library (e.g. <c>Fulfilment.Contracts</c>)
     /// leaves it out, and the host names its source modules in configuration, under
-    /// <c>Spark:Replication:Sources:{TargetCollection}</c>.
+    /// <c>Spark:Replication:Sources:{TargetCollection}</c>. In an assembly marked
+    /// <see cref="SparkReplicaContractsAttribute"/>, a class the host does not bind is inert instead of refusing startup.
     /// </summary>
     public string? SourceModule { get; init; }
 

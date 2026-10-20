@@ -62,7 +62,9 @@ internal sealed class ReplicaCatalog : ISparkReplicaTypes
     /// <summary>For tests: a catalog over the given replica types.</summary>
     internal ReplicaCatalog(SparkReplicationOptions options, params Type[] replicaTypes)
     {
-        var found = replicaTypes.Select(t => Describe(t, options)).ToList();
+        var found = replicaTypes.Select(t => Describe(t, options))
+            .Where(d => !(d.Type.Assembly.IsDefined(typeof(SparkReplicaContractsAttribute), inherit: false) && d.Sources.Count == 0))
+            .ToList();
         foreach (var descriptor in found)
             types.Add(descriptor.Type);
         all = new(found);
@@ -138,13 +140,24 @@ internal sealed class ReplicaCatalog : ISparkReplicaTypes
         foreach (var assembly in CandidateAssemblies())
         {
             IEnumerable<SparkReplicaTypesAttribute> declared;
-            try { declared = assembly.GetCustomAttributes<SparkReplicaTypesAttribute>(); }
+            bool contracts;
+            try
+            {
+                declared = assembly.GetCustomAttributes<SparkReplicaTypesAttribute>().ToList();
+                contracts = assembly.IsDefined(typeof(SparkReplicaContractsAttribute), inherit: false);
+            }
             catch (Exception) { continue; }
 
             foreach (var type in declared.SelectMany(a => a.Types))
             {
-                if (seen.Add(type))
-                    yield return Describe(type, options);
+                if (!seen.Add(type))
+                    continue;
+                var descriptor = Describe(type, options);
+                // A generic contract library's class this host does not bind is inert here (§4.3): the host may be
+                // its owner, or not use it at all.
+                if (contracts && descriptor.Sources.Count == 0)
+                    continue;
+                yield return descriptor;
             }
         }
     }

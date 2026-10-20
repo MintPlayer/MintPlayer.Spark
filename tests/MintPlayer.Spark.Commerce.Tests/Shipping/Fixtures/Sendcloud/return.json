@@ -1,6 +1,7 @@
 {
   "_fixture": {
     "source": "https://sendcloud.dev/api/v3/returns/retrieve-a-return (200: the Return object, no data wrapper)",
+    "retrieved": "2026-10-20",
     "derived": "built from the schema's documented top-level fields (tracking_number, tracking_url, status, label); values invented, addresses trimmed",
     "recorded": false
   },

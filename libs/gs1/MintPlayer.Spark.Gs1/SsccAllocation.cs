@@ -7,14 +7,33 @@ namespace MintPlayer.Spark.Gs1;
 /// (extension digit, company prefix), named by <see cref="SsccAllocator.SequenceKey"/>.
 /// </summary>
 /// <remarks>
-/// This package has no RavenDB dependency (§4.1). The production source is a RavenDB compare-exchange counter in
-/// <c>MintPlayer.Spark.Warehouse</c>: read the value under <see cref="SsccAllocator.SequenceKey"/>, write value + 1 with
-/// the read index, retry on a lost race, so that two pack stations never get the same serial, even on a cluster.
+/// This package has no RavenDB dependency (§4.1). The production source is Spark core's compare-exchange sequence
+/// (<c>ISparkSequences</c>, bound through <see cref="DelegateSsccSerialSource"/>): read the value under
+/// <see cref="SsccAllocator.SequenceKey"/>, write value + 1 with the read index, retry on a lost race, so that two pack
+/// stations never get the same serial, even on a cluster.
 /// </remarks>
 public interface ISsccSerialSource
 {
     /// <summary>The next unused serial reference of the sequence: 0, 1, 2… Never the same value twice.</summary>
     ValueTask<long> NextAsync(string sequenceKey, CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// An <see cref="ISsccSerialSource"/> over any counter, without a dependency on it. The production wiring is Spark's
+/// compare-exchange sequence (<c>MintPlayer.Spark.Sequences.ISparkSequences</c>):
+/// <code>
+/// new SsccAllocator(new DelegateSsccSerialSource((key, ct) => new(sequences.NextAsync(key, 0, ct))), 0, prefix);
+/// </code>
+/// </summary>
+public sealed class DelegateSsccSerialSource(Func<string, CancellationToken, ValueTask<long>> next) : ISsccSerialSource
+{
+    private readonly Func<string, CancellationToken, ValueTask<long>> next = next ?? throw new ArgumentNullException(nameof(next));
+
+    public ValueTask<long> NextAsync(string sequenceKey, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(sequenceKey);
+        return next(sequenceKey, cancellationToken);
+    }
 }
 
 /// <summary>An in-process <see cref="ISsccSerialSource"/>, for tests and single-process tools. It forgets on restart.</summary>

@@ -1,0 +1,28 @@
+<mjml>
+  <mj-head>
+    <mj-title>Your tickets for {{ event_name }}</mj-title>
+    <mj-attributes>
+      <mj-all font-family="Segoe UI, Helvetica, Arial, sans-serif" />
+      <mj-text font-size="15px" line-height="22px" color="#111827" />
+      <mj-button background-color="#2563eb" color="#ffffff" border-radius="6px" font-size="15px" />
+    </mj-attributes>
+  </mj-head>
+  <mj-body background-color="#f3f4f6">
+    <mj-section background-color="#ffffff" padding="24px 0">
+      <mj-column>
+        <mj-text font-size="20px" font-weight="600">{{ if holder_name }}{{ holder_name }}, here{{ else }}Here{{ end }} {{ if count == 1 }}is your ticket{{ else }}are your {{ count }} tickets{{ end }} for {{ event_name }}</mj-text>
+        <mj-text>Order {{ order_number }}. The PDF is attached, with a calendar file per date. Show the QR code at the entrance, on paper or on your phone.</mj-text>
+        {{ for ticket in tickets }}
+        <mj-text><strong>{{ ticket.title }}</strong>{{ if ticket.seat }} · {{ ticket.seat }}{{ end }}{{ if ticket.holder }} · {{ ticket.holder }}{{ end }}<br />{{ ticket.dates }}</mj-text>
+        <mj-button href="{{ ticket.link }}">Open the ticket</mj-button>
+        {{ end }}
+      </mj-column>
+    </mj-section>
+    <mj-section padding="0 0 24px 0">
+      <mj-column>
+        <mj-divider border-width="1px" border-color="#e5e7eb" />
+        <mj-text font-size="12px" color="#6b7280">Keep this mail to yourself: anyone with the ticket link or QR code can use the ticket. If you give the ticket away through the ticket page, it is issued again and this copy stops working.</mj-text>
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>

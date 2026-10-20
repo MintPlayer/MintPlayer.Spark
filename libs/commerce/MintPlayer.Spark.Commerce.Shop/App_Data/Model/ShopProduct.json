@@ -1,0 +1,612 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "ShopProduct (docs/commerce_PRD.md §4.10): an organization-owned, publishable product (X8). Its variants are their own type",
+    "(ShopVariant). Publishing (IsPublished) needs the organization's Publish role (Admin) and is refused while the product",
+    "cannot sell; for goods without the ProductSafety group filled in (GA7, Reg. (EU) 2023/988 Art. 19) it is refused at",
+    "publication, never at startup (ShopProductInterceptor, ProductRules.SafetyProblems). The Maintained group is the shop's.",
+    "",
+    "HAND-AUTHORED. Ids are UUIDv5 of 'commerce-shop:ShopProduct[...]', written by 'npm run stamp:library-model-ids'."
+  ],
+  "persistentObject": {
+    "id": "74c79247-703f-5b5e-abaf-a12f48622a39",
+    "name": "ShopProduct",
+    "clrType": "MintPlayer.Spark.Commerce.Shop.Models.ShopProduct",
+    "alias": "shopproduct",
+    "breadcrumb": "{Name}",
+    "tabs": [],
+    "groups": [
+      {
+        "id": "592307a7-58cb-5e08-bb8d-d8a5bef7efa4",
+        "name": "General",
+        "order": 1
+      },
+      {
+        "id": "ef38fa58-e45c-56be-94df-3a50e728ba2e",
+        "name": "Pricing",
+        "order": 2
+      },
+      {
+        "id": "dd5710cc-9de6-5230-9118-cfcc67c3552a",
+        "name": "ProductSafety",
+        "order": 3
+      },
+      {
+        "id": "775a7afb-1668-57e6-b307-99f13d8dcbc8",
+        "name": "Guarantee",
+        "order": 4
+      },
+      {
+        "id": "7931ae59-0f5b-50be-8865-97058e13205c",
+        "name": "Customs",
+        "order": 5
+      },
+      {
+        "id": "74be8cfd-2919-5c01-a4ca-9a65b38ec1ea",
+        "name": "Media",
+        "order": 6
+      },
+      {
+        "id": "f9af9bd6-bca3-5487-9148-93595a1e49f9",
+        "name": "Maintained",
+        "order": 7
+      }
+    ],
+    "attributes": [
+      {
+        "id": "a8a9b498-05f8-5df3-b2c0-39cd2cd6549c",
+        "name": "Name",
+        "dataType": "TranslatedString",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "group": "592307a7-58cb-5e08-bb8d-d8a5bef7efa4"
+      },
+      {
+        "id": "c857654d-d373-57ee-a599-40c4eb6a9d66",
+        "name": "Slug",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "group": "592307a7-58cb-5e08-bb8d-d8a5bef7efa4"
+      },
+      {
+        "id": "f013231d-0251-5d51-bfdd-670182a5c230",
+        "name": "OrganizationId",
+        "dataType": "Reference",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 3,
+        "query": "GetOrganizations",
+        "referenceType": "MintPlayer.Spark.Organizations.Models.Organization",
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "group": "592307a7-58cb-5e08-bb8d-d8a5bef7efa4"
+      },
+      {
+        "id": "83164d01-4274-54e3-9caf-fcfaa042c474",
+        "name": "IsPublished",
+        "dataType": "boolean",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "group": "592307a7-58cb-5e08-bb8d-d8a5bef7efa4"
+      },
+      {
+        "id": "dfdd46e6-bb08-5b99-9a0e-2d74851c65db",
+        "name": "Channel",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "group": "592307a7-58cb-5e08-bb8d-d8a5bef7efa4"
+      },
+      {
+        "id": "2a16cac4-b283-51ad-aad6-9483095ec230",
+        "name": "Kind",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "lookupReferenceType": "ShopProductKind",
+        "group": "592307a7-58cb-5e08-bb8d-d8a5bef7efa4"
+      },
+      {
+        "id": "51aaf0ee-fb83-5384-84c0-570b92061fe9",
+        "name": "Brand",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "group": "592307a7-58cb-5e08-bb8d-d8a5bef7efa4"
+      },
+      {
+        "id": "3df81b10-68bb-5bae-8e50-61c9c51b1b1c",
+        "name": "Mpn",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "592307a7-58cb-5e08-bb8d-d8a5bef7efa4"
+      },
+      {
+        "id": "4fb95aef-4244-5909-99ba-fb87a9087919",
+        "name": "Description",
+        "dataType": "TranslatedString",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 9,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "592307a7-58cb-5e08-bb8d-d8a5bef7efa4"
+      },
+      {
+        "id": "69cd645a-115a-510e-97a3-27a5eef2722f",
+        "name": "CategoryIds",
+        "dataType": "Reference",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 10,
+        "query": "ShopCategories",
+        "referenceType": "MintPlayer.Spark.Commerce.Shop.Models.ShopCategory",
+        "isArray": true,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "592307a7-58cb-5e08-bb8d-d8a5bef7efa4"
+      },
+      {
+        "id": "789fd563-01dc-58a3-9342-9bc1c354a170",
+        "name": "MinimumAge",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 11,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "592307a7-58cb-5e08-bb8d-d8a5bef7efa4"
+      },
+      {
+        "id": "9206d30e-5125-5f51-9758-e3a40182ce4f",
+        "name": "ReviewsEnabled",
+        "dataType": "boolean",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 12,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "592307a7-58cb-5e08-bb8d-d8a5bef7efa4"
+      },
+      {
+        "id": "5a33b867-3f62-5fe0-b70f-9a2b7105f7fd",
+        "name": "WithdrawalExemption",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 13,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "592307a7-58cb-5e08-bb8d-d8a5bef7efa4"
+      },
+      {
+        "id": "15eaf13b-5697-5dfa-a36b-8f51b666ac50",
+        "name": "RefundPolicy",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 14,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "592307a7-58cb-5e08-bb8d-d8a5bef7efa4"
+      },
+      {
+        "id": "4d083128-9ed1-5fe9-9b0b-bfd7a4cee650",
+        "name": "RefundDaysBefore",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 15,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "592307a7-58cb-5e08-bb8d-d8a5bef7efa4"
+      },
+      {
+        "id": "177c82fe-0b39-530a-b89f-d24417159f86",
+        "name": "RefundFeeBasisPoints",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 16,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "592307a7-58cb-5e08-bb8d-d8a5bef7efa4"
+      },
+      {
+        "id": "5cc6388d-db29-5973-8927-cb20b1aa58cf",
+        "name": "Price",
+        "dataType": "Money",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 17,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "group": "ef38fa58-e45c-56be-94df-3a50e728ba2e"
+      },
+      {
+        "id": "31224b3c-0a57-55e8-b04e-fc464c621861",
+        "name": "VatRateBasisPoints",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 18,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "ef38fa58-e45c-56be-94df-3a50e728ba2e"
+      },
+      {
+        "id": "4358e84c-f494-5aac-9614-665ab9e63663",
+        "name": "UnitOfMeasure",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 19,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "lookupReferenceType": "ShopUnitOfMeasure",
+        "group": "ef38fa58-e45c-56be-94df-3a50e728ba2e"
+      },
+      {
+        "id": "91ed77fb-c7b5-500c-b8dc-87e0875ec0b6",
+        "name": "NetQuantity",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 20,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "ef38fa58-e45c-56be-94df-3a50e728ba2e"
+      },
+      {
+        "id": "55c702cf-11c5-55ff-913c-ae0acb4f083c",
+        "name": "UnitPriceReference",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 21,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "ef38fa58-e45c-56be-94df-3a50e728ba2e"
+      },
+      {
+        "id": "8b497fb9-4df3-5c0c-ae8d-28e580289144",
+        "name": "ManufacturerName",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 22,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "dd5710cc-9de6-5230-9118-cfcc67c3552a"
+      },
+      {
+        "id": "df84ecf9-9027-5790-8229-ba97c8f4ed61",
+        "name": "ManufacturerAddress",
+        "dataType": "MultiLineString",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 23,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "dd5710cc-9de6-5230-9118-cfcc67c3552a"
+      },
+      {
+        "id": "4c3fd6d9-0b17-582e-aecb-2a2fe75e4d24",
+        "name": "ManufacturerContact",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 24,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "dd5710cc-9de6-5230-9118-cfcc67c3552a"
+      },
+      {
+        "id": "596be6bd-6a72-5aa4-9412-adef3f94960a",
+        "name": "ManufacturerCountry",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 25,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "dd5710cc-9de6-5230-9118-cfcc67c3552a"
+      },
+      {
+        "id": "a78780e0-3a30-598a-9886-ed539b9ea712",
+        "name": "ResponsiblePersonName",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 26,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "dd5710cc-9de6-5230-9118-cfcc67c3552a"
+      },
+      {
+        "id": "91cb5a08-1778-51d9-8b71-0646cd4dc431",
+        "name": "ResponsiblePersonAddress",
+        "dataType": "MultiLineString",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 27,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "dd5710cc-9de6-5230-9118-cfcc67c3552a"
+      },
+      {
+        "id": "dd4111fd-3d15-5ed8-af09-0071cd1e78a7",
+        "name": "ResponsiblePersonContact",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 28,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "dd5710cc-9de6-5230-9118-cfcc67c3552a"
+      },
+      {
+        "id": "7026dc7e-f04b-5a16-9320-ed62073e43ac",
+        "name": "SafetyIdentifier",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 29,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "dd5710cc-9de6-5230-9118-cfcc67c3552a"
+      },
+      {
+        "id": "9bd40f39-b7ec-567a-8df0-f630ff2c781e",
+        "name": "SafetyPictureUrl",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 30,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "dd5710cc-9de6-5230-9118-cfcc67c3552a"
+      },
+      {
+        "id": "b795d665-b56c-5229-aa01-674c881bfea6",
+        "name": "SafetyWarnings",
+        "dataType": "TranslatedString",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 31,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "dd5710cc-9de6-5230-9118-cfcc67c3552a"
+      },
+      {
+        "id": "3bda5ebd-9023-597e-abdb-6d22e155b187",
+        "name": "DurabilityGuaranteeMonths",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 32,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "775a7afb-1668-57e6-b307-99f13d8dcbc8"
+      },
+      {
+        "id": "73b77c3b-ec4e-5b81-b063-87e4eeb5843a",
+        "name": "DurabilityGuarantor",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 33,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "775a7afb-1668-57e6-b307-99f13d8dcbc8"
+      },
+      {
+        "id": "83b00924-0214-5117-89ca-d53ce8457f7c",
+        "name": "DurabilityGuaranteeTerms",
+        "dataType": "TranslatedString",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 34,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "775a7afb-1668-57e6-b307-99f13d8dcbc8"
+      },
+      {
+        "id": "efbe8b2c-4e46-5fcc-8dfb-c1ee5278bd07",
+        "name": "HsCode",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 35,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "7931ae59-0f5b-50be-8865-97058e13205c"
+      },
+      {
+        "id": "49a5ef8d-e9dc-51fe-b2c2-a837571b7236",
+        "name": "OriginCountry",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 36,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "7931ae59-0f5b-50be-8865-97058e13205c"
+      },
+      {
+        "id": "8fe161f8-1009-5050-8dd0-3cad9cb756c1",
+        "name": "DangerousGoods",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 37,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "7931ae59-0f5b-50be-8865-97058e13205c"
+      },
+      {
+        "id": "5f4c1431-fd02-5baa-9aa6-b7f2a94b03e2",
+        "name": "UnNumber",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 38,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "7931ae59-0f5b-50be-8865-97058e13205c"
+      },
+      {
+        "id": "26800b19-4e1d-5b3d-8a70-412ba08ad01b",
+        "name": "Media",
+        "dataType": "AsDetail",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 39,
+        "asDetailType": "MintPlayer.Spark.Commerce.Shop.Models.ShopProductMedia",
+        "isArray": true,
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "74be8cfd-2919-5c01-a4ca-9a65b38ec1ea"
+      },
+      {
+        "id": "e54ccab6-aa30-56d3-a036-6261f1784696",
+        "name": "Attributes",
+        "dataType": "AsDetail",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 40,
+        "asDetailType": "MintPlayer.Spark.Commerce.Shop.Models.ShopProductAttribute",
+        "isArray": true,
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "74be8cfd-2919-5c01-a4ca-9a65b38ec1ea"
+      },
+      {
+        "id": "9d45bae9-3b1e-5cad-b562-fce7dca201a6",
+        "name": "ReviewCount",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 41,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "f9af9bd6-bca3-5487-9148-93595a1e49f9"
+      },
+      {
+        "id": "839f9e96-cee8-542c-998c-f889c767c506",
+        "name": "RatingAverage",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 42,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "f9af9bd6-bca3-5487-9148-93595a1e49f9"
+      },
+      {
+        "id": "8d1589a7-4bcb-5be1-b788-bea49b1dcc38",
+        "name": "PublishedAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 43,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "f9af9bd6-bca3-5487-9148-93595a1e49f9"
+      },
+      {
+        "id": "c43b6ef0-26f0-5d84-85c4-e31bbfd10045",
+        "name": "UpdatedAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 44,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "group": "f9af9bd6-bca3-5487-9148-93595a1e49f9"
+      }
+    ]
+  },
+  "queries": [
+    {
+      "id": "29f172ef-a554-516d-913a-fd9b20b37ad8",
+      "name": "ShopProducts",
+      "source": "Custom.ShopProducts",
+      "alias": "shopproducts",
+      "sortColumns": [
+        {
+          "property": "UpdatedAt",
+          "direction": "desc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "ShopProduct"
+    }
+  ]
+}

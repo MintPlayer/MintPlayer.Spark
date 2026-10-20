@@ -135,8 +135,12 @@ public sealed record CheckoutCapacity
 /// <see cref="IFinalPriceCalculator"/> first (FinalPrice, §4.4), then runs the steps by <see cref="Order"/>: Promotions'
 /// codes (around 100), the donation step (900, GC3), the insurance step (950, GC4). A step adds line adjustments or
 /// order extras; it never changes another line's FinalPrice. Discovered (<c>[SparkDiscoverable]</c>); a library
-/// registers its own (scoped, <c>TryAddEnumerable</c>). Steps run on every quote, so they must be side-effect free:
-/// a step that reserves something (a capacity-blocking code) does so from an <see cref="IOrderEventRecipient"/>.
+/// registers its own (scoped, <c>TryAddEnumerable</c>). Steps run on every quote, so they are side-effect free while
+/// quoting (<see cref="CheckoutPricingContext.Placing"/> false). When placing, a step may reserve something (Promotions
+/// reserves a code use), but the reservation must lapse on its own (an expiry), because the placement can still fail
+/// after the step ran and nothing calls the step back; its <see cref="IOrderEventRecipient"/> extends it on
+/// <c>Placed</c>, keeps it on <c>Confirmed</c> and releases it on <c>Expired</c>/<c>Cancelled</c>/<c>Voided</c>. Key the
+/// reservation on the order's line ids, so a retried placement never reserves twice.
 /// </summary>
 [SparkDiscoverable]
 public interface ICheckoutPricingStep
@@ -204,6 +208,13 @@ public sealed class PricedLine
 
     /// <summary>The VAT of the goods after every adjustment (S21), set with <see cref="Net"/>.</summary>
     public Money? Vat { get; internal set; }
+
+    /// <summary>
+    /// This line's pro-rata share of the order-level discounts (<see cref="PricedExtraKind.Discount"/> extras, S21):
+    /// split over the lines' goods amounts by largest remainder (<c>Money.Allocate</c>), the same split Invoicing makes.
+    /// <see cref="Net"/> + <see cref="Vat"/> = goods + this share. Zero without an order discount; set with <see cref="Net"/>.
+    /// </summary>
+    public Money? OrderDiscount { get; internal set; }
 }
 
 /// <summary>How Checkout rounds the VAT of adjusted order lines (S21; <c>Spark:Commerce:Checkout:VatRounding</c>).</summary>

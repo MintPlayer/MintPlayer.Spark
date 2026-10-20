@@ -18,6 +18,8 @@ namespace MintPlayer.Spark.Commerce.Ticketing.Tickets.Contracts;
 /// <param name="MinimumAge">GB12: an ID is checked at the door.</param>
 /// <param name="CanTransfer">The event allows transfer (D30), the ticket is valid and the freeze has not begun.</param>
 /// <param name="CanResell">The event's face-value resale is open (D30), the ticket is valid and the freeze has not begun.</param>
+/// <param name="ResaleCap">What the ticket cost (the resale ceiling, D30), in the currency the event's order was paid in:
+/// the resale form's currency before any listing exists. Null when the ticket cannot be resold.</param>
 [SparkContract]
 public sealed record SparkTicketView(
     string Code,
@@ -44,6 +46,7 @@ public sealed record SparkTicketView(
     bool CanResell,
     SparkTicketTransferInfo? Transfer,
     SparkTicketResaleInfo? Resale,
+    Money? ResaleCap,
     SparkTicketTemplate Template);
 
 /// <summary>A date the ticket admits to; the page renders it in the viewer's zone with the venue-local hint (D33).</summary>
@@ -222,6 +225,13 @@ public sealed record SparkOfflineScan(string ScanId, string Code, DateTimeOffset
 /// <summary>Uploads offline scans and asks for the list's changes since <c>Since</c> (a previous <c>Cursor</c>).</summary>
 [SparkContract]
 public sealed record SparkScannerSyncRequest(IReadOnlyList<SparkOfflineScan> Scans, string? Since = null);
+
+/// <summary>
+/// The live topic <c>ticketing-scanner:{EventId}</c> (X2): the event's tickets changed at <c>ChangedAt</c> (a revocation,
+/// a reissue, another device's scan). Public by construction, so it carries no ticket data: a device syncs on it.
+/// </summary>
+[SparkContract]
+public sealed record SparkScannerNudge(string EventId, DateTimeOffset ChangedAt);
 
 /// <summary>
 /// The sync's outcome (S9): each uploaded scan's result as the server decided it with every device's scans in time

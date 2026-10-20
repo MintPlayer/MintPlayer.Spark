@@ -67,7 +67,7 @@ internal sealed class BackOfficeOrders(
             throw CheckoutException.Of(CheckoutRefusals.AgeAttestationRequired);
 
         var priced = await pricing.PriceAsync(resolved.Select(r => new PricingInput(r.LineId, r.Item, r.Quantity)).ToList(),
-            new Dictionary<string, string>(), null, placing: true, cancellationToken);
+            new Dictionary<string, string>(), null, placing: true, cancellationToken, buyerEmail: email);
         var identifiers = new BuyerIdentifiers(Email: email);
         var free = origin is OrderOrigin.Comp or OrderOrigin.GuestList;
 
@@ -97,6 +97,7 @@ internal sealed class BackOfficeOrders(
                 line.Total = Money.Zero(order.Currency);
                 line.Net = Money.Zero(order.Currency);
                 line.Vat = Money.Zero(order.Currency);
+                line.OrderDiscount = Money.Zero(order.Currency);
                 line.Fees.Clear();
                 line.Adjustments.Clear();
             }
@@ -294,7 +295,12 @@ internal sealed class BackOfficeOrders(
             var repriced = (await pricing.PriceAsync([new PricingInput(line.LineId, item, line.Quantity)], new Dictionary<string, string>(), null, true, cancellationToken)).Lines[0];
             var comp = order.ExcludedFromRevenue;
             var newTotal = comp ? Money.Zero(order.Currency) : repriced.Total;
-            var diff = newTotal - line.Total;
+            // S21: the line keeps its share of the order discount (the order's discount extra does not change), capped at
+            // the new goods amount; the difference is between what was charged and what is charged now.
+            var newGoods = newTotal.ToMinorUnits() - (comp ? 0 : repriced.Price.MandatoryFees.Sum(f => f.Amount.ToMinorUnits()));
+            var newShare = comp ? 0 : Math.Max(line.OrderDiscount.ToMinorUnits(), -Math.Max(0, newGoods));
+            var newDiscount = Money.FromMinorUnits(newShare, order.Currency);
+            var diff = newTotal + newDiscount - line.Charged();
             difference = diff;
 
             var oldUnits = string.Join(" ", line.Units);
@@ -307,10 +313,18 @@ internal sealed class BackOfficeOrders(
             line.Units = converted.Units?.ToList() ?? [.. item.Capacity.Units];
             line.Capacity = capacity;
             line.Total = newTotal;
+            line.OrderDiscount = newDiscount;
             if (!comp)
             {
                 line.Net = repriced.Net ?? repriced.Price.Net;
                 line.Vat = repriced.Vat ?? repriced.Price.Vat;
+                if (newShare != 0)
+                {
+                    // The VAT base is the new goods amount plus the kept share (the same rule CheckoutLineVat applies).
+                    var vat = repriced.Item.VatRateBasisPoints is { } rate ? CheckoutLineVat.Vat(newGoods + newShare, rate, repriced.Item.PriceBasis) : 0;
+                    line.Net = Money.FromMinorUnits(newGoods + newShare - vat, order.Currency);
+                    line.Vat = Money.FromMinorUnits(vat, order.Currency);
+                }
                 line.Fees = repriced.Price.MandatoryFees.Select(f => new CheckoutOrderFee { Code = f.Code, Kind = f.Kind.ToString(), Amount = f.Amount, LabelKey = f.LabelKey, Mandatory = true }).ToList();
             }
             line.MinimumAge = item.MinimumAge;

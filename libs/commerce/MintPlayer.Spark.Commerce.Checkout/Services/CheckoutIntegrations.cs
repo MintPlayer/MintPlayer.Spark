@@ -65,6 +65,9 @@ internal sealed class CheckoutBasketMerge(IOptionsMonitor<SparkCommerceOptions> 
         var guest = await session.LoadAsync<CheckoutBasket>(CheckoutBasket.IdForVisitor(visitorId), cancellationToken);
         if (guest is null)
             return;
+        // D16: the moved lines keep counting against the guest's visitor limit key (CheckoutService.Identifiers(line)).
+        foreach (var line in guest.Lines)
+            line.LimitVisitorId ??= visitorId;
         var accountId = CheckoutBasket.IdForUser(userId);
         var account = await session.LoadAsync<CheckoutBasket>(accountId, cancellationToken);
 
@@ -189,7 +192,7 @@ internal sealed class CheckoutBuyersExport(IDocumentStore store) : ISellerExport
             foreach (var line in order.Lines.Where(l => l.SellerOrganizationId == organizationId))
                 yield return [order.Number, order.CreatedAt.ToString("o", CultureInfo.InvariantCulture), order.State.ToString(), order.BuyerEmail, order.BuyerName,
                     line.Title?.GetValue("en") ?? line.ItemId, line.Quantity.ToString(CultureInfo.InvariantCulture),
-                    line.Total.Amount.ToString(CultureInfo.InvariantCulture), line.Total.Currency];
+                    line.Charged().Amount.ToString(CultureInfo.InvariantCulture), line.Total.Currency];
         }
     }
 }

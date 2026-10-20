@@ -62,15 +62,17 @@ internal static class RefundMath
 
     /// <summary>
     /// Every refundable component of an order. Refused lines are left out (checkout refunded them at confirmation, D40).
-    /// A negative extra (an order discount) is allocated over the line price parts by largest remainder, so each line's
-    /// price part is what the buyer really paid for it.
+    /// A line's price part is what the buyer really paid for its goods: total − fees + the order-discount share stored on
+    /// the line at pricing (S21, <see cref="CheckoutOrderLine.OrderDiscount"/>), so it equals the line's <c>Net + Vat</c>
+    /// and the gross Invoicing put on the invoice. Any other negative extra (not a <see cref="PricedExtraKind.Discount"/>)
+    /// is still allocated over the price parts by largest remainder.
     /// </summary>
     public static List<RefundComponent> Components(CheckoutOrder order, IReadOnlyDictionary<string, Money?>? standardDelivery = null)
     {
         var currency = order.Currency;
         var lines = order.Lines.Where(l => l.Status != OrderLineStatus.Refused).ToList();
-        var priceParts = lines.Select(l => (l.Total - Money.Sum(l.Fees.Select(f => f.Amount), currency)).ToMinorUnits()).ToList();
-        var discount = Money.Sum(order.Extras.Where(e => e.Amount.ToMinorUnits() < 0).Select(e => e.Amount), currency);
+        var priceParts = lines.Select(l => l.ChargedGoods().ToMinorUnits()).ToList();
+        var discount = Money.Sum(order.Extras.Where(e => e.Kind != PricedExtraKind.Discount && e.Amount.ToMinorUnits() < 0).Select(e => e.Amount), currency);
         if (!discount.IsZero && priceParts.Any(p => p > 0))
         {
             var shares = Money.Allocate(discount.ToMinorUnits(), priceParts.Select(p => Math.Max(0, p)).ToList());

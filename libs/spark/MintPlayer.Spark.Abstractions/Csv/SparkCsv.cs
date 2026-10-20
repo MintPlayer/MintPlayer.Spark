@@ -136,11 +136,20 @@ public static class SparkCsv
         return Field(text, delimiter, guard: isText);
     }
 
-    /// <summary>Prefixes an apostrophe to text a spreadsheet would run as a formula.</summary>
-    public static string Guard(string text) => text.Length > 0 && FormulaStarts.Contains(text[0]) ? "'" + text : text;
+    /// <summary>
+    /// Prefixes an apostrophe to text a spreadsheet would run as a formula. Text that already reads as a guarded cell
+    /// (apostrophes, then a formula start) is prefixed too, so <see cref="Unguard"/> gives back exactly what was written.
+    /// </summary>
+    public static string Guard(string text) => NeedsGuard(text) ? "'" + text : text;
 
-    /// <summary>Undoes <see cref="Guard"/>: an apostrophe followed by a formula start is dropped.</summary>
-    public static string Unguard(string text) => text.Length > 1 && text[0] == '\'' && FormulaStarts.Contains(text[1]) ? text[1..] : text;
+    /// <summary>Undoes <see cref="Guard"/>: one apostrophe before (apostrophes and) a formula start is dropped.</summary>
+    public static string Unguard(string text) => text.Length > 1 && text[0] == '\'' && NeedsGuard(text.AsSpan(1)) ? text[1..] : text;
+
+    private static bool NeedsGuard(ReadOnlySpan<char> text)
+    {
+        var start = text.IndexOfAnyExcept('\'');
+        return start >= 0 && FormulaStarts.Contains(text[start]);
+    }
 
     /// <summary>
     /// The invariant text of a value: numbers with a dot and no grouping, <see cref="DateOnly"/> as <c>yyyy-MM-dd</c>,

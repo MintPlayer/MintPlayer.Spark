@@ -255,6 +255,18 @@ public class SendcloudAdapterTests
     }
 
     [Fact]
+    public async Task The_lookup_never_takes_a_shipment_of_another_reference_for_ours()
+    {
+        // The docs do not say the filter matches exactly: a shipment of the refused generation ("-r1") or of a longer
+        // key answered for our reference is not our booking.
+        var (carrier, handler) = Sendcloud();
+        var other = CarrierFixtures.Text("Sendcloud", "shipments-by-reference.json").Replace("\"Shipments/orders/12345\"", "\"Shipments/orders/12345-r1\"");
+        handler.On("GET", "/api/v3/shipments?external_reference_id=Shipments%2Forders%2F12345", other);
+
+        (await carrier.FindBookingAsync(Request(), default)).Status.Should().Be(CarrierBookingLookupStatus.NotFound);
+    }
+
+    [Fact]
     public async Task Void_cancels_the_whole_shipment_and_counts_queued_as_voided()
     {
         var (carrier, handler) = Sendcloud();

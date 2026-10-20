@@ -409,11 +409,12 @@ export class SparkPoFormComponent {
     // For multi-reference attributes (Reference && isArray): a <bs-tree-select> provider over the
     // query itself, so "load more" and search reach every row and not just this first page (the
     // in-memory provider it replaced stopped at the 50 rows loaded here), and a by-id node map of
-    // this page for the chips of the current selection.
+    // this page for the chips of the current selection. A single reference gets one too when it
+    // declares a `referenceTree` (WX9): it then picks from the lazy tree instead of the flat modal.
     const providers: Record<string, TreeSelectProvider> = {};
     const nodesByAttr: Record<string, Record<string, TreeNode>> = {};
     for (const attr of refAttrs) {
-      if (!attr.isArray) continue;
+      if (!attr.isArray && !attr.referenceTree) continue;
       const nodes = (optionsByAttr[attr.name] || [])
         .map(referenceTreeNode)
         .filter((n): n is TreeNode => n !== null);
@@ -443,8 +444,11 @@ export class SparkPoFormComponent {
     const loaded = this.loadedReferences();
     const result: Record<string, TreeNode[]> = {};
     for (const attr of this.editableAttributes()) {
-      if (attr.dataType !== 'Reference' || !attr.isArray) continue;
-      const ids: string[] = Array.isArray(fd[attr.name]) ? fd[attr.name] : [];
+      if (attr.dataType !== 'Reference' || (!attr.isArray && !attr.referenceTree)) continue;
+      // A single tree reference (WX9) holds one id, or none.
+      const ids: string[] = attr.isArray
+        ? (Array.isArray(fd[attr.name]) ? fd[attr.name] : [])
+        : (typeof fd[attr.name] === 'string' && fd[attr.name] ? [fd[attr.name]] : []);
       const nodeMap = nodesByAttr[attr.name] || {};
       result[attr.name] = ids.map(id => {
         const server = loadedReferenceLabel(id, loaded[attr.name]);
@@ -474,10 +478,25 @@ export class SparkPoFormComponent {
       }));
     }
     const data = { ...this.formData() };
-    data[attr.name] = nodes.map(n => n.id);
+    // A single tree reference (WX9) stores one id or null, as the flat picker does.
+    data[attr.name] = attr.isArray ? nodes.map(n => n.id) : (nodes[0]?.id ?? null);
     this.formData.set(data);
+    if (!attr.isArray && nodes[0]) {
+      // As the flat picker's rowPicked: the picked row joins the options, which label the value.
+      const item: QueryResultItem = { id: nodes[0].id, breadcrumb: nodes[0].label, values: [] };
+      this.referenceOptions.update(prev => withOption(prev, attr.name, item));
+      this.referencePicked.emit({ attribute: attr.name, item });
+    }
     // A picked value is a discrete change: triggersRefresh fires now, as for a checkbox or a select.
     this.noteChange(attr);
+  }
+
+  /**
+   * Whether a single Reference picks from a lazy tree (WX9): it declares a `referenceTree`, and no
+   * refresh hook replaced its options (a hook's list is flat, so the flat picker shows it).
+   */
+  isTreeReference(attr: EntityAttributeDefinition): boolean {
+    return !attr.isArray && !!attr.referenceTree && !this.hookReplacedReferences().has(attr.name);
   }
 
   async loadAsDetailTypes(): Promise<void> {

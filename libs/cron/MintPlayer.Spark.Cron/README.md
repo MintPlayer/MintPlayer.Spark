@@ -97,8 +97,8 @@ spark.AddCron(cron => cron
 } } }
 ```
 
-An unknown zone throws at `AddJob`; an unknown zone or a bad expression in configuration fails host
-startup. `"UTC"` (or no zone) keeps the plain UTC path. Zones are resolved by the core's
+An unknown zone throws at `AddJob`; an unknown zone, a bad expression, or a key that names no registered
+job (keys are case-sensitive registration names) in configuration fails host startup. `"UTC"` (or no zone) keeps the plain UTC path. Zones are resolved by the core's
 `SparkTimeZones` (K10), so Windows ids and the newer-tzdata aliases work as they do for viewers.
 
 Daylight-saving transitions are defined (Q-W1):

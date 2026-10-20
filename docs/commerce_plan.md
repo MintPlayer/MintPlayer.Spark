@@ -7,42 +7,33 @@ The order of work for [commerce_PRD.md](commerce_PRD.md). The PRD carries the de
 - **Done and compile-verified** (commits up to e0c542f9): M0 spikes (rounds 3–4), M1 (X1–X23), M2, M3, M4–M10, M11 except fulfilment, M13, M14, M16, M19. No test suite has run yet (M22).
 - **In progress, interrupted mid-edit; the last commit ("WIP") may not compile:**
   - warehouse WM0–WM2: the replication redesign, `Fulfilment.Contracts` and `Quantity`. A build failure was seen in core `SyncActionHandler.cs` during this work.
-  - M12 Shop: stopped at the delivery step.
+  - ~~M12 Shop: stopped at the delivery step.~~ M12 Shop: **done** 2026-10-20 (every M12 line ticked, delivery step included; tests written, not run).
   - M15 Tickets + scanner.
-  - The integration batch: see the scratchpad list mirrored below.
-- **Integration batch items** (from the M4–M16 reports):
-  - the Checkout VAT base on discounted lines (bug);
-  - an Inventory exchange operation, a quota-mapping read, a commit hook and a declared sweeper index;
-  - MailManager attachments and headers;
-  - Checkout pricing context, hold time, attendee-question hook, combined admission scopes, refusal-code fallback, single `RefundFailed`, fr/nl mails;
-  - a Payments commission kind;
-  - one `WaitingRoomMode`;
-  - a `Commerce.WaitingRoom` bridge package;
-  - WaitingRoom GDPR hooks;
-  - public holidays in refund periods;
-  - Events price history in-transaction;
-  - Sendcloud API v3 and carrier booking idempotency.
-- **Smaller follow-ups** (from the lead's working list; some may already be done, so check each before acting):
-  - X6: the `schemas/model.schema.json` description changed, so check the schema revision/drift tests and the `TemplateMatcher` obsolete warnings.
-  - X7: the contracts generator must skip the `[JsonIgnore]` `PersistentObject.Replacement`.
-  - X8: ng-spark `SparkOrganizationChoice` gets `customRoles`.
-  - X1/X2: the ng-spark auth entry point calls `SparkLiveService.reconnect()` after sign-in and sign-out.
-  - X10: `SparkQuotas.KeyFor` → `SparkClientAddress.Key` in libs/settings.
-  - X13: phone-number uniqueness through an X12 compare-exchange reservation instead of a waited query.
-  - X18: settle reference_data_PRD §4.10 (pin Corax) against X18 (server default); recommended: server default, and fix §4.10.
-  - SPARK_INDEX_014–016 and SPARK063 are taken; check that no other agent reused them.
-  - CodeCoverage Dockerfile may lack the COPY for Authorization.Abstractions (SeoTester has it); verify.
-  - Checkout: a soft availability check for OnPayment lines; merged guest lines keep the visitor limit key; the guide says pricing steps may reserve lapsing resources.
-  - Shop/Shipping (M12): `IRefundTermsSource`, `IStandardDeliveryCost`, `MarkDeliveredAsync`, `RegisterGoodsBackAsync`; an optional reference-data `IShippingAddressValidator`.
-  - Invoicing: credit notes for `LineRefused`.
-  - Events ↔ WaitingRoom: automatic rooms for queued phases plus an `IWaitingRoomCapacity` adapter (bridge).
-  - Venues: `VenueAddress.json` reuses clrType `MintPlayer.Spark.ReferenceData.Address`; check for ambiguity under X9.
-  - PRD: record the CRD Art. 9(2)(b)(i) choice (the period starts at the last delivery) and the S7/S12/S13/S14/S15 results in §13 (S7: Chromium, 50k seats, layer cache, 100–239 fps).
+  - The integration batch: finished 2026-10-20, see below.
+- **Integration batch: done 2026-10-20** (code checked item by item; tests written, not run; M22 runs them):
+  - [x] Checkout VAT base on discounted lines (bug, fixed): an order-level discount never reached the lines' VAT base. `CheckoutLineVat.Apply` now spreads it with `Money.Allocate` (largest remainder, the split Invoicing makes) before the S21 Gross/Net and per-line/per-group rules; `PricedLine.OrderDiscount`. Red tests: `Checkout/CheckoutLineVatTests.cs` (3).
+  - [x] Inventory exchange (`InventoryEngine.cs:217/922`), quota-mapping read (`:306`), commit hook (`InventoryCommits.cs`, `Live/InventoryCommitDispatcher.cs`), declared sweeper index (`Indexes/InventoryIndexes.cs:19`).
+  - [x] MailManager attachments and headers (`ISparkMailer.cs:104/113` → `SparkMailHandlers.cs:116-187`); Checkout contributors (`CheckoutMails.cs:61-129`).
+  - [x] Checkout pricing context (`CheckoutPricing.cs:20-48`; back-office email added), hold time per sale (`CheckoutItem.HoldTime`), pre-payment hook (`CheckoutPrePayment.cs` + Events' `AttendeeAnswersPrePaymentCheck`), combined admission scopes (`CheckoutInfrastructure.cs:136-158`), refusal-code fallback (ng-spark checkout service), one `OrderEventKind.RefundFailed`, fr/nl for all 6 mails.
+  - [x] Payments commission kind (`PaymentDocuments.cs:249-252`, `ISparkPlatformFeeLedger.cs:17-42`); Promotions books through it (`Tracking.cs:131/164/219`), no `PromotionCommission` store left.
+  - [x] One `WaitingRoomMode` (`WaitingRoom.Abstractions/WaitingRoomMode.cs:8`); `Commerce.WaitingRoom` bridge complete (slnx:118); GDPR export/erase (`WaitingRoom/Identity/WaitingRoomAccountHooks.cs`).
+  - [x] Public holidays in refund periods, Reg. 1182/71 Art. 3(4) (`CheckoutHolidays.cs`, `RefundMath.cs:327-337`, reference-data calendar); per-country confirmation noted in the guide.
+  - [x] Price history in-transaction: Events (`EventInterceptors.cs:138-166`) and now also the generic `ISellableItem` interceptor for new items (`Commerce/Pricing/PriceHistoryInterceptors.cs`, test `Core/PriceHistoryInterceptorTests.cs`).
+  - [x] Sendcloud v3 (`/shipments/announce`, v3 `errors[]`; no idempotency header, a repeated `external_reference_id` answers 409 with the shipment) and booking idempotency (`SparkShipping.cs:628-735`: `InDoubt` before the call, lookup before rebooking; exact-reference match added). Crash test: `Shipping/ShippingBookingIdempotencyTests.cs`.
+- **Smaller follow-ups: done 2026-10-20**, except the M12 line:
+  - [x] X6: no test asserts schema descriptions; `TemplateMatcher` gives no obsolete warning on SDK 11.0.100-rc.2.
+  - [x] X7 (`SparkContractGenerator.cs:310-312`, test added) · X8 (`customRoles` was there; `role` added) · X1/X2 (`spark-auth.service.ts:79-91` → `spark-live.service.ts:115-122`, specs added) · X10 (`SparkQuotas.cs:28-31`).
+  - [x] X13: phone uniqueness now uses `SparkClaims` (`SparkPhoneVerification.cs`); key format unchanged.
+  - [x] X18: server default; reference_data_PRD §4.10 fixed, RD11. ~~(PRD §4's X18 row still says "pinned explicitly": strike it.)~~ PRD §4's X18 row struck to match (2026-10-20).
+  - [x] Diagnostic ids: none reused (SPARK009's two descriptors are intentional).
+  - [x] Dockerfiles: CodeCoverage lacked Authorization.Abstractions, Spark.Model, Approvals and Approvals.Abstractions; SeoTester lacked the two Approvals. COPYs added.
+  - [x] Checkout soft availability (`SoftAvailability.cs`), merged guest lines keep the visitor limit key (`CheckoutBasketLine.LimitVisitorId`, new), lapsing-reservation doc comment corrected.
+  - [ ] Shop/Shipping (M12): `IRefundTermsSource`, `IStandardDeliveryCost`, `MarkDeliveredAsync`, `RegisterGoodsBackAsync`; an optional reference-data `IShippingAddressValidator` (the M12 agent).
+  - [x] Invoicing credit notes for `LineRefused` (`InvoicingService.cs:392-408`, tests added) · Events ↔ WaitingRoom rooms + `IWaitingRoomCapacity` (capacity tests added).
+  - [x] Venues clrType: no clash today; `SparkModelLayers` now refuses two libraries mapping one CLR type.
+  - [x] PRD §13: S7, S12–S15 rows and D44 (CRD Art. 9(2)(b)(i)).
 - **Not started:** M11 fulfilment (shop side), WM3–WM9, M17, M18, M20 rest, M21, M22, the rest of X20 item 2 (remaining TS mirrors), EUR-Lex verification of every legal citation (EUR-Lex blocks automated fetches: use a real browser through Playwright).
-- **First step on resume:**
-  1. `dotnet build MintPlayer.Spark.slnx`, then fix the WIP compile errors.
-  2. Regenerate the contracts (`tools/SchemaGenerator contracts`).
-  3. Run the ng-spark build and the app `tsc` checks, plus the per-app verify gates.
+- **Done on resume (2026-10-20):** the WIP compile errors are fixed and WM1 (the replication redesign) is committed. The contracts regenerate, ng-spark build, app `tsc` and per-app verify gates run only in M22 (owner, 2026-10-20: no interim build or test runs).
 
 ## Rules for executing this plan
 
@@ -73,7 +64,7 @@ The order of work for [commerce_PRD.md](commerce_PRD.md). The PRD carries the de
 - [x] S6 Connect onboarding (both providers), including the insufficient-balance refund
 - [x] S7 seat-map rendering (50k seats)
 - [x] S8 PBKDF2 cost (server ≤10 ms; ~~WebCrypto ≤300 ms on low-end Android~~ dropped, round 4)
-- [ ] S9 offline scanner list and double-entry sync
+- [x] S9 offline scanner list and double-entry sync (fixture/CI size; result in PRD §13, round 6 list)
 - [x] S10 `ISaveReplacement` proposal round trip
 - [x] S11 name-collision analyzer (SPARK057–062, code fixes)
 - [x] S12 bot defence S1–S10 (research §6)
@@ -238,16 +229,16 @@ The order of work for [commerce_PRD.md](commerce_PRD.md). The PRD carries the de
 
 ### M12 — Shop
 
-- [ ] Products, variants (own quota), categories, search
-- [ ] Order states Paid → Shipped → Delivered; returns; 14-day withdrawal (~~seller-approved request~~: three flows per return reason, GA1/GA8)
-- [ ] Shop storefront pages (M17 completes the shell)
-- [ ] Round 5 — unit of measure + net quantity; computed unit price shown beside `FinalPrice` (GA3)
-- [ ] Round 5 — `ProductSafety` attribute group (manufacturer, EU responsible person, identifier, picture, per-language warnings); publish refused without it for goods; storefront block (GA7; confirm against Reg. 2023/988 Art. 19)
-- [ ] Round 5 — legal-guarantee notice and durability-guarantee field on product pages and confirmations (GA8; ECGT applies 27 Sep 2026, confirm)
-- [ ] Round 5 — HS code and country of origin per product/variant (GB6); `MinimumAge` (GB12)
-- [ ] Round 5 — galleries with per-variant images (alt text required); facet filters on category and declared attributes, counts from a declared index map (GB13)
-- [ ] Round 5 — verified-purchase reviews with the verification statement, moderated through Moderation (GC5)
-- [ ] Round 5 — Google Merchant / Meta product feed per seller at a stable URL (GC6)
+- [x] Products, variants (own quota), categories, search
+- [x] Order states Paid → Shipped → Delivered; returns; 14-day withdrawal (~~seller-approved request~~: three flows per return reason, GA1/GA8)
+- [x] Shop storefront pages (M17 completes the shell)
+- [x] Round 5 — unit of measure + net quantity; computed unit price shown beside `FinalPrice` (GA3)
+- [x] Round 5 — `ProductSafety` attribute group (manufacturer, EU responsible person, identifier, picture, per-language warnings); publish refused without it for goods; storefront block (GA7; confirm against Reg. 2023/988 Art. 19)
+- [x] Round 5 — legal-guarantee notice and durability-guarantee field on product pages and confirmations (GA8; ECGT applies 27 Sep 2026, confirm)
+- [x] Round 5 — HS code and country of origin per product/variant (GB6); `MinimumAge` (GB12)
+- [x] Round 5 — galleries with per-variant images (alt text required); facet filters on category and declared attributes, counts from a declared index map (GB13)
+- [x] Round 5 — verified-purchase reviews with the verification statement, moderated through Moderation (GC5)
+- [x] Round 5 — Google Merchant / Meta product feed per seller at a stable URL (GC6)
 
 ### M13 — Ticketing events
 
@@ -266,14 +257,14 @@ The order of work for [commerce_PRD.md](commerce_PRD.md). The PRD carries the de
 
 ### M15 — Tickets and scanner
 
-- [ ] Issuance (PBKDF2-hashed 128-bit secrets, QR = id + secret), delivery lead time, ticket page + PDF mail
-- [ ] Named tickets, transfer, face-value resale with reissue; freeze before doors
-- [ ] Scanner PWA: event-scoped device token, online atomic check-in, offline hashed list, sync with double-entry flags, revocation, wipe after the event
-- [ ] Round 5 — check-in lists per gate/day/zone; multi-day and combi passes; re-entry (in/out toggling); VIP zones; list ids in offline lists (GB3)
-- [ ] Round 5 — comps, guest lists, re-send, seat change and upgrade from the back office (GB7)
-- [ ] Round 5 — dispute freeze ("on hold" at the gate) and revocation on loss (GB1); "ID check" banner for age-restricted types (GB12)
-- [ ] Round 5 — transfer/resale erase the previous holder's data from the ticket; seller sees the current holder only (PRD §4.11)
-- [ ] Round 5 — per-event ticket-PDF templates with fixed QR and legal blocks (GC7); `.ics` attachment in ticket mails via the core formatter (GB9)
+- [x] Issuance (PBKDF2-hashed 128-bit secrets, QR = id + secret), delivery lead time, ticket page + PDF mail
+- [x] Named tickets, transfer, face-value resale with reissue; freeze before doors
+- [x] Scanner PWA: event-scoped device token, online atomic check-in, offline hashed list, sync with double-entry flags, revocation, wipe after the event
+- [x] Round 5 — check-in lists per gate/day/zone; multi-day and combi passes; re-entry (in/out toggling); VIP zones; list ids in offline lists (GB3)
+- [x] Round 5 — comps, guest lists, re-send, seat change and upgrade from the back office (GB7)
+- [x] Round 5 — dispute freeze ("on hold" at the gate) and revocation on loss (GB1); "ID check" banner for age-restricted types (GB12)
+- [x] Round 5 — transfer/resale erase the previous holder's data from the ticket; seller sees the current holder only (PRD §4.11)
+- [x] Round 5 — per-event ticket-PDF templates with fixed QR and legal blocks (GC7); `.ics` attachment in ticket mails via the core formatter (GB9)
 
 ### M16 — Waiting room and bot defence
 

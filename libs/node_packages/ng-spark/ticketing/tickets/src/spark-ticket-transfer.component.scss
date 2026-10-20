@@ -1,0 +1,29 @@
+:host {
+  display: block;
+}
+
+.spark-ticket-transfer {
+  max-width: 32rem;
+  margin: 0 auto;
+
+  form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+}
+
+.spark-ticket-transfer-note {
+  color: var(--bs-secondary-color, #6c757d);
+}
+
+.spark-ticket-transfer-refusal {
+  color: var(--bs-danger, #dc3545);
+  text-align: center;
+}

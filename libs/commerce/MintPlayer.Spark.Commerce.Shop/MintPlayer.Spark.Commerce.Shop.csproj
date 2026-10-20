@@ -27,6 +27,12 @@
 		<None Include="README.md" Pack="true" PackagePath="\" />
 	</ItemGroup>
 
+	<!-- The default MJML templates (SparkShop/*), read by MailManager. An app overrides one by placing a file with the
+	     same name in its Templates/Mail folder. -->
+	<ItemGroup>
+		<EmbeddedResource Include="Mail\**\*.mjml" LogicalName="SparkMail/%(RecursiveDir)%(Filename)%(Extension)" WithCulture="false" />
+	</ItemGroup>
+
 	<ItemGroup>
 		<PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="11.4.1-rc.0" />
 		<PackageReference Include="MintPlayer.SourceGenerators" Version="13.0.0">

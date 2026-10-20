@@ -1,0 +1,99 @@
+:host {
+  display: block;
+}
+
+.spark-shop-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.spark-shop-catalog-search {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+
+  input {
+    flex: 1;
+    min-width: 0;
+  }
+}
+
+.spark-shop-catalog-body {
+  display: grid;
+  grid-template-columns: minmax(12rem, 16rem) 1fr;
+  gap: 1.5rem;
+
+  @media (max-width: 640px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.spark-shop-facet {
+  border: 0;
+  margin: 0 0 1rem;
+  padding: 0;
+
+  legend {
+    font-weight: 600;
+  }
+
+  label {
+    display: block;
+  }
+}
+
+.spark-shop-count,
+.spark-shop-ranking {
+  color: var(--spark-muted-color, #6b7280);
+}
+
+.spark-shop-ranking {
+  font-size: 0.85rem;
+}
+
+.spark-shop-catalog-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.spark-shop-catalog-items {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+  gap: 1rem;
+}
+
+.spark-shop-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+
+  img {
+    width: 100%;
+    aspect-ratio: 1;
+    object-fit: cover;
+    border-radius: var(--spark-radius, 0.375rem);
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+}
+
+.spark-shop-card-name {
+  display: block;
+  font-weight: 600;
+}
+
+.spark-shop-more {
+  margin-top: 1rem;
+}

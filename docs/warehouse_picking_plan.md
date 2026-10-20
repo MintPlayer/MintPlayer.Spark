@@ -184,18 +184,18 @@ Runtime (`tests/MintPlayer.Spark.Tests/Replication`, `SparkTestDriver` + `SparkE
 
 ### WM2 — Shared foundations
 
-- [ ] `MintPlayer.Spark.Fulfilment.Contracts` (`libs/fulfilment/contracts/`): v1 of `fulfilment-orders`, `catalog-items`, `expected-returns`, `fulfilment-status`, `shipments`, `stock-levels` and `return-receipts` (PRD §4.3); `expected-receipts` too if Q-W9 is accepted
-- [ ] `MintPlayer.Spark.Gs1` (`libs/gs1/`):
+- [x] `MintPlayer.Spark.Fulfilment.Contracts` (`libs/fulfilment/contracts/`): v1 of `fulfilment-orders`, `catalog-items`, `expected-returns`, `fulfilment-status`, `shipments`, `stock-levels` and `return-receipts` (PRD §4.3); `expected-receipts` too if Q-W9 is accepted *As built 2026-10-20: one `[Replicated]` class per contract (8, `expected-receipts` included: Q-W9 accepted), stored by the owner and replicated to the host that binds `Spark:Replication:Sources:{collection}`; new `[assembly: SparkReplicaContracts]` makes unbound classes inert (PRD §4.3 "Contracts as replica classes"). Per-consumer row filter for a multi-shop warehouse is open.*
+- [x] `MintPlayer.Spark.Gs1` (`libs/gs1/`):
   - check digits (GTIN, SSCC, location)
-  - SSCC allocation (company prefix, extension digit, compare-exchange sequence)
+  - SSCC allocation (company prefix, extension digit, compare-exchange sequence) *(2026-10-20: core `ISparkSequences`, `libs/spark/MintPlayer.Spark/Sequences/SparkSequences.cs`, bound through `DelegateSsccSerialSource`)*
   - AI element strings and Digital Link parsing from GS1's AI dataset, kept as data (Q-W16)
   - the W12 corpus as tests
-- [ ] `MintPlayer.Spark.Warehouse.Abstractions` (`libs/warehouse/abstractions/`): `IAllocationRule`, `IPutawayRule`, `IPickStrategy`, `IPickRouter`, `ICartonizer`, `IBarcodeResolutionStep`, `ISiteRouter`
-- [ ] WX8 `Quantity`, on X4's value-type infrastructure (model types stop at `decimal`, `libs/spark/MintPlayer.Spark.Abstractions/Model/SparkModelShape.cs:191-216`)
-- [ ] WX9 hierarchical reference picker: `loadChildren` (flat today, `libs/node_packages/ng-spark/po-form/src/reference-query-tree-select-provider.ts:35-38`), plus materialized-path helpers
-- [ ] WX11 generic CSV import and export, shared with the commerce seat CSV (D32)
-- [ ] WX14 zone-aware schedules in core cron, with DST gaps and folds defined (Q-W1). Today it is UTC only (`libs/cron/MintPlayer.Spark.Cron/SparkCronScheduler.cs:76,101-102,209`; `CronScheduleParser.cs:21`)
-- [ ] WX16 composable multi-map indexes, if Q-W26 is accepted
+- [x] `MintPlayer.Spark.Warehouse.Abstractions` (`libs/warehouse/abstractions/`): `IAllocationRule`, `IPutawayRule`, `IPickStrategy`, `IPickRouter`, `ICartonizer`, `IBarcodeResolutionStep`, `ISiteRouter`
+- [x] WX8 `Quantity`, on X4's value-type infrastructure (model types stop at `decimal`, `libs/spark/MintPlayer.Spark.Abstractions/Model/SparkModelShape.cs:191-216`) *(verified 2026-10-20: model shape, converters, mapper, sort/filter companions, `[GenerateIndex]` companions, renderers, guide)*
+- [x] WX9 hierarchical reference picker: `loadChildren` (flat today, `libs/node_packages/ng-spark/po-form/src/reference-query-tree-select-provider.ts:35-38`), plus materialized-path helpers *(2026-10-20: also single references with a `referenceTree` pick from the lazy tree in `spark-po-form`)*
+- [x] WX11 generic CSV import and export, shared with the commerce seat CSV (D32) *(reviewed 2026-10-20: guard round-trip fixed; open: request-size limit on import, no `docs/guide-csv.md`)*
+- [x] WX14 zone-aware schedules in core cron, with DST gaps and folds defined (Q-W1). Today it is UTC only (`libs/cron/MintPlayer.Spark.Cron/SparkCronScheduler.cs:76,101-102,209`; `CronScheduleParser.cs:21`) *(reviewed 2026-10-20: gap/fold per Q-W1 in core; unknown `Spark:Cron:Jobs` keys now fail validation)*
+- [x] WX16 composable multi-map indexes, if Q-W26 is accepted *(Q-W26 accepted; delivered by commerce X19, library-declared `[SparkIndexMap]` maps composed into one multi-map index by the app generator)*
 
 ### WM3 — Warehouse core
 

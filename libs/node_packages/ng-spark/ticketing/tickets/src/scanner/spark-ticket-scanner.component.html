@@ -1,0 +1,72 @@
+<section class="spark-ticket-scanner">
+  <h1>{{ 'ticketingTickets.scanner.title' | t }}</h1>
+
+  @if (wiped()) {
+    <p class="spark-ticket-scanner-notice" role="status">{{ 'ticketingTickets.scanner.wiped' | t }}</p>
+  }
+
+  @if (session(); as s) {
+    <p class="spark-ticket-scanner-event">{{ s.eventName | resolveTranslation }} · {{ s.list.name }} · {{ s.name }}</p>
+
+    @if (!online()) {
+      <p class="spark-ticket-scanner-offline" role="status">{{ 'ticketingTickets.scanner.offline' | t }}</p>
+    }
+    @if (frozen() && queued() === 0) {
+      <p class="spark-ticket-scanner-notice">{{ 'ticketingTickets.scanner.syncAfterFreeze' | t }}</p>
+    }
+
+    @if (outcome(); as o) {
+      <div class="spark-ticket-scanner-result" [attr.data-result]="o.result" role="alert" aria-live="assertive">
+        <strong>{{ 'ticketingTickets.scan.' + o.result | t }}</strong>
+        @if (o.minimumAge) {
+          <span class="spark-ticket-scanner-idcheck">{{ ('ticketingTickets.idCheck' | t).replace('{age}', '' + o.minimumAge) }}</span>
+        }
+        @if (o.holder) {
+          <span>{{ o.holder }}</span>
+        }
+        @if (o.seat) {
+          <span>{{ o.seat }}</span>
+        }
+      </div>
+    }
+
+    <video #video class="spark-ticket-scanner-video" [class.on]="cameraOn()" muted playsinline></video>
+
+    <div class="spark-ticket-scanner-controls">
+      @if (s.list.allowReentry) {
+        <div class="spark-ticket-scanner-direction" role="radiogroup">
+          <button type="button" class="btn" [class.btn-primary]="direction() === 'In'" [class.btn-outline-primary]="direction() !== 'In'" [attr.aria-checked]="direction() === 'In'" role="radio" (click)="direction.set('In')">{{ 'ticketingTickets.scanner.in' | t }}</button>
+          <button type="button" class="btn" [class.btn-primary]="direction() === 'Out'" [class.btn-outline-primary]="direction() !== 'Out'" [attr.aria-checked]="direction() === 'Out'" role="radio" (click)="direction.set('Out')">{{ 'ticketingTickets.scanner.out' | t }}</button>
+        </div>
+      }
+      @if (cameraAvailable) {
+        <button type="button" class="btn btn-outline-secondary" (click)="toggleCamera()">{{ 'ticketingTickets.scanner.start' | t }}</button>
+      }
+      <form class="spark-ticket-scanner-manual" (submit)="$event.preventDefault(); scanManual()">
+        <label>
+          {{ 'ticketingTickets.scanner.manual' | t }}
+          <input type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" [value]="manualCode()" (input)="manualCode.set($any($event.target).value)" />
+        </label>
+      </form>
+    </div>
+
+    <footer class="spark-ticket-scanner-status">
+      <span>{{ ('ticketingTickets.scanner.listReady' | t).replace('{count}', '' + listed()) }}</span>
+      @if (queued() > 0) {
+        <span>{{ ('ticketingTickets.scanner.queued' | t).replace('{count}', '' + queued()) }}</span>
+      }
+      <button type="button" class="btn btn-link" [disabled]="!online()" (click)="sync()">{{ 'ticketingTickets.scanner.syncNow' | t }}</button>
+      @if (doubleEntries().length > 0) {
+        <span class="spark-ticket-scanner-doubles">{{ 'ticketingTickets.scanner.doubleEntry' | t }}: {{ doubleEntries().length }}</span>
+      }
+    </footer>
+  } @else {
+    <form class="spark-ticket-scanner-setup" (submit)="$event.preventDefault(); setUp()">
+      <label>
+        {{ 'ticketingTickets.scanner.setup' | t }}
+        <input type="password" autocomplete="off" spellcheck="false" [value]="credentialInput()" (input)="credentialInput.set($any($event.target).value)" />
+      </label>
+      <button type="submit" class="btn btn-primary" [disabled]="busy() || !credentialInput().trim()">{{ 'ticketingTickets.scanner.start' | t }}</button>
+    </form>
+  }
+</section>
