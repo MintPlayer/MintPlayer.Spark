@@ -1,0 +1,32 @@
+:host {
+  display: block;
+}
+
+.spark-my-tickets-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.spark-my-tickets-item {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--spark-commerce-border, var(--bs-border-color, #dee2e6));
+
+  p {
+    margin: 0;
+  }
+}
+
+.spark-my-tickets-status,
+.spark-my-tickets-empty {
+  color: var(--spark-commerce-muted, var(--bs-secondary-color, #6c757d));
+}
+
+.spark-my-tickets-error {
+  color: var(--spark-commerce-danger, var(--bs-danger, #dc3545));
+}

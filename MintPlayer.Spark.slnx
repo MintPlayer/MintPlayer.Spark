@@ -114,6 +114,7 @@
     <Project Path="libs/commerce/MintPlayer.Spark.Commerce.Shipping.PostNL/MintPlayer.Spark.Commerce.Shipping.PostNL.csproj" />
     <Project Path="libs/commerce/MintPlayer.Spark.Commerce.Shipping.Test/MintPlayer.Spark.Commerce.Shipping.Test.csproj" />
     <Project Path="libs/commerce/MintPlayer.Spark.Commerce.Shop/MintPlayer.Spark.Commerce.Shop.csproj" />
+    <Project Path="libs/commerce/MintPlayer.Spark.Commerce.Fulfilment/MintPlayer.Spark.Commerce.Fulfilment.csproj" />
     <Project Path="libs/commerce/MintPlayer.Spark.Commerce.Ticketing.Venues/MintPlayer.Spark.Commerce.Ticketing.Venues.csproj" />
     <Project Path="libs/commerce/MintPlayer.Spark.Commerce.Ticketing.Events/MintPlayer.Spark.Commerce.Ticketing.Events.csproj" />
     <Project Path="libs/commerce/MintPlayer.Spark.Commerce.Ticketing.Tickets/MintPlayer.Spark.Commerce.Ticketing.Tickets.csproj" />
@@ -235,6 +236,7 @@
   </Folder>
   <Folder Name="/libs/warehouse/">
     <Project Path="libs/warehouse/abstractions/MintPlayer.Spark.Warehouse.Abstractions.csproj" />
+    <Project Path="libs/warehouse/core/MintPlayer.Spark.Warehouse.csproj" />
   </Folder>
   <Folder Name="/libs/webhooks/">
     <Project Path="libs/webhooks/MintPlayer.Spark.Webhooks.GitHub.DevTunnel/MintPlayer.Spark.Webhooks.GitHub.DevTunnel.csproj" />
@@ -251,5 +253,6 @@
     <Project Path="tests/MintPlayer.Spark.Gs1.Tests/MintPlayer.Spark.Gs1.Tests.csproj" />
     <Project Path="tests/MintPlayer.Spark.SourceGenerators.Tests/MintPlayer.Spark.SourceGenerators.Tests.csproj" />
     <Project Path="tests/MintPlayer.Spark.Tests/MintPlayer.Spark.Tests.csproj" />
+    <Project Path="tests/MintPlayer.Spark.Warehouse.Tests/MintPlayer.Spark.Warehouse.Tests.csproj" />
   </Folder>
 </Solution>

@@ -6,6 +6,29 @@ namespace MintPlayer.Spark.Commerce.Ticketing.Events.Contracts;
 // Ids travel in bodies and query strings, never in paths (RavenDB ids contain slashes). Enum values travel as their
 // names. Item ids (checkout's ItemId) are "ticketing:{phaseId}|{ticketTypeId}|{category}|{dateId}" (or "|pass").
 
+// ---- public event list (M17 storefront) ----------------------------------------------------------------------------
+
+/// <summary>A published event in the storefront's list (<c>GET /spark/ticketing/events/public/list</c>).</summary>
+/// <param name="NextStartsAt">The next date that has not ended (null when every date is over), with its stored offset.</param>
+/// <param name="NextTimeZoneId">That date's venue zone: the list renders the time in the viewer's zone with the venue-local hint (D33).</param>
+/// <param name="DateCount">How many dates the event has.</param>
+[SparkContract]
+public sealed record SparkPublicEventSummary(
+    string Id,
+    string Slug,
+    TranslatedString Name,
+    TranslatedString? Description,
+    string? ImageUrl,
+    string Status,
+    int? MinimumAge,
+    DateTimeOffset? NextStartsAt,
+    string? NextTimeZoneId,
+    int DateCount);
+
+/// <summary>A page of the published events: upcoming first by their next date, then the past ones.</summary>
+[SparkContract]
+public sealed record SparkPublicEventList(IReadOnlyList<SparkPublicEventSummary> Events, int Total, int Skip, int Take);
+
 // ---- public event page ---------------------------------------------------------------------------------------------
 
 /// <summary>A published event as its public page shows it (<c>GET /spark/ticketing/events/public?slug=</c>).</summary>

@@ -42,9 +42,9 @@ public static class SparkBuilderReplicationExtensions
         builder.AddCron(cron =>
         {
             cron.AddJob<ReplicaReconcileJob>(registrationTime.Reconcile.Schedule, "Replication.Reconcile");
-            if (registrationTime.DirtySetCollections.Count > 0)
-                cron.AddJob<ReplicaDirtySetFlushJob>(registrationTime.Push.DirtySetFlushSchedule, "Replication.DirtySetFlush");
         });
+        if (registrationTime.DirtySetCollections.Count > 0)
+            EnsureDirtySetFlush(builder, registrationTime.Push.DirtySetFlushSchedule);
 
         // Tombstones and applied pending marks expire.
         builder.Registry.RequireDocumentExpiration("Replication");
@@ -59,4 +59,33 @@ public static class SparkBuilderReplicationExtensions
 
         return builder;
     }
+
+    /// <summary>
+    /// A library contributes a high-churn source collection to the dirty set (warehouse §4.2.3; lead decision 2026-10-20:
+    /// the warehouse registers <c>FulfilmentStockLevels</c> by default): its changes are marked and flushed every
+    /// <c>Spark:Replication:Push:DirtySetFlushSchedule</c> instead of pushed one by one. Works before or after
+    /// <see cref="AddReplication"/>; the host's <c>Spark:Replication:DirtySetCollections</c> can still add more. The flush
+    /// job is registered once, whichever call comes first.
+    /// </summary>
+    public static ISparkBuilder AddReplicaDirtySetCollection(this ISparkBuilder builder, string sourceCollection)
+    {
+        if (!Abstractions.Rendering.ReplicaScriptRenderer.IsIdentifier(sourceCollection))
+            throw new ArgumentException($"'{sourceCollection}' is not a collection name.", nameof(sourceCollection));
+        builder.Services.PostConfigure<SparkReplicationOptions>(options => options.DirtySetCollections.Add(sourceCollection));
+        EnsureDirtySetFlush(builder);
+        return builder;
+    }
+
+    /// <summary>Registers the dirty-set flush job once, on the schedule configuration names (or the default).</summary>
+    private static void EnsureDirtySetFlush(ISparkBuilder builder, string? scheduleFromCode = null)
+    {
+        if (!builder.Services.TryAddSparkMarker<DirtySetFlushMarker>())
+            return;
+        var schedule = scheduleFromCode
+            ?? (builder.Configuration?.GetSection(ConfigurationSection + ":Push:DirtySetFlushSchedule").Value is { Length: > 0 } configured ? configured : null)
+            ?? new ReplicationPushOptions().DirtySetFlushSchedule;
+        builder.AddCron(cron => cron.AddJob<ReplicaDirtySetFlushJob>(schedule, "Replication.DirtySetFlush"));
+    }
+
+    private sealed class DirtySetFlushMarker;
 }

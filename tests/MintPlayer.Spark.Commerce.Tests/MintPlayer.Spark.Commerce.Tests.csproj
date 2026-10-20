@@ -46,6 +46,8 @@
     <ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce.Shipping.PostNL\MintPlayer.Spark.Commerce.Shipping.PostNL.csproj" />
     <ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce.Shipping.Test\MintPlayer.Spark.Commerce.Shipping.Test.csproj" />
     <ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce.Shop\MintPlayer.Spark.Commerce.Shop.csproj" />
+    <!-- M11 / warehouse WM10: the shop side of the fulfilment contracts. -->
+    <ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce.Fulfilment\MintPlayer.Spark.Commerce.Fulfilment.csproj" />
     <ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce.Ticketing.Venues\MintPlayer.Spark.Commerce.Ticketing.Venues.csproj" />
     <ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce.Ticketing.Events\MintPlayer.Spark.Commerce.Ticketing.Events.csproj" />
     <ProjectReference Include="..\..\libs\commerce\MintPlayer.Spark.Commerce.Ticketing.Tickets\MintPlayer.Spark.Commerce.Ticketing.Tickets.csproj" />

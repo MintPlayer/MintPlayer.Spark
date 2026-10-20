@@ -1,3 +1,5 @@
+import type * as Wire from './generated/contracts';
+import type { AssertNone, MissingMembers } from './contract-mirror';
 import { TranslatedString } from './translated-string';
 
 /**
@@ -44,3 +46,6 @@ export interface CustomActionDefinition {
    */
   requiresClient?: string;
 }
+
+/** The hand-written mirror is checked against the generated wire type (docs/guide-typescript-contracts.md). */
+export type CustomActionDefinitionMirrorsContract = AssertNone<MissingMembers<Wire.CustomActionDefinition, CustomActionDefinition>>;

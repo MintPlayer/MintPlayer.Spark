@@ -84,6 +84,23 @@ internal sealed partial class GetPublicEvent : IGetEndpoint
         => TicketingResults.RunAsync(addOn, httpContext, async () => await events.GetPublicAsync(TicketingResults.Query(httpContext, "slug"), httpContext.RequestAborted));
 }
 
+/// <summary><c>GET /spark/ticketing/events/public/list?skip=&amp;take=</c>: the storefront's event list (M17). Anonymous.</summary>
+[MemberOf<TicketingEventsGroup>]
+internal sealed partial class ListPublicEvents : IGetEndpoint
+{
+    public static string Path => "/public/list";
+
+    [Inject] private readonly ISparkTicketEvents events;
+    [Inject] private readonly ISparkAddOnEndpoints addOn;
+
+    public Task<IResult> HandleAsync(HttpContext httpContext)
+    {
+        var skip = int.TryParse(TicketingResults.Query(httpContext, "skip"), System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var s) ? s : 0;
+        var take = int.TryParse(TicketingResults.Query(httpContext, "take"), System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var t) ? t : 24;
+        return TicketingResults.RunAsync(addOn, httpContext, async () => await events.ListPublicAsync(skip, take, httpContext.RequestAborted));
+    }
+}
+
 /// <summary><c>GET /spark/ticketing/events/availability?eventId=&amp;phaseId=</c>: places left per date (the waiting page's too). Anonymous.</summary>
 [MemberOf<TicketingEventsGroup>]
 internal sealed partial class GetEventAvailability : IGetEndpoint

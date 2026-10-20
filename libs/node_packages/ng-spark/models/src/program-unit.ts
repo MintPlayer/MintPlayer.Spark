@@ -1,3 +1,5 @@
+import type * as Wire from './generated/contracts';
+import type { AssertNone, MissingMembers } from './contract-mirror';
 import { TranslatedString } from './translated-string';
 
 export interface ProgramUnit {
@@ -37,3 +39,8 @@ export interface ProgramUnitGroup {
 export interface ProgramUnitsConfiguration {
   programUnitGroups: ProgramUnitGroup[];
 }
+
+// The hand-written mirrors are checked against the generated wire types (docs/guide-typescript-contracts.md).
+export type ProgramUnitMirrorsContract = AssertNone<MissingMembers<Wire.ProgramUnit, ProgramUnit>>;
+export type ProgramUnitGroupMirrorsContract = AssertNone<MissingMembers<Wire.ProgramUnitGroup, ProgramUnitGroup>>;
+export type ProgramUnitsConfigurationMirrorsContract = AssertNone<MissingMembers<Wire.ProgramUnitsConfiguration, ProgramUnitsConfiguration>>;

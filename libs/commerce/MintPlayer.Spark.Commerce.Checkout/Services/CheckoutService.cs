@@ -164,7 +164,10 @@ internal sealed class CheckoutService(
         var channel = Channel(item.Channel, line.LineId);
         if (line.ClaimId is { } claimId)
         {
-            var expiresAt = Now + channel.Hold.Clamp(item.HoldTime);
+            // GA10/D2: a quantity change never restarts a live hold. The line keeps its deadline and its first HeldSince,
+            // so Hold:Max bounds the total hold time however often the quantity changes; extra units are claimed under
+            // the same deadline. Only a lapsed hold is taken afresh.
+            var (expiresAt, heldSince) = HoldAfterQuantityChange(line, Now, channel.Hold.Clamp(item.HoldTime));
             var result = await inventory.AdjustAsync(OrderClaims.Request(claimId, basket.Id!, expiresAt, CheckoutCapacitySnapshot.From(item.Capacity),
                 OrderClaims.Limits(item, channel, quantity, LineIdentifiers(line))), cancellationToken);
             if (!result.Succeeded)
@@ -173,6 +176,7 @@ internal sealed class CheckoutService(
                 throw OrderClaims.Refusal(result, line.LineId);
             }
             line.HeldUntil = expiresAt;
+            line.HeldSince = heldSince;
             line.HeldUnits = result.Units?.ToList() ?? [];
         }
         else if (channel.Allocation == AllocationMode.HoldFromSelection && !item.Capacity.IsEmpty)
@@ -181,6 +185,16 @@ internal sealed class CheckoutService(
             await HoldAsync(basket, line, item, channel, cancellationToken);
         }
     }
+
+    /// <summary>
+    /// The deadline and hold start after a quantity change (pure, for the unit test): a live hold keeps both (its
+    /// first <c>HeldSince</c>, falling back to <c>AddedAt</c> for lines held before the field existed); a lapsed or
+    /// missing one starts now for <paramref name="holdTime"/>.
+    /// </summary>
+    internal static (DateTimeOffset ExpiresAt, DateTimeOffset HeldSince) HoldAfterQuantityChange(CheckoutBasketLine line, DateTimeOffset now, TimeSpan holdTime)
+        => line.HeldUntil is { } until && until > now
+            ? (until, line.HeldSince ?? line.AddedAt)
+            : (now + holdTime, now);
 
     private async Task HoldAsync(CheckoutBasket basket, CheckoutBasketLine line, CheckoutItem item, CommerceChannelOptions channel, CancellationToken cancellationToken)
     {
@@ -192,7 +206,58 @@ internal sealed class CheckoutService(
             throw OrderClaims.Refusal(result, line.LineId);
         line.ClaimId = claimId;
         line.HeldUntil = expiresAt;
+        line.HeldSince = Now;
         line.HeldUnits = result.Units?.ToList() ?? [];
+    }
+
+    /// <summary>
+    /// GA10 (WCAG 2.2.1 "Extend"): one "More time" moves every live hold of the basket on by <c>Hold:Extension</c>, each
+    /// capped at its channel's <c>Hold:Max</c> from when it was taken. A lapsed hold is not revived here (re-adding or
+    /// "Pay" re-claims it); a line already at its cap stays as it is. All or nothing per line: a claim the engine refuses
+    /// to extend keeps its old deadline and the refusal is answered.
+    /// </summary>
+    public async Task<SparkBasket> ExtendHoldAsync(CancellationToken cancellationToken = default)
+    {
+        var basket = await baskets.UpdateCurrentAsync(async basket =>
+        {
+            if (basket.PendingOrderId is not null)
+                throw CheckoutException.Of(CheckoutRefusals.PendingOrder);
+            var now = Now;
+            var extended = false;
+            foreach (var line in basket.Lines)
+            {
+                if (line.ClaimId is not { } claimId || line.HeldUntil is not { } until || until <= now)
+                    continue;
+                var channel = Channel(line.Channel, line.LineId);
+                if (channel.Hold.Extend(line.HeldSince ?? line.AddedAt, until) is not { } next)
+                    continue;
+                var result = await inventory.ExtendAsync(claimId, next, cancellationToken);
+                if (!result.Succeeded)
+                    throw OrderClaims.Refusal(result, line.LineId);
+                line.HeldUntil = next;
+                extended = true;
+            }
+            if (!extended)
+                throw CheckoutException.Of(CheckoutRefusals.HoldNotExtendable);
+        }, cancellationToken);
+        return await ViewAsync(basket, cancellationToken);
+    }
+
+    /// <summary>The deadline the earliest live hold would get from one "More time"; null when none can move (GA10).</summary>
+    private DateTimeOffset? NextExtension(CheckoutBasket basket, DateTimeOffset now)
+    {
+        DateTimeOffset? earliest = null;
+        foreach (var line in basket.Lines)
+        {
+            if (line.ClaimId is null || line.HeldUntil is not { } until || until <= now)
+                continue;
+            CommerceChannelOptions channel;
+            try { channel = commerce.CurrentValue.GetChannel(line.Channel); }
+            catch (KeyNotFoundException) { continue; }
+            if (channel.Hold.Extend(line.HeldSince ?? line.AddedAt, until) is { } next && (earliest is null || next < earliest))
+                earliest = next;
+        }
+        return earliest;
     }
 
     /// <summary>
@@ -231,7 +296,7 @@ internal sealed class CheckoutService(
     {
         var choices = new Dictionary<string, string>(basket?.Choices ?? new Dictionary<string, string>(), StringComparer.Ordinal);
         if (basket is null || basket.Lines.Count == 0)
-            return new SparkBasket([], null, null, null, false, choices, null);
+            return new SparkBasket([], null, null, null, false, choices, null, null);
 
         var now = Now;
         var grace = inventoryOptions.CurrentValue.Grace;
@@ -269,7 +334,8 @@ internal sealed class CheckoutService(
         }).ToList();
         var earliest = basket.Lines.Where(l => l.HeldUntil is { } h && h + grace > now).Select(l => l.HeldUntil).Min();
         return new SparkBasket(lines, basket.Currency, priced?.Total, earliest,
-            basket.Lines.Select(l => l.Channel).Distinct(StringComparer.OrdinalIgnoreCase).Count() > 1, choices, pendingNumber);
+            basket.Lines.Select(l => l.Channel).Distinct(StringComparer.OrdinalIgnoreCase).Count() > 1, choices, pendingNumber,
+            basket.PendingOrderId is null ? NextExtension(basket, now) : null);
     }
 
     private static string? ParentItem(CheckoutBasket basket, CheckoutBasketLine line)

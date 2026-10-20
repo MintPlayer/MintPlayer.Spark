@@ -1,0 +1,92 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "A warehouse site (PRD §4.5): code, name, reference-data address, IANA zone.",
+    "",
+    "HAND-AUTHORED. Ids are UUIDv5 of 'warehouse:WarehouseSite[...]', written by 'npm run stamp:library-model-ids'."
+  ],
+  "persistentObject": {
+    "id": "75d99c05-0e7e-5a77-8bcb-504b83c439fb",
+    "name": "WarehouseSite",
+    "clrType": "MintPlayer.Spark.Warehouse.Models.WarehouseSite",
+    "alias": "warehouse-site",
+    "breadcrumb": "{Code} {Name}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "bfe18bf7-9755-5d16-b692-2e39a03014af",
+        "name": "Code",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "4a4a2550-1a13-5e9a-b340-702b63c34b7f",
+        "name": "Name",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "f6daa302-f03b-5504-b784-707fa35a1d1b",
+        "name": "Address",
+        "dataType": "AsDetail",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "asDetailType": "MintPlayer.Spark.ReferenceData.Address",
+        "renderer": "spark-address"
+      },
+      {
+        "id": "72385f75-02a0-5b82-9b95-18d353c7fe9d",
+        "name": "TimeZone",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "4f463f73-0073-5530-b4cd-9ee055aca5f1",
+        "name": "Active",
+        "dataType": "boolean",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ]
+  },
+  "queries": [
+    {
+      "id": "80d1372b-9753-50d3-b8df-2b34250d1d90",
+      "name": "WarehouseSites",
+      "source": "Custom.WarehouseSites",
+      "alias": "warehouse-sites",
+      "sortColumns": [
+        {
+          "property": "Code",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "WarehouseSite"
+    }
+  ]
+}

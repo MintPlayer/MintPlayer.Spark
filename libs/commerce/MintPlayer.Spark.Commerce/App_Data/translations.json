@@ -107,5 +107,70 @@
         "other": { "en": "Other", "fr": "Autre", "nl": "Andere" }
       }
     }
+  },
+  "commerceStorefront": {
+    "backInStock": {
+      "busy": { "en": "One moment…", "fr": "Un instant…", "nl": "Even geduld…" },
+      "confirm": { "en": "Your alert is confirmed: we will e-mail you when the item is back.", "fr": "Votre alerte est confirmée : nous vous enverrons un e-mail quand l'article sera de retour.", "nl": "Je melding is bevestigd: we mailen je zodra het artikel terug is." },
+      "unsubscribe": { "en": "Your alert has been stopped.", "fr": "Votre alerte a été arrêtée.", "nl": "Je melding is gestopt." },
+      "invalid": { "en": "This link is no longer valid.", "fr": "Ce lien n'est plus valide.", "nl": "Deze link is niet meer geldig." }
+    },
+    "skipToContent": { "en": "Skip to content", "fr": "Aller au contenu", "nl": "Naar de inhoud" },
+    "notFound": { "en": "This page does not exist.", "fr": "Cette page n'existe pas.", "nl": "Deze pagina bestaat niet." },
+    "cancel": { "en": "Cancel", "fr": "Annuler", "nl": "Annuleren" },
+    "nav": {
+      "label": { "en": "Main", "fr": "Principal", "nl": "Hoofdmenu" },
+      "shop": { "en": "Shop", "fr": "Boutique", "nl": "Winkel" },
+      "events": { "en": "Events", "fr": "Événements", "nl": "Evenementen" },
+      "tickets": { "en": "My tickets", "fr": "Mes billets", "nl": "Mijn tickets" },
+      "basket": { "en": "Basket", "fr": "Panier", "nl": "Winkelmandje" },
+      "account": { "en": "My account", "fr": "Mon compte", "nl": "Mijn account" }
+    },
+    "footer": {
+      "label": { "en": "Legal information", "fr": "Informations légales", "nl": "Juridische informatie" }
+    },
+    "legal": {
+      "terms": { "en": "Terms of sale", "fr": "Conditions de vente", "nl": "Verkoopvoorwaarden" },
+      "privacy": { "en": "Privacy policy", "fr": "Politique de confidentialité", "nl": "Privacybeleid" },
+      "withdrawal": { "en": "Right of withdrawal", "fr": "Droit de rétractation", "nl": "Herroepingsrecht" },
+      "cookies": { "en": "Cookie policy", "fr": "Politique en matière de cookies", "nl": "Cookiebeleid" },
+      "consent": { "en": "Cookie and consent settings", "fr": "Paramètres des cookies et du consentement", "nl": "Cookie- en toestemmingsinstellingen" },
+      "accessibility": { "en": "Accessibility", "fr": "Accessibilité", "nl": "Toegankelijkheid" },
+      "ranking": { "en": "How we rank results", "fr": "Comment nous classons les résultats", "nl": "Hoe we resultaten rangschikken" },
+      "notPublished": { "en": "This document has not been published yet.", "fr": "Ce document n'a pas encore été publié.", "nl": "Dit document is nog niet gepubliceerd." },
+      "withdrawFunction": { "en": "Withdraw from a purchase", "fr": "Se rétracter d'un achat", "nl": "Een aankoop herroepen" },
+      "withdrawFunctionText": {
+        "en": "You can withdraw from an order on its page, under your account or through the link in your order confirmation. No form is needed.",
+        "fr": "Vous pouvez vous rétracter d'une commande sur sa page, dans votre compte ou via le lien de votre confirmation de commande. Aucun formulaire n'est nécessaire.",
+        "nl": "Je kunt een bestelling herroepen op haar pagina, in je account of via de link in je bestelbevestiging. Een formulier is niet nodig."
+      }
+    },
+    "event": {
+      "chooseSeats": { "en": "Choose your seats", "fr": "Choisissez vos places", "nl": "Kies je plaatsen" },
+      "addSeats": { "en": "Add seats to basket", "fr": "Ajouter les places au panier", "nl": "Plaatsen in winkelmandje" }
+    },
+    "account": {
+      "signInLink": { "en": "Sign in", "fr": "Se connecter", "nl": "Aanmelden" },
+      "signIn": { "en": "Sign in to see your orders, tickets and settings.", "fr": "Connectez-vous pour voir vos commandes, billets et paramètres.", "nl": "Meld je aan om je bestellingen, tickets en instellingen te zien." },
+      "orders": { "en": "My orders", "fr": "Mes commandes", "nl": "Mijn bestellingen" },
+      "noOrders": { "en": "You have no orders yet.", "fr": "Vous n'avez pas encore de commandes.", "nl": "Je hebt nog geen bestellingen." },
+      "documentsAndReturns": { "en": "Invoices, withdrawal and claims", "fr": "Factures, rétractation et réclamations", "nl": "Facturen, herroeping en klachten" },
+      "moreOrders": { "en": "More orders", "fr": "Plus de commandes", "nl": "Meer bestellingen" },
+      "guestOrders": { "en": "Orders placed without an account", "fr": "Commandes passées sans compte", "nl": "Bestellingen zonder account" },
+      "confirmEmailFirst": {
+        "en": "Confirm your e-mail address to add the orders you placed as a guest with it.",
+        "fr": "Confirmez votre adresse e-mail pour ajouter les commandes passées en tant qu'invité avec cette adresse.",
+        "nl": "Bevestig je e-mailadres om de bestellingen die je er als gast mee plaatste toe te voegen."
+      },
+      "noGuestOrders": { "en": "No guest orders were placed with your e-mail address.", "fr": "Aucune commande d'invité n'a été passée avec votre adresse e-mail.", "nl": "Er zijn geen gastbestellingen met je e-mailadres geplaatst." },
+      "guestOrdersFound": { "en": "Guest orders with your e-mail address:", "fr": "Commandes d'invité avec votre adresse e-mail :", "nl": "Gastbestellingen met je e-mailadres:" },
+      "attachGuestOrders": { "en": "Add them to my account", "fr": "Les ajouter à mon compte", "nl": "Aan mijn account toevoegen" },
+      "attached": { "en": "{0} orders were added to your account.", "fr": "{0} commandes ont été ajoutées à votre compte.", "nl": "{0} bestellingen werden aan je account toegevoegd." },
+      "backInStock": { "en": "Back-in-stock alerts", "fr": "Alertes de retour en stock", "nl": "Meldingen bij nieuwe voorraad" },
+      "noBackInStock": { "en": "You have no back-in-stock alerts.", "fr": "Vous n'avez aucune alerte de retour en stock.", "nl": "Je hebt geen meldingen bij nieuwe voorraad." },
+      "notified": { "en": "notified", "fr": "notifié", "nl": "gemeld" },
+      "unsubscribe": { "en": "Stop alert", "fr": "Arrêter l'alerte", "nl": "Melding stoppen" },
+      "backInStockRemoved": { "en": "Alert stopped.", "fr": "Alerte arrêtée.", "nl": "Melding gestopt." }
+    }
   }
 }

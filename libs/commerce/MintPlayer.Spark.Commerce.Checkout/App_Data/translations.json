@@ -438,6 +438,16 @@
         "en": "Give your name and e-mail address so we can send you the acknowledgement.",
         "fr": "Indiquez votre nom et votre adresse e-mail pour recevoir l'accusé de réception.",
         "nl": "Geef je naam en e-mailadres zodat we je de ontvangstbevestiging kunnen sturen."
+      },
+      "holdNotExtendable": {
+        "en": "Your reservation cannot be extended any further.",
+        "fr": "Votre réservation ne peut plus être prolongée.",
+        "nl": "Je reservering kan niet verder verlengd worden."
+      },
+      "emailNotConfirmed": {
+        "en": "Confirm your e-mail address first.",
+        "fr": "Confirmez d'abord votre adresse e-mail.",
+        "nl": "Bevestig eerst je e-mailadres."
       }
     },
     "withdrawal": {
@@ -547,6 +557,48 @@
         "en": "Refund",
         "fr": "Rembourser",
         "nl": "Terugbetalen"
+      }
+    },
+    "holdTimer": {
+      "until": {
+        "en": "Reserved until {0}",
+        "fr": "Réservé jusqu'à {0}",
+        "nl": "Gereserveerd tot {0}"
+      },
+      "payBefore": {
+        "en": "Pay before {0}",
+        "fr": "Payez avant {0}",
+        "nl": "Betaal vóór {0}"
+      },
+      "moreTime": {
+        "en": "More time",
+        "fr": "Plus de temps",
+        "nl": "Meer tijd"
+      },
+      "moreTimeUntil": {
+        "en": "Keeps your reservation until {0}",
+        "fr": "Garde votre réservation jusqu'à {0}",
+        "nl": "Houdt je reservering vast tot {0}"
+      },
+      "extended": {
+        "en": "Your reservation now ends at {0}.",
+        "fr": "Votre réservation se termine maintenant à {0}.",
+        "nl": "Je reservering loopt nu af om {0}."
+      },
+      "minutesLeft": {
+        "en": "Your reservation ends in {0} minutes.",
+        "fr": "Votre réservation se termine dans {0} minutes.",
+        "nl": "Je reservering loopt af over {0} minuten."
+      },
+      "oneMinuteLeft": {
+        "en": "Your reservation ends in 1 minute.",
+        "fr": "Votre réservation se termine dans 1 minute.",
+        "nl": "Je reservering loopt af over 1 minuut."
+      },
+      "secondsLeft": {
+        "en": "Your reservation ends in {0} seconds.",
+        "fr": "Votre réservation se termine dans {0} secondes.",
+        "nl": "Je reservering loopt af over {0} seconden."
       }
     }
   },

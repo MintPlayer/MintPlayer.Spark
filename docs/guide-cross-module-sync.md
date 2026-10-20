@@ -81,6 +81,10 @@ approves:
 "bindings": { "replication:approvers": [ "Administrators" ] }
 ```
 
+A pending request reaches the slot's members by default: each user holding a bound group gets a private
+`replication:requests` frame on their open pages and, when MailManager is registered, a mail to a confirmed address;
+the request itself waits on "Replication requests". `IReplicationRequestObserver` adds any other channel.
+
 Each new manifest a consumer registers becomes a request (pending first in the list) with a readable diff against
 the shape delivered now. `ApproveReplication` deploys it; `RejectReplication` suspends the subscription. A host in
 the **Development** environment approves automatically (recorded as `system (Development)`); no build configuration

@@ -46,6 +46,8 @@
     }
 
     @if (canPay()) {
+      <!-- GA10: the provider's payment window, shown like a hold (no "More time": the limit is the provider's, D3). -->
+      <spark-checkout-hold-timer [deadline]="o.paymentPendingUntil" deadlineKey="commerceCheckout.holdTimer.payBefore" />
       <div class="spark-checkout-order-actions">
         <a class="btn btn-primary spark-checkout-order-pay" [href]="o.paymentUrl">{{ 'commerceCheckout.payNow' | t }}</a>
         <button type="button" class="btn btn-outline-secondary spark-checkout-order-cancel" [disabled]="busy()" (click)="cancelPayment()">

@@ -37,8 +37,16 @@ namespace MintPlayer.Spark.Organizations.Services;
 /// anonymous caller or a non-member): the one OR in row security, and it lives inside this policy, so the
 /// composition across policies stays AND-only (<c>docs/guide-row-security.md</c>).
 /// </para>
+/// <para>
+/// <b>Across organizations</b> (warehouse WM3, lead decision 2026-10-20): a caller whose group <c>security.json</c> grants
+/// <c>AllOrganizations/{Type}</c> (<see cref="OrganizationRights.AllOrganizations"/>) sees every organization's rows of
+/// that type for <c>Query</c> and <c>Read</c>: no organization filter for that type and those actions (the switcher still
+/// narrows lists when one is chosen). It is granted per type, typically to a slot (a warehouse's staff), never implied by a
+/// role; writes keep the membership rule. Without the grant nothing changes. The rows are read through the same audited
+/// read paths as any other read.
+/// </para>
 /// </remarks>
-internal sealed class OrganizationRowPolicy(OrganizationMembershipReader memberships, CurrentOrganization current) : IRowFilterPolicy
+internal sealed class OrganizationRowPolicy(OrganizationMembershipReader memberships, CurrentOrganization current, IPermissionService permissions) : IRowFilterPolicy
 {
     /// <summary>An organization id no document holds: random per process, never written anywhere.</summary>
     internal static readonly string[] NoOrganization = ["Organizations/none/" + Guid.NewGuid().ToString("N")];
@@ -55,6 +63,23 @@ internal sealed class OrganizationRowPolicy(OrganizationMembershipReader members
         var isOrganization = typeof(Organization).IsAssignableFrom(context.EntityType);
         if (isOrganization && string.Equals(context.Action, "New", StringComparison.OrdinalIgnoreCase))
             return null;
+
+        var isRead = string.Equals(context.Action, "Query", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(context.Action, "Read", StringComparison.OrdinalIgnoreCase);
+        if (!isOrganization && isRead
+            && context.User?.FindFirstValue(ClaimTypes.NameIdentifier) is { Length: > 0 }
+            && await permissions.IsAllowedAsync(OrganizationRights.AllOrganizations, context.EntityType.Name))
+        {
+            // The switcher still narrows a list to the chosen organization; everything else: every organization.
+            if (!context.IsSubQuery && string.Equals(context.Action, "Query", StringComparison.OrdinalIgnoreCase)
+                && await current.GetIdAsync() is { } chosenOne)
+            {
+                var only = new[] { chosenOne };
+                Expression<Func<IOrganizationOwned, bool>> chosenRows = x => x.OrganizationId.In(only);
+                return chosenRows;
+            }
+            return null;
+        }
 
         var ids = await AllowedOrganizationIdsAsync(context.User, context.EntityType, context.Action);
 

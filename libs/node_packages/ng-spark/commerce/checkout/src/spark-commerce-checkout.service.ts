@@ -4,6 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import { SPARK_CONFIG } from '@mintplayer/ng-spark';
 import { SparkService } from '@mintplayer/ng-spark/services';
 import {
+  SparkAccountOrderPage,
   SparkBackOfficeOrderRequest,
   SparkBackOfficeResult,
   SparkBasket,
@@ -11,6 +12,8 @@ import {
   SparkCancellationRequest,
   SparkCheckoutRefusal,
   SparkGuaranteeClaimRequest,
+  SparkGuestOrdersAttached,
+  SparkGuestOrdersInfo,
   SparkOrderAftercare,
   SparkRefundResult,
   SparkRescheduleChoiceRequest,
@@ -94,6 +97,42 @@ export class SparkCommerceCheckoutService {
   /** `POST /spark/commerce/checkout/basket/quantity`: 0 removes the line. */
   setQuantity(lineId: string, quantity: number): Promise<SparkBasket> {
     return this.spark.postEnvelope<SparkBasket>('/commerce/checkout/basket/quantity', { lineId, quantity });
+  }
+
+  /** `POST /spark/commerce/checkout/basket/extend-hold`: "More time" (GA10, WCAG 2.2.1), one action. */
+  extendHold(): Promise<SparkBasket> {
+    return this.spark.postEnvelope<SparkBasket>('/commerce/checkout/basket/extend-hold', {});
+  }
+
+  // ---- customer account area (GB10) ----------------------------------------------------------------------------
+
+  /** `GET /spark/commerce/checkout/account/orders`: the signed-in buyer's orders, newest first; `null` when signed out. */
+  async accountOrders(skip = 0, take = 20): Promise<SparkAccountOrderPage | null> {
+    try {
+      const envelope = await firstValueFrom(this.http.get<{ result?: SparkAccountOrderPage } | null>(
+        `${this.baseUrl}/commerce/checkout/account/orders`, { params: { skip, take } }));
+      return envelope?.result ?? null;
+    } catch (e) {
+      if ((e as HttpErrorResponse)?.status === 401) return null;
+      throw e;
+    }
+  }
+
+  /** `GET /spark/commerce/checkout/account/guest-orders`: what "attach guest orders" would move (D4). */
+  async guestOrders(): Promise<SparkGuestOrdersInfo | null> {
+    try {
+      const envelope = await firstValueFrom(this.http.get<{ result?: SparkGuestOrdersInfo } | null>(
+        `${this.baseUrl}/commerce/checkout/account/guest-orders`));
+      return envelope?.result ?? null;
+    } catch (e) {
+      if ((e as HttpErrorResponse)?.status === 401) return null;
+      throw e;
+    }
+  }
+
+  /** `POST /spark/commerce/checkout/account/guest-orders/attach`: needs a confirmed e-mail address (`emailNotConfirmed`). */
+  attachGuestOrders(): Promise<SparkGuestOrdersAttached> {
+    return this.spark.postEnvelope<SparkGuestOrdersAttached>('/commerce/checkout/account/guest-orders/attach', {});
   }
 
   /** `POST /spark/commerce/checkout/basket/choices`: donation, insurance, promotion codes; null removes a choice. */

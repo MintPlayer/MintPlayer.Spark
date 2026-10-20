@@ -28,6 +28,7 @@ export interface SparkBackInStockView {
   createdAt: string;
   expiresAt: string;
   notified: boolean;
+  title?: TranslatedString | null;
 }
 
 export interface SparkPromotionCodeInfo {

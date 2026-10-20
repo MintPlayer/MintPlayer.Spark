@@ -1,0 +1,39 @@
+<a class="spark-storefront-skip" href="#spark-storefront-main" (click)="skipToContent($event, main)">{{ 'commerceStorefront.skipToContent' | t }}</a>
+
+<header class="spark-storefront-header">
+  <nav class="spark-storefront-nav" [attr.aria-label]="'commerceStorefront.nav.label' | t">
+    <ul>
+      @if (config.shop) {
+        <li><a [routerLink]="link(p.shop)" routerLinkActive="active" ariaCurrentWhenActive="page">{{ 'commerceStorefront.nav.shop' | t }}</a></li>
+      }
+      @if (config.ticketing) {
+        <li><a [routerLink]="link(p.events)" routerLinkActive="active" ariaCurrentWhenActive="page">{{ 'commerceStorefront.nav.events' | t }}</a></li>
+        <li><a [routerLink]="link(p.tickets)" routerLinkActive="active" ariaCurrentWhenActive="page">{{ 'commerceStorefront.nav.tickets' | t }}</a></li>
+      }
+      <li><a [routerLink]="link(p.checkout, 'basket')" routerLinkActive="active" ariaCurrentWhenActive="page">{{ 'commerceStorefront.nav.basket' | t }}</a></li>
+      <li><a [routerLink]="link(p.account)" routerLinkActive="active" ariaCurrentWhenActive="page">{{ 'commerceStorefront.nav.account' | t }}</a></li>
+    </ul>
+  </nav>
+</header>
+
+<main id="spark-storefront-main" class="spark-storefront-main" tabindex="-1" #main (click)="followInApp($event)">
+  <router-outlet />
+</main>
+
+<footer class="spark-storefront-footer">
+  <nav [attr.aria-label]="'commerceStorefront.footer.label' | t">
+    <ul>
+      <li><a [routerLink]="link(p.legal, 'terms')">{{ 'commerceStorefront.legal.terms' | t }}</a></li>
+      <li><a [routerLink]="link(p.legal, 'privacy')">{{ 'commerceStorefront.legal.privacy' | t }}</a></li>
+      @if (config.shop) {
+        <li><a [routerLink]="link(p.legal, 'withdrawal')">{{ 'commerceStorefront.legal.withdrawal' | t }}</a></li>
+      }
+      <li><a [routerLink]="link(p.legal, 'cookies')">{{ 'commerceStorefront.legal.cookies' | t }}</a></li>
+      <li><a [routerLink]="link(p.consent, 'settings')">{{ 'commerceStorefront.legal.consent' | t }}</a></li>
+      <li><a [routerLink]="link(p.legal, 'accessibility')">{{ 'commerceStorefront.legal.accessibility' | t }}</a></li>
+      <li><a [routerLink]="link(p.commerce, 'ranking')">{{ 'commerceStorefront.legal.ranking' | t }}</a></li>
+    </ul>
+  </nav>
+</footer>
+
+<spark-consent-banner [policyUrl]="link(p.legal, 'privacy')" />

@@ -144,7 +144,29 @@ generated names in the entry point's `export *`.
 | Module | Types | C# |
 |---|---|---|
 | `@mintplayer/ng-spark/models` | `EntityPermissions`, `ValidationRule`, `PersistentObjectPermissions`, `PersistentObjectAttributeOption`, `PersistentObjectAttributeAsDetail` (+ the two mirrored types) | `MintPlayer.Spark.Abstractions` |
-| `@mintplayer/ng-spark/auth/models` | `AuthUser`, `SparkAuthCapabilities`, `SparkExternalProvider`, `SparkSignInIdentifier` | `MintPlayer.Spark.Authorization.Contracts` |
+| `@mintplayer/ng-spark/models` (X20 rest) | `EntityTypeDefinition` (+ `EntityAttributeDefinition`, `AttributeTab`, `AttributeGroup`, `EntityRevisionsDefinition`, `SparkReferenceTree`, `EReferenceDisplayType`, `ERefreshTrigger`), `SparkQuery` (+ `SparkQuerySortColumn`, `SparkQueryColumn`, `SparkSelectionModeSetting`), `QueryResult` (+ columns, items, values), `ProgramUnitsConfiguration` (+ groups, units), `LookupReferenceDto`, `LookupReferenceListItem`, `ELookupDisplayType`, `CustomActionDefinition` | `MintPlayer.Spark.Abstractions` (`CustomActionDefinition` was a private record in the actions endpoint) |
+| `@mintplayer/ng-spark/auth/models` | `AuthUser`, `SparkAuthCapabilities`, `SparkExternalProvider`, `SparkSignInIdentifier`; since X20 rest: `SparkExternalLogins` (+ linked, available), `SparkPersonalData` (+ account, claims, logins, passkeys), `SparkPhoneVerificationOutcome`, `SparkAuthError` (every `{"error":…}` body), `SparkExternalLoginUnlinked`, `SparkPasskeySignedIn`, `SparkGrantRevoked` | `MintPlayer.Spark.Authorization.Contracts` |
+| `@mintplayer/ng-spark/identity-provider/core` | `SparkConnectedApplication`, `SparkConnectedScope`, `SparkWithdrawAccessRequest`, `SparkDeveloperStatus`, `SparkRegistrationToken`, `SparkInvitationOutcome`, `SparkSigningKey`, `SparkKeyRotation` (the C# records keep their `Oidc…` names) | `MintPlayer.Spark.IdentityProvider.Endpoints.Portal` |
+
+The records that replaced anonymous objects serialize exactly as those did (same names, order and nulls);
+`tests/MintPlayer.Spark.Tests/Contracts/TypedResponseShapeTests.cs` pins each against the anonymous object it replaced,
+because the production apps (CodeCoverage, SeoTester) run on these endpoints.
+
+`SparkSubQuery` (a bare alias or an object, by its converter) and `SparkDateTimeDisplay` (its zones are written by a
+converter) are declared hand-written (`SparkClientType`) as `SparkSubQueryEntry` and `SparkDateTimeDisplay`.
+
+The hand-written mirrors in `models/src/` (`EntityType`, `EntityAttributeDefinition`, `AttributeTab`, `AttributeGroup`,
+`EReferenceDisplayType`, `RefreshTrigger`, `SparkQuery`, `SparkQueryRenderMode`, `SparkSelectionModeSetting`,
+`QueryResult` and its parts, `ProgramUnit*`, `LookupReference*`, `CustomActionDefinition`) each carry a
+`…MirrorsContract` check like the two above; `models/src/index.ts` exports them explicitly, shadowing the generated
+names.
+
+## Merge-queue regeneration
+
+`coverage.yml` lists `**/generated/contracts.ts` in `regeneratedPaths` and resolves a conflict in one by taking the base
+side; `.github/workflows/regenerate.yml` then runs `--spark-synchronize-contracts` for every app and
+`tools/SchemaGenerator contracts` (the `spark-regenerate` action's `contracts` and `library-contracts-project` inputs),
+in both fixed-point passes.
 
 Two drifts the hand-written TypeScript had are gone: `PersistentObjectAttribute.options` was missing, and six of
 the eleven always-sent `EntityPermissions` flags were marked optional.

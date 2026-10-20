@@ -1,0 +1,52 @@
+@if (orders().length > 0) {
+  <section class="spark-shop-order" aria-labelledby="spark-shop-order-title">
+    <h3 id="spark-shop-order-title">{{ 'commerceShop.order.title' | t }}</h3>
+    @for (order of orders(); track order.organizationId ?? '') {
+      <div class="spark-shop-order-seller" [attr.data-state]="order.state">
+        <p class="spark-shop-order-state">{{ stateKey(order.state) | t }}</p>
+        @if (order.servicePointName) {
+          <p>{{ 'commerceShop.order.servicePoint' | t }}: {{ order.servicePointName }}</p>
+        }
+        @if (order.deliveredAt) {
+          <p>{{ 'commerceShop.order.deliveredAt' | t }}: <time [attr.datetime]="order.deliveredAt">{{ order.deliveredAt.substring(0, 10) }}</time></p>
+        }
+        <ul class="spark-shop-order-lines">
+          @for (line of order.lines; track line.lineId) {
+            <li>
+              <span>{{ line.quantity }} × {{ line.title | resolveTranslation: line.itemId }}</span>
+              @if (line.shippedQuantity > 0 && line.shippedQuantity < line.quantity) {
+                <small>{{ 'commerceShop.order.partlyShipped' | t }} ({{ line.shippedQuantity }}/{{ line.quantity }})</small>
+              }
+            </li>
+          }
+        </ul>
+        @for (shipment of order.shipments; track $index) {
+          <div class="spark-shop-order-shipment" [class.spark-shop-order-return]="shipment.return">
+            <p>
+              <strong>{{ shipmentKey(shipment) | t }}</strong>
+              @if (shipment.carrier) { · {{ shipment.carrier }} }
+              · {{ ('commerceShop.order.tracking.' + shipment.status) | t }}
+              @if (shipment.promisedBy) {
+                · {{ 'commerceShop.order.promisedBy' | t }} <time [attr.datetime]="shipment.promisedBy">{{ shipment.promisedBy }}</time>
+              }
+            </p>
+            <ul class="spark-shop-order-parcels">
+              @for (parcel of shipment.parcels; track parcel.number) {
+                <li>
+                  @if (parcel.trackingUrl) {
+                    <a [href]="parcel.trackingUrl" target="_blank" rel="noopener noreferrer">
+                      {{ trackText(parcel) }}
+                      <span class="visually-hidden">({{ 'commerceShop.order.opensNewWindow' | t }})</span>
+                    </a>
+                  } @else {
+                    {{ parcel.trackingNumber ?? parcel.number }}
+                  }
+                </li>
+              }
+            </ul>
+          </div>
+        }
+      </div>
+    }
+  </section>
+}

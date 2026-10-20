@@ -295,3 +295,25 @@ public sealed record SparkShopPendingReview(string Id, string ProductId, Transla
 /// </summary>
 [SparkContract]
 public sealed record SparkShopReviewDecision(string ReviewId, bool Publish, string? Reason = null);
+
+// ---- customer account area (GB10) ---------------------------------------------------------------------------------
+
+/// <summary>A saved address of the signed-in buyer.</summary>
+[SparkContract]
+public sealed record SparkShopAddressBookEntry(string EntryId, string? Label, SparkShopAddress Address, bool IsDefault);
+
+/// <summary>The signed-in buyer's address book (<c>GET /spark/commerce/shop/account/addresses</c>), in saved order; one entry is the default.</summary>
+[SparkContract]
+public sealed record SparkShopAddressBook(IReadOnlyList<SparkShopAddressBookEntry> Entries);
+
+/// <summary><c>POST /spark/commerce/shop/account/addresses</c>: adds an entry, or replaces <paramref name="EntryId"/>'s.</summary>
+[SparkContract]
+public sealed record SparkShopAddressSaveRequest(SparkShopAddress Address, string? EntryId = null, string? Label = null, bool IsDefault = false);
+
+/// <summary><c>POST /spark/commerce/shop/account/addresses/delete</c>.</summary>
+[SparkContract]
+public sealed record SparkShopAddressDeleteRequest(string EntryId);
+
+/// <summary>Where a checkout item lives on the storefront (<c>GET /spark/commerce/shop/item?id=</c>): the product page and the variant.</summary>
+[SparkContract]
+public sealed record SparkShopItemLink(string Slug, string VariantId);

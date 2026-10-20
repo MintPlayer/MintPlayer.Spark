@@ -4,6 +4,16 @@
 
     <fieldset class="spark-shop-delivery-address">
       <legend>{{ 'commerceShop.delivery.address' | t }}</legend>
+      @if (saved().length > 0) {
+        <label>{{ 'commerceShop.addressBook.useSaved' | t }}
+          <select (change)="useSaved($any($event.target).value)">
+            <option value="">{{ 'commerceShop.addressBook.choose' | t }}</option>
+            @for (entry of saved(); track entry.entryId) {
+              <option [value]="entry.entryId">{{ entry.label || (entry.address.street + ' ' + (entry.address.houseNumber ?? '') + ', ' + entry.address.city) }}</option>
+            }
+          </select>
+        </label>
+      }
       <label>{{ 'commerceShop.delivery.name' | t }}
         <input autocomplete="name" required [value]="address().name" (input)="set('name', $any($event.target).value)" /></label>
       <label>{{ 'commerceShop.delivery.street' | t }}

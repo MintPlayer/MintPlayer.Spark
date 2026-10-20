@@ -16,6 +16,7 @@ namespace MintPlayer.Spark.Abstractions;
 /// is why row ids can be treated as hostile input without an integrity token on the wire.
 /// </para>
 /// </remarks>
+[SparkContract]
 public sealed class QueryResult
 {
     /// <summary>The column metadata for every row in <see cref="Items"/>, sent once.</summary>

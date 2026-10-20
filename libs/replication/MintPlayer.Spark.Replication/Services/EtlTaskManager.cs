@@ -22,7 +22,14 @@ internal sealed record EtlDeployment(
     string RequestingModule,
     string TargetDatabase,
     string[] TargetUrls,
-    IReadOnlyList<EtlTransformScript> Transforms);
+    IReadOnlyList<EtlTransformScript> Transforms)
+{
+    /// <summary>
+    /// Transforms to reset after an update (their row scope changed, warehouse §4.2.3 "Row filter"): RavenDB then
+    /// reprocesses the source collection, loading rows that entered the scope and removing rows that left it.
+    /// </summary>
+    public IReadOnlyCollection<string> ResetTransforms { get; init; } = [];
+}
 
 /// <summary>How an ETL task change ended.</summary>
 internal sealed record EtlTaskResult(bool Success, string? Error = null, int Created = 0, int Updated = 0, int Removed = 0)
@@ -93,6 +100,8 @@ internal partial class EtlTaskManager : IEtlTaskManager
             if (FindExistingEtlTaskId(name) is { } existing)
             {
                 documentStore.Maintenance.Send(new UpdateEtlOperation<RavenConnectionString>(existing, configuration));
+                foreach (var transform in deployment.ResetTransforms.Where(r => configuration.Transforms.Any(t => t.Name == r)))
+                    documentStore.Maintenance.Send(new ResetEtlOperation(name, transform));
                 logger.LogInformation("Updated ETL task '{TaskName}' with {Count} transformation(s) for module '{Module}'",
                     name, configuration.Transforms.Count, deployment.RequestingModule);
                 return new EtlTaskResult(true, Updated: 1);

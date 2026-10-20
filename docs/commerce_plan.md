@@ -32,7 +32,7 @@ The order of work for [commerce_PRD.md](commerce_PRD.md). The PRD carries the de
   - [x] Invoicing credit notes for `LineRefused` (`InvoicingService.cs:392-408`, tests added) · Events ↔ WaitingRoom rooms + `IWaitingRoomCapacity` (capacity tests added).
   - [x] Venues clrType: no clash today; `SparkModelLayers` now refuses two libraries mapping one CLR type.
   - [x] PRD §13: S7, S12–S15 rows and D44 (CRD Art. 9(2)(b)(i)).
-- **Not started:** M11 fulfilment (shop side), WM3–WM9, M17, M18, M20 rest, M21, M22, the rest of X20 item 2 (remaining TS mirrors), EUR-Lex verification of every legal citation (EUR-Lex blocks automated fetches: use a real browser through Playwright).
+- **Not started:** M11 fulfilment (shop side), WM3–WM9, M17, M18, M20 rest, M21, M22, EUR-Lex verification of every legal citation (EUR-Lex blocks automated fetches: use a real browser through Playwright).
 - **Done on resume (2026-10-20):** the WIP compile errors are fixed and WM1 (the replication redesign) is committed. The contracts regenerate, ng-spark build, app `tsc` and per-app verify gates run only in M22 (owner, 2026-10-20: no interim build or test runs).
 
 ## Rules for executing this plan
@@ -102,7 +102,7 @@ The order of work for [commerce_PRD.md](commerce_PRD.md). The PRD carries the de
 - [x] X18 revised (D38, round 5): **fuzzy by default**: every index with searchable fields on Lucene; typo-tolerant Spark search by default (exact and prefix matches rank first); per-field opt-out in the model search rule and the index-declaration marker (X20 item 4 becomes an opt-out); engine pinned explicitly on every index; side-by-side rebuild of existing search indexes, production apps included; analyzer flags fuzzy queries on opted-out fields; reference-data §4.10 engines updated
 - [x] X21 consent primitive (GA9): purposes, consent records per visitor/account (merge on sign-in, withdrawal), `ISparkConsent`, `@mintplayer/ng-spark/consent` banner + settings page, `RequiresConsent` declarations refused at startup when unwired
 - [x] X19 library-declared index definitions (incl. maps contributed to a shared multi-map index) emitted into the app by the generator at build time; commerce, warehouse and reference-data libraries ship declarations, never index classes
-- [~] X20 source-generator programme (done except: item 2 remaining mirrors and anonymous responses; item 4 Quantity companions wait for WX8; item 7 rest in M20): (1) D28 names constants (effective names + library ids) or delete unused; (2) C#→TS contract tool (layout per the pending output-path investigation; CI diff check; typed records replace anonymous objects for ng-spark responses; migrate existing TS mirrors, fixing the `PersistentObjectAttribute.options` and `EntityPermissions` drifts); (3) one shared discovery generator (+ row policies, `IReplicaChanged<T>`, approval deciders/handlers, account hooks); (4) `GenerateIndexGenerator`: Money/Quantity companions, sanitized language fields, fuzzy marker, record fix; (5) enum-backed lookup generator; (6) GS1 tables tool (C# + TS); (7) runtime ETL from contracts; (8) public plugin helpers; (9) guards: translation-key test (fix `dashboards.yes`, `common.unexpectedError`), K10 banned symbols, migration Version from class name, authorization endpoint filter
+- [~] X20 source-generator programme (done except: item 4 Quantity companions wait for WX8; item 7 rest in M20. Item 2 rest done 2026-10-20: typed records for the remaining auth and IdP-portal responses, core mirrors generated or mirror-checked, merge-queue regeneration; generated files hand-predicted, regenerate + verify in M22): (1) D28 names constants (effective names + library ids) or delete unused; (2) C#→TS contract tool (layout per the pending output-path investigation; CI diff check; typed records replace anonymous objects for ng-spark responses; migrate existing TS mirrors, fixing the `PersistentObjectAttribute.options` and `EntityPermissions` drifts); (3) one shared discovery generator (+ row policies, `IReplicaChanged<T>`, approval deciders/handlers, account hooks); (4) `GenerateIndexGenerator`: Money/Quantity companions, sanitized language fields, fuzzy marker, record fix; (5) enum-backed lookup generator; (6) GS1 tables tool (C# + TS); (7) runtime ETL from contracts; (8) public plugin helpers; (9) guards: translation-key test (fix `dashboards.yes`, `common.unexpectedError`), K10 banned symbols, migration Version from class name, authorization endpoint filter
 - [x] X15 po-form edit renderer for a single AsDetail value object (`spark-po-form.component.html:381-398`)
 - [x] X14 recipient locale: time zone + culture on the account (preference) and captured onto orders at checkout; `ISparkRecipientLocale` used by mails, PDFs and background jobs (D33)
 - [x] F10 duplicate actions fail at startup; F11 same-name custom actions fail at startup
@@ -219,7 +219,7 @@ The order of work for [commerce_PRD.md](commerce_PRD.md). The PRD carries the de
 
 - [x] Methods and zones, free threshold, pickup, `IShippingRateProvider`
 - [x] `.Sendcloud`, `.Bpost`, `.PostNL`, `.Test` (labels, tracking webhooks via X5)
-- [ ] `MintPlayer.Spark.Commerce.Fulfilment` (shop side) over `MintPlayer.Spark.Fulfilment.Contracts`, using the WD1 transport (ETL when licensed, else SyncAction → owner → HTTPS push + digest reconcile; module client certificates); state both ways, one owner per fact (WD2); stub consumer test
+- [x] `MintPlayer.Spark.Commerce.Fulfilment` (shop side) over `MintPlayer.Spark.Fulfilment.Contracts`, using the WD1 transport (ETL when licensed, else SyncAction → owner → HTTPS push + digest reconcile; module client certificates); state both ways, one owner per fact (WD2); stub consumer test *(2026-10-20: `libs/commerce/MintPlayer.Spark.Commerce.Fulfilment` (11.0.0-preview.1) over replication's `IReplicaPublisher`/`IReplicaChanged<T>`; Checkout seam `ICheckoutStockFeed` + `GoodsBackKind.Released`; tests `Fulfilment/*`, `Checkout/RefundStockFeedTests.cs`, written, not run; details in warehouse plan WM10)*
 - [x] Round 5 — `IServicePointProvider` (bpost, PostNL, Sendcloud, Test) and the checkout point picker (GB5)
 - [x] Round 5 — shop-only multi-parcel shipments and buyer return labels (GB5)
 - [x] Round 5 — customs: CN22/CN23 or commercial invoice through adapters; DAP/DDP per destination zone shown at checkout (GB6)
@@ -281,14 +281,14 @@ The order of work for [commerce_PRD.md](commerce_PRD.md). The PRD carries the de
 
 ### M17 — Storefront + meta tags
 
-- [ ] Routed, replaceable pages for shop, events, waiting room, basket, checkout, orders, tickets; theme variables; translations; WCAG
-- [ ] `provideSparkCommerce(...)`, `withShopRoutes()`, `withTicketingRoutes()`, `withWaitingRoomRoutes()`
-- [ ] Server-side meta tags wired for public event and product routes
+- [x] Routed, replaceable pages for shop, events, waiting room, basket, checkout, orders, tickets; theme variables; translations; WCAG
+- [x] `provideSparkCommerce(...)`, `withShopRoutes()`, `withTicketingRoutes()`, `withWaitingRoomRoutes()`
+- [x] Server-side meta tags wired for public event and product routes
 - [x] Round 5 — X22: `sitemap.xml`, JSON-LD `Event`/`Product`, `hreflang`; validated with SeoTester's checks (GB9)
 - [x] Round 5 — X23 embed widget (web component + iframe), top-level hand-over for holds, sign-in and waiting rooms, `frame-ancestors` allow-list (GB8)
-- [ ] Round 5 — customer account area: orders, invoice/credit-note downloads, address book, tickets, withdrawals and claims, consent settings, back-in-stock subscriptions, attach guest orders (GB10)
-- [ ] Round 5 — hold timer: text deadline, polite announcements, ≥20 s "More time" up to `Hold:Max`, exception reasoning in the accessibility statement (GA10; confirm against W3C Understanding 2.2.1)
-- [ ] Round 5 — accessibility statement page from a template; legal pages (terms, privacy, withdrawal info + model form, trader page); consent banner and settings (GA2, GA5, GA9, GA10)
+- [x] Round 5 — customer account area: orders, invoice/credit-note downloads, address book, tickets, withdrawals and claims, consent settings, back-in-stock subscriptions, attach guest orders (GB10)
+- [x] Round 5 — hold timer: text deadline, polite announcements, ≥20 s "More time" up to `Hold:Max`, exception reasoning in the accessibility statement (GA10; confirm against W3C Understanding 2.2.1) — W3C Understanding 2.2.1 NOT re-read: unconfirmed (D37)
+- [x] Round 5 — accessibility statement page from a template; legal pages (terms, privacy, withdrawal info + model form, trader page); consent banner and settings (GA2, GA5, GA9, GA10)
 
 ### M18 — Demo app
 

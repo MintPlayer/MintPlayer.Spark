@@ -115,7 +115,7 @@ public class ReplicaPushTests : SparkTestDriver
 
     private ReplicaPushRecipient Recipient(Func<HttpRequestMessage, Task<HttpResponseMessage>> consumer, TimeProvider? clock = null)
         => new(Store, ReplicationFixtures.Directory("HR"), ReplicationFixtures.Http(consumer, _requests),
-            Microsoft.Extensions.Options.Options.Create(ReplicationFixtures.Options("Fleet")), clock ?? TimeProvider.System, NullLogger<ReplicaPushRecipient>.Instance);
+            Microsoft.Extensions.Options.Options.Create(ReplicationFixtures.Options("Fleet")), clock ?? TimeProvider.System, NullLogger<ReplicaPushRecipient>.Instance, new ReplicaRowScopes([]));
 
     private static ReplicaPushMessage Message(params string[] ids) => new()
     {
@@ -231,7 +231,7 @@ public class ReplicaReconcileTests : SparkTestDriver
         => new(Store, ReplicationFixtures.Directory("HR"),
             ReplicationFixtures.Http(_ => Task.FromResult(ReplicationFixtures.Json(HttpStatusCode.OK, digest))),
             _grants, _subscriptions, _fanOut, Microsoft.Extensions.Options.Options.Create(ReplicationFixtures.Options("Fleet")),
-            NullLogger<ReplicaReconciler>.Instance);
+            NullLogger<ReplicaReconciler>.Instance, new ReplicaRowScopes([]));
 
     [Fact]
     public async Task Missing_and_older_replicas_are_pushed_and_extra_ones_get_tombstones()
@@ -252,7 +252,7 @@ public class ReplicaReconcileTests : SparkTestDriver
         pushed.Should().Be(3);
         await _fanOut.Received(1).PublishCollectionAsync("ReplSourceCars",
             Arg.Is<IReadOnlyCollection<string>>(ids => ids.OrderBy(i => i).SequenceEqual(new[] { "ReplSourceCars/2-A", "ReplSourceCars/3-A", "ReplSourceCars/9-A" })),
-            Arg.Any<CancellationToken>(), "HR", "ReplicaCars");
+            Arg.Any<CancellationToken>(), "HR", "ReplicaCars", Arg.Any<IReadOnlyCollection<string>?>());
     }
 
     [Fact]

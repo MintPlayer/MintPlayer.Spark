@@ -16,8 +16,9 @@
   @if (lines().length === 0) {
     <p class="spark-checkout-basket-empty">{{ 'commerceCheckout.basketEmpty' | t }}</p>
   } @else {
-    @if (countdown(); as text) {
-      <p class="spark-checkout-basket-countdown" role="timer">{{ text }}</p>
+    @if (basket(); as current) {
+      <spark-checkout-hold-timer [deadline]="current.earliestHoldUntil" [extendableUntil]="current.extendableUntil"
+                                 (extended)="basket.set($event)" />
     }
 
     <ul class="spark-checkout-basket-lines">

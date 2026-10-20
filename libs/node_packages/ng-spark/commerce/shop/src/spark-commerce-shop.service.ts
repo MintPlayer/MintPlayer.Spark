@@ -4,7 +4,10 @@ import { firstValueFrom } from 'rxjs';
 import { SPARK_CONFIG } from '@mintplayer/ng-spark';
 import { SparkService } from '@mintplayer/ng-spark/services';
 import {
+  SparkShopAddressBook,
+  SparkShopAddressSaveRequest,
   SparkShopCatalogPage,
+  SparkShopItemLink,
   SparkShopCategory,
   SparkShopDeliveryChoice,
   SparkShopDeliveryOptions,
@@ -111,6 +114,28 @@ export class SparkCommerceShopService {
   /** `GET /spark/commerce/shop/orders?number=`: the shop's side of the caller's own order (one entry per seller). */
   async order(number: string): Promise<SparkShopOrder[] | null> {
     return this.getOrNull<SparkShopOrder[]>('/commerce/shop/orders', { number });
+  }
+
+  /** `GET /spark/commerce/shop/item?id=`: the product page of a checkout item id (`shop:{variantId}`); null when not published. */
+  async itemLink(itemId: string): Promise<SparkShopItemLink | null> {
+    return this.getOrNull<SparkShopItemLink>('/commerce/shop/item', { id: itemId });
+  }
+
+  // ---- customer account area (GB10) ----------------------------------------------------------------------------
+
+  /** `GET /spark/commerce/shop/account/addresses`: the signed-in buyer's address book; `null` when signed out. */
+  async addressBook(): Promise<SparkShopAddressBook | null> {
+    return this.getOrNull<SparkShopAddressBook>('/commerce/shop/account/addresses', {});
+  }
+
+  /** `POST /spark/commerce/shop/account/addresses`: adds an entry, or replaces `entryId`'s (`invalidAddress`, `addressBookFull`). */
+  saveAddress(request: SparkShopAddressSaveRequest): Promise<SparkShopAddressBook> {
+    return this.spark.postEnvelope<SparkShopAddressBook>('/commerce/shop/account/addresses', { ...request });
+  }
+
+  /** `POST /spark/commerce/shop/account/addresses/delete`. */
+  deleteAddress(entryId: string): Promise<SparkShopAddressBook> {
+    return this.spark.postEnvelope<SparkShopAddressBook>('/commerce/shop/account/addresses/delete', { entryId });
   }
 
   /** The stable URL of a seller's product feed (GC6); omit `seller` for the platform's own products. */

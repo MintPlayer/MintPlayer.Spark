@@ -43,7 +43,7 @@ internal sealed partial class AddLookupReferenceValue : IPostEndpoint<LookupRefe
             // R2-M1: don't echo ex.Message — leaks RavenDB-internal strings,
             // index/collection names, etc. Log server-side with correlation ID.
             logger.LogWarning(ex, "AddLookupReferenceValue failed");
-            return Results.Json(new { error = "Operation failed" }, statusCode: 400);
+            return Results.Json(new Abstractions.SparkErrorResponse("Operation failed"), statusCode: 400);
         }
     }
 }
@@ -66,6 +66,6 @@ internal static class LookupReferenceBodies
     {
         await permissionService.EnsureAuthorizedAsync("Edit", "LookupReferences");
 
-        return Results.Json(new { error = failure is null ? "Invalid request body" : "Operation failed" }, statusCode: 400);
+        return Results.Json(new Abstractions.SparkErrorResponse(failure is null ? "Invalid request body" : "Operation failed"), statusCode: 400);
     }
 }

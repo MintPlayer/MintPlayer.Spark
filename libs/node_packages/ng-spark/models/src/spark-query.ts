@@ -1,12 +1,12 @@
 import { SparkSelectionModeSetting } from './selection-mode';
 import { TranslatedString } from './translated-string';
+import type { SparkQueryColumn, SparkQuerySortColumn } from './generated/contracts';
+import type * as Wire from './generated/contracts';
+import type { AssertNone, MissingMembers } from './contract-mirror';
 
 export type SparkQueryRenderMode = 'Pagination' | 'VirtualScrolling';
 
-export interface SparkQuerySortColumn {
-  property: string;
-  direction: string;
-}
+// SparkQuerySortColumn (`property`, `direction`) and SparkQueryColumn are generated (./generated/contracts).
 
 export interface SparkQuery {
   id: string;
@@ -21,6 +21,8 @@ export interface SparkQuery {
   indexName?: string;
   /** Optional entity type name (e.g., "Person"). When set, used for entity type resolution. */
   entityType?: string;
+  /** Per-column overrides of the sort/filter/distinct switches; the server applies them to the result's `columns`. */
+  columns?: SparkQueryColumn[] | null;
   /**
    * Whether grids showing this query follow it over `/spark/live` (X4): the page re-renders when a row in
    * it changes, appears or disappears, with server-side paging, sort, search and filters intact. Opt-in
@@ -50,3 +52,7 @@ export interface SparkQuery {
  * Omitted means `'exclude'`.
  */
 export type SparkDeletedFilter = 'exclude' | 'include' | 'only';
+
+/** The hand-written mirror is checked against the generated wire type (docs/guide-typescript-contracts.md). */
+export type SparkQueryMirrorsContract = AssertNone<MissingMembers<Wire.SparkQuery, SparkQuery>>;
+export type SparkQueryRenderModeMirrorsContract = AssertNone<Exclude<Wire.SparkQuery['renderMode'], SparkQueryRenderMode> | Exclude<SparkQueryRenderMode, Wire.SparkQuery['renderMode']>>;

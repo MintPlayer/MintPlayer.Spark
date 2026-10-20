@@ -22,9 +22,87 @@ export interface SparkAuthCapabilities {
   externalProviders: SparkExternalProvider[];
 }
 
+export interface SparkAuthError {
+  error: string;
+}
+
+export interface SparkAvailableExternalProvider {
+  provider: string;
+  displayName: string;
+}
+
+export interface SparkExternalLoginUnlinked {
+  unlinked: boolean;
+}
+
+export interface SparkExternalLogins {
+  linked: SparkLinkedExternalLogin[];
+  available: SparkAvailableExternalProvider[];
+}
+
 export interface SparkExternalProvider {
   scheme: string;
   displayName: string;
+}
+
+export interface SparkGrantRevoked {
+  revoked: boolean;
+}
+
+export interface SparkLinkedExternalLogin {
+  provider: string;
+  providerKey: string;
+  displayName: string;
+  canUnlink: boolean;
+}
+
+export interface SparkPasskeySignedIn {
+  success: boolean;
+}
+
+export interface SparkPersonalData {
+  account: SparkPersonalDataAccount;
+  data: Record<string, any>;
+}
+
+export interface SparkPersonalDataAccount {
+  id?: string | null;
+  userName?: string | null;
+  email?: string | null;
+  emailConfirmed: boolean;
+  phoneNumber?: string | null;
+  phoneNumberConfirmed: boolean;
+  twoFactorEnabled: boolean;
+  hasPassword: boolean;
+  createdAtUtc?: string | null;
+  registrationMethod?: string | null;
+  preferredCulture?: string | null;
+  preferredTimeZone?: string | null;
+  roles: string[];
+  claims: SparkPersonalDataClaim[];
+  externalLogins: SparkPersonalDataExternalLogin[];
+  passkeys: SparkPersonalDataPasskey[];
+}
+
+export interface SparkPersonalDataClaim {
+  type: string;
+  value: string;
+}
+
+export interface SparkPersonalDataExternalLogin {
+  provider: string;
+  displayName?: string | null;
+}
+
+export interface SparkPersonalDataPasskey {
+  name?: string | null;
+  createdAt: string;
+}
+
+export interface SparkPhoneVerificationOutcome {
+  outcome: string;
+  phoneNumber?: string | null;
+  expiresAtUtc?: string | null;
 }
 
 export type SparkSignInIdentifier = 'email' | 'userName';

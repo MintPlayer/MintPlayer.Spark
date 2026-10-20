@@ -80,6 +80,9 @@ public sealed class CheckoutBasketLine
     /// <summary>When the hold lapses (the basket's countdown shows the earliest).</summary>
     public DateTimeOffset? HeldUntil { get; set; }
 
+    /// <summary>When the current hold was taken (GA10): "More time" never moves <see cref="HeldUntil"/> past this plus <c>Hold:Max</c>.</summary>
+    public DateTimeOffset? HeldSince { get; set; }
+
     /// <summary>The seats the claim holds (chain fill chose them).</summary>
     public List<string> HeldUnits { get; set; } = [];
 

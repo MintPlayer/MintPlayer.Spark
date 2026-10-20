@@ -130,8 +130,9 @@ public sealed record SparkBackInStockResult(string Id, bool Confirmed, bool Conf
 public sealed record SparkBackInStockTokenRequest(string Id, string Token);
 
 /// <summary>One of the signed-in buyer's subscriptions (the account area, GB10).</summary>
+/// <param name="Title">The item's name as checkout sells it (null when it is no longer on sale).</param>
 [SparkContract]
-public sealed record SparkBackInStockView(string Id, string ItemId, DateTimeOffset CreatedAt, DateTimeOffset ExpiresAt, bool Notified);
+public sealed record SparkBackInStockView(string Id, string ItemId, DateTimeOffset CreatedAt, DateTimeOffset ExpiresAt, bool Notified, TranslatedString? Title);
 
 /// <summary>A visit through a tracking link (<c>POST …/track</c>).</summary>
 [SparkContract]

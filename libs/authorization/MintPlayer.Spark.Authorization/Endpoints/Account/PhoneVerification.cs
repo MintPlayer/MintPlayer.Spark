@@ -2,6 +2,7 @@ using System.Globalization;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Options;
+using MintPlayer.Spark.Authorization.Contracts;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Authorization.Extensions;
@@ -129,7 +130,7 @@ internal static class SparkPhoneVerificationHttp
             case SparkPhoneVerificationStatus.CodeSent:
             case SparkPhoneVerificationStatus.Verified:
             case SparkPhoneVerificationStatus.AlreadyVerified:
-                return Results.Ok(new { outcome, phoneNumber = result.PhoneNumber, expiresAtUtc = result.ExpiresAtUtc });
+                return Results.Ok(new SparkPhoneVerificationOutcome(outcome, result.PhoneNumber, result.ExpiresAtUtc));
 
             case SparkPhoneVerificationStatus.RateLimited:
                 var seconds = (int)Math.Ceiling((result.RetryAfter ?? TimeSpan.Zero).TotalSeconds);

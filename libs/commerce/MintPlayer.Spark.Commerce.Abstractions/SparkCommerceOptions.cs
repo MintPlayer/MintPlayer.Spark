@@ -84,7 +84,7 @@ public sealed class CommerceChannelOptions
 
     /// <summary>How long a hold lasts, and the range a seller may pick per sale (D2). Ignored for
     /// <see cref="AllocationMode.OnPayment"/>.</summary>
-    public DurationBounds Hold { get; set; } = new() { Default = TimeSpan.FromMinutes(10), Min = TimeSpan.FromMinutes(5), Max = TimeSpan.FromMinutes(20) };
+    public HoldBounds Hold { get; set; } = new() { Default = TimeSpan.FromMinutes(10), Min = TimeSpan.FromMinutes(5), Max = TimeSpan.FromMinutes(20) };
 
     /// <summary>The longest a hold may be extended while the buyer is at the provider (D3). Methods whose provider
     /// expiry is longer are not offered in this channel. Default 30 minutes.</summary>
@@ -126,7 +126,7 @@ public sealed class CommerceChannelOptions
 
 /// <summary>A default value and the range a seller may pick inside (D2). Stored values are clamped when read, so
 /// tightening the configuration takes effect at once.</summary>
-public sealed class DurationBounds
+public class DurationBounds
 {
     /// <summary>The value used when a sale does not choose one.</summary>
     public TimeSpan Default { get; set; }
@@ -149,6 +149,32 @@ public sealed class DurationBounds
 
     /// <summary>Whether <see cref="Min"/> ≤ <see cref="Default"/> ≤ <see cref="Max"/> and none is negative.</summary>
     public bool IsValid => Min >= TimeSpan.Zero && Min <= Default && Default <= Max;
+}
+
+/// <summary>
+/// The hold bounds (D2) plus the buyer's "More time" step (GA10, WCAG 2.2.1 "Extend"): each request moves the deadline
+/// on by <see cref="Extension"/>, never past <see cref="DurationBounds.Max"/> counted from when the hold was taken.
+/// </summary>
+public sealed class HoldBounds : DurationBounds
+{
+    /// <summary>How much one "More time" adds (<c>Hold:Extension</c>). Default 5 minutes; zero turns the button off.</summary>
+    public TimeSpan Extension { get; set; } = TimeSpan.FromMinutes(5);
+
+    /// <summary>
+    /// The deadline after one "More time" on a hold taken at <paramref name="heldSince"/> that now lapses at
+    /// <paramref name="heldUntil"/>: <c>heldUntil + Extension</c>, capped at <c>heldSince + Max</c>; null when that
+    /// would not move the deadline (the cap is reached, or extensions are off).
+    /// </summary>
+    public DateTimeOffset? Extend(DateTimeOffset heldSince, DateTimeOffset heldUntil)
+    {
+        if (Extension <= TimeSpan.Zero)
+            return null;
+        var cap = heldSince + Max;
+        var next = heldUntil + Extension;
+        if (next > cap)
+            next = cap;
+        return next > heldUntil ? next : null;
+    }
 }
 
 /// <summary>An integer default and range (days before an event, …) a seller may pick inside.</summary>

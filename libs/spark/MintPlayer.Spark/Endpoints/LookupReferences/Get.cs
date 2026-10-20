@@ -36,7 +36,7 @@ internal sealed partial class GetLookupReference : IGetEndpoint
 
         if (lookupReference == null)
         {
-            return Results.Json(new { error = $"LookupReference '{name}' not found" }, statusCode: 404);
+            return Results.Json(new Abstractions.SparkErrorResponse($"LookupReference '{name}' not found"), statusCode: 404);
         }
 
         return Results.Json(lookupReference);

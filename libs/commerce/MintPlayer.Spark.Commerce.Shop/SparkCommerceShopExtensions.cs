@@ -94,6 +94,10 @@ public static class SparkCommerceShopExtensions
         // GDPR (GC5): the buyer's reviews in the personal-data export, deleted with the account.
         services.TryAddEnumerable(ServiceDescriptor.Scoped(typeof(ISparkPersonalDataContributor<>), typeof(ShopReviewPersonalData<>)));
         services.TryAddEnumerable(ServiceDescriptor.Scoped(typeof(ISparkAccountDeletionHandler<>), typeof(ShopReviewAccountDeletion<>)));
+        // GB10: the account area's address book, in the export and deleted with the account.
+        services.TryAddScoped<Account.ShopAddressBooks>();
+        services.TryAddEnumerable(ServiceDescriptor.Scoped(typeof(ISparkPersonalDataContributor<>), typeof(Account.ShopAddressBookPersonalData<>)));
+        services.TryAddEnumerable(ServiceDescriptor.Scoped(typeof(ISparkAccountDeletionHandler<>), typeof(Account.ShopAddressBookAccountDeletion<>)));
 
         builder.AddInterceptor<ShopProductInterceptor>();
         builder.AddInterceptor<ShopVariantInterceptor>();

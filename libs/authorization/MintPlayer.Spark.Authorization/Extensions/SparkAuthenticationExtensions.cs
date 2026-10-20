@@ -71,6 +71,8 @@ internal static class SparkAuthenticationExtensions
 
         builder.Services.AddScoped<IUserStore<TUser>, UserStore<TUser>>();
         builder.Services.AddScoped<IRoleStore<SparkRole>, RoleStore>();
+        // Who is in a group, for libraries that tell a slot's members something (replication's approvers).
+        builder.Services.TryAddScoped<MintPlayer.Spark.Abstractions.Authorization.ISparkGroupMembers, SparkGroupMembers<TUser>>();
         builder.Services.AddScoped<SparkExternalLoginLinker<TUser>>();
         // The generic passkeys page (Passkeys / PasskeyRow): its actions classes are resolved by name,
         // so they reach the user through this seam, closed over TUser here.

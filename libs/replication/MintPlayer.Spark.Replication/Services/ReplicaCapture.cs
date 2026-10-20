@@ -60,7 +60,8 @@ internal interface IReplicaFanOut
     Task PublishAsync(string entityTypeName, IReadOnlyCollection<string> ids, CancellationToken cancellationToken);
 
     /// <summary>The same, for a source collection, bypassing the dirty set (the flush and the reconcile).</summary>
-    Task PublishCollectionAsync(string sourceCollection, IReadOnlyCollection<string> ids, CancellationToken cancellationToken, string? onlyConsumer = null, string? onlyTarget = null);
+    /// <param name="heldIds">Ids the consumer is known to hold (the reconcile); see <see cref="ReplicaPushMessage.HeldIds"/>.</param>
+    Task PublishCollectionAsync(string sourceCollection, IReadOnlyCollection<string> ids, CancellationToken cancellationToken, string? onlyConsumer = null, string? onlyTarget = null, IReadOnlyCollection<string>? heldIds = null);
 }
 
 internal sealed partial class ReplicaFanOut : IReplicaFanOut
@@ -88,7 +89,7 @@ internal sealed partial class ReplicaFanOut : IReplicaFanOut
         await PublishCollectionAsync(collection, ids, cancellationToken);
     }
 
-    public async Task PublishCollectionAsync(string sourceCollection, IReadOnlyCollection<string> ids, CancellationToken cancellationToken, string? onlyConsumer = null, string? onlyTarget = null)
+    public async Task PublishCollectionAsync(string sourceCollection, IReadOnlyCollection<string> ids, CancellationToken cancellationToken, string? onlyConsumer = null, string? onlyTarget = null, IReadOnlyCollection<string>? heldIds = null)
     {
         if (ids.Count == 0)
             return;
@@ -96,6 +97,7 @@ internal sealed partial class ReplicaFanOut : IReplicaFanOut
         var push = options.Value.Push;
         var ladder = push.ResolvedRetryLadder;
         var now = timeProvider.GetUtcNow().UtcDateTime;
+        var held = heldIds is null ? null : new HashSet<string>(heldIds, StringComparer.OrdinalIgnoreCase);
         foreach (var subscription in await subscriptions.DeliveringAsync(sourceCollection, cancellationToken))
         {
             if (!IsHttp(subscription)
@@ -110,6 +112,7 @@ internal sealed partial class ReplicaFanOut : IReplicaFanOut
                     Consumer = subscription.ConsumerModule,
                     TargetCollection = subscription.TargetCollection,
                     Ids = [.. batch],
+                    HeldIds = held is null ? [] : [.. batch.Where(held.Contains)],
                     GiveUpAtUtc = now + push.GiveUpAfter,
                 }, new BroadcastOptions
                 {

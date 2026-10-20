@@ -18,6 +18,12 @@ public interface ISparkCheckout
     /// <summary>Changes a line's quantity (0 removes it, with its add-ons); a held line's claim is adjusted, all or nothing.</summary>
     Task<SparkBasket> SetQuantityAsync(string lineId, int quantity, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// GA10: "More time". Every live hold moves on by its channel's <c>Hold:Extension</c>, capped at <c>Hold:Max</c> from
+    /// when it was taken; refused with <see cref="CheckoutRefusals.HoldNotExtendable"/> when none can move.
+    /// </summary>
+    Task<SparkBasket> ExtendHoldAsync(CancellationToken cancellationToken = default);
+
     /// <summary>Sets the pricing steps' choices (donation, insurance, codes) and a guest's e-mail address.</summary>
     Task<SparkBasket> SetChoicesAsync(IReadOnlyDictionary<string, string?> choices, string? email, CancellationToken cancellationToken = default);
 

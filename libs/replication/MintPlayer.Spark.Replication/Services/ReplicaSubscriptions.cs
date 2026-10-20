@@ -4,6 +4,7 @@ using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Live;
 using MintPlayer.Spark.Messaging;
+using MintPlayer.Spark.Replication.Abstractions;
 using MintPlayer.Spark.Replication.Abstractions.Configuration;
 using MintPlayer.Spark.Replication.Abstractions.Models;
 using MintPlayer.Spark.Replication.Abstractions.Rendering;
@@ -110,6 +111,7 @@ internal sealed partial class ReplicaSubscriptions : IReplicaSubscriptions
         var now = timeProvider.GetUtcNow().UtcDateTime;
         var autoApprove = hostEnvironment.IsDevelopment();
         var redeploy = false;
+        var arrived = new List<SparkReplicationRequest>();
 
         using (var session = documentStore.OpenAsyncSession())
         {
@@ -132,7 +134,7 @@ internal sealed partial class ReplicaSubscriptions : IReplicaSubscriptions
                     await session.StoreAsync(subscription, id, cancellationToken);
                 }
 
-                var answer = await RecordAsync(session, subscription, item, manifest, autoApprove, now, cancellationToken);
+                var answer = await RecordAsync(session, subscription, item, manifest, autoApprove, now, arrived, cancellationToken);
                 redeploy |= answer.Status is ReplicaRegistrationStatus.Approved;
                 result.Items.Add(answer);
             }
@@ -158,6 +160,7 @@ internal sealed partial class ReplicaSubscriptions : IReplicaSubscriptions
         }
 
         services.GetService<ISparkLiveNotifier>()?.CollectionChanged("SparkReplicationRequests");
+        await NotifyArrivedAsync(arrived, cancellationToken);
         logger.LogInformation("Module '{Module}' registered {Items}; withdrawn: {Withdrawn}", module,
             string.Join(", ", result.Items.Select(i => $"{i.TargetCollection} {i.Status}")),
             result.Withdrawn.Count == 0 ? "none" : string.Join(", ", result.Withdrawn));
@@ -169,7 +172,7 @@ internal sealed partial class ReplicaSubscriptions : IReplicaSubscriptions
     /// <summary>One item: unchanged, a (re)approval, or a pending request with its diff.</summary>
     private async Task<ReplicaRegistrationItemResult> RecordAsync(
         IAsyncDocumentSession session, SparkReplicationSubscription subscription, ReplicaRegistrationItem item, ReplicaManifest manifest,
-        bool autoApprove, DateTime now, CancellationToken cancellationToken)
+        bool autoApprove, DateTime now, List<SparkReplicationRequest> arrived, CancellationToken cancellationToken)
     {
         var reactivated = subscription.State != ReplicationSubscriptionStates.Active;
         subscription.SourceCollection = item.SourceCollection;
@@ -204,7 +207,8 @@ internal sealed partial class ReplicaSubscriptions : IReplicaSubscriptions
             };
         }
 
-        if (request is null || request.Status == ReplicationRequestStatuses.Superseded)
+        var opened = request is null || request.Status == ReplicationRequestStatuses.Superseded;
+        if (opened)
         {
             ReplicaManifest? approved = null;
             if (subscription.ApprovedManifest is { } approvedJson)
@@ -248,6 +252,10 @@ internal sealed partial class ReplicaSubscriptions : IReplicaSubscriptions
             // Approved before (a consumer that rolled back and forward again): approved again without asking.
             await ApproveCoreAsync(session, subscription, request, request.DecidedBy, request.AutoApproved, now, cancellationToken);
         }
+
+        // Told once, when the request opens and waits; a re-post of the same pending shape is not news.
+        if (opened && request.Status == ReplicationRequestStatuses.Pending)
+            arrived.Add(request);
 
         var approvedNow = subscription.ApprovedHash == item.Hash;
         return new ReplicaRegistrationItemResult
@@ -394,4 +402,13 @@ internal sealed partial class ReplicaSubscriptions : IReplicaSubscriptions
     /// <summary>The deploy runs from messaging, in this commit: it retries and survives a restart.</summary>
     private Task EnqueueDeployAsync(IAsyncDocumentSession session, string consumer, CancellationToken cancellationToken)
         => services.GetRequiredService<IMessageOutbox>().EnqueueAsync(session, new ReplicaDeployMessage { Consumer = consumer }, cancellationToken: cancellationToken);
+
+    /// <summary>
+    /// Tells the <c>replication:approvers</c> slot that requests wait, after the commit (<see cref="ReplicationRequestNotifier"/>:
+    /// the members' open pages, a mail, every <see cref="IReplicationRequestObserver"/>).
+    /// </summary>
+    private Task NotifyArrivedAsync(List<SparkReplicationRequest> arrived, CancellationToken cancellationToken)
+        => arrived.Count == 0
+            ? Task.CompletedTask
+            : services.GetRequiredService<IReplicationRequestNotifier>().NotifyArrivedAsync(arrived, cancellationToken);
 }

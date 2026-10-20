@@ -2,6 +2,7 @@ using ExternalLoginErrors = MintPlayer.Spark.Authorization.Extensions.SparkAuthe
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Options;
+using MintPlayer.Spark.Authorization.Contracts;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Authorization.Configuration;
@@ -55,7 +56,7 @@ internal sealed partial class UnlinkExternalLogin<TUser> : IPostEndpoint
                 string.Equals(l.LoginProvider, provider, StringComparison.Ordinal)
                 && string.Equals(l.ProviderKey, providerKey, StringComparison.Ordinal)))
         {
-            return Results.BadRequest(new { error = ExternalLoginErrors.LoginNotFound });
+            return Results.BadRequest(new SparkAuthError(ExternalLoginErrors.LoginNotFound));
         }
 
         // ⚠️ The guard. Removing the last way in is permanent: no password to fall back on, no
@@ -69,16 +70,16 @@ internal sealed partial class UnlinkExternalLogin<TUser> : IPostEndpoint
                 logins.Count, await userManager.HasPasswordAsync(user), options.Value.LocalCredentials,
                 (await userManager.GetPasskeysAsync(user)).Count, options.Value.Passkeys))
         {
-            return Results.BadRequest(new { error = ExternalLoginErrors.LastCredential });
+            return Results.BadRequest(new SparkAuthError(ExternalLoginErrors.LastCredential));
         }
 
         var result = await userManager.RemoveLoginAsync(user, provider, providerKey);
         if (!result.Succeeded)
-            return Results.BadRequest(new { error = ExternalLoginErrors.UnlinkFailed });
+            return Results.BadRequest(new SparkAuthError(ExternalLoginErrors.UnlinkFailed));
 
         // The security stamp carries into the cookie, so refreshing it is what makes the removal
         // take effect on sessions other than this one.
         await signInManager.RefreshSignInAsync(user);
-        return Results.Ok(new { unlinked = true });
+        return Results.Ok(SparkExternalLoginUnlinked.Done);
     }
 }

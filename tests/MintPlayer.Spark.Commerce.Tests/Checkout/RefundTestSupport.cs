@@ -135,8 +135,9 @@ internal sealed class NobodySignedIn : ISparkCurrentUser
 /// <summary>Checkout with the refund flows (M9) over RavenDB and the real inventory engine.</summary>
 internal static class RefundHost
 {
+    /// <param name="stockFeed">A stock feed owning goods lines' quota (warehouse §4.4, <c>ICheckoutStockFeed</c>), or null.</param>
     public static (CheckoutHost Host, ProviderPayments Provider, TestRefundTerms Terms) Build(IDocumentStore store, Action<SparkCommerceCheckoutOptions>? checkout = null,
-        Action<SparkCommerceOptions>? commerce = null)
+        Action<SparkCommerceOptions>? commerce = null, ICheckoutStockFeed? stockFeed = null)
     {
         ProviderPayments? provider = null;
         var terms = new TestRefundTerms();
@@ -167,6 +168,8 @@ internal static class RefundHost
             services.AddScoped<MassRefunds>();
             services.AddScoped<IOrderEventRecipient, RefundTermsRecipient>();
             services.AddScoped<RefundPaymentRecipient>();
+            if (stockFeed is not null)
+                services.AddSingleton(stockFeed);
         });
         return (host, provider!, terms);
     }

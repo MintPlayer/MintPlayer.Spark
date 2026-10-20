@@ -28,6 +28,10 @@ public static class CheckoutRefusals
     public const string NotTogether = "notTogether";
     public const string LeavesSingleSeat = "leavesSingleSeat";
     public const string HoldExpired = "holdExpired";
+    /// <summary>GA10: "More time" was asked for, but no live hold can move (each is at its <c>Hold:Max</c>, or extensions are off).</summary>
+    public const string HoldNotExtendable = "holdNotExtendable";
+    /// <summary>GB10: attaching guest orders needs a confirmed e-mail address on the account.</summary>
+    public const string EmailNotConfirmed = "emailNotConfirmed";
     public const string Conflict = "conflict";
     public const string LineNotFound = "lineNotFound";
     /// <summary>GA2: the buyer did not accept every required document in force.</summary>

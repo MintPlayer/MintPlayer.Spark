@@ -1,0 +1,37 @@
+<section class="spark-my-tickets" aria-labelledby="spark-my-tickets-title">
+  <h2 id="spark-my-tickets-title">{{ 'ticketingTickets.mine.title' | t }}</h2>
+
+  @if (failed()) {
+    <p class="spark-my-tickets-error" role="alert">{{ 'ticketingTickets.mine.failed' | t }}</p>
+  }
+  @if (loaded() && list().length === 0) {
+    <p class="spark-my-tickets-empty">{{ 'ticketingTickets.mine.empty' | t }}</p>
+  }
+
+  <ul class="spark-my-tickets-list">
+    @for (ticket of sorted(); track ticket.code) {
+      <li class="spark-my-tickets-item" [attr.data-status]="ticket.status">
+        <div>
+          <a [href]="href(ticket)">{{ ticket.eventName | resolveTranslation: ticket.eventId }}</a>
+          @if (ticket.ticketTypeName) {
+            <span> · {{ ticket.ticketTypeName | resolveTranslation: ticket.ticketTypeId }}</span>
+          }
+          @if (ticket.dates[0]; as date) {
+            <p><spark-date-time [value]="date.startsAt" [alsoIn]="date.venueTimeZoneId" />@if (date.venueName) { · {{ date.venueName }} }</p>
+          }
+          @if (ticket.seatLabel) {
+            <p>{{ ticket.seatLabel }}</p>
+          }
+          @if (ticket.status !== 'Valid') {
+            <p class="spark-my-tickets-status">{{ (ticket.status === 'OnHold' ? 'ticketingTickets.onHold' : 'ticketingTickets.revoked') | t }}</p>
+          }
+        </div>
+        @if (ticket.available) {
+          <button type="button" class="btn btn-outline-secondary btn-sm" [disabled]="busyCode() === ticket.code" (click)="download(ticket)">
+            {{ 'ticketingTickets.mine.pdf' | t }}
+          </button>
+        }
+      </li>
+    }
+  </ul>
+</section>

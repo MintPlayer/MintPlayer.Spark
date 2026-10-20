@@ -5,6 +5,7 @@ import { ResolveTranslationPipe, TranslateKeyPipe } from '@mintplayer/ng-spark/p
 import { SparkOrderView } from './generated/contracts';
 import { refusalKey, refusalOf, SparkCommerceCheckoutService } from './spark-commerce-checkout.service';
 import { SparkCheckoutAftercareComponent } from './spark-checkout-aftercare.component';
+import { SparkCheckoutHoldTimerComponent } from './spark-checkout-hold-timer.component';
 
 /**
  * The buyer's own order (commerce #521): its state, lines (with the ID-check marker, GB12), extras, total and any
@@ -15,7 +16,7 @@ import { SparkCheckoutAftercareComponent } from './spark-checkout-aftercare.comp
  */
 @Component({
   selector: 'spark-checkout-order',
-  imports: [TranslateKeyPipe, ResolveTranslationPipe, SparkCheckoutAftercareComponent],
+  imports: [TranslateKeyPipe, ResolveTranslationPipe, SparkCheckoutAftercareComponent, SparkCheckoutHoldTimerComponent],
   templateUrl: './spark-checkout-order.component.html',
   styleUrl: './spark-checkout-order.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

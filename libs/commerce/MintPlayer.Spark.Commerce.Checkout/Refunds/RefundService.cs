@@ -28,8 +28,45 @@ internal sealed class RefundService(
     ICommerceAudit audit,
     IOptionsMonitor<SparkCommerceCheckoutOptions> options,
     CheckoutHolidays holidays,
-    ILogger<RefundService> logger) : ISparkCheckoutRefunds
+    ILogger<RefundService> logger) : ISparkCheckoutRefunds, ISparkCheckoutUndelivered
 {
+    // ---- undeliverable goods (lead decision 2026-10-20) ----------------------------------------------------------------
+
+    public async Task<string?> RefundUndeliveredAsync(UndeliveredRefund request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var refundId = RefundEngine.StableId("u", request.OrderId + ":" + request.Reference);
+        string? done = null;
+        var updated = await UpdateAsync(request.OrderId, async (session, o, ledger, raised) =>
+        {
+            done = null;
+            if (ledger.Refunds.Any(r => r.RefundId == refundId))
+            {
+                done = refundId; // a retry: already refunded in a saved session
+                return;
+            }
+            if (!RefundEngine.IsRefundable(o.State))
+                throw CheckoutException.Of(CheckoutRefusals.InvalidState, subject: o.State.ToString());
+            var requests = request.Lines
+                .Select(l => (Request: l, Line: o.Lines.FirstOrDefault(x => x.LineId == l.LineId)))
+                .Where(x => x.Line is not null && x.Request.Quantity > 0)
+                .Select(x => new RefundLineRequest(x.Line!.LineId, Math.Min(x.Request.Quantity, RefundEngine.Free(x.Line, ledger.Lines.First(l => l.LineId == x.Line.LineId)))))
+                .Where(r => r.Quantity > 0).ToList();
+            if (requests.Count == 0)
+                return;
+            // CRD Art. 18(2)–(3) (unconfirmed, D37): all sums paid for the undelivered units, fees included (the seller's
+            // failure), their order-discount share through the line's charged amount (CheckoutOrderLineAmounts.Charged).
+            // CRD Art. 13(1) (unconfirmed): the delivery cost in full once no goods of the order remain (RefundMath's
+            // completesGoods rule); a partly delivered order keeps it.
+            var spec = new RefundSpec(RefundKind.Cancellation, ReturnReasonCode.Other, requests, RefundFees: true, Delivery: DeliveryRefund.Full);
+            var refund = await engine.RefundAsync(session, o, ledger, spec, new RefundMeta(refundId, Note: "undelivered " + request.Reference), raised, cancellationToken);
+            done = refund?.RefundId;
+        }, cancellationToken);
+        // The existing refund mail goes out once the provider paid it (deduplicated per refund).
+        await MarkIssuedDeliveredAsync(updated, cancellationToken);
+        return done;
+    }
+
     public const string WithdrawButtonKey = "commerceCheckout.withdrawal.button";
     public const string WithdrawConfirmKey = "commerceCheckout.withdrawal.confirm";
 
@@ -321,8 +358,9 @@ internal sealed class RefundService(
 
             if (registration.Kind == GoodsBackKind.Received)
                 ret.GoodsReceivedAt ??= at;
-            else
+            else if (registration.Kind == GoodsBackKind.ProofOfDispatch)
                 ret.ProofOfDispatchAt ??= at;
+            // GoodsBackKind.Released records no date: the seller chose to pay without waiting (warehouse WD12).
 
             if (ret.Status == ReturnStatus.AwaitingGoods)
             {
@@ -369,6 +407,10 @@ internal sealed class RefundService(
             {
                 var line = order.Lines.First(l => l.LineId == units.LineId);
                 if (line.ClaimId is null || line.Capacity.IsEmpty)
+                    continue;
+                // Warehouse §4.4 rule 4 (I4): a stock feed's restock raises its on-hand, and so the capacity; restocking the
+                // quota here too would count the units twice.
+                if (await engine.FedByStockFeedAsync(order, line, cancellationToken))
                     continue;
                 var result = await inventory.RestockAsync(line.ClaimId, RefundEngine.InventoryReturnId(order.Id!, refund.RefundId, line.LineId), cancellationToken);
                 if (!result.Succeeded)

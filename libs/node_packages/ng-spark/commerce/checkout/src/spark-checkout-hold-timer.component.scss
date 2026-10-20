@@ -1,0 +1,54 @@
+:host {
+  display: block;
+}
+
+.spark-checkout-hold-timer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 1rem;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 1rem;
+  border: 1px solid var(--spark-commerce-border, var(--bs-border-color, #dee2e6));
+  border-radius: var(--spark-commerce-radius, 0.375rem);
+  background: var(--spark-commerce-surface, var(--bs-tertiary-bg, transparent));
+
+  p {
+    margin: 0;
+  }
+}
+
+.spark-checkout-hold-timer-urgent {
+  border-color: var(--spark-commerce-warning, var(--bs-warning, #ffc107));
+}
+
+.spark-checkout-hold-timer-deadline {
+  font-weight: 600;
+}
+
+.spark-checkout-hold-timer-clock {
+  font-variant-numeric: tabular-nums;
+  color: var(--spark-commerce-muted, var(--bs-secondary-color, #6c757d));
+}
+
+.spark-checkout-hold-timer-hint {
+  flex-basis: 100%;
+  color: var(--spark-commerce-muted, var(--bs-secondary-color, #6c757d));
+}
+
+.spark-checkout-hold-timer-lapsed,
+.spark-checkout-refusal {
+  color: var(--spark-commerce-danger, var(--bs-danger, #dc3545));
+}
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}

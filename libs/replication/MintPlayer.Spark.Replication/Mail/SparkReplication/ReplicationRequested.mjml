@@ -1,0 +1,19 @@
+<mjml>
+  <mj-head>
+    <mj-title>{{ consumer }} asks to replicate {{ source }}</mj-title>
+    <mj-attributes>
+      <mj-all font-family="Segoe UI, Helvetica, Arial, sans-serif" />
+      <mj-text font-size="15px" line-height="22px" color="#111827" />
+    </mj-attributes>
+  </mj-head>
+  <mj-body background-color="#f3f4f6">
+    <mj-section background-color="#ffffff" padding="24px 0">
+      <mj-column>
+        <mj-text font-size="20px" font-weight="600">A replication request waits for your approval</mj-text>
+        <mj-text>{{ consumer }} asks {{ module }} for a replica of {{ source }} (as {{ collection }}). Nothing is sent until an approver approves it.</mj-text>
+        {{ if changes }}<mj-text><strong>What changes:</strong> {{ changes }}</mj-text>{{ end }}
+        <mj-text>Open "Replication requests" in {{ module }} ({{ page }}) to approve or reject it.</mj-text>
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>

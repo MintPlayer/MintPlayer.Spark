@@ -19,6 +19,28 @@ export interface SparkShopAddress {
   phone?: string | null;
 }
 
+export interface SparkShopAddressBook {
+  entries: SparkShopAddressBookEntry[];
+}
+
+export interface SparkShopAddressBookEntry {
+  entryId: string;
+  label?: string | null;
+  address: SparkShopAddress;
+  isDefault: boolean;
+}
+
+export interface SparkShopAddressDeleteRequest {
+  entryId: string;
+}
+
+export interface SparkShopAddressSaveRequest {
+  address: SparkShopAddress;
+  entryId?: string | null;
+  label?: string | null;
+  isDefault: boolean;
+}
+
 export interface SparkShopCatalogItem {
   id: string;
   slug: string;
@@ -123,6 +145,11 @@ export interface SparkShopInspectRequest {
 export interface SparkShopInspectResult {
   returnId: string;
   disposition: string;
+}
+
+export interface SparkShopItemLink {
+  slug: string;
+  variantId: string;
 }
 
 export interface SparkShopMedia {

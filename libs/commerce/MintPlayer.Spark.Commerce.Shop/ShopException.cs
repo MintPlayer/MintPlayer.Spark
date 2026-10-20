@@ -10,6 +10,8 @@ public static class ShopRefusals
     public const string OrderNotFound = "orderNotFound";
     public const string Forbidden = "forbidden";
     public const string InvalidAddress = "invalidAddress";
+    /// <summary>GB10: the address book holds its maximum of entries.</summary>
+    public const string AddressBookFull = "addressBookFull";
     public const string MethodNotOffered = "methodNotOffered";
     public const string ServicePointRequired = "servicePointRequired";
     public const string NothingToShip = "nothingToShip";

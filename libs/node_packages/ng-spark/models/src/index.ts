@@ -1,10 +1,19 @@
 // Generated from the C# contracts (docs/guide-typescript-contracts.md): EntityPermissions, ValidationRule,
-// PersistentObjectPermissions, PersistentObjectAttributeOption, PersistentObjectAttributeAsDetail. The two
-// explicit exports below shadow the generated PersistentObject and PersistentObjectAttribute with the
-// hand-written mirrors the client uses (checked against the generated ones at compile time).
+// PersistentObjectPermissions, PersistentObjectAttributeOption, PersistentObjectAttributeAsDetail, the CSV import result,
+// EntityTypeDefinition, EntityRevisionsDefinition, SparkReferenceTree, SparkQuerySortColumn, SparkQueryColumn,
+// LookupReferenceDto, LookupReferenceValueDto, ELookupDisplayType, ERefreshTrigger. The explicit exports below shadow the
+// generated types the client keeps a hand-written mirror of (narrower members, client-side docs); each mirror carries a
+// compile-time check against its generated type, so a member the server adds fails this build until the mirror has it.
 export * from './generated/contracts';
 export type { PersistentObject } from './persistent-object';
 export type { PersistentObjectAttribute } from './persistent-object-attribute';
+export { EReferenceDisplayType, type EntityAttributeDefinition, type AttributeTab, type AttributeGroup } from './entity-type';
+export type { SparkQuery } from './spark-query';
+export type { QueryResult, QueryColumn, QueryResultItem, QueryResultItemValue } from './query-result';
+export type { ProgramUnit, ProgramUnitGroup, ProgramUnitsConfiguration } from './program-unit';
+export type { LookupReferenceListItem } from './lookup-reference';
+export type { CustomActionDefinition } from './custom-action';
+export type { SparkSelectionModeSetting } from './selection-mode';
 export * from './translated-string';
 export * from './validation-error';
 export * from './showed-on';

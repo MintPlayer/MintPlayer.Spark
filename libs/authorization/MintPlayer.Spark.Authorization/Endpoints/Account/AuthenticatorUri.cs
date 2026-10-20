@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
+using MintPlayer.Spark.Authorization.Contracts;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Authorization.Configuration;
@@ -35,7 +36,7 @@ internal sealed partial class AuthenticatorUri<TUser> : IGetEndpoint
 
         var key = await userManager.GetAuthenticatorKeyAsync(user);
         if (string.IsNullOrEmpty(key))
-            return Results.Json(new { error = "no_authenticator_key" }, statusCode: StatusCodes.Status409Conflict);
+            return Results.Json(new SparkAuthError("no_authenticator_key"), statusCode: StatusCodes.Status409Conflict);
 
         var issuer = options.Value.AuthenticatorIssuer
             ?? environment?.ApplicationName

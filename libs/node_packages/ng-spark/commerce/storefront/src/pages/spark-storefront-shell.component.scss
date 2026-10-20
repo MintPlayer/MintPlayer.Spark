@@ -1,0 +1,96 @@
+// The storefront's theme tokens (M17). Every commerce component reads them with a Bootstrap fallback, so they follow
+// the app's Bootstrap theme and dark mode (#462); override any of them on an ancestor of the shell.
+:host {
+  --spark-commerce-text: var(--bs-body-color, #212529);
+  --spark-commerce-bg: var(--bs-body-bg, #fff);
+  --spark-commerce-surface: var(--bs-tertiary-bg, #f8f9fa);
+  --spark-commerce-border: var(--bs-border-color, #dee2e6);
+  --spark-commerce-muted: var(--bs-secondary-color, #6c757d);
+  --spark-commerce-link: var(--bs-link-color, #0d6efd);
+  --spark-commerce-primary: var(--bs-primary, #0d6efd);
+  --spark-commerce-success: var(--bs-success-text-emphasis, #0a3622);
+  --spark-commerce-warning: var(--bs-warning, #ffc107);
+  --spark-commerce-warning-text: var(--bs-warning-text-emphasis, #664d03);
+  --spark-commerce-danger: var(--bs-danger-text-emphasis, #58151c);
+  --spark-commerce-focus: var(--bs-focus-ring-color, rgba(13, 110, 253, 0.5));
+  --spark-commerce-radius: var(--bs-border-radius, 0.375rem);
+  --spark-commerce-gap: 1rem;
+  --spark-commerce-max-width: 72rem;
+
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  color: var(--spark-commerce-text);
+  background: var(--spark-commerce-bg);
+}
+
+// WCAG 2.4.7: a visible focus indicator on everything focusable inside the storefront.
+:host ::ng-deep :focus-visible {
+  outline: 2px solid var(--spark-commerce-primary);
+  outline-offset: 2px;
+}
+
+.spark-storefront-skip {
+  position: absolute;
+  left: 0.5rem;
+  top: -10rem;
+  z-index: 1000;
+  padding: 0.5rem 1rem;
+  background: var(--spark-commerce-bg);
+  color: var(--spark-commerce-link);
+  border: 2px solid var(--spark-commerce-primary);
+  border-radius: var(--spark-commerce-radius);
+
+  &:focus {
+    top: 0.5rem;
+  }
+}
+
+.spark-storefront-header,
+.spark-storefront-footer {
+  border-color: var(--spark-commerce-border);
+  border-style: solid;
+  border-width: 0;
+}
+
+.spark-storefront-header {
+  border-bottom-width: 1px;
+}
+
+.spark-storefront-footer {
+  margin-top: auto;
+  border-top-width: 1px;
+  font-size: 0.875rem;
+}
+
+.spark-storefront-nav ul,
+.spark-storefront-footer ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem var(--spark-commerce-gap);
+  max-width: var(--spark-commerce-max-width);
+  margin: 0 auto;
+  padding: 0.75rem var(--spark-commerce-gap);
+  list-style: none;
+}
+
+.spark-storefront-nav a,
+.spark-storefront-footer a {
+  color: var(--spark-commerce-link);
+}
+
+.spark-storefront-nav a.active {
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.spark-storefront-main {
+  width: 100%;
+  max-width: var(--spark-commerce-max-width);
+  margin: 0 auto;
+  padding: var(--spark-commerce-gap);
+
+  &:focus {
+    outline: none;
+  }
+}

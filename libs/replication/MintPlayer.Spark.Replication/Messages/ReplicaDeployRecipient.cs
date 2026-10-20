@@ -12,10 +12,11 @@ namespace MintPlayer.Spark.Replication.Messages;
 
 /// <summary>
 /// Owner: brings one consumer's delivery in line with its subscriptions (warehouse §4.2.2 "Deploy"). On ETL, one task
-/// per consumer with one transform per delivering subscription, rendered by this module from the approved manifest,
-/// to the destination in the consumer's registry entry (F19); skipped when transport, destination and hashes are
-/// unchanged (WD15), so a changed registry entry redeploys. On HTTP, a newly approved subscription gets its initial
-/// reconcile. Grants are checked again here; a lost one suspends (§4.2.6).
+/// per consumer with one transform per delivering subscription, rendered by this module from the approved manifest
+/// and the owner's row scope for that consumer (§4.2.3 "Row filter"), to the destination in the consumer's registry
+/// entry (F19); skipped when transport, destination, hashes and scopes are unchanged (WD15), so a changed registry
+/// entry redeploys and a changed scope re-renders and resets its transform. On HTTP, a newly approved subscription,
+/// or one whose scope changed, gets a reconcile. Grants are checked again here; a lost one suspends (§4.2.6).
 /// </summary>
 internal sealed partial class ReplicaDeployRecipient : IRecipient<ReplicaDeployMessage>
 {
@@ -28,6 +29,12 @@ internal sealed partial class ReplicaDeployRecipient : IRecipient<ReplicaDeployM
     [Inject] private readonly IOptions<SparkReplicationOptions> options;
     [Inject] private readonly TimeProvider timeProvider;
     [Inject] private readonly ILogger<ReplicaDeployRecipient> logger;
+    [Inject] private readonly IReplicaRowScopes rowScopes;
+
+    private sealed record Delivery(SparkReplicationSubscription Subscription, ReplicaManifest Manifest, ReplicaRowScope? Scope)
+    {
+        public string? ScopeFingerprint => Scope?.Fingerprint;
+    }
 
     public async Task HandleAsync(ReplicaDeployMessage message, CancellationToken cancellationToken = default)
     {
@@ -37,7 +44,7 @@ internal sealed partial class ReplicaDeployRecipient : IRecipient<ReplicaDeployM
         using var session = documentStore.OpenAsyncSession();
         var all = (await session.Advanced.LoadStartingWithAsync<SparkReplicationSubscription>($"SparkReplicationSubscriptions/{consumer}/", pageSize: 1024, token: cancellationToken)).ToList();
 
-        var delivering = new List<(SparkReplicationSubscription Subscription, ReplicaManifest Manifest)>();
+        var delivering = new List<Delivery>();
         foreach (var subscription in all.Where(s => s.IsDelivering))
         {
             if (!ReplicaScriptRenderer.TryParse(subscription.ApprovedManifest, out var manifest, out var error))
@@ -53,7 +60,7 @@ internal sealed partial class ReplicaDeployRecipient : IRecipient<ReplicaDeployM
                 logger.LogWarning("Suspended the replication of '{Target}' to '{Consumer}' at deploy: {Reason}", subscription.TargetCollection, consumer, grant.Refusal);
                 continue;
             }
-            delivering.Add((subscription, manifest!));
+            delivering.Add(new Delivery(subscription, manifest!, await rowScopes.GetAsync(consumer, subscription.SourceCollection, cancellationToken)));
         }
 
         var now = timeProvider.GetUtcNow().UtcDateTime;
@@ -65,8 +72,10 @@ internal sealed partial class ReplicaDeployRecipient : IRecipient<ReplicaDeployM
         await session.SaveChangesAsync(cancellationToken);
     }
 
+    internal static string TransformName(string targetCollection) => $"spark-replica-{targetCollection}";
+
     private async Task DeployEtlAsync(string consumer, List<SparkReplicationSubscription> all,
-        List<(SparkReplicationSubscription Subscription, ReplicaManifest Manifest)> delivering, DateTime now, CancellationToken cancellationToken)
+        List<Delivery> delivering, DateTime now, CancellationToken cancellationToken)
     {
         string? destination = null;
         string[] urls = [];
@@ -82,8 +91,8 @@ internal sealed partial class ReplicaDeployRecipient : IRecipient<ReplicaDeployM
             destination = $"{database}@{string.Join(",", urls)}";
         }
 
-        var unchanged = all.All(s => delivering.Any(d => d.Subscription == s)
-            ? s.Deployed is { Transport: ReplicationTransport.Etl } deployed && deployed.Hash == s.ApprovedHash && deployed.Destination == destination
+        var unchanged = all.All(s => delivering.FirstOrDefault(d => d.Subscription == s) is { } d
+            ? s.Deployed is { Transport: ReplicationTransport.Etl } deployed && deployed.Hash == s.ApprovedHash && deployed.Destination == destination && deployed.Scope == d.ScopeFingerprint
             : s.Deployed is null);
         if (unchanged)
         {
@@ -101,11 +110,18 @@ internal sealed partial class ReplicaDeployRecipient : IRecipient<ReplicaDeployM
             var owner = options.Value.ModuleName;
             var transforms = delivering
                 .Select(d => new EtlTransformScript(
-                    $"spark-replica-{d.Subscription.TargetCollection}",
+                    TransformName(d.Subscription.TargetCollection),
                     d.Subscription.SourceCollection,
-                    ReplicaScriptRenderer.RenderEtlScript(d.Manifest, owner)))
+                    ReplicaScriptRenderer.RenderEtlScript(d.Manifest, owner, d.Scope)))
                 .ToList();
-            result = await etlTaskManager.DeployAsync(new EtlDeployment(consumer, database!, urls, transforms), cancellationToken);
+
+            // A transform already running with another scope is reset after the update, so rows that entered the scope are
+            // loaded and rows that left it are removed by the reprocessing (the script loads nothing for them).
+            var reset = delivering
+                .Where(d => d.Subscription.Deployed is { Transport: ReplicationTransport.Etl } deployed && deployed.Scope != d.ScopeFingerprint)
+                .Select(d => TransformName(d.Subscription.TargetCollection))
+                .ToList();
+            result = await etlTaskManager.DeployAsync(new EtlDeployment(consumer, database!, urls, transforms) { ResetTransforms = reset }, cancellationToken);
         }
 
         if (!result.Success)
@@ -118,15 +134,15 @@ internal sealed partial class ReplicaDeployRecipient : IRecipient<ReplicaDeployM
 
         foreach (var subscription in all)
         {
-            subscription.Deployed = delivering.Any(d => d.Subscription == subscription)
-                ? new ReplicationDeployment { Transport = ReplicationTransport.Etl, Hash = subscription.ApprovedHash, Destination = destination, DeployedAtUtc = now }
+            subscription.Deployed = delivering.FirstOrDefault(d => d.Subscription == subscription) is { } delivery
+                ? new ReplicationDeployment { Transport = ReplicationTransport.Etl, Hash = subscription.ApprovedHash, Destination = destination, Scope = delivery.ScopeFingerprint, DeployedAtUtc = now }
                 : null;
         }
         logger.LogInformation("ETL delivery to '{Consumer}': {Count} transform(s).", consumer, delivering.Count);
     }
 
     private async Task DeployHttpAsync(Raven.Client.Documents.Session.IAsyncDocumentSession session, string consumer, List<SparkReplicationSubscription> all,
-        List<(SparkReplicationSubscription Subscription, ReplicaManifest Manifest)> delivering, DateTime now, CancellationToken cancellationToken)
+        List<Delivery> delivering, DateTime now, CancellationToken cancellationToken)
     {
         // A switch from ETL leaves a task behind: remove it, so the two transports never both write.
         if (all.Any(s => s.Deployed?.Transport == ReplicationTransport.Etl))
@@ -138,19 +154,20 @@ internal sealed partial class ReplicaDeployRecipient : IRecipient<ReplicaDeployM
 
         foreach (var subscription in all)
         {
-            if (!delivering.Any(d => d.Subscription == subscription))
+            if (delivering.FirstOrDefault(d => d.Subscription == subscription) is not { } delivery)
             {
                 subscription.Deployed = null;
                 continue;
             }
 
-            if (subscription.Deployed is { Transport: ReplicationTransport.Http } deployed && deployed.Hash == subscription.ApprovedHash)
+            if (subscription.Deployed is { Transport: ReplicationTransport.Http } deployed && deployed.Hash == subscription.ApprovedHash && deployed.Scope == delivery.ScopeFingerprint)
                 continue;
 
-            // The initial load (and the load after a new shape is approved): the reconcile pushes what is missing or older.
+            // The initial load (and the load after a new shape is approved or the scope changed): the reconcile pushes what
+            // is missing or older, and tombstones what the consumer holds outside its scope.
             await outbox.EnqueueAsync(session, new ReplicaReconcileMessage { Consumer = consumer, TargetCollection = subscription.TargetCollection }, cancellationToken: cancellationToken);
-            subscription.Deployed = new ReplicationDeployment { Transport = ReplicationTransport.Http, Hash = subscription.ApprovedHash, DeployedAtUtc = now };
-            logger.LogInformation("HTTP delivery of '{Target}' to '{Consumer}' active in {Hash}; initial reconcile queued.", subscription.TargetCollection, consumer, subscription.ApprovedHash);
+            subscription.Deployed = new ReplicationDeployment { Transport = ReplicationTransport.Http, Hash = subscription.ApprovedHash, Scope = delivery.ScopeFingerprint, DeployedAtUtc = now };
+            logger.LogInformation("HTTP delivery of '{Target}' to '{Consumer}' active in {Hash}; reconcile queued.", subscription.TargetCollection, consumer, subscription.ApprovedHash);
         }
     }
 }

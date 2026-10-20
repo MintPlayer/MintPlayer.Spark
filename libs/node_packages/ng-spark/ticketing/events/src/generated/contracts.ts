@@ -149,6 +149,26 @@ export interface SparkPublicEvent {
   phases: SparkPublicPhase[];
 }
 
+export interface SparkPublicEventList {
+  events: SparkPublicEventSummary[];
+  total: number;
+  skip: number;
+  take: number;
+}
+
+export interface SparkPublicEventSummary {
+  id: string;
+  slug: string;
+  name: TranslatedString;
+  description?: TranslatedString | null;
+  imageUrl?: string | null;
+  status: string;
+  minimumAge?: number | null;
+  nextStartsAt?: string | null;
+  nextTimeZoneId?: string | null;
+  dateCount: number;
+}
+
 export interface SparkPublicPhase {
   id: string;
   name: TranslatedString;

@@ -1,21 +1,22 @@
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, OnInit, output, signal } from '@angular/core';
 import { currentLanguage, formatMoney } from '@mintplayer/ng-spark/models';
 import { formatSparkDateTime } from '@mintplayer/ng-spark/date-time';
 import { SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { ResolveTranslationPipe, TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
 import { SparkBasket, SparkBasketLine } from './generated/contracts';
 import { refusalKey, refusalOf, SparkCommerceCheckoutService } from './spark-commerce-checkout.service';
+import { SparkCheckoutHoldTimerComponent } from './spark-checkout-hold-timer.component';
 
 /**
  * The basket (commerce #521): its lines with quantity controls, each line's hold ("Reserved until …" or expired), the
- * countdown to the earliest hold deadline (D40), the minimum-age note (GB12), the total, and the button that goes to
+ * hold timer of the earliest hold deadline with "More time" (D40, GA10), the minimum-age note (GB12), the total, and the button that goes to
  * the last step. A basket locked by an order awaiting payment shows that order instead.
  *
  * `<spark-checkout-basket (checkout)="goToLastStep()" (resume)="openOrder($event)" />`
  */
 @Component({
   selector: 'spark-checkout-basket',
-  imports: [TranslateKeyPipe, ResolveTranslationPipe],
+  imports: [TranslateKeyPipe, ResolveTranslationPipe, SparkCheckoutHoldTimerComponent],
   templateUrl: './spark-checkout-basket.component.html',
   styleUrl: './spark-checkout-basket.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -33,28 +34,11 @@ export class SparkCheckoutBasketComponent implements OnInit {
   protected readonly basket = signal<SparkBasket | null>(null);
   protected readonly busy = signal(false);
   protected readonly refusal = signal<string | null>(null);
-  private readonly now = signal(Date.now());
 
   protected readonly lines = computed(() => this.basket()?.lines ?? []);
   protected readonly total = computed(() => this.money(this.basket()?.total));
   protected readonly minimumAge = computed(() => this.lines().reduce<number | null>(
     (max, line) => (line.minimumAge != null && (max == null || line.minimumAge > max) ? line.minimumAge : max), null));
-
-  /** The time left on the earliest hold, `m:ss`; `null` without a hold or once it lapsed. */
-  protected readonly countdown = computed(() => {
-    const until = this.basket()?.earliestHoldUntil;
-    if (!until) return null;
-    const left = Math.floor((Date.parse(until) - this.now()) / 1000);
-    if (!(left > 0)) return null;
-    const minutes = Math.floor(left / 60);
-    const seconds = left % 60;
-    return this.lang.t('commerceCheckout.holdCountdown').replace('{0}', `${minutes}:${String(seconds).padStart(2, '0')}`);
-  });
-
-  constructor() {
-    const timer = setInterval(() => this.now.set(Date.now()), 1000);
-    inject(DestroyRef).onDestroy(() => clearInterval(timer));
-  }
 
   ngOnInit(): void {
     void this.reload();

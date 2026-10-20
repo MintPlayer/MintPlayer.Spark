@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Antiforgery;
+using MintPlayer.Spark.Authorization.Contracts;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions.Authentication;
@@ -117,7 +118,7 @@ internal sealed partial class RevokeAgentGrant : IPostEndpoint<AgentGrantRevokeR
             return Results.NotFound();
 
         return await account.RevokeAsync(userId, request.Key, cancellationToken)
-            ? Results.Ok(new { revoked = true })
+            ? Results.Ok(SparkGrantRevoked.Done)
             : Results.NotFound();
     }
 }
@@ -145,7 +146,7 @@ internal sealed partial class RevokeConnectedApplication : IPostEndpoint<Connect
             return Results.NotFound();
 
         return await account.RevokeApplicationAsync(userId, request.Source, request.Id, cancellationToken)
-            ? Results.Ok(new { revoked = true })
+            ? Results.Ok(SparkGrantRevoked.Done)
             : Results.NotFound();
     }
 }

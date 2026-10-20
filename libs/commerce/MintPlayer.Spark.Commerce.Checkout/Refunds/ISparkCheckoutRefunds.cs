@@ -22,10 +22,38 @@ public interface ISparkCheckoutRefunds
     Task RegisterGoodsBackAsync(GoodsBackRegistration registration, CancellationToken cancellationToken = default);
 }
 
+/// <summary>
+/// Refunds goods the seller cannot deliver (lead decision 2026-10-20, commerce PRD §13): a warehouse cancelled units on its
+/// own (a cancelled remainder, warehouse §4.3). Registered scoped by <c>AddCommerceCheckout()</c>; Commerce.Fulfilment
+/// calls it. CRD Art. 18(2)–(3): where the trader fails to deliver, the consumer is reimbursed all sums paid without undue
+/// delay; Art. 13(1): including the costs of delivery (⚠️ both unconfirmed against EUR-Lex, D37).
+/// </summary>
+public interface ISparkCheckoutUndelivered
+{
+    /// <summary>
+    /// Refunds the units' charged amounts (with their order-discount share and their fees) and, when no goods of the order
+    /// remain, the whole delivery cost; the buyer gets the refund mail once it is paid. No quota goes back on sale here: a
+    /// stock feed's line is restocked by the feed (warehouse §4.4 rule 1). Idempotent per <see cref="UndeliveredRefund.Reference"/>;
+    /// answers the refund id, or null when nothing was left to refund.
+    /// </summary>
+    Task<string?> RefundUndeliveredAsync(UndeliveredRefund request, CancellationToken cancellationToken = default);
+}
+
+/// <summary>Goods that will not be delivered.</summary>
+/// <param name="Reference">Stable per fact (e.g. the warehouse's cumulative cancelled count of a line): a repeat refunds nothing.</param>
+public sealed record UndeliveredRefund(string OrderId, string Reference, IReadOnlyList<UndeliveredLine> Lines);
+
+public sealed record UndeliveredLine(string LineId, int Quantity);
+
 public enum GoodsBackKind
 {
     Received,
     ProofOfDispatch,
+    /// <summary>
+    /// Neither yet: the seller pays the withheld refund now, without waiting for the goods (a host's "refund on request",
+    /// warehouse PRD WD12, commerce §4.9). No date is recorded; the receipt is still registered when the goods arrive.
+    /// </summary>
+    Released,
 }
 
 /// <summary>Goods of a return came back, or dispatch was proven.</summary>

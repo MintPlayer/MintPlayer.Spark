@@ -51,6 +51,9 @@ jobs:
       - uses: ./.github/actions/spark-regenerate
         with:
           expected_sha: ${{ inputs.expected_sha }}
+          # The TypeScript contracts (commerce X20): each app's, and ng-spark's from tools/SchemaGenerator.
+          contracts: 'true'
+          library-contracts-project: tools/SchemaGenerator/MintPlayer.Spark.SchemaGenerator.csproj
           projects: |
             apps/DemoApp/DemoApp/DemoApp.csproj
             apps/HR/HR/HR.csproj

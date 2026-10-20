@@ -4,7 +4,82 @@
 // CI fails when this file differs from what the generator writes.
 // </auto-generated>
 
+import type { SparkDateTimeDisplay } from '../date-time-display';
+import type { SparkSubQueryEntry } from '../sub-query';
 import type { TranslatedString } from '../translated-string';
+
+export interface AttributeGroup {
+  id: string;
+  name: string;
+  label?: TranslatedString | null;
+  tab?: string | null;
+  order: number;
+}
+
+export interface AttributeTab {
+  id: string;
+  name: string;
+  label?: TranslatedString | null;
+  order: number;
+  columnCount?: number | null;
+}
+
+export interface CustomActionDefinition {
+  name: string;
+  label: TranslatedString;
+  icon?: string | null;
+  description?: TranslatedString | null;
+  showedOn: string;
+  selectionRule?: string | null;
+  refreshOnCompleted: boolean;
+  confirmation?: TranslatedString | null;
+  variant?: string | null;
+  offset: number;
+  isDefault?: boolean;
+  requiresClient?: string;
+}
+
+export enum ELookupDisplayType {
+  Dropdown = 0,
+  Modal = 1,
+}
+
+export type EReferenceDisplayType = 'Dropdown' | 'Modal';
+
+export type ERefreshTrigger = 'None' | 'Auto' | 'ValueChanged' | 'Blur';
+
+export interface EntityAttributeDefinition {
+  id: string;
+  name: string;
+  label?: TranslatedString | null;
+  description?: TranslatedString | null;
+  dataType: string;
+  isRequired: boolean;
+  isReadOnly: boolean;
+  order: number;
+  query?: string | null;
+  referenceType?: string | null;
+  asDetailType?: string | null;
+  isArray: boolean;
+  editMode?: string | null;
+  referenceDisplayType?: EReferenceDisplayType | null;
+  referenceTree?: SparkReferenceTree | null;
+  isSortable?: boolean | null;
+  canSort?: boolean | null;
+  canFilter?: boolean | null;
+  canListDistincts?: boolean | null;
+  triggersRefresh?: ERefreshTrigger | null;
+  lookupReferenceType?: string | null;
+  inCollectionType?: boolean | null;
+  inQueryType?: boolean | null;
+  showedOn: string;
+  rules: ValidationRule[];
+  group?: string | null;
+  columnSpan?: number | null;
+  renderer?: string | null;
+  rendererOptions?: Record<string, any> | null;
+  dateTimeDisplay?: SparkDateTimeDisplay | null;
+}
 
 export interface EntityPermissions {
   canQuery: boolean;
@@ -18,6 +93,57 @@ export interface EntityPermissions {
   canViewHistory: boolean;
   canRevert: boolean;
   canRevertContribution: boolean;
+}
+
+export interface EntityRevisionsDefinition {
+  enabled: boolean;
+  minimumRevisionsToKeep?: number;
+  minimumRevisionAgeToKeep?: string;
+  purgeOnDelete: boolean;
+}
+
+export interface EntityTypeDefinition {
+  id: string;
+  name: string;
+  label?: TranslatedString | null;
+  clrType?: string | null;
+  alias?: string | null;
+  canRead?: boolean;
+  detailTypes?: EntityTypeDefinition[];
+  queryType?: string | null;
+  indexName?: string | null;
+  breadcrumb?: string | null;
+  breadcrumbProjectionSatisfiable?: boolean | null;
+  serverSideRowLifecycle?: boolean | null;
+  revisions?: EntityRevisionsDefinition;
+  expiresAfter?: string;
+  live?: boolean;
+  agentPermissions?: string;
+  tabs: AttributeTab[];
+  groups: AttributeGroup[];
+  attributes: EntityAttributeDefinition[];
+  queries: SparkSubQueryEntry[];
+}
+
+export interface LookupReferenceDto {
+  name: string;
+  isTransient: boolean;
+  displayType: ELookupDisplayType;
+  values: LookupReferenceValueDto[];
+}
+
+export interface LookupReferenceListItem {
+  name: string;
+  isTransient: boolean;
+  valueCount: number;
+  displayType: ELookupDisplayType;
+}
+
+export interface LookupReferenceValueDto {
+  key: string;
+  values: TranslatedString;
+  isActive: boolean;
+  extra?: Record<string, any> | null;
 }
 
 export interface PersistentObject {
@@ -71,6 +197,78 @@ export interface PersistentObjectPermissions {
   delete: boolean;
 }
 
+export interface ProgramUnit {
+  id: string;
+  name: TranslatedString;
+  icon?: string | null;
+  type: string;
+  queryId?: string | null;
+  persistentObjectId?: string | null;
+  objectId?: string | null;
+  url?: string | null;
+  order: number;
+  alias?: string | null;
+}
+
+export interface ProgramUnitGroup {
+  id: string;
+  name: TranslatedString;
+  icon?: string | null;
+  order: number;
+  programUnits: ProgramUnit[];
+}
+
+export interface ProgramUnitsConfiguration {
+  programUnitGroups: ProgramUnitGroup[];
+}
+
+export interface QueryColumn {
+  name: string;
+  label?: TranslatedString | null;
+  description?: TranslatedString | null;
+  dataType: string;
+  order: number;
+  isArray: boolean;
+  canSort: boolean;
+  canFilter: boolean;
+  canListDistincts: boolean;
+  query?: string | null;
+  referenceType?: string | null;
+  lookupReferenceType?: string | null;
+  asDetailType?: string | null;
+  renderer?: string | null;
+  rendererOptions?: Record<string, any> | null;
+  dateTimeDisplay?: SparkDateTimeDisplay | null;
+  typeHints?: Record<string, string> | null;
+}
+
+export interface QueryResult {
+  columns: QueryColumn[];
+  items: QueryResultItem[];
+  totalItems: number;
+  skip: number;
+  take: number;
+  typeHints?: Record<string, string> | null;
+  disabledActions?: string[] | null;
+}
+
+export interface QueryResultItem {
+  id: string;
+  breadcrumb?: string | null;
+  etag?: string | null;
+  values: QueryResultItemValue[];
+  typeHints?: Record<string, string> | null;
+}
+
+export interface QueryResultItemValue {
+  key: string;
+  value?: any;
+  objectId?: string | null;
+  breadcrumb?: string | null;
+  breadcrumbs?: Record<string, string | null> | null;
+  typeHints?: Record<string, string> | null;
+}
+
 export interface SparkCsvImportResult {
   dryRun: boolean;
   created: number;
@@ -95,6 +293,46 @@ export interface SparkCsvRowError {
 }
 
 export type SparkCsvRowStatus = 'Created' | 'Updated' | 'Submitted' | 'Skipped' | 'Refused';
+
+export interface SparkError {
+  error: string;
+}
+
+export interface SparkQuery {
+  id: string;
+  name: string;
+  label?: TranslatedString | null;
+  source: string;
+  alias?: string | null;
+  sortColumns: SparkQuerySortColumn[];
+  renderMode: 'Pagination' | 'VirtualScrolling';
+  indexName?: string | null;
+  entityType?: string | null;
+  columns?: SparkQueryColumn[] | null;
+  columnOrder?: string[];
+  live?: boolean;
+  selectionMode?: SparkSelectionModeSetting | null;
+  parentReference?: string | null;
+}
+
+export interface SparkQueryColumn {
+  name: string;
+  canSort?: boolean | null;
+  canFilter?: boolean | null;
+  canListDistincts?: boolean | null;
+}
+
+export interface SparkQuerySortColumn {
+  property: string;
+  direction: string;
+}
+
+export interface SparkReferenceTree {
+  parentAttribute: string;
+  childCountAttribute?: string | null;
+}
+
+export type SparkSelectionModeSetting = 'auto' | 'none' | 'multiple';
 
 export interface ValidationRule {
   type: string;

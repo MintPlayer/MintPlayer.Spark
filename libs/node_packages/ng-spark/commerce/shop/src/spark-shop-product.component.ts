@@ -35,6 +35,9 @@ export class SparkShopProductComponent {
   /** A line was added to the basket. */
   added = output<SparkShopVariant>();
 
+  /** The product was loaded (null: none published under the slug); the storefront sets the page's meta tags from it. */
+  productLoaded = output<SparkShopProduct | null>();
+
   protected readonly product = signal<SparkShopProduct | null>(null);
   protected readonly loaded = signal(false);
   protected readonly reviews = signal<SparkShopReviewPage | null>(null);
@@ -76,6 +79,7 @@ export class SparkShopProductComponent {
         this.product.set(product);
         this.chosenId.set(product?.variants.find((v) => v.id === this.variant())?.id ?? product?.variants[0]?.id ?? null);
         this.loaded.set(true);
+        this.productLoaded.emit(product);
         if (product?.reviewsEnabled) this.reviews.set(await this.shop.reviews(product.id));
       }, () => this.loaded.set(true));
     });

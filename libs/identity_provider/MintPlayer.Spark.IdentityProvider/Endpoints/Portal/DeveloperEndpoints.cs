@@ -23,6 +23,7 @@ internal class IdentityProviderPortalGroup : IEndpointGroup
 }
 
 /// <summary>What <c>GET /spark/identity-provider/developer</c> answers.</summary>
+[MintPlayer.Spark.Abstractions.SparkContract("SparkDeveloperStatus")]
 public sealed record OidcDeveloperStatusResponse(
     string? Status,
     int? AcceptedTermsVersion,
@@ -36,6 +37,11 @@ public sealed record OidcDeveloperStatusResponse(
 
 /// <summary>The body of <c>POST /spark/identity-provider/developer</c>.</summary>
 public sealed record OidcDeveloperRequestBody(int TermsVersion);
+
+/// <summary>What <c>POST /spark/identity-provider/developer/registration-token</c> answers: an RFC 7591 initial access token, shown once.</summary>
+/// <param name="ExpiresIn">Seconds until the token stops working.</param>
+[MintPlayer.Spark.Abstractions.SparkContract("SparkRegistrationToken")]
+public sealed record OidcRegistrationTokenResponse(string InitialAccessToken, int ExpiresIn);
 
 /// <summary>
 /// Issues an initial access token for dynamic client registration (RFC 7591, D8), shown once. Approved
@@ -63,7 +69,7 @@ internal sealed partial class IssueRegistrationToken : IPostEndpoint
         var token = await OidcClientRegistration.IssueInitialAccessTokenAsync(session, userId, httpContext.RequestAborted);
         await session.SaveChangesAsync(httpContext.RequestAborted);
         httpContext.Response.Headers.CacheControl = "no-store";
-        return TypedResults.Ok(new { initialAccessToken = token, expiresIn = (int)OidcClientRegistration.InitialTokenLifetime.TotalSeconds });
+        return TypedResults.Ok(new OidcRegistrationTokenResponse(token, (int)OidcClientRegistration.InitialTokenLifetime.TotalSeconds));
     }
 }
 

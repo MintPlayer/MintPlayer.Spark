@@ -28,6 +28,7 @@ internal sealed partial class ReplicaPushRecipient : IRecipient<ReplicaPushMessa
     [Inject] private readonly IOptions<SparkReplicationOptions> options;
     [Inject] private readonly TimeProvider timeProvider;
     [Inject] private readonly ILogger<ReplicaPushRecipient> logger;
+    [Inject] private readonly IReplicaRowScopes rowScopes;
 
     public async Task HandleAsync(ReplicaPushMessage message, CancellationToken cancellationToken = default)
     {
@@ -43,12 +44,18 @@ internal sealed partial class ReplicaPushRecipient : IRecipient<ReplicaPushMessa
             return;
         }
 
+        // The owner's row scope for this consumer, read now (warehouse §4.2.3, "Row filter"): rows of other consumers never leave.
+        var scope = await rowScopes.GetAsync(message.Consumer, subscription.SourceCollection, cancellationToken);
+        var items = await ReplicaItems.ReadAsync(documentStore, session, manifest!, message.Ids, cancellationToken, scope, message.HeldIds);
+        if (items.Count == 0)
+            return;
+
         var request = new ReplicaApplyRequest
         {
             SourceModule = options.Value.ModuleName,
             TargetCollection = message.TargetCollection,
             Hash = subscription.ApprovedHash!,
-            Items = await ReplicaItems.ReadAsync(documentStore, session, manifest!, message.Ids, cancellationToken),
+            Items = items,
         };
 
         var registration = await moduleDirectory.FindAsync(message.Consumer, cancellationToken);
@@ -88,23 +95,38 @@ internal sealed partial class ReplicaPushRecipient : IRecipient<ReplicaPushMessa
     }
 }
 
-/// <summary>Reads source documents as replica items: the projection of each, or a tombstone for an id that is gone.</summary>
+/// <summary>
+/// Reads source documents as replica items: the projection of each, or a tombstone for an id that is gone. Under a row
+/// scope (warehouse §4.2.3, "Row filter") a row outside it is never projected; it and a gone id become a tombstone only
+/// when the consumer is known to hold them (<paramref name="heldIds"/>), and are skipped otherwise, so neither the
+/// content nor the id of another consumer's row reaches this one.
+/// </summary>
 internal static class ReplicaItems
 {
     public static async Task<List<ReplicaItem>> ReadAsync(IDocumentStore store, Raven.Client.Documents.Session.IAsyncDocumentSession session,
-        ReplicaManifest manifest, IReadOnlyCollection<string> ids, CancellationToken cancellationToken)
+        ReplicaManifest manifest, IReadOnlyCollection<string> ids, CancellationToken cancellationToken,
+        ReplicaRowScope? scope = null, IReadOnlyCollection<string>? heldIds = null)
     {
+        var held = new HashSet<string>(heldIds ?? [], StringComparer.OrdinalIgnoreCase);
         var loaded = await session.LoadAsync<object>(ids.Distinct(StringComparer.OrdinalIgnoreCase), cancellationToken);
         var items = new List<ReplicaItem>(ids.Count);
         foreach (var (id, entity) in loaded)
         {
             if (entity is null)
             {
-                items.Add(new ReplicaItem { Id = id, Deleted = true });
+                if (scope is null || held.Contains(id))
+                    items.Add(new ReplicaItem { Id = id, Deleted = true });
                 continue;
             }
 
             var source = ReplicaJson.Serialize(store, entity);
+            if (!ReplicaRowScopes.Admits(scope, source))
+            {
+                if (held.Contains(id))
+                    items.Add(new ReplicaItem { Id = id, Deleted = true });
+                continue;
+            }
+
             var payload = ManifestProjector.Project(manifest, source);
             items.Add(new ReplicaItem
             {

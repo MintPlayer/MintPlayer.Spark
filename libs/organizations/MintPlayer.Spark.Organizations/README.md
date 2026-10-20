@@ -62,6 +62,11 @@ public class Site : IOrganizationOwned
 That is the whole row rule. A non-member gets the missing-row 404 on a load and never sees the row in a
 list, a sub-query, a reference picker or a custom-action selection.
 
+**Across organizations.** A group granted `AllOrganizations/{Type}` in `security.json` reads (Query, Read) every
+organization's rows of that type, e.g. a warehouse's staff working on every owner's stock:
+`{ "resource": "AllOrganizations/StockBalance", "groupId": "warehouse:staff" }`. Per type, explicit, never implied by a
+role; writes keep the membership rule; the switcher still narrows lists. Without the grant nothing changes.
+
 ## Cascade and export
 
 ```csharp

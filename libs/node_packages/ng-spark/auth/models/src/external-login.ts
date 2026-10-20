@@ -145,31 +145,8 @@ export function sparkExternalLoginNonce(): string {
   return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_');
 }
 
-/** One external login attached to the signed-in account. */
-export interface SparkLinkedExternalLogin {
-  provider: string;
-  providerKey: string;
-  displayName: string;
-  /**
-   * ⚠️ `false` when removing this login would leave the account with no way to sign in.
-   *
-   * Served by the server so the UI can disable the control rather than offer an action that will
-   * be refused. It is **not** the enforcement — the server refuses the request too — and a client
-   * that treats it as advisory only is behaving correctly.
-   */
-  canUnlink: boolean;
-}
-
-/** A provider that is configured but not yet attached to the signed-in account. */
-export interface SparkAvailableExternalProvider {
-  provider: string;
-  displayName: string;
-}
-
-export interface SparkExternalLogins {
-  linked: SparkLinkedExternalLogin[];
-  available: SparkAvailableExternalProvider[];
-}
+// SparkExternalLogins, SparkLinkedExternalLogin and SparkAvailableExternalProvider (GET /external-logins) are generated
+// from the C# records (MintPlayer.Spark.Authorization.Contracts, docs/guide-typescript-contracts.md).
 
 /** Why a login was not detached. */
 export type SparkUnlinkError =

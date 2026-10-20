@@ -39,6 +39,7 @@ internal sealed partial class ReplicaReconciler : IReplicaReconciler
     [Inject] private readonly IReplicaFanOut fanOut;
     [Inject] private readonly IOptions<SparkReplicationOptions> options;
     [Inject] private readonly ILogger<ReplicaReconciler> logger;
+    [Inject] private readonly IReplicaRowScopes rowScopes;
 
     public async Task<int> ReconcileAsync(string consumer, string targetCollection, CancellationToken cancellationToken)
     {
@@ -62,6 +63,11 @@ internal sealed partial class ReplicaReconciler : IReplicaReconciler
             throw new InvalidOperationException($"Module '{consumer}' is not registered in SparkModules; the reconcile retries.");
 
         var held = await ReadDigestAsync(consumer, registration.AppUrl, targetCollection, cancellationToken);
+        var heldIds = held.Keys.ToList();
+
+        // The owner's row scope (warehouse §4.2.3, "Row filter"): a row outside it is never pushed; one the consumer still
+        // holds stays in `held` and is pushed as a tombstone below.
+        var scope = await rowScopes.GetAsync(consumer, subscription.SourceCollection, cancellationToken);
 
         var toPush = new List<string>();
         using (var session = documentStore.OpenAsyncSession())
@@ -72,16 +78,19 @@ internal sealed partial class ReplicaReconciler : IReplicaReconciler
             while (await stream.MoveNextAsync())
             {
                 var current = stream.Current;
+                if (scope is not null && (current.Document is null || !ReplicaRowScopes.Admits(scope, ReplicaJson.Serialize(documentStore, current.Document))))
+                    continue;
+
                 if (!held.Remove(current.Id, out var consumerVector)
                     || SparkChangeVector.Compare(current.ChangeVector, consumerVector) is SparkChangeVectorOrder.Newer or SparkChangeVectorOrder.Concurrent)
                     toPush.Add(current.Id);
             }
         }
 
-        // Present at the consumer, gone here: the push finds nothing and sends a tombstone.
+        // Present at the consumer, gone here (or outside its scope now): the push sends a tombstone, since the consumer holds it.
         toPush.AddRange(held.Keys);
 
-        await fanOut.PublishCollectionAsync(subscription.SourceCollection, toPush, cancellationToken, onlyConsumer: consumer, onlyTarget: targetCollection);
+        await fanOut.PublishCollectionAsync(subscription.SourceCollection, toPush, cancellationToken, onlyConsumer: consumer, onlyTarget: targetCollection, heldIds: heldIds);
         logger.LogInformation("Reconciled '{Target}' of '{Consumer}': {Count} document(s) pushed.", targetCollection, consumer, toPush.Count);
         return toPush.Count;
     }
@@ -131,9 +140,18 @@ internal sealed partial class ReplicaReconcileJob : ISparkCronJob
     [Inject] private readonly IReplicaReconciler reconciler;
     [Inject] private readonly ILogger<ReplicaReconcileJob> logger;
 
+    [Inject] private readonly IMessageBus messageBus;
+
     public async Task RunAsync(CancellationToken cancellationToken)
     {
-        foreach (var subscription in await subscriptions.AllDeliveringAsync(cancellationToken))
+        var all = await subscriptions.AllDeliveringAsync(cancellationToken);
+
+        // ETL: a deploy check per consumer, so a row scope that changed without IReplicaRowScopeChanges (or a lost
+        // message) is re-rendered within one period. The deploy skips when transport, destination, hashes and scopes match.
+        foreach (var consumer in all.Where(s => s.Deployed?.Transport == ReplicationTransport.Etl).Select(s => s.ConsumerModule).Distinct(StringComparer.OrdinalIgnoreCase))
+            await messageBus.BroadcastAsync(new ReplicaDeployMessage { Consumer = consumer }, cancellationToken: cancellationToken);
+
+        foreach (var subscription in all)
         {
             if (subscription.Deployed?.Transport != ReplicationTransport.Http)
                 continue;

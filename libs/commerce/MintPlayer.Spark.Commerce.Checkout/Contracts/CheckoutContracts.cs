@@ -29,6 +29,10 @@ public sealed record SparkBasketLine(
 /// <summary>The current buyer's basket (<c>GET /spark/commerce/checkout/basket</c>).</summary>
 /// <param name="EarliestHoldUntil">The earliest hold deadline among the lines (the countdown, D40).</param>
 /// <param name="PendingOrderNumber">An order placed from this basket that awaits payment; the basket is locked until it ends.</param>
+/// <param name="ExtendableUntil">
+/// GA10 (WCAG 2.2.1 "Extend"): the deadline one "More time" (<c>POST …/basket/extend-hold</c>) would give the earliest
+/// live hold; null when no hold can move any more (each is at its channel's <c>Hold:Max</c>, or extensions are off).
+/// </param>
 [SparkContract]
 public sealed record SparkBasket(
     IReadOnlyList<SparkBasketLine> Lines,
@@ -37,7 +41,8 @@ public sealed record SparkBasket(
     DateTimeOffset? EarliestHoldUntil,
     bool MixedChannels,
     Dictionary<string, string> Choices,
-    string? PendingOrderNumber);
+    string? PendingOrderNumber,
+    DateTimeOffset? ExtendableUntil);
 
 /// <summary><c>POST /spark/commerce/checkout/basket/add</c>.</summary>
 /// <param name="AdmissionTokens">
@@ -179,6 +184,43 @@ public sealed record SparkOrderView(
 /// <summary><c>POST /spark/commerce/checkout/order/cancel-payment</c>: the buyer abandons the payment (D3: cancelled actively, holds back at once).</summary>
 [SparkContract]
 public sealed record SparkOrderNumberRequest(string Number);
+
+/// <summary><c>POST /spark/commerce/checkout/basket/extend-hold</c>: "More time" (GA10). The body is empty: the action is the whole request.</summary>
+public sealed record SparkBasketExtendHoldRequest;
+
+// ---- customer account area (GB10) ---------------------------------------------------------------------------------
+
+/// <summary>One order in the signed-in buyer's history (<c>GET /spark/commerce/checkout/account/orders</c>).</summary>
+/// <param name="Titles">The first lines' titles, for the list; the order page shows them all.</param>
+[SparkContract]
+public sealed record SparkAccountOrder(
+    string Number,
+    string State,
+    Money Total,
+    Money? AmountRefunded,
+    int LineCount,
+    IReadOnlyList<TranslatedString?> Titles,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? ConfirmedAt);
+
+/// <summary>A page of the signed-in buyer's orders, newest first.</summary>
+[SparkContract]
+public sealed record SparkAccountOrderPage(IReadOnlyList<SparkAccountOrder> Orders, int Total, int Skip, int Take);
+
+/// <summary>
+/// D4, GB10: guest orders placed with the account's confirmed e-mail address that can move onto the account
+/// (<c>GET /spark/commerce/checkout/account/guest-orders</c>). <paramref name="EmailConfirmed"/> false: the account must
+/// confirm its address first, and <paramref name="Numbers"/> is empty.
+/// </summary>
+[SparkContract]
+public sealed record SparkGuestOrdersInfo(bool EmailConfirmed, IReadOnlyList<string> Numbers);
+
+/// <summary><c>POST /spark/commerce/checkout/account/guest-orders/attach</c>: the orders that moved onto the account.</summary>
+[SparkContract]
+public sealed record SparkGuestOrdersAttached(IReadOnlyList<string> Numbers);
+
+/// <summary><c>POST /spark/commerce/checkout/account/guest-orders/attach</c>. Empty: every listed order moves.</summary>
+public sealed record SparkAttachGuestOrdersRequest;
 
 // ---- back office (GB7) --------------------------------------------------------------------------------------------
 

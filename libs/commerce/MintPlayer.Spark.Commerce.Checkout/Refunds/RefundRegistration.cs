@@ -19,6 +19,7 @@ internal static class CheckoutRefundRegistration
         services.TryAddScoped<CheckoutHolidays>();
         services.TryAddScoped<RefundService>();
         services.TryAddScoped<ISparkCheckoutRefunds>(sp => sp.GetRequiredService<RefundService>());
+        services.TryAddScoped<ISparkCheckoutUndelivered>(sp => sp.GetRequiredService<RefundService>());
         services.TryAddScoped<MassRefunds>();
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IOrderEventRecipient, RefundTermsRecipient>());
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IPaymentEventRecipient, RefundPaymentRecipient>());

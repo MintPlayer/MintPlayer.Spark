@@ -1,0 +1,40 @@
+:host {
+  display: block;
+}
+
+.spark-shop-order-seller {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--spark-commerce-border, var(--bs-border-color, #dee2e6));
+
+  p {
+    margin: 0 0 0.25rem;
+  }
+}
+
+.spark-shop-order-state {
+  font-weight: 600;
+}
+
+.spark-shop-order-lines,
+.spark-shop-order-parcels {
+  margin: 0 0 0.5rem;
+  padding-left: 1.25rem;
+
+  small {
+    margin-left: 0.5rem;
+    color: var(--spark-commerce-muted, var(--bs-secondary-color, #6c757d));
+  }
+}
+
+.spark-shop-order-return {
+  color: var(--spark-commerce-muted, var(--bs-secondary-color, #6c757d));
+}
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+}

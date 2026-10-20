@@ -1,0 +1,28 @@
+// Shared by the storefront's page wrappers (M17); the pages carry little layout of their own.
+:host {
+  display: block;
+}
+
+.spark-storefront-page-section + .spark-storefront-page-section {
+  margin-top: 2rem;
+}
+
+.spark-storefront-page-muted {
+  color: var(--spark-commerce-muted, var(--bs-secondary-color, #6c757d));
+}
+
+.spark-storefront-page-refusal {
+  color: var(--spark-commerce-danger, var(--bs-danger, #dc3545));
+}
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}

@@ -265,9 +265,10 @@ internal static class RefundMath
     /// the items and quotas scaled to the units, the seats, and the per-buyer counts (which a partial return only gives
     /// back when named). Shipped goods return no quota until restock.
     /// </summary>
-    public static InventoryReturn InventoryReturnFor(CheckoutOrderLine line, RefundUnits units, int returnedBefore, string returnId, ReturnReason reason)
+    /// <param name="returnStock">Whether the quota units go back on sale now; null: unless the line shipped. False for a line a stock feed backs (<see cref="ICheckoutStockFeed"/>).</param>
+    public static InventoryReturn InventoryReturnFor(CheckoutOrderLine line, RefundUnits units, int returnedBefore, string returnId, ReturnReason reason, bool? returnStock = null)
     {
-        var stock = line.ShippedAt is null;
+        var stock = returnStock ?? line.ShippedAt is null;
         if (returnedBefore == 0 && units.Quantity >= line.Quantity)
             return new InventoryReturn(returnId, reason, ReturnStock: stock);
         int Scale(int n) => (int)Money.RoundDiv((long)n * units.Quantity, line.Quantity);

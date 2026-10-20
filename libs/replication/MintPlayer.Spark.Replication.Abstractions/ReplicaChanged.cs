@@ -71,3 +71,39 @@ public sealed record SyncActionEnded(
     string Status,
     string? Reason,
     IReadOnlyList<string> Attributes);
+
+/// <summary>
+/// Owner side: told when a consumer's replication request arrives and waits for a decision (warehouse §4.2.2, WD16):
+/// a new shape, or a first registration, on a host that is not Development (a Development owner approves at once and
+/// tells nobody). Whom to tell is the <see cref="ReplicationRequestArrived.ApproversSlot"/> slot the application binds
+/// (typically its administrators). The library already pushes the change of the "Replication requests" query live; an
+/// observer adds anything else (a Notifications entry for the slot's members, a mail, a chat message). Called once per
+/// request, after it is committed; a consumer re-posting the same pending shape does not call it again. A failing
+/// observer is logged and does not fail the registration. Register implementations in DI (scoped), as
+/// <see cref="ISyncActionOutcomeObserver"/>.
+/// </summary>
+public interface IReplicationRequestObserver
+{
+    Task OnReplicationRequestArrivedAsync(ReplicationRequestArrived request, CancellationToken cancellationToken);
+}
+
+/// <summary>A replication request that waits for an approver.</summary>
+/// <param name="RequestId">The <c>SparkReplicationRequests/…</c> document in this (the owner's) database.</param>
+/// <param name="ConsumerModule">The module asking to receive the data.</param>
+/// <param name="SourceCollection">The owner's collection it reads.</param>
+/// <param name="TargetCollection">The consumer's replica collection.</param>
+/// <param name="Hash">The requested shape's hash.</param>
+/// <param name="ApprovedHash">The shape delivered now (it keeps flowing while this one waits, Q-W29), or null.</param>
+/// <param name="Diff">The fields added and removed against <paramref name="ApprovedHash"/>'s shape, one per line.</param>
+public sealed record ReplicationRequestArrived(
+    string RequestId,
+    string ConsumerModule,
+    string SourceCollection,
+    string TargetCollection,
+    string Hash,
+    string? ApprovedHash,
+    string? Diff)
+{
+    /// <summary>The security slot whose members decide replication requests (<c>security.json</c> <c>bindings</c>).</summary>
+    public const string ApproversSlot = "replication:approvers";
+}

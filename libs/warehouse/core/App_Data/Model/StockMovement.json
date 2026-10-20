@@ -1,0 +1,197 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "The append-only ledger (PRD §4.5), keyed by op id (WI4): never edited or deleted.",
+    "",
+    "HAND-AUTHORED. Ids are UUIDv5 of 'warehouse:StockMovement[...]', written by 'npm run stamp:library-model-ids'."
+  ],
+  "persistentObject": {
+    "id": "68d63a14-3a69-5de1-8c59-22889f67491a",
+    "name": "StockMovement",
+    "clrType": "MintPlayer.Spark.Warehouse.Models.StockMovement",
+    "alias": "warehouse-stock-movement",
+    "breadcrumb": "{Kind} {OpId}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "73eb78d9-10ac-532a-a0bc-9eacc7f06657",
+        "name": "OpId",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "88fff3e4-81f5-5987-bd60-93aabe4537e7",
+        "name": "Kind",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "c08b28ad-a797-5a98-b9d7-d1eab448945e",
+        "name": "ItemId",
+        "dataType": "Reference",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "query": "WarehouseItems",
+        "referenceType": "MintPlayer.Spark.Warehouse.Models.WarehouseItem"
+      },
+      {
+        "id": "34a0ee7a-b7da-53bf-855f-8ca70dd06f9e",
+        "name": "LotCode",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "ce132744-ffa7-57cd-b351-e72c4adbc2cf",
+        "name": "FromLocationId",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "0f96696e-ffa8-5dc4-b88d-6ed410416c5c",
+        "name": "ToLocationId",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "69fe4b55-7365-56d2-adbf-1b6b01bb0652",
+        "name": "Quantity",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "8ea664fc-8c00-50bc-8b49-a334386de78f",
+        "name": "Channel",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "554c29dc-0a00-50a1-9a14-71f50c768913",
+        "name": "ReasonCode",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 9,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "b81edcaf-668f-586b-baa9-5e5795d4ebdb",
+        "name": "Reference",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 10,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "326b97b7-c76a-566e-b8b8-6e74a55cc2d7",
+        "name": "UserId",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 11,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "07865f04-cd96-58f7-b2b2-5385e705bcab",
+        "name": "DeviceId",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 12,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "bb6a147a-d519-5dc5-93e9-378d27217e22",
+        "name": "DeviceTime",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 13,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "03e7efd8-28da-5741-99ce-d263d6955931",
+        "name": "ServerTime",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 14,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "004b6260-47a3-5a34-affd-fcfb565d68a9",
+        "name": "OrganizationId",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 15,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      }
+    ]
+  },
+  "queries": [
+    {
+      "id": "b3438b14-0f8d-5d60-9ed1-2afcb50b4e13",
+      "name": "StockMovements",
+      "source": "Custom.StockMovements",
+      "alias": "stock-movements",
+      "sortColumns": [],
+      "renderMode": "Pagination",
+      "entityType": "StockMovement"
+    }
+  ]
+}

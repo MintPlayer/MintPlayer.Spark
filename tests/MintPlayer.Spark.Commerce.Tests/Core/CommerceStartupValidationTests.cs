@@ -139,7 +139,7 @@ public class CommerceStartupValidationTests
 
     [Fact]
     public void Invalid_hold_bounds_are_refused()
-        => Evaluate(Options(o => o.Channels["tickets"].Hold = new DurationBounds { Default = TimeSpan.FromMinutes(30), Min = TimeSpan.FromMinutes(5), Max = TimeSpan.FromMinutes(20) }))
+        => Evaluate(Options(o => o.Channels["tickets"].Hold = new HoldBounds { Default = TimeSpan.FromMinutes(30), Min = TimeSpan.FromMinutes(5), Max = TimeSpan.FromMinutes(20) }))
             .Errors.Should().ContainSingle();
 
     [Fact]

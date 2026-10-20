@@ -1,5 +1,7 @@
 import { CustomActionDefinition } from './custom-action';
 import { parseSelectionRule } from './selection-rule';
+import type * as Wire from './generated/contracts';
+import type { AssertNone } from './contract-mirror';
 
 /**
  * Whether a grid lets the user tick rows — what `<bs-datatable>` renders. There is no single
@@ -13,6 +15,9 @@ export type SparkSelectionMode = 'none' | 'multiple';
  * the default, and what an absent field means — to derive it from the actions offered.
  */
 export type SparkSelectionModeSetting = 'auto' | SparkSelectionMode;
+
+/** The setting is the server's `SparkSelectionMode` enum, generated as `SparkSelectionModeSetting`: the same values both ways. */
+export type SparkSelectionModeSettingMirrorsContract = AssertNone<Exclude<Wire.SparkSelectionModeSetting, SparkSelectionModeSetting> | Exclude<SparkSelectionModeSetting, Wire.SparkSelectionModeSetting>>;
 
 /** The largest selection the server accepts in one request (`SparkDefaultActions.MaxSelectedItems`). */
 export const SPARK_MAX_SELECTED_ITEMS = 200;

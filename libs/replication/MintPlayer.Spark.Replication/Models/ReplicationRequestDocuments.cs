@@ -149,5 +149,11 @@ public class ReplicationDeployment
     /// <summary>The ETL destination (database @ urls) taken from the consumer's registry entry; null on HTTP.</summary>
     public string? Destination { get; set; }
 
+    /// <summary>
+    /// The fingerprint of the owner's row scope this delivery was made with (<c>ReplicaRowScope.Fingerprint</c>); null when
+    /// unscoped. A change re-renders and resets the ETL transform, or reconciles the HTTP subscription.
+    /// </summary>
+    public string? Scope { get; set; }
+
     public DateTime DeployedAtUtc { get; set; }
 }

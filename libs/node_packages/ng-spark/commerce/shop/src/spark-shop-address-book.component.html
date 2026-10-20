@@ -1,0 +1,62 @@
+<section class="spark-shop-address-book" aria-labelledby="spark-shop-address-book-title">
+  <h2 id="spark-shop-address-book-title">{{ 'commerceShop.addressBook.title' | t }}</h2>
+
+  @if (refusal(); as key) {
+    <p class="spark-shop-address-book-refusal" role="alert">{{ key | t }}</p>
+  }
+  <p class="visually-hidden" role="status">{{ status() }}</p>
+
+  @if (loaded() && entries().length === 0 && !editing()) {
+    <p class="spark-shop-address-book-empty">{{ 'commerceShop.addressBook.empty' | t }}</p>
+  }
+
+  <ul class="spark-shop-address-book-list">
+    @for (entry of entries(); track entry.entryId) {
+      <li class="spark-shop-address-book-entry">
+        <div>
+          @if (entry.label) {
+            <strong>{{ entry.label }}</strong>
+          }
+          @if (entry.isDefault) {
+            <span class="spark-shop-address-book-default">{{ 'commerceShop.addressBook.default' | t }}</span>
+          }
+          <p>{{ line(entry.address) }}</p>
+        </div>
+        <div class="spark-shop-address-book-actions">
+          <button type="button" class="btn btn-link btn-sm" [disabled]="busy()" (click)="edit(entry)">{{ 'commerceShop.addressBook.edit' | t }}</button>
+          <button type="button" class="btn btn-link btn-sm" [disabled]="busy()" (click)="remove(entry)">{{ 'commerceShop.addressBook.remove' | t }}</button>
+        </div>
+      </li>
+    }
+  </ul>
+
+  @if (editing(); as form) {
+    <fieldset class="spark-shop-address-book-form">
+      <legend>{{ (form.entryId ? 'commerceShop.addressBook.edit' : 'commerceShop.addressBook.add') | t }}</legend>
+      <label>{{ 'commerceShop.addressBook.label' | t }}
+        <input maxlength="60" [value]="form.label" (input)="setLabel($any($event.target).value)" /></label>
+      <label>{{ 'commerceShop.delivery.name' | t }}
+        <input autocomplete="name" required [value]="form.address.name" (input)="set('name', $any($event.target).value)" /></label>
+      <label>{{ 'commerceShop.delivery.street' | t }}
+        <input autocomplete="address-line1" required [value]="form.address.street" (input)="set('street', $any($event.target).value)" /></label>
+      <label>{{ 'commerceShop.delivery.houseNumber' | t }}
+        <input [value]="form.address.houseNumber ?? ''" (input)="set('houseNumber', $any($event.target).value)" /></label>
+      <label>{{ 'commerceShop.delivery.postalCode' | t }}
+        <input autocomplete="postal-code" required [value]="form.address.postalCode" (input)="set('postalCode', $any($event.target).value)" /></label>
+      <label>{{ 'commerceShop.delivery.city' | t }}
+        <input autocomplete="address-level2" required [value]="form.address.city" (input)="set('city', $any($event.target).value)" /></label>
+      <label>{{ 'commerceShop.delivery.country' | t }}
+        <input autocomplete="country" maxlength="2" required [value]="form.address.country" (input)="set('country', $any($event.target).value)" /></label>
+      <label class="spark-shop-address-book-check">
+        <input type="checkbox" [checked]="form.isDefault" (change)="setDefault($any($event.target).checked)" />
+        {{ 'commerceShop.addressBook.makeDefault' | t }}
+      </label>
+      <div class="spark-shop-address-book-actions">
+        <button type="button" class="btn btn-primary" [disabled]="busy()" (click)="save()">{{ 'commerceShop.addressBook.save' | t }}</button>
+        <button type="button" class="btn btn-outline-secondary" [disabled]="busy()" (click)="cancel()">{{ 'commerceShop.addressBook.cancel' | t }}</button>
+      </div>
+    </fieldset>
+  } @else {
+    <button type="button" class="btn btn-outline-primary" [disabled]="busy()" (click)="add()">{{ 'commerceShop.addressBook.add' | t }}</button>
+  }
+</section>

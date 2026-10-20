@@ -43,6 +43,13 @@ public sealed class ReplicaPushMessage
 
     public List<string> Ids { get; set; } = [];
 
+    /// <summary>
+    /// Ids of <see cref="Ids"/> the consumer is known to hold (the reconcile read them from its digest). Under a row
+    /// scope a tombstone — for a gone row or one outside the scope — is sent only for these, so no id of another
+    /// consumer's rows ever reaches this one (warehouse §4.2.3, "Row filter"). Unscoped, every gone id is a tombstone.
+    /// </summary>
+    public List<string> HeldIds { get; set; } = [];
+
     /// <summary>When the push stops retrying an unreachable consumer (the reconcile repairs it later).</summary>
     public DateTime GiveUpAtUtc { get; set; }
 

@@ -168,7 +168,9 @@ public sealed record SyncOutcomeFrame(
     IReadOnlyList<string> Attributes);
 
 /// <summary>
-/// <c>replication:outcomes</c> is private to each signed-in user: their own write-backs' outcomes, nothing else.
+/// <c>replication:outcomes</c> and <c>replication:requests</c> are private to each signed-in user: their own write-backs'
+/// outcomes, and (for a member of <c>replication:approvers</c>) the requests that wait for them; frames are only ever
+/// published to the user they are for.
 /// </summary>
 internal sealed class ReplicationLiveTopicPolicy : ISparkLiveTopicPolicy
 {
@@ -177,7 +179,7 @@ internal sealed class ReplicationLiveTopicPolicy : ISparkLiveTopicPolicy
     public bool CanSubscribe(string topic, SparkLiveViewer viewer) => false;
 
     public bool CanSubscribePrivate(string topic, SparkLiveViewer viewer)
-        => topic == SyncOutcomeNotifier.OutcomesTopic && viewer.UserId is { Length: > 0 };
+        => topic is SyncOutcomeNotifier.OutcomesTopic or ReplicationRequestNotifier.RequestsTopic && viewer.UserId is { Length: > 0 };
 }
 
 /// <summary>Builds the stored and the wire form of write-back changes.</summary>

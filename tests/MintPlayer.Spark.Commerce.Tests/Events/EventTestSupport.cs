@@ -152,6 +152,8 @@ internal sealed class FakeCheckout : ISparkCheckout
         return Task.FromResult(Basket());
     }
 
+    public Task<SparkBasket> ExtendHoldAsync(CancellationToken cancellationToken = default) => Task.FromResult(Basket());
+
     public Task<SparkBasket> SetQuantityAsync(string lineId, int quantity, CancellationToken cancellationToken = default)
     {
         var index = Lines.FindIndex(l => l.LineId == lineId);
@@ -177,5 +179,5 @@ internal sealed class FakeCheckout : ISparkCheckout
 
     public Task MarkShippedAsync(string orderId, string lineId, DateTimeOffset shippedAt, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
-    private SparkBasket Basket() => new(Lines.ToList(), "EUR", null, null, false, new Dictionary<string, string>(), null);
+    private SparkBasket Basket() => new(Lines.ToList(), "EUR", null, null, false, new Dictionary<string, string>(), null, null);
 }

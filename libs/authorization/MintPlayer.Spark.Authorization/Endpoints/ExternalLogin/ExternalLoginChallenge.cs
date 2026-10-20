@@ -1,6 +1,7 @@
 using ExternalLoginErrors = MintPlayer.Spark.Authorization.Extensions.SparkAuthenticationExtensions.ExternalLoginErrors;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Identity;
+using MintPlayer.Spark.Authorization.Contracts;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Authorization.Extensions;
@@ -33,7 +34,7 @@ internal sealed partial class ExternalLoginChallenge<TUser> : IGetEndpoint
         var popup = Popup;
 
         if (string.IsNullOrEmpty(provider))
-            return Results.BadRequest(new { error = ExternalLoginErrors.UnknownProvider });
+            return Results.BadRequest(new SparkAuthError(ExternalLoginErrors.UnknownProvider));
 
         // R2-M3: validate returnUrl at the entry point. Even if R2-C4's callback fix were bypassed,
         // accepting an absolute attacker URL here round-trips through OAuth state and reflects back
@@ -66,7 +67,7 @@ internal sealed partial class ExternalLoginChallenge<TUser> : IGetEndpoint
         // client and a deployment disagreeing about which providers exist, which a 500 actively
         // hides.
         if (await schemes.GetSchemeAsync(provider) is null)
-            return Results.BadRequest(new { error = ExternalLoginErrors.UnknownProvider });
+            return Results.BadRequest(new SparkAuthError(ExternalLoginErrors.UnknownProvider));
 
         var properties = signInManager.ConfigureExternalAuthenticationProperties(provider, callbackUrl);
         return Results.Challenge(properties, [provider]);

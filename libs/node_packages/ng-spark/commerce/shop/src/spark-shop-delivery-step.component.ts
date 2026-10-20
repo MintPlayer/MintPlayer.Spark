@@ -3,7 +3,7 @@ import { formatMoney } from '@mintplayer/ng-spark/models';
 import { SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
 import { SparkServicePoint, SparkServicePointPickerComponent } from '@mintplayer/ng-spark/commerce/shipping';
-import { SparkShopAddress, SparkShopDeliveryChoice, SparkShopDeliveryRate } from './generated/contracts';
+import { SparkShopAddress, SparkShopAddressBookEntry, SparkShopDeliveryChoice, SparkShopDeliveryRate } from './generated/contracts';
 import { shopRefusalKey, shopRefusalOf, SparkCommerceShopService } from './spark-commerce-shop.service';
 
 /**
@@ -53,6 +53,24 @@ export class SparkShopDeliveryStepComponent implements OnInit {
       this.address.set({ ...options.chosen.shipTo });
       this.method.set(options.chosen.method);
     }
+    // GB10: a signed-in buyer's saved addresses; the default fills an empty step. Signed out answers null.
+    if (options.needsDelivery) {
+      const book = await this.shop.addressBook().catch(() => null);
+      this.saved.set(book?.entries ?? []);
+      const preferred = book?.entries.find((e) => e.isDefault);
+      if (!options.chosen && preferred) this.address.set({ ...preferred.address });
+    }
+  }
+
+  /** GB10: the address book's entries (empty when signed out). */
+  protected readonly saved = signal<SparkShopAddressBookEntry[]>([]);
+
+  /** Fills the form from a saved address; the rates are asked for again. */
+  protected useSaved(entryId: string): void {
+    const entry = this.saved().find((e) => e.entryId === entryId);
+    if (!entry) return;
+    this.address.set({ ...entry.address });
+    this.rates.set(null);
   }
 
   protected set(field: keyof SparkShopAddress, value: string): void {

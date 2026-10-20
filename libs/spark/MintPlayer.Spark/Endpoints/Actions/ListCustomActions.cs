@@ -30,7 +30,7 @@ internal sealed partial class ListCustomActions : IPostEndpoint<ListCustomAction
 
     /// <summary>A body that cannot be bound gets the empty list an unknown type gets below: never a parse error, and never a refusal (PRD D3a).</summary>
     protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure)
-        => new(Results.Json(Array.Empty<object>()));
+        => new(Results.Json(Array.Empty<Abstractions.CustomActionDefinition>()));
 
     public override async Task<IResult> HandleAsync(ListCustomActionsRequest request, CancellationToken cancellationToken)
     {
@@ -47,7 +47,7 @@ internal sealed partial class ListCustomActions : IPostEndpoint<ListCustomAction
             // while a denied type answers 200, and the difference is precisely the existence
             // oracle M-3 closes. An earlier revision called SparkDenial with a comment claiming
             // the two shapes matched. They did not.
-            return Results.Json(Array.Empty<object>());
+            return Results.Json(Array.Empty<Abstractions.CustomActionDefinition>());
         }
 
         var catalogue = catalogueLoader.GetCatalogue();
@@ -57,7 +57,7 @@ internal sealed partial class ListCustomActions : IPostEndpoint<ListCustomAction
         // name ends "Outer+Inner", which names no right).
         var typeName = entityType.Name;
 
-        var result = new List<ActionDescription>();
+        var result = new List<Abstractions.CustomActionDefinition>();
         foreach (var action in catalogue.Actions)
         {
             // A custom action needs a C# implementation; New, Edit and Delete are the framework's own
@@ -75,7 +75,7 @@ internal sealed partial class ListCustomActions : IPostEndpoint<ListCustomAction
         // By offset; stable, so equal offsets keep the catalogue's order (core first).
         var sorted = result
             .Select((item, index) => (item, index))
-            .OrderBy(x => x.item.offset)
+            .OrderBy(x => x.item.Offset)
             .ThenBy(x => x.index)
             .Select(x => x.item)
             .ToList();
@@ -83,7 +83,7 @@ internal sealed partial class ListCustomActions : IPostEndpoint<ListCustomAction
         return Results.Json(sorted);
     }
 
-    private static ActionDescription Describe(Models.ActionDefinition definition) => new(
+    internal static Abstractions.CustomActionDefinition Describe(Models.ActionDefinition definition) => new(
         definition.Name,
         definition.Label,
         definition.Icon,
@@ -96,27 +96,4 @@ internal sealed partial class ListCustomActions : IPostEndpoint<ListCustomAction
         definition.Offset,
         definition.IsBuiltIn ? true : null,
         definition.RequiresClient);
-
-    /// <summary>
-    /// One listed action. Lower-case members because this is the wire shape, serialized as-is. Text is
-    /// resolved on the server (#467, D26). <c>isDefault</c> is <c>true</c> for New, Edit and Delete and
-    /// omitted for a custom action.
-    /// </summary>
-#pragma warning disable IDE1006 // wire names
-    private sealed record ActionDescription(
-        string name,
-        Abstractions.TranslatedString label,
-        string? icon,
-        Abstractions.TranslatedString? description,
-        string showedOn,
-        string? selectionRule,
-        bool refreshOnCompleted,
-        Abstractions.TranslatedString? confirmation,
-        string? variant,
-        int offset,
-        [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
-        bool? isDefault,
-        [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
-        string? requiresClient);
-#pragma warning restore IDE1006
 }

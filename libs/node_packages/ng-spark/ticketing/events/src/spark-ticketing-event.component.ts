@@ -29,6 +29,12 @@ export interface SparkTicketSeatRequest {
   itemId: string;
 }
 
+/** The admission token a phase's line needs (its `admissionScope`), as checkout's `admissionTokens`; null when none. */
+export function admissionTokensFor(phase: Pick<SparkPublicPhase, 'admissionScope'>, tokens: Record<string, string>): Record<string, string> | null {
+  const scope = phase.admissionScope;
+  return scope && tokens[scope] ? { [scope]: tokens[scope] } : null;
+}
+
 /** One sellable row of the selected date and phase. */
 interface OfferRow {
   key: string;
@@ -68,6 +74,18 @@ export class SparkTicketingEventComponent {
   /** Tickets were put in the basket. */
   added = output<string>();
 
+  /** A queued phase's "join the queue" was chosen (§4.12): the host opens its waiting room (storefront: `/queue/{key}`). */
+  queueRequested = output<SparkPublicPhase>();
+
+  /** The event was loaded (null: none published under the slug); the storefront sets the page's meta tags from it. */
+  eventLoaded = output<SparkPublicEvent | null>();
+
+  /**
+   * The waiting room's admission tokens by scope (`ticketing-phase:{phaseId}`, §4.12); a queued phase's line is added
+   * with its token. The storefront fills it from the waiting room page (single-use, kept for the tab only).
+   */
+  admissionTokens = input<Record<string, string>>({});
+
   protected readonly event = signal<SparkPublicEvent | null>(null);
   protected readonly loaded = signal(false);
   protected readonly availability = signal<SparkEventAvailability | null>(null);
@@ -104,6 +122,7 @@ export class SparkTicketingEventComponent {
           this.event.set(ev);
           this.selectedDateId.set(ev?.dates.find((d) => d.onSale)?.id ?? ev?.dates[0]?.id ?? null);
           this.loaded.set(true);
+          this.eventLoaded.emit(ev);
           if (ev) this.availability.set(await this.events.availability(ev.id).catch(() => null));
         },
         () => this.loaded.set(true));
@@ -178,6 +197,7 @@ export class SparkTicketingEventComponent {
         itemId: row.itemId,
         quantity: this.quantity(row.key),
         options: phase.presaleCodeRequired && code ? { presale: code } : null,
+        admissionTokens: admissionTokensFor(phase, this.admissionTokens()),
       });
       this.message.set('ticketingEvents.addToBasket');
       this.added.emit(row.itemId);

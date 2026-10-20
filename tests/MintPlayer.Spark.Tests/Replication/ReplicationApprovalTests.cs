@@ -1,8 +1,12 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
+using MintPlayer.Spark.Abstractions.Authorization;
+using MintPlayer.Spark.Abstractions.Live;
+using MintPlayer.Spark.MailManager;
 using MintPlayer.Spark.Messaging;
 using MintPlayer.Spark.Messaging.Abstractions;
+using MintPlayer.Spark.Replication.Abstractions;
 using MintPlayer.Spark.Replication.Abstractions.Models;
 using MintPlayer.Spark.Replication.Abstractions.Rendering;
 using MintPlayer.Spark.Replication.Messages;
@@ -25,18 +29,40 @@ public class ReplicationApprovalTests : SparkTestDriver
     private readonly IModuleGrants _grants = Substitute.For<IModuleGrants>();
     private readonly IReplicaSourceTypes _sourceTypes = Substitute.For<IReplicaSourceTypes>();
     private readonly IMessageOutbox _outbox = Substitute.For<IMessageOutbox>();
+    private readonly IReplicationRequestObserver _approvers = Substitute.For<IReplicationRequestObserver>();
+    private readonly ISparkGroupMembers _members = Substitute.For<ISparkGroupMembers>();
+    private readonly ISecurityConfigurationLoader _security = Substitute.For<ISecurityConfigurationLoader>();
+    private readonly ISparkLiveTopics _topics = Substitute.For<ISparkLiveTopics>();
+    private readonly ISparkMailer _mailer = Substitute.For<ISparkMailer>();
+
+    /// <summary>The group the apps bind the slot to (HR, Fleet: <c>"replication:approvers": ["Administrators"]</c>).</summary>
+    private const string AdministratorsId = "a76a9b99-225d-4b3c-8985-cd29a9ddbd4e";
 
     public ReplicationApprovalTests()
     {
         _grants.CheckAsync(default!, default!, default!, default).ReturnsForAnyArgs(Task.FromResult(new ReplicaGrant(true, [])));
         _sourceTypes.Resolve("ReplSourceCars").Returns(typeof(ReplSourceCar));
+        _security.GetConfiguration().Returns(new SecurityConfiguration
+        {
+            Groups = new() { [AdministratorsId] = "Administrators" },
+            Bindings = new(StringComparer.OrdinalIgnoreCase) { [ReplicationRequestArrived.ApproversSlot] = ["Administrators"] },
+        });
+        _members.GetMembersAsync(default!, default).ReturnsForAnyArgs(Task.FromResult<IReadOnlyList<SparkGroupMember>>(
+        [
+            new SparkGroupMember("users/ada", "ada", "ada@example.test", true, "nl-BE"),
+            new SparkGroupMember("users/bob", "bob", "bob@example.test", false, null),
+        ]));
     }
 
     private ReplicaSubscriptions Owner(string environment)
     {
         var host = Substitute.For<IHostEnvironment>();
         host.EnvironmentName.Returns(environment);
-        var services = new ServiceCollection().AddSingleton(_outbox).BuildServiceProvider();
+        var services = new ServiceCollection().AddLogging().AddOptions()
+            .AddSingleton(_outbox).AddSingleton(_approvers)
+            .AddSingleton(_members).AddSingleton(_security).AddSingleton(_topics).AddSingleton(_mailer)
+            .AddScoped<IReplicationRequestNotifier, ReplicationRequestNotifier>()
+            .BuildServiceProvider();
         return new ReplicaSubscriptions(Store, _grants, _sourceTypes, host, services, TimeProvider.System, NullLogger<ReplicaSubscriptions>.Instance);
     }
 
@@ -242,5 +268,136 @@ public class ReplicationApprovalTests : SparkTestDriver
 
         (await owner.RejectAsync(SparkReplicationRequest.For(Consumer, "ReplicaCars", ReplicaCar.ReplicationHash), "users/admin", null, CancellationToken.None))
             .Should().Be(ReplicationDecisionOutcome.NotPending);
+    }
+
+    /// <summary>
+    /// Red before the observer: a request waited in "Replication requests" and nobody was told. Now the
+    /// <c>replication:approvers</c> slot hears of it once, after the commit, with the diff to decide on.
+    /// </summary>
+    [Fact]
+    public async Task A_pending_request_tells_the_approvers_once()
+    {
+        var owner = Owner("Production");
+
+        await owner.RegisterAsync(Consumer, [ReplicationFixtures.Item()], CancellationToken.None);
+        await owner.RegisterAsync(Consumer, [ReplicationFixtures.Item()], CancellationToken.None);
+
+        await _approvers.Received(1).OnReplicationRequestArrivedAsync(Arg.Is<ReplicationRequestArrived>(r =>
+                r.RequestId == SparkReplicationRequest.For(Consumer, "ReplicaCars", ReplicaCar.ReplicationHash)
+                && r.ConsumerModule == Consumer
+                && r.SourceCollection == "ReplSourceCars"
+                && r.TargetCollection == "ReplicaCars"
+                && r.Hash == ReplicaCar.ReplicationHash
+                && r.ApprovedHash == null
+                && r.Diff!.Contains("+ OwnerName ← Owner.Name")),
+            Arg.Any<CancellationToken>());
+        ReplicationRequestArrived.ApproversSlot.Should().Be("replication:approvers");
+    }
+
+    /// <summary>The request is stored before anyone is told, so an approver who follows the notification finds it.</summary>
+    [Fact]
+    public async Task The_approvers_are_told_after_the_request_is_committed()
+    {
+        SparkReplicationRequest? seen = null;
+        _approvers.OnReplicationRequestArrivedAsync(Arg.Any<ReplicationRequestArrived>(), Arg.Any<CancellationToken>())
+            .Returns(async call =>
+            {
+                using var session = Store.OpenAsyncSession();
+                seen = await session.LoadAsync<SparkReplicationRequest>(call.Arg<ReplicationRequestArrived>().RequestId);
+            });
+
+        await Owner("Production").RegisterAsync(Consumer, [ReplicationFixtures.Item()], CancellationToken.None);
+
+        seen.Should().NotBeNull();
+        seen!.Status.Should().Be(ReplicationRequestStatuses.Pending);
+    }
+
+    /// <summary>A Development owner approves at once (WD16): there is nothing to decide, so nobody is told.</summary>
+    [Fact]
+    public async Task An_auto_approved_request_tells_nobody()
+    {
+        await Owner(Environments.Development).RegisterAsync(Consumer, [ReplicationFixtures.Item()], CancellationToken.None);
+
+        await _approvers.DidNotReceiveWithAnyArgs().OnReplicationRequestArrivedAsync(default!, default);
+    }
+
+    /// <summary>Q-W29: a new shape of a delivered replica is news too, and carries the shape that keeps flowing.</summary>
+    [Fact]
+    public async Task A_new_shape_tells_the_approvers_with_the_approved_hash()
+    {
+        var owner = Owner("Production");
+        await owner.RegisterAsync(Consumer, [ReplicationFixtures.Item(ReplicaCarNarrow.Manifest, ReplicaCarNarrow.Script, ReplicaCarNarrow.Hash)], CancellationToken.None);
+        await owner.ApproveAsync(SparkReplicationRequest.For(Consumer, "ReplicaCars", ReplicaCarNarrow.Hash), "users/admin", CancellationToken.None);
+        _approvers.ClearReceivedCalls();
+
+        await owner.RegisterAsync(Consumer, [ReplicationFixtures.Item()], CancellationToken.None);
+
+        await _approvers.Received(1).OnReplicationRequestArrivedAsync(
+            Arg.Is<ReplicationRequestArrived>(r => r.Hash == ReplicaCar.ReplicationHash && r.ApprovedHash == ReplicaCarNarrow.Hash),
+            Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>A failing observer is logged; the registration (and the consumer's answer) does not depend on it.</summary>
+    [Fact]
+    public async Task A_failing_observer_does_not_fail_the_registration()
+    {
+        _approvers.OnReplicationRequestArrivedAsync(Arg.Any<ReplicationRequestArrived>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException(new InvalidOperationException("mail server down")));
+
+        var outcome = await Owner("Production").RegisterAsync(Consumer, [ReplicationFixtures.Item()], CancellationToken.None);
+
+        outcome.StatusCode.Should().Be(200);
+        outcome.Result.Items.Single().Status.Should().Be(ReplicaRegistrationStatus.Pending);
+    }
+
+    /// <summary>
+    /// The default delivery, with no observer an app registered: the slot's members (the users holding a group the slot
+    /// binds to) get a private <c>replication:requests</c> frame, and those with a confirmed address a mail.
+    /// </summary>
+    [Fact]
+    public async Task By_default_the_slot_members_get_a_live_notice_and_a_mail()
+    {
+        await Owner("Production").RegisterAsync(Consumer, [ReplicationFixtures.Item()], CancellationToken.None);
+
+        var id = SparkReplicationRequest.For(Consumer, "ReplicaCars", ReplicaCar.ReplicationHash);
+        await _members.Received(1).GetMembersAsync(Arg.Is<IReadOnlyCollection<string>>(names => names.SequenceEqual(new[] { "Administrators" })), Arg.Any<CancellationToken>());
+        _topics.Received(1).PublishPrivate("user:users/ada", ReplicationRequestNotifier.RequestsTopic, Arg.Is<ReplicationRequestFrame>(f => f.RequestId == id && f.Status == ReplicationRequestStatuses.Pending));
+        _topics.Received(1).PublishPrivate("user:users/bob", ReplicationRequestNotifier.RequestsTopic, Arg.Any<object>());
+        await _mailer.Received(1).SendAsync(Arg.Is<SparkMailRequest>(m => m.To == "ada@example.test" && m.Template == ReplicationRequestNotifier.RequestedTemplate && m.Culture == "nl-BE"), Arg.Any<CancellationToken>());
+        await _mailer.DidNotReceive().SendAsync(Arg.Is<SparkMailRequest>(m => m.To == "bob@example.test"), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>An auto-approved request reaches no member either: no frame, no mail.</summary>
+    [Fact]
+    public async Task An_auto_approved_request_sends_no_frame_and_no_mail()
+    {
+        await Owner(Environments.Development).RegisterAsync(Consumer, [ReplicationFixtures.Item()], CancellationToken.None);
+
+        _topics.DidNotReceiveWithAnyArgs().PublishPrivate(default!, default!, default!);
+        await _mailer.DidNotReceiveWithAnyArgs().SendAsync(default!, default);
+    }
+
+    /// <summary>A slot bound to no group tells nobody but the observers, and the registration still succeeds.</summary>
+    [Fact]
+    public async Task An_unbound_slot_reaches_only_the_observers()
+    {
+        _security.GetConfiguration().Returns(new SecurityConfiguration { Groups = new() { [AdministratorsId] = "Administrators" } });
+
+        var outcome = await Owner("Production").RegisterAsync(Consumer, [ReplicationFixtures.Item()], CancellationToken.None);
+
+        outcome.StatusCode.Should().Be(200);
+        await _members.DidNotReceiveWithAnyArgs().GetMembersAsync(default!, default);
+        _topics.DidNotReceiveWithAnyArgs().PublishPrivate(default!, default!, default!);
+        await _approvers.Received(1).OnReplicationRequestArrivedAsync(Arg.Any<ReplicationRequestArrived>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>The approvers' topic is private, and open to any signed-in user only for frames published to them.</summary>
+    [Fact]
+    public void The_requests_topic_is_private()
+    {
+        var policy = new ReplicationLiveTopicPolicy();
+        policy.CanSubscribe(ReplicationRequestNotifier.RequestsTopic, new SparkLiveViewer("user:users/ada", "users/ada", null)).Should().BeFalse();
+        policy.CanSubscribePrivate(ReplicationRequestNotifier.RequestsTopic, new SparkLiveViewer("user:users/ada", "users/ada", null)).Should().BeTrue();
+        policy.CanSubscribePrivate(ReplicationRequestNotifier.RequestsTopic, new SparkLiveViewer("visitor:v1", null, "v1")).Should().BeFalse();
     }
 }

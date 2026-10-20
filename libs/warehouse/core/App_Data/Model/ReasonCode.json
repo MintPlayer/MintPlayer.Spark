@@ -1,0 +1,79 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "Adjustment, short-pick and inspection reasons, editable by the host (PRD §4.5).",
+    "",
+    "HAND-AUTHORED. Ids are UUIDv5 of 'warehouse:ReasonCode[...]', written by 'npm run stamp:library-model-ids'."
+  ],
+  "persistentObject": {
+    "id": "1bf61af8-181e-5560-a94e-a1dd09f14272",
+    "name": "ReasonCode",
+    "clrType": "MintPlayer.Spark.Warehouse.Models.ReasonCode",
+    "alias": "warehouse-reason-code",
+    "breadcrumb": "{Code} {Name}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "f82b9ff7-c9bc-5712-a1aa-60592eb6a8fb",
+        "name": "Code",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "e17fda74-d114-5566-a213-92d8ab8956cb",
+        "name": "Name",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "e0be72e0-24b3-53f4-813b-522e0fd51f8b",
+        "name": "Kind",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "8d0f4cd9-17c7-52fa-81e2-5b4935024a63",
+        "name": "Active",
+        "dataType": "boolean",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ]
+  },
+  "queries": [
+    {
+      "id": "e0626526-956b-545e-825d-7c6fd7ebcddc",
+      "name": "ReasonCodes",
+      "source": "Custom.ReasonCodes",
+      "alias": "reason-codes",
+      "sortColumns": [
+        {
+          "property": "Code",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "ReasonCode"
+    }
+  ]
+}

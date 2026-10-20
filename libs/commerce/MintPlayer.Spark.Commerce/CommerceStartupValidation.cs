@@ -97,6 +97,8 @@ public static class CommerceStartupValidation
             {
                 if (!channel.Hold.IsValid)
                     errors.Add($"{path}:Hold must satisfy 0 ≤ Min ≤ Default ≤ Max.");
+                if (channel.Hold.Extension < TimeSpan.Zero)
+                    errors.Add($"{path}:Hold:Extension must not be negative (GA10; zero turns \"More time\" off).");
                 if (channel.MaxPaymentWindow <= TimeSpan.Zero)
                     errors.Add($"{path}:MaxPaymentWindow must be positive (D3).");
             }

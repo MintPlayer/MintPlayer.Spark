@@ -30,6 +30,7 @@ internal sealed class RefundEngine(
     ICommerceAudit audit,
     IEnumerable<IRefundTermsSource> termsSources,
     IEnumerable<IStandardDeliveryCost> deliverySources,
+    IEnumerable<ICheckoutStockFeed> stockFeeds,
     CheckoutInsurance insurance,
     IOptionsMonitor<SparkCommerceOptions> commerce,
     IOptionsMonitor<SparkCommerceCheckoutOptions> options,
@@ -54,6 +55,15 @@ internal sealed class RefundEngine(
     public static string ProviderReference(string orderId, string refundId) => orderId + ":refund:" + refundId;
 
     public static string InventoryReturnId(string orderId, string refundId, string lineId) => orderId + ":" + refundId + ":" + lineId;
+
+    /// <summary>Whether a stock feed owns the line's quota (<see cref="ICheckoutStockFeed"/>): Checkout then never puts its units back on sale itself.</summary>
+    public async Task<bool> FedByStockFeedAsync(CheckoutOrder order, CheckoutOrderLine line, CancellationToken cancellationToken)
+    {
+        foreach (var feed in stockFeeds)
+            if (await feed.BacksAsync(order, line, cancellationToken))
+                return true;
+        return false;
+    }
 
     /// <summary>The refund id a provider reference names, when it is one of ours.</summary>
     public static bool TryParseReference(string? reference, out string orderId, out string refundId)
@@ -183,11 +193,12 @@ internal sealed class RefundEngine(
         {
             var line = order.Lines.First(l => l.LineId == units.LineId);
             var before = ledger.Lines.First(l => l.LineId == line.LineId).QuantityReturned;
-            units.StockReturned = line.ShippedAt is null;
+            // A stock feed's line keeps its units sold until the warehouse confirmed the cancellation (warehouse §4.4 rule 1).
+            units.StockReturned = line.ShippedAt is null && !await FedByStockFeedAsync(order, line, cancellationToken);
             if (line.ClaimId is null || line.Capacity.IsEmpty)
                 continue;
             var result = await inventory.ReturnAsync(line.ClaimId,
-                RefundMath.InventoryReturnFor(line, units, before, InventoryReturnId(order.Id!, meta.RefundId, line.LineId), inventoryReason), cancellationToken);
+                RefundMath.InventoryReturnFor(line, units, before, InventoryReturnId(order.Id!, meta.RefundId, line.LineId), inventoryReason, units.StockReturned), cancellationToken);
             if (!result.Succeeded && result.Status != ClaimStatus.NotFound)
                 logger.LogWarning("Returning {Quantity} of line {LineId} (order {OrderId}) answered {Status}.", units.Quantity, line.LineId, order.Id, result.Status);
         }

@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Antiforgery;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authentication;
+using MintPlayer.Spark.Commerce.Checkout;
 using MintPlayer.Spark.Commerce.Promotions.Contracts;
 using MintPlayer.Spark.Commerce.Promotions.Models;
 using MintPlayer.Spark.Commerce.Promotions.Services;
@@ -268,13 +270,27 @@ internal sealed partial class GetMyBackInStock : IGetEndpoint
     public static string Path => "/back-in-stock/mine";
 
     [Inject] private readonly BackInStock backInStock;
+    [Inject] private readonly PromotionItems items;
     [Inject] private readonly ISparkCurrentUser currentUser;
     [Inject] private readonly ISparkAddOnEndpoints addOn;
 
     public Task<IResult> HandleAsync(HttpContext httpContext)
-        => PromotionResults.RunAsync(addOn, httpContext, async () => currentUser.Id is not { } me ? null
-            : (await backInStock.MineAsync(me, httpContext.RequestAborted))
-                .Select(s => new SparkBackInStockView(s.Id!, s.ItemId, s.CreatedAt, s.ExpiresAt, s.NotifiedAt is not null)).ToList());
+        => PromotionResults.RunAsync(addOn, httpContext, async () =>
+        {
+            if (currentUser.Id is not { } me)
+                return null;
+            var views = new List<SparkBackInStockView>();
+            foreach (var s in await backInStock.MineAsync(me, httpContext.RequestAborted))
+                views.Add(new SparkBackInStockView(s.Id!, s.ItemId, s.CreatedAt, s.ExpiresAt, s.NotifiedAt is not null, await TitleAsync(s.ItemId, httpContext.RequestAborted)));
+            return views;
+        });
+
+    /// <summary>The item's name through checkout's item sources (M17: the account area shows it); null when gone.</summary>
+    private async Task<TranslatedString?> TitleAsync(string itemId, CancellationToken cancellationToken)
+    {
+        try { return (await items.ResolveAsync(itemId, 1, cancellationToken))?.Title; }
+        catch (CheckoutException) { return null; }
+    }
 }
 
 /// <summary><c>POST /spark/commerce/promotions/back-in-stock/delete</c>: one of the signed-in buyer's own subscriptions.</summary>

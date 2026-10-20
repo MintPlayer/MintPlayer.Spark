@@ -4,3 +4,5 @@ export * from './spark-checkout-basket.component';
 export * from './spark-checkout-step.component';
 export * from './spark-checkout-order.component';
 export * from './spark-checkout-aftercare.component';
+export * from './hold-timer';
+export * from './spark-checkout-hold-timer.component';

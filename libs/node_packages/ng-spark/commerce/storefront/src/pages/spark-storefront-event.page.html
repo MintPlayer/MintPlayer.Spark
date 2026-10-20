@@ -1,0 +1,23 @@
+<spark-ticketing-event [slug]="slug()" [admissionTokens]="admissions.tokens()"
+                       (eventLoaded)="setMeta($event)" (seatsRequested)="openSeats($event)"
+                       (queueRequested)="joinQueue($event)" (added)="toBasket()" />
+
+@if (seating(); as request) {
+  @if (request.date.layoutSnapshotId; as snapshotId) {
+    <section class="spark-storefront-page-section" aria-labelledby="spark-storefront-seats-title">
+      <h2 id="spark-storefront-seats-title">{{ 'commerceStorefront.event.chooseSeats' | t }}</h2>
+      @if (refusal(); as key) {
+        <p class="spark-storefront-page-refusal" role="alert">{{ key | t }}</p>
+      }
+      <spark-seat-picker [snapshotId]="snapshotId" [(selected)]="seats" (bestAvailable)="addBestAvailable($event)" />
+      <div class="spark-storefront-event-seat-actions">
+        <button type="button" class="btn btn-primary" [disabled]="busy() || seats().length === 0" (click)="addSeats()">
+          {{ 'commerceStorefront.event.addSeats' | t }} ({{ seats().length }})
+        </button>
+        <button type="button" class="btn btn-outline-secondary" [disabled]="busy()" (click)="closeSeats()">
+          {{ 'commerceStorefront.cancel' | t }}
+        </button>
+      </div>
+    </section>
+  }
+}

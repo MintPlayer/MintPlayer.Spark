@@ -18,3 +18,11 @@ using MintPlayer.Spark.Abstractions;
 // Quantity (warehouse WX8) is written by QuantityJsonConverter ({"Amount":12,"Unit":"EA"}); its TypeScript is hand-written
 // in models/src/quantity.ts.
 [assembly: SparkClientType(typeof(Quantity), "Quantity", "quantity")]
+
+// A sub-query entry is written by SparkSubQueryJsonConverter as a bare alias or an object ({"query":…}); its TypeScript is
+// the hand-written union in models/src/sub-query.ts.
+[assembly: SparkClientType(typeof(SparkSubQuery), "SparkSubQueryEntry", "sub-query")]
+
+// An attribute's dateTimeDisplay holds SparkDateTimeZones, each written by SparkDateTimeZoneJsonConverter as a keyword or
+// a one-key object; the TypeScript is hand-written in models/src/date-time-display.ts.
+[assembly: SparkClientType(typeof(SparkDateTimeDisplay), "SparkDateTimeDisplay", "date-time-display")]

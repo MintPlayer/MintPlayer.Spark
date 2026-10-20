@@ -14,7 +14,8 @@ namespace MintPlayer.Spark.Commerce.Ticketing.Tickets.Services;
 /// <item><c>TicketsRevoked</c>: the returned units' tickets are revoked, once per revocation (I4);</item>
 /// <item><c>Disputed</c> / <c>DisputeWon</c> / <c>DisputeLost</c>: freeze, unfreeze, revoke (GB1);</item>
 /// <item><c>LineChanged</c>: a seat change or upgrade reissues the line's tickets (GB7);</item>
-/// <item><c>ConfirmationResent</c>: the tickets are re-sent with the confirmation (GB7).</item>
+/// <item><c>ConfirmationResent</c>: the tickets are re-sent with the confirmation (GB7);</item>
+/// <item><c>AttachedToAccount</c>: the tickets the guest visitor still holds move onto the account (D4, GB10).</item>
 /// </list>
 /// Every branch is idempotent: Checkout records a throwing recipient as undelivered and may deliver again.
 /// </summary>
@@ -68,6 +69,10 @@ internal sealed class TicketOrderEvents(
                 await delivery.ResendAsync(order.Id, null, cancellationToken);
                 return;
 
+            case OrderEventKind.AttachedToAccount when order.BuyerUserId is { } accountId:
+                await AttachToAccountAsync(order.Id!, accountId, orderEvent.Reference, cancellationToken);
+                return;
+
             default:
                 return;
         }
@@ -79,6 +84,29 @@ internal sealed class TicketOrderEvents(
         var eventIds = await session.Query<Ticket>().Where(t => t.OrderId == orderId).Select(t => t.EventId).Take(256).ToListAsync(cancellationToken);
         foreach (var eventId in eventIds.Distinct(StringComparer.Ordinal))
             feed.Changed(eventId);
+    }
+
+    /// <summary>
+    /// D4, GB10: a guest order moved onto an account. The order's tickets the guest visitor still holds follow it; a
+    /// ticket transferred or resold since then belongs to its new holder and stays where it is.
+    /// </summary>
+    private async Task AttachToAccountAsync(string orderId, string accountId, string? guestVisitorId, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrEmpty(guestVisitorId))
+            return;
+        using var session = store.OpenAsyncSession();
+        var tickets = await session.Query<Ticket>()
+            .Where(t => t.OrderId == orderId && t.HolderUserId == null && t.HolderVisitorId == guestVisitorId)
+            .Take(4096)
+            .ToListAsync(cancellationToken);
+        if (tickets.Count == 0)
+            return;
+        foreach (var ticket in tickets)
+        {
+            ticket.HolderUserId = accountId;
+            ticket.HolderVisitorId = null;
+        }
+        await session.SaveChangesAsync(cancellationToken);
     }
 
     /// <summary>Delivers the order's tickets that are due now (the rest wait for their lead time, D11).</summary>

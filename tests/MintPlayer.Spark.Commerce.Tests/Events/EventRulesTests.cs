@@ -50,7 +50,7 @@ public class EventRulesTests
     {
         var channel = Channel(c =>
         {
-            c.Hold = new DurationBounds { Default = TimeSpan.FromMinutes(10), Min = TimeSpan.FromMinutes(5), Max = TimeSpan.FromMinutes(20) };
+            c.Hold = new HoldBounds { Default = TimeSpan.FromMinutes(10), Min = TimeSpan.FromMinutes(5), Max = TimeSpan.FromMinutes(20) };
             c.PerBuyerLimit = 4;
             c.Refunds.Allowed = [RefundPolicyKind.None, RefundPolicyKind.UntilDaysBefore];
             c.Refunds.MaxFeeBasisPoints = 500;

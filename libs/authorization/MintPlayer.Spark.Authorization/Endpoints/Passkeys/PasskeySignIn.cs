@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Identity;
+using MintPlayer.Spark.Authorization.Contracts;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Authorization.Extensions;
@@ -59,10 +60,10 @@ internal sealed partial class PasskeySignIn<TUser> : IPostEndpoint<PasskeySignIn
         // distinguishing, because a user who cannot tell a locked account from a broken
         // authenticator will keep retrying into the lockout.
         if (result.IsLockedOut)
-            return Results.Json(new { error = "locked_out" }, statusCode: StatusCodes.Status401Unauthorized);
+            return Results.Json(new SparkAuthError("locked_out"), statusCode: StatusCodes.Status401Unauthorized);
 
         return result.Succeeded
-            ? Results.Ok(new { success = true })
+            ? Results.Ok(SparkPasskeySignedIn.Done)
             : PasskeyEndpoints.SignInFailed();
     }
 }

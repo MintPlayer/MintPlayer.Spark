@@ -161,6 +161,63 @@ public static class ReplicaScriptRenderer
     }
 
     /// <summary>
+    /// <see cref="RenderEtlScript(ReplicaManifest, string)"/> restricted to the rows <paramref name="scope"/> admits
+    /// (warehouse §4.2.3, "Row filter"): the <c>loadTo</c> call runs only when every condition's field holds one of its
+    /// values. The scope is the owner's, rendered at deploy; values are written as escaped string literals, fields are
+    /// identifiers. A <see langword="null"/> scope renders the unfiltered script.
+    /// </summary>
+    public static string RenderEtlScript(ReplicaManifest manifest, string sourceModule, ReplicaRowScope? scope)
+    {
+        var script = RenderEtlScript(manifest, sourceModule);
+        if (scope is null)
+            return script;
+
+        var condition = new StringBuilder();
+        for (var i = 0; i < scope.Conditions.Count; i++)
+        {
+            var row = scope.Conditions[i];
+            if (i > 0)
+                condition.Append(" && ");
+            condition.Append('[');
+            for (var v = 0; v < row.AllowedValues.Count; v++)
+            {
+                if (v > 0)
+                    condition.Append(", ");
+                condition.Append(JavaScriptString(row.AllowedValues[v]));
+            }
+            // A field is an identifier (checked by ReplicaRowCondition); indexOf compares strictly, so a non-string never matches.
+            condition.Append("].indexOf(this.").Append(row.Field).Append(") >= 0");
+        }
+
+        return "if (" + condition + ") {\n" + script + "\n}";
+    }
+
+    /// <summary>
+    /// <paramref name="value"/> as a double-quoted JavaScript string literal. Everything but ASCII letters, digits and
+    /// <c> _-./:@</c> is written as a <c>\uXXXX</c> escape, so no value can end the literal or the script.
+    /// </summary>
+    public static string JavaScriptString(string value)
+    {
+        if (value is null)
+            throw new ArgumentNullException(nameof(value));
+
+        const string hex = "0123456789abcdef";
+        var literal = new StringBuilder(value.Length + 2);
+        literal.Append('"');
+        foreach (var c in value)
+        {
+            var plain = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')
+                || c == ' ' || c == '_' || c == '-' || c == '.' || c == '/' || c == ':' || c == '@';
+            if (plain)
+                literal.Append(c);
+            else
+                literal.Append("\\u").Append(hex[(c >> 12) & 0xF]).Append(hex[(c >> 8) & 0xF]).Append(hex[(c >> 4) & 0xF]).Append(hex[c & 0xF]);
+        }
+        literal.Append('"');
+        return literal.ToString();
+    }
+
+    /// <summary>
     /// <c>"sha256:"</c> and the lowercase hex SHA-256 of the UTF-8 bytes of
     /// <c>manifestJson + "\n" + script</c>. Both sides compare it, so an unchanged script is neither posted
     /// nor redeployed (WD15).

@@ -15,6 +15,7 @@ using MintPlayer.Spark.Commerce.Ticketing.Venues.Services;
 using MintPlayer.Spark.Organizations;
 using MintPlayer.Spark.Organizations.Models;
 using Raven.Client.Documents;
+using Raven.Client.Documents.Linq;
 using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.Commerce.Ticketing.Events.Services;
@@ -28,6 +29,12 @@ public interface ISparkTicketEvents
 {
     /// <summary>A published event by its slug, as the public page shows it; null when there is none.</summary>
     Task<SparkPublicEvent?> GetPublicAsync(string slug, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// A page of the published events (the storefront's list, M17). The page is cut in publication order (newest first)
+    /// and sorted inside by the next date, past events last: a host with more events than one page shows the newest.
+    /// </summary>
+    Task<SparkPublicEventList> ListPublicAsync(int skip, int take, CancellationToken cancellationToken = default);
 
     /// <summary>Places left per date of a published event (of one phase's dates when <paramref name="phaseId"/> is given).</summary>
     Task<SparkEventAvailability?> GetAvailabilityAsync(string eventId, string? phaseId = null, CancellationToken cancellationToken = default);
@@ -66,6 +73,49 @@ internal sealed class SparkTicketEvents(
     TimeProvider clock) : ISparkTicketEvents
 {
     // ---- public page -----------------------------------------------------------------------------------------------
+
+    /// <summary>The largest page of the public list.</summary>
+    internal const int MaxListPage = 100;
+
+    public async Task<SparkPublicEventList> ListPublicAsync(int skip, int take, CancellationToken cancellationToken = default)
+    {
+        skip = Math.Max(0, skip);
+        take = Math.Clamp(take, 1, MaxListPage);
+        if (!options.CurrentValue.PublicPages)
+            return new SparkPublicEventList([], 0, skip, take);
+        using var session = store.OpenAsyncSession();
+        var events = await session.Query<TicketEvent>()
+            .Statistics(out var stats)
+            .Where(e => e.IsPublished == true)
+            .OrderByDescending(e => e.PublishedAt)
+            .Skip(skip)
+            .Take(take)
+            .ToListAsync(cancellationToken);
+        var ids = events.Select(e => e.Id!).ToList();
+        var dates = ids.Count == 0 ? [] : await session.Query<TicketEventDate>()
+            .Where(d => d.EventId.In(ids))
+            .Take(ids.Count * 64)
+            .ToListAsync(cancellationToken);
+        var byEvent = dates.ToLookup(d => d.EventId, StringComparer.Ordinal);
+        var now = clock.GetUtcNow();
+        var summaries = events.Select(e => Summary(e, byEvent[e.Id!].ToList(), now)).ToList();
+        return new SparkPublicEventList(OrderForList(summaries), (int)stats.TotalResults, skip, take);
+    }
+
+    /// <summary>The list entry of one event: its next date that has not ended (pure, for the unit test).</summary>
+    internal static SparkPublicEventSummary Summary(TicketEvent ev, IReadOnlyList<TicketEventDate> dates, DateTimeOffset now)
+    {
+        var next = dates
+            .Where(d => (d.EndsAt ?? d.StartsAt) >= now && d.Status != ETicketEventStatus.Cancelled)
+            .OrderBy(d => d.StartsAt)
+            .FirstOrDefault();
+        return new SparkPublicEventSummary(ev.Id!, ev.Slug, ev.Name, ev.Description, ev.ImageUrl, ev.Status.ToString(), ev.MinimumAge,
+            next?.StartsAt, next?.VenueTimeZoneId, dates.Count);
+    }
+
+    /// <summary>Upcoming first by their next date, then the events with no date left (pure).</summary>
+    internal static List<SparkPublicEventSummary> OrderForList(IEnumerable<SparkPublicEventSummary> summaries)
+        => summaries.OrderBy(s => s.NextStartsAt is null ? 1 : 0).ThenBy(s => s.NextStartsAt ?? DateTimeOffset.MaxValue).ThenBy(s => s.Slug, StringComparer.Ordinal).ToList();
 
     public async Task<SparkPublicEvent?> GetPublicAsync(string slug, CancellationToken cancellationToken = default)
     {

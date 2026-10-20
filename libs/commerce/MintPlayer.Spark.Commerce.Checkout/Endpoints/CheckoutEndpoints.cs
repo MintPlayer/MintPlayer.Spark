@@ -90,6 +90,23 @@ internal sealed partial class SetBasketQuantity : IPostEndpoint<SparkBasketQuant
         => CheckoutResults.RunAsync(addOn, httpContextAccessor.HttpContext!, async () => request?.LineId is null ? null : await checkout.SetQuantityAsync(request.LineId, request.Quantity, cancellationToken));
 }
 
+/// <summary><c>POST /spark/commerce/checkout/basket/extend-hold</c>: "More time" (GA10, WCAG 2.2.1), one action, no body.</summary>
+[MemberOf<CheckoutGroup>]
+internal sealed partial class ExtendBasketHold : IPostEndpoint<SparkBasketExtendHoldRequest>
+{
+    public static string Path => "/basket/extend-hold";
+
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
+        => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
+
+    [Inject] private readonly ISparkCheckout checkout;
+    [Inject] private readonly ISparkAddOnEndpoints addOn;
+    [Inject] private readonly IHttpContextAccessor httpContextAccessor;
+
+    public override Task<IResult> HandleAsync(SparkBasketExtendHoldRequest request, CancellationToken cancellationToken)
+        => CheckoutResults.RunAsync(addOn, httpContextAccessor.HttpContext!, async () => await checkout.ExtendHoldAsync(cancellationToken));
+}
+
 /// <summary><c>POST /spark/commerce/checkout/basket/choices</c>: donation (GC3), insurance (GC4), codes; a guest's e-mail.</summary>
 [MemberOf<CheckoutGroup>]
 internal sealed partial class SetBasketChoices : IPostEndpoint<SparkBasketChoicesRequest>

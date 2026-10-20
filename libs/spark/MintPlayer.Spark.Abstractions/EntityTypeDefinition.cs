@@ -1,6 +1,7 @@
 namespace MintPlayer.Spark.Abstractions;
 
 /// <summary>An entity type (persistent object) of the model: its CLR type, attributes, tabs, groups and sub-queries.</summary>
+[SparkContract]
 public sealed class EntityTypeDefinition
 {
     /// <summary>

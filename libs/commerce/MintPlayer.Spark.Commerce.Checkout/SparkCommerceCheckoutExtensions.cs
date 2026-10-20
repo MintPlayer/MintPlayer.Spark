@@ -71,6 +71,7 @@ public static class SparkCommerceCheckoutExtensions
         services.TryAddScoped<OrderLifecycle>();
         services.TryAddScoped<OrderAccess>();
         services.TryAddScoped<BackOfficeOrders>();
+        services.TryAddScoped<CheckoutAccount>();
         services.TryAddScoped<ISparkCheckout, CheckoutService>();
 
         services.TryAddEnumerable(ServiceDescriptor.Scoped<ICheckoutPricingStep, DonationPricingStep>());

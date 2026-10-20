@@ -72,6 +72,9 @@
           }
           @if (phase.queued) {
             <p class="spark-ticketing-event-queued">{{ 'ticketingEvents.queued' | t }}</p>
+            @if (!admissionTokens()[phase.admissionScope ?? '']) {
+              <button type="button" class="btn btn-outline-primary btn-sm" (click)="queueRequested.emit(phase)">{{ 'ticketingEvents.joinQueue' | t }}</button>
+            }
           }
           @if (phase.presaleCodeRequired && phase.open) {
             <label class="spark-ticketing-event-presale">

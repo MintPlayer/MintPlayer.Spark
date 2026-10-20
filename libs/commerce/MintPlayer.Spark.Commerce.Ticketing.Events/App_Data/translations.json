@@ -260,6 +260,60 @@
         "fr": "Les événements ayant la même prochaine date sont classés par nom.",
         "nl": "Evenementen met dezelfde volgende datum staan op naam."
       }
+    },
+    "list": {
+      "title": {
+        "en": "Events",
+        "fr": "Événements",
+        "nl": "Evenementen"
+      },
+      "empty": {
+        "en": "No events are on sale right now.",
+        "fr": "Aucun événement n'est en vente pour le moment.",
+        "nl": "Er zijn momenteel geen evenementen te koop."
+      },
+      "more": {
+        "en": "More events",
+        "fr": "Plus d'événements",
+        "nl": "Meer evenementen"
+      },
+      "moreDates": {
+        "en": "more dates",
+        "fr": "autres dates",
+        "nl": "meer data"
+      },
+      "past": {
+        "en": "Past event",
+        "fr": "Événement passé",
+        "nl": "Voorbij evenement"
+      }
+    },
+    "status": {
+      "Scheduled": {
+        "en": "Scheduled",
+        "fr": "Programmé",
+        "nl": "Gepland"
+      },
+      "Postponed": {
+        "en": "Postponed",
+        "fr": "Reporté",
+        "nl": "Uitgesteld"
+      },
+      "Rescheduled": {
+        "en": "New date",
+        "fr": "Nouvelle date",
+        "nl": "Nieuwe datum"
+      },
+      "Cancelled": {
+        "en": "Cancelled",
+        "fr": "Annulé",
+        "nl": "Geannuleerd"
+      }
+    },
+    "joinQueue": {
+      "en": "Join the queue",
+      "fr": "Rejoindre la file d'attente",
+      "nl": "In de wachtrij gaan"
     }
   },
   "lookup": {

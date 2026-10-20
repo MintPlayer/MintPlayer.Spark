@@ -320,6 +320,32 @@ public enum OrderEventKind
     GuaranteeClaimOpened,
     /// <summary>M9, GA8: a guarantee claim was resolved (repair, replacement, price reduction or refund).</summary>
     GuaranteeClaimResolved,
+    /// <summary>
+    /// D4, GB10: a guest order moved onto the account that confirmed its e-mail address. <see cref="OrderEvent.Reference"/>
+    /// is the guest visitor id it was placed under (null when none), so Tickets can move the tickets that visitor still holds.
+    /// </summary>
+    AttachedToAccount,
+}
+
+// ---- stock feeds (warehouse §4.4) ---------------------------------------------------------------------------------
+
+/// <summary>
+/// A stock feed that owns the quota of some order lines (warehouse PRD §4.4): a warehouse publishes its on-hand and
+/// shipped totals, and the quota's capacity is derived from them (<c>MintPlayer.Spark.Commerce.Fulfilment</c> registers
+/// one). For such a line Checkout never puts quota units back on sale itself:
+/// <list type="bullet">
+/// <item>a refund (or a lost dispute) before shipment returns them with <c>ReturnStock = false</c>; the feed restocks them
+/// once the warehouse <b>confirmed</b> the cancellation (§4.4 rule 1: <c>sold</c> is lowered only then);</item>
+/// <item>goods received back with a <see cref="Refunds.ReturnDisposition.Restock"/> disposition are not restocked here: the
+/// warehouse's restock raises its on-hand, which raises the capacity (rule 4, the I4 exception).</item>
+/// </list>
+/// Discovered (<c>[SparkDiscoverable]</c>); a library registers its own (scoped, <c>TryAddEnumerable</c>).
+/// </summary>
+[SparkDiscoverable]
+public interface ICheckoutStockFeed
+{
+    /// <summary>Whether this feed owns the quota of <paramref name="line"/> of <paramref name="order"/>.</summary>
+    Task<bool> BacksAsync(CheckoutOrder order, CheckoutOrderLine line, CancellationToken cancellationToken);
 }
 
 // ---- waiting-room admission ---------------------------------------------------------------------------------------

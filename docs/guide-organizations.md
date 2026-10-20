@@ -57,6 +57,23 @@ rule. Call `AddOrganizations()`.
 | Member | works with the content |
 | Viewer | reads only |
 
+### Reading across organizations (`AllOrganizations/{Type}`)
+
+Some callers work on every organization's rows without belonging to them: a warehouse's staff handle every
+owner's goods (warehouse WM3; lead decision 2026-10-20). `security.json` grants that per type, as a right:
+
+```json
+{ "resource": "AllOrganizations/StockBalance", "groupId": "warehouse:staff" }
+```
+
+- It lifts the organization filter for **`Query` and `Read`** of that type only. Writes (`New`, `Edit`, `Delete`,
+  custom actions) keep the membership rule.
+- It is explicit and per type: no role implies it, and there is no global bypass. No grant, no change.
+- The switcher still narrows a list when an organization is chosen; every other policy (expiration, soft
+  deletion) still applies, and the rows are read through the same audited read paths as any other read.
+- A library grants it to a slot it declares (the warehouse grants it to `warehouse:staff` on its stock, item,
+  lot and task types); the application decides who is in the slot.
+
 ## Organization-owned types
 
 ```csharp

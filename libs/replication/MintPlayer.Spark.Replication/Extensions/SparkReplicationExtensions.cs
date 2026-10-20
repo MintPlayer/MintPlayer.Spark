@@ -49,9 +49,13 @@ internal static class SparkReplicationExtensions
         services.AddScoped<IReplicaPublisher, ReplicaPublisher>();
         services.AddScoped<IReplicaApplier, ReplicaApplier>();
         services.AddScoped<IReplicaReconciler, ReplicaReconciler>();
+        // Per-consumer row filters (warehouse §4.2.3 "Row filter"): the owner's IReplicaRowFilter implementations, combined.
+        services.AddScoped<IReplicaRowScopes, ReplicaRowScopes>();
+        services.AddScoped<IReplicaRowScopeChanges, ReplicaRowScopeChanges>();
         services.AddScoped<ISyncApplyService, SyncApplyService>();
         services.AddScoped<ISyncActionSender, SyncActionSender>();
         services.AddScoped<ISyncOutcomeNotifier, SyncOutcomeNotifier>();
+        services.AddScoped<IReplicationRequestNotifier, ReplicationRequestNotifier>();
 
         services.AddScoped<IRecipient<ReplicaRegistrationMessage>, ReplicaRegistrationRecipient>();
         services.AddScoped<IRecipient<ReplicaDeployMessage>, ReplicaDeployRecipient>();

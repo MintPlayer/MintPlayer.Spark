@@ -37,7 +37,7 @@ internal sealed partial class DeleteLookupReferenceValue : IDeleteEndpoint
         {
             // R2-M1: don't leak Raven-internal strings — log server-side.
             logger.LogWarning(ex, "DeleteLookupReferenceValue failed");
-            return Results.Json(new { error = "Operation failed" }, statusCode: 400);
+            return Results.Json(new Abstractions.SparkErrorResponse("Operation failed"), statusCode: 400);
         }
     }
 }

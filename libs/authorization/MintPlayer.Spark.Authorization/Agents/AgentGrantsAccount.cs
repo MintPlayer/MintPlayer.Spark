@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using MintPlayer.Spark.Authorization.Contracts;
 using MintPlayer.Spark.Abstractions;
 
 namespace MintPlayer.Spark.Authorization.Agents;
@@ -266,7 +267,7 @@ internal sealed record AgentResult<T>(T? Value, string? Error, bool IsNotFound)
 
     public IResult ToHttp() => IsNotFound
         ? Results.NotFound()
-        : Error is not null ? Results.BadRequest(new { error = Error }) : Results.Ok(Value);
+        : Error is not null ? Results.BadRequest(new SparkAuthError(Error)) : Results.Ok(Value);
 }
 
 /// <summary><c>GET /spark/auth/manage/agents</c>.</summary>

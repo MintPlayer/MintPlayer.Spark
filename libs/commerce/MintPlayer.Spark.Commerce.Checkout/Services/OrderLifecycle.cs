@@ -25,12 +25,21 @@ internal sealed class OrderLifecycle(
     CheckoutInsurance insurance,
     ICommerceAudit audit,
     BasketStore baskets,
+    IEnumerable<ICheckoutStockFeed> stockFeeds,
     IOptionsMonitor<SparkCommerceOptions> commerce,
     IOptionsMonitor<SparkCommerceCheckoutOptions> options,
     TimeProvider clock,
     ILogger<OrderLifecycle> logger)
 {
     private const int MaxAttempts = 5;
+
+    private async Task<bool> FedByStockFeedAsync(CheckoutOrder order, CheckoutOrderLine line, CancellationToken cancellationToken)
+    {
+        foreach (var feed in stockFeeds)
+            if (await feed.BacksAsync(order, line, cancellationToken))
+                return true;
+        return false;
+    }
 
     // ---- the unit of work ----------------------------------------------------------------------------------------
 
@@ -438,8 +447,10 @@ internal sealed class OrderLifecycle(
                         {
                             if (line.ServiceDate is { } service && service <= now)
                                 continue; // a past event: nothing is releasable
+                            // A stock feed's line stays sold until the warehouse confirmed a cancellation (ICheckoutStockFeed).
+                            var returnStock = line.ShippedAt is null && !await FedByStockFeedAsync(order, line, cancellationToken);
                             await inventory.ReturnAsync(line.ClaimId!, new InventoryReturn(dispute.Id + ":" + line.LineId, ReturnReason.DisputeLost,
-                                ReturnStock: line.ShippedAt is null), cancellationToken);
+                                ReturnStock: returnStock), cancellationToken);
                             line.Status = OrderLineStatus.Returned;
                             line.StatusReason = "dispute lost";
                         }

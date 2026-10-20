@@ -1,0 +1,20 @@
+<mjml>
+  <mj-head>
+    <mj-title>Rappel de sécurité : {{ product }}</mj-title>
+    <mj-attributes>
+      <mj-all font-family="Segoe UI, Helvetica, Arial, sans-serif" />
+      <mj-text font-size="15px" line-height="22px" color="#111827" />
+    </mj-attributes>
+  </mj-head>
+  <mj-body background-color="#f3f4f6">
+    <mj-section background-color="#ffffff" padding="24px 0">
+      <mj-column>
+        <mj-text font-size="20px" font-weight="600" color="#b91c1c">Rappel de sécurité : {{ product }}</mj-text>
+        <mj-text>{{ if buyer_name }}{{ buyer_name }}, v{{ else }}V{{ end }}otre commande {{ number }} contenait {{ units }} unité(s) de {{ product }} (article {{ sku }}) du lot {{ lot }}, qui fait l'objet d'un rappel.</mj-text>
+        {{ if hazard }}<mj-text><strong>Le risque :</strong> {{ hazard }}</mj-text>{{ end }}
+        {{ if action }}<mj-text><strong>Que faire :</strong> {{ action }}</mj-text>{{ else }}<mj-text><strong>Que faire :</strong> cessez d'utiliser le produit et gardez-le hors de portée jusqu'à notre prochain message.</mj-text>{{ end }}
+        {{ if contact }}<mj-text font-size="13px" color="#4b5563">Plus d'informations : {{ contact }}</mj-text>{{ end }}
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>

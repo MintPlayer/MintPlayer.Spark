@@ -10,6 +10,7 @@ import {
   SparkPreSelection,
   SparkPreSelectionRequest,
   SparkPublicEvent,
+  SparkPublicEventList,
   SparkQuickEventRequest,
   SparkQuickEventResult,
   SparkTicketingRefusal,
@@ -84,6 +85,12 @@ export class SparkTicketingEventsService {
   /** `GET …/public?slug=`: a published event's page data, or `null`. */
   publicEvent(slug: string): Promise<SparkPublicEvent | null> {
     return this.get<SparkPublicEvent>('/public', { slug });
+  }
+
+  /** `GET …/public/list?skip=&take=`: the storefront's event list, upcoming first (M17). */
+  async publicEvents(skip = 0, take = 24): Promise<SparkPublicEventList> {
+    return (await this.get<SparkPublicEventList>('/public/list', { skip: String(skip), take: String(take) }))
+      ?? { events: [], total: 0, skip, take };
   }
 
   /** `GET …/availability?eventId=&phaseId=`: places left per date (the waiting page's too, §4.11). */

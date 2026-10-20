@@ -48,7 +48,7 @@ This file is the order of work for [warehouse_picking_PRD.md](warehouse_picking_
 Commerce S18's Community checklist gains the warehouse items (PRD §7). W19 and that checklist come first, because they constrain the index design.
 
 **Stock and processes**
-- [ ] W1 stock engine invariants: 0 WI1–WI6 violations over ≥100 runs × 10k ops; p95 pick-confirm ≤150 ms; retry rates on hot balances and `StockLevel` recorded
+- [x] W1 stock engine invariants: 0 WI1–WI6 violations over ≥100 runs × 10k ops; p95 pick-confirm ≤150 ms; retry rates on hot balances and `StockLevel` recorded *(WM3 2026-10-20, at CI size per round 4: `tests/MintPlayer.Spark.Warehouse.Tests/Stock/StockInvariantGuardTests.cs`, seeded run of 6 concurrent workers × 120 commands on hot balances with 10 % re-sends; asserts WI1–WI4 and WI6 exactly and prints the retry rate. Written, not run yet: the result is recorded in PRD §13 at the WM13 sweep. ≥100 runs × 10k ops, the 3-node cluster and p95 ≤150 ms dropped, round 4)*
 - [ ] W2 stock feed without oversell: 0 in ≥1,000 single-channel runs; the multi-channel bound recorded; red→green on refused cancellation and on refund of shipped units; ≤10 s p95 through the real HTTP transport
 - [ ] W3 release, allocation and batching: 1,000 orders × 3 lines over 5,000 locations, with FEFO, in ≤30 s; 50-line route ≤50 ms
 - [ ] W4 zone split and consolidation: 0 units lost or misplaced over ≥100 runs; no incomplete order released; no double-assigned slot
@@ -74,7 +74,7 @@ Commerce S18's Community checklist gains the warehouse items (PRD §7). W19 and 
 - [ ] W18 shift sign-in: hybrid passkey sign-in succeeds ≥19/20 with median ≤20 s; idle sign-out within 5 s of the timeout
 
 **Licence limits**
-- [ ] W19 index limits: read `/license/status` first (Community caps lifted 2024-05-22, #18564); budget checks (≤12 static, ≥2 left for the host, refusal behaviour, WX13 warning fixture) only if a cap still applies; always: 0 auto indexes from library pages
+- [x] W19 index limits: read `/license/status` first (Community caps lifted 2024-05-22, #18564); budget checks (≤12 static, ≥2 left for the host, refusal behaviour, WX13 warning fixture) only if a cap still applies; always: 0 auto indexes from library pages *(WM3 2026-10-20: caps lifted per #18564, `/license/status` not read on a Community server here (Developer licence locally), so no budget checks; `Indexes/IndexBudgetTests.cs` asserts the core declares 4 indexes (Documents gets its maps from WM4–WM6) and that every library read path creates 0 auto indexes. Written, not run yet)*
 
 ### WM1 — Replication redesign (WX1–WX4, WX13; WD13–WD18; F12–F19)
 
@@ -167,24 +167,26 @@ Runtime (`tests/MintPlayer.Spark.Tests/Replication`, `SparkTestDriver` + `SparkE
 - [x] `ReplicaRegisterEndpointTests` (reworked from `EtlDeployEndpointTests`): no cert → 401, wrong thumbprint → 403, no `Replicate/{SourceCollection}` → 403, field without attribute read right → refused by name, script ≠ re-render → 400 (F16: a posted `loadDocument` script is never stored), destination always the registry entry (F19 red at the pre-43d492df shape, kept green). *As built: `ReplicaEndpointGateTests` (401/403) + `ReplicationApprovalTests` (grant, read right by name, re-render 400, unknown collection 404); the destination is never in the request (`SparkReplicationExtensionsTests`).*
 - [x] `ReplicationApprovalTests`: Development owner auto-approves; "Testing"/Production owner leaves Pending; `ApproveReplication` without the right → refused; approve → deploy message; same hash re-posted → `unchanged`, no second deploy (WD15; red: today every start redeploys); missing item → Withdrawn and transform removed (F18).
 - [x] `ReplicaRegistrationRecipientTests` (reworked from `EtlScriptDeploymentRecipientTests`): unchanged acknowledged set hash → no post; owner unregistered → retry; 403 → non-retryable.
-- [x] `EtlTaskManagerTests` / `EtlTaskManagerDeploymentTests` (kept, adapted): unlicensed → refusal before any ETL call; approved transform reaches the consumer database with `Spark-Replica-Source-Change-Vector` metadata (W6); `RemoveAsync` removes it; registry URL change redeploys. *Registry-URL redeploy is covered by the deploy recipient's `(transport, destination, hash)` comparison, not by a test yet.*
+- [x] `EtlTaskManagerTests` / `EtlTaskManagerDeploymentTests` (kept, adapted): unlicensed → refusal before any ETL call; approved transform reaches the consumer database with `Spark-Replica-Source-Change-Vector` metadata (W6); `RemoveAsync` removes it; registry URL change redeploys. *Registry-URL redeploy: `ReplicaDeployRegistryTests` (ReplicationEndToEndTests.cs), through the deploy recipient's `(transport, destination, hash, scope)` comparison.*
 - [x] `ReplicationTransportResolverTests`: Http pinned; Etl pinned without licence throws at startup; Auto with unknown licence → Http.
 - [x] `SparkChangeVectorTests`: Older/Equal/Newer/Concurrent over single- and multi-entry vectors.
 - [x] `ManifestProjectorEquivalenceTests`: the C# projector and the ETL script produce identical replicas for the same source documents (nulls, nested, arrays, `Color?`). *As built: `ManifestProjectorTests` (unit) + `EtlTaskManagerDeploymentTests.The_ETL_load_carries_the_source_stamp_and_equals_the_manifest_projection` (Developer licence, W6).*
 - [x] `ReplicaApplyEndpointTests`: newer applies and stamps metadata; equal/older no-op 200; delete leaves a tombstone and an older push doesn't resurrect; foreign source module refused; hash neither current nor last approved → 409; `IReplicaChanged<T>` enqueued in the same commit. *As built: `ReplicaApplierTests`.*
-- [x] `ReplicaPushTests`: owner save → after-commit work → push message per consumer → replica updated; consumer down → `RetryAfterException` and later delivery; 4xx → dead-letter; a burst of 5 saves → replica ends at the latest state. *As built: the push recipient (projection, tombstone, ladder, give-up, 4xx, dropped subscription); the interceptor → message hop and the 5-save burst are left for the WM11 E2E.*
+- [x] `ReplicaPushTests`: owner save → after-commit work → push message per consumer → replica updated; consumer down → `RetryAfterException` and later delivery; 4xx → dead-letter; a burst of 5 saves → replica ends at the latest state. *As built: the push recipient (projection, tombstone, ladder, give-up, 4xx, dropped subscription); the interceptor → message hop is `ReplicaCaptureTests` (after-commit work stored in the write's commit, one push per HTTP consumer) and the 5-save burst is `ReplicaPushBurstTests` (owner and consumer databases, out-of-order delivery), both in ReplicationEndToEndTests.cs.*
 - [x] `ReplicaReconcileTests`: a raw owner write (no interceptor) is repaired by one reconcile; an extra consumer replica gets a tombstone; initial load after approval fills an empty consumer.
 - [x] `SyncActionCaptureTests` (reworked from `SyncActionInterceptorTests`): the edit stores the SyncAction **and** its outbox message in the same commit and leaves the replica untouched (F13; red: today `SyncActionInterceptor.cs:161` saves in a new session after the local save); `BaseEtag` = the replica's source change vector; initiator stamped (#271); nested values stay JSON (F18; red: `SyncActionInterceptor.cs:184`); second edit while pending refused (Q-W28); non-`WriteBack` replica edit refused. *As built: `ReplicaWriteBackTests` (synchronous applied/conflict/refused, queued in the same commit, Q-W28, nested field, no create, pending badge).*
 - [x] `SyncApplyEndpointTests` (reworked): **stale edit** — owner changed after the replica was built → 409 `conflict(changed)` and the owner document unchanged (WD18; red: `SyncActionHandler.cs:39-47,60` overwrites); deleted at owner → `conflict(deleted)`; module without write right on an attribute → `refused(unwritable)` (F17; red: silently dropped); op-id replay returns the first outcome, no false conflict (F15); never 207 (F12). *As built: the compare-and-set red→green tests are `Services/SyncActionHandlerIntegrationTests`; the endpoint statuses and op-id replay are `Replication/SyncApplyEndpointTests`.*
 - [x] `SyncActionDispatchTests` (replaces `SyncActionSubscriptionWorkerE2ETests` and `SyncActionRetrySweeperTests`): applied → Completed; conflict → Refused + observer + notifier called with the initiator (F12; red: 207 recorded Completed, `Workers/SyncActionSubscriptionWorker.cs:75-85`); owner down → retried past 8 minutes on the ladder (F14; red: `RetryNumerator` gives up after ~5–8 min); expired → Failed; `RetrySyncAction` re-drives.
-- [x] `SparkReplicationExtensionsTests` / `SparkBuilderReplicationExtensionsTests` (reworked): no subscription worker, no sweeper registered; replication creates **0** RavenDB subscriptions (assert the database's subscription count with messaging + replication = 1). *As built: asserts no hosted service is registered; the database subscription count (messaging + replication = 1) is left for the WM13 sweep.*
+- [x] `SparkReplicationExtensionsTests` / `SparkBuilderReplicationExtensionsTests` (reworked): no subscription worker, no sweeper registered; replication creates **0** RavenDB subscriptions (assert the database's subscription count with messaging + replication = 1). *As built: asserts no hosted service is registered; the database subscription count (messaging + replication = 1) is `ReplicationSubscriptionCountTests`.*
+- [x] `ReplicaSourcesConfigurationTests`: a replica without `SourceModule` takes its owners from `Spark:Replication:Sources:{TargetCollection}` (bound through `AddReplication`), applies their pushes, refuses other modules, and is a startup problem when unbound; a declared `SourceModule` wins. *Added 2026-10-20 (ReplicationEndToEndTests.cs).*
+- [x] Approvers told on arrival (found 2026-10-20: a pending request notified nobody): `IReplicationRequestObserver` (Replication.Abstractions, beside `ISyncActionOutcomeObserver`) is called once per newly pending request after its commit, with `ReplicationRequestArrived.ApproversSlot` = `replication:approvers`; a Development auto-approval tells nobody; a failing observer is logged. Tests in `ReplicationApprovalTests`. *Default delivery added 2026-10-20 (`ReplicationRequestNotifier`): the slot's members (users holding a bound group, via core `ISparkGroupMembers`, implemented by Authorization) get a private `replication:requests` frame and, with MailManager, the `SparkReplication/ReplicationRequested` mail; the pending request is the durable record on "Replication requests". The observer stays the extension point.*
 - [x] Kept unchanged: `ModuleCertificateValidatorTests`, `ModuleRegistrationServiceTests`, `ReplicationHttpClientProviderTests`, `SparkReplicationOptionsBindingTests`. *`ModuleRegistrationServiceTests` gained the read-only registry test.*
 - [x] Dropped: `EtlTransformGeneratorTests` (moved to the generator tests), `ReplicaContractCollectorTests`, `SyncActionGenericTests`.
 - [ ] E2E `tests/MintPlayer.Spark.E2E.Tests/Security/CrossModuleSyncTests.cs`: replace the 207 expectation (`:116-134`) with Fleet ↔ HR end to end under `Transport=Http`: edit a replica in HR → Fleet applies → HR's replica updated by the push; stale edit → refusal shown to the initiator; once more under `Etl` on CI (Q-W24). Add the missing end-to-end mTLS test (`:24-31`).
 
 ### WM2 — Shared foundations
 
-- [x] `MintPlayer.Spark.Fulfilment.Contracts` (`libs/fulfilment/contracts/`): v1 of `fulfilment-orders`, `catalog-items`, `expected-returns`, `fulfilment-status`, `shipments`, `stock-levels` and `return-receipts` (PRD §4.3); `expected-receipts` too if Q-W9 is accepted *As built 2026-10-20: one `[Replicated]` class per contract (8, `expected-receipts` included: Q-W9 accepted), stored by the owner and replicated to the host that binds `Spark:Replication:Sources:{collection}`; new `[assembly: SparkReplicaContracts]` makes unbound classes inert (PRD §4.3 "Contracts as replica classes"). Per-consumer row filter for a multi-shop warehouse is open.*
+- [x] `MintPlayer.Spark.Fulfilment.Contracts` (`libs/fulfilment/contracts/`): v1 of `fulfilment-orders`, `catalog-items`, `expected-returns`, `fulfilment-status`, `shipments`, `stock-levels` and `return-receipts` (PRD §4.3); `expected-receipts` too if Q-W9 is accepted *As built 2026-10-20: one `[Replicated]` class per contract (8, `expected-receipts` included: Q-W9 accepted), stored by the owner and replicated to the host that binds `Spark:Replication:Sources:{collection}`; new `[assembly: SparkReplicaContracts]` makes unbound classes inert (PRD §4.3 "Contracts as replica classes"). Per-consumer row filter for a multi-shop warehouse: closed in WM3 (PRD §4.2.3 "Row filter").*
 - [x] `MintPlayer.Spark.Gs1` (`libs/gs1/`):
   - check digits (GTIN, SSCC, location)
   - SSCC allocation (company prefix, extension digit, compare-exchange sequence) *(2026-10-20: core `ISparkSequences`, `libs/spark/MintPlayer.Spark/Sequences/SparkSequences.cs`, bound through `DelegateSsccSerialSource`)*
@@ -200,43 +202,43 @@ Runtime (`tests/MintPlayer.Spark.Tests/Replication`, `SparkTestDriver` + `SparkE
 ### WM3 — Warehouse core
 
 **Package and master data**
-- [ ] `libs/warehouse/core/`, alias `warehouse`: `spark.AddWarehouse()` binds `Spark:Warehouse`, with startup validation as in PRD §4.13
-- [ ] Sites (IANA zone; address from reference data) and zones
-- [ ] Locations: separate documents, materialized path, walk sequence, check digits, types, geometry fields. Deactivated, never deleted
+- [x] `libs/warehouse/core/`, alias `warehouse`: `spark.AddWarehouse()` binds `Spark:Warehouse`, with startup validation as in PRD §4.13 *(WM3: `MintPlayer.Spark.Warehouse` 11.0.0-preview.1, `SparkWarehouseOptionsValidator` + ValidateOnStart)*
+- [x] Sites (IANA zone; address from reference data) and zones
+- [x] Locations: separate documents, materialized path, walk sequence, check digits, types, geometry fields. Deactivated, never deleted *(`IWarehouseLocations`; delete refused once `HasHistory`)*
 
 **Owners and items**
-- [ ] Owner links (Q-W23)
-- [ ] `IOrganizationOwned` on every owner-bearing document (`libs/organizations/MintPlayer.Spark.Organizations/IOrganizationOwned.cs:25-29`)
-- [ ] Explicit owner filters in every library query; raw session queries are unfiltered (`IOrganizationOwned.cs:21-22`)
-- [ ] Items:
+- [x] Owner links (Q-W23) *(`Owners/WarehouseOwnerLinks.cs`; also replication's row filter, PRD §4.2.3; an external owner id links to one module only)*
+- [x] `IOrganizationOwned` on every owner-bearing document (`libs/organizations/MintPlayer.Spark.Organizations/IOrganizationOwned.cs:25-29`)
+- [x] Explicit owner filters in every library query; raw session queries are unfiltered (`IOrganizationOwned.cs:21-22`) *(`IWarehouseOwnerScope`; staff through the `AllOrganizations/{Type}` right on the staff and supervisor slots, lead decision 2026-10-20, PRD §13 WM3)*
+- [x] Items:
   - consume `catalog-items`
   - `WarehouseItem` extensions, with (owner, SKU) as a unique key
   - warehouse-owned items
   - pre-items and linking (Q-W12)
   - tombstoned replicas keep their stock
-- [ ] Barcode registry, with `barcodes/{code}/…` ids for prefix lookups, plus the resolution pipeline (`IBarcodeResolutionStep`)
+- [x] Barcode registry, with `barcodes/{code}/…` ids for prefix lookups, plus the resolution pipeline (`IBarcodeResolutionStep`)
   - several matches → the user chooses
   - unknown → the link-to-item right
 
 **Stock engine**
-- [ ] Documents: `StockLot` (`DateOnly` expiry, `SparkModelShape.cs:206`), `StockBalance` per (location, item, lot), `StockMovement` keyed by op id
-- [ ] Moves and adjustments as custom actions in one session, with OCC retry (`libs/settings/MintPlayer.Spark.Settings/Quotas/SparkQuotas.cs:46-77`)
-- [ ] Cluster-wide mode (`libs/authorization/MintPlayer.Spark.Authorization/Identity/UserStore.cs:203-209`)
-- [ ] Atomic first-put-away create (commerce X3)
-- [ ] Reason codes; stock read-only in the UI
-- [ ] `StockLevel` per (owner, item), updated in the movement's session (WI6)
-- [ ] `stock-levels` publication: dirty-set flush; per-channel projection filtered by owner links
-- [ ] Min/max replenishment: daily sweep plus every short pick; fixed pick faces only; lots chosen by FEFO
-- [ ] Round 5 (commerce GA7): Recalled lots blocked at once (allocations re-allocated or short-picked); owner-scoped, audited **recall trace** report lot → movements → shipment lines → fulfilment orders (+ stock still on hand), CSV export; the shop resolves buyers and sends the notice; item + date-range trace for untracked items
-- [ ] Round 5 (commerce GC9): dangerous-goods data on `WarehouseItem` (UN number, class, packing group, lithium-battery kind, limited quantity); zone mixing rules can segregate them
+- [x] Documents: `StockLot` (`DateOnly` expiry, `SparkModelShape.cs:206`), `StockBalance` per (location, item, lot), `StockMovement` keyed by op id
+- [x] Moves and adjustments as custom actions in one session, with OCC retry (`libs/settings/MintPlayer.Spark.Settings/Quotas/SparkQuotas.cs:46-77`) *(`WarehouseMoveStock`/`WarehouseAdjustStock` on the never-stored `WarehouseStockCommand` form)*
+- [x] Cluster-wide mode (`libs/authorization/MintPlayer.Spark.Authorization/Identity/UserStore.cs:203-209`) *(`Spark:Warehouse:Stock:ClusterWide`: a raw cluster-wide session, atomic guards)*
+- [x] Atomic first-put-away create (commerce X3)
+- [x] Reason codes; stock read-only in the UI
+- [x] `StockLevel` per (owner, item), updated in the movement's session (WI6)
+- [x] `stock-levels` publication: dirty-set flush; per-channel projection filtered by owner links *(per owner link as `FulfilmentStockLevel` in the movement's session; dirty set registered by the library, lead decision 2026-10-20)*
+- [x] Min/max replenishment: daily sweep plus every short pick; fixed pick faces only; lots chosen by FEFO
+- [x] Round 5 (commerce GA7): Recalled lots blocked at once (allocations re-allocated or short-picked); owner-scoped, audited **recall trace** report lot → movements → shipment lines → fulfilment orders (+ stock still on hand), CSV export; the shop resolves buyers and sends the notice; item + date-range trace for untracked items *(core side: block + trace + `ILotStatusObserver`; the re-allocation/short-pick is Outbound's, WM5)*
+- [x] Round 5 (commerce GC9): dangerous-goods data on `WarehouseItem` (UN number, class, packing group, lithium-battery kind, limited quantity); zone mixing rules can segregate them *(`DangerousGoodsData`, `ZoneMixing.Allows`)*
 
 **Work, indexes, guard**
-- [ ] Task envelope: `WarehouseTask` (one collection for every kind) and `WarehouseTaskGroup`; assignment, leases (commerce X12), op ids
-- [ ] Productivity events
-- [ ] Static indexes per the PRD §4.5 budget: `Warehouse_Stock`, `Warehouse_LedgerTotals`, `Warehouse_Work`, `Warehouse_Catalog`, `Warehouse_Documents`
+- [x] Task envelope: `WarehouseTask` (one collection for every kind) and `WarehouseTaskGroup`; assignment, leases (commerce X12), op ids *(leases on the task document under OCC, not X12 claims; tote claims come with batches in WM5)*
+- [x] Productivity events
+- [x] Static indexes per the PRD §4.5 budget: `Warehouse_Stock`, `Warehouse_LedgerTotals`, `Warehouse_Work`, `Warehouse_Catalog`, `Warehouse_Documents` *(declared with `[SparkIndexMap]` (X19), not `AddIndexesFrom`; LedgerTotals is a map summed in code, X19 has no reduce)*
   - deployed through `AddIndexesFrom` (precedent: `libs/moderation/MintPlayer.Spark.Moderation/SparkModerationExtensions.cs:79`)
   - every library query bound to one of them
-- [ ] A scaled-down concurrency guard for WI1–WI6, kept in the suite (it runs in WM13)
+- [x] A scaled-down concurrency guard for WI1–WI6, kept in the suite (it runs in WM13) *(= the W1 test above)*
 
 ### WM4 — Inbound
 
@@ -377,18 +379,18 @@ Runtime (`tests/MintPlayer.Spark.Tests/Replication`, `SparkTestDriver` + `SparkE
 
 ### WM10 — Shop side (commerce work, tracked in commerce M11–M12)
 
-- [ ] `Commerce.Fulfilment` works through `Fulfilment.Contracts`:
+- [x] `Commerce.Fulfilment` works through `Fulfilment.Contracts` *(2026-10-20: `FulfilmentSync` publishes through `IReplicaPublisher`, consumes through `IReplicaChanged<T>` plus a reconcile job (the ETL path); the three published types are model types of the library, rights granted by the app: SPARK047)*:
   - publishes `fulfilment-orders`, `catalog-items` and `expected-returns`
   - consumes `fulfilment-status`, `shipments`, `stock-levels` and `return-receipts`
-- [ ] Fulfilment-order ids unique across shops; cancellation as a status; an edit = a cancellation plus a new order
-- [ ] Capacity source from `stock-levels` (the PRD §4.4 formula):
+- [x] Fulfilment-order ids unique across shops; cancellation as a status; an edit = a cancellation plus a new order *(ids `FulfilmentOrders/{ShopName}/{orderNumber}/{seller}/{revision}`; one whole-order cancellation per revision, the replacement published after the warehouse accepted; `FulfilmentPlanner`)*
+- [x] Capacity source from `stock-levels` (the PRD §4.4 formula) *(`FulfilmentStock`; rule 1 through Checkout's `ICheckoutStockFeed` + restock on confirmation; baseline `SetBaselineAsync`; bundles by construction (the feed sets component quotas); a capacity below sold + held closes the quota)*:
   - `sold` lowered only on a confirmed cancellation
   - an epoch baseline at onboarding
   - bundles through quota multipliers
   - the I4 exception
-- [ ] Returns gate: refund on the warehouse's receipt by default; the host can switch to refund on request (WD12); round 5 (commerce GA1): for withdrawals, also on the buyer's proof of dispatch, whichever is earlier
-- [ ] Round 5 (commerce GA8): `expected-returns` carries the return reason per line
-- [ ] Round 5 (commerce GA7): the shop resolves a recall trace's fulfilment orders to buyers and mails the recall notice
+- [x] Returns gate: refund on the warehouse's receipt by default; the host can switch to refund on request (WD12); round 5 (commerce GA1): for withdrawals, also on the buyer's proof of dispatch, whichever is earlier *(`RefundTiming`; `GoodsBackKind.Released` added to Checkout; the proof of dispatch is registered in Checkout's aftercare, which pays on the first of the two)*
+- [x] Round 5 (commerce GA8): `expected-returns` carries the return reason per line
+- [x] Round 5 (commerce GA7): the shop resolves a recall trace's fulfilment orders to buyers and mails the recall notice *(`TraceRecallAsync` / `SendRecallNoticeAsync` over the shipments replicas; template `SparkFulfilment/RecallNotice` en/fr/nl)*
 - [x] Sync the commerce text with WD1/WD2 (PRD §0): commerce PRD §4.9's transport paragraph, plus commerce plan M11 and S20 *(docs only; S20 synced in commerce round 5, 2026-10-19)*
 
 ### WM11 — Demo app and E2E

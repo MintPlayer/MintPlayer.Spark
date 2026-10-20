@@ -435,6 +435,93 @@
         "en": "Write a review",
         "fr": "Écrire un avis",
         "nl": "Beoordeling schrijven"
+      },
+      "title": {
+        "en": "Delivery",
+        "fr": "Livraison",
+        "nl": "Levering"
+      },
+      "servicePoint": {
+        "en": "Pick-up point",
+        "fr": "Point relais",
+        "nl": "Afhaalpunt"
+      },
+      "deliveredAt": {
+        "en": "Delivered on",
+        "fr": "Livré le",
+        "nl": "Geleverd op"
+      },
+      "partlyShipped": {
+        "en": "Partly shipped",
+        "fr": "Expédié en partie",
+        "nl": "Deels verzonden"
+      },
+      "shipment": {
+        "en": "Shipment",
+        "fr": "Envoi",
+        "nl": "Zending"
+      },
+      "returnShipment": {
+        "en": "Return",
+        "fr": "Retour",
+        "nl": "Retour"
+      },
+      "promisedBy": {
+        "en": "expected by",
+        "fr": "attendu pour le",
+        "nl": "verwacht tegen"
+      },
+      "opensNewWindow": {
+        "en": "opens in a new window",
+        "fr": "s'ouvre dans une nouvelle fenêtre",
+        "nl": "opent in een nieuw venster"
+      },
+      "tracking": {
+        "Pending": {
+          "en": "Being prepared",
+          "fr": "En préparation",
+          "nl": "In voorbereiding"
+        },
+        "Labelled": {
+          "en": "Label created",
+          "fr": "Étiquette créée",
+          "nl": "Label aangemaakt"
+        },
+        "InTransit": {
+          "en": "On its way",
+          "fr": "En route",
+          "nl": "Onderweg"
+        },
+        "OutForDelivery": {
+          "en": "Out for delivery",
+          "fr": "En cours de livraison",
+          "nl": "Wordt vandaag geleverd"
+        },
+        "AvailableForPickup": {
+          "en": "Ready for pick-up",
+          "fr": "Prêt à être retiré",
+          "nl": "Klaar om af te halen"
+        },
+        "Exception": {
+          "en": "Delivery problem",
+          "fr": "Problème de livraison",
+          "nl": "Leveringsprobleem"
+        },
+        "Delivered": {
+          "en": "Delivered",
+          "fr": "Livré",
+          "nl": "Geleverd"
+        },
+        "ReturnedToSender": {
+          "en": "Returned to sender",
+          "fr": "Retourné à l'expéditeur",
+          "nl": "Teruggestuurd naar afzender"
+        },
+        "Cancelled": {
+          "en": "Cancelled",
+          "fr": "Annulé",
+          "nl": "Geannuleerd"
+        }
       }
     },
     "refusal": {
@@ -517,6 +604,11 @@
         "en": "The carrier did not answer; try again.",
         "fr": "Le transporteur n'a pas répondu ; réessayez.",
         "nl": "De vervoerder antwoordde niet; probeer opnieuw."
+      },
+      "addressBookFull": {
+        "en": "Your address book is full. Remove an address first.",
+        "fr": "Votre carnet d'adresses est plein. Supprimez d'abord une adresse.",
+        "nl": "Je adresboek is vol. Verwijder eerst een adres."
       }
     },
     "ranking": {
@@ -549,6 +641,78 @@
         "en": "You can sort by price or rating instead. No position is paid for.",
         "fr": "Vous pouvez trier par prix ou par évaluation. Aucune position n'est payée.",
         "nl": "U kunt in de plaats sorteren op prijs of beoordeling. Geen enkele plaats is betaald."
+      }
+    },
+    "addressBook": {
+      "title": {
+        "en": "Address book",
+        "fr": "Carnet d'adresses",
+        "nl": "Adresboek"
+      },
+      "empty": {
+        "en": "No saved addresses yet.",
+        "fr": "Aucune adresse enregistrée.",
+        "nl": "Nog geen bewaarde adressen."
+      },
+      "default": {
+        "en": "Default",
+        "fr": "Par défaut",
+        "nl": "Standaard"
+      },
+      "add": {
+        "en": "Add an address",
+        "fr": "Ajouter une adresse",
+        "nl": "Adres toevoegen"
+      },
+      "edit": {
+        "en": "Edit",
+        "fr": "Modifier",
+        "nl": "Wijzigen"
+      },
+      "remove": {
+        "en": "Remove",
+        "fr": "Supprimer",
+        "nl": "Verwijderen"
+      },
+      "label": {
+        "en": "Label (optional)",
+        "fr": "Libellé (facultatif)",
+        "nl": "Label (optioneel)"
+      },
+      "makeDefault": {
+        "en": "Use as default address",
+        "fr": "Utiliser comme adresse par défaut",
+        "nl": "Als standaardadres gebruiken"
+      },
+      "save": {
+        "en": "Save address",
+        "fr": "Enregistrer l'adresse",
+        "nl": "Adres bewaren"
+      },
+      "cancel": {
+        "en": "Cancel",
+        "fr": "Annuler",
+        "nl": "Annuleren"
+      },
+      "saved": {
+        "en": "Address saved.",
+        "fr": "Adresse enregistrée.",
+        "nl": "Adres bewaard."
+      },
+      "removed": {
+        "en": "Address removed.",
+        "fr": "Adresse supprimée.",
+        "nl": "Adres verwijderd."
+      },
+      "useSaved": {
+        "en": "Use a saved address",
+        "fr": "Utiliser une adresse enregistrée",
+        "nl": "Een bewaard adres gebruiken"
+      },
+      "choose": {
+        "en": "Choose…",
+        "fr": "Choisir…",
+        "nl": "Kies…"
       }
     }
   },

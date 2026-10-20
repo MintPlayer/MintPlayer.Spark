@@ -6,6 +6,24 @@
 
 import type { Money, TranslatedString } from '@mintplayer/ng-spark/models';
 
+export interface SparkAccountOrder {
+  number: string;
+  state: string;
+  total: Money;
+  amountRefunded?: Money | null;
+  lineCount: number;
+  titles: (TranslatedString | null)[];
+  createdAt: string;
+  confirmedAt?: string | null;
+}
+
+export interface SparkAccountOrderPage {
+  orders: SparkAccountOrder[];
+  total: number;
+  skip: number;
+  take: number;
+}
+
 export interface SparkAftercareClaim {
   claimId: string;
   status: string;
@@ -81,6 +99,7 @@ export interface SparkBasket {
   mixedChannels: boolean;
   choices: Record<string, string>;
   pendingOrderNumber?: string | null;
+  extendableUntil?: string | null;
 }
 
 export interface SparkBasketAddRequest {
@@ -228,6 +247,15 @@ export interface SparkGuaranteeClaimRequest {
   description: string;
   access?: string | null;
   preferredRemedy?: string | null;
+}
+
+export interface SparkGuestOrdersAttached {
+  numbers: string[];
+}
+
+export interface SparkGuestOrdersInfo {
+  emailConfirmed: boolean;
+  numbers: string[];
 }
 
 export interface SparkInsuranceOffer {

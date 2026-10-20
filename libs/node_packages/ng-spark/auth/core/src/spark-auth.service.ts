@@ -22,6 +22,8 @@ import {
   sparkExternalLoginNonce,
   sparkExternalLoginStorageKey,
   SparkExternalLogins,
+  SparkExternalLoginUnlinked,
+  SparkPersonalData,
   SparkPasskeyError,
   SparkPasskeyResult,
   passkeysSupported,
@@ -243,7 +245,7 @@ export class SparkAuthService {
       + `?provider=${encodeURIComponent(provider)}`
       + `&providerKey=${encodeURIComponent(providerKey)}`;
     try {
-      await firstValueFrom(this.http.post<{ unlinked: boolean }>(url, {}));
+      await firstValueFrom(this.http.post<SparkExternalLoginUnlinked>(url, {}));
       await this.checkAuth();
       return { success: true };
     } catch (response: unknown) {
@@ -554,8 +556,8 @@ export class SparkAuthService {
   }
 
   /** `GET /manage/personal-data` — the account and every contributor's data, as JSON. */
-  personalData(): Promise<SparkAccountResult<unknown>> {
-    return this.accountCall(() => firstValueFrom(this.http.get<unknown>(`${this.config.apiBasePath}/manage/personal-data`)));
+  personalData(): Promise<SparkAccountResult<SparkPersonalData>> {
+    return this.accountCall(() => firstValueFrom(this.http.get<SparkPersonalData>(`${this.config.apiBasePath}/manage/personal-data`)));
   }
 
   /**

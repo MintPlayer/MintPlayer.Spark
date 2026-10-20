@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using MintPlayer.Spark.Authorization.Contracts;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.Authorization.Endpoints.Passkeys;
@@ -46,7 +47,7 @@ internal static class PasskeyEndpoints
     /// learn which of those happened, or whether a given credential or account exists.
     /// </summary>
     internal static IResult SignInFailed() =>
-        Results.Json(new { error = "passkey_failed" }, statusCode: StatusCodes.Status401Unauthorized);
+        Results.Json(new SparkAuthError("passkey_failed"), statusCode: StatusCodes.Status401Unauthorized);
 
     /// <summary>
     /// Everything the framework throws when a ceremony cannot be evaluated.

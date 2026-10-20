@@ -10,3 +10,4 @@ export * from './scanner/spark-ticket-scanner.component';
 export * from './scanner/scanner-devices';
 export * from './scanner/spark-scanner-devices.component';
 export * from './provide-spark-tickets';
+export * from './spark-my-tickets.component';

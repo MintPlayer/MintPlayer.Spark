@@ -9,7 +9,12 @@ using Raven.Client.Documents.Session;
 namespace MintPlayer.Spark.IdentityProvider.Endpoints.Portal;
 
 /// <summary>One signing key as the management page lists it: never its private material.</summary>
+[MintPlayer.Spark.Abstractions.SparkContract("SparkSigningKey")]
 public sealed record OidcKeySummary(string Kid, string Algorithm, string State, DateTime CreatedAt, DateTime? ActivatedAt, DateTime? RetiredAt);
+
+/// <summary>What <c>POST /spark/identity-provider/admin/keys/rotate</c> answers: what the rotation did, one line per change.</summary>
+[MintPlayer.Spark.Abstractions.SparkContract("SparkKeyRotation")]
+public sealed record OidcKeyRotationResponse(IReadOnlyList<string> Changes);
 
 /// <summary>
 /// The signing keys, for the management page (<c>docs/identity_provider_platform_PRD.md</c> D9). Identity-provider
@@ -62,6 +67,6 @@ internal sealed partial class RotateSigningKeys : IPostEndpoint
             return TypedResults.Forbid();
 
         var changes = await keyRing.RotateAsync(force: true, httpContext.RequestAborted);
-        return TypedResults.Ok(new { changes });
+        return TypedResults.Ok(new OidcKeyRotationResponse(changes));
     }
 }

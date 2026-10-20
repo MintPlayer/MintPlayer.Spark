@@ -100,6 +100,12 @@
       "deviceRevoked": { "en": "This device is no longer allowed to scan.", "fr": "Cet appareil n'est plus autorisé à scanner.", "nl": "Dit toestel mag niet meer scannen." },
       "listNotFound": { "en": "Check-in list not found.", "fr": "Liste d'entrée introuvable.", "nl": "Toegangslijst niet gevonden." },
       "tooManyScans": { "en": "Too many scans in one sync.", "fr": "Trop de scans en une synchronisation.", "nl": "Te veel scans in één synchronisatie." }
+    },
+    "mine": {
+      "title": { "en": "My tickets", "fr": "Mes billets", "nl": "Mijn tickets" },
+      "empty": { "en": "You have no tickets yet.", "fr": "Vous n'avez pas encore de billets.", "nl": "Je hebt nog geen tickets." },
+      "failed": { "en": "Your tickets could not be loaded. Try again later.", "fr": "Vos billets n'ont pas pu être chargés. Réessayez plus tard.", "nl": "Je tickets konden niet geladen worden. Probeer het later opnieuw." },
+      "pdf": { "en": "Download PDF", "fr": "Télécharger le PDF", "nl": "PDF downloaden" }
     }
   }
 }
