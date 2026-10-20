@@ -152,7 +152,7 @@ public class SendcloudAdapterTests
         body["external_reference"]!.GetValue<string>().Should().Be("Shipments/orders/12345");
         body["customs_information"]!["export_reason"]!.GetValue<string>().Should().Be("returned_goods");
         body["customs_invoice_nr"]!.GetValue<string>().Should().Be("22334455");
-        body["parcel_items"]!.AsArray().Should().ContainSingle();
+        ((IEnumerable<System.Text.Json.Nodes.JsonNode?>)body["parcel_items"]!.AsArray()).Should().ContainSingle();
 
         var twoParcels = () => SendcloudCarrier.BuildReturn(request with { Parcels = [new ParcelSpec(500), new ParcelSpec(600)] }, new SendcloudOptions());
         twoParcels.Should().Throw<CarrierException>();

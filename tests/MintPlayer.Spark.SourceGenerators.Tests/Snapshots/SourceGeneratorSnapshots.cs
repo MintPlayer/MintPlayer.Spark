@@ -239,4 +239,37 @@ public class SourceGeneratorSnapshots
 
         return Verifier.Verify(Render(result));
     }
+
+    /// <summary>
+    /// Pins the replica constants (warehouse PRD §4.2.1) byte for byte. The hash in the snapshot is the
+    /// contract with the owner: it re-renders the manifest at runtime, so any drift here is a redeploy of
+    /// every replica's ETL task.
+    /// </summary>
+    [Fact]
+    public Task Replicated_car()
+    {
+        var car = """
+            using MintPlayer.Spark.Replication.Abstractions;
+
+            namespace TestLib;
+
+            [Replicated(SourceCollection = "Cars", SourceModule = "Fleet", WriteBack = true)]
+            public partial class Car
+            {
+                public string? Id { get; set; }
+                public string LicensePlate { get; set; } = "";
+                public string Model { get; set; } = "";
+                [ReplicatedFrom("Owner.Name")] public string? OwnerName { get; set; }
+            }
+            """;
+
+        var result = GeneratorHarness.Run(
+            "ReplicatedGenerator",
+            [car],
+            referenceTypes: [typeof(MintPlayer.Spark.Replication.Abstractions.ReplicatedAttribute)],
+            rootNamespace: "TestLib",
+            generatorAssemblyName: "MintPlayer.Spark.LibraryGenerators");
+
+        return Verifier.Verify(Render(result));
+    }
 }

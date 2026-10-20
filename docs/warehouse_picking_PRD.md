@@ -15,11 +15,11 @@
 > The decision log (§13) is the record. Where the body and the log disagree, the log wins; fix the body.
 >
 > **Numbering:**
-> - owner decisions: WD1–WD12;
+> - owner decisions: WD1–WD18 (WD13–WD18: replication, round 3);
 > - spikes: W1–W19;
 > - milestones: WM0–WM13;
 > - framework additions: WX1–WX16;
-> - open questions: Q-W1–Q-W26;
+> - open questions: Q-W1–Q-W29 (all decided; Q-W27–Q-W29 on 2026-10-20);
 > - warehouse invariants: WI1–WI6.
 >
 > Commerce numbers (D, F, I, K, M, Q-O, S, X) keep their commerce meaning, and so do the commerce round-5 gap items **GA/GB/GC** (commerce §4.21). Three land here: GA7 (recall trace), GA8 (return reasons) and GC9 (dangerous goods).
@@ -38,6 +38,7 @@
 | Commerce text still to sync with WD1/WD2 (three places) | ✅ (~~⏳~~; synced: commerce §4.9 and plan M11 earlier, S20 in commerce round 5) | 2026-10-19 | see below |
 | Commerce round 5 (owner, 2026-10-19): GA7 recall trace, GA8 return reasons, GC9 dangerous goods land here; reference data is developed, not deployed (commerce D39) | ✅ decided; ⏳ to build | 2026-10-19 | §4.3, §4.5, §4.7; commerce §13 Round 5 |
 | Spikes W1–W19 | ⏳ | — | §7 |
+| Round 3 (owner, 2026-10-20): replication redesign: `[Replicated]` stays the single declaration, generated script + hash, owner approval gate, ETL or owner push by licence, change-vector concurrency (WD13–WD18); WIP b4c218eb's `[Replica]`/contract records rejected | ✅ decided; ⏳ to build (WM1) | 2026-10-20 | §4.2, §13 Round 3 |
 | Milestones WM0–WM13 (inside commerce M20) | ⏳ | — | §10, plan |
 
 The three commerce places ~~still~~ to sync with WD1/WD2 (all synced by 2026-10-19):
@@ -295,142 +296,251 @@ Commerce X9 adds the collision analyzer.
 - Commerce references no warehouse package.
 - The two meet only in `Fulfilment.Contracts`.
 
-### 4.2 Replication: the transport is chosen by licence capability (WD1)
+### 4.2 Replication: one declaration, an approval gate, the transport chosen by licence (WD1, WD13–WD18)
 
-**What exists.** `[Replicated]` ETL plus SyncAction write-back (`docs/guide-cross-module-sync.md`):
-- The consumer broadcasts its ETL scripts.
-- The owner creates one ETL task per consumer, `spark-etl-{Module}`, and deploys each script verbatim (`libs/replication/MintPlayer.Spark.Replication/Services/EtlTaskManager.cs:25-26,65-70`).
-- On Community, `AddEtlOperation` (`:92`) throws `LicenseLimitException` and the endpoint answers 500 (`Endpoints/EtlDeploy.cs:113-115`). No replica is ever created.
+> **Rewritten 2026-10-20 (owner round 3, §13).** The contract design this section held until then (hand-written versioned contract records, `Publish<TSource, TContract>`, `Consume:{contract}` configuration, the `[Replica]` rename of the interrupted WIP commit b4c218eb) is **superseded**; its decisions are kept, struck, at the end of this section. Evidence notation: `path:line` is the working tree at HEAD (b4c218eb); `path:line @e0c542f9` is a file the WIP commit deleted or broke, cited from the last good commit.
 
-**Decision.** Owner (WD1 refined): "if ETL is available, the user can use the ETL replication - otherwise the updater module sends a syncaction request to the owning module, and the owning module sends the http-request (etl not available) to all other modules - all using the ClientCertificate authentication for cross-module webrequest communication".
+**What exists (e0c542f9).**
+- The consumer declares `[Replicated(SourceModule, Contract, SourceCollection)]` on a read-only copy class (`libs/replication/MintPlayer.Spark.Replication.Abstractions/ReplicatedAttribute.cs:14-42 @e0c542f9`). Since 43d492df the owner also declares a hand-written record per type and a `Publish` lambda (`apps/Fleet/Fleet.Library/Contracts/CarV1.cs`; `apps/HR/HR/Program.cs:86-92`; `apps/Fleet/Fleet/Program.cs:56-60`), and compiles the lambda to an ETL script at runtime (`libs/replication/MintPlayer.Spark.Replication/Services/EtlTransformGenerator.cs:74-92 @e0c542f9`). Every replicated field is therefore written twice. That is the duplication the owner rejected.
+- At startup the consumer broadcasts a deployment request per owner (`Extensions/SparkReplicationExtensions.cs:113-115 @e0c542f9`). A messaging recipient posts it over mTLS and treats 400/404/409 as final (`Messages/EtlScriptDeploymentRecipient.cs:43-48 @e0c542f9`). The owner checks the `Replicate/{SourceCollection}` grant (`Endpoints/EtlDeploy.cs:101 @e0c542f9`), takes the destination from the registry (F19 fixed, `:115-129`), and deploys one task `spark-etl-{Module}` (`Services/EtlTaskManager.cs:49-50,112,119 @e0c542f9`). It posts on **every** start and redeploys on **every** start; there is no hash and no approval.
+- Write-back runs on its own RavenDB subscription (`Workers/SyncActionSubscriptionWorker.cs:36`) plus a sweeper (`Services/SyncActionRetrySweeper.cs:85-92`). The default app with messaging and replication therefore uses 2 of Community's 3 subscriptions (`libs/messaging/MintPlayer.Spark.Messaging/SparkMessagingOptions.cs:195-212`; `libs/subscription_worker/MintPlayer.Spark.SubscriptionWorker.Abstractions/SparkSubscriptionWorker.cs:105`).
+- The owner applies an edit on top of the version stored **now**, so a stale replica edit silently overwrites newer owner changes: "The replica's change vector means nothing here" (`libs/spark/MintPlayer.Spark/Services/SyncActionHandler.cs:43-53,63 @e0c542f9`; still so in the WIP, `SyncActionHandler.cs:39-47,60`). A replica stores nothing about the source version it was built from (no change vector in the generated script, `EtlTransformGenerator.cs:74-92 @e0c542f9`).
 
-| | Read path: owner → every consumer | Write path: consumer → owner |
+**Decision (owner round 3, 2026-10-20).**
+
+| # | Rule |
+|---|---|
+| WD13 | `[Replicated]` stays, and the **replica class is the single declaration**. No contract records, no `Publish`, no `[Replica]` |
+| WD14 | The replication script is **source-generated** into the `partial` replica class as `const string`s (script and hash). No runtime reflection |
+| WD15 | Scripts are hashed on **both** sides: the consumer doesn't post an unchanged script, the owner doesn't redeploy an unchanged approved one |
+| WD16 | The **owner** approves. Auto-approval only when the owner's host environment is Development, never by build configuration. Destinations come from the authenticated module's registry entry (F19) |
+| WD17 | Owner licence has ETL: the approved script runs as a RavenDB ETL task. No ETL (Community, production): the owner pushes the same projection over Spark messaging and the mTLS channel, both directions share that plumbing, and a Spark cron job reconciles |
+| WD18 | ~~Write-back reuses Spark's optimistic concurrency. The replica carries the source change vector it was built from; a write-back uses it as `BaseEtag`, so a stale edit is a **Conflict** that reaches the initiator.~~ **Superseded for write-back by WD19 (owner decision 2026-10-20).** Still in force: pushes never apply an older projection over a newer one (the source change vector guards the push direction) |
+| WD19 | Write-back is a **per-property compare-and-set** inside the owner's normal save path (`ISparkReplacedSaves`: rights incl. attribute rights, validation, interceptors). Each changed property carries the base the person started from; equal → applied, different → that property is a Conflict, the whole action is refused, nothing is applied; unlisted properties never conflict; collections and AsDetail compare as whole values. Answered with Spark's concurrency vocabulary (`SparkConflictException` reasons, the 409). Owner decision 2026-10-20 |
+| WD20 | The save of a write-back replica calls the owner **synchronously** over the mTLS channel (5 s, configurable); the owner's answer is the save's answer. Only an unreachable or slow owner queues the SyncAction (same commit) and the user is told "saved, pending at {owner}". Deferred terminal outcomes reach the initiator durably and live; GaveUp also mails. Write-back edits are **never applied locally**. Owner decision 2026-10-20 |
+| WD21 | Administrators approve replication requests on the owner's website: the library's "Replication requests" program unit (pending first; consumer, source, state, requested vs approved hash, readable diff; Approve/Reject custom actions; `replication:approvers` slot, hidden from users without the read right; auto-approved rows marked). Owner decision 2026-10-20 |
+
+#### 4.2.1 The declaration and the generator
+
+```csharp
+// HR.Library: a read-only copy of Fleet's cars. Nothing else declares this shape.
+[Replicated(SourceCollection = "Cars", SourceModule = "Fleet", WriteBack = true)]
+public partial class Car
+{
+    public string? Id { get; set; }
+    public string LicensePlate { get; set; } = "";
+    public string Model { get; set; } = "";
+    [ReplicatedFrom("Owner.Name")] public string? OwnerName { get; set; }   // rename / nested path
+}
+```
+
+**Attribute arguments** (`ReplicatedAttribute`, restored from e0c542f9 and reworked):
+
+| Argument | Meaning | Default |
 |---|---|---|
-| Licence has ETL | RavenDB ETL, with a transform the owner generates from the contract | A SyncAction request to the owner (F12–F15 fixed). The owner applies it, and the new state returns to every consumer, the requester included, through the read path |
-| No ETL | An outbox → HTTPS push to every consumer, plus a digest reconcile (initial load, repair) | (same) |
-| Every call | Module client certificates (existing mTLS) | Module client certificates (existing mTLS) |
+| `SourceCollection` (required) | The owner's RavenDB collection the script reads. The generator can't know the owner's naming conventions, so it is never inferred | — |
+| `SourceModule` | The owner module. **Optional** (owner decision 2026-10-20): a **generic library** (e.g. `Fulfilment.Contracts`) leaves it out and the host names it in `Spark:Replication:Sources:{TargetCollection}` (one or more modules; ids must be unique across them, an id held by another source is refused as poison). **Startup refuses** a replica that neither names (`ReplicaCatalog.Problems`) | config |
+| `TargetCollection` | The consumer's collection. Defaults to the generator's pluralisation of the class name (Inflector-like: `Person` → `People`); startup refuses when the store names the collection differently, with the value to set (implementation decision, WM1) | pluralised name |
+| `OriginalType` | Optional `typeof(owner type)` when the consumer can reference the owner's library. The generator then checks every mapped path against it (SPARK067) | none |
+| `WriteBack` | Whether edits of this replica go back to the owner as SyncActions. False: the type is fully read-only | `false` |
+| `[ReplicatedFrom("A.B")]` on a property | Source path when it differs from the property name | the property name |
 
-**Selection.** `Spark:Replication:Transport` = `Auto` (default) | `Http` | `Etl`. These names are proposals.
-- `Auto` reads the server's licence at startup (WX13). It picks ETL when the licence has it, HTTP otherwise.
-- `Etl` on a licence without ETL refuses startup with an actionable message (F18).
-- Local runs and CI hold the Developer licence, so `Auto` would choose ETL there and HTTP in production. Tests and demos therefore pin the transport (Q-W24).
+`Contract`/`Version` are removed: a new shape is a new replica class in a new target collection, so versions still run side by side without a version number.
 
-**Interpretation, stated so the owner can correct it.** "Sends … to all other modules" is read as *every consumer module, the requester included*. The requester's replica must take the owner's applied state.
+**What the generator emits** (in `MintPlayer.Spark.LibraryGenerators`, the entity-library generator, because replica classes live in entity libraries; modelled on `ValueObjectKeyGenerator`: `ForAttributeWithMetadataName`, an equatable model without symbols, a `Producer`, a reporter, `libs/source_generators/MintPlayer.Spark.LibraryGenerators/Generators/ValueObjectKeyGenerator.cs:30-64,72-86`):
 
-**Contracts (WX2): declared in configuration, versioned, from several sources.**
-- **The producer** declares a contract in code: a lower-kebab name (permanent), a version, the source type and a C# projection. Example: `Publish<WarehouseShipment, ShipmentV1>("shipments", 1, …)`.
-- **The consumer** declares a replica type bound to `(contract, versions)`.
-- **Configuration** names the sources: `Spark:Replication:Consume:{contract}:Sources`. A generic library never hard-codes a module name. Today `[Replicated]` forces one (`required string SourceModule`, `ReplicatedAttribute.cs:16`).
-- **Grants.** The owner grants `Module:{consumer}` the existing verb on the contract: `Replicate/{contract}`. Today the verb names a collection, `Replicate/{Collection}` (`EtlDeploy.cs:97-111`).
-- **Several sources** can feed one contract:
-  - every replica records its source module;
-  - producer ids must be unique across modules (commerce §4.9);
-  - an id already held by another source is refused as poison.
-- **Versions** run side by side, for example `fulfilment-orders` v1 and v2. The consumer declares which ones it reads.
-- **Subscriptions.**
-  - At startup the consumer registers `(contract, versions)` with each source over mTLS. This replaces the ETL deployment broadcast (`Extensions/SparkReplicationExtensions.cs:84,95-96,135-139`).
-  - The owner keeps a subscription only while the grant holds.
-  - It removes the subscription, and its ETL task, when the consumer withdraws or the grant is revoked (F18).
+```csharp
+partial class Car : MintPlayer.Spark.Replication.Abstractions.IReplicatedEntity
+{
+    public const string ReplicationSourceCollection = "Cars";
+    public const string ReplicationTargetCollection = "Cars";        // the consumer's collection for Car
+    public const string ReplicationManifest = "{\"v\":1,\"fields\":[[\"LicensePlate\",\"LicensePlate\"],…]}";
+    public const string ReplicationScript = "loadToCars({ LicensePlate: this.LicensePlate, …, '@metadata': {…} });";
+    public const string ReplicationHash = "sha256:…";                 // over v1 + source + target + manifest + script
+}
+// plus one [assembly: SparkReplicaTypes(typeof(Car), …)] per library, so the runtime lists replicas without scanning members
+```
 
-**HTTP path: capture at the owner.**
-- An `IBeforeSave` increments `ReplicationVersion` in the same session. Spark saves with the expected change vector (`docs/guide-concurrency.md:46-58`), so the counter is monotonic per document.
-- An `IAfterSaveCommitted` / `IAfterDeleteCommitted` stores the push in the save's own commit (`SparkCommittedInterceptors.cs:3-20`). That is the outbox.
-- Raw session writes bypass interceptors (`docs/guide-auditing.md:123-131`):
-  - library code calls `IReplicaPublisher.MarkChanged(session, id)`;
-  - reconciliation catches the rest through the change vector.
+**As built (WM1, 2026-10-20).** `IReplicatedEntity` is a marker: a `const` cannot implement a static abstract member, so the runtime reads the generated literals (`FieldInfo.GetRawConstantValue`, no member scanning, no script building). The generator also emits `ReplicationSourceModule` (null when not given) and `ReplicationWriteBack`. The manifest JSON carries `v`, `source`, `target` and the fields; the hash is `sha256` over `manifest + "\n" + script`. The ETL variant of the script (`RenderEtlScript`) adds `Spark-Replica-Source-Module` and is rendered by the owner at deploy, so the posted script stays module-independent. Inherited properties are mapped (base first). Files: `libs/replication/MintPlayer.Spark.Replication.Abstractions/Rendering/*`, `libs/source_generators/MintPlayer.Spark.LibraryGenerators/Generators/ReplicatedGenerator*.cs`, `ReplicaCollectionNames.cs`, `CodeFixes/ReplicatedPartialCodeFixProvider.cs`.
 
-**HTTP path: delivery.**
-- There is one messaging queue per consuming module. The handler **loads the current document**, so a burst of writes becomes one push of the latest state.
-- The handler sends `POST /spark/replicas/apply` to the consumer's URL **as recorded in the registry**, over the module certificate, with the body `{contract, version, items: [{id, sourceModule, replicationVersion, changeVector, payload | deleted}]}`. The URL never comes from a request (F19).
-- Peer unreachable or 5xx: `RetryAfterException`.
-- 4xx: no retry. The message is dead-lettered with its reason and raises an alert.
-- Stock levels change on every movement, so they flush as a dirty set every 1–2 s from a 6-field cron. The outbox cannot deduplicate them, because it refuses `DeduplicationKey` (`IMessageOutbox.cs:13-18`).
+- Every public instance property with a setter, except `Id`, is mapped. Replicas hold no consumer state (consumer state lives in consumer documents keyed by the replica id, as before).
+- The **manifest** is the structured field list (target ← source path). The **script** is its JavaScript rendering: null-safe member paths only, identifiers checked against `^[A-Za-z_][A-Za-z0-9_]*$` (the escaping rules of `EtlTransformGenerator.cs @e0c542f9`, moved), plus `'@metadata': {'@collection', 'Spark-Replica-Source-Change-Vector', 'Spark-Replica-Source-Module'}` (W6 verifies ETL may set custom metadata; fallback: one reserved body field `SparkReplicaSource`, which Raven keeps without a CLR member).
+- The renderer is **one source file** compiled into both the generator (netstandard2.0, `SHA256.Create().ComputeHash` + own hex) and `Replication.Abstractions`, so the owner can re-render a manifest byte-for-byte.
+- **Diagnostics** (next free id is SPARK065: the highest in use is SPARK064, `libs/source_generators/MintPlayer.Spark.SourceGenerators/Diagnostics/SparkLookupDiagnostics.cs:15`; registry `docs/diagnostics.md:24-89`):
 
-**HTTP path: apply at the consumer.**
-- **The newer version wins.** An item is applied only if its `replicationVersion` is higher than the stored one. Tombstones are kept, so a late older update cannot resurrect a deleted document.
-- **Replicas are read-only:**
-  - no `New` or `Delete` rights;
-  - edits go through write-back;
-  - consumer state never goes on a replica document. It lives in consumer documents keyed by the replica id.
-- **`IReplicaChanged<T>`.** In the same session a durable `IReplicaChanged<T>` is enqueued, carrying the previous and the new state. Transitions are derived by comparing the two, so the order of pushes doesn't matter.
+  | Id | Severity | When |
+  |---|---|---|
+  | SPARK065 | Error | `[Replicated]` class not `partial` (code fix adds `partial`, as `CodeFixes/ValueObjectPartialCodeFixProvider.cs:32`). Error, not a runtime fallback: without the generated constants the runtime has no script (WD14) |
+  | SPARK066 | Error | A mapped member or path segment is not a plain identifier, or `SourceCollection` is missing/invalid |
+  | SPARK067 | Error | `OriginalType` given and a mapped path does not exist on it |
+  | SPARK068 | Error | A hand-written member collides with a generated one (`ReplicationScript` …). **There is no hand-written script override**: a consumer-authored script is exactly F16, and it couldn't run on the HTTP path. A derived value is computed by the consumer from the replica |
 
-**HTTP path: reconciliation.**
-- **When:** a consumer cron job (one run per occurrence across the cluster, `SparkCronScheduler.cs:239-273`), plus a run at startup.
-- **How:** it pages `GET /spark/replicas/{contract}/digest?after=&take=` for `(id, replicationVersion, changeVector)` and fetches whatever differs.
-- The initial load is a full reconcile, and so is recovery after a backup restore.
-- The ETL path doesn't need it (WD1 refined).
+#### 4.2.2 Registration, hashing and the approval gate
 
-**ETL path.**
-- **One task per consumer per owner**, as today. The difference: the owner **generates the transform from the contract**, and the consumer sends only `(contract, versions)`.
-- Consumer JavaScript is never deployed, which closes F16 by construction. How projections become ETL transforms is Q-W17.
-- The ETL destination (database and URLs) comes from the registry entry of the authenticated consumer, never from the request body. Today the consumer supplies it and the owner never checks it (F19).
-- Two RavenDB behaviours (research §5), both absorbed by the contract rules:
+```
+consumer start ──(set hash changed?)──► outbox message ──mTLS──► owner /spark/replicas/register
+                                                                   │ grant + attribute read rights per field
+                                                                   │ re-render manifest == posted script/hash?
+                                                                   ▼
+                                    SparkReplicationSubscription (persistent object, one per consumer × target collection)
+                                       hash == ApprovedHash ─► "unchanged", nothing redeployed
+                                       else Pending ─► Development? auto-approve : admin Approve/Reject (custom actions, diff)
+                                                         └► on approve: messaging ─► deploy (ETL task | HTTP subscription + initial reconcile)
+```
 
-  | RavenDB ETL behaviour | Contract rule that absorbs it |
-  |---|---|
-  | It keeps a document's id only when loading into the same collection | Producer ids are unique across modules |
-  | It propagates deletes by default | Cancelling is a status change, never a delete |
+**Consumer.**
+- At startup it groups its replica types by owner module and computes a **set hash** over their `ReplicationHash`es. It stores the last hash the owner acknowledged in `SparkReplicaRegistrations/{owner}`; if unchanged and acknowledged as approved, it posts nothing (WD15).
+- Otherwise it enqueues a `ReplicaRegistrationMessage` through the messaging outbox (durable, the same pattern as `EtlScriptDeploymentRecipient @e0c542f9`): owner not registered or unreachable → `RetryAfterException`; 400/403/404 → `NonRetryableException` with the reason logged (`libs/messaging/MintPlayer.Spark.Messaging.Abstractions/RetryAfterException.cs:10,22`).
+- The post lists **all** replicas the consumer reads from that owner: `{targetCollection, sourceCollection, manifest, script, hash}`. The requesting module comes from the certificate, never the body; the destination database is never sent (F19).
 
-**Write path: generic; shop and warehouse don't use it (WD2).**
-- **A request, not a local save.** Editing a replica sends a **SyncAction request** to the owner. The replica is **not** saved locally first:
-  - today it is (`Services/ReplicationInterceptor.cs:16`);
-  - the guide says the opposite of what the code does (`docs/guide-cross-module-sync.md:124`).
+**Owner, `POST /spark/replicas/register`** (mTLS gate as `Endpoints/EtlDeploy.cs:63-79 @e0c542f9`):
+1. Grant: `Replicate/{SourceCollection}` for `Module:{consumer}` (`EtlDeploy.cs:101 @e0c542f9`; WIP `Services/ModuleGrants.cs`). **Attribute rights** too: a manifest field the module may not read is refused by name (F17, read side; "ETL script reads beyond its grant").
+2. Re-render the script from the manifest with the shared renderer; refuse (400) unless it equals the posted script and hash. The owner therefore never deploys consumer-authored JavaScript (F16 closed by construction), and the manifest grammar has no `loadDocument`.
+3. Upsert `SparkReplicationSubscriptions/{consumer}/{targetCollection}`: `PendingHash/Manifest/Script`, `ApprovedHash/Manifest/Script`, `ApprovedBy/At`, `Status` (`Pending | Approved | Rejected | Withdrawn | Suspended`), `Deployed` (transport, destination, hash).
+4. Posted hash == `ApprovedHash` → `unchanged`; nothing is redeployed (WD15). Otherwise `Pending`, and:
+   - owner `IHostEnvironment.IsDevelopment()` → approved at once, by the system, recorded as such (precedent for environment gating: `libs/identity_provider/MintPlayer.Spark.IdentityProvider/Services/OidcSigningKeyService.cs:39`). No `#if DEBUG`, no configuration switch (the reference system's flaw, §13);
+   - otherwise an administrator decides.
+5. Subscriptions of this consumer **missing** from the post become `Withdrawn`: the ETL transform is removed or pushes stop (F18 cleanup).
+6. Answer per item: `approved | unchanged | pending | refused(reason)`. The consumer stores the answer; `pending` items get data once approved, without a re-post.
 
-  The request document is stored in the edit's own session (commerce X7 `ISaveReplacement`), so dispatch is durable (F13).
-- **Attribute rights.** The owner applies the request through its pipeline **with attribute rights** for the module principal (F17). An owner can therefore limit a module to, say, status fields.
-- **Fixes:**
-  - outcomes are per action: a refusal is recorded as refused, with its reason, and the initiator is notified (F12);
-  - the retry budget is configurable with backoff, and failed requests can be re-driven (F14);
-  - requests are ordered per document and idempotent by op id at the owner (F15);
-  - nested values keep their JSON structure (F18).
-- **No diverged replica.** The replica changes only when the owner pushes, so a refused request leaves no diverged replica. What the editor sees in between is Q-W18.
-- **The SyncAction worker** holds one of the three subscriptions per database that Community allows, and today it is registered unconditionally (`SparkReplicationExtensions.cs:49`). It becomes registered only when a replica type allows write-back (WX3).
+**The gate is built from Spark features** (Q-W27 decided 2026-10-20: the replication library's own persistent object, no dependency on `libs/approvals`; WD21). As built:
+- **Two documents.** `SparkReplicationRequest` (`SparkReplicationRequests/{consumer}/{target}/{hash16}`, so re-posting a shape is idempotent) is the library persistent object administrators see; states `Pending | Approved | Rejected | Superseded` (a newer pending request, or a newer approval, supersedes). `SparkReplicationSubscription` (`SparkReplicationSubscriptions/{consumer}/{target}`) is internal delivery bookkeeping: `Active | Withdrawn | Suspended`, approved manifest/hash, the pending request, `Deployed (transport, hash, destination)`.
+- **Program unit "Replication requests"** shipped in the library's App_Data layer (`SparkLibraryAlias` `replication`: `Model/SparkReplicationRequest.json`, `programUnits.json`, `actions.json`, `translations.json`, `security.json`), query `ReplicationRequests` with pending requests first (stored `IsPending`), then newest. The detail shows consumer module, source and target collection, status, auto-approved flag, requested vs approved hash, the readable **diff** (`+ field ← path`, `- field`, `~ field ← newpath (was oldpath)`, collection changes) and the manifest. Auto-approved (Development) rows stay listed, marked `AutoApproved` with approver `system (Development)`.
+- **Rights:** the library's `security.json` grants `QueryRead`, `ApproveReplication` and `RejectReplication` on `SparkReplicationRequest` to the slot `replication:approvers`; each application binds it (`"bindings": { "replication:approvers": [ "Administrators" ] }`, HR and Fleet do). A user without the read right does not see the program unit. Approve/Reject are offered only on a pending row (`SparkReplicationRequestActions.OnDisableActionsAsync`). Library rights are a layer since composition D16, so the old "a package cannot ship rights" limit no longer applies.
+- Approving re-checks the grant and read rights (§4.2.6) and enqueues a `ReplicaDeployMessage` in the same commit; the deploy runs from messaging, so it retries and survives restarts. Reject suspends the subscription and removes its delivery; re-posting a rejected shape is answered `Refused`.
+- ~~Q-W27 asks whether to use `libs/approvals` instead.~~ Decided (above).
 
-**Security (WX4).**
-- Every cross-module call, on both paths, uses module client certificates (WD1).
-- Grants are per contract. Module writes respect attribute rights (F17), and there are no consumer scripts (F16).
-- **Destinations** of pushes and ETL tasks come from the registry entry of the authenticated module, never from the caller (F19). That makes the registry the trust root.
-- **Registry trust root.** Every module needs write access to `SparkModules` in order to register. A compromised module could therefore rewrite another module's pinned thumbprint and URL (`libs/replication/MintPlayer.Spark.Replication.Abstractions/Models/ModuleInformation.cs:18,30`).
-  - WX4 adds an operator-managed, read-only registry mode.
-  - Today a registration failure stops the replication setup before anything else runs (`SparkReplicationExtensions.cs:84`).
-- **Behind Traefik:** the forwarded certificate plus `KnownProxies` (`ModuleCertificateForwarding.cs:9-35`).
+**Deploy** (`ReplicaDeployMessage` recipient, owner):
+- Transport per owner: `Spark:Replication:Transport` = `Auto | Http | Etl`, resolved by `ReplicationTransportResolver` (WIP, `Services/ReplicationTransportResolver.cs:33-65`) over `ISparkLicenseCapabilities` (WIP, `libs/spark/MintPlayer.Spark/Services/SparkLicenseCapabilities.cs:24-47,99,121`: `GET /license/status` → `HasRavenEtl`, cached; unreadable → unknown → `Auto` takes HTTP). `Etl` pinned without the licence refuses startup (F18). The consumer needs no transport setting: it always exposes the apply endpoint.
+- ETL: one task per consumer (`spark-etl-{consumer}`), with one transform per approved subscription; the connection string comes from the consumer's registry entry (`EtlDeploy.cs:115-129 @e0c542f9`). It is skipped when the deployed `(transport, destination, hash set)` is unchanged; a changed registry URL or database therefore redeploys. Withdrawn/rejected/revoked transforms are removed (WIP `EtlTaskManager.RemoveAsync`).
+- HTTP: the subscription becomes active and an **initial reconcile** runs (§4.2.4).
 
-**HTTP-path failure modes** (W5 measures them):
+#### 4.2.3 HTTP path (no ETL): the owner pushes
+
+**Projection without ETL.** The owner interprets the approved **manifest** in C#: it reads the source document as raw JSON and copies the listed paths with the script's null-safe semantics. Considered and rejected:
+- a RavenDB JavaScript `select` projection query: the script would be spliced into RQL (repo rule: never), and it would run consumer-shaped JavaScript;
+- a generated C# projection on the owner: the owner does not reference the consumer's classes;
+- running the script in an embedded JS engine: a second engine with subtly different semantics.
+
+A test asserts the manifest projector and the ETL script give the same document for the same source (W6, Developer licence).
+
+**Capture (owner).**
+- An `IAfterSaveCommitted` / `IAfterDeleteCommitted` interceptor on every collection with an active HTTP subscription. The framework stores its work message **in the save's own session** (`libs/spark/MintPlayer.Spark.Abstractions/Interceptors/SparkCommittedInterceptors.cs:104-114`; `libs/spark/MintPlayer.Spark/Services/SparkInterceptorPipeline.cs:176-210`), so capture is durable without a new subscription; the interceptor runs later, at least once (`SparkCommittedInterceptors.cs:16`).
+- It broadcasts one `ReplicaPushMessage {consumer, targetCollection, documentId}` per subscribed consumer (`libs/messaging/MintPlayer.Spark.Messaging.Abstractions/IMessageBus.cs:10`) on the queue `spark-replication` (declared by the library, `libs/messaging/MintPlayer.Spark.Messaging/Services/MessageBus.cs:158-177`).
+- Raw session writes bypass interceptors: library code calls `IReplicaPublisher.MarkChanged(session, id)` (WIP `ReplicaChanged.cs`), and reconcile catches the rest.
+
+**Delivery (owner).** The recipient **loads the current document** and its change vector (so a burst of writes becomes one push of the latest state), projects it, and posts `POST /spark/replicas/apply` to the consumer's `AppUrl` **from the registry** (F19; `ModuleInformation.cs:17-30`) with the module certificate (`Services/ReplicationHttpClientProvider.cs:16-69`). Body: `{targetCollection, hash, items: [{id, sourceModule, sourceChangeVector, payload | deleted}]}`.
+- unreachable / 5xx / 429 → `RetryAfterException`; 4xx → `NonRetryableException`, dead-lettered with its reason;
+- `409 manifest-mismatch` (the push's hash is neither the consumer's current nor its last approved one, e.g. after a rejection) → dead-letter; the reconcile after the next approval repairs it;
+- budget and backoff per queue (`libs/messaging/MintPlayer.Spark.Messaging/SparkQueueOptions.cs:54-76`; global defaults `SparkMessagingOptions.cs:40,50,75-89`): the library default is the reference system's ladder 1 m / 5 m / 30 m / 2 h, then every 2 h, with `ExpiresAtUtc` at 48 h (RetryAfterException parks count as attempts only every `RateLimitParksPerAttempt`, `RetryAfterException.cs:10`).
+- Ordering is not needed (the version guard decides), so the queue may run with `MaxConcurrency` > 1 (`SparkQueueOptions.cs:54-58`). W5 checks that a parked push for one dead consumer doesn't delay the others.
+- High-churn collections (stock levels) flush through the WIP dirty set (`ReplicaDirtyMarker`, `Models/ReplicationDocuments.cs`) every 1–2 s from a cron job, because the outbox refuses `DeduplicationKey` (`libs/messaging/MintPlayer.Spark.Messaging/IMessageOutbox.cs:16-17`).
+
+**Apply (consumer), `POST /spark/replicas/apply`:**
+1. mTLS; the caller must be a source module of `targetCollection` (attribute or `Sources` config); the posted `hash` must equal the replica class's `ReplicationHash` **or** the hash the owner last acknowledged as approved (so an upgraded consumer keeps receiving the approved shape while its new manifest waits; Q-W29 decided 2026-10-20), else `409 manifest-mismatch`.
+2. Per item, in one session with optimistic concurrency on the replica: load the replica and its tombstone (`ReplicaTombstone`, WIP `ReplicationDocuments.cs`), compare **change vectors** with a new core helper `SparkChangeVector.Compare(a, b)` → `Older | Equal | Newer | Concurrent` (entry-wise over `TAG:etag-dbid`):
+   - `Newer` → store the payload with metadata `Spark-Replica-Source-Change-Vector` and `-Source-Module` (WIP `ReplicationDocuments.cs:21`), or delete it and keep a tombstone;
+   - `Equal` / `Older` → no-op, still 200 (idempotent: a resend after a lost 200 is harmless);
+   - `Concurrent` → no-op plus a reconcile hint (only a conflicted multi-node owner produces it; the owner's next state dominates both);
+   - an id whose replica came from another source module → refused as poison.
+3. In the same session, a durable `IReplicaChanged<T>` (previous and new state, WIP `ReplicaChanged.cs`) is enqueued through the outbox.
+4. Tombstones expire after 7 days (> the 48 h budget + one reconcile period), using RavenDB document expiration (W6 confirms it on Community).
+
+Replicas are **read-only** to everything but this endpoint and ETL: `DatabaseAccess` refuses unchecked writes to replica types (WIP `ISparkReplicaTypes`, `DatabaseAccess.EnsureNotReplica`); the model grants no `New`/`Delete`, and `Edit` only with `WriteBack = true`, which becomes a SyncAction (§4.2.5).
+
+#### 4.2.4 Reconcile (HTTP path only)
+
+- An **owner** cron job (`ISparkCronJob`, `libs/cron/MintPlayer.Spark.Cron/ISparkCronJob.cs:12,19,37`; one run per occurrence across the cluster through a compare-exchange claim, no subscription, `SparkCronScheduler.cs:215-260`), default hourly (`Spark:Replication:Reconcile`), and once per subscription right after approval (the initial load) or after a restore.
+- Per active HTTP subscription it merge-joins two id-ordered streams: the owner's `(id, change vector)` of `SourceCollection` (collection name through `RqlIdentifier.Collection`, never spliced) and the consumer's `GET /spark/replicas/digest?collection=&after=&take=` pages `(id, sourceChangeVector, tombstone)`.
+- Missing or older at the consumer → a `ReplicaPushMessage`; present at the consumer but gone at the owner → a tombstone push. Pushes reuse delivery unchanged, so the reconcile adds no second write path.
+- The ETL path doesn't need it (WD1 refined): RavenDB ETL resends from its own etag.
+
+#### 4.2.5 Write path: per-property compare-and-set, synchronous first (WD19, WD20)
+
+> **Rewritten 2026-10-20 (owner's final decisions, §13 round 3).** The "source change vector as `BaseEtag`" design below the line is **superseded** for write-back: a whole-document base made an edit of one field conflict with any unrelated owner change. The change vector still guards the push direction (§4.2.3).
+
+```
+replica save ─ ISaveReplacement ─► SyncApplyRequest {OpId, changes: [{property, base, value}], initiator}
+           ─ mTLS, within the request (5 s) ─► owner /spark/sync/apply ─► ISyncActionHandler (CAS) ─► ISparkReplacedSaves
+           ◄── applied | conflict(changed|deleted, attributes) | refused(forbidden|invalid) ──┘  = the save's own answer
+   owner unreachable / 5xx / timeout ─► SparkSyncAction + SyncActionDispatchMessage, same commit ─► "saved, pending at {owner}"
+           ─ messaging (ladder 1 m/5 m/30 m/2 h, 48 h) ─► Completed | Conflict | Refused | GaveUp ─► initiator told (durable + live, GaveUp mailed)
+```
+
+- **Capture (consumer).** `ReplicaWriteBackInterceptor` is the `ISaveReplacement`/`IDeleteReplacement` of every replica type (`libs/replication/MintPlayer.Spark.Replication/Services/ReplicaWriteBack.cs`). The changed properties are the posted object's `IsValueChanged` attributes (as `SyncAction.Properties` were); each carries its **base** (the stored replica's value, which the framework's etag check has just verified the person saw) and its new value (the posted object through `IEntityMapper.ToEntity`), both as JSON in the store's serialization, keyed by the owner's property name. A field read from a nested path cannot be written back (refused naming it); a replica that is not `WriteBack` is read-only; a replica is never created here. A delete carries every writable field as base.
+- **Synchronous first (WD20).** The save posts to the owner's `/spark/sync/apply` with `Spark:Replication:WriteBack:SynchronousTimeout` (5 s). Applied → `202 { submitted: { kind: "replication" } }`; conflict → `SparkConflictException` (now a public base of the framework's concurrency exception, so the 409 body is the one a person gets, plus `attributes`); forbidden/invalid → `SparkValidationException` naming the replica's attribute. Only no answer (unreachable, 5xx, 429, timeout) queues: the `SparkSyncAction` (`SparkSyncActions/{opId}`, changes stored as JSON text because the store serializes with Newtonsoft) and its `SyncActionDispatchMessage` go into the **save's own session** through `IMessageOutbox` (F13), and the answer is `202 { kind: "replication-pending", referenceId }`. Write-back edits are **never applied locally**: the replica changes only when the owner's delivery arrives.
+- **Owner (WD19).** `SyncApplyService` resolves the source collection to a model type (`ReplicaSourceTypes`, model types only), answers a replayed op id from `SyncInboxEntry` (F15; written with the edit through `SyncEdit.Alongside`, or right after a refusal), and calls `ISyncActionHandler.ApplyEditAsync(SyncEdit { Values, BaseValues, InitiatorId, Alongside })`. The handler (`libs/spark/MintPlayer.Spark/Services/SyncActionHandler.cs`) loads the row, compares each listed property's stored JSON with its base (`JsonElement.DeepEquals`; absent = null), returns `Conflict(changed, attributes)` on any difference (nothing applied), else saves through `ISparkReplacedSaves.ApplyAsync` with the change vector the compare read as `BaseEtag`; a write landing in between is compared again (3 rounds). A deleted row is `Conflict(deleted)`. Deletes go through `IDatabaseAccess.DeletePersistentObjectAsync` with the same compare. Status codes: 200 applied, 409 conflict, 403 forbidden, 422 invalid, 400 otherwise; never 207 (F12).
+- **One pending change per row (Q-W28, decided 2026-10-20).** A `SyncPendingMarker` (`SparkSyncPending/{documentId}`) is written in the save's commit. It counts while its queued SyncAction runs, and, once the owner applied the change, until the delivery rewrites the replica (the replica's own change vector moves; 1 h expiry as a backstop), on either transport. A second edit meanwhile is refused locally: "A change to this row is still pending at {owner}."
+- **Deferred outcomes (WD20).** `SyncActionDispatchRecipient` sends the stored request with its op id; applied → `Completed` (the badge stays until the delivery); conflict/refused → `Conflict`/`Refused`; no answer → `RetryAfterException` on the ladder until `GiveUpAtUtc` (48 h) → `GaveUp`. A terminal failure removes the pending mark and `SyncOutcomeNotifier` tells the initiator: the `SparkSyncAction` itself is the durable per-user record ("My pending changes" query, the initiator's rows only, until dismissed — so it shows at the next sign-in), a `SyncOutcomeFrame` goes to `PublishPrivate("user:{id}", "replication:outcomes")` (live topic policy `replication:`, private, signed-in only), `GaveUp` is mailed through `ISparkMailer` when MailManager is registered (template `SparkReplication/WriteBackGaveUp`, the user document read as JSON so replication does not depend on Authorization), and every `ISyncActionOutcomeObserver` hears it (e.g. to add a Notifications entry). `RetrySyncAction` re-drives a GaveUp edit; `DismissSyncAction` removes an ended one from the list.
+- **The pending state on the row.** `metadata.replication = { pending, owner, syncActionId, own }` (`IAfterLoad`), drawn by ng-spark's `provideSparkReplication()` as a title badge; `<spark-pending-changes-link>` in the shell shows the count of "My pending changes" live and turns red when a failure is pushed (`@mintplayer/ng-spark/replication`).
+- **No echo.** The replica is never saved locally, so the owner's push of the applied state is the only change.
+- **Subscriptions.** `SyncActionSubscriptionWorker`, `SyncActionRetrySweeper` and `SparkSyncActions_ByStatus` are deleted. Replication needs **no subscription of its own** and registers no hosted service.
+
+<details>
+<summary>Superseded 2026-10-20: write-back with the source change vector as <code>BaseEtag</code></summary>
+
+
+```
+replica edit ─ ISaveReplacement ─► SparkSyncAction {OpId, BaseEtag = replica's source CV, values, initiator}
+                                   + outbox message, same commit (F13)
+           ─ messaging ─mTLS─► owner /spark/sync/apply ─► ISparkReplacedSaves (BaseEtag) ─► Applied | Conflict | Refused
+           ◄──────── outcome per action ────────┘        Applied: the owner's push (or ETL) updates every replica, requester included
+```
+
+- **Capture (consumer).** A replica edit is replaced, not saved (commerce X7 `ISaveReplacement`, `libs/spark/MintPlayer.Spark.Abstractions/Interceptors/SparkSaveReplacement.cs:28`); a replica delete likewise (`IDeleteReplacement`, `Interceptors/SparkInterceptors.cs:117`). The replacement stores a `SparkSyncAction` (WIP model, plus `BaseEtag`) and a `SyncActionDispatchMessage` through `IMessageOutbox.EnqueueAsync(session, …)` (`IMessageOutbox.cs:19`) in the edit's own session: durable (F13). Today the record is written after the commit in a new session (`Services/SyncActionInterceptor.cs:149-164`), and the replica is saved locally first (`Services/ReplicationInterceptor.cs:16,28-34`).
+- **The base is the source version the replica was built from**, read from its `Spark-Replica-Source-Change-Vector`. The owner hands it to `ISparkReplacedSaves.ApplyAsync` as `BaseEtag` (`SparkSaveReplacement.cs:59-63,90-105`; `libs/spark/MintPlayer.Spark/Services/SparkReplacedSaves.cs:61,69,83,109-112`), which stores with that expected change vector (`libs/spark/MintPlayer.Spark/Services/DatabaseAccess.cs:862,906-907`) and maps Raven's conflict to `SparkConcurrencyException` `changed`/`deleted` (`libs/spark/MintPlayer.Spark/Exceptions/SparkConcurrencyException.cs:15,18,37`), the same 409 a person gets (`docs/guide-concurrency.md:14-16,75-76`). This replaces "the version stored now" (`SyncActionHandler.cs:39-47,60`).
+- **One pending action per replica document.** While a SyncAction for a document is pending, a second edit is refused locally ("an edit is pending at {owner}"). This gives per-document ordering (F15) without a sequence: the second edit would carry the same stale base anyway.
+- **Owner, `POST /spark/sync/apply`.** mTLS; one action per request. Idempotency by op id: the outcome is stored with the apply in one commit (WIP `SyncInboxEntry`, `Models/ReplicationDocuments.cs:121-135`, through `ReplacedSave.Alongside`), and a replay returns the stored outcome instead of a false Conflict. The save runs as `Module:{consumer}` **with attribute rights** (WIP `SparkSystemContext.IsModulePrincipal`; `Services/AttributeRights.cs`): an attribute the module may not write makes the action `Refused(unwritable: [...])` (`SparkReplacedSaves.cs:78-80`) instead of today's silent drop (F17). Answers: 200 `applied`, 409 `conflict(changed|deleted)`, 403/422 `refused(reason)`. No more 207 (`Endpoints/SyncApply.cs:171-173`).
+- **Consumer outcome handling** (the dispatch recipient): `applied` → `Completed`. `conflict`/`refused` → `Refused` with its reason (WIP `ESyncActionStatus.Refused`), and the **initiator is notified**: `ISyncActionRefusalObserver` (WIP) plus, when `libs/notifications` is present, `ISparkNotifier.NotifyAsync` to the initiator (`libs/notifications/MintPlayer.Spark.Notifications/ISparkNotifier.cs:18-20`). Unreachable / 5xx → `RetryAfterException` on the same ladder (1 m … 2 h, 48 h) as pushes; dead-lettered → `Failed`, re-drivable with a `RetrySyncAction` custom action (F14). Today any 2xx is `Completed` (`Workers/SyncActionSubscriptionWorker.cs:75-85`) and retries end after about 5–8 minutes.
+- **No echo.** The replica is never saved locally, so the owner's push of the applied state is the only change, and it reaches the requester like every other consumer. (The reference system needed a `Source` stamp to drop its own echo because it saved locally first.)
+- **What the editor sees** (Q-W18): the save answers "sent to {owner}", the form shows a pending badge until the push lands; a conflict arrives as a notification with "reload and edit again".
+- **Subscriptions.** `SyncActionSubscriptionWorker`, `SyncActionRetrySweeper` and `SparkSyncActions_ByStatus` are deleted. Replication then needs **no subscription of its own**: messaging's one is shared (`SparkMessagingOptions.cs:195-212`).
+
+
+</details>
+
+#### 4.2.6 Security (WX4)
+
+- Every cross-module call uses module client certificates (WD1; `Authentication/ModuleCertificateAuthentication.cs:49`, `docs/guide-replication-mtls.md:21-38`).
+- No consumer-authored script ever runs (re-render check, no override); reads are bounded by the `Replicate/{SourceCollection}` grant **and** attribute read rights, checked at register, at approval, and again at every deploy and reconcile (a revoked grant suspends and removes delivery).
+- Writes respect attribute rights (F17). Destinations of ETL tasks and pushes come from the registry entry of the authenticated module (F19).
+- **Registry trust root.** Any module can rewrite another's pinned thumbprint and URL in `SparkModules` (`libs/replication/MintPlayer.Spark.Replication.Abstractions/Models/ModuleInformation.cs:18,30`); WX4's operator-managed read-only registry mode stays in scope.
+- Behind Traefik: the forwarded certificate plus `KnownProxies` (`Authentication/ModuleCertificateForwarding.cs:9-35`).
+
+#### 4.2.7 Failure modes (W5 measures them)
 
 | Failure | Outcome |
 |---|---|
-| Consumer down for hours | Pushes park and retry within the budget, and the backlog drains on recovery. Pushes past the budget are dead-lettered, and the next reconcile repairs them. The consumer's replicas stay readable throughout |
-| Producer down | Nothing new is produced, because writes go through the producer. The consumer's reconcile retries next period, and the warehouse keeps picking the orders it already has |
-| Crash after commit, before the push | The outbox message was stored in the same commit and is delivered after the restart |
-| Consumer crash after applying, before answering 200 | The resend hits the version guard: a no-op that answers 200 |
-| Duplicate or out-of-order delivery | The version guard and tombstones absorb it; transitions come from comparing states |
-| Poison payload or schema mismatch | 4xx, dead-lettered with its reason and an alert. The digest mismatch stays visible until fixed |
-| A write that bypasses the pipeline | The reconcile catches it through the change vector |
-| Contract evolution | v1 and v2 run side by side |
+| Consumer down for hours | Pushes and registrations park on the ladder; the backlog drains on recovery; past 48 h they dead-letter and the next reconcile repairs. Replicas stay readable |
+| Owner down | A save cannot reach the owner within 5 s: the edit is queued in the same commit ("saved, pending at {owner}"), retried on the ladder; the row shows the pending badge; after 48 h `GaveUp`, the initiator told (live + "My pending changes") and mailed, re-drivable with `RetrySyncAction` |
+| Crash after commit, before the push | The after-commit work message was stored in the same commit and runs after the restart |
+| Lost 200 on apply | Resend hits the change-vector guard (push) or the op-id record (write-back): no-op, same answer |
+| Duplicate or reordered pushes | Change-vector guard plus tombstones |
+| Stale replica edit | A listed property changed at the owner: `Conflict(changed)` naming it, nothing applied (WD19); within the save it is the 409 a person gets, when queued it ends `Conflict` and the initiator is told. A change of an unlisted property is not a conflict |
+| Consumer upgraded with a new manifest | It re-registers (hash changed); pushes in the last approved shape keep landing (Q-W29); the new fields arrive with the initial reconcile after approval |
+| Raw write on the owner | `MarkChanged`, else the reconcile |
 
-**Cost:**
-- no ETL licence;
-- no new subscription (messaging's one is reused);
-- no cross-database certificate.
+**Cost:** no ETL licence, no new subscription, no cross-database certificate; it also works across RavenDB servers.
 
-It also works when the two apps live on different RavenDB servers.
+**Rejected** (research §5; still valid): a pull change feed (cursor gaps; revisions capped at 2 on Community); a subscription on the other app's database; SyncAction as the push; buying ETL. **Rejected 2026-10-20:** hand-written contract records (duplicate the replica class); a runtime-compiled projection (`EtlTransformGenerator @e0c542f9`); a consumer-authored script override.
 
-**Rejected** (research §5):
+**Fleet and HR** are migrated (WM1, 2026-10-20): `partial` replica classes `[Replicated(SourceCollection = …, SourceModule = …, WriteBack = true)]` (`apps/HR/HR.Library/Replicated/Car.cs`, `apps/Fleet/Fleet.Library/Replicated/{Person,Company}.cs`); the contract records and `Publish` are deleted; `Program.cs` calls `AddReplication()` with no code options; `appsettings.json` sets `Transport: Http` (Q-W24); grants stay `Replicate/Cars`, `Replicate/People`, `Replicate/Companies`; both bind `replication:approvers` to `Administrators` (both own something). The demos run Development, so they auto-approve; the ng-spark shell shows `<spark-pending-changes-link>` and `provideSparkReplication()`.
 
-| Option | Why not |
-|---|---|
-| A pull change feed | Cursor gaps on RavenDB; a revision-based feed is impossible at 2 revisions per document |
-| A subscription on the other app's database | Breaks per-app isolation and authorization, and spends the source database's subscription budget |
-| SyncAction as the push | It needs replicas anyway, and it reorders writes |
-| Buying a licence with ETL | Production doesn't have one, and it would still need WX2 and the F fixes |
+**§4.3 terminology.** The contract names in §4.3 (`fulfilment-orders`, …) become `[Replicated]` replica classes in `Fulfilment.Contracts` without `SourceModule` (the host names the source in `Spark:Replication:Sources`); "v1" becomes the class and target collection name.
 
-**Fleet and HR are rewired.** These are local demos only.
-- **Contracts.** Fleet publishes `cars`; HR publishes `people` and `companies`.
-- **Grants** become `Replicate/cars`, `Replicate/people` and `Replicate/companies`. Today Fleet grants `Replicate/Cars` (`apps/Fleet/Fleet/App_Data/security.json:107-112`).
-- **Replica types** bind to contracts: `apps/HR/HR.Library/Replicated/Car.cs`, `apps/Fleet/Fleet.Library/Replicated/Person.cs`, `Company.cs`.
-- **Edits.** Editing a replica becomes a write-back request.
+**Reference data** (WD1): the reference-data app is an owner like any other; consumers declare replica classes.
 
-**Reference data** (WD1). The reference-data app publishes contracts, and consumers receive copies through the same transport (`reference_data_PRD.md`).
+<details>
+<summary>Superseded 2026-10-20 (kept for the record)</summary>
+
+- ~~Contracts declared in configuration, versioned, from several sources: `Publish<WarehouseShipment, ShipmentV1>("shipments", 1, …)`; consumer replica types bound to `(contract, versions)`; `Spark:Replication:Consume:{contract}:Sources`; grants `Replicate/{contract}`.~~ → WD13: the replica class is the declaration; several sources survive as `Spark:Replication:Sources:{TargetCollection}`; grants stay per source collection.
+- ~~The owner generates the transform from the contract; the consumer sends only `(contract, versions)` (Q-W17).~~ → WD14: the consumer's generator emits manifest + script; the owner re-renders and approves (WD16).
+- ~~An `IBeforeSave` increments `ReplicationVersion`; newer `replicationVersion` wins.~~ → WD18: the source change vector is the version; nothing is written to owner documents.
+- ~~One messaging queue per consuming module.~~ → one `spark-replication` queue; queues must be declared in configuration (`MessageBus.cs:158-177`), and the change-vector guard makes ordering unnecessary.
+- ~~The consumer runs the reconcile against an owner digest.~~ → the owner runs it, so repairs reuse the push path.
+- ~~The SyncAction worker registers only when a replica allows write-back.~~ → the worker is removed; write-back runs on messaging.
+- ~~WIP b4c218eb: `[Replica]`, `[ReplicationContract]`, `*V1` records in apps.~~ → rejected by the owner.
+</details>
 
 ### 4.3 Shop ↔ warehouse: state both ways, one owner per fact (WD2)
 
@@ -996,8 +1106,10 @@ Names and defaults are proposals unless the last column names a decision. Defaul
 | Setting | Values (proposed default first) | Decided by |
 |---|---|---|
 | `Spark:Replication:Transport` | `Auto` \| `Http` \| `Etl` | WD1 |
-| `Spark:Replication:Consume:{contract}:Sources`, `:Versions` | Module names; versions | WD1 |
-| `Spark:Replication:Reconcile` | A 6-field cron (HTTP path only) | WD1 |
+| ~~`Spark:Replication:Consume:{contract}:Sources`, `:Versions`~~ (superseded by WD13) | ~~Module names; versions~~ | ~~WD1~~ |
+| `Spark:Replication:Sources:{TargetCollection}` | Owner module name(s) for a replica class that leaves `SourceModule` out (generic libraries) | WD13 |
+| `Spark:Replication:Reconcile` | A 6-field cron, run by the **owner** (HTTP path only); default hourly | WD1, WD17 |
+| `Spark:Messaging:Queues:spark-replication` | Push and write-back budget; library default 1 m / 5 m / 30 m / 2 h ladder, 48 h expiry | WD17 |
 | `Spark:Warehouse:Routing` | Rules (owner, channel, ship-to country → site); otherwise the owner's default site | WD3 |
 | `Spark:Warehouse:Release:Mode` | `Immediate` \| `Waves` \| `Manual`; cut-offs per site | WD5, Q-W1 |
 | `Spark:Warehouse:Allocation:Rule` | `Fifo` \| `Fefo` \| `ClosestLocation` \| custom; per owner and per item | WD4 |
@@ -1098,16 +1210,16 @@ Names and defaults are proposals unless the last column names a decision. Defaul
 > **Source-generator programme (commerce X20, K12, accepted 2026-10-17)** applies here:
 > - the **shared discovery generator** registers `IReplicaChanged<T>` handlers, warehouse row policies and account hooks;
 > - **GS1 tables** come from one `tools/` script emitting C# (`MintPlayer.Spark.Gs1`) and TypeScript (`ng-spark/scanning`), as Q-W16 decided. The **GS1 core** (element strings, Digital Link, linters, check digits) is written once in **MintPlayer.Polyglot** `.pg`. That holds only if a Polyglot release fixing [MintPlayer.Polyglot#73](https://github.com/MintPlayer/MintPlayer.Polyglot/issues/73) ships before WM2; otherwise both parsers are hand-written against the Syntax Engine vectors (owner decision, 2026-10-17). Polyglot's C# stays internal behind a hand-written facade, and its types never cross the wire. The CLI comes from the `MintPlayer.Polyglot.MSBuild` NuGet restore;
-> - **replication contracts** generate their ETL script at runtime, with complex projections refused at startup (Q-W17);
+> - ~~**replication contracts** generate their ETL script at runtime, with complex projections refused at startup (Q-W17);~~ **Superseded by WD14 (round 3):** the `[Replicated]` replica class gets its manifest, script and hash from `MintPlayer.Spark.LibraryGenerators` at build time (SPARK065–SPARK068);
 > - **TypeScript contracts** for the `scanning`, `offline`, `printing` and `warehouse` entry points come from the C#→TS tool;
 > - **library-declared indexes** are emitted into the app (X19, which supersedes WX16's runtime mechanism);
 > - `Quantity` companions come from the extended `GenerateIndexGenerator`.
 
 | # | Addition | Why | Evidence of the gap | Shared with commerce? |
 |---|---|---|---|---|
-| WX1 | **The replication transport:**<br>• an abstraction with an HTTP transport;<br>• the contract capture, outbox delivery, versioned apply, tombstones, `IReplicaChanged<T>` and digest reconcile;<br>• ETL as the licensed alternative, with transforms the owner generates | WD1 | Community has no ETL (`docs/endpoints_generator_adoption_plan.md:219`); `EtlTaskManager.cs:92` | Yes: the fulfilment contract (commerce §4.9, S20) and reference data |
-| WX2 | **Contracts:**<br>• declared in configuration, versioned, from several sources;<br>• the consumer registers with its sources;<br>• write-back routed per document to its source | WD1 | `ReplicatedAttribute.cs:9,16,34`: `AllowMultiple = false`, a required compile-time `SourceModule`, a required `EtlScript` | Yes |
-| WX3 | **SyncAction hardening:**<br>• a request instead of a local save;<br>• dispatch inside the edit's commit;<br>• per-action outcomes;<br>• a configurable budget, with re-drive;<br>• per-document ordering and op-id idempotency;<br>• structured nested values;<br>• the worker registered only when used | WD1 refined; F12–F15, F18 | `SyncApply.cs:149-161,171-173`; `SyncActionSubscriptionWorker.cs:20,75-85`; `SyncActionRetrySweeper.cs:77-79,85-89`; `SyncActionInterceptor.cs:149-164,170-185`; `SparkReplicationExtensions.cs:49` | Yes |
+| WX1 | **The replication transport** (rewritten by WD13–WD18, §4.2):<br>• generated manifest/script/hash per `[Replicated]` class; registration with hashing on both sides;<br>• the owner approval gate (`SparkReplicationSubscription`, Development-only auto-approval);<br>• ETL by licence, else owner push over messaging with a change-vector-guarded apply, tombstones, `IReplicaChanged<T>` and an owner-run reconcile | WD1, WD13–WD17 | Community has no ETL (`docs/endpoints_generator_adoption_plan.md:219`); `EtlTaskManager.cs:92` | Yes: the fulfilment contract (commerce §4.9, S20) and reference data |
+| WX2 | ~~**Contracts:** declared in configuration, versioned, from several sources~~ **Superseded by WD13:** the replica class is the declaration; several sources through `Spark:Replication:Sources`; the consumer registers with its sources; write-back routed per document to its source | WD1, WD13 | `ReplicatedAttribute.cs:9,16,34`: `AllowMultiple = false`, a required compile-time `SourceModule`, a required `EtlScript` | Yes |
+| WX3 | **SyncAction hardening:**<br>• a request instead of a local save;<br>• dispatch inside the edit's commit;<br>• per-action outcomes;<br>• a configurable budget, with re-drive;<br>• the source change vector as `BaseEtag` (WD18), one pending action per document, op-id idempotency;<br>• structured nested values;<br>• ~~the worker registered only when used~~ the subscription worker and sweeper removed: dispatch runs on messaging | WD1 refined; WD18; F12–F15, F18 | `SyncApply.cs:149-161,171-173`; `SyncActionSubscriptionWorker.cs:20,75-85`; `SyncActionRetrySweeper.cs:77-79,85-89`; `SyncActionInterceptor.cs:149-164,170-185`; `SparkReplicationExtensions.cs:49` | Yes |
 | WX4 | **Replication security:**<br>• no consumer scripts;<br>• destinations taken from the registry, never from the caller;<br>• subscription and ETL-task removal;<br>• attribute rights for module principals;<br>• an operator-managed read-only registry | F16–F19; the registry trust root | `EtlTaskManager.cs:52-60,65-70`; `EtlDeploy.cs:97-111`; `SparkReplicationExtensions.cs:135-147`; `docs/guide-authorization.md:122`; `ModuleInformation.cs:18,30` | Yes |
 | WX5 | **Scanning** (`ng-spark/scanning`):<br>• wedge capture;<br>• camera: native `BarcodeDetector` plus a same-shape, self-hosted WASM ponyfill;<br>• GS1 parsing from the Syntax Engine's dictionary (Q-W16);<br>• AZERTY detection; scan-driven steps.<br>Server twin: `MintPlayer.Spark.Gs1` | WD7, WD8, K11 | No scanning code in `libs`, `apps` or `tools`, and none in ng-bootstrap 22.25.0 (research §3) | Yes: the scanner PWA (commerce §4.11) |
 | WX6 | **Document and label rendering:**<br>• 1D and 2D barcodes;<br>• ZPL and PDF templates;<br>• a PDF seam (library per W17);<br>• print-delivery adapters | WD7; commerce Q-O9 | QR only, inside Authorization (`SparkQrCodeRenderer.cs:17-44`); no PDF library in `libs/` (SeoTester uses Chromium, `ReportPdf.cs:51,124`) | Yes: invoices, tickets, packing slips |
@@ -1143,6 +1255,16 @@ All are in code that ships today, so they belong in this PR (K5). This PRD imple
 | F17 | WF6 | Module sync ignores attribute rights, so a granted module can overwrite any field | `docs/guide-authorization.md:122`; `SyncActionHandler.cs:132` (`AsSystem()`) | **Security** | Attribute rights apply to module principals |
 | F18 | WF7–WF10 | Four problems:<br>• ETL tasks are never removed: no removal path, and an early return with no scripts;<br>• nested values are sent as JSON text;<br>• the guide has drifted from the code;<br>• there is no licence check | • `EtlTaskManager.cs`; `SparkReplicationExtensions.cs:95-96`<br>• `SyncActionInterceptor.cs:184`<br>• `docs/guide-cross-module-sync.md:124,243,245,270-272`<br>• `EtlDeploy.cs:113-115` | Privacy, reliability | WX2/WX4 removal; structured values; a guide rewrite; WX13 |
 | F19 | research §4, after the table (no WF id; not yet assessed) | Suspected: the ETL deploy endpoint never checks the request's `TargetDatabase` or `TargetUrls` against the registry. The consumer fills them from its own store, and they become the ETL connection string. So an authenticated module decides where the owner's server sends the granted collection. With F18's never-removed tasks, the flow outlives the module | `EtlDeploy.cs:97-111`; `SparkReplicationExtensions.cs:135-147`; `EtlTaskManager.cs:52-60` | **Security** (suspected; confirm red) | WX4: destinations come from the registry entry of the authenticated module, never from the request |
+
+**How the round-3 design (§4.2, WD13–WD18) fixes each one:**
+- F12: per-action answers (200 / 409 conflict / 403-422 refused) replace 207; the consumer records `Refused` and notifies the initiator (§4.2.5).
+- F13: the SyncAction and its outbox message are stored in the edit's own session by `ISaveReplacement`/`IDeleteReplacement`.
+- F14: the messaging ladder (1 m … 2 h, 48 h), dead-letter → `Failed`, re-drive by custom action.
+- F15 and the stale overwrite: `BaseEtag` = the replica's source change vector, one pending action per document, op-id record stored with the apply.
+- F16: the owner re-renders the posted manifest and deploys only its own rendering; no script override exists (SPARK068).
+- F17: module saves run with attribute rights; a manifest field the module may not read is refused at registration.
+- F18: withdrawn/rejected/revoked subscriptions remove their ETL transform or stop pushes; `ISparkLicenseCapabilities` refuses a pinned `Etl` at startup; nested values stay JSON (`element.Clone()`).
+- F19: destinations from the registry (already true at e0c542f9, `Endpoints/EtlDeploy.cs:115-129 @e0c542f9`), kept for ETL and pushes; a registry change redeploys.
 
 **Related weakness, without an F number:** the registry trust root (§4.2). Any module can rewrite another module's pinned thumbprint in `SparkModules`. WX4 closes it.
 
@@ -1318,11 +1440,11 @@ These milestones are the content of commerce M20 and ship in the commerce PR (K5
   - generate both parsers from GS1's AI dataset, kept as data: C# in `MintPlayer.Spark.Gs1`, TypeScript in `scanning`;
   - test them against the Syntax Engine's vectors (W12);
   - this keeps a native binary out of the NuGet package and a second large WASM out of the camera bundle.
-- **Q-W17 ETL transforms from contracts.** *Recommendation:*
+- **Q-W17 ETL transforms from contracts.** **Superseded by WD14 (round 3):** the transform is generated from the replica class at build time and re-rendered by the owner (§4.2.1–4.2.2). The original recommendation, accepted in round 2:
   - contracts declare a projection the owner can express both as C# (HTTP path) and as a generated ETL script (field selection and renames);
   - a contract whose projection needs code is HTTP-only, and startup says so;
   - never consumer JavaScript (WD1).
-- **Q-W18 Editing a replica: what the editor sees.** *Recommendation:*
+- **Q-W18 Editing a replica: what the editor sees.** (Unchanged by round 3; a Conflict now also counts as a refusal, with "reload and edit again".) *Recommendation:*
   - the save returns "sent to {owner}" through commerce X7's `ISaveReplacement`;
   - the form shows a pending badge until the push lands;
   - a refusal arrives as a notification, with its reason.
@@ -1364,6 +1486,9 @@ These milestones are the content of commerce M20 and ship in the commerce PR (K5
   - a generic core seam (WX16): packages contribute maps to a named index, and the core assembles them into one multi-map definition at startup;
   - W19 verifies it on Community;
   - the alternative is to keep these document types in core and only their behaviour in the packages.
+- **Q-W27 The approval record: own persistent object or `libs/approvals`?** `MintPlayer.Spark.Approvals` already has kinds, deciders, Revoke, Stale and notifications (`libs/approvals/MintPlayer.Spark.Approvals.Abstractions/ApprovalKinds.cs:25`; `ISparkApprovals.cs:20`). *Recommendation:* the replication library's own `SparkReplicationSubscription` persistent object with `ApproveReplication`/`RejectReplication` custom actions (the owner's list: persistent objects, custom actions, security.json, model sync, messaging), so replication, which every multi-app host needs, doesn't pull in Approvals; notify approvers through `ISparkNotifier` when Notifications is present. **Decided (owner, 2026-10-20): the replication library's own persistent object, no dependency on `libs/approvals`.** Built as `SparkReplicationRequest` (the program unit "Replication requests") plus internal `SparkReplicationSubscription` bookkeeping (§4.2.2); approvers are told through open pages (live query) rather than `ISparkNotifier`, which replication does not reference.
+- **Q-W28 A second edit while one is pending.** *Recommendation:* refuse it locally ("an edit of this document is pending at {owner}"). It would carry the same stale base and be a Conflict at the owner anyway; refusing it early keeps per-document order without sequences (F15). **Decided (owner, 2026-10-20): refused locally, "a change to this row is still pending at {owner}".** Built with `SyncPendingMarker` (§4.2.5).
+- **Q-W29 A consumer upgraded with a new manifest, before approval.** *Recommendation:* the consumer keeps accepting pushes made with its last **approved** hash (missing fields keep their defaults), and the owner keeps the old ETL transform running until the new one is approved; data stays fresh, and the new fields arrive after approval through the initial reconcile. The alternative, refusing everything until approval, freezes replicas for as long as nobody approves. **Decided (owner, 2026-10-20): as recommended, an upgraded consumer keeps receiving pushes in its last approved shape until the new manifest is approved.** Built: the apply endpoint accepts the acknowledged `ApprovedHash`; the owner keeps delivering the approved manifest (§4.2.3).
 
 ---
 
@@ -1372,7 +1497,10 @@ These milestones are the content of commerce M20 and ship in the commerce PR (K5
 | Risk | Mitigation |
 |---|---|
 | The Developer licence locally and in CI hides production behaviour (ETL works locally, not in production) | Tests pin `Http` and run once more with `Etl` (Q-W24). WX13 refuses `Etl` on Community. Commerce S18 checklist |
-| The HTTP transport loses or duplicates state under failures | Outbox in the commit, version guard, tombstones, reconcile. W5 |
+| The HTTP transport loses or duplicates state under failures | After-commit work stored in the save's commit, change-vector guard, tombstones, owner reconcile. W5 |
+| Change-vector comparison is wrong on a multi-node owner (concurrent vectors) | `Concurrent` is never applied, only reconciled; `SparkChangeVector.Compare` unit tests over real vectors from a 3-node test cluster fixture (W6) |
+| The C# manifest projector and the generated ETL script drift apart | One shared renderer source file; an equivalence test runs both on the same documents under the Developer licence (W6) |
+| An approval nobody makes blocks a production deploy | Q-W29 keeps the approved shape flowing; the pending request notifies approvers |
 | Oversell across channels during replication lag | Shop-side buffer; W2 measures the bound; allotments if needed (Q-W4) |
 | Contention on hot balances or on the `StockLevel` aggregate | OCC retry; W1 measures it; split the aggregate per channel if W1 shows a hot spot |
 | Stale indexes mislead allocation | Candidates come from queries; claims are made on loaded documents (§4.5) |
@@ -1406,8 +1534,8 @@ Owner answers are quoted where they changed or refined the recommendation.
 ### Round 1 (owner, 2026-10-17)
 
 - **WD1 (WQ1, transport):** Push + reconcile becomes **Spark's standard replication transport**. ETL stays as an optional transport behind a licence check. Fleet and HR are rewired. Closes F16 (no consumer scripts). Also serves reference-data consumer copies. The design:
-  - config-declared, versioned C# projection contracts with several sources, granted as `Replicate/{contract}`;
-  - a version stamp per save;
+  - ~~config-declared, versioned C# projection contracts with several sources, granted as `Replicate/{contract}`;~~ (superseded by WD13, round 3)
+  - ~~a version stamp per save;~~ (superseded by WD18: the source change vector)
   - the outbox through `IAfterSaveCommitted`, in the save's commit;
   - messaging push over module-certificate HTTPS;
   - newer-version-wins read-only replicas, with tombstones and a durable `IReplicaChanged<T>`;
@@ -1513,7 +1641,7 @@ Owner answers are quoted where they changed or refined the recommendation.
 
 ### Round 2 (owner, 2026-10-17)
 
-- **Q-W1 … Q-W26:** all §11 recommendations **accepted as written** ("Accept all"). §11 now records decisions, not open questions:
+- **Q-W1 … Q-W26:** all §11 recommendations **accepted as written** ("Accept all"); Q-W17 later superseded by WD14 (round 3). §11 now records decisions, not open questions:
   - zone-aware cron for site-local cut-offs (WX14);
   - accept-with-put-back after pick;
   - a per-owner feed over routable sites;
@@ -1541,6 +1669,54 @@ Owner answers are quoted where they changed or refined the recommendation.
   - the W25 defaults;
   - the shared-index seam (WX16).
 - **Index limit:** owner asked "What's the 12-index limit?" → answered from ravendb.net/buy's footnotes (12 static + 24 auto per database). **Correction, same day:** RavenDB lifted those caps for Community on 2024-05-22, and existing licences update when the server reaches api.ravendb.net ([discussion #18564](https://github.com/ravendb/ravendb/discussions/18564)); the buy page is stale. The decisions stay valid (the shared index, WX16/X19, is the cleaner design anyway). The hard budget becomes "verify with `/license/status`" (W19).
+
+### Round 3 (owner, 2026-10-20): replication redesign
+
+The interrupted WIP commit b4c218eb renamed `[Replicated]` to `[Replica]` and kept per-type contract records (`apps/HR/HR.Library/Contracts/PersonV1.cs`, `CompanyV1.cs`, `apps/Fleet/Fleet.Library/Contracts/CarV1.cs`, added in 43d492df). The owner rejected that: one hand-written record per replicated type duplicates what the replica class already states, against Spark's low-code, don't-copy principle. Binding decisions (owner instructions, 2026-10-20, relayed to the design pass):
+- **WD13:** keep `[Replicated]` (no rename); the replica class is the single declaration; no contract records.
+- **WD14:** the script is source-generated as `const string`s into the `partial` replica class; no runtime reflection. The design pass chose: attribute arguments `SourceCollection` (required), `SourceModule` (optional for generic libraries), `OriginalType`, `WriteBack`, and `[ReplicatedFrom]` per property; a non-partial class is SPARK065 (error, with a code fix); no hand-written script override (SPARK068), because a consumer-authored script is F16.
+- **WD15:** hashed on both sides: no post of an unchanged script, no redeploy of an unchanged approved one.
+- **WD16:** the owner approves, from Spark features; auto-approval only when the **owner's** host environment is Development, never by build configuration; destinations from the authenticated module's registry entry (F19).
+- **WD17:** with ETL, deploy the approved script as an ETL task; without ETL (Community, production), the owner delivers the projection itself over Spark messaging and the mTLS channel, write-back shares that plumbing, and a Spark cron job reconciles. The design pass chose an owner-side C# manifest projector over a RavenDB JavaScript `select` query (RQL splicing; consumer-shaped JavaScript) and over a generated owner projection (the owner doesn't reference consumer types), and no new subscription.
+- **WD18:** write-back reuses Spark's optimistic concurrency with the replica's source change vector as `BaseEtag`; pushes never apply an older projection.
+- F12–F19 stay in scope (§6).
+
+**Evidence, reference system** (a decompiled enterprise module-replication system that Spark's design is modelled on; summary recorded 2026-10-20):
+- The consumer computes SHA-512 over `{database, collection, script}` and posts only when the hash changed, through a durable outbox with retry.
+- The hub stores a job per request and auto-approves and deploys only when its host environment `IsDevelopment()`; otherwise an administrator approves through a custom action that shows a diff against the last approved job. Approval state is `job.Approved` plus a deployed-task record per database.
+- SyncActions: a durable outbox; retry backoff 1 m / 5 m / 30 m / 2 h; give up after 48 h, delete after 24 h more; deletes propagated by an `OnBeforeDelete` hook; a `Source` stamp to ignore its own echo (needed because it saves the replica locally first; Spark doesn't, §4.2.5).
+- **Its flaw, not copied:** a build-configuration switch (`#if DEBUG`) forces the Development environment and so auto-approves.
+- Not copied either: the database inside the hash (Spark's destination comes from the registry, so a registry change redeploys instead).
+
+**Evidence, this repository** (file:line in §4.2):
+- stale overwrite: the owner applies on the version stored now, `libs/spark/MintPlayer.Spark/Services/SyncActionHandler.cs:43-53,63 @e0c542f9` and `:39-47,60` (working tree);
+- the concurrency to reuse: `PersistentObject.Etag` is the change vector (`libs/spark/MintPlayer.Spark/Actions/DefaultPersistentObjectActions.cs:197-199`), saves store with the expected vector (`DatabaseAccess.cs:862,906-907`), `ISparkReplacedSaves` takes `BaseEtag` (`SparkSaveReplacement.cs:59-63,90-105`);
+- durable capture without a subscription: after-commit work is stored in the save's session (`SparkCommittedInterceptors.cs:104-114`);
+- subscription budget: messaging uses one (`SparkMessagingOptions.cs:195-212`), the SyncAction worker a second (`Workers/SyncActionSubscriptionWorker.cs:36`); round 3 removes the second;
+- generator precedent: `ValueObjectKeyGenerator` (SPARK016 for a missing `partial`, `ValueObjectKeyReporter.Rules.cs:23-30`); next free id SPARK065.
+
+Q-W27, Q-W28 and Q-W29 were decided by the owner on 2026-10-20 (below).
+
+**Final decisions (owner, 2026-10-20, relayed to the WM1 implementation).** Evidence: owner decision; implementation file:line in §4.2.
+- **Q-W27:** the approval record is the replication library's own persistent object, no dependency on `libs/approvals`.
+- **Q-W28:** a second write-back edit while one is pending is refused locally ("a change to this row is still pending at {owner}").
+- **Q-W29:** an upgraded consumer keeps receiving pushes in its last approved shape until the new manifest is approved.
+- **SourceModule optional** on `[Replicated]`; fallback `Spark:Replication:Sources:{TargetCollection}`; startup refuses when neither names a source.
+- **WD19, per-property compare-and-set** replaces the whole-document `BaseEtag` for write-back (WD18 struck for write-back; the change vector still guards pushes). Spark's concurrency vocabulary is reused: `SparkConflictException` became the public base of the internal `SparkConcurrencyException` (`libs/spark/MintPlayer.Spark.Abstractions/SparkConflictException.cs`), the endpoints catch the base, and the 409 body gains `attributes`.
+- **WD20, user feedback:** synchronous call within the save (5 s, configurable), queued only when the owner does not answer; deferred terminal outcomes recorded per user (durable), pushed on the private live topic `replication:outcomes`, shown at next sign-in ("My pending changes"), GaveUp mailed when MailManager is registered; a pending badge on the row; never applied locally.
+- **Reuse the message queue** (`IMessageBus`, `IMessageOutbox`, recipients, `RetryAfterException`, budgets, dead-letter) for registration, deploys, pushes, reconciles and queued write-backs, on the one queue `spark-replication`; replication creates no RavenDB subscription and no hosted service.
+- **WD21 (owner addition, 2026-10-20):** approval from the website through the library's program unit "Replication requests" (pending first; consumer, source, state Pending/Approved/Rejected/Superseded, requested vs approved hash, readable diff; Approve/Reject custom actions guarded by `security.json`, default Administrators through the `replication:approvers` slot, hidden from users without the read right; auto-approved rows marked); wired into HR and Fleet.
+
+**Implementation decisions the owner's instructions did not dictate (WM1, 2026-10-20):**
+- Two documents for the gate (request = persistent object per shape, subscription = delivery state), so history and "Superseded" exist without a revision feature.
+- `TargetCollection` attribute argument with a generated Inflector-like default, verified against the store's conventions at startup (the generator cannot run RavenDB's pluraliser).
+- The ETL script's `Spark-Replica-Source-Module` is added by the owner at deploy (`RenderEtlScript`); the posted script and hash are module-independent, so one generated constant serves every owner.
+- A delete of a write-back replica is sent like an edit whose bases are every writable field (a row changed meanwhile conflicts); the local delete becomes an unchanged save (`IDeleteReplacement`) and the row disappears with the owner's tombstone.
+- The pending mark after an applied edit lasts until the replica's own change vector moves (works for ETL too, where no apply endpoint runs), with a 1 h expiry.
+- The retry ladder is derived from the elapsed time (no stored counter; `RetryAfterException` parks are not messaging attempts); messages get a generous `MaxAttempts` and the recipient decides when to give up.
+- ~~The capture interceptor claims every non-replica model type: one small after-commit work document per save on a module that runs replication.~~ Superseded (owner, 2026-10-20: "y" to narrowing it): it claims only model types whose collection `security.json` grants `Replicate/{collection}` on (`ReplicaCapture.cs`, `ReplicaPublishInterceptor.AppliesTo`), since the register endpoint refuses any other. `AppliesTo` is cached per type, so a grant added by a security reload is captured after the next restart; the reconcile carries it until then.
+- The reconcile holds the consumer digest in memory instead of merge-joining two id orders.
+- Owner-side `IReplicaChanged<T>` and outcome observers (`ISyncActionOutcomeObserver`) are DI extension points; replication does not reference Notifications.
 
 ---
 

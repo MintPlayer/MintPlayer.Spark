@@ -55,7 +55,7 @@ Commerce S18's Community checklist gains the warehouse items (PRD §7). W19 and 
 
 **Replication**
 - [ ] W5 HTTP transport failure modes (consumer down, producer down, crash after commit, crash before 200, duplicates, reordering, poison, raw writes, exhausted budget): converges within one reconcile, 0 lost, 0 duplicated
-- [ ] W6 ETL semantics on Developer, and WX13 licence detection on Developer and Community
+- [ ] W6 ETL semantics on Developer, and WX13 licence detection on Developer and Community; round 3 adds: an ETL transform may set custom metadata (`Spark-Replica-Source-Change-Vector`, else the `SparkReplicaSource` body-field fallback, PRD §4.2.1); document expiration works on Community (tombstones); manifest projector = ETL output
 - [ ] W7 F12–F19 red, then green; write-path refusal reaches the initiator
 - [ ] W8 contract genericity: a Spark app without commerce packages; no `Commerce.Checkout` reference (covers commerce S20)
 
@@ -76,73 +76,111 @@ Commerce S18's Community checklist gains the warehouse items (PRD §7). W19 and 
 **Licence limits**
 - [ ] W19 index limits: read `/license/status` first (Community caps lifted 2024-05-22, #18564); budget checks (≤12 static, ≥2 left for the host, refusal behaviour, WX13 warning fixture) only if a cap still applies; always: 0 auto indexes from library pages
 
-### WM1 — Replication redesign (WX1–WX4, WX13; F12–F19)
+### WM1 — Replication redesign (WX1–WX4, WX13; WD13–WD18; F12–F19)
 
-All paths below are under `libs/replication/MintPlayer.Spark.Replication/` unless stated otherwise.
+Design: PRD §4.2 (rewritten 2026-10-20, owner round 3). Paths are under `libs/replication/MintPlayer.Spark.Replication/` unless stated otherwise. `@e0c542f9` marks a file taken from the last good commit. Tests are written in order with the code and **run once in WM13**; "red" below names what the test proves fails today (or on the WIP), "green" what makes it pass.
 
-**Transport and contracts**
-- [ ] WX13 `ISparkLicenseCapabilities`: read the server's licence at startup (ETL; subscription and index limits). The API is recorded by W6
-- [ ] Transport abstraction: `Spark:Replication:Transport` = `Auto` | `Http` | `Etl`
-  - `Etl` without an ETL licence refuses startup with an actionable message (F18)
-  - today it fails with a generic 500 (`Endpoints/EtlDeploy.cs:113-115`; `Services/EtlTaskManager.cs:92`)
-- [ ] Contracts (WX2):
-  - producer side: `Publish<TSource, TContract>(name, version, map)`
-  - consumer side: replica types bound to `(contract, versions)`, with sources from `Spark:Replication:Consume:{contract}:Sources`
-  - grants: `Replicate/{contract}` (today `Replicate/{Collection}`, `Endpoints/EtlDeploy.cs:97-111`)
-  - retire `[Replicated]` without a shim (`libs/replication/MintPlayer.Spark.Replication.Abstractions/ReplicatedAttribute.cs:9,16,34`)
-- [ ] Consumer registration with each source over mTLS, replacing the ETL deployment broadcast (`Extensions/SparkReplicationExtensions.cs:84,95-96,135-139`)
-  - the owner keeps a subscription only while its grant holds
-  - add the removal path for subscriptions and ETL tasks (F18; `Services/EtlTaskManager.cs` has none)
-- [ ] F19, red test first: push URLs and ETL destinations come from the registry entry of the authenticated module, never from the request. Today the request decides (`Endpoints/EtlDeploy.cs:97-111`; `Extensions/SparkReplicationExtensions.cs:135-147`; `Services/EtlTaskManager.cs:52-60`)
+**Owner's final decisions (2026-10-20, PRD §11 and §13 round 3)** fold into the lines below: Q-W27 (own persistent object), Q-W28 (second edit refused locally), Q-W29 (last approved shape keeps flowing), `SourceModule` optional with `Spark:Replication:Sources` fallback, WD19 (per-property compare-and-set for write-back), WD20 (synchronous first, deferred outcomes durable + live + mail, never applied locally), WD21 (the "Replication requests" program unit, wired into HR and Fleet), the message queue for everything durable.
+- [x] Core: `SparkConflictException` (public base of `SparkConcurrencyException`; endpoints catch it; 409 body gains `attributes`), `ISyncActionHandler` with `SyncEdit.BaseValues` and `ApplyDeleteAsync`.
+- [x] ng-spark `@mintplayer/ng-spark/replication`: `provideSparkReplication()` (pending title badge), `<spark-pending-changes-link>` (live count of "My pending changes", red on a pushed failure), spec; wired into the HR and Fleet shells.
 
-**HTTP path**
-- [ ] Capture:
-  - an `IBeforeSave` stamps `ReplicationVersion`
-  - an `IAfterSaveCommitted` / `IAfterDeleteCommitted` writes the outbox entry in the save's commit (`libs/spark/MintPlayer.Spark.Abstractions/Interceptors/SparkCommittedInterceptors.cs:3-20`)
-  - `IReplicaPublisher.MarkChanged(session, id)` covers raw writes
-- [ ] Delivery:
-  - one messaging queue per consuming module; the handler loads the current state
-  - `POST /spark/replicas/apply`
-  - 5xx or unreachable → `RetryAfterException` (`libs/messaging/MintPlayer.Spark.Messaging.Abstractions/RetryAfterException.cs:3-14`)
-  - 4xx → dead-letter with its reason, plus an alert
-  - retry budget per queue (`libs/messaging/MintPlayer.Spark.Messaging/Services/MessageBus.cs:122`)
-- [ ] Apply endpoint:
-  - version guard and tombstones
-  - source-module check (a foreign id is poison)
-  - read-only replicas (no `New` or `Delete` rights)
-  - a durable `IReplicaChanged<T>` (previous and new state) in the same session
-- [ ] Digest endpoint `GET /spark/replicas/{contract}/digest?after=&take=`, plus the consumer reconcile cron (`libs/cron/MintPlayer.Spark.Cron/SparkCronScheduler.cs:239-273`) and a run at startup. The initial load is a full reconcile
-- [ ] A dirty-set flush helper for high-churn contracts; the outbox refuses `DeduplicationKey` (`libs/messaging/MintPlayer.Spark.Messaging/IMessageOutbox.cs:13-18`)
+**0. Starting point (do first)**
+- [x] Rewind `libs/replication/**` and `tests/MintPlayer.Spark.Tests/Replication/**` to e0c542f9 (allowed; HEAD does not compile there: `ReplicaCapture.cs` uses a missing `ReplicaPushMessage`; `SyncApply.cs`, `SyncActionSubscriptionWorker.cs`, both interceptors and `SparkReplicationExtensions.cs` still use deleted types). Then re-apply the WIP files marked **keep** below from b4c218eb (`git show b4c218eb:<path>`). *Done 2026-10-20 by rewriting the files (no git operation): the obsolete runtime and tests deleted, WIP keepers reworked in place.*
+- [x] `stash@{0}` (30597360) holds the rest of the rejected half-refactor (SyncApply, extensions, worker, tests, HR/Fleet). Salvage nothing from it without reading it; the lead drops it after WM1 (agents don't touch git state). *Not applied; nothing salvaged.*
+- [x] WIP triage (b4c218eb):
 
-**ETL path**
-- [ ] Owner-generated transforms from contracts (Q-W17)
-- [ ] One task per consumer per owner (`Services/EtlTaskManager.cs:25-26`)
-- [ ] Consumer scripts are never deployed (F16; today they go out verbatim, `Services/EtlTaskManager.cs:65-70`)
+  | File | Verdict | Why / change |
+  |---|---|---|
+  | `libs/spark/MintPlayer.Spark.Abstractions/Licensing/ISparkLicenseCapabilities.cs`, `libs/spark/MintPlayer.Spark/Services/SparkLicenseCapabilities.cs` | keep | `/license/status` → `HasRavenEtl`, cached, unknown → null (`SparkLicenseCapabilities.cs:24-47,99,121`); replaces `RavenEtlLicence @e0c542f9` |
+  | `Services/ReplicationTransportResolver.cs`, the `ReplicationTransport` enum in `Configuration/ReplicationTransportOptions.cs` | keep | Auto/Http/Etl over the licence (`:33-65`); drop its "every contract fits ETL" check (every generated manifest fits) |
+  | `ReplicationTransportOptions` Consume/Registry/Push/Reconcile/WriteBack | rework | keep the push/write-back retry knobs (mapped onto the `spark-replication` queue) and Reconcile; replace Consume with `Sources:{TargetCollection}` |
+  | `libs/spark/MintPlayer.Spark.Abstractions/ISparkReplicaTypes.cs`, `DatabaseAccess.EnsureNotReplica` | keep | fix the doc comment (`[Replica]` → `[Replicated]`) |
+  | `libs/spark/MintPlayer.Spark.Abstractions/ISyncActionHandler.cs` (`ApplyEditAsync`, `SyncEdit`, `SyncEditOutcome`) | rework | add `BaseEtag` and a delete kind to `SyncEdit` |
+  | `libs/spark/MintPlayer.Spark/Services/SyncActionHandler.cs` | rework | use `SyncEdit.BaseEtag`, not the stored vector (`:39-47,60`); keep `ReplacedSave` mapping and `element.Clone()` (`:287`); the working tree already removes HEAD's stray `}` |
+  | Deletion of `ISyncActionInterceptor.cs`; `SparkSystemContext` module origin; `Services/AttributeRights.cs` (modules like people) | keep | F17 |
+  | `Endpoints/Groups.cs` (`SparkReplicasGroup`, `ModuleCaller.AuthenticateAsync`) | keep | |
+  | `Models/ReplicaApply.cs` | rework | items carry `sourceChangeVector` (drop `ReplicationVersion`), body carries `hash` |
+  | `Models/ReplicaSubscription.cs`, `Endpoints/ReplicaSubscribe.cs`, `Services/ReplicaSubscriptions.cs` | rework | becomes register: items carry manifest/script/hash; the owner re-renders, stores `SparkReplicationSubscription`, gates approval |
+  | `Models/ReplicationDocuments.cs` | rework | keep `ReplicationMetadata` (source change vector, source module), `ReplicaTombstone`, `ReplicaDirtyMarker`, `SyncInboxEntry`; drop `ReplicaVersion` and the contract-keyed `ReplicaSourceState` |
+  | `ReplicaChanged.cs` (`IReplicaChanged<T>`, `IReplicaPublisher`, `ISyncActionRefusalObserver`) | keep | |
+  | `Services/ReplicaCapture.cs` | rework | drop `ReplicationVersionStamp` (WD18); keep the after-commit interceptor, fan-out, dirty set; add `ReplicaPushMessage` + recipient |
+  | `Services/ReplicaSourceReader.cs` | rework | project with the manifest projector, not a compiled lambda |
+  | `Services/ReplicaJson.cs`, `Services/ModuleGrants.cs` | keep | grants check `Replicate/{SourceCollection}` (the WIP checked `Replicate/{contract}`, which no `security.json` grants) |
+  | `Services/ReplicaCatalog.cs` | rework | read `[assembly: SparkReplicaTypes]` + the generated constants |
+  | `Services/EtlTaskManager.cs` (`RemoveAsync`, licence via capabilities) | keep | deploy takes approved transforms only |
+  | `Models/SyncAction.cs`, `Models/SparkSyncAction.cs`, `Models/ESyncActionStatus.cs` (`Refused`) | keep + `BaseEtag` | |
+  | `Services/EtlTransformGenerator.cs` | drop | moves into the generator (identifier rules kept) |
+  | `ReplicaAttribute.cs`, `ReplicationContractAttribute.cs`, `ReplicationContract.cs`, `Services/ReplicationContractCatalog.cs`, `ReplicaContractCollector.cs @e0c542f9`, `SparkReplicationOptions.Publish` | drop | WD13 |
+  | `apps/HR/HR.Library/Contracts/*V1.cs`, `apps/Fleet/Fleet.Library/Contracts/CarV1.cs` | drop | WD13 |
+  | `EtlDeploy.cs`, `EtlScriptDeployment*`, `RavenEtlLicence.cs` (all `@e0c542f9`) | drop | replaced by register/deploy; keep EtlDeploy's mTLS, grant and F19 code (`:63-79,101,115-129`) in the register endpoint |
 
-**Write path**
-- [ ] A replica edit becomes a SyncAction request, stored in the edit's own session through commerce X7 `ISaveReplacement`; no local save first (F13; `Services/ReplicationInterceptor.cs:16`)
-- [ ] F12: per-action outcomes, and the initiator is notified (`Endpoints/SyncApply.cs:149-161,171-173`; `Workers/SyncActionSubscriptionWorker.cs:75-85`)
-- [ ] F14: a configurable budget with backoff, and re-drive of Failed requests
-  - `libs/subscription_worker/MintPlayer.Spark.SubscriptionWorker.Abstractions/RetryNumerator.cs:40,46,117-120`
-  - `Workers/SyncActionSubscriptionWorker.cs:20`
-  - `Services/SyncActionRetrySweeper.cs:77-79,85-89`
-- [ ] F15: per-document ordering and op-id idempotency at the owner (`libs/spark/MintPlayer.Spark/Services/SyncActionHandler.cs:43-54`)
-- [ ] F17: attribute rights for module principals (`SyncActionHandler.cs:132`; `docs/guide-authorization.md:122`)
-- [ ] F18: nested values keep their JSON structure (`Services/SyncActionInterceptor.cs:170-185`, today `:184`)
-- [ ] The SyncAction worker and `Indexes/SparkSyncActions_ByStatus.cs` register only when a replica type allows write-back (today unconditional, `Extensions/SparkReplicationExtensions.cs:49`)
+**1. Declaration and generator (WD13, WD14)**
+- [x] `ReplicatedAttribute`: `SourceCollection` (required), `SourceModule?`, `OriginalType?`, `WriteBack`; remove `Contract`/`Version`. `ReplicatedFromAttribute(path)`. `IReplicatedEntity` (static abstract `ReplicationSourceCollection`, `ReplicationTargetCollection`, `ReplicationManifest`, `ReplicationScript`, `ReplicationHash`). `SparkReplicaTypesAttribute` (assembly). *As built: also `TargetCollection?` (generated default, verified at startup); `IReplicatedEntity` is a marker, the runtime reads the generated literals.*
+- [x] Shared renderer `ReplicaScriptRenderer.cs` (manifest → script, canonical manifest JSON, SHA-256 hash with own hex; netstandard2.0-safe), compiled into `Replication.Abstractions` and linked into the generator.
+- [x] `ReplicatedGenerator` in `libs/source_generators/MintPlayer.Spark.LibraryGenerators/` (model/producer/reporter/rules split as `ValueObjectKeyGenerator`), emitting the constants and the assembly attribute.
+- [x] Diagnostics SPARK065–SPARK068 + the `partial` code fix; rows in `docs/diagnostics.md` (also add the missing SPARK064 row).
+- [x] Replica libraries reference `MintPlayer.Spark.LibraryGenerators` as an analyzer (`OutputItemType="Analyzer" ReferenceOutputAssembly="false"`); `Fulfilment.Contracts` too (WM2). *HR.Library and Fleet.Library already did; `Fulfilment.Contracts` is WM2.*
 
-**Security, demos, tests**
-- [ ] WX4 operator-managed read-only registry mode
-  - registration: `Services/ModuleRegistrationService.cs:33-35,58-68`
-  - today a registration failure stops setup: `Extensions/SparkReplicationExtensions.cs:84`
-  - the fields at risk: `libs/replication/MintPlayer.Spark.Replication.Abstractions/Models/ModuleInformation.cs:18,30`
-- [ ] Rewire Fleet and HR:
-  - contracts `cars`, `people`, `companies`
-  - grants: `apps/Fleet/Fleet/App_Data/security.json:107-112` and `apps/HR/HR/App_Data/security.json`
-  - replica types: `apps/HR/HR.Library/Replicated/Car.cs`, `apps/Fleet/Fleet.Library/Replicated/Person.cs`, `Company.cs`
-  - wiring: `apps/Fleet/Fleet/Program.cs:20-47,100-104`, `apps/HR/HR/Program.cs`, and both `appsettings.json` files
-  - regenerate `modelHashes.json`, `securityPosture.txt` and route snapshots (`apps/Fleet/Fleet.Tests/RouteTableSnapshotTests.cs`, `apps/HR/HR.Tests/RouteTableSnapshotTests.cs`)
-- [ ] Red tests for F12–F19 (W7). The 207 precedent is `tests/MintPlayer.Spark.E2E.Tests/Security/CrossModuleSyncTests.cs:116-134`
+**2. Registration and the approval gate (WD15, WD16)**
+- [x] Consumer: set hash per owner, `SparkReplicaRegistrations/{owner}` (last acknowledged hashes), `ReplicaRegistrationMessage` + recipient (retry vs non-retryable as `EtlScriptDeploymentRecipient.cs:43-48 @e0c542f9`). *`ReplicaRegistrationState`, `ReplicaRegistrationRecipient`.*
+- [x] Owner: `POST /spark/replicas/register` — mTLS, `Replicate/{SourceCollection}`, attribute read rights per manifest field, re-render check, upsert, unchanged/pending/approved/refused per item, withdraw what's missing.
+- [x] `SparkReplicationSubscription` persistent object (App_Data model layer, query, detail with pending-vs-approved diff), custom actions `ApproveReplication`/`RejectReplication` (+ `Suspend` on grant loss), rights in the library's security layer; auto-approve iff `IHostEnvironment.IsDevelopment()`. *As built (WD21): the persistent object is `SparkReplicationRequest` (program unit "Replication requests", slot `replication:approvers`), `SparkReplicationSubscription` is internal delivery state; suspension is automatic on grant loss (no `Suspend` action).*
+- [x] `ReplicaDeployMessage` recipient: transport via resolver; ETL deploy/remove (skip when `(transport, destination, hash set)` unchanged; destination from the registry); HTTP activate + initial reconcile. `Transport=Etl` without licence refuses startup.
+
+**3. HTTP path (WD17)**
+- [x] Core `SparkChangeVector.Compare` (`libs/spark/MintPlayer.Spark.Abstractions`).
+- [x] Owner: manifest projector over raw JSON; capture interceptor (`IAfterSaveCommitted`/`IAfterDeleteCommitted`) → `ReplicaPushMessage` per consumer on `spark-replication`; push recipient (load current, project, post to registry `AppUrl`; 5xx → `RetryAfterException`, 4xx → `NonRetryableException`); the queue's ladder 1 m/5 m/30 m/2 h with 48 h expiry as library default; `IReplicaPublisher.MarkChanged`; dirty-set flush job.
+- [x] Consumer: `POST /spark/replicas/apply` (source-module check, hash = current or last approved, change-vector guard, tombstones with 7-day expiry, metadata stamp, durable `IReplicaChanged<T>`), `GET /spark/replicas/digest`.
+- [x] Owner reconcile cron job (`Spark:Replication:Reconcile`, default hourly) merge-joining owner stream and consumer digest; collection name through `RqlIdentifier.Collection`. *As built: the consumer digest is held in memory, not merge-joined; source collection read through a collection query, never RQL text.*
+
+**4. Write path (WD18, F12–F15, F17, F18)**
+- [x] Consumer: `ISaveReplacement` + `IDeleteReplacement` for `WriteBack` replica types → `SparkSyncAction` (+ `BaseEtag` from the replica's source change vector, op id, initiator, structured values) + `SyncActionDispatchMessage` in the same session; refuse a second edit while one is pending (Q-W28); refuse edits of non-`WriteBack` replicas. *As built per WD19/WD20 (owner, 2026-10-20): per-property bases instead of `BaseEtag`; the save calls the owner synchronously (5 s) and queues only when it gets no answer.*
+- [x] Owner `POST /spark/sync/apply`: one action per request, op-id replay from `SyncInboxEntry` (stored via `ReplacedSave.Alongside`), `ApplyEditAsync` with `BaseEtag` as `Module:{consumer}` with attribute rights; 200/409/403/422, never 207. *As built: `ApplyEditAsync` does the per-property compare-and-set (WD19).*
+- [x] Dispatch recipient: applied → Completed; conflict/refused → Refused + `ISyncActionRefusalObserver` + `ISparkNotifier` when present; 5xx → retry ladder; dead-letter → Failed; `RetrySyncAction` custom action. *As built: statuses Completed/Conflict/Refused/GaveUp; `ISyncActionOutcomeObserver` replaces `ISyncActionRefusalObserver`; the initiator is told through the durable `SparkSyncAction` ("My pending changes"), the private live topic `replication:outcomes`, and mail on GaveUp (WD20).*
+- [x] Delete `Workers/SyncActionSubscriptionWorker.cs`, `Services/SyncActionRetrySweeper.cs`, `Indexes/SparkSyncActions_ByStatus.cs`, `Services/ReplicationInterceptor.cs`, `Services/SyncActionInterceptor.cs`.
+
+**5. Security (WX4)**
+- [x] Grant/attribute-right re-check at approval, deploy and every reconcile; loss suspends and removes delivery.
+- [x] Operator-managed read-only registry mode (`Services/ModuleRegistrationService.cs:33-35,58-68`; `Models/ModuleInformation.cs:18,30`).
+
+**6. Migrate Fleet and HR**
+- [x] `apps/HR/HR.Library/Replicated/Car.cs`, `apps/Fleet/Fleet.Library/Replicated/Person.cs`, `Company.cs`: `partial`, `[Replicated(SourceCollection = …, SourceModule = …, WriteBack = …)]`, `[ReplicatedFrom]` where a name differs; both libraries reference `LibraryGenerators`.
+- [x] Delete the `Contracts/` folders; remove `Publish`/`AssembliesToScan` from `apps/HR/HR/Program.cs:86-92` and `apps/Fleet/Fleet/Program.cs:56-60`; `appsettings.json` `Replication` sections (`:19` in both) gain `Transport: Http` (Q-W24).
+- [x] `security.json`: keep `Replicate/Cars` (`apps/Fleet/Fleet/App_Data/security.json:109`), `Replicate/Companies`/`Replicate/People` (`apps/HR/HR/App_Data/security.json:78,126`); add `Execute/ApproveReplication` for administrators. *As built: `bindings: { "replication:approvers": [ "Administrators" ] }` instead of an app-level right (the library ships the rights).*
+- [x] Check `Fleet/Actions/CompanyActions.cs`, `FleetContext.cs`, `Entities/Car.cs:90`, `App_Data/Model/{Car,Company,Person}.json`; `Fleet.Tests/McpOutputBudgetTests.cs:138-140` stores replica types raw (now refused by `EnsureNotReplica` only through `DatabaseAccess`; keep the raw store).
+- [ ] Regenerate `modelHashes.json`, `securityPosture.txt`, and the route snapshots (`apps/Fleet/Fleet.Tests/RouteTableSnapshotTests.cs`, `apps/HR/HR.Tests/RouteTableSnapshotTests.cs`) in WM13. *Partly 2026-10-20: HR and Fleet `modelHashes.json` and `securityPosture.txt` re-synchronized (`--spark-verify-model/-security/-contracts` exit 0); the route snapshots are left for WM13.*
+- [x] Rewrite `docs/guide-cross-module-sync.md` (F18 drift) and `docs/guide-replication-mtls.md` (WM12 may finish the prose). *Rewritten 2026-10-20 for the as-built design; the mTLS guide got the endpoint list.*
+
+**7. Tests**
+
+Generator (`tests/MintPlayer.Spark.SourceGenerators.Tests`, `GeneratorHarness.Run(..., generatorAssemblyName: "MintPlayer.Spark.LibraryGenerators")`, pattern `Generators/ValueObjectKeyGeneratorTests.cs:27-68,158-195`):
+- [x] `ReplicatedGeneratorTests.Emits_constants_for_partial_class` — red: nothing generated; green: the five constants and the assembly attribute, compiling without diagnostics.
+- [x] `…Maps_ReplicatedFrom_paths_null_safely` — nested path renders `this.Owner == null ? null : this.Owner.Name`-style access; manifest lists `[OwnerName, Owner.Name]`.
+- [x] `…Skips_Id_and_getter_only_members`.
+- [x] `…Hash_is_stable_and_changes_with_any_field` — same input → same hash across runs; rename one property → different hash.
+- [x] `…Hash_equals_runtime_renderer` — the generated `ReplicationHash` equals `ReplicaScriptRenderer.Hash(manifest)` at runtime (the owner's re-render check depends on it).
+- [x] `…SPARK065_when_not_partial` (+ negative case) and the code fix test (`CodeFixHarness`).
+- [x] `…SPARK066_invalid_identifier_or_missing_SourceCollection`, `…SPARK067_path_missing_on_OriginalType`, `…SPARK068_handwritten_member_collides`.
+- [x] Snapshot `SourceGeneratorSnapshots.Replicated_car` (`Snapshots/SourceGeneratorSnapshots.cs:20-77`).
+
+Runtime (`tests/MintPlayer.Spark.Tests/Replication`, `SparkTestDriver` + `SparkEndpointFactory` with `environment:` (`libs/testing/MintPlayer.Spark.Testing/SparkEndpointFactory.cs:121,165`); two hosts/databases for owner and consumer as in `EtlTaskManagerDeploymentTests @e0c542f9`):
+- [x] `ReplicaRegisterEndpointTests` (reworked from `EtlDeployEndpointTests`): no cert → 401, wrong thumbprint → 403, no `Replicate/{SourceCollection}` → 403, field without attribute read right → refused by name, script ≠ re-render → 400 (F16: a posted `loadDocument` script is never stored), destination always the registry entry (F19 red at the pre-43d492df shape, kept green). *As built: `ReplicaEndpointGateTests` (401/403) + `ReplicationApprovalTests` (grant, read right by name, re-render 400, unknown collection 404); the destination is never in the request (`SparkReplicationExtensionsTests`).*
+- [x] `ReplicationApprovalTests`: Development owner auto-approves; "Testing"/Production owner leaves Pending; `ApproveReplication` without the right → refused; approve → deploy message; same hash re-posted → `unchanged`, no second deploy (WD15; red: today every start redeploys); missing item → Withdrawn and transform removed (F18).
+- [x] `ReplicaRegistrationRecipientTests` (reworked from `EtlScriptDeploymentRecipientTests`): unchanged acknowledged set hash → no post; owner unregistered → retry; 403 → non-retryable.
+- [x] `EtlTaskManagerTests` / `EtlTaskManagerDeploymentTests` (kept, adapted): unlicensed → refusal before any ETL call; approved transform reaches the consumer database with `Spark-Replica-Source-Change-Vector` metadata (W6); `RemoveAsync` removes it; registry URL change redeploys. *Registry-URL redeploy is covered by the deploy recipient's `(transport, destination, hash)` comparison, not by a test yet.*
+- [x] `ReplicationTransportResolverTests`: Http pinned; Etl pinned without licence throws at startup; Auto with unknown licence → Http.
+- [x] `SparkChangeVectorTests`: Older/Equal/Newer/Concurrent over single- and multi-entry vectors.
+- [x] `ManifestProjectorEquivalenceTests`: the C# projector and the ETL script produce identical replicas for the same source documents (nulls, nested, arrays, `Color?`). *As built: `ManifestProjectorTests` (unit) + `EtlTaskManagerDeploymentTests.The_ETL_load_carries_the_source_stamp_and_equals_the_manifest_projection` (Developer licence, W6).*
+- [x] `ReplicaApplyEndpointTests`: newer applies and stamps metadata; equal/older no-op 200; delete leaves a tombstone and an older push doesn't resurrect; foreign source module refused; hash neither current nor last approved → 409; `IReplicaChanged<T>` enqueued in the same commit. *As built: `ReplicaApplierTests`.*
+- [x] `ReplicaPushTests`: owner save → after-commit work → push message per consumer → replica updated; consumer down → `RetryAfterException` and later delivery; 4xx → dead-letter; a burst of 5 saves → replica ends at the latest state. *As built: the push recipient (projection, tombstone, ladder, give-up, 4xx, dropped subscription); the interceptor → message hop and the 5-save burst are left for the WM11 E2E.*
+- [x] `ReplicaReconcileTests`: a raw owner write (no interceptor) is repaired by one reconcile; an extra consumer replica gets a tombstone; initial load after approval fills an empty consumer.
+- [x] `SyncActionCaptureTests` (reworked from `SyncActionInterceptorTests`): the edit stores the SyncAction **and** its outbox message in the same commit and leaves the replica untouched (F13; red: today `SyncActionInterceptor.cs:161` saves in a new session after the local save); `BaseEtag` = the replica's source change vector; initiator stamped (#271); nested values stay JSON (F18; red: `SyncActionInterceptor.cs:184`); second edit while pending refused (Q-W28); non-`WriteBack` replica edit refused. *As built: `ReplicaWriteBackTests` (synchronous applied/conflict/refused, queued in the same commit, Q-W28, nested field, no create, pending badge).*
+- [x] `SyncApplyEndpointTests` (reworked): **stale edit** — owner changed after the replica was built → 409 `conflict(changed)` and the owner document unchanged (WD18; red: `SyncActionHandler.cs:39-47,60` overwrites); deleted at owner → `conflict(deleted)`; module without write right on an attribute → `refused(unwritable)` (F17; red: silently dropped); op-id replay returns the first outcome, no false conflict (F15); never 207 (F12). *As built: the compare-and-set red→green tests are `Services/SyncActionHandlerIntegrationTests`; the endpoint statuses and op-id replay are `Replication/SyncApplyEndpointTests`.*
+- [x] `SyncActionDispatchTests` (replaces `SyncActionSubscriptionWorkerE2ETests` and `SyncActionRetrySweeperTests`): applied → Completed; conflict → Refused + observer + notifier called with the initiator (F12; red: 207 recorded Completed, `Workers/SyncActionSubscriptionWorker.cs:75-85`); owner down → retried past 8 minutes on the ladder (F14; red: `RetryNumerator` gives up after ~5–8 min); expired → Failed; `RetrySyncAction` re-drives.
+- [x] `SparkReplicationExtensionsTests` / `SparkBuilderReplicationExtensionsTests` (reworked): no subscription worker, no sweeper registered; replication creates **0** RavenDB subscriptions (assert the database's subscription count with messaging + replication = 1). *As built: asserts no hosted service is registered; the database subscription count (messaging + replication = 1) is left for the WM13 sweep.*
+- [x] Kept unchanged: `ModuleCertificateValidatorTests`, `ModuleRegistrationServiceTests`, `ReplicationHttpClientProviderTests`, `SparkReplicationOptionsBindingTests`. *`ModuleRegistrationServiceTests` gained the read-only registry test.*
+- [x] Dropped: `EtlTransformGeneratorTests` (moved to the generator tests), `ReplicaContractCollectorTests`, `SyncActionGenericTests`.
+- [ ] E2E `tests/MintPlayer.Spark.E2E.Tests/Security/CrossModuleSyncTests.cs`: replace the 207 expectation (`:116-134`) with Fleet ↔ HR end to end under `Transport=Http`: edit a replica in HR → Fleet applies → HR's replica updated by the push; stale edit → refusal shown to the initiator; once more under `Etl` on CI (Q-W24). Add the missing end-to-end mTLS test (`:24-31`).
 
 ### WM2 — Shared foundations
 

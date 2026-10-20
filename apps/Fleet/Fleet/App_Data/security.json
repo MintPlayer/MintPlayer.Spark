@@ -13,6 +13,9 @@
     "b0000001-0000-0000-0000-000000000001": "Module:HR",
     "b0000002-0000-0000-0000-000000000001": "Machine:FleetApi"
   },
+  "bindings": {
+    "replication:approvers": [ "Administrators" ]
+  },
   "rights": [
     {
       "key": "ca000001-0000-0000-0000-000000000001",

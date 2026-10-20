@@ -64,7 +64,7 @@ internal sealed partial class UpdatePersistentObject : IPostEndpoint<PersistentO
             var outcome = await savePath.UpdateAsync(entityType, request.Id, obj, request, httpContext.RequestAborted);
             return ClientResult.Saved(clientAccessor, outcome, 200);
         }
-        catch (SparkConcurrencyException ex)
+        catch (Abstractions.SparkConflictException ex)
         {
             // R2-M1: SparkConcurrencyException.Message contains the server-side
             // change vector — useful for the legitimate optimistic-concurrency

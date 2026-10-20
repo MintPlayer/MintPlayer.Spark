@@ -4,14 +4,12 @@ using System.Drawing;
 namespace HR.Replicated;
 
 /// <summary>
-/// A read-only copy of Fleet's <c>cars</c> contract (v1, <c>Fleet.Contracts.CarV1</c>). Fleet
-/// decides which fields are replicated and generates the ETL transform; this type only has that shape.
+/// A read-only copy of Fleet's cars (warehouse §4.2.1): this class is the only declaration of what HR reads. The
+/// replication generator renders the manifest, the script and the hash from it; Fleet re-renders and approves them.
+/// An edit here is written back to Fleet (per-property compare-and-set) and arrives back with Fleet's push.
 /// </summary>
-[Replicated(
-    SourceModule = "Fleet",
-    Contract = "cars",
-    SourceCollection = "Cars")]
-public class Car
+[Replicated(SourceCollection = "Cars", SourceModule = "Fleet", WriteBack = true)]
+public partial class Car
 {
     /// <summary>Identifier of the car, replicated read-only from the Fleet app.</summary>
     public string? Id { get; set; }

@@ -7,12 +7,16 @@
 		<OutputType>library</OutputType>
 		<IsPackable>true</IsPackable>
 
+		<!-- Names this library's App_Data layers (composition D16): the approval gate (SparkReplicationSubscription) and
+		     the write-back requests (SparkSyncAction). Permanent: it is part of the right keys, the slot and the model ids. -->
+		<SparkLibraryAlias>replication</SparkLibraryAlias>
+
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.Replication</PackageId>
 		<Version>11.0.0-preview.104</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
-		<Description>Cross-module ETL replication for MintPlayer.Spark using RavenDB ETL tasks and the durable message bus.</Description>
+		<Description>Cross-module replication for MintPlayer.Spark: source-generated replica declarations, an owner-side approval gate, delivery by RavenDB ETL or over Spark messaging and mTLS, and write-back with per-property compare-and-set.</Description>
 		<PackageTags>replication;etl;ravendb;message-bus</PackageTags>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
@@ -25,13 +29,27 @@
 		<InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
 	</ItemGroup>
 
+	<!-- The give-up mail's default MJML template (SparkReplication/*), read by MailManager when it is present. -->
+	<ItemGroup>
+		<EmbeddedResource Include="Mail\**\*.mjml" LogicalName="SparkMail/%(RecursiveDir)%(Filename)%(Extension)" WithCulture="false" />
+	</ItemGroup>
+
 	<ItemGroup>
 		<PackageReference Include="Microsoft.AspNetCore.Authentication.Certificate" Version="11.0.0-rc.1.26425.128" />
 		<PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="11.4.1-rc.0" />
 		<ProjectReference Include="..\..\spark\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
+		<!-- Actions classes, custom actions and the replaced-save path of the library's own persistent objects. -->
+		<ProjectReference Include="..\..\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
 		<ProjectReference Include="..\MintPlayer.Spark.Replication.Abstractions\MintPlayer.Spark.Replication.Abstractions.csproj" />
+		<!-- Registration, pushes and queued write-backs ride the message queue and its transactional outbox (no subscription of its own). -->
 		<ProjectReference Include="..\..\messaging\MintPlayer.Spark.Messaging.Abstractions\MintPlayer.Spark.Messaging.Abstractions.csproj" />
-		<ProjectReference Include="..\..\subscription_worker\MintPlayer.Spark.SubscriptionWorker.Abstractions\MintPlayer.Spark.SubscriptionWorker.Abstractions.csproj" />
+		<ProjectReference Include="..\..\messaging\MintPlayer.Spark.Messaging\MintPlayer.Spark.Messaging.csproj" />
+		<!-- The reconcile and the dirty-set flush. -->
+		<ProjectReference Include="..\..\cron\MintPlayer.Spark.Cron\MintPlayer.Spark.Cron.csproj" />
+		<!-- The give-up mail, sent only when an application registered MailManager. -->
+		<ProjectReference Include="..\..\mail\MintPlayer.Spark.MailManager.Abstractions\MintPlayer.Spark.MailManager.Abstractions.csproj" />
+		<!-- Spark's generators (the library layers) and analyzers (SPARK045). Analyzer ProjectReferences are not transitive. -->
+		<ProjectReference Include="..\..\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
 	</ItemGroup>
 
 	<ItemGroup>

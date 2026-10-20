@@ -12,6 +12,9 @@
     "b1b2c3d4-0000-0000-0000-000000000003": "Viewers",
     "b0000002-0000-0000-0000-000000000001": "Module:Fleet"
   },
+  "bindings": {
+    "replication:approvers": [ "Administrators" ]
+  },
   "rights": [
     {
       "key": "a0000001-0000-0000-0000-000000000003",

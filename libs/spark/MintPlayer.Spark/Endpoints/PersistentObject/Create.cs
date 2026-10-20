@@ -84,7 +84,7 @@ internal sealed partial class CreatePersistentObject : IPostEndpoint<PersistentO
             // wrong); 202 when an ISaveReplacement diverted it for approval (X7).
             return ClientResult.Saved(clientAccessor, outcome, 201);
         }
-        catch (SparkConcurrencyException ex)
+        catch (Abstractions.SparkConflictException ex)
         {
             // A creation whose natural id is already held by a row the caller may edit: "exists"
             // (#467, D16), never an overwrite. Generic body, as in Update (R2-M1).

@@ -1,0 +1,20 @@
+{
+  "$schema": "../../../../schemas/security.schema.json",
+  "_comment": [
+    "The replication package's rights, shipped as a library layer (warehouse §4.2, owner decision 2026-10-20). One slot",
+    "the application binds in its own security.json, or startup is refused:",
+    "  \"bindings\": { \"replication:approvers\": [ \"Administrators\" ] }",
+    "Approvers read the replication requests and decide them (ApproveReplication, RejectReplication); the program unit",
+    "is hidden from everyone else. Every signed-in user reads and retries or dismisses their own write-backs (the",
+    "SparkSyncAction row rule narrows every read to the initiator). Grants for modules (Replicate/{Collection}) stay the",
+    "application's: they name its own collections."
+  ],
+  "rights": [
+    { "key": "requests", "resource": "QueryRead/SparkReplicationRequest", "groupId": "replication:approvers" },
+    { "key": "approve", "resource": "ApproveReplication/SparkReplicationRequest", "groupId": "replication:approvers" },
+    { "key": "reject", "resource": "RejectReplication/SparkReplicationRequest", "groupId": "replication:approvers" },
+    { "key": "pending-changes", "resource": "QueryRead/SparkSyncAction", "groupId": "@authenticated" },
+    { "key": "retry", "resource": "RetrySyncAction/SparkSyncAction", "groupId": "@authenticated" },
+    { "key": "dismiss", "resource": "DismissSyncAction/SparkSyncAction", "groupId": "@authenticated" }
+  ]
+}

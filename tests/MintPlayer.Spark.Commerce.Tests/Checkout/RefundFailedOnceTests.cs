@@ -1,6 +1,7 @@
 using MintPlayer.Spark.Commerce.Checkout;
 using MintPlayer.Spark.Commerce.Checkout.Refunds;
 using MintPlayer.Spark.Commerce.Payments;
+using MintPlayer.Spark.Commerce.Payments.Models;
 using MintPlayer.Spark.Testing;
 
 namespace MintPlayer.Spark.Commerce.Tests.Checkout;

@@ -1,0 +1,38 @@
+{
+  "$schema": "../../../../schemas/programUnits.schema.json",
+  "_comment": [
+    "The replication package's menu fragment (warehouse §4.2, owner decision 2026-10-20): \"Replication requests\" for the",
+    "administrators who approve what other modules may read (shown only to callers holding the query's right, i.e. the",
+    "group the application binds to replication:approvers), and \"My pending changes\" for anyone whose edit of a replica",
+    "waits at its owner or ended without being applied. Ids are UUIDv5 of 'replication:programUnits.…'.",
+    "An application removes a unit with { \"id\": \"…\", \"$remove\": true } in its own programUnits.json."
+  ],
+  "programUnitGroups": [
+    {
+      "id": "9f6fc59e-46fb-5f3a-bbde-93dea4a89554",
+      "name": "programUnits.groups.replication",
+      "icon": "bi-arrow-left-right",
+      "order": 90,
+      "programUnits": [
+        {
+          "id": "da8917e9-d199-5f25-aa1f-d87235dd3ecf",
+          "name": "programUnits.replicationRequests",
+          "icon": "bi-shield-check",
+          "type": "query",
+          "queryId": "7fcbe877-8c50-53a7-9bac-c685f79382e6",
+          "alias": "replication-requests",
+          "order": 1
+        },
+        {
+          "id": "a4e17857-441d-5322-9cc0-68fb890a84f7",
+          "name": "programUnits.myPendingChanges",
+          "icon": "bi-hourglass-split",
+          "type": "query",
+          "queryId": "121f1d22-5929-523d-bb9a-f0535abe51a1",
+          "alias": "my-pending-changes",
+          "order": 2
+        }
+      ]
+    }
+  ]
+}

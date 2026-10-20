@@ -1,0 +1,26 @@
+{
+  "$schema": "../../../../schemas/actions.schema.json",
+  "_comment": [
+    "The replication package's custom actions (warehouse §4.2), shipped as a library layer. The classes are",
+    "CustomActions/ReplicationActions.cs; their rights are in this library's security.json; labels are actions.<Name>.*",
+    "in translations.json. Each is offered per row only where it would succeed (the Actions classes' OnDisableActionsAsync)."
+  ],
+  "ApproveReplication": {
+    "icon": "check-lg",
+    "showedOn": "both",
+    "variant": "success"
+  },
+  "RejectReplication": {
+    "icon": "x-lg",
+    "showedOn": "both",
+    "variant": "danger"
+  },
+  "RetrySyncAction": {
+    "icon": "arrow-repeat",
+    "showedOn": "both"
+  },
+  "DismissSyncAction": {
+    "icon": "eye-slash",
+    "showedOn": "both"
+  }
+}

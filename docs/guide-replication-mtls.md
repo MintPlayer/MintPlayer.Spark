@@ -3,7 +3,7 @@
 This guide walks an operator through enabling mutual-TLS authentication between
 Spark modules (R2-C1 / R2-C2 / R2-H7). The audit found `/spark/etl/deploy` and
 `/spark/sync/apply` shipped without any authentication; mTLS is the design Spark
-picked to close that gap.
+picked to close that gap. (WM1 replaced `/spark/etl/deploy` with `/spark/replicas/register`, where the owner renders every script itself; see [guide-cross-module-sync.md](guide-cross-module-sync.md).)
 
 ## Threat model
 
@@ -14,7 +14,7 @@ picked to close that gap.
   pinned to `moduleInformations/{Name}.ClientCertificateThumbprint`. Subsequent
   re-registrations with a different thumbprint are refused (key rotation goes
   through an operator-driven delete-then-register flow).
-- Inbound `/spark/etl/deploy` and `/spark/sync/apply` look up the
+- Inbound `/spark/replicas/register`, `/spark/replicas/apply`, `/spark/replicas/digest` and `/spark/sync/apply` look up the
   `RequestingModule` field in the body, find the pinned thumbprint, and refuse
   the request unless the presenting client cert matches.
 

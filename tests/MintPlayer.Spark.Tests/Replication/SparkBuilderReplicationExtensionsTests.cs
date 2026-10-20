@@ -43,8 +43,8 @@ public class SparkBuilderReplicationExtensionsTests
         // Spot-check the registrations AddSparkReplication contributes; the full DI shape
         // is pinned in SparkReplicationExtensionsTests.
         builder.Services.Should().Contain(d => d.ServiceType == typeof(ModuleRegistrationService));
-        builder.Services.Should().Contain(d => d.ServiceType == typeof(ReplicaContractCollector));
-        builder.Services.Should().Contain(d => d.ServiceType == typeof(EtlTaskManager));
+        builder.Services.Should().Contain(d => d.ServiceType == typeof(ReplicaCatalog));
+        builder.Services.Should().Contain(d => d.ServiceType == typeof(IEtlTaskManager));
     }
 
     [Fact]
@@ -174,7 +174,7 @@ public class SparkBuilderReplicationExtensionsTests
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <c>/spark/sync/apply</c> and <c>/spark/etl/deploy</c> are machine endpoints authenticated by a
+    /// <c>/spark/sync/apply</c> and <c>/spark/replicas/*</c> are machine endpoints authenticated by a
     /// pinned module client certificate over mTLS. They briefly carried
     /// <c>RequireAntiforgeryTokenAttribute(true)</c> as defence in depth, and that broke the feature:
     /// explicit antiforgery metadata is enforced <em>before</em> authentication and applies to
@@ -214,7 +214,9 @@ public class SparkBuilderReplicationExtensionsTests
         var patterns = routes.Select(r => r.RoutePattern.RawText).ToArray();
         patterns.Should().Contain("/spark/sync/apply",
             "this test is only meaningful while it is actually inspecting that endpoint");
-        patterns.Should().Contain("/spark/etl/deploy",
+        patterns.Should().Contain("/spark/replicas/register",
+            "this test is only meaningful while it is actually inspecting that endpoint");
+        patterns.Should().Contain("/spark/replicas/apply",
             "this test is only meaningful while it is actually inspecting that endpoint");
 
         var gated = routes

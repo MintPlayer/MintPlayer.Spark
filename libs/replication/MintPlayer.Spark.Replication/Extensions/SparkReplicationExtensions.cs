@@ -1,122 +1,111 @@
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Interceptors;
+using MintPlayer.Spark.Abstractions.Live;
+using MintPlayer.Spark.Messaging;
 using MintPlayer.Spark.Messaging.Abstractions;
+using MintPlayer.Spark.Replication.Abstractions;
 using MintPlayer.Spark.Replication.Abstractions.Configuration;
-using MintPlayer.Spark.Replication.Abstractions.Models;
-using MintPlayer.Spark.Replication.Indexes;
 using MintPlayer.Spark.Replication.Messages;
+using MintPlayer.Spark.Replication.Models;
 using MintPlayer.Spark.Replication.Services;
-using MintPlayer.Spark.Replication.Workers;
 using Raven.Client.Documents;
-using System.Reflection;
 
 namespace MintPlayer.Spark.Replication;
 
 internal static class SparkReplicationExtensions
 {
     /// <summary>
-    /// Registers replication services (module registration, ETL script collection, ETL task management,
-    /// message bus recipient for deployment, and HTTP client for outbound requests).
+    /// Registers replication's services (warehouse §4.2): the module registry, the replica catalog (also the framework's
+    /// <see cref="ISparkReplicaTypes"/>), the owner's approval gate and delivery, the consumer's apply endpoint and
+    /// write-back, and their message recipients. No hosted service and no subscription: everything durable rides the
+    /// message queue (<c>spark-replication</c>) and its transactional outbox.
     /// </summary>
     internal static IServiceCollection AddSparkReplication(
         this IServiceCollection services,
         Action<SparkReplicationOptions> configure)
     {
         services.Configure(configure);
+        services.AddHttpContextAccessor();
+        services.TryAddSingleton(TimeProvider.System);
+        services.AddMintPlayerSparkReplication();
+
         services.AddSingleton<ModuleRegistrationService>();
         services.AddSingleton<IModuleDirectory, ModuleDirectory>();
-        services.AddMintPlayerSparkReplication();
-        services.AddSingleton<ReplicaContractCollector>();
-        services.AddSingleton<ReplicationContractCatalog>();
-        services.AddSingleton<IRavenEtlLicence, RavenEtlLicence>();
-        services.AddSingleton<EtlTaskManager>();
-        services.AddSingleton<IEtlTaskManager>(sp => sp.GetRequiredService<EtlTaskManager>());
-        services.AddScoped<IRecipient<EtlScriptDeploymentMessage>, EtlScriptDeploymentRecipient>();
-
-        // R2-C1/C2: outbound replication HttpClients attach this module's
-        // client certificate so the peer module can verify mTLS. The cert is
-        // *this* module's identity — same cert presented to every target by
-        // default. Per-target overrides exist for advanced multi-CA cases.
-        // Operators set the cert via SparkReplicationOptions.ClientCertificate.
-        //
-        // Both outbound paths know their target module, so both resolve this provider.
-        // They previously used named clients whose handler only ever attached the default
-        // certificate, which is why PerTargetOverrides was documented but did nothing (F5).
+        // R2-C1/C2: outbound calls attach this module's client certificate (per-target overrides honoured, F5).
         services.AddSingleton<IReplicationHttpClientProvider, ReplicationHttpClientProvider>();
 
-        // Sync action services
-        services.AddScoped<ISyncActionInterceptor, SyncActionInterceptor>();
-        // Forwards every committed write of a [Replicated] type to its owner (#482).
-        Spark.Abstractions.Interceptors.SparkBuilderInterceptorExtensions.AddSparkInterceptor<ReplicationInterceptor>(services);
-        services.AddHostedService<SyncActionSubscriptionWorker>();
+        services.AddSingleton<ReplicaCatalog>();
+        services.AddSingleton<ISparkReplicaTypes>(sp => sp.GetRequiredService<ReplicaCatalog>());
+        services.AddSingleton<IReplicaSourceTypes, ReplicaSourceTypes>();
+        services.AddSingleton<IModuleGrants, ModuleGrants>();
+        services.AddSingleton<IReplicationTransportResolver, ReplicationTransportResolver>();
+        services.AddSingleton<IEtlTaskManager, EtlTaskManager>();
 
-        // Without this, a retry is scheduled and then never delivered: the subscription only
-        // re-evaluates a document that gets written, and a backoff elapsing writes nothing. See #258.
-        services.AddHostedService<SyncActionRetrySweeper>();
+        services.AddScoped<IReplicaSubscriptions, ReplicaSubscriptions>();
+        services.AddScoped<IReplicaFanOut, ReplicaFanOut>();
+        services.AddScoped<IReplicaPublisher, ReplicaPublisher>();
+        services.AddScoped<IReplicaApplier, ReplicaApplier>();
+        services.AddScoped<IReplicaReconciler, ReplicaReconciler>();
+        services.AddScoped<ISyncApplyService, SyncApplyService>();
+        services.AddScoped<ISyncActionSender, SyncActionSender>();
+        services.AddScoped<ISyncOutcomeNotifier, SyncOutcomeNotifier>();
+
+        services.AddScoped<IRecipient<ReplicaRegistrationMessage>, ReplicaRegistrationRecipient>();
+        services.AddScoped<IRecipient<ReplicaDeployMessage>, ReplicaDeployRecipient>();
+        services.AddScoped<IRecipient<ReplicaPushMessage>, ReplicaPushRecipient>();
+        services.AddScoped<IRecipient<ReplicaReconcileMessage>, ReplicaReconcileRecipient>();
+        services.AddScoped<IRecipient<SyncActionDispatchMessage>, SyncActionDispatchRecipient>();
+        services.AddScoped<IRecipient<ReplicaChangedMessage>, ReplicaChangedRecipient>();
+
+        // Owner: a committed write of a source document is pushed (HTTP transport). Consumer: a replica edit becomes a
+        // write-back and never a local write; the row shows a pending badge.
+        services.AddSparkInterceptor<ReplicaPublishInterceptor>();
+        services.AddSparkInterceptor<ReplicaWriteBackInterceptor>();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<ISparkLiveTopicPolicy, ReplicationLiveTopicPolicy>());
+
+        // The queue's library defaults; Spark:Messaging:Queues:spark-replication overrides them. Ordering is not needed
+        // (change-vector guard, op ids), so several pushes may run at once and one dead consumer does not hold up the rest.
+        services.Configure<SparkMessagingOptions>(options =>
+            options.Queues.TryAdd(ReplicationQueue.Name, new SparkQueueOptions { MaxConcurrency = 4 }));
+
+        MintPlayer.Spark.MailManager.SparkMailTemplateServiceCollectionExtensions.AddSparkMailTemplates(
+            services, typeof(SparkReplicationExtensions).Assembly, "SparkMail/");
 
         return services;
     }
 
     /// <summary>
-    /// On startup: (0) translates the contracts this module publishes, refusing startup on a
-    /// projection the ETL transform cannot express, (1) registers this module in the shared
-    /// SparkModules database, (2) scans assemblies for [Replicated] replica types, (3) asks each
-    /// source module for the contracts they read, via the durable message bus.
+    /// On startup: refuses what cannot work (a replica without a source, a store collection name the generated one
+    /// disagrees with, <c>Transport=Etl</c> on a licence without ETL, no messaging), then — in the background —
+    /// registers this module in <c>SparkModules</c> and queues one registration per owner whose set hash is not settled
+    /// (WD15), plus an empty one for an owner it no longer reads from (F18).
     /// </summary>
     internal static WebApplication UseSparkReplication(this WebApplication app)
     {
-        var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("SparkReplication");
-        var options = app.Services.GetRequiredService<IOptions<SparkReplicationOptions>>().Value;
-        var registrationService = app.Services.GetRequiredService<ModuleRegistrationService>();
-        var moduleDirectory = app.Services.GetRequiredService<IModuleDirectory>();
-        var collector = app.Services.GetRequiredService<ReplicaContractCollector>();
-        var appStore = app.Services.GetRequiredService<IDocumentStore>();
+        var services = app.Services;
+        var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("SparkReplication");
+        var appStore = services.GetRequiredService<IDocumentStore>();
+        var catalog = services.GetRequiredService<ReplicaCatalog>();
 
-        // Step 0, synchronously: resolving the catalog translates every published projection, so a
-        // complex one refuses startup here rather than failing a consumer's deployment later.
-        app.Services.GetRequiredService<ReplicationContractCatalog>();
+        var problems = catalog.Problems(appStore).ToList();
+        if (services.GetService<IMessageRecipientRegistry>() is null)
+            problems.Add("Replication needs messaging: call spark.AddMessaging() before spark.AddReplication().");
+        if (problems.Count > 0)
+            throw new InvalidOperationException("Replication cannot start:" + Environment.NewLine + string.Join(Environment.NewLine, problems.Select(p => "  - " + p)));
 
-        // Deploy the SparkSyncActions index
-        new SparkSyncActions_ByStatus().Execute(appStore);
+        // F18: Etl pinned on a licence without it refuses startup with the fix in the message.
+        services.GetRequiredService<IReplicationTransportResolver>().ResolveAsync().GetAwaiter().GetResult();
 
-        // Run registration and ETL deployment asynchronously to not block startup
         _ = Task.Run(async () =>
         {
             try
             {
-                // IMessageBus is scoped, so create a scope to resolve it
-                using var scope = app.Services.CreateScope();
-                var messageBus = scope.ServiceProvider.GetRequiredService<IMessageBus>();
-                // Step 1: Register this module in the shared SparkModules database
-                await registrationService.RegisterAsync(moduleDirectory.Store);
-
-                // Step 2: Scan assemblies for [Replicated] attributes
-                var assemblies = options.AssembliesToScan.Length > 0
-                    ? options.AssembliesToScan
-                    : [Assembly.GetEntryAssembly()!];
-
-                var contractsByModule = collector.Collect(type => appStore.Conventions.FindCollectionName(type), assemblies);
-
-                if (contractsByModule.Count == 0)
-                {
-                    logger.LogInformation("No [Replicated] attributes found — no contracts to request");
-                    return;
-                }
-
-                // Step 3: For each source module, broadcast an ETL deployment message. The
-                // recipient resolves the source module's URL from SparkModules on each delivery,
-                // so we don't need to look it up here — and a not-yet-registered source no
-                // longer needs a fabricated fallback URL (which previously baked
-                // `http://{name}:5000` into the message and made retries hit a stale endpoint
-                // forever even after the source module finally registered).
-                foreach (var deploymentMessage in BuildDeploymentMessages(contractsByModule, options))
-                {
-                    await messageBus.BroadcastAsync(deploymentMessage);
-                    logger.LogInformation(
-                        "Queued ETL deployment to '{SourceModule}' ({ContractCount} contracts) via message bus",
-                        deploymentMessage.SourceModuleName, deploymentMessage.Request.Contracts.Count);
-                }
+                var registrationService = services.GetRequiredService<ModuleRegistrationService>();
+                await registrationService.RegisterAsync(services.GetRequiredService<IModuleDirectory>().Store);
+                await QueueRegistrationsAsync(services, catalog, appStore, logger);
             }
             catch (Exception ex)
             {
@@ -127,37 +116,31 @@ internal static class SparkReplicationExtensions
         return app;
     }
 
-    /// <summary>
-    /// Pure function that projects the collected per-source-module contracts into the
-    /// <see cref="EtlScriptDeploymentMessage"/> envelopes the message bus broadcasts.
-    /// Extracted so the message-shape contract can be unit-tested without spinning up
-    /// a host (which would otherwise require IMessageBus + IDocumentStore + Task.Run timing).
-    /// <para>
-    /// The message names no database or URLs (F19): the owner reads this module's destination
-    /// from its SparkModules registry entry, which registration keeps current.
-    /// </para>
-    /// </summary>
-    internal static IEnumerable<EtlScriptDeploymentMessage> BuildDeploymentMessages(
-        IReadOnlyDictionary<string, List<EtlContractRequest>> contractsByModule,
-        SparkReplicationOptions options)
+    /// <summary>One registration message per owner whose set hash this module has not had acknowledged as approved.</summary>
+    internal static async Task QueueRegistrationsAsync(IServiceProvider services, ReplicaCatalog catalog, IDocumentStore store, ILogger logger)
     {
-        foreach (var (sourceModule, contracts) in contractsByModule)
+        await using var scope = services.CreateAsyncScope();
+        var bus = scope.ServiceProvider.GetRequiredService<IMessageBus>();
+        var now = (scope.ServiceProvider.GetService<TimeProvider>() ?? TimeProvider.System).GetUtcNow().UtcDateTime;
+
+        using var session = store.OpenAsyncSession();
+        var known = await session.Advanced.LoadStartingWithAsync<ReplicaRegistrationState>("SparkReplicaRegistrations/", pageSize: 1024);
+        var owners = catalog.Owners.Concat(known.Select(k => k.Owner)).Distinct(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var owner in owners)
         {
-            yield return new EtlScriptDeploymentMessage
+            var state = known.FirstOrDefault(k => string.Equals(k.Owner, owner, StringComparison.OrdinalIgnoreCase));
+            if (state?.IsSettled(catalog.SetHash(owner)) == true)
             {
-                SourceModuleName = sourceModule,
-                Request = new EtlDeploymentRequest
-                {
-                    RequestingModule = options.ModuleName,
-                    Contracts = contracts,
-                },
-            };
+                logger.LogDebug("Replicas from '{Owner}' are registered and approved as they are; nothing posted.", owner);
+                continue;
+            }
+            await bus.BroadcastAsync(new ReplicaRegistrationMessage { Owner = owner, QueuedAtUtc = now });
+            logger.LogInformation("Queued the replica registration with '{Owner}'.", owner);
         }
     }
 
-    /// <summary>
-    /// Maps the replication endpoints (ETL deploy, sync apply).
-    /// </summary>
+    /// <summary>Maps <c>/spark/replicas/*</c> and <c>/spark/sync/apply</c>.</summary>
     internal static IEndpointRouteBuilder MapSparkReplication(this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapSparkReplicationEndpoints();

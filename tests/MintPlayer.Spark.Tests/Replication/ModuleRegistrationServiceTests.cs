@@ -137,4 +137,22 @@ public class ModuleRegistrationServiceTests(SparkSharedDatabase database)
         info.Should().NotBeNull();
         info!.AppUrl.Should().Be("http://fleet.internal:8080");
     }
+
+    /// <summary>
+    /// WX4: in operator-managed mode a module never writes the registry (the trust root of every destination and pinned
+    /// thumbprint). A missing entry is reported, not created.
+    /// </summary>
+    [Fact]
+    public async Task A_read_only_registry_is_never_written()
+    {
+        var options = DefaultOptions();
+        options.Registry.ReadOnly = true;
+        using var directory = NewDirectory(options);
+        directory.Store.Maintenance.Server.Send(new CreateDatabaseOperation(new DatabaseRecord(_modulesDatabase)));
+
+        await NewService(options).RegisterAsync(directory.Store);
+
+        (await directory.FindAsync("HR", CancellationToken.None)).Should().BeNull("the operator creates entries in read-only mode");
+        (await NewService(options).VerifyReadOnlyEntryAsync(directory.Store, CancellationToken.None)).Should().BeFalse();
+    }
 }

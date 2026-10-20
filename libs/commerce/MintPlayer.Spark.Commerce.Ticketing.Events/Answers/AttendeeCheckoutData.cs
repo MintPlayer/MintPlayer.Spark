@@ -25,7 +25,7 @@ internal static class AttendeeCheckoutData
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
-    private sealed record Position(string LineId, int Position, List<Answer>? Answers);
+    private sealed record AttendeePosition(string LineId, int Position, List<Answer>? Answers);
 
     private sealed record Answer(string QuestionKey, string? Value, bool Consent);
 
@@ -35,8 +35,8 @@ internal static class AttendeeCheckoutData
         var result = new Dictionary<(string, int), IReadOnlyList<AttendeeAnswerInput>>();
         if (!data.TryGetValue(Key, out var raw) || string.IsNullOrWhiteSpace(raw))
             return result;
-        List<Position>? positions;
-        try { positions = JsonSerializer.Deserialize<List<Position>>(raw, Json); }
+        List<AttendeePosition>? positions;
+        try { positions = JsonSerializer.Deserialize<List<AttendeePosition>>(raw, Json); }
         catch (JsonException) { return result; }
         foreach (var p in positions ?? [])
         {

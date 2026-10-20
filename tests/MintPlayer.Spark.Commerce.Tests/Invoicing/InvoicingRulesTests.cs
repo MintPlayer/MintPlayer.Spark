@@ -308,7 +308,7 @@ public class InvoicingRulesTests
     [Fact]
     public void CSV_cells_never_run_as_formulas_but_numbers_keep_their_sign()
     {
-        var csv = new Csv("A", "B").Row("=HYPERLINK(\"x\")", -12.5m).ToString();
+        var csv = new MintPlayer.Spark.Commerce.Invoicing.Exports.Csv("A", "B").Row("=HYPERLINK(\"x\")", -12.5m).ToString();
         csv.Should().Contain("\"'=HYPERLINK(\"\"x\"\")\"");
         csv.Should().Contain("-12.50");
     }

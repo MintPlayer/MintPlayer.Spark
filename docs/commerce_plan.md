@@ -22,6 +22,22 @@ The order of work for [commerce_PRD.md](commerce_PRD.md). The PRD carries the de
   - public holidays in refund periods;
   - Events price history in-transaction;
   - Sendcloud API v3 and carrier booking idempotency.
+- **Smaller follow-ups** (from the lead's working list; some may already be done, so check each before acting):
+  - X6: the `schemas/model.schema.json` description changed, so check the schema revision/drift tests and the `TemplateMatcher` obsolete warnings.
+  - X7: the contracts generator must skip the `[JsonIgnore]` `PersistentObject.Replacement`.
+  - X8: ng-spark `SparkOrganizationChoice` gets `customRoles`.
+  - X1/X2: the ng-spark auth entry point calls `SparkLiveService.reconnect()` after sign-in and sign-out.
+  - X10: `SparkQuotas.KeyFor` → `SparkClientAddress.Key` in libs/settings.
+  - X13: phone-number uniqueness through an X12 compare-exchange reservation instead of a waited query.
+  - X18: settle reference_data_PRD §4.10 (pin Corax) against X18 (server default); recommended: server default, and fix §4.10.
+  - SPARK_INDEX_014–016 and SPARK063 are taken; check that no other agent reused them.
+  - CodeCoverage Dockerfile may lack the COPY for Authorization.Abstractions (SeoTester has it); verify.
+  - Checkout: a soft availability check for OnPayment lines; merged guest lines keep the visitor limit key; the guide says pricing steps may reserve lapsing resources.
+  - Shop/Shipping (M12): `IRefundTermsSource`, `IStandardDeliveryCost`, `MarkDeliveredAsync`, `RegisterGoodsBackAsync`; an optional reference-data `IShippingAddressValidator`.
+  - Invoicing: credit notes for `LineRefused`.
+  - Events ↔ WaitingRoom: automatic rooms for queued phases plus an `IWaitingRoomCapacity` adapter (bridge).
+  - Venues: `VenueAddress.json` reuses clrType `MintPlayer.Spark.ReferenceData.Address`; check for ambiguity under X9.
+  - PRD: record the CRD Art. 9(2)(b)(i) choice (the period starts at the last delivery) and the S7/S12/S13/S14/S15 results in §13 (S7: Chromium, 50k seats, layer cache, 100–239 fps).
 - **Not started:** M11 fulfilment (shop side), WM3–WM9, M17, M18, M20 rest, M21, M22, the rest of X20 item 2 (remaining TS mirrors), EUR-Lex verification of every legal citation (EUR-Lex blocks automated fetches: use a real browser through Playwright).
 - **First step on resume:**
   1. `dotnet build MintPlayer.Spark.slnx`, then fix the WIP compile errors.

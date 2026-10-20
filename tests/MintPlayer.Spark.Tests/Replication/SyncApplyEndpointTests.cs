@@ -5,240 +5,158 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Replication.Abstractions.Models;
 using MintPlayer.Spark.Replication.Endpoints;
+using MintPlayer.Spark.Replication.Models;
 using MintPlayer.Spark.Replication.Services;
+using MintPlayer.Spark.Testing;
 using NSubstitute;
 
 namespace MintPlayer.Spark.Tests.Replication;
 
 /// <summary>
-/// In-process coverage for the /spark/sync/apply endpoint. The E2E suite exercises it
-/// against a real Fleet subprocess, but that runs out-of-process so it contributes no
-/// line coverage — these tests drive HandleAsync directly with mocked collaborators.
+/// Owner, <c>POST /spark/sync/apply</c> (warehouse §4.2.5): the mTLS gate, one action per request, the status of every
+/// outcome (never 207, F12) and op-id idempotency (F15). The compare-and-set itself is
+/// <see cref="Services.SyncActionHandlerIntegrationTests"/>.
 /// </summary>
-public class SyncApplyEndpointTests
+public class SyncApplyEndpointTests : SparkTestDriver
 {
     private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
 
     private readonly IModuleCertificateValidator _certValidator = Substitute.For<IModuleCertificateValidator>();
     private readonly ISyncActionHandler _handler = Substitute.For<ISyncActionHandler>();
+    private readonly IReplicaSourceTypes _sourceTypes = Substitute.For<IReplicaSourceTypes>();
 
-    private SyncApply NewEndpoint(bool withHandler = true) =>
-        new(NullLogger<SyncApply>.Instance, _certValidator, new HttpContextAccessor(), withHandler ? _handler : null);
+    public SyncApplyEndpointTests()
+    {
+        _sourceTypes.Resolve("ReplSourceCars").Returns(typeof(ReplSourceCar));
+        Cert(ModuleCertificateValidation.Ok);
+    }
+
+    private SyncApplyService Service() => new(Store, _sourceTypes, _handler, NullLogger<SyncApplyService>.Instance);
+
+    private SyncApply NewEndpoint() => new(_certValidator, new HttpContextAccessor(), Service(), NullLogger<SyncApply>.Instance);
 
     private void Cert(ModuleCertificateValidation result) =>
-        _certValidator.ValidateAsync(Arg.Any<HttpContext>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(result));
+        _certValidator.ValidateAsync(Arg.Any<HttpContext>(), Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult(result));
 
-    [Fact]
-    public async Task Invalid_json_body_returns_400()
-    {
-        var ctx = NewContext("{ this is not json");
-        var result = await NewEndpoint().HandleAsync(ctx);
-        (await StatusAsync(result, ctx)).Should().Be(HttpStatusCode.BadRequest);
-    }
+    private void Handler(SyncEditOutcome outcome) =>
+        _handler.ApplyEditAsync(Arg.Any<SyncEdit>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult(outcome));
 
-    [Fact]
-    public async Task Empty_actions_list_returns_400()
+    private static SyncApplyRequest Request(string opId = "op-1") => new()
     {
-        var ctx = NewContext(new { requestingModule = "HR", actions = Array.Empty<object>() });
-        var result = await NewEndpoint().HandleAsync(ctx);
-        (await StatusAsync(result, ctx)).Should().Be(HttpStatusCode.BadRequest);
-    }
+        RequestingModule = "HR",
+        OpId = opId,
+        ActionType = SyncActionType.Update,
+        SourceCollection = "ReplSourceCars",
+        DocumentId = "ReplSourceCars/1-A",
+        Changes = [new SyncPropertyChange { Property = "LicensePlate", Base = JsonSerializer.SerializeToElement("old"), Value = JsonSerializer.SerializeToElement("new") }],
+        InitiatorId = "SparkUsers/alice",
+    };
 
     [Fact]
     public async Task Missing_certificate_returns_401()
     {
         Cert(ModuleCertificateValidation.MissingCertificate);
-        var ctx = NewContext(DeleteBody("HR"));
-        var result = await NewEndpoint().HandleAsync(ctx);
-        (await StatusAsync(result, ctx)).Should().Be(HttpStatusCode.Unauthorized);
+        (await StatusAsync(Request())).Should().Be(HttpStatusCode.Unauthorized);
+        await _handler.DidNotReceiveWithAnyArgs().ApplyEditAsync(default!, default);
+    }
+
+    [Theory]
+    [InlineData((int)ModuleCertificateValidation.UnknownModule)]
+    [InlineData((int)ModuleCertificateValidation.ThumbprintMismatch)]
+    public async Task A_module_that_is_not_who_it_says_is_403(int validation)
+    {
+        Cert((ModuleCertificateValidation)validation);
+        (await StatusAsync(Request())).Should().Be(HttpStatusCode.Forbidden);
     }
 
     [Fact]
-    public async Task Unknown_module_returns_403()
+    public async Task An_applied_edit_is_200_and_carries_bases_values_and_initiator()
     {
-        Cert(ModuleCertificateValidation.UnknownModule);
-        var ctx = NewContext(DeleteBody("Attacker-Not-Registered"));
-        var result = await NewEndpoint().HandleAsync(ctx);
-        (await StatusAsync(result, ctx)).Should().Be(HttpStatusCode.Forbidden);
+        Handler(new SyncEditOutcome(SyncEditOutcomeKind.Applied));
+
+        (await StatusAsync(Request())).Should().Be(HttpStatusCode.OK);
+
+        await _handler.Received(1).ApplyEditAsync(Arg.Is<SyncEdit>(e =>
+            e.EntityType == typeof(ReplSourceCar) && e.DocumentId == "ReplSourceCars/1-A" && e.InitiatorId == "SparkUsers/alice"
+            && e.Values["LicensePlate"].GetString() == "new" && e.BaseValues["LicensePlate"].GetString() == "old"), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>F12 red→green: a refusal used to be a 207 the consumer recorded as Completed.</summary>
+    [Theory]
+    [InlineData(SyncEditOutcomeKind.Conflict, SyncEditRefusal.Other, HttpStatusCode.Conflict)]
+    [InlineData(SyncEditOutcomeKind.Refused, SyncEditRefusal.Forbidden, HttpStatusCode.Forbidden)]
+    [InlineData(SyncEditOutcomeKind.Refused, SyncEditRefusal.Invalid, HttpStatusCode.UnprocessableEntity)]
+    [InlineData(SyncEditOutcomeKind.Refused, SyncEditRefusal.Other, HttpStatusCode.BadRequest)]
+    public async Task Every_outcome_has_its_own_status_never_207(SyncEditOutcomeKind kind, SyncEditRefusal refusal, HttpStatusCode expected)
+    {
+        Handler(new SyncEditOutcome(kind, "why") { Refusal = refusal, Attributes = ["LicensePlate"] });
+
+        (await StatusAsync(Request())).Should().Be(expected);
+    }
+
+    /// <summary>F15: a resend after a lost answer returns the first outcome instead of a false conflict.</summary>
+    [Fact]
+    public async Task A_replayed_op_id_answers_the_recorded_outcome_without_applying_again()
+    {
+        Handler(new SyncEditOutcome(SyncEditOutcomeKind.Refused, "invalid plate") { Refusal = SyncEditRefusal.Invalid });
+        (await StatusAsync(Request())).Should().Be(HttpStatusCode.UnprocessableEntity);
+
+        Handler(new SyncEditOutcome(SyncEditOutcomeKind.Applied));
+        var replay = await Service().ApplyAsync("HR", Request(), CancellationToken.None);
+
+        replay.StatusCode.Should().Be(422);
+        replay.Result.Reason.Should().Be("invalid plate");
+        await _handler.Received(1).ApplyEditAsync(Arg.Any<SyncEdit>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
-    public async Task Thumbprint_mismatch_returns_403()
+    public async Task An_applied_edit_records_its_op_id_with_the_edit()
     {
-        Cert(ModuleCertificateValidation.ThumbprintMismatch);
-        var ctx = NewContext(DeleteBody("HR"));
-        var result = await NewEndpoint().HandleAsync(ctx);
-        (await StatusAsync(result, ctx)).Should().Be(HttpStatusCode.Forbidden);
-    }
-
-    [Fact]
-    public async Task Authorized_call_with_no_registered_handler_returns_500()
-    {
-        Cert(ModuleCertificateValidation.Ok);
-        var ctx = NewContext(DeleteBody("HR"));
-        var result = await NewEndpoint(withHandler: false).HandleAsync(ctx);
-        (await StatusAsync(result, ctx)).Should().Be(HttpStatusCode.InternalServerError);
-    }
-
-    [Fact]
-    public async Task Delete_action_in_string_enum_form_binds_and_invokes_handler_returning_200()
-    {
-        // Regression for the JsonStringEnumConverter<SyncActionType> change: the worker
-        // now serializes actionType as "Delete" (string), and it must bind + dispatch.
-        Cert(ModuleCertificateValidation.Ok);
-        var ctx = NewContext(new
+        _handler.ApplyEditAsync(Arg.Any<SyncEdit>(), Arg.Any<CancellationToken>()).Returns(async call =>
         {
-            requestingModule = "HR",
-            actions = new[] { new { actionType = "Delete", collection = "Cars", documentId = "cars/1" } },
+            // The handler commits Alongside with the edit; here a session of the test's own stands in.
+            using var session = Store.OpenAsyncSession();
+            await call.Arg<SyncEdit>().Alongside!(session);
+            await session.SaveChangesAsync();
+            return new SyncEditOutcome(SyncEditOutcomeKind.Applied);
         });
 
-        var result = await NewEndpoint().HandleAsync(ctx);
+        await Service().ApplyAsync("HR", Request("op-applied"), CancellationToken.None);
 
-        await _handler.Received(1).HandleDeleteAsync("Cars", "cars/1");
-        (await StatusAsync(result, ctx)).Should().Be(HttpStatusCode.OK);
+        using var check = Store.OpenAsyncSession();
+        var inbox = await check.LoadAsync<SyncInboxEntry>(SyncInboxEntry.For("HR", "ReplSourceCars/1-A"));
+        inbox!.Recent.Should().ContainSingle(o => o.OpId == "op-applied" && o.Outcome == SyncApplyOutcome.Applied);
     }
 
     [Fact]
-    public async Task Insert_without_data_is_reported_as_partial_failure_207()
+    public async Task An_unknown_collection_is_404()
     {
-        Cert(ModuleCertificateValidation.Ok);
-        var ctx = NewContext(new
-        {
-            requestingModule = "HR",
-            actions = new[] { new { actionType = "Insert", collection = "Cars", documentId = (string?)null } },
-        });
-
-        var result = await NewEndpoint().HandleAsync(ctx);
-
-        await _handler.DidNotReceive().HandleSaveAsync(
-            Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<Dictionary<string, object?>>(), Arg.Any<string[]?>(), Arg.Any<bool>(), Arg.Any<string?>());
-        (await StatusAsync(result, ctx)).Should().Be((HttpStatusCode)207);
+        var request = Request();
+        request.SourceCollection = "Nope";
+        (await Service().ApplyAsync("HR", request, CancellationToken.None)).StatusCode.Should().Be(404);
     }
 
     [Fact]
-    public async Task Insert_with_data_saves_and_returns_200()
+    public async Task An_update_without_changes_is_400()
     {
-        Cert(ModuleCertificateValidation.Ok);
-        _handler.HandleSaveAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<Dictionary<string, object?>>(), Arg.Any<string[]?>(), Arg.Any<bool>(), Arg.Any<string?>())
-            .Returns(Task.FromResult<string?>("cars/generated"));
-
-        var ctx = NewContext(new
-        {
-            requestingModule = "HR",
-            actions = new[]
-            {
-                new { actionType = "Insert", collection = "Cars", documentId = (string?)null, data = new { Plate = "ABC-123" } },
-            },
-        });
-
-        var result = await NewEndpoint().HandleAsync(ctx);
-
-        // Key casing follows the wire JSON (serialized camelCase here), so assert on
-        // payload presence rather than an exact key name — the point is that the data
-        // dictionary flowed through to the handler.
-        await _handler.Received(1).HandleSaveAsync(Arg.Is("Cars"), Arg.Is<string?>(id => id == null),
-            Arg.Is<Dictionary<string, object?>>(d => d.Count > 0), Arg.Any<string[]?>(), Arg.Is(false), Arg.Any<string?>());
-        (await StatusAsync(result, ctx)).Should().Be(HttpStatusCode.OK);
+        var request = Request();
+        request.Changes = [];
+        (await Service().ApplyAsync("HR", request, CancellationToken.None)).StatusCode.Should().Be(400);
     }
 
-    /// <summary>#271 F2: the user the replica states reaches the owner's save, where History stamps it.</summary>
-    [Fact]
-    public async Task The_initiator_the_replica_states_reaches_the_handler()
-    {
-        Cert(ModuleCertificateValidation.Ok);
-        var ctx = NewContext(new
-        {
-            requestingModule = "HR",
-            actions = new[]
-            {
-                new { actionType = "Update", collection = "Cars", documentId = "cars/1", data = new { Plate = "ABC-123" }, initiatorId = "users/alice" },
-            },
-        });
-
-        var result = await NewEndpoint().HandleAsync(ctx);
-
-        await _handler.Received(1).HandleSaveAsync(
-            Arg.Is("Cars"), Arg.Is<string?>("cars/1"), Arg.Any<Dictionary<string, object?>>(), Arg.Any<string[]?>(), Arg.Is(true), Arg.Is<string?>("users/alice"));
-        (await StatusAsync(result, ctx)).Should().Be(HttpStatusCode.OK);
-    }
-
-    private static object DeleteBody(string module) => new
-    {
-        requestingModule = module,
-        actions = new[] { new { actionType = "Delete", collection = "Cars", documentId = "cars/1" } },
-    };
-
-    /// <summary>
-    /// A body the endpoint cannot bind answers what it answered while it read the body by hand
-    /// (measured before it became a typed endpoint, endpoints generator completion M3).
-    /// </summary>
-    [Fact]
-    public async Task Unbindable_bodies_answer_as_before()
-    {
-        (await ProbeAsync(ctx => NewEndpoint().HandleAsync(ctx))).Should().Be("""
-            none: 400 {"error":"Invalid request body"}
-            empty: 400 {"error":"Invalid request body"}
-            null: 400 {"error":"Request must contain at least one sync action"}
-            malformed: 400 {"error":"Invalid request body"}
-            text/plain: 400 {"error":"Invalid request body"}
-            """.ReplaceLineEndings("\n"));
-        await _handler.DidNotReceiveWithAnyArgs().HandleDeleteAsync(default!, default!);
-    }
-
-    /// <summary>
-    /// Runs <paramref name="handle"/> on each of the unbindable bodies and lists the answers, one
-    /// <c>label: status body</c> line each.
-    /// </summary>
-    internal static async Task<string> ProbeAsync(Func<HttpContext, Task<IResult>> handle)
-    {
-        var lines = new List<string>();
-        foreach (var (label, content) in MintPlayer.Spark.Tests.Endpoints.LookupReferences.LookupReferenceEndpointTests.UnbindableBodies())
-        {
-            var services = new ServiceCollection().AddLogging().BuildServiceProvider();
-            var ctx = new DefaultHttpContext { RequestServices = services };
-        // The typed endpoint reaches its context through IHttpContextAccessor (AsyncLocal, so per test flow).
-        new HttpContextAccessor().HttpContext = ctx;
-            var bytes = content is null ? [] : await content.ReadAsByteArrayAsync();
-            ctx.Request.Method = "POST";
-            ctx.Request.Body = new MemoryStream(bytes);
-            ctx.Request.ContentType = content?.Headers.ContentType?.ToString();
-            ctx.Request.ContentLength = bytes.Length;
-            var responseBody = new MemoryStream();
-            ctx.Response.Body = responseBody;
-
-            try
-            {
-                await (await handle(ctx)).ExecuteAsync(ctx);
-                lines.Add($"{label}: {ctx.Response.StatusCode} {Encoding.UTF8.GetString(responseBody.ToArray())}");
-            }
-            catch (Exception ex)
-            {
-                lines.Add($"{label}: throws {ex.GetType().Name}");
-            }
-        }
-        return string.Join("\n", lines);
-    }
-
-    private static DefaultHttpContext NewContext(object body) => NewContext(JsonSerializer.Serialize(body, Web));
-
-    private static DefaultHttpContext NewContext(string json)
+    private async Task<HttpStatusCode> StatusAsync(SyncApplyRequest body)
     {
         var services = new ServiceCollection().AddLogging().BuildServiceProvider();
         var ctx = new DefaultHttpContext { RequestServices = services };
-        // The typed endpoint reaches its context through IHttpContextAccessor (AsyncLocal, so per test flow).
         new HttpContextAccessor().HttpContext = ctx;
-        var bytes = Encoding.UTF8.GetBytes(json);
+        var bytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(body, Web));
         ctx.Request.Body = new MemoryStream(bytes);
         ctx.Request.ContentType = "application/json";
         ctx.Request.ContentLength = bytes.Length;
         ctx.Response.Body = new MemoryStream();
-        return ctx;
-    }
-
-    private static async Task<HttpStatusCode> StatusAsync(IResult result, HttpContext ctx)
-    {
+        var result = await NewEndpoint().HandleAsync(ctx);
         await result.ExecuteAsync(ctx);
         return (HttpStatusCode)ctx.Response.StatusCode;
     }

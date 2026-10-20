@@ -83,6 +83,9 @@
     <!-- SPARK039's negative case: an application that does reference the stamping package. -->
     <ProjectReference Include="..\..\libs\history\MintPlayer.Spark.History\MintPlayer.Spark.History.csproj" />
 
+    <!-- [Replicated] / [ReplicatedFrom] and ReplicaScriptRenderer: the replica generator's inputs, and the runtime renderer its hash is checked against. -->
+    <ProjectReference Include="..\..\libs\replication\MintPlayer.Spark.Replication.Abstractions\MintPlayer.Spark.Replication.Abstractions.csproj" />
+
     <!-- Abstractions are needed to compile the test input sources (DefaultPersistentObjectActions, etc). -->
     <ProjectReference Include="..\..\libs\spark\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
     <ProjectReference Include="..\..\libs\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />

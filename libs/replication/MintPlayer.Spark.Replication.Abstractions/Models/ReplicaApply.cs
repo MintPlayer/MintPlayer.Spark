@@ -4,44 +4,44 @@ using System.Text.Json.Serialization;
 namespace MintPlayer.Spark.Replication.Abstractions.Models;
 
 /// <summary>
-/// A push from an owner to a consumer: <c>POST /spark/replicas/apply</c>, over the owner's module certificate
-/// (warehouse WX1). Also the answer of <c>POST /spark/replicas/fetch</c>, which the reconcile applies the same way.
+/// A push from an owner to a consumer on the HTTP transport: <c>POST /spark/replicas/apply</c>, over the owner's module
+/// certificate (warehouse §4.2.3). Each item is the document as the owner holds it now, projected through the approved
+/// manifest.
 /// </summary>
 public class ReplicaApplyRequest
 {
-    /// <summary>The owner. Must match the presented module certificate; every item is recorded as coming from it.</summary>
+    /// <summary>The owner. Must match the presented module certificate and be a source of <see cref="TargetCollection"/>.</summary>
     public required string SourceModule { get; set; }
 
-    /// <summary>The contract's lower-kebab name.</summary>
-    public required string Contract { get; set; }
+    /// <summary>The consumer's replica collection.</summary>
+    public required string TargetCollection { get; set; }
 
-    /// <summary>The contract version the payloads have.</summary>
-    public required int Version { get; set; }
+    /// <summary>
+    /// The manifest hash the payloads were projected with: the consumer's current <c>ReplicationHash</c> or the hash
+    /// the owner last acknowledged as approved (Q-W29), else <c>409 manifest-mismatch</c>.
+    /// </summary>
+    public required string Hash { get; set; }
 
-    public required List<ReplicaItem> Items { get; set; }
+    public List<ReplicaItem> Items { get; set; } = [];
 }
 
 /// <summary>The state of one document, as the owner holds it now.</summary>
 public class ReplicaItem
 {
-    /// <summary>The document id: the owner's, unique across every source of the contract.</summary>
+    /// <summary>The document id: the owner's, unique across every source of the collection.</summary>
     public required string Id { get; set; }
 
     /// <summary>
-    /// The owner's version stamp: monotonic per document. The consumer applies an item only when it is
-    /// higher than the one it holds (or its tombstone holds), so a late, duplicated or reordered push is a
-    /// no-op. Zero on a deletion whose version the owner no longer knows: the consumer then supersedes
-    /// whatever it holds.
+    /// The owner's change vector of this state. The consumer applies an item only when it is newer than the one its
+    /// replica (or tombstone) holds (<c>SparkChangeVector.Compare</c>), so a late, duplicated or reordered push is a
+    /// no-op. Null on a deletion whose version the owner no longer knows: it then supersedes whatever is held.
     /// </summary>
-    public long ReplicationVersion { get; set; }
-
-    /// <summary>The owner's change vector, informational (the reconcile shows it).</summary>
-    public string? ChangeVector { get; set; }
+    public string? SourceChangeVector { get; set; }
 
     /// <summary>Whether the document no longer exists at the owner (a tombstone).</summary>
     public bool Deleted { get; set; }
 
-    /// <summary>The contract record, as JSON in the owner store's serialization; null when <see cref="Deleted"/>.</summary>
+    /// <summary>The projected replica, as JSON in the owner store's serialization; null when <see cref="Deleted"/>.</summary>
     public JsonElement? Payload { get; set; }
 }
 
@@ -55,10 +55,10 @@ public enum ReplicaApplyOutcome
     /// <summary>Not newer than what the consumer holds: a duplicate or a late push. Answered as success.</summary>
     Stale,
 
-    /// <summary>
-    /// Refused as poison: the id is held by another source, or the payload does not fit the replica type.
-    /// The owner dead-letters the push with this reason; the digest mismatch stays visible until fixed.
-    /// </summary>
+    /// <summary>Neither newer nor older (a conflicted multi-node owner): a no-op; the owner's next state dominates both.</summary>
+    Concurrent,
+
+    /// <summary>Refused as poison: the id is held by another source, or the payload does not fit the replica type.</summary>
     Refused,
 }
 
@@ -71,35 +71,30 @@ public class ReplicaApplyResult
 public class ReplicaApplyItemResult
 {
     public required string Id { get; set; }
+
     public ReplicaApplyOutcome Outcome { get; set; }
+
     public string? Reason { get; set; }
 }
 
 /// <summary>
-/// One page of an owner's digest: <c>GET /spark/replicas/{contract}/digest?version=&amp;after=&amp;take=</c>.
-/// Ordered by id; <see cref="Next"/> is the cursor for the following page, null on the last.
+/// One page of a consumer's digest of a replica collection: <c>GET /spark/replicas/digest?collection=&amp;after=&amp;take=</c>,
+/// what the owner's reconcile merge-joins with its own documents. Ordered by id; <see cref="Next"/> is the cursor of
+/// the following page, null on the last.
 /// </summary>
 public class ReplicaDigestPage
 {
     public List<ReplicaDigestEntry> Items { get; set; } = [];
+
     public string? Next { get; set; }
 }
 
-/// <summary>One document in a digest.</summary>
+/// <summary>One replica (or tombstone) the consumer holds from the asking owner.</summary>
 public class ReplicaDigestEntry
 {
     public required string Id { get; set; }
-    public long ReplicationVersion { get; set; }
-    public string? ChangeVector { get; set; }
-}
 
-/// <summary>The documents a reconcile wants in full: <c>POST /spark/replicas/fetch</c>.</summary>
-public class ReplicaFetchRequest
-{
-    public required string RequestingModule { get; set; }
-    public required string Contract { get; set; }
-    public required int Version { get; set; }
+    public string? SourceChangeVector { get; set; }
 
-    /// <summary>The ids to fetch; an id that no longer exists comes back as a tombstone.</summary>
-    public required List<string> Ids { get; set; }
+    public bool Tombstone { get; set; }
 }

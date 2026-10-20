@@ -6,6 +6,7 @@
 authorization | MintPlayer.Spark.Authorization | 45c4fc153e9d
 approvals | MintPlayer.Spark.Approvals | 4430466488dc
 identity-provider | MintPlayer.Spark.IdentityProvider | fe2406070da9 | switched off
+replication | MintPlayer.Spark.Replication | cd2efb39295a
 
 ## Reachable without signing in (expanded)
 Query/Company
@@ -24,6 +25,9 @@ Administrators | grant | QueryReadEditNewDelete/CarStatus | f0000001-0000-0000-0
 Administrators | grant | QueryReadEditNewDelete/Person | f0000001-0000-0000-0000-000000000004 | app | ff87918c-1e9f-4467-a47e-831d49c81f25
 Administrators | grant | QueryReadEditNewDelete/ServiceEntry | f0000001-0000-0000-0000-000000000005 | app | 256f4a27-f8e4-46d6-99c1-8fa4b8756aee
 Administrators | grant | ScatterRegistrationOffsets/Car | ca000002-0000-0000-0000-000000000001 | app | facb6829-f2a1-4ae2-a046-6ba506e8c0ce
+Administrators (replication:approvers) | grant | ApproveReplication/SparkReplicationRequest | replication:approve | replication | replication:SparkReplicationRequest
+Administrators (replication:approvers) | grant | QueryRead/SparkReplicationRequest | replication:requests | replication | replication:SparkReplicationRequest
+Administrators (replication:approvers) | grant | RejectReplication/SparkReplicationRequest | replication:reject | replication | replication:SparkReplicationRequest
 Fleet managers | grant | CarCopy/Car | ca000001-0000-0000-0000-000000000002 | app | facb6829-f2a1-4ae2-a046-6ba506e8c0ce
 Fleet managers | grant | QueryRead/CarBrand | f0000002-0000-0000-0000-000000000002 | app | -
 Fleet managers | grant | QueryRead/CarStatus | f0000002-0000-0000-0000-000000000003 | app | -
@@ -41,11 +45,14 @@ Signed-in users (@authenticated) | grant | ApprovalApprove/ApprovalRequest | app
 Signed-in users (@authenticated) | grant | ApprovalReject/ApprovalRequest | approvals:reject | approvals | approvals:ApprovalRequest
 Signed-in users (@authenticated) | grant | ApprovalRevoke/ApprovalRequest | approvals:revoke | approvals | approvals:ApprovalRequest
 Signed-in users (@authenticated) | grant | ApprovalWithdraw/ApprovalRequest | approvals:withdraw | approvals | approvals:ApprovalRequest
+Signed-in users (@authenticated) | grant | DismissSyncAction/SparkSyncAction | replication:dismiss | replication | replication:SparkSyncAction
 Signed-in users (@authenticated) | grant | Query/PasskeyRow | authorization:passkey-rows-query | authorization | authorization:PasskeyRow
 Signed-in users (@authenticated) | grant | QueryRead/ApprovalRequest | approvals:requests | approvals | approvals:ApprovalRequest
+Signed-in users (@authenticated) | grant | QueryRead/SparkSyncAction | replication:pending-changes | replication | replication:SparkSyncAction
 Signed-in users (@authenticated) | grant | Read/Passkeys | authorization:passkeys-read | authorization | authorization:Passkeys
 Signed-in users (@authenticated) | grant | RemovePasskey/PasskeyRow | authorization:passkey-rows-remove | authorization | authorization:PasskeyRow
 Signed-in users (@authenticated) | grant | RenamePasskey/PasskeyRow | authorization:passkey-rows-rename | authorization | authorization:PasskeyRow
+Signed-in users (@authenticated) | grant | RetrySyncAction/SparkSyncAction | replication:retry | replication | replication:SparkSyncAction
 Viewers | grant | QueryRead/Car | f0000003-0000-0000-0000-000000000001 | app | facb6829-f2a1-4ae2-a046-6ba506e8c0ce
 Viewers | grant | QueryRead/CarBrand | f0000003-0000-0000-0000-000000000002 | app | -
 Viewers | grant | QueryRead/CarStatus | f0000003-0000-0000-0000-000000000003 | app | -

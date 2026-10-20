@@ -5,7 +5,7 @@ using MintPlayer.Spark.Replication.Services;
 
 namespace MintPlayer.Spark.Replication.Endpoints;
 
-/// <summary><c>/spark/replicas</c>: subscriptions, pushes, digests and fetches (warehouse WX1/WX2).</summary>
+/// <summary><c>/spark/replicas</c>: registration (owner), pushes and digests (consumer), warehouse §4.2.</summary>
 internal class SparkReplicasGroup : IEndpointGroup
 {
     public static string Prefix => "/spark/replicas";

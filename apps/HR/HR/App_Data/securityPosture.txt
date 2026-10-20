@@ -4,6 +4,7 @@
 
 ## Layers: libraries that ship rights (alias | assembly | hash)
 authorization | MintPlayer.Spark.Authorization | 45c4fc153e9d
+replication | MintPlayer.Spark.Replication | cd2efb39295a
 
 ## Reachable without signing in (expanded)
 Query/Company
@@ -24,6 +25,9 @@ Administrators | grant | QueryReadEditNewDelete/CarreerJob | a0000001-0000-0000-
 Administrators | grant | QueryReadEditNewDelete/Company | a0000001-0000-0000-0000-000000000002 | app | 5a990917-387b-4f1e-8434-befc64da1958
 Administrators | grant | QueryReadEditNewDelete/Person | a0000001-0000-0000-0000-000000000001 | app | 2a34a658-1768-4c82-8724-884b2f99f4e0
 Administrators | grant | QueryReadEditNewDelete/Profession | a0000001-0000-0000-0000-000000000005 | app | 1efb3727-d67a-43f2-a457-5b8ede02bc2f
+Administrators (replication:approvers) | grant | ApproveReplication/SparkReplicationRequest | replication:approve | replication | replication:SparkReplicationRequest
+Administrators (replication:approvers) | grant | QueryRead/SparkReplicationRequest | replication:requests | replication | replication:SparkReplicationRequest
+Administrators (replication:approvers) | grant | RejectReplication/SparkReplicationRequest | replication:reject | replication | replication:SparkReplicationRequest
 HR managers | grant | QueryRead/Car | b0000002-0000-0000-0000-000000000004 | app | 8317d070-b79e-40c6-825e-1e245142daf9
 HR managers | grant | QueryReadEditNew/Address | b0000002-0000-0000-0000-000000000003 | app | a1c8e3f0-9d2b-4f6a-b5e7-3c4d8f2a1b0e
 HR managers | grant | QueryReadEditNew/CarreerJob | b0000002-0000-0000-0000-000000000006 | app | dcbc8be1-049f-40ba-acb5-09af16af2d57
@@ -37,10 +41,13 @@ Signed-in users | grant | QueryRead/Company | 00000000-0000-0000-0000-0000000000
 Signed-in users | grant | Read/LookupReferences | e0000009-0000-0000-0000-000000000001 | app | -
 Signed-in users | grant | Read/Profession | 00000000-0000-0000-0000-000000000010 | app | 1efb3727-d67a-43f2-a457-5b8ede02bc2f
 Signed-in users (@authenticated) | grant | AddPasskey/Passkeys | authorization:passkeys-add | authorization | authorization:Passkeys
+Signed-in users (@authenticated) | grant | DismissSyncAction/SparkSyncAction | replication:dismiss | replication | replication:SparkSyncAction
 Signed-in users (@authenticated) | grant | Query/PasskeyRow | authorization:passkey-rows-query | authorization | authorization:PasskeyRow
+Signed-in users (@authenticated) | grant | QueryRead/SparkSyncAction | replication:pending-changes | replication | replication:SparkSyncAction
 Signed-in users (@authenticated) | grant | Read/Passkeys | authorization:passkeys-read | authorization | authorization:Passkeys
 Signed-in users (@authenticated) | grant | RemovePasskey/PasskeyRow | authorization:passkey-rows-remove | authorization | authorization:PasskeyRow
 Signed-in users (@authenticated) | grant | RenamePasskey/PasskeyRow | authorization:passkey-rows-rename | authorization | authorization:PasskeyRow
+Signed-in users (@authenticated) | grant | RetrySyncAction/SparkSyncAction | replication:retry | replication | replication:SparkSyncAction
 Viewers | grant | QueryRead/Address | c0000003-0000-0000-0000-000000000003 | app | a1c8e3f0-9d2b-4f6a-b5e7-3c4d8f2a1b0e
 Viewers | grant | QueryRead/Car | c0000003-0000-0000-0000-000000000004 | app | 8317d070-b79e-40c6-825e-1e245142daf9
 Viewers | grant | QueryRead/CarreerJob | c0000003-0000-0000-0000-000000000006 | app | dcbc8be1-049f-40ba-acb5-09af16af2d57

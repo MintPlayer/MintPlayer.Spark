@@ -41,7 +41,7 @@ public class CronZoneScheduleTests
         for (var i = 0; i < count; i++)
         {
             var next = CronScheduleParser.NextOccurrenceUtc(schedule, zone, cursor);
-            next.Should().NotBeNull();
+            next.HasValue.Should().BeTrue();
             result.Add(next!.Value);
             cursor = next.Value;
         }
@@ -195,7 +195,7 @@ public class CronZoneScheduleTests
     public void A_never_occurring_expression_still_has_no_occurrence_in_a_zone()
     {
         CronScheduleParser.TryParse("0 0 30 2 *", out var schedule, out _).Should().BeTrue();
-        CronScheduleParser.NextOccurrenceUtc(schedule, Zone("Europe/Brussels"), Utc("2026-01-01T00:00:00Z")).Should().BeNull();
+        CronScheduleParser.NextOccurrenceUtc(schedule, Zone("Europe/Brussels"), Utc("2026-01-01T00:00:00Z")).HasValue.Should().BeFalse();
     }
 
     // --- The core facility directly -------------------------------------------------------------------
@@ -204,8 +204,8 @@ public class CronZoneScheduleTests
     public void Core_NextWallClockOccurrence_returns_null_when_the_schedule_does_not_move_forward()
     {
         var zone = SparkTimeZones.Find("Europe/Brussels")!;
-        SparkTimeZones.NextWallClockOccurrence(DateTimeOffset.UnixEpoch, zone, wall => wall).Should().BeNull();
-        SparkTimeZones.NextWallClockOccurrence(DateTimeOffset.UnixEpoch, zone, _ => null).Should().BeNull();
+        SparkTimeZones.NextWallClockOccurrence(DateTimeOffset.UnixEpoch, zone, wall => wall).HasValue.Should().BeFalse();
+        SparkTimeZones.NextWallClockOccurrence(DateTimeOffset.UnixEpoch, zone, _ => null).HasValue.Should().BeFalse();
     }
 
     // --- Registration and configuration ---------------------------------------------------------------

@@ -25,6 +25,24 @@ internal static class ReplicaJson
         return JsonSerializer.SerializeToElement(node);
     }
 
+    /// <summary>
+    /// Loads <paramref name="id"/> as <paramref name="type"/>. A typed load, not <c>LoadAsync&lt;object&gt;</c>: a document
+    /// an ETL task wrote carries no CLR-type metadata, so an untyped load would not materialize the replica type.
+    /// </summary>
+    public static async Task<object?> LoadAsync(Raven.Client.Documents.Session.IAsyncDocumentSession session, Type type, string id, CancellationToken cancellationToken)
+    {
+        var load = LoadTypedMethod.MakeGenericMethod(type);
+        var task = (Task)load.Invoke(null, [session, id, cancellationToken])!;
+        await task;
+        return task.GetType().GetProperty(nameof(Task<object>.Result))!.GetValue(task);
+    }
+
+    private static readonly System.Reflection.MethodInfo LoadTypedMethod =
+        typeof(ReplicaJson).GetMethod(nameof(LoadTypedAsync), System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+
+    private static async Task<object?> LoadTypedAsync<T>(Raven.Client.Documents.Session.IAsyncDocumentSession session, string id, CancellationToken cancellationToken)
+        => await session.LoadAsync<T>(id, cancellationToken);
+
     /// <summary>Reads <paramref name="payload"/> into <paramref name="type"/> through <paramref name="store"/>'s conventions.</summary>
     /// <exception cref="InvalidOperationException">The payload does not fit the type.</exception>
     public static async Task<object> DeserializeAsync(IDocumentStore store, Type type, JsonElement payload, string id, CancellationToken cancellationToken)

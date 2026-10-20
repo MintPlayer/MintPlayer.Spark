@@ -1,210 +1,397 @@
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Live;
+using MintPlayer.Spark.Messaging;
 using MintPlayer.Spark.Replication.Abstractions.Configuration;
 using MintPlayer.Spark.Replication.Abstractions.Models;
+using MintPlayer.Spark.Replication.Abstractions.Rendering;
+using MintPlayer.Spark.Replication.Messages;
 using MintPlayer.Spark.Replication.Models;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.Replication.Services;
 
-/// <summary>The owner's answer to a subscription, with the HTTP status it maps to.</summary>
-internal sealed record ReplicaSubscribeOutcome(int StatusCode, ReplicaSubscriptionResult Result);
+/// <summary>The owner's answer to a registration, with the HTTP status it maps to.</summary>
+internal sealed record ReplicaRegisterOutcome(int StatusCode, ReplicaRegistrationResult Result);
+
+/// <summary>How a decision on a replication request ended.</summary>
+internal enum ReplicationDecisionOutcome
+{
+    Done,
+    NotFound,
+    NotPending,
+    /// <summary>The consumer no longer holds the grant or a field's read right: suspended instead.</summary>
+    NotGranted,
+}
 
 /// <summary>
-/// The owner's book of consumers (warehouse WX2, F18): who reads which contract, at which version, by which transport.
-/// The authenticated module is the only one it ever changes, and every destination it deploys to is that module's
-/// registry entry (F19).
+/// The owner's book of consumers and the approval gate (warehouse §4.2.2, WD15, WD16). Only the authenticated module's
+/// subscriptions change on its registration, and every destination is that module's registry entry (F19).
 /// </summary>
 internal interface IReplicaSubscriptions
 {
     /// <summary>
-    /// Replaces <paramref name="module"/>'s subscriptions with <paramref name="items"/>, after checking each contract is
-    /// published and granted (<c>Replicate/{contract}</c>), and brings its ETL task in line. Asked inside the module's
-    /// request: its principal is the caller.
+    /// Validates and records <paramref name="module"/>'s registration: the re-render check (F16), the grant and attribute
+    /// read rights (F17), one request per new shape (auto-approved iff this host is Development), and the withdrawal of
+    /// what the post no longer lists (F18).
     /// </summary>
-    Task<ReplicaSubscribeOutcome> SubscribeAsync(string module, IReadOnlyList<ReplicaSubscriptionItem> items, Func<string, Task<bool>> isGranted, CancellationToken cancellationToken);
+    Task<ReplicaRegisterOutcome> RegisterAsync(string module, IReadOnlyList<ReplicaRegistrationItem> items, CancellationToken cancellationToken);
 
-    /// <summary>The consumers of <paramref name="contract"/> (all versions).</summary>
-    Task<IReadOnlyList<ReplicaConsumer>> ConsumersAsync(string contract, CancellationToken cancellationToken);
+    /// <summary>An administrator approves a pending request; the delivery is redeployed through messaging.</summary>
+    Task<ReplicationDecisionOutcome> ApproveAsync(string requestId, string? approver, CancellationToken cancellationToken);
 
-    /// <summary>Withdraws <paramref name="module"/> from <paramref name="contract"/> (a revoked grant), and its ETL transform.</summary>
-    Task WithdrawAsync(string module, string contract, CancellationToken cancellationToken);
+    /// <summary>An administrator rejects a pending request: the subscription is suspended and its delivery removed.</summary>
+    Task<ReplicationDecisionOutcome> RejectAsync(string requestId, string? approver, string? reason, CancellationToken cancellationToken);
 
-    /// <summary>Every (module, contract) subscription, for the grant sweep.</summary>
-    Task<IReadOnlyList<(string Module, string Contract)>> AllAsync(CancellationToken cancellationToken);
+    /// <summary>The subscriptions that deliver from <paramref name="sourceCollection"/> now.</summary>
+    Task<IReadOnlyList<SparkReplicationSubscription>> DeliveringAsync(string sourceCollection, CancellationToken cancellationToken);
+
+    /// <summary>Every subscription of <paramref name="consumer"/>.</summary>
+    Task<IReadOnlyList<SparkReplicationSubscription>> OfConsumerAsync(string consumer, CancellationToken cancellationToken);
+
+    /// <summary>Every delivering subscription (the reconcile's list).</summary>
+    Task<IReadOnlyList<SparkReplicationSubscription>> AllDeliveringAsync(CancellationToken cancellationToken);
+
+    /// <summary>Suspends a subscription whose grant or read right is gone (§4.2.6), and redeploys its consumer.</summary>
+    Task SuspendAsync(string consumer, string targetCollection, string reason, CancellationToken cancellationToken);
 }
 
 internal sealed partial class ReplicaSubscriptions : IReplicaSubscriptions
 {
     [Inject] private readonly IDocumentStore documentStore;
-    [Inject] private readonly ReplicationContractCatalog catalog;
-    [Inject] private readonly IReplicationTransportResolver transportResolver;
-    [Inject] private readonly IEtlTaskManager etlTaskManager;
-    [Inject] private readonly IModuleDirectory moduleDirectory;
+    [Inject] private readonly IModuleGrants grants;
+    [Inject] private readonly IReplicaSourceTypes sourceTypes;
+    [Inject] private readonly IHostEnvironment hostEnvironment;
+    [Inject] private readonly IServiceProvider services;
     [Inject] private readonly TimeProvider timeProvider;
     [Inject] private readonly ILogger<ReplicaSubscriptions> logger;
 
-    private IEnumerable<string> PublishedNames => catalog.All.Select(c => c.Name).Distinct(StringComparer.Ordinal);
-
-    public async Task<ReplicaSubscribeOutcome> SubscribeAsync(
-        string module, IReadOnlyList<ReplicaSubscriptionItem> items, Func<string, Task<bool>> isGranted, CancellationToken cancellationToken)
+    public async Task<ReplicaRegisterOutcome> RegisterAsync(string module, IReadOnlyList<ReplicaRegistrationItem> items, CancellationToken cancellationToken)
     {
-        var transport = await transportResolver.ResolveAsync(cancellationToken);
-        var result = new ReplicaSubscriptionResult { Transport = transport };
-        var wanted = new Dictionary<string, (PublishedContract Contract, string TargetCollection)>(StringComparer.Ordinal);
+        var result = new ReplicaRegistrationResult();
+        var parsed = new List<(ReplicaRegistrationItem Item, ReplicaManifest Manifest)>();
 
         foreach (var item in items)
         {
-            // The target collection becomes code in an ETL script (loadTo{Collection}): a plain identifier or nothing.
-            if (item is null || !EtlTransformGenerator.IsIdentifier(item.TargetCollection) || item.Versions is not { Length: > 0 })
-                return Refusal(400, "Invalid subscription item");
+            if (item is null || !ReplicaScriptRenderer.IsIdentifier(item.TargetCollection) || !ReplicaScriptRenderer.IsIdentifier(item.SourceCollection))
+                return Refusal(400, "Invalid registration item");
+            if (parsed.Any(p => p.Item.TargetCollection == item.TargetCollection))
+                return Refusal(400, $"Target collection '{item.TargetCollection}' is registered twice");
 
-            var contract = catalog.Highest(item.Contract, item.Versions);
-            if (contract is null)
+            // F16 closed by construction: the owner never deploys consumer-authored JavaScript. The script is re-rendered
+            // from the manifest (whose grammar has member paths only) and must be the posted one, byte for byte.
+            if (!ReplicaScriptRenderer.TryParse(item.Manifest, out var manifest, out var error))
+                return Refusal(400, $"Invalid manifest for '{item.TargetCollection}': {error}");
+            if (manifest!.SourceCollection != item.SourceCollection || manifest.TargetCollection != item.TargetCollection)
+                return Refusal(400, $"The manifest of '{item.TargetCollection}' names other collections than the item");
+            var script = ReplicaScriptRenderer.RenderScript(manifest);
+            if (script != item.Script || ReplicaScriptRenderer.Hash(item.Manifest, script) != item.Hash)
             {
-                logger.LogWarning("Subscription refused: module '{Module}' asked for contract '{Contract}' v{Versions}, which this module does not publish.",
-                    module, item.Contract, string.Join(",", item.Versions));
-                return Refusal(404, $"Unknown contract '{item.Contract}' v{string.Join(",", item.Versions)}");
+                logger.LogWarning("Registration refused: module '{Module}' posted a script or hash for '{Target}' that its manifest does not render.", module, item.TargetCollection);
+                return Refusal(400, $"The script of '{item.TargetCollection}' is not the rendering of its manifest");
             }
 
-            // The certificate answers "who are you"; the grant, on the contract itself, answers "what may you read".
-            if (!await isGranted(contract.Name))
+            if (sourceTypes.Resolve(item.SourceCollection) is null)
+                return Refusal(404, $"Unknown source collection '{item.SourceCollection}'");
+
+            var grant = await grants.CheckAsync(module, item.SourceCollection, manifest, cancellationToken);
+            if (!grant.Allowed)
             {
-                logger.LogWarning("Subscription refused: module '{Module}' holds no Replicate/{Contract}.", module, contract.Name);
-                return Refusal(403, "Forbidden");
+                logger.LogWarning("Registration refused: module '{Module}' reading '{Source}': {Reason}", module, item.SourceCollection, grant.Refusal);
+                return Refusal(403, grant.Refusal!);
             }
 
-            wanted[contract.Name] = (contract, item.TargetCollection);
-        }
-
-        // F19: an ETL destination is the authenticated module's registry entry, never the request.
-        if (transport == ReplicationTransport.Etl && wanted.Count > 0)
-        {
-            var registration = await moduleDirectory.FindAsync(module, cancellationToken);
-            if (registration is null || string.IsNullOrEmpty(registration.DatabaseName) || registration.DatabaseUrls.Length == 0)
-                return Refusal(409, "The requesting module has no database registered");
+            parsed.Add((item, manifest));
         }
 
         var now = timeProvider.GetUtcNow().UtcDateTime;
+        var autoApprove = hostEnvironment.IsDevelopment();
+        var redeploy = false;
+
         using (var session = documentStore.OpenAsyncSession())
         {
-            session.Advanced.UseOptimisticConcurrency = true;
-            foreach (var name in PublishedNames)
-            {
-                var set = await LoadSetAsync(session, name, cancellationToken);
-                var had = set.Consumers.RemoveAll(c => string.Equals(c.Module, module, StringComparison.OrdinalIgnoreCase)) > 0;
+            session.Advanced.OptimisticConcurrencyMode = Raven.Client.Documents.Session.OptimisticConcurrencyMode.Writes;
+            var existing = await QueryOfConsumerAsync(session, module, cancellationToken);
 
-                if (wanted.TryGetValue(name, out var entry))
+            foreach (var (item, manifest) in parsed)
+            {
+                var id = SparkReplicationSubscription.For(module, item.TargetCollection);
+                var subscription = existing.FirstOrDefault(s => s.Id == id);
+                if (subscription is null)
                 {
-                    set.Consumers.Add(new ReplicaConsumer
+                    subscription = new SparkReplicationSubscription
                     {
-                        Module = module,
-                        Version = entry.Contract.Version,
-                        TargetCollection = entry.TargetCollection,
-                        Transport = transport,
-                        SubscribedAtUtc = now,
-                    });
-                    result.Contracts.Add(new ReplicaSubscriptionGranted { Contract = name, Version = entry.Contract.Version });
+                        Id = id,
+                        ConsumerModule = module,
+                        SourceCollection = item.SourceCollection,
+                        TargetCollection = item.TargetCollection,
+                    };
+                    await session.StoreAsync(subscription, id, cancellationToken);
                 }
-                else if (had)
-                {
-                    result.Withdrawn.Add(name);
-                }
+
+                var answer = await RecordAsync(session, subscription, item, manifest, autoApprove, now, cancellationToken);
+                redeploy |= answer.Status is ReplicaRegistrationStatus.Approved;
+                result.Items.Add(answer);
             }
-            await session.SaveChangesAsync(cancellationToken);
-        }
 
-        var etl = await SyncEtlTaskAsync(module, transport, cancellationToken);
-        if (!etl.Success)
-        {
-            result.Error = etl.Error;
-            return new ReplicaSubscribeOutcome(etl.Error == EtlTaskResult.NotLicensedError ? 409 : 500, result);
-        }
-
-        logger.LogInformation("Module '{Module}' subscribed to {Contracts} over {Transport}; withdrawn: {Withdrawn}",
-            module, string.Join(", ", result.Contracts.Select(c => $"{c.Contract} v{c.Version}")), transport,
-            result.Withdrawn.Count == 0 ? "none" : string.Join(", ", result.Withdrawn));
-        return new ReplicaSubscribeOutcome(200, result);
-
-        ReplicaSubscribeOutcome Refusal(int status, string error)
-            => new(status, new ReplicaSubscriptionResult { Transport = transport, Error = error });
-    }
-
-    public async Task<IReadOnlyList<ReplicaConsumer>> ConsumersAsync(string contract, CancellationToken cancellationToken)
-    {
-        using var session = documentStore.OpenAsyncSession();
-        var set = await session.LoadAsync<ReplicaSubscriptionSet>(ReplicaSubscriptionSet.For(contract), cancellationToken);
-        return set?.Consumers ?? [];
-    }
-
-    public async Task WithdrawAsync(string module, string contract, CancellationToken cancellationToken)
-    {
-        using (var session = documentStore.OpenAsyncSession())
-        {
-            session.Advanced.UseOptimisticConcurrency = true;
-            var set = await session.LoadAsync<ReplicaSubscriptionSet>(ReplicaSubscriptionSet.For(contract), cancellationToken);
-            if (set is null || set.Consumers.RemoveAll(c => string.Equals(c.Module, module, StringComparison.OrdinalIgnoreCase)) == 0)
-                return;
-            await session.SaveChangesAsync(cancellationToken);
-        }
-
-        logger.LogWarning("Withdrew module '{Module}' from contract '{Contract}': it no longer holds Replicate/{Contract}.", module, contract, contract);
-        await SyncEtlTaskAsync(module, await transportResolver.ResolveAsync(cancellationToken), cancellationToken);
-    }
-
-    public async Task<IReadOnlyList<(string Module, string Contract)>> AllAsync(CancellationToken cancellationToken)
-    {
-        using var session = documentStore.OpenAsyncSession();
-        var sets = await session.LoadAsync<ReplicaSubscriptionSet>(PublishedNames.Select(ReplicaSubscriptionSet.For), cancellationToken);
-        return sets.Values.Where(s => s is not null)
-            .SelectMany(s => s!.Consumers.Select(c => (c.Module, s.Contract)))
-            .ToList();
-    }
-
-    /// <summary>
-    /// Brings the module's ETL task in line with its subscriptions: one task with every ETL subscription's transform,
-    /// or no task at all (F18). On the HTTP transport any leftover task is removed.
-    /// </summary>
-    private async Task<EtlTaskResult> SyncEtlTaskAsync(string module, ReplicationTransport transport, CancellationToken cancellationToken)
-    {
-        var transforms = new List<EtlTransformScript>();
-        if (transport == ReplicationTransport.Etl)
-        {
-            using var session = documentStore.OpenAsyncSession();
-            var sets = await session.LoadAsync<ReplicaSubscriptionSet>(PublishedNames.Select(ReplicaSubscriptionSet.For), cancellationToken);
-            foreach (var set in sets.Values.Where(s => s is not null))
+            // F18: what the post no longer lists stops.
+            foreach (var gone in existing.Where(s => s.State != ReplicationSubscriptionStates.Withdrawn
+                && !parsed.Any(p => p.Item.TargetCollection == s.TargetCollection)))
             {
-                foreach (var consumer in set!.Consumers.Where(c => string.Equals(c.Module, module, StringComparison.OrdinalIgnoreCase)))
-                {
-                    if (catalog.Find(set.Contract, consumer.Version) is not { EtlExpressible: true } contract)
-                        continue;
-                    transforms.Add(new EtlTransformScript(
-                        $"{contract.Name}-v{contract.Version}-{consumer.TargetCollection}",
-                        contract.SourceCollection,
-                        contract.ScriptFor(consumer.TargetCollection)));
-                }
+                gone.State = ReplicationSubscriptionStates.Withdrawn;
+                gone.Reason = "No longer registered by the consumer";
+                if (gone.PendingRequestId is { } pendingId && await session.LoadAsync<SparkReplicationRequest>(pendingId, cancellationToken) is { } pending)
+                    Supersede(pending, "withdrawn by the consumer");
+                gone.PendingRequestId = null;
+                gone.PendingHash = null;
+                result.Withdrawn.Add(gone.TargetCollection);
+                redeploy = true;
             }
+
+            if (redeploy)
+                await EnqueueDeployAsync(session, module, cancellationToken);
+
+            await session.SaveChangesAsync(cancellationToken);
         }
 
-        if (transforms.Count == 0)
-            return await etlTaskManager.RemoveAsync(module, cancellationToken);
+        services.GetService<ISparkLiveNotifier>()?.CollectionChanged("SparkReplicationRequests");
+        logger.LogInformation("Module '{Module}' registered {Items}; withdrawn: {Withdrawn}", module,
+            string.Join(", ", result.Items.Select(i => $"{i.TargetCollection} {i.Status}")),
+            result.Withdrawn.Count == 0 ? "none" : string.Join(", ", result.Withdrawn));
+        return new ReplicaRegisterOutcome(200, result);
 
-        var registration = await moduleDirectory.FindAsync(module, cancellationToken);
-        if (registration is null || string.IsNullOrEmpty(registration.DatabaseName) || registration.DatabaseUrls.Length == 0)
-            return new EtlTaskResult(false, "The requesting module has no database registered");
-
-        return await etlTaskManager.DeployAsync(new EtlDeployment(module, registration.DatabaseName, registration.DatabaseUrls, transforms), cancellationToken);
+        ReplicaRegisterOutcome Refusal(int status, string error) => new(status, new ReplicaRegistrationResult { Error = error });
     }
 
-    private static async Task<ReplicaSubscriptionSet> LoadSetAsync(IAsyncDocumentSession session, string contract, CancellationToken cancellationToken)
+    /// <summary>One item: unchanged, a (re)approval, or a pending request with its diff.</summary>
+    private async Task<ReplicaRegistrationItemResult> RecordAsync(
+        IAsyncDocumentSession session, SparkReplicationSubscription subscription, ReplicaRegistrationItem item, ReplicaManifest manifest,
+        bool autoApprove, DateTime now, CancellationToken cancellationToken)
     {
-        var id = ReplicaSubscriptionSet.For(contract);
-        var set = await session.LoadAsync<ReplicaSubscriptionSet>(id, cancellationToken);
-        if (set is null)
+        var reactivated = subscription.State != ReplicationSubscriptionStates.Active;
+        subscription.SourceCollection = item.SourceCollection;
+
+        // WD15: the approved shape again — nothing to decide; a pending newer shape the consumer stepped back from is superseded.
+        if (subscription.ApprovedHash == item.Hash && subscription.State != ReplicationSubscriptionStates.Suspended)
         {
-            set = new ReplicaSubscriptionSet { Id = id, Contract = contract };
-            await session.StoreAsync(set, id, cancellationToken);
+            subscription.State = ReplicationSubscriptionStates.Active;
+            subscription.Reason = null;
+            if (subscription.PendingRequestId is { } stepBack && await session.LoadAsync<SparkReplicationRequest>(stepBack, cancellationToken) is { } stepped)
+                Supersede(stepped, "the consumer registered the approved shape again");
+            subscription.PendingRequestId = null;
+            subscription.PendingHash = null;
+            return new ReplicaRegistrationItemResult
+            {
+                TargetCollection = item.TargetCollection,
+                Status = reactivated ? ReplicaRegistrationStatus.Approved : ReplicaRegistrationStatus.Unchanged,
+                ApprovedHash = subscription.ApprovedHash,
+            };
         }
-        return set;
+
+        var requestId = SparkReplicationRequest.For(subscription.ConsumerModule, item.TargetCollection, item.Hash);
+        var request = await session.LoadAsync<SparkReplicationRequest>(requestId, cancellationToken);
+        if (request?.Status == ReplicationRequestStatuses.Rejected)
+        {
+            return new ReplicaRegistrationItemResult
+            {
+                TargetCollection = item.TargetCollection,
+                Status = ReplicaRegistrationStatus.Refused,
+                ApprovedHash = subscription.IsDelivering ? subscription.ApprovedHash : null,
+                Reason = "Rejected: " + (request.Reason ?? "by an administrator"),
+            };
+        }
+
+        if (request is null || request.Status == ReplicationRequestStatuses.Superseded)
+        {
+            ReplicaManifest? approved = null;
+            if (subscription.ApprovedManifest is { } approvedJson)
+                ReplicaScriptRenderer.TryParse(approvedJson, out approved, out _);
+
+            request ??= new SparkReplicationRequest
+            {
+                Id = requestId,
+                ConsumerModule = subscription.ConsumerModule,
+                SourceCollection = item.SourceCollection,
+                TargetCollection = item.TargetCollection,
+                Manifest = item.Manifest,
+                Hash = item.Hash,
+            };
+            request.Status = ReplicationRequestStatuses.Pending;
+            request.ApprovedHash = subscription.ApprovedHash;
+            request.Diff = ManifestDiff.Describe(approved, manifest);
+            request.RequestedAtUtc = now;
+            request.Reason = null;
+            request.DecidedBy = null;
+            request.DecidedAtUtc = null;
+            await session.StoreAsync(request, requestId, cancellationToken);
+        }
+
+        if (subscription.PendingRequestId is { } previousId && previousId != requestId
+            && await session.LoadAsync<SparkReplicationRequest>(previousId, cancellationToken) is { } previous)
+            Supersede(previous, "a newer request of the consumer");
+
+        subscription.PendingRequestId = requestId;
+        subscription.PendingHash = item.Hash;
+        if (subscription.State == ReplicationSubscriptionStates.Withdrawn)
+            subscription.State = ReplicationSubscriptionStates.Active;
+
+        // WD16: only the OWNER's host environment approves automatically, never a build configuration or a setting.
+        if (request.Status == ReplicationRequestStatuses.Pending && autoApprove)
+        {
+            await ApproveCoreAsync(session, subscription, request, SparkReplicationRequest.SystemApprover, auto: true, now, cancellationToken);
+        }
+        else if (request.Status == ReplicationRequestStatuses.Approved)
+        {
+            // Approved before (a consumer that rolled back and forward again): approved again without asking.
+            await ApproveCoreAsync(session, subscription, request, request.DecidedBy, request.AutoApproved, now, cancellationToken);
+        }
+
+        var approvedNow = subscription.ApprovedHash == item.Hash;
+        return new ReplicaRegistrationItemResult
+        {
+            TargetCollection = item.TargetCollection,
+            Status = approvedNow ? ReplicaRegistrationStatus.Approved : ReplicaRegistrationStatus.Pending,
+            // Q-W29: while the new shape waits, the consumer keeps receiving the approved one.
+            ApprovedHash = subscription.IsDelivering || approvedNow ? subscription.ApprovedHash : null,
+        };
     }
+
+    public async Task<ReplicationDecisionOutcome> ApproveAsync(string requestId, string? approver, CancellationToken cancellationToken)
+    {
+        using var session = documentStore.OpenAsyncSession();
+        session.Advanced.OptimisticConcurrencyMode = Raven.Client.Documents.Session.OptimisticConcurrencyMode.Writes;
+        var request = await session.LoadAsync<SparkReplicationRequest>(requestId, cancellationToken);
+        if (request is null)
+            return ReplicationDecisionOutcome.NotFound;
+        if (request.Status != ReplicationRequestStatuses.Pending)
+            return ReplicationDecisionOutcome.NotPending;
+
+        var subscription = await session.LoadAsync<SparkReplicationSubscription>(
+            SparkReplicationSubscription.For(request.ConsumerModule, request.TargetCollection), cancellationToken);
+        if (subscription is null || subscription.PendingRequestId != request.Id)
+        {
+            Supersede(request, "no longer the consumer's request");
+            await session.SaveChangesAsync(cancellationToken);
+            return ReplicationDecisionOutcome.NotPending;
+        }
+
+        // §4.2.6: the grant and every field's read right are checked again at approval.
+        if (!ReplicaScriptRenderer.TryParse(request.Manifest, out var manifest, out _)
+            || await grants.CheckAsync(request.ConsumerModule, request.SourceCollection, manifest!, cancellationToken) is { Allowed: false })
+        {
+            await session.SaveChangesAsync(cancellationToken);
+            await SuspendAsync(request.ConsumerModule, request.TargetCollection, "No longer granted at approval", cancellationToken);
+            return ReplicationDecisionOutcome.NotGranted;
+        }
+
+        await ApproveCoreAsync(session, subscription, request, approver, auto: false, timeProvider.GetUtcNow().UtcDateTime, cancellationToken);
+        await EnqueueDeployAsync(session, request.ConsumerModule, cancellationToken);
+        await session.SaveChangesAsync(cancellationToken);
+        services.GetService<ISparkLiveNotifier>()?.CollectionChanged("SparkReplicationRequests");
+        logger.LogInformation("Replication request {RequestId} approved by {Approver}.", requestId, approver);
+        return ReplicationDecisionOutcome.Done;
+    }
+
+    public async Task<ReplicationDecisionOutcome> RejectAsync(string requestId, string? approver, string? reason, CancellationToken cancellationToken)
+    {
+        using var session = documentStore.OpenAsyncSession();
+        session.Advanced.OptimisticConcurrencyMode = Raven.Client.Documents.Session.OptimisticConcurrencyMode.Writes;
+        var request = await session.LoadAsync<SparkReplicationRequest>(requestId, cancellationToken);
+        if (request is null)
+            return ReplicationDecisionOutcome.NotFound;
+        if (request.Status != ReplicationRequestStatuses.Pending)
+            return ReplicationDecisionOutcome.NotPending;
+
+        request.Status = ReplicationRequestStatuses.Rejected;
+        request.DecidedBy = approver;
+        request.DecidedAtUtc = timeProvider.GetUtcNow().UtcDateTime;
+        request.Reason = reason;
+
+        // PRD §4.2.2: a rejection suspends the subscription and removes its delivery.
+        var subscription = await session.LoadAsync<SparkReplicationSubscription>(
+            SparkReplicationSubscription.For(request.ConsumerModule, request.TargetCollection), cancellationToken);
+        if (subscription is not null && subscription.PendingRequestId == request.Id)
+        {
+            subscription.PendingRequestId = null;
+            subscription.PendingHash = null;
+            subscription.State = ReplicationSubscriptionStates.Suspended;
+            subscription.Reason = "Rejected: " + (reason ?? "by an administrator");
+            await EnqueueDeployAsync(session, request.ConsumerModule, cancellationToken);
+        }
+
+        await session.SaveChangesAsync(cancellationToken);
+        services.GetService<ISparkLiveNotifier>()?.CollectionChanged("SparkReplicationRequests");
+        logger.LogInformation("Replication request {RequestId} rejected by {Approver}.", requestId, approver);
+        return ReplicationDecisionOutcome.Done;
+    }
+
+    public async Task SuspendAsync(string consumer, string targetCollection, string reason, CancellationToken cancellationToken)
+    {
+        using var session = documentStore.OpenAsyncSession();
+        var subscription = await session.LoadAsync<SparkReplicationSubscription>(SparkReplicationSubscription.For(consumer, targetCollection), cancellationToken);
+        if (subscription is null || subscription.State == ReplicationSubscriptionStates.Suspended)
+            return;
+        subscription.State = ReplicationSubscriptionStates.Suspended;
+        subscription.Reason = reason;
+        await EnqueueDeployAsync(session, consumer, cancellationToken);
+        await session.SaveChangesAsync(cancellationToken);
+        logger.LogWarning("Suspended the replication of '{Target}' to module '{Consumer}': {Reason}", targetCollection, consumer, reason);
+    }
+
+    public async Task<IReadOnlyList<SparkReplicationSubscription>> DeliveringAsync(string sourceCollection, CancellationToken cancellationToken)
+        => (await AllDeliveringAsync(cancellationToken)).Where(s => s.SourceCollection == sourceCollection).ToList();
+
+    public async Task<IReadOnlyList<SparkReplicationSubscription>> AllDeliveringAsync(CancellationToken cancellationToken)
+    {
+        using var session = documentStore.OpenAsyncSession();
+        var all = await session.Advanced.LoadStartingWithAsync<SparkReplicationSubscription>("SparkReplicationSubscriptions/", pageSize: 1024, token: cancellationToken);
+        return all.Where(s => s.IsDelivering).ToList();
+    }
+
+    public async Task<IReadOnlyList<SparkReplicationSubscription>> OfConsumerAsync(string consumer, CancellationToken cancellationToken)
+    {
+        using var session = documentStore.OpenAsyncSession();
+        return await QueryOfConsumerAsync(session, consumer, cancellationToken);
+    }
+
+    /// <summary>A prefix load, not a query: the ids are derived, and a point-read never answers from a stale index.</summary>
+    private static async Task<List<SparkReplicationSubscription>> QueryOfConsumerAsync(IAsyncDocumentSession session, string consumer, CancellationToken cancellationToken)
+        => [.. await session.Advanced.LoadStartingWithAsync<SparkReplicationSubscription>($"SparkReplicationSubscriptions/{consumer}/", pageSize: 1024, token: cancellationToken)];
+
+    private async Task ApproveCoreAsync(IAsyncDocumentSession session, SparkReplicationSubscription subscription, SparkReplicationRequest request,
+        string? approver, bool auto, DateTime now, CancellationToken cancellationToken)
+    {
+        if (subscription.ApprovedRequestId is { } previousId && previousId != request.Id
+            && await session.LoadAsync<SparkReplicationRequest>(previousId, cancellationToken) is { Status: ReplicationRequestStatuses.Approved } previous)
+            Supersede(previous, "a newer approved request");
+
+        request.Status = ReplicationRequestStatuses.Approved;
+        request.DecidedBy = approver;
+        request.DecidedAtUtc ??= now;
+        request.AutoApproved = auto;
+
+        subscription.ApprovedManifest = request.Manifest;
+        subscription.ApprovedHash = request.Hash;
+        subscription.ApprovedRequestId = request.Id;
+        subscription.PendingRequestId = null;
+        subscription.PendingHash = null;
+        subscription.State = ReplicationSubscriptionStates.Active;
+        subscription.Reason = null;
+    }
+
+    private static void Supersede(SparkReplicationRequest request, string why)
+    {
+        if (request.Status is ReplicationRequestStatuses.Pending or ReplicationRequestStatuses.Approved)
+        {
+            request.Status = ReplicationRequestStatuses.Superseded;
+            request.Reason = "Superseded: " + why;
+        }
+    }
+
+    /// <summary>The deploy runs from messaging, in this commit: it retries and survives a restart.</summary>
+    private Task EnqueueDeployAsync(IAsyncDocumentSession session, string consumer, CancellationToken cancellationToken)
+        => services.GetRequiredService<IMessageOutbox>().EnqueueAsync(session, new ReplicaDeployMessage { Consumer = consumer }, cancellationToken: cancellationToken);
 }

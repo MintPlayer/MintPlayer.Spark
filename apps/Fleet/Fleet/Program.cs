@@ -49,16 +49,10 @@ builder.WebHost.ConfigureKestrel(kestrel =>
 
 builder.Services.AddSparkFull(builder.Configuration, options =>
 {
-    // Everything else comes from the `Spark:Replication` section, bound by AddReplication.
-    // Assemblies are the one setting configuration cannot express.
-    // Fleet owns cars: it publishes the `cars` contract, and generates the ETL transform for every
-    // consumer from this projection (consumers send no script).
-    options.Replication = opt =>
-    {
-        opt.AssembliesToScan = [typeof(Fleet.Replicated.Person).Assembly];
-        opt.Publish<Fleet.Entities.Car, Fleet.Contracts.CarV1>("cars", 1,
-            car => new Fleet.Contracts.CarV1(car.LicensePlate, car.Model, car.Year, car.Color));
-    };
+    // Everything comes from the `Spark:Replication` section, bound by AddReplication. Fleet reads HR's people and
+    // companies through its [Replicated] classes (Fleet.Replicated); what Fleet owns (cars) other modules read through
+    // their own classes, which Fleet approves under "Replication requests" (automatically while Fleet runs in Development).
+    options.Replication = _ => { };
     options.RateLimiter = _ => { };
 
     // Explicit since preview.60: LocalCredentials now defaults to Disabled, matching the client's

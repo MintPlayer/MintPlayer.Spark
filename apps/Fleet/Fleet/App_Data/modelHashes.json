@@ -1,8 +1,8 @@
 {
   "version": 3,
-  "modelHash": "f714f6dacdfe3bd9b610eb729d78e041265778b5f999489050a815eb72849f77",
+  "modelHash": "0d1a5692e0921f0d53423617d562bc7bcce0841b28d388da458441da1a91f44f",
   "contextRoots": "b37568abea714cc6f37f5adcd41857bbda9a66e0f96b82f0cc1eb49e6c747eab",
-  "modelFiles": "492d1f38cc257ab6e33025e916b7c0d5bc7b1bd18efadfb5288ee3bae0feb739",
+  "modelFiles": "af6b4948dee5ef0a73ccf9f029c162cd566667bd4198429964ab675dbe964fad",
   "files": {
     "ApprovalReason.json": "737f374d52ab7694edaaf65c072acb1e9429e7a33483ed48e1237bd610f71473",
     "ApprovalRequest.json": "a7376e4c77b2677ceb4fe7823b705c98aebbc6422572788b89aa58a7471319a8",
@@ -27,6 +27,8 @@
     "Person.json": "b8fdfaa94a823f380044ebf30bd6b32d5b074753d2afb5de620a9a4b8f0c0622",
     "ServiceEntry.json": "b225fdb65bc53d04caa70c111ad4b079f3894362020ea996f129ef0fa91869b2",
     "SparkMailDelivery.json": "6d3aad682961f6b749c361acc41e9b4198e565a4499ac1a726428eead3a15e23",
+    "SparkReplicationRequest.json": "0fb7d1e4ce64347f0d515a59bea514bbbef07142161758ad165ab866df81e1fb",
+    "SparkSyncAction.json": "1fdf458095327f420118e19d3785cfd2bac05eac41862785e716e5c469016f44",
     "SparkUser.json": "81d5e4fe403e329fc20404f35c3b9944aa11c17374981df5a4073ddf08fcdb69"
   },
   "entities": {
@@ -37,12 +39,13 @@
     "SparkMailDelivery": "6bcdba1248a4f344f4b0001a4c3cb8c34504c63e5cc1bd2ebd5f36409a228e36"
   },
   "configFiles": {
-    "actions.json": "b57ef5ec301d46d0e6204ae08e82798b087ae74d98e40f72588ad260b8cf5f98"
+    "actions.json": "b7fd23d2165a68364133daed06099e441b566d653b6a7dbfc6e185406f4ff803"
   },
   "libraries": {
     "approvals": "MintPlayer.Spark.Approvals",
     "authorization": "MintPlayer.Spark.Authorization",
     "identity-provider": "MintPlayer.Spark.IdentityProvider",
+    "replication": "MintPlayer.Spark.Replication",
     "spark": "MintPlayer.Spark"
   },
   "layers": {
@@ -97,6 +100,12 @@
     "Model/Passkeys.json": {
       "authorization": "738742f13217adeeb4724f72f968923099f7d7210cee1133dfd6707eb55856ce"
     },
+    "Model/SparkReplicationRequest.json": {
+      "replication": "0fb7d1e4ce64347f0d515a59bea514bbbef07142161758ad165ab866df81e1fb"
+    },
+    "Model/SparkSyncAction.json": {
+      "replication": "1fdf458095327f420118e19d3785cfd2bac05eac41862785e716e5c469016f44"
+    },
     "Model/SparkUser.json": {
       "authorization": "81d5e4fe403e329fc20404f35c3b9944aa11c17374981df5a4073ddf08fcdb69"
     },
@@ -105,11 +114,13 @@
       "approvals": "3644a0387d86076bd48137bee65ed032a1ae7646febe3f9995afdbd392952813",
       "authorization": "fb0d34fa66e732b157e4e222fb9c357e4219cf6d85177473103874e8c1090427",
       "identity-provider": "b0cf6785f290ce92d425518100f6fb84d5831785f9492bcccb9aaba0068709af",
+      "replication": "62dbc1068c51ef923aefda60b2a897656583e0512c034f9f29ed8f958fbe41c2",
       "spark": "5974b38c8164cafbfb22c012c52fb46dd27264181d772b9f004de1829d1838e6"
     },
     "programUnits.json": {
       "app": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "identity-provider": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      "identity-provider": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "replication": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     }
   },
   "names": {
@@ -121,6 +132,8 @@
     "2e662d0c-c4b7-579d-88b0-a23c9f2c7f2f": "OidcApplicationMember (identity-provider:OidcApplicationMember)",
     "2e9b7c64-4d35-4f1a-8e8c-7d6a1f3b5c29": "ConfirmDeleteCar",
     "34ee96f8-869e-578f-a03b-ab77fbb4d7b5": "OidcAuditEvent (identity-provider:OidcAuditEvent)",
+    "45c8870d-15c8-51ca-ba62-e5f13a8c3e4f": "SparkSyncAction (replication:SparkSyncAction)",
+    "5063ba37-cc73-507c-8371-42564ea75663": "SparkReplicationRequest (replication:SparkReplicationRequest)",
     "59e1ca22-4cb3-5d6b-91ea-52dad25d8ce7": "ClientSecret (identity-provider:ClientSecret)",
     "745c8cfe-13bd-56c0-a4f7-7a46c1e1a2d9": "OidcApiScope (identity-provider:OidcApiScope)",
     "86356a6e-211d-531b-994b-a185dc398ba2": "ClientClaim (identity-provider:ClientClaim)",

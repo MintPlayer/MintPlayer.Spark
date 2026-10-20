@@ -79,18 +79,10 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     // as an .eml file into Spark:Mail:PickupFolder (appsettings.json) instead of being sent.
     spark.AddMailManager();
 
-    // Everything else comes from the `Spark:Replication` section, bound by AddReplication.
-    // Assemblies are the one setting configuration cannot express.
-    // HR owns people and companies: it publishes those contracts, and generates the ETL transform
-    // for every consumer from these projections (consumers send no script).
-    spark.AddReplication(opt =>
-    {
-        opt.AssembliesToScan = [typeof(HR.Replicated.Car).Assembly];
-        opt.Publish<HR.Entities.Person, HR.Contracts.PersonV1>("people", 1,
-            person => new HR.Contracts.PersonV1(person.FirstName, person.LastName, person.Email));
-        opt.Publish<HR.Entities.Company, HR.Contracts.CompanyV1>("companies", 1,
-            company => new HR.Contracts.CompanyV1(company.Name, company.Website, company.EmployeeCount));
-    });
+    // Everything comes from the `Spark:Replication` section, bound by AddReplication. HR reads Fleet's cars through
+    // its [Replicated] class (HR.Replicated.Car); what HR owns (people, companies) other modules read through their own
+    // classes, which HR approves under "Replication requests" (automatically while HR runs in Development).
+    spark.AddReplication();
 });
 
 // For /api/hr/fleet-cars (the I12 demo).

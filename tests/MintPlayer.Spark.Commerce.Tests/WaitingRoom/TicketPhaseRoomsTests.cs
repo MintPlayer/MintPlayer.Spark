@@ -54,9 +54,9 @@ public class TicketPhaseRoomsTests : SparkTestDriver
         room.Gate.Should().Be(phase.Id);
         room.Mode.Should().Be(WaitingRoomMode.RandomizedPreQueue); // the channel's first mode; the seller chose none
         room.RequireSignIn.Should().BeTrue(); // D10
-        room.OpensAt.Should().Be(phase.QueueOpensAt);
+        room.OpensAt.Should().Be(phase.QueueOpensAt!.Value);
         room.StartsAt.Should().Be(phase.StartsAt);
-        room.EndsAt.Should().Be(phase.EndsAt);
+        room.EndsAt.Should().Be(phase.EndsAt!.Value);
         room.CapacityKey.Should().Be(CommerceWaitingRoomScopes.TicketingPhasePrefix + phase.Id);
         room.Admission.MaxActive.Should().Be(50);
     }

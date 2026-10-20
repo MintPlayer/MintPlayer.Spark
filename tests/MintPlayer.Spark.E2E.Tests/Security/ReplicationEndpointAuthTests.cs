@@ -5,7 +5,7 @@ using MintPlayer.Spark.E2E.Tests._Infrastructure;
 namespace MintPlayer.Spark.E2E.Tests.Security;
 
 /// <summary>
-/// R2-C1 / R2-C2 — <c>/spark/etl/deploy</c> and <c>/spark/sync/apply</c> are cross-module
+/// R2-C1 / R2-C2 — <c>/spark/replicas/register</c> and <c>/spark/sync/apply</c> are cross-module
 /// endpoints that previously shipped with no authentication at all. Round 2 gates them behind
 /// mTLS.
 /// <para>
@@ -35,32 +35,33 @@ public class ReplicationEndpointAuthTests
     public ReplicationEndpointAuthTests(FleetE2ECollectionFixture fixture) => _fixture = fixture;
 
     [Fact]
-    public async Task Unauth_post_etl_deploy_with_unknown_requesting_module_is_refused()
+    public async Task Unauth_post_replica_register_with_unknown_requesting_module_is_refused()
     {
         using var http = SparkClientFactory.CreateHttpClient(_fixture.Host);
 
         var body = new
         {
             RequestingModule = "Attacker-Not-Registered",
-            TargetDatabase = "victim",
-            TargetUrls = new[] { "http://attacker.example/raven" },
-            Scripts = new[]
+            Items = new[]
             {
                 new
                 {
-                    SourceCollection = "Users",
+                    TargetCollection = "Users",
+                    SourceCollection = "SparkUsers",
+                    Manifest = "{\"v\":1,\"source\":\"SparkUsers\",\"target\":\"Users\",\"fields\":[[\"Email\",\"Email\"]]}",
                     Script = "loadToUsers({Email: this.Email})",
+                    Hash = "sha256:00",
                 }
             }
         };
 
-        var response = await http.PostAsJsonAsync("/spark/etl/deploy", body);
+        var response = await http.PostAsJsonAsync("/spark/replicas/register", body);
 
         // Production: the caller named a module, so the cert check runs first and no cert was
-        // presented. Critically NOT 200 — the previous behaviour was no check at all, and this
-        // body would have put an attacker-controlled ETL target into RavenDB.
+        // presented. Critically NOT 200 — before R2 there was no check at all, and a body like this
+        // put an attacker-chosen script and target into RavenDB.
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized,
-            "ETL deployment must refuse a caller that presents no client certificate");
+            "replica registration must refuse a caller that presents no client certificate");
     }
 
     [Fact]
@@ -68,25 +69,11 @@ public class ReplicationEndpointAuthTests
     {
         using var http = SparkClientFactory.CreateHttpClient(_fixture.Host);
 
-        var body = new
-        {
-            RequestingModule = "Attacker-Not-Registered",
-            Actions = new[]
-            {
-                new
-                {
-                    Collection = "SparkUsers",
-                    DocumentId = "users/victim",
-                    ActionType = "Delete",
-                }
-            }
-        };
-
-        var response = await http.PostAsJsonAsync("/spark/sync/apply", body);
+        var response = await http.PostAsJsonAsync("/spark/sync/apply", DeleteUser("Attacker-Not-Registered"));
 
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized,
             "sync apply must refuse a caller that presents no client certificate — this endpoint "
-            + "can delete any document in any collection, and was previously fully unauthenticated");
+            + "can change or delete documents, and was previously fully unauthenticated");
     }
 
     [Fact]
@@ -94,24 +81,21 @@ public class ReplicationEndpointAuthTests
     {
         using var http = SparkClientFactory.CreateHttpClient(_fixture.Host);
 
-        var body = new
-        {
-            RequestingModule = "",
-            Actions = new[]
-            {
-                new
-                {
-                    Collection = "SparkUsers",
-                    DocumentId = "users/victim",
-                    ActionType = "Delete",
-                }
-            }
-        };
-
-        var response = await http.PostAsJsonAsync("/spark/sync/apply", body);
+        var response = await http.PostAsJsonAsync("/spark/sync/apply", DeleteUser(""));
 
         response.StatusCode.Should().Be(HttpStatusCode.Forbidden,
             "an empty RequestingModule is refused before the certificate is even considered, so "
             + "this is 403 where the named-module cases above are 401");
     }
+
+    /// <summary>A well-formed write-back body (every required member present), so the answer is the gate's, not the binder's.</summary>
+    private static object DeleteUser(string module) => new
+    {
+        RequestingModule = module,
+        OpId = "e2e-op",
+        ActionType = "Delete",
+        SourceCollection = "SparkUsers",
+        DocumentId = "users/victim",
+        Changes = Array.Empty<object>(),
+    };
 }

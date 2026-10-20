@@ -24,6 +24,14 @@ internal partial class ModuleRegistrationService
     /// </summary>
     public async Task RegisterAsync(IDocumentStore modulesStore, CancellationToken cancellationToken = default)
     {
+        // WX4: in operator-managed mode the module never writes the registry (the trust root: every destination and
+        // pinned thumbprint is read from it, F19). It only checks its own entry, and says what is wrong.
+        if (Options.Registry.ReadOnly)
+        {
+            await VerifyReadOnlyEntryAsync(modulesStore, cancellationToken);
+            return;
+        }
+
         // Auto-create SparkModules database if it doesn't exist
         try
         {
@@ -96,5 +104,36 @@ internal partial class ModuleRegistrationService
         await session.SaveChangesAsync(cancellationToken);
         logger.LogInformation("Registered module '{ModuleName}' in SparkModules database (URL: {ModuleUrl}, DB: {Database}, thumbprint pinned: {HasThumbprint})",
             Options.ModuleName, Options.ModuleUrl, appDocumentStore.Database, !string.IsNullOrEmpty(thumbprint));
+    }
+
+    /// <summary>
+    /// Read-only registry mode: logs an error for a missing entry or one that differs from this module's configuration.
+    /// Replication still starts, so the endpoints answer and the operator can fix the entry without a restart loop.
+    /// </summary>
+    internal async Task<bool> VerifyReadOnlyEntryAsync(IDocumentStore modulesStore, CancellationToken cancellationToken)
+    {
+        using var session = modulesStore.OpenAsyncSession();
+        var entry = await session.LoadAsync<ModuleInformation>(ModuleInformation.DocumentId(Options.ModuleName), cancellationToken);
+        var problems = new List<string>();
+        if (entry is null)
+        {
+            problems.Add("there is no entry");
+        }
+        else
+        {
+            if (!string.Equals(entry.AppUrl, Options.ModuleUrl, StringComparison.OrdinalIgnoreCase))
+                problems.Add("its AppUrl differs from Spark:Replication:ModuleUrl");
+            if (!string.Equals(entry.DatabaseName, appDocumentStore.Database, StringComparison.OrdinalIgnoreCase))
+                problems.Add("its DatabaseName differs from this module's database");
+            if (!string.IsNullOrEmpty(Options.ClientCertificate.Thumbprint)
+                && !string.Equals(entry.ClientCertificateThumbprint, Options.ClientCertificate.Thumbprint, StringComparison.OrdinalIgnoreCase))
+                problems.Add("its pinned thumbprint differs from Spark:Replication:ClientCertificate:Thumbprint");
+        }
+
+        if (problems.Count == 0)
+            return true;
+        logger.LogError("SparkModules is operator-managed (Spark:Replication:Registry:ReadOnly) and the entry of module '{Module}' is wrong: {Problems}. " +
+            "An operator must create or correct moduleInformations/{Module}.", Options.ModuleName, string.Join("; ", problems), Options.ModuleName);
+        return false;
     }
 }

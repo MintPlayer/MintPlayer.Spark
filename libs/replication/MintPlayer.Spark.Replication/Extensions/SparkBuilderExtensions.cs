@@ -1,5 +1,7 @@
 using MintPlayer.Spark.Abstractions.Builder;
+using MintPlayer.Spark.Cron;
 using MintPlayer.Spark.Replication.Abstractions.Configuration;
+using MintPlayer.Spark.Replication.Services;
 
 namespace MintPlayer.Spark.Replication;
 
@@ -11,40 +13,49 @@ public static class SparkBuilderReplicationExtensions
     private const string ConfigurationSection = "Spark:Replication";
 
     /// <summary>
-    /// Adds Spark cross-module ETL replication services.
+    /// Adds Spark cross-module replication (warehouse §4.2): the replica classes this module declares
+    /// (<c>[Replicated]</c>, source-generated), registration with their owners, the approval gate for what other modules
+    /// read from this one, delivery by RavenDB ETL or over messaging and mTLS, the reconcile, and write-back.
     /// <para>
-    /// Binds <c>Spark:Replication</c> first, then applies <paramref name="configure"/>, so code
-    /// wins over configuration and settings that cannot be expressed in JSON (assemblies to
-    /// scan) stay in code. Binding here rather than in each app is the fix for F2: hosts used to
-    /// hand-map four properties by name, which meant every key the operator guide documents but
-    /// nobody had hand-mapped — the whole <c>ClientCertificate</c> node, mTLS included — bound to
-    /// nothing, silently and with no error.
+    /// Binds <c>Spark:Replication</c> first, then applies <paramref name="configure"/>, so code wins over
+    /// configuration (the fix for F2: hosts used to hand-map four properties by name, so the whole
+    /// <c>ClientCertificate</c> node, mTLS included, bound to nothing). Needs <c>AddMessaging()</c>: registrations,
+    /// pushes and queued write-backs ride its queue, and replication creates no RavenDB subscription of its own.
     /// </para>
     /// </summary>
     public static ISparkBuilder AddReplication(
         this ISparkBuilder builder,
-        Action<SparkReplicationOptions> configure)
+        Action<SparkReplicationOptions>? configure = null)
     {
         var section = builder.Configuration?.GetSection(ConfigurationSection);
 
         builder.Services.AddSparkReplication(options =>
         {
             section?.Bind(options);
-            configure(options);
+            configure?.Invoke(options);
         });
 
-        // Register middleware callback for replication startup
+        // Schedules are read at registration (the cron registry needs them now): configuration, then code.
+        var registrationTime = new SparkReplicationOptions { ModuleName = string.Empty, ModuleUrl = string.Empty };
+        section?.Bind(registrationTime);
+        configure?.Invoke(registrationTime);
+        builder.AddCron(cron =>
+        {
+            cron.AddJob<ReplicaReconcileJob>(registrationTime.Reconcile.Schedule, "Replication.Reconcile");
+            if (registrationTime.DirtySetCollections.Count > 0)
+                cron.AddJob<ReplicaDirtySetFlushJob>(registrationTime.Push.DirtySetFlushSchedule, "Replication.DirtySetFlush");
+        });
+
+        // Tombstones and applied pending marks expire.
+        builder.Registry.RequireDocumentExpiration("Replication");
+
         builder.Registry.AddMiddleware(app =>
         {
             if (app is WebApplication webApp)
-            {
                 SparkReplicationExtensions.UseSparkReplication(webApp);
-            }
         });
 
-        // Register endpoint callback
-        builder.Registry.AddEndpoints(endpoints =>
-            SparkReplicationExtensions.MapSparkReplication(endpoints));
+        builder.Registry.AddEndpoints(endpoints => SparkReplicationExtensions.MapSparkReplication(endpoints));
 
         return builder;
     }

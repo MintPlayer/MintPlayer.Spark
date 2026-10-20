@@ -94,7 +94,7 @@ public class SparkCsvCellsTests
 
         error.Should().BeNull();
         plan!.IdColumn.Should().Be(0);
-        plan.EtagColumn.Should().BeNull();
+        plan.EtagColumn.HasValue.Should().BeFalse();
         plan.Width.Should().Be(4);
         plan.Attributes.Select(a => $"{a.Column}:{a.Name}").Should().Equal("1:Name", "3:Age");
     }

@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Commerce.Checkout.Models;
 using MintPlayer.Spark.Commerce.Inventory;
 
 namespace MintPlayer.Spark.Commerce.Checkout.Services;

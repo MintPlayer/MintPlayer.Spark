@@ -67,12 +67,14 @@ internal static class ClientResult
     /// </summary>
     public static IResult ConcurrencyConflict(IClientAccessor client, Exception? exception = null)
     {
-        var conflict = exception as SparkConcurrencyException;
+        // The public base: an add-on's conflict (a refused write-back, warehouse §4.2.5) answers the same.
+        var conflict = exception as Abstractions.SparkConflictException;
         return Envelope(client, new
         {
             error = "Concurrency conflict",
-            reason = conflict?.Reason ?? SparkConcurrencyException.Changed,
+            reason = conflict?.Reason ?? Abstractions.SparkConflictException.Changed,
             message = conflict?.UserMessage,
+            attributes = conflict is { Attributes.Count: > 0 } ? conflict.Attributes : null,
         }, StatusCodes.Status409Conflict);
     }
 

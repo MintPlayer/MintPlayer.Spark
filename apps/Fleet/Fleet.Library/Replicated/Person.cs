@@ -3,14 +3,12 @@ using MintPlayer.Spark.Replication.Abstractions;
 namespace Fleet.Replicated;
 
 /// <summary>
-/// A read-only copy of HR's <c>people</c> contract (v1, <c>HR.Contracts.PersonV1</c>). HR decides
-/// which fields are replicated and generates the ETL transform; this type only has that shape.
+/// A read-only copy of HR's people (warehouse §4.2.1): this class is the only declaration of what Fleet reads. The
+/// replication generator renders the manifest, the script and the hash from it; HR re-renders and approves them.
+/// An edit here is written back to HR and arrives back with HR's push.
 /// </summary>
-[Replicated(
-    SourceModule = "HR",
-    Contract = "people",
-    SourceCollection = "People")]
-public class Person
+[Replicated(SourceCollection = "People", SourceModule = "HR", WriteBack = true)]
+public partial class Person
 {
     /// <summary>Identifier of the person, replicated from HR; it matches the HR document id.</summary>
     public string? Id { get; set; }

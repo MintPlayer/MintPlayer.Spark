@@ -8,10 +8,10 @@ using Raven.Client.Exceptions.Commercial;
 
 namespace MintPlayer.Spark.Replication.Services;
 
-/// <summary>One owner-generated ETL transform.</summary>
+/// <summary>One ETL transform: an approved replica subscription.</summary>
 /// <param name="Name">The transform name, unique within the task.</param>
 /// <param name="SourceCollection">The owner's collection it reads.</param>
-/// <param name="Script">The script <see cref="EtlTransformGenerator"/> generated.</param>
+/// <param name="Script">The approved manifest rendered by this module (<c>ReplicaScriptRenderer.RenderEtlScript</c>).</param>
 internal sealed record EtlTransformScript(string Name, string SourceCollection, string Script);
 
 /// <summary>

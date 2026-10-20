@@ -1,6 +1,9 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
-using MintPlayer.Spark.Replication.Abstractions.Models;
+using MintPlayer.Spark.Abstractions.Licensing;
+using MintPlayer.Spark.Replication.Abstractions.Rendering;
+using MintPlayer.Spark.Services;
+using MintPlayer.Spark.Replication.Abstractions;
 using MintPlayer.Spark.Replication.Services;
 using MintPlayer.Spark.Testing;
 using Raven.Client.Documents;
@@ -54,16 +57,16 @@ public class EtlTaskManagerDeploymentTests : SparkTestDriver
         Module,
         _targetDatabase,
         Store.Urls,
-        [new EtlTransformScript("cars-v1-Cars", "Cars", script)]);
+        [new EtlTransformScript("spark-replica-Cars", "Cars", script)]);
 
     private OngoingTaskRavenEtl? Task_()
         => Store.Maintenance.Send(new GetOngoingTaskInfoOperation($"spark-etl-{Module}", OngoingTaskType.RavenEtl)) as OngoingTaskRavenEtl;
 
     /// <summary>True when this server's licence refuses ETL, in which case there is nothing further to test.</summary>
-    private static bool EtlIsNotLicensed(EtlDeploymentResult result)
-        => !result.Success && result.Error == EtlDeploymentResult.NotLicensedError;
+    private static bool EtlIsNotLicensed(EtlTaskResult result)
+        => !result.Success && result.Error == EtlTaskResult.NotLicensedError;
 
-    private EtlTaskManager NewManager(IDocumentStore store) => new(store, _log, new RavenEtlLicence(store, NullLogger<RavenEtlLicence>.Instance));
+    private EtlTaskManager NewManager(IDocumentStore store) => new(store, _log, new SparkLicenseCapabilities(store, NullLogger<SparkLicenseCapabilities>.Instance));
 
     /// <summary>
     /// F18: the licence read reports what the server does. Where it says ETL is licensed the
@@ -73,7 +76,7 @@ public class EtlTaskManagerDeploymentTests : SparkTestDriver
     [Fact]
     public async Task The_licence_read_agrees_with_what_the_server_does()
     {
-        var hasEtl = await new RavenEtlLicence(Store, NullLogger<RavenEtlLicence>.Instance).HasRavenEtlAsync(CancellationToken.None);
+        var hasEtl = (await new SparkLicenseCapabilities(Store, NullLogger<SparkLicenseCapabilities>.Instance).GetAsync(CancellationToken.None))?.HasRavenEtl;
         hasEtl.HasValue.Should().BeTrue("/license/status reports HasRavenEtl on every licence");
 
         var result = await NewManager(Store).DeployAsync(Request());
@@ -81,7 +84,7 @@ public class EtlTaskManagerDeploymentTests : SparkTestDriver
         if (hasEtl == true)
             result.Success.Should().BeTrue(result.Error ?? "");
         else
-            result.Error.Should().Be(EtlDeploymentResult.NotLicensedError);
+            result.Error.Should().Be(EtlTaskResult.NotLicensedError);
     }
 
     /// <summary>
@@ -91,7 +94,7 @@ public class EtlTaskManagerDeploymentTests : SparkTestDriver
     [Fact]
     public async Task The_deployed_transform_and_connection_string_are_the_owners()
     {
-        var script = EtlTransformGenerator.Script([new EtlField("Plate", ["LicensePlate"])], "Cars");
+        var script = ReplicaScriptRenderer.RenderEtlScript(new ReplicaManifest("Cars", "Cars", [new ReplicaField("Plate", ["LicensePlate"])]), "Fleet");
 
         var result = await NewManager(Store).DeployAsync(Request(script));
         if (EtlIsNotLicensed(result))
@@ -114,15 +117,15 @@ public class EtlTaskManagerDeploymentTests : SparkTestDriver
             return;
 
         created.Success.Should().BeTrue(created.Error ?? "");
-        created.TasksCreated.Should().Be(1);
+        created.Created.Should().Be(1);
         var task = Task_();
         task.Should().NotBeNull();
 
         var updated = await manager.DeployAsync(Request("loadToCars({\n    Plate: this.LicensePlate\n});\n"));
 
         updated.Success.Should().BeTrue(updated.Error ?? "");
-        updated.TasksUpdated.Should().Be(1);
-        updated.TasksCreated.Should().Be(0, "the task exists, so redeploying must not add a second one");
+        updated.Updated.Should().Be(1);
+        updated.Created.Should().Be(0, "the task exists, so redeploying must not add a second one");
 
         // ⚠️ Not `TaskId.Should().Be(task.TaskId)`: RavenDB gives an ETL task a NEW id on every
         // update (the raft index of the update command), so an update and a delete-plus-add look
@@ -163,8 +166,8 @@ public class EtlTaskManagerDeploymentTests : SparkTestDriver
         _log.Entries.Clear();
 
         // The licence was read above through the healthy store; the flaky one is only for the task lookup.
-        var licence = Substitute.For<IRavenEtlLicence>();
-        licence.HasRavenEtlAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult<bool?>(true));
+        var licence = Substitute.For<ISparkLicenseCapabilities>();
+        licence.GetAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult<SparkLicenseStatus?>(new SparkLicenseStatus { HasRavenEtl = true }));
         var result = await new EtlTaskManager(flaky, _log, licence).DeployAsync(Request());
 
         result.Success.Should().BeFalse();
@@ -174,6 +177,69 @@ public class EtlTaskManagerDeploymentTests : SparkTestDriver
                 string.Join("\n", requests));
         _log.Entries.Any(e => e.Level == LogLevel.Error && ContainsInChain(e.Exception, lookupFailure)).Should().BeTrue(
             "the logged cause must be the failure that happened");
+    }
+
+    /// <summary>
+    /// W6 (warehouse §4.2.1, §4.2.3), Developer licence: the approved script, deployed as an ETL transform, loads the
+    /// replica with the source metadata stamp, and its payload equals what the HTTP transport's
+    /// <see cref="ManifestProjector"/> pushes for the same source document (nulls and a nested path included).
+    /// </summary>
+    [Fact]
+    public async Task The_ETL_load_carries_the_source_stamp_and_equals_the_manifest_projection()
+    {
+        ReplicaScriptRenderer.TryParse(ReplicaCar.ReplicationManifest, out var manifest, out _).Should().BeTrue();
+        var script = ReplicaScriptRenderer.RenderEtlScript(manifest!, "Fleet");
+        var result = await NewManager(Store).DeployAsync(new EtlDeployment(Module, _targetDatabase, Store.Urls,
+            [new EtlTransformScript("spark-replica-ReplicaCars", "ReplSourceCars", script)]));
+        if (EtlIsNotLicensed(result))
+            return;
+        result.Success.Should().BeTrue(result.Error ?? "");
+
+        string sourceVector;
+        System.Text.Json.JsonElement sourceJson;
+        using (var session = Store.OpenAsyncSession())
+        {
+            var source = new ReplSourceCar { LicensePlate = "1-ABC", Model = "Golf", Owner = null, Mileage = 3 };
+            await session.StoreAsync(source, "ReplSourceCars/1-A");
+            await session.SaveChangesAsync();
+            sourceVector = session.Advanced.GetChangeVectorFor(source)!;
+            sourceJson = ReplicaJson.Serialize(Store, source);
+        }
+
+        using var target = new DocumentStore { Urls = Store.Urls, Database = _targetDatabase }.Initialize();
+        ReplicaCar? loaded = null;
+        IDictionary<string, object?>? metadata = null;
+        await AsyncWait.UntilAsync(() =>
+        {
+            using var session = target.OpenSession();
+            loaded = session.Load<ReplicaCar>("ReplSourceCars/1-A");
+            metadata = loaded is null ? null : session.Advanced.GetMetadataFor(loaded).ToDictionary(kv => kv.Key, kv => (object?)kv.Value);
+            return loaded is not null;
+        }, "the ETL task to load the replica");
+
+        metadata![ReplicaMetadata.SourceChangeVector]?.ToString().Should().Be(sourceVector);
+        metadata[ReplicaMetadata.SourceModule]?.ToString().Should().Be("Fleet");
+        var projected = ManifestProjector.Project(manifest!, sourceJson);
+        loaded!.LicensePlate.Should().Be(projected["LicensePlate"]!.GetValue<string>());
+        loaded.Model.Should().Be(projected["Model"]!.GetValue<string>());
+        loaded.OwnerName.Should().BeNull();
+        projected["OwnerName"].Should().BeNull();
+    }
+
+    /// <summary>F18: a withdrawn consumer's task and connection string are removed.</summary>
+    [Fact]
+    public async Task RemoveAsync_removes_the_task_and_its_connection_string()
+    {
+        var manager = NewManager(Store);
+        var created = await manager.DeployAsync(Request());
+        if (EtlIsNotLicensed(created))
+            return;
+
+        (await manager.RemoveAsync(Module)).Success.Should().BeTrue();
+
+        Task_().Should().BeNull();
+        var record = Store.Maintenance.Server.Send(new GetDatabaseRecordOperation(Store.Database));
+        record.RavenConnectionStrings.ContainsKey($"spark-etl-{Module}").Should().BeFalse();
     }
 
     private static bool ContainsInChain(Exception? exception, Exception target)
