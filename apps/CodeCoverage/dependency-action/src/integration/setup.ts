@@ -6,12 +6,12 @@ import { commitAll, gitRepo, hasCommand, tempDir, writeTree } from '../testing/h
 import { realExec, type Exec } from '../util/exec';
 import { PLAN_PATH } from '../util/git';
 
-/** DEP_ACTION_IT_GROUP picks one CI slice; unset runs every group (a local run). */
+/** DEP_ACTION_IT_GROUP picks a CI slice: one group or a comma-separated list; unset runs every group (a local run). */
 export type ItGroup = 'node+dotnet' | 'jvm' | 'python+go+rust+php' | 'docker+renovate';
 
 export function enabled(group: ItGroup, ...tools: string[]): boolean {
   const wanted = process.env.DEP_ACTION_IT_GROUP;
-  if (wanted && wanted !== group) return false;
+  if (wanted && !wanted.split(',').includes(group)) return false;
   const missing = tools.filter((t) => !hasCommand(t, t === 'go' ? ['version'] : ['--version']));
   if (missing.length > 0) {
     // Loud: a skipped integration test must say why in the log.

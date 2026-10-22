@@ -317,7 +317,7 @@ jobs:
       if: always()
       # The working copy, not a published ref: the action's source lives in this
       # repository, so a PR that changes the upload API and the action together is
-      # tested with the action it just changed. `coverage-action` below guarantees
+      # tested with the action it just changed. `actions` below guarantees
       # dist/index.js matches src/, so this runs the built bundle from this PR.
       uses: ./apps/CodeCoverage/action
       with:
@@ -342,25 +342,28 @@ jobs:
   # One check that is green only when every job is, under the name the single job used to carry.
   pull-request:
     name: pull-request
-    needs: [build, angular, tests, coverage, coverage-action, dependency-action]
+    needs: [build, angular, tests, coverage, actions]
     if: always()
     runs-on: ubuntu-latest
     steps:
     - name: Every job passed
       run: |
-        echo 'build=${{ needs.build.result }} angular=${{ needs.angular.result }} tests=${{ needs.tests.result }} coverage=${{ needs.coverage.result }} coverage-action=${{ needs.coverage-action.result }} dependency-action=${{ needs.dependency-action.result }}'
+        echo 'build=${{ needs.build.result }} angular=${{ needs.angular.result }} tests=${{ needs.tests.result }} coverage=${{ needs.coverage.result }} actions=${{ needs.actions.result }}'
         if ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped') }}; then
           echo "::error::A job failed, was cancelled or was skipped."
           exit 1
         fi
 
+  # The two committed action bundles, one job: each took ~30 s, and a public repository runs at most 20
+  # jobs at once (at 22, a Spark shard waited 2.3 min for a runner, run 39827710856).
+  #
   # The upload action's source lives in this repository (docs/coverage_action_home_PRD.md).
   # `dist/index.js` is committed and is what `runs.main` executes, so a PR that
   # edits src/ without rebuilding would ship nothing -- this job is what makes
   # that impossible to merge. It also runs the action's own suites, which the
   # action never had in CI while it lived in MintPlayer/github-actions.
-  coverage-action:
-    name: coverage-upload action
+  actions:
+    name: action bundles
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -372,7 +375,7 @@ jobs:
     # one place shared with the five other actions in MintPlayer/github-actions.
     # mode: verify rebuilds and fails on drift; the master workflow uses
     # mode: push to commit the rebuilt bundle.
-    - name: Build and verify the bundle
+    - name: Build and verify the upload action's bundle
       uses: MintPlayer/github-actions/compile-ts-action@main
       with:
         working-directory: apps/CodeCoverage/action
@@ -387,23 +390,14 @@ jobs:
     # server speaking the documented contract. The unit tests import src/, so
     # they all pass against a bundle built from the wrong entry point -- an
     # action that exits 0 having uploaded nothing. Only this catches that.
-    - name: Smoke-test the built bundle
+    - name: Smoke-test the upload action's bundle
       working-directory: apps/CodeCoverage/action
       run: npm run test:bundle
 
-  # The dependency-update action (docs/code-coverage/dependency-updates-PRD.md §13.11.2), the same
-  # guarantee: its committed dist/index.js is what the template callers run, so a src/ change without a
-  # rebuild must not merge. Its unit and bundle tests also run in test.yml's "Other suites".
-  dependency-action:
-    name: dependency-update action
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v7
-
-    - name: Build and verify the bundle
+    # The dependency-update action (docs/code-coverage/dependency-updates-PRD.md §13.11.2), the same
+    # guarantee: its committed dist/index.js is what the template callers run, so a src/ change without a
+    # rebuild must not merge. Its unit and bundle tests also run in test.yml's "Angular suites".
+    - name: Build and verify the dependency-update action's bundle
       uses: MintPlayer/github-actions/compile-ts-action@main
       with:
         working-directory: apps/CodeCoverage/dependency-action
@@ -414,6 +408,6 @@ jobs:
         build-command: npm run build
         mode: verify
 
-    - name: Smoke-test the built bundle
+    - name: Smoke-test the dependency-update action's bundle
       working-directory: apps/CodeCoverage/dependency-action
       run: npm run test:bundle

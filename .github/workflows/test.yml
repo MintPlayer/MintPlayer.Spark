@@ -59,12 +59,13 @@ jobs:
           - { name: Other suites, artifact: other, exclude: 'MintPlayer.Spark.Tests,MintPlayer.Spark.E2E.Tests,CodeCoverage.Tests,SeoTester.Tests,MintPlayer.Spark.SourceGenerators.Tests,MintPlayer.Spark.Client.Tests,MintPlayer.Spark.Gs1.Tests,MintPlayer.Migration.Tests,CodeCoverage.Git.Tests,CodeCoverage.GitMirror.Tests,CodeCoverage.GitWriter.Tests,DemoApp.Tests,SparkId.Tests,Fleet.Tests,QnA.Tests,HR.Tests,@mintplayer/ng-spark,@spark-apps/*,@spark-demo/*,@mintplayer/coverage-upload-action,@mintplayer/dependency-update-action' }
           # The dependency-update action against real package managers and LOCAL registries
           # (docs/code-coverage/dependency-updates-PRD.md §13.11.2): its own `test-integration` target, so
-          # "Other suites" (target `test`) never runs it. One slice per ecosystem group, 15 minutes each;
+          # "Other suites" (target `test`) never runs it. Two ecosystem groups per slice, 15 minutes each;
           # the Nx cache makes an unchanged action about a minute.
-          - { name: 'dependency-action IT node+dotnet', artifact: dep-it-node-dotnet, projects: '@mintplayer/dependency-update-action', target: test-integration, itGroup: 'node+dotnet', timeout: 15 }
-          - { name: 'dependency-action IT jvm', artifact: dep-it-jvm, projects: '@mintplayer/dependency-update-action', target: test-integration, itGroup: 'jvm', timeout: 15 }
-          - { name: 'dependency-action IT python+go+rust+php', artifact: dep-it-python-go-rust-php, projects: '@mintplayer/dependency-update-action', target: test-integration, itGroup: 'python+go+rust+php', timeout: 15 }
-          - { name: 'dependency-action IT docker+renovate', artifact: dep-it-docker-renovate, projects: '@mintplayer/dependency-update-action', target: test-integration, itGroup: 'docker+renovate', timeout: 15 }
+          # Two slices, not four: a public repository runs at most 20 jobs at once, and at 22 a Spark shard
+          # waited 2.3 min for a runner and set the run's pace (run 39827710856). The four groups took
+          # 1.5-2 min each there.
+          - { name: 'dependency-action IT node+dotnet, jvm', artifact: dep-it-node-dotnet-jvm, projects: '@mintplayer/dependency-update-action', target: test-integration, itGroup: 'node+dotnet,jvm', timeout: 15 }
+          - { name: 'dependency-action IT python+go+rust+php, docker+renovate', artifact: dep-it-python-go-rust-php-docker-renovate, projects: '@mintplayer/dependency-update-action', target: test-integration, itGroup: 'python+go+rust+php,docker+renovate', timeout: 15 }
 
     steps:
     - name: Checkout
@@ -82,7 +83,7 @@ jobs:
     # The package managers ubuntu-latest lacks, at the versions the S13/S14 spikes ran. npm, yarn,
     # dotnet, java/maven/gradle, go, cargo, php/composer and docker are on the image already.
     - name: Integration toolchains
-      if: matrix.itGroup == 'node+dotnet' || matrix.itGroup == 'python+go+rust+php'
+      if: contains(matrix.itGroup, 'node+dotnet') || contains(matrix.itGroup, 'python+go+rust+php')
       run: |
         npm install -g pnpm@10.18.0 --ignore-scripts
         pipx install uv==0.13.1

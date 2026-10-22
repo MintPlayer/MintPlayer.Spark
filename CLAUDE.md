@@ -72,6 +72,12 @@ parallel `Angular apps` job (`--exclude='*,!@spark-demo/*,!@spark-apps/*'`; `nx 
 `--projects`), and skips the `*.Tests` projects, which each test job compiles itself (`test` depends on
 `build`). Measured run 39825656950: 10.2 min push-to-green, ~2 min of it queueing.
 
+- **Keep the run at 20 concurrent jobs or fewer.** A public repository gets at most 20 runners at once,
+  and GitHub has no job priority: at 22, Spark shard 2/4 waited 2.3 min for a runner and finished last
+  (run 39827710856). The two action-bundle jobs are therefore one (`actions`), and the dependency-action
+  integration tests run as two slices of two groups (`DEP_ACTION_IT_GROUP` takes a comma-separated
+  list). A new matrix entry should join an existing job unless it is long enough to set the pace.
+
 - **Shards:** `tools/test-shard.mjs` packs the test classes into N groups by
   `tools/test-shard-weights.json` (seconds per class, for every sharded project). Shards 1..N-1 run their classes and shard N runs
   everything else, so a new class can never be skipped. Unset `SPARK_TEST_SHARD` and the command runs
