@@ -1,4 +1,5 @@
 import { computed, Injectable, signal } from '@angular/core';
+import { EPlayerState } from '@mintplayer/player-provider';
 
 /** One queued medium: what plays, and the song (or artist) it came from. */
 export interface QueueItem {
@@ -22,6 +23,13 @@ export class PlayerService {
   readonly hasPrevious = computed(() => this.index() > 0);
   readonly hasNext = computed(() => this.index() < this.queue().length - 1);
   readonly queueOpen = signal(false);
+  /** Two-way bound to the video player: it reports its state here, and setting it plays or pauses. */
+  readonly state = signal(EPlayerState.unstarted);
+  readonly isPlaying = computed(() => this.state() === EPlayerState.playing);
+
+  togglePlay() {
+    if (this.current()) this.state.set(this.isPlaying() ? EPlayerState.paused : EPlayerState.playing);
+  }
 
   add(item: QueueItem) {
     this.queue.update(queue => [...queue, item]);
@@ -51,5 +59,6 @@ export class PlayerService {
   clear() {
     this.queue.set([]);
     this.index.set(-1);
+    this.state.set(EPlayerState.unstarted);
   }
 }

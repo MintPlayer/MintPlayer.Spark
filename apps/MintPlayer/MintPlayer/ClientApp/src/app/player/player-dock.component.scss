@@ -8,3 +8,13 @@
   max-width: calc(100vw - 2rem);
   overflow: hidden;
 }
+
+// Dragged by its header (cdkDragHandle).
+.player-dock-handle {
+  cursor: move;
+}
+
+// The player's iframe would swallow the pointer events of a fast drag.
+.player-dock.cdk-drag-dragging video-player {
+  pointer-events: none;
+}

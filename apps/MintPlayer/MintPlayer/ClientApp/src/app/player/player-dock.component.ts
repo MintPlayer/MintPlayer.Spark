@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { CdkDrag, CdkDragHandle } from '@angular/cdk/drag-drop';
 import { VideoPlayerComponent } from '@mintplayer/ng-video-player';
 import { EPlayerState } from '@mintplayer/player-provider';
 import { BsOffcanvasCloseDirective, BsOffcanvasContentDirective, BsOffcanvasHostComponent, OffcanvasBodyComponent, OffcanvasHeaderComponent } from '@mintplayer/ng-bootstrap/offcanvas';
@@ -12,7 +13,7 @@ import { PlayerService } from './player.service';
 /** The floating player and its queue (G7): shown while the queue has a current item. */
 @Component({
   selector: 'app-player-dock',
-  imports: [VideoPlayerComponent, BsOffcanvasHostComponent, BsOffcanvasContentDirective, BsOffcanvasCloseDirective, OffcanvasHeaderComponent, OffcanvasBodyComponent, BsCloseComponent, BsListGroupComponent, BsListGroupItemComponent, BsCardComponent, BsCardHeaderComponent, BsCardBodyComponent, BsButtonTypeDirective],
+  imports: [VideoPlayerComponent, BsOffcanvasHostComponent, BsOffcanvasContentDirective, BsOffcanvasCloseDirective, OffcanvasHeaderComponent, OffcanvasBodyComponent, BsCloseComponent, BsListGroupComponent, BsListGroupItemComponent, BsCardComponent, BsCardHeaderComponent, BsCardBodyComponent, BsButtonTypeDirective, CdkDrag, CdkDragHandle],
   templateUrl: './player-dock.component.html',
   styleUrl: './player-dock.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -22,6 +23,7 @@ export class PlayerDockComponent {
   protected readonly colors = Color;
 
   protected onStateChange(state: EPlayerState) {
+    this.player.state.set(state);
     if (state === EPlayerState.ended) this.player.next();
   }
 }

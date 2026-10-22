@@ -1,15 +1,13 @@
 @if (player.current(); as current) {
-  <bs-card class="d-block shadow player-dock">
-    <bs-card-header>Currently playing</bs-card-header>
-    <video-player [url]="current.url" [autoplay]="true" [width]="320" [height]="180" (playerStateChange)="onStateChange($event)" />
+  <bs-card class="d-block shadow player-dock" cdkDrag>
+    <bs-card-header cdkDragHandle class="player-dock-handle">Currently playing</bs-card-header>
+    <video-player [url]="current.url" [autoplay]="true" [width]="320" [height]="180" [playerState]="player.state()" (playerStateChange)="onStateChange($event)" />
     <bs-card-body>
       <div class="d-flex align-items-center gap-1">
-        <span class="text-truncate flex-grow-1 small" [title]="current.title">
-          {{ current.title }}
-          @if (current.subtitle) { <span class="text-body-secondary">· {{ current.subtitle }}</span> }
-        </span>
-        <button type="button" [color]="colors.secondary" title="Previous" aria-label="Previous" [disabled]="!player.hasPrevious()" (click)="player.previous()"><i class="bi bi-skip-start-fill"></i></button>
-        <button type="button" [color]="colors.secondary" title="Next" aria-label="Next" [disabled]="!player.hasNext()" (click)="player.next()"><i class="bi bi-skip-end-fill"></i></button>
+        <div class="flex-grow-1 small overflow-hidden">
+          <div class="text-truncate" [title]="current.title">{{ current.title }}</div>
+          @if (current.subtitle) { <div class="text-truncate text-body-secondary" [title]="current.subtitle">{{ current.subtitle }}</div> }
+        </div>
         <button type="button" [color]="colors.secondary" class="text-nowrap" title="Queue" aria-label="Queue" (click)="player.queueOpen.set(true)"><i class="bi bi-music-note-list"></i> {{ player.queue().length }}</button>
         <button type="button" [color]="colors.secondary" title="Stop and clear the queue" aria-label="Stop and clear the queue" (click)="player.clear()"><i class="bi bi-x-lg"></i></button>
       </div>
@@ -20,10 +18,17 @@
 <bs-offcanvas position="end" [isVisible]="player.queueOpen()" (isVisibleChange)="player.queueOpen.set($event)" (backdropClick)="player.queueOpen.set(false)">
   <div *bsOffcanvasContent>
     <bs-offcanvas-header>
-      <h5 class="offcanvas-title">Queue</h5>
+      <h5 class="offcanvas-title me-auto mb-0">Queue</h5>
       <bs-close bsOffcanvasClose />
     </bs-offcanvas-header>
     <bs-offcanvas-body>
+      <div class="d-flex justify-content-center gap-2 mb-3">
+        <button type="button" [color]="colors.secondary" title="Previous" aria-label="Previous" [disabled]="!player.hasPrevious()" (click)="player.previous()"><i class="bi bi-skip-start-fill"></i></button>
+        <button type="button" [color]="colors.primary" [title]="player.isPlaying() ? 'Pause' : 'Play'" [attr.aria-label]="player.isPlaying() ? 'Pause' : 'Play'" [disabled]="!player.current()" (click)="player.togglePlay()">
+          <i class="bi" [class.bi-pause-fill]="player.isPlaying()" [class.bi-play-fill]="!player.isPlaying()"></i>
+        </button>
+        <button type="button" [color]="colors.secondary" title="Next" aria-label="Next" [disabled]="!player.hasNext()" (click)="player.next()"><i class="bi bi-skip-end-fill"></i></button>
+      </div>
       <bs-list-group>
         @for (item of player.queue(); track $index; let i = $index) {
           <bs-list-group-item [active]="i === player.index()">
