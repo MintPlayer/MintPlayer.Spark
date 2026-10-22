@@ -69,7 +69,8 @@ were two causes. First, the app projects' `implicitDependencies` on their Client
 build Angular production bundles. Second, "Other suites" took every new project. The implicit deps are
 gone; the E2E host still builds a stale bundle itself. "build + verify" now leaves the Angular apps to a
 parallel `Angular apps` job (`--exclude='*,!@spark-demo/*,!@spark-apps/*'`; `nx affected` ignores
-`--projects`).
+`--projects`), and skips the `*.Tests` projects, which each test job compiles itself (`test` depends on
+`build`). Measured run 39825656950: 10.2 min push-to-green, ~2 min of it queueing.
 
 - **Shards:** `tools/test-shard.mjs` packs the test classes into N groups by
   `tools/test-shard-weights.json` (seconds per class, for every sharded project). Shards 1..N-1 run their classes and shard N runs

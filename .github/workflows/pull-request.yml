@@ -62,8 +62,10 @@ jobs:
 
     # Everything affected except the Angular apps, whose production builds run in parallel in the
     # `angular` job below. Together they took ~9 min of this job (PR #531).
+    # And except the test projects: every test job compiles its own (`test` depends on `build`), and no
+    # verification below needs them. Their builds were the last 2.2 of this step's 5.6 min (run 39825656950).
     - name: Build affected projects (Nx)
-      run: npx nx affected --target=build --exclude='@spark-demo/*,@spark-apps/*'
+      run: npx nx affected --target=build --exclude='@spark-demo/*,@spark-apps/*,*.Tests'
 
     # The GS1 core is written once, in libs/gs1/MintPlayer.Spark.Gs1/pg (Polyglot). Its C# is generated at
     # build time, but the TypeScript copy in ng-spark's scanning entry point is committed, so check that it
