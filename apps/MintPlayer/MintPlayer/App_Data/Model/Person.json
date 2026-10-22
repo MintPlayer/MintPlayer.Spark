@@ -16,7 +16,7 @@
         "dataType": "date",
         "isRequired": false,
         "isReadOnly": false,
-        "order": 3,
+        "order": 4,
         "isArray": false,
         "showedOn": "Query, PersistentObject",
         "rules": []
@@ -27,7 +27,7 @@
         "dataType": "datetime",
         "isRequired": false,
         "isReadOnly": true,
-        "order": 8,
+        "order": 9,
         "isArray": false,
         "showedOn": "None",
         "rules": []
@@ -38,7 +38,7 @@
         "dataType": "string",
         "isRequired": false,
         "isReadOnly": true,
-        "order": 7,
+        "order": 8,
         "isArray": false,
         "showedOn": "None",
         "rules": []
@@ -49,7 +49,7 @@
         "dataType": "datetime",
         "isRequired": false,
         "isReadOnly": true,
-        "order": 12,
+        "order": 13,
         "isArray": false,
         "showedOn": "None",
         "rules": []
@@ -60,7 +60,7 @@
         "dataType": "string",
         "isRequired": false,
         "isReadOnly": true,
-        "order": 13,
+        "order": 14,
         "isArray": false,
         "showedOn": "None",
         "rules": []
@@ -71,7 +71,7 @@
         "dataType": "string",
         "isRequired": false,
         "isReadOnly": true,
-        "order": 14,
+        "order": 15,
         "isArray": false,
         "showedOn": "None",
         "rules": []
@@ -82,7 +82,7 @@
         "dataType": "date",
         "isRequired": false,
         "isReadOnly": false,
-        "order": 4,
+        "order": 5,
         "isArray": false,
         "showedOn": "Query, PersistentObject",
         "rules": []
@@ -104,7 +104,7 @@
         "dataType": "string",
         "isRequired": false,
         "isReadOnly": true,
-        "order": 15,
+        "order": 3,
         "isArray": false,
         "showedOn": "Query",
         "rules": []
@@ -115,7 +115,7 @@
         "dataType": "boolean",
         "isRequired": false,
         "isReadOnly": true,
-        "order": 11,
+        "order": 12,
         "isArray": false,
         "showedOn": "None",
         "rules": []
@@ -137,7 +137,7 @@
         "dataType": "AsDetail",
         "isRequired": false,
         "isReadOnly": false,
-        "order": 5,
+        "order": 6,
         "asDetailType": "MintPlayer.Entities.Medium",
         "isArray": true,
         "inQueryType": false,
@@ -150,7 +150,7 @@
         "dataType": "datetime",
         "isRequired": false,
         "isReadOnly": true,
-        "order": 10,
+        "order": 11,
         "isArray": false,
         "showedOn": "None",
         "rules": []
@@ -161,7 +161,7 @@
         "dataType": "string",
         "isRequired": false,
         "isReadOnly": true,
-        "order": 9,
+        "order": 10,
         "isArray": false,
         "showedOn": "None",
         "rules": []
@@ -172,7 +172,7 @@
         "dataType": "Reference",
         "isRequired": false,
         "isReadOnly": false,
-        "order": 6,
+        "order": 7,
         "query": "GetTags",
         "referenceType": "MintPlayer.Entities.Tag",
         "isArray": true,
