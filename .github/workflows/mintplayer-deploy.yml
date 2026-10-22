@@ -164,10 +164,16 @@ jobs:
             docker network inspect "$net" > /dev/null 2>&1 || docker network create --internal "$net" > /dev/null 2>&1 || docker network inspect "$net" > /dev/null
             [ "$(docker network inspect -f '{{.Internal}}' "$net")" = "true" ] || { echo "::error::the network $net exists but is not internal: remove it (docker network rm $net) once nothing uses it, then redeploy"; exit 1; }
           done
-          # The database and the mail relay are CodeCoverage's: refuse (before touching the running stack) until its
-          # coverage-raven and coverage-smtp are on the shared networks, i.e. until CodeCoverage was deployed with the compose file that joins them.
-          docker network inspect mintplayer-raven --format '{{range .Containers}}{{.Name}} {{end}}' | grep -q 'coverage-raven' || { echo "::error::coverage-raven is not on the network mintplayer-raven — deploy CodeCoverage first"; exit 1; }
-          docker network inspect mintplayer-mail --format '{{range .Containers}}{{.Name}} {{end}}' | grep -q 'coverage-smtp' || { echo "::error::coverage-smtp is not on the network mintplayer-mail — deploy CodeCoverage first"; exit 1; }
+          # The database and the mail relay are CodeCoverage's. Its compose file joins them to the shared networks, but only
+          # once CodeCoverage is redeployed with it; until then they are attached here, under their service names, so the
+          # order of the two deploys does not matter. Idempotent; CodeCoverage's next up attaches them the same way.
+          # Refused (before touching the running stack) when CodeCoverage is not running at all.
+          for pair in coverage-raven:mintplayer-raven coverage-smtp:mintplayer-mail; do
+            svc=${pair%%:*}; net=${pair#*:}
+            id=$(docker ps -q --filter label=com.docker.compose.project=code-coverage --filter "label=com.docker.compose.service=$svc" | head -n 1)
+            [ -n "$id" ] || { echo "::error::CodeCoverage's $svc is not running"; exit 1; }
+            docker network inspect "$net" --format '{{range .Containers}}{{.Name}} {{end}}' | grep -q "$svc" || docker network connect --alias "$svc" "$net" "$id"
+          done
 
           rm -f docker-compose.yml
           curl -sf -H "Authorization: token $GITHUB_TOKEN" -o docker-compose.yml \

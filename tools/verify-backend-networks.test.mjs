@@ -194,8 +194,11 @@ test('mintplayer.com\'s networks are external in both its file and CodeCoverage\
   }
   assert.equal(blocks[0], blocks[1], 'the same block in both deploys');
   const mp = read(MP_DEPLOY);
-  assert.match(mp, /docker network inspect mintplayer-raven --format '\{\{range \.Containers\}\}\{\{\.Name\}\} \{\{end\}\}' \| grep -q 'coverage-raven' \|\| \{ echo "::error::/);
-  assert.match(mp, /docker network inspect mintplayer-mail --format '\{\{range \.Containers\}\}\{\{\.Name\}\} \{\{end\}\}' \| grep -q 'coverage-smtp' \|\| \{ echo "::error::/);
+  // No deploy order: the MintPlayer deploy attaches CodeCoverage's running containers itself, under the service names.
+  assert.match(mp, /for pair in coverage-raven:mintplayer-raven coverage-smtp:mintplayer-mail; do/);
+  assert.match(mp, /label=com\.docker\.compose\.project=code-coverage/);
+  assert.match(mp, /docker network connect --alias "\$svc" "\$net" "\$id"/);
+  assert.ok(mp.indexOf('docker network connect') < mp.indexOf('docker compose --env-file .env down'), 'attached before down');
   assert.match(read(CC_DEPLOY), /register_app_cert mintplayer MintPlayer \/var\/www\/mintplayer\/raven-certs\/mintplayer\.crt/, 'the CodeCoverage deploy registers the app\'s certificate for its database');
 });
 
