@@ -1023,5 +1023,12 @@
         }
       }
     }
+  },
+  "home": {
+    "tagline": {
+      "en": "Music videos, lyrics and playlists.",
+      "fr": "Clips musicaux, paroles et listes de lecture.",
+      "nl": "Videoclips, songteksten en afspeellijsten."
+    }
   }
 }

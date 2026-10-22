@@ -4,6 +4,8 @@
 		<Nullable>enable</Nullable>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<IsPackable>false</IsPackable>
+		<!-- The external-login client secrets live here locally; in production in /var/www/mintplayer/.env. -->
+		<UserSecretsId>mintplayer-app-3f9a2c61</UserSecretsId>
 		<SpaRoot>ClientApp\</SpaRoot>
 	</PropertyGroup>
 

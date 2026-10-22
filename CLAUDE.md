@@ -10,6 +10,11 @@ Treat changes to it as production changes. Its docs are in [docs/code-coverage/]
 deployed beside CodeCoverage on the same VPS. Treat changes to it as production changes. Its docs are in
 [docs/seotester/](docs/seotester/README.md); its plan and decision log are `docs/seo_analyzer_PRD.md`.
 
+**`apps/MintPlayer`** is production as well: mintplayer.com (https 5015), rewritten from the legacy
+`MintPlayer/MintPlayer` repository and deployed on the same VPS. Its RavenDB database is `MintPlayer` on the shared
+server, and the users are the legacy site's real accounts. Its plan, decisions and log are in
+`docs/mintplayer_website_PRD.md` and `docs/mintplayer_website_plan.md`.
+
 - **`apps/SparkId`** is the demo identity provider (https 5011). HR, Fleet and QnA sign in against it,
   and Fleet validates the machine tokens it issues. Identity-provider work lands there, not in HR
   (`docs/identity_provider_platform_PRD.md`).

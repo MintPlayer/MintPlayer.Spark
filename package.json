@@ -19,6 +19,7 @@
     "apps/SparkId/SparkId/ClientApp",
     "apps/CodeCoverage/CodeCoverage/ClientApp",
     "apps/SeoTester/SeoTester/ClientApp",
+    "apps/MintPlayer/MintPlayer/ClientApp",
     "apps/CodeCoverage/action",
     "apps/CodeCoverage/dependency-action"
   ],
