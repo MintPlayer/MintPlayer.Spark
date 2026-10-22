@@ -3,8 +3,7 @@
   "version": "0.0.0",
   "scripts": {
     "start": "nx run @spark-apps/mint-player:serve",
-    "build": "nx run @spark-apps/mint-player:build",
-    "test": "nx run @spark-apps/mint-player:test"
+    "build": "nx run @spark-apps/mint-player:build"
   },
   "prettier": {
     "printWidth": 100,
