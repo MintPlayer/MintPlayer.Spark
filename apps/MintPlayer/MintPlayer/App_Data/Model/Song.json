@@ -102,7 +102,7 @@
         "name": "LyricsTimings",
         "dataType": "AsDetail",
         "isRequired": false,
-        "isReadOnly": false,
+        "isReadOnly": true,
         "order": 5,
         "asDetailType": "MintPlayer.Entities.LyricsTiming",
         "isArray": true,
