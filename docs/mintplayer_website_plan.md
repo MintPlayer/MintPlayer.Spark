@@ -4,7 +4,7 @@ PRD: [mintplayer_website_PRD.md](mintplayer_website_PRD.md). Everything lands in
 `feat/mintplayer-website`. Stage 0 is deployed from that branch's image before the PR merges, if needed, so
 the site can go live today. Test runs are batched at the end of each stage, never per step.
 
-Status (2026-10-22): plan and decisions committed (7ee4f332). Next: 0.2 scaffold, then 0.3 domain, then 0.4 migration port.
+Status (2026-10-22): 0.2/0.3 committed (4b642c39, 3450c067). 0.4 migration ported, its 50 tests green, the local run into `MintPlayer_Cutover` reconciled GREEN, and the dump is exported. Next: the owner approves scp + import into production `MintPlayer`, then the login checks, mail in dev, and S1.
 
 ### Log
 
@@ -29,6 +29,11 @@ Update this section at every step; it is what survives a context compaction.
   - ClientApp (`@spark-apps/mint-player`, from SeoTester): `<spark-shell>` with the language selector and auth bar, `sparkAuthRoutes` with Facebook, Google, LinkedIn, Microsoft and X plus the account page, a home page (tagline `home.tagline` and the `songs`/`artists` query cards), the PWA manifest and the legacy icons. Renderers: `media-player` (a link with a host icon, http(s) only; the real player is spike S1) and `color-swatch` (paints only `#rgb`/`#rrggbb`). `nx run @spark-apps/mint-player:build:development` is green with no warnings. The csproj has a `UserSecretsId` for the provider secrets in dev. CLAUDE.md lists the app as production.
   - Still open in 0.2/0.3: mail in dev.
   - 0.4 decisions while porting the migration (`apps/MintPlayer/MintPlayer.Migration`): users go to `SparkUsers/{guid:D}` as `SparkUser`. Roles become `Roles[]` only, with no extra `group` claim, because `AgentStoreGroupMembership` and the cookie read `Roles`. `AuthenticatorKey` and other tokens are copied verbatim, since `UserStore.Secrets` reads values without the `sdp1:` prefix as plaintext. `PictureUrl` is dropped (SparkUser has no such field) and reported. `OldId` is gone. Embedded rows get deterministic ids derived from the document id and the legacy row, so re-runs and `--verify-only` reproduce every byte. `BlogPost` becomes a real library entity now (no persistent-object wiring until step 9).
+  - 0.4 delivery (owner, 2026-10-22: "let the migration run locally on localhost:8080 - export the database contents - scp the file over to my vps and import the file in that database"): production never runs the migration or sees the SQL snapshot. The migration deploys **no indexes**, because Spark deploys the app's own at startup, so the dump carries data only.
+    - Evidence, local run into `MintPlayer_Cutover`: 1180 documents, 776 email reservations, RECONCILER GREEN. Every count check matched the source, round-trip 1180/1180 SHA-256 equal, 1176 references with 0 unresolved, 20 karaoke timelines with 0 mismatches. 77 issues, all expected (2 Warning: `medium-empty` x2, `bare-datedelete-live` x1).
+    - Export: the Raven client smuggler (`Documents | CompareExchange | CounterGroups | Attachments`) gave 1180 documents and 776 compare-exchange values in a 281 KB `.ravendbdump`. The raw `/smuggler/export` endpoint via curl returned only a `SmugglerResult` with no data.
+    - `Microsoft.Data.SqlClient` 6.1.1 became 7.1.1, and `System.Security.Cryptography.Pkcs` is pinned to 10.0.13: 7.1.1 still brings 9.0.18, which is flagged by GHSA-846f-f764-76mx (high). `SPARK039` is suppressed in the tool, since it is not a Spark host.
+    - The tests use MintPlayer.Assertions, because `Assert` is banned repo-wide (RS0030).
 
 ## Stage 0: live today
 
