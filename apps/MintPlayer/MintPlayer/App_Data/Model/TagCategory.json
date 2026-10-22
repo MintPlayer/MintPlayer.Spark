@@ -1,0 +1,142 @@
+{
+  "$schema": "https://schemas.spark.mintplayer.com/v7/model.schema.json",
+  "persistentObject": {
+    "id": "6d49e1af-ad46-4aae-b9ed-1722e872553c",
+    "name": "TagCategory",
+    "clrType": "MintPlayer.Entities.TagCategory",
+    "breadcrumb": "{Description}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "9cdde7b1-6151-439f-be7b-0c300ffe160f",
+        "name": "Color",
+        "dataType": "color",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "renderer": "color-swatch"
+      },
+      {
+        "id": "fb3740d9-de45-4eeb-883c-f04f1ed23c24",
+        "name": "CreatedAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "None",
+        "rules": []
+      },
+      {
+        "id": "6da0ec22-2173-4e88-940f-e771757db24e",
+        "name": "CreatedBy",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "None",
+        "rules": []
+      },
+      {
+        "id": "77ba4dbf-d9ec-4e9f-af33-5a8e02f95ee5",
+        "name": "DeletedAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "fcc50a87-69ac-426b-a1a2-72204ae4946d",
+        "name": "DeletedBy",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 9,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "039d8ec8-317f-4f53-b3fa-683477f94da8",
+        "name": "DeleteReason",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 10,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "07a44be1-44e7-4bea-8a46-eeb5d518ef9e",
+        "name": "Description",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "f2a8d1e9-362d-4d46-9c48-e719485c8b54",
+        "name": "IsDeleted",
+        "dataType": "boolean",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "8dbf49fb-4b46-48f4-9f89-5b6e22279f8e",
+        "name": "ModifiedAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "None",
+        "rules": []
+      },
+      {
+        "id": "a41644c9-de86-4b8d-b91b-18fc8c8903f7",
+        "name": "ModifiedBy",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "None",
+        "rules": []
+      }
+    ],
+    "queries": [
+      "category-tags"
+    ]
+  },
+  "queries": [
+    {
+      "id": "a5af75a9-811d-49bb-b25f-6e56a83c1764",
+      "name": "GetTagCategories",
+      "source": "Database.TagCategories",
+      "sortColumns": [
+        {
+          "property": "Description",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "TagCategory"
+    }
+  ]
+}

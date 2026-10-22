@@ -1,0 +1,40 @@
+{
+  "$schema": "https://schemas.spark.mintplayer.com/v7/model.schema.json",
+  "persistentObject": {
+    "id": "376abbc7-6194-4b0f-b525-3d19336449a1",
+    "name": "Medium",
+    "clrType": "MintPlayer.Entities.Medium",
+    "breadcrumb": "{Value}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "eb71f4e0-036f-499e-a2eb-534fdc187e41",
+        "name": "TypeId",
+        "dataType": "Reference",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 2,
+        "query": "GetMediumTypes",
+        "referenceType": "MintPlayer.Entities.MediumType",
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "d9ed37c4-16cc-428b-ad2d-9e0cd84bd584",
+        "name": "Value",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "renderer": "media-player"
+      }
+    ],
+    "queries": []
+  },
+  "queries": []
+}

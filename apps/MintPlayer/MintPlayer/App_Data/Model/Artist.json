@@ -1,0 +1,203 @@
+{
+  "$schema": "https://schemas.spark.mintplayer.com/v7/model.schema.json",
+  "persistentObject": {
+    "id": "e2ab02ca-c453-47c2-9f69-bcd6ab2401a1",
+    "name": "Artist",
+    "clrType": "MintPlayer.Entities.Artist",
+    "breadcrumb": "{Name}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "168f9961-97cb-460e-8d35-89c479f33279",
+        "name": "CreatedAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "None",
+        "rules": []
+      },
+      {
+        "id": "b3270859-5d9f-4e42-abd2-6d21a6256aa9",
+        "name": "CreatedBy",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "None",
+        "rules": []
+      },
+      {
+        "id": "e94aa957-eebd-43c9-ae49-1ba774ff871f",
+        "name": "DeletedAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 12,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "259413a0-9c1c-4fae-944f-7cf99747d60e",
+        "name": "DeletedBy",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 13,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "9683f0b8-d56c-4f1e-b3dc-637413449502",
+        "name": "DeleteReason",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 14,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "0a1f3438-869f-4cd6-b2e3-7dd56e9f89e1",
+        "name": "IsDeleted",
+        "dataType": "boolean",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 11,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "d73d0366-e443-4f67-9add-e8e4af1050c1",
+        "name": "Media",
+        "dataType": "AsDetail",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 5,
+        "asDetailType": "MintPlayer.Entities.Medium",
+        "isArray": true,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "c32d8746-4703-45a7-b8c7-6970d2ffbe30",
+        "name": "Members",
+        "dataType": "AsDetail",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 4,
+        "asDetailType": "MintPlayer.Entities.ArtistMember",
+        "isArray": true,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "feadc44a-bdfb-4e14-ae04-561b974eed90",
+        "name": "ModifiedAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 10,
+        "isArray": false,
+        "showedOn": "None",
+        "rules": []
+      },
+      {
+        "id": "f31a7cc4-1214-4b84-9ad5-5790c694698f",
+        "name": "ModifiedBy",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 9,
+        "isArray": false,
+        "showedOn": "None",
+        "rules": []
+      },
+      {
+        "id": "5aab9cc1-b3a1-4834-8e6f-e935db4b3734",
+        "name": "Name",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "3b52fa10-a7ca-4b9b-a5ff-4945aeb8831e",
+        "name": "TagIds",
+        "dataType": "Reference",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 6,
+        "query": "GetTags",
+        "referenceType": "MintPlayer.Entities.Tag",
+        "isArray": true,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "80f66f3a-bea8-45dd-bbda-f7260422dd50",
+        "name": "YearQuit",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "4a9ab53a-a2a8-4934-9d5a-f0e683965d2c",
+        "name": "YearStarted",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": [
+      "artist-songs"
+    ]
+  },
+  "queries": [
+    {
+      "id": "09111a07-80e4-4df8-8a8a-7c01bfc2441d",
+      "name": "GetArtists",
+      "source": "Database.Artists",
+      "sortColumns": [
+        {
+          "property": "Name",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "Artist"
+    },
+    {
+      "id": "9bd5776e-c9b1-496b-b0d8-6ebb4806b93f",
+      "name": "Person_Artists",
+      "source": "Custom.Person_Artists",
+      "alias": "person-artists",
+      "sortColumns": [
+        {
+          "property": "Name",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "Artist"
+    }
+  ]
+}

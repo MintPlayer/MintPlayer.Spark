@@ -927,7 +927,7 @@ public class GenerateIndexGenerator : IncrementalGenerator
                 Name = companionName,
                 TypeDisplay = searchable
                     ? typeDisplay
-                    : $"global::MintPlayer.Spark.Abstractions.SparkIndexValue<{typeDisplay}>",
+                    : $"global::MintPlayer.Spark.Abstractions.SparkIndexValue<{typeDisplay}>?",
                 NeedsDefaultInitializer = searchable
                     && property.Type.IsReferenceType
                     && property.Type.NullableAnnotation != NullableAnnotation.Annotated,
@@ -1093,7 +1093,9 @@ public class GenerateIndexGenerator : IncrementalGenerator
     private static IndexPropertyInfo WrapperCompanionFor(IndexPropertyInfo field, List<string> attributes) => new()
     {
         Name = IndexNaming.WrapperCompanion(field.Name),
-        TypeDisplay = $"global::MintPlayer.Spark.Abstractions.SparkIndexValue<{field.TypeDisplay}>",
+        // Nullable: the wrapper is a class and the view declares no initializer, so without it every
+        // view with a DateTimeOffset raises CS8618 under the generated file's #nullable enable.
+        TypeDisplay = $"global::MintPlayer.Spark.Abstractions.SparkIndexValue<{field.TypeDisplay}>?",
         NeedsDefaultInitializer = false,
         MapExpression =
             $"new global::MintPlayer.Spark.Abstractions.SparkIndexValue<{field.TypeDisplay}> {{ V = {field.MapExpression} }}",

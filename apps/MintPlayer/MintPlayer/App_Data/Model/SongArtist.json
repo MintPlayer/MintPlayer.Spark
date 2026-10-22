@@ -1,0 +1,39 @@
+{
+  "$schema": "https://schemas.spark.mintplayer.com/v7/model.schema.json",
+  "persistentObject": {
+    "id": "ff383433-42db-4b56-a365-9e2f6cf00bd2",
+    "name": "SongArtist",
+    "clrType": "MintPlayer.Entities.SongArtist",
+    "breadcrumb": "{ArtistId}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "90deffb6-161d-4f05-805e-c26c3ad0829b",
+        "name": "ArtistId",
+        "dataType": "Reference",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 1,
+        "query": "GetArtists",
+        "referenceType": "MintPlayer.Entities.Artist",
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "2f8f7d73-e749-4c41-ad91-9c06cc3f7fbe",
+        "name": "Credited",
+        "dataType": "boolean",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": []
+}

@@ -1,0 +1,1027 @@
+{
+  "$schema": "https://schemas.spark.mintplayer.com/v7/translations.schema.json",
+  "app": {
+    "title": {
+      "en": "MintPlayer",
+      "fr": "MintPlayer",
+      "nl": "MintPlayer"
+    }
+  },
+  "model": {
+    "Artist": {
+      "attributes": {
+        "CreatedAt": {
+          "label": {
+            "en": "Created",
+            "fr": "Créé",
+            "nl": "Aangemaakt"
+          }
+        },
+        "CreatedBy": {
+          "label": {
+            "en": "Created by",
+            "fr": "Créé par",
+            "nl": "Aangemaakt door"
+          }
+        },
+        "DeleteReason": {
+          "label": {
+            "en": "Delete reason",
+            "fr": "Motif de suppression",
+            "nl": "Reden van verwijdering"
+          }
+        },
+        "DeletedAt": {
+          "label": {
+            "en": "Deleted at",
+            "fr": "Supprimé le",
+            "nl": "Verwijderd op"
+          }
+        },
+        "DeletedBy": {
+          "label": {
+            "en": "Deleted by",
+            "fr": "Supprimé par",
+            "nl": "Verwijderd door"
+          }
+        },
+        "IsDeleted": {
+          "label": {
+            "en": "Deleted",
+            "fr": "Supprimé",
+            "nl": "Verwijderd"
+          }
+        },
+        "Media": {
+          "description": {
+            "en": "Links to this subject elsewhere: YouTube, Spotify, Wikipedia, the official site."
+          },
+          "label": {
+            "en": "Media",
+            "fr": "Médias",
+            "nl": "Media"
+          }
+        },
+        "Members": {
+          "label": {
+            "en": "Members",
+            "fr": "Membres",
+            "nl": "Leden"
+          }
+        },
+        "ModifiedAt": {
+          "label": {
+            "en": "Modified",
+            "fr": "Modifié",
+            "nl": "Gewijzigd"
+          }
+        },
+        "ModifiedBy": {
+          "label": {
+            "en": "Modified by",
+            "fr": "Modifié par",
+            "nl": "Gewijzigd door"
+          }
+        },
+        "Name": {
+          "label": {
+            "en": "Name",
+            "fr": "Nom",
+            "nl": "Naam"
+          }
+        },
+        "TagIds": {
+          "label": {
+            "en": "Tags",
+            "fr": "Tags",
+            "nl": "Tags"
+          }
+        },
+        "YearQuit": {
+          "label": {
+            "en": "Quit",
+            "fr": "Fin",
+            "nl": "Gestopt"
+          }
+        },
+        "YearStarted": {
+          "label": {
+            "en": "Started",
+            "fr": "Début",
+            "nl": "Gestart"
+          }
+        }
+      },
+      "label": {
+        "en": "Artist",
+        "fr": "Artiste",
+        "nl": "Artiest"
+      }
+    },
+    "ArtistMember": {
+      "attributes": {
+        "Active": {
+          "description": {
+            "en": "Whether the person is a current member."
+          },
+          "label": {
+            "en": "Active",
+            "fr": "Actif",
+            "nl": "Actief"
+          }
+        },
+        "PersonId": {
+          "label": {
+            "en": "Person",
+            "fr": "Personne",
+            "nl": "Persoon"
+          }
+        }
+      },
+      "label": {
+        "en": "Member",
+        "fr": "Membre",
+        "nl": "Lid"
+      }
+    },
+    "LyricsTiming": {
+      "attributes": {
+        "MediumUrl": {
+          "label": {
+            "en": "Medium",
+            "fr": "Média",
+            "nl": "Medium"
+          }
+        },
+        "StartTimes": {
+          "label": {
+            "en": "Start times",
+            "fr": "Débuts",
+            "nl": "Starttijden"
+          }
+        }
+      },
+      "label": {
+        "en": "Lyrics timing",
+        "fr": "Synchronisation",
+        "nl": "Tijdstippen"
+      }
+    },
+    "Medium": {
+      "attributes": {
+        "TypeId": {
+          "label": {
+            "en": "Type",
+            "fr": "Type",
+            "nl": "Type"
+          }
+        },
+        "Value": {
+          "label": {
+            "en": "Link",
+            "fr": "Lien",
+            "nl": "Link"
+          }
+        }
+      },
+      "label": {
+        "en": "Medium",
+        "fr": "Média",
+        "nl": "Medium"
+      }
+    },
+    "MediumType": {
+      "attributes": {
+        "CreatedAt": {
+          "label": {
+            "en": "Created",
+            "fr": "Créé",
+            "nl": "Aangemaakt"
+          }
+        },
+        "CreatedBy": {
+          "label": {
+            "en": "Created by",
+            "fr": "Créé par",
+            "nl": "Aangemaakt door"
+          }
+        },
+        "DeleteReason": {
+          "label": {
+            "en": "Delete reason",
+            "fr": "Motif de suppression",
+            "nl": "Reden van verwijdering"
+          }
+        },
+        "DeletedAt": {
+          "label": {
+            "en": "Deleted at",
+            "fr": "Supprimé le",
+            "nl": "Verwijderd op"
+          }
+        },
+        "DeletedBy": {
+          "label": {
+            "en": "Deleted by",
+            "fr": "Supprimé par",
+            "nl": "Verwijderd door"
+          }
+        },
+        "Description": {
+          "label": {
+            "en": "Description",
+            "fr": "Description",
+            "nl": "Omschrijving"
+          }
+        },
+        "IsDeleted": {
+          "label": {
+            "en": "Deleted",
+            "fr": "Supprimé",
+            "nl": "Verwijderd"
+          }
+        },
+        "ModifiedAt": {
+          "label": {
+            "en": "Modified",
+            "fr": "Modifié",
+            "nl": "Gewijzigd"
+          }
+        },
+        "ModifiedBy": {
+          "label": {
+            "en": "Modified by",
+            "fr": "Modifié par",
+            "nl": "Gewijzigd door"
+          }
+        },
+        "Name": {
+          "label": {
+            "en": "Name",
+            "fr": "Nom",
+            "nl": "Naam"
+          }
+        },
+        "Visible": {
+          "description": {
+            "en": "Whether media of this type are shown to visitors. Hidden types (legacy 15, the lyrics-source links) stay as data and are shown to editors only."
+          },
+          "label": {
+            "en": "Visible",
+            "fr": "Visible",
+            "nl": "Zichtbaar"
+          }
+        }
+      },
+      "label": {
+        "en": "Medium type",
+        "fr": "Type de média",
+        "nl": "Mediumtype"
+      }
+    },
+    "Person": {
+      "attributes": {
+        "Born": {
+          "label": {
+            "en": "Born",
+            "fr": "Né(e)",
+            "nl": "Geboren"
+          }
+        },
+        "CreatedAt": {
+          "label": {
+            "en": "Created",
+            "fr": "Créé",
+            "nl": "Aangemaakt"
+          }
+        },
+        "CreatedBy": {
+          "label": {
+            "en": "Created by",
+            "fr": "Créé par",
+            "nl": "Aangemaakt door"
+          }
+        },
+        "DeleteReason": {
+          "label": {
+            "en": "Delete reason",
+            "fr": "Motif de suppression",
+            "nl": "Reden van verwijdering"
+          }
+        },
+        "DeletedAt": {
+          "label": {
+            "en": "Deleted at",
+            "fr": "Supprimé le",
+            "nl": "Verwijderd op"
+          }
+        },
+        "DeletedBy": {
+          "label": {
+            "en": "Deleted by",
+            "fr": "Supprimé par",
+            "nl": "Verwijderd door"
+          }
+        },
+        "Died": {
+          "label": {
+            "en": "Died",
+            "fr": "Décédé(e)",
+            "nl": "Overleden"
+          }
+        },
+        "FirstName": {
+          "label": {
+            "en": "First name",
+            "fr": "Prénom",
+            "nl": "Voornaam"
+          }
+        },
+        "FullName": {
+          "label": {
+            "en": "Name",
+            "fr": "Nom",
+            "nl": "Naam"
+          }
+        },
+        "IsDeleted": {
+          "label": {
+            "en": "Deleted",
+            "fr": "Supprimé",
+            "nl": "Verwijderd"
+          }
+        },
+        "LastName": {
+          "label": {
+            "en": "Last name",
+            "fr": "Nom de famille",
+            "nl": "Achternaam"
+          }
+        },
+        "Media": {
+          "description": {
+            "en": "Links to this subject elsewhere: YouTube, Spotify, Wikipedia, the official site."
+          },
+          "label": {
+            "en": "Media",
+            "fr": "Médias",
+            "nl": "Media"
+          }
+        },
+        "ModifiedAt": {
+          "label": {
+            "en": "Modified",
+            "fr": "Modifié",
+            "nl": "Gewijzigd"
+          }
+        },
+        "ModifiedBy": {
+          "label": {
+            "en": "Modified by",
+            "fr": "Modifié par",
+            "nl": "Gewijzigd door"
+          }
+        },
+        "TagIds": {
+          "label": {
+            "en": "Tags",
+            "fr": "Tags",
+            "nl": "Tags"
+          }
+        }
+      },
+      "label": {
+        "en": "Person",
+        "fr": "Personne",
+        "nl": "Persoon"
+      }
+    },
+    "Playlist": {
+      "attributes": {
+        "CreatedAt": {
+          "label": {
+            "en": "Created",
+            "fr": "Créé",
+            "nl": "Aangemaakt"
+          }
+        },
+        "CreatedBy": {
+          "label": {
+            "en": "Created by",
+            "fr": "Créé par",
+            "nl": "Aangemaakt door"
+          }
+        },
+        "DeleteReason": {
+          "label": {
+            "en": "Delete reason",
+            "fr": "Motif de suppression",
+            "nl": "Reden van verwijdering"
+          }
+        },
+        "DeletedAt": {
+          "label": {
+            "en": "Deleted at",
+            "fr": "Supprimé le",
+            "nl": "Verwijderd op"
+          }
+        },
+        "DeletedBy": {
+          "label": {
+            "en": "Deleted by",
+            "fr": "Supprimé par",
+            "nl": "Verwijderd door"
+          }
+        },
+        "Description": {
+          "label": {
+            "en": "Description",
+            "fr": "Description",
+            "nl": "Omschrijving"
+          }
+        },
+        "IsDeleted": {
+          "label": {
+            "en": "Deleted",
+            "fr": "Supprimé",
+            "nl": "Verwijderd"
+          }
+        },
+        "IsPublic": {
+          "label": {
+            "en": "Public",
+            "fr": "Public",
+            "nl": "Openbaar"
+          }
+        },
+        "ModifiedAt": {
+          "label": {
+            "en": "Modified",
+            "fr": "Modifié",
+            "nl": "Gewijzigd"
+          }
+        },
+        "ModifiedBy": {
+          "label": {
+            "en": "Modified by",
+            "fr": "Modifié par",
+            "nl": "Gewijzigd door"
+          }
+        },
+        "Name": {
+          "label": {
+            "en": "Name",
+            "fr": "Nom",
+            "nl": "Naam"
+          }
+        },
+        "OwnerId": {
+          "description": {
+            "en": "The owner's SparkUser id, stamped on create and never edited."
+          },
+          "label": {
+            "en": "Owner",
+            "fr": "Propriétaire",
+            "nl": "Eigenaar"
+          }
+        },
+        "Tracks": {
+          "description": {
+            "en": "The tracks; their order is the array position."
+          },
+          "label": {
+            "en": "Tracks",
+            "fr": "Morceaux",
+            "nl": "Nummers"
+          }
+        }
+      },
+      "label": {
+        "en": "Playlist",
+        "fr": "Liste de lecture",
+        "nl": "Afspeellijst"
+      }
+    },
+    "PlaylistTrack": {
+      "attributes": {
+        "SongId": {
+          "label": {
+            "en": "Song",
+            "fr": "Chanson",
+            "nl": "Nummer"
+          }
+        }
+      },
+      "label": {
+        "en": "Track",
+        "fr": "Morceau",
+        "nl": "Nummer"
+      }
+    },
+    "Song": {
+      "attributes": {
+        "Artists": {
+          "label": {
+            "en": "Artists",
+            "fr": "Artistes",
+            "nl": "Artiesten"
+          }
+        },
+        "CreatedAt": {
+          "label": {
+            "en": "Created",
+            "fr": "Créé",
+            "nl": "Aangemaakt"
+          }
+        },
+        "CreatedBy": {
+          "label": {
+            "en": "Created by",
+            "fr": "Créé par",
+            "nl": "Aangemaakt door"
+          }
+        },
+        "DeleteReason": {
+          "label": {
+            "en": "Delete reason",
+            "fr": "Motif de suppression",
+            "nl": "Reden van verwijdering"
+          }
+        },
+        "DeletedAt": {
+          "label": {
+            "en": "Deleted at",
+            "fr": "Supprimé le",
+            "nl": "Verwijderd op"
+          }
+        },
+        "DeletedBy": {
+          "label": {
+            "en": "Deleted by",
+            "fr": "Supprimé par",
+            "nl": "Verwijderd door"
+          }
+        },
+        "IsDeleted": {
+          "label": {
+            "en": "Deleted",
+            "fr": "Supprimé",
+            "nl": "Verwijderd"
+          }
+        },
+        "Lyrics": {
+          "description": {
+            "en": "The lyrics, one line per row. null until someone adds them."
+          },
+          "label": {
+            "en": "Lyrics",
+            "fr": "Paroles",
+            "nl": "Songtekst"
+          }
+        },
+        "LyricsTimings": {
+          "description": {
+            "en": "Per-recording karaoke timing of Lyrics. Written by the timeline sync editor, which needs playback, so the attribute is hidden on the generic edit page."
+          },
+          "label": {
+            "en": "Lyrics timings",
+            "fr": "Synchronisation des paroles",
+            "nl": "Tijdstippen songtekst"
+          }
+        },
+        "Media": {
+          "description": {
+            "en": "Links to this subject elsewhere: YouTube, Spotify, Wikipedia, the official site."
+          },
+          "label": {
+            "en": "Media",
+            "fr": "Médias",
+            "nl": "Media"
+          }
+        },
+        "ModifiedAt": {
+          "label": {
+            "en": "Modified",
+            "fr": "Modifié",
+            "nl": "Gewijzigd"
+          }
+        },
+        "ModifiedBy": {
+          "label": {
+            "en": "Modified by",
+            "fr": "Modifié par",
+            "nl": "Gewijzigd door"
+          }
+        },
+        "Released": {
+          "label": {
+            "en": "Released",
+            "fr": "Sortie",
+            "nl": "Uitgebracht"
+          }
+        },
+        "TagIds": {
+          "label": {
+            "en": "Tags",
+            "fr": "Tags",
+            "nl": "Tags"
+          }
+        },
+        "Title": {
+          "label": {
+            "en": "Title",
+            "fr": "Titre",
+            "nl": "Titel"
+          }
+        }
+      },
+      "label": {
+        "en": "Song",
+        "fr": "Chanson",
+        "nl": "Nummer"
+      }
+    },
+    "SongArtist": {
+      "attributes": {
+        "ArtistId": {
+          "label": {
+            "en": "Artist",
+            "fr": "Artiste",
+            "nl": "Artiest"
+          }
+        },
+        "Credited": {
+          "description": {
+            "en": "Whether the artist is officially credited, rather than featured."
+          },
+          "label": {
+            "en": "Credited",
+            "fr": "Crédité",
+            "nl": "Vermeld"
+          }
+        }
+      },
+      "label": {
+        "en": "Artist",
+        "fr": "Artiste",
+        "nl": "Artiest"
+      }
+    },
+    "Tag": {
+      "attributes": {
+        "CategoryId": {
+          "label": {
+            "en": "Category",
+            "fr": "Catégorie",
+            "nl": "Categorie"
+          }
+        },
+        "CreatedAt": {
+          "label": {
+            "en": "Created",
+            "fr": "Créé",
+            "nl": "Aangemaakt"
+          }
+        },
+        "CreatedBy": {
+          "label": {
+            "en": "Created by",
+            "fr": "Créé par",
+            "nl": "Aangemaakt door"
+          }
+        },
+        "DeleteReason": {
+          "label": {
+            "en": "Delete reason",
+            "fr": "Motif de suppression",
+            "nl": "Reden van verwijdering"
+          }
+        },
+        "DeletedAt": {
+          "label": {
+            "en": "Deleted at",
+            "fr": "Supprimé le",
+            "nl": "Verwijderd op"
+          }
+        },
+        "DeletedBy": {
+          "label": {
+            "en": "Deleted by",
+            "fr": "Supprimé par",
+            "nl": "Verwijderd door"
+          }
+        },
+        "Description": {
+          "label": {
+            "en": "Description",
+            "fr": "Description",
+            "nl": "Omschrijving"
+          }
+        },
+        "IsDeleted": {
+          "label": {
+            "en": "Deleted",
+            "fr": "Supprimé",
+            "nl": "Verwijderd"
+          }
+        },
+        "ModifiedAt": {
+          "label": {
+            "en": "Modified",
+            "fr": "Modifié",
+            "nl": "Gewijzigd"
+          }
+        },
+        "ModifiedBy": {
+          "label": {
+            "en": "Modified by",
+            "fr": "Modifié par",
+            "nl": "Gewijzigd door"
+          }
+        },
+        "ParentId": {
+          "label": {
+            "en": "Parent",
+            "fr": "Tag parent",
+            "nl": "Bovenliggende tag"
+          }
+        }
+      },
+      "label": {
+        "en": "Tag",
+        "fr": "Tag",
+        "nl": "Tag"
+      }
+    },
+    "TagCategory": {
+      "attributes": {
+        "Color": {
+          "label": {
+            "en": "Colour",
+            "fr": "Couleur",
+            "nl": "Kleur"
+          }
+        },
+        "CreatedAt": {
+          "label": {
+            "en": "Created",
+            "fr": "Créé",
+            "nl": "Aangemaakt"
+          }
+        },
+        "CreatedBy": {
+          "label": {
+            "en": "Created by",
+            "fr": "Créé par",
+            "nl": "Aangemaakt door"
+          }
+        },
+        "DeleteReason": {
+          "label": {
+            "en": "Delete reason",
+            "fr": "Motif de suppression",
+            "nl": "Reden van verwijdering"
+          }
+        },
+        "DeletedAt": {
+          "label": {
+            "en": "Deleted at",
+            "fr": "Supprimé le",
+            "nl": "Verwijderd op"
+          }
+        },
+        "DeletedBy": {
+          "label": {
+            "en": "Deleted by",
+            "fr": "Supprimé par",
+            "nl": "Verwijderd door"
+          }
+        },
+        "Description": {
+          "label": {
+            "en": "Description",
+            "fr": "Description",
+            "nl": "Omschrijving"
+          }
+        },
+        "IsDeleted": {
+          "label": {
+            "en": "Deleted",
+            "fr": "Supprimé",
+            "nl": "Verwijderd"
+          }
+        },
+        "ModifiedAt": {
+          "label": {
+            "en": "Modified",
+            "fr": "Modifié",
+            "nl": "Gewijzigd"
+          }
+        },
+        "ModifiedBy": {
+          "label": {
+            "en": "Modified by",
+            "fr": "Modifié par",
+            "nl": "Gewijzigd door"
+          }
+        }
+      },
+      "label": {
+        "en": "Tag category",
+        "fr": "Catégorie de tags",
+        "nl": "Tagcategorie"
+      }
+    }
+  },
+  "programUnits": {
+    "artists": {
+      "en": "Artists",
+      "fr": "Artistes",
+      "nl": "Artiesten"
+    },
+    "groups": {
+      "catalog": {
+        "en": "Catalog",
+        "fr": "Catalogue",
+        "nl": "Catalogus"
+      },
+      "music": {
+        "en": "Music",
+        "fr": "Musique",
+        "nl": "Muziek"
+      },
+      "playlists": {
+        "en": "Playlists",
+        "fr": "Listes de lecture",
+        "nl": "Afspeellijsten"
+      }
+    },
+    "mediumTypes": {
+      "en": "Medium types",
+      "fr": "Types de médias",
+      "nl": "Mediumtypes"
+    },
+    "myPlaylists": {
+      "en": "My playlists",
+      "fr": "Mes listes de lecture",
+      "nl": "Mijn afspeellijsten"
+    },
+    "people": {
+      "en": "People",
+      "fr": "Personnes",
+      "nl": "Personen"
+    },
+    "publicPlaylists": {
+      "en": "Public playlists",
+      "fr": "Listes de lecture publiques",
+      "nl": "Openbare afspeellijsten"
+    },
+    "songs": {
+      "en": "Songs",
+      "fr": "Chansons",
+      "nl": "Nummers"
+    },
+    "tagCategories": {
+      "en": "Tag categories",
+      "fr": "Catégories de tags",
+      "nl": "Tagcategorieën"
+    },
+    "tags": {
+      "en": "Tags",
+      "fr": "Tags",
+      "nl": "Tags"
+    }
+  },
+  "queries": {
+    "Artist_Songs": {
+      "label": {
+        "en": "Songs",
+        "fr": "Chansons",
+        "nl": "Nummers"
+      }
+    },
+    "Category_Tags": {
+      "label": {
+        "en": "Tags",
+        "fr": "Tags",
+        "nl": "Tags"
+      }
+    },
+    "GetArtists": {
+      "label": {
+        "en": "Artists",
+        "fr": "Artistes",
+        "nl": "Artiesten"
+      }
+    },
+    "GetMediumTypes": {
+      "label": {
+        "en": "Medium types",
+        "fr": "Types de médias",
+        "nl": "Mediumtypes"
+      }
+    },
+    "GetPeople": {
+      "label": {
+        "en": "People",
+        "fr": "Personnes",
+        "nl": "Personen"
+      }
+    },
+    "GetPlaylists": {
+      "label": {
+        "en": "Playlists",
+        "fr": "Listes de lecture",
+        "nl": "Afspeellijsten"
+      }
+    },
+    "GetSongs": {
+      "label": {
+        "en": "Songs",
+        "fr": "Chansons",
+        "nl": "Nummers"
+      }
+    },
+    "GetTagCategories": {
+      "label": {
+        "en": "Tag categories",
+        "fr": "Catégories de tags",
+        "nl": "Tagcategorieën"
+      }
+    },
+    "GetTags": {
+      "label": {
+        "en": "Tags",
+        "fr": "Tags",
+        "nl": "Tags"
+      }
+    },
+    "My_Playlists": {
+      "label": {
+        "en": "My playlists",
+        "fr": "Mes listes de lecture",
+        "nl": "Mijn afspeellijsten"
+      }
+    },
+    "Person_Artists": {
+      "label": {
+        "en": "Member of",
+        "fr": "Membre de",
+        "nl": "Lid van"
+      }
+    },
+    "Public_Playlists": {
+      "label": {
+        "en": "Public playlists",
+        "fr": "Listes de lecture publiques",
+        "nl": "Openbare afspeellijsten"
+      }
+    },
+    "Tag_Children": {
+      "label": {
+        "en": "Child tags",
+        "fr": "Sous-tags",
+        "nl": "Subtags"
+      }
+    }
+  },
+  "security": {
+    "groups": {
+      "Administrator": {
+        "label": {
+          "en": "Administrator",
+          "fr": "Administrateur",
+          "nl": "Beheerder"
+        }
+      },
+      "Anonymous visitors": {
+        "label": {
+          "en": "Anonymous visitors",
+          "fr": "Visiteurs anonymes",
+          "nl": "Anonieme bezoekers"
+        }
+      },
+      "Blogger": {
+        "label": {
+          "en": "Blogger",
+          "fr": "Blogueur",
+          "nl": "Blogger"
+        }
+      },
+      "Editor": {
+        "label": {
+          "en": "Editor",
+          "fr": "Éditeur",
+          "nl": "Editor"
+        }
+      },
+      "Signed-in users": {
+        "label": {
+          "en": "Signed-in users",
+          "fr": "Utilisateurs connectés",
+          "nl": "Aangemelde gebruikers"
+        }
+      }
+    }
+  }
+}

@@ -4,7 +4,29 @@ PRD: [mintplayer_website_PRD.md](mintplayer_website_PRD.md). Everything lands in
 `feat/mintplayer-website`. Stage 0 is deployed from that branch's image before the PR merges, if needed, so
 the site can go live today. Test runs are batched at the end of each stage, never per step.
 
-Status: not started (2026-10-22).
+Status (2026-10-22): plan and decisions committed (7ee4f332). Next: 0.2 scaffold, then 0.3 domain, then 0.4 migration port.
+
+### Log
+
+Update this section at every step; it is what survives a context compaction.
+
+- **Existing local Raven data checked, not reused (2026-10-22).** localhost:8080 holds two old-branch databases:
+  - `MintPlayer_Migration`: 1156 docs, written 2026-09-27 by the old branch's migration.
+    - Subjects match the snapshot exactly: 141 songs + 145 artists + 15 people = 301 `Subjects` rows. Tags 51, categories 8, medium types 15, playlists 16 and blog posts 10 also match.
+    - Users: 752 against the snapshot's 776, so 24 accounts were registered after it was taken.
+    - It is in the **Spark 10 shape**: users sit in a `MintPlayerUsers` collection with CLR type `MintPlayer.Web.MintPlayerUser` and the fields `Bypass2faForExternalLogin` and `PictureUrl`; embedded rows (`Media`, `Artists`, `Tracks`, `Members`) have no `Id`; entities carry `OldId` and the hand-written `IsDeleted`/`DeletedAt`/`CreatedAt`/`ModifiedAt`.
+  - `MintPlayer`: 347 docs and 3 users, a dev database. Ignore it.
+  - **Decision:** port `MintPlayer.Migration` (step 0.4) and run it on `MintPlayer_Snapshot_20261022` (G12), writing the current shape. Embedded rows get explicit ids, because the generated `[ValueObject]` key mints a new GUID on every load, which dirties each document. Users go into `SparkUsers`. `MintPlayer_Migration` is kept only as a reconciliation reference: the new run's counts and ids are diffed against it.
+  - The snapshot's SQL schema is `mintplay.*`, not `dbo`. Row counts: AspNetUserLogins 34, AspNetUserTokens 15, Likes 156, Lyrics 145, Media 507, PlaylistSong 116, SubjectTag 132.
+- **0.2 scaffold and 0.3 domain, server side (2026-10-22), uncommitted.**
+  - `apps/MintPlayer/MintPlayer.Library` holds the entities (`MintPlayer.Entities`). `apps/MintPlayer/MintPlayer` is the host, on https 5015 and http 5016. Both build. `OldId` was dropped.
+  - Actions: the catalog types own row security (`ISparkOwnsRowSecurity`). `PlaylistActions`: everyone reads public playlists, the owner reads and edits their own, and an admin everything. `OwnerId` is stamped on create.
+  - Model: the legacy customizations were ported onto the generated JSON (`scratchpad/model_patch.js`). That covers the Person breadcrumb `{FirstName} {LastName}`, Lyrics as MultiLineString, LyricsTimings hidden, `OwnerId` hidden and read-only, Tracks inline, the renderers `media-player` (Medium.Value) and `color-swatch` (TagCategory.Color), the legacy sort columns instead of CreatedBy, and the sub-queries Person_Artists, Artist_Songs, Category_Tags, Tag_Children, My_Playlists and Public_Playlists. A re-sync keeps all of them.
+  - `security.json` (keys `5e15…`): groups Anonymous, Signed-in, Administrator, Blogger and Editor, the legacy role names. Anonymous gets QueryRead on the catalog and on Playlist/PlaylistTrack (the row filter limits that to public playlists). Editor gets QueryReadEditNewDelete on Person, Artist, Song and the rows. Signed-in users get QueryReadEditNewDelete on Playlist. Administrator gets everything, plus Restore/Purge/ViewDeleted/History/Revert. Posture: SparkUser is not reachable anonymously.
+  - `programUnits.json`: the legacy Music, Playlists and Catalog groups. `translations.json` has full en/nl/fr labels for every type, attribute, query, group and program unit.
+  - Indexes: `Person` has `[GenerateIndex]` and a `[Search]` computed `FullName`, so its list runs on the generated `People_Overview` (breadcrumb `{FullName}`, FullName shown in the list only, labelled Name/Naam/Nom). `Subjects_Search` is a multi-map over Artist, Person and Song with search and suggestions on `Text`, for the search endpoint. `Likes_Count` is a fan-out map-reduce over `UserLike`. `Songs_ByYouTubeId` normalises media URLs with `YouTube/YouTubeUrl.cs` (from the old `feature/spark-migration` branch). Every map filters `IsDeleted != true` (SPARK022). `Subject.Media` is `[IgnoreForIndex]` (SPARK_INDEX_010).
+  - Generator fix: `[GenerateIndex]` emitted non-nullable `SparkIndexValue<T>` companions (`CreatedAtRaw` …), which gave CS8618 in a nullable app. They are now `SparkIndexValue<T>?` (`GenerateIndexGenerator.cs`, both places). The expectation in `GenerateIndexGeneratorTests.cs` was updated; it has not been run yet (batched sweep at the end). The host builds with no SPARK or CS warnings.
+  - Still open in 0.2/0.3: the ClientApp, the client renderers `media-player` and `color-swatch`, the CLAUDE.md production entry, and mail in dev.
 
 ## Stage 0: live today
 

@@ -1,0 +1,112 @@
+# Spark security posture: every effective right and the layer it comes from.
+# --spark-synchronize-security writes this file; --spark-verify-security fails when it drifts.
+# Rows: group | effect | resource | key | layer
+
+## Layers: libraries that ship rights (alias | assembly | hash)
+authorization | MintPlayer.Spark.Authorization | 45c4fc153e9d
+
+## Reachable without signing in (expanded)
+Query/Artist
+Query/ArtistMember
+Query/LyricsTiming
+Query/Medium
+Query/MediumType
+Query/Person
+Query/Playlist
+Query/PlaylistTrack
+Query/Song
+Query/SongArtist
+Query/Tag
+Query/TagCategory
+Read/Artist
+Read/ArtistMember
+Read/LyricsTiming
+Read/Medium
+Read/MediumType
+Read/Person
+Read/Playlist
+Read/PlaylistTrack
+Read/Song
+Read/SongArtist
+Read/Tag
+Read/TagCategory
+
+## Granted to @anonymous
+Anonymous visitors | grant | QueryRead/Artist | 5e15ffff-0000-4000-8000-000000000005 | app
+Anonymous visitors | grant | QueryRead/ArtistMember | 5e15ffff-0000-4000-8000-000000000008 | app
+Anonymous visitors | grant | QueryRead/LyricsTiming | 5e15ffff-0000-4000-8000-000000000010 | app
+Anonymous visitors | grant | QueryRead/Medium | 5e15ffff-0000-4000-8000-000000000007 | app
+Anonymous visitors | grant | QueryRead/MediumType | 5e15ffff-0000-4000-8000-000000000001 | app
+Anonymous visitors | grant | QueryRead/Person | 5e15ffff-0000-4000-8000-000000000004 | app
+Anonymous visitors | grant | QueryRead/Playlist | 5e15ffff-0000-4000-8000-000000000028 | app
+Anonymous visitors | grant | QueryRead/PlaylistTrack | 5e15ffff-0000-4000-8000-000000000029 | app
+Anonymous visitors | grant | QueryRead/Song | 5e15ffff-0000-4000-8000-000000000006 | app
+Anonymous visitors | grant | QueryRead/SongArtist | 5e15ffff-0000-4000-8000-000000000009 | app
+Anonymous visitors | grant | QueryRead/Tag | 5e15ffff-0000-4000-8000-000000000003 | app
+Anonymous visitors | grant | QueryRead/TagCategory | 5e15ffff-0000-4000-8000-000000000002 | app
+
+## Rights
+Administrator | grant | History/Artist | 5e15ffff-0000-4000-8000-000000000057 | app
+Administrator | grant | History/MediumType | 5e15ffff-0000-4000-8000-000000000037 | app
+Administrator | grant | History/Person | 5e15ffff-0000-4000-8000-000000000052 | app
+Administrator | grant | History/Playlist | 5e15ffff-0000-4000-8000-000000000067 | app
+Administrator | grant | History/Song | 5e15ffff-0000-4000-8000-000000000062 | app
+Administrator | grant | History/Tag | 5e15ffff-0000-4000-8000-000000000047 | app
+Administrator | grant | History/TagCategory | 5e15ffff-0000-4000-8000-000000000042 | app
+Administrator | grant | Purge/Artist | 5e15ffff-0000-4000-8000-000000000055 | app
+Administrator | grant | Purge/MediumType | 5e15ffff-0000-4000-8000-000000000035 | app
+Administrator | grant | Purge/Person | 5e15ffff-0000-4000-8000-000000000050 | app
+Administrator | grant | Purge/Playlist | 5e15ffff-0000-4000-8000-000000000065 | app
+Administrator | grant | Purge/Song | 5e15ffff-0000-4000-8000-000000000060 | app
+Administrator | grant | Purge/Tag | 5e15ffff-0000-4000-8000-000000000045 | app
+Administrator | grant | Purge/TagCategory | 5e15ffff-0000-4000-8000-000000000040 | app
+Administrator | grant | QueryReadEditNewDelete/Artist | 5e15ffff-0000-4000-8000-000000000015 | app
+Administrator | grant | QueryReadEditNewDelete/ArtistMember | 5e15ffff-0000-4000-8000-000000000018 | app
+Administrator | grant | QueryReadEditNewDelete/LyricsTiming | 5e15ffff-0000-4000-8000-000000000020 | app
+Administrator | grant | QueryReadEditNewDelete/Medium | 5e15ffff-0000-4000-8000-000000000017 | app
+Administrator | grant | QueryReadEditNewDelete/MediumType | 5e15ffff-0000-4000-8000-000000000011 | app
+Administrator | grant | QueryReadEditNewDelete/Person | 5e15ffff-0000-4000-8000-000000000014 | app
+Administrator | grant | QueryReadEditNewDelete/Playlist | 5e15ffff-0000-4000-8000-000000000032 | app
+Administrator | grant | QueryReadEditNewDelete/PlaylistTrack | 5e15ffff-0000-4000-8000-000000000033 | app
+Administrator | grant | QueryReadEditNewDelete/Song | 5e15ffff-0000-4000-8000-000000000016 | app
+Administrator | grant | QueryReadEditNewDelete/SongArtist | 5e15ffff-0000-4000-8000-000000000019 | app
+Administrator | grant | QueryReadEditNewDelete/Tag | 5e15ffff-0000-4000-8000-000000000013 | app
+Administrator | grant | QueryReadEditNewDelete/TagCategory | 5e15ffff-0000-4000-8000-000000000012 | app
+Administrator | grant | Restore/Artist | 5e15ffff-0000-4000-8000-000000000054 | app
+Administrator | grant | Restore/MediumType | 5e15ffff-0000-4000-8000-000000000034 | app
+Administrator | grant | Restore/Person | 5e15ffff-0000-4000-8000-000000000049 | app
+Administrator | grant | Restore/Playlist | 5e15ffff-0000-4000-8000-000000000064 | app
+Administrator | grant | Restore/Song | 5e15ffff-0000-4000-8000-000000000059 | app
+Administrator | grant | Restore/Tag | 5e15ffff-0000-4000-8000-000000000044 | app
+Administrator | grant | Restore/TagCategory | 5e15ffff-0000-4000-8000-000000000039 | app
+Administrator | grant | Revert/Artist | 5e15ffff-0000-4000-8000-000000000058 | app
+Administrator | grant | Revert/MediumType | 5e15ffff-0000-4000-8000-000000000038 | app
+Administrator | grant | Revert/Person | 5e15ffff-0000-4000-8000-000000000053 | app
+Administrator | grant | Revert/Playlist | 5e15ffff-0000-4000-8000-000000000068 | app
+Administrator | grant | Revert/Song | 5e15ffff-0000-4000-8000-000000000063 | app
+Administrator | grant | Revert/Tag | 5e15ffff-0000-4000-8000-000000000048 | app
+Administrator | grant | Revert/TagCategory | 5e15ffff-0000-4000-8000-000000000043 | app
+Administrator | grant | ViewDeleted/Artist | 5e15ffff-0000-4000-8000-000000000056 | app
+Administrator | grant | ViewDeleted/MediumType | 5e15ffff-0000-4000-8000-000000000036 | app
+Administrator | grant | ViewDeleted/Person | 5e15ffff-0000-4000-8000-000000000051 | app
+Administrator | grant | ViewDeleted/Playlist | 5e15ffff-0000-4000-8000-000000000066 | app
+Administrator | grant | ViewDeleted/Song | 5e15ffff-0000-4000-8000-000000000061 | app
+Administrator | grant | ViewDeleted/Tag | 5e15ffff-0000-4000-8000-000000000046 | app
+Administrator | grant | ViewDeleted/TagCategory | 5e15ffff-0000-4000-8000-000000000041 | app
+Editor | grant | QueryReadEditNewDelete/Artist | 5e15ffff-0000-4000-8000-000000000022 | app
+Editor | grant | QueryReadEditNewDelete/ArtistMember | 5e15ffff-0000-4000-8000-000000000026 | app
+Editor | grant | QueryReadEditNewDelete/LyricsTiming | 5e15ffff-0000-4000-8000-000000000027 | app
+Editor | grant | QueryReadEditNewDelete/Medium | 5e15ffff-0000-4000-8000-000000000024 | app
+Editor | grant | QueryReadEditNewDelete/Person | 5e15ffff-0000-4000-8000-000000000021 | app
+Editor | grant | QueryReadEditNewDelete/Song | 5e15ffff-0000-4000-8000-000000000023 | app
+Editor | grant | QueryReadEditNewDelete/SongArtist | 5e15ffff-0000-4000-8000-000000000025 | app
+Signed-in users | grant | QueryReadEditNewDelete/Playlist | 5e15ffff-0000-4000-8000-000000000030 | app
+Signed-in users | grant | QueryReadEditNewDelete/PlaylistTrack | 5e15ffff-0000-4000-8000-000000000031 | app
+Signed-in users (@authenticated) | grant | AddPasskey/Passkeys | authorization:passkeys-add | authorization
+Signed-in users (@authenticated) | grant | Query/PasskeyRow | authorization:passkey-rows-query | authorization
+Signed-in users (@authenticated) | grant | Read/Passkeys | authorization:passkeys-read | authorization
+Signed-in users (@authenticated) | grant | RemovePasskey/PasskeyRow | authorization:passkey-rows-remove | authorization
+Signed-in users (@authenticated) | grant | RenamePasskey/PasskeyRow | authorization:passkey-rows-rename | authorization
+
+## Inert: libraries switched off in "libraries"
+(nothing)

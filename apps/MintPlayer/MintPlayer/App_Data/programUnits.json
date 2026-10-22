@@ -1,0 +1,101 @@
+{
+  "$schema": "../../../../schemas/programUnits.schema.json",
+  "programUnitGroups": [
+    {
+      "id": "b2000000-0000-0000-0000-000000000001",
+      "name": "programUnits.groups.music",
+      "icon": "bi-music-note-beamed",
+      "order": 1,
+      "programUnits": [
+        {
+          "id": "b2000000-0000-0000-0000-000000000101",
+          "name": "programUnits.people",
+          "icon": "bi-person",
+          "type": "query",
+          "queryId": "6f0d7520-6f0f-4fb6-a0ae-05cfacacc563",
+          "alias": "people",
+          "order": 1
+        },
+        {
+          "id": "b2000000-0000-0000-0000-000000000102",
+          "name": "programUnits.artists",
+          "icon": "bi-people",
+          "type": "query",
+          "queryId": "09111a07-80e4-4df8-8a8a-7c01bfc2441d",
+          "alias": "artists",
+          "order": 2
+        },
+        {
+          "id": "b2000000-0000-0000-0000-000000000103",
+          "name": "programUnits.songs",
+          "icon": "bi-music-note",
+          "type": "query",
+          "queryId": "7e731f2e-051d-468f-8438-769fdd7ae929",
+          "alias": "songs",
+          "order": 3
+        }
+      ]
+    },
+    {
+      "id": "b3000000-0000-0000-0000-000000000001",
+      "name": "programUnits.groups.playlists",
+      "icon": "bi-music-note-list",
+      "order": 2,
+      "programUnits": [
+        {
+          "id": "b3000000-0000-0000-0000-000000000101",
+          "name": "programUnits.myPlaylists",
+          "icon": "bi-person-lines-fill",
+          "type": "query",
+          "queryId": "a39a1825-7c27-4a14-9227-3b1f53b3c3e3",
+          "alias": "my-playlists",
+          "order": 1
+        },
+        {
+          "id": "b3000000-0000-0000-0000-000000000102",
+          "name": "programUnits.publicPlaylists",
+          "icon": "bi-globe",
+          "type": "query",
+          "queryId": "02be782d-927e-4cf7-a099-69f585c29583",
+          "alias": "public-playlists",
+          "order": 2
+        }
+      ]
+    },
+    {
+      "id": "b1000000-0000-0000-0000-000000000001",
+      "name": "programUnits.groups.catalog",
+      "icon": "bi-collection",
+      "order": 3,
+      "programUnits": [
+        {
+          "id": "b1000000-0000-0000-0000-000000000101",
+          "name": "programUnits.mediumTypes",
+          "icon": "bi-disc",
+          "type": "query",
+          "queryId": "4df43793-9c7a-4fb7-a484-315df813ebc6",
+          "alias": "medium-types",
+          "order": 1
+        },
+        {
+          "id": "b1000000-0000-0000-0000-000000000102",
+          "name": "programUnits.tagCategories",
+          "icon": "bi-tags",
+          "type": "query",
+          "queryId": "a5af75a9-811d-49bb-b25f-6e56a83c1764",
+          "alias": "tag-categories",
+          "order": 2
+        },
+        {
+          "id": "b1000000-0000-0000-0000-000000000103",
+          "name": "programUnits.tags",
+          "icon": "bi-tag",
+          "type": "query",
+          "queryId": "c085a606-4432-445c-882c-6ae5b28cdbdf",
+          "alias": "tags",
+          "order": 3
+        }
+      ]
+    }
+  ]
+}
