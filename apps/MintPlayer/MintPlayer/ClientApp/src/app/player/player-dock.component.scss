@@ -1,0 +1,10 @@
+// Floats over the page, bottom right, like the legacy player card.
+.player-dock {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 1030;
+  width: 320px;
+  max-width: calc(100vw - 2rem);
+  overflow: hidden;
+}

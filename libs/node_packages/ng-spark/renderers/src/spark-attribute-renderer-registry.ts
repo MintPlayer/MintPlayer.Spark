@@ -21,6 +21,15 @@ export interface SparkAttributeRendererRegistration {
    */
   rowComponent?: Type<any>;
   /**
+   * A **leading cell** for AsDetail tables on the PO detail page. A row type with an attribute carrying
+   * this renderer gets an extra, unlabelled first column, and the component is drawn in it ONCE per row,
+   * given the row and those attributes. Must implement {@link SparkAttributeRowRenderer}. Unlike
+   * `rowComponent`, the attributes stay columns as well.
+   *
+   * For a per-row action keyed on a value: a play button in front of a playable media link.
+   */
+  leadingComponent?: Type<any>;
+  /**
    * Relabels this column's values in a filter panel (#431).
    *
    * A renderer is a component that paints arbitrary DOM, and a distinct value has no row, so it

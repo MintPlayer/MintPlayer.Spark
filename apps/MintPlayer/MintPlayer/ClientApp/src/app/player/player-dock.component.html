@@ -1,0 +1,44 @@
+@if (player.current(); as current) {
+  <bs-card class="d-block shadow player-dock">
+    <bs-card-header>Currently playing</bs-card-header>
+    <video-player [url]="current.url" [autoplay]="true" [width]="320" [height]="180" (playerStateChange)="onStateChange($event)" />
+    <bs-card-body>
+      <div class="d-flex align-items-center gap-1">
+        <span class="text-truncate flex-grow-1 small" [title]="current.title">
+          {{ current.title }}
+          @if (current.subtitle) { <span class="text-body-secondary">· {{ current.subtitle }}</span> }
+        </span>
+        <button type="button" [color]="colors.secondary" title="Previous" aria-label="Previous" [disabled]="!player.hasPrevious()" (click)="player.previous()"><i class="bi bi-skip-start-fill"></i></button>
+        <button type="button" [color]="colors.secondary" title="Next" aria-label="Next" [disabled]="!player.hasNext()" (click)="player.next()"><i class="bi bi-skip-end-fill"></i></button>
+        <button type="button" [color]="colors.secondary" class="text-nowrap" title="Queue" aria-label="Queue" (click)="player.queueOpen.set(true)"><i class="bi bi-music-note-list"></i> {{ player.queue().length }}</button>
+        <button type="button" [color]="colors.secondary" title="Stop and clear the queue" aria-label="Stop and clear the queue" (click)="player.clear()"><i class="bi bi-x-lg"></i></button>
+      </div>
+    </bs-card-body>
+  </bs-card>
+}
+
+<bs-offcanvas position="end" [isVisible]="player.queueOpen()" (isVisibleChange)="player.queueOpen.set($event)" (backdropClick)="player.queueOpen.set(false)">
+  <div *bsOffcanvasContent>
+    <bs-offcanvas-header>
+      <h5 class="offcanvas-title">Queue</h5>
+      <bs-close bsOffcanvasClose />
+    </bs-offcanvas-header>
+    <bs-offcanvas-body>
+      <bs-list-group>
+        @for (item of player.queue(); track $index; let i = $index) {
+          <bs-list-group-item [active]="i === player.index()">
+            <div class="d-flex align-items-center gap-2">
+              <button type="button" [color]="colors.transparent" class="text-start text-truncate flex-grow-1" (click)="player.playAt(i)">
+                {{ item.title }}
+                @if (item.subtitle) { <small class="d-block opacity-75">{{ item.subtitle }}</small> }
+              </button>
+              <button type="button" [color]="colors.danger" title="Remove" aria-label="Remove" (click)="player.remove(i)"><i class="bi bi-trash"></i></button>
+            </div>
+          </bs-list-group-item>
+        } @empty {
+          <bs-list-group-item [disabled]="true">The queue is empty.</bs-list-group-item>
+        }
+      </bs-list-group>
+    </bs-offcanvas-body>
+  </div>
+</bs-offcanvas>

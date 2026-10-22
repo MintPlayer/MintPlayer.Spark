@@ -51,7 +51,7 @@
         "isReadOnly": true,
         "order": 9,
         "isArray": false,
-        "showedOn": "PersistentObject",
+        "showedOn": "None",
         "rules": []
       },
       {
@@ -62,7 +62,7 @@
         "isReadOnly": true,
         "order": 10,
         "isArray": false,
-        "showedOn": "PersistentObject",
+        "showedOn": "None",
         "rules": []
       },
       {
@@ -73,7 +73,7 @@
         "isReadOnly": true,
         "order": 11,
         "isArray": false,
-        "showedOn": "PersistentObject",
+        "showedOn": "None",
         "rules": []
       },
       {
@@ -95,7 +95,7 @@
         "isReadOnly": true,
         "order": 8,
         "isArray": false,
-        "showedOn": "PersistentObject",
+        "showedOn": "None",
         "rules": []
       },
       {

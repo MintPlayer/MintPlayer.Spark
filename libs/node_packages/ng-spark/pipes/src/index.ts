@@ -14,6 +14,7 @@ export * from './router-link.pipe';
 export * from './as-detail-type.pipe';
 export * from './as-detail-columns.pipe';
 export * from './as-detail-row-renderer.pipe';
+export * from './as-detail-leading-renderer.pipe';
 export * from './as-detail-cell-value.pipe';
 export * from './as-detail-display-value.pipe';
 export * from './can-create-detail-row.pipe';

@@ -69,6 +69,8 @@ export interface SparkAttributeRowRenderer {
   options?: InputSignal<Record<string, any> | undefined>;
   /** The id of the object that owns the AsDetail list (undefined on a create page). */
   ownerId?: InputSignal<string | undefined>;
+  /** The object that owns the AsDetail list, as loaded. Detail page only (undefined in the edit form). */
+  owner?: InputSignal<PersistentObject | undefined>;
 }
 
 /**

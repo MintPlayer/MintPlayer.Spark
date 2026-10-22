@@ -17,7 +17,7 @@
         "order": 3,
         "asDetailType": "MintPlayer.Entities.SongArtist",
         "isArray": true,
-        "showedOn": "Query, PersistentObject",
+        "showedOn": "PersistentObject",
         "rules": []
       },
       {
@@ -50,7 +50,7 @@
         "isReadOnly": true,
         "order": 13,
         "isArray": false,
-        "showedOn": "PersistentObject",
+        "showedOn": "None",
         "rules": []
       },
       {
@@ -61,7 +61,7 @@
         "isReadOnly": true,
         "order": 14,
         "isArray": false,
-        "showedOn": "PersistentObject",
+        "showedOn": "None",
         "rules": []
       },
       {
@@ -72,7 +72,7 @@
         "isReadOnly": true,
         "order": 15,
         "isArray": false,
-        "showedOn": "PersistentObject",
+        "showedOn": "None",
         "rules": []
       },
       {
@@ -83,7 +83,7 @@
         "isReadOnly": true,
         "order": 12,
         "isArray": false,
-        "showedOn": "PersistentObject",
+        "showedOn": "None",
         "rules": []
       },
       {
@@ -94,7 +94,7 @@
         "isReadOnly": false,
         "order": 4,
         "isArray": false,
-        "showedOn": "Query, PersistentObject",
+        "showedOn": "PersistentObject",
         "rules": []
       },
       {
@@ -118,7 +118,7 @@
         "order": 6,
         "asDetailType": "MintPlayer.Entities.Medium",
         "isArray": true,
-        "showedOn": "Query, PersistentObject",
+        "showedOn": "PersistentObject",
         "rules": []
       },
       {
@@ -164,7 +164,7 @@
         "query": "GetTags",
         "referenceType": "MintPlayer.Entities.Tag",
         "isArray": true,
-        "showedOn": "Query, PersistentObject",
+        "showedOn": "PersistentObject",
         "rules": []
       },
       {

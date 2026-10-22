@@ -17,3 +17,9 @@
 .spark-multiline-value {
   white-space: pre-wrap;
 }
+
+// An AsDetail table's leading-cell column (leadingComponent) is as narrow as its content.
+.spark-leading-cell {
+  width: 1%;
+  white-space: nowrap;
+}

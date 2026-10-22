@@ -1,6 +1,7 @@
 import { Routes } from '@angular/router';
 import {
   facebookProvider, googleProvider, linkedInProvider, microsoftProvider, sparkAuthRoutes, twitterProvider, withAccount, withExternalLogin,
+  withLocalLogin, withPasskeys, withRegistration,
 } from '@mintplayer/ng-spark/auth/routes';
 import { sparkRoutes } from '@mintplayer/ng-spark/routes';
 import { ShellComponent } from './shell/shell.component';
@@ -14,8 +15,12 @@ export const routes: Routes = [
     component: ShellComponent,
     children: [
       // Local accounts plus the five legacy external logins (docs/mintplayer_website_PRD.md G10). The page shows a
-      // button only for a provider the server registered, so one without secrets never appears.
+      // button only for a provider the server registered, so one without secrets never appears. Unlike SeoTester,
+      // the migrated users sign in with passwords: Program.cs runs SparkLocalCredentials.Full and passkeys.
       ...sparkAuthRoutes(
+        withLocalLogin(),
+        withRegistration(),
+        withPasskeys(),
         withExternalLogin(facebookProvider(), googleProvider(), linkedInProvider(), microsoftProvider(), twitterProvider()),
         withAccount(),
       ),

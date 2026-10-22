@@ -7,7 +7,9 @@ import { withSparkLanguage, withSparkTimezone } from '@mintplayer/ng-spark/servi
 import { provideSparkAuth, withSparkAuth } from '@mintplayer/ng-spark/auth';
 import { provideSparkClientOperations } from '@mintplayer/ng-spark/client-operations';
 import { provideSparkAttributeRenderers } from '@mintplayer/ng-spark/renderers';
+import { provideVideoApis } from '@mintplayer/ng-video-player';
 import { mintPlayerRenderers } from './renderers/renderers';
+import { videoPlugins } from './player/video-apis';
 
 import { routes } from './app.routes';
 
@@ -23,6 +25,7 @@ export const appConfig: ApplicationConfig = {
     provideSparkClientOperations(),
     // media-player (Medium.Value) and color-swatch (TagCategory.Color), by the model's names.
     provideSparkAttributeRenderers(mintPlayerRenderers),
+    provideVideoApis(...videoPlugins),
     provideZonelessChangeDetection(),
   ]
 };

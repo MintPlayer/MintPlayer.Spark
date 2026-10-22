@@ -31,6 +31,12 @@ builder.Services.AddSpark(builder.Configuration, spark =>
         auth.AuthenticatorIssuer = "MintPlayer";
         // The legacy site let a user skip their code for external sign-ins; the migrated flag maps here.
         auth.ExternalLoginTwoFactor.AllowUserBypass = true;
+    }, identity =>
+    {
+        // As on the legacy site (MintPlayer.Web Startup.cs): any character. 80 of the 776 migrated user names have
+        // spaces, parentheses or non-ASCII letters, and Identity validates the name on every update, so the default
+        // set refused even a password reset for them. Spark's own validator still refuses '@'.
+        identity.User.AllowedUserNameCharacters = string.Empty;
     });
     // Facebook, Google, LinkedIn, Microsoft and Twitter from Spark:Auth:Providers; the secrets are in the
     // deployment's .env.
