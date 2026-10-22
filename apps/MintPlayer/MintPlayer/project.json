@@ -1,5 +1,4 @@
 {
   "name": "MintPlayer",
-  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
-  "implicitDependencies": ["@spark-apps/mint-player"]
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json"
 }

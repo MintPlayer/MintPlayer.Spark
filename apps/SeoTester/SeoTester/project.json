@@ -1,5 +1,4 @@
 {
   "name": "SeoTester",
-  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
-  "implicitDependencies": ["@spark-apps/seo-tester"]
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json"
 }

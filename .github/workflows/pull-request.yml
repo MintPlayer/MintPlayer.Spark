@@ -60,14 +60,10 @@ jobs:
       with:
         nuget-token: ${{ github.token }}
 
-    # Run build so Angular-app build failures (e.g., broken
-    # imports, type errors, budget overruns) block the PR. The .NET test
-    # target already dependsOn build, but the demo Angular apps
-    # (@spark-demo/{demo-app,fleet-demo,hr-demo,qna-demo,sparkid-demo}) don't have
-    # a test target — without this step their build is never exercised in
-    # CI, and the next deploy run is the first thing to notice.
+    # Everything affected except the Angular apps, whose production builds run in parallel in the
+    # `angular` job below. Together they took ~9 min of this job (PR #531).
     - name: Build affected projects (Nx)
-      run: npx nx affected --target=build
+      run: npx nx affected --target=build --exclude='@spark-demo/*,@spark-apps/*'
 
     # The GS1 core is written once, in libs/gs1/MintPlayer.Spark.Gs1/pg (Polyglot). Its C# is generated at
     # build time, but the TypeScript copy in ng-spark's scanning entry point is committed, so check that it
@@ -109,8 +105,7 @@ jobs:
     #
     # Verifying all five, rather than skipping the unaffected ones, is deliberate. Skipping would be
     # sound only if `affected` were exactly right, and dependency tracking here is not purely
-    # automatic: CodeCoverage/project.json carries implicitDependencies by hand, and
-    # code-coverage-deploy.yml maintains its ProjectReference closure as a hand-written path list. A
+    # automatic: code-coverage-deploy.yml maintains its ProjectReference closure as a hand-written path list. A
     # check that silently does nothing when that bookkeeping slips is worse than a slow one.
     - name: Restore the Spark app binaries the verifications need
       run: npx nx run-many --target=build --projects=DemoApp,HR,Fleet,QnA,SparkId,CodeCoverage,SeoTester
@@ -223,6 +218,32 @@ jobs:
         fi
         echo "Version bumps present for every changed package."
 
+  # The affected Angular apps' production builds, so a broken import, type error or budget overrun blocks the
+  # PR: the apps have no test target, so nothing else builds them before a deploy. A job of its own beside
+  # `build`, because the two together set the pace of the whole run. The .NET apps no longer carry their
+  # ClientApp as an implicit dependency, so no test job builds them either.
+  angular:
+    name: Angular apps
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7
+      with:
+        fetch-depth: 0  # nx affected needs history
+
+    - name: Derive base SHA for nx affected
+      uses: nrwl/nx-set-shas@v5
+
+    - name: Setup
+      uses: ./.github/actions/setup
+      with:
+        nuget-token: ${{ github.token }}
+
+    - name: Build the affected Angular apps (Nx)
+      run: npx nx affected --target=build --exclude='*,!@spark-demo/*,!@spark-apps/*'
+
   # Every test project as parallel jobs, MintPlayer.Spark.Tests in four shards (test.yml). Normal runs
   # finish well inside the job timeouts there; without ceilings a wedged run holds the default 6-hour
   # GitHub timeout (measured twice on PR #269, once on PR #277: the E2E suite hanging silently).
@@ -319,13 +340,13 @@ jobs:
   # One check that is green only when every job is, under the name the single job used to carry.
   pull-request:
     name: pull-request
-    needs: [build, tests, coverage, coverage-action, dependency-action]
+    needs: [build, angular, tests, coverage, coverage-action, dependency-action]
     if: always()
     runs-on: ubuntu-latest
     steps:
     - name: Every job passed
       run: |
-        echo 'build=${{ needs.build.result }} tests=${{ needs.tests.result }} coverage=${{ needs.coverage.result }} coverage-action=${{ needs.coverage-action.result }} dependency-action=${{ needs.dependency-action.result }}'
+        echo 'build=${{ needs.build.result }} angular=${{ needs.angular.result }} tests=${{ needs.tests.result }} coverage=${{ needs.coverage.result }} coverage-action=${{ needs.coverage-action.result }} dependency-action=${{ needs.dependency-action.result }}'
         if ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped') }}; then
           echo "::error::A job failed, was cancelled or was skipped."
           exit 1

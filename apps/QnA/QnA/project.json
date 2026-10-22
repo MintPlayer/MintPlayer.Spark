@@ -1,5 +1,4 @@
 {
   "name": "QnA",
-  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
-  "implicitDependencies": ["@spark-demo/qna-demo"]
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json"
 }

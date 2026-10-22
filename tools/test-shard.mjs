@@ -1,5 +1,5 @@
 // Runs one shard of a .NET test project, so CI can spread MintPlayer.Spark.Tests (the long pole: ~8 min
-// of a ~9 min test step) over parallel jobs.
+// of a ~9 min test step), the E2E suite and SeoTester.Tests over parallel jobs.
 //
 //   SPARK_TEST_SHARD=2/4 node tools/test-shard.mjs <project dir> dotnet test --no-build ...
 //
@@ -145,9 +145,13 @@ function main(argv) {
     return;
   }
   if (argv[0] === '--timings') {
-    const weights = timingsFromTrx(argv.slice(2).map((f) => readFileSync(f, 'utf8')));
+    // Merged into the existing file: it holds every sharded project's classes, and each project's trx
+    // files are passed separately. A measured class replaces its old entry.
+    const measured = timingsFromTrx(argv.slice(2).map((f) => readFileSync(f, 'utf8')));
+    const merged = { ...loadWeights(), ...measured };
+    const weights = Object.fromEntries(Object.entries(merged).sort(([a], [b]) => a.localeCompare(b)));
     writeFileSync(WEIGHTS_FILE, JSON.stringify(weights, null, 2) + '\n');
-    console.log(`Wrote ${Object.keys(weights).length} classes to ${path.relative(ROOT, WEIGHTS_FILE)}`);
+    console.log(`Wrote ${Object.keys(measured).length} measured classes (${Object.keys(weights).length} in all) to ${path.relative(ROOT, WEIGHTS_FILE)}`);
     return;
   }
 
