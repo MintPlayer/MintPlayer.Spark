@@ -35,7 +35,7 @@ export class PlayerService {
   readonly shuffle = signal(false);
   readonly repeat = signal(ERepeatMode.noRepeat);
   readonly queueOpen = signal(false);
-  /** The state the video player reports; it is never written back to the player. */
+  /** Two-way bound to the video player: it reports its state here, and setting it plays or pauses. */
   readonly state = signal(EPlayerState.unstarted);
   readonly isPlaying = computed(() => this.state() === EPlayerState.playing);
 
@@ -49,9 +49,19 @@ export class PlayerService {
     this.refresh();
   }
 
+  /**
+   * One by one, the current item last: removing the last item ends playback. setPlaylist([]) does not, because it
+   * keeps the current item playing.
+   */
   clear() {
-    this.controller.setPlaylist([]);
+    const current = this.current();
+    for (const item of this.queue()) if (item !== current) this.controller.removeFromPlaylist(item);
+    if (current) this.controller.removeFromPlaylist(current);
     this.refresh();
+  }
+
+  togglePlay() {
+    if (this.current()) this.state.set(this.isPlaying() ? EPlayerState.paused : EPlayerState.playing);
   }
 
   previous() {
@@ -62,7 +72,12 @@ export class PlayerService {
     this.controller.next();
   }
 
+  /**
+   * Leaves `ended` out of the bound state: the binding would push it back into the player, and the YouTube player
+   * stops on `ended`, which stopped the next medium. `unstarted` is a no-op in every player.
+   */
   ended() {
+    this.state.set(EPlayerState.unstarted);
     this.controller.playerEnded();
   }
 

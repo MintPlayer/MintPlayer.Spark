@@ -1,7 +1,7 @@
 @if (player.current(); as current) {
   <bs-card class="d-block shadow player-dock" cdkDrag>
     <bs-card-header cdkDragHandle class="player-dock-handle">Currently playing</bs-card-header>
-    <video-player [width]="320" [height]="180" (playerStateChange)="onStateChange($event)" (progressChange)="player.progress($event.currentTime)" />
+    <video-player [width]="320" [height]="180" [(playerState)]="player.state" (playerStateChange)="onStateChange($event)" (progressChange)="player.progress($event.currentTime)" />
     <bs-card-body>
       <div class="d-flex align-items-center gap-1">
         <div class="flex-grow-1 small overflow-hidden">
@@ -24,7 +24,7 @@
     <bs-offcanvas-body>
       <div class="d-flex justify-content-center gap-2 mb-2">
         <button type="button" [color]="colors.secondary" title="Previous" aria-label="Previous" [disabled]="!player.current()" (click)="player.previous()"><i class="bi bi-skip-start-fill"></i></button>
-        <button type="button" [color]="colors.primary" [title]="player.isPlaying() ? 'Pause' : 'Play'" [attr.aria-label]="player.isPlaying() ? 'Pause' : 'Play'" [disabled]="!player.current()" (click)="togglePlay()">
+        <button type="button" [color]="colors.primary" [title]="player.isPlaying() ? 'Pause' : 'Play'" [attr.aria-label]="player.isPlaying() ? 'Pause' : 'Play'" [disabled]="!player.current()" (click)="player.togglePlay()">
           <i class="bi" [class.bi-pause-fill]="player.isPlaying()" [class.bi-play-fill]="!player.isPlaying()"></i>
         </button>
         <button type="button" [color]="colors.secondary" title="Next" aria-label="Next" [disabled]="!player.current()" (click)="player.next()"><i class="bi bi-skip-end-fill"></i></button>

@@ -30,19 +30,14 @@ export class PlayerDockComponent {
     // restarts a medium (repeatOne, or previous after 5 seconds).
     effect(() => {
       const { item } = this.player.play();
+      // The previous medium's state isn't this one's, and a player that never reports one would keep it.
+      this.player.state.set(EPlayerState.unstarted);
       if (item) this.videoPlayer()?.setUrl(item.url);
-      else this.player.state.set(EPlayerState.unstarted);
     });
   }
 
-  /** A command, not a binding: echoing the reported state back (ended → stopVideo) stopped the next medium. */
-  protected togglePlay() {
-    const videoPlayer = this.videoPlayer();
-    if (videoPlayer && this.player.current()) videoPlayer.playerState = this.player.isPlaying() ? EPlayerState.paused : EPlayerState.playing;
-  }
-
+  /** Runs after the two-way binding has stored the state (it is bound first in the template). */
   protected onStateChange(state: EPlayerState) {
-    this.player.state.set(state);
     if (state === EPlayerState.ended) this.player.ended();
   }
 }
