@@ -6,11 +6,14 @@
       "inputs": [
         "default",
         "^production",
-        { "env": "SPARK_E2E_HOST_COVERAGE" }
+        { "env": "SPARK_E2E_HOST_COVERAGE" },
+        "{workspaceRoot}/tools/test-shard.mjs",
+        "{workspaceRoot}/tools/test-shard-weights.json",
+        { "env": "SPARK_TEST_SHARD" }
       ],
       "options": {
         "cwd": "tests/MintPlayer.Spark.E2E.Tests",
-        "command": "dotnet test --no-build --no-restore --settings ../../coverlet.runsettings --collect:\"XPlat Code Coverage\" --results-directory coverage --blame-hang --blame-hang-timeout 10m --blame-hang-dump-type none",
+        "command": "node ../../tools/test-shard.mjs . dotnet test --no-build --no-restore --settings ../../coverlet.runsettings --collect:\"XPlat Code Coverage\" --results-directory coverage --blame-hang --blame-hang-timeout 10m --blame-hang-dump-type none",
         "args": []
       },
       "configurations": {

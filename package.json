@@ -19,6 +19,7 @@
     "apps/SparkId/SparkId/ClientApp",
     "apps/CodeCoverage/CodeCoverage/ClientApp",
     "apps/SeoTester/SeoTester/ClientApp",
+    "apps/MintPlayer/MintPlayer/ClientApp",
     "apps/CodeCoverage/action",
     "apps/CodeCoverage/dependency-action"
   ],
@@ -42,6 +43,7 @@
     "@mintplayer/pagination": "^2.5.0",
     "@mintplayer/player-progress": "^20.1.0",
     "@mintplayer/player-provider": "^20.1.0",
+    "@mintplayer/playlist-controller": "^20.1.0",
     "@mintplayer/soundcloud-player": "^20.1.0",
     "@mintplayer/video-player": "^20.1.0",
     "@mintplayer/vimeo-player": "^20.1.0",

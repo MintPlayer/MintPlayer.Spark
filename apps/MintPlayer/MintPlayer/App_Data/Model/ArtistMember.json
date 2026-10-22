@@ -1,0 +1,39 @@
+{
+  "$schema": "https://schemas.spark.mintplayer.com/v7/model.schema.json",
+  "persistentObject": {
+    "id": "28f69e14-7d02-4172-a4f3-ac9134f1bc06",
+    "name": "ArtistMember",
+    "clrType": "MintPlayer.Entities.ArtistMember",
+    "breadcrumb": "{PersonId}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "e200fe85-5edb-47b3-a4d4-b0cb67d37aa1",
+        "name": "Active",
+        "dataType": "boolean",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "07e8fc60-9c77-479b-9546-85a7dcb389aa",
+        "name": "PersonId",
+        "dataType": "Reference",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 1,
+        "query": "GetPeople",
+        "referenceType": "MintPlayer.Entities.Person",
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": []
+}

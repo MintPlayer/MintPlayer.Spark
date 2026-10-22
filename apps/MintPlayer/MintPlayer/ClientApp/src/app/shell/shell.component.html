@@ -1,0 +1,10 @@
+<spark-shell title="MintPlayer">
+  <!-- The menu is server-driven (App_Data/programUnits.json): Music, Playlists and Catalog. -->
+  <ng-container *sparkShellTopbarEnd>
+    <spark-language-selector />
+    <spark-auth-bar />
+    <app-queue-toggler />
+  </ng-container>
+  <router-outlet />
+</spark-shell>
+<app-player-dock />

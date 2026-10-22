@@ -1,0 +1,63 @@
+@if (player.current(); as current) {
+  <bs-card class="d-block shadow player-dock" cdkDrag>
+    <bs-card-header cdkDragHandle class="player-dock-handle">Currently playing</bs-card-header>
+    <video-player [width]="320" [height]="180" [(playerState)]="player.state" (playerStateChange)="onStateChange($event)" (progressChange)="player.progress($event.currentTime)" />
+    <bs-card-body>
+      <div class="d-flex align-items-center gap-1">
+        <div class="flex-grow-1 small overflow-hidden">
+          <div class="text-truncate" [title]="current.title">{{ current.title }}</div>
+          @if (current.subtitle) { <div class="text-truncate text-body-secondary" [title]="current.subtitle">{{ current.subtitle }}</div> }
+        </div>
+        <button type="button" [color]="colors.secondary" class="text-nowrap" title="Queue" aria-label="Queue" (click)="player.queueOpen.set(true)"><i class="bi bi-music-note-list"></i> {{ player.queue().length }}</button>
+        <button type="button" [color]="colors.secondary" title="Stop and clear the queue" aria-label="Stop and clear the queue" (click)="player.clear()"><i class="bi bi-x-lg"></i></button>
+      </div>
+    </bs-card-body>
+  </bs-card>
+}
+
+<bs-offcanvas position="end" [isVisible]="player.queueOpen()" (isVisibleChange)="player.queueOpen.set($event)" (backdropClick)="player.queueOpen.set(false)">
+  <div *bsOffcanvasContent>
+    <bs-offcanvas-header>
+      <h5 class="offcanvas-title me-auto mb-0">Queue</h5>
+      <bs-close bsOffcanvasClose />
+    </bs-offcanvas-header>
+    <bs-offcanvas-body>
+      <div class="d-flex justify-content-center gap-2 mb-2">
+        <button type="button" [color]="colors.secondary" title="Previous" aria-label="Previous" [disabled]="!player.current()" (click)="player.previous()"><i class="bi bi-skip-start-fill"></i></button>
+        <button type="button" [color]="colors.primary" [title]="player.isPlaying() ? 'Pause' : 'Play'" [attr.aria-label]="player.isPlaying() ? 'Pause' : 'Play'" [disabled]="!player.current()" (click)="player.togglePlay()">
+          <i class="bi" [class.bi-pause-fill]="player.isPlaying()" [class.bi-play-fill]="!player.isPlaying()"></i>
+        </button>
+        <button type="button" [color]="colors.secondary" title="Next" aria-label="Next" [disabled]="!player.current()" (click)="player.next()"><i class="bi bi-skip-end-fill"></i></button>
+      </div>
+      <div class="d-flex justify-content-center gap-2 mb-3">
+        <button type="button" [color]="player.shuffle() ? colors.primary : colors.secondary" [title]="player.shuffle() ? 'Shuffle: on' : 'Shuffle: off'" aria-label="Shuffle" [attr.aria-pressed]="player.shuffle()" (click)="player.toggleShuffle()"><i class="bi bi-shuffle"></i></button>
+        @switch (player.repeat()) {
+          @case (repeatModes.repeatAll) {
+            <button type="button" [color]="colors.primary" title="Repeat: all" aria-label="Repeat: all" (click)="player.cycleRepeat()"><i class="bi bi-repeat"></i></button>
+          }
+          @case (repeatModes.repeatOne) {
+            <button type="button" [color]="colors.primary" title="Repeat: one" aria-label="Repeat: one" (click)="player.cycleRepeat()"><i class="bi bi-repeat-1"></i></button>
+          }
+          @default {
+            <button type="button" [color]="colors.secondary" title="Repeat: off" aria-label="Repeat: off" (click)="player.cycleRepeat()"><i class="bi bi-repeat"></i></button>
+          }
+        }
+      </div>
+      <bs-list-group>
+        @for (item of player.queue(); track $index; let i = $index) {
+          <bs-list-group-item [active]="i === player.index()">
+            <div class="d-flex align-items-center gap-2">
+              <div class="text-truncate flex-grow-1">
+                {{ item.title }}
+                @if (item.subtitle) { <small class="d-block opacity-75">{{ item.subtitle }}</small> }
+              </div>
+              <button type="button" [color]="colors.danger" title="Remove" aria-label="Remove" (click)="player.remove(i)"><i class="bi bi-trash"></i></button>
+            </div>
+          </bs-list-group-item>
+        } @empty {
+          <bs-list-group-item [disabled]="true">The queue is empty.</bs-list-group-item>
+        }
+      </bs-list-group>
+    </bs-offcanvas-body>
+  </div>
+</bs-offcanvas>

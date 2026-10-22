@@ -1,0 +1,24 @@
+{
+  "name": "@spark-apps/mint-player",
+  "version": "0.0.0",
+  "scripts": {
+    "start": "nx run @spark-apps/mint-player:serve",
+    "build": "nx run @spark-apps/mint-player:build"
+  },
+  "prettier": {
+    "printWidth": 100,
+    "singleQuote": true,
+    "overrides": [
+      {
+        "files": "*.html",
+        "options": {
+          "parser": "angular"
+        }
+      }
+    ]
+  },
+  "private": true,
+  "dependencies": {
+    "@mintplayer/ng-spark": "^22.43.0"
+  }
+}

@@ -773,7 +773,7 @@ public class GenerateIndexGeneratorTests
         generated.Should().Contain(
             "ArchivedOnRaw = new global::MintPlayer.Spark.Abstractions.SparkIndexValue<global::System.DateTimeOffset?> { V = car.ArchivedOn },");
         generated.Should().Contain(
-            "public global::MintPlayer.Spark.Abstractions.SparkIndexValue<global::System.DateTimeOffset> CreatedOnRaw { get; set; }");
+            "public global::MintPlayer.Spark.Abstractions.SparkIndexValue<global::System.DateTimeOffset>? CreatedOnRaw { get; set; }");
     }
 
     /// <summary>

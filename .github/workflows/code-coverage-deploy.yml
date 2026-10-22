@@ -370,6 +370,12 @@ jobs:
             docker network inspect "$net" > /dev/null 2>&1 || docker network create --internal "$net" > /dev/null 2>&1 || docker network inspect "$net" > /dev/null
             [ "$(docker network inspect -f '{{.Internal}}' "$net")" = "true" ] || { echo "::error::the network $net exists but is not internal: remove it (docker network rm $net) once nothing uses it, then redeploy"; exit 1; }
           done
+          # Likewise the two shared with mintplayer.com (mintplayer-raven: coverage-raven + mintplayer-app; mintplayer-mail:
+          # coverage-smtp + mintplayer-app). Same block in mintplayer-deploy.yml.
+          for net in mintplayer-raven mintplayer-mail; do
+            docker network inspect "$net" > /dev/null 2>&1 || docker network create --internal "$net" > /dev/null 2>&1 || docker network inspect "$net" > /dev/null
+            [ "$(docker network inspect -f '{{.Internal}}' "$net")" = "true" ] || { echo "::error::the network $net exists but is not internal: remove it (docker network rm $net) once nothing uses it, then redeploy"; exit 1; }
+          done
 
           docker compose --env-file .env pull
           docker compose --env-file .env down --remove-orphans
@@ -395,6 +401,9 @@ jobs:
           register_app_cert codecoverage Coverage raven-certs/codecoverage.crt
           if [ -s /var/www/seotester/raven-certs/seotester.crt ]; then
             register_app_cert seotester SeoTester /var/www/seotester/raven-certs/seotester.crt
+          fi
+          if [ -s /var/www/mintplayer/raven-certs/mintplayer.crt ]; then
+            register_app_cert mintplayer MintPlayer /var/www/mintplayer/raven-certs/mintplayer.crt
           fi
           docker compose --env-file .env up -d --remove-orphans
 

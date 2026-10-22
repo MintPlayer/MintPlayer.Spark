@@ -1,0 +1,22 @@
+{
+  "name": "MintPlayer.Migration.Tests",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "targets": {
+    "test": {
+      "inputs": [
+        "default",
+        "^production"
+      ],
+      "options": {
+        "cwd": "apps/MintPlayer/MintPlayer.Migration.Tests",
+        "command": "dotnet test --no-build --no-restore --settings ../../../coverlet.runsettings --collect:\"XPlat Code Coverage\" --results-directory coverage --blame-hang --blame-hang-timeout 10m --blame-hang-dump-type none",
+        "args": []
+      },
+      "configurations": {
+        "local": {
+          "command": "dotnet test --no-build --no-restore --blame-hang --blame-hang-timeout 10m --blame-hang-dump-type none"
+        }
+      }
+    }
+  }
+}

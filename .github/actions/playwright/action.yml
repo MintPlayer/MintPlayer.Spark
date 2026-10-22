@@ -35,6 +35,14 @@ runs:
     # A cache hit is no proof of completeness: the key was first saved (2026-10-09) by an older workflow
     # without chromium_headless_shell, and skipping the install on a hit left every SeoTester render test with
     # "Executable doesn't exist" (PR #512; master hid it behind an nx remote-cache replay).
+    #
+    # The browser only, no `--with-deps`: that runs apt-get against the runner's Azure Ubuntu mirror, which
+    # serves some runners at ~40 KB/s. On PR #531 it held one E2E shard for 12+ minutes in two runs in a row
+    # (39820864227, 39822821571), retries and short apt timeouts included. And it bought nothing: every
+    # library Chromium needs is already on ubuntu-24.04 ("is already the newest version"); the 26 MB it
+    # fetched were optional CJK/Thai fonts and upgrades of installed packages. Should the image ever drop a
+    # library, Chromium refuses to launch with Playwright's "Host system is missing dependencies", so the gap
+    # fails loudly. The browser itself comes from Playwright's CDN and the cache above.
     - name: Install Chromium
       shell: bash
-      run: npx --yes playwright@${{ steps.version.outputs.version }} install --with-deps chromium
+      run: npx --yes playwright@${{ steps.version.outputs.version }} install chromium

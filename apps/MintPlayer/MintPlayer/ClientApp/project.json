@@ -1,0 +1,80 @@
+{
+  "name": "@spark-apps/mint-player",
+  "$schema": "../../../../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "root": "apps/MintPlayer/MintPlayer/ClientApp",
+  "sourceRoot": "apps/MintPlayer/MintPlayer/ClientApp/src",
+  "prefix": "app",
+  "targets": {
+    "build": {
+      "executor": "@nx/angular:application",
+      "outputs": [
+        "{workspaceRoot}/apps/MintPlayer/MintPlayer/ClientApp/dist/ClientApp"
+      ],
+      "options": {
+        "outputPath": "apps/MintPlayer/MintPlayer/ClientApp/dist/ClientApp",
+        "browser": "apps/MintPlayer/MintPlayer/ClientApp/src/main.ts",
+        "tsConfig": "apps/MintPlayer/MintPlayer/ClientApp/tsconfig.app.json",
+        "inlineStyleLanguage": "scss",
+        "assets": [
+          {
+            "glob": "**/*",
+            "input": "apps/MintPlayer/MintPlayer/ClientApp/public"
+          },
+          {
+            "glob": "bs-theme-preboot.js",
+            "input": "node_modules/@mintplayer/web-components/theming",
+            "output": "/"
+          }
+        ],
+        "styles": [
+          "node_modules/@mintplayer/ng-bootstrap/_bootstrap.scss",
+          "node_modules/bootstrap-icons/font/bootstrap-icons.css",
+          "apps/MintPlayer/MintPlayer/ClientApp/src/styles.scss"
+        ],
+        "loader": {
+          ".svg": "text"
+        }
+      },
+      "configurations": {
+        "production": {
+          "budgets": [
+            {
+              "type": "initial",
+              "maximumWarning": "1MB",
+              "maximumError": "2MB"
+            },
+            {
+              "type": "anyComponentStyle",
+              "maximumWarning": "4kB",
+              "maximumError": "8kB"
+            }
+          ],
+          "outputHashing": "all",
+          "serviceWorker": "apps/MintPlayer/MintPlayer/ClientApp/ngsw-config.json"
+        },
+        "development": {
+          "optimization": false,
+          "extractLicenses": false,
+          "sourceMap": true
+        }
+      },
+      "defaultConfiguration": "production"
+    },
+    "serve": {
+      "executor": "@nx/angular:dev-server",
+      "options": {
+        "hmr": true
+      },
+      "configurations": {
+        "production": {
+          "buildTarget": "@spark-apps/mint-player:build:production"
+        },
+        "development": {
+          "buildTarget": "@spark-apps/mint-player:build:development"
+        }
+      },
+      "defaultConfiguration": "development"
+    }
+  }
+}

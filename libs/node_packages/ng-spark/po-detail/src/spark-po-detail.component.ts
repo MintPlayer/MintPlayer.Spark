@@ -1,8 +1,9 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject, input, output, signal, TemplateRef, Type, untracked } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { CommonModule, NgTemplateOutlet, NgComponentOutlet } from '@angular/common';
+import { CommonModule, Location, NgTemplateOutlet, NgComponentOutlet } from '@angular/common';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
+import { sparkSlug } from './spark-slug';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
 import { BsBadgeComponent } from '@mintplayer/ng-bootstrap/badge';
@@ -28,6 +29,7 @@ import {
   ReferenceChipsPipe,
   ParsedDatePipe,
   AsDetailRowRendererPipe,
+  AsDetailLeadingRendererPipe,
 } from '@mintplayer/ng-spark/pipes';
 import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
 import { SparkAttributeDescriptionComponent } from '@mintplayer/ng-spark/attribute-description';
@@ -65,7 +67,7 @@ import { Subscription, combineLatest } from 'rxjs';
 
 @Component({
   selector: 'spark-po-detail',
-  imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, RouterModule, BsAlertComponent, BsBadgeComponent,BsCardComponent, BsCardHeaderComponent, BsContainerComponent, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsPriorityNavComponent, BsPriorityNavItemDirective, BsTableComponent, BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective, BsSpinnerComponent, SparkIconComponent, SparkQueryCardComponent, SparkGridCellComponent, ResolveTranslationPipe, TranslateKeyPipe, AttributeValuePipe, OrDashPipe, RawAttributeValuePipe, AsDetailColumnsPipe, AsDetailRowRendererPipe, AsDetailCellValuePipe, ArrayValuePipe, ReferenceLinkRoutePipe, ReferenceChipsPipe, ParsedDatePipe, SparkAttributeDescriptionComponent],
+  imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, RouterModule, BsAlertComponent, BsBadgeComponent,BsCardComponent, BsCardHeaderComponent, BsContainerComponent, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsPriorityNavComponent, BsPriorityNavItemDirective, BsTableComponent, BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective, BsSpinnerComponent, SparkIconComponent, SparkQueryCardComponent, SparkGridCellComponent, ResolveTranslationPipe, TranslateKeyPipe, AttributeValuePipe, OrDashPipe, RawAttributeValuePipe, AsDetailColumnsPipe, AsDetailRowRendererPipe, AsDetailLeadingRendererPipe, AsDetailCellValuePipe, ArrayValuePipe, ReferenceLinkRoutePipe, ReferenceChipsPipe, ParsedDatePipe, SparkAttributeDescriptionComponent],
   templateUrl: './spark-po-detail.component.html',
   styleUrl: './spark-po-detail.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -73,6 +75,7 @@ import { Subscription, combineLatest } from 'rxjs';
 export class SparkPoDetailComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
+  private readonly location = inject(Location);
   private readonly sparkService = inject(SparkService);
   private readonly returnNavigation = inject(SparkReturnNavigationService);
   private readonly queryRefresh = inject(SparkQueryRefreshService);
@@ -348,6 +351,19 @@ export class SparkPoDetailComponent {
     await this.load();
   }
 
+  /**
+   * With `sparkRoutes({ slugs: true })`, puts the breadcrumb's slug in the URL, or corrects a stale one, without a
+   * navigation. A slug of "edit" is left out: that URL is the edit page.
+   */
+  private writeSlug(item: PersistentObject): void {
+    if (!this.route.snapshot.data['sparkSlug']) return;
+    const slug = sparkSlug(item.breadcrumb);
+    if (slug === (this.route.snapshot.paramMap.get('slug') ?? '')) return;
+    const commands = slug && slug !== 'edit' ? ['/po', this.type, this.id, slug] : ['/po', this.type, this.id];
+    const tree = this.router.createUrlTree(commands, { queryParams: this.route.snapshot.queryParams });
+    this.location.replaceState(this.router.serializeUrl(tree));
+  }
+
   /** The object as the page's current mode sees it. Only a set mode is sent. */
   private loadItem(): Promise<PersistentObject> {
     const deleted = this.deletedMode();
@@ -380,6 +396,7 @@ export class SparkPoDetailComponent {
       this.allEntityTypes.set(entityTypes);
       this.entityType.set(et);
       this.item.set(item);
+      this.writeSlug(item);
       this.loadLookupReferenceOptions();
       this.loadAsDetailTypes();
 
@@ -501,9 +518,9 @@ export class SparkPoDetailComponent {
     return this.rendererRegistry.find(r => r.name === attr.renderer)?.detailComponent ?? null;
   }
 
-  /** Inputs of an AsDetail row renderer (`rowComponent`): the row and the object that owns it. */
+  /** Inputs of an AsDetail row or leading-cell renderer: the row and the object that owns it. */
   getRowRendererInputs(renderer: SparkResolvedRowRenderer, row: Record<string, any>, item: PersistentObject): Record<string, any> {
-    return rowRendererInputs(renderer, row, item?.id);
+    return rowRendererInputs(renderer, row, item?.id, item);
   }
 
   getDetailRendererInputs(component: Type<any>, attr: EntityAttributeDefinition, item: PersistentObject): Record<string, any> {

@@ -1,0 +1,63 @@
+{
+  "version": 2,
+  "modelHash": "d9d6171e082cbb645aa61384bc99f4add50526e4f9c7f81898fb84442f41d9a9",
+  "contextRoots": "0a57797fc64a2524af70bdcc95198f5f4f2e96ee0ca7c67cb5ded14c179833a9",
+  "modelFiles": "85602809c4f0e4852e31d12d4ff640c901d5e6a030a16d3e820c69cb33779a6c",
+  "files": {
+    "Artist.json": "f05e3b27b2884e4f0525ded87609efa1db036bf7a29bec3bc7892a10511b67b6",
+    "ArtistMember.json": "a2637697f6b10fdde2f34d1c3bd8cd98c5819f1b2b77994bd7457c6472a70890",
+    "LyricsTiming.json": "edf860ab01e1600bf483fa22494f5581f2fb78bf107cbd3626334e7b5ada9133",
+    "Medium.json": "ad5c85b7865afb765a5a15bd9098b5c09b55c37a584707b3e555ba607e3c83db",
+    "MediumType.json": "29b8616eabcb9d10ae652ac694d25eeafc7589267864fb887123a23c557fe518",
+    "PasskeyRename.json": "efd6a49e2c20d8420f48f546557fe7605a0553d3f4ce50ec8ae62876ce86714e",
+    "PasskeyRow.json": "902d6e7e53ac01ab224b90bdd486b9ba3f4ee27273fe667c907312aac3541b33",
+    "Passkeys.json": "738742f13217adeeb4724f72f968923099f7d7210cee1133dfd6707eb55856ce",
+    "Person.json": "47c1162e051e095709916913960772886d852d59cdfd01f4d1c9d1998b2ecf38",
+    "Playlist.json": "6f0877a7b252db717d4a29196197bef72967f3724fa00c9226ddb9d65a42e1cf",
+    "PlaylistTrack.json": "1b3d314839a068801140ae86fec3f88349292860e67cc4840d98ebe047345d11",
+    "Song.json": "87151dfa430b8312d4cafbd8f20ff231a47cfb62bf7a5b7915b6071f5d147fc1",
+    "SongArtist.json": "537f2c0b46c2091f7d9ad378e7e933f8770a64f774b4b08ca6d6fd31541b0e43",
+    "SparkUser.json": "81d5e4fe403e329fc20404f35c3b9944aa11c17374981df5a4073ddf08fcdb69",
+    "Tag.json": "0ed810865d832cc1af210f7545c3b95bfb273f88c0efe6bdac371a1b523e5ed2",
+    "TagCategory.json": "0dd5dafb7ae7227927398821f4bec8193eae1e1072a767d9dad3c4e065e1dc9f"
+  },
+  "entities": {
+    "Artist": "17694f1ff6dfa9de111fbd426c6a5fbd6f9a3c75c753cd21af0a86e8bd686065",
+    "ArtistMember": "d7d1bf67e42c65763d13f5c9cedc304ed12c317b77ee38ccb753097c83ce28c5",
+    "LyricsTiming": "ba9ae7b988650d3dc6f6f2b462582849fea4e5c5f42240f70cce3d274271e150",
+    "Medium": "4449ee3584e7ccba996bd0a4b587dd4993f712f29e9aebe38a3429f2a3b14fed",
+    "MediumType": "f0dd6c861d08c39389c7a3ec606951c599ec04d788c7f1bc817e36b2cd9ed624",
+    "Person": "764b73ca2056c40964dc83a60b1912beac1d8478e77c33ddad1c8b2d0f7ca195",
+    "Playlist": "111cae87a691ce7cdcb91f59be1d353b877404b6991ba9ff4ee74483296923ef",
+    "PlaylistTrack": "61b8656a000d7b726e5ed2e9e037dac90c68d2a27b7da358096337b66f24aa55",
+    "Song": "ce8b612fc6a6ae80662a986dc0de256ccb6d17353acbe4e1ce17224d2bd22fbf",
+    "SongArtist": "8015e005daabc4b1ff6db7bf2d9166dc38023d9133b57b0193a026bb4937dbc1",
+    "Tag": "8e658c94e071c52e3817f31d814862ca1d35c4afa92d5e37304f0eb4ba9eeed1",
+    "TagCategory": "6e052c34ddb73ad514d3a13becb31df7ba17c109f926baf8ac0aa4e494f2b230"
+  },
+  "configFiles": {
+    "actions.json": "32cc41b3dafef21b94b7ca75ac82dfed573e43b1207fe4902a16d9e3e9572b4d"
+  },
+  "libraries": {
+    "authorization": "MintPlayer.Spark.Authorization",
+    "spark": "MintPlayer.Spark"
+  },
+  "layers": {
+    "Model/PasskeyRename.json": {
+      "authorization": "efd6a49e2c20d8420f48f546557fe7605a0553d3f4ce50ec8ae62876ce86714e"
+    },
+    "Model/PasskeyRow.json": {
+      "authorization": "902d6e7e53ac01ab224b90bdd486b9ba3f4ee27273fe667c907312aac3541b33"
+    },
+    "Model/Passkeys.json": {
+      "authorization": "738742f13217adeeb4724f72f968923099f7d7210cee1133dfd6707eb55856ce"
+    },
+    "Model/SparkUser.json": {
+      "authorization": "81d5e4fe403e329fc20404f35c3b9944aa11c17374981df5a4073ddf08fcdb69"
+    },
+    "actions.json": {
+      "authorization": "fb0d34fa66e732b157e4e222fb9c357e4219cf6d85177473103874e8c1090427",
+      "spark": "5974b38c8164cafbfb22c012c52fb46dd27264181d772b9f004de1829d1838e6"
+    }
+  }
+}

@@ -10,6 +10,11 @@ Treat changes to it as production changes. Its docs are in [docs/code-coverage/]
 deployed beside CodeCoverage on the same VPS. Treat changes to it as production changes. Its docs are in
 [docs/seotester/](docs/seotester/README.md); its plan and decision log are `docs/seo_analyzer_PRD.md`.
 
+**`apps/MintPlayer`** is production as well: mintplayer.com (https 5015), rewritten from the legacy
+`MintPlayer/MintPlayer` repository and deployed on the same VPS. Its RavenDB database is `MintPlayer` on the shared
+server, and the users are the legacy site's real accounts. Its plan, decisions and log are in
+`docs/mintplayer_website_PRD.md` and `docs/mintplayer_website_plan.md`.
+
 - **`apps/SparkId`** is the demo identity provider (https 5011). HR, Fleet and QnA sign in against it,
   and Fleet validates the machine tokens it issues. Identity-provider work lands there, not in HR
   (`docs/identity_provider_platform_PRD.md`).
@@ -53,18 +58,35 @@ while CI runs everything, E2E included, with its Nx cache and the Developer Rave
 
 **CI layout (PR #511, 2026-10-13):** `.github/workflows/test.yml` (reusable, called by both
 `pull-request.yml` and the master `publish-release`) runs every suite as a parallel job:
-`MintPlayer.Spark.Tests` in four shards, E2E, CodeCoverage.Tests, SeoTester.Tests and "Other suites".
+`MintPlayer.Spark.Tests` in four shards, E2E and SeoTester.Tests in two each, CodeCoverage.Tests, the
+named groups of smaller suites (Library, CodeCoverage git, App, Angular) and a catch-all "Other suites".
 Each job uploads its coverage reports as an artifact, and one coverage job uploads them together. On
 master, the Release build + pack runs beside the tests and `publish` needs both. Measured: PR run
 38389429815 took 4.7 min wall, against 12–16 min for the single sequential job before.
 
+**PR #531 (2026-10-22):** the run had grown back to ~10 min (16–22 min on the commerce branch). There
+were two causes. First, the app projects' `implicitDependencies` on their ClientApp made every app test
+build Angular production bundles. Second, "Other suites" took every new project. The implicit deps are
+gone; the E2E host still builds a stale bundle itself. "build + verify" now leaves the Angular apps to a
+parallel `Angular apps` job (`--exclude='*,!@spark-demo/*,!@spark-apps/*'`; `nx affected` ignores
+`--projects`), and skips the `*.Tests` projects, which each test job compiles itself (`test` depends on
+`build`). Measured run 39825656950: 10.2 min push-to-green, ~2 min of it queueing.
+
+- **Keep the run at 20 concurrent jobs or fewer.** A public repository gets at most 20 runners at once,
+  and GitHub has no job priority: at 22, Spark shard 2/4 waited 2.3 min for a runner and finished last
+  (run 39827710856). The two action-bundle jobs are therefore one (`actions`), and the dependency-action
+  integration tests run as two slices of two groups (`DEP_ACTION_IT_GROUP` takes a comma-separated
+  list). A new matrix entry should join an existing job unless it is long enough to set the pace.
+
 - **Shards:** `tools/test-shard.mjs` packs the test classes into N groups by
-  `tools/test-shard-weights.json` (seconds per class). Shards 1..N-1 run their classes and shard N runs
+  `tools/test-shard-weights.json` (seconds per class, for every sharded project). Shards 1..N-1 run their classes and shard N runs
   everything else, so a new class can never be skipped. Unset `SPARK_TEST_SHARD` and the command runs
   unchanged, which is what local runs do. When the shards drift apart, regenerate the weights from a
-  run's trx files: `gh run download <run> --pattern 'coverage-spark-*'`, then
-  `node tools/test-shard.mjs --timings tests/MintPlayer.Spark.Tests <trx files>`.
-- **A new long suite** gets its own entry in `test.yml`'s matrix (and in "Other suites"' `exclude`).
+  run's trx files: `gh run download <run> --pattern 'coverage-spark-*'` (or `coverage-e2e-*`,
+  `coverage-seotester-*`), then `node tools/test-shard.mjs --timings <project dir> <trx files>`, which
+  merges into the file.
+- **A new test project** lands in the catch-all "Other suites" automatically. Give a long one its own
+  matrix entry, or add it to a group, and add it to "Other suites"' `exclude` too.
 
 - **CI runs cost money: never push just to get a test run.** The sweep runs locally. Making it fast
   is tracked work (see `docs/contributions_PRD.md` §5c).

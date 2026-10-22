@@ -1,0 +1,20 @@
+// Floats over the page, bottom right, like the legacy player card.
+.player-dock {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 1030;
+  width: 320px;
+  max-width: calc(100vw - 2rem);
+  overflow: hidden;
+}
+
+// Dragged by its header (cdkDragHandle).
+.player-dock-handle {
+  cursor: move;
+}
+
+// The player's iframe would swallow the pointer events of a fast drag.
+.player-dock.cdk-drag-dragging video-player {
+  pointer-events: none;
+}

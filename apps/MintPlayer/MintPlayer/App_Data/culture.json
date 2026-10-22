@@ -1,0 +1,9 @@
+{
+  "$schema": "../../../../schemas/culture.schema.json",
+  "languages": [
+    "en",
+    "fr",
+    "nl"
+  ],
+  "defaultLanguage": "en"
+}

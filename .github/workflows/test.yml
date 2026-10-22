@@ -41,20 +41,31 @@ jobs:
           - { name: Spark.Tests 2/4, artifact: spark-2, projects: MintPlayer.Spark.Tests, shard: 2/4 }
           - { name: Spark.Tests 3/4, artifact: spark-3, projects: MintPlayer.Spark.Tests, shard: 3/4 }
           - { name: Spark.Tests 4/4, artifact: spark-4, projects: MintPlayer.Spark.Tests, shard: 4/4 }
-          - { name: E2E, artifact: e2e, projects: MintPlayer.Spark.E2E.Tests, playwright: true }
+          - { name: E2E 1/2, artifact: e2e-1, projects: MintPlayer.Spark.E2E.Tests, shard: 1/2, playwright: true }
+          - { name: E2E 2/2, artifact: e2e-2, projects: MintPlayer.Spark.E2E.Tests, shard: 2/2, playwright: true }
           - { name: CodeCoverage.Tests, artifact: codecoverage, projects: CodeCoverage.Tests }
-          - { name: SeoTester.Tests, artifact: seotester, projects: SeoTester.Tests, playwright: true }
-          # Everything else: the generator, client and app test projects and the Angular (vitest) suites.
-          # This includes the dependency-update action's `test` target (unit + committed-bundle smoke test).
-          - { name: Other suites, artifact: other, exclude: 'MintPlayer.Spark.Tests,MintPlayer.Spark.E2E.Tests,CodeCoverage.Tests,SeoTester.Tests' }
+          - { name: SeoTester.Tests 1/2, artifact: seotester-1, projects: SeoTester.Tests, shard: 1/2, playwright: true }
+          - { name: SeoTester.Tests 2/2, artifact: seotester-2, projects: SeoTester.Tests, shard: 2/2, playwright: true }
+          # The smaller suites in groups of a few minutes each. One "Other suites" job used to run them all and
+          # set the pace of the whole run (9.3 min, 16-22 min once the commerce suites joined it).
+          - { name: Library suites, artifact: libs, projects: 'MintPlayer.Spark.SourceGenerators.Tests,MintPlayer.Spark.Client.Tests,MintPlayer.Spark.Gs1.Tests,MintPlayer.Migration.Tests' }
+          - { name: CodeCoverage git suites, artifact: codecoverage-git, projects: 'CodeCoverage.Git.Tests,CodeCoverage.GitMirror.Tests,CodeCoverage.GitWriter.Tests' }
+          - { name: App suites, artifact: apps, projects: 'DemoApp.Tests,SparkId.Tests,Fleet.Tests,QnA.Tests,HR.Tests' }
+          # The Angular and action suites (vitest), among them the dependency-update action's `test` target
+          # (unit + committed-bundle smoke test).
+          - { name: Angular suites, artifact: angular, projects: '@mintplayer/ng-spark,@spark-apps/*,@spark-demo/*,@mintplayer/coverage-upload-action,@mintplayer/dependency-update-action' }
+          # Everything not named above, so a new test project runs without being added here. Keep this list
+          # in step with the entries above.
+          - { name: Other suites, artifact: other, exclude: 'MintPlayer.Spark.Tests,MintPlayer.Spark.E2E.Tests,CodeCoverage.Tests,SeoTester.Tests,MintPlayer.Spark.SourceGenerators.Tests,MintPlayer.Spark.Client.Tests,MintPlayer.Spark.Gs1.Tests,MintPlayer.Migration.Tests,CodeCoverage.Git.Tests,CodeCoverage.GitMirror.Tests,CodeCoverage.GitWriter.Tests,DemoApp.Tests,SparkId.Tests,Fleet.Tests,QnA.Tests,HR.Tests,@mintplayer/ng-spark,@spark-apps/*,@spark-demo/*,@mintplayer/coverage-upload-action,@mintplayer/dependency-update-action' }
           # The dependency-update action against real package managers and LOCAL registries
           # (docs/code-coverage/dependency-updates-PRD.md §13.11.2): its own `test-integration` target, so
-          # "Other suites" (target `test`) never runs it. One slice per ecosystem group, 15 minutes each;
+          # "Other suites" (target `test`) never runs it. Two ecosystem groups per slice, 15 minutes each;
           # the Nx cache makes an unchanged action about a minute.
-          - { name: 'dependency-action IT node+dotnet', artifact: dep-it-node-dotnet, projects: '@mintplayer/dependency-update-action', target: test-integration, itGroup: 'node+dotnet', timeout: 15 }
-          - { name: 'dependency-action IT jvm', artifact: dep-it-jvm, projects: '@mintplayer/dependency-update-action', target: test-integration, itGroup: 'jvm', timeout: 15 }
-          - { name: 'dependency-action IT python+go+rust+php', artifact: dep-it-python-go-rust-php, projects: '@mintplayer/dependency-update-action', target: test-integration, itGroup: 'python+go+rust+php', timeout: 15 }
-          - { name: 'dependency-action IT docker+renovate', artifact: dep-it-docker-renovate, projects: '@mintplayer/dependency-update-action', target: test-integration, itGroup: 'docker+renovate', timeout: 15 }
+          # Two slices, not four: a public repository runs at most 20 jobs at once, and at 22 a Spark shard
+          # waited 2.3 min for a runner and set the run's pace (run 39827710856). The four groups took
+          # 1.5-2 min each there.
+          - { name: 'dependency-action IT node+dotnet, jvm', artifact: dep-it-node-dotnet-jvm, projects: '@mintplayer/dependency-update-action', target: test-integration, itGroup: 'node+dotnet,jvm', timeout: 15 }
+          - { name: 'dependency-action IT python+go+rust+php, docker+renovate', artifact: dep-it-python-go-rust-php-docker-renovate, projects: '@mintplayer/dependency-update-action', target: test-integration, itGroup: 'python+go+rust+php,docker+renovate', timeout: 15 }
 
     steps:
     - name: Checkout
@@ -72,7 +83,7 @@ jobs:
     # The package managers ubuntu-latest lacks, at the versions the S13/S14 spikes ran. npm, yarn,
     # dotnet, java/maven/gradle, go, cargo, php/composer and docker are on the image already.
     - name: Integration toolchains
-      if: matrix.itGroup == 'node+dotnet' || matrix.itGroup == 'python+go+rust+php'
+      if: contains(matrix.itGroup, 'node+dotnet') || contains(matrix.itGroup, 'python+go+rust+php')
       run: |
         npm install -g pnpm@10.18.0 --ignore-scripts
         pipx install uv==0.13.1
@@ -86,9 +97,9 @@ jobs:
       # prints NOTHING. Streaming trades tidy grouping for a visible last line.
       run: |
         if [ -n "${{ matrix.projects }}" ]; then
-          npx nx run-many --target=${{ matrix.target || 'test' }} --projects=${{ matrix.projects }} --output-style=stream
+          npx nx run-many --target=${{ matrix.target || 'test' }} --projects='${{ matrix.projects }}' --output-style=stream
         else
-          npx nx run-many --target=test --exclude=${{ matrix.exclude }} --output-style=stream
+          npx nx run-many --target=test --exclude='${{ matrix.exclude }}' --output-style=stream
         fi
       env:
         # The integration tests' ecosystem slice; unset for every other suite.
@@ -119,6 +130,7 @@ jobs:
           coverage-artifact-root.txt
           tests/*/coverage/**/coverage.cobertura.xml
           tests/*/coverage/*.trx
+          apps/*/*/coverage/*.trx
           apps/CodeCoverage/*/coverage/**/coverage.cobertura.xml
           libs/node_packages/*/coverage/cobertura-coverage.xml
           apps/CodeCoverage/CodeCoverage/ClientApp/coverage/cobertura-coverage.xml

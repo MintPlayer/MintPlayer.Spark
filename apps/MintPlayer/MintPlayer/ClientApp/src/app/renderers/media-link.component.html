@@ -1,0 +1,5 @@
+@if (url(); as url) {
+  <a [href]="url.href" target="_blank" rel="noopener noreferrer"><i class="bi" [class]="icon()"></i> {{ url.hostname }}{{ url.pathname === '/' ? '' : url.pathname }}</a>
+} @else {
+  {{ value() }}
+}

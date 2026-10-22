@@ -121,8 +121,12 @@
                 <ng-container *ngComponentOutlet="rendererType; inputs: getDetailRendererInputs(rendererType, attr, currentItem)"></ng-container>
               } @else if (attr.dataType === 'AsDetail' && attr.isArray) {
                 <bs-table [isResponsive]="true">
+                  @let leadingRenderer = (attr | asDetailLeadingRenderer:asDetailTypes():rendererRegistry);
                   <thead>
                     <tr>
+                      @if (leadingRenderer) {
+                        <th class="spark-leading-cell"></th>
+                      }
                       @for (col of (attr | asDetailColumns:asDetailTypes():rendererRegistry); track col.name) {
                         <th>{{ (col.label | resolveTranslation) || col.name }}<spark-attribute-description [description]="col.description" /></th>
                       }
@@ -132,6 +136,12 @@
                     @let rowRenderer = (attr | asDetailRowRenderer:asDetailTypes():rendererRegistry);
                     @for (row of (attr.name | arrayValue:currentItem); track $index) {
                       <tr>
+                        <!-- A leading-cell renderer (leadingComponent: a play button) gets its own first column. -->
+                        @if (leadingRenderer) {
+                          <td class="spark-leading-cell">
+                            <ng-container *ngComponentOutlet="leadingRenderer.component; inputs: getRowRendererInputs(leadingRenderer, row, currentItem)"></ng-container>
+                          </td>
+                        }
                         @for (col of (attr | asDetailColumns:asDetailTypes():rendererRegistry); track col.name; let firstCol = $first) {
                           <td>
                             <!--
@@ -165,7 +175,7 @@
                       </tr>
                     } @empty {
                       <tr>
-                        <td [attr.colspan]="(attr | asDetailColumns:asDetailTypes():rendererRegistry).length" class="text-center text-muted">
+                        <td [attr.colspan]="(attr | asDetailColumns:asDetailTypes():rendererRegistry).length + (leadingRenderer ? 1 : 0)" class="text-center text-muted">
                           {{ 'common.noItemsFound' | t }}
                         </td>
                       </tr>

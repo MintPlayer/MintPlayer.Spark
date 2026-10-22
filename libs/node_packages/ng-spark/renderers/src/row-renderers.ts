@@ -1,5 +1,5 @@
 import { Type } from '@angular/core';
-import { EntityAttributeDefinition, EntityType, hasShowedOnFlag, ShowedOn } from '@mintplayer/ng-spark/models';
+import { EntityAttributeDefinition, EntityType, hasShowedOnFlag, PersistentObject, ShowedOn } from '@mintplayer/ng-spark/models';
 import { SparkAttributeRendererRegistration } from './spark-attribute-renderer-registry';
 import { withDeclaredInputs } from './renderer-inputs';
 
@@ -26,25 +26,42 @@ export function resolveRowRenderer(
   rowType: EntityType | null | undefined,
   registry: readonly SparkAttributeRendererRegistration[] | null | undefined,
 ): SparkResolvedRowRenderer | null {
+  return resolveRowComponent(rowType, registry, 'rowComponent');
+}
+
+/** The first leading-cell renderer (`leadingComponent`) the row type's visible attributes name, or null. */
+export function resolveLeadingRenderer(
+  rowType: EntityType | null | undefined,
+  registry: readonly SparkAttributeRendererRegistration[] | null | undefined,
+): SparkResolvedRowRenderer | null {
+  return resolveRowComponent(rowType, registry, 'leadingComponent');
+}
+
+function resolveRowComponent(
+  rowType: EntityType | null | undefined,
+  registry: readonly SparkAttributeRendererRegistration[] | null | undefined,
+  key: 'rowComponent' | 'leadingComponent',
+): SparkResolvedRowRenderer | null {
   if (!rowType || !registry?.length) return null;
   const ordered = [...(rowType.attributes ?? [])]
     .filter(a => hasShowedOnFlag(a.showedOn, ShowedOn.Query) || hasShowedOnFlag(a.showedOn, ShowedOn.PersistentObject))
     .sort((a, b) => a.order - b.order);
   for (const attribute of ordered) {
-    const registration = attribute.renderer ? registry.find(r => r.name === attribute.renderer && r.rowComponent) : undefined;
+    const registration = attribute.renderer ? registry.find(r => r.name === attribute.renderer && r[key]) : undefined;
     if (!registration) continue;
     const attributes = ordered.filter(a => a.renderer === registration.name);
-    return { component: registration.rowComponent!, attributes, options: attributes[0]?.rendererOptions };
+    return { component: registration[key]!, attributes, options: attributes[0]?.rendererOptions };
   }
   return null;
 }
 
 /** The input bag for a row renderer, filtered to what the component declares. */
-export function rowRendererInputs(renderer: SparkResolvedRowRenderer, row: Record<string, any>, ownerId: string | undefined): Record<string, any> {
+export function rowRendererInputs(renderer: SparkResolvedRowRenderer, row: Record<string, any>, ownerId: string | undefined, owner?: PersistentObject): Record<string, any> {
   return withDeclaredInputs(renderer.component, {
     row,
     attributes: renderer.attributes,
     options: renderer.options,
     ownerId,
+    owner,
   });
 }

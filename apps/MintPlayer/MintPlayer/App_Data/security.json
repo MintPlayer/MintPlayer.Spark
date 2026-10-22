@@ -1,0 +1,424 @@
+{
+  "$schema": "../../../../schemas/security.schema.json",
+  "wellKnown": {
+    "anonymous": "00000000-0000-0000-0000-000000000000",
+    "authenticated": "5e150000-0000-4000-8000-00000000000f"
+  },
+  "groups": {
+    "00000000-0000-0000-0000-000000000000": "Anonymous visitors",
+    "5e150000-0000-4000-8000-00000000000f": "Signed-in users",
+    "5e150000-0000-4000-8000-000000000001": "Administrator",
+    "5e150000-0000-4000-8000-000000000002": "Blogger",
+    "5e150000-0000-4000-8000-000000000003": "Editor"
+  },
+  "rights": [
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000005",
+      "resource": "QueryRead/Artist",
+      "groupId": "00000000-0000-0000-0000-000000000000",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000057",
+      "resource": "History/Artist",
+      "groupId": "5e150000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000055",
+      "resource": "Purge/Artist",
+      "groupId": "5e150000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000015",
+      "resource": "QueryReadEditNewDelete/Artist",
+      "groupId": "5e150000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000054",
+      "resource": "Restore/Artist",
+      "groupId": "5e150000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000058",
+      "resource": "Revert/Artist",
+      "groupId": "5e150000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000056",
+      "resource": "ViewDeleted/Artist",
+      "groupId": "5e150000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000022",
+      "resource": "QueryReadEditNewDelete/Artist",
+      "groupId": "5e150000-0000-4000-8000-000000000003",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000008",
+      "resource": "QueryRead/ArtistMember",
+      "groupId": "00000000-0000-0000-0000-000000000000",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000018",
+      "resource": "QueryReadEditNewDelete/ArtistMember",
+      "groupId": "5e150000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000026",
+      "resource": "QueryReadEditNewDelete/ArtistMember",
+      "groupId": "5e150000-0000-4000-8000-000000000003",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000010",
+      "resource": "QueryRead/LyricsTiming",
+      "groupId": "00000000-0000-0000-0000-000000000000",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000020",
+      "resource": "QueryReadEditNewDelete/LyricsTiming",
+      "groupId": "5e150000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000027",
+      "resource": "QueryReadEditNewDelete/LyricsTiming",
+      "groupId": "5e150000-0000-4000-8000-000000000003",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000007",
+      "resource": "QueryRead/Medium",
+      "groupId": "00000000-0000-0000-0000-000000000000",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000017",
+      "resource": "QueryReadEditNewDelete/Medium",
+      "groupId": "5e150000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000024",
+      "resource": "QueryReadEditNewDelete/Medium",
+      "groupId": "5e150000-0000-4000-8000-000000000003",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000001",
+      "resource": "QueryRead/MediumType",
+      "groupId": "00000000-0000-0000-0000-000000000000",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000037",
+      "resource": "History/MediumType",
+      "groupId": "5e150000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000035",
+      "resource": "Purge/MediumType",
+      "groupId": "5e150000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000011",
+      "resource": "QueryReadEditNewDelete/MediumType",
+      "groupId": "5e150000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000034",
+      "resource": "Restore/MediumType",
+      "groupId": "5e150000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000038",
+      "resource": "Revert/MediumType",
+      "groupId": "5e150000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000036",
+      "resource": "ViewDeleted/MediumType",
+      "groupId": "5e150000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000004",
+      "resource": "QueryRead/Person",
+      "groupId": "00000000-0000-0000-0000-000000000000",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000052",
+      "resource": "History/Person",
+      "groupId": "5e150000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000050",
+      "resource": "Purge/Person",
+      "groupId": "5e150000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000014",
+      "resource": "QueryReadEditNewDelete/Person",
+      "groupId": "5e150000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000049",
+      "resource": "Restore/Person",
+      "groupId": "5e150000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000053",
+      "resource": "Revert/Person",
+      "groupId": "5e150000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000051",
+      "resource": "ViewDeleted/Person",
+      "groupId": "5e150000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000021",
+      "resource": "QueryReadEditNewDelete/Person",
+      "groupId": "5e150000-0000-4000-8000-000000000003",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000028",
+      "resource": "QueryRead/Playlist",
+      "groupId": "00000000-0000-0000-0000-000000000000",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000067",
+      "resource": "History/Playlist",
+      "groupId": "5e150000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000065",
+      "resource": "Purge/Playlist",
+      "groupId": "5e150000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000032",
+      "resource": "QueryReadEditNewDelete/Playlist",
+      "groupId": "5e150000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000064",
+      "resource": "Restore/Playlist",
+      "groupId": "5e150000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000068",
+      "resource": "Revert/Playlist",
+      "groupId": "5e150000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000066",
+      "resource": "ViewDeleted/Playlist",
+      "groupId": "5e150000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000030",
+      "resource": "QueryReadEditNewDelete/Playlist",
+      "groupId": "5e150000-0000-4000-8000-00000000000f",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000029",
+      "resource": "QueryRead/PlaylistTrack",
+      "groupId": "00000000-0000-0000-0000-000000000000",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000033",
+      "resource": "QueryReadEditNewDelete/PlaylistTrack",
+      "groupId": "5e150000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000031",
+      "resource": "QueryReadEditNewDelete/PlaylistTrack",
+      "groupId": "5e150000-0000-4000-8000-00000000000f",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000006",
+      "resource": "QueryRead/Song",
+      "groupId": "00000000-0000-0000-0000-000000000000",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000062",
+      "resource": "History/Song",
+      "groupId": "5e150000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000060",
+      "resource": "Purge/Song",
+      "groupId": "5e150000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000016",
+      "resource": "QueryReadEditNewDelete/Song",
+      "groupId": "5e150000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000059",
+      "resource": "Restore/Song",
+      "groupId": "5e150000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000063",
+      "resource": "Revert/Song",
+      "groupId": "5e150000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000061",
+      "resource": "ViewDeleted/Song",
+      "groupId": "5e150000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000023",
+      "resource": "QueryReadEditNewDelete/Song",
+      "groupId": "5e150000-0000-4000-8000-000000000003",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000009",
+      "resource": "QueryRead/SongArtist",
+      "groupId": "00000000-0000-0000-0000-000000000000",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000019",
+      "resource": "QueryReadEditNewDelete/SongArtist",
+      "groupId": "5e150000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000025",
+      "resource": "QueryReadEditNewDelete/SongArtist",
+      "groupId": "5e150000-0000-4000-8000-000000000003",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000003",
+      "resource": "QueryRead/Tag",
+      "groupId": "00000000-0000-0000-0000-000000000000",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000047",
+      "resource": "History/Tag",
+      "groupId": "5e150000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000045",
+      "resource": "Purge/Tag",
+      "groupId": "5e150000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000013",
+      "resource": "QueryReadEditNewDelete/Tag",
+      "groupId": "5e150000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000044",
+      "resource": "Restore/Tag",
+      "groupId": "5e150000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000048",
+      "resource": "Revert/Tag",
+      "groupId": "5e150000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000046",
+      "resource": "ViewDeleted/Tag",
+      "groupId": "5e150000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000002",
+      "resource": "QueryRead/TagCategory",
+      "groupId": "00000000-0000-0000-0000-000000000000",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000042",
+      "resource": "History/TagCategory",
+      "groupId": "5e150000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000040",
+      "resource": "Purge/TagCategory",
+      "groupId": "5e150000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000012",
+      "resource": "QueryReadEditNewDelete/TagCategory",
+      "groupId": "5e150000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000039",
+      "resource": "Restore/TagCategory",
+      "groupId": "5e150000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000043",
+      "resource": "Revert/TagCategory",
+      "groupId": "5e150000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "5e15ffff-0000-4000-8000-000000000041",
+      "resource": "ViewDeleted/TagCategory",
+      "groupId": "5e150000-0000-4000-8000-000000000001",
+      "isDenied": false
+    }
+  ]
+}

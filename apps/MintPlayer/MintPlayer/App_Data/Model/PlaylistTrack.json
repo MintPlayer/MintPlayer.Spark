@@ -1,0 +1,28 @@
+{
+  "$schema": "https://schemas.spark.mintplayer.com/v7/model.schema.json",
+  "persistentObject": {
+    "id": "01173c46-176a-4a62-ae12-6007a7d1e656",
+    "name": "PlaylistTrack",
+    "clrType": "MintPlayer.Entities.PlaylistTrack",
+    "breadcrumb": "{SongId}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "5dbccf8c-d4d3-42f8-8245-9cee844305e5",
+        "name": "SongId",
+        "dataType": "Reference",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 1,
+        "query": "GetSongs",
+        "referenceType": "MintPlayer.Entities.Song",
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": []
+}

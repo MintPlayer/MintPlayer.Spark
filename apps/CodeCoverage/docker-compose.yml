@@ -43,6 +43,8 @@ services:
       # Shared with SeoTester's app only (apps/SeoTester/docker-compose.yml), which reaches this service by the same
       # name. External: created by either deploy, never removed by either stack's up/down.
       - seo-raven
+      # Likewise shared with mintplayer.com's app only (apps/MintPlayer/docker-compose.yml).
+      - mintplayer-raven
     # No curl/wget assumptions: bash's /dev/tcp is enough for "is it listening".
     healthcheck:
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080"]
@@ -164,6 +166,8 @@ services:
       - coverage-mail
       # Shared with SeoTester's app only; external, created by either deploy (like seo-raven).
       - seo-mail
+      # Shared with mintplayer.com's app only, likewise.
+      - mintplayer-mail
       # The relay's own way out (it delivers to recipients' MX on port 25). Nothing else joins it.
       - coverage-smtp-egress
     # bash, not sh: /dev/tcp is a bash feature, and this image's sh is dash, so the sh form
@@ -400,6 +404,8 @@ networks:
   #   coverage-git-writer-egress  coverage-git-writer (its way to the forges)
   #   seo-raven  (external) coverage-raven + SeoTester's app
   #   seo-mail   (external) coverage-smtp  + SeoTester's app
+  #   mintplayer-raven  (external) coverage-raven + mintplayer.com's app
+  #   mintplayer-mail   (external) coverage-smtp  + mintplayer.com's app
   coverage-db:
     driver: bridge
     internal: true
@@ -433,3 +439,10 @@ networks:
   seo-mail:
     external: true
     name: seo-mail
+  # Shared with mintplayer.com the same way (apps/MintPlayer/docker-compose.yml; both deploys create them).
+  mintplayer-raven:
+    external: true
+    name: mintplayer-raven
+  mintplayer-mail:
+    external: true
+    name: mintplayer-mail

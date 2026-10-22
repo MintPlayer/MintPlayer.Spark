@@ -1,0 +1,37 @@
+{
+  "$schema": "https://schemas.spark.mintplayer.com/v7/model.schema.json",
+  "persistentObject": {
+    "id": "e60da440-152d-4b3b-a5f4-65c57af2e6bc",
+    "name": "LyricsTiming",
+    "clrType": "MintPlayer.Entities.LyricsTiming",
+    "breadcrumb": "{MediumUrl}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "d528fedb-441e-40e9-91ba-ef3e670df62d",
+        "name": "MediumUrl",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "4d7a097e-d1fe-4178-9e65-0c7a2ce5c41a",
+        "name": "StartTimes",
+        "dataType": "decimal",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": true,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": []
+}
