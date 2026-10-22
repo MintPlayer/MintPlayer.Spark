@@ -35,6 +35,23 @@ runs:
     # A cache hit is no proof of completeness: the key was first saved (2026-10-09) by an older workflow
     # without chromium_headless_shell, and skipping the install on a hit left every SeoTester render test with
     # "Executable doesn't exist" (PR #512; master hid it behind an nx remote-cache replay).
+    #
+    # Bounded and retried: `--with-deps` runs apt-get against the runner's Azure Ubuntu mirror, and apt has no
+    # overall deadline. On PR #531 (run 39820864227) one job sat in this step for 12+ minutes on fetches the
+    # mirror never answered ("Ign:" lines), while the same install took under a minute in three sibling jobs.
+    # Short fetch timeouts make apt fail over and retry instead of waiting, and each attempt is capped.
     - name: Install Chromium
       shell: bash
-      run: npx --yes playwright@${{ steps.version.outputs.version }} install --with-deps chromium
+      run: |
+        printf 'Acquire::Retries "5";\nAcquire::http::Timeout "20";\nAcquire::https::Timeout "20";\n' \
+          | sudo tee /etc/apt/apt.conf.d/99ci-timeouts > /dev/null
+        for attempt in 1 2 3; do
+          timeout 240 npx --yes playwright@${{ steps.version.outputs.version }} install --with-deps chromium && exit 0
+          echo "::warning::Playwright install attempt $attempt failed or took over 4 minutes; retrying."
+          # timeout stops npx, not the apt-get it started under sudo, which would keep the dpkg lock.
+          sudo pkill -x apt-get || true
+          sleep 2
+          sudo dpkg --configure -a || true
+        done
+        echo "::error::Playwright install failed three times."
+        exit 1
