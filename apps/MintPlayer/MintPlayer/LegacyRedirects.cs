@@ -1,3 +1,5 @@
+using MintPlayer.AspNetCore.Endpoints;
+
 namespace MintPlayer;
 
 /// <summary>
@@ -8,20 +10,42 @@ namespace MintPlayer;
 /// </summary>
 internal static class LegacyRedirects
 {
-    private static readonly (string Segment, string Collection)[] Subjects = [("song", "Songs"), ("artist", "Artists"), ("person", "People")];
+    public const string Subject = "{segment:regex(^(song|artist|person)$)}";
 
-    public static IEndpointRouteBuilder MapLegacyRedirects(this IEndpointRouteBuilder endpoints)
+    private static readonly Dictionary<string, string> Collections = new() { ["song"] = "Songs", ["artist"] = "Artists", ["person"] = "People" };
+
+    public static IResult To(HttpContext httpContext, string? name = null)
     {
-        foreach (var (segment, collection) in Subjects)
-        {
-            // The name becomes the page's slug; the page corrects it if the title has changed since.
-            endpoints.MapGet($"/{segment}/{{id:int}}", (int id) => Results.Redirect($"/po/{segment}/{collection}%2F{id}", permanent: true));
-            endpoints.MapGet($"/{segment}/{{id:int}}/{{name}}", (int id, string name) =>
-                Results.Redirect($"/po/{segment}/{collection}%2F{id}/{Uri.EscapeDataString(name)}", permanent: true));
-        }
-
-        // D11: AMP is dropped.
-        endpoints.MapGet("/amp/song/{id:int}", (int id) => Results.Redirect($"/po/song/Songs%2F{id}", permanent: true));
-        return endpoints;
+        var segment = (string)httpContext.Request.RouteValues["segment"]!;
+        var id = (string)httpContext.Request.RouteValues["id"]!;
+        // The name becomes the page's slug; the page corrects it if the title has changed since.
+        var slug = name is null ? "" : "/" + Uri.EscapeDataString(name);
+        return Results.Redirect($"/po/{segment}/{Collections[segment]}%2F{id}{slug}", permanent: true);
     }
+}
+
+/// <summary><c>GET /song/313</c> (and <c>/artist</c>, <c>/person</c>).</summary>
+internal sealed partial class LegacyShowEndpoint : IGetEndpoint
+{
+    public static string Path => $"/{LegacyRedirects.Subject}/{{id:int}}";
+
+    public Task<IResult> HandleAsync(HttpContext httpContext) => Task.FromResult(LegacyRedirects.To(httpContext));
+}
+
+/// <summary><c>GET /song/313/sky-full-of-stars</c> (and <c>/artist</c>, <c>/person</c>).</summary>
+internal sealed partial class LegacyShowWithNameEndpoint : IGetEndpoint
+{
+    public static string Path => $"/{LegacyRedirects.Subject}/{{id:int}}/{{name}}";
+
+    public Task<IResult> HandleAsync(HttpContext httpContext) =>
+        Task.FromResult(LegacyRedirects.To(httpContext, (string)httpContext.Request.RouteValues["name"]!));
+}
+
+/// <summary><c>GET /amp/song/313</c>: D11, AMP is dropped.</summary>
+internal sealed partial class LegacyAmpSongEndpoint : IGetEndpoint
+{
+    public static string Path => "/amp/song/{id:int}";
+
+    public Task<IResult> HandleAsync(HttpContext httpContext) =>
+        Task.FromResult(Results.Redirect($"/po/song/Songs%2F{httpContext.Request.RouteValues["id"]}", permanent: true));
 }

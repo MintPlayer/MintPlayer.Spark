@@ -1,0 +1,74 @@
+name: mintplayer-image-check
+
+# Builds the MintPlayer production image on a pull request, without pushing it (as seotester-image-check.yml): a
+# missing COPY for a new ProjectReference fails here instead of in the production deploy. Never logs in to a registry,
+# never pushes, never deploys.
+#
+# The paths MIRROR mintplayer-deploy.yml's push filter (plus both workflow files);
+# tools/verify-mintplayer-deploy.test.mjs keeps them equal.
+
+on:
+  pull_request:
+    paths:
+      - 'apps/MintPlayer/MintPlayer/**'
+      - 'apps/MintPlayer/MintPlayer.Library/**'
+      - 'apps/MintPlayer/docker-compose.yml'
+      # MintPlayer's transitive ProjectReference closure, the same list as the Dockerfile's COPY lines and
+      # mintplayer-deploy.yml (tools/verify-mintplayer-deploy.test.mjs keeps the three equal to the csproj graph).
+      - 'libs/attributes/MintPlayer.Spark.Attributes/**'
+      - 'libs/authorization/MintPlayer.Spark.Authorization/**'
+      - 'libs/authorization/MintPlayer.Spark.Authorization.Abstractions/**'
+      - 'libs/history/MintPlayer.Spark.History/**'
+      - 'libs/history/MintPlayer.Spark.History.Abstractions/**'
+      - 'libs/mail/MintPlayer.Spark.MailManager/**'
+      - 'libs/mail/MintPlayer.Spark.MailManager.Abstractions/**'
+      - 'libs/messaging/MintPlayer.Spark.Messaging/**'
+      - 'libs/messaging/MintPlayer.Spark.Messaging.Abstractions/**'
+      - 'libs/migrations/MintPlayer.Spark.Migrations/**'
+      - 'libs/model/MintPlayer.Spark.Model/**'
+      - 'libs/soft_delete/MintPlayer.Spark.SoftDelete/**'
+      - 'libs/soft_delete/MintPlayer.Spark.SoftDelete.Abstractions/**'
+      - 'libs/source_generators/MintPlayer.Spark.LibraryGenerators/**'
+      - 'libs/source_generators/MintPlayer.Spark.SourceGenerators/**'
+      - 'libs/spark/MintPlayer.Spark/**'
+      - 'libs/spark/MintPlayer.Spark.SafeHttp/**'
+      - 'libs/spark/MintPlayer.Spark.Abstractions/**'
+      - 'libs/subscription_worker/MintPlayer.Spark.SubscriptionWorker.Abstractions/**'
+      # Angular libraries baked into the image via `nx run @spark-apps/mint-player:build`.
+      - 'libs/node_packages/ng-spark/**'
+      # Workspace-level files that affect the build.
+      - 'package.json'
+      - 'package-lock.json'
+      - 'nx.json'
+      - 'tsconfig.base.json'
+      - '.github/workflows/mintplayer-image-check.yml'
+      - '.github/workflows/mintplayer-deploy.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-image:
+    name: Build the MintPlayer image (no push)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v4
+
+    # cache-from only: a pull request may READ the layers the master deploy cached, never write them.
+    - name: Build the image
+      uses: docker/build-push-action@v7
+      with:
+        context: .
+        file: ./apps/MintPlayer/MintPlayer/Dockerfile
+        push: false
+        cache-from: type=gha,scope=mintplayer

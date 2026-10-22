@@ -1,0 +1,104 @@
+# mintplayer.com (docs/mintplayer_website_PRD.md A5–A7, G3; plan step 0.6). Runs on the VPS beside CodeCoverage and
+# SeoTester, from /var/www/mintplayer (compose project "mintplayer"), and reuses CodeCoverage's RavenDB server and mail
+# relay instead of running its own.
+#
+# Networks:
+#   web                  Traefik's public network (external). The app's only route out, which it needs for the sign-in
+#                        providers' token endpoints and the media sites' metadata.
+#   mintplayer-raven     internal: true, external (created by either deploy, removed by neither): this app and
+#                        CodeCoverage's coverage-raven ONLY (HTTPS with client certificates; the app's certificate may use
+#                        the database "MintPlayer" and nothing else).
+#   mintplayer-mail      internal: true, external, likewise: this app and coverage-smtp ONLY.
+#                        RavenDB and the mail relay never share a network.
+#
+# The deploy (.github/workflows/mintplayer-deploy.yml) refreshes this file and runs pull / down / up. .env and the
+# volumes are server-managed; deploys never write them. tools/verify-mintplayer-deploy.test.mjs keeps the rules above.
+
+services:
+
+  mintplayer-app:
+    # Pull-only (no build block), floating like CodeCoverage's: every push to master that changes the image deploys it.
+    image: ghcr.io/mintplayer/mintplayer:master
+    # Below Messaging's ClaimTtl (5 min): a message in flight finishes on SIGTERM.
+    stop_grace_period: 60s
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      # CodeCoverage's RavenDB server over HTTPS (mintplayer-raven), with this app's own client certificate, registered
+      # with Admin on the database MintPlayer only, and the private CA of the server's certificate.
+      - Spark__RavenDb__Urls__0=https://coverage-raven:8080
+      - Spark__RavenDb__Database=MintPlayer
+      - Spark__RavenDb__CertificateFile=/run/secrets/raven/mintplayer.crt
+      - Spark__RavenDb__CertificateKeyFile=/run/secrets/raven/mintplayer.key
+      - Spark__RavenDb__ServerCertificateAuthorityFile=/run/secrets/raven/ca.crt
+      # Off: creating a database needs the operator; the MintPlayer database already exists (PRD Q1).
+      - Spark__RavenDb__EnsureDatabaseCreated=false
+      # Data Protection key ring on a volume: a redeploy does not sign everyone out.
+      - Spark__DataProtection__KeysPath=/var/lib/mintplayer/dataprotection-keys
+      # The legacy site's sign-in providers. A provider without a ClientId is not offered.
+      - Spark__Auth__Providers__Facebook__ClientId=${FACEBOOK_CLIENT_ID:-}
+      - Spark__Auth__Providers__Facebook__ClientSecret=${FACEBOOK_CLIENT_SECRET:-}
+      - Spark__Auth__Providers__Google__ClientId=${GOOGLE_CLIENT_ID:-}
+      - Spark__Auth__Providers__Google__ClientSecret=${GOOGLE_CLIENT_SECRET:-}
+      - Spark__Auth__Providers__LinkedIn__ClientId=${LINKEDIN_CLIENT_ID:-}
+      - Spark__Auth__Providers__LinkedIn__ClientSecret=${LINKEDIN_CLIENT_SECRET:-}
+      - Spark__Auth__Providers__MicrosoftAccount__ClientId=${MICROSOFT_CLIENT_ID:-}
+      - Spark__Auth__Providers__MicrosoftAccount__ClientSecret=${MICROSOFT_CLIENT_SECRET:-}
+      - Spark__Auth__Providers__Twitter__ClientId=${TWITTER_CLIENT_ID:-}
+      - Spark__Auth__Providers__Twitter__ClientSecret=${TWITTER_CLIENT_SECRET:-}
+      # Mail through CodeCoverage's relay, send-only, from a subdomain with its own DKIM key (PRD G3, G4). Security=None:
+      # the relay is reachable from here only on mintplayer-mail (internal) and advertises STARTTLS without a certificate.
+      - Spark__Mail__Smtp__Host=${MAIL_HOST:-coverage-smtp}
+      - Spark__Mail__Smtp__Port=${MAIL_PORT:-587}
+      - Spark__Mail__Smtp__Security=None
+      - Spark__Mail__From__Address=${MAIL_FROM_ADDRESS:-noreply@mail.mintplayer.com}
+      - Spark__Mail__From__Name=${MAIL_FROM_NAME:-MintPlayer}
+    volumes:
+      - dataprotection-keys:/var/lib/mintplayer/dataprotection-keys
+      # Its RavenDB client certificate and the CA (server-managed). Only this container mounts them.
+      - ./raven-certs/mintplayer.crt:/run/secrets/raven/mintplayer.crt:ro
+      - ./raven-certs/mintplayer.key:/run/secrets/raven/mintplayer.key:ro
+      - ./raven-certs/ca.crt:/run/secrets/raven/ca.crt:ro
+    labels:
+      - "traefik.enable=true"
+      # Hard-coded, never interpolated (see apps/CodeCoverage/docker-compose.yml: an empty or CRLF value broke SNI).
+      # One router for both hosts, so the certificate covers www too; www is then redirected to the apex, because the
+      # passkey RP id and the cookies belong to mintplayer.com (PRD A7).
+      - "traefik.http.routers.mintplayer.rule=Host(`mintplayer.com`) || Host(`www.mintplayer.com`)"
+      - "traefik.http.routers.mintplayer.entrypoints=websecure"
+      - "traefik.http.routers.mintplayer.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.mintplayer.middlewares=mintplayer-www-to-apex"
+      - "traefik.http.middlewares.mintplayer-www-to-apex.redirectregex.regex=^https://www\\.mintplayer\\.com/(.*)"
+      - "traefik.http.middlewares.mintplayer-www-to-apex.redirectregex.replacement=https://mintplayer.com/$$1"
+      - "traefik.http.middlewares.mintplayer-www-to-apex.redirectregex.permanent=true"
+      - "traefik.http.services.mintplayer.loadbalancer.server.port=8080"
+      # Three networks: without this Traefik may pick an address it cannot reach (random 504s).
+      - "traefik.docker.network=web"
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /health HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && grep -q '200' <&3"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      # Startup runs the migrations before the app listens.
+      start_period: 300s
+    mem_limit: 1g
+    networks:
+      - web
+      - mintplayer-raven
+      - mintplayer-mail
+    restart: unless-stopped
+
+volumes:
+  dataprotection-keys:
+
+networks:
+  web:
+    external: true
+  # Shared with CodeCoverage (apps/CodeCoverage/docker-compose.yml declares them the same way): coverage-raven is
+  # reachable on mintplayer-raven, coverage-smtp on mintplayer-mail, by those names. No compose project owns them, so
+  # neither stack's up/down touches them; both deploys create them, internal, when missing.
+  mintplayer-raven:
+    external: true
+    name: mintplayer-raven
+  mintplayer-mail:
+    external: true
+    name: mintplayer-mail

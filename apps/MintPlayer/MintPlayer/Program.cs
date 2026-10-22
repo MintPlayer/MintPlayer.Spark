@@ -50,6 +50,9 @@ builder.Services.AddSpark(builder.Configuration, spark =>
 });
 
 builder.Services.AddScoped<MintPlayerAccess>();
+// Liveness for the compose healthcheck and the deploy: no checks registered, so it depends on nothing that can be
+// misconfigured, and a bad secret cannot restart-loop the container.
+builder.Services.AddHealthChecks();
 
 builder.Services.ConfigureApplicationCookie(options =>
 {
@@ -83,7 +86,8 @@ app.UseSpark();
 app.UseEndpoints(endpoints =>
 {
     endpoints.MapSpark();
-    endpoints.MapLegacyRedirects();
+    endpoints.MapMintPlayerEndpoints();
+    endpoints.MapHealthChecks("/health").AllowAnonymous();
 });
 
 app.UseWhen(

@@ -10,6 +10,7 @@
 	</PropertyGroup>
 
 	<ItemGroup>
+		<PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="11.4.1-rc.0" />
 		<PackageReference Include="MintPlayer.AspNetCore.SpaServices" Version="11.0.0-rc.3" />
 		<PackageReference Include="MintPlayer.SourceGenerators" Version="13.0.0">
 			<PrivateAssets>all</PrivateAssets>

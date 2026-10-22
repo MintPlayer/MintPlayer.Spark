@@ -163,6 +163,9 @@ public class EndpointConventionsTests
         new("SparkIdentityProviderExtensions.cs", "Map",
             "not a route: OidcUserEndpoints.Map closes the user-generic /connect endpoints and maps them "
             + "through MapEndpoint<T>()"),
+        new("Program.cs", "MapHealthChecks",
+            "owner preference (2026-10-22): an application's /health is ASP.NET Core's health checks, not a "
+            + "hand-written endpoint class"),
     ];
 
     private static readonly HashSet<string> MappingMethods =
