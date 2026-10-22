@@ -34,9 +34,11 @@ services:
       - Spark__RavenDb__EnsureDatabaseCreated=false
       # Data Protection key ring on a volume: a redeploy does not sign everyone out.
       - Spark__DataProtection__KeysPath=/var/lib/mintplayer/dataprotection-keys
-      # The legacy site's sign-in providers. A provider without a ClientId is not offered.
+      # The legacy site's sign-in providers, and GitHub. A provider without a ClientId is not offered.
       - Spark__Auth__Providers__Facebook__ClientId=${FACEBOOK_CLIENT_ID:-}
       - Spark__Auth__Providers__Facebook__ClientSecret=${FACEBOOK_CLIENT_SECRET:-}
+      - Spark__Auth__Providers__GitHub__ClientId=${GITHUB_CLIENT_ID:-}
+      - Spark__Auth__Providers__GitHub__ClientSecret=${GITHUB_CLIENT_SECRET:-}
       - Spark__Auth__Providers__Google__ClientId=${GOOGLE_CLIENT_ID:-}
       - Spark__Auth__Providers__Google__ClientSecret=${GOOGLE_CLIENT_SECRET:-}
       - Spark__Auth__Providers__LinkedIn__ClientId=${LINKEDIN_CLIENT_ID:-}

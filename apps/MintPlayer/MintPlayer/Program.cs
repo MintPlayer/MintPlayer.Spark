@@ -38,7 +38,7 @@ builder.Services.AddSpark(builder.Configuration, spark =>
         // set refused even a password reset for them. Spark's own validator still refuses '@'.
         identity.User.AllowedUserNameCharacters = string.Empty;
     });
-    // Facebook, Google, LinkedIn, Microsoft and Twitter from Spark:Auth:Providers; the secrets are in the
+    // Facebook, GitHub, Google, LinkedIn, Microsoft and Twitter from Spark:Auth:Providers; the secrets are in the
     // deployment's .env.
     spark.AddExternalProviders(builder.Configuration);
 
