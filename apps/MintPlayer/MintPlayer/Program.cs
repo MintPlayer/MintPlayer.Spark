@@ -83,6 +83,7 @@ app.UseSpark();
 app.UseEndpoints(endpoints =>
 {
     endpoints.MapSpark();
+    endpoints.MapLegacyRedirects();
 });
 
 app.UseWhen(

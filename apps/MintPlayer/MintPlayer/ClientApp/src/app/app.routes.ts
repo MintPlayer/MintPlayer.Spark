@@ -26,7 +26,8 @@ export const routes: Routes = [
       ),
       { path: 'home', loadComponent: () => import('./pages/home/home.component') },
       // Last: sparkRoutes() has parameterised first segments that would shadow anything after them.
-      ...sparkRoutes(),
+      // Slugs, as the legacy URLs had: /po/song/Songs%2F23/a-sky-full-of-stars.
+      ...sparkRoutes({ slugs: true }),
     ]
   }
 ];

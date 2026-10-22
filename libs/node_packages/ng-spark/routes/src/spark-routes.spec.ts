@@ -103,4 +103,33 @@ describe('sparkRoutes', () => {
       expect(params).toEqual({ type: 'Car', id: 'cars-1' });
     });
   });
+
+  describe('slugs', () => {
+    it('adds the slug route after the edit route, and only when asked', () => {
+      expect(sparkRoutes().some(r => r.path === 'po/:type/:id/:slug')).toBe(false);
+      expect(sparkRoutes({ slugs: true }).map(r => r.path)).toEqual([
+        'query/:queryId',
+        'po/:type/new',
+        'po/:type/:id/edit',
+        'po/:type/:id',
+        'po/:type/:id/:slug',
+        'po/:type',
+      ]);
+    });
+
+    it('opens the detail page with or without a slug, and still opens edit', async () => {
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({
+        providers: [provideRouter(sparkRoutes({ slugs: true, poEdit: () => EditStub, poDetail: () => DetailStub }))],
+      });
+      const harness = await RouterTestingHarness.create();
+      const router = TestBed.inject(Router);
+
+      expect(await harness.navigateByUrl('/po/Song/songs-23/a-sky-full-of-stars')).toBeInstanceOf(DetailStub);
+      expect(router.routerState.snapshot.root.firstChild!.data).toEqual({ sparkSlug: true });
+      expect(await harness.navigateByUrl('/po/Song/songs-23')).toBeInstanceOf(DetailStub);
+      expect(router.routerState.snapshot.root.firstChild!.data).toEqual({ sparkSlug: true });
+      expect(await harness.navigateByUrl('/po/Song/songs-23/edit')).toBeInstanceOf(EditStub);
+    });
+  });
 });

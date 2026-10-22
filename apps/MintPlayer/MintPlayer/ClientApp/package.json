@@ -20,6 +20,6 @@
   },
   "private": true,
   "dependencies": {
-    "@mintplayer/ng-spark": "^22.42.0"
+    "@mintplayer/ng-spark": "^22.43.0"
   }
 }

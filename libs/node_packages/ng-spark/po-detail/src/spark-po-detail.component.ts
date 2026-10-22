@@ -1,8 +1,9 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject, input, output, signal, TemplateRef, Type, untracked } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { CommonModule, NgTemplateOutlet, NgComponentOutlet } from '@angular/common';
+import { CommonModule, Location, NgTemplateOutlet, NgComponentOutlet } from '@angular/common';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
+import { sparkSlug } from './spark-slug';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
 import { BsBadgeComponent } from '@mintplayer/ng-bootstrap/badge';
@@ -74,6 +75,7 @@ import { Subscription, combineLatest } from 'rxjs';
 export class SparkPoDetailComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
+  private readonly location = inject(Location);
   private readonly sparkService = inject(SparkService);
   private readonly returnNavigation = inject(SparkReturnNavigationService);
   private readonly queryRefresh = inject(SparkQueryRefreshService);
@@ -349,6 +351,19 @@ export class SparkPoDetailComponent {
     await this.load();
   }
 
+  /**
+   * With `sparkRoutes({ slugs: true })`, puts the breadcrumb's slug in the URL, or corrects a stale one, without a
+   * navigation. A slug of "edit" is left out: that URL is the edit page.
+   */
+  private writeSlug(item: PersistentObject): void {
+    if (!this.route.snapshot.data['sparkSlug']) return;
+    const slug = sparkSlug(item.breadcrumb);
+    if (slug === (this.route.snapshot.paramMap.get('slug') ?? '')) return;
+    const commands = slug && slug !== 'edit' ? ['/po', this.type, this.id, slug] : ['/po', this.type, this.id];
+    const tree = this.router.createUrlTree(commands, { queryParams: this.route.snapshot.queryParams });
+    this.location.replaceState(this.router.serializeUrl(tree));
+  }
+
   /** The object as the page's current mode sees it. Only a set mode is sent. */
   private loadItem(): Promise<PersistentObject> {
     const deleted = this.deletedMode();
@@ -381,6 +396,7 @@ export class SparkPoDetailComponent {
       this.allEntityTypes.set(entityTypes);
       this.entityType.set(et);
       this.item.set(item);
+      this.writeSlug(item);
       this.loadLookupReferenceOptions();
       this.loadAsDetailTypes();
 
