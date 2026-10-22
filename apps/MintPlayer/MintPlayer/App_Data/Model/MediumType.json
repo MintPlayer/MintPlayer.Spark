@@ -137,6 +137,7 @@
       "id": "4df43793-9c7a-4fb7-a484-315df813ebc6",
       "name": "GetMediumTypes",
       "source": "Database.MediumTypes",
+      "alias": "medium-types",
       "sortColumns": [
         {
           "property": "Name",

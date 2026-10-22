@@ -7,6 +7,13 @@
       "nl": "MintPlayer"
     }
   },
+  "home": {
+    "tagline": {
+      "en": "Music videos, lyrics and playlists.",
+      "fr": "Clips musicaux, paroles et listes de lecture.",
+      "nl": "Videoclips, songteksten en afspeellijsten."
+    }
+  },
   "model": {
     "Artist": {
       "attributes": {
@@ -1022,13 +1029,6 @@
           "nl": "Aangemelde gebruikers"
         }
       }
-    }
-  },
-  "home": {
-    "tagline": {
-      "en": "Music videos, lyrics and playlists.",
-      "fr": "Clips musicaux, paroles et listes de lecture.",
-      "nl": "Videoclips, songteksten en afspeellijsten."
     }
   }
 }

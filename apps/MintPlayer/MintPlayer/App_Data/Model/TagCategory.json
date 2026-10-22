@@ -129,6 +129,7 @@
       "id": "a5af75a9-811d-49bb-b25f-6e56a83c1764",
       "name": "GetTagCategories",
       "source": "Database.TagCategories",
+      "alias": "tag-categories",
       "sortColumns": [
         {
           "property": "Description",

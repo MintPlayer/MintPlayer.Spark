@@ -191,7 +191,7 @@
       "source": "Database.People",
       "sortColumns": [
         {
-          "property": "LastName",
+          "property": "FullName",
           "direction": "asc"
         }
       ],
