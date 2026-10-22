@@ -46,16 +46,33 @@ function* csFiles(dir) {
 }
 
 /**
- * One unit per test file: its namespace, the classes that carry test attributes (the text from one class
- * declaration to the next), and its estimated weight. Helper classes and records in the same file are left
- * out, which keeps the filters short; a test class misattributed by this split still runs in the last shard.
+ * One unit per test file: its namespace, the top-level classes that carry test attributes (the text from one
+ * top-level class declaration to the next), and its estimated weight. Helper classes and records in the same
+ * file are left out, which keeps the filters short; a test class misattributed by this split still runs in
+ * the last shard.
+ *
+ * Top-level only: a test class that declares nested helpers (an index, a recipient, an entity) above its
+ * [Fact]s used to hand those facts to the last nested class, whose filter (`Ns.Nested.`) selects nothing,
+ * so the real class landed in the last shard unplanned. That was 102 classes and 127 s of test time
+ * (run 39822821571), which kept the last shard ~110 s behind the others.
  */
 export function parseTestFile(source) {
   const tests = source.match(TEST_ATTRIBUTE)?.length ?? 0;
   if (tests === 0) return null;
-  const ns = /^\s*namespace\s+([A-Za-z0-9_.]+)/m.exec(source)?.[1];
+  const nsMatch = /^\s*namespace\s+([A-Za-z0-9_.]+)\s*(;)?/m.exec(source);
+  const ns = nsMatch?.[1];
   if (!ns) return null;
-  const declarations = [...source.matchAll(CLASS)];
+  // A file-scoped namespace puts its classes at brace depth 0, a block-scoped one at depth 1.
+  const topDepth = nsMatch[2] ? 0 : 1;
+  const depthAt = (index) => {
+    let depth = 0;
+    for (let i = 0; i < index; i++) {
+      if (source[i] === '{') depth++;
+      else if (source[i] === '}') depth--;
+    }
+    return depth;
+  };
+  const declarations = [...source.matchAll(CLASS)].filter((m) => depthAt(m.index) === topDepth);
   const classes = declarations
     .filter((m, i) => HAS_TEST.test(source.slice(m.index, declarations[i + 1]?.index ?? source.length)))
     .map((m) => `${ns}.${m[1]}`);

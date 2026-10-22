@@ -61,6 +61,25 @@ internal class Helper { }`);
   assert.equal(unit.weight, 4);
 });
 
+test('tests after a nested helper class belong to the top-level class', () => {
+  const fileScoped = parseTestFile(`namespace A.B;
+public class Widgets : SparkTestDriver
+{
+    public sealed class Widgets_ByName : AbstractIndexCreationTask<Widget> { public Widgets_ByName() { Map = x => x; } }
+    [Fact] public void X() {}
+}`);
+  assert.deepEqual(fileScoped.classes, ['A.B.Widgets']);
+  const blockScoped = parseTestFile(`namespace A.B
+{
+    public class Widgets
+    {
+        public class Thing { }
+        [Fact] public void X() {}
+    }
+}`);
+  assert.deepEqual(blockScoped.classes, ['A.B.Widgets']);
+});
+
 test('measured seconds replace the estimate, and an unmeasured class is converted to seconds', () => {
   const units = [{ classes: ['A.X'], weight: 10 }, { classes: ['A.Y'], weight: 20 }];
   // A.X: 10 units took 2.5 s, so A.Y's 20 units count as 5 s.
