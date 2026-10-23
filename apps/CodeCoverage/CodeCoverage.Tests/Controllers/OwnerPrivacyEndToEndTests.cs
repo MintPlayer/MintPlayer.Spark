@@ -560,6 +560,12 @@ public sealed class OwnerPrivacyHostFixture : CoverageRavenTest, IAsyncLifetime
             Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json"),
         }, user);
 
+    public Task<(HttpStatusCode Status, string Body)> PostRawAsync(string path, string json, string? user)
+        => SendAsync(new HttpRequestMessage(HttpMethod.Post, path)
+        {
+            Content = new StringContent(json, Encoding.UTF8, "application/json"),
+        }, user);
+
     public Task<(HttpStatusCode Status, string Body)> GetAsync(string path, string? user)
         => SendAsync(new HttpRequestMessage(HttpMethod.Get, path), user);
 
