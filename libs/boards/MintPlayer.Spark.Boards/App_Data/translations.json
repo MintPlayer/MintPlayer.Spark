@@ -1,0 +1,50 @@
+{
+  "$schema": "../../../../schemas/translations.schema.json",
+  "boards": {
+    "spa": {
+      "customize": { "en": "Customize", "fr": "Personnaliser", "nl": "Aanpassen" },
+      "save": { "en": "Save", "fr": "Enregistrer", "nl": "Opslaan" },
+      "cancel": { "en": "Cancel", "fr": "Annuler", "nl": "Annuleren" },
+      "reset": { "en": "Reset to default", "fr": "Rétablir par défaut", "nl": "Standaard herstellen" },
+      "resetConfirm": {
+        "en": "Discard your layout and use the default board?",
+        "fr": "Abandonner votre disposition et utiliser le tableau par défaut ?",
+        "nl": "Uw indeling verwijderen en het standaardbord gebruiken?"
+      },
+      "resetWidth": { "en": "Reset this width", "fr": "Rétablir cette largeur", "nl": "Deze breedte herstellen" },
+      "addTile": { "en": "Add tile", "fr": "Ajouter une tuile", "nl": "Tegel toevoegen" },
+      "removeTile": { "en": "Remove", "fr": "Retirer", "nl": "Verwijderen" },
+      "renameTile": { "en": "Rename", "fr": "Renommer", "nl": "Hernoemen" },
+      "tileTitle": { "en": "Title", "fr": "Titre", "nl": "Titel" },
+      "applySmaller": {
+        "en": "Also apply this layout to smaller screens?",
+        "fr": "Appliquer aussi cette disposition aux écrans plus petits ?",
+        "nl": "Deze indeling ook op kleinere schermen toepassen?"
+      },
+      "applySmallerYes": { "en": "Yes, apply", "fr": "Oui, appliquer", "nl": "Ja, toepassen" },
+      "applySmallerNo": { "en": "Only this width", "fr": "Seulement cette largeur", "nl": "Alleen deze breedte" },
+      "conflict": {
+        "en": "This board was changed elsewhere. Reload it and try again.",
+        "fr": "Ce tableau a été modifié ailleurs. Rechargez-le et réessayez.",
+        "nl": "Dit bord werd elders gewijzigd. Herlaad het en probeer opnieuw."
+      },
+      "saveFailed": { "en": "The board could not be saved.", "fr": "Le tableau n'a pas pu être enregistré.", "nl": "Het bord kon niet opgeslagen worden." },
+      "loadFailed": { "en": "This board could not be loaded.", "fr": "Ce tableau n'a pas pu être chargé.", "nl": "Dit bord kon niet geladen worden." },
+      "empty": { "en": "This board has no tiles yet.", "fr": "Ce tableau n'a pas encore de tuiles.", "nl": "Dit bord heeft nog geen tegels." },
+      "unknownKind": { "en": "This tile cannot be shown.", "fr": "Cette tuile ne peut pas être affichée.", "nl": "Deze tegel kan niet getoond worden." },
+      "pickerTitle": { "en": "Add a tile", "fr": "Ajouter une tuile", "nl": "Een tegel toevoegen" },
+      "pickerSearch": { "en": "Search", "fr": "Rechercher", "nl": "Zoeken" },
+      "pickerMenu": { "en": "Menu", "fr": "Menu", "nl": "Menu" },
+      "pickerQueries": { "en": "Lists", "fr": "Listes", "nl": "Lijsten" },
+      "kind_query": { "en": "List", "fr": "Liste", "nl": "Lijst" },
+      "kind_count": { "en": "Count", "fr": "Nombre", "nl": "Aantal" },
+      "kind_persistentObject": { "en": "Item", "fr": "Élément", "nl": "Item" },
+      "kind_programUnit": { "en": "Shortcut", "fr": "Raccourci", "nl": "Snelkoppeling" },
+      "pickerRemoved": { "en": "Removed tiles", "fr": "Tuiles supprimées", "nl": "Verwijderde tegels" },
+      "pin": { "en": "Pin to dashboard", "fr": "Épingler au tableau de bord", "nl": "Vastmaken aan dashboard" },
+      "pinned": { "en": "Pinned to the dashboard.", "fr": "Épinglé au tableau de bord.", "nl": "Vastgemaakt aan het dashboard." },
+      "open": { "en": "Open", "fr": "Ouvrir", "nl": "Openen" },
+      "items": { "en": "items", "fr": "éléments", "nl": "items" }
+    }
+  }
+}

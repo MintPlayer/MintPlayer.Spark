@@ -1,0 +1,93 @@
+@if (board(); as b) {
+  <div class="spark-board-toolbar">
+    @if (b.title) { <h1 class="spark-board-title">{{ b.title | resolveTranslation }}</h1> }
+    <span class="spark-board-actions">
+      @if (editing()) {
+        <button type="button" class="spark-board-add" [color]="colors.secondary" [disabled]="busy()" (click)="pickerOpen.set(true)">{{ 'boards.spa.addTile' | t }}</button>
+        <button type="button" class="spark-board-reset-width" [color]="colors.secondary" [disabled]="busy()" (click)="resetWidth()">{{ 'boards.spa.resetWidth' | t }}</button>
+        <button type="button" class="spark-board-cancel" [color]="colors.secondary" [disabled]="busy()" (click)="cancel()">{{ 'boards.spa.cancel' | t }}</button>
+        <button type="button" class="spark-board-save" [color]="colors.primary" [disabled]="busy()" (click)="save()">{{ 'boards.spa.save' | t }}</button>
+      } @else if (b.canCustomize) {
+        @if (b.customized) {
+          <button type="button" class="spark-board-reset" [color]="colors.secondary" [disabled]="busy()" (click)="reset()">{{ 'boards.spa.reset' | t }}</button>
+        }
+        <button type="button" class="spark-board-customize" [color]="colors.primary" [disabled]="busy()" (click)="customize()">{{ 'boards.spa.customize' | t }}</button>
+      }
+    </span>
+  </div>
+
+  @if (error(); as message) {
+    <p class="spark-board-error" role="alert">{{ message }}</p>
+  }
+
+  @if (items().length) {
+    <bs-tile-manager
+      [layouts]="layouts()"
+      [dragMode]="editing() ? 'header' : 'off'"
+      [resizeMode]="editing() ? 'hover' : 'off'"
+      [label]="b.title ? (b.title | resolveTranslation) : null"
+      (layoutChange)="onLayoutChange($event)"
+      (columnCountChange)="onColumnCount($event)">
+      <ng-container *bsTile="let item of items()">
+        <span *bsTileHeader class="spark-tile-header">
+          <span class="spark-tile-title">{{ item.label }}</span>
+          @if (editing()) {
+            <span class="spark-tile-edit" (pointerdown)="$event.stopPropagation()">
+              <button type="button" class="spark-tile-rename" [color]="colors.transparent" [attr.aria-label]="'boards.spa.renameTile' | t" (click)="startRename(item.tile)">✎</button>
+              <button type="button" class="spark-tile-remove" [color]="colors.transparent" [attr.aria-label]="'boards.spa.removeTile' | t" (click)="remove(item.id)">✕</button>
+            </span>
+          }
+        </span>
+        <div *bsTileContent class="spark-tile-body">
+          @if (renderer(item.tile); as component) {
+            <ng-container *ngComponentOutlet="component; inputs: { tile: item.tile, context: context() }" />
+          } @else {
+            <span class="spark-board-muted">{{ 'boards.spa.unknownKind' | t }}</span>
+          }
+        </div>
+      </ng-container>
+    </bs-tile-manager>
+  } @else {
+    <p class="spark-board-muted">{{ 'boards.spa.empty' | t }}</p>
+  }
+
+  @if (editing()) {
+    <spark-board-picker
+      [isOpen]="pickerOpen()"
+      [boardId]="b.id"
+      [removed]="draft()?.removed ?? []"
+      (isOpenChange)="pickerOpen.set($event)"
+      (picked)="onPick($event)" />
+  }
+
+  <bs-modal [isOpen]="askNarrower()" (isOpenChange)="askNarrower.set($event)">
+    <div *bsModal>
+      <div bsModalHeader><h5 class="modal-title">{{ 'boards.spa.save' | t }}</h5></div>
+      <div bsModalBody><p>{{ 'boards.spa.applySmaller' | t }}</p></div>
+      <div bsModalFooter>
+        <button type="button" class="spark-board-narrower-no" [color]="colors.secondary" (click)="send(false)">{{ 'boards.spa.applySmallerNo' | t }}</button>
+        <button type="button" class="spark-board-narrower-yes" [color]="colors.primary" (click)="send(true)">{{ 'boards.spa.applySmallerYes' | t }}</button>
+      </div>
+    </div>
+  </bs-modal>
+
+  <bs-modal [isOpen]="renaming() !== null" (isOpenChange)="!$event && renaming.set(null)">
+    <div *bsModal>
+      <div bsModalHeader><h5 class="modal-title">{{ 'boards.spa.renameTile' | t }}</h5></div>
+      <div bsModalBody>
+        <bs-form>
+          <label for="spark-board-rename">{{ 'boards.spa.tileTitle' | t }}</label>
+          <input id="spark-board-rename" type="text" maxlength="200" [ngModel]="renaming()?.title ?? ''" (ngModelChange)="setRenameTitle($event)" (keydown.enter)="confirmRename()" />
+        </bs-form>
+      </div>
+      <div bsModalFooter>
+        <button type="button" [color]="colors.secondary" (click)="renaming.set(null)">{{ 'boards.spa.cancel' | t }}</button>
+        <button type="button" class="spark-board-rename-ok" [color]="colors.primary" (click)="confirmRename()">{{ 'boards.spa.save' | t }}</button>
+      </div>
+    </div>
+  </bs-modal>
+} @else if (loadFailed()) {
+  <p class="spark-board-error" role="alert">{{ 'boards.spa.loadFailed' | t }}</p>
+} @else {
+  <p class="spark-board-muted">…</p>
+}

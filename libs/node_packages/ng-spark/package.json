@@ -1,7 +1,7 @@
 {
   "name": "@mintplayer/ng-spark",
   "private": false,
-  "version": "22.43.0",
+  "version": "22.44.0",
   "description": "Angular component library for MintPlayer.Spark CRUD applications",
   "repository": {
     "type": "git",
@@ -19,8 +19,9 @@
     "@angular/router": "^22.0.0",
     "@angular/forms": "^22.0.0",
     "@angular/service-worker": "^22.0.0",
-    "@mintplayer/ng-bootstrap": "^22.25.0",
-    "@mintplayer/web-components": "^2.20.0",
+    "@mintplayer/ng-bootstrap": "^22.27.0",
+    "@mintplayer/ui-core": "^1.1.0",
+    "@mintplayer/web-components": "^3.0.0",
     "@mintplayer/pagination": "*",
     "rxjs": "~7.8.0"
   },
