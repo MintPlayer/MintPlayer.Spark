@@ -5,8 +5,9 @@
 
 ## Status
 
-Not started. **The spikes run first.** Each one ends with a recorded result and the decision it settles, written into
-the PRD with its evidence. Then the grill on Q1–Q4, then the milestones.
+Grill done (2026-10-23): Q1–Q4 are answered and folded into the PRD (D1, D4.3, D5, D7, D10). **The spikes run next.**
+Each one ends with a recorded result and the decision it settles, written into the PRD with its evidence. Then the
+milestones.
 
 Tests run **once, at the end** (M10): the CodeCoverage.Tests classes the change touches, and the ClientApp specs. No
 interim gate runs.
@@ -23,7 +24,8 @@ Measure:
 
 1. `PATCH /labels/{name}` with `new_name`: does an open **and** a closed PR still carry the renamed label? (D3 relies on
    it.)
-2. `DELETE /labels/{name}`: is the label removed from closed PRs too? (This is what Q2's risk is about.)
+2. `DELETE /labels/{name}`: is the label removed from closed PRs too? (The Remove labels prompt, D4.3, says so;
+   confirm the wording.)
 3. The label name length limit: create names of 50, 100 and 256 characters, and record the 422 message.
 4. Is a label name match case-insensitive on create? Create `size/m` while `size/M` exists.
 5. Pacing: create and delete 60 labels back-to-back. Is there a secondary-limit 403, and how long is its `retry-after`?
@@ -67,10 +69,16 @@ The applier (on `spark-forge-all`) and the reconciler both write `Repository.PrS
   `ConcurrencyException` is retried, not dead-lettered.
 - Decide D9.
 
-## Grill
+## Grill — done 2026-10-23
 
-Before M1, put Q1–Q4 and anything the spikes surfaced to the owner, one at a time. Record each answer as a decision in
-the PRD, with "owner, <date>" as its evidence.
+| Q | Answer | Lands in |
+|---|---|---|
+| Q1 | Repository extra ignore rules after the account's; path-level, last match wins; `!` = count fully | M1, M3 |
+| Q2 | Disable prompts Remove / Keep / Cancel through `Retry.Action` on a normal save | M7 |
+| Q3 | Neutral "PR size" check run with the breakdown, also on failure | M6 |
+| Q4 | Coverage-setup link only while the repository has no coverage | M9 |
+
+Anything a spike surfaces that changes a decision goes back to the owner before M1.
 
 ## Milestones
 
@@ -83,6 +91,7 @@ the PRD, with "owner, <date>" as its evidence.
 - `EPrSizeLabelPolicy` + `PrSizeLabelPolicy : TransientLookupReference<…>` (copy `DeleteBranchPolicy.cs`), and
   `EPrSizeIgnoreMode` with its lookup
 - `Repository.PrSizeLabels : EPrSizeLabelPolicy`
+- `Repository.PrSizeIgnoreRules : List<PrSizeIgnoreRule>`, empty by default, applied after the account's (PRD D5)
 - `Repository.PrSizeLabelState : List<ManagedLabel>`, with no model attribute (internal state, never shown)
 - `Repository.ResolvePrSizeLabels(repository, account)` returning `(bool, Source)`, like the resolvers at
   `Repository.cs:265-290`
@@ -101,9 +110,12 @@ here.
 
 ### M3 — The size calculator (pure)
 
-`PrSizeCalculator.Compute(files, changedFiles, totals, ignoreRules) → int` and `PrSizeScale.LabelFor(size) → row`.
+`PrSizeCalculator.Compute(files, changedFiles, totals, ignoreRules) → (int size, breakdown)` and
+`PrSizeScale.LabelFor(size) → row`. The breakdown (per file: counted / ignored / deletions only, plus the matching rule)
+feeds the check run (M6).
 
-- Ignore before IgnoreAdditions, the last matching rule wins, and `!` re-includes.
+- The rule list is the account's followed by the repository's. Per path, the last matching rule wins, and `!` counts
+  the file fully.
 - Above 3 000 files, use the totals.
 - Unit tests port the reference's cases (lockfiles, `.md`, `*Tests/` additions, net deletions).
 
@@ -132,7 +144,11 @@ here.
      same rule as the branch-deletion consumer).
   2. Resolve the setting, and return if the repository is off or the forge lacks the capability.
   3. Reconcile when the state differs from the scale.
-  4. Compute the size, then apply the label exclusively (D6).
+  4. Create the "PR size" check run `in_progress` through `IForgeFeedbackPublisher` (PRD D7). It is idempotent by
+     name and head SHA, so a retry updates it rather than adding a second.
+  5. Compute the size, then apply the label exclusively (D6).
+  6. In a `finally`, complete the check run **neutral**. On success the title is `size/M · 87 lines changed` and the
+     breakdown table is capped at about 50 rows. On failure the title is "Size label not applied", with the reason.
 - Register it, and update `RegistrationInventoryTests` / `ForgeWebhookDocsTests`.
 - (M6b, only if S4 says so) GitLab.
 
@@ -140,8 +156,16 @@ here.
 
 - `AccountActions.IAfterSaveCommitted`: when the scale changes, publish `ReconcilePrSizeLabelsMessage` per repository
   with state, throttled per S1.5.
-- On disable (account off, or repository set to `Disabled`), act per Q2.
-- On the Repository side, the override changes through `RepositoryActions`, with the same hook.
+- **On disable** (PRD D4.3), `OnBeforeSaveAsync` in `AccountActions` and `RepositoryActions` raises
+  `manager.Retry.Action` with Remove labels / Keep labels / Cancel.
+  - Triggers: the account goes true → false via `IsValueChanged`, or a repository's effective value becomes off.
+  - Cancel throws `SparkCancelException`, as `CarActions.cs:115-145` does.
+  - A scoped holder carries the answer to `IAfterSaveCommitted`. Only Remove publishes `RemovePrSizeLabelsMessage`
+    per affected repository that has state. The handler deletes the managed labels and clears the state.
+  - The repository-scoped wording names that one repository instead of "N repositories".
+- **Test:** HTTP end to end through `OwnerPrivacyHostFixture` in CodeCoverage.Tests, following
+  `DependencyOnboardingTamperEndToEndTests.cs:315-352`. There is no browser E2E, because CodeCoverage is not in
+  `E2E_APPS`.
 
 ### M8 — Edit surface and access
 
@@ -159,7 +183,9 @@ here.
    - Route `coverage/setup`.
    - A Guides program unit at order 0, with a new id. The other units keep their ids and orders shift.
    - Translations.
-   - The Repository extras (`po-detail-page.component.ts:70`) replace `<app-repo-setup-panel />` with the link, per Q4.
+   - The Repository extras (`po-detail-page.component.ts:70`) replace `<app-repo-setup-panel />` with the link, shown
+     only while the repository has no coverage yet (PRD D10). Use a signal the panels already load; verify which one
+     here.
    - Delete the panel and its spec.
 2. **`pages/pr-size-labels-setup/`**: the guide content listed in PRD D10.
    - Route `pr-size-labels/setup`, a Guides unit, translations.
@@ -184,16 +210,23 @@ here.
 
 | Area | Cases |
 |---|---|
-| Calculator | reference parity, `!` re-include, last-rule-wins, net-deletions floor at 0, >3 000 files fallback |
+| Calculator | reference parity, `!` re-include, last-rule-wins, net-deletions floor at 0, >3 000 files fallback, repository rule after account rule, repository `!` overrides an account ignore, breakdown names the matching rule |
 | Scale | label boundaries on the pascalgn defaults (9/10, 999/1000), single-row scale, generated descriptions |
 | Validation | duplicate name (case), duplicate threshold, no 0 row, bad hex, 101-char description, enable with empty scale |
 | Reconciler | create, adopt, rename keeps id, rename of a hand-deleted label → create, row removed → delete, user `size/foo` untouched, partial failure converges |
 | Recipient | off → no calls; Inherit/Enabled/Disabled × account on/off; already-correct label → no write; swap S→M removes S only; Bitbucket → no-op |
+| Check run | one neutral "PR size" run per head SHA; a retry updates it, never a second; a 403 completes it neutral with the reason; the breakdown is capped at 50 rows + "and N more" |
 | Fan-out | scale change → one message per repository *with state*; unchanged save → none |
+| Disable prompt (HTTP) | true → false plus another changed attribute → 449; resubmitting Keep saves both and publishes nothing; resubmitting Remove saves both and publishes the removal; Cancel stores nothing; an unchanged save does not prompt |
 | Access (FR10) | anonymous/non-manager read redacted; non-manager write refused |
-| Guides | snippets parity for `/coverage/setup`; both routes anonymous; Guides group lists five units |
+| Guides | snippets parity for `/coverage/setup`; both routes anonymous; Guides group lists five units; the Repository link shows without coverage and hides with it |
 | Migration | missing `PrSizeLabels` on Repository reads `Inherit`; accounts get the default scale exactly once |
 
 ## Deliberately not doing
 
-PRD § Out of scope applies. In addition: no `label` webhook subscription (PRD D4) and no commit status (D7, pending Q3).
+PRD § Out of scope applies. In addition:
+
+- No `label` webhook subscription (PRD D4).
+- No commit status. The check run replaces it (D7), so no permission change is needed.
+- No custom action and no read-only attribute for disabling. It is a normal save with a retry prompt (D4.3).
+- No browser E2E for the prompt.

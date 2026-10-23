@@ -1,6 +1,6 @@
 # Pull-request size labels — the GitHub App labels every PR by the lines it changes
 
-**Status:** Draft, not started. See [coverage_pr_size_labels_plan.md](coverage_pr_size_labels_plan.md)
+**Status:** Draft, grilled 2026-10-23 (Q1–Q4 answered), spikes not started. See [coverage_pr_size_labels_plan.md](coverage_pr_size_labels_plan.md)
 **Issue:** #527 · **App:** `apps/CodeCoverage` (production, coverage.mintplayer.com) · one pull request, which also
 moves "Set up coverage uploads" from the Repository page into a Guides page (D10)
 **Prior art:** `C:\Repos\ProjectDashboard\ProjectDashboard\Service\Recipients\PullRequestSizeLabeler.cs`. That repository
@@ -64,8 +64,9 @@ All verified against `master` @ `9d818517`. Paths are under `apps/CodeCoverage/`
 
 ## Decisions
 
-The owner left the per-repository question to me ("I'll let you decide"). Every decision here can be revisited at the
-grill. Each gives its reason.
+The owner left the per-repository question to me ("I'll let you decide"). The open questions Q1–Q4 were grilled with
+the owner on 2026-10-23, and their answers are folded into D1, D4, D5, D7 and D10 below. Each decision gives its
+reason.
 
 ### D1 — Account default, with a per-repository on/off override. The scale stays per Account.
 
@@ -79,9 +80,8 @@ it on one repo", and an on/off override covers both.
 **The size scale gets no per-repository override in v1.** An override would need a second editable `AsDetail` list on
 Repository, a policy enum, and per-repository label state that diverges from the account's. That is the
 `MergeQueueCheckExclusions` shape, and it is affordable. Still, no consumer has asked for a different scale per
-repository, and the owner wants a lean API (`feedback_minimal_pr_diff`). **Ignore rules are the exception that could
-change this.** They name repository paths (see D5), and that is where a repository override would earn its place, so
-it is question **Q1**.
+repository, and the owner wants a lean API (`feedback_minimal_pr_diff`). **Ignore rules are the exception.** They name
+repository paths, so a repository may add its own rules (D5, Q1).
 
 **Default off.** Turning it on writes labels into *every* repository of the account. Consent is required for that, so
 the app must not do it silently on deploy.
@@ -138,9 +138,21 @@ State is written only after GitHub confirms, so a crash part-way leaves a state 
    repository that **already has label state**. Repositories that never had a PR since the feature was enabled are
    picked up lazily. This bounds the burst (180 repositories × 6 labels ≈ 1 080 writes) and GitHub's secondary
    content-creation limits; spike **S1** measures the pacing.
-3. **On disable** (account off, or repository `Disabled`): the app stops labelling. **What happens to the existing
-   labels is question Q2.** The recommended answer is to delete the managed labels, since the issue says the app deletes
-   them, which also removes them from every PR, closed ones included. The alternative keeps them and only stops applying.
+3. **On disable, the save asks** (Q2, owner 2026-10-23). The triggers are `Account.PrSizeLabels` going true → false
+   (`IsValueChanged`), or a repository's effective value becoming off.
+   - `OnBeforeSaveAsync` raises `manager.Retry.Action`: *"Also remove the size labels from the N repositories that
+     inherit this setting? Pull requests that carry them, including closed ones, lose them."* The options are
+     **Remove labels** / **Keep labels**, plus the built-in **Cancel**, which throws `SparkCancelException` and stores
+     nothing.
+   - It is a **normal save**: no custom action, and the attribute stays editable. Precedent: `CarActions.cs:115-145`
+     prompts from `OnBeforeSaveAsync` on `IsValueChanged`.
+   - **No entered value is lost.** On a 449 the browser resends the *same request body* with `retryResults` appended
+     (`ng-spark/services/src/spark.service.ts:476-530`).
+   - The deletion runs **after the commit**, as a fan-out message from `IAfterSaveCommitted`, never inside
+     `BeforeSave`. The answer is carried from the one hook to the other through a scoped holder.
+   - The retry reruns the hook from the top. That is harmless here, because nothing before the prompt has side
+     effects.
+   - **Keep labels** stops labelling and leaves the labels and their state. Turning it back on adopts them again.
 
 There is **no subscription to the `label` webhook**. A manual edit or delete of a managed label in GitHub is repaired at
 the next reconcile, by the 404 → create path and by the adopt rule. Subscribing would change the App's events, and every
@@ -152,8 +164,20 @@ installation would have to re-approve.
 `max(deletions − additions, 0)`. That is the reference's rule: generated content inflates additions, while a large
 deletion may be an accident worth seeing (`PullRequestSizeLabeler.cs:35,70`).
 
-The ignore rules are an account-level list of rows `{ Glob, Mode: Ignore | IgnoreAdditions }` matched by `PathGlob`. A
-leading `!` re-includes a file, the way pascalgn's `IGNORED` does. The defaults are the reference's:
+The ignore rules are rows `{ Glob, Mode: Ignore | IgnoreAdditions }` matched by `PathGlob`.
+
+**Account rules, plus a repository's own extra rules** (Q1 C, owner 2026-10-23):
+
+- `Account.PrSizeIgnoreRules` and `Repository.PrSizeIgnoreRules`. There is no policy enum: a repository's rules are
+  always *added after* the account's.
+- **Matching is path-level, and the last matching rule wins** (Q1b A, gitignore/pascalgn semantics). A leading `!`
+  means "count this file fully" and carries no mode. So a repository rule `!apps/web/**/*.json` re-includes JSON under
+  `apps/web` only, and `!**/*.json` re-includes all of it.
+- Rule-level cancellation by exact glob text was rejected, because a typo would be indistinguishable from a working
+  rule.
+- **The accepted trap:** an account rule added later applies to every repository unless that repository counters it.
+
+The account defaults are the reference's:
 
 | Glob | Mode |
 |---|---|
@@ -175,11 +199,31 @@ so the applier always fetches (**S2**).
   The size labeller only consumes `PullRequestUpdated`, which `labeled` never produces, so **changing a label cannot
   loop back into another labelling.**
 
-### D7 — No commit status
+### D7 — A neutral check run with the size breakdown (Q3, owner 2026-10-23)
 
-The reference posts a `pending` → `success` status per push (`:49,76,103`). That is two writes per push, a context
-nobody requires, and a status that could be confused with a gate. Failures are logged through the messaging retry like
-any other recipient instead. *Owner may overrule.*
+The owner chose this over no status and over a check run only on failure.
+
+- **When labelling starts,** a check run named "PR size" is created `in_progress` ("Calculating size…").
+- **When it ends,** it is completed **neutral** with the title `size/M · 87 lines changed`. The summary is a table of
+  counted files, ignored files, and files counted for deletions only, each with the rule that matched. It is capped at
+  about 50 rows plus "and N more", because GitHub limits check-run output text to 65 535 characters.
+- **A failure also completes it neutral,** titled "Size label not applied", with the reason (for example a 403 →
+  "missing Issues: write").
+- **It is never red,** so it is never a gate.
+
+**No permission change.** The App already has Checks R&W (`docs/code-coverage/hosting.md:402`). A commit status like the
+reference's would have needed Commit statuses *write*, which the App lacks (`:406`). The labeller goes through the
+forge-neutral `IForgeFeedbackPublisher`, whose GitHub implementation maps `EForgeOutcome.Neutral` to
+`CheckConclusion.Neutral` losslessly (`GitHubForgeFeedbackPublisher.cs:15-30,69`). The other forges degrade as they
+already do.
+
+**The pending-left-behind trap**, since the merge queue gate waits for every check run (merge-queue PRD O12):
+
+- Completion runs in a `finally` path, so any exception still completes the run.
+- The run is **idempotent by name and head SHA.** A messaging retry after a killed process updates the same check run,
+  never a second one, and so completes the stuck one.
+- Precedent: `DependencyUpdateEngine.PublishOwnCheckAsync` (`:1872`) publishes its own in-progress check runs the same
+  way.
 
 ### D8 — Behind the forge abstraction; GitHub first, GitLab if S4 is cheap
 
@@ -218,8 +262,9 @@ The existing pattern, verified in `CodeCoverage/ClientApp/src/app`, has five par
 - what the labeller does
 - enabling it per account and overriding it per repository (D1)
 - editing the scale (D2) and what a rename or delete does on GitHub (D3)
-- the ignore rules, their defaults and `!` (D5)
-- what disabling does (Q2)
+- the ignore rules, their defaults, `!`, and a repository's extra rules (D5)
+- the neutral "PR size" check run and its breakdown (D7)
+- what disabling does: the Remove / Keep / Cancel prompt (D4.3)
 - adopting labels from an older GitHub Action (D3)
 - that Bitbucket has no PR labels (D8)
 
@@ -233,8 +278,9 @@ only host is the Repository extras in `spark/po-detail-page.component.ts:70`.
 - The examples and their snippets move into `pages/coverage-setup/`. The page takes the server's `baseUrl` from the
   same source the panel uses today (`browse.service.ts:26`) and falls back to `location.origin` (`:122`).
 - The Repository page loses the large card. In its place is a one-line link "Set up coverage uploads →", following the
-  merge-queue panel's pattern. Recommended: show it only while the repository has **no coverage yet**, which is when
-  someone needs it. **Q4** for the owner.
+  merge-queue panel's pattern. **It is shown only while the repository has no coverage yet** (Q4 B, owner 2026-10-23).
+  Use a signal the panels above already load, not a new query.
+  - The accepted trap: a repository whose uploads break later has no link and finds the guide through the sidebar.
 - The panel component and its spec are deleted, not left as dead code.
 - A Guides unit is added at order 0 (coverage is the app's first feature), and the other units keep their ids.
 
@@ -252,7 +298,9 @@ only host is the Repository extras in `spark/po-detail-page.component.ts:70`.
 | FR8 | Pre-existing labels with a scale row's name are adopted, not duplicated. |
 | FR9 | User labels, including other `size/*` names not in the scale, are never modified or removed. |
 | FR10 | Non-managers can neither read nor write any of these settings (deny-by-default redaction holds). |
-| FR11 | Disabling behaves as Q2 decides. |
+| FR11 | Switching off prompts Remove labels / Keep labels / Cancel on the save. Every other edited value survives the prompt, only Remove deletes, and Cancel stores nothing. |
+| FR14 | A repository's extra ignore rules apply after the account's, last match wins, and `!` counts a file fully. |
+| FR15 | Every labelling run leaves exactly one completed **neutral** "PR size" check run on the head commit, with the breakdown, also on failure. |
 | FR12 | `/pr-size-labels/setup` exists, anonymous-readable, in the sidebar's Guides group, linked from the Account and Repository settings. |
 | FR13 | `/coverage/setup` holds everything the "Set up coverage uploads" card showed, with identical snippets for the same `baseUrl`; the Repository page links to it instead of embedding it, and `RepoSetupPanelComponent` is gone. |
 
@@ -262,28 +310,27 @@ The following are genuinely not being done:
 
 - **Failing a check or commenting when a PR is too large** (`fail_if_xl` / `message_if_xl`). That would be a gate, and
   this is a label.
-- **Ignore rules in `coverage.yml`.** A repository-file source for configuration is a different mechanism; see Q1 for
+- **Ignore rules in `coverage.yml`.** A repository-file source for configuration is a different mechanism; the repository's own rules (D5) are
   the in-app alternative.
 - **Bitbucket.** The forge has no PR labels.
 - **cbrgm's extras:** a file-count threshold next to the line threshold, several labels per size (`pairing-wanted`), and
   `added_lines_only`. Ignore-additions rows cover the useful part of the last one.
 
-## Open questions for the owner
+## Questions — all answered 2026-10-23
 
-- **Q1:** Should ignore rules get a per-repository override (policy enum + own list, the `MergeQueueCheckExclusions`
-  shape)? Recommended **yes** if any of your repositories need different ignores; otherwise no.
-- **Q2:** On disable, delete the managed labels (recommended, matches "the app deletes them") or leave them?
-- **Q3:** Keep D7 (no commit status)?
-- **Q4:** On the Repository page, show the "Set up coverage uploads →" link always, or only while the repository has no
-  coverage yet (recommended)?
+| # | Question | Answer |
+|---|---|---|
+| Q1 | Per-repository ignore rules? | **Extra repository rules after the account's** (no replace, no policy enum); path-level, last match wins, `!` = count fully (D5) |
+| Q2 | On disable, delete the labels? | **Ask on the save**: Retry.Action with Remove / Keep / Cancel (D4.3) |
+| Q3 | Commit status? | **A check run**, `in_progress` → neutral, with the size breakdown (D7) |
+| Q4 | When to show the coverage-setup link? | **Only while the repository has no coverage yet** (D10) |
 
 ## Risks
 
 - **Write bursts.** Enabling a scale change on a large org is bounded by D4.2, but still real. S1 measures the pacing.
 - **Adoption overwrites colours.** The adopt rule takes over a hand-made `size/M` and repaints it. That is intended, but
   it is visible to users.
-- **Disable-deletes is irreversible** from GitHub's side: the labels are removed from closed PRs too. This is why Q2 is
-  the owner's call.
+- **Remove labels is irreversible** from GitHub's side: the labels are removed from closed PRs too. The prompt says so.
 - **Production app.** The new settings are protected deny-by-default. FR10 still gets an explicit test, because a
   missing redaction would leak an organization's configuration to anonymous readers (`security.json:21` grants
   `QueryRead/Account` anonymously).
