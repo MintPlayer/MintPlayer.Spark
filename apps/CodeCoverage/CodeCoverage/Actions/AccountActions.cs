@@ -45,6 +45,8 @@ public partial class AccountActions : DefaultPersistentObjectActions<Account>, I
     /// <summary>R23: the account default's transition, for the after-commit hook (which gets facts, never the entity).</summary>
     public ValueTask OnBeforeSaveAsync(Account entity, MintPlayer.Spark.Abstractions.Interceptors.SaveContext context)
     {
+        PrSize.PrSizeValidation.ValidateAccount(entity);
+
         if (DependencyUpdateSwitch.Transition(context.Before as Account, entity) is { } transition)
             context.Facts[DependencyUpdateSwitch.Fact] = transition;
         return ValueTask.CompletedTask;

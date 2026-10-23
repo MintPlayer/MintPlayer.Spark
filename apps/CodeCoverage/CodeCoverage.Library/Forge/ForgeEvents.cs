@@ -86,6 +86,11 @@ public sealed record BranchCommitPushed(
 /// pull request may have just become one the merge queue can take, so the queue offers its button again, and
 /// a retarget moves the base the coverage record keeps. A title or body edit raises nothing.
 /// </para>
+/// <para>
+/// <paramref name="Additions"/>, <paramref name="Deletions"/> and <paramref name="ChangedFiles"/> are the pull request's
+/// totals when the forge's event carries them (GitHub does, S2 of docs/coverage_pr_size_labels_PRD.md); null otherwise.
+/// The size labeller reads them as an upper bound on the size, and as the fallback above GitHub's 3 000-file cap.
+/// </para>
 /// </remarks>
 public sealed record PullRequestUpdated(
     string RepositoryId,
@@ -96,7 +101,10 @@ public sealed record PullRequestUpdated(
     string BaseSha,
     string? Title,
     bool IsFirstOpen,
-    bool AuthorIsBot) : IForgeEvent;
+    bool AuthorIsBot,
+    int? Additions = null,
+    int? Deletions = null,
+    int? ChangedFiles = null) : IForgeEvent;
 
 /// <summary>A pull request was merged.</summary>
 /// <param name="HeadRef">The source branch, for the optional delete-after-merge courtesy.</param>

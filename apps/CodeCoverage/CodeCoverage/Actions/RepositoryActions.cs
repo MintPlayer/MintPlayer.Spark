@@ -122,6 +122,7 @@ public partial class RepositoryActions : DefaultPersistentObjectActions<Reposito
     public async ValueTask OnBeforeSaveAsync(Repository entity, SaveContext context)
     {
         ValidateGate(entity);
+        PrSize.PrSizeValidation.ValidateRepository(entity);
 
         // R23: the switch's transition, for the after-commit hook (which gets facts, never the entity).
         var account = entity.Account is { Length: > 0 } accountId ? await session.LoadAsync<Account>(accountId) : null;

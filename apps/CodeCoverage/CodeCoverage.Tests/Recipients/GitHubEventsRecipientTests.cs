@@ -323,7 +323,7 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
             "draft": false, "author_association": "MEMBER", "active_lock_reason": null,
             "merged": {{(merged ? "true" : "false")}}, "mergeable": true, "rebaseable": true, "mergeable_state": "clean",
             "merged_by": null, "comments": 0, "review_comments": 0, "maintainer_can_modify": true,
-            "commits": 1, "additions": 1, "deletions": 0, "changed_files": 1,
+            "commits": 1, "additions": 12, "deletions": 3, "changed_files": 2,
             "head": {
               "label": "acme:feature/thing", "ref": "feature/thing", "sha": "{{headSha}}",
               "user": {{UserJson}}, "repo": {{(headFromFork ? ForkRepositoryJson : RepositoryJson)}}
@@ -424,6 +424,10 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
         update.HeadSha.Should().Be(HeadSha);
         update.BaseRef.Should().Be("master");
         update.IsFirstOpen.Should().BeFalse();
+        // The size labeller's upper bound (docs/coverage_pr_size_labels_PRD.md S2).
+        update.Additions.Should().Be(12);
+        update.Deletions.Should().Be(3);
+        update.ChangedFiles.Should().Be(2);
         bus.Messages.OfType<CodeCoverage.Feedback.OpenPullRequestCommentMessage>().Should().BeEmpty();
     }
 
