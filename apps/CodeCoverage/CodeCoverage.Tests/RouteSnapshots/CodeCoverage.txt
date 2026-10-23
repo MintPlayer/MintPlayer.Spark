@@ -77,6 +77,10 @@ POST /spark/auth/manage/profile | antiforgery=required | authorize(policy=;roles
 GET /spark/auth/me
 POST /spark/auth/passkeys/request-options
 POST /spark/auth/passkeys/sign-in
+DELETE /spark/boards/{board} | antiforgery=required
+GET /spark/boards/{board}
+PUT /spark/boards/{board} | antiforgery=required
+GET /spark/boards/{board}/catalog
 GET /spark/culture
 CONNECT,GET /spark/live
 GET /spark/lookupref

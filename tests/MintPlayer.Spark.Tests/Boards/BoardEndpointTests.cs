@@ -175,7 +175,8 @@ public class BoardEndpointTests : OrganizationsTestHost
             .Where(e => e.GetProperty("group").GetString() == "queries")
             .Select(e => e.GetProperty("target").GetProperty("query").GetString())
             .ToList();
-        queries.Should().Contain(NotesQueryId.ToString());
+        // A query with an alias is offered by its alias (D17).
+        queries.Should().Contain("ognotes");
         catalog.GetProperty("kinds").EnumerateArray().Select(k => k.GetString()).Should().Contain("count");
     }
 

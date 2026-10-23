@@ -126,6 +126,8 @@ public class EndpointConventionsTests
         new("OidcAuthorizationResponse", "delivers an authorization response by query or form_post (OAuth 2.0 Form Post Response Mode) from values the endpoint resolved"),
         new("SparkPageHtml", "HTML helpers of the server-rendered pages; AppendAntiforgery writes the form field from the IAntiforgery the endpoint injected"),
         new("SparkProofOfPossession", "resource-server token checks (DPoP, cnf) called from the JwtBearer events and the introspection handler, which are not endpoints"),
+        // boards (#530)
+        new("BoardResults", "maps a BoardSaveResult to its status (200/404/401/403/409/400), shared by the save and reset endpoints; a pure function of the value passed in, maps no route"),
         // mcp (MCP PRD D3, D15): the /mcp endpoint is the SDK's, mapped through MapMcp, not a generator endpoint
         new("McpOrigin", "the Origin rule the /mcp gate middleware applies (D3); a pure function of the request headers and options, maps no route"),
         new("McpProtectedResource", "the RFC 9728 resource URL, challenge and document shared by the gate middleware and the two metadata endpoints; its services arrive as arguments, maps no route"),

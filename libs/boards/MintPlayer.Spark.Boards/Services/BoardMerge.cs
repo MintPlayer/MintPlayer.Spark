@@ -154,7 +154,8 @@ internal static class BoardMerge
                     return (null, $"layout {count} places '{entry.Id}' twice");
                 list.Add(new SparkTileLayoutEntry(entry.Id, entry.Position));
             }
-            if (stored.Layouts.TryGetValue(count, out var previous))
+            // Before a first save of this count, the hidden tiles keep their default positions.
+            if (stored.Layouts.TryGetValue(count, out var previous) || board.Layouts.TryGetValue(count, out previous))
                 list.AddRange(previous.Where(e => denied.Contains(e.Id) && IsLive(e.Id) && placed.Add(e.Id)));
             layouts[count] = list;
         }
