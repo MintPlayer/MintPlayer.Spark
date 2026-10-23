@@ -1,68 +1,39 @@
-import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, input, untracked, viewChild } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { hasShowedOnFlag, PersistentObject, PersistentObjectAttribute, ShowedOn } from '@mintplayer/ng-spark/models';
-import { ResolveTranslationPipe, TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
-import { SparkService } from '@mintplayer/ng-spark/services';
+import { TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
+import { SparkPoDetailComponent } from '@mintplayer/ng-spark/po-detail';
 import { SparkBoardTile, SparkTileContext } from '../spark-board.models';
 
 /**
- * The `persistentObject` kind (D15): one object, read-only, over `SparkService.get`. It lists the
- * attributes the detail page would show, as plain text, and links to that page. It does not reuse
- * `spark-po-detail`, which reads its object from the route.
+ * The `persistentObject` kind (D15): one object, read-only. It is the detail page's own attribute
+ * view (`spark-po-detail` with the object as inputs), without the action bar, title, sub-queries and
+ * panels, and a link to that page.
  */
 @Component({
   selector: 'spark-po-tile',
-  imports: [RouterLink, ResolveTranslationPipe, TranslateKeyPipe],
+  imports: [RouterLink, SparkPoDetailComponent, TranslateKeyPipe],
   styleUrl: './spark-tiles.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    @if (item(); as po) {
-      <dl class="spark-tile-po">
-        @for (attribute of attributes(); track attribute.name) {
-          <dt>{{ attribute.label ? (attribute.label | resolveTranslation) : attribute.name }}</dt>
-          <dd>{{ display(attribute) }}</dd>
-        }
-      </dl>
-      <a class="spark-tile-open" [routerLink]="['/po', entityType(), po.id]">{{ 'boards.spa.open' | t }}</a>
-    } @else if (failed()) {
-      <span class="spark-tile-muted" role="alert">{{ 'boards.spa.loadFailed' | t }}</span>
-    } @else {
-      <span class="spark-tile-muted">…</span>
-    }
+    <spark-po-detail [objectType]="entityType()" [objectId]="id()" [showQueries]="false" [showChrome]="false" />
+    <a class="spark-tile-open" [routerLink]="['/po', entityType(), id()]">{{ 'boards.spa.open' | t }}</a>
   `,
 })
 export class SparkPoTileComponent {
-  private readonly spark = inject(SparkService);
-
   readonly tile = input.required<SparkBoardTile>();
   readonly context = input.required<SparkTileContext>();
 
   protected readonly entityType = computed(() => this.tile().target['entityType'] ?? '');
-  protected readonly item = signal<PersistentObject | null>(null);
-  protected readonly failed = signal(false);
-  protected readonly attributes = computed(() =>
-    (this.item()?.attributes ?? []).filter(a => hasShowedOnFlag(a.showedOn, ShowedOn.PersistentObject)));
+  protected readonly id = computed(() => this.tile().target['id'] ?? '');
+  private readonly detail = viewChild(SparkPoDetailComponent);
 
   constructor() {
-    effect(onCleanup => {
-      const type = this.entityType();
-      const id = this.tile().target['id'] ?? '';
+    // The board's refresh: the first run is the initial load, which the detail component does itself.
+    let first = true;
+    effect(() => {
       this.context().reloadToken;
-      let live = true;
-      onCleanup(() => live = false);
-      this.failed.set(false);
-      this.spark.get(type, id).then(
-        po => { if (live) this.item.set(po); },
-        () => { if (live) this.failed.set(true); },
-      );
+      if (first) { first = false; return; }
+      untracked(() => this.detail()?.load());
     });
-  }
-
-  protected display(attribute: PersistentObjectAttribute): string {
-    if (attribute.breadcrumb) return attribute.breadcrumb;
-    const value = attribute.value;
-    if (value === null || value === undefined) return '';
-    if (Array.isArray(value)) return value.map(v => attribute.breadcrumbs?.[v] ?? String(v)).join(', ');
-    return typeof value === 'object' ? '' : String(value);
   }
 }

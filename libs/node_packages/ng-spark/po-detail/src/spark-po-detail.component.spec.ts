@@ -970,4 +970,31 @@ describe('SparkPoDetailComponent', () => {
       expect(got?.entityType.name).toBe('Person');
     });
   });
+
+  describe('embedded (objectType/objectId, #530)', () => {
+    /** A board tile's use: on a route without `:type`, the object, its attributes and nothing else. */
+    @Component({
+      imports: [SparkPoDetailComponent],
+      template: `<spark-po-detail objectType="person" objectId="people/1" [showQueries]="false" [showChrome]="false" />`,
+    })
+    class EmbeddedHost {}
+
+    it('loads the input object and draws only its attributes', async () => {
+      const withSubQuery = { ...personType, queries: ['person-friends'] } as any;
+      const { harness, service } = await setup({
+        getEntityTypes: vi.fn().mockResolvedValue([withSubQuery]),
+        getQuery: vi.fn().mockReturnValue(new Promise(() => undefined)),
+      } as any);
+      TestBed.inject(Router).resetConfig([{ path: '', component: EmbeddedHost }]);
+      await harness.navigateByUrl('/', EmbeddedHost);
+      await settle(harness.fixture);
+
+      const root = harness.routeNativeElement!;
+      expect(service.get).toHaveBeenCalledWith('person', 'people/1');
+      expect(root.querySelector('dl')).not.toBeNull();
+      expect(root.querySelector('.spark-actionbar')).toBeNull();
+      expect(root.querySelector('h2')).toBeNull();
+      expect(root.querySelector('spark-query-card')).toBeNull();
+    });
+  });
 });

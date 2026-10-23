@@ -14,6 +14,7 @@
         </div>
       </bs-alert>
     }
+    @if (showChrome()) {
     <div class="spark-actionbar py-2">
       <bs-priority-nav [moreLabel]="lang.t('common.more')" [collapseAt]="'sm'">
         <button *bsPriorityNavItem="1" class="btn btn-outline-secondary" (click)="onBack()">
@@ -60,6 +61,7 @@
         <bs-badge [type]="colors.secondary" class="align-middle ms-2 spark-deleted-badge">{{ 'softDelete.deleted' | t }}</bs-badge>
       }
     </h2>
+    }
 
     @if (detailLayout(); as layout) {
       <!-- A registered layout draws the attributes instead (SPARK_DETAIL_LAYOUTS): Dashboards' tiles. -->
@@ -281,7 +283,7 @@
     @if (beforeQueriesTemplate(); as beforeQueriesTpl) {
       <ng-container *ngTemplateOutlet="beforeQueriesTpl; context: { $implicit: currentItem, entityType: et }"></ng-container>
     }
-    @for (subQuery of subQueries(); track subQuery.query) {
+    @for (subQuery of (showQueries() ? subQueries() : []); track subQuery.query) {
       <!-- The entry's selectionMode overrides the query's own for this parent (#460, D17). -->
       <spark-query-card [queryId]="subQuery.query" [parentId]="currentItem.id!" [parentType]="et.name"
                         [selectionMode]="subQuery.selectionMode ?? null"
@@ -293,7 +295,7 @@
       <ng-container *ngTemplateOutlet="extraContentTpl; context: { $implicit: currentItem, entityType: et }"></ng-container>
     }
     <!-- Add-on panels (SPARK_DETAIL_PANELS), e.g. <spark-po-history>. -->
-    @if (detailContext(); as ctx) {
+    @if (showChrome() && detailContext(); as ctx) {
       @for (panel of detailPanels; track panel.id) {
         <div class="spark-detail-panel m-3">
           <ng-container *ngComponentOutlet="panel.component; inputs: { context: ctx }" />
