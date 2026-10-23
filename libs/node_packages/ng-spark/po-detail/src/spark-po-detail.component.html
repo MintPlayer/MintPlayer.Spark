@@ -68,6 +68,16 @@
       <ng-container *ngComponentOutlet="layout.component; inputs: { context: detailContext() }" />
     } @else {
     <bs-grid>
+      @if (compact()) {
+        <!-- One flat grid of the essential fields, by order: no tabs, no group cards (#530). -->
+        <div class="p-3">
+          <dl bsRow>
+            @for (attr of summaryAttributes(); track attr.id) {
+              <ng-container *ngTemplateOutlet="detailAttrField; context: { $implicit: attr, item: currentItem }"></ng-container>
+            }
+          </dl>
+        </div>
+      } @else {
       <bs-tab-control>
         @for (tab of resolvedTabs(); track tab.id) {
           <bs-tab-page>
@@ -76,6 +86,7 @@
           </bs-tab-page>
         }
       </bs-tab-control>
+      }
 
       <ng-template #detailTabContent let-tab>
         @if (tab.id === '__default__') {

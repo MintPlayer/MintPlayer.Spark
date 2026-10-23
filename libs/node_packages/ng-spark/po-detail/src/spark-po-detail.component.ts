@@ -104,6 +104,11 @@ export class SparkPoDetailComponent {
   showQueries = input(true);
   /** The action bar, the title and the add-on panels: off where the host draws its own (a tile). */
   showChrome = input(true);
+  /**
+   * One flat grid of the `Summary` attributes (all detail attributes when none is), no tabs or cards: a tile.
+   * A registered detail layout (SPARK_DETAIL_LAYOUTS) still draws its type instead.
+   */
+  compact = input(false);
 
   showCustomActions = input(true);
   extraActionsTemplate = input<TemplateRef<void> | null>(null);
@@ -490,6 +495,15 @@ export class SparkPoDetailComponent {
     return this.entityType()?.attributes
       .filter(a => hasShowedOnFlag(loaded.get(a.name)?.showedOn ?? a.showedOn, ShowedOn.PersistentObject))
       .sort((a, b) => a.order - b.order) || [];
+  });
+
+  /** The compact view's fields: those marked `Summary`, by order, or every detail field when the type marks none. */
+  summaryAttributes = computed(() => {
+    const loaded = new Map((this.item()?.attributes ?? []).map(a => [a.name, a] as const));
+    const summary = this.entityType()?.attributes
+      .filter(a => hasShowedOnFlag(loaded.get(a.name)?.showedOn ?? a.showedOn, ShowedOn.Summary))
+      .sort((a, b) => a.order - b.order) ?? [];
+    return summary.length ? summary : this.visibleAttributes();
   });
 
   private static readonly DEFAULT_TAB: AttributeTab = { id: '__default__', name: 'Algemeen', label: { nl: 'Algemeen', en: 'General' }, order: 0 };

@@ -36,6 +36,17 @@ sparkBoardRoute('home', 'home'),      // app.routes.ts, or <spark-board boardId=
 - A tile's query target is the query's **id or alias**, never its name. A name refuses startup.
 - `provideSparkBoards()` also adds **Pin to dashboard** to every detail page. `{ pinAction: false }` leaves it out.
 
+## An object's essential fields: `showedOn` `Summary`
+
+- `EShowedOn` / `ShowedOn` gains `Summary = 4` (MintPlayer.Spark, ng-spark models). It marks the few attributes
+  that identify an object. It is never part of the default: an absent `showedOn` still means `Query, PersistentObject`.
+  Synchronize keeps it as long as the attribute stays on the detail page.
+- `spark-po-detail` gains `objectType`/`objectId` (in place of the route), `showQueries`, `showChrome` (the action
+  bar, the title and the add-on panels) and `compact`. `compact` draws one flat grid of the `Summary` attributes by
+  `order`, without tabs or group cards. When the type marks none, it draws every detail attribute.
+- A `persistentObject` tile is `spark-po-detail` with `compact` on and the queries and chrome off. A type with a
+  registered detail layout keeps that layout.
+
 ## Endpoints
 
 | Endpoint | Does |
@@ -49,5 +60,6 @@ sparkBoardRoute('home', 'home'),      // app.routes.ts, or <spark-board boardId=
 
 - **Fleet:** the home page is the `home` board, and it is the E2E host (`BoardsTests`).
 - **SeoTester:** the home cards are the board.
-- **MintPlayer:** the cards below the hero are the board.
+- **MintPlayer:** the cards below the hero are the board. `Song` and `Artist` mark their `Summary` fields, as does
+  Fleet's `Car`.
 - **CodeCoverage:** Home's accounts grid is the board's `my-accounts` tile. The `Home` page itself is unchanged.

@@ -63,8 +63,21 @@ declared in both places refuses startup.
 |---|---|---|
 | `query` | `query` (id or alias) | the query's grid, with paging and search |
 | `count` | `query` | the query's total, counted with row security applied |
-| `persistentObject` | `entityType`, `id` | the object's detail, including virtual objects such as dashboards |
+| `persistentObject` | `entityType`, `id` | the object's essential fields, or a virtual object's own layout such as a dashboard |
 | `programUnit` | `programUnit` (id) | a link to the program unit |
+
+A `persistentObject` tile draws one flat grid of label/value pairs, without tabs or group cards. It shows the
+attributes whose `showedOn` includes `Summary`, ordered by their `order`. When the type marks none, it shows every
+attribute of the detail page. Mark the few fields that identify the object:
+
+```json
+{ "name": "Title", "order": 1, "showedOn": "Query, PersistentObject, Summary" }
+```
+
+`Summary` is never part of the default, and synchronize keeps it as long as the attribute stays on the detail page.
+A type drawn by a registered detail layout (`SPARK_DETAIL_LAYOUTS`, such as a Dashboards virtual object) keeps that
+layout in the tile. Outside a board, `<spark-po-detail objectType objectId [compact]="true" [showChrome]="false"
+[showQueries]="false" />` draws the same view.
 
 An application kind implements `ITileKind`. `Validate` checks the target's shape, and `CheckAccessAsync` decides
 whether the caller may see the tile. The kind is resolved per request, so it can take scoped services. Its client

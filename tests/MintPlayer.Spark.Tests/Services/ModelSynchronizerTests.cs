@@ -870,6 +870,24 @@ public sealed class ModelSynchronizerTests : IDisposable
     }
 
     [Theory]
+    [InlineData("Title", "Query, PersistentObject, Summary", EShowedOn.Query | EShowedOn.PersistentObject | EShowedOn.Summary)]
+    [InlineData("Secret", "PersistentObject, Summary", EShowedOn.PersistentObject | EShowedOn.Summary)]
+    public void A_hand_set_Summary_survives_re_synchronize(string attribute, string tampered, EShowedOn expected)
+    {
+        // #530: Summary is never derived, so intersecting with the derived sides alone would strip it.
+        // It is drawn from the loaded object, so it lasts as long as the PersistentObject side does.
+        RegisterBookProjection(typeof(MS_ProjectedBookView));
+        var sync = CreateSynchronizer();
+        sync.SynchronizeModels(typeof(ProjectedBookContext));
+
+        TamperShowedOn("MS_ProjectedBook", attribute, tampered);
+
+        sync.SynchronizeModels(typeof(ProjectedBookContext));
+
+        BookAttribute(attribute).ShowedOn.Should().Be(expected);
+    }
+
+    [Theory]
     [InlineData("Title")]   // on the entity and the projection
     [InlineData("Secret")]  // on the entity only
     public void An_explicit_None_survives_re_synchronize(string attribute)

@@ -15,7 +15,7 @@ import { SparkBoardTile, SparkTileContext } from '../spark-board.models';
   styleUrl: './spark-tiles.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <spark-po-detail [objectType]="entityType()" [objectId]="id()" [showQueries]="false" [showChrome]="false" />
+    <spark-po-detail [objectType]="entityType()" [objectId]="id()" [showQueries]="false" [showChrome]="false" [compact]="true" />
     <a class="spark-tile-open" [routerLink]="['/po', entityType(), id()]">{{ 'boards.spa.open' | t }}</a>
   `,
 })

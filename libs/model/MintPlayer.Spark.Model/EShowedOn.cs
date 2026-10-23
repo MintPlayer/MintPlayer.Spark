@@ -22,4 +22,10 @@ public enum EShowedOn
     Query = 1,
     /// <summary>A field on the detail and edit pages.</summary>
     PersistentObject = 2,
+    /// <summary>
+    /// One of the object's essential fields, drawn on a compact view of it such as a dashboard tile (#530).
+    /// Never part of the default: an author sets it on the few attributes that identify the object, and they are
+    /// shown by their <c>order</c>. A type that marks none shows all its <see cref="PersistentObject"/> fields there.
+    /// </summary>
+    Summary = 4,
 }

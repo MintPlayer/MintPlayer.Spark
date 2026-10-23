@@ -23,6 +23,10 @@
     SeoTester, MintPlayer and CodeCoverage. The one test sweep at the end is still to run.
   - Decisions made while building are D17–D20 in §12. §5's table is the plan; D18 and D19 record where the build
     differs from it.
+- 2026-10-23: the `persistentObject` tile now renders through `spark-po-detail` (D15, superseded; `8efc7b5e`).
+  Inside a tile it still draws tabs and a card per group, which is too heavy. Two investigators compared the
+  owner's `isDefault` group flag with alternatives. Q9 in §11 has the options and a recommendation, and M11 in §10
+  is the plan once Q9 is decided.
 
 ## 1. Goal
 
@@ -392,6 +396,7 @@ never edits.
 | M7 | Fleet adoption (showcase) + E2E |
 | M8 | SeoTester and MintPlayer adoption (production) |
 | M9 | CodeCoverage adoption (production). HR/QnA if Q7 says so |
+| M11 | ✅ **Compact object tile (Q9 = B, D21).** Evidence: po-detail + boards specs 76/76 and 22/22 (`compact draws the Summary attributes…`, `compact falls back…`), `ModelSynchronizerTests` 71/71 (`A_hand_set_Summary_survives_re_synchronize`). Browser check pending a host restart. (1) `EShowedOn.Summary = 4` in `libs/model/MintPlayer.Spark.Model/EShowedOn.cs`, plus the TS `ShowedOn` in `models/src/showed-on.ts`. In TS an **absent** `showedOn` must **not** count as `Summary`. (2) Synchronize keeps `Summary` when it narrows (`ModelSynchronizer.cs:1048` intersects with the derived `Query \| PersistentObject`, which would strip it). (3) `spark-po-detail` gains `compact = input(false)`: one `<dl bsRow>` over the existing `detailAttrField` template, no `bs-tab-control`, no `bs-card`, ordered by the attribute's `order` alone (groups and tabs play no part; `visibleAttributes` already sorts so, `spark-po-detail.component.ts:488`). It shows the `Summary` attributes, or every detail attribute when the type marks none. A registered `SPARK_DETAIL_LAYOUTS` layout still wins over `compact`, because SeoTester's `operator-dashboard` tile is a Dashboards virtual object drawn by its layout. (4) `spark-po-tile` passes `[compact]="true"`. (5) Specs: compact draws no tab-control or card, filters to `Summary`, and falls back. A synchronizer test that `Summary` survives a re-sync. (6) Mark a few attributes in the apps' model JSON (MintPlayer songs/artists, Fleet cars), the guide's tile section, and the release notes |
 | M10 | Guide `docs/guide-boards.md`, README, CHANGELOG/release notes. Then the full test sweep, once, at the end |
 
 ## 11. Open decisions (owner)
@@ -411,6 +416,42 @@ never edits.
 - **Q6 — Saving.** An explicit Save/Cancel in edit mode (recommended), or autosave after each gesture?
 - **Q7 — HR and QnA.** Adopt them as second demos, or leave them alone?
 - ~~**Q8 — ng-bootstrap branch.**~~ Resolved: the fixes were made on a branch from master and merged as PR #441.
+- ~~**Q9**~~ Decided as B (D21). **Q9 — Which attributes an object tile shows, and how (2026-10-23).** The tile should be one flat label/value
+  grid: no tabs and no cards. Owner constraint: "reuse the existing components as much as possible. Adding inputs
+  is acceptable". **The renderer is the same under every option:** `spark-po-detail` gains a `compact` input that
+  draws its existing `detailAttrField` template into one `<dl bsRow>` (M11). Only the way the attributes are
+  chosen differs.
+
+  What exists today (evidence):
+  - `AttributeGroup` has `Id`, `Name`, `Label`, `Tab` and `Order` (`Abstractions/EntityTypeDefinition.cs:452`).
+    `AttributeTab` has `Id`, `Name`, `Label`, `Order` and `ColumnCount` (:432).
+  - An attribute reaches a tab only through its group (`Group`, :404), and carries `Order` (:284) and `ShowedOn`
+    (:397).
+  - `EShowedOn` is a flags enum: `None = 0`, `Query = 1`, `PersistentObject = 2`
+    (`libs/model/MintPlayer.Spark.Model/EShowedOn.cs`).
+  - Nothing like `isDefault`, summary, essential, compact or preview exists on a tab, group, attribute or type. The
+    nearest is the type's `Breadcrumb` template.
+  - A new field survives synchronize only as a real C# property: JSON without one is dropped
+    (`libs/spark/MintPlayer.Spark/AGENTS.md:97-104`). Tabs and groups are copied whole (`ModelSynchronizer.cs:798`).
+    `ShowedOn` is intersected with the derived sides (:1048), so a new flag needs that line changed.
+
+  Prior art (web): every product keeps "what the summary shows" apart from the full form's layout, ordered and
+  small.
+  - Salesforce *compact layouts* are an ordered field list per object. The first four fields fill the highlights
+    panel and the hover cards, and a system default applies when none is defined.
+  - Dynamics 365 has a separate *Quick View* / *Card* form per purpose.
+  - SAP Fiori puts a flagged field group in the object page header, with at most 5 fields, ordered by position.
+  - An Odoo kanban card lists its own fields.
+  - None of them flattens the whole form (option D).
+
+  | Option | How a tile picks attributes | For | Against |
+  |---|---|---|---|
+  | A. `isDefault` on `AttributeGroup` (owner's idea) | the attributes of the flagged group | one bool on a type that copies through sync whole; the group's order is reused; SAP Fiori's header field group is the same shape | The essentials usually sit in **several** groups: HR's `Person` has its name under *Personal* and its email under *Contact* (`apps/HR/HR/App_Data/Model/Person.json`). A flag then forces the detail page's grouping to serve the tile, the coupling every product above avoids. "Default" also reads as "the group/tab opened first" |
+  | **B. `Summary` value in `EShowedOn` (recommended)** | the attributes with `"showedOn": "Query, PersistentObject, Summary"`, ordered by the attribute's `order` | chosen per attribute across groups; reuses the existing visibility mechanism and `hasShowedOnFlag`; the detail layout is untouched; matches Salesforce's per-object list; usable later for hover cards or a reference's preview | needs the sync change (:1048) and care that an absent `showedOn` does not mean "Summary" in TS; it changes the shared enum |
+  | C. a per-tile attribute list in the board config | `target.attributes: [...]` | per-user choice, like Odoo | picker UI, validation against the model and permission filtering per attribute; every user and every default board repeats it. Can come later, on top of B |
+  | D. no metadata: flatten every detail attribute | all of them | zero model change | large objects give a long, scrolling tile; no product does it. Kept only as **B's fallback** when a type marks nothing, so an unconfigured app still gets a usable tile |
+
+  **Decided (owner, 2026-10-23): B, with D as the fallback (D21).**
 
 ## 12. Decision log
 
@@ -451,3 +492,9 @@ be reversed.
 | D18 | **MintPlayer's default board is `songs` and `artists` only.** `My_Playlists` is left out, unlike §5's plan, so the home page is unchanged for a user who never customizes. A user can add playlists from the picker | §5: "Every production adoption keeps today's home content as the default layout". Today's home showed only the two cards |
 | D19 | **CodeCoverage keeps `Home` as the page.** Only the `my-accounts` sub-query moves, into a one-tile `home` board that `HomeExtrasComponent` renders for a signed-in user. `HOME_URL`, the sign-in redirects and the KPI attributes are unchanged. §5's KPI, build/commit and HostMetrics tiles are not added | The redirects and `HOME_URL` point at the Home PO. `ResyncAction`'s `RefreshQuery("my-accounts")` (asserted in `BoardAndResyncActionTests.cs:284`) still reaches the tile, because `spark-query-grid` matches a refresh by id, name or alias (`grid/src/spark-query-grid.component.ts:753`). `--spark-verify-model` is in sync after `--spark-synchronize-model` (hash `b66581cc…`) |
 | D20 | **Known limitation: "Also apply this layout to smaller screens?" is asked at Save time**, about the last width edited. A narrower count that only the app default stores is not part of the user's layout, so it comes back from the default | `spark-board.component.ts:200` (`askNarrower` when the last edit left stale stored counts), `board-draft.ts` `applyToNarrower` |
+
+### Round 4 (owner, 2026-10-23)
+
+| # | Decision | Evidence |
+|---|---|---|
+| D21 | **Q9 = B. An object tile shows the attributes flagged `EShowedOn.Summary`**, as one flat grid ordered by the attribute's `order` alone, with no tabs, cards or groups. When a type flags none, it shows every detail attribute (D). Rendering reuses `spark-po-detail` with a new `compact` input, not a new presenter component | Owner: "B looks great", "the essential attributes being spread across several groups is correct", "still also the attribute's offset value determines how the attributes are ordered" (the `order` field), "reuse the existing components as much as possible. Adding inputs is acceptable". **No attribute presenter component exists.** All value rendering (renderers, AsDetail tables, primitive lists, booleans, colors, images, urls, reference chips and links, multiline, dates) is the inline `#detailAttrField` template in `po-detail/src/spark-po-detail.component.html:115-312`. That template reads po-detail state the component loads itself: `lookupReferenceOptions`, `asDetailTypes`, `rendererRegistry`, `allEntityTypes` (`spark-po-detail.component.ts:585`, `:603`). A separate presenter would need its host to repeat those loads, while `compact` reuses them as they are. Query grids have their own `spark-grid-cell` |

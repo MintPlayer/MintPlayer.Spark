@@ -996,5 +996,45 @@ describe('SparkPoDetailComponent', () => {
       expect(root.querySelector('h2')).toBeNull();
       expect(root.querySelector('spark-query-card')).toBeNull();
     });
+
+    @Component({
+      imports: [SparkPoDetailComponent],
+      template: `<spark-po-detail objectType="person" objectId="people/1" [showQueries]="false" [showChrome]="false" [compact]="true" />`,
+    })
+    class CompactHost {}
+
+    async function compactLabels(type: EntityType) {
+      const { harness } = await setup({ getEntityTypes: vi.fn().mockResolvedValue([type]) } as Partial<SparkService>);
+      TestBed.inject(Router).resetConfig([{ path: '', component: CompactHost }]);
+      await harness.navigateByUrl('/', CompactHost);
+      await settle(harness.fixture);
+      const root = harness.routeNativeElement!;
+      return {
+        root,
+        labels: [...root.querySelectorAll('dt')].map(dt => dt.textContent!.trim()),
+      };
+    }
+
+    it('compact draws the Summary attributes by order in one grid, without tabs or cards', async () => {
+      const { root, labels } = await compactLabels({
+        ...personType,
+        attributes: [
+          { ...personType.attributes[0], showedOn: 'PersistentObject' },
+          { id: 'a-nick', name: 'Nick', dataType: 'string', order: 0 } as any, // absent showedOn: not Summary
+          { id: 'a-last', name: 'LastName', dataType: 'string', order: 3, group: 'g-main', showedOn: 'Query, PersistentObject, Summary' } as any,
+          { id: 'a-city', name: 'City', dataType: 'string', order: 2, showedOn: 'PersistentObject, Summary' } as any,
+        ],
+      } as EntityType);
+
+      expect(labels).toEqual(['City', 'LastName']);
+      expect(root.querySelector('bs-tab-control')).toBeNull();
+      expect(root.querySelector('bs-card')).toBeNull();
+      expect(root.querySelectorAll('dl').length).toBe(1);
+    });
+
+    it('compact falls back to every detail attribute when the type marks none Summary', async () => {
+      const { labels } = await compactLabels(personType);
+      expect(labels).toEqual(['FirstName']);
+    });
   });
 });
