@@ -478,7 +478,7 @@ public partial class GitHubAccessService : IGitHubAccessService
                         Login = installation.Login,
                         Type = installation.Type == "Organization" ? "Organization" : "User",
                         AvatarUrl = installation.AvatarUrl,
-                    };
+                    }.ApplyPrSizeDefaults();
                     await session.StoreAsync(account, id, cancellationToken);
                 }
                 account.InstallationId = installation.Id;

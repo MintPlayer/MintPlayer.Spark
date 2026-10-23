@@ -197,6 +197,32 @@ public class Repository : IForgeConnectable
             PreviousFullNames.RemoveAt(0);
     }
 
+    /// <summary>Whether this repository labels its pull requests by size, or the account's setting (docs/coverage_pr_size_labels_PRD.md D1).</summary>
+    /// <remarks>A stored document without the field reads <see cref="EPrSizeLabelPolicy.Inherit"/>, the enum's zero.</remarks>
+    [IgnoreForIndex]
+    [LookupReference(typeof(PrSizeLabelPolicy))]
+    public EPrSizeLabelPolicy PrSizeLabels { get; set; }
+
+    /// <summary>This repository's own ignore rules, applied after the account's, so the last matching rule still wins (D5).</summary>
+    [IgnoreForIndex]
+    public List<PrSizeIgnoreRule> PrSizeIgnoreRules { get; set; } = [];
+
+    /// <summary>What the app last wrote to the forge per scale row (D3). Internal state, read-only and never shown.</summary>
+    [IgnoreForIndex]
+    public List<ManagedLabel> PrSizeLabelState { get; set; } = [];
+
+    /// <summary>
+    /// Whether pull requests in this repository get a size label, and where the answer came from (<c>repository</c>,
+    /// <c>organization</c> or <c>default</c>). The one place the two levels are combined; a missing account is off.
+    /// </summary>
+    public static (bool Enabled, string Source) ResolvePrSizeLabels(Repository? repository, Account? account)
+        => repository?.PrSizeLabels switch
+        {
+            EPrSizeLabelPolicy.Enabled => (true, "repository"),
+            EPrSizeLabelPolicy.Disabled => (false, "repository"),
+            _ => (account?.PrSizeLabels ?? false, account is null ? "default" : "organization"),
+        };
+
     public static bool ResolveDeleteBranchOnPrClose(Repository? repository, Account? account)
         => repository?.DeleteBranchOnPrClose switch
         {

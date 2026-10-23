@@ -421,6 +421,46 @@
         "inQueryType": false,
         "showedOn": "PersistentObject",
         "rules": []
+      },
+      {
+        "id": "53973f78-a298-44f8-af84-1a40e6722cdd",
+        "name": "PrSizeIgnoreRules",
+        "dataType": "AsDetail",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 35,
+        "asDetailType": "CodeCoverage.Entities.PrSizeIgnoreRule",
+        "isArray": true,
+        "editMode": "inline",
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "1daaf56f-e8d1-4479-a6d6-a82477395601",
+        "name": "PrSizeLabels",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 34,
+        "isArray": false,
+        "lookupReferenceType": "PrSizeLabelPolicy",
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "7fe9fe13-7d74-401a-a36e-710c185928b2",
+        "name": "PrSizeLabelState",
+        "dataType": "AsDetail",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 36,
+        "asDetailType": "CodeCoverage.Entities.ManagedLabel",
+        "isArray": true,
+        "inQueryType": false,
+        "showedOn": "None",
+        "rules": []
       }
     ],
     "queries": [

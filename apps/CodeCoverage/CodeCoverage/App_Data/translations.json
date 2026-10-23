@@ -781,6 +781,42 @@
             "en": "Provider and Login as one comparable value, github:acme."
           }
         },
+        "PrSizeIgnoreRules": {
+          "description": {
+            "en": "Files that do not count towards the size, or count only their net deletions. The last matching rule wins; a glob starting with ! counts the file fully.",
+            "fr": "Fichiers qui ne comptent pas dans la taille, ou seulement leurs suppressions nettes. La dernière règle correspondante l'emporte ; un glob commençant par ! compte le fichier entièrement.",
+            "nl": "Bestanden die niet meetellen voor de grootte, of alleen hun netto verwijderingen. De laatste overeenkomende regel wint; een glob die met ! begint telt het bestand volledig."
+          },
+          "label": {
+            "en": "Ignored files",
+            "fr": "Fichiers ignorés",
+            "nl": "Genegeerde bestanden"
+          }
+        },
+        "PrSizeLabelScale": {
+          "description": {
+            "en": "One label per row: a pull request that changes at least this many lines, and fewer than the next row, gets the label. The app creates, renames and deletes these labels itself.",
+            "fr": "Une étiquette par ligne : une pull request qui modifie au moins ce nombre de lignes, et moins que la ligne suivante, reçoit l'étiquette. L'application crée, renomme et supprime ces étiquettes elle-même.",
+            "nl": "Eén label per rij: een pull request die minstens zoveel regels wijzigt, en minder dan de volgende rij, krijgt het label. De app maakt, hernoemt en verwijdert deze labels zelf."
+          },
+          "label": {
+            "en": "Size scale",
+            "fr": "Échelle de taille",
+            "nl": "Grootteschaal"
+          }
+        },
+        "PrSizeLabels": {
+          "description": {
+            "en": "Label every pull request with its size, in every repository of this account that does not decide for itself.",
+            "fr": "Étiqueter chaque pull request selon sa taille, dans chaque dépôt de ce compte qui ne décide pas lui-même.",
+            "nl": "Elke pull request labelen met zijn grootte, in elke repository van dit account die zelf niets kiest."
+          },
+          "label": {
+            "en": "PR size labels",
+            "fr": "Étiquettes de taille de PR",
+            "nl": "PR-groottelabels"
+          }
+        },
         "Provider": {
           "description": {
             "en": "The forge that hosts this account. Set on every document by the M6 re-key."
@@ -840,6 +876,13 @@
             "en": "Merge queue",
             "fr": "File de fusion",
             "nl": "Merge queue"
+          }
+        },
+        "PrSizeLabels": {
+          "label": {
+            "en": "PR size labels",
+            "fr": "Étiquettes de taille de PR",
+            "nl": "PR-groottelabels"
           }
         }
       },
@@ -2352,6 +2395,58 @@
         "nl": "Hostmetingen"
       }
     },
+    "ManagedLabel": {
+      "attributes": {
+        "Color": {
+          "description": {
+            "en": "The colour last written.",
+            "fr": "La dernière couleur écrite.",
+            "nl": "De laatst geschreven kleur."
+          },
+          "label": {
+            "en": "Colour",
+            "fr": "Couleur",
+            "nl": "Kleur"
+          }
+        },
+        "Description": {
+          "description": {
+            "en": "The description last written.",
+            "fr": "La dernière description écrite.",
+            "nl": "De laatst geschreven beschrijving."
+          },
+          "label": {
+            "en": "Description",
+            "fr": "Description",
+            "nl": "Beschrijving"
+          }
+        },
+        "Name": {
+          "description": {
+            "en": "The label's name on the forge.",
+            "fr": "Le nom de l'étiquette sur la forge.",
+            "nl": "De naam van het label op de forge."
+          },
+          "label": {
+            "en": "Label",
+            "fr": "Étiquette",
+            "nl": "Label"
+          }
+        },
+        "RowId": {
+          "description": {
+            "en": "The scale row.",
+            "fr": "La ligne de l'échelle.",
+            "nl": "De rij van de schaal."
+          },
+          "label": {
+            "en": "Row",
+            "fr": "Ligne",
+            "nl": "Rij"
+          }
+        }
+      }
+    },
     "MyAccountRow": {
       "attributes": {
         "AggregateCoverage": {
@@ -2475,6 +2570,86 @@
             "en": "Merge Base Sha",
             "fr": "Sha de la base de fusion",
             "nl": "Merge-base-sha"
+          }
+        }
+      }
+    },
+    "PrSizeIgnoreRule": {
+      "attributes": {
+        "Glob": {
+          "description": {
+            "en": "A repository-relative path glob, such as **/*.md. ** spans folders; a leading ! counts the file fully.",
+            "fr": "Un glob de chemin relatif au dépôt, par exemple **/*.md. ** couvre les dossiers ; un ! initial compte le fichier entièrement.",
+            "nl": "Een pad-glob relatief aan de repository, zoals **/*.md. ** omvat mappen; een ! vooraan telt het bestand volledig."
+          },
+          "label": {
+            "en": "Path glob",
+            "fr": "Glob de chemin",
+            "nl": "Pad-glob"
+          }
+        },
+        "Mode": {
+          "description": {
+            "en": "Ignore the file, or count only its net deletions.",
+            "fr": "Ignorer le fichier, ou ne compter que ses suppressions nettes.",
+            "nl": "Het bestand negeren, of alleen de netto verwijderingen tellen."
+          },
+          "label": {
+            "en": "Counts",
+            "fr": "Compte",
+            "nl": "Telt"
+          }
+        }
+      }
+    },
+    "PrSizeLabel": {
+      "attributes": {
+        "Color": {
+          "description": {
+            "en": "The label's colour.",
+            "fr": "La couleur de l'étiquette.",
+            "nl": "De kleur van het label."
+          },
+          "label": {
+            "en": "Colour",
+            "fr": "Couleur",
+            "nl": "Kleur"
+          }
+        },
+        "Description": {
+          "description": {
+            "en": "At most 100 characters. Left empty, it says which line range the label stands for.",
+            "fr": "100 caractères au plus. Laissée vide, elle indique la plage de lignes de l'étiquette.",
+            "nl": "Hoogstens 100 tekens. Leeg vermeldt ze het regelbereik van het label."
+          },
+          "label": {
+            "en": "Description",
+            "fr": "Description",
+            "nl": "Beschrijving"
+          }
+        },
+        "MinLines": {
+          "description": {
+            "en": "The smallest number of changed lines that gets this label. The smallest row is 0.",
+            "fr": "Le plus petit nombre de lignes modifiées qui reçoit cette étiquette. La plus petite ligne vaut 0.",
+            "nl": "Het kleinste aantal gewijzigde regels dat dit label krijgt. De kleinste rij is 0."
+          },
+          "label": {
+            "en": "From lines",
+            "fr": "À partir de lignes",
+            "nl": "Vanaf regels"
+          }
+        },
+        "Name": {
+          "description": {
+            "en": "The label's name, such as size/M. Unique per scale, at most 50 characters.",
+            "fr": "Le nom de l'étiquette, par exemple size/M. Unique dans l'échelle, 50 caractères au plus.",
+            "nl": "De naam van het label, zoals size/M. Uniek per schaal, hoogstens 50 tekens."
+          },
+          "label": {
+            "en": "Label",
+            "fr": "Étiquette",
+            "nl": "Label"
           }
         }
       }
@@ -2897,6 +3072,42 @@
             "en": "Owner",
             "fr": "Propriétaire",
             "nl": "Eigenaar"
+          }
+        },
+        "PrSizeIgnoreRules": {
+          "description": {
+            "en": "Rules applied after the account's, so they can ignore more files or, with !, count files the account ignores.",
+            "fr": "Règles appliquées après celles du compte : elles peuvent ignorer d'autres fichiers ou, avec !, compter des fichiers que le compte ignore.",
+            "nl": "Regels die na die van het account gelden: ze kunnen meer bestanden negeren of, met !, bestanden meetellen die het account negeert."
+          },
+          "label": {
+            "en": "Extra ignored files",
+            "fr": "Fichiers ignorés supplémentaires",
+            "nl": "Extra genegeerde bestanden"
+          }
+        },
+        "PrSizeLabelState": {
+          "description": {
+            "en": "The labels the app last wrote to the forge.",
+            "fr": "Les étiquettes que l'application a écrites en dernier.",
+            "nl": "De labels die de app het laatst naar de forge schreef."
+          },
+          "label": {
+            "en": "Managed labels",
+            "fr": "Étiquettes gérées",
+            "nl": "Beheerde labels"
+          }
+        },
+        "PrSizeLabels": {
+          "description": {
+            "en": "Whether this repository labels its pull requests by size, or the account's setting.",
+            "fr": "Si ce dépôt étiquette ses pull requests selon leur taille, ou le paramètre du compte.",
+            "nl": "Of deze repository zijn pull requests labelt volgens grootte, of de instelling van het account."
+          },
+          "label": {
+            "en": "PR size labels",
+            "fr": "Étiquettes de taille de PR",
+            "nl": "PR-groottelabels"
           }
         },
         "PreviousFullNames": {

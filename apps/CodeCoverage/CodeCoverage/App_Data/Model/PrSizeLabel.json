@@ -1,0 +1,59 @@
+{
+  "$schema": "https://schemas.spark.mintplayer.com/v8/model.schema.json",
+  "persistentObject": {
+    "id": "4453b086-435b-475a-b7b6-db5cc9fd8489",
+    "name": "PrSizeLabel",
+    "clrType": "CodeCoverage.Entities.PrSizeLabel",
+    "breadcrumb": "{Name}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "671c0c49-9592-46a0-97b0-50c59c547882",
+        "name": "Color",
+        "dataType": "color",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "6141ef67-9c82-44e4-a3ba-b37726ace346",
+        "name": "Description",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "97d26a5c-6539-4a17-afc6-96f3f16a4888",
+        "name": "MinLines",
+        "dataType": "number",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "03ba715e-c84e-4fee-9b1d-03044d26b212",
+        "name": "Name",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": []
+}

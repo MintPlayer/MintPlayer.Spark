@@ -1,0 +1,59 @@
+{
+  "$schema": "https://schemas.spark.mintplayer.com/v8/model.schema.json",
+  "persistentObject": {
+    "id": "63d7e7aa-21c4-4787-a125-a31689fac990",
+    "name": "ManagedLabel",
+    "clrType": "CodeCoverage.Entities.ManagedLabel",
+    "breadcrumb": "{Name}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "d78ea745-881e-450e-b412-38b90fdb1d0b",
+        "name": "Color",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "0fa61439-4550-4e14-b0fe-1f0c7b94d35a",
+        "name": "Description",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "2d1c4b99-0995-491c-b6ae-df12f80b93e0",
+        "name": "Name",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "8cf3539c-65b5-4984-b90d-6872d3ab9a9f",
+        "name": "RowId",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": []
+}

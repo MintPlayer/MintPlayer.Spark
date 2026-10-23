@@ -777,7 +777,7 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
         var account = await session.LoadAsync<Account>(id, ct);
         if (account is null)
         {
-            account = new Account { GitHubId = gitHubId };
+            account = new Account { GitHubId = gitHubId }.ApplyPrSizeDefaults();
             await session.StoreAsync(account, id, ct);
         }
         return account;

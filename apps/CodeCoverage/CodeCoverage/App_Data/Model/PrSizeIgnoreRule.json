@@ -1,0 +1,38 @@
+{
+  "$schema": "https://schemas.spark.mintplayer.com/v8/model.schema.json",
+  "persistentObject": {
+    "id": "4fba0e9f-e2c9-473d-87ad-69819ef00916",
+    "name": "PrSizeIgnoreRule",
+    "clrType": "CodeCoverage.Entities.PrSizeIgnoreRule",
+    "breadcrumb": "{Glob}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "d87fdf25-4c10-4c27-beb7-855161a13c95",
+        "name": "Glob",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "16b11e7b-279b-4b39-921f-866ead904500",
+        "name": "Mode",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "lookupReferenceType": "PrSizeIgnoreMode",
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": []
+}
