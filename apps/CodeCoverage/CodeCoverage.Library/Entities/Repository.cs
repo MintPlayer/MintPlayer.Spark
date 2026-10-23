@@ -212,6 +212,14 @@ public class Repository : IForgeConnectable
     public List<ManagedLabel> PrSizeLabelState { get; set; } = [];
 
     /// <summary>
+    /// Read-only, never written by the server (it stays null in the document): the labeller's effective value and where it
+    /// comes from, as a sentence (FR2), or why this forge cannot carry size labels (D8). Filled on load from
+    /// <see cref="ResolvePrSizeLabels"/>.
+    /// </summary>
+    [IgnoreForIndex]
+    public string? PrSizeLabelsEffective { get; set; }
+
+    /// <summary>
     /// Whether pull requests in this repository get a size label, and where the answer came from (<c>repository</c>,
     /// <c>organization</c> or <c>default</c>). The one place the two levels are combined; a missing account is off.
     /// </summary>

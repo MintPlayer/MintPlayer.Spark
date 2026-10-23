@@ -35,6 +35,7 @@ public partial class RepositoryActions : DefaultPersistentObjectActions<Reposito
     [Inject] private readonly MintPlayer.Spark.Abstractions.Authorization.IPermissionService permissions;
     [Inject] private readonly MintPlayer.Spark.Messaging.Abstractions.IMessageBus messageBus;
     [Inject] private readonly IManager manager;
+    [Inject] private readonly IEnumerable<CodeCoverage.Forge.IForgeLabels> labels;
 
     /// <summary>
     /// Opens the embedded gate in the shape its mode calls for (#264, G-Q3): a <c>fixed</c> gate
@@ -66,6 +67,16 @@ public partial class RepositoryActions : DefaultPersistentObjectActions<Reposito
             var key = DependencyFileMergeQueue.TranslationKey(state);
             var text = manager.GetTranslatedMessage(key);
             mergeQueue.Value = string.IsNullOrEmpty(text) || text == key ? state ?? "not read yet" : text;
+        }
+
+        // #527 FR2/D8: what is in effect and from where, under the same deny-by-default question as above.
+        if (po is not null
+            && await session.LoadAsync<Repository>(id) is { } repository
+            && (await GetProtectedAttributesAsync("Read", repository))?.Contains(nameof(Repository.PrSizeLabelsEffective)) != true)
+        {
+            var account = repository.Account is { } accountId ? await session.LoadAsync<Account>(accountId) : null;
+            PrSize.PrSizeLabelForm.ShapeRepository(po, repository, account, labels.Any(l => l.Provider == repository.Provider),
+                key => manager.GetTranslatedMessage(key));
         }
         return po;
     }

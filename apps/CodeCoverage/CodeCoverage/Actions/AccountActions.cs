@@ -42,6 +42,24 @@ public partial class AccountActions : DefaultPersistentObjectActions<Account>, I
     [Inject] private readonly Raven.Client.Documents.IDocumentStore documentStore;
     [Inject] private readonly ILogger<AccountActions> logger;
     [Inject] private readonly IManager manager;
+    [Inject] private readonly IEnumerable<CodeCoverage.Forge.IForgeLabels> labels;
+
+    /// <summary>
+    /// #527 D8: a forge without pull request labels shows the labeller's settings read-only, with the reason. Asked after
+    /// <c>base.OnLoadAsync</c> blanked the protected attributes, under the same deny-by-default question.
+    /// </summary>
+    public override async Task<PersistentObject?> OnLoadAsync(string id, PersistentObject? parent)
+    {
+        var po = await base.OnLoadAsync(id, parent);
+        if (po is null) return po;
+        using var session = documentStore.OpenAsyncSession();
+        if (await session.LoadAsync<Account>(id) is { } account
+            && await GetProtectedAttributesAsync("Read", account) is null)
+        {
+            PrSize.PrSizeLabelForm.ShapeAccount(po, labels.Any(l => l.Provider == account.Provider), key => manager.GetTranslatedMessage(key));
+        }
+        return po;
+    }
 
     /// <summary>
     /// R23: the account default's transition, for the after-commit hook (which gets facts, never the entity). The PR size

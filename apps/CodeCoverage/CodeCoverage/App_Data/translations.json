@@ -817,6 +817,18 @@
             "nl": "PR-groottelabels"
           }
         },
+        "PrSizeLabelsUnavailable": {
+          "description": {
+            "en": "Why this account's pull requests cannot carry size labels.",
+            "fr": "Pourquoi les pull requests de ce compte ne peuvent pas porter d'étiquettes de taille.",
+            "nl": "Waarom de pull requests van dit account geen groottelabels kunnen dragen."
+          },
+          "label": {
+            "en": "Size labels",
+            "fr": "Étiquettes de taille",
+            "nl": "Groottelabels"
+          }
+        },
         "Provider": {
           "description": {
             "en": "The forge that hosts this account. Set on every document by the M6 re-key."
@@ -3110,6 +3122,18 @@
             "nl": "PR-groottelabels"
           }
         },
+        "PrSizeLabelsEffective": {
+          "description": {
+            "en": "Whether this repository's pull requests get a size label, and whether this repository or its account decides.",
+            "fr": "Si les pull requests de ce dépôt reçoivent une étiquette de taille, et si c'est ce dépôt ou son compte qui en décide.",
+            "nl": "Of de pull requests van deze repository een groottelabel krijgen, en of deze repository of het account dat beslist."
+          },
+          "label": {
+            "en": "Size labels in effect",
+            "fr": "Étiquettes de taille en vigueur",
+            "nl": "Groottelabels van kracht"
+          }
+        },
         "PreviousFullNames": {
           "description": {
             "en": "Names this repository was previously known by, oldest first.",
@@ -3257,6 +3281,38 @@
         "fr": "Miroir",
         "nl": "Mirror"
       }
+    }
+  },
+  "prSizeLabelsUi": {
+    "effective.off.default": {
+      "en": "Off: this repository has no account",
+      "fr": "Désactivées : ce dépôt n'a pas de compte",
+      "nl": "Uit: deze repository heeft geen account"
+    },
+    "effective.off.organization": {
+      "en": "Off, as the account's setting",
+      "fr": "Désactivées, selon le paramètre du compte",
+      "nl": "Uit, volgens de instelling van het account"
+    },
+    "effective.off.repository": {
+      "en": "Off for this repository",
+      "fr": "Désactivées pour ce dépôt",
+      "nl": "Uit voor deze repository"
+    },
+    "effective.on.organization": {
+      "en": "On, as the account's setting",
+      "fr": "Activées, selon le paramètre du compte",
+      "nl": "Aan, volgens de instelling van het account"
+    },
+    "effective.on.repository": {
+      "en": "On for this repository",
+      "fr": "Activées pour ce dépôt",
+      "nl": "Aan voor deze repository"
+    },
+    "unavailable": {
+      "en": "Not available: Bitbucket pull requests have no labels",
+      "fr": "Non disponible : les pull requests Bitbucket n'ont pas d'étiquettes",
+      "nl": "Niet beschikbaar: Bitbucket-pull-requests hebben geen labels"
     }
   },
   "programUnits": {

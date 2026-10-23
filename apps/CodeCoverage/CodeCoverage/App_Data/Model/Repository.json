@@ -428,7 +428,7 @@
         "dataType": "AsDetail",
         "isRequired": false,
         "isReadOnly": false,
-        "order": 35,
+        "order": 37,
         "asDetailType": "CodeCoverage.Entities.PrSizeIgnoreRule",
         "isArray": true,
         "editMode": "inline",
@@ -445,6 +445,18 @@
         "order": 34,
         "isArray": false,
         "lookupReferenceType": "PrSizeLabelPolicy",
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "d65f9597-48ec-4faa-b662-7de2eab75294",
+        "name": "PrSizeLabelsEffective",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 35,
+        "isArray": false,
         "inQueryType": false,
         "showedOn": "PersistentObject",
         "rules": []

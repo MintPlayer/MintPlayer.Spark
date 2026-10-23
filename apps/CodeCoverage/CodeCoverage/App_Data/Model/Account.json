@@ -372,6 +372,19 @@
         "group": "6b2e9d41-7c03-4f58-a1e6-2d94c8b05f73"
       },
       {
+        "id": "6a3e889f-3d5f-409c-b515-5e0a50f7d5d8",
+        "name": "PrSizeLabelsUnavailable",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 20,
+        "isArray": false,
+        "inQueryType": false,
+        "showedOn": "None",
+        "rules": [],
+        "group": "6b2e9d41-7c03-4f58-a1e6-2d94c8b05f73"
+      },
+      {
         "id": "47ee693b-379e-469b-ba29-22a472796297",
         "name": "Type",
         "dataType": "string",

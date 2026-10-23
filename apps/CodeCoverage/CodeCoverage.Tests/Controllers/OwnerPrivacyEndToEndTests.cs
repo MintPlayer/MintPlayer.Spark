@@ -62,6 +62,7 @@ public class OwnerPrivacyEndToEndTests(OwnerPrivacyHostFixture host) : IClassFix
         "OwnerKey", "DeleteBranchOnPrClose", "MergeQueueApprovalFloor", "MergeQueueCheckExclusions", "MergeQueueBypassRole",
         "DependencyUpdates", "DependencyScheduleFrequency", "DependencyScheduleWeekday", "DependencyScheduleHour",
         "DependencyTimeZone", "DependencyCooldown", "DependencyBisectBudget", "DependencyRules", "DependencyOnboardingMergeQueue",
+        "PrSizeLabels", "PrSizeLabelScale", "PrSizeIgnoreRules", "PrSizeLabelsUnavailable",
     ];
 
     /// <summary>What a visitor of a repository they may see may read: its identity, coverage and connection.</summary>
@@ -78,6 +79,7 @@ public class OwnerPrivacyEndToEndTests(OwnerPrivacyHostFixture host) : IClassFix
         "MergeQueueApprovalFloor", "MergeQueueCheckExclusionsPolicy", "MergeQueueCheckExclusions", "MergeQueueBypassRole",
         "DependencyUpdates", "DependencySchedulePolicy", "DependencyScheduleFrequency", "DependencyScheduleWeekday",
         "DependencyScheduleHour", "DependencyCooldown", "DependencyBisectBudget", "DependencyOnboardingMergeQueue", "MergeQueueInCoverageYml",
+        "PrSizeLabels", "PrSizeIgnoreRules", "PrSizeLabelState", "PrSizeLabelsEffective",
     ];
 
     /// <summary>Callers who manage nothing of acme: a visitor and a signed-in stranger.</summary>
@@ -339,6 +341,30 @@ public class OwnerPrivacyEndToEndTests(OwnerPrivacyHostFixture host) : IClassFix
         using var session = host.Store.OpenAsyncSession();
         (await session.LoadAsync<Account>(host.AccountId)).DeleteBranchOnPrClose.Should().BeTrue();
         (await session.LoadAsync<Repository>(host.PrivateRepositoryId)).DeleteBranchOnPrClose.Should().Be(EDeleteBranchPolicy.Enabled);
+    }
+
+    /// <summary>#527 FR10: the size labeller writes labels into the account's repositories, so only a manager may switch it on.</summary>
+    [Fact]
+    public async Task A_read_only_member_cannot_switch_on_the_size_labeller()
+    {
+        var (account, _) = await host.UpdateAsync(AccountTypeId, host.AccountId, "PrSizeLabels", true, OwnerPrivacyHostFixture.MemberUserId);
+        var (repository, _) = await host.UpdateAsync(RepositoryTypeId, host.PrivateRepositoryId, "PrSizeLabels", "Enabled", OwnerPrivacyHostFixture.MemberUserId);
+
+        account.Should().NotBe(HttpStatusCode.OK);
+        repository.Should().NotBe(HttpStatusCode.OK);
+        using var session = host.Store.OpenAsyncSession();
+        (await session.LoadAsync<Account>(host.AccountId)).PrSizeLabels.Should().BeFalse();
+        (await session.LoadAsync<Repository>(host.PrivateRepositoryId)).PrSizeLabels.Should().Be(EPrSizeLabelPolicy.Inherit);
+    }
+
+    /// <summary>#527 FR2: a manager sees what is in effect for the repository and where it comes from.</summary>
+    [Fact]
+    public async Task A_manager_sees_the_size_labellers_effective_value_and_its_source()
+    {
+        var (status, body) = await host.PostAsync("/spark/po/load", new { objectTypeId = RepositoryTypeId, id = host.PrivateRepositoryId }, OwnerPrivacyHostFixture.OwnerUserId);
+
+        status.Should().Be(HttpStatusCode.OK, body);
+        body.Should().Contain("Off, as the account"); // the apostrophe goes over the wire escaped
     }
 
     [Fact]

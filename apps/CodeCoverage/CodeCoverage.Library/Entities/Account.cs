@@ -206,6 +206,13 @@ public class Account : IForgeConnectable
     [IgnoreForIndex]
     public List<PrSizeIgnoreRule> PrSizeIgnoreRules { get; set; } = [];
 
+    /// <summary>
+    /// Read-only, never written by the server (it stays null in the document): why this account's forge cannot carry size
+    /// labels (D8). Filled on load and shown only then; the settings above are read-only beside it.
+    /// </summary>
+    [IgnoreForIndex]
+    public string? PrSizeLabelsUnavailable { get; set; }
+
     /// <summary>Gives a new account the default scale and ignore rules (<see cref="PrSizeDefaults"/>). Returns the account.</summary>
     public Account ApplyPrSizeDefaults()
     {
