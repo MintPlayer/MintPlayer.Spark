@@ -23,3 +23,17 @@
     --bs-btn-active-color: var(--mp-datatable-row-selected-color);
   }
 }
+
+// fill (#530): the host passes a sized parent's height to the datatable, which takes what the
+// alert and the selection bar above it leave over.
+:host(.spark-query-grid-fill) {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+
+  > bs-datatable {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+}
