@@ -5,6 +5,7 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import { Color } from '@mintplayer/ng-bootstrap';
+import { BsButtonGroupComponent } from '@mintplayer/ng-bootstrap/button-group';
 import { BsButtonTypeDirective } from '@mintplayer/ng-bootstrap/button-type';
 import { BsFormComponent, BsFormControlDirective } from '@mintplayer/ng-bootstrap/form';
 import { BsModalBodyDirective, BsModalDirective, BsModalFooterDirective, BsModalHeaderDirective, BsModalHostComponent } from '@mintplayer/ng-bootstrap/modal';
@@ -43,7 +44,7 @@ interface SparkBoardTileItem extends MintTile {
   imports: [
     NgComponentOutlet, FormsModule,
     BsTileManagerComponent, BsTileDirective, BsTileHeaderDirective, BsTileContentDirective,
-    BsButtonTypeDirective, BsFormComponent, BsFormControlDirective,
+    BsButtonGroupComponent, BsButtonTypeDirective, BsFormComponent, BsFormControlDirective,
     BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective,
     ResolveTranslationPipe, TranslateKeyPipe, SparkBoardPickerComponent,
   ],

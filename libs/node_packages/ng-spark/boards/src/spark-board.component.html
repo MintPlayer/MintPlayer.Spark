@@ -3,15 +3,21 @@
     @if (b.title) { <h1 class="spark-board-title">{{ b.title | resolveTranslation }}</h1> }
     <span class="spark-board-actions">
       @if (editing()) {
-        <button type="button" class="spark-board-add" [color]="colors.secondary" [disabled]="busy()" (click)="pickerOpen.set(true)">{{ 'boards.spa.addTile' | t }}</button>
-        <button type="button" class="spark-board-reset-width" [color]="colors.secondary" [disabled]="busy()" (click)="resetWidth()">{{ 'boards.spa.resetWidth' | t }}</button>
-        <button type="button" class="spark-board-cancel" [color]="colors.secondary" [disabled]="busy()" (click)="cancel()">{{ 'boards.spa.cancel' | t }}</button>
-        <button type="button" class="spark-board-save" [color]="colors.primary" [disabled]="busy()" (click)="save()">{{ 'boards.spa.save' | t }}</button>
+        <bs-button-group>
+          <button type="button" class="spark-board-add" [color]="colors.secondary" [disabled]="busy()" (click)="pickerOpen.set(true)">{{ 'boards.spa.addTile' | t }}</button>
+          <button type="button" class="spark-board-reset-width" [color]="colors.secondary" [disabled]="busy()" (click)="resetWidth()">{{ 'boards.spa.resetWidth' | t }}</button>
+        </bs-button-group>
+        <bs-button-group>
+          <button type="button" class="spark-board-cancel" [color]="colors.secondary" [disabled]="busy()" (click)="cancel()">{{ 'boards.spa.cancel' | t }}</button>
+          <button type="button" class="spark-board-save" [color]="colors.primary" [disabled]="busy()" (click)="save()">{{ 'boards.spa.save' | t }}</button>
+        </bs-button-group>
       } @else if (b.canCustomize) {
-        @if (b.customized) {
-          <button type="button" class="spark-board-reset" [color]="colors.secondary" [disabled]="busy()" (click)="reset()">{{ 'boards.spa.reset' | t }}</button>
-        }
-        <button type="button" class="spark-board-customize" [color]="colors.primary" [disabled]="busy()" (click)="customize()">{{ 'boards.spa.customize' | t }}</button>
+        <bs-button-group>
+          @if (b.customized) {
+            <button type="button" class="spark-board-reset" [color]="colors.secondary" [disabled]="busy()" (click)="reset()">{{ 'boards.spa.reset' | t }}</button>
+          }
+          <button type="button" class="spark-board-customize" [color]="colors.primary" [disabled]="busy()" (click)="customize()">{{ 'boards.spa.customize' | t }}</button>
+        </bs-button-group>
       }
     </span>
   </div>
@@ -32,10 +38,10 @@
         <span *bsTileHeader class="spark-tile-header">
           <span class="spark-tile-title">{{ item.label }}</span>
           @if (editing()) {
-            <span class="spark-tile-edit" (pointerdown)="$event.stopPropagation()">
+            <bs-button-group class="spark-tile-edit" (pointerdown)="$event.stopPropagation()">
               <button type="button" class="spark-tile-rename" [color]="colors.transparent" [attr.aria-label]="'boards.spa.renameTile' | t" (click)="startRename(item.tile)">✎</button>
               <button type="button" class="spark-tile-remove" [color]="colors.transparent" [attr.aria-label]="'boards.spa.removeTile' | t" (click)="remove(item.id)">✕</button>
-            </span>
+            </bs-button-group>
           }
         </span>
         <div *bsTileContent class="spark-tile-body">
@@ -65,8 +71,10 @@
       <div bsModalHeader><h5 class="modal-title">{{ 'boards.spa.save' | t }}</h5></div>
       <div bsModalBody><p>{{ 'boards.spa.applySmaller' | t }}</p></div>
       <div bsModalFooter>
-        <button type="button" class="spark-board-narrower-no" [color]="colors.secondary" (click)="send(false)">{{ 'boards.spa.applySmallerNo' | t }}</button>
-        <button type="button" class="spark-board-narrower-yes" [color]="colors.primary" (click)="send(true)">{{ 'boards.spa.applySmallerYes' | t }}</button>
+        <bs-button-group>
+          <button type="button" class="spark-board-narrower-no" [color]="colors.secondary" (click)="send(false)">{{ 'boards.spa.applySmallerNo' | t }}</button>
+          <button type="button" class="spark-board-narrower-yes" [color]="colors.primary" (click)="send(true)">{{ 'boards.spa.applySmallerYes' | t }}</button>
+        </bs-button-group>
       </div>
     </div>
   </bs-modal>
@@ -81,8 +89,10 @@
         </bs-form>
       </div>
       <div bsModalFooter>
-        <button type="button" [color]="colors.secondary" (click)="renaming.set(null)">{{ 'boards.spa.cancel' | t }}</button>
-        <button type="button" class="spark-board-rename-ok" [color]="colors.primary" (click)="confirmRename()">{{ 'boards.spa.save' | t }}</button>
+        <bs-button-group>
+          <button type="button" [color]="colors.secondary" (click)="renaming.set(null)">{{ 'boards.spa.cancel' | t }}</button>
+          <button type="button" class="spark-board-rename-ok" [color]="colors.primary" (click)="confirmRename()">{{ 'boards.spa.save' | t }}</button>
+        </bs-button-group>
       </div>
     </div>
   </bs-modal>

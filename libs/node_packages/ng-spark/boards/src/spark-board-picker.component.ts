@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, model, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Color } from '@mintplayer/ng-bootstrap';
+import { BsButtonGroupComponent } from '@mintplayer/ng-bootstrap/button-group';
 import { BsButtonTypeDirective } from '@mintplayer/ng-bootstrap/button-type';
 import { BsFormComponent, BsFormControlDirective } from '@mintplayer/ng-bootstrap/form';
 import { BsListGroupComponent, BsListGroupItemComponent } from '@mintplayer/ng-bootstrap/list-group';
@@ -28,7 +29,7 @@ export interface SparkBoardPick {
 @Component({
   selector: 'spark-board-picker',
   imports: [
-    FormsModule, BsButtonTypeDirective, BsFormComponent, BsFormControlDirective, BsListGroupComponent, BsListGroupItemComponent,
+    FormsModule, BsButtonGroupComponent, BsButtonTypeDirective, BsFormComponent, BsFormControlDirective, BsListGroupComponent, BsListGroupItemComponent,
     BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective,
     SparkIconComponent, TranslateKeyPipe,
   ],
@@ -54,13 +55,13 @@ export interface SparkBoardPick {
                   <span class="spark-picker-row">
                     @if (row.icon) { <spark-icon [name]="row.icon" /> }
                     <span class="spark-picker-name">{{ row.name }}</span>
-                    <span class="spark-picker-kinds">
+                    <bs-button-group class="spark-picker-kinds">
                       @for (kind of row.kinds; track kind) {
                         <button type="button" class="spark-picker-add" [attr.data-kind]="kind" [color]="colors.primary" (click)="pick(row, kind)">
                           {{ kindLabel(kind) }}
                         </button>
                       }
-                    </span>
+                    </bs-button-group>
                   </span>
                 </bs-list-group-item>
               }

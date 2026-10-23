@@ -23,7 +23,7 @@ import { SparkBoardsService } from './spark-boards.service';
   template: `
     @if (context().deleted !== 'only') {
       <span class="spark-pin">
-        <button type="button" class="spark-pin-button" [color]="colors.secondary" [disabled]="busy() || done()" (click)="pin()">
+        <button type="button" class="spark-pin-button rounded-0" [color]="colors.secondary" [disabled]="busy() || done()" (click)="pin()">
           {{ 'boards.spa.pin' | t }}
         </button>
         @if (done()) {
