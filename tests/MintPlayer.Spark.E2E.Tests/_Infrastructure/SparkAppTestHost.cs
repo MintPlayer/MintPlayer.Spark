@@ -685,7 +685,7 @@ public abstract class SparkAppTestHost : IAsyncLifetime
             // local E2E run stuck after the QnA collection, with Fleet's build long finished.
             var psi = new ProcessStartInfo("dotnet", $"build \"{project}\" --configuration Debug --disable-build-servers");
             psi.Environment["MSBUILDDISABLENODEREUSE"] = "1";
-            var (exitCode, output) = await RunToCompletionAsync(psi, TimeSpan.FromMinutes(10));
+            var (exitCode, output) = await RunToCompletionAsync(psi, DotnetBuildBound);
             if (exitCode != 0)
                 throw new InvalidOperationException($"Building {app.AppName} failed (exit {exitCode}).\n{output}");
 
@@ -728,10 +728,17 @@ public abstract class SparkAppTestHost : IAsyncLifetime
         psi.Environment["NX_SELF_HOSTED_REMOTE_CACHE_SERVER"] = "";
         psi.Environment["NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN"] = "";
 
-        var (exitCode, output) = await RunToCompletionAsync(psi, TimeSpan.FromMinutes(10));
+        var (exitCode, output) = await RunToCompletionAsync(psi, AngularBuildBound);
         if (exitCode != 0)
             throw new InvalidOperationException($"npm run build for {app.AppName} failed (exit {exitCode}).\n{output}");
     }
+
+    // Both builds run behind BuildGate, so together they must stay inside the run's
+    // `--blame-hang-timeout 10m` (project.json). At 10 min each, a stuck build was killed by blame
+    // first, as an anonymous "Test host process crashed" with no output (run 40019492329, shard 1/2),
+    // and RunToCompletionAsync's TimeoutException, which carries the build's stdout and stderr, never fired.
+    private static readonly TimeSpan AngularBuildBound = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan DotnetBuildBound = TimeSpan.FromMinutes(4);
 
     /// <summary>
     /// Runs a process to completion, draining stdout and stderr <b>concurrently</b> and killing the
