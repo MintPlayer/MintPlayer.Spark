@@ -105,8 +105,13 @@
 		<Content Remove="project.json" />
 	</ItemGroup>
 
-	<!-- Suppress launchSettings.json generation for Web SDK class libraries -->
-	<PropertyGroup Condition="'$(OutputType)' == 'Library'">
+	<!--
+	  Suppress launchSettings.json generation for Web SDK class libraries, and for Web SDK services
+	  that commit no launch profile (CodeCoverage.GitMirror/GitWriter, SeoTester.Fetcher run in their
+	  containers; Visual Studio kept creating Properties/launchSettings.json with random ports there).
+	  An app that commits its own Properties/launchSettings.json keeps it.
+	-->
+	<PropertyGroup Condition="'$(OutputType)' == 'Library' or !Exists('$(MSBuildProjectDirectory)\Properties\launchSettings.json')">
 		<NoDefaultLaunchSettingsFile>true</NoDefaultLaunchSettingsFile>
 	</PropertyGroup>
 
