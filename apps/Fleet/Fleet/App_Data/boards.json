@@ -1,0 +1,23 @@
+{
+  "boards": [
+    {
+      "id": "home",
+      "tiles": [
+        { "id": "stolen-count", "kind": "count", "target": { "query": "stolen-cars" } },
+        { "id": "recent-cars", "kind": "query", "target": { "query": "recent-cars" }, "defaultSize": { "colSpan": 2, "rowSpan": 2 } },
+        { "id": "stolen-cars", "kind": "query", "target": { "query": "stolen-cars" }, "defaultSize": { "colSpan": 1, "rowSpan": 2 } },
+        { "id": "registrations", "kind": "query", "target": { "query": "registrations" }, "defaultSize": { "colSpan": 2, "rowSpan": 2 } },
+        { "id": "mail-deliveries", "kind": "query", "target": { "query": "bd26ea00-a979-4653-b211-b67dc564d167" }, "defaultSize": { "colSpan": 2, "rowSpan": 2 } }
+      ],
+      "layouts": {
+        "4": [
+          { "id": "stolen-count", "position": { "colStart": 1, "rowStart": 1, "colSpan": 1, "rowSpan": 1 } },
+          { "id": "recent-cars", "position": { "colStart": 2, "rowStart": 1, "colSpan": 2, "rowSpan": 2 } },
+          { "id": "stolen-cars", "position": { "colStart": 4, "rowStart": 1, "colSpan": 1, "rowSpan": 2 } },
+          { "id": "registrations", "position": { "colStart": 1, "rowStart": 3, "colSpan": 2, "rowSpan": 2 } },
+          { "id": "mail-deliveries", "position": { "colStart": 3, "rowStart": 3, "colSpan": 2, "rowSpan": 2 } }
+        ]
+      }
+    }
+  ]
+}

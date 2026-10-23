@@ -7,6 +7,7 @@ import { provideAnimations } from '@angular/platform-browser/animations';
 import { provideSparkAuth, withSparkAuth } from '@mintplayer/ng-spark/auth';
 import { provideSparkAttributeRenderers } from '@mintplayer/ng-spark/renderers';
 import { provideSparkClientOperations } from '@mintplayer/ng-spark/client-operations';
+import { provideSparkBoards } from '@mintplayer/ng-spark/boards';
 
 import { routes } from './app.routes';
 import { ColorDetailRendererComponent } from './renderers/color-detail-renderer.component';
@@ -24,6 +25,7 @@ export const appConfig: ApplicationConfig = {
     provideAnimations(),
     provideSparkAuth(),
     provideSparkClientOperations(),
+    provideSparkBoards(),
     provideZonelessChangeDetection(),
     provideSparkAttributeRenderers([
       {
