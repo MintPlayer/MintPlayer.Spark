@@ -155,25 +155,27 @@ jobs:
           for f in raven-certs/mintplayer.crt raven-certs/mintplayer.key raven-certs/ca.crt; do
             test -s "$f" || { echo "::error::/var/www/mintplayer/$f is missing (docs/mintplayer_website_plan.md 0.7)"; exit 1; }
           done
-          # The two backend networks shared with CodeCoverage (mintplayer-raven: coverage-raven + mintplayer-app;
-          # mintplayer-mail: coverage-smtp + mintplayer-app). External to every compose project, so they are created here,
-          # INTERNAL (no route out), when missing; idempotent, and a concurrent create by the other deploy is fine (the
-          # second inspect finds it). A network of that name that is not internal is refused rather than used. Same block in
-          # code-coverage-deploy.yml.
+          # The two backend networks this app shares (mintplayer-raven: CodeCoverage's coverage-raven + mintplayer-app;
+          # mintplayer-mail: the shared mail relay, apps/MailRelay, + mintplayer-app). External to every compose project, so
+          # they are created here, INTERNAL (no route out), when missing; idempotent, and a concurrent create by another
+          # deploy is fine (the second inspect finds it). A network of that name that is not internal is refused rather than
+          # used. The same block, over its own networks, in every deploy.
           for net in mintplayer-raven mintplayer-mail; do
             docker network inspect "$net" > /dev/null 2>&1 || docker network create --internal "$net" > /dev/null 2>&1 || docker network inspect "$net" > /dev/null
             [ "$(docker network inspect -f '{{.Internal}}' "$net")" = "true" ] || { echo "::error::the network $net exists but is not internal: remove it (docker network rm $net) once nothing uses it, then redeploy"; exit 1; }
           done
-          # The database and the mail relay are CodeCoverage's. Its compose file joins them to the shared networks, but only
-          # once CodeCoverage is redeployed with it; until then they are attached here, under their service names, so the
-          # order of the two deploys does not matter. Idempotent; CodeCoverage's next up attaches them the same way.
-          # Refused (before touching the running stack) when CodeCoverage is not running at all.
-          for pair in coverage-raven:mintplayer-raven coverage-smtp:mintplayer-mail; do
+          # The database is CodeCoverage's. Its compose file joins it to the shared network, but only once CodeCoverage is
+          # redeployed with it; until then it is attached here, under its service name, so the order of the two deploys does
+          # not matter. Idempotent; CodeCoverage's next up attaches it the same way. Refused (before touching the running
+          # stack) when CodeCoverage is not running at all. (The mail relay, apps/MailRelay, joins mintplayer-mail from its own
+          # compose file; until it runs, mail waits in the app's queue.)
+          for pair in coverage-raven:mintplayer-raven; do
             svc=${pair%%:*}; net=${pair#*:}
             id=$(docker ps -q --filter label=com.docker.compose.project=code-coverage --filter "label=com.docker.compose.service=$svc" | head -n 1)
             [ -n "$id" ] || { echo "::error::CodeCoverage's $svc is not running"; exit 1; }
             docker network inspect "$net" --format '{{range .Containers}}{{.Name}} {{end}}' | grep -q "$svc" || docker network connect --alias "$svc" "$net" "$id"
           done
+          docker network inspect mintplayer-mail --format '{{range .Containers}}{{.Name}} {{end}}' | grep -qw 'mail-relay' || echo "::warning::mail-relay is not on the network mintplayer-mail yet: mail is queued until it is (deploy apps/MailRelay)"
 
           rm -f docker-compose.yml
           curl -sf -H "Authorization: token $GITHUB_TOKEN" -o docker-compose.yml \

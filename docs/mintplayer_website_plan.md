@@ -65,7 +65,7 @@ Batch the deploys. Each item is a step on the same branch and PR.
 4. Lyrics, one shared text with revisions (D29), and the timeline sync editor.
 5. Auth: the external providers live (Q3), the TOTP migration, 2FA bypass mapped to `ExternalLoginTwoFactor`,
    account page, and passkeys.
-6. Mail: the `mintplayer.com` sender domain on the relay, DKIM, and SPF (S4).
+6. Mail: the `mintplayer.com` sender domain on the relay, DKIM, and SPF (S4). **Done 2026-10-23** as `mail.mintplayer.com` on the shared `mail-relay` (key `key OK`, SPF, DKIM and `_dmarc.mail` published at Foxxl and read back from `ns10.foxxl.net`); the owner's test mail was delivered to Outlook (to junk). The sender then moved to the apex, `noreply@mintplayer.com`, with its own DKIM key, SPF `ip4:188.245.190.60 -all` and `_dmarc` `p=reject` (docs/mintplayer_mail_plan.md).
 7. i18n: en, nl and fr from the legacy JSON into `translations.json`, plus the language selector.
 8. **S5** spike. Then bot and server pages with OG and JSON-LD, `sitemap.xml`, `robots.txt` and the OpenSearch
    descriptor, share buttons, and the 301s (`/amp/song/{id}` and any changed shapes).

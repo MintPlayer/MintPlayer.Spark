@@ -1,0 +1,88 @@
+name: mail-relay-deploy
+
+# Deploys apps/MailRelay, the outgoing mail relay shared by CodeCoverage, SeoTester and MintPlayer, to the VPS
+# (/var/www/mail-relay). No image of our own: boky/postfix, pinned in the compose file. Same repository secrets
+# (VPS_*) and SSH step as the app deploys. Keys and setup: apps/MailRelay/README.md.
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'apps/MailRelay/**'
+      - '.github/workflows/mail-relay-deploy.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+
+    name: Deploy to VPS
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.ref == 'refs/heads/master'
+
+    permissions:
+      contents: read
+
+    steps:
+    - name: Deploy to VPS
+      uses: appleboy/ssh-action@v1.2.5
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        host: ${{ secrets.VPS_HOST }}
+        username: ${{ secrets.VPS_USERNAME }}
+        key: ${{ secrets.VPS_SSH_KEY }}
+        port: ${{ secrets.VPS_PORT }}
+        passphrase: ${{ secrets.VPS_SSH_KEY_PASSPHRASE }}
+        envs: GITHUB_TOKEN
+        script: |
+          # Fail on the FIRST failing command (code-coverage-deploy.yml learned this the hard way).
+          set -e
+
+          mkdir -p /var/www/mail-relay
+          cd /var/www/mail-relay
+
+          # .env is server-managed; deploys never write it. Only the compose file is refreshed from the repo.
+          test -f .env || { echo "::error::/var/www/mail-relay/.env is missing (apps/MailRelay/README.md)"; exit 1; }
+          # Every allowed sender domain needs its flat DKIM key, or the relay sends that domain's mail unsigned and
+          # DMARC (sp=reject on mintplayer.com) bounces it. Presence only; the default list is the compose file's.
+          domains=$(sed -n 's/^MAIL_SENDER_DOMAIN=//p' .env | tail -n 1 | tr -d '"\r')
+          [ -n "$domains" ] || domains="coverage.mintplayer.com seotester.mintplayer.com mail.mintplayer.com mintplayer.com"
+          for d in $domains; do
+            test -s "mail-dkim/$d.private" || { echo "::error::/var/www/mail-relay/mail-dkim/$d.private is missing (apps/MailRelay/README.md)"; exit 1; }
+          done
+          # One backend network per app (coverage-mail, seo-mail, mintplayer-mail: mail-relay + that app). External to
+          # every compose project, so they are created here, INTERNAL (no route out), when missing; idempotent, and a
+          # concurrent create by another deploy is fine (the second inspect finds it). A network of that name that is not
+          # internal is refused rather than used. The same block, over its own networks, in every deploy.
+          for net in coverage-mail seo-mail mintplayer-mail; do
+            docker network inspect "$net" > /dev/null 2>&1 || docker network create --internal "$net" > /dev/null 2>&1 || docker network inspect "$net" > /dev/null
+            [ "$(docker network inspect -f '{{.Internal}}' "$net")" = "true" ] || { echo "::error::the network $net exists but is not internal: remove it (docker network rm $net) once nothing uses it, then redeploy"; exit 1; }
+          done
+
+          rm -f docker-compose.yml
+          curl -sf -H "Authorization: token $GITHUB_TOKEN" -o docker-compose.yml \
+            https://raw.githubusercontent.com/${{ github.repository }}/master/apps/MailRelay/docker-compose.yml
+
+          docker compose --env-file .env pull
+          # No `down` first: up recreates the container only when its configuration changed, and the queue lives in a
+          # volume, so a no-op deploy does not interrupt delivery.
+          docker compose --env-file .env up -d --remove-orphans
+          docker image prune -f
+          docker compose --env-file .env ps
+
+          # Readiness that can fail: the healthcheck probes port 587 every 15s after a 20s start period. A FAILURE bound
+          # (the loop exits on the first healthy), 24 probes 5s apart; keep it above start_period + a few intervals.
+          for i in $(seq 1 24); do
+            sleep 5
+            state=$(docker inspect -f '{{.State.Health.Status}}' mail-relay 2>/dev/null || echo missing)
+            echo "readiness attempt $i: $state"
+            if [ "$state" = "healthy" ]; then exit 0; fi
+          done
+          echo "::error::mail-relay did not become healthy within 120s — docker compose logs mail-relay"
+          exit 1

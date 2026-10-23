@@ -295,7 +295,7 @@ One-time setup, in `/var/www/code-coverage` (the path the deploy workflow uses):
 
    Replacing it later: see [§9](#replacing-the-github-app-key).
 5. Optional: put the RavenDB licence at `/var/www/code-coverage/raven-license.json` ([§4](#4-ravendb)).
-6. Optional, for mail: create `/var/www/code-coverage/mail-dkim` and follow
+6. Optional, for mail: set up the shared relay ([apps/MailRelay](../MailRelay/README.md)) and follow
    [§8](#8-outgoing-mail-optional). Skipping this leaves the app unable to send,
    which is fine unless `ExternalLoginLinking` is `ConfirmByEmail` — Spark refuses to
    start in that combination rather than discarding confirmations silently.
@@ -309,10 +309,10 @@ The resulting directory, all of it server-managed:
 ├── docker-compose.yml      # replaced by every deploy
 ├── .env                    # yours; deploys fail without it
 ├── github-app.pem          # yours; deploys fail without it
-├── raven-license.json      # optional
-└── mail-dkim/              # optional
-    └── <your-domain>.private
+└── raven-license.json      # optional
 ```
+
+(The DKIM keys live with the relay, in `/var/www/mail-relay/mail-dkim`.)
 
 ### 4. RavenDB
 
@@ -570,82 +570,23 @@ that leaves `MAIL_FROM_ADDRESS` unset registers no mail transport at all, which 
 supported state. The general guide, with bounces and provider fallback, is
 [docs/guide-outgoing-mail.md](../../docs/guide-outgoing-mail.md).
 
-**The app never talks to the internet.** It hands the message to the `coverage-smtp`
-container (`boky/postfix:v4.3.0`) on the internal network and returns; that container queues it
-(on the `smtp-queue` volume, so a redeploy loses nothing) and does the
-delivering. This is not tidiness: the send happens *inside the external-login callback*,
-while somebody is waiting on an HTTP response, and a handoff one hop away takes
+**The app never talks to the internet.** It hands the message to the shared relay
+`mail-relay` ([apps/MailRelay](../MailRelay/README.md), its own compose project in
+`/var/www/mail-relay`) on the internal network `coverage-mail` and returns. The relay queues it
+and does the delivering. This is not tidiness: the send happens *inside the external-login
+callback*, while somebody is waiting on an HTTP response, and a handoff one hop away takes
 milliseconds whether or not the receiving mail server is reachable.
 
-To turn it on: set `MAIL_FROM_ADDRESS` (and `MAIL_SENDER_DOMAIN` / `MAIL_HELO_HOSTNAME` if your
-domain is not the default), publish the DNS records below, put the DKIM key in place, and redeploy.
+To turn it on: set `MAIL_FROM_ADDRESS` (an address at `coverage.mintplayer.com`, or at another
+domain the relay accepts) and redeploy. The sender domain, its DKIM key and its DNS records are
+the relay's business. See [Adding a sender domain](../MailRelay/README.md#adding-a-sender-domain);
+`coverage.mintplayer.com` is already set up.
 
-⚠️ **Delivery is the hard part, not the wiring.** All of the following was measured
-against this VPS on 2026-09-21, and every step of it was necessary:
-
-| | |
-|---|---|
-| Hetzner blocks outbound **25 and 465** on all Cloud Servers | Request an unblock from the Hetzner console (Limits page). 587 is open by default, so relaying through a provider needs no request. |
-| Reverse DNS must match the HELO name | Set the PTR to `coverage.mintplayer.com` in the Hetzner console. It forward-resolves to the server, which is what receivers check. **Done for IPv4 on 2026-09-29**. The IPv6 address has no PTR, which is why the relay is IPv4-only (below). |
-| `mintplayer.com` publishes DMARC **`sp=reject`** | Every subdomain inherits it. Mail that fails alignment is **rejected**, not junked — measured: `550 5.7.509 ... does not pass DMARC verification and has a DMARC policy of reject`. |
-
-Two DNS records make it pass, both on `mintplayer.com`'s zone:
-
-```
-coverage                    TXT   v=spf1 ip4:188.245.190.60 ip6:2a01:4f8:c0c:f87c:: -all
-mail._domainkey.coverage    TXT   v=DKIM1;k=rsa;p=<public key>
-```
-
-⚠️ **The relay sends over IPv4 only** (`POSTFIX_inet_protocols=ipv4` in the compose file).
-IPv6 fails, as measured on 2026-09-29:
-- **SPF:** the VPS sends IPv6 from `2a01:4f8:c0c:f87c::1`, but the SPF record's `ip6:` term and the
-  AAAA both name `2a01:4f8:c0c:f87c::`, which is `::0`, a different address. So an IPv6 send
-  fails SPF.
-- **Reverse DNS:** `::1` has no PTR, and Gmail and Outlook refuse IPv6 senders without one.
-
-`smtp_address_preference=ipv4` alone was not enough, because it only prefers IPv4.
-
-To re-enable IPv6 later, all three have to change together: the SPF term must become
-`ip6:2a01:4f8:c0c:f87c::/64` (or `::1`), the address needs a PTR to `coverage.mintplayer.com`,
-and the AAAA must name the sending address.
-
-Generating the DKIM key, on the VPS:
-
-```bash
-cd /var/www/code-coverage
-mkdir -p mail-dkim && cd mail-dkim
-docker run --rm -v "$PWD":/out alpine:3.20 sh -c \
-  'apk add --no-cache opendkim-utils && opendkim-genkey -b 2048 \
-     -d coverage.mintplayer.com -s mail -D /out'
-mv coverage.mintplayer.com/mail.private coverage.mintplayer.com.private   # see below
-chown -R 101:104 . && chmod 600 *.private                                 # see below
-```
-
-⚠️ **Two layout traps, each of which cost a deploy cycle:**
-
-1. **The key must be flat** — `mail-dkim/<domain>.private`. `opendkim-genkey` writes
-   `<domain>/<selector>.private`, and with that layout the image logs `Skipping DKIM` and
-   delivers the message **unsigned**. It still arrives, because SPF passes on its own, so
-   the failure is invisible unless you read the container log or the message headers.
-2. **The key must be owned by opendkim on the host** (`101:104` in `boky/postfix:v4.3.0`).
-   The image tries to `chown` a key it cannot read, the read-only mount refuses, and the
-   container exits — which at least fails loudly, unlike the first trap.
-
-Verify the key against what is published, which is the check that actually proves it:
-
-```bash
-docker run --rm -v /var/www/code-coverage/mail-dkim:/keys:ro alpine:3.20 sh -c \
-  'apk add --no-cache opendkim-utils bind-tools >/dev/null &&
-   opendkim-testkey -d coverage.mintplayer.com -s mail \
-     -k /keys/coverage.mintplayer.com.private -vvv'
-```
-
-`key OK` means the private key and the DNS record agree. Anything else means the record
-was pasted wrong — most often line-wrapping inside the base64.
-
-**If deliverability ever degrades**, set `MAIL_RELAY_HOST` (plus username and password)
-to a provider's submission host. Postfix then relays instead of delivering directly, the
-port 25 unblock stops mattering, and the provider's reputation replaces this IP's.
+⚠️ **Delivery is the hard part, not the wiring.** `mintplayer.com` publishes DMARC
+**`sp=reject`**, so a subdomain without aligned SPF and DKIM is **rejected**, not junked
+(measured: `550 5.7.509 ... does not pass DMARC verification`). The measured facts about this
+VPS (the Hetzner port-25 unblock, reverse DNS, IPv4 only) are in
+[the relay's README](../MailRelay/README.md#delivery-facts-measured-against-this-vps).
 
 ### 9. Operations
 
@@ -655,10 +596,11 @@ port 25 unblock stops mattering, and the provider's reputation replaces this IP'
 |---|---|---|
 | `raven-data` | The database **and** the activated RavenDB licence (system database) | Everything. Back it up ([below](#backing-up-the-database)). |
 | `dataprotection-keys` | The Data Protection key ring | Every user is signed out once and outstanding antiforgery tokens are invalidated. Nothing else. |
-| `smtp-queue` | Mail queued for delivery | Undelivered queued mail. |
+
+(The mail queue is the relay's, `mail-relay_smtp-queue`: [apps/MailRelay](../MailRelay/README.md).)
 
 On disk they are prefixed with the project name (`code-coverage_raven-data`, …); a volume is
-created by the first `up` that declares it. All three survive `pull`/`down`/`up` deploys; only `docker compose down -v` or a volume prune
+created by the first `up` that declares it. Both survive `pull`/`down`/`up` deploys; only `docker compose down -v` or a volume prune
 destroys them. The files next to the compose file ([§3](#3-the-server-docker-and-traefik)) are not
 in any volume — back up `.env`, `github-app.pem` and `raven-license.json` separately, somewhere
 private.
@@ -835,10 +777,10 @@ were read on 2026-09-29.
 | Host | A Hetzner Cloud **CPX32** (shared vCPU) in Nuremberg, running Debian GNU/Linux 13 (trixie), Docker Engine 29.3.0 and Docker Compose 5.1.1. |
 | Layout | Twelve compose stacks, one directory each under `/var/www/<name>`. This one is `/var/www/code-coverage`, deployed by `code-coverage-deploy.yml` on every qualifying push to `master`. |
 | Traefik | 3.6.11 (image `traefik:latest`), its own stack in `/var/www/traefik`, configured exactly as the sketch in [§3](#3-the-server-docker-and-traefik): Docker provider with `exposedbydefault=false` on network `web`, `web` (:80) redirecting to `websecure` (:443), resolver `letsencrypt` using the HTTP challenge, certificates on a volume. It also loads a file provider from a host directory (`/var/www/traefik/dynamic`, watched) for routes that are not containers, and a certificate-dumper container runs beside it. Neither matters to this app. |
-| Networks | `web` (external, shared by every public stack), `code-coverage_coverage-db`, `code-coverage_coverage-mail`, `code-coverage_coverage-smtp-egress`, `seo-raven` and `seo-mail` (external, shared with SeoTester), and Traefik's own default network. |
-| Server-managed files | `.env`, `github-app.pem`, `raven-license.json` and `mail-dkim/` (the flat `coverage.mintplayer.com.private`, plus the nested copy `opendkim-genkey` wrote, which the relay ignores). |
+| Networks | `web` (external, shared by every public stack), `code-coverage_coverage-db`, `seo-raven` and `mintplayer-raven` (external, shared with SeoTester and mintplayer.com), `coverage-mail` (external, shared with the mail relay, since 2026-10), and Traefik's own default network. |
+| Server-managed files | `.env`, `github-app.pem` and `raven-license.json`. The DKIM keys moved to `/var/www/mail-relay/mail-dkim` with the relay (2026-10). |
 | `.env` | Sets `GITHUB_WEBHOOK_SECRET`, `GITHUB_APP_ID`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET` and `COVERAGE_BADGE_SIGNING_KEY`. It also still carries a `TRAEFIK_HOST`, a leftover that nothing reads since the hostname was hard-coded. |
-| Volumes | `code-coverage_raven-data` and `code-coverage_smtp-queue`. `code-coverage_dataprotection-keys` is created by the first deploy that declares it — that deploy signs everyone out once ([§9](#data-protection-keys)). |
+| Volumes | `code-coverage_raven-data` (`code-coverage_smtp-queue` is left over from the relay's time in this stack; remove it once its queue was empty at the cutover). `code-coverage_dataprotection-keys` is created by the first deploy that declares it — that deploy signs everyone out once ([§9](#data-protection-keys)). |
 | DNS | The `mintplayer.com` zone is hosted separately from the server, at a Plesk-based DNS host; `coverage` is a record in that zone. `mintplayer.com`'s own MX points at a third-party spam filter, which plays no part in this app's outgoing mail. |
 | A / AAAA | `coverage.mintplayer.com` → `188.245.190.60` / `2a01:4f8:c0c:f87c::` |
 | SPF | `coverage.mintplayer.com TXT "v=spf1 ip4:188.245.190.60 ip6:2a01:4f8:c0c:f87c:: -all"` |

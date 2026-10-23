@@ -8,7 +8,7 @@
 #   mintplayer-raven     internal: true, external (created by either deploy, removed by neither): this app and
 #                        CodeCoverage's coverage-raven ONLY (HTTPS with client certificates; the app's certificate may use
 #                        the database "MintPlayer" and nothing else).
-#   mintplayer-mail      internal: true, external, likewise: this app and coverage-smtp ONLY.
+#   mintplayer-mail      internal: true, external, likewise: this app and the shared mail relay (apps/MailRelay) ONLY.
 #                        RavenDB and the mail relay never share a network.
 #
 # The deploy (.github/workflows/mintplayer-deploy.yml) refreshes this file and runs pull / down / up. .env and the
@@ -47,12 +47,12 @@ services:
       - Spark__Auth__Providers__MicrosoftAccount__ClientSecret=${MICROSOFT_CLIENT_SECRET:-}
       - Spark__Auth__Providers__Twitter__ClientId=${TWITTER_CLIENT_ID:-}
       - Spark__Auth__Providers__Twitter__ClientSecret=${TWITTER_CLIENT_SECRET:-}
-      # Mail through CodeCoverage's relay, send-only, from a subdomain with its own DKIM key (PRD G3, G4). Security=None:
+      # Mail through the shared relay (apps/MailRelay), send-only, from the apex with its own DKIM key (docs/mintplayer_mail_plan.md). Security=None:
       # the relay is reachable from here only on mintplayer-mail (internal) and advertises STARTTLS without a certificate.
-      - Spark__Mail__Smtp__Host=${MAIL_HOST:-coverage-smtp}
+      - Spark__Mail__Smtp__Host=${MAIL_HOST:-mail-relay}
       - Spark__Mail__Smtp__Port=${MAIL_PORT:-587}
       - Spark__Mail__Smtp__Security=None
-      - Spark__Mail__From__Address=${MAIL_FROM_ADDRESS:-noreply@mail.mintplayer.com}
+      - Spark__Mail__From__Address=${MAIL_FROM_ADDRESS:-noreply@mintplayer.com}
       - Spark__Mail__From__Name=${MAIL_FROM_NAME:-MintPlayer}
     volumes:
       - dataprotection-keys:/var/lib/mintplayer/dataprotection-keys
@@ -60,6 +60,10 @@ services:
       - ./raven-certs/mintplayer.crt:/run/secrets/raven/mintplayer.crt:ro
       - ./raven-certs/mintplayer.key:/run/secrets/raven/mintplayer.key:ro
       - ./raven-certs/ca.crt:/run/secrets/raven/ca.crt:ro
+      # Server-managed files served at /.well-known/* by UseStaticFiles (the image has no wwwroot of its own), e.g.
+      # seotester-verification.txt, SeoTester's ownership proof for mintplayer.com. A directory, not a file mount, so
+      # replacing a file on the server needs no recreate.
+      - ./well-known:/app/wwwroot/.well-known:ro
     labels:
       - "traefik.enable=true"
       # Hard-coded, never interpolated (see apps/CodeCoverage/docker-compose.yml: an empty or CRLF value broke SNI).
@@ -95,9 +99,9 @@ volumes:
 networks:
   web:
     external: true
-  # Shared with CodeCoverage (apps/CodeCoverage/docker-compose.yml declares them the same way): coverage-raven is
-  # reachable on mintplayer-raven, coverage-smtp on mintplayer-mail, by those names. No compose project owns them, so
-  # neither stack's up/down touches them; both deploys create them, internal, when missing.
+  # Shared with CodeCoverage and the mail relay (apps/CodeCoverage, apps/MailRelay declare them the same way): coverage-raven is
+  # reachable on mintplayer-raven, mail-relay on mintplayer-mail, by those names. No compose project owns them, so
+  # no stack's up/down touches them; every deploy that uses one creates it, internal, when missing.
   mintplayer-raven:
     external: true
     name: mintplayer-raven

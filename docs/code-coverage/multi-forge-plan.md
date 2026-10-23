@@ -714,7 +714,7 @@ address. Pinned in both directions — a successful provision is not undone.
 write-up in [`docs/guide-outgoing-mail.md`](../guide-outgoing-mail.md); the CodeCoverage-specific
 half is in that app's README under "Outgoing mail".
 
-`coverage-smtp` (`boky/postfix`) on the internal network, no published ports. The app hands the
+`coverage-smtp` (`boky/postfix`; since 2026-10 the shared `mail-relay`, apps/MailRelay) on the internal network, no published ports. The app hands the
 message over and returns — **the send happens inside the external-login callback**, while somebody
 is waiting on an HTTP response, so a local handoff that takes milliseconds regardless of whether
 the receiving server is reachable is the whole point. A named queue volume keeps messages across a

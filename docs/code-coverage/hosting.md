@@ -28,11 +28,12 @@ Contents:
 
 Source: [`apps/CodeCoverage/docker-compose.yml`](../../apps/CodeCoverage/docker-compose.yml). No
 service publishes a host port. Traefik reaches the app over the external `web` network; behind it every network is
-pairwise and `internal: true` (SeoTester PRD D55): `coverage-db` (app, RavenDB, licence one-shot), `coverage-mail`
-(app, relay), `coverage-smtp-egress` (the relay alone, its only way out), `coverage-git` (app and the commit-graph
-sidecar, #504), `coverage-git-egress` (the sidecar alone, its way out to the forges), `coverage-git-writer` (app and the
-merge queue's git writer), `coverage-git-writer-egress` (the writer alone, its way out), and the external `seo-raven` and
-`seo-mail` shared with SeoTester's app (below; matrix in [raven-tls-migration.md](raven-tls-migration.md) §1). RavenDB runs **secured**, HTTPS with client certificates (D56). Traefik itself is a separate stack;
+pairwise and internal (SeoTester PRD D55): `coverage-db` (app, RavenDB, licence one-shot), the external `coverage-mail`
+(app and the shared mail relay `mail-relay`, its own stack: [apps/MailRelay](../../apps/MailRelay/README.md)),
+`coverage-git` (app and the commit-graph sidecar, #504), `coverage-git-egress` (the sidecar alone, its way out to the
+forges), `coverage-git-writer` (app and the merge queue's git writer), `coverage-git-writer-egress` (the writer alone,
+its way out), and the external `seo-raven` and `mintplayer-raven` shared with SeoTester's and mintplayer.com's apps
+(below; matrix in [raven-tls-migration.md](raven-tls-migration.md) §1). RavenDB runs **secured**, HTTPS with client certificates (D56). Traefik itself is a separate stack;
 what it must provide (Docker provider on `web`, `exposedbydefault=false`, entrypoints `web` →
 `websecure`, resolver `letsencrypt`) is sketched in the README's
 [§3](../../apps/CodeCoverage/README.md#3-the-server-docker-and-traefik).
@@ -41,12 +42,11 @@ what it must provide (Docker provider on `web`, `exposedbydefault=false`, entryp
 |---|---|---|---|---|---|---|
 | `coverage-raven` | `docker.io/ravendb/ravendb:7.1.10-ubuntu.22.04-x64` | `coverage-db`, `seo-raven` | `raven-data` → `/var/lib/ravendb/data`; `./raven-certs/server.pfx` (ro) | TCP connect to `127.0.0.1:8080`; interval 10 s, timeout 5 s, retries 12, start period 30 s | `unless-stopped` | The database, HTTPS with client certificates only ([raven-tls-migration.md](raven-tls-migration.md)); no egress. |
 | `coverage-raven-license` | `curlimages/curl:8.11.1` | `coverage-db` | `./raven-license.json` → `/raven-license.json` (ro); the operator certificate and `ca.crt` (ro) | — | `"no"` (one-shot) | POSTs the licence to `https://coverage-raven:8080/admin/license/activate` with the operator certificate once Raven is healthy, with 10 retries 3 s apart, then exits. Runs on every `up`. Nothing depends on it. |
-| `coverage-smtp` | `boky/postfix:v4.3.0` | `coverage-mail`, `seo-mail`, `coverage-smtp-egress` | `./mail-dkim` → `/etc/opendkim/keys` (ro); `smtp-queue` → `/var/spool/postfix` | TCP connect to `127.0.0.1:587` (under `bash`: `/dev/tcp` does not exist in the image's `sh`, which is dash); interval 15 s, timeout 5 s, retries 6, start period 20 s | `unless-stopped` | Outbound-only mail relay. Unauthenticated, which is safe only because nothing outside the project can reach it. |
 | `coverage-git` | `ghcr.io/mintplayer/codecoverage-git:master` (floating, pull-only) | `coverage-git`, `coverage-git-egress` | `codecoverage-git-data` → `/data/git` | — | `unless-stopped` | The commit-graph mirror sidecar (#504, [commit-graph.md](commit-graph.md)): the only container that runs `git`. `mem_limit: 1g` (D22). Holds no App key, no Raven certificate and no stored credential; the app sends a token per fetch. ⚠️ **Its API has no authentication**: the `coverage-git` network is the boundary (D4). |
 | `coverage-git-writer` | `ghcr.io/mintplayer/codecoverage-git-writer:master` (floating, pull-only) | `coverage-git-writer`, `coverage-git-writer-egress` | `codecoverage-git-writer-jobs` → `/data/jobs` | — | `unless-stopped` | The merge queue's git writer (`docs/coverage_merge_queue_PRD.md` D2, M3): per job a bare, blob-less clone, the merge-tree resolver, `commit-tree` and a leased push. `mem_limit: 768m`, `pids_limit: 128`, `read_only: true` with a 64 MB `/tmp` tmpfs. Holds no App key, no Raven certificate and no stored credential; the app mints a short-lived token per request. ⚠️ **Its API has no authentication and pushes**: the `coverage-git-writer` network is the boundary. |
-| `coverage-app` | `ghcr.io/mintplayer/codecoverage:master` (floating, pull-only: no `build:` block) | `web`, `coverage-db`, `coverage-mail`, `coverage-git`, `coverage-git-writer` | `./github-app.pem` → `/run/secrets/github-app.pem` (ro); `./raven-certs/codecoverage.{crt,key}`, `ca.crt` (ro); `dataprotection-keys` → `/var/lib/codecoverage/dataprotection-keys` | `GET /health` must answer 200; interval 15 s, timeout 5 s, retries 8, **start period 600 s** | `unless-stopped` | The application. `stop_grace_period: 120s`. Waits for `coverage-raven` to be *healthy* and `coverage-smtp` and `coverage-git` to be *started* (the graph answers `unavailable` without the sidecar). |
+| `coverage-app` | `ghcr.io/mintplayer/codecoverage:master` (floating, pull-only: no `build:` block) | `web`, `coverage-db`, `coverage-mail`, `coverage-git`, `coverage-git-writer` | `./github-app.pem` → `/run/secrets/github-app.pem` (ro); `./raven-certs/codecoverage.{crt,key}`, `ca.crt` (ro); `dataprotection-keys` → `/var/lib/codecoverage/dataprotection-keys` | `GET /health` must answer 200; interval 15 s, timeout 5 s, retries 8, **start period 600 s** | `unless-stopped` | The application. `stop_grace_period: 120s`. Waits for `coverage-raven` to be *healthy* and `coverage-git` to be *started* (not for the mail relay, another stack: MailManager retries) (the graph answers `unavailable` without the sidecar). |
 
-Named volumes: `raven-data`, `smtp-queue`, `dataprotection-keys`, `codecoverage-git-data`, `codecoverage-git-writer-jobs`
+Named volumes: `raven-data`, `dataprotection-keys`, `codecoverage-git-data`, `codecoverage-git-writer-jobs`
 (the writer's job directories, empty between jobs; no backup). Docker prefixes them with the
 compose project name, which is the directory name (`code-coverage` for `/var/www/code-coverage`), so
 the database network is `code-coverage_coverage-db`. The backup commands in the README rely on
@@ -107,12 +107,13 @@ so an unpatched base image is caught before merge. If it ever fails, install git
 The image `ghcr.io/mintplayer/codecoverage-git-writer` is a third GHCR package, with the same first-publish caveat as
 `codecoverage-git` above: check that it is public after the first deploy.
 
-**`seo-raven`, `seo-mail`** (since SeoTester, PRD `docs/seo_analyzer_PRD.md` D55; they replace D48's
-`mintplayer-backend`): external networks that no compose project owns, so neither CodeCoverage's nor SeoTester's `down`
-removes them. `coverage-raven` joins `seo-raven` and `coverage-smtp` joins `seo-mail`; SeoTester's app reaches them
-there by the same names (database `SeoTester` on the same server with its own certificate, mail through the same relay).
-`coverage-app` joins neither. Both deploy workflows create them `--internal` when missing (idempotent) before
-`down`/`up`, and refuse one that exists but is not internal. One-time migration: [raven-tls-migration.md](raven-tls-migration.md); the order with SeoTester:
+**`seo-raven`, `mintplayer-raven`, `coverage-mail`** (since SeoTester, PRD `docs/seo_analyzer_PRD.md` D55; they replace
+D48's `mintplayer-backend`): external networks that no compose project owns, so no stack's `down` removes them.
+`coverage-raven` joins `seo-raven` and `mintplayer-raven`; SeoTester's and mintplayer.com's apps reach it there by the
+same name (each its own database and certificate on the same server). `coverage-app` joins neither. `coverage-mail`
+pairs `coverage-app` with the shared relay (since 2026-10 its own stack, [apps/MailRelay](../../apps/MailRelay/README.md);
+before that the `coverage-smtp` service here, which also joined `seo-mail`). Every deploy creates its shared networks
+`--internal` when missing (idempotent) before `down`/`up`, and refuses one that exists but is not internal. One-time migration: [raven-tls-migration.md](raven-tls-migration.md); the order with SeoTester:
 `docs/seotester/deploy.md` §3.0.
 
 Traefik labels on `coverage-app`:
@@ -147,14 +148,9 @@ is **never written by a deploy**, and must have **LF line endings** — a CRLF f
 | `EXTERNAL_LOGIN_LINKING` | `Spark__Auth__ExternalLoginLinking` | `Disabled` | No | `Disabled` \| `WhenSignedIn` \| `ConfirmByEmail`. ⚠️ `ConfirmByEmail` without mail configured **refuses startup**. |
 | `MAIL_FROM_ADDRESS` | `Spark__Mail__From__Address` | empty | No | The switch for outgoing mail: empty means the app registers no mail transport at all, which is supported. |
 | `MAIL_FROM_NAME` | `Spark__Mail__From__Name` | `MintPlayer Coverage` | No | Display name of the sender. |
-| `MAIL_HOST` | `Spark__Mail__Smtp__Host` | `coverage-smtp` | No | Where the app hands mail. The default is the relay container; change it only to bypass the relay. |
+| `MAIL_HOST` | `Spark__Mail__Smtp__Host` | `mail-relay` | No | Where the app hands mail. The default is the shared relay (apps/MailRelay); change it only to bypass the relay. |
 | `MAIL_PORT` | `Spark__Mail__Smtp__Port` | `587` | No | Port on `MAIL_HOST`. |
-| `MAIL_SENDER_DOMAIN` | relay `ALLOWED_SENDER_DOMAINS` | `coverage.mintplayer.com` | If mail is on and your domain differs | The only envelope-sender domain the relay accepts; anything else is refused rather than relayed. |
-| `MAIL_HELO_HOSTNAME` | relay `HOSTNAME` | `coverage.mintplayer.com` | If mail is on and your domain differs | Announced in HELO and used in Message-ID. ⚠️ Must match the sending address's PTR. |
-| `MAIL_DKIM_SELECTOR` | relay `DKIM_SELECTOR` | `mail` | No | The selector half of the `<selector>._domainkey.<domain>` TXT record. |
-| `MAIL_RELAY_HOST` | relay `RELAYHOST` | empty | No | Empty: deliver directly to each recipient's MX (needs outbound 25). Set to a provider's submission host (e.g. `[smtp.example.com]:587`) to relay instead. |
-| `MAIL_RELAY_USERNAME` | relay `RELAYHOST_USERNAME` | empty | With `MAIL_RELAY_HOST` | Provider credentials. |
-| `MAIL_RELAY_PASSWORD` | relay `RELAYHOST_PASSWORD` | empty | With `MAIL_RELAY_HOST` | Provider credentials. |
+| `MAIL_SENDER_DOMAIN`, `MAIL_HELO_HOSTNAME`, `MAIL_DKIM_SELECTOR`, `MAIL_RELAY_*` | — | — | — | Moved to the relay's own `.env` (`/var/www/mail-relay/.env`) with the relay in 2026-10: [apps/MailRelay/.env.example](../../apps/MailRelay/.env.example). The ones still in this `.env` are ignored. |
 | `GIT_MIRROR_MIN_FREE_BYTES` | sidecar `GitMirror__MinFreeBytes` | `16106127360` (15 GiB) | No | The host free-space floor: below it the commit-graph sidecar refuses every clone and fetch (D8, D20). It guards the root disk RavenDB shares. Not listed in `.env.example`. |
 
 Not in `.env` on purpose:
@@ -200,7 +196,6 @@ All server-managed: a deploy re-downloads `docker-compose.yml` and touches nothi
 | `raven-certs/server.pfx`, `ca.crt`, `codecoverage.crt`, `codecoverage.key` | **Yes** — the deploy fails without them | [raven-tls-migration.md](raven-tls-migration.md) §3 | RavenDB's server certificate and this app's client certificate. Never in the repository. |
 | `raven-operator/operator.crt`, `operator.key` | **Yes** — the deploy fails without them | [raven-tls-migration.md](raven-tls-migration.md) §3 | The operator (cluster admin) certificate, mounted only into the licence one-shot. |
 | `raven-license.json` | No | any; read whole, so pretty-printing and CRLF are fine | Without it the one-shot exits non-zero and Raven runs unlicensed. Also a single-file bind mount; same inode rule. `apps/*/raven-license.json` is gitignored. |
-| `mail-dkim/<domain>.private` | Only with mail | owned **101:104** (opendkim in `boky/postfix:v4.3.0`), `600` | ⚠️ Must be *flat*, not `opendkim-genkey`'s `<domain>/<selector>.private`, or the relay delivers unsigned. |
 
 ## 4. Application configuration keys
 
@@ -309,9 +304,9 @@ registered only when both `Smtp:Host` and `From:Address` are non-empty (`Program
 |---|---|---|---|
 | `ApplicationName` | unset | `Coverage` (appsettings) | |
 | `From:Address` / `From:Name` | unset | `MAIL_FROM_ADDRESS` / `MintPlayer Coverage` | Sender. |
-| `Smtp:Host` / `Smtp:Port` | unset / `587` | `coverage-smtp` / `587` (compose) | The relay. |
+| `Smtp:Host` / `Smtp:Port` | unset / `587` | `mail-relay` / `587` (compose) | The relay. |
 | `Smtp:Security` | `Auto` | `None` (appsettings and compose) | Never STARTTLS to the internal relay. |
-| `Smtp:UserName` / `Smtp:Password` | unset | not mapped | The relay needs none; provider credentials belong on the relay (`MAIL_RELAY_*`). |
+| `Smtp:UserName` / `Smtp:Password` | unset | not mapped | The relay needs none; provider credentials belong on the relay (`MAIL_RELAY_*` in `/var/www/mail-relay/.env`). |
 | `Smtp:Timeout` | 100 s | — | |
 | `DeliveryRetentionDays` | `30` | — | |
 | `Bounces:*` | disabled | not mapped | Bounce processing is not enabled for this app; see [`docs/guide-outgoing-mail.md`](../guide-outgoing-mail.md) §8. |

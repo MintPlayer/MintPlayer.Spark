@@ -294,18 +294,20 @@ jobs:
           for f in raven-certs/seotester.crt raven-certs/seotester.key raven-certs/ca.crt; do
             test -s "$f" || { echo "::error::/var/www/seotester/$f is missing — see docs/seotester/deploy.md §3.0"; exit 1; }
           done
-          # The two backend networks shared with CodeCoverage (seo-raven: coverage-raven + seotester-app; seo-mail: coverage-smtp +
+          # The two backend networks this app shares (seo-raven: CodeCoverage's coverage-raven + seotester-app; seo-mail: mail-relay +
           # seotester-app). External to every compose project, so they are created here, INTERNAL (no route out), when missing;
           # idempotent, and a concurrent create by the other deploy is fine (the second inspect finds it). A network of that name
-          # that is not internal is refused rather than used (SeoTester PRD D55). Same block in the other deploy.
+          # that is not internal is refused rather than used (SeoTester PRD D55). The same block, over its own networks, in every deploy.
           for net in seo-raven seo-mail; do
             docker network inspect "$net" > /dev/null 2>&1 || docker network create --internal "$net" > /dev/null 2>&1 || docker network inspect "$net" > /dev/null
             [ "$(docker network inspect -f '{{.Internal}}' "$net")" = "true" ] || { echo "::error::the network $net exists but is not internal: remove it (docker network rm $net) once nothing uses it, then redeploy"; exit 1; }
           done
-          # The database and the mail relay are CodeCoverage's: refuse (before touching the running stack) until its
-          # coverage-raven and coverage-smtp are on the shared networks, i.e. until CodeCoverage was deployed with the compose file that joins them.
+          # The database is CodeCoverage's: refuse (before touching the running stack) until its coverage-raven is on the
+          # shared network, i.e. until CodeCoverage was deployed with the compose file that joins it.
           docker network inspect seo-raven --format '{{range .Containers}}{{.Name}} {{end}}' | grep -q 'coverage-raven' || { echo "::error::coverage-raven is not on the network seo-raven — deploy CodeCoverage first (docs/seotester/deploy.md §3.0)"; exit 1; }
-          docker network inspect seo-mail --format '{{range .Containers}}{{.Name}} {{end}}' | grep -q 'coverage-smtp' || { echo "::error::coverage-smtp is not on the network seo-mail — deploy CodeCoverage first (docs/seotester/deploy.md §3.0)"; exit 1; }
+          # The mail relay (apps/MailRelay) joins seo-mail from its own compose file, so the deploy order does not matter; until
+          # it runs, mail waits in the app's queue. A warning, not a refusal.
+          docker network inspect seo-mail --format '{{range .Containers}}{{.Name}} {{end}}' | grep -qw 'mail-relay' || echo "::warning::mail-relay is not on the network seo-mail yet: mail is queued until it is (deploy apps/MailRelay)"
 
           rm -f docker-compose.yml
           curl -sf -H "Authorization: token $GITHUB_TOKEN" -o docker-compose.yml \
