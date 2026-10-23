@@ -1,7 +1,7 @@
 # Dashboard layout system (#530): PRD and plan
 
 **Issue:** [#530](https://github.com/MintPlayer/MintPlayer.Spark/issues/530) · **Branch:** `feat/issue530-dashboard` ·
-**Date:** 2026-10-23 · **Status:** Proposed. Round 1 decided (§12). Spikes S1–S6 not yet run, Q1 and Q3–Q7 open. M1 (ng-bootstrap #440) is shipped.
+**Date:** 2026-10-23 · **Status:** Implemented (M1–M10), not yet pushed. All of Q1–Q7 are decided (§12, rounds 1–3).
 
 ## 0. Status
 
@@ -11,20 +11,18 @@
   per user under a natural id. An app can have **several** dashboards. A narrow-screen design is wanted (§4.7).
 - 2026-10-23: the narrow-screen gap was **measured** in a browser, for both our tile manager and Infragistics'
   open-source one (§2.4).
-- 2026-10-23, PAUSED mid-M5/M6 (nothing committed, nothing tested; all work is uncommitted in the tree):
-  - Versions bumped to ng-bootstrap 22.27.0 / web-components 3.0.0 / ui-core 1.1.0 (root `package.json`,
-    ng-spark `package.json`, lockfile).
-  - Server done: `libs/boards/MintPlayer.Spark.Boards` (endpoints, merge, catalog, registry, translations, README),
-    slnx + test-csproj references, `tests/MintPlayer.Spark.Tests/Boards/` (BoardMergeTests, BoardEndpointTests).
-    The view now also returns `removed` (visible removed defaults) so a save can send them back; that change is
-    **not rebuilt yet**.
-  - Client written so far (`libs/node_packages/ng-spark/boards/`): `index.ts`, `ng-package.json`,
-    `src/spark-board.models.ts`, `src/board-draft.ts`, `src/spark-boards.service.ts`, `src/spark-tile-renderers.ts`,
-    `src/tiles/*` (query, count, persistentObject, programUnit + `spark-tiles.scss`).
-  - Next: `spark-board.component` (.ts/.html/.scss; drag/resize modes `'tile'|'header'|'off'` /
-    `'hover'|'always'|'off'`), picker modal, pin detail action (model: moderation's flag button), `provide-spark-boards.ts`,
-    `src/index.ts`, board-draft vitest spec, ng-spark → 22.44.0; rebuild server; then M7–M9 adoption and M10 docs;
-    one test sweep at the end.
+- 2026-10-23: M2–M10 implemented, committed locally on `feat/issue530-dashboard`, not pushed:
+  - `954ff197`: the package (`libs/boards/MintPlayer.Spark.Boards`, `11.0.0-preview.1`), the client
+    (`@mintplayer/ng-spark/boards`, ng-spark 22.44.0), and the server and vitest tests.
+  - `5819adab`: Fleet, with E2E `BoardsTests`.
+  - `0032041d`: SeoTester and MintPlayer.
+  - `e6b7ab25`: CodeCoverage.
+  - M10 docs: [guide-boards.md](guide-boards.md),
+    [release-notes-ng-spark-22.44.0.md](release-notes-ng-spark-22.44.0.md), and the README fixes.
+  - Gates checked locally: every app builds, and `--spark-verify-model --spark-verify-security` exits 0 for Fleet,
+    SeoTester, MintPlayer and CodeCoverage. The one test sweep at the end is still to run.
+  - Decisions made while building are D17–D20 in §12. §5's table is the plan; D18 and D19 record where the build
+    differs from it.
 
 ## 1. Goal
 
@@ -444,3 +442,12 @@ be reversed.
 | D14 | **S4:** the `count` kind executes the query with page size 1 and shows `totalItems`. It runs through `SparkService.executeQuery`, so RLS applies unchanged | §4.3, "tile content is fetched through the existing endpoints" |
 | D15 | **S2:** the `persistentObject` tile is a light read-only renderer over `SparkService.get(type, id)`. It shows the attributes marked visible, and does not refactor `spark-po-detail` | `spark-po-detail` reads `ActivatedRoute`. A light renderer needs no refactor |
 | D16 | **The id needs no escaping.** It is `BoardLayouts/{userId}/{boardId}` with the user id as `ISparkCurrentUser` gives it, which may itself contain `/`. The board id is the last segment and is checked against `^[a-z0-9][a-z0-9-]{0,63}$`, so it never contains `/` and the id cannot be ambiguous | §4.2 says both parts are validated |
+
+### Round 3 (2026-10-23, made during M7–M10)
+
+| # | Decision | Evidence |
+|---|---|---|
+| D17 | **A query target is the query's id or alias, never its name.** A name refuses startup. The apps use derived aliases (`recent-cars`, `songs`, `my-accounts`) or a GUID | `QueryTileKind.ValidateQuery` resolves through `IQueryLoader.ResolveQuery(idOrAlias)` (`Kinds/BuiltInTileKinds.cs:39`), which matches an id or an alias only. The README's first example (`"GetCars"`) would have refused startup and was fixed |
+| D18 | **MintPlayer's default board is `songs` and `artists` only.** `My_Playlists` is left out, unlike §5's plan, so the home page is unchanged for a user who never customizes. A user can add playlists from the picker | §5: "Every production adoption keeps today's home content as the default layout". Today's home showed only the two cards |
+| D19 | **CodeCoverage keeps `Home` as the page.** Only the `my-accounts` sub-query moves, into a one-tile `home` board that `HomeExtrasComponent` renders for a signed-in user. `HOME_URL`, the sign-in redirects and the KPI attributes are unchanged. §5's KPI, build/commit and HostMetrics tiles are not added | The redirects and `HOME_URL` point at the Home PO. `ResyncAction`'s `RefreshQuery("my-accounts")` (asserted in `BoardAndResyncActionTests.cs:284`) still reaches the tile, because `spark-query-grid` matches a refresh by id, name or alias (`grid/src/spark-query-grid.component.ts:753`). `--spark-verify-model` is in sync after `--spark-synchronize-model` (hash `b66581cc…`) |
+| D20 | **Known limitation: "Also apply this layout to smaller screens?" is asked at Save time**, about the last width edited. A narrower count that only the app default stores is not part of the user's layout, so it comes back from the default | `spark-board.component.ts:200` (`askNarrower` when the last edit left stale stored counts), `board-draft.ts` `applyToNarrower` |

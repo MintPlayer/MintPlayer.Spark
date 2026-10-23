@@ -28,7 +28,7 @@ public sealed class SparkBoardTile
     /// <summary>A registered <see cref="ITileKind"/>: <c>query</c>, <c>count</c>, <c>persistentObject</c>, <c>programUnit</c> or an app kind.</summary>
     public string Kind { get; set; } = "";
 
-    /// <summary>The kind's target, e.g. <c>{ "query": "Recent_Cars" }</c> or <c>{ "entityType": "Car", "id": "cars/1" }</c>.</summary>
+    /// <summary>The kind's target, e.g. <c>{ "query": "recent-cars" }</c> (a query id or alias, never its name) or <c>{ "entityType": "Car", "id": "cars/1" }</c>.</summary>
     public Dictionary<string, string> Target { get; set; } = [];
 
     /// <summary>The application's caption. Null takes the target's own (the query's or the type's label).</summary>

@@ -11,6 +11,9 @@ Decisions and evidence: [coverage_commit_graph_PRD.md](coverage_commit_graph_PRD
 [spark_dashboards_PRD.md](spark_dashboards_PRD.md). Package reference:
 [README](../libs/dashboards/MintPlayer.Spark.Dashboards/README.md).
 
+Not to be confused with [Boards](guide-boards.md), pages of existing Spark content (grids, counts, pinned objects)
+that each user arranges. A dashboard can be pinned to a board as a `persistentObject` tile.
+
 ## Declaring a dashboard
 
 Three pieces: the model type, a one-line actions class and the registration.

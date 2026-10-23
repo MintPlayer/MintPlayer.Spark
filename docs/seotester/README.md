@@ -75,6 +75,8 @@ links to it; *Stop sharing* ends both. The check texts come from `GET /seotester
 share page needs them). The operator dashboard is a [Spark dashboard](../guide-dashboards.md) (#504): a live virtual
 page whose figures are its own attributes (`Admin/OperatorDashboard.cs`: `OperatorDashboardFigures` plus the
 package's RavenDB statistics), drawn as tiles by `@mintplayer/ng-spark/dashboards` and pushed over `/spark/live`.
+On the home page it is a tile of the `home` [board](../guide-boards.md) (#530), beside the sites and audit-run grids
+(`App_Data/boards.json`); only an administrator sees that tile.
 `Read/OperatorDashboard` is granted to the `dashboards:administrators` slot, which `security.json` binds to
 Administrators. There is no separate dashboard endpoint.
 

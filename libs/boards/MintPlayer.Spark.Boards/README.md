@@ -20,8 +20,8 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     {
       "id": "home",
       "tiles": [
-        { "id": "cars", "kind": "query", "target": { "query": "GetCars" }, "defaultSize": { "colSpan": 2, "rowSpan": 2 } },
-        { "id": "car-count", "kind": "count", "target": { "query": "GetCars" } }
+        { "id": "cars", "kind": "query", "target": { "query": "cars" }, "defaultSize": { "colSpan": 2, "rowSpan": 2 } },
+        { "id": "car-count", "kind": "count", "target": { "query": "cars" } }
       ],
       "layouts": {
         "4": [ { "id": "cars", "position": { "colStart": 1, "rowStart": 1, "colSpan": 2, "rowSpan": 2 } } ]
@@ -31,9 +31,11 @@ builder.Services.AddSpark(builder.Configuration, spark =>
 }
 ```
 
+A query target is the query's id or alias (`cars` is the alias Spark derives from `GetCars`), never its name.
+
 Built-in kinds: `query`, `count`, `persistentObject` (`entityType` + `id`) and `programUnit`. An
 application adds its own with `o.AddKind<TKind>()` and a matching client renderer
-(`provideSparkTileRenderers`). Client: `@mintplayer/ng-spark/boards` (`<spark-board board="home">`).
+(`provideSparkTileRenderers`). Client: `@mintplayer/ng-spark/boards` (`provideSparkBoards()`, then `<spark-board boardId="home" />` or `sparkBoardRoute('home', 'home')`).
 
 Endpoints: `GET/PUT/DELETE /spark/boards/{board}` and `GET /spark/boards/{board}/catalog`. A layout is
 stored as `BoardLayouts/{userId}/{board}`. See `docs/guide-boards.md`.
