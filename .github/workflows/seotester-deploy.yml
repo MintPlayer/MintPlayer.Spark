@@ -18,6 +18,7 @@ on:
       # seotester-image-check.yml (tools/verify-seotester-deploy.test.mjs keeps the three equal to the csproj graph).
       - 'libs/attributes/MintPlayer.Spark.Attributes/**'
       - 'libs/authorization/MintPlayer.Spark.Authorization/**'
+      - 'libs/boards/MintPlayer.Spark.Boards/**'
       - 'libs/authorization/MintPlayer.Spark.Authorization.Abstractions/**'
       - 'libs/cron/MintPlayer.Spark.Cron/**'
       - 'libs/dashboards/MintPlayer.Spark.Dashboards/**'

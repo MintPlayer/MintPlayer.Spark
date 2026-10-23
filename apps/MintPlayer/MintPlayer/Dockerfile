@@ -24,6 +24,7 @@ COPY ["apps/MintPlayer/MintPlayer/MintPlayer.csproj", "apps/MintPlayer/MintPlaye
 COPY ["apps/MintPlayer/MintPlayer.Library/MintPlayer.Library.csproj", "apps/MintPlayer/MintPlayer.Library/"]
 COPY ["libs/attributes/MintPlayer.Spark.Attributes/MintPlayer.Spark.Attributes.csproj", "libs/attributes/MintPlayer.Spark.Attributes/"]
 COPY ["libs/authorization/MintPlayer.Spark.Authorization/MintPlayer.Spark.Authorization.csproj", "libs/authorization/MintPlayer.Spark.Authorization/"]
+COPY ["libs/boards/MintPlayer.Spark.Boards/MintPlayer.Spark.Boards.csproj", "libs/boards/MintPlayer.Spark.Boards/"]
 COPY ["libs/authorization/MintPlayer.Spark.Authorization.Abstractions/MintPlayer.Spark.Authorization.Abstractions.csproj", "libs/authorization/MintPlayer.Spark.Authorization.Abstractions/"]
 COPY ["libs/history/MintPlayer.Spark.History/MintPlayer.Spark.History.csproj", "libs/history/MintPlayer.Spark.History/"]
 COPY ["libs/history/MintPlayer.Spark.History.Abstractions/MintPlayer.Spark.History.Abstractions.csproj", "libs/history/MintPlayer.Spark.History.Abstractions/"]

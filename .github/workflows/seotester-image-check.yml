@@ -14,6 +14,7 @@ on:
       - '!apps/SeoTester/SeoTester.Tests/**'
       - 'libs/attributes/MintPlayer.Spark.Attributes/**'
       - 'libs/authorization/MintPlayer.Spark.Authorization/**'
+      - 'libs/boards/MintPlayer.Spark.Boards/**'
       - 'libs/authorization/MintPlayer.Spark.Authorization.Abstractions/**'
       - 'libs/cron/MintPlayer.Spark.Cron/**'
       - 'libs/dashboards/MintPlayer.Spark.Dashboards/**'

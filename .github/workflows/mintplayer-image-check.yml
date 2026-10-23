@@ -17,6 +17,7 @@ on:
       # mintplayer-deploy.yml (tools/verify-mintplayer-deploy.test.mjs keeps the three equal to the csproj graph).
       - 'libs/attributes/MintPlayer.Spark.Attributes/**'
       - 'libs/authorization/MintPlayer.Spark.Authorization/**'
+      - 'libs/boards/MintPlayer.Spark.Boards/**'
       - 'libs/authorization/MintPlayer.Spark.Authorization.Abstractions/**'
       - 'libs/history/MintPlayer.Spark.History/**'
       - 'libs/history/MintPlayer.Spark.History.Abstractions/**'

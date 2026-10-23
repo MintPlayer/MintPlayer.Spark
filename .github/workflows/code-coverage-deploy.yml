@@ -31,6 +31,7 @@ on:
       - 'libs/spark/MintPlayer.Spark.Abstractions/**'
       - 'libs/attributes/MintPlayer.Spark.Attributes/**'
       - 'libs/authorization/MintPlayer.Spark.Authorization/**'
+      - 'libs/boards/MintPlayer.Spark.Boards/**'
       - 'libs/controllers/MintPlayer.Spark.Controllers/**'
       - 'libs/cron/MintPlayer.Spark.Cron/**'
       - 'libs/dashboards/MintPlayer.Spark.Dashboards/**'
