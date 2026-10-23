@@ -3,6 +3,7 @@ import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
 import { RouterModule } from '@angular/router';
 import { TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
+import { SparkBoardComponent } from '@mintplayer/ng-spark/boards';
 import { SparkAuthService } from '@mintplayer/ng-spark/auth/core';
 import { AccountsService } from '../services/accounts.service';
 
@@ -20,13 +21,14 @@ import { AccountsService } from '../services/accounts.service';
  * costs a full navigation instead of a popup, and in exchange it works for every provider the
  * server reports rather than only for GitHub.
  *
- * It reads `/api/me/accounts` for those two facts only. The account list itself comes from the
- * `my-accounts` Spark query beside it; both are served by the same `IMyAccountsService`, so
- * there is one aggregation behind the page even though there are two round trips to it.
+ * It reads `/api/me/accounts` for those two facts only. The account list itself is the
+ * `my-accounts` tile of the "home" board below (#530, `App_Data/boards.json`); both are served by
+ * the same `IMyAccountsService`, so there is one aggregation behind the page even though there are
+ * two round trips to it.
  */
 @Component({
   selector: 'app-home-extras',
-  imports: [RouterModule, BsAlertComponent, TranslateKeyPipe],
+  imports: [RouterModule, BsAlertComponent, SparkBoardComponent, TranslateKeyPipe],
   template: `
     @if (reauthRequired()) {
       <bs-alert [type]="warningColor" [announce]="true" class="d-block mt-3">
@@ -48,6 +50,7 @@ import { AccountsService } from '../services/accounts.service';
         <a [href]="connectUrl()" target="_blank" rel="noopener">{{ 'app.installAppHintLink' | t }}</a>
         {{ 'app.installAppHintAfter' | t }}
       </p>
+      <spark-board class="d-block mt-3" boardId="home" />
     }
   `,
   changeDetection: ChangeDetectionStrategy.OnPush

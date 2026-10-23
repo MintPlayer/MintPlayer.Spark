@@ -6,6 +6,7 @@ import { provideAnimations } from '@angular/platform-browser/animations';
 import { provideSparkAuth, withSparkAuth } from '@mintplayer/ng-spark/auth';
 import { provideSparkScoreRenderers } from '@mintplayer/ng-spark/score-renderers';
 import { provideSparkDashboards, sparkDashboardRenderers } from '@mintplayer/ng-spark/dashboards';
+import { provideSparkBoards } from '@mintplayer/ng-spark/boards';
 import { provideSparkClientOperations } from '@mintplayer/ng-spark/client-operations';
 import { withSparkLanguage, withSparkTimezone } from '@mintplayer/ng-spark/services';
 
@@ -31,6 +32,8 @@ export const appConfig: ApplicationConfig = {
     provideSparkScoreRenderers([...codeCoverageRenderers, ...sparkDashboardRenderers]),
     // The host metrics dashboard and the package's database statistics (#504, M5b) draw as tiles.
     provideSparkDashboards(),
+    // Home's "home" board (#530, rendered by HomeExtrasComponent) and "Pin to dashboard" on detail pages.
+    provideSparkBoards(),
     // The Resync custom action's refreshQuery operation is dispatched here; without
     // this provider the action runs and the grid silently keeps its stale rows.
     provideSparkClientOperations(),

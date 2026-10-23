@@ -56,6 +56,7 @@
 		<ProjectReference Include="..\..\..\libs\controllers\MintPlayer.Spark.Controllers\MintPlayer.Spark.Controllers.csproj" />
 		<ProjectReference Include="..\..\..\libs\cron\MintPlayer.Spark.Cron\MintPlayer.Spark.Cron.csproj" />
 		<ProjectReference Include="..\..\..\libs\dashboards\MintPlayer.Spark.Dashboards\MintPlayer.Spark.Dashboards.csproj" />
+		<ProjectReference Include="..\..\..\libs\boards\MintPlayer.Spark.Boards\MintPlayer.Spark.Boards.csproj" />
 		<ProjectReference Include="..\..\..\libs\messaging\MintPlayer.Spark.Messaging\MintPlayer.Spark.Messaging.csproj" />
 		<ProjectReference Include="..\..\..\libs\mail\MintPlayer.Spark.MailManager\MintPlayer.Spark.MailManager.csproj" />
 		<!-- The MCP server for AI agents (plan M6) and its embedded authorization server (ForMcp().AgentsOnly(), PRD D24). -->
