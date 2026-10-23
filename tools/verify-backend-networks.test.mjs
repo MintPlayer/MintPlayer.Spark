@@ -1,14 +1,16 @@
-// The backend topology shared by CodeCoverage (production, coverage.mintplayer.com) and SeoTester on one VPS
-// (docs/seo_analyzer_PRD.md §12 D55, D56; docs/code-coverage/raven-tls-migration.md). Nothing here runs Docker; it reads
-// apps/CodeCoverage/docker-compose.yml, apps/SeoTester/docker-compose.yml and both deploy workflows, and holds them to
-// the owner's "minimal network exposure" decisions:
+// The backend topology shared by CodeCoverage (production, coverage.mintplayer.com), SeoTester, mintplayer.com and the
+// shared mail relay on one VPS (docs/seo_analyzer_PRD.md §12 D55, D56; docs/code-coverage/raven-tls-migration.md;
+// docs/mintplayer_mail_plan.md). Nothing here runs Docker; it reads the four compose files (apps/CodeCoverage,
+// apps/SeoTester, apps/MintPlayer, apps/MailRelay) and their deploy workflows, and holds them to the owner's "minimal
+// network exposure" decisions:
 //
 // - networks are pairwise: each backend service is reachable only by the app container that uses it, and RavenDB and the
-//   mail relay never share a network; every backend network is `internal: true`, only the relay has a way out;
-// - the two cross-stack networks (seo-raven, seo-mail) are external, same name in both files, and both deploys create
-//   them `--internal` when missing, before compose runs, and refuse one that is not internal;
-// - mintplayer.com (apps/MintPlayer/docker-compose.yml, docs/mintplayer_website_PRD.md G3) shares RavenDB and the relay the
-//   same way, on its own pair (mintplayer-raven, mintplayer-mail), never on SeoTester's;
+//   mail relay never share a network; every backend network is internal, only the relay has a way out;
+// - a network two stacks share (seo-raven, mintplayer-raven, and one mail network per app) is external, that name, in
+//   every file that joins it, and every deploy creates its own `--internal` when missing, before compose runs, with the
+//   same block, and refuses one that is not internal;
+// - mintplayer.com (docs/mintplayer_website_PRD.md G3) shares RavenDB and the relay the same way, on its own pair
+//   (mintplayer-raven, mintplayer-mail), never on SeoTester's;
 // - Chromium is only on seo-browser;
 // - RavenDB is TLS-only (https/tcp URLs, no unsecured-access flag) and every app that reaches it presents a client
 //   certificate and trusts the private CA; a key or certificate is mounted only into the container that needs it, and the
@@ -31,10 +33,14 @@ const CC_DEPLOY = '.github/workflows/code-coverage-deploy.yml';
 const SEO_DEPLOY = '.github/workflows/seotester-deploy.yml';
 const MP = 'apps/MintPlayer/docker-compose.yml';
 const MP_DEPLOY = '.github/workflows/mintplayer-deploy.yml';
+const MR = 'apps/MailRelay/docker-compose.yml';
+const MR_DEPLOY = '.github/workflows/mail-relay-deploy.yml';
 const MP_CROSS = ['mintplayer-raven', 'mintplayer-mail'];
-const CROSS = ['seo-raven', 'seo-mail'];
+const DEPLOYS = { [CC]: CC_DEPLOY, [SEO]: SEO_DEPLOY, [MP]: MP_DEPLOY, [MR]: MR_DEPLOY };
 
-const stacks = { [CC]: YAML.parse(read(CC)), [SEO]: YAML.parse(read(SEO)), [MP]: YAML.parse(read(MP)) };
+const stacks = { [CC]: YAML.parse(read(CC)), [SEO]: YAML.parse(read(SEO)), [MP]: YAML.parse(read(MP)), [MR]: YAML.parse(read(MR)) };
+// A new file is LF in a Windows working copy while older ones are CRLF; CI checks both out as LF.
+const readLf = (rel) => read(rel).replaceAll('\r\n', '\n');
 const networksOf = (service) => (Array.isArray(service.networks) ? service.networks : Object.keys(service.networks ?? {}));
 const env = (service) => Object.fromEntries((service.environment ?? []).map((e) => [e.slice(0, e.indexOf('=')), e.slice(e.indexOf('=') + 1)]));
 
@@ -67,8 +73,9 @@ const members = (name) => [...(nets.get(name)?.members ?? [])].sort();
 test('each backend network holds exactly the services that need each other', () => {
   const expected = {
     'coverage-db': ['coverage-app', 'coverage-raven', 'coverage-raven-license'],
-    'coverage-mail': ['coverage-app', 'coverage-smtp'],
-    'coverage-smtp-egress': ['coverage-smtp'],
+    // The relay is its own stack (apps/MailRelay), on one network per app plus its own way out.
+    'coverage-mail': ['coverage-app', 'mail-relay'],
+    'mail-relay-egress': ['mail-relay'],
     // The commit-graph sidecar (#504, D4/D18/D24): its unauthenticated API is shared with the app alone, and its way
     // out with nothing.
     'coverage-git': ['coverage-app', 'coverage-git'],
@@ -78,9 +85,9 @@ test('each backend network holds exactly the services that need each other', () 
     'coverage-git-writer': ['coverage-app', 'coverage-git-writer'],
     'coverage-git-writer-egress': ['coverage-git-writer'],
     'seo-raven': ['coverage-raven', 'seotester-app'],
-    'seo-mail': ['coverage-smtp', 'seotester-app'],
+    'seo-mail': ['mail-relay', 'seotester-app'],
     'mintplayer-raven': ['coverage-raven', 'mintplayer-app'],
-    'mintplayer-mail': ['coverage-smtp', 'mintplayer-app'],
+    'mintplayer-mail': ['mail-relay', 'mintplayer-app'],
     'seo-browser': ['seo-chromium', 'seotester-app'],
     'seo-fetch': ['seo-fetcher', 'seotester-app'],
     'seo-egress': ['seo-fetcher'],
@@ -92,16 +99,19 @@ test('each backend network holds exactly the services that need each other', () 
 
 test('RavenDB and the mail relay share no network, and neither has a way out except the relay\'s own', () => {
   for (const [name, { members: m }] of nets) {
-    assert.ok(!(m.has('coverage-raven') && m.has('coverage-smtp')), `${name} carries both coverage-raven and coverage-smtp`);
+    assert.ok(!(m.has('coverage-raven') && m.has('mail-relay')), `${name} carries both coverage-raven and mail-relay`);
   }
   const egress = [...nets].filter(([, n]) => n.decls.every((d) => d.internal !== true && d.external !== true)).map(([name]) => name).sort();
-  // Non-internal networks of a stack: Traefik's (external) aside, only the relay's egress network, the git sidecar's
-  // (commit graph D18) and the fetcher's (PRD D54).
-  assert.deepEqual(egress, ['coverage-git-egress', 'coverage-git-writer-egress', 'coverage-smtp-egress', 'seo-egress'], 'the only compose-created networks with a route out are the relay\'s, the two git sidecars\' and the fetcher\'s');
+  // Non-internal networks of a stack: the external ones aside (Traefik's, and the shared backend networks the deploys
+  // create internal, checked below), only the relay's egress network, the git sidecars' (commit graph D18) and the
+  // fetcher's (PRD D54).
+  assert.deepEqual(egress, ['coverage-git-egress', 'coverage-git-writer-egress', 'mail-relay-egress', 'seo-egress'], 'the only compose-created networks with a route out are the relay\'s, the two git sidecars\' and the fetcher\'s');
+  assert.deepEqual(members('mail-relay-egress'), ['mail-relay'], 'the relay\'s egress network carries the relay alone');
+  assert.deepEqual(networksOf(stacks[MR].services['mail-relay']).sort(), ['coverage-mail', 'mail-relay-egress', 'mintplayer-mail', 'seo-mail'], 'the relay is on its mail networks and its way out, nothing else');
   assert.deepEqual(members('coverage-git-writer-egress'), ['coverage-git-writer'], 'the git writer\'s egress network carries the writer alone');
   assert.deepEqual(members('seo-egress'), ['seo-fetcher'], 'the fetcher\'s egress network carries the fetcher alone (no database, no relay)');
   assert.deepEqual(members('coverage-git-egress'), ['coverage-git'], 'the git sidecar\'s egress network carries the sidecar alone (D18)');
-  for (const name of ['coverage-db', 'coverage-mail', 'coverage-git', 'coverage-git-writer', 'seo-browser', 'seo-fetch']) {
+  for (const name of ['coverage-db', 'coverage-git', 'coverage-git-writer', 'seo-browser', 'seo-fetch']) {
     assert.ok(nets.get(name).decls.every((d) => d.internal === true), `${name} is internal: true`);
   }
   const ravenNets = [...nets].filter(([, n]) => n.members.has('coverage-raven')).map(([name]) => name).sort();
@@ -150,52 +160,57 @@ test('the merge queue\'s git writer shares no network with RavenDB or the read-o
   assert.match(deploy, /needs: \[build-and-push, build-and-push-git, build-and-push-git-writer\]/, 'the deploy waits for the writer image, which compose pulls');
 });
 
-test('the cross-stack networks are external in both files and created internal by both deploys before compose runs', () => {
-  for (const name of CROSS) {
-    for (const file of [CC, SEO]) {
-      assert.deepEqual(stacks[file].networks?.[name], { external: true, name }, `${file} declares ${name} external, that name`);
+test('the shared networks are external in every stack that joins them, and every deploy creates its own internal before compose runs', () => {
+  const blocks = new Set();
+  for (const [file, workflow] of Object.entries(DEPLOYS)) {
+    // Every external network but Traefik's is a shared backend network.
+    const shared = Object.entries(stacks[file].networks ?? {}).filter(([key, d]) => d.external === true && key !== 'web');
+    for (const [key, decl] of shared) {
+      assert.deepEqual(decl, { external: true, name: key }, `${file} declares ${key} external, that name`);
+      assert.ok(nets.get(key).decls.length >= 2, `${key} is shared by two stacks`);
     }
-  }
-  const blocks = [];
-  for (const workflow of [CC_DEPLOY, SEO_DEPLOY]) {
-    const script = read(workflow);
-    const loop = script.indexOf('for net in seo-raven seo-mail; do');
-    assert.ok(loop >= 0, `${workflow} loops over both networks`);
-    const body = script.slice(loop, script.indexOf('done', loop));
+    const script = readLf(workflow);
+    const loop = /for net in ([^;]+); do\n([\s\S]*?)\n\s*done/.exec(script);
+    assert.ok(loop, `${workflow} loops over its shared networks`);
+    assert.deepEqual(loop[1].trim().split(/\s+/).sort(), shared.map(([key]) => key).sort(), `${workflow} creates exactly its stack's shared networks`);
+    const body = loop[2];
     assert.match(body, /docker network inspect "\$net" > \/dev\/null 2>&1 \|\| docker network create --internal "\$net"/, `${workflow} creates them --internal, only when missing`);
     assert.match(body, /docker network inspect -f '\{\{\.Internal\}\}' "\$net"\)" = "true" \] \|\| \{ echo "::error::/, `${workflow} refuses an existing network that is not internal`);
-    assert.ok(loop < script.indexOf('docker compose --env-file .env down'), `${workflow} creates them before down`);
-    assert.ok(loop < script.indexOf('docker compose --env-file .env up -d'), `${workflow} creates them before up`);
+    const down = script.indexOf('docker compose --env-file .env down');
+    if (down >= 0) assert.ok(loop.index < down, `${workflow} creates them before down`);
+    assert.ok(loop.index < script.indexOf('docker compose --env-file .env up -d'), `${workflow} creates them before up`);
     assert.ok(!script.includes('mintplayer-backend'), `${workflow} no longer creates mintplayer-backend`);
-    blocks.push(body);
+    assert.ok(!script.includes('coverage-smtp'), `${workflow} no longer refers to coverage-smtp (the relay is mail-relay, its own stack)`);
+    blocks.add(body.replace(/^[ \t]+/gm, ''));
   }
-  assert.equal(blocks[0], blocks[1], 'the same block in both deploys');
-  const seo = read(SEO_DEPLOY);
+  assert.equal(blocks.size, 1, 'the same block in every deploy');
+  const seo = readLf(SEO_DEPLOY);
   assert.match(seo, /docker network inspect seo-raven --format '\{\{range \.Containers\}\}\{\{\.Name\}\} \{\{end\}\}' \| grep -q 'coverage-raven' \|\| \{ echo "::error::/);
-  assert.match(seo, /docker network inspect seo-mail --format '\{\{range \.Containers\}\}\{\{\.Name\}\} \{\{end\}\}' \| grep -q 'coverage-smtp' \|\| \{ echo "::error::/);
+  // The relay is not required: mail waits in the app's queue (MailManager retries) until the relay joins.
+  assert.match(seo, /docker network inspect seo-mail --format '\{\{range \.Containers\}\}\{\{\.Name\}\} \{\{end\}\}' \| grep -qw 'mail-relay' \|\| echo "::warning::/);
 });
 
-test('mintplayer.com\'s networks are external in both its file and CodeCoverage\'s, created internal by both deploys', () => {
-  for (const name of MP_CROSS) {
-    for (const file of [CC, MP]) assert.deepEqual(stacks[file].networks?.[name], { external: true, name }, `${file} declares ${name} external, that name`);
-    assert.ok(!stacks[SEO].networks?.[name], `SeoTester does not join ${name}`);
+test('the mail relay deploy refuses to start without a DKIM key for every sender domain', () => {
+  const script = readLf(MR_DEPLOY);
+  assert.match(script, /test -f \.env \|\| \{ echo "::error::/, 'the relay\'s .env is server-managed and required');
+  const dkim = script.indexOf('test -s "mail-dkim/$d.private"');
+  assert.ok(dkim >= 0, 'every allowed sender domain needs its flat DKIM key');
+  assert.ok(dkim < script.indexOf('docker compose --env-file .env up -d'), 'checked before up');
+  const relay = stacks[MR].services['mail-relay'];
+  assert.equal(relay.container_name, 'mail-relay', 'the apps and raven-cert-renew.sh reach it by that name');
+  const defaults = /\$\{MAIL_SENDER_DOMAIN:-([^}]+)\}/.exec(env(relay).ALLOWED_SENDER_DOMAINS);
+  assert.ok(defaults && script.includes(`domains="${defaults[1]}"`), 'the deploy\'s default domain list is the compose file\'s');
+  for (const [file, service] of [[CC, 'coverage-app'], [SEO, 'seotester-app'], [MP, 'mintplayer-app']]) {
+    assert.equal(env(stacks[file].services[service]).Spark__Mail__Smtp__Host, '${MAIL_HOST:-mail-relay}', `${service} sends through mail-relay`);
   }
-  const blocks = [];
-  for (const workflow of [CC_DEPLOY, MP_DEPLOY]) {
-    // A new file is LF in a Windows working copy while older ones are CRLF; CI checks both out as LF.
-    const script = read(workflow).replaceAll('\r\n', '\n');
-    const loop = script.indexOf('for net in mintplayer-raven mintplayer-mail; do');
-    assert.ok(loop >= 0, `${workflow} loops over both networks`);
-    const body = script.slice(loop, script.indexOf('done', loop));
-    assert.match(body, /docker network inspect "\$net" > \/dev\/null 2>&1 \|\| docker network create --internal "\$net"/, `${workflow} creates them --internal, only when missing`);
-    assert.match(body, /docker network inspect -f '\{\{\.Internal\}\}' "\$net"\)" = "true" \] \|\| \{ echo "::error::/, `${workflow} refuses an existing network that is not internal`);
-    assert.ok(loop < script.indexOf('docker compose --env-file .env down'), `${workflow} creates them before down`);
-    blocks.push(body);
-  }
-  assert.equal(blocks[0], blocks[1], 'the same block in both deploys');
-  const mp = read(MP_DEPLOY);
-  // No deploy order: the MintPlayer deploy attaches CodeCoverage's running containers itself, under the service names.
-  assert.match(mp, /for pair in coverage-raven:mintplayer-raven coverage-smtp:mintplayer-mail; do/);
+});
+
+test('mintplayer.com\'s networks are its own, never SeoTester\'s', () => {
+  for (const name of MP_CROSS) assert.ok(!stacks[SEO].networks?.[name], `SeoTester does not join ${name}`);
+  const mp = readLf(MP_DEPLOY);
+  // No deploy order: the MintPlayer deploy attaches CodeCoverage's running database itself, under the service name.
+  assert.match(mp, /for pair in coverage-raven:mintplayer-raven; do/);
+  assert.match(mp, /docker network inspect mintplayer-mail --format '\{\{range \.Containers\}\}\{\{\.Name\}\} \{\{end\}\}' \| grep -qw 'mail-relay' \|\| echo "::warning::/);
   assert.match(mp, /label=com\.docker\.compose\.project=code-coverage/);
   assert.match(mp, /docker network connect --alias "\$svc" "\$net" "\$id"/);
   assert.ok(mp.indexOf('docker network connect') < mp.indexOf('docker compose --env-file .env down'), 'attached before down');

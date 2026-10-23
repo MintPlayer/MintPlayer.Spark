@@ -362,17 +362,12 @@ jobs:
 
           echo "$GITHUB_TOKEN" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-          # The two backend networks shared with SeoTester (seo-raven: coverage-raven + seotester-app; seo-mail: coverage-smtp +
-          # seotester-app). External to every compose project, so they are created here, INTERNAL (no route out), when missing;
-          # idempotent, and a concurrent create by the other deploy is fine (the second inspect finds it). A network of that name
-          # that is not internal is refused rather than used (SeoTester PRD D55). Same block in the other deploy.
-          for net in seo-raven seo-mail; do
-            docker network inspect "$net" > /dev/null 2>&1 || docker network create --internal "$net" > /dev/null 2>&1 || docker network inspect "$net" > /dev/null
-            [ "$(docker network inspect -f '{{.Internal}}' "$net")" = "true" ] || { echo "::error::the network $net exists but is not internal: remove it (docker network rm $net) once nothing uses it, then redeploy"; exit 1; }
-          done
-          # Likewise the two shared with mintplayer.com (mintplayer-raven: coverage-raven + mintplayer-app; mintplayer-mail:
-          # coverage-smtp + mintplayer-app). Same block in mintplayer-deploy.yml.
-          for net in mintplayer-raven mintplayer-mail; do
+          # The backend networks this stack shares: seo-raven (coverage-raven + seotester-app), mintplayer-raven (coverage-raven
+          # + mintplayer-app) and coverage-mail (coverage-app + the shared mail relay, apps/MailRelay). External to every compose
+          # project, so they are created here, INTERNAL (no route out), when missing; idempotent, and a concurrent create by
+          # another deploy is fine (the second inspect finds it). A network of that name that is not internal is refused rather
+          # than used (SeoTester PRD D55). The same block, over its own networks, in every deploy.
+          for net in seo-raven mintplayer-raven coverage-mail; do
             docker network inspect "$net" > /dev/null 2>&1 || docker network create --internal "$net" > /dev/null 2>&1 || docker network inspect "$net" > /dev/null
             [ "$(docker network inspect -f '{{.Internal}}' "$net")" = "true" ] || { echo "::error::the network $net exists but is not internal: remove it (docker network rm $net) once nothing uses it, then redeploy"; exit 1; }
           done

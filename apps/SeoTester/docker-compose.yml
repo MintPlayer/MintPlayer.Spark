@@ -10,7 +10,7 @@
 #   seo-raven                        internal: true, external (created by either deploy, removed by neither): this
 #                                    app and CodeCoverage's coverage-raven ONLY (HTTPS with client certificates; the
 #                                    app's certificate may use the database "SeoTester" and nothing else, PRD D56).
-#   seo-mail                         internal: true, external, likewise: this app and coverage-smtp ONLY.
+#   seo-mail                         internal: true, external, likewise: this app and the shared mail relay (apps/MailRelay) ONLY.
 #                                    RavenDB and the mail relay never share a network (PRD D55).
 #   seo-browser                      internal: true, no egress at all. seotester-app and seo-chromium ONLY. Chromium
 #                                    never fetches anything itself (SeoTester routes and fulfils every request through
@@ -54,9 +54,9 @@ services:
       - Spark__Auth__Providers__Twitter__ClientSecret=${X_CLIENT_SECRET:-}
       - Spark__Auth__Providers__Google__ClientId=${GOOGLE_CLIENT_ID:-}
       - Spark__Auth__Providers__Google__ClientSecret=${GOOGLE_CLIENT_SECRET:-}
-      # Mail through CodeCoverage's relay (required: ConfirmByEmail needs a sender). Security=None: the relay is reachable
-      # from here only on seo-mail (internal) and advertises STARTTLS without a certificate (as CodeCoverage).
-      - Spark__Mail__Smtp__Host=${MAIL_HOST:-coverage-smtp}
+      # Mail through the shared relay, apps/MailRelay (required: ConfirmByEmail needs a sender). Security=None: the relay is reachable
+      # from here only on seo-mail (internal) and advertises STARTTLS without a certificate.
+      - Spark__Mail__Smtp__Host=${MAIL_HOST:-mail-relay}
       - Spark__Mail__Smtp__Port=${MAIL_PORT:-587}
       - Spark__Mail__Smtp__Security=None
       - Spark__Mail__From__Address=${MAIL_FROM_ADDRESS:-noreply@seotester.mintplayer.com}
@@ -184,9 +184,9 @@ volumes:
 networks:
   web:
     external: true
-  # Shared with CodeCoverage (apps/CodeCoverage/docker-compose.yml declares them the same way): coverage-raven is
-  # reachable on seo-raven, coverage-smtp on seo-mail, by those names. No compose project owns them, so neither
-  # stack's up/down touches them; both deploys create them, internal, when missing (PRD D55, deploy.md §3.0).
+  # Shared with CodeCoverage and the mail relay (apps/CodeCoverage, apps/MailRelay declare them the same way): coverage-raven is
+  # reachable on seo-raven, mail-relay on seo-mail, by those names. No compose project owns them, so no
+  # stack's up/down touches them; every deploy that uses one creates it, internal, when missing (PRD D55, deploy.md §3.0).
   seo-raven:
     external: true
     name: seo-raven

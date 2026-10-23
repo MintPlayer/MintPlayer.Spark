@@ -182,23 +182,32 @@ PTR and passes.
 ## 4. The relay container
 
 ```yaml
-coverage-smtp:
+mail-relay:
   image: boky/postfix:v4.3.0
+  container_name: mail-relay                     # the name every app's MAIL_HOST uses
   environment:
-    - ALLOWED_SENDER_DOMAINS=coverage.mintplayer.com
-    - HOSTNAME=coverage.mintplayer.com          # must match reverse DNS
+    # One domain per app; each app keeps its own From address, the relay signs per domain.
+    - ALLOWED_SENDER_DOMAINS=coverage.mintplayer.com seotester.mintplayer.com mail.mintplayer.com mintplayer.com
+    - HOSTNAME=coverage.mintplayer.com          # must match reverse DNS (one name per address)
     - DKIM_SELECTOR=mail
     - POSTFIX_inet_protocols=ipv4                # never IPv6 unless its PTR + SPF are set (§3.3)
     - RELAYHOST=                                 # empty = direct to MX
   volumes:
     - ./mail-dkim:/etc/opendkim/keys:ro
     - smtp-queue:/var/spool/postfix              # survives recreation
-  networks:
-    - coverage-internal                          # no published ports
+  networks:                                      # no published ports
+    - coverage-mail                              # one internal network per app, shared with that app only
+    - seo-mail
+    - mintplayer-mail
+    - mail-relay-egress                          # its own way out; nothing else joins it
 ```
 
-⚠️ **This is not an inbound mail server.** It publishes no ports and sits only on the internal
-network, so nothing outside the compose project can reach it — which is also what makes running it
+This is the shape of [`apps/MailRelay/docker-compose.yml`](../apps/MailRelay/docker-compose.yml): the relay is its
+own compose project, shared by every app on the server, so no app's `down` takes it with it. Its operations (adding a
+domain, verifying a key) are in [apps/MailRelay/README.md](../apps/MailRelay/README.md).
+
+⚠️ **This is not an inbound mail server.** It publishes no ports and sits only on internal
+networks, each shared with one app, so nothing else can reach it, which is also what makes running it
 without authentication safe. `ALLOWED_SENDER_DOMAINS` is the second lock: an envelope sender from
 any other domain is refused rather than relayed, so a bug cannot turn it into an open relay.
 
@@ -504,6 +513,9 @@ dig +short TXT mail._domainkey.coverage.mintplayer.com @ns10.foxxl.com
 
 ### 9.3 On the server
 
+(As run in 2026-09, when the relay was CodeCoverage's `coverage-smtp`. Since 2026-10 the keys live with the shared
+relay in `/var/www/mail-relay/mail-dkim`: [apps/MailRelay/README.md](../apps/MailRelay/README.md).)
+
 ```bash
 mkdir -p /var/www/code-coverage/mail-dkim/coverage.mintplayer.com
 
@@ -539,8 +551,9 @@ The third row is the one worth remembering: it looked like success and was not.
 
 ### 9.5 In the repository
 
-- `apps/CodeCoverage/docker-compose.yml` — the `coverage-smtp` service, the `smtp-queue` volume,
-  and on the app `Spark__Mail__Smtp__*`, `Spark__Mail__From__*`, `Spark__Auth__PublicBaseUrl` and
+- `apps/MailRelay/docker-compose.yml` — the relay (`mail-relay`, formerly CodeCoverage's `coverage-smtp` service) and
+  its `smtp-queue` volume; deployed by `.github/workflows/mail-relay-deploy.yml`.
+- `apps/CodeCoverage/docker-compose.yml` — on the app `Spark__Mail__Smtp__*`, `Spark__Mail__From__*`, `Spark__Auth__PublicBaseUrl` and
   `Spark__Auth__ExternalLoginLinking` (#460 M8: these replaced `Coverage__Mail__*`; the `.env`
   variables are unchanged).
 - `apps/CodeCoverage/CodeCoverage/Program.cs` — `spark.AddMailManager()`, only when both

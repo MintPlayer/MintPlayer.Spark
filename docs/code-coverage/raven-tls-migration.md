@@ -1,5 +1,10 @@
 # RavenDB over TLS with client certificates — design and one-time migration of the live server
 
+> **Superseded in part (2026-10-23):** the mail relay `coverage-smtp` this page refers to is now `mail-relay`, its own
+> compose project shared by every app ([apps/MailRelay](../../apps/MailRelay/README.md), decision in [mintplayer_mail_plan.md](../mintplayer_mail_plan.md)). Each
+> app has its own internal mail network to it (`coverage-mail`, `seo-mail`, `mintplayer-mail`). The text below is kept
+> as decided.
+
 > **Proven in Docker on 2026-10-11** (§8; SeoTester PRD Q-D56a, §12 "Q-D56a"): the pinned
 > `ravendb/ravendb:7.1.10-ubuntu.22.04-x64` with this page's settings and certificates, both compose files brought up
 > locally with stand-ins for the apps, and §4.2, §4.4, §4.6, §4.7, §4.8 and §4.9 run as written. What could not be

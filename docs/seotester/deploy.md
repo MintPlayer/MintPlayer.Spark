@@ -22,7 +22,7 @@ every sign-in URL.
 | **Google** sign-in | Google Cloud project **`seotester-mintplayer`** → Google Auth Platform | OAuth client *SeoTester production* (Web application) | Audience External, **In production** (not Testing: there only listed test users may sign in). Branding: app name, home page, `/privacy`, `/terms`, authorized domain `mintplayer.com`; **no logo** (a logo requires Google's verification). Scopes `openid profile email` are non-sensitive: no review. Redirects: production and `https://localhost:5013/signin-google`. |
 | **X** sign-in | **Not set up**: console.x.com, project *SeoTester* (empty) | — | X's API is pay-per-use and the account has no credits; the `users/me` call every X sign-in makes would be refused. `X_CLIENT_ID` stays empty, so no X button. To enable: buy credits, then an app in that project with OAuth 2.0 (Web App, *Request email*), callbacks `/signin-twitter` (production and localhost). X refuses new apps while a suspended one exists. |
 | **DNS** of `mintplayer.com` | Qweb (formerly Foxxl): [mijn.qweb.nl](https://mijn.qweb.nl) → hosting → Plesk → *DNS Settings* | name servers `ns10.foxxl.{nl,com,net}` | `seotester` A/AAAA → the VPS; TXT `v=spf1 ip4:188.245.190.60 ip6:2a01:4f8:c0c:f87c:: -all`; TXT `mail._domainkey.seotester` = the DKIM public key (§3.2). ⚠️ Plesk keeps added records pending until **Update** in the banner is clicked. `mintplayer.com` has DMARC `sp=reject`: a subdomain without SPF/DKIM cannot send. |
-| **Mail** | `coverage-smtp` (CodeCoverage's relay) | `MAIL_SENDER_DOMAIN=coverage.mintplayer.com seotester.mintplayer.com` in **CodeCoverage's** `.env` | DKIM key `/var/www/code-coverage/mail-dkim/seotester.mintplayer.com.private` (101:104, 0600). Without the domain in that list the relay answers `554 5.7.1 Recipient address rejected: Access denied` and the mail is dead-lettered. |
+| **Mail** | `mail-relay` (the shared relay, [apps/MailRelay](../../apps/MailRelay/README.md)) | `seotester.mintplayer.com` in the relay's `MAIL_SENDER_DOMAIN` (`/var/www/mail-relay/.env`) | DKIM key `/var/www/mail-relay/mail-dkim/seotester.mintplayer.com.private` (101:104, 0600). Without the domain in that list the relay answers `554 5.7.1 Recipient address rejected: Access denied` and the mail is dead-lettered. |
 | **Database** | `SeoTester` on `coverage-raven` (TLS, client certificates) | certificate `seotester` (Admin on `SeoTester` only) | Renewed automatically, nightly check: `raven-cert-renew --status` on the VPS ([raven-tls-migration.md](../code-coverage/raven-tls-migration.md) §6). |
 | **Secrets on the VPS** | `/var/www/seotester/.env` (0600) | — | Sign-in client IDs and secrets, `SEO_FETCHER_KEY`, `LEGAL_*`, optional VAPID and PageSpeed keys (§4). |
 
@@ -58,13 +58,14 @@ provider.
   │ project "code-coverage"         │  │ project "seotester"                │
   │  coverage-raven  (DB Coverage,  │◄─┤  seotester-app ──┐                 │
   │                   DB SeoTester) │  │                  │ seo-browser     │
-  │  coverage-smtp   (relay)        │◄─┤                  │ (internal: no   │
+  │                                 │  │                  │ (internal: no   │
   │  coverage-app                   │  │  seo-chromium ◄──┘  egress at all) │
-  │  (coverage-db, coverage-mail:   │  │                                    │
-  │   CodeCoverage's own, internal) │  │                                    │
+  │  (coverage-db: CodeCoverage's   │  │                                    │
+  │   own, internal)                │  │                                    │
   └─────────────────────────────────┘  └────────────────────────────────────┘
-     seotester-app meets coverage-raven on "seo-raven" and coverage-smtp on "seo-mail": external, internal: true,
-     owned by no project, created by either deploy, removed by neither (PRD D55)
+     seotester-app meets coverage-raven on "seo-raven" and the shared relay mail-relay (/var/www/mail-relay,
+     apps/MailRelay) on "seo-mail": external, internal, owned by no project, created by any deploy that uses them,
+     removed by none (PRD D55)
 
   seotester-app ──seo-fetch (internal)──► seo-fetcher ──seo-egress──► Internet (the audited sites, RDAP, PageSpeed)
      seo-fetcher has no database client and no other network: every request to a target leaves from it (PRD D54)
@@ -81,14 +82,14 @@ provider.
   client certificate, registered with Admin on `SeoTester` and nothing else, and the private CA of the server's
   certificate (`Spark__RavenDb__CertificateFile` / `CertificateKeyFile` / `ServerCertificateAuthorityFile`, files in
   `/var/www/seotester/raven-certs/`). `EnsureDatabaseCreated` is `false`: creating a database is cluster admin.
-- **Mail:** CodeCoverage's relay `coverage-smtp:587` (no credentials; `Security=None` as CodeCoverage). It must accept
+- **Mail:** the shared relay `mail-relay:587` (no credentials; `Security=None` as CodeCoverage). It must accept
   the sender domain `seotester.mintplayer.com` (§3.2).
 - **Why the shared server and relay:** one RavenDB process and one mail reputation on a small VPS, both already
   operated (licence activation, DKIM, PTR). They meet on two networks, one per service (owner decision D55, which
   replaces D48's single `mintplayer-backend`): `seo-raven` (the app and RavenDB) and `seo-mail` (the app and the
   relay), both external, `internal: true`, declared by both compose files; neither stack's `up`/`down` touches them,
-  and both deploys create them when missing. The cost: SeoTester needs CodeCoverage's database running (its deploy
-  refuses until `coverage-raven` and `coverage-smtp` are on them), and CodeCoverage's maintenance windows are SeoTester's too.
+  and every deploy that uses one creates it when missing. The cost: SeoTester needs CodeCoverage's database running
+  (its deploy refuses until `coverage-raven` is on `seo-raven`; a missing relay only warns, mail waits in the queue), and CodeCoverage's maintenance windows are SeoTester's too.
 - **The Chromium container** can reach nothing: `seo-browser` is `internal: true`, and Chromium itself never resolves a
   name or opens a connection (`--host-resolver-rules=MAP * ~NOTFOUND`, a dead proxy; SeoTester fulfils every request
   through its SSRF-safe client, PRD §6). It can reach `seotester-app:8080` on that network, which only matters if both
@@ -123,7 +124,8 @@ Dockerfile's COPY lines and the csproj graph; the tools test keeps the three equ
    On the VPS: refuses without `/var/www/seotester/.env` or without one of `raven-certs/seotester.crt`, `.key`, `ca.crt`;
    creates `seo-raven` and `seo-mail` `--internal` if they are missing (the same block as CodeCoverage's deploy) and
    refuses one that is not internal; refuses, before touching the running stack, while `coverage-raven` is not on
-   `seo-raven` or `coverage-smtp` not on `seo-mail` (CodeCoverage not yet deployed with the compose file that joins them, §3.0); downloads `docker-compose.yml` from master; `docker compose pull`, `down --remove-orphans`, `up -d`; prunes images;
+   `seo-raven` (CodeCoverage not yet deployed with the compose file that joins it, §3.0), and warns while `mail-relay` is
+   not on `seo-mail`; downloads `docker-compose.yml` from master; `docker compose pull`, `down --remove-orphans`, `up -d`; prunes images;
    then waits for `GET /health` = 200 inside the container (36 × 10 s, the healthcheck's start period + 1 min).
 
 Bumping Playwright: change `Microsoft.Playwright` in `SeoTester.csproj`, the chromium Dockerfile's `FROM` and
@@ -135,8 +137,8 @@ Run on the VPS as the deploy user unless noted. None of these print a secret.
 
 ### 3.0 The secured database, the shared networks, and the order with CodeCoverage (once)
 
-SeoTester reaches `coverage-raven` over `seo-raven` and `coverage-smtp` over `seo-mail`, which CodeCoverage's compose
-file joins (PRD D55), and RavenDB is secured with client certificates (D56). Both come with CodeCoverage's one-time
+SeoTester reaches `coverage-raven` over `seo-raven`, which CodeCoverage's compose file joins, and the relay over
+`seo-mail` (PRD D55; the relay was CodeCoverage's `coverage-smtp` until 2026-10, now `mail-relay` in apps/MailRelay), and RavenDB is secured with client certificates (D56). Both come with CodeCoverage's one-time
 migration, [raven-tls-migration.md](../code-coverage/raven-tls-migration.md) §4, which also generates SeoTester's certificate, puts it in `/var/www/seotester/raven-certs/`,
 registers it (Admin on `SeoTester` only) and creates the database `SeoTester`. In this order:
 
@@ -147,7 +149,7 @@ registers it (Admin on `SeoTester` only) and creates the database `SeoTester`. I
 
    ```bash
    docker network inspect seo-raven --format '{{.Internal}} {{range .Containers}}{{.Name}} {{end}}'   # true code-coverage-coverage-raven-1
-   docker network inspect seo-mail  --format '{{.Internal}} {{range .Containers}}{{.Name}} {{end}}'   # true code-coverage-coverage-smtp-1
+   docker network inspect seo-mail  --format '{{.Internal}} {{range .Containers}}{{.Name}} {{end}}'   # true mail-relay
    ls -l /var/www/seotester/raven-certs/                                                              # ca.crt seotester.crt seotester.key
    ```
 3. **Deploy SeoTester** (§3.6).
@@ -185,34 +187,12 @@ Until then every SeoTester mail was refused at the relay (`554 5.7.1 … Access 
 below, as run: `opendkim-genkey -D` needs its output folder to exist (`mkdir -p` it first), and the SPF record is the
 same as CodeCoverage's, IPv4 and IPv6.
 
-SeoTester **requires** mail (account-link confirmations, `ConfirmByEmail`; invitations; notifications). The relay accepts
-only the domains in CodeCoverage's `MAIL_SENDER_DOMAIN` and signs only those it has a DKIM key for
-(`apps/CodeCoverage/README.md` "Outgoing mail" has the traps; both apply here).
-
-1. DNS for the sender domain (at the `mintplayer.com` DNS host). `mintplayer.com` publishes DMARC `sp=reject`, so a
-   subdomain that fails alignment is **rejected**:
-   - `seotester.mintplayer.com` TXT `v=spf1 ip4:188.245.190.60 -all` (IPv4 only, as CodeCoverage: the relay sends over IPv4).
-   - `mail._domainkey.seotester.mintplayer.com` TXT: the record `opendkim-genkey` writes in step 2.
-2. The DKIM key, flat and owned by opendkim (`101:104`):
-
-   ```bash
-   cd /var/www/code-coverage/mail-dkim
-   docker run --rm -v "$PWD":/out alpine:3.20 sh -c \
-     'apk add --no-cache opendkim-utils && mkdir -p /out/seotester.mintplayer.com && opendkim-genkey -b 2048 -d seotester.mintplayer.com -s mail -D /out/seotester.mintplayer.com'
-   cat seotester.mintplayer.com/mail.txt        # the DNS record for step 1 (public)
-   mv seotester.mintplayer.com/mail.private seotester.mintplayer.com.private
-   sudo chown -R 101:104 . && sudo chmod 600 *.private
-   ```
-3. In `/var/www/code-coverage/.env`: `MAIL_SENDER_DOMAIN=coverage.mintplayer.com seotester.mintplayer.com` (a
-   space-separated list; the default is CodeCoverage's domain alone). Then recreate only the relay:
-   `cd /var/www/code-coverage && docker compose --env-file .env up -d coverage-smtp`.
-4. Verify the key against DNS (`key OK`):
-
-   ```bash
-   docker run --rm -v /var/www/code-coverage/mail-dkim:/keys:ro alpine:3.20 sh -c \
-     'apk add --no-cache opendkim-utils bind-tools >/dev/null &&
-      opendkim-testkey -d seotester.mintplayer.com -s mail -k /keys/seotester.mintplayer.com.private -vvv'
-   ```
+SeoTester **requires** mail (account-link confirmations, `ConfirmByEmail`; invitations; notifications). It sends through
+the shared relay `mail-relay` ([apps/MailRelay](../../apps/MailRelay/README.md), its own stack in `/var/www/mail-relay`),
+which accepts only the domains in its `MAIL_SENDER_DOMAIN` and signs only those it has a DKIM key for.
+`seotester.mintplayer.com` is set up: SPF `v=spf1 ip4:188.245.190.60 -all`, `mail._domainkey.seotester`, and the key in
+`/var/www/mail-relay/mail-dkim/seotester.mintplayer.com.private`. To set up a domain from scratch, follow the relay
+README's [Adding a sender domain](../../apps/MailRelay/README.md#adding-a-sender-domain); its traps apply here too.
 
 After the first deploy, sign in once with a provider whose address is not yet confirmed (or link a second provider) and
 check the mail arrives with `dkim=pass` and `dmarc=pass` in its headers.
@@ -466,7 +446,7 @@ not configured" or errors, and *Download PDF* produces a PDF. If Chromium's peak
   "[to be completed]", and `docker compose --env-file .env logs seotester-app | grep -i "to be completed"` is empty.
 
 - **The shared network after the migration (§3.0).** CodeCoverage still sends mail (sign in there once with a provider
-  that mails, or check `docker logs code-coverage-coverage-smtp-1 --since 1h | grep status=sent`), and on the next
+  that mails, or check `docker logs mail-relay --since 1h | grep status=sent`), and on the next
   CodeCoverage deploy SeoTester reconnects to RavenDB without a restart
   (`docker compose --env-file .env logs --since 10m seotester-app | grep -i raven`).
 - **Monitoring:** set a verified site to *Weekly*; within 15 minutes a run starts (abuse log: *AuditStarted*, detail

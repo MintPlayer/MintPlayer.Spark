@@ -1,5 +1,10 @@
 # SeoTester (#268): PRD and plan
 
+> **Superseded in part (2026-10-23):** the mail relay `coverage-smtp` this page refers to is now `mail-relay`, its own
+> compose project shared by every app ([apps/MailRelay](../apps/MailRelay/README.md), decision in [mintplayer_mail_plan.md](mintplayer_mail_plan.md)). Each
+> app has its own internal mail network to it (`coverage-mail`, `seo-mail`, `mintplayer-mail`). The text below is kept
+> as decided.
+
 Status: **spec consolidated after 8 grilling rounds** (2026-10-10); M1–M12 built (M12's deploy pending the owner). Issue: https://github.com/MintPlayer/MintPlayer.Spark/issues/268
 **2026-10-15:** §12 "CI stall" (the download proof read a FIFO; every browser close is bounded) and "Downloads never reach Chromium" (owner decision) are in PR #515, recorded there as D86 and O29 of `docs/coverage_merge_queue_PRD.md`.
 

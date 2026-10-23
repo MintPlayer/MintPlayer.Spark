@@ -12,7 +12,7 @@
 #   - every RavenDB call is a throwaway curl container on the INTERNAL network coverage-db: RavenDB gets no new network,
 #     no port, nothing reaches it from outside;
 #   - --scheduled: up to ATTEMPTS tries ATTEMPT_DELAY apart; when all fail, a mail to CERT_ALERT_EMAIL through
-#     coverage-smtp (on the internal network coverage-mail). Run nightly, so a lasting failure mails every night.
+#     the shared mail relay (apps/MailRelay, on the internal network coverage-mail). Run nightly, so a lasting failure mails every night.
 #
 # Usage: raven-cert-renew [--status | --force | --scheduled]
 #   (none)       renew when due, one attempt, no mail
@@ -41,7 +41,7 @@ LOCK=${RAVEN_RENEW_LOCK:-/run/raven-cert-renew.lock}
 
 CC_PROJECT=${CC_PROJECT:-$(basename "$CC_DIR")}
 DB_NET="${CC_PROJECT}_coverage-db"
-MAIL_NET="${CC_PROJECT}_coverage-mail"
+MAIL_NET=coverage-mail   # external, shared with the mail relay (apps/MailRelay): no project prefix
 R=https://coverage-raven:8080
 
 log() { printf '%s raven-cert-renew: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >&2; }
@@ -300,7 +300,7 @@ mail_alert() {   # subject body
   } > "$msg"
   chmod 0644 "$msg"   # readable by curl's user in the container; the directory stays 0700
   docker run --rm --network "$MAIL_NET" -v "$msg:/m.txt:ro" "$CURL_IMAGE" -sS \
-    --url smtp://coverage-smtp:587 --mail-from "$from" "${rcpt[@]}" -T /m.txt
+    --url smtp://mail-relay:587 --mail-from "$from" "${rcpt[@]}" -T /m.txt
   local rc=$?
   rm -f "$msg"
   return $rc
