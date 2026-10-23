@@ -3,7 +3,8 @@
 Status: **in progress, 2026-10-23.** Steps 1–6 and 8 are done. The sender moved to the apex, `noreply@mintplayer.com`
 (see "Sender on the apex"), and step 7 was dropped. The relay moved out of CodeCoverage as `mail-relay` (apps/MailRelay,
 `/var/www/mail-relay`) and is pre-staged and healthy on the VPS. The cutover to it happens when the PR merges (see
-"Rename the relay"). Still open: the first apex-sent mail lands in Outlook's junk folder, see "Deliverability".
+"Rename the relay"). The first mail from `mail.mintplayer.com` went to Outlook's junk folder. The first one from the
+apex arrived in the inbox (step 6).
 
 ## Problem
 
@@ -74,7 +75,7 @@ Outcome (2026-10-23):
 3. **Done** in Plesk through a `playwright_node` browser. The three records were read back from the authoritative `ns10.foxxl.net`. The `rua` first reused the apex's dmarcadvisor address. That address turned out to be Foxxl's default (the apex `_dmarc` was a CNAME to `_dmarcdefault.foxxl.com`), so it was dropped the same day (Q1).
 4. **Done.** The old `coverage-smtp` was recreated with the key loaded. The new `mail-relay` is up and `healthy`. Its OpenDKIM SigningTable lists all three domains, and it sits on `coverage-mail`, `seo-mail`, `mintplayer-mail` and `mail-relay_mail-relay-egress`. The log shows no error, only the benign hash→lmdb notice.
 5. **Done, by a different method.** `opendkim-testkey` times out inside the relay (it has no resolver for it). Run in a throwaway alpine container against the same key, it prints `key OK`. The method is in apps/MailRelay/README.md, "Adding a sender domain".
-6. **Delivered, to junk.** The owner's password reset of 2026-10-23 06:02 UTC was signed `d=mail.mintplayer.com` and accepted by Outlook (`relay=msn-com.olc.protection.outlook.com`, `status=sent`, 250 2.6.0). It landed in the junk folder. The owner then asked for `noreply@mintplayer.com` as the sender (see "Sender on the apex").
+6. **Delivered, to junk.** The owner's password reset of 2026-10-23 06:02 UTC was signed `d=mail.mintplayer.com` and accepted by Outlook (`relay=msn-com.olc.protection.outlook.com`, `status=sent`, 250 2.6.0). It landed in the junk folder. The owner then asked for `noreply@mintplayer.com` as the sender (see "Sender on the apex"). **Inbox, 06:17 UTC:** the next reset, sent from `…@mintplayer.com` and signed `d=mintplayer.com`, was accepted by Outlook (`status=sent`, 250 2.6.0). The owner confirmed it arrived in the inbox.
 7. **Dropped.** The owner said Foxxl won't be used any more (Q2), but the apex now *sends*, and a null MX on a sending domain gets its mail refused (Postfix's `reject_unknown_sender_domain` treats `MX 0 .` as an unknown sender domain). The apex SPF and DMARC are now the sending records under "Sender on the apex". The MX stays at Foxxl's spam filter until the hosting is cancelled, and must then point at something that accepts mail.
 8. **Done.** `docs/mintplayer_website_plan.md` item 6 and PRD row A6 are updated. The superseded relay text in the SeoTester PRD, raven-tls-migration and multi-forge-plan carries a note.
 
