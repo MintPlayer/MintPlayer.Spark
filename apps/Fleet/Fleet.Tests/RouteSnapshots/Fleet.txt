@@ -54,6 +54,10 @@ POST /spark/auth/refresh | accepts(application/json)
 POST /spark/auth/register | antiforgery=required
 POST /spark/auth/resendConfirmationEmail | antiforgery=required
 POST /spark/auth/resetPassword | antiforgery=required
+DELETE /spark/boards/{board} | antiforgery=required
+GET /spark/boards/{board}
+PUT /spark/boards/{board} | antiforgery=required
+GET /spark/boards/{board}/catalog
 GET /spark/culture
 POST /spark/etl/deploy
 CONNECT,GET /spark/live

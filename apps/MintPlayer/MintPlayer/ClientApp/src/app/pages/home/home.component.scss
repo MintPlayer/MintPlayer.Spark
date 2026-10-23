@@ -1,4 +1,1 @@
 .mp-hero { max-width: 52rem; margin: 0 auto; }
-/* min(…, 100%): a phone is narrower than a 22rem column, which would push the page sideways. */
-.mp-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(22rem, 100%), 1fr)); gap: 1rem; }
-.mp-cards > * { min-width: 0; }

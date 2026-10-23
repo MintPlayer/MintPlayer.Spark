@@ -1,6 +1,7 @@
 import { Routes } from '@angular/router';
 import { oidcProvider, sparkAuthRoutes, withAccount, withConnectedAgents, withExternalLogin, withLocalLogin, withRegistration } from '@mintplayer/ng-spark/auth/routes';
 import { sparkRoutes } from '@mintplayer/ng-spark/routes';
+import { sparkBoardRoute } from '@mintplayer/ng-spark/boards';
 import { ShellComponent } from './shell/shell.component';
 
 export const routes: Routes = [
@@ -21,7 +22,8 @@ export const routes: Routes = [
         withConnectedAgents(),
       ),
       { path: '', redirectTo: 'home', pathMatch: 'full' },
-      { path: 'home', loadComponent: () => import('./pages/home/home.component') },
+      // The home page is the "home" board (#530): App_Data/boards.json ships its default, a signed-in user customizes it.
+      sparkBoardRoute('home', 'home'),
       ...sparkRoutes({
         poCreate: () => import('./pages/po-create/po-create.component'),
         poEdit: () => import('./pages/po-edit/po-edit.component'),

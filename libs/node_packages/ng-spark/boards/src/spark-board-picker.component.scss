@@ -1,0 +1,24 @@
+.spark-picker-group {
+  margin: 1rem 0 .5rem;
+  opacity: .75;
+}
+
+.spark-picker-row {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+}
+
+.spark-picker-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.spark-picker-kinds {
+  flex: none;
+}
+
+.spark-picker-error {
+  color: var(--bs-danger, #dc3545);
+}

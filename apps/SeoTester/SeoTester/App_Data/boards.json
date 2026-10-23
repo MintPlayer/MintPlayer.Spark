@@ -1,0 +1,19 @@
+{
+  "boards": [
+    {
+      "id": "home",
+      "tiles": [
+        { "id": "sites", "kind": "query", "target": { "query": "sites" }, "defaultSize": { "colSpan": 2, "rowSpan": 2 } },
+        { "id": "audit-runs", "kind": "query", "target": { "query": "audit-runs" }, "defaultSize": { "colSpan": 2, "rowSpan": 2 } },
+        { "id": "operator-dashboard", "kind": "persistentObject", "target": { "entityType": "OperatorDashboard", "id": "main" }, "defaultSize": { "colSpan": 4, "rowSpan": 2 } }
+      ],
+      "layouts": {
+        "4": [
+          { "id": "sites", "position": { "colStart": 1, "rowStart": 1, "colSpan": 2, "rowSpan": 2 } },
+          { "id": "audit-runs", "position": { "colStart": 3, "rowStart": 1, "colSpan": 2, "rowSpan": 2 } },
+          { "id": "operator-dashboard", "position": { "colStart": 1, "rowStart": 3, "colSpan": 4, "rowSpan": 2 } }
+        ]
+      }
+    }
+  ]
+}

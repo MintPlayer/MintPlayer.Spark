@@ -9,6 +9,7 @@ import { provideSparkClientOperations } from '@mintplayer/ng-spark/client-operat
 import { provideSparkNotifications } from '@mintplayer/ng-spark/notifications';
 import { provideSparkScoreRenderers } from '@mintplayer/ng-spark/score-renderers';
 import { provideSparkDashboards, sparkDashboardRenderers } from '@mintplayer/ng-spark/dashboards';
+import { provideSparkBoards } from '@mintplayer/ng-spark/boards';
 import { seoRenderers } from './seo/renderers';
 
 import { routes } from './app.routes';
@@ -33,6 +34,8 @@ export const appConfig: ApplicationConfig = {
     provideSparkScoreRenderers([...seoRenderers, ...sparkDashboardRenderers]),
     // The operator dashboard and the database statistics (#504) draw as tiles.
     provideSparkDashboards(),
+    // The home page's board (#530) and "Pin to dashboard" on every detail page.
+    provideSparkBoards(),
     provideZonelessChangeDetection(),
   ]
 };

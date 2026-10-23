@@ -1,0 +1,17 @@
+{
+  "boards": [
+    {
+      "id": "home",
+      "tiles": [
+        { "id": "songs", "kind": "query", "target": { "query": "songs" }, "defaultSize": { "colSpan": 2, "rowSpan": 2 } },
+        { "id": "artists", "kind": "query", "target": { "query": "artists" }, "defaultSize": { "colSpan": 2, "rowSpan": 2 } }
+      ],
+      "layouts": {
+        "4": [
+          { "id": "songs", "position": { "colStart": 1, "rowStart": 1, "colSpan": 2, "rowSpan": 2 } },
+          { "id": "artists", "position": { "colStart": 3, "rowStart": 1, "colSpan": 2, "rowSpan": 2 } }
+        ]
+      }
+    }
+  ]
+}

@@ -3,6 +3,7 @@ using Fleet;
 using Microsoft.AspNetCore.Server.Kestrel.Https;
 using MintPlayer.Spark;
 using MintPlayer.Spark.Extensions;
+using MintPlayer.Spark.Boards;
 using MintPlayer.Spark.History;
 using MintPlayer.Spark.MailManager;
 using MintPlayer.Spark.Controllers;
@@ -74,6 +75,7 @@ builder.Services.AddSparkFull(builder.Configuration, options =>
         // Stamps Car.CreatedBy / CreatedAt (IAuditCreated; the members are generated, #271). The row
         // filter in CarActions scopes users to the cars they created by that stamp.
         spark.AddHistory();
+        spark.AddBoards();
 
         // What a context root's properties become when synchronize first creates their attributes
         // (docs/default_index_PRD.md, D9). It matters for a root over a type Fleet does not own: FleetContext's

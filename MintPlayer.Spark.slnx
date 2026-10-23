@@ -71,6 +71,9 @@
     <Project Path="libs/authorization/MintPlayer.Spark.Authorization/MintPlayer.Spark.Authorization.csproj" />
     <Project Path="libs/authorization/MintPlayer.Spark.Authorization.Abstractions/MintPlayer.Spark.Authorization.Abstractions.csproj" />
   </Folder>
+  <Folder Name="/libs/boards/">
+    <Project Path="libs/boards/MintPlayer.Spark.Boards/MintPlayer.Spark.Boards.csproj" />
+  </Folder>
   <Folder Name="/libs/client/">
     <Project Path="libs/client/MintPlayer.Spark.Client.Authorization/MintPlayer.Spark.Client.Authorization.csproj" />
     <Project Path="libs/client/MintPlayer.Spark.Client/MintPlayer.Spark.Client.csproj" />

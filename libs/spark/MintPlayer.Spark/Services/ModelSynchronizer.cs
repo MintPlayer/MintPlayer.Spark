@@ -1042,10 +1042,12 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                     // An empty result self-heals to the derived capability — unless the author wrote
                     // `None` (#264, G-Q4): drawn nowhere is a choice, not an empty intersection, and an
                     // action shows it per object through the runtime ShowedOn. An absent showedOn reads
-                    // as the default (both sides), so only that one is derived.
+                    // as the default (both sides), so only that one is derived. Summary (#530) is drawn from
+                    // the loaded object, so it lasts as long as the PersistentObject side does.
                     if (existingAttr.ShowedOn != EShowedOn.None)
                     {
-                        var narrowedShowedOn = existingAttr.ShowedOn & showedOn;
+                        var capability = (showedOn & EShowedOn.PersistentObject) != 0 ? showedOn | EShowedOn.Summary : showedOn;
+                        var narrowedShowedOn = existingAttr.ShowedOn & capability;
                         existingAttr.ShowedOn = narrowedShowedOn != 0 ? narrowedShowedOn : showedOn;
                     }
                 }

@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, Injector, computed, effect, inject, input, model, output, runInInjectionContext, signal, untracked, viewChild, Type } from '@angular/core';
+import { booleanAttribute, ChangeDetectionStrategy, Component, DestroyRef, Injector, computed, effect, inject, input, model, output, runInInjectionContext, signal, untracked, viewChild, Type } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { toSignal } from '@angular/core/rxjs-interop';
@@ -92,6 +92,7 @@ const LIVE_ERROR_STATUS: Record<string, number> = { unavailable: 404, invalid: 4
   templateUrl: './spark-query-grid.component.html',
   styleUrl: './spark-query-grid.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: { '[class.spark-query-grid-fill]': 'fill()' },
 })
 export class SparkQueryGridComponent {
   private readonly sparkService = inject(SparkService);
@@ -298,6 +299,12 @@ export class SparkQueryGridComponent {
    * entry's. `null` (the default) defers to the query, whose absent setting is `'auto'`.
    */
   selectionModeSetting = input<SparkSelectionModeSetting | null>(null);
+
+  /**
+   * Fit a sized parent (a board tile, #530): the header sticks to the top, the pager to the bottom
+   * and only the rows scroll in between (ng-bootstrap's datatable `fill`). The parent needs a height.
+   */
+  fill = input(false, { transform: booleanAttribute });
 
   /** Emitted whenever a load or a page fetch fails, for a host in bespoke chrome. */
   error = output<HttpErrorResponse>();

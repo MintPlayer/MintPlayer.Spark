@@ -94,6 +94,22 @@ export class SparkPoDetailComponent {
   protected readonly detailActions = orderSparkExtensions(inject(SPARK_DETAIL_ACTIONS, { optional: true }), a => a.priority ?? 60);
   private readonly detailLayouts = orderSparkExtensions(inject(SPARK_DETAIL_LAYOUTS, { optional: true }), () => undefined);
 
+  /**
+   * The object to show (type id or alias, and id), for a host that embeds this component — a board
+   * tile (#530). Set, they replace the route's `:type`/`:id`, and the URL's slug is left alone.
+   */
+  objectType = input<string | null>(null);
+  objectId = input<string | null>(null);
+  /** The sub-query cards below the attributes. */
+  showQueries = input(true);
+  /** The action bar, the title and the add-on panels: off where the host draws its own (a tile). */
+  showChrome = input(true);
+  /**
+   * One flat grid of the `Summary` attributes (all detail attributes when none is), no tabs or cards: a tile.
+   * A registered detail layout (SPARK_DETAIL_LAYOUTS) still draws its type instead.
+   */
+  compact = input(false);
+
   showCustomActions = input(true);
   extraActionsTemplate = input<TemplateRef<void> | null>(null);
   extraContentTemplate = input<TemplateRef<{ $implicit: PersistentObject; entityType: EntityType }> | null>(null);
@@ -213,10 +229,22 @@ export class SparkPoDetailComponent {
 
   constructor() {
     // The query map too: Restore navigates from `?deleted=only` to the same path without it, and the
-    // object must then be re-read as a live row.
+    // object must then be re-read as a live row. The first emission is synchronous, before the inputs
+    // are set, so an embedded object is told apart by the route having no `:type` (a board's route).
     combineLatest([this.route.paramMap, this.route.queryParamMap])
       .pipe(takeUntilDestroyed())
-      .subscribe(([params, query]) => this.onParamsChange(params, query.get('deleted')));
+      .subscribe(([params, query]) => {
+        const type = params.get('type');
+        if (!type || this.objectType()) return;
+        this.onTargetChange(type, params.get('id') || '', query.get('deleted'));
+      });
+
+    // An embedded object: follows the inputs, and a change of them loads the other object.
+    effect(() => {
+      const type = this.objectType();
+      const id = this.objectId() ?? '';
+      if (type) untracked(() => this.onTargetChange(type, id, null));
+    });
 
     // Server-issued `refreshAttribute` patches for the object this page is showing.
     //
@@ -340,9 +368,9 @@ export class SparkPoDetailComponent {
     if (changed) this.item.set({ ...current, attributes });
   }
 
-  private async onParamsChange(params: any, deleted: string | null = null): Promise<void> {
-    this.type = params.get('type') || '';
-    this.id = params.get('id') || '';
+  private async onTargetChange(type: string, id: string, deleted: string | null): Promise<void> {
+    this.type = type;
+    this.id = id;
     // The previous object's pushes must not land on this one, even when this load fails.
     this.stopFollowing();
     const mode = parseSparkDeletedParam(deleted);
@@ -356,7 +384,7 @@ export class SparkPoDetailComponent {
    * navigation. A slug of "edit" is left out: that URL is the edit page.
    */
   private writeSlug(item: PersistentObject): void {
-    if (!this.route.snapshot.data['sparkSlug']) return;
+    if (this.objectType() || !this.route.snapshot.data['sparkSlug']) return;
     const slug = sparkSlug(item.breadcrumb);
     if (slug === (this.route.snapshot.paramMap.get('slug') ?? '')) return;
     const commands = slug && slug !== 'edit' ? ['/po', this.type, this.id, slug] : ['/po', this.type, this.id];
@@ -375,6 +403,9 @@ export class SparkPoDetailComponent {
   /** (Re)loads the object, its type, rights and actions. Also what add-ons call via `context.reload()`. */
   async load(): Promise<void> {
     this.errorMessage.set(null);
+    // A load overtaken by a move to another object publishes nothing.
+    const type = this.type, id = this.id;
+    const stale = () => type !== this.type || id !== this.id;
     try {
       const [entityTypes, item] = await Promise.all([
         this.sparkService.getEntityTypes(),
@@ -392,6 +423,7 @@ export class SparkPoDetailComponent {
           this.sparkService.getCustomActions(et.id)
         ])
         : [null, null];
+      if (stale()) return;
 
       this.allEntityTypes.set(entityTypes);
       this.entityType.set(et);
@@ -405,6 +437,7 @@ export class SparkPoDetailComponent {
       this.deriveActions(item);
       this.follow(et);
     } catch (e) {
+      if (stale()) return;
       const error = e as HttpErrorResponse;
       this.errorMessage.set(error.error?.error || error.message || 'An unexpected error occurred');
     }
@@ -462,6 +495,15 @@ export class SparkPoDetailComponent {
     return this.entityType()?.attributes
       .filter(a => hasShowedOnFlag(loaded.get(a.name)?.showedOn ?? a.showedOn, ShowedOn.PersistentObject))
       .sort((a, b) => a.order - b.order) || [];
+  });
+
+  /** The compact view's fields: those marked `Summary`, by order, or every detail field when the type marks none. */
+  summaryAttributes = computed(() => {
+    const loaded = new Map((this.item()?.attributes ?? []).map(a => [a.name, a] as const));
+    const summary = this.entityType()?.attributes
+      .filter(a => hasShowedOnFlag(loaded.get(a.name)?.showedOn ?? a.showedOn, ShowedOn.Summary))
+      .sort((a, b) => a.order - b.order) ?? [];
+    return summary.length ? summary : this.visibleAttributes();
   });
 
   private static readonly DEFAULT_TAB: AttributeTab = { id: '__default__', name: 'Algemeen', label: { nl: 'Algemeen', en: 'General' }, order: 0 };

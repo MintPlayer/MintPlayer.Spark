@@ -6,6 +6,7 @@ import { provideSparkServiceWorker } from '@mintplayer/ng-spark/pwa';
 import { withSparkLanguage, withSparkTimezone } from '@mintplayer/ng-spark/services';
 import { provideSparkAuth, withSparkAuth } from '@mintplayer/ng-spark/auth';
 import { provideSparkClientOperations } from '@mintplayer/ng-spark/client-operations';
+import { provideSparkBoards } from '@mintplayer/ng-spark/boards';
 import { provideSparkAttributeRenderers } from '@mintplayer/ng-spark/renderers';
 import { provideVideoApis } from '@mintplayer/ng-video-player';
 import { mintPlayerRenderers } from './renderers/renderers';
@@ -23,6 +24,7 @@ export const appConfig: ApplicationConfig = {
     provideAnimations(),
     provideSparkAuth(),
     provideSparkClientOperations(),
+    provideSparkBoards(),
     // media-player (Medium.Value) and color-swatch (TagCategory.Color), by the model's names.
     provideSparkAttributeRenderers(mintPlayerRenderers),
     provideVideoApis(...videoPlugins),

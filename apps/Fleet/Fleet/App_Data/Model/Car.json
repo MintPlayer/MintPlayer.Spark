@@ -20,7 +20,7 @@
         "order": 7,
         "isArray": false,
         "lookupReferenceType": "CarBrand",
-        "showedOn": "Query, PersistentObject",
+        "showedOn": "Query, PersistentObject, Summary",
         "rules": []
       },
       {
@@ -127,7 +127,7 @@
         "order": 1,
         "isArray": false,
         "canListDistincts": false,
-        "showedOn": "Query, PersistentObject",
+        "showedOn": "Query, PersistentObject, Summary",
         "rules": [
           {
             "type": "minLength",
@@ -167,7 +167,7 @@
         "isReadOnly": false,
         "order": 2,
         "isArray": false,
-        "showedOn": "Query, PersistentObject",
+        "showedOn": "Query, PersistentObject, Summary",
         "rules": [
           {
             "type": "minLength",
@@ -244,7 +244,7 @@
         "isArray": false,
         "triggersRefresh": "Auto",
         "lookupReferenceType": "CarStatus",
-        "showedOn": "Query, PersistentObject",
+        "showedOn": "Query, PersistentObject, Summary",
         "rules": []
       },
       {
@@ -255,7 +255,7 @@
         "isReadOnly": false,
         "order": 3,
         "isArray": false,
-        "showedOn": "Query, PersistentObject",
+        "showedOn": "Query, PersistentObject, Summary",
         "rules": [
           {
             "type": "range",

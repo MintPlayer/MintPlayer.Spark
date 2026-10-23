@@ -33,6 +33,7 @@
 		<ProjectReference Include="..\..\..\libs\cron\MintPlayer.Spark.Cron\MintPlayer.Spark.Cron.csproj" />
 		<ProjectReference Include="..\..\..\libs\dashboards\MintPlayer.Spark.Dashboards\MintPlayer.Spark.Dashboards.csproj" />
 		<ProjectReference Include="..\..\..\libs\history\MintPlayer.Spark.History\MintPlayer.Spark.History.csproj" />
+		<ProjectReference Include="..\..\..\libs\boards\MintPlayer.Spark.Boards\MintPlayer.Spark.Boards.csproj" />
 		<ProjectReference Include="..\..\..\libs\migrations\MintPlayer.Spark.Migrations\MintPlayer.Spark.Migrations.csproj" />
 		<ProjectReference Include="..\..\..\libs\settings\MintPlayer.Spark.Settings\MintPlayer.Spark.Settings.csproj" />
 		<ProjectReference Include="..\..\..\libs\notifications\MintPlayer.Spark.Notifications\MintPlayer.Spark.Notifications.csproj" />

@@ -12,6 +12,7 @@ using MintPlayer.Spark;
 using MintPlayer.Spark.Abstractions.Authentication;
 using MintPlayer.Spark.Authorization.Extensions;
 using MintPlayer.Spark.Controllers;
+using MintPlayer.Spark.Boards;
 using MintPlayer.Spark.Dashboards;
 using MintPlayer.Spark.Extensions;
 using MintPlayer.Spark.Webhooks.GitHub.DevTunnel.Extensions;
@@ -301,6 +302,8 @@ builder.Services.AddSpark(builder.Configuration, spark =>
             .DatabaseStatistics()
             .History("HostDiskUsedPercent")
             .ObjectId(CodeCoverage.CommitGraph.HostMetricsActions.ObjectId)));
+    // #530: Home's accounts grid is the "home" board (App_Data/boards.json); a signed-in user may rearrange it.
+    spark.AddBoards();
 
     // ⚠ The four calls above are source-generated over THIS assembly only, so they do not see
     // anything in CodeCoverage.GithubIntegration. Its own entry point has to be called explicitly,

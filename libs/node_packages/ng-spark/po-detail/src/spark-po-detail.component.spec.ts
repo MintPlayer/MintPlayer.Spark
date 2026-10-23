@@ -970,4 +970,71 @@ describe('SparkPoDetailComponent', () => {
       expect(got?.entityType.name).toBe('Person');
     });
   });
+
+  describe('embedded (objectType/objectId, #530)', () => {
+    /** A board tile's use: on a route without `:type`, the object, its attributes and nothing else. */
+    @Component({
+      imports: [SparkPoDetailComponent],
+      template: `<spark-po-detail objectType="person" objectId="people/1" [showQueries]="false" [showChrome]="false" />`,
+    })
+    class EmbeddedHost {}
+
+    it('loads the input object and draws only its attributes', async () => {
+      const withSubQuery = { ...personType, queries: ['person-friends'] } as any;
+      const { harness, service } = await setup({
+        getEntityTypes: vi.fn().mockResolvedValue([withSubQuery]),
+        getQuery: vi.fn().mockReturnValue(new Promise(() => undefined)),
+      } as any);
+      TestBed.inject(Router).resetConfig([{ path: '', component: EmbeddedHost }]);
+      await harness.navigateByUrl('/', EmbeddedHost);
+      await settle(harness.fixture);
+
+      const root = harness.routeNativeElement!;
+      expect(service.get).toHaveBeenCalledWith('person', 'people/1');
+      expect(root.querySelector('dl')).not.toBeNull();
+      expect(root.querySelector('.spark-actionbar')).toBeNull();
+      expect(root.querySelector('h2')).toBeNull();
+      expect(root.querySelector('spark-query-card')).toBeNull();
+    });
+
+    @Component({
+      imports: [SparkPoDetailComponent],
+      template: `<spark-po-detail objectType="person" objectId="people/1" [showQueries]="false" [showChrome]="false" [compact]="true" />`,
+    })
+    class CompactHost {}
+
+    async function compactLabels(type: EntityType) {
+      const { harness } = await setup({ getEntityTypes: vi.fn().mockResolvedValue([type]) } as Partial<SparkService>);
+      TestBed.inject(Router).resetConfig([{ path: '', component: CompactHost }]);
+      await harness.navigateByUrl('/', CompactHost);
+      await settle(harness.fixture);
+      const root = harness.routeNativeElement!;
+      return {
+        root,
+        labels: [...root.querySelectorAll('dt')].map(dt => dt.textContent!.trim()),
+      };
+    }
+
+    it('compact draws the Summary attributes by order in one grid, without tabs or cards', async () => {
+      const { root, labels } = await compactLabels({
+        ...personType,
+        attributes: [
+          { ...personType.attributes[0], showedOn: 'PersistentObject' },
+          { id: 'a-nick', name: 'Nick', dataType: 'string', order: 0 } as any, // absent showedOn: not Summary
+          { id: 'a-last', name: 'LastName', dataType: 'string', order: 3, group: 'g-main', showedOn: 'Query, PersistentObject, Summary' } as any,
+          { id: 'a-city', name: 'City', dataType: 'string', order: 2, showedOn: 'PersistentObject, Summary' } as any,
+        ],
+      } as EntityType);
+
+      expect(labels).toEqual(['City', 'LastName']);
+      expect(root.querySelector('bs-tab-control')).toBeNull();
+      expect(root.querySelector('bs-card')).toBeNull();
+      expect(root.querySelectorAll('dl').length).toBe(1);
+    });
+
+    it('compact falls back to every detail attribute when the type marks none Summary', async () => {
+      const { labels } = await compactLabels(personType);
+      expect(labels).toEqual(['FirstName']);
+    });
+  });
 });

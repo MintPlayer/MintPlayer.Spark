@@ -6,6 +6,7 @@ using MintPlayer.Spark;
 using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.Authorization.Extensions;
 using MintPlayer.Spark.Authorization.Identity;
+using MintPlayer.Spark.Boards;
 using MintPlayer.Spark.Extensions;
 using MintPlayer.Spark.History;
 using MintPlayer.Spark.MailManager;
@@ -47,6 +48,8 @@ builder.Services.AddSpark(builder.Configuration, spark =>
 
     spark.AddSoftDelete();
     spark.AddHistory();
+    // #530: the home page is the "home" board (App_Data/boards.json); a signed-in user may rearrange it.
+    spark.AddBoards();
 });
 
 builder.Services.AddScoped<MintPlayerAccess>();

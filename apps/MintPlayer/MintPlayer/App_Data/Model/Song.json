@@ -17,7 +17,7 @@
         "order": 3,
         "asDetailType": "MintPlayer.Entities.SongArtist",
         "isArray": true,
-        "showedOn": "PersistentObject",
+        "showedOn": "PersistentObject, Summary",
         "rules": []
       },
       {
@@ -151,7 +151,7 @@
         "isReadOnly": false,
         "order": 2,
         "isArray": false,
-        "showedOn": "Query, PersistentObject",
+        "showedOn": "Query, PersistentObject, Summary",
         "rules": []
       },
       {
@@ -175,7 +175,7 @@
         "isReadOnly": false,
         "order": 1,
         "isArray": false,
-        "showedOn": "Query, PersistentObject",
+        "showedOn": "Query, PersistentObject, Summary",
         "rules": []
       }
     ],

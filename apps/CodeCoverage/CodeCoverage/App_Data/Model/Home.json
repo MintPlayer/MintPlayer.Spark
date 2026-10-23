@@ -9,10 +9,10 @@
     "tabs and groups are both empty on purpose: attributes then land in one unheaded card, so the",
     "breadcrumb is the only heading on the page and there is no double title.",
     "",
-    "The accounts grid is the my-accounts query of MyAccountRow, named below. Read/Home is granted",
-    "to BOTH well-known roles -- anonymous visitors get the page and the welcome text; the grid",
-    "itself needs Query/MyAccountRow, which only the authenticated role holds, so it simply does",
-    "not render for them."
+    "The accounts grid is the my-accounts tile of the \"home\" board (#530, App_Data/boards.json),",
+    "which HomeExtrasComponent renders for a signed-in user, so no query is named below. Read/Home",
+    "is granted to BOTH well-known roles -- anonymous visitors get the page and the welcome text;",
+    "the grid itself needs Query/MyAccountRow, which only the authenticated role holds."
   ],
   "persistentObject": {
     "id": "149ab426-ae90-4c96-ae26-3fdde3554754",
@@ -54,8 +54,6 @@
         "rules": []
       }
     ],
-    "queries": [
-      "my-accounts"
-    ]
+    "queries": []
   }
 }

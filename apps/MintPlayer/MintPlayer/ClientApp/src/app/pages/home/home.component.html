@@ -2,7 +2,5 @@
   <h1>{{ 'app.title' | t }}</h1>
   <p class="lead text-body-secondary">{{ 'home.tagline' | t }}</p>
 </section>
-<div class="mp-cards">
-  <spark-query-card queryId="songs" data-card="songs" />
-  <spark-query-card queryId="artists" data-card="artists" />
-</div>
+<!-- The "home" board (#530): App_Data/boards.json ships the songs and artists; a signed-in user may rearrange it. -->
+<spark-board boardId="home" />

@@ -59,6 +59,7 @@
 
   <!-- 'checkbox' (#467, D9): only the checkbox cell selects; a row click opens the row. -->
   <bs-datatable
+      [fill]="fill()"
       [selectionMode]="selectionMode() === 'multiple' ? 'checkbox' : 'none'"
       [(selection)]="selection"
       [virtualScroll]="isVirtualScrolling()"

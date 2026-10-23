@@ -1,0 +1,15 @@
+{
+  "boards": [
+    {
+      "id": "home",
+      "tiles": [
+        { "id": "my-accounts", "kind": "query", "target": { "query": "my-accounts" }, "defaultSize": { "colSpan": 4, "rowSpan": 3 } }
+      ],
+      "layouts": {
+        "4": [
+          { "id": "my-accounts", "position": { "colStart": 1, "rowStart": 1, "colSpan": 4, "rowSpan": 3 } }
+        ]
+      }
+    }
+  ]
+}
