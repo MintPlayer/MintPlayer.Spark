@@ -1,7 +1,8 @@
 # ng-spark 22.44.0 / MintPlayer.Spark.Boards 11.0.0-preview.1 — boards users arrange
 
 **Packages:**
-- NuGet: a new package, `MintPlayer.Spark.Boards`, at `11.0.0-preview.1`.
+- NuGet: a new package, `MintPlayer.Spark.Boards`, at `11.0.0-preview.1`. `MintPlayer.Spark.Model` →
+  `11.0.0-preview.103` and `MintPlayer.Spark` → `11.0.0-preview.113` (`showedOn` `Summary`).
 - npm: `@mintplayer/ng-spark` → `22.44.0`, with the new entry point `@mintplayer/ng-spark/boards`.
 - The majors do not move: the packages still target .NET 11 and Angular 22.
 

@@ -1,7 +1,7 @@
 # Dashboard layout system (#530): PRD and plan
 
 **Issue:** [#530](https://github.com/MintPlayer/MintPlayer.Spark/issues/530) · **Branch:** `feat/issue530-dashboard` ·
-**Date:** 2026-10-23 · **Status:** Implemented (M1–M10), not yet pushed. All of Q1–Q7 are decided (§12, rounds 1–3).
+**Date:** 2026-10-23 · **Status:** Implemented (M1–M11), PR #533. Q1–Q7 and Q9 are decided (§12, rounds 1–4).
 
 ## 0. Status
 
@@ -27,6 +27,9 @@
   Inside a tile it still draws tabs and a card per group, which is too heavy. Two investigators compared the
   owner's `isDefault` group flag with alternatives. Q9 in §11 has the options and a recommendation, and M11 in §10
   is the plan once Q9 is decided.
+- 2026-10-23: Q9 decided (B, D21), and M11 is implemented (`7c22ab1f`). It adds `showedOn` `Summary`, which bumps
+  `MintPlayer.Spark.Model` to `11.0.0-preview.103` and `MintPlayer.Spark` to `11.0.0-preview.113`. It also adds
+  `spark-po-detail`'s `compact`, and the tile uses it. Checked in the browser on MintPlayer's `home` board (M11 row).
 
 ## 1. Goal
 
@@ -396,7 +399,7 @@ never edits.
 | M7 | Fleet adoption (showcase) + E2E |
 | M8 | SeoTester and MintPlayer adoption (production) |
 | M9 | CodeCoverage adoption (production). HR/QnA if Q7 says so |
-| M11 | ✅ **Compact object tile (Q9 = B, D21).** Evidence: po-detail + boards specs 76/76 and 22/22 (`compact draws the Summary attributes…`, `compact falls back…`), `ModelSynchronizerTests` 71/71 (`A_hand_set_Summary_survives_re_synchronize`). Browser check pending a host restart. (1) `EShowedOn.Summary = 4` in `libs/model/MintPlayer.Spark.Model/EShowedOn.cs`, plus the TS `ShowedOn` in `models/src/showed-on.ts`. In TS an **absent** `showedOn` must **not** count as `Summary`. (2) Synchronize keeps `Summary` when it narrows (`ModelSynchronizer.cs:1048` intersects with the derived `Query \| PersistentObject`, which would strip it). (3) `spark-po-detail` gains `compact = input(false)`: one `<dl bsRow>` over the existing `detailAttrField` template, no `bs-tab-control`, no `bs-card`, ordered by the attribute's `order` alone (groups and tabs play no part; `visibleAttributes` already sorts so, `spark-po-detail.component.ts:488`). It shows the `Summary` attributes, or every detail attribute when the type marks none. A registered `SPARK_DETAIL_LAYOUTS` layout still wins over `compact`, because SeoTester's `operator-dashboard` tile is a Dashboards virtual object drawn by its layout. (4) `spark-po-tile` passes `[compact]="true"`. (5) Specs: compact draws no tab-control or card, filters to `Summary`, and falls back. A synchronizer test that `Summary` survives a re-sync. (6) Mark a few attributes in the apps' model JSON (MintPlayer songs/artists, Fleet cars), the guide's tile section, and the release notes |
+| M11 | ✅ **Compact object tile (Q9 = B, D21).** Evidence: po-detail + boards specs 76/76 and 22/22 (`compact draws the Summary attributes…`, `compact falls back…`), `ModelSynchronizerTests` 71/71 (`A_hand_set_Summary_survives_re_synchronize`). Browser check (MintPlayer `home`, 2026-10-23): the pinned Playlist tile has 0 `bs-tab-control`, 0 `bs-card` and 1 `dl` (Name, Description, Public, Tracks: the fallback, since Playlist marks no `Summary`), with 0 console errors. (1) `EShowedOn.Summary = 4` in `libs/model/MintPlayer.Spark.Model/EShowedOn.cs`, plus the TS `ShowedOn` in `models/src/showed-on.ts`. In TS an **absent** `showedOn` must **not** count as `Summary`. (2) Synchronize keeps `Summary` when it narrows (`ModelSynchronizer.cs:1048` intersects with the derived `Query \| PersistentObject`, which would strip it). (3) `spark-po-detail` gains `compact = input(false)`: one `<dl bsRow>` over the existing `detailAttrField` template, no `bs-tab-control`, no `bs-card`, ordered by the attribute's `order` alone (groups and tabs play no part; `visibleAttributes` already sorts so, `spark-po-detail.component.ts:488`). It shows the `Summary` attributes, or every detail attribute when the type marks none. A registered `SPARK_DETAIL_LAYOUTS` layout still wins over `compact`, because SeoTester's `operator-dashboard` tile is a Dashboards virtual object drawn by its layout. (4) `spark-po-tile` passes `[compact]="true"`. (5) Specs: compact draws no tab-control or card, filters to `Summary`, and falls back. A synchronizer test that `Summary` survives a re-sync. (6) Mark a few attributes in the apps' model JSON (MintPlayer songs/artists, Fleet cars), the guide's tile section, and the release notes |
 | M10 | Guide `docs/guide-boards.md`, README, CHANGELOG/release notes. Then the full test sweep, once, at the end |
 
 ## 11. Open decisions (owner)
