@@ -14,9 +14,9 @@
   </section>
 
   @if (auth.isAuthenticated()) {
-    <div class="seo-cards px-3">
-      <spark-query-card queryId="sites" [searchable]="false" data-card="sites" />
-      <spark-query-card queryId="audit-runs" [searchable]="false" data-card="audits" />
+    <!-- The "home" board (#530): App_Data/boards.json ships the sites and audits, and each user may rearrange it. -->
+    <div class="px-3">
+      <spark-board boardId="home" />
     </div>
   } @else {
     <section class="px-3" data-features>

@@ -1,22 +1,19 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { SparkAuthService } from '@mintplayer/ng-spark/auth/core';
-import { SparkQueryCardComponent } from '@mintplayer/ng-spark/grid';
+import { SparkBoardComponent } from '@mintplayer/ng-spark/boards';
 import { TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
 
 /**
- * The landing page (PRD §4.5 "Dashboard"): what SeoTester checks and how, with a way in; signed in, the user's sites and
- * audits as query cards (the audits list is live, so a running audit's progress shows here too).
+ * The landing page (PRD §4.5 "Dashboard"): what SeoTester checks and how, with a way in; signed in, the "home" board
+ * (#530) with the user's sites and audits (the audits list is live, so a running audit's progress shows here too).
  */
 @Component({
   selector: 'app-home',
-  imports: [RouterLink, SparkQueryCardComponent, TranslateKeyPipe],
+  imports: [RouterLink, SparkBoardComponent, TranslateKeyPipe],
   templateUrl: './home.component.html',
   styles: [`
     .seo-hero { max-width: 52rem; margin: 0 auto; }
-    /* min(…, 100%): a phone (375 px) is narrower than a 22rem column, which pushed the page sideways. */
-    .seo-cards > * { min-width: 0; }
-    .seo-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(22rem, 100%), 1fr)); gap: 1rem; }
     .seo-features { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(14rem, 100%), 1fr)); gap: 1rem; max-width: 64rem; margin: 0 auto; }
     .seo-steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(14rem, 100%), 1fr)); gap: 1rem; max-width: 64rem; margin: 0 auto; padding: 0; list-style-position: inside; }
   `],

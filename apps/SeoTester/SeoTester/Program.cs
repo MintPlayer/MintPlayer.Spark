@@ -5,6 +5,7 @@ using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.Authorization.Extensions;
 using MintPlayer.Spark.Authorization.Identity;
+using MintPlayer.Spark.Boards;
 using MintPlayer.Spark.Dashboards;
 using MintPlayer.Spark.Extensions;
 using MintPlayer.Spark.History;
@@ -95,6 +96,8 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     // pushed live; security.json binds dashboards:administrators to Administrators.
     spark.AddDashboards(dashboards => dashboards
         .Add(OperatorDashboardActions.TypeName, d => d.Provider<OperatorDashboardFigures>().DatabaseStatistics()));
+    // #530: the home page's sites and audits are the "home" board (App_Data/boards.json); each user may rearrange it.
+    spark.AddBoards();
 
     // X10: in-app, mail and Web Push (Spark:Notifications:WebPush, VAPID keys from secrets; without them push is off).
     spark.AddNotifications();
