@@ -55,7 +55,24 @@ public interface IForgeLabels
     /// Path and counts only, never the patch (S2).
     /// </summary>
     Task<IReadOnlyList<ForgePullRequestFile>> ListPullRequestFilesAsync(Repository repository, int number, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Creates or updates the <see cref="SizeCheckName"/> check on <paramref name="sha"/> (D7) and returns its id. Without
+    /// <paramref name="existingId"/> it looks the check up by name first, so a redelivered message updates the one check
+    /// rather than adding a second.
+    /// </summary>
+    /// <remarks>
+    /// Here rather than on <c>IForgeFeedbackPublisher</c>: that one publishes completed verdicts of a line or two, and this
+    /// check starts in progress and completes with the breakdown table as its text.
+    /// </remarks>
+    Task<long> PublishSizeCheckAsync(Repository repository, string sha, ForgeSizeCheck check, long? existingId, CancellationToken cancellationToken = default);
+
+    /// <summary>The check run's name.</summary>
+    const string SizeCheckName = "PR size";
 }
+
+/// <summary>The "PR size" check: in progress, or completed neutral with a title, a summary and the breakdown.</summary>
+public sealed record ForgeSizeCheck(bool Completed, string Title, string Summary, string? Text);
 
 /// <summary>A label as the forge holds it.</summary>
 /// <param name="Color">Six lower-case hex digits, no <c>#</c>.</param>

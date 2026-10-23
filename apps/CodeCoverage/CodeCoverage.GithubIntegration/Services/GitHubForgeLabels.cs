@@ -140,6 +140,38 @@ public partial class GitHubForgeLabels : IForgeLabels
         return files;
     }
 
+    public async Task<long> PublishSizeCheckAsync(Repository repository, string sha, ForgeSizeCheck check, long? existingId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(sha);
+        ArgumentNullException.ThrowIfNull(check);
+
+        var id = existingId ?? await FindSizeCheckAsync(repository, sha, cancellationToken);
+        var output = new { title = check.Title, summary = check.Summary, text = check.Text };
+        object body = check.Completed
+            ? new { name = IForgeLabels.SizeCheckName, head_sha = sha, status = "completed", conclusion = "neutral", output }
+            : new { name = IForgeLabels.SizeCheckName, head_sha = sha, status = "in_progress", output };
+
+        using var reply = id is { } existing
+            ? await SendAsync(repository, HttpMethod.Patch, $"{RepoPath(repository)}/check-runs/{existing}", body, cancellationToken)
+            : await SendAsync(repository, HttpMethod.Post, $"{RepoPath(repository)}/check-runs", body, cancellationToken);
+        reply.EnsureSuccess("checks=write");
+        return reply.Json!.RootElement.GetProperty("id").GetInt64();
+    }
+
+    /// <summary>The newest "PR size" check on the commit, when there is one.</summary>
+    private async Task<long?> FindSizeCheckAsync(Repository repository, string sha, CancellationToken cancellationToken)
+    {
+        var path = $"{RepoPath(repository)}/commits/{Uri.EscapeDataString(sha)}/check-runs?check_name={Uri.EscapeDataString(IForgeLabels.SizeCheckName)}&filter=latest&per_page=1";
+        using var reply = await SendAsync(repository, HttpMethod.Get, path, null, cancellationToken);
+        reply.EnsureSuccess("checks=read");
+        return ReadCheckRunId(reply.Json!.RootElement);
+    }
+
+    internal static long? ReadCheckRunId(JsonElement root)
+        => root.TryGetProperty("check_runs", out var runs) && runs.ValueKind == JsonValueKind.Array && runs.GetArrayLength() > 0
+            ? runs[0].GetProperty("id").GetInt64()
+            : null;
+
     /// <summary>One page of <c>pullRequest.files</c>: path and counts only, every value a variable.</summary>
     internal static string FilesRequest(Repository repository, int number, string? cursor)
     {
@@ -202,12 +234,12 @@ public partial class GitHubForgeLabels : IForgeLabels
                && root.TryGetProperty("errors", out var errors) && errors.ValueKind == JsonValueKind.Array
                && errors.EnumerateArray().Any(e => e.ValueKind == JsonValueKind.Object && Str(e, "code") == code);
 
-        public void EnsureSuccess()
+        public void EnsureSuccess(string permission = Permission)
         {
             if ((int)Status is >= 200 and < 300) return;
             var message = Json?.RootElement is { ValueKind: JsonValueKind.Object } root ? Str(root, "message") : null;
             if (Status == HttpStatusCode.Forbidden)
-                throw new ForgeAccessDeniedException(message ?? $"{method} {path} was forbidden.", Permission);
+                throw new ForgeAccessDeniedException(message ?? $"{method} {path} was forbidden.", permission);
             throw new ForgeRequestException($"{method} {path} answered {(int)Status}: {message}", (int)Status);
         }
 

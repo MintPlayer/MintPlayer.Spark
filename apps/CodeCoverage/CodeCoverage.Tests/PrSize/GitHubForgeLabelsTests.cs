@@ -28,6 +28,16 @@ public class GitHubForgeLabelsTests
     }
 
     [Fact]
+    public void The_existing_size_check_is_found_by_its_id_so_a_retry_updates_it()
+    {
+        using var found = JsonDocument.Parse("""{"total_count":1,"check_runs":[{"id":4711,"name":"PR size","status":"in_progress"}]}""");
+        using var none = JsonDocument.Parse("""{"total_count":0,"check_runs":[]}""");
+
+        GitHubForgeLabels.ReadCheckRunId(found.RootElement).Should().Be(4711);
+        GitHubForgeLabels.ReadCheckRunId(none.RootElement).HasValue.Should().BeFalse();
+    }
+
+    [Fact]
     public void The_files_request_asks_for_path_and_counts_with_every_value_a_variable()
     {
         using var body = JsonDocument.Parse(GitHubForgeLabels.FilesRequest(Repo, 7, "Y3Vyc29y"));

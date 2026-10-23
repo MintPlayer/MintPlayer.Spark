@@ -199,6 +199,18 @@ public class RegistrationInventoryTests : CoverageRavenTest
         typeof(IRecipient<global::CodeCoverage.MergeQueue.RefreshKnownChecksMessage>));
 
     /// <summary>
+    /// The PR size labeller (#527, M6). Without its lane's recipient every apply would be consumed with nothing done; without
+    /// the GitHub seam the lane finds no forge and skips every repository, with no error either way.
+    /// </summary>
+    [Fact]
+    public void The_pr_size_labeller_is_registered() => AssertRegistered(
+        typeof(IForgeLabels),
+        typeof(global::CodeCoverage.PrSize.PrSizeLabelPacing),
+        typeof(IRecipient<global::CodeCoverage.PrSize.ApplyPrSizeLabelMessage>),
+        typeof(IRecipient<global::CodeCoverage.PrSize.ReconcilePrSizeLabelsMessage>),
+        typeof(IRecipient<global::CodeCoverage.PrSize.RemovePrSizeLabelsMessage>));
+
+    /// <summary>
     /// The Administrators group (#504, M5b). Without its membership provider the app still starts and the group still
     /// exists, but nobody is in it: the host metrics dashboard and the mirrors list go dark with no error.
     /// </summary>
