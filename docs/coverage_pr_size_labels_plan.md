@@ -33,6 +33,17 @@ Measure:
 
 Record the results in PRD D2/D3/D4. Delete the scratch repository afterwards.
 
+**Done 2026-10-23** in the browser, on scratch repository `PieterjanDeClippel/pr-size-labels-scratch`, with PR #1 open
+and PR #2 closed. Results are in PRD D2, D3 and D4.2.
+
+1. A rename keeps the label on the open and the closed PR, and the old name 404s.
+2. A delete removes the label from both.
+3. Name ≤ 50 characters (the UI's `maxlength`); description ≤ 100 (server error at 101).
+4. Names are case-insensitive: "Name has already been taken".
+5. Pacing was **not measured**, because there is no API token in the browser. D4.2 uses GitHub's documented limits.
+
+New finding: **archived labels** (PRD D3). Open for M5: the API's response when adding an archived label.
+
 ### S2 — Where the line counts come from (≤ 30 min, code reading plus one GraphQL call)
 
 - Does Octokit.GraphQL's `pr.Files(...).AllPages()` (the reference's `:62-65`) work against the
@@ -214,7 +225,7 @@ feeds the check run (M6).
 | Scale | label boundaries on the pascalgn defaults (9/10, 999/1000), single-row scale, generated descriptions |
 | Validation | duplicate name (case), duplicate threshold, no 0 row, bad hex, 101-char description, enable with empty scale |
 | Reconciler | create, adopt, rename keeps id, rename of a hand-deleted label → create, row removed → delete, user `size/foo` untouched, partial failure converges |
-| Recipient | off → no calls; Inherit/Enabled/Disabled × account on/off; already-correct label → no write; swap S→M removes S only; Bitbucket → no-op |
+| Recipient | off → no calls; Inherit/Enabled/Disabled × account on/off; already-correct label → no write; swap S→M removes S only; Bitbucket → no-op; archived target label → no label, neutral check run names it, no fallback label |
 | Check run | one neutral "PR size" run per head SHA; a retry updates it, never a second; a 403 completes it neutral with the reason; the breakdown is capped at 50 rows + "and N more" |
 | Fan-out | scale change → one message per repository *with state*; unchanged save → none |
 | Disable prompt (HTTP) | true → false plus another changed attribute → 449; resubmitting Keep saves both and publishes nothing; resubmitting Remove saves both and publishes the removal; Cancel stores nothing; an unchanged save does not prompt |

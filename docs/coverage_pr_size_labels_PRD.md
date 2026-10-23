@@ -103,11 +103,14 @@ scale edits five numbers.
 - **An empty description is generated** ("Denotes a PR that changes 100-299 lines") from the row and the next one, so
   it stays correct when the thresholds move.
 - **Validation in `BeforeSave`** keeps bad data away from GitHub:
-  - names are unique and case-insensitive, because GitHub label names are
+  - names are unique and case-insensitive, because GitHub label names are. Measured in S1: creating `size/m` while
+    `size/M` exists fails with "Name has already been taken".
   - `MinLines` values are unique, and the smallest is `0` so every PR gets a label
   - `Color` is 6 hex digits without `#` (GitHub's format)
-  - the description is ≤ 100 characters (GitHub's documented limit)
-  - the name length limit is undocumented, so spike **S1** measures it
+  - the description is ≤ 100 characters. Measured in S1: 101 characters gives "Description is too long (maximum is
+    100 characters)".
+  - the name is ≤ **50 characters**. Measured in S1: GitHub's own label form has `maxlength=50` on the name. The REST
+    limit could not be probed without a token, so the app applies the UI's limit, which is never wrong.
 - Enabling the feature with an empty scale is refused, not silently ignored.
 
 ### D3 — The app owns its labels, tracked by row id, so a rename is a rename
@@ -116,7 +119,13 @@ Labels are reconciled per repository from the effective scale. The app has to re
 
 - It must never delete a user's `size/whatever` label.
 - Renaming row `size/M` → `M` must **PATCH with `new_name`**. That keeps the label on every PR that already carries it.
-  Delete-and-create would strip it from those PRs (to be confirmed in **S1**).
+  Delete-and-create would strip it from those PRs.
+  - **Measured in S1:** renaming `size/M` → `size/medium` kept the label on an open PR **and** a closed PR, and
+    `GET /labels/size%2FM` then returned 404.
+  - Deleting the label removed it from both, the closed one included. GitHub's dialog says the same: "Deleting this
+    label will remove it from all issues and pull requests."
+  - The unauthenticated REST reads lagged the change by up to ~20 s (cached responses). Tests must not read their own
+    writes through a cached GET.
 
 `Repository.PrSizeLabelState : List<ManagedLabel { RowId, Name, Color, Description }>` records what was last written
 to GitHub for each row. Reconciliation then has four cases:
@@ -130,6 +139,17 @@ to GitHub for each row. Reconciliation then has four cases:
 
 State is written only after GitHub confirms, so a crash part-way leaves a state that the next run converges from.
 
+**Archived labels** (found in S1, not in the original research). GitHub now lets a user *archive* a label. Its dialog
+says: "Archiving hides "size/medium" so it can't be added to discussions, issues, or pull requests. It remains on
+anything that already uses it." The label REST object carries `archived_at` / `archived_by`.
+
+- The reconciler treats a managed label with `archived_at` set as **the user's choice**: it does not unarchive it.
+- The applier then cannot apply that size. The check run completes neutral with "Size label not applied: `size/M`
+  is archived in this repository".
+- It never falls back to another label, because a wrong size is worse than none.
+- **To confirm in M5:** what `POST /issues/{n}/labels` returns for an archived label. The API write could not be
+  probed without a token.
+
 ### D4 — When labels are reconciled
 
 1. **Lazily, before applying a label to a PR.** The applier reconciles first when the state differs from the scale. This
@@ -137,7 +157,13 @@ State is written only after GitHub confirms, so a crash part-way leaves a state 
 2. **Eagerly, after an account saves a changed scale.** `IAfterSaveCommitted` fans out one reconcile message per
    repository that **already has label state**. Repositories that never had a PR since the feature was enabled are
    picked up lazily. This bounds the burst (180 repositories × 6 labels ≈ 1 080 writes) and GitHub's secondary
-   content-creation limits; spike **S1** measures the pacing.
+   content-creation limits.
+   - S1 could not measure the pacing: the browser has no API token, and the UI writes are not the API's limits.
+   - So the throttle follows GitHub's **documented** secondary limits: at most 80 content-generating requests per
+     minute and 500 per hour. The fan-out sends one repository per message, and the label writes pace at ≤ 1 per
+     second.
+   - A 403 or 429 carrying `retry-after` is honoured through the messaging retry.
+   - This rests on documentation, not measurement.
 3. **On disable, the save asks** (Q2, owner 2026-10-23). The triggers are `Account.PrSizeLabels` going true → false
    (`IsValueChanged`), or a repository's effective value becoming off.
    - `OnBeforeSaveAsync` raises `manager.Retry.Action`: *"Also remove the size labels from the N repositories that
@@ -327,7 +353,7 @@ The following are genuinely not being done:
 
 ## Risks
 
-- **Write bursts.** Enabling a scale change on a large org is bounded by D4.2, but still real. S1 measures the pacing.
+- **Write bursts.** Enabling a scale change on a large org is bounded by D4.2, but still real. The pacing follows the documented limits (D4.2), not a measurement.
 - **Adoption overwrites colours.** The adopt rule takes over a hand-made `size/M` and repaints it. That is intended, but
   it is visible to users.
 - **Remove labels is irreversible** from GitHub's side: the labels are removed from closed PRs too. The prompt says so.
