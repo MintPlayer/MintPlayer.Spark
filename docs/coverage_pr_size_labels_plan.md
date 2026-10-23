@@ -5,9 +5,9 @@
 
 ## Status
 
-Grill done (2026-10-23): Q1–Q4 are answered and folded into the PRD (D1, D4.3, D5, D7, D10). **The spikes run next.**
-Each one ends with a recorded result and the decision it settles, written into the PRD with its evidence. Then the
-milestones.
+Grill done (2026-10-23): Q1–Q4 are answered and folded into the PRD (D1, D4.3, D5, D7, D10). **Spikes S1–S5 are done
+(2026-10-24)**, and each result is written into the PRD with its evidence. Two of them change the plan: GitLab is out
+of scope (S4, so no M6b), and both label writers share a dedicated serial queue (S5, PRD D9). **M1 is next.**
 
 Tests run **once, at the end** (M10): the CodeCoverage.Tests classes the change touches, and the ClientApp specs. No
 interim gate runs.
@@ -54,6 +54,13 @@ New finding: **archived labels** (PRD D3). Open for M5: the API's response when 
   `ChangedFiles` from the webhook payload as a cheap pre-check. `ForgeEventContractTests` must then cover the new
   fields.
 
+**Done 2026-10-24.** Results are in PRD D5.
+
+- `PullRequestUpdated` gains `Additions`, `Deletions` and `ChangedFiles` from the webhook.
+- A PR whose raw total already maps to the lowest row is labelled without a fetch.
+- Above 3 000 files, the totals are used.
+- Otherwise, the files come from GraphQL, which carries no patch payload. REST took 19.8 s for 2 862 files.
+
 ### S3 — The scale and ignore lists edit well on the Account form (≤ 1 h)
 
 - Is there an ng-spark renderer for a hex colour? If not, decide between a plain string field with a swatch next to it
@@ -62,6 +69,18 @@ New finding: **archived labels** (PRD D3). Open for M5: the API's response when 
   already exists (`DependencyRule.MaxUpdate`, `DependencyRule.cs:37`), so confirm the int case only.
 - The validation error from `BeforeSave` must show the row. Check how a `DependencyRule` error reports today.
 
+**Done 2026-10-24**, by code reading in ng-spark and Spark. The results are in PRD D2.
+
+- **Colour:** a `System.Drawing.Color` property with dataType `color`. `input-type.pipe.ts` maps it to
+  `<input type="color">` on the form and in an inline cell, and `spark-grid-cell.component.html:24-31` shows a swatch.
+  Spark stores `#rrggbb`. Nothing new is built, and hex validation goes away.
+- **`MinLines`:** an `int` inline cell renders as `<input type="number">`. Correction to this spike's own premise:
+  `DependencyRule.MaxUpdate` (`DependencyRule.cs:38`) is an **enum** (`EDependencyThreshold`), not an int, so it is the
+  precedent for `Mode` (a lookup, rendered as `bs-select`) and not for `MinLines`. No existing inline int was found,
+  but the number path is the same pipe the form uses.
+- **Row errors:** `SparkValidationException(message, "PrSizeLabelScale[i].MinLines")` lands on that cell
+  (`spark-po-form.component.ts:663-676`, `SparkAddOnEndpoints.cs:115-116`). M10 checks this in the browser.
+
 ### S4 — GitLab merge-request labels: in this PR or not (≤ 45 min, code reading)
 
 - Does `CodeCoverage.GitlabIntegration` already produce `PullRequestUpdated` for MR events, and does it have an
@@ -69,6 +88,10 @@ New finding: **archived labels** (PRD D3). Open for M5: the API's response when 
 - GitLab labels are project- or group-level, and `PUT /projects/:id/labels` renames.
 - Estimate the cost. If it is ≤ ½ day, it is in (M6b). Otherwise it goes into the PRD's Out of scope **with the
   reason**, not as a follow-up.
+
+**Done 2026-10-24: GitLab is out of scope** (PRD D8 and Out of scope). `CodeCoverage.GitlabIntegration` is an empty
+stage-1 stub that is not called from `Program.cs`. It has no client, no sign-in, no webhook normaliser and no
+`PullRequestUpdated`, so labels would carry the whole GitLab port. M6b is dropped.
 
 ### S5 — One writer per repository (≤ 30 min, code reading)
 
@@ -79,6 +102,16 @@ The applier (on `spark-forge-all`) and the reconciler both write `Repository.PrS
 - If not: optimistic concurrency (`session.Advanced.UseOptimisticConcurrency`) plus messaging retry. Check that a
   `ConcurrencyException` is retried, not dead-lettered.
 - Decide D9.
+
+**Done 2026-10-24**, by code reading in `libs/messaging`. The decision is in PRD D9.
+
+- There are no per-key lanes. There is one lane per `[MessageQueue]` name, with one strictly serial pump
+  (`MessageQueueRouter.cs:106-131`, `MaxConcurrency` default 1, and CodeCoverage sets none).
+- Both writers go on a dedicated queue, `spark-pr-size-labels`. The `spark-forge-all` recipient only republishes
+  `ApplyPrSizeLabelMessage` there. Sharing `spark-forge-all` was rejected: a paced account-wide reconcile would stall
+  every other forge event.
+- A failed handler, a `ConcurrencyException` included, is retried up to `MaxAttempts` = 5 (`SparkMessagingOptions.cs:40`).
+  Optimistic concurrency on the Repository save stays as a backstop.
 
 ## Grill — done 2026-10-23
 
@@ -161,7 +194,10 @@ feeds the check run (M6).
   6. In a `finally`, complete the check run **neutral**. On success the title is `size/M · 87 lines changed` and the
      breakdown table is capped at about 50 rows. On failure the title is "Size label not applied", with the reason.
 - Register it, and update `RegistrationInventoryTests` / `ForgeWebhookDocsTests`.
-- (M6b, only if S4 says so) GitLab.
+- Per S5 (PRD D9), the work above runs in `ApplyPrSizeLabelHandler` on queue `spark-pr-size-labels`. The
+  `IRecipient<ForgeWebhookMessage<PullRequestUpdated>>` on `spark-forge-all` only republishes
+  `ApplyPrSizeLabelMessage(RepositoryId, PrNumber, HeadSha, Additions, Deletions, ChangedFiles)`, and the reconciler
+  message uses the same queue. Pin the queue with `[MessageQueue]` on both message records.
 
 ### M7 — Settings-change fan-out and disable
 
@@ -216,6 +252,18 @@ feeds the check run (M6).
   handler, as `GitHubForgeMergeQueueTests` does) and `CoverageRavenTest` + `RecordingMessageBus` for the recipient, plus
   the ClientApp specs for the two guide pages. Run with the Developer licence (`RAVENDB_LICENSE`). Then push and let the
   PR's CI be the full sweep.
+- **Live test, locally.**
+  - Every repository in the owner's account has the CoverageDevelopment GitHub App installed, and its webhooks reach
+    a locally running CodeCoverage.
+  - Run the app (`dotnet run --launch-profile https`), turn the labeller on for the owner's account, create a scratch
+    repository, and open PRs against it.
+  - Watch the labels get created and applied, and the neutral "PR size" check run.
+  - This also settles what S1 could not measure through the UI:
+    - the API's response when adding an **archived** label
+    - the label-name limit through REST
+    - GraphQL file-listing time
+    - pacing on a scale change
+  - Delete the scratch repository afterwards. The owner confirms the sudo prompt.
 
 ## Test list (written during the milestones, run at M10)
 
@@ -223,7 +271,7 @@ feeds the check run (M6).
 |---|---|
 | Calculator | reference parity, `!` re-include, last-rule-wins, net-deletions floor at 0, >3 000 files fallback, repository rule after account rule, repository `!` overrides an account ignore, breakdown names the matching rule |
 | Scale | label boundaries on the pascalgn defaults (9/10, 999/1000), single-row scale, generated descriptions |
-| Validation | duplicate name (case), duplicate threshold, no 0 row, bad hex, 101-char description, enable with empty scale |
+| Validation | duplicate name (case), duplicate threshold, no 0 row, a colour with alpha is sent as 6 digits, 101-char description, the error lands on `PrSizeLabelScale[i].Col`, enable with empty scale |
 | Reconciler | create, adopt, rename keeps id, rename of a hand-deleted label → create, row removed → delete, user `size/foo` untouched, partial failure converges |
 | Recipient | off → no calls; Inherit/Enabled/Disabled × account on/off; already-correct label → no write; swap S→M removes S only; Bitbucket → no-op; archived target label → no label, neutral check run names it, no fallback label |
 | Check run | one neutral "PR size" run per head SHA; a retry updates it, never a second; a 403 completes it neutral with the reason; the breakdown is capped at 50 rows + "and N more" |

@@ -106,7 +106,14 @@ scale edits five numbers.
   - names are unique and case-insensitive, because GitHub label names are. Measured in S1: creating `size/m` while
     `size/M` exists fails with "Name has already been taken".
   - `MinLines` values are unique, and the smallest is `0` so every PR gets a label
-  - `Color` is 6 hex digits without `#` (GitHub's format)
+  - `Color` is a `System.Drawing.Color` with model dataType `color` (S3). ng-spark already renders it: a colour
+    input on the form and in an inline cell, and a swatch in the grid. Spark stores it as `#rrggbb`
+    (`ColorNewtonsoftJsonConverter`), so the input cannot hold a malformed value and there is no hex validation.
+    Alpha is ignored, and the GitHub implementation sends the 6 digits without `#`.
+  - every row error names its cell. `SparkValidationException(message, "PrSizeLabelScale[2].MinLines")` lands on
+    that inline cell, because the form's inline error path is `` `${attr}[${row}].${col}` ``
+    (`spark-po-form.component.ts:663-676`) and the 400 envelope carries the attribute name unchanged
+    (`SparkAddOnEndpoints.cs:115-116`).
   - the description is ≤ 100 characters. Measured in S1: 101 characters gives "Description is too long (maximum is
     100 characters)".
   - the name is ≤ **50 characters**. Measured in S1: GitHub's own label form has `maxlength=50` on the name. The REST
@@ -212,8 +219,27 @@ The account defaults are the reference's:
 
 Per-file data comes from GraphQL `pullRequest.files`, paged in full as the reference does. GitHub returns at most **3 000
 files**. When `changedFiles > 3000`, the remaining files are counted at their PR-level totals, which can only make the
-size larger, never smaller. `PullRequestUpdated` carries no additions, deletions or file counts (`ForgeEvents.cs:90-99`),
-so the applier always fetches (**S2**).
+size larger, never smaller.
+
+**S2 results (2026-10-24):**
+
+- **The webhook already has the totals.** Octokit.Webhooks 4.2.0's `PullRequest` exposes `Additions`, `Deletions` and
+  `ChangedFiles` (getters present in the DLL). `PullRequestUpdated` (`ForgeEvents.cs:90-99`) gains those three fields,
+  filled at `GitHubEventsRecipient.cs:464`. `ForgeEventContractTests` must cover them.
+- **Skipping the fetch.** Ignore rules can only lower the size, so the raw total `additions + deletions` is an upper
+  bound. When that bound already falls in the scale's lowest row, the applier labels without fetching any files. That
+  covers every small PR.
+- **Above 3 000 files,** the applier uses the totals as the fallback above, also without listing.
+- **The fetch cost is real:**
+  - Measured: listing PR #529 (2 862 files) through REST `/pulls/529/files?per_page=100` took **29 pages, 19.8 s**,
+    with the slowest page at 1.0 s.
+  - The summed additions and deletions matched the PR's totals exactly (255 280 / 12 788), so nothing was truncated
+    below the cap.
+  - REST pages carry each file's `patch`, which a size count never reads. The applier therefore uses
+    **GraphQL** `pullRequest.files(first: 100)`, which returns only `path`, `additions` and `deletions`.
+  - Octokit.GraphQL 0.4.0-beta has `PullRequest.Files(...)` and `PullRequestChangedFile.{Path, Additions, Deletions}`,
+    and it runs on the existing `CreateGraphQLConnectionAsync` (used at `GitHubAvatarResolver.cs:60`).
+  - GraphQL's own timing was not measured, because the browser has no token. M10's local live test measures it.
 
 ### D6 — Exactly one size label per PR, and it is idempotent
 
@@ -251,21 +277,44 @@ already do.
 - Precedent: `DependencyUpdateEngine.PublishOwnCheckAsync` (`:1872`) publishes its own in-progress check runs the same
   way.
 
-### D8 — Behind the forge abstraction; GitHub first, GitLab if S4 is cheap
+### D8 — Behind the forge abstraction; GitHub only (S4)
 
 The new `EForgeCapability.PullRequestLabels` comes with `IForgeLabels` (list/create/update/delete label definitions,
 list PR labels, add/remove, list PR files with line counts).
 
 - **GitHub** implements it.
 - **Bitbucket Cloud has no PR labels.** It declares no capability, and the setting is shown disabled with that reason.
-- **GitLab** has merge-request labels. Spike **S4** decides whether it lands in this PR. It is either in, or recorded in
-  Out of scope as not being done, and never parked as a follow-up.
+- **GitLab is not in this PR (S4).** GitLab has merge-request labels, but the app has no GitLab forge to put them on.
+  `CodeCoverage.GitlabIntegration` is a stage-1 stub: `AddGitlabIntegration` registers nothing and is deliberately not
+  called from `Program.cs` (`Extensions/SparkBuilderExtensions.cs`). There is no sign-in, no API client, no webhook
+  normaliser and no `PullRequestUpdated` from a merge request. Labels would be the first GitLab feature, so they would
+  carry the whole port, which is far over S4's half day. `IForgeLabels` keeps the seam forge-neutral, so the GitLab port
+  implements it when it lands.
 
-### D9 — One writer per repository
+### D9 — One writer per repository: a dedicated serial lane (S5)
 
 The PR applier and the reconciler both write a repository's label state. Two `synchronize` events, or a settings save
-that lands during a push, would race on `PrSizeLabelState`. RavenDB optimistic concurrency on the Repository save plus
-the messaging retry is the default. Spike **S5** checks whether a per-repository messaging lane is cheaper and clearer.
+that lands during a push, would race on `PrSizeLabelState`. There is a GitHub-side race too: if a reconcile renames
+`size/M` while an applier adds `size/M`, GitHub's add-labels call creates a fresh `size/M` next to the renamed one.
+
+**Decision: both writers run on one dedicated queue, `spark-pr-size-labels`.** S5 found what makes this sound, by code
+reading:
+
+- Spark messaging has **no per-key lanes**. It has one lane per queue name (`[MessageQueue]`), drained by **one
+  strictly serial pump** unless the queue sets `MaxConcurrency` > 1 (`MessageQueueRouter.cs:106-131`, default 1).
+  CodeCoverage configures no queue options, so every queue it uses is FIFO.
+- `ForgeWebhookMessage<T>` is pinned to `spark-forge-all`, so the applier cannot move off that lane. Its recipient
+  therefore only **republishes** an `ApplyPrSizeLabelMessage(RepositoryId, PrNumber, HeadSha, totals)` to
+  `spark-pr-size-labels`. That is the pattern `ForgeEventsRecipient` already uses with its injected `IMessageBus`.
+  `ReconcilePrSizeLabelsMessage` (D4) goes to the same queue.
+- This rejected option is recorded so it is not re-proposed: putting the reconciler on `spark-forge-all`. It would also
+  serialise the writers, but an account-wide reconcile is paced to GitHub's documented limits (D4.2). Fifty
+  repositories at six labels each is several minutes, during which coverage comments, merge-queue and branch events
+  would all wait behind it.
+- Optimistic concurrency on the Repository save stays as the second line of defence, in case some other code ever saves
+  the Repository document. A `ConcurrencyException` makes the handler throw, and the bus retries it up to `MaxAttempts`
+  (5 by default, `SparkMessagingOptions.cs:40`) before dead-lettering. The reconciler is idempotent against
+  `PrSizeLabelState`, so a retry is safe.
 
 ### D10 — A Guides page for size labels, plus the missing coverage-uploads guide (owner, 2026-10-23)
 
@@ -339,6 +388,8 @@ The following are genuinely not being done:
 - **Ignore rules in `coverage.yml`.** A repository-file source for configuration is a different mechanism; the repository's own rules (D5) are
   the in-app alternative.
 - **Bitbucket.** The forge has no PR labels.
+- **GitLab.** The app has no working GitLab forge yet (D8, S4). This is not deferred: there is nothing to attach labels
+  to until the GitLab port exists, and that port is its own work.
 - **cbrgm's extras:** a file-count threshold next to the line threshold, several labels per size (`pairing-wanted`), and
   `added_lines_only`. Ignore-additions rows cover the useful part of the last one.
 
