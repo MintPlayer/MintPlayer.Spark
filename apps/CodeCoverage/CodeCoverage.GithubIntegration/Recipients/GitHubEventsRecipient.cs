@@ -502,10 +502,22 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
         var action = Text(root, "action");
         if (action is not ("labeled" or "unlabeled" or "closed")) return false;
         if (action == "closed" && Child(root, "pull_request") is { } closed && Flag(closed, "merged"))
+        {
+            await OnMergedWithBackportLabelsAsync(root, closed, ct);
             return false; // the merged close is PullRequestMerged, raised by OnPullRequest
+        }
 
         if (await LoadKnownRepositoryIdAsync(root, ct) is not { } repositoryId) return true;
         if (Child(root, "pull_request") is not { } pull || Number(pull, "number") is not { } number) return true;
+
+        // #153 D10: a backport label added to a pull request that already merged asks for the backport now; one on an open
+        // pull request waits for the merge, which reads the labels it carries.
+        if (action == "labeled" && Flag(pull, "merged") && Child(root, "label") is { } added && BackportCommand.FromLabel(Text(added, "name")) is { } labelled)
+        {
+            if (HumanSender(root) is { } requester)
+                await RaiseAsync(new BackportRequested(repositoryId, (int)number, [labelled], requester, EBackportSource.Label), ct);
+            return true;
+        }
 
         if (action == "closed")
         {
@@ -523,6 +535,21 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
             action == "labeled" ? EMergeQueueCommand.Enqueue : EMergeQueueCommand.Dequeue,
             actor, EMergeQueueCommandSource.Label, labelName), ct);
         return true;
+    }
+
+    /// <summary>
+    /// #153 D10: the backport labels a pull request carried as it merged. The actor is the sender, who merged it, and may be
+    /// a bot (this App's merge queue): the request was made by whoever applied the label, and the merge itself needed write
+    /// access, so the recipient does not check the role of a merge-time request.
+    /// </summary>
+    private async Task OnMergedWithBackportLabelsAsync(JsonElement root, JsonElement pull, CancellationToken ct)
+    {
+        if (!pull.TryGetProperty("labels", out var labels) || labels.ValueKind != JsonValueKind.Array) return;
+        var lines = BackportCommand.FromLabels(labels.EnumerateArray().Select(l => l.ValueKind == JsonValueKind.Object ? Text(l, "name") : null));
+        if (lines.Count == 0 || Number(pull, "number") is not { } number) return;
+        if (Child(root, "sender") is not { } sender || Text(sender, "login") is not { Length: > 0 } merger) return;
+        if (await LoadKnownRepositoryIdAsync(root, ct) is not { } repositoryId) return;
+        await RaiseAsync(new BackportRequested(repositoryId, (int)number, lines, merger, EBackportSource.Merge), ct);
     }
 
     /// <summary>
@@ -546,11 +573,18 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
         };
         // The dependency updater's commands (§7.5): the first word of a new comment, by a person (gap E), never the App.
         var dependencyCommand = command is null ? DependencyCommandParser.Parse(body) : null;
-        if (command is null && dependencyCommand is null) return;
+        // #153 D10: /backport 8.x 9.x, by a person; the recipient checks the role and that the pull request merged.
+        var backport = command is null && dependencyCommand is null ? BackportCommand.FromComment(body) : null;
+        if (command is null && dependencyCommand is null && backport is null) return;
         if (IsOurApp(comment) || HumanSender(root) is not { } actor) return;
         if (Child(comment, "user") is { } author && (Text(author, "type") == "Bot" || Text(author, "login")?.EndsWith("[bot]", StringComparison.Ordinal) == true)) return;
         if (await LoadKnownRepositoryIdAsync(root, ct) is not { } repositoryId) return;
 
+        if (backport is not null)
+        {
+            await RaiseAsync(new BackportRequested(repositoryId, (int)number, backport, actor, EBackportSource.Comment), ct);
+            return;
+        }
         if (dependencyCommand is { } dependency)
         {
             if (Number(comment, "id") is not { } commentId) return;

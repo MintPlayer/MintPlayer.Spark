@@ -92,3 +92,64 @@ internal sealed partial class GitWriterVersioningRunEndpoint : IPostEndpoint<Ver
     private static bool IsPattern(string? pattern)
         => pattern is { Length: > 0 } && pattern.Length <= Limits.MaxGlobLength && !pattern.Any(c => char.IsControl(c) || char.IsWhiteSpace(c));
 }
+
+/// <summary><c>POST /jobs/versioning/backport</c>: apply a merged pull request to release branches (#153 M10, D10).</summary>
+internal sealed partial class GitWriterVersioningBackportEndpoint : IPostEndpoint<VersioningBackportRequestWire>
+{
+    public const int MaxTargets = 10;
+    public const int MaxSubjects = 250;
+    public const int MaxTitle = 256;
+    public const string HeadPrefix = "backport/";
+    public const string PullRequestRule = "a pull request number above 0";
+    public static readonly string TitleRule = $"1 to {MaxTitle} characters, no control characters";
+    public static readonly string SubjectsRule = $"at most {MaxSubjects} commit subjects of 1 to {MaxTitle} characters, no control characters";
+    public static readonly string TargetsRule = $"1 to {MaxTargets} targets with distinct branches and heads, none the source branch, every head a branch under {HeadPrefix}";
+
+    public static string Path => "/jobs/versioning/backport";
+
+    [Inject] private readonly BackportService backports;
+    [Inject] private readonly IOptions<GitWriterOptions> options;
+
+    protected override async ValueTask<VersioningBackportRequestWire?> BindRequestAsync(HttpContext context)
+        => await Body.ReadAsync<VersioningBackportRequestWire>(context.Request.Body, context.Request.ContentLength, Body.SmallBytes, context.RequestAborted);
+
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure) => new(Refusal.Body(Body.SmallBytes));
+
+    public override async Task<IResult> HandleAsync(VersioningBackportRequestWire request, CancellationToken cancellationToken)
+    {
+        var refusal = new Refusal();
+        if (!refusal.Check(WireValidation.IsRepo(request.Provider, request.RepoId), "repoId", WireValidation.RepoRule)
+            || refusal.Check(WireValidation.RemoteUrl(request.CloneUrl, options.Value.AllowInsecureHttp), "cloneUrl", WireValidation.RemoteUrlRule) is not { } cloneUrl
+            || refusal.Check(WireValidation.Credential(request.Credential), "credential", WireValidation.CredentialRule) is not { } credential
+            || refusal.Check(WireValidation.Branch(request.SourceBranch), "sourceBranch", MergeQueueWireRules.BranchRule) is not { } source
+            || refusal.Check(WireValidation.ObjectId(request.Commit), "commit", WireValidation.ShaRule) is not { } commit
+            || !refusal.Check(request.PullRequest > 0, "pullRequest", PullRequestRule)
+            || refusal.Check(IsLine(request.Title) ? request.Title : null, "title", TitleRule) is not { } title
+            || refusal.Check(request.Subjects is null or { Count: <= MaxSubjects } && (request.Subjects ?? []).All(IsLine) ? request.Subjects ?? [] : null, "subjects", SubjectsRule) is not { } subjects
+            || refusal.Check(Committer(request.Committer), "committer", MergeQueueWireRules.IdentityRule) is not { } committer
+            || refusal.Check(Targets(request.Targets, source), "targets", TargetsRule) is not { } targets)
+            return refusal.Result();
+
+        return Results.Json(await backports.RunAsync(new BackportJob($"{request.Provider}/{request.RepoId}", cloneUrl, credential, source, commit, request.PullRequest,
+            title, subjects, committer, targets)), GitWriterHost.Json);
+    }
+
+    private static bool IsLine(string? value) => value is { Length: > 0 and <= MaxTitle } && !value.Any(char.IsControl);
+
+    private static GitIdentity? Committer(IdentityWire? wire)
+        => wire is not null && MergeQueueWireRules.IsIdentity(wire.Name, wire.Email) ? new GitIdentity(wire.Name!, wire.Email!) : null;
+
+    internal static List<(string Branch, string Head)>? Targets(List<BackportTargetWire>? wires, string source)
+    {
+        if (wires is not { Count: > 0 and <= MaxTargets }) return null;
+        var targets = new List<(string Branch, string Head)>();
+        foreach (var wire in wires)
+        {
+            if (WireValidation.Branch(wire.Branch) is not { } branch || WireValidation.Branch(wire.Head) is not { } head) return null;
+            if (branch == source || !head.StartsWith(HeadPrefix, StringComparison.Ordinal) || head.Length == HeadPrefix.Length) return null;
+            targets.Add((branch, head));
+        }
+        var distinct = targets.Select(t => t.Branch).Concat(targets.Select(t => t.Head)).Distinct(StringComparer.Ordinal).Count() == targets.Count * 2;
+        return distinct ? targets : null;
+    }
+}

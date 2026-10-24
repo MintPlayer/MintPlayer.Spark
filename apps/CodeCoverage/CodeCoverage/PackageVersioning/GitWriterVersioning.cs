@@ -36,3 +36,26 @@ public sealed record GitWriterPackageNote(string Id, string Reason);
 
 /// <summary>A release branch a platform major move asks for (D12): <see cref="Branch"/> at the release commit's first parent.</summary>
 public sealed record GitWriterBranchCut(string Branch, int Major, string Commit, IReadOnlyList<string>? Packages, int? PullRequest);
+
+/// <summary><c>POST jobs/versioning/backport</c> (#153 M10, D10): the merged pull request applied to release branches.</summary>
+public sealed record GitWriterBackportRequest(
+    string Provider, string RepoId, string CloneUrl, SidecarCredential Credential, string SourceBranch, string Commit, int PullRequest, string Title,
+    IReadOnlyList<string> Subjects, GitWriterTagger Committer, IReadOnlyList<GitWriterBackportTarget> Targets);
+
+public sealed record GitWriterBackportTarget(string Branch, string Head);
+
+/// <summary>The writer's answer. <see cref="Conflicted"/> means no target was pushed.</summary>
+public sealed record GitWriterBackportResult(
+    string Outcome, string? Reason, string? Mode, string? Base, IReadOnlyList<GitWriterBackportTargetResult>? Targets, string? Detail, long DurationMs)
+{
+    public const string Backported = "backported";
+    public const string Conflicted = "conflicted";
+}
+
+/// <param name="Push"><c>created</c>, <c>exists</c>, <c>empty</c> (the line already holds the change) or <c>rejected</c>.</param>
+public sealed record GitWriterBackportTargetResult(string Branch, string Head, string? Commit, string? Push, IReadOnlyList<string>? Conflicts, string? Detail = null)
+{
+    public const string Created = "created";
+    public const string Exists = "exists";
+    public const string Empty = "empty";
+}

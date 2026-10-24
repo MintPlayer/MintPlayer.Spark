@@ -7,7 +7,7 @@ MintPlayer repositories (PRD D17).
 ## Status
 
 2026-10-24: grilled (Q1–Q14 → D1–D17). Spikes S1–S4, S7, S8 run; S5 and S6 answered from GitHub's documented
-behaviour and confirmed in the M16 live test (both need a real workflow run on GitHub). M1–M9 committed; M10 next.
+behaviour and confirmed in the M16 live test (both need a real workflow run on GitHub). M1–M10 committed; M11 next.
 Every test written so far runs once, in M16.
 
 ## Spike results
@@ -163,6 +163,35 @@ M7 (versioning action):
   (`cutReleaseBranches`, `cutComment`).
 - **No branch protection is set.** Only a ruleset matching `release/*` protects the branch; the docs (M15)
   advise one, and the comment says so.
+- **M10: backports are app-only, in both modes.** Labels and comments arrive as webhooks, so there is no local
+  host for them; `mode: local` repositories get backports as long as the app is installed. Three triggers raise
+  one `BackportRequested` event (`EBackportSource`): the `backport:` labels a pull request carries when it merges,
+  a `backport:` label added to an already-merged pull request, and a `/backport <line> …` comment. The parser
+  (`BackportCommand`) takes at most 10 lines of `[A-Za-z0-9._/-]{1,100}`, and only from a comment's first line.
+  Evidence: `BackportTests` (CodeCoverage.Tests: label and comment parsing).
+- **Who may ask:** a label or comment needs write access, read from the forge per request as the merge queue does
+  (T1). Labels present at merge need no check: the merge needed write access. A comment on an open pull request is
+  answered with "add the label and it runs on merge"; a label on an open pull request waits silently for the
+  merge. Evidence: `BackportRecipientTests` (Triage refused, Merge accepted).
+- **A line is resolved only through `versioning.releaseBranches` on the default branch.** A major or `N.x` names
+  the branch the way a cut names it (`ReleaseBranchCuts.NameFor`); a branch name must match a pattern; the branch
+  must exist. One unknown line refuses the whole request before the writer is reached, so a typo never produces a
+  partial backport. The base the pull request merged into is skipped. Evidence: `BackportTests.A_line_resolves_…`,
+  `BackportRecipientTests.A_line_naming_no_release_branch_…`.
+- **The writer uses plumbing, not `RollingBranchReplay` (S8).** `BackportService` reads the merged commit's mode:
+  2+ parents is a merge (base = first parent); a run of single-parent commits whose subjects equal the pull
+  request's commit subjects is a rebase merge (base = the run's parent); anything else is a squash. Each target
+  is merged in memory with `merge-tree --write-tree --merge-base=<base> <tip> <commit>`. **Any conflict on any
+  target pushes nothing**; the comment names the files per line and the manual `git switch` + `git cherry-pick -x`
+  (`-m 1` for a merge, `<base>..<commit>` for a rebase). When all apply, each target gets one commit
+  (`commit-tree -p <tip>`, the original author, the versioning committer, a `(cherry picked from commit …)`
+  trailer per original commit) pushed to `backport/<pr>-<line>` without force, and the app opens
+  `[N.x] <title>`. CI on that pull request is the compile check against the line's platform. A head that exists is
+  "exists" (never overwritten); a line whose tree already equals the result is "empty" and gets no branch.
+  Evidence: `CodeCoverage.GitWriter.Tests/BackportTests` (squash on two lines, one conflicting of two pushes
+  nothing, rebase run as one commit, already-applied line, malformed requests refused with 400).
+- **The endpoint re-validates everything:** 1–10 targets, heads under `backport/`, no target equal to the source,
+  distinct branches and heads, a 40-hex commit, a single-line title of at most 256 characters.
 
 ## Spikes
 
