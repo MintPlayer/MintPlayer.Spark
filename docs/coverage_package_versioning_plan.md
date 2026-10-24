@@ -7,7 +7,7 @@ MintPlayer repositories (PRD D17).
 ## Status
 
 2026-10-24: grilled (Q1–Q14 → D1–D17). Spikes S1–S4, S7, S8 run; S5 and S6 answered from GitHub's documented
-behaviour and confirmed in the M16 live test (both need a real workflow run on GitHub). M1–M11 committed; M12 next.
+behaviour and confirmed in the M16 live test (both need a real workflow run on GitHub). M1–M12 committed; M13 next.
 Every test written so far runs once, in M16.
 
 ## Spike results
@@ -213,6 +213,22 @@ M7 (versioning action):
   dispatches nothing. A plan that could not be made (busy, no writer access, unplannable commit) dispatches nothing
   and is logged; the next push plans again. Evidence: `DispatchRecipientTests.A_merge_that_changes_no_package_…`
   (no dispatch, access revoked) and `…_changes_a_package_dispatches_…` (`publish.yml` on `release/8.x`, major 8).
+- **M12: D16 hides the policies, it does not explain them.** `VersioningForm.Shape` sets `ShowedOn = None` and
+  `IsReadOnly` on `PrTitleCorrection`, `ReleaseOnTag` and `AutoCutReleaseBranches` when no `IForgeVersioning` serves
+  the account's or repository's provider. `ShowedOn` alone is layout only (Spark still validates and writes a field
+  it does not draw), hence the pair. Unlike the PR size labeller (#527 D8) there is no "unavailable" text: D16 says
+  the UI is hidden elsewhere. The policies are protected settings automatically (deny by default in
+  `OwnerSettings`), and are now classified in `OwnerPrivacyEndToEndTests` and `ConnectionStateIsReadOnlyTests`.
+  Evidence: `VersioningFormTests` (both ways) and
+  `OwnerPrivacyEndToEndTests.The_versioning_policies_round_trip_through_the_account_and_repository_pages`.
+- **The history builds no index (D-O22).** `VersioningRun` is a read-only Spark entity with a context root, and the
+  repository page shows it through `Custom.Repository_VersioningRuns`, which streams the repository's id prefix
+  `VersioningRuns/<provider>/<repo id>/` (the trailing slash keeps repository 71010 out of 7101's stream). The query
+  is named `GetVersioningRuns`: model sync mints a `Database.VersioningRuns` query, which would build an auto index,
+  for every root unless a query of that name exists. Read is `QueryRead/VersioningRun` for everyone, narrowed to
+  visible repositories by the row filter, as for commits; the nested lists are `[IgnoreProperty]` and shown as the
+  `Tags` and `RefusedPackages` summaries. Evidence: `ReadRowFilterTests.Repository_VersioningRuns_…` (parent-scoped,
+  newest first, wrong parent type refused); the model sync run left `VersioningRun.json` unchanged.
 
 ## Spikes
 

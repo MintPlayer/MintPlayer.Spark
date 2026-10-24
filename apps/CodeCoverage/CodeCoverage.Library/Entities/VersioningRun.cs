@@ -1,4 +1,5 @@
 using CodeCoverage.Forge;
+using MintPlayer.Spark.Abstractions;
 
 namespace CodeCoverage.Entities;
 
@@ -12,7 +13,11 @@ namespace CodeCoverage.Entities;
 /// (no query, so no RQL to splice into). A retried request of the same attempt overwrites its record: the engine is
 /// idempotent, so the second answer is the one that holds.
 /// </para>
-/// <para>Not a Spark entity: nothing here is edited through the generic UI.</para>
+/// <para>
+/// A read-only Spark entity since M12 (D16): the repository page lists its runs through <c>Custom.Repository_VersioningRuns</c>,
+/// which streams this repository's id prefix, so no index is built. The nested lists stay out of the model; the page shows
+/// them as the <see cref="Tags"/> and <see cref="RefusedPackages"/> summaries.
+/// </para>
 /// </remarks>
 public class VersioningRun
 {
@@ -20,11 +25,16 @@ public class VersioningRun
     public const int MaxNotes = 500;
 
     public static string DocumentId(EForgeProvider provider, long repositoryId, long runId, int runAttempt)
-        => $"{Prefix}{provider.ToString().ToLowerInvariant()}/{repositoryId}/{runId}.{runAttempt}";
+        => $"{ForRepository(provider, repositoryId)}{runId}.{runAttempt}";
+
+    /// <summary>The id prefix every run of one repository shares.</summary>
+    public static string ForRepository(EForgeProvider provider, long repositoryId)
+        => $"{Prefix}{provider.ToString().ToLowerInvariant()}/{repositoryId}/";
 
     public string? Id { get; set; }
 
     /// <summary>The <see cref="Entities.Repository"/> document id.</summary>
+    [Reference(typeof(Repository))]
     public string Repository { get; set; } = string.Empty;
 
     public string Branch { get; set; } = string.Empty;
@@ -47,17 +57,29 @@ public class VersioningRun
 
     public string? Reason { get; set; }
 
+    /// <summary>The writer's diagnostic text; kept for the operators, not drawn on the page.</summary>
+    [IgnoreProperty]
     public string? Detail { get; set; }
 
+    [IgnoreProperty]
     public List<VersioningRunRelease> Releases { get; set; } = [];
 
+    [IgnoreProperty]
     public List<VersioningRunNote> Refused { get; set; } = [];
+
+    /// <summary>The tags this run placed or found, for the repository page.</summary>
+    public string Tags => string.Join(", ", Releases.Select(r => r.Tag).Where(t => t.Length > 0));
+
+    /// <summary>The packages the plan refused, for the repository page.</summary>
+    public string RefusedPackages => string.Join(", ", Refused.Select(r => r.Id));
 
     public int Skipped { get; set; }
 
+    [IgnoreProperty]
     public List<string> Warnings { get; set; } = [];
 
     /// <summary>The release branches a platform major move asks for (D12), created behind the auto-cut policy.</summary>
+    [IgnoreProperty]
     public List<VersioningRunBranchCut> BranchCuts { get; set; } = [];
 }
 

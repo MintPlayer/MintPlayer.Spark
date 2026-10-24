@@ -515,7 +515,8 @@
       }
     ],
     "queries": [
-      "repository-commits"
+      "repository-commits",
+      "repository-versioning-runs"
     ]
   },
   "queries": [

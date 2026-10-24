@@ -36,6 +36,7 @@ public partial class RepositoryActions : DefaultPersistentObjectActions<Reposito
     [Inject] private readonly MintPlayer.Spark.Messaging.Abstractions.IMessageBus messageBus;
     [Inject] private readonly IManager manager;
     [Inject] private readonly IEnumerable<CodeCoverage.Forge.IForgeLabels> labels;
+    [Inject] private readonly IEnumerable<CodeCoverage.Forge.IForgeVersioning> versioning;
 
     /// <summary>
     /// Opens the embedded gate in the shape its mode calls for (#264, G-Q3): a <c>fixed</c> gate
@@ -78,6 +79,10 @@ public partial class RepositoryActions : DefaultPersistentObjectActions<Reposito
             PrSize.PrSizeLabelForm.ShapeRepository(po, repository, account, labels.Any(l => l.Provider == repository.Provider),
                 key => manager.GetTranslatedMessage(key));
         }
+
+        // #153 D16: a forge without versioning draws none of its policies.
+        if (po is not null && await session.LoadAsync<Repository>(id) is { } versioned)
+            PackageVersioning.VersioningForm.Shape(po, versioning.Any(v => v.Provider == versioned.Provider));
         return po;
     }
 

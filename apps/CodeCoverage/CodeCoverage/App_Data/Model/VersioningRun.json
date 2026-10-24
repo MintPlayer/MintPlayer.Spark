@@ -1,0 +1,175 @@
+{
+  "$schema": "https://schemas.spark.mintplayer.com/v8/model.schema.json",
+  "persistentObject": {
+    "id": "52d0ba95-e86c-4cef-81c0-38cadd6cd8aa",
+    "name": "VersioningRun",
+    "clrType": "CodeCoverage.Entities.VersioningRun",
+    "breadcrumb": "{Branch} {Commit}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "7e065c11-8d4b-4fff-91dd-28a88d3bb2ab",
+        "name": "Branch",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "c0828434-6bba-4735-ac9c-51bbc9e26e80",
+        "name": "Commit",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "7af3fd19-0542-4037-9b03-955b7ffb41b7",
+        "name": "FinishedAtUtc",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 9,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "a410bfa7-948f-4818-adcb-ba54f9e52cc7",
+        "name": "Outcome",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "c12c241d-1d4d-4c16-891d-0d49f99c9df3",
+        "name": "Reason",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "f0e45ad9-7568-4bd2-bd16-a5dfe3f1b975",
+        "name": "RefusedPackages",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "2e80d3ee-4f1d-422b-aa3b-7c79d3c09269",
+        "name": "Repository",
+        "dataType": "Reference",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 13,
+        "query": "GetRepositories",
+        "referenceType": "CodeCoverage.Entities.Repository",
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "852394a1-b2f7-4c56-9f0d-f5f54842b030",
+        "name": "RunAttempt",
+        "dataType": "number",
+        "isRequired": true,
+        "isReadOnly": true,
+        "order": 11,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "90f002c6-3661-46bf-911a-847dae8f97a5",
+        "name": "RunId",
+        "dataType": "number",
+        "isRequired": true,
+        "isReadOnly": true,
+        "order": 10,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "9975dc69-a78a-44f3-b966-45a8b07badea",
+        "name": "Skipped",
+        "dataType": "number",
+        "isRequired": true,
+        "isReadOnly": true,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "6c42ba1f-8d13-4126-bacd-466a5d33a2d3",
+        "name": "StartedAtUtc",
+        "dataType": "datetime",
+        "isRequired": true,
+        "isReadOnly": true,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "a911e9fe-c93c-475a-b6a2-b0ec7ad716f9",
+        "name": "Tags",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "0f902fca-08fd-46bc-b261-e94c05cf9a23",
+        "name": "WorkflowRef",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 12,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": [
+    {
+      "id": "efe5cbc8-6a7b-4b53-a9be-7f3576757b69",
+      "name": "GetVersioningRuns",
+      "source": "Custom.Repository_VersioningRuns",
+      "alias": "repository-versioning-runs",
+      "sortColumns": [
+        {
+          "property": "StartedAtUtc",
+          "direction": "desc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "VersioningRun"
+    }
+  ]
+}

@@ -3360,6 +3360,25 @@
         "fr": "Miroir",
         "nl": "Mirror"
       }
+    },
+    "VersioningRun": {
+      "attributes": {
+        "Outcome": {
+          "description": {
+            "en": "The git writer's outcome (versioned, plan-refused, failed, …), or the app's own refusal."
+          }
+        },
+        "Repository": {
+          "description": {
+            "en": "The Repository document id."
+          }
+        },
+        "WorkflowRef": {
+          "description": {
+            "en": "The token's workflow_ref (S6): which workflow asked for the tags."
+          }
+        }
+      }
     }
   },
   "prSizeLabelsUi": {

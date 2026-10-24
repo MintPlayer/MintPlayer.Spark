@@ -14,11 +14,13 @@ Query/Build
 Query/Commit
 Query/Home
 Query/Repository
+Query/VersioningRun
 Read/Account
 Read/Build
 Read/Commit
 Read/Home
 Read/Repository
+Read/VersioningRun
 
 ## Granted to @anonymous
 Anonymous visitors | grant | Browse/Coverage | c0e5a9e1-0000-4000-8000-000000000021 | app
@@ -31,6 +33,7 @@ Anonymous visitors | deny | QueryRead/Home/RepoCount | c0e5a9e1-0000-4000-8000-0
 Anonymous visitors | grant | QueryRead/Repository | c0e5a9e1-0000-4000-8000-000000000002 | app
 Anonymous visitors | deny | QueryRead/Repository/OwnerKey | c0e5a9e1-0000-4000-8000-000000000083 | app
 Anonymous visitors | deny | QueryRead/Repository/PreviousFullNames | c0e5a9e1-0000-4000-8000-000000000085 | app
+Anonymous visitors | grant | QueryRead/VersioningRun | c0e5a9e1-0000-4000-8000-0000000000a7 | app
 Anonymous visitors | grant | Read/Home | c0e5a9e1-0000-4000-8000-000000000041 | app
 
 ## Rights
@@ -58,6 +61,7 @@ Signed-in users | grant | QueryRead/ProjectColumn | c0e5a9e1-0000-4000-8000-0000
 Signed-in users | grant | QueryRead/Repository | c0e5a9e1-0000-4000-8000-000000000012 | app
 Signed-in users | deny | QueryRead/Repository/OwnerKey | c0e5a9e1-0000-4000-8000-000000000084 | app
 Signed-in users | deny | QueryRead/Repository/PreviousFullNames | c0e5a9e1-0000-4000-8000-000000000086 | app
+Signed-in users | grant | QueryRead/VersioningRun | c0e5a9e1-0000-4000-8000-0000000000a8 | app
 Signed-in users | grant | QueryReadEditNew/ApiToken | c0e5a9e1-0000-4000-8000-000000000069 | app
 Signed-in users | grant | QueryReadEditNewDelete/DependencyRule | c0e5a9e1-0000-4000-8000-000000000094 | app
 Signed-in users | grant | QueryReadEditNewDelete/EventColumnMapping | c0e5a9e1-0000-4000-8000-000000000066 | app
