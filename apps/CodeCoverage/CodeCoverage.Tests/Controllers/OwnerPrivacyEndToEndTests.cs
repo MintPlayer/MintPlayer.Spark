@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using MintPlayer.Spark.Testing;
 using MintPlayer.Spark.Authorization.Identity;
 using MintPlayer.Spark.Services;
 using Raven.Client.Documents;
@@ -453,9 +454,17 @@ public class OwnerPrivacyEndToEndTests(OwnerPrivacyHostFixture host) : IClassFix
 /// The application with a scripted owner set per caller, signed in by header, and one administrator by forge id: acme
 /// (an organization with every owner-only setting filled with a findable value), its public repository <c>open</c> and its
 /// private repository <c>secret</c>.
+/// <para>
+/// On <see cref="SparkTestDriver"/>, whose store carries Spark's conventions, as the host's does: the host reads what the
+/// tests write to its database. Without them a <see cref="System.Drawing.Color"/> is stored as <c>"0, 153, 0"</c>, which
+/// the host's <c>#rrggbb</c> converter cannot read.
+/// </para>
 /// </summary>
-public sealed class OwnerPrivacyHostFixture : CoverageRavenTest, IAsyncLifetime
+public sealed class OwnerPrivacyHostFixture : SparkTestDriver
 {
+    // Like CoverageRavenTest: fork pull requests get no licence, and nothing here needs a licensed feature.
+    protected override bool RequireLicense => false;
+
     public const string OwnerUserId = "SparkUsers/privacy-owner";
     public const string StrangerUserId = "SparkUsers/privacy-stranger";
     public const string AdminUserId = "SparkUsers/privacy-admin";
@@ -478,7 +487,7 @@ public sealed class OwnerPrivacyHostFixture : CoverageRavenTest, IAsyncLifetime
     public const string RepositoryCheckMarker = "privacy-marker-repository-check";
     public const string BadgeTokenMarker = "privacy-marker-badge-token";
 
-    public IDocumentStore Store { get; private set; } = null!;
+    public new IDocumentStore Store => base.Store;
     public CoverageWebAppFactory Factory { get; private set; } = null!;
 
     public string AccountId { get; } = Account.DocumentId(EForgeProvider.GitHub, 5);
@@ -491,19 +500,9 @@ public sealed class OwnerPrivacyHostFixture : CoverageRavenTest, IAsyncLifetime
     public string OtherAccountId { get; } = Account.DocumentId(EForgeProvider.GitHub, 6);
     public string[] OtherRepositoryIds { get; } = [Repository.DocumentId(EForgeProvider.GitHub, 4701), Repository.DocumentId(EForgeProvider.GitHub, 4702)];
 
-    /// <summary>
-    /// The host reads what the tests write to its database, so the tests' store serializes as the host's does. Without it a
-    /// <see cref="System.Drawing.Color"/> is stored as <c>"0, 153, 0"</c>, which the host's <c>#rrggbb</c> converter cannot read.
-    /// </summary>
-    protected override void PreInitialize(IDocumentStore documentStore)
+    public override async Task InitializeAsync()
     {
-        MintPlayer.Spark.SparkStoreConfiguration.ApplySparkConventions(documentStore);
-        base.PreInitialize(documentStore);
-    }
-
-    public async Task InitializeAsync()
-    {
-        Store = GetDocumentStore();
+        await base.InitializeAsync();
         Factory = new CoverageWebAppFactory(Store, services =>
         {
             services.AddSingleton<IStartupFilter, TestPrincipalStartupFilter>();
@@ -560,7 +559,7 @@ public sealed class OwnerPrivacyHostFixture : CoverageRavenTest, IAsyncLifetime
                 }, Repository.DocumentId(EForgeProvider.GitHub, id));
             await session.SaveChangesAsync();
         }
-        WaitForIndexing(Store);
+        await Store.WaitForIndexingAsync();
     }
 
     private Repository Repo(long id, string name, bool isPrivate) => new()
@@ -640,12 +639,12 @@ public sealed class OwnerPrivacyHostFixture : CoverageRavenTest, IAsyncLifetime
         }
     }
 
-    public new async Task DisposeAsync()
+    public override async Task DisposeAsync()
     {
         try { await Factory.DisposeAsync(); }
         catch (Exception ex) { Console.WriteLine($"[OwnerPrivacyHostFixture] host disposal faulted: {ex}"); }
 
-        try { Store?.Dispose(); }
+        try { await base.DisposeAsync(); }
         catch (Exception ex) { Console.WriteLine($"[OwnerPrivacyHostFixture] store disposal faulted: {ex}"); }
 
         try { base.Dispose(); }
