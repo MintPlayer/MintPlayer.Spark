@@ -33,12 +33,14 @@ public class VersioningYmlTests
               dispatch: publish.yml
               releaseBranches: ['release/*.x', 'lts/*']
               ignore: ['docs/**']
+              prerelease: preview
               groups:
                 - name: spark
                   packages: ['MintPlayer.Spark*']
               packages:
                 MintPlayer.Spark:
                   anchor: free
+                "@mintplayer/ng-spark": { prerelease: upstream }
             """);
 
         parsed.Errors.Should().BeEmpty();
@@ -48,6 +50,8 @@ public class VersioningYmlTests
         config.EffectiveReleaseBranches.Should().BeEquivalentTo(["release/*.x", "lts/*"]);
         config.Groups!.Single().Packages.Should().BeEquivalentTo(["MintPlayer.Spark*"]);
         config.Packages!["MintPlayer.Spark"]!.Anchor.Should().Be("free");
+        config.Prerelease.Should().Be("preview");
+        config.Packages!["@mintplayer/ng-spark"]!.Prerelease.Should().Be("upstream");
     }
 
     [Theory]
@@ -55,6 +59,7 @@ public class VersioningYmlTests
     [InlineData("versioning:\n  dispatch: ../evil.sh\n")]
     [InlineData("versioning:\n  releaseBranches: ['release/../main']\n")]
     [InlineData("versioning:\n  packages:\n    Acme:\n      anchor: 'not an id'\n")]
+    [InlineData("versioning:\n  prerelease: canary\n")]
     [InlineData("versioning: [unclosed\n")]
     public void An_unusable_section_reports_why(string yml)
     {

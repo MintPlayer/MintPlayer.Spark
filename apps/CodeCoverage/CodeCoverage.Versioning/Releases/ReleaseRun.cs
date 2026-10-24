@@ -49,6 +49,7 @@ public static class ReleaseRun
 			Diff = new GitInputDiff(git),
 			Settings = request.Settings,
 			Build = request.Manifest.BuildFacts(),
+			Sdk = request.Manifest.Sdk,
 			OnDefaultBranch = request.OnDefaultBranch,
 			BranchMajor = request.BranchMajor,
 		}, cancellationToken);

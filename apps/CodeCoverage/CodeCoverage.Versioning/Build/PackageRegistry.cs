@@ -50,16 +50,24 @@ public sealed class PublicPackageRegistry(HttpClient http) : IPackageRegistry
 		using var zip = new ZipArchive(nupkg, ZipArchiveMode.Read);
 		var lines = new List<string>();
 		foreach (var entry in zip.Entries.OrderBy(e => e.FullName, StringComparer.Ordinal))
-		{
-			var parts = entry.FullName.Split('/');
-			if (parts is not ["lib", var tfm, var file] || !file.Equals(assembly, StringComparison.OrdinalIgnoreCase) || !Identifiers.IsTargetFramework(tfm)) continue;
-			if (entry.Length > MaxEntryBytes) throw new InvalidDataException($"{entry.FullName} is larger than the registry read allows.");
-			using var copy = new MemoryStream();
-			using (var stream = entry.Open()) stream.CopyTo(copy);
-			copy.Position = 0;
-			lines.AddRange(DotnetApiListing.List(copy).Select(l => $"{tfm} {l}"));
-		}
+			if (entry.FullName.Split('/') is ["lib", var tfm, var file] && file.Equals(assembly, StringComparison.OrdinalIgnoreCase) && Identifiers.IsTargetFramework(tfm))
+				lines.AddRange(List(entry, tfm));
+
+		// A source generator or analyzer ships its assembly under analyzers/dotnet/cs instead. The nupkg does not record the
+		// framework it was built for, and the build prefixes each line with it, so it is read from the project: one tfm.
+		if (lines.Count == 0 && package.TargetFrameworks is [var analyzerTfm] && Identifiers.IsTargetFramework(analyzerTfm)
+			&& zip.Entries.FirstOrDefault(e => e.FullName.Equals($"analyzers/dotnet/cs/{assembly}", StringComparison.OrdinalIgnoreCase)) is { } analyzer)
+			lines.AddRange(List(analyzer, analyzerTfm));
 		return lines.Count == 0 ? null : DotnetApiListing.Hash(lines);
+	}
+
+	private static IEnumerable<string> List(ZipArchiveEntry entry, string tfm)
+	{
+		if (entry.Length > MaxEntryBytes) throw new InvalidDataException($"{entry.FullName} is larger than the registry read allows.");
+		using var copy = new MemoryStream();
+		using (var stream = entry.Open()) stream.CopyTo(copy);
+		copy.Position = 0;
+		return DotnetApiListing.List(copy).Select(l => $"{tfm} {l}").ToList();
 	}
 
 	internal static async Task<string?> NpmHashAsync(Stream tgz, CancellationToken cancellationToken)

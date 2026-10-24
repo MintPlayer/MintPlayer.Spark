@@ -13,8 +13,9 @@ namespace CodeCoverage.Versioning.Build;
 /// <param name="BranchMajor">The release branch's major, null on the default branch: picks the line whose last tag's hash is looked up.</param>
 /// <param name="Registry">Where a previous hash comes from when the last tag has none (S7); null to never ask.</param>
 /// <param name="Ignore"><c>versioning.ignore</c>, which keeps matching projects out of the graph as it does in the run.</param>
+/// <param name="Sdk">The .NET SDK the build ran on (<see cref="DotnetSdk"/>), copied into the manifest when a .NET package is in it.</param>
 public sealed record BuildManifestRequest(string WorkingDirectory, string Commit, string Configuration, int? BranchMajor, IPackageRegistry? Registry,
-	IReadOnlyList<string>? Ignore = null);
+	IReadOnlyList<string>? Ignore = null, string? Sdk = null);
 
 /// <summary>A manifest and what the action should tell the workflow about how it was collected.</summary>
 public sealed record BuildManifestResult(ReleaseManifest Manifest, IReadOnlyList<string> Notes);
@@ -61,7 +62,8 @@ public static class BuildManifest
 			}
 			packages.Add(package);
 		}
-		return new BuildManifestResult(new ReleaseManifest { Commit = request.Commit, Packages = packages }, notes);
+		var sdk = packages.Any(p => p.Kind == "nuget") ? request.Sdk : null;
+		return new BuildManifestResult(new ReleaseManifest { Commit = request.Commit, Packages = packages, Sdk = sdk }, notes);
 	}
 
 	private static ManifestPackage DotnetPackage(BuildManifestRequest request, ProjectNode node, List<string> notes)

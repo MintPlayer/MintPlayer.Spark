@@ -253,6 +253,10 @@ public sealed class VersioningSettingsWire
     public Dictionary<string, string>? Anchors { get; set; }
     /// <summary><c>versioning.releaseBranches</c> (D10), which names a branch a major move cuts (D12).</summary>
     public List<string>? ReleaseBranches { get; set; }
+    /// <summary><c>versioning.prerelease</c> (D8); a label outside the enum fails the request's deserialization.</summary>
+    public Versioning.Versions.PrereleaseLabel? Prerelease { get; set; }
+    /// <summary><c>versioning.packages.&lt;id&gt;.prerelease</c>: a label, or null for <c>upstream</c>.</summary>
+    public Dictionary<string, Versioning.Versions.PrereleaseLabel?>? PrereleasePins { get; set; }
 }
 
 public sealed class LockstepGroupWire

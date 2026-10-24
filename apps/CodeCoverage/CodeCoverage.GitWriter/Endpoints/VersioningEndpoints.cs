@@ -68,12 +68,17 @@ internal sealed partial class GitWriterVersioningRunEndpoint : IPostEndpoint<Ver
         if (!groups.All(g => g is { Name.Length: > 0 and <= 100, Packages.Count: > 0 and <= Limits.MaxPackagesPerRun } && g.Packages.All(IsPattern))) return null;
         if (groups.Select(g => g.Name).Distinct(StringComparer.Ordinal).Count() != groups.Count) return null;
         if (!anchors.All(a => Identifiers.IsPackageId(a.Key) && a.Value is { Length: > 0 and <= MaxAnchorLength } && !a.Value.Any(char.IsControl))) return null;
+        var pins = wire.PrereleasePins ?? [];
+        if (pins.Count > Limits.MaxPackagesPerRun || !pins.Keys.All(Identifiers.IsPackageId)) return null;
+        if (wire.Prerelease is { } label && !Enum.IsDefined(label) || pins.Values.Any(p => p is { } pin && !Enum.IsDefined(pin))) return null;
         return new VersioningSettings
         {
             Ignore = ignore,
             Groups = groups.Select(g => new LockstepGroup(g.Name!, g.Packages!)).ToList(),
             Anchors = new Dictionary<string, string>(anchors, StringComparer.Ordinal),
             ReleaseBranches = releaseBranches,
+            Prerelease = wire.Prerelease,
+            PrereleasePins = new Dictionary<string, Versioning.Versions.PrereleaseLabel?>(pins, StringComparer.Ordinal),
         };
     }
 

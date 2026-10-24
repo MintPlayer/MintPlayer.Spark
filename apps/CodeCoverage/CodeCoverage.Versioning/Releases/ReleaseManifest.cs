@@ -24,12 +24,16 @@ public sealed record ReleaseManifest
 
 	public IReadOnlyList<ManifestPackage>? Packages { get; init; }
 
+	/// <summary>The .NET SDK the build ran on (<c>dotnet --version</c> in the checkout), when it has one: D8 reads its label.</summary>
+	public string? Sdk { get; init; }
+
 	/// <summary>Every rule the manifest breaks, naming the field and never echoing a value; empty when it is well formed.</summary>
 	public IReadOnlyList<string> Validate()
 	{
 		var errors = new List<string>();
 		if (Version != CurrentVersion) errors.Add($"version must be {CurrentVersion}.");
 		if (!GitCli.IsObjectId(Commit)) errors.Add("commit must be a full sha of 40 lowercase hex characters.");
+		if (Sdk is not null && (Sdk.Length > MaxVersionLength || !Versions.SemVer.TryParse(Sdk, out _))) errors.Add("sdk must be a version.");
 		if (Packages is null) errors.Add("packages is required.");
 		else if (Packages.Count > Limits.MaxPackagesPerRun) errors.Add($"packages holds more than {Limits.MaxPackagesPerRun} entries.");
 		else

@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 
 namespace CodeCoverage.Versioning.Versions;
@@ -6,8 +8,9 @@ namespace CodeCoverage.Versioning.Versions;
 /// <summary>
 /// The prerelease labels a version of ours may carry (PRD D5, D8), in order of maturity: the least mature one wins when
 /// several upstreams are in prerelease. The order is also semver's alphabetical order, so tools that sort our versions
-/// agree with us.
+/// agree with us. On the wire (the settings the app sends the git writer) a label is its text, never its number.
 /// </summary>
+[JsonConverter(typeof(LabelJsonConverter))]
 public enum PrereleaseLabel
 {
 	Alpha,
@@ -131,4 +134,18 @@ public static class Labels
 		}
 		return least;
 	}
+}
+
+/// <summary>A label on the wire is its text (<c>"preview"</c>); anything else, a number included, is refused.</summary>
+public sealed class LabelJsonConverter : JsonConverter<PrereleaseLabel>
+{
+	public override PrereleaseLabel Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+	{
+		if (reader.TokenType != JsonTokenType.String) throw new JsonException("A prerelease label must be a string.");
+		try { return Labels.Parse(reader.GetString()!); }
+		catch (FormatException e) { throw new JsonException(e.Message, e); }
+	}
+
+	public override void Write(Utf8JsonWriter writer, PrereleaseLabel value, JsonSerializerOptions options)
+		=> writer.WriteStringValue(Labels.Format(value));
 }

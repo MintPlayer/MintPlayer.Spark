@@ -1,5 +1,6 @@
 using CodeCoverage.Versioning.Graph;
 using CodeCoverage.Versioning.Validation;
+using CodeCoverage.Versioning.Versions;
 
 namespace CodeCoverage.Versioning.Releases;
 
@@ -23,17 +24,20 @@ namespace CodeCoverage.Versioning.Releases;
 ///   dispatch: publish.yml            # trigger B (D3): fired on a merge that changes a package
 ///   releaseBranches: ["release/*.x"] # D10
 ///   ignore: ["**/*.md"]              # D4: changed files that never release a package
+///   prerelease: preview              # D8: every package releases with this label until the line is removed
 ///   groups:                          # D13
 ///     - name: mapper
 ///       packages: [MintPlayer.Mapper, MintPlayer.Mapper.*]
 ///   packages:
 ///     MintPlayer.SourceGenerators: { anchor: free }   # D7: free, or a framework package id
+///     "@mintplayer/ng-spark": { prerelease: upstream } # D8: a label, or upstream to take the label from what it ships against
 /// </code>
 /// </remarks>
 public sealed class VersioningConfig
 {
 	public const string ServerMode = "server";
 	public const string LocalMode = "local";
+	public const string UpstreamPrerelease = "upstream";
 	public const int MaxReleaseBranches = 16;
 	public const int MaxIgnore = 64;
 	public const int MaxGroups = 64;
@@ -44,6 +48,10 @@ public sealed class VersioningConfig
 	public string? Dispatch { get; set; }
 	public List<string>? ReleaseBranches { get; set; }
 	public List<string>? Ignore { get; set; }
+
+	/// <summary>A label every package releases with (D8), whatever it ships against; <c>upstream</c> or absent mirrors upstream.</summary>
+	public string? Prerelease { get; set; }
+
 	public List<VersioningGroupConfig>? Groups { get; set; }
 	public Dictionary<string, VersioningPackageConfig?>? Packages { get; set; }
 
@@ -59,6 +67,8 @@ public sealed class VersioningConfig
 			errors.Add($"versioning.mode must be '{ServerMode}' or '{LocalMode}'.");
 		if (Dispatch is not null && !IsWorkflowFile(Dispatch))
 			errors.Add("versioning.dispatch must be a workflow file name under .github/workflows, such as publish.yml.");
+		if (!IsPrerelease(Prerelease))
+			errors.Add($"versioning.prerelease must be one of alpha, beta, next, preview, rc or {UpstreamPrerelease}.");
 
 		if (ReleaseBranches is { } branches)
 		{
@@ -102,6 +112,8 @@ public sealed class VersioningConfig
 					errors.Add($"versioning.packages: '{Shown(id)}' is not a package id.");
 				else if (settings?.Anchor is { } anchor && anchor != "free" && !Identifiers.IsPackageId(anchor))
 					errors.Add($"versioning.packages.{id}.anchor must be 'free' or the id of the package whose major it follows.");
+				else if (!IsPrerelease(settings?.Prerelease))
+					errors.Add($"versioning.packages.{id}.prerelease must be one of alpha, beta, next, preview, rc or {UpstreamPrerelease}.");
 			}
 		}
 		return errors;
@@ -114,7 +126,14 @@ public sealed class VersioningConfig
 		Groups = (Groups ?? []).Select(g => new LockstepGroup(g.Name!, g.Packages!)).ToList(),
 		Anchors = (Packages ?? []).Where(p => p.Value?.Anchor is not null).ToDictionary(p => p.Key, p => p.Value!.Anchor!, StringComparer.Ordinal),
 		ReleaseBranches = EffectiveReleaseBranches,
+		Prerelease = Pin(Prerelease),
+		PrereleasePins = (Packages ?? []).Where(p => p.Value?.Prerelease is not null).ToDictionary(p => p.Key, p => Pin(p.Value!.Prerelease), StringComparer.Ordinal),
 	};
+
+	private static PrereleaseLabel? Pin(string? setting) => setting is null or UpstreamPrerelease ? null : Labels.Parse(setting);
+
+	private static bool IsPrerelease(string? setting)
+		=> setting is null or UpstreamPrerelease or "alpha" or "beta" or "next" or "preview" or "rc";
 
 	private static bool IsWorkflowFile(string name)
 		=> name.Length is > 0 and <= 255 && (name.EndsWith(".yml", StringComparison.Ordinal) || name.EndsWith(".yaml", StringComparison.Ordinal))
@@ -155,4 +174,7 @@ public sealed class VersioningPackageConfig
 {
 	/// <summary><c>free</c>, or the id of the package whose resolved major this one follows (D7).</summary>
 	public string? Anchor { get; set; }
+
+	/// <summary>A label (D8) for this package alone, or <c>upstream</c> to exempt it from <c>versioning.prerelease</c>.</summary>
+	public string? Prerelease { get; set; }
 }
