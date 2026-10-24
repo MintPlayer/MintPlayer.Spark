@@ -74,6 +74,7 @@ public class ForgeIntegrationConformanceTests
         [EForgeCapability.RepositoryAdminCheck] = typeof(IForgeRepositoryAdministration),
         [EForgeCapability.SetupRedirect] = typeof(IForgeSetupRedirect),
         [EForgeCapability.PullRequestLabels] = typeof(IForgeLabels),
+        [EForgeCapability.Versioning] = typeof(IForgeVersioning),
     };
 
     /// <summary>

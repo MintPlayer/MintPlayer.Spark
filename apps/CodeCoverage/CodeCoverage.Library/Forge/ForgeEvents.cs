@@ -106,6 +106,13 @@ public sealed record PullRequestUpdated(
     int? Deletions = null,
     int? ChangedFiles = null) : IForgeEvent;
 
+/// <summary>
+/// An open pull request was opened, reopened, or had its title or body edited by someone other than a bot
+/// (docs/coverage_package_versioning_PRD.md D14). Carries no text: the consumer reads it fresh, because a queued message
+/// may be older than the next edit.
+/// </summary>
+public sealed record PullRequestDescribed(string RepositoryId, int Number) : IForgeEvent;
+
 /// <summary>A pull request was merged.</summary>
 /// <param name="HeadRef">The source branch, for the optional delete-after-merge courtesy.</param>
 /// <remarks>

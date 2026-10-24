@@ -448,7 +448,13 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
 
         // ready_for_review and a retarget may have just made the pull request one the merge queue can take, so the queue
         // offers its button again (merge-queue PRD §0 O30); a retarget also moves the base recorded below. Octokit's
-        // edited event types no base change, so that one is read from the raw payload. A title or body edit raises nothing.
+        // edited event types no base change, so that one is read from the raw payload. A title or body edit raises only
+        // PullRequestDescribed, for title correction.
+        if (evt.Action == "edited" && TextEditedByHuman(message) && evt.PullRequest.State?.StringValue == "open"
+            && await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, evt.Repository.Id), ct) is { } edited)
+            await messageBus.BroadcastAsync(new ForgeWebhookMessage<PullRequestDescribed>(
+                EForgeProvider.GitHub, new PullRequestDescribed(edited.Id!, (int)evt.Number)), ct);
+
         if (evt.Action is not ("opened" or "synchronize" or "reopened" or "ready_for_review")
             && !(evt.Action == "edited" && BaseChanged(message))) return;
 
@@ -474,6 +480,10 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
                 Additions: (int)pr.Additions,
                 Deletions: (int)pr.Deletions,
                 ChangedFiles: (int)pr.ChangedFiles)), ct);
+
+        if (evt.Action is "opened" or "reopened")
+            await messageBus.BroadcastAsync(new ForgeWebhookMessage<PullRequestDescribed>(
+                EForgeProvider.GitHub, new PullRequestDescribed(repository.Id!, (int)evt.Number)), ct);
     }
 
     // ── The merge queue (PRD M5) ─────────────────────────────────────────────────────────────────────
@@ -726,6 +736,19 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
     {
         using var payload = JsonDocument.Parse(message.EventJson);
         return Child(payload.RootElement, "changes") is { } changes && Child(changes, "base") is not null;
+    }
+
+    /// <summary>
+    /// The edit changed the title or the body, and a person made it (versioning PRD D14). A bot's edit, the app's own title
+    /// correction among them, is skipped: the builder is a fixed point anyway, this only saves the round trip.
+    /// </summary>
+    internal static bool TextEditedByHuman(GitHubWebhookMessage message)
+    {
+        using var payload = JsonDocument.Parse(message.EventJson);
+        var root = payload.RootElement;
+        if (Child(root, "changes") is not { } changes || (Child(changes, "title") is null && Child(changes, "body") is null)) return false;
+        return Child(root, "sender") is not { } sender
+               || (Text(sender, "type") != "Bot" && Text(sender, "login")?.EndsWith("[bot]", StringComparison.Ordinal) != true);
     }
 
     /// <summary>The stored repository the payload's <c>repository.id</c> names, or null for one we do not know.</summary>

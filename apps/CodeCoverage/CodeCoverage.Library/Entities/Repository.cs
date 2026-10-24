@@ -231,6 +231,48 @@ public class Repository : IForgeConnectable
             _ => (account?.PrSizeLabels ?? false, account is null ? "default" : "organization"),
         };
 
+    /// <summary>Whether this repository's pull-request titles are corrected, or the account's setting (docs/coverage_package_versioning_PRD.md D14).</summary>
+    [IgnoreForIndex]
+    [LookupReference(typeof(PrTitlePolicy))]
+    public EPrTitlePolicy PrTitleCorrection { get; set; }
+
+    /// <summary>Whether this repository's version tags get a GitHub Release, or the account's setting (D15).</summary>
+    [IgnoreForIndex]
+    [LookupReference(typeof(ReleaseOnTagPolicy))]
+    public EReleaseOnTagPolicy ReleaseOnTag { get; set; }
+
+    /// <summary>Whether the app cuts release branches in this repository, or the account's setting (D12).</summary>
+    [IgnoreForIndex]
+    [LookupReference(typeof(AutoCutReleaseBranchPolicy))]
+    public EAutoCutReleaseBranchPolicy AutoCutReleaseBranches { get; set; }
+
+    /// <summary>The PR-title policy for this repository and where it comes from; a missing account is off (D14).</summary>
+    public static (bool Enabled, string Source) ResolvePrTitleCorrection(Repository? repository, Account? account)
+        => repository?.PrTitleCorrection switch
+        {
+            EPrTitlePolicy.Enabled => (true, "repository"),
+            EPrTitlePolicy.Disabled => (false, "repository"),
+            _ => (account?.PrTitleCorrection ?? false, account is null ? "default" : "organization"),
+        };
+
+    /// <summary>The release-on-tag policy; a missing account takes the default, on (D15).</summary>
+    public static (bool Enabled, string Source) ResolveReleaseOnTag(Repository? repository, Account? account)
+        => repository?.ReleaseOnTag switch
+        {
+            EReleaseOnTagPolicy.Enabled => (true, "repository"),
+            EReleaseOnTagPolicy.Disabled => (false, "repository"),
+            _ => (account?.ReleaseOnTag ?? true, account is null ? "default" : "organization"),
+        };
+
+    /// <summary>The auto-cut policy; a missing account takes the default, on (D12).</summary>
+    public static (bool Enabled, string Source) ResolveAutoCutReleaseBranches(Repository? repository, Account? account)
+        => repository?.AutoCutReleaseBranches switch
+        {
+            EAutoCutReleaseBranchPolicy.Enabled => (true, "repository"),
+            EAutoCutReleaseBranchPolicy.Disabled => (false, "repository"),
+            _ => (account?.AutoCutReleaseBranches ?? true, account is null ? "default" : "organization"),
+        };
+
     public static bool ResolveDeleteBranchOnPrClose(Repository? repository, Account? account)
         => repository?.DeleteBranchOnPrClose switch
         {

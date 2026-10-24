@@ -198,6 +198,24 @@ public class Account : IForgeConnectable
     [IgnoreForIndex]
     public bool PrSizeLabels { get; set; }
 
+    /// <summary>
+    /// Whether the app rewrites pull-request titles to <c>&lt;type&gt;: &lt;title&gt; (#issue)</c> in this account's repositories
+    /// (docs/coverage_package_versioning_PRD.md D14). Off by default: it edits somebody else's pull requests.
+    /// </summary>
+    [IgnoreForIndex]
+    public bool PrTitleCorrection { get; set; }
+
+    /// <summary>
+    /// Whether every version tag the app pushes gets a GitHub Release (D15). On by default; stored accounts are backfilled
+    /// by <c>M_202610241300_BackfillVersioningDefaults</c>, because a missing field would read false.
+    /// </summary>
+    [IgnoreForIndex]
+    public bool ReleaseOnTag { get; set; } = true;
+
+    /// <summary>Whether the app cuts <c>release/&lt;major&gt;.x</c> when a platform major moves (D12). On by default, backfilled like <see cref="ReleaseOnTag"/>.</summary>
+    [IgnoreForIndex]
+    public bool AutoCutReleaseBranches { get; set; } = true;
+
     /// <summary>The size scale, one label per row (D2). The app creates, renames and deletes these labels itself (D3).</summary>
     [IgnoreForIndex]
     public List<PrSizeLabel> PrSizeLabelScale { get; set; } = [];

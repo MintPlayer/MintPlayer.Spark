@@ -56,9 +56,28 @@
         "name": "PrSizeLabels",
         "tab": "a7c1f9d2-4b60-4e3a-9c85-1f27b0e6d431",
         "order": 7
+      },
+      {
+        "id": "5c8e2f17-3a94-4d6b-9e01-b7f4c2a8d613",
+        "name": "Versioning",
+        "tab": "a7c1f9d2-4b60-4e3a-9c85-1f27b0e6d431",
+        "order": 8
       }
     ],
     "attributes": [
+      {
+        "id": "138f7d04-190a-4905-9dce-99fd3baafd7d",
+        "name": "AutoCutReleaseBranches",
+        "dataType": "boolean",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 26,
+        "isArray": false,
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "5c8e2f17-3a94-4d6b-9e01-b7f4c2a8d613"
+      },
       {
         "id": "f6c2f843-1be2-4af2-902f-1547077bff03",
         "name": "AvatarUrl",
@@ -383,6 +402,32 @@
         "showedOn": "None",
         "rules": [],
         "group": "6b2e9d41-7c03-4f58-a1e6-2d94c8b05f73"
+      },
+      {
+        "id": "9a24c292-181d-4e98-bc9c-474b1979ffd1",
+        "name": "PrTitleCorrection",
+        "dataType": "boolean",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 24,
+        "isArray": false,
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "5c8e2f17-3a94-4d6b-9e01-b7f4c2a8d613"
+      },
+      {
+        "id": "a251b9b4-59f7-4394-8902-6c55408df282",
+        "name": "ReleaseOnTag",
+        "dataType": "boolean",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 25,
+        "isArray": false,
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "5c8e2f17-3a94-4d6b-9e01-b7f4c2a8d613"
       },
       {
         "id": "47ee693b-379e-469b-ba29-22a472796297",
