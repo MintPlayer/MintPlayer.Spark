@@ -11,7 +11,7 @@
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.Dashboards</PackageId>
-		<Version>11.0.0-preview.104</Version>
+		<Version>0.0.0-PLACEHOLDER</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>Administrator dashboards for MintPlayer.Spark: a dashboard is a live virtual persistent object whose values IDashboardProvider fills, pushed over /spark/live, with optional history on RavenDB time series and built-in RavenDB statistics and host metrics. Who may open them is a security.json slot the application binds.</Description>

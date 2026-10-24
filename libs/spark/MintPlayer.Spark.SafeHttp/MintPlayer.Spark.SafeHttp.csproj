@@ -8,7 +8,7 @@
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.SafeHttp</PackageId>
-		<Version>11.0.0-preview.104</Version>
+		<Version>0.0.0-PLACEHOLDER</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>SSRF-safe named HttpClients for URLs users supply: an address allow-list checked at connect time (no DNS rebinding), redirects re-checked per hop, no proxy, no cookies, byte, decompression and time caps; plus raw sockets under the same rules. No RavenDB, no Spark runtime: usable from any ASP.NET Core or generic host.</Description>

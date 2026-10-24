@@ -397,8 +397,30 @@ settings for forges without the capability. The owner wants GitLab and Bitbucket
 - **After the deploy:** onboarding PRs for MintPlayer.AspNetCore.SpaServices, MintPlayer.AspNetCore.Tools,
   MintPlayer.Dotnet.Tools and one Nx repository. Each must publish one correct release. Under the one-PR rule these are
   part of this unit of work, sequenced after the deploy.
-- **MintPlayer.Spark** adopts it in this PR in `local` mode (D2). Its hand-edited versions go, and seed tags are pushed
-  from the current versions.
+- **MintPlayer.Spark** adopts it in this PR in `local` mode (D2), by hand rather than through the onboarding action,
+  because the server that would onboard it is deployed by the same workflow (M14):
+  - `coverage.yml` gets `versioning: mode: local` and `ignore: ["**/fixtures/**", "**/Fixtures/**"]`. The ~50 fixture
+    csproj/package.json files under test projects are not packages. `**/*.md` is not ignored, because a package's
+    README ships inside it.
+  - `Directory.Build.targets` imports the targets of `CodeCoverage.Versioning.MSBuild` from source (Spark builds the
+    package, so it cannot consume it). Every packable `libs/**` csproj, and the MSBuild package itself, holds
+    `0.0.0-PLACEHOLDER`. Evidence: with no tag, `dotnet pack` of `MintPlayer.Spark.Attributes` printed MPV001 and wrote
+    no package; with a local tag `MintPlayer.Spark.Attributes/v11.0.0-preview.104` it wrote
+    `MintPlayer.Spark.Attributes.11.0.0-preview.104.nupkg` (2026-10-24).
+  - **`@mintplayer/ng-spark` keeps `22.44.0` in source, not the placeholder.** Seven app ClientApps depend on it with
+    `^22.3.0`…`^22.43.0`, and npm links a workspace package only when its version satisfies the range; a prerelease
+    `0.0.0` would make npm fetch the published package instead. The action stamps the seeded package whatever its
+    source version, so nothing is lost, and `package-lock.json` is unchanged.
+  - The `release` job builds, runs the action (`token: github.token`, job permission `contents: write`, checkout with
+    `persist-credentials: false` so only that step holds the token), then packs **without** `--no-build`
+    (D9). The publish job pushes npm through `MintPlayer/github-actions/publish-npm-packages` with `skipDuplicate`.
+  - **Seed tags** come from `tools/versioning-seed-tags.mjs`, which reads each package's version from `master` before
+    the merge (46: 45 NuGet plus `@mintplayer/ng-spark/v22.44.0`) and creates the tags at that commit, so they are
+    reachable from the merge commit. The owner pushes them right before merging; the script never pushes.
+  - **Not applicable:** the plan's "action-publish workflows call the in-repo action". The committed ncc actions are
+    versioned by moving git refs, not published to a registry, so they have no package version to compute.
+  - **Expected first-release change:** the engine mirrors the upstream prerelease label (D8), so Spark's
+    `11.0.0-preview.N` line follows the .NET SDK's label. Once the SDK is at `rc`, the next release is `rc.N`.
 
 **A repository is "versioned"** when its default-branch `coverage.yml` has a `versioning:` section. The webhook features
 (D10, D12, D3 B) act only on those. This is my call, not grilled: it keeps the opt-in in a file the owner reviews in the

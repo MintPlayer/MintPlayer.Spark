@@ -15,7 +15,7 @@
 		<ImplicitUsings>disable</ImplicitUsings>
 		<EnableDefaultCompileItems>false</EnableDefaultCompileItems>
 		<PackageId>MintPlayer.Versioning.MSBuild</PackageId>
-		<Version>1.0.0</Version>
+		<Version>0.0.0-PLACEHOLDER</Version>
 		<Authors>MintPlayer</Authors>
 		<Description>Sets a project's Version from the highest &lt;PackageId&gt;/v&lt;version&gt; git tag reachable from HEAD, as written by the CodeCoverage versioning app.</Description>
 		<PackageTags>versioning;git;tags;msbuild</PackageTags>

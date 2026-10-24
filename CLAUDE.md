@@ -235,13 +235,26 @@ The major version **must equal the major .NET version the package targets**.
 Same rule as above: an API break inside a .NET generation is a minor bump, never a
 major one.
 
-### Before bumping a version
+### Versions come from tags: never edit them by hand (#153)
 
-Ask: *did the targeted Angular / .NET major change?* If the answer is no, the major
-digit stays exactly where it is. Getting this wrong is expensive — a wrongly published
-major cannot be reused on npm even after it is unpublished or deprecated, so the real
-`23.0.0` (or `11.0.0`) is burned forever.
+Nobody bumps a version any more. The `release` job of `dotnet-build-master.yml` runs the in-repo
+versioning action (`apps/CodeCoverage/versioning-action`, `mode: local` in `coverage.yml`), which
+computes every changed package's next version and pushes a `<PackageId>/v<version>` tag. The pack
+then reads the highest reachable tag (`MintPlayer.Versioning.MSBuild`, imported from
+`Directory.Build.targets`), and the publish pushes everything with `--skip-duplicate`, so
+unchanged packages are skipped. The rules above are now enforced by the engine
+(`docs/coverage_package_versioning_PRD.md` D7): it takes the major from `TargetFramework` and
+from the resolved `@angular/core`, and an API break inside a platform generation is a minor.
 
-CI publishes on push to `master`, so a wrong version number in `package.json` /
-`.csproj` becomes a permanent public artifact as soon as the PR merges. Check the
-version diff in the PR review.
+- **csproj `<Version>` is `0.0.0-PLACEHOLDER`.** A project with no reachable tag keeps it, gets
+  warning MPV001 and is not packed. A new package gets its first version from the engine; don't
+  write one.
+- **`libs/node_packages/ng-spark/package.json` keeps its last released version** (not the
+  placeholder) only so the apps' `^22.x` workspace ranges still link the local package; npm
+  fetches from the registry otherwise. The action stamps the real version into the dist copy, so
+  the number in source is stale by design. Don't bump it.
+- **Seed tags:** when versioning was adopted, `tools/versioning-seed-tags.mjs` tagged each
+  package at the version it last shipped. Without its tag, a package restarts at `11.0.0`.
+- **A wrong major is still permanent** on npm and NuGet. If a platform upgrade PR should not
+  move a major, set `versioning.packages.<id>.anchor` in `coverage.yml` rather than editing a
+  version.

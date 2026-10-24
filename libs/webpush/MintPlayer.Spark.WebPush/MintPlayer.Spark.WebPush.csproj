@@ -8,7 +8,7 @@
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.WebPush</PackageId>
-		<Version>11.0.0-preview.104</Version>
+		<Version>0.0.0-PLACEHOLDER</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>Web Push for .NET on built-in crypto only: RFC 8291 aes128gcm message encryption, RFC 8292 VAPID (ES256) authorization and an RFC 8030 sender over any HttpClient. No third-party packages; verified against the RFC 8291 Appendix A test vectors.</Description>

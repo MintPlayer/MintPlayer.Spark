@@ -31,3 +31,14 @@ mergeQueue:
       strategy: take-base
     - path: "**/App_Data/securityPosture.txt"
       strategy: take-base
+
+# Package versions (#153, docs/coverage_package_versioning_PRD.md D2): the versioning action in
+# dotnet-build-master.yml runs the engine on the runner, never against coverage.mintplayer.com, because that
+# workflow is what deploys the app. Read from the DEFAULT branch only, like mergeQueue:.
+versioning:
+  mode: local
+  # Test fixtures hold ~50 csproj/package.json files that are not packages; matching project files stay out of the
+  # graph and matching changes release nothing. Not **/*.md: a package's README ships inside it.
+  ignore:
+    - "**/fixtures/**"
+    - "**/Fixtures/**"

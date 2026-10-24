@@ -135,9 +135,20 @@ jobs:
       # the packages.
       SparkSchemaRevision: ${{ needs.schema-revision.outputs.revision }}
 
+    # The versioning step pushes the version tags, their Releases and any auto-cut release branch (#153), hence
+    # contents: write and pull-requests: write (the cut comment). The checkout keeps no credentials, so the
+    # third-party code this job runs (npm ci, the builds) finds no write token in .git/config; only the
+    # versioning step is handed one.
+    permissions:
+      contents: write
+      pull-requests: write
+      packages: read
+
     steps:
     - name: Checkout
       uses: actions/checkout@v7
+      with:
+        persist-credentials: false
 
     - name: Setup
       uses: ./.github/actions/setup
@@ -147,26 +158,34 @@ jobs:
     # Build everything via Nx so master populates the self-hosted remote
     # cache that PRs read from. Two run-many calls because:
     #   - .NET projects have a `build:release` target (Release config —
-    #     produces bin/Release/ artifacts that `dotnet pack --no-build`
-    #     consumes below).
+    #     produces the bin/Release/ assemblies whose public API the
+    #     versioning step hashes).
     #   - Angular library (@mintplayer/ng-spark, auth entries included)
-    #     only have a `build` target and produce ng-packagr `dist/` for the
-    #     `JS-DevTools/npm-publish` steps in `publish`.
+    #     only have a `build` target and produce ng-packagr `dist/` (the
+    #     .d.ts files the versioning step hashes, and what `publish` pushes).
     - name: Build .NET projects (Release)
       run: npx nx run-many --target=build:release
 
-    # Pack MUST run immediately after the Release build, before any other Nx
-    # invocation. Nx cache replay is destructive: it deletes a task's declared
-    # output directories before extracting the cached archive (preview.43
-    # release failure, run 31778271642, when a cache-hit Debug build wiped the
-    # bin/Release artifacts). The Debug builds of the tests now run on other
-    # runners, but pack still goes first. Output goes to nupkgs/ (outside any
-    # project's bin/) so cache replays can't delete the packages.
-    - name: Pack
-      run: dotnet pack --no-build --configuration Release /p:ContinuousIntegrationBuild=true -o nupkgs
-
     - name: Build Angular libraries
       run: npx nx run-many --target=build --projects=@mintplayer/ng-spark
+
+    # Versions every package this commit changes (docs/coverage_package_versioning_PRD.md): tags the commit
+    # <package id>/v<version>, and stamps the npm versions into package.json and ng-packagr's dist copy.
+    # mode: local (coverage.yml): the engine runs here from this commit's source, never against
+    # coverage.mintplayer.com, because this workflow is what deploys that app.
+    - name: Version the packages
+      id: versioning
+      uses: ./apps/CodeCoverage/versioning-action
+      with:
+        token: ${{ github.token }}
+
+    # Every package is packed: one this commit did not release packs at the version its last tag gives it,
+    # which the push skips as a duplicate. No --no-build: the build runs again so the assemblies, and the
+    # nuspec dependencies restore reads, carry the versions the new tags give them (the Nx cache does not
+    # know about tags, so a replayed build:release still holds the previous versions).
+    # Output goes to nupkgs/ (outside any project's bin/) so cache replays can't delete the packages.
+    - name: Pack
+      run: dotnet pack --configuration Release /p:ContinuousIntegrationBuild=true -o nupkgs
 
     - name: Hand the packages to the publish job
       uses: actions/upload-artifact@v7
@@ -279,20 +298,14 @@ jobs:
       env:
         NUGET_AUTH_TOKEN: ${{ github.token }}
 
-    - name: Push ng-spark to NPM
-      uses: JS-DevTools/npm-publish@v4
+    # Every publishable package under the folder, skipping a version the registry already has (the npm
+    # counterpart of --skip-duplicate). The versioning step marked a never-tagged placeholder private.
+    - name: Push the npm packages
+      uses: MintPlayer/github-actions/publish-npm-packages@b08fbddf0b285a8633ac138b89d79ceb8cc8c888
       with:
-        package: 'libs/node_packages/ng-spark/dist/package.json'
-        registry: 'https://registry.npmjs.org'
-        token: ${{ secrets.PUBLISH_TO_NPMJS }}
-        access: 'public'
-        provenance: true
-
-    - name: Push ng-spark to Github
-      uses: JS-DevTools/npm-publish@v4
-      with:
-        package: 'libs/node_packages/ng-spark/dist/package.json'
-        registry: 'https://npm.pkg.github.com'
-        token: ${{ github.token }}
-        access: 'public'
-        provenance: true
+        folder: libs/node_packages/ng-spark/dist
+        registries: |
+          [
+            { "url": "https://registry.npmjs.org", "token": "${{ secrets.PUBLISH_TO_NPMJS }}", "provenance": true },
+            { "url": "https://npm.pkg.github.com", "token": "${{ github.token }}", "provenance": true }
+          ]

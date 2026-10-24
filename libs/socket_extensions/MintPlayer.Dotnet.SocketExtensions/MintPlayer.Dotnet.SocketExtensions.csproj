@@ -12,7 +12,7 @@
 		     deleted version number is reserved forever, so the stable release on .NET 11 has to be
 		     11.0.1. The preview counter is shared with the Spark packages, as it was through the
 		     10.0.0-preview.21..80 train. -->
-		<Version>11.0.1-preview.86</Version>
+		<Version>0.0.0-PLACEHOLDER</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>Extension methods for WebSocket (ReadMessage, WriteMessage, ReadObject, WriteObject)</Description>

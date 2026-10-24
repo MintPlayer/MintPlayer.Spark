@@ -11,7 +11,7 @@
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.Boards</PackageId>
-		<Version>11.0.0-preview.1</Version>
+		<Version>0.0.0-PLACEHOLDER</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>Dashboards of tiles for MintPlayer.Spark: the application ships default boards in App_Data/boards.json, each signed-in user drags, resizes, adds and removes tiles, and every tile is filtered by the caller's rights on every read.</Description>
