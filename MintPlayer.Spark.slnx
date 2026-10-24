@@ -17,6 +17,9 @@
     <Project Path="apps/CodeCoverage/CodeCoverage.GitWriter/CodeCoverage.GitWriter.csproj" />
     <Project Path="apps/CodeCoverage/CodeCoverage.Library/CodeCoverage.Library.csproj" />
     <Project Path="apps/CodeCoverage/CodeCoverage.Tests/CodeCoverage.Tests.csproj" />
+    <Project Path="apps/CodeCoverage/CodeCoverage.Versioning.Cli/CodeCoverage.Versioning.Cli.csproj" />
+    <Project Path="apps/CodeCoverage/CodeCoverage.Versioning.Tests/CodeCoverage.Versioning.Tests.csproj" />
+    <Project Path="apps/CodeCoverage/CodeCoverage.Versioning/CodeCoverage.Versioning.csproj" />
     <Project Path="apps/CodeCoverage/CodeCoverage/CodeCoverage.csproj" />
   </Folder>
   <Folder Name="/apps/DemoApp/">

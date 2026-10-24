@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<!--
+	  The versioning engine (docs/coverage_package_versioning_PRD.md): tag model, version rules, project graph, release set.
+	  Two hosts run it: the CodeCoverage server and versioning-action's local mode (CodeCoverage.Versioning.Cli).
+	  ⚠️ net8.0 and no package references on purpose: in local mode a consumer's runner builds this from source with
+	  whatever SDK it has (8 or later), outside this repository's global.json (plan S4). Never add a MintPlayer.* package:
+	  nuget.config maps those to GitHub Packages, which a consumer's runner cannot authenticate against.
+	-->
+	<PropertyGroup>
+		<TargetFramework>net8.0</TargetFramework>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<IsPackable>false</IsPackable>
+		<RootNamespace>CodeCoverage.Versioning</RootNamespace>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<InternalsVisibleTo Include="CodeCoverage.Versioning.Tests" />
+	</ItemGroup>
+
+</Project>

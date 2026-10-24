@@ -6,7 +6,61 @@ MintPlayer repositories (PRD D17).
 
 ## Status
 
-2026-10-24: grilled (Q1–Q14 → D1–D17). Spikes open. No code yet.
+2026-10-24: grilled (Q1–Q14 → D1–D17). Spikes S1–S4, S7, S8 run; S5 and S6 answered from GitHub's documented
+behaviour and confirmed in the M16 live test (both need a real workflow run on GitHub). Milestones in progress.
+
+## Spike results
+
+- **S1 (MinVer, static parser).** Scratch repo with `MintPlayer.Mapper` (net10.0;net11.0, explicit `PackageId`),
+  `MintPlayer.Mapper.Abstractions` (net10.0) and `Gen` (netstandard2.0, default `PackageId`), MinVer 7.0.0, tags
+  `MintPlayer.Mapper/v11.2.0`, `MintPlayer.Mapper.Abstractions/v10.7.3`, `Gen/v13.0.0`, one commit past them.
+  - Plain `<MinVerTagPrefix>$(PackageId)/v</MinVerTagPrefix>` in `Directory.Build.targets`: `Gen` got prefix `/v`
+    (its `PackageId` defaults later, in the SDK's targets). Set inside `<Target BeforeTargets="MinVer">`: every
+    project got its own prefix; Mapper → `11.2.1-alpha.0.1`, Abstractions → `10.7.4-alpha.0.1`, Gen →
+    `13.0.1-alpha.0.1`; with HEAD tagged `MintPlayer.Mapper/v11.3.0` Mapper → `11.3.0`. **No prefix collision.**
+  - Static parsing over Dotnet.Tools, AspNetCore.Tools, SpaServices and Spark: no `$(` in any `TargetFramework(s)` or
+    `PackageId`. The parser must default `PackageId` to `AssemblyName`, else the project file name. Inputs outside the
+    project directory exist: linked `Compile`/`None` items (truncate at `$(` or a wildcard; a `bin`/`obj` path maps to
+    its owning project) and relative `<Import Project>` files.
+- **S2 (npm writing).** In an npm workspace, `npm version 22.45.0 --no-git-tag-version -w @x/a` also rewrote the root
+  `package-lock.json`; `npm pkg set 'version=1.0.0; echo pwned'` wrote the string as given. So the action edits
+  `package.json` as JSON itself after validating the version (PRD D9), and writes `<ng-package dest>/package.json`
+  (default `dist`) when it exists.
+- **Step order.** The API hash needs the build and MinVer needs the tags, so the action runs **after build, before
+  pack**, and `dotnet pack` runs without `--no-build` (PRD D3).
+- **S3 (API listing).** `.NET`: `Api/DotnetApiListing.cs`, a System.Reflection.Metadata walk (no load, no execution):
+  public/protected types and members, sealed types' protected members dropped, attributes, nullability and parameter
+  names left out, enum underlying type kept. A sample library (records, generics with constraints, events, indexers,
+  init setters, `in`/`ref readonly`, defaults, delegates, nested types) built for net8.0 with SDK 10.0.113 and SDK
+  11.0.100-rc.2 gave the same hash (`sha256:d530d2a8…`); a private member added: unchanged; a public field added:
+  changed. TypeScript: the `.d.ts` output normalized as text (comments dropped, whitespace collapsed around
+  punctuation, files sorted by path); TypeScript 5.8.3 and 5.9.3 emitted byte-identical `.d.ts` for a sample with
+  generics, enums, abstract classes, accessors, `#private`, `as const` and a default export. Private members appear
+  in `.d.ts` (`private hidden;`), so the normalizer drops `private` member declarations (not `private constructor`).
+- **S4 (engine packaging).** Built from source on the runner (PRD D2): `net8.0`, `RollForward=Major`, no package
+  references; `dotnet run` (project mode) from a directory outside the repository, with SDK 10.0.113, against the
+  repository's own `Directory.Build.props/.targets`: **18.7 s cold** (restore + build), **2.3 s warm**, ran on .NET
+  8.0.32. Rejected: committed DLLs (needs a staleness guard on top of the ncc one) and a dotnet tool (its version pin
+  is the chicken-and-egg the engine exists to solve).
+- **S5 (tags).** GitHub documents that a push creating more than three tags creates no `push` event for them, and a
+  `GITHUB_TOKEN` push triggers no workflow. Neither matters: publishing happens in the same run as the tagging (D3), and
+  nothing listens for tags. Confirmed in M16.
+- **S6 (OIDC).** `job_workflow_ref` names the workflow file that holds the job (a reusable workflow included), and
+  `workflow_ref` the caller. The existing `ForgeOidcProfile.GitHub` (`CodeCoverage.Library/Forge/ForgeOidcProfile.cs`)
+  maps `repository`, `repository_id`, owner, visibility, `run_id` and `run_attempt` only, so M6 adds `ref` and
+  `workflow_ref` to the profile. The server requires `repository_id` of a known repository, a `ref` that is the default
+  branch or a configured release branch (a pull-request run's `refs/pull/N/merge` is refused, which also keeps fork
+  and PR runs from tagging), and records `workflow_ref`. Confirmed per trigger in M16.
+- **S7 (previous hash from the registry).** `MintPlayer.SourceGenerators.Attributes` 13.0.0 from nuget.org's flat
+  container (23 KB), `lib/netstandard2.0/*.dll` read by the S3 lister: `sha256:06f24f2d…`; the same source
+  (`MintPlayer.Dotnet.Tools` at 33538f6) built locally on Windows: **the same hash**. The package's content is never
+  executed: the nupkg is a zip, only `lib/**.dll` metadata is read. npm: the tarball holds the same `.d.ts` files the
+  build emitted, read as text.
+- **S8 (backport dry-run).** `RollingBranchReplay` does not fit: its resolution table takes the human's side on planned
+  manifests. A backport is plain plumbing on the same `GitRunner`: `merge-tree --write-tree --merge-base=<c>^1
+  <target> <c>` per target, `MergeTreeOutput.Parse`, any conflict = refuse; then `commit-tree`. No `IConflictResolver`
+  applies: versions are placeholders in source, so version lines never conflict. Every target is dry-run before any
+  push.
 
 ## Spikes
 

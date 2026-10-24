@@ -103,8 +103,11 @@ the graph, change detection, the version rules, annotated-tag writing and Releas
 
 1. **server** (default): the action posts to coverage.mintplayer.com, the server computes and pushes the tags as the
    App, and records the run in RavenDB.
-2. **local**: the action runs the engine in the workflow (a CLI, packaging per S4) and pushes with the workflow's
-   `GITHUB_TOKEN`.
+2. **local**: the action runs the engine in the workflow and pushes with the workflow's `GITHUB_TOKEN`. The engine
+   is built from source on the runner: `CodeCoverage.Versioning(.Cli)` target `net8.0` with `RollForward=Major` and no
+   package references, and the action runs `dotnet run` (project mode) from `$RUNNER_TEMP` so this repository's
+   `global.json` doesn't apply (S4: 18.7 s cold, 2.3 s warm on SDK 10.0.113). No binaries are committed, so nothing
+   can go stale.
 
 ```yaml
 # coverage.yml
@@ -130,8 +133,10 @@ adds tags and Releases authored by the App, per-repository serialization, and hi
 ### D3 — Two triggers: the action step (default) and bot dispatch (Q2)
 
 - **A, the action step (default).** The consumer's publish workflow calls `MintPlayer/versioning-action@v1` once,
-  before build and pack. The step computes and tags (D2), runs `git fetch --tags` and deepens a shallow clone itself,
-  and exposes the versions as outputs. The consumer controls *when* a release happens: gate the step with `if:`, make the
+  **after build and before pack**: the API hash needs the built assemblies and `.d.ts` files (D6), and `dotnet pack`
+  (without `--no-build`) rebuilds with MinVer reading the new tags (S1). For npm the action writes the versions into
+  `package.json` before the library build that copies them to `dist` (D9). The step computes and tags (D2), runs
+  `git fetch --tags` and deepens a shallow clone itself, and exposes the versions as outputs. The consumer controls *when* a release happens: gate the step with `if:`, make the
   workflow manual, or push tags by hand.
 - **B, bot dispatch.** `versioning: { dispatch: publish.yml }`. On a merge to the default branch or a release branch,
   the server checks whether any package's inputs changed (D4). If one did, it fires `workflow_dispatch` on that workflow,
@@ -248,12 +253,20 @@ their code in our container. So:
 
 ### D9 — How the version reaches the artifacts (Q4)
 
-- **.NET: MinVer.** The onboarding PR adds the `MinVer` package and `<MinVerTagPrefix>$(PackageId)/v</MinVerTagPrefix>`
-  to `Directory.Build.targets` (`.targets`, because `PackageId` must be evaluated first; S1). Offline builds read local
-  tags.
-- **npm/Nx:** the action writes the version into the working-tree `package.json` of every publishable package with
-  `npm version <v> --no-git-tag-version` (argument array, validated version), and rewrites internal `dependencies` /
-  `peerDependencies` ranges (`workspace:*`, `file:`, plain ranges) to `^<released>` (S2). Nothing is committed.
+- **.NET: MinVer.** The onboarding PR adds the `MinVer` package and sets `MinVerTagPrefix` to `$(PackageId)/v`
+  **inside a target** in `Directory.Build.targets` (S1: as a plain property it read an empty `PackageId` for projects
+  that rely on the default and gave `/v`):
+  ```xml
+  <Target Name="SetMinVerTagPrefix" BeforeTargets="MinVer">
+    <PropertyGroup><MinVerTagPrefix>$(PackageId)/v</MinVerTagPrefix></PropertyGroup>
+  </Target>
+  ```
+  Offline builds read local tags. `MintPlayer.Mapper/v` never matches `MintPlayer.Mapper.Abstractions/v…` (S1).
+- **npm/Nx:** the action writes the version into the working-tree `package.json` of every publishable package by
+  editing the JSON itself (validated version, formatting and trailing newline kept), and rewrites internal
+  `dependencies` / `peerDependencies` ranges (`workspace:*`, `file:`, plain ranges) to `^<released>`. Not
+  `npm version`: inside a workspace it also rewrites the root lockfile, and `npm pkg set` accepts any string (S2).
+  When a built `<ng-package dest>/package.json` already exists, it is written too. Nothing is committed.
   Publishable = not `"private": true`; for Angular, the library has an `ng-package.json`.
 - No dependency on Nx Release (owner: "my bot can make it easier, without depending on them").
 
