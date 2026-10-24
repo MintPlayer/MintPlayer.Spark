@@ -56,6 +56,24 @@ public class VersioningRun
     public int Skipped { get; set; }
 
     public List<string> Warnings { get; set; } = [];
+
+    /// <summary>The release branches a platform major move asks for (D12), created behind the auto-cut policy.</summary>
+    public List<VersioningRunBranchCut> BranchCuts { get; set; } = [];
+}
+
+public sealed class VersioningRunBranchCut
+{
+    public string Branch { get; set; } = string.Empty;
+    public int Major { get; set; }
+
+    /// <summary>The release commit's first parent: the last commit of the old line.</summary>
+    public string Commit { get; set; } = string.Empty;
+
+    public List<string> Packages { get; set; } = [];
+    public int? PullRequest { get; set; }
+
+    /// <summary><c>created</c>, <c>exists</c>, <c>disabled</c> or <c>invalid</c> once handled; null while pending.</summary>
+    public string? Outcome { get; set; }
 }
 
 public sealed class VersioningRunRelease

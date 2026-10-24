@@ -251,6 +251,8 @@ public sealed class VersioningSettingsWire
     public List<string>? Ignore { get; set; }
     public List<LockstepGroupWire>? Groups { get; set; }
     public Dictionary<string, string>? Anchors { get; set; }
+    /// <summary><c>versioning.releaseBranches</c> (D10), which names a branch a major move cuts (D12).</summary>
+    public List<string>? ReleaseBranches { get; set; }
 }
 
 public sealed class LockstepGroupWire
@@ -266,13 +268,16 @@ public sealed record ReleaseWire(string Id, string Kind, string Version, string 
 
 public sealed record ReleaseNotesWire(string Name, string Body, bool Prerelease);
 
+/// <summary>A release branch a platform major move asks for (D12); the app creates it behind its auto-cut policy.</summary>
+public sealed record BranchCutWire(string Branch, int Major, string Commit, IReadOnlyList<string> Packages, int? PullRequest);
+
 public sealed record PackageNoteWire(string Id, string Reason);
 
 /// <param name="Outcome"><see cref="JobOutcomes.Versioned"/> (see the per-tag outcomes), <see cref="JobOutcomes.PlanRefused"/>
 /// when the plan refused a package and nothing was written, or a failure.</param>
 public sealed record VersioningRunResponse(
     string Outcome, string? Reason, IReadOnlyList<ReleaseWire> Releases, IReadOnlyList<PackageNoteWire> Skipped, IReadOnlyList<PackageNoteWire> Refused,
-    IReadOnlyList<string> Warnings, string? Detail, long DurationMs);
+    IReadOnlyList<string> Warnings, string? Detail, long DurationMs, IReadOnlyList<BranchCutWire>? BranchCuts = null);
 
 /// <summary>The body of a 400 (§0 D57): the first field that broke its rule, and the rule. Never the value.</summary>
 public sealed record RefusedResponse(string Outcome, string Field, string Detail);

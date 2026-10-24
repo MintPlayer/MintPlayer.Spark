@@ -7,7 +7,7 @@ MintPlayer repositories (PRD D17).
 ## Status
 
 2026-10-24: grilled (Q1–Q14 → D1–D17). Spikes S1–S4, S7, S8 run; S5 and S6 answered from GitHub's documented
-behaviour and confirmed in the M16 live test (both need a real workflow run on GitHub). M1–M8 committed; M9 next.
+behaviour and confirmed in the M16 live test (both need a real workflow run on GitHub). M1–M9 committed; M10 next.
 Every test written so far runs once, in M16.
 
 ## Spike results
@@ -133,6 +133,36 @@ M7 (versioning action):
   follows the input, not the app's policy. Evidence: `releases.test.ts`.
 - **`make_latest: false`** on every Release: in a monorepo, "latest" across all packages means nothing, and a
   backport would otherwise steal it.
+- **M9: the engine reports the cuts, the hosts make them (D2, D12).** `ReleasePlanner` marks a release
+  `MovedFromMajor` when it runs on the default branch, its anchor is a platform (not free), and its new major is
+  above the package's highest tag major. That previous highest tag stands in for "M(first parent)": the tags are
+  the record of what the first parent shipped, and reading them needs no second plan. `ReleaseBranchCuts.ForAsync`
+  groups the moved releases whose tag is in place by old major, resolves `head^1` and reads the PR number from the
+  head's subject (GitHub's "Merge pull request #N from …" or a squash's trailing "(#N)"). It returns one
+  `ReleaseBranchCut` per old major. A root commit, or patterns with no single-`*` entry to name the branch from,
+  gives a warning and no cut. Evidence: `ReleaseBranchCutsTests` (move on net11.0, multi-target net10.0;net11.0,
+  free package never moves, a `release/10.x` run beside 11.x moves nothing, naming, subject parsing, a real-git
+  first parent, a root commit).
+- **The branch is named from the first pattern with exactly one `*`** (and no `?`), the major in its place:
+  `release/*.x` → `release/10.x`. The patterns are the repository's `versioning.releaseBranches`, the same list
+  that decides which branches may tag, so the cut branch is always one the next run accepts as a release line.
+- **The first package to move cuts the branch for the whole line.** Creating a branch that exists is "exists",
+  not an error, and the existing branch is left where it is. The PR comment is posted only by the cut that
+  created the branch.
+- **Server: a queued `CutReleaseBranchesMessage` and `ReleaseBranchCutRecipient`**, as the Releases are.
+  The recipient re-reads `Repository.ResolveAutoCutReleaseBranches` (Account default Enabled) when it handles the
+  message, and re-validates what it sends to the forge. It accepts only a branch name that passes
+  `VersioningConfig.IsBranchPattern` and has no `*`, and only a 40-character object id. Anything else is marked
+  "invalid" and never sent. The GitWriter re-validates the patterns it is sent too (`VersioningSettingsTests`).
+  Evidence: `ReleaseBranchCutRecipientTests` (policy matrix, existing branch, comment only on create, invalid name or
+  commit).
+- **Local: the `cut-release-branches` input (default `true`) stands in for the policy**, as `releases` does. The
+  branch is created with `POST /git/refs`, and a 422 "Reference already exists" counts as "exists". The comment
+  needs `pull-requests: write`; when it is refused, that is a warning. The comment text is the same in both hosts,
+  with `\n` spelled out in C# so a CRLF checkout does not change it. Evidence: `releases.test.ts`
+  (`cutReleaseBranches`, `cutComment`).
+- **No branch protection is set.** Only a ruleset matching `release/*` protects the branch; the docs (M15)
+  advise one, and the comment says so.
 
 ## Spikes
 

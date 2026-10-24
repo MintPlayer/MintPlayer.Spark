@@ -59,7 +59,7 @@ public partial class VersioningController : ControllerBase
     /// <param name="Outcome">The writer's outcome (<c>versioned</c>, <c>plan-refused</c>, …) or the app's refusal.</param>
     public sealed record VersioningRunResponse(
         string Outcome, string? Reason, string? Detail, IReadOnlyList<GitWriterRelease> Releases, IReadOnlyList<GitWriterPackageNote> Refused,
-        int Skipped, IReadOnlyList<string> Warnings, IReadOnlyList<string>? Errors = null);
+        int Skipped, IReadOnlyList<string> Warnings, IReadOnlyList<string>? Errors = null, IReadOnlyList<GitWriterBranchCut>? BranchCuts = null);
 
     [RequireAntiforgeryToken(false)]
     [HttpPost("run")]
@@ -133,6 +133,9 @@ public partial class VersioningController : ControllerBase
         // instead of holding this request (and the action's fallback clock) open.
         if (record.Releases.Any(r => r.Release is not null))
             await messageBus.BroadcastAsync(new CreateVersionReleasesMessage { RunId = record.Id! }, cancellationToken);
+        // D12: so does the cut of a release branch when a platform major moved.
+        if (record.BranchCuts.Count > 0)
+            await messageBus.BroadcastAsync(new CutReleaseBranchesMessage { RunId = record.Id! }, cancellationToken);
         await ReportAsync(repository, manifest.Commit!, branch, response, cancellationToken);
         return StatusCode(status, response);
     }
@@ -151,7 +154,7 @@ public partial class VersioningController : ControllerBase
                 new CommitGraph.SidecarCredential(access.Username, access.Password), branch, defaultBranch, branchMajor, Tagger, settings, manifest),
                 cancellationToken);
             var response = new VersioningRunResponse(result.Outcome, result.Reason, result.Detail, result.Releases ?? [], result.Refused ?? [],
-                result.Skipped?.Count ?? 0, result.Warnings ?? []);
+                result.Skipped?.Count ?? 0, result.Warnings ?? [], null, result.BranchCuts ?? []);
             return (result.Outcome, result.Reason) switch
             {
                 (GitWriterVersioningResult.Versioned, _) => (StatusCodes.Status200OK, response),
@@ -189,6 +192,10 @@ public partial class VersioningController : ControllerBase
         record.Refused = response.Refused.Take(VersioningRun.MaxNotes).Select(n => new VersioningRunNote { Id = n.Id, Reason = n.Reason }).ToList();
         record.Skipped = response.Skipped;
         record.Warnings = response.Warnings.Take(VersioningRun.MaxNotes).ToList();
+        record.BranchCuts = (response.BranchCuts ?? []).Take(VersioningRun.MaxNotes).Select(c => new VersioningRunBranchCut
+        {
+            Branch = c.Branch, Major = c.Major, Commit = c.Commit, Packages = [.. c.Packages ?? []], PullRequest = c.PullRequest,
+        }).ToList();
     }
 
     /// <summary>The run's check on the commit. Best effort: the tags are written whether or not the forge takes it.</summary>

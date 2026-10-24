@@ -8,7 +8,7 @@ import { realExec, type Exec } from './exec';
 import { checkBranchName, prepareHistory, showOnDefaultBranch, taggedVersions } from './git';
 import { discoverPackages, writeVersions } from './npm';
 import { distTag, highest } from './semver';
-import { createReleases } from './releases';
+import { createReleases, cutReleaseBranches } from './releases';
 import { runOnServer } from './server';
 
 export interface Inputs {
@@ -19,6 +19,7 @@ export interface Inputs {
   token: string;
   registryFallback: boolean;
   releases: boolean;
+  cutReleaseBranches: boolean;
   githubToken: string;
   repository: string;
   apiUrl: string;
@@ -38,6 +39,7 @@ export function readInputs(env: NodeJS.ProcessEnv = process.env): Inputs {
     token: get('token'),
     registryFallback: get('registry-fallback') !== 'false',
     releases: get('releases') !== 'false',
+    cutReleaseBranches: get('cut-release-branches') !== 'false',
     githubToken: get('github-token'),
     repository: env.GITHUB_REPOSITORY ?? '',
     apiUrl: env.GITHUB_API_URL || 'https://api.github.com',
@@ -155,6 +157,13 @@ export async function version(inputs: Inputs, deps: Dependencies): Promise<Outpu
     if (!inputs.githubToken || !inputs.repository) deps.warn('No github-token or GITHUB_REPOSITORY: the Releases are not created.');
     else await createReleases({ apiUrl: inputs.apiUrl, repository: inputs.repository, token: inputs.githubToken, fetch: deps.fetch, sleep: deps.sleep,
       log: deps.log, warn: deps.warn }, released);
+  }
+  // PRD D12: likewise for the release-branch cuts, behind `cut-release-branches` in place of the auto-cut policy.
+  const cuts = response.branchCuts ?? [];
+  if (mode === 'local' && inputs.cutReleaseBranches && cuts.length > 0) {
+    if (!inputs.githubToken || !inputs.repository) deps.warn('No github-token or GITHUB_REPOSITORY: the release branches are not cut.');
+    else await cutReleaseBranches({ apiUrl: inputs.apiUrl, repository: inputs.repository, token: inputs.githubToken, fetch: deps.fetch, sleep: deps.sleep,
+      log: deps.log, warn: deps.warn }, cuts);
   }
   return {
     outcome: 'versioned',

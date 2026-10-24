@@ -16,7 +16,8 @@ public sealed record GitWriterTagger(string Name, string Email);
 /// <summary>The writer's answer: always 200 with an outcome, as every job (<c>GitWriterOutcomes</c>).</summary>
 public sealed record GitWriterVersioningResult(
     string Outcome, string? Reason, IReadOnlyList<GitWriterRelease>? Releases, IReadOnlyList<GitWriterPackageNote>? Skipped,
-    IReadOnlyList<GitWriterPackageNote>? Refused, IReadOnlyList<string>? Warnings, string? Detail, long DurationMs)
+    IReadOnlyList<GitWriterPackageNote>? Refused, IReadOnlyList<string>? Warnings, string? Detail, long DurationMs,
+    IReadOnlyList<GitWriterBranchCut>? BranchCuts = null)
 {
     public const string Versioned = "versioned";
     public const string PlanRefused = "plan-refused";
@@ -32,3 +33,6 @@ public sealed record GitWriterRelease(string Id, string Kind, string Version, st
 public sealed record GitWriterReleaseNotes(string Name, string Body, bool Prerelease);
 
 public sealed record GitWriterPackageNote(string Id, string Reason);
+
+/// <summary>A release branch a platform major move asks for (D12): <see cref="Branch"/> at the release commit's first parent.</summary>
+public sealed record GitWriterBranchCut(string Branch, int Major, string Commit, IReadOnlyList<string>? Packages, int? PullRequest);

@@ -113,13 +113,15 @@ public sealed class VersioningConfig
 		Ignore = Ignore ?? VersioningSettings.DefaultIgnore,
 		Groups = (Groups ?? []).Select(g => new LockstepGroup(g.Name!, g.Packages!)).ToList(),
 		Anchors = (Packages ?? []).Where(p => p.Value?.Anchor is not null).ToDictionary(p => p.Key, p => p.Value!.Anchor!, StringComparer.Ordinal),
+		ReleaseBranches = EffectiveReleaseBranches,
 	};
 
 	private static bool IsWorkflowFile(string name)
 		=> name.Length is > 0 and <= 255 && (name.EndsWith(".yml", StringComparison.Ordinal) || name.EndsWith(".yaml", StringComparison.Ordinal))
 			&& name.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or '-') && !name.StartsWith('.');
 
-	private static bool IsBranchPattern(string? pattern)
+	/// <summary>A branch name or pattern safe to name a ref with (the git writer re-checks what it receives, D12).</summary>
+	public static bool IsBranchPattern(string? pattern)
 		=> pattern is { Length: > 0 and <= MaxBranchPatternLength } && pattern.All(c => char.IsAsciiLetterOrDigit(c) || c is '/' or '.' or '_' or '-' or '*')
 			&& !pattern.StartsWith('/') && !pattern.EndsWith('/') && !pattern.Contains("..", StringComparison.Ordinal) && !pattern.Contains("//", StringComparison.Ordinal);
 

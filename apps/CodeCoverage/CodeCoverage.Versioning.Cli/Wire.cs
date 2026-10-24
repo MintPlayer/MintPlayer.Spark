@@ -21,7 +21,7 @@ internal static class Wire
 /// </summary>
 internal sealed record LocalRunResponse(
 	string Outcome, string? Reason, string? Detail, IReadOnlyList<LocalRelease> Releases, IReadOnlyList<LocalPackageNote> Refused,
-	int Skipped, IReadOnlyList<string> Warnings, IReadOnlyList<string>? Errors = null)
+	int Skipped, IReadOnlyList<string> Warnings, IReadOnlyList<string>? Errors = null, IReadOnlyList<ReleaseBranchCut>? BranchCuts = null)
 {
 	public const string Versioned = "versioned";
 	public const string PlanRefused = "plan-refused";
@@ -39,7 +39,7 @@ internal sealed record LocalRunResponse(
 				r.ApiHash, r.TaggedByHand, outcomes.TryGetValue(r.Tag.Name, out var written) ? TagWire(written.Outcome) : null,
 				result.Notes?.GetValueOrDefault(r.Tag.Name) is { } notes ? new LocalReleaseNotes(notes.Name, notes.Body, notes.Prerelease) : null))],
 			[.. result.Plan.Refused.Select(n => new LocalPackageNote(n.Id, n.Reason))],
-			result.Plan.Skipped.Count, result.Warnings);
+			result.Plan.Skipped.Count, result.Warnings, null, result.BranchCuts);
 	}
 
 	private static string TagWire(TagOutcome outcome) => outcome switch

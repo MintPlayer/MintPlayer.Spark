@@ -22,6 +22,9 @@ public sealed record VersioningSettings
 
 	/// <summary><c>versioning.packages.&lt;id&gt;.anchor</c>: a framework package id or <c>free</c> (D7).</summary>
 	public IReadOnlyDictionary<string, string> Anchors { get; init; } = new Dictionary<string, string>();
+
+	/// <summary><c>versioning.releaseBranches</c> (D10): the first pattern with one <c>*</c> names a cut branch (D12).</summary>
+	public IReadOnlyList<string> ReleaseBranches { get; init; } = Releases.ReleaseBranches.Default;
 }
 
 /// <summary>What the build knows about one packed package (D5): what static parsing cannot read.</summary>
@@ -63,8 +66,12 @@ public sealed record ReleaseContext
 /// <param name="Since">The commit of the previous tag on the package's line; null for a first release (the notes, D15).</param>
 /// <param name="Inputs">The paths whose commits the notes list: the package's inputs and those of the projects compiled into it.</param>
 /// <param name="Follows">The released dependencies this release follows (D4), for the notes' "Dependency update" lines.</param>
+/// <param name="MovedFromMajor">
+/// On the default branch, the major a platform-anchored package leaves behind when its platform's major moves (D12):
+/// the line that gets a release branch. Null for a free package, which never cuts one.
+/// </param>
 public sealed record PlannedRelease(ProjectNode Project, PackageVersion Version, IReadOnlyList<string> Reasons, string? ApiHash, bool TaggedByHand,
-	string? Since = null, IReadOnlyList<string>? Inputs = null, IReadOnlyList<VersionTag>? Follows = null)
+	string? Since = null, IReadOnlyList<string>? Inputs = null, IReadOnlyList<VersionTag>? Follows = null, int? MovedFromMajor = null)
 {
 	public string Id => Project.Id!;
 
@@ -203,8 +210,12 @@ public static class ReleasePlanner
 						if (history.Any(t => t.Version == groupVersion)) { refused.Add(new PackageNote(id, $"Lockstep version {groupVersion} already exists for {id}.")); break; }
 						version = groupVersion;
 					}
+					// The package's previous major is the major it computed at its last release, which stands for M(first parent).
+					var movedFrom = context.OnDefaultBranch && !anchor.IsFree && history.LastOrDefault() is { } previous && version.Major > previous.Version.Major
+						? previous.Version.Major
+						: (int?)null;
 					released[id] = new PlannedRelease(project, version, reasons, facts?.ApiHash, TaggedByHand: false,
-						lastOnLine?.Commit, InputsOf(graph, project), follows);
+						lastOnLine?.Commit, InputsOf(graph, project), follows, movedFrom);
 					break;
 				case VersionDecision.Skip(var why):
 					skipped.Add(new PackageNote(id, why));

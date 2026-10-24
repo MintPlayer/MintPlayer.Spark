@@ -31,8 +31,12 @@ inputs:
     description: 'local mode: create one GitHub Release per new tag (PRD D15). Server mode follows the app''s release-on-tag policy instead.'
     required: false
     default: 'true'
+  cut-release-branches:
+    description: 'local mode: when a platform major moves on the default branch, cut release/<old major>.x at the first parent and comment on the merged pull request (PRD D12). Server mode follows the app''s auto-cut policy instead.'
+    required: false
+    default: 'true'
   github-token:
-    description: 'local mode: the token the Releases are created with; needs contents: write.'
+    description: 'local mode: the token the Releases and release branches are created with; needs contents: write (and pull-requests: write for the cut comment).'
     required: false
     default: '${{ github.token }}'
 

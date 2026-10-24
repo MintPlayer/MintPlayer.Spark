@@ -60,7 +60,9 @@ internal sealed partial class GitWriterVersioningRunEndpoint : IPostEndpoint<Ver
         var ignore = wire.Ignore ?? [.. VersioningSettings.DefaultIgnore];
         var groups = wire.Groups ?? [];
         var anchors = wire.Anchors ?? [];
+        var releaseBranches = wire.ReleaseBranches is { Count: > 0 } patterns ? patterns : [.. ReleaseBranches.Default];
         if (ignore.Count > MaxIgnore || groups.Count > MaxGroups || anchors.Count > Limits.MaxPackagesPerRun) return null;
+        if (releaseBranches.Count > VersioningConfig.MaxReleaseBranches || !releaseBranches.All(VersioningConfig.IsBranchPattern)) return null;
         if (!ignore.All(IsGlob)) return null;
         if (!groups.All(g => g is { Name.Length: > 0 and <= 100, Packages.Count: > 0 and <= Limits.MaxPackagesPerRun } && g.Packages.All(IsPattern))) return null;
         if (groups.Select(g => g.Name).Distinct(StringComparer.Ordinal).Count() != groups.Count) return null;
@@ -70,6 +72,7 @@ internal sealed partial class GitWriterVersioningRunEndpoint : IPostEndpoint<Ver
             Ignore = ignore,
             Groups = groups.Select(g => new LockstepGroup(g.Name!, g.Packages!)).ToList(),
             Anchors = new Dictionary<string, string>(anchors, StringComparer.Ordinal),
+            ReleaseBranches = releaseBranches,
         };
     }
 

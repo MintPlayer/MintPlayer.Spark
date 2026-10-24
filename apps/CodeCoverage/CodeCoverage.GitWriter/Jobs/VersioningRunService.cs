@@ -69,6 +69,7 @@ public sealed class VersioningRunService(JobRunner jobs)
             result.Plan.Refused.Count > 0 ? JobOutcomes.PlanRefused : JobOutcomes.Versioned, null, releases,
             result.Plan.Skipped.Select(n => new PackageNoteWire(n.Id, n.Reason)).ToList(),
             result.Plan.Refused.Select(n => new PackageNoteWire(n.Id, n.Reason)).ToList(),
-            result.Warnings, null, durationMs);
+            result.Warnings, null, durationMs,
+            (result.BranchCuts ?? []).Select(c => new BranchCutWire(c.Branch, c.Major, c.Commit, c.Packages, c.PullRequest)).ToList());
     }
 }

@@ -17,6 +17,7 @@ public class VersioningSettingsTests
         settings.Should().NotBeNull();
         settings!.Ignore.Should().BeEquivalentTo(["**/*.md"]);
         settings.Groups.Should().BeEmpty();
+        settings.ReleaseBranches.Should().Equal("release/*.x");
     }
 
     [Fact]
@@ -27,9 +28,11 @@ public class VersioningSettingsTests
             Ignore = ["docs/**"],
             Groups = [new LockstepGroupWire { Name = "spark", Packages = ["MintPlayer.Spark*"] }],
             Anchors = new() { ["MintPlayer.Spark"] = "free" },
+            ReleaseBranches = ["lts/*"],
         });
 
         settings.Should().NotBeNull();
+        settings!.ReleaseBranches.Should().Equal("lts/*");
         settings!.Groups.Single().Name.Should().Be("spark");
         settings.Anchors["MintPlayer.Spark"].Should().Be("free");
     }
@@ -43,6 +46,8 @@ public class VersioningSettingsTests
         new VersioningSettingsWire { Anchors = new() { ["not a package id"] = "free" } },
         new VersioningSettingsWire { Anchors = new() { ["Acme"] = "bad\nvalue" } },
         new VersioningSettingsWire { Ignore = [.. Enumerable.Repeat("**/*.md", 65)] },
+        new VersioningSettingsWire { ReleaseBranches = ["release/../main"] },
+        new VersioningSettingsWire { ReleaseBranches = ["release/*.x; rm"] },
     };
 
     [Theory]

@@ -12,6 +12,17 @@ export interface RunResponse {
   skipped: number;
   warnings: string[];
   errors?: string[];
+  /** The release branches a platform major move asks for (PRD D12); the server cuts them itself. */
+  branchCuts?: BranchCut[];
+}
+
+/** `release/<major>.x` at `commit`, the release commit's first parent. */
+export interface BranchCut {
+  branch: string;
+  major: number;
+  commit: string;
+  packages: string[];
+  pullRequest?: number | null;
 }
 
 export interface Release {

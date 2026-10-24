@@ -41,7 +41,8 @@ repository without that section is refused.
 | `token` | (none) | Local mode only: a token to push the tags with. Without it the checkout's own credentials push (`contents: write`). |
 | `registry-fallback` | `true` | When the last version's tag has no API hash (a tag made by hand), compare against the package on nuget.org / npmjs.org. |
 | `releases` | `true` | Local mode only: create one GitHub Release per new tag, notes grouped from the commit subjects. Server mode follows the app's release-on-tag setting. |
-| `github-token` | `${{ github.token }}` | Local mode only: the token the Releases are created with (`contents: write`). |
+| `cut-release-branches` | `true` | Local mode only: when a platform package's major moves on the default branch, cut `release/<old major>.x` at the merge's first parent and comment on the merged pull request. Server mode follows the app's auto-cut setting. |
+| `github-token` | `${{ github.token }}` | Local mode only: the token the Releases and release branches are created with (`contents: write`; `pull-requests: write` for the cut comment). |
 
 Every tag gets its own Release, so a workflow triggered `on: release` runs once per released package.
 

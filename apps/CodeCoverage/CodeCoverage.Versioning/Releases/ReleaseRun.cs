@@ -9,8 +9,9 @@ public sealed record ReleaseRunRequest(ReleaseManifest Manifest, VersioningSetti
 
 /// <summary>What a run planned and what became of each tag. <see cref="Tags"/> is empty when the plan refused anything.</summary>
 /// <param name="Notes">Per tag name, the Release text (D15) of each tag the run created or found already in place.</param>
+/// <param name="BranchCuts">The release branches a platform major move asks for (D12); the host creates them.</param>
 public sealed record ReleaseRunResult(ReleasePlan Plan, IReadOnlyList<TagWriteResult> Tags, IReadOnlyList<string> Warnings,
-	IReadOnlyDictionary<string, ReleaseNotesText>? Notes = null)
+	IReadOnlyDictionary<string, ReleaseNotesText>? Notes = null, IReadOnlyList<ReleaseBranchCut>? BranchCuts = null)
 {
 	public bool Succeeded => Plan.Refused.Count == 0 && Tags.All(t => t.Outcome is TagOutcome.Created or TagOutcome.AlreadyPresent);
 }
@@ -65,9 +66,16 @@ public static class ReleaseRun
 		// Notes for every tag now in place, the already-present ones too: a rerun after a failed Release creates what is missing.
 		var notes = new Dictionary<string, ReleaseNotesText>(StringComparer.Ordinal);
 		var placed = written.Where(t => t.Outcome is TagOutcome.Created or TagOutcome.AlreadyPresent).Select(t => t.Tag.Name).ToHashSet(StringComparer.Ordinal);
-		foreach (var release in plan.Releases.Where(r => placed.Contains(r.Tag.Name)))
+		var placedReleases = plan.Releases.Where(r => placed.Contains(r.Tag.Name)).ToList();
+		foreach (var release in placedReleases)
 			notes[release.Tag.Name] = await ReleaseNotes.ForAsync(git, head, release, cancellationToken);
-		return new ReleaseRunResult(plan, written, graph.Warnings, notes);
+
+		// A cut follows a tag in place, never a refused or failed one: the branch marks a line that was really left.
+		var warnings = graph.Warnings.ToList();
+		var cuts = request.OnDefaultBranch
+			? await ReleaseBranchCuts.ForAsync(git, head, placedReleases, request.Settings.ReleaseBranches, warnings, cancellationToken)
+			: [];
+		return new ReleaseRunResult(plan, written, warnings, notes, cuts);
 	}
 }
 
