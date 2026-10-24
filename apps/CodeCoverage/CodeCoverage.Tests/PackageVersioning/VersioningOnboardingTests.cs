@@ -342,6 +342,25 @@ public class VersioningOnboardingTests
     }
 
     [Fact]
+    public async Task MinVer_goes_from_the_repository_build_but_stays_in_props_a_package_ships()
+    {
+        // MintPlayer.Dotnet.Tools#198: the onboarding took MinVer out of the Vidyano SDK's props, which consumers import.
+        const string sdkProps = "<Project>\n  <ItemGroup>\n    <GlobalPackageReference Include=\"MinVer\" Version=\"6.0.0\" PrivateAssets=\"all\" />\n  </ItemGroup>\n</Project>\n";
+        var tree = new InMemoryTree()
+            .Add("Directory.Packages.props", "<Project>\n  <ItemGroup>\n    <GlobalPackageReference Include=\"MinVer\" Version=\"6.0.0\" PrivateAssets=\"all\" />\n    <PackageVersion Include=\"Xunit\" Version=\"2.9.0\" />\n  </ItemGroup>\n</Project>\n")
+            .Add("Sdks/Acme.Sdk/Acme.Sdk.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net11.0</TargetFramework>\n"
+                + "    <PackageId>Acme.Sdk</PackageId>\n    <Version>11.0.0</Version>\n  </PropertyGroup>\n</Project>\n")
+            .Add("Sdks/Acme.Sdk/Sdk/Acme.props", sdkProps);
+
+        var plan = await VersioningOnboarding.PlanAsync(tree, None, Sha);
+        var files = ByPath(plan);
+
+        files.Should().NotContainKey("Sdks/Acme.Sdk/Sdk/Acme.props");
+        files["Directory.Packages.props"].Should().NotContain("MinVer").And.Contain("Xunit");
+        plan.Notes.Should().Contain(n => n.StartsWith("`Sdks/Acme.Sdk/Sdk/Acme.props` mentions MinVer and was left alone"));
+    }
+
+    [Fact]
     public async Task Tagged_packages_get_no_seed_and_an_onboarded_repository_needs_nothing()
     {
         var tree = new InMemoryTree()

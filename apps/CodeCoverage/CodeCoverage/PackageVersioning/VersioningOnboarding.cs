@@ -90,7 +90,7 @@ public static partial class VersioningOnboarding
             foreach (var path in nuget.SelectMany(p => p.BuildProps.Append(p.Path)).Distinct(StringComparer.Ordinal))
                 if (await files.ReadAsync(path) is { } text) files.Write(path, ReplaceVersions(path, text, notes));
             await ReferenceAsync(files, nuget);
-            await RemoveMinVerAsync(files, tree, notes);
+            await RemoveMinVerAsync(files, tree, nuget, notes);
         }
 
         foreach (var package in packages.Where(p => p.Kind == PackageKind.Npm))
@@ -201,12 +201,22 @@ public static partial class VersioningOnboarding
         return $"{before}{eol}{indent}<ItemGroup>{eol}{indent}{indent}{item}{eol}{indent}</ItemGroup>{eol}{text[end..]}";
     }
 
-    /// <summary>MinVer sets the version from the same tags its own way, after this package: its single-line references and settings go.</summary>
-    private static async Task RemoveMinVerAsync(Files files, IRepositoryTree tree, List<string> notes)
+    /// <summary>
+    /// MinVer sets the version from the same tags its own way, after this package: its single-line references and settings go
+    /// from the repository's own build. Another MSBuild file may ship to consumers, as MintPlayer.Dotnet.Tools' Vidyano SDK
+    /// props do (#198): it is left alone, with a note.
+    /// </summary>
+    private static async Task RemoveMinVerAsync(Files files, IRepositoryTree tree, IReadOnlyList<ProjectNode> nuget, List<string> notes)
     {
+        var ownBuild = new HashSet<string>(nuget.SelectMany(p => p.BuildProps.Append(p.Path)), StringComparer.Ordinal);
         foreach (var path in tree.Entries.Keys.Where(IsMSBuildFile).Order(StringComparer.Ordinal).Take(MaxMSBuildFiles))
         {
             if (await files.ReadAsync(path) is not { } text || !text.Contains("MinVer", StringComparison.Ordinal)) continue;
+            if (!ownBuild.Contains(path) && !IsDirectoryFile(path))
+            {
+                notes.Add($"`{path}` mentions MinVer and was left alone: it is not a package project or a `Directory.*` file, so it may ship to consumers. If it is part of this repository's build, remove MinVer from it.");
+                continue;
+            }
             var lines = text.Split('\n');
             var kept = lines.Where(l => !MinVerLine().IsMatch(l)).ToList();
             if (kept.Count != lines.Length) files.Write(path, EmptyItemGroup().Replace(string.Join('\n', kept), ""));
@@ -214,6 +224,10 @@ public static partial class VersioningOnboarding
                 notes.Add($"`{path}` still mentions MinVer: remove it, or it sets the version after `{PackageId}`.");
         }
     }
+
+    private static bool IsDirectoryFile(string path)
+        => Path.GetFileName(path) is var name && (name.Equals("Directory.Build.props", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("Directory.Build.targets", StringComparison.OrdinalIgnoreCase) || name.Equals("Directory.Packages.props", StringComparison.OrdinalIgnoreCase));
 
     private static bool IsMSBuildFile(string path)
         => path.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".props", StringComparison.OrdinalIgnoreCase)
