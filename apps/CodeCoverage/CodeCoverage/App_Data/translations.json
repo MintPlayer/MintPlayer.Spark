@@ -41,6 +41,13 @@
         "nl": "Geplande run nu starten"
       }
     },
+    "SetUpVersioning": {
+      "label": {
+        "en": "Set up versioning",
+        "fr": "Configurer le versionnage",
+        "nl": "Versiebeheer instellen"
+      }
+    },
     "SyncColumns": {
       "label": {
         "en": "Sync columns",
@@ -583,6 +590,18 @@
   "model": {
     "Account": {
       "attributes": {
+        "AutoCutReleaseBranches": {
+          "description": {
+            "en": "Create release/<major>.x when a package moves to a new platform major, in every repository of this account that does not decide for itself.",
+            "fr": "Créer release/<major>.x quand un paquet passe à une nouvelle version majeure de plateforme, dans chaque dépôt de ce compte qui ne décide pas lui-même.",
+            "nl": "release/<major>.x aanmaken wanneer een pakket naar een nieuwe platform-major gaat, in elke repository van dit account die zelf niets kiest."
+          },
+          "label": {
+            "en": "Cut release branches",
+            "fr": "Créer les branches de release",
+            "nl": "Releasebranches aanmaken"
+          }
+        },
         "AvatarUrl": {
           "description": {
             "en": "URL of the account's GitHub avatar image, shown next to the login.",
@@ -829,9 +848,33 @@
             "nl": "Groottelabels"
           }
         },
+        "PrTitleCorrection": {
+          "description": {
+            "en": "Rewrite pull-request titles to \"<type>: <title> (#issue)\", in every repository of this account that does not decide for itself.",
+            "fr": "Réécrire les titres des pull requests en « <type>: <titre> (#issue) », dans chaque dépôt de ce compte qui ne décide pas lui-même.",
+            "nl": "Titels van pull requests herschrijven naar \"<type>: <titel> (#issue)\", in elke repository van dit account die zelf niets kiest."
+          },
+          "label": {
+            "en": "PR title correction",
+            "fr": "Correction des titres de PR",
+            "nl": "PR-titelcorrectie"
+          }
+        },
         "Provider": {
           "description": {
             "en": "The forge that hosts this account. Set on every document by the M6 re-key."
+          }
+        },
+        "ReleaseOnTag": {
+          "description": {
+            "en": "Publish a GitHub Release for every version tag the app pushes, in every repository of this account that does not decide for itself.",
+            "fr": "Publier une Release GitHub pour chaque tag de version que l'app pousse, dans chaque dépôt de ce compte qui ne décide pas lui-même.",
+            "nl": "Een GitHub Release publiceren voor elke versietag die de app pusht, in elke repository van dit account die zelf niets kiest."
+          },
+          "label": {
+            "en": "Release per version tag",
+            "fr": "Release par tag de version",
+            "nl": "Release per versietag"
           }
         },
         "Type": {
@@ -895,6 +938,13 @@
             "en": "PR size labels",
             "fr": "Étiquettes de taille de PR",
             "nl": "PR-groottelabels"
+          }
+        },
+        "Versioning": {
+          "label": {
+            "en": "Package versioning",
+            "fr": "Versionnage des paquets",
+            "nl": "Pakketversiebeheer"
           }
         }
       },
@@ -2752,6 +2802,18 @@
             "nl": "Gearchiveerd"
           }
         },
+        "AutoCutReleaseBranches": {
+          "description": {
+            "en": "Create release/<major>.x in this repository when a package moves to a new platform major, or follow the account.",
+            "fr": "Créer release/<major>.x dans ce dépôt quand un paquet passe à une nouvelle version majeure de plateforme, ou suivre le compte.",
+            "nl": "release/<major>.x aanmaken in deze repository wanneer een pakket naar een nieuwe platform-major gaat, of het account volgen."
+          },
+          "label": {
+            "en": "Cut release branches",
+            "fr": "Créer les branches de release",
+            "nl": "Releasebranches aanmaken"
+          }
+        },
         "BadgeToken": {
           "description": {
             "en": "Grants access to the rendered badge SVG only — never report data.",
@@ -3134,6 +3196,18 @@
             "nl": "Groottelabels van kracht"
           }
         },
+        "PrTitleCorrection": {
+          "description": {
+            "en": "Rewrite this repository's pull-request titles to \"<type>: <title> (#issue)\", or follow the account.",
+            "fr": "Réécrire les titres des pull requests de ce dépôt en « <type>: <titre> (#issue) », ou suivre le compte.",
+            "nl": "De titels van de pull requests van deze repository herschrijven naar \"<type>: <titel> (#issue)\", of het account volgen."
+          },
+          "label": {
+            "en": "PR title correction",
+            "fr": "Correction des titres de PR",
+            "nl": "PR-titelcorrectie"
+          }
+        },
         "PreviousFullNames": {
           "description": {
             "en": "Names this repository was previously known by, oldest first.",
@@ -3149,6 +3223,18 @@
         "Provider": {
           "description": {
             "en": "The forge that hosts this repository. Set on every document by the M6 re-key."
+          }
+        },
+        "ReleaseOnTag": {
+          "description": {
+            "en": "Publish a GitHub Release for every version tag in this repository, or follow the account.",
+            "fr": "Publier une Release GitHub pour chaque tag de version de ce dépôt, ou suivre le compte.",
+            "nl": "Een GitHub Release publiceren voor elke versietag van deze repository, of het account volgen."
+          },
+          "label": {
+            "en": "Release per version tag",
+            "fr": "Release par tag de version",
+            "nl": "Release per versietag"
           }
         }
       }
@@ -3280,6 +3366,25 @@
         "en": "Mirror",
         "fr": "Miroir",
         "nl": "Mirror"
+      }
+    },
+    "VersioningRun": {
+      "attributes": {
+        "Outcome": {
+          "description": {
+            "en": "The git writer's outcome (versioned, plan-refused, failed, …), or the app's own refusal."
+          }
+        },
+        "Repository": {
+          "description": {
+            "en": "The Repository document id."
+          }
+        },
+        "WorkflowRef": {
+          "description": {
+            "en": "The token's workflow_ref (S6): which workflow asked for the tags."
+          }
+        }
       }
     }
   },
@@ -3488,6 +3593,18 @@
           "nl": "Aangemelde gebruikers"
         }
       }
+    }
+  },
+  "versioningOnboarding": {
+    "notManaged": {
+      "en": "You don't manage this repository.",
+      "fr": "Vous ne gérez pas ce dépôt.",
+      "nl": "Je beheert deze repository niet."
+    },
+    "unavailable": {
+      "en": "The git writer is busy or unreachable; try again in a few minutes.",
+      "fr": "Le git writer est occupé ou injoignable ; réessayez dans quelques minutes.",
+      "nl": "De git writer is bezet of onbereikbaar; probeer het over enkele minuten opnieuw."
     }
   }
 }

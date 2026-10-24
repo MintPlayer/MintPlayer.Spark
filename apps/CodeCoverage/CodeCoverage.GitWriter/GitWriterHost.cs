@@ -35,6 +35,9 @@ public static class GitWriterHost
         builder.Services.AddSingleton(sp => new GitRunner(sp.GetRequiredService<IOptions<GitWriterOptions>>().Value.ToRunnerOptions(), sp.GetRequiredService<ILogger<GitRunner>>()));
         builder.Services.AddSingleton<JobRunner>();
         builder.Services.AddSingleton<WriterService>();
+        builder.Services.AddSingleton<TagService>();
+        builder.Services.AddSingleton<VersioningRunService>();
+        builder.Services.AddSingleton<BackportService>();
         // The conflict resolvers and validators, [Register]ed in CodeCoverage.Git (merge-queue PRD §10.3).
         builder.Services.AddMergeQueueResolution();
         builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase);

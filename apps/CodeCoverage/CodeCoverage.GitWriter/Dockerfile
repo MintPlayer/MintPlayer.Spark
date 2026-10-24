@@ -44,8 +44,9 @@ FROM mcr.microsoft.com/dotnet/sdk:11.0 AS build
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
 # Selective csproj COPY for restore-layer caching: the writer's full transitive ProjectReference closure, which is just
-# itself plus the shared git library (no Spark, RavenDB or GitHub App project; the isolation test in its tests).
+# itself plus the shared git library and the versioning engine (no Spark, RavenDB or GitHub App project; the isolation test in its tests).
 COPY ["apps/CodeCoverage/CodeCoverage.Git/CodeCoverage.Git.csproj", "apps/CodeCoverage/CodeCoverage.Git/"]
+COPY ["apps/CodeCoverage/CodeCoverage.Versioning/CodeCoverage.Versioning.csproj", "apps/CodeCoverage/CodeCoverage.Versioning/"]
 COPY ["apps/CodeCoverage/CodeCoverage.GitWriter/CodeCoverage.GitWriter.csproj", "apps/CodeCoverage/CodeCoverage.GitWriter/"]
 RUN dotnet restore "./apps/CodeCoverage/CodeCoverage.GitWriter/CodeCoverage.GitWriter.csproj"
 COPY . .

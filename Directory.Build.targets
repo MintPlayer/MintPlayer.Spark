@@ -251,4 +251,12 @@
 		</PackageReference>
 		<AdditionalFiles Include="$(MSBuildThisFileDirectory)BannedSymbols.Tests.txt" />
 	</ItemGroup>
+
+	<!--
+	  Package versions come from the <PackageId>/v<version> tags the versioning action writes (#153,
+	  docs/coverage_package_versioning_PRD.md D9). Imported from source: these are the targets of the
+	  MintPlayer.Versioning.MSBuild package, which this repository publishes. A project with IsPackable=false (the
+	  apps, the tests) is left alone; a packable project no tag names yet builds as 0.0.0-PLACEHOLDER and is not packed.
+	-->
+	<Import Project="$(MSBuildThisFileDirectory)apps\CodeCoverage\CodeCoverage.Versioning.MSBuild\build\MintPlayer.Versioning.MSBuild.targets" />
 </Project>

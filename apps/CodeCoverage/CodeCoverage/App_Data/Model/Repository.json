@@ -36,6 +36,19 @@
         "rules": []
       },
       {
+        "id": "20b68aa8-be24-434d-9edf-48f84744f0a4",
+        "name": "AutoCutReleaseBranches",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 17,
+        "isArray": false,
+        "lookupReferenceType": "AutoCutReleaseBranchPolicy",
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
         "id": "b676851e-f8de-4297-8408-6fe1f4287b42",
         "name": "BadgeToken",
         "dataType": "string",
@@ -473,10 +486,37 @@
         "inQueryType": false,
         "showedOn": "None",
         "rules": []
+      },
+      {
+        "id": "edf6e1f9-2973-4ccf-8532-bd5379ce0083",
+        "name": "PrTitleCorrection",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 15,
+        "isArray": false,
+        "lookupReferenceType": "PrTitlePolicy",
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "ae5ad514-e7a2-4624-9083-394b5e0bea68",
+        "name": "ReleaseOnTag",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 16,
+        "isArray": false,
+        "lookupReferenceType": "ReleaseOnTagPolicy",
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": []
       }
     ],
     "queries": [
-      "repository-commits"
+      "repository-commits",
+      "repository-versioning-runs"
     ]
   },
   "queries": [

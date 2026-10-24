@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<!--
+	  versioning-action's local engine (docs/coverage_package_versioning_PRD.md D3, plan S4). The action runs it with
+	  `dotnet run` (project mode) from $RUNNER_TEMP so this repository's global.json (an 11.0 preview SDK) does not apply,
+	  and RollForward=Major lets it run on whatever runtime the runner has.
+	-->
+	<PropertyGroup>
+		<OutputType>Exe</OutputType>
+		<TargetFramework>net8.0</TargetFramework>
+		<RollForward>Major</RollForward>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<IsPackable>false</IsPackable>
+		<SparkApplication>false</SparkApplication>
+		<AssemblyName>codecoverage-versioning</AssemblyName>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\CodeCoverage.Versioning\CodeCoverage.Versioning.csproj" />
+	</ItemGroup>
+
+</Project>

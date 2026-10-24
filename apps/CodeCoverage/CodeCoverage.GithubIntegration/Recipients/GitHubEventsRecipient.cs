@@ -448,7 +448,13 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
 
         // ready_for_review and a retarget may have just made the pull request one the merge queue can take, so the queue
         // offers its button again (merge-queue PRD §0 O30); a retarget also moves the base recorded below. Octokit's
-        // edited event types no base change, so that one is read from the raw payload. A title or body edit raises nothing.
+        // edited event types no base change, so that one is read from the raw payload. A title or body edit raises only
+        // PullRequestDescribed, for title correction.
+        if (evt.Action == "edited" && TextEditedByHuman(message) && evt.PullRequest.State?.StringValue == "open"
+            && await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, evt.Repository.Id), ct) is { } edited)
+            await messageBus.BroadcastAsync(new ForgeWebhookMessage<PullRequestDescribed>(
+                EForgeProvider.GitHub, new PullRequestDescribed(edited.Id!, (int)evt.Number)), ct);
+
         if (evt.Action is not ("opened" or "synchronize" or "reopened" or "ready_for_review")
             && !(evt.Action == "edited" && BaseChanged(message))) return;
 
@@ -474,6 +480,10 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
                 Additions: (int)pr.Additions,
                 Deletions: (int)pr.Deletions,
                 ChangedFiles: (int)pr.ChangedFiles)), ct);
+
+        if (evt.Action is "opened" or "reopened")
+            await messageBus.BroadcastAsync(new ForgeWebhookMessage<PullRequestDescribed>(
+                EForgeProvider.GitHub, new PullRequestDescribed(repository.Id!, (int)evt.Number)), ct);
     }
 
     // ── The merge queue (PRD M5) ─────────────────────────────────────────────────────────────────────
@@ -492,10 +502,22 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
         var action = Text(root, "action");
         if (action is not ("labeled" or "unlabeled" or "closed")) return false;
         if (action == "closed" && Child(root, "pull_request") is { } closed && Flag(closed, "merged"))
+        {
+            await OnMergedWithBackportLabelsAsync(root, closed, ct);
             return false; // the merged close is PullRequestMerged, raised by OnPullRequest
+        }
 
         if (await LoadKnownRepositoryIdAsync(root, ct) is not { } repositoryId) return true;
         if (Child(root, "pull_request") is not { } pull || Number(pull, "number") is not { } number) return true;
+
+        // #153 D10: a backport label added to a pull request that already merged asks for the backport now; one on an open
+        // pull request waits for the merge, which reads the labels it carries.
+        if (action == "labeled" && Flag(pull, "merged") && Child(root, "label") is { } added && BackportCommand.FromLabel(Text(added, "name")) is { } labelled)
+        {
+            if (HumanSender(root) is { } requester)
+                await RaiseAsync(new BackportRequested(repositoryId, (int)number, [labelled], requester, EBackportSource.Label), ct);
+            return true;
+        }
 
         if (action == "closed")
         {
@@ -513,6 +535,21 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
             action == "labeled" ? EMergeQueueCommand.Enqueue : EMergeQueueCommand.Dequeue,
             actor, EMergeQueueCommandSource.Label, labelName), ct);
         return true;
+    }
+
+    /// <summary>
+    /// #153 D10: the backport labels a pull request carried as it merged. The actor is the sender, who merged it, and may be
+    /// a bot (this App's merge queue): the request was made by whoever applied the label, and the merge itself needed write
+    /// access, so the recipient does not check the role of a merge-time request.
+    /// </summary>
+    private async Task OnMergedWithBackportLabelsAsync(JsonElement root, JsonElement pull, CancellationToken ct)
+    {
+        if (!pull.TryGetProperty("labels", out var labels) || labels.ValueKind != JsonValueKind.Array) return;
+        var lines = BackportCommand.FromLabels(labels.EnumerateArray().Select(l => l.ValueKind == JsonValueKind.Object ? Text(l, "name") : null));
+        if (lines.Count == 0 || Number(pull, "number") is not { } number) return;
+        if (Child(root, "sender") is not { } sender || Text(sender, "login") is not { Length: > 0 } merger) return;
+        if (await LoadKnownRepositoryIdAsync(root, ct) is not { } repositoryId) return;
+        await RaiseAsync(new BackportRequested(repositoryId, (int)number, lines, merger, EBackportSource.Merge), ct);
     }
 
     /// <summary>
@@ -536,11 +573,18 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
         };
         // The dependency updater's commands (§7.5): the first word of a new comment, by a person (gap E), never the App.
         var dependencyCommand = command is null ? DependencyCommandParser.Parse(body) : null;
-        if (command is null && dependencyCommand is null) return;
+        // #153 D10: /backport 8.x 9.x, by a person; the recipient checks the role and that the pull request merged.
+        var backport = command is null && dependencyCommand is null ? BackportCommand.FromComment(body) : null;
+        if (command is null && dependencyCommand is null && backport is null) return;
         if (IsOurApp(comment) || HumanSender(root) is not { } actor) return;
         if (Child(comment, "user") is { } author && (Text(author, "type") == "Bot" || Text(author, "login")?.EndsWith("[bot]", StringComparison.Ordinal) == true)) return;
         if (await LoadKnownRepositoryIdAsync(root, ct) is not { } repositoryId) return;
 
+        if (backport is not null)
+        {
+            await RaiseAsync(new BackportRequested(repositoryId, (int)number, backport, actor, EBackportSource.Comment), ct);
+            return;
+        }
         if (dependencyCommand is { } dependency)
         {
             if (Number(comment, "id") is not { } commentId) return;
@@ -726,6 +770,19 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
     {
         using var payload = JsonDocument.Parse(message.EventJson);
         return Child(payload.RootElement, "changes") is { } changes && Child(changes, "base") is not null;
+    }
+
+    /// <summary>
+    /// The edit changed the title or the body, and a person made it (versioning PRD D14). A bot's edit, the app's own title
+    /// correction among them, is skipped: the builder is a fixed point anyway, this only saves the round trip.
+    /// </summary>
+    internal static bool TextEditedByHuman(GitHubWebhookMessage message)
+    {
+        using var payload = JsonDocument.Parse(message.EventJson);
+        var root = payload.RootElement;
+        if (Child(root, "changes") is not { } changes || (Child(changes, "title") is null && Child(changes, "body") is null)) return false;
+        return Child(root, "sender") is not { } sender
+               || (Text(sender, "type") != "Bot" && Text(sender, "login")?.EndsWith("[bot]", StringComparison.Ordinal) != true);
     }
 
     /// <summary>The stored repository the payload's <c>repository.id</c> names, or null for one we do not know.</summary>

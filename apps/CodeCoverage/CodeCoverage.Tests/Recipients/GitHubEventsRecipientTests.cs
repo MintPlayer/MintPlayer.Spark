@@ -431,6 +431,37 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
         bus.Messages.OfType<CodeCoverage.Feedback.OpenPullRequestCommentMessage>().Should().BeEmpty();
     }
 
+    /// <summary>
+    /// Title correction (docs/coverage_package_versioning_PRD.md D14) hears an open, a reopen and a person's title or body
+    /// edit. A base change alone is no reason to rewrite the title, and an edit of a repository we never stored mints nothing.
+    /// </summary>
+    [Fact]
+    public async Task Opening_and_a_text_edit_describe_the_pull_request()
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        var recipient = CreateRecipient(session, out var bus);
+
+        await recipient.HandleAsync(Message("pull_request", PullRequestJson(HeadSha, BaseSha, "edited", changes: """{"title":{"from":"x"}}""")));
+        bus.Messages.OfType<ForgeWebhookMessage<PullRequestDescribed>>().Should().BeEmpty();
+
+        await recipient.HandleAsync(Message("pull_request", PullRequestJson(HeadSha, BaseSha, "opened")));
+        await session.SaveChangesAsync();
+        await recipient.HandleAsync(Message("pull_request", PullRequestJson(HeadSha, BaseSha, "edited", changes: """{"body":{"from":"x"}}""")));
+        await recipient.HandleAsync(Message("pull_request", PullRequestJson(HeadSha, BaseSha, "edited", changes: """{"base":{"ref":{"from":"develop"}}}""")));
+
+        bus.Messages.OfType<ForgeWebhookMessage<PullRequestDescribed>>().Select(m => m.Event.Number).Should().Equal(42, 42);
+    }
+
+    [Theory]
+    [InlineData("""{"title":{"from":"x"}}""", """{"login":"octo","type":"User"}""", true)]
+    [InlineData("""{"title":{"from":"x"}}""", """{"login":"mintplayer-coverage[bot]","type":"Bot"}""", false)]
+    [InlineData("""{"body":{"from":"x"}}""", """{"login":"renovate[bot]","type":"User"}""", false)]
+    [InlineData("""{"base":{"ref":{"from":"x"}}}""", """{"login":"octo","type":"User"}""", false)]
+    public void Only_a_persons_title_or_body_edit_counts(string changes, string sender, bool counts)
+        => GitHubEventsRecipient.TextEditedByHuman(Message("pull_request", $$"""{"action":"edited","changes":{{changes}},"sender":{{sender}}}"""))
+            .Should().Be(counts);
+
     [Fact]
     public async Task A_pull_request_event_records_the_base_sha()
     {

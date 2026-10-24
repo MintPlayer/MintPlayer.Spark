@@ -211,6 +211,16 @@ public class RegistrationInventoryTests : CoverageRavenTest
         typeof(IRecipient<global::CodeCoverage.PrSize.RemovePrSizeLabelsMessage>));
 
     /// <summary>
+    /// Package versioning's title correction (#153, M1). Without the filter or the lane's recipient a pull request's title is
+    /// never corrected; without the GitHub seam the lane finds no forge and skips. Neither fails loudly.
+    /// </summary>
+    [Fact]
+    public void Pr_title_correction_is_registered() => AssertRegistered(
+        typeof(IForgeVersioning),
+        typeof(IRecipient<ForgeWebhookMessage<PullRequestDescribed>>),
+        typeof(IRecipient<global::CodeCoverage.PackageVersioning.CorrectPrTitleMessage>));
+
+    /// <summary>
     /// The Administrators group (#504, M5b). Without its membership provider the app still starts and the group still
     /// exists, but nobody is in it: the host metrics dashboard and the mirrors list go dark with no error.
     /// </summary>

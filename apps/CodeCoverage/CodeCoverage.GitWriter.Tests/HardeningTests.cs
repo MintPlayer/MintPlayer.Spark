@@ -130,7 +130,9 @@ public class HardeningTests : WriterTestBase
                || name.StartsWith("GitHubJwt", StringComparison.OrdinalIgnoreCase)
                || name.Equals("MintPlayer.Spark", StringComparison.OrdinalIgnoreCase)
                || name.StartsWith("MintPlayer.Spark.", StringComparison.OrdinalIgnoreCase)
-               || name.StartsWith("CodeCoverage.", StringComparison.OrdinalIgnoreCase) && !name.Equals("CodeCoverage.GitWriter", StringComparison.OrdinalIgnoreCase) && !name.Equals("CodeCoverage.Git", StringComparison.OrdinalIgnoreCase);
+               || name.StartsWith("CodeCoverage.", StringComparison.OrdinalIgnoreCase) && !name.Equals("CodeCoverage.GitWriter", StringComparison.OrdinalIgnoreCase) && !name.Equals("CodeCoverage.Git", StringComparison.OrdinalIgnoreCase)
+                  // The versioning engine the writer hosts (#153 M5): plain git and arithmetic, no package references.
+                  && !name.Equals("CodeCoverage.Versioning", StringComparison.OrdinalIgnoreCase);
 
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var queue = new Queue<Assembly>([typeof(GitWriterHost).Assembly]);

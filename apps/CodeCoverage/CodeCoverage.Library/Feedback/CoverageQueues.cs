@@ -75,4 +75,10 @@ public static class CoverageQueues
     /// account-wide reconcile waits here instead of on the shared forge-event lane.
     /// </summary>
     public const string PrSizeLabels = "coverage-pr-size-labels";
+
+    /// <summary>
+    /// Package versioning's webhook features (docs/coverage_package_versioning_PRD.md D3, D10, D12, D14, D15): title
+    /// correction, release branches, backports, dispatch and Releases. Serial, so two runs on one repository never race.
+    /// </summary>
+    public const string Versioning = "coverage-versioning";
 }

@@ -42,6 +42,7 @@
 		  references anything Spark.
 		-->
 		<ProjectReference Include="..\CodeCoverage.Git\CodeCoverage.Git.csproj" />
+		<ProjectReference Include="..\CodeCoverage.Versioning\CodeCoverage.Versioning.csproj" />
 		<!--
 		  Referenced but NOT registered: their AddXxxIntegration() is a no-op until there is
 		  something to register, and Program.cs calls only AddGithubIntegration(). Referencing them

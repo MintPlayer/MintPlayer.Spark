@@ -521,7 +521,7 @@ public sealed partial class WriterService(GitRunner git, JobRunner jobs, IOption
         return null;
     }
 
-    private abstract record Push
+    internal abstract record Push
     {
         public sealed record Done : Push;
 
@@ -536,7 +536,7 @@ public sealed partial class WriterService(GitRunner git, JobRunner jobs, IOption
     /// the ref must still be at <paramref name="expected"/>, or not exist when that is null. <c>--porcelain</c> tells a
     /// rejected lease ("stale info") from a forge's refusal and an up-to-date ref (<c>=</c>) from a push; anything else
     /// (auth, network) throws.</summary>
-    private static async Task<Push> PushAsync(JobContext context, Uri url, GitCredential credential, string? source, string remoteRef, string? expected, bool lease = true)
+    internal static async Task<Push> PushAsync(JobContext context, Uri url, GitCredential credential, string? source, string remoteRef, string? expected, bool lease = true)
     {
         var arguments = new List<string> { "push", "--porcelain", "--no-verify", "--no-recurse-submodules" };
         if (lease)
@@ -556,7 +556,7 @@ public sealed partial class WriterService(GitRunner git, JobRunner jobs, IOption
         throw new GitCommandException("push", result);
     }
 
-    private static string Oid(GitResult result, string verb)
+    internal static string Oid(GitResult result, string verb)
     {
         var oid = result.StandardOutput.Trim();
         return WireValidation.ObjectId(oid) ?? throw new GitCommandException(verb, "did not print an object id.");

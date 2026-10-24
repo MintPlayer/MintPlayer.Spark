@@ -197,6 +197,46 @@ public class ReadRowFilterTests : CoverageRavenTest
             .WithMessage("*expects parent of type 'Repository', got 'Account'*");
     }
 
+    [Fact]
+    public async Task Repository_VersioningRuns_is_scoped_to_its_parent_and_newest_first()
+    {
+        using var store = GetDocumentStore();
+        await SeedAsync(store);
+        using (var seed = store.OpenAsyncSession())
+        {
+            // #153 M12. Repository 71010 shares the digits' prefix: the trailing slash keeps its run out of the stream.
+            foreach (var (repo, runId, day) in new[] { (PublicRepo, 1L, 3), (PublicRepo, 2L, 5), (PrivateRepo, 3L, 4), (71010L, 4L, 6) })
+                await seed.StoreAsync(new VersioningRun
+                {
+                    Repository = Repository.DocumentId(EForgeProvider.GitHub, repo),
+                    Branch = "master",
+                    Commit = $"run{runId}",
+                    RunId = runId,
+                    RunAttempt = 1,
+                    StartedAtUtc = new DateTime(2026, 10, day, 12, 0, 0, DateTimeKind.Utc),
+                }, VersioningRun.DocumentId(EForgeProvider.GitHub, repo, runId, 1));
+            await seed.SaveChangesAsync();
+        }
+
+        using var session = store.OpenAsyncSession();
+        var actions = CreateActions<VersioningRunActions>(VisibilityFor(session), session);
+        var rows = (await actions.Repository_VersioningRuns(
+            ParentArgs("Repository", Repository.DocumentId(EForgeProvider.GitHub, PublicRepo)))).ToList();
+
+        rows.Select(r => r.Commit).Should().Equal("run2", "run1");
+    }
+
+    [Fact]
+    public async Task Repository_VersioningRuns_refuses_a_parent_of_the_wrong_type()
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        var actions = CreateActions<VersioningRunActions>(VisibilityFor(session), session);
+
+        await new Func<Task>(() => actions.Repository_VersioningRuns(ParentArgs("Account", "Accounts/github/1")))
+            .Should().ThrowExactlyAsync<SparkQueryParentRequiredException>();
+    }
+
     private static Build BuildOf(string? commitId) => new() { Commit = commitId };
 
     [Theory]

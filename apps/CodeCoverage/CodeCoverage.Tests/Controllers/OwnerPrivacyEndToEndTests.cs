@@ -64,6 +64,7 @@ public class OwnerPrivacyEndToEndTests(OwnerPrivacyHostFixture host) : IClassFix
         "DependencyUpdates", "DependencyScheduleFrequency", "DependencyScheduleWeekday", "DependencyScheduleHour",
         "DependencyTimeZone", "DependencyCooldown", "DependencyBisectBudget", "DependencyRules", "DependencyOnboardingMergeQueue",
         "PrSizeLabels", "PrSizeLabelScale", "PrSizeIgnoreRules", "PrSizeLabelsUnavailable",
+        "PrTitleCorrection", "ReleaseOnTag", "AutoCutReleaseBranches",
     ];
 
     /// <summary>What a visitor of a repository they may see may read: its identity, coverage and connection.</summary>
@@ -81,6 +82,7 @@ public class OwnerPrivacyEndToEndTests(OwnerPrivacyHostFixture host) : IClassFix
         "DependencyUpdates", "DependencySchedulePolicy", "DependencyScheduleFrequency", "DependencyScheduleWeekday",
         "DependencyScheduleHour", "DependencyCooldown", "DependencyBisectBudget", "DependencyOnboardingMergeQueue", "MergeQueueInCoverageYml",
         "PrSizeLabels", "PrSizeIgnoreRules", "PrSizeLabelState", "PrSizeLabelsEffective",
+        "PrTitleCorrection", "ReleaseOnTag", "AutoCutReleaseBranches",
     ];
 
     /// <summary>Callers who manage nothing of acme: a visitor and a signed-in stranger.</summary>
@@ -379,6 +381,39 @@ public class OwnerPrivacyEndToEndTests(OwnerPrivacyHostFixture host) : IClassFix
         using var session = host.Store.OpenAsyncSession();
         (await session.LoadAsync<Repository>(host.AdministeredRepositoryId)).DeleteBranchOnPrClose.Should().Be(EDeleteBranchPolicy.Disabled);
         (await session.LoadAsync<Account>(host.AccountId)).DeleteBranchOnPrClose.Should().BeTrue();
+    }
+
+    /// <summary>
+    /// #153 M12 (D12, D14, D15): the three versioning policies save from the Account and Repository pages and read back, and
+    /// on GitHub, which has the capability (D16), the page draws them.
+    /// </summary>
+    [Fact]
+    public async Task The_versioning_policies_round_trip_through_the_account_and_repository_pages()
+    {
+        var (account, accountBody) = await host.UpdateAsync(AccountTypeId, host.AccountId, "PrTitleCorrection", true, OwnerPrivacyHostFixture.OwnerUserId);
+        var (repository, repositoryBody) = await host.UpdateAsync(RepositoryTypeId, host.AdministeredRepositoryId, "ReleaseOnTag", "Disabled", OwnerPrivacyHostFixture.RepoAdminUserId);
+        var (autoCut, autoCutBody) = await host.UpdateAsync(RepositoryTypeId, host.AdministeredRepositoryId, "AutoCutReleaseBranches", "Disabled", OwnerPrivacyHostFixture.RepoAdminUserId);
+
+        account.Should().Be(HttpStatusCode.OK, accountBody);
+        repository.Should().Be(HttpStatusCode.OK, repositoryBody);
+        autoCut.Should().Be(HttpStatusCode.OK, autoCutBody);
+        using (var session = host.Store.OpenAsyncSession())
+        {
+            (await session.LoadAsync<Account>(host.AccountId)).PrTitleCorrection.Should().BeTrue();
+            var saved = await session.LoadAsync<Repository>(host.AdministeredRepositoryId);
+            saved.ReleaseOnTag.Should().Be(EReleaseOnTagPolicy.Disabled);
+            saved.AutoCutReleaseBranches.Should().Be(EAutoCutReleaseBranchPolicy.Disabled);
+        }
+
+        var (status, body) = await host.PostAsync("/spark/po/load", new { objectTypeId = RepositoryTypeId, id = host.AdministeredRepositoryId }, OwnerPrivacyHostFixture.RepoAdminUserId);
+        status.Should().Be(HttpStatusCode.OK, body);
+        using var json = JsonDocument.Parse(body);
+        var policies = json.RootElement.GetProperty("attributes").EnumerateArray()
+            .Where(a => a.GetProperty("name").GetString() is "PrTitleCorrection" or "ReleaseOnTag" or "AutoCutReleaseBranches")
+            .ToList();
+        policies.Should().HaveCount(3);
+        policies.Should().OnlyContain(a => a.GetProperty("showedOn").ToString() is not ("None" or "0") && !a.GetProperty("isReadOnly").GetBoolean(),
+            "GitHub has IForgeVersioning, so the page draws the policies as settings");
     }
 
     [Fact]

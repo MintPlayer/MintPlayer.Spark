@@ -33,4 +33,7 @@ public partial class CoverageSparkContext : SparkContext
 
     // The commit-graph mirrors (#504, M5b): the administrators' list, with each mirror's size.
     public IRavenQueryable<RepositoryGraphState> RepositoryGraphStates => Session.Query<RepositoryGraphState>();
+
+    // The versioning history (#153 M12): read-only, listed per repository by Custom.Repository_VersioningRuns.
+    public IRavenQueryable<VersioningRun> VersioningRuns => Session.Query<VersioningRun>();
 }

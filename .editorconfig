@@ -1,0 +1,9 @@
+# Files the tools regenerate keep LF, matching .gitattributes (eol=lf).
+[apps/*/*/App_Data/**.{json,txt}]
+end_of_line = lf
+
+[tests/MintPlayer.Spark.Tests/Layering/Golden/*.txt]
+end_of_line = lf
+
+[**/RouteSnapshots/*.txt]
+end_of_line = lf

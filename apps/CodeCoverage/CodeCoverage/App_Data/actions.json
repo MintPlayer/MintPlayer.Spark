@@ -38,5 +38,11 @@
     "showedOn": "detail",
     "selectionRule": "=0",
     "refreshOnCompleted": true
+  },
+  "SetUpVersioning": {
+    "icon": "Tags",
+    "showedOn": "detail",
+    "selectionRule": "=0",
+    "refreshOnCompleted": false
   }
 }

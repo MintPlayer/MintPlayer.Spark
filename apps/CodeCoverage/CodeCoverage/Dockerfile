@@ -26,6 +26,7 @@ WORKDIR /src
 COPY ["apps/CodeCoverage/CodeCoverage/CodeCoverage.csproj", "apps/CodeCoverage/CodeCoverage/"]
 COPY ["apps/CodeCoverage/CodeCoverage.Library/CodeCoverage.Library.csproj", "apps/CodeCoverage/CodeCoverage.Library/"]
 COPY ["apps/CodeCoverage/CodeCoverage.Git/CodeCoverage.Git.csproj", "apps/CodeCoverage/CodeCoverage.Git/"]
+COPY ["apps/CodeCoverage/CodeCoverage.Versioning/CodeCoverage.Versioning.csproj", "apps/CodeCoverage/CodeCoverage.Versioning/"]
 COPY ["apps/CodeCoverage/CodeCoverage.GithubIntegration/CodeCoverage.GithubIntegration.csproj", "apps/CodeCoverage/CodeCoverage.GithubIntegration/"]
 COPY ["apps/CodeCoverage/CodeCoverage.GitlabIntegration/CodeCoverage.GitlabIntegration.csproj", "apps/CodeCoverage/CodeCoverage.GitlabIntegration/"]
 COPY ["apps/CodeCoverage/CodeCoverage.BitbucketIntegration/CodeCoverage.BitbucketIntegration.csproj", "apps/CodeCoverage/CodeCoverage.BitbucketIntegration/"]

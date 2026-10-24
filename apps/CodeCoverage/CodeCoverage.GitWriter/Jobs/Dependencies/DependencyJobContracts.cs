@@ -107,6 +107,15 @@ public sealed class DependencyFilesWire : DependencyCommitJobWire
     public List<DependencyFileWire>? Files { get; set; }
 }
 
+/// <summary>
+/// <c>POST /jobs/versioning/onboarding</c> (#153 D17): one commit on <c>expected_sha</c> writing the files the onboarding plan
+/// edits (project files, workflows, <c>coverage.yml</c>), pushed to <c>mintplayer/versioning-onboarding</c>. No deletions.
+/// </summary>
+public sealed class VersioningOnboardingWire : DependencyCommitJobWire
+{
+    public List<DependencyFileWire>? Files { get; set; }
+}
+
 /// <summary><c>DELETE /jobs/dependencies/work-ref</c>: removes the work ref after a run (R14), only while it is at
 /// <see cref="DependencyJobWire.ExpectedSha"/> (the lease; null deletes it wherever it is). No clone.</summary>
 public sealed class DependencyDeleteRefWire : DependencyJobWire;

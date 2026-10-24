@@ -31,6 +31,8 @@
 	<ItemGroup>
 		<!-- The hardened GitRunner and the merge-tree resolver (M2), shared with the read-only mirror. -->
 		<ProjectReference Include="..\CodeCoverage.Git\CodeCoverage.Git.csproj" />
+		<!-- The versioning engine's tag writer (#153 M5): the server host writes version tags as a job. -->
+		<ProjectReference Include="..\CodeCoverage.Versioning\CodeCoverage.Versioning.csproj" />
 	</ItemGroup>
 
 	<ItemGroup>

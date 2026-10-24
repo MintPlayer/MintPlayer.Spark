@@ -57,6 +57,7 @@ builder.Services.AddHttpClient();
 builder.Services.AddMemoryCache();
 // Bounded, and separate from the shared cache on purpose — see SourceContentCache.
 builder.Services.AddSingleton<CodeCoverage.Services.ISourceContentCache, CodeCoverage.Services.SourceContentCache>();
+builder.Services.AddSingleton<CodeCoverage.PackageVersioning.VersioningRunLocks>();
 builder.Services.AddSingleton(TimeProvider.System);
 // The PR size labeller's pause between label writes (#527). Registered here because the [Register] generator emits
 // nothing for a class registered as itself.

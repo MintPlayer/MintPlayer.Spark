@@ -1,0 +1,125 @@
+name: versioning-action-publish
+
+# Republishes the versioning action's bundle and moves the tags consumers pin
+# (docs/coverage_package_versioning_PRD.md D2/D3: `uses: ...versioning-action@versioning-v1`). Modelled on
+# dependency-action-publish.yml and coverage-action-publish.yml; the reasoning there applies here unchanged:
+#
+#   versioning-v<full>   cut once, on one commit, never moved: a repository bitten by a release can pin backwards.
+#   versioning-v<major>  force-moved to the latest commit of that major: what the onboarding pull request pins,
+#                        so a fix reaches every repository with no PR anywhere.
+#
+# `mode: local` runs the engine from source at the pinned commit (CodeCoverage.Versioning.Cli and the
+# CodeCoverage.Versioning library it references), so an engine change moves the tag too: the local host must
+# run the same engine the server runs (D2).
+#
+# Its own workflow for the `paths:` filter: the moving tag must only move for a commit that touched the
+# action or its engine, never for an unrelated master push.
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'apps/CodeCoverage/versioning-action/**'
+      # Docs only: moving the tag would hand every consumer an action bump with no code in it.
+      - '!apps/CodeCoverage/versioning-action/**/*.md'
+      # The engine local mode runs from source.
+      - 'apps/CodeCoverage/CodeCoverage.Versioning/**'
+      - 'apps/CodeCoverage/CodeCoverage.Versioning.Cli/**'
+      - '.github/workflows/versioning-action-publish.yml'
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Version bump to apply before publishing (none = just repack)"
+        type: choice
+        default: none
+        options:
+          - none
+          - patch
+          - minor
+          - major
+
+# Queue rather than cancel: two publishers racing to force-move the major tag is worse than waiting.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: publish versioning action
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7
+      with:
+        fetch-depth: 0
+        fetch-tags: true
+
+    # `--no-git-tag-version`: npm would cut a bare `v1.0.1` tag in the monorepo's shared namespace.
+    # A GITHUB_TOKEN push does not trigger workflows, so bumping cannot re-enter this workflow.
+    - name: Bump the action's version
+      if: inputs.bump != '' && inputs.bump != 'none'
+      run: |
+        cd apps/CodeCoverage/versioning-action
+        npm version "${BUMP}" --no-git-tag-version
+        version="$(node -p "require('./package.json').version")"
+        cd "$GITHUB_WORKSPACE"
+
+        git config --local user.name  'github-actions[bot]'
+        git config --local user.email '41898282+github-actions[bot]@users.noreply.github.com'
+        git add apps/CodeCoverage/versioning-action/package.json apps/CodeCoverage/versioning-action/package-lock.json
+        git commit -m "release(versioning-action): ${version}"
+        git push origin "HEAD:${GITHUB_REF_NAME}"
+        echo "Bumped to ${version}."
+      env:
+        BUMP: ${{ inputs.bump }}
+
+    # Both tag names from ONE source, the action's package.json version (see coverage-action-publish.yml
+    # for why a hard-coded major tag is a trap).
+    - name: Derive the action's tag names
+      id: tags
+      run: |
+        version="$(node -p "require('./apps/CodeCoverage/versioning-action/package.json').version")"
+        major="${version%%.*}"
+        case "$major" in
+          ''|*[!0-9]*)
+            echo "::error::Could not read a numeric major version from apps/CodeCoverage/versioning-action/package.json (got '${version}')."
+            exit 1
+            ;;
+        esac
+        echo "major=versioning-v${major}" >> "$GITHUB_OUTPUT"
+        echo "Moving tag: versioning-v${major} (from version ${version})"
+
+        # Cut the immutable tag only when this version does not have one yet; otherwise just repack and
+        # re-point the moving tag (a README-only change must not turn master red).
+        if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/versioning-v${version}" >/dev/null 2>&1; then
+          echo "version-from=" >> "$GITHUB_OUTPUT"
+          echo "::notice::Version ${version} is already tagged. Run this workflow with a bump (patch/minor/major) to release a new one."
+        else
+          echo "version-from=apps/CodeCoverage/versioning-action/package.json" >> "$GITHUB_OUTPUT"
+          echo "Will cut versioning-v${version}."
+        fi
+      env:
+        GH_TOKEN: ${{ github.token }}
+
+    - name: Rebuild, publish and tag
+      uses: MintPlayer/github-actions/compile-ts-action@main
+      with:
+        working-directory: apps/CodeCoverage/versioning-action
+        output-dir: dist
+        node-version: 24.x
+        install-command: npm ci
+        test-command: npm test
+        build-command: npm run build
+        mode: push
+        commit-message: 'build: repack the versioning bundle'
+        major-tag: ${{ steps.tags.outputs.major }}
+        # Empty on purpose: see coverage-action-publish.yml (checkout@v7 keeps its credential outside
+        # .git/config, and a second Authorization header fails every git request with HTTP 400).
+        token: ''
+        version-tag-from: ${{ steps.tags.outputs.version-from }}
+        version-tag-prefix: versioning-v

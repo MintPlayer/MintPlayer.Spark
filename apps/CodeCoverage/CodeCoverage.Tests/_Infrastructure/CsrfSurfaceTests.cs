@@ -61,6 +61,10 @@ public class CsrfSurfaceTests
 
         // Anonymous by design: fork PRs run without credentials, so there is no session to forge.
         "ForkUploadsController.UploadFromFork",
+
+        // Called by the versioning action with a GitHub workflow JWT only (#153 M6): the controller names
+        // the OIDC scheme alone, so a cookie principal cannot reach it.
+        "VersioningController.Run",
     ];
 
     /// <summary>

@@ -312,6 +312,13 @@ public enum EForgeCapability
     /// Cloud has no pull-request labels, and GitLab has no forge here yet (S4).
     /// </summary>
     PullRequestLabels,
+
+    /// <summary>
+    /// Pull-request titles, Releases, release branches, backport pull requests and workflow dispatch for package versioning
+    /// (docs/coverage_package_versioning_PRD.md D16). Its members live on <see cref="IForgeVersioning"/>. GitHub only; the
+    /// settings are hidden for a forge without it.
+    /// </summary>
+    Versioning,
 }
 
 /// <summary>How a git process reaches one repository (<see cref="IForgeIntegration.GetGitAccessAsync"/>).</summary>

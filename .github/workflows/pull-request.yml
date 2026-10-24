@@ -411,3 +411,16 @@ jobs:
     - name: Smoke-test the dependency-update action's bundle
       working-directory: apps/CodeCoverage/dependency-action
       run: npm run test:bundle
+
+    # The package-versioning action (docs/coverage_package_versioning_PRD.md D3), the same guarantee: Spark's own
+    # publish job runs its committed dist/index.js from this checkout (D2), so a stale bundle must not merge.
+    - name: Build and verify the versioning action's bundle
+      uses: MintPlayer/github-actions/compile-ts-action@main
+      with:
+        working-directory: apps/CodeCoverage/versioning-action
+        output-dir: dist
+        node-version: 24.x
+        install-command: npm ci
+        test-command: npm test
+        build-command: npm run build
+        mode: verify

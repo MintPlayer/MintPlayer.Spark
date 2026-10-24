@@ -106,6 +106,13 @@ public sealed record PullRequestUpdated(
     int? Deletions = null,
     int? ChangedFiles = null) : IForgeEvent;
 
+/// <summary>
+/// An open pull request was opened, reopened, or had its title or body edited by someone other than a bot
+/// (docs/coverage_package_versioning_PRD.md D14). Carries no text: the consumer reads it fresh, because a queued message
+/// may be older than the next edit.
+/// </summary>
+public sealed record PullRequestDescribed(string RepositoryId, int Number) : IForgeEvent;
+
 /// <summary>A pull request was merged.</summary>
 /// <param name="HeadRef">The source branch, for the optional delete-after-merge courtesy.</param>
 /// <remarks>
@@ -316,3 +323,25 @@ public sealed record ReleasePublished(string RepositoryId, string Tag, DateTimeO
 /// <param name="Ecosystem">The ecosystem as the lookup records name it (<c>npm</c>, <c>nuget</c>, <c>pypi</c>, …), mapped by
 /// the normaliser from the forge's own word.</param>
 public sealed record DependencyAlertRaised(string RepositoryId, string Ecosystem, string DepName, string? Advisory) : IForgeEvent;
+
+// ── Package versioning (#153) ─────────────────────────────────────────────────────────────────────────────────────
+
+/// <summary>
+/// A person asked for a merged pull request to be applied to release lines (#153 M10, PRD D10): a <c>backport: 8.x</c>
+/// label added to a merged pull request, such a label on a pull request as it merged, or a <c>/backport 8.x 9.x</c> comment.
+/// </summary>
+/// <param name="Lines">What the person wrote, as <see cref="BackportCommand"/> accepts it: a major (<c>8</c>, <c>8.x</c>) or a
+/// branch name. Whether each names a release branch is the recipient's to decide, from the repository's configuration.</param>
+/// <param name="ActorLogin">The signed webhook's sender (T1), never text from the comment or the label. A normaliser drops
+/// what a bot or the App itself did, and raises nothing when it cannot name the actor.</param>
+public sealed record BackportRequested(string RepositoryId, int Number, IReadOnlyList<string> Lines, string ActorLogin, EBackportSource Source) : IForgeEvent;
+
+public enum EBackportSource
+{
+    /// <summary>A label added to a pull request that had already merged.</summary>
+    Label,
+    /// <summary>Labels the pull request carried when it merged.</summary>
+    Merge,
+    /// <summary>A <c>/backport</c> comment.</summary>
+    Comment,
+}

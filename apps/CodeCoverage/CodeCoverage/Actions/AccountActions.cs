@@ -43,6 +43,7 @@ public partial class AccountActions : DefaultPersistentObjectActions<Account>, I
     [Inject] private readonly ILogger<AccountActions> logger;
     [Inject] private readonly IManager manager;
     [Inject] private readonly IEnumerable<CodeCoverage.Forge.IForgeLabels> labels;
+    [Inject] private readonly IEnumerable<CodeCoverage.Forge.IForgeVersioning> versioning;
 
     /// <summary>
     /// #527 D8: a forge without pull request labels shows the labeller's settings read-only, with the reason. Asked after
@@ -57,6 +58,8 @@ public partial class AccountActions : DefaultPersistentObjectActions<Account>, I
             && await GetProtectedAttributesAsync("Read", account) is null)
         {
             PrSize.PrSizeLabelForm.ShapeAccount(po, labels.Any(l => l.Provider == account.Provider), key => manager.GetTranslatedMessage(key));
+            // #153 D16: a forge without versioning draws none of its policies.
+            PackageVersioning.VersioningForm.Shape(po, versioning.Any(v => v.Provider == account.Provider));
         }
         return po;
     }

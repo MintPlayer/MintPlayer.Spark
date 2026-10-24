@@ -1,0 +1,49 @@
+<Project>
+
+	<!--
+	  MintPlayer.Versioning.MSBuild (docs/coverage_package_versioning_PRD.md D9): a packable project's Version is the
+	  highest <PackageId>/v<version> tag reachable from HEAD, which the versioning engine wrote when it released (or
+	  seeded) the package. An unchanged package therefore packs at the version it already has, and
+	  the push's skip-duplicate option skips it.
+
+	  Knobs:
+	    MintPlayerVersioningSkip=true        leave this project's version alone
+	    MintPlayerVersioningTagPrefix=X/v    read X's tags instead of $(PackageId)'s
+	    MintPlayerVersioningTaskSource=path  compile the task from another file (a repository importing these targets
+	                                         from source)
+	-->
+	<PropertyGroup>
+		<MintPlayerVersioningTaskSource Condition="'$(MintPlayerVersioningTaskSource)' == ''">$(MSBuildThisFileDirectory)MintPlayer.Versioning.MSBuild.cs</MintPlayerVersioningTaskSource>
+	</PropertyGroup>
+
+	<UsingTask TaskName="MintPlayer.Versioning.MSBuild.ResolveTagVersion"
+	           TaskFactory="RoslynCodeTaskFactory"
+	           AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+		<Task>
+			<Code Type="Class" Language="cs" Source="$(MintPlayerVersioningTaskSource)" />
+		</Task>
+	</UsingTask>
+
+	<!-- MinVer's hook points: before anything reads Version (assembly attributes, the nuspec, restore's project spec for
+	     project-to-project dependencies). _IntermediatePack is the first target of Pack, so the IsPackable below is set
+	     before GenerateNuspec's condition reads it, even with no-build. Design-time builds skip it: the IDE spawns no git. -->
+	<Target Name="MintPlayerVersioning"
+	        BeforeTargets="BeforeCompile;CoreCompile;GetAssemblyVersion;_IntermediatePack;GenerateNuspec;_GenerateRestoreProjectSpec;_GetOutputItemsFromPack"
+	        Condition="'$(DesignTimeBuild)' != 'true' And '$(MintPlayerVersioningSkip)' != 'true' And '$(IsPackable)' != 'false' And '$(_MintPlayerVersioningDone)' != 'true'">
+		<PropertyGroup>
+			<MintPlayerVersioningTagPrefix Condition="'$(MintPlayerVersioningTagPrefix)' == ''">$(PackageId)/v</MintPlayerVersioningTagPrefix>
+		</PropertyGroup>
+		<ResolveTagVersion TagPrefix="$(MintPlayerVersioningTagPrefix)" WorkingDirectory="$(MSBuildProjectDirectory)">
+			<Output TaskParameter="Version" PropertyName="MintPlayerVersion" />
+		</ResolveTagVersion>
+		<!-- AssemblyVersion, FileVersion and InformationalVersion follow from Version in the SDK's GetAssemblyVersion. -->
+		<PropertyGroup>
+			<Version>$(MintPlayerVersion)</Version>
+			<PackageVersion>$(MintPlayerVersion)</PackageVersion>
+			<!-- A package the engine never tagged is not packed, so a placeholder can never reach a feed. -->
+			<IsPackable Condition="'$(MintPlayerVersion)' == '0.0.0-PLACEHOLDER'">false</IsPackable>
+			<_MintPlayerVersioningDone>true</_MintPlayerVersioningDone>
+		</PropertyGroup>
+	</Target>
+
+</Project>
