@@ -3570,18 +3570,6 @@
       "nl": "Dit verwijdert definitief alle commits, builds en dekkingsrapporten van deze repository. Dit kan niet ongedaan worden gemaakt."
     }
   },
-  "versioningOnboarding": {
-    "notManaged": {
-      "en": "You don't manage this repository.",
-      "fr": "Vous ne gérez pas ce dépôt.",
-      "nl": "Je beheert deze repository niet."
-    },
-    "unavailable": {
-      "en": "The git writer is busy or unreachable; try again in a few minutes.",
-      "fr": "Le git writer est occupé ou injoignable ; réessayez dans quelques minutes.",
-      "nl": "De git writer is bezet of onbereikbaar; probeer het over enkele minuten opnieuw."
-    }
-  },
   "security": {
     "groups": {
       "Administrators": {
@@ -3605,6 +3593,18 @@
           "nl": "Aangemelde gebruikers"
         }
       }
+    }
+  },
+  "versioningOnboarding": {
+    "notManaged": {
+      "en": "You don't manage this repository.",
+      "fr": "Vous ne gérez pas ce dépôt.",
+      "nl": "Je beheert deze repository niet."
+    },
+    "unavailable": {
+      "en": "The git writer is busy or unreachable; try again in a few minutes.",
+      "fr": "Le git writer est occupé ou injoignable ; réessayez dans quelques minutes.",
+      "nl": "De git writer is bezet of onbereikbaar; probeer het over enkele minuten opnieuw."
     }
   }
 }

@@ -107,7 +107,7 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
         foreach (var line in message.Lines)
         {
             var branch = Resolve(config.EffectiveReleaseBranches, line);
-            if (branch is null || await git.GetBranchHeadAsync(repository, branch, cancellationToken) is null)
+            if (branch is null || string.IsNullOrEmpty(await git.GetBranchHeadAsync(repository, branch, cancellationToken)))
             {
                 unknown.Add(line);
                 continue;

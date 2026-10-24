@@ -107,6 +107,10 @@ public sealed class TagWriter(ITagGit git, string remote, IReadOnlyList<string> 
 
 	private async Task<bool> ReachableAsync(string commit, CancellationToken cancellationToken)
 	{
+		// The allowed branches were fetched, so a commit missing locally is on none of them. merge-base would fail on it
+		// instead: in a partial clone it tries an unauthenticated lazy fetch first (CI run 40120193216).
+		var present = await git.RunAsync(["cat-file", "-e", commit + "^{commit}"], null, authenticated: false, null, cancellationToken);
+		if (present.ExitCode != 0) return false;
 		foreach (var branch in branchRefs)
 		{
 			var result = await git.RunAsync(["merge-base", "--is-ancestor", commit, branch], null, authenticated: false, null, cancellationToken);

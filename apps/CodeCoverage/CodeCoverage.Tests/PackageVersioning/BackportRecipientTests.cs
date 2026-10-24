@@ -32,6 +32,8 @@ public class BackportRecipientTests : CoverageRavenTest
         git.Provider.Returns(EForgeProvider.GitHub);
         integration.Provider.Returns(EForgeProvider.GitHub);
         integration.GetFileContentAsync(Arg.Any<Repository>(), "main", CoverageYml.FileName, Arg.Any<CancellationToken>()).Returns("versioning:\n");
+        // NSubstitute answers an unconfigured Task<string?> with "", not null, which would make every branch exist.
+        git.GetBranchHeadAsync(Arg.Any<Repository>(), Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns((string?)null);
         git.GetBranchHeadAsync(Arg.Any<Repository>(), "release/8.x", Arg.Any<CancellationToken>()).Returns(new string('8', 40));
         git.GetActorRoleAsync(Arg.Any<Repository>(), "maintainer", Arg.Any<CancellationToken>()).Returns(EForgeRepositoryRole.Write);
         git.GetActorRoleAsync(Arg.Any<Repository>(), "visitor", Arg.Any<CancellationToken>()).Returns(EForgeRepositoryRole.Triage);

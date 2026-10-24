@@ -48,6 +48,7 @@ public class BuildManifestTests : IDisposable
         // The test assembly stands in for Acme.Core's build output: the lister reads any assembly's metadata.
         var assembly = Path.GetFileNameWithoutExtension(typeof(BuildManifestTests).Assembly.Location);
         Write("src/Core/Core.csproj", $"<Project Sdk=\"Microsoft.NET.Sdk\">\n<PropertyGroup><TargetFramework>net10.0</TargetFramework><PackageId>Acme.Core</PackageId><AssemblyName>{assembly}</AssemblyName></PropertyGroup>\n</Project>\n");
+        Write("package.json", "{ \"private\": true, \"workspaces\": [\"packages/*\"] }\n");
         Write("packages/util/package.json", "{ \"name\": \"@acme/util\", \"version\": \"0.0.0\" }\n");
         Write("packages/util/index.d.ts", "export declare function util(): void;\n");
         Write("packages/bare/package.json", "{ \"name\": \"@acme/bare\", \"version\": \"0.0.0\" }\n");

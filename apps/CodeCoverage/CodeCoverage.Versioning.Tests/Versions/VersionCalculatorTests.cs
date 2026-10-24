@@ -7,10 +7,11 @@ public class VersionCalculatorTests
     static readonly MajorAnchor Net11 = new(11, "targets net11.0");
     static readonly MajorAnchor Free = MajorAnchor.Free("targets only .NET Standard");
 
-    static VersionDecision Next(MajorAnchor anchor, string[] existing, bool apiChanged = false, PrereleaseLabel? upstream = null, bool defaultBranch = true, int? branchMajor = null)
+    static VersionDecision Next(MajorAnchor anchor, string[] existing, bool apiChanged = false, PrereleaseLabel? upstream = null, bool defaultBranch = true, int? branchMajor = null, string? lastTag = null)
     {
         var versions = existing.Select(PackageVersion.Parse).ToList();
-        return VersionCalculator.Next(new VersionRequest(anchor, versions.DefaultIfEmpty().Max(), versions, apiChanged, upstream, defaultBranch, branchMajor));
+        var last = lastTag is null ? versions.DefaultIfEmpty().Max() : PackageVersion.Parse(lastTag);
+        return VersionCalculator.Next(new VersionRequest(anchor, last, versions, apiChanged, upstream, defaultBranch, branchMajor));
     }
 
     static string Released(VersionDecision decision)
@@ -69,7 +70,7 @@ public class VersionCalculatorTests
     [Fact]
     public void A_release_branch_releases_only_its_own_major()
     {
-        Released(Next(new MajorAnchor(10, "targets net10.0"), ["10.4.0", "11.0.0"], defaultBranch: false, branchMajor: 10)).Should().Be("10.4.1");
+        Released(Next(new MajorAnchor(10, "targets net10.0"), ["10.4.0", "11.0.0"], defaultBranch: false, branchMajor: 10, lastTag: "10.4.0")).Should().Be("10.4.1");
         Next(Net11, ["10.4.0"], defaultBranch: false, branchMajor: 10).Should().BeOfType<VersionDecision.Refuse>();
     }
 

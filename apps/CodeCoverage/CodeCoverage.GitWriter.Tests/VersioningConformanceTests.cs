@@ -22,6 +22,7 @@ public class VersioningConformanceTests : WriterTestBase
     private static Origin Fixture(Origin origin)
     {
         origin.Write("src/Core/Core.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\">\n<PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup>\n</Project>\n");
+        origin.Write("package.json", "{ \"private\": true, \"workspaces\": [\"packages/*\"] }\n");
         origin.Write("packages/util/package.json", "{ \"name\": \"@acme/util\", \"version\": \"0.0.0\" }\n");
         origin.Write("README.md", "fixture\n");
         origin.Commit("packages");
@@ -89,7 +90,7 @@ public class VersioningConformanceTests : WriterTestBase
 
         serverFirst.Outcome.Should().Be("versioned", serverFirst.Detail);
         localFirst.Succeeded.Should().BeTrue();
-        serverFirst.Releases.Select(r => r.Tag).Should().BeEquivalentTo(localFirst.Plan.Releases.Select(r => r.Tag));
+        serverFirst.Releases.Select(r => r.Tag).Should().BeEquivalentTo(localFirst.Plan.Releases.Select(r => r.Tag.Name));
         Tags(server).Should().NotBeEmpty().And.Be(Tags(local));
 
         var serverSecond = await ServerAsync(Change(server), Manifest(server.Head(), ChangedCoreHash));
@@ -97,7 +98,7 @@ public class VersioningConformanceTests : WriterTestBase
 
         serverSecond.Outcome.Should().Be("versioned", serverSecond.Detail);
         localSecond.Succeeded.Should().BeTrue();
-        serverSecond.Releases.Select(r => r.Tag).Should().BeEquivalentTo(localSecond.Plan.Releases.Select(r => r.Tag)).And.Contain(t => t.StartsWith("Core/v"));
+        serverSecond.Releases.Select(r => r.Tag).Should().BeEquivalentTo(localSecond.Plan.Releases.Select(r => r.Tag.Name)).And.Contain(t => t.StartsWith("Core/v"));
         Tags(server).Should().Be(Tags(local));
     }
 }
