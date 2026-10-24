@@ -1,6 +1,7 @@
 using CodeCoverage.Git;
 using CodeCoverage.Git.MergeQueue;
 using CodeCoverage.GitWriter.Jobs;
+using CodeCoverage.GitWriter.Jobs.Dependencies;
 using CodeCoverage.Versioning.Graph;
 using CodeCoverage.Versioning.Releases;
 using CodeCoverage.Versioning.Validation;
@@ -122,6 +123,59 @@ internal sealed partial class GitWriterVersioningPlanEndpoint : IPostEndpoint<Ve
         return Results.Json(await runs.PlanAsync(new VersioningPlanJob($"{request.Provider}/{request.RepoId}", cloneUrl, credential, branch, defaultBranch, commit,
             request.BranchMajor, settings)), GitWriterHost.Json);
     }
+}
+
+/// <summary><c>POST /jobs/versioning/onboarding</c>: the onboarding pull request's commit (#153 D17).</summary>
+internal sealed partial class GitWriterVersioningOnboardingEndpoint : IPostEndpoint<VersioningOnboardingWire>
+{
+    public const int MaxFiles = 256;
+    public const int MaxFileBytes = 256 * 1024;
+    public const long MaxBodyBytes = 16L * 1024 * 1024;
+    public static readonly string FilesRule = $"1 to {MaxFiles} distinct files of at most {MaxFileBytes / 1024} KiB text, no deletions; every path "
+        + "printable ASCII without spaces, quotes, backslashes, empty, . or .. components, nothing under .git, no .gitmodules or .gitattributes, "
+        + "and under .github only .github/workflows/*.yml or *.yaml";
+
+    public static string Path => "/jobs/versioning/onboarding";
+
+    [Inject] private readonly WriterService writer;
+    [Inject] private readonly IOptions<GitWriterOptions> options;
+
+    protected override async ValueTask<VersioningOnboardingWire?> BindRequestAsync(HttpContext context)
+        => await Body.ReadAsync<VersioningOnboardingWire>(context.Request.Body, context.Request.ContentLength, MaxBodyBytes, context.RequestAborted);
+
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure) => new(Refusal.Body(MaxBodyBytes));
+
+    public override async Task<IResult> HandleAsync(VersioningOnboardingWire request, CancellationToken cancellationToken)
+    {
+        var refusal = new Refusal();
+        if (DependencyFields.Job(refusal, request, options.Value.AllowInsecureHttp) is not { } job
+            || DependencyFields.Commit(refusal, request) is not { } commit
+            || refusal.Check(Files(request.Files), "files", FilesRule) is not { } files)
+            return refusal.Result();
+        return Results.Json(await writer.VersioningOnboardingAsync(job, commit, files), GitWriterHost.Json);
+    }
+
+    internal static List<(string Path, string? Content)>? Files(List<DependencyFileWire>? wires)
+    {
+        if (wires is not { Count: > 0 and <= MaxFiles }) return null;
+        var list = new List<(string Path, string? Content)>();
+        foreach (var wire in wires)
+        {
+            if (wire is not { Path: { } path, Content: { Length: <= MaxFileBytes } content, Delete: false } || !IsPath(path)
+                || list.Any(f => f.Path.Equals(path, StringComparison.OrdinalIgnoreCase)))
+                return null;
+            list.Add((path, content));
+        }
+        return list;
+    }
+
+    /// <summary>The patch validator's writable path; under <c>.github</c> only a workflow file, which the token's
+    /// <c>workflows</c> permission covers.</summary>
+    internal static bool IsPath(string path)
+        => PatchValidator.IsWritablePath(path)
+            && (!PatchValidator.IsUnderGitHub(path)
+                || path.StartsWith(".github/workflows/", StringComparison.Ordinal) && path.Count(c => c == '/') == 2
+                    && (path.EndsWith(".yml", StringComparison.Ordinal) || path.EndsWith(".yaml", StringComparison.Ordinal)));
 }
 
 /// <summary><c>POST /jobs/versioning/backport</c>: apply a merged pull request to release branches (#153 M10, D10).</summary>

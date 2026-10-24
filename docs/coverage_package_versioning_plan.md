@@ -7,7 +7,8 @@ MintPlayer repositories (PRD D17).
 ## Status
 
 2026-10-24: grilled (Q1–Q14 → D1–D17). Spikes S1–S4, S7, S8 run; S5 and S6 answered from GitHub's documented
-behaviour and confirmed in the M16 live test (both need a real workflow run on GitHub). M1–M12 committed; M13 next.
+behaviour and confirmed in the M16 live test (both need a real workflow run on GitHub). M1–M13 committed; M14 next. M13 also fixed
+the `VersioningControllerTests` harness, which had lacked an `IMessageBus` since M8 and failed every test in the class.
 Every test written so far runs once, in M16.
 
 ## Spike results
@@ -270,7 +271,7 @@ the code and type-checking.
 | M10 | **Backports** (D10): `backport: <line>` label and `/backport <line>` comment on merged PRs; dry-run all targets (S8); push `backport/<pr>-<line>` + open PRs with cherry-pick trailers, or comment the conflict and manual commands; nothing pushed on any conflict. | Tests: clean, one-conflicting-of-two, unknown line |
 | M11 | **Trigger B** (D3): `versioning.dispatch`; on a merge to a versioned line, fire `workflow_dispatch` only when the release set (M4) is non-empty. | Tests: no-change merge dispatches nothing |
 | M12 | **Forge abstraction + UI** (D16): `IForgeVersioning`, `EForgeCapability.Versioning`, GitHub implementation; Account/Repository settings for the three policies, hidden for forges without the capability; versioning history on the repository page. | Settings round-trip test; capability hides the section |
-| M13 | **Onboarding** (D17): row action modelled on `DependencyOnboardingRowActions`; the PR adds MinVer + prefix, `0.0.0-PLACEHOLDER`, the action step with `permissions: contents: write`, a `versioning:` section; seed tags from the replaced versions when it merges (free packages seed their own version). | Onboarding-PR content snapshot tests on Dotnet.Tools-shaped and Nx-shaped fixtures |
+| M13 | **Onboarding** (D17): ✅ detail action `SetUpVersioning` (not a row action, superseded); the PR adds `MintPlayer.Versioning.MSBuild` (our own exact-tag package, replacing MinVer, D9) to `Directory.Build.props`, points npm publishing at `MintPlayer/github-actions/publish-npm-packages`, `0.0.0-PLACEHOLDER`, the action step with `permissions: contents: write`, a `versioning:` section; seed tags from the replaced versions when it merges (free packages seed their own version). | Onboarding-PR content snapshot tests on Dotnet.Tools-shaped and Nx-shaped fixtures |
 | M14 | **Spark adopts it** in `mode: local` with `./apps/CodeCoverage/versioning-action`: csproj `<Version>`s and npm versions → `0.0.0-PLACEHOLDER`, `dotnet-build-master.yml` and the action-publish workflows call the in-repo action, seed tags from the current versions (the major-lock rule in CLAUDE.md is now enforced by D7 instead of review). | Workflow files reviewed; dry run of the local engine on the Spark repo prints the expected versions |
 | M15 | **Docs:** `docs/code-coverage/versioning.md` (consumer guide: onboarding, triggers, coverage.yml reference, backports, the `release/*` ruleset advice, `on: release` warning), CLAUDE.md "Versioning" section updated for tags. | — |
 | M16 | **Test sweep, once:** `npm run test:affected` with the Developer licence. Then the live test on the CodeCoverageDevelopment test repository (PRD D17): tagging, unchanged skip, cascade, preview, auto-cut, backport with a conflict, Releases, title correction, server stopped mid-run → fallback. | All green; live checklist ticked with evidence |

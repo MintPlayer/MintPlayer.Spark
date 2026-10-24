@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<!--
+	  The MintPlayer.Versioning.MSBuild package (docs/coverage_package_versioning_PRD.md D9): build/ holds the targets
+	  and the task's source, which MSBuild compiles in the consumer's build (RoslynCodeTaskFactory). The package has no
+	  lib/ and no dependencies, and is a development dependency, so it never flows to the consumer's own consumers.
+	  This project compiles the task source too, only so the build type-checks it against the netstandard2.0
+	  surface RoslynCodeTaskFactory compiles it with.
+	  A free package (D7): its version is its own, not locked to a .NET major.
+	-->
+	<PropertyGroup>
+		<TargetFramework>netstandard2.0</TargetFramework>
+		<LangVersion>7.3</LangVersion>
+		<Nullable>disable</Nullable>
+		<ImplicitUsings>disable</ImplicitUsings>
+		<EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+		<PackageId>MintPlayer.Versioning.MSBuild</PackageId>
+		<Version>1.0.0</Version>
+		<Authors>MintPlayer</Authors>
+		<Description>Sets a project's Version from the highest &lt;PackageId&gt;/v&lt;version&gt; git tag reachable from HEAD, as written by the CodeCoverage versioning app.</Description>
+		<PackageTags>versioning;git;tags;msbuild</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark</RepositoryUrl>
+		<DevelopmentDependency>true</DevelopmentDependency>
+		<IncludeBuildOutput>false</IncludeBuildOutput>
+		<SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
+		<!-- NU5128: no lib/ for the declared framework, on purpose. -->
+		<NoWarn>$(NoWarn);NU5128</NoWarn>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<Compile Include="build\MintPlayer.Versioning.MSBuild.cs" />
+		<None Include="build\MintPlayer.Versioning.MSBuild.cs;build\MintPlayer.Versioning.MSBuild.targets" Pack="true" PackagePath="build\" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Microsoft.Build.Utilities.Core" Version="18.10.1" PrivateAssets="all" ExcludeAssets="runtime" />
+	</ItemGroup>
+
+</Project>

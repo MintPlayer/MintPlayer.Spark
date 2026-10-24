@@ -13,6 +13,30 @@ public sealed record GitWriterVersioningRequest(
 
 public sealed record GitWriterTagger(string Name, string Email);
 
+/// <summary>
+/// The body of the git writer's <c>POST /jobs/tags</c>: tags pushed outside a run, which is how the onboarding's seed tags
+/// (D17) reach the repository. A seed carries no <see cref="GitWriterTag.ApiHash"/>, so its annotation says nothing an API
+/// comparison could trust, and no GitHub Release is made for it: releases come only from a run's result.
+/// </summary>
+public sealed record GitWriterTagsRequest(
+    string Provider, string RepoId, string CloneUrl, SidecarCredential Credential, IReadOnlyList<string> Branches, GitWriterTagger Tagger,
+    IReadOnlyList<GitWriterTag> Tags);
+
+public sealed record GitWriterTag(string Name, string Commit, string? ApiHash = null);
+
+/// <param name="Outcome"><c>tagged</c> with one result per tag, or a failure.</param>
+public sealed record GitWriterTagsResult(string Outcome, string? Reason, IReadOnlyList<GitWriterTagResult>? Tags, string? Detail, long DurationMs)
+{
+    public const string Tagged = "tagged";
+}
+
+/// <param name="Outcome"><c>created</c>, <c>already-present</c>, <c>conflict</c> or <c>unreachable</c>.</param>
+public sealed record GitWriterTagResult(string Name, string Outcome, string? Detail)
+{
+    public const string Created = "created";
+    public const string AlreadyPresent = "already-present";
+}
+
 /// <summary>The writer's answer: always 200 with an outcome, as every job (<c>GitWriterOutcomes</c>).</summary>
 public sealed record GitWriterVersioningResult(
     string Outcome, string? Reason, IReadOnlyList<GitWriterRelease>? Releases, IReadOnlyList<GitWriterPackageNote>? Skipped,

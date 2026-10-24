@@ -33,6 +33,12 @@
 	</ItemGroup>
 
 	<ItemGroup>
+		<!-- MintPlayer.Versioning.MSBuild's task ships as source (RoslynCodeTaskFactory); compiled here for its parity tests. -->
+		<Compile Include="..\CodeCoverage.Versioning.MSBuild\build\MintPlayer.Versioning.MSBuild.cs" Link="MSBuild\MintPlayer.Versioning.MSBuild.cs" />
+		<PackageReference Include="Microsoft.Build.Utilities.Core" Version="18.10.1" />
+	</ItemGroup>
+
+	<ItemGroup>
 		<Content Include="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
 		<Content Include="Fixtures\**" CopyToOutputDirectory="PreserveNewest" />
 	</ItemGroup>

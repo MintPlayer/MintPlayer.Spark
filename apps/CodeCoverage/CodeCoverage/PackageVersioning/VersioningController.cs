@@ -49,6 +49,7 @@ public partial class VersioningController : ControllerBase
     [Inject] private readonly IEnumerable<IForgeMergeQueue> queues;
     [Inject] private readonly IGitWriterSidecar writer;
     [Inject] private readonly VersioningRunLocks locks;
+    [Inject] private readonly IVersioningOnboardingService onboarding;
     [Inject] private readonly IMessageBus messageBus;
     [Inject] private readonly TimeProvider clock;
     [Inject] private readonly ILogger<VersioningController> logger;
@@ -112,6 +113,19 @@ public partial class VersioningController : ControllerBase
         using var held = await locks.TryEnterAsync(repository.Id!, cancellationToken);
         if (held is null)
             return Answer(StatusCodes.Status503ServiceUnavailable, "failed", "busy", "Another versioning run of this repository is still going.");
+
+        // D17: the first run after the onboarding merged may beat its webhook; without the seeds it would release every
+        // untagged package from scratch, so it pushes them itself, or waits.
+        try
+        {
+            if (!await onboarding.PushSeedsAsync(repository, cancellationToken))
+                return Answer(StatusCodes.Status503ServiceUnavailable, "failed", "seeds", "The onboarding's seed tags could not be pushed yet; the run waits for them.");
+        }
+        catch (Exception ex) when (ex is GitWriterUnavailableException or HttpRequestException or ForgeRequestException && !cancellationToken.IsCancellationRequested)
+        {
+            logger.LogWarning(ex, "Versioning: could not push the onboarding seeds of {Repository}", repository.FullName);
+            return Answer(StatusCodes.Status503ServiceUnavailable, "failed", "seeds", "The onboarding's seed tags could not be pushed yet; the run waits for them.");
+        }
 
         var record = new VersioningRun
         {

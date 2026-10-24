@@ -75,6 +75,7 @@ Signed-in users | grant | Read/LookupReferences | c0e5a9e1-0000-4000-8000-000000
 Signed-in users | grant | Resync/Home | c0e5a9e1-0000-4000-8000-000000000052 | app
 Signed-in users | grant | Revoke/ApiToken | c0e5a9e1-0000-4000-8000-00000000006a | app
 Signed-in users | grant | RunScheduledSlotNow/Repository | c0e5a9e1-0000-4000-8000-0000000000a2 | app
+Signed-in users | grant | SetUpVersioning/Repository | c0e5a9e1-0000-4000-8000-0000000000a9 | app
 Signed-in users | grant | SyncColumns/GitHubProject | c0e5a9e1-0000-4000-8000-000000000064 | app
 Signed-in users | grant | Upload/Coverage | c0e5a9e1-0000-4000-8000-000000000033 | app
 Signed-in users (@authenticated) | grant | AddPasskey/Passkeys | authorization:passkeys-add | authorization

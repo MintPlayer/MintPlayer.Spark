@@ -46,7 +46,7 @@ outputs:
   mode:
     description: 'The host that versioned: server or local.'
   released:
-    description: 'JSON array of the package ids released by this commit; pack and publish only these.'
+    description: 'JSON array of the package ids released by this commit. Pack and publish everything: an unchanged package packs at its published version, which the publish skips.'
   versions:
     description: 'JSON object: package id → version, for every released package.'
   dist-tags:

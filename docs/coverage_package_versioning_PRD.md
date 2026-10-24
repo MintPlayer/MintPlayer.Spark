@@ -47,7 +47,7 @@ This causes three problems:
 
 | Tool | Bump decided by | Dependents | Tags | What we take |
 |---|---|---|---|---|
-| MinVer | the nearest reachable tag with a prefix (`MinVerTagPrefix`); `x.y.(z+1)-alpha.0.{height}` after it | — | per prefix | **the .NET reader** (D9) |
+| MinVer | the nearest reachable tag with a prefix (`MinVerTagPrefix`); `x.y.(z+1)-alpha.0.{height}` after it | — | per prefix | the .NET reader until 2026-10-24; replaced by our own exact-tag MSBuild package (D9) |
 | Nerdbank.GitVersioning | `version.json` + git height, `pathFilters` | — | not the source of truth | nothing: it edits files |
 | changesets | intent files per PR | patch bump on internal dependents; major on a peer-dep change | `pkg@x.y.z` | the peer-dependency rule (D4) |
 | release-please (manifest) | conventional commits, path-filtered | `node-workspace` plugin | `pkg-vx.y.z` | path-filtered change detection (D4) |
@@ -93,8 +93,8 @@ git-repository locally, which allows `dotnet build` targets etc to set the libra
 even with no internet connection" (owner). A repository holds several libraries that are **not** versioned in lockstep,
 hence one tag per package.
 
-**Trap accepted:** a build outside a tagged commit (local `dotnet pack`, forks) shows `0.0.0-PLACEHOLDER` or MinVer's
-`x.y.z-alpha.0.N`.
+**Trap accepted:** a build outside a tagged commit (local `dotnet pack`, forks) gets the last tagged version
+(`MintPlayer.Versioning.MSBuild`, D9), or `0.0.0-PLACEHOLDER` and is not packable when nothing was tagged yet.
 
 ### D2 — One engine, two hosts, chosen by `versioning.mode` (Q14)
 
@@ -134,7 +134,7 @@ adds tags and Releases authored by the App, per-repository serialization, and hi
 
 - **A, the action step (default).** The consumer's publish workflow calls `MintPlayer/versioning-action@v1` once,
   **after build and before pack**: the API hash needs the built assemblies and `.d.ts` files (D6), and `dotnet pack`
-  (without `--no-build`) rebuilds with MinVer reading the new tags (S1). For npm the action writes the versions into
+  (without `--no-build`) rebuilds with `MintPlayer.Versioning.MSBuild` reading the new tags (S1, D9). For npm the action writes the versions into
   `package.json` before the library build that copies them to `dist` (D9). The step computes and tags (D2), runs
   `git fetch --tags` and deepens a shallow clone itself, and exposes the versions as outputs. The consumer controls *when* a release happens: gate the step with `if:`, make the
   workflow manual, or push tags by hand.
@@ -253,15 +253,27 @@ their code in our container. So:
 
 ### D9 — How the version reaches the artifacts (Q4)
 
-- **.NET: MinVer.** The onboarding PR adds the `MinVer` package and sets `MinVerTagPrefix` to `$(PackageId)/v`
-  **inside a target** in `Directory.Build.targets` (S1: as a plain property it read an empty `PackageId` for projects
-  that rely on the default and gave `/v`):
-  ```xml
-  <Target Name="SetMinVerTagPrefix" BeforeTargets="MinVer">
-    <PropertyGroup><MinVerTagPrefix>$(PackageId)/v</MinVerTagPrefix></PropertyGroup>
-  </Target>
-  ```
-  Offline builds read local tags. `MintPlayer.Mapper/v` never matches `MintPlayer.Mapper.Abstractions/v…` (S1).
+- **.NET: our own `MintPlayer.Versioning.MSBuild`** (owner decision 2026-10-24, M13; *supersedes MinVer*). The
+  onboarding PR adds the package to `Directory.Build.props`. It ships a `build/` target (not `buildTransitive`, so only
+  the projects that reference it are versioned) that sets `Version`/`PackageVersion` to the **highest reachable
+  `<PackageId>/v*` tag, exactly**: no height suffix. Why not MinVer: MinVer gives an untagged-since commit
+  `x.y.(z+1)-alpha.0.{height}`, so every package the run did *not* release would pack as a fresh prerelease and be
+  pushed. With the exact tag, an unchanged package re-packs at the version the feed already has and
+  `dotnet nuget push --skip-duplicate` skips it, so the consumer's workflow can pack and push *everything*.
+  - The prefix is resolved **inside the target** (S1: as a plain property it read an empty `PackageId` for projects
+    relying on the default and gave `/v`). `MintPlayer.Mapper/v` never matches `MintPlayer.Mapper.Abstractions/v…`.
+  - A project with no tag gets `0.0.0-PLACEHOLDER`, a warning and `IsPackable=false`, so a placeholder can never reach
+    a feed.
+  - Knobs: `MintPlayerVersioningSkip`, `MintPlayerVersioningTagPrefix`, `MintPlayerVersioningTaskSource` (Spark imports
+    the targets from source, M14).
+  - The task is an inline `RoslynCodeTaskFactory` class (`build/MintPlayer.Versioning.MSBuild.cs`), so the package
+    carries no assembly. Its version grammar and ordering mirror the engine's `PackageVersion`.
+  - The package is free (not platform-locked), so it starts at 1.0.0.
+  - Evidence: `CodeCoverage.Versioning.Tests/MSBuild/TagVersionTests`. It covers parity with the engine's grammar and
+    ordering, the highest tag of its own package only, and refusal of a non-package-id prefix. It also runs the task
+    against a real git repository and reads the highest tag reachable from HEAD.
+- **npm publishing** goes through `MintPlayer/github-actions/publish-npm-packages` (owner, 2026-10-24), which
+  publishes only the versions the registry does not have yet: the npm counterpart of `--skip-duplicate`.
 - **npm/Nx:** the action writes the version into the working-tree `package.json` of every publishable package by
   editing the JSON itself (validated version, formatting and trailing newline kept), and rewrites internal
   `dependencies` / `peerDependencies` ranges (`workspace:*`, `file:`, plain ranges) to `^<released>`. Not
@@ -357,14 +369,31 @@ settings for forges without the capability. The owner wants GitLab and Bitbucket
   (one single-target, one multi-target), an Angular library and a `netstandard2.0` generator exercises every flow:
   tagging, skipping unchanged packages, the dependent cascade, a preview, an auto-cut branch, a backport with a
   conflict, Releases, title correction, and the fallback (server stopped mid-run).
-- **Onboarding** is a row action on the dependency onboarding page's pattern. Its PR:
-  - adds MinVer and the tag prefix to `Directory.Build.targets` (.NET);
+- **Onboarding** (M13) is the repository page's detail action **Set up versioning** (`SetUpVersioning`), not a row
+  action: it runs synchronously, so the person sees the outcome (PR opened, seeded, nothing to do, refused). It needs
+  the same managed-repository check as dependency onboarding (`IDependencyOnboardingService.CheckAsync`). It plans from the
+  default branch's tree (`VersioningOnboarding.PlanAsync`). Packages that already have a `<PackageId>/v*` tag are left
+  alone. The writer (`/jobs/versioning/onboarding`) builds the branch `mintplayer/versioning-onboarding`, and that PR:
+  - adds `MintPlayer.Versioning.MSBuild` to `Directory.Build.props` (.NET, D9);
   - replaces hand-edited versions with `0.0.0-PLACEHOLDER`;
   - adds the action step and `permissions: contents: write` to the publish workflow;
   - adds a `versioning:` section to `coverage.yml`.
 
-  When it merges, the server pushes a **seed tag** per package from the version it replaced, so nobody restarts at
-  0.0.0. A free package seeds from its own version (13.0.0).
+  The commit's identity and date are kept in `VersioningOnboardingStates/{provider}/{id}`, and the date resets only when
+  the base sha changes, so a retry rebuilds the same commit. When there is nothing to change, the seeds are pushed at
+  once.
+
+  When the PR merges, the server pushes a **seed tag** per package from the version it replaced, so nobody restarts at
+  0.0.0. A free package seeds from its own version (13.0.0). The seeds go on the merge commit, read from the forge
+  rather than the webhook, through `/jobs/tags`. Two paths can push them, and whichever comes first does it:
+  - the merged-PR webhook (`VersioningSeedsMessage`);
+  - the first versioning run (`VersioningController.Run`).
+
+  Both hold `VersioningRunLocks`, so the other finds nothing pending. A run whose seeds cannot be pushed answers 503
+  `seeds` and waits, so an untagged package is never released from scratch. Evidence:
+  - `VersioningOnboardingTests` (plan content on Dotnet.Tools- and Nx-shaped trees);
+  - `VersioningControllerTests.A_run_after_the_onboarding_merged_pushes_its_seed_tags_at_the_merge_commit_first`;
+  - `VersioningControllerTests.A_run_waits_when_the_merged_onboardings_seed_tags_are_refused`.
 - **After the deploy:** onboarding PRs for MintPlayer.AspNetCore.SpaServices, MintPlayer.AspNetCore.Tools,
   MintPlayer.Dotnet.Tools and one Nx repository. Each must publish one correct release. Under the one-PR rule these are
   part of this unit of work, sequenced after the deploy.
@@ -389,7 +418,7 @@ onboarding PR, and needs no extra setting.
 | R8 | API hash travels in the tag; fallbacks registry → minor | D6 |
 | R9 | Major from the anchor table; free packages manual; a major never goes down | D7 |
 | R10 | Minor iff API hash changed; prerelease and label mirrored from resolved upstream | D8 |
-| R11 | MinVer for .NET (offline); `package.json` written for npm, internal ranges rewritten | D9 |
+| R11 | `MintPlayer.Versioning.MSBuild` for .NET (offline, exact tag, `--skip-duplicate`); `package.json` written for npm, internal ranges rewritten | D9 |
 | R12 | Release branches; backports dry-run all targets, open PRs, never push partially | D10 |
 | R13 | npm dist-tag output per package | D11 |
 | R14 | Auto-cut release branch on a major move (policy) | D12 |

@@ -5,8 +5,8 @@ import * as path from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { collectManifest, defaultEngineProject, runLocal, type EngineOptions, type Release, type RunResponse } from './engine';
 import { realExec, type Exec } from './exec';
-import { checkBranchName, prepareHistory, showOnDefaultBranch, taggedVersions } from './git';
-import { discoverPackages, writeVersions } from './npm';
+import { checkBranchName, fetchTags, prepareHistory, showOnDefaultBranch, taggedVersions } from './git';
+import { discoverPackages, PLACEHOLDER, writeVersions, type Stamp } from './npm';
 import { distTag, highest } from './semver';
 import { createReleases, cutReleaseBranches } from './releases';
 import { runOnServer } from './server';
@@ -101,7 +101,8 @@ export function failureOf(response: RunResponse): string | null {
 }
 
 export async function version(inputs: Inputs, deps: Dependencies): Promise<Outputs> {
-  // Only a branch run versions (PRD D5): a pull request or a tag build packs MinVer's prerelease and publishes nothing.
+  // Only a branch run versions (PRD D5): a pull request or a tag build versions nothing, and its pack
+  // re-packs the last tagged versions, which a publish with skip-duplicate skips.
   if (!inputs.ref.startsWith('refs/heads/') || inputs.eventName.startsWith('pull_request')) {
     deps.log(`Not a branch run (${inputs.eventName} on ${inputs.ref || 'no ref'}): nothing is versioned.`);
     return { outcome: 'skipped', released: [], versions: {}, distTags: {} };
@@ -149,7 +150,9 @@ export async function version(inputs: Inputs, deps: Dependencies): Promise<Outpu
 
   const released = response.releases;
   for (const r of released) deps.log(`${r.id} ${r.version}${r.taggedByHand ? ' (tagged by hand)' : ''}: ${r.reasons.join('; ')}`);
-  const distTags = await writeNpm(deps.exec, cwd, released, deps.log);
+  // The server pushed the tags to the remote; the pack step's build reads them from this checkout (D9).
+  if (mode === 'server') await fetchTags(deps.exec, cwd);
+  const distTags = await writeNpm(deps.exec, cwd, released, deps.log, deps.warn);
 
   // PRD D15: the server creates its Releases itself, behind the app's release-on-tag policy. The local host cannot read
   // that policy, so the `releases` input stands in for it, default on like the policy's own default.
@@ -174,20 +177,33 @@ export async function version(inputs: Inputs, deps: Dependencies): Promise<Outpu
   };
 }
 
-/** npm takes its version from package.json, so the action writes it there before pack (PRD D3); MinVer reads the tags. */
-async function writeNpm(exec: Exec, cwd: string, released: Release[], log: (m: string) => void): Promise<Record<string, string>> {
+/**
+ * npm takes its version from package.json, so the action stamps EVERY publishable package there before publish (PRD
+ * D3, D9): a release at its new version under its dist-tag, any other package at its last reachable tag, which the
+ * publisher skips as already published. The .NET side reads the same tags in MintPlayer.Versioning.MSBuild.
+ */
+async function writeNpm(exec: Exec, cwd: string, released: Release[], log: (m: string) => void, warn: (m: string) => void): Promise<Record<string, string>> {
   const npm = released.filter((r) => r.kind === 'npm');
-  if (npm.length === 0) return {};
-  const tags = await taggedVersions(exec, cwd);
   const packages = await discoverPackages(exec, cwd);
-  const releasedVersions = new Map(npm.map((r) => [r.id, r.version]));
-  const internal = new Map<string, string>();
-  for (const name of packages.keys()) {
-    const v = releasedVersions.get(name) ?? highest(tags.get(name) ?? [])?.text;
-    if (v) internal.set(name, v);
+  if (npm.length === 0 && ![...packages.values()].some((p) => !p.private)) return {};
+  const all = await taggedVersions(exec, cwd);
+  const reachable = await taggedVersions(exec, cwd, 'HEAD');
+  const distTags = Object.fromEntries(npm.map((r) => [r.id, distTag(r.version, all.get(r.id) ?? [])]));
+
+  const stamps = new Map<string, Stamp>(npm.map((r) => [r.id, { version: r.version, distTag: distTags[r.id] }]));
+  for (const pkg of packages.values()) {
+    if (pkg.private || stamps.has(pkg.name)) continue;
+    const last = highest(reachable.get(pkg.name) ?? [])?.text;
+    if (last) stamps.set(pkg.name, { version: last, distTag: null });
+    else if (pkg.version === PLACEHOLDER) {
+      stamps.set(pkg.name, 'withhold');
+      warn(`${pkg.name} has no tag reachable from HEAD: it stays at ${PLACEHOLDER} and is marked private, so it is not published.`);
+    }
   }
-  for (const file of writeVersions(packages, releasedVersions, internal)) log(`wrote ${path.relative(cwd, file)}`);
-  return Object.fromEntries(npm.map((r) => [r.id, distTag(r.version, tags.get(r.id) ?? [])]));
+  const internal = new Map<string, string>();
+  for (const [name, stamp] of stamps) if (stamp !== 'withhold') internal.set(name, stamp.version);
+  for (const file of writeVersions(packages, stamps, internal)) log(`wrote ${path.relative(cwd, file)}`);
+  return distTags;
 }
 
 export async function run(): Promise<void> {

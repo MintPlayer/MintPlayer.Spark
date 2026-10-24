@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { realExec } from './exec';
-import { discoverPackages, writeVersions } from './npm';
+import { discoverPackages, PLACEHOLDER, writeVersions, type Stamp } from './npm';
 
 function repo(files: Record<string, string>): string {
   const root = mkdtempSync(path.join(os.tmpdir(), 'versioning-npm-'));
@@ -32,6 +32,23 @@ describe('npm versions', () => {
 
     expect([...packages.keys()].sort()).toEqual(['@acme/core', 'root']);
     expect(packages.get('@acme/core')!.builtFile).toBe(path.join(root, 'dist/core/package.json'));
+    expect(packages.get('root')).toMatchObject({ private: true, version: null });
+    expect(packages.get('@acme/core')).toMatchObject({ private: false, version: '0.0.0' });
+  });
+
+  it('puts a release under its dist-tag, keeps the other publishConfig, and withholds a placeholder', async () => {
+    const root = repo({
+      'libs/ui/package.json': '{\n  "name": "@acme/ui",\n  "version": "0.0.0-PLACEHOLDER",\n  "publishConfig": { "access": "public" }\n}\n',
+      'libs/new/package.json': '{\n  "name": "@acme/new",\n  "version": "0.0.0-PLACEHOLDER"\n}\n',
+    });
+    const packages = await discoverPackages(realExec, root);
+
+    writeVersions(packages, new Map<string, Stamp>([['@acme/ui', { version: '3.0.0-rc.1', distTag: 'next' }], ['@acme/new', 'withhold']]), new Map());
+
+    expect(JSON.parse(readFileSync(path.join(root, 'libs/ui/package.json'), 'utf8')))
+      .toEqual({ name: '@acme/ui', version: '3.0.0-rc.1', publishConfig: { access: 'public', tag: 'next' } });
+    expect(JSON.parse(readFileSync(path.join(root, 'libs/new/package.json'), 'utf8')))
+      .toEqual({ name: '@acme/new', version: PLACEHOLDER, private: true });
   });
 
   it('writes the version and internal ranges, keeping the file\'s formatting', async () => {
@@ -39,7 +56,7 @@ describe('npm versions', () => {
     const root = repo({ 'libs/ui/package.json': original, 'libs/core/package.json': '{ "name": "@acme/core" }' });
     const packages = await discoverPackages(realExec, root);
 
-    writeVersions(packages, new Map([['@acme/ui', '2.1.0']]), new Map([['@acme/core', '1.4.0'], ['@acme/ui', '2.1.0']]));
+    writeVersions(packages, new Map<string, Stamp>([['@acme/ui', { version: '2.1.0', distTag: null }]]), new Map([['@acme/core', '1.4.0'], ['@acme/ui', '2.1.0']]));
 
     const written = readFileSync(path.join(root, 'libs/ui/package.json'), 'utf8');
     expect(written).toBe(original.replace('"0.0.0"', '"2.1.0"').replace('"@acme/core": "*",', '"@acme/core": "^1.4.0",'));
@@ -48,6 +65,6 @@ describe('npm versions', () => {
   it('refuses a release no tracked package.json declares', async () => {
     const root = repo({ 'package.json': '{ "name": "root" }' });
     const packages = await discoverPackages(realExec, root);
-    expect(() => writeVersions(packages, new Map([['@acme/ghost', '1.0.0']]), new Map())).toThrow(/@acme\/ghost/);
+    expect(() => writeVersions(packages, new Map<string, Stamp>([['@acme/ghost', { version: '1.0.0', distTag: null }]]), new Map())).toThrow(/@acme\/ghost/);
   });
 });

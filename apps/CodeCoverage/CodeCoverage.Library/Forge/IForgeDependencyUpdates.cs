@@ -71,6 +71,13 @@ public interface IForgeDependencyUpdates
     /// </summary>
     Task<string?> GetRepositoryFileAsync(Repository repository, string ownerRepo, string gitRef, string path, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// #153 D17: whether <paramref name="repository"/> has a tag whose name starts with <paramref name="prefix"/>
+    /// (<c>&lt;PackageId&gt;/v</c>): a package that is tagged already gets no seed tag at onboarding.
+    /// </summary>
+    Task<bool> HasTagWithPrefixAsync(Repository repository, string prefix, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException("This forge cannot list tags.");
+
     /// <summary>The name of the updater's own check run.</summary>
     public const string DependencyCheckName = "Dependency updates";
 }

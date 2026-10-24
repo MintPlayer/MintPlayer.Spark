@@ -34,7 +34,8 @@ public sealed partial class DotnetProjectReader(IRepositoryTree tree, List<strin
 		var inputs = new List<string> { directory.Length == 0 ? path : directory };
 		var imported = new List<XDocument>();
 
-		foreach (var props in await ChainAsync(directory, "Directory.Build.props", cancellationToken))
+		var buildProps = await ChainAsync(directory, "Directory.Build.props", cancellationToken);
+		foreach (var props in buildProps)
 		{
 			inputs.Add(props);
 			if (await LoadAsync(props, cancellationToken) is { } document) imported.Add(document);
@@ -110,6 +111,9 @@ public sealed partial class DotnetProjectReader(IRepositoryTree tree, List<strin
 			ProjectReferences = references,
 			Dependencies = dependencies,
 			Inputs = inputs.Distinct(StringComparer.Ordinal).ToList(),
+			DeclaredVersion = Property("PackageVersion") ?? Property("Version")
+				?? (Property("VersionPrefix") is { } prefix ? (Property("VersionSuffix") is { } suffix ? $"{prefix}-{suffix}" : prefix) : null),
+			BuildProps = buildProps,
 		};
 
 		string? Attribute(XElement item, string key)

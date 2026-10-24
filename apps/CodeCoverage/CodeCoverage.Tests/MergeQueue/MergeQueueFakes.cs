@@ -304,6 +304,19 @@ internal sealed class FakeGitWriter : IGitWriterSidecar
         return Versioning?.Invoke(request) ?? throw new NotSupportedException("No versioning answer scripted.");
     }
 
+    /// <summary>The tags job (#153 M13 seeds); unset, every tag is created.</summary>
+    public Func<CodeCoverage.PackageVersioning.GitWriterTagsRequest, Task<CodeCoverage.PackageVersioning.GitWriterTagsResult>>? Tags { get; set; }
+    public ConcurrentQueue<CodeCoverage.PackageVersioning.GitWriterTagsRequest> TagRequests { get; } = new();
+
+    public Task<CodeCoverage.PackageVersioning.GitWriterTagsResult> TagsAsync(
+        CodeCoverage.PackageVersioning.GitWriterTagsRequest request, CancellationToken cancellationToken = default)
+    {
+        TagRequests.Enqueue(request);
+        return Tags?.Invoke(request) ?? Task.FromResult(new CodeCoverage.PackageVersioning.GitWriterTagsResult(
+            CodeCoverage.PackageVersioning.GitWriterTagsResult.Tagged, null,
+            [.. request.Tags.Select(t => new CodeCoverage.PackageVersioning.GitWriterTagResult(t.Name, CodeCoverage.PackageVersioning.GitWriterTagResult.Created, null))], null, 1));
+    }
+
     public Task<GitWriterPrepareResult> PrepareAsync(GitWriterPrepareRequest request, CancellationToken cancellationToken = default)
     {
         Prepares.Add(request);

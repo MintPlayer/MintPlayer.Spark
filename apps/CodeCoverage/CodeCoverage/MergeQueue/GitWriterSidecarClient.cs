@@ -108,6 +108,14 @@ public interface IGitWriterSidecar
     /// <summary>#153 M11: the release plan for a pushed commit, without a build and without writing anything.</summary>
     Task<PackageVersioning.GitWriterVersioningPlanResult> VersioningPlanAsync(PackageVersioning.GitWriterVersioningPlanRequest request, CancellationToken cancellationToken = default)
         => throw new NotSupportedException("This git writer has no versioning plan job.");
+
+    /// <summary>#153 D17: the versioning onboarding commit on <c>mintplayer/versioning-onboarding</c>.</summary>
+    Task<GitWriterDependencyResult> VersioningOnboardingAsync(GitWriterDependencyRequest request, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException("This git writer has no versioning onboarding job.");
+
+    /// <summary>#153 D17: version tags pushed outside a run (the onboarding's seed tags), never with force.</summary>
+    Task<PackageVersioning.GitWriterTagsResult> TagsAsync(PackageVersioning.GitWriterTagsRequest request, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException("This git writer has no tags job.");
 }
 
 /// <summary>A typed <see cref="HttpClient"/> over the writer's contract.</summary>
@@ -143,6 +151,12 @@ public sealed class GitWriterSidecarClient(HttpClient http, IOptions<MergeQueueO
 
     public Task<GitWriterDependencyResult> DependencyDeleteWorkRefAsync(GitWriterDependencyRequest request, CancellationToken cancellationToken = default)
         => SendAsync<GitWriterDependencyResult>(HttpMethod.Delete, "jobs/dependencies/work-ref", request, cancellationToken);
+
+    public Task<GitWriterDependencyResult> VersioningOnboardingAsync(GitWriterDependencyRequest request, CancellationToken cancellationToken = default)
+        => SendAsync<GitWriterDependencyResult>(HttpMethod.Post, "jobs/versioning/onboarding", request, cancellationToken);
+
+    public Task<PackageVersioning.GitWriterTagsResult> TagsAsync(PackageVersioning.GitWriterTagsRequest request, CancellationToken cancellationToken = default)
+        => SendAsync<PackageVersioning.GitWriterTagsResult>(HttpMethod.Post, "jobs/tags", request, cancellationToken);
 
     public Task<PackageVersioning.GitWriterVersioningResult> VersioningRunAsync(PackageVersioning.GitWriterVersioningRequest request, CancellationToken cancellationToken = default)
         => SendAsync<PackageVersioning.GitWriterVersioningResult>(HttpMethod.Post, "jobs/versioning/run", request, cancellationToken);

@@ -190,19 +190,27 @@ public sealed partial class WriterService
 
     /// <summary>R16: one commit writing the onboarding files on <c>expected_sha</c>, force-pushed to the onboarding branch.</summary>
     public Task<DependencyJobResponse> DependencyFilesAsync(DependencyJob job, DependencyCommit commit, IReadOnlyList<(string Path, string? Content)> files)
-        => jobs.RunAsync("dependencies-files", job.Repo, async context =>
+        => FilesOnBranchAsync("dependencies-files", DependencyBranches.Onboarding, job, commit, files);
+
+    /// <summary>One commit writing <paramref name="files"/> on <c>expected_sha</c>, force-pushed to the bot-owned <paramref name="branch"/>.</summary>
+    private Task<DependencyJobResponse> FilesOnBranchAsync(string name, string branch, DependencyJob job, DependencyCommit commit, IReadOnlyList<(string Path, string? Content)> files)
+        => jobs.RunAsync(name, job.Repo, async context =>
         {
             await OpenDependenciesAsync(context, job);
             var baseTree = await RevParseAsync(context, $"{job.ExpectedSha}^{{tree}}");
             var tree = await WriteFilesAsync(context, job, baseTree, files);
             var built = await CommitTreeOnAsync(context, tree, job.ExpectedSha, commit);
-            return await PushBotRefAsync(context, job, built, DependencyBranches.Onboarding, null) switch
+            return await PushBotRefAsync(context, job, built, branch, null) switch
             {
                 Push.Done or Push.UpToDate => new DependencyJobResponse(JobOutcomes.Pushed, null, built, null, [.. files.Select(f => f.Path)], null, context.ElapsedMilliseconds),
                 Push.Rejected rejected => new DependencyJobResponse(JobOutcomes.PushRejected, null, null, null, [], rejected.Detail, context.ElapsedMilliseconds),
                 _ => throw new InvalidOperationException("Unknown push outcome."),
             };
         }, (outcome, reason, detail, ms) => new DependencyJobResponse(outcome, reason, null, null, [], detail, ms));
+
+    /// <summary>#153 D17: the versioning onboarding commit, force-pushed to <see cref="DependencyBranches.VersioningOnboarding"/>.</summary>
+    public Task<DependencyJobResponse> VersioningOnboardingAsync(DependencyJob job, DependencyCommit commit, IReadOnlyList<(string Path, string? Content)> files)
+        => FilesOnBranchAsync("versioning-onboarding", DependencyBranches.VersioningOnboarding, job, commit, files);
 
     /// <summary>R14: the work ref is removed after every run, while it is still at <paramref name="expectedSha"/>.</summary>
     public Task<DependencyJobResponse> DependencyDeleteWorkRefAsync(string repo, Uri cloneUrl, GitCredential credential, string? expectedSha)
@@ -319,4 +327,7 @@ public static class DependencyBranches
     public const string Rolling = "mintplayer/dependencies";
     public const string Work = "mintplayer/dependencies-work";
     public const string Onboarding = "mintplayer/dependencies-onboarding";
+
+    /// <summary>#153 D17: the package versioning onboarding pull request's head.</summary>
+    public const string VersioningOnboarding = "mintplayer/versioning-onboarding";
 }

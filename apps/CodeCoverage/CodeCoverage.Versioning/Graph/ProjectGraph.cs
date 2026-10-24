@@ -55,8 +55,15 @@ public sealed record ProjectNode
 	/// </summary>
 	public IReadOnlyList<string> Inputs { get; init; } = [];
 
-	/// <summary>The npm package's <c>version</c> as written; <c>0.0.0-PLACEHOLDER</c> once onboarded.</summary>
+	/// <summary>
+	/// The version as written: npm's <c>version</c>; for .NET the unconditional <c>PackageVersion</c>, else <c>Version</c>,
+	/// else <c>VersionPrefix</c>-<c>VersionSuffix</c>, possibly holding an unresolved <c>$(...)</c>. <c>0.0.0-PLACEHOLDER</c>
+	/// once onboarded (D17).
+	/// </summary>
 	public string? DeclaredVersion { get; init; }
+
+	/// <summary>The <c>Directory.Build.props</c> files the project imports, root first (.NET).</summary>
+	public IReadOnlyList<string> BuildProps { get; init; } = [];
 
 	/// <summary>The built assembly's file name without <c>.dll</c> (.NET), which the action hashes (D6). Null when it uses a property.</summary>
 	public string? AssemblyName { get; init; }

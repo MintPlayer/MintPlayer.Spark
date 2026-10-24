@@ -28,11 +28,12 @@ public class VersioningControllerTests : CoverageRavenTest
 
     private static readonly ForgeOidcProfile Oidc = ForgeOidcProfile.GitHub;
 
-    private sealed record Harness(VersioningController Controller, FakeGitWriter Writer, FakeForgeMergeQueue Queue, ScriptedDiffService Forge);
+    private sealed record Harness(VersioningController Controller, FakeGitWriter Writer, FakeForgeMergeQueue Queue, ScriptedDiffService Forge, FakeForgeVersioning Versioning);
 
     private static Harness Create(IDocumentStore store, ClaimsPrincipal user, string? yml = Versioned,
         FakeGitWriter? writer = null, VersioningRunLocks? locks = null)
     {
+        var versioning = new FakeForgeVersioning();
         var forge = new ScriptedDiffService();
         if (yml is not null) forge.Files[$"main/{CoverageYml.FileName}"] = yml;
         var queue = new FakeForgeMergeQueue();
@@ -47,11 +48,14 @@ public class VersioningControllerTests : CoverageRavenTest
         services.AddSingleton<IGitWriterSidecar>(writer);
         services.AddSingleton(locks ?? new VersioningRunLocks());
         services.AddSingleton(TimeProvider.System);
+        services.AddSingleton<IForgeVersioning>(versioning);
+        services.AddSingleton<MintPlayer.Spark.Messaging.Abstractions.IMessageBus>(new Dependencies.Lifecycle.DependencyOnboardingSurfaceTests.RecordingBus());
+        services.AddScoped<IVersioningOnboardingService, VersioningOnboardingService>();
         services.AddScoped<VersioningController>();
 
         var controller = services.BuildServiceProvider().GetRequiredService<VersioningController>();
         controller.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = user } };
-        return new Harness(controller, writer, queue, forge);
+        return new Harness(controller, writer, queue, forge, versioning);
     }
 
     private static ClaimsPrincipal Token(string gitRef = "refs/heads/main", string sha = Sha, long repositoryId = RepoId, string runId = "77")
@@ -111,6 +115,65 @@ public class VersioningControllerTests : CoverageRavenTest
         run!.Outcome.Should().Be(GitWriterVersioningResult.Versioned);
         run.WorkflowRef.Should().Be("acme/widget/.github/workflows/publish.yml@refs/heads/main");
         run.Releases.Single().Tag.Should().Be("Acme.Widget/1.2.0");
+    }
+
+    [Fact]
+    public async Task A_run_after_the_onboarding_merged_pushes_its_seed_tags_at_the_merge_commit_first()
+    {
+        using var store = GetDocumentStore();
+        await SeedRepositoryAsync(store);
+        var repositoryId = Repository.DocumentId(EForgeProvider.GitHub, RepoId);
+        using (var seed = store.OpenAsyncSession())
+        {
+            await seed.StoreAsync(new VersioningOnboardingState
+            {
+                PullRequestNumber = 9, Seeds = [new VersioningOnboardingSeed { PackageId = "Acme.Widget", Version = "1.1.0" }],
+            }, VersioningOnboardingState.ForRepository(repositoryId));
+            await seed.SaveChangesAsync();
+        }
+        var h = Create(store, Token());
+        const string merge = "9999999999999999999999999999999999999999";
+        h.Versioning.PullRequest = new ForgePullRequestText(9, VersioningOnboarding.Title, null, VersioningOnboarding.Branch, Sha, "main",
+            IsOpen: false, Merged: true, AuthorIsBot: true, MergeCommitSha: merge, []);
+
+        Status(await h.Controller.Run(Manifest(), default)).Should().Be(StatusCodes.Status200OK);
+
+        var tags = h.Writer.TagRequests.Single();
+        tags.Branches.Should().Equal("main");
+        tags.Tags.Should().Equal(new GitWriterTag("Acme.Widget/v1.1.0", merge));
+        h.Writer.VersioningRuns.Should().HaveCount(1);
+        using var read = store.OpenAsyncSession();
+        (await read.LoadAsync<VersioningOnboardingState>(VersioningOnboardingState.ForRepository(repositoryId)))!.SeedCommit.Should().Be(merge);
+
+        // Pushed once: the next run finds nothing pending.
+        Status(await Create(store, Token(runId: "78")).Controller.Run(Manifest(), default)).Should().Be(StatusCodes.Status200OK);
+    }
+
+    [Fact]
+    public async Task A_run_waits_when_the_merged_onboardings_seed_tags_are_refused()
+    {
+        using var store = GetDocumentStore();
+        await SeedRepositoryAsync(store);
+        var repositoryId = Repository.DocumentId(EForgeProvider.GitHub, RepoId);
+        using (var seed = store.OpenAsyncSession())
+        {
+            await seed.StoreAsync(new VersioningOnboardingState
+            {
+                PullRequestNumber = 9, Seeds = [new VersioningOnboardingSeed { PackageId = "Acme.Widget", Version = "1.1.0" }],
+            }, VersioningOnboardingState.ForRepository(repositoryId));
+            await seed.SaveChangesAsync();
+        }
+        var writer = new FakeGitWriter
+        {
+            Versioning = _ => Task.FromResult(Result(GitWriterVersioningResult.Versioned)),
+            Tags = r => Task.FromResult(new GitWriterTagsResult(GitWriterTagsResult.Tagged, null, [new GitWriterTagResult(r.Tags[0].Name, "conflict", "points elsewhere")], null, 1)),
+        };
+        var h = Create(store, Token(), writer: writer);
+        h.Versioning.PullRequest = new ForgePullRequestText(9, VersioningOnboarding.Title, null, VersioningOnboarding.Branch, Sha, "main",
+            IsOpen: false, Merged: true, AuthorIsBot: true, MergeCommitSha: "9999999999999999999999999999999999999999", []);
+
+        Status(await h.Controller.Run(Manifest(), default)).Should().Be(StatusCodes.Status503ServiceUnavailable);
+        h.Writer.VersioningRuns.Should().BeEmpty();
     }
 
     [Fact]

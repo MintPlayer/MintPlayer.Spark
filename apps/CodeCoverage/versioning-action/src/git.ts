@@ -24,9 +24,20 @@ export async function showOnDefaultBranch(exec: Exec, cwd: string, defaultBranch
   return result.code === 0 ? result.stdout : null;
 }
 
-/** Every package's tagged versions, from the `<id>/v<version>` tags (PRD D9). */
-export async function taggedVersions(exec: Exec, cwd: string): Promise<Map<string, string[]>> {
-  const out = await execOk(exec, 'git', ['tag', '--list'], { cwd });
+/**
+ * Fetches the tags the run just wrote (the server pushes them to the remote, PRD D3), so the pack step's build reads
+ * them through MintPlayer.Versioning.MSBuild (D9).
+ */
+export async function fetchTags(exec: Exec, cwd: string): Promise<void> {
+  await execOk(exec, 'git', ['fetch', '--no-recurse-submodules', '--tags', '--force', 'origin'], { cwd });
+}
+
+/**
+ * Every package's tagged versions, from the `<id>/v<version>` tags (PRD D9); with `reachableFrom`, only the tags of
+ * commits in that commit's history, as MintPlayer.Versioning.MSBuild reads them.
+ */
+export async function taggedVersions(exec: Exec, cwd: string, reachableFrom?: string): Promise<Map<string, string[]>> {
+  const out = await execOk(exec, 'git', ['tag', '--list', ...(reachableFrom ? ['--merged', reachableFrom] : [])], { cwd });
   const byId = new Map<string, string[]>();
   for (const tag of out.split('\n').map((t) => t.trim())) {
     const at = tag.lastIndexOf('/v');

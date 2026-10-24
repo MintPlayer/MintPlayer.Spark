@@ -267,6 +267,18 @@ public partial class GitHubForgeDependencyUpdates : IForgeDependencyUpdates
         return type == "commit" && sha is not null && CommitSha().IsMatch(sha) ? sha.ToLowerInvariant() : null;
     }
 
+    /// <remarks><c>GET /repos/{owner}/{repo}/git/matching-refs/tags/{prefix}</c>: an empty array when no tag matches.</remarks>
+    public async Task<bool> HasTagWithPrefixAsync(Repository repository, string prefix, CancellationToken cancellationToken = default)
+    {
+        // GitRef plus '@': an npm scope is part of the tag (`@scope/name/v`).
+        if (!GitRef().IsMatch(prefix.Replace('@', '_')))
+            throw new ArgumentException($"'{prefix}' is not a tag prefix.", nameof(prefix));
+        using var reply = await SendAsync(repository, HttpMethod.Get, $"{RepoPath(repository)}/git/matching-refs/tags/{EscapePath(prefix)}?per_page=1", null, cancellationToken);
+        if (reply.Status == HttpStatusCode.NotFound) return false;
+        EnsureSuccess(reply);
+        return reply.Json!.RootElement is { ValueKind: JsonValueKind.Array } refs && refs.GetArrayLength() > 0;
+    }
+
     public async Task<string?> GetRepositoryFileAsync(Repository repository, string ownerRepo, string gitRef, string path, CancellationToken cancellationToken = default)
     {
         if (!GitHubForgeClient.GitHubFullName().IsMatch(ownerRepo) || !GitRef().IsMatch(gitRef))
