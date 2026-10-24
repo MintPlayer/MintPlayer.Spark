@@ -41,7 +41,7 @@ public sealed class TagService(JobRunner jobs)
 
     /// <summary>The engine's git port over the job's hardened <see cref="GitRunner"/>: the credential only for the
     /// commands that reach the forge.</summary>
-    private sealed class JobTagGit(JobContext context, GitCredential credential) : ITagGit
+    internal sealed class JobTagGit(JobContext context, GitCredential credential) : ITagGit
     {
         public async Task<GitCli.Result> RunAsync(IReadOnlyList<string> arguments, string? input, bool authenticated, Tagger? tagger, CancellationToken cancellationToken)
         {

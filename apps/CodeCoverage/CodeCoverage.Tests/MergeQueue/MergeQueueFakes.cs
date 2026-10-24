@@ -293,6 +293,17 @@ internal sealed class FakeGitWriter : IGitWriterSidecar
     public Queue<GitWriterQueueBranchResult> QueueBranchResults { get; } = new();
     public List<GitWriterQueueBranchRequest> QueueBranchPushes { get; } = [];
 
+    /// <summary>The versioning job's answer (#153 M6); unset, the run is refused as unsupported like the interface's default.</summary>
+    public Func<CodeCoverage.PackageVersioning.GitWriterVersioningRequest, Task<CodeCoverage.PackageVersioning.GitWriterVersioningResult>>? Versioning { get; set; }
+    public ConcurrentQueue<CodeCoverage.PackageVersioning.GitWriterVersioningRequest> VersioningRuns { get; } = new();
+
+    public Task<CodeCoverage.PackageVersioning.GitWriterVersioningResult> VersioningRunAsync(
+        CodeCoverage.PackageVersioning.GitWriterVersioningRequest request, CancellationToken cancellationToken = default)
+    {
+        VersioningRuns.Enqueue(request);
+        return Versioning?.Invoke(request) ?? throw new NotSupportedException("No versioning answer scripted.");
+    }
+
     public Task<GitWriterPrepareResult> PrepareAsync(GitWriterPrepareRequest request, CancellationToken cancellationToken = default)
     {
         Prepares.Add(request);

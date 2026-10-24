@@ -96,6 +96,10 @@ public interface IGitWriterSidecar
     /// <summary>R14: deletes the work ref while it is at <see cref="GitWriterDependencyRequest.ExpectedSha"/>. Idempotent.</summary>
     Task<GitWriterDependencyResult> DependencyDeleteWorkRefAsync(GitWriterDependencyRequest request, CancellationToken cancellationToken = default)
         => throw new NotSupportedException("This git writer has no dependency jobs: DependencyDeleteWorkRefAsync.");
+
+    /// <summary>#153 M6: one server-host versioning run, planned and tagged by the engine inside the writer.</summary>
+    Task<PackageVersioning.GitWriterVersioningResult> VersioningRunAsync(PackageVersioning.GitWriterVersioningRequest request, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException("This git writer has no versioning job.");
 }
 
 /// <summary>A typed <see cref="HttpClient"/> over the writer's contract.</summary>
@@ -131,6 +135,9 @@ public sealed class GitWriterSidecarClient(HttpClient http, IOptions<MergeQueueO
 
     public Task<GitWriterDependencyResult> DependencyDeleteWorkRefAsync(GitWriterDependencyRequest request, CancellationToken cancellationToken = default)
         => SendAsync<GitWriterDependencyResult>(HttpMethod.Delete, "jobs/dependencies/work-ref", request, cancellationToken);
+
+    public Task<PackageVersioning.GitWriterVersioningResult> VersioningRunAsync(PackageVersioning.GitWriterVersioningRequest request, CancellationToken cancellationToken = default)
+        => SendAsync<PackageVersioning.GitWriterVersioningResult>(HttpMethod.Post, "jobs/versioning/run", request, cancellationToken);
 
     /// <summary>
     /// The request as the writer reads it: one flat object. The queue-branch push and the publish carry their prepare's

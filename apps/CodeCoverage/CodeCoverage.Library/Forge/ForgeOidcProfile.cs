@@ -37,6 +37,13 @@ namespace CodeCoverage.Forge;
 /// Which attempt of that run, where the forge has the concept. Null when it does not — GitLab
 /// retries a job rather than re-running an attempt of a pipeline, so there is nothing honest to map.
 /// </param>
+/// <param name="RefClaim">The git ref the run was triggered for (#153 M6: versioning tags only builds of a branch).</param>
+/// <param name="BranchRefPrefix">
+/// What <paramref name="RefClaim"/> starts with when that ref is a branch; the rest is the branch name. A ref without it
+/// (a tag, a pull request's merge ref) is not a branch.
+/// </param>
+/// <param name="CommitClaim">The commit the run built.</param>
+/// <param name="WorkflowRefClaim">The workflow that started the run, recorded with each versioning run.</param>
 public sealed record ForgeOidcProfile(
     EForgeProvider Provider,
     string SchemeName,
@@ -48,8 +55,18 @@ public sealed record ForgeOidcProfile(
     string VisibilityClaim,
     string PublicVisibilityValue,
     string RunIdClaim,
-    string? RunAttemptClaim)
+    string? RunAttemptClaim,
+    string RefClaim,
+    string BranchRefPrefix,
+    string CommitClaim,
+    string WorkflowRefClaim)
 {
+    /// <summary>The branch the token's run was triggered for, or null when its ref is not a branch.</summary>
+    public string? Branch(System.Security.Claims.ClaimsPrincipal principal)
+        => principal.FindFirst(RefClaim)?.Value is { } gitRef && gitRef.StartsWith(BranchRefPrefix, StringComparison.Ordinal) && gitRef.Length > BranchRefPrefix.Length
+            ? gitRef[BranchRefPrefix.Length..]
+            : null;
+
     /// <summary>
     /// GitHub Actions. A workflow with <c>permissions: id-token: write</c> mints a GitHub-signed
     /// JWT asserting which repository and run it is — verified against GitHub's JWKS, with nothing
@@ -72,7 +89,11 @@ public sealed record ForgeOidcProfile(
         VisibilityClaim: "repository_visibility",
         PublicVisibilityValue: "public",
         RunIdClaim: "run_id",
-        RunAttemptClaim: "run_attempt");
+        RunAttemptClaim: "run_attempt",
+        RefClaim: "ref",
+        BranchRefPrefix: "refs/heads/",
+        CommitClaim: "sha",
+        WorkflowRefClaim: "workflow_ref");
 
     /// <summary>
     /// GitLab CI, shaped but <b>not registered</b> — stage 2 wires it up. Written now because the
@@ -104,5 +125,11 @@ public sealed record ForgeOidcProfile(
         VisibilityClaim: "project_visibility",
         PublicVisibilityValue: "public",
         RunIdClaim: "pipeline_id",
-        RunAttemptClaim: null);
+        RunAttemptClaim: null,
+        // ⚠️ GitLab's ref is the bare name and ref_type says whether it is a branch or a tag: the empty prefix
+        // accepts a tag too, so wiring GitLab up must check ref_type == "branch" first.
+        RefClaim: "ref",
+        BranchRefPrefix: "",
+        CommitClaim: "sha",
+        WorkflowRefClaim: "ci_config_ref_uri");
 }

@@ -223,6 +223,53 @@ public sealed record TagResultWire(string Name, string Outcome, string? Detail);
 /// <param name="Outcome"><see cref="JobOutcomes.Tagged"/> with one result per tag, or a failure.</param>
 public sealed record TagsResponse(string Outcome, string? Reason, IReadOnlyList<TagResultWire> Tags, string? Detail, long DurationMs);
 
+/// <summary>
+/// <c>POST /jobs/versioning/run</c> (#153 M6): one whole versioning run on the server host. The writer fetches
+/// <see cref="Branch"/> (and <see cref="DefaultBranch"/>) with the tags, plans from <see cref="Manifest"/> with the
+/// engine and pushes the tags. The main app has decided everything a token's claims decide; this decides nothing the
+/// engine would not decide the same way in the action's local host.
+/// </summary>
+public sealed class VersioningRunRequestWire
+{
+    public string? Provider { get; set; }
+    public string? RepoId { get; set; }
+    public string? CloneUrl { get; set; }
+    public CredentialWire? Credential { get; set; }
+    /// <summary>The branch the workflow ran on: the default branch or a release branch (D10).</summary>
+    public string? Branch { get; set; }
+    public string? DefaultBranch { get; set; }
+    /// <summary>The release line's major when <see cref="Branch"/> is a release branch whose name carries one.</summary>
+    public int? BranchMajor { get; set; }
+    public IdentityWire? Tagger { get; set; }
+    public VersioningSettingsWire? Settings { get; set; }
+    public Versioning.Releases.ReleaseManifest? Manifest { get; set; }
+}
+
+/// <summary>The <c>versioning:</c> section of <c>coverage.yml</c> as the engine reads it (D13, D17).</summary>
+public sealed class VersioningSettingsWire
+{
+    public List<string>? Ignore { get; set; }
+    public List<LockstepGroupWire>? Groups { get; set; }
+    public Dictionary<string, string>? Anchors { get; set; }
+}
+
+public sealed class LockstepGroupWire
+{
+    public string? Name { get; set; }
+    public List<string>? Packages { get; set; }
+}
+
+/// <param name="TagOutcome">What became of its tag; null for a version a person tagged by hand, or when nothing was written.</param>
+public sealed record ReleaseWire(string Id, string Kind, string Version, string Tag, IReadOnlyList<string> Reasons, string? ApiHash, bool TaggedByHand, string? TagOutcome);
+
+public sealed record PackageNoteWire(string Id, string Reason);
+
+/// <param name="Outcome"><see cref="JobOutcomes.Versioned"/> (see the per-tag outcomes), <see cref="JobOutcomes.PlanRefused"/>
+/// when the plan refused a package and nothing was written, or a failure.</param>
+public sealed record VersioningRunResponse(
+    string Outcome, string? Reason, IReadOnlyList<ReleaseWire> Releases, IReadOnlyList<PackageNoteWire> Skipped, IReadOnlyList<PackageNoteWire> Refused,
+    IReadOnlyList<string> Warnings, string? Detail, long DurationMs);
+
 /// <summary>The body of a 400 (§0 D57): the first field that broke its rule, and the rule. Never the value.</summary>
 public sealed record RefusedResponse(string Outcome, string Field, string Detail);
 
@@ -265,6 +312,10 @@ public static class JobOutcomes
     public const string Deleted = "deleted";
     /// <summary>Tags: every tag has its own result; a conflict or an unreachable commit is one of them, not a failure.</summary>
     public const string Tagged = "tagged";
+    /// <summary>Versioning run: planned, and every tag has its own result.</summary>
+    public const string Versioned = "versioned";
+    /// <summary>Versioning run: the plan refused a package (D10, D13), so no tag was written.</summary>
+    public const string PlanRefused = "plan-refused";
     /// <summary>Every slot was taken for <c>SlotWaitSeconds</c>; retry later.</summary>
     public const string Busy = "busy";
     /// <summary>An operational failure; <c>reason</c> is one of <see cref="JobReasons"/>.</summary>
@@ -288,4 +339,7 @@ public static class JobReasons
     /// whose answer never reached the saga (merge-queue PRD D51 (1), D52). The branch was left as it was.
     /// </summary>
     public const string AlreadyPushed = "already-pushed";
+    /// <summary>Versioning run: the repository cannot be planned (a project graph past its caps, a packed package the
+    /// graph does not hold, the built commit not on the branch); <c>detail</c> says which. Rerunning changes nothing.</summary>
+    public const string Unplannable = "unplannable";
 }
