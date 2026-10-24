@@ -25,6 +25,12 @@ public sealed record VersioningSettings
 
 	/// <summary><c>versioning.releaseBranches</c> (D10): the first pattern with one <c>*</c> names a cut branch (D12).</summary>
 	public IReadOnlyList<string> ReleaseBranches { get; init; } = Releases.ReleaseBranches.Default;
+
+	/// <summary><c>versioning.prerelease</c> (D8): the label every package releases with; null mirrors upstream.</summary>
+	public PrereleaseLabel? Prerelease { get; init; }
+
+	/// <summary><c>versioning.packages.&lt;id&gt;.prerelease</c>: a label, or null for <c>upstream</c>; wins over <see cref="Prerelease"/>.</summary>
+	public IReadOnlyDictionary<string, PrereleaseLabel?> PrereleasePins { get; init; } = new Dictionary<string, PrereleaseLabel?>();
 }
 
 /// <summary>What the build knows about one packed package (D5): what static parsing cannot read.</summary>
@@ -56,6 +62,9 @@ public sealed record ReleaseContext
 	public VersioningSettings Settings { get; init; } = new();
 
 	public IReadOnlyDictionary<string, PackageBuildFacts> Build { get; init; } = new Dictionary<string, PackageBuildFacts>();
+
+	/// <summary>The .NET SDK version the build ran on (<c>dotnet --version</c>), null when unknown: the platform's maturity (D8).</summary>
+	public string? Sdk { get; init; }
 
 	public bool OnDefaultBranch { get; init; } = true;
 
@@ -198,7 +207,7 @@ public static class ReleasePlanner
 				context.BranchMajor is null ? history.LastOrDefault()?.Version : lastOnLine?.Version,
 				history.Select(t => t.Version).ToList(),
 				apiChanged,
-				UpstreamLabel(context, project, facts, released),
+				ReleaseLabel(context, project, anchor, facts, released),
 				context.OnDefaultBranch,
 				context.BranchMajor));
 
@@ -260,13 +269,29 @@ public static class ReleasePlanner
 	}
 
 	/// <summary>
-	/// The least mature prerelease among what the package ships against (D8): its runtime and peer dependencies as
-	/// resolved, and its in-repo dependencies at the version this run gives them or their last tag.
+	/// The label of the release (D8): a pin from <c>versioning.packages.&lt;id&gt;.prerelease</c> or
+	/// <c>versioning.prerelease</c> when there is one, which upstream never overrides; else <see cref="UpstreamLabel"/>.
 	/// </summary>
-	private static PrereleaseLabel? UpstreamLabel(ReleaseContext context, ProjectNode project, PackageBuildFacts? facts, Dictionary<string, PlannedRelease> released)
+	private static PrereleaseLabel? ReleaseLabel(ReleaseContext context, ProjectNode project, MajorAnchor anchor, PackageBuildFacts? facts,
+		Dictionary<string, PlannedRelease> released)
+		=> context.Settings.PrereleasePins.TryGetValue(project.Id!, out var pin)
+			? pin ?? UpstreamLabel(context, project, anchor, facts, released)
+			: context.Settings.Prerelease ?? UpstreamLabel(context, project, anchor, facts, released);
+
+	/// <summary>
+	/// The least mature prerelease among what the package ships against (D8): its runtime and peer dependencies as
+	/// resolved, its in-repo dependencies at the version this run gives them or their last tag, and for a .NET package
+	/// anchored on its target framework, the SDK the build ran on when that is the same major (net11.0 built on
+	/// 11.0.100-rc.2 targets a platform still in rc).
+	/// </summary>
+	private static PrereleaseLabel? UpstreamLabel(ReleaseContext context, ProjectNode project, MajorAnchor anchor, PackageBuildFacts? facts,
+		Dictionary<string, PlannedRelease> released)
 	{
 		var graph = context.Graph;
 		var versions = new List<string>();
+		if (project.Kind == PackageKind.NuGet && !context.Settings.Anchors.ContainsKey(project.Id!) && anchor.Major is { } major
+			&& context.Sdk is { } sdk && SemVer.TryParse(sdk, out var sdkVersion) && sdkVersion.Major == major)
+			versions.Add(sdk);
 		var internalIds = new HashSet<string>(StringComparer.Ordinal);
 		foreach (var (dependency, _) in graph.InternalDependencies(project))
 		{

@@ -25,6 +25,12 @@ case assumed the wrong last tag; the conformance test compared `VersionTag` obje
 a line-ending-only diff (owner request). Spark's 46 seed tags were pushed by the owner at master `162c1fa3`.
 Left: the M16 live test, then M17 after merge and deploy.
 
+2026-10-24, after the merge: the first master run (40124565898) refused, so nothing was tagged. Webhooks.GitHub mirrored
+Octokit.GraphQL's `beta` below its `preview` seed tag, and the other labels were wrong too (stable, or `rc` from
+Endpoints). Fixed on `fix/issue153-prerelease-label` (PRD D8 amendment): a `prerelease` pin in `coverage.yml` (Spark
+pins `preview`), the SDK as an upstream for TFM-anchored NuGet packages, and the registry hash reading generator
+packages' `analyzers/dotnet/cs/` assembly.
+
 ## Spike results
 
 - **S1 (MinVer, static parser).** Scratch repo with `MintPlayer.Mapper` (net10.0;net11.0, explicit `PackageId`),

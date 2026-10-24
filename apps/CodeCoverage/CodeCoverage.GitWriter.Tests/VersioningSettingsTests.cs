@@ -37,6 +37,33 @@ public class VersioningSettingsTests
         settings.Anchors["MintPlayer.Spark"].Should().Be("free");
     }
 
+    [Fact]
+    public void Prerelease_pins_survive_the_wire_from_the_app()
+    {
+        // The app posts its own VersioningSettings with JsonSerializerOptions.Web; the writer reads the wire type.
+        var sent = new Versioning.Releases.VersioningConfig
+        {
+            Prerelease = "preview",
+            Packages = new() { ["@mintplayer/ng-spark"] = new() { Prerelease = "upstream" }, ["Acme"] = new() { Prerelease = "rc" } },
+        }.ToSettings();
+        var json = System.Text.Json.JsonSerializer.Serialize(sent, System.Text.Json.JsonSerializerOptions.Web);
+        json.Should().Contain("\"prerelease\":\"preview\"");
+
+        var settings = GitWriterVersioningRunEndpoint.Settings(System.Text.Json.JsonSerializer.Deserialize<VersioningSettingsWire>(json, GitWriterHost.Json));
+
+        settings!.Prerelease.Should().Be(Versioning.Versions.PrereleaseLabel.Preview);
+        settings.PrereleasePins["@mintplayer/ng-spark"].HasValue.Should().BeFalse();
+        settings.PrereleasePins["Acme"].Should().Be(Versioning.Versions.PrereleaseLabel.Rc);
+    }
+
+    [Fact]
+    public void An_unknown_label_on_the_wire_is_not_read()
+    {
+        var read = () => System.Text.Json.JsonSerializer.Deserialize<VersioningSettingsWire>("""{"prerelease":"gamma"}""", GitWriterHost.Json);
+
+        read.Should().Throw<System.Text.Json.JsonException>();
+    }
+
     public static TheoryData<VersioningSettingsWire> Refused() => new()
     {
         new VersioningSettingsWire { Groups = [new LockstepGroupWire { Name = "a", Packages = ["x"] }, new LockstepGroupWire { Name = "a", Packages = ["y"] }] },

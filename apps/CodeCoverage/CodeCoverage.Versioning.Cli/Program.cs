@@ -49,7 +49,7 @@ static async Task<int> Manifest(Options options)
 	if (options.Get("branch") is { } branch && options.Get("default-branch") is { } defaultBranch && branch != defaultBranch)
 		ReleaseBranches.IsMatch(config.EffectiveReleaseBranches, branch, out branchMajor);
 	var result = await BuildManifest.CollectAsync(git, new BuildManifestRequest(repo, commit, options.Get("configuration") ?? "Release", branchMajor,
-		options.Has("no-registry") ? null : new PublicPackageRegistry(http), config.ToSettings().Ignore));
+		options.Has("no-registry") ? null : new PublicPackageRegistry(http), config.ToSettings().Ignore, await DotnetSdk.VersionAsync(repo)));
 	await File.WriteAllTextAsync(options.Require("out"), JsonSerializer.Serialize(new { result.Manifest, result.Notes }, Wire.Json));
 	return 0;
 }

@@ -42,3 +42,10 @@ versioning:
   ignore:
     - "**/fixtures/**"
     - "**/Fixtures/**"
+  # Spark is in preview, so every package releases as -preview.N whatever it ships against (an Octokit.GraphQL beta,
+  # an Endpoints rc). Remove this line when Spark goes stable. The two exemptions are already stable: ng-spark is a
+  # 22.x Angular package, and the onboarding PRs reference MintPlayer.Versioning.MSBuild 1.0.0.
+  prerelease: preview
+  packages:
+    "@mintplayer/ng-spark": { prerelease: upstream }
+    MintPlayer.Versioning.MSBuild: { prerelease: upstream }

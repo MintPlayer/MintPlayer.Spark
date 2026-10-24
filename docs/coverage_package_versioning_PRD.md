@@ -250,6 +250,28 @@ their code in our container. So:
   - No stable of the major yet: `<major>.0.0-<label>.N`.
   - A stable line exists (`11.2.0`): `11.3.0-<label>.N`.
   - Everything stable again: the next release is stable.
+- **Amended 2026-10-24 after the first live run (40124565898).** Mirroring alone was wrong for Spark in three ways:
+  - Webhooks.GitHub resolves Octokit.GraphQL `0.4.0-beta`, so it computed `11.0.0-beta.1` and was refused
+    ("11.0.0-beta.1 is not above 11.0.0-preview.105"). One refusal refuses the run, so nothing was tagged.
+  - Packages with only stable dependencies computed a stable `11.0.0`, though Spark itself is in preview. Others got
+    `rc` from MintPlayer.AspNetCore.Endpoints `11.4.1-rc.0`.
+  - The platform's own maturity was never an input: a `net11.0` package anchored on .NET 11 ignored that the SDK is
+    `11.0.100-rc.2`.
+
+  Two additions (owner: "spark is still in preview. Additionally, it targets .NET 11 which is also in preview"):
+  - **A pin.** `versioning.prerelease: <alpha|beta|next|preview|rc|upstream>` and per package
+    `versioning.packages.<id>.prerelease`. A pin sets the label outright; upstream never overrides it. A package pin
+    wins over the repository pin, and `upstream` restores the mirroring above. Removing the pin is how a project goes
+    stable. Spark pins `preview`, and exempts ng-spark (a stable 22.x Angular package) and
+    MintPlayer.Versioning.MSBuild (the onboarding PRs reference `1.0.0`).
+  - **The SDK as an upstream.** For a NuGet package anchored on its TFM (no `anchor` override) whose major equals the
+    SDK's major, the build's `dotnet --version` joins the mirrored versions. It travels in the manifest as `sdk`.
+    SDK 12 against a `net11.0` package, or a stable SDK, adds nothing.
+  - Evidence: `ReleaseLabelTests` (Versioning.Tests) red→green for each case above, and
+    `VersioningSettingsTests.Prerelease_pins_survive_the_wire_from_the_app` (server mode).
+  - The same run showed the generator packages as "not on the public registry": they ship their assembly under
+    `analyzers/dotnet/cs/`, not `lib/<tfm>/`. The registry hash now falls back to that entry for a single-TFM package
+    (`ReleaseLabelTests`, the analyzer-nupkg case).
 
 ### D9 — How the version reaches the artifacts (Q4)
 
@@ -419,8 +441,9 @@ settings for forges without the capability. The owner wants GitLab and Bitbucket
     reachable from the merge commit. The owner pushes them right before merging; the script never pushes.
   - **Not applicable:** the plan's "action-publish workflows call the in-repo action". The committed ncc actions are
     versioned by moving git refs, not published to a registry, so they have no package version to compute.
-  - **Expected first-release change:** the engine mirrors the upstream prerelease label (D8), so Spark's
-    `11.0.0-preview.N` line follows the .NET SDK's label. Once the SDK is at `rc`, the next release is `rc.N`.
+  - ~~**Expected first-release change:** the engine mirrors the upstream prerelease label (D8), so Spark's
+    `11.0.0-preview.N` line follows the .NET SDK's label.~~ *Superseded by the D8 amendment:* Spark pins `preview`,
+    so its packages continue `11.0.0-preview.N` until the pin is removed.
 
 **A repository is "versioned"** when its default-branch `coverage.yml` has a `versioning:` section. The webhook features
 (D10, D12, D3 B) act only on those. This is my call, not grilled: it keeps the opt-in in a file the owner reviews in the

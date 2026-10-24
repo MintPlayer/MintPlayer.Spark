@@ -18,7 +18,11 @@ action step after the build. That step tags every package that changed, then the
 - **Minor or patch comes from the public API** (D8). If the API listing changed, it is a minor. Otherwise it is a
   patch. A breaking change is a minor too, because the major belongs to the platform.
 - **Prereleases mirror upstream** (D8). When the platform or a runtime dependency resolves to a prerelease, the
-  package gets the same label (`preview`, `rc`, `next`, …) with its own counter: `11.0.0-rc.3`.
+  package gets the same label (`preview`, `rc`, `next`, …) with its own counter: `11.0.0-rc.3`. For a .NET package
+  that follows its target framework, the .NET SDK counts as an upstream too: `net11.0` built by SDK `11.0.100-rc.2`
+  releases as `rc`.
+- **A pin overrides the mirroring.** `prerelease: preview` in `coverage.yml` releases every package as `-preview.N`,
+  whatever its upstreams are. Use it while the project itself is in preview, and remove it to go stable.
 
 ## Onboarding
 
@@ -103,12 +107,17 @@ versioning:
   dispatch: publish.yml              # bot dispatch (D3); default none
   releaseBranches: ["release/*.x"]   # release lines (D10); default release/*.x, at most 16
   ignore: ["**/*.md"]                # changed files that release nothing (D4); this list REPLACES the default
+  prerelease: preview                # D8: alpha | beta | next | preview | rc | upstream; default upstream
   groups:                            # lockstep groups (D13)
     - name: mapper
       packages: [MintPlayer.Mapper, MintPlayer.Mapper.*]
   packages:
     MintPlayer.SourceGenerators: { anchor: free }   # D7: free, or the id of the package whose major it follows
+    "@acme/stable-lib": { prerelease: upstream }    # a package pin wins over the repository pin
 ```
+
+- **`prerelease`** sets the label outright; upstream prereleases never override it. `upstream` (the default) mirrors
+  the least mature upstream label, the SDK included. A per-package pin wins over the repository's.
 
 - **`ignore`** globs also keep matching project files out of the package graph. Test fixtures that contain
   `.csproj` or `package.json` files belong here. Leave out `**/*.md` if your packages ship their README.
