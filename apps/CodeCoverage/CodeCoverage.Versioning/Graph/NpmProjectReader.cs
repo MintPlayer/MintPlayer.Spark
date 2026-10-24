@@ -109,6 +109,8 @@ public sealed class NpmProjectReader(IRepositoryTree tree, List<string> warnings
 		// A workspace root's own package.json is a package only when it declares a name and is not private; it is never
 		// the input of everything below it, or every change anywhere would release it.
 		if (directory.Length == 0) inputs = ["package.json"];
+		// The lockfile decides what the package is built against (D4), and the upstream label it mirrors (D8).
+		if (tree.IsFile("package-lock.json")) inputs.Add("package-lock.json");
 
 		return new ProjectNode
 		{
