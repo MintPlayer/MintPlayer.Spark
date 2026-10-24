@@ -1,0 +1,8 @@
+.cov-setup {
+  max-width: 60rem;
+}
+
+// A step a link jumped to lands clear of the shell's top bar.
+bs-card[id] {
+  scroll-margin-top: 4rem;
+}

@@ -2,12 +2,12 @@ import { Component, input, provideZonelessChangeDetection, TemplateRef } from '@
 import { NgTemplateOutlet } from '@angular/common';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
+import { provideRouter } from '@angular/router';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { PersistentObject } from '@mintplayer/ng-spark/models';
 import { SparkPoDetailComponent } from '@mintplayer/ng-spark/po-detail';
 import { RepoBadgePanelComponent } from '../components/repo-badge-panel/repo-badge-panel.component';
 import { RepoTrendPanelComponent } from '../components/repo-trend-panel/repo-trend-panel.component';
-import { RepoSetupPanelComponent } from '../components/repo-setup-panel/repo-setup-panel.component';
 import { RepoCommitGraphPanelComponent } from '../components/repo-commit-graph-panel/repo-commit-graph-panel.component';
 import { RepoMergeQueuePanelComponent } from '../components/repo-merge-queue-panel/repo-merge-queue-panel.component';
 import { AccountDependencyGraphPanelComponent } from '../components/account-dependency-graph-panel/account-dependency-graph-panel.component';
@@ -74,8 +74,6 @@ class StubMergeQueuePanel {
   readonly name = input<string>();
 }
 
-@Component({ selector: 'app-repo-setup-panel', template: '' })
-class StubSetupPanel {}
 
 @Component({ selector: 'app-commit-files-extras', template: '' })
 class StubCommitFilesExtras {
@@ -112,15 +110,15 @@ class StubPermissionsNotice {
 
 describe('PoDetailPageComponent', () => {
   beforeEach(() => {
-    TestBed.configureTestingModule({ providers: [provideZonelessChangeDetection()] });
+    TestBed.configureTestingModule({ providers: [provideZonelessChangeDetection(), provideRouter([])] });
     TestBed.overrideComponent(PoDetailPageComponent, {
       remove: {
         imports: [SparkPoDetailComponent, RepoBadgePanelComponent, RepoTrendPanelComponent, RepoCommitGraphPanelComponent, RepoMergeQueuePanelComponent,
-          RepoSetupPanelComponent, CommitFilesExtrasComponent, HomeExtrasComponent, AccountDependencyGraphPanelComponent, AccountPermissionsNoticeComponent,
+          CommitFilesExtrasComponent, HomeExtrasComponent, AccountDependencyGraphPanelComponent, AccountPermissionsNoticeComponent,
           AccountDependencyUpdatesPanelComponent, RepoDependencyUpdatesPanelComponent],
       },
       add: {
-        imports: [StubPoDetail, StubBadgePanel, StubTrendPanel, StubCommitGraphPanel, StubMergeQueuePanel, StubSetupPanel, StubCommitFilesExtras,
+        imports: [StubPoDetail, StubBadgePanel, StubTrendPanel, StubCommitGraphPanel, StubMergeQueuePanel, StubCommitFilesExtras,
           StubHomeExtras, StubDependencyGraphPanel, StubPermissionsNotice, StubDependencyFleetPanel, StubRepoDependencyPanel],
       },
     });
@@ -137,7 +135,11 @@ describe('PoDetailPageComponent', () => {
     return fixture.debugElement.query(By.directive(type as never)) !== null;
   }
 
-  it('mounts the badge, trend, commit-graph, merge-queue and setup panels on a Repository, scoped to its forge', () => {
+  function link(fixture: ComponentFixture<unknown>, testId: string): HTMLAnchorElement | null {
+    return (fixture.nativeElement as HTMLElement).querySelector<HTMLAnchorElement>(`[data-testid="${testId}"] a`);
+  }
+
+  it('mounts the badge, trend, commit-graph and merge-queue panels on a Repository, scoped to its forge', () => {
     const fixture = render('Repository', po({ FullName: 'acme/widgets' }, 'Repositories/gitlab/1'));
 
     for (const type of [StubBadgePanel, StubTrendPanel, StubCommitGraphPanel, StubMergeQueuePanel, StubRepoDependencyPanel]) {
@@ -145,16 +147,38 @@ describe('PoDetailPageComponent', () => {
       expect([panel.provider(), panel.owner(), panel.name()]).toEqual(['gitlab', 'acme', 'widgets']);
     }
     expect(has(fixture, StubDependencyFleetPanel)).toBe(false);
-    expect(has(fixture, StubSetupPanel)).toBe(true);
     expect(has(fixture, StubCommitFilesExtras)).toBe(false);
     expect(has(fixture, StubHomeExtras)).toBe(false);
+  });
+
+  // PRD FR13: the setup instructions moved to a guide; the repository links to it until its first upload.
+  it('links a repository without coverage to the coverage setup guide, and drops the link once coverage arrives', () => {
+    const empty = render('Repository', po({ FullName: 'acme/widgets', LatestCoverageAtUtc: null }, 'Repositories/github/1'));
+    expect(link(empty, 'coverage-setup-link')?.getAttribute('href')).toBe('/coverage/setup');
+
+    const covered = render('Repository', po({ FullName: 'acme/widgets', LatestCoverageAtUtc: '2026-10-24T08:00:00Z' }, 'Repositories/github/1'));
+    expect(link(covered, 'coverage-setup-link')).toBeNull();
+  });
+
+  // PRD D10: the size labeller's settings link to its guide, for a caller who can read them.
+  it('links the size label settings of an Account and a Repository to their guide, only when they are readable', () => {
+    for (const [type, object] of [
+      ['Account', po({ Login: 'acme', PrSizeLabels: false }, 'Accounts/github/1')],
+      ['Repository', po({ FullName: 'acme/widgets', PrSizeLabels: 'Inherit' }, 'Repositories/github/1')],
+    ] as const) {
+      const fixture = render(type, object);
+      expect(link(fixture, 'pr-size-labels-guide-link')?.getAttribute('href')).toBe('/pr-size-labels/setup');
+      expect((fixture.nativeElement as HTMLElement).querySelector('[data-testid="pr-size-labels-guide-link"]')?.closest('.slot-before-queries')).not.toBeNull();
+    }
+    expect(link(render('Repository', po({ FullName: 'acme/widgets' }, 'Repositories/github/1')), 'pr-size-labels-guide-link')).toBeNull();
+    expect(link(render('Commit', po({ PrSizeLabels: false })), 'pr-size-labels-guide-link')).toBeNull();
   });
 
   it('mounts no repository panel when the repository has no forge or no owner/name', () => {
     for (const object of [po({ FullName: 'acme/widgets' }), po({ FullName: 'widgets' }, 'Repositories/github/1'), po({}, 'Repositories/github/1')]) {
       const fixture = render('Repository', object);
       expect(has(fixture, StubBadgePanel)).toBe(false);
-      expect(has(fixture, StubSetupPanel)).toBe(false);
+      expect(link(fixture, 'coverage-setup-link')).toBeNull();
     }
   });
 
@@ -171,7 +195,7 @@ describe('PoDetailPageComponent', () => {
     expect(has(render('Home', po({})), StubHomeExtras)).toBe(true);
 
     const account = render('Account', po({ FullName: 'acme/widgets' }, 'Accounts/github/1'));
-    for (const type of [StubBadgePanel, StubTrendPanel, StubCommitGraphPanel, StubMergeQueuePanel, StubSetupPanel, StubCommitFilesExtras, StubHomeExtras]) {
+    for (const type of [StubBadgePanel, StubTrendPanel, StubCommitGraphPanel, StubMergeQueuePanel, StubCommitFilesExtras, StubHomeExtras]) {
       expect(has(account, type)).toBe(false);
     }
   });

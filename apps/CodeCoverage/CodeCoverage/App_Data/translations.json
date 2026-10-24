@@ -3321,6 +3321,11 @@
       "fr": "Connecter un agent IA",
       "nl": "Een AI-agent koppelen"
     },
+    "coverageSetup": {
+      "en": "Coverage uploads",
+      "fr": "Envoi de la couverture",
+      "nl": "Coverage uploaden"
+    },
     "dependencyUpdatesSetup": {
       "en": "Dependency updater",
       "fr": "Mises à jour des dépendances",
@@ -3362,6 +3367,11 @@
       "en": "Merge queue setup",
       "fr": "Configuration de la file de fusion",
       "nl": "Merge queue instellen"
+    },
+    "prSizeLabelsSetup": {
+      "en": "PR size labels",
+      "fr": "Étiquettes de taille de PR",
+      "nl": "PR-groottelabels"
     },
     "mirrors": {
       "en": "Mirrors",
