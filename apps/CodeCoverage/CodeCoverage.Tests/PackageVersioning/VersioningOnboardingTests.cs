@@ -179,7 +179,8 @@ public class VersioningOnboardingTests
                     NUGET_AUTH_TOKEN: ${{ github.token }}
 
             """);
-        files["coverage.yml"].Should().StartWith("# MintPlayer package versioning").And.Contain("\nversioning:\n  mode: server ");
+        files["coverage.yml"].Should().StartWith("# MintPlayer package versioning").And.Contain("\nversioning:\n  mode: server ")
+            .And.Contain("\n#   prerelease: upstream ").And.EndWith("}   # free, or the framework package whose major it follows\n");
         plan.Body.Should().Contain("| `MintPlayer.Tools` | `MintPlayer.Tools/v11.2.0` |");
     }
 
@@ -322,6 +323,22 @@ public class VersioningOnboardingTests
                       folder: libs/snippets
 
             """);
+    }
+
+    [Fact]
+    public async Task A_file_with_a_byte_order_mark_keeps_it()
+    {
+        // MintPlayer.AspNetCore.SpaServices#91: the onboarding wrote five csproj files back without their BOM.
+        var tree = new InMemoryTree()
+            .Add("src/Tools/Tools.csproj", "﻿<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net11.0</TargetFramework>\n"
+                + "    <PackageId>MintPlayer.Tools</PackageId>\n    <Version>11.2.0</Version>\n  </PropertyGroup>\n</Project>\n")
+            .Add("Directory.Build.props", "<Project>\n</Project>\n");
+
+        var files = ByPath(await VersioningOnboarding.PlanAsync(tree, None, Sha));
+
+        files["src/Tools/Tools.csproj"].Should().Be("﻿<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net11.0</TargetFramework>\n"
+            + "    <PackageId>MintPlayer.Tools</PackageId>\n    <Version>0.0.0-PLACEHOLDER</Version>\n  </PropertyGroup>\n</Project>\n");
+        files["Directory.Build.props"].Should().StartWith("<Project>");
     }
 
     [Fact]

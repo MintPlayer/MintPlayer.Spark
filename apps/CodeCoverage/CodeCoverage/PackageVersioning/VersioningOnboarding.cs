@@ -50,11 +50,13 @@ public static partial class VersioningOnboarding
           mode: server                       # server | local: local runs the engine on the runner, without the app
         #   releaseBranches: ["release/*.x"]
         #   ignore: ["**/*.md"]              # changed files that never release a package
-        #   groups:                          # packages that always share one version
+        #   prerelease: upstream             # alpha | beta | next | preview | rc pins the label; upstream mirrors dependencies and the SDK
+        #   groups:                         # packages that always share one version
         #     - name: core
         #       packages: [Acme.Core, Acme.Core.*]
         #   packages:
         #     Acme.Generators: { anchor: free }   # free, or the framework package whose major it follows
+
         """.ReplaceLineEndings("\n");
 
     /// <param name="tree">The default branch's head.</param>
@@ -439,17 +441,31 @@ public static partial class VersioningOnboarding
         return body.ToString();
     }
 
-    /// <summary>The repository's files as the plan reads and edits them: a file the plan wrote is read back as written.</summary>
+    /// <summary>
+    /// The repository's files as the plan reads and edits them: a file the plan wrote is read back as written. The plan
+    /// edits text without a byte order mark, and a file that had one gets it back when written.
+    /// </summary>
     private sealed class Files(IRepositoryTree tree, CancellationToken cancellationToken)
     {
+        private const char ByteOrderMark = '﻿';
         private readonly Dictionary<string, string?> original = new(StringComparer.Ordinal);
         private readonly Dictionary<string, string> written = new(StringComparer.Ordinal);
+        private readonly HashSet<string> withBom = new(StringComparer.Ordinal);
 
         public async Task<string?> ReadAsync(string path)
         {
             if (written.TryGetValue(path, out var text)) return text;
             if (!original.TryGetValue(path, out var read))
-                original[path] = read = await tree.ReadTextAsync(path, MaxFileBytes, cancellationToken);
+            {
+                var bytes = await tree.ReadAsync(path, MaxFileBytes, cancellationToken);
+                read = bytes is null ? null : Encoding.UTF8.GetString(bytes);
+                if (read?.StartsWith(ByteOrderMark) == true)
+                {
+                    withBom.Add(path);
+                    read = read.TrimStart(ByteOrderMark);
+                }
+                original[path] = read;
+            }
             return read;
         }
 
@@ -459,7 +475,8 @@ public static partial class VersioningOnboarding
             else written[path] = text;
         }
 
-        public IReadOnlyList<GitWriterFile> Changed() => [.. written.OrderBy(w => w.Key, StringComparer.Ordinal).Select(w => new GitWriterFile(w.Key, w.Value))];
+        public IReadOnlyList<GitWriterFile> Changed() => [.. written.OrderBy(w => w.Key, StringComparer.Ordinal)
+            .Select(w => new GitWriterFile(w.Key, withBom.Contains(w.Key) ? ByteOrderMark + w.Value : w.Value))];
     }
 
     [GeneratedRegex(@"^(\s*""version""\s*:\s*"")([^""]*)""", RegexOptions.Multiline)]
