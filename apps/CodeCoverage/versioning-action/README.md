@@ -95,7 +95,8 @@ Reference the package once, in `Directory.Build.props`:
 
 Every packable project then takes its `Version` from the highest `<PackageId>/v<version>` tag in HEAD's history,
 exactly: no height suffix, no prerelease of its own. A prerelease comes from the tag (`1.4.0-preview.2`). A project
-with no such tag is versioned `0.0.0-PLACEHOLDER` and **not packed** (warning MPV001), so a placeholder never reaches a
+with no such tag yet gets warning MPV001. It packs at `0.0.0-untagged` in a local build or a pull-request or
+merge-queue run, and is versioned `0.0.0-PLACEHOLDER` and **not packed** in any other CI run, so it never reaches a
 feed. `<MintPlayerVersioningSkip>true</MintPlayerVersioningSkip>` leaves a project alone, and
 `<MintPlayerVersioningTagPrefix>` reads another id's tags. The package ships its targets and the task's source, which
 MSBuild compiles in your build; it adds no dependency to your packages.

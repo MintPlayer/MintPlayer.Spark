@@ -58,6 +58,31 @@ public class TagVersionTests
             TagVersion.IsValidPrefix(prefix).Should().BeFalse(prefix);
     }
 
+    [Theory]
+    [InlineData(null, null, true)]
+    [InlineData("", "push", true)]
+    [InlineData("true", "pull_request", true)]
+    [InlineData("true", "pull_request_target", true)]
+    [InlineData("true", "merge_group", true)]
+    [InlineData("TRUE", "pull_request", true)]
+    [InlineData("true", "push", false)]
+    [InlineData("true", "workflow_dispatch", false)]
+    [InlineData("true", "schedule", false)]
+    [InlineData("true", "release", false)]
+    [InlineData("true", null, false)]
+    [InlineData("true", "Pull_Request", false)]
+    public void Packs_an_untagged_package_only_where_nothing_is_published(string? gitHubActions, string? eventName, bool packs)
+    {
+        TagVersion.PacksUntagged(gitHubActions, eventName).Should().Be(packs);
+    }
+
+    [Fact]
+    public void The_untagged_version_is_never_read_as_a_tag()
+    {
+        TagVersion.Highest(["Lib/v" + TagVersion.Untagged], "Lib/v").Should().BeNull();
+        PackageVersion.TryParse(TagVersion.Untagged, out _).Should().BeFalse();
+    }
+
     [Fact]
     public void The_task_reads_the_highest_tag_reachable_from_HEAD()
     {
@@ -68,11 +93,20 @@ public class TagVersionTests
             Run(repo, "init", "-q", "-b", "main");
             Run(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "one");
             var engine = new Engine();
-            var task = new ResolveTagVersion { BuildEngine = engine, TagPrefix = "Lib/v", WorkingDirectory = repo };
+            var task = new ResolveTagVersion
+            {
+                BuildEngine = engine, TagPrefix = "Lib/v", WorkingDirectory = repo, GitHubActions = "true", GitHubEventName = "push",
+            };
 
             task.Execute().Should().BeTrue();
             task.Version.Should().Be(TagVersion.Placeholder);
             engine.Warnings.Should().ContainSingle(w => w == "MPV001");
+
+            // The onboarding pull request: no tag yet, and its build still packs.
+            task.GitHubEventName = "pull_request";
+            task.Execute().Should().BeTrue();
+            task.Version.Should().Be(TagVersion.Untagged);
+            engine.Warnings.Should().HaveCount(2).And.OnlyContain(w => w == "MPV001");
 
             Run(repo, "tag", "-a", "-m", "seed", "Lib/v1.4.0");
             Run(repo, "tag", "-a", "-m", "release", "Lib/v1.5.0-preview.2");

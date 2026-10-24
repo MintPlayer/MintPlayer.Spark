@@ -31,6 +31,20 @@ Endpoints). Fixed on `fix/issue153-prerelease-label` (PRD D8 amendment): a `prer
 pins `preview`), the SDK as an upstream for TFM-anchored NuGet packages, and the registry hash reading generator
 packages' `analyzers/dotnet/cs/` assembly.
 
+2026-10-24/25, M17 onboardings:
+- **Merged fixes:**
+  - #539: the onboarding keeps byte order marks.
+  - #540: it leaves MinVer in props that a package ships.
+  - #541: multi-targeted packs (`buildMultiTargeting/` + `MPV004`) and stale branch reads.
+  - #542: it references the latest stable MSBuild package from nuget.org.
+- **Onboarding state:**
+  - AspNetCore.Tools and SpaServices are onboarded, on MSBuild 1.0.1, and their master runs are green.
+  - Dotnet.Tools #202 and ng-bootstrap #445 are open.
+- **Last fix:** on `fix/issue153-untagged-pack`, an untagged package now packs at `0.0.0-untagged` in pull-request,
+  merge-queue and local builds (PRD D9). Dotnet.Tools #202 found the bug: with no tag anywhere, nothing packed.
+- **Left:** merge it, release MSBuild, and point #202 at the new version. Then merge #202 and #445, and check each
+  repository's seed tags and first release.
+
 ## Spike results
 
 - **S1 (MinVer, static parser).** Scratch repo with `MintPlayer.Mapper` (net10.0;net11.0, explicit `PackageId`),
