@@ -1,4 +1,5 @@
 using System.Text.Json;
+using CodeCoverage.Git;
 using CodeCoverage.Git.MergeQueue;
 using CodeCoverage.GitWriter.Jobs;
 using Microsoft.Extensions.Options;
@@ -167,6 +168,62 @@ internal sealed partial class GitWriterDeleteQueueBranchEndpoint : IDeleteEndpoi
             return refusal.Result();
         var job = new DeleteQueueBranchJob($"{request.Provider}/{request.RepoId}", cloneUrl, credential, queueBranch, request.ExpectedSha);
         return Results.Json(await writer.DeleteQueueBranchAsync(job), GitWriterHost.Json);
+    }
+}
+
+/// <summary><c>POST /jobs/tags</c> (#153 M5): creates and pushes version tags, never with force.</summary>
+internal sealed partial class GitWriterTagsEndpoint : IPostEndpoint<TagsRequestWire>
+{
+    public const int MaxBranches = 64;
+    public const string BranchesRule = "1 to 64 branches, each " + MergeQueueWireRules.BranchRule;
+    public const string TaggerRule = MergeQueueWireRules.IdentityRule;
+    public static readonly string TagsRule = $"1 to {Versioning.Graph.Limits.MaxPackagesPerRun} distinct tags: a name <PackageId>/v<version>, "
+        + "a commit id of 40 lowercase hex characters and an optional apiHash sha256:<64 hex>";
+
+    public static string Path => "/jobs/tags";
+
+    [Inject] private readonly TagService tags;
+    [Inject] private readonly IOptions<GitWriterOptions> options;
+
+    protected override async ValueTask<TagsRequestWire?> BindRequestAsync(HttpContext context)
+        => await Body.ReadAsync<TagsRequestWire>(context.Request.Body, context.Request.ContentLength, Body.SmallBytes, context.RequestAborted);
+
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure) => new(Refusal.Body(Body.SmallBytes));
+
+    public override async Task<IResult> HandleAsync(TagsRequestWire request, CancellationToken cancellationToken)
+    {
+        var refusal = new Refusal();
+        if (!refusal.Check(WireValidation.IsRepo(request.Provider, request.RepoId), "repoId", WireValidation.RepoRule)
+            || refusal.Check(WireValidation.RemoteUrl(request.CloneUrl, options.Value.AllowInsecureHttp), "cloneUrl", WireValidation.RemoteUrlRule) is not { } cloneUrl
+            || refusal.Check(WireValidation.Credential(request.Credential), "credential", WireValidation.CredentialRule) is not { } credential
+            || refusal.Check(Branches(request.Branches), "branches", BranchesRule) is not { } branches
+            || refusal.Check(Tagger(request.Tagger), "tagger", TaggerRule) is not { } tagger
+            || refusal.Check(Tags(request.Tags), "tags", TagsRule) is not { } toWrite)
+            return refusal.Result();
+        return Results.Json(await tags.WriteAsync(new TagsJob($"{request.Provider}/{request.RepoId}", cloneUrl, credential, branches, tagger, toWrite)),
+            GitWriterHost.Json);
+    }
+
+    private static IReadOnlyList<string>? Branches(List<string>? values)
+        => values is { Count: > 0 and <= MaxBranches } && values.All(v => WireValidation.Branch(v) is not null) ? values.Distinct(StringComparer.Ordinal).ToList() : null;
+
+    private static GitIdentity? Tagger(IdentityWire? wire)
+        => wire is not null && MergeQueueWireRules.IsIdentity(wire.Name, wire.Email) ? new GitIdentity(wire.Name!, wire.Email!) : null;
+
+    private static IReadOnlyList<Versioning.Releases.TagToWrite>? Tags(List<TagWire>? wires)
+    {
+        if (wires is not { Count: > 0 } || wires.Count > Versioning.Graph.Limits.MaxPackagesPerRun)
+            return null;
+        var result = new List<Versioning.Releases.TagToWrite>();
+        foreach (var wire in wires)
+        {
+            if (wire is null || !Versioning.Versions.VersionTag.TryParse(wire.Name, out var tag) || tag.Name != wire.Name
+                || WireValidation.ObjectId(wire.Commit) is not { } commit
+                || (wire.ApiHash is not null && !Versioning.Validation.Identifiers.IsApiHash(wire.ApiHash)))
+                return null;
+            result.Add(new(tag, commit, new Versioning.Versions.TagAnnotation(wire.ApiHash, null)));
+        }
+        return result.Select(t => t.Tag.Name).Distinct(StringComparer.Ordinal).Count() == result.Count ? result : null;
     }
 }
 

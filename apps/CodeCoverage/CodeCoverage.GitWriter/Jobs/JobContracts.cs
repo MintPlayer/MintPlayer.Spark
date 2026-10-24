@@ -191,6 +191,38 @@ public sealed record PublishResponse(string Outcome, string? Reason, string? Fin
 
 public sealed record DeleteQueueBranchResponse(string Outcome, string? Reason, string? Detail, long DurationMs);
 
+/// <summary>
+/// <c>POST /jobs/tags</c> (#153 M5): the server host's version tags. The writer builds each annotation itself from
+/// <see cref="TagWire.ApiHash"/>, so a request can never carry an arbitrary tag message.
+/// </summary>
+public sealed class TagsRequestWire
+{
+    public string? Provider { get; set; }
+    public string? RepoId { get; set; }
+    public string? CloneUrl { get; set; }
+    public CredentialWire? Credential { get; set; }
+    /// <summary>The branches a tagged commit must be on: the default branch and the release branches (D10).</summary>
+    public List<string>? Branches { get; set; }
+    /// <summary>The tagger; the date is the writer's clock.</summary>
+    public IdentityWire? Tagger { get; set; }
+    public List<TagWire>? Tags { get; set; }
+}
+
+public sealed class TagWire
+{
+    /// <summary><c>&lt;PackageId&gt;/v&lt;version&gt;</c> (D1).</summary>
+    public string? Name { get; set; }
+    public string? Commit { get; set; }
+    /// <summary><c>sha256:&lt;64 hex&gt;</c>, or null when the package's API could not be hashed (D6).</summary>
+    public string? ApiHash { get; set; }
+}
+
+/// <param name="Outcome">One of <c>created</c>, <c>already-present</c>, <c>conflict</c>, <c>unreachable</c>.</param>
+public sealed record TagResultWire(string Name, string Outcome, string? Detail);
+
+/// <param name="Outcome"><see cref="JobOutcomes.Tagged"/> with one result per tag, or a failure.</param>
+public sealed record TagsResponse(string Outcome, string? Reason, IReadOnlyList<TagResultWire> Tags, string? Detail, long DurationMs);
+
 /// <summary>The body of a 400 (§0 D57): the first field that broke its rule, and the rule. Never the value.</summary>
 public sealed record RefusedResponse(string Outcome, string Field, string Detail);
 
@@ -231,6 +263,8 @@ public static class JobOutcomes
     public const string PushRejected = "push-rejected";
     /// <summary>Delete: the branch is gone (or was never there).</summary>
     public const string Deleted = "deleted";
+    /// <summary>Tags: every tag has its own result; a conflict or an unreachable commit is one of them, not a failure.</summary>
+    public const string Tagged = "tagged";
     /// <summary>Every slot was taken for <c>SlotWaitSeconds</c>; retry later.</summary>
     public const string Busy = "busy";
     /// <summary>An operational failure; <c>reason</c> is one of <see cref="JobReasons"/>.</summary>
