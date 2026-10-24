@@ -60,7 +60,11 @@ public sealed record ReleaseContext
 	public int? BranchMajor { get; init; }
 }
 
-public sealed record PlannedRelease(ProjectNode Project, PackageVersion Version, IReadOnlyList<string> Reasons, string? ApiHash, bool TaggedByHand)
+/// <param name="Since">The commit of the previous tag on the package's line; null for a first release (the notes, D15).</param>
+/// <param name="Inputs">The paths whose commits the notes list: the package's inputs and those of the projects compiled into it.</param>
+/// <param name="Follows">The released dependencies this release follows (D4), for the notes' "Dependency update" lines.</param>
+public sealed record PlannedRelease(ProjectNode Project, PackageVersion Version, IReadOnlyList<string> Reasons, string? ApiHash, bool TaggedByHand,
+	string? Since = null, IReadOnlyList<string>? Inputs = null, IReadOnlyList<VersionTag>? Follows = null)
 {
 	public string Id => Project.Id!;
 
@@ -168,10 +172,14 @@ public static class ReleasePlanner
 					reasons.Add($"inputs changed since {lastOnLine.Tag.Name}: {string.Join(", ", changed.Take(3))}{(changed.Count > 3 ? $" and {changed.Count - 3} more" : "")}");
 			}
 
+			var follows = new List<VersionTag>();
 			foreach (var (dependency, declared) in graph.InternalDependencies(project))
 				if (dependency.Id is { } dependencyId && released.TryGetValue(dependencyId, out var dependencyRelease)
 					&& FollowReason(context, project, declared, dependencyRelease) is { } reason)
+				{
 					reasons.Add(reason);
+					follows.Add(dependencyRelease.Tag);
+				}
 
 			if (forced.TryGetValue(id, out var forcedReason)) reasons.Add(forcedReason);
 			if (reasons.Count == 0) continue;
@@ -195,7 +203,8 @@ public static class ReleasePlanner
 						if (history.Any(t => t.Version == groupVersion)) { refused.Add(new PackageNote(id, $"Lockstep version {groupVersion} already exists for {id}.")); break; }
 						version = groupVersion;
 					}
-					released[id] = new PlannedRelease(project, version, reasons, facts?.ApiHash, TaggedByHand: false);
+					released[id] = new PlannedRelease(project, version, reasons, facts?.ApiHash, TaggedByHand: false,
+						lastOnLine?.Commit, InputsOf(graph, project), follows);
 					break;
 				case VersionDecision.Skip(var why):
 					skipped.Add(new PackageNote(id, why));
@@ -273,6 +282,15 @@ public static class ReleasePlanner
 	private static async Task<IReadOnlyList<string>> ChangedInputsAsync(ReleaseContext context, ProjectNode project, string since, CancellationToken cancellationToken)
 	{
 		var graph = context.Graph;
+		var ignore = context.Settings.Ignore.Select(g => new PathGlob(g)).ToList();
+		var tests = graph.Projects.Where(IsTestProject).Select(p => p.Directory).Where(d => d.Length > 0 && d != project.Directory).ToList();
+		var changed = await context.Diff.ChangedAsync(since, context.Head, InputsOf(graph, project), cancellationToken);
+		return changed.Where(path => !ignore.Any(g => g.Matches(path)) && !tests.Any(d => RepoPath.IsUnder(path, d))).ToList();
+	}
+
+	/// <summary>The package's inputs, with those of the non-packable projects it references: they are compiled into it.</summary>
+	private static IReadOnlyList<string> InputsOf(ProjectGraph graph, ProjectNode project)
+	{
 		var inputs = new SortedSet<string>(StringComparer.Ordinal);
 		var visited = new HashSet<string>(StringComparer.Ordinal);
 		var pending = new Stack<ProjectNode>([project]);
@@ -283,11 +301,7 @@ public static class ReleasePlanner
 			foreach (var path in current.ProjectReferences)
 				if (graph.ByPath(path) is { Publishable: false } embedded) pending.Push(embedded);
 		}
-
-		var ignore = context.Settings.Ignore.Select(g => new PathGlob(g)).ToList();
-		var tests = graph.Projects.Where(IsTestProject).Select(p => p.Directory).Where(d => d.Length > 0 && d != project.Directory).ToList();
-		var changed = await context.Diff.ChangedAsync(since, context.Head, inputs.ToList(), cancellationToken);
-		return changed.Where(path => !ignore.Any(g => g.Matches(path)) && !tests.Any(d => RepoPath.IsUnder(path, d))).ToList();
+		return inputs.ToList();
 	}
 
 	private static bool IsTestProject(ProjectNode project)

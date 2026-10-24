@@ -7,7 +7,7 @@ MintPlayer repositories (PRD D17).
 ## Status
 
 2026-10-24: grilled (Q1–Q14 → D1–D17). Spikes S1–S4, S7, S8 run; S5 and S6 answered from GitHub's documented
-behaviour and confirmed in the M16 live test (both need a real workflow run on GitHub). M1–M7 committed; M8 next.
+behaviour and confirmed in the M16 live test (both need a real workflow run on GitHub). M1–M8 committed; M9 next.
 Every test written so far runs once, in M16.
 
 ## Spike results
@@ -105,6 +105,34 @@ M7 (versioning action):
   runs from source (`CodeCoverage.Versioning`, `CodeCoverage.Versioning.Cli`). Without that, local mode would run
   a stale engine at the pinned commit. The action has its own `package-lock.json`, like `dependency-action`,
   because compile-ts-action runs `npm ci` in its folder.
+- **M8: the Release notes are computed by the engine, so both hosts write the same text (D2, D15).**
+  `ReleaseNotes.ForAsync` reads `git log --first-parent` subjects from the package's previous tag on its line to
+  the release commit, limited to the package's inputs (`:(literal)` pathspecs) and capped at 200 commits. It
+  groups them into Features / Fixes / Other changes by the conventional-commit prefix, and lists every followed
+  dependency as "Dependency update: <id> <version>". A dependent-only release has only those lines; a first release
+  says "First release.". A merge commit "Merge pull request #N from …" is shown as its body's first line plus
+  " (#N)", the PR's title. Evidence: `ReleaseNotesTests` (grouping, dependent-only, first release, a real-git
+  repository with a squash commit, a merge commit and an off-input commit).
+- **The coverage ignore globs are not applied to the notes log.** A commit touching only an ignored file (a `.md`)
+  inside the inputs can appear in the notes. It is rare, harmless in a changelog, and keeping the log a plain
+  pathspec keeps it one git call.
+- **A Release is made for every tag that is in place, created or already present.** Creating one is idempotent
+  (an existing Release is counted "exists"), so a rerun recovers a Release that failed the first time.
+- **Server: the Releases are created by a queued message, not in the request.** `VersioningController` saves the
+  run, then broadcasts `CreateVersionReleasesMessage` on `CoverageQueues.Versioning`. `VersionReleaseRecipient`
+  re-reads the policy (`Repository.ResolveReleaseOnTag`, account default), spaces creates by 1 s, saves each
+  outcome as it lands, and lets a `ForgeRateLimitedException` park the message for the bus's durable retry. A rate
+  limit therefore never holds the action's request or its 10-minute fallback timeout, and a resumed message skips
+  the Releases already done. Evidence: `VersionReleaseRecipientTests` (policy matrix, in-place tags only, the
+  prerelease flag, "exists", rerun idempotence).
+- **Local: the `releases` input (default `true`, the policy's default) stands in for the policy**, which the runner
+  cannot read. The Releases are made with `github-token` (default `${{ github.token }}`) through the REST API,
+  1 s apart, retrying only a real rate limit (`retry-after`, then `x-ratelimit-reset`, capped at 60 s); a 403
+  without a rate-limit signal is a permission error and is not retried. A failure is a warning, not a step
+  failure: the tags, which are the release, are already pushed. Caveat: a server run that falls back to local
+  follows the input, not the app's policy. Evidence: `releases.test.ts`.
+- **`make_latest: false`** on every Release: in a monorepo, "latest" across all packages means nothing, and a
+  backport would otherwise steal it.
 
 ## Spikes
 

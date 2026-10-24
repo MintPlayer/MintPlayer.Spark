@@ -36,7 +36,8 @@ internal sealed record LocalRunResponse(
 		return new LocalRunResponse(
 			result.Plan.Refused.Count > 0 ? PlanRefused : Versioned, null, null,
 			[.. result.Plan.Releases.Select(r => new LocalRelease(r.Id, ManifestPackage.Wire(r.Project.Kind), r.Version.ToString(), r.Tag.Name, r.Reasons,
-				r.ApiHash, r.TaggedByHand, outcomes.TryGetValue(r.Tag.Name, out var written) ? TagWire(written.Outcome) : null))],
+				r.ApiHash, r.TaggedByHand, outcomes.TryGetValue(r.Tag.Name, out var written) ? TagWire(written.Outcome) : null,
+				result.Notes?.GetValueOrDefault(r.Tag.Name) is { } notes ? new LocalReleaseNotes(notes.Name, notes.Body, notes.Prerelease) : null))],
 			[.. result.Plan.Refused.Select(n => new LocalPackageNote(n.Id, n.Reason))],
 			result.Plan.Skipped.Count, result.Warnings);
 	}
@@ -51,7 +52,11 @@ internal sealed record LocalRunResponse(
 	};
 }
 
-internal sealed record LocalRelease(string Id, string Kind, string Version, string Tag, IReadOnlyList<string> Reasons, string? ApiHash, bool TaggedByHand, string? TagOutcome);
+/// <param name="Release">The GitHub Release the action creates for the tag (D15); null when the tag is not in place.</param>
+internal sealed record LocalRelease(string Id, string Kind, string Version, string Tag, IReadOnlyList<string> Reasons, string? ApiHash, bool TaggedByHand, string? TagOutcome,
+	LocalReleaseNotes? Release);
+
+internal sealed record LocalReleaseNotes(string Name, string Body, bool Prerelease);
 
 internal sealed record LocalPackageNote(string Id, string Reason);
 

@@ -27,6 +27,14 @@ inputs:
     description: 'Look up the API hash of the last released version on nuget.org / npmjs.org when its tag carries none (a repository''s first run). "false" counts such a package as changed.'
     required: false
     default: 'true'
+  releases:
+    description: 'local mode: create one GitHub Release per new tag (PRD D15). Server mode follows the app''s release-on-tag policy instead.'
+    required: false
+    default: 'true'
+  github-token:
+    description: 'local mode: the token the Releases are created with; needs contents: write.'
+    required: false
+    default: '${{ github.token }}'
 
 outputs:
   outcome:

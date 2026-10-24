@@ -69,6 +69,19 @@ public sealed class VersioningRunRelease
 
     /// <summary><c>created</c>, <c>already-present</c>, <c>conflict</c> or <c>unreachable</c>; null for a tag a human placed.</summary>
     public string? TagOutcome { get; set; }
+
+    /// <summary>The GitHub Release to create for the tag (D15); null when the tag is not in place.</summary>
+    public VersioningRunReleaseNotes? Release { get; set; }
+
+    /// <summary><c>created</c> or <c>exists</c> once the Release step handled it; null while pending or with Releases off.</summary>
+    public string? ReleaseOutcome { get; set; }
+}
+
+public sealed class VersioningRunReleaseNotes
+{
+    public string Name { get; set; } = string.Empty;
+    public string Body { get; set; } = string.Empty;
+    public bool Prerelease { get; set; }
 }
 
 public sealed class VersioningRunNote

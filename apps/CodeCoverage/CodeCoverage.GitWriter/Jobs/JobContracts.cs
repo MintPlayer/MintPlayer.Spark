@@ -260,7 +260,11 @@ public sealed class LockstepGroupWire
 }
 
 /// <param name="TagOutcome">What became of its tag; null for a version a person tagged by hand, or when nothing was written.</param>
-public sealed record ReleaseWire(string Id, string Kind, string Version, string Tag, IReadOnlyList<string> Reasons, string? ApiHash, bool TaggedByHand, string? TagOutcome);
+/// <param name="Release">The GitHub Release the app creates for the tag (D15); null when the tag is not in place.</param>
+public sealed record ReleaseWire(string Id, string Kind, string Version, string Tag, IReadOnlyList<string> Reasons, string? ApiHash, bool TaggedByHand, string? TagOutcome,
+    ReleaseNotesWire? Release = null);
+
+public sealed record ReleaseNotesWire(string Name, string Body, bool Prerelease);
 
 public sealed record PackageNoteWire(string Id, string Reason);
 

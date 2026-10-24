@@ -62,7 +62,8 @@ public sealed class VersioningRunService(JobRunner jobs)
         var outcomes = result.Tags.ToDictionary(t => t.Tag.Name, StringComparer.Ordinal);
         var releases = result.Plan.Releases
             .Select(r => new ReleaseWire(r.Id, ManifestPackage.Wire(r.Project.Kind), r.Version.ToString(), r.Tag.Name, r.Reasons, r.ApiHash, r.TaggedByHand,
-                outcomes.TryGetValue(r.Tag.Name, out var written) ? TagService.Wire(written.Outcome) : null))
+                outcomes.TryGetValue(r.Tag.Name, out var written) ? TagService.Wire(written.Outcome) : null,
+                result.Notes?.GetValueOrDefault(r.Tag.Name) is { } notes ? new ReleaseNotesWire(notes.Name, notes.Body, notes.Prerelease) : null))
             .ToList();
         return new VersioningRunResponse(
             result.Plan.Refused.Count > 0 ? JobOutcomes.PlanRefused : JobOutcomes.Versioned, null, releases,

@@ -8,6 +8,7 @@ import { realExec, type Exec } from './exec';
 import { checkBranchName, prepareHistory, showOnDefaultBranch, taggedVersions } from './git';
 import { discoverPackages, writeVersions } from './npm';
 import { distTag, highest } from './semver';
+import { createReleases } from './releases';
 import { runOnServer } from './server';
 
 export interface Inputs {
@@ -17,6 +18,10 @@ export interface Inputs {
   workspace: string;
   token: string;
   registryFallback: boolean;
+  releases: boolean;
+  githubToken: string;
+  repository: string;
+  apiUrl: string;
   runnerTemp: string;
   ref: string;
   eventName: string;
@@ -32,6 +37,10 @@ export function readInputs(env: NodeJS.ProcessEnv = process.env): Inputs {
     workspace: path.resolve(get('working-directory') || env.GITHUB_WORKSPACE || process.cwd()),
     token: get('token'),
     registryFallback: get('registry-fallback') !== 'false',
+    releases: get('releases') !== 'false',
+    githubToken: get('github-token'),
+    repository: env.GITHUB_REPOSITORY ?? '',
+    apiUrl: env.GITHUB_API_URL || 'https://api.github.com',
     runnerTemp: env.RUNNER_TEMP || os.tmpdir(),
     ref: env.GITHUB_REF ?? '',
     eventName: env.GITHUB_EVENT_NAME ?? '',
@@ -52,6 +61,7 @@ export interface Dependencies {
   engineProject: string;
   idToken: (audience: string) => Promise<string>;
   fetch?: typeof fetch;
+  sleep?: (ms: number) => Promise<void>;
   log: (message: string) => void;
   warn: (message: string) => void;
 }
@@ -138,6 +148,14 @@ export async function version(inputs: Inputs, deps: Dependencies): Promise<Outpu
   const released = response.releases;
   for (const r of released) deps.log(`${r.id} ${r.version}${r.taggedByHand ? ' (tagged by hand)' : ''}: ${r.reasons.join('; ')}`);
   const distTags = await writeNpm(deps.exec, cwd, released, deps.log);
+
+  // PRD D15: the server creates its Releases itself, behind the app's release-on-tag policy. The local host cannot read
+  // that policy, so the `releases` input stands in for it, default on like the policy's own default.
+  if (mode === 'local' && inputs.releases) {
+    if (!inputs.githubToken || !inputs.repository) deps.warn('No github-token or GITHUB_REPOSITORY: the Releases are not created.');
+    else await createReleases({ apiUrl: inputs.apiUrl, repository: inputs.repository, token: inputs.githubToken, fetch: deps.fetch, sleep: deps.sleep,
+      log: deps.log, warn: deps.warn }, released);
+  }
   return {
     outcome: 'versioned',
     mode,
@@ -167,6 +185,7 @@ export async function run(): Promise<void> {
   try {
     const inputs = readInputs();
     if (inputs.token) core.setSecret(inputs.token);
+    if (inputs.githubToken) core.setSecret(inputs.githubToken);
     const outputs = await version(inputs, {
       exec: realExec,
       engineProject: defaultEngineProject(),

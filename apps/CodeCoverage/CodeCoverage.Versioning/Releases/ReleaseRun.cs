@@ -8,7 +8,9 @@ namespace CodeCoverage.Versioning.Releases;
 public sealed record ReleaseRunRequest(ReleaseManifest Manifest, VersioningSettings Settings, bool OnDefaultBranch, int? BranchMajor);
 
 /// <summary>What a run planned and what became of each tag. <see cref="Tags"/> is empty when the plan refused anything.</summary>
-public sealed record ReleaseRunResult(ReleasePlan Plan, IReadOnlyList<TagWriteResult> Tags, IReadOnlyList<string> Warnings)
+/// <param name="Notes">Per tag name, the Release text (D15) of each tag the run created or found already in place.</param>
+public sealed record ReleaseRunResult(ReleasePlan Plan, IReadOnlyList<TagWriteResult> Tags, IReadOnlyList<string> Warnings,
+	IReadOnlyDictionary<string, ReleaseNotesText>? Notes = null)
 {
 	public bool Succeeded => Plan.Refused.Count == 0 && Tags.All(t => t.Outcome is TagOutcome.Created or TagOutcome.AlreadyPresent);
 }
@@ -59,7 +61,13 @@ public static class ReleaseRun
 			.Select(r => new TagToWrite(r.Tag, head, new TagAnnotation(r.ApiHash, null)))
 			.ToList();
 		var written = tags.Count == 0 ? [] : await writer.WriteAsync(tags, cancellationToken);
-		return new ReleaseRunResult(plan, written, graph.Warnings);
+
+		// Notes for every tag now in place, the already-present ones too: a rerun after a failed Release creates what is missing.
+		var notes = new Dictionary<string, ReleaseNotesText>(StringComparer.Ordinal);
+		var placed = written.Where(t => t.Outcome is TagOutcome.Created or TagOutcome.AlreadyPresent).Select(t => t.Tag.Name).ToHashSet(StringComparer.Ordinal);
+		foreach (var release in plan.Releases.Where(r => placed.Contains(r.Tag.Name)))
+			notes[release.Tag.Name] = await ReleaseNotes.ForAsync(git, head, release, cancellationToken);
+		return new ReleaseRunResult(plan, written, graph.Warnings, notes);
 	}
 }
 

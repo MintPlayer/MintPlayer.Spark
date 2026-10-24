@@ -25,6 +25,10 @@ public sealed record GitWriterVersioningResult(
     public const string Unplannable = "unplannable";
 }
 
-public sealed record GitWriterRelease(string Id, string Kind, string Version, string Tag, IReadOnlyList<string>? Reasons, string? ApiHash, bool TaggedByHand, string? TagOutcome);
+public sealed record GitWriterRelease(string Id, string Kind, string Version, string Tag, IReadOnlyList<string>? Reasons, string? ApiHash, bool TaggedByHand, string? TagOutcome,
+    GitWriterReleaseNotes? Release = null);
+
+/// <summary>The GitHub Release the app creates for a tag (D15).</summary>
+public sealed record GitWriterReleaseNotes(string Name, string Body, bool Prerelease);
 
 public sealed record GitWriterPackageNote(string Id, string Reason);

@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Messaging.Abstractions;
 using MintPlayer.Spark.Services;
 using Raven.Client.Documents.Session;
 
@@ -48,6 +49,7 @@ public partial class VersioningController : ControllerBase
     [Inject] private readonly IEnumerable<IForgeMergeQueue> queues;
     [Inject] private readonly IGitWriterSidecar writer;
     [Inject] private readonly VersioningRunLocks locks;
+    [Inject] private readonly IMessageBus messageBus;
     [Inject] private readonly TimeProvider clock;
     [Inject] private readonly ILogger<VersioningController> logger;
 
@@ -127,6 +129,10 @@ public partial class VersioningController : ControllerBase
         Record(record, response);
         await session.StoreAsync(record, record.Id, cancellationToken);
         await session.SaveChangesAsync(cancellationToken);
+        // D15: the Releases follow on the versioning lane, one at a time, so a secondary rate limit parks the message
+        // instead of holding this request (and the action's fallback clock) open.
+        if (record.Releases.Any(r => r.Release is not null))
+            await messageBus.BroadcastAsync(new CreateVersionReleasesMessage { RunId = record.Id! }, cancellationToken);
         await ReportAsync(repository, manifest.Commit!, branch, response, cancellationToken);
         return StatusCode(status, response);
     }
@@ -178,6 +184,7 @@ public partial class VersioningController : ControllerBase
         record.Releases = response.Releases.Take(VersioningRun.MaxNotes).Select(r => new VersioningRunRelease
         {
             Id = r.Id, Kind = r.Kind, Version = r.Version, Tag = r.Tag, Reasons = [.. r.Reasons ?? []], TaggedByHand = r.TaggedByHand, TagOutcome = r.TagOutcome,
+            Release = r.Release is { } notes ? new VersioningRunReleaseNotes { Name = notes.Name, Body = notes.Body, Prerelease = notes.Prerelease } : null,
         }).ToList();
         record.Refused = response.Refused.Take(VersioningRun.MaxNotes).Select(n => new VersioningRunNote { Id = n.Id, Reason = n.Reason }).ToList();
         record.Skipped = response.Skipped;

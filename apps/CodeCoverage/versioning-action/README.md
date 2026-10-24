@@ -40,6 +40,10 @@ repository without that section is refused.
 | `working-directory` | `.` | The checkout root. |
 | `token` | (none) | Local mode only: a token to push the tags with. Without it the checkout's own credentials push (`contents: write`). |
 | `registry-fallback` | `true` | When the last version's tag has no API hash (a tag made by hand), compare against the package on nuget.org / npmjs.org. |
+| `releases` | `true` | Local mode only: create one GitHub Release per new tag, notes grouped from the commit subjects. Server mode follows the app's release-on-tag setting. |
+| `github-token` | `${{ github.token }}` | Local mode only: the token the Releases are created with (`contents: write`). |
+
+Every tag gets its own Release, so a workflow triggered `on: release` runs once per released package.
 
 In server mode the action falls back to local mode when the app cannot answer: no OIDC token (`id-token: write`
 missing), a network error, a timeout or a 5xx. A 4xx is the app's answer, and the action fails on it.
