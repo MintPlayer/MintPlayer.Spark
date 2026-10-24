@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using CodeCoverage.Forge;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Webhooks.GitHub.Services;
@@ -146,16 +147,33 @@ public partial class GitHubForgeLabels : IForgeLabels
         ArgumentNullException.ThrowIfNull(check);
 
         var id = existingId ?? await FindSizeCheckAsync(repository, sha, cancellationToken);
-        var output = new { title = check.Title, summary = check.Summary, text = check.Text };
-        object body = check.Completed
-            ? new { name = IForgeLabels.SizeCheckName, head_sha = sha, status = "completed", conclusion = "neutral", output }
-            : new { name = IForgeLabels.SizeCheckName, head_sha = sha, status = "in_progress", output };
+        var body = SizeCheckBody(sha, check);
 
         using var reply = id is { } existing
             ? await SendAsync(repository, HttpMethod.Patch, $"{RepoPath(repository)}/check-runs/{existing}", body, cancellationToken)
             : await SendAsync(repository, HttpMethod.Post, $"{RepoPath(repository)}/check-runs", body, cancellationToken);
         reply.EnsureSuccess("checks=write");
         return reply.Json!.RootElement.GetProperty("id").GetInt64();
+    }
+
+    /// <summary>
+    /// The check run's body. GitHub answers 422 ("For 'properties/text', nil is not a string") to an explicit
+    /// <c>"text": null</c>, so a check without a text leaves the property out.
+    /// </summary>
+    internal static JsonObject SizeCheckBody(string sha, ForgeSizeCheck check)
+    {
+        var output = new JsonObject { ["title"] = check.Title, ["summary"] = check.Summary };
+        if (check.Text is { } text) output["text"] = text;
+
+        var body = new JsonObject
+        {
+            ["name"] = IForgeLabels.SizeCheckName,
+            ["head_sha"] = sha,
+            ["status"] = check.Completed ? "completed" : "in_progress",
+        };
+        if (check.Completed) body["conclusion"] = "neutral";
+        body["output"] = output;
+        return body;
     }
 
     /// <summary>The newest "PR size" check on the commit, when there is one.</summary>

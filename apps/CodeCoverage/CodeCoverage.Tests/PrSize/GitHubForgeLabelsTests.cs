@@ -38,6 +38,20 @@ public class GitHubForgeLabelsTests
     }
 
     [Fact]
+    public void A_check_without_text_leaves_the_property_out()
+    {
+        // GitHub answers 422 to "text": null (found in the live test on PR #534).
+        using var started = JsonDocument.Parse(GitHubForgeLabels.SizeCheckBody("abc", new ForgeSizeCheck(false, "Counting", "Counting the lines", null)).ToJsonString());
+        using var done = JsonDocument.Parse(GitHubForgeLabels.SizeCheckBody("abc", new ForgeSizeCheck(true, "size/M", "40 lines", "the table")).ToJsonString());
+
+        started.RootElement.GetProperty("status").GetString().Should().Be("in_progress");
+        started.RootElement.TryGetProperty("conclusion", out _).Should().BeFalse();
+        started.RootElement.GetProperty("output").TryGetProperty("text", out _).Should().BeFalse();
+        done.RootElement.GetProperty("conclusion").GetString().Should().Be("neutral");
+        done.RootElement.GetProperty("output").GetProperty("text").GetString().Should().Be("the table");
+    }
+
+    [Fact]
     public void The_files_request_asks_for_path_and_counts_with_every_value_a_variable()
     {
         using var body = JsonDocument.Parse(GitHubForgeLabels.FilesRequest(Repo, 7, "Y3Vyc29y"));
