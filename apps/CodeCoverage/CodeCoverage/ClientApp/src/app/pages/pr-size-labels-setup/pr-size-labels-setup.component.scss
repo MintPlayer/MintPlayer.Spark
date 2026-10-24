@@ -1,0 +1,20 @@
+.ps-setup {
+  max-width: 60rem;
+}
+
+// A step a link jumped to lands clear of the shell's top bar.
+bs-card[id] {
+  scroll-margin-top: 4rem;
+}
+
+// The label's colour, as a swatch next to its hex value.
+.swatch {
+  display: inline-block;
+  width: 0.9rem;
+  height: 0.9rem;
+  margin-right: 0.4rem;
+  vertical-align: -0.1rem;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 0.2rem;
+  background-color: var(--swatch);
+}

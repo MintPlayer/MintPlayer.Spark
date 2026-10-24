@@ -1,10 +1,10 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import { SparkPoDetailComponent } from '@mintplayer/ng-spark/po-detail';
 import type { PersistentObject } from '@mintplayer/ng-spark/models';
 import { valueFor } from '@mintplayer/ng-spark/models';
 import { RepoBadgePanelComponent } from '../components/repo-badge-panel/repo-badge-panel.component';
 import { RepoTrendPanelComponent } from '../components/repo-trend-panel/repo-trend-panel.component';
-import { RepoSetupPanelComponent } from '../components/repo-setup-panel/repo-setup-panel.component';
 import { RepoCommitGraphPanelComponent } from '../components/repo-commit-graph-panel/repo-commit-graph-panel.component';
 import { RepoMergeQueuePanelComponent } from '../components/repo-merge-queue-panel/repo-merge-queue-panel.component';
 import { AccountDependencyGraphPanelComponent } from '../components/account-dependency-graph-panel/account-dependency-graph-panel.component';
@@ -42,8 +42,8 @@ import { HomeExtrasComponent } from './home-extras.component';
 @Component({
   selector: 'app-po-detail-page',
   imports: [
-    SparkPoDetailComponent,
-    RepoBadgePanelComponent, RepoTrendPanelComponent, RepoCommitGraphPanelComponent, RepoMergeQueuePanelComponent, RepoSetupPanelComponent,
+    SparkPoDetailComponent, RouterLink,
+    RepoBadgePanelComponent, RepoTrendPanelComponent, RepoCommitGraphPanelComponent, RepoMergeQueuePanelComponent,
     CommitFilesExtrasComponent, HomeExtrasComponent, AccountDependencyGraphPanelComponent, AccountPermissionsNoticeComponent,
     AccountDependencyUpdatesPanelComponent, RepoDependencyUpdatesPanelComponent,
   ],
@@ -57,6 +57,12 @@ import { HomeExtrasComponent } from './home-extras.component';
           <app-account-permissions-notice class="d-block mx-3" [provider]="account.provider" [login]="account.login" />
         }
       }
+      <!-- Below the attributes, so next to the PR size labels group; only for a caller who can read its settings. -->
+      @if ((entityType.name === 'Account' || entityType.name === 'Repository') && hasSizeLabelSettings(po)) {
+        <p class="small mx-3 mb-3" data-testid="pr-size-labels-guide-link">
+          <i class="bi bi-rulers"></i> How the size labeller works: <a routerLink="/pr-size-labels/setup">PR size labels guide</a>
+        </p>
+      }
     </ng-template>
 
     <ng-template #extras let-po let-entityType="entityType">
@@ -67,7 +73,13 @@ import { HomeExtrasComponent } from './home-extras.component';
           <app-repo-commit-graph-panel [provider]="repo.provider" [owner]="repo.owner" [name]="repo.name" />
           <app-repo-merge-queue-panel [provider]="repo.provider" [owner]="repo.owner" [name]="repo.name" />
           <app-repo-dependency-updates-panel [provider]="repo.provider" [owner]="repo.owner" [name]="repo.name" />
-          <app-repo-setup-panel />
+          <!-- The setup instructions are a guide of their own (/coverage/setup); a repository links to it until its first upload. -->
+          @if (!hasCoverage(po)) {
+            <p class="mt-3 mb-0" data-testid="coverage-setup-link">
+              <i class="bi bi-rocket-takeoff"></i> No coverage uploaded yet.
+              <a routerLink="/coverage/setup">Set up coverage uploads</a>
+            </p>
+          }
         }
       } @else if (entityType.name === 'Account') {
         @if (accountOf(po); as account) {
@@ -103,6 +115,16 @@ export default class PoDetailPageComponent {
     const login = valueFor(po, 'Login')?.value;
     const provider = forgeOf(po);
     return typeof login === 'string' && login && provider ? { provider, login } : null;
+  }
+
+  /** Whether the repository has had an upload; until then it links to the coverage setup guide. */
+  hasCoverage(po: PersistentObject): boolean {
+    return !!valueFor(po, 'LatestCoverageAtUtc')?.value;
+  }
+
+  /** The size-label settings reach only a caller who may read them (they are private to the account's managers). */
+  hasSizeLabelSettings(po: PersistentObject): boolean {
+    return valueFor(po, 'PrSizeLabels') !== undefined;
   }
 
 }

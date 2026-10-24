@@ -41,13 +41,41 @@ public partial class AccountActions : DefaultPersistentObjectActions<Account>, I
     [Inject] private readonly MintPlayer.Spark.Messaging.Abstractions.IMessageBus messageBus;
     [Inject] private readonly Raven.Client.Documents.IDocumentStore documentStore;
     [Inject] private readonly ILogger<AccountActions> logger;
+    [Inject] private readonly IManager manager;
+    [Inject] private readonly IEnumerable<CodeCoverage.Forge.IForgeLabels> labels;
 
-    /// <summary>R23: the account default's transition, for the after-commit hook (which gets facts, never the entity).</summary>
-    public ValueTask OnBeforeSaveAsync(Account entity, MintPlayer.Spark.Abstractions.Interceptors.SaveContext context)
+    /// <summary>
+    /// #527 D8: a forge without pull request labels shows the labeller's settings read-only, with the reason. Asked after
+    /// <c>base.OnLoadAsync</c> blanked the protected attributes, under the same deny-by-default question.
+    /// </summary>
+    public override async Task<PersistentObject?> OnLoadAsync(string id, PersistentObject? parent)
     {
+        var po = await base.OnLoadAsync(id, parent);
+        if (po is null) return po;
+        using var session = documentStore.OpenAsyncSession();
+        if (await session.LoadAsync<Account>(id) is { } account
+            && await GetProtectedAttributesAsync("Read", account) is null)
+        {
+            PrSize.PrSizeLabelForm.ShapeAccount(po, labels.Any(l => l.Provider == account.Provider), key => manager.GetTranslatedMessage(key));
+        }
+        return po;
+    }
+
+    /// <summary>
+    /// R23: the account default's transition, for the after-commit hook (which gets facts, never the entity). The PR size
+    /// labeller's decision rides along the same way (#527 D4.3); switching it off may ask first, so a retry reruns this
+    /// from the top, and nothing before the question has a side effect.
+    /// </summary>
+    public async ValueTask OnBeforeSaveAsync(Account entity, MintPlayer.Spark.Abstractions.Interceptors.SaveContext context)
+    {
+        PrSize.PrSizeValidation.ValidateAccount(entity);
+
         if (DependencyUpdateSwitch.Transition(context.Before as Account, entity) is { } transition)
             context.Facts[DependencyUpdateSwitch.Fact] = transition;
-        return ValueTask.CompletedTask;
+
+        using var session = documentStore.OpenAsyncSession();
+        if (await PrSize.PrSizeLabelSwitch.DecideAsync(manager, session, context.Before as Account, entity) is { } decision)
+            context.Facts[PrSize.PrSizeLabelSwitch.Fact] = decision;
     }
 
     /// <summary>
@@ -56,11 +84,18 @@ public partial class AccountActions : DefaultPersistentObjectActions<Account>, I
     /// </summary>
     public async Task OnAfterSaveCommittedAsync(MintPlayer.Spark.Abstractions.Interceptors.SparkCommittedChange change, CancellationToken cancellationToken)
     {
-        if (!change.Facts.TryGetValue(DependencyUpdateSwitch.Fact, out var transition))
-            return;
         using var session = documentStore.OpenAsyncSession();
-        var count = await DependencyUpdateSwitch.FanOutAsync(session, messageBus, change.Id, transition, change.OccurredAt, cancellationToken);
-        logger.LogInformation("Dependency updates: {Transition} for account {Account}, fanned out over {Count} repositories", transition, change.Id, count);
+        if (change.Facts.TryGetValue(DependencyUpdateSwitch.Fact, out var transition))
+        {
+            var count = await DependencyUpdateSwitch.FanOutAsync(session, messageBus, change.Id, transition, change.OccurredAt, cancellationToken);
+            logger.LogInformation("Dependency updates: {Transition} for account {Account}, fanned out over {Count} repositories", transition, change.Id, count);
+        }
+        // #527 D4.2/D4.3: a changed scale reconciles, a disable with "Remove labels" removes; both on the labeller's lane.
+        if (change.Facts.TryGetValue(PrSize.PrSizeLabelSwitch.Fact, out var decision))
+        {
+            var count = await PrSize.PrSizeLabelSwitch.FanOutAsync(session, messageBus, change.Id, decision, cancellationToken);
+            logger.LogInformation("PR size labels: {Decision} for account {Account}, fanned out over {Count} repositories", decision, change.Id, count);
+        }
     }
 
     /// <summary>

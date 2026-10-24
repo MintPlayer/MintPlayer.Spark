@@ -305,6 +305,13 @@ public enum EForgeCapability
     /// reads (R20, R36). GitHub's App setup URL; GitLab or Bitbucket would need an OAuth app or a Connect descriptor.
     /// </summary>
     SetupRedirect,
+
+    /// <summary>
+    /// Label definitions on a repository, and labels and changed files on a pull request, for the PR size labeller
+    /// (docs/coverage_pr_size_labels_PRD.md D8). Its members live on <see cref="IForgeLabels"/>. GitHub only: Bitbucket
+    /// Cloud has no pull-request labels, and GitLab has no forge here yet (S4).
+    /// </summary>
+    PullRequestLabels,
 }
 
 /// <summary>How a git process reaches one repository (<see cref="IForgeIntegration.GetGitAccessAsync"/>).</summary>

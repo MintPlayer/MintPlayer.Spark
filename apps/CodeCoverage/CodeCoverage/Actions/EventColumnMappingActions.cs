@@ -32,5 +32,14 @@ public partial class EventColumnMappingActions : DefaultPersistentObjectActions<
         "GitHubProjectActions.OnLoadAsync applies it, so a caller who cannot see a board never " +
         "receives its rules, and writes go through the board's save under the same filter. The " +
         "grant here is for the nested form's metadata, which is the type's attribute definitions " +
-        "and carries no row data at all.";
+        "and carries no row data at all. A standalone " +
+        "document of this type is refused outright, by IsAllowedAsync.";
+
+    /// <summary>
+    /// Refuses every standalone document of this type. The type-level <c>New</c>/<c>Edit</c>/<c>Delete</c> grant
+    /// lets any signed-in user reach <c>/spark/po/create</c> for it, and without this they could store rows that
+    /// belong to no owner they manage. Rows inside the owner's document are mapped by the owner's save, which
+    /// checks the owner's row security, and never come through here.
+    /// </summary>
+    public override Task<bool> IsAllowedAsync(string action, EventColumnMapping entity) => Task.FromResult(false);
 }

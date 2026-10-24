@@ -35,6 +35,7 @@ public partial class RepositoryActions : DefaultPersistentObjectActions<Reposito
     [Inject] private readonly MintPlayer.Spark.Abstractions.Authorization.IPermissionService permissions;
     [Inject] private readonly MintPlayer.Spark.Messaging.Abstractions.IMessageBus messageBus;
     [Inject] private readonly IManager manager;
+    [Inject] private readonly IEnumerable<CodeCoverage.Forge.IForgeLabels> labels;
 
     /// <summary>
     /// Opens the embedded gate in the shape its mode calls for (#264, G-Q3): a <c>fixed</c> gate
@@ -66,6 +67,16 @@ public partial class RepositoryActions : DefaultPersistentObjectActions<Reposito
             var key = DependencyFileMergeQueue.TranslationKey(state);
             var text = manager.GetTranslatedMessage(key);
             mergeQueue.Value = string.IsNullOrEmpty(text) || text == key ? state ?? "not read yet" : text;
+        }
+
+        // #527 FR2/D8: what is in effect and from where, under the same deny-by-default question as above.
+        if (po is not null
+            && await session.LoadAsync<Repository>(id) is { } repository
+            && (await GetProtectedAttributesAsync("Read", repository))?.Contains(nameof(Repository.PrSizeLabelsEffective)) != true)
+        {
+            var account = repository.Account is { } accountId ? await session.LoadAsync<Account>(accountId) : null;
+            PrSize.PrSizeLabelForm.ShapeRepository(po, repository, account, labels.Any(l => l.Provider == repository.Provider),
+                key => manager.GetTranslatedMessage(key));
         }
         return po;
     }
@@ -122,21 +133,30 @@ public partial class RepositoryActions : DefaultPersistentObjectActions<Reposito
     public async ValueTask OnBeforeSaveAsync(Repository entity, SaveContext context)
     {
         ValidateGate(entity);
+        PrSize.PrSizeValidation.ValidateRepository(entity);
 
         // R23: the switch's transition, for the after-commit hook (which gets facts, never the entity).
         var account = entity.Account is { Length: > 0 } accountId ? await session.LoadAsync<Account>(accountId) : null;
         if (DependencyUpdateSwitch.Transition(context.Before as Repository, entity, account) is { } transition)
             context.Facts[DependencyUpdateSwitch.Fact] = transition;
+
+        // #527 D4.3: switching the labeller off for this repository asks whether to remove its labels.
+        if (PrSize.PrSizeLabelSwitch.Decide(manager, context.Before as Repository, entity, account) is { } decision)
+            context.Facts[PrSize.PrSizeLabelSwitch.Fact] = decision;
     }
 
     /// <summary>
     /// R23/R24: a switch of this repository's dependency updates, committed: onboard (off → on) or offboard (on → off),
-    /// expedited, since a person is waiting on the page they switched it from.
+    /// expedited, since a person is waiting on the page they switched it from. And #527 D4.3: "Remove labels" removes this
+    /// repository's size labels on the labeller's lane.
     /// </summary>
-    public Task OnAfterSaveCommittedAsync(SparkCommittedChange change, CancellationToken cancellationToken)
-        => change.Facts.TryGetValue(DependencyUpdateSwitch.Fact, out var transition)
-            ? DependencyUpdateSwitch.SignalAsync(messageBus, change.Id, transition, change.OccurredAt, expedite: true, cancellationToken)
-            : Task.CompletedTask;
+    public async Task OnAfterSaveCommittedAsync(SparkCommittedChange change, CancellationToken cancellationToken)
+    {
+        if (change.Facts.TryGetValue(DependencyUpdateSwitch.Fact, out var transition))
+            await DependencyUpdateSwitch.SignalAsync(messageBus, change.Id, transition, change.OccurredAt, expedite: true, cancellationToken);
+        if (change.Facts.TryGetValue(PrSize.PrSizeLabelSwitch.Fact, out var decision) && decision == PrSize.PrSizeLabelSwitch.Remove)
+            await messageBus.BroadcastAsync(new PrSize.RemovePrSizeLabelsMessage { RepositoryId = change.Id }, cancellationToken);
+    }
 
     private static void ValidateGate(Repository entity)
     {

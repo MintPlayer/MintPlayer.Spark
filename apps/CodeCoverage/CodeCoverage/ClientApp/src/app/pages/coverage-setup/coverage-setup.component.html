@@ -1,0 +1,95 @@
+<div class="cov-setup py-3" data-coverage-setup>
+  <h1 class="h3 mb-3"><i class="bi bi-rocket-takeoff"></i> Setting up coverage uploads</h1>
+  <p class="lead">
+    CodeCoverage reports a repository's test coverage from the reports your CI already produces. Your test run writes a
+    report, and one step of the same workflow uploads it here.
+  </p>
+
+  <nav aria-label="Steps" class="mb-4">
+    <ol class="mb-0" data-testid="cov-setup-steps">
+      @for (step of steps; track step.id) {
+        <li>
+          <a [routerLink]="[]" [fragment]="step.id" (click)="jumpTo(step.id)">{{ step.title }}</a>
+        </li>
+      }
+    </ol>
+  </nav>
+
+  @for (step of steps; track step.id; let n = $index) {
+    <bs-card class="d-block mb-4" [attr.id]="step.id" [attr.data-step]="step.id">
+      <bs-card-header>
+        <h2 class="h5 mb-0"><bs-badge class="me-2" [type]="primaryColor">{{ n + 1 }}</bs-badge>{{ step.title }}</h2>
+      </bs-card-header>
+      <bs-card-body>
+        @switch (step.id) {
+          @case ('install') {
+            <p class="mb-0">
+              Install the CodeCoverage GitHub App on the organization or user that owns the repository;
+              <a routerLink="/">Home</a> links it once you are signed in. The repository then has a page here, which
+              stays empty until the first upload.
+            </p>
+          }
+          @case ('workflow') {
+            @if (singleGuide) {
+              <p class="text-muted small" data-testid="cov-setup-intro" [innerHTML]="guides[0].intro"></p>
+              <bs-tab-control [border]="true">
+                @for (example of guides[0].examples; track example.key) {
+                  <bs-tab-page>
+                    <ng-container *bsTabPageHeader>{{ example.label }}</ng-container>
+                    <div class="p-3">
+                      @if (example.config; as config) {
+                        <p class="small text-muted">{{ config.note }}</p>
+                        <bs-code-snippet [code]="config.code" [language]="config.language" class="d-block mb-3" />
+                      }
+                      <p class="small text-muted">{{ example.note }}</p>
+                      <bs-code-snippet [code]="example.code" language="yaml" />
+                    </div>
+                  </bs-tab-page>
+                }
+              </bs-tab-control>
+            } @else {
+              <bs-tab-control [border]="true">
+                @for (guide of guides; track guide.provider) {
+                  <bs-tab-page>
+                    <ng-container *bsTabPageHeader>{{ guide.label }}</ng-container>
+                    <div class="p-3">
+                      <p class="text-muted small" [innerHTML]="guide.intro"></p>
+                      <bs-tab-control [border]="true">
+                        @for (example of guide.examples; track example.key) {
+                          <bs-tab-page>
+                            <ng-container *bsTabPageHeader>{{ example.label }}</ng-container>
+                            <div class="p-3">
+                              @if (example.config; as config) {
+                                <p class="small text-muted">{{ config.note }}</p>
+                                <bs-code-snippet [code]="config.code" [language]="config.language" class="d-block mb-3" />
+                              }
+                              <p class="small text-muted">{{ example.note }}</p>
+                              <bs-code-snippet [code]="example.code" language="yaml" />
+                            </div>
+                          </bs-tab-page>
+                        }
+                      </bs-tab-control>
+                    </div>
+                  </bs-tab-page>
+                }
+              </bs-tab-control>
+            }
+          }
+          @case ('private') {
+            <p class="mb-0" data-testid="cov-setup-private">
+              A public repository uploads without a secret: GitHub vouches for the workflow run through OIDC. A private
+              repository needs an upload token. Create one on the account's page, store it as a repository secret, and
+              replace the <code>use-oidc: true</code> line with <code ngNonBindable>token: ${{ secrets.&lt;NAME&gt; }}</code>.
+            </p>
+          }
+          @case ('results') {
+            <p class="mb-0">
+              After the first upload, the repository's page shows its coverage, the trend over time and a badge to put in
+              your README, and pull requests get coverage feedback from the uploads of their commits.
+            </p>
+          }
+        }
+      </bs-card-body>
+    </bs-card>
+  }
+</div>

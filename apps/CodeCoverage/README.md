@@ -19,6 +19,7 @@ Built on [MintPlayer.Spark](https://github.com/MintPlayer/MintPlayer.Spark)
 - **Releasing a new version of the action**: [action/README.md § Releasing](action/README.md#releasing-a-new-version) — Actions → *coverage-action-publish* → **Run workflow** with a `patch`/`minor`/`major` bump. The tag names derive from the action's `package.json`, so going to a new major needs no workflow edit
 - **The upload API contract** (states, polling, gating a PR): [docs/code-coverage/upload-api.md](../../docs/code-coverage/upload-api.md)
 - **The merge queue** (rebase, resolve conflicts in generated files, regenerate them in your CI, squash-merge; not yet deployed): [docs/code-coverage/merge-queue.md](../../docs/code-coverage/merge-queue.md)
+- **PR size labels** (`size/XS`–`size/XXL` on every pull request, with a neutral check run that explains the count; not yet deployed): [docs/code-coverage/pr-size-labels.md](../../docs/code-coverage/pr-size-labels.md)
 - **Upstream (Spark) work items**: [docs/PRD-CoverageHandoff.md](../../docs/PRD-CoverageHandoff.md)
 - **How this repo measures itself**: [docs/code-coverage/self-coverage-PRD.md](../../docs/code-coverage/self-coverage-PRD.md)
 
@@ -412,9 +413,9 @@ the app actually uses:
 |---|---|---|
 | Contents | Read-only; **Read & write** for branch deletion | File view fetches source at a commit through the installation token; also required to subscribe to `push` events. Deleting a merged pull request's head branch — opt-in per project board — needs write; with read the call is a 403 that is logged, not raised. |
 | Metadata | Read-only | Mandatory on every App; covers repository listings |
-| Pull requests | Read-only; **Read & write** for the PR comment | Required to subscribe to `pull_request` events |
-| Checks | Read & write | The `coverage/project` and `coverage/patch` check-runs (see below) |
-| Issues | Read-only; **Read & write** for the merge queue and dependency updates | Project-board automation and the merge queue's `/queue` comments: the `issues` and `issue_comment` events. Write: the merge queue closes linked issues; dependency updates post comments and react to `approve`, `hold`, `unhold`, `bisect`, `refresh` |
+| Pull requests | Read-only; **Read & write** for the PR comment and PR size labels | Required to subscribe to `pull_request` events, which also trigger the size labeller |
+| Checks | Read & write | The `coverage/project` and `coverage/patch` check-runs (see below), and the neutral **PR size** check run |
+| Issues | Read-only; **Read & write** for the merge queue, dependency updates and PR size labels | Project-board automation and the merge queue's `/queue` comments: the `issues` and `issue_comment` events. Write: the merge queue closes linked issues; dependency updates post comments and react to `approve`, `hold`, `unhold`, `bisect`, `refresh`; PR size labels create, rename and delete the repository's `size/*` labels and set them on pull requests (GitHub's labels are an Issues API) |
 | Actions | Read & write | Merge queue: dispatching the regenerate workflow, reading its run and artifact, cancelling a run it no longer waits for. Dependency updates: the same for the lookup, apply, relock and migrate runs |
 | Workflows | Read & write | Merge queue: a push that brings workflow files the target repository lacks. Dependency updates: the onboarding pull request (it adds the workflows) and Actions `uses:` bumps. Each writer job's own token asks for it only then (merge-queue PRD D59, dependency-updates PRD R15) |
 | Commit statuses | Read-only | Merge queue only: its gate waits for commit statuses as well as check runs |

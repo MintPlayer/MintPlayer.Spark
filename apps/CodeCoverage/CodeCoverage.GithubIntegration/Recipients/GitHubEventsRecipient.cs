@@ -470,7 +470,10 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
                 BaseSha: pr.Base.Sha,
                 Title: pr.Title,
                 IsFirstOpen: evt.Action is "opened" or "reopened",
-                AuthorIsBot: pr.User?.Type is not null && pr.User.Type == Octokit.Webhooks.Models.UserType.Bot)), ct);
+                AuthorIsBot: pr.User?.Type is not null && pr.User.Type == Octokit.Webhooks.Models.UserType.Bot,
+                Additions: (int)pr.Additions,
+                Deletions: (int)pr.Deletions,
+                ChangedFiles: (int)pr.ChangedFiles)), ct);
     }
 
     // ── The merge queue (PRD M5) ─────────────────────────────────────────────────────────────────────
@@ -777,7 +780,7 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
         var account = await session.LoadAsync<Account>(id, ct);
         if (account is null)
         {
-            account = new Account { GitHubId = gitHubId };
+            account = new Account { GitHubId = gitHubId }.ApplyPrSizeDefaults();
             await session.StoreAsync(account, id, ct);
         }
         return account;

@@ -190,6 +190,37 @@ public class Account : IForgeConnectable
     [IgnoreForIndex]
     public List<DependencyRule> DependencyRules { get; set; } = [];
 
+    /// <summary>
+    /// Whether the app labels pull requests by size in this account's repositories (docs/coverage_pr_size_labels_PRD.md
+    /// D1). A repository overrides it with <see cref="Repository.PrSizeLabels"/>; <see cref="Repository.ResolvePrSizeLabels"/>
+    /// combines the two. Off by default: it writes labels into somebody else's repositories.
+    /// </summary>
+    [IgnoreForIndex]
+    public bool PrSizeLabels { get; set; }
+
+    /// <summary>The size scale, one label per row (D2). The app creates, renames and deletes these labels itself (D3).</summary>
+    [IgnoreForIndex]
+    public List<PrSizeLabel> PrSizeLabelScale { get; set; } = [];
+
+    /// <summary>The paths that do not count, or count only their net deletions, in every repository (D5).</summary>
+    [IgnoreForIndex]
+    public List<PrSizeIgnoreRule> PrSizeIgnoreRules { get; set; } = [];
+
+    /// <summary>
+    /// Read-only, never written by the server (it stays null in the document): why this account's forge cannot carry size
+    /// labels (D8). Filled on load and shown only then; the settings above are read-only beside it.
+    /// </summary>
+    [IgnoreForIndex]
+    public string? PrSizeLabelsUnavailable { get; set; }
+
+    /// <summary>Gives a new account the default scale and ignore rules (<see cref="PrSizeDefaults"/>). Returns the account.</summary>
+    public Account ApplyPrSizeDefaults()
+    {
+        PrSizeLabelScale = PrSizeDefaults.Scale();
+        PrSizeIgnoreRules = PrSizeDefaults.IgnoreRules();
+        return this;
+    }
+
     /// <summary>Q8's default hour.</summary>
     public const int DefaultDependencyScheduleHour = 6;
 

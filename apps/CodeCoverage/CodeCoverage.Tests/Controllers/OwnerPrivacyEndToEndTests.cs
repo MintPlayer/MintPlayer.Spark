@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using MintPlayer.Spark.Testing;
 using MintPlayer.Spark.Authorization.Identity;
 using MintPlayer.Spark.Services;
 using Raven.Client.Documents;
@@ -62,6 +63,7 @@ public class OwnerPrivacyEndToEndTests(OwnerPrivacyHostFixture host) : IClassFix
         "OwnerKey", "DeleteBranchOnPrClose", "MergeQueueApprovalFloor", "MergeQueueCheckExclusions", "MergeQueueBypassRole",
         "DependencyUpdates", "DependencyScheduleFrequency", "DependencyScheduleWeekday", "DependencyScheduleHour",
         "DependencyTimeZone", "DependencyCooldown", "DependencyBisectBudget", "DependencyRules", "DependencyOnboardingMergeQueue",
+        "PrSizeLabels", "PrSizeLabelScale", "PrSizeIgnoreRules", "PrSizeLabelsUnavailable",
     ];
 
     /// <summary>What a visitor of a repository they may see may read: its identity, coverage and connection.</summary>
@@ -78,6 +80,7 @@ public class OwnerPrivacyEndToEndTests(OwnerPrivacyHostFixture host) : IClassFix
         "MergeQueueApprovalFloor", "MergeQueueCheckExclusionsPolicy", "MergeQueueCheckExclusions", "MergeQueueBypassRole",
         "DependencyUpdates", "DependencySchedulePolicy", "DependencyScheduleFrequency", "DependencyScheduleWeekday",
         "DependencyScheduleHour", "DependencyCooldown", "DependencyBisectBudget", "DependencyOnboardingMergeQueue", "MergeQueueInCoverageYml",
+        "PrSizeLabels", "PrSizeIgnoreRules", "PrSizeLabelState", "PrSizeLabelsEffective",
     ];
 
     /// <summary>Callers who manage nothing of acme: a visitor and a signed-in stranger.</summary>
@@ -341,6 +344,30 @@ public class OwnerPrivacyEndToEndTests(OwnerPrivacyHostFixture host) : IClassFix
         (await session.LoadAsync<Repository>(host.PrivateRepositoryId)).DeleteBranchOnPrClose.Should().Be(EDeleteBranchPolicy.Enabled);
     }
 
+    /// <summary>#527 FR10: the size labeller writes labels into the account's repositories, so only a manager may switch it on.</summary>
+    [Fact]
+    public async Task A_read_only_member_cannot_switch_on_the_size_labeller()
+    {
+        var (account, _) = await host.UpdateAsync(AccountTypeId, host.AccountId, "PrSizeLabels", true, OwnerPrivacyHostFixture.MemberUserId);
+        var (repository, _) = await host.UpdateAsync(RepositoryTypeId, host.PrivateRepositoryId, "PrSizeLabels", "Enabled", OwnerPrivacyHostFixture.MemberUserId);
+
+        account.Should().NotBe(HttpStatusCode.OK);
+        repository.Should().NotBe(HttpStatusCode.OK);
+        using var session = host.Store.OpenAsyncSession();
+        (await session.LoadAsync<Account>(host.AccountId)).PrSizeLabels.Should().BeFalse();
+        (await session.LoadAsync<Repository>(host.PrivateRepositoryId)).PrSizeLabels.Should().Be(EPrSizeLabelPolicy.Inherit);
+    }
+
+    /// <summary>#527 FR2: a manager sees what is in effect for the repository and where it comes from.</summary>
+    [Fact]
+    public async Task A_manager_sees_the_size_labellers_effective_value_and_its_source()
+    {
+        var (status, body) = await host.PostAsync("/spark/po/load", new { objectTypeId = RepositoryTypeId, id = host.PrivateRepositoryId }, OwnerPrivacyHostFixture.OwnerUserId);
+
+        status.Should().Be(HttpStatusCode.OK, body);
+        body.Should().Contain("Off, as the account"); // the apostrophe goes over the wire escaped
+    }
+
     [Fact]
     public async Task A_repository_admin_may_save_the_repository_they_administer_but_not_the_account()
     {
@@ -427,9 +454,17 @@ public class OwnerPrivacyEndToEndTests(OwnerPrivacyHostFixture host) : IClassFix
 /// The application with a scripted owner set per caller, signed in by header, and one administrator by forge id: acme
 /// (an organization with every owner-only setting filled with a findable value), its public repository <c>open</c> and its
 /// private repository <c>secret</c>.
+/// <para>
+/// On <see cref="SparkTestDriver"/>, whose store carries Spark's conventions, as the host's does: the host reads what the
+/// tests write to its database. Without them a <see cref="System.Drawing.Color"/> is stored as <c>"0, 153, 0"</c>, which
+/// the host's <c>#rrggbb</c> converter cannot read.
+/// </para>
 /// </summary>
-public sealed class OwnerPrivacyHostFixture : CoverageRavenTest, IAsyncLifetime
+public sealed class OwnerPrivacyHostFixture : SparkTestDriver
 {
+    // Like CoverageRavenTest: fork pull requests get no licence, and nothing here needs a licensed feature.
+    protected override bool RequireLicense => false;
+
     public const string OwnerUserId = "SparkUsers/privacy-owner";
     public const string StrangerUserId = "SparkUsers/privacy-stranger";
     public const string AdminUserId = "SparkUsers/privacy-admin";
@@ -452,7 +487,7 @@ public sealed class OwnerPrivacyHostFixture : CoverageRavenTest, IAsyncLifetime
     public const string RepositoryCheckMarker = "privacy-marker-repository-check";
     public const string BadgeTokenMarker = "privacy-marker-badge-token";
 
-    public IDocumentStore Store { get; private set; } = null!;
+    public new IDocumentStore Store => base.Store;
     public CoverageWebAppFactory Factory { get; private set; } = null!;
 
     public string AccountId { get; } = Account.DocumentId(EForgeProvider.GitHub, 5);
@@ -465,9 +500,9 @@ public sealed class OwnerPrivacyHostFixture : CoverageRavenTest, IAsyncLifetime
     public string OtherAccountId { get; } = Account.DocumentId(EForgeProvider.GitHub, 6);
     public string[] OtherRepositoryIds { get; } = [Repository.DocumentId(EForgeProvider.GitHub, 4701), Repository.DocumentId(EForgeProvider.GitHub, 4702)];
 
-    public async Task InitializeAsync()
+    public override async Task InitializeAsync()
     {
-        Store = GetDocumentStore();
+        await base.InitializeAsync();
         Factory = new CoverageWebAppFactory(Store, services =>
         {
             services.AddSingleton<IStartupFilter, TestPrincipalStartupFilter>();
@@ -524,7 +559,7 @@ public sealed class OwnerPrivacyHostFixture : CoverageRavenTest, IAsyncLifetime
                 }, Repository.DocumentId(EForgeProvider.GitHub, id));
             await session.SaveChangesAsync();
         }
-        WaitForIndexing(Store);
+        await Store.WaitForIndexingAsync();
     }
 
     private Repository Repo(long id, string name, bool isPrivate) => new()
@@ -558,6 +593,12 @@ public sealed class OwnerPrivacyHostFixture : CoverageRavenTest, IAsyncLifetime
         => SendAsync(new HttpRequestMessage(HttpMethod.Post, path)
         {
             Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json"),
+        }, user);
+
+    public Task<(HttpStatusCode Status, string Body)> PostRawAsync(string path, string json, string? user)
+        => SendAsync(new HttpRequestMessage(HttpMethod.Post, path)
+        {
+            Content = new StringContent(json, Encoding.UTF8, "application/json"),
         }, user);
 
     public Task<(HttpStatusCode Status, string Body)> GetAsync(string path, string? user)
@@ -598,12 +639,12 @@ public sealed class OwnerPrivacyHostFixture : CoverageRavenTest, IAsyncLifetime
         }
     }
 
-    public new async Task DisposeAsync()
+    public override async Task DisposeAsync()
     {
         try { await Factory.DisposeAsync(); }
         catch (Exception ex) { Console.WriteLine($"[OwnerPrivacyHostFixture] host disposal faulted: {ex}"); }
 
-        try { Store?.Dispose(); }
+        try { await base.DisposeAsync(); }
         catch (Exception ex) { Console.WriteLine($"[OwnerPrivacyHostFixture] store disposal faulted: {ex}"); }
 
         try { base.Dispose(); }

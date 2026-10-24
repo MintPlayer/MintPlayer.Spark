@@ -7,7 +7,8 @@ namespace MintPlayer.Spark.Testing;
 /// Configures the one embedded RavenDB server a test run uses, exactly once per process.
 /// </summary>
 /// <remarks>
-/// Both drivers share this. <see cref="SparkTestDriver"/> takes a database per test case;
+/// Both drivers share this, and so does a suite with its own <c>RavenTestDriver</c> base that must
+/// share the process with them. <see cref="SparkTestDriver"/> takes a database per test case;
 /// <see cref="SparkSharedDatabase"/> takes one per test class. They must not disagree about how the
 /// server is licensed, and neither may configure it twice — <c>ConfigureServer</c> throws once the
 /// server has started.
@@ -21,7 +22,7 @@ namespace MintPlayer.Spark.Testing;
 /// the originating framework's driver, which is safe only because NUnit is sequential by default. Do not copy it.)
 /// </para>
 /// </remarks>
-internal static class SparkEmbeddedServer
+public static class SparkEmbeddedServer
 {
     static SparkEmbeddedServer()
     {
@@ -77,7 +78,7 @@ internal static class SparkEmbeddedServer
     /// The body is deliberately empty: touching the type is what runs the initialiser. A method
     /// rather than a field read so the call site says what it means.
     /// </remarks>
-    internal static void EnsureConfigured()
+    public static void EnsureConfigured()
     {
     }
 }

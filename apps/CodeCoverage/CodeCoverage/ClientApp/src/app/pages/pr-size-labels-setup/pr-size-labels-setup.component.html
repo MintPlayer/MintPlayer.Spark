@@ -1,0 +1,156 @@
+<div class="ps-setup py-3" data-pr-size-labels-setup>
+  <h1 class="h3 mb-3"><i class="bi bi-rulers"></i> PR size labels</h1>
+  <p class="lead">
+    CodeCoverage labels every pull request with its size, <code>size/XS</code> to <code>size/XXL</code>, from the lines
+    it changes. Reviewers see at a glance what they are taking on, and authors see when a pull request should be split.
+  </p>
+  <p>
+    The size is the sum of the lines added and deleted in every file that counts. It is computed again on every push, and
+    a pull request carries exactly one size label at a time. Your own labels are never touched.
+  </p>
+
+  <nav aria-label="Steps" class="mb-4">
+    <ol class="mb-0" data-testid="ps-setup-steps">
+      @for (step of steps; track step.id) {
+        <li>
+          <a [routerLink]="[]" [fragment]="step.id" (click)="jumpTo(step.id)">{{ step.title }}</a>
+        </li>
+      }
+    </ol>
+  </nav>
+
+  @for (step of steps; track step.id; let n = $index) {
+    <bs-card class="d-block mb-4" [attr.id]="step.id" [attr.data-step]="step.id">
+      <bs-card-header>
+        <h2 class="h5 mb-0"><bs-badge class="me-2" [type]="primaryColor">{{ n + 1 }}</bs-badge>{{ step.title }}</h2>
+      </bs-card-header>
+      <bs-card-body>
+        @switch (step.id) {
+          @case ('enable') {
+            <p>
+              The labeller needs no new permission: the CodeCoverage GitHub App already has what it uses. Install it on the
+              organization or user that owns the repository; <a routerLink="/">Home</a> links it once you are signed in.
+            </p>
+            <p data-testid="ps-setup-account">
+              On the account's page, choose <strong>Edit</strong> and switch on <strong>PR size labels</strong> in the
+              <em>PR size labels</em> group. Every repository of the account that does not decide for itself is labelled
+              from then on, starting with the next push to each pull request.
+            </p>
+            <p>A repository can decide for itself, under <strong>PR size labels</strong> on its own page:</p>
+            <bs-table [isResponsive]="true" data-testid="ps-setup-policies">
+              <thead>
+                <tr><th>Setting</th><th>Meaning</th></tr>
+              </thead>
+              <tbody>
+                @for (policy of policies; track policy.value) {
+                  <tr><td class="text-nowrap">{{ policy.value }}</td><td>{{ policy.meaning }}</td></tr>
+                }
+              </tbody>
+            </bs-table>
+            <p class="mb-0">
+              The repository's page also shows <strong>Size labels in effect</strong>: whether its pull requests are
+              labelled, and whether the repository or its account decides.
+            </p>
+          }
+          @case ('scale') {
+            <p>
+              The <strong>Size scale</strong> is on the account, one row per label: a pull request that changes at least
+              a row's number of lines, and fewer than the next row's, gets that row's label. A new account starts with:
+            </p>
+            <bs-table [isResponsive]="true" data-testid="ps-setup-scale">
+              <thead>
+                <tr><th>Label</th><th>From lines</th><th>Colour</th></tr>
+              </thead>
+              <tbody>
+                @for (row of scale; track row.name) {
+                  <tr>
+                    <td><code>{{ row.name }}</code></td>
+                    <td>{{ row.minLines }}</td>
+                    <td class="text-nowrap"><span class="swatch" [style.--swatch]="row.color"></span>{{ row.color }}</td>
+                  </tr>
+                }
+              </tbody>
+            </bs-table>
+            <p>The labels are the app's own: it creates them in each repository, and keeps them in step with the scale.</p>
+            <ul class="mb-0" data-testid="ps-setup-scale-changes">
+              <li><strong>Renaming a row renames the label</strong> on GitHub, so every pull request that carries it, closed ones too, keeps it under its new name.</li>
+              <li><strong>A new colour or description</strong> is written to the existing label.</li>
+              <li><strong>Deleting a row deletes its label</strong>, and GitHub removes it from every pull request that carries it, closed ones included.</li>
+              <li>A label you archive on GitHub is left archived. Pull requests of that size then get no label, and the check says why.</li>
+            </ul>
+          }
+          @case ('ignore') {
+            <p>
+              Generated files and lockfiles say little about how much there is to review, so some files count less.
+              <strong>Ignored files</strong> on the account are rules of a glob and a mode:
+            </p>
+            <ul>
+              <li><strong>Ignore</strong>: the file does not count at all.</li>
+              <li><strong>Ignore additions</strong>: only the file's net deletions count, so a large generated file adds nothing while a large deletion still shows.</li>
+            </ul>
+            <p>A new account starts with these, in this order:</p>
+            <bs-table [isResponsive]="true" data-testid="ps-setup-ignore">
+              <thead>
+                <tr><th>Glob</th><th>Mode</th></tr>
+              </thead>
+              <tbody>
+                @for (rule of ignoreRules; track rule.glob) {
+                  <tr><td><code>{{ rule.glob }}</code></td><td>{{ rule.mode }}</td></tr>
+                }
+              </tbody>
+            </bs-table>
+            <p data-testid="ps-setup-last-wins">
+              <strong>The last matching rule wins.</strong> That is why <code>**/package-lock.json</code> comes after
+              <code>**/*.json</code>: it is ignored outright rather than for its additions only. A glob that starts with
+              <code>!</code> counts the matching files fully again.
+            </p>
+            <p class="mb-0">
+              A repository adds its own <strong>Extra ignored files</strong>, which apply after the account's. They can
+              ignore more, or count what the account ignores: <code>!apps/web/**/*.json</code> counts the JSON files under
+              <code>apps/web</code> in full. A rule added to the account later applies to every repository that does not
+              counter it.
+            </p>
+          }
+          @case ('check-run') {
+            <p>
+              Every labelled push gets a <strong>PR size</strong> check run. It is titled with the label and the size, such
+              as <code>size/M · 87 lines changed</code>, and its summary lists the files that counted, the ignored ones and
+              those counted for their deletions only, each with the rule that matched.
+            </p>
+            <bs-alert [type]="infoColor" class="d-block mb-0" data-testid="ps-setup-neutral">
+              The check always completes <strong>neutral</strong>, even when the label could not be applied; it then says
+              why. It never fails a pull request, so it never blocks a merge or the merge queue.
+            </bs-alert>
+          }
+          @case ('disable') {
+            <p>Switching the labeller off, on the account or on a repository, asks what to do with the labels:</p>
+            <ul class="mb-0" data-testid="ps-setup-disable">
+              <li><strong>Remove labels</strong> deletes the app's labels from the repositories that stop labelling. Pull requests that carry them, closed ones included, lose them.</li>
+              <li><strong>Keep labels</strong> stops labelling and leaves the labels where they are. Switching it on again picks them up.</li>
+              <li><strong>Cancel</strong> saves nothing.</li>
+            </ul>
+          }
+          @case ('adopt') {
+            <p class="mb-0" data-testid="ps-setup-adopt">
+              If a GitHub Action labelled your pull requests until now, such as <code>pascalgn/size-label-action</code>,
+              remove its workflow before you switch the labeller on, so that only one of them writes. The labels it made are
+              not duplicated: a label whose name matches a row of the scale is adopted, given the row's colour and
+              description, and stays on the pull requests that already carry it.
+            </p>
+          }
+          @case ('forges') {
+            <p class="mb-0" data-testid="ps-setup-forges">
+              Size labels work on GitHub. <strong>Bitbucket pull requests have no labels</strong>, so on a Bitbucket
+              account or repository the settings are shown read-only, with that reason.
+            </p>
+          }
+        }
+      </bs-card-body>
+    </bs-card>
+  }
+
+  <p class="small text-body-secondary mb-0">
+    The full reference is
+    <a href="https://github.com/MintPlayer/MintPlayer.Spark/blob/master/docs/code-coverage/pr-size-labels.md" target="_blank" rel="noopener">the PR size labels guide</a>.
+  </p>
+</div>

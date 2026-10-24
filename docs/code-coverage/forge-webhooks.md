@@ -92,6 +92,12 @@ for a port, not as a specification.
 | **`ReleasePublished`** | ✅ `release` — `published` (`tag_name`, `published_at`; §7.6) | `Release Hook` — action `create` | ⚠️ no releases; a tag `repo:push` is the nearest |
 | **`DependencyAlertRaised`** | ✅ `dependabot_alert` — `created`, `reopened`, `reintroduced`; needs the App's *Dependabot alerts: read* (R10) | `Vulnerability` events | ⚠️ no known webhook |
 
+`PullRequestUpdated` has a second consumer besides `ForgeEventsRecipient`: `PrSizeLabelEventsRecipient`
+(`CodeCoverage/PrSize/PrSizeLabelRecipients.cs`, #527). It point-loads the repository and its account and, when size
+labels are on, forwards to the labeller's own queue; all of its writes happen there ([`pr-size-labels.md`](pr-size-labels.md)).
+It reads the event's `HeadSha`, `Additions`, `Deletions` and `ChangedFiles`, so a new forge must fill those for the
+labeller to work.
+
 `CiRunCompleted`, `CommitChecksChanged` and `PullRequestReviewed` are raised **only while the repository's merge queue
 is busy** (one point load of `MergeQueues/{provider}/{id}` per delivery), because check deliveries are the most frequent
 events an App receives and nothing else consumes them. `CheckReported` is the exception (merge-queue PRD §11, D108): it

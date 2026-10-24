@@ -57,6 +57,10 @@ export const routes: Routes = [
       // The dependency updater's setup guide (docs/code-coverage/dependency-updates.md); static, open to anonymous visitors
       // too. Like the two above, it is reached from the sidebar's Guides group (programUnits.json).
       { path: 'dependency-updates/setup', loadComponent: () => import('./pages/dependency-updates-setup/dependency-updates-setup.component') },
+      // Setting up coverage uploads, which was the repository page's setup panel, and the PR size labeller's guide
+      // (docs/coverage_pr_size_labels_PRD.md D10); static, open to anonymous visitors, in the Guides group too.
+      { path: 'coverage/setup', loadComponent: () => import('./pages/coverage-setup/coverage-setup.component') },
+      { path: 'pr-size-labels/setup', loadComponent: () => import('./pages/pr-size-labels-setup/pr-size-labels-setup.component') },
       // The dependency updater's onboarding page (dependency-updates PRD R20, R36): the GitHub App's Setup URL. Signed-in
       // only, and through the GUARD, which keeps the setup redirect's query (installation_id, setup_action) through the
       // sign-in. ⚠️ Never rely on the API's 401 bounce instead: the auth interceptor strips the query.

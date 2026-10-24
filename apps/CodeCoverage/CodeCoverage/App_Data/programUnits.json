@@ -28,9 +28,11 @@
     "its own Dashboards > Database entry under the same rule.",
     "",
     "The Guides group holds the static how-to pages, each an Angular route of its own and open to anonymous visitors:",
-    "the merge queue's GitHub setup (/merge-queue/setup), the dependency updater's setup (/dependency-updates/setup)",
-    "and connecting an AI agent to /mcp (/connect-agent, also the topbar's button). A url unit has no target to grant,",
-    "so the group is shown to everyone. The merge queue unit kept its id when it moved here from the Coverage group."
+    "setting up coverage uploads (/coverage/setup, which was the repository page's setup panel), the merge queue's GitHub",
+    "setup (/merge-queue/setup), the dependency updater's setup (/dependency-updates/setup), PR size labels",
+    "(/pr-size-labels/setup) and connecting an AI agent to /mcp (/connect-agent, also the topbar's button). A url unit",
+    "has no target to grant, so the group is shown to everyone. The merge queue unit kept its id when it moved here from",
+    "the Coverage group, and every unit kept its id when the coverage guide took the first place."
   ],
   "programUnitGroups": [
     {
@@ -68,12 +70,20 @@
       "order": 2,
       "programUnits": [
         {
+          "id": "3f8a6c1e-52d9-4b07-9e4a-c81b2d7f0e35",
+          "name": "programUnits.coverageSetup",
+          "icon": "bi-rocket-takeoff",
+          "type": "url",
+          "url": "/coverage/setup",
+          "order": 1
+        },
+        {
           "id": "0580223f-bbbd-425f-9be5-b7b2f289d323",
           "name": "programUnits.mergeQueueSetup",
           "icon": "bi-signpost-split",
           "type": "url",
           "url": "/merge-queue/setup",
-          "order": 1
+          "order": 2
         },
         {
           "id": "4267ae23-783e-4942-ac37-cd22431299e8",
@@ -81,7 +91,15 @@
           "icon": "bi-box-seam",
           "type": "url",
           "url": "/dependency-updates/setup",
-          "order": 2
+          "order": 3
+        },
+        {
+          "id": "9d4e2b70-16c5-4a8f-b3e1-5f0a7c92d6b4",
+          "name": "programUnits.prSizeLabelsSetup",
+          "icon": "bi-rulers",
+          "type": "url",
+          "url": "/pr-size-labels/setup",
+          "order": 4
         },
         {
           "id": "a8025e33-3ea7-4bca-9804-3433240839b2",
@@ -89,7 +107,7 @@
           "icon": "bi-robot",
           "type": "url",
           "url": "/connect-agent",
-          "order": 3
+          "order": 5
         }
       ]
     },

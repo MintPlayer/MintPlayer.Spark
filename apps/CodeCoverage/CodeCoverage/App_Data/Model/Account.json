@@ -50,6 +50,12 @@
         "name": "DependencyUpdates",
         "tab": "a7c1f9d2-4b60-4e3a-9c85-1f27b0e6d431",
         "order": 6
+      },
+      {
+        "id": "6b2e9d41-7c03-4f58-a1e6-2d94c8b05f73",
+        "name": "PrSizeLabels",
+        "tab": "a7c1f9d2-4b60-4e3a-9c85-1f27b0e6d431",
+        "order": 7
       }
     ],
     "attributes": [
@@ -321,6 +327,62 @@
         "showedOn": "Query, PersistentObject",
         "rules": [],
         "group": "b2e84c07-9d13-4f56-8a2b-6c9e17f0a582"
+      },
+      {
+        "id": "da53f1d5-8948-4b98-9203-d1a08df9aff5",
+        "name": "PrSizeIgnoreRules",
+        "dataType": "AsDetail",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 23,
+        "asDetailType": "CodeCoverage.Entities.PrSizeIgnoreRule",
+        "isArray": true,
+        "editMode": "inline",
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "6b2e9d41-7c03-4f58-a1e6-2d94c8b05f73"
+      },
+      {
+        "id": "205d6344-5472-4d9e-a1bc-e95d53a7d29c",
+        "name": "PrSizeLabels",
+        "dataType": "boolean",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 21,
+        "isArray": false,
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "6b2e9d41-7c03-4f58-a1e6-2d94c8b05f73"
+      },
+      {
+        "id": "d5c4aeeb-b8a9-4944-9205-0dcd74bc4b40",
+        "name": "PrSizeLabelScale",
+        "dataType": "AsDetail",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 22,
+        "asDetailType": "CodeCoverage.Entities.PrSizeLabel",
+        "isArray": true,
+        "editMode": "inline",
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "6b2e9d41-7c03-4f58-a1e6-2d94c8b05f73"
+      },
+      {
+        "id": "6a3e889f-3d5f-409c-b515-5e0a50f7d5d8",
+        "name": "PrSizeLabelsUnavailable",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 20,
+        "isArray": false,
+        "inQueryType": false,
+        "showedOn": "None",
+        "rules": [],
+        "group": "6b2e9d41-7c03-4f58-a1e6-2d94c8b05f73"
       },
       {
         "id": "47ee693b-379e-469b-ba29-22a472796297",

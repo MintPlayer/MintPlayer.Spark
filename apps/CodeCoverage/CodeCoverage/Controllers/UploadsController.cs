@@ -695,7 +695,7 @@ public partial class UploadsController : ControllerBase
             account = await session.LoadAsync<Account>(Account.DocumentId(EForgeProvider.GitHub, ownerId), cancellationToken);
             if (account is null)
             {
-                account = new Account { GitHubId = ownerId, Login = ownerLogin };
+                account = new Account { GitHubId = ownerId, Login = ownerLogin }.ApplyPrSizeDefaults();
                 await session.StoreAsync(account, Account.DocumentId(EForgeProvider.GitHub, ownerId), cancellationToken);
             }
         }

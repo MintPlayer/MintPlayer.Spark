@@ -68,4 +68,11 @@ public static class CoverageQueues
     /// never delays a queued merge; serial like it, so one repository's run never changes twice at once.
     /// </summary>
     public const string DependencyUpdates = "coverage-dependency-updates";
+
+    /// <summary>
+    /// The PR size labeller (docs/coverage_pr_size_labels_PRD.md D9): applying a label, reconciling a repository's label
+    /// definitions and removing them. One serial lane is the one writer of <c>Repository.PrSizeLabelState</c>, and a paced
+    /// account-wide reconcile waits here instead of on the shared forge-event lane.
+    /// </summary>
+    public const string PrSizeLabels = "coverage-pr-size-labels";
 }

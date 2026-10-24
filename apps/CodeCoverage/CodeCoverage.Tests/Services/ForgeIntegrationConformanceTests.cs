@@ -73,6 +73,7 @@ public class ForgeIntegrationConformanceTests
         [EForgeCapability.MergeQueue] = typeof(IForgeMergeQueue),
         [EForgeCapability.RepositoryAdminCheck] = typeof(IForgeRepositoryAdministration),
         [EForgeCapability.SetupRedirect] = typeof(IForgeSetupRedirect),
+        [EForgeCapability.PullRequestLabels] = typeof(IForgeLabels),
     };
 
     /// <summary>
