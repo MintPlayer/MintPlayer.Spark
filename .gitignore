@@ -28,6 +28,8 @@ mono_crash.*
 [Dd]ebugPublic/
 [Rr]elease/
 [Rr]eleases/
+# The versioning engine's Releases namespace is source, not build output (#153): never let the line above swallow it.
+!apps/CodeCoverage/CodeCoverage.Versioning*/Releases/
 x64/
 x86/
 [Ww][Ii][Nn]32/
