@@ -15,7 +15,8 @@ landed differs from the PRD's text in eleven places, each recorded with its evid
 feature doc is [`code-coverage/pr-size-labels.md`](code-coverage/pr-size-labels.md).
 
 M10's test run: see the commit message of the M10 commit for the classes and their result. The live test against the
-CoverageDevelopment App (below) has not been run yet; it needs the owner's scratch repository and their sudo prompt.
+CoverageDevelopment App passed on 2026-10-24 on PieterjanDeClippel/DependencyUpdaterTest PR #6, after the check-run fix
+(PRD B12). The results are on PR #534. The embedded-row hardening is PRD B13.
 
 Tests run **once, at the end** (M10): the CodeCoverage.Tests classes the change touches, and the ClientApp specs. No
 interim gate runs.

@@ -131,18 +131,6 @@
       "isDenied": false
     },
     {
-      "key": "c0e5a9e1-0000-4000-8000-0000000000a5",
-      "resource": "QueryReadEditNewDelete/PrSizeLabel",
-      "groupId": "00000000-0000-0000-0000-000000000001",
-      "isDenied": false
-    },
-    {
-      "key": "c0e5a9e1-0000-4000-8000-0000000000a6",
-      "resource": "QueryReadEditNewDelete/PrSizeIgnoreRule",
-      "groupId": "00000000-0000-0000-0000-000000000001",
-      "isDenied": false
-    },
-    {
       "key": "c0e5a9e1-0000-4000-8000-000000000066",
       "resource": "QueryReadEditNewDelete/EventColumnMapping",
       "groupId": "00000000-0000-0000-0000-000000000001",
@@ -229,6 +217,18 @@
     {
       "key": "c0e5a9e1-0000-4000-8000-000000000051",
       "resource": "Query/MyAccountRow",
+      "groupId": "00000000-0000-0000-0000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "c0e5a9e1-0000-4000-8000-0000000000a6",
+      "resource": "QueryReadEditNewDelete/PrSizeIgnoreRule",
+      "groupId": "00000000-0000-0000-0000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "c0e5a9e1-0000-4000-8000-0000000000a5",
+      "resource": "QueryReadEditNewDelete/PrSizeLabel",
       "groupId": "00000000-0000-0000-0000-000000000001",
       "isDenied": false
     },

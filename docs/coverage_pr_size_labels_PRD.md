@@ -1,7 +1,7 @@
 # Pull-request size labels — the GitHub App labels every PR by the lines it changes
 
-**Status:** Implemented 2026-10-24 (M1–M10; where the code differs from this text, see "As built" below), tests green,
-live test with the development App and deployment pending. Grilled 2026-10-23 (Q1–Q4 answered). See [coverage_pr_size_labels_plan.md](coverage_pr_size_labels_plan.md)
+**Status:** Implemented 2026-10-24 (M1–M10; where the code differs from this text, see "As built" below), tests green.
+The live test with the development App passed on 2026-10-24 after the fix in B12 (results on PR #534). Deployment is pending. Grilled 2026-10-23 (Q1–Q4 answered). See [coverage_pr_size_labels_plan.md](coverage_pr_size_labels_plan.md)
 **Issue:** #527 · **App:** `apps/CodeCoverage` (production, coverage.mintplayer.com) · one pull request, which also
 moves "Set up coverage uploads" from the Repository page into a Guides page (D10)
 **Prior art:** `C:\Repos\ProjectDashboard\ProjectDashboard\Service\Recipients\PullRequestSizeLabeler.cs`. That repository
@@ -377,6 +377,8 @@ Where these disagree with a decision above, this list wins. Each item names its 
 | B9 | **Accepted edge:** a disable answered Keep, saved together with a scale change, still reconciles the label definitions of repositories that keep labelling. Nothing is removed; only definitions are rewritten. | owner-visible only as renamed/recoloured labels; not worth a second prompt |
 | B10 | D10: the Repository page links to `/coverage/setup` while it has no `LatestCoverageAtUtc`; the Account and Repository pages link to `/pr-size-labels/setup` below their attributes when the caller can read the settings. The coverage guide's snippets take `location.origin`, as the panel did. | `spark/po-detail-page.component.ts`; `po-detail-page.component.spec.ts`; `coverage-setup.snippets.spec.ts` (golden from the deleted panel) |
 | B11 | The Guides units are numbered 1–5 rather than inserting an order 0: coverage 1, merge queue 2, dependency updates 3, PR size labels 4, connect agent 5. Every existing unit kept its id. | `App_Data/programUnits.json` |
+| B12 | The "Calculating size…" check run leaves `output.text` out when there is none. GitHub answers an explicit `null` with 422 ("For 'properties/text', nil is not a string"), and the live test showed that this aborted the labelling. | `GitHubForgeLabels.SizeCheckBody`; `GitHubForgeLabelsTests.A_check_without_text_leaves_the_property_out` |
+| B13 | `PrSizeLabel` and `PrSizeIgnoreRule` exist only as rows inside an Account or Repository. Their type-level `New` grant (the nested form needs it) also opened `/spark/po/create` for them, so any signed-in user could store a standalone row that belonged to no account they manage. Their Actions now override `IsAllowedAsync` to refuse every standalone document. Rows are written only through the owner's save, under the owner's row filter. The same hole and fix apply to `DependencyRule` and `EventColumnMapping`. | `Actions/PrSizeLabelActions.cs`, `DependencyRuleActions.cs`, `EventColumnMappingActions.cs`; `EmbeddedRowStandaloneWriteTests` (8 cases: four types, as owner and as stranger). Without the override all 8 were stored; with it, all 8 answer 404 and nothing is stored. |
 
 ## Requirements
 

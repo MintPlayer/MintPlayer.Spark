@@ -17,7 +17,16 @@ public partial class PrSizeLabelActions : DefaultPersistentObjectActions<PrSizeL
         "page. Scoping is therefore the account's, in AccountActions' row filter, and writes go " +
         "through the account's save, which that filter narrows to accounts the caller manages. The " +
         "grant here is for the nested form's metadata, which is the type's attribute definitions " +
-        "and carries no row data at all.";
+        "and carries no row data at all. A standalone " +
+        "document of this type is refused outright, by IsAllowedAsync.";
+
+    /// <summary>
+    /// Refuses every standalone document of this type. The type-level <c>New</c>/<c>Edit</c>/<c>Delete</c> grant
+    /// lets any signed-in user reach <c>/spark/po/create</c> for it, and without this they could store rows that
+    /// belong to no owner they manage. Rows inside the owner's document are mapped by the owner's save, which
+    /// checks the owner's row security, and never come through here.
+    /// </summary>
+    public override Task<bool> IsAllowedAsync(string action, PrSizeLabel entity) => Task.FromResult(false);
 }
 
 /// <summary>
@@ -32,5 +41,14 @@ public partial class PrSizeIgnoreRuleActions : DefaultPersistentObjectActions<Pr
         "embedded in one Account or Repository document, and they reach a caller only as part of that " +
         "owner's page. Scoping is therefore the owner's, in AccountActions' and RepositoryActions' row " +
         "filters and their owner-settings redaction, and writes go through the owner's save. The grant " +
-        "here is for the nested form's metadata, which carries no row data at all.";
+        "here is for the nested form's metadata, which carries no row data at all. A standalone " +
+        "document of this type is refused outright, by IsAllowedAsync.";
+
+    /// <summary>
+    /// Refuses every standalone document of this type. The type-level <c>New</c>/<c>Edit</c>/<c>Delete</c> grant
+    /// lets any signed-in user reach <c>/spark/po/create</c> for it, and without this they could store rows that
+    /// belong to no owner they manage. Rows inside the owner's document are mapped by the owner's save, which
+    /// checks the owner's row security, and never come through here.
+    /// </summary>
+    public override Task<bool> IsAllowedAsync(string action, PrSizeIgnoreRule entity) => Task.FromResult(false);
 }
