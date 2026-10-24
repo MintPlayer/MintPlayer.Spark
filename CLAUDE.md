@@ -254,7 +254,15 @@ from the resolved `@angular/core`, and an API break inside a platform generation
   fetches from the registry otherwise. The action stamps the real version into the dist copy, so
   the number in source is stale by design. Don't bump it.
 - **Seed tags:** when versioning was adopted, `tools/versioning-seed-tags.mjs` tagged each
-  package at the version it last shipped. Without its tag, a package restarts at `11.0.0`.
+  package at the version it last shipped (46 tags at master `162c1fa3`, pushed 2026-10-24). Without
+  its tag, a package restarts at `11.0.0`.
+
+## Regenerated files are LF
+
+The files tools rewrite (the model synchronize's `apps/*/*/App_Data/**`, `SPARK_UPDATE_GOLDEN`'s layering
+goldens, `SPARK_UPDATE_ROUTE_SNAPSHOT`'s `**/RouteSnapshots/*.txt`) are `eol=lf` in `.gitattributes` and
+`.editorconfig`, so a regeneration never shows a line-ending-only change. A new generated-file location
+belongs in both.
 - **A wrong major is still permanent** on npm and NuGet. If a platform upgrade PR should not
   move a major, set `versioning.packages.<id>.anchor` in `coverage.yml` rather than editing a
   version.

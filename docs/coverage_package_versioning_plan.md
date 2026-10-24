@@ -11,6 +11,20 @@ behaviour and confirmed in the M16 live test (both need a real workflow run on G
 the `VersioningControllerTests` harness, which had lacked an `IMessageBus` since M8 and failed every test in the class.
 Every test written so far runs once, in M16.
 
+2026-10-24, PR #537 open: CI is the M16 sweep (CLAUDE.md, "once a PR is open"). Run 40120193216 failed six jobs and
+run 40122716503 one test; all fixed in `1c23039c`, `53905e05`, `2a9597bc`. One was a real defect: `TagWriter` asked
+`merge-base --is-ancestor` about a commit the checkout lacks, and in a `blob:none` partial clone git tries an
+unauthenticated lazy fetch first, failing with "could not read Username … terminal prompts disabled". It now checks
+`cat-file -e <commit>^{commit}` first: the allowed branches were fetched, so a missing commit is on none of them and is
+`Unreachable`. The rest were stale generated files (CodeCoverage model sync, translations golden, route snapshot gaining
+`POST /api/versioning/run`), the forge-webhooks doc missing `PullRequestDescribed`/`BackportRequested`, the CSRF
+exemption for `VersioningController.Run` (OIDC JWT only), and test-side mistakes (NSubstitute answers `""` for an
+unconfigured `Task<string?>`; the M7 fixtures lacked the root `package.json` npm discovery requires; a release-branch
+case assumed the wrong last tag; the conformance test compared `VersionTag` objects with strings). Regenerated files
+(`App_Data/**`, layering goldens, route snapshots) are now `eol=lf` in `.gitattributes`, so a regeneration never shows
+a line-ending-only diff (owner request). Spark's 46 seed tags were pushed by the owner at master `162c1fa3`.
+Left: the M16 live test, then M17 after merge and deploy.
+
 ## Spike results
 
 - **S1 (MinVer, static parser).** Scratch repo with `MintPlayer.Mapper` (net10.0;net11.0, explicit `PackageId`),

@@ -57,8 +57,8 @@ public partial class ForgeEventsRecipient :
 with a base list, so interfaces split across two parts register twice and **run each handler twice
 per message**.
 
-⚠️ **`ForgeWebhookMessage<T>` is constrained to `IForgeEvent`**, so `T` can only be one of the six
-below. That is deliberate: the envelope is what makes a consumer forge-agnostic, so what may travel
+⚠️ **`ForgeWebhookMessage<T>` is constrained to `IForgeEvent`**, so `T` can only be one of the neutral
+events below. That is deliberate: the envelope is what makes a consumer forge-agnostic, so what may travel
 in it is the one thing that must not be open-ended — a forge-specific payload inside a neutral
 envelope would look neutral to every reader and every recipient signature, and be neutral to none of
 them. A fact only one forge can state keeps a forge-specific message and an honestly forge-specific
