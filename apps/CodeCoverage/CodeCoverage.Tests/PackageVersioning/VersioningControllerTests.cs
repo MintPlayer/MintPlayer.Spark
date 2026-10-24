@@ -48,6 +48,7 @@ public class VersioningControllerTests : CoverageRavenTest
         services.AddSingleton<IGitWriterSidecar>(writer);
         services.AddSingleton(locks ?? new VersioningRunLocks());
         services.AddSingleton(TimeProvider.System);
+        services.AddHttpClient();
         services.AddSingleton<IForgeVersioning>(versioning);
         services.AddSingleton<MintPlayer.Spark.Messaging.Abstractions.IMessageBus>(new Dependencies.Lifecycle.DependencyOnboardingSurfaceTests.RecordingBus());
         services.AddScoped<IVersioningOnboardingService, VersioningOnboardingService>();

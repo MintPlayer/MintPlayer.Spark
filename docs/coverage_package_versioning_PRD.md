@@ -437,6 +437,13 @@ settings for forges without the capability. The owner wants GitLab and Bitbucket
     `MintPlayer.Timestamps` at Tools' `ea63582d` ran the target only in the two inner builds and wrote
     `0.0.0-PLACEHOLDER.nupkg`; with the fixed package it wrote `11.0.1-rc.0.nupkg`, with the tag deleted it printed
     MPV001 and wrote nothing, and with `MintPlayerVersioningSkip=true` it failed with MPV004 (2026-10-24).
+  - **The onboarding references the latest stable `MintPlayer.Versioning.MSBuild` on nuget.org**, read from the
+    flat-container index when the pull request is planned. `VersioningOnboarding.PackageVersion` is only the fallback
+    when nuget.org cannot be read (10 s bound). Evidence: the fix above needed a hand bump of that constant from
+    1.0.0 to 1.0.1 (PR #541), which only matched the release because the patch bump was predicted; 1.0.1 appeared in
+    the flat container about 330 s after it was pushed (2026-10-24). A reference without a version is no alternative:
+    NuGet resolves `>= 0.0.0` to the lowest version (1.0.0, the broken one), and central management rejects it (NU1010).
+    Prereleases are never taken.
   - **`@mintplayer/ng-spark` keeps `22.44.0` in source, not the placeholder.** Seven app ClientApps depend on it with
     `^22.3.0`…`^22.43.0`, and npm links a workspace package only when its version satisfies the range; a prerelease
     `0.0.0` would make npm fetch the published package instead. The action stamps the seeded package whatever its

@@ -29,7 +29,8 @@ action step after the build. That step tags every package that changed, then the
 On the repository page in CodeCoverage, run **Set up versioning**. It plans from the default branch and opens a
 pull request from `mintplayer/versioning-onboarding` (D17) that:
 
-- adds `MintPlayer.Versioning.MSBuild` to `Directory.Build.props` (.NET);
+- adds `MintPlayer.Versioning.MSBuild` to `Directory.Build.props` (.NET), at the latest stable version on nuget.org
+  (a built-in version when nuget.org cannot be read);
 - replaces hand-edited versions with `0.0.0-PLACEHOLDER`;
 - adds the action step, and `permissions: contents: write` and `id-token: write`, to the publish workflow;
 - adds a `versioning:` section to `coverage.yml`.

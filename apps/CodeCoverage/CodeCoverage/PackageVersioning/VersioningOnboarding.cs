@@ -32,7 +32,9 @@ public static partial class VersioningOnboarding
     public const string ActionPath = "MintPlayer/MintPlayer.Spark/apps/CodeCoverage/versioning-action";
     public const string ActionTag = "versioning-v1";
     public const string PackageId = "MintPlayer.Versioning.MSBuild";
+    /// <summary>The version referenced when nuget.org's <see cref="PackageIndexUrl"/> cannot be read.</summary>
     public const string PackageVersion = "1.0.1";
+    public const string PackageIndexUrl = "https://api.nuget.org/v3-flatcontainer/mintplayer.versioning.msbuild/index.json";
     public const string Placeholder = "0.0.0-PLACEHOLDER";
     public const string StepName = "Version the packages";
 
@@ -62,13 +64,14 @@ public static partial class VersioningOnboarding
     /// <param name="tree">The default branch's head.</param>
     /// <param name="taggedIds">Packages that already have a version tag: they keep it and get no seed.</param>
     /// <param name="actionSha">The commit <see cref="ActionTag"/> resolves to, pinned in the step; null keeps the tag.</param>
+    /// <param name="packageVersion">The <see cref="PackageId"/> version to reference (<see cref="LatestStable"/>); null takes <see cref="PackageVersion"/>.</param>
     public static Task<VersioningOnboardingPlan> PlanAsync(IRepositoryTree tree, IReadOnlySet<string> taggedIds, string? actionSha,
-        CancellationToken cancellationToken = default)
-        => PlanAsync(tree, (id, _) => Task.FromResult(taggedIds.Contains(id)), actionSha, cancellationToken);
+        string? packageVersion = null, CancellationToken cancellationToken = default)
+        => PlanAsync(tree, (id, _) => Task.FromResult(taggedIds.Contains(id)), actionSha, packageVersion, cancellationToken);
 
     /// <param name="isTagged">Whether a package already has a version tag, asked once per package the graph finds.</param>
     public static async Task<VersioningOnboardingPlan> PlanAsync(IRepositoryTree tree, Func<string, CancellationToken, Task<bool>> isTagged, string? actionSha,
-        CancellationToken cancellationToken = default)
+        string? packageVersion = null, CancellationToken cancellationToken = default)
     {
         var files = new Files(tree, cancellationToken);
         var notes = new List<string>();
@@ -89,7 +92,7 @@ public static partial class VersioningOnboarding
         {
             foreach (var path in nuget.SelectMany(p => p.BuildProps.Append(p.Path)).Distinct(StringComparer.Ordinal))
                 if (await files.ReadAsync(path) is { } text) files.Write(path, ReplaceVersions(path, text, notes));
-            await ReferenceAsync(files, nuget);
+            await ReferenceAsync(files, nuget, packageVersion ?? PackageVersion);
             await RemoveMinVerAsync(files, tree, nuget, notes);
         }
 
@@ -172,21 +175,38 @@ public static partial class VersioningOnboarding
     /// The package reference, once per <c>Directory.Build.props</c> chain root (a new root file when a project has none), or
     /// as a <c>GlobalPackageReference</c> when the repository manages its versions centrally.
     /// </summary>
-    private static async Task ReferenceAsync(Files files, List<ProjectNode> nuget)
+    private static async Task ReferenceAsync(Files files, List<ProjectNode> nuget, string version)
     {
         if (await files.ReadAsync("Directory.Packages.props") is { } central && CentralManagement().IsMatch(central))
         {
             if (!central.Contains(PackageId, StringComparison.Ordinal))
-                files.Write("Directory.Packages.props", AddItem(central, $"<GlobalPackageReference Include=\"{PackageId}\" Version=\"{PackageVersion}\" />"));
+                files.Write("Directory.Packages.props", AddItem(central, $"<GlobalPackageReference Include=\"{PackageId}\" Version=\"{version}\" />"));
             return;
         }
         foreach (var root in nuget.Select(p => p.BuildProps.FirstOrDefault() ?? "Directory.Build.props").Distinct(StringComparer.Ordinal))
         {
-            var reference = $"<PackageReference Include=\"{PackageId}\" Version=\"{PackageVersion}\" PrivateAssets=\"all\" />";
+            var reference = $"<PackageReference Include=\"{PackageId}\" Version=\"{version}\" PrivateAssets=\"all\" />";
             var text = await files.ReadAsync(root);
             if (text is null) files.Write(root, $"<Project>\n  <ItemGroup>\n    {reference}\n  </ItemGroup>\n</Project>\n");
             else if (!text.Contains(PackageId, StringComparison.Ordinal)) files.Write(root, AddItem(text, reference));
         }
+    }
+
+    /// <summary>
+    /// The highest stable version in nuget.org's flat-container index (<see cref="PackageIndexUrl"/>), or null. A prerelease is
+    /// never taken, and an unlisted version still counts: the index does not mark it, and unlisting is no reason to skip a fix.
+    /// </summary>
+    public static string? LatestStable(string indexJson)
+    {
+        using var document = System.Text.Json.JsonDocument.Parse(indexJson);
+        if (!document.RootElement.TryGetProperty("versions", out var versions) || versions.ValueKind != System.Text.Json.JsonValueKind.Array)
+            return null;
+        (SemVer Version, string Text)? best = null;
+        foreach (var item in versions.EnumerateArray())
+            if (item.GetString() is { } text && SemVer.TryParse(text, out var version) && version.Prerelease is null
+                && (best is null || version.CompareTo(best.Value.Version) > 0))
+                best = (version, text);
+        return best?.Text;
     }
 
     /// <summary>Inserts an <c>ItemGroup</c> holding <paramref name="item"/> before <c>&lt;/Project&gt;</c>, in the file's own indentation.</summary>
