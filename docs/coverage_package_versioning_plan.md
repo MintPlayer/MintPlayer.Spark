@@ -7,7 +7,7 @@ MintPlayer repositories (PRD D17).
 ## Status
 
 2026-10-24: grilled (Q1–Q14 → D1–D17). Spikes S1–S4, S7, S8 run; S5 and S6 answered from GitHub's documented
-behaviour and confirmed in the M16 live test (both need a real workflow run on GitHub). M1–M10 committed; M11 next.
+behaviour and confirmed in the M16 live test (both need a real workflow run on GitHub). M1–M11 committed; M12 next.
 Every test written so far runs once, in M16.
 
 ## Spike results
@@ -192,6 +192,27 @@ M7 (versioning action):
   nothing, rebase run as one commit, already-applied line, malformed requests refused with 400).
 - **The endpoint re-validates everything:** 1–10 targets, heads under `backport/`, no target equal to the source,
   distinct branches and heads, a 40-hex commit, a single-line title of at most 256 characters.
+- **M11: trigger B consumes the existing neutral push event.** `BranchCommitPushed` already carries branch and sha
+  (heads only, no deletes), so no forge code changed. `VersioningDispatchEventsRecipient` forwards a push only for
+  the default branch, or for a branch matched by the release patterns cached in `VersioningDispatchState`
+  (`VersioningDispatchStates/<provider>/<id>`, loaded by id, not indexed). Every other push costs one document load
+  and no forge call. The forward is `BroadcastOnceAsync` keyed `repo:branch:sha`, so a redelivered webhook plans
+  once. Evidence: `DispatchRecipientTests.Only_the_default_branch_and_cached_release_lines_are_forwarded`.
+- **The cache is never the authority.** The worker re-reads `coverage.yml` from the default branch (D17) on every
+  planned push and rewrites the state, or deletes it when `versioning.dispatch` is gone. A push to the default branch
+  is always planned, so a pattern change lands with the push that made it; a release line that was never cached
+  waits for one default-branch push. Evidence: `DispatchRecipientTests.Without_a_dispatch_setting_…`.
+- **The plan runs in the writer, without a build** (`/jobs/versioning/plan`, `ReleaseRun.PlanAsync`). It fetches
+  the branch and the tags, checks the commit is on the branch, and runs `ReleasePlanner` on the static graph, the
+  tags and the input diff with no build facts. A null API hash counts as changed, so the plan can over-report a
+  release (the run then tags nothing for it) but never misses one. It answers package ids only; its versions are not
+  the run's. Evidence: `CodeCoverage.GitWriter.Tests/VersioningPlanTests` (untagged → `Core`; docs-only commit after
+  the tag → empty and no tag written; an input change → `Core`).
+- **Dispatch rule:** `workflow_dispatch` fires on the pushed branch when the plan has a release **or a refused
+  package**. A refusal dispatches because the run fails with it, and that is where the owner sees it; an empty plan
+  dispatches nothing. A plan that could not be made (busy, no writer access, unplannable commit) dispatches nothing
+  and is logged; the next push plans again. Evidence: `DispatchRecipientTests.A_merge_that_changes_no_package_…`
+  (no dispatch, access revoked) and `…_changes_a_package_dispatches_…` (`publish.yml` on `release/8.x`, major 8).
 
 ## Spikes
 

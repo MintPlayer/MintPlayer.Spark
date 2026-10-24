@@ -77,6 +77,28 @@ public static class ReleaseRun
 			: [];
 		return new ReleaseRunResult(plan, written, warnings, notes, cuts);
 	}
+
+	/// <summary>
+	/// The plan for <paramref name="head"/> without a build (D3 trigger B): the static graph, the tags and the input diff,
+	/// no API hashes. It answers only whether a run would release anything; the versions it computes are not the ones the
+	/// run will tag, because an unknown API hash always counts as changed.
+	/// </summary>
+	public static async Task<(ReleasePlan Plan, IReadOnlyList<string> Warnings)> PlanAsync(GitCli git, string head, VersioningSettings settings, bool onDefaultBranch,
+		int? branchMajor, CancellationToken cancellationToken = default)
+	{
+		var graph = await ProjectGraphBuilder.BuildAsync(await GitTree.OpenAsync(git, GitCli.RequireObjectId(head), cancellationToken), settings.Ignore, cancellationToken);
+		var plan = await ReleasePlanner.PlanAsync(new ReleaseContext
+		{
+			Graph = graph,
+			Head = head,
+			Tags = await TagHistory.ReadAsync(git, cancellationToken),
+			Diff = new GitInputDiff(git),
+			Settings = settings,
+			OnDefaultBranch = onDefaultBranch,
+			BranchMajor = branchMajor,
+		}, cancellationToken);
+		return (plan, graph.Warnings);
+	}
 }
 
 /// <summary>Release-branch patterns (D10): <c>versioning.releaseBranches</c>, default <c>release/*.x</c>.</summary>

@@ -280,6 +280,29 @@ public sealed record VersioningRunResponse(
     IReadOnlyList<string> Warnings, string? Detail, long DurationMs, IReadOnlyList<BranchCutWire>? BranchCuts = null);
 
 /// <summary>
+/// <c>POST /jobs/versioning/plan</c> (#153 M11, PRD D3 trigger B): would a run on <see cref="Commit"/> release anything?
+/// The same repository a run fetches, planned without a build; nothing is written.
+/// </summary>
+public sealed class VersioningPlanRequestWire
+{
+    public string? Provider { get; set; }
+    public string? RepoId { get; set; }
+    public string? CloneUrl { get; set; }
+    public CredentialWire? Credential { get; set; }
+    public string? Branch { get; set; }
+    public string? DefaultBranch { get; set; }
+    public string? Commit { get; set; }
+    public int? BranchMajor { get; set; }
+    public VersioningSettingsWire? Settings { get; set; }
+}
+
+/// <param name="Outcome"><see cref="JobOutcomes.Planned"/>, or a failure.</param>
+/// <param name="Releases">The ids of the packages a run would release.</param>
+public sealed record VersioningPlanResponse(
+    string Outcome, string? Reason, IReadOnlyList<string> Releases, IReadOnlyList<PackageNoteWire> Refused, IReadOnlyList<string> Warnings, string? Detail,
+    long DurationMs);
+
+/// <summary>
 /// <c>POST /jobs/versioning/backport</c> (#153 M10, PRD D10): apply a merged pull request's change to release branches.
 /// Every target is merged in memory first; when any one conflicts nothing is pushed, otherwise each target gets
 /// <see cref="BackportTargetWire.Head"/>, a new branch for the app to open a pull request from. The commit message is
@@ -375,6 +398,8 @@ public static class JobOutcomes
     public const string Backported = "backported";
     /// <summary>Backport: a target conflicts (see its paths), so no target was pushed (D10).</summary>
     public const string Conflicted = "conflicted";
+    /// <summary>Versioning plan: what a run would release, nothing written (D3 trigger B).</summary>
+    public const string Planned = "planned";
     /// <summary>Every slot was taken for <c>SlotWaitSeconds</c>; retry later.</summary>
     public const string Busy = "busy";
     /// <summary>An operational failure; <c>reason</c> is one of <see cref="JobReasons"/>.</summary>

@@ -9,6 +9,10 @@ namespace CodeCoverage.GitWriter.Jobs;
 public sealed record VersioningRunJob(
     string Repo, Uri CloneUrl, GitCredential Credential, string Branch, string DefaultBranch, GitIdentity Tagger, ReleaseRunRequest Run);
 
+/// <summary>A validated <c>POST /jobs/versioning/plan</c>.</summary>
+public sealed record VersioningPlanJob(
+    string Repo, Uri CloneUrl, GitCredential Credential, string Branch, string DefaultBranch, string Commit, int? BranchMajor, VersioningSettings Settings);
+
 /// <summary>
 /// The server host's whole versioning run (#153 M6, PRD D2). The plan and the tags are the engine's
 /// <see cref="ReleaseRun"/>, the same the action's local host runs; this job supplies the repository: an empty bare one
@@ -56,6 +60,34 @@ public sealed class VersioningRunService(JobRunner jobs)
         }
         return Response(result, context.ElapsedMilliseconds);
     }, (outcome, reason, detail, ms) => new VersioningRunResponse(outcome, reason, [], [], [], [], detail, ms));
+
+    /// <summary>The plan alone (D3 trigger B): the branch and the tags fetched as for a run, nothing written.</summary>
+    public Task<VersioningPlanResponse> PlanAsync(VersioningPlanJob job) => jobs.RunAsync("versioning-plan", job.Repo, async context =>
+    {
+        await context.RequireAsync(["init", "--bare", "--quiet", "--template=", context.GitDirectory], inRepository: false);
+        await context.RequireAsync(["fetch", "--quiet", "--no-tags", "--no-write-fetch-head", job.CloneUrl.AbsoluteUri,
+            $"+refs/heads/{job.Branch}:refs/heads/{job.Branch}", "+refs/tags/*:refs/tags/*"], job.Credential);
+        context.EnsureWithinDisk();
+
+        var git = new GitCli(context.GitDirectory);
+        var onBranch = await git.RunAsync(["merge-base", "--is-ancestor", job.Commit, "refs/heads/" + job.Branch], cancellationToken: context.Deadline);
+        if (onBranch.ExitCode != 0)
+            throw new JobAbortedException(JobReasons.Unplannable, $"The commit {job.Commit} is not on {job.Branch}.");
+        try
+        {
+            var (plan, warnings) = await ReleaseRun.PlanAsync(git, job.Commit, job.Settings, job.Branch == job.DefaultBranch, job.BranchMajor, context.Deadline);
+            return new VersioningPlanResponse(JobOutcomes.Planned, null, plan.Releases.Select(r => r.Id).ToList(),
+                plan.Refused.Select(n => new PackageNoteWire(n.Id, n.Reason)).ToList(), warnings, null, context.ElapsedMilliseconds);
+        }
+        catch (GraphException e)
+        {
+            throw new JobAbortedException(JobReasons.Unplannable, e.Message);
+        }
+        catch (GitException e)
+        {
+            throw new JobAbortedException(JobReasons.Error, e.Message);
+        }
+    }, (outcome, reason, detail, ms) => new VersioningPlanResponse(outcome, reason, [], [], [], detail, ms));
 
     internal static VersioningRunResponse Response(ReleaseRunResult result, long durationMs)
     {

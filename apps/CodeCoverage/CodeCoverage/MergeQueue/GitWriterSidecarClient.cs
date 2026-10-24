@@ -104,6 +104,10 @@ public interface IGitWriterSidecar
     /// <summary>#153 M10: apply a merged pull request to release branches, or report the conflicts with nothing pushed.</summary>
     Task<PackageVersioning.GitWriterBackportResult> VersioningBackportAsync(PackageVersioning.GitWriterBackportRequest request, CancellationToken cancellationToken = default)
         => throw new NotSupportedException("This git writer has no backport job.");
+
+    /// <summary>#153 M11: the release plan for a pushed commit, without a build and without writing anything.</summary>
+    Task<PackageVersioning.GitWriterVersioningPlanResult> VersioningPlanAsync(PackageVersioning.GitWriterVersioningPlanRequest request, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException("This git writer has no versioning plan job.");
 }
 
 /// <summary>A typed <see cref="HttpClient"/> over the writer's contract.</summary>
@@ -145,6 +149,9 @@ public sealed class GitWriterSidecarClient(HttpClient http, IOptions<MergeQueueO
 
     public Task<PackageVersioning.GitWriterBackportResult> VersioningBackportAsync(PackageVersioning.GitWriterBackportRequest request, CancellationToken cancellationToken = default)
         => SendAsync<PackageVersioning.GitWriterBackportResult>(HttpMethod.Post, "jobs/versioning/backport", request, cancellationToken);
+
+    public Task<PackageVersioning.GitWriterVersioningPlanResult> VersioningPlanAsync(PackageVersioning.GitWriterVersioningPlanRequest request, CancellationToken cancellationToken = default)
+        => SendAsync<PackageVersioning.GitWriterVersioningPlanResult>(HttpMethod.Post, "jobs/versioning/plan", request, cancellationToken);
 
     /// <summary>
     /// The request as the writer reads it: one flat object. The queue-branch push and the publish carry their prepare's

@@ -93,6 +93,37 @@ internal sealed partial class GitWriterVersioningRunEndpoint : IPostEndpoint<Ver
         => pattern is { Length: > 0 } && pattern.Length <= Limits.MaxGlobLength && !pattern.Any(c => char.IsControl(c) || char.IsWhiteSpace(c));
 }
 
+/// <summary><c>POST /jobs/versioning/plan</c>: would a run release anything on this commit? (#153 M11, D3 trigger B)</summary>
+internal sealed partial class GitWriterVersioningPlanEndpoint : IPostEndpoint<VersioningPlanRequestWire>
+{
+    public static string Path => "/jobs/versioning/plan";
+
+    [Inject] private readonly VersioningRunService runs;
+    [Inject] private readonly IOptions<GitWriterOptions> options;
+
+    protected override async ValueTask<VersioningPlanRequestWire?> BindRequestAsync(HttpContext context)
+        => await Body.ReadAsync<VersioningPlanRequestWire>(context.Request.Body, context.Request.ContentLength, Limits.MaxManifestBytes, context.RequestAborted);
+
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure) => new(Refusal.Body(Limits.MaxManifestBytes));
+
+    public override async Task<IResult> HandleAsync(VersioningPlanRequestWire request, CancellationToken cancellationToken)
+    {
+        var refusal = new Refusal();
+        if (!refusal.Check(WireValidation.IsRepo(request.Provider, request.RepoId), "repoId", WireValidation.RepoRule)
+            || refusal.Check(WireValidation.RemoteUrl(request.CloneUrl, options.Value.AllowInsecureHttp), "cloneUrl", WireValidation.RemoteUrlRule) is not { } cloneUrl
+            || refusal.Check(WireValidation.Credential(request.Credential), "credential", WireValidation.CredentialRule) is not { } credential
+            || refusal.Check(WireValidation.Branch(request.Branch), "branch", MergeQueueWireRules.BranchRule) is not { } branch
+            || refusal.Check(WireValidation.Branch(request.DefaultBranch), "defaultBranch", MergeQueueWireRules.BranchRule) is not { } defaultBranch
+            || refusal.Check(WireValidation.ObjectId(request.Commit), "commit", WireValidation.ShaRule) is not { } commit
+            || !refusal.Check(request.BranchMajor is null or (>= 0 and <= 999_999), "branchMajor", GitWriterVersioningRunEndpoint.BranchMajorRule)
+            || refusal.Check(GitWriterVersioningRunEndpoint.Settings(request.Settings), "settings", GitWriterVersioningRunEndpoint.SettingsRule) is not { } settings)
+            return refusal.Result();
+
+        return Results.Json(await runs.PlanAsync(new VersioningPlanJob($"{request.Provider}/{request.RepoId}", cloneUrl, credential, branch, defaultBranch, commit,
+            request.BranchMajor, settings)), GitWriterHost.Json);
+    }
+}
+
 /// <summary><c>POST /jobs/versioning/backport</c>: apply a merged pull request to release branches (#153 M10, D10).</summary>
 internal sealed partial class GitWriterVersioningBackportEndpoint : IPostEndpoint<VersioningBackportRequestWire>
 {
