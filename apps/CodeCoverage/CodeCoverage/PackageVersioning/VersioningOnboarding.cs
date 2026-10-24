@@ -32,7 +32,7 @@ public static partial class VersioningOnboarding
     public const string ActionPath = "MintPlayer/MintPlayer.Spark/apps/CodeCoverage/versioning-action";
     public const string ActionTag = "versioning-v1";
     public const string PackageId = "MintPlayer.Versioning.MSBuild";
-    public const string PackageVersion = "1.0.0";
+    public const string PackageVersion = "1.0.1";
     public const string Placeholder = "0.0.0-PLACEHOLDER";
     public const string StepName = "Version the packages";
 

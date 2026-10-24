@@ -74,7 +74,9 @@ and it fetches the tags and the history it needs, so `fetch-depth: 0` is not req
 
 - **.NET:** `MintPlayer.Versioning.MSBuild` sets `Version` to the highest `<PackageId>/v*` tag reachable from
   HEAD, with no height suffix. A local `dotnet pack` therefore gets the last released version. A project with no tag
-  gets `0.0.0-PLACEHOLDER`, warning `MPV001` and `IsPackable=false`, so a placeholder never reaches a feed.
+  gets `0.0.0-PLACEHOLDER`, warning `MPV001` and `IsPackable=false`, so a placeholder never reaches a feed. A
+  multi-targeted project gets the same targets in its outer build, the one that packs (`buildMultiTargeting/`), and a
+  pack that would still write a placeholder nuspec fails with `MPV004`.
 - **npm:** the action writes the version into each publishable `package.json`, and into an already-built
   ng-packagr `dist/package.json`, and rewrites internal dependency ranges to `^<released>`. Nothing is committed.
   A package that has never been tagged keeps `0.0.0-PLACEHOLDER` and is marked `"private": true`, so it is not
@@ -179,6 +181,7 @@ Versioning is GitHub only (D16). On GitLab and Bitbucket repositories the Versio
 | Symptom | Cause |
 |---|---|
 | `MPV001: No tag '<id>/v<version>' is reachable from HEAD` | The package has no tag yet, or the checkout is shallow and has no tags (`fetch-depth: 0`, or let the action fetch before the pack). |
+| `MPV004: <id> would be packed at 0.0.0-PLACEHOLDER` | The project skipped the versioning target (`MintPlayerVersioningSkip`) but is still packable, or it uses `MintPlayer.Versioning.MSBuild` 1.0.0, whose targets a multi-targeted project's outer build never imports. Update the package. |
 | A package restarted at `X.0.0` | It had no seed tag. Push `<id>/v<last published>` on a commit before the release and re-run. |
 | The run fails: "a major never goes down" | The computed major is below the last tag's, or the version already exists (D7). Anchor the package `free`, or fix the target framework. |
 | The run answers `503 seeds` | The onboarding's seed tags could not be pushed yet. The run waits instead of releasing untagged packages. |

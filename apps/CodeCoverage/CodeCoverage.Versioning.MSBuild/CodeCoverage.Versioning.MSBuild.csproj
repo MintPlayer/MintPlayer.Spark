@@ -31,6 +31,7 @@
 	<ItemGroup>
 		<Compile Include="build\MintPlayer.Versioning.MSBuild.cs" />
 		<None Include="build\MintPlayer.Versioning.MSBuild.cs;build\MintPlayer.Versioning.MSBuild.targets" Pack="true" PackagePath="build\" />
+		<None Include="buildMultiTargeting\MintPlayer.Versioning.MSBuild.targets" Pack="true" PackagePath="buildMultiTargeting\" />
 	</ItemGroup>
 
 	<ItemGroup>

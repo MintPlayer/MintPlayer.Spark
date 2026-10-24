@@ -429,6 +429,14 @@ settings for forges without the capability. The owner wants GitLab and Bitbucket
     `0.0.0-PLACEHOLDER`. Evidence: with no tag, `dotnet pack` of `MintPlayer.Spark.Attributes` printed MPV001 and wrote
     no package; with a local tag `MintPlayer.Spark.Attributes/v11.0.0-preview.104` it wrote
     `MintPlayer.Spark.Attributes.11.0.0-preview.104.nupkg` (2026-10-24).
+  - **The package ships `buildMultiTargeting/` too, and a placeholder nuspec is an error (`MPV004`).** 1.0.0 had only
+    `build/`, which NuGet imports in a multi-targeted project's inner builds but not in the outer build that packs.
+    AspNetCore.Tools (`net10.0;net11.0`) therefore packed and pushed 14 packages at `0.0.0-PLACEHOLDER` to nuget.org
+    and GitHub Packages (master run 40132026912, 2026-10-24; unlisted on nuget.org the same day). Spark's packages
+    are single-target and import the targets from source, so Spark never saw it. Evidence: a local pack of
+    `MintPlayer.Timestamps` at Tools' `ea63582d` ran the target only in the two inner builds and wrote
+    `0.0.0-PLACEHOLDER.nupkg`; with the fixed package it wrote `11.0.1-rc.0.nupkg`, with the tag deleted it printed
+    MPV001 and wrote nothing, and with `MintPlayerVersioningSkip=true` it failed with MPV004 (2026-10-24).
   - **`@mintplayer/ng-spark` keeps `22.44.0` in source, not the placeholder.** Seven app ClientApps depend on it with
     `^22.3.0`…`^22.43.0`, and npm links a workspace package only when its version satisfies the range; a prerelease
     `0.0.0` would make npm fetch the published package instead. The action stamps the seeded package whatever its

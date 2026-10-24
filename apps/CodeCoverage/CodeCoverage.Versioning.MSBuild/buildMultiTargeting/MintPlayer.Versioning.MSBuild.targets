@@ -1,0 +1,9 @@
+<Project>
+
+	<!--
+	  NuGet imports build/ only in the per-framework inner builds of a multi-targeted project. The outer build is the one
+	  that packs, so without this import it packed at the csproj's placeholder version.
+	-->
+	<Import Project="$(MSBuildThisFileDirectory)..\build\MintPlayer.Versioning.MSBuild.targets" />
+
+</Project>
