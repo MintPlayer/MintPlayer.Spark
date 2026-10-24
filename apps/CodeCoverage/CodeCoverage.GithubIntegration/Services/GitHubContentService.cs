@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using CodeCoverage.Entities;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Webhooks.GitHub.Services;
@@ -14,7 +15,7 @@ public interface IGitHubContentService
 /// Fetches file content from GitHub at view time — source is never stored
 /// here. Private repos read through the App installation token; public repos
 /// fall back to raw.githubusercontent.com. Content at a full SHA is immutable,
-/// so cache entries can live long.
+/// so cache entries can live long; a read by branch name is never cached.
 /// </summary>
 [Register(typeof(IGitHubContentService), ServiceLifetime.Scoped)]
 public partial class GitHubContentService : IGitHubContentService
@@ -28,11 +29,20 @@ public partial class GitHubContentService : IGitHubContentService
 
     public async Task<string?> GetFileContentAsync(Repository repository, long? installationId, string sha, string path, CancellationToken cancellationToken = default)
     {
+        // Only a full SHA is immutable. Many callers pass a branch name (the default branch's coverage.yml), and a cached
+        // branch read served the onboarding's pre-merge coverage.yml to the release run right after the merge: "coverage.yml
+        // on master has no versioning section" (MintPlayer.AspNetCore.SpaServices, run 40132022816).
+        if (!FullSha().IsMatch(sha))
+            return await FetchFileContentAsync(repository, installationId, sha, path);
+
         // One GitHub fetch per uncached file however many requests ask for it at once; a miss
         // (null) is returned but not cached.
         var cacheKey = $"content/{repository.GitHubId}/{sha}/{path}";
         return await sourceCache.GetOrFetchAsync(cacheKey, () => FetchFileContentAsync(repository, installationId, sha, path), CacheDuration, cancellationToken);
     }
+
+    [GeneratedRegex(@"\A(?:[0-9a-f]{40}|[0-9a-f]{64})\z", RegexOptions.CultureInvariant)]
+    private static partial Regex FullSha();
 
     /// <summary>
     /// Runs once per key for every caller waiting on it, so it does not take any one caller's

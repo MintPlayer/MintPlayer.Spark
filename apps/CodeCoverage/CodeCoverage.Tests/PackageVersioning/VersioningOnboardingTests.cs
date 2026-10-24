@@ -112,7 +112,7 @@ public class VersioningOnboardingTests
               </PropertyGroup>
 
               <ItemGroup>
-                <PackageReference Include="MintPlayer.Versioning.MSBuild" Version="1.0.0" PrivateAssets="all" />
+                <PackageReference Include="MintPlayer.Versioning.MSBuild" Version="1.0.1" PrivateAssets="all" />
               </ItemGroup>
             </Project>
 
@@ -367,7 +367,7 @@ public class VersioningOnboardingTests
             .Add("Directory.Build.props", """
                 <Project>
                   <ItemGroup>
-                    <PackageReference Include="MintPlayer.Versioning.MSBuild" Version="1.0.0" PrivateAssets="all" />
+                    <PackageReference Include="MintPlayer.Versioning.MSBuild" Version="1.0.1" PrivateAssets="all" />
                   </ItemGroup>
                 </Project>
                 """)
@@ -414,7 +414,7 @@ public class VersioningOnboardingTests
         plan.Notes[2].Should().Contain("`.github/workflows/publish.yml` job `pack` had the repository's default token permissions");
         var files = ByPath(plan);
         files.Should().NotContainKey("src/Tools/Tools.csproj");
-        files["Directory.Build.props"].Should().Be("<Project>\n  <ItemGroup>\n    <PackageReference Include=\"MintPlayer.Versioning.MSBuild\" Version=\"1.0.0\" PrivateAssets=\"all\" />\n  </ItemGroup>\n</Project>\n");
+        files["Directory.Build.props"].Should().Be("<Project>\n  <ItemGroup>\n    <PackageReference Include=\"MintPlayer.Versioning.MSBuild\" Version=\"1.0.1\" PrivateAssets=\"all\" />\n  </ItemGroup>\n</Project>\n");
         files[".github/workflows/publish.yml"].Should().Be(
             "on: push\njobs:\n  pack:\n    runs-on: ubuntu-latest\n"
             + "    permissions:\n      packages: write\n      contents: write\n      id-token: write\n\n"

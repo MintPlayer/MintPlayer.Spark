@@ -46,4 +46,14 @@
 		</PropertyGroup>
 	</Target>
 
+	<!-- The backstop: a nuspec is never generated at the placeholder, whatever skipped the target above (a knob, or an
+	     outer multi-targeting build that did not import these targets: AspNetCore.Tools published 14 placeholder packages
+	     that way, master run 40132026912). The check sits in the body because a target's condition is read before its
+	     DependsOnTargets run. -->
+	<Target Name="MintPlayerVersioningGuard" BeforeTargets="GenerateNuspec" DependsOnTargets="MintPlayerVersioning">
+		<Error Code="MPV004"
+		       Condition="'$(IsPackable)' == 'true' And '$(PackageVersion)' == '0.0.0-PLACEHOLDER'"
+		       Text="MintPlayer.Versioning: $(PackageId) would be packed at 0.0.0-PLACEHOLDER. Its version comes from a $(PackageId)/v&lt;version&gt; tag reachable from HEAD." />
+	</Target>
+
 </Project>
