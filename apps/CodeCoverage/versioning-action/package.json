@@ -1,0 +1,35 @@
+{
+  "name": "@mintplayer/versioning-action",
+  "version": "1.0.0",
+  "private": true,
+  "description": "GitHub Action behind MintPlayer CodeCoverage package versioning: hashes the build's public API, asks the app (or the in-workflow engine) for the versions, tags the commit and writes npm versions before pack",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MintPlayer/MintPlayer.Spark",
+    "directory": "apps/CodeCoverage/versioning-action"
+  },
+  "license": "Apache-2.0",
+  "author": {
+    "name": "Pieterjan De Clippel",
+    "url": "https://github.com/MintPlayer",
+    "email": "info@mintplayer.com"
+  },
+  "scripts": {
+    "prebuild": "node ../../../tools/ncc-build-guard.mjs @vercel/ncc @actions/core",
+    "build": "ncc build src/index.ts -o dist --minify",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@actions/core": "^3.0.1",
+    "yaml": "^2.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.1",
+    "@vercel/ncc": "^0.45.0",
+    "@vitest/coverage-v8": "^5.0.3",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.3"
+  }
+}

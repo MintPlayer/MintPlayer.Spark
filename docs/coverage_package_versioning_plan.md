@@ -7,7 +7,8 @@ MintPlayer repositories (PRD D17).
 ## Status
 
 2026-10-24: grilled (Q1–Q14 → D1–D17). Spikes S1–S4, S7, S8 run; S5 and S6 answered from GitHub's documented
-behaviour and confirmed in the M16 live test (both need a real workflow run on GitHub). Milestones in progress.
+behaviour and confirmed in the M16 live test (both need a real workflow run on GitHub). M1–M7 committed; M8 next.
+Every test written so far runs once, in M16.
 
 ## Spike results
 
@@ -61,6 +62,49 @@ behaviour and confirmed in the M16 live test (both need a real workflow run on G
   <target> <c>` per target, `MergeTreeOutput.Parse`, any conflict = refuse; then `commit-tree`. No `IConflictResolver`
   applies: versions are placeholders in source, so version lines never conflict. Every target is dry-run before any
   push.
+
+## Implementation decisions
+
+M7 (versioning action):
+
+- **Manifest collection is C#, in `CodeCoverage.Versioning.Cli manifest`, not TypeScript.** It needs the static
+  graph (the same `ProjectGraphBuilder` the run uses) and the `System.Reflection.Metadata` API lister (S3). Porting
+  either to TypeScript would give two listers that could disagree on a hash. The action shells out to
+  `dotnet run --project <engine>` in both modes. Cost per S4: 18.7 s cold, 2.3 s warm.
+- **"Packed" = build output was found.** For NuGet that is `<AssemblyName>.dll` under `bin/<Configuration>/<tfm>`
+  or the artifacts layout. For npm it is `.d.ts` files under the ng-packagr `dest`, else under the package folder.
+  A package without output is sent with no hash and a note ("its API counts as changed"), never dropped
+  (`BuildManifest.cs`).
+- **An id two projects declare is excluded with a warning naming both paths**, instead of failing the graph. Before
+  that change, Spark's tree failed outright: test fixtures under `**/fixtures/**` re-declare real package ids.
+  Test: `ProjectGraphTests.An_id_two_projects_declare_is_versioned_by_neither_and_says_where`.
+- **`versioning.ignore` globs also keep matching project files out of the graph** (they used to filter changed
+  paths only). Evidence: on Spark, `manifest --config {"ignore":["**/*.md","**/fixtures/**","**/Fixtures/**"]}` went
+  from 20 packages to 43 (every `MintPlayer.Spark.*` plus `@mintplayer/ng-spark`, 43 API hashes, no notes). Test:
+  `ProjectGraphTests.Projects_matching_versioning_ignore_are_left_out_of_the_graph`. M14 sets those globs in Spark's
+  `coverage.yml`.
+- **The registry fallback (S7) also covers a lightweight tag.** `{ Annotation.ApiHash: null }` never matched a tag
+  without an annotation, which is exactly a tag made by hand. Fixed to `last.Annotation?.ApiHash is null`. Test:
+  `BuildManifestTests` (the lightweight `@acme/util/v1.0.0` asks the registry; the annotated `Acme.Core/v1.0.0` does
+  not).
+- **Local mode reads `coverage.yml` from `refs/remotes/origin/<default branch>`**, the same file the server reads
+  (D13). A release branch therefore cannot loosen its own rules.
+- **The local token is optional.** Without `token`, the checkout's own credentials push, so `contents: write` is
+  enough. With it, the token travels in `CODECOVERAGE_VERSIONING_TOKEN`, never in an argument.
+- **The npm package map comes from tracked `package.json` files** (`git ls-files`, never `node_modules`). The first
+  path per name wins. A released package with no tracked `package.json` fails the step.
+- **Internal ranges are rewritten in `dependencies`, `peerDependencies` and `optionalDependencies` only**, to
+  `^<version>`. `devDependencies` are not rewritten: they are not part of what a consumer installs.
+- **Server mode falls back to local on no OIDC token, a network error, a 10-minute timeout or a 5xx.** A 4xx is the
+  app's answer, and the action fails on it (`server.test.ts`).
+- **Conformance (D2):** `VersioningConformanceTests` seeds two identical origins and runs two rounds, first the
+  initial release and then an API change. One origin goes through the git writer's `/jobs/versioning/run`; the other
+  goes through the CLI's composition (`ReleaseRun` + `TagWriter(CliTagGit)` on the checkout). Both must produce the
+  same tag names, commits and annotations. The tagger differs by host and is not compared.
+- **`versioning-action-publish.yml` moves `versioning-v<major>`** on changes to the action and to the engine it
+  runs from source (`CodeCoverage.Versioning`, `CodeCoverage.Versioning.Cli`). Without that, local mode would run
+  a stale engine at the pinned commit. The action has its own `package-lock.json`, like `dependency-action`,
+  because compile-ts-action runs `npm ci` in its folder.
 
 ## Spikes
 

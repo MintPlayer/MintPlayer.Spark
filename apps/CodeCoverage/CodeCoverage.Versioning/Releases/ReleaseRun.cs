@@ -29,13 +29,14 @@ public static class ReleaseRun
 		if (errors.Count > 0) throw new ReleaseRunException("The release manifest is malformed: " + string.Join(" ", errors));
 		var head = request.Manifest.Commit!;
 
-		var graph = await ProjectGraphBuilder.BuildAsync(await GitTree.OpenAsync(git, head, cancellationToken), cancellationToken);
+		var graph = await ProjectGraphBuilder.BuildAsync(await GitTree.OpenAsync(git, head, cancellationToken), request.Settings.Ignore, cancellationToken);
 		var missing = request.Manifest.Packages!
 			.Where(p => p.Packed && !graph.Packages.Any(n => n.Id == p.Id && n.Kind == p.PackageKind))
 			.Select(p => p.Id)
 			.ToList();
 		if (missing.Count > 0)
-			throw new ReleaseRunException($"The build packed {string.Join(", ", missing)}, which the repository's projects do not declare as publishable packages.");
+			throw new ReleaseRunException($"The build packed {string.Join(", ", missing)}, which the repository's projects do not declare as publishable packages"
+				+ (graph.Warnings.Count > 0 ? ": " + string.Join(" ", graph.Warnings) : "."));
 
 		var plan = await ReleasePlanner.PlanAsync(new ReleaseContext
 		{

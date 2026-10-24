@@ -1,0 +1,45 @@
+name: 'MintPlayer Package Versioning'
+description: 'Versions every changed package of the commit (MintPlayer CodeCoverage, issue #153): hashes the built public API, tags the commit, and writes npm versions. Run it after build and before pack.'
+author: 'MintPlayer'
+branding:
+  icon: 'tag'
+  color: 'green'
+
+inputs:
+  mode:
+    description: 'server | local. Default: versioning.mode in coverage.yml on the default branch, else server. server falls back to local when the app is unreachable or answers 5xx.'
+    required: false
+  url:
+    description: 'The CodeCoverage app the server mode asks; also the OIDC audience.'
+    required: false
+    default: 'https://coverage.mintplayer.com'
+  configuration:
+    description: 'The build configuration whose bin output is hashed (.NET).'
+    required: false
+    default: 'Release'
+  working-directory:
+    description: 'The checkout. Default: GITHUB_WORKSPACE.'
+    required: false
+  token:
+    description: 'local mode: a token to push the tags with. Leave empty to push with the checkout''s credentials; pass one only with actions/checkout persist-credentials: false, or git sends two Authorization headers.'
+    required: false
+  registry-fallback:
+    description: 'Look up the API hash of the last released version on nuget.org / npmjs.org when its tag carries none (a repository''s first run). "false" counts such a package as changed.'
+    required: false
+    default: 'true'
+
+outputs:
+  outcome:
+    description: 'versioned | skipped (not a branch run). The step fails on anything else.'
+  mode:
+    description: 'The host that versioned: server or local.'
+  released:
+    description: 'JSON array of the package ids released by this commit; pack and publish only these.'
+  versions:
+    description: 'JSON object: package id → version, for every released package.'
+  dist-tags:
+    description: 'JSON object: npm package id → dist-tag (latest, v<major>-lts or next), for every released npm package.'
+
+runs:
+  using: 'node24'
+  main: 'dist/index.js'

@@ -23,6 +23,7 @@ on:
       - '!apps/CodeCoverage/action/**'
       # The dependency-update action likewise (dependency-action-publish.yml republishes it).
       - '!apps/CodeCoverage/dependency-action/**'
+      - '!apps/CodeCoverage/versioning-action/**'
       # CodeCoverage's transitive ProjectReference closure. Hand-maintained: if the app takes a new
       # Spark dependency, add it here or a change to that library will not trigger a deploy. Add it
       # to code-coverage-image-check.yml's filter and the Dockerfile's COPY list as well.

@@ -58,6 +58,9 @@ public sealed record ProjectNode
 	/// <summary>The npm package's <c>version</c> as written; <c>0.0.0-PLACEHOLDER</c> once onboarded.</summary>
 	public string? DeclaredVersion { get; init; }
 
+	/// <summary>The built assembly's file name without <c>.dll</c> (.NET), which the action hashes (D6). Null when it uses a property.</summary>
+	public string? AssemblyName { get; init; }
+
 	/// <summary>An Angular library's build output folder from <c>ng-package.json</c>, written by the action (D9).</summary>
 	public string? NgPackageDest { get; init; }
 

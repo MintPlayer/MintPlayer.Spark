@@ -157,6 +157,33 @@ public class ProjectGraphTests
             .Add("Lib/Lib.csproj", Library(extra: "<ItemGroup><ProjectReference Include=\"..\\..\\..\\etc\\x.csproj\" /></ItemGroup>"))))).Should().ThrowAsync<GraphException>();
 
     [Fact]
+    public async Task An_id_two_projects_declare_is_versioned_by_neither_and_says_where()
+    {
+        var graph = await Build(new InMemoryTree()
+            .Add("src/Lib/Lib.csproj", Library())
+            .Add("test/fixtures/Lib/Lib.csproj", Library())
+            .Add("src/Other/Other.csproj", Library()));
+
+        graph.Packages.Select(p => p.Id).Should().BeEquivalentTo(["Other"]);
+        graph.Warnings.Should().Contain(w => w.Contains("src/Lib/Lib.csproj") && w.Contains("test/fixtures/Lib/Lib.csproj"));
+    }
+
+    [Fact]
+    public async Task Projects_matching_versioning_ignore_are_left_out_of_the_graph()
+    {
+        var graph = await ProjectGraphBuilder.BuildAsync(new InMemoryTree()
+            .Add("src/Lib/Lib.csproj", Library())
+            .Add("test/fixtures/Lib/Lib.csproj", Library())
+            .Add("test/fixtures/web/package.json", """{ "name": "@acme/web", "version": "1.0.0" }""")
+            .Add("package.json", """{ "name": "root", "private": true, "workspaces": ["test/fixtures/*"] }"""),
+            ["**/*.md", "**/fixtures/**"]);
+
+        graph.Projects.Select(p => p.Path).Should().NotContain(p => p.StartsWith("test/", StringComparison.Ordinal));
+        graph.Packages.Select(p => p.Id).Should().BeEquivalentTo(["Lib"]);
+        graph.Warnings.Should().NotContain(w => w.Contains("more than one"));
+    }
+
+    [Fact]
     public async Task Symbolic_links_are_never_read()
     {
         var graph = await Build(new InMemoryTree()

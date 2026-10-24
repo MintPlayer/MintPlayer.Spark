@@ -106,6 +106,7 @@ public sealed partial class DotnetProjectReader(IRepositoryTree tree, List<strin
 			Id = id,
 			Publishable = IsPackable(project, Property("IsPackable"), Property("IsTestProject"), dependencies),
 			TargetFrameworks = tfms,
+			AssemblyName = Property("AssemblyName") is { } assemblyName ? (assemblyName.Contains("$(") ? null : assemblyName) : name,
 			ProjectReferences = references,
 			Dependencies = dependencies,
 			Inputs = inputs.Distinct(StringComparer.Ordinal).ToList(),

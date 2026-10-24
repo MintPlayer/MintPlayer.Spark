@@ -1,0 +1,21 @@
+{
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "name": "@mintplayer/versioning-action",
+  "projectType": "application",
+  "sourceRoot": "apps/CodeCoverage/versioning-action/src",
+  "targets": {
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "apps/CodeCoverage/versioning-action",
+        "command": "npm run test:coverage"
+      },
+      "configurations": {
+        "local": {
+          "command": "npm run test"
+        }
+      },
+      "outputs": ["{projectRoot}/coverage"]
+    }
+  }
+}

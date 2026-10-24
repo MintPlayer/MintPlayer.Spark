@@ -21,7 +21,8 @@
     "apps/SeoTester/SeoTester/ClientApp",
     "apps/MintPlayer/MintPlayer/ClientApp",
     "apps/CodeCoverage/action",
-    "apps/CodeCoverage/dependency-action"
+    "apps/CodeCoverage/dependency-action",
+    "apps/CodeCoverage/versioning-action"
   ],
   "dependencies": {
     "@angular/animations": "22.2.2",
