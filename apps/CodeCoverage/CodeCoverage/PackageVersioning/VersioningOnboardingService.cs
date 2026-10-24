@@ -43,6 +43,7 @@ public partial class VersioningOnboardingService : IVersioningOnboardingService
     [Inject] private readonly IEnumerable<IForgeMergeQueue> queues;
     [Inject] private readonly IEnumerable<IForgeDependencyUpdates> updates;
     [Inject] private readonly IGitWriterSidecar writer;
+    [Inject] private readonly IHttpClientFactory httpClients;
     [Inject] private readonly TimeProvider time;
     [Inject] private readonly ILogger<VersioningOnboardingService> logger;
 
@@ -82,7 +83,8 @@ public partial class VersioningOnboardingService : IVersioningOnboardingService
         {
             logger.LogWarning(ex, "Versioning onboarding: could not resolve {Tag}; the workflow step keeps the tag", VersioningOnboarding.ActionTag);
         }
-        var plan = await VersioningOnboarding.PlanAsync(tree, (package, ct) => pulls.HasTagWithPrefixAsync(repository, VersionTag.Prefix(package), ct), actionSha, cancellationToken);
+        var plan = await VersioningOnboarding.PlanAsync(tree, (package, ct) => pulls.HasTagWithPrefixAsync(repository, VersionTag.Prefix(package), ct), actionSha,
+            await LatestPackageVersionAsync(cancellationToken), cancellationToken);
 
         if (plan.Files.Count == 0)
         {
@@ -209,6 +211,23 @@ public partial class VersioningOnboardingService : IVersioningOnboardingService
         finally
         {
             await git.RevokeWriterAccessAsync(repository, access, CancellationToken.None);
+        }
+    }
+
+    /// <summary>The latest stable <see cref="VersioningOnboarding.PackageId"/> on nuget.org; null (the constant) when it cannot be read.</summary>
+    private async Task<string?> LatestPackageVersionAsync(CancellationToken cancellationToken)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(10));
+        try
+        {
+            var json = await httpClients.CreateClient().GetStringAsync(VersioningOnboarding.PackageIndexUrl, timeout.Token);
+            return VersioningOnboarding.LatestStable(json);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or System.Text.Json.JsonException or OperationCanceledException && !cancellationToken.IsCancellationRequested)
+        {
+            logger.LogWarning(ex, "Versioning onboarding: could not read {Url}; referencing {Version}", VersioningOnboarding.PackageIndexUrl, VersioningOnboarding.PackageVersion);
+            return null;
         }
     }
 

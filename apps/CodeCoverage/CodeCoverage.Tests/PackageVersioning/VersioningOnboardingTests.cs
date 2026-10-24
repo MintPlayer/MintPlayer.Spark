@@ -422,4 +422,23 @@ public class VersioningOnboardingTests
             + "        uses: MintPlayer/MintPlayer.Spark/apps/CodeCoverage/versioning-action@versioning-v1\n"
             + "      - run: dotnet pack -o nupkgs\n      - run: dotnet nuget push 'nupkgs/*.nupkg' --source github --skip-duplicate\n");
     }
+
+    [Fact]
+    public async Task The_reference_takes_the_version_read_from_nuget_org()
+    {
+        var tree = new InMemoryTree()
+            .Add("src/Tools/Tools.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <PackageId>MintPlayer.Tools</PackageId>\n    <Version>1.2.3</Version>\n  </PropertyGroup>\n</Project>\n");
+
+        var plan = await VersioningOnboarding.PlanAsync(tree, None, Sha, "1.4.0");
+
+        ByPath(plan)["Directory.Build.props"].Should().Contain("<PackageReference Include=\"MintPlayer.Versioning.MSBuild\" Version=\"1.4.0\" PrivateAssets=\"all\" />");
+    }
+
+    [Theory]
+    [InlineData("""{"versions":["1.0.0","1.0.1","1.10.0-preview.1","1.2.0"]}""", "1.2.0")]
+    [InlineData("""{"versions":["2.0.0-rc.1"]}""", null)]
+    [InlineData("""{"versions":[]}""", null)]
+    [InlineData("""{}""", null)]
+    public void Latest_stable_skips_prereleases_and_compares_numerically(string json, string? expected)
+        => VersioningOnboarding.LatestStable(json).Should().Be(expected);
 }
