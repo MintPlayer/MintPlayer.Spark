@@ -491,6 +491,16 @@ public sealed class OwnerPrivacyHostFixture : CoverageRavenTest, IAsyncLifetime
     public string OtherAccountId { get; } = Account.DocumentId(EForgeProvider.GitHub, 6);
     public string[] OtherRepositoryIds { get; } = [Repository.DocumentId(EForgeProvider.GitHub, 4701), Repository.DocumentId(EForgeProvider.GitHub, 4702)];
 
+    /// <summary>
+    /// The host reads what the tests write to its database, so the tests' store serializes as the host's does. Without it a
+    /// <see cref="System.Drawing.Color"/> is stored as <c>"0, 153, 0"</c>, which the host's <c>#rrggbb</c> converter cannot read.
+    /// </summary>
+    protected override void PreInitialize(IDocumentStore documentStore)
+    {
+        MintPlayer.Spark.SparkStoreConfiguration.ApplySparkConventions(documentStore);
+        base.PreInitialize(documentStore);
+    }
+
     public async Task InitializeAsync()
     {
         Store = GetDocumentStore();

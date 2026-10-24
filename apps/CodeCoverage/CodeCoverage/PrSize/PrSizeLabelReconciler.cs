@@ -1,7 +1,5 @@
 using CodeCoverage.Entities;
 using CodeCoverage.Forge;
-using Microsoft.Extensions.DependencyInjection;
-using MintPlayer.SourceGenerators.Attributes;
 
 namespace CodeCoverage.PrSize;
 
@@ -9,8 +7,7 @@ namespace CodeCoverage.PrSize;
 /// The pause between two label-definition writes (PRD D4.2): GitHub asks for at most one content-creating request a
 /// second, and an account-wide reconcile writes several labels in a row.
 /// </summary>
-[Register(typeof(PrSizeLabelPacing), ServiceLifetime.Singleton)]
-public partial class PrSizeLabelPacing
+public class PrSizeLabelPacing
 {
     /// <summary>No pause, for tests.</summary>
     public static PrSizeLabelPacing None { get; } = new(TimeSpan.Zero);

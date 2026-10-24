@@ -1,6 +1,7 @@
 # Pull-request size labels — the GitHub App labels every PR by the lines it changes
 
-**Status:** Draft, grilled 2026-10-23 (Q1–Q4 answered), spikes not started. See [coverage_pr_size_labels_plan.md](coverage_pr_size_labels_plan.md)
+**Status:** Implemented 2026-10-24 (M1–M10; where the code differs from this text, see "As built" below), tests green,
+live test with the development App and deployment pending. Grilled 2026-10-23 (Q1–Q4 answered). See [coverage_pr_size_labels_plan.md](coverage_pr_size_labels_plan.md)
 **Issue:** #527 · **App:** `apps/CodeCoverage` (production, coverage.mintplayer.com) · one pull request, which also
 moves "Set up coverage uploads" from the Repository page into a Guides page (D10)
 **Prior art:** `C:\Repos\ProjectDashboard\ProjectDashboard\Service\Recipients\PullRequestSizeLabeler.cs`. That repository
@@ -358,6 +359,24 @@ only host is the Repository extras in `spark/po-detail-page.component.ts:70`.
   - The accepted trap: a repository whose uploads break later has no link and finds the guide through the sidebar.
 - The panel component and its spec are deleted, not left as dead code.
 - A Guides unit is added at order 0 (coverage is the app's first feature), and the other units keep their ids.
+
+### As built — where the code differs from the text above (2026-10-24)
+
+Where these disagree with a decision above, this list wins. Each item names its evidence.
+
+| # | Decision as built | Evidence |
+|---|---|---|
+| B1 | **D4.3 deviates:** the prompt's answer travels from `IBeforeSave` to `IAfterSaveCommitted` through `SaveContext.Facts`, not a scoped holder. Facts belong to the one save, so two saves in one request scope cannot see each other's answer; a scoped holder would leak across them. | `PrSize/PrSizeLabelSwitch.cs`; `PrSizeLabelSwitchTests`, `PrSizeLabelSwitchEndToEndTests` (Keep / Remove / Cancel / unchanged save) |
+| B2 | The check-run calls live on `IForgeLabels` (`IForgeLabels.SizeCheckName = "PR size"`), beside the label calls, rather than on a separate check abstraction: they share the installation client and only the labeller uses them. | `CodeCoverage.Library/Forge/IForgeLabels.cs`; `GitHubForgeLabelsTests` |
+| B3 | The labeller's queue is `coverage-pr-size-labels` (`CoverageQueues.PrSizeLabels`); the forge-event lane only filters and forwards (D9). | `CodeCoverage.Library/Feedback/CoverageQueues.cs:77`; `PrSizeLabelMessages.cs` |
+| B4 | `PullRequestUpdated`'s `Additions`, `Deletions` and `ChangedFiles` are nullable: a forge that cannot state them leaves them null, and the labeller lists the files instead of trusting a 0. With totals, a raw size below the smallest row's ceiling settles the label without listing files (ignoring only lowers a size, S2). | `CodeCoverage.Library/Forge/ForgeEvents.cs`; `GitHubEventsRecipientTests` |
+| B5 | An empty scale means the defaults (`PrSizeDefaults`), so a cleared Size scale never stops labelling silently. | `PrSize/PrSizeScale.cs`; `PrSizeScaleTests` |
+| B6 | Remove on the **account** reaches only the repositories that inherit; a repository set to `Label pull requests` keeps labelling and keeps its labels. | `PrSize/PrSizeLabelSwitch.cs`; `PrSizeLabelSwitchTests` |
+| B7 | FR2 is a read-only `PrSizeLabelsEffective` attribute filled on load (the `MergeQueueInCoverageYml` precedent): "On/Off, as the repository/account decides". | `Actions/RepositoryActions.cs` `OnLoadAsync`; `OwnerPrivacyEndToEndTests.A_manager_sees_the_size_labellers_effective_value_and_its_source` |
+| B8 | D8 (Bitbucket) is detected by whether an `IForgeLabels` is registered for the provider, never by a forge list: the settings load read-only, and the Account shows `PrSizeLabelsUnavailable`. GitLab gets the same treatment until it has an implementation (S4). | `Actions/AccountActions.cs`, `Actions/RepositoryActions.cs`; `RegistrationInventoryTests` |
+| B9 | **Accepted edge:** a disable answered Keep, saved together with a scale change, still reconciles the label definitions of repositories that keep labelling. Nothing is removed; only definitions are rewritten. | owner-visible only as renamed/recoloured labels; not worth a second prompt |
+| B10 | D10: the Repository page links to `/coverage/setup` while it has no `LatestCoverageAtUtc`; the Account and Repository pages link to `/pr-size-labels/setup` below their attributes when the caller can read the settings. The coverage guide's snippets take `location.origin`, as the panel did. | `spark/po-detail-page.component.ts`; `po-detail-page.component.spec.ts`; `coverage-setup.snippets.spec.ts` (golden from the deleted panel) |
+| B11 | The Guides units are numbered 1–5 rather than inserting an order 0: coverage 1, merge queue 2, dependency updates 3, PR size labels 4, connect agent 5. Every existing unit kept its id. | `App_Data/programUnits.json` |
 
 ## Requirements
 

@@ -7,7 +7,15 @@
 
 Grill done (2026-10-23): Q1–Q4 are answered and folded into the PRD (D1, D4.3, D5, D7, D10). **Spikes S1–S5 are done
 (2026-10-24)**, and each result is written into the PRD with its evidence. Two of them change the plan: GitLab is out
-of scope (S4, so no M6b), and both label writers share a dedicated serial queue (S5, PRD D9). **M1 is next.**
+of scope (S4, so no M6b), and both label writers share a dedicated serial queue (S5, PRD D9).
+
+**2026-10-24: M1–M10 implemented** on `feat/issue527-pr-size-labels`, one commit per milestone (M2–M5 together). What
+landed differs from the PRD's text in eleven places, each recorded with its evidence in the PRD's "As built" table
+(B1–B11); the notable one is B1, where the disable answer travels in `SaveContext.Facts` instead of a scoped holder. The
+feature doc is [`code-coverage/pr-size-labels.md`](code-coverage/pr-size-labels.md).
+
+M10's test run: see the commit message of the M10 commit for the classes and their result. The live test against the
+CoverageDevelopment App (below) has not been run yet; it needs the owner's scratch repository and their sudo prompt.
 
 Tests run **once, at the end** (M10): the CodeCoverage.Tests classes the change touches, and the ClientApp specs. No
 interim gate runs.

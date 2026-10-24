@@ -3368,15 +3368,15 @@
       "fr": "Configuration de la file de fusion",
       "nl": "Merge queue instellen"
     },
-    "prSizeLabelsSetup": {
-      "en": "PR size labels",
-      "fr": "Étiquettes de taille de PR",
-      "nl": "PR-groottelabels"
-    },
     "mirrors": {
       "en": "Mirrors",
       "fr": "Miroirs",
       "nl": "Mirrors"
+    },
+    "prSizeLabelsSetup": {
+      "en": "PR size labels",
+      "fr": "Étiquettes de taille de PR",
+      "nl": "PR-groottelabels"
     }
   },
   "queries": {

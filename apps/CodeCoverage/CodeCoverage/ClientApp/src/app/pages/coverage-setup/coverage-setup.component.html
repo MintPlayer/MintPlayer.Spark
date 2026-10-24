@@ -79,7 +79,7 @@
             <p class="mb-0" data-testid="cov-setup-private">
               A public repository uploads without a secret: GitHub vouches for the workflow run through OIDC. A private
               repository needs an upload token. Create one on the account's page, store it as a repository secret, and
-              replace the <code>use-oidc: true</code> line with <code>token: $&#123;&#123; secrets.&lt;NAME&gt; &#125;&#125;</code>.
+              replace the <code>use-oidc: true</code> line with <code ngNonBindable>token: ${{ secrets.&lt;NAME&gt; }}</code>.
             </p>
           }
           @case ('results') {

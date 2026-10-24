@@ -39,7 +39,7 @@ public class PrSizeLabelSwitchEndToEndTests(OwnerPrivacyHostFixture host) : ICla
             options.Should().Contain(PrSizeLabelSwitch.KeepOption);
             retry.GetRawText().Should().Contain("the 1 repository that inherit");
             (await LoadAccountAsync()).PrSizeLabels.Should().BeTrue();
-            (await RemovalsAsync()).Should().Be(0);
+            (await MessagesAsync<RemovePrSizeLabelsMessage>(0)).Should().Be(0);
         }
         finally { await RestoreAsync(); }
     }
@@ -60,7 +60,7 @@ public class PrSizeLabelSwitchEndToEndTests(OwnerPrivacyHostFixture host) : ICla
 
             if (stored) status.Should().Be(HttpStatusCode.OK, body);
             (await LoadAccountAsync()).PrSizeLabels.Should().Be(!stored);
-            (await RemovalsAsync()).Should().Be(removals);
+            (await MessagesAsync<RemovePrSizeLabelsMessage>(removals)).Should().Be(removals);
         }
         finally { await RestoreAsync(); }
     }
@@ -74,14 +74,15 @@ public class PrSizeLabelSwitchEndToEndTests(OwnerPrivacyHostFixture host) : ICla
             var (status, body) = await SaveAsync(po =>
             {
                 var scale = po["attributes"]!.AsArray().Single(a => a!["name"]!.GetValue<string>() == "PrSizeLabelScale")!.AsObject();
-                var rows = scale["value"]!.AsArray();
+                // An array AsDetail carries its rows as nested persistent objects in "objects"; its "value" is null.
+                var rows = scale["objects"]!.AsArray();
                 var m = rows.Single(r => Field(r!, "Name") == "size/M")!;
                 SetField(m, "Name", "size/medium");
                 scale["isValueChanged"] = true;
             }, retry: null);
 
             status.Should().Be(HttpStatusCode.OK, body);
-            (await MessagesAsync<ReconcilePrSizeLabelsMessage>()).Should().Be(1);
+            (await MessagesAsync<ReconcilePrSizeLabelsMessage>(1)).Should().Be(1);
         }
         finally { await RestoreAsync(); }
     }
@@ -122,15 +123,24 @@ public class PrSizeLabelSwitchEndToEndTests(OwnerPrivacyHostFixture host) : ICla
         return await session.LoadAsync<Account>(host.AccountId);
     }
 
-    private Task<int> RemovalsAsync() => MessagesAsync<RemovePrSizeLabelsMessage>();
-
-    private async Task<int> MessagesAsync<T>()
+    /// <summary>
+    /// The lane's messages of type <typeparamref name="T"/> for the public repository. The fan-out runs in the after-commit
+    /// hook, which Spark delivers through its outbox after the response, so this waits up to 10 s for
+    /// <paramref name="expected"/> of them. The bound is a failure bound: the count is returned as soon as it is reached.
+    /// </summary>
+    private async Task<int> MessagesAsync<T>(int expected)
     {
-        using var session = host.Store.OpenAsyncSession();
-        var messages = await session.Query<SparkMessage>().Customize(c => c.WaitForNonStaleResults())
-            .Where(m => m.QueueName == CoverageQueues.PrSizeLabels).ToListAsync();
-        return messages.Count(m => m.MessageType.Contains(typeof(T).Name, StringComparison.Ordinal)
-            && m.PayloadJson.Contains(host.PublicRepositoryId, StringComparison.Ordinal));
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (true)
+        {
+            using var session = host.Store.OpenAsyncSession();
+            var messages = await session.Query<SparkMessage>().Customize(c => c.WaitForNonStaleResults())
+                .Where(m => m.QueueName == CoverageQueues.PrSizeLabels).ToListAsync();
+            var count = messages.Count(m => m.MessageType.Contains(typeof(T).Name, StringComparison.Ordinal)
+                && m.PayloadJson.Contains(host.PublicRepositoryId, StringComparison.Ordinal));
+            if (count >= expected || DateTime.UtcNow > deadline) return count;
+            await Task.Delay(100);
+        }
     }
 
     private static JsonElement Retry(string body)
