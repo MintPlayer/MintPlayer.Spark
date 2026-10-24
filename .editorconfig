@@ -4,3 +4,6 @@ end_of_line = lf
 
 [tests/MintPlayer.Spark.Tests/Layering/Golden/*.txt]
 end_of_line = lf
+
+[**/RouteSnapshots/*.txt]
+end_of_line = lf

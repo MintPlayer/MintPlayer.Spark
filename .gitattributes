@@ -86,9 +86,10 @@ apps/CodeCoverage/dependency-action/dist/index.js text eol=lf linguist-generated
 
 ###############################################################################
 # Files the tools regenerate: the model synchronize (App_Data) and SPARK_UPDATE_GOLDEN
-# (the layering goldens). eol=lf keeps a regenerated file from showing up as
+# (the layering goldens), SPARK_UPDATE_ROUTE_SNAPSHOT (the route tables). eol=lf keeps a regenerated file from showing up as
 # modified when only its line endings differ from the checkout.
 ###############################################################################
 apps/*/*/App_Data/**/*.json text eol=lf
 apps/*/*/App_Data/**/*.txt text eol=lf
 tests/MintPlayer.Spark.Tests/Layering/Golden/*.txt text eol=lf
+**/RouteSnapshots/*.txt text eol=lf
