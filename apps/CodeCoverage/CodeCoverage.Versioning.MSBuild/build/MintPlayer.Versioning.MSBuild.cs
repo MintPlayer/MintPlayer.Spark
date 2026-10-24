@@ -20,7 +20,8 @@ namespace MintPlayer.Versioning.MSBuild
 	/// <summary>
 	/// Sets a package's version from the highest <c>&lt;PackageId&gt;/v&lt;version&gt;</c> tag reachable from HEAD: the
 	/// version the versioning engine last released (or seeded) for it, exactly, with no height suffix. A package that has
-	/// no tag gets <see cref="TagVersion.Placeholder"/> and a warning.
+	/// no tag gets a warning and <see cref="TagVersion.Untagged"/> in a build that cannot publish (see
+	/// <see cref="TagVersion.PacksUntagged"/>), else <see cref="TagVersion.Placeholder"/>, which is never packed.
 	/// </summary>
 	// Qualified: a project compiling this file with implicit usings also has System.Threading.Tasks.Task in scope.
 	public class ResolveTagVersion : Microsoft.Build.Utilities.Task
@@ -32,6 +33,12 @@ namespace MintPlayer.Versioning.MSBuild
 		/// <summary>Where git runs: the project's directory, so a project inside a submodule reads that repository.</summary>
 		[Required]
 		public string WorkingDirectory { get; set; }
+
+		/// <summary><c>$(GITHUB_ACTIONS)</c>: whether this build runs on GitHub Actions.</summary>
+		public string GitHubActions { get; set; }
+
+		/// <summary><c>$(GITHUB_EVENT_NAME)</c>: the event that started the workflow run.</summary>
+		public string GitHubEventName { get; set; }
 
 		[Output]
 		public string Version { get; set; }
@@ -68,9 +75,21 @@ namespace MintPlayer.Versioning.MSBuild
 			var version = TagVersion.Highest(output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries), TagPrefix);
 			if (version == null)
 			{
-				Log.LogWarning(null, "MPV001", null, null, 0, 0, 0, 0,
-					"No tag '{0}<version>' is reachable from HEAD, so the version is {1} and the project is not packed. A shallow clone has no tags: check out with fetch-depth: 0.",
-					TagPrefix, TagVersion.Placeholder);
+				// A repository's onboarding pull request, or a package not released yet, has no tag. Its pull-request and
+				// local builds still pack, at a version no engine tag can hold; a build that may publish does not.
+				if (TagVersion.PacksUntagged(GitHubActions, GitHubEventName))
+				{
+					Version = TagVersion.Untagged;
+					Log.LogWarning(null, "MPV001", null, null, 0, 0, 0, 0,
+						"No tag '{0}<version>' is reachable from HEAD, so this pull-request or local build packs the project at {1}. A shallow clone has no tags: check out with fetch-depth: 0.",
+						TagPrefix, TagVersion.Untagged);
+				}
+				else
+				{
+					Log.LogWarning(null, "MPV001", null, null, 0, 0, 0, 0,
+						"No tag '{0}<version>' is reachable from HEAD, so the version is {1} and the project is not packed. A shallow clone has no tags: check out with fetch-depth: 0.",
+						TagPrefix, TagVersion.Placeholder);
+				}
 				return true;
 			}
 			Version = version;
@@ -105,6 +124,13 @@ namespace MintPlayer.Versioning.MSBuild
 	{
 		public const string Placeholder = "0.0.0-PLACEHOLDER";
 
+		/// <summary>The version of an untagged package in a build that cannot publish. Its label is outside
+		/// <see cref="Grammar"/>, so the engine never reads it as a release.</summary>
+		public const string Untagged = "0.0.0-untagged";
+
+		// The GitHub Actions events whose runs check a change before it lands. Their builds never publish.
+		private static readonly string[] CheckEvents = { "pull_request", "pull_request_target", "merge_group" };
+
 		private static readonly Regex Grammar = new Regex(
 			@"^(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})(?:-(alpha|beta|next|preview|rc)\.(0|[1-9][0-9]{0,8}))?\z",
 			RegexOptions.CultureInvariant);
@@ -117,6 +143,16 @@ namespace MintPlayer.Versioning.MSBuild
 		private static readonly string[] Labels = { "alpha", "beta", "next", "preview", "rc" };
 
 		public static bool IsValidPrefix(string prefix) => prefix != null && Prefix.IsMatch(prefix);
+
+		/// <summary>
+		/// Whether an untagged package packs at <see cref="Untagged"/>: in a local build, and in a GitHub Actions run of a
+		/// pull request or merge queue. Any other CI run (a push, a schedule, a dispatch) is where packages are published,
+		/// and there an untagged package keeps the placeholder and is not packed (the 14 placeholder packages of master
+		/// run 40132026912 must not come back under another name).
+		/// </summary>
+		public static bool PacksUntagged(string gitHubActions, string gitHubEventName) =>
+			!string.Equals(gitHubActions, "true", StringComparison.OrdinalIgnoreCase)
+			|| Array.IndexOf(CheckEvents, gitHubEventName) >= 0;
 
 		/// <summary>
 		/// The highest version among the tag names that start with <paramref name="prefix"/>. Names whose version is not

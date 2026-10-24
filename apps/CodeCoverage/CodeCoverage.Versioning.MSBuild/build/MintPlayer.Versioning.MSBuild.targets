@@ -4,7 +4,9 @@
 	  MintPlayer.Versioning.MSBuild (docs/coverage_package_versioning_PRD.md D9): a packable project's Version is the
 	  highest <PackageId>/v<version> tag reachable from HEAD, which the versioning engine wrote when it released (or
 	  seeded) the package. An unchanged package therefore packs at the version it already has, and
-	  the push's skip-duplicate option skips it.
+	  the push's skip-duplicate option skips it. A package with no tag yet (a repository's onboarding pull request, a
+	  package not released yet) packs at 0.0.0-untagged in a pull-request, merge-queue or local build, and is not packed
+	  in any other CI build.
 
 	  Knobs:
 	    MintPlayerVersioningSkip=true        leave this project's version alone
@@ -33,14 +35,16 @@
 		<PropertyGroup>
 			<MintPlayerVersioningTagPrefix Condition="'$(MintPlayerVersioningTagPrefix)' == ''">$(PackageId)/v</MintPlayerVersioningTagPrefix>
 		</PropertyGroup>
-		<ResolveTagVersion TagPrefix="$(MintPlayerVersioningTagPrefix)" WorkingDirectory="$(MSBuildProjectDirectory)">
+		<ResolveTagVersion TagPrefix="$(MintPlayerVersioningTagPrefix)" WorkingDirectory="$(MSBuildProjectDirectory)"
+		                   GitHubActions="$(GITHUB_ACTIONS)" GitHubEventName="$(GITHUB_EVENT_NAME)">
 			<Output TaskParameter="Version" PropertyName="MintPlayerVersion" />
 		</ResolveTagVersion>
 		<!-- AssemblyVersion, FileVersion and InformationalVersion follow from Version in the SDK's GetAssemblyVersion. -->
 		<PropertyGroup>
 			<Version>$(MintPlayerVersion)</Version>
 			<PackageVersion>$(MintPlayerVersion)</PackageVersion>
-			<!-- A package the engine never tagged is not packed, so a placeholder can never reach a feed. -->
+			<!-- A package the engine never tagged is not packed where packages are published, so a placeholder can never
+			     reach a feed. A pull-request or local build packs it at 0.0.0-untagged instead (the task decides). -->
 			<IsPackable Condition="'$(MintPlayerVersion)' == '0.0.0-PLACEHOLDER'">false</IsPackable>
 			<_MintPlayerVersioningDone>true</_MintPlayerVersioningDone>
 		</PropertyGroup>

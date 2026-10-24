@@ -75,7 +75,10 @@ and it fetches the tags and the history it needs, so `fetch-depth: 0` is not req
 
 - **.NET:** `MintPlayer.Versioning.MSBuild` sets `Version` to the highest `<PackageId>/v*` tag reachable from
   HEAD, with no height suffix. A local `dotnet pack` therefore gets the last released version. A project with no tag
-  gets `0.0.0-PLACEHOLDER`, warning `MPV001` and `IsPackable=false`, so a placeholder never reaches a feed. A
+  yet (on the onboarding pull request, or a package not released yet) gets warning `MPV001`. In a local build, or
+  in a GitHub Actions run of a pull request or merge queue, it packs at `0.0.0-untagged`. In any other CI run it
+  gets `0.0.0-PLACEHOLDER` and `IsPackable=false`, so an untagged package never reaches a feed. Keep package pushes
+  out of pull-request workflows. A
   multi-targeted project gets the same targets in its outer build, the one that packs (`buildMultiTargeting/`), and a
   pack that would still write a placeholder nuspec fails with `MPV004`.
 - **npm:** the action writes the version into each publishable `package.json`, and into an already-built

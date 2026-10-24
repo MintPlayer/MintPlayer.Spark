@@ -284,8 +284,20 @@ their code in our container. So:
   `dotnet nuget push --skip-duplicate` skips it, so the consumer's workflow can pack and push *everything*.
   - The prefix is resolved **inside the target** (S1: as a plain property it read an empty `PackageId` for projects
     relying on the default and gave `/v`). `MintPlayer.Mapper/v` never matches `MintPlayer.Mapper.Abstractions/v…`.
-  - A project with no tag gets `0.0.0-PLACEHOLDER`, a warning and `IsPackable=false`, so a placeholder can never reach
-    a feed.
+  - ~~A project with no tag gets `0.0.0-PLACEHOLDER`, a warning and `IsPackable=false`, so a placeholder can never
+    reach a feed.~~ *Superseded 2026-10-25 by the next bullet; it still holds for a build that may publish.*
+  - **A project with no tag packs at `0.0.0-untagged` in a build that cannot publish** (owner decision 2026-10-25):
+    locally (`GITHUB_ACTIONS` unset) and in a GitHub Actions run of `pull_request`, `pull_request_target` or
+    `merge_group`. Any other CI run (push, schedule, dispatch, release) keeps `0.0.0-PLACEHOLDER` and
+    `IsPackable=false`, and `MPV004` stays the backstop. Both cases warn `MPV001`. `untagged` is outside the tag
+    grammar, so the engine never reads the version as a release. The owner rejected pushing the seed tags when the
+    onboarding PR opens ("not sure why we would create a tag for a pull-request that's not even merged yet … the code
+    should just notice that no tag exists, and choose the correct defaults"). Evidence: Dotnet.Tools' onboarding PR
+    #202 had no tag anywhere, so nothing packed. Its pack-and-consume test failed with NU1101 (run 40137704671), and
+    after a per-repo workaround its `Assert-PackageVersions.ps1` failed with "No .nupkg found" (run 40138296322).
+    A package added to an onboarded repository is untagged until its first release and hit the same failure. Tests:
+    `TagVersionTests.Packs_an_untagged_package_only_where_nothing_is_published`, `The_untagged_version_is_never_read_as_a_tag`,
+    and the git-backed task test now runs the push and the pull-request case.
   - Knobs: `MintPlayerVersioningSkip`, `MintPlayerVersioningTagPrefix`, `MintPlayerVersioningTaskSource` (Spark imports
     the targets from source, M14).
   - The task is an inline `RoslynCodeTaskFactory` class (`build/MintPlayer.Versioning.MSBuild.cs`), so the package
