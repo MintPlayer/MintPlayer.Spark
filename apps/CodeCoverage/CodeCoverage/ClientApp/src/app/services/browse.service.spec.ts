@@ -200,6 +200,16 @@ describe('BrowseService', () => {
     expect(await result).toEqual({ badgeToken: 't0k' });
   });
 
+  it('reads release runs from the browse API and sends a re-run to the repository endpoint', async () => {
+    const runs = service.getReleaseRuns(provider, owner, name, [41, 40]);
+    expect(answer('GET', `${repoBase}/release-runs`, []).params.get('ids')).toBe('41,40');
+    expect(await runs).toEqual([]);
+
+    const rerun = service.rerunRelease(provider, owner, name, 41);
+    expect(answer('POST', `/api/repos/${P}/${O}/${N}/release-runs/41/rerun`, {}).body).toEqual({});
+    await rerun;
+  });
+
   it('reads the merge queue from the browse API and sends the button to the repository endpoint', async () => {
     const view = service.getMergeQueue(provider, owner, name);
     answer('GET', `${repoBase}/merge-queue`, { supported: false, lanes: [], config: null, viewer: {} });

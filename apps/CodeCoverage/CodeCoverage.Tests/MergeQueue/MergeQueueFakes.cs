@@ -115,6 +115,24 @@ internal sealed class FakeForgeMergeQueue : IForgeMergeQueue
     public Task<ForgeWorkflowRun?> GetWorkflowRunAsync(Repository repository, long runId, CancellationToken cancellationToken = default)
         => Task.FromResult(Runs.TryGetValue(runId, out var run) ? run : null);
 
+    /// <summary>Runs with a newer unfinished run of their workflow (#544 D5).</summary>
+    public HashSet<long> NewerUnfinished { get; } = [];
+    /// <summary>Every run whose failed jobs were re-run, in order.</summary>
+    public List<long> RerunFailedJobs { get; } = [];
+    public bool RerunFailedJobsResult { get; set; } = true;
+    /// <summary>When set, the next re-run of failed jobs throws it (a missing permission, a 5xx).</summary>
+    public Exception? RerunFailedJobsThrows { get; set; }
+
+    public Task<bool> HasNewerUnfinishedRunAsync(Repository repository, ForgeWorkflowRun run, CancellationToken cancellationToken = default)
+        => Task.FromResult(NewerUnfinished.Contains(run.Id));
+
+    public Task<bool> RerunFailedJobsAsync(Repository repository, long runId, CancellationToken cancellationToken = default)
+    {
+        if (RerunFailedJobsThrows is { } thrown) throw thrown;
+        RerunFailedJobs.Add(runId);
+        return Task.FromResult(RerunFailedJobsResult);
+    }
+
     /// <summary>Every run the saga asked to cancel, in order.</summary>
     public List<long> CancelledRuns { get; } = [];
 

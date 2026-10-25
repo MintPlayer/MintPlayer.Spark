@@ -107,7 +107,7 @@ internal sealed class RepoBuilder
 
     private readonly List<(string Name, string[] Parents, long Minutes)> commits = [];
     private readonly List<(string Ref, string Commit)> refs = [];
-    private readonly List<(string Name, string Commit)> annotatedTags = [];
+    private readonly List<(string Name, string Commit, string Message)> annotatedTags = [];
 
     public RepoBuilder Commit(string name, long minutes, params string[] parents)
     {
@@ -121,10 +121,11 @@ internal sealed class RepoBuilder
         return this;
     }
 
-    public RepoBuilder Tag(string name, string commit, bool annotated = false)
+    /// <param name="message">An annotated tag's message; its name when null.</param>
+    public RepoBuilder Tag(string name, string commit, bool annotated = false, string? message = null)
     {
         if (annotated)
-            annotatedTags.Add((name, commit));
+            annotatedTags.Add((name, commit, message ?? name));
         else
             refs.Add(($"refs/tags/{name}", commit));
         return this;
@@ -157,10 +158,10 @@ internal sealed class RepoBuilder
                 stream.Append(i == 0 ? "from " : "merge ").Append(Ref(parents[i], marks)).Append('\n');
             stream.Append('\n');
         }
-        foreach (var (name, commit) in annotatedTags)
+        foreach (var (name, commit, message) in annotatedTags)
         {
             stream.Append($"tag {name}\nfrom {Ref(commit, marks)}\ntagger {Identity} {Epoch} +0000\n");
-            AppendData(stream, name);
+            AppendData(stream, message);
         }
         foreach (var (reference, commit) in refs)
             stream.Append($"reset {reference}\nfrom {Ref(commit, marks)}\n\n");

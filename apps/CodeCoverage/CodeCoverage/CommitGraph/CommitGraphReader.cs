@@ -73,6 +73,7 @@ public sealed record CommitGraphRef(string Name, string Kind, string Sha);
 /// <param name="Refs">Names of the refs pointing at it.</param>
 /// <param name="Coverage">Null when no upload ever reached this commit.</param>
 /// <param name="AvatarKey">For <c>GET /api/browse/avatar/{key}</c>; null means initials.</param>
+/// <param name="ReleaseRun">The workflow run a version tag on the commit names (#544 D5); null without one.</param>
 public sealed record CommitGraphRow(
     string Sha,
     string[] Parents,
@@ -85,7 +86,8 @@ public sealed record CommitGraphRow(
     int[][] Down,
     string[] Refs,
     CommitGraphCoverage? Coverage,
-    string? AvatarKey);
+    string? AvatarKey,
+    long? ReleaseRun = null);
 
 /// <summary>The coverage overlay of one commit.</summary>
 /// <param name="LinesCovered">Null while the commit has a record but no assembled report (pending).</param>
@@ -206,6 +208,11 @@ public partial class CommitGraphReader : ICommitGraphReader
         var refsBySha = page.Refs
             .GroupBy(r => r.Sha, StringComparer.Ordinal)
             .ToDictionary(g => g.Key, g => g.Select(r => r.Name).ToArray(), StringComparer.Ordinal);
+        // #544 D5: the latest run a version tag on the commit names, when it is a run of this repository.
+        var runsBySha = page.Refs
+            .Where(r => r.Kind == "tag" && ReleaseRunId(repository, r.Run) is not null)
+            .GroupBy(r => r.Sha, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.Max(r => ReleaseRunId(repository, r.Run)!.Value), StringComparer.Ordinal);
 
         var rows = page.Rows.Select(r => new CommitGraphRow(
             r.Sha,
@@ -219,11 +226,25 @@ public partial class CommitGraphReader : ICommitGraphReader
             r.Down ?? [],
             refsBySha.GetValueOrDefault(r.Sha) ?? [],
             Overlay(commits.GetValueOrDefault(ids[r.Sha])),
-            r.AuthorEmail is { Length: > 0 } email ? avatarKeys.GetValueOrDefault(email) : null)).ToList();
+            r.AuthorEmail is { Length: > 0 } email ? avatarKeys.GetValueOrDefault(email) : null,
+            runsBySha.TryGetValue(r.Sha, out var run) ? run : null)).ToList();
 
         return new CommitGraphResponse(
             "ready", null, page.SnapshotId, page.TotalRows, page.From, page.LaneCount, page.Top ?? [],
             [.. page.Refs.Select(r => new CommitGraphRef(r.Name, r.Kind, r.Sha))], rows);
+    }
+
+    /// <summary>
+    /// The id of the run a tag's <c>run:</c> line names, when it is a run of <paramref name="repository"/> on GitHub. Anyone
+    /// who can push a tag can write the line, so a run of another repository is ignored rather than looked up.
+    /// </summary>
+    internal static long? ReleaseRunId(Repository repository, string? run)
+    {
+        if (repository.Provider != EForgeProvider.GitHub || !Versioning.Validation.Identifiers.IsRunUrl(run)) return null;
+        var prefix = $"https://github.com/{repository.FullName}/actions/runs/";
+        return run!.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+            && long.TryParse(run.AsSpan(prefix.Length), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var id) && id > 0
+            ? id : null;
     }
 
     private static CommitGraphCoverage? Overlay(Commit? commit)

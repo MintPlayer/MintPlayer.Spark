@@ -60,4 +60,42 @@ public class VersionTagTests
         var act = () => new TagAnnotation("sha256:nope", null).Format(VersionTag.For("pkg", PackageVersion.Parse("1.0.0")));
         act.Should().Throw<VersioningException>();
     }
+
+    private const string Run = "https://github.com/MintPlayer/MintPlayer.Spark/actions/runs/18234567890";
+
+    [Fact]
+    public void The_annotation_names_the_run_that_wrote_it_and_reads_it_back()
+    {
+        var tag = VersionTag.For("MintPlayer.Mapper", PackageVersion.Parse("13.2.0"));
+        var message = new TagAnnotation(Hash, "1.4.0", Run).Format(tag);
+
+        message.Should().Be($"MintPlayer.Mapper 13.2.0\n\napi-hash: {Hash}\nengine: CodeCoverage.Versioning 1.4.0\nrun: {Run}\n");
+        TagAnnotation.Parse(message).Should().Be(new TagAnnotation(Hash, "1.4.0", Run));
+        // A seed tag (or one from before #544) has no run.
+        TagAnnotation.Parse($"MintPlayer.Mapper 13.2.0\n\napi-hash: {Hash}\n").Run.Should().BeNull();
+    }
+
+    [Fact]
+    public void The_run_url_comes_from_the_runner_environment()
+    {
+        TagAnnotation.RunUrl("https://github.com/", "MintPlayer/MintPlayer.Spark", "18234567890").Should().Be(Run);
+        TagAnnotation.RunUrl("https://github.com", "MintPlayer/MintPlayer.Spark", null).Should().BeNull();
+        TagAnnotation.RunUrl(null, "MintPlayer/MintPlayer.Spark", "1").Should().BeNull();
+        TagAnnotation.RunUrl("https://github.com", "MintPlayer/../evil", "1").Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData("run: http://github.com/a/b/actions/runs/1")]
+    [InlineData("run: https://github.com/a/b/actions/runs/1x")]
+    [InlineData("run: https://github.com/a/b/actions/runs/1\" onclick=\"x")]
+    [InlineData("run: javascript:alert(1)")]
+    public void A_malformed_run_reads_as_none(string message)
+        => TagAnnotation.Parse(message).Run.Should().BeNull();
+
+    [Fact]
+    public void A_malformed_run_is_never_written()
+    {
+        var act = () => new TagAnnotation(null, null, "javascript:alert(1)").Format(VersionTag.For("pkg", PackageVersion.Parse("1.0.0")));
+        act.Should().Throw<VersioningException>();
+    }
 }

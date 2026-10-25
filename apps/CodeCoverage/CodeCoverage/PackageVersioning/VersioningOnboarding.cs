@@ -37,6 +37,10 @@ public static partial class VersioningOnboarding
     public const string PackageIndexUrl = "https://api.nuget.org/v3-flatcontainer/mintplayer.versioning.msbuild/index.json";
     public const string Placeholder = "0.0.0-PLACEHOLDER";
     public const string StepName = "Version the packages";
+    /// <summary>The name setup-dotnet looks for in the repository root, case-insensitively.</summary>
+    private const string NuGetConfigName = "nuget.config";
+    private const string GitHubFeedHost = "nuget.pkg.github.com";
+    private const string NuGetOrgSource = "https://api.nuget.org/v3/index.json";
 
     private const long MaxFileBytes = Limits.MaxManifestBytes;
     private const int MaxMSBuildFiles = 500;
@@ -65,13 +69,14 @@ public static partial class VersioningOnboarding
     /// <param name="taggedIds">Packages that already have a version tag: they keep it and get no seed.</param>
     /// <param name="actionSha">The commit <see cref="ActionTag"/> resolves to, pinned in the step; null keeps the tag.</param>
     /// <param name="packageVersion">The <see cref="PackageId"/> version to reference (<see cref="LatestStable"/>); null takes <see cref="PackageVersion"/>.</param>
+    /// <param name="owner">The repository's owner, which <c>${{ github.repository_owner }}</c> in a workflow resolves to.</param>
     public static Task<VersioningOnboardingPlan> PlanAsync(IRepositoryTree tree, IReadOnlySet<string> taggedIds, string? actionSha,
-        string? packageVersion = null, CancellationToken cancellationToken = default)
-        => PlanAsync(tree, (id, _) => Task.FromResult(taggedIds.Contains(id)), actionSha, packageVersion, cancellationToken);
+        string? packageVersion = null, string? owner = null, CancellationToken cancellationToken = default)
+        => PlanAsync(tree, (id, _) => Task.FromResult(taggedIds.Contains(id)), actionSha, packageVersion, owner, cancellationToken);
 
     /// <param name="isTagged">Whether a package already has a version tag, asked once per package the graph finds.</param>
     public static async Task<VersioningOnboardingPlan> PlanAsync(IRepositoryTree tree, Func<string, CancellationToken, Task<bool>> isTagged, string? actionSha,
-        string? packageVersion = null, CancellationToken cancellationToken = default)
+        string? packageVersion = null, string? owner = null, CancellationToken cancellationToken = default)
     {
         var files = new Files(tree, cancellationToken);
         var notes = new List<string>();
@@ -94,6 +99,7 @@ public static partial class VersioningOnboarding
                 if (await files.ReadAsync(path) is { } text) files.Write(path, ReplaceVersions(path, text, notes));
             await ReferenceAsync(files, nuget, packageVersion ?? PackageVersion);
             await RemoveMinVerAsync(files, tree, nuget, notes);
+            await NuGetConfigAsync(files, tree, owner, notes);
         }
 
         foreach (var package in packages.Where(p => p.Kind == PackageKind.Npm))
@@ -245,6 +251,155 @@ public static partial class VersioningOnboarding
         }
     }
 
+    /// <summary>
+    /// #544 D4: a repository restoring from GitHub Packages asks that feed for <see cref="PackageId"/> too, and one without
+    /// Actions access to the package gets a 403. The root <c>nuget.config</c> maps the package to nuget.org (an exact id beats
+    /// every prefix and <c>*</c>) and lists the feed under the URL setup-dotnet's <c>source-url</c> uses, so the credentials
+    /// setup-dotnet writes next to the repository attach to it. The workflows stay as they are.
+    /// </summary>
+    private static async Task NuGetConfigAsync(Files files, IRepositoryTree tree, string? owner, List<string> notes)
+    {
+        var feeds = new List<string>();
+        foreach (var path in tree.Entries.Keys.Where(IsWorkflow).Order(StringComparer.Ordinal))
+        {
+            if (await files.ReadAsync(path) is not { } workflow) continue;
+            foreach (var source in SourceUrls(workflow).Where(u => u.Contains(GitHubFeedHost, StringComparison.OrdinalIgnoreCase)))
+            {
+                // The usual form (every onboarded repository's) names the owner through the context.
+                var url = owner is null ? source : RepositoryOwner().Replace(source, owner);
+                if (url.Contains("${{", StringComparison.Ordinal))
+                    notes.Add($"`{path}` sets setup-dotnet's `source-url` from an expression: list that feed in the root `nuget.config` under the URL it resolves to, and map `{PackageId}` to nuget.org in its `<packageSourceMapping>`.");
+                else if (!feeds.Contains(url, StringComparer.OrdinalIgnoreCase)) feeds.Add(url);
+            }
+        }
+
+        var rootPath = tree.Entries.Keys.FirstOrDefault(p => p.Equals(NuGetConfigName, StringComparison.OrdinalIgnoreCase));
+        foreach (var path in tree.Entries.Keys.Where(p => p != rootPath && Path.GetFileName(p).Equals(NuGetConfigName, StringComparison.OrdinalIgnoreCase)).Order(StringComparer.Ordinal))
+            if (await files.ReadAsync(path) is { } nested && nested.Contains(GitHubFeedHost, StringComparison.OrdinalIgnoreCase))
+                notes.Add($"`{path}` lists GitHub Packages: map `{PackageId}` to nuget.org in its `<packageSourceMapping>` by hand, or restores below it ask GitHub Packages for it.");
+
+        var root = rootPath is null ? null : await files.ReadAsync(rootPath);
+        if (feeds.Count == 0 && root?.Contains(GitHubFeedHost, StringComparison.OrdinalIgnoreCase) != true) return;
+        if (NuGetConfig(rootPath ?? NuGetConfigName, root, feeds, notes) is { } edited) files.Write(rootPath ?? NuGetConfigName, edited);
+    }
+
+    /// <summary>
+    /// The <c>nuget.config</c> with every feed listed (matched as setup-dotnet matches it: a case-insensitive substring of a
+    /// source's value) and <see cref="PackageId"/> mapped to nuget.org. A file without a mapping gets one that keeps today's
+    /// resolution, every source taking <c>*</c>; null when nothing changes or the file cannot be edited safely.
+    /// </summary>
+    internal static string? NuGetConfig(string path, string? text, IReadOnlyList<string> feeds, List<string> notes)
+    {
+        text ??= "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<configuration>\n</configuration>\n";
+        XElement configuration;
+        try
+        {
+            configuration = XDocument.Parse(text.TrimStart('﻿'), LoadOptions.SetLineInfo).Root!;
+        }
+        catch (XmlException)
+        {
+            notes.Add($"`{path}` is not readable XML: map `{PackageId}` to nuget.org in its `<packageSourceMapping>` by hand.");
+            return null;
+        }
+        if (configuration.Name.LocalName != "configuration") return null;
+
+        var lines = text.Split('\n').ToList();
+        var unit = Indentation().Match(text) is { Success: true } m ? m.Groups[1].Value : "  ";
+        var inserts = new SortedDictionary<int, List<string>>();
+        bool Insert(XElement parent, int depth, IEnumerable<string> added)
+        {
+            if (parent.IsEmpty || ClosingLine(lines, parent) is not { } line)
+            {
+                notes.Add($"`{path}` line {((IXmlLineInfo)parent).LineNumber}: `<{parent.Name.LocalName}>` could not be extended; map `{PackageId}` to nuget.org by hand.");
+                return false;
+            }
+            if (!inserts.TryGetValue(line, out var list)) inserts[line] = list = [];
+            list.AddRange(added.Select(a => string.Concat(Enumerable.Repeat(unit, depth)) + a));
+            return true;
+        }
+
+        var packageSources = configuration.Element("packageSources");
+        var sources = packageSources?.Elements("add").Select(a => (Key: (string?)a.Attribute("key"), Url: (string?)a.Attribute("value")))
+            .Where(a => a.Key is not null && a.Url is not null).Select(a => (Key: a.Key!, Url: a.Url!)).ToList() ?? [];
+        var added = new List<(string Key, string Url)>();
+        var nugetOrg = sources.FirstOrDefault(s => s.Url.Contains("api.nuget.org", StringComparison.OrdinalIgnoreCase)).Key;
+        if (nugetOrg is null) added.Add((nugetOrg = "nuget.org", NuGetOrgSource));
+        foreach (var feed in feeds.Where(f => !sources.Any(s => s.Url.Contains(f, StringComparison.OrdinalIgnoreCase))))
+        {
+            var key = "github";
+            for (var n = 2; sources.Concat(added).Any(s => s.Key.Equals(key, StringComparison.OrdinalIgnoreCase)); n++) key = $"github-{n}";
+            added.Add((key, feed));
+        }
+        var adds = added.Select(a => new XElement("add", new XAttribute("key", a.Key), new XAttribute("value", a.Url)).ToString());
+        if (added.Count > 0 && !(packageSources is null
+            ? Insert(configuration, 1, ["<packageSources>", .. adds.Select(a => unit + a), "</packageSources>"])
+            : Insert(packageSources, 2, adds)))
+            return null;
+
+        var exact = $"<package pattern=\"{PackageId}\" />";
+        var mapping = configuration.Element("packageSourceMapping");
+        if (mapping is null)
+        {
+            var block = new List<string> { "<packageSourceMapping>" };
+            foreach (var key in sources.Concat(added).Select(s => s.Key).Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                block.Add($"{unit}{new XElement("packageSource", new XAttribute("key", key)).ToString().Replace(" />", ">", StringComparison.Ordinal)}");
+                block.Add($"{unit}{unit}<package pattern=\"*\" />");
+                if (key == nugetOrg) block.Add($"{unit}{unit}{exact}");
+                block.Add($"{unit}</packageSource>");
+            }
+            block.Add("</packageSourceMapping>");
+            if (!Insert(configuration, 1, block)) return null;
+        }
+        else if (!mapping.Descendants("package").Any(p => string.Equals((string?)p.Attribute("pattern"), PackageId, StringComparison.OrdinalIgnoreCase)))
+        {
+            var mapped = mapping.Elements("packageSource").FirstOrDefault(s => string.Equals((string?)s.Attribute("key"), nugetOrg, StringComparison.OrdinalIgnoreCase));
+            var inserted = mapped is null
+                ? Insert(mapping, 2, [new XElement("packageSource", new XAttribute("key", nugetOrg)).ToString().Replace(" />", ">", StringComparison.Ordinal), unit + exact, "</packageSource>"])
+                : Insert(mapped, 3, [exact]);
+            if (!inserted) return null;
+        }
+        if (inserts.Count == 0) return null;
+
+        var eol = text.Contains("\r\n", StringComparison.Ordinal) ? "\r" : "";
+        foreach (var (line, insert) in inserts.Reverse()) lines.InsertRange(line, insert.Select(l => l + eol));
+        return string.Join('\n', lines);
+    }
+
+    /// <summary>The line of <paramref name="element"/>'s closing tag, when it stands on a line of its own.</summary>
+    private static int? ClosingLine(List<string> lines, XElement element)
+    {
+        // nuget.config nests no element in one of the same name, so the first closing tag is the element's.
+        var close = $"</{element.Name.LocalName}>";
+        for (var l = ((IXmlLineInfo)element).LineNumber - 1; l < lines.Count; l++)
+        {
+            if (lines[l].Trim() == close) return l;
+            if (lines[l].Contains(close, StringComparison.Ordinal)) return null;
+        }
+        return null;
+    }
+
+    /// <summary>Every setup-dotnet step's <c>source-url</c> in the workflow.</summary>
+    private static IEnumerable<string> SourceUrls(string workflow)
+    {
+        var stream = new YamlStream();
+        try
+        {
+            stream.Load(new StringReader(workflow));
+        }
+        catch (YamlDotNet.Core.YamlException)
+        {
+            yield break;
+        }
+        if (stream.Documents.FirstOrDefault()?.RootNode is not YamlMappingNode root || Child(root, "jobs") is not YamlMappingNode jobs) yield break;
+        foreach (var job in jobs.Children.Values)
+            if (Child(job, "steps") is YamlSequenceNode steps)
+                foreach (var step in steps.Children)
+                    if (Scalar(step, "uses")?.StartsWith("actions/setup-dotnet", StringComparison.OrdinalIgnoreCase) == true
+                        && Child(step, "with") is { } with && Scalar(with, "source-url") is { Length: > 0 } url)
+                        yield return url;
+    }
+
     private static bool IsDirectoryFile(string path)
         => Path.GetFileName(path) is var name && (name.Equals("Directory.Build.props", StringComparison.OrdinalIgnoreCase)
             || name.Equals("Directory.Build.targets", StringComparison.OrdinalIgnoreCase) || name.Equals("Directory.Packages.props", StringComparison.OrdinalIgnoreCase));
@@ -262,8 +417,9 @@ public static partial class VersioningOnboarding
 
     /// <summary>
     /// The workflow with the versioning step in front of each push-triggered job's first pack or publish step, the job's
-    /// permissions widened to <c>contents: write</c> and <c>id-token: write</c>, <c>--no-build</c> dropped from its pack and
-    /// <c>--skip-duplicate</c> added to its NuGet push; null when the workflow needs nothing.
+    /// permissions widened to <c>contents: write</c> and <c>id-token: write</c>, <c>--no-build</c> dropped from its pack (with
+    /// a comment saying why) and <c>--skip-duplicate</c> added to its NuGet push, and a <c>concurrency</c> group when the
+    /// workflow has none; null when the workflow needs nothing.
     /// </summary>
     internal static string? Workflow(string path, string text, string? actionSha, List<string> notes)
     {
@@ -298,11 +454,24 @@ public static partial class VersioningOnboarding
             var steps = (YamlSequenceNode)Child(job, "steps")!;
             if (steps.Children.Any(s => Scalar(s, "uses")?.Contains("versioning-action", StringComparison.Ordinal) == true)) continue;
             var first = PublishStep(job)!.Value;
+            TestOrder(path, (YamlScalarNode)key, job, jobs, first, notes);
 
             // The step, above the first pack or publish step's comment block, separated like its neighbours.
             var stepLine = Line(steps.Children[first].Start) - 1;
             var dash = lines[stepLine].IndexOf('-');
             var keyIndent = new string(' ', (int)steps.Children[first].Start.Column - 1);
+
+            // #544 D3: the pack builds again, so the versions decided after the tests reach the assemblies. Added before
+            // the versioning step, so on the same line it lands below it.
+            if (Enumerable.Range(first, steps.Children.Count - first).FirstOrDefault(i => Scalar(steps.Children[i], "run")?.Contains("dotnet pack", StringComparison.Ordinal) == true, -1) is var pack and >= 0)
+            {
+                var pad = new string(' ', dash);
+                edits.Add(new LineEdit(Line(steps.Children[pack].Start) - 1, null, [
+                    $"{pad}# No --no-build: the versions are decided after the tests, so pack builds again to stamp them into the",
+                    $"{pad}# assemblies (--no-build also skips restore, which leaves the nuspec's dependency versions stale).",
+                ]));
+            }
+
             var at = stepLine;
             while (at > 0 && lines[at - 1].TrimStart().StartsWith('#')) at--;
             var step = new List<string>
@@ -338,6 +507,20 @@ public static partial class VersioningOnboarding
         }
         if (edits.Count == 0) return null;
 
+        // #544 D3: a newer push cancels the older run. A run cancelled after its tags were pushed leaves tags without
+        // packages, which is harmless: the newer run packs them. A workflow's own concurrency is left alone.
+        if (Child(root, "concurrency") is null && root.Children.Keys.OfType<YamlScalarNode>().FirstOrDefault(k => k.Value == "jobs") is { } jobsKey
+            && jobsKey.Start.Column == 1)
+        {
+            var unit = new string(' ', Math.Max(2, (int)jobs.Children.Keys.First().Start.Column - 1));
+            edits.Add(new LineEdit(Line(jobsKey.Start) - 1, null, [
+                "concurrency:",
+                unit + "group: ${{ github.workflow }}-${{ github.ref }}",
+                unit + "cancel-in-progress: true",
+                "",
+            ]));
+        }
+
         var result = lines.ToList();
         foreach (var edit in edits.Where(e => e.Replace is not null)) result[edit.Line] = edit.Replace!;
         foreach (var edit in edits.Where(e => e.Insert is not null).OrderByDescending(e => e.Line))
@@ -346,6 +529,38 @@ public static partial class VersioningOnboarding
             result.InsertRange(edit.Line, edit.Insert!.Select(l => l + eol));
         }
         return string.Join('\n', result);
+    }
+
+    /// <summary>
+    /// #544 D3: the tags are pushed only once the tests passed, so a test that runs after the versioning step, or in a job
+    /// the publishing job does not wait for, is reported: the rewrite does not move steps or jobs.
+    /// </summary>
+    private static void TestOrder(string path, YamlScalarNode key, YamlMappingNode job, YamlMappingNode jobs, int first, List<string> notes)
+    {
+        var steps = ((YamlSequenceNode)Child(job, "steps")!).Children;
+        if (steps.Skip(first).Any(s => Scalar(s, "run") is { } run && TestRun().IsMatch(run)))
+            notes.Add($"`{path}` job `{key.Value}` runs tests after it packs: move them above the versioning step, which pushes the tags.");
+
+        var awaited = new HashSet<string>(StringComparer.Ordinal);
+        var pending = new Stack<YamlNode?>([Child(job, "needs")]);
+        while (pending.TryPop(out var needs))
+        {
+            var names = needs switch
+            {
+                YamlScalarNode one => [one.Value!],
+                YamlSequenceNode many => many.Children.OfType<YamlScalarNode>().Select(n => n.Value!).ToArray(),
+                _ => Array.Empty<string>(),
+            };
+            foreach (var name in names.Where(awaited.Add))
+                if (Child(jobs, name) is { } needed) pending.Push(Child(needed, "needs"));
+        }
+        foreach (var (otherKey, other) in jobs.Children)
+        {
+            var name = ((YamlScalarNode)otherKey).Value!;
+            if (name == key.Value || awaited.Contains(name) || Child(other, "steps") is not YamlSequenceNode otherSteps) continue;
+            if (otherSteps.Children.Any(s => Scalar(s, "run") is { } run && TestRun().IsMatch(run)))
+                notes.Add($"`{path}` job `{key.Value}` does not wait for job `{name}`, which runs tests: add it to `needs`, so a failing test pushes no tags.");
+        }
     }
 
     /// <summary>The job's token gets <c>contents: write</c> (the tags) and <c>id-token: write</c> (the app's proof of the caller).</summary>
@@ -530,6 +745,12 @@ public static partial class VersioningOnboarding
 
     [GeneratedRegex(@"\n[ \t]*<ItemGroup>\r?\n[ \t]*</ItemGroup>\r?(?=\n)")]
     private static partial Regex EmptyItemGroup();
+
+    [GeneratedRegex(@"\$\{\{\s*github\.repository_owner\s*\}\}")]
+    private static partial Regex RepositoryOwner();
+
+    [GeneratedRegex(@"\bdotnet\s+test\b|\b(npm|pnpm|yarn)\s+(run\s+)?test\b|\bnx\b.*\btest\b")]
+    private static partial Regex TestRun();
 
     [GeneratedRegex(@"[ \t]+--no-build\b")]
     private static partial Regex NoBuild();

@@ -2,7 +2,7 @@ import { provideZonelessChangeDetection } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { CommitGraphPage, CommitGraphRow } from '../../services/browse.service';
+import type { CommitGraphPage, CommitGraphRow, ReleaseRunView } from '../../services/browse.service';
 import { BrowseServiceStub, createBrowseStub, provideBrowseStub, settle } from '../../../testing/test-utils';
 import { GRAPH_PAGE_SIZE, POLL_FIRST_MS, RepoCommitGraphPanelComponent } from './repo-commit-graph-panel.component';
 
@@ -31,8 +31,10 @@ describe('RepoCommitGraphPanelComponent', () => {
 
   afterEach(() => vi.useRealTimers());
 
-  async function create(getCommitGraph: (...args: any[]) => Promise<CommitGraphPage>, flush = () => settle(fixture)) {
+  async function create(getCommitGraph: (...args: any[]) => Promise<CommitGraphPage>, flush = () => settle(fixture),
+    extra: Parameters<typeof createBrowseStub>[0] = {}) {
     browse = createBrowseStub({
+      ...extra,
       getCommitGraph,
       getRepo: () => Promise.resolve({ defaultBranch: 'main', latestCoverageSha: 'aaaaaaa1' }),
       avatarUrl: (key: string) => `/api/browse/avatar/${key}`,
@@ -309,6 +311,42 @@ describe('RepoCommitGraphPanelComponent', () => {
     for (const svg of fixture.nativeElement.querySelectorAll('.cg-graph svg')) {
       expect(svg.getAttribute('aria-hidden')).toBe('true');
     }
+  });
+
+  it('marks a tagged commit with its release run, and re-runs a failed one', async () => {
+    const failed: ReleaseRunView = { id: 41, status: 'completed', conclusion: 'failure', attempt: 1, htmlUrl: 'https://github.com/acme/widgets/actions/runs/41', canRerun: true, blocked: null };
+    const blocked: ReleaseRunView = { id: 40, status: 'completed', conclusion: 'cancelled', attempt: 1, htmlUrl: null, canRerun: false, blocked: 'A newer run is still going' };
+    await create(() => Promise.resolve(page({ rows: [{ ...row('aaaaaaa1', ['bbbbbbb2']), releaseRun: 41 }, { ...row('bbbbbbb2'), releaseRun: 40 }] })),
+      () => settle(fixture), {
+        getReleaseRuns: () => Promise.resolve([failed, blocked]),
+        rerunRelease: () => Promise.resolve(),
+      });
+
+    // One request for the page's runs, never one per row.
+    expect(browse.getReleaseRuns).toHaveBeenCalledTimes(1);
+    expect(browse.getReleaseRuns).toHaveBeenCalledWith('github', 'acme', 'widgets', [41, 40]);
+    expect(panel().releaseMark(failed)).toEqual({ text: 'release failed', tone: 'failed' });
+    expect(panel().releaseMark(blocked)).toEqual({ text: 'release cancelled', tone: 'failed' });
+    expect(panel().releaseMark({ ...failed, status: 'in_progress', conclusion: null })).toEqual({ text: 'release running', tone: 'running' });
+    expect(panel().releaseMark({ ...failed, conclusion: 'success' })).toEqual({ text: 'released', tone: 'ok' });
+
+    const event = new MouseEvent('click');
+    const stop = vi.spyOn(event, 'stopPropagation');
+    await panel().rerunRelease(event, failed);
+    expect(stop).toHaveBeenCalled();
+    expect(browse.rerunRelease).toHaveBeenCalledWith('github', 'acme', 'widgets', 41);
+    expect(panel().releaseRuns().get(41)).toEqual(expect.objectContaining({ status: 'queued', canRerun: false }));
+    expect(panel().notice()).toContain('Re-running');
+  });
+
+  it('shows the server\'s reason when a re-run is refused', async () => {
+    const failed: ReleaseRunView = { id: 41, status: 'completed', conclusion: 'failure', attempt: 1, htmlUrl: null, canRerun: true, blocked: null };
+    await create(() => Promise.resolve(page()), () => settle(fixture), {
+      rerunRelease: () => Promise.reject({ status: 403, error: { error: 'Re-running a release needs write access' } }),
+    });
+    await panel().rerunRelease(new MouseEvent('click'), failed);
+    expect(panel().notice()).toBe('Re-running a release needs write access');
+    expect(panel().rerunning().size).toBe(0);
   });
 
   it('encodes coverage on the node', async () => {

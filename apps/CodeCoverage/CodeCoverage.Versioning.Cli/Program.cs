@@ -94,7 +94,10 @@ static async Task<int> Run(Options options)
 		[$"refs/remotes/{remote}/{branch}"], new Tagger("github-actions[bot]", "41898282+github-actions[bot]@users.noreply.github.com"));
 	try
 	{
-		var result = await ReleaseRun.RunAsync(git, writer, new ReleaseRunRequest(manifest, config.ToSettings(), branch == defaultBranch, branchMajor));
+		// #544 D5: the tags name the run that wrote them; the CLI runs on the runner, so its environment says which.
+		var run = TagAnnotation.RunUrl(Environment.GetEnvironmentVariable("GITHUB_SERVER_URL"), Environment.GetEnvironmentVariable("GITHUB_REPOSITORY"),
+			Environment.GetEnvironmentVariable("GITHUB_RUN_ID"));
+		var result = await ReleaseRun.RunAsync(git, writer, new ReleaseRunRequest(manifest, config.ToSettings(), branch == defaultBranch, branchMajor, run));
 		return await Write(LocalRunResponse.From(result));
 	}
 	catch (Exception e) when (e is ReleaseRunException or GraphException or VersioningException)

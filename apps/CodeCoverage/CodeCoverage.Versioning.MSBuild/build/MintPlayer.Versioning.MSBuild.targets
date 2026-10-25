@@ -35,19 +35,42 @@
 		<PropertyGroup>
 			<MintPlayerVersioningTagPrefix Condition="'$(MintPlayerVersioningTagPrefix)' == ''">$(PackageId)/v</MintPlayerVersioningTagPrefix>
 		</PropertyGroup>
+		<!-- An explicit version wins (#544 D1): a global Version or PackageVersion (`-p:` on the command line, or passed
+		     down from a parent build) means the caller owns the version, so the task reads no tags and the project stays
+		     packable. Only the task can tell: an assignment in a target overrides a global property. -->
 		<ResolveTagVersion TagPrefix="$(MintPlayerVersioningTagPrefix)" WorkingDirectory="$(MSBuildProjectDirectory)"
 		                   GitHubActions="$(GITHUB_ACTIONS)" GitHubEventName="$(GITHUB_EVENT_NAME)">
 			<Output TaskParameter="Version" PropertyName="MintPlayerVersion" />
+			<Output TaskParameter="ExplicitVersion" PropertyName="_MintPlayerVersioningExplicit" />
+			<Output TaskParameter="ExplicitPackageVersionOnly" PropertyName="_MintPlayerVersioningPackageOnly" />
 		</ResolveTagVersion>
-		<!-- AssemblyVersion, FileVersion and InformationalVersion follow from Version in the SDK's GetAssemblyVersion. -->
 		<PropertyGroup>
+			<!-- Only PackageVersion given: the assemblies follow it (#544 Q1). -->
+			<Version Condition="'$(_MintPlayerVersioningPackageOnly)' == 'True'">$(PackageVersion)</Version>
+			<MintPlayerVersion Condition="'$(_MintPlayerVersioningExplicit)' == 'True'"></MintPlayerVersion>
+		</PropertyGroup>
+		<!-- AssemblyVersion, FileVersion and InformationalVersion follow from Version in the SDK's GetAssemblyVersion. -->
+		<PropertyGroup Condition="'$(_MintPlayerVersioningExplicit)' != 'True'">
 			<Version>$(MintPlayerVersion)</Version>
 			<PackageVersion>$(MintPlayerVersion)</PackageVersion>
 			<!-- A package the engine never tagged is not packed where packages are published, so a placeholder can never
 			     reach a feed. A pull-request or local build packs it at 0.0.0-untagged instead (the task decides). -->
 			<IsPackable Condition="'$(MintPlayerVersion)' == '0.0.0-PLACEHOLDER'">false</IsPackable>
+		</PropertyGroup>
+		<PropertyGroup>
 			<_MintPlayerVersioningDone>true</_MintPlayerVersioningDone>
 		</PropertyGroup>
+	</Target>
+
+	<!-- A project packed on its own (not through a solution, which sets SolutionPath) is expected to produce a package,
+	     so the placeholder is an error there rather than the silent "not packed" a solution-wide pack wants (#544 D2).
+	     _IntermediatePack runs only for the project being packed, never for its ProjectReferences, so a build or a
+	     test run of a single project is unaffected. -->
+	<Target Name="MintPlayerVersioningDirectPack" BeforeTargets="_IntermediatePack" DependsOnTargets="MintPlayerVersioning"
+	        Condition="'$(MintPlayerVersioningSkip)' != 'true'">
+		<Error Code="MPV005"
+		       Condition="'$(MintPlayerVersion)' == '0.0.0-PLACEHOLDER' And ('$(SolutionPath)' == '' Or '$(SolutionPath)' == '*Undefined*')"
+		       Text="MintPlayer.Versioning: $(PackageId) has no $(PackageId)/v&lt;version&gt; tag reachable from HEAD on this build, so packing it on its own would produce nothing. Pass -p:Version, tag it, or set IsPackable to false." />
 	</Target>
 
 	<!-- The backstop: a nuspec is never generated at the placeholder, whatever skipped the target above (a knob, or an

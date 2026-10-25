@@ -13,7 +13,7 @@ import { BsFormComponent, BsFormControlDirective } from '@mintplayer/ng-bootstra
 import { BsSelectComponent, BsSelectOption } from '@mintplayer/ng-bootstrap/select';
 import { SparkTrendOptions, SparkTrendSparklineComponent } from '@mintplayer/ng-spark/score-renderers';
 import {
-  BrowseService, CommitGraphPage, CommitGraphQuery, CommitGraphRef, CoverageDrop, RepoInfo,
+  BrowseService, CommitGraphPage, CommitGraphQuery, CommitGraphRef, CoverageDrop, ReleaseRunView, RepoInfo,
 } from '../../services/browse.service';
 import { isDarkBackground, LANE_PALETTE } from './commit-graph-palette';
 import {
@@ -32,6 +32,8 @@ const SEARCH_DEBOUNCE_MS = 300;
 const NODE_R = 5;
 /** The coverage-drop list's default threshold, percentage points. */
 export const DROP_THRESHOLD_DEFAULT = 1;
+/** The release-runs endpoint's cap per request. */
+export const RELEASE_RUNS_PER_REQUEST = 20;
 
 type PanelState = 'loading' | 'ready' | 'empty' | 'syncing' | 'unavailable';
 
@@ -221,6 +223,17 @@ const UNAVAILABLE_REASONS: Record<string, string> = {
                       @if (v.row.sha === latestCoverageSha()) {
                         <span class="cg-ref-pill cg-latest" title="Latest coverage of the default branch">coverage</span>
                       }
+                      @if (v.row.releaseRun && releaseRuns().get(v.row.releaseRun); as run) {
+                        @let mark = releaseMark(run);
+                        <a class="cg-ref-pill cg-release" [class]="'cg-release-' + mark.tone" [href]="run.htmlUrl" target="_blank"
+                           rel="noopener" [title]="'Workflow run ' + run.id + ', attempt ' + run.attempt" (click)="$event.stopPropagation()">{{ mark.text }}</a>
+                        @if (run.canRerun) {
+                          <button type="button" class="cg-ref-pill cg-rerun" [disabled]="rerunning().has(run.id)"
+                                  (click)="rerunRelease($event, run)">re-run</button>
+                        } @else if (run.blocked) {
+                          <span class="cg-ref-pill cg-rerun text-muted" [title]="run.blocked">re-run later</span>
+                        }
+                      }
                       <span [class.fw-semibold]="v.isMerge">{{ v.row.subject }}</span>
                     </td>
                     <td class="cg-coverage">
@@ -306,6 +319,11 @@ const UNAVAILABLE_REASONS: Record<string, string> = {
     .cg-ref-pill.cg-default { font-weight: 600; border-color: var(--bs-primary); }
     .cg-ref-pill.cg-tag { border-radius: .2em; font-style: italic; }
     .cg-ref-pill.cg-latest { border-style: dashed; }
+    a.cg-release { color: inherit; text-decoration: none; }
+    .cg-release-ok { border-color: var(--bs-success); }
+    .cg-release-failed { border-color: var(--bs-danger); color: var(--bs-danger-text-emphasis) !important; }
+    .cg-release-running { border-style: dotted; }
+    button.cg-rerun { color: inherit; }
     .cg-avatar { width: 20px; height: 20px; border-radius: 50%; vertical-align: top; margin-right: .3em; display: inline-block; }
     .cg-initials { background: var(--bs-secondary-bg); font-size: 9px; line-height: 20px; text-align: center; }
     .cg-sha code { font-size: .8em; }
@@ -347,6 +365,9 @@ export class RepoCommitGraphPanelComponent {
   /** Lanes of the widest row on the first page, capped (D16). */
   readonly pageLanes = signal(1);
   readonly mobile = signal(false);
+  /** The release runs the tagged commits name, by id; a run the forge does not know stays absent (no mark). */
+  readonly releaseRuns = signal<ReadonlyMap<number, ReleaseRunView>>(new Map());
+  readonly rerunning = signal<ReadonlySet<number>>(new Set());
   /** Bumped whenever rows land in the cache, so derived views recompute. */
   private readonly cacheVersion = signal(0);
 
@@ -403,6 +424,8 @@ export class RepoCommitGraphPanelComponent {
   /** Rows by absolute index, for the current snapshot. */
   private cache = new Map<number, GraphRowView>();
   private shaIndex = new Map<string, number>();
+  /** Release runs already asked about in this walk. */
+  private requestedRuns = new Set<number>();
   private snapshot: string | null = null;
   private activeQuery: CommitGraphQuery = {};
   private generation = 0;
@@ -479,6 +502,8 @@ export class RepoCommitGraphPanelComponent {
     this.clearTimers();
     this.cache = new Map();
     this.shaIndex = new Map();
+    this.requestedRuns = new Set();
+    this.releaseRuns.set(new Map());
     this.snapshot = null;
     this.hover.set(null);
     this.cursor.set(null);
@@ -580,6 +605,42 @@ export class RepoCommitGraphPanelComponent {
       this.shaIndex.set(view.row.sha, view.index);
     }
     this.cacheVersion.update((v) => v + 1);
+    void this.loadReleaseRuns(page.rows.map((r) => r.releaseRun).filter((id): id is number => !!id), this.generation);
+  }
+
+  /** The release overlay (#544 D5): the status of the runs that tagged this page's commits, asked once per walk. */
+  private async loadReleaseRuns(ids: number[], gen: number): Promise<void> {
+    const wanted = [...new Set(ids)].filter((id) => !this.requestedRuns.has(id));
+    for (let i = 0; i < wanted.length; i += RELEASE_RUNS_PER_REQUEST) {
+      const chunk = wanted.slice(i, i + RELEASE_RUNS_PER_REQUEST);
+      chunk.forEach((id) => this.requestedRuns.add(id));
+      const views = await this.browse.getReleaseRuns(this.provider(), this.owner(), this.name(), chunk).catch(() => []);
+      if (gen !== this.generation) return;
+      if (views.length) this.releaseRuns.update((m) => new Map([...m, ...views.map((v) => [v.id, v] as const)]));
+    }
+  }
+
+  /** The release mark's text and tone: what the run's conclusion means for the tagged versions. */
+  releaseMark(run: ReleaseRunView): { text: string; tone: 'ok' | 'failed' | 'running' } {
+    if (run.status !== 'completed') return { text: 'release running', tone: 'running' };
+    if (run.conclusion === 'success') return { text: 'released', tone: 'ok' };
+    return { text: run.conclusion === 'cancelled' ? 'release cancelled' : 'release failed', tone: 'failed' };
+  }
+
+  /** Re-runs the release's failed and cancelled jobs (D5); the server checks write access again. */
+  async rerunRelease(event: Event, run: ReleaseRunView): Promise<void> {
+    event.stopPropagation();
+    this.rerunning.update((s) => new Set(s).add(run.id));
+    try {
+      await this.browse.rerunRelease(this.provider(), this.owner(), this.name(), run.id);
+      this.releaseRuns.update((m) => new Map(m).set(run.id, { ...run, status: 'queued', conclusion: null, canRerun: false, blocked: null }));
+      this.notice.set(`Re-running the failed jobs of release run ${run.id}.`);
+    } catch (e) {
+      const error = (e as { error?: { error?: string } })?.error?.error;
+      this.notice.set(error ?? `Release run ${run.id} could not be re-run.`);
+    } finally {
+      this.rerunning.update((s) => { const next = new Set(s); next.delete(run.id); return next; });
+    }
   }
 
   private makeFetch(gen: number): BsDatatableFetch<GraphRowView> {

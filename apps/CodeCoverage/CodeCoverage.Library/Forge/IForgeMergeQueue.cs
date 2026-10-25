@@ -104,6 +104,20 @@ public interface IForgeMergeQueue
     Task<bool> CancelWorkflowRunAsync(Repository repository, long runId, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Whether a newer run of <paramref name="run"/>'s workflow on its branch is queued or in progress (#544 D5): re-running
+    /// the older one then would cancel the newer one through the workflow's <c>cancel-in-progress</c>.
+    /// </summary>
+    Task<bool> HasNewerUnfinishedRunAsync(Repository repository, ForgeWorkflowRun run, CancellationToken cancellationToken = default)
+        => Task.FromResult(false);
+
+    /// <summary>
+    /// Re-runs the failed and cancelled jobs of workflow run <paramref name="runId"/> (#544 D5). False when the forge cannot
+    /// (no such run, nothing failed, a run past the re-run window).
+    /// </summary>
+    Task<bool> RerunFailedJobsAsync(Repository repository, long runId, CancellationToken cancellationToken = default)
+        => Task.FromResult(false);
+
+    /// <summary>
     /// The most recent runs of <paramref name="workflowFile"/> on <paramref name="branch"/>, newest first (one page). The
     /// queue reads it before dispatching, to find a run an earlier dispatch started whose answer never arrived (§0 D53).
     /// </summary>
@@ -364,7 +378,10 @@ public enum EForgeDispatchOutcome
 /// <param name="Status">The forge's word: <c>queued</c>, <c>in_progress</c>, <c>completed</c>, …</param>
 /// <param name="Conclusion">Null until completed.</param>
 /// <param name="HeadSha">The commit the run built, resolved at dispatch time (D14).</param>
-public sealed record ForgeWorkflowRun(long Id, string Status, string? Conclusion, string HeadSha, string? HeadBranch, string? HtmlUrl)
+/// <param name="WorkflowId">The workflow the run is of; null when the forge did not say.</param>
+/// <param name="Attempt">The latest attempt, which <see cref="Status"/> and <see cref="Conclusion"/> describe.</param>
+public sealed record ForgeWorkflowRun(long Id, string Status, string? Conclusion, string HeadSha, string? HeadBranch, string? HtmlUrl,
+    long? WorkflowId = null, int Attempt = 1)
 {
     public bool IsCompleted => Status == "completed";
 }

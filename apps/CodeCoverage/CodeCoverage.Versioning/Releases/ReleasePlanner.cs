@@ -165,7 +165,9 @@ public static class ReleasePlanner
 			}
 			if (byHand.TryGetValue(id, out var tagged))
 			{
-				released[id] = new PlannedRelease(project, tagged.Version, [$"{tagged.Tag.Name} was tagged by hand on this commit"], facts?.ApiHash, TaggedByHand: true);
+				released[id] = tagged.Annotation?.EngineVersion is null
+					? new PlannedRelease(project, tagged.Version, [$"{tagged.Tag.Name} was tagged by hand on this commit"], facts?.ApiHash, TaggedByHand: true)
+					: Rerun(context, project, facts, history, tagged);
 				continue;
 			}
 
@@ -235,6 +237,30 @@ public static class ReleasePlanner
 			}
 		}
 		return new ReleasePlan(order.Where(p => released.ContainsKey(p.Id!)).Select(p => released[p.Id!]).ToList(), skipped, refused);
+	}
+
+	/// <summary>
+	/// A tag the engine itself wrote on this commit (its annotation names the engine): an earlier run of the same commit
+	/// that failed or was cancelled after tagging (#544 D3). The re-run releases the same version again, as the engine's
+	/// own release, so the writer reports it already present and the notes, Releases and branch cut that run never got
+	/// to are made now. A tag a person pushed carries no engine line and stays a fixed version (D3 of #153).
+	/// </summary>
+	private static PlannedRelease Rerun(ReleaseContext context, ProjectNode project, PackageBuildFacts? facts, IReadOnlyList<TaggedVersion> history, TaggedVersion tagged)
+	{
+		var previous = history.LastOrDefault(t => t.Version < tagged.Version);
+		var sinceOnLine = history.LastOrDefault(t => t.Version < tagged.Version && t.Version.Major == tagged.Version.Major);
+		int? movedFrom = null;
+		try
+		{
+			if (context.OnDefaultBranch && !AnchorOf(context, project, facts).IsFree && previous is not null && tagged.Version.Major > previous.Version.Major)
+				movedFrom = previous.Version.Major;
+		}
+		catch (VersioningException)
+		{
+			// The anchor could not be read again; the release stands, only its branch cut is left out.
+		}
+		return new PlannedRelease(project, tagged.Version, [$"{tagged.Tag.Name} was released by an earlier run of this commit"],
+			tagged.Annotation!.ApiHash ?? facts?.ApiHash, TaggedByHand: false, sinceOnLine?.Commit, InputsOf(context.Graph, project), MovedFromMajor: movedFrom);
 	}
 
 	/// <summary>

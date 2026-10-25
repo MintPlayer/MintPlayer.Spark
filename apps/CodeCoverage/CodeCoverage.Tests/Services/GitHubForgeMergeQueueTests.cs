@@ -441,6 +441,56 @@ public class GitHubForgeMergeQueueTests
     }
 
     [Fact]
+    public async Task A_run_reports_its_workflow_and_latest_attempt()
+    {
+        var github = new StubGitHub().On(HttpMethod.Get, $"{Repo}/actions/runs/38538867631", HttpStatusCode.OK, """
+            {"id":38538867631,"workflow_id":161335,"run_attempt":2,"head_branch":"master","head_sha":"f4fe1f2c0ffee0000000000000000000000000aa",
+             "status":"completed","conclusion":"failure","html_url":"https://github.com/acme/widget/actions/runs/38538867631"}
+            """);
+
+        var run = await Queue(github).GetWorkflowRunAsync(Target(), 38538867631);
+
+        run!.WorkflowId.Should().Be(161335);
+        run.Attempt.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task A_newer_unfinished_run_of_the_same_workflow_and_branch_is_found()
+    {
+        // docs.github.com/rest/actions/workflow-runs#list-workflow-runs-for-a-workflow (a workflow id works as well as its file name)
+        var github = new StubGitHub().On(HttpMethod.Get, $"{Repo}/actions/workflows/161335/runs?per_page=30&branch=master", HttpStatusCode.OK, """
+            {"total_count":3,"workflow_runs":[
+              {"id":300,"status":"queued","conclusion":null},
+              {"id":200,"status":"completed","conclusion":"failure"},
+              {"id":100,"status":"in_progress","conclusion":null}]}
+            """);
+        var queue = Queue(github);
+        ForgeWorkflowRun Run(long id) => new(id, "completed", "failure", "f4fe", "master", null, 161335);
+
+        (await queue.HasNewerUnfinishedRunAsync(Target(), Run(200))).Should().BeTrue("300 is newer and queued");
+        (await queue.HasNewerUnfinishedRunAsync(Target(), Run(300))).Should().BeFalse("100 is unfinished but older");
+        (await queue.HasNewerUnfinishedRunAsync(Target(), Run(200) with { WorkflowId = null })).Should().BeFalse("no workflow to list");
+    }
+
+    [Fact]
+    public async Task A_failed_run_is_rerun_and_one_that_cannot_be_is_false_and_a_missing_permission_throws()
+    {
+        // docs.github.com/rest/actions/workflow-runs#re-run-failed-jobs-from-a-workflow-run: 201 Created.
+        var github = new StubGitHub()
+            .On(HttpMethod.Post, $"{Repo}/actions/runs/41/rerun-failed-jobs", HttpStatusCode.Created, "{}")
+            .On(HttpMethod.Post, $"{Repo}/actions/runs/42/rerun-failed-jobs", HttpStatusCode.UnprocessableEntity, """{"message":"This workflow run cannot be rerun."}""")
+            .On(HttpMethod.Post, $"{Repo}/actions/runs/43/rerun-failed-jobs", (_, _) => WithHeader(
+                new HttpResponseMessage(HttpStatusCode.Forbidden) { Content = new StringContent("""{"message":"Resource not accessible by integration"}""") },
+                "X-Accepted-GitHub-Permissions", "actions=write"));
+        var queue = Queue(github);
+
+        (await queue.RerunFailedJobsAsync(Target(), 41)).Should().BeTrue();
+        (await queue.RerunFailedJobsAsync(Target(), 42)).Should().BeFalse("422: too old, or nothing failed");
+        (await queue.RerunFailedJobsAsync(Target(), 44)).Should().BeFalse("404: no such run");
+        await Throws<ForgeAccessDeniedException>(() => queue.RerunFailedJobsAsync(Target(), 43));
+    }
+
+    [Fact]
     public async Task A_missing_run_is_null()
         => (await Queue(new StubGitHub()).GetWorkflowRunAsync(Target(), 1)).Should().BeNull();
 

@@ -43,9 +43,40 @@ namespace MintPlayer.Versioning.MSBuild
 		[Output]
 		public string Version { get; set; }
 
+		/// <summary>
+		/// Whether <c>Version</c> or <c>PackageVersion</c> is a global property (<c>-p:</c>, or passed down by a parent
+		/// build): the caller owns the version, so nothing is resolved (#544 D1). A target's own assignment would
+		/// override the global value, so the targets must know before they assign.
+		/// </summary>
+		[Output]
+		public bool ExplicitVersion { get; set; }
+
+		/// <summary>Whether <c>PackageVersion</c> alone is global, so <c>Version</c> follows it (#544 Q1).</summary>
+		[Output]
+		public bool ExplicitPackageVersionOnly { get; set; }
+
 		public override bool Execute()
 		{
 			Version = TagVersion.Placeholder;
+			var engine = BuildEngine as IBuildEngine6;
+			var globals = engine != null ? engine.GetGlobalProperties() : null;
+			if (globals != null)
+			{
+				// Property names are case-insensitive (`-p:version=` counts), whatever comparer the dictionary has.
+				bool hasVersion = false, hasPackageVersion = false;
+				foreach (var name in globals.Keys)
+				{
+					hasVersion |= string.Equals(name, "Version", StringComparison.OrdinalIgnoreCase);
+					hasPackageVersion |= string.Equals(name, "PackageVersion", StringComparison.OrdinalIgnoreCase);
+				}
+				if (hasVersion || hasPackageVersion)
+				{
+					ExplicitVersion = true;
+					ExplicitPackageVersionOnly = hasPackageVersion && !hasVersion;
+					Log.LogMessage(MessageImportance.Normal, "MintPlayer.Versioning: the version is given explicitly; tags are not read.");
+					return true;
+				}
+			}
 			if (!TagVersion.IsValidPrefix(TagPrefix))
 			{
 				Log.LogWarning(null, "MPV002", null, null, 0, 0, 0, 0,

@@ -488,7 +488,40 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
             Str(root, "conclusion"),
             Str(root, "head_sha") ?? string.Empty,
             Str(root, "head_branch"),
-            Str(root, "html_url"));
+            Str(root, "html_url"),
+            Num(root, "workflow_id"),
+            (int)Math.Clamp(Num(root, "run_attempt") ?? 1, 1, int.MaxValue));
+    }
+
+    /// <summary>
+    /// The newest runs of the workflow on the run's branch (<c>GET /actions/workflows/{id}/runs</c>, newest first): one with
+    /// a higher id that has not completed is newer and unfinished. The first page is enough, since <c>cancel-in-progress</c>
+    /// leaves at most a few unfinished runs and they are the newest.
+    /// </summary>
+    public async Task<bool> HasNewerUnfinishedRunAsync(Repository repository, ForgeWorkflowRun run, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(run);
+        if (run.WorkflowId is not { } workflow) return false;
+        var path = $"{RepoPath(repository)}/actions/workflows/{workflow.ToString(CultureInfo.InvariantCulture)}/runs?per_page=30"
+            + (run.HeadBranch is { Length: > 0 } branch ? $"&branch={Uri.EscapeDataString(branch)}" : "");
+        using var reply = await SendAsync(repository, HttpMethod.Get, path, null, DefaultApiVersion, cancellationToken);
+        if (reply.Status == HttpStatusCode.NotFound) return false;
+        EnsureSuccess(reply);
+        return Items(reply.Json!.RootElement, "workflow_runs").Any(r => Num(r, "id") > run.Id && Str(r, "status") != "completed");
+    }
+
+    /// <summary>
+    /// <c>POST /actions/runs/{id}/rerun-failed-jobs</c>, which re-runs the failed and cancelled jobs and what depends on them.
+    /// Like <see cref="RerunCheckAsync"/>: 403 is the missing <c>actions: write</c> (O17), 404 and 422 are "cannot".
+    /// </summary>
+    public async Task<bool> RerunFailedJobsAsync(Repository repository, long runId, CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(runId);
+        using var reply = await SendAsync(repository, HttpMethod.Post,
+            $"{RepoPath(repository)}/actions/runs/{runId.ToString(CultureInfo.InvariantCulture)}/rerun-failed-jobs", null, DefaultApiVersion, cancellationToken);
+        if (reply.Status is HttpStatusCode.NotFound or HttpStatusCode.UnprocessableEntity) return false;
+        EnsureSuccess(reply, "actions=write");
+        return true;
     }
 
     /// <summary>

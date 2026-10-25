@@ -9,7 +9,7 @@ namespace CodeCoverage.PackageVersioning;
 /// </summary>
 public sealed record GitWriterVersioningRequest(
     string Provider, string RepoId, string CloneUrl, SidecarCredential Credential, string Branch, string DefaultBranch, int? BranchMajor,
-    GitWriterTagger Tagger, VersioningSettings Settings, ReleaseManifest Manifest);
+    GitWriterTagger Tagger, VersioningSettings Settings, ReleaseManifest Manifest, string? Run = null);
 
 public sealed record GitWriterTagger(string Name, string Email);
 

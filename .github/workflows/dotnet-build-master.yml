@@ -119,12 +119,13 @@ jobs:
         echo "revision=$revision" >> "$GITHUB_OUTPUT"
 
 
-  # The Release build and the packages, in parallel with the tests: this used to be one job running
-  # restore, Release build, pack, a Debug build and every suite in a row (~16 min), with the publish at
-  # the end. The packages wait for the tests in `publish`, so nothing ships on red.
+  # The Release build, the version tags and the packages, after the tests (#544 D3): the versioning step
+  # pushes tags, so it runs only once every test job passed, and a red commit gets no tags. A run that
+  # fails or is cancelled after the tags were pushed leaves tags without packages, which is harmless:
+  # re-run it, or the next push packs those packages at their tags (docs/versioning_msbuild_traps_PRD.md).
   release:
     name: build release
-    needs: schema-revision
+    needs: [schema-revision, tests]
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -261,8 +262,8 @@ jobs:
         finish: true
         fail-ci-if-error: false
 
-  # Publishing waits for the packages AND every test job: nothing ships on red. The coverage upload is
-  # not a gate (it never was: fail-ci-if-error is false).
+  # Publishing waits for the packages, which waited for every test job: nothing ships on red. The coverage
+  # upload is not a gate (it never was: fail-ci-if-error is false).
   publish:
     name: publish-release
     needs: [release, tests]

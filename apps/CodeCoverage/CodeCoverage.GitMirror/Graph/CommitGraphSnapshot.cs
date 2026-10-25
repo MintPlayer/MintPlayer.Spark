@@ -43,7 +43,7 @@ public sealed class CommitGraphSnapshot
         TotalRows = totalRows;
         SnapshotId = IdOf(key, refs.RefsHash, filter);
         Complete = refs.Refs.Count == 0 || totalRows == 0;
-        bytes = 1024 + refs.Refs.Sum(r => 2L * (r.Name.Length + r.Sha.Length) + 64);
+        bytes = 1024 + refs.Refs.Sum(r => 2L * (r.Name.Length + r.Sha.Length + (r.Run?.Length ?? 0)) + 64);
     }
 
     public RepoKey Key { get; }

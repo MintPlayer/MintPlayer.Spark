@@ -269,6 +269,21 @@ export interface CommitGraphRow {
   coverage: CommitGraphCoverage | null;
   /** Feed to `BrowseService.avatarUrl`; null means draw initials. */
   avatarKey: string | null;
+  /** The workflow run that wrote this commit's version tags (#544 D5); its status comes from `getReleaseRuns`. */
+  releaseRun?: number | null;
+}
+
+/** A release run's status (`GET /api/browse/repos/{provider}/{owner}/{name}/release-runs`). */
+export interface ReleaseRunView {
+  id: number;
+  status: string;
+  conclusion: string | null;
+  attempt: number;
+  htmlUrl: string | null;
+  /** The viewer may re-run its failed and cancelled jobs now. */
+  canRerun: boolean;
+  /** Why a failed run cannot be re-run now; null otherwise. */
+  blocked: string | null;
 }
 
 /** One page of the commit graph (`GET /api/browse/repos/{provider}/{owner}/{name}/graph`). */
@@ -690,6 +705,19 @@ export class BrowseService {
     return firstValueFrom(this.http.get<MergeQueueCandidates>(
       `/api/repos/${encodeURIComponent(provider)}/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/merge-queue/candidates`,
       refresh ? { params: { refresh: 'true' } } : {}));
+  }
+
+  /** The status of the release runs the graph's tagged commits name (#544 D5); unknown runs are left out. */
+  getReleaseRuns(provider: string, owner: string, name: string, ids: number[]): Promise<ReleaseRunView[]> {
+    return firstValueFrom(this.http.get<ReleaseRunView[]>(
+      `/api/browse/repos/${encodeURIComponent(provider)}/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/release-runs`,
+      { params: new HttpParams().set('ids', ids.join(',')) }));
+  }
+
+  /** Re-runs a release run's failed and cancelled jobs. A mutating request, so the XSRF interceptor stamps it. */
+  rerunRelease(provider: string, owner: string, name: string, runId: number): Promise<void> {
+    return firstValueFrom(this.http.post<void>(
+      `/api/repos/${encodeURIComponent(provider)}/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/release-runs/${encodeURIComponent(String(runId))}/rerun`, {}));
   }
 
   private mergeQueueUrl(provider: string, owner: string, name: string, number: number): string {

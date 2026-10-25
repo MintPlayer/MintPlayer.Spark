@@ -18,7 +18,8 @@ internal sealed partial class GitWriterVersioningRunEndpoint : IPostEndpoint<Ver
     public const int MaxGroups = 64;
     public const int MaxAnchorLength = 256;
     public const string BranchMajorRule = "null, or a major between 0 and 999999";
-    public const string ManifestRule = "a release manifest: version 1, a commit id of 40 lowercase hex characters and well-formed packages";
+    public const string RunRule = "null, or a workflow run's page: https://<host>/<owner>/<repo>/actions/runs/<id>";
+    public const string ManifestRule ="a release manifest: version 1, a commit id of 40 lowercase hex characters and well-formed packages";
     public static readonly string SettingsRule = $"at most {MaxIgnore} ignore globs, {MaxGroups} named groups of package patterns and "
         + $"{Limits.MaxPackagesPerRun} anchors by package id, every glob at most {Limits.MaxGlobLength} characters";
 
@@ -43,10 +44,11 @@ internal sealed partial class GitWriterVersioningRunEndpoint : IPostEndpoint<Ver
             || !refusal.Check(request.BranchMajor is null or (>= 0 and <= 999_999), "branchMajor", BranchMajorRule)
             || refusal.Check(Tagger(request.Tagger), "tagger", MergeQueueWireRules.IdentityRule) is not { } tagger
             || refusal.Check(Settings(request.Settings), "settings", SettingsRule) is not { } settings
-            || refusal.Check(request.Manifest is { } manifest && manifest.Validate().Count == 0 ? manifest : null, "manifest", ManifestRule) is not { } valid)
+            || refusal.Check(request.Manifest is { } manifest && manifest.Validate().Count == 0 ? manifest : null, "manifest", ManifestRule) is not { } valid
+            || !refusal.Check(request.Run is null || Identifiers.IsRunUrl(request.Run), "run", RunRule))
             return refusal.Result();
 
-        var run = new ReleaseRunRequest(valid, settings, branch == defaultBranch, request.BranchMajor);
+        var run = new ReleaseRunRequest(valid, settings, branch == defaultBranch, request.BranchMajor, request.Run);
         return Results.Json(await runs.RunAsync(new VersioningRunJob($"{request.Provider}/{request.RepoId}", cloneUrl, credential, branch, defaultBranch, tagger, run)),
             GitWriterHost.Json);
     }

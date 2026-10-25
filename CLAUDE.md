@@ -61,7 +61,8 @@ while CI runs everything, E2E included, with its Nx cache and the Developer Rave
 `MintPlayer.Spark.Tests` in four shards, E2E and SeoTester.Tests in two each, CodeCoverage.Tests, the
 named groups of smaller suites (Library, CodeCoverage git, App, Angular) and a catch-all "Other suites".
 Each job uploads its coverage reports as an artifact, and one coverage job uploads them together. On
-master, the Release build + pack runs beside the tests and `publish` needs both. Measured: PR run
+master, the Release build + version + pack (`release`) runs after the tests, because its versioning step
+pushes the tags (#544 D3), and `publish` follows it. Measured: PR run
 38389429815 took 4.7 min wall, against 12–16 min for the single sequential job before.
 
 **PR #531 (2026-10-22):** the run had grown back to ~10 min (16–22 min on the commerce branch). There
