@@ -58,8 +58,12 @@ public partial class GitHubContentService : IGitHubContentService
             try
             {
                 var client = await installationService.CreateInstallationClientAsync(installationId.Value);
-                var files = await client.Repository.Content.GetAllContentsByRef(repository.GitHubId, path, sha);
-                return files.FirstOrDefault()?.Content;
+                var file = (await client.Repository.Content.GetAllContentsByRef(repository.GitHubId, path, sha)).FirstOrDefault();
+                // The contents API leaves a file over 1 MB empty (encoding "none"); the raw media type serves it up to 100 MB.
+                // mintplayer-ng-video-player's 1.6 MB package-lock.json read as "not readable JSON" in its onboarding.
+                if (file is { Size: > 0, Content: null or "" } && repository.FullName.Split('/') is [var owner, var name])
+                    return System.Text.Encoding.UTF8.GetString(await client.Repository.Content.GetRawContentByRef(owner, name, path, sha));
+                return file?.Content;
             }
             catch (Octokit.NotFoundException)
             {

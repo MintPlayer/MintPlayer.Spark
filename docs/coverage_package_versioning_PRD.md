@@ -317,6 +317,11 @@ their code in our container. So:
     against a real git repository and reads the highest tag reachable from HEAD.
 - **npm publishing** goes through `MintPlayer/github-actions/publish-npm-packages` (owner, 2026-10-24), which
   publishes only the versions the registry does not have yet: the npm counterpart of `--skip-duplicate`.
+  *(2026-10-25, mintplayer-ng-video-player #101: `JS-DevTools/npm-publish` is recognised as a publish step too. Its
+  default `strategy: all` skips a version the registry has, and it reads its dist-tag from `publishConfig.tag`. The
+  onboarding had not seen its 40 steps and left the workflow alone. The same onboarding read the repository's 1.6 MB
+  `package-lock.json` as empty: GitHub's contents API returns no content over 1 MB, so such a file is now fetched with
+  the raw media type.)*
 - **npm/Nx:** the action writes the version into the working-tree `package.json` of every publishable package by
   editing the JSON itself (validated version, formatting and trailing newline kept), and rewrites internal
   `dependencies` / `peerDependencies` ranges (`workspace:*`, `file:`, plain ranges) to `^<released>`. Not
