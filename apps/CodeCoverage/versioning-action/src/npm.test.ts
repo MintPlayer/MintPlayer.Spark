@@ -36,6 +36,30 @@ describe('npm versions', () => {
     expect(packages.get('@acme/core')).toMatchObject({ private: false, version: '0.0.0' });
   });
 
+  // mintplayer-ng-bootstrap #446: @nx/js:tsc and @nx/vite:build copy package.json into outputPath, which publishes.
+  it('finds the copy in an Nx build target\'s outputPath, and stamps it', async () => {
+    const root = repo({
+      'libs/tsc/package.json': '{ "name": "@acme/tsc", "version": "0.0.0-PLACEHOLDER" }\n',
+      'libs/tsc/project.json': '{ "targets": { "build": { "executor": "@nx/js:tsc", "options": { "outputPath": "dist/libs/tsc" } } } }\n',
+      'libs/vite/package.json': '{ "name": "@acme/vite", "version": "0.0.0-PLACEHOLDER" }\n',
+      'libs/vite/project.json': '{ "targets": { "build": { "options": { "outputPath": "{workspaceRoot}/dist/{projectRoot}" } } } }\n',
+      'libs/out/package.json': '{ "name": "@acme/out", "version": "0.0.0-PLACEHOLDER" }\n',
+      'libs/out/project.json': '{ "targets": { "build": { "options": { "outputPath": "../outside" } } } }\n',
+    });
+    for (const dir of ['dist/libs/tsc', 'dist/libs/vite']) {
+      mkdirSync(path.join(root, dir), { recursive: true });
+      writeFileSync(path.join(root, dir, 'package.json'), '{ "name": "x", "version": "0.0.0-PLACEHOLDER" }\n');
+    }
+
+    const packages = await discoverPackages(realExec, root);
+    expect(packages.get('@acme/tsc')!.builtFile).toBe(path.join(root, 'dist/libs/tsc/package.json'));
+    expect(packages.get('@acme/vite')!.builtFile).toBe(path.join(root, 'dist/libs/vite/package.json'));
+    expect(packages.get('@acme/out')!.builtFile).toBeNull();
+
+    writeVersions(packages, new Map<string, Stamp>([['@acme/tsc', { version: '1.7.1', distTag: null }]]), new Map());
+    expect(JSON.parse(readFileSync(path.join(root, 'dist/libs/tsc/package.json'), 'utf8')).version).toBe('1.7.1');
+  });
+
   it('puts a release under its dist-tag, keeps the other publishConfig, and withholds a placeholder', async () => {
     const root = repo({
       'libs/ui/package.json': '{\n  "name": "@acme/ui",\n  "version": "0.0.0-PLACEHOLDER",\n  "publishConfig": { "access": "public" }\n}\n',

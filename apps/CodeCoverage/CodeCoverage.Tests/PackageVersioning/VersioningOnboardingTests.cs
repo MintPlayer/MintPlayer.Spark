@@ -270,7 +270,7 @@ public class VersioningOnboardingTests
             new VersioningSeed("@mintplayer/ng-bootstrap", PackageKind.Npm, "22.4.1"),
             new VersioningSeed("@mintplayer/ng-bootstrap-snippets", PackageKind.Npm, "22.0.0"),
         ]);
-        plan.Notes.Should().ContainSingle().Which.Should().Contain("`@mintplayer/ng-bootstrap-snippets` is not built by ng-packagr");
+        plan.Notes.Should().ContainSingle().Which.Should().Contain("`@mintplayer/ng-bootstrap-snippets` has no build output the action knows");
         var files = ByPath(plan);
         files["libs/ui/package.json"].Should().Contain("\"version\": \"0.0.0-PLACEHOLDER\",").And.Contain("\"^22.0.0\"");
         files["coverage.yml"].Should().StartWith("coverage:\n  threshold: 80\n\n# MintPlayer package versioning");
@@ -475,7 +475,8 @@ public class VersioningOnboardingTests
         plan.Notes.Should().ContainSingle().Which.Should().StartWith("No push-triggered");
         var files = ByPath(plan);
         files.Should().NotContainKey(".github/workflows/build.yml");
-        files["nuget.config"].Should().Be($"""
+        // The raw string takes the checkout's line endings; the new file is LF.
+        files["nuget.config"].ReplaceLineEndings().Should().Be($"""
             <?xml version="1.0" encoding="utf-8"?>
             <configuration>
               <packageSources>

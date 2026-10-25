@@ -135,11 +135,44 @@ public class ProjectGraphTests
 
         graph.Packages.Select(p => p.Id).Should().BeEquivalentTo(["@acme/util", "@acme/ng-acme"]);
         var ng = graph.ById("@acme/ng-acme")!;
-        ng.NgPackageDest.Should().Be("dist/libs/ng-acme");
+        ng.BuildOutput.Should().Be("dist/libs/ng-acme");
         ng.FrameworkPackage.Should().Be("@angular/core");
         graph.AnchorOf(ng).Major.Should().Be(22);
         graph.InternalDependencies(ng).Select(d => d.Project.Id).Should().BeEquivalentTo(["@acme/util"]);
         graph.AnchorOf(graph.ById("@acme/util")!).IsFree.Should().BeTrue();
+    }
+
+    /// <summary>
+    /// mintplayer-ng-bootstrap #446: <c>@nx/js:tsc</c> and <c>@nx/vite:build</c> copy package.json into the build target's
+    /// outputPath, which the action must stamp too, or that copy publishes as the placeholder.
+    /// </summary>
+    [Fact]
+    public async Task An_nx_build_targets_outputPath_is_the_build_output()
+    {
+        var graph = await Build(new InMemoryTree()
+            .Add("package.json", """{ "name": "root", "private": true }""")
+            .Add("libs/tsc/project.json", """{ "targets": { "build": { "executor": "@nx/js:tsc", "options": { "outputPath": "dist/libs/tsc" } } } }""")
+            .Add("libs/tsc/package.json", """{ "name": "@acme/tsc", "version": "0.0.0-PLACEHOLDER" }""")
+            .Add("libs/vite/project.json", """{ "targets": { "build": { "executor": "@nx/vite:build", "options": { "outputPath": "{workspaceRoot}/dist/{projectRoot}" } } } }""")
+            .Add("libs/vite/package.json", """{ "name": "@acme/vite", "version": "0.0.0-PLACEHOLDER" }""")
+            .Add("libs/none/project.json", """{ "targets": { "test": { "options": { "outputPath": "dist/never" } } } }""")
+            .Add("libs/none/package.json", """{ "name": "@acme/none", "version": "0.0.0-PLACEHOLDER" }"""));
+
+        graph.ById("@acme/tsc")!.BuildOutput.Should().Be("dist/libs/tsc");
+        graph.ById("@acme/vite")!.BuildOutput.Should().Be("dist/libs/vite");
+        graph.ById("@acme/none")!.BuildOutput.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task An_nx_outputPath_outside_the_repository_is_a_warning()
+    {
+        var graph = await Build(new InMemoryTree()
+            .Add("package.json", """{ "name": "root", "private": true }""")
+            .Add("libs/x/project.json", """{ "targets": { "build": { "options": { "outputPath": "../../../outside" } } } }""")
+            .Add("libs/x/package.json", """{ "name": "@acme/x" }"""));
+
+        graph.ById("@acme/x")!.BuildOutput.Should().BeNull();
+        graph.Warnings.Should().ContainSingle().Which.Should().Contain("outputPath '../../../outside' is outside the repository");
     }
 
     [Fact]

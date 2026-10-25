@@ -98,7 +98,7 @@ and it fetches the tags and the history it needs, so `fetch-depth: 0` is not req
   untagged project is error `MPV005` instead of a silent placeholder. A solution pack still only warns MPV001, so
   untagged projects drop out. A project that is never released sets `IsPackable=false`.
 - **npm:** the action writes the version into each publishable `package.json`, and into an already-built
-  ng-packagr `dist/package.json`, and rewrites internal dependency ranges to `^<released>`. Nothing is committed.
+  copy of it (ng-packagr's `dest`, or the Nx `build` target's `outputPath`), and rewrites internal dependency ranges to `^<released>`. Nothing is committed.
   A package that has never been tagged keeps `0.0.0-PLACEHOLDER` and is marked `"private": true`, so it is not
   published.
 - **npm dist-tags** (D11): `latest` only for the highest stable major, `v<major>-lts` for older majors, `next` for
