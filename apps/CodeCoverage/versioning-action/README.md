@@ -8,7 +8,7 @@ through the `MintPlayer.Versioning.MSBuild` package.
 
 ## Usage
 
-Run it after the build and before pack, on pushes to the default branch and to release branches. Pack and publish
+Run it after the build and the tests, and before pack (a tag promises that the package ships), on pushes to the default branch and to release branches. Pack and publish
 **every** package, every time: a package this commit did not release packs at the version it already published, and
 the publish skips it as a duplicate.
 

@@ -133,7 +133,9 @@ adds tags and Releases authored by the App, per-repository serialization, and hi
 ### D3 — Two triggers: the action step (default) and bot dispatch (Q2)
 
 - **A, the action step (default).** The consumer's publish workflow calls `MintPlayer/versioning-action@v1` once,
-  **after build and before pack**: the API hash needs the built assemblies and `.d.ts` files (D6), and `dotnet pack`
+  ~~**after build and before pack**~~ **after the tests and before pack** (*superseded 2026-10-25 by #544 D3*: a
+  tag made before failing tests left a version that never shipped, so the onboarding now puts the step after the
+  last test step and adds `concurrency: cancel-in-progress`; Spark's `release` job `needs: tests`). The API hash needs the built assemblies and `.d.ts` files (D6), and `dotnet pack`
   (without `--no-build`) rebuilds with `MintPlayer.Versioning.MSBuild` reading the new tags (S1, D9). For npm the action writes the versions into
   `package.json` before the library build that copies them to `dist` (D9). The step computes and tags (D2), runs
   `git fetch --tags` and deepens a shallow clone itself, and exposes the versions as outputs. The consumer controls *when* a release happens: gate the step with `if:`, make the
@@ -298,6 +300,13 @@ their code in our container. So:
     A package added to an onboarded repository is untagged until its first release and hit the same failure. Tests:
     `TagVersionTests.Packs_an_untagged_package_only_where_nothing_is_published`, `The_untagged_version_is_never_read_as_a_tag`,
     and the git-backed task test now runs the push and the pull-request case.
+  - **An explicit global `Version` or `PackageVersion` wins** (#544 D1, 2026-10-25). Before this, the target overrode
+    `-p:Version=…` with the tag, because an assignment inside a target beats a global property at execution time
+    (#544 S1: `-p:Version=9.9.9` packed the tag's 1.2.3). The task now reads the engine's global properties and
+    resolves nothing when one is set. `PackageVersion` alone also sets `Version`. A csproj `<Version>` still does not
+    win. Evidence: `RealPackTests` (real `dotnet pack`, 13 cases). See `docs/versioning_msbuild_traps_PRD.md`.
+  - **A project packed on its own that would get the placeholder errors `MPV005`** (#544 D2) instead of warning;
+    a solution pack keeps the MPV001 warning.
   - Knobs: `MintPlayerVersioningSkip`, `MintPlayerVersioningTagPrefix`, `MintPlayerVersioningTaskSource` (Spark imports
     the targets from source, M14).
   - The task is an inline `RoslynCodeTaskFactory` class (`build/MintPlayer.Versioning.MSBuild.cs`), so the package
@@ -460,7 +469,7 @@ settings for forges without the capability. The owner wants GitLab and Bitbucket
     `^22.3.0`…`^22.43.0`, and npm links a workspace package only when its version satisfies the range; a prerelease
     `0.0.0` would make npm fetch the published package instead. The action stamps the seeded package whatever its
     source version, so nothing is lost, and `package-lock.json` is unchanged.
-  - The `release` job builds, runs the action (`token: github.token`, job permission `contents: write`, checkout with
+  - The `release` job (which, since #544, `needs` the test jobs) builds, runs the action (`token: github.token`, job permission `contents: write`, checkout with
     `persist-credentials: false` so only that step holds the token), then packs **without** `--no-build`
     (D9). The publish job pushes npm through `MintPlayer/github-actions/publish-npm-packages` with `skipDuplicate`.
   - **Seed tags** come from `tools/versioning-seed-tags.mjs`, which reads each package's version from `master` before

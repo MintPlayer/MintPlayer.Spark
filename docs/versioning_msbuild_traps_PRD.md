@@ -239,8 +239,11 @@ its failed jobs.
 - **The tag records its run.** `TagAnnotation` (`CodeCoverage.Versioning/Versions/VersionTag.cs:53-89`) is already a
   list of `key: value` lines (`api-hash:`, `engine:`), and `Parse` skips unknown lines. A third line is added:
   `run: <GITHUB_SERVER_URL>/<GITHUB_REPOSITORY>/actions/runs/<GITHUB_RUN_ID>`. Local mode reads the runner's
-  environment. Server mode: the action sends the run id with its request, and the app writes the same line. A tag
-  without the line (a seed tag, a hand-made tag, every tag from before this change) shows no status.
+  environment. Server mode: ~~the action sends the run id with its request~~ the app takes the run id from the
+  OIDC token's `run_id` claim, which it already verifies (`Oidc.RunIdClaim`), and writes the same line. The action
+  and its `dist` are therefore unchanged. A tag without the line (a seed tag, a hand-made tag, every tag from before
+  this change) shows no status. The URL is validated on write and on read (`Identifiers.IsRunUrl`). The graph also
+  ignores a run of any other repository, because anyone who can push a tag can write the line.
 - **The run, not the job that ran the action** (Q8, owner 2026-10-25).
   - In Spark the action runs in `release`, but the packages are pushed by the later `publish` job
     (`dotnet-build-master.yml:266-298`). A failed push leaves `release` green; only the run is red.
@@ -254,7 +257,10 @@ its failed jobs.
   uses the same permission need, `RerunActions` = `actions: write` (`GitHubInstallationPermissions.cs:241`), and
   the account-permissions notice already handles an installation that has not accepted it.
 - **Who sees what.** Everyone who can read the repository sees the status. The button is for users with write access,
-  checked on the server. Private repositories keep the existing rule: anonymous 401, signed-in without access 404.
+  checked on the server. "Write access" means the viewer's own forge login has a role of Write or higher. The login
+  comes from the viewer's linked sign-in, and the role is read the same way the merge-queue panel reads it
+  (`IForgeAccessService.GetViewerAccountAsync` + `IForgeMergeQueue.GetActorRoleAsync`). The app has no write rule of
+  its own, and `CanManageRepositoryAsync` is admin-only, so it would be too strict. Private repositories keep the existing rule: anonymous 401, signed-in without access 404.
 - **The cancel trap.** With `cancel-in-progress: true` (D3), re-running an older commit's run while a newer run of the
   same workflow is in progress cancels the *newer* one. The button is disabled, with the reason, while a newer run of
   that workflow is queued or in progress (owner left the choice to me, 2026-10-25; rejected: allowing it and

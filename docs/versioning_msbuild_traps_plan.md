@@ -12,7 +12,10 @@ kind (owner: "sounds good to me"). PRD and plan rewritten. D5 added (release-run
 graph). Q1 = A, Q2 = A, Q5 moot (the package stays on GitHub Packages), Q9–Q11 settled (D4: `nuget.config` mapping
 only, `source-url` stays, Spark's publish unchanged). D5's two remaining points left to me by the owner: the re-run
 button is disabled while a newer run is unfinished, and server mode passes the run id to the app. Grill closed.
-Next: the spikes (S0, S1, S3, S4, S5). Next: a grill round, then the spikes.
+
+2026-10-25 (later): M1–M7 implemented and committed on the branch (owner: "commit + start the spikes, then implement
+all milestones, and create the pull-request"). S0, S1, S4 and S5's git half have results below; S3 and S5's GitHub
+half were not run, since they need a real GitHub test repository. Next: M8, the sweep, then the pull request.
 
 ## Spikes
 
@@ -48,6 +51,30 @@ that depends on it starts.
   dependency B 9.8.7; untagged direct push pack → MPV005 (exit 1); solution pack → MPV001 only; `dotnet build` of
   one project unaffected; local untagged → 0.0.0-untagged. `IBuildEngine6` exists since MSBuild 16; net8's SDK is
   17.8. Only SDK 10/11 are installed here, so net8 was not run.
+- **S4 (2026-10-25): a real pack in a test is fast enough to run in every test run.** `RealPackTests`
+  (`CodeCoverage.Versioning.Tests/MSBuild/`) builds a temp git repository whose `Directory.Build.targets` imports the
+  source targets, as Spark does, and runs `dotnet pack` for each case. The class takes 27 s, under the 60 s target, so
+  it needs no CI group of its own.
+- **S3: NOT run.** It needs a GitHub repository outside the package's Actions access list and a real setup-dotnet run.
+  M4 relies on reading the code instead: setup-dotnet's `authutil.ts` (feed matched case-insensitively with
+  `includes`, an unmatched feed gets key `Source`), and NuGet's documented rule that an exact package id in
+  `packageSourceMapping` beats a prefix and `*`. The first onboarding of a GitHub Packages repository is the real
+  test. Until then this is unverified.
+- **S5, the git half (2026-10-25): one `for-each-ref`, no extra fetch.** On an annotated tag,
+  `%(if)%(*objectname)%(then)%(contents:trailers:key=run,valueonly,separator=%x20)%(end)` gives the `run:` trailer.
+  It gives nothing for heads and lightweight tags. It works on git 2.47, the git of the mirror image (aspnet:11.0,
+  Debian trixie). Tag objects are always present in a treeless mirror, since only trees and blobs are filtered. The
+  refs hash still covers `objectname refname` only, so existing snapshots stay valid. Pinned by
+  `LaneLayoutGoldenTests.A_version_tag_carries_the_run_that_wrote_it_and_other_refs_none`. Spark's ~300-tag mirror
+  was not timed.
+- **S5, the GitHub half: NOT exercised.** GitHub's documentation says `rerun-failed-jobs` re-runs failed and
+  cancelled jobs and answers 201. The 403, 404 and 422 handling copies `RerunCheckAsync`, and the stubbed responses
+  are tested in `GitHubForgeMergeQueueTests`. No real run was re-run, so the behaviour on a cancelled run and past the
+  re-run window is unverified until the first real use.
+- **M6, server mode needs no action change.** The app already reads the calling run's id from the OIDC token's
+  `run_id` claim (`Oidc.RunIdClaim`, which `VersioningController` uses for the run record). It builds the `run:` URL
+  from that, so the action and its committed `dist` are unchanged, and the plan's "rebuild the action's `dist`" step
+  is not needed. Local mode reads `GITHUB_SERVER_URL`, `GITHUB_REPOSITORY` and `GITHUB_RUN_ID` in the CLI.
 
 ## Milestones
 

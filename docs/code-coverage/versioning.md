@@ -44,20 +44,29 @@ one. A branch cannot change the section for itself.
 
 ## The workflow step
 
-Run the action after the build and before the pack. Then pack and publish **every** package: a package this commit
-did not release packs at the version the feed already has, and the publish skips it.
+Run the action **after the tests** and before the pack (#544 D3): a tag is a promise that the package ships, so it
+is only made once the commit passed. Then pack and publish **every** package. A package this commit did not release
+packs at the version the feed already has, and the publish skips it. When the tests run in another job, the job with
+the action `needs:` it. The onboarding pull request moves the step there and says so in its notes when it cannot.
 
 ```yaml
 permissions:
   contents: write   # push the version tags
   id-token: write   # server mode: proves to the app which repository and workflow is calling
 
+# A newer push cancels the older run; a run cancelled after its tags is recovered by re-running it (see Troubleshooting).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 steps:
   - uses: actions/checkout@v7
   - run: dotnet build -c Release            # and/or your npm library builds
+  - run: dotnet test -c Release --no-build
   - id: versioning
     uses: MintPlayer/MintPlayer.Spark/apps/CodeCoverage/versioning-action@versioning-v1
-  # No --no-build: it implies --no-restore, which leaves the dependency versions in the nuspec stale.
+  # No --no-build: the versions are decided after the tests, so pack builds again to stamp them into the
+  # assemblies (--no-build also skips restore, which leaves the nuspec's dependency versions stale).
   - run: dotnet pack -c Release -o nupkgs
   - run: dotnet nuget push 'nupkgs/*.nupkg' --source https://api.nuget.org/v3/index.json --api-key "${{ secrets.NUGET_API_KEY }}" --skip-duplicate
   - uses: MintPlayer/github-actions/publish-npm-packages@b08fbddf0b285a8633ac138b89d79ceb8cc8c888
@@ -81,6 +90,13 @@ and it fetches the tags and the history it needs, so `fetch-depth: 0` is not req
   out of pull-request workflows. A
   multi-targeted project gets the same targets in its outer build, the one that packs (`buildMultiTargeting/`), and a
   pack that would still write a placeholder nuspec fails with `MPV004`.
+- **An explicit version wins** (#544 D1). `dotnet pack -p:Version=1.2.3` (or a `Version` passed down from a parent
+  build) skips the target entirely: no git call, no MPV001, and the project stays packable. `-p:PackageVersion`
+  alone sets `Version` too, so the assembly and the package agree. A `<Version>` in a csproj does **not** win, because
+  that is where the placeholder lives. `MintPlayerVersioningSkip` still turns versioning off altogether.
+- **A project packed on its own fails loudly** (#544 D2). On a push build, `dotnet pack path/to/One.csproj` of an
+  untagged project is error `MPV005` instead of a silent placeholder. A solution pack still only warns MPV001, so
+  untagged projects drop out. A project that is never released sets `IsPackable=false`.
 - **npm:** the action writes the version into each publishable `package.json`, and into an already-built
   ng-packagr `dist/package.json`, and rewrites internal dependency ranges to `^<released>`. Nothing is committed.
   A package that has never been tagged keeps `0.0.0-PLACEHOLDER` and is marked `"private": true`, so it is not
@@ -176,6 +192,32 @@ Both are settings on the account and repository **Versioning** tab (Inherit / En
 
 In local mode, the action's `releases` and `cut-release-branches` inputs control the same features.
 
+### GitHub Packages as a restore source (#544 D4)
+
+`MintPlayer.Versioning.MSBuild` is published to nuget.org and to MintPlayer's GitHub Packages feed. A repository
+whose setup-dotnet has `source-url: https://nuget.pkg.github.com/<owner>/index.json` asks every source for every
+package. GitHub Packages then answers **403** for this package, because the repository is not on the package's
+Actions access list, and the restore fails. The onboarding pull request adds a `nuget.config` at the repository root,
+or updates the one that is there:
+
+- the feed, listed under exactly the URL `source-url` uses, so setup-dotnet attaches its credentials to that key;
+- a `packageSourceMapping` that sends the exact id `MintPlayer.Versioning.MSBuild` to nuget.org. An exact id beats a
+  prefix and `*`, so the feed is never asked for it. A file with no mapping yet gets one in which every source keeps
+  `*`, so everything else resolves as before.
+
+The workflow is not touched. A `source-url` built from an expression other than `github.repository_owner`, or a feed
+in a nested `nuget.config`, gets a note in the pull request with the fix to make by hand.
+
+### The release on the commit graph (#544 D5)
+
+Each version tag records the workflow run that wrote it, as a `run:` line in its annotation. On the repository page,
+the commit graph marks a tagged commit with that run's status: *released*, *release running*, *release failed* or
+*release cancelled*. The mark links to the run. A viewer whose own GitHub login has write access to the repository
+gets a **re-run** button on a failed or cancelled run, which re-runs its failed and cancelled jobs. It is refused
+while a newer run of the same workflow is unfinished, because the re-run would cancel that newer run (`concurrency`
+above). The App needs `actions: write` for the button. Seed tags, hand-made tags and tags from before this change
+have no `run:` line and show no mark.
+
 ## Forges
 
 Versioning is GitHub only (D16). On GitLab and Bitbucket repositories the Versioning settings are hidden.
@@ -190,3 +232,8 @@ Versioning is GitHub only (D16). On GitLab and Bitbucket repositories the Versio
 | The run fails: "a major never goes down" | The computed major is below the last tag's, or the version already exists (D7). Anchor the package `free`, or fix the target framework. |
 | The run answers `503 seeds` | The onboarding's seed tags could not be pushed yet. The run waits instead of releasing untagged packages. |
 | Nothing is released after a merge | No input of any package changed: only ignored files did, or only files outside the project directories. |
+| The run failed or was cancelled after the Version step | The tags exist but some packages were not pushed. **Re-run it** (the commit graph's re-run button, or GitHub's "Re-run failed jobs"). The re-run finds its own tags, releases the same versions and pushes what is missing. A tag whose package never ships is harmless: the next release of that package gets the next version. |
+| `MPV005: <id> has no version tag on this push build` | A single project was packed on its own on a push build, and it has no tag. Pass `-p:Version`, tag it, pack the solution instead, or set `IsPackable=false` on a project that is never released. |
+| `-p:Version` is ignored | `MintPlayer.Versioning.MSBuild` older than the #544 release. Update the package. |
+| Restore warns `NU1603: <Q> depends on <P> (>= X) but <P> X was not found` | A run was cancelled or failed partway through its push, and a later release of P skipped the dangling version X. Re-run the failed run **before** the next one, so that it publishes P X. |
+| Restore fails with **403** from `nuget.pkg.github.com` for `MintPlayer.Versioning.MSBuild` | The repository restores from GitHub Packages without a mapping (see "GitHub Packages as a restore source" above). Merge the onboarding's `nuget.config`, or map the id to nuget.org yourself. |
