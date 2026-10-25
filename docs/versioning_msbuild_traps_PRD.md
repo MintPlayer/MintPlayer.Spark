@@ -225,9 +225,11 @@ Push packages           # --skip-duplicate (NuGet); npm publishes only versions 
   - "If possible": a `nuget.config` it cannot parse, or a feed configured some other way (a script, a composite
     action), gets a `notes` entry with file:line and the manual fix instead, as for MinVer
     (`VersioningOnboarding.cs:237,244`).
-  - Spike S3 confirms the two NuGet behaviours this relies on: the credentials from the parent-directory file attach
-    to a source declared in the repository's file even under `<clear />`, and the exact-id mapping keeps restore from
-    querying GitHub Packages for the package (no NU1301 without Actions access).
+  - ~~Spike S3 confirms~~ Spike S3 was meant to confirm the two NuGet behaviours this relies on: the credentials from
+    the parent-directory file attach to a source declared in the repository's file even under `<clear />`, and the
+    exact-id mapping keeps restore from querying GitHub Packages for the package (no NU1301 without Actions access).
+    **S3 was not run** (2026-10-25: it needs a real GitHub repository outside the package's access list). Both
+    behaviours are **unverified** until the first onboarding of a GitHub Packages repository (plan, Spike results).
   - The existing GitHub copies of the package stay (Q5 moot).
 
 ### D5: The commit graph shows the release run of a tagged commit, with a re-run button (owner, 2026-10-25)

@@ -15,7 +15,9 @@ button is disabled while a newer run is unfinished, and server mode passes the r
 
 2026-10-25 (later): M1–M7 implemented and committed on the branch (owner: "commit + start the spikes, then implement
 all milestones, and create the pull-request"). S0, S1, S4 and S5's git half have results below; S3 and S5's GitHub
-half were not run, since they need a real GitHub test repository. Next: M8, the sweep, then the pull request.
+half were not run, since they need a real GitHub test repository. **PR #545 opened 2026-10-25.** M8's local sweep was
+not run: the targeted classes ran locally (all green), and the PR's CI run is the sweep (CLAUDE.md: once a PR is open,
+CI is the sweep). Next: CI green, merge, then M8's post-merge steps.
 
 ## Spikes
 
@@ -85,9 +87,9 @@ that depends on it starts.
 | M3 | Onboarding workflow rewrite (`VersioningOnboarding.Workflow`): the Version step goes after the last test step (not merely above the first pack step), `--no-build` stays stripped, a comment above the pack step explains the second build, and a `concurrency` group with `cancel-in-progress: true` is added when the workflow has none. `VersioningOnboardingTests` expectations updated, including an existing `concurrency` key left alone. If S0 finds a re-run gap, fix it in the engine here. | D3, R4, R5 |
 | M4 | Onboarding (Spark's publish job is unchanged, Q11): detect GitHub Packages restore sources (workflows + every `nuget.config`) and add or update the root `nuget.config` (PRD D4: the feed listed under the exact `source-url` URL, the exact-id mapping of MintPlayer.Versioning.MSBuild to nuget.org); workflows untouched; a `notes` warning with file:line for any shape it cannot rewrite. Tests: no `nuget.config`, one without mapping, one with `MintPlayer.*` mapped to GitHub, one with `<clear />`, a feed URL differing only by trailing slash or case. | D4, R6, R7 |
 | M5 | Spark's `dotnet-build-master.yml`: `release` needs `tests` and runs build → version → pack linearly; concurrency unchanged. | D3, R4 |
-| M6 | Release status on the commit graph: `TagAnnotation` gains `run:` (format + parse, unknown-line tolerance kept); the action passes the run in local and server mode; the graph reader returns each tagged commit's run; a status endpoint (lazy, rows on screen, cached while unfinished); a forge `RerunFailedJobsAsync` (`rerun-failed-jobs`, same 403/404/422 handling as `RerunCheckAsync`); a write-access-only re-run action, refused while a newer run of the workflow is unfinished; the graph overlay and button (ng-bootstrap components). Rebuild the action's `dist` from the main checkout. | D5, R9, R10 |
+| M6 | Release status on the commit graph: `TagAnnotation` gains `run:` (format + parse, unknown-line tolerance kept); ~~the action passes the run in local and server mode~~ (local mode: the CLI reads the runner env; server mode: the app reads the OIDC `run_id`, see S5 results); the graph reader returns each tagged commit's run; a status endpoint (lazy, rows on screen, cached while unfinished); a forge `RerunFailedJobsAsync` (`rerun-failed-jobs`, same 403/404/422 handling as `RerunCheckAsync`); a write-access-only re-run action, refused while a newer run of the workflow is unfinished; the graph overlay and button (~~ng-bootstrap components~~: a link and a button styled as the row's existing ref pills, like the coverage pill beside them, since the virtual datatable's rows are plain cells). ~~Rebuild the action's `dist` from the main checkout~~ (not needed: the action is unchanged). | D5, R9, R10 |
 | M7 | Docs: #153 PRD D9 (superseded bullets marked), `docs/code-coverage/versioning.md` (explicit version; workflow order; the second-build comment; troubleshooting row "failed or cancelled after Version: re-run it, a tag without a package is harmless", plus the NU1603 case; GitHub Packages), this plan's Status. | — |
-| M8 | Sweep (`npm run test:affected`, Developer licence) once, at the end. Then, after merge and the MSBuild release: regenerate Dotnet.Tools #202 without the `MintPlayerVersioningSkip` workaround. Check the root `nuget.config` of AspNetCore.Tools and SpaServices. | — |
+| M8 | ~~Sweep (`npm run test:affected`, Developer licence) once, at the end.~~ Replaced by the PR's CI run; the targeted classes ran locally. Then, after merge and the MSBuild release: regenerate Dotnet.Tools #202 without the `MintPlayerVersioningSkip` workaround. Check the root `nuget.config` of AspNetCore.Tools and SpaServices. | — |
 
 ## Test list (written per milestone, run once in M8)
 
