@@ -459,6 +459,164 @@ public class VersioningOnboardingTests
         workflow.Should().NotContain("cancel-in-progress");
     }
 
+    private const string Feed = "https://nuget.pkg.github.com/MintPlayer/index.json";
+
+    private static InMemoryTree GitHubPackagesRepository(string sourceUrl) => new InMemoryTree()
+        .Add("src/Tools/Tools.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <PackageId>MintPlayer.Tools</PackageId>\n    <Version>1.2.3</Version>\n  </PropertyGroup>\n</Project>\n")
+        .Add(".github/workflows/build.yml", $"on: pull_request\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n"
+            + $"      - uses: actions/setup-dotnet@v5\n        with:\n          source-url: {sourceUrl}\n        env:\n          NUGET_AUTH_TOKEN: ${{{{ github.token }}}}\n"
+            + "      - run: dotnet build\n");
+
+    [Fact]
+    public async Task A_github_packages_restore_gets_a_nuget_config_mapping_the_package_to_nuget_org()
+    {
+        var plan = await VersioningOnboarding.PlanAsync(GitHubPackagesRepository(Feed), None, Sha);
+
+        plan.Notes.Should().ContainSingle().Which.Should().StartWith("No push-triggered");
+        var files = ByPath(plan);
+        files.Should().NotContainKey(".github/workflows/build.yml");
+        files["nuget.config"].Should().Be($"""
+            <?xml version="1.0" encoding="utf-8"?>
+            <configuration>
+              <packageSources>
+                <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
+                <add key="github" value="{Feed}" />
+              </packageSources>
+              <packageSourceMapping>
+                <packageSource key="nuget.org">
+                  <package pattern="*" />
+                  <package pattern="MintPlayer.Versioning.MSBuild" />
+                </packageSource>
+                <packageSource key="github">
+                  <package pattern="*" />
+                </packageSource>
+              </packageSourceMapping>
+            </configuration>
+
+            """);
+    }
+
+    [Fact]
+    public async Task A_nuget_config_without_a_mapping_keeps_its_sources_and_gets_one()
+    {
+        var tree = GitHubPackagesRepository(Feed).Add("NuGet.Config", """
+            <?xml version="1.0" encoding="utf-8"?>
+            <configuration>
+                <packageSources>
+                    <clear />
+                    <add key="nuget" value="https://api.nuget.org/v3/index.json" />
+                    <add key="MintPlayer" value="https://NUGET.pkg.github.com/mintplayer/index.json/" />
+                </packageSources>
+            </configuration>
+
+            """);
+
+        var plan = await VersioningOnboarding.PlanAsync(tree, None, Sha);
+
+        ByPath(plan)["NuGet.Config"].Should().Be("""
+            <?xml version="1.0" encoding="utf-8"?>
+            <configuration>
+                <packageSources>
+                    <clear />
+                    <add key="nuget" value="https://api.nuget.org/v3/index.json" />
+                    <add key="MintPlayer" value="https://NUGET.pkg.github.com/mintplayer/index.json/" />
+                </packageSources>
+                <packageSourceMapping>
+                    <packageSource key="nuget">
+                        <package pattern="*" />
+                        <package pattern="MintPlayer.Versioning.MSBuild" />
+                    </packageSource>
+                    <packageSource key="MintPlayer">
+                        <package pattern="*" />
+                    </packageSource>
+                </packageSourceMapping>
+            </configuration>
+
+            """);
+    }
+
+    [Fact]
+    public async Task A_mapping_that_sends_the_prefix_to_github_gets_the_exact_id_under_nuget_org()
+    {
+        var config = $"""
+            <configuration>
+              <packageSources>
+                <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
+                <add key="github" value="{Feed}" />
+              </packageSources>
+              <packageSourceMapping>
+                <packageSource key="nuget.org">
+                  <package pattern="*" />
+                </packageSource>
+                <packageSource key="github">
+                  <package pattern="MintPlayer.*" />
+                </packageSource>
+              </packageSourceMapping>
+            </configuration>
+
+            """;
+        var notes = new List<string>();
+
+        var edited = VersioningOnboarding.NuGetConfig("nuget.config", config, [Feed], notes);
+
+        notes.Should().BeEmpty();
+        edited.Should().Be(config.Replace("""
+                  <package pattern="*" />
+                </packageSource>
+                <packageSource key="github">
+            """, """
+                  <package pattern="*" />
+                  <package pattern="MintPlayer.Versioning.MSBuild" />
+                </packageSource>
+                <packageSource key="github">
+            """));
+        VersioningOnboarding.NuGetConfig("nuget.config", edited, [Feed], notes).Should().BeNull();
+    }
+
+    [Fact]
+    public async Task A_source_url_naming_the_owner_through_the_context_resolves_to_the_repository_owner()
+    {
+        // The shape of MintPlayer.AspNetCore.Tools and SpaServices.
+        var tree = GitHubPackagesRepository("https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json").Add("nuget.config", """
+            <?xml version="1.0" encoding="utf-8"?>
+            <configuration>
+              <packageSources>
+                <add key="nuget.org" value="https://api.nuget.org/v3/index.json" protocolVersion="3" />
+              </packageSources>
+            </configuration>
+            """);
+
+        var plan = await VersioningOnboarding.PlanAsync(tree, None, Sha, owner: "MintPlayer");
+
+        ByPath(plan)["nuget.config"].Should().Be($"""
+            <?xml version="1.0" encoding="utf-8"?>
+            <configuration>
+              <packageSources>
+                <add key="nuget.org" value="https://api.nuget.org/v3/index.json" protocolVersion="3" />
+                <add key="github" value="{Feed}" />
+              </packageSources>
+              <packageSourceMapping>
+                <packageSource key="nuget.org">
+                  <package pattern="*" />
+                  <package pattern="MintPlayer.Versioning.MSBuild" />
+                </packageSource>
+                <packageSource key="github">
+                  <package pattern="*" />
+                </packageSource>
+              </packageSourceMapping>
+            </configuration>
+            """);
+    }
+
+    [Fact]
+    public async Task A_source_url_from_an_expression_is_left_to_the_merger()
+    {
+        var plan = await VersioningOnboarding.PlanAsync(GitHubPackagesRepository("https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json"), None, Sha);
+
+        plan.Notes.Where(n => !n.StartsWith("No push-triggered", StringComparison.Ordinal)).Should().ContainSingle().Which.Should().Contain("sets setup-dotnet's `source-url` from an expression");
+        ByPath(plan).Should().NotContainKey("nuget.config");
+    }
+
     [Fact]
     public async Task The_reference_takes_the_version_read_from_nuget_org()
     {

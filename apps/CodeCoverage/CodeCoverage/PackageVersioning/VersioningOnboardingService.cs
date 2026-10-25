@@ -84,7 +84,7 @@ public partial class VersioningOnboardingService : IVersioningOnboardingService
             logger.LogWarning(ex, "Versioning onboarding: could not resolve {Tag}; the workflow step keeps the tag", VersioningOnboarding.ActionTag);
         }
         var plan = await VersioningOnboarding.PlanAsync(tree, (package, ct) => pulls.HasTagWithPrefixAsync(repository, VersionTag.Prefix(package), ct), actionSha,
-            await LatestPackageVersionAsync(cancellationToken), cancellationToken);
+            await LatestPackageVersionAsync(cancellationToken), repository.OwnerLogin, cancellationToken);
 
         if (plan.Files.Count == 0)
         {
