@@ -262,8 +262,9 @@ public static partial class VersioningOnboarding
 
     /// <summary>
     /// The workflow with the versioning step in front of each push-triggered job's first pack or publish step, the job's
-    /// permissions widened to <c>contents: write</c> and <c>id-token: write</c>, <c>--no-build</c> dropped from its pack and
-    /// <c>--skip-duplicate</c> added to its NuGet push; null when the workflow needs nothing.
+    /// permissions widened to <c>contents: write</c> and <c>id-token: write</c>, <c>--no-build</c> dropped from its pack (with
+    /// a comment saying why) and <c>--skip-duplicate</c> added to its NuGet push, and a <c>concurrency</c> group when the
+    /// workflow has none; null when the workflow needs nothing.
     /// </summary>
     internal static string? Workflow(string path, string text, string? actionSha, List<string> notes)
     {
@@ -298,11 +299,24 @@ public static partial class VersioningOnboarding
             var steps = (YamlSequenceNode)Child(job, "steps")!;
             if (steps.Children.Any(s => Scalar(s, "uses")?.Contains("versioning-action", StringComparison.Ordinal) == true)) continue;
             var first = PublishStep(job)!.Value;
+            TestOrder(path, (YamlScalarNode)key, job, jobs, first, notes);
 
             // The step, above the first pack or publish step's comment block, separated like its neighbours.
             var stepLine = Line(steps.Children[first].Start) - 1;
             var dash = lines[stepLine].IndexOf('-');
             var keyIndent = new string(' ', (int)steps.Children[first].Start.Column - 1);
+
+            // #544 D3: the pack builds again, so the versions decided after the tests reach the assemblies. Added before
+            // the versioning step, so on the same line it lands below it.
+            if (Enumerable.Range(first, steps.Children.Count - first).FirstOrDefault(i => Scalar(steps.Children[i], "run")?.Contains("dotnet pack", StringComparison.Ordinal) == true, -1) is var pack and >= 0)
+            {
+                var pad = new string(' ', dash);
+                edits.Add(new LineEdit(Line(steps.Children[pack].Start) - 1, null, [
+                    $"{pad}# No --no-build: the versions are decided after the tests, so pack builds again to stamp them into the",
+                    $"{pad}# assemblies (--no-build also skips restore, which leaves the nuspec's dependency versions stale).",
+                ]));
+            }
+
             var at = stepLine;
             while (at > 0 && lines[at - 1].TrimStart().StartsWith('#')) at--;
             var step = new List<string>
@@ -338,6 +352,20 @@ public static partial class VersioningOnboarding
         }
         if (edits.Count == 0) return null;
 
+        // #544 D3: a newer push cancels the older run. A run cancelled after its tags were pushed leaves tags without
+        // packages, which is harmless: the newer run packs them. A workflow's own concurrency is left alone.
+        if (Child(root, "concurrency") is null && root.Children.Keys.OfType<YamlScalarNode>().FirstOrDefault(k => k.Value == "jobs") is { } jobsKey
+            && jobsKey.Start.Column == 1)
+        {
+            var unit = new string(' ', Math.Max(2, (int)jobs.Children.Keys.First().Start.Column - 1));
+            edits.Add(new LineEdit(Line(jobsKey.Start) - 1, null, [
+                "concurrency:",
+                unit + "group: ${{ github.workflow }}-${{ github.ref }}",
+                unit + "cancel-in-progress: true",
+                "",
+            ]));
+        }
+
         var result = lines.ToList();
         foreach (var edit in edits.Where(e => e.Replace is not null)) result[edit.Line] = edit.Replace!;
         foreach (var edit in edits.Where(e => e.Insert is not null).OrderByDescending(e => e.Line))
@@ -346,6 +374,38 @@ public static partial class VersioningOnboarding
             result.InsertRange(edit.Line, edit.Insert!.Select(l => l + eol));
         }
         return string.Join('\n', result);
+    }
+
+    /// <summary>
+    /// #544 D3: the tags are pushed only once the tests passed, so a test that runs after the versioning step, or in a job
+    /// the publishing job does not wait for, is reported: the rewrite does not move steps or jobs.
+    /// </summary>
+    private static void TestOrder(string path, YamlScalarNode key, YamlMappingNode job, YamlMappingNode jobs, int first, List<string> notes)
+    {
+        var steps = ((YamlSequenceNode)Child(job, "steps")!).Children;
+        if (steps.Skip(first).Any(s => Scalar(s, "run") is { } run && TestRun().IsMatch(run)))
+            notes.Add($"`{path}` job `{key.Value}` runs tests after it packs: move them above the versioning step, which pushes the tags.");
+
+        var awaited = new HashSet<string>(StringComparer.Ordinal);
+        var pending = new Stack<YamlNode?>([Child(job, "needs")]);
+        while (pending.TryPop(out var needs))
+        {
+            var names = needs switch
+            {
+                YamlScalarNode one => [one.Value!],
+                YamlSequenceNode many => many.Children.OfType<YamlScalarNode>().Select(n => n.Value!).ToArray(),
+                _ => Array.Empty<string>(),
+            };
+            foreach (var name in names.Where(awaited.Add))
+                if (Child(jobs, name) is { } needed) pending.Push(Child(needed, "needs"));
+        }
+        foreach (var (otherKey, other) in jobs.Children)
+        {
+            var name = ((YamlScalarNode)otherKey).Value!;
+            if (name == key.Value || awaited.Contains(name) || Child(other, "steps") is not YamlSequenceNode otherSteps) continue;
+            if (otherSteps.Children.Any(s => Scalar(s, "run") is { } run && TestRun().IsMatch(run)))
+                notes.Add($"`{path}` job `{key.Value}` does not wait for job `{name}`, which runs tests: add it to `needs`, so a failing test pushes no tags.");
+        }
     }
 
     /// <summary>The job's token gets <c>contents: write</c> (the tags) and <c>id-token: write</c> (the app's proof of the caller).</summary>
@@ -530,6 +590,9 @@ public static partial class VersioningOnboarding
 
     [GeneratedRegex(@"\n[ \t]*<ItemGroup>\r?\n[ \t]*</ItemGroup>\r?(?=\n)")]
     private static partial Regex EmptyItemGroup();
+
+    [GeneratedRegex(@"\bdotnet\s+test\b|\b(npm|pnpm|yarn)\s+(run\s+)?test\b|\bnx\b.*\btest\b")]
+    private static partial Regex TestRun();
 
     [GeneratedRegex(@"[ \t]+--no-build\b")]
     private static partial Regex NoBuild();

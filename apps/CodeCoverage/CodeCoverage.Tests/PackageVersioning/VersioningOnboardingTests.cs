@@ -140,6 +140,10 @@ public class VersioningOnboardingTests
               contents: read
               packages: write
 
+            concurrency:
+              group: ${{ github.workflow }}-${{ github.ref }}
+              cancel-in-progress: true
+
             jobs:
               build:
                 name: publish-release
@@ -162,6 +166,8 @@ public class VersioningOnboardingTests
                   id: versioning
                   uses: MintPlayer/MintPlayer.Spark/apps/CodeCoverage/versioning-action@{{{Sha}}} # versioning-v1
 
+                # No --no-build: the versions are decided after the tests, so pack builds again to stamp them into the
+                # assemblies (--no-build also skips restore, which leaves the nuspec's dependency versions stale).
                 - name: Pack
                   run: dotnet pack --configuration Release /p:ContinuousIntegrationBuild=true
 
@@ -274,6 +280,10 @@ public class VersioningOnboardingTests
             on:
               push:
                 branches: [ master ]
+
+            concurrency:
+              group: ${{ github.workflow }}-${{ github.ref }}
+              cancel-in-progress: true
 
             jobs:
               build:
@@ -416,11 +426,37 @@ public class VersioningOnboardingTests
         files.Should().NotContainKey("src/Tools/Tools.csproj");
         files["Directory.Build.props"].Should().Be("<Project>\n  <ItemGroup>\n    <PackageReference Include=\"MintPlayer.Versioning.MSBuild\" Version=\"1.0.1\" PrivateAssets=\"all\" />\n  </ItemGroup>\n</Project>\n");
         files[".github/workflows/publish.yml"].Should().Be(
-            "on: push\njobs:\n  pack:\n    runs-on: ubuntu-latest\n"
+            "on: push\n"
+            + "concurrency:\n  group: ${{ github.workflow }}-${{ github.ref }}\n  cancel-in-progress: true\n\n"
+            + "jobs:\n  pack:\n    runs-on: ubuntu-latest\n"
             + "    permissions:\n      packages: write\n      contents: write\n      id-token: write\n\n"
             + "    steps:\n      - name: Version the packages\n        id: versioning\n"
             + "        uses: MintPlayer/MintPlayer.Spark/apps/CodeCoverage/versioning-action@versioning-v1\n"
+            + "      # No --no-build: the versions are decided after the tests, so pack builds again to stamp them into the\n"
+            + "      # assemblies (--no-build also skips restore, which leaves the nuspec's dependency versions stale).\n"
             + "      - run: dotnet pack -o nupkgs\n      - run: dotnet nuget push 'nupkgs/*.nupkg' --source github --skip-duplicate\n");
+    }
+
+    [Fact]
+    public async Task Tests_after_the_tags_are_reported_and_an_own_concurrency_is_kept()
+    {
+        var tree = new InMemoryTree()
+            .Add("src/Tools/Tools.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <PackageId>MintPlayer.Tools</PackageId>\n    <Version>1.2.3</Version>\n  </PropertyGroup>\n</Project>\n")
+            .Add(".github/workflows/publish.yml", "on: push\nconcurrency: release\njobs:\n"
+                + "  unit:\n    runs-on: ubuntu-latest\n    steps:\n      - run: dotnet test\n"
+                + "  lint:\n    runs-on: ubuntu-latest\n    steps:\n      - run: npx nx affected -t lint test\n"
+                + "  build:\n    needs: lint\n    runs-on: ubuntu-latest\n    steps:\n      - run: dotnet build\n"
+                + "  pack:\n    needs: [build]\n    runs-on: ubuntu-latest\n    permissions:\n      contents: write\n      id-token: write\n"
+                + "    steps:\n      - run: dotnet pack\n      - run: dotnet test --no-build\n");
+
+        var plan = await VersioningOnboarding.PlanAsync(tree, None, null);
+
+        plan.Notes.Should().HaveCount(2);
+        plan.Notes[0].Should().Contain("job `pack` runs tests after it packs");
+        plan.Notes[1].Should().Contain("job `pack` does not wait for job `unit`");
+        var workflow = ByPath(plan)[".github/workflows/publish.yml"];
+        workflow.Should().StartWith("on: push\nconcurrency: release\njobs:\n");
+        workflow.Should().NotContain("cancel-in-progress");
     }
 
     [Fact]
