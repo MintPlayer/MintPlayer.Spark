@@ -107,8 +107,8 @@ public static partial class VersioningOnboarding
             if (package.DeclaredVersion is { } declared && declared != Placeholder && await files.ReadAsync(package.Path) is { } json
                 && NpmVersion().Match(json) is { Success: true } match && match.Groups[2].Value == declared)
                 files.Write(package.Path, string.Concat(json.AsSpan(0, match.Groups[2].Index), Placeholder, json.AsSpan(match.Groups[2].Index + match.Groups[2].Length)));
-            if (package.NgPackageDest is null)
-                notes.Add($"`{package.Id}` is not built by ng-packagr, so the action stamps only `{package.Path}`: build it after the versioning step, or publish it from its source folder.");
+            if (package.BuildOutput is null)
+                notes.Add($"`{package.Id}` has no build output the action knows (an `ng-package.json` `dest`, or an Nx `build` target's `outputPath`), so it stamps only `{package.Path}`: build it after the versioning step, or publish it from its source folder.");
         }
 
         var workflows = 0;

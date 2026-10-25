@@ -322,6 +322,9 @@ their code in our container. So:
   `dependencies` / `peerDependencies` ranges (`workspace:*`, `file:`, plain ranges) to `^<released>`. Not
   `npm version`: inside a workspace it also rewrites the root lockfile, and `npm pkg set` accepts any string (S2).
   When a built `<ng-package dest>/package.json` already exists, it is written too. Nothing is committed.
+  *(2026-10-25, mintplayer-ng-bootstrap #446: so is `<outputPath>/package.json` of a library's Nx `build` target, which
+  `@nx/js:tsc` and `@nx/vite:build` copy there. ng-bootstrap's seven non-ng-packagr libraries would otherwise have
+  published their dist copy as `0.0.0-PLACEHOLDER`.)*
   Publishable = not `"private": true`; for Angular, the library has an `ng-package.json`.
 - No dependency on Nx Release (owner: "my bot can make it easier, without depending on them").
 

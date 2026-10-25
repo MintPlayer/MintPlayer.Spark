@@ -148,15 +148,15 @@ public static class BuildManifest
 
 	private static ManifestPackage NpmPackage(BuildManifestRequest request, ProjectNode node, List<string> notes)
 	{
-		// An Angular library publishes its ng-packagr output; any other package publishes its own folder.
-		var root = Local(request.WorkingDirectory, node.NgPackageDest ?? node.Directory);
+		// A library with a build output (ng-packagr, Nx) publishes that; any other package publishes its own folder.
+		var root = Local(request.WorkingDirectory, node.BuildOutput ?? node.Directory);
 		var files = Directory.Exists(root) ? Declarations(root).ToList() : [];
 		if (files.Count == 0)
 		{
-			notes.Add(node.NgPackageDest is not null
-				? $"{node.Id}: no .d.ts under {node.NgPackageDest}; run the library build before this step. Its API counts as changed."
+			notes.Add(node.BuildOutput is not null
+				? $"{node.Id}: no .d.ts under {node.BuildOutput}; run the library build before this step. Its API counts as changed."
 				: $"{node.Id}: no .d.ts files; its API counts as changed.");
-			return new ManifestPackage { Id = node.Id, Kind = "npm", Packed = Directory.Exists(root) && node.NgPackageDest is not null };
+			return new ManifestPackage { Id = node.Id, Kind = "npm", Packed = Directory.Exists(root) && node.BuildOutput is not null };
 		}
 		return new ManifestPackage
 		{

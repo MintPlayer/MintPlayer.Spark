@@ -44,12 +44,23 @@ export async function discoverPackages(exec: Exec, cwd: string): Promise<Map<str
   return packages;
 }
 
+/**
+ * The build's copy of the package.json: ng-packagr's `dest`, else the Nx `build` target's `outputPath`, which
+ * `@nx/js:tsc` and `@nx/vite:build` copy package.json into (mintplayer-ng-bootstrap #446). The graph reads the same.
+ */
 function builtPackageJson(directory: string, root: string): string | null {
   const ngPackage = readJson(path.join(directory, 'ng-package.json'));
-  if (typeof ngPackage?.dest !== 'string') return null;
-  const dest = path.resolve(directory, ngPackage.dest);
+  let dest: string | null = null;
+  if (typeof ngPackage?.dest === 'string') dest = path.resolve(directory, ngPackage.dest);
+  else {
+    const outputPath = readJson(path.join(directory, 'project.json'))?.targets?.build?.options?.outputPath;
+    if (typeof outputPath !== 'string') return null;
+    // Nx resolves outputPath from the workspace root; {workspaceRoot} and {projectRoot} are its two tokens.
+    const projectRoot = path.relative(root, directory).split(path.sep).join('/');
+    dest = path.resolve(root, outputPath.replace('{workspaceRoot}/', '').replace('{projectRoot}', projectRoot));
+  }
   const inside = path.relative(path.resolve(root), dest);
-  if (inside.startsWith('..') || path.isAbsolute(inside)) return null;
+  if (!inside || inside.startsWith('..') || path.isAbsolute(inside)) return null;
   const file = path.join(dest, 'package.json');
   return existsSync(file) ? file : null;
 }

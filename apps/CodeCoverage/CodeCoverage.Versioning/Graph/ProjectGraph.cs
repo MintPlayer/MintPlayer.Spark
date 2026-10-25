@@ -68,8 +68,11 @@ public sealed record ProjectNode
 	/// <summary>The built assembly's file name without <c>.dll</c> (.NET), which the action hashes (D6). Null when it uses a property.</summary>
 	public string? AssemblyName { get; init; }
 
-	/// <summary>An Angular library's build output folder from <c>ng-package.json</c>, written by the action (D9).</summary>
-	public string? NgPackageDest { get; init; }
+	/// <summary>
+	/// The package's build output folder, written by the action (D9): <c>ng-package.json</c>'s <c>dest</c>, else the Nx
+	/// <c>build</c> target's <c>outputPath</c> (<c>@nx/js:tsc</c>, <c>@nx/vite:build</c>), whose build copies package.json there.
+	/// </summary>
+	public string? BuildOutput { get; init; }
 
 	/// <summary>The frontend framework whose resolved major anchors this npm package (D7), if any.</summary>
 	public string? FrameworkPackage { get; init; }

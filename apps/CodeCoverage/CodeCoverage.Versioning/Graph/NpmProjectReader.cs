@@ -35,7 +35,8 @@ public sealed class NpmLockfile(IReadOnlyDictionary<string, string> versions)
 
 /// <summary>
 /// Reads npm packages statically (PRD D5): <c>package.json</c> for the name, privacy, version and dependencies, and
-/// <c>ng-package.json</c> for an Angular library's output folder. JSON is read with a depth limit under a size cap.
+/// <c>ng-package.json</c> or the Nx <c>project.json</c> build target for the output folder. JSON is read with a depth limit
+/// under a size cap.
 /// </summary>
 public sealed class NpmProjectReader(IRepositoryTree tree, List<string> warnings)
 {
@@ -105,6 +106,24 @@ public sealed class NpmProjectReader(IRepositoryTree tree, List<string> warnings
 			if (ng?.RootElement is { ValueKind: JsonValueKind.Object } ngRoot && String(ngRoot, "dest") is { } destText)
 				dest = RepoPath.Resolve(directory, destText) ?? throw new GraphException($"{ngPackage}: dest '{destText}' points outside the repository.");
 		}
+		var projectJson = RepoPath.Combine(directory, "project.json");
+		if (dest is null && tree.IsFile(projectJson))
+		{
+			// Nx resolves outputPath from the workspace root; {workspaceRoot} and {projectRoot} are its two tokens.
+			using var project = await ReadJsonAsync(projectJson, cancellationToken);
+			if (project?.RootElement is { ValueKind: JsonValueKind.Object } projectRoot
+				&& projectRoot.TryGetProperty("targets", out var targets) && targets.ValueKind == JsonValueKind.Object
+				&& targets.TryGetProperty("build", out var build) && build.ValueKind == JsonValueKind.Object
+				&& build.TryGetProperty("options", out var options) && options.ValueKind == JsonValueKind.Object
+				&& String(options, "outputPath") is { } outputText)
+			{
+				var output = outputText.Replace("{workspaceRoot}/", "", StringComparison.Ordinal).Replace("{projectRoot}", directory, StringComparison.Ordinal);
+				// Unlike ng-package's dest, outputPath is the build's business, not the package's: one outside the repository
+				// is never stamped, with a warning, rather than failing every package's versioning.
+				dest = RepoPath.Resolve("", output) is { Length: > 0 } resolved ? resolved : null;
+				if (dest is null) warnings.Add($"{projectJson}: outputPath '{outputText}' is outside the repository, so its package.json copy is not stamped.");
+			}
+		}
 
 		// A workspace root's own package.json is a package only when it declares a name and is not private; it is never
 		// the input of everything below it, or every change anywhere would release it.
@@ -121,7 +140,7 @@ public sealed class NpmProjectReader(IRepositoryTree tree, List<string> warnings
 			Dependencies = dependencies,
 			Inputs = inputs,
 			DeclaredVersion = String(manifest, "version"),
-			NgPackageDest = dest,
+			BuildOutput = dest,
 			FrameworkPackage = MajorAnchor.FrameworkPackages.FirstOrDefault(f => dependencies.Any(d => d.Name == f && d.Kind != DependencyKind.Dev)),
 		};
 	}

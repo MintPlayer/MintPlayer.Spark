@@ -38,8 +38,9 @@ The action does nothing on pull requests and tag builds. It fetches the tags and
 
 ## npm: every package is stamped
 
-The action writes a version into every publishable (non-private) package.json, and into ng-packagr's built copy
-(`<ng-package.json dest>/package.json`):
+The action writes a version into every publishable (non-private) package.json, and into the build's copy of it:
+`<ng-package.json dest>/package.json`, else `<outputPath>/package.json` of the library's Nx `build` target
+(`@nx/js:tsc`, `@nx/vite:build`):
 
 - a package this commit releases gets its new version, and its dist-tag as `publishConfig.tag`, which `npm publish`
   and `publish-npm-packages` use by default: `next` for a prerelease, `latest` for the highest stable major,
@@ -48,8 +49,8 @@ The action writes a version into every publishable (non-private) package.json, a
 - a package with no such tag that is still at `0.0.0-PLACEHOLDER` is marked `"private": true`, so nothing publishes
   the placeholder.
 
-Only ng-packagr's output is found and stamped. With another builder, build the npm libraries after this step, so
-they copy the stamped package.json.
+Only those two outputs are found and stamped, and only when the build ran before this step. With another builder,
+build the npm libraries after this step, so they copy the stamped package.json.
 
 It reads the `versioning:` section of `coverage.yml` from the **default branch**, the same file the app reads. A
 repository without that section is refused.
