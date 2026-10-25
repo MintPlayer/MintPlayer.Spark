@@ -637,7 +637,10 @@ public static partial class VersioningOnboarding
             if (Scalar(steps.Children[i], "run") is { } run && (run.Contains("dotnet pack", StringComparison.Ordinal)
                 || run.Contains("dotnet nuget push", StringComparison.Ordinal) || RawNpmPublish().IsMatch(run)))
                 return i;
-            if (Scalar(steps.Children[i], "uses")?.StartsWith("MintPlayer/github-actions/publish-npm-packages", StringComparison.OrdinalIgnoreCase) == true)
+            // JS-DevTools/npm-publish (mintplayer-ng-video-player) publishes only versions the registry lacks (`strategy: all`)
+            // and takes its dist-tag from publishConfig.tag, so it works unchanged behind the versioning step.
+            if (Scalar(steps.Children[i], "uses") is { } uses && (uses.StartsWith("MintPlayer/github-actions/publish-npm-packages", StringComparison.OrdinalIgnoreCase)
+                || uses.StartsWith("JS-DevTools/npm-publish@", StringComparison.OrdinalIgnoreCase)))
                 return i;
         }
         return null;

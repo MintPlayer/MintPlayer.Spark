@@ -336,6 +336,56 @@ public class VersioningOnboardingTests
     }
 
     [Fact]
+    public async Task A_js_devtools_npm_publish_step_gets_the_versioning_step_in_front()
+    {
+        // mintplayer-ng-video-player#101: its 40 JS-DevTools/npm-publish steps were not seen as publishing, so the workflow was left alone.
+        var tree = new InMemoryTree()
+            .Add("libs/player/package.json", "{\n  \"name\": \"@mintplayer/video-player\",\n  \"version\": \"20.1.0\"\n}\n")
+            .Add("libs/player/project.json", """{ "targets": { "build": { "options": { "outputPath": "{workspaceRoot}/dist/{projectRoot}" } } } }""")
+            .Add(".github/workflows/publish-master.yml", """
+                name: npm-publish
+
+                on:
+                  push:
+                    branches: [ master ]
+
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    permissions:
+                      contents: read
+                      id-token: write
+                    steps:
+                    - run: npm run build
+                    - run: npx nx run-many --target=test --all
+
+                    - name: Push to NPM
+                      uses: JS-DevTools/npm-publish@v4
+                      with:
+                        package: 'dist/libs/player/package.json'
+
+                """);
+
+        var plan = await VersioningOnboarding.PlanAsync(tree, None, Sha);
+
+        plan.Notes.Should().BeEmpty();
+        ByPath(plan)[".github/workflows/publish-master.yml"].Should().Contain($$"""
+                  contents: write
+                  id-token: write
+                steps:
+                - run: npm run build
+                - run: npx nx run-many --target=test --all
+
+                - name: Version the packages
+                  id: versioning
+                  uses: MintPlayer/MintPlayer.Spark/apps/CodeCoverage/versioning-action@{{Sha}} # versioning-v1
+
+                - name: Push to NPM
+                  uses: JS-DevTools/npm-publish@v4
+            """);
+    }
+
+    [Fact]
     public async Task A_file_with_a_byte_order_mark_keeps_it()
     {
         // MintPlayer.AspNetCore.SpaServices#91: the onboarding wrote five csproj files back without their BOM.
