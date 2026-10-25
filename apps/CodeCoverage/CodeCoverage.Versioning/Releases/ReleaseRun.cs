@@ -5,7 +5,8 @@ using CodeCoverage.Versioning.Versions;
 namespace CodeCoverage.Versioning.Releases;
 
 /// <summary>One run's inputs beside the repository: the manifest, the repository's settings and the branch's line (D10).</summary>
-public sealed record ReleaseRunRequest(ReleaseManifest Manifest, VersioningSettings Settings, bool OnDefaultBranch, int? BranchMajor);
+/// <param name="Run">The workflow run's page, written into every tag (#544 D5); null writes none.</param>
+public sealed record ReleaseRunRequest(ReleaseManifest Manifest, VersioningSettings Settings, bool OnDefaultBranch, int? BranchMajor, string? Run = null);
 
 /// <summary>What a run planned and what became of each tag. <see cref="Tags"/> is empty when the plan refused anything.</summary>
 /// <param name="Notes">Per tag name, the Release text (D15) of each tag the run created or found already in place.</param>
@@ -60,7 +61,7 @@ public static class ReleaseRun
 
 		var tags = plan.Releases
 			.Where(r => !r.TaggedByHand)
-			.Select(r => new TagToWrite(r.Tag, head, new TagAnnotation(r.ApiHash, null)))
+			.Select(r => new TagToWrite(r.Tag, head, new TagAnnotation(r.ApiHash, null, request.Run)))
 			.ToList();
 		var written = tags.Count == 0 ? [] : await writer.WriteAsync(tags, cancellationToken);
 

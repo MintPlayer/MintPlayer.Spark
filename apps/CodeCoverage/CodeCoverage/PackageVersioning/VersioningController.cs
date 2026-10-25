@@ -6,6 +6,7 @@ using CodeCoverage.Forge;
 using CodeCoverage.Feedback;
 using CodeCoverage.MergeQueue;
 using CodeCoverage.Versioning.Releases;
+using CodeCoverage.Versioning.Versions;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -139,7 +140,9 @@ public partial class VersioningController : ControllerBase
             StartedAtUtc = clock.GetUtcNow().UtcDateTime,
         };
 
-        var (status, response) = await RunOnWriterAsync(repository, forge, branch, defaultBranch, branchMajor, config.ToSettings(), manifest, cancellationToken);
+        // #544 D5: every tag names this run; the id comes from the OIDC token, never from the request body.
+        var runUrl = TagAnnotation.RunUrl("https://github.com", repository.FullName, runId.ToString(CultureInfo.InvariantCulture));
+        var (status, response) = await RunOnWriterAsync(repository, forge, branch, defaultBranch, branchMajor, config.ToSettings(), manifest, runUrl, cancellationToken);
         Record(record, response);
         await session.StoreAsync(record, record.Id, cancellationToken);
         await session.SaveChangesAsync(cancellationToken);
@@ -156,7 +159,7 @@ public partial class VersioningController : ControllerBase
 
     private async Task<(int Status, VersioningRunResponse Response)> RunOnWriterAsync(
         Repository repository, IForgeMergeQueue forge, string branch, string defaultBranch, int? branchMajor, VersioningSettings settings,
-        ReleaseManifest manifest, CancellationToken cancellationToken)
+        ReleaseManifest manifest, string? runUrl, CancellationToken cancellationToken)
     {
         var push = await forge.GetWriterAccessAsync(repository, null, false, cancellationToken);
         if (push.Access is not { } access)
@@ -165,7 +168,7 @@ public partial class VersioningController : ControllerBase
         {
             var result = await writer.VersioningRunAsync(new GitWriterVersioningRequest(
                 repository.Provider.ToCanonicalString(), repository.GitHubId.ToString(CultureInfo.InvariantCulture), access.CloneUrl,
-                new CommitGraph.SidecarCredential(access.Username, access.Password), branch, defaultBranch, branchMajor, Tagger, settings, manifest),
+                new CommitGraph.SidecarCredential(access.Username, access.Password), branch, defaultBranch, branchMajor, Tagger, settings, manifest, runUrl),
                 cancellationToken);
             var response = new VersioningRunResponse(result.Outcome, result.Reason, result.Detail, result.Releases ?? [], result.Refused ?? [],
                 result.Skipped?.Count ?? 0, result.Warnings ?? [], null, result.BranchCuts ?? []);

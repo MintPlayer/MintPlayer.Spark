@@ -243,6 +243,8 @@ public sealed class VersioningRunRequestWire
     public IdentityWire? Tagger { get; set; }
     public VersioningSettingsWire? Settings { get; set; }
     public Versioning.Releases.ReleaseManifest? Manifest { get; set; }
+    /// <summary>The workflow run's page, written into every tag (#544 D5); the app takes it from the caller's OIDC token.</summary>
+    public string? Run { get; set; }
 }
 
 /// <summary>The <c>versioning:</c> section of <c>coverage.yml</c> as the engine reads it (D13, D17).</summary>

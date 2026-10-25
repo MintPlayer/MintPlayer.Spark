@@ -1,3 +1,4 @@
+using CodeCoverage.GitMirror.Mirror;
 using CodeCoverage.GitMirror.Tests._Infrastructure;
 
 namespace CodeCoverage.GitMirror.Tests.Graph;
@@ -121,6 +122,30 @@ public class LaneLayoutGoldenTests
         snapshot.Refs.Should().ContainSingle(r => r.Name == "refs/tags/v1.0" && r.Kind == "tag" && r.Sha == shas["merge"]);
         snapshot.Refs.Should().ContainSingle(r => r.Name == "refs/tags/light" && r.Kind == "tag" && r.Sha == shas["feat1"]);
         snapshot.Refs.Should().ContainSingle(r => r.Name == "refs/heads/main" && r.Kind == "head" && r.Sha == shas["after"]);
+    }
+
+    [Fact]
+    public async Task A_version_tag_carries_the_run_that_wrote_it_and_other_refs_none()
+    {
+        using var dir = new TempDir("golden");
+        var repo = dir.Sub("origin.git");
+        const string run = "https://github.com/acme/widgets/actions/runs/18234567890";
+        new RepoBuilder()
+            .Commit("base", 1).Commit("main1", 2, "base")
+            .Branch("main", "main1")
+            // As the versioning engine writes it (#544 D5): a subject, then key: value trailers.
+            .Tag("Widgets/v1.2.0", "main1", annotated: true, message: $"Widgets 1.2.0\n\napi-hash: sha256:{new string('a', 64)}\nrun: {run}\n")
+            .Tag("Widgets/v1.1.0", "base", annotated: true, message: "Widgets 1.1.0\n\napi-hash: none\n")
+            // A lightweight tag pointing at a commit: no tag object, so no trailers to read.
+            .Tag("light", "main1")
+            .WriteTo(repo);
+
+        var state = await MirrorRefsState.ReadAsync(GraphFixtures.Runner(), repo, CancellationToken.None);
+
+        state!.Refs.Should().ContainSingle(r => r.Name == "refs/tags/Widgets/v1.2.0").Which.Run.Should().Be(run);
+        state.Refs.Should().ContainSingle(r => r.Name == "refs/tags/Widgets/v1.1.0").Which.Run.Should().BeNull();
+        state.Refs.Should().ContainSingle(r => r.Name == "refs/tags/light").Which.Run.Should().BeNull();
+        state.Refs.Should().ContainSingle(r => r.Name == "refs/heads/main").Which.Run.Should().BeNull();
     }
 
     [Fact]

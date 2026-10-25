@@ -49,11 +49,17 @@ public sealed record VersionTag(string PackageId, PackageVersion Version)
 /// <summary>
 /// The message of an annotated version tag (PRD D6): a title line, then <c>api-hash: sha256:…</c> and the engine
 /// version that computed it. Both fields are optional when read back, since a human's tag or a seed tag carries neither.
+/// <see cref="Run"/> is the workflow run that wrote the tag (#544 D5); a tag from before it, or a seed tag, has none.
 /// </summary>
-public sealed record TagAnnotation(string? ApiHash, string? EngineVersion)
+public sealed record TagAnnotation(string? ApiHash, string? EngineVersion, string? Run = null)
 {
 	public const string ApiHashKey = "api-hash:";
 	public const string EngineKey = "engine:";
+	public const string RunKey = "run:";
+
+	/// <summary>The run's page from the runner's <c>GITHUB_SERVER_URL</c>, <c>GITHUB_REPOSITORY</c> and <c>GITHUB_RUN_ID</c>; null when any is unusable.</summary>
+	public static string? RunUrl(string? server, string? repository, string? runId)
+		=> $"{server?.TrimEnd('/')}/{repository}/actions/runs/{runId}" is var url && Identifiers.IsRunUrl(url) ? url : null;
 
 	public string Format(VersionTag tag)
 	{
@@ -64,6 +70,11 @@ public sealed record TagAnnotation(string? ApiHash, string? EngineVersion)
 			text.Append(ApiHashKey).Append(' ').Append(ApiHash).Append('\n');
 		}
 		text.Append(EngineKey).Append(" CodeCoverage.Versioning ").Append(EngineVersion ?? Engine.Version).Append('\n');
+		if (Run is not null)
+		{
+			if (!Identifiers.IsRunUrl(Run)) throw new VersioningException($"'{Run}' is not a workflow run's URL.");
+			text.Append(RunKey).Append(' ').Append(Run).Append('\n');
+		}
 		return text.ToString();
 	}
 
@@ -73,7 +84,7 @@ public sealed record TagAnnotation(string? ApiHash, string? EngineVersion)
 	/// </summary>
 	public static TagAnnotation Parse(string? message)
 	{
-		string? hash = null, engine = null;
+		string? hash = null, engine = null, run = null;
 		foreach (var raw in (message ?? "").Split('\n'))
 		{
 			var line = raw.Trim();
@@ -87,8 +98,13 @@ public sealed record TagAnnotation(string? ApiHash, string? EngineVersion)
 				var value = line[EngineKey.Length..].Trim();
 				engine = value.StartsWith("CodeCoverage.Versioning ", StringComparison.Ordinal) ? value["CodeCoverage.Versioning ".Length..] : value;
 			}
+			else if (line.StartsWith(RunKey, StringComparison.Ordinal))
+			{
+				var value = line[RunKey.Length..].Trim();
+				run = Identifiers.IsRunUrl(value) ? value : null;
+			}
 		}
-		return new TagAnnotation(hash, engine);
+		return new TagAnnotation(hash, engine, run);
 	}
 }
 

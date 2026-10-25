@@ -76,6 +76,46 @@ public class CommitGraphReaderTests : CoverageRavenTest
     }
 
     [Fact]
+    public async Task A_commit_names_the_latest_release_run_of_its_own_repository_only()
+    {
+        using var store = GetDocumentStore();
+        var (kit, repository) = await SetUpAsync(store, (ShaA, null), (ShaB, null), (ShaC, null));
+        var runs = $"https://github.com/{repository.FullName}/actions/runs/";
+        var page = FakeSidecar.Page((ShaA, null), (ShaB, null), (ShaC, null));
+        kit.Sidecar.Pages[$"github/{RepoGitHubId}"] = page with
+        {
+            Refs =
+            [
+                .. page.Refs,
+                // Two packages tagged by two attempts' runs: the newest run is the one to show.
+                new SidecarRef("refs/tags/Widgets/v1.2.0", "tag", ShaA, runs + "100"),
+                new SidecarRef("refs/tags/Widgets.Core/v1.2.0", "tag", ShaA, runs + "101"),
+                // Anyone who can push a tag can write the line: another repository's run is never looked up.
+                new SidecarRef("refs/tags/Widgets/v1.1.0", "tag", ShaB, "https://github.com/evil/elsewhere/actions/runs/7"),
+                new SidecarRef("refs/tags/Widgets/v1.0.0", "tag", ShaC, "not a url"),
+            ],
+        };
+
+        var read = await kit.Get<ICommitGraphReader>().ReadAsync(repository, new CommitGraphRequest());
+
+        read.Rows.Select(r => r.ReleaseRun).Should().Equal(101L, null, null);
+    }
+
+    [Theory]
+    [InlineData("https://github.com/acme/widgets/actions/runs/42", 42L)]
+    [InlineData("https://GitHub.com/ACME/Widgets/actions/runs/42", 42L)]
+    [InlineData("https://github.com/acme/widgets-two/actions/runs/42", null)]
+    [InlineData("https://github.example/acme/widgets/actions/runs/42", null)]
+    [InlineData("https://github.com/acme/widgets/actions/runs/0", null)]
+    [InlineData(null, null)]
+    public void A_run_url_names_a_run_only_of_the_same_github_repository(string? run, long? expected)
+    {
+        var repository = new Repository { Provider = EForgeProvider.GitHub, FullName = "acme/widgets" };
+        CommitGraphReader.ReleaseRunId(repository, run).Should().Be(expected);
+        CommitGraphReader.ReleaseRunId(new Repository { Provider = EForgeProvider.GitLab, FullName = "acme/widgets" }, run).HasValue.Should().BeFalse();
+    }
+
+    [Fact]
     public async Task No_email_reaches_the_response_and_no_reply_authors_cost_no_forge_call()
     {
         using var store = GetDocumentStore();

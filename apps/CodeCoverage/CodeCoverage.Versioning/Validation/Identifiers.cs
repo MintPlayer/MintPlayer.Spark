@@ -36,6 +36,12 @@ public static partial class Identifiers
 
 	public static bool IsApiHash(string? hash) => hash is not null && ApiHashGrammar().IsMatch(hash);
 
+	/// <summary>A workflow run's page, <c>https://&lt;host&gt;/&lt;owner&gt;/&lt;repo&gt;/actions/runs/&lt;id&gt;</c> (#544 D5).</summary>
+	public static bool IsRunUrl(string? url) => url is { Length: <= 512 } && RunUrlGrammar().IsMatch(url);
+
+	[GeneratedRegex(@"^https://[A-Za-z0-9.-]+(?::[0-9]{1,5})?/[A-Za-z0-9-]+/[A-Za-z0-9._-]+/actions/runs/[0-9]{1,20}\z", RegexOptions.CultureInvariant)]
+	private static partial Regex RunUrlGrammar();
+
 	public static bool IsTargetFramework(string? tfm) => tfm is { Length: > 0 and <= 64 } && TargetFrameworkGrammar().IsMatch(tfm);
 
 	/// <summary>

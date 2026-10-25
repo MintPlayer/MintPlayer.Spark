@@ -197,6 +197,7 @@ public class SparkAuthorizeEndToEndTests
     [InlineData("/api/browse/repos/github/parity-org/open/history")]
     [InlineData("/api/browse/repos/github/parity-org/open/branches")]
     [InlineData("/api/browse/repos/github/parity-org/open/merge-queue")]
+    [InlineData("/api/browse/repos/github/parity-org/open/release-runs")]
     public async Task An_anonymous_visitor_can_browse_a_public_repository(string path)
     {
         await SeedParityAsync();
@@ -229,6 +230,8 @@ public class SparkAuthorizeEndToEndTests
     [InlineData("/api/browse/repos/github/parity-org/secret/history")]
     [InlineData("/api/browse/repos/github/parity-org/secret/merge-queue")]
     [InlineData("/api/browse/repos/github/parity-org/made-up/merge-queue")]
+    [InlineData("/api/browse/repos/github/parity-org/secret/release-runs?ids=1")]
+    [InlineData("/api/browse/repos/github/parity-org/made-up/release-runs?ids=1")]
     public async Task Anonymous_browse_answers_a_private_repository_exactly_like_a_missing_one(string path)
     {
         await SeedParityAsync();

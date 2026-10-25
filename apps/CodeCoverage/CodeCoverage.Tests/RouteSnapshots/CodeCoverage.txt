@@ -22,6 +22,7 @@ GET /api/browse/repos/{provider}/{owner}/{name}/dependency-updates | authorize(p
 GET /api/browse/repos/{provider}/{owner}/{name}/graph | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=) | rate-limit=policy:browse
 GET /api/browse/repos/{provider}/{owner}/{name}/history | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=) | rate-limit=policy:browse
 GET /api/browse/repos/{provider}/{owner}/{name}/merge-queue | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=) | rate-limit=policy:browse
+GET /api/browse/repos/{provider}/{owner}/{name}/release-runs | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=) | rate-limit=policy:browse
 GET /api/dependency-updates/onboarding | authorize(policy=;roles=;schemes=) | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=)
 POST /api/github/webhooks | antiforgery=not-required
 GET /api/me/accounts | authorize(policy=;roles=;schemes=) | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=)
@@ -29,6 +30,7 @@ POST /api/me/accounts/resync | antiforgery=required | authorize(policy=;roles=;s
 GET /api/repos/{provider}/{owner}/{name}/merge-queue/candidates | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=) | rate-limit=policy:browse
 DELETE /api/repos/{provider}/{owner}/{name}/merge-queue/{number:int} | antiforgery=required | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=)
 POST /api/repos/{provider}/{owner}/{name}/merge-queue/{number:int} | antiforgery=required | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=)
+POST /api/repos/{provider}/{owner}/{name}/release-runs/{runId:long}/rerun | antiforgery=required | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=)
 POST /api/repos/{provider}/{owner}/{name}/settings/badge-token | antiforgery=required | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=)
 POST /api/uploads | antiforgery=not-required | authorize(policy=;roles=;schemes=ApiToken,GitHubOidc) | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=) | rate-limit=policy:uploads | request-size-limit=52428800
 GET /api/uploads/capabilities | authorize(policy=;roles=;schemes=ApiToken,GitHubOidc) | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=) | rate-limit=policy:uploads-status

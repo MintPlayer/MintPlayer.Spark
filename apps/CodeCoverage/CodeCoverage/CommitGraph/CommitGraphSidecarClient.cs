@@ -208,7 +208,7 @@ public sealed record SidecarRow(
     int Lane, int Colour, int[] Up, int[][] Down);
 
 /// <summary>A branch or tag.</summary>
-public sealed record SidecarRef(string Name, string Kind, string Sha);
+public sealed record SidecarRef(string Name, string Kind, string Sha, string? Run = null);
 
 /// <summary>The body of <c>GET /stats</c>: the mirror volume as the sidecar sees it, and the mirrors on it.</summary>
 public sealed record SidecarStats(long FreeBytes, long TotalBytes, int MirrorCount, long MirrorBytes);
