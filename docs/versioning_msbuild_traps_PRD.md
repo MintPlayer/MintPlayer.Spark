@@ -18,9 +18,9 @@ onboarding PR hits all three, so they ship together.
 
 1. **`dotnet pack -p:Version=9.9.9` produces no package and exits 0.** The `MintPlayerVersioning` target always
    resolves a version from the tags. On a push build with no reachable tag it gets `0.0.0-PLACEHOLDER` and sets
-   `IsPackable=false`. MSBuild silently ignores the target's assignment to the global `Version`, but `IsPackable` is
-   not global, so `GenerateNuspec` is skipped. A pull-request build packs `0.0.0-untagged` instead of `9.9.9`, because
-   `PackageVersion` is not global either. Either way, the only signal is warning MPV001.
+   `IsPackable=false`, so `GenerateNuspec` is skipped. A pull-request build packs `0.0.0-untagged` instead of `9.9.9`:
+   the target's assignment overrides even the global `Version` at execution time (spike S1). Either way, the only
+   signal is warning MPV001.
 2. **The publish workflow tags before the tests have passed.** Spark's `release` job pushes the tags while the
    sharded `tests` job is still running, so a red run leaves release tags behind. (The onboarding's second build —
    `--no-build` stripped — is deliberate and stays; see D3.)
@@ -35,7 +35,7 @@ onboarding PR hits all three, so they ship together.
 
 - `build/MintPlayer.Versioning.MSBuild.targets:31-51`: the condition is `DesignTimeBuild`, `MintPlayerVersioningSkip`,
   `IsPackable` and the done flag. Nothing looks at an explicit version. `:44-45` assigns `Version`/`PackageVersion`
-  (no-ops when global). `:48` sets `IsPackable=false` on the placeholder (always takes effect).
+  (which override even a global value at execution time, S1). `:48` sets `IsPackable=false` on the placeholder (always takes effect).
 - MPV001 is raised in `build/MintPlayer.Versioning.MSBuild.cs:83` (untagged) and `:89` (placeholder). The
   untagged-vs-placeholder decision is `PacksUntagged` (`.cs:153`). MPV004 (`targets:57-61`) does not fire, because
   `IsPackable` is already false.
@@ -121,10 +121,10 @@ version in source, no tags — is a different system altogether, not a fix for o
 
 When `Version` or `PackageVersion` is a **global** property (`-p:` on the command line, or passed down from a parent
 build), the target resolves nothing: no git call, no MPV001, no `IsPackable` change. The caller owns the version.
-- Detection, in order of preference (spike S1):
-  - The task asks the engine through `IBuildEngine6.GetGlobalProperties()` and outputs `ExplicitVersion`.
-  - Otherwise, the target uses the probe trick: save the value, assign a probe, compare, restore.
-  - `$(MSBuildGlobalProperties)` does not exist.
+- Detection (spike S1): the task asks the engine through `IBuildEngine6.GetGlobalProperties()` and outputs
+  `ExplicitVersion` / `ExplicitPackageVersionOnly`. ~~The probe trick in the target~~ fails: an assignment inside a
+  target overrides a global property at execution time (S1 measured `-p:Version=9.9.9` packing the tag's 1.2.3).
+  `$(MSBuildGlobalProperties)` does not exist.
 - Only `PackageVersion` global: `Version` is set to `$(PackageVersion)`, so the assembly and package agree (Q1, owner 2026-10-25). Passing both keeps both; a csproj
   `AssemblyVersion` is never touched, since the target only sets `Version`.
 - A `<Version>` in a csproj does **not** win. Onboarded csprojs carry `<Version>0.0.0-PLACEHOLDER</Version>`, and

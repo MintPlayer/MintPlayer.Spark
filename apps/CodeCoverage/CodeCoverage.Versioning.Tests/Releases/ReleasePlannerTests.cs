@@ -163,6 +163,34 @@ public class ReleasePlannerTests
         plan.Of("Mapper").Should().NotBeNull();
     }
 
+    private static TaggedVersion EngineTag(string id, string version, string commit)
+        => new(VersionTag.For(id, PackageVersion.Parse(version)), commit, new TagAnnotation(Hash, "1.2.0"));
+
+    [Fact]
+    public async Task A_rerun_of_a_tagged_commit_releases_the_same_versions_as_the_engines_own()
+    {
+        // #544 D3: the first run tagged Core and its dependents on head, then failed before the packages shipped.
+        TaggedVersion[] tags = [.. DotnetTags(), EngineTag("Core", "10.1.1", "head"), EngineTag("Mapper", "10.1.1", "head"), EngineTag("Mapper.Json", "10.0.5", "head")];
+
+        var plan = await Plan(DotnetChain(), tags, new FakeDiff("src/Core/Guard.cs"));
+
+        plan.Releases.Select(r => r.Tag.Name).Should().BeEquivalentTo(["Core/v10.1.1", "Mapper/v10.1.1", "Mapper.Json/v10.0.5"]);
+        plan.Releases.Should().AllSatisfy(r => r.TaggedByHand.Should().BeFalse());
+        plan.Of("Core")!.Since.Should().Be("c1");
+        plan.Of("Core")!.Reasons.Should().ContainSingle(r => r.Contains("released by an earlier run"));
+    }
+
+    [Fact]
+    public async Task A_later_commit_packs_an_unchanged_package_at_its_dangling_tag()
+    {
+        // The run that tagged Core 10.1.1 on c2 never published it; head changes only Cli, so Core is not released again
+        // and the pack reads Core/v10.1.1, the highest reachable tag.
+        var plan = await Plan(DotnetChain(), [.. DotnetTags(), EngineTag("Core", "10.1.1", "c2")], new FakeDiff("src/Cli/Cli.csproj"));
+
+        plan.Of("Core").Should().BeNull();
+        plan.Of("Cli")!.Version.ToString().Should().Be("10.0.1");
+    }
+
     [Fact]
     public async Task A_package_without_tags_is_a_first_release()
     {

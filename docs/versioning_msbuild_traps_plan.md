@@ -28,6 +28,27 @@ that depends on it starts.
 
 | S5 | **Tag messages in the graph.** Can `CommitGraphReader` (via the sidecar mirror, `CodeCoverage/CommitGraph/`) read annotated tag messages for the refs it already returns, in one `git for-each-ref` call, on the treeless mirrors? Measure on Spark's mirror (~300 tags). And: does `rerun-failed-jobs` restart cancelled jobs, and what does it answer for a run older than GitHub's re-run window? | 0.5 day | M6 |
 
+### Spike results
+
+- **S0 (2026-10-25): one real gap, fixed.** Read in code: a re-run of the same commit sees the engine's own tags on
+  HEAD and took them for hand-pushed tags (`ReleasePlanner.cs`, the `byHand` lookup), so it planned the same versions
+  (no new version: good) but excluded them from the tags to write (`ReleaseRun.cs:61-63`). Their notes and branch cut
+  were therefore never made on the re-run (`ReleaseRun.cs:67-78` use only written tags). Fix: a HEAD tag whose
+  annotation carries the `engine:` line is planned as the engine's own release at that version (`Rerun`), so the
+  writer reports `AlreadyPresent` (`TagWriter.cs:65-70`) and the notes, Releases and cut follow. A tag without the
+  engine line stays a hand tag. Case (b), a later commit: an unchanged package has no changed inputs since its
+  dangling tag, so it is not released and the pack reads that tag (planner, `lastOnLine` + `ChangedInputsAsync`).
+  Both are pinned in `ReleasePlannerTests` (`A_rerun_of_a_tagged_commit_…`, `A_later_commit_packs_…`).
+- **S1 (2026-10-25): the probe trick does NOT work; `IBuildEngine6.GetGlobalProperties()` does.** Real `dotnet pack`
+  runs (SDK 11.0.100-rc.2) on a scratch repo importing the source targets: with the probe, `-p:Version=9.9.9` on a
+  tagged project packed **1.2.3**: an assignment inside a target overrides a global property at execution time. The
+  task now reads the engine's global properties (case-insensitive) and outputs `ExplicitVersion` /
+  `ExplicitPackageVersionOnly`. 13 cases, all as decided: explicit version packs at 9.9.9 (single + multi-target,
+  push + pull_request, tagged + untagged, solution); `-p:PackageVersion=9.8.7` alone gives assembly 9.8.7.0 and
+  dependency B 9.8.7; untagged direct push pack → MPV005 (exit 1); solution pack → MPV001 only; `dotnet build` of
+  one project unaffected; local untagged → 0.0.0-untagged. `IBuildEngine6` exists since MSBuild 16; net8's SDK is
+  17.8. Only SDK 10/11 are installed here, so net8 was not run.
+
 ## Milestones
 
 | # | Milestone | Covers |
