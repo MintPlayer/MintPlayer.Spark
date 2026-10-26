@@ -260,6 +260,13 @@ public sealed record PullRequestClosed(string RepositoryId, int Number) : IForge
 /// <param name="Conclusion">The forge's word; the queue re-reads the run before acting on it.</param>
 public sealed record CiRunCompleted(string RepositoryId, long RunId, string HeadSha, string? Conclusion) : IForgeEvent;
 
+/// <summary>
+/// A workflow run that asked the server for version tags finished: one with a <see cref="Entities.VersioningRun"/> record.
+/// Raised whether or not anything else is waiting on the repository, and only for such a run.
+/// </summary>
+/// <param name="HtmlUrl">The run's page, for the comment that names what it published.</param>
+public sealed record VersioningRunCompleted(string RepositoryId, long RunId, int RunAttempt, string? Conclusion, string? HtmlUrl) : IForgeEvent;
+
 /// <summary>A check or status on a commit was created or changed state.</summary>
 /// <remarks>Carries no verdict: the queue re-reads every check on the commit and decides with <see cref="CheckGate"/>.</remarks>
 public sealed record CommitChecksChanged(string RepositoryId, string Sha) : IForgeEvent;

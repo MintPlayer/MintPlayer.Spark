@@ -681,6 +681,7 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
         // Before the busy filter (§11 D108): a check that reports is a name the exclusion lists may pick, whether or not
         // anything is queued.
         await RaiseReportedCheckAsync(message.EventType, root, repositoryId, ct);
+        await RaiseVersioningRunCompletedAsync(message.EventType, action, root, repositoryId, ct);
 
         if (Build(repositoryId) is not { } evt) return;
         var queue = await session.LoadAsync<MergeQueue>(MergeQueue.DocumentId(repositoryId), ct);
@@ -695,6 +696,21 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
             case CommitChecksChanged e: await RaiseAsync(e, ct); break;
             case PullRequestReviewed e: await RaiseAsync(e, ct); break;
         }
+    }
+
+    /// <summary>
+    /// <see cref="VersioningRunCompleted"/> for a finished workflow run that asked the server for version tags, before the
+    /// busy filter: the comment naming what it published does not wait on a queue. Which runs did is a point load of the
+    /// run's record (<see cref="VersioningRun.DocumentId"/>), so every other run raises nothing.
+    /// </summary>
+    private async Task RaiseVersioningRunCompletedAsync(string eventType, string? action, JsonElement root, string repositoryId, CancellationToken ct)
+    {
+        if (eventType != "workflow_run" || action != "completed" || Child(root, "workflow_run") is not { } run
+            || Number(run, "id") is not { } runId || Number(run, "run_attempt") is not { } attempt
+            || Child(root, "repository") is not { } repo || Number(repo, "id") is not { } gitHubId)
+            return;
+        if (!await session.Advanced.ExistsAsync(VersioningRun.DocumentId(EForgeProvider.GitHub, gitHubId, runId, (int)attempt), ct)) return;
+        await RaiseAsync(new VersioningRunCompleted(repositoryId, runId, (int)attempt, Text(run, "conclusion"), Text(run, "html_url")), ct);
     }
 
     /// <summary>
