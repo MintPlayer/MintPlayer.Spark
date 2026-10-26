@@ -44,7 +44,7 @@ public class ReferenceIncludeTests : SparkTestDriver
         => new(actionsResolver ?? Substitute.For<IActionsResolver>(), null);
 
     [Fact]
-    public async Task ApplyIncludes_emits_include_in_the_query_and_the_referenced_doc_is_a_cache_hit()
+    public async Task Provider_Include_emits_include_in_the_query_and_the_referenced_doc_is_a_cache_hit()
     {
         var book = new Book { Title = "Notes" };
         await SeedAsync(async seed =>
@@ -56,13 +56,13 @@ public class ReferenceIncludeTests : SparkTestDriver
         });
         var bookId = book.Id!;
 
-        var resolver = CreateResolver();
         using var session = Store.OpenAsyncSession();
 
-        var queryable = (IRavenQueryable<Book>)resolver.ApplyIncludes(session.Query<Book>(), typeof(Book), ["AuthorId"]);
+        var provider = new MintPlayer.Spark.Storage.Raven.RavenSparkQueryProvider(session.AsSparkSession(), Substitute.For<IIndexCatalog>());
+        var queryable = (IRavenQueryable<Book>)provider.Include(session.Query<Book>(), ["AuthorId"]);
 
         queryable.ToString().Should().Contain("include",
-            "the include must land in the RQL — before the fix ApplyIncludes silently no-oped");
+            "the include must land in the RQL — an Include that reflected for an instance method silently no-oped");
 
         var books = await queryable.ToListAsync();
         var authorId = books.Single(b => b.Id == bookId).AuthorId!;

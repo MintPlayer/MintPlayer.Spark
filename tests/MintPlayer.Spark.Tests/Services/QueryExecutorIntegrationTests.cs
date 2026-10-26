@@ -83,7 +83,8 @@ public class QueryExecutorIntegrationTests : SparkTestDriver
             // executor and its gate share one permissive rule, which is what keeps them agreeing.
             executorRowSecurity,
             TestRowSecurityGate.For(executorRowSecurity, entityMapper, breadcrumbResolver),
-            TestQueryResultProjector.For(session, _modelLoader));
+            TestQueryResultProjector.For(session, _modelLoader),
+            queryProvider: TestQueryProvider.For(session.AsSparkSession(), _indexCatalog));
     }
 
     private static EntityTypeDefinition PersonTypeDefinition() => new()

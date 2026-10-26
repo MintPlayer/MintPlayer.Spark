@@ -246,6 +246,7 @@ public static class SparkExtensions
         // session, so code still holding IAsyncDocumentSession shares its unit of work.
         services.AddSingleton<Abstractions.Storage.ISparkStore>(sp => new Storage.Raven.RavenSparkStore(sp.GetRequiredService<IDocumentStore>()));
         services.AddScoped<Abstractions.Storage.ISparkSession>(sp => new Storage.Raven.RavenSparkSession(sp.GetRequiredService<IAsyncDocumentSession>()));
+        services.AddScoped<Abstractions.Storage.ISparkQueryProvider, Storage.Raven.RavenSparkQueryProvider>();
 
         services.AddScoped<IDocumentSession>(sp =>
             sp.GetRequiredService<IDocumentStore>().OpenSession());

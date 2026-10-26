@@ -5,8 +5,6 @@ using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Abstractions.Model;
 using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Queries;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Linq;
 using Raven.Client.Documents.Session;
 using System.Linq.Expressions;
 using System.Reflection;
@@ -68,7 +66,7 @@ public interface IQueryExecutor
 internal partial class QueryExecutor : IQueryExecutor
 {
     [Inject] private readonly Abstractions.Storage.ISparkSession sparkSession;
-    // Source acquisition (indexes, projections, includes, .Search()) is still RavenDB here until the provider seam takes it (#551 M3).
+    // Only the SparkContext still takes the RavenDB session; it moves onto ISparkSession with D15 (#551 M3).
     private IAsyncDocumentSession session => sparkSession.AsRavenSession();
     [Inject] private readonly IEntityMapper entityMapper;
     [Inject] private readonly IModelLoader modelLoader;
@@ -81,6 +79,7 @@ internal partial class QueryExecutor : IQueryExecutor
     [Inject] private readonly IRowSecurity rowSecurity;
     [Inject] private readonly IRowSecurityGate gate;
     [Inject] private readonly IQueryResultProjector projector;
+    [Inject] private readonly Abstractions.Storage.ISparkQueryProvider queryProvider;
 
     /// <summary>
     /// Nullable so the distinct pass (#431) can recognise the breadcrumb redaction placeholder
@@ -629,7 +628,7 @@ internal sealed record DatabasePage(int TotalItems);
     /// default can express.
     /// </para>
     /// </remarks>
-    private static object RestrictToIds(
+    private object RestrictToIds(
         object source,
         Type elementType,
         IReadOnlyCollection<string> ids,
@@ -651,32 +650,22 @@ internal sealed record DatabasePage(int TotalItems);
             var parameter = Expression.Parameter(elementType, "x");
             var idAccess = Expression.Property(parameter, declaredId);
 
-            // RavenDB and LINQ-to-objects need DIFFERENT expressions for the same idea, and neither
-            // one works on the other:
+            // A store and LINQ-to-objects may need DIFFERENT expressions for the same idea, and
+            // neither works on the other:
             //
-            //   Raven      -> x.Id.In(ids)         — the provider's own marker method
+            //   RavenDB    -> x.Id.In(ids)         — the provider's own marker method
             //   in-memory  -> ids.Contains(x.Id)   — an ordinary instance call
             //
             // Handing Raven the Contains form fails at query translation; .In() outside a Raven
-            // query is a marker with no runtime meaning. Both land at the first restricted run.
+            // query is a marker with no runtime meaning. Both land at the first restricted run, so
+            // the store's query takes the provider's form.
             //
             // Contains is an INSTANCE method, so the list is the receiver and not the first
             // argument — the other way round throws "Static method requires null instance".
             var idList = ids.ToList();
-            var isRavenBacked = typeof(IRavenQueryable<>).MakeGenericType(elementType).IsInstanceOfType(source);
 
-            Expression predicate = isRavenBacked
-                ? Expression.Call(
-                    ReflectionCache.GetOrAdd<(string Op, Type Element), MethodInfo>(
-                        ("QueryExecutor.RavenIn", typeof(string)),
-                        static _ => typeof(Raven.Client.Documents.Linq.RavenQueryableExtensions)
-                            .GetMethods()
-                            .First(m => m.Name == "In"
-                                     && m.GetParameters().Length == 2
-                                     && m.GetParameters()[1].ParameterType.IsGenericType)
-                            .MakeGenericMethod(typeof(string))),
-                    idAccess,
-                    Expression.Constant(idList))
+            Expression predicate = queryProvider.IsStoreQuery((IQueryable)source)
+                ? queryProvider.In(idAccess, idList)
                 : Expression.Call(Expression.Constant(idList), ContainsMethod, idAccess);
 
             var lambda = Expression.Lambda(predicate, parameter);
@@ -970,9 +959,7 @@ internal sealed record DatabasePage(int TotalItems);
             // security, column filters, search, sort and the projection below all compose on top
             // (docs/default_index_PRD.md, D4/SP1). Unnarrowed, a Bike would come back as a Car and
             // outside Bike's row policy.
-            var indexQuery = entry.FiltersByCollection(entityType)
-                ? ApplyCollectionNarrowedIndex(session, entityType, indexType)
-                : ApplyIndexWithType(session, entityType, indexType);
+            var indexQuery = queryProvider.OpenIndex(entityType, indexType, entry.FiltersByCollection(entityType));
 
             // Re-root rather than replace: a context property may have composed a predicate onto its
             // query (a user-scoped grid), and building the index query from scratch silently dropped
@@ -980,7 +967,7 @@ internal sealed record DatabasePage(int TotalItems);
             queryable = RerootOntoIndexQuery(queryable, indexQuery);
             if (resultType != entityType)
             {
-                queryable = ApplyProjection(queryable, resultType);
+                queryable = queryProvider.Project((IQueryable)queryable, resultType);
             }
         }
 
@@ -1054,12 +1041,15 @@ internal sealed record DatabasePage(int TotalItems);
         var (queryable, entityType, entityTypeDefinition, surface, resultType, indexType) =
             await ResolveDatabaseSourceAsync(query, propertyName, cancellationToken);
 
+        // The store executes the query, or — a context property over a fixed set — it runs in process.
+        var isStoreQuery = queryable is IQueryable rooted && queryProvider.IsStoreQuery(rooted);
+
         // Chain .Include() before executing: [Reference] property names + the type's
         // GetDefaultIncludes() paths (#239), so referenced docs arrive in the same round-trip.
         var includePaths = referenceResolver.ResolveIncludePaths(resultType, entityType);
-        if (includePaths.Count > 0)
+        if (includePaths.Count > 0 && isStoreQuery)
         {
-            queryable = referenceResolver.ApplyIncludes(queryable, resultType, includePaths);
+            queryable = queryProvider.Include((IQueryable)queryable, includePaths);
         }
 
         // Push the row filter into the Raven query where shapes allow (no projection in play);
@@ -1084,7 +1074,7 @@ internal sealed record DatabasePage(int TotalItems);
         // security predicate ahead of the search group yields `(predicate) and (search or search)`.
         // Reversing them, or passing SearchOptions explicitly, ORs the predicate in instead.
         var searchPushedDown = false;
-        if (searchTerm != null)
+        if (searchTerm != null && isStoreQuery)
         {
             (queryable, searchPushedDown) = ApplySearch(queryable, sortType, searchTerm, ResolveIndexedSearchFields(queryable), surface);
         }
@@ -1134,7 +1124,8 @@ internal sealed record DatabasePage(int TotalItems);
         var mayPageInDatabase = rowFilter.CanPageInDatabase
             && restrictToIds is not { Count: > 0 }
             && (searchTerm is null || searchPushedDown)
-            && indexType is null;
+            && indexType is null
+            && isStoreQuery;
 
         // Two very different cost profiles behind one query, chosen per request. Reported once per
         // (query, outcome) so a slow grid can be explained rather than guessed at — and so the
@@ -1154,12 +1145,14 @@ internal sealed record DatabasePage(int TotalItems);
         DatabasePage? databasePage = null;
         if (mayPageInDatabase)
         {
-            var total = await CountQueryableAsync(queryable, resultType, cancellationToken);
+            var total = await queryProvider.CountAsync((IQueryable)queryable, cancellationToken);
             databasePage = new DatabasePage(total);
             queryable = ApplyPaging(queryable, resultType, skip, take);
         }
 
-        var materialized = (await ExecuteQueryableAsync(queryable, resultType, cancellationToken)).ToList();
+        List<object> materialized = isStoreQuery
+            ? [.. await queryProvider.ToListAsync((IQueryable)queryable, cancellationToken)]
+            : MaterializeQueryable(queryable, resultType).ToList();
 
         // Row-level authorization. The type-level check above answers "may this principal query
         // this type at all"; it says nothing about which rows. Without this, an entity whose
@@ -1355,26 +1348,24 @@ internal sealed record DatabasePage(int TotalItems);
         //
         // This is also why the two must be computed here rather than cached alongside the MethodInfo:
         // the same method can only be resolved once, but what it returns is a per-invocation fact.
-        var isRavenQueryable = typeof(IRavenQueryable<>)
-            .MakeGenericType(methodInfo.ResultElementType)
-            .IsInstanceOfType(result);
+        var isStoreQuery = result is IQueryable returned && queryProvider.IsStoreQuery(returned);
         var isQueryable = result is IQueryable;
 
         // Apply index projection for computed/stored fields (e.g., FullName from People_Overview).
         // Without this, RavenDB loads full documents which lack computed index fields.
-        if (isRavenQueryable && methodInfo.ResultElementType.IsSparkProjection())
+        if (isStoreQuery && methodInfo.ResultElementType.IsSparkProjection())
         {
-            result = ApplyProjection(result, methodInfo.ResultElementType);
+            result = queryProvider.Project((IQueryable)result, methodInfo.ResultElementType);
         }
 
         // Chain .Include() on the custom query too (#239) — custom queries applied no includes
-        // before. Only for RavenDB-backed queryables (an in-memory IQueryable has no .Include).
-        if (isRavenQueryable && entityType is not null)
+        // before. Only for the store's own queries (an in-memory IQueryable has no .Include).
+        if (isStoreQuery && entityType is not null)
         {
             var includePaths = referenceResolver.ResolveIncludePaths(methodInfo.ResultElementType, entityType);
             if (includePaths.Count > 0)
             {
-                result = referenceResolver.ApplyIncludes(result, methodInfo.ResultElementType, includePaths);
+                result = queryProvider.Include((IQueryable)result, includePaths);
             }
         }
 
@@ -1436,9 +1427,7 @@ internal sealed record DatabasePage(int TotalItems);
             result = RestrictToIds(
                 result, methodInfo.ResultElementType, restrictToIds, query, entityTypeDefinition, actionsInstance);
             isQueryable = result is IQueryable;
-            isRavenQueryable = typeof(IRavenQueryable<>)
-                .MakeGenericType(methodInfo.ResultElementType)
-                .IsInstanceOfType(result);
+            isStoreQuery = result is IQueryable restricted && queryProvider.IsStoreQuery(restricted);
         }
 
         // ⚠️ Resolved BEFORE anything composes onto the queryable, and kept for the column metadata.
@@ -1454,7 +1443,7 @@ internal sealed record DatabasePage(int TotalItems);
         // Only a RavenDB-backed queryable can push the search into the database; an in-memory
         // IQueryable has no Search, and the caller's own filtering may already have materialized.
         var searchPushedDown = false;
-        if (searchTerm != null && isRavenQueryable)
+        if (searchTerm != null && isStoreQuery)
         {
             (result, searchPushedDown) = ApplySearch(result, methodInfo.ResultElementType, searchTerm, indexedFields, surface);
         }
@@ -1467,13 +1456,13 @@ internal sealed record DatabasePage(int TotalItems);
 
         // Materialize results
         IEnumerable<object> entities;
-        if (isRavenQueryable)
+        if (isStoreQuery)
         {
-            // Raven-backed: enumerate asynchronously. Reaching MaterializeQueryable with one of these
+            // The store's query: the provider executes it asynchronously. Reaching MaterializeQueryable with one of these
             // is what made Task<IRavenQueryable<T>> throw before #294 — a blocking ToList() over an
             // async session, which RavenDB rejects. Both branches now ask the object the same
             // question, so they can no longer disagree.
-            entities = await ExecuteQueryableAsync(result, methodInfo.ResultElementType, cancellationToken);
+            entities = await queryProvider.ToListAsync((IQueryable)result, cancellationToken);
         }
         else if (isQueryable)
         {
@@ -1519,7 +1508,7 @@ internal sealed record DatabasePage(int TotalItems);
 
         // ⚠️ DO NOT REMOVE THIS DistinctBy, and do not make it unconditional. Both halves matter.
         //
-        // WHY IT IS HERE (the isRavenQueryable case): a custom query may hand back a Raven queryable
+        // WHY IT IS HERE (the isStoreQuery case): a custom query may hand back a Raven queryable
         // over a *fan-out index* — one that projects over a collection and therefore emits one entry
         // per element. Three tags on one car means three index entries naming the same document,
         // which map to three PersistentObjects with the same Id and render as the same row three
@@ -1555,7 +1544,7 @@ internal sealed record DatabasePage(int TotalItems);
             EntityType = entityType,
             ResultType = entityType is null ? null : methodInfo.ResultElementType,
             Action = "Query",
-            DedupeById = isRavenQueryable,
+            DedupeById = isStoreQuery,
             OrderRows = needsInMemorySort
                 ? rows => SortMappedRows(rows, query.SortColumns, surface, query)
                 : null,
@@ -1817,60 +1806,6 @@ internal sealed record DatabasePage(int TotalItems);
     #region Shared Helpers
 
     /// <summary>
-    /// Returns session.Query&lt;resultType, indexType&gt;()
-    /// </summary>
-    /// <param name="session">The asynchronous document session to execute the query on.</param>
-    /// <param name="resultType">The type of the query result.</param>
-    /// <param name="indexType">The type of the index to use for the query.</param>
-    /// <returns>The result of the invoked generic query.</returns>
-    /// <exception cref="InvalidOperationException">Thrown when the required generic Query&lt;T, TIndexCreator&gt; method cannot be found on the session.</exception>
-    private object ApplyIndexWithType(IAsyncDocumentSession session, Type resultType, Type indexType)
-    {
-        var genericMethod = ReflectionCache.GetOrAdd<(string Op, Type Result, Type Index), MethodInfo>(
-            ("QueryExecutor.SessionQueryByIndexCreator", resultType, indexType),
-            static k =>
-            {
-                var sessionQueryMethod = typeof(IAsyncDocumentSession).GetMethods()
-                    .FirstOrDefault(m => m.Name == "Query"
-                        && m.IsGenericMethod
-                        && m.GetGenericArguments().Length == 2
-                        && m.GetParameters().Length == 0)
-                    ?? throw new InvalidOperationException("Could not find Query<T, TIndexCreator> method on IAsyncDocumentSession");
-                return sessionQueryMethod.MakeGenericMethod(k.Result, k.Index);
-            });
-        return genericMethod.Invoke(session, [])!;
-    }
-
-    /// <summary>
-    /// <c>session.Query&lt;SparkCollectionRow, TIndex&gt;().Where(r =&gt; r.SparkCollection == collection).OfType&lt;T&gt;()</c>:
-    /// a multi-map default narrowed to <paramref name="entityType"/>'s collection, typed as
-    /// <c>IRavenQueryable&lt;T&gt;</c> exactly like <see cref="ApplyIndexWithType"/>'s result, so everything
-    /// downstream composes on it unchanged (SP1: correct rows, paging, totals and view projection, with and
-    /// without a row policy).
-    /// </summary>
-    /// <remarks>
-    /// The collection is a query parameter, never spliced RQL, and it is the store's own name for the type —
-    /// the same convention that rendered <c>docs.&lt;Collection&gt;</c> in the map the discriminator was
-    /// injected into (<see cref="SparkMultiMapIndexCreationTask{TReduceResult}.CreateIndexDefinition"/>).
-    /// </remarks>
-    private object ApplyCollectionNarrowedIndex(IAsyncDocumentSession session, Type entityType, Type indexType)
-    {
-        var collection = session.Advanced.DocumentStore.Conventions.GetCollectionName(entityType);
-        var method = ReflectionCache.GetOrAdd<(string Op, Type Entity, Type Index), MethodInfo>(
-            ("QueryExecutor.CollectionNarrowedIndexQuery", entityType, indexType),
-            static k => typeof(QueryExecutor)
-                .GetMethod(nameof(CollectionNarrowedIndexQuery), BindingFlags.NonPublic | BindingFlags.Static)!
-                .MakeGenericMethod(k.Entity, k.Index));
-        return method.Invoke(null, [session, collection])!;
-    }
-
-    private static IRavenQueryable<T> CollectionNarrowedIndexQuery<T, TIndex>(IAsyncDocumentSession session, string collection)
-        where TIndex : Raven.Client.Documents.Indexes.AbstractCommonApiForIndexes, new()
-        => (IRavenQueryable<T>)session.Query<SparkCollectionRow, TIndex>()
-            .Where(row => row.SparkCollection == collection)
-            .OfType<T>();
-
-    /// <summary>
     /// Replays whatever the context property composed onto its query — a <c>Where</c>, an
     /// <c>OrderBy</c> — on top of the index-backed query, instead of discarding it.
     /// </summary>
@@ -1913,35 +1848,6 @@ internal sealed record DatabasePage(int TotalItems);
     {
         protected override Expression VisitConstant(ConstantExpression node)
             => typeof(IQueryable).IsAssignableFrom(node.Type) ? replacement : node;
-    }
-
-    /// <summary>
-    /// Returns queryable.ProjectInto&lt;resultType&gt;() to apply index projections for computed/stored fields.
-    /// </summary>
-    /// <param name="queryable"></param>
-    /// <param name="resultType"></param>
-    /// <returns></returns>
-    private object ApplyProjection(object queryable, Type resultType)
-    {
-        var genericProjectMethod = ReflectionCache.GetOrAdd<(string Op, Type Type), MethodInfo?>(
-            ("QueryExecutor.LinqProjectInto", resultType),
-            static k =>
-            {
-                var projectIntoMethod = typeof(LinqExtensions).GetMethods()
-                    .FirstOrDefault(m => m.Name == "ProjectInto"
-                        && m.IsGenericMethod
-                        && m.GetGenericArguments().Length == 1
-                        && m.GetParameters().Length == 1
-                        && m.GetParameters()[0].ParameterType == typeof(IQueryable));
-                return projectIntoMethod?.MakeGenericMethod(k.Type);
-            });
-
-        if (genericProjectMethod == null)
-        {
-            return queryable;
-        }
-
-        return genericProjectMethod.Invoke(null, [queryable])!;
     }
 
     /// <summary>
@@ -2156,29 +2062,7 @@ internal sealed record DatabasePage(int TotalItems);
     /// </para>
     /// </remarks>
     private IReadOnlySet<string>? ResolveIndexedSearchFields(object queryable)
-    {
-        if (queryable is not IRavenQueryInspector inspector) return null;
-
-        var indexName = inspector.IndexName;
-        if (string.IsNullOrEmpty(indexName)) return null;
-
-        // An auto-index is RavenDB's own, built per query shape; it is never in our catalog and never
-        // rejects a field the query names.
-        if (indexName.StartsWith("Auto/", StringComparison.Ordinal)) return null;
-
-        // The catalog keys on the CLR class name while RavenDB reports the deployed name, which
-        // replaces '_' with '/'. Unambiguous to reverse: a CLR type name cannot contain '/'.
-        var entry = indexCatalog.GetByIndexName(indexName.Replace('/', '_'));
-        if (entry?.ProjectionType is null) return EmptyFieldSet;
-
-        return ReflectionCache.GetOrAdd<(string Op, Type Projection), IReadOnlySet<string>>(
-            ("QueryExecutor.IndexedSearchFields", entry.ProjectionType),
-            static k => k.Projection.GetCachedProperties()
-                .Select(p => p.Name)
-                .ToHashSet(StringComparer.Ordinal));
-    }
-
-    private static readonly IReadOnlySet<string> EmptyFieldSet = new HashSet<string>(StringComparer.Ordinal);
+        => queryable is IQueryable query && queryProvider.IsStoreQuery(query) ? queryProvider.IndexedFields(query) : null;
 
     /// <remarks>
     /// ⚠️ Substitutes the <c>{Name}Search</c> companion wherever one exists. That companion is the
@@ -2230,17 +2114,9 @@ internal sealed record DatabasePage(int TotalItems);
     private const string SearchCompanionSuffix = "Search";
 
     /// <summary>
-    /// Adds one <c>Search</c> clause per searchable field, and reports whether anything was added.
-    /// <para>
-    /// <see cref="SearchOptions"/> is never passed. That is a safety requirement rather than a style
-    /// preference: measured on RavenDB 7.2.5, an explicit <see cref="SearchOptions.Or"/> leaks onto the
-    /// <em>adjacent</em> clause and ORs it in. The adjacent clause here is the row-security predicate, so an
-    /// explicit option would turn a security filter into an alternative — silently, returning plausible rows.
-    /// The default <see cref="SearchOptions.Guess"/> instead groups the consecutive clauses and ANDs the group
-    /// with its neighbours in both directions, which is exactly what a multi-field search wants.
-    /// </para>
-    /// <para>Every argument is passed explicitly because <see cref="MethodInfo.Invoke"/> does not apply
-    /// optional parameter defaults.</para>
+    /// Searches every searchable field through the provider (<see cref="Abstractions.Storage.ISparkQueryProvider.Search"/>),
+    /// and reports whether the provider applied it. The provider ANDs the search with the row-security
+    /// predicate ahead of it; RavenDB's half of that is a measured constraint on its <c>SearchOptions</c>.
     /// <para>
     /// <b>Only attributes on the caller's query surface are searched</b> (contributions M2c-2a):
     /// shown on the query (<c>ShowedOn.Query</c>) and not <c>Query</c>-denied. This used to be every
@@ -2250,7 +2126,7 @@ internal sealed record DatabasePage(int TotalItems);
     /// searched either.
     /// </para>
     /// </summary>
-    private static (object Queryable, bool Applied) ApplySearch(
+    private (object Queryable, bool Applied) ApplySearch(
         object queryable, Type elementType, string term, IReadOnlySet<string>? indexedFields,
         EntityTypeDefinition surface)
     {
@@ -2278,33 +2154,10 @@ internal sealed record DatabasePage(int TotalItems);
             return (queryable, false);
         }
 
-        var searchMethod = ReflectionCache.GetOrAdd<(string Op, Type Element), MethodInfo>(
-            ("QueryExecutor.LinqSearch", elementType),
-            static k => typeof(LinqExtensions).GetMethods()
-                .First(m => m.Name == nameof(LinqExtensions.Search)
-                    && m.IsGenericMethod
-                    && m.GetGenericArguments().Length == 1
-                    && m.GetParameters().Length == 6
-                    // The string overload, not the IEnumerable<string> one.
-                    && m.GetParameters()[2].ParameterType == typeof(string))
-                .MakeGenericMethod(k.Element));
-
-        var selectorType = typeof(Func<,>).MakeGenericType(elementType, typeof(object));
-
-        foreach (var property in properties)
-        {
-            var parameter = System.Linq.Expressions.Expression.Parameter(elementType, "x");
-            // Expression<Func<T, object>>, so the property access needs boxing even for a string.
-            var propertyAccess = System.Linq.Expressions.Expression.Convert(
-                System.Linq.Expressions.Expression.Property(parameter, property), typeof(object));
-            var lambda = System.Linq.Expressions.Expression.Lambda(selectorType, propertyAccess, parameter);
-
-            queryable = searchMethod.Invoke(
-                null,
-                [queryable, lambda, term, 1m, SearchOptions.Guess, Raven.Client.Documents.Queries.SearchOperator.And])!;
-        }
-
-        return (queryable, true);
+        // A provider without full-text search answers null, and the in-memory fallback takes over.
+        return queryProvider.Search((IQueryable)queryable, properties, term) is { } searched
+            ? (searched, true)
+            : (queryable, false);
     }
 
     /// <summary>
@@ -2655,35 +2508,6 @@ internal sealed record DatabasePage(int TotalItems);
         return method.Invoke(null, [queryable, value])!;
     }
 
-    /// <summary>
-    /// The database's count of matching rows, for the paging-pushdown path only.
-    /// </summary>
-    /// <remarks>
-    /// A second round trip, deliberately. The alternative is RavenDB's query statistics, which would
-    /// avoid it — but the statistics out-parameter has to be threaded through the same reflection that
-    /// builds this queryable, and the win here is not the round trip: it is not materializing the
-    /// whole collection to hand back fifty rows.
-    /// <para>
-    /// Counting <b>before</b> paging and only where nothing can remove rows afterwards is what keeps
-    /// this from becoming the cardinality oracle an author-supplied total already was.
-    /// </para>
-    /// </remarks>
-    private static async Task<int> CountQueryableAsync(object queryable, Type elementType, CancellationToken cancellationToken)
-    {
-        var method = ReflectionCache.GetOrAdd<(string Op, Type Entity), MethodInfo?>(
-            ("QueryExecutor.LinqCountAsync", elementType),
-            static k => typeof(LinqExtensions).GetMethods()
-                .FirstOrDefault(m => m.Name == nameof(LinqExtensions.CountAsync)
-                    && m.GetParameters().Length == 2)
-                ?.MakeGenericMethod(k.Entity));
-
-        if (method is null)
-            throw new InvalidOperationException("RavenDB's CountAsync could not be resolved.");
-
-        var task = (Task<int>)method.Invoke(null, [queryable, cancellationToken])!;
-        return await task;
-    }
-
     /// <summary>The open <c>Queryable.Where(source, predicate)</c> overload, closed over <paramref name="entityType"/>.</summary>
     /// <summary>
     /// Lifts a sequence to <see cref="IQueryable"/> so one expression can serve every shape.
@@ -2768,51 +2592,6 @@ internal sealed record DatabasePage(int TotalItems);
         if (!companion.IsIgnoredForSparkModel()) return requested;
 
         return companion.Name;
-    }
-
-    /// <summary>
-    /// Materializes an IRavenQueryable<T> by calling ToListAsync via reflection.
-    /// </summary>
-    /// <param name="queryable"></param>
-    /// <param name="entityType"></param>
-    /// <returns></returns>
-    private async Task<IEnumerable<object>> ExecuteQueryableAsync(object queryable, Type entityType, CancellationToken cancellationToken)
-    {
-        var genericToListMethod = ReflectionCache.GetOrAdd<(string Op, Type Type), MethodInfo?>(
-            ("QueryExecutor.LinqToListAsync", entityType),
-            static k =>
-            {
-                var toListMethod = typeof(LinqExtensions).GetMethods()
-                    .FirstOrDefault(m => m.Name == nameof(LinqExtensions.ToListAsync)
-                        && m.GetGenericArguments().Length == 1
-                        && m.GetParameters().Length == 2);
-                return toListMethod?.MakeGenericMethod(k.Type);
-            });
-
-        if (genericToListMethod == null)
-        {
-            return [];
-        }
-
-        // Was hardcoded to CancellationToken.None, which is where a cancelled request stopped
-        // mattering: the socket was gone, and the database kept materializing the result anyway.
-        var task = genericToListMethod.Invoke(null, [queryable, cancellationToken]) as Task;
-
-        if (task == null)
-        {
-            return [];
-        }
-
-        await task;
-
-        var result = task.GetCompletedTaskResult();
-
-        if (result is System.Collections.IEnumerable enumerable)
-        {
-            return enumerable.Cast<object>().ToList();
-        }
-
-        return [];
     }
 
     #endregion

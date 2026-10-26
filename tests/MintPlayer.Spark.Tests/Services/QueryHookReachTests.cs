@@ -78,7 +78,8 @@ public class QueryHookReachTests
             Substitute.For<IReferenceResolver>(), Substitute.For<IBreadcrumbResolver>(),
             new PermissiveRowSecurity(),
             TestRowSecurityGate.For(new PermissiveRowSecurity(), entityMapper),
-            TestQueryResultProjector.For(Substitute.For<IAsyncDocumentSession>(), modelLoader));
+            TestQueryResultProjector.For(Substitute.For<IAsyncDocumentSession>(), modelLoader),
+            queryProvider: TestQueryProvider.For(Substitute.For<IAsyncDocumentSession>().AsSparkSession()));
 
         return (executor, actions);
     }

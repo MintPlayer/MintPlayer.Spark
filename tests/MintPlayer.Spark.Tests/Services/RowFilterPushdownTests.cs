@@ -373,7 +373,8 @@ public class RowFilterPushdownTests : SparkTestDriver
             new BreadcrumbResolver(modelLoader, new BreadcrumbClosure(modelLoader), rowSecurity, new SparkOptions()),
             rowSecurity,
             TestRowSecurityGate.For(rowSecurity, entityMapper),
-            TestQueryResultProjector.For(session, modelLoader));
+            TestQueryResultProjector.For(session, modelLoader),
+            queryProvider: TestQueryProvider.For(session.AsSparkSession(), indexCatalog));
 
         var query = new SparkQuery
         {
