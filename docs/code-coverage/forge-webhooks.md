@@ -93,6 +93,7 @@ for a port, not as a specification.
 | **`ReleasePublished`** | ✅ `release` — `published` (`tag_name`, `published_at`; §7.6) | `Release Hook` — action `create` | ⚠️ no releases; a tag `repo:push` is the nearest |
 | **`DependencyAlertRaised`** | ✅ `dependabot_alert` — `created`, `reopened`, `reintroduced`; needs the App's *Dependabot alerts: read* (R10) | `Vulnerability` events | ⚠️ no known webhook |
 | **`PullRequestDescribed`** | ✅ `pull_request` — `opened`, `reopened`, `edited` (title or body) by a non-bot sender; carries no text, the consumer reads the title fresh (versioning PRD D14) | `Merge Request Hook` — `open`, `reopen`, `update` with title/description changes | `pullrequest:created`, `pullrequest:updated` |
+| **`VersioningRunCompleted`** | ✅ `workflow_run` — `completed`, only for a run that has a `VersioningRun` record (one point load per delivery); carries `conclusion` and `html_url` | `Pipeline Hook` — finished status | `repo:commit_status_updated` from Pipelines |
 | **`BackportRequested`** | ✅ `pull_request` `labeled` `backport: <line>` on a merged pull request, or such a label at the merge; `issue_comment` `created` starting `/backport` (versioning PRD D10). The actor is `sender` (T1); bots and the App raise nothing | `Merge Request Hook` label changes; `Note Hook` on a merge request | `pullrequest:comment_created` (no labels) |
 
 `PullRequestUpdated` has a second consumer besides `ForgeEventsRecipient`: `PrSizeLabelEventsRecipient`
