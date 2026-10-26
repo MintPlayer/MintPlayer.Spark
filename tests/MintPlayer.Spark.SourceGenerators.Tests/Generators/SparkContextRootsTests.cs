@@ -4,7 +4,7 @@ using MetadataReference = Microsoft.CodeAnalysis.MetadataReference;
 using OutputKind = Microsoft.CodeAnalysis.OutputKind;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.SourceGenerators.Tests._Infrastructure;
-using TestingHarness = MintPlayer.SourceGenerators.Testing.GeneratorHarness;
+using TestingHarness = MintPlayer.SourceGenerators.TestHarness.GeneratorHarness;
 
 namespace MintPlayer.Spark.SourceGenerators.Tests.Generators;
 
