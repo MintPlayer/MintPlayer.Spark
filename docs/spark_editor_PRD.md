@@ -432,6 +432,20 @@ public interface ISparkQueryProvider
 public sealed record SparkSearchSpec(string Term, IReadOnlyList<PropertyInfo> Properties);
 ```
 
+**As implemented in M2 (commit 1a2f2143), refining the draft above.** The contract is
+`Abstractions/Storage/ISparkQueryProvider.cs`, and the Raven half is `Storage/Raven/RavenSparkQueryProvider.cs`.
+- `IsStoreQuery(source)` replaces the executor's `is IRavenQueryable<>` checks. It also covers a Database.* context
+  property over a fixed set, which now runs in process and is never paged in the database. Before, that shape
+  reached Raven's async `ToListAsync`.
+- `OpenIndex(entityType, indexType, narrowToCollection)` replaces `OpenSource`. Indexes stay catalog types: an
+  in-memory store has none, so it is never called there.
+- `Search` returns null when the provider has no full-text search, in place of `(Query, Applied)`.
+- `In(member, ids)` was added. Restrict-to-ids needs Raven's `.In()` marker, and LINQ-to-objects needs `Contains`.
+- `MayFanOut` was dropped: the paging decision still keys on "an index is bound", which is provider-neutral.
+- `VersionTokensAsync` lives on `ISparkSession.GetVersionsAsync`, and `RowChangeVectors` was removed.
+- Evidence: the query-path classes (QueryExecutor*, Search, Include, RowFilter, Paging, SubQuery, ColumnFilter,
+  DefaultIndex) ran 287/287 green on 2026-10-26.
+
 The core side is a record the executor builds once and then applies. Each piece is
 `LambdaExpression`/`Expression<Func<T,bool>>`:
 
