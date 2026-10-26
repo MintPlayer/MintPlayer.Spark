@@ -19,6 +19,8 @@ internal sealed class RavenSparkStore(IDocumentStore store) : ISparkStore
 
     public ISparkSession OpenSession() => new RavenSparkSession(store.OpenAsyncSession(), ownsSession: true);
 
+    public string GetCollectionName(Type type) => store.Conventions.GetCollectionName(type);
+
     /// <remarks>See <see cref="SparkIndexWait.WaitAsync"/>: sliced waits on the indexes over the written collections.</remarks>
     public Task WaitForConsistencyAsync(
         ISparkSession session, IReadOnlyCollection<string> collections, TimeSpan bound,

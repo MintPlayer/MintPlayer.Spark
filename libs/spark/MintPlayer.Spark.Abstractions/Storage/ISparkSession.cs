@@ -119,6 +119,9 @@ public interface ISparkStore
     /// <summary>A fresh unit of work, independent of the request's. Dispose it.</summary>
     ISparkSession OpenSession();
 
+    /// <summary>The collection <paramref name="type"/> is stored in, per the store's conventions.</summary>
+    string GetCollectionName(Type type);
+
     /// <summary>
     /// Waits, bounded by <paramref name="bound"/>, until reads over <paramref name="collections"/> see the
     /// writes committed before the call. Never throws; a provider whose reads are always current returns at once.

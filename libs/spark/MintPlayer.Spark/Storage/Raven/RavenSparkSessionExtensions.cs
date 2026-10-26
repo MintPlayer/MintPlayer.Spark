@@ -13,6 +13,10 @@ public static class RavenSparkSessionExtensions
     public static ISparkSession AsSparkSession(this IAsyncDocumentSession session)
         => new Storage.Raven.RavenSparkSession(session);
 
+    /// <summary><paramref name="store"/> as an <see cref="ISparkStore"/>.</summary>
+    public static ISparkStore AsSparkStore(this Raven.Client.Documents.IDocumentStore store)
+        => new Storage.Raven.RavenSparkStore(store);
+
     /// <summary>The RavenDB session behind <paramref name="session"/>; throws when another provider serves it.</summary>
     public static IAsyncDocumentSession AsRavenSession(this ISparkSession session)
         => session.Native as IAsyncDocumentSession
