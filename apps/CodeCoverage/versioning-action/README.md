@@ -33,8 +33,10 @@ steps:
         [{ "url": "https://registry.npmjs.org", "token": "${{ secrets.NPM_TOKEN }}" }]
 ```
 
-The action does nothing on pull requests and tag builds. It fetches the tags and the history it needs itself, so
-`fetch-depth: 0` is not required.
+The action does nothing on pull requests and tag builds. It fetches the tags and the history it needs itself, but a
+.NET build that runs before it, or in a pull request, reads its version from the tags reachable from HEAD
+(MintPlayer.Versioning.MSBuild), so check out with `fetch-depth: 0` wherever `dotnet` builds. `fetch-tags: true` alone
+is not enough: the tags arrive, but none is reachable from a depth-1 clone. The onboarding pull request sets it.
 
 ## npm: every package is stamped
 

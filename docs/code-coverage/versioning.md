@@ -33,7 +33,12 @@ pull request from `mintplayer/versioning-onboarding` (D17) that:
   (a built-in version when nuget.org cannot be read);
 - replaces hand-edited versions with `0.0.0-PLACEHOLDER`;
 - adds the action step, and `permissions: contents: write` and `id-token: write`, to the publish workflow;
+- gives the checkout of every job that runs `dotnet` `fetch-depth: 0`;
 - adds a `versioning:` section to `coverage.yml`.
+
+Each of these is a rule that checks before it edits, so **Set up versioning** can be run again on a repository that
+was onboarded before. It then opens a pull request with only what is still missing (for example a checkout added
+since), listed per rule under "Changes", or answers that there is nothing to change.
 
 Review and merge it. At the merge, the app pushes one **seed tag** per package at the merge commit, from the
 version the pull request replaced, so no package restarts at `0.0.0`. If the seeds cannot be pushed, the first
@@ -78,7 +83,9 @@ steps:
 
 The action's inputs and outputs (`released`, `versions`, `dist-tags`) are listed in
 [its README](../../apps/CodeCoverage/versioning-action/README.md). It does nothing on pull requests and tag builds,
-and it fetches the tags and the history it needs, so `fetch-depth: 0` is not required.
+and it fetches the tags and the history it needs. A .NET build that runs before it, or in a pull request, still reads its
+version from the tags reachable from HEAD, so every checkout of a job that runs `dotnet` needs `fetch-depth: 0`
+(`fetch-tags: true` is not enough: a depth-1 clone reaches no tag). The onboarding pull request adds it (Dotnet.Tools#203).
 
 **What reaches the artifacts** (D9):
 

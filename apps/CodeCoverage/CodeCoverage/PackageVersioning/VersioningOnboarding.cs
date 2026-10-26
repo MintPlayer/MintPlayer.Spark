@@ -23,6 +23,8 @@ public sealed record VersioningOnboardingPlan(IReadOnlyList<GitWriterFile> Files
 /// once, replaces every hand-written version with <c>0.0.0-PLACEHOLDER</c> (recording it as the package's seed), puts the
 /// action step in front of every push-triggered job's first pack or publish step, and adds the <c>versioning:</c> section.
 /// Every edit is textual, so the diff holds the edit and nothing else; what it cannot place safely goes into the body.
+/// The edits are <see cref="Rules"/> that each check before they change, so the plan of an onboarded repository holds only
+/// what is still missing, and the onboarding can be run again whenever it learns something new.
 /// </summary>
 public static partial class VersioningOnboarding
 {
@@ -78,7 +80,6 @@ public static partial class VersioningOnboarding
     public static async Task<VersioningOnboardingPlan> PlanAsync(IRepositoryTree tree, Func<string, CancellationToken, Task<bool>> isTagged, string? actionSha,
         string? packageVersion = null, string? owner = null, CancellationToken cancellationToken = default)
     {
-        var files = new Files(tree, cancellationToken);
         var notes = new List<string>();
         var seeds = new List<VersioningSeed>();
 
@@ -92,41 +93,87 @@ public static partial class VersioningOnboarding
         foreach (var package in packages)
             if (!taggedIds.Contains(package.Id!) && Seed(package, notes) is { } seed) seeds.Add(seed);
 
-        var nuget = packages.Where(p => p.Kind == PackageKind.NuGet).ToList();
-        if (nuget.Count > 0)
+        var context = new Context(tree, new Files(tree, cancellationToken), notes, packages, [.. packages.Where(p => p.Kind == PackageKind.NuGet)],
+            actionSha, packageVersion ?? PackageVersion, owner);
+        var applied = new List<(string Rule, List<string> Paths)>();
+        foreach (var rule in Rules)
         {
-            foreach (var path in nuget.SelectMany(p => p.BuildProps.Append(p.Path)).Distinct(StringComparer.Ordinal))
-                if (await files.ReadAsync(path) is { } text) files.Write(path, ReplaceVersions(path, text, notes));
-            await ReferenceAsync(files, nuget, packageVersion ?? PackageVersion);
-            await RemoveMinVerAsync(files, tree, nuget, notes);
-            await NuGetConfigAsync(files, tree, owner, notes);
+            var before = context.Files.Snapshot();
+            await rule.RunAsync(context);
+            var after = context.Files.Snapshot();
+            var paths = before.Keys.Union(after.Keys).Where(p => before.GetValueOrDefault(p) != after.GetValueOrDefault(p)).Order(StringComparer.Ordinal).ToList();
+            if (paths.Count > 0) applied.Add((rule.Name, paths));
         }
-
-        foreach (var package in packages.Where(p => p.Kind == PackageKind.Npm))
-        {
-            if (package.DeclaredVersion is { } declared && declared != Placeholder && await files.ReadAsync(package.Path) is { } json
-                && NpmVersion().Match(json) is { Success: true } match && match.Groups[2].Value == declared)
-                files.Write(package.Path, string.Concat(json.AsSpan(0, match.Groups[2].Index), Placeholder, json.AsSpan(match.Groups[2].Index + match.Groups[2].Length)));
-            if (package.BuildOutput is null)
-                notes.Add($"`{package.Id}` has no build output the action knows (an `ng-package.json` `dest`, or an Nx `build` target's `outputPath`), so it stamps only `{package.Path}`: build it after the versioning step, or publish it from its source folder.");
-        }
-
-        var workflows = 0;
-        foreach (var path in tree.Entries.Keys.Where(IsWorkflow).Order(StringComparer.Ordinal))
-            if (await files.ReadAsync(path) is { } text && Workflow(path, text, actionSha, notes) is { } edited)
-            {
-                files.Write(path, edited);
-                workflows++;
-            }
-        if (workflows == 0 && packages.Count > 0)
+        if (packages.Count > 0 && !await HasVersioningStepAsync(context))
             notes.Add("No push-triggered workflow packs or publishes a package: add the versioning step before your publish steps by hand (see the action's README).");
 
-        var coverageYml = await files.ReadAsync(CoverageYml.FileName);
-        if (!DependencyOnboarding.HasTopLevelKey(coverageYml, "versioning"))
-            files.Write(CoverageYml.FileName, coverageYml is null ? Section.TrimStart('\n') : coverageYml.TrimEnd('\n', '\r') + "\n" + Section);
+        return new VersioningOnboardingPlan(context.Files.Changed(), seeds, notes, Body(packages, seeds, taggedIds, applied, notes, actionSha));
+    }
 
-        var written = files.Changed();
-        return new VersioningOnboardingPlan(written, seeds, notes, Body(packages, seeds, taggedIds, written, notes, actionSha));
+    /// <summary>What the rules share: the default branch's tree, its files as the rules before left them, and the notes.</summary>
+    private sealed record Context(IRepositoryTree Tree, Files Files, List<string> Notes, List<ProjectNode> Packages, List<ProjectNode> NuGet,
+        string? ActionSha, string PackageVersion, string? Owner);
+
+    /// <summary>
+    /// One thing the onboarding sets up. A rule reads the repository as the rules before it left it and edits only what is not
+    /// set up yet, so on its own output it changes nothing. That makes "Set up versioning" safe to press again on a repository
+    /// onboarded before: the pull request holds only what the onboarding learned since, or the answer is "nothing to change".
+    /// What the onboarding learns later is a new rule (or a check in one), never a step that assumes an earlier run.
+    /// </summary>
+    private sealed record Rule(string Name, Func<Context, Task> RunAsync);
+
+    private static readonly Rule[] Rules =
+    [
+        new("Hand-written versions become the placeholder", PlaceholderVersionsAsync),
+        new($"`{PackageId}` is referenced", c => c.NuGet.Count == 0 ? Task.CompletedTask : ReferenceAsync(c.Files, c.NuGet, c.PackageVersion)),
+        new("MinVer leaves the build", c => c.NuGet.Count == 0 ? Task.CompletedTask : RemoveMinVerAsync(c.Files, c.Tree, c.NuGet, c.Notes)),
+        new($"`nuget.config` maps `{PackageId}` to nuget.org", c => c.NuGet.Count == 0 ? Task.CompletedTask : NuGetConfigAsync(c.Files, c.Tree, c.Owner, c.Notes)),
+        new("The versioning step runs before the first pack or publish", c => WorkflowsAsync(c, (path, text, notes) => VersioningStep(path, text, c.ActionSha, notes))),
+        new("Pack builds again and the NuGet push skips published versions", c => WorkflowsAsync(c, PackAndPush)),
+        new("Publishing jobs may push the tags", c => WorkflowsAsync(c, PublishPermissions)),
+        new("A newer push cancels the older publish run", c => WorkflowsAsync(c, Concurrency)),
+        new("Checkouts of .NET jobs fetch the history and its tags", c => c.NuGet.Count == 0 ? Task.CompletedTask : WorkflowsAsync(c, FullHistory)),
+        new("`coverage.yml` has the `versioning:` section", CoverageSectionAsync),
+    ];
+
+    private static async Task PlaceholderVersionsAsync(Context context)
+    {
+        foreach (var path in context.NuGet.SelectMany(p => p.BuildProps.Append(p.Path)).Distinct(StringComparer.Ordinal))
+            if (await context.Files.ReadAsync(path) is { } text) context.Files.Write(path, ReplaceVersions(path, text, context.Notes));
+
+        foreach (var package in context.Packages.Where(p => p.Kind == PackageKind.Npm))
+        {
+            if (package.DeclaredVersion is { } declared && declared != Placeholder && await context.Files.ReadAsync(package.Path) is { } json
+                && NpmVersion().Match(json) is { Success: true } match && match.Groups[2].Value == declared)
+                context.Files.Write(package.Path, string.Concat(json.AsSpan(0, match.Groups[2].Index), Placeholder, json.AsSpan(match.Groups[2].Index + match.Groups[2].Length)));
+            if (package.BuildOutput is null)
+                context.Notes.Add($"`{package.Id}` has no build output the action knows (an `ng-package.json` `dest`, or an Nx `build` target's `outputPath`), so it stamps only `{package.Path}`: build it after the versioning step, or publish it from its source folder.");
+        }
+    }
+
+    private static async Task CoverageSectionAsync(Context context)
+    {
+        var coverageYml = await context.Files.ReadAsync(CoverageYml.FileName);
+        if (!DependencyOnboarding.HasTopLevelKey(coverageYml, "versioning"))
+            context.Files.Write(CoverageYml.FileName, coverageYml is null ? Section.TrimStart('\n') : coverageYml.TrimEnd('\n', '\r') + "\n" + Section);
+    }
+
+    /// <summary>Runs a workflow rule over every workflow, each as the rules before left it.</summary>
+    private static async Task WorkflowsAsync(Context context, Func<string, string, List<string>, string?> rule)
+    {
+        foreach (var path in context.Tree.Entries.Keys.Where(IsWorkflow).Order(StringComparer.Ordinal))
+            if (await context.Files.ReadAsync(path) is { } text && rule(path, text, context.Notes) is { } edited)
+                context.Files.Write(path, edited);
+    }
+
+    /// <summary>Whether a push-triggered workflow has the versioning step in front of its publish, after the rules ran.</summary>
+    private static async Task<bool> HasVersioningStepAsync(Context context)
+    {
+        foreach (var path in context.Tree.Entries.Keys.Where(IsWorkflow).Order(StringComparer.Ordinal))
+            if (await context.Files.ReadAsync(path) is { } text && Parse(path, text, null) is var (root, jobs)
+                && PublishingJobs(root, jobs).Any(j => VersioningStepIndex((YamlSequenceNode)Child(j.Job, "steps")!) is not null))
+                return true;
+        return false;
     }
 
     private static VersioningSeed? Seed(ProjectNode package, List<string> notes)
@@ -415,73 +462,106 @@ public static partial class VersioningOnboarding
     /// <summary>One edit of a workflow, against the original line numbers: a whole-line replacement, or lines inserted before one.</summary>
     private sealed record LineEdit(int Line, string? Replace, IReadOnlyList<string>? Insert);
 
-    /// <summary>
-    /// The workflow with the versioning step in front of each push-triggered job's first pack or publish step, the job's
-    /// permissions widened to <c>contents: write</c> and <c>id-token: write</c>, <c>--no-build</c> dropped from its pack (with
-    /// a comment saying why) and <c>--skip-duplicate</c> added to its NuGet push, and a <c>concurrency</c> group when the
-    /// workflow has none; null when the workflow needs nothing.
-    /// </summary>
-    internal static string? Workflow(string path, string text, string? actionSha, List<string> notes)
+    /// <summary>The workflow's root and its jobs, or null when it has none; unreadable YAML is noted when <paramref name="notes"/> is given.</summary>
+    private static (YamlMappingNode Root, YamlMappingNode Jobs)? Parse(string path, string text, List<string>? notes)
     {
-        YamlMappingNode root;
         try
         {
             var stream = new YamlStream();
             stream.Load(new StringReader(text));
-            if (stream.Documents.FirstOrDefault()?.RootNode is not YamlMappingNode mapping) return null;
-            root = mapping;
+            return stream.Documents.FirstOrDefault()?.RootNode is YamlMappingNode root && Child(root, "jobs") is YamlMappingNode jobs ? (root, jobs) : null;
         }
         catch (YamlDotNet.Core.YamlException)
         {
-            notes.Add($"`{path}` is not readable YAML: add the versioning step by hand.");
+            notes?.Add($"`{path}` is not readable YAML: add the versioning step by hand.");
             return null;
         }
-        if (Child(root, "jobs") is not YamlMappingNode jobs) return null;
+    }
 
-        var publishing = jobs.Children.Where(j => j.Value is YamlMappingNode job && PublishStep(job) is not null).ToList();
-        if (publishing.Count == 0) return null;
+    /// <summary>The jobs that pack or publish a package, in a push-triggered workflow; none in any other.</summary>
+    private static List<(YamlScalarNode Key, YamlMappingNode Job)> PublishingJobs(YamlMappingNode root, YamlMappingNode jobs)
+        => !OnPush(Child(root, "on")) ? [] : [.. jobs.Children.Where(j => j.Value is YamlMappingNode job && PublishStep(job) is not null)
+            .Select(j => ((YamlScalarNode)j.Key, (YamlMappingNode)j.Value))];
+
+    private static int? VersioningStepIndex(YamlSequenceNode steps)
+    {
+        for (var i = 0; i < steps.Children.Count; i++)
+            if (Scalar(steps.Children[i], "uses")?.Contains("versioning-action", StringComparison.Ordinal) == true) return i;
+        return null;
+    }
+
+    /// <summary>
+    /// The versioning step in front of each push-triggered job's first pack or publish step, in a job that has none yet; null
+    /// when every job has it. Tests that run after the tags are pushed are reported on every run, for as long as they do.
+    /// </summary>
+    internal static string? VersioningStep(string path, string text, string? actionSha, List<string> notes)
+    {
+        if (Parse(path, text, notes) is not var (root, jobs)) return null;
         if (!OnPush(Child(root, "on")))
         {
-            notes.Add($"`{path}` publishes, but not on a push: the action versions only branch pushes, so the versioning step goes in front of the publish of the push workflow (none was added here).");
+            if (jobs.Children.Any(j => j.Value is YamlMappingNode job && PublishStep(job) is not null))
+                notes.Add($"`{path}` publishes, but not on a push: the action versions only branch pushes, so the versioning step goes in front of the publish of the push workflow (none was added here).");
             return null;
         }
 
         var lines = text.Split('\n');
         var edits = new List<LineEdit>();
-        foreach (var (key, value) in publishing)
+        foreach (var (key, job) in PublishingJobs(root, jobs))
         {
-            var job = (YamlMappingNode)value;
             var steps = (YamlSequenceNode)Child(job, "steps")!;
-            if (steps.Children.Any(s => Scalar(s, "uses")?.Contains("versioning-action", StringComparison.Ordinal) == true)) continue;
             var first = PublishStep(job)!.Value;
-            TestOrder(path, (YamlScalarNode)key, job, jobs, first, notes);
+            var existing = VersioningStepIndex(steps);
+            TestOrder(path, key, job, jobs, existing ?? first, notes);
+            if (steps.Children.Skip(first).Any(s => Scalar(s, "run") is { } run && RawNpmPublish().IsMatch(run)))
+                notes.Add($"`{path}` job `{key.Value}` runs `npm publish` itself, which fails on a package this commit did not release: use `MintPlayer/github-actions/publish-npm-packages`, which skips versions the registry has.");
+            if (existing is not null) continue;
 
             // The step, above the first pack or publish step's comment block, separated like its neighbours.
             var stepLine = Line(steps.Children[first].Start) - 1;
-            var dash = lines[stepLine].IndexOf('-');
-            var keyIndent = new string(' ', (int)steps.Children[first].Start.Column - 1);
-
-            // #544 D3: the pack builds again, so the versions decided after the tests reach the assemblies. Added before
-            // the versioning step, so on the same line it lands below it.
-            if (Enumerable.Range(first, steps.Children.Count - first).FirstOrDefault(i => Scalar(steps.Children[i], "run")?.Contains("dotnet pack", StringComparison.Ordinal) == true, -1) is var pack and >= 0)
-            {
-                var pad = new string(' ', dash);
-                edits.Add(new LineEdit(Line(steps.Children[pack].Start) - 1, null, [
-                    $"{pad}# No --no-build: the versions are decided after the tests, so pack builds again to stamp them into the",
-                    $"{pad}# assemblies (--no-build also skips restore, which leaves the nuspec's dependency versions stale).",
-                ]));
-            }
-
             var at = stepLine;
             while (at > 0 && lines[at - 1].TrimStart().StartsWith('#')) at--;
+            var keyIndent = new string(' ', (int)steps.Children[first].Start.Column - 1);
             var step = new List<string>
             {
-                $"{new string(' ', dash)}- name: {StepName}",
+                $"{new string(' ', lines[stepLine].IndexOf('-'))}- name: {StepName}",
                 $"{keyIndent}id: versioning",
                 $"{keyIndent}uses: {ActionPath}@{actionSha ?? ActionTag}{(actionSha is null ? "" : $" # {ActionTag}")}",
             };
             if (at > 0 && lines[at - 1].Trim().Length == 0) step.Add("");
             edits.Add(new LineEdit(at, null, step));
+        }
+        return edits.Count == 0 ? null : Apply(lines, edits);
+    }
+
+    /// <summary>
+    /// #544 D3: from each publishing job's first pack or publish step on, the pack loses <c>--no-build</c> (with a comment
+    /// saying why, once) and the NuGet push gets <c>--skip-duplicate</c>; null when they are set up.
+    /// </summary>
+    internal static string? PackAndPush(string path, string text, List<string> notes)
+    {
+        if (Parse(path, text, null) is not var (root, jobs)) return null;
+        var lines = text.Split('\n');
+        var edits = new List<LineEdit>();
+        foreach (var (_, job) in PublishingJobs(root, jobs))
+        {
+            var steps = (YamlSequenceNode)Child(job, "steps")!;
+            var first = PublishStep(job)!.Value;
+
+            // The pack builds again, so the versions decided after the tests reach the assemblies.
+            if (Enumerable.Range(first, steps.Children.Count - first).FirstOrDefault(i => Scalar(steps.Children[i], "run")?.Contains("dotnet pack", StringComparison.Ordinal) == true, -1) is var pack and >= 0)
+            {
+                var packLine = Line(steps.Children[pack].Start) - 1;
+                var above = packLine;
+                while (above > 0 && lines[above - 1].TrimStart().StartsWith('#')) above--;
+                if (!lines[above..packLine].Any(l => l.Contains("No --no-build", StringComparison.Ordinal)))
+                {
+                    var pad = new string(' ', lines[packLine].IndexOf('-'));
+                    edits.Add(new LineEdit(packLine, null, [
+                        $"{pad}# No --no-build: the versions are decided after the tests, so pack builds again to stamp them into the",
+                        $"{pad}# assemblies (--no-build also skips restore, which leaves the nuspec's dependency versions stale).",
+                    ]));
+                }
+            }
 
             for (var i = first; i < steps.Children.Count; i++)
             {
@@ -499,28 +579,41 @@ public static partial class VersioningOnboarding
                         line = LineEnd().Replace(line, " --skip-duplicate$1", 1);
                     if (line != lines[l]) edits.Add(new LineEdit(l, line, null));
                 }
-                if (RawNpmPublish().IsMatch(run))
-                    notes.Add($"`{path}` job `{key}` runs `npm publish` itself, which fails on a package this commit did not release: use `MintPlayer/github-actions/publish-npm-packages`, which skips versions the registry has.");
             }
-
-            Permissions(path, root, (YamlScalarNode)key, job, lines, edits, notes);
         }
-        if (edits.Count == 0) return null;
+        return edits.Count == 0 ? null : Apply(lines, edits);
+    }
 
-        // #544 D3: a newer push cancels the older run. A run cancelled after its tags were pushed leaves tags without
-        // packages, which is harmless: the newer run packs them. A workflow's own concurrency is left alone.
-        if (Child(root, "concurrency") is null && root.Children.Keys.OfType<YamlScalarNode>().FirstOrDefault(k => k.Value == "jobs") is { } jobsKey
-            && jobsKey.Start.Column == 1)
-        {
-            var unit = new string(' ', Math.Max(2, (int)jobs.Children.Keys.First().Start.Column - 1));
-            edits.Add(new LineEdit(Line(jobsKey.Start) - 1, null, [
-                "concurrency:",
-                unit + "group: ${{ github.workflow }}-${{ github.ref }}",
-                unit + "cancel-in-progress: true",
-                "",
-            ]));
-        }
+    /// <summary>Each publishing job's token gets <c>contents: write</c> and <c>id-token: write</c>; null when it has them.</summary>
+    internal static string? PublishPermissions(string path, string text, List<string> notes)
+    {
+        if (Parse(path, text, null) is not var (root, jobs)) return null;
+        var lines = text.Split('\n');
+        var edits = new List<LineEdit>();
+        foreach (var (key, job) in PublishingJobs(root, jobs)) Permissions(path, root, key, job, lines, edits, notes);
+        return edits.Count == 0 ? null : Apply(lines, edits);
+    }
 
+    /// <summary>
+    /// #544 D3: a newer push cancels the older run. A run cancelled after its tags were pushed leaves tags without packages,
+    /// which is harmless: the newer run packs them. A workflow's own concurrency is left alone.
+    /// </summary>
+    internal static string? Concurrency(string path, string text, List<string> notes)
+    {
+        if (Parse(path, text, null) is not var (root, jobs) || PublishingJobs(root, jobs).Count == 0 || Child(root, "concurrency") is not null
+            || root.Children.Keys.OfType<YamlScalarNode>().FirstOrDefault(k => k.Value == "jobs") is not { } jobsKey || jobsKey.Start.Column != 1)
+            return null;
+        var unit = new string(' ', Math.Max(2, (int)jobs.Children.Keys.First().Start.Column - 1));
+        return Apply(text.Split('\n'), [new LineEdit(Line(jobsKey.Start) - 1, null, [
+            "concurrency:",
+            unit + "group: ${{ github.workflow }}-${{ github.ref }}",
+            unit + "cancel-in-progress: true",
+            "",
+        ])]);
+    }
+
+    private static string Apply(string[] lines, List<LineEdit> edits)
+    {
         var result = lines.ToList();
         foreach (var edit in edits.Where(e => e.Replace is not null)) result[edit.Line] = edit.Replace!;
         foreach (var edit in edits.Where(e => e.Insert is not null).OrderByDescending(e => e.Line))
@@ -529,6 +622,69 @@ public static partial class VersioningOnboarding
             result.InsertRange(edit.Line, edit.Insert!.Select(l => l + eol));
         }
         return string.Join('\n', result);
+    }
+
+    /// <summary>
+    /// The workflow with <c>fetch-depth: 0</c> on the checkout of every job that runs <c>dotnet</c>; null when it needs
+    /// nothing. MintPlayer.Versioning.MSBuild reads a version from the tags reachable from HEAD (<c>git tag --merged</c>),
+    /// and actions/checkout's default clone of depth 1 has neither the tags nor the history that reaches them, so every
+    /// build before the versioning step, and every pull-request build, compiled at the placeholder (Dotnet.Tools#203).
+    /// <c>fetch-tags: true</c> alone is not enough: the tags arrive, but no commit of theirs is an ancestor of HEAD.
+    /// </summary>
+    internal static string? FullHistory(string path, string text, List<string> notes)
+    {
+        if (Parse(path, text, null) is not var (_, jobs)) return null;
+        var lines = text.Split('\n');
+        var edits = new List<LineEdit>();
+        foreach (var (key, value) in jobs.Children)
+        {
+            if (Child(value, "steps") is not YamlSequenceNode steps
+                || !steps.Children.Any(s => Scalar(s, "run")?.Contains("dotnet ", StringComparison.Ordinal) == true)) continue;
+            foreach (var step in steps.Children)
+            {
+                if (Scalar(step, "uses")?.StartsWith("actions/checkout@", StringComparison.Ordinal) != true) continue;
+                var checkout = (YamlMappingNode)step;
+                if (checkout.Style == YamlDotNet.Core.Events.MappingStyle.Flow)
+                {
+                    notes.Add($"`{path}` job `{((YamlScalarNode)key).Value}`: give its checkout `fetch-depth: 0` by hand, so the build sees the version tags.");
+                    continue;
+                }
+                switch (Child(checkout, "with"))
+                {
+                    case null:
+                        var indent = new string(' ', (int)checkout.Start.Column - 1);
+                        edits.Add(new LineEdit(LastLine(checkout) + 1, null, [
+                            $"{indent}# Full history: MintPlayer.Versioning.MSBuild reads each version from the tags reachable from HEAD.",
+                            $"{indent}with:",
+                            $"{indent}  fetch-depth: 0",
+                        ]));
+                        break;
+                    case YamlMappingNode { Style: not YamlDotNet.Core.Events.MappingStyle.Flow } with when with.Children.Count > 0:
+                        if (with.Children.FirstOrDefault(c => ((YamlScalarNode)c.Key).Value == "fetch-depth") is { Key: not null } depth)
+                        {
+                            if (depth.Value is YamlScalarNode { Value: not "0" } scalar && Line(scalar.Start) == Line(scalar.End))
+                            {
+                                var l = Line(scalar.Start) - 1;
+                                edits.Add(new LineEdit(l, lines[l][..((int)scalar.Start.Column - 1)] + "0" + lines[l][((int)scalar.End.Column - 1)..], null));
+                            }
+                        }
+                        else
+                            edits.Add(new LineEdit(LastLine(with) + 1, null, [$"{new string(' ', (int)with.Children.First().Key.Start.Column - 1)}fetch-depth: 0"]));
+                        break;
+                    default:
+                        notes.Add($"`{path}` job `{((YamlScalarNode)key).Value}`: give its checkout `fetch-depth: 0` by hand, so the build sees the version tags.");
+                        break;
+                }
+            }
+        }
+        return edits.Count == 0 ? null : Apply(lines, edits);
+    }
+
+    /// <summary>The 0-based line of a block mapping's last value. A value's end mark sits on the next line, column 1, after a block scalar.</summary>
+    private static int LastLine(YamlMappingNode mapping)
+    {
+        var end = mapping.Children.Last().Value.End;
+        return Line(end) - (end.Column == 1 ? 2 : 1);
     }
 
     /// <summary>
@@ -661,14 +817,20 @@ public static partial class VersioningOnboarding
 
     private static int Line(YamlDotNet.Core.Mark mark) => (int)mark.Line;
 
-    private static string Body(List<ProjectNode> packages, List<VersioningSeed> seeds, IReadOnlySet<string> taggedIds, IReadOnlyList<GitWriterFile> files,
-        List<string> notes, string? actionSha)
+    private static string Body(List<ProjectNode> packages, List<VersioningSeed> seeds, IReadOnlySet<string> taggedIds,
+        List<(string Rule, List<string> Paths)> applied, List<string> notes, string? actionSha)
     {
+        // Every package tagged: an onboarded repository, pressed again for what the onboarding learned since.
+        var update = packages.Count > 0 && packages.All(p => taggedIds.Contains(p.Id!));
         var body = new StringBuilder();
-        body.Append("This switches the repository to tag-driven package versions (CodeCoverage package versioning). On every push to the ")
-            .Append("default branch, the versioning step decides which packages changed, tags each release `<package id>/v<version>`, and ")
-            .Append("writes the npm versions. NuGet packages read their version from the tags through `").Append(PackageId).Append("`. ")
-            .Append("Every package is packed and published on every run: an unchanged one keeps the version it already published, which the push skips.\n\n");
+        if (update)
+            body.Append("The repository already takes its package versions from tags. This brings its setup up to date with what the ")
+                .Append("versioning onboarding sets up today; only what was missing is changed.\n\n");
+        else
+            body.Append("This switches the repository to tag-driven package versions (CodeCoverage package versioning). On every push to the ")
+                .Append("default branch, the versioning step decides which packages changed, tags each release `<package id>/v<version>`, and ")
+                .Append("writes the npm versions. NuGet packages read their version from the tags through `").Append(PackageId).Append("`. ")
+                .Append("Every package is packed and published on every run: an unchanged one keeps the version it already published, which the push skips.\n\n");
         body.Append("The step calls `").Append(ActionPath).Append('`').Append(actionSha is null ? $" at `{ActionTag}`" : $", pinned to `{actionSha}` (`{ActionTag}`)").Append(".\n\n");
 
         body.Append("## Packages\n\n| Package | Seed tag |\n|---|---|\n");
@@ -679,11 +841,13 @@ public static partial class VersioningOnboarding
                 : taggedIds.Contains(package.Id!) ? "already tagged" : "none (see below)";
             body.Append("| `").Append(package.Id).Append("` | ").Append(tag).Append(" |\n");
         }
-        body.Append("\nWhen this merges, the app pushes the seed tags at the merge commit, so each package continues from the version it has now. ")
-            .Append("The versions in the project files become `").Append(Placeholder).Append("`: the tags are the only place a version lives.\n\n");
+        if (!update)
+            body.Append("\nWhen this merges, the app pushes the seed tags at the merge commit, so each package continues from the version it has now. ")
+                .Append("The versions in the project files become `").Append(Placeholder).Append("`: the tags are the only place a version lives.\n");
 
-        body.Append("## Files\n\n");
-        foreach (var file in files) body.Append("- `").Append(file.Path).Append("`\n");
+        body.Append("\n## Changes\n\n");
+        foreach (var (rule, paths) in applied)
+            body.Append("- ").Append(rule).Append(": ").AppendJoin(", ", paths.Select(p => $"`{p}`")).Append('\n');
 
         if (notes.Count > 0)
         {
@@ -726,6 +890,9 @@ public static partial class VersioningOnboarding
             if (original.GetValueOrDefault(path) == text) written.Remove(path);
             else written[path] = text;
         }
+
+        /// <summary>The files written so far, for telling which a rule changed.</summary>
+        public Dictionary<string, string> Snapshot() => new(written, StringComparer.Ordinal);
 
         public IReadOnlyList<GitWriterFile> Changed() => [.. written.OrderBy(w => w.Key, StringComparer.Ordinal)
             .Select(w => new GitWriterFile(w.Key, withBom.Contains(w.Key) ? ByteOrderMark + w.Value : w.Value))];

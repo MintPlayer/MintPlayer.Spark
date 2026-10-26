@@ -157,6 +157,9 @@ public class VersioningOnboardingTests
                 steps:
                 - name: Checkout
                   uses: actions/checkout@v5
+                  # Full history: MintPlayer.Versioning.MSBuild reads each version from the tags reachable from HEAD.
+                  with:
+                    fetch-depth: 0
 
                 - name: Test
                   # --no-build: the Release build is the one tested.
@@ -383,6 +386,185 @@ public class VersioningOnboardingTests
                 - name: Push to NPM
                   uses: JS-DevTools/npm-publish@v4
             """);
+    }
+
+    [Fact]
+    public async Task Every_checkout_of_a_dotnet_job_gets_the_full_history()
+    {
+        // MintPlayer.Dotnet.Tools#203: a depth-1 checkout has no tag reachable from HEAD, so the pull-request build
+        // compiled every assembly at 0.0.0.0.
+        var tree = new InMemoryTree()
+            .Add("src/Tools/Tools.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net11.0</TargetFramework>\n"
+                + "    <PackageId>MintPlayer.Tools</PackageId>\n    <Version>11.2.0</Version>\n  </PropertyGroup>\n</Project>\n")
+            .Add(".github/workflows/pull-request.yml", """
+                on: pull_request
+                jobs:
+                  plain:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - uses: actions/checkout@v5
+                      - run: dotnet build
+                  submodules:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - uses: actions/checkout@v5
+                        with:
+                          submodules: true
+                      - run: |
+                          dotnet test
+                  shallow:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - uses: actions/checkout@v5
+                        with:
+                          fetch-depth: 1 # fast
+                      - run: dotnet build
+                  flow:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - {uses: actions/checkout@v5}
+                      - run: dotnet build
+                  lint:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - uses: actions/checkout@v5
+                      - run: npm run lint
+
+                """);
+
+        var plan = await VersioningOnboarding.PlanAsync(tree, None, Sha);
+
+        ByPath(plan)[".github/workflows/pull-request.yml"].Should().Be("""
+            on: pull_request
+            jobs:
+              plain:
+                runs-on: ubuntu-latest
+                steps:
+                  - uses: actions/checkout@v5
+                    # Full history: MintPlayer.Versioning.MSBuild reads each version from the tags reachable from HEAD.
+                    with:
+                      fetch-depth: 0
+                  - run: dotnet build
+              submodules:
+                runs-on: ubuntu-latest
+                steps:
+                  - uses: actions/checkout@v5
+                    with:
+                      submodules: true
+                      fetch-depth: 0
+                  - run: |
+                      dotnet test
+              shallow:
+                runs-on: ubuntu-latest
+                steps:
+                  - uses: actions/checkout@v5
+                    with:
+                      fetch-depth: 0 # fast
+                  - run: dotnet build
+              flow:
+                runs-on: ubuntu-latest
+                steps:
+                  - {uses: actions/checkout@v5}
+                  - run: dotnet build
+              lint:
+                runs-on: ubuntu-latest
+                steps:
+                  - uses: actions/checkout@v5
+                  - run: npm run lint
+
+            """);
+        plan.Notes.Should().Contain("`.github/workflows/pull-request.yml` job `flow`: give its checkout `fetch-depth: 0` by hand, so the build sees the version tags.");
+    }
+
+    private const string ToolsProject = "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net11.0</TargetFramework>\n"
+        + "    <PackageId>MintPlayer.Tools</PackageId>\n    <Version>11.2.0</Version>\n  </PropertyGroup>\n</Project>\n";
+
+    /// <summary>Repositories in the shapes the rules edit, for the run-it-again test.</summary>
+    public static TheoryData<string> Shapes => ["publish-release", "github-packages", "npm", "tests-after-pack", "shallow-checkouts"];
+
+    private static InMemoryTree Shape(string name) => name switch
+    {
+        "publish-release" => new InMemoryTree()
+            .Add("src/Tools/Tools.csproj", ToolsProject)
+            .Add("Directory.Build.props", "<Project>\n  <ItemGroup>\n    <PackageReference Include=\"MinVer\" Version=\"6.0.0\" PrivateAssets=\"all\" />\n  </ItemGroup>\n</Project>\n")
+            .Add(".github/workflows/publish.yml", "on:\n  push:\n    branches: [master]\npermissions:\n  contents: read\n  packages: write\njobs:\n  build:\n    runs-on: ubuntu-latest\n"
+                + "    steps:\n    - uses: actions/checkout@v5\n    - run: dotnet test --no-build\n\n    # Pack it.\n    - name: Pack\n      run: dotnet pack --no-build -c Release\n"
+                + "    - run: dotnet nuget push **/*.nupkg --source https://api.nuget.org/v3/index.json\n"),
+        "github-packages" => GitHubPackagesRepository(Feed)
+            .Add(".github/workflows/publish.yml", "on: push\njobs:\n  pack:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v5\n        with:\n          fetch-depth: 1\n"
+                + "      - run: dotnet pack -o nupkgs\n      - run: dotnet nuget push 'nupkgs/*.nupkg' --source github\n"),
+        "npm" => new InMemoryTree()
+            .Add("libs/ui/package.json", "{\n  \"name\": \"@mintplayer/ui\",\n  \"version\": \"22.4.1\"\n}\n")
+            .Add("libs/ui/ng-package.json", "{ \"dest\": \"../../dist/libs/ui\" }")
+            .Add(".github/workflows/publish.yml", "on: push\njobs:\n  publish:\n    runs-on: ubuntu-latest\n    permissions:\n      contents: read\n    steps:\n      - uses: actions/checkout@v5\n"
+                + "      - run: npm run build\n      - uses: JS-DevTools/npm-publish@v4\n"),
+        "tests-after-pack" => new InMemoryTree()
+            .Add("src/Tools/Tools.csproj", ToolsProject)
+            .Add(".github/workflows/publish.yml", "on: push\nconcurrency: release\njobs:\n  unit:\n    runs-on: ubuntu-latest\n    steps:\n      - run: dotnet test\n"
+                + "  pack:\n    runs-on: ubuntu-latest\n    permissions:\n      contents: write\n      id-token: write\n    steps:\n      - run: dotnet pack\n      - run: dotnet test --no-build\n"),
+        "shallow-checkouts" => new InMemoryTree()
+            .Add("src/Tools/Tools.csproj", ToolsProject)
+            .Add(".github/workflows/pull-request.yml", "on: pull_request\njobs:\n  a:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v5\n      - run: |\n          dotnet build\n"
+                + "  b:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v5\n        with:\n          submodules: true\n      - run: dotnet test\n"),
+        _ => throw new ArgumentOutOfRangeException(nameof(name)),
+    };
+
+    /// <summary>The plan for the repository once <paramref name="plan"/> merged and its seeds were tagged.</summary>
+    private static Task<VersioningOnboardingPlan> AfterMergeAsync(InMemoryTree tree, VersioningOnboardingPlan plan)
+    {
+        foreach (var file in plan.Files) tree.Add(file.Path, file.Content!);
+        return VersioningOnboarding.PlanAsync(tree, (_, _) => Task.FromResult(true), Sha);
+    }
+
+    [Theory]
+    [MemberData(nameof(Shapes))]
+    public async Task Running_the_onboarding_on_its_own_result_changes_nothing(string shape)
+    {
+        // Every rule checks before it edits, so "Set up versioning" can be pressed again on an onboarded repository.
+        var tree = Shape(shape);
+        var plan = await VersioningOnboarding.PlanAsync(tree, None, Sha);
+        plan.Files.Should().NotBeEmpty();
+
+        var again = await AfterMergeAsync(tree, plan);
+
+        again.Files.Select(f => f.Path).Should().BeEmpty();
+        again.Seeds.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task An_onboarded_repository_gets_only_what_it_is_missing()
+    {
+        // Onboarded before the checkout, permissions and pack rules existed: the step is there, the rest is not.
+        var tree = new InMemoryTree()
+            .Add("src/Tools/Tools.csproj", ToolsProject.Replace("11.2.0", "0.0.0-PLACEHOLDER", StringComparison.Ordinal))
+            .Add("Directory.Build.props", "<Project>\n  <ItemGroup>\n    <PackageReference Include=\"MintPlayer.Versioning.MSBuild\" Version=\"1.1.0\" PrivateAssets=\"all\" />\n  </ItemGroup>\n</Project>\n")
+            .Add("coverage.yml", "versioning:\n  mode: server\n")
+            .Add(".github/workflows/publish.yml", "on: push\njobs:\n  pack:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v5\n"
+                + "      - name: Version the packages\n        uses: MintPlayer/MintPlayer.Spark/apps/CodeCoverage/versioning-action@versioning-v1\n"
+                + "      - run: dotnet pack --no-build\n      - run: dotnet nuget push '*.nupkg' --source https://api.nuget.org/v3/index.json --skip-duplicate\n");
+
+        var plan = await VersioningOnboarding.PlanAsync(tree, new HashSet<string> { "MintPlayer.Tools" }, Sha);
+
+        ByPath(plan).Keys.Should().Equal(".github/workflows/publish.yml");
+        ByPath(plan)[".github/workflows/publish.yml"].Should().Be(
+            "on: push\n"
+            + "concurrency:\n  group: ${{ github.workflow }}-${{ github.ref }}\n  cancel-in-progress: true\n\n"
+            + "jobs:\n  pack:\n    runs-on: ubuntu-latest\n"
+            + "    permissions:\n      contents: write\n      id-token: write\n\n"
+            + "    steps:\n      - uses: actions/checkout@v5\n"
+            + "        # Full history: MintPlayer.Versioning.MSBuild reads each version from the tags reachable from HEAD.\n"
+            + "        with:\n          fetch-depth: 0\n"
+            + "      - name: Version the packages\n        uses: MintPlayer/MintPlayer.Spark/apps/CodeCoverage/versioning-action@versioning-v1\n"
+            + "      # No --no-build: the versions are decided after the tests, so pack builds again to stamp them into the\n"
+            + "      # assemblies (--no-build also skips restore, which leaves the nuspec's dependency versions stale).\n"
+            + "      - run: dotnet pack\n      - run: dotnet nuget push '*.nupkg' --source https://api.nuget.org/v3/index.json --skip-duplicate\n");
+        plan.Seeds.Should().BeEmpty();
+        plan.Body.Should().StartWith("The repository already takes its package versions from tags.")
+            .And.NotContain("When this merges")
+            .And.Contain("- Pack builds again and the NuGet push skips published versions: `.github/workflows/publish.yml`\n")
+            .And.Contain("- Checkouts of .NET jobs fetch the history and its tags: `.github/workflows/publish.yml`\n")
+            .And.NotContain("versioning step runs before");
+        plan.Notes.Should().NotContain(n => n.StartsWith("No push-triggered", StringComparison.Ordinal));
     }
 
     [Fact]
