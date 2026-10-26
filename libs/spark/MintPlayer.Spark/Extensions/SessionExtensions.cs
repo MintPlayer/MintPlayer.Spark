@@ -27,7 +27,8 @@ public static class SessionExtensions
         [CallerMemberName] string? scope = null)
     {
         ArgumentNullException.ThrowIfNull(session);
-        return new MaxRequestsScope(session.Advanced, expectedMaximumRequests, logger, scope);
+        var advanced = session.Advanced;
+        return new MaxRequestsScope(() => advanced.MaxNumberOfRequestsPerSession, max => advanced.MaxNumberOfRequestsPerSession = max, () => advanced.NumberOfRequests, expectedMaximumRequests, logger, scope);
     }
 
     /// <inheritdoc cref="IgnoreMaxRequests(IAsyncDocumentSession, int?, ILogger?, string?)"/>
@@ -38,12 +39,25 @@ public static class SessionExtensions
         [CallerMemberName] string? scope = null)
     {
         ArgumentNullException.ThrowIfNull(session);
-        return new MaxRequestsScope(session.Advanced, expectedMaximumRequests, logger, scope);
+        var advanced = session.Advanced;
+        return new MaxRequestsScope(() => advanced.MaxNumberOfRequestsPerSession, max => advanced.MaxNumberOfRequestsPerSession = max, () => advanced.NumberOfRequests, expectedMaximumRequests, logger, scope);
+    }
+
+    /// <inheritdoc cref="IgnoreMaxRequests(IAsyncDocumentSession, int?, ILogger?, string?)"/>
+    public static IDisposable IgnoreMaxRequests(
+        this Abstractions.Storage.ISparkSession session,
+        int? expectedMaximumRequests = null,
+        ILogger? logger = null,
+        [CallerMemberName] string? scope = null)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        return new MaxRequestsScope(() => session.MaxNumberOfRequests, max => session.MaxNumberOfRequests = max, () => session.NumberOfRequests, expectedMaximumRequests, logger, scope);
     }
 
     private sealed class MaxRequestsScope : IDisposable
     {
-        private readonly IAdvancedDocumentSessionOperations advanced;
+        private readonly Action<int> setMax;
+        private readonly Func<int> requests;
         private readonly int originalMax;
         private readonly int baselineRequests;
         private readonly int allowedRequests;
@@ -52,17 +66,20 @@ public static class SessionExtensions
         private bool disposed;
 
         public MaxRequestsScope(
-            IAdvancedDocumentSessionOperations advanced,
+            Func<int> getMax,
+            Action<int> setMax,
+            Func<int> requests,
             int? expectedMaximumRequests,
             ILogger? logger,
             string? scope)
         {
-            this.advanced = advanced;
+            this.setMax = setMax;
+            this.requests = requests;
             this.logger = logger;
             this.scope = scope;
 
-            originalMax = advanced.MaxNumberOfRequestsPerSession;
-            baselineRequests = advanced.NumberOfRequests;
+            originalMax = getMax();
+            baselineRequests = requests();
 
             // If the caller supplied an expected ceiling, use it; otherwise fall back to the
             // session's prior limit. If that limit was already int.MaxValue (someone nested
@@ -71,7 +88,7 @@ public static class SessionExtensions
             allowedRequests = expectedMaximumRequests
                 ?? (originalMax == int.MaxValue ? 30 : originalMax);
 
-            advanced.MaxNumberOfRequestsPerSession = int.MaxValue;
+            setMax(int.MaxValue);
         }
 
         public void Dispose()
@@ -79,11 +96,11 @@ public static class SessionExtensions
             if (disposed) return;
             disposed = true;
 
-            advanced.MaxNumberOfRequestsPerSession = originalMax;
+            setMax(originalMax);
 
             if (logger is null) return;
 
-            var used = advanced.NumberOfRequests - baselineRequests;
+            var used = requests() - baselineRequests;
             if (used > allowedRequests)
             {
                 logger.LogWarning(

@@ -72,7 +72,7 @@ public class RowSecurityProjectionBatchingTests : SparkTestDriver
 
         using var filterSession = Store.OpenAsyncSession();
         var visible = await CreateRowSecurity().FilterAsync(
-            filterSession, projections, typeof(Note), typeof(VNote), "Query");
+            filterSession.AsSparkSession(), projections, typeof(Note), typeof(VNote), "Query");
 
         visible.Should().HaveCount(20,
             "40 projected rows exceed the 30-requests-per-session cap — per-row loading throws "
@@ -115,7 +115,7 @@ public class RowSecurityProjectionBatchingTests : SparkTestDriver
 
         using var filterSession = Store.OpenAsyncSession();
         var visible = await CreateRowSecurity().FilterAsync(
-            filterSession, projections, typeof(Note), typeof(VNote), "Query");
+            filterSession.AsSparkSession(), projections, typeof(Note), typeof(VNote), "Query");
 
         visible.Should().ContainSingle()
             .Which.Should().BeOfType<VNote>()

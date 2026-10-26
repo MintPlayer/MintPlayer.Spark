@@ -3,7 +3,7 @@ using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Services.Breadcrumb;
-using Raven.Client.Documents.Session;
+using MintPlayer.Spark.Abstractions.Storage;
 using System.Drawing;
 using System.Globalization;
 using System.Reflection;
@@ -111,7 +111,7 @@ public interface IEntityMapper
     /// </list>
     /// </summary>
     Task PopulateObjectValuesAsync(PersistentObject po, object entity,
-        IAsyncDocumentSession? session = null, CancellationToken cancellationToken = default);
+        ISparkSession? session = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Sync counterpart of <see cref="PopulateObjectValuesAsync"/>. Uses
@@ -592,7 +592,7 @@ internal partial class EntityMapper : IEntityMapper
     }
 
     public async Task PopulateObjectValuesAsync(PersistentObject po, object entity,
-        IAsyncDocumentSession? session = null, CancellationToken cancellationToken = default)
+        ISparkSession? session = null, CancellationToken cancellationToken = default)
     {
         var entityType = entity.GetType();
         var schemaAttributes = GetSchemaAttributeMap(entityType);
@@ -699,7 +699,7 @@ internal partial class EntityMapper : IEntityMapper
     }
 
     private async Task WritePropertyAsync(PropertyInfo property, object entity,
-        PersistentObjectAttribute attribute, IAsyncDocumentSession? session,
+        PersistentObjectAttribute attribute, ISparkSession? session,
         Dictionary<string, object>? includedDocuments, CancellationToken cancellationToken)
     {
         var targetType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
@@ -776,7 +776,7 @@ internal partial class EntityMapper : IEntityMapper
     /// vs <see cref="IEnumerable{T}"/>). Null / empty incoming clears the property.
     /// </summary>
     private async Task WriteAsDetailAsync(PersistentObjectAttributeAsDetail attr, PropertyInfo property,
-        object entity, IAsyncDocumentSession? session, Dictionary<string, object>? includedDocuments,
+        object entity, ISparkSession? session, Dictionary<string, object>? includedDocuments,
         CancellationToken cancellationToken)
     {
         var propertyType = property.PropertyType;
@@ -905,7 +905,7 @@ internal partial class EntityMapper : IEntityMapper
     /// into, which is why the scratch gets a copy.
     /// </remarks>
     private async Task<bool> RowWouldChangeAsync(PersistentObject po, object stored,
-        IAsyncDocumentSession? session, int depth, CancellationToken cancellationToken)
+        ISparkSession? session, int depth, CancellationToken cancellationToken)
     {
         const int maxDepth = 8;
         if (depth > maxDepth)
@@ -962,7 +962,7 @@ internal partial class EntityMapper : IEntityMapper
 
     /// <summary>The AsDetail half of <see cref="RowWouldChangeAsync"/>: same rows, same order, same content.</summary>
     private async Task<bool> AsDetailWouldChangeAsync(PersistentObjectAttributeAsDetail attr, object? current,
-        IAsyncDocumentSession? session, int depth, CancellationToken cancellationToken)
+        ISparkSession? session, int depth, CancellationToken cancellationToken)
     {
         if (!attr.IsArray)
         {
@@ -1215,23 +1215,10 @@ internal partial class EntityMapper : IEntityMapper
         return value.ToString();
     }
 
-    private async Task<object?> LoadReferenceAsync(IAsyncDocumentSession session,
+    private async Task<object?> LoadReferenceAsync(ISparkSession session,
         Type targetType, string refId, CancellationToken cancellationToken)
     {
-        var generic = ReflectionCache.GetOrAdd<(string Op, Type Type), MethodInfo>(
-            ("EntityMapper.SessionLoadAsync", targetType),
-            static k =>
-            {
-                var method = typeof(IAsyncDocumentSession).GetMethod(
-                    nameof(IAsyncDocumentSession.LoadAsync),
-                    [typeof(string), typeof(CancellationToken)])
-                    ?? throw new InvalidOperationException("Could not resolve IAsyncDocumentSession.LoadAsync<T>(string, CancellationToken).");
-                return method.MakeGenericMethod(k.Type);
-            });
-        var task = (Task)generic.Invoke(session, [refId, cancellationToken])!;
-        await task.ConfigureAwait(false);
-        var resultProp = task.GetType().GetCachedProperty("Result");
-        var loaded = resultProp is not null ? AccessorCache.GetGetter(resultProp)(task) : null;
+        var loaded = await session.LoadAsync(targetType, refId, cancellationToken).ConfigureAwait(false);
         if (loaded is null)
             return null;
 

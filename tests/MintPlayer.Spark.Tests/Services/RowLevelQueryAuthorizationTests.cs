@@ -116,7 +116,7 @@ public class RowLevelQueryAuthorizationTests : SparkTestDriver
         var session = Store.OpenAsyncSession();
         var rowSecurity = new RowSecurity(_actionsResolver);
         return new QueryExecutor(
-            session, entityMapper, _modelLoader, _contextResolver, _indexCatalog,
+            session.AsSparkSession(), entityMapper, _modelLoader, _contextResolver, _indexCatalog,
             _permissionService, _actionsResolver, _referenceResolver,
             new BreadcrumbResolver(_modelLoader, new BreadcrumbClosure(_modelLoader), permissive, new SparkOptions()),
             rowSecurity,

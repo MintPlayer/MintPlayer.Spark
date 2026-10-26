@@ -216,7 +216,7 @@ public class RowLevelWithCheckTests : SparkTestDriver
 
         using var session = Store.OpenAsyncSession();
         var rows = new List<object> { new Note { Owner = "bob" }, new Note { Owner = "carol" } };
-        (await rowSecurity.FilterAsync(session, rows, typeof(Note), typeof(Note), "Query"))
+        (await rowSecurity.FilterAsync(session.AsSparkSession(), rows, typeof(Note), typeof(Note), "Query"))
             .Should().HaveCount(2, "sync reads back what it wrote regardless of row scoping");
     }
 }

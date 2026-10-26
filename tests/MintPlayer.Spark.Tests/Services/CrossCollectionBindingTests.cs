@@ -153,7 +153,7 @@ public class CrossCollectionBindingTests : SparkTestDriver
         });
 
         using var session = Store.OpenAsyncSession();
-        await mapper.PopulateObjectValuesAsync(po, container, session);
+        await mapper.PopulateObjectValuesAsync(po, container, session.AsSparkSession());
 
         container.Author.Should().BeNull(
             "a reference declared as Person must not resolve a Secrets document by id — that is the "

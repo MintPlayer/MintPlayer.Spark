@@ -32,7 +32,7 @@ public class QueryExecutorRowShapeTests : SparkTestDriver
     private readonly IBreadcrumbResolver _breadcrumbResolver = Substitute.For<IBreadcrumbResolver>();
 
     private QueryExecutor CreateExecutor() => new(
-        Store.OpenAsyncSession(), _entityMapper, _modelLoader, _contextResolver,
+        Store.OpenAsyncSession().AsSparkSession(), _entityMapper, _modelLoader, _contextResolver,
         _indexCatalog, _permissionService, _actionsResolver, _referenceResolver, _breadcrumbResolver,
         new PermissiveRowSecurity(),
         TestRowSecurityGate.For(new PermissiveRowSecurity(), _entityMapper),

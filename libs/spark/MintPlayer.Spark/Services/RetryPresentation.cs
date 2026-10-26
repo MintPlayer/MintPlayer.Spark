@@ -33,7 +33,7 @@ internal static class RetryPresentation
         if (!rowSecurity.HasProtectedAttributesHook(clrType))
             return;
 
-        var session = services.GetRequiredService<IAsyncDocumentSession>();
+        var session = services.GetRequiredService<Abstractions.Storage.ISparkSession>();
         var documents = await RowSecurity.LoadBaseDocumentsAsync(session, clrType, [prompt.Id!], cancellationToken);
         if (documents.TryGetValue(prompt.Id!, out var document))
             await rowSecurity.RedactAsync(session, [(prompt, document)], clrType, clrType, SparkCoreActions.Read, cancellationToken);

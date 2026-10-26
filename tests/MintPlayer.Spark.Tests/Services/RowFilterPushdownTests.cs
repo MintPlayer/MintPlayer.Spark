@@ -101,7 +101,7 @@ public class RowFilterPushdownTests : SparkTestDriver
             await rowSecurity.IsAllowedAsync(typeof(Note), "Read", new Note { Owner = "alice" });
         using var session = Store.OpenAsyncSession();
         var rows = Enumerable.Range(0, 50).Select(_ => (object)new Note { Owner = "alice" }).ToList();
-        await rowSecurity.FilterAsync(session, rows, typeof(Note), typeof(Note), "Read");
+        await rowSecurity.FilterAsync(session.AsSparkSession(), rows, typeof(Note), typeof(Note), "Read");
 
         actions.Invocations.Should().Be(1,
             "the hook is memoized per (type, action) per request — invariant of row count");
@@ -225,7 +225,7 @@ public class RowFilterPushdownTests : SparkTestDriver
 
         using var session = Store.OpenAsyncSession();
         var notes = (await session.Query<Note>().ToListAsync()).Cast<object>().ToList();
-        var visible = await rowSecurity.FilterAsync(session, notes, typeof(Note), typeof(Note), "Query");
+        var visible = await rowSecurity.FilterAsync(session.AsSparkSession(), notes, typeof(Note), typeof(Note), "Query");
 
         visible.Should().HaveCount(3, "an administrator's GetRowFilter returns null — nothing is restricted");
         (await rowSecurity.IsAllowedAsync(typeof(Note), "Edit", new Note { Owner = "bob" })).Should().BeTrue();
@@ -251,7 +251,7 @@ public class RowFilterPushdownTests : SparkTestDriver
 
         // … and the in-memory evaluation still drops every row.
         var notes = (await session.Query<Note>().ToListAsync()).Cast<object>().ToList();
-        var visible = await rowSecurity.FilterAsync(session, notes, typeof(Note), typeof(Note), "Query");
+        var visible = await rowSecurity.FilterAsync(session.AsSparkSession(), notes, typeof(Note), typeof(Note), "Query");
         visible.Should().BeEmpty();
     }
 
@@ -308,7 +308,7 @@ public class RowFilterPushdownTests : SparkTestDriver
             new VNote { Id = bobId, Title = "Bob's" },
         };
         var visible = await rowSecurity.FilterAsync(
-            filterSession, projections, typeof(Note), typeof(VNote), "Query");
+            filterSession.AsSparkSession(), projections, typeof(Note), typeof(VNote), "Query");
 
         visible.Should().ContainSingle().Which.Should().BeOfType<VNote>()
             .Which.Title.Should().Be("Alice's");
@@ -368,7 +368,7 @@ public class RowFilterPushdownTests : SparkTestDriver
         var rowSecurity = new RowSecurity(actionsResolver);
         using var session = Store.OpenAsyncSession();
         var executor = new QueryExecutor(
-            session, entityMapper, modelLoader, contextResolver, indexCatalog,
+            session.AsSparkSession(), entityMapper, modelLoader, contextResolver, indexCatalog,
             permissionService, actionsResolver, referenceResolver,
             new BreadcrumbResolver(modelLoader, new BreadcrumbClosure(modelLoader), rowSecurity, new SparkOptions()),
             rowSecurity,

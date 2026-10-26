@@ -241,6 +241,12 @@ public static class SparkExtensions
         services.AddScoped<IAsyncDocumentSession>(sp =>
             sp.GetRequiredService<IDocumentStore>().OpenAsyncSession());
 
+        // The storage seam (docs/spark_editor_PRD.md D2/D3): the RavenDB provider, still registered by core until
+        // MintPlayer.Spark.RavenDB takes it over. The request-scoped ISparkSession wraps the request's own Raven
+        // session, so code still holding IAsyncDocumentSession shares its unit of work.
+        services.AddSingleton<Abstractions.Storage.ISparkStore>(sp => new Storage.Raven.RavenSparkStore(sp.GetRequiredService<IDocumentStore>()));
+        services.AddScoped<Abstractions.Storage.ISparkSession>(sp => new Storage.Raven.RavenSparkSession(sp.GetRequiredService<IAsyncDocumentSession>()));
+
         services.AddScoped<IDocumentSession>(sp =>
             sp.GetRequiredService<IDocumentStore>().OpenSession());
 

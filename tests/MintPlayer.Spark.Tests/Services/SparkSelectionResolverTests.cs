@@ -28,7 +28,7 @@ public class SparkSelectionResolverTests
         _permissions,
         Substitute.For<IRowSecurity>(),
         Substitute.For<ISparkTypeResolver>(),
-        Substitute.For<IAsyncDocumentSession>(),
+        Substitute.For<MintPlayer.Spark.Abstractions.Storage.ISparkSession>(),
         NullLogger<SparkSelectionResolver>.Instance,
         Substitute.For<IAttributeRightsEnforcement>(),
         TestQueryResultProjector.For(Substitute.For<IAsyncDocumentSession>()));

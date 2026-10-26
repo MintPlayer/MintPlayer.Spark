@@ -72,7 +72,7 @@ public class QueryHookReachTests
 
         var entityMapper = Substitute.For<IEntityMapper>();
         var executor = new QueryExecutor(
-            Substitute.For<IAsyncDocumentSession>(), entityMapper, modelLoader,
+            Substitute.For<IAsyncDocumentSession>().AsSparkSession(), entityMapper, modelLoader,
             contextResolver, Substitute.For<IIndexCatalog>(),
             Substitute.For<IPermissionService>(), actionsResolver,
             Substitute.For<IReferenceResolver>(), Substitute.For<IBreadcrumbResolver>(),

@@ -4,7 +4,7 @@ using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Actions;
-using Raven.Client.Documents.Session;
+using MintPlayer.Spark.Abstractions.Storage;
 using System.Collections.Concurrent;
 using System.Linq.Expressions;
 using System.Reflection;
@@ -70,7 +70,7 @@ internal interface IRowSecurity
     /// <c>FilterAsync</c>'s stance that unverifiable is not shown.
     /// </para>
     /// </remarks>
-    Task<bool> AreAllowedAsync(IAsyncDocumentSession session, Type entityType, string action, IReadOnlyCollection<string> ids);
+    Task<bool> AreAllowedAsync(ISparkSession session, Type entityType, string action, IReadOnlyCollection<string> ids);
 
     /// <summary>
     /// Whether this entity type has a row-level rule at all — i.e. its Actions class overrides
@@ -102,7 +102,7 @@ internal interface IRowSecurity
     /// </para>
     /// </summary>
     Task<IReadOnlyList<object>> FilterAsync(
-        IAsyncDocumentSession session,
+        ISparkSession session,
         IReadOnlyList<object> entities,
         Type entityType,
         Type resultType,
@@ -142,7 +142,7 @@ internal interface IRowSecurity
     /// </para>
     /// </summary>
     Task RedactAsync(
-        IAsyncDocumentSession session,
+        ISparkSession session,
         IReadOnlyList<(Abstractions.PersistentObject Po, object Row)> items,
         Type entityType,
         Type resultType,
@@ -257,7 +257,7 @@ internal partial class RowSecurity : IRowSecurity
         return rule is null || await rule(entity);
     }
 
-    public async Task<bool> AreAllowedAsync(IAsyncDocumentSession session, Type entityType, string action, IReadOnlyCollection<string> ids)
+    public async Task<bool> AreAllowedAsync(ISparkSession session, Type entityType, string action, IReadOnlyCollection<string> ids)
     {
         if (ids.Count == 0) return true;
 
@@ -342,7 +342,7 @@ internal partial class RowSecurity : IRowSecurity
     }
 
     public async Task<IReadOnlyList<object>> FilterAsync(
-        IAsyncDocumentSession session,
+        ISparkSession session,
         IReadOnlyList<object> entities,
         Type entityType,
         Type resultType,
@@ -501,7 +501,7 @@ internal partial class RowSecurity : IRowSecurity
     }
 
     public async Task RedactAsync(
-        IAsyncDocumentSession session,
+        ISparkSession session,
         IReadOnlyList<(Abstractions.PersistentObject Po, object Row)> items,
         Type entityType,
         Type resultType,
@@ -616,7 +616,7 @@ internal partial class RowSecurity : IRowSecurity
     /// </para>
     /// </summary>
     internal static async Task<Dictionary<string, object>> LoadBaseDocumentsAsync(
-        IAsyncDocumentSession session, Type entityType, IReadOnlyCollection<string> ids,
+        ISparkSession session, Type entityType, IReadOnlyCollection<string> ids,
         CancellationToken cancellationToken = default)
     {
         // Same comparer RavenDB builds its own result with: document ids are case-insensitive, and
@@ -625,26 +625,10 @@ internal partial class RowSecurity : IRowSecurity
         if (ids.Count == 0)
             return baseDocuments;
 
-        var loadMethod = ReflectionCache.GetOrAdd<(string Op, Type Entity), MethodInfo?>(
-            ("RowSecurity.SessionLoadManyAsync", entityType),
-            static k => typeof(IAsyncDocumentSession)
-                .GetMethod(nameof(IAsyncDocumentSession.LoadAsync), [typeof(IEnumerable<string>), typeof(CancellationToken)])
-                ?.MakeGenericMethod(k.Entity));
-
-        // Reflection applies no default arguments, so the token is passed explicitly.
-        if (loadMethod?.Invoke(session, [ids, cancellationToken]) is not Task task)
-            return baseDocuments;
-
-        await task;
-
-        // Task<Dictionary<string, TEntity>>, copied into the object-valued shape the callers hold.
-        if (task.GetCompletedTaskResult() is System.Collections.IDictionary loaded)
+        foreach (var (id, document) in await session.LoadAsync(entityType, ids, cancellationToken))
         {
-            foreach (System.Collections.DictionaryEntry entry in loaded)
-            {
-                if (entry.Value is not null)
-                    baseDocuments[(string)entry.Key] = entry.Value;
-            }
+            if (document is not null)
+                baseDocuments[id] = document;
         }
 
         return baseDocuments;

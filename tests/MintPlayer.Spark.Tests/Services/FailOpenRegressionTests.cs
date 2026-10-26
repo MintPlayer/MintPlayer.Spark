@@ -113,13 +113,13 @@ public class FailOpenRegressionTests
         // GetRowRuleKinds too, so it must answer that as well — an Actions-class rule.
         rowSecurity.GetRowRuleKinds(typeof(PagedDoc)).Returns(RowRuleKinds.ActionsRule);
         rowSecurity.FilterAsync(
-                Arg.Any<IAsyncDocumentSession>(), Arg.Any<IReadOnlyList<object>>(),
+                Arg.Any<MintPlayer.Spark.Abstractions.Storage.ISparkSession>(), Arg.Any<IReadOnlyList<object>>(),
                 Arg.Any<Type>(), Arg.Any<Type>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(ci => Task.FromResult(ci.Arg<IReadOnlyList<object>>()));
 
         var entityMapper = Substitute.For<IEntityMapper>();
         var executor = new QueryExecutor(
-            Substitute.For<IAsyncDocumentSession>(), entityMapper, modelLoader,
+            Substitute.For<IAsyncDocumentSession>().AsSparkSession(), entityMapper, modelLoader,
             Substitute.For<ISparkContextResolver>(), Substitute.For<IIndexCatalog>(),
             Substitute.For<IPermissionService>(), actionsResolver,
             Substitute.For<IReferenceResolver>(), Substitute.For<IBreadcrumbResolver>(), rowSecurity,
@@ -180,7 +180,7 @@ public class FailOpenRegressionTests
 
         var entityMapper = Substitute.For<IEntityMapper>();
         var executor = new QueryExecutor(
-            Substitute.For<IAsyncDocumentSession>(), entityMapper, modelLoader,
+            Substitute.For<IAsyncDocumentSession>().AsSparkSession(), entityMapper, modelLoader,
             Substitute.For<ISparkContextResolver>(), Substitute.For<IIndexCatalog>(),
             permissions, Substitute.For<IActionsResolver>(),
             Substitute.For<IReferenceResolver>(), Substitute.For<IBreadcrumbResolver>(),

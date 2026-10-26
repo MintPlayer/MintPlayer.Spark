@@ -6,9 +6,7 @@ using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Exceptions;
 using Microsoft.Extensions.Logging;
-using Raven.Client.Documents;
-using Raven.Client.Documents.Linq;
-using Raven.Client.Documents.Session;
+using MintPlayer.Spark.Abstractions.Storage;
 using System.Reflection;
 
 using static MintPlayer.Spark.Services.SparkHookInvocation;
@@ -18,8 +16,8 @@ namespace MintPlayer.Spark.Services;
 [Register(typeof(IDatabaseAccess), ServiceLifetime.Scoped)]
 internal partial class DatabaseAccess : IDatabaseAccess
 {
-    [Inject] private readonly IDocumentStore documentStore;
-    [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly ISparkStore store;
+    [Inject] private readonly ISparkSession session;
     [Inject] private readonly IEntityMapper entityMapper;
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IActionsResolver actionsResolver;
@@ -45,14 +43,13 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
     public async Task<IEnumerable<T>> GetDocumentsUncheckedAsync<T>() where T : class
     {
-        return await session.Query<T>().ToListAsync();
+        return await session.ToListAsync(session.Query<T>());
     }
 
     public async Task<IEnumerable<T>> GetDocumentsByObjectTypeIdUncheckedAsync<T>(Guid objectTypeId) where T : class
     {
-        return await session.Query<T>()
-            .Where(x => ((PersistentObject)(object)x).ObjectTypeId == objectTypeId)
-            .ToListAsync();
+        return await session.ToListAsync(session.Query<T>()
+            .Where(x => ((PersistentObject)(object)x).ObjectTypeId == objectTypeId));
     }
 
     public async Task<T> SaveDocumentUncheckedAsync<T>(T document) where T : class
@@ -66,7 +63,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
         // Insert or Update for the owner module (#467, D15), decided before the store assigns an id.
         var idBefore = ReadId();
-        var isNew = replicated && (string.IsNullOrEmpty(idBefore) || !await session.Advanced.ExistsAsync(idBefore));
+        var isNew = replicated && (string.IsNullOrEmpty(idBefore) || !await session.ExistsAsync(idBefore));
 
         await session.StoreAsync(document);
         await CommitAsync();
@@ -274,8 +271,8 @@ internal partial class DatabaseAccess : IDatabaseAccess
             var derivedId = probe?.GetId();
             if (!string.IsNullOrEmpty(derivedId))
             {
-                using var probeSession = documentStore.OpenAsyncSession();
-                if (await probeSession.Advanced.ExistsAsync(derivedId))
+                using var probeSession = store.OpenSession();
+                if (await probeSession.ExistsAsync(derivedId))
                 {
                     persistentObject.Id = derivedId;
                     naturalIdCollision = true;
@@ -317,8 +314,8 @@ internal partial class DatabaseAccess : IDatabaseAccess
         if (!string.IsNullOrEmpty(persistentObject.Id))
         {
             var rowAction = isRestore ? "Restore" : isRevert ? "Revert" : "Edit";
-            using var checkSession = documentStore.OpenAsyncSession();
-            var existing = await LoadEntityAsync(checkSession, entityType, persistentObject.Id);
+            using var checkSession = store.OpenSession();
+            var existing = await checkSession.LoadAsync(entityType, persistentObject.Id);
             // Hydrated like every other load (contributions F1), in the side session it came from,
             // so the row gates and SaveContext.Before see the satellite rows as they are stored.
             if (existing is not null)
@@ -349,7 +346,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
                 // and the write.
                 if (!string.IsNullOrEmpty(persistentObject.Etag))
                 {
-                    var currentEtag = checkSession.Advanced.GetChangeVectorFor(existing);
+                    var currentEtag = checkSession.GetVersion(existing);
                     if (!string.Equals(currentEtag, persistentObject.Etag, StringComparison.Ordinal))
                         throw new SparkConcurrencyException(persistentObject.Etag, currentEtag);
                 }
@@ -427,7 +424,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
             // The write found the document changed since it was loaded (contributions F7): the same
             // conflict the etag check above answers, caught one step later, so the same 409. RavenDB's
             // message carries change vectors; it stays in the inner exception, for logs only.
-            if (ex is Raven.Client.Exceptions.ConcurrencyException)
+            if (ex is SparkStoreConcurrencyException)
                 throw new SparkConcurrencyException(ex);
             throw;
         }
@@ -444,7 +441,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
         async Task AfterCommitAsync()
         {
             // Return the fresh change vector so the client can round-trip it to the next update.
-            persistentObject.Etag = session.Advanced.GetChangeVectorFor(savedEntity);
+            persistentObject.Etag = session.GetVersion(savedEntity);
             await interceptors.RunIsolatedAsync(interceptors.For<IAfterSave>(entityType, operation), interceptor => interceptor.OnAfterSaveAsync(saveContext), entityType, generatedId);
         }
 
@@ -495,9 +492,9 @@ internal partial class DatabaseAccess : IDatabaseAccess
         // copy judges whatever that copy has become, while a gate should judge what is STORED. The
         // difference is invisible today because nothing mutates between the read and the delete, and
         // it is exactly the kind of "invisible today" that stops being true after an unrelated edit.
-        using (var checkSession = documentStore.OpenAsyncSession())
+        using (var checkSession = store.OpenSession())
         {
-            var existing = await LoadEntityAsync(checkSession, entityType, id);
+            var existing = await checkSession.LoadAsync(entityType, id);
             if (existing is null) return false; // Nothing to delete; preserves 404-on-missing semantics.
 
             // Id-to-type binding (security sweep C1/H1): don't let a Delete on one type erase a
@@ -516,7 +513,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
             // before any interceptor runs. The write below carries it too, which closes the window after this.
             if (!string.IsNullOrEmpty(etag))
             {
-                var current = checkSession.Advanced.GetChangeVectorFor(existing);
+                var current = checkSession.GetVersion(existing);
                 if (!string.Equals(current, etag, StringComparison.Ordinal))
                     throw new SparkConcurrencyException(etag, current);
             }
@@ -528,11 +525,11 @@ internal partial class DatabaseAccess : IDatabaseAccess
         // Everything the request session tracks before any delete interceptor runs, so a refusal can take back
         // what the interceptors wrote besides the target (contributions F6).
         var sessionBefore = SessionWriteSnapshot.Take(session);
-        var entity = await LoadEntityAsync(session, entityType, id);
+        var entity = await session.LoadAsync(entityType, id);
         if (entity is null) return false;
         // The write must still find the version the caller saw (#467, D14) — or, for an internal caller,
         // the version loaded here — or a concurrent edit that landed after the gate is lost (F7).
-        var expectedChangeVector = string.IsNullOrEmpty(etag) ? session.Advanced.GetChangeVectorFor(entity) : etag;
+        var expectedChangeVector = string.IsNullOrEmpty(etag) ? session.GetVersion(entity) : etag;
 
         DeleteContext context;
         try
@@ -547,9 +544,9 @@ internal partial class DatabaseAccess : IDatabaseAccess
             // A refusal after an earlier hook already changed the entity (SoftDelete marks it deleted,
             // then a later interceptor says no) must leave nothing behind for a later SaveChangesAsync in this
             // request (#460, M6 finding) — nor any other document an interceptor stored on the way (F6).
-            session.Advanced.Evict(entity);
+            session.Evict(entity);
             sessionBefore.EvictWrittenSince();
-            if (ex is Raven.Client.Exceptions.ConcurrencyException)
+            if (ex is SparkStoreConcurrencyException)
                 throw new SparkConcurrencyException(ex);
             throw;
         }
@@ -569,7 +566,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
     /// redacting resolver, in one batched call however many rows failed.
     /// </summary>
     private async Task<string> BulkRefusalMessageAsync(
-        IAsyncDocumentSession resolveSession,
+        ISparkSession resolveSession,
         EntityTypeDefinition entityTypeDefinition,
         IReadOnlyDictionary<string, object> entities,
         IReadOnlyList<(string Id, string? Reason)> failures,
@@ -607,7 +604,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
         // Every gate before the first write, judged on what is STORED (a side session, as the
         // single-row delete does). Never shrink silently: a missing, foreign or denied row refuses
         // the lot, indistinguishably (M-3) — deleting 198 of 200 and saying nothing is worse.
-        using (var checkSession = documentStore.OpenAsyncSession())
+        using (var checkSession = store.OpenSession())
         {
             var stored = await RowSecurity.LoadBaseDocumentsAsync(checkSession, entityType, distinct);
             foreach (var id in distinct)
@@ -632,14 +629,14 @@ internal partial class DatabaseAccess : IDatabaseAccess
             {
                 var changed = distinct
                     .Where(id => !etags.TryGetValue(id, out var etag) || string.IsNullOrEmpty(etag)
-                        || !string.Equals(checkSession.Advanced.GetChangeVectorFor(stored[id]), etag, StringComparison.Ordinal))
+                        || !string.Equals(checkSession.GetVersion(stored[id]), etag, StringComparison.Ordinal))
                     .ToList();
                 if (changed.Count > 0)
                 {
                     var first = changed[0];
                     throw new SparkConcurrencyException(
                         etags.GetValueOrDefault(first) ?? string.Empty,
-                        checkSession.Advanced.GetChangeVectorFor(stored[first]),
+                        checkSession.GetVersion(stored[first]),
                         await BulkRefusalMessageAsync(checkSession, entityTypeDefinition, stored,
                             changed.Select(id => (id, (string?)null)).ToList(),
                             "Changed by another user since the list was loaded:"));
@@ -722,7 +719,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
         // version loaded here — so an edit landing after the checks above refuses the batch with a 409.
         var expectedChangeVectors = tracked.ToDictionary(
             pair => pair.Key,
-            pair => context?.Etags?.GetValueOrDefault(pair.Key) is { Length: > 0 } etag ? etag : session.Advanced.GetChangeVectorFor(pair.Value),
+            pair => context?.Etags?.GetValueOrDefault(pair.Key) is { Length: > 0 } etag ? etag : session.GetVersion(pair.Value)!,
             StringComparer.OrdinalIgnoreCase);
         var contexts = new List<DeleteContext>(distinct.Length);
 
@@ -762,9 +759,9 @@ internal partial class DatabaseAccess : IDatabaseAccess
             // marked soft-deleted, or queued for deletion — is evicted, so it reads as stored again. A
             // cancel (SparkCancelException) of one row cancels the batch the same way.
             foreach (var entity in tracked.Values)
-                session.Advanced.Evict(entity);
+                session.Evict(entity);
             sessionBefore.EvictWrittenSince();
-            if (ex is Raven.Client.Exceptions.ConcurrencyException)
+            if (ex is SparkStoreConcurrencyException)
                 throw new SparkConcurrencyException(ex);
             throw;
         }
@@ -791,10 +788,10 @@ internal partial class DatabaseAccess : IDatabaseAccess
         string? expectedChangeVector = null;
         if (!string.IsNullOrEmpty(obj.Id))
         {
-            existing = await LoadEntityAsync(session, entityType, obj.Id);
+            existing = await session.LoadAsync(entityType, obj.Id);
             if (existing is not null)
             {
-                expectedChangeVector = !string.IsNullOrEmpty(obj.Etag) ? obj.Etag : session.Advanced.GetChangeVectorFor(existing);
+                expectedChangeVector = !string.IsNullOrEmpty(obj.Etag) ? obj.Etag : session.GetVersion(existing);
                 // Satellite properties are filled before the posted values are merged (contributions F1),
                 // so an edited hydrated row maps as an Edit, not a New plus a Delete. Idempotent: an
                 // instance the Update pre-read already intercepted is not intercepted again.
@@ -818,7 +815,8 @@ internal partial class DatabaseAccess : IDatabaseAccess
             UnwritableAttributes = unwritable,
             Entity = entity,
             Id = existing is null ? null : obj.Id,
-            Session = session,
+            Session = session.Native,
+            StorageSession = session,
             User = interceptors.User,
             IsSystemContext = interceptors.IsSystemContext,
         };
@@ -835,12 +833,12 @@ internal partial class DatabaseAccess : IDatabaseAccess
             throw new SparkRowLevelAccessDeniedException($"{action}/{entityType.Name}");
 
         if (expectedChangeVector is not null)
-            await session.StoreAsync(entity, expectedChangeVector, session.Advanced.GetDocumentId(entity));
+            await session.StoreAsync(entity, expectedChangeVector, session.GetId(entity)!);
         else
             await session.StoreAsync(entity);
 
         // Durable after-commit work (#482, D17), written in this commit. The store assigned the id.
-        await interceptors.EnqueueCommittedAsync(context, session.Advanced.GetDocumentId(entity), operation, isDelete: false, isReplaced: false, expectedChangeVector);
+        await interceptors.EnqueueCommittedAsync(context, session.GetId(entity)!, operation, isDelete: false, isReplaced: false, expectedChangeVector);
         return context;
     }
 
@@ -860,7 +858,8 @@ internal partial class DatabaseAccess : IDatabaseAccess
             Id = id,
             Entity = entity,
             Reason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim(),
-            Session = session,
+            Session = session.Native,
+            StorageSession = session,
             User = interceptors.User,
             IsSystemContext = interceptors.IsSystemContext,
         };
@@ -883,8 +882,8 @@ internal partial class DatabaseAccess : IDatabaseAccess
         else
         {
             // Evicted first: RavenDB refuses a delete by id of a tracked entity that an interceptor changed.
-            session.Advanced.Evict(entity);
-            SparkRawWrites.IssuedByFramework(session, id);
+            session.Evict(entity);
+            SparkRawWrites.IssuedByFramework(session.Native, id);
             session.Delete(id, expectedChangeVector);
         }
 
@@ -908,7 +907,8 @@ internal partial class DatabaseAccess : IDatabaseAccess
             Id = persistentObject.Id!,
             PersistentObject = persistentObject,
             Existing = existing,
-            Session = session,
+            Session = session.Native,
+            StorageSession = session,
             User = interceptors.User,
             IsSystemContext = interceptors.IsSystemContext,
         };
@@ -947,10 +947,10 @@ internal partial class DatabaseAccess : IDatabaseAccess
     /// </summary>
     private async Task EvictTrackedAsync(Type entityType, string? id)
     {
-        if (string.IsNullOrEmpty(id) || !session.Advanced.IsLoaded(id))
+        if (string.IsNullOrEmpty(id) || !session.IsLoaded(id))
             return;
-        if (await LoadEntityAsync(session, entityType, id) is { } tracked)
-            session.Advanced.Evict(tracked);
+        if (await session.LoadAsync(entityType, id) is { } tracked)
+            session.Evict(tracked);
     }
 
     /// <summary>
@@ -999,25 +999,25 @@ internal partial class DatabaseAccess : IDatabaseAccess
         // put it in the session (the save itself, an interceptor, an Actions hook).
         var collections = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (deletedById is not null)
-            collections.Add(documentStore.Conventions.GetCollectionName(deletedById));
+            collections.Add(session.GetCollectionName(deletedById));
         void Record(object? entity)
         {
-            if (entity is not null && documentStore.Conventions.GetCollectionName(entity) is { Length: > 0 } collection)
+            if (entity is not null && session.GetCollectionName(entity.GetType()) is { Length: > 0 } collection)
                 collections.Add(collection);
         }
-        void OnStore(object? sender, BeforeStoreEventArgs e) => Record(e.Entity);
-        void OnDelete(object? sender, BeforeDeleteEventArgs e) => Record(e.Entity);
+        void OnStore(object entity) => Record(entity);
+        void OnDelete(object entity) => Record(entity);
 
-        session.Advanced.OnBeforeStore += OnStore;
-        session.Advanced.OnBeforeDelete += OnDelete;
+        session.BeforeStore += OnStore;
+        session.BeforeDelete += OnDelete;
         try
         {
             await session.SaveChangesAsync();
         }
         finally
         {
-            session.Advanced.OnBeforeStore -= OnStore;
-            session.Advanced.OnBeforeDelete -= OnDelete;
+            session.BeforeStore -= OnStore;
+            session.BeforeDelete -= OnDelete;
         }
 
         await WaitForIndexesAsync(collections, httpContext.RequestAborted);
@@ -1052,9 +1052,8 @@ internal partial class DatabaseAccess : IDatabaseAccess
     /// </para>
     /// </remarks>
     private Task WaitForIndexesAsync(HashSet<string> collections, CancellationToken requestAborted)
-        => SparkIndexWait.WaitAsync(
-            documentStore,
-            (session as InMemoryDocumentSessionOperations)?.DatabaseName ?? documentStore.Database,
+        => store.WaitForConsistencyAsync(
+            session,
             collections,
             RequestWriteIndexWait,
             (ex, index, elapsed) => LogUnfinishedWait(ex, index, collections, elapsed),
@@ -1064,26 +1063,6 @@ internal partial class DatabaseAccess : IDatabaseAccess
         => logger?.LogWarning(ex,
             "A request's write was committed, but waiting for index {Index} over [{Collections}] to catch up with it ended after {Elapsed} ms without it; the write stands, a query right after it may read the index stale",
             index, string.Join(", ", collections), (long)elapsed.TotalMilliseconds);
-
-    private async Task<object?> LoadEntityAsync(IAsyncDocumentSession session, Type entityType, string id)
-    {
-        var genericMethod = ReflectionCache.GetOrAdd<(string Op, Type Type), MethodInfo?>(
-            ("DatabaseAccess.SessionLoadAsync", entityType),
-            static k =>
-            {
-                var method = typeof(IAsyncDocumentSession).GetMethod(
-                    nameof(IAsyncDocumentSession.LoadAsync),
-                    [typeof(string), typeof(CancellationToken)]);
-                return method?.MakeGenericMethod(k.Type);
-            });
-        var task = genericMethod?.Invoke(session, [id, CancellationToken.None]) as Task;
-
-        if (task == null) return null;
-
-        await task;
-
-        return task.GetCompletedTaskResult();
-    }
 
     #region Actions Helper Methods
 

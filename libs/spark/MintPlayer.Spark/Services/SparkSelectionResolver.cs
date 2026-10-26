@@ -48,7 +48,7 @@ internal sealed partial class SparkSelectionResolver : ISparkSelectionResolver
     [Inject] private readonly IPermissionService permissionService;
     [Inject] private readonly IRowSecurity rowSecurity;
     [Inject] private readonly ISparkTypeResolver typeResolver;
-    [Inject] private readonly Raven.Client.Documents.Session.IAsyncDocumentSession session;
+    [Inject] private readonly Abstractions.Storage.ISparkSession session;
     [Inject] private readonly ILogger<SparkSelectionResolver> logger;
     [Inject] private readonly IAttributeRightsEnforcement attributeRights;
     [Inject] private readonly IQueryResultProjector projector;

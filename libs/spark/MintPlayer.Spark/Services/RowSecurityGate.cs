@@ -1,7 +1,7 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Services.Breadcrumb;
-using Raven.Client.Documents.Session;
+using MintPlayer.Spark.Abstractions.Storage;
 
 namespace MintPlayer.Spark.Services;
 
@@ -21,7 +21,7 @@ internal sealed record RowSecurityContext
     /// undo that and reintroduce the failure where a long stream over a referenced type died partway
     /// through.
     /// </remarks>
-    public required IAsyncDocumentSession Session { get; init; }
+    public required ISparkSession Session { get; init; }
 
     /// <summary>The model type the rows are mapped against.</summary>
     public required EntityTypeDefinition Definition { get; init; }

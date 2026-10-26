@@ -67,7 +67,9 @@ public interface IQueryExecutor
 [Register(typeof(IQueryExecutor), ServiceLifetime.Scoped)]
 internal partial class QueryExecutor : IQueryExecutor
 {
-    [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly Abstractions.Storage.ISparkSession sparkSession;
+    // Source acquisition (indexes, projections, includes, .Search()) is still RavenDB here until the provider seam takes it (#551 M3).
+    private IAsyncDocumentSession session => sparkSession.AsRavenSession();
     [Inject] private readonly IEntityMapper entityMapper;
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly ISparkContextResolver sparkContextResolver;
@@ -1169,7 +1171,7 @@ internal sealed record DatabasePage(int TotalItems);
         // first batched load is a cache hit; deeper breadcrumb levels cost one request each.
         var secured = await gate.ApplyAsync(materialized, new RowSecurityContext
         {
-            Session = session,
+            Session = sparkSession,
             Definition = entityTypeDefinition,
             EntityType = entityType,
             ResultType = resultType,
@@ -1548,7 +1550,7 @@ internal sealed record DatabasePage(int TotalItems);
 
         var secured = await gate.ApplyAsync(rawRows, new RowSecurityContext
         {
-            Session = session,
+            Session = sparkSession,
             Definition = entityTypeDefinition,
             EntityType = entityType,
             ResultType = entityType is null ? null : methodInfo.ResultElementType,

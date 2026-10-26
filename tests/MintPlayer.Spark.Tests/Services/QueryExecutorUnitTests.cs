@@ -29,7 +29,7 @@ public class QueryExecutorUnitTests
     private readonly IBreadcrumbResolver _breadcrumbResolver = Substitute.For<IBreadcrumbResolver>();
 
     private QueryExecutor CreateExecutor() => new(
-        _session, _entityMapper, _modelLoader, _contextResolver,
+        _session.AsSparkSession(), _entityMapper, _modelLoader, _contextResolver,
         _indexCatalog, _permissionService, _actionsResolver, _referenceResolver, _breadcrumbResolver,
         new PermissiveRowSecurity(),
         TestRowSecurityGate.For(new PermissiveRowSecurity(), _entityMapper),

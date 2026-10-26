@@ -74,7 +74,7 @@ internal partial class DisabledActionsEvaluator : IDisabledActionsEvaluator
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IActionsResolver actionsResolver;
     [Inject] private readonly ISparkTypeResolver typeResolver;
-    [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly Abstractions.Storage.ISparkSession session;
     [Inject] private readonly Microsoft.AspNetCore.Http.IHttpContextAccessor? httpContextAccessor;
 
     public async Task ApplyOnLoadAsync(PersistentObject obj)

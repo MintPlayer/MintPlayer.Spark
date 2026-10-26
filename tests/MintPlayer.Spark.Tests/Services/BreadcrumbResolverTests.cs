@@ -96,7 +96,7 @@ public class BreadcrumbResolverTests : SparkTestDriver
         var (resolver, _) = Build(person, car, spot);
         using var session = Store.OpenAsyncSession();
 
-        var result = await resolver.ResolveAsync(session, [], spot);
+        var result = await resolver.ResolveAsync(session.AsSparkSession(), [], spot);
 
         result.BreadcrumbsById.Should().BeEmpty();
     }
@@ -124,7 +124,7 @@ public class BreadcrumbResolverTests : SparkTestDriver
         var spots = (await session.LoadAsync<BR_ParkingSpot>(spotIds)).Values.Where(s => s is not null).Cast<object>().ToList();
 
         var before = session.Advanced.NumberOfRequests;
-        var result = await resolver.ResolveAsync(session, spots, spot);
+        var result = await resolver.ResolveAsync(session.AsSparkSession(), spots, spot);
         var added = session.Advanced.NumberOfRequests - before;
 
         added.Should().Be(2, $"cost is O(depth): one batched load for cars, one for people — independent of n={n}");
@@ -145,7 +145,7 @@ public class BreadcrumbResolverTests : SparkTestDriver
         using var session = Store.OpenAsyncSession();
 
         var root = new BR_Order { Id = "orders/1", OrderNo = "1001", Customer = new BR_Customer { FirstName = "Ada", LastName = "Lovelace" } };
-        var result = await resolver.ResolveAsync(session, [root], order);
+        var result = await resolver.ResolveAsync(session.AsSparkSession(), [root], order);
 
         result.Get("orders/1").Should().Be("1001: Ada Lovelace",
             "an embedded complex token must recurse into the embedded type's breadcrumb, not ToString() it");
@@ -160,7 +160,7 @@ public class BreadcrumbResolverTests : SparkTestDriver
         using var session = Store.OpenAsyncSession();
 
         var root = new BR_Order { Id = "orders/2", OrderNo = "1002", Customer = null };
-        var result = await resolver.ResolveAsync(session, [root], order);
+        var result = await resolver.ResolveAsync(session.AsSparkSession(), [root], order);
 
         result.Get("orders/2").Should().Be("1002: ");
     }
@@ -175,7 +175,7 @@ public class BreadcrumbResolverTests : SparkTestDriver
         using var session = Store.OpenAsyncSession();
 
         var root = new BR_Shipment { Id = "shipments/1", Code = "S1", Destination = new BR_MarkedAddress { City = "Ghent" } };
-        var result = await resolver.ResolveAsync(session, [root], shipment);
+        var result = await resolver.ResolveAsync(session.AsSparkSession(), [root], shipment);
 
         result.Get("shipments/1").Should().Be("S1 to City: Ghent");
     }
@@ -199,7 +199,7 @@ public class BreadcrumbResolverTests : SparkTestDriver
         using var session = Store.OpenAsyncSession();
         var carEntity = await session.LoadAsync<BR_Car>("cars/1");
 
-        var result = await resolver.ResolveAsync(session, [carEntity], car);
+        var result = await resolver.ResolveAsync(session.AsSparkSession(), [carEntity], car);
 
         result.Get("cars/1").Should().Be("CAR-1", "the car's own breadcrumb omits the driver");
         result.Get("people/1").Should().Be("John Doe", "but the driver reference still resolves a label");
@@ -223,7 +223,7 @@ public class BreadcrumbResolverTests : SparkTestDriver
         using var session = Store.OpenAsyncSession();
         var postEntity = await session.LoadAsync<BR_Post>("posts/1");
 
-        var result = await resolver.ResolveAsync(session, [postEntity], post);
+        var result = await resolver.ResolveAsync(session.AsSparkSession(), [postEntity], post);
 
         result.Get("posts/1").Should().Be("Post: news, sports");
     }
@@ -247,7 +247,7 @@ public class BreadcrumbResolverTests : SparkTestDriver
         using var session = Store.OpenAsyncSession();
         var carEntity = await session.LoadAsync<BR_Car>("cars/1");
 
-        var result = await resolver.ResolveAsync(session, [carEntity], car);
+        var result = await resolver.ResolveAsync(session.AsSparkSession(), [carEntity], car);
 
         result.Get("cars/1").Should().Be("CAR-1 (—)", "the denied driver is redacted, the rest renders");
         result.Get("people/1").Should().Be("—");
@@ -299,7 +299,7 @@ public class BreadcrumbResolverTests : SparkTestDriver
         using var session = Store.OpenAsyncSession();
         var carEntity = await session.LoadAsync<BR_Car>("cars/1");
 
-        var result = await resolver.ResolveAsync(session, [carEntity], car);
+        var result = await resolver.ResolveAsync(session.AsSparkSession(), [carEntity], car);
 
         result.Get("cars/1").Should().Be("CAR-1");
         result.Get("people/1").Should().Be("—", "the driver column shows the placeholder, keeping only the id");
@@ -323,7 +323,7 @@ public class BreadcrumbResolverTests : SparkTestDriver
         using var session = Store.OpenAsyncSession();
         var spotEntity = await session.LoadAsync<BR_ParkingSpot>("spots/1");
 
-        var result = await resolver.ResolveAsync(session, [spotEntity], spot);
+        var result = await resolver.ResolveAsync(session.AsSparkSession(), [spotEntity], spot);
 
         result.Get("spots/1").Should().Be("CAR-1 (—) (1,1)", "two levels down, the person is still withheld");
         result.Get("cars/1").Should().Be("CAR-1 (—)");
@@ -347,7 +347,7 @@ public class BreadcrumbResolverTests : SparkTestDriver
         using var session = Store.OpenAsyncSession();
         var carEntity = await session.LoadAsync<BR_Car>("cars/1");
 
-        var result = await resolver.ResolveAsync(session, [carEntity], car);
+        var result = await resolver.ResolveAsync(session.AsSparkSession(), [carEntity], car);
 
         result.Get("cars/1").Should().Be("CAR-1 (John Doe)");
         result.Get("people/1").Should().Be("John Doe");
@@ -386,7 +386,7 @@ public class BreadcrumbResolverTests : SparkTestDriver
         using var session = Store.OpenAsyncSession();
         var carEntity = await session.LoadAsync<BR_Car>("cars/1");
 
-        var result = await resolver.ResolveAsync(session, [carEntity], car);
+        var result = await resolver.ResolveAsync(session.AsSparkSession(), [carEntity], car);
 
         // Loading as `object` returned a JObject, which matched no entity-type definition, so the
         // resolver fell through to the CLR type name and rendered the literal text "JObject" —
@@ -414,7 +414,7 @@ public class BreadcrumbResolverTests : SparkTestDriver
         using var session = Store.OpenAsyncSession();
         var carEntity = await session.LoadAsync<BR_Car>("cars/1");
 
-        var result = await resolver.ResolveAsync(session, [carEntity], car);
+        var result = await resolver.ResolveAsync(session.AsSparkSession(), [carEntity], car);
 
         // The rule is declared over BR_Person. Judged as a JObject it did not apply at all — and
         // "no rule" means unrestricted, so a document whose metadata had gone stale silently
@@ -440,7 +440,7 @@ public class BreadcrumbResolverTests : SparkTestDriver
         using var session = Store.OpenAsyncSession();
         var carEntity = await session.LoadAsync<BR_Car>("cars/1");
 
-        var result = await resolver.ResolveAsync(session, [carEntity], car);
+        var result = await resolver.ResolveAsync(session.AsSparkSession(), [carEntity], car);
 
         // The id is a true, stable label; a type name is an internal detail that means nothing
         // to the person reading the page.
@@ -474,7 +474,7 @@ public class BreadcrumbResolverTests : SparkTestDriver
         using var session = Store.OpenAsyncSession();
         var carEntity = await session.LoadAsync<BR_Car>("cars/1");
 
-        var result = await resolver.ResolveAsync(session, [carEntity], car);
+        var result = await resolver.ResolveAsync(session.AsSparkSession(), [carEntity], car);
 
         // The Driver edge declares BR_Person, but accounts/1 is a BR_Account. Loaded as a person it
         // rendered the account's fields through Person's template, judged under Person's Read right
@@ -503,7 +503,7 @@ public class BreadcrumbResolverTests : SparkTestDriver
         using var session = Store.OpenAsyncSession();
         var carEntity = await session.LoadAsync<BR_Car>("cars/1");
 
-        var result = await resolver.ResolveAsync(session, [carEntity], car);
+        var result = await resolver.ResolveAsync(session.AsSparkSession(), [carEntity], car);
 
         result.Get("accounts/2").Should().Be("Ada Lovelace");
         result.Get("cars/1").Should().Be("CAR-1 (Ada Lovelace)");
@@ -526,7 +526,7 @@ public class BreadcrumbResolverTests : SparkTestDriver
         using var session = Store.OpenAsyncSession();
         var carEntity = await session.LoadAsync<BR_Car>("cars/1");
 
-        var result = await resolver.ResolveAsync(session, [carEntity], car);
+        var result = await resolver.ResolveAsync(session.AsSparkSession(), [carEntity], car);
 
         // A base-typed edge to a genuine subtype document is valid: the guard judges the type the
         // document materialized as, which RavenDB recovered from its own metadata.
@@ -551,7 +551,7 @@ public class BreadcrumbResolverTests : SparkTestDriver
         var projection = new BR_VPerson { Id = "people/1", FullName = "ignored" };
 
         var before = session.Advanced.NumberOfRequests;
-        var result = await resolver.ResolveAsync(session, [projection], person);
+        var result = await resolver.ResolveAsync(session.AsSparkSession(), [projection], person);
         var added = session.Advanced.NumberOfRequests - before;
 
         added.Should().Be(1, "one batched load fetches the collection documents for the page");
@@ -574,7 +574,7 @@ public class BreadcrumbResolverTests : SparkTestDriver
         using var session = Store.OpenAsyncSession();
         var a = await session.LoadAsync<BR_Person>("people/1");
 
-        var result = await resolver.ResolveAsync(session, [a], person);
+        var result = await resolver.ResolveAsync(session.AsSparkSession(), [a], person);
 
         // Must terminate (no stack overflow / hang) and name both people before the cycle is cut.
         var crumb = result.Get("people/1");
@@ -600,7 +600,7 @@ public class BreadcrumbResolverTests : SparkTestDriver
         using var session = Store.OpenAsyncSession();
         var carEntity = await session.LoadAsync<BR_Car>("cars/1");
 
-        var result = await resolver.ResolveAsync(session, [carEntity], car);
+        var result = await resolver.ResolveAsync(session.AsSparkSession(), [carEntity], car);
 
         result.Get("cars/1").Should().Be("CAR-1 ()", "a null reference contributes no text");
     }
@@ -621,7 +621,7 @@ public class BreadcrumbResolverTests : SparkTestDriver
         using var session = Store.OpenAsyncSession();
         var postEntity = await session.LoadAsync<BR_Post>("posts/1");
 
-        var result = await resolver.ResolveAsync(session, [postEntity], post);
+        var result = await resolver.ResolveAsync(session.AsSparkSession(), [postEntity], post);
 
         result.Get("posts/1").Should().Be("Untagged: ");
     }
@@ -647,7 +647,7 @@ public class BreadcrumbResolverTests : SparkTestDriver
         var spotEntity = await session.LoadAsync<BR_ParkingSpot>("spots/1");
 
         var before = session.Advanced.NumberOfRequests;
-        var result = await resolver.ResolveAsync(session, [spotEntity], spot);
+        var result = await resolver.ResolveAsync(session.AsSparkSession(), [spotEntity], spot);
         var added = session.Advanced.NumberOfRequests - before;
 
         added.Should().Be(1, "only one reference level is loaded before MaxDepth caps the walk");
@@ -673,7 +673,7 @@ public class BreadcrumbResolverTests : SparkTestDriver
         using var session = Store.OpenAsyncSession();
         var self = await session.LoadAsync<BR_Person>("people/1");
 
-        var result = await resolver.ResolveAsync(session, [self], person);
+        var result = await resolver.ResolveAsync(session.AsSparkSession(), [self], person);
 
         var crumb = result.Get("people/1");
         crumb.Should().NotBeNullOrEmpty();
@@ -717,7 +717,7 @@ public class BreadcrumbResolverTests : SparkTestDriver
         var songEntity = await session.LoadAsync<BR_Song>("songs/43");
 
         var before = session.Advanced.NumberOfRequests;
-        var result = await resolver.ResolveAsync(session, [songEntity], song);
+        var result = await resolver.ResolveAsync(session.AsSparkSession(), [songEntity], song);
         var added = session.Advanced.NumberOfRequests - before;
 
         result.Get("artists/40").Should().Be("Artist40");
@@ -756,7 +756,7 @@ public class BreadcrumbResolverTests : SparkTestDriver
         using var session = Store.OpenAsyncSession();
         var employeeEntity = await session.LoadAsync<BR_Employee>("employees/1");
 
-        var result = await resolver.ResolveAsync(session, [employeeEntity], employee);
+        var result = await resolver.ResolveAsync(session.AsSparkSession(), [employeeEntity], employee);
 
         result.Get("issuers/1").Should().Be("Microsoft");
         result.Get("issuers/2").Should().Be("Google");
@@ -786,7 +786,7 @@ public class BreadcrumbResolverTests : SparkTestDriver
         using var session = Store.OpenAsyncSession();
         var releaseEntity = await session.LoadAsync<BR_Release>("releases/1");
 
-        var result = await resolver.ResolveAsync(session, [releaseEntity], release);
+        var result = await resolver.ResolveAsync(session.AsSparkSession(), [releaseEntity], release);
 
         result.Get("labels/1").Should().Be("Sony (Japan)", "the AsDetail-nested reference renders the label's full breadcrumb, which itself expands {CountryId}");
         result.Get("countries/1").Should().Be("Japan");
@@ -812,7 +812,7 @@ public class BreadcrumbResolverTests : SparkTestDriver
         using var session = Store.OpenAsyncSession();
         var bands = (await session.LoadAsync<BR_Band>(["bands/1", "bands/2"])).Values.Where(b => b is not null).Cast<object>().ToList();
 
-        var result = await resolver.ResolveAsync(session, bands, band);
+        var result = await resolver.ResolveAsync(session.AsSparkSession(), bands, band);
 
         result.Get("artists/2").Should().Be("Artist2");
         result.Get("bands/2").Should().Be("Solo");

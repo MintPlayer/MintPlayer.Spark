@@ -106,7 +106,7 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
     public async Task<IReadOnlyList<PersistentObject>> LoadManyAsync(IReadOnlyList<string> ids, PersistentObject? parent)
     {
         var services = RequireServices();
-        var session = services.GetRequiredService<IAsyncDocumentSession>();
+        var session = services.GetRequiredService<Abstractions.Storage.ISparkSession>();
 
         // Ids are untrusted client input: de-duplicate (a selection may legitimately repeat a row,
         // and RavenDB's multi-load would return it twice) and drop empties, preserving order.
@@ -196,7 +196,7 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
 
         // Capture the RavenDB change vector so clients can round-trip it for optimistic concurrency.
         foreach (var (po, row) in mapped)
-            po.Etag = session.Advanced.GetChangeVectorFor(row);
+            po.Etag = session.GetVersion(row);
 
         return [.. mapped.Select(m => m.Po)];
     }
@@ -244,7 +244,7 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
     public virtual async Task<IDictionary<string, T>> MaterializeAsync(IReadOnlyList<string> ids)
     {
         var services = RequireServices();
-        var session = services.GetRequiredService<IAsyncDocumentSession>();
+        var session = services.GetRequiredService<Abstractions.Storage.ISparkSession>();
         // The [Reference] properties as a query includes them, so the breadcrumb resolver finds their
         // documents in the session instead of making a round trip for them.
         var includes = services.GetRequiredService<IReferenceResolver>().GetReferenceProperties(typeof(T))
@@ -252,13 +252,14 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
             .Concat(GetDefaultIncludes() ?? [])
             .Distinct(StringComparer.Ordinal)
             .ToArray();
-        return includes is { Length: > 0 }
-            ? await session.LoadAsync<T>(ids, builder =>
-              {
-                  foreach (var path in includes)
-                      builder.IncludeDocuments(path);
-              })
-            : await session.LoadAsync<T>(ids);
+        // Includes are a RavenDB round-trip saving; a provider without them loads the references when read.
+        if (includes is { Length: > 0 } && session.Native is IAsyncDocumentSession raven)
+            return await raven.LoadAsync<T>(ids, builder =>
+            {
+                foreach (var path in includes)
+                    builder.IncludeDocuments(path);
+            });
+        return (await session.LoadAsync<T>(ids)).ToDictionary(kv => kv.Key, kv => kv.Value!, StringComparer.OrdinalIgnoreCase);
     }
 
     /// <inheritdoc />
@@ -273,7 +274,7 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
         if (existing is null)
             return entityMapper.ToEntity<T>(obj);
 
-        await entityMapper.PopulateObjectValuesAsync(obj, existing, RequireServices().GetRequiredService<IAsyncDocumentSession>());
+        await entityMapper.PopulateObjectValuesAsync(obj, existing, RequireServices().GetRequiredService<Abstractions.Storage.ISparkSession>());
         return existing;
     }
 
