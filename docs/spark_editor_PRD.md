@@ -147,7 +147,7 @@ Each decision states its evidence: a file:line, a measurement, or "owner prefere
     with no `clrType` throws (`DatabaseAccess.cs:228-229`); deleting one is refused (`DatabaseAccess.cs:585-587`).
 - **D12 — The query contract is a provider-neutral spec, and typed actions keep their native queryable.** Owner
   preference (Q12 = C).
-  - Core builds a spec: source, typed filter tree, search text, sort, page, projection columns, row-security
+  - Core builds a spec (S3, §4b: LINQ expression trees plus provider hooks, superseding "typed filter tree"): source, filters, search text, sort, page, projection columns, row-security
     predicate. Each provider translates it: RQL for Raven, LINQ-to-objects for InMemory, SQL later.
   - Raven-specific overloads (`.Search()`, `.Customize()`, `.Include()`, named indexes, `.ProjectInto<>()`) stay
     reachable through `RavenPersistentObjectActions<T>` with `IAsyncDocumentSession`/`IRavenQueryable`, so app
@@ -237,6 +237,199 @@ Each decision states its evidence: a file:line, a measurement, or "owner prefere
 | S6 | Delta writing: given a composed library PO plus the app's additions, produce the minimal app delta file (attributes keyed by name, reorder, removing an app-added attribute). Is the delta byte-stable through a compose → write round trip? | PR B (D5) | a round-trip test on HR's `SparkUser` delta |
 | S7 | Walk Vidyano Management (the owner's local Fleet app) and record its screens, forms and navigation as the UX reference. Credentials stay out of the repo. | PR B UI | screen inventory in this PRD |
 | S8 | VS extension: a Community.VisualStudio.Toolkit tool window or document window with WebView2 pointed at the server, and a Solution Explorer context-menu item per Spark application project. | PR B | a throwaway VSIX opening a tab per project |
+
+### 4a. S2 result — RavenDB consumers (2026-10-26, proposed classification, awaiting owner sign-off)
+
+Method: `grep -rE "IDocumentStore|IAsyncDocumentSession|IRavenQueryable|IDocumentSession|Raven\.Client"` over
+`libs/**/*.cs`. 56 files in `libs/spark` (53 in `MintPlayer.Spark`, 3 in Abstractions). Line numbers are at master
+`479c4feb`.
+
+**Findings that change the plan:**
+
+- **F1 — The app's data model is declared Raven-typed.** Every `SparkContext` declares `IRavenQueryable<T>`
+  properties (`apps/DemoApp/DemoApp/DemoSparkContext.cs:9-11`), and `SparkContext.Session` is an
+  `IAsyncDocumentSession` (`SparkContext.cs:7`). `ModelSynchronizer.cs:75,490,1593`, `ModelShapeDiscovery.cs:95`,
+  `ValueObjectKeyVerifier.cs:168` and `QueryExecutor.cs:904-911` find collections by `IRavenQueryable<>`.
+  - Proposal: core detects any `IQueryable<T>` property. `IRavenQueryable<T>` is an `IQueryable<T>`, so existing
+    contexts compile and behave unchanged. `SparkContext.Session` moves to a `RavenSparkContext` base in the Raven
+    package. In-memory contexts use `Set<T>()`.
+- **F2 — 32 files outside core return `IRavenQueryable<T>`**, including DemoApp's custom queries over index
+  projections (`apps/DemoApp/DemoApp/Actions/CarActions.cs:39`, `PersonActions.cs:62`). Moving DemoApp to InMemory
+  (D14) means rewriting those two queries as LINQ over `Set<T>()`, with no index.
+- **F3 — "Open a fresh session" is a real operation, not an accident.** Concurrency re-checks and out-of-unit reads
+  open their own session, for example:
+  - `DatabaseAccess.cs:345,507,623`
+  - `SyncActionHandler.cs:49`
+  - `LookupReferenceService.cs:132-227`
+  - `ProgramUnits/Get.cs:82`
+  - `SparkShareLinks.cs:86,178,261`
+
+  The contract needs `OpenUnit()` beside the request-scoped unit.
+- **F4 — The change vector is the ETag.** `GetChangeVectorFor` sets `PersistentObject.Etag` and is the
+  optimistic-concurrency token (`DatabaseAccess.cs:435,523,785,826,869,876`; `RowChangeVectors.cs`), and
+  `ConcurrencyException` is caught at `:418,540,755` and `WriteUnit.cs:94`.
+  - The contract gets an opaque version token plus a neutral `SparkConcurrencyException`.
+  - `SparkCommittedInterceptors.PreviousChangeVector` (Abstractions `:76`) keeps its name, documented as opaque.
+- **F5 — Interceptors are already neutral at the boundary.** `SparkInterceptorContext.Session` is `object`, cast
+  back to Raven in `SparkInterceptorContextExtensions.cs:9-12`. `GetSession()` moves to the Raven package.
+- **F6 — Sixteen libraries have no Raven usage at all:** approvals, challenges, client, commerce, controllers,
+  fulfilment, gs1, printing, refdata, sms, socket_extensions, waiting_room, warehouse, webpush, all_features (plus
+  Abstractions' own policy types). They already go through `IDatabaseAccess`, so they become provider-neutral for
+  free.
+
+**Core files.** Each row says where its Raven use ends up: **P** moves to `MintPlayer.Spark.RavenDB`, **C** stays in
+core and takes a neutral contract type instead of the session, **Cap** moves to the provider behind a capability.
+
+| File:line | Raven use | Class |
+|---|---|---|
+| `SparkMiddleware.cs:192-235` | registers `IDocumentStore`, `IAsyncDocumentSession`, `IDocumentSession` | P (`UseRavenDb`) |
+| `SparkMiddleware.cs:564, 614, 681, 903-997` | connection wait, index scan and deploy | P |
+| `SparkDocumentStoreConventions.cs`, `Configuration/SparkRavenDbSecurity.cs` | store conventions, certificates | P |
+| `Indexes/SparkIndexCreationTask.cs`, `RavenIndexHierarchy.cs`, `IndexCatalog.cs:22` | index types | P (core keeps the index *name* on the model) |
+| `SparkIndexWait.cs:64-95` | waits for non-stale indexes | P (the contract's optional consistency wait) |
+| `Extensions/SessionExtensions.cs`, `SessionWriteSnapshot.cs`, `RowChangeVectors.cs` | session internals, change vectors | P |
+| `Extensions/SparkDevelopmentExtensions.cs:656` | index-definition dump | P |
+| `ValueObjectKeyVerifier.cs:81-168` | RQL check of value-object keys | P |
+| `ModelSynchronizer.cs:1712` | reads index fields for projections | P (an index-shape hook); `:75,490,1593` become C per F1 |
+| `RavenDataProtectionKeyRepository.cs`, `SparkDataProtection.cs:103` | data-protection key ring in Raven | P; core falls back to ASP.NET's default file ring |
+| `Expiration/ExpirationStamper.cs`, `ExpirationStartup.cs:68` | `@expires` metadata | Cap `Expiration` |
+| `Live/LiveHub.cs:32,48,253`, `LiveActionsSource.cs:38-98`, `LiveConnection.cs:44,62`, `LiveStartup.cs:30` | Changes API feed | Cap `ChangeNotifications` (InMemory can offer it: it sees every write) |
+| `Live/LiveAppStreamSubscription.cs:40,92,156` | streaming session | Cap `ChangeNotifications` |
+| `Services/DatabaseAccess.cs:21-22, 1056-1063, 771-879, 976` | load, store, delete, commit | C — the provider seam (D2/D3) |
+| `Actions/DefaultPersistentObjectActions.cs:109,199,246,269` | session for load and etag | C — `RavenPersistentObjectActions<T>` keeps the session |
+| `EntityMapper.cs:114,591,698,775,1071-1081` | reference loads | C (batch load by ids) |
+| `ReferenceResolver.cs:103-109` | `.Include()` | C — include paths become a spec hint the provider may ignore |
+| `Breadcrumb/BreadcrumbResolver.cs:91,112,319,676-694` | batch loads | C |
+| `RowSecurity.cs:260,345,504,619-631`, `RowSecurityGate.cs:24`, `SparkRowRule.cs:28,72` | batch loads, async materialize | C |
+| `CollectionGuard.cs:29-36` | collection from metadata | C — the provider answers "collection of this entity" |
+| `SparkContext.cs:7`, `SparkContextResolver.cs:8-16` | context session | C per F1 |
+| `SparkInterceptorPipeline.cs:35,38,126,153`, `SparkInterceptorContextExtensions.cs:9` | session parameter | C per F5 |
+| `DisabledActionsEvaluator.cs:77`, `PersistentObjectPresenter.cs:35`, `CustomActionExecution.cs:101`, `RefreshInvoker.cs:75`, `SparkSelectionResolver.cs:51`, `RetryPresentation.cs:36` | injected session | C |
+| `SyncActionHandler.cs:24,49,53,277`, `LookupReferenceService.cs:25,132-227`, `ProgramUnits/Get.cs:21,82`, `Sharing/SparkShareLinks.cs:63-272` | fresh sessions, collection names | C per F3 |
+| `Endpoints/PersistentObject/DeleteMany.cs:52`, `Refresh.cs:54` | injected session | C |
+| `QueryExecutor.cs` (29 hits), `QueryResultProjector.cs:173` | queries, etags | C + provider, see S3 |
+| `Queries/LiveQueryArgs.cs:45` | **public** `Session` property | C — moves to a Raven subtype; public API break (minor) |
+| Abstractions `SparkQuery.cs:21,59`, `SparkIndexValue.cs` | doc comments only | C |
+
+**Libraries.**
+
+| Library | Files | Class |
+|---|---|---|
+| identity_provider | 70 | Feature, Raven-only |
+| messaging, subscription_worker | 18, 2 | Feature, needs `Subscriptions` |
+| moderation | 15 | Feature, Raven-only |
+| authorization | 9: `UserStore*`, `RoleStore`, `AgentGrantStore`, `SparkUserBackfill`, `SparkExternalLoginLinker`, two migrations | Feature (user store). `IPermissionService` and `security.json` enforcement have no Raven use and stay core |
+| source_generators | 13 | Generated code names Raven types. The emitted `IRavenQueryable` and session code follows F1 |
+| testing | 9 | `SparkTestDriver` stays Raven. The conformance suite adds a neutral base |
+| organizations, replication | 8, 8 | Feature, Raven-only |
+| contributions, history | 6, 4 | Feature, needs `Revisions` |
+| dashboards | 5 (`RavenStatisticsProvider`, revisions config) | Feature, Raven-only |
+| notifications, settings, soft_delete | 5, 4, 4 | Feature, Raven-only; soft_delete needs `Revisions` |
+| cron, migrations | 2, 2 | Feature, Raven-only |
+| attributes, boards, mail, mcp | 1 each | Feature, Raven-only (each one injects the store directly) |
+
+**Owner questions for sign-off:**
+
+1. F1: should context properties become `IQueryable<T>` (existing apps unchanged), or should core get its own
+   collection type?
+2. Data protection's key ring on InMemory: is ASP.NET's file ring acceptable?
+3. Is settings Raven-only acceptable? It is used widely, but the D13 capability check makes the dependency
+   explicit.
+
+### 4b. S3 result — the query spec (2026-10-26, draft)
+
+**How `QueryExecutor` is built today.** Both sources (`ExecuteDatabaseQueryAsync` `:819`, `ExecuteCustomQueryAsync`
+`:1156`) run the same pipeline over an untyped `object queryable`:
+
+1. Acquire the source.
+   - Database: a context property (`:898`), re-rooted onto the bound index (`:983-990`, Raven).
+   - Custom: the actions method's return value.
+2. Project into the index's view (`:993`, `ApplyProjection` `:1864`, Raven `ProjectInto`).
+3. Includes (`:999-1003`, Raven).
+4. Row-security pushdown (`:1008`, `ComposeRowFilterAsync`). This is an `Expression<Func<T,bool>>` from the actions
+   class: neutral LINQ.
+5. Column filters (#431) (`:1019`, `ApplyColumnFilters` `:2313`, built by `AnyEquals` / `AnyContains` `:2418/:2458`).
+   These are `Expression` trees: neutral LINQ.
+6. Search (`:1029`, `ApplySearch` `:2193`). This is Raven `.Search()`, restricted to the index's fields. Where it
+   isn't applied, the in-memory fallback `NarrowBySearch` (`:2011`, `:307`, `:414`) runs instead: neutral.
+7. Restrict to ids (`:1040`, `RestrictToIds` `:618`, LINQ), then sort (`:1047`, `ApplySorting` `:1911`, LINQ).
+8. Paging pushdown, only when nothing can remove rows afterwards (`:1074-1100`), then count and execute
+   (`CountQueryableAsync` `:2611`, `ExecuteQueryableAsync` `:2719`, Raven async).
+9. The row-security gate on materialized rows (`:1112`, `RowSecurityGate`), with dedupe by id for fan-out indexes.
+   This is neutral and is **the enforcement point**. Pushdown is only an optimization.
+
+**Conclusion:** the spec should be **LINQ expression trees plus a few provider hooks**, not a hand-made filter tree.
+This replaces D12's "typed filter tree": the expressions already exist and are portable to Raven's LINQ provider,
+LINQ-to-objects and EF. Core keeps steps 4, 5, 7, the paging decision and 9. The provider owns steps 1–3, 6 and 8.
+
+```csharp
+public interface ISparkQueryProvider
+{
+    // Step 1 — Database.* source: the root queryable for a collection, optionally bound to a named index
+    // (null when the provider has no indexes). Custom.* sources skip it: actions return their own queryable.
+    IQueryable OpenSource(Type entityType, string? indexName, out Type resultType);
+
+    // Steps 2-3, 6: optional; each reports whether it applied, and core falls back where it did not.
+    IQueryable ApplyIncludes(IQueryable source, IReadOnlyList<string> paths);          // no-op allowed
+    (IQueryable Query, bool Applied) ApplySearch(IQueryable source, SparkSearchSpec search);
+    IReadOnlySet<string>? IndexedFields(IQueryable source);                            // null = unrestricted
+    bool MayFanOut(IQueryable source);                                                 // today: "indexType is not null"
+
+    // Step 8: async execution.
+    Task<int> CountAsync(IQueryable source, CancellationToken ct);
+    Task<IReadOnlyList<object>> ToListAsync(IQueryable source, CancellationToken ct);
+    Task<IReadOnlyDictionary<string, string>> VersionTokensAsync(IEnumerable<string> ids, CancellationToken ct); // F4
+}
+
+public sealed record SparkSearchSpec(string Term, IReadOnlyList<PropertyInfo> Properties);
+```
+
+The core side is a record the executor builds once and then applies. Each piece is
+`LambdaExpression`/`Expression<Func<T,bool>>`:
+
+```csharp
+internal sealed record SparkQuerySpec(
+    Type EntityType, Type ResultType, Type SortType, string? IndexName,
+    LambdaExpression? RowFilter, bool RowFilterIsComplete,       // RowFilterComposition today
+    IReadOnlyList<LambdaExpression> ColumnFilters,               // #431
+    SparkSearchSpec? Search,
+    IReadOnlyCollection<string>? RestrictToIds,
+    IReadOnlyList<SortColumn> Sort,
+    int Skip, int Take);
+```
+
+**The three check cases, expressed in it:**
+
+1. **A #431 sub-query filter** (a `Custom.*` sub-query, the column filter `Status ∈ {Open, Closed}`).
+   - The actions method returns `IQueryable<T>` (native on Raven) scoped to the parent.
+   - `ColumnFilters = [x => x.Status == "Open" || x.Status == "Closed"]`, the expression `AnyEquals` already builds.
+   - Core applies it with `Queryable.Where`. Raven translates it into RQL `in`/`or`; InMemory evaluates it. No
+     provider hook is involved.
+2. **A `.Search()`.**
+   - `Search = new("foo bar", [Name, Code])`, intersected with `IndexedFields`.
+   - Raven's `ApplySearch` returns `Applied: true` and emits consecutive `.Search()` calls after the row filter, so
+     `(predicate) and (search or search)` holds (the `:1022-1025` constraint stays inside the Raven provider).
+   - InMemory returns `Applied: false`, so core runs `NarrowBySearch` and the paging decision drops to in-memory
+     paging. This is today's fallback path, now chosen by the provider rather than by the bound index.
+3. **A row-security filter** (`GetFilterExpressionAsync` → `x => x.OwnerId == currentUser`, plus an
+   `IsAllowedAsync` override).
+   - `RowFilter = that lambda` and `RowFilterIsComplete = false` (a per-row refinement exists).
+   - Core applies `Where(RowFilter)` for pushdown, and the gate (step 9) runs `IsAllowedAsync` on every
+     materialized row regardless of provider.
+   - `RowFilterIsComplete = false` forbids database paging.
+   - The conformance leak test asserts that a provider which ignores the pushed `Where` still returns no
+     foreign rows.
+
+**What this spec leaves Raven-only (reachable through `RavenPersistentObjectActions<T>`):** `.Customize()`,
+`ProjectInto<>` with an explicit view, named index queries in custom sources, and `.Include()` beyond the model's
+reference paths.
+
+**Risk:**
+- `RestrictToIds` and `ApplySorting` call `Queryable.*` through reflection over `object`. They already work on
+  LINQ-to-objects (custom sources can return in-memory sequences, `AsQueryable` at `:2637`), so InMemory inherits
+  a tested path.
+- The untested part is EF (#536): client-evaluated expressions such as `AnyContains` over a collection property
+  may not translate. That is deferred to #536's own spike.
 
 ## 5. Milestones
 
