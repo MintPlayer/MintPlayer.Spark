@@ -49,6 +49,9 @@ public interface IForgeVersioning
     /// <summary>Opens a pull request and returns its number, or the number of the open one with the same head and base.</summary>
     Task<int> OpenPullRequestAsync(Repository repository, string head, string @base, string title, string body, CancellationToken cancellationToken = default);
 
+    /// <summary>The merged pull requests into <paramref name="baseBranch"/> that the commit belongs to (a squash or merge commit's one).</summary>
+    Task<IReadOnlyList<int>> MergedPullRequestsAsync(Repository repository, string sha, string baseBranch, CancellationToken cancellationToken = default);
+
     /// <summary>Comments on an issue or pull request.</summary>
     Task CommentAsync(Repository repository, int number, string body, CancellationToken cancellationToken = default);
 

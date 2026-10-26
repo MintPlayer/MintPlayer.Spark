@@ -160,6 +160,18 @@ public partial class GitHubForgeVersioning : IForgeVersioning
         return reply.Json!.RootElement.GetProperty("number").GetInt32();
     }
 
+    public async Task<IReadOnlyList<int>> MergedPullRequestsAsync(Repository repository, string sha, string baseBranch, CancellationToken cancellationToken = default)
+    {
+        using var reply = await SendAsync(repository, HttpMethod.Get, $"{RepoPath(repository)}/commits/{Uri.EscapeDataString(sha)}/pulls?per_page=10", null, cancellationToken);
+        if (reply.Status is HttpStatusCode.NotFound or HttpStatusCode.UnprocessableEntity) return [];
+        reply.EnsureSuccess("pull_requests=read");
+        if (reply.Json!.RootElement is not { ValueKind: JsonValueKind.Array } list) return [];
+        return [.. list.EnumerateArray()
+            .Where(p => p.TryGetProperty("merged_at", out var merged) && merged.ValueKind == JsonValueKind.String
+                && p.TryGetProperty("base", out var @base) && Str(@base, "ref") == baseBranch)
+            .Select(p => p.GetProperty("number").GetInt32())];
+    }
+
     public async Task CommentAsync(Repository repository, int number, string body, CancellationToken cancellationToken = default)
     {
         using var reply = await SendAsync(repository, HttpMethod.Post, $"{RepoPath(repository)}/issues/{number}/comments", new JsonObject { ["body"] = body }, cancellationToken);

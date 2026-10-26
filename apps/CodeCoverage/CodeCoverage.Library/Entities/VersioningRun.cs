@@ -75,6 +75,16 @@ public class VersioningRun
 
     public int Skipped { get; set; }
 
+    /// <summary>
+    /// The pull requests told what the run published, once it finished green: <c>commented</c>, <c>none</c> (nothing
+    /// released, or no merged pull request) or <c>failed-run</c>; null until the run's <c>workflow_run</c> arrived.
+    /// </summary>
+    [IgnoreProperty]
+    public string? PublishedComment { get; set; }
+
+    [IgnoreProperty]
+    public List<int> CommentedPullRequests { get; set; } = [];
+
     [IgnoreProperty]
     public List<string> Warnings { get; set; } = [];
 

@@ -199,6 +199,35 @@ public class MergeQueueWebhookTests : CoverageRavenTest
         review.Of<ForgeWebhookMessage<PullRequestReviewed>>().Should().ContainSingle();
     }
 
+    /// <summary>
+    /// A finished run that asked the server for version tags is raised whether or not the queue is busy, for the comment
+    /// naming what it published; any other run is not.
+    /// </summary>
+    [Fact]
+    public async Task A_finished_versioning_run_is_raised_while_idle_and_another_run_is_not()
+    {
+        using var store = GetDocumentStore();
+        await SeedAsync(store, busy: false);
+        using (var session = store.OpenAsyncSession())
+        {
+            await session.StoreAsync(new Entities.VersioningRun { Repository = RepositoryId, RunId = 9001, RunAttempt = 2 },
+                Entities.VersioningRun.DocumentId(EForgeProvider.GitHub, MergeQueueHarness.RepoGitHubId, 9001, 2));
+            await session.SaveChangesAsync();
+        }
+        static string Run(long id) => $$$"""
+            {"action":"completed","workflow_run":{"id":{{{id}}},"run_attempt":2,"head_sha":"{{{Sha}}}","conclusion":"success",
+             "html_url":"https://github.com/acme/widget/actions/runs/{{{id}}}"},"repository":{{{Repo}}}}
+            """;
+
+        var versioning = await DeliverAsync(store, "workflow_run", Run(9001));
+        var other = await DeliverAsync(store, "workflow_run", Run(9002));
+
+        versioning.Of<ForgeWebhookMessage<VersioningRunCompleted>>().Should().ContainSingle().Which.Event
+            .Should().Be(new VersioningRunCompleted(RepositoryId, 9001, 2, "success", "https://github.com/acme/widget/actions/runs/9001"));
+        versioning.Of<ForgeWebhookMessage<CiRunCompleted>>().Should().BeEmpty("the queue is idle");
+        other.Messages.Should().BeEmpty();
+    }
+
     // ── The checks a repository has seen (§11 D108 (a)) ──────────────────────────────────────────────
 
     private static string NamedCheckRun(string name, long appId, string slug = "gitguardian") => $$$"""

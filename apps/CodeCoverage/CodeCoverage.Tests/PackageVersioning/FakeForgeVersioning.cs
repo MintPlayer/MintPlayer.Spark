@@ -16,6 +16,8 @@ internal sealed class FakeForgeVersioning : IForgeVersioning
     public List<(string Branch, string Sha)> Branches { get; } = [];
     public List<(string Head, string Base, string Title, string Body)> OpenedPullRequests { get; } = [];
     public List<(int Number, string Body)> Comments { get; } = [];
+    /// <summary>The merged pull requests per commit, for <see cref="MergedPullRequestsAsync"/>.</summary>
+    public Dictionary<string, int[]> MergedPullRequests { get; } = [];
     public List<(string Workflow, string Branch)> Dispatches { get; } = [];
     public Exception? FailTitleUpdateWith { get; set; }
 
@@ -63,6 +65,9 @@ internal sealed class FakeForgeVersioning : IForgeVersioning
         }
         return Task.FromResult(1000 + index);
     }
+
+    public Task<IReadOnlyList<int>> MergedPullRequestsAsync(Repository repository, string sha, string baseBranch, CancellationToken cancellationToken = default)
+        => Task.FromResult<IReadOnlyList<int>>(MergedPullRequests.TryGetValue(sha, out var numbers) ? numbers : []);
 
     public Task CommentAsync(Repository repository, int number, string body, CancellationToken cancellationToken = default)
     {

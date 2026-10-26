@@ -225,6 +225,15 @@ while a newer run of the same workflow is unfinished, because the re-run would c
 above). The App needs `actions: write` for the button. Seed tags, hand-made tags and tags from before this change
 have no `run:` line and show no mark.
 
+### The published packages on the pull request
+
+When a server-mode publish run finishes **green**, the pull request its commit was merged from gets one comment: a
+table of the packages and versions the run tagged (`created` or `already-present`; a conflicting tag is left out). The
+app reads the pull request from GitHub's commit-to-pulls API, keeps only merged ones whose base is the run's branch,
+and comments on at most five. The outcome is saved on the run (`commented`, `none` or `failed-run`), so a redelivered
+`workflow_run` comments nothing twice. A failed or cancelled run comments nothing; its re-run is a new attempt with its
+own record and comments when it goes green. Local-mode repositories have no run record and get no comment.
+
 ## Forges
 
 Versioning is GitHub only (D16). On GitLab and Bitbucket repositories the Versioning settings are hidden.

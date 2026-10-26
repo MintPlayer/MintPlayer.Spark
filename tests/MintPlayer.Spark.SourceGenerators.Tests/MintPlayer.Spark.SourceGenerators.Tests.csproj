@@ -37,7 +37,7 @@
     on one driver are the only way to see a pipeline model compared by reference. The local GeneratorHarness stays
     the entry point for everything else; the package's harness is used under an alias.
     -->
-    <PackageReference Include="MintPlayer.SourceGenerators.Testing" Version="13.0.0" />
+    <PackageReference Include="MintPlayer.SourceGenerators.TestHarness" Version="11.0.0-rc.1" />
     <PackageReference Include="xunit" Version="2.9.3" />
 
     <!--
