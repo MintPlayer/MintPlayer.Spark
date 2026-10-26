@@ -281,6 +281,19 @@ Method: `grep -rE "IDocumentStore|IAsyncDocumentSession|IRavenQueryable|IDocumen
       check it in milestone 2.
     - Trap accepted: using a Raven operator on an in-memory query fails when the query runs, not at build time. The
       clear exception and the conformance suite cover it.
+    - **The goal is portability: switching a context between RavenDB and SQL Server must be a registration change.**
+      Owner, 2026-10-26: "I don't mind changing the code in the applications. The benefit … is that we can easily
+      switch from RavenDB to sql-server and vv". Consequences:
+      - PR A migrates all 32 `IRavenQueryable<T>` declarations (F2) to `IQueryable<T>`, in apps and libraries
+        alike. Leaving them compiling is not the target.
+      - An analyzer warns when a `SparkContext` property or a `Custom.*` query method *declares* a provider-specific
+        queryable type (`IRavenQueryable<T>`, EF's `DbSet<T>`).
+      - Operators every provider can offer are neutral and live in core, for example `SparkSearch(…)`. Such an
+        operator never puts itself into the tree. It resolves the provider that owns `q.Provider` (registered by
+        `UseRavenDb`/`UseInMemory`/`UseSqlServer`) and calls that provider's §4b `ApplySearch`, so Rule 2 holds. A
+        provider without full-text search gets core's in-memory fallback, as the executor does today.
+      - Truly store-specific operators (`UseIndex<TIndex>()`, `Customize(…)`) stay in the provider package. They
+        are deliberate, visible pins to one provider.
     - `SparkContext.Session` moves to a `RavenSparkContext` base in the Raven package. Raw session work (patches,
       operations, attachments) stays in `RavenPersistentObjectActions<T>`.
 - **F2 — 32 files outside core return `IRavenQueryable<T>`**, including DemoApp's custom queries over index
