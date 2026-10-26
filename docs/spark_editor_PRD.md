@@ -238,6 +238,8 @@ Each decision states its evidence: a file:line, a measurement, or "owner prefere
 | S7 | Walk Vidyano Management (the owner's local Fleet app) and record its screens, forms and navigation as the UX reference. Credentials stay out of the repo. | PR B UI | screen inventory in this PRD |
 | S8 | VS extension: a Community.VisualStudio.Toolkit tool window or document window with WebView2 pointed at the server, and a Solution Explorer context-menu item per Spark application project. | PR B | a throwaway VSIX opening a tab per project |
 
+| S9 | D15 on a real RavenDB: does the runtime type survive standard LINQ behind `IQueryable<T>`? Sync enumeration on an async session? Delegated vs own-method operators? Neutral `SparkSearch` dispatch? Absent-field semantics, RavenDB vs LINQ-to-objects? | PR A | **done 2026-10-26**, §4c |
+
 ### 4a. S2 result — RavenDB consumers (2026-10-26, owner signed off)
 
 Method: `grep -rE "IDocumentStore|IAsyncDocumentSession|IRavenQueryable|IDocumentSession|Raven\.Client"` over
@@ -277,8 +279,9 @@ Method: `grep -rE "IDocumentStore|IAsyncDocumentSession|IRavenQueryable|IDocumen
       `NotSupportedException` naming the operator, the package and the actual provider, as EF's `Include` does.
     - **Rule 3 — core executes only through the provider hooks** (§4b `CountAsync` / `ToListAsync`), never through
       a neutral `ToListAsync` on `IQueryable<T>`. EF Core already extends `IQueryable<T>` with that name, so a
-      second one would be ambiguous. Whether the async session refuses synchronous `.ToArray()` is unverified;
-      check it in milestone 2.
+      second one would be ambiguous. Synchronous `.ToArray()` on the async session throws
+      `NotSupportedException: You can't query sync from an async session` (S9 T2), so this rule is required, not
+      just tidy.
     - Trap accepted: using a Raven operator on an in-memory query fails when the query runs, not at build time. The
       clear exception and the conformance suite cover it.
     - **The goal is portability: switching a context between RavenDB and SQL Server must be a registration change.**
@@ -471,6 +474,52 @@ internal sealed record SparkQuerySpec(
   raw session code: `.Customize()`, `ProjectInto<>` with an explicit view, named index queries in custom sources,
   and `.Include()` beyond the model's reference paths. Only raw session work (patches, operations, attachments)
   still needs `RavenPersistentObjectActions<T>`.
+
+### 4c. S9 result — D15 on a real RavenDB (2026-10-26)
+
+**Setup:**
+- A throwaway console app (RavenDB.Client 7.2.6, net11.0) against the local dev server `localhost:8080`, with
+  database `SparkSpikeS9`, which was deleted afterwards and its deletion confirmed.
+- `People` holds three documents: `people/1` (Alice Smith, `Active: true`), `people/2` (Bob Jones,
+  `Active: false`) and `people/3` (Carol Smith, **no `Active` field**).
+- The in-memory side is the same three objects through `AsQueryable()`.
+- Not committed; it was a throwaway in the session scratchpad.
+
+| # | Check | Observed | Consequence |
+|---|---|---|---|
+| T1 | `IQueryable<Person> q = session.Query<Person>()`, then `.Where().OrderBy().Select()` | `is IRavenQueryable<Person>` = **True**; RQL `from 'People' where Name != $p0 order by Name` | D15's premise holds: standard LINQ needs no provider overloads |
+| T2 | `.ToArray()` on an async-session query | `NotSupportedException: You can't query sync from an async session` | Rule 3 is required |
+| T3 | `RavenSearch` on `IQueryable<T>` delegating to `raven.Search(...)` | 2 rows (`people/1`, `people/3`); RQL `where search(Name, $p0)` | Rule 2 works |
+| T4 | An operator that puts its **own** `MethodInfo` into the tree | `NotSupportedException: Could not understand expression: from 'People'.BadSearch("smith")`, at execution, not at composition | Rule 2 is required; the failure only shows up at run time |
+| T5 | Neutral `SparkSearch` dispatching on the runtime type (Raven `Search`, otherwise in-memory `Contains`) | raven = 2, memory = 2 (`EnumerableQuery`1`) | The neutral-operator design works |
+| T6 | `Where(p => p.Active == false)` | raven = `[people/2]`; **memory = `[people/2, people/3]`** | **The providers disagree** on an absent field; see D16 |
+| T6b | `Where(p => p.Active != true)` | raven = `[people/2, people/3]`; memory = the same | Agree |
+
+**D16 (proposed, awaiting owner) — absent-field semantics are Spark's, not the store's.**
+- The divergence: LINQ-to-objects sees the CLR default (`false`) for the absent field, and SQL Server will too,
+  because a NOT NULL column has a default. RavenDB treats an absent field as *no value*, so `== false` doesn't
+  match it (memory note "Absent field ≠ `== false`").
+- The form already shows such a document as `false`.
+- Proposal: the defined semantics are "absent = CLR default". The Raven provider rewrites `member == default(T)` on
+  non-nullable value-type members with an `ExpressionVisitor`.
+  - ~~Rewrite it into `(member == default || member == null)`.~~ **Wrong**, and refuted by T7 and by
+    `tests/MintPlayer.Spark.Tests/Services/AbsentVersusNullFieldTests.cs`: an absent field carries no null term,
+    so `== null` matches nothing.
+  - The rewrite is **`!(member > default || member < default)`**. T7 measured it on an int field with
+    `people/1 = 5`, `people/2 = 0` and `people/3` absent:
+
+    | Shape | Rows | RQL |
+    |---|---|---|
+    | `Count == 0` | `[people/2]` | `where Count = $p0` |
+    | `!(Count != 0)` | `[people/2]` | `where (true and not (Count != $p0))` |
+    | `(int?)Count == null` | `[]` | `where Count = $p0`: the cast is dropped |
+    | **`!(Count > 0 \|\| Count < 0)`** | **`[people/2, people/3]`** | `where (true and not (Count > $p0 or Count < $p1))` |
+    | `DocumentQuery`: `WhereEquals(Count, 0).OrElse().Not.WhereExists(Count)` | `[people/2, people/3]` | `where Count = $p0 or not exists(Count)` |
+
+  - For `bool` the rewrite is `!= true` (T6b). Other value types (`DateTime`, `Guid`, enums stored as strings)
+    rely on range comparison against the default's term. That is unmeasured, so the conformance suite pins each
+    type. Static-index queries are unmeasured too.
+- The conformance suite pins T6/T7 for every provider.
 
 **Risk:**
 - `RestrictToIds` and `ApplySorting` call `Queryable.*` through reflection over `object`. They already work on
