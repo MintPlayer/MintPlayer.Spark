@@ -49,8 +49,8 @@ internal sealed partial class GitWriterVersioningRunEndpoint : IPostEndpoint<Ver
             return refusal.Result();
 
         var run = new ReleaseRunRequest(valid, settings, branch == defaultBranch, request.BranchMajor, request.Run);
-        return Results.Json(await runs.RunAsync(new VersioningRunJob($"{request.Provider}/{request.RepoId}", cloneUrl, credential, branch, defaultBranch, tagger, run)),
-            GitWriterHost.Json);
+        return Results.Json(await runs.RunAsync(new VersioningRunJob($"{request.Provider}/{request.RepoId}", cloneUrl, credential, branch, defaultBranch, tagger, run,
+            request.PlanOnly)), GitWriterHost.Json);
     }
 
     private static GitIdentity? Tagger(IdentityWire? wire)

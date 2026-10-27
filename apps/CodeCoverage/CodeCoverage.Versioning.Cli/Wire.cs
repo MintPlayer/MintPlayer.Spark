@@ -23,6 +23,9 @@ internal sealed record LocalRunResponse(
 	string Outcome, string? Reason, string? Detail, IReadOnlyList<LocalRelease> Releases, IReadOnlyList<LocalPackageNote> Refused,
 	int Skipped, IReadOnlyList<string> Warnings, IReadOnlyList<string>? Errors = null, IReadOnlyList<ReleaseBranchCut>? BranchCuts = null)
 {
+	/// <summary>The tags a plan-only run decided (#552 D1); <c>push-tags</c> writes them.</summary>
+	public TagPlan? Plan { get; init; }
+
 	public const string Versioned = "versioned";
 	public const string PlanRefused = "plan-refused";
 	public const string RefusedOutcome = "refused";
@@ -42,12 +45,38 @@ internal sealed record LocalRunResponse(
 			result.Plan.Skipped.Count, result.Warnings, null, result.BranchCuts);
 	}
 
+	/// <summary>
+	/// This plan after <c>push-tags</c> (#552 D2): each tag's outcome, and only the notes and branch cuts of tags now in
+	/// place, as <see cref="ReleaseRun.RunAsync"/> computes them for a run that wrote its tags itself.
+	/// </summary>
+	public LocalRunResponse Released(IReadOnlyList<TagWriteResult> written)
+	{
+		var outcomes = written.ToDictionary(t => t.Tag.Name, StringComparer.Ordinal);
+		var releases = Releases.Select(r => r.TaggedByHand ? r
+			: outcomes.TryGetValue(r.Tag, out var result) ? r with
+			{
+				TagOutcome = TagWire(result.Outcome),
+				Release = result.Outcome is TagOutcome.Created or TagOutcome.AlreadyPresent ? r.Release : null,
+			}
+			: r with { TagOutcome = null, Release = null }).ToList();
+		var placed = releases.Where(r => r.Release is not null).Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
+		var failed = written.Any(t => t.Outcome is not (TagOutcome.Created or TagOutcome.AlreadyPresent));
+		return this with
+		{
+			Releases = releases,
+			BranchCuts = BranchCuts?.Where(c => c.Packages.Any(placed.Contains)).ToList(),
+			Errors = failed ? [.. written.Where(t => t.Outcome is not (TagOutcome.Created or TagOutcome.AlreadyPresent)).Select(t => $"{t.Tag.Name}: {t.Detail ?? t.Outcome.ToString()}")] : Errors,
+			Plan = null,
+		};
+	}
+
 	private static string TagWire(TagOutcome outcome) => outcome switch
 	{
 		TagOutcome.Created => "created",
 		TagOutcome.AlreadyPresent => "already-present",
 		TagOutcome.Conflict => "conflict",
 		TagOutcome.Unreachable => "unreachable",
+		TagOutcome.Planned => "planned",
 		_ => throw new ArgumentOutOfRangeException(nameof(outcome)),
 	};
 }

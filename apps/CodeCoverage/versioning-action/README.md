@@ -57,11 +57,59 @@ build the npm libraries after this step, so they copy the stamped package.json.
 It reads the `versioning:` section of `coverage.yml` from the **default branch**, the same file the app reads. A
 repository without that section is refused.
 
+### Plan beside the tests, tag after them (#552)
+
+When the tests run in their own job, split the step so that nothing waits for them that does not need to.
+`phase: plan` runs after the library build, in parallel with the tests. It decides the versions and stamps them into
+every publishable package.json, the source file and the build-output copy, exactly as a release does, but writes no
+tag. Whatever builds after it in the same job (a demo or docs site showing the library version) reads the stamped
+files, and `all-versions` gives every package's version to anything else. Its `plan` output goes to a job output.
+`phase: release` runs after the tests with that output as its `plan` input. It writes exactly the planned tags and
+stamps again, so a job that did not inherit the stamped files still publishes right, and the pack follows it. Several
+jobs may release the same plan (one per publish job): the later ones find the tags and Releases in place.
+
+```yaml
+jobs:
+  plan:
+    permissions:
+      contents: read
+      id-token: write   # server mode; without it the plan warns and runs on the runner (local mode)
+    outputs: { plan: '${{ steps.plan.outputs.plan }}' }
+    steps:
+      # The action deepens the clone itself. Add fetch-depth: 0 only if `dotnet` builds BEFORE the action here.
+      - uses: actions/checkout@v7
+      - run: npx nx run-many -t build --projects='libs/*'
+      - id: plan
+        uses: MintPlayer/MintPlayer.Spark/apps/CodeCoverage/versioning-action@versioning-v1
+        with: { phase: plan }
+      # Reads the stamped package.json. The stamp changed the libraries' inputs, so without
+      # --exclude-task-dependencies Nx would build every library a second time.
+      - run: npx nx run-many -t build --projects='apps/*' --exclude-task-dependencies
+  publish:
+    needs: [plan, test]
+    permissions:
+      contents: write   # push the tags (and, in local mode, create the Releases)
+      id-token: write   # server mode
+    steps:
+      - uses: actions/checkout@v7
+      - uses: MintPlayer/MintPlayer.Spark/apps/CodeCoverage/versioning-action@versioning-v1
+        with: { phase: release, plan: '${{ needs.plan.outputs.plan }}' }
+      - run: dotnet pack -c Release -o nupkgs   # after the action, so the clone is full and the tags are there
+```
+
+The release refuses a plan made for another commit or branch, and a plan the tag history moved past (`stale-plan`):
+use **"Re-run all jobs"** to plan again. The check covers **every** version tag in the repository, so expect this
+friction: a tag pushed on a release branch, or by hand, while a master run is between its plan and its release makes
+that master release refuse, even when its versions would not have changed. This is deliberate (the strict check of
+#552 D3). In server mode a 5xx on either phase falls back to the local engine, with the same plan for the release. See [the versioning guide](../../../docs/code-coverage/versioning.md#plan-beside-the-tests-tag-after-them-552).
+
 ## Inputs
 
 | Input | Default | Meaning |
 |---|---|---|
-| `mode` | `versioning.mode`, else `server` | `server`: the app plans and pushes the tags. `local`: the engine runs on the runner, from this action's source. |
+| `phase` | `all` | `all`: decide and tag in one step. `plan`: decide and stamp the npm files, no tag. `release`: write the tags of the `plan` input, and stamp again. |
+| `plan` | (none) | `phase: release` only: the `plan` output of the `phase: plan` step. |
+| `mode` | `versioning.mode`, else `server` | `server`: the app plans and pushes the tags. `local`: the engine runs on the runner. |
 | `url` | `https://coverage.mintplayer.com` | The app, for server mode. |
 | `configuration` | `Release` | The build configuration whose output the API hashes are read from. |
 | `working-directory` | `.` | The checkout root. |
@@ -80,9 +128,11 @@ missing), a network error, a timeout or a 5xx. A 4xx is the app's answer, and th
 
 | Output | Content |
 |---|---|
-| `outcome` | `versioned`, or `skipped` (a pull request or tag build). A refusal fails the step and names the packages. |
+| `outcome` | `versioned`, `planned` (`phase: plan`), or `skipped` (a pull request or tag build). A refusal fails the step and names the packages. |
+| `plan` | `phase: plan` only: the plan as JSON, for the release step. |
 | `mode` | The host that ran: `server` or `local`. |
-| `released` | JSON array of the package ids this commit released. |
+| `released` | JSON array of the package ids this commit released (`phase: plan`: will release). |
+| `all-versions` | JSON object, package id → version, for **every** package of the manifest: a release at its new version, any other at its last reachable tag. A package never tagged is absent. |
 | `versions` | JSON object, package id → version, for every released package. |
 | `dist-tags` | JSON object, npm package → dist-tag: `next` for a prerelease, `latest` for the highest stable major, `v<major>-lts` for an older major. |
 
@@ -107,5 +157,7 @@ MSBuild compiles in your build; it adds no dependency to your packages.
 ## Versions of this action
 
 Pin the moving `versioning-v<major>` tag, or a commit with that tag as a comment. `versioning-action-publish.yml`
-moves the tag on every change to the action or to the engine it runs from source in local mode. `dist/` is the
+moves the tag on every change to the action or to its engine. The tags point at a commit on top of master's that also
+holds the engine prebuilt (`engine/`, #552 D8), so the step runs `dotnet engine/codecoverage-versioning.dll` instead of
+building it. A checkout of a branch has no `engine/` and runs the engine from source. `dist/` is the
 committed ncc bundle; build it from the main checkout only (see the repository's `CLAUDE.md`).

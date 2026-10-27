@@ -1,4 +1,4 @@
-import { runOnServer } from './server';
+import { planOnServer, releaseOnServer, runOnServer } from './server';
 
 const versioned = { outcome: 'versioned', releases: [], refused: [], skipped: 0, warnings: [] };
 
@@ -31,6 +31,27 @@ describe('runOnServer', () => {
   it.each([502, 503])('%i falls back to the local engine', async (status) => {
     const answer = await runOnServer({ url: 'https://x', idToken: async () => 't', fetch: fakeFetch(status, 'down') }, {});
     expect(answer.kind).toBe('unavailable');
+  });
+
+  it('plans and releases on their own routes; the release sends only the seal (#552 D6)', async () => {
+    const seen: { url?: string } = {};
+    let body = '';
+    const recording = (async (url: string, init: RequestInit) => {
+      seen.url = url;
+      body = String(init.body);
+      return new Response(JSON.stringify(versioned), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    await planOnServer({ url: 'https://x', idToken: async () => 't', fetch: recording }, { commit: 'c' });
+    expect(seen.url).toBe('https://x/api/versioning/plan');
+    await releaseOnServer({ url: 'https://x', idToken: async () => 't', fetch: recording }, 'sealed');
+    expect(seen.url).toBe('https://x/api/versioning/release');
+    expect(JSON.parse(body)).toEqual({ seal: 'sealed' });
+  });
+
+  it('a stale release (409) is an answer, so the action does not fall back', async () => {
+    const answer = await releaseOnServer({ url: 'https://x', idToken: async () => 't', fetch: fakeFetch(409, { ...versioned, outcome: 'refused', reason: 'stale-plan' }) }, 's');
+    expect(answer).toMatchObject({ kind: 'answer', status: 409 });
   });
 
   it('falls back when the job has no OIDC token or the app is unreachable', async () => {

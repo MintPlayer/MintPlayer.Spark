@@ -198,11 +198,17 @@ internal sealed partial class GitWriterTagsEndpoint : IPostEndpoint<TagsRequestW
             || refusal.Check(WireValidation.Credential(request.Credential), "credential", WireValidation.CredentialRule) is not { } credential
             || refusal.Check(Branches(request.Branches), "branches", BranchesRule) is not { } branches
             || refusal.Check(Tagger(request.Tagger), "tagger", TaggerRule) is not { } tagger
-            || refusal.Check(Tags(request.Tags), "tags", TagsRule) is not { } toWrite)
+            || !refusal.Check(request.Run is null || Versioning.Validation.Identifiers.IsRunUrl(request.Run), "run", GitWriterVersioningRunEndpoint.RunRule)
+            || !refusal.Check(request.Fingerprint is null || Versioning.Validation.Identifiers.IsApiHash(request.Fingerprint), "fingerprint", FingerprintRule)
+            || refusal.Check(Tags(request.Tags, request.Run), "tags", TagsRule) is not { } toWrite
+            || !refusal.Check(request.Fingerprint is null || toWrite.Select(t => t.Commit).Distinct(StringComparer.Ordinal).Count() == 1, "tags", OneCommitRule))
             return refusal.Result();
-        return Results.Json(await tags.WriteAsync(new TagsJob($"{request.Provider}/{request.RepoId}", cloneUrl, credential, branches, tagger, toWrite)),
-            GitWriterHost.Json);
+        return Results.Json(await tags.WriteAsync(new TagsJob($"{request.Provider}/{request.RepoId}", cloneUrl, credential, branches, tagger, toWrite,
+            request.Fingerprint)), GitWriterHost.Json);
     }
+
+    public const string FingerprintRule = "null, or a tag-history fingerprint sha256:<64 hex>";
+    public const string OneCommitRule = "every tag of a plan's release on the same commit";
 
     private static IReadOnlyList<string>? Branches(List<string>? values)
         => values is { Count: > 0 and <= MaxBranches } && values.All(v => WireValidation.Branch(v) is not null) ? values.Distinct(StringComparer.Ordinal).ToList() : null;
@@ -210,7 +216,7 @@ internal sealed partial class GitWriterTagsEndpoint : IPostEndpoint<TagsRequestW
     private static GitIdentity? Tagger(IdentityWire? wire)
         => wire is not null && MergeQueueWireRules.IsIdentity(wire.Name, wire.Email) ? new GitIdentity(wire.Name!, wire.Email!) : null;
 
-    private static IReadOnlyList<Versioning.Releases.TagToWrite>? Tags(List<TagWire>? wires)
+    private static IReadOnlyList<Versioning.Releases.TagToWrite>? Tags(List<TagWire>? wires, string? run)
     {
         if (wires is not { Count: > 0 } || wires.Count > Versioning.Graph.Limits.MaxPackagesPerRun)
             return null;
@@ -221,7 +227,7 @@ internal sealed partial class GitWriterTagsEndpoint : IPostEndpoint<TagsRequestW
                 || WireValidation.ObjectId(wire.Commit) is not { } commit
                 || (wire.ApiHash is not null && !Versioning.Validation.Identifiers.IsApiHash(wire.ApiHash)))
                 return null;
-            result.Add(new(tag, commit, new Versioning.Versions.TagAnnotation(wire.ApiHash, null)));
+            result.Add(new(tag, commit, new Versioning.Versions.TagAnnotation(wire.ApiHash, null, run)));
         }
         return result.Select(t => t.Tag.Name).Distinct(StringComparer.Ordinal).Count() == result.Count ? result : null;
     }

@@ -6,6 +6,13 @@ branding:
   color: 'green'
 
 inputs:
+  phase:
+    description: 'all | plan | release (#552). all decides the versions and tags the commit in one step. plan decides them and stamps the npm package.json files (source and build output) but writes no tag, so whatever builds next reads the versions and it can run beside the tests; release, after the tests, writes exactly the planned tags from the plan input and stamps again. A release refuses a plan the tag history moved past: use "Re-run all jobs" to plan again.'
+    required: false
+    default: 'all'
+  plan:
+    description: 'phase: release: the plan output of the phase: plan step, passed through a job output.'
+    required: false
   mode:
     description: 'server | local. Default: versioning.mode in coverage.yml on the default branch, else server. server falls back to local when the app is unreachable or answers 5xx.'
     required: false
@@ -42,13 +49,17 @@ inputs:
 
 outputs:
   outcome:
-    description: 'versioned | skipped (not a branch run). The step fails on anything else.'
+    description: 'versioned | planned (phase: plan) | skipped (not a branch run). The step fails on anything else.'
+  plan:
+    description: 'phase: plan: the plan, as JSON, for the release step''s plan input. Pass it through a job output.'
   mode:
     description: 'The host that versioned: server or local.'
   released:
-    description: 'JSON array of the package ids released by this commit. Pack and publish everything: an unchanged package packs at its published version, which the publish skips.'
+    description: 'JSON array of the package ids released by this commit (phase: plan: to be released). Pack and publish everything: an unchanged package packs at its published version, which the publish skips.'
   versions:
     description: 'JSON object: package id → version, for every released package.'
+  all-versions:
+    description: 'JSON object: package id → version for EVERY package of the manifest, released or not (an unreleased one at its last reachable tag; one never tagged is absent). Set by every phase.'
   dist-tags:
     description: 'JSON object: npm package id → dist-tag (latest, v<major>-lts or next), for every released npm package.'
 

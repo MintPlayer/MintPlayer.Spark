@@ -338,6 +338,8 @@ its failed jobs.
 
 - ~~Compute versions as **local** tags, rebuild, then push tags in a later phase (`push: false` input, engine/CLI
   split, spike S2).~~ One step is enough once tagging happens after the tests (Q3) and a dangling tag needs no undo.
+  *Reopened 2026-10-27 by #552 for a different reason:* a demo build needs the versions before the tests finish. See
+  [versioning_plan_release_split_PRD.md](versioning_plan_release_split_PRD.md).
 - ~~A post-step that deletes the tags when a later step fails.~~ Rejected: a `post:` only sees its own job, and
   deleting a tag whose package shipped reuses a version.
 - ~~Protect the tag-to-package tail from cancellation with `if: always() && …`.~~ Unnecessary: a cancelled tail is

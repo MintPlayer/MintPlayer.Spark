@@ -8,9 +8,10 @@ name: versioning-action-publish
 #   versioning-v<major>  force-moved to the latest commit of that major: what the onboarding pull request pins,
 #                        so a fix reaches every repository with no PR anywhere.
 #
-# `mode: local` runs the engine from source at the pinned commit (CodeCoverage.Versioning.Cli and the
-# CodeCoverage.Versioning library it references), so an engine change moves the tag too: the local host must
-# run the same engine the server runs (D2).
+# `mode: local` runs the engine of the pinned commit (CodeCoverage.Versioning.Cli and the CodeCoverage.Versioning
+# library it references), so an engine change moves the tag too: the local host must run the same engine the server
+# runs (D2). The tags point at a commit on top of master's that also holds the engine prebuilt (#552 D8); a checkout
+# of master itself has none and runs the engine from source.
 #
 # Its own workflow for the `paths:` filter: the moving tag must only move for a commit that touched the
 # action or its engine, never for an unrelated master push.
@@ -106,20 +107,58 @@ jobs:
       env:
         GH_TOKEN: ${{ github.token }}
 
-    - name: Rebuild, publish and tag
-      uses: MintPlayer/github-actions/compile-ts-action@main
+    # Our own steps rather than compile-ts-action (#552 S1): that action commits its output to the branch it runs on,
+    # and the prebuilt engine below must land only on the tag commit, never on master.
+    - name: Setup Node
+      uses: actions/setup-node@v6
       with:
-        working-directory: apps/CodeCoverage/versioning-action
-        output-dir: dist
         node-version: 24.x
-        install-command: npm ci
-        test-command: npm test
-        build-command: npm run build
-        mode: push
-        commit-message: 'build: repack the versioning bundle'
-        major-tag: ${{ steps.tags.outputs.major }}
-        # Empty on purpose: see coverage-action-publish.yml (checkout@v7 keeps its credential outside
-        # .git/config, and a second Authorization header fails every git request with HTTP 400).
-        token: ''
-        version-tag-from: ${{ steps.tags.outputs.version-from }}
-        version-tag-prefix: versioning-v
+
+    - name: Test and rebuild the bundle
+      working-directory: apps/CodeCoverage/versioning-action
+      run: |
+        npm ci
+        npm test
+        npm run build
+
+    # The pull-request workflow already fails on a stale dist, so this is normally a no-op.
+    - name: Commit a changed bundle to master
+      run: |
+        git config --local user.name  'github-actions[bot]'
+        git config --local user.email '41898282+github-actions[bot]@users.noreply.github.com'
+        if [ -n "$(git status --porcelain -- apps/CodeCoverage/versioning-action/dist)" ]; then
+          git add apps/CodeCoverage/versioning-action/dist
+          git commit -m 'build: repack the versioning bundle'
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+        fi
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v6
+      with:
+        global-json-file: global.json
+
+    # #552 D8: the engine prebuilt, so a consumer's step runs `dotnet <dll>` instead of building it (about 19 s cold).
+    # net8.0 with RollForward=Major, framework-dependent: it runs on whatever runtime the runner has. It is committed
+    # on a detached commit on top of master's, which only the tags point at.
+    - name: Publish the engine onto the tag commit and tag it
+      run: |
+        engine=apps/CodeCoverage/versioning-action/engine
+        dotnet publish apps/CodeCoverage/CodeCoverage.Versioning.Cli --configuration Release --output "$engine" \
+          -p:UseAppHost=false -p:DebugType=none -p:GenerateDocumentationFile=false
+        test -f "$engine/codecoverage-versioning.dll"
+
+        git checkout --detach
+        git add --force "$engine"
+        git commit -m "build: the versioning action with its prebuilt engine (${MAJOR})"
+        if [ -n "${VERSION_FROM}" ]; then
+          version="versioning-v$(node -p "require('./${VERSION_FROM}').version")"
+          git tag "$version"
+          git push origin "refs/tags/${version}"
+          echo "Cut ${version}."
+        fi
+        git tag --force "${MAJOR}"
+        git push --force origin "refs/tags/${MAJOR}"
+        echo "Moved ${MAJOR} to $(git rev-parse HEAD)."
+      env:
+        MAJOR: ${{ steps.tags.outputs.major }}
+        VERSION_FROM: ${{ steps.tags.outputs.version-from }}

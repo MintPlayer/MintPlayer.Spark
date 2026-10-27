@@ -17,6 +17,16 @@ public sealed class TagHistory(IEnumerable<TaggedVersion> tags)
 
 	public IReadOnlyList<TaggedVersion> Of(string packageId) => byPackage[packageId].OrderBy(t => t.Version).ToList();
 
+	/// <summary>
+	/// What a plan was decided against (#552 D3): every version tag but <paramref name="excluded"/> (the plan's own), by
+	/// name, commit and API hash. A tag added, moved or re-annotated between the plan and its release changes it.
+	/// </summary>
+	public string Fingerprint(IReadOnlySet<string> excluded) => Api.DotnetApiListing.Hash(byPackage
+		.SelectMany(g => g)
+		.Where(t => !excluded.Contains(t.Tag.Name))
+		.Select(t => $"{t.Tag.Name} {t.Commit} {t.Annotation?.ApiHash}")
+		.Order(StringComparer.Ordinal));
+
 	/// <summary>The tags a person pushed on <paramref name="commit"/>: fixed versions for this run (D3).</summary>
 	public IEnumerable<TaggedVersion> On(string commit) => byPackage.SelectMany(g => g).Where(t => t.Commit == commit);
 

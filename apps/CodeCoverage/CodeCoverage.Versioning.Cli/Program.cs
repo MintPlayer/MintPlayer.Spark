@@ -14,6 +14,7 @@ try
 		["api-list", var path] => ApiList(path),
 		["manifest", .. var rest] => await Manifest(Options.Parse(rest)),
 		["run", .. var rest] => await Run(Options.Parse(rest)),
+		["push-tags", .. var rest] => await PushTags(Options.Parse(rest)),
 		_ => Usage(),
 	};
 }
@@ -97,12 +98,71 @@ static async Task<int> Run(Options options)
 		// #544 D5: the tags name the run that wrote them; the CLI runs on the runner, so its environment says which.
 		var run = TagAnnotation.RunUrl(Environment.GetEnvironmentVariable("GITHUB_SERVER_URL"), Environment.GetEnvironmentVariable("GITHUB_REPOSITORY"),
 			Environment.GetEnvironmentVariable("GITHUB_RUN_ID"));
-		var result = await ReleaseRun.RunAsync(git, writer, new ReleaseRunRequest(manifest, config.ToSettings(), branch == defaultBranch, branchMajor, run));
+		var request = new ReleaseRunRequest(manifest, config.ToSettings(), branch == defaultBranch, branchMajor, run);
+		// #552 D1: decide and record, write nothing; push-tags writes the plan after the tests.
+		if (options.Has("plan-only"))
+		{
+			var (planned, tags) = await ReleaseRun.PlanOnlyAsync(git, request);
+			return await Write(LocalRunResponse.From(planned) with { Plan = tags });
+		}
+		var result = await ReleaseRun.RunAsync(git, writer, request);
 		return await Write(LocalRunResponse.From(result));
 	}
 	catch (Exception e) when (e is ReleaseRunException or GraphException or VersioningException)
 	{
 		return await Write(LocalRunResponse.Refusal("unplannable", e.Message));
+	}
+	catch (GitException e)
+	{
+		return await Write(LocalRunResponse.Refusal("error", e.Message));
+	}
+}
+
+// The release half (#552 D2, D3): writes the tags of a `run --plan-only` result, deciding nothing again. The output is
+// that result with each tag's outcome, and the notes and branch cuts of the tags now in place.
+static async Task<int> PushTags(Options options)
+{
+	var repo = Path.GetFullPath(options.Require("repo"));
+	var output = options.Require("out");
+	var branch = options.Require("branch");
+	var remote = options.Get("remote") ?? "origin";
+
+	async Task<int> Write(LocalRunResponse response)
+	{
+		await File.WriteAllTextAsync(output, JsonSerializer.Serialize(response, Wire.Json));
+		return 0;
+	}
+
+	LocalRunResponse planned;
+	try
+	{
+		planned = JsonSerializer.Deserialize<LocalRunResponse>(await File.ReadAllTextAsync(options.Require("plan")), Wire.Json)
+			?? throw new JsonException("The plan is empty.");
+	}
+	catch (JsonException e)
+	{
+		return await Write(LocalRunResponse.Refusal("invalid-input", e.Message));
+	}
+	if (planned.Plan is not { } plan) return await Write(LocalRunResponse.Refusal("invalid-input", "The file holds no plan: it is not the output of `run --plan-only`, or the plan was refused."));
+
+	var git = new GitCli(GitDirectory(repo), TimeSpan.FromMinutes(5));
+	var head = (await git.RunAsync(["rev-parse", "--verify", "HEAD^{commit}"])).EnsureSuccess("rev-parse").Text.Trim();
+	if (head != plan.Commit)
+		return await Write(LocalRunResponse.Refusal("stale-plan", $"The plan is for {plan.Commit}, but the checkout is at {head}."));
+
+	var writer = new TagWriter(new CliTagGit(git, Environment.GetEnvironmentVariable("CODECOVERAGE_VERSIONING_TOKEN")), remote,
+		[$"refs/remotes/{remote}/{branch}"], new Tagger("github-actions[bot]", "41898282+github-actions[bot]@users.noreply.github.com"));
+	try
+	{
+		return await Write(planned.Released(await ReleaseRun.ReleaseAsync(git, writer, plan)));
+	}
+	catch (StalePlanException e)
+	{
+		return await Write(LocalRunResponse.Refusal("stale-plan", e.Message));
+	}
+	catch (VersioningException e)
+	{
+		return await Write(LocalRunResponse.Refusal("invalid-input", e.Message));
 	}
 	catch (GitException e)
 	{
@@ -124,7 +184,8 @@ static int Usage()
 	Console.Error.WriteLine("""
 		usage: codecoverage-versioning api-list <assembly.dll>
 		       codecoverage-versioning manifest --repo <dir> --out <file> [--config <file>] [--configuration Release] [--branch <name> --default-branch <name>] [--no-registry]
-		       codecoverage-versioning run --repo <dir> --manifest <file> --config <file> --branch <name> --default-branch <name> --out <file> [--remote origin]
+		       codecoverage-versioning run --repo <dir> --manifest <file> --config <file> --branch <name> --default-branch <name> --out <file> [--remote origin] [--plan-only]
+		       codecoverage-versioning push-tags --repo <dir> --plan <file> --branch <name> --out <file> [--remote origin]
 		""");
 	return 2;
 }

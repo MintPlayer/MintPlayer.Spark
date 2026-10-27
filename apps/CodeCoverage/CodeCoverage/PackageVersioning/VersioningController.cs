@@ -1,5 +1,7 @@
 using System.Globalization;
+using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using CodeCoverage.ApiTokens;
 using CodeCoverage.Entities;
 using CodeCoverage.Forge;
@@ -8,6 +10,7 @@ using CodeCoverage.MergeQueue;
 using CodeCoverage.Versioning.Releases;
 using CodeCoverage.Versioning.Versions;
 using Microsoft.AspNetCore.Antiforgery;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -54,6 +57,7 @@ public partial class VersioningController : ControllerBase
     [Inject] private readonly IMessageBus messageBus;
     [Inject] private readonly TimeProvider clock;
     [Inject] private readonly ILogger<VersioningController> logger;
+    [Inject] private readonly IDataProtectionProvider dataProtection;
 
     /// <summary>See <c>UploadsController.Oidc</c>: GitHub is the only OIDC scheme registered.</summary>
     private static ForgeOidcProfile Oidc => ForgeOidcProfile.GitHub;
@@ -61,12 +65,42 @@ public partial class VersioningController : ControllerBase
     /// <param name="Outcome">The writer's outcome (<c>versioned</c>, <c>plan-refused</c>, …) or the app's refusal.</param>
     public sealed record VersioningRunResponse(
         string Outcome, string? Reason, string? Detail, IReadOnlyList<GitWriterRelease> Releases, IReadOnlyList<GitWriterPackageNote> Refused,
-        int Skipped, IReadOnlyList<string> Warnings, IReadOnlyList<string>? Errors = null, IReadOnlyList<GitWriterBranchCut>? BranchCuts = null);
+        int Skipped, IReadOnlyList<string> Warnings, IReadOnlyList<string>? Errors = null, IReadOnlyList<GitWriterBranchCut>? BranchCuts = null)
+    {
+        /// <summary>#552 D1: the tags <c>plan</c> decided and wrote none of.</summary>
+        public TagPlan? Plan { get; init; }
+
+        /// <summary>
+        /// #552 D6: this response, sealed with the app's Data Protection keys for a day. <c>release</c> takes only the seal,
+        /// so the client cannot change a version, a tag or a Release text between the plan and its release.
+        /// </summary>
+        public string? Seal { get; init; }
+    }
+
+    /// <summary>The body of <c>release</c>: the seal <c>plan</c> answered with.</summary>
+    public sealed record VersioningReleaseRequest(string? Seal);
+
+    /// <summary>What a seal holds: the plan's answer and what the release's token must match.</summary>
+    internal sealed record SealedPlan(long RepositoryId, long RunId, string Commit, string Branch, VersioningRunResponse Response);
+
+    internal const string SealPurpose = "CodeCoverage.Versioning.Plan.v1";
+    internal static readonly TimeSpan SealLifetime = TimeSpan.FromDays(1);
 
     [RequireAntiforgeryToken(false)]
     [HttpPost("run")]
     [RequestSizeLimit(Versioning.Graph.Limits.MaxManifestBytes)]
-    public async Task<IActionResult> Run([FromBody] ReleaseManifest? manifest, CancellationToken cancellationToken)
+    public Task<IActionResult> Run([FromBody] ReleaseManifest? manifest, CancellationToken cancellationToken) => VersionAsync(manifest, planOnly: false, cancellationToken);
+
+    /// <summary>
+    /// #552 D1, D6: the run's decision without its tags, checked exactly as <see cref="Run"/>. The answer carries the plan
+    /// and its seal; nothing is recorded or reported until <see cref="Release"/> writes the tags.
+    /// </summary>
+    [RequireAntiforgeryToken(false)]
+    [HttpPost("plan")]
+    [RequestSizeLimit(Versioning.Graph.Limits.MaxManifestBytes)]
+    public Task<IActionResult> Plan([FromBody] ReleaseManifest? manifest, CancellationToken cancellationToken) => VersionAsync(manifest, planOnly: true, cancellationToken);
+
+    private async Task<IActionResult> VersionAsync(ReleaseManifest? manifest, bool planOnly, CancellationToken cancellationToken)
     {
         if (manifest?.Validate() is not { Count: 0 })
             return Answer(StatusCodes.Status400BadRequest, "refused", "manifest", errors: manifest?.Validate() ?? ["The body is not a release manifest."]);
@@ -128,21 +162,76 @@ public partial class VersioningController : ControllerBase
             return Answer(StatusCodes.Status503ServiceUnavailable, "failed", "seeds", "The onboarding's seed tags could not be pushed yet; the run waits for them.");
         }
 
-        var record = new VersioningRun
-        {
-            Id = VersioningRun.DocumentId(repository.Provider, repoId, runId, runAttempt),
-            Repository = repository.Id!,
-            Branch = branch,
-            Commit = manifest.Commit!,
-            WorkflowRef = User.FindFirst(Oidc.WorkflowRefClaim)?.Value,
-            RunId = runId,
-            RunAttempt = runAttempt,
-            StartedAtUtc = clock.GetUtcNow().UtcDateTime,
-        };
+        var record = NewRecord(repository, repoId, runId, runAttempt, branch, manifest.Commit!);
 
         // #544 D5: every tag names this run; the id comes from the OIDC token, never from the request body.
         var runUrl = TagAnnotation.RunUrl("https://github.com", repository.FullName, runId.ToString(CultureInfo.InvariantCulture));
-        var (status, response) = await RunOnWriterAsync(repository, forge, branch, defaultBranch, branchMajor, config.ToSettings(), manifest, runUrl, cancellationToken);
+        var (status, response) = await RunOnWriterAsync(repository, forge, branch, defaultBranch, branchMajor, config.ToSettings(), manifest, runUrl, planOnly,
+            cancellationToken);
+        if (planOnly)
+            return StatusCode(status, status == StatusCodes.Status200OK && response.Plan is not null
+                ? response with { Seal = Sealer.Protect(JsonSerializer.Serialize(new SealedPlan(repoId, runId, manifest.Commit!, branch, response), SealJson), SealLifetime) }
+                : response);
+        return await FinishAsync(record, repository, branch, status, response, cancellationToken);
+    }
+
+    /// <summary>
+    /// #552 D6: writes the tags of a sealed plan as the App, deciding nothing again. The token must be the same
+    /// repository's same workflow run (any attempt, so "re-run failed jobs" works) on the plan's commit and branch, and the
+    /// writer refuses with <c>stale-plan</c> when the tag history moved since the plan (D3).
+    /// </summary>
+    [RequireAntiforgeryToken(false)]
+    [HttpPost("release")]
+    [RequestSizeLimit(Versioning.Graph.Limits.MaxManifestBytes)]
+    public async Task<IActionResult> Release([FromBody] VersioningReleaseRequest? request, CancellationToken cancellationToken)
+    {
+        if (!long.TryParse(User.FindFirst(Oidc.RepositoryIdClaim)?.Value, NumberStyles.None, CultureInfo.InvariantCulture, out var repoId)
+            || !long.TryParse(User.FindFirst(Oidc.RunIdClaim)?.Value, NumberStyles.None, CultureInfo.InvariantCulture, out var runId))
+            return Forbidden("The token names no repository or workflow run.");
+        var runAttempt = int.TryParse(User.FindFirst(Oidc.RunAttemptClaim!)?.Value, NumberStyles.None, CultureInfo.InvariantCulture, out var attempt) ? attempt : 1;
+
+        if (Unseal(request?.Seal) is not { Response.Plan: { } plan } sealedPlan)
+            return Answer(StatusCodes.Status400BadRequest, "refused", "seal", "The plan's seal is missing, expired, or was not made by this server.");
+        // A run id belongs to exactly one workflow of one repository, so these two also pin the workflow (#552 D6).
+        if (sealedPlan.RepositoryId != repoId || sealedPlan.RunId != runId)
+            return Forbidden("The plan was made for another repository or workflow run.");
+        if (!string.Equals(User.FindFirst(Oidc.CommitClaim)?.Value, sealedPlan.Commit, StringComparison.Ordinal))
+            return Forbidden("The plan's commit is not the commit the workflow run is for.");
+        if (Oidc.Branch(User) is not { } branch || branch != sealedPlan.Branch)
+            return Forbidden("The plan was made on another branch.");
+
+        var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, repoId), cancellationToken);
+        if (repository is null)
+            return Forbidden("The repository is not known to CodeCoverage: install the GitHub App on it.");
+        if (!writer.IsConfigured)
+            return Answer(StatusCodes.Status503ServiceUnavailable, "failed", "unavailable", "The git writer is not configured on this server.");
+        if (queues.FirstOrDefault(q => q.Provider == repository.Provider) is not { } forge)
+            return Answer(StatusCodes.Status503ServiceUnavailable, "failed", "unavailable", "This forge has no git writer access.");
+
+        using var held = await locks.TryEnterAsync(repository.Id!, cancellationToken);
+        if (held is null)
+            return Answer(StatusCodes.Status503ServiceUnavailable, "failed", "busy", "Another versioning run of this repository is still going.");
+
+        var record = NewRecord(repository, repoId, runId, runAttempt, branch, sealedPlan.Commit);
+        var (status, response) = await ReleaseOnWriterAsync(repository, forge, branch, plan, sealedPlan.Response, cancellationToken);
+        return await FinishAsync(record, repository, branch, status, response, cancellationToken);
+    }
+
+    private VersioningRun NewRecord(Repository repository, long repoId, long runId, int runAttempt, string branch, string commit) => new()
+    {
+        Id = VersioningRun.DocumentId(repository.Provider, repoId, runId, runAttempt),
+        Repository = repository.Id!,
+        Branch = branch,
+        Commit = commit,
+        WorkflowRef = User.FindFirst(Oidc.WorkflowRefClaim)?.Value,
+        RunId = runId,
+        RunAttempt = runAttempt,
+        StartedAtUtc = clock.GetUtcNow().UtcDateTime,
+    };
+
+    private async Task<IActionResult> FinishAsync(VersioningRun record, Repository repository, string branch, int status, VersioningRunResponse response,
+        CancellationToken cancellationToken)
+    {
         Record(record, response);
         await session.StoreAsync(record, record.Id, cancellationToken);
         await session.SaveChangesAsync(cancellationToken);
@@ -153,13 +242,92 @@ public partial class VersioningController : ControllerBase
         // D12: so does the cut of a release branch when a platform major moved.
         if (record.BranchCuts.Count > 0)
             await messageBus.BroadcastAsync(new CutReleaseBranchesMessage { RunId = record.Id! }, cancellationToken);
-        await ReportAsync(repository, manifest.Commit!, branch, response, cancellationToken);
+        await ReportAsync(repository, record.Commit, branch, response, cancellationToken);
         return StatusCode(status, response);
+    }
+
+    private ITimeLimitedDataProtector Sealer => dataProtection.CreateProtector(SealPurpose).ToTimeLimitedDataProtector();
+
+    private static readonly JsonSerializerOptions SealJson = new(JsonSerializerDefaults.Web);
+
+    private SealedPlan? Unseal(string? seal)
+    {
+        if (string.IsNullOrEmpty(seal)) return null;
+        try
+        {
+            return JsonSerializer.Deserialize<SealedPlan>(Sealer.Unprotect(seal), SealJson);
+        }
+        catch (Exception ex) when (ex is CryptographicException or JsonException or FormatException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>#552 D6: the plan's tags through the writer's <c>/jobs/tags</c>, which re-checks the tag history first (D3).</summary>
+    private async Task<(int Status, VersioningRunResponse Response)> ReleaseOnWriterAsync(
+        Repository repository, IForgeMergeQueue forge, string branch, TagPlan plan, VersioningRunResponse planned, CancellationToken cancellationToken)
+    {
+        if (plan.Tags.Count == 0) return (StatusCodes.Status200OK, Released(planned, []));
+        var push = await forge.GetWriterAccessAsync(repository, null, false, cancellationToken);
+        if (push.Access is not { } access)
+            return (StatusCodes.Status503ServiceUnavailable, Refusal("failed", "auth", push.RefusalReason));
+        try
+        {
+            var result = await writer.TagsAsync(new GitWriterTagsRequest(
+                repository.Provider.ToCanonicalString(), repository.GitHubId.ToString(CultureInfo.InvariantCulture), access.CloneUrl,
+                new CommitGraph.SidecarCredential(access.Username, access.Password), [branch], Tagger,
+                [.. plan.Tags.Select(t => new GitWriterTag(t.Name, plan.Commit, t.ApiHash))], plan.Run, plan.Fingerprint), cancellationToken);
+            return (result.Outcome, result.Reason) switch
+            {
+                (GitWriterTagsResult.Tagged, _) => (StatusCodes.Status200OK, Released(planned, result.Tags ?? [])),
+                (_, StalePlan) => (StatusCodes.Status409Conflict, Refusal("refused", StalePlan, result.Detail)),
+                ("busy", _) => (StatusCodes.Status503ServiceUnavailable, Refusal(result.Outcome, result.Reason, result.Detail)),
+                _ => (StatusCodes.Status502BadGateway, Refusal(result.Outcome, result.Reason, result.Detail)),
+            };
+        }
+        catch (GitWriterRefusedException ex)
+        {
+            return (StatusCodes.Status422UnprocessableEntity, Refusal("refused", "request", ex.Message));
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
+        {
+            logger.LogWarning(ex, "Versioning: the git writer did not answer for {Repository}", repository.FullName);
+            return (StatusCodes.Status502BadGateway, Refusal("failed", "unavailable", "The git writer did not answer."));
+        }
+        finally
+        {
+            await forge.RevokeWriterAccessAsync(repository, access, CancellationToken.None);
+        }
+    }
+
+    internal const string StalePlan = "stale-plan";
+
+    /// <summary>
+    /// The plan's answer after its release: each tag's outcome, and only the Release texts and branch cuts of tags now in
+    /// place, as a run that wrote its own tags reports them.
+    /// </summary>
+    internal static VersioningRunResponse Released(VersioningRunResponse planned, IReadOnlyList<GitWriterTagResult> written)
+    {
+        var outcomes = written.ToDictionary(t => t.Name, StringComparer.Ordinal);
+        static bool InPlace(string? outcome) => outcome is GitWriterTagResult.Created or GitWriterTagResult.AlreadyPresent;
+        var releases = planned.Releases.Select(r => r.TaggedByHand ? r
+            : outcomes.TryGetValue(r.Tag, out var result) ? r with { TagOutcome = result.Outcome, Release = InPlace(result.Outcome) ? r.Release : null }
+            : r with { TagOutcome = null, Release = null }).ToList();
+        var placed = releases.Where(r => r.Release is not null).Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
+        var failed = written.Where(t => !InPlace(t.Outcome)).Select(t => $"{t.Name}: {t.Detail ?? t.Outcome}").ToList();
+        return planned with
+        {
+            Releases = releases,
+            BranchCuts = planned.BranchCuts?.Where(c => (c.Packages ?? []).Any(placed.Contains)).ToList(),
+            Errors = failed.Count > 0 ? failed : planned.Errors,
+            Plan = null,
+            Seal = null,
+        };
     }
 
     private async Task<(int Status, VersioningRunResponse Response)> RunOnWriterAsync(
         Repository repository, IForgeMergeQueue forge, string branch, string defaultBranch, int? branchMajor, VersioningSettings settings,
-        ReleaseManifest manifest, string? runUrl, CancellationToken cancellationToken)
+        ReleaseManifest manifest, string? runUrl, bool planOnly, CancellationToken cancellationToken)
     {
         var push = await forge.GetWriterAccessAsync(repository, null, false, cancellationToken);
         if (push.Access is not { } access)
@@ -168,10 +336,10 @@ public partial class VersioningController : ControllerBase
         {
             var result = await writer.VersioningRunAsync(new GitWriterVersioningRequest(
                 repository.Provider.ToCanonicalString(), repository.GitHubId.ToString(CultureInfo.InvariantCulture), access.CloneUrl,
-                new CommitGraph.SidecarCredential(access.Username, access.Password), branch, defaultBranch, branchMajor, Tagger, settings, manifest, runUrl),
+                new CommitGraph.SidecarCredential(access.Username, access.Password), branch, defaultBranch, branchMajor, Tagger, settings, manifest, runUrl, planOnly),
                 cancellationToken);
             var response = new VersioningRunResponse(result.Outcome, result.Reason, result.Detail, result.Releases ?? [], result.Refused ?? [],
-                result.Skipped?.Count ?? 0, result.Warnings ?? [], null, result.BranchCuts ?? []);
+                result.Skipped?.Count ?? 0, result.Warnings ?? [], null, result.BranchCuts ?? []) { Plan = result.Plan };
             return (result.Outcome, result.Reason) switch
             {
                 (GitWriterVersioningResult.Versioned, _) => (StatusCodes.Status200OK, response),

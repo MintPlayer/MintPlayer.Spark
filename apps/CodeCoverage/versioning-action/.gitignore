@@ -1,2 +1,4 @@
 node_modules/
 coverage/
+# The prebuilt engine (#552 D8) is committed only onto the versioning-v<version> tag commit, with git add --force.
+engine/

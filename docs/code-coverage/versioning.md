@@ -111,6 +111,66 @@ version from the tags reachable from HEAD, so every checkout of a job that runs 
 - **npm dist-tags** (D11): `latest` only for the highest stable major, `v<major>-lts` for older majors, `next` for
   prereleases. Pass the `dist-tags` output to your publish if you publish more than one line.
 
+### Plan beside the tests, tag after them (#552)
+
+The single step above computes the versions after the tests, so nothing that needs them can start before the tests
+end. When the tests run in their own job, split the step in two with `phase`. `phase: plan` runs right after the
+library build, in parallel with the tests. It decides the versions and stamps every publishable package.json (source
+and build output), but writes no tag. A demo or docs site built after it reads the right version, and the
+`all-versions` output gives every package's version, released or not. `phase: release` runs after the tests: it
+writes exactly the tags the plan decided and stamps again, and the pack follows it. No tag exists before the tests
+pass. `phase: all`, the default, is the single step. Several publish jobs may each release the same plan; the later
+ones find the tags and Releases already there.
+
+```yaml
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    permissions: { contents: read, id-token: write }
+    outputs:
+      plan: ${{ steps.plan.outputs.plan }}
+    steps:
+      - uses: actions/checkout@v7
+        with: { fetch-depth: 0 }
+      - run: dotnet build -c Release
+      - id: plan
+        uses: MintPlayer/MintPlayer.Spark/apps/CodeCoverage/versioning-action@versioning-v1
+        with: { phase: plan }
+  test:
+    runs-on: ubuntu-latest
+    steps: [ ... ]            # runs at the same time as plan
+  publish:
+    needs: [plan, test]
+    runs-on: ubuntu-latest
+    permissions: { contents: write, id-token: write }
+    steps:
+      - uses: actions/checkout@v7
+        with: { fetch-depth: 0 }
+      - uses: MintPlayer/MintPlayer.Spark/apps/CodeCoverage/versioning-action@versioning-v1
+        with:
+          phase: release
+          plan: ${{ needs.plan.outputs.plan }}
+      - run: dotnet pack -c Release -o nupkgs   # builds again, now with the tags
+      - run: dotnet nuget push ...
+```
+
+- **The plan travels as a job output.** It holds the versions, the tags and the Release texts. In server mode it also
+  holds the app's seal over them. `POST api/versioning/plan` answers with the plan and the seal, and
+  `POST api/versioning/release` takes only the seal. The release's OIDC token must name the same repository, the same
+  workflow run (any attempt), the same commit and the same branch. The seal holds for a day.
+- **A stale plan is refused.** The release checks that no version tag was added, moved or deleted since the plan, its
+  own tags aside. If one was, nothing is written and the step fails with `stale-plan`. **"Re-run all jobs"** plans again;
+  "Re-run failed jobs" reuses the old plan and fails the same way. A release whose tags are already there (a re-run
+  after a failed pack) succeeds and releases nothing new.
+- **Expect this friction:** the check covers every version tag in the repository, not only the plan's packages. A
+  release-branch run that tags while a master run is between plan and release makes the master release refuse, even
+  when its versions would not have changed. Re-run it. This is the strict check the owner chose (#552 D3).
+- **A hand-pushed tag goes in before the run.** To raise a major by hand (`<PackageId>/v5.0.0` on a .NET Standard
+  library, whose major no platform sets), push the tag first and then start the workflow. A tag pushed while a run is
+  between plan and release makes that release stale. "Re-run all jobs" then plans with it.
+- **Fallback:** if the app answers 5xx to the plan, the plan is made on the runner. If it answers 5xx to the release,
+  the runner writes the same plan's tags. A 409 (stale) or a 4xx fails the step.
+
 ### When a release happens (D3)
 
 - **The action step** (the default): every run of the workflow on the default branch or a release branch versions
@@ -246,6 +306,8 @@ Versioning is GitHub only (D16). On GitLab and Bitbucket repositories the Versio
 | `MPV004: <id> would be packed at 0.0.0-PLACEHOLDER` | The project skipped the versioning target (`MintPlayerVersioningSkip`) but is still packable, or it uses `MintPlayer.Versioning.MSBuild` 1.0.0, whose targets a multi-targeted project's outer build never imports. Update the package. |
 | A package restarted at `X.0.0` | It had no seed tag. Push `<id>/v<last published>` on a commit before the release and re-run. |
 | The run fails: "a major never goes down" | The computed major is below the last tag's, or the version already exists (D7). Anchor the package `free`, or fix the target framework. |
+| `phase: release` fails with `stale-plan` | A version tag was added, moved or deleted between the plan and the release (#552 D3). Use **"Re-run all jobs"**, which plans again. "Re-run failed jobs" reuses the stale plan. |
+| `phase: release` says the plan was made for another commit | The `plan` input is from another run, or the branch moved. Use "Re-run all jobs". |
 | The run answers `503 seeds` | The onboarding's seed tags could not be pushed yet. The run waits instead of releasing untagged packages. |
 | Nothing is released after a merge | No input of any package changed: only ignored files did, or only files outside the project directories. |
 | The run failed or was cancelled after the Version step | The tags exist but some packages were not pushed. **Re-run it** (the commit graph's re-run button, or GitHub's "Re-run failed jobs"). The re-run finds its own tags, releases the same versions and pushes what is missing. A tag whose package never ships is harmless: the next release of that package gets the next version. |

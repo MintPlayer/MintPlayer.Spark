@@ -14,7 +14,32 @@ public sealed record ReleaseRunRequest(ReleaseManifest Manifest, VersioningSetti
 public sealed record ReleaseRunResult(ReleasePlan Plan, IReadOnlyList<TagWriteResult> Tags, IReadOnlyList<string> Warnings,
 	IReadOnlyDictionary<string, ReleaseNotesText>? Notes = null, IReadOnlyList<ReleaseBranchCut>? BranchCuts = null)
 {
-	public bool Succeeded => Plan.Refused.Count == 0 && Tags.All(t => t.Outcome is TagOutcome.Created or TagOutcome.AlreadyPresent);
+	public bool Succeeded => Plan.Refused.Count == 0 && Tags.All(t => t.Outcome is TagOutcome.Created or TagOutcome.AlreadyPresent or TagOutcome.Planned);
+}
+
+/// <summary>
+/// The tags a plan-only run decided (#552 D1), for the release half to write later in the same workflow run. It holds
+/// data only, so it crosses jobs as a job output and reaches the server as a request body: both are untrusted, and
+/// <see cref="ReleaseRun.ReleaseAsync"/> validates every field before it writes anything.
+/// </summary>
+/// <param name="Fingerprint">The tag history the plan was decided against, without the plan's own tags (D3).</param>
+public sealed record TagPlan(string Commit, string Fingerprint, string? Run, IReadOnlyList<PlannedTag> Tags);
+
+public sealed record PlannedTag(string Name, string? ApiHash);
+
+/// <summary>The tag history changed after the plan was made, so its versions may be wrong (#552 D3).</summary>
+public sealed class StalePlanException(string message) : Exception(message);
+
+/// <summary>The tag writer of a plan-only run (#552 D1): it records every tag and writes none.</summary>
+public sealed class RecordingTagWriter : ITagWriter
+{
+	public IReadOnlyList<TagToWrite> Recorded { get; private set; } = [];
+
+	public Task<IReadOnlyList<TagWriteResult>> WriteAsync(IReadOnlyList<TagToWrite> tags, CancellationToken cancellationToken = default)
+	{
+		Recorded = tags;
+		return Task.FromResult<IReadOnlyList<TagWriteResult>>([.. tags.Select(t => new TagWriteResult(t.Tag, TagOutcome.Planned))]);
+	}
 }
 
 /// <summary>The run cannot plan at all: a malformed manifest, or a packed package the graph does not hold (D5).</summary>
@@ -67,7 +92,7 @@ public static class ReleaseRun
 
 		// Notes for every tag now in place, the already-present ones too: a rerun after a failed Release creates what is missing.
 		var notes = new Dictionary<string, ReleaseNotesText>(StringComparer.Ordinal);
-		var placed = written.Where(t => t.Outcome is TagOutcome.Created or TagOutcome.AlreadyPresent).Select(t => t.Tag.Name).ToHashSet(StringComparer.Ordinal);
+		var placed = written.Where(t => t.Outcome is TagOutcome.Created or TagOutcome.AlreadyPresent or TagOutcome.Planned).Select(t => t.Tag.Name).ToHashSet(StringComparer.Ordinal);
 		var placedReleases = plan.Releases.Where(r => placed.Contains(r.Tag.Name)).ToList();
 		foreach (var release in placedReleases)
 			notes[release.Tag.Name] = await ReleaseNotes.ForAsync(git, head, release, cancellationToken);
@@ -78,6 +103,51 @@ public static class ReleaseRun
 			? await ReleaseBranchCuts.ForAsync(git, head, placedReleases, request.Settings.ReleaseBranches, warnings, cancellationToken)
 			: [];
 		return new ReleaseRunResult(plan, written, warnings, notes, cuts);
+	}
+
+	/// <summary>
+	/// The plan half (#552 D1): <see cref="RunAsync"/> with a <see cref="RecordingTagWriter"/>, so the versions, notes and
+	/// branch cuts are exactly a run's, and no tag is written. <see cref="TagPlan"/> is null when the plan refused anything.
+	/// </summary>
+	public static async Task<(ReleaseRunResult Result, TagPlan? Tags)> PlanOnlyAsync(GitCli git, ReleaseRunRequest request, CancellationToken cancellationToken = default)
+	{
+		var recorder = new RecordingTagWriter();
+		var result = await RunAsync(git, recorder, request, cancellationToken);
+		if (result.Plan.Refused.Count > 0) return (result, null);
+		var names = recorder.Recorded.Select(t => t.Tag.Name).ToHashSet(StringComparer.Ordinal);
+		var fingerprint = (await TagHistory.ReadAsync(git, cancellationToken)).Fingerprint(names);
+		return (result, new TagPlan(request.Manifest.Commit!, fingerprint, request.Run,
+			[.. recorder.Recorded.Select(t => new PlannedTag(t.Tag.Name, t.Annotation.ApiHash))]));
+	}
+
+	/// <summary>
+	/// The release half (#552 D2, D3): writes exactly the planned tags, deciding nothing again. It refuses with
+	/// <see cref="StalePlanException"/> when the tag history moved since the plan; the plan's own tags are left out of
+	/// that comparison, so a release that pushed some of them before it failed can run again. The caller checks that
+	/// the commit is the one its run built (HEAD locally, the OIDC token's <c>sha</c> on the server).
+	/// </summary>
+	public static async Task<IReadOnlyList<TagWriteResult>> ReleaseAsync(GitCli git, ITagWriter writer, TagPlan plan, CancellationToken cancellationToken = default)
+	{
+		var commit = GitCli.RequireObjectId(plan.Commit);
+		var tags = new List<TagToWrite>();
+		foreach (var planned in plan.Tags)
+		{
+			if (!VersionTag.TryParse(planned.Name, out var tag)) throw new VersioningException($"'{planned.Name}' is not a version tag.");
+			var annotation = new TagAnnotation(planned.ApiHash, null, plan.Run);
+			annotation.Format(tag); // validates the hash and the run URL before anything is written
+			tags.Add(new TagToWrite(tag, commit, annotation));
+		}
+
+		await RequireFreshAsync(git, tags.Select(t => t.Tag.Name).ToHashSet(StringComparer.Ordinal), plan.Fingerprint, cancellationToken);
+		return tags.Count == 0 ? [] : await writer.WriteAsync(tags, cancellationToken);
+	}
+
+	/// <summary>Throws <see cref="StalePlanException"/> unless the tag history, without <paramref name="own"/>, is the one the plan saw (#552 D3).</summary>
+	public static async Task RequireFreshAsync(GitCli git, IReadOnlySet<string> own, string fingerprint, CancellationToken cancellationToken = default)
+	{
+		if ((await TagHistory.ReadAsync(git, cancellationToken)).Fingerprint(own) != fingerprint)
+			throw new StalePlanException("The version tags changed after this plan was made (another run or a hand-pushed tag), so its versions may be wrong. "
+				+ "Use \"Re-run all jobs\" to plan again; \"Re-run failed jobs\" reuses this plan.");
 	}
 
 	/// <summary>
