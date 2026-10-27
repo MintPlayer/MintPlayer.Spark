@@ -65,6 +65,9 @@ public class CsrfSurfaceTests
         // Called by the versioning action with a GitHub workflow JWT only (#153 M6): the controller names
         // the OIDC scheme alone, so a cookie principal cannot reach it.
         "VersioningController.Run",
+        // #552 D6: the plan and release halves of a run, the same OIDC-only scheme as Run.
+        "VersioningController.Plan",
+        "VersioningController.Release",
     ];
 
     /// <summary>
