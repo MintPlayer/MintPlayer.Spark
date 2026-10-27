@@ -3,15 +3,23 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import { collectManifest, defaultEngineProject, runLocal, type EngineOptions, type Release, type RunResponse } from './engine';
+import {
+  collectManifest, defaultEngineProject, prebuiltEngine, pushTags, runLocal, type EngineOptions, type Release, type RunResponse,
+} from './engine';
 import { realExec, type Exec } from './exec';
 import { checkBranchName, fetchTags, prepareHistory, showOnDefaultBranch, taggedVersions } from './git';
 import { discoverPackages, PLACEHOLDER, writeVersions, type Stamp } from './npm';
 import { distTag, highest } from './semver';
 import { createReleases, cutReleaseBranches } from './releases';
-import { runOnServer } from './server';
+import { planOnServer, releaseOnServer, runOnServer } from './server';
 
 export interface Inputs {
+  /** #552 D4: all (plan and tag in one step), plan (decide, write nothing) or release (write the plan's tags). */
+  phase: string;
+  /** phase: release: the plan phase's `plan` output. */
+  plan: string;
+  /** The commit the workflow runs for, which a release's plan must have been made for. */
+  sha: string;
   mode: string;
   url: string;
   configuration: string;
@@ -32,6 +40,9 @@ export interface Inputs {
 export function readInputs(env: NodeJS.ProcessEnv = process.env): Inputs {
   const get = (name: string) => (env[`INPUT_${name.replace(/ /g, '_').toUpperCase()}`] ?? '').trim();
   return {
+    phase: get('phase'),
+    plan: get('plan'),
+    sha: env.GITHUB_SHA ?? '',
     mode: get('mode'),
     url: get('url') || 'https://coverage.mintplayer.com',
     configuration: get('configuration') || 'Release',
@@ -51,16 +62,20 @@ export function readInputs(env: NodeJS.ProcessEnv = process.env): Inputs {
 }
 
 export interface Outputs {
-  outcome: 'versioned' | 'skipped';
+  outcome: 'versioned' | 'planned' | 'skipped';
   mode?: 'server' | 'local';
   released: string[];
   versions: Record<string, string>;
   distTags: Record<string, string>;
+  /** phase: plan: the {@link PlanOutput} as JSON, for the release phase's `plan` input. */
+  plan?: string;
 }
 
 export interface Dependencies {
   exec: Exec;
   engineProject: string;
+  /** The prebuilt engine, run in place of {@link engineProject} when present (#552 D8). */
+  engineDll?: string;
   idToken: (audience: string) => Promise<string>;
   fetch?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
@@ -88,19 +103,37 @@ function defaultBranchOf(eventPath: string): string {
   throw new Error('The workflow event does not name the repository\'s default branch.');
 }
 
-/** Why a response is not a success, or null when every release is tagged (created, already there, or tagged by hand). */
-export function failureOf(response: RunResponse): string | null {
+/**
+ * Why a response is not a success, or null when every release is tagged (created, already there, or tagged by hand);
+ * for a plan, when every release is planned and the plan is there.
+ */
+export function failureOf(response: RunResponse, planned = false): string | null {
   const lines: string[] = [];
   if (response.outcome !== 'versioned') lines.push(`${response.outcome}${response.reason ? ` (${response.reason})` : ''}${response.detail ? `: ${response.detail}` : ''}`);
+  else if (planned && !response.plan) lines.push('the answer holds no plan');
   for (const error of response.errors ?? []) lines.push(`  ${error}`);
   for (const refused of response.refused ?? []) lines.push(`  ${refused.id}: ${refused.reason}`);
+  const written = planned ? ['planned'] : ['created', 'already-present'];
   for (const release of response.releases ?? [])
-    if (!release.taggedByHand && release.tagOutcome !== 'created' && release.tagOutcome !== 'already-present')
+    if (!release.taggedByHand && !written.includes(release.tagOutcome ?? ''))
       lines.push(`  ${release.tag}: ${release.tagOutcome ?? 'not written'}`);
   return lines.length === 0 ? null : lines.join('\n');
 }
 
+/**
+ * What `phase: plan` hands `phase: release` through a job output (#552 D5): the plan-only answer, the host that made
+ * it, and the commit and branch it was made for.
+ */
+export interface PlanOutput {
+  commit: string;
+  branch: string;
+  mode: 'server' | 'local';
+  response: RunResponse;
+}
+
 export async function version(inputs: Inputs, deps: Dependencies): Promise<Outputs> {
+  const phase = inputs.phase || 'all';
+  if (phase !== 'all' && phase !== 'plan' && phase !== 'release') throw new Error(`phase must be all, plan or release, not '${phase}'.`);
   // Only a branch run versions (PRD D5): a pull request or a tag build versions nothing, and its pack
   // re-packs the last tagged versions, which a publish with skip-duplicate skips.
   if (!inputs.ref.startsWith('refs/heads/') || inputs.eventName.startsWith('pull_request')) {
@@ -110,6 +143,7 @@ export async function version(inputs: Inputs, deps: Dependencies): Promise<Outpu
   const branch = checkBranchName(inputs.ref.slice('refs/heads/'.length));
   const defaultBranch = defaultBranchOf(inputs.eventPath);
   const cwd = inputs.workspace;
+  if (phase === 'release') return release(inputs, deps, branch, defaultBranch);
 
   await prepareHistory(deps.exec, cwd, branch, defaultBranch);
   const section = versioningSection(await showOnDefaultBranch(deps.exec, cwd, defaultBranch, 'coverage.yml'), defaultBranch);
@@ -120,7 +154,7 @@ export async function version(inputs: Inputs, deps: Dependencies): Promise<Outpu
   const work = mkdtempSync(path.join(inputs.runnerTemp, 'versioning-'));
   const config = path.join(work, 'config.json');
   writeFileSync(config, JSON.stringify(section));
-  const engine: EngineOptions = { exec: deps.exec, project: deps.engineProject, cwd: inputs.runnerTemp, token: inputs.token || undefined };
+  const engine = engineOptions(inputs, deps);
 
   const manifestFile = path.join(work, 'manifest.json');
   const collected = await collectManifest(engine, {
@@ -130,36 +164,112 @@ export async function version(inputs: Inputs, deps: Dependencies): Promise<Outpu
   for (const note of collected.notes) deps.log(note);
   writeFileSync(manifestFile, JSON.stringify(collected.manifest));
 
+  // #552 D1: the plan phase asks the same host the same question, with the tags left unwritten.
+  const planOnly = phase === 'plan';
   let mode: 'server' | 'local' = requested;
   let response: RunResponse | null = null;
   if (mode === 'server') {
-    const answer = await runOnServer({ url: inputs.url, idToken: deps.idToken, fetch: deps.fetch }, collected.manifest);
-    if (answer.kind === 'answer') {
-      response = answer.body;
-      if (answer.status >= 400 && response.outcome === 'versioned') response = { ...response, outcome: `http-${answer.status}` };
-    } else {
+    const server = { url: inputs.url, idToken: deps.idToken, fetch: deps.fetch };
+    const answer = await (planOnly ? planOnServer(server, collected.manifest) : runOnServer(server, collected.manifest));
+    if (answer.kind === 'answer') response = answered(answer.status, answer.body);
+    else {
       deps.warn(`${inputs.url} is unavailable (${answer.reason}); versioning with the local engine instead.`);
       mode = 'local';
     }
   }
-  response ??= await runLocal(engine, { repo: cwd, manifest: manifestFile, config, branch, defaultBranch, out: path.join(work, 'result.json') });
+  response ??= await runLocal(engine, {
+    repo: cwd, manifest: manifestFile, config, branch, defaultBranch, out: path.join(work, 'result.json'), planOnly,
+  });
 
+  if (!planOnly) return finish(inputs, deps, mode, response);
+
+  for (const warning of response.warnings ?? []) deps.warn(warning);
+  const failure = failureOf(response, true);
+  if (failure) throw new Error(`Versioning (${mode}) could not plan the commit:\n${failure}`);
+  for (const r of response.releases) deps.log(`${r.id} ${r.version}${r.taggedByHand ? ' (tagged by hand)' : ''} (planned): ${r.reasons.join('; ')}`);
+  const plan: PlanOutput = { commit: collected.manifest.commit, branch, mode, response };
+  return { ...released(response.releases), outcome: 'planned', mode, distTags: {}, plan: JSON.stringify(plan) };
+}
+
+/** A 4xx keeps the app's own outcome only when it names a failure. */
+function answered(status: number, body: RunResponse): RunResponse {
+  return status >= 400 && body.outcome === 'versioned' ? { ...body, outcome: `http-${status}` } : body;
+}
+
+function engineOptions(inputs: Inputs, deps: Dependencies): EngineOptions {
+  return { exec: deps.exec, project: deps.engineProject, prebuilt: deps.engineDll, cwd: inputs.runnerTemp, token: inputs.token || undefined };
+}
+
+function released(releases: Release[]): Pick<Outputs, 'released' | 'versions'> {
+  return { released: releases.map((r) => r.id), versions: Object.fromEntries(releases.map((r) => [r.id, r.version])) };
+}
+
+/** Reads the plan phase's output, and refuses one made for another commit or branch (#552 D3). */
+export function readPlan(text: string, sha: string, branch: string): PlanOutput {
+  if (!text) throw new Error('phase: release needs the plan phase\'s `plan` output as its `plan` input.');
+  let plan: PlanOutput;
+  try {
+    plan = JSON.parse(text);
+  } catch {
+    throw new Error('The plan input is not the plan phase\'s `plan` output.');
+  }
+  if (!plan?.response || (plan.mode !== 'server' && plan.mode !== 'local') || typeof plan.commit !== 'string')
+    throw new Error('The plan input is not the plan phase\'s `plan` output.');
+  if (plan.commit !== sha || plan.branch !== branch)
+    throw new Error(`The plan was made for ${plan.commit} on ${plan.branch}, not ${sha} on ${branch}: use "Re-run all jobs" to plan again.`);
+  return plan;
+}
+
+/**
+ * #552 D2: writes the tags the plan phase decided, deciding nothing again: through the app with its seal, or with the
+ * local engine, which the server's plan falls back to on a 5xx as a run does. Either refuses a plan the tag history
+ * moved past (D3).
+ */
+async function release(inputs: Inputs, deps: Dependencies, branch: string, defaultBranch: string): Promise<Outputs> {
+  const plan = readPlan(inputs.plan, inputs.sha, branch);
+  const cwd = inputs.workspace;
+  await prepareHistory(deps.exec, cwd, branch, defaultBranch);
+
+  let mode = plan.mode;
+  let response: RunResponse | null = null;
+  if (mode === 'server') {
+    const answer = plan.response.seal
+      ? await releaseOnServer({ url: inputs.url, idToken: deps.idToken, fetch: deps.fetch }, plan.response.seal)
+      : { kind: 'unavailable' as const, reason: 'the plan carries no seal' };
+    if (answer.kind === 'answer') response = answered(answer.status, answer.body);
+    else {
+      deps.warn(`${inputs.url} is unavailable (${answer.reason}); writing the plan's tags with the local engine instead.`);
+      mode = 'local';
+    }
+  }
+  if (!response) {
+    const work = mkdtempSync(path.join(inputs.runnerTemp, 'versioning-'));
+    const planFile = path.join(work, 'plan.json');
+    writeFileSync(planFile, JSON.stringify(plan.response));
+    response = await pushTags(engineOptions(inputs, deps), { repo: cwd, plan: planFile, branch, out: path.join(work, 'result.json') });
+  }
+  return finish(inputs, deps, mode, response);
+}
+
+/** After the tags are written, by a run or a release: npm's versions, and in local mode the Releases and the cuts. */
+async function finish(inputs: Inputs, deps: Dependencies, mode: 'server' | 'local', response: RunResponse): Promise<Outputs> {
+  const cwd = inputs.workspace;
   for (const warning of response.warnings ?? []) deps.warn(warning);
   const failure = failureOf(response);
   if (failure) throw new Error(`Versioning (${mode}) did not tag the commit:\n${failure}`);
 
-  const released = response.releases;
-  for (const r of released) deps.log(`${r.id} ${r.version}${r.taggedByHand ? ' (tagged by hand)' : ''}: ${r.reasons.join('; ')}`);
+  const releases = response.releases;
+  for (const r of releases) deps.log(`${r.id} ${r.version}${r.taggedByHand ? ' (tagged by hand)' : ''}: ${r.reasons.join('; ')}`);
   // The server pushed the tags to the remote; the pack step's build reads them from this checkout (D9).
   if (mode === 'server') await fetchTags(deps.exec, cwd);
-  const distTags = await writeNpm(deps.exec, cwd, released, deps.log, deps.warn);
+  const distTags = await writeNpm(deps.exec, cwd, releases, deps.log, deps.warn);
 
   // PRD D15: the server creates its Releases itself, behind the app's release-on-tag policy. The local host cannot read
   // that policy, so the `releases` input stands in for it, default on like the policy's own default.
   if (mode === 'local' && inputs.releases) {
     if (!inputs.githubToken || !inputs.repository) deps.warn('No github-token or GITHUB_REPOSITORY: the Releases are not created.');
     else await createReleases({ apiUrl: inputs.apiUrl, repository: inputs.repository, token: inputs.githubToken, fetch: deps.fetch, sleep: deps.sleep,
-      log: deps.log, warn: deps.warn }, released);
+      log: deps.log, warn: deps.warn }, releases);
   }
   // PRD D12: likewise for the release-branch cuts, behind `cut-release-branches` in place of the auto-cut policy.
   const cuts = response.branchCuts ?? [];
@@ -168,13 +278,7 @@ export async function version(inputs: Inputs, deps: Dependencies): Promise<Outpu
     else await cutReleaseBranches({ apiUrl: inputs.apiUrl, repository: inputs.repository, token: inputs.githubToken, fetch: deps.fetch, sleep: deps.sleep,
       log: deps.log, warn: deps.warn }, cuts);
   }
-  return {
-    outcome: 'versioned',
-    mode,
-    released: released.map((r) => r.id),
-    versions: Object.fromEntries(released.map((r) => [r.id, r.version])),
-    distTags,
-  };
+  return { ...released(releases), outcome: 'versioned', mode, distTags };
 }
 
 /**
@@ -214,6 +318,7 @@ export async function run(): Promise<void> {
     const outputs = await version(inputs, {
       exec: realExec,
       engineProject: defaultEngineProject(),
+      engineDll: prebuiltEngine(),
       idToken: (audience) => core.getIDToken(audience),
       log: (m) => core.info(m),
       warn: (m) => core.warning(m),
@@ -223,6 +328,7 @@ export async function run(): Promise<void> {
     core.setOutput('released', JSON.stringify(outputs.released));
     core.setOutput('versions', JSON.stringify(outputs.versions));
     core.setOutput('dist-tags', JSON.stringify(outputs.distTags));
+    core.setOutput('plan', outputs.plan ?? '');
   } catch (e) {
     core.setFailed((e as Error).message);
   }
