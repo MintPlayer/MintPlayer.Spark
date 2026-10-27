@@ -1,5 +1,5 @@
 import type { Exec } from './exec';
-import { failureOf, readInputs, readPlan, version, versioningSection, type Dependencies } from './main';
+import { allVersionsOf, failureOf, readInputs, readPlan, version, versioningSection, type Dependencies } from './main';
 
 const release = (over: object = {}) => ({
   id: 'Acme.Core', kind: 'nuget', version: '1.2.0', tag: 'Acme.Core/v1.2.0', reasons: ['api changed'], taggedByHand: false, tagOutcome: 'created', ...over,
@@ -30,6 +30,17 @@ describe('failureOf a plan (#552 D1)', () => {
     expect(failureOf(planned, true)).toBeNull();
     expect(failureOf(planned)).toContain('Acme.Core/v1.2.0: planned');
     expect(failureOf({ ...planned, plan: undefined }, true)).toContain('no plan');
+  });
+});
+
+describe('allVersionsOf (#552 D10)', () => {
+  it('gives every package its release, else its last reachable tag, and omits one with neither', async () => {
+    const exec: Exec = async (_cmd, args) => {
+      expect(args).toEqual(['tag', '--list', '--merged', 'HEAD']);
+      return { code: 0, stdout: 'Acme.Core/v1.1.0\n@acme/util/v2.0.0\n@acme/util/v2.1.0\nversioning-v1\n', stderr: '' };
+    };
+    const versions = await allVersionsOf(exec, '.', ['Acme.Core', '@acme/util', 'Acme.New'], [release({ version: '1.2.0', tagOutcome: 'planned' })] as any);
+    expect(versions).toEqual({ 'Acme.Core': '1.2.0', '@acme/util': '2.1.0' });
   });
 });
 

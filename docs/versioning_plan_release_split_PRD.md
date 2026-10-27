@@ -79,8 +79,10 @@ Paths are under `apps/CodeCoverage/`.
 ## Decisions
 
 - **D1 — Plan = today's run with a recording tag writer** (owner, "minimal pull-request").
-  - CLI `run --plan-only` runs `RunAsync` with a writer that records each `TagToWrite` and reports `Created`.
-  - The output is today's `LocalRunResponse` plus, for each tag, its commit and full annotation text.
+  - CLI `run --plan-only` runs `RunAsync` with a writer that records each `TagToWrite` and reports the new
+    `TagOutcome.Planned` (`RecordingTagWriter`, `ReleaseRun.cs`), so notes and cuts are computed as for a written tag.
+  - The output is today's `LocalRunResponse` plus `plan`: the commit, the run, the fingerprint (D3) and each tag's
+    name and API hash. The annotation is rebuilt from these by the same `TagAnnotation.Format`.
   - No new engine API; `ReleaseRun.PlanAsync` (the trigger-B preview) keeps its name.
 - **D2 — Release = write exactly the planned tags.**
   - CLI `push-tags --plan <file> [--remote]` writes the plan's tags through the existing `TagWriter`, which
@@ -104,19 +106,33 @@ Paths are under `apps/CodeCoverage/`.
     mode, as today), then re-stamps through `writeNpm`. The tags are now reachable, so a job that never stamped (ng-bootstrap's
     `publish-snippets`) gets the same versions.
   - Existing outputs keep their meaning in every phase.
+- **D10 — The plan stamps, and `all-versions` gives every package's version** (the issue's "Versions first, no tags";
+  ng-bootstrap's analysis 2026-10-27).
+  - The first implementation (`02d4fb3d`) made `plan` write nothing, and the README said so. ng-bootstrap's demos
+    build between the plan and the tests and would still have shown `0.0.0-PLACEHOLDER`, and `versions` covers
+    released packages only, so the consumer could not stamp them itself either.
+  - `plan` now runs the same `writeNpm` a release runs. It needs no new tag: a release is stamped at its planned
+    version, any other package at its last reachable tag, which a plan does not change.
+  - The new `all-versions` output (every phase) maps every manifest package to its version: a release's own, else
+    the last tag reachable from HEAD. A package with neither is absent. The plan output carries the package ids, so
+    the release, which has no manifest, reports the same set.
+  - Releasing one plan from two jobs (`publish-libs` and `publish-snippets`) is safe. The second finds its tags
+    (`already-present`), and its Releases and cuts answer `exists` (`releases.ts`, 422 `already_exists` /
+    "Reference already exists").
 - **D5 — The plan travels as a job output** (`needs.build.outputs.plan`). It is a few KB, so it needs no artifact,
   no file and no new dependency. This supersedes the earlier "the action uploads an artifact" answer (Q3 = B), which
   was given before the plan shrank.
 - **D6 — Server mode supports plan and release too** (owner, B). This keeps the App as the tagger and keeps the
   commit-graph release status (#544 D5).
   - `POST api/versioning/plan`: the same claim checks as `run`. The sidecar runs the recording-writer run
-    (`/jobs/versioning/prepare`) and returns the plan plus a **seal**:
-    `IDataProtector.Protect(sha256(plan))`, purpose `CodeCoverage.Versioning.Plan.v1`. It stores nothing
-    (owner, Q2 = B).
-  - `POST api/versioning/release` takes the plan and the seal. It unseals and compares the hash, then checks from
-    the OIDC token: same repository id, **same run id** (any attempt), and `sha` = the plan's commit. The sidecar
-    (`/jobs/versioning/release`) checks D3 and writes the tags as the App. The app then creates the Releases and cuts
-    and records the `VersioningRun`, as `run` does today.
+    (`/jobs/versioning/run` with `planOnly`) and the app returns the plan plus a **seal**: the whole answer with the
+    repository id, run id, commit and branch, protected by a time-limited `IDataProtector` (purpose
+    `CodeCoverage.Versioning.Plan.v1`, one day). It stores nothing (owner, Q2 = B).
+  - `POST api/versioning/release` takes **only the seal**, so the client cannot change a version, a tag or a Release
+    text. The app unseals it, then checks from the OIDC token: same repository id, **same run id** (any attempt),
+    `sha` = the plan's commit, same branch. The sidecar's existing `/jobs/tags`, given the plan's `run` and
+    `fingerprint`, checks D3 and writes the tags as the App. The app then creates the Releases and cuts and records
+    the `VersioningRun`, as `run` does. A stale plan answers 409, which the action does not fall back on.
   - `workflow_ref` is not checked. A run id belongs to exactly one workflow, so it adds nothing, and it would
     break reusable workflows.
   - **Trap accepted:** a lost key ring between plan and release fails the release ("re-run all jobs"). The keys are
@@ -145,7 +161,7 @@ build:
     - build the libs                                  # API surface for the decision
     - id: versioning
       uses: …/versioning-action@versioning-v1
-      with: { phase: plan }                           # decides + stamps, no tags
+      with: { phase: plan }                           # decides + stamps, no tags; all-versions for anything else
     - build everything (demos see the real version)
     - upload dist
 tests:            unchanged

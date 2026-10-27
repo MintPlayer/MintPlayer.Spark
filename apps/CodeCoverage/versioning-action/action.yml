@@ -7,7 +7,7 @@ branding:
 
 inputs:
   phase:
-    description: 'all | plan | release (#552). all decides the versions and tags the commit in one step. plan decides them and writes nothing, so it can run beside the tests; release, after the tests, writes exactly the planned tags from the plan input and stamps the versions. A release refuses a plan the tag history moved past: use "Re-run all jobs" to plan again.'
+    description: 'all | plan | release (#552). all decides the versions and tags the commit in one step. plan decides them and stamps the npm package.json files (source and build output) but writes no tag, so whatever builds next reads the versions and it can run beside the tests; release, after the tests, writes exactly the planned tags from the plan input and stamps again. A release refuses a plan the tag history moved past: use "Re-run all jobs" to plan again.'
     required: false
     default: 'all'
   plan:
@@ -58,6 +58,8 @@ outputs:
     description: 'JSON array of the package ids released by this commit (phase: plan: to be released). Pack and publish everything: an unchanged package packs at its published version, which the publish skips.'
   versions:
     description: 'JSON object: package id → version, for every released package.'
+  all-versions:
+    description: 'JSON object: package id → version for EVERY package of the manifest, released or not (an unreleased one at its last reachable tag; one never tagged is absent). Set by every phase.'
   dist-tags:
     description: 'JSON object: npm package id → dist-tag (latest, v<major>-lts or next), for every released npm package.'
 

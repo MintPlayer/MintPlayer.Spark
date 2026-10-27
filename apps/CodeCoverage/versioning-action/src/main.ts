@@ -67,6 +67,8 @@ export interface Outputs {
   released: string[];
   versions: Record<string, string>;
   distTags: Record<string, string>;
+  /** #552 D10: every package's version, released or not (absent when skipped). */
+  allVersions?: Record<string, string>;
   /** phase: plan: the {@link PlanOutput} as JSON, for the release phase's `plan` input. */
   plan?: string;
 }
@@ -129,6 +131,8 @@ export interface PlanOutput {
   branch: string;
   mode: 'server' | 'local';
   response: RunResponse;
+  /** The manifest's package ids: the release phase has no manifest, and reports `all-versions` over the same set. */
+  packages: string[];
 }
 
 export async function version(inputs: Inputs, deps: Dependencies): Promise<Outputs> {
@@ -181,14 +185,35 @@ export async function version(inputs: Inputs, deps: Dependencies): Promise<Outpu
     repo: cwd, manifest: manifestFile, config, branch, defaultBranch, out: path.join(work, 'result.json'), planOnly,
   });
 
-  if (!planOnly) return finish(inputs, deps, mode, response);
+  const packages = (collected.manifest.packages as { id: string }[]).map((p) => p.id);
+  if (!planOnly) return finish(inputs, deps, mode, response, packages);
 
   for (const warning of response.warnings ?? []) deps.warn(warning);
   const failure = failureOf(response, true);
   if (failure) throw new Error(`Versioning (${mode}) could not plan the commit:\n${failure}`);
   for (const r of response.releases) deps.log(`${r.id} ${r.version}${r.taggedByHand ? ' (tagged by hand)' : ''} (planned): ${r.reasons.join('; ')}`);
-  const plan: PlanOutput = { commit: collected.manifest.commit, branch, mode, response };
-  return { ...released(response.releases), outcome: 'planned', mode, distTags: {}, plan: JSON.stringify(plan) };
+  // #552 D10: the stamps need no new tag (a release at its planned version, any other package at its last tag), so the
+  // plan writes them, and whatever builds between the plan and the tests (a demo, a docs site) reads the right version.
+  const distTags = await writeNpm(deps.exec, cwd, response.releases, deps.log, deps.warn);
+  const plan: PlanOutput = { commit: collected.manifest.commit, branch, mode, response, packages };
+  return {
+    ...released(response.releases), outcome: 'planned', mode, distTags,
+    allVersions: await allVersionsOf(deps.exec, cwd, packages, response.releases), plan: JSON.stringify(plan),
+  };
+}
+
+/**
+ * #552 D10: every package's version, released or not: a release's own, else the last tag reachable from HEAD, which is
+ * what MintPlayer.Versioning.MSBuild and the npm stamps give an unreleased package. A package with neither has none.
+ */
+export async function allVersionsOf(exec: Exec, cwd: string, packages: string[], releases: Release[]): Promise<Record<string, string>> {
+  const reachable = await taggedVersions(exec, cwd, 'HEAD');
+  const versions: Record<string, string> = {};
+  for (const id of new Set([...packages, ...releases.map((r) => r.id)])) {
+    const version = releases.find((r) => r.id === id)?.version ?? highest(reachable.get(id) ?? [])?.text;
+    if (version) versions[id] = version;
+  }
+  return versions;
 }
 
 /** A 4xx keeps the app's own outcome only when it names a failure. */
@@ -248,11 +273,14 @@ async function release(inputs: Inputs, deps: Dependencies, branch: string, defau
     writeFileSync(planFile, JSON.stringify(plan.response));
     response = await pushTags(engineOptions(inputs, deps), { repo: cwd, plan: planFile, branch, out: path.join(work, 'result.json') });
   }
-  return finish(inputs, deps, mode, response);
+  return finish(inputs, deps, mode, response, plan.packages ?? []);
 }
 
-/** After the tags are written, by a run or a release: npm's versions, and in local mode the Releases and the cuts. */
-async function finish(inputs: Inputs, deps: Dependencies, mode: 'server' | 'local', response: RunResponse): Promise<Outputs> {
+/**
+ * After the tags are written, by a run or a release: npm's versions, and in local mode the Releases and the cuts.
+ * A release stamps again (the same stamps as its plan), so a job that did not inherit the plan's files publishes right.
+ */
+async function finish(inputs: Inputs, deps: Dependencies, mode: 'server' | 'local', response: RunResponse, packages: string[]): Promise<Outputs> {
   const cwd = inputs.workspace;
   for (const warning of response.warnings ?? []) deps.warn(warning);
   const failure = failureOf(response);
@@ -278,7 +306,7 @@ async function finish(inputs: Inputs, deps: Dependencies, mode: 'server' | 'loca
     else await cutReleaseBranches({ apiUrl: inputs.apiUrl, repository: inputs.repository, token: inputs.githubToken, fetch: deps.fetch, sleep: deps.sleep,
       log: deps.log, warn: deps.warn }, cuts);
   }
-  return { ...released(releases), outcome: 'versioned', mode, distTags };
+  return { ...released(releases), outcome: 'versioned', mode, distTags, allVersions: await allVersionsOf(deps.exec, cwd, packages, releases) };
 }
 
 /**
@@ -329,6 +357,7 @@ export async function run(): Promise<void> {
     core.setOutput('versions', JSON.stringify(outputs.versions));
     core.setOutput('dist-tags', JSON.stringify(outputs.distTags));
     core.setOutput('plan', outputs.plan ?? '');
+    core.setOutput('all-versions', JSON.stringify(outputs.allVersions ?? {}));
   } catch (e) {
     core.setFailed((e as Error).message);
   }

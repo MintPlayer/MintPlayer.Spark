@@ -60,9 +60,13 @@ repository without that section is refused.
 ### Plan beside the tests, tag after them (#552)
 
 When the tests run in their own job, split the step so that nothing waits for them that does not need to.
-`phase: plan` runs after the build, in parallel with the tests. It decides the versions and writes nothing, and its
-`plan` output goes to a job output. `phase: release` runs after the tests with that output as its `plan` input. It
-writes exactly the planned tags, stamps the npm versions, and the pack follows it:
+`phase: plan` runs after the library build, in parallel with the tests. It decides the versions and stamps them into
+every publishable package.json, the source file and the build-output copy, exactly as a release does, but writes no
+tag. Whatever builds after it in the same job (a demo or docs site showing the library version) reads the stamped
+files, and `all-versions` gives every package's version to anything else. Its `plan` output goes to a job output.
+`phase: release` runs after the tests with that output as its `plan` input. It writes exactly the planned tags and
+stamps again, so a job that did not inherit the stamped files still publishes right, and the pack follows it. Several
+jobs may release the same plan (one per publish job): the later ones find the tags and Releases in place.
 
 ```yaml
 jobs:
@@ -71,10 +75,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with: { fetch-depth: 0 }
-      - run: dotnet build -c Release
+      - run: npx nx run-many -t build --projects='libs/*'
       - id: plan
         uses: MintPlayer/MintPlayer.Spark/apps/CodeCoverage/versioning-action@versioning-v1
         with: { phase: plan }
+      - run: npx nx run-many -t build --projects='apps/*'   # reads the stamped package.json
   publish:
     needs: [plan, test]
     steps:
@@ -93,7 +98,7 @@ same plan for the release. See [the versioning guide](../../../docs/code-coverag
 
 | Input | Default | Meaning |
 |---|---|---|
-| `phase` | `all` | `all`: decide and tag in one step. `plan`: decide and write nothing. `release`: write the tags of the `plan` input. |
+| `phase` | `all` | `all`: decide and tag in one step. `plan`: decide and stamp the npm files, no tag. `release`: write the tags of the `plan` input, and stamp again. |
 | `plan` | (none) | `phase: release` only: the `plan` output of the `phase: plan` step. |
 | `mode` | `versioning.mode`, else `server` | `server`: the app plans and pushes the tags. `local`: the engine runs on the runner. |
 | `url` | `https://coverage.mintplayer.com` | The app, for server mode. |
@@ -117,7 +122,8 @@ missing), a network error, a timeout or a 5xx. A 4xx is the app's answer, and th
 | `outcome` | `versioned`, `planned` (`phase: plan`), or `skipped` (a pull request or tag build). A refusal fails the step and names the packages. |
 | `plan` | `phase: plan` only: the plan as JSON, for the release step. |
 | `mode` | The host that ran: `server` or `local`. |
-| `released` | JSON array of the package ids this commit released. |
+| `released` | JSON array of the package ids this commit released (`phase: plan`: will release). |
+| `all-versions` | JSON object, package id → version, for **every** package of the manifest: a release at its new version, any other at its last reachable tag. A package never tagged is absent. |
 | `versions` | JSON object, package id → version, for every released package. |
 | `dist-tags` | JSON object, npm package → dist-tag: `next` for a prerelease, `latest` for the highest stable major, `v<major>-lts` for an older major. |
 

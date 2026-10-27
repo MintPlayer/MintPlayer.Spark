@@ -115,9 +115,12 @@ version from the tags reachable from HEAD, so every checkout of a job that runs 
 
 The single step above computes the versions after the tests, so nothing that needs them can start before the tests
 end. When the tests run in their own job, split the step in two with `phase`. `phase: plan` runs right after the
-build, in parallel with the tests: it decides the versions and writes nothing. `phase: release` runs after the tests:
-it writes exactly the tags the plan decided and stamps the versions, and the pack follows it. No tag exists before the
-tests pass. `phase: all`, the default, is the single step.
+library build, in parallel with the tests. It decides the versions and stamps every publishable package.json (source
+and build output), but writes no tag. A demo or docs site built after it reads the right version, and the
+`all-versions` output gives every package's version, released or not. `phase: release` runs after the tests: it
+writes exactly the tags the plan decided and stamps again, and the pack follows it. No tag exists before the tests
+pass. `phase: all`, the default, is the single step. Several publish jobs may each release the same plan; the later
+ones find the tags and Releases already there.
 
 ```yaml
 jobs:
