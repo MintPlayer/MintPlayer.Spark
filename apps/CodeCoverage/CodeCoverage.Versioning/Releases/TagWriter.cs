@@ -23,6 +23,9 @@ public enum TagOutcome
 
 	/// <summary>The commit is not on the default branch or a release branch, so it is never tagged.</summary>
 	Unreachable,
+
+	/// <summary>A plan-only run (#552 D1): the tag is decided but not written; the release half writes it later.</summary>
+	Planned,
 }
 
 public sealed record TagWriteResult(VersionTag Tag, TagOutcome Outcome, string? Detail = null);

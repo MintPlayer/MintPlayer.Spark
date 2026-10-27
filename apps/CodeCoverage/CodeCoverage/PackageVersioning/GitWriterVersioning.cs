@@ -9,7 +9,7 @@ namespace CodeCoverage.PackageVersioning;
 /// </summary>
 public sealed record GitWriterVersioningRequest(
     string Provider, string RepoId, string CloneUrl, SidecarCredential Credential, string Branch, string DefaultBranch, int? BranchMajor,
-    GitWriterTagger Tagger, VersioningSettings Settings, ReleaseManifest Manifest, string? Run = null);
+    GitWriterTagger Tagger, VersioningSettings Settings, ReleaseManifest Manifest, string? Run = null, bool PlanOnly = false);
 
 public sealed record GitWriterTagger(string Name, string Email);
 
@@ -20,7 +20,7 @@ public sealed record GitWriterTagger(string Name, string Email);
 /// </summary>
 public sealed record GitWriterTagsRequest(
     string Provider, string RepoId, string CloneUrl, SidecarCredential Credential, IReadOnlyList<string> Branches, GitWriterTagger Tagger,
-    IReadOnlyList<GitWriterTag> Tags);
+    IReadOnlyList<GitWriterTag> Tags, string? Run = null, string? Fingerprint = null);
 
 public sealed record GitWriterTag(string Name, string Commit, string? ApiHash = null);
 
@@ -41,7 +41,7 @@ public sealed record GitWriterTagResult(string Name, string Outcome, string? Det
 public sealed record GitWriterVersioningResult(
     string Outcome, string? Reason, IReadOnlyList<GitWriterRelease>? Releases, IReadOnlyList<GitWriterPackageNote>? Skipped,
     IReadOnlyList<GitWriterPackageNote>? Refused, IReadOnlyList<string>? Warnings, string? Detail, long DurationMs,
-    IReadOnlyList<GitWriterBranchCut>? BranchCuts = null)
+    IReadOnlyList<GitWriterBranchCut>? BranchCuts = null, TagPlan? Plan = null)
 {
     public const string Versioned = "versioned";
     public const string PlanRefused = "plan-refused";

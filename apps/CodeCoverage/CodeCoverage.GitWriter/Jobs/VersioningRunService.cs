@@ -7,7 +7,7 @@ namespace CodeCoverage.GitWriter.Jobs;
 
 /// <summary>A validated <c>POST /jobs/versioning/run</c>.</summary>
 public sealed record VersioningRunJob(
-    string Repo, Uri CloneUrl, GitCredential Credential, string Branch, string DefaultBranch, GitIdentity Tagger, ReleaseRunRequest Run);
+    string Repo, Uri CloneUrl, GitCredential Credential, string Branch, string DefaultBranch, GitIdentity Tagger, ReleaseRunRequest Run, bool PlanOnly = false);
 
 /// <summary>A validated <c>POST /jobs/versioning/plan</c>.</summary>
 public sealed record VersioningPlanJob(
@@ -46,9 +46,12 @@ public sealed class VersioningRunService(JobRunner jobs)
         var writer = new TagWriter(new TagService.JobTagGit(context, job.Credential), job.CloneUrl.AbsoluteUri, ["refs/heads/" + job.Branch],
             new Tagger(job.Tagger.Name, job.Tagger.Email));
         ReleaseRunResult result;
+        TagPlan? plan = null;
         try
         {
-            result = await ReleaseRun.RunAsync(git, writer, job.Run, context.Deadline);
+            // #552 D1: the same run with a recording writer; the tags are written later through /jobs/tags.
+            if (job.PlanOnly) (result, plan) = await ReleaseRun.PlanOnlyAsync(git, job.Run, context.Deadline);
+            else result = await ReleaseRun.RunAsync(git, writer, job.Run, context.Deadline);
         }
         catch (Exception e) when (e is ReleaseRunException or GraphException)
         {
@@ -58,7 +61,7 @@ public sealed class VersioningRunService(JobRunner jobs)
         {
             throw new JobAbortedException(JobReasons.Error, e.Message);
         }
-        return Response(result, context.ElapsedMilliseconds);
+        return Response(result, context.ElapsedMilliseconds) with { Plan = plan };
     }, (outcome, reason, detail, ms) => new VersioningRunResponse(outcome, reason, [], [], [], [], detail, ms));
 
     /// <summary>The plan alone (D3 trigger B): the branch and the tags fetched as for a run, nothing written.</summary>

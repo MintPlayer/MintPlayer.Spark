@@ -206,6 +206,13 @@ public sealed class TagsRequestWire
     /// <summary>The tagger; the date is the writer's clock.</summary>
     public IdentityWire? Tagger { get; set; }
     public List<TagWire>? Tags { get; set; }
+    /// <summary>The workflow run's page for every tag's annotation (#544 D5); null writes none.</summary>
+    public string? Run { get; set; }
+    /// <summary>
+    /// #552 D3: the release of a plan. The tags are written only while the tag history, without them, still has this
+    /// fingerprint; otherwise the job ends <c>stale-plan</c> and writes nothing. Every tag must then be on one commit.
+    /// </summary>
+    public string? Fingerprint { get; set; }
 }
 
 public sealed class TagWire
@@ -245,6 +252,8 @@ public sealed class VersioningRunRequestWire
     public Versioning.Releases.ReleaseManifest? Manifest { get; set; }
     /// <summary>The workflow run's page, written into every tag (#544 D5); the app takes it from the caller's OIDC token.</summary>
     public string? Run { get; set; }
+    /// <summary>#552 D1: decide the tags and write none; the response's <see cref="VersioningRunResponse.Plan"/> holds them.</summary>
+    public bool PlanOnly { get; set; }
 }
 
 /// <summary>The <c>versioning:</c> section of <c>coverage.yml</c> as the engine reads it (D13, D17).</summary>
@@ -283,7 +292,11 @@ public sealed record PackageNoteWire(string Id, string Reason);
 /// when the plan refused a package and nothing was written, or a failure.</param>
 public sealed record VersioningRunResponse(
     string Outcome, string? Reason, IReadOnlyList<ReleaseWire> Releases, IReadOnlyList<PackageNoteWire> Skipped, IReadOnlyList<PackageNoteWire> Refused,
-    IReadOnlyList<string> Warnings, string? Detail, long DurationMs, IReadOnlyList<BranchCutWire>? BranchCuts = null);
+    IReadOnlyList<string> Warnings, string? Detail, long DurationMs, IReadOnlyList<BranchCutWire>? BranchCuts = null)
+{
+    /// <summary>The tags a plan-only run decided (#552 D1), for <c>/jobs/tags</c> with its fingerprint to write later.</summary>
+    public Versioning.Releases.TagPlan? Plan { get; init; }
+}
 
 /// <summary>
 /// <c>POST /jobs/versioning/plan</c> (#153 M11, PRD D3 trigger B): would a run on <see cref="Commit"/> release anything?
@@ -424,6 +437,8 @@ public static class JobReasons
     public const string Auth = "auth";
     public const string NotFound = "not-found";
     public const string Error = "error";
+    /// <summary>#552 D3: the tag history moved since the plan was made, so its tags were not written.</summary>
+    public const string StalePlan = "stale-plan";
     /// <summary>
     /// Not a failure: <c>pushed</c> or <c>published</c> with the commit an earlier attempt of the same job already pushed,
     /// whose answer never reached the saga (merge-queue PRD D51 (1), D52). The branch was left as it was.

@@ -28,6 +28,10 @@ public class VersioningControllerTests : CoverageRavenTest
 
     private static readonly ForgeOidcProfile Oidc = ForgeOidcProfile.GitHub;
 
+    // One key ring for the class, as one server: a plan sealed by one request unseals in the next (#552 D6).
+    private static readonly Microsoft.AspNetCore.DataProtection.IDataProtectionProvider Sealer =
+        new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider();
+
     private sealed record Harness(VersioningController Controller, FakeGitWriter Writer, FakeForgeMergeQueue Queue, ScriptedDiffService Forge, FakeForgeVersioning Versioning);
 
     private static Harness Create(IDocumentStore store, ClaimsPrincipal user, string? yml = Versioned,
@@ -49,6 +53,7 @@ public class VersioningControllerTests : CoverageRavenTest
         services.AddSingleton(locks ?? new VersioningRunLocks());
         services.AddSingleton(TimeProvider.System);
         services.AddHttpClient();
+        services.AddSingleton<Microsoft.AspNetCore.DataProtection.IDataProtectionProvider>(Sealer);
         services.AddSingleton<IForgeVersioning>(versioning);
         services.AddSingleton<MintPlayer.Spark.Messaging.Abstractions.IMessageBus>(new Dependencies.Lifecycle.DependencyOnboardingSurfaceTests.RecordingBus());
         services.AddScoped<IVersioningOnboardingService, VersioningOnboardingService>();
@@ -325,5 +330,119 @@ public class VersioningControllerTests : CoverageRavenTest
 
         writer.VersioningRuns.Should().HaveCount(2);
         overlapped.Should().BeFalse();
+    }
+
+    private const string Fingerprint = "sha256:2222222222222222222222222222222222222222222222222222222222222222";
+
+    private static FakeGitWriter PlanningWriter() => new()
+    {
+        Versioning = r => Task.FromResult(r.PlanOnly
+            ? new GitWriterVersioningResult(GitWriterVersioningResult.Versioned, null,
+                [new GitWriterRelease("Acme.Widget", "nuget", "1.2.0", "Acme.Widget/v1.2.0", ["api added"], null, false, "planned",
+                    new GitWriterReleaseNotes("Acme.Widget 1.2.0", "notes", false))],
+                [], [], [], null, 5, [], new TagPlan(Sha, Fingerprint, r.Run, [new PlannedTag("Acme.Widget/v1.2.0", null)]))
+            : Result(GitWriterVersioningResult.Versioned)),
+    };
+
+    private static async Task<string> PlanAsync(IDocumentStore store, FakeGitWriter writer)
+    {
+        var result = await Create(store, Token(), writer: writer).Controller.Plan(Manifest(), default);
+        Status(result).Should().Be(StatusCodes.Status200OK);
+        var response = result.Should().BeAssignableTo<ObjectResult>().Which.Value.Should().BeOfType<VersioningController.VersioningRunResponse>().Which;
+        response.Plan.Should().NotBeNull();
+        return response.Seal.Should().NotBeNullOrEmpty().And.Subject!;
+    }
+
+    [Fact]
+    public async Task A_plan_tags_nothing_and_its_release_tags_records_and_reports()
+    {
+        using var store = GetDocumentStore();
+        await SeedRepositoryAsync(store);
+        var writer = PlanningWriter();
+        var seal = await PlanAsync(store, writer);
+
+        writer.VersioningRuns.Single().PlanOnly.Should().BeTrue();
+        writer.TagRequests.Should().BeEmpty();
+        using (var read = store.OpenAsyncSession())
+            (await read.LoadAsync<VersioningRun>(VersioningRun.DocumentId(EForgeProvider.GitHub, RepoId, 77, 2))).Should().BeNull("a plan records nothing");
+
+        // Attempt 3 of the same run: "re-run failed jobs" releases the plan the first attempt made.
+        var released = Create(store, new ClaimsPrincipal(new ClaimsIdentity(Token().Claims
+            .Select(c => c.Type == Oidc.RunAttemptClaim ? new Claim(c.Type, "3") : c), Oidc.SchemeName)), writer: writer);
+        var result = await released.Controller.Release(new VersioningController.VersioningReleaseRequest(seal), default);
+
+        Status(result).Should().Be(StatusCodes.Status200OK);
+        var tags = writer.TagRequests.Single();
+        tags.Tags.Should().Equal(new GitWriterTag("Acme.Widget/v1.2.0", Sha, null));
+        tags.Fingerprint.Should().Be(Fingerprint);
+        tags.Run.Should().Be("https://github.com/acme/widget/actions/runs/77");
+        tags.Branches.Should().Equal("main");
+        var response = (VersioningController.VersioningRunResponse)((ObjectResult)result).Value!;
+        response.Releases.Single().TagOutcome.Should().Be(GitWriterTagResult.Created);
+        response.Releases.Single().Release.Should().NotBeNull();
+        response.Seal.Should().BeNull();
+        released.Forge.Statuses.Single().Verdict.Outcome.Should().Be(EForgeOutcome.Success);
+        using var check = store.OpenAsyncSession();
+        (await check.LoadAsync<VersioningRun>(VersioningRun.DocumentId(EForgeProvider.GitHub, RepoId, 77, 3)))!.Releases.Single().Tag.Should().Be("Acme.Widget/v1.2.0");
+    }
+
+    [Theory]
+    [InlineData("seal")]
+    [InlineData("repository")]
+    [InlineData("run")]
+    [InlineData("sha")]
+    [InlineData("branch")]
+    public async Task A_release_is_refused_unless_its_token_matches_the_sealed_plan(string mismatch)
+    {
+        using var store = GetDocumentStore();
+        await SeedRepositoryAsync(store);
+        var writer = PlanningWriter();
+        var seal = await PlanAsync(store, writer);
+        var token = mismatch switch
+        {
+            "repository" => Token(repositoryId: RepoId + 1),
+            "run" => Token(runId: "78"),
+            "sha" => Token(sha: "9999999999999999999999999999999999999999"),
+            "branch" => Token("refs/heads/release/8.x"),
+            _ => Token(),
+        };
+
+        var result = await Create(store, token, writer: writer).Controller.Release(
+            new VersioningController.VersioningReleaseRequest(mismatch == "seal" ? seal[..^4] + "AAAA" : seal), default);
+
+        Status(result).Should().Be(mismatch == "seal" ? StatusCodes.Status400BadRequest : StatusCodes.Status403Forbidden);
+        writer.TagRequests.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task A_stale_release_is_a_409_so_the_action_does_not_fall_back()
+    {
+        using var store = GetDocumentStore();
+        await SeedRepositoryAsync(store);
+        var writer = PlanningWriter();
+        writer.Tags = _ => Task.FromResult(new GitWriterTagsResult("aborted", VersioningController.StalePlan, null, "moved", 1));
+        var seal = await PlanAsync(store, writer);
+
+        Status(await Create(store, Token(), writer: writer).Controller.Release(new VersioningController.VersioningReleaseRequest(seal), default))
+            .Should().Be(StatusCodes.Status409Conflict);
+    }
+
+    [Fact]
+    public async Task A_released_plan_released_again_answers_the_same()
+    {
+        using var store = GetDocumentStore();
+        await SeedRepositoryAsync(store);
+        var writer = PlanningWriter();
+        var seal = await PlanAsync(store, writer);
+        Status(await Create(store, Token(), writer: writer).Controller.Release(new VersioningController.VersioningReleaseRequest(seal), default))
+            .Should().Be(StatusCodes.Status200OK);
+        writer.Tags = r => Task.FromResult(new GitWriterTagsResult(GitWriterTagsResult.Tagged, null,
+            [.. r.Tags.Select(t => new GitWriterTagResult(t.Name, GitWriterTagResult.AlreadyPresent, null))], null, 1));
+
+        var again = await Create(store, Token(), writer: writer).Controller.Release(new VersioningController.VersioningReleaseRequest(seal), default);
+
+        Status(again).Should().Be(StatusCodes.Status200OK);
+        ((VersioningController.VersioningRunResponse)((ObjectResult)again).Value!).Releases.Single().Release.Should().NotBeNull(
+            "a re-run that finds its tags still creates the Releases it missed");
     }
 }

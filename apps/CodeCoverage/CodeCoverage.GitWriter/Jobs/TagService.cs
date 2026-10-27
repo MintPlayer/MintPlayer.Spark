@@ -6,7 +6,9 @@ using CodeCoverage.Versioning.Releases;
 namespace CodeCoverage.GitWriter.Jobs;
 
 /// <summary>A validated <c>POST /jobs/tags</c>.</summary>
-public sealed record TagsJob(string Repo, Uri CloneUrl, GitCredential Credential, IReadOnlyList<string> Branches, GitIdentity Tagger, IReadOnlyList<TagToWrite> Tags);
+/// <param name="Fingerprint">#552 D3: set for the release of a plan, which the tag history must still match.</param>
+public sealed record TagsJob(string Repo, Uri CloneUrl, GitCredential Credential, IReadOnlyList<string> Branches, GitIdentity Tagger, IReadOnlyList<TagToWrite> Tags,
+    string? Fingerprint = null);
 
 /// <summary>
 /// The server host's tag writer (#153 M5, PRD D16). The decisions are the engine's <see cref="TagWriter"/>, the same the
@@ -18,10 +20,24 @@ public sealed class TagService(JobRunner jobs)
     public Task<TagsResponse> WriteAsync(TagsJob job) => jobs.RunAsync("tags", job.Repo, async context =>
     {
         await context.RequireAsync(["init", "--bare", "--quiet", "--template=", context.GitDirectory], inRepository: false);
+        // A plan's release compares the tag history too, so it fetches the tags (their objects hold the API hashes).
         string[] fetch = ["fetch", "--quiet", "--no-tags", "--no-write-fetch-head", "--filter=blob:none", job.CloneUrl.AbsoluteUri,
-            .. job.Branches.Select(b => $"+refs/heads/{b}:refs/heads/{b}")];
+            .. job.Branches.Select(b => $"+refs/heads/{b}:refs/heads/{b}"), .. job.Fingerprint is null ? Array.Empty<string>() : ["+refs/tags/*:refs/tags/*"]];
         await context.RequireAsync(fetch, job.Credential);
         context.EnsureWithinDisk();
+
+        if (job.Fingerprint is { } fingerprint)
+        {
+            try
+            {
+                await ReleaseRun.RequireFreshAsync(new GitCli(context.GitDirectory), job.Tags.Select(t => t.Tag.Name).ToHashSet(StringComparer.Ordinal), fingerprint,
+                    context.Deadline);
+            }
+            catch (StalePlanException e)
+            {
+                throw new JobAbortedException(JobReasons.StalePlan, e.Message);
+            }
+        }
 
         var writer = new TagWriter(new JobTagGit(context, job.Credential), job.CloneUrl.AbsoluteUri, job.Branches.Select(b => "refs/heads/" + b).ToList(),
             new Tagger(job.Tagger.Name, job.Tagger.Email));
@@ -36,6 +52,7 @@ public sealed class TagService(JobRunner jobs)
         TagOutcome.AlreadyPresent => "already-present",
         TagOutcome.Conflict => "conflict",
         TagOutcome.Unreachable => "unreachable",
+        TagOutcome.Planned => "planned",
         _ => throw new ArgumentOutOfRangeException(nameof(outcome)),
     };
 
