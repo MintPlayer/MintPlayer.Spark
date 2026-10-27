@@ -1,6 +1,6 @@
 {
   "name": "@mintplayer/versioning-action",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "description": "GitHub Action behind MintPlayer CodeCoverage package versioning: hashes the build's public API, asks the app (or the in-workflow engine) for the versions, tags the commit and writes npm versions before pack",
   "repository": {
