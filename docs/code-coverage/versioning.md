@@ -162,6 +162,9 @@ jobs:
   own tags aside. If one was, nothing is written and the step fails with `stale-plan`. **"Re-run all jobs"** plans again;
   "Re-run failed jobs" reuses the old plan and fails the same way. A release whose tags are already there (a re-run
   after a failed pack) succeeds and releases nothing new.
+- **Expect this friction:** the check covers every version tag in the repository, not only the plan's packages. A
+  release-branch run that tags while a master run is between plan and release makes the master release refuse, even
+  when its versions would not have changed. Re-run it. This is the strict check the owner chose (#552 D3).
 - **A hand-pushed tag goes in before the run.** To raise a major by hand (`<PackageId>/v5.0.0` on a .NET Standard
   library, whose major no platform sets), push the tag first and then start the workflow. A tag pushed while a run is
   between plan and release makes that release stale. "Re-run all jobs" then plans with it.

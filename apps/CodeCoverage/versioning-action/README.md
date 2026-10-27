@@ -71,28 +71,37 @@ jobs may release the same plan (one per publish job): the later ones find the ta
 ```yaml
 jobs:
   plan:
+    permissions:
+      contents: read
+      id-token: write   # server mode; without it the plan warns and runs on the runner (local mode)
     outputs: { plan: '${{ steps.plan.outputs.plan }}' }
     steps:
+      # The action deepens the clone itself. Add fetch-depth: 0 only if `dotnet` builds BEFORE the action here.
       - uses: actions/checkout@v7
-        with: { fetch-depth: 0 }
       - run: npx nx run-many -t build --projects='libs/*'
       - id: plan
         uses: MintPlayer/MintPlayer.Spark/apps/CodeCoverage/versioning-action@versioning-v1
         with: { phase: plan }
-      - run: npx nx run-many -t build --projects='apps/*'   # reads the stamped package.json
+      # Reads the stamped package.json. The stamp changed the libraries' inputs, so without
+      # --exclude-task-dependencies Nx would build every library a second time.
+      - run: npx nx run-many -t build --projects='apps/*' --exclude-task-dependencies
   publish:
     needs: [plan, test]
+    permissions:
+      contents: write   # push the tags (and, in local mode, create the Releases)
+      id-token: write   # server mode
     steps:
       - uses: actions/checkout@v7
-        with: { fetch-depth: 0 }
       - uses: MintPlayer/MintPlayer.Spark/apps/CodeCoverage/versioning-action@versioning-v1
         with: { phase: release, plan: '${{ needs.plan.outputs.plan }}' }
-      - run: dotnet pack -c Release -o nupkgs
+      - run: dotnet pack -c Release -o nupkgs   # after the action, so the clone is full and the tags are there
 ```
 
 The release refuses a plan made for another commit or branch, and a plan the tag history moved past (`stale-plan`):
-use **"Re-run all jobs"** to plan again. In server mode a 5xx on either phase falls back to the local engine, with the
-same plan for the release. See [the versioning guide](../../../docs/code-coverage/versioning.md#plan-beside-the-tests-tag-after-them-552).
+use **"Re-run all jobs"** to plan again. The check covers **every** version tag in the repository, so expect this
+friction: a tag pushed on a release branch, or by hand, while a master run is between its plan and its release makes
+that master release refuse, even when its versions would not have changed. This is deliberate (the strict check of
+#552 D3). In server mode a 5xx on either phase falls back to the local engine, with the same plan for the release. See [the versioning guide](../../../docs/code-coverage/versioning.md#plan-beside-the-tests-tag-after-them-552).
 
 ## Inputs
 
