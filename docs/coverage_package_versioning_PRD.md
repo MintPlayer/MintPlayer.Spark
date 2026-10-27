@@ -135,7 +135,10 @@ adds tags and Releases authored by the App, per-repository serialization, and hi
 - **A, the action step (default).** The consumer's publish workflow calls `MintPlayer/versioning-action@v1` once,
   ~~**after build and before pack**~~ **after the tests and before pack** (*superseded 2026-10-25 by #544 D3*: a
   tag made before failing tests left a version that never shipped, so the onboarding now puts the step after the
-  last test step and adds `concurrency: cancel-in-progress`; Spark's `release` job `needs: tests`). The API hash needs the built assemblies and `.d.ts` files (D6), and `dotnet pack`
+  last test step and adds `concurrency: cancel-in-progress`; Spark's `release` job `needs: tests`). *Proposed by
+  #552 ([versioning_plan_release_split_PRD.md](versioning_plan_release_split_PRD.md)): `phase: plan` after the build
+  gives the versions without tagging, and `phase: release` after the tests writes exactly those tags; the single
+  step stays the default.* The API hash needs the built assemblies and `.d.ts` files (D6), and `dotnet pack`
   (without `--no-build`) rebuilds with `MintPlayer.Versioning.MSBuild` reading the new tags (S1, D9). For npm the action writes the versions into
   `package.json` before the library build that copies them to `dist` (D9). The step computes and tags (D2), runs
   `git fetch --tags` and deepens a shallow clone itself, and exposes the versions as outputs. The consumer controls *when* a release happens: gate the step with `if:`, make the
