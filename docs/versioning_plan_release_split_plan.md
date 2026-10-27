@@ -7,13 +7,16 @@
 
 - **2026-10-27:** investigated, then grilled. The first draft was too complicated (owner). Decided: D1–D9 in the
   PRD.
-- **Next:** spike S1, then M1–M6.
+- **2026-10-27:** S1 done, M1–M6 implemented on the branch (commits `3eeae546` M1+M3, `02d4fb3d` M2+M4+M5, then
+  M6). The engine moved with no new API: the plan is `RunAsync` with a recording writer, and the server release
+  reuses `/jobs/tags`. Targeted verification is below.
+- **Next:** the PR, then post-merge (deploy, minor bump of the action, S2 in ng-bootstrap).
 
 ## Spikes
 
 | Spike | Question | Blocks | Result |
 |---|---|---|---|
-| S1 | Can `compile-ts-action` commit the `dotnet publish` output onto the `versioning-v1.x.y` tag commit only? If not, what does our own publish step look like? Size and cold `dotnet <dll>` time on ubuntu-latest | M5 | — |
+| S1 | Can `compile-ts-action` commit the `dotnet publish` output onto the `versioning-v1.x.y` tag commit only? If not, what does our own publish step look like? Size and cold `dotnet <dll>` time on ubuntu-latest | M5 | **No.** `MintPlayer/github-actions` `compile-ts-action/publish.sh` commits `output-dir` and pushes `HEAD:${GITHUB_REF_NAME}`, then tags that commit: it can only put files on the branch. `versioning-action-publish.yml` therefore builds, tests and tags itself: the bundle is committed to master when changed, then `dotnet publish` goes into `engine/` (gitignored, `git add --force`) on a detached commit on top, and only the tags point at it. The size and the cold time are measured on the first publish after merge. |
 | S2 | After merge: is ng-bootstrap's master run under 5 min with the new shape? | post-merge | — |
 
 ## Milestones
@@ -86,7 +89,7 @@
 
 These are the targeted classes only:
 - `CodeCoverage.Versioning.Tests` `Releases/*`
-- `CodeCoverage.GitWriter.Tests` `VersioningConformanceTests`
+- `CodeCoverage.GitWriter.Tests` `VersioningConformanceTests`, `VersioningPlanReleaseTests`, `VersioningPlanTests`
 - `CodeCoverage.Tests` `VersioningControllerTests`
 - the action's vitest
 

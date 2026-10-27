@@ -57,11 +57,45 @@ build the npm libraries after this step, so they copy the stamped package.json.
 It reads the `versioning:` section of `coverage.yml` from the **default branch**, the same file the app reads. A
 repository without that section is refused.
 
+### Plan beside the tests, tag after them (#552)
+
+When the tests run in their own job, split the step so that nothing waits for them that does not need to.
+`phase: plan` runs after the build, in parallel with the tests. It decides the versions and writes nothing, and its
+`plan` output goes to a job output. `phase: release` runs after the tests with that output as its `plan` input. It
+writes exactly the planned tags, stamps the npm versions, and the pack follows it:
+
+```yaml
+jobs:
+  plan:
+    outputs: { plan: '${{ steps.plan.outputs.plan }}' }
+    steps:
+      - uses: actions/checkout@v7
+        with: { fetch-depth: 0 }
+      - run: dotnet build -c Release
+      - id: plan
+        uses: MintPlayer/MintPlayer.Spark/apps/CodeCoverage/versioning-action@versioning-v1
+        with: { phase: plan }
+  publish:
+    needs: [plan, test]
+    steps:
+      - uses: actions/checkout@v7
+        with: { fetch-depth: 0 }
+      - uses: MintPlayer/MintPlayer.Spark/apps/CodeCoverage/versioning-action@versioning-v1
+        with: { phase: release, plan: '${{ needs.plan.outputs.plan }}' }
+      - run: dotnet pack -c Release -o nupkgs
+```
+
+The release refuses a plan made for another commit or branch, and a plan the tag history moved past (`stale-plan`):
+use **"Re-run all jobs"** to plan again. In server mode a 5xx on either phase falls back to the local engine, with the
+same plan for the release. See [the versioning guide](../../../docs/code-coverage/versioning.md#plan-beside-the-tests-tag-after-them-552).
+
 ## Inputs
 
 | Input | Default | Meaning |
 |---|---|---|
-| `mode` | `versioning.mode`, else `server` | `server`: the app plans and pushes the tags. `local`: the engine runs on the runner, from this action's source. |
+| `phase` | `all` | `all`: decide and tag in one step. `plan`: decide and write nothing. `release`: write the tags of the `plan` input. |
+| `plan` | (none) | `phase: release` only: the `plan` output of the `phase: plan` step. |
+| `mode` | `versioning.mode`, else `server` | `server`: the app plans and pushes the tags. `local`: the engine runs on the runner. |
 | `url` | `https://coverage.mintplayer.com` | The app, for server mode. |
 | `configuration` | `Release` | The build configuration whose output the API hashes are read from. |
 | `working-directory` | `.` | The checkout root. |
@@ -80,7 +114,8 @@ missing), a network error, a timeout or a 5xx. A 4xx is the app's answer, and th
 
 | Output | Content |
 |---|---|
-| `outcome` | `versioned`, or `skipped` (a pull request or tag build). A refusal fails the step and names the packages. |
+| `outcome` | `versioned`, `planned` (`phase: plan`), or `skipped` (a pull request or tag build). A refusal fails the step and names the packages. |
+| `plan` | `phase: plan` only: the plan as JSON, for the release step. |
 | `mode` | The host that ran: `server` or `local`. |
 | `released` | JSON array of the package ids this commit released. |
 | `versions` | JSON object, package id → version, for every released package. |
@@ -107,5 +142,7 @@ MSBuild compiles in your build; it adds no dependency to your packages.
 ## Versions of this action
 
 Pin the moving `versioning-v<major>` tag, or a commit with that tag as a comment. `versioning-action-publish.yml`
-moves the tag on every change to the action or to the engine it runs from source in local mode. `dist/` is the
+moves the tag on every change to the action or to its engine. The tags point at a commit on top of master's that also
+holds the engine prebuilt (`engine/`, #552 D8), so the step runs `dotnet engine/codecoverage-versioning.dll` instead of
+building it. A checkout of a branch has no `engine/` and runs the engine from source. `dist/` is the
 committed ncc bundle; build it from the main checkout only (see the repository's `CLAUDE.md`).

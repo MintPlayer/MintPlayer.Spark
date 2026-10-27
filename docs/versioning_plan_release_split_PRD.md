@@ -7,6 +7,10 @@
 > **Status 2026-10-27:** investigated and grilled (owner). The first draft is listed under "Superseded" at the end.
 > It had a new engine API, a plan file, artifacts and stored plans, and the owner judged it "way too complicated".
 > This version is the minimal PR that does what the owner described.
+>
+> **Implemented 2026-10-27** on `feat/issue552-versioning-plan-release` (D1–D8; D9 is the ng-bootstrap issue). S1's
+> answer was no: `compile-ts-action` commits only to its branch, so the publish workflow tags the engine commit itself
+> (plan file, S1).
 
 ## The goal (owner, 2026-10-27)
 
