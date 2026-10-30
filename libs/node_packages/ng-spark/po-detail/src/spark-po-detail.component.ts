@@ -644,6 +644,15 @@ export class SparkPoDetailComponent {
       {} as Record<string, LookupReference>));
   }
 
+  /** Whether a row of the AsDetail attribute holds a reference in the column that the server sent no breadcrumb for. */
+  private needsReferenceLabels(attribute: string, column: string): boolean {
+    const rows = this.item()?.attributes.find(a => a.name === attribute)?.objects ?? [];
+    return rows.some(row => {
+      const reference = row.attributes.find(a => a.name === column);
+      return reference?.value != null && reference.value !== '' && !reference.breadcrumb;
+    });
+  }
+
   private async loadAsDetailTypes(): Promise<void> {
     const asDetailAttrs = this.visibleAttributes().filter(a => a.dataType === 'AsDetail' && a.isArray && a.asDetailType);
     if (asDetailAttrs.length === 0) return;
@@ -660,7 +669,11 @@ export class SparkPoDetailComponent {
         ?? embedded.find(t => t.clrType === attr.asDetailType);
       if (asDetailType) {
         newAsDetailTypes[attr.name] = asDetailType;
-        const refCols = asDetailType.attributes.filter(a => a.dataType === 'Reference' && a.query);
+        // A cell shows the breadcrumb the server resolved (#185); the reference query's options only label a
+        // reference that came without one. Fetching them for every row cost the song page 14 of its 18 database
+        // requests (docs/spark_ssr_PRD.md I26).
+        const refCols = asDetailType.attributes.filter(a => a.dataType === 'Reference' && a.query
+          && this.needsReferenceLabels(attr.name, a.name));
         if (refCols.length > 0) {
           const refEntries = await Promise.all(
             refCols.map(async col => {

@@ -85,13 +85,14 @@ internal sealed class SparkRoutesPrerenderContributor : ISparkPrerenderContribut
         var entityType = types.FirstOrDefault(t => t.Id == type || t.Alias == type);
         if (entityType?.Id is null || !item.IsSuccess)
             return;
+        var loaded = item.Read<ObjectReference>();
 
         await Task.WhenAll(
             context.GetAsync($"{Api}/permissions/{EncodeUriComponent(entityType.Id)}"),
             context.PostAsync($"{Api}/actions/list", new { objectTypeId = entityType.Id }),
             SupplyLookupsAsync(context, entityType),
-            SupplyAsDetailReferencesAsync(context, types, entityType, type, id),
-            SupplySubQueriesAsync(context, entityType, item.Read<ObjectReference>()?.Id ?? id));
+            SupplyAsDetailReferencesAsync(context, types, entityType, type, id, loaded),
+            SupplySubQueriesAsync(context, entityType, loaded?.Id ?? id));
     }
 
     /// <summary>
@@ -125,16 +126,19 @@ internal sealed class SparkRoutesPrerenderContributor : ISparkPrerenderContribut
 
     /// <summary>
     /// <c>loadAsDetailTypes()</c>: each AsDetail array's reference columns run their query by name, with the
-    /// page's object as the parent. By name means the query catalogue first (<c>getQueryByName</c>).
+    /// page's object as the parent. By name means the query catalogue first (<c>getQueryByName</c>). Only a column
+    /// with a row whose reference came without a breadcrumb (<c>needsReferenceLabels</c>, PRD I26).
     /// </summary>
-    private static async Task SupplyAsDetailReferencesAsync(ISparkPrerenderContext context, List<EntityTypeReference> types, EntityTypeReference entityType, string type, string id)
+    private static async Task SupplyAsDetailReferencesAsync(ISparkPrerenderContext context, List<EntityTypeReference> types, EntityTypeReference entityType, string type, string id, ObjectReference? item)
     {
         var queryNames = (entityType.Attributes ?? [])
             .Where(a => a.DataType == "AsDetail" && a.IsArray && a.AsDetailType is not null)
-            .Select(a => types.FirstOrDefault(t => t.ClrType == a.AsDetailType)
-                ?? (entityType.DetailTypes ?? []).FirstOrDefault(t => t.ClrType == a.AsDetailType))
-            .OfType<EntityTypeReference>()
-            .SelectMany(t => (t.Attributes ?? []).Where(a => a.DataType == "Reference" && a.Query is not null).Select(a => a.Query!))
+            .Select(a => (Attribute: a, Type: types.FirstOrDefault(t => t.ClrType == a.AsDetailType)
+                ?? (entityType.DetailTypes ?? []).FirstOrDefault(t => t.ClrType == a.AsDetailType)))
+            .Where(x => x.Type is not null)
+            .SelectMany(x => (x.Type!.Attributes ?? [])
+                .Where(c => c.DataType == "Reference" && c.Query is not null && NeedsReferenceLabels(item, x.Attribute.Name, c.Name))
+                .Select(c => c.Query!))
             .Distinct()
             .ToList();
         if (queryNames.Count == 0)
@@ -146,6 +150,14 @@ internal sealed class SparkRoutesPrerenderContributor : ISparkPrerenderContribut
             .OfType<string>()
             .Select(queryId => context.PostAsync($"{Api}/queries/execute", new { queryId, parentId = id, parentType = type })));
     }
+
+    /// <summary>spark-po-detail's <c>needsReferenceLabels</c>: a row holds a reference the server sent no breadcrumb for.</summary>
+    private static bool NeedsReferenceLabels(ObjectReference? item, string? attribute, string? column)
+        => (item?.Attributes?.FirstOrDefault(a => a.Name == attribute)?.Objects ?? [])
+            .Any(row => row.Attributes?.FirstOrDefault(a => a.Name == column) is { } reference
+                && reference.Value is { ValueKind: not (JsonValueKind.Null or JsonValueKind.Undefined) } value
+                && !(value.ValueKind == JsonValueKind.String && value.GetString() == "")
+                && string.IsNullOrEmpty(reference.Breadcrumb));
 
     /// <summary>
     /// spark-query-list.component.ts on <c>po/:type</c>: the type's list query, found as the page finds it,
@@ -272,6 +284,16 @@ internal sealed class SparkRoutesPrerenderContributor : ISparkPrerenderContribut
     {
         public string? Id { get; set; }
         public string? Breadcrumb { get; set; }
+        public List<AttributeValue>? Attributes { get; set; }
+    }
+
+    /// <summary>An attribute of a loaded object: its value, the reference's breadcrumb, an AsDetail array's rows.</summary>
+    private sealed class AttributeValue
+    {
+        public string? Name { get; set; }
+        public JsonElement? Value { get; set; }
+        public string? Breadcrumb { get; set; }
+        public List<ObjectReference>? Objects { get; set; }
     }
 
     // The members of GET /spark/types the predictions need.
@@ -289,6 +311,7 @@ internal sealed class SparkRoutesPrerenderContributor : ISparkPrerenderContribut
 
     private sealed class AttributeReference
     {
+        public string? Name { get; set; }
         public string? DataType { get; set; }
         public bool IsArray { get; set; }
         public string? AsDetailType { get; set; }

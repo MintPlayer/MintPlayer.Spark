@@ -870,7 +870,11 @@ describe('SparkPoDetailComponent', () => {
     } as any);
     const orderItem = {
       id: 'people/1', objectTypeId: 't-person',
-      attributes: [{ id: 'a-lines', name: 'Lines', dataType: 'AsDetail', isArray: true, value: [{ Product: 'products/1', Qty: '2' }] }],
+      attributes: [{
+        id: 'a-lines', name: 'Lines', dataType: 'AsDetail', isArray: true, value: [{ Product: 'products/1', Qty: '2' }],
+        // The rows as the server sends them; this reference carries no breadcrumb, so the options are needed (I26).
+        objects: [{ id: 'lines/1', attributes: [{ name: 'Product', value: 'products/1' }, { name: 'Qty', value: '2' }] }],
+      }],
     } as any;
     const products = [{ id: 'products/1', breadcrumb: 'Widget', values: [] }];
 
@@ -894,6 +898,27 @@ describe('SparkPoDetailComponent', () => {
       const cells = Array.from(harness.routeNativeElement!.querySelectorAll('tbody td')).map(td => td.textContent?.trim());
       expect(cells).toContain('Widget');
       expect(cells).not.toContain('products/1');
+    });
+
+    it('does not query the reference options when every row reference has its breadcrumb (I26)', async () => {
+      const labelled = {
+        ...orderItem,
+        attributes: [{
+          ...orderItem.attributes[0],
+          objects: [{ id: 'lines/1', attributes: [{ name: 'Product', value: 'products/1', breadcrumb: 'Widget' }, { name: 'Qty', value: '2' }] }],
+        }],
+      };
+      const executeQueryByName = vi.fn();
+      const { harness } = await setup({
+        getEntityTypes: vi.fn().mockResolvedValue([orderType([lineType])]),
+        get: vi.fn().mockResolvedValue(labelled),
+        executeQueryByName,
+      } as any);
+      const c = await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
+      await settle(harness.fixture);
+
+      expect(c.asDetailTypes()['Lines']).toBe(lineType);
+      expect(executeQueryByName).not.toHaveBeenCalled();
     });
 
     it('prefers the catalogue copy over the embedded one', async () => {

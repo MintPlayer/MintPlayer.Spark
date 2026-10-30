@@ -159,7 +159,12 @@ internal sealed class SparkPrerenderDispatcher
         {
             if (accessor is not null)
                 accessor.HttpContext = null;
-            page.Cost.Add(DatabaseRequests(scope.ServiceProvider));
+            var databaseRequests = DatabaseRequests(scope.ServiceProvider);
+            page.Cost.Add(databaseRequests);
+            // Which request a page's database total comes from (its sum is logged per page).
+            scope.ServiceProvider.GetService<ILoggerFactory>()?.CreateLogger<SparkPrerenderDispatcher>()
+                .LogDebug("Server rendering: {Method} {Path} {Body} made {DatabaseRequests} database requests.",
+                    method, pathAndQuery, body, databaseRequests);
         }
 
         if (WasRefused(request))
