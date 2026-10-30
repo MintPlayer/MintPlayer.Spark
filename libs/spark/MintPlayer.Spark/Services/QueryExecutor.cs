@@ -51,6 +51,17 @@ public interface IQueryExecutor
         string? querySearch = null);
 
     bool OwnsItsOwnPaging(SparkQuery query);
+
+    /// <summary>
+    /// The columns <see cref="ExecuteQueryAsync"/> will ship for <paramref name="query"/>, known before
+    /// it runs, so a client can draw a server-rendered grid's cells before its first fetch (docs/spark_ssr_PRD.md D13).
+    /// </summary>
+    /// <remarks>
+    /// Exact for a <c>Database.*</c> query. A <c>Custom.*</c> query's sortable and filterable flags also
+    /// depend on the index of the queryable its method returns, which only running it reveals; there they
+    /// are an upper bound that the executed result may narrow. Empty when the query names no type.
+    /// </remarks>
+    Task<IReadOnlyList<QueryColumn>> DescribeColumnsAsync(SparkQuery query, CancellationToken cancellationToken = default);
 }
 
 [Register(typeof(IQueryExecutor), ServiceLifetime.Scoped)]
@@ -772,6 +783,32 @@ internal sealed record DatabasePage(int TotalItems);
                 return method;
             });
 
+    public async Task<IReadOnlyList<QueryColumn>> DescribeColumnsAsync(SparkQuery query, CancellationToken cancellationToken = default)
+    {
+        var (isCustom, name) = ResolveSource(query);
+        if (!isCustom)
+        {
+            var (queryable, entityType, _, surface, resultType, indexType) =
+                await ResolveDatabaseSourceAsync(query, name, cancellationToken);
+            return QueryResultProjector.BuildColumns(
+                surface, query, DatabaseSortType(entityType, resultType, indexType), ResolveIndexedSearchFields(queryable));
+        }
+
+        var definition = ResolveEntityTypeDefinition(query, name);
+        if (definition is null) return [];
+        await permissionService.EnsureAuthorizedAsync("Query", definition.Name);
+        var customSurface = await QuerySurfaceAsync(definition, cancellationToken);
+
+        var clrType = string.IsNullOrEmpty(definition.ClrType) ? null : SparkTypeResolver.ResolveClrType(definition.ClrType);
+        var actions = clrType is not null
+            ? actionsResolver.ResolveForType(clrType)
+            : actionsResolver.ResolveByEntityName(definition.Name);
+        var method = actions is null ? null : ResolveCustomQueryMethod(actions.GetType(), name);
+
+        // No index set: the one the method's queryable runs over is known only once it has run.
+        return QueryResultProjector.BuildColumns(customSurface, query, method?.ResultElementType);
+    }
+
     public bool OwnsItsOwnPaging(SparkQuery query)
     {
         var (isCustom, methodName) = ResolveSource(query);
@@ -816,66 +853,16 @@ internal sealed record DatabasePage(int TotalItems);
 
     #region Database Queries
 
-    private async Task<QuerySourceResult> ExecuteDatabaseQueryAsync(
-        SparkQuery query, string propertyName, PersistentObject? parent, string? searchTerm,
-        IReadOnlyCollection<string>? restrictToIds, IReadOnlyList<QueryColumnFilter>? columnFilters,
-        int skip, int take, CancellationToken cancellationToken)
+    /// <summary>
+    /// A <c>Database.*</c> query's source as far as it can be resolved without running it: the context
+    /// property's queryable re-rooted onto the query's index and projected, the row type's definition and
+    /// the caller's query surface of it. Shared by <see cref="ExecuteDatabaseQueryAsync"/> and
+    /// <see cref="DescribeColumnsAsync"/>, so the columns a query's metadata promises are the ones its
+    /// result ships (docs/spark_ssr_PRD.md D13).
+    /// </summary>
+    private async Task<(object Queryable, Type EntityType, EntityTypeDefinition Definition, EntityTypeDefinition Surface, Type ResultType, Type? IndexType)> ResolveDatabaseSourceAsync(
+        SparkQuery query, string propertyName, CancellationToken cancellationToken)
     {
-        // Authorization comes FIRST, from the query's declared entity type (F1). Everything below
-        // is resolution work — reflecting over the context, reading a property, matching a CLR type
-        // to a model file — and every step of it used to run for a caller with no Query right at
-        // all, because the only check sat after the last of them. That is backwards on its own, and
-        // it also meant a misconfigured query answered a denied caller with an empty grid instead
-        // of a denial. The check below on the resolved definition stays and remains authoritative;
-        // permission decisions memoize per request, so asking twice costs nothing.
-        if (!string.IsNullOrEmpty(query.EntityType))
-            await permissionService.EnsureAuthorizedAsync("Query", query.EntityType);
-
-        // AFTER authorization, deliberately — this refusal names the query's source and entity type,
-        // and handing that to a caller who has no Query right is the same disclosure the sortColumns
-        // parser above was reordered to close.
-        //
-        // The parent used to stop here: this method did not take one, while the custom branch three
-        // lines away did. The client sent parentId/parentType, the endpoint resolved AND authorized
-        // the parent, and then this branch dropped it and served the WHOLE child collection under
-        // that parent's detail page. No error, no warning, nothing at startup — the tab simply showed
-        // every row in the collection. It went unnoticed only because every sub-query in the
-        // repository happens to use a Custom.* source.
-        //
-        // A Database.* source is a queryable property on the SparkContext. It cannot express
-        // "belonging to this parent" — that scoping lives in an actions method, which is why a
-        // sub-query must route through one. So the parent is not something this branch can honour;
-        // its presence proves the query was configured somewhere it cannot serve. Refuse, and name
-        // the fix.
-        //
-        // But only for an actual sub-query, which is what the parent's type DECLARES, not merely
-        // what a request carries. This condition used to be `parent is not null`, and that was too
-        // broad by one whole use of the parent: the edit form sends the object being edited as the
-        // parent when it fetches every Reference attribute's OPTION LIST, so a picker pointed at a
-        // plain Database.* query — the ordinary way to offer "any Account" — failed the form with a
-        // 500 and no options. The refusal's own premise does not hold there either: "serving it
-        // would list every row" is the defect for a child grid and the entire point of a picker.
-        //
-        // Declared sub-queries are the parent type's Queries, by alias. That is exactly the
-        // configuration the original guard was written to catch, so it still fires where it was
-        // aimed; an undeclared pairing means the parent is context rather than a filter, and is
-        // served unscoped below. This concedes nothing to a caller: dropping parentId from the
-        // request already returns these rows, and the Query right was enforced above either way.
-        var declaresAsSubQuery = parent is not null
-            && (modelLoader.GetEntityType(parent.ObjectTypeId)?.Queries ?? [])
-                .Select(entry => entry.Query)
-                .Contains(query.Alias ?? SparkQueryAliases.Derive(query.Name), StringComparer.OrdinalIgnoreCase);
-
-        if (declaresAsSubQuery)
-        {
-            throw new InvalidOperationException(
-                $"Query '{query.Name}' is used as a sub-query (it was executed with a parent), but its " +
-                $"source '{query.Source}' reads a SparkContext property directly and cannot be scoped to " +
-                $"that parent. Serving it would list every row of '{query.EntityType}' under the parent's " +
-                $"page. Change the source to 'Custom.<Method>' on '{query.EntityType}Actions' and scope the " +
-                $"rows with the parent, e.g. '.Where(x => x.ParentId == args.Parent!.Id)'.");
-        }
-
         var sparkContext = sparkContextResolver.ResolveContext(session)
             ?? throw new InvalidOperationException(
                 $"Query '{query.Name}' reads 'Database.{propertyName}', but this application registers no " +
@@ -994,6 +981,76 @@ internal sealed record DatabasePage(int TotalItems);
             }
         }
 
+        return (queryable, entityType, entityTypeDefinition, surface, resultType, indexType);
+    }
+
+    /// <summary>The type a database query sorts, filters and searches over: the index's projection when one is bound, else the entity.</summary>
+    private static Type DatabaseSortType(Type entityType, Type resultType, Type? indexType)
+        => (indexType != null && resultType != entityType) ? resultType : entityType;
+
+    private async Task<QuerySourceResult> ExecuteDatabaseQueryAsync(
+        SparkQuery query, string propertyName, PersistentObject? parent, string? searchTerm,
+        IReadOnlyCollection<string>? restrictToIds, IReadOnlyList<QueryColumnFilter>? columnFilters,
+        int skip, int take, CancellationToken cancellationToken)
+    {
+        // Authorization comes FIRST, from the query's declared entity type (F1). Everything below
+        // is resolution work — reflecting over the context, reading a property, matching a CLR type
+        // to a model file — and every step of it used to run for a caller with no Query right at
+        // all, because the only check sat after the last of them. That is backwards on its own, and
+        // it also meant a misconfigured query answered a denied caller with an empty grid instead
+        // of a denial. The check below on the resolved definition stays and remains authoritative;
+        // permission decisions memoize per request, so asking twice costs nothing.
+        if (!string.IsNullOrEmpty(query.EntityType))
+            await permissionService.EnsureAuthorizedAsync("Query", query.EntityType);
+
+        // AFTER authorization, deliberately — this refusal names the query's source and entity type,
+        // and handing that to a caller who has no Query right is the same disclosure the sortColumns
+        // parser above was reordered to close.
+        //
+        // The parent used to stop here: this method did not take one, while the custom branch three
+        // lines away did. The client sent parentId/parentType, the endpoint resolved AND authorized
+        // the parent, and then this branch dropped it and served the WHOLE child collection under
+        // that parent's detail page. No error, no warning, nothing at startup — the tab simply showed
+        // every row in the collection. It went unnoticed only because every sub-query in the
+        // repository happens to use a Custom.* source.
+        //
+        // A Database.* source is a queryable property on the SparkContext. It cannot express
+        // "belonging to this parent" — that scoping lives in an actions method, which is why a
+        // sub-query must route through one. So the parent is not something this branch can honour;
+        // its presence proves the query was configured somewhere it cannot serve. Refuse, and name
+        // the fix.
+        //
+        // But only for an actual sub-query, which is what the parent's type DECLARES, not merely
+        // what a request carries. This condition used to be `parent is not null`, and that was too
+        // broad by one whole use of the parent: the edit form sends the object being edited as the
+        // parent when it fetches every Reference attribute's OPTION LIST, so a picker pointed at a
+        // plain Database.* query — the ordinary way to offer "any Account" — failed the form with a
+        // 500 and no options. The refusal's own premise does not hold there either: "serving it
+        // would list every row" is the defect for a child grid and the entire point of a picker.
+        //
+        // Declared sub-queries are the parent type's Queries, by alias. That is exactly the
+        // configuration the original guard was written to catch, so it still fires where it was
+        // aimed; an undeclared pairing means the parent is context rather than a filter, and is
+        // served unscoped below. This concedes nothing to a caller: dropping parentId from the
+        // request already returns these rows, and the Query right was enforced above either way.
+        var declaresAsSubQuery = parent is not null
+            && (modelLoader.GetEntityType(parent.ObjectTypeId)?.Queries ?? [])
+                .Select(entry => entry.Query)
+                .Contains(query.Alias ?? SparkQueryAliases.Derive(query.Name), StringComparer.OrdinalIgnoreCase);
+
+        if (declaresAsSubQuery)
+        {
+            throw new InvalidOperationException(
+                $"Query '{query.Name}' is used as a sub-query (it was executed with a parent), but its " +
+                $"source '{query.Source}' reads a SparkContext property directly and cannot be scoped to " +
+                $"that parent. Serving it would list every row of '{query.EntityType}' under the parent's " +
+                $"page. Change the source to 'Custom.<Method>' on '{query.EntityType}Actions' and scope the " +
+                $"rows with the parent, e.g. '.Where(x => x.ParentId == args.Parent!.Id)'.");
+        }
+
+        var (queryable, entityType, entityTypeDefinition, surface, resultType, indexType) =
+            await ResolveDatabaseSourceAsync(query, propertyName, cancellationToken);
+
         // Chain .Include() before executing: [Reference] property names + the type's
         // GetDefaultIncludes() paths (#239), so referenced docs arrive in the same round-trip.
         var includePaths = referenceResolver.ResolveIncludePaths(resultType, entityType);
@@ -1008,7 +1065,7 @@ internal sealed record DatabasePage(int TotalItems);
         var rowFilter = await rowSecurity.ComposeRowFilterAsync(queryable, entityType, resultType, "Query", cancellationToken);
         queryable = rowFilter.Queryable;
 
-        var sortType = (indexType != null && resultType != entityType) ? resultType : entityType;
+        var sortType = DatabaseSortType(entityType, resultType, indexType);
 
         // Column filters sit between the row filter and the search group (#431). Not merely "before
         // search": they are plain Equal comparisons, so they cannot be swept into RavenDB's

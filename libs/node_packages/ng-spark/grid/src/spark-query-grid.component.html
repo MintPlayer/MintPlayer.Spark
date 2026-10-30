@@ -73,6 +73,7 @@
       [labels]="datatableLabels()"
       [stateKey]="stateKey()"
       (filterschange)="onFiltersChange($event)"
+      (pageload)="onPageLoad($event)"
       (rowclick)="onRowClick($event)"
       [(page)]="page"
       [(perPage)]="perPage"

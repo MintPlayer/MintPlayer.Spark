@@ -1,4 +1,4 @@
-import { booleanAttribute, ChangeDetectionStrategy, Component, DestroyRef, Injector, TransferState, computed, effect, inject, input, makeStateKey, model, output, runInInjectionContext, signal, untracked, viewChild, Type } from '@angular/core';
+import { booleanAttribute, ChangeDetectionStrategy, Component, DestroyRef, Injector, computed, effect, inject, input, model, output, runInInjectionContext, signal, untracked, viewChild, Type } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { toSignal } from '@angular/core/rxjs-interop';
@@ -6,7 +6,7 @@ import { NavigationEnd, Router, RouterModule } from '@angular/router';
 import { filter, map } from 'rxjs';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
-import { BsDatatableComponent, BsDatatableFilterDirective, BsDatatableHeaderDirective, BsDatatableRowDirective, type DatatableColumnDef, type DatatableDistincts, type DatatableFetch, type DatatableFetchRequest, type DatatableFilters, type RowEventDetail, type SelectionChangeEventDetail, type SortColumn } from '@mintplayer/ng-bootstrap/datatable';
+import { BsDatatableComponent, BsDatatableFilterDirective, BsDatatableHeaderDirective, BsDatatableRowDirective, type DatatableColumnDef, type DatatableDistincts, type DatatableFetch, type DatatableFetchRequest, type DatatableFetchResponse, type DatatableFilters, type RowEventDetail, type SelectionChangeEventDetail, type SortColumn } from '@mintplayer/ng-bootstrap/datatable';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { BsBadgeComponent } from '@mintplayer/ng-bootstrap/badge';
 // ⚠️ NOT @mintplayer/ng-bootstrap/dropdown. Its fesm (22.19.0) declares BsDropdownToggleDirective,
@@ -56,6 +56,12 @@ import { LiveGridSession } from './live-grid-session';
 
 /** The HTTP status `/spark/queries/execute` gives for the same refusal, per live error code (guide-live-updates.md). */
 const LIVE_ERROR_STATUS: Record<string, number> = { unavailable: 404, invalid: 400, limit: 429, failed: 500 };
+
+/** What a page's datatable response carries for the grid beyond its rows (`extra`, ng-bootstrap #450). */
+interface PageExtra {
+  columns: QueryColumn[];
+  disabledActions: string[];
+}
 
 /**
  * The one Spark grid: a `<bs-datatable>` rendering a query or a sub-query.
@@ -781,26 +787,15 @@ export class SparkQueryGridComponent {
   });
 
   /**
-   * What `toPage` records off page 1, handed from the server render to the client. A hydrating
-   * datatable seeds page 1 from its own transfer and never calls `fetch`, and its seed keeps only the
-   * rows and the total, so without this the client grid had no columns: rows without cells, no
-   * headers (2026-10-30, `/query/songs`). Drop it once ng-bootstrap #450 hands the seeded result back.
+   * The datatable's `(pageload)`, for the page 1 a hydrating datatable seeded from the server render
+   * instead of calling `fetch` (ng-bootstrap #450): what `toPage` read off that result comes back in
+   * `extra`. Fetched pages went through `toPage` already. The columns were drawn from the query's
+   * `resultColumns` before this; the result's replace them (docs/spark_ssr_PRD.md D13).
    */
-  private readonly transferState = inject(TransferState);
-  private pageMetaKey() {
-    const stateKey = this.stateKey();
-    return stateKey ? makeStateKey<{ columns: QueryColumn[]; disabledActions: string[]; totalItems: number; ids: string[] }>(`${stateKey}:meta`) : null;
-  }
-  private restorePageMeta(): void {
-    const key = untracked(() => this.pageMetaKey());
-    const meta = key && this.transferState.get(key, null);
-    if (!key || !meta) return;
-    // Once: a later visit to the same query fetches, and must not be dressed in this render's page.
-    this.transferState.remove(key);
-    this.setFetchedColumns(meta.columns);
-    this.disabledActions.set(meta.disabledActions);
-    this.resultCount.set(meta.totalItems);
-    this.loadedIds.set(new Set(meta.ids));
+  protected onPageLoad(event: { seeded: boolean; result: { data: unknown[]; totalRecords: number; extra?: unknown } }): void {
+    if (!event.seeded) return;
+    const extra = (event.result.extra ?? {}) as Partial<PageExtra>;
+    this.applyPage(event.result.data as QueryResultItem[], event.result.totalRecords, extra.columns, extra.disabledActions);
   }
 
   /**
@@ -1273,7 +1268,9 @@ export class SparkQueryGridComponent {
       ]);
 
       this.query.set(resolvedQuery);
-      this.restorePageMeta();
+      // Before the first fetch, so a hydrating grid draws the server's cells on its first pass; the
+      // fetched result's columns replace them, narrowing a custom query's sort and filter flags (D13).
+      this.setFetchedColumns(resolvedQuery?.resultColumns ?? []);
       this.allEntityTypes.set(entityTypes);
 
       const et = this.resolveEntityType(resolvedQuery, entityTypes);
@@ -1378,27 +1375,31 @@ export class SparkQueryGridComponent {
    * One page as the datatable takes it, recording what the chrome reads off a result: count, columns,
    * the result's withheld actions, the ids on screen.
    */
-  private toPage(r: QueryResult, req: DatatableFetchRequest) {
-    this.errorMessage.set(null);
-    this.resultCount.set(r.totalItems);
-    // Columns come from the result now, not from the entity type: the server decides the query
-    // surface (ShowedOn.Query) and is the same place the sort-column allow-list is checked.
-    // ?? [] because a malformed or older response must render an empty grid, not throw inside a
-    // computed — where the stack points at the column filter and not at the response that lacked them.
-    this.setFetchedColumns(r.columns ?? []);
-    // Per-result, so it is re-read on every page rather than latched from the first.
-    this.disabledActions.set(r.disabledActions ?? []);
-    // Paged: the page shown. Virtual scroll keeps every block it fetched reachable by scrolling.
-    const ids = (r.items ?? []).map(item => item.id);
-    if (req.page === 1) {
-      const key = untracked(() => this.pageMetaKey());
-      if (key) this.transferState.set(key, { columns: r.columns ?? [], disabledActions: r.disabledActions ?? [], totalItems: r.totalItems, ids });
-    }
-    this.loadedIds.set(this.isVirtualScrolling() ? new Set([...this.loadedIds(), ...ids]) : new Set(ids));
+  private toPage(r: QueryResult) {
+    this.applyPage(r.items ?? [], r.totalItems, r.columns, r.disabledActions);
+    // What a server render's seeded page 1 hands to the client's `onPageLoad`; JSON, as it is transferred.
+    const extra: PageExtra = { columns: r.columns ?? [], disabledActions: r.disabledActions ?? [] };
     return {
       data: r.items ?? [],
       totalRecords: r.totalItems,
+      extra: extra as unknown as DatatableFetchResponse["extra"],
     };
+  }
+
+  private applyPage(items: QueryResultItem[], totalItems: number, columns: QueryColumn[] | undefined, disabledActions: string[] | undefined): void {
+    this.errorMessage.set(null);
+    this.resultCount.set(totalItems);
+    // Columns come from the server, not from the entity type: it decides the query surface
+    // (ShowedOn.Query) and is the same place the sort-column allow-list is checked. The query's
+    // `resultColumns` drew them already; the result is authoritative for the flags.
+    // ?? [] because a malformed or older response must render an empty grid, not throw inside a
+    // computed — where the stack points at the column filter and not at the response that lacked them.
+    this.setFetchedColumns(columns ?? []);
+    // Per-result, so it is re-read on every page rather than latched from the first.
+    this.disabledActions.set(disabledActions ?? []);
+    // Paged: the page shown. Virtual scroll keeps every block it fetched reachable by scrolling.
+    const ids = items.map(item => item.id);
+    this.loadedIds.set(this.isVirtualScrolling() ? new Set([...this.loadedIds(), ...ids]) : new Set(ids));
   }
 
   /**
@@ -1431,13 +1432,13 @@ export class SparkQueryGridComponent {
         this.loadedIds.set(new Set());
         return { data: [], totalRecords: 0 };
       }
-      return this.toPage(result, req);
+      return this.toPage(result);
     };
   }
 
   private makeHttpFetch(query: SparkQuery, parentId: string, parentType: string): DatatableFetch<QueryResultItem> {
     return (req) => this.sparkService.executeQuery(query.id, this.requestFor(req, parentId, parentType))
-      .then(r => this.toPage(r, req))
+      .then(r => this.toPage(r))
       .catch((e: HttpErrorResponse) => {
       // Report before returning the empty page, or a failed fetch is indistinguishable from a
       // query that legitimately has no rows.
