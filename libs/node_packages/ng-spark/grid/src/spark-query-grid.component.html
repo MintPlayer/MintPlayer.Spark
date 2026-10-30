@@ -78,6 +78,7 @@
       [(page)]="page"
       [(perPage)]="perPage"
       [(sortColumns)]="sortColumns"
+      [pagination]="!isVirtualScrolling()"
       [perPageOptions]="pageSizes">
     <!-- The header of every column (datatableColumns()): the translated label and its description.
          The ⋮ menu's column has no visible header. -->
