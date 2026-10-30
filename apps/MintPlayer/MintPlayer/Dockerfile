@@ -1,4 +1,12 @@
 FROM mcr.microsoft.com/dotnet/aspnet:11.0 AS base
+# Node.js at runtime: server rendering runs the Angular server bundle in a Node process (SpaServices.Prerendering,
+# docs/spark_ssr_PRD.md D1). Without it every rendered page is a 500 while the API still answers.
+RUN apt-get update && \
+    apt-get -y install --no-install-recommends curl ca-certificates && \
+    curl -sL https://deb.nodesource.com/setup_24.x | bash && \
+    apt-get -y install --no-install-recommends nodejs && \
+    apt-get -y purge curl && apt-get -y autoremove && \
+    rm -rf /var/lib/apt/lists/*
 # Mount point for the Data Protection key ring (the compose file mounts a volume here and points
 # Spark__DataProtection__KeysPath at it). Created as root and handed to `app` because a fresh named volume copies the
 # mount point's ownership from the image: without this the non-root app could not write its first key.
