@@ -188,6 +188,14 @@ public sealed class EntityTypeDefinition
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
     public EAgentPermission AgentPermissions { get; set; }
 
+    /// <summary>
+    /// How a detail page of this type describes itself to search engines and link previews
+    /// (<c>docs/spark_ssr_PRD.md</c> D12): hand-written in the model JSON and preserved by model
+    /// synchronization. Absent, the page keeps the breadcrumb as its title and is <c>noindex</c>.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public EntityTypeSeo? Seo { get; set; }
+
     /// <summary>The tabs of the detail page, matched across layers by <c>name</c>.</summary>
     public AttributeTab[] Tabs { get; set; } = [];
 
@@ -242,6 +250,33 @@ public sealed class EntityRevisionsDefinition
 
     /// <summary>Whether a document's revisions go when the document is deleted (a hard delete).</summary>
     public bool PurgeOnDelete { get; set; }
+}
+
+/// <summary>
+/// The model's SEO mapping for one entity type (<c>docs/spark_ssr_PRD.md</c> D12). The page's title is the
+/// object's breadcrumb; the rest names attributes of the presented object, so a value the caller may not
+/// read is absent from the page as it is from <c>/spark/po/load</c>.
+/// </summary>
+public sealed class EntityTypeSeo
+{
+    /// <summary>Whether a readable object's page may be indexed (<c>robots: index</c>); otherwise <c>noindex</c>.</summary>
+    public bool Indexable { get; set; }
+
+    /// <summary>The schema.org <c>@type</c> of the page's JSON-LD, e.g. <c>MusicRecording</c>; absent, no JSON-LD.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? SchemaType { get; set; }
+
+    /// <summary>The attribute whose value is the meta and Open Graph description.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? Description { get; set; }
+
+    /// <summary>The attribute whose value is the Open Graph image URL.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? Image { get; set; }
+
+    /// <summary>More JSON-LD members, schema.org property → attribute name, e.g. <c>{ "datePublished": "Released" }</c>.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public Dictionary<string, string>? Properties { get; set; }
 }
 
 /// <summary>One attribute of an entity type: a field shown, edited and validated on its pages.</summary>

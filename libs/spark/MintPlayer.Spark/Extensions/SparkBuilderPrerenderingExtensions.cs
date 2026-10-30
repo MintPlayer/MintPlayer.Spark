@@ -25,9 +25,6 @@ namespace MintPlayer.Spark.Extensions;
 /// </summary>
 public static class SparkBuilderPrerenderingExtensions
 {
-    /// <summary>The <c>ApplicationBuilder.Properties</c> key UseRouting reads the endpoint route builder from.</summary>
-    private const string GlobalEndpointRouteBuilderKey = "__GlobalEndpointRouteBuilder";
-
     /// <summary>Registers the supplier. Idempotent; libraries register their own contributors.</summary>
     public static ISparkBuilder AddPrerendering(this ISparkBuilder builder, Action<SparkPrerenderingOptions>? configure = null)
     {
@@ -54,15 +51,7 @@ public static class SparkBuilderPrerenderingExtensions
         var app = spa.ApplicationBuilder;
         var dispatcher = app.ApplicationServices.GetService<SparkPrerenderDispatcher>()
             ?? throw new InvalidOperationException("UseSparkPrerendering() needs AddSpark(..., spark => spark.AddPrerendering()).");
-
-        // The page's requests run through the application's own endpoints. UseRouting finds them through
-        // the endpoint route builder under this key, but WebApplication.New() removes it from every branch
-        // (UseWhen, UseSpaImproved), and without it UseRouting starts an empty table: every request 404s.
-        // The application's endpoints are also the DI EndpointDataSource, which UseEndpoints fills.
-        var branch = app.New();
-        branch.Properties[GlobalEndpointRouteBuilderKey] = new ApplicationEndpoints(app);
-        SparkPrerenderDispatcher.Configure(branch);
-        dispatcher.Pipeline = branch.Build();
+        dispatcher.Attach(app);
 
         spa.Options.DefaultPage = "/index.csr.html";
         spa.UseSpaPrerendering(options =>
@@ -74,11 +63,18 @@ public static class SparkBuilderPrerenderingExtensions
         return spa;
     }
 
-    /// <summary>Every endpoint the application mapped, as the DI <see cref="EndpointDataSource"/> composes them.</summary>
-    private sealed class ApplicationEndpoints(IApplicationBuilder app) : IEndpointRouteBuilder
-    {
-        public IServiceProvider ServiceProvider => app.ApplicationServices;
-        public ICollection<EndpointDataSource> DataSources { get; } = [app.ApplicationServices.GetRequiredService<EndpointDataSource>()];
-        public IApplicationBuilder CreateApplicationBuilder() => app.New();
-    }
+    /// <summary>
+    /// The development server bundle (PRD I12, M4): runs <paramref name="npmScript"/>, an Angular build of the server
+    /// entry in watch mode, and renders once its first build completes. Each rebuild replaces the boot module, so a
+    /// change to server-side code needs no production build. Set it in <c>UseSparkPrerendering</c>'s
+    /// <c>configure</c>, in Development only:
+    /// <code>
+    /// spa.UseSparkPrerendering(o => o.BootModuleBuilder = app.Environment.IsDevelopment() ? SparkBuilderPrerenderingExtensions.WatchBuild("build:ssr:watch") : null);
+    /// </code>
+    /// The script must keep its Angular cache apart from the dev server's (<c>tools/ssr-watch.mjs</c> sets <c>CI=1</c>),
+    /// since two builds writing one <c>.angular/cache</c> can wedge the dev server's watcher.
+    /// </summary>
+    public static ISpaPrerendererBuilder WatchBuild(string npmScript)
+        => new AngularPrerendererBuilder(npmScript, @"Application bundle generation complete\.", 1);
+
 }

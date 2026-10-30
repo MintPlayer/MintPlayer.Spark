@@ -1,4 +1,5 @@
-import { DestroyRef, Injectable, Injector, NgZone, Signal, assertInInjectionContext, effect, inject, signal, untracked } from '@angular/core';
+import { isPlatformBrowser } from '@angular/common';
+import { DestroyRef, Injectable, Injector, NgZone, PLATFORM_ID, Signal, assertInInjectionContext, effect, inject, signal, untracked } from '@angular/core';
 import { BehaviorSubject, Observable, Subscription, isObservable, of } from 'rxjs';
 import {
   LIVE_CLOSE_MESSAGE_TOO_LARGE,
@@ -75,6 +76,7 @@ export class SparkLiveService {
   private readonly config = inject(SPARK_CONFIG, { optional: true });
   private readonly baseUrl = this.config?.baseUrl ?? '/spark';
   private readonly ngZone = inject(NgZone);
+  private readonly browser = isPlatformBrowser(inject(PLATFORM_ID));
 
   private readonly entries = new Map<string, Entry>();
   private readonly bySub = new Map<string, Entry>();
@@ -267,6 +269,9 @@ export class SparkLiveService {
   }
 
   private ensureSocket(): void {
+    // A server render never opens a socket (docs/spark_ssr_PRD.md D9): watchers stay silent there and
+    // the page shows what its HTTP load returned; the browser follows after hydration.
+    if (!this.browser) return;
     if (this.socket || this.reconnectTimer) return;
     this.open();
   }

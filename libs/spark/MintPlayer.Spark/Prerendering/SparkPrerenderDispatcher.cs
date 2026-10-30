@@ -31,6 +31,30 @@ internal sealed class SparkPrerenderDispatcher
     /// <summary>Whether the endpoint was refused because it is not marked prerenderable.</summary>
     public static bool WasRefused(HttpContext request) => request.Items.ContainsKey(NotPrerenderableKey);
 
+    /// <summary>The <c>ApplicationBuilder.Properties</c> key UseRouting reads the endpoint route builder from.</summary>
+    private const string GlobalEndpointRouteBuilderKey = "__GlobalEndpointRouteBuilder";
+
+    /// <summary>Builds <see cref="Pipeline"/> as a branch of <paramref name="app"/>, over the application's endpoints.</summary>
+    public void Attach(IApplicationBuilder app)
+    {
+        // The page's requests run through the application's own endpoints. UseRouting finds them through
+        // the endpoint route builder under this key, but WebApplication.New() removes it from every branch
+        // (UseWhen, UseSpaImproved), and without it UseRouting starts an empty table: every request 404s.
+        // The application's endpoints are also the DI EndpointDataSource, which UseEndpoints fills.
+        var branch = app.New();
+        branch.Properties[GlobalEndpointRouteBuilderKey] = new ApplicationEndpoints(app);
+        Configure(branch);
+        Pipeline = branch.Build();
+    }
+
+    /// <summary>Every endpoint the application mapped, as the DI <see cref="EndpointDataSource"/> composes them.</summary>
+    private sealed class ApplicationEndpoints(IApplicationBuilder app) : IEndpointRouteBuilder
+    {
+        public IServiceProvider ServiceProvider => app.ApplicationServices;
+        public ICollection<EndpointDataSource> DataSources { get; } = [app.ApplicationServices.GetRequiredService<EndpointDataSource>()];
+        public IApplicationBuilder CreateApplicationBuilder() => app.New();
+    }
+
     /// <summary>The branch: everything after <c>UseRouting</c>.</summary>
     public static void Configure(IApplicationBuilder branch)
     {

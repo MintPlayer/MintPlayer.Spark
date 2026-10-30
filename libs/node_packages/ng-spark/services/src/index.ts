@@ -11,3 +11,4 @@ export * from './spark-error';
 export * from './spark-language.interceptor';
 export * from './provide-spark-hydration';
 export * from './spark-render-phase';
+export * from './spark-seo.service';

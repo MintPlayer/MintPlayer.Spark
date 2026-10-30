@@ -5,6 +5,13 @@
     "name": "Song",
     "clrType": "MintPlayer.Entities.Song",
     "breadcrumb": "{Title}",
+    "seo": {
+      "indexable": true,
+      "schemaType": "MusicRecording",
+      "properties": {
+        "datePublished": "Released"
+      }
+    },
     "tabs": [],
     "groups": [],
     "attributes": [

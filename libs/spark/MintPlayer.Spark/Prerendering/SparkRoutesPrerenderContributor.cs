@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 using MintPlayer.Spark.Abstractions.Prerendering;
 
 namespace MintPlayer.Spark.Prerendering;
@@ -35,7 +36,8 @@ internal sealed class SparkRoutesPrerenderContributor : ISparkPrerenderContribut
                 break;
             // po/:type/:id, po/:type/:id/edit, po/:type/:id/:slug
             case ["po", var type, var id, ..] when segments.Length <= 4:
-                supplies.Add(SupplyObjectAsync(context, type, id));
+                var slug = segments is [_, _, _, var s] && s != "edit" ? s : null;
+                supplies.Add(SupplyObjectAsync(context, type, id, slug: slug));
                 break;
             // po/:type
             case ["po", var type]:
@@ -51,7 +53,8 @@ internal sealed class SparkRoutesPrerenderContributor : ISparkPrerenderContribut
 
     /// <summary>spark-po-detail.component.ts <c>load()</c>: the object and the types, then the type's rights and actions.</summary>
     /// <param name="primary">Whether the object is the page's primary read, whose status becomes the page's (D4); a board tile's is not.</param>
-    internal static async Task SupplyObjectAsync(ISparkPrerenderContext context, string type, string id, bool primary = true)
+    /// <param name="slug">The URL's slug segment (<c>po/:type/:id/:slug</c>), or null when the URL has none.</param>
+    internal static async Task SupplyObjectAsync(ISparkPrerenderContext context, string type, string id, bool primary = true, string? slug = null)
     {
         var objectTask = context.PostAsync($"{Api}/po/load", new { objectTypeId = type, id });
         var typesTask = context.GetAsync($"{Api}/types");
@@ -62,6 +65,22 @@ internal sealed class SparkRoutesPrerenderContributor : ISparkPrerenderContribut
         if (primary)
             context.SetPageStatus(item.Status);
 
+        // A stale slug is a 301 to the canonical one (D4), decided only on a readable object: a denied or
+        // missing one keeps its status above, so the slug is never revealed. The canonical slug is the one
+        // the page writes itself (spark-po-detail writeSlug); no slug at all is left to the page.
+        if (primary && slug is not null && item.IsSuccess)
+        {
+            var canonical = SparkSlug(item.Read<ObjectReference>()?.Breadcrumb);
+            if (canonical != slug)
+            {
+                var location = canonical is "" or "edit"
+                    ? $"/po/{EncodeUriComponent(type)}/{EncodeUriComponent(id)}"
+                    : $"/po/{EncodeUriComponent(type)}/{EncodeUriComponent(id)}/{canonical}";
+                context.Redirect(location + context.QueryString, permanent: true);
+                return;
+            }
+        }
+
         var types = (await typesTask).Read<List<EntityTypeReference>>() ?? [];
         var entityType = types.FirstOrDefault(t => t.Id == type || t.Alias == type);
         if (entityType?.Id is null || !item.IsSuccess)
@@ -71,7 +90,25 @@ internal sealed class SparkRoutesPrerenderContributor : ISparkPrerenderContribut
             context.GetAsync($"{Api}/permissions/{EncodeUriComponent(entityType.Id)}"),
             context.PostAsync($"{Api}/actions/list", new { objectTypeId = entityType.Id }),
             SupplyLookupsAsync(context, entityType),
-            SupplyAsDetailReferencesAsync(context, types, entityType, type, id));
+            SupplyAsDetailReferencesAsync(context, types, entityType, type, id),
+            SupplySubQueriesAsync(context, entityType, item.Read<ObjectReference>()?.Id ?? id));
+    }
+
+    /// <summary>
+    /// spark-po-detail's sub-query cards (<c>subQueriesOf</c>): a grid each, by the alias or id the type lists, with
+    /// the object as its parent. A card's status is its own, never the page's.
+    /// </summary>
+    private static Task SupplySubQueriesAsync(ISparkPrerenderContext context, EntityTypeReference entityType, string parentId)
+    {
+        var queries = entityType.Queries is { ValueKind: JsonValueKind.Array } entries
+            ? entries.EnumerateArray()
+                .Select(e => e.ValueKind == JsonValueKind.String ? e.GetString()
+                    : e.ValueKind == JsonValueKind.Object && e.TryGetProperty("query", out var q) ? q.GetString() : null)
+                .OfType<string>()
+                .Where(q => q.Length > 0)
+                .ToList()
+            : [];
+        return Task.WhenAll(queries.Select(q => SupplyGridAsync(context, q, primary: false, parentId, entityType.Name ?? "")));
     }
 
     /// <summary>
@@ -141,7 +178,9 @@ internal sealed class SparkRoutesPrerenderContributor : ISparkPrerenderContribut
     /// page's (D4).
     /// </summary>
     /// <param name="primary">Whether the query is the page's primary read, whose status becomes the page's (D4); a board tile's is not.</param>
-    internal static async Task SupplyGridAsync(ISparkPrerenderContext context, string queryId, bool primary = true)
+    /// <param name="parentId">A sub-query card's parent object, as the card passes it; "" for a root grid.</param>
+    /// <param name="parentType">The parent's type name, as the card passes it; "" for a root grid.</param>
+    internal static async Task SupplyGridAsync(ISparkPrerenderContext context, string queryId, bool primary = true, string parentId = "", string parentType = "")
     {
         var queryTask = context.PostAsync($"{Api}/queries/get", new { queryId });
         var typesTask = context.GetAsync($"{Api}/types");
@@ -166,7 +205,7 @@ internal sealed class SparkRoutesPrerenderContributor : ISparkPrerenderContribut
         if (query.Live != true && query.RenderMode != "VirtualScrolling")
         {
             // initialGridSettings(): page 1 of the first page size, the query's own sort. A root grid's parent
-            // is "" (an input default), which the body keeps; an empty filter list is left out.
+            // is "" (an input default), which the body keeps; a card's is its object. An empty filter list is left out.
             var sortColumns = query.SortColumns is { Count: > 0 } sorts
                 ? sorts.Select(s => new { property = s.Property, direction = s.Direction == "desc" ? "desc" : "asc" }).ToList()
                 : null;
@@ -176,8 +215,8 @@ internal sealed class SparkRoutesPrerenderContributor : ISparkPrerenderContribut
                 sortColumns,
                 skip = 0,
                 take = FirstPageSize,
-                parentId = "",
-                parentType = "",
+                parentId,
+                parentType,
             }));
         }
         await Task.WhenAll(supplies);
@@ -201,11 +240,38 @@ internal sealed class SparkRoutesPrerenderContributor : ISparkPrerenderContribut
     internal static string[] Segments(PathString path)
         => (path.Value ?? "").Split('/', StringSplitOptions.RemoveEmptyEntries).Select(Uri.UnescapeDataString).ToArray();
 
+    /// <summary>
+    /// ng-spark's <c>sparkSlug</c> (po-detail/src/spark-slug.ts): lower case, accents dropped, every run of other
+    /// characters one dash. "Beyoncé - Halo!" → "beyonce-halo".
+    /// </summary>
+    internal static string SparkSlug(string? text)
+    {
+        var slug = new StringBuilder();
+        foreach (var c in (text ?? "").Normalize(NormalizationForm.FormD))
+        {
+            if (c is >= '̀' and <= 'ͯ')
+                continue;
+            var lower = char.ToLowerInvariant(c);
+            if (lower is >= 'a' and <= 'z' or >= '0' and <= '9')
+                slug.Append(lower);
+            else if (slug.Length > 0 && slug[^1] != '-')
+                slug.Append('-');
+        }
+        return slug.ToString().TrimEnd('-');
+    }
+
     /// <summary>JavaScript's <c>encodeURIComponent</c>, which the page's requests use: it leaves <c>!'()*</c> as they are.</summary>
     internal static string EncodeUriComponent(string value)
     {
         var escaped = new StringBuilder(Uri.EscapeDataString(value));
         return escaped.Replace("%21", "!").Replace("%27", "'").Replace("%28", "(").Replace("%29", ")").Replace("%2A", "*").ToString();
+    }
+
+    // The member of POST /spark/po/load the slug needs.
+    private sealed class ObjectReference
+    {
+        public string? Id { get; set; }
+        public string? Breadcrumb { get; set; }
     }
 
     // The members of GET /spark/types the predictions need.
@@ -217,6 +283,8 @@ internal sealed class SparkRoutesPrerenderContributor : ISparkPrerenderContribut
         public string? ClrType { get; set; }
         public List<AttributeReference>? Attributes { get; set; }
         public List<EntityTypeReference>? DetailTypes { get; set; }
+        /// <summary>The sub-queries: an alias or id each, or <c>{ query, … }</c> (<c>SparkSubQueryEntry</c>).</summary>
+        public JsonElement? Queries { get; set; }
     }
 
     private sealed class AttributeReference

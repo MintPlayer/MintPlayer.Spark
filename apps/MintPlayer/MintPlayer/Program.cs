@@ -103,7 +103,11 @@ app.UseWhen(
         appBuilder.UseSpaImproved(spa =>
         {
             spa.Options.SourcePath = "ClientApp";
-            spa.UseSparkPrerendering();
+            // In Development the server bundle is a watch build beside the dev server (tools/ssr-watch.mjs), so a
+            // change to server-side code shows on the next render; in production it is the published build's.
+            spa.UseSparkPrerendering(prerendering => prerendering.BootModuleBuilder = app.Environment.IsDevelopment()
+                ? SparkBuilderPrerenderingExtensions.WatchBuild("build:ssr:watch")
+                : null);
 
             if (app.Environment.IsDevelopment())
             {

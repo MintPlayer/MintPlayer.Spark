@@ -9,6 +9,13 @@ import { provideClientHydration, withEventReplay, withHttpTransferCacheOptions }
 export const SPARK_SERVER_LANGUAGE = new InjectionToken<string>('SPARK_SERVER_LANGUAGE');
 
 /**
+ * The page's public origin (`https://mintplayer.com`), as the .NET host saw the request. Provided by
+ * `@mintplayer/ng-spark/ssr` on the server only, where the render URL is relative (PRD I4) and
+ * `document.location` cannot say it; in the browser, `document.location.origin` is the answer.
+ */
+export const SPARK_SERVER_ORIGIN = new InjectionToken<string>('SPARK_SERVER_ORIGIN');
+
+/**
  * Hydrates a server-rendered page instead of rendering it again, and lets the browser reuse every
  * response the server render was answered with (TransferState), so none is fetched twice.
  *

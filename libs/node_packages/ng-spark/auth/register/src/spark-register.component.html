@@ -8,8 +8,8 @@
         <bs-alert [type]="colors.danger" class="mb-3">{{ errorMessage() }}</bs-alert>
       }
 
-      <bs-form>
-        <form [formGroup]="form" (ngSubmit)="onSubmit()">
+      <bs-form (submitted)="onSubmit()">
+        <div [formGroup]="form">
           <div class="mb-3">
             <label for="email" class="form-label">{{ 'auth.email' | t }}</label>
             <input
@@ -67,7 +67,7 @@
             }
             {{ 'auth.register' | t }}
           </button>
-        </form>
+        </div>
       </bs-form>
 
       <!-- withRegistration() is opt-in independently of withLocalLogin(), so the password form may

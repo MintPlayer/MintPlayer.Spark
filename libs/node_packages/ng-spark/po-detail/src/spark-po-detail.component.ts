@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject, input, output, signal, TemplateRef, Type, untracked } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, PendingTasks, computed, effect, inject, input, output, signal, TemplateRef, Type, untracked } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule, Location, NgTemplateOutlet, NgComponentOutlet } from '@angular/common';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
@@ -14,7 +14,7 @@ import { BsPriorityNavComponent, BsPriorityNavItemDirective } from '@mintplayer/
 import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
 import { BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective } from '@mintplayer/ng-bootstrap/tab-control';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
-import { SparkService, SparkLanguageService, SparkLiveService, SparkReturnNavigationService, describeSparkError } from '@mintplayer/ng-spark/services';
+import { SparkService, SparkLanguageService, SparkLiveService, SparkReturnNavigationService, SparkSeoService, describeSparkError } from '@mintplayer/ng-spark/services';
 import { SparkAttributePatch, SparkAttributeRefreshService, SparkClientMethodRegistry, SparkQueryRefreshService } from '@mintplayer/ng-spark/client-operations';
 import {
   TranslateKeyPipe,
@@ -77,10 +77,12 @@ export class SparkPoDetailComponent {
   private readonly router = inject(Router);
   private readonly location = inject(Location);
   private readonly sparkService = inject(SparkService);
+  private readonly pendingTasks = inject(PendingTasks);
   private readonly returnNavigation = inject(SparkReturnNavigationService);
   private readonly queryRefresh = inject(SparkQueryRefreshService);
   private readonly attributeRefresh = inject(SparkAttributeRefreshService);
   private readonly live = inject(SparkLiveService);
+  private readonly seo = inject(SparkSeoService);
   protected readonly lang = inject(SparkLanguageService);
   private readonly clientMethods = inject(SparkClientMethodRegistry);
   protected readonly rendererRegistry = inject(SPARK_ATTRIBUTE_RENDERERS);
@@ -258,7 +260,10 @@ export class SparkPoDetailComponent {
       untracked(() => this.applyAttributePatches(patches));
     });
 
-    inject(DestroyRef).onDestroy(() => this.stopFollowing());
+    inject(DestroyRef).onDestroy(() => {
+      this.stopFollowing();
+      if (!this.objectType()) this.seo.reset();
+    });
   }
 
   // --- live (X4) ---------------------------------------------------------------------------------
@@ -406,6 +411,12 @@ export class SparkPoDetailComponent {
     // A load overtaken by a move to another object publishes nothing.
     const type = this.type, id = this.id;
     const stale = () => type !== this.type || id !== this.id;
+    // The app is not stable until the load and its secondary reads are done. Angular turns its transfer cache off
+    // at the first stable moment after hydration, and that came between the last answered read and the next await's
+    // continuation: the AsDetail pickers' reads went to the server a second time instead of being answered from the
+    // render (docs/spark_ssr_PRD.md SP3, measured on the song page).
+    const done = this.pendingTasks.add();
+    let secondary: Promise<unknown> = Promise.resolve();
     try {
       const [entityTypes, item] = await Promise.all([
         this.sparkService.getEntityTypes(),
@@ -429,8 +440,9 @@ export class SparkPoDetailComponent {
       this.entityType.set(et);
       this.item.set(item);
       this.writeSlug(item);
-      this.loadLookupReferenceOptions();
-      this.loadAsDetailTypes();
+      this.writeSeo(et, item);
+      // Not awaited: the page shows without them.
+      secondary = Promise.all([this.loadLookupReferenceOptions(), this.loadAsDetailTypes()]);
 
       this.permissions.set(et && permissions && actions ? permissions : null);
       this.loadedActions = et && permissions && actions ? actions : null;
@@ -440,7 +452,26 @@ export class SparkPoDetailComponent {
       if (stale()) return;
       const error = e as HttpErrorResponse;
       this.errorMessage.set(error.error?.error || error.message || 'An unexpected error occurred');
+      if (!this.objectType()) this.seo.noIndex();
+    } finally {
+      secondary.then(done, done);
     }
+  }
+
+  /**
+   * The page's title and SEO tags (D12), for a routed page only. The canonical URL carries the breadcrumb's slug
+   * when the routes use slugs, as {@link writeSlug} puts it in the address bar. A deleted or historical view of
+   * the object is never indexed.
+   */
+  private writeSeo(et: EntityType | null, item: PersistentObject): void {
+    if (this.objectType()) return;
+    if (this.deletedMode()) {
+      this.seo.noIndex();
+      return;
+    }
+    const slug = this.route.snapshot.data['sparkSlug'] ? sparkSlug(item.breadcrumb) : '';
+    const commands = slug && slug !== 'edit' ? ['/po', this.type, this.id, slug] : ['/po', this.type, this.id];
+    this.seo.forObject(et, item, this.router.serializeUrl(this.router.createUrlTree(commands)));
   }
 
   /**

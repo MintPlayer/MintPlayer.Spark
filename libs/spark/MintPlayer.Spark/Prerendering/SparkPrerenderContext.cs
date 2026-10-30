@@ -19,6 +19,7 @@ internal sealed class SparkPrerenderContext : ISparkPrerenderContext
         this.dispatcher = dispatcher;
         HttpContext = httpContext;
         Path = httpContext.Request.Path;
+        QueryString = httpContext.Request.QueryString;
         Language = language;
         TimeZone = timeZone;
         page = SparkPrerenderPage.From(httpContext, language, timeZone);
@@ -26,6 +27,7 @@ internal sealed class SparkPrerenderContext : ISparkPrerenderContext
 
     public HttpContext HttpContext { get; }
     public PathString Path { get; }
+    public QueryString QueryString { get; }
     public string Language { get; }
     public string TimeZone { get; }
 

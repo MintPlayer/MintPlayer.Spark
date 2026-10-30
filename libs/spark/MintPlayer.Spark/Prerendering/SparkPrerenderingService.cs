@@ -73,13 +73,19 @@ internal sealed class SparkPrerenderingService : ISpaPrerenderingService
             return;
         }
         if (context.PageStatus is { } status)
+        {
             httpContext.Response.StatusCode = status;
+            // D12: a non-200 page is never indexed, whichever component renders its error.
+            httpContext.Response.Headers["X-Robots-Tag"] = "noindex";
+        }
 
         data["spark"] = new Dictionary<string, object?>
         {
             ["responses"] = await context.ResponsesAsync(),
             ["language"] = context.Language,
             ["timeZone"] = context.TimeZone,
+            // The render URL is relative (PRD I4), so the page learns its public origin here (D12: canonical, og:url).
+            ["origin"] = $"{httpContext.Request.Scheme}://{httpContext.Request.Host}{httpContext.Request.PathBase}",
         };
     }
 

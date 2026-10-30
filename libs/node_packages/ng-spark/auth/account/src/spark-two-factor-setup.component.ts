@@ -76,15 +76,15 @@ import { accountMessages } from './account-messages';
                   </bs-form>
                   <small class="text-muted d-block">{{ 'auth.externalTwoFactorBypassHint' | t }}</small>
                   @if (bypassPending()) {
-                    <bs-form>
-                      <form [formGroup]="bypassForm" (ngSubmit)="confirmBypass()" class="d-flex gap-2 align-items-end mt-2">
+                    <bs-form (submitted)="confirmBypass()">
+                      <div [formGroup]="bypassForm" class="d-flex gap-2 align-items-end mt-2">
                         <div class="flex-grow-1">
                           <label for="bypassCode" class="form-label">{{ 'auth.code' | t }}</label>
                           <input type="text" id="bypassCode" formControlName="code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" />
                         </div>
                         <button type="submit" class="btn btn-primary spark-2fa-bypass-confirm" [disabled]="busy()">{{ 'auth.verify' | t }}</button>
                         <button type="button" class="btn btn-outline-secondary spark-2fa-bypass-cancel" [disabled]="busy()" (click)="toggleBypass(false)">{{ 'common.cancel' | t }}</button>
-                      </form>
+                      </div>
                     </bs-form>
                   }
                 </div>
@@ -100,14 +100,14 @@ import { accountMessages } from './account-messages';
                 <p class="text-muted small mb-1">{{ 'auth.manualKey' | t }}</p>
                 <p class="font-monospace spark-2fa-key">{{ formatKey(a.sharedKey) }}</p>
               }
-              <bs-form>
-                <form [formGroup]="form" (ngSubmit)="enable()" class="d-flex gap-2 align-items-end">
+              <bs-form (submitted)="enable()">
+                <div [formGroup]="form" class="d-flex gap-2 align-items-end">
                   <div class="flex-grow-1">
                     <label for="twoFactorCode" class="form-label">{{ 'auth.code' | t }}</label>
                     <input type="text" id="twoFactorCode" formControlName="code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" />
                   </div>
                   <button type="submit" class="btn btn-primary spark-2fa-enable" [disabled]="busy()">{{ 'auth.enableTwoFactor' | t }}</button>
-                </form>
+                </div>
               </bs-form>
             }
           }

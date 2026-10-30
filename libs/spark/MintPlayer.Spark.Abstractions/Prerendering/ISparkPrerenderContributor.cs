@@ -32,6 +32,9 @@ public interface ISparkPrerenderContext
     /// <summary>The page's path, without the path base, e.g. <c>/po/song/songs-1</c>.</summary>
     PathString Path { get; }
 
+    /// <summary>The page's query string, e.g. <c>?deleted=only</c>, or empty.</summary>
+    QueryString QueryString { get; }
+
     /// <summary>The language the page renders in (the <c>spark-lang</c> cookie, then <c>Accept-Language</c>, then the default).</summary>
     string Language { get; }
 

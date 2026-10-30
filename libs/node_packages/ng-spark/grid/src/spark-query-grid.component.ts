@@ -1,5 +1,5 @@
-import { booleanAttribute, ChangeDetectionStrategy, Component, DestroyRef, Injector, computed, effect, inject, input, model, output, runInInjectionContext, signal, untracked, viewChild, Type } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { booleanAttribute, ChangeDetectionStrategy, Component, DestroyRef, Injector, PLATFORM_ID, computed, effect, inject, input, model, output, runInInjectionContext, signal, untracked, viewChild, Type } from '@angular/core';
+import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterModule } from '@angular/router';
@@ -102,6 +102,7 @@ interface PageExtra {
 export class SparkQueryGridComponent {
   private readonly sparkService = inject(SparkService);
   private readonly liveService = inject(SparkLiveService);
+  private readonly browser = isPlatformBrowser(inject(PLATFORM_ID));
   private readonly gridRenderers = inject(SparkGridRenderers);
   private readonly queryRefresh = inject(SparkQueryRefreshService);
   private readonly injector = inject(Injector);
@@ -172,7 +173,8 @@ export class SparkQueryGridComponent {
   readonly isLive = computed(() => this.data() === null && this.liveWanted(this.query()) && !this.liveFailed());
 
   private liveWanted(query: SparkQuery | null): boolean {
-    if (!query || isVirtualScrollingQuery(query)) return false;
+    // A server render fetches the rows over HTTP (supplied); the socket is browser-only (D9).
+    if (!this.browser || !query || isVirtualScrollingQuery(query)) return false;
     return this.live() ?? query.live === true;
   }
 
