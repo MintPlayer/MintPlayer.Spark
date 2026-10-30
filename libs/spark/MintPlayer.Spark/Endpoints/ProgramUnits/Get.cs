@@ -5,6 +5,7 @@ using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Services;
 using Raven.Client.Documents;
+using MintPlayer.Spark.Abstractions.Prerendering;
 
 namespace MintPlayer.Spark.Endpoints.ProgramUnits;
 
@@ -12,6 +13,10 @@ namespace MintPlayer.Spark.Endpoints.ProgramUnits;
 internal sealed partial class GetProgramUnits : IGetEndpoint
 {
     public static string Path => "/program-units";
+
+    // A read: server-side rendering may supply its response (SparkPrerenderableAttribute).
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
+        => builder.WithMetadata(SparkPrerenderableAttribute.Instance);
 
     [Inject] private readonly IProgramUnitsLoader programUnitsLoader;
     [Inject] private readonly IPermissionService permissionService;

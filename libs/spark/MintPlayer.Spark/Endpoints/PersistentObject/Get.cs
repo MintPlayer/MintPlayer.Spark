@@ -3,6 +3,7 @@ using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Exceptions;
 using MintPlayer.Spark.Services;
+using MintPlayer.Spark.Abstractions.Prerendering;
 
 namespace MintPlayer.Spark.Endpoints.PersistentObject;
 
@@ -19,7 +20,7 @@ internal sealed partial class GetPersistentObject : IPostEndpoint<PersistentObje
     // survive the next default change.
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
     {
-        builder.WithMetadata(new RequireAntiforgeryTokenAttribute(false));
+        builder.WithMetadata(new RequireAntiforgeryTokenAttribute(false), SparkPrerenderableAttribute.Instance);
     }
 
     // ⚠️ Deliberately NO RequireAntiforgeryTokenAttribute, unlike every other POST in this group.

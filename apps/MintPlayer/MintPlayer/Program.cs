@@ -7,6 +7,7 @@ using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.Authorization.Extensions;
 using MintPlayer.Spark.Authorization.Identity;
 using MintPlayer.Spark.Boards;
+using MintPlayer.Spark.Boards.Prerendering;
 using MintPlayer.Spark.Extensions;
 using MintPlayer.Spark.History;
 using MintPlayer.Spark.MailManager;
@@ -50,6 +51,13 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     spark.AddHistory();
     // #530: the home page is the "home" board (App_Data/boards.json); a signed-in user may rearrange it.
     spark.AddBoards();
+    // docs/spark_ssr_PRD.md: every page is server-rendered with its data. Dates on a first visit render in
+    // Brussels time (D10); /home is the "home" board.
+    spark.AddPrerendering(prerendering =>
+    {
+        prerendering.DefaultTimeZone = "Europe/Brussels";
+        prerendering.MapPage("/home", page => page.SupplyBoardAsync("home"));
+    });
 });
 
 builder.Services.AddScoped<MintPlayerAccess>();
@@ -100,6 +108,7 @@ app.UseWhen(
         appBuilder.UseSpaImproved(spa =>
         {
             spa.Options.SourcePath = "ClientApp";
+            spa.UseSparkPrerendering();
 
             if (app.Environment.IsDevelopment())
             {

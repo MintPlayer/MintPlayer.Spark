@@ -1,4 +1,4 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, PendingTasks, inject } from '@angular/core';
 import { HttpBackend, HttpErrorResponse, HttpEvent, HttpHeaders, HttpRequest, HttpResponse } from '@angular/common/http';
 import { Observable, of, throwError } from 'rxjs';
 import { SPARK_SERVER_DATA, SparkSuppliedResponse } from './spark-server-data';
@@ -15,6 +15,12 @@ import { sparkServerRequestKey } from './spark-server-request-key';
  * A request the supplier did not predict (a miss, PRD D3) is answered with an error rather than left
  * pending: a pending request holds the app unstable and the render would wait for its timeout. Errors
  * are not recorded, so the browser makes that one request itself after hydration.
+ *
+ * Every answer holds the render open until the next macrotask (see {@link hold}). The apps are zoneless, so
+ * the render serializes as soon as no task is pending, and a supplied answer is synchronous: without the
+ * hold, a component awaiting one request before sending the next (`await getQuery(); ... executeQuery()`)
+ * leaves a gap with nothing pending, and the page was serialized mid-load, the grid still showing its
+ * spinner (2026-10-30, `/query/songs`).
  */
 @Injectable()
 export class SparkServerBackend implements HttpBackend {
@@ -22,7 +28,27 @@ export class SparkServerBackend implements HttpBackend {
     (inject(SPARK_SERVER_DATA, { optional: true })?.responses ?? []).map(r => [r.key, r]),
   );
 
+  private readonly pendingTasks = inject(PendingTasks);
+
   handle(req: HttpRequest<unknown>): Observable<HttpEvent<unknown>> {
+    return this.hold(this.answer(req));
+  }
+
+  /**
+   * The answer, with a pending task until the macrotask after it is delivered. The caller's continuation
+   * (`await`, `.then`) runs as microtasks before that, so the request it sends next is pending before
+   * this one is released.
+   */
+  private hold(answer: Observable<HttpEvent<unknown>>): Observable<HttpEvent<unknown>> {
+    return new Observable(subscriber => {
+      const done = this.pendingTasks.add();
+      const subscription = answer.subscribe(subscriber);
+      setTimeout(done);
+      return subscription;
+    });
+  }
+
+  private answer(req: HttpRequest<unknown>): Observable<HttpEvent<unknown>> {
     const key = sparkServerRequestKey(req.method, req.urlWithParams, req.body);
     const supplied = this.responses.get(key);
     if (!supplied) {

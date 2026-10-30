@@ -105,6 +105,7 @@
 	<ItemGroup>
 	  <PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="11.4.1-rc.0" />
 	  <PackageReference Include="MintPlayer.AspNetCore.SpaServices.Xsrf" Version="11.0.0-rc.3" />
+	  <PackageReference Include="MintPlayer.AspNetCore.SpaServices.Prerendering" Version="11.0.0-rc.3" />
 	  <ProjectReference Include="..\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
 	  <!-- The SSRF-safe client (X2), its own package since D54 (docs/seo_analyzer_PRD.md): namespace MintPlayer.Spark.Http unchanged. -->
 	  <ProjectReference Include="..\MintPlayer.Spark.SafeHttp\MintPlayer.Spark.SafeHttp.csproj" />

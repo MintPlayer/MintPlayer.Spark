@@ -230,6 +230,10 @@ Each spike is time-boxed and ends with a written result in §7 (numbers, file:li
 | I10 | **`@angular/ssr` is a build-time devDependency (exact 22.2.2), approved by the owner on 2026-10-30.** `@angular/build:application` unconditionally injects `import { ɵsetAngularAppManifest } from '@angular/ssr'` and its re-exports into every server bundle, and no option turns this off. The import is bundled into `main.server.mjs`, so it is not a runtime dependency. Rendering still uses `renderApplication` from `@angular/platform-server`, and neither the Express server nor `AngularNodeAppEngine` is used. Build options: `ssr: true` (write the server bundle) and `prerender: false`, with no `outputMode` and no `ssr.entry`. | `node_modules/@angular/build/src/tools/esbuild/application-code-bundle.js:209-245`; build error "Could not resolve @angular/ssr" without it |
 | I11 | **One object travels from the backend to the frontend** (owner, 2026-10-30). .NET's `data["spark"] = {responses, language, timeZone}` becomes the renderer's `customDataParameter.spark`, then the `SPARK_SERVER_DATA` token. The backend, the language and the timezone all read from that object, and the browser receives the responses through Angular's TransferState. New server-to-client data extends this object; it never adds another key. | `create-spark-server-renderer.ts`, `spark-server-data.ts` |
 | I9 | **Client hydration** is `provideSparkHydration()`, which is `provideClientHydration(withEventReplay(), withHttpTransferCacheOptions({ includePostRequests: true }))` exported from `@mintplayer/ng-spark/services`. MintPlayer's `app.config.ts` adds it. | `services/src/provide-spark-hydration.ts` |
+| I12 | **In development the template is the dev server's CSR `index.html`, and the render uses the prebuilt `dist/ClientApp/server/main.server.mjs`.** The `development` build configuration has `ssr: false`, so `ng serve` keeps serving a client-only page. A server watch build is M4. Until then, a change to server-side code needs a `build:production`, with the host stopped (shared `.angular/cache`). | `apps/MintPlayer/MintPlayer/ClientApp/project.json` |
+| I13 | **Sub-requests reach the app's endpoints through the DI `EndpointDataSource`.** `WebApplication.New()` removes `__GlobalEndpointRouteBuilder` from every branch, including `UseSpaImproved`'s, so `UseRouting` in the branch saw no endpoints. `UseSparkPrerendering` puts an `IEndpointRouteBuilder` adapter over the composite `EndpointDataSource` in its place. | `SparkBuilderPrerenderingExtensions.cs` (`ApplicationEndpoints`); first failure was the guard "needs a WebApplication host" |
+| I14 | **The page `HttpContext` is read once, into `SparkPrerenderPage`, before any sub-request runs.** `HttpContext` is not thread-safe, and contributors run concurrently. `/po/song` returned 500 with a `NullReferenceException` at `DefaultHttpRequest.get_Scheme` when two sub-requests read the page's request at once. `ISparkPrerenderContext.HttpContext` documents this. | `SparkPrerenderDispatcher.cs` (`SparkPrerenderPage`), 2026-10-30 |
+| I15 | **All Angular code is zoneless (owner, 2026-10-30: "Important"), so a server render waits through `PendingTasks`, never through zone.js.** A supplied answer is synchronous. A component that awaits one request before sending the next left a gap with nothing pending, and the page was serialized mid-load: `/query/songs` rendered the grid's spinner and never asked for its rows. `SparkServerBackend` now holds a pending task for every answer until the next macrotask, which is after the caller's microtask continuation has sent its next request. One place covers every HttpClient-driven load chain; no component code changes. | `ssr/src/spark-server-backend.ts` (`hold`) |
 
 ### M1 — ng-bootstrap 22.29 migration (code done, build green, specs not yet run)
 
@@ -271,11 +275,20 @@ Each spike is time-boxed and ends with a written result in §7 (numbers, file:li
 
 ### Status / resume point
 
-1. **SP1:** fix the server-bundle emission (see above), then run a render through the boot function.
-2. **Commit M1** together with the ssr scaffolding (nothing is committed after `1d122f72` yet).
-3. **Next:** SP2–SP7, then M2–M7 as in §6. The M3 .NET design is in §3 and the summary in memory
+1. ✅ **SP1** done: the server bundle renders, concurrent languages are isolated, and the process survives misses.
+   The dev watch builder is still open and moves to M4.
+2. ✅ **M1 + ssr scaffolding + SP1 committed** (the commit after `1d122f72`, "feat(ssr): ng-bootstrap 22.29 migration
+   (M1)…").
+3. **Next: M3, the .NET supplier.** SP3–SP5 need it. Start with the home page's five requests (SP1 list) and
+   `po/:type/:id`. The harness is `sp1-render.mjs` in the session scratchpad. Re-create it from the description in §7
+   if it is gone: it calls the default export as `prerenderer.js` does, with `index.csr.html` as `originalHtml`. Run it
+   under Git Bash with `MSYS_NO_PATHCONV=1`, or `/` gets rewritten. After M3 come SP2 and SP6–SP7, then M2 and M4–M7 as
+   in §6. The M3 .NET design is in §3 and the summary in memory
    `project_spark_ssr.md`:
    - an in-process sub-request dispatcher, using a new DI scope and `ExecutionContext.SuppressFlow` with `Task.Run`;
    - a `SparkPrerenderable` endpoint metadata allow-list;
    - `data["spark"] = {responses, language, timeZone}`.
-4. **Last:** run the specs and suites.
+4. ✅ **M3, the .NET supplier, committed** (2026-10-30). Measured on the dev host (anonymous, warm): `/home` 200, the song page `/po/song/Songs%2F23/a-sky-full-of-stars` 200 in 0.70 s with its title and fields, a missing song 401 (D4), and `/query/songs` and `/po/song` 200 in 0.15–0.17 s with the grid loaded (query, type, rights, actions). Response headers: `Cache-Control: private, no-store` and `Vary: Cookie`. Remaining misses: only the home board's tiles (`queries/get` songs and artists, `types`), which are SP5.
+5. ⏳ **Grid rows are blocked on ng-bootstrap #448** (https://github.com/MintPlayer/mintplayer-ng-bootstrap/issues/448, filed 2026-10-30). A `[fetch]` `bs-datatable` starts its first fetch only in `attach`, which `useCore` runs in `afterNextRender` (`machine/src/core.ts:107`, `ui-core/datatable/src/datatable.core.ts:358,1167`), so the server serializes its `Loading…` row. Spark already predicts and supplies the first-page `queries/execute`. A Spark-side `[data]` workaround was rejected: wrong pager on the server, and a hydration mismatch.
+6. **Next:** SP5 (board tiles), then SP2, SP6–SP7, M2 and M4–M7.
+7. **Last:** run the specs and suites.

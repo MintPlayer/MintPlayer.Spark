@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Identity;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Authorization.Identity;
+using MintPlayer.Spark.Abstractions.Prerendering;
 
 namespace MintPlayer.Spark.Authorization.Endpoints;
 
@@ -23,6 +24,10 @@ internal sealed partial class GetCurrentUser<TUser> : IGetEndpoint
     where TUser : SparkUser, new()
 {
     public static string Path => "/me";
+
+    // A read: server-side rendering may supply its response (SparkPrerenderableAttribute).
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
+        => builder.WithMetadata(SparkPrerenderableAttribute.Instance);
 
     [Inject] private readonly UserManager<TUser> userManager;
 

@@ -3,6 +3,7 @@ using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Services;
+using MintPlayer.Spark.Abstractions.Prerendering;
 
 namespace MintPlayer.Spark.Endpoints.Actions;
 
@@ -19,7 +20,7 @@ internal sealed partial class ListCustomActions : IPostEndpoint<ListCustomAction
     // survive the next default change.
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
     {
-        builder.WithMetadata(new RequireAntiforgeryTokenAttribute(false));
+        builder.WithMetadata(new RequireAntiforgeryTokenAttribute(false), SparkPrerenderableAttribute.Instance);
     }
 
     [Inject] private readonly IModelLoader modelLoader;
