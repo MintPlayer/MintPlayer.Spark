@@ -81,7 +81,10 @@ public class ServerRenderingTests
     [MemberData(nameof(Pages))]
     public async Task The_browser_hydrates_a_page_without_asking_the_server_again(string path, string shows)
     {
-        var context = await _fixture.Browser.NewContextAsync(new() { IgnoreHTTPSErrors = true });
+        // No service worker: Chromium refuses to register one from an origin whose certificate it does not trust
+        // (the CI runner does not trust the dev certificate; IgnoreHTTPSErrors does not cover it), and Angular logs
+        // NG05604. Hydration does not depend on it.
+        var context = await _fixture.Browser.NewContextAsync(new() { IgnoreHTTPSErrors = true, ServiceWorkers = ServiceWorkerPolicy.Block });
         try
         {
             var page = await context.NewPageAsync();
@@ -94,6 +97,8 @@ public class ServerRenderingTests
             };
             page.Console += (_, message) =>
             {
+                if (message.Text == "Service Worker registration blocked by Playwright")
+                    return;
                 if (message.Type is "error" or "warning" || message.Text.Contains("NG0", StringComparison.Ordinal))
                     lock (problems) problems.Add($"{message.Type}: {message.Text}");
             };
