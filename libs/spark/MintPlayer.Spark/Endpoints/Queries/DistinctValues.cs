@@ -5,6 +5,7 @@ using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Exceptions;
 using MintPlayer.Spark.Services;
+using MintPlayer.Spark.Abstractions.Prerendering;
 
 namespace MintPlayer.Spark.Endpoints.Queries;
 
@@ -35,7 +36,7 @@ internal sealed partial class DistinctValues : IPostEndpoint<DistinctValuesReque
     // survive the next default change.
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
     {
-        builder.WithMetadata(new RequireAntiforgeryTokenAttribute(false));
+        builder.WithMetadata(new RequireAntiforgeryTokenAttribute(false), SparkPrerenderableAttribute.Instance);
     }
 
     [Inject] private readonly IQueryLoader queryLoader;

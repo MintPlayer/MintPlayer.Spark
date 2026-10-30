@@ -79,7 +79,7 @@ public class ReferencePickerPagingTests : IAsyncLifetime
                 async () => $"the popup's first page should list Profession 001; it shows:\n{await RowsTextAsync(modal)}");
 
             // Profession 090 is the 90th of 101 rows: page 9 at the popup's default 10 per page.
-            var next = modal.Locator("mp-pagination.datatable-pagination button[aria-label='Next']");
+            var next = modal.Locator(".datatable-pagination button[aria-label='Next']");
             for (var pageNumber = 1; await Row(modal, "Profession 090").CountAsync() == 0; pageNumber++)
             {
                 if (pageNumber > 15 || await next.IsDisabledAsync())

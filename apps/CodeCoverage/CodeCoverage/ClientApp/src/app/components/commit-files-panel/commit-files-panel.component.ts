@@ -42,7 +42,7 @@ export class CommitFilesPanelComponent {
   readonly currentPath = signal('');
   readonly hierarchy = signal<CoverageHierarchyNode | null>(null);
   // The chart's zoom root; node ids are repo paths, '/' is the data root.
-  readonly chartRootId = signal<string | undefined>('/');
+  readonly chartRootId = signal<string | null>('/');
   readonly successColor = Color.success;
   readonly warningColor = Color.warning;
   readonly dangerColor = Color.danger;

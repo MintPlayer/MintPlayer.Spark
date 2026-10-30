@@ -20,7 +20,7 @@ import { CustomActionDefinition, PersistentObject, SparkQuery } from '@mintplaye
  * source. Actions are the mirror image: the server declares them per type, so the default is
  * the real answer and the slot is a rare override.
  *
- * Naming follows ng-bootstrap's `*bsDatatableColumn` convention — prefix, component, slot —
+ * Naming follows ng-bootstrap's `bsDatatableHeader` convention — prefix, component, slot —
  * with `spark`, since these are ng-spark directives and `bs` is another package's prefix. These
  * are the first attribute directives in ng-spark; every existing selector is an element.
  *

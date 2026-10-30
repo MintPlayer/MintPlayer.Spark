@@ -8,8 +8,8 @@
         <bs-alert [type]="colors.danger" class="mb-3">{{ errorMessage() }}</bs-alert>
       }
 
-      <bs-form>
-        <form [formGroup]="form" (ngSubmit)="onSubmit()">
+      <bs-form (submitted)="onSubmit()">
+        <div [formGroup]="form">
           @if (!useRecoveryCode()) {
             <div class="mb-3">
               <label for="code" class="form-label">{{ 'auth.code' | t }}</label>
@@ -45,7 +45,7 @@
             }
             {{ 'auth.verify' | t }}
           </button>
-        </form>
+        </div>
       </bs-form>
 
       <div class="mt-3 text-center">

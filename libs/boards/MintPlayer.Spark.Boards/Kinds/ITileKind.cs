@@ -1,4 +1,5 @@
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Prerendering;
 
 namespace MintPlayer.Spark.Boards;
 
@@ -21,6 +22,14 @@ public interface ITileKind
     /// read and on every save. A denied tile is left out entirely, so a denial must not throw.
     /// </summary>
     Task<SparkTileAccess> CheckAccessAsync(IReadOnlyDictionary<string, string> target, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Supplies the requests the kind's client renderer sends, so a server-rendered board shows the tile's content
+    /// (docs/spark_ssr_PRD.md D14). Runs only for a board of at most <see cref="SparkBoardsOptions.PrerenderedTileLimit"/>
+    /// tiles, and only for a tile the caller may see. Must not set the page's status. By default nothing: the
+    /// renderer fetches after hydration.
+    /// </summary>
+    Task SupplyAsync(ISparkPrerenderContext context, IReadOnlyDictionary<string, string> target) => Task.CompletedTask;
 }
 
 /// <summary>The outcome of <see cref="ITileKind.CheckAccessAsync"/>.</summary>

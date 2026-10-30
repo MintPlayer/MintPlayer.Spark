@@ -158,16 +158,15 @@ describe('SparkReferencePickerComponent', () => {
         skip: 80, take: 10, parentId: 'people/1', parentType: 'Test.Person', search: undefined,
       }));
       expect(result.totalRecords).toBe(120);
-      expect(result.totalPages).toBe(12);
       expect(result.data[0].id).toBe('companies/81');
     });
 
     it('sends the search term to the server and resets to page 1', async () => {
       const { component, executeQueryByName } = await openWithQuery();
-      component.settings().page.selected = 4;
+      component.page.set(4);
 
       component.onSearchChange('  Company 117 ');
-      expect(component.settings().page.selected).toBe(1);
+      expect(component.page()).toBe(1);
 
       await component.fetchFn()!({ page: 1, perPage: 10, sortColumns: [] } as any);
       expect(executeQueryByName).toHaveBeenLastCalledWith('GetCompanies', expect.objectContaining({ skip: 0, take: 10, search: 'Company 117' }));

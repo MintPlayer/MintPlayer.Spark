@@ -1,5 +1,5 @@
 import { Pipe, type PipeTransform, inject } from '@angular/core';
-import { currentLanguage } from '@mintplayer/ng-spark/models';
+import { activeLanguage } from '@mintplayer/ng-spark/models';
 import { SparkAuthTranslationService } from '@mintplayer/ng-spark/auth/core';
 
 /** Where the pages' texts live: `identityProvider.spa.*` in the identity-provider library's `translations.json`. */
@@ -43,7 +43,7 @@ export function identityProviderDate(value: string | null | undefined): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   try {
-    return new Intl.DateTimeFormat(currentLanguage(), { dateStyle: 'medium', timeStyle: 'short' }).format(date);
+    return new Intl.DateTimeFormat(activeLanguage(), { dateStyle: 'medium', timeStyle: 'short' }).format(date);
   } catch {
     return date.toLocaleString();
   }

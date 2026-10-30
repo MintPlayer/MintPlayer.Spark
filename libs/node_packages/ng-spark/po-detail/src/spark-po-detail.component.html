@@ -92,7 +92,7 @@
         @if (tab.id === '__default__') {
           @let ungroupedAttrs = ungroupedAttributes();
           @if (ungroupedAttrs.length > 0) {
-            <bs-card class="d-block m-3">
+            <bs-card class="m-3">
               <div class="p-3">
                 <dl bsRow>
                   @for (attr of ungroupedAttrs; track attr.id) {
@@ -106,7 +106,7 @@
         @for (group of groupsForTab(tab); track group.id) {
           @if (attrsForGroup(group); as groupAttrs) {
             @if (groupAttrs.length > 0) {
-              <bs-card class="d-block m-3">
+              <bs-card class="m-3">
                 @if (group.label) {
                   <bs-card-header>{{ group.label | resolveTranslation:group.name }}</bs-card-header>
                 }

@@ -30,10 +30,10 @@ import { spawnSync } from 'node:child_process';
 const E2E = 'MintPlayer.Spark.E2E.Tests';
 // The apps the E2E suite hosts (the SparkAppDescriptor in each *TestHost.cs under
 // tests/MintPlayer.Spark.E2E.Tests). Add one here when a new host appears, or it runs stale.
-const E2E_APPS = ['Fleet', 'QnA', 'HR', 'SparkId'];
+const E2E_APPS = ['Fleet', 'QnA', 'HR', 'SparkId', 'MintPlayer'];
 // Their ClientApps. The .NET projects no longer depend on them in the Nx graph, so they are built here, in
 // parallel and from the cache, rather than one at a time by the host's own bundle check.
-const E2E_CLIENT_APPS = ['@spark-demo/fleet-demo', '@spark-demo/qna-demo', '@spark-demo/hr-demo', '@spark-demo/sparkid-demo'];
+const E2E_CLIENT_APPS = ['@spark-demo/fleet-demo', '@spark-demo/qna-demo', '@spark-demo/hr-demo', '@spark-demo/sparkid-demo', '@spark-apps/mint-player'];
 
 const passthrough = process.argv.slice(2);
 

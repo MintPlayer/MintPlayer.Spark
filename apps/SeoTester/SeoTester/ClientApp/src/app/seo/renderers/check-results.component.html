@@ -60,7 +60,7 @@
                 <div class="mb-2">
                   <div class="small fw-semibold mb-1">{{ platform.label }}</div>
                   <bs-code-snippet [code]="row.check?.snippets?.[platform.key] ?? ''" [language]="platform.language" [wrap]="true"
-                                   [label]="platform.label" [copyLabel]="'seoUi.copy' | t" />
+                                   [label]="platform.label" [labels]="{ copy: ('seoUi.copy' | t), copyText: ('seoUi.copy' | t) }" />
                 </div>
               }
               @if (row.check?.docsUrl; as docs) {

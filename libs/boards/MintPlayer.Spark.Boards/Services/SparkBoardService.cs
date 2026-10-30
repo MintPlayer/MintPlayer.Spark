@@ -103,7 +103,7 @@ internal sealed partial class SparkBoardService
         }
         var denied = await DeniedAsync(board.Tiles.Concat(stored?.Tiles ?? []), cancellationToken);
 
-        var (layout, problem) = BoardMerge.Apply(board, stored, request, denied, allowedNew, options.Value.MaxUserTiles);
+        var (layout, problem) = BoardMerge.Apply(board, stored, request, denied, allowedNew, options.Value.MaxTiles);
         if (layout is null)
             return new(BoardSaveOutcome.Invalid, problem);
         layout.Id = id;

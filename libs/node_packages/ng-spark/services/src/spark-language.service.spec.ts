@@ -30,9 +30,13 @@ describe('SparkLanguageService', () => {
     await new Promise(resolve => setTimeout(resolve, 0));
   };
 
+  // The cookie is the source of truth, so one test's language must not leak into the next.
+  const clearCookie = () => { document.cookie = 'spark-lang=; max-age=0; path=/'; };
+
   beforeEach(() => {
     TestBed.resetTestingModule();
     localStorage.clear();
+    clearCookie();
     currentLanguage.set('en');
   });
 
@@ -53,7 +57,17 @@ describe('SparkLanguageService', () => {
     expect(service.languages()).toEqual(culture.languages);
   });
 
-  it('prefers the language saved in localStorage over the server default', async () => {
+  it('prefers the spark-lang cookie over localStorage and the server default', async () => {
+    document.cookie = 'spark-lang=en; path=/';
+    localStorage.setItem('spark-lang', 'fr');
+    const service = create();
+    await load();
+
+    expect(service.language()).toBe('en');
+    expect(currentLanguage()).toBe('en');
+  });
+
+  it('falls back to a localStorage choice that predates the cookie', async () => {
     localStorage.setItem('spark-lang', 'fr');
     const service = create();
     await load();
@@ -76,9 +90,9 @@ describe('SparkLanguageService', () => {
 
     expect(service.language()).toBe('en');
     expect(currentLanguage()).toBe('en');
-    expect(localStorage.getItem('spark-lang')).toBe('en');
-    // The server-rendered /connect/* pages read the cookie, not localStorage.
+    // The cookie alone persists it: a server render reads the cookie, never localStorage.
     expect(document.cookie).toContain('spark-lang=en');
+    expect(localStorage.getItem('spark-lang')).toBeNull();
   });
 
   it('writes the spark-lang cookie for the initial language too', async () => {

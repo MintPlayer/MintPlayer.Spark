@@ -177,6 +177,9 @@
 		                 Condition="Exists('$(SparkAppDataDir)\actions.json')" />
 		<AdditionalFiles Include="$(SparkAppDataDir)\programUnits.json"
 		                 Condition="Exists('$(SparkAppDataDir)\programUnits.json')" />
+		<!-- boards.json (MintPlayer.Spark.Boards), hand-authored too: its tiles name queries, types and program units (SPARK057-059). -->
+		<AdditionalFiles Include="$(SparkAppDataDir)\boards.json"
+		                 Condition="Exists('$(SparkAppDataDir)\boards.json')" />
 	</ItemGroup>
 
 	<!--

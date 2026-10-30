@@ -1,4 +1,4 @@
-<bs-card class="mt-3 d-block">
+<bs-card class="mt-3">
   <bs-card-header>Files</bs-card-header>
 
   @if (assembly(); as a) {
@@ -61,14 +61,14 @@
             [data]="h"
             layout="sunburst"
             [rootId]="chartRootId()"
-            (rootIdChange)="chartRootId.set($event)"
+            (rootidchange)="chartRootId.set($event)"
             [maxDepth]="'auto'"
             [colorMin]="60"
             [colorMax]="80"
             inputLabel="Coverage by folder"
             valueUnitLabel="lines"
             (zoom)="onChartZoom($event)"
-            (nodeSelect)="onChartSelect($event)" />
+            (nodeselect)="onChartSelect($event)" />
         </div>
         <div [xxs]="12" [lg]="7">
           <ng-container *ngTemplateOutlet="folderList" />

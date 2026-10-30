@@ -6,7 +6,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
-import { BsDatatableComponent, DatatableSettings } from '@mintplayer/ng-bootstrap/datatable';
+import { BsDatatableComponent } from '@mintplayer/ng-bootstrap/datatable';
 import { By } from '@angular/platform-browser';
 import { SparkQueryGridComponent } from './spark-query-grid.component';
 import { SparkService, SparkLanguageService, SparkLiveService } from '@mintplayer/ng-spark/services';
@@ -215,7 +215,7 @@ describe('SparkQueryGridComponent', () => {
     it('sends no grid search to the value list when there is none', async () => {
       const { c, service } = await setup();
 
-      await (c as any).distinctsFn({ column: 'FirstName', search: '', signal: new AbortController().signal });
+      await (c as any).distinctsFn({ column: 'FirstName', search: '', filters: {}, params: undefined, signal: new AbortController().signal });
 
       expect(service.getDistinctValues.mock.calls.at(-1)![2].querySearch).toBeUndefined();
     });
@@ -416,7 +416,7 @@ describe('SparkQueryGridComponent', () => {
 
   describe('column labels', () => {
     it('labels each column by its translated header text, and passes the translated resize strings', async () => {
-      // Without bsDatatableColumnLabel the datatable named a column by its NAME: "Resize column
+      // Without a column label the datatable named a column by its NAME: "Resize column
       // Created" under a header reading "Added".
       const t = vi.spyOn(langStub, 't').mockImplementation((k: string) =>
         k === 'common.resizeColumn' ? 'Kolom {column} aanpassen' : k === 'common.fitColumn' ? 'Aanpassen aan inhoud' : k);
@@ -425,10 +425,10 @@ describe('SparkQueryGridComponent', () => {
           data: [{ id: 'r/1', values: [{ key: 'Created', value: '2026-10-07' }] }],
           columns: [{ name: 'Created', label: { en: 'Added' }, dataType: 'string', order: 1 }, { name: 'Plain', dataType: 'string', order: 2 }] as any,
         });
-        const columns = (fixture.debugElement.query(By.directive(BsDatatableComponent)).componentInstance as BsDatatableComponent<unknown>).columnDirectives();
-        expect(columns.map(c => [c.name(), c.label()])).toEqual([['Created', 'Added'], ['Plain', 'Plain']]);
+        const columns = (fixture.debugElement.query(By.directive(BsDatatableComponent)).componentInstance as BsDatatableComponent).columns();
+        expect(columns.map(c => [c.name, c.label])).toEqual([['Created', 'Added'], ['Plain', 'Plain']]);
 
-        const datatable = fixture.debugElement.query(By.directive(BsDatatableComponent)).componentInstance as BsDatatableComponent<unknown>;
+        const datatable = fixture.debugElement.query(By.directive(BsDatatableComponent)).componentInstance as BsDatatableComponent;
         expect(datatable.labels()!.resizeColumn!('Added')).toBe('Kolom Added aanpassen');
         expect(datatable.labels()!.fitColumn).toBe('Aanpassen aan inhoud');
       } finally {
@@ -738,43 +738,46 @@ describe('SparkQueryGridComponent', () => {
       expect(c.allColumns().map((col: any) => col.canSort)).toEqual([undefined, false]);
     });
 
-    it('translates a values change into includes and refetches from page one', async () => {
+    it('translates a values change into includes, and leaves the refetch to the datatable (#448)', async () => {
       const executeQuery = vi.fn().mockResolvedValue(filterPage);
       const { c, fixture } = await setup({ executeQuery });
 
       const tableReload = vi.spyOn((c as any).datatable(), 'reload');
-      c.settings.set(new DatatableSettings({
-        perPage: { values: [10, 25, 50], selected: 10 },
-        page: { values: [1, 2, 3], selected: 3 },
-        sortColumns: [],
-      }));
+      c.selection.set([{ id: 'people/1' } as any]);
 
-      c['onFilterChange']({
-        mode: 'values',
-        column: 'FirstName',
-        selected: [{ value: 'Alice', label: 'Alice' }],
-        inverse: false,
-      } as any);
+      c['onFiltersChange']({ FirstName: { values: ['Alice'], inverse: false } });
       await settle(fixture);
 
-      // Page 1, because the old page number means nothing against a different result set.
-      expect(c.settings().page.selected).toBe(1);
-      // A FORCED reload, from page 1. The datatable dedupes reloads by (page, perPage, sort) — none
-      // of which a filter changes — so without it the request is silently never made; and the
-      // settings binding reaches the datatable only after the reload already fetched.
-      expect(tableReload).toHaveBeenCalledWith({ resetPage: true });
+      await c.fetchFn()!({ page: 1, perPage: 10, sortColumns: [] } as any);
+      expect(executeQuery.mock.calls.at(-1)![1].columns).toEqual([{ name: 'FirstName', includes: ['Alice'] }]);
+      // ng-bootstrap 22.30 goes back to page 1 and refetches on its own filtersChange, after this handler ran;
+      // a reload from here would fetch the same page twice.
+      expect(tableReload).not.toHaveBeenCalled();
+      // A different result set (#467, D19).
+      expect(c.selection()).toEqual([]);
+    });
+
+    it('translates only the columns a change touched, so a filter set beside the model stays', async () => {
+      const executeQuery = vi.fn().mockResolvedValue(filterPage);
+      const { c, fixture } = await setup({ executeQuery });
+
+      // A preset (URL) filter lives in filters() only; the datatable's model knows nothing of it.
+      (c as any).filters.set([{ name: 'LastName', includes: ['Smith'] }]);
+      c['onFiltersChange']({ FirstName: { values: ['Alice'], inverse: false } });
+      await settle(fixture);
+
+      await c.fetchFn()!({ page: 1, perPage: 10, sortColumns: [] } as any);
+      expect(executeQuery.mock.calls.at(-1)![1].columns).toEqual([
+        { name: 'LastName', includes: ['Smith'] },
+        { name: 'FirstName', includes: ['Alice'] },
+      ]);
     });
 
     it('sends excludes rather than a flag when the selection is inversed', async () => {
       const executeQuery = vi.fn().mockResolvedValue(filterPage);
       const { c, fixture } = await setup({ executeQuery });
 
-      c['onFilterChange']({
-        mode: 'values',
-        column: 'FirstName',
-        selected: [{ value: 'Alice', label: 'Alice' }],
-        inverse: true,
-      } as any);
+      c['onFiltersChange']({ FirstName: { values: ['Alice'], inverse: true } });
       await settle(fixture);
 
       await c.fetchFn()!({ page: 1, perPage: 10, sortColumns: [] } as any);
@@ -787,8 +790,8 @@ describe('SparkQueryGridComponent', () => {
       const executeQuery = vi.fn().mockResolvedValue(filterPage);
       const { c, fixture } = await setup({ executeQuery });
 
-      c['onFilterChange']({ mode: 'values', column: 'FirstName', selected: [{ value: 'Alice', label: 'Alice' }], inverse: false } as any);
-      c['onFilterChange']({ mode: 'values', column: 'FirstName', selected: [], inverse: false } as any);
+      c['onFiltersChange']({ FirstName: { values: ['Alice'], inverse: false } });
+      c['onFiltersChange']({});
       await settle(fixture);
 
       await c.fetchFn()!({ page: 1, perPage: 10, sortColumns: [] } as any);
@@ -832,12 +835,12 @@ describe('SparkQueryGridComponent', () => {
         getDistinctValues,
       });
 
-      c['onFilterChange']({ mode: 'values', column: 'FirstName', selected: [{ value: 'Alice', label: 'Alice' }], inverse: false } as any);
+      c['onFiltersChange']({ FirstName: { values: ['Alice'], inverse: false } });
       await settle(fixture);
 
       // A stable function, not a signal: it reads the filters when CALLED, which is what removes the
       // reassign-and-abort race that a per-change identity introduced.
-      await c['distinctsFn']({ column: 'FirstName', search: '', signal: new AbortController().signal });
+      await c['distinctsFn']({ column: 'FirstName', search: '', filters: {}, params: undefined, signal: new AbortController().signal });
 
       // Its own filter is excluded: a panel must offer the values you could still pick, not only
       // the ones you already picked.
@@ -846,7 +849,7 @@ describe('SparkQueryGridComponent', () => {
 
     it('lists values under a deleted parent with parentDeleted: include, and only under a parent (#460)', async () => {
       const getDistinctValues = vi.fn().mockResolvedValue({ matching: [], remaining: [], hasMore: false });
-      const request = { column: 'FirstName', search: '', signal: new AbortController().signal };
+      const request = { column: 'FirstName', search: '', filters: {}, params: undefined, signal: new AbortController().signal };
 
       const under = await setup(
         { executeQuery: vi.fn().mockResolvedValue(filterPage), getDistinctValues },
@@ -876,7 +879,7 @@ describe('SparkQueryGridComponent', () => {
         const grid = s.c as any;
         await grid.distinctsFn({ column: 'FirstName', search, signal: new AbortController().signal });
         const apply = async (values: unknown[], inverse = false) => {
-          grid.onFilterChange({ mode: 'values', column: 'FirstName', selected: values.map(v => ({ value: v, label: String(v) })), inverse } as any);
+          grid.onFiltersChange(values.length ? { FirstName: { values, inverse } } : {});
           await settle(s.fixture);
           await s.c.fetchFn()!({ page: 1, perPage: 10, sortColumns: [] } as any);
           return executeQuery.mock.calls.at(-1)![1].columns;
@@ -915,13 +918,15 @@ describe('SparkQueryGridComponent', () => {
       });
     });
 
-    it('ignores a comparison-mode change, which the panel never declares', async () => {
-      const { c } = await setup({ executeQuery: vi.fn().mockResolvedValue(filterPage) });
-      const before = c.fetchFn();
+    it('a comparison entry, which the panel never declares, filters nothing', async () => {
+      const executeQuery = vi.fn().mockResolvedValue(filterPage);
+      const { c, fixture } = await setup({ executeQuery });
 
-      (c as any).onFilterChange({ mode: 'comparison', column: 'FirstName' });
+      c['onFiltersChange']({ FirstName: { values: [], inverse: false, operator: 'gt', operand: 3 } });
+      await settle(fixture);
 
-      expect(c.fetchFn()).toBe(before);
+      await c.fetchFn()!({ page: 1, perPage: 10, sortColumns: [] } as any);
+      expect(executeQuery.mock.calls.at(-1)![1].columns).toEqual([]);
     });
 
     it('lists no values before the query is known', async () => {
@@ -1120,7 +1125,7 @@ describe('SparkQueryGridComponent', () => {
 
       const page = await c.fetchFn()!({ page: 3, perPage: 25, sortColumns: [] } as any);
 
-      expect(page).toEqual({ data: [], totalRecords: 0, totalPages: 1, perPage: 25, page: 3 });
+      expect(page).toEqual({ data: [], totalRecords: 0 });
       expect(c.errorMessage()).toBe('Timeout');
       expect(c.resultCount()).toBe(0);
       expect(emitted).toHaveBeenCalledWith(expect.objectContaining({ status: 500 }));
@@ -1134,7 +1139,7 @@ describe('SparkQueryGridComponent', () => {
       const page = await c.fetchFn()!({ page: 1, perPage: 10, sortColumns: [] } as any);
 
       expect(c.errorMessage()).toBeNull();
-      expect(page.totalPages).toBe(1);
+      expect(page.totalRecords).toBe(1);
       expect(page.data).toHaveLength(1);
     });
   });
@@ -1303,10 +1308,10 @@ describe('SparkQueryGridComponent preset filters and add-on row actions', () => 
     expect(actions.map(a => a.name)).toEqual(['addon']);
 
     // The row-actions column: announced as "Actions", and never resizable.
-    const actionsColumn = (fixture.debugElement.query(By.directive(BsDatatableComponent)).componentInstance as BsDatatableComponent<unknown>).columnDirectives()
-      .find(col => col.name() === c.rowActionsColumn)!;
-    expect(actionsColumn.label()).toBe('common.actions');
-    expect(actionsColumn.resizable()).toBe(false);
+    const actionsColumn = (fixture.debugElement.query(By.directive(BsDatatableComponent)).componentInstance as BsDatatableComponent).columns()
+      .find(col => col.name === c.rowActionsColumn)!;
+    expect(actionsColumn.label).toBe('common.actions');
+    expect(actionsColumn.resizable).toBe(false);
     expect(actions[0].kind).toBe('addon');
     expect(actions[0].definition.label).toEqual({ en: 'addon.label' });
 
@@ -1370,7 +1375,7 @@ describe('SparkQueryGridComponent live', () => {
     fixture.detectChanges();
     await settle(fixture);
     const c = fixture.componentInstance;
-    const perPage = c.settings().perPage.selected;
+    const perPage = c.perPage();
     const fetch = (page = 1, sortColumns: any[] = []) => c.fetchFn()!({ page, perPage, sortColumns } as any);
     return { fixture, c, service, live, events, requests, perPage, fetch };
   }

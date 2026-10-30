@@ -1,11 +1,10 @@
 import { ChangeDetectionStrategy, Component, computed, contentChild, contentChildren, inject, input, signal, TemplateRef } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
-import { BsShellComponent, BsShellSidebarDirective, BsShellState } from '@mintplayer/ng-bootstrap/shell';
+import { BsShellComponent, BsShellSidebarDirective, BsShellState, BsShellTopbarDirective, type BsShellStateChange } from '@mintplayer/ng-bootstrap/shell';
 import { BsNavbarTogglerComponent } from '@mintplayer/ng-bootstrap/navbar-toggler';
 import { BS_THEME_DEFAULT_MODES, BsThemeService, BsThemeToggleComponent, BsThemeToggleMode } from '@mintplayer/ng-bootstrap/theming';
 import { SparkLanguageService } from '@mintplayer/ng-spark/services';
 import type { Breakpoint } from '@mintplayer/ng-bootstrap';
-import type { ShellStateChangeEventDetail } from '@mintplayer/web-components/shell';
 import { SparkProgramUnitsComponent } from './spark-program-units.component';
 import { SparkLanguageSelectorComponent } from './spark-language-selector.component';
 import {
@@ -57,7 +56,7 @@ import {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     NgTemplateOutlet,
-    BsShellComponent, BsShellSidebarDirective, BsNavbarTogglerComponent, BsThemeToggleComponent,
+    BsShellComponent, BsShellSidebarDirective, BsShellTopbarDirective, BsNavbarTogglerComponent, BsThemeToggleComponent,
     SparkProgramUnitsComponent, SparkLanguageSelectorComponent,
   ],
   templateUrl: './spark-shell.component.html',
@@ -150,7 +149,7 @@ export class SparkShellComponent {
     this.shellState.set(open ? 'show' : 'hide');
   }
 
-  protected onShellToggle(detail: ShellStateChangeEventDetail): void {
+  protected onShellToggle(detail: BsShellStateChange): void {
     this.isSidebarVisible.set(detail.open);
   }
 }

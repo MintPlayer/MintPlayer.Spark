@@ -7,6 +7,14 @@
     "queryType": "MintPlayer.Indexes.VPerson",
     "indexName": "People_Overview",
     "breadcrumb": "{FullName}",
+    "seo": {
+      "indexable": true,
+      "schemaType": "Person",
+      "properties": {
+        "birthDate": "Born",
+        "deathDate": "Died"
+      }
+    },
     "tabs": [],
     "groups": [],
     "attributes": [

@@ -1,6 +1,6 @@
-<bs-shell [state]="shellState()" [breakpoint]="breakpoint()" [dismissOnNavigate]="true"
+<bs-shell [state]="shellState()" [breakpoint]="breakpoint()" [dismissOnNavigate]="true" [externalToggle]="true"
           (statechange)="onShellToggle($event)">
-  <div slot="topbar" class="spark-topbar w-100 d-flex align-items-center">
+  <div *bsShellTopbar class="spark-topbar w-100 d-flex align-items-center">
     @if (topbarStartTpl(); as tpl) {
       <ng-container *ngTemplateOutlet="tpl" />
     } @else {
@@ -24,7 +24,7 @@
     </div>
   </div>
 
-  <nav bsShellSidebar class="spark-sidebar p-2">
+  <nav *bsShellSidebar class="spark-sidebar p-2">
     @if (sidebarHeaderTpl(); as tpl) {
       <ng-container *ngTemplateOutlet="tpl" />
     } @else {

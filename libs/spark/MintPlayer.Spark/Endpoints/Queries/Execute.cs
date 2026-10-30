@@ -3,6 +3,7 @@ using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Exceptions;
 using MintPlayer.Spark.Services;
+using MintPlayer.Spark.Abstractions.Prerendering;
 
 namespace MintPlayer.Spark.Endpoints.Queries;
 
@@ -19,7 +20,7 @@ internal sealed partial class ExecuteQuery : IPostEndpoint<ExecuteQueryRequest>
     // survive the next default change.
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
     {
-        builder.WithMetadata(new RequireAntiforgeryTokenAttribute(false));
+        builder.WithMetadata(new RequireAntiforgeryTokenAttribute(false), SparkPrerenderableAttribute.Instance);
     }
 
     // No antiforgery metadata, deliberately: the verb changed, what the endpoint does did not. See

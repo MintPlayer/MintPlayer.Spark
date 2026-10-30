@@ -39,25 +39,24 @@
         }
 
         <bs-datatable
-          [(settings)]="settings"
+          [columns]="datatableColumns()"
+          [(page)]="page"
+          [(perPage)]="perPage"
+          [(sortColumns)]="sortColumns"
+          pagination
+          [perPageOptions]="pageSizes"
           [data]="rows()"
           [fetch]="fetchFn()"
           [labels]="datatableLabels()"
-          (rowClick)="select($event.row)">
-          <!-- The executed result's columns, in its order (#284, D9). Without a query the rows are a
-               refresh hook's list, which carries only a breadcrumb per row, so that is the one column. -->
-          @if (fetchFn()) {
-            @for (col of columns(); track col.name) {
-              <div *bsDatatableColumn="col.name; sortable: col.canSort !== false; label: col.label | resolveTranslation:col.name">
-                {{ col.label | resolveTranslation:col.name }}
-                <spark-attribute-description [description]="col.description" />
-              </div>
+          (rowclick)="select($any($event.row))">
+          <ng-template bsDatatableHeader let-column="column">
+            {{ column.label }}
+            @if (columnByName().get(column.name); as col) {
+              <spark-attribute-description [description]="col.description" />
             }
-          } @else {
-            <div *bsDatatableColumn="'breadcrumb'; sortable: false; label: title()">{{ title() }}</div>
-          }
+          </ng-template>
 
-          <ng-container *bsRowTemplate="let item">
+          <ng-template bsDatatableRow let-item="row">
             @if (fetchFn()) {
               @for (col of columns(); track col.name) {
                 <td>{{ $any(item) | referenceAttrValue:col.name }}</td>
@@ -65,7 +64,7 @@
             } @else {
               <td>{{ $any(item).breadcrumb || $any(item).id }}</td>
             }
-          </ng-container>
+          </ng-template>
         </bs-datatable>
       } @else {
         <div class="text-center p-3">

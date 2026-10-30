@@ -45,7 +45,9 @@
           }
         </span>
         <div *bsTileContent class="spark-tile-body">
-          @if (renderer(item.tile); as component) {
+          @if (linkMode() && tileLink(item.tile); as link) {
+            <a class="spark-tile-link" [routerLink]="link">{{ 'boards.spa.open' | t }}</a>
+          } @else if (renderer(item.tile); as component) {
             <ng-container *ngComponentOutlet="component; inputs: { tile: item.tile, context: context() }" />
           } @else {
             <span class="spark-board-muted">{{ 'boards.spa.unknownKind' | t }}</span>

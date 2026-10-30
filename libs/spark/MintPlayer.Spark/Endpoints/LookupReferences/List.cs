@@ -2,6 +2,7 @@ using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Services;
+using MintPlayer.Spark.Abstractions.Prerendering;
 
 namespace MintPlayer.Spark.Endpoints.LookupReferences;
 
@@ -9,6 +10,10 @@ namespace MintPlayer.Spark.Endpoints.LookupReferences;
 internal sealed partial class ListLookupReferences : IGetEndpoint
 {
     public static string Path => "/";
+
+    // A read: server-side rendering may supply its response (SparkPrerenderableAttribute).
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
+        => builder.WithMetadata(SparkPrerenderableAttribute.Instance);
 
     [Inject] private readonly ILookupReferenceService lookupReferenceService;
     [Inject] private readonly IPermissionService permissionService;

@@ -197,7 +197,11 @@ describe('SparkProgramUnitsComponent', () => {
 
     const tabs = accordions[0].querySelectorAll('bs-accordion-tab');
     expect(tabs.length).toBe(3);                              // two server groups, then the extra
-    expect(tabs[2].querySelector('.extra-link')).toBeTruthy();
+    // Since ng-bootstrap 22.29 a bs-accordion-tab is a hidden data host; the accordion renders each
+    // tab's content into its own region, in tab order.
+    const regions = accordions[0].querySelectorAll('.accordion-content');
+    expect(regions.length).toBe(3);
+    expect(regions[2].querySelector('.extra-link')).toBeTruthy();
     expect(el.textContent).toContain('Component demos');
   });
 

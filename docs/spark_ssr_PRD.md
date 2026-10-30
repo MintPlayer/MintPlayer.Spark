@@ -1,0 +1,352 @@
+# Spark server-side rendering — PRD and plan
+
+Status: **Decisions locked 2026-10-30** (grilling session; D7 delegated to Claude). **In progress on `feat/spark-ssr`:**
+M1 code done and building, the ssr scaffolding is written, and SP1 is half done (the server bundle is not emitted yet).
+The resume point is §8 "Status".
+
+## 1. Goal
+
+Every page of `apps/MintPlayer` is server-side rendered with its data already in the HTML. The feature lives in the
+framework, so **no per-entity code** is needed: the legacy site's hand-written `OnSupplyData` switch is replaced by one
+generic supplier that understands Spark's own routes. A server-rendered page shows **exactly** what the same user would
+see through the HTTP API: same row security, same attribute redaction, same denials.
+
+Non-goals: SSR of the Lit front of ng-bootstrap (out of scope there too); static prerendering at build time (SSG).
+
+## 2. What exists today (evidence)
+
+### 2.1 Legacy MintPlayer (`C:\Repos\MintPlayer`, Angular 13.3)
+- `MintPlayer.Web/Services/SpaPrerenderingService.cs`, class `SpaRouteService : ISpaPrerenderingService`, registered
+  at `Startup.cs:173`. `BuildRoutes` (:54-141) **duplicates the Angular route table in C#**; `OnSupplyData` (:143-570)
+  is one `switch (route?.Name)` that loads DTOs per entity into `data["person"]`, `data["songs"]`, …
+- 404 through `Response.OnStarting` (:151-158), slug-mismatch redirects through `GenerateUrl` (:188, :217, :318),
+  `last-modified` (:211). The current user always goes in `data["user"]` (:146-147).
+- **Authorization was ad hoc**: only the playlist cases check the owner (403 at :520, :548). Nothing else.
+- `main.server.ts:24-120` turns each key into a string injection token; `main.ts:20-39` provides them all as `null` in
+  the browser; about 20 components branch on `@Inject(SERVER_SIDE)`. **The browser refetches everything on boot**
+  (no TransferState). `NODE_TLS_REJECT_UNAUTHORIZED = "0"` at `main.server.ts:130`.
+- Cost per new entity: a C# case, a token in `main.server.ts`, a null provider in `main.ts`, and a component branch.
+
+### 2.2 `MintPlayer.AspNetCore.SpaServices` (`C:\Repos\MintPlayer.AspNetCore.SpaServices`)
+- `UseSpaPrerendering` captures the downstream `index.html`, then runs the server bundle in Node (NodeServices,
+  `Content/Node/prerenderer.js`) with the capture as `originalHtml`. Only `GET`, `text/html`, exactly `200` and a
+  complete body are rendered; everything else passes through (README "How it works").
+- `ISpaPrerenderingService.OnSupplyData(HttpContext, IDictionary<string, object>)` is **awaited**
+  (`SpaPrerenderingExtensions.cs:377, :744`); a status set there (404/403/302) is honoured (`:380`,
+  `ResponseHeaderPreservationTests`).
+- `HttpContext.SkipPrerendering()` opts a request out (`PrerenderingHttpContextExtensions.cs:24-36`).
+- The demo runs **Angular 21** `renderApplication` behind `createServerRenderer` (`Demo/Prerendering/Demo.Web/
+  ClientApp/src/main.server.ts`), built with the old separate `ng run ClientApp:server` target.
+  ~~**Not yet proven on Angular 22's `@angular/build:application` (ESM server output).** → spike SP1.~~
+  *Superseded: proven by SP1 (status item 1).*
+
+### 2.3 ng-bootstrap (`C:\Repos\mintplayer-ng-bootstrap`, commit b28e1ac4, #412/#437)
+- In `@mintplayer/ng-bootstrap` **v22.29.0** (tag `@mintplayer/ng-bootstrap/v22.29.0`). There are no custom elements
+  and no shadow roots any more. Styles behave like emulated encapsulation, using `[data-mps]` in `@layer mp.components`
+  with Bootstrap in `@layer mp.bootstrap`. Sheets are written into `DOCUMENT.head` during the server render.
+- Browser-only work is guarded inside the library, so consumers need no guards. The one known limit is the theme
+  toggle, which renders disabled on the server.
+- Breaking changes for consumers are listed in `CHANGELOG.md` `[Unreleased] → Breaking`; there is no separate
+  migration guide. They are: outputs renamed (`selectionChange`→`selectionChanged`, carousel `slideStart/End`,
+  tree-select `searchStart`), `checkboxRef`/`radioRef`/`navStyle` removed, `*bsShellSidebar` now structural with a
+  new `*bsShellTopbar`, `*bsNavbarDropdownLabelTemplate`, typeahead `[provider]`, and the `lit` peer dropped.
+- Reference SSR setup: `apps/ng-bootstrap-demo/server.ts` (`AngularNodeAppEngine`), `app.routes.server.ts`
+  (`RenderMode.Server` for `**`), `provideClientHydration(withEventReplay())`, zoneless. The e2e test is
+  `apps/ng-bootstrap-demo-e2e/e2e/ssr.spec.ts`.
+- Spark today: root `package.json:40` pins `@mintplayer/ng-bootstrap ^22.28.0` (pre-SSR); `ui-core ^1.1.0`,
+  `web-components ^3.1.0`.
+
+### 2.4 Spark
+- **Hosting**: `apps/MintPlayer/MintPlayer/Program.cs:65-109` — `AddSpaStaticFilesImproved`, `UseSpark`,
+  `MapSpark`, then `UseWhen(!/spark) → UseSpaImproved` with `UseAngularCliServer("start")` in Development. SparkId and
+  DemoApp copy the block; Spark has no wrapper. Angular **22.2.2**, Nx `@nx/angular:application`, browser entry only,
+  service worker in production. No app has `main.server.ts`/`@angular/ssr`.
+- **Routes are generic** (`libs/node_packages/ng-spark/routes/src/spark-routes.ts:19-43`): `query/:queryId`,
+  `po/:type/new`, `po/:type/:id/edit`, `po/:type/:id`, `po/:type/:id/:slug`, `po/:type`. MintPlayer adds only auth
+  routes and `home` (a `SparkBoardComponent`). **The C# side can match these without per-entity code**, which is the core
+  insight of this PRD.
+- **Data path**: everything goes through `SparkService` (`ng-spark/services/src/spark.service.ts`): `POST /spark/po/load`
+  (:242), `POST /spark/queries/execute` (:158), `POST /spark/queries/get` (:136), `GET /spark/types[/id]`,
+  `/permissions/{id}`, `/program-units`, `/lookupref`.
+- **Read paths**: `IPersistentObjectReadPath.LoadAsync` (`Services/PersistentObjectReadPath.cs:14-32`; row security,
+  deleted scope, `OnDisableActions`, Read veto) and `IQueryReadPath.ExecuteAsync` (`Services/QueryReadPath.cs:22-49`;
+  `IPermissionService`, `IRowSecurity`). Both are `internal`, Scoped, already shared by the HTTP endpoints and the live
+  socket, and take the user from the scoped `HttpContext`.
+- **Boundary net** (`Services/SparkPresentation.cs`): a `JsonTypeInfo.OnSerializing` hook installed into the HTTP JSON
+  options. It checks every outbound `PersistentObject` was presented for *this* request; in Development it throws,
+  elsewhere it prunes fail-closed. **SSR data must be serialized with the same options**, or it bypasses the net.
+- **Browser globals** appear in ~25 ng-spark files (`spark-live.service.ts:426` WebSocket/`window.location`,
+  `spark-language.service.ts:37,55,66` localStorage/`document.cookie`, `po-detail.component.ts:760`
+  `window.history`, `spark-auth.service.ts:301-336`, PWA, notifications, WebAuthn, the timezone interceptor). Only 7
+  files use `isPlatformBrowser`/`afterNextRender`. No `provideClientHydration`, no TransferState.
+- **MintPlayer `player/*`** (YouTube, Vimeo, SoundCloud, Dailymotion, `PlaylistController`) is browser-only.
+- Earlier notes: `docs/issue_460_PRD.md:1181-1195` (S-TZ2, timezone under SSR; `DatePipe` IANA limit at :150,
+  :476-477); `docs/mintplayer_website_PRD.md` :161 (SSR goal), :179 (A4 bot pages "until SSR lands"), :196 (S6
+  re-validate SSR on Angular 22). **This PRD supersedes S6 and retires A4 once SSR is live.**
+
+## 3. Design (proposed)
+
+```
+GET /po/song/123/bohemian-rhapsody
+  └─ UseSpaPrerendering (SpaServices) ── captures index.html
+       └─ SparkPrerenderingService.OnSupplyData(ctx, data)          ← framework, generic
+            ├─ match path against Spark's route table (po/query/board/home, app-registered extras)
+            ├─ call the SAME read paths in-process with ctx.User
+            │     IPersistentObjectReadPath / IQueryReadPath / types / permissions / program units / current user
+            ├─ serialize each result with the HTTP JSON options (boundary net included)
+            ├─ data["spark"] = { "<METHOD> <url> <body-hash>": <exact HTTP response body>, … }
+            ├─ also: board tiles, lookups, sub-queries from the model (D3); app hooks for custom requests (D11)
+            └─ status: the read path's own (anonymous 401 / signed-in 404, D4); slug mismatch → 301 if readable
+  └─ Node: main.server.ts (renderApplication) → provideSparkServer(params.data.spark)
+       └─ server-only HttpInterceptor answers SparkService requests from the map
+            └─ Angular HttpTransferCache records the answers into <script id="ng-state">
+  └─ Browser hydrates; the same requests hit the transfer cache → no second fetch
+```
+
+- **No per-entity code and no injection tokens.** The components don't change: they call `SparkService` as they do
+  now. Only the transport answers differently on the server.
+- **Authorization is inherited, not reimplemented**: the supplier runs the exact read paths and JSON options of the
+  HTTP endpoints, under the request's user. The supplied map holds HTTP response bodies, so whatever Angular renders
+  is byte-identical to what the user would fetch themselves.
+- **Response headers**: `Cache-Control: private, no-store` and `Vary: Cookie` on every prerendered response (D7).
+- **SEO tags** come from the model mapping plus an optional hook on the presented object (D12).
+
+## 4. Decisions
+
+| # | Decision | Status | Evidence |
+|---|---|---|---|
+| D1 | Rendering engine: SpaServices.Prerendering (NodeServices + `OnSupplyData`). `@angular/ssr`'s `AngularNodeAppEngine` is **not** a fallback: if SP1 finds the Angular 22 ESM bundle does not load, the fix goes into SpaServices (an issue there, released first). | ✅ owner, 2026-10-30 | In-process supply needs no loopback, CSRF or second process. |
+| D2 | Data hand-off: Angular's **TransferState** mechanism. A request-keyed response map + server interceptor feed `HttpTransferCache` (`includePostRequests`), which writes TransferState (`ng-state`). The legacy injection tokens are dropped. | ✅ owner, 2026-10-30 | Legacy cost 3 edits per entity and refetched on boot (§2.1). |
+| D3 | **Avoid misses as far as possible**: the supplier also works out board tiles, lookup refs, sub-queries and AsDetail data in-process from the model definitions. Anything still missed renders without data (the loading state) and the browser fetches it after hydration. Each miss is logged in Development, and an M5 test fails on any miss for the seeded MintPlayer pages. Rejected: a loopback HTTP call (an extra hop plus cookie/XSRF forwarding, which D1 avoids) and a two-pass render (double render time). | ✅ owner, 2026-10-30 (accepted without objection) | SP3/SP5 measure how many misses a real page has. |
+| D11 | **App components that use `HttpClient` directly need no branches.** The app's C# hook supplies the *response* to the request the component will make, keyed by method, URL and body, through the same interceptor + TransferState path. No `DATA_FROM_SERVER` token: a token keeps holding the first page's data after client-side navigation unless it is cleared, while `HttpTransferCache` stops answering once the app is stable. A key mismatch degrades to a browser fetch and shows up in the D3 miss log. | ✅ owner, 2026-10-30 | Owner proposed an optional token. B was chosen as lower-code. |
+| D4 | The SSR status **follows the API's rule exactly**: a denied or missing object/query gives anonymous callers **401** (login prompt) and signed-in callers **404** ("not found"). The supplier passes the read path's status through rather than computing its own. A slug mismatch gives a **301 to the canonical slug** only when the caller may read the object; otherwise it is the denial above, and the slug is never revealed. Every non-200 page carries `noindex` (D12). SP4 asserts that an anonymous request for a non-existent id and for a forbidden id return the same status **and** the same HTML. | ✅ owner, 2026-10-30 | `reference_sparkauthorize_default_policy_401`; existence must not leak (`project_coverage_private_repo_existence_oracle`). |
+| D12 | **SEO tags = model mapping + an optional per-type hook.** The entity type declares its SEO in the model: the title is `Breadcrumb`, plus a description attribute, an image attribute, a schema.org `@type` and an indexable flag. ng-spark sets `Title`/`Meta`/canonical/robots/OG/JSON-LD generically on both server and client. The optional hook covers rich JSON-LD (references) and receives **only the presented, pruned object**: no session, no stored document. Robots: `noindex` on non-200, `/new`, `/edit` and non-indexable types; `index` only on a 200 page of an indexable type. The canonical link is the slugged URL. M5 asserts that a redacted value appears nowhere in the raw HTML, `ng-state` included. | ✅ owner, 2026-10-30 | `EntityTypeDefinition.cs:100-106` (Breadcrumb); ng-spark has no `Title`/`Meta` use today. |
+| D13 | **`queries/get` ships the query's result columns (`resultColumns`); `execute` stays authoritative.** The column layout (names, labels, types, order, `ShowedOn.Query`, `columnOrder`, attribute rights) is fixed per query and caller, so the grid gets it with the query and draws a hydrated grid's cells on the client's first pass, instead of only after `pageLoad` (ng-bootstrap #451). The sortable/filterable flags depend on the row shape and index (`IndexedFields`): exact for `Database.*` queries, because `QueryExecutor.ResolveDatabaseSourceAsync` is now shared by `execute` and `DescribeColumnsAsync`. For `Custom.*` queries they are an upper bound (the index of the returned queryable is known only after running), and `toPage` replaces them with the result's. If the description fails, the field is left out and the grid falls back to the fetch. A JSON node in the endpoint, not a property on `SparkQuery`: the catalogue may return the loader's shared instance. | ✅ owner, 2026-10-30 (option C) | `QueryResultProjector.BuildColumns`; `QueryExecutor.cs` `IndexedFields` from the custom result (`ResolveIndexedSearchFields(result)`); `Endpoints/Queries/Get.cs` |
+| D14 | **A board holds at most 20 tiles; a server render supplies tile content only up to 7 tiles, and renders links beyond.** The cap counts the whole board, declared and user tiles together: `SparkBoardsOptions.MaxTiles = 20` replaces `MaxUserTiles` (50), with no backward compatibility. A declared board over it refuses startup, and a save over it is a 400. A board of **at most 7 tiles** (`SparkBoardsOptions.PrerenderedTileLimit`) has each tile's content supplied: each kind supplies the requests its renderer sends (`ITileKind.SupplyAsync`, a no-op by default so an application kind can join), through the same endpoints, so security.json and row-level security apply. A board of **8 or more** is supplied only as the board: on the server and until hydration, `<spark-board>` renders each query, count and object tile as a link to its page (`/query/{id}`, `/po/{type}/{id}`), and the content loads in the browser afterwards. `SPARK_BOARD_PRERENDERED_TILES` (ng-spark) must equal the server constant. `SparkRenderPhase.serverMatching` is true on the server and, in the browser, only for a page that has `ng-server-context` and only until the app is first stable, so a page the browser renders by itself shows no links. A tile's supply never sets the page status (`SparkPrerenderSupplyExtensions`, `primary: false`). **Superseded** (same day, before any code): a 30-request page budget with per-session grants. That design was replaced by the hybrid, which bounds the fan-out by construction. The cost is measured instead: the dispatcher sums each sub-request session's `NumberOfRequests` and logs it per page at Debug. | ✅ owner, 2026-10-30 ("one of the options would be to allow at max 20 tiles per dashboard"; "no backward compat needed"; "Hybrid. If there's less than 7 tiles, render the data … If there's 8 or more, just render links") | Each sub-request runs in its own DI scope (`SparkPrerenderDispatcher.RunAsync`), so Raven's per-session 30 (`SparkMiddleware.cs:231`) never sees a page's total. Measured in §8 Status 9. |
+| D15 | **A board declares the paths that show it.** `SparkBoardDefinition.Paths` (boards.json `"paths": ["/home"]`). `AddBoards` registers a prerender contributor that supplies a board on its paths, matched exactly and ignoring case. MintPlayer's `MapPage("/home", …)` goes away; `MapPage` stays for application pages that are not boards. Trap: a path must be kept equal to its Angular route by hand. | ✅ owner, 2026-10-30 | Angular routes are app-defined, so the server cannot discover a `<spark-board>` (`home.component.html:6`). |
+| D16 | **`boards.json` is checked at build time by an analyzer, not turned into generated code.** The owner suggested a generator that reads boards.json and generates an extension method. Under D15 the consumer already writes no code, so generated code would only repeat what the contributor does at runtime. What a build can add is checking. `spark.targets` hands `boards.json` to the compiler, and `BoardsConfigurationAnalyzer` reports three diagnostics. **SPARK057** (warning): over the default 20-tile cap; only a warning because `MaxTiles` can be raised in code. **SPARK058** (error): a bad or shared path, which the host also refuses. **SPARK059** (warning): a tile target that resolves to nothing — a query id/alias (declared or derived), an entity type id/alias/name in the composed model, a program-unit id — or a non-built-in kind in a project that declares no `ITileKind`. The runtime hides such a tile as denied, so without this a typo reads as a permissions problem. The startup checks stay as the net for code-declared boards. The D15 trap (path equals Angular route) stays: a C# analyzer cannot see the Angular routes. | ✅ owner, 2026-10-30 ("y" to the analyzer recommendation) | `BoardsConfigurationAnalyzerTests` 10/10. On MintPlayer, a typo `artsts` gave `boards.json(8,17): warning SPARK059`; clean, it builds with 0 SPARK057-059. CodeCoverage, Fleet and SeoTester, the other apps with a boards.json, also build with exit 0 and 0 SPARK057-059. |
+| D5 | **In `MintPlayer.Spark` core.** Core references `MintPlayer.AspNetCore.SpaServices.Prerendering`, and the feature is opt-in through `AddSparkPrerendering()` / `UseSparkPrerendering()` (inert unless called). The read paths and `SparkPresentation` stay `internal`, so no public API can load data around authorization. On the npm side, a secondary entry point `@mintplayer/ng-spark/ssr`. Accepted cost: every app carries the NodeServices assemblies. | ✅ owner, 2026-10-30 | Core already references SpaServices.Xsrf (`MintPlayer.Spark.csproj:107`); read paths are internal (§2.4). |
+| D6 | **SSR is switched on for MintPlayer only.** Every app gets the shared changes (D8 ng-bootstrap 22.29, M2 SSR-safe ng-spark) but keeps browser rendering. That is a decision that they don't need SSR, not something deferred: the demos are behind a login, CodeCoverage is too apart from public repositories, and SeoTester already has bot pages. The shared ng-spark changes are only *verified* under SSR on MintPlayer. | ✅ owner, 2026-10-30 | |
+| D7 | **Rendered pages are never cached.** Every prerendered response gets `Cache-Control: private, no-store` and `Vary: Cookie`, and every request renders fresh. A shared cache for anonymous pages is rejected, because one stray `Set-Cookie` (anti-forgery) or a missing cookie dimension in the key would hand one visitor's page or token to another. An in-process output cache is rejected because Spark has no data-change invalidation for arbitrary queries. **Revisit trigger:** if SP1 measures a warm render above ~150 ms, an anonymous in-process output cache comes back into *this* PR. The service worker keeps serving the raw `index.html` for later navigations, so returning visitors skip SSR (crawlers have no service worker). | ✅ Claude, delegated by owner, 2026-10-30 | The old site's S1 measured ~30 ms TTFB (`mintplayer_website_PRD.md:48`, treat as history). SP1 re-measures. |
+| D8 | ng-bootstrap upgrade to ^22.29.0 (no web components) lands in this same PR, with every app migrated. | proposed | One PR rule; SSR depends on it. |
+| D9 | Live updates (WebSocket) connect only after hydration (`afterNextRender`), never on the server. | proposed | `spark-live.service.ts:426`. |
+| D10 | **The server renders from cookies, with per-app defaults.** Language: the `spark-lang` cookie, then `Accept-Language`, then the app default. Theme: the dark-mode cookie (#462). Timezone: the `spark-timezone` cookie or `X-Spark-Timezone`, otherwise a **per-app default zone** in options (MintPlayer: `Europe/Brussels`). Every date renders as `<time datetime="ISO">text</time>`. After hydration, the browser re-formats it **through a signal** if its own zone differs; changing the text directly is a hydration mismatch and discards the server DOM. Offsets are computed per value, because `DatePipe` takes offsets, not IANA zones. Rejected: UTC (a visible 1–2 h jump on first visits) and no server dates (crawlers lose them). | ✅ owner, 2026-10-30 | `spark-language.service.ts:45-55`; `RequestTimeZoneResolver.cs` (cookie + `HeaderName`); `docs/issue_460_PRD.md:150`, S-TZ2. |
+
+## 5. Spikes
+
+Each spike is time-boxed and ends with a written result in §7 (numbers, file:line, red→green test).
+
+| Spike | Question | Box |
+|---|---|---|
+| **SP1** | Does SpaServices.Prerendering's `prerenderer.js` load an Angular 22 `@angular/build:application` server bundle (ESM `.mjs`, `server` entry, no `ssr` entry)? Does the `AngularPrerendererBuilder` watch work under `UseAngularCliServer`? TTFB on a warm render of `/home` and `/po/song/{id}`. If ESM fails: a CJS wrapper, a SpaServices fix (filed **as an issue there**), or the D1 fallback. | 4 h |
+| **SP2** | Render the MintPlayer shell + `po/:type/:id` + `query/:id` under `platform-server` with ng-bootstrap 22.29. List every crash or hydration mismatch (NG05xx) from browser globals in ng-spark, the auth package and the app. | 4 h |
+| **SP3** | Supplied map + server interceptor + `withHttpTransferCacheOptions({ includePostRequests: true })`: are the keys stable for POST bodies (`/spark/po/load`, `/spark/queries/execute`), and does the browser make **zero** Spark data requests after hydration (Playwright network log)? | 3 h |
+| **SP4** | Security equivalence. The in-process supplier, serialized with the HTTP options, must be byte-equal to the HTTP endpoint for anonymous, signed-in-without-right, signed-in-with-right, row-secured and redacted-attribute cases. The boundary net must fire, and must throw in Development for an unpresented object. This becomes the permanent test matrix (M5). | 4 h |
+| **SP5** | Board/home page: how many requests do the tiles make, can the supplier predict them from the board definition, and what does a miss cost under D3 (a)/(b)/(c)? | 3 h |
+| **SP6** | Caching and the service worker. ngsw must never cache a prerendered page (`/index.html` must stay the raw static file; check that dev and prod both do). Check `Cache-Control`/`Vary` on the response, and that SSR HTML is never served across users behind a reverse proxy. | 2 h |
+| **SP7** | Hydration with zoneless + `withEventReplay`. The live socket, `spark-language`, timezone and the player must not mismatch, and there must be no layout flash for the theme toggle (the known ng-bootstrap limit). | 3 h |
+
+## 6. Milestones (after the spikes)
+
+1. **M1 ng-bootstrap 22.29.** Upgrade and migrate every app (CHANGELOG breaking list). Drop the `lit` peer and keep
+   `web-components` only for `color-mode.css`.
+2. **M2 SSR-safe ng-spark.** Guard browser globals: `afterNextRender` for live, PWA and notifications; cookies through
+   `REQUEST`/`DOCUMENT` instead of `document.cookie`; `window.history` behind `isPlatformBrowser`. Add
+   `provideClientHydration(withEventReplay(), withHttpTransferCacheOptions(...))` to the shared app config.
+3. **M3 Server supplier (.NET).** Add `SparkPrerenderingService : ISpaPrerenderingService`, the route matcher over
+   Spark's routes (plus an app hook for custom routes), the in-process read-path calls, serialization through the
+   HTTP JSON options, status/redirect/`last-modified`, and an `AddSparkPrerendering()` / `UseSparkPrerendering()` pair
+   that wraps the current `UseSpaImproved` block.
+4. **M4 Server entry (npm).** Add `@mintplayer/ng-spark/ssr`: `provideSparkServer(data)`, the server interceptor, and
+   a `createSparkServerRenderer(App, config)` so an app's `main.server.ts` is ~5 lines. Add Nx `server` targets and
+   the dev builder script.
+5. **M5 Security test matrix.** Make SP4's cases permanent tests. Include an E2E that renders a page as anonymous and
+   asserts that redacted fields and denied rows are absent from the **raw HTML and the `ng-state` script**.
+6. **M6 MintPlayer adoption.** Make every route SSR, including home/board, song/artist/person, queries and the auth
+   pages. The player renders client-only. Retire A4 bot pages. Run a SeoTester check against the result.
+7. **M7 SEO + docs.** Add the model SEO mapping and the presented-object hook (D12), plus MintPlayer's mappings
+   (Song → `MusicRecording`, Artist → `MusicGroup`, Person → `Person`). Then the docs (`docs/guides/ssr.md`), and route snapshot/CSRF surface guards if new endpoints
+   appear (none are expected).
+
+## 7. Spike results
+
+### SP1 — server bundle (in progress, 2026-10-30)
+
+- **Boot module loads as ESM.** `prerenderer.js` (SpaServices) imports the boot module with a dynamic `import()`, so an
+  `.mjs` default export works. It requires the function to carry `isServerRenderer = true`, or it falls back to the
+  `aspnet-prerendering` v1 path. `createSparkServerRenderer` sets the flag.
+- **Per-request isolation is NOT given by SpaServices.** NodeServices runs one long-lived Node HTTP server. It imports
+  the boot module once and serves concurrent invocations from it. Angular's per-render injector isolates DI, but any
+  module-level state is shared across concurrent renders. That includes ng-spark's `globalThis` `currentLanguage`
+  signal. Fix (implemented): an `AsyncLocalStorage` scope in `createSparkServerRenderer`, read through
+  `activeLanguage()` (§8).
+- **Server bundle: `ssr: true` + `prerender: false`.** With only `server` set, `@angular/build:application` prerenders
+  at build time and writes no server bundle. `ssr: true` writes `dist/ClientApp/server/main.server.mjs` with our
+  default export intact. It needs `@angular/ssr` at build time (I10).
+- **The browser shell is renamed `index.csr.html`** whenever SSR is on (`@angular/build/.../options.js:217-221`); there
+  is no option to keep `index.html`. `index.server.html` is for `AngularAppEngine`, which we do not use. M3/M6 therefore
+  set SpaServices' default page to `/index.csr.html`. SP6 must check the ngsw `index` and the static-file fallback
+  against the rename.
+- **A render works (harness `sp1-render.mjs`).** The harness calls the default export exactly as `prerenderer.js`
+  does: four concurrent renders of `/`, alternating `en`/`nl`, with no supplied responses. Results:
+  - the import takes 194 ms;
+  - `isServerRenderer` is true;
+  - a cold render takes 142–155 ms and a warm one about 63 ms;
+  - the HTML (86 KB) contains `ng-state` and the `ngh=` hydration markers.
+
+  This is the Node side only. TTFB through .NET comes with M3.
+- **Platform-server makes request URLs absolute** (`/spark/culture` → `http://localhost/spark/culture`). The request
+  key therefore uses the path and query only (`spark-server-request-key.ts`).
+- **One unhandled rejection killed the shared Node process.** `loadCulture` failed on a miss with nothing catching
+  it, and Node exits on an unhandled rejection. Under NodeServices that ends every concurrent and later render. Fixed
+  twice over:
+  - the language service and the program-units menu catch their own loads;
+  - `createSparkServerRenderer` installs a process `unhandledRejection` handler that logs
+    `[spark-ssr] unhandled rejection while rendering <path>`.
+- **What `/` requests on the server** (the misses, so this is what M3 must supply for the home page):
+  - `GET /spark/culture`
+  - `GET /spark/translations`, twice: ng-spark's language service and the auth package's translation service. These
+    share one supplied response.
+  - `GET /spark/program-units`
+  - `GET /spark/boards/home`
+  - `GET /spark/auth/me`
+- **`<html lang>` was never set**, neither in the browser nor on the server. `SparkLanguageService` now mirrors the
+  language into it on both platforms. On the server it takes the supplied language at once, even when `/culture` was
+  not supplied.
+- **NG02801** ("HttpClient is not configured to use fetch") is logged once. It is noise: on the server our
+  `HttpBackend` replaces the backend. Switching the browser to `withFetch()` would lose upload progress events, so it
+  is left as is.
+- ~~**Still open:** a dev builder script for `AngularPrerendererBuilder` (watch).~~ *Superseded: done in M4 (I21).*
+
+## 8. Implementation log
+
+### Decisions made while implementing (2026-10-30)
+
+| # | Decision | Evidence |
+|---|---|---|
+| I1 | **Request key** is `METHOD pathAndQuery canonicalJson(body)`, where an absent body is the empty string and object keys are sorted ordinally and recursively, with `undefined` members dropped. The .NET side (M3) must produce it byte for byte. | `libs/node_packages/ng-spark/ssr/src/spark-server-request-key.ts` |
+| I2 | **The server replaces `HttpBackend`, not an interceptor.** Angular orders interceptors as user interceptors, then the transfer-cache interceptor, then the backend. A supplied response must pass through the transfer-cache interceptor to land in `TransferState`, so it has to come from the backend. | `ssr/src/spark-server-backend.ts`, `provide-spark-server-rendering.ts` |
+| I3 | **A miss is an immediate `HttpErrorResponse` (status 0), never a hang**, because a pending request holds app stability and stalls the render until the timeout. It is logged as `[spark-ssr] miss: <key>`. Errors are not transfer-cached, so the browser refetches. | `spark-server-backend.ts` |
+| I4 | **The render URL is relative.** An absolute URL makes Angular check `allowedHosts`, and ASP.NET Core has already checked the host. | `create-spark-server-renderer.ts` |
+| I5 | **Language per render: `AsyncLocalStorage`.** `activeLanguage()` (ng-spark/models) reads `globalThis.__sparkScopedLanguage` before the global signal. It is used in attribute-description, account overview, identity-provider `text.ts` and the auth translation service. On the server, `SparkLanguageService` takes `SPARK_SERVER_LANGUAGE` and never writes the global. | `models/src/translated-string.ts`, `services/src/spark-language.service.ts` |
+| I6 | **The `spark-lang` cookie is the source of truth for the language** (not localStorage), because the server render can only see the cookie. localStorage is read once, as a migration for viewers who picked a language before the cookie existed. `setLanguage` writes only the cookie. | `spark-language.service.ts` |
+| I7 | **Non-HttpOnly cookie inventory.** These are needed or acceptable: `bs-theme-mode` (the preboot script sets `data-bs-theme`), `spark-timezone` (the server default applies when it is absent), `XSRF-TOKEN` and `spark-lang`. The auth cookie stays HttpOnly. The auth popup's localStorage flags, the service worker's sessionStorage flag and SeoTester (no SSR) do not affect rendering. | owner question, 2026-10-30 |
+| I8 | **The Node types are scoped to the ssr entry** with `/// <reference types="node" />`, not to the whole library tsconfig, so browser code cannot reach Node globals by accident. | `create-spark-server-renderer.ts:1` |
+| I10 | **`@angular/ssr` is a build-time devDependency (exact 22.2.2), approved by the owner on 2026-10-30.** `@angular/build:application` unconditionally injects `import { ɵsetAngularAppManifest } from '@angular/ssr'` and its re-exports into every server bundle, and no option turns this off. The import is bundled into `main.server.mjs`, so it is not a runtime dependency. Rendering still uses `renderApplication` from `@angular/platform-server`, and neither the Express server nor `AngularNodeAppEngine` is used. Build options: `ssr: true` (write the server bundle) and `prerender: false`, with no `outputMode` and no `ssr.entry`. | `node_modules/@angular/build/src/tools/esbuild/application-code-bundle.js:209-245`; build error "Could not resolve @angular/ssr" without it |
+| I11 | **One object travels from the backend to the frontend** (owner, 2026-10-30). .NET's `data["spark"] = {responses, language, timeZone}` becomes the renderer's `customDataParameter.spark`, then the `SPARK_SERVER_DATA` token. The backend, the language and the timezone all read from that object, and the browser receives the responses through Angular's TransferState. New server-to-client data extends this object; it never adds another key. | `create-spark-server-renderer.ts`, `spark-server-data.ts` |
+| I9 | **Client hydration** is `provideSparkHydration()`, which is `provideClientHydration(withEventReplay(), withHttpTransferCacheOptions({ includePostRequests: true }))` exported from `@mintplayer/ng-spark/services`. MintPlayer's `app.config.ts` adds it. | `services/src/provide-spark-hydration.ts` |
+| I12 | **In development the template is the dev server's CSR `index.html`, and the render uses the prebuilt `dist/ClientApp/server/main.server.mjs`.** The `development` build configuration has `ssr: false`, so `ng serve` keeps serving a client-only page. A server watch build is M4. Until then, a change to server-side code needs a `build:production`, with the host stopped (shared `.angular/cache`). | `apps/MintPlayer/MintPlayer/ClientApp/project.json` |
+| I13 | **Sub-requests reach the app's endpoints through the DI `EndpointDataSource`.** `WebApplication.New()` removes `__GlobalEndpointRouteBuilder` from every branch, including `UseSpaImproved`'s, so `UseRouting` in the branch saw no endpoints. `UseSparkPrerendering` puts an `IEndpointRouteBuilder` adapter over the composite `EndpointDataSource` in its place. Since M5 the branch is built by `SparkPrerenderDispatcher.Attach(app)`, so a test builds the same pipeline over a `TestServer`'s services. | `SparkPrerenderDispatcher.cs` (`Attach`, `ApplicationEndpoints`); first failure was the guard "needs a WebApplication host" |
+| I14 | **The page `HttpContext` is read once, into `SparkPrerenderPage`, before any sub-request runs.** `HttpContext` is not thread-safe, and contributors run concurrently. `/po/song` returned 500 with a `NullReferenceException` at `DefaultHttpRequest.get_Scheme` when two sub-requests read the page's request at once. `ISparkPrerenderContext.HttpContext` documents this. | `SparkPrerenderDispatcher.cs` (`SparkPrerenderPage`), 2026-10-30 |
+| I15 | **All Angular code is zoneless (owner, 2026-10-30: "Important"), so a server render waits through `PendingTasks`, never through zone.js.** A supplied answer is synchronous. A component that awaits one request before sending the next left a gap with nothing pending, and the page was serialized mid-load: `/query/songs` rendered the grid's spinner and never asked for its rows. `SparkServerBackend` now holds a pending task for every answer until the next macrotask, which is after the caller's microtask continuation has sent its next request. One place covers every HttpClient-driven load chain; no component code changes. | `ssr/src/spark-server-backend.ts` (`hold`) |
+| I16 | ⚠️ **Superseded 2026-10-30 by ng-bootstrap 22.31 (#451): `toPage` returns `extra: {columns, disabledActions}` and `(pageload)` applies the seeded page 1; `pageMetaKey`/`restorePageMeta` are deleted, and the columns come with the query first (D13).** Was: **The grid hands page 1's result metadata to the client itself, under `<stateKey>:meta` in TransferState.** With 22.30's `[stateKey]`, the hydrating datatable seeds page 1 and never calls `fetch`, and its seed keeps only rows and total. The grid takes its columns from the result (`toPage`), so the hydrated `/query/songs` showed 10 rows with no `<td>` and no header (2026-10-30, measured in the browser; client-side navigation was fine). `toPage` now records `disabledActions`/`totalItems`/ids for page 1 (the columns originally too; since D13 they come with the query) on the server; `restorePageMeta` applies them once on the client after the query loads. Verified: headers "Title, Released", cells present, zero `/spark/` requests after hydration, and a sort still fetches. Remove once ng-bootstrap #450 hands the seeded result back. | `grid/src/spark-query-grid.component.ts` (`pageMetaKey`, `restorePageMeta`) |
+| I17 | **The shell topbar fills its row with `flex: 1 1 auto`, not `.w-100`.** (ui-core 1.4 restores `.w-100`, measured 1084 px on 2026-10-30; the flex rule stays, it needs no utility.) ui-core 1.3's width patch replaces Bootstrap's `width` utility with `auto` only, so `.w-25`…`.w-100` no longer exist (ng-bootstrap #450). The topbar measured 316 px in a 1084 px viewport; after the fix, 1084 px. The other 18 uses in ng-spark (auth buttons, po-form) wait for the upstream fix. | `shell/src/spark-shell.component.scss` |
+| I18 | **The page's origin travels in `data["spark"].origin` (extends I11) and becomes `SPARK_SERVER_ORIGIN`.** The canonical link, `og:url` and JSON-LD `url` are absolute; the server has no `document.location`, and the request's scheme, host and path base are what the visitor asked for. The browser falls back to `document.location.origin`. | `SparkPrerenderingService.cs` (`origin`), `ssr/src/provide-spark-server-rendering.ts`, `services/src/provide-spark-hydration.ts` |
+| I19 | **SEO is written by `SparkSeoService` from `spark-po-detail`, on the server and on client navigation alike (D12).** The hook receives only the presented object, so a redacted value cannot reach the tags. The site title is recorded on `<title data-spark-site>`, so a hydrating page that already carries an object's title reads it back. JSON-LD escapes `<` as `<`, so a value cannot close the script. The new and edit forms, an error and a deleted view are `noindex`. | `services/src/spark-seo.service.ts`, `spark-seo.service.spec.ts` (6 tests) |
+| I20 | **A non-200 rendered page also carries `X-Robots-Tag: noindex`.** The 401/404 page renders the app shell, and its `<meta name="robots">` comes from a page that failed to load; the header holds even when a crawler ignores the body. Measured: `/po/song/Songs%2F999999` gave 401, `X-Robots-Tag: noindex`, `Cache-Control: private, no-store`, `Vary: Origin, Cookie`. | `SparkPrerenderingService.cs` |
+| I21 | **Development builds the server bundle with `WatchBuild("build:ssr:watch")` (M4), a second watch build next to the dev server.** `tools/ssr-watch.mjs` runs `nx run <app>:build:development-ssr --watch --skip-nx-cache --output-style=stream` with `CI=1`. `CI=1` turns off Angular's persistent cache for that process (`normalize-cache.js`), so it never shares `.angular/cache` with the dev server. `--output-style=stream` is required: without it nx prints only its task summary, the builder never saw "Application bundle generation complete" and timed out after 120 s (measured, first run). One command string with `shell: true`, since Node deprecates an argument array with a shell (DEP0190); the project name is checked against `^[@\w./-]+$`. Verified: editing `seo.ts` rebuilt the server bundle, and the next request rendered the new JSON-LD without a host restart. | `tools/ssr-watch.mjs`, `SparkBuilderPrerenderingExtensions.WatchBuild`, MintPlayer `project.json` (`development-ssr`) |
+| I22 | **`spark-po-detail` holds a `PendingTasks` task from the start of `load()` until its secondary reads (lookups, AsDetail pickers) finish.** Angular turns the HTTP transfer cache off at the first stable moment after hydration (`appRef.whenStable()`, `@angular/common/fesm2022/http.mjs:238`). HttpClient's own task ended synchronously with the last cached answer, and `whenStable`'s callback ran before `load()`'s next continuation, so the song page fetched `GET /spark/queries` and one or both picker `queries/execute` again (measured 3/3 loads; they were in `ng-state`). After the change: 0 Spark requests after hydration on 3/3 loads. A task taken only after the awaits did not fix it (measured). | `po-detail/src/spark-po-detail.component.ts` (`load`) |
+| I23 | **Never nest a `<form>` in `<bs-form>`: put `[formGroup]` on a `<div>` and submit through `(submitted)`.** `bs-form` renders the `<form>` itself; the HTML parser drops a nested form tag, so the server-rendered DOM is one level shallower than the template. `/login` hydrated with `NG0500: expected <form> but found <div>`. The 10 nested forms in the auth pages (login, register, two-factor, forgot/reset password, and the account profile, change-password, personal-data and two-factor-setup panels) moved; after the change `/login` and `/register` hydrate with no error. | `auth/*/src/*`, ng-bootstrap's `bs-form` template comment |
+| I24 | **A detail page supplies its sub-query cards** (`SupplySubQueriesAsync`): for each entry of the type's `queries` (an alias, or `{query, …}`), the card's grid with the object as parent (`parentId` the object's id, `parentType` the type's name). A card's status never becomes the page's. Before it, `/po/artist/Artists%2F22` missed `queries/get {"queryId":"artist-songs"}` and fetched 4 requests after hydration; after it, 0 misses and 0 requests (2/2 loads). | `SparkRoutesPrerenderContributor.cs` |
+| I25 | **The new-object form is not supplied beyond the types.** `po/:type/new` misses `GET /spark/types/{id}?for=new`, and its next request, `/po/new`, runs the type's `OnNewAsync` hook and is not `[SparkPrerenderable]`. The form is `noindex` and differs per visitor, so a server-rendered form shell buys nothing; it renders after hydration. | measured: one miss on `/po/song/new` |
+| I26 | **AsDetail picker options load only for a row reference without a breadcrumb.** The server sends each row reference's label (#185), so the reference column's options query (e.g. GetArtists, GetMediumTypes) is needed only when one is missing. Client (`spark-po-detail` `needsReferenceLabels`) and server (`SparkRoutesPrerenderContributor.NeedsReferenceLabels`) apply the same test, so the server supplies exactly what the page asks for. Editing a row still loads the options through the picker. | measured on the song page, read from the per-request Debug log (`Logging__LogLevel__MintPlayer.Spark.Prerendering=Debug`): 18 → 4 database requests, 12 → 9 sub-requests, 0 misses, 0 requests after hydration; specs pin both cases |
+| I27 | **A load by id includes the readable `[Reference]` properties, as a query already did (#239).** `MaterializeAsync` took only `GetDefaultIncludes()`, so the breadcrumb resolver made a round trip for the referenced documents of every detail page. It now merges the `[Reference]` names (ignored ones excluded, as for queries). Only the first level: RavenDB has no recursive include, so AsDetail-row and deeper references stay with the resolver's batched load, and a type that needs more uses `GetDefaultIncludes()` or `IgnoreMaxRequests`. | ✅ owner, 2026-10-30 ("you can do so, in this pull-request"); `ReferenceIncludeTests.MaterializeAsync_includes_the_reference_properties…` red without the change, green with it (6b26f53a) |
+| I28 | **Outside Development a server render supplied nothing page-specific.** The SPA fallback rewrites `Request.Path` to the default page (`/index.csr.html`) before the render, while SpaServices renders the URL of the request line (`IHttpRequestFeature.RawTarget`). Every contributor therefore saw `/index.csr.html`: only the app-wide requests were supplied, every page request missed, the page rendered without its data, a stale slug was a 200 and a missing object a 200 without `noindex`. Development never showed it, because the dev-server proxy leaves the path alone. `SparkPrerenderContext.PageUrl` now reads the request line, decoded as Kestrel decodes a path (all but `%2F`), without the path base, and the per-path pages match on it. **Production (mintplayer.com) was affected; nothing of it had shipped yet.** | found by the new MintPlayer E2E tests (M5): before, the debug log said `Server rendering /index.csr.html: 5 requests` for a song page and all 4 tests failed; after, `Server rendering /po/song/Songs%2Fe2e-sky/a-sky-full-of-stars: 9 requests, 2 database requests` and all pass. `SparkPrerenderPageUrlTests` (3) pin the decoding |
+| I29 | **The home board names `/` among its paths.** Angular redirects `/` to `/home`, so the front page rendered the board without its data (`[spark-ssr] miss: GET /spark/boards/home` on `/`). `apps/MintPlayer/MintPlayer/App_Data/boards.json` now lists `["/home", "/"]`. The D15 trap stands: a path has to equal the URL the visitor asks for, redirects included. | the E2E browser theory covers `/` and the song page |
+
+### M1 — ng-bootstrap 22.29 migration (code done, build green; specs run green, status item 10)
+
+- **Packages.** `@mintplayer/ng-bootstrap ^22.29.0`, `ui-core ^1.2.0`, `web-components ^3.2.0`, `ng-animations 22.1.1`,
+  `ng-click-outside ^22.2.1`, `ng-focus-on-load ^22.1.2`, `pagination ^2.5.1` and `@angular/platform-server 22.2.2`.
+  `lit` was removed. The npm ERESOLVE on the ng-animations peer was fixed by these bumps. The ng-spark peer ranges are
+  bumped to match.
+- **The datatable takes its columns as data, and its templates are slots.** This follows ng-bootstrap's decision
+  (`docs/prd/headless-catalog-437-plan.md:153-158`): one core compiles into four fronts, and the server needs the
+  columns. Spark uses `[columns]: DatatableColumnDef[]` (computed), with these slots:
+  - `bsDatatableHeader`: the label plus `spark-attribute-description`.
+  - `bsDatatableFilter`: every filterable column is `filterMode: 'custom'`, which renders `spark-column-filter-panel`
+    with `ctx.values`.
+  - `bsDatatableRow`: whole-row `<td>`s, chosen over the per-cell slot so that the first-column link and the ⋮ menu
+    keep their markup.
+
+  The ⋮ column is still appended only once the data columns exist (sizing).
+- **Grid state.** `settings: DatatableSettings` is replaced by `page`/`perPage` signals and a `sortColumns` model, with
+  `[perPageOptions]="SPARK_GRID_PAGE_SIZES"`. `initialGridSettings` returns a plain `SparkGridSettings`. Fetch responses
+  are `{data, totalRecords}`.
+- **Selection.** The datatable selects by string key (`[rowKey]` is the document id, one-way `[selectedIds]`).
+  `(selectionchanged)` maps the ids back to rows, falling back to the previous selection for ticked rows on other pages
+  (#467 D19 preserved).
+- **Events are lowercase**: `rowclick`, `filterchange`, `selectionchanged`. The datatable no longer has
+  `[isResponsive]`.
+- **Shell.** `*bsShellTopbar` and `*bsShellSidebar` (now structural), plus `[externalToggle]="true"`, which keeps
+  Spark's own navbar toggler. The event type is `BsShellStateChange` from `@mintplayer/ng-bootstrap/shell`.
+- **Also migrated:** `spark-reference-picker` (page, perPage and sortColumns signals, `datatableColumns`) and
+  CodeCoverage's `repo-commit-graph-panel` (static `columns`, header slot).
+- **Specs updated but NOT run yet** (batched to the end): grid, toolbar and picker specs. They read `columns()`,
+  `page()` and `perPage()`, and simulate deselect-all through `selectionchanged.emit`.
+- **Build errors fixed on the way:**
+  - `[data]` no longer takes `null`, so the grid passes `data() ?? []`.
+  - The tree-select `[provider]` needs `?? null`.
+  - An unused `ResolveTranslationPipe` was removed from the picker.
+  - The ssr entry needed Node types (I8).
+- **Not checked yet:** the CodeCoverage app build. (Whether the datatable uses `fetch` over `[data]=[]` is answered: it does,
+  measured on `/query/songs` 2026-10-30.) **Missed by M1:** `[pagination]` and `d-block` on `bs-card`, see Status 7.
+
+### Status / resume point
+
+1. ✅ **SP1** done: the server bundle renders, concurrent languages are isolated, and the process survives misses.
+   The dev watch builder moved to M4, where it is done (I21).
+2. ✅ **M1 + ssr scaffolding + SP1 committed** (the commit after `1d122f72`, "feat(ssr): ng-bootstrap 22.29 migration
+   (M1)…").
+3. **Next: M3, the .NET supplier.** SP3–SP5 need it. Start with the home page's five requests (SP1 list) and
+   `po/:type/:id`. The harness is `sp1-render.mjs` in the session scratchpad. Re-create it from the description in §7
+   if it is gone: it calls the default export as `prerenderer.js` does, with `index.csr.html` as `originalHtml`. Run it
+   under Git Bash with `MSYS_NO_PATHCONV=1`, or `/` gets rewritten. After M3 come SP2 and SP6–SP7, then M2 and M4–M7 as
+   in §6. The M3 .NET design is in §3 and the summary in memory
+   `project_spark_ssr.md`:
+   - an in-process sub-request dispatcher, using a new DI scope and `ExecutionContext.SuppressFlow` with `Task.Run`;
+   - a `SparkPrerenderable` endpoint metadata allow-list;
+   - `data["spark"] = {responses, language, timeZone}`.
+4. ✅ **M3, the .NET supplier, committed** (2026-10-30). Measured on the dev host (anonymous, warm): `/home` 200, the song page `/po/song/Songs%2F23/a-sky-full-of-stars` 200 in 0.70 s with its title and fields, a missing song 401 (D4), and `/query/songs` and `/po/song` 200 in 0.15–0.17 s with the grid loaded (query, type, rights, actions). Response headers: `Cache-Control: private, no-store` and `Vary: Cookie`. Remaining misses: only the home board's tiles (`queries/get` songs and artists, `types`), which are SP5.
+5. ✅ **Resolved by ng-bootstrap 22.30 (#449), adopted 2026-10-30:** the grid sets `[stateKey]` (null for external data, virtual scroll and live), migrates `(filterchange)` to the two-way `filters` model (`onFiltersChange`), and hands its page-1 metadata over itself (I16). Server HTML has the rows; hydration makes no page-1 refetch. Was: **Grid rows are blocked on ng-bootstrap #448** (https://github.com/MintPlayer/mintplayer-ng-bootstrap/issues/448, filed 2026-10-30). A `[fetch]` `bs-datatable` starts its first fetch only in `attach`, which `useCore` runs in `afterNextRender` (`machine/src/core.ts:107`, `ui-core/datatable/src/datatable.core.ts:358,1167`), so the server serializes its `Loading…` row. Spark already predicts and supplies the first-page `queries/execute`. A Spark-side `[data]` workaround was rejected: wrong pager on the server, and a hydration mismatch.
+6. ✅ **D13 + ng-bootstrap 22.31 (#451), committed 2026-10-30 (`6f9f8830`).** `queries/get` returns `resultColumns`; the grid returns `extra` and binds `(pageload)`, and the I16 `:meta` workaround is gone. `@mintplayer/ui-core` left the root `package.json` (a peer of ng-bootstrap); ng-spark peers are `^22.31.0` / `^1.4.0`. `/query/songs`: 20 server-rendered cells, hydrated with cells, zero `/spark/` requests after hydration.
+7. ✅ **Two 22.29 regressions found against mintplayer.com (22.28), fixed 2026-10-30:**
+   - **`bs-datatable [pagination]` now defaults to `false`.** The grid and the reference picker lost their page and per-page controls. They bind it now (`6b536084`); verified, page 2 fetches once.
+   - **`bs-card`'s host is the `.card` since 22.29.** `d-block` on it killed the flex column, so card headers and bodies lost their spacing. Removed from all 11 cards (`8091431c`). The player dock was measured equal to production (320×303, 41/186/74 px); the ng-spark and CodeCoverage cards were not opened in a browser.
+8. ✅ **SP5, board tiles (D14, D15), 2026-10-30.** Boards declare `paths`, and `AddBoards` registers `SparkBoardsPrerenderContributor`. MintPlayer's `MapPage("/home", …)` and `SupplyBoardAsync` are gone. Each built-in kind supplies its tile through `SparkPrerenderSupplyExtensions` (`primary: false`); `programUnit` needs nothing, because the shell already supplies `program-units`. `MaxTiles = 20` is enforced at startup and on save (`BoardEndpointTests`, `BoardMergeTests`, 23/23 with the prerender tests).
+   - **Measured on the dev host** (anonymous, warm; the dispatcher's per-page Debug line):
+
+     | Page | Sub-requests | DB requests |
+     |---|---|---|
+     | `/home`, 2 query tiles | 15 | 7 |
+     | `/query/songs` | 10 | 4 |
+     | `/po/song/Songs%2F23/…` | 12 | 18 |
+     | `/home`, a temporary 8-tile board (2 query + 6 count) | 6 | 0 (links) |
+
+   - **Browser, playwright_node:**
+     - `/home` (2 tiles): zero `/spark/` requests after hydration, no warnings.
+     - The 8-tile board: 8 `spark-tile-link`s in the server HTML. Hydration gave no warnings. The tiles then swapped to their content (counts 141/138, two grids), fetched in the browser, while the board itself came from the transfer cache.
+   - **Open:** the song page's 18 DB requests are the most of any page. Look at which sub-request spends them during M4–M7.
+9. ✅ **SP2, SP6, SP7, M2 and M4–M7, 2026-10-30.** Measured on the dev host (anonymous unless stated; the browser counts Spark requests made after hydration, which should be zero):
+
+   | Route | Status | After hydration | Hydration |
+   |---|---|---|---|
+   | `/home` | 200 | 0 requests | 21 components, no warning |
+   | `/query/songs` | 200 | 0 | 28, no warning |
+   | `/po/song/Songs%2F23/a-sky-full-of-stars` (3 loads) | 200 | 0 (I22) | 35, no warning |
+   | `/po/artist/Artists%2F22` (2 loads) | 200 | 0 (I24) | 35, no warning |
+   | `/login`, `/register` | 200 | 0 | no warning after I23 |
+   | `/po/song/Songs%2F23/wrong-slug` | **301** → `/po/song/Songs%2F23/a-sky-full-of-stars` | – | – |
+   | `/po/song/Songs%2F999999` | **401**, `X-Robots-Tag: noindex` | – | – |
+   | `/po/song/new` | 200, `noindex` | one miss, by design (I25) | – |
+
+   Every rendered response: `Cache-Control: private, no-store`, `Vary: Origin` and `Vary: Cookie` (D7).
+   - **SP2 / M2 (SSR-safe ng-spark):** no crash on any route. The live socket opens only in the browser (D9): `SparkLiveService.ensureSocket()` and the grid's `liveWanted` return early on the server. The one hydration mismatch was the nested `<form>` (I23). `NG02801` (HttpClient without `withFetch`) is logged per render; it is advice, and the server never uses a backend of its own (I2).
+   - **SP6:** `/index.csr.html` is served raw by static files (200, 1800 bytes, no `ng-state`). Observed in a production build (2026-10-30): `dist/ClientApp/browser/ngsw.json` has `"index": "/index.csr.html"`, so the service worker never caches a prerendered page.
+   - **SP7:** with `spark-lang=nl`, `bs-theme-mode=dark` and `spark-timezone=America/New_York`, the server HTML is Dutch (`<html lang="nl">`, "Artiesten"), the theme is dark before paint (the preboot script), and hydration made no request and no warning. The player renders only when `player.current()` is set, so it is client-only by construction.
+   - **M4:** the watch build (I21).
+   - **M5:** `SparkPrerenderEquivalenceTests` (4 tests + a 6-case theory, through `Attach` over a `TestServer`). Every supplied response is the HTTP response, status and body. A missing and a denied object answer alike. A redacted reference ("Zeno", `pedrivers/1`) is absent from what the page receives. An endpoint not marked prerenderable answers 404, is not supplied, and does not run (the count of cars stays 1). `SparkSlugTests` pins the server slug to the client's `sparkSlug`. ~~**The E2E part is not built:** the E2E project hosts Fleet and QnA only, and the curl and browser measurements above stand in for it.~~ *Superseded 2026-10-30 (owner: "address all remaining items"):* the E2E project now hosts MintPlayer (`MintPlayerTestHost`, outside Development, so on the built server bundle as in production), and `ServerRenderingTests` pins the song page's server HTML (title, artists, canonical, JSON-LD `byArtist`, transfer state), the stale-slug 301, the missing song's 401 with `X-Robots-Tag: noindex`, and a browser load that makes no Spark request and logs no warning.
+   - **M6:** MintPlayer renders every route above. The legacy A4 bot pages never existed in `apps/MintPlayer`, so retiring them is a no-op.
+   - **M7:** the model's `seo` mapping (Song `MusicRecording`, Artist `MusicGroup`, Person `Person`) and MintPlayer's `byArtist` hook (`src/app/seo.ts`). The song page's server HTML has title "A Sky Full of Stars - MintPlayer", `index, follow`, the canonical and `og:url` links, and JSON-LD with `datePublished` "2014-05-02" and `byArtist` Coldplay and Avicii. An AsDetail array travels in the attribute's `objects`, not its `value`; the first hook read `value` and produced no `byArtist`. Guide: [guide-ssr.md](guide-ssr.md).
+   - **Song page DB requests (item 8):** 18 → 4 after I26. The 14 extra came from the AsDetail picker options (GetMediumTypes 6, GetArtists 8), which the page never shows when every row reference carries its breadcrumb. The artist page makes 9 across 13 sub-requests.
+10. **Specs and suites, 2026-10-30:** 552 ng-spark specs in 27 files (grid, toolbar, picker, po-detail/create/edit, live, services) pass. After I22/I23, the po-detail and auth specs pass: 362 in 27 files. The .NET prerendering tests pass: 20, `SparkPrerenderRequestKeyTests` included. The boards tests pass, as do `QueryExecutor*` and `GetQueryEndpointTests` (83). The CodeCoverage app builds: the Angular production build and `dotnet build` both exit 0.

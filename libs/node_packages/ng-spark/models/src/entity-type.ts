@@ -99,6 +99,23 @@ export interface AttributeGroup {
   order: number;
 }
 
+/**
+ * The model's SEO mapping for one entity type (`EntityTypeSeo` on the server, D12). Every name is an attribute of
+ * the presented object, so a value the caller may not read is absent from the page.
+ */
+export interface EntityTypeSeo {
+  /** Whether a readable object's page may be indexed; otherwise `noindex`. */
+  indexable: boolean;
+  /** The schema.org `@type` of the page's JSON-LD, e.g. `MusicRecording`; absent, no JSON-LD. */
+  schemaType?: string;
+  /** The attribute whose value is the meta and Open Graph description. */
+  description?: string;
+  /** The attribute whose value is the Open Graph image URL. */
+  image?: string;
+  /** More JSON-LD members, schema.org property → attribute name, e.g. `{ datePublished: 'Released' }`. */
+  properties?: Record<string, string>;
+}
+
 export interface EntityType {
   id: string;
   name: string;
@@ -128,6 +145,11 @@ export interface EntityType {
    * adopts a newer version (or offers a merge when the form is dirty). Opt-in per type.
    */
   live?: boolean;
+  /**
+   * How a detail page of this type describes itself to search engines and link previews (`docs/spark_ssr_PRD.md`
+   * D12). Absent, the page keeps the breadcrumb as its title and is `noindex`.
+   */
+  seo?: EntityTypeSeo;
   /**
    * Breadcrumb template: literal text plus `{AttributeName}` placeholders. A scalar placeholder
    * renders its value; a reference placeholder renders the referenced entity's breadcrumb.

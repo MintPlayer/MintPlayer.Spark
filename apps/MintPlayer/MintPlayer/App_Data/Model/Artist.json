@@ -5,6 +5,14 @@
     "name": "Artist",
     "clrType": "MintPlayer.Entities.Artist",
     "breadcrumb": "{Name}",
+    "seo": {
+      "indexable": true,
+      "schemaType": "MusicGroup",
+      "properties": {
+        "foundingDate": "YearStarted",
+        "dissolutionDate": "YearQuit"
+      }
+    },
     "tabs": [],
     "groups": [],
     "attributes": [

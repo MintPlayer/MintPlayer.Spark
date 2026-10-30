@@ -106,6 +106,8 @@ internal static class SparkAuthenticationExtensions
                 ? new SparkMailLinkConfirmationSender<TUser>(mailer, sp.GetRequiredService<TimeProvider>())
                 : null!);
         builder.Services.TryAddEnumerable(ServiceDescriptor.Scoped<MailManager.ISparkMailRecipientCulture, SparkUserMailCulture<TUser>>());
+        // Inert unless the app server-renders (AddPrerendering).
+        builder.Services.TryAddEnumerable(ServiceDescriptor.Scoped<MintPlayer.Spark.Abstractions.Prerendering.ISparkPrerenderContributor, MintPlayer.Spark.Authorization.Prerendering.SparkAuthPrerenderContributor>());
         // The account mails' default templates; an app's Templates/Mail/SparkAuth/*.mjml overrides them.
         // Anchored on SparkAuthMailTemplates, which lives in this assembly with the embedded templates. Not
         // SparkUser: it moved to Authorization.Abstractions (#388), which has no templates, and every

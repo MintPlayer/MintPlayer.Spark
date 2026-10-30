@@ -2,6 +2,7 @@ using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Services;
+using MintPlayer.Spark.Abstractions.Prerendering;
 
 namespace MintPlayer.Spark.Endpoints.Aliases;
 
@@ -9,6 +10,10 @@ namespace MintPlayer.Spark.Endpoints.Aliases;
 internal sealed partial class GetAliases : IGetEndpoint
 {
     public static string Path => "/aliases";
+
+    // A read: server-side rendering may supply its response (SparkPrerenderableAttribute).
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
+        => builder.WithMetadata(SparkPrerenderableAttribute.Instance);
 
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IQueryLoader queryLoader;

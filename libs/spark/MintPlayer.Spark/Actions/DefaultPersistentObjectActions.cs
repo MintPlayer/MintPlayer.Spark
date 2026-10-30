@@ -234,7 +234,7 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
     /// widen anything; returning fewer refuses.
     /// </para>
     /// <para>
-    /// #239: the declared includes are attached to this load, because RavenDB requires them on the
+    /// #239: the declared includes, and the readable <c>[Reference]</c> properties, are attached to this load, because RavenDB requires them on the
     /// same fluent call — there is no pre-register-on-session. That is why the default lives here
     /// and not at the call site, and why the multi-id overload is what makes a bulk selection one
     /// request rather than N.
@@ -243,9 +243,16 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
     [NoInterfaceMember]
     public virtual async Task<IDictionary<string, T>> MaterializeAsync(IReadOnlyList<string> ids)
     {
-        var session = RequireServices().GetRequiredService<IAsyncDocumentSession>();
-        var includes = GetDefaultIncludes();
-        return includes is { Count: > 0 }
+        var services = RequireServices();
+        var session = services.GetRequiredService<IAsyncDocumentSession>();
+        // The [Reference] properties as a query includes them, so the breadcrumb resolver finds their
+        // documents in the session instead of making a round trip for them.
+        var includes = services.GetRequiredService<IReferenceResolver>().GetReferenceProperties(typeof(T))
+            .Select(p => p.Property.Name)
+            .Concat(GetDefaultIncludes() ?? [])
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        return includes is { Length: > 0 }
             ? await session.LoadAsync<T>(ids, builder =>
               {
                   foreach (var path in includes)

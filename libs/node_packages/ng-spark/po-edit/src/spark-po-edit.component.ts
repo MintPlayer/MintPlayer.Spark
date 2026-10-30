@@ -9,7 +9,7 @@ import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
 import { BsContainerComponent } from '@mintplayer/ng-bootstrap/container';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { SPARK_CONFIG } from '@mintplayer/ng-spark';
-import { SparkService, SparkLanguageService, SparkLiveService, canonicalJson } from '@mintplayer/ng-spark/services';
+import { SparkService, SparkLanguageService, SparkLiveService, SparkSeoService, canonicalJson } from '@mintplayer/ng-spark/services';
 import { SparkPoFormComponent } from '@mintplayer/ng-spark/po-form';
 import { TranslateKeyPipe, ResolveTranslationPipe } from '@mintplayer/ng-spark/pipes';
 import {
@@ -146,7 +146,13 @@ export class SparkPoEditComponent {
 
   constructor() {
     this.route.paramMap.pipe(takeUntilDestroyed()).subscribe(params => this.onParamsChange(params));
-    inject(DestroyRef).onDestroy(() => this.stopFollowing());
+    // A form is never indexed (D12).
+    const seo = inject(SparkSeoService);
+    seo.noIndex();
+    inject(DestroyRef).onDestroy(() => {
+      this.stopFollowing();
+      seo.reset();
+    });
   }
 
   // --- live (X4) ---------------------------------------------------------------------------------

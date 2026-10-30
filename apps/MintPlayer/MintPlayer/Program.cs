@@ -50,6 +50,9 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     spark.AddHistory();
     // #530: the home page is the "home" board (App_Data/boards.json); a signed-in user may rearrange it.
     spark.AddBoards();
+    // docs/spark_ssr_PRD.md: every page is server-rendered with its data. Dates on a first visit render in
+    // Brussels time (D10). /home is the "home" board, which names its path in boards.json (D15).
+    spark.AddPrerendering(prerendering => prerendering.DefaultTimeZone = "Europe/Brussels");
 });
 
 builder.Services.AddScoped<MintPlayerAccess>();
@@ -100,6 +103,11 @@ app.UseWhen(
         appBuilder.UseSpaImproved(spa =>
         {
             spa.Options.SourcePath = "ClientApp";
+            // In Development the server bundle is a watch build beside the dev server (tools/ssr-watch.mjs), so a
+            // change to server-side code shows on the next render; in production it is the published build's.
+            spa.UseSparkPrerendering(prerendering => prerendering.BootModuleBuilder = app.Environment.IsDevelopment()
+                ? SparkBuilderPrerenderingExtensions.WatchBuild("build:ssr:watch")
+                : null);
 
             if (app.Environment.IsDevelopment())
             {

@@ -2,9 +2,11 @@ using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Services;
 using MintPlayer.Spark.Testing;
+using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Linq;
+using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.Tests.Services;
 
@@ -70,6 +72,35 @@ public class ReferenceIncludeTests : SparkTestDriver
         author.Name.Should().Be("Ada");
         session.Advanced.NumberOfRequests.Should().Be(requestsBefore,
             "the author was primed by .Include() in the same round-trip — accessing it is a cache hit");
+    }
+
+    [Fact]
+    public async Task MaterializeAsync_includes_the_reference_properties_so_the_referenced_doc_is_a_cache_hit()
+    {
+        var book = new Book { Title = "Notes" };
+        await SeedAsync(async seed =>
+        {
+            var seedAuthor = new Author { Name = "Ada" };
+            await seed.StoreAsync(seedAuthor);
+            book.AuthorId = seedAuthor.Id;
+            await seed.StoreAsync(book);
+        });
+
+        using var session = Store.OpenAsyncSession();
+        var services = new ServiceCollection()
+            .AddSingleton<IAsyncDocumentSession>(session)
+            .AddSingleton<IReferenceResolver>(CreateResolver())
+            .BuildServiceProvider();
+        var actions = new DefaultPersistentObjectActions<Book>(new EntityMapper(Substitute.For<IModelLoader>()));
+        actions.Attach(services);
+
+        var loaded = await actions.MaterializeAsync([book.Id!]);
+
+        var requestsBefore = session.Advanced.NumberOfRequests;
+        var author = await session.LoadAsync<Author>(loaded[book.Id!].AuthorId);
+        author.Name.Should().Be("Ada");
+        session.Advanced.NumberOfRequests.Should().Be(requestsBefore,
+            "a plain load includes the [Reference] property, so the breadcrumb resolver makes no round trip for it");
     }
 
     [Fact]

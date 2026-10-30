@@ -47,8 +47,8 @@ import { accountMessages } from './account-messages';
           @for (message of deleteMessages(); track message) {
             <bs-alert [type]="colors.danger" class="mb-3 d-block spark-delete-error">{{ message | t }}</bs-alert>
           }
-          <bs-form>
-            <form [formGroup]="form" (ngSubmit)="deleteAccount()">
+          <bs-form (submitted)="deleteAccount()">
+            <div [formGroup]="form">
               @if (hasPassword() !== false) {
                 <div class="mb-3">
                   <label for="deletePassword" class="form-label">{{ 'auth.password' | t }}</label>
@@ -65,7 +65,7 @@ import { accountMessages } from './account-messages';
                 @if (busy()) { <bs-spinner class="me-1" /> }
                 {{ 'auth.deleteAccount' | t }}
               </button>
-            </form>
+            </div>
           </bs-form>
         </div>
       </bs-card>

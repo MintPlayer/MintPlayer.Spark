@@ -447,13 +447,13 @@ describe('CommitFilesPanelComponent', () => {
     });
 
     it('selecting a chart leaf opens that file', () => {
-      chart().componentInstance.nodeSelect.emit({ node: { id: 'src/b.ts' } });
+      chart().componentInstance.nodeselect.emit({ node: { id: 'src/b.ts' } });
       expect(navigate).toHaveBeenCalledWith(
         ['/', 'github', 'r', 'acme', 'widgets', 'c', 'abc1234567', 'f'], { queryParams: { path: 'src/b.ts' } });
     });
 
     it('the chart zoom root binds back into the component', () => {
-      chart().componentInstance.rootId.set('src');
+      chart().componentInstance.rootidchange.emit('src');
       expect(component.chartRootId()).toBe('src');
     });
   });

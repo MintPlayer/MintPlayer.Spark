@@ -1,12 +1,12 @@
-import { booleanAttribute, ChangeDetectionStrategy, Component, DestroyRef, Injector, computed, effect, inject, input, model, output, runInInjectionContext, signal, untracked, viewChild, Type } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { booleanAttribute, ChangeDetectionStrategy, Component, DestroyRef, Injector, PLATFORM_ID, computed, effect, inject, input, model, output, runInInjectionContext, signal, untracked, viewChild, Type } from '@angular/core';
+import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterModule } from '@angular/router';
 import { filter, map } from 'rxjs';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
-import { BsDatatableComponent, BsDatatableColumnDirective, BsDatatableFilterPanelDirective, BsRowTemplateDirective, DatatableSettings, type BsDatatableFetch, type BsDatatableRowEvent, type DatatableDistincts, type FilterChangeDetail } from '@mintplayer/ng-bootstrap/datatable';
+import { BsDatatableComponent, BsDatatableFilterDirective, BsDatatableHeaderDirective, BsDatatableRowDirective, type DatatableColumnDef, type DatatableDistincts, type DatatableFetch, type DatatableFetchRequest, type DatatableFetchResponse, type DatatableFilters, type RowEventDetail, type SelectionChangeEventDetail, type SortColumn } from '@mintplayer/ng-bootstrap/datatable';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { BsBadgeComponent } from '@mintplayer/ng-bootstrap/badge';
 // ⚠️ NOT @mintplayer/ng-bootstrap/dropdown. Its fesm (22.19.0) declares BsDropdownToggleDirective,
@@ -53,10 +53,15 @@ import { SparkGridCellComponent } from './spark-grid-cell.component';
 import { SparkQueryToolbarAction, sparkActionClass } from './spark-query-toolbar';
 import { SPARK_QUERY_ROW_ACTIONS, SparkQueryRowAction, orderSparkExtensions } from '@mintplayer/ng-spark/panels';
 import { LiveGridSession } from './live-grid-session';
-import type { BsDatatableFetchRequest } from '@mintplayer/ng-bootstrap/datatable';
 
 /** The HTTP status `/spark/queries/execute` gives for the same refusal, per live error code (guide-live-updates.md). */
 const LIVE_ERROR_STATUS: Record<string, number> = { unavailable: 404, invalid: 400, limit: 429, failed: 500 };
+
+/** What a page's datatable response carries for the grid beyond its rows (`extra`, ng-bootstrap #450). */
+interface PageExtra {
+  columns: QueryColumn[];
+  disabledActions: string[];
+}
 
 /**
  * The one Spark grid: a `<bs-datatable>` rendering a query or a sub-query.
@@ -88,7 +93,7 @@ const LIVE_ERROR_STATUS: Record<string, number> = { unavailable: 404, invalid: 4
  */
 @Component({
   selector: 'spark-query-grid',
-  imports: [CommonModule, RouterModule, BsAlertComponent, BsDatatableComponent, BsDatatableColumnDirective, BsDatatableFilterPanelDirective, BsRowTemplateDirective, BsSpinnerComponent, SparkGridCellComponent, ResolveTranslationPipe, QueryCellValuePipe, QueryReferenceChipsPipe, TranslateKeyPipe, SparkAttributeDescriptionComponent, SparkColumnFilterPanelComponent, BsBadgeComponent, CdkOverlayOrigin, CdkConnectedOverlay, BsDropdownMenuComponent, BsDropdownItemDirective, SparkIconComponent],
+  imports: [CommonModule, RouterModule, BsAlertComponent, BsDatatableComponent, BsDatatableHeaderDirective, BsDatatableFilterDirective, BsDatatableRowDirective, BsSpinnerComponent, SparkGridCellComponent, ResolveTranslationPipe, QueryCellValuePipe, QueryReferenceChipsPipe, TranslateKeyPipe, SparkAttributeDescriptionComponent, SparkColumnFilterPanelComponent, BsBadgeComponent, CdkOverlayOrigin, CdkConnectedOverlay, BsDropdownMenuComponent, BsDropdownItemDirective, SparkIconComponent],
   templateUrl: './spark-query-grid.component.html',
   styleUrl: './spark-query-grid.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -97,6 +102,7 @@ const LIVE_ERROR_STATUS: Record<string, number> = { unavailable: 404, invalid: 4
 export class SparkQueryGridComponent {
   private readonly sparkService = inject(SparkService);
   private readonly liveService = inject(SparkLiveService);
+  private readonly browser = isPlatformBrowser(inject(PLATFORM_ID));
   private readonly gridRenderers = inject(SparkGridRenderers);
   private readonly queryRefresh = inject(SparkQueryRefreshService);
   private readonly injector = inject(Injector);
@@ -167,7 +173,8 @@ export class SparkQueryGridComponent {
   readonly isLive = computed(() => this.data() === null && this.liveWanted(this.query()) && !this.liveFailed());
 
   private liveWanted(query: SparkQuery | null): boolean {
-    if (!query || isVirtualScrollingQuery(query)) return false;
+    // A server render fetches the rows over HTTP (supplied); the socket is browser-only (D9).
+    if (!this.browser || !query || isVirtualScrollingQuery(query)) return false;
     return this.live() ?? query.live === true;
   }
 
@@ -254,7 +261,7 @@ export class SparkQueryGridComponent {
    * row (a vote button, a checkbox) are theirs, not the row's; a modified click (Ctrl, ⌘, Shift,
    * middle) is left to the browser.
    */
-  protected onRowClick(event: BsDatatableRowEvent<unknown>): void {
+  protected onRowClick(event: RowEventDetail<unknown>): void {
     const row = event.row as QueryResultItem | null;
     const original = event.originalEvent as MouseEvent | undefined;
     const target = original?.target as Element | null | undefined;
@@ -271,14 +278,32 @@ export class SparkQueryGridComponent {
    * Paging and sorting. Two-way, so a host driving `data` can sort those rows by whatever the
    * user actually clicked — the datatable writes the new sort back through here.
    */
-  settings = model(new DatatableSettings({
-    perPage: { values: SPARK_GRID_PAGE_SIZES, selected: SPARK_GRID_PAGE_SIZES[0] },
-    page: { values: [1], selected: 1 },
-    sortColumns: [],
-  }));
+  sortColumns = model<SortColumn[]>([]);
+
+  /** The page shown (1-based) and its size; the datatable writes both back. */
+  readonly page = signal(1);
+  readonly perPage = signal(SPARK_GRID_PAGE_SIZES[0]);
+  protected readonly pageSizes = SPARK_GRID_PAGE_SIZES;
 
   /** Rows the user has ticked. Two-way so chrome outside the grid can read and clear them. */
   selection = model<QueryResultItem[]>([]);
+
+  /** The datatable selects by row key (the document id); `selection` keeps the rows themselves. */
+  protected readonly selectedIds = computed(() => this.selection().map(r => r.id));
+  protected readonly rowKey = (row: unknown) => (row as QueryResultItem).id;
+
+  /**
+   * The datatable's selection, mapped back to rows. A ticked row on another page is not in
+   * `selectedRows` (the datatable only knows the rows it holds), so it is looked up in the previous
+   * selection, which is why `selection` survives paging (#467, D19).
+   */
+  protected onSelectionChanged(detail: SelectionChangeEventDetail<unknown>): void {
+    const known = new Map(this.selection().map(r => [r.id, r] as const));
+    for (const row of detail.selectedRows) {
+      if (row) known.set((row as QueryResultItem).id, row as QueryResultItem);
+    }
+    this.selection.set(detail.selectedIds.map(id => known.get(id)).filter((r): r is QueryResultItem => !!r));
+  }
 
   /**
    * Replaces where the first column's link points, per row.
@@ -386,7 +411,7 @@ export class SparkQueryGridComponent {
     const lowered = new Set(withheld.map(name => name.toLowerCase()));
     return this.customActions().filter(action => !lowered.has(action.name.toLowerCase()));
   });
-  fetchFn = signal<BsDatatableFetch<QueryResultItem> | null>(null);
+  fetchFn = signal<DatatableFetch<QueryResultItem> | null>(null);
 
   /**
    * The grid's own datatable, for {@link reload}. A `viewChild` is safe here: the `@if` concern above
@@ -710,6 +735,37 @@ export class SparkQueryGridComponent {
   /** The internal name of the per-row ⋮ menu's column; never shown or announced (its `label` is "Actions"). */
   readonly rowActionsColumn = '__sparkRowActions';
 
+  /** The wire columns by name, for the header and filter slots, which receive the datatable's column. */
+  protected readonly columnByName = computed(() => new Map(this.allColumns().map(col => [col.name, col])));
+
+  /**
+   * The datatable's `[columns]`.
+   *
+   * `canSort`/`canFilter` arrive already resolved by the server (query override → attribute →
+   * true), so this only spells the polarity: absent means capable on our wire. Every filterable
+   * column is `'custom'`, so Spark's own panel renders in the `bsDatatableFilter` slot.
+   *
+   * `filterActive` and `filterSummary` are not set: a filtered column carries no marker yet (#431 F7).
+   *
+   * ⚠️ The ⋮ menu's column only once the data columns exist. Those ship WITH the first page, so the
+   * rows reach the datatable one render before the columns do. The datatable sizes its columns ONCE,
+   * from the first render that has both columns and rows; if this column were already there it would
+   * be the only one measured, and at phone width the data columns' headers ran into each other.
+   */
+  protected readonly datatableColumns = computed((): DatatableColumnDef[] => {
+    const columns: DatatableColumnDef[] = this.allColumns().map(col => ({
+      name: col.name,
+      label: this.lang.resolve(col.label) || col.name,
+      sortable: col.canSort !== false,
+      filterable: col.canFilter !== false,
+      filterMode: 'custom',
+    }));
+    if (this.rowActions().length && columns.length) {
+      columns.push({ name: this.rowActionsColumn, label: this.lang.t('common.actions', 'Actions'), sortable: false, filterable: false, resizable: false });
+    }
+    return columns;
+  });
+
   /**
    * The datatable's `[labels]`: the resize handle and its options dialog, translated. The column
    * each string names comes from `bsDatatableColumnLabel` in the template. See `sparkDatatableLabels`.
@@ -718,6 +774,31 @@ export class SparkQueryGridComponent {
 
   /** True when rows do not come from this component's own fetch: the host bound `data`. */
   hasExternalData = computed(() => this.data() !== null);
+
+  /**
+   * The datatable's `stateKey` (ng-bootstrap #448): set, a server render fetches the first page,
+   * renders it and hands it to the browser, which hydrates without fetching it again. Only for the
+   * grids whose first page the .NET supplier predicts (`SparkRoutesPrerenderContributor`): a live
+   * grid fetches over the socket, which opens in the browser only (docs/spark_ssr_PRD.md D9), and a
+   * virtual-scrolling one in blocks of its own size. Unique per grid on a page: the query and its parent.
+   */
+  protected readonly stateKey = computed(() => {
+    const query = this.query();
+    if (!query || this.hasExternalData() || this.isVirtualScrolling() || this.liveWanted(query)) return null;
+    return `spark-grid:${query.id}:${this.parentType()}:${this.parentId()}`;
+  });
+
+  /**
+   * The datatable's `(pageload)`, for the page 1 a hydrating datatable seeded from the server render
+   * instead of calling `fetch` (ng-bootstrap #450): what `toPage` read off that result comes back in
+   * `extra`. Fetched pages went through `toPage` already. The columns were drawn from the query's
+   * `resultColumns` before this; the result's replace them (docs/spark_ssr_PRD.md D13).
+   */
+  protected onPageLoad(event: { seeded: boolean; result: { data: unknown[]; totalRecords: number; extra?: unknown } }): void {
+    if (!event.seeded) return;
+    const extra = (event.result.extra ?? {}) as Partial<PageExtra>;
+    this.applyPage(event.result.data as QueryResultItem[], event.result.totalRecords, extra.columns, extra.disabledActions);
+  }
 
   /**
    * Whether an action can run right now: its selection rule is satisfied, and the client method it
@@ -925,13 +1006,8 @@ export class SparkQueryGridComponent {
 
   private onSearchChanged(): void {
     if (this.hasExternalData()) return;
-    const s = this.settings();
     // Back to page 1: the old page number means nothing against a different result set.
-    this.settings.set(new DatatableSettings({
-      perPage: { values: s.perPage.values, selected: s.perPage.selected },
-      page: { values: [1], selected: 1 },
-      sortColumns: s.sortColumns,
-    }));
+    this.page.set(1);
     this.reload();
   }
 
@@ -1028,18 +1104,36 @@ export class SparkQueryGridComponent {
     return result;
   };
 
-  /**
-   * Translates one filter change into the wire shape and refetches.
-   *
-   * The event always arrives as the `'values'` shape because the panel only ever calls
-   * `ctx.apply(...)`; comparison mode is never declared. `inverse` is a flag on the event and two
-   * arrays on the wire — the translation is this method's whole job.
-   */
-  protected onFilterChange(detail: FilterChangeDetail): void {
-    if (detail.mode !== 'values') return;
+  /** The datatable's `filters` model as it last reported it, to tell which columns a change touched. */
+  private datatableFilters: DatatableFilters = {};
 
-    const values = detail.selected.map(v => v.value);
-    const next = this.filters().filter(f => f.name !== detail.column);
+  /**
+   * The datatable's `filters` model changed (ng-bootstrap 22.30, #448): translates each column it
+   * touched into the wire shape. The datatable itself goes back to page 1 and refetches, after this
+   * handler has run (it emits first and reloads in a microtask), so the fetch reads the new filters.
+   *
+   * Only the touched columns, because the model knows nothing of the host's preset (URL) filters,
+   * which live in `filters()` beside it. Every entry is the values shape: the panel only ever calls
+   * `ctx.apply(...)`, and comparison mode is never declared.
+   */
+  protected onFiltersChange(next: DatatableFilters): void {
+    const previous = this.datatableFilters;
+    this.datatableFilters = next;
+    for (const column of new Set([...Object.keys(previous), ...Object.keys(next)])) {
+      const filter = next[column];
+      if (JSON.stringify(filter) === JSON.stringify(previous[column])) continue;
+      this.setColumnFilter(column, filter?.values ?? [], filter?.inverse ?? false);
+    }
+    // A different result set (#467, D19): the selection survives paging, never a new filter.
+    this.selection.set([]);
+  }
+
+  /**
+   * One column's selection in the wire shape. `inverse` is a flag in the model and two arrays on the
+   * wire — the translation is this method's whole job.
+   */
+  private setColumnFilter(column: string, values: unknown[], inverse: boolean): void {
+    const next = this.filters().filter(f => f.name !== column);
 
     if (values.length > 0) {
       // ⚠️ `< none >` cannot be asked for directly. The server compares against the index term, and
@@ -1051,28 +1145,25 @@ export class SparkQueryGridComponent {
       // The complement is expressible, though: "none of the real values" catches absent and null
       // alike. So a selection containing the null entry is sent as an exclusion of everything NOT
       // selected, which is exactly the same set and needs no server change.
-      const complete = this.completeDistincts.get(detail.column);
+      const complete = this.completeDistincts.get(column);
       const selectsNone = values.some(v => v === null || v === undefined);
 
-      if (selectsNone && !detail.inverse && complete) {
+      if (selectsNone && !inverse && complete) {
         const unselected = complete.filter(v =>
           v !== null && v !== undefined && !values.some(s => s === v));
 
         // Everything is selected, so the filter narrows nothing — drop it rather than sending an
         // empty exclusion, which would read as "exclude nothing" only by accident.
         if (unselected.length > 0)
-          next.push({ name: detail.column, excludes: unselected });
+          next.push({ name: column, excludes: unselected });
       } else {
-        next.push(detail.inverse
-          ? { name: detail.column, excludes: values }
-          : { name: detail.column, includes: values });
+        next.push(inverse
+          ? { name: column, excludes: values }
+          : { name: column, includes: values });
       }
     }
 
     this.filters.set(next);
-    // A different result set (#467, D19): the selection survives paging, never a new filter.
-    this.selection.set([]);
-    this.onFilterChanged();
   }
 
   /**
@@ -1081,17 +1172,12 @@ export class SparkQueryGridComponent {
    * Both halves matter: the old page number means nothing against a different result set, and the
    * datatable dedupes reloads by `(page, perPage, sort)` — none of which a filter changes — so
    * without forcing it the request is silently never made. `resetPage` makes the datatable fetch
-   * page 1 itself: the settings binding reaches it only on the next change detection, after the
+   * page 1 itself: the page binding reaches it only on the next change detection, after the
    * reload already fetched.
    */
   private onFilterChanged(): void {
     if (this.hasExternalData()) return;
-    const s = this.settings();
-    this.settings.set(new DatatableSettings({
-      perPage: { values: s.perPage.values, selected: s.perPage.selected },
-      page: { values: [1], selected: 1 },
-      sortColumns: s.sortColumns,
-    }));
+    this.page.set(1);
     this.reload({ resetPage: true });
   }
 
@@ -1184,6 +1270,9 @@ export class SparkQueryGridComponent {
       ]);
 
       this.query.set(resolvedQuery);
+      // Before the first fetch, so a hydrating grid draws the server's cells on its first pass; the
+      // fetched result's columns replace them, narrowing a custom query's sort and filter flags (D13).
+      this.setFetchedColumns(resolvedQuery?.resultColumns ?? []);
       this.allEntityTypes.set(entityTypes);
 
       const et = this.resolveEntityType(resolvedQuery, entityTypes);
@@ -1212,8 +1301,11 @@ export class SparkQueryGridComponent {
           + 'which resolves to no type in /spark/types; the grid offers no actions and no row links.');
       }
 
-      this.settings.set(initialGridSettings(resolvedQuery));
-      // The datatable drives paging/sorting via [(settings)] and calls fetchFn per page. Virtual
+      const initial = initialGridSettings(resolvedQuery);
+      this.page.set(initial.page);
+      this.perPage.set(initial.perPage);
+      this.sortColumns.set(initial.sortColumns);
+      // The datatable drives paging/sorting via [(page)]/[(perPage)]/[(sortColumns)] and calls fetchFn per page. Virtual
       // scrolling is just the [virtualScroll] template flag.
       // `resolvedQuery`, not the computeds: the query signal is set above, but reading a computed here
       // would depend on signal-read ordering inside an async method. `makeFetch` picks HTTP or live.
@@ -1255,7 +1347,7 @@ export class SparkQueryGridComponent {
   }
 
   /** The datatable's `[fetch]`: over `/spark/live` when the grid is live (see {@link live}), else HTTP. */
-  private makeFetch(query: SparkQuery, parentId: string, parentType: string): BsDatatableFetch<QueryResultItem> {
+  private makeFetch(query: SparkQuery, parentId: string, parentType: string): DatatableFetch<QueryResultItem> {
     return this.liveWanted(query) && this.data() === null
       ? this.makeLiveFetch(query, parentId, parentType)
       : this.makeHttpFetch(query, parentId, parentType);
@@ -1266,7 +1358,7 @@ export class SparkQueryGridComponent {
    * what forces a refetch is the fetch identity `reload()` creates, not the value captured when the
    * closure was built.
    */
-  private requestFor(req: BsDatatableFetchRequest, parentId: string, parentType: string) {
+  private requestFor(req: DatatableFetchRequest, parentId: string, parentType: string) {
     return {
       sortColumns: req.sortColumns,
       skip: (req.page - 1) * req.perPage,
@@ -1285,26 +1377,31 @@ export class SparkQueryGridComponent {
    * One page as the datatable takes it, recording what the chrome reads off a result: count, columns,
    * the result's withheld actions, the ids on screen.
    */
-  private toPage(r: QueryResult, req: BsDatatableFetchRequest) {
-    this.errorMessage.set(null);
-    this.resultCount.set(r.totalItems);
-    // Columns come from the result now, not from the entity type: the server decides the query
-    // surface (ShowedOn.Query) and is the same place the sort-column allow-list is checked.
-    // ?? [] because a malformed or older response must render an empty grid, not throw inside a
-    // computed — where the stack points at the column filter and not at the response that lacked them.
-    this.setFetchedColumns(r.columns ?? []);
-    // Per-result, so it is re-read on every page rather than latched from the first.
-    this.disabledActions.set(r.disabledActions ?? []);
-    // Paged: the page shown. Virtual scroll keeps every block it fetched reachable by scrolling.
-    const ids = (r.items ?? []).map(item => item.id);
-    this.loadedIds.set(this.isVirtualScrolling() ? new Set([...this.loadedIds(), ...ids]) : new Set(ids));
+  private toPage(r: QueryResult) {
+    this.applyPage(r.items ?? [], r.totalItems, r.columns, r.disabledActions);
+    // What a server render's seeded page 1 hands to the client's `onPageLoad`; JSON, as it is transferred.
+    const extra: PageExtra = { columns: r.columns ?? [], disabledActions: r.disabledActions ?? [] };
     return {
       data: r.items ?? [],
       totalRecords: r.totalItems,
-      totalPages: Math.ceil(r.totalItems / req.perPage) || 1,
-      perPage: req.perPage,
-      page: req.page,
+      extra: extra as unknown as DatatableFetchResponse["extra"],
     };
+  }
+
+  private applyPage(items: QueryResultItem[], totalItems: number, columns: QueryColumn[] | undefined, disabledActions: string[] | undefined): void {
+    this.errorMessage.set(null);
+    this.resultCount.set(totalItems);
+    // Columns come from the server, not from the entity type: it decides the query surface
+    // (ShowedOn.Query) and is the same place the sort-column allow-list is checked. The query's
+    // `resultColumns` drew them already; the result is authoritative for the flags.
+    // ?? [] because a malformed or older response must render an empty grid, not throw inside a
+    // computed — where the stack points at the column filter and not at the response that lacked them.
+    this.setFetchedColumns(columns ?? []);
+    // Per-result, so it is re-read on every page rather than latched from the first.
+    this.disabledActions.set(disabledActions ?? []);
+    // Paged: the page shown. Virtual scroll keeps every block it fetched reachable by scrolling.
+    const ids = items.map(item => item.id);
+    this.loadedIds.set(this.isVirtualScrolling() ? new Set([...this.loadedIds(), ...ids]) : new Set(ids));
   }
 
   /**
@@ -1312,7 +1409,7 @@ export class SparkQueryGridComponent {
    * an `update` when it changes, answered from the latest push when it does not. After an error every fetch
    * is an empty page and the error stays shown.
    */
-  private makeLiveFetch(query: SparkQuery, parentId: string, parentType: string): BsDatatableFetch<QueryResultItem> {
+  private makeLiveFetch(query: SparkQuery, parentId: string, parentType: string): DatatableFetch<QueryResultItem> {
     const session = this.liveSession ??= new LiveGridSession(this.liveService, () => this.onLivePush(), e => this.onLiveError(e));
     return async (req) => {
       const options = this.requestFor(req, parentId, parentType);
@@ -1335,21 +1432,21 @@ export class SparkQueryGridComponent {
       if (!result) {
         this.resultCount.set(0);
         this.loadedIds.set(new Set());
-        return { data: [], totalRecords: 0, totalPages: 1, perPage: req.perPage, page: req.page };
+        return { data: [], totalRecords: 0 };
       }
-      return this.toPage(result, req);
+      return this.toPage(result);
     };
   }
 
-  private makeHttpFetch(query: SparkQuery, parentId: string, parentType: string): BsDatatableFetch<QueryResultItem> {
+  private makeHttpFetch(query: SparkQuery, parentId: string, parentType: string): DatatableFetch<QueryResultItem> {
     return (req) => this.sparkService.executeQuery(query.id, this.requestFor(req, parentId, parentType))
-      .then(r => this.toPage(r, req))
+      .then(r => this.toPage(r))
       .catch((e: HttpErrorResponse) => {
       // Report before returning the empty page, or a failed fetch is indistinguishable from a
       // query that legitimately has no rows.
       this.reportError(e);
       this.resultCount.set(0);
-      return { data: [], totalRecords: 0, totalPages: 1, perPage: req.perPage, page: req.page };
+      return { data: [], totalRecords: 0 };
     });
   }
 

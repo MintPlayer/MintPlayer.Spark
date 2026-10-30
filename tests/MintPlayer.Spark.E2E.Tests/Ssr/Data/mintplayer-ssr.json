@@ -1,0 +1,47 @@
+{
+  "Results": [
+    {
+      "Name": "Coldplay",
+      "YearStarted": 1996,
+      "YearQuit": null,
+      "Members": [],
+      "Media": [],
+      "TagIds": [],
+      "@metadata": {
+        "@id": "Artists/e2e-coldplay",
+        "@collection": "Artists",
+        "Raven-Clr-Type": "MintPlayer.Entities.Artist, MintPlayer.Library"
+      }
+    },
+    {
+      "Name": "Avicii",
+      "YearStarted": 2006,
+      "YearQuit": 2018,
+      "Members": [],
+      "Media": [],
+      "TagIds": [],
+      "@metadata": {
+        "@id": "Artists/e2e-avicii",
+        "@collection": "Artists",
+        "Raven-Clr-Type": "MintPlayer.Entities.Artist, MintPlayer.Library"
+      }
+    },
+    {
+      "Title": "A Sky Full of Stars",
+      "Released": "2014-05-02",
+      "Artists": [
+        { "ArtistId": "Artists/e2e-coldplay", "Credited": true },
+        { "ArtistId": "Artists/e2e-avicii", "Credited": true }
+      ],
+      "Lyrics": null,
+      "LyricsTimings": [],
+      "Media": [],
+      "TagIds": [],
+      "@metadata": {
+        "@id": "Songs/e2e-sky",
+        "@collection": "Songs",
+        "Raven-Clr-Type": "MintPlayer.Entities.Song, MintPlayer.Library"
+      }
+    }
+  ]
+}

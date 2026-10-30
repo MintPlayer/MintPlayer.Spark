@@ -67,15 +67,25 @@ internal sealed partial class SparkBoardRegistry
     private static void Add(Dictionary<string, SparkBoardDefinition> all, SparkBoardDefinition board, string source)
     {
         Validate(board, source);
+        foreach (var path in board.Paths)
+            if (all.Values.FirstOrDefault(other => other.Paths.Contains(path, StringComparer.OrdinalIgnoreCase)) is { } other)
+                throw new InvalidOperationException($"{source}: board '{board.Id}' shows on '{path}', where board '{other.Id}' already shows.");
         if (!all.TryAdd(board.Id, board))
             throw new InvalidOperationException($"{source} declares board '{board.Id}', which is already declared.");
     }
+
+    /// <summary>The board a page shows (<see cref="SparkBoardDefinition.Paths"/>), compared as the prerendered pages are: ignoring case.</summary>
+    public SparkBoardDefinition? FindByPath(string? path)
+        => path is null ? null : Boards.Values.FirstOrDefault(b => b.Paths.Contains(path, StringComparer.OrdinalIgnoreCase));
 
     /// <summary>The structural rules; that each kind exists is checked at startup with the registered kinds.</summary>
     internal static void Validate(SparkBoardDefinition board, string source)
     {
         if (!SparkBoardIds.IsValid(board.Id))
             throw new InvalidOperationException($"{source}: board id '{board.Id}' must match {SparkBoardIds.Pattern}.");
+        foreach (var path in board.Paths)
+            if (!path.StartsWith('/') || path.Contains('?') || path.Contains('#'))
+                throw new InvalidOperationException($"{source}: board '{board.Id}' path '{path}' must be a page path starting with '/'.");
         var ids = new HashSet<string>(StringComparer.Ordinal);
         foreach (var tile in board.Tiles)
         {

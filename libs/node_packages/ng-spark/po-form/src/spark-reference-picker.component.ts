@@ -4,12 +4,12 @@ import { BsFormControlDirective } from '@mintplayer/ng-bootstrap/form';
 import { BsInputGroupComponent } from '@mintplayer/ng-bootstrap/input-group';
 import { BsButtonTypeDirective } from '@mintplayer/ng-bootstrap/button-type';
 import { BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective } from '@mintplayer/ng-bootstrap/modal';
-import { BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, DatatableSettings, type BsDatatableFetch, type BsDatatableFetchRequest } from '@mintplayer/ng-bootstrap/datatable';
+import { BsDatatableComponent, BsDatatableHeaderDirective, BsDatatableRowDirective, type DatatableColumnDef, type DatatableFetch, type DatatableFetchRequest, type SortColumn } from '@mintplayer/ng-bootstrap/datatable';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { PaginationResponse } from '@mintplayer/pagination';
 import { SparkService, SparkLanguageService, sparkDatatableLabels } from '@mintplayer/ng-spark/services';
 import { EntityType, QueryColumn, QueryResultItem } from '@mintplayer/ng-spark/models';
-import { TranslateKeyPipe, ResolveTranslationPipe, ReferenceAttrValuePipe, LoadedReference, referenceLabel } from '@mintplayer/ng-spark/pipes';
+import { TranslateKeyPipe, ReferenceAttrValuePipe, LoadedReference, referenceLabel } from '@mintplayer/ng-spark/pipes';
 import { SparkAttributeDescriptionComponent } from '@mintplayer/ng-spark/attribute-description';
 import { SparkSearchBoxComponent } from '@mintplayer/ng-spark/grid';
 
@@ -39,7 +39,7 @@ export interface ReferenceQueryParent {
  */
 @Component({
   selector: 'spark-reference-picker',
-  imports: [BsFormControlDirective, BsInputGroupComponent, BsButtonTypeDirective, BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsSpinnerComponent, TranslateKeyPipe, ResolveTranslationPipe, ReferenceAttrValuePipe, SparkAttributeDescriptionComponent, SparkSearchBoxComponent],
+  imports: [BsFormControlDirective, BsInputGroupComponent, BsButtonTypeDirective, BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective, BsDatatableComponent, BsDatatableHeaderDirective, BsDatatableRowDirective, BsSpinnerComponent, TranslateKeyPipe, ReferenceAttrValuePipe, SparkAttributeDescriptionComponent, SparkSearchBoxComponent],
   templateUrl: './spark-reference-picker.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
@@ -87,7 +87,11 @@ export class SparkReferencePickerComponent {
   showModal = signal(false);
   entityType = signal<EntityType | null>(null);
   pagination = signal<PaginationResponse<QueryResultItem> | undefined>(undefined);
-  settings = signal(SparkReferencePickerComponent.freshSettings());
+  /** Paging and sorting, two-way with the datatable; reset on every open. */
+  page = signal(1);
+  perPage = signal(10);
+  sortColumns = signal<SortColumn[]>([]);
+  readonly pageSizes = [10, 25, 50];
   /** The published (debounced) search term. */
   searchTerm = signal('');
   /** Rows matching the search, as the last page reported them; shown beside a search. */
@@ -95,7 +99,7 @@ export class SparkReferencePickerComponent {
   /** Set when the last server page failed, so a failure does not read as "no rows". */
   loadError = signal<string | null>(null);
   /** The datatable's `[fetch]` in server mode; null pages `options` in memory. */
-  fetchFn = signal<BsDatatableFetch<QueryResultItem> | null>(null);
+  fetchFn = signal<DatatableFetch<QueryResultItem> | null>(null);
 
   private readonly datatable = viewChild(BsDatatableComponent);
   /** The last row picked here, so the textbox can label it even when the parent does not keep it. */
@@ -127,19 +131,25 @@ export class SparkReferencePickerComponent {
     return referenceLabel(id, this.loaded(), picked ? [picked, ...this.options()] : this.options());
   });
 
-  private static freshSettings(): DatatableSettings {
-    return new DatatableSettings({
-      perPage: { values: [10, 25, 50], selected: 10 },
-      page: { values: [1], selected: 1 },
-      sortColumns: []
-    });
-  }
+  /**
+   * The datatable's `[columns]`: the executed result's columns, in its order (#284, D9). Without a
+   * query the rows are a refresh hook's list, which carries only a breadcrumb per row, so that is
+   * the one column.
+   */
+  datatableColumns = computed((): DatatableColumnDef[] => this.fetchFn()
+    ? this.columns().map(col => ({ name: col.name, label: this.lang.resolve(col.label) || col.name, sortable: col.canSort !== false }))
+    : [{ name: 'breadcrumb', label: this.title(), sortable: false }]);
+
+  /** The wire columns by name, for the header slot (the attribute description). */
+  columnByName = computed(() => new Map(this.columns().map(col => [col.name, col])));
 
   async open(): Promise<void> {
     this.searchTerm.set('');
     this.resultCount.set(null);
     this.loadError.set(null);
-    this.settings.set(SparkReferencePickerComponent.freshSettings());
+    this.page.set(1);
+    this.perPage.set(10);
+    this.sortColumns.set([]);
 
     // Lazily resolve the target entity type; the modal shows its grid once it has.
     const refType = this.referenceType();
@@ -160,20 +170,15 @@ export class SparkReferencePickerComponent {
     this.searchTerm.set(term ?? '');
 
     if (!this.fetchFn()) {
-      this.settings().page.selected = 1;
+      this.page.set(1);
       this.applyFilter();
       return;
     }
 
     // Back to page 1 and a forced re-fetch, as the query grid does for a filter: the datatable
     // dedupes reloads by (page, perPage, sort), none of which a search changes, and `resetPage`
-    // makes it fetch page 1 itself rather than wait for the settings binding.
-    const s = this.settings();
-    this.settings.set(new DatatableSettings({
-      perPage: { values: s.perPage.values, selected: s.perPage.selected },
-      page: { values: [1], selected: 1 },
-      sortColumns: s.sortColumns,
-    }));
+    // makes it fetch page 1 itself rather than wait for the page binding.
+    this.page.set(1);
     const datatable = this.datatable();
     if (datatable) datatable.reload({ resetPage: true });
     else this.fetchFn.set(this.makeFetch(this.query()!));
@@ -183,8 +188,8 @@ export class SparkReferencePickerComponent {
    * One server page as the datatable takes it. The term and the parent are read at call time, so a
    * reload after a search sends the new term.
    */
-  private makeFetch(query: string): BsDatatableFetch<QueryResultItem> {
-    return async (req: BsDatatableFetchRequest) => {
+  private makeFetch(query: string): DatatableFetch<QueryResultItem> {
+    return async (req: DatatableFetchRequest) => {
       const parent = this.queryParent();
       try {
         const result = await this.sparkService.executeQueryByName(query, {
@@ -201,15 +206,12 @@ export class SparkReferencePickerComponent {
         return {
           data: result.items ?? [],
           totalRecords: result.totalItems,
-          totalPages: Math.ceil(result.totalItems / req.perPage) || 1,
-          perPage: req.perPage,
-          page: req.page,
         };
       } catch {
         // Said out loud: an empty page alone is indistinguishable from a query with no rows.
         this.loadError.set(this.lang.t('spark.query.unavailable', 'This list is not available.'));
         this.resultCount.set(0);
-        return { data: [], totalRecords: 0, totalPages: 1, perPage: req.perPage, page: req.page };
+        return { data: [], totalRecords: 0 };
       }
     };
   }
@@ -240,21 +242,16 @@ export class SparkReferencePickerComponent {
       });
     }
 
-    const totalPages = Math.ceil(filteredItems.length / this.settings().perPage.selected) || 1;
+    const totalPages = Math.ceil(filteredItems.length / this.perPage()) || 1;
+    if (this.page() > totalPages) this.page.set(1);
     this.resultCount.set(filteredItems.length);
     this.pagination.set({
       data: filteredItems,
       totalRecords: filteredItems.length,
       totalPages: totalPages,
-      perPage: this.settings().perPage.selected,
-      page: this.settings().page.selected
+      perPage: this.perPage(),
+      page: this.page()
     });
-
-    this.settings().page.values = Array.from({ length: totalPages }, (_, i) => i + 1);
-
-    if (this.settings().page.selected > totalPages) {
-      this.settings().page.selected = 1;
-    }
   }
 
   select(item: QueryResultItem): void {

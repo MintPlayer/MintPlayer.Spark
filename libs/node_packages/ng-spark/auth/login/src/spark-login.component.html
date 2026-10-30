@@ -15,8 +15,8 @@
         <div class="text-center text-muted my-2 spark-login-or">{{ 'auth.or' | t }}</div>
       }
 
-      <bs-form>
-        <form [formGroup]="form" (ngSubmit)="onSubmit()">
+      <bs-form (submitted)="onSubmit()">
+        <div [formGroup]="form">
           <div class="mb-3">
             <label for="email" class="form-label">{{ identifierField().label | t }}</label>
             <input
@@ -51,7 +51,7 @@
             }
             {{ 'auth.login' | t }}
           </button>
-        </form>
+        </div>
       </bs-form>
 
       <!-- Passkeys are independent of withLocalLogin()/withExternalLogin(), so the button has to be

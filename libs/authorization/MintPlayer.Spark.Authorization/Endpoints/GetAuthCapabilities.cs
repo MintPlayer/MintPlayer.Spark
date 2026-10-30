@@ -8,6 +8,7 @@ using MintPlayer.Spark.Authorization.Endpoints.Account;
 using MintPlayer.Spark.Authorization.Endpoints.ExternalLogin;
 using MintPlayer.Spark.Authorization.Endpoints.Passkeys;
 using MintPlayer.Spark.Authorization.Extensions;
+using MintPlayer.Spark.Abstractions.Prerendering;
 
 namespace MintPlayer.Spark.Authorization.Endpoints;
 
@@ -33,6 +34,10 @@ namespace MintPlayer.Spark.Authorization.Endpoints;
 internal sealed partial class GetAuthCapabilities : IGetEndpoint
 {
     public static string Path => "/capabilities";
+
+    // A read: server-side rendering may supply its response (SparkPrerenderableAttribute).
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
+        => builder.WithMetadata(SparkPrerenderableAttribute.Instance);
 
     [Inject] private readonly EndpointDataSource endpoints;
     [Inject] private readonly IOptions<SparkAuthenticationOptions> options;

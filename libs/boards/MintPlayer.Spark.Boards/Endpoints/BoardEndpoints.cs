@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Antiforgery;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Abstractions.Prerendering;
 using MintPlayer.Spark.Boards.Services;
 
 namespace MintPlayer.Spark.Boards.Endpoints;
@@ -31,6 +32,10 @@ internal static class BoardResults
 internal sealed partial class GetBoard : IGetEndpoint
 {
     public static string Path => "/{board}";
+
+    // A read: server-side rendering may supply its response (SparkPrerenderableAttribute).
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
+        => builder.WithMetadata(SparkPrerenderableAttribute.Instance);
 
     [RouteParam] public string Board { get; set; } = "";
 

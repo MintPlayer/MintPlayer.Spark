@@ -54,8 +54,8 @@ interface CultureOption {
               <bs-alert [type]="colors.success" class="mb-3 d-block spark-account-saved">{{ 'auth.profileSaved' | t }}</bs-alert>
             }
 
-            <bs-form>
-              <form [formGroup]="form" (ngSubmit)="save()">
+            <bs-form (submitted)="save()">
+              <div [formGroup]="form">
                 <div class="mb-3">
                   <label for="userName" class="form-label">{{ 'auth.userName' | t }}</label>
                   <input type="text" id="userName" formControlName="userName" autocomplete="username" />
@@ -120,7 +120,7 @@ interface CultureOption {
                   @if (busy()) { <bs-spinner class="me-1" /> }
                   {{ 'auth.saveProfile' | t }}
                 </button>
-              </form>
+              </div>
             </bs-form>
 
             <hr class="my-4" />
@@ -142,14 +142,14 @@ interface CultureOption {
             }
             <!-- Opt-in on the server (SparkEmailChange.Enabled); hidden until it says so. -->
             @if (emailChangeAllowed()) {
-              <bs-form>
-                <form [formGroup]="emailForm" (ngSubmit)="changeEmail()">
+              <bs-form (submitted)="changeEmail()">
+                <div [formGroup]="emailForm">
                   <label for="newEmail" class="form-label">{{ 'auth.newEmail' | t }}</label>
                   <bs-input-group>
                     <input type="email" id="newEmail" formControlName="newEmail" autocomplete="email" />
                     <button type="submit" class="btn btn-outline-primary" [disabled]="busy()">{{ 'auth.changeEmail' | t }}</button>
                   </bs-input-group>
-                </form>
+                </div>
               </bs-form>
             }
           }

@@ -30,8 +30,8 @@ import { accountMessages } from './account-messages';
           @if (saved()) {
             <bs-alert [type]="colors.success" class="mb-3 d-block spark-account-saved">{{ 'auth.passwordChanged' | t }}</bs-alert>
           }
-          <bs-form>
-            <form [formGroup]="form" (ngSubmit)="submit()">
+          <bs-form (submitted)="submit()">
+            <div [formGroup]="form">
               <div class="mb-3">
                 <label for="currentPassword" class="form-label">{{ 'auth.currentPassword' | t }}</label>
                 <input type="password" id="currentPassword" formControlName="currentPassword" autocomplete="current-password" />
@@ -49,7 +49,7 @@ import { accountMessages } from './account-messages';
                 @if (busy()) { <bs-spinner class="me-1" /> }
                 {{ 'auth.savePassword' | t }}
               </button>
-            </form>
+            </div>
           </bs-form>
         </div>
       </bs-card>

@@ -18,9 +18,9 @@ export interface SparkDatatableLabels {
  * the viewer's language.
  *
  * The `column` these formatters receive is the column's label: every Spark grid binds
- * `bsDatatableColumnLabel` to the header's translated text (and the row-actions column to
+ * each column's `label` to the header's translated text (and the row-actions column to
  * "Actions"), so the datatable no longer falls back to the internal name. The keys omitted here
- * keep the web component's English defaults.
+ * keep the datatable's English defaults.
  *
  * Every translation is read EAGERLY, so a `computed` that calls this tracks the language and the
  * translation map, and hands the datatable a new object — which re-renders it — when either changes.

@@ -82,7 +82,7 @@ internal static class BoardMerge
     /// be visible to the caller (<paramref name="allowedNew"/> holds the user tiles that passed the access check).
     /// </summary>
     public static (BoardLayout? Layout, string? Error) Apply(SparkBoardDefinition board, BoardLayout? stored, SaveRequest request,
-        IReadOnlySet<string> denied, IReadOnlySet<string> allowedNew, int maxUserTiles)
+        IReadOnlySet<string> denied, IReadOnlySet<string> allowedNew, int maxTiles)
     {
         var defaults = board.Tiles.Select(t => t.Id).ToHashSet(StringComparer.Ordinal);
         stored ??= new BoardLayout();
@@ -105,9 +105,6 @@ internal static class BoardMerge
             userTiles.Add(kept);
             userIds.Add(kept.Id);
         }
-        if (userTiles.Count > maxUserTiles)
-            return (null, $"a board holds at most {maxUserTiles} tiles of your own");
-
         // Removed defaults.
         var removed = new HashSet<string>(StringComparer.Ordinal);
         foreach (var id in request.Removed)
@@ -117,6 +114,11 @@ internal static class BoardMerge
             removed.Add(id);
         }
         removed.UnionWith(stored.Removed.Where(id => defaults.Contains(id) && denied.Contains(id)));
+
+        // The whole board counts, denied tiles included: the cap bounds what the document can ever show (D14).
+        var liveCount = defaults.Count(id => !removed.Contains(id)) + userTiles.Count;
+        if (liveCount > maxTiles)
+            return (null, $"a board holds at most {maxTiles} tiles");
 
         bool IsLive(string id) => (defaults.Contains(id) && !removed.Contains(id)) || userIds.Contains(id);
         bool IsSendable(string id) => IsLive(id) && !denied.Contains(id);

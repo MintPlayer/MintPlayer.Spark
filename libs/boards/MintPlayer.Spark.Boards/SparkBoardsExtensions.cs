@@ -3,6 +3,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using MintPlayer.Spark.Abstractions.Builder;
+using MintPlayer.Spark.Abstractions.Prerendering;
+using MintPlayer.Spark.Boards.Prerendering;
 using MintPlayer.Spark.Boards.Services;
 
 namespace MintPlayer.Spark.Boards;
@@ -44,6 +46,7 @@ public static class SparkBoardsExtensions
         services.TryAddScoped<SparkTileKindRegistry>();
         services.TryAddScoped<SparkBoardService>();
         services.TryAddScoped<SparkBoardCatalogBuilder>();
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<ISparkPrerenderContributor, SparkBoardsPrerenderContributor>());
 
         builder.Registry.AddMiddleware(app => ValidateStartup(app.ApplicationServices));
         builder.Registry.AddEndpoints(endpoints => endpoints.MapSparkBoardsEndpoints());
@@ -56,6 +59,13 @@ public static class SparkBoardsExtensions
         var registry = services.GetRequiredService<SparkBoardRegistry>();
         using var scope = services.CreateScope();
         var kinds = scope.ServiceProvider.GetRequiredService<SparkTileKindRegistry>();
+        var maxTiles = services.GetRequiredService<IOptions<SparkBoardsOptions>>().Value.MaxTiles;
+        foreach (var board in registry.Boards.Values)
+        {
+            if (board.Tiles.Count > maxTiles)
+                throw new InvalidOperationException(
+                    $"Board '{board.Id}' declares {board.Tiles.Count} tiles; a board holds at most {maxTiles} (SparkBoardsOptions.MaxTiles).");
+        }
         foreach (var board in registry.Boards.Values)
         foreach (var tile in board.Tiles)
         {

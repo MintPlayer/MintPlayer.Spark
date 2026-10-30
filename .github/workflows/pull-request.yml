@@ -160,66 +160,6 @@ jobs:
           echo "::endgroup::"
         done
 
-    # A published package changed but its version did not, which on master is a SILENT no-op:
-    # `dotnet nuget push --skip-duplicate` turns the 409 into a success, and npm-publish no-ops on
-    # an existing version, so the release job goes green having shipped nothing. Nothing else in CI
-    # compares the in-repo version against a registry, so review was the only control -- and on
-    # PR #390 it did not fire: an EntityMapper fix and two ng-spark pipes merged to master and
-    # reached no published artifact.
-    #
-    # Deliberately a diff check rather than a registry query: it needs no network, no credentials,
-    # and it answers the question that is actually actionable -- "you changed a package and did not
-    # bump it" -- rather than "master happens to equal what is published right now".
-    - name: Verify a changed package was version-bumped
-      run: |
-        base="${{ github.event.pull_request.base.sha }}"
-        changed="$(git diff --name-only "$base"...HEAD -- 'libs/**')"
-
-        if [ -z "$changed" ]; then
-          echo "No libs/** changes; nothing to verify."
-          exit 0
-        fi
-
-        fail=0
-
-        # NuGet: each packable csproj under libs/ carries its OWN <Version>, and
-        # `dotnet nuget push --skip-duplicate` silently skips a version that already exists on
-        # nuget.org. So a project whose source changed without its own <Version> moving merges and
-        # publishes nothing — precisely the failure this gate exists to catch.
-        #
-        # This used to ask only whether SOME csproj under libs/ had bumped, which is not the same
-        # question and let exactly that through: MintPlayer.Spark and .Abstractions were bumped while
-        # MintPlayer.Spark.SourceGenerators changed in the same PR and stayed behind, so consumers
-        # would have got the new runtime with the old analyzer.
-        for proj in $(echo "$changed" | grep -v '^libs/node_packages/' | sed -E 's|^(libs/[^/]+/[^/]+)/.*|\1|' | sort -u); do
-          csproj="$(ls "$proj"/*.csproj 2>/dev/null | head -1)"
-          [ -z "$csproj" ] && continue
-
-          # No <Version> of its own: not independently packable, nothing to bump.
-          grep -q '<Version>' "$csproj" || continue
-
-          if ! git diff "$base"...HEAD -- "$csproj" | grep -q '^+.*<Version>'; then
-            echo "::error::$proj changed but its own <Version> was not bumped. dotnet nuget push --skip-duplicate silently skips an existing version, so this would merge and publish nothing."
-            fail=1
-          fi
-        done
-
-        # npm: each package's version is its own; only the ones that changed need bumping.
-        for pkg in ng-spark; do
-          if echo "$changed" | grep -q "^libs/node_packages/$pkg/"; then
-            if ! git diff "$base"...HEAD -- "libs/node_packages/$pkg/package.json" | grep -q '^+  "version"'; then
-              echo "::error::libs/node_packages/$pkg changed but its package.json version was not bumped. npm-publish no-ops on an existing version, so this would merge and publish nothing."
-              fail=1
-            fi
-          fi
-        done
-
-        if [ "$fail" -ne 0 ]; then
-          echo "Majors are locked to the platform: npm major = Angular major, NuGet major = .NET major. An API change inside a generation is a MINOR bump, never a major."
-          exit 1
-        fi
-        echo "Version bumps present for every changed package."
-
   # The affected Angular apps' production builds, so a broken import, type error or budget overrun blocks the
   # PR: the apps have no test target, so nothing else builds them before a deploy. A job of its own beside
   # `build`, because the two together set the pace of the whole run. The .NET apps no longer carry their

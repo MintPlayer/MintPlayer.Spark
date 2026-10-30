@@ -376,7 +376,7 @@ describe('query toolbar (#460 M15)', () => {
 
     it('renders the checkbox-only datatable mode, so a row click never selects (D9)', async () => {
       const { fixture } = await grid([deleteAction]);
-      const table = fixture.debugElement.query(By.directive(BsDatatableComponent)).componentInstance as BsDatatableComponent<QueryResultItem>;
+      const table = fixture.debugElement.query(By.directive(BsDatatableComponent)).componentInstance as BsDatatableComponent;
       expect(table.selectionMode()).toBe('checkbox');
     });
 
@@ -408,9 +408,9 @@ describe('query toolbar (#460 M15)', () => {
       fixture.detectChanges();
       await settle(fixture);
 
-      const table = fixture.debugElement.query(By.directive(BsDatatableComponent)).componentInstance as BsDatatableComponent<QueryResultItem>;
-      expect(table.selection().length).toBe(2);
-      table.selection.set([]);
+      const table = fixture.debugElement.query(By.directive(BsDatatableComponent)).componentInstance as BsDatatableComponent;
+      expect(table.selectedIds().length).toBe(2);
+      table.selectionchanged.emit({ selectedIds: [], selectedRows: [] });
 
       expect(c.selection()).toEqual([]);
     });

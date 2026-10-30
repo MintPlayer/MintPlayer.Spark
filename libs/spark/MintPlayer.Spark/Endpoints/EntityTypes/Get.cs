@@ -2,6 +2,7 @@ using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Services;
+using MintPlayer.Spark.Abstractions.Prerendering;
 
 namespace MintPlayer.Spark.Endpoints.EntityTypes;
 
@@ -9,6 +10,10 @@ namespace MintPlayer.Spark.Endpoints.EntityTypes;
 internal sealed partial class GetEntityType : IGetEndpoint
 {
     public static string Path => "/{id}";
+
+    // A read: server-side rendering may supply its response (SparkPrerenderableAttribute).
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
+        => builder.WithMetadata(SparkPrerenderableAttribute.Instance);
 
     [RouteParam] public string Id { get; set; } = "";
 

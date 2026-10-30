@@ -87,7 +87,8 @@ export class SparkProgramUnitsComponent {
     effect(() => {
       this.authState?.();
       this.reloadToken();
-      untracked(() => this.reload());
+      // Caught: an unloadable menu stays empty rather than rejecting unhandled (fatal to the SSR process).
+      untracked(() => this.reload().catch(() => undefined));
     });
   }
 

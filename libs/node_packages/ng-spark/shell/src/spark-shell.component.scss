@@ -43,6 +43,9 @@ bs-shell {
 }
 
 .spark-topbar {
+  // Fills the shell's flex topbar itself rather than through `.w-100`: ui-core 1.3's width patch
+  // dropped the w-25..w-100 utilities (ng-bootstrap #450), and the topbar collapsed to its content.
+  flex: 1 1 auto;
   background-color: var(--spark-shell-topbar-bg, var(--bs-tertiary-bg));
   color: var(--spark-shell-topbar-color, var(--bs-body-color));
   border-bottom: var(--bs-border-width) solid var(--spark-shell-border-color);

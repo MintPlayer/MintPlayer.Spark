@@ -136,7 +136,7 @@ public class QnASubQueryTests
     private static async Task TickAsync(ILocator rows, int count)
     {
         for (var i = 0; i < count; i++)
-            await rows.Nth(i).Locator("td.checkbox-cell mp-checkbox").ClickAsync();
+            await rows.Nth(i).Locator("td.checkbox-cell input[type=checkbox]").ClickAsync();
     }
 
     /// <summary>
@@ -144,7 +144,7 @@ public class QnASubQueryTests
     /// only while a row is selected.
     /// </summary>
     private static Task DeselectAllAsync(ILocator card) =>
-        card.Locator("thead th.checkbox-cell mp-checkbox").ClickAsync();
+        card.Locator("thead th.checkbox-cell input[type=checkbox]").ClickAsync();
 
     /// <summary>
     /// Polls <see cref="IPage.Url"/> rather than using <c>WaitForURLAsync</c>, which waits for a
@@ -187,7 +187,7 @@ public class QnASubQueryTests
             await WaitForRowCountAsync(rows, 3);
 
             // Checkboxes, because the entry declares selectionMode: multiple.
-            (await card.Locator("td.checkbox-cell mp-checkbox").CountAsync()).Should().Be(3);
+            (await card.Locator("td.checkbox-cell input[type=checkbox]").CountAsync()).Should().Be(3);
 
             // The header offers New, Delete and the =1 Duplicate — each exactly once on screen.
             foreach (var action in new[] { "New", "Delete", "DuplicateAnswer" })
@@ -210,8 +210,8 @@ public class QnASubQueryTests
             (await CardAction(card, "Delete").IsDisabledAsync()).Should().BeTrue("Delete is '>0'");
 
             // Tick two rows, delete them (the confirm is accepted).
-            await rows.Nth(0).Locator("td.checkbox-cell mp-checkbox").ClickAsync();
-            await rows.Nth(1).Locator("td.checkbox-cell mp-checkbox").ClickAsync();
+            await rows.Nth(0).Locator("td.checkbox-cell input[type=checkbox]").ClickAsync();
+            await rows.Nth(1).Locator("td.checkbox-cell input[type=checkbox]").ClickAsync();
             await WaitForChipAsync(chip, 2);
             await CardAction(card, "Delete").ClickAsync();
             await WaitForRowCountAsync(rows, 1);

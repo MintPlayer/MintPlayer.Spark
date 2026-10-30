@@ -1,3 +1,4 @@
+import { QueryColumn } from './query-result';
 import { SparkSelectionModeSetting } from './selection-mode';
 import { TranslatedString } from './translated-string';
 
@@ -42,6 +43,12 @@ export interface SparkQuery {
    * listed but hidden. The server applies it to the result's `columns`; the grid does not read it.
    */
   columnOrder?: string[];
+  /**
+   * The columns the query's result will ship, sent by `queries/get` so a grid draws its cells before
+   * its first fetch (docs/spark_ssr_PRD.md D13). Exact for a `Database.*` query; for a `Custom.*` one the
+   * result's columns may narrow `canSort`/`canFilter`. Absent when the server could not describe them.
+   */
+  resultColumns?: QueryColumn[];
 }
 
 /**

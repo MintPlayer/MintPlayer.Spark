@@ -486,6 +486,12 @@ settings for forges without the capability. The owner wants GitLab and Bitbucket
   - **Seed tags** come from `tools/versioning-seed-tags.mjs`, which reads each package's version from `master` before
     the merge (46: 45 NuGet plus `@mintplayer/ng-spark/v22.44.0`) and creates the tags at that commit, so they are
     reachable from the merge commit. The owner pushes them right before merging; the script never pushes.
+  - **The PR "version-bumped" gate is removed** (owner decision, 2026-10-30, PR #555). It failed every PR that
+    changed a `libs/**` package unless the PR hand-bumped `<Version>`/`package.json`, which the placeholder and the
+    tags now forbid. It never met this world: no PR between #537 and #555 touched `libs/**` (`git log
+    36eee549..origin/master -- libs` is empty). On #555 it failed run 41090885790 for MintPlayer.Spark, .Abstractions,
+    .Authorization, .Boards and ng-spark. What it guarded, "a changed package publishes nothing", is the engine's job
+    now (D4).
   - **Not applicable:** the plan's "action-publish workflows call the in-repo action". The committed ncc actions are
     versioned by moving git refs, not published to a registry, so they have no package version to compute.
   - ~~**Expected first-release change:** the engine mirrors the upstream prerelease label (D8), so Spark's

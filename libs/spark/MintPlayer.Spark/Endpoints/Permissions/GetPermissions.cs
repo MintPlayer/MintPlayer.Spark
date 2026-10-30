@@ -2,6 +2,7 @@ using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Services;
+using MintPlayer.Spark.Abstractions.Prerendering;
 
 namespace MintPlayer.Spark.Endpoints.Permissions;
 
@@ -9,6 +10,10 @@ namespace MintPlayer.Spark.Endpoints.Permissions;
 internal sealed partial class GetPermissions : IGetEndpoint
 {
     public static string Path => "/permissions/{entityTypeId}";
+
+    // A read: server-side rendering may supply its response (SparkPrerenderableAttribute).
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
+        => builder.WithMetadata(SparkPrerenderableAttribute.Instance);
 
     [RouteParam] public string EntityTypeId { get; set; } = "";
 

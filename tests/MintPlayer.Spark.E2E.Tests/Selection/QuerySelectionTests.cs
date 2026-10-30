@@ -123,7 +123,7 @@ public class QuerySelectionTests
         await Tick(rows, 0);
         await WaitForChipAsync(page, 1);
 
-        await page.Locator("mp-pagination.datatable-pagination button[aria-label='Next']").ClickAsync();
+        await page.Locator(".datatable-pagination button[aria-label='Next']").ClickAsync();
         rows = await WaitForRowsAsync(page, 1);
         await Tick(rows, 0);
         await WaitForChipAsync(page, 2);
@@ -277,7 +277,7 @@ public class QuerySelectionTests
         return rows;
     }
 
-    private static Task Tick(ILocator rows, int index) => rows.Nth(index).Locator("td.checkbox-cell mp-checkbox").ClickAsync();
+    private static Task Tick(ILocator rows, int index) => rows.Nth(index).Locator("td.checkbox-cell input[type=checkbox]").ClickAsync();
 
     /// <summary>The visible toolbar button: <c>bs-priority-nav</c> stamps each item more than once (see <c>QnASubQueryTests.CardAction</c>).</summary>
     private static ILocator ToolbarAction(IPage page, string name)

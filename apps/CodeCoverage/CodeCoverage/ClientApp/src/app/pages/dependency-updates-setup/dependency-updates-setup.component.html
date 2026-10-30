@@ -28,7 +28,7 @@
   </nav>
 
   @for (step of steps; track step.id; let n = $index) {
-    <bs-card class="d-block mb-4" [attr.id]="step.id" [attr.data-step]="step.id">
+    <bs-card class="mb-4" [attr.id]="step.id" [attr.data-step]="step.id">
       <bs-card-header>
         <h2 class="h5 mb-0"><bs-badge class="me-2" [type]="primaryColor">{{ n + 1 }}</bs-badge>{{ step.title }}</h2>
       </bs-card-header>

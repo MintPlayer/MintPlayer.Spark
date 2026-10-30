@@ -1,8 +1,11 @@
-﻿using Microsoft.AspNetCore.Antiforgery;
+﻿using System.Text.Json;
+using Microsoft.AspNetCore.Antiforgery;
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Services;
+using MintPlayer.Spark.Abstractions.Prerendering;
 
 namespace MintPlayer.Spark.Endpoints.Queries;
 
@@ -19,7 +22,7 @@ internal sealed partial class GetQuery : IPostEndpoint<GetQueryRequest>
     // survive the next default change.
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
     {
-        builder.WithMetadata(new RequireAntiforgeryTokenAttribute(false));
+        builder.WithMetadata(new RequireAntiforgeryTokenAttribute(false), SparkPrerenderableAttribute.Instance);
     }
 
     // No antiforgery metadata, deliberately: the verb changed, what the endpoint does did not. See
@@ -28,6 +31,9 @@ internal sealed partial class GetQuery : IPostEndpoint<GetQueryRequest>
     // The check and the metadata shaping live in the catalogue, shared with the MCP tools (MCP PRD D9).
     [Inject] private readonly ISparkCatalogue catalogue;
     [Inject] private readonly IHttpContextAccessor httpContextAccessor;
+    [Inject] private readonly IQueryExecutor queryExecutor;
+    [Inject] private readonly Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions> jsonOptions;
+    [Inject] private readonly ILogger<GetQuery> logger;
 
     /// <summary>A body that cannot be bound gets the refusal an unusable request gets below, never a parse error (PRD D3a).</summary>
     protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure)
@@ -48,8 +54,34 @@ internal sealed partial class GetQuery : IPostEndpoint<GetQueryRequest>
         // anonymous caller on a host that can sign in gets the uniform 401 so it is sent to sign in; a
         // signed-in caller keeps the 404.
         var query = await catalogue.GetQueryAsync(id, httpContext.RequestAborted);
-        return query is null
-            ? SparkDenial.NotFoundOrSignIn(httpContext, $"Query '{id}' not found")
-            : Results.Json(query);
+        if (query is null)
+            return SparkDenial.NotFoundOrSignIn(httpContext, $"Query '{id}' not found");
+
+        // The query plus `resultColumns`, the columns its result will ship, so a server-rendered grid
+        // draws its cells on the client's first pass rather than after its first fetch
+        // (docs/spark_ssr_PRD.md D13). A JSON node rather than a property on SparkQuery: the catalogue
+        // may hand back the loader's shared instance, and this is per caller.
+        var options = jsonOptions.Value.SerializerOptions;
+        var body = JsonSerializer.SerializeToNode(query, options)!.AsObject();
+        if (await DescribeColumnsAsync(query, cancellationToken) is { } columns)
+            body["resultColumns"] = JsonSerializer.SerializeToNode(columns, options);
+        return Results.Json(body, options);
+    }
+
+    /// <summary>
+    /// Null when the columns cannot be described: then the client takes them from the first fetch, as
+    /// before, and the misconfiguration surfaces where it always has, on <c>queries/execute</c>.
+    /// </summary>
+    private async Task<IReadOnlyList<QueryColumn>?> DescribeColumnsAsync(SparkQuery query, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await queryExecutor.DescribeColumnsAsync(query, cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogDebug(ex, "Query '{Query}': no result columns in its metadata.", query.Name);
+            return null;
+        }
     }
 }

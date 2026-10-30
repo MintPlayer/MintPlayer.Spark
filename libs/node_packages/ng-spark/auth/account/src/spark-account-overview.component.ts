@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 import { RouterLink } from '@angular/router';
 import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
 import { SparkAuthService } from '@mintplayer/ng-spark/auth/core';
-import { currentLanguage } from '@mintplayer/ng-spark/models';
+import { activeLanguage } from '@mintplayer/ng-spark/models';
 import {
   SPARK_ACCOUNT_OVERVIEW_LINKS,
   SPARK_AUTH_ROUTE_PATHS,
@@ -95,7 +95,7 @@ export class SparkAccountOverviewComponent {
    * auth pages. Each carries its own translations; resolved in the app's current language.
    */
   protected readonly extraLinks = computed(() => {
-    const lang = currentLanguage();
+    const lang = activeLanguage();
     return this.accountLinks.map(link => ({
       key: link.key,
       path: link.path,
