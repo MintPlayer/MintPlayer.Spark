@@ -65,12 +65,12 @@ describe('RepoCommitGraphPanelComponent', () => {
 
     // Page 1 is served from what the probe already loaded: no second request.
     const fetch = panel().fetchFn()!;
-    const p1 = await fetch({ page: 1, perPage: GRAPH_PAGE_SIZE, sortColumns: [], signal: new AbortController().signal });
+    const p1 = await fetch({ page: 1, perPage: GRAPH_PAGE_SIZE, sortColumns: [], parentId: null, filters: {}, params: undefined, signal: new AbortController().signal });
     expect(p1.data.length).toBe(200);
     expect(p1.totalRecords).toBe(250);
     expect(browse.getCommitGraph).toHaveBeenCalledTimes(1);
 
-    const p2 = await fetch({ page: 2, perPage: GRAPH_PAGE_SIZE, sortColumns: [], signal: new AbortController().signal });
+    const p2 = await fetch({ page: 2, perPage: GRAPH_PAGE_SIZE, sortColumns: [], parentId: null, filters: {}, params: undefined, signal: new AbortController().signal });
     expect(browse.getCommitGraph).toHaveBeenLastCalledWith('github', 'acme', 'widgets',
       expect.objectContaining({ from: 200, count: GRAPH_PAGE_SIZE, snapshot: 'snap-1' }));
     expect(p2.data.map((v) => v.index)).toEqual(Array.from({ length: 50 }, (_, i) => 200 + i));
@@ -133,7 +133,7 @@ describe('RepoCommitGraphPanelComponent', () => {
       return Promise.resolve(page({ totalRows: 400, snapshotId: q.at ? 'snap-2' : 'snap-1' }));
     });
 
-    await expect(panel().fetchFn()!({ page: 2, perPage: GRAPH_PAGE_SIZE, sortColumns: [], signal: new AbortController().signal })).rejects.toThrow('stale');
+    await expect(panel().fetchFn()!({ page: 2, perPage: GRAPH_PAGE_SIZE, sortColumns: [], parentId: null, filters: {}, params: undefined, signal: new AbortController().signal })).rejects.toThrow('stale');
     await settle(fixture);
     // No scroll container in jsdom: the first visible row is row 0.
     const restart = calls.findIndex((q) => q.at);
@@ -178,7 +178,7 @@ describe('RepoCommitGraphPanelComponent', () => {
     expect(calls.at(-1)).toEqual(expect.objectContaining({ author: 'Test Author' }));
     expect(panel().listMode()).toBe(true);
 
-    const hit = (await panel().fetchFn()!({ page: 1, perPage: GRAPH_PAGE_SIZE, sortColumns: [], signal: new AbortController().signal })).data[1];
+    const hit = (await panel().fetchFn()!({ page: 1, perPage: GRAPH_PAGE_SIZE, sortColumns: [], parentId: null, filters: {}, params: undefined, signal: new AbortController().signal })).data[1];
     panel().open(hit);
     await settle(fixture);
     expect(calls.at(-1)).toEqual(expect.objectContaining({ at: 'bbbbbbb2' }));
@@ -292,7 +292,7 @@ describe('RepoCommitGraphPanelComponent', () => {
   it('gives every row a labelled button and keeps the graph out of the accessibility tree', async () => {
     const covered = { linesCovered: 1, linesCoverable: 2, percent: 50, deltaVsParent: -1.5, completeness: 'Complete' };
     await create(() => Promise.resolve(page({ rows: [{ ...row('aaaaaaa1', ['bbbbbbb2']), coverage: covered }, row('bbbbbbb2')] })));
-    const views = (await panel().fetchFn()!({ page: 1, perPage: GRAPH_PAGE_SIZE, sortColumns: [], signal: new AbortController().signal })).data as any[];
+    const views = (await panel().fetchFn()!({ page: 1, perPage: GRAPH_PAGE_SIZE, sortColumns: [], parentId: null, filters: {}, params: undefined, signal: new AbortController().signal })).data as any[];
     expect(views[0].ui.label).toBe('Open aaaaaaa: 50.0% covered, down 1.5 points; commit aaaaaaa1');
     expect(views[1].ui.label).toBe('Open bbbbbbb: no coverage report; commit bbbbbbb2');
 
