@@ -37,7 +37,8 @@ Non-goals: SSR of the Lit front of ng-bootstrap (out of scope there too); static
 - `HttpContext.SkipPrerendering()` opts a request out (`PrerenderingHttpContextExtensions.cs:24-36`).
 - The demo runs **Angular 21** `renderApplication` behind `createServerRenderer` (`Demo/Prerendering/Demo.Web/
   ClientApp/src/main.server.ts`), built with the old separate `ng run ClientApp:server` target.
-  **Not yet proven on Angular 22's `@angular/build:application` (ESM server output).** → spike SP1.
+  ~~**Not yet proven on Angular 22's `@angular/build:application` (ESM server output).** → spike SP1.~~
+  *Superseded: proven by SP1 (status item 1).*
 
 ### 2.3 ng-bootstrap (`C:\Repos\mintplayer-ng-bootstrap`, commit b28e1ac4, #412/#437)
 - In `@mintplayer/ng-bootstrap` **v22.29.0** (tag `@mintplayer/ng-bootstrap/v22.29.0`). There are no custom elements
@@ -215,7 +216,7 @@ Each spike is time-boxed and ends with a written result in §7 (numbers, file:li
 - **NG02801** ("HttpClient is not configured to use fetch") is logged once. It is noise: on the server our
   `HttpBackend` replaces the backend. Switching the browser to `withFetch()` would lose upload progress events, so it
   is left as is.
-- **Still open:** a dev builder script for `AngularPrerendererBuilder` (watch).
+- ~~**Still open:** a dev builder script for `AngularPrerendererBuilder` (watch).~~ *Superseded: done in M4 (I21).*
 
 ## 8. Implementation log
 
@@ -249,8 +250,11 @@ Each spike is time-boxed and ends with a written result in §7 (numbers, file:li
 | I24 | **A detail page supplies its sub-query cards** (`SupplySubQueriesAsync`): for each entry of the type's `queries` (an alias, or `{query, …}`), the card's grid with the object as parent (`parentId` the object's id, `parentType` the type's name). A card's status never becomes the page's. Before it, `/po/artist/Artists%2F22` missed `queries/get {"queryId":"artist-songs"}` and fetched 4 requests after hydration; after it, 0 misses and 0 requests (2/2 loads). | `SparkRoutesPrerenderContributor.cs` |
 | I25 | **The new-object form is not supplied beyond the types.** `po/:type/new` misses `GET /spark/types/{id}?for=new`, and its next request, `/po/new`, runs the type's `OnNewAsync` hook and is not `[SparkPrerenderable]`. The form is `noindex` and differs per visitor, so a server-rendered form shell buys nothing; it renders after hydration. | measured: one miss on `/po/song/new` |
 | I26 | **AsDetail picker options load only for a row reference without a breadcrumb.** The server sends each row reference's label (#185), so the reference column's options query (e.g. GetArtists, GetMediumTypes) is needed only when one is missing. Client (`spark-po-detail` `needsReferenceLabels`) and server (`SparkRoutesPrerenderContributor.NeedsReferenceLabels`) apply the same test, so the server supplies exactly what the page asks for. Editing a row still loads the options through the picker. | measured on the song page, read from the per-request Debug log (`Logging__LogLevel__MintPlayer.Spark.Prerendering=Debug`): 18 → 4 database requests, 12 → 9 sub-requests, 0 misses, 0 requests after hydration; specs pin both cases |
+| I27 | **A load by id includes the readable `[Reference]` properties, as a query already did (#239).** `MaterializeAsync` took only `GetDefaultIncludes()`, so the breadcrumb resolver made a round trip for the referenced documents of every detail page. It now merges the `[Reference]` names (ignored ones excluded, as for queries). Only the first level: RavenDB has no recursive include, so AsDetail-row and deeper references stay with the resolver's batched load, and a type that needs more uses `GetDefaultIncludes()` or `IgnoreMaxRequests`. | ✅ owner, 2026-10-30 ("you can do so, in this pull-request"); `ReferenceIncludeTests.MaterializeAsync_includes_the_reference_properties…` red without the change, green with it (6b26f53a) |
+| I28 | **Outside Development a server render supplied nothing page-specific.** The SPA fallback rewrites `Request.Path` to the default page (`/index.csr.html`) before the render, while SpaServices renders the URL of the request line (`IHttpRequestFeature.RawTarget`). Every contributor therefore saw `/index.csr.html`: only the app-wide requests were supplied, every page request missed, the page rendered without its data, a stale slug was a 200 and a missing object a 200 without `noindex`. Development never showed it, because the dev-server proxy leaves the path alone. `SparkPrerenderContext.PageUrl` now reads the request line, decoded as Kestrel decodes a path (all but `%2F`), without the path base, and the per-path pages match on it. **Production (mintplayer.com) was affected; nothing of it had shipped yet.** | found by the new MintPlayer E2E tests (M5): before, the debug log said `Server rendering /index.csr.html: 5 requests` for a song page and all 4 tests failed; after, `Server rendering /po/song/Songs%2Fe2e-sky/a-sky-full-of-stars: 9 requests, 2 database requests` and all pass. `SparkPrerenderPageUrlTests` (3) pin the decoding |
+| I29 | **The home board names `/` among its paths.** Angular redirects `/` to `/home`, so the front page rendered the board without its data (`[spark-ssr] miss: GET /spark/boards/home` on `/`). `apps/MintPlayer/MintPlayer/App_Data/boards.json` now lists `["/home", "/"]`. The D15 trap stands: a path has to equal the URL the visitor asks for, redirects included. | the E2E browser theory covers `/` and the song page |
 
-### M1 — ng-bootstrap 22.29 migration (code done, build green, specs not yet run)
+### M1 — ng-bootstrap 22.29 migration (code done, build green; specs run green, status item 10)
 
 - **Packages.** `@mintplayer/ng-bootstrap ^22.29.0`, `ui-core ^1.2.0`, `web-components ^3.2.0`, `ng-animations 22.1.1`,
   `ng-click-outside ^22.2.1`, `ng-focus-on-load ^22.1.2`, `pagination ^2.5.1` and `@angular/platform-server 22.2.2`.
@@ -291,7 +295,7 @@ Each spike is time-boxed and ends with a written result in §7 (numbers, file:li
 ### Status / resume point
 
 1. ✅ **SP1** done: the server bundle renders, concurrent languages are isolated, and the process survives misses.
-   The dev watch builder is still open and moves to M4.
+   The dev watch builder moved to M4, where it is done (I21).
 2. ✅ **M1 + ssr scaffolding + SP1 committed** (the commit after `1d122f72`, "feat(ssr): ng-bootstrap 22.29 migration
    (M1)…").
 3. **Next: M3, the .NET supplier.** SP3–SP5 need it. Start with the home page's five requests (SP1 list) and
@@ -341,7 +345,7 @@ Each spike is time-boxed and ends with a written result in §7 (numbers, file:li
    - **SP6:** `/index.csr.html` is served raw by static files (200, 1800 bytes, no `ng-state`). Observed in a production build (2026-10-30): `dist/ClientApp/browser/ngsw.json` has `"index": "/index.csr.html"`, so the service worker never caches a prerendered page.
    - **SP7:** with `spark-lang=nl`, `bs-theme-mode=dark` and `spark-timezone=America/New_York`, the server HTML is Dutch (`<html lang="nl">`, "Artiesten"), the theme is dark before paint (the preboot script), and hydration made no request and no warning. The player renders only when `player.current()` is set, so it is client-only by construction.
    - **M4:** the watch build (I21).
-   - **M5:** `SparkPrerenderEquivalenceTests` (4 tests + a 6-case theory, through `Attach` over a `TestServer`). Every supplied response is the HTTP response, status and body. A missing and a denied object answer alike. A redacted reference ("Zeno", `pedrivers/1`) is absent from what the page receives. An endpoint not marked prerenderable answers 404, is not supplied, and does not run (the count of cars stays 1). `SparkSlugTests` pins the server slug to the client's `sparkSlug`. **The E2E part is not built:** the E2E project hosts Fleet and QnA only, and the curl and browser measurements above stand in for it.
+   - **M5:** `SparkPrerenderEquivalenceTests` (4 tests + a 6-case theory, through `Attach` over a `TestServer`). Every supplied response is the HTTP response, status and body. A missing and a denied object answer alike. A redacted reference ("Zeno", `pedrivers/1`) is absent from what the page receives. An endpoint not marked prerenderable answers 404, is not supplied, and does not run (the count of cars stays 1). `SparkSlugTests` pins the server slug to the client's `sparkSlug`. ~~**The E2E part is not built:** the E2E project hosts Fleet and QnA only, and the curl and browser measurements above stand in for it.~~ *Superseded 2026-10-30 (owner: "address all remaining items"):* the E2E project now hosts MintPlayer (`MintPlayerTestHost`, outside Development, so on the built server bundle as in production), and `ServerRenderingTests` pins the song page's server HTML (title, artists, canonical, JSON-LD `byArtist`, transfer state), the stale-slug 301, the missing song's 401 with `X-Robots-Tag: noindex`, and a browser load that makes no Spark request and logs no warning.
    - **M6:** MintPlayer renders every route above. The legacy A4 bot pages never existed in `apps/MintPlayer`, so retiring them is a no-op.
    - **M7:** the model's `seo` mapping (Song `MusicRecording`, Artist `MusicGroup`, Person `Person`) and MintPlayer's `byArtist` hook (`src/app/seo.ts`). The song page's server HTML has title "A Sky Full of Stars - MintPlayer", `index, follow`, the canonical and `og:url` links, and JSON-LD with `datePublished` "2014-05-02" and `byArtist` Coldplay and Avicii. An AsDetail array travels in the attribute's `objects`, not its `value`; the first hook read `value` and produced no `byArtist`. Guide: [guide-ssr.md](guide-ssr.md).
    - **Song page DB requests (item 8):** 18 → 4 after I26. The 14 extra came from the AsDetail picker options (GetMediumTypes 6, GetArtists 8), which the page never shows when every row reference carries its breadcrumb. The artist page makes 9 across 13 sub-requests.

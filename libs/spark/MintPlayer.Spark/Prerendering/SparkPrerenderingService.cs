@@ -60,7 +60,7 @@ internal sealed class SparkPrerenderingService : ISpaPrerenderingService
         var supplies = contributors.Select(c => c.ContributeAsync(context)).ToList();
         foreach (var (path, supply) in options.Value.Pages)
         {
-            if (string.Equals(path.Value, httpContext.Request.Path.Value, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(path.Value, context.Path.Value, StringComparison.OrdinalIgnoreCase))
                 supplies.Add(supply(context));
         }
         await Task.WhenAll(supplies);

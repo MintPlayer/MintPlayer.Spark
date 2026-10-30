@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Microsoft.AspNetCore.Http.Features;
 using MintPlayer.Spark.Abstractions.Prerendering;
 
 namespace MintPlayer.Spark.Prerendering;
@@ -18,11 +19,34 @@ internal sealed class SparkPrerenderContext : ISparkPrerenderContext
     {
         this.dispatcher = dispatcher;
         HttpContext = httpContext;
-        Path = httpContext.Request.Path;
-        QueryString = httpContext.Request.QueryString;
+        (Path, QueryString) = PageUrl(httpContext);
         Language = language;
         TimeZone = timeZone;
         page = SparkPrerenderPage.From(httpContext, language, timeZone);
+    }
+
+    /// <summary>
+    /// The page's URL as the browser asked for it, which is the one Angular renders. Outside Development the SPA
+    /// fallback has already rewritten <c>Request.Path</c> to the default page (<c>/index.csr.html</c>), so the
+    /// request line (<see cref="IHttpRequestFeature.RawTarget"/>, what SpaServices hands the renderer) is read
+    /// instead, decoded as Kestrel decodes a path: everything except <c>%2F</c>, so an id like
+    /// <c>Songs%2F23</c> stays one segment.
+    /// </summary>
+    internal static (PathString Path, QueryString QueryString) PageUrl(HttpContext httpContext)
+    {
+        var request = httpContext.Request;
+        var rawTarget = httpContext.Features.Get<IHttpRequestFeature>()?.RawTarget;
+        if (string.IsNullOrEmpty(rawTarget) || rawTarget[0] != '/')
+            return (request.Path, request.QueryString);
+
+        var queryStart = rawTarget.IndexOf('?');
+        var rawPath = queryStart < 0 ? rawTarget : rawTarget[..queryStart];
+        var decoded = string.Join("%2F", rawPath
+            .Split(["%2F", "%2f"], StringSplitOptions.None)
+            .Select(Uri.UnescapeDataString));
+        var path = new PathString(decoded);
+        return (path.StartsWithSegments(request.PathBase, out var remaining) ? remaining : path,
+            queryStart < 0 ? QueryString.Empty : new QueryString(rawTarget[queryStart..]));
     }
 
     public HttpContext HttpContext { get; }
