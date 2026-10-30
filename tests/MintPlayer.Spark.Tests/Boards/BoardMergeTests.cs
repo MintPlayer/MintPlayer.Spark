@@ -118,10 +118,15 @@ public class BoardMergeTests
     }
 
     [Fact]
-    public void A_save_bounds_the_user_tiles_and_the_title_length()
+    public void A_save_bounds_the_whole_board_and_the_title_length()
     {
+        // The cap counts the live defaults with the user's tiles (D14): 2 defaults + 2 user tiles is over 3.
         var many = new BoardMerge.SaveRequest { Tiles = [Tile("u-1"), Tile("u-2")] };
-        BoardMerge.Apply(Board(), null, many, None, new HashSet<string> { "u-1", "u-2" }, 1).Error.Should().Contain("at most 1");
+        BoardMerge.Apply(Board(), null, many, None, new HashSet<string> { "u-1", "u-2" }, 3).Error.Should().Contain("at most 3 tiles");
+
+        // A removed default frees its place.
+        var swap = new BoardMerge.SaveRequest { Tiles = [Tile("u-1"), Tile("u-2")], Removed = ["b"] };
+        BoardMerge.Apply(Board(), null, swap, None, new HashSet<string> { "u-1", "u-2" }, 3).Error.Should().BeNull();
 
         var longTitle = new BoardMerge.SaveRequest { Titles = new() { ["a"] = new string('x', BoardMerge.MaxTitleLength + 1) } };
         BoardMerge.Apply(Board(), null, longTitle, None, None, 50).Error.Should().Contain("at most");

@@ -1,6 +1,8 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
+using MintPlayer.Spark.Abstractions.Prerendering;
+using MintPlayer.Spark.Prerendering;
 using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Boards.Kinds;
@@ -28,6 +30,10 @@ internal sealed partial class QueryTileKind : ITileKind
 
     public Task<SparkTileAccess> CheckAccessAsync(IReadOnlyDictionary<string, string> target, CancellationToken cancellationToken)
         => CheckQueryAsync(queryLoader, permissionService, target, cancellationToken);
+
+    /// <summary>spark-query-tile: a root <c>&lt;spark-query-grid&gt;</c> over the target query.</summary>
+    public Task SupplyAsync(ISparkPrerenderContext context, IReadOnlyDictionary<string, string> target)
+        => context.SupplyQueryGridAsync(target["query"]);
 
     internal static string? ValidateQuery(IReadOnlyDictionary<string, string> target)
         => target.TryGetValue("query", out var query) && !string.IsNullOrWhiteSpace(query) && query.Length <= 200
@@ -59,6 +65,10 @@ internal sealed partial class CountTileKind : ITileKind
 
     public Task<SparkTileAccess> CheckAccessAsync(IReadOnlyDictionary<string, string> target, CancellationToken cancellationToken)
         => QueryTileKind.CheckQueryAsync(queryLoader, permissionService, target, cancellationToken);
+
+    /// <summary>spark-count-tile: <c>executeQuery(query, { skip: 0, take: 1 })</c>.</summary>
+    public Task SupplyAsync(ISparkPrerenderContext context, IReadOnlyDictionary<string, string> target)
+        => context.PostAsync("/spark/queries/execute", new { queryId = target["query"], skip = 0, take = 1 });
 }
 
 /// <summary>
@@ -99,6 +109,10 @@ internal sealed partial class PersistentObjectTileKind : ITileKind
             return SparkTileAccess.Denied;
         }
     }
+
+    /// <summary>spark-po-tile: a <c>&lt;spark-po-detail&gt;</c> over the target object.</summary>
+    public Task SupplyAsync(ISparkPrerenderContext context, IReadOnlyDictionary<string, string> target)
+        => context.SupplyPersistentObjectAsync(target["entityType"], target["id"]);
 }
 
 /// <summary>A launcher for a menu entry, visible exactly when the menu would show it (<c>GET /spark/program-units</c>).</summary>

@@ -2,6 +2,7 @@
   "boards": [
     {
       "id": "home",
+      "paths": ["/home"],
       "tiles": [
         { "id": "songs", "kind": "query", "target": { "query": "songs" }, "defaultSize": { "colSpan": 2, "rowSpan": 2 } },
         { "id": "artists", "kind": "query", "target": { "query": "artists" }, "defaultSize": { "colSpan": 2, "rowSpan": 2 } }

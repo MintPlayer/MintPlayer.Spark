@@ -19,6 +19,7 @@ builder.Services.AddSpark(builder.Configuration, spark =>
   "boards": [
     {
       "id": "home",
+      "paths": ["/home"],   // the pages a server render supplies it on (optional)
       "tiles": [
         { "id": "cars", "kind": "query", "target": { "query": "cars" }, "defaultSize": { "colSpan": 2, "rowSpan": 2 } },
         { "id": "car-count", "kind": "count", "target": { "query": "cars" } }

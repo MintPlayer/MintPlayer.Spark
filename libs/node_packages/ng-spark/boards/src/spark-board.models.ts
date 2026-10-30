@@ -9,6 +9,14 @@ export const SPARK_TILE_KINDS = {
   programUnit: 'programUnit',
 } as const;
 
+/**
+ * The most tiles a server-rendered board renders with their content (docs/spark_ssr_PRD.md D14). A board
+ * with more renders each query and object tile as a link to its page, on the server and until the page
+ * has hydrated; the content loads in the browser after. ⚠️ Equals `SparkBoardsOptions.PrerenderedTileLimit`
+ * (MintPlayer.Spark.Boards), which supplies the content only up to it.
+ */
+export const SPARK_BOARD_PRERENDERED_TILES = 7;
+
 /** One tile of a board as the caller may see it (`SparkBoardTileView`). */
 export interface SparkBoardTile {
   id: string;

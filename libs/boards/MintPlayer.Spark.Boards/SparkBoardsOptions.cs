@@ -15,8 +15,18 @@ public sealed class SparkBoardsOptions
     /// <summary>Boards declared in code, beside <c>App_Data/boards.json</c>. An id declared in both refuses startup.</summary>
     public List<SparkBoardDefinition> Boards { get; } = [];
 
-    /// <summary>The most tiles a user may add to one board. Bounds the stored document.</summary>
-    public int MaxUserTiles { get; set; } = 50;
+    /// <summary>
+    /// The most tiles one board holds, its declared and the user's own together (docs/spark_ssr_PRD.md D14). A declared
+    /// board over it refuses startup; a save over it is a 400. Bounds the stored document and a page's fan-out.
+    /// </summary>
+    public int MaxTiles { get; set; } = 20;
+
+    /// <summary>
+    /// The most tiles a server-rendered board supplies the content of (D14). A board with more renders its query and
+    /// object tiles as links until the page hydrates. ⚠️ Equals <c>SPARK_BOARD_PRERENDERED_TILES</c> in
+    /// <c>@mintplayer/ng-spark/boards</c>, which renders the links.
+    /// </summary>
+    public const int PrerenderedTileLimit = 7;
 
     internal List<Type> KindTypes { get; } = [];
 

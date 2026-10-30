@@ -50,7 +50,8 @@ internal sealed class SparkRoutesPrerenderContributor : ISparkPrerenderContribut
     }
 
     /// <summary>spark-po-detail.component.ts <c>load()</c>: the object and the types, then the type's rights and actions.</summary>
-    private static async Task SupplyObjectAsync(ISparkPrerenderContext context, string type, string id)
+    /// <param name="primary">Whether the object is the page's primary read, whose status becomes the page's (D4); a board tile's is not.</param>
+    internal static async Task SupplyObjectAsync(ISparkPrerenderContext context, string type, string id, bool primary = true)
     {
         var objectTask = context.PostAsync($"{Api}/po/load", new { objectTypeId = type, id });
         var typesTask = context.GetAsync($"{Api}/types");
@@ -58,7 +59,8 @@ internal sealed class SparkRoutesPrerenderContributor : ISparkPrerenderContribut
         // The page's status is the object's (D4): a 401 for an anonymous visitor and a 404 for a signed-in
         // one, whether the object is missing or denied.
         var item = await objectTask;
-        context.SetPageStatus(item.Status);
+        if (primary)
+            context.SetPageStatus(item.Status);
 
         var types = (await typesTask).Read<List<EntityTypeReference>>() ?? [];
         var entityType = types.FirstOrDefault(t => t.Id == type || t.Alias == type);
@@ -138,12 +140,14 @@ internal sealed class SparkRoutesPrerenderContributor : ISparkPrerenderContribut
     /// rights and actions, then the first page as <c>executeQuery</c> sends it. The query's status is the
     /// page's (D4).
     /// </summary>
-    private static async Task SupplyGridAsync(ISparkPrerenderContext context, string queryId)
+    /// <param name="primary">Whether the query is the page's primary read, whose status becomes the page's (D4); a board tile's is not.</param>
+    internal static async Task SupplyGridAsync(ISparkPrerenderContext context, string queryId, bool primary = true)
     {
         var queryTask = context.PostAsync($"{Api}/queries/get", new { queryId });
         var typesTask = context.GetAsync($"{Api}/types");
         var response = await queryTask;
-        context.SetPageStatus(response.Status);
+        if (primary)
+            context.SetPageStatus(response.Status);
         var query = response.Read<QueryReference>();
         if (query?.Id is null)
             return;

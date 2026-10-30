@@ -109,8 +109,15 @@ Anonymous visitors get the default board, filtered by their rights, and cannot s
 
 A layout is stored as `BoardLayouts/{userId}/{board}`. A save is the full state, and it carries the change vector of
 the last read. If the layout changed in between (another tab, another device), the save answers **409** and the client
-reloads. Writes need the antiforgery header, like every other Spark write. `MaxUserTiles` (default 50) limits how
-many tiles a user may add to one board.
+reloads. Writes need the antiforgery header, like every other Spark write. `MaxTiles` (default 20) limits the whole
+board, its declared tiles and the user's own together: a declared board over it refuses startup, and a save over it
+answers 400.
+
+With server-side rendering (`spark.AddPrerendering()`), a board names the pages that show it, so the server render
+supplies it: `"paths": ["/home"]` in `boards.json`, kept equal to the Angular route by hand. A board of at most 7
+tiles renders with its tiles' content; a larger one renders each query, count and object tile as a link to its page,
+and the content loads in the browser once the page has hydrated. That keeps the database requests of one page bounded
+(`docs/spark_ssr_PRD.md` D14). An application kind supplies its own content by implementing `ITileKind.SupplyAsync`.
 
 When the application changes its default, the change reaches each user's layout on their next read:
 

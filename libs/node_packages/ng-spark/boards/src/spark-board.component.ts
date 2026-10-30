@@ -3,7 +3,7 @@ import { NgComponentOutlet } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal, Type, untracked, viewChild } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsButtonGroupComponent } from '@mintplayer/ng-bootstrap/button-group';
 import { BsButtonTypeDirective } from '@mintplayer/ng-bootstrap/button-type';
@@ -19,10 +19,10 @@ import {
   type TileLayouts,
 } from '@mintplayer/ng-bootstrap/tile-manager';
 import { ResolveTranslationPipe, TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
-import { SparkLanguageService } from '@mintplayer/ng-spark/services';
+import { SparkLanguageService, SparkRenderPhase } from '@mintplayer/ng-spark/services';
 import { addTile, applyToNarrower, commitLayout, removeTile, renameTile, SparkBoardDraft, startDraft, toSaveRequest } from './board-draft';
 import { SparkBoardPickerComponent, SparkBoardPick } from './spark-board-picker.component';
-import { SparkBoard, SparkBoardTile, SparkTileContext, toTileLayouts } from './spark-board.models';
+import { SPARK_BOARD_PRERENDERED_TILES, SPARK_TILE_KINDS, SparkBoard, SparkBoardTile, SparkTileContext, toTileLayouts } from './spark-board.models';
 import { SparkBoardsService } from './spark-boards.service';
 import { SPARK_TILE_RENDERERS, tileRendererMap } from './spark-tile-renderers';
 
@@ -42,7 +42,7 @@ interface SparkBoardTileItem extends MintTile {
 @Component({
   selector: 'spark-board',
   imports: [
-    NgComponentOutlet, FormsModule,
+    NgComponentOutlet, FormsModule, RouterLink,
     BsTileManagerComponent, BsTileDirective, BsTileHeaderDirective, BsTileContentDirective,
     BsButtonGroupComponent, BsButtonTypeDirective, BsFormComponent, BsFormControlDirective,
     BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective,
@@ -56,6 +56,7 @@ export class SparkBoardComponent {
   private readonly boards = inject(SparkBoardsService);
   private readonly lang = inject(SparkLanguageService);
   private readonly route = inject(ActivatedRoute, { optional: true });
+  private readonly renderPhase = inject(SparkRenderPhase);
   private readonly renderers = tileRendererMap(inject(SPARK_TILE_RENDERERS, { optional: true }));
 
   readonly boardId = input<string | null>(null);
@@ -101,6 +102,22 @@ export class SparkBoardComponent {
     this.itemCache = next;
     return items;
   });
+
+  /** Over {@link SPARK_BOARD_PRERENDERED_TILES} tiles, the server render and its hydration show links (D14). */
+  protected readonly linkMode = computed(() => this.renderPhase.serverMatching() && this.tiles().length > SPARK_BOARD_PRERENDERED_TILES);
+
+  /** The page a tile links to in link mode, or null for a kind that renders its content even then. */
+  protected tileLink(tile: SparkBoardTile): string[] | null {
+    switch (tile.kind) {
+      case SPARK_TILE_KINDS.query:
+      case SPARK_TILE_KINDS.count:
+        return tile.target['query'] ? ['/query', tile.target['query']] : null;
+      case SPARK_TILE_KINDS.persistentObject:
+        return tile.target['entityType'] && tile.target['id'] ? ['/po', tile.target['entityType'], tile.target['id']] : null;
+      default:
+        return null;
+    }
+  }
 
   protected readonly context = computed<SparkTileContext>(() => ({
     boardId: this.id() ?? '',

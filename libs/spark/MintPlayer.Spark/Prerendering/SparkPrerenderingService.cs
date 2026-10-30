@@ -27,6 +27,7 @@ internal sealed class SparkPrerenderingService : ISpaPrerenderingService
     private readonly IOptions<SparkTimeZoneOptions> timeZoneOptions;
     private readonly ICultureLoader cultureLoader;
     private readonly IRequestCultureResolver cultureResolver;
+    private readonly ILogger<SparkPrerenderingService> logger;
 
     public SparkPrerenderingService(
         SparkPrerenderDispatcher dispatcher,
@@ -34,8 +35,10 @@ internal sealed class SparkPrerenderingService : ISpaPrerenderingService
         IOptions<SparkPrerenderingOptions> options,
         IOptions<SparkTimeZoneOptions> timeZoneOptions,
         ICultureLoader cultureLoader,
-        IRequestCultureResolver cultureResolver)
+        IRequestCultureResolver cultureResolver,
+        ILogger<SparkPrerenderingService> logger)
     {
+        this.logger = logger;
         this.dispatcher = dispatcher;
         this.contributors = contributors;
         this.options = options;
@@ -61,6 +64,8 @@ internal sealed class SparkPrerenderingService : ISpaPrerenderingService
                 supplies.Add(supply(context));
         }
         await Task.WhenAll(supplies);
+        logger.LogDebug("Server rendering {Path}: {Requests} requests, {DatabaseRequests} database requests.",
+            context.Path, context.Cost.Requests, context.Cost.DatabaseRequests);
 
         if (context.RedirectTo is { } redirect)
         {

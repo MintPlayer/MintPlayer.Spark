@@ -34,6 +34,9 @@ internal sealed class SparkPrerenderContext : ISparkPrerenderContext
 
     public (string Location, bool Permanent)? RedirectTo { get; private set; }
 
+    /// <summary>What the page's requests cost so far.</summary>
+    public SparkPrerenderCost Cost => page.Cost;
+
     public Task<SparkPrerenderResponse> GetAsync(string pathAndQuery) => SendAsync(HttpMethods.Get, pathAndQuery, "");
 
     public Task<SparkPrerenderResponse> PostAsync(string pathAndQuery, object? body)

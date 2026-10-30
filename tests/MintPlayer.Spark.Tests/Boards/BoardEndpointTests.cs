@@ -190,4 +190,39 @@ public class BoardEndpointTests : OrganizationsTestHost
 
         act.Should().Throw<InvalidOperationException>().WithMessage("*kind 'chart'*");
     }
+
+    [Fact]
+    public void A_board_over_the_tile_cap_refuses_startup()
+    {
+        // docs/spark_ssr_PRD.md D14: the cap holds for declared boards too.
+        var board = new SparkBoardDefinition
+        {
+            Id = "x",
+            Tiles = new[] { "a", "b", "c" }.Select(id => new SparkBoardTile { Id = id, Kind = "query", Target = new() { ["query"] = "OgNotes" } }).ToList(),
+        };
+        ExtraSpark = spark => spark.AddBoards(o =>
+        {
+            o.Boards.Add(board);
+            o.MaxTiles = 2;
+        });
+
+        var act = () => Factory.CreateClient();
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*declares 3 tiles*at most 2*");
+    }
+
+    [Fact]
+    public void Two_boards_on_one_path_refuse_startup()
+    {
+        // D15: a page shows one board.
+        ExtraSpark = spark => spark.AddBoards(o =>
+        {
+            o.Boards.Add(new SparkBoardDefinition { Id = "a", Paths = ["/home"] });
+            o.Boards.Add(new SparkBoardDefinition { Id = "b", Paths = ["/HOME"] });
+        });
+
+        var act = () => Factory.CreateClient();
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*board 'b' shows on '/HOME'*board 'a'*");
+    }
 }

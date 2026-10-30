@@ -13,6 +13,12 @@ public sealed class SparkBoardDefinition
 
     public TranslatedString? Title { get; set; }
 
+    /// <summary>
+    /// The pages that show this board, e.g. <c>["/home"]</c>, so a server render supplies it (docs/spark_ssr_PRD.md D15).
+    /// Each starts with <c>/</c>, and no two boards share one.
+    /// </summary>
+    public List<string> Paths { get; set; } = [];
+
     public List<SparkBoardTile> Tiles { get; set; } = [];
 
     /// <summary>Positions per column count, the way <c>bs-tile-manager</c>'s <c>layouts</c> holds them.</summary>

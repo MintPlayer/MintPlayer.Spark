@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Net.Http.Headers;
 using MintPlayer.Spark.Abstractions.Prerendering;
 using MintPlayer.Spark.Services;
+using Raven.Client.Documents;
+using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.Prerendering;
 
@@ -133,6 +135,7 @@ internal sealed class SparkPrerenderDispatcher
         {
             if (accessor is not null)
                 accessor.HttpContext = null;
+            page.Cost.Add(DatabaseRequests(scope.ServiceProvider));
         }
 
         if (WasRefused(request))
@@ -144,6 +147,32 @@ internal sealed class SparkPrerenderDispatcher
 
         var text = responseBody.Length == 0 ? null : Encoding.UTF8.GetString(responseBody.GetBuffer(), 0, (int)responseBody.Length);
         return (new SparkPrerenderResponse(request.Response.StatusCode, text), false);
+    }
+
+    /// <summary>
+    /// The requests the request's RavenDB session made. Each request has a session of its own, so Raven's
+    /// per-session limit never sees a page's total; this does (PRD D14). Opening the session to read it sends nothing.
+    /// </summary>
+    private static int DatabaseRequests(IServiceProvider services)
+        => services.GetService<IDocumentStore>() is not null
+            && services.GetService<IAsyncDocumentSession>() is InMemoryDocumentSessionOperations session
+            ? session.NumberOfRequests
+            : 0;
+}
+
+/// <summary>What one page's requests cost, summed across their scopes.</summary>
+internal sealed class SparkPrerenderCost
+{
+    private int requests;
+    private int databaseRequests;
+
+    public int Requests => requests;
+    public int DatabaseRequests => databaseRequests;
+
+    public void Add(int databaseRequestCount)
+    {
+        Interlocked.Increment(ref requests);
+        Interlocked.Add(ref databaseRequests, databaseRequestCount);
     }
 }
 
@@ -166,6 +195,8 @@ internal sealed record SparkPrerenderPage(
     string Language,
     string TimeZone)
 {
+    public SparkPrerenderCost Cost { get; } = new();
+
     public static SparkPrerenderPage From(HttpContext page, string language, string timeZone) => new(
         page.RequestServices.GetRequiredService<IServiceScopeFactory>(),
         page.User,
