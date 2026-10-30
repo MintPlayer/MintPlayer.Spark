@@ -3,7 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { provideRouter, Router } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
-import { BsCodeSnippetComponent } from '@mintplayer/ng-bootstrap/code-snippet';
+import { BsCodeSnippetComponent, type CodeLineActivation } from '@mintplayer/ng-bootstrap/code-snippet';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FileDetail } from '../../services/browse.service';
 import { BrowseServiceStub, createBrowseStub, provideBrowseStub } from '../../../testing/test-utils';
@@ -19,7 +19,7 @@ class StubCodeSnippet {
   readonly activeLine = input<number | null>(null);
   readonly lineHref = input<((line: number) => string) | null>(null);
   readonly label = input<string>('');
-  readonly lineActivate = output<CustomEvent<{ line: number }>>();
+  readonly lineactivate = output<CodeLineActivation>();
 }
 
 function detail(overrides: Partial<FileDetail> = {}): FileDetail {
@@ -178,12 +178,12 @@ describe('FileComponent', () => {
     const component = await open(`${base}?path=src%2Fa.ts`);
     const router = TestBed.inject(Router);
     const navigate = vi.spyOn(router, 'navigate');
-    const event = new CustomEvent('lineActivate', { detail: { line: 9 }, cancelable: true });
+    let prevented = false;
 
-    snippet()!.lineActivate.emit(event);
+    snippet()!.lineactivate.emit({ line: 9, preventDefault: () => { prevented = true; } });
     await settleHarness();
 
-    expect(event.defaultPrevented).toBe(true);
+    expect(prevented).toBe(true);
     expect(navigate).toHaveBeenCalledWith([], expect.objectContaining({ queryParams: { path: 'src/a.ts' }, fragment: 'L9' }));
     expect(router.url).toBe(`${base}?path=src%2Fa.ts#L9`);
     expect(component.targetLine()).toBe(9);

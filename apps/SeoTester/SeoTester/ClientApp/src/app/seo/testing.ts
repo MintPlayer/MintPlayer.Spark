@@ -46,7 +46,7 @@ export class StubCodeSnippet {
   readonly language = input('');
   readonly wrap = input(false);
   readonly label = input('');
-  readonly copyLabel = input('');
+  readonly labels = input<unknown>(null);
 }
 
 export function provideSeoSpecServices() {

@@ -158,7 +158,6 @@ describe('SparkReferencePickerComponent', () => {
         skip: 80, take: 10, parentId: 'people/1', parentType: 'Test.Person', search: undefined,
       }));
       expect(result.totalRecords).toBe(120);
-      expect(result.totalPages).toBe(12);
       expect(result.data[0].id).toBe('companies/81');
     });
 

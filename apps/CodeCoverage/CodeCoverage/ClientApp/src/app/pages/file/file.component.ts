@@ -7,7 +7,7 @@ import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsBadgeComponent } from '@mintplayer/ng-bootstrap/badge';
-import { BsCodeSnippetComponent } from '@mintplayer/ng-bootstrap/code-snippet';
+import { BsCodeSnippetComponent, type CodeLineActivation } from '@mintplayer/ng-bootstrap/code-snippet';
 import type { CodeLineAnnotation } from '@mintplayer/web-components/code-snippet';
 import { canHighlight } from '@mintplayer/web-components/code-snippet';
 import { BrowseService, FileDetail } from '../../services/browse.service';
@@ -189,12 +189,12 @@ export default class FileComponent {
 
   // The anchors carry a real href (middle-click/new-tab work); a primary click
   // is cancelled here and routed through Angular so only the fragment changes.
-  onLineActivate(event: CustomEvent<{ line: number }>): void {
+  onLineActivate(event: CodeLineActivation): void {
     event.preventDefault();
     void this.router.navigate([], {
       relativeTo: this.route,
       queryParams: { path: this.path() },
-      fragment: `L${event.detail.line}`,
+      fragment: `L${event.line}`,
     });
   }
 

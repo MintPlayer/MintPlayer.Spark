@@ -28,7 +28,9 @@ internal static class SparkPrerenderRequestKey
     {
         if (body is null)
             return "";
-        var node = body as JsonNode ?? JsonSerializer.SerializeToNode(body, body.GetType(), BodyOptions);
+        // Parsed rather than SerializeToNode: the Web defaults make that JsonObject case-insensitive,
+        // so it rejects keys differing only in case ("b" and "B"), which JavaScript keeps apart.
+        var node = body as JsonNode ?? JsonNode.Parse(JsonSerializer.SerializeToUtf8Bytes(body, body.GetType(), BodyOptions));
         if (node is null)
             return "";
         var builder = new StringBuilder();

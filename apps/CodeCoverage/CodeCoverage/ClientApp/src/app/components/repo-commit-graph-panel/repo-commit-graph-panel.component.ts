@@ -437,7 +437,7 @@ export class RepoCommitGraphPanelComponent {
   /** The commit the next effect-driven restart opens at. */
   private pendingAt: string | null = null;
 
-  protected readonly rowKey = (row: GraphRowView | undefined, index: number) => row?.row.sha ?? `p-${index}`;
+  protected readonly rowKey = (row: unknown, index: number) => (row as GraphRowView | undefined)?.row.sha ?? `p-${index}`;
 
   constructor() {
     effect(() => {

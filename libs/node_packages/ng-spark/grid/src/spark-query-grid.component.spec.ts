@@ -215,7 +215,7 @@ describe('SparkQueryGridComponent', () => {
     it('sends no grid search to the value list when there is none', async () => {
       const { c, service } = await setup();
 
-      await (c as any).distinctsFn({ column: 'FirstName', search: '', signal: new AbortController().signal });
+      await (c as any).distinctsFn({ column: 'FirstName', search: '', filters: {}, params: undefined, signal: new AbortController().signal });
 
       expect(service.getDistinctValues.mock.calls.at(-1)![2].querySearch).toBeUndefined();
     });
@@ -840,7 +840,7 @@ describe('SparkQueryGridComponent', () => {
 
       // A stable function, not a signal: it reads the filters when CALLED, which is what removes the
       // reassign-and-abort race that a per-change identity introduced.
-      await c['distinctsFn']({ column: 'FirstName', search: '', signal: new AbortController().signal });
+      await c['distinctsFn']({ column: 'FirstName', search: '', filters: {}, params: undefined, signal: new AbortController().signal });
 
       // Its own filter is excluded: a panel must offer the values you could still pick, not only
       // the ones you already picked.
@@ -849,7 +849,7 @@ describe('SparkQueryGridComponent', () => {
 
     it('lists values under a deleted parent with parentDeleted: include, and only under a parent (#460)', async () => {
       const getDistinctValues = vi.fn().mockResolvedValue({ matching: [], remaining: [], hasMore: false });
-      const request = { column: 'FirstName', search: '', signal: new AbortController().signal };
+      const request = { column: 'FirstName', search: '', filters: {}, params: undefined, signal: new AbortController().signal };
 
       const under = await setup(
         { executeQuery: vi.fn().mockResolvedValue(filterPage), getDistinctValues },
@@ -1125,7 +1125,7 @@ describe('SparkQueryGridComponent', () => {
 
       const page = await c.fetchFn()!({ page: 3, perPage: 25, sortColumns: [] } as any);
 
-      expect(page).toEqual({ data: [], totalRecords: 0, totalPages: 1, perPage: 25, page: 3 });
+      expect(page).toEqual({ data: [], totalRecords: 0 });
       expect(c.errorMessage()).toBe('Timeout');
       expect(c.resultCount()).toBe(0);
       expect(emitted).toHaveBeenCalledWith(expect.objectContaining({ status: 500 }));
@@ -1139,7 +1139,7 @@ describe('SparkQueryGridComponent', () => {
       const page = await c.fetchFn()!({ page: 1, perPage: 10, sortColumns: [] } as any);
 
       expect(c.errorMessage()).toBeNull();
-      expect(page.totalPages).toBe(1);
+      expect(page.totalRecords).toBe(1);
       expect(page.data).toHaveLength(1);
     });
   });

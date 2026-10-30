@@ -1,4 +1,4 @@
-import { Component, input, model, output, Provider } from '@angular/core';
+import { Component, input, output, Provider } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute, convertToParamMap, Params } from '@angular/router';
 import { BehaviorSubject } from 'rxjs';
@@ -115,14 +115,15 @@ export function provideActivatedRouteStub(stub: ActivatedRouteStub): Provider {
 export class StubHierarchyChart {
   readonly data = input<unknown>();
   readonly layout = input<string>();
-  readonly rootId = model<string | undefined>();
+  readonly rootId = input<string | null>();
+  readonly rootidchange = output<string | null>();
   readonly maxDepth = input<number | 'auto' | undefined>();
   readonly colorMin = input<number>();
   readonly colorMax = input<number>();
   readonly inputLabel = input<string>();
   readonly valueUnitLabel = input<string>();
   readonly zoom = output<any>();
-  readonly nodeSelect = output<any>();
+  readonly nodeselect = output<any>();
 }
 
 @Component({ selector: 'bs-sparkline', template: '' })

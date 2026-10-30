@@ -221,7 +221,7 @@ describe('SparkShellComponent', () => {
       // No translations are loaded in the test, so SparkLanguageService.t() echoes the key: what
       // is pinned here is that every label and announcement goes through the theme.* keys.
       const modes = (toggle.componentInstance as BsThemeToggleComponent).modes();
-      expect(modes.map(m => [m.mode, m.label, m.announcement])).toEqual([
+      expect(modes!.map(m => [m.mode, m.label, m.announcement])).toEqual([
         ['auto', 'theme.switchToAuto', 'theme.auto'],
         ['light', 'theme.switchToLight', 'theme.light'],
         ['dark', 'theme.switchToDark', 'theme.dark'],

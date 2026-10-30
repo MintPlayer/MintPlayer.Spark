@@ -42,5 +42,5 @@
 </div>
 
 <ng-template #codeBlock let-code>
-  <bs-code-snippet [code]="code" [language]="code.startsWith('{') ? 'json' : 'bash'" [copyLabel]="'mcpUi.copy' | t" class="d-block mb-3" />
+  <bs-code-snippet [code]="code" [language]="code.startsWith('{') ? 'json' : 'bash'" [labels]="{ copy: ('mcpUi.copy' | t), copyText: ('mcpUi.copy' | t) }" class="d-block mb-3" />
 </ng-template>
