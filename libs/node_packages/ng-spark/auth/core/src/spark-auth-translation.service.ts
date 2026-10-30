@@ -29,7 +29,8 @@ export class SparkAuthTranslationService {
   t(key: string): string {
     const ts = this.translationsMap()[key];
     if (!ts) return key;
-    const lang = currentLanguage();
+    // The render's language during SSR (see activeLanguage in @mintplayer/ng-spark/models).
+    const lang = (globalThis as any).__sparkScopedLanguage?.() ?? currentLanguage();
     return ts[lang] ?? ts['en'] ?? Object.values(ts)[0] ?? key;
   }
 }

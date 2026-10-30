@@ -6,8 +6,8 @@ import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { BsCardBodyComponent, BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
 import {
-  BsDatatableColumnDirective, BsDatatableComponent, BsRowTemplateDirective, DatatableSettings,
-  type BsDatatableFetch, type BsDatatableRowEvent,
+  BsDatatableComponent, BsDatatableHeaderDirective, BsDatatableRowDirective,
+  type DatatableColumnDef, type DatatableFetch, type RowEventDetail,
 } from '@mintplayer/ng-bootstrap/datatable';
 import { BsFormComponent, BsFormControlDirective } from '@mintplayer/ng-bootstrap/form';
 import { BsSelectComponent, BsSelectOption } from '@mintplayer/ng-bootstrap/select';
@@ -86,7 +86,7 @@ const UNAVAILABLE_REASONS: Record<string, string> = {
   selector: 'app-repo-commit-graph-panel',
   imports: [
     FormsModule, BsCardComponent, BsCardHeaderComponent, BsCardBodyComponent, BsSelectComponent, BsSelectOption,
-    BsFormComponent, BsFormControlDirective, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective,
+    BsFormComponent, BsFormControlDirective, BsDatatableComponent, BsDatatableHeaderDirective, BsDatatableRowDirective,
     SparkTrendSparklineComponent,
   ],
   template: `
@@ -185,16 +185,13 @@ const UNAVAILABLE_REASONS: Record<string, string> = {
                  (keydown)="onKeydown($event)" (mouseover)="onHover($event)" (mouseleave)="hover.set(null)">
               <!-- virtualBuffer 3: mp-datatable re-renders and re-checks every row in the window on each range change (S9). -->
               <bs-datatable [fetch]="fetchFn()" [virtualScroll]="true" [itemSize]="rowHeight" [virtualBuffer]="3"
-                            [isResponsive]="true" [resizableColumns]="false" [rowKey]="rowKey"
-                            [(settings)]="settings" (rowClick)="onRowClick($event)">
-                <div *bsDatatableColumn="'graph'; sortable: false; label: 'Graph'"><span class="visually-hidden">Graph</span></div>
-                <div *bsDatatableColumn="'subject'; sortable: false">Message</div>
-                <div *bsDatatableColumn="'coverage'; sortable: false">Coverage</div>
-                <div *bsDatatableColumn="'author'; sortable: false">Author</div>
-                <div *bsDatatableColumn="'date'; sortable: false">Date</div>
-                <div *bsDatatableColumn="'sha'; sortable: false">Commit</div>
+                            [resizableColumns]="false" [rowKey]="rowKey"
+                            [columns]="columns" [perPage]="pageSize" [perPageOptions]="[pageSize]" (rowclick)="onRowClick($event)">
+                <ng-template bsDatatableHeader let-column="column">
+                  @if (column.name === 'graph') { <span class="visually-hidden">{{ column.label }}</span> } @else { {{ column.label }} }
+                </ng-template>
 
-                <ng-container *bsRowTemplate="let item">
+                <ng-template bsDatatableRow let-item="row">
                   @let v = $any(item);
                   @if (v) {
                     @let hl = highlight().get(v.index);
@@ -267,7 +264,7 @@ const UNAVAILABLE_REASONS: Record<string, string> = {
                     <td class="cg-graph" [style.width.px]="graphWidth()"></td>
                     <td class="text-muted">…</td><td></td><td></td><td></td><td></td>
                   }
-                </ng-container>
+                </ng-template>
               </bs-datatable>
             </div>
           }
@@ -358,7 +355,7 @@ export class RepoCommitGraphPanelComponent {
   readonly searchText = signal('');
   /** The debounced search the walk is filtered by. */
   readonly appliedSearch = signal('');
-  readonly fetchFn = signal<BsDatatableFetch<GraphRowView> | null>(null);
+  readonly fetchFn = signal<DatatableFetch<GraphRowView> | null>(null);
   readonly hover = signal<number | null>(null);
   readonly cursor = signal<number | null>(null);
   readonly failedAvatars = signal<ReadonlySet<string>>(new Set());
@@ -371,11 +368,15 @@ export class RepoCommitGraphPanelComponent {
   /** Bumped whenever rows land in the cache, so derived views recompute. */
   private readonly cacheVersion = signal(0);
 
-  settings = new DatatableSettings({
-    perPage: { values: [GRAPH_PAGE_SIZE], selected: GRAPH_PAGE_SIZE },
-    page: { values: [1], selected: 1 },
-    sortColumns: [],
-  });
+  readonly pageSize = GRAPH_PAGE_SIZE;
+  readonly columns: DatatableColumnDef[] = [
+    { name: 'graph', label: 'Graph', sortable: false },
+    { name: 'subject', label: 'Message', sortable: false },
+    { name: 'coverage', label: 'Coverage', sortable: false },
+    { name: 'author', label: 'Author', sortable: false },
+    { name: 'date', label: 'Date', sortable: false },
+    { name: 'sha', label: 'Commit', sortable: false },
+  ];
 
   readonly visibleLanes = computed(() => Math.min(this.pageLanes(), this.mobile() ? LANE_CAP_MOBILE : LANE_CAP));
   /** Room for the visible lanes plus the overflow marker. */
@@ -643,7 +644,7 @@ export class RepoCommitGraphPanelComponent {
     }
   }
 
-  private makeFetch(gen: number): BsDatatableFetch<GraphRowView> {
+  private makeFetch(gen: number): DatatableFetch<GraphRowView> {
     return async (req) => {
       const perPage = req.perPage || GRAPH_PAGE_SIZE;
       const from = (req.page - 1) * perPage;
@@ -667,7 +668,7 @@ export class RepoCommitGraphPanelComponent {
         if (view) data.push(view);
       }
       if (req.page === 1) queueMicrotask(() => this.flushScroll());
-      return { data, totalRecords: total, page: req.page, perPage, totalPages: Math.ceil(total / perPage) };
+      return { data, totalRecords: total };
     };
   }
 
@@ -725,8 +726,8 @@ export class RepoCommitGraphPanelComponent {
     }, SEARCH_DEBOUNCE_MS);
   }
 
-  onRowClick(event: BsDatatableRowEvent<GraphRowView>): void {
-    if (event.row) this.open(event.row);
+  onRowClick(event: RowEventDetail<unknown>): void {
+    if (event.row) this.open(event.row as GraphRowView);
   }
 
   /** The row's own button: the same as a row click, without the datatable's row click firing too. */

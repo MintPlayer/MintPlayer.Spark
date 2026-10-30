@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 import { BsTooltipDirective } from '@mintplayer/ng-bootstrap/tooltip';
 import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
-import { TranslatedString, currentLanguage, resolveTranslation } from '@mintplayer/ng-spark/models';
+import { TranslatedString, activeLanguage, resolveTranslation } from '@mintplayer/ng-spark/models';
 
 export type SparkAttributeDescriptionPosition = 'top' | 'bottom' | 'start' | 'end';
 
@@ -65,7 +65,7 @@ export class SparkAttributeDescriptionComponent {
   position = input<SparkAttributeDescriptionPosition>('top');
 
   /** Resolved for the current language; re-evaluates when the user switches language. */
-  text = computed(() => resolveTranslation(this.description(), currentLanguage()).trim());
+  text = computed(() => resolveTranslation(this.description(), activeLanguage()).trim());
 
   onClick(event: MouseEvent): void {
     event.preventDefault();

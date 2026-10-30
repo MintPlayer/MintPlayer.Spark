@@ -61,63 +61,46 @@
   <bs-datatable
       [fill]="fill()"
       [selectionMode]="selectionMode() === 'multiple' ? 'checkbox' : 'none'"
-      [(selection)]="selection"
+      [selectedIds]="selectedIds()"
+      (selectionchanged)="onSelectionChanged($event)"
+      [rowKey]="rowKey"
       [virtualScroll]="isVirtualScrolling()"
       [itemSize]="40"
-      [isResponsive]="isVirtualScrolling()"
-      [data]="data()"
+      [columns]="datatableColumns()"
+      [data]="data() ?? []"
       [fetch]="fetchFn()"
       [distincts]="distinctsFn"
       [labels]="datatableLabels()"
-      (filterChange)="onFilterChange($event)"
-      (rowClick)="onRowClick($event)"
-      [(settings)]="settings">
-    @for (col of allColumns(); track col.name) {
-      <!--
-        `canSort`/`canFilter` arrive already resolved by the server (query override → attribute →
-        true), so this only spells the polarity. `!== false` is needed for BOTH, for opposite
-        reasons: absent means capable on our wire, while the datatable's own `filterable` defaults
-        to false, unlike `sortable`.
-
-        ⚠️ `filterActive` and `filterSummary` are deliberately NOT bound. Any *bsDatatableColumn
-        input change recomputes the column set, which retires the live filter view — while the web
-        component's mount-once guard leaves the panel's nodes in place and never re-renders them.
-        Binding them to state our own panel mutates would freeze the panel the instant a value is
-        ticked, until it is closed and reopened. The cost is that a filtered column carries no
-        visual marker yet, which is worth far less than a panel that dies on first use. See #431 F7.
-      -->
-      <div *bsDatatableColumn="col.name; sortable: col.canSort !== false; filterable: col.canFilter !== false; label: (col.label | resolveTranslation) || col.name">
-        {{ (col.label | resolveTranslation) || col.name }}
+      (filterchange)="onFilterChange($event)"
+      (rowclick)="onRowClick($event)"
+      [(page)]="page"
+      [(perPage)]="perPage"
+      [(sortColumns)]="sortColumns"
+      [perPageOptions]="pageSizes">
+    <!-- The header of every column (datatableColumns()): the translated label and its description.
+         The ⋮ menu's column has no visible header. -->
+    <ng-template bsDatatableHeader let-column="column">
+      @if (columnByName().get(column.name); as col) {
+        {{ column.label }}
         <spark-attribute-description [description]="col.description" />
+      } @else {
+        <span class="visually-hidden">{{ column.label }}</span>
+      }
+    </ng-template>
 
-        @if (col.canFilter !== false) {
-          <ng-container *bsDatatableFilterPanel="let values; let ctx = ctx">
-            <spark-column-filter-panel
-              [column]="col"
-              [values]="values()"
-              [ctx]="ctx"
-              [filterLabel]="filterLabelFor(col)" />
-          </ng-container>
-        }
-      </div>
-    }
-    <!--
-      The per-row ⋮ menu's column: no header, never sorted or filtered.
+    <!-- Every filterable column is `filterMode: 'custom'`: Spark's own panel, fed by the datatable's
+         filter context (distinct values, search term, apply/clear). -->
+    <ng-template bsDatatableFilter let-column="column" let-ctx="ctx">
+      @if (columnByName().get(column.name); as col) {
+        <spark-column-filter-panel
+          [column]="col"
+          [values]="ctx.values"
+          [ctx]="ctx"
+          [filterLabel]="filterLabelFor(col)" />
+      }
+    </ng-template>
 
-      ⚠️ Only once the data columns exist. Those ship WITH the first page, so the rows reach the
-      datatable one render before the column templates do. The datatable sizes its columns ONCE,
-      from the first render that has both columns and rows, then switches to `table-layout: fixed`
-      and never measures again. If this column were already registered it would be the only one
-      measured; the data columns would share what it left over equally, and at phone width their
-      unclipped headers ran into each other. With no column at all the datatable waits.
-    -->
-    @if (rowActions().length && allColumns().length) {
-      <div *bsDatatableColumn="rowActionsColumn; sortable: false; filterable: false; resizable: false; label: 'common.actions' | t">
-        <span class="visually-hidden">{{ 'common.actions' | t }}</span>
-      </div>
-    }
-
-    <ng-container *bsRowTemplate="let item">
+    <ng-template bsDatatableRow let-item="row">
       @let row = $any(item);
       @for (col of allColumns(); track col.name; let first = $first) {
         <td>
@@ -181,7 +164,7 @@
           }
         </td>
       }
-    </ng-container>
+    </ng-template>
   </bs-datatable>
 } @else {
   <!-- The query could not be resolved. Rendering something keeps the host's layout intact and,

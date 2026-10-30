@@ -1,6 +1,8 @@
 # Spark server-side rendering — PRD and plan
 
-Status: **Decisions locked 2026-10-30** (grilling session; D7 delegated to Claude). Next: the spikes (§5), then M1–M7.
+Status: **Decisions locked 2026-10-30** (grilling session; D7 delegated to Claude). **In progress on `feat/spark-ssr`:**
+M1 code done and building, the ssr scaffolding is written, and SP1 is half done (the server bundle is not emitted yet).
+The resume point is §8 "Status".
 
 ## 1. Goal
 
@@ -163,4 +165,117 @@ Each spike is time-boxed and ends with a written result in §7 (numbers, file:li
 
 ## 7. Spike results
 
-_Empty until the spikes run._
+### SP1 — server bundle (in progress, 2026-10-30)
+
+- **Boot module loads as ESM.** `prerenderer.js` (SpaServices) imports the boot module with a dynamic `import()`, so an
+  `.mjs` default export works. It requires the function to carry `isServerRenderer = true`, or it falls back to the
+  `aspnet-prerendering` v1 path. `createSparkServerRenderer` sets the flag.
+- **Per-request isolation is NOT given by SpaServices.** NodeServices runs one long-lived Node HTTP server. It imports
+  the boot module once and serves concurrent invocations from it. Angular's per-render injector isolates DI, but any
+  module-level state is shared across concurrent renders. That includes ng-spark's `globalThis` `currentLanguage`
+  signal. Fix (implemented): an `AsyncLocalStorage` scope in `createSparkServerRenderer`, read through
+  `activeLanguage()` (§8).
+- **Server bundle: `ssr: true` + `prerender: false`.** With only `server` set, `@angular/build:application` prerenders
+  at build time and writes no server bundle. `ssr: true` writes `dist/ClientApp/server/main.server.mjs` with our
+  default export intact. It needs `@angular/ssr` at build time (I10).
+- **The browser shell is renamed `index.csr.html`** whenever SSR is on (`@angular/build/.../options.js:217-221`); there
+  is no option to keep `index.html`. `index.server.html` is for `AngularAppEngine`, which we do not use. M3/M6 therefore
+  set SpaServices' default page to `/index.csr.html`. SP6 must check the ngsw `index` and the static-file fallback
+  against the rename.
+- **A render works (harness `sp1-render.mjs`).** The harness calls the default export exactly as `prerenderer.js`
+  does: four concurrent renders of `/`, alternating `en`/`nl`, with no supplied responses. Results:
+  - the import takes 194 ms;
+  - `isServerRenderer` is true;
+  - a cold render takes 142–155 ms and a warm one about 63 ms;
+  - the HTML (86 KB) contains `ng-state` and the `ngh=` hydration markers.
+
+  This is the Node side only. TTFB through .NET comes with M3.
+- **Platform-server makes request URLs absolute** (`/spark/culture` → `http://localhost/spark/culture`). The request
+  key therefore uses the path and query only (`spark-server-request-key.ts`).
+- **One unhandled rejection killed the shared Node process.** `loadCulture` failed on a miss with nothing catching
+  it, and Node exits on an unhandled rejection. Under NodeServices that ends every concurrent and later render. Fixed
+  twice over:
+  - the language service and the program-units menu catch their own loads;
+  - `createSparkServerRenderer` installs a process `unhandledRejection` handler that logs
+    `[spark-ssr] unhandled rejection while rendering <path>`.
+- **What `/` requests on the server** (the misses, so this is what M3 must supply for the home page):
+  - `GET /spark/culture`
+  - `GET /spark/translations`, twice: ng-spark's language service and the auth package's translation service. These
+    share one supplied response.
+  - `GET /spark/program-units`
+  - `GET /spark/boards/home`
+  - `GET /spark/auth/me`
+- **`<html lang>` was never set**, neither in the browser nor on the server. `SparkLanguageService` now mirrors the
+  language into it on both platforms. On the server it takes the supplied language at once, even when `/culture` was
+  not supplied.
+- **NG02801** ("HttpClient is not configured to use fetch") is logged once. It is noise: on the server our
+  `HttpBackend` replaces the backend. Switching the browser to `withFetch()` would lose upload progress events, so it
+  is left as is.
+- **Still open:** a dev builder script for `AngularPrerendererBuilder` (watch).
+
+## 8. Implementation log
+
+### Decisions made while implementing (2026-10-30)
+
+| # | Decision | Evidence |
+|---|---|---|
+| I1 | **Request key** is `METHOD pathAndQuery canonicalJson(body)`, where an absent body is the empty string and object keys are sorted ordinally and recursively, with `undefined` members dropped. The .NET side (M3) must produce it byte for byte. | `libs/node_packages/ng-spark/ssr/src/spark-server-request-key.ts` |
+| I2 | **The server replaces `HttpBackend`, not an interceptor.** Angular orders interceptors as user interceptors, then the transfer-cache interceptor, then the backend. A supplied response must pass through the transfer-cache interceptor to land in `TransferState`, so it has to come from the backend. | `ssr/src/spark-server-backend.ts`, `provide-spark-server-rendering.ts` |
+| I3 | **A miss is an immediate `HttpErrorResponse` (status 0), never a hang**, because a pending request holds app stability and stalls the render until the timeout. It is logged as `[spark-ssr] miss: <key>`. Errors are not transfer-cached, so the browser refetches. | `spark-server-backend.ts` |
+| I4 | **The render URL is relative.** An absolute URL makes Angular check `allowedHosts`, and ASP.NET Core has already checked the host. | `create-spark-server-renderer.ts` |
+| I5 | **Language per render: `AsyncLocalStorage`.** `activeLanguage()` (ng-spark/models) reads `globalThis.__sparkScopedLanguage` before the global signal. It is used in attribute-description, account overview, identity-provider `text.ts` and the auth translation service. On the server, `SparkLanguageService` takes `SPARK_SERVER_LANGUAGE` and never writes the global. | `models/src/translated-string.ts`, `services/src/spark-language.service.ts` |
+| I6 | **The `spark-lang` cookie is the source of truth for the language** (not localStorage), because the server render can only see the cookie. localStorage is read once, as a migration for viewers who picked a language before the cookie existed. `setLanguage` writes only the cookie. | `spark-language.service.ts` |
+| I7 | **Non-HttpOnly cookie inventory.** These are needed or acceptable: `bs-theme-mode` (the preboot script sets `data-bs-theme`), `spark-timezone` (the server default applies when it is absent), `XSRF-TOKEN` and `spark-lang`. The auth cookie stays HttpOnly. The auth popup's localStorage flags, the service worker's sessionStorage flag and SeoTester (no SSR) do not affect rendering. | owner question, 2026-10-30 |
+| I8 | **The Node types are scoped to the ssr entry** with `/// <reference types="node" />`, not to the whole library tsconfig, so browser code cannot reach Node globals by accident. | `create-spark-server-renderer.ts:1` |
+| I10 | **`@angular/ssr` is a build-time devDependency (exact 22.2.2), approved by the owner on 2026-10-30.** `@angular/build:application` unconditionally injects `import { ɵsetAngularAppManifest } from '@angular/ssr'` and its re-exports into every server bundle, and no option turns this off. The import is bundled into `main.server.mjs`, so it is not a runtime dependency. Rendering still uses `renderApplication` from `@angular/platform-server`, and neither the Express server nor `AngularNodeAppEngine` is used. Build options: `ssr: true` (write the server bundle) and `prerender: false`, with no `outputMode` and no `ssr.entry`. | `node_modules/@angular/build/src/tools/esbuild/application-code-bundle.js:209-245`; build error "Could not resolve @angular/ssr" without it |
+| I11 | **One object travels from the backend to the frontend** (owner, 2026-10-30). .NET's `data["spark"] = {responses, language, timeZone}` becomes the renderer's `customDataParameter.spark`, then the `SPARK_SERVER_DATA` token. The backend, the language and the timezone all read from that object, and the browser receives the responses through Angular's TransferState. New server-to-client data extends this object; it never adds another key. | `create-spark-server-renderer.ts`, `spark-server-data.ts` |
+| I9 | **Client hydration** is `provideSparkHydration()`, which is `provideClientHydration(withEventReplay(), withHttpTransferCacheOptions({ includePostRequests: true }))` exported from `@mintplayer/ng-spark/services`. MintPlayer's `app.config.ts` adds it. | `services/src/provide-spark-hydration.ts` |
+
+### M1 — ng-bootstrap 22.29 migration (code done, build green, specs not yet run)
+
+- **Packages.** `@mintplayer/ng-bootstrap ^22.29.0`, `ui-core ^1.2.0`, `web-components ^3.2.0`, `ng-animations 22.1.1`,
+  `ng-click-outside ^22.2.1`, `ng-focus-on-load ^22.1.2`, `pagination ^2.5.1` and `@angular/platform-server 22.2.2`.
+  `lit` was removed. The npm ERESOLVE on the ng-animations peer was fixed by these bumps. The ng-spark peer ranges are
+  bumped to match.
+- **The datatable takes its columns as data, and its templates are slots.** This follows ng-bootstrap's decision
+  (`docs/prd/headless-catalog-437-plan.md:153-158`): one core compiles into four fronts, and the server needs the
+  columns. Spark uses `[columns]: DatatableColumnDef[]` (computed), with these slots:
+  - `bsDatatableHeader`: the label plus `spark-attribute-description`.
+  - `bsDatatableFilter`: every filterable column is `filterMode: 'custom'`, which renders `spark-column-filter-panel`
+    with `ctx.values`.
+  - `bsDatatableRow`: whole-row `<td>`s, chosen over the per-cell slot so that the first-column link and the ⋮ menu
+    keep their markup.
+
+  The ⋮ column is still appended only once the data columns exist (sizing).
+- **Grid state.** `settings: DatatableSettings` is replaced by `page`/`perPage` signals and a `sortColumns` model, with
+  `[perPageOptions]="SPARK_GRID_PAGE_SIZES"`. `initialGridSettings` returns a plain `SparkGridSettings`. Fetch responses
+  are `{data, totalRecords}`.
+- **Selection.** The datatable selects by string key (`[rowKey]` is the document id, one-way `[selectedIds]`).
+  `(selectionchanged)` maps the ids back to rows, falling back to the previous selection for ticked rows on other pages
+  (#467 D19 preserved).
+- **Events are lowercase**: `rowclick`, `filterchange`, `selectionchanged`. The datatable no longer has
+  `[isResponsive]`.
+- **Shell.** `*bsShellTopbar` and `*bsShellSidebar` (now structural), plus `[externalToggle]="true"`, which keeps
+  Spark's own navbar toggler. The event type is `BsShellStateChange` from `@mintplayer/ng-bootstrap/shell`.
+- **Also migrated:** `spark-reference-picker` (page, perPage and sortColumns signals, `datatableColumns`) and
+  CodeCoverage's `repo-commit-graph-panel` (static `columns`, header slot).
+- **Specs updated but NOT run yet** (batched to the end): grid, toolbar and picker specs. They read `columns()`,
+  `page()` and `perPage()`, and simulate deselect-all through `selectionchanged.emit`.
+- **Build errors fixed on the way:**
+  - `[data]` no longer takes `null`, so the grid passes `data() ?? []`.
+  - The tree-select `[provider]` needs `?? null`.
+  - An unused `ResolveTranslationPipe` was removed from the picker.
+  - The ssr entry needed Node types (I8).
+- **Not checked yet:** the CodeCoverage app build, and whether the datatable uses `fetch` over `[data]=[]` when both
+  are set. The grid used to pass `null`; verify this in SP2/the browser.
+
+### Status / resume point
+
+1. **SP1:** fix the server-bundle emission (see above), then run a render through the boot function.
+2. **Commit M1** together with the ssr scaffolding (nothing is committed after `1d122f72` yet).
+3. **Next:** SP2–SP7, then M2–M7 as in §6. The M3 .NET design is in §3 and the summary in memory
+   `project_spark_ssr.md`:
+   - an in-process sub-request dispatcher, using a new DI scope and `ExecutionContext.SuppressFlow` with `Task.Run`;
+   - a `SparkPrerenderable` endpoint metadata allow-list;
+   - `data["spark"] = {responses, language, timeZone}`.
+4. **Last:** run the specs and suites.

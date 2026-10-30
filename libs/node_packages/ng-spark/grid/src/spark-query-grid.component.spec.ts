@@ -6,7 +6,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
-import { BsDatatableComponent, DatatableSettings } from '@mintplayer/ng-bootstrap/datatable';
+import { BsDatatableComponent } from '@mintplayer/ng-bootstrap/datatable';
 import { By } from '@angular/platform-browser';
 import { SparkQueryGridComponent } from './spark-query-grid.component';
 import { SparkService, SparkLanguageService, SparkLiveService } from '@mintplayer/ng-spark/services';
@@ -416,7 +416,7 @@ describe('SparkQueryGridComponent', () => {
 
   describe('column labels', () => {
     it('labels each column by its translated header text, and passes the translated resize strings', async () => {
-      // Without bsDatatableColumnLabel the datatable named a column by its NAME: "Resize column
+      // Without a column label the datatable named a column by its NAME: "Resize column
       // Created" under a header reading "Added".
       const t = vi.spyOn(langStub, 't').mockImplementation((k: string) =>
         k === 'common.resizeColumn' ? 'Kolom {column} aanpassen' : k === 'common.fitColumn' ? 'Aanpassen aan inhoud' : k);
@@ -425,10 +425,10 @@ describe('SparkQueryGridComponent', () => {
           data: [{ id: 'r/1', values: [{ key: 'Created', value: '2026-10-07' }] }],
           columns: [{ name: 'Created', label: { en: 'Added' }, dataType: 'string', order: 1 }, { name: 'Plain', dataType: 'string', order: 2 }] as any,
         });
-        const columns = (fixture.debugElement.query(By.directive(BsDatatableComponent)).componentInstance as BsDatatableComponent<unknown>).columnDirectives();
-        expect(columns.map(c => [c.name(), c.label()])).toEqual([['Created', 'Added'], ['Plain', 'Plain']]);
+        const columns = (fixture.debugElement.query(By.directive(BsDatatableComponent)).componentInstance as BsDatatableComponent).columns();
+        expect(columns.map(c => [c.name, c.label])).toEqual([['Created', 'Added'], ['Plain', 'Plain']]);
 
-        const datatable = fixture.debugElement.query(By.directive(BsDatatableComponent)).componentInstance as BsDatatableComponent<unknown>;
+        const datatable = fixture.debugElement.query(By.directive(BsDatatableComponent)).componentInstance as BsDatatableComponent;
         expect(datatable.labels()!.resizeColumn!('Added')).toBe('Kolom Added aanpassen');
         expect(datatable.labels()!.fitColumn).toBe('Aanpassen aan inhoud');
       } finally {
@@ -743,11 +743,7 @@ describe('SparkQueryGridComponent', () => {
       const { c, fixture } = await setup({ executeQuery });
 
       const tableReload = vi.spyOn((c as any).datatable(), 'reload');
-      c.settings.set(new DatatableSettings({
-        perPage: { values: [10, 25, 50], selected: 10 },
-        page: { values: [1, 2, 3], selected: 3 },
-        sortColumns: [],
-      }));
+      c.page.set(3);
 
       c['onFilterChange']({
         mode: 'values',
@@ -758,7 +754,7 @@ describe('SparkQueryGridComponent', () => {
       await settle(fixture);
 
       // Page 1, because the old page number means nothing against a different result set.
-      expect(c.settings().page.selected).toBe(1);
+      expect(c.page()).toBe(1);
       // A FORCED reload, from page 1. The datatable dedupes reloads by (page, perPage, sort) — none
       // of which a filter changes — so without it the request is silently never made; and the
       // settings binding reaches the datatable only after the reload already fetched.
@@ -1303,10 +1299,10 @@ describe('SparkQueryGridComponent preset filters and add-on row actions', () => 
     expect(actions.map(a => a.name)).toEqual(['addon']);
 
     // The row-actions column: announced as "Actions", and never resizable.
-    const actionsColumn = (fixture.debugElement.query(By.directive(BsDatatableComponent)).componentInstance as BsDatatableComponent<unknown>).columnDirectives()
-      .find(col => col.name() === c.rowActionsColumn)!;
-    expect(actionsColumn.label()).toBe('common.actions');
-    expect(actionsColumn.resizable()).toBe(false);
+    const actionsColumn = (fixture.debugElement.query(By.directive(BsDatatableComponent)).componentInstance as BsDatatableComponent).columns()
+      .find(col => col.name === c.rowActionsColumn)!;
+    expect(actionsColumn.label).toBe('common.actions');
+    expect(actionsColumn.resizable).toBe(false);
     expect(actions[0].kind).toBe('addon');
     expect(actions[0].definition.label).toEqual({ en: 'addon.label' });
 
@@ -1370,7 +1366,7 @@ describe('SparkQueryGridComponent live', () => {
     fixture.detectChanges();
     await settle(fixture);
     const c = fixture.componentInstance;
-    const perPage = c.settings().perPage.selected;
+    const perPage = c.perPage();
     const fetch = (page = 1, sortColumns: any[] = []) => c.fetchFn()!({ page, perPage, sortColumns } as any);
     return { fixture, c, service, live, events, requests, perPage, fetch };
   }

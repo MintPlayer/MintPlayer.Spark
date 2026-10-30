@@ -3,7 +3,7 @@ import { provideRouter } from '@angular/router';
 import { provideHttpClient } from '@angular/common/http';
 import { provideAnimations } from '@angular/platform-browser/animations';
 import { provideSparkServiceWorker } from '@mintplayer/ng-spark/pwa';
-import { withSparkLanguage, withSparkTimezone } from '@mintplayer/ng-spark/services';
+import { provideSparkHydration, withSparkLanguage, withSparkTimezone } from '@mintplayer/ng-spark/services';
 import { provideSparkAuth, withSparkAuth } from '@mintplayer/ng-spark/auth';
 import { provideSparkClientOperations } from '@mintplayer/ng-spark/client-operations';
 import { provideSparkBoards } from '@mintplayer/ng-spark/boards';
@@ -29,5 +29,7 @@ export const appConfig: ApplicationConfig = {
     provideSparkAttributeRenderers(mintPlayerRenderers),
     provideVideoApis(...videoPlugins),
     provideZonelessChangeDetection(),
+    // Server rendering (docs/spark_ssr_PRD.md): hydrate instead of re-rendering, and reuse the server's responses.
+    provideSparkHydration(),
   ]
 };

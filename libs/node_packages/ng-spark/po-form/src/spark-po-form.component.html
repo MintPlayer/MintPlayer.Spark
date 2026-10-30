@@ -90,7 +90,7 @@
               variant="textbox"
               [showClear]="true"
               [placeholder]="'common.search' | t"
-              [provider]="getReferenceProvider(attr)"
+              [provider]="getReferenceProvider(attr) ?? null"
               [ngModel]="referenceTreeValues()[attr.name] || []"
               (ngModelChange)="onReferenceTreeChange(attr, $event)"
               [ngModelOptions]="{ standalone: true }">

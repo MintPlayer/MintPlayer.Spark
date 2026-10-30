@@ -164,10 +164,10 @@ describe('SparkReferencePickerComponent', () => {
 
     it('sends the search term to the server and resets to page 1', async () => {
       const { component, executeQueryByName } = await openWithQuery();
-      component.settings().page.selected = 4;
+      component.page.set(4);
 
       component.onSearchChange('  Company 117 ');
-      expect(component.settings().page.selected).toBe(1);
+      expect(component.page()).toBe(1);
 
       await component.fetchFn()!({ page: 1, perPage: 10, sortColumns: [] } as any);
       expect(executeQueryByName).toHaveBeenLastCalledWith('GetCompanies', expect.objectContaining({ skip: 0, take: 10, search: 'Company 117' }));

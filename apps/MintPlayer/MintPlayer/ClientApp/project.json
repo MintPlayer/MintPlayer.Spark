@@ -14,6 +14,9 @@
       "options": {
         "outputPath": "apps/MintPlayer/MintPlayer/ClientApp/dist/ClientApp",
         "browser": "apps/MintPlayer/MintPlayer/ClientApp/src/main.ts",
+        "server": "apps/MintPlayer/MintPlayer/ClientApp/src/main.server.ts",
+        "ssr": true,
+        "prerender": false,
         "tsConfig": "apps/MintPlayer/MintPlayer/ClientApp/tsconfig.app.json",
         "inlineStyleLanguage": "scss",
         "assets": [
