@@ -1,4 +1,4 @@
-import { booleanAttribute, ChangeDetectionStrategy, Component, DestroyRef, Injector, computed, effect, inject, input, model, output, runInInjectionContext, signal, untracked, viewChild, Type } from '@angular/core';
+import { booleanAttribute, ChangeDetectionStrategy, Component, DestroyRef, Injector, TransferState, computed, effect, inject, input, makeStateKey, model, output, runInInjectionContext, signal, untracked, viewChild, Type } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { toSignal } from '@angular/core/rxjs-interop';
@@ -6,7 +6,7 @@ import { NavigationEnd, Router, RouterModule } from '@angular/router';
 import { filter, map } from 'rxjs';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
-import { BsDatatableComponent, BsDatatableFilterDirective, BsDatatableHeaderDirective, BsDatatableRowDirective, type DatatableColumnDef, type DatatableDistincts, type DatatableFetch, type DatatableFetchRequest, type FilterChangeDetail, type RowEventDetail, type SelectionChangeEventDetail, type SortColumn } from '@mintplayer/ng-bootstrap/datatable';
+import { BsDatatableComponent, BsDatatableFilterDirective, BsDatatableHeaderDirective, BsDatatableRowDirective, type DatatableColumnDef, type DatatableDistincts, type DatatableFetch, type DatatableFetchRequest, type DatatableFilters, type RowEventDetail, type SelectionChangeEventDetail, type SortColumn } from '@mintplayer/ng-bootstrap/datatable';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { BsBadgeComponent } from '@mintplayer/ng-bootstrap/badge';
 // ⚠️ NOT @mintplayer/ng-bootstrap/dropdown. Its fesm (22.19.0) declares BsDropdownToggleDirective,
@@ -768,6 +768,42 @@ export class SparkQueryGridComponent {
   hasExternalData = computed(() => this.data() !== null);
 
   /**
+   * The datatable's `stateKey` (ng-bootstrap #448): set, a server render fetches the first page,
+   * renders it and hands it to the browser, which hydrates without fetching it again. Only for the
+   * grids whose first page the .NET supplier predicts (`SparkRoutesPrerenderContributor`): a live
+   * grid fetches over the socket, which opens in the browser only (docs/spark_ssr_PRD.md D9), and a
+   * virtual-scrolling one in blocks of its own size. Unique per grid on a page: the query and its parent.
+   */
+  protected readonly stateKey = computed(() => {
+    const query = this.query();
+    if (!query || this.hasExternalData() || this.isVirtualScrolling() || this.liveWanted(query)) return null;
+    return `spark-grid:${query.id}:${this.parentType()}:${this.parentId()}`;
+  });
+
+  /**
+   * What `toPage` records off page 1, handed from the server render to the client. A hydrating
+   * datatable seeds page 1 from its own transfer and never calls `fetch`, and its seed keeps only the
+   * rows and the total, so without this the client grid had no columns: rows without cells, no
+   * headers (2026-10-30, `/query/songs`). Drop it once ng-bootstrap #450 hands the seeded result back.
+   */
+  private readonly transferState = inject(TransferState);
+  private pageMetaKey() {
+    const stateKey = this.stateKey();
+    return stateKey ? makeStateKey<{ columns: QueryColumn[]; disabledActions: string[]; totalItems: number; ids: string[] }>(`${stateKey}:meta`) : null;
+  }
+  private restorePageMeta(): void {
+    const key = untracked(() => this.pageMetaKey());
+    const meta = key && this.transferState.get(key, null);
+    if (!key || !meta) return;
+    // Once: a later visit to the same query fetches, and must not be dressed in this render's page.
+    this.transferState.remove(key);
+    this.setFetchedColumns(meta.columns);
+    this.disabledActions.set(meta.disabledActions);
+    this.resultCount.set(meta.totalItems);
+    this.loadedIds.set(new Set(meta.ids));
+  }
+
+  /**
    * Whether an action can run right now: its selection rule is satisfied, and the client method it
    * requires (`requiresClient`) is registered and supported here. The server checks the rule again.
    */
@@ -1071,18 +1107,36 @@ export class SparkQueryGridComponent {
     return result;
   };
 
-  /**
-   * Translates one filter change into the wire shape and refetches.
-   *
-   * The event always arrives as the `'values'` shape because the panel only ever calls
-   * `ctx.apply(...)`; comparison mode is never declared. `inverse` is a flag on the event and two
-   * arrays on the wire — the translation is this method's whole job.
-   */
-  protected onFilterChange(detail: FilterChangeDetail): void {
-    if (detail.mode !== 'values') return;
+  /** The datatable's `filters` model as it last reported it, to tell which columns a change touched. */
+  private datatableFilters: DatatableFilters = {};
 
-    const values = detail.selected.map(v => v.value);
-    const next = this.filters().filter(f => f.name !== detail.column);
+  /**
+   * The datatable's `filters` model changed (ng-bootstrap 22.30, #448): translates each column it
+   * touched into the wire shape. The datatable itself goes back to page 1 and refetches, after this
+   * handler has run (it emits first and reloads in a microtask), so the fetch reads the new filters.
+   *
+   * Only the touched columns, because the model knows nothing of the host's preset (URL) filters,
+   * which live in `filters()` beside it. Every entry is the values shape: the panel only ever calls
+   * `ctx.apply(...)`, and comparison mode is never declared.
+   */
+  protected onFiltersChange(next: DatatableFilters): void {
+    const previous = this.datatableFilters;
+    this.datatableFilters = next;
+    for (const column of new Set([...Object.keys(previous), ...Object.keys(next)])) {
+      const filter = next[column];
+      if (JSON.stringify(filter) === JSON.stringify(previous[column])) continue;
+      this.setColumnFilter(column, filter?.values ?? [], filter?.inverse ?? false);
+    }
+    // A different result set (#467, D19): the selection survives paging, never a new filter.
+    this.selection.set([]);
+  }
+
+  /**
+   * One column's selection in the wire shape. `inverse` is a flag in the model and two arrays on the
+   * wire — the translation is this method's whole job.
+   */
+  private setColumnFilter(column: string, values: unknown[], inverse: boolean): void {
+    const next = this.filters().filter(f => f.name !== column);
 
     if (values.length > 0) {
       // ⚠️ `< none >` cannot be asked for directly. The server compares against the index term, and
@@ -1094,28 +1148,25 @@ export class SparkQueryGridComponent {
       // The complement is expressible, though: "none of the real values" catches absent and null
       // alike. So a selection containing the null entry is sent as an exclusion of everything NOT
       // selected, which is exactly the same set and needs no server change.
-      const complete = this.completeDistincts.get(detail.column);
+      const complete = this.completeDistincts.get(column);
       const selectsNone = values.some(v => v === null || v === undefined);
 
-      if (selectsNone && !detail.inverse && complete) {
+      if (selectsNone && !inverse && complete) {
         const unselected = complete.filter(v =>
           v !== null && v !== undefined && !values.some(s => s === v));
 
         // Everything is selected, so the filter narrows nothing — drop it rather than sending an
         // empty exclusion, which would read as "exclude nothing" only by accident.
         if (unselected.length > 0)
-          next.push({ name: detail.column, excludes: unselected });
+          next.push({ name: column, excludes: unselected });
       } else {
-        next.push(detail.inverse
-          ? { name: detail.column, excludes: values }
-          : { name: detail.column, includes: values });
+        next.push(inverse
+          ? { name: column, excludes: values }
+          : { name: column, includes: values });
       }
     }
 
     this.filters.set(next);
-    // A different result set (#467, D19): the selection survives paging, never a new filter.
-    this.selection.set([]);
-    this.onFilterChanged();
   }
 
   /**
@@ -1222,6 +1273,7 @@ export class SparkQueryGridComponent {
       ]);
 
       this.query.set(resolvedQuery);
+      this.restorePageMeta();
       this.allEntityTypes.set(entityTypes);
 
       const et = this.resolveEntityType(resolvedQuery, entityTypes);
@@ -1338,6 +1390,10 @@ export class SparkQueryGridComponent {
     this.disabledActions.set(r.disabledActions ?? []);
     // Paged: the page shown. Virtual scroll keeps every block it fetched reachable by scrolling.
     const ids = (r.items ?? []).map(item => item.id);
+    if (req.page === 1) {
+      const key = untracked(() => this.pageMetaKey());
+      if (key) this.transferState.set(key, { columns: r.columns ?? [], disabledActions: r.disabledActions ?? [], totalItems: r.totalItems, ids });
+    }
     this.loadedIds.set(this.isVirtualScrolling() ? new Set([...this.loadedIds(), ...ids]) : new Set(ids));
     return {
       data: r.items ?? [],

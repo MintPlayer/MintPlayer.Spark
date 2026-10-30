@@ -738,39 +738,46 @@ describe('SparkQueryGridComponent', () => {
       expect(c.allColumns().map((col: any) => col.canSort)).toEqual([undefined, false]);
     });
 
-    it('translates a values change into includes and refetches from page one', async () => {
+    it('translates a values change into includes, and leaves the refetch to the datatable (#448)', async () => {
       const executeQuery = vi.fn().mockResolvedValue(filterPage);
       const { c, fixture } = await setup({ executeQuery });
 
       const tableReload = vi.spyOn((c as any).datatable(), 'reload');
-      c.page.set(3);
+      c.selection.set([{ id: 'people/1' } as any]);
 
-      c['onFilterChange']({
-        mode: 'values',
-        column: 'FirstName',
-        selected: [{ value: 'Alice', label: 'Alice' }],
-        inverse: false,
-      } as any);
+      c['onFiltersChange']({ FirstName: { values: ['Alice'], inverse: false } });
       await settle(fixture);
 
-      // Page 1, because the old page number means nothing against a different result set.
-      expect(c.page()).toBe(1);
-      // A FORCED reload, from page 1. The datatable dedupes reloads by (page, perPage, sort) — none
-      // of which a filter changes — so without it the request is silently never made; and the
-      // settings binding reaches the datatable only after the reload already fetched.
-      expect(tableReload).toHaveBeenCalledWith({ resetPage: true });
+      await c.fetchFn()!({ page: 1, perPage: 10, sortColumns: [] } as any);
+      expect(executeQuery.mock.calls.at(-1)![1].columns).toEqual([{ name: 'FirstName', includes: ['Alice'] }]);
+      // ng-bootstrap 22.30 goes back to page 1 and refetches on its own filtersChange, after this handler ran;
+      // a reload from here would fetch the same page twice.
+      expect(tableReload).not.toHaveBeenCalled();
+      // A different result set (#467, D19).
+      expect(c.selection()).toEqual([]);
+    });
+
+    it('translates only the columns a change touched, so a filter set beside the model stays', async () => {
+      const executeQuery = vi.fn().mockResolvedValue(filterPage);
+      const { c, fixture } = await setup({ executeQuery });
+
+      // A preset (URL) filter lives in filters() only; the datatable's model knows nothing of it.
+      (c as any).filters.set([{ name: 'LastName', includes: ['Smith'] }]);
+      c['onFiltersChange']({ FirstName: { values: ['Alice'], inverse: false } });
+      await settle(fixture);
+
+      await c.fetchFn()!({ page: 1, perPage: 10, sortColumns: [] } as any);
+      expect(executeQuery.mock.calls.at(-1)![1].columns).toEqual([
+        { name: 'LastName', includes: ['Smith'] },
+        { name: 'FirstName', includes: ['Alice'] },
+      ]);
     });
 
     it('sends excludes rather than a flag when the selection is inversed', async () => {
       const executeQuery = vi.fn().mockResolvedValue(filterPage);
       const { c, fixture } = await setup({ executeQuery });
 
-      c['onFilterChange']({
-        mode: 'values',
-        column: 'FirstName',
-        selected: [{ value: 'Alice', label: 'Alice' }],
-        inverse: true,
-      } as any);
+      c['onFiltersChange']({ FirstName: { values: ['Alice'], inverse: true } });
       await settle(fixture);
 
       await c.fetchFn()!({ page: 1, perPage: 10, sortColumns: [] } as any);
@@ -783,8 +790,8 @@ describe('SparkQueryGridComponent', () => {
       const executeQuery = vi.fn().mockResolvedValue(filterPage);
       const { c, fixture } = await setup({ executeQuery });
 
-      c['onFilterChange']({ mode: 'values', column: 'FirstName', selected: [{ value: 'Alice', label: 'Alice' }], inverse: false } as any);
-      c['onFilterChange']({ mode: 'values', column: 'FirstName', selected: [], inverse: false } as any);
+      c['onFiltersChange']({ FirstName: { values: ['Alice'], inverse: false } });
+      c['onFiltersChange']({});
       await settle(fixture);
 
       await c.fetchFn()!({ page: 1, perPage: 10, sortColumns: [] } as any);
@@ -828,7 +835,7 @@ describe('SparkQueryGridComponent', () => {
         getDistinctValues,
       });
 
-      c['onFilterChange']({ mode: 'values', column: 'FirstName', selected: [{ value: 'Alice', label: 'Alice' }], inverse: false } as any);
+      c['onFiltersChange']({ FirstName: { values: ['Alice'], inverse: false } });
       await settle(fixture);
 
       // A stable function, not a signal: it reads the filters when CALLED, which is what removes the
@@ -872,7 +879,7 @@ describe('SparkQueryGridComponent', () => {
         const grid = s.c as any;
         await grid.distinctsFn({ column: 'FirstName', search, signal: new AbortController().signal });
         const apply = async (values: unknown[], inverse = false) => {
-          grid.onFilterChange({ mode: 'values', column: 'FirstName', selected: values.map(v => ({ value: v, label: String(v) })), inverse } as any);
+          grid.onFiltersChange(values.length ? { FirstName: { values, inverse } } : {});
           await settle(s.fixture);
           await s.c.fetchFn()!({ page: 1, perPage: 10, sortColumns: [] } as any);
           return executeQuery.mock.calls.at(-1)![1].columns;
@@ -911,13 +918,15 @@ describe('SparkQueryGridComponent', () => {
       });
     });
 
-    it('ignores a comparison-mode change, which the panel never declares', async () => {
-      const { c } = await setup({ executeQuery: vi.fn().mockResolvedValue(filterPage) });
-      const before = c.fetchFn();
+    it('a comparison entry, which the panel never declares, filters nothing', async () => {
+      const executeQuery = vi.fn().mockResolvedValue(filterPage);
+      const { c, fixture } = await setup({ executeQuery });
 
-      (c as any).onFilterChange({ mode: 'comparison', column: 'FirstName' });
+      c['onFiltersChange']({ FirstName: { values: [], inverse: false, operator: 'gt', operand: 3 } });
+      await settle(fixture);
 
-      expect(c.fetchFn()).toBe(before);
+      await c.fetchFn()!({ page: 1, perPage: 10, sortColumns: [] } as any);
+      expect(executeQuery.mock.calls.at(-1)![1].columns).toEqual([]);
     });
 
     it('lists no values before the query is known', async () => {
