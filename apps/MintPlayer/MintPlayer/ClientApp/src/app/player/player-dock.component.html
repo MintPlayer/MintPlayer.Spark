@@ -1,5 +1,5 @@
 @if (player.current(); as current) {
-  <bs-card class="d-block shadow player-dock" cdkDrag>
+  <bs-card class="shadow player-dock" cdkDrag>
     <bs-card-header cdkDragHandle class="player-dock-handle">Currently playing</bs-card-header>
     <video-player [width]="320" [height]="180" [(playerState)]="player.state" (playerStateChange)="onStateChange($event)" (progressChange)="player.progress($event.currentTime)" />
     <bs-card-body>
