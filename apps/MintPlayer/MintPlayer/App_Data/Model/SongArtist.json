@@ -1,5 +1,5 @@
 {
-  "$schema": "https://schemas.spark.mintplayer.com/v7/model.schema.json",
+  "$schema": "../../../../../schemas/model.schema.json",
   "persistentObject": {
     "id": "ff383433-42db-4b56-a365-9e2f6cf00bd2",
     "name": "SongArtist",

@@ -1,4 +1,5 @@
 {
+  "$schema": "../../../../schemas/security.schema.json",
   "_comment": [
     "Authorization's rights, shipped as a library layer (composition D4): the passkeys page, granted to",
     "signed-in users and only on the types this library ships (Passkeys, PasskeyRow). Every one is the",

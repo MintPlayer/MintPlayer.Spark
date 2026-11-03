@@ -1,5 +1,5 @@
 {
-  "$schema": "https://schemas.spark.mintplayer.com/v7/model.schema.json",
+  "$schema": "../../../../../schemas/model.schema.json",
   "persistentObject": {
     "id": "e60da440-152d-4b3b-a5f4-65c57af2e6bc",
     "name": "LyricsTiming",

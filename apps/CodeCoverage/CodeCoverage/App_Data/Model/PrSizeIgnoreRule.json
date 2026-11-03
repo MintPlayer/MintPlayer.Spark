@@ -1,5 +1,5 @@
 {
-  "$schema": "https://schemas.spark.mintplayer.com/v8/model.schema.json",
+  "$schema": "../../../../../schemas/model.schema.json",
   "persistentObject": {
     "id": "4fba0e9f-e2c9-473d-87ad-69819ef00916",
     "name": "PrSizeIgnoreRule",

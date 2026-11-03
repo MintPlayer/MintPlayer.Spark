@@ -1,5 +1,5 @@
 {
-  "$schema": "https://schemas.spark.mintplayer.com/v7/translations.schema.json",
+  "$schema": "../../../../schemas/translations.schema.json",
   "app": {
     "title": {
       "en": "MintPlayer",
