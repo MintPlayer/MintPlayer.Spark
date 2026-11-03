@@ -5,6 +5,9 @@
     "name": "MediumType",
     "clrType": "MintPlayer.Entities.MediumType",
     "breadcrumb": "{Name}",
+    "seo": {
+      "indexable": true
+    },
     "tabs": [],
     "groups": [],
     "attributes": [

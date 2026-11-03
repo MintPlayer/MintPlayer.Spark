@@ -5,6 +5,9 @@
     "name": "Tag",
     "clrType": "MintPlayer.Entities.Tag",
     "breadcrumb": "{Description}",
+    "seo": {
+      "indexable": true
+    },
     "tabs": [],
     "groups": [],
     "attributes": [

@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, contentChild, contentChildren, inject, input, signal, TemplateRef } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, contentChild, contentChildren, ElementRef, inject, input, signal, TemplateRef } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import { BsShellComponent, BsShellSidebarDirective, BsShellState, BsShellTopbarDirective, type BsShellStateChange } from '@mintplayer/ng-bootstrap/shell';
 import { BsNavbarTogglerComponent } from '@mintplayer/ng-bootstrap/navbar-toggler';
@@ -80,7 +80,8 @@ export class SparkShellComponent {
    * would leave 'auto' with no live `prefers-color-scheme` listener in Angular's view.
    */
   protected readonly theme = inject(BsThemeService);
-  private readonly lang = inject(SparkLanguageService);
+  protected readonly lang = inject(SparkLanguageService);
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
 
   /** The toggle's cycle with Spark's translated labels (`theme.*` keys); icons stay ng-bootstrap's. */
   protected readonly themeModes = computed<readonly BsThemeToggleMode[]>(() =>
@@ -151,5 +152,11 @@ export class SparkShellComponent {
 
   protected onShellToggle(detail: BsShellStateChange): void {
     this.isSidebarVisible.set(detail.open);
+  }
+
+  /** The skip link: focus the main area in place (a #fragment would resolve against <base href> and leave the page). */
+  protected skipToMain(event: Event): void {
+    event.preventDefault();
+    this.host.nativeElement.querySelector<HTMLElement>('#spark-main')?.focus();
   }
 }

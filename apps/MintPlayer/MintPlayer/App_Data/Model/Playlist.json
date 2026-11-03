@@ -5,6 +5,10 @@
     "name": "Playlist",
     "clrType": "MintPlayer.Entities.Playlist",
     "breadcrumb": "{Name}",
+    "seo": {
+      "indexable": true,
+      "indexableWhen": "IsPublic"
+    },
     "tabs": [],
     "groups": [],
     "attributes": [

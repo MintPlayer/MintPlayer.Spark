@@ -33,7 +33,7 @@
     </bs-priority-nav>
   </div>
 
-  <h2 class="mb-4 flex-shrink-0" [class.px-4]="isVirtualScrolling()">
+  <h1 class="h2 mb-4 flex-shrink-0" [class.px-4]="isVirtualScrolling()">
     {{ (query()?.label | resolveTranslation) || query()?.name || ('common.loading' | t) }}
     @if (isLive()) {
       <bs-badge [type]="colors.success" class="ms-2 align-middle spark-live-badge">LIVE</bs-badge>
@@ -41,7 +41,7 @@
     @if (deletedMode() === 'only') {
       <bs-badge [type]="colors.secondary" class="ms-2 align-middle spark-deleted-badge">{{ 'softDelete.deleted' | t }}</bs-badge>
     }
-  </h2>
+  </h1>
 
   @if (errorMessage(); as err) {
     <!-- The route could not be resolved to a query at all. A failure INSIDE the grid renders in

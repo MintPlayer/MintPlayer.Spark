@@ -10,8 +10,9 @@ import {
 } from '@mintplayer/ng-spark/auth/models';
 
 import { inject } from '@angular/core';
-import { Router, type CanActivateFn } from '@angular/router';
+import { Router, type CanActivateFn, type ResolveFn } from '@angular/router';
 import { sparkAuthGuard } from '@mintplayer/ng-spark/auth/guards';
+import { SparkLanguageService } from '@mintplayer/ng-spark/services';
 
 type Loader = () => Promise<any>;
 
@@ -20,6 +21,7 @@ interface Child {
   loadComponent?: Loader;
   canActivate?: CanActivateFn[];
   children?: [];
+  title?: ResolveFn<string>;
 }
 
 /**
@@ -52,10 +54,18 @@ function entryPath(entry: SparkAuthRouteEntry | undefined, defaultPath: string):
   return typeof entry === 'string' ? entry : entry.path;
 }
 
-/** An explicitly supplied component wins over the library's lazy import. */
-function child(entry: SparkAuthRouteEntry | undefined, path: string, defaultLoader: Loader): Child {
+/**
+ * An explicitly supplied component wins over the library's lazy import. `title` is the page's heading key and its
+ * English fallback: the document title (through the app's `TitleStrategy`), so the sign-in pages do not all share the
+ * site's title.
+ */
+function child(entry: SparkAuthRouteEntry | undefined, path: string, defaultLoader: Loader, title?: [key: string, fallback: string]): Child {
   const component = typeof entry === 'object' && entry.component ? entry.component : undefined;
-  return { path, loadComponent: component ? () => Promise.resolve(component) : defaultLoader };
+  return {
+    path,
+    loadComponent: component ? () => Promise.resolve(component) : defaultLoader,
+    ...(title ? { title: () => inject(SparkLanguageService).t(title[0], title[1]) } : {}),
+  };
 }
 
 /**
@@ -153,13 +163,13 @@ export function withLocalLogin(
     },
     children: [
       child(entries?.login, login,
-        () => import('@mintplayer/ng-spark/auth/login').then(m => m.SparkLoginComponent)),
+        () => import('@mintplayer/ng-spark/auth/login').then(m => m.SparkLoginComponent), ['auth.login', 'Log in']),
       child(entries?.twoFactor, twoFactor,
-        () => import('@mintplayer/ng-spark/auth/two-factor').then(m => m.SparkTwoFactorComponent)),
+        () => import('@mintplayer/ng-spark/auth/two-factor').then(m => m.SparkTwoFactorComponent), ['auth.twoFactorTitle', 'Two-factor authentication']),
       child(entries?.forgotPassword, forgotPassword,
-        () => import('@mintplayer/ng-spark/auth/forgot-password').then(m => m.SparkForgotPasswordComponent)),
+        () => import('@mintplayer/ng-spark/auth/forgot-password').then(m => m.SparkForgotPasswordComponent), ['auth.forgotPasswordTitle', 'Forgot password']),
       child(entries?.resetPassword, resetPassword,
-        () => import('@mintplayer/ng-spark/auth/reset-password').then(m => m.SparkResetPasswordComponent)),
+        () => import('@mintplayer/ng-spark/auth/reset-password').then(m => m.SparkResetPasswordComponent), ['auth.resetPassword', 'Reset password']),
     ],
   };
 }
@@ -179,7 +189,7 @@ export function withRegistration(entry?: SparkAuthRouteEntry): SparkAuthRoutesFe
     paths: { register: '/' + register },
     children: [
       child(entry, register,
-        () => import('@mintplayer/ng-spark/auth/register').then(m => m.SparkRegisterComponent)),
+        () => import('@mintplayer/ng-spark/auth/register').then(m => m.SparkRegisterComponent), ['auth.register', 'Register']),
     ],
   };
 }
@@ -206,7 +216,7 @@ export function withExternalLogin(
     providers,
     children: [
       child(options?.signIn, signIn,
-        () => import('@mintplayer/ng-spark/auth/sign-in').then(m => m.SparkSignInComponent)),
+        () => import('@mintplayer/ng-spark/auth/sign-in').then(m => m.SparkSignInComponent), ['auth.login', 'Log in']),
     ],
   };
 }

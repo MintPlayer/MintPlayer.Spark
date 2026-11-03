@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Microsoft.AspNetCore.ResponseCompression;
 using MintPlayer;
 using MintPlayer.AspNetCore.SpaServices.Extensions;
 using MintPlayer.Services;
@@ -11,6 +12,7 @@ using MintPlayer.Spark.Extensions;
 using MintPlayer.Spark.History;
 using MintPlayer.Spark.MailManager;
 using MintPlayer.Spark.Messaging;
+using MintPlayer.Spark.SitemapXml;
 using MintPlayer.Spark.SoftDelete;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -53,6 +55,9 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     // docs/spark_ssr_PRD.md: every page is server-rendered with its data. Dates on a first visit render in
     // Brussels time (D10). /home is the "home" board, which names its path in boards.json (D15).
     spark.AddPrerendering(prerendering => prerendering.DefaultTimeZone = "Europe/Brussels");
+    // SeoTester crawl.sitemap: /sitemap.xml lists every public song, artist, person, medium type, tag and public
+    // playlist (D17). robots.txt (ClientApp/public) names it.
+    spark.AddSitemap();
 });
 
 builder.Services.AddScoped<MintPlayerAccess>();
@@ -70,6 +75,17 @@ builder.Services.AddSpaStaticFilesImproved(configuration =>
     configuration.RootPath = "ClientApp/dist/ClientApp/browser";
 });
 
+// SeoTester (performance.compression, security.hsts): Brotli or gzip for text, and a year of HSTS. Traefik terminates TLS,
+// and Spark's forwarded headers make the request HTTPS here, so both apply to every public response.
+builder.Services.AddResponseCompression(options =>
+{
+    options.EnableForHttps = true;
+    options.Providers.Add<BrotliCompressionProvider>();
+    options.Providers.Add<GzipCompressionProvider>();
+    options.MimeTypes = ResponseCompressionDefaults.MimeTypes.Concat(["image/svg+xml", "application/manifest+json"]);
+});
+builder.Services.AddHsts(options => options.MaxAge = TimeSpan.FromDays(365));
+
 if (builder.SynchronizeSparkModelsIfRequested(args))
     return;
 
@@ -81,10 +97,37 @@ if (builder.VerifySparkSecurityIfRequested(args))
 
 var app = builder.Build();
 
+if (!app.Environment.IsDevelopment())
+    app.UseHsts();
+app.Use((context, next) =>
+{
+    // SeoTester security.nosniff and security.permissions-policy. The policy denies only what the site never uses: the
+    // media players need autoplay, fullscreen and encrypted-media, and passkeys need publickey-credentials-*.
+    context.Response.OnStarting(() =>
+    {
+        var headers = context.Response.Headers;
+        headers.XContentTypeOptions = "nosniff";
+        headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=(), usb=()";
+        return Task.CompletedTask;
+    });
+    return next(context);
+});
+app.UseResponseCompression();
+
 if (builder.Configuration.GetValue("Spark:HttpsRedirection", true))
     app.UseHttpsRedirection();
 app.UseStaticFiles();
-app.UseSpaStaticFilesImproved();
+app.UseSpaStaticFiles(new StaticFileOptions
+{
+    // Angular's hashed bundles (main-QOAEFUKX.js, styles-CCMUWBJD.css, chunk-*.js) never change under their name, so
+    // browsers may keep them for a year (SeoTester performance.cache-control). index.html is not hashed and keeps
+    // SpaServices' no-cache.
+    OnPrepareResponse = context =>
+    {
+        if (hashedAsset().IsMatch(context.File.Name))
+            context.Context.Response.Headers.CacheControl = "public, max-age=31536000, immutable";
+    },
+});
 
 app.UseRouting();
 app.UseSpark();
@@ -122,4 +165,8 @@ partial class Program
 {
     [GeneratedRegex(@"Local\:\s+(?<openbrowser>https?\:\/\/(.+))")]
     private static partial Regex openBrowserRegex();
+
+    // The esbuild output hash: eight base-32 capitals before the extension.
+    [GeneratedRegex(@"-[A-Z0-9]{8}\.(js|css|woff2?|ttf|svg|png|jpg|webp)$")]
+    private static partial Regex hashedAsset();
 }

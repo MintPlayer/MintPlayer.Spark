@@ -4,6 +4,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { ApplicationRef } from '@angular/core';
 import { BootstrapContext } from '@angular/platform-browser';
 import { renderApplication } from '@angular/platform-server';
+import { SPARK_SERVER_RESPONSE, SparkServerResponse } from '@mintplayer/ng-spark/services';
 import { SPARK_SERVER_DATA, SparkServerData } from './spark-server-data';
 
 /** The application's bootstrap, as `main.server.ts` exports it. */
@@ -54,8 +55,9 @@ process.on('unhandledRejection', reason => {
  * rendered into the template the middleware captured (`originalHtml`), at the request's path, with the
  * responses `SparkPrerenderingService` supplied (`data.spark`).
  *
- * The status code is not returned here: the .NET side already set it on the response in
- * `OnSupplyData`, from the page's own read (PRD D4), and SpaServices keeps it.
+ * The status of a page's reads is not returned here: the .NET side already set it on the response in
+ * `OnSupplyData` (PRD D4), and SpaServices keeps it. Only a status the page decided itself
+ * ({@link SPARK_SERVER_RESPONSE}, e.g. the not-found route's 404) is returned, and SpaServices applies it.
  */
 export function createSparkServerRenderer(bootstrap: SparkServerBootstrap) {
   const render = (
@@ -68,18 +70,21 @@ export function createSparkServerRenderer(bootstrap: SparkServerBootstrap) {
     overrideTimeoutMilliseconds?: number,
   ): void => {
     const timeout = overrideTimeoutMilliseconds || DEFAULT_TIMEOUT_MILLISECONDS;
+    // One per render: what the page itself says about its response (a 404 for a URL no route matches).
+    const response: SparkServerResponse = {};
     const rendering = renderPath.run(requestPathAndQuery, () => languageScope.run(customDataParameter.spark?.language ?? 'en', () => renderApplication(bootstrap, {
       document: customDataParameter.originalHtml,
       // Relative on purpose: an absolute URL makes Angular check it against `allowedHosts`, and the
       // host has already been checked by ASP.NET Core (AllowedHosts) before the request got here.
       url: requestPathAndQuery,
-      platformProviders: customDataParameter.spark
-        ? [{ provide: SPARK_SERVER_DATA, useValue: customDataParameter.spark }]
-        : [],
+      platformProviders: [
+        { provide: SPARK_SERVER_RESPONSE, useValue: response },
+        ...(customDataParameter.spark ? [{ provide: SPARK_SERVER_DATA, useValue: customDataParameter.spark }] : []),
+      ],
     })));
 
     withTimeout(rendering, timeout, requestPathAndQuery).then(
-      html => callback(null, { html }),
+      html => callback(null, response.status ? { html, statusCode: response.status } : { html }),
       error => callback(error instanceof Error ? (error.stack ?? error.message) : String(error), null),
     );
   };

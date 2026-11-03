@@ -18,7 +18,7 @@
 <bs-offcanvas position="end" [isVisible]="player.queueOpen()" (isVisibleChange)="player.queueOpen.set($event)" (backdropClick)="player.queueOpen.set(false)">
   <div *bsOffcanvasContent>
     <bs-offcanvas-header>
-      <h5 class="offcanvas-title me-auto mb-0">Queue</h5>
+      <h2 class="h5 offcanvas-title me-auto mb-0">Queue</h2>
       <bs-close bsOffcanvasClose />
     </bs-offcanvas-header>
     <bs-offcanvas-body>

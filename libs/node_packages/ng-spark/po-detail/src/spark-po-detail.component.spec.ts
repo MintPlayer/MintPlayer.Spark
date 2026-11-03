@@ -585,7 +585,7 @@ describe('SparkPoDetailComponent', () => {
     // A refused action used to replace the whole page with the alert (seen in SeoTester, M11).
     expect(c.errorMessage()).toBeNull();
     const page = harness.routeNativeElement as HTMLElement;
-    expect(page.querySelector('h2')).not.toBeNull();
+    expect(page.querySelector('h1')).not.toBeNull();
     expect(page.querySelector('.spark-action-error')!.textContent).toContain('Boom');
   });
 
@@ -1018,7 +1018,7 @@ describe('SparkPoDetailComponent', () => {
       expect(service.get).toHaveBeenCalledWith('person', 'people/1');
       expect(root.querySelector('dl')).not.toBeNull();
       expect(root.querySelector('.spark-actionbar')).toBeNull();
-      expect(root.querySelector('h2')).toBeNull();
+      expect(root.querySelector('h1')).toBeNull();
       expect(root.querySelector('spark-query-card')).toBeNull();
     });
 

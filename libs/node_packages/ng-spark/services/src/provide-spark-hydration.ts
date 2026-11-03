@@ -16,6 +16,17 @@ export const SPARK_SERVER_LANGUAGE = new InjectionToken<string>('SPARK_SERVER_LA
 export const SPARK_SERVER_ORIGIN = new InjectionToken<string>('SPARK_SERVER_ORIGIN');
 
 /**
+ * The server render's own answer about the page, read back by `createSparkServerRenderer` once the page is stable.
+ * `status` is a status the page decided itself, such as the 404 of a URL no route matches; it replaces the one the
+ * .NET side set from the page's reads. Provided by `@mintplayer/ng-spark/ssr` on the server only.
+ */
+export interface SparkServerResponse {
+  status?: number;
+}
+
+export const SPARK_SERVER_RESPONSE = new InjectionToken<SparkServerResponse>('SPARK_SERVER_RESPONSE');
+
+/**
  * Hydrates a server-rendered page instead of rendering it again, and lets the browser reuse every
  * response the server render was answered with (TransferState), so none is fetched twice.
  *

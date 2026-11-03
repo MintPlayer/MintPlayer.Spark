@@ -10,6 +10,12 @@ export interface SparkRouteConfig {
    * cosmetic: the id alone still opens the page, and a stale or wrong slug is corrected in place.
    */
   slugs?: boolean;
+  /**
+   * Ends the routes with a catch-all page that a server render answers with a 404, instead of a 200 for any URL
+   * (a soft 404). Only for an app that lists nothing after `sparkRoutes()`: the catch-all shadows every later route.
+   * `true` for Spark's own page, or a component of the app's.
+   */
+  notFound?: boolean | Route['loadComponent'];
 }
 
 export function sparkRoutes(config?: SparkRouteConfig): Routes {
@@ -39,6 +45,12 @@ export function sparkRoutes(config?: SparkRouteConfig): Routes {
     {
       path: 'po/:type',
       loadComponent: config?.queryList ?? (() => import('@mintplayer/ng-spark/query-list').then(m => m.SparkQueryListComponent))
-    }
+    },
+    ...(config?.notFound ? [{
+      path: '**',
+      loadComponent: typeof config.notFound === 'function'
+        ? config.notFound
+        : () => import('./spark-not-found.component').then(m => m.SparkNotFoundComponent),
+    }] : []),
   ];
 }

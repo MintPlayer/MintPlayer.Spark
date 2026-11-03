@@ -55,12 +55,12 @@
         }
       </bs-priority-nav>
     </div>
-    <h2>
+    <h1 class="h2">
       {{ currentItem.breadcrumb || currentItem.name }}
       @if (isDeletedView()) {
         <bs-badge [type]="colors.secondary" class="align-middle ms-2 spark-deleted-badge">{{ 'softDelete.deleted' | t }}</bs-badge>
       }
-    </h2>
+    </h1>
     }
 
     @if (detailLayout(); as layout) {
@@ -138,7 +138,8 @@
                   <thead>
                     <tr>
                       @if (leadingRenderer) {
-                        <th class="spark-leading-cell"></th>
+                        <!-- A <td>: the column has no heading, and an empty <th> is an unnamed header to assistive technology. -->
+                        <td class="spark-leading-cell"></td>
                       }
                       @for (col of (attr | asDetailColumns:asDetailTypes():rendererRegistry); track col.name) {
                         <th>{{ (col.label | resolveTranslation) || col.name }}<spark-attribute-description [description]="col.description" /></th>
@@ -210,7 +211,9 @@
                   -
                 }
               } @else if (attr.dataType === 'boolean') {
+                <!-- Named for assistive technology: the <dt> beside it is not a <label>. -->
                 <input type="checkbox"
+                  [attr.aria-label]="(attr.label | resolveTranslation) || attr.name"
                   [checked]="(attr.name | attributeValue:item():entityType():lookupReferenceOptions():allEntityTypes()) === true"
                   [indeterminate]="(attr.name | attributeValue:item():entityType():lookupReferenceOptions():allEntityTypes()) == null"
                   disabled

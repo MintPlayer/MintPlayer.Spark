@@ -69,6 +69,29 @@ bs-navbar-toggler {
   --bs-secondary-color: var(--spark-shell-topbar-color, var(--bs-body-color));
 }
 
+// The skip link: off screen until it has keyboard focus, then above the topbar's top-left corner.
+.spark-skip-link {
+  position: absolute;
+  left: 0.5rem;
+  top: 0.5rem;
+  z-index: 1100;
+  padding: 0.5rem 1rem;
+  background: var(--bs-body-bg);
+  color: var(--bs-link-color);
+  border: var(--bs-border-width) solid var(--bs-border-color);
+  border-radius: var(--bs-border-radius);
+  transform: translateY(-200%);
+
+  &:focus {
+    transform: none;
+  }
+}
+
+main:focus {
+  // Focused by the skip link only; the ring would frame the whole page.
+  outline: none;
+}
+
 main {
   // `main` is both the scrollport and the thing carrying the page padding. Anything sticky inside
   // it is therefore sized to the CONTENT box while the scrollport is wider, so content scrolls past

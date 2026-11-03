@@ -1,3 +1,6 @@
+<!-- The first focusable element: keyboard and screen-reader users skip the topbar and the menu. A click handler, not a
+     plain #fragment link, because <base href="/"> would resolve "#spark-main" to the home page. -->
+<a class="spark-skip-link" href="#spark-main" (click)="skipToMain($event)">{{ lang.t('shell.skipToContent', 'Skip to main content') }}</a>
 <bs-shell [state]="shellState()" [breakpoint]="breakpoint()" [dismissOnNavigate]="true" [externalToggle]="true"
           (statechange)="onShellToggle($event)">
   <div *bsShellTopbar class="spark-topbar w-100 d-flex align-items-center">
@@ -41,7 +44,7 @@
 
   <!-- The padding lives in the stylesheet as `--spark-main-padding`, not as a `p-4` utility, so the
        sticky action bar can read it and bleed back out to the scrollport edges. See _actionbar.scss. -->
-  <main>
+  <main id="spark-main" tabindex="-1">
     @if (mainHeaderTpl(); as tpl) {
       <ng-container *ngTemplateOutlet="tpl" />
     }
