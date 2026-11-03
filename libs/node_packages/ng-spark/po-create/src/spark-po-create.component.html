@@ -1,5 +1,4 @@
-<bs-container>
-<div class="container">
+<bs-grid>
   @if (entityType(); as et) {
     <h2 class="mb-4">{{ 'common.create' | t }} {{ (et.label | resolveTranslation) || et.name }}</h2>
 
@@ -28,5 +27,4 @@
       <bs-spinner />
     </div>
   }
-</div>
-</bs-container>
+</bs-grid>

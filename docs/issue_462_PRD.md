@@ -281,7 +281,9 @@ part) and D12 are Claude's recommendations, with reasons recorded; the owner may
 https://github.com/MintPlayer/mintplayer-ng-bootstrap/pull/421#issuecomment-5916913690; fixes in
 `d075383b`; published 22.20.0 and web-components 2.17.0, run 36827354045, "Published: 16, failed: 0").
 The deviations were **accepted by the owner**, each argued in that repo's `docs/prd/dark-mode.md`:
-- **Pre-boot script path:** `@mintplayer/web-components/theming/bs-theme-preboot.js`. The owner kept
+- **Pre-boot script path:** `@mintplayer/web-components/theming/bs-theme-preboot.js` (*SUPERSEDED
+  2026-11-03: web-components 3.4.0 no longer ships it; the apps copy it from `@mintplayer/ui-core/theming/`,
+  which is where `node_modules` has it after mintplayer-ng-bootstrap#456*). The owner kept
   that path ("Good") over a second copy under ng-bootstrap, because one copy next to the shared
   implementation avoids drift.
 - **Default mode** via `<meta name="bs-theme-default-mode">`. `provideBsTheme` takes only `cookieDomain`.

@@ -1,5 +1,4 @@
-<bs-container>
-<div class="container">
+<bs-grid>
   @if (errorMessage(); as err) {
     <bs-alert [type]="colors.danger" class="mb-3">
       {{ err }}
@@ -322,5 +321,4 @@
       <bs-spinner />
     </div>
   }
-</div>
-</bs-container>
+</bs-grid>

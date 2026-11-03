@@ -5,7 +5,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
-import { BsContainerComponent } from '@mintplayer/ng-bootstrap/container';
+import { BsGridComponent } from '@mintplayer/ng-bootstrap/grid';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { SparkSeoService, SparkService } from '@mintplayer/ng-spark/services';
 import { SparkPoFormComponent } from '@mintplayer/ng-spark/po-form';
@@ -30,7 +30,7 @@ import {
 
 @Component({
   selector: 'spark-po-create',
-  imports: [CommonModule, BsAlertComponent, BsContainerComponent, BsSpinnerComponent, SparkPoFormComponent, ResolveTranslationPipe, TranslateKeyPipe],
+  imports: [CommonModule, BsAlertComponent, BsGridComponent, BsSpinnerComponent, SparkPoFormComponent, ResolveTranslationPipe, TranslateKeyPipe],
   templateUrl: './spark-po-create.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })

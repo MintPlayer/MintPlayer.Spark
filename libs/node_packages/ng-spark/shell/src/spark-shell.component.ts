@@ -3,6 +3,14 @@ import { NgTemplateOutlet } from '@angular/common';
 import { BsShellComponent, BsShellSidebarDirective, BsShellState, BsShellTopbarDirective, type BsShellStateChange } from '@mintplayer/ng-bootstrap/shell';
 import { BsNavbarTogglerComponent } from '@mintplayer/ng-bootstrap/navbar-toggler';
 import { BS_THEME_DEFAULT_MODES, BsThemeService, BsThemeToggleComponent, BsThemeToggleMode } from '@mintplayer/ng-bootstrap/theming';
+import { useBootstrap } from '@mintplayer/ng-bootstrap/machine';
+import { bootstrapAlertPage } from '@mintplayer/ui-core/bootstrap/alert';
+import { bootstrapDropdownPage } from '@mintplayer/ui-core/bootstrap/dropdown';
+import { bootstrapFormsPage } from '@mintplayer/ui-core/bootstrap/forms';
+import { bootstrapModalPage } from '@mintplayer/ui-core/bootstrap/modal';
+import { bootstrapNavPage } from '@mintplayer/ui-core/bootstrap/nav';
+import { bootstrapOffcanvasPage } from '@mintplayer/ui-core/bootstrap/offcanvas';
+import { bootstrapTablesPage } from '@mintplayer/ui-core/bootstrap/tables';
 import { SparkLanguageService } from '@mintplayer/ng-spark/services';
 import type { Breakpoint } from '@mintplayer/ng-bootstrap';
 import { SparkProgramUnitsComponent } from './spark-program-units.component';
@@ -82,6 +90,19 @@ export class SparkShellComponent {
   protected readonly theme = inject(BsThemeService);
   protected readonly lang = inject(SparkLanguageService);
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+
+  constructor() {
+    // ng-bootstrap 22.32 (#452) scopes each Bootstrap part to elements stamped with data-mps, and some
+    // sub-elements of its own components are never stamped: .form-label, .form-text, .invalid-feedback,
+    // .input-group-text, .modal-title, .offcanvas-title, .alert-link, .dropdown-item-text, table row
+    // variants, and the shell's raw .nav-links (mintplayer-ng-bootstrap#458). Until that is fixed, the
+    // shell installs the unscoped page variants. These parts were all in the global stylesheet before
+    // 22.32, so nothing grows. Remove this when #458 ships.
+    useBootstrap(
+      bootstrapAlertPage, bootstrapDropdownPage, bootstrapFormsPage, bootstrapModalPage,
+      bootstrapNavPage, bootstrapOffcanvasPage, bootstrapTablesPage,
+    );
+  }
 
   /** The toggle's cycle with Spark's translated labels (`theme.*` keys); icons stay ng-bootstrap's. */
   protected readonly themeModes = computed<readonly BsThemeToggleMode[]>(() =>

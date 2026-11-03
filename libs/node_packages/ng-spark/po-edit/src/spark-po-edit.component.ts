@@ -6,7 +6,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
-import { BsContainerComponent } from '@mintplayer/ng-bootstrap/container';
+import { BsGridComponent } from '@mintplayer/ng-bootstrap/grid';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { SPARK_CONFIG } from '@mintplayer/ng-spark';
 import { SparkService, SparkLanguageService, SparkLiveService, SparkSeoService, canonicalJson } from '@mintplayer/ng-spark/services';
@@ -47,7 +47,7 @@ interface PendingConflict {
 
 @Component({
   selector: 'spark-po-edit',
-  imports: [CommonModule, BsAlertComponent, BsContainerComponent, BsSpinnerComponent, SparkPoFormComponent, SparkPoConflictDialogComponent, ResolveTranslationPipe, TranslateKeyPipe],
+  imports: [CommonModule, BsAlertComponent, BsGridComponent, BsSpinnerComponent, SparkPoFormComponent, SparkPoConflictDialogComponent, ResolveTranslationPipe, TranslateKeyPipe],
   templateUrl: './spark-po-edit.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })

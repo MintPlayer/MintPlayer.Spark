@@ -1,5 +1,4 @@
-<bs-container>
-<div class="container">
+<bs-grid>
   @for (error of generalErrors(); track error.errorMessage) {
     <bs-alert [type]="colors.danger" class="mb-3">
       {{ error.errorMessage | resolveTranslation }}
@@ -55,5 +54,4 @@
       <bs-spinner />
     </div>
   }
-</div>
-</bs-container>
+</bs-grid>
