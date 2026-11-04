@@ -50,7 +50,8 @@ Issues #238 and #560. **One PR**, branch `feat/issue238-search`.
 - [x] Labels + disambiguation + `ResolveAsync` (D3), natural id order.
 - [x] `spark.AddSearch(...)`, options (`Fuzzy`, caps), in-endpoint rate limiter, engine circuit breaker (D6).
 - [x] Endpoints `/spark/search`, `/spark/search/suggest`, `/spark/search/resolve` (generator classes; results `SparkPrerenderable`).
-- [ ] Prerender contributor for `/search`.
+- [x] Prerender contributor for `/search` (`SearchPrerenderContributor`: on `SearchPagePath` with `?q=`, supplies
+      `GET /spark/search?q=` with the trimmed term escaped as `encodeURIComponent`; the page sends the same URL).
 
 ## M3 — RavenDB provider + generator
 
@@ -77,19 +78,22 @@ Issues #238 and #560. **One PR**, branch `feat/issue238-search`.
 
 ## M6 — ng-spark `search` entry point
 
-- [ ] `withSearch()`, `sparkSearchRoutes()`, `SparkSearchPageComponent`, `<spark-search-box>`.
-- [ ] `withOpenSearchDescription({ title })` (`<link rel="search">`, `requires` withSearch).
+- [x] `withSearch({ pagePath, singleHit })`, `sparkSearchRoutes()`, `SparkSearchPageComponent` (grouped by type,
+      `noindex`), `<spark-site-search>` on `bs-typeahead` (the name `<spark-search-box>` is the grid's filter box),
+      `SparkSearchService`; `search.*` translations in core `translations.json`.
+- [x] `withOpenSearchDescription({ title, href })` (`<link rel="search">` written by an environment initializer,
+      reused when hydration kept the server's; `requires` withSearch). Spec `search/src/spark-search.spec.ts`.
 
 ## M7 — mintplayer.com
 
 - [x] `search` blocks on Artist, Person, Song (Person searches `FirstName`/`LastName`: `FullName` is computed);
       `Indexes/Subjects_Search.cs` deleted (nothing used it); `spark.AddSearch()` in `Program.cs`.
-- [ ] `Program.cs`: `AddSearch(s => s.UseOpenSearch(...))`, `AddOpenSearchDescription(...)`; `app.config.ts`
-      (`withOpenSearchDescription` in `provideSpark`) + routes.
+- [x] `Program.cs`: `AddSearch(s => s.UseOpenSearch(...))`, `AddOpenSearchDescription(...)`; `app.config.ts`
+      (`withOpenSearchDescription` in `provideSpark`) + `sparkSearchRoutes()`; `<spark-site-search>` in the top bar.
 - [x] `apps/MintPlayer/opensearch/Dockerfile`, compose service + network + volume, deploy workflow builds/pushes
       the image; security plugin disabled, internal network only (D13). Deploy/backend-network tool tests updated;
       app Dockerfile + both path filters list the search libraries. `UseOpenSearch` when `Search:OpenSearch:Uri` is set.
-- [ ] Point `mintplayer_website_PRD.md:99` and plan step 8 here.
+- [x] Point `mintplayer_website_PRD.md:99` and plan step 8 here.
 
 ## M8 — Tests (run once, at the end)
 

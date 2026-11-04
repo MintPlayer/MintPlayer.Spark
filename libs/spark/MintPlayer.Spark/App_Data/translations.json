@@ -187,6 +187,12 @@
     "rateLimited":   { "en": "Too many requests: try again in a minute.", "fr": "Trop de requêtes : réessayez dans une minute.", "nl": "Te veel verzoeken: probeer het over een minuut opnieuw." },
     "unavailable":   { "en": "This page could not be loaded. Try again later.", "fr": "Cette page n'a pas pu être chargée. Réessayez plus tard.", "nl": "Deze pagina kon niet geladen worden. Probeer het later opnieuw." }
   },
+  "search": {
+    "resultsFor":  { "en": "Results for", "fr": "Résultats pour", "nl": "Resultaten voor" },
+    "noResults":   { "en": "Nothing found.", "fr": "Aucun résultat.", "nl": "Niets gevonden." },
+    "rateLimited": { "en": "Too many searches: try again in a minute.", "fr": "Trop de recherches : réessayez dans une minute.", "nl": "Te veel zoekopdrachten: probeer het over een minuut opnieuw." },
+    "failed":      { "en": "The search could not be completed. Try again later.", "fr": "La recherche n'a pas pu aboutir. Réessayez plus tard.", "nl": "De zoekopdracht kon niet worden uitgevoerd. Probeer het later opnieuw." }
+  },
   "spark": {
     "tryAgainIn": { "en": "Try again in {0}.", "fr": "Réessayez dans {0}.", "nl": "Probeer opnieuw over {0}." },
     "wait": {

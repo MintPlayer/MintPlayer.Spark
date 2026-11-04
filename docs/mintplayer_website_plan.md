@@ -68,7 +68,8 @@ Batch the deploys. Each item is a step on the same branch and PR.
 6. Mail: the `mintplayer.com` sender domain on the relay, DKIM, and SPF (S4). **Done 2026-10-23** as `mail.mintplayer.com` on the shared `mail-relay` (key `key OK`, SPF, DKIM and `_dmarc.mail` published at Foxxl and read back from `ns10.foxxl.net`); the owner's test mail was delivered to Outlook (to junk). The sender then moved to the apex, `noreply@mintplayer.com`, with its own DKIM key, SPF `ip4:188.245.190.60 -all` and `_dmarc` `p=reject` (docs/mintplayer_mail_plan.md).
 7. i18n: en, nl and fr from the legacy JSON into `translations.json`, plus the language selector.
 8. **S5** spike. Then bot and server pages with OG and JSON-LD, `sitemap.xml`, `robots.txt` and the OpenSearch
-   descriptor, share buttons, and the 301s (`/amp/song/{id}` and any changed shapes).
+   descriptor, share buttons, and the 301s (`/amp/song/{id}` and any changed shapes). *(OpenSearch descriptor and
+   search: done in #238, `docs/spark_search_plan.md` M5–M7.)*
 9. GDPR privacy and terms (server pages), and the blog.
 10. Tests:
     - a `MintPlayer.Tests` project (migration, actions, endpoints) plus an entry in `test.yml`;

@@ -4,6 +4,7 @@ import {
   withLocalLogin, withPasskeys, withRegistration,
 } from '@mintplayer/ng-spark/auth/routes';
 import { sparkRoutes } from '@mintplayer/ng-spark/routes';
+import { sparkSearchRoutes } from '@mintplayer/ng-spark/search';
 import { ShellComponent } from './shell/shell.component';
 
 export const routes: Routes = [
@@ -25,6 +26,8 @@ export const routes: Routes = [
         withAccount(),
       ),
       { path: 'home', loadComponent: () => import('./pages/home/home.component') },
+      // /search?q=: the results page, server-rendered (MintPlayer.Spark.Search's prerender contributor).
+      ...sparkSearchRoutes(),
       // Last: sparkRoutes() has parameterised first segments that would shadow anything after them.
       // Slugs, as the legacy URLs had: /po/song/Songs%2F23/a-sky-full-of-stars.
       // notFound: a URL nothing matches renders a 404 page, answered with status 404 (not a soft 404).

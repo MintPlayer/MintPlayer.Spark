@@ -9,6 +9,7 @@ import { withAuth, withSparkAuth } from '@mintplayer/ng-spark/auth';
 import { withClientOperations } from '@mintplayer/ng-spark/client-operations';
 import { withBoards } from '@mintplayer/ng-spark/boards';
 import { withAttributeRenderers } from '@mintplayer/ng-spark/renderers';
+import { withOpenSearchDescription } from '@mintplayer/ng-spark/search';
 import { provideVideoApis } from '@mintplayer/ng-video-player';
 import { mintPlayerRenderers } from './renderers/renderers';
 import { videoPlugins } from './player/video-apis';
@@ -33,6 +34,8 @@ export const appConfig: ApplicationConfig = {
       // Server rendering (docs/spark_ssr_PRD.md): hydrate instead of re-rendering, and reuse the server's responses.
       withHydration(),
       withSeo(mintPlayerSeo),
+      // <link rel="search"> to Program.cs' AddOpenSearchDescription: browsers offer mintplayer.com as a search engine.
+      withOpenSearchDescription({ title: 'MintPlayer' }),
     ),
     provideVideoApis(...videoPlugins),
     provideZonelessChangeDetection(),

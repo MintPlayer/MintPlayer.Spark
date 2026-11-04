@@ -13,11 +13,12 @@
 //   @mintplayer/ng-spark/retry-action-modal (SparkRetryActionModalComponent)
 //   @mintplayer/ng-spark/icon               (SparkIconComponent)
 //   @mintplayer/ng-spark/shell              (SparkShellComponent + slots, SparkProgramUnitsComponent, SparkLanguageSelectorComponent)
-//   @mintplayer/ng-spark/panels             (SPARK_DETAIL_PANELS, SPARK_DETAIL_ACTIONS, SPARK_DETAIL_LAYOUTS, SPARK_QUERY_LIST_ACTIONS + provide* helpers, contexts)
-//   @mintplayer/ng-spark/dashboards         (withDashboards,sparkDashboardRenderers: tile layout, spark-meter, spark-stat, spark-dashboard-table)
-//   @mintplayer/ng-spark/soft-delete        (withSoftDelete,Deleted toggle, Restore/Purge, SparkSoftDeleteService)
-//   @mintplayer/ng-spark/history            (withHistory,<spark-po-history>, SparkHistoryService)
-//   @mintplayer/ng-spark/contributions      (withContributions,sparkContributionRenderers: attribution row + lineDiff, revert)
+//   @mintplayer/ng-spark/panels             (SPARK_DETAIL_PANELS, SPARK_DETAIL_ACTIONS, SPARK_DETAIL_LAYOUTS, SPARK_QUERY_LIST_ACTIONS + with* features, contexts)
+//   @mintplayer/ng-spark/dashboards         (withDashboards, sparkDashboardRenderers: tile layout, spark-meter, spark-stat, spark-dashboard-table)
+//   @mintplayer/ng-spark/soft-delete        (withSoftDelete, Deleted toggle, Restore/Purge, SparkSoftDeleteService)
+//   @mintplayer/ng-spark/history            (withHistory, <spark-po-history>, SparkHistoryService)
+//   @mintplayer/ng-spark/contributions      (withContributions, sparkContributionRenderers: attribution row + lineDiff, revert)
+//   @mintplayer/ng-spark/search             (withSearch, withOpenSearchDescription, sparkSearchRoutes, <spark-site-search>, SparkSearchService)
 
 export type { SparkConfig } from './lib/spark-config';
 export { SPARK_CONFIG, defaultSparkConfig } from './lib/spark-config';

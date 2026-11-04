@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using MintPlayer.Spark.Abstractions.Builder;
+using MintPlayer.Spark.Abstractions.Prerendering;
 using MintPlayer.Spark.Abstractions.Search;
 
 namespace MintPlayer.Spark.Search;
@@ -35,6 +36,7 @@ public static class SparkSearchExtensions
         builder.Services.AddScoped<ISparkSearchProvider, SearchProviderSelector>();
         builder.Services.AddScoped<SearchReadPath>();
         builder.Services.AddScoped<ISparkSearch, SparkSearchService>();
+        builder.Services.TryAddEnumerable(ServiceDescriptor.Scoped<ISparkPrerenderContributor, SearchPrerenderContributor>());
 
         builder.Registry.AddEndpoints(endpoints => endpoints.MapSparkSearchEndpoints());
         return builder;
