@@ -101,6 +101,15 @@ public class SearchIndexGeneratorTests
     }
 
     [Fact]
+    public void Search_fields_add_to_the_label_attributes_and_never_replace_them()
+    {
+        // Resolve finds a label's object through this text: without Name, "Queen" could never resolve.
+        var index = Index(Run(models: [Model("Artist", """{ "enabled": true, "label": "{Name}", "fields": ["Country"] }""")]));
+
+        index.Should().Contain("(d.Name ?? \"\") + \" \" + (d.Country ?? \"\")");
+    }
+
+    [Fact]
     public void A_soft_deletable_type_maps_its_flag()
     {
         var index = Index(Run(models: MusicModels()));

@@ -17,6 +17,12 @@ spark.AddSearch(search => search.UseOpenSearch(o => o.Uri = new Uri("http://sear
 - The engine only proposes candidates. Every hit is re-read through Spark as the caller, so rights and row
   security apply as on the list page.
 
+- Document ids are stored lower-cased in the engine, so a hard delete (stored casing) hits the row the sync copied
+  from the index (lower-cased).
+
 Run the engine on an internal network only: Spark talks to it without credentials.
+
+The tests (`MintPlayer.Spark.Tests/Search/OpenSearchEngineTests`) run against a real engine and skip unless
+`SPARK_OPENSEARCH_URI` names one, e.g. `opensearchproject/opensearch:3.9.0` with `DISABLE_SECURITY_PLUGIN=true`.
 
 Design: `docs/spark_search_PRD.md` D6–D8, D13.

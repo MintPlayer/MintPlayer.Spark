@@ -18,8 +18,8 @@ namespace MintPlayer.Spark.SourceGenerators.Generators;
 /// MintPlayer.Spark.Search, and the index lives in the application like every other RavenDB index.
 /// </summary>
 /// <remarks>
-/// The searched text is the type's <c>search.fields</c>, else the placeholders of its <c>search.label</c>, else of its
-/// <c>breadcrumb</c>. A field is used when it is a readable public property of the CLR type holding a string or a
+/// The searched text is the placeholders of the type's <c>search.label</c> (else of its <c>breadcrumb</c>), then its
+/// <c>search.fields</c>. A field is used when it is a readable public property of the CLR type holding a string or a
 /// collection of strings; anything else (a reference id, a number) is left out, because its text is not what a visitor
 /// types. Every identifier in the emitted source comes from a resolved symbol, never from the JSON text (R2-C5).
 /// </remarks>
@@ -105,15 +105,16 @@ public class SearchIndexGenerator : IncrementalGenerator
         if (compilation.GetTypeByMetadataName(clrType) is not { } type)
             return null;
 
+        // The label's attributes always: a label lookup (resolve) finds its object through this text. Then search.fields.
         IEnumerable<string> names;
-        if (search["fields"] is SparkJsonArray fields)
-            names = fields.Items.OfType<SparkJsonString>().Select(s => s.Value);
-        else if (search["label"] is SparkJsonString { Value: { Length: > 0 } label })
+        if (search["label"] is SparkJsonString { Value: { Length: > 0 } label })
             names = Placeholders(label);
         else if (po["breadcrumb"] is SparkJsonString { Value: { Length: > 0 } breadcrumb })
             names = Placeholders(breadcrumb);
         else
             names = Array.Empty<string>();
+        if (search["fields"] is SparkJsonArray fields)
+            names = names.Concat(fields.Items.OfType<SparkJsonString>().Select(s => s.Value));
 
         var textFields = new List<SearchFieldInfo>();
         foreach (var fieldName in names.Distinct(StringComparer.Ordinal))

@@ -106,7 +106,10 @@ Issues #238 and #560. **One PR**, branch `feat/issue238-search`.
 
 ## M9 — Docs
 
-- [ ] READMEs for the three packages (security contract for providers), guide page, #238 description.
+- [x] READMEs for the three packages (security contract for providers in the Search README), guide page
+      (`docs/guide-site-search.md`, linked from the README guide table and from `guide-search.md`'s fuzzy section),
+      ng-spark README `/search` row. Writing them found the `search.fields` generator bug (PRD §8, D5).
+- [ ] #238 description: drafted, posted with the PR (outward-facing, owner confirms).
 
 ## M10 — PR + deploy
 

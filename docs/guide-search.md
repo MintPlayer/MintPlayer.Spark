@@ -169,6 +169,9 @@ with `Method 'Fuzzy' is not supported`. It is therefore an index-definition deci
 rather than a query feature. It is also mutually exclusive with the wildcard wrapping above, because wildcards
 count as literal edits and silently consume the edit-distance budget.
 
+This is about a query list's search. The site-wide search box does tolerate typos, through its own Lucene index:
+see [Site Search](guide-site-search.md).
+
 ### No relevance ranking
 
 Results are ordered by the query's sort columns, never by match quality.
