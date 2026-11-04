@@ -291,8 +291,18 @@ jobs:
       env:
         NUGET_AUTH_TOKEN: '%NUGET_AUTH_TOKEN%'
 
+    # Trusted publishing: the job's GitHub OIDC token (id-token: write) is exchanged for a short-lived
+    # nuget.org API key. The policy lives on nuget.org (owner MintPlayer, workflow dotnet-build-master.yml,
+    # packages MintPlayer.Spark*, MintPlayer.Dotnet.SocketExtensions, MintPlayer.Versioning.MSBuild);
+    # a package outside those patterns is refused. `user` is the nuget.org profile that owns the policy.
+    - name: NuGet login (trusted publishing)
+      id: nuget-login
+      uses: NuGet/login@v1
+      with:
+        user: Pieterjan
+
     - name: PushNuget
-      run: dotnet nuget push 'nupkgs/*.nupkg' --source https://api.nuget.org/v3/index.json --api-key ${{ secrets.PUBLISH_TO_NUGET_ORG }} --skip-duplicate
+      run: dotnet nuget push 'nupkgs/*.nupkg' --source https://api.nuget.org/v3/index.json --api-key ${{ steps.nuget-login.outputs.NUGET_API_KEY }} --skip-duplicate
 
     - name: PushGithub
       run: dotnet nuget push 'nupkgs/*.nupkg' --no-symbols --skip-duplicate
