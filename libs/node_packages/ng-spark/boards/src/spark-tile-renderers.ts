@@ -1,4 +1,5 @@
-import { InjectionToken, Provider, Type } from '@angular/core';
+import { InjectionToken, Type } from '@angular/core';
+import { sparkFeature, SparkFeature, SparkFeatureOrder } from '@mintplayer/ng-spark';
 
 /**
  * A component that draws one kind of tile. It declares `tile = input.required<SparkBoardTile>()` and
@@ -13,13 +14,13 @@ export interface SparkTileRendererRegistration {
 /** Multi-provider: tile renderers by kind. The last registration of a kind wins. */
 export const SPARK_TILE_RENDERERS = new InjectionToken<SparkTileRendererRegistration[]>('SparkTileRenderers');
 
-/** Registers tile renderers (multi — every call adds; a later kind replaces an earlier one). */
-export function provideSparkTileRenderers(renderers: Record<string, Type<unknown>>): Provider[] {
-  return Object.entries(renderers).map(([kind, component]) => ({
+/** Tile renderers, for `provideSpark(...)` (every listing adds; a later kind replaces an earlier one). */
+export function withTileRenderers(renderers: Record<string, Type<unknown>>): SparkFeature {
+  return sparkFeature('tileRenderers', SparkFeatureOrder.registrations, Object.entries(renderers).map(([kind, component]) => ({
     provide: SPARK_TILE_RENDERERS,
     useValue: { kind, component } satisfies SparkTileRendererRegistration,
     multi: true,
-  }));
+  })), { multi: true });
 }
 
 /** The renderer per kind, last registration winning. */

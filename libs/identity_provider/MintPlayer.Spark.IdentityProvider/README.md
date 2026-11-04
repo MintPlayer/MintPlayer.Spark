@@ -22,7 +22,7 @@ user type. On the SPA side:
 ```ts
 sparkAuthRoutes(/* … */),
 withIdentityProvider(withConnectedApplications(), withDeveloperRoutes(), withManagementRoutes()),
-// and provideSparkClientOperations() for the show-once secret dialog
+// and withClientOperations() for the show-once secret dialog
 ```
 
 ## AI agents: `ForMcp()`

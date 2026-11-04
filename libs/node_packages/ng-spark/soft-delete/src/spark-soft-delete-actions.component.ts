@@ -14,7 +14,7 @@ import { SparkSoftDeleteService } from './spark-soft-delete.service';
  * deleted) and the caller holds `Restore/T` / `Purge/T`. The server re-checks both — the row must be
  * deleted and the row gate must pass — so a refusal here is the 404/403 it answers, surfaced inline.
  *
- * Registered by {@link provideSparkSoftDelete} as a `SPARK_DETAIL_ACTIONS` entry.
+ * Registered by {@link withSoftDelete} as a `SPARK_DETAIL_ACTIONS` entry.
  */
 @Component({
   selector: 'spark-soft-delete-actions',

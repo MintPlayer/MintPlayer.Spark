@@ -55,7 +55,7 @@ export const SPARK_SW_SCHEDULE = new InjectionToken<SparkServiceWorkerSchedule>(
 const RELOADED_FOR_KEY = 'spark-sw-reloaded-for';
 
 /**
- * The update policy of `provideSparkServiceWorker()` (#464, Q1b).
+ * The update policy of `withServiceWorker()` (#464, Q1b).
  *
  * - `VERSION_READY`: the **next** router navigation becomes a full page load of its target, so the
  *   user lands on the page they asked for, in the new version, without losing anything on the page
@@ -98,7 +98,7 @@ export class SparkServiceWorkerUpdates {
   private reloadWhenVisible = false;
   private lastCheck = 0;
 
-  /** Starts the policy. Idempotent; called by the app initializer `provideSparkServiceWorker()` adds. */
+  /** Starts the policy. Idempotent; called by the app initializer `withServiceWorker()` adds. */
   start(): void {
     if (this.started) return;
     this.started = true;

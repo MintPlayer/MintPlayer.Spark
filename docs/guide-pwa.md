@@ -49,7 +49,7 @@ does not exist`), and forced through, Nx's `angular.json` shim rewrites **every*
    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
    ```
    plus a `<noscript>` line after `<app-root>`.
-6. **`src/app/app.config.ts`**: add `provideSparkServiceWorker()` from `@mintplayer/ng-spark/pwa`
+6. **`src/app/app.config.ts`**: add `withServiceWorker()` from `@mintplayer/ng-spark/pwa`
    to the providers. `@angular/service-worker` must be installed (it is in the root
    `package.json`); it is an **optional** peer dependency of `@mintplayer/ng-spark`, and only the
    `/pwa` entry point imports it.
@@ -89,13 +89,13 @@ exclusion list is what actually protects it.
 `pull-request.yml`) finds every `apps/**/ClientApp` and fails when its `ngsw-config.json` is missing,
 lacks one of these exclusions, has a `dataGroup` for `/spark`, has an empty or sha-shaped `appData.build`, or when the production build does not use the file.
 
-## `provideSparkServiceWorker()`
+## `withServiceWorker()`
 
 ```ts
-import { provideSparkServiceWorker } from '@mintplayer/ng-spark/pwa';
+import { withServiceWorker } from '@mintplayer/ng-spark/pwa';
 
-providers: [provideSparkServiceWorker()]
-// or: provideSparkServiceWorker({ enabled, script, registrationStrategy })
+providers: [provideSpark(withServiceWorker())]
+// or: withServiceWorker({ enabled, script, registrationStrategy })
 ```
 
 It calls `provideServiceWorker('ngsw-worker.js', { enabled: !isDevMode(), registrationStrategy:
@@ -147,7 +147,7 @@ needs a nonce for its inline script.
 
 - **Standalone mode uses redirects.** When the app runs installed
   (`display-mode: standalone`, or `navigator.standalone` on iOS), the shipped sign-in and account
-  pages sign in by full-page redirect instead of a popup (`provideSparkAuth({ externalLoginMode:
+  pages sign in by full-page redirect instead of a popup (`withAuth({ externalLoginMode:
   'auto' })`, the default). A popup from inside an installed app lands in a Custom Tab or a
   separate window whose relationship to the app is unpredictable.
 - **Android, popup from a Chrome tab while the app is installed:** Android captures every
@@ -176,7 +176,7 @@ server), replace it with Angular's safety worker, which unregisters itself and c
    From then on the app runs from the network like a plain SPA.
 3. Leave it in place until the fixed build is deployed, and preferably a while after, so that
    clients who were away also pick it up. To leave PWA mode for good, also remove
-   `provideSparkServiceWorker()` (or pass `enabled: false`) and the `serviceWorker` entry in
+   `withServiceWorker()` (or pass `enabled: false`) and the `serviceWorker` entry in
    `project.json`, but keep serving the safety worker at `/ngsw-worker.js` for a few weeks.
 
 Do not delete `ngsw-worker.js` instead: a 404 leaves the installed worker running from its cache.

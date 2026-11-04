@@ -1,5 +1,5 @@
-import { Provider } from '@angular/core';
-import { provideSparkDetailActions, provideSparkQueryListActions } from '@mintplayer/ng-spark/panels';
+import { sparkFeature, SparkFeature, SparkFeatureOrder } from '@mintplayer/ng-spark';
+import { withDetailActions, withQueryListActions } from '@mintplayer/ng-spark/panels';
 import { SparkDeletedToggleComponent } from './spark-deleted-toggle.component';
 import { SparkSoftDeleteActionsComponent } from './spark-soft-delete-actions.component';
 
@@ -10,12 +10,11 @@ import { SparkSoftDeleteActionsComponent } from './spark-soft-delete-actions.com
  *   (`?deleted=only`); its rows open with the same mode;
  * - the detail page of such a row gets **Restore** (`Restore/T`) and **Purge** (`Purge/T`).
  *
- * Needs the server package `MintPlayer.Spark.SoftDelete`. Add to the app's providers:
- * `providers: [provideSpark(...), provideSparkSoftDelete()]`.
+ * Needs the server package `MintPlayer.Spark.SoftDelete`: `provideSpark(withSoftDelete())`.
  */
-export function provideSparkSoftDelete(): Provider[] {
-  return [
-    ...provideSparkQueryListActions({ id: 'spark-soft-delete-toggle', component: SparkDeletedToggleComponent, priority: 55 }),
-    ...provideSparkDetailActions({ id: 'spark-soft-delete-actions', component: SparkSoftDeleteActionsComponent, priority: 4 }),
-  ];
+export function withSoftDelete(): SparkFeature {
+  return sparkFeature('softDelete', SparkFeatureOrder.modules, [
+    ...withQueryListActions({ id: 'spark-soft-delete-toggle', component: SparkDeletedToggleComponent, priority: 55 }).providers,
+    ...withDetailActions({ id: 'spark-soft-delete-actions', component: SparkSoftDeleteActionsComponent, priority: 4 }).providers,
+  ]);
 }

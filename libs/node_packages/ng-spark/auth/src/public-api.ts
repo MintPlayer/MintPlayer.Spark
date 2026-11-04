@@ -14,5 +14,5 @@
 
 export type { SparkAuthConfig } from '@mintplayer/ng-spark/auth/models';
 export { SPARK_AUTH_CONFIG, defaultSparkAuthConfig } from '@mintplayer/ng-spark/auth/models';
-export { provideSparkAuth, withSparkAuth } from './lib/provide-spark-auth';
+export { withAuth, withSparkAuth } from './lib/provide-spark-auth';
 export { sparkAuthClientMethods } from './lib/webauthn-client-methods';

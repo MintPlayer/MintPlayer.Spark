@@ -12,7 +12,8 @@ import { diffHasChanges, lineDiff, splitLines } from './line-diff';
 import { lineDiffSourceOf, lineDiffTextOf, SparkLineDiffComponent } from './spark-line-diff.component';
 import { SparkContributionAttributionComponent, contributionHistoryLink, relativeTime } from './spark-contribution-attribution.component';
 import { SparkRevertContributionComponent, isContributionsQuery, sparkRevertContributionRowAction } from './spark-revert-contribution';
-import { provideSparkContributions, sparkContributionRenderers } from './provide-spark-contributions';
+import { provideSpark } from '@mintplayer/ng-spark';
+import { withContributions, sparkContributionRenderers } from './provide-spark-contributions';
 
 const flush = () => new Promise(resolve => setTimeout(resolve, 0));
 
@@ -177,7 +178,7 @@ describe('revert', () => {
         provideRouter([]),
         { provide: SparkService, useValue: spark },
         { provide: SparkLanguageService, useValue: { t: (k: string) => k, resolve: (t: any) => t?.en ?? '' } },
-        provideSparkContributions(),
+        provideSpark(withContributions()),
       ],
     });
   });

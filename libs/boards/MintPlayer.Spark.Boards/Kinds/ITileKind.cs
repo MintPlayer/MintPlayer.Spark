@@ -7,7 +7,7 @@ namespace MintPlayer.Spark.Boards;
 /// What a tile can show (<c>docs/dashboard_layout_PRD.md</c> §4.4). The built-in kinds use this interface too. A kind is
 /// resolved per request, so it can take scoped services (<c>IPermissionService</c>, <c>IDatabaseAccess</c>).
 /// Register an application kind with <see cref="SparkBoardsOptions.AddKind{TKind}"/>; the client renders it with a
-/// component registered through <c>provideSparkTileRenderers</c>.
+/// component registered through <c>withTileRenderers</c>.
 /// </summary>
 public interface ITileKind
 {

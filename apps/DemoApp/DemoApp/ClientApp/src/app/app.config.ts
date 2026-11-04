@@ -1,10 +1,11 @@
 import { ApplicationConfig, provideBrowserGlobalErrorListeners, provideZonelessChangeDetection } from '@angular/core';
 import { provideRouter } from '@angular/router';
-import { provideSparkServiceWorker } from '@mintplayer/ng-spark/pwa';
 import { provideHttpClient, withXsrfConfiguration } from '@angular/common/http';
 import { withSparkTimezone } from '@mintplayer/ng-spark/services';
 import { provideAnimations } from '@angular/platform-browser/animations';
-import { provideSparkAttributeRenderers } from '@mintplayer/ng-spark/renderers';
+import { provideSpark } from '@mintplayer/ng-spark';
+import { withServiceWorker } from '@mintplayer/ng-spark/pwa';
+import { withAttributeRenderers } from '@mintplayer/ng-spark/renderers';
 
 import { routes } from './app.routes';
 import { AddressCardDetailRendererComponent } from './renderers/address-card-detail-renderer.component';
@@ -12,14 +13,16 @@ import { AddressCardDetailRendererComponent } from './renderers/address-card-det
 export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
-    provideSparkServiceWorker(),
     provideRouter(routes),
     provideHttpClient(withXsrfConfiguration({ cookieName: 'XSRF-TOKEN', headerName: 'X-XSRF-TOKEN' }), ...withSparkTimezone()),
     provideAnimations(),
     provideZonelessChangeDetection(),
-    // Detail-only registration: columnComponent/editComponent deliberately omitted (#241/#245).
-    provideSparkAttributeRenderers([
-      { name: 'address-card', detailComponent: AddressCardDetailRendererComponent },
-    ]),
+    provideSpark(
+      withServiceWorker(),
+      // Detail-only registration: columnComponent/editComponent deliberately omitted (#241/#245).
+      withAttributeRenderers([
+        { name: 'address-card', detailComponent: AddressCardDetailRendererComponent },
+      ]),
+    ),
   ]
 };

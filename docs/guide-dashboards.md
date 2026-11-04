@@ -153,11 +153,13 @@ The package's own **DatabaseStatistics** dashboard uses the first, with the hist
 
 ```ts
 // app.config.ts
-provideSparkScoreRenderers([...appRenderers, ...sparkDashboardRenderers]),   // spark-trend comes from here
-provideSparkDashboards(),
+provideSpark(
+  withScoreRenderers([...appRenderers, ...sparkDashboardRenderers]),   // spark-trend comes from here
+  withDashboards(),
+),
 ```
 
-`provideSparkDashboards()` registers a [detail layout](#detail-layouts) that draws every dashboard (an object the
+`withDashboards()` registers a [detail layout](#detail-layouts) that draws every dashboard (an object the
 server marks with `metadata.dashboard`) as tiles instead of the attribute cards: one section per model group, one tile
 per readable attribute, its label above its renderer. `columnSpan` 2 takes two columns, 3 or more the whole row (a
 table without a `columnSpan` takes the row too). The page follows the object over `/spark/live` like any live type,
@@ -175,7 +177,7 @@ bar, sub-queries, `extraContentTemplate` (SeoTester puts its abuse log there) an
 
 The tile layout is one use of `SPARK_DETAIL_LAYOUTS` (`@mintplayer/ng-spark/panels`): a layout whose
 `matches(item, entityType)` is true draws that object's attributes in place of the tabs and cards. Register one with
-`provideSparkDetailLayouts({ id, component, matches })`; the component declares
+`withDetailLayouts({ id, component, matches })`; the component declares
 `context = input.required<SparkDetailContext>()`. The first match wins.
 
 ## Options

@@ -1,5 +1,5 @@
-import { Provider } from '@angular/core';
-import { provideSparkDetailPanels } from '@mintplayer/ng-spark/panels';
+import { sparkFeature, SparkFeature, SparkFeatureOrder } from '@mintplayer/ng-spark';
+import { withDetailPanels } from '@mintplayer/ng-spark/panels';
 import { SparkHistoryPanelComponent } from './spark-history-panel.component';
 
 /**
@@ -7,8 +7,9 @@ import { SparkHistoryPanelComponent } from './spark-history-panel.component';
  * detail page `sparkRoutes()` routes to, for holders of `History/T` (#460). Needs the server package
  * `MintPlayer.Spark.History` and revisions enabled for the type in its model.
  *
- * `providers: [provideSpark(...), provideSparkHistory()]`
+ * `provideSpark(withHistory())`
  */
-export function provideSparkHistory(options?: { order?: number }): Provider[] {
-  return provideSparkDetailPanels({ id: 'spark-history', component: SparkHistoryPanelComponent, order: options?.order ?? 100 });
+export function withHistory(options?: { order?: number }): SparkFeature {
+  return sparkFeature('history', SparkFeatureOrder.modules,
+    withDetailPanels({ id: 'spark-history', component: SparkHistoryPanelComponent, order: options?.order ?? 100 }).providers);
 }

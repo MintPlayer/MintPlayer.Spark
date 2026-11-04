@@ -6,9 +6,9 @@ import {
   SPARK_QUERY_LIST_ACTIONS,
   orderSparkExtensions,
   parseSparkDeletedParam,
-  provideSparkDetailPanels,
-  provideSparkQueryListActions,
 } from './spark-panels';
+import { withDetailPanels, withQueryListActions } from './spark-panels-features';
+import { provideSpark } from '@mintplayer/ng-spark';
 
 @Component({ standalone: true, template: 'a' })
 class PanelA {}
@@ -52,13 +52,15 @@ describe('parseSparkDeletedParam', () => {
   });
 });
 
-describe('provide* helpers', () => {
-  it('multi-provide: every call adds', () => {
+describe('with* registrations', () => {
+  it('multi-provide: every listing adds', () => {
     TestBed.configureTestingModule({
       providers: [
-        provideSparkDetailPanels({ id: 'a', component: PanelA }),
-        provideSparkDetailPanels({ id: 'b', component: PanelB, order: 1 }),
-        provideSparkQueryListActions({ id: 'x', component: PanelA }),
+        provideSpark(
+          withDetailPanels({ id: 'a', component: PanelA }),
+          withDetailPanels({ id: 'b', component: PanelB, order: 1 }),
+          withQueryListActions({ id: 'x', component: PanelA }),
+        ),
       ],
     });
     expect(TestBed.inject(SPARK_DETAIL_PANELS).map(p => p.id)).toEqual(['a', 'b']);

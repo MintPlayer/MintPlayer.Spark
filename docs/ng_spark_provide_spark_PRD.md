@@ -1,6 +1,6 @@
 # ng-spark: `provideSpark(withX(), …)` — PRD
 
-Status: **draft, 2026-11-04.** Issue #560. Delivered **in the #238 search PR** (owner, 2026-11-04: "I would
+Status: **implemented, 2026-11-04** (M-P done; lib, spec and app type-checks clean). Issue #560. Delivered **in the #238 search PR** (owner, 2026-11-04: "I would
 prefer to address it in this pull-request"); its milestone is M-P in [spark_search_plan.md](spark_search_plan.md).
 
 ## 1. What exists
@@ -108,3 +108,7 @@ provideSpark(
 | P3 | Features carry their order; sorted internally | owner, 2026-11-04 |
 | P6, P7 | SSR and routes stay separate | owner, 2026-11-04 |
 | P8 | No backward compatibility | owner, 2026-11-04 |
+| P10 | Renderer sets merge through a multi token, `SPARK_ATTRIBUTE_RENDERER_SETS`; `SPARK_ATTRIBUTE_RENDERERS` is a factory that flattens the sets (in feature order) and appends `sparkCoreRenderers`. `withScoreRenderers` is `withAttributeRenderers([...renderers, ...sparkScoreRenderers], builtInRegistrations = 510)`, so the app's set (500) comes first and wins by name. Replaces SP1's "merges into one value" without `provideSpark` knowing about renderers | `renderers/src/spark-attribute-renderer-registry.ts`; score-renderers spec "merges with the app's renderers" |
+| P11 | A feature that composes another spreads that feature's `.providers` (SoftDelete → `withQueryListActions(...).providers`), not an unexported `Provider[]` helper. **Supersedes** SP1's "plain `Provider[]` helpers" note | `soft-delete/src/provide-spark-soft-delete.ts`; no `provideSpark*` export left besides `provideSparkServerRendering` |
+| P12 | The generated `spark-auth.setup.ts` exports `setupSparkAuth(config)` returning `withAuth(config)` (was `setupSparkAuthProviders` returning a provider array). The file is written only when missing, so existing apps' local copies are edited by hand | `libs/authorization/.../Targets/spark-auth.setup.template.ts` |
+| P13 | Historical docs (release notes, issue PRDs/plans, `docs/prd/`) keep the old names; guides, READMEs and code comments use the new ones | owner rule: document decisions as made |

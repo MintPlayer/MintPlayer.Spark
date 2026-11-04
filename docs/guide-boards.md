@@ -81,7 +81,7 @@ layout in the tile. Outside a board, `<spark-po-detail objectType objectId [comp
 
 An application kind implements `ITileKind`. `Validate` checks the target's shape, and `CheckAccessAsync` decides
 whether the caller may see the tile. The kind is resolved per request, so it can take scoped services. Its client
-renderer is registered with `provideSparkTileRenderers({ weather: WeatherTileComponent })`. The component declares
+renderer is registered with `withTileRenderers({ weather: WeatherTileComponent })`. The component declares
 `tile = input.required<SparkBoardTile>()` and `context = input.required<SparkTileContext>()`, fetches its own
 content, and fetches again when `context().reloadToken` changes.
 
@@ -129,10 +129,10 @@ When the application changes its default, the change reaches each user's layout 
 
 ```ts
 // app.config.ts
-providers: [
-  provideSparkBoards(),            // the four renderers and "Pin to dashboard" on detail pages
-  provideSparkClientOperations(),  // so RefreshQuery reaches the query tiles
-]
+provideSpark(
+  withBoards(),            // the four renderers and "Pin to dashboard" on detail pages
+  withClientOperations(),  // so RefreshQuery reaches the query tiles
+),
 
 // app.routes.ts: a page that is only a board
 sparkBoardRoute('home', 'home'),
@@ -144,7 +144,7 @@ component reads `data.boardId` from the route.
 - **Customize** switches the board into edit mode. **Save** stores the changes, **Cancel** throws them away, and
   **Reset** (after a confirmation) deletes the user's layout.
 - **Pin to dashboard** on a detail page adds that object to a board as a `persistentObject` tile. The board defaults
-  to `home`; change it with `provideSparkBoards({ pinBoard: 'start' })`, or leave the action out with
+  to `home`; change it with `withBoards({ pinBoard: 'start' })`, or leave the action out with
   `{ pinAction: false }`.
 - A custom action's `RefreshQuery("<alias>")` reaches a query tile. The tile's grid matches the query's id, name or
   alias.

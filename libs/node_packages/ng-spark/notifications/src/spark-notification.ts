@@ -1,4 +1,5 @@
-import { InjectionToken, Provider, inject } from '@angular/core';
+import { InjectionToken, inject } from '@angular/core';
+import { sparkFeature, SparkFeature, SparkFeatureOrder } from '@mintplayer/ng-spark';
 import { DOCUMENT } from '@angular/common';
 import { QueryResultItem, valueFor } from '@mintplayer/ng-spark/models';
 
@@ -54,12 +55,12 @@ export const SPARK_NOTIFICATIONS_OPTIONS = new InjectionToken<SparkNotifications
   factory: () => ({ recentCount: 8, listLink: ['/query', 'notifications'] }),
 });
 
-/** Overrides {@link SparkNotificationsOptions}; anything left out keeps its default. */
-export function provideSparkNotifications(options: Partial<SparkNotificationsOptions> = {}): Provider {
-  return {
+/** The notification bell's options, for `provideSpark(...)`; anything left out keeps its default. */
+export function withNotifications(options: Partial<SparkNotificationsOptions> = {}): SparkFeature {
+  return sparkFeature('notifications', SparkFeatureOrder.modules, [{
     provide: SPARK_NOTIFICATIONS_OPTIONS,
     useValue: { recentCount: 8, listLink: ['/query', 'notifications'], ...options } satisfies SparkNotificationsOptions,
-  };
+  }]);
 }
 
 /** The browser's Notification API, as far as push needs it. */

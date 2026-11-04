@@ -34,7 +34,7 @@ export type SparkPushState = 'unsupported' | 'denied' | 'off' | 'on';
  *   deleted notification arrives as a patch. The subscriptions start again whenever `SPARK_AUTH_STATE`
  *   changes (sign-in, sign-out), so a page opened before signing in still counts afterwards.
  * - **Web Push**: {@link enablePush} / {@link disablePush} subscribe this device through Angular's
- *   `SwPush` and register it at `/spark/notifications/push/*`. It needs `provideSparkServiceWorker()`
+ *   `SwPush` and register it at `/spark/notifications/push/*`. It needs `withServiceWorker()`
  *   (or `provideServiceWorker`) with the worker enabled; without it {@link pushState} is `unsupported`.
  */
 @Injectable({ providedIn: 'root' })

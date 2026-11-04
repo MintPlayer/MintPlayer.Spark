@@ -13,7 +13,8 @@ import { SparkService, SparkLanguageService, SparkLiveService } from '@mintplaye
 import { Observable, Subject } from 'rxjs';
 import { SPARK_ATTRIBUTE_RENDERERS } from '@mintplayer/ng-spark/renderers';
 import { SparkClientMethodRegistry, SparkQueryRefreshService } from '@mintplayer/ng-spark/client-operations';
-import { SparkQueryRowAction, provideSparkQueryRowActions } from '@mintplayer/ng-spark/panels';
+import { SparkQueryRowAction, withQueryRowActions } from '@mintplayer/ng-spark/panels';
+import { provideSpark } from '@mintplayer/ng-spark';
 import { EntityType, QueryResultItem, ShowedOn, SparkQuery } from '@mintplayer/ng-spark/models';
 import { settle } from '../../src/test-utils';
 
@@ -1268,7 +1269,7 @@ describe('SparkQueryGridComponent preset filters and add-on row actions', () => 
         { provide: SparkService, useValue: service },
         { provide: SparkLanguageService, useValue: langStub },
         { provide: SPARK_ATTRIBUTE_RENDERERS, useValue: [] },
-        ...provideSparkQueryRowActions(...rowActions),
+        provideSpark(withQueryRowActions(...rowActions)),
       ],
     });
     const fixture = TestBed.createComponent(SparkQueryGridComponent);

@@ -104,7 +104,7 @@ internal sealed class SparkWebPushSender : IDisposable
     public void Dispose() => vapid?.Dispose();
 
     /// <summary>
-    /// The payload Angular's service worker (<c>provideSparkServiceWorker()</c>) shows and acts on by itself:
+    /// The payload Angular's service worker (<c>withServiceWorker()</c>) shows and acts on by itself:
     /// <c>notification.title/body/tag</c>, and <c>data.onActionClick.default</c> = <c>focusLastFocusedOrOpen</c>: an open tab of the app
     /// is focused and ng-spark's <c>SparkNotificationClicks</c> navigates it in-app to <c>data.url</c> (with
     /// <c>navigateLastFocusedOrOpen</c> the worker reloads the tab first, so the in-app handler had nothing left to do);

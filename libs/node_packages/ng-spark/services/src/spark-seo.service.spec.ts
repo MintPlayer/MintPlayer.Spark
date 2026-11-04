@@ -2,7 +2,10 @@ import { TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { EntityType, PersistentObject } from '@mintplayer/ng-spark/models';
 import { SPARK_SERVER_ORIGIN } from './provide-spark-hydration';
-import { SparkSeoService, provideSparkSeo } from './spark-seo.service';
+import { provideSpark } from '@mintplayer/ng-spark';
+import { SparkSeoService, withSeo } from './spark-seo.service';
+
+const seoProviders = (options: Parameters<typeof withSeo>[0]) => provideSpark(withSeo(options));
 
 /**
  * The detail page's SEO tags (docs/spark_ssr_PRD.md D12): the model mapping, the per-type hook, robots, and
@@ -53,7 +56,7 @@ describe('SparkSeoService', () => {
 
   it('merges the type hook over the mapping, given only the presented object', () => {
     let seen: PersistentObject | null = null;
-    create([provideSparkSeo({ structuredData: { Song: po => { seen = po; return { byArtist: [{ '@type': 'MusicGroup', name: 'Beyoncé' }] }; } } })])
+    create([seoProviders({ structuredData: { Song: po => { seen = po; return { byArtist: [{ '@type': 'MusicGroup', name: 'Beyoncé' }] }; } } })])
       .forObject(songType, song, '/po/song/Songs%2F1');
 
     expect(seen).toBe(song);
@@ -106,7 +109,7 @@ describe('SparkSeoService', () => {
 
   it('takes the type hook description and cuts it at a word', () => {
     const long = 'word '.repeat(60).trim();
-    create([provideSparkSeo({ description: { Song: () => long }, image: '/icons/icon.png' })])
+    create([seoProviders({ description: { Song: () => long }, image: '/icons/icon.png' })])
       .forObject({ ...songType, seo: { indexable: true } } as EntityType, song, '/po/song/Songs%2F1');
 
     const description = meta('name="description"')!;
@@ -119,7 +122,7 @@ describe('SparkSeoService', () => {
   });
 
   it("gives another page its route's title, the site's description and a canonical link without the query", () => {
-    create([provideSparkSeo({ siteDescription: 'Music videos and lyrics' })]).forPage('Songs', '/query/songs?page=2');
+    create([seoProviders({ siteDescription: 'Music videos and lyrics' })]).forPage('Songs', '/query/songs?page=2');
 
     expect(document.title).toBe('Songs - MintPlayer');
     expect(meta('name="description"')).toBe('Music videos and lyrics');
@@ -129,7 +132,7 @@ describe('SparkSeoService', () => {
   });
 
   it("keeps an object's tags when the route's come after them, and a noindex page's robots", () => {
-    const seo = create([provideSparkSeo({ siteDescription: 'Music videos and lyrics' })]);
+    const seo = create([seoProviders({ siteDescription: 'Music videos and lyrics' })]);
     seo.forObject(songType, song, '/po/song/Songs%2F1');
     seo.forPage(undefined, '/po/song/Songs%2F1');
     expect(document.title).toBe('Halo </script> - MintPlayer');

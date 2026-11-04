@@ -114,6 +114,6 @@ for (const clientApp of clientApps) {
     assert.match(html, /<link\s+rel="manifest"\s+href="manifest\.webmanifest">/);
     assert.ok(existsSync(path.join(clientApp, 'public', 'manifest.webmanifest')), 'public/manifest.webmanifest is missing');
     const appConfig = readFileSync(path.join(clientApp, 'src', 'app', 'app.config.ts'), 'utf8');
-    assert.match(appConfig, /provideSparkServiceWorker\(/);
+    assert.match(appConfig, /withServiceWorker\(/);
   });
 }

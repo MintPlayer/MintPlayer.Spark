@@ -9,7 +9,7 @@ import { SparkQueryListContext } from '@mintplayer/ng-spark/panels';
  * server would ignore the widening anyway, so offering it would show the same rows under a
  * misleading label.
  *
- * Registered by {@link provideSparkSoftDelete} as a `SPARK_QUERY_LIST_ACTIONS` entry; usable on its
+ * Registered by {@link withSoftDelete} as a `SPARK_QUERY_LIST_ACTIONS` entry; usable on its
  * own in a custom page with any {@link SparkQueryListContext}.
  */
 @Component({

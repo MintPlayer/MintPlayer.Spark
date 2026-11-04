@@ -1,5 +1,6 @@
 import { DOCUMENT } from '@angular/common';
-import { EnvironmentProviders, Injectable, InjectionToken, inject, makeEnvironmentProviders } from '@angular/core';
+import { Injectable, InjectionToken, inject } from '@angular/core';
+import { sparkFeature, SparkFeature, SparkFeatureOrder } from '@mintplayer/ng-spark';
 import { Meta, Title } from '@angular/platform-browser';
 import { RouterStateSnapshot, TitleStrategy } from '@angular/router';
 import { EntityType, PersistentObject, PersistentObjectAttribute } from '@mintplayer/ng-spark/models';
@@ -38,8 +39,8 @@ export const SPARK_SEO_OPTIONS = new InjectionToken<SparkSeoOptions>('SPARK_SEO_
  * other page gets its route's `title` (or the site's), the site's description and image, Open Graph tags and a
  * canonical link too (through {@link SparkTitleStrategy}).
  */
-export function provideSparkSeo(options: SparkSeoOptions): EnvironmentProviders {
-  return makeEnvironmentProviders([
+export function withSeo(options: SparkSeoOptions): SparkFeature {
+  return sparkFeature('seo', SparkFeatureOrder.seo, [
     { provide: SPARK_SEO_OPTIONS, useValue: options },
     { provide: TitleStrategy, useClass: SparkTitleStrategy },
   ]);
@@ -206,7 +207,7 @@ export class SparkSeoService {
 
 /**
  * Sets the document title (and the SEO tags of pages that are not an object's) on every navigation, from the route's
- * `title` through {@link SparkSeoService.forPage}. Installed by {@link provideSparkSeo}. Unlike Angular's default
+ * `title` through {@link SparkSeoService.forPage}. Installed by {@link withSeo}. Unlike Angular's default
  * strategy it also restores the site's title on a route without one, so a previous page's title never stays.
  */
 @Injectable()

@@ -2,7 +2,7 @@
 // This file was generated once and will NOT be overwritten.
 // Feel free to customize it to match your application's needs.
 
-import { provideSparkAuth, withSparkAuth } from '@mintplayer/ng-spark/auth';
+import { withAuth, withSparkAuth } from '@mintplayer/ng-spark/auth';
 import {
   sparkAuthRoutes,
   withLocalLogin,
@@ -16,22 +16,23 @@ import { SparkAuthService } from '@mintplayer/ng-spark/auth/core';
 import type { SparkAuthConfig } from '@mintplayer/ng-spark/auth';
 
 /**
- * Provides Spark authentication services.
+ * The Spark authentication feature.
  *
  * Add to your `app.config.ts` providers array:
  * ```typescript
- * import { setupSparkAuthProviders, setupSparkAuthHttp } from './spark-auth.setup';
+ * import { provideSpark } from '@mintplayer/ng-spark';
+ * import { setupSparkAuth, setupSparkAuthHttp } from './spark-auth.setup';
  *
  * export const appConfig: ApplicationConfig = {
  *   providers: [
  *     provideHttpClient(...setupSparkAuthHttp()),
- *     ...setupSparkAuthProviders(),
+ *     provideSpark(setupSparkAuth()),
  *   ]
  * };
  * ```
  */
-export function setupSparkAuthProviders(config?: Partial<SparkAuthConfig>) {
-  return [provideSparkAuth(config)];
+export function setupSparkAuth(config?: Partial<SparkAuthConfig>) {
+  return withAuth(config);
 }
 
 /**

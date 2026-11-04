@@ -259,12 +259,11 @@ The client pieces live in `@mintplayer/ng-spark/contributions` (no new npm packa
 own — PRD Q7):
 
 ```ts
-providers: [
-  provideSpark(...),
-  provideSparkSoftDelete(),          // the Deleted toggle, Restore/Purge of single contributions
-  provideSparkContributions(),       // "Revert to this version": row menu + contribution page
-  provideSparkAttributeRenderers([...sparkContributionRenderers, ...yourRenderers]),
-]
+provideSpark(
+  withSoftDelete(),          // the Deleted toggle, Restore/Purge of single contributions
+  withContributions(),       // "Revert to this version": row menu + contribution page
+  withAttributeRenderers([...sparkContributionRenderers, ...yourRenderers]),
+)
 ```
 
 - `contributionAttribution` is an AsDetail **row** renderer (`rowComponent`, see

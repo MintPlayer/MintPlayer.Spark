@@ -23,7 +23,7 @@ export interface RetryActionPayload {
   cancellable?: boolean;
   /**
    * Set when the server asks for a client method (`IRetryAccessor.Invoke`) instead of a choice: the
-   * name a method was registered under with `provideSparkClientMethods`. No modal is shown then.
+   * name a method was registered under with `withClientMethods`. No modal is shown then.
    */
   clientMethod?: string;
   /** The client method's argument, as the server serialized it. */

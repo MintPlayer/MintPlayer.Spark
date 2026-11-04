@@ -190,10 +190,10 @@ Key points:
 
 ## Step 3: Register Renderers
 
-In your `app.config.ts`, call `provideSparkAttributeRenderers()` with your registrations:
+In your `app.config.ts`, call `withAttributeRenderers()` with your registrations:
 
 ```typescript
-import { provideSparkAttributeRenderers } from '@mintplayer/ng-spark/renderers';
+import { withAttributeRenderers } from '@mintplayer/ng-spark/renderers';
 import { VideoDetailRendererComponent } from './renderers/video-detail-renderer.component';
 import { VideoColumnRendererComponent } from './renderers/video-column-renderer.component';
 import { ColorDetailRendererComponent } from './renderers/color-detail-renderer.component';
@@ -203,7 +203,7 @@ import { ColorEditRendererComponent } from './renderers/color-edit-renderer.comp
 export const appConfig: ApplicationConfig = {
   providers: [
     // ... other providers ...
-    provideSparkAttributeRenderers([
+    provideSpark(withAttributeRenderers([
       {
         name: 'video-player',                         // matches "renderer" in model JSON
         detailComponent: VideoDetailRendererComponent,
@@ -216,12 +216,13 @@ export const appConfig: ApplicationConfig = {
         columnComponent: ColorColumnRendererComponent,
         editComponent: ColorEditRendererComponent,     // custom color picker on create/edit
       },
-    ]),
+    ])),
   ]
 };
 ```
 
-The `name` must match the `renderer` value in your model JSON exactly.
+The `name` must match the `renderer` value in your model JSON exactly. `withAttributeRenderers` may be
+listed more than once (an add-on's renderers beside the app's): every set is merged into one list.
 
 ## Inputs Provided to Renderers
 
@@ -413,7 +414,7 @@ Its inputs (all optional, filtered to what it declares): `row` (the flat row rec
 ("by Alice · 3 days ago · History (4)") is one; see `@mintplayer/ng-spark/contributions`.
 
 ```ts
-provideSparkAttributeRenderers([
+withAttributeRenderers([
   { name: 'row-summary', rowComponent: RowSummaryComponent },
 ])
 ```
@@ -471,10 +472,10 @@ multi-provider tokens in `@mintplayer/ng-spark/panels`:
 
 | Token | Where | The component's input |
 |---|---|---|
-| `SPARK_DETAIL_PANELS` (`provideSparkDetailPanels`) | below the attributes of `po/:type/:id` | `context = input.required<SparkDetailContext>()` |
-| `SPARK_DETAIL_ACTIONS` (`provideSparkDetailActions`) | the detail page's action bar | `context = input.required<SparkDetailContext>()` |
-| `SPARK_QUERY_LIST_ACTIONS` (`provideSparkQueryListActions`) | the query page's action bar | `context = input.required<SparkQueryListContext>()` |
-| `SPARK_QUERY_ROW_ACTIONS` (`provideSparkQueryRowActions`) | every Spark grid's per-row `⋮` menu (query page and sub-query card) | not a component: a `SparkQueryRowAction` (`id`, `labelKey`, `isOffered(scope)`, `run(context)`; `run` executes in the grid's injection context, a rejection shows in the grid's alert) |
+| `SPARK_DETAIL_PANELS` (`withDetailPanels`) | below the attributes of `po/:type/:id` | `context = input.required<SparkDetailContext>()` |
+| `SPARK_DETAIL_ACTIONS` (`withDetailActions`) | the detail page's action bar | `context = input.required<SparkDetailContext>()` |
+| `SPARK_QUERY_LIST_ACTIONS` (`withQueryListActions`) | the query page's action bar | `context = input.required<SparkQueryListContext>()` |
+| `SPARK_QUERY_ROW_ACTIONS` (`withQueryRowActions`) | every Spark grid's per-row `⋮` menu (query page and sub-query card) | not a component: a `SparkQueryRowAction` (`id`, `labelKey`, `isOffered(scope)`, `run(context)`; `run` executes in the grid's injection context, a rejection shows in the grid's alert) |
 
 `SparkDetailContext` carries the route's `type` and `id`, the loaded `item`, its `entityType`, the
 type-level `permissions` (`null` while loading), the `deleted` mode the row was loaded with, and
@@ -484,6 +485,6 @@ object is passed whenever the page changes, so read it as a value. Each componen
 rights and renders nothing when it does not apply. Registering the same `id` again replaces an entry
 in its original slot. `order` (panels) and `priority` (actions, default 60) sort them.
 
-`provideSparkHistory()` (`@mintplayer/ng-spark/history`) and `provideSparkSoftDelete()`
+`withHistory()` (`@mintplayer/ng-spark/history`) and `withSoftDelete()`
 (`@mintplayer/ng-spark/soft-delete`) are built this way; see the History and SoftDelete package
 READMEs.

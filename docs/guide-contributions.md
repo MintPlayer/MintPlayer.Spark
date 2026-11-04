@@ -323,14 +323,13 @@ No new npm package and no routes of its own: the pieces are a secondary entry po
 `@mintplayer/ng-spark`, and the history uses `sparkRoutes()`' existing `query/:queryId` page.
 
 ```ts
-import { provideSparkContributions, sparkContributionRenderers } from '@mintplayer/ng-spark/contributions';
+import { withContributions, sparkContributionRenderers } from '@mintplayer/ng-spark/contributions';
 
-providers: [
-  provideSpark(...),
-  provideSparkSoftDelete(),          // the Deleted toggle, Restore/Purge of single versions
-  provideSparkContributions(),       // "Revert to this version": row menu and contribution page
-  provideSparkAttributeRenderers([...sparkContributionRenderers, ...yourRenderers]),
-],
+provideSpark(
+  withSoftDelete(),          // the Deleted toggle, Restore/Purge of single versions
+  withContributions(),       // "Revert to this version": row menu and contribution page
+  withAttributeRenderers([...sparkContributionRenderers, ...yourRenderers]),
+),
 ```
 
 What that gives you:

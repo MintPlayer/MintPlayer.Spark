@@ -3,7 +3,7 @@ import { passkeysSupported, sparkPasskeyError } from '@mintplayer/ng-spark/auth/
 
 /**
  * The browser steps the Authorization library's server actions invoke (`IRetryAccessor.Invoke`),
- * registered by {@link provideSparkAuth}.
+ * registered by {@link withAuth}.
  *
  * `webauthn.create` is the enrollment ceremony of the passkeys page's `AddPasskey` action: the
  * server hands it the creation options and receives the credential back in the same action, which

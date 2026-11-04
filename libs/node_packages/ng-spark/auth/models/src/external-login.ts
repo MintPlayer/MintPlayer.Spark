@@ -3,7 +3,7 @@ export type SparkExternalLoginMode = 'popup' | 'redirect';
 
 /**
  * The app-wide default for {@link SparkExternalLoginMode}, set through
- * `provideSparkAuth({ externalLoginMode })`.
+ * `withAuth({ externalLoginMode })`.
  *
  * `'auto'` (the default) uses `'redirect'` inside an installed web app (`display-mode: standalone`,
  * or iOS's `navigator.standalone`) and `'popup'` in a browser tab. Inside an installed app a popup is

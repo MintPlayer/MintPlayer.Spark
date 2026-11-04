@@ -30,11 +30,12 @@ Issues #238 and #560. **One PR**, branch `feat/issue238-search`.
 
 ## M-P — `provideSpark(withX(), …)` (#560), before M6 so search ships as features
 
-- [ ] `SparkFeature` (`kind`, `order`, `providers`, `requires`), `provideSpark(...features)` with sorting,
+- [x] `SparkFeature` (`kind`, `order`, `providers`, `requires`), `provideSpark(...features)` with sorting,
       duplicate check (multi-registration kinds merge), `requires` resolution, `withConfig`.
-- [ ] Convert every `provideSpark*` (except `provideSparkServerRendering`) to a `withX()` in its entry point; remove the old functions.
-- [ ] Update all app configs (17 files), ng-spark tests, README and guides (43 docs).
-- [ ] Unit tests: order independence, duplicate error, `requires`.
+- [x] Convert every `provideSpark*` (except `provideSparkServerRendering`) to a `withX()` in its entry point; remove the old functions.
+- [x] Update all app configs (8), the auth setup template, ng-spark tests, READMEs, guides and code comments
+      (historical PRDs and release notes keep the old names, PRD P13).
+- [x] Unit tests: order independence, duplicate error, `requires` (`src/lib/provide-spark.spec.ts`; tests run at M8).
 
 ## M1 — Model + shared helpers
 

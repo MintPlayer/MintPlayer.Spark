@@ -6,8 +6,9 @@ import {
     SPARK_CLIENT_UNSUPPORTED_REASON,
     SparkClientMethodRegistry,
     type SparkClientMethodMap,
-    provideSparkClientMethods,
+    withClientMethods,
 } from './client-methods';
+import { provideSpark } from '@mintplayer/ng-spark';
 
 /**
  * The client half of a client-method retry (generic passkeys page, D7 and Q9): which methods can run
@@ -20,7 +21,7 @@ describe('SparkClientMethodRegistry', () => {
         TestBed.configureTestingModule({
             providers: [
                 { provide: GREETING, useValue: 'hello' },
-                ...registrations.map(r => provideSparkClientMethods(r)),
+                provideSpark(...registrations.map(r => withClientMethods(r))),
             ],
         });
         return TestBed.inject(SparkClientMethodRegistry);

@@ -6,7 +6,7 @@ import { SparkModerationService } from './spark-moderation.service';
 import { describeModerationError } from './spark-vote.component';
 
 /**
- * **Flag** on the detail page of every object (#460). Registered by {@link provideSparkModeration}
+ * **Flag** on the detail page of every object (#460). Registered by {@link withModeration}
  * as a `SPARK_DETAIL_ACTIONS` entry. The button is offered to every signed-in viewer of a live row;
  * the server decides (`Flag/T`, a visible moderatable row) and answers a refusal inline — the
  * permissions endpoint does not report moderation rights, and a type that is not moderatable answers

@@ -22,13 +22,14 @@ not declare `@mintplayer/ng-spark` (the generated `spark-auth.setup.ts` imports 
 ```ts
 // app.config.ts
 import { provideHttpClient } from '@angular/common/http';
-import { provideSparkAuth, withSparkAuth } from '@mintplayer/ng-spark/auth';
+import { provideSpark } from '@mintplayer/ng-spark';
+import { withAuth, withSparkAuth } from '@mintplayer/ng-spark/auth';
 
 export const appConfig: ApplicationConfig = {
   providers: [
     provideRouter(routes),
     provideHttpClient(...withSparkAuth()),   // interceptor + XSRF-TOKEN / X-XSRF-TOKEN
-    provideSparkAuth(),                      // optional: { apiBasePath, loginUrl, defaultRedirectUrl, externalLoginMode }
+    provideSpark(withAuth()),                // optional: { apiBasePath, loginUrl, defaultRedirectUrl, externalLoginMode }
   ],
 };
 
@@ -88,7 +89,7 @@ button; both live on the account page.
 
 `confirm-email` must stay at the server's `Spark:Auth:Links:ConfirmEmailPath` (default
 `/confirm-email`). App-specific profile fields are declared with
-`provideSparkAccountProfileFields(...)` (`/models`) and validated on the server by an
+`withAccountProfileFields(...)` (`/models`) and validated on the server by an
 `ISparkProfileContributor<TUser>`.
 
 ## External sign-in: popup, redirect and installed apps
@@ -96,7 +97,7 @@ button; both live on the account page.
 `SparkAuthService.loginWithProvider(scheme, options?)` signs in through a provider;
 `linkProvider(scheme, options?)` attaches one to the signed-in account. Both use one handshake.
 
-**Mode.** `provideSparkAuth({ externalLoginMode })` sets the default, and a call's own
+**Mode.** `withAuth({ externalLoginMode })` sets the default, and a call's own
 `{ mode: 'popup' | 'redirect' }` overrides it.
 
 | `externalLoginMode` | Behaviour |
@@ -196,12 +197,12 @@ each failure once, so two components on one page cannot both show it.
 
 | Entry point | What it provides |
 |---|---|
-| `@mintplayer/ng-spark/auth` | `provideSparkAuth(config?)`, `withSparkAuth()` |
+| `@mintplayer/ng-spark/auth` | `withAuth(config?)` (a `provideSpark` feature), `withSparkAuth()` (the `HttpClient` features) |
 | `/routes` | `sparkAuthRoutes(...)`, `withLocalLogin`, `withRegistration`, `withExternalLogin`, `withPasskeys`, `withAccount`; provider presets `githubProvider`, `googleProvider`, `microsoftProvider`, `facebookProvider`, `twitterProvider`, `linkedInProvider`, `oidcProvider(scheme, displayName, iconClass?)`, `externalProvider(scheme)` |
 | `/guards` | `sparkAuthGuard` — lets a signed-in user through, otherwise redirects to sign-in with `returnUrl`; waits for the session check on a hard reload. `sparkAuthenticatedGuard` is the same guard |
 | `/interceptors` | `sparkAuthInterceptor` (included by `withSparkAuth()`) |
 | `/core` | `SparkAuthService` (current user signal, `checkAuth()`, sign-in/out, `loginWithProvider`/`linkProvider`, `externalLoginPending`, `takeExternalLoginResult()`), `SparkAuthTranslationService` |
-| `/models` | `SPARK_AUTH_CONFIG`, `SPARK_AUTH_ROUTE_PATHS`, `SPARK_EXTERNAL_PROVIDERS`, `SPARK_ACCOUNT_PROFILE_FIELDS`, `provideSparkAccountProfileFields(...)` and the wire types |
+| `/models` | `SPARK_AUTH_CONFIG`, `SPARK_AUTH_ROUTE_PATHS`, `SPARK_EXTERNAL_PROVIDERS`, `SPARK_ACCOUNT_PROFILE_FIELDS`, `withAccountProfileFields(...)` and the wire types |
 | `/login`, `/two-factor`, `/forgot-password`, `/reset-password`, `/register`, `/sign-in` | The individual pages the route features mount |
 | `/external-login` | `<spark-external-login-buttons>` (`SparkExternalLoginButtonsComponent`), `SparkProviderButtonContext`, `SparkExternalProviderView` |
 | `/account`, `/confirm-email` | The account pages above |

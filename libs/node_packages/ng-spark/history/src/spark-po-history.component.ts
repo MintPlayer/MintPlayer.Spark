@@ -36,7 +36,7 @@ const chipsPipe = new QueryReferenceChipsPipe();
  * revision, its field diff against the current object, and Revert.
  *
  * Standalone — bind it anywhere — and also what the History detail panel
- * (`provideSparkHistory()`) renders on every routed detail page.
+ * (`withHistory()`) renders on every routed detail page.
  *
  * Rights come from `permissions`: nothing is listed without `canViewHistory`, and Revert is offered
  * only with `canRevert` (the server's `Revert/T` together with `Edit/T`), never for the current

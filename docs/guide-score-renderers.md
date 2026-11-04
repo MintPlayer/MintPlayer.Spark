@@ -23,19 +23,19 @@ points than `minPoints` (default 2) is a dash too: one point is not a trend.
 ## Setup
 
 ```ts
-import { provideSparkScoreRenderers } from '@mintplayer/ng-spark/score-renderers';
+import { withScoreRenderers } from '@mintplayer/ng-spark/score-renderers';
 
-providers: [
-  provideSparkScoreRenderers([
-    // the app's own renderers, as you would pass them to provideSparkAttributeRenderers
-  ]),
-]
+provideSpark(
+  withScoreRenderers(),
+  withAttributeRenderers([/* the app's own renderers */]),
+),
 ```
 
-`provideSparkScoreRenderers` **replaces** `provideSparkAttributeRenderers`. Do not use both: they provide
-the same renderer list and the last one wins. The app's registrations come first, so an app renderer with
-the same name replaces a score renderer. `sparkScoreRenderers` is the bare registration list, for an app
-that composes its list itself.
+Every renderer set is merged into one list, sorted by its feature's order: the app's
+`withAttributeRenderers` come before the score renderers, so an app renderer with the same name replaces a
+score renderer, whichever order the features are listed in. `withScoreRenderers([...])` also takes the app's
+renderers directly. `sparkScoreRenderers` is the bare registration list, for an app that composes its list
+itself.
 
 Then name the renderer on the attribute in the model JSON:
 
@@ -60,10 +60,10 @@ That is how an app adapts a value that is not already a number (see the CodeCove
 | `spark-trend-chart` | `SparkTrendChartComponent` | the chart alone |
 | `spark-delta` | `SparkDeltaComponent` | |
 
-**Bundle size.** `provideSparkScoreRenderers` puts all four renderers, both chart wrappers included, in the
+**Bundle size.** `withScoreRenderers` puts all four renderers, both chart wrappers included, in the
 bundle of whatever provides it, usually the initial one. An app that draws only a sparkline in a cell and
 keeps its chart on a lazily loaded page registers its own names with the half it needs
-(`SparkTrendSparklineComponent`) through `provideSparkAttributeRenderers`, as CodeCoverage does.
+(`SparkTrendSparklineComponent`) through `withAttributeRenderers`, as CodeCoverage does.
 
 ## Bands and grades
 
@@ -146,7 +146,7 @@ code.
 
 CodeCoverage keeps its model renderer names (`coverage-bar`, `coverage-sparkline`, `coverage-delta`) and
 draws them through the score renderers, so its App_Data model did not change. It keeps
-`provideSparkAttributeRenderers` (its list is `codeCoverageRenderers` in `src/app/spark/renderers.ts`): it
+`withAttributeRenderers` (its list is `codeCoverageRenderers` in `src/app/spark/renderers.ts`): it
 names no `spark-*` renderer, and registering them would move the trend chart, which only its lazily
 loaded detail page draws, into the initial bundle.
 

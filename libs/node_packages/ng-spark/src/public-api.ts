@@ -3,7 +3,7 @@
 //   @mintplayer/ng-spark/models             (PersistentObject, EntityType, SparkQuery, etc. + currentLanguage/resolveTranslation/ShowedOn/ELookupDisplayType)
 //   @mintplayer/ng-spark/services           (SparkService, SparkLiveService, SparkLanguageService, RetryActionService, SparkIconRegistry)
 //   @mintplayer/ng-spark/pipes              (all 22 pipes)
-//   @mintplayer/ng-spark/renderers          (SPARK_ATTRIBUTE_RENDERERS, provideSparkAttributeRenderers, renderer interfaces)
+//   @mintplayer/ng-spark/renderers          (SPARK_ATTRIBUTE_RENDERERS, withAttributeRenderers, renderer interfaces)
 //   @mintplayer/ng-spark/routes             (sparkRoutes, SparkRouteConfig)
 //   @mintplayer/ng-spark/po-form            (SparkPoFormComponent)
 //   @mintplayer/ng-spark/po-create          (SparkPoCreateComponent)
@@ -14,12 +14,13 @@
 //   @mintplayer/ng-spark/icon               (SparkIconComponent)
 //   @mintplayer/ng-spark/shell              (SparkShellComponent + slots, SparkProgramUnitsComponent, SparkLanguageSelectorComponent)
 //   @mintplayer/ng-spark/panels             (SPARK_DETAIL_PANELS, SPARK_DETAIL_ACTIONS, SPARK_DETAIL_LAYOUTS, SPARK_QUERY_LIST_ACTIONS + provide* helpers, contexts)
-//   @mintplayer/ng-spark/dashboards         (provideSparkDashboards, sparkDashboardRenderers: tile layout, spark-meter, spark-stat, spark-dashboard-table)
-//   @mintplayer/ng-spark/soft-delete        (provideSparkSoftDelete, Deleted toggle, Restore/Purge, SparkSoftDeleteService)
-//   @mintplayer/ng-spark/history            (provideSparkHistory, <spark-po-history>, SparkHistoryService)
-//   @mintplayer/ng-spark/contributions      (provideSparkContributions, sparkContributionRenderers: attribution row + lineDiff, revert)
+//   @mintplayer/ng-spark/dashboards         (withDashboards,sparkDashboardRenderers: tile layout, spark-meter, spark-stat, spark-dashboard-table)
+//   @mintplayer/ng-spark/soft-delete        (withSoftDelete,Deleted toggle, Restore/Purge, SparkSoftDeleteService)
+//   @mintplayer/ng-spark/history            (withHistory,<spark-po-history>, SparkHistoryService)
+//   @mintplayer/ng-spark/contributions      (withContributions,sparkContributionRenderers: attribution row + lineDiff, revert)
 
 export type { SparkConfig } from './lib/spark-config';
 export { SPARK_CONFIG, defaultSparkConfig } from './lib/spark-config';
 export { SPARK_AUTH_STATE } from './lib/spark-auth-state';
-export { provideSpark } from './lib/provide-spark';
+export { provideSpark, sparkFeature, withConfig, SparkFeatureOrder } from './lib/provide-spark';
+export type { SparkFeature } from './lib/provide-spark';

@@ -622,7 +622,7 @@ Opt into the pages the server actually mounts, and point `loginUrl` at a route t
 ...sparkAuthRoutes(withLocalLogin(), withRegistration(), withExternalLogin(githubProvider())),
 
 // app.config.ts
-provideSparkAuth({ loginUrl: '/sign-in' }),
+withAuth({ loginUrl: '/sign-in' }),
 ```
 
 **Nothing is mounted unless a feature asks for it** — `sparkAuthRoutes()` with no arguments emits no

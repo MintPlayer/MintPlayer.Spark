@@ -20,7 +20,7 @@ import { sparkInAppUrl } from './spark-in-app-url';
  * finds the router already there and does nothing; `focusLastFocusedOrOpen` focuses the open page
  * without loading it (and opens the URL when no page is open), leaving the navigation to this handler.
  *
- * Active only in a browser with the service worker enabled; started by `provideSparkServiceWorker()`.
+ * Active only in a browser with the service worker enabled; started by `withServiceWorker()`.
  */
 @Injectable({ providedIn: 'root' })
 export class SparkNotificationClicks {
@@ -33,7 +33,7 @@ export class SparkNotificationClicks {
 
   private started = false;
 
-  /** Starts listening. Idempotent; called by the app initializer `provideSparkServiceWorker()` adds. */
+  /** Starts listening. Idempotent; called by the app initializer `withServiceWorker()` adds. */
   start(): void {
     if (this.started) return;
     this.started = true;

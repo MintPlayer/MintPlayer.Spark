@@ -1,13 +1,14 @@
 import { ApplicationConfig, provideBrowserGlobalErrorListeners, provideZonelessChangeDetection } from '@angular/core';
 import { provideRouter } from '@angular/router';
-import { provideSparkServiceWorker } from '@mintplayer/ng-spark/pwa';
 import { provideHttpClient } from '@angular/common/http';
 import { withSparkTimezone } from '@mintplayer/ng-spark/services';
 import { provideAnimations } from '@angular/platform-browser/animations';
-import { provideSparkAuth, withSparkAuth } from '@mintplayer/ng-spark/auth';
-import { provideSparkAttributeRenderers } from '@mintplayer/ng-spark/renderers';
-import { provideSparkClientOperations } from '@mintplayer/ng-spark/client-operations';
-import { provideSparkBoards } from '@mintplayer/ng-spark/boards';
+import { provideSpark } from '@mintplayer/ng-spark';
+import { withServiceWorker } from '@mintplayer/ng-spark/pwa';
+import { withAuth, withSparkAuth } from '@mintplayer/ng-spark/auth';
+import { withAttributeRenderers } from '@mintplayer/ng-spark/renderers';
+import { withClientOperations } from '@mintplayer/ng-spark/client-operations';
+import { withBoards } from '@mintplayer/ng-spark/boards';
 
 import { routes } from './app.routes';
 import { ColorDetailRendererComponent } from './renderers/color-detail-renderer.component';
@@ -19,26 +20,28 @@ import { ColorEditRendererComponent } from './renderers/color-edit-renderer.comp
 export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
-    provideSparkServiceWorker(),
     provideRouter(routes),
     provideHttpClient(...withSparkAuth(), ...withSparkTimezone()),
     provideAnimations(),
-    provideSparkAuth(),
-    provideSparkClientOperations(),
-    provideSparkBoards(),
     provideZonelessChangeDetection(),
-    provideSparkAttributeRenderers([
-      {
-        name: 'color-swatch',
-        detailComponent: ColorDetailRendererComponent,
-        columnComponent: ColorColumnRendererComponent,
-        editComponent: ColorEditRendererComponent,
-      },
-      {
-        name: 'video-player',
-        detailComponent: VideoPlayerDetailRendererComponent,
-        columnComponent: VideoPlayerColumnRendererComponent,
-      },
-    ]),
+    provideSpark(
+      withServiceWorker(),
+      withAuth(),
+      withClientOperations(),
+      withBoards(),
+      withAttributeRenderers([
+        {
+          name: 'color-swatch',
+          detailComponent: ColorDetailRendererComponent,
+          columnComponent: ColorColumnRendererComponent,
+          editComponent: ColorEditRendererComponent,
+        },
+        {
+          name: 'video-player',
+          detailComponent: VideoPlayerDetailRendererComponent,
+          columnComponent: VideoPlayerColumnRendererComponent,
+        },
+      ]),
+    ),
   ]
 };

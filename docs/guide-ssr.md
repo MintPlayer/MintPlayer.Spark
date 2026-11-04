@@ -56,7 +56,7 @@ export default createSparkServerRenderer(bootstrap);
 export const config = mergeApplicationConfig(appConfig, { providers: [provideSparkServerRendering()] });
 
 // app.config.ts
-provideSparkHydration(),
+provideSpark(withHydration()),
 ```
 
 All Angular code is zoneless: a render waits through `PendingTasks`, never zone.js.
@@ -111,7 +111,7 @@ an indexable type; a type without `seo`, an error, a deleted view, and the new a
 Rich JSON-LD that the mapping cannot express comes from a per-type hook, which receives only the presented object:
 
 ```ts
-provideSparkSeo({
+withSeo({
   structuredData: {
     Song: po => ({ byArtist: artistsOf(po).map(name => ({ '@type': 'MusicGroup', name })) }),
   },
@@ -123,7 +123,7 @@ provideSparkSeo({
 }),
 ```
 
-With `provideSparkSeo`, every page that is not an object's gets its route's `title` (or the site's), the site
+With `withSeo`, every page that is not an object's gets its route's `title` (or the site's), the site
 description and image, Open Graph tags and a canonical link without the query (`SparkTitleStrategy`).
 
 A type can be indexable while some of its objects are not: `"seo": { "indexable": true, "indexableWhen": "IsPublic" }`

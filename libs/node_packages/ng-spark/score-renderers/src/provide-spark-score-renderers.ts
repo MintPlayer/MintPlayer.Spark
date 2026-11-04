@@ -1,5 +1,5 @@
-import { Provider } from '@angular/core';
-import { provideSparkAttributeRenderers, SparkAttributeRendererRegistration } from '@mintplayer/ng-spark/renderers';
+import { SparkFeature, SparkFeatureOrder } from '@mintplayer/ng-spark';
+import { SparkAttributeRendererRegistration, withAttributeRenderers } from '@mintplayer/ng-spark/renderers';
 import { SparkGaugeComponent } from './spark-gauge.component';
 import { SparkThresholdBarComponent } from './spark-threshold-bar.component';
 import { SparkTrendComponent } from './spark-trend.component';
@@ -17,17 +17,15 @@ export const sparkScoreRenderers: readonly SparkAttributeRendererRegistration[] 
 ];
 
 /**
- * Registers the score renderers (`spark-gauge`, `spark-threshold-bar`, `spark-trend`, `spark-delta`)
- * together with the app's own. Use it **instead of** `provideSparkAttributeRenderers`, not next to
- * it: both provide the one renderer list, and the last provider would win.
- *
- * The app's registrations come first, so an app renderer of the same name replaces a score renderer.
+ * Registers the score renderers (`spark-gauge`, `spark-threshold-bar`, `spark-trend`, `spark-delta`), for
+ * `provideSpark(...)`, together with `renderers` if given. They come after every `withAttributeRenderers(...)`
+ * listing, so an app renderer of the same name replaces a score renderer.
  *
  * @example
- * provideSparkScoreRenderers([
+ * withScoreRenderers([
  *   { name: 'coverage-delta', columnComponent: SparkDeltaComponent, detailComponent: SparkDeltaComponent },
  * ])
  */
-export function provideSparkScoreRenderers(renderers: SparkAttributeRendererRegistration[] = []): Provider {
-  return provideSparkAttributeRenderers([...renderers, ...sparkScoreRenderers]);
+export function withScoreRenderers(renderers: readonly SparkAttributeRendererRegistration[] = []): SparkFeature {
+  return withAttributeRenderers([...renderers, ...sparkScoreRenderers], SparkFeatureOrder.builtInRegistrations);
 }

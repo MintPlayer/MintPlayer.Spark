@@ -10,7 +10,7 @@ import { SeoVerificationComponent } from './renderers/verification.component';
 
 /**
  * SeoTester's attribute renderers, by the `renderer` names its App_Data model uses, on top of the score renderers
- * (`spark-gauge`, `spark-threshold-bar`, `spark-trend`, `spark-delta`; `provideSparkScoreRenderers` in app.config.ts).
+ * (`spark-gauge`, `spark-threshold-bar`, `spark-trend`, `spark-delta`; `withScoreRenderers` in app.config.ts).
  * The full-width ones are a whole section of a page (no label column); each also draws the share page's cell, which
  * goes through `spark-grid-cell`.
  */

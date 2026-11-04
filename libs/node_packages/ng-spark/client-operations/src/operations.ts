@@ -69,7 +69,7 @@ export interface RetryOperation {
     message?: string | null;
     /** Whether the client offers its own translated Cancel, answered as `'Cancel'` (`IRetryAccessor.Action(..., cancellable)`). */
     cancellable?: boolean;
-    /** A client method to run instead of a modal (`IRetryAccessor.Invoke`); see `provideSparkClientMethods`. */
+    /** A client method to run instead of a modal (`IRetryAccessor.Invoke`); see `withClientMethods`. */
     clientMethod?: string | null;
     /** Its argument, as the server serialized it. */
     arguments?: unknown;

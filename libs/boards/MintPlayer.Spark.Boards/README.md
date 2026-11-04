@@ -36,7 +36,7 @@ A query target is the query's id or alias (`cars` is the alias Spark derives fro
 
 Built-in kinds: `query`, `count`, `persistentObject` (`entityType` + `id`) and `programUnit`. An
 application adds its own with `o.AddKind<TKind>()` and a matching client renderer
-(`provideSparkTileRenderers`). Client: `@mintplayer/ng-spark/boards` (`provideSparkBoards()`, then `<spark-board boardId="home" />` or `sparkBoardRoute('home', 'home')`).
+(`withTileRenderers`). Client: `@mintplayer/ng-spark/boards` (`withBoards()`, then `<spark-board boardId="home" />` or `sparkBoardRoute('home', 'home')`).
 
 Endpoints: `GET/PUT/DELETE /spark/boards/{board}` and `GET /spark/boards/{board}/catalog`. A layout is
 stored as `BoardLayouts/{userId}/{board}`. See `docs/guide-boards.md`.

@@ -53,7 +53,7 @@ public sealed class ActionDefinition
     public int Offset { get; init; }
 
     /// <summary>
-    /// The client method the action needs in the browser (<c>provideSparkClientMethods</c>), e.g.
+    /// The client method the action needs in the browser (<c>withClientMethods</c>), e.g.
     /// <c>"webauthn.create"</c>. The client shows the action disabled, with a reason, when the method
     /// is not registered or reports itself unsupported. Advisory only: the action still has to treat
     /// a cancelled client-method step gracefully.

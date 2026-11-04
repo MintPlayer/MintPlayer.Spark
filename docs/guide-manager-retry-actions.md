@@ -276,13 +276,13 @@ public async Task ExecuteAsync(CustomActionArgs args, CancellationToken cancella
 }
 ```
 
-On the client, `@mintplayer/ng-spark/auth`'s `provideSparkAuth()` registers `webauthn.create`. An
+On the client, `@mintplayer/ng-spark/auth`'s `withAuth()` registers `webauthn.create`. An
 application registers its own the same way:
 
 ```typescript
-import { provideSparkClientMethods } from '@mintplayer/ng-spark/client-operations';
+import { withClientMethods } from '@mintplayer/ng-spark/client-operations';
 
-provideSparkClientMethods({
+withClientMethods({
   'files.pick': {
     invoke: async (args) => { /* runs in an injection context; resolve the answer */ },
     supported: () => 'showOpenFilePicker' in window,   // optional

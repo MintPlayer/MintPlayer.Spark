@@ -100,7 +100,7 @@ checked byte for byte against the RFC 8291 Appendix A vectors.
 - The `spark-webpush` queue sends them: **404/410** deletes the device, **429/5xx** retries with backoff (up to
   8 attempts over about 10 hours), anything else (400/403: VAPID or keys; 413: too large) parks the message as
   failed. `TTL` is `Spark:Notifications:WebPush:TimeToLive` (1 day).
-- The payload is Angular's service-worker format, so `provideSparkServiceWorker()`'s `ngsw-worker.js` shows it
+- The payload is Angular's service-worker format, so `withServiceWorker()`'s `ngsw-worker.js` shows it
   with no code of yours. A click uses `focusLastFocusedOrOpen`: an open tab of the app is focused and
   `SparkNotificationClicks` (ng-spark `pwa`) navigates it in-app to `data.url`; a closed app opens at that URL.
   `SparkNotificationsService` marks the clicked notification read (`data.notificationId`) when the click reaches
@@ -139,8 +139,8 @@ and Safari were not measured (PRD §11 Q-M6a).
   and push: `pushSupported`, `pushState` (`unsupported` | `denied` | `off` | `on`), `pushConfigured`,
   `enablePush()` (asks permission inside the click, subscribes through `SwPush`, posts the subscription; a
   refused device is unsubscribed again), `disablePush()`. Both lists are subscriptions on the one live socket.
-- `provideSparkNotifications({ recentCount, listLink })` changes the defaults (8, `['/query', 'notifications']`).
-- Needs `@angular/service-worker` (for `SwPush`) and `provideSparkServiceWorker()`. Push is `unsupported` where
+- `withNotifications({ recentCount, listLink })` changes the defaults (8, `['/query', 'notifications']`).
+- Needs `@angular/service-worker` (for `SwPush`) and `withServiceWorker()`. Push is `unsupported` where
   there is no Notification API, `PushManager` or service worker (iOS outside an installed app).
 
 ## Testing

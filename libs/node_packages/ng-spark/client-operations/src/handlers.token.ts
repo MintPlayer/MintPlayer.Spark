@@ -19,7 +19,7 @@ export interface ClientOperationHandlerRegistration {
 }
 
 /**
- * Multi-provider token. `provideSparkClientOperations()` registers the
+ * Multi-provider token. `withClientOperations()` registers the
  * built-in handlers; apps can add their own with additional `multi: true`
  * providers using this token.
  */

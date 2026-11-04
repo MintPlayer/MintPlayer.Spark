@@ -13,9 +13,10 @@ import {
   SPARK_AUTH_CONFIG,
   SPARK_AUTH_ROUTE_PATHS,
   defaultSparkAuthConfig,
-  provideSparkAccountProfileFields,
+  withAccountProfileFields,
 } from '@mintplayer/ng-spark/auth/models';
 import { SparkConfirmEmailComponent } from '@mintplayer/ng-spark/auth/confirm-email';
+import { provideSpark } from '@mintplayer/ng-spark';
 import { accountMessages } from './account-messages';
 import { SparkAccountOverviewComponent } from './spark-account-overview.component';
 import { SparkAccountProfileComponent } from './spark-account-profile.component';
@@ -141,10 +142,10 @@ describe('SparkAccountProfileComponent', () => {
       ...overrides,
     };
     configure(auth, [
-      provideSparkAccountProfileFields(
+      provideSpark(withAccountProfileFields(
         { name: 'Newsletter', label: 'Newsletter', type: 'checkbox', order: 2 },
         { name: 'Bio', label: 'Bio', type: 'textarea', order: 1 },
-      ),
+      )),
     ]);
     const fixture = TestBed.createComponent(SparkAccountProfileComponent);
     const http = TestBed.inject(HttpTestingController);
