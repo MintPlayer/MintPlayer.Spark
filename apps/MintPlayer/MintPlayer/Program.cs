@@ -12,6 +12,7 @@ using MintPlayer.Spark.Extensions;
 using MintPlayer.Spark.History;
 using MintPlayer.Spark.MailManager;
 using MintPlayer.Spark.Messaging;
+using MintPlayer.Spark.Search;
 using MintPlayer.Spark.SitemapXml;
 using MintPlayer.Spark.SoftDelete;
 
@@ -58,6 +59,9 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     // SeoTester crawl.sitemap: /sitemap.xml lists every public song, artist, person, medium type, tag and public
     // playlist (D17). robots.txt (ClientApp/public) names it.
     spark.AddSitemap();
+    // #238 (docs/spark_search_PRD.md): songs, artists and people ("search" in their model files), served at
+    // /spark/search and /spark/search/suggest from the generated Spark_Search index.
+    spark.AddSearch();
 });
 
 builder.Services.AddScoped<MintPlayerAccess>();

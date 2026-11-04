@@ -53,7 +53,9 @@ Issues #238 and #560. **One PR**, branch `feat/issue238-search`.
 
 ## M3 — RavenDB provider + generator
 
-- [ ] Generator emitting `Spark_Search` (Lucene, fields per D5) into the app.
+- [x] Generator emitting `Spark_Search` (Lucene, fields per D5) into the app (`SearchIndexGenerator`, only when the
+      app references MintPlayer.Spark.Search; text = string / string-collection properties only). MintPlayer's
+      generated output reviewed (3 maps), app compiles. Index compile on the server is checked in M8.
 - [x] Default provider: search, fuzzy, suggest (`RavenSearchProvider`, in the Search package).
 
 ## M4 — `MintPlayer.Spark.Search.OpenSearch` (engine)
@@ -75,7 +77,8 @@ Issues #238 and #560. **One PR**, branch `feat/issue238-search`.
 
 ## M7 — mintplayer.com
 
-- [ ] `search` blocks on Artist, Person, Song (labels, fields); delete `Indexes/Subjects_Search.cs`.
+- [x] `search` blocks on Artist, Person, Song (Person searches `FirstName`/`LastName`: `FullName` is computed);
+      `Indexes/Subjects_Search.cs` deleted (nothing used it); `spark.AddSearch()` in `Program.cs`.
 - [ ] `Program.cs`: `AddSearch(s => s.UseOpenSearch(...))`, `AddOpenSearchDescription(...)`; `app.config.ts`
       (`withOpenSearchDescription` in `provideSpark`) + routes.
 - [ ] `apps/MintPlayer/opensearch/Dockerfile`, compose service + network + volume, deploy workflow builds/pushes
