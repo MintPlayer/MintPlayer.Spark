@@ -1,0 +1,11 @@
+{
+  "Results": [
+    { "Title": "Queen", "Hidden": false, "@metadata": { "@id": "SrchSongs/1", "@collection": "SrchSongs", "Raven-Clr-Type": "MintPlayer.Spark.Tests.Search.SrchSong, MintPlayer.Spark.Tests" } },
+    { "Title": "Queen", "Hidden": true, "@metadata": { "@id": "SrchSongs/2", "@collection": "SrchSongs", "Raven-Clr-Type": "MintPlayer.Spark.Tests.Search.SrchSong, MintPlayer.Spark.Tests" } },
+    { "Title": "Queen", "Hidden": false, "@metadata": { "@id": "SrchSongs/10", "@collection": "SrchSongs", "Raven-Clr-Type": "MintPlayer.Spark.Tests.Search.SrchSong, MintPlayer.Spark.Tests" } },
+    { "Title": "Bohemian Rhapsody", "Hidden": false, "@metadata": { "@id": "SrchSongs/3", "@collection": "SrchSongs", "Raven-Clr-Type": "MintPlayer.Spark.Tests.Search.SrchSong, MintPlayer.Spark.Tests" } },
+    { "Title": "Secret", "Hidden": true, "@metadata": { "@id": "SrchSongs/4", "@collection": "SrchSongs", "Raven-Clr-Type": "MintPlayer.Spark.Tests.Search.SrchSong, MintPlayer.Spark.Tests" } },
+    { "Title": "Top 40 (Remix)", "Hidden": false, "@metadata": { "@id": "SrchSongs/5", "@collection": "SrchSongs", "Raven-Clr-Type": "MintPlayer.Spark.Tests.Search.SrchSong, MintPlayer.Spark.Tests" } },
+    { "Title": "Bohemian Rhapsody", "Hidden": true, "@metadata": { "@id": "SrchSongs/6", "@collection": "SrchSongs", "Raven-Clr-Type": "MintPlayer.Spark.Tests.Search.SrchSong, MintPlayer.Spark.Tests" } }
+  ]
+}

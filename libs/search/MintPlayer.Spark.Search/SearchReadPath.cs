@@ -63,7 +63,7 @@ internal sealed partial class SearchReadPath
         var types = (await AllowedTypesAsync(cancellationToken)).ToDictionary(t => t.Name, StringComparer.Ordinal);
         var ordered = candidates
             .Where(c => types.ContainsKey(c.EntityType))
-            .DistinctBy(c => (c.EntityType, c.Id))
+            .DistinctBy(c => Key(c.EntityType, c.Id))
             .ToList();
 
         var rows = new Dictionary<(string Type, string Id), QueryResultItem>();
@@ -82,19 +82,26 @@ internal sealed partial class SearchReadPath
                 continue;
             }
             foreach (var row in result.Items)
-                rows[(group.Key, row.Id)] = row;
+                rows[Key(group.Key, row.Id)] = row;
         }
 
         return ordered
-            .Where(c => rows.ContainsKey((c.EntityType, c.Id)))
+            .Where(c => rows.ContainsKey(Key(c.EntityType, c.Id)))
             .Select(c =>
             {
                 var type = types[c.EntityType];
-                var row = rows[(c.EntityType, c.Id)];
+                var row = rows[Key(c.EntityType, c.Id)];
                 return new VisibleHit(type, row, RenderLabel(type.Definition, row));
             })
             .ToList();
     }
+
+    /// <summary>
+    /// A candidate's key. RavenDB ids are case-insensitive, and a provider may not return the stored casing: an index
+    /// projection answers with the lower-cased id it keeps in the index entry (<c>srchsongs/1</c>), so an ordinal
+    /// match against the re-read row dropped every hit of the RavenDB provider.
+    /// </summary>
+    private static (string Type, string Id) Key(string type, string id) => (type, id.ToLowerInvariant());
 
     /// <summary>
     /// The hit's label (D3): <c>search.label</c>, else the breadcrumb template, filled from the row's values. A

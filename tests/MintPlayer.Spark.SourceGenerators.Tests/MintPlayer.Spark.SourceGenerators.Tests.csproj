@@ -82,6 +82,8 @@
     <ProjectReference Include="..\..\libs\history\MintPlayer.Spark.History.Abstractions\MintPlayer.Spark.History.Abstractions.csproj" />
     <!-- SPARK039's negative case: an application that does reference the stamping package. -->
     <ProjectReference Include="..\..\libs\history\MintPlayer.Spark.History\MintPlayer.Spark.History.csproj" />
+    <!-- #238: SearchIndexGenerator only emits Spark_Search for an application that references the search package. -->
+    <ProjectReference Include="..\..\libs\search\MintPlayer.Spark.Search\MintPlayer.Spark.Search.csproj" />
 
     <!-- Abstractions are needed to compile the test input sources (DefaultPersistentObjectActions, etc). -->
     <ProjectReference Include="..\..\libs\spark\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />

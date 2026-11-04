@@ -100,11 +100,11 @@ internal sealed class OpenSearchEngine(IHttpClientFactory httpClients, SparkOpen
         var ndjson = new StringBuilder();
         foreach (var entry in upserts)
         {
-            ndjson.Append(JsonSerializer.Serialize(new { index = new { _index = Index, _id = entry.Id } })).Append('\n');
+            ndjson.Append(JsonSerializer.Serialize(new { index = new { _index = Index, _id = DocumentId(entry.Id) } })).Append('\n');
             ndjson.Append(JsonSerializer.Serialize(new { type = entry.Type, text = entry.Text ?? "" })).Append('\n');
         }
         foreach (var id in deletes)
-            ndjson.Append(JsonSerializer.Serialize(new { delete = new { _index = Index, _id = id } })).Append('\n');
+            ndjson.Append(JsonSerializer.Serialize(new { delete = new { _index = Index, _id = DocumentId(id) } })).Append('\n');
 
         using var content = new StringContent(ndjson.ToString(), Encoding.UTF8, "application/x-ndjson");
         using var response = await http.PostAsync("_bulk", content, cancellationToken);
@@ -122,9 +122,16 @@ internal sealed class OpenSearchEngine(IHttpClientFactory httpClients, SparkOpen
         }
     }
 
+    /// <summary>
+    /// The engine's id for a document. RavenDB ids are case-insensitive, and the sync reads them from <c>Spark_Search</c>
+    /// projections, which answer lower-cased (<c>songs/1</c>), while a hard delete arrives with the stored casing
+    /// (<c>Songs/1</c>): one casing for both, or the delete misses. The read path matches hits ignoring case.
+    /// </summary>
+    internal static string DocumentId(string id) => id.ToLowerInvariant();
+
     public async Task DeleteAsync(string id, CancellationToken cancellationToken)
     {
-        using var response = await http.DeleteAsync($"{Index}/_doc/{Uri.EscapeDataString(id)}", cancellationToken);
+        using var response = await http.DeleteAsync($"{Index}/_doc/{Uri.EscapeDataString(DocumentId(id))}", cancellationToken);
         if (response.StatusCode != HttpStatusCode.NotFound)
             await EnsureSuccessAsync(response, cancellationToken);
     }

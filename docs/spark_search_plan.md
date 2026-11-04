@@ -97,7 +97,12 @@ Issues #238 and #560. **One PR**, branch `feat/issue238-search`.
 
 ## M8 — Tests (run once, at the end)
 
-- [ ] Per PRD D14; CI: OpenSearch container joins an existing job.
+- [x] Per PRD D14; CI: OpenSearch container joins an existing job (the four Spark.Tests shards, `docker run -d`).
+      `Search/SparkSearchTests` (core, labels, resolve, description), `Search/RavenSearchProviderTests` (the
+      generator's snapshot deployed to RavenDB), `Search/OpenSearchEngineTests` (skip without
+      `SPARK_OPENSEARCH_URI`), `SearchIndexGeneratorTests`, `search/src/spark-search.spec.ts`. Run once: 17 passed +
+      9 skipped (engine), 7 generator, 11 + 6 vitest. Found and fixed the id-casing bug (PRD §8, D2/D6). No SSR E2E
+      (PRD §8 deviation).
 
 ## M9 — Docs
 

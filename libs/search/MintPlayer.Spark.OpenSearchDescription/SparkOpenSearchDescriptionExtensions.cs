@@ -43,7 +43,14 @@ public static class SparkOpenSearchDescriptionExtensions
             o.ImageWidth = options.ImageSize;
             o.ImageHeight = options.ImageSize;
         });
-        builder.Registry.AddEndpoints(endpoints => endpoints.MapOpenSearch());
+        builder.Registry.AddEndpoints(endpoints =>
+        {
+            // A browser fetches these signed out: anonymous like the sitemap and /spark/search, so an app's fallback
+            // authorization policy cannot lock them. A group, because MapOpenSearch takes no conventions itself.
+            var group = endpoints.MapGroup("");
+            group.AllowAnonymous().ExcludeFromDescription();
+            group.MapOpenSearch();
+        });
         return builder;
     }
 }

@@ -9,7 +9,9 @@ using MintPlayer.Spark.IdentityProvider.Extensions;
 using MintPlayer.Spark.MailManager;
 using MintPlayer.Spark.Messaging;
 using MintPlayer.Spark.Moderation;
+using MintPlayer.Spark.OpenSearchDescription;
 using MintPlayer.Spark.Replication;
+using MintPlayer.Spark.Search;
 using MintPlayer.Spark.SoftDelete;
 using MintPlayer.Spark.Testing;
 using MintPlayer.Spark.Tests._Infrastructure;
@@ -66,6 +68,9 @@ public class RouteTableSnapshotTests(SparkSharedDatabase database)
             spark.AddContributions();
             spark.AddModeration<SparkUser>();
             spark.AddReplication(o => o.ModuleName = "RouteSnapshot");
+            // #238: GET-only, so the CSRF surface is unchanged; the route table still pins them.
+            spark.AddSearch();
+            spark.AddOpenSearchDescription(o => o.ShortName = "RouteSnapshot");
         },
         ["webhooks"] = spark => spark.AddMessaging().AddGithubWebhooks(o => o.WebhookSecret = "route-snapshot"),
         ["webhooks-dev-app"] = spark => spark.AddMessaging().AddGithubWebhooks(o =>

@@ -135,7 +135,8 @@ describe('SparkSiteSearchComponent', () => {
   it('singleHit searchPage always lists the results, without a resolve', async () => {
     const { http, box, navigate } = create(withSearch({ singleHit: 'searchPage' }));
     await box.submit('queen');
-    http.expectNone(() => true);
+    // Other requests (the box's translations) are not this test's business: only the resolve must not happen.
+    http.expectNone(r => r.url.includes('/search/resolve'));
     expect(navigate).toHaveBeenCalledWith(['/search'], { queryParams: { q: 'queen' } });
   });
 
