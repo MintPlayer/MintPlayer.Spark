@@ -49,7 +49,7 @@ export function seoRunProgress(data: Record<string, unknown> | undefined) {
           <span>{{ p.done }} / {{ p.total }} {{ 'seoUi.results.pages' | t }}</span>
         </div>
         <bs-progress [height]="10">
-          <bs-progress-bar [value]="p.percent" color="primary" [striped]="true" [animated]="true" [ariaLabel]="'seoUi.progress' | t" />
+          <bs-progress-bar [value]="p.percent" color="primary" [striped]="true" [animated]="true" [label]="'seoUi.progress' | t" />
         </bs-progress>
         @if (p.currentUrl) { <div class="small text-body-secondary text-truncate mt-1" [title]="p.currentUrl">{{ p.currentUrl }}</div> }
       </div>

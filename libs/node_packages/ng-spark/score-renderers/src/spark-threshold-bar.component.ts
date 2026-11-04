@@ -49,7 +49,7 @@ interface ThresholdBarView {
       <div class="d-flex align-items-center gap-2">
         <bs-progress [style.width]="settings().width" [style.height]="settings().height">
           <bs-progress-bar [value]="v.value" [minimum]="settings().min" [maximum]="settings().max" [color]="v.color"
-                           [ariaLabel]="settings().label" [valueText]="v.text" />
+                           [label]="settings().label" [valueText]="v.text" />
         </bs-progress>
         @if (settings().showValue) {
           <span class="small text-nowrap">{{ v.text }}</span>

@@ -41,7 +41,7 @@ interface MeterView {
       <div class="d-flex flex-column gap-1 spark-meter">
         <bs-progress [style.height]="'.75rem'">
           <bs-progress-bar [value]="v.share" [minimum]="0" [maximum]="100" [color]="v.color"
-                           [ariaLabel]="label()" [valueText]="v.text" />
+                           [label]="label()" [valueText]="v.text" />
         </bs-progress>
         <span class="small text-nowrap" data-meter-text>{{ v.text }}</span>
       </div>

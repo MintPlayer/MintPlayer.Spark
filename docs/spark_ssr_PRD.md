@@ -380,6 +380,17 @@ Each spike is time-boxed and ends with a written result in §7 (numbers, file:li
       - ngc with templates is clean for ng-spark and all 8 apps.
       - vitest is green for ng-spark, CodeCoverage, DemoApp, SeoTester, SparkId, Fleet, QnA and HR.
       - Not opened in a browser.
+    - **Checked against the release's own list** (mintplayer-ng-bootstrap#459, CHANGELOG `[Unreleased]` ›
+      Breaking, the #458 entries). The type-check cannot see two kinds of rename, so every old name was
+      grepped:
+      - **A static attribute or a dropped directive selector** compiles and silently does nothing.
+      - **A bound input whose name is also a DOM property** compiles too. `[ariaLabel]` on
+        `bs-progress-bar` (renamed `label`) bound the host element's ARIA reflection, so the outer
+        `bs-progress-bar` element got a stray `aria-label`. spark-meter, spark-threshold-bar and SeoTester's
+        run progress now bind `[label]`.
+      - **Breadcrumb:** CodeCoverage's file breadcrumb marks the open folder `active` (`aria-current="page"`).
+      - **No other old name is used.** Overlays now render into a body host, which drops custom properties
+        inherited from an ancestor; none of ours depends on one (only `--bs-*` from `:root`).
     - **Also on the PR:**
       - `8674adbd` pointed every App_Data file at the local schemas (`guide-json-schemas.md`).
       - Its `$schema` line in the Authorization and Moderation `security.json` moved those layers' hashes, so

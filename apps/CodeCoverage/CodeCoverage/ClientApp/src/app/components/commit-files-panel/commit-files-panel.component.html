@@ -82,9 +82,10 @@
 
 <ng-template #folderList>
   <bs-breadcrumb class="mb-2">
-    <bs-breadcrumb-item><a href="javascript:void(0)" (click)="openFolder('')">root</a></bs-breadcrumb-item>
-    @for (segment of pathSegments(); track segment.path) {
-      <bs-breadcrumb-item><a href="javascript:void(0)" (click)="openFolder(segment.path)">{{ segment.name }}</a></bs-breadcrumb-item>
+    <!-- The open folder is the active item (aria-current="page", ng-bootstrap 22.33). -->
+    <bs-breadcrumb-item [active]="pathSegments().length === 0"><a href="javascript:void(0)" (click)="openFolder('')">root</a></bs-breadcrumb-item>
+    @for (segment of pathSegments(); track segment.path; let last = $last) {
+      <bs-breadcrumb-item [active]="last"><a href="javascript:void(0)" (click)="openFolder(segment.path)">{{ segment.name }}</a></bs-breadcrumb-item>
     }
   </bs-breadcrumb>
 

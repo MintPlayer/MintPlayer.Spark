@@ -79,7 +79,7 @@ const DASH = '<span class="text-muted">—</span>';
 function bar(percent: string, now: string, progress: string, color: string): string {
   return '<div class="align-items-center d-flex gap-2">'
     + '<bs-progress class="progress-host" data-mps="progress" style="width: 80px; height: 8px;"><div class="progress" data-mps="progress">'
-    + '<bs-progress-bar aria-label="Coverage" class="progress-bar-host">'
+    + '<bs-progress-bar class="progress-bar-host">'
     + `<div aria-label="Coverage" aria-valuemax="100" aria-valuemin="0" aria-valuenow="${now}" aria-valuetext="${percent}%" class="progress-bar ${color}" data-mps="progress" data-progress="${progress}" role="progressbar"></div>`
     + '</bs-progress-bar></div></bs-progress>'
     + `<span class="small text-nowrap">${percent}%</span></div>`;
