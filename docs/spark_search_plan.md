@@ -12,16 +12,16 @@ Issues #238 and #560. **One PR**, branch `feat/issue238-search`.
 
 ## M0 — Spikes (results into PRD §9, with numbers)
 
-- [ ] S1 description library inside the module registry (R3 exception).
-- [ ] S2 source generator reading App_Data model JSON.
-- [ ] S3 RavenDB provider latency on MintPlayer data (Lucene, fuzzy, suggest, re-check).
-- [ ] S4 sync: checkpointed poll vs messaging queue → decision D8.
-- [ ] S5 disambiguation cost, stability, suffix parsing.
-- [ ] S6 `OpenSearch.Client` on net11, version pin, 512 MB heap footprint, suggestion quality.
+- [x] S1 description library inside the module registry — no R3 exception needed.
+- [x] S2 generator reading model JSON — feasible as-is.
+- [x] S3 corpus size (301 searchable docs) — D5 needs no measurement.
+- [x] S4 sync — poll backbone + delete messages (D8).
+- [x] S5 disambiguation — exact first, then known type suffix.
+- [x] S6 OpenSearch.Client 2.3.0 + engine 3.9.0; footprint measured in CI/after deploy (no local Docker).
 - [ ] S7 VPS `vm.max_map_count` + free RAM (owner runs).
 - [ ] S8 `/search?q=` prerender + transfer cache.
 - [ ] S9 OpenSearch `services:` container in an existing CI job.
-- [ ] SP1 (#560) inventory of `provideSpark*` call sites, injector levels, order constraints.
+- [x] SP1 (#560) inventory — Q1, Q2 answered.
 
 ## M-P — `provideSpark(withX(), …)` (#560), before M6 so search ships as features
 

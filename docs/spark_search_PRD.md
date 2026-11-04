@@ -209,8 +209,9 @@ same index also serves the checkpointed poll (D8a), so the fallback costs no ext
 **D7 — Fuzzy in both providers** (owner, O-fuzzy: "Both providers"). Default on, per type `search.fuzzy`, global
 `AddSearch(s => s.Fuzzy = false)`.
 
-**D8 — Sync to the OpenSearch engine is Spark-side; mechanism decided by spike S4** (owner: "Spike both — we can
-easily ship a source-generator if this helps").
+**D8 — Sync to the OpenSearch engine is Spark-side: (a) checkpointed poll + hard deletes via (b)** (decided by
+S4, §6.1; owner: "Spike both — we can easily ship a source-generator if this helps"). `Spark_Search` maps soft-deleted
+rows too (`IsDeleted` field; searches filter on it) so the poll sees deletions.
 - **(a) Checkpointed poll**: a hosted worker queries `Spark_Search` (D5) for `LastModified > checkpoint`, pushes a
   bulk, stores the checkpoint document. No subscription, durable, catches writes outside Spark. Deletes: a
   generated per-collection tombstone check or a reconcile pass (S4 measures which).
@@ -283,6 +284,53 @@ integration tests against a `services:` container in an **existing** CI job (20-
 - **S7** — VPS: `vm.max_map_count`, free RAM with the engine up (owner runs the commands).
 - **S8** — prerendering `/search?q=` through a contributor and the transfer cache (no double request).
 - **S9** — CI: OpenSearch `services:` container inside an existing job; start-up time.
+
+### 6.1 Spike results (2026-11-04)
+
+- **S1 — description library in the registry: works, no R3 exception needed.** `EndpointConventionsTests` R3 flags
+  only the method names in `MappingMethods` (`Map`, `MapGet`, …, `EndpointConventionsTests.cs:173-178`);
+  `MapOpenSearch` is not one, exactly like SitemapXml's `MapDefaultSitemapXmlStylesheet()` today
+  (`SparkSitemapExtensions.cs:33`). `AddOpenSearch<T>()` is an `IServiceCollection` extension, so it runs on
+  `builder.Services`; `builder.Registry.AddEndpoints(e => e.MapOpenSearch())` is mapped by `MapSpark()`
+  (`Program.cs:137`), before `UseSpaImproved` (:142), so the SSR fallback can't shadow it.
+- **S4 — sync: (a) checkpointed poll as the backbone, hard deletes through a `spark-search` message.**
+  - Messaging already runs on **one** subscription for all queues (`MessageFeeder.SubscriptionNameConstant =
+    "SparkMessaging"`, `MessageFeeder.cs:36`; the local MintPlayer database has exactly that one subscription), so
+    a `spark-search` queue costs no subscription. The Community cap is not the deciding factor any more.
+  - Deciding factor: completeness. Only the poll sees writes outside Spark's save pipeline (migrations, imports,
+    fixtures, `SparkMigrationRecords` show MintPlayer uses migrations). It reads `Spark_Search` by `LastModified`,
+    which D5 deploys anyway.
+  - The poll can't see hard deletes (tombstones aren't in an index). Soft deletes (MintPlayer uses `AddSoftDelete`)
+    are modifications: `Spark_Search` therefore maps deleted rows too, with an `IsDeleted` field, instead of
+    filtering them out, and the poll removes them from the engine. Hard deletes: Spark's delete pipeline sends a
+    `spark-search` message; a full reindex reconciles anything missed.
+- **S6 — engine and client.** `OpenSearch.Client` 2.3.0 (Apache-2.0) targets netstandard2.0/2.1, so it runs on
+  net11; its compatibility table says 2.0.0+ supports OpenSearch 3.x (`opensearch-net/COMPATIBILITY.md:8-12`).
+  Pin `opensearchproject/opensearch:3.9.0` (latest, 2026-11-04). Footprint and suggestion quality: **not measured
+  locally** (Docker Desktop not running on this machine); measured in CI (S9) and after deploy.
+- **S3 — corpus size.** Local copy of MintPlayer: 145 Artists, 141 Songs, 15 People (1194 documents in total). At this
+  size latency is dominated by round trips, not by the index: one suggest = one `Spark_Search` query + one
+  re-check query per type with hits (≤ 3). No measurement needed to choose D5; the circuit-breaker fallback (D6)
+  rides on the same numbers.
+- **S2 — generator reading the model: feasible as-is, no targets change.** `spark.targets:157-159` already adds
+  `$(SparkAppDataDir)\Model\*.json` as `AdditionalFiles` (default on, `spark.props:29`; `CompilerVisibleProperty
+  SparkAppDataDir`, `spark.targets:192`), and library model layers arrive with `SparkLayerPath` metadata
+  (`SourceGenerators/build/…targets:31,47`). `PersistentObjectNamesGenerator.cs:143-175` already reads them and
+  composes layers (`ComposedModel.Compose`). Model JSON names the CLR type (`"clrType": "MintPlayer.Entities.Song"`,
+  `Song.json:6`) and attribute names equal property names, so the generator resolves `clrType` with
+  `GetTypeByMetadataName` and emits typed `AddMap<Song>(...)`. Base class `SparkMultiMapIndexCreationTask`
+  (`SparkIndexCreationTask.cs:96`, SPARK018-exempt). Deployment is automatic (`IndexCreation.CreateIndexes` per
+  assembly, `SparkMiddleware.cs:943-961`). No precedent for a per-index engine: set
+  `Configuration["Indexing.Static.SearchEngineType"] = "Lucene"` in the constructor. `ModelJsonReader.TryRead`
+  (`ModelJsonReader.cs:39-78`) needs extending for `clrType` + `search` with the same identifier validation, since
+  the JSON is untrusted input to generated code. Gate: OutputKind Console/Windows like `[GenerateIndex]`
+  (`GenerateIndexGenerator.cs:164-167`); unresolved `clrType` → diagnostic.
+- **S5 — disambiguation, decided by design.** Resolving a picked string first tries it as an exact `LabelExact`;
+  only if that finds nothing does it strip a trailing ` (<type label>)` / ` (<type label> <n>)` whose type label is a
+  searchable type's, so a title like "Help! (Remastered)" still resolves. Ordinal = position in natural id order
+  among visible exact matches: adding an item can only append, never renumber, unless ids are reused.
+- **S7 — VPS**: owner runs `sysctl vm.max_map_count` and `free -m` before the first deploy (plan M10).
+- **S8, S9** — answered while implementing M2 (prerender contributor) and M8 (CI job); results logged in §10.
 
 ## 7. Acceptance
 

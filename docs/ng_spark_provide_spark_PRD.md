@@ -65,6 +65,32 @@ provideSpark(
 - **SP1** — inventory every `provideSpark*` call site (apps, ng-spark tests, docs), its injector level, and any
   order dependency.
 
+### 4.1 SP1 results (2026-11-04)
+
+- **Q1 — answered: every app call is application-level** (`ApplicationConfig.providers` in SparkId, QnA,
+  MintPlayer, SeoTester, HR, Fleet, DemoApp, CodeCoverage). Other callers: the auth setup template
+  (`libs/authorization/.../Targets/spark-auth.setup.template.ts:34`), ng-spark features calling each other's
+  registration helpers (Auth → ClientMethods; SoftDelete → QueryListActions + DetailActions; Moderation →
+  DetailActions + DetailPanels; Contributions → QueryRowActions + DetailActions; History → DetailPanels;
+  Dashboards → DetailLayouts; Boards → TileRenderers + DetailActions; ScoreRenderers → AttributeRenderers), and
+  `TestBed` specs. So `EnvironmentProviders` is safe (P9); internal composition keeps using plain `Provider[]`
+  helpers that are no longer exported as `provideSpark*`.
+- **Q2 — answered: three real order constraints, all resolvable inside `provideSpark`.**
+  1. `provideSparkAttributeRenderers` is **not multi**: one value, last provider wins; `provideSparkScoreRenderers`
+     wraps it ("use one or the other"). → `withAttributeRenderers(...)` and `withScoreRenderers(...)` become
+     multi-registration features whose arrays `provideSpark` **merges** into one value, app renderers first so an
+     app renderer replaces a built-in one by name.
+  2. `provideSparkSeo` provides `TitleStrategy`; Angular's `TitleStrategy` is `providedIn: 'root'`, so an
+     environment provider overrides it regardless of position. No order needed.
+  3. `provideSparkServerRendering` replaces `HttpBackend`, must follow `provideHttpClient`; it stays a separate
+     server call (P6), merged after the browser config, so unchanged.
+  - Last-registration-wins per id for tile renderers and panels/actions stays; panels/actions already sort by
+    their own `order`/`priority`. The only initializer is ServiceWorker's `provideAppInitializer`.
+  - Feature order constants: config 0, hydration 10, service worker 20, auth 100, client operations 110, then
+    feature modules 200+ (boards, dashboards, history, moderation, contributions, soft delete, notifications,
+    search), registrations 500+ (renderers merged last), SEO 900.
+- **Usage counts:** 48 Markdown files in `docs/`, 2 ng-spark READMEs (`README.md`, `auth/README.md`).
+
 ## 5. Acceptance
 
 - No `provideSpark*` call left in `apps/` except `provideSparkServerRendering`; each app config has one
