@@ -1,5 +1,5 @@
 {
-  "$schema": "https://schemas.spark.mintplayer.com/v8/model.schema.json",
+  "$schema": "../../../../../schemas/model.schema.json",
   "persistentObject": {
     "id": "63d7e7aa-21c4-4787-a125-a31689fac990",
     "name": "ManagedLabel",

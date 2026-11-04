@@ -39,8 +39,8 @@
         @for (value of matching(); track value.value) {
           <bs-checkbox
             class="spark-filter-value"
-            [isToggled]="isChecked(value)"
-            (isToggledChange)="toggle(value, $event === true)">
+            [checked]="isChecked(value)"
+            (checkedChange)="toggle(value, $event === true)">
             {{ labelFor(value) }}
           </bs-checkbox>
         }
@@ -53,8 +53,8 @@
         @for (value of remaining(); track value.value) {
           <bs-checkbox
             class="spark-filter-value is-remaining"
-            [isToggled]="isChecked(value)"
-            (isToggledChange)="toggle(value, $event === true)">
+            [checked]="isChecked(value)"
+            (checkedChange)="toggle(value, $event === true)">
             {{ labelFor(value) }}
           </bs-checkbox>
         }

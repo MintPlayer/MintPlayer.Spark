@@ -262,6 +262,13 @@ public sealed class EntityTypeSeo
     /// <summary>Whether a readable object's page may be indexed (<c>robots: index</c>); otherwise <c>noindex</c>.</summary>
     public bool Indexable { get; set; }
 
+    /// <summary>
+    /// A boolean attribute that must be true too for one object's page to be indexed, e.g. a playlist's <c>IsPublic</c>:
+    /// the type is indexable, a private object of it is not. Absent, every readable object of an indexable type is.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? IndexableWhen { get; set; }
+
     /// <summary>The schema.org <c>@type</c> of the page's JSON-LD, e.g. <c>MusicRecording</c>; absent, no JSON-LD.</summary>
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public string? SchemaType { get; set; }

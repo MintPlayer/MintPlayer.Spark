@@ -36,6 +36,13 @@ describe('sparkRoutes', () => {
     ]);
   });
 
+  it('ends with a catch-all only when notFound is asked for', () => {
+    expect(sparkRoutes().some(r => r.path === '**')).toBe(false);
+    expect(sparkRoutes({ notFound: true }).at(-1)?.path).toBe('**');
+    const own = () => Promise.resolve(ListStub);
+    expect(sparkRoutes({ notFound: own }).at(-1)?.loadComponent).toBe(own);
+  });
+
   it('lazy-loads the library components by default', async () => {
     // The entry points are mocked (below): importing the real ones pulls the whole component tree
     // and takes longer than a test is allowed. The mocks still prove each loader imports the right

@@ -1,9 +1,8 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, LOCALE_ID } from '@angular/core';
 import { formatNumber } from '@angular/common';
-import { Color } from '@mintplayer/ng-bootstrap';
 import { BsProgressComponent, BsProgressBarComponent } from '@mintplayer/ng-bootstrap/progress-bar';
 import type { SparkAttributeColumnRenderer, SparkAttributeDetailRenderer } from '@mintplayer/ng-spark/renderers';
-import { resolveSparkScoreBands, SparkScoreBandsOption, sparkScoreColor, toSparkScoreNumber } from './score-bands';
+import { resolveSparkScoreBands, SparkScoreBandsOption, SparkScoreColor, sparkScoreColor, toSparkScoreNumber } from './score-bands';
 import { numberOption, stringOption } from './option-readers';
 
 /** `rendererOptions` of the `spark-threshold-bar` renderer. Every member is optional. */
@@ -31,7 +30,7 @@ export interface SparkThresholdBarOptions {
 interface ThresholdBarView {
   value: number;
   text: string;
-  color: Color;
+  color: SparkScoreColor;
 }
 
 /**
@@ -50,7 +49,7 @@ interface ThresholdBarView {
       <div class="d-flex align-items-center gap-2">
         <bs-progress [style.width]="settings().width" [style.height]="settings().height">
           <bs-progress-bar [value]="v.value" [minimum]="settings().min" [maximum]="settings().max" [color]="v.color"
-                           [ariaLabel]="settings().label" [valueText]="v.text" />
+                           [label]="settings().label" [valueText]="v.text" />
         </bs-progress>
         @if (settings().showValue) {
           <span class="small text-nowrap">{{ v.text }}</span>

@@ -32,7 +32,7 @@ import { TranslateKeyPipe } from '@mintplayer/ng-spark/auth/pipes';
         <bs-card-header><h3 class="mb-0">{{ 'auth.externalLoginsTitle' | t }}</h3></bs-card-header>
         <div class="p-4">
           @if (errorKey()) {
-            <bs-alert [type]="errorIsNotice() ? colors.info : colors.danger" class="mb-3 d-block spark-account-error">{{ errorKey() | t }}</bs-alert>
+            <bs-alert [color]="errorIsNotice() ? 'info' : 'danger'" class="mb-3 d-block spark-account-error">{{ errorKey() | t }}</bs-alert>
           }
           @if (loading()) {
             <div class="text-center"><bs-spinner /></div>

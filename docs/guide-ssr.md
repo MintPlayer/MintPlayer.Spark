@@ -115,8 +115,33 @@ provideSparkSeo({
   structuredData: {
     Song: po => ({ byArtist: artistsOf(po).map(name => ({ '@type': 'MusicGroup', name })) }),
   },
+  // A description for a type whose model names no description attribute; cut to 160 characters.
+  description: { Song: po => `Lyrics and music video of ${po.breadcrumb}.` },
+  // Every other page: the home page, the lists, the sign-in pages.
+  siteDescription: 'Music videos, lyrics and playlists.',
+  image: '/icons/icon-512x512.png',
 }),
 ```
+
+With `provideSparkSeo`, every page that is not an object's gets its route's `title` (or the site's), the site
+description and image, Open Graph tags and a canonical link without the query (`SparkTitleStrategy`).
+
+A type can be indexable while some of its objects are not: `"seo": { "indexable": true, "indexableWhen": "IsPublic" }`
+indexes only an object whose boolean `IsPublic` is true. Row security still decides who can read it at all.
+
+### Not found and the sitemap
+
+`sparkRoutes({ notFound: true })` ends the routes with a catch-all page that renders with status 404 and `noindex`,
+instead of an empty 200. Leave it off when the app declares routes after `sparkRoutes()`, or put its own catch-all
+last.
+
+The `MintPlayer.Spark.SitemapXml` package adds `spark.AddSitemap()` (in `AddSpark`; `MapSpark()` maps it with the
+other modules' endpoints). `/sitemap.xml` is a sitemap index with one sitemap per 1000 rows of each indexable type's
+list (`/sitemap/{type}/{page}.xml`). Together they hold the detail page of every object an anonymous visitor may
+read, for every type with `seo.indexable` (and `indexableWhen` true), by the same canonical URL the page writes. It
+uses MintPlayer.AspNetCore.SitemapXml's types and stylesheet (`/sitemap.xsl`); see its
+[README](../libs/sitemap/MintPlayer.Spark.SitemapXml/README.md). Name it in a `robots.txt` (`Sitemap: https://example.com/sitemap.xml`) in the app's `public`
+folder.
 
 ## Service worker
 

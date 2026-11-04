@@ -27,7 +27,8 @@ export const routes: Routes = [
       { path: 'home', loadComponent: () => import('./pages/home/home.component') },
       // Last: sparkRoutes() has parameterised first segments that would shadow anything after them.
       // Slugs, as the legacy URLs had: /po/song/Songs%2F23/a-sky-full-of-stars.
-      ...sparkRoutes({ slugs: true }),
+      // notFound: a URL nothing matches renders a 404 page, answered with status 404 (not a soft 404).
+      ...sparkRoutes({ slugs: true, notFound: true }),
     ]
   }
 ];

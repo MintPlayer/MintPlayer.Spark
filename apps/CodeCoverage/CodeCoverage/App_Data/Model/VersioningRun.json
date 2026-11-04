@@ -1,5 +1,5 @@
 {
-  "$schema": "https://schemas.spark.mintplayer.com/v8/model.schema.json",
+  "$schema": "../../../../../schemas/model.schema.json",
   "persistentObject": {
     "id": "52d0ba95-e86c-4cef-81c0-38cadd6cd8aa",
     "name": "VersioningRun",

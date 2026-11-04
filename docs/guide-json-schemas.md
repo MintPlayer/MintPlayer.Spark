@@ -91,8 +91,13 @@ branch rather than against whatever is deployed:
 ```
 
 (`apps/<App>/<App>/App_Data/Model/x.json` → repo root; one level less for the other five files.)
-Synchronize leaves relative paths alone. ⚠️ A model file **copied from this repository** into another
-application should have its `$schema` line removed; the next synchronize then adds the hosted URL.
+Synchronize leaves relative paths alone, but it **adds the hosted URL to a file that has no `$schema`**,
+so a new file in this repository must get its relative line by hand.
+`SparkSchemaGeneratorTests.Every_App_Data_file_in_the_repository_references_the_locally_generated_schema`
+fails on any other value. (2026-11-03: 28 files of MintPlayer, SeoTester and CodeCoverage pointed at the hosted v7,
+and the editor flagged MintPlayer's valid `seo` blocks, which arrived in v9.) ⚠️ A model file **copied from this
+repository** into another application should have its `$schema` line removed; the next synchronize then adds the
+hosted URL.
 
 The schemas are **build artifacts and are never committed**: `schemas/` at the repository root is in
 `.gitignore`. ⚠️ A fresh clone therefore has no schemas until it is built once; until then every

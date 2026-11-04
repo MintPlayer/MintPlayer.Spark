@@ -62,7 +62,13 @@ public static class SparkExtensions
         services.AddAuthorization(Services.SparkAuthorizeAttribute.AddPolicy);
 
         // Register antiforgery (required by Spark's POST/PUT/DELETE endpoints)
-        services.AddAntiforgery(opt => opt.HeaderName = "X-XSRF-TOKEN");
+        services.AddAntiforgery(opt =>
+        {
+            opt.HeaderName = "X-XSRF-TOKEN";
+            // ASP.NET's default is None: the cookie went out without Secure even over HTTPS (SeoTester
+            // security.cookie-flags on mintplayer.com). SameAsRequest keeps plain-HTTP development working.
+            opt.Cookie.SecurePolicy = Microsoft.AspNetCore.Http.CookieSecurePolicy.SameAsRequest;
+        });
 
         // CORS services, always — for the same reason antiforgery is registered always, and with the
         // same consequence if it is not. Registering them is what makes `RequireCors` *safe to write*

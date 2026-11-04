@@ -18,6 +18,7 @@ on:
       - 'libs/attributes/MintPlayer.Spark.Attributes/**'
       - 'libs/authorization/MintPlayer.Spark.Authorization/**'
       - 'libs/boards/MintPlayer.Spark.Boards/**'
+      - 'libs/sitemap/MintPlayer.Spark.SitemapXml/**'
       - 'libs/authorization/MintPlayer.Spark.Authorization.Abstractions/**'
       - 'libs/history/MintPlayer.Spark.History/**'
       - 'libs/history/MintPlayer.Spark.History.Abstractions/**'

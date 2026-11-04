@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, effect, inject, input, ou
 import { NgTemplateOutlet } from '@angular/common';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsFormComponent } from '@mintplayer/ng-bootstrap/form';
-import { BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective } from '@mintplayer/ng-bootstrap/modal';
+import { BsModalComponent, BsModalHeaderDirective, BsModalFooterDirective } from '@mintplayer/ng-bootstrap/modal';
 import { BsButtonTypeDirective } from '@mintplayer/ng-bootstrap/button-type';
 import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
 import { SparkGridCellComponent, SparkGridRenderers } from '@mintplayer/ng-spark/grid';
@@ -66,14 +66,12 @@ const chipsPipe = new QueryReferenceChipsPipe();
  */
 @Component({
   selector: 'spark-po-conflict-dialog',
-  imports: [NgTemplateOutlet, BsFormComponent, BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective, BsButtonTypeDirective, BsTableComponent, SparkGridCellComponent, ResolveTranslationPipe, TranslateKeyPipe],
+  imports: [NgTemplateOutlet, BsFormComponent, BsModalComponent, BsModalHeaderDirective, BsModalFooterDirective, BsButtonTypeDirective, BsTableComponent, SparkGridCellComponent, ResolveTranslationPipe, TranslateKeyPipe],
   template: `
-    <bs-modal [isOpen]="conflicts().length > 0" (isOpenChange)="!$event && cancelled.emit()">
-      <div *bsModal>
-        <div bsModalHeader>
-          <h5 class="modal-title">{{ 'common.conflictTitle' | t }}</h5>
-        </div>
-        <div bsModalBody class="spark-conflict-dialog">
+    <bs-modal [open]="conflicts().length > 0" (openChange)="!$event && cancelled.emit()">
+      <ng-container *bsModalHeader>{{ 'common.conflictTitle' | t }}</ng-container>
+      @if (conflicts().length > 0) {
+        <div class="spark-conflict-dialog">
           <!-- Its own bs-form loads the form stylesheet (.form-check-input) instead of relying on
                the edit page's spark-po-form being on the page. -->
           <bs-form class="d-block">
@@ -94,7 +92,7 @@ const chipsPipe = new QueryReferenceChipsPipe();
                   }
                 </h6>
               }
-              <bs-table [isResponsive]="true">
+              <bs-table [responsive]="true">
                 <thead>
                   <tr>
                     <th>{{ 'common.conflictField' | t }}</th>
@@ -134,13 +132,13 @@ const chipsPipe = new QueryReferenceChipsPipe();
           }
           </bs-form>
         </div>
-        <div bsModalFooter>
+      }
+      <ng-container *bsModalFooter>
           <button type="button" class="spark-conflict-all-mine" [color]="colors.secondary" (click)="chooseAll('mine')">{{ 'common.conflictKeepAllMine' | t }}</button>
           <button type="button" class="spark-conflict-all-theirs" [color]="colors.secondary" (click)="chooseAll('theirs')">{{ 'common.conflictTakeAllTheirs' | t }}</button>
           <button type="button" class="spark-conflict-cancel" [color]="colors.secondary" (click)="cancelled.emit()">{{ 'common.cancel' | t }}</button>
           <button type="button" class="spark-conflict-apply" [color]="colors.primary" [disabled]="!complete()" (click)="apply()">{{ 'common.conflictApply' | t }}</button>
-        </div>
-      </div>
+      </ng-container>
     </bs-modal>
 
     <!-- One side's value. A row is its attributes cell by cell, the ones the other side differs in marked.

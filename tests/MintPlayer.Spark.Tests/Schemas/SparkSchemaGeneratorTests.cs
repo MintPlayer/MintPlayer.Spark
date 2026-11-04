@@ -62,6 +62,27 @@ public sealed class SparkSchemaGeneratorTests
         failures.Should().BeEmpty(string.Join(Environment.NewLine, failures));
     }
 
+    /// <summary>
+    /// docs/guide-json-schemas.md "In this repository": the files reference the schemas generated in this
+    /// workspace, so a branch is checked against its own libraries. A hosted URL validates against the last
+    /// published revision instead. MintPlayer's model pointed at v7 while its "seo" block arrived in v9, and the
+    /// editor flagged a valid file (2026-11-03). Synchronize adds the hosted URL to a file without one, so the
+    /// rule needs this guard.
+    /// </summary>
+    [Fact]
+    public void Every_App_Data_file_in_the_repository_references_the_locally_generated_schema()
+    {
+        var root = RepositoryRoot();
+        var wrong = RepositoryFiles()
+            .Select(f => (f.Path, Actual: SparkSchemaReference.Read(File.ReadAllText(f.Path)),
+                Expected: Path.GetRelativePath(Path.GetDirectoryName(f.Path)!, Path.Combine(root, "schemas", f.Schema + ".schema.json")).Replace('\\', '/')))
+            .Where(f => f.Actual != f.Expected)
+            .Select(f => $"{Path.GetRelativePath(root, f.Path)}: \"{f.Actual}\", expected \"{f.Expected}\"")
+            .ToList();
+
+        wrong.Should().BeEmpty(string.Join(Environment.NewLine, wrong));
+    }
+
     [Fact]
     public void A_property_the_server_does_not_read_is_rejected_and_an_underscore_comment_is_not()
     {

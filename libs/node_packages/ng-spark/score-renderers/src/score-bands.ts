@@ -1,4 +1,3 @@
-import { Color } from '@mintplayer/ng-bootstrap';
 
 /** A Bootstrap theme colour a band paints with: `bg-*` on a bar, `--bs-*` on a gauge, `text-bg-*` on a grade. */
 export type SparkScoreColor = 'primary' | 'secondary' | 'success' | 'danger' | 'warning' | 'info' | 'light' | 'dark';
@@ -60,10 +59,9 @@ export function sparkScoreBand(value: number | null | undefined, bands: readonly
   return best;
 }
 
-/** The ng-bootstrap {@link Color} of `value`'s band; `secondary` when there is no value or no band. */
-export function sparkScoreColor(value: number | null | undefined, bands: readonly SparkScoreBand[] = sparkTrafficLightBands): Color {
-  const band = sparkScoreBand(value, bands);
-  return band ? Color[band.color] : Color.secondary;
+/** The theme colour of `value`'s band, as ng-bootstrap's `color` inputs take it; `secondary` when there is no value or no band. */
+export function sparkScoreColor(value: number | null | undefined, bands: readonly SparkScoreBand[] = sparkTrafficLightBands): SparkScoreColor {
+  return sparkScoreBand(value, bands)?.color ?? 'secondary';
 }
 
 /**

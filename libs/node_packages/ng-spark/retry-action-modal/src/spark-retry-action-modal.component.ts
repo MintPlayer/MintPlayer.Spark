@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Color } from '@mintplayer/ng-bootstrap';
-import { BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective } from '@mintplayer/ng-bootstrap/modal';
+import { BsModalComponent, BsModalHeaderDirective, BsModalFooterDirective } from '@mintplayer/ng-bootstrap/modal';
 import { BsButtonTypeDirective } from '@mintplayer/ng-bootstrap/button-type';
 import { RetryActionService, SparkService } from '@mintplayer/ng-spark/services';
 import { SparkPoFormComponent } from '@mintplayer/ng-spark/po-form';
@@ -28,26 +28,23 @@ import {
  */
 @Component({
   selector: 'spark-retry-action-modal',
-  imports: [CommonModule, BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective, BsButtonTypeDirective, SparkPoFormComponent, TranslateKeyPipe],
+  imports: [CommonModule, BsModalComponent, BsModalHeaderDirective, BsModalFooterDirective, BsButtonTypeDirective, SparkPoFormComponent, TranslateKeyPipe],
   template: `
-    <bs-modal [isOpen]="isOpen()" (isOpenChange)="!$event && onOption(cancel)">
-      <div *bsModal>
-        <div bsModalHeader>
-          <h5 class="modal-title">{{ retryActionService.payload()?.title }}</h5>
-        </div>
-        <div bsModalBody>
-          @if (retryActionService.payload()?.message; as message) {
-            <p>{{ message }}</p>
-          }
-          @if (entityType(); as et) {
-            <spark-po-form
-              [entityType]="et"
-              [(formData)]="formData"
-              [showButtons]="false">
-            </spark-po-form>
-          }
-        </div>
-        <div bsModalFooter>
+    <bs-modal [open]="isOpen()" (openChange)="!$event && onOption(cancel)">
+      <ng-container *bsModalHeader>{{ retryActionService.payload()?.title }}</ng-container>
+      @if (isOpen()) {
+        @if (retryActionService.payload()?.message; as message) {
+          <p>{{ message }}</p>
+        }
+        @if (entityType(); as et) {
+          <spark-po-form
+            [entityType]="et"
+            [(formData)]="formData"
+            [showButtons]="false">
+          </spark-po-form>
+        }
+      }
+      <ng-container *bsModalFooter>
           @for (option of retryActionService.payload()?.options; track option) {
             <button
               type="button"
@@ -67,8 +64,7 @@ import {
               {{ 'common.cancel' | t }}
             </button>
           }
-        </div>
-      </div>
+      </ng-container>
     </bs-modal>
   `,
   changeDetection: ChangeDetectionStrategy.OnPush

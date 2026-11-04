@@ -1,5 +1,4 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
-import { Color } from '@mintplayer/ng-bootstrap';
 import { BsBadgeComponent } from '@mintplayer/ng-bootstrap/badge';
 import { TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
 import { SparkLanguageService } from '@mintplayer/ng-spark/services';
@@ -33,7 +32,7 @@ export function seoPageFindings(value: unknown, catalogue: ReadonlyMap<string, S
     <ul class="list-unstyled mb-0">
       @for (f of rows; track f.id) {
         <li class="py-1" [attr.data-check]="f.id">
-          <bs-badge [type]="color(f.status)">{{ ('seoUi.status.' + f.status) | t }}</bs-badge>
+          <bs-badge [color]="color(f.status)">{{ ('seoUi.status.' + f.status) | t }}</bs-badge>
           <span class="ms-2">{{ f.title }}</span>
           @if (f.summary && f.status !== 'Pass') { <div class="small text-body-secondary ms-1">{{ f.summary }}</div> }
         </li>
@@ -48,7 +47,7 @@ export class SeoPageFindingsComponent {
   protected readonly lang = inject(SparkLanguageService);
   protected readonly findings = computed(() => seoPageFindings(this.value(), this.catalogue.byId()));
 
-  protected color(status: string): Color {
-    return status === 'Fail' ? Color.danger : status === 'Warn' ? Color.warning : status === 'Pass' ? Color.success : Color.secondary;
+  protected color(status: string): 'danger' | 'warning' | 'success' | 'secondary' {
+    return status === 'Fail' ? 'danger' : status === 'Warn' ? 'warning' : status === 'Pass' ? 'success' : 'secondary';
   }
 }

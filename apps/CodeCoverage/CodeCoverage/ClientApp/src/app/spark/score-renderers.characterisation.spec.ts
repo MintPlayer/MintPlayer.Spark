@@ -72,12 +72,18 @@ function render(component: Type<unknown>, inputs: Record<string, unknown>): Comp
 const DASH_SMALL = '<span class="small text-muted">—</span>';
 const DASH = '<span class="text-muted">—</span>';
 
-/** The compact bar as production draws it at `percent`, coloured `color`. */
-function bar(percent: string, now: string, width: string, color: string): string {
+/**
+ * The compact bar as production draws it at `percent`, coloured `color`. Since ng-bootstrap 22.33 the bar is an
+ * inner `div.progress-bar` whose fill comes from its whole-percent `data-progress`, not an inline width. Since 22.34
+ * the `bs-progress-bar` host carries the `progress` scope too (ng-bootstrap #460): its `display: contents` rule needs
+ * it, or the host is a 0px flex item and the bar draws no fill.
+ */
+function bar(percent: string, now: string, progress: string, color: string): string {
   return '<div class="align-items-center d-flex gap-2">'
-    + '<bs-progress class="d-block overflow-hidden" style="width: 80px; height: 8px;"><div class="progress">'
-    + `<bs-progress-bar aria-label="Coverage" aria-valuemax="100" aria-valuemin="0" aria-valuenow="${now}" aria-valuetext="${percent}%" class="${color} progress-bar" role="progressbar" style="width: ${width};"></bs-progress-bar>`
-    + '</div></bs-progress>'
+    + '<bs-progress class="progress-host" data-mps="progress" style="width: 80px; height: 8px;"><div class="progress" data-mps="progress">'
+    + '<bs-progress-bar class="progress-bar-host" data-mps="progress">'
+    + `<div aria-label="Coverage" aria-valuemax="100" aria-valuemin="0" aria-valuenow="${now}" aria-valuetext="${percent}%" class="progress-bar ${color}" data-mps="progress" data-progress="${progress}" role="progressbar"></div>`
+    + '</bs-progress-bar></div></bs-progress>'
     + `<span class="small text-nowrap">${percent}%</span></div>`;
 }
 
@@ -95,14 +101,14 @@ describe('coverage renderers, characterised (#268 X5)', () => {
       ['nothing coverable and no files', po({ LinesCoverable: 0, FilesCount: 0 }), DASH_SMALL],
       // A summary exists (one file) but 0/0 is no percentage: still the dash, not a 0% bar.
       ['files but nothing coverable', po({ LinesCovered: 0, LinesCoverable: 0, FilesCount: 1 }), DASH_SMALL],
-      ['0%', po({ LinesCovered: 0, LinesCoverable: 100, FilesCount: 1 }), bar('0.0', '0', '0%', 'bg-danger')],
+      ['0%', po({ LinesCovered: 0, LinesCoverable: 100, FilesCount: 1 }), bar('0.0', '0', '0', 'text-bg-danger')],
       // Shown as 60.0% but still below the 60 threshold: the colour uses the unrounded value.
-      ['59.95%', po({ LinesCovered: 1199, LinesCoverable: 2000, FilesCount: 1 }), bar('60.0', '59.95', '59.95%', 'bg-danger')],
-      ['60% edge', po({ LinesCovered: 60, LinesCoverable: 100, FilesCount: 1 }), bar('60.0', '60', '60%', 'bg-warning')],
-      ['79.99%', po({ LinesCovered: 7999, LinesCoverable: 10000, FilesCount: 1 }), bar('80.0', '79.99000000000001', '79.99000000000001%', 'bg-warning')],
-      ['80% edge', po({ LinesCovered: 80, LinesCoverable: 100, FilesCount: 1 }), bar('80.0', '80', '80%', 'bg-success')],
-      ['100%', po({ LinesCovered: 100, LinesCoverable: 100, FilesCount: 1 }), bar('100.0', '100', '100%', 'bg-success')],
-      ['flat /api dict', { linesCovered: 3, linesCoverable: 4, branchesCovered: 0, branchesTotal: 0, filesCount: 1 }, bar('75.0', '75', '75%', 'bg-warning')],
+      ['59.95%', po({ LinesCovered: 1199, LinesCoverable: 2000, FilesCount: 1 }), bar('60.0', '59.95', '60', 'text-bg-danger')],
+      ['60% edge', po({ LinesCovered: 60, LinesCoverable: 100, FilesCount: 1 }), bar('60.0', '60', '60', 'text-bg-warning')],
+      ['79.99%', po({ LinesCovered: 7999, LinesCoverable: 10000, FilesCount: 1 }), bar('80.0', '79.99000000000001', '80', 'text-bg-warning')],
+      ['80% edge', po({ LinesCovered: 80, LinesCoverable: 100, FilesCount: 1 }), bar('80.0', '80', '80', 'text-bg-success')],
+      ['100%', po({ LinesCovered: 100, LinesCoverable: 100, FilesCount: 1 }), bar('100.0', '100', '100', 'text-bg-success')],
+      ['flat /api dict', { linesCovered: 3, linesCoverable: 4, branchesCovered: 0, branchesTotal: 0, filesCount: 1 }, bar('75.0', '75', '75', 'text-bg-warning')],
     ];
 
     it.each(cases)('%s', (_label, value, expected) => {
@@ -121,7 +127,7 @@ describe('coverage renderers, characterised (#268 X5)', () => {
       const value = po({ LinesCovered: 50, LinesCoverable: 200, BranchesCovered: 3, BranchesTotal: 8, FilesCount: 12 });
 
       expect(rendered(render(detail(), { value }))).toBe(
-        `<div>${bar('25.0', '25', '25%', 'bg-danger')}<div class="small text-muted">50/200 lines · 3/8 branches · 12 files</div></div>`);
+        `<div>${bar('25.0', '25', '25', 'text-bg-danger')}<div class="small text-muted">50/200 lines · 3/8 branches · 12 files</div></div>`);
     });
 
     it('draws a dash bar with counts for files but nothing coverable', () => {
@@ -137,7 +143,7 @@ describe('coverage renderers, characterised (#268 X5)', () => {
     it.each([
       [null, DASH_SMALL],
       [{ linesCovered: 0, linesCoverable: 0, branchesCovered: 0, branchesTotal: 0, filesCount: 0 }, DASH_SMALL],
-      [{ linesCovered: 2, linesCoverable: 3, branchesCovered: 0, branchesTotal: 0, filesCount: 0 }, bar('66.7', '66.66666666666666', '66.66666666666666%', 'bg-warning')],
+      [{ linesCovered: 2, linesCoverable: 3, branchesCovered: 0, branchesTotal: 0, filesCount: 0 }, bar('66.7', '66.66666666666666', '67', 'text-bg-warning')],
     ])('summary %#', (summary, expected) => {
       expect(rendered(render(CoverageBarComponent, { summary }))).toBe(expected);
     });

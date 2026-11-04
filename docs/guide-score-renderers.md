@@ -84,8 +84,8 @@ named from JSON:
 | `"traffic-light"` (default) | green ≥ 80, amber ≥ 60, red below | `sparkTrafficLightBands` |
 | `"letter-grades"` | A ≥ 90, B ≥ 80 (green), C ≥ 70, D ≥ 50 (amber), F below (red) | `sparkLetterGrades` |
 
-`sparkScoreBand(value, bands)` and `sparkScoreColor(value, bands)` give the band and its ng-bootstrap
-`Color` in code.
+`sparkScoreBand(value, bands)` and `sparkScoreColor(value, bands)` give the band and its theme colour
+(`'success'`, `'warning'`, …) in code, as ng-bootstrap's `color` inputs take it.
 
 ## Options
 

@@ -3,7 +3,7 @@
 # Rows: group | effect | resource | key | layer
 
 ## Layers: libraries that ship rights (alias | assembly | hash)
-authorization | MintPlayer.Spark.Authorization | 45c4fc153e9d
+authorization | MintPlayer.Spark.Authorization | c6fc3af07823
 identity-provider | MintPlayer.Spark.IdentityProvider | a47cb40caae8 | switched off
 
 ## Reachable without signing in (expanded)

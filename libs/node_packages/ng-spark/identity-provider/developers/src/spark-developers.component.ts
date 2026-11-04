@@ -38,10 +38,10 @@ import {
         <div class="p-4">
           <p class="text-muted">{{ 'dev.intro' | idp }}</p>
           @if (notice()) {
-            <bs-alert [type]="colors.success" class="mb-3 d-block spark-idp-notice">{{ notice() }}</bs-alert>
+            <bs-alert [color]="'success'" class="mb-3 d-block spark-idp-notice">{{ notice() }}</bs-alert>
           }
           @if (error()) {
-            <bs-alert [type]="colors.danger" class="mb-3 d-block spark-idp-error">{{ error() }}</bs-alert>
+            <bs-alert [color]="'danger'" class="mb-3 d-block spark-idp-error">{{ error() }}</bs-alert>
           }
           @if (loading()) {
             <div class="text-center"><bs-spinner /></div>
@@ -63,7 +63,7 @@ import {
               }
               <bs-form>
                 <div class="mb-3">
-                  <bs-checkbox [type]="'checkbox'" [name]="'acceptDeveloperTerms'" [isToggled]="accepted()" (isToggledChange)="accepted.set($event === true)">
+                  <bs-checkbox [type]="'checkbox'" [name]="'acceptDeveloperTerms'" [checked]="accepted()" (checkedChange)="accepted.set($event === true)">
                     {{ 'dev.acceptTerms' | idp: s.currentTermsVersion }}
                   </bs-checkbox>
                 </div>

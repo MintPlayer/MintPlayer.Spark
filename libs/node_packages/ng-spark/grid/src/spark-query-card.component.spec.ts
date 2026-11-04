@@ -9,7 +9,6 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { By } from '@angular/platform-browser';
 import { SparkQueryCardComponent } from './spark-query-card.component';
 import { SparkSearchBoxComponent } from './spark-search-box.component';
-import { BsPriorityNavComponent } from '@mintplayer/ng-bootstrap/priority-nav';
 import {
   SparkQueryActionsDirective,
   SparkQueryCaptionDirective,
@@ -124,12 +123,16 @@ describe('SparkQueryCardComponent', () => {
     it('closes the "More" overflow once one of its actions is chosen', async () => {
       // At phone width every action lives in the overflow, and it stayed open after each one ran.
       const { fixture } = await bare([exportAction]);
-      const nav = fixture.debugElement.query(By.directive(BsPriorityNavComponent)).componentInstance as BsPriorityNavComponent;
-      nav.isMoreOpen.set(true);
+      // The nav owns its open state (22.33): a click inside the open overflow panel closes it.
+      const overflow = () => fixture.nativeElement.querySelector('bs-priority-nav .priority-nav-overflow') as HTMLElement;
+      (fixture.nativeElement.querySelector('bs-priority-nav .priority-nav-more-toggle') as HTMLElement).click();
+      fixture.detectChanges();
+      expect(overflow().classList).toContain('priority-nav-overflow-open');
 
-      (fixture.nativeElement.querySelector('.priority-nav-overflow button[data-action]') as HTMLElement).click();
+      (overflow().querySelector('button[data-action]') as HTMLElement).click();
+      fixture.detectChanges();
 
-      expect(nav.isMoreOpen()).toBe(false);
+      expect(overflow().classList).not.toContain('priority-nav-overflow-open');
     });
 
     it('wraps its header below sm, so caption, "More" and search are never clipped by the card', async () => {

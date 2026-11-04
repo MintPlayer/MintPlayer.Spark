@@ -106,6 +106,8 @@ export interface AttributeGroup {
 export interface EntityTypeSeo {
   /** Whether a readable object's page may be indexed; otherwise `noindex`. */
   indexable: boolean;
+  /** A boolean attribute that must be true too for one object's page to be indexed, e.g. a playlist's `IsPublic`. */
+  indexableWhen?: string;
   /** The schema.org `@type` of the page's JSON-LD, e.g. `MusicRecording`; absent, no JSON-LD. */
   schemaType?: string;
   /** The attribute whose value is the meta and Open Graph description. */

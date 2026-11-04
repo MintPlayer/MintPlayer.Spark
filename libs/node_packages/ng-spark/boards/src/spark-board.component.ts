@@ -8,12 +8,11 @@ import { Color } from '@mintplayer/ng-bootstrap';
 import { BsButtonGroupComponent } from '@mintplayer/ng-bootstrap/button-group';
 import { BsButtonTypeDirective } from '@mintplayer/ng-bootstrap/button-type';
 import { BsFormComponent, BsFormControlDirective } from '@mintplayer/ng-bootstrap/form';
-import { BsModalBodyDirective, BsModalDirective, BsModalFooterDirective, BsModalHeaderDirective, BsModalHostComponent } from '@mintplayer/ng-bootstrap/modal';
+import { BsModalComponent, BsModalFooterDirective, BsModalHeaderDirective } from '@mintplayer/ng-bootstrap/modal';
 import {
-  BsTileContentDirective,
-  BsTileDirective,
-  BsTileHeaderDirective,
   BsTileManagerComponent,
+  BsTileManagerContentDirective,
+  BsTileManagerHeaderDirective,
   type MintTile,
   type TileLayoutChange,
   type TileLayouts,
@@ -43,9 +42,9 @@ interface SparkBoardTileItem extends MintTile {
   selector: 'spark-board',
   imports: [
     NgComponentOutlet, FormsModule, RouterLink,
-    BsTileManagerComponent, BsTileDirective, BsTileHeaderDirective, BsTileContentDirective,
+    BsTileManagerComponent, BsTileManagerHeaderDirective, BsTileManagerContentDirective,
     BsButtonGroupComponent, BsButtonTypeDirective, BsFormComponent, BsFormControlDirective,
-    BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective,
+    BsModalComponent, BsModalHeaderDirective, BsModalFooterDirective,
     ResolveTranslationPipe, TranslateKeyPipe, SparkBoardPickerComponent,
   ],
   templateUrl: './spark-board.component.html',
@@ -102,6 +101,11 @@ export class SparkBoardComponent {
     this.itemCache = next;
     return items;
   });
+
+  /** The tile manager's slots hand back the `MintTile` it was given, which is always one of {@link items}. */
+  protected asItem(tile: MintTile): SparkBoardTileItem {
+    return tile as SparkBoardTileItem;
+  }
 
   /** Over {@link SPARK_BOARD_PRERENDERED_TILES} tiles, the server render and its hydration show links (D14). */
   protected readonly linkMode = computed(() => this.renderPhase.serverMatching() && this.tiles().length > SPARK_BOARD_PRERENDERED_TILES);

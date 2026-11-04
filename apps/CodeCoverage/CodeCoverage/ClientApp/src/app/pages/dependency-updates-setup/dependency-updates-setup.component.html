@@ -30,7 +30,7 @@
   @for (step of steps; track step.id; let n = $index) {
     <bs-card class="mb-4" [attr.id]="step.id" [attr.data-step]="step.id">
       <bs-card-header>
-        <h2 class="h5 mb-0"><bs-badge class="me-2" [type]="primaryColor">{{ n + 1 }}</bs-badge>{{ step.title }}</h2>
+        <h2 class="h5 mb-0"><bs-badge class="me-2" [color]="'primary'">{{ n + 1 }}</bs-badge>{{ step.title }}</h2>
       </bs-card-header>
       <bs-card-body>
         @switch (step.id) {
@@ -40,7 +40,7 @@
               organization or user that owns the repository; <a routerLink="/">Home</a> links it once you are signed in.
               Dependency updates need:
             </p>
-            <bs-table [isResponsive]="true" data-testid="du-setup-permissions">
+            <bs-table [responsive]="true" data-testid="du-setup-permissions">
               <thead>
                 <tr><th>Permission</th><th>Access</th><th>The updater uses it to</th></tr>
               </thead>
@@ -99,7 +99,7 @@
               <code>coverage.yml</code> can only opt out (<code>enabled: false</code>), so a pull request can never switch
               the updater on.
             </p>
-            <bs-table [isResponsive]="true" data-testid="du-setup-settings">
+            <bs-table [responsive]="true" data-testid="du-setup-settings">
               <thead>
                 <tr><th>Setting</th><th>Where</th><th>Default</th></tr>
               </thead>
@@ -150,7 +150,7 @@
               The rolling pull request keeps the action's pin current without the cooldown, because the action is the
               bot's own runtime.
             </p>
-            <bs-alert [type]="infoColor" class="d-block mb-3" data-testid="du-setup-first-draft">
+            <bs-alert [color]="'info'" class="d-block mb-3" data-testid="du-setup-first-draft">
               <strong>The first rolling pull request is a draft.</strong> After you merge the onboarding pull request, the
               first <code>mintplayer/dependencies</code> pull request is opened as a draft and never auto-merges: review
               it once. The ones after it follow your thresholds.
@@ -169,7 +169,7 @@
               Every key, with an example value:
             </p>
             <ng-container *ngTemplateOutlet="code; context: { $implicit: snippets.dependencies, language: 'yaml' }" />
-            <bs-table [isResponsive]="true" data-testid="du-setup-keys">
+            <bs-table [responsive]="true" data-testid="du-setup-keys">
               <thead>
                 <tr><th>Key</th><th>Default</th><th>Meaning</th></tr>
               </thead>
@@ -194,7 +194,7 @@
               Anyone with write access comments on the rolling pull request, one command per comment. Edited comments and
               comments by bots are ignored; the bot reacts 👍 or 👎.
             </p>
-            <bs-table [isResponsive]="true" data-testid="du-setup-commands">
+            <bs-table [responsive]="true" data-testid="du-setup-commands">
               <thead>
                 <tr><th>Command</th><th>Does</th></tr>
               </thead>
@@ -285,7 +285,7 @@
               </li>
               <li><strong>Pushes</strong> use a token minted per job for the one repository, revoked afterwards.</li>
             </ul>
-            <bs-alert [type]="dangerColor" class="d-block mb-0" data-testid="du-setup-residual-risk">
+            <bs-alert [color]="'danger'" class="d-block mb-0" data-testid="du-setup-residual-risk">
               <strong>The residual risk, stated plainly.</strong> The validators stop the runner from changing anything
               beyond the plan; they cannot make a <em>planned</em> package safe. Once a malicious version is planned, your
               pull request's CI installs it <strong>with your CI's secrets</strong> (npm scripts in CI's own install,
@@ -299,7 +299,7 @@
               its <em>Recent steps</em> and on the pull request. The account page's panel shows the whole fleet, per
               repository, per package and per platform.
             </p>
-            <bs-table [isResponsive]="true" data-testid="du-setup-outcomes">
+            <bs-table [responsive]="true" data-testid="du-setup-outcomes">
               <thead>
                 <tr><th>Outcome</th><th>Meaning</th><th>What to do</th></tr>
               </thead>

@@ -90,6 +90,58 @@ describe('SparkSeoService', () => {
     expect(meta('name="description"')).toBeNull();
   });
 
+  it('keeps a private object of an indexable type out of the index (indexableWhen)', () => {
+    const playlistType = { id: 't2', name: 'Playlist', attributes: [], seo: { indexable: true, indexableWhen: 'IsPublic' } } as unknown as EntityType;
+    const playlist = (isPublic: unknown) => ({
+      id: 'Playlists/1', name: 'Playlist', objectTypeId: 't2', breadcrumb: 'Road trip',
+      attributes: [{ name: 'IsPublic', value: isPublic }],
+    }) as unknown as PersistentObject;
+    const seo = create();
+
+    seo.forObject(playlistType, playlist(true), '/po/playlist/Playlists%2F1');
+    expect(meta('name="robots"')).toBe('index, follow');
+    seo.forObject(playlistType, playlist(false), '/po/playlist/Playlists%2F1');
+    expect(meta('name="robots"')).toBe('noindex');
+  });
+
+  it('takes the type hook description and cuts it at a word', () => {
+    const long = 'word '.repeat(60).trim();
+    create([provideSparkSeo({ description: { Song: () => long }, image: '/icons/icon.png' })])
+      .forObject({ ...songType, seo: { indexable: true } } as EntityType, song, '/po/song/Songs%2F1');
+
+    const description = meta('name="description"')!;
+    expect(description.length).toBeLessThanOrEqual(160);
+    expect(description.endsWith('…')).toBe(true);
+    expect(description.slice(0, -1).endsWith('word')).toBe(true);
+    // The site's image, absolute, and the large card that goes with an image.
+    expect(meta('property="og:image"')).toBe('https://example.com/icons/icon.png');
+    expect(meta('name="twitter:card"')).toBe('summary_large_image');
+  });
+
+  it("gives another page its route's title, the site's description and a canonical link without the query", () => {
+    create([provideSparkSeo({ siteDescription: 'Music videos and lyrics' })]).forPage('Songs', '/query/songs?page=2');
+
+    expect(document.title).toBe('Songs - MintPlayer');
+    expect(meta('name="description"')).toBe('Music videos and lyrics');
+    expect(meta('property="og:title"')).toBe('Songs');
+    expect(meta('name="twitter:card"')).toBe('summary');
+    expect(document.head.querySelector('link[rel="canonical"]')?.getAttribute('href')).toBe('https://example.com/query/songs');
+  });
+
+  it("keeps an object's tags when the route's come after them, and a noindex page's robots", () => {
+    const seo = create([provideSparkSeo({ siteDescription: 'Music videos and lyrics' })]);
+    seo.forObject(songType, song, '/po/song/Songs%2F1');
+    seo.forPage(undefined, '/po/song/Songs%2F1');
+    expect(document.title).toBe('Halo </script> - MintPlayer');
+    expect(meta('name="description"')).toBe('Remember those walls');
+
+    seo.noIndex();
+    seo.forPage('Log in', '/account/login');
+    expect(document.title).toBe('Log in - MintPlayer');
+    expect(meta('name="robots"')).toBe('noindex');
+    expect(document.head.querySelector('link[rel="canonical"]')).toBeNull();
+  });
+
   it('reads the site title back from the element on a hydrating page', () => {
     // The server render already set the object's title and recorded the site's.
     create().forObject(songType, song, '/po/song/Songs%2F1');

@@ -1,10 +1,13 @@
 {
-  "$schema": "https://schemas.spark.mintplayer.com/v7/model.schema.json",
+  "$schema": "../../../../../schemas/model.schema.json",
   "persistentObject": {
     "id": "e8f22d7a-e0f5-4499-ba1b-cb659c292caf",
     "name": "MediumType",
     "clrType": "MintPlayer.Entities.MediumType",
     "breadcrumb": "{Name}",
+    "seo": {
+      "indexable": true
+    },
     "tabs": [],
     "groups": [],
     "attributes": [

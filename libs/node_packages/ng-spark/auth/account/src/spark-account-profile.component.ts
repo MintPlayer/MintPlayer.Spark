@@ -48,10 +48,10 @@ interface CultureOption {
             <div class="text-center"><bs-spinner /></div>
           } @else {
             @for (message of messages(); track message) {
-              <bs-alert [type]="colors.danger" class="mb-3 d-block spark-account-error">{{ message | t }}</bs-alert>
+              <bs-alert [color]="'danger'" class="mb-3 d-block spark-account-error">{{ message | t }}</bs-alert>
             }
             @if (saved()) {
-              <bs-alert [type]="colors.success" class="mb-3 d-block spark-account-saved">{{ 'auth.profileSaved' | t }}</bs-alert>
+              <bs-alert [color]="'success'" class="mb-3 d-block spark-account-saved">{{ 'auth.profileSaved' | t }}</bs-alert>
             }
 
             <bs-form (submitted)="save()">
@@ -134,11 +134,11 @@ interface CultureOption {
             </p>
             @if (emailMessages().length) {
               @for (message of emailMessages(); track message) {
-                <bs-alert [type]="colors.danger" class="mb-3 d-block">{{ message | t }}</bs-alert>
+                <bs-alert [color]="'danger'" class="mb-3 d-block">{{ message | t }}</bs-alert>
               }
             }
             @if (emailSent()) {
-              <bs-alert [type]="colors.info" class="mb-3 d-block spark-email-sent">{{ 'auth.emailChangeSent' | t }}</bs-alert>
+              <bs-alert [color]="'info'" class="mb-3 d-block spark-email-sent">{{ 'auth.emailChangeSent' | t }}</bs-alert>
             }
             <!-- Opt-in on the server (SparkEmailChange.Enabled); hidden until it says so. -->
             @if (emailChangeAllowed()) {

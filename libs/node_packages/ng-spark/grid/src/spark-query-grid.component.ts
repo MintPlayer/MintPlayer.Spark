@@ -16,7 +16,7 @@ import { BsBadgeComponent } from '@mintplayer/ng-bootstrap/badge';
 // before initialization" at import time (#460 M15, CI run a1b47012). The row menu therefore drives
 // the CDK overlay itself and keeps ng-bootstrap's menu for the look.
 import { CdkConnectedOverlay, CdkOverlayOrigin, type ConnectedPosition } from '@angular/cdk/overlay';
-import { BsDropdownItemDirective, BsDropdownMenuComponent } from '@mintplayer/ng-bootstrap/dropdown-menu';
+import { BsDropdownItemComponent, BsDropdownMenuComponent } from '@mintplayer/ng-bootstrap/dropdown';
 import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
 import { SparkClientMethodRegistry, SparkQueryRefreshService } from '@mintplayer/ng-spark/client-operations';
 import { cellValue } from '@mintplayer/ng-spark/renderers';
@@ -93,7 +93,7 @@ interface PageExtra {
  */
 @Component({
   selector: 'spark-query-grid',
-  imports: [CommonModule, RouterModule, BsAlertComponent, BsDatatableComponent, BsDatatableHeaderDirective, BsDatatableFilterDirective, BsDatatableRowDirective, BsSpinnerComponent, SparkGridCellComponent, ResolveTranslationPipe, QueryCellValuePipe, QueryReferenceChipsPipe, TranslateKeyPipe, SparkAttributeDescriptionComponent, SparkColumnFilterPanelComponent, BsBadgeComponent, CdkOverlayOrigin, CdkConnectedOverlay, BsDropdownMenuComponent, BsDropdownItemDirective, SparkIconComponent],
+  imports: [CommonModule, RouterModule, BsAlertComponent, BsDatatableComponent, BsDatatableHeaderDirective, BsDatatableFilterDirective, BsDatatableRowDirective, BsSpinnerComponent, SparkGridCellComponent, ResolveTranslationPipe, QueryCellValuePipe, QueryReferenceChipsPipe, TranslateKeyPipe, SparkAttributeDescriptionComponent, SparkColumnFilterPanelComponent, BsBadgeComponent, CdkOverlayOrigin, CdkConnectedOverlay, BsDropdownMenuComponent, BsDropdownItemComponent, SparkIconComponent],
   templateUrl: './spark-query-grid.component.html',
   styleUrl: './spark-query-grid.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -789,7 +789,7 @@ export class SparkQueryGridComponent {
   });
 
   /**
-   * The datatable's `(pageload)`, for the page 1 a hydrating datatable seeded from the server render
+   * The datatable's `(pageLoad)`, for the page 1 a hydrating datatable seeded from the server render
    * instead of calling `fetch` (ng-bootstrap #450): what `toPage` read off that result comes back in
    * `extra`. Fetched pages went through `toPage` already. The columns were drawn from the query's
    * `resultColumns` before this; the result's replace them (docs/spark_ssr_PRD.md D13).
@@ -1116,7 +1116,8 @@ export class SparkQueryGridComponent {
    * which live in `filters()` beside it. Every entry is the values shape: the panel only ever calls
    * `ctx.apply(...)`, and comparison mode is never declared.
    */
-  protected onFiltersChange(next: DatatableFilters): void {
+  protected onFiltersChange(change: DatatableFilters | null): void {
+    const next = change ?? {};
     const previous = this.datatableFilters;
     this.datatableFilters = next;
     for (const column of new Set([...Object.keys(previous), ...Object.keys(next)])) {

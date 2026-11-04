@@ -1,4 +1,5 @@
 {
+  "$schema": "../../../../schemas/translations.schema.json",
   "common": {
     "save":        { "en": "Save",       "fr": "Enregistrer",    "nl": "Opslaan" },
     "cancel":      { "en": "Cancel",     "fr": "Annuler",        "nl": "Annuleren" },

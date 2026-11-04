@@ -78,6 +78,7 @@
     <ProjectReference Include="..\..\libs\webpush\MintPlayer.Spark.WebPush\MintPlayer.Spark.WebPush.csproj" />
     <ProjectReference Include="..\..\libs\notifications\MintPlayer.Spark.Notifications\MintPlayer.Spark.Notifications.csproj" />
     <ProjectReference Include="..\..\libs\boards\MintPlayer.Spark.Boards\MintPlayer.Spark.Boards.csproj" />
+    <ProjectReference Include="..\..\libs\sitemap\MintPlayer.Spark.SitemapXml\MintPlayer.Spark.SitemapXml.csproj" />
     <!-- Contributions M5: the runtime, plus its generator through the targets imported below. -->
     <ProjectReference Include="..\..\libs\contributions\MintPlayer.Spark.Contributions\MintPlayer.Spark.Contributions.csproj" />
     <ProjectReference Include="..\..\libs\mail\MintPlayer.Spark.MailManager\MintPlayer.Spark.MailManager.csproj" />

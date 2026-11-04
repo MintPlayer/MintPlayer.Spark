@@ -23,14 +23,14 @@
       @for (row of group.rows; track row.id) {
         <div class="seo-check" [attr.data-check]="row.id">
           <div class="d-flex flex-wrap align-items-start gap-2">
-            <bs-badge class="seo-status" [type]="statusColor(row.status)">{{ statusLabel(row) }}</bs-badge>
+            <bs-badge class="seo-status" [color]="statusColor(row.status)">{{ statusLabel(row) }}</bs-badge>
             <div class="seo-check-main">
               <strong>{{ row.title }}</strong>
-              <bs-badge class="ms-1" [type]="severityColor(row.severity)">{{ catalogue.severityLabel(row.severity) }}</bs-badge>
+              <bs-badge class="ms-1" [color]="severityColor(row.severity)">{{ catalogue.severityLabel(row.severity) }}</bs-badge>
               @if (row.delta === 'New') {
-                <bs-badge class="ms-1" [type]="colors.danger" data-delta="New">{{ 'seoUi.delta.New' | t }}</bs-badge>
+                <bs-badge class="ms-1" [color]="'danger'" data-delta="New">{{ 'seoUi.delta.New' | t }}</bs-badge>
               } @else if (row.delta === 'Fixed') {
-                <bs-badge class="ms-1" [type]="colors.success" data-delta="Fixed">{{ 'seoUi.delta.Fixed' | t }}</bs-badge>
+                <bs-badge class="ms-1" [color]="'success'" data-delta="Fixed">{{ 'seoUi.delta.Fixed' | t }}</bs-badge>
               } @else if (row.delta === 'Unchanged' && row.status !== 'Pass') {
                 <span class="small text-body-secondary ms-1" data-delta="Unchanged">{{ 'seoUi.delta.Unchanged' | t }}</span>
               }

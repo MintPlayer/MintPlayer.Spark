@@ -73,7 +73,7 @@ describe('ConnectedRendererComponent', () => {
   it('draws the green connected badge only for a literal true', () => {
     const fixture = render(ConnectedRendererComponent, { value: true });
 
-    const badge = (fixture.nativeElement as HTMLElement).querySelector('bs-badge .badge')!;
+    const badge = (fixture.nativeElement as HTMLElement).querySelector('bs-badge.badge')!;
     expect(badge.classList.contains('text-bg-success')).toBe(true);
     expect(text(fixture)).toBe('app.connected');
   });
@@ -81,7 +81,7 @@ describe('ConnectedRendererComponent', () => {
   it('draws the grey not-connected badge for false, null and truthy non-booleans', () => {
     for (const value of [false, null, undefined, 'true', 1]) {
       const fixture = render(ConnectedRendererComponent, { value });
-      const badge = (fixture.nativeElement as HTMLElement).querySelector('bs-badge .badge')!;
+      const badge = (fixture.nativeElement as HTMLElement).querySelector('bs-badge.badge')!;
       expect(badge.classList.contains('text-bg-secondary')).toBe(true);
       expect(text(fixture)).toBe('app.notConnected');
     }
@@ -198,7 +198,7 @@ describe('BuildSessionsRendererComponent', () => {
   }
 
   function badges(line: HTMLElement): HTMLElement[] {
-    return Array.from(line.querySelectorAll('bs-badge .badge'));
+    return Array.from(line.querySelectorAll('bs-badge.badge'));
   }
 
   it('draws one line per nested PersistentObject session with its flags and parse status', () => {

@@ -117,7 +117,8 @@ Each takes an **optional query alias or id as its value** — `*sparkQueryIcon="
 page renders one card per entry in `EntityTypeDefinition.Queries`, so a bare slot would decorate
 all of them identically, which is rarely the intent. A targeted slot wins over an untargeted one,
 which is the catch-all. This is `bsPriorityNavItem`'s shape: a value input aliased to the
-selector, collected with `contentChildren`.
+selector, collected with `contentChildren`. (ng-bootstrap 22.33 dropped `*bsPriorityNavItem` for data
+`[items]`; ng-spark's `*sparkPriorityNavItem` keeps the same shape, `docs/spark_ssr_PRD.md` Status 11.)
 
 Named after ng-bootstrap's `*bsDatatableColumn` convention — `{prefix}{Component}{Slot}` —
 with the `spark` prefix, since these are ng-spark directives. The `*bs…` prefix in the

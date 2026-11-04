@@ -34,7 +34,7 @@ import { accountMessages } from './account-messages';
         <div class="p-4">
           <p>{{ 'auth.personalDataDescription' | t }}</p>
           @for (message of downloadMessages(); track message) {
-            <bs-alert [type]="colors.danger" class="mb-3 d-block">{{ message | t }}</bs-alert>
+            <bs-alert [color]="'danger'" class="mb-3 d-block">{{ message | t }}</bs-alert>
           }
           <button type="button" class="btn btn-outline-primary spark-download-data" [disabled]="busy()" (click)="download()">
             {{ 'auth.downloadPersonalData' | t }}
@@ -45,7 +45,7 @@ import { accountMessages } from './account-messages';
           <h5 class="text-danger">{{ 'auth.deleteAccountTitle' | t }}</h5>
           <p>{{ 'auth.deleteAccountDescription' | t }}</p>
           @for (message of deleteMessages(); track message) {
-            <bs-alert [type]="colors.danger" class="mb-3 d-block spark-delete-error">{{ message | t }}</bs-alert>
+            <bs-alert [color]="'danger'" class="mb-3 d-block spark-delete-error">{{ message | t }}</bs-alert>
           }
           <bs-form (submitted)="deleteAccount()">
             <div [formGroup]="form">

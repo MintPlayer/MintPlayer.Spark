@@ -1,6 +1,7 @@
 import { DOCUMENT } from '@angular/common';
 import { EnvironmentProviders, Injectable, InjectionToken, inject, makeEnvironmentProviders } from '@angular/core';
 import { Meta, Title } from '@angular/platform-browser';
+import { RouterStateSnapshot, TitleStrategy } from '@angular/router';
 import { EntityType, PersistentObject, PersistentObjectAttribute } from '@mintplayer/ng-spark/models';
 import { SPARK_SERVER_ORIGIN } from './provide-spark-hydration';
 
@@ -11,23 +12,44 @@ import { SPARK_SERVER_ORIGIN } from './provide-spark-hydration';
  */
 export type SparkStructuredData = (po: PersistentObject, type: EntityType) => Record<string, unknown> | null;
 
+/** A detail page's meta description, from the presented object only (as {@link SparkStructuredData}), or null for none. */
+export type SparkSeoDescription = (po: PersistentObject, type: EntityType) => string | null;
+
 export interface SparkSeoOptions {
-  /** The page title for an object's title (its breadcrumb). Default: `"<title> - <the document's own title>"`. */
+  /** The page title for an object's or a route's title. Default: `"<title> - <the document's own title>"`. */
   title?: (title: string) => string;
   /** Rich JSON-LD per entity type, keyed by the type's name (e.g. `Song`). */
   structuredData?: Record<string, SparkStructuredData>;
+  /**
+   * The meta and Open Graph description per entity type, keyed by the type's name, for a type whose model names no
+   * description attribute (`seo.description`, which wins). Cut to 160 characters.
+   */
+  description?: Record<string, SparkSeoDescription>;
+  /** The description of every page that has no own: the home page, the lists, the sign-in pages. */
+  siteDescription?: string;
+  /** The Open Graph image of every page without an own (`seo.image`): a path on the site or an absolute URL. */
+  image?: string;
 }
 
 export const SPARK_SEO_OPTIONS = new InjectionToken<SparkSeoOptions>('SPARK_SEO_OPTIONS');
 
-/** Configures the detail pages' SEO tags (D12). Without it, the model mapping alone applies. */
+/**
+ * Configures the pages' SEO tags (D12). Without it, the model mapping alone applies to the detail pages. With it, every
+ * other page gets its route's `title` (or the site's), the site's description and image, Open Graph tags and a
+ * canonical link too (through {@link SparkTitleStrategy}).
+ */
 export function provideSparkSeo(options: SparkSeoOptions): EnvironmentProviders {
-  return makeEnvironmentProviders([{ provide: SPARK_SEO_OPTIONS, useValue: options }]);
+  return makeEnvironmentProviders([
+    { provide: SPARK_SEO_OPTIONS, useValue: options },
+    { provide: TitleStrategy, useClass: SparkTitleStrategy },
+  ]);
 }
 
 const JSON_LD_SELECTOR = 'script[type="application/ld+json"][data-spark-seo]';
 const SEO_META = ['name="description"', 'name="robots"', 'property="og:title"', 'property="og:description"',
-  'property="og:url"', 'property="og:image"', 'property="og:type"'];
+  'property="og:url"', 'property="og:image"', 'property="og:type"', 'name="twitter:card"'];
+/** Google shows about this many characters of a description. */
+const DESCRIPTION_LENGTH = 160;
 
 /**
  * The detail page's title, description, robots, canonical link, Open Graph tags and JSON-LD (D12), the same on the
@@ -47,6 +69,8 @@ export class SparkSeoService {
    * object title, so the server records the site's on the element (`data-spark-site`) and the browser reads it back.
    */
   private readonly siteTitle = this.document.head?.querySelector('title')?.getAttribute('data-spark-site') ?? this.title.getTitle();
+  /** Whether the tags on the page are an object's, set by {@link forObject} and cleared by {@link reset}. */
+  private objectTags = false;
 
   /**
    * The tags for a readable object.
@@ -56,18 +80,18 @@ export class SparkSeoService {
     const seo = type?.seo;
     const name = po.breadcrumb || po.name;
     const url = this.origin() + canonicalPath;
-    const description = seo?.description ? attributeText(po, seo.description) : null;
-    const image = seo?.image ? attributeText(po, seo.image) : null;
+    const typeDescription = type ? this.options?.description?.[type.name] : undefined;
+    const description = clip(seo?.description ? attributeText(po, seo.description)
+      : typeDescription && type ? typeDescription(po, type) : null);
+    const image = (seo?.image ? attributeText(po, seo.image) : null) ?? this.siteImage();
+    // `indexableWhen`: one object of an indexable type may still be private, e.g. a playlist that is not public.
+    const indexable = !!seo?.indexable && (!seo.indexableWhen || attributeValue(po, seo.indexableWhen) === true);
 
-    this.title.setTitle(this.options?.title?.(name) ?? (this.siteTitle ? `${name} - ${this.siteTitle}` : name));
-    this.document.head?.querySelector('title')?.setAttribute('data-spark-site', this.siteTitle);
-    this.setMeta('name', 'robots', seo?.indexable ? 'index, follow' : 'noindex');
+    this.objectTags = true;
+    this.setPageTitle(name);
+    this.setMeta('name', 'robots', indexable ? 'index, follow' : 'noindex');
     this.setMeta('name', 'description', description);
-    this.setMeta('property', 'og:type', 'website');
-    this.setMeta('property', 'og:title', name);
-    this.setMeta('property', 'og:description', description);
-    this.setMeta('property', 'og:url', url);
-    this.setMeta('property', 'og:image', image);
+    this.setOpenGraph(name, description, url, image);
     this.setCanonical(url);
 
     if (!type || !seo?.schemaType) {
@@ -84,6 +108,26 @@ export class SparkSeoService {
     this.setJsonLd({ ...data, ...(this.options?.structuredData?.[type.name]?.(po, type) ?? {}) });
   }
 
+  /**
+   * The tags of a page that is not an object's: its route's title (or the site's), the site's description and image,
+   * and a canonical link to its path without the query. Called by {@link SparkTitleStrategy} on every navigation, after
+   * the page's components were created; a detail page replaces the tags once its object arrives. A page that already
+   * set its own tags keeps them: an object's (until {@link reset}, so in whichever order the two calls come), or
+   * `noindex` (a new, an edit or a not-found page), which gets its title only.
+   */
+  forPage(routeTitle: string | undefined, path: string): void {
+    if (this.objectTags) return;
+    if (routeTitle) this.setPageTitle(routeTitle);
+    else this.title.setTitle(this.siteTitle);
+    if (this.meta.getTag('name="robots"')?.content === 'noindex') return;
+
+    const description = clip(this.options?.siteDescription ?? null);
+    const url = this.origin() + (path.split(/[?#]/)[0] || '/');
+    this.setMeta('name', 'description', description);
+    this.setOpenGraph(routeTitle ?? this.siteTitle, description, url, this.siteImage());
+    this.setCanonical(url);
+  }
+
   /** A page that must not be indexed: an error, a new object, an edit form. */
   noIndex(): void {
     this.reset();
@@ -92,6 +136,7 @@ export class SparkSeoService {
 
   /** Removes every tag this service set and restores the document's own title. */
   reset(): void {
+    this.objectTags = false;
     this.title.setTitle(this.siteTitle);
     for (const selector of SEO_META) this.meta.removeTag(selector);
     this.setCanonical(null);
@@ -100,6 +145,27 @@ export class SparkSeoService {
 
   private origin(): string {
     return this.serverOrigin || this.document.location?.origin || '';
+  }
+
+  private setPageTitle(name: string): void {
+    this.title.setTitle(this.options?.title?.(name) ?? (this.siteTitle ? `${name} - ${this.siteTitle}` : name));
+    this.document.head?.querySelector('title')?.setAttribute('data-spark-site', this.siteTitle);
+  }
+
+  private setOpenGraph(title: string, description: string | null, url: string, image: string | null): void {
+    this.setMeta('property', 'og:type', 'website');
+    this.setMeta('property', 'og:title', title);
+    this.setMeta('property', 'og:description', description);
+    this.setMeta('property', 'og:url', url);
+    this.setMeta('property', 'og:image', image);
+    this.setMeta('name', 'twitter:card', image ? 'summary_large_image' : 'summary');
+  }
+
+  /** The site's Open Graph image as an absolute URL (Open Graph requires one), or null. */
+  private siteImage(): string | null {
+    const image = this.options?.image;
+    if (!image) return null;
+    return /^https?:\/\//i.test(image) ? image : this.origin() + (image.startsWith('/') ? image : '/' + image);
   }
 
   private setMeta(attribute: 'name' | 'property', key: string, content: string | null): void {
@@ -136,6 +202,35 @@ export class SparkSeoService {
     // `<` escaped, so a value holding "</script>" cannot end the element.
     script.textContent = JSON.stringify(data).replace(/</g, '\\u003c');
   }
+}
+
+/**
+ * Sets the document title (and the SEO tags of pages that are not an object's) on every navigation, from the route's
+ * `title` through {@link SparkSeoService.forPage}. Installed by {@link provideSparkSeo}. Unlike Angular's default
+ * strategy it also restores the site's title on a route without one, so a previous page's title never stays.
+ */
+@Injectable()
+export class SparkTitleStrategy extends TitleStrategy {
+  private readonly seo = inject(SparkSeoService);
+
+  override updateTitle(snapshot: RouterStateSnapshot): void {
+    this.seo.forPage(this.buildTitle(snapshot), snapshot.url);
+  }
+}
+
+/** A description cut to what a search result shows, on a word boundary; null when empty. */
+function clip(text: string | null): string | null {
+  const value = text?.replace(/\s+/g, ' ').trim();
+  if (!value) return null;
+  if (value.length <= DESCRIPTION_LENGTH) return value;
+  const cut = value.slice(0, DESCRIPTION_LENGTH - 1);
+  const space = cut.lastIndexOf(' ');
+  return (space > DESCRIPTION_LENGTH / 2 ? cut.slice(0, space) : cut) + '…';
+}
+
+/** An attribute's raw value, or undefined when the object has no such attribute. */
+function attributeValue(po: PersistentObject, name: string): unknown {
+  return po.attributes.find(a => a.name === name)?.value;
 }
 
 /** An attribute's value as text: a reference's breadcrumb, a scalar as is, anything else nothing. */

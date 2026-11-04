@@ -50,13 +50,13 @@ const QUEUES: { label: string; alias: string }[] = [
           @if (loading()) {
             <div class="text-center"><bs-spinner /></div>
           } @else if (forbidden()) {
-            <bs-alert [type]="colors.warning" class="d-block spark-idp-not-allowed">{{ 'admin.notAllowed' | idp }}</bs-alert>
+            <bs-alert [color]="'warning'" class="d-block spark-idp-not-allowed">{{ 'admin.notAllowed' | idp }}</bs-alert>
           } @else {
             @if (notice()) {
-              <bs-alert [type]="colors.success" class="mb-3 d-block spark-idp-notice">{{ notice() }}</bs-alert>
+              <bs-alert [color]="'success'" class="mb-3 d-block spark-idp-notice">{{ notice() }}</bs-alert>
             }
             @if (error()) {
-              <bs-alert [type]="colors.danger" class="mb-3 d-block spark-idp-error">{{ error() }}</bs-alert>
+              <bs-alert [color]="'danger'" class="mb-3 d-block spark-idp-error">{{ error() }}</bs-alert>
             }
 
             <h5>{{ 'admin.queues' | idp }}</h5>
@@ -69,7 +69,7 @@ const QUEUES: { label: string; alias: string }[] = [
             <h5>{{ 'admin.keys' | idp }}</h5>
             <p class="text-muted">{{ 'admin.keysHint' | idp }}</p>
             @if (keys().length) {
-              <bs-table [isResponsive]="true">
+              <bs-table [responsive]="true">
                 <thead>
                   <tr>
                     <th>{{ 'admin.kid' | idp }}</th>
@@ -85,7 +85,7 @@ const QUEUES: { label: string; alias: string }[] = [
                     <tr class="spark-idp-key" [attr.data-state]="key.state">
                       <td class="font-monospace text-break">{{ key.kid }}</td>
                       <td>{{ key.algorithm }}</td>
-                      <td><bs-badge [type]="stateColor(key.state)">{{ key.state }}</bs-badge></td>
+                      <td><bs-badge [color]="stateColor(key.state)">{{ key.state }}</bs-badge></td>
                       <td>{{ key.createdAt | idpDate }}</td>
                       <td>{{ key.activatedAt | idpDate }}</td>
                       <td>{{ key.retiredAt | idpDate }}</td>
@@ -160,11 +160,11 @@ export class SparkIdentityProviderManagementComponent {
     this.busy.set(false);
   }
 
-  protected stateColor(state: string): Color {
+  protected stateColor(state: string): 'success' | 'secondary' | 'info' {
     switch (state.toLowerCase()) {
-      case 'active': return Color.success;
-      case 'retired': return Color.secondary;
-      default: return Color.info;
+      case 'active': return 'success';
+      case 'retired': return 'secondary';
+      default: return 'info';
     }
   }
 }

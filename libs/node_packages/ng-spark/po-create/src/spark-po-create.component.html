@@ -1,10 +1,9 @@
-<bs-container>
-<div class="container">
+<bs-grid>
   @if (entityType(); as et) {
     <h2 class="mb-4">{{ 'common.create' | t }} {{ (et.label | resolveTranslation) || et.name }}</h2>
 
     @for (error of generalErrors(); track error.errorMessage) {
-      <bs-alert [type]="colors.danger" class="mb-3">
+      <bs-alert [color]="'danger'" class="mb-3">
         {{ error.errorMessage | resolveTranslation }}
       </bs-alert>
     }
@@ -28,5 +27,4 @@
       <bs-spinner />
     </div>
   }
-</div>
-</bs-container>
+</bs-grid>

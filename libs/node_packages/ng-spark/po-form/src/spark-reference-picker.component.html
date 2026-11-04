@@ -14,13 +14,11 @@
   </button>
 </bs-input-group>
 
-<bs-modal [isOpen]="showModal()" (isOpenChange)="!$event && close()">
-  <div *bsModal class="reference-modal">
-    <div bsModalHeader>
-      <h5 class="modal-title">{{ 'common.select' | t }} {{ title() }}</h5>
-    </div>
+<bs-modal [open]="showModal()" (openChange)="!$event && close()">
+  <ng-container *bsModalHeader>{{ 'common.select' | t }} {{ title() }}</ng-container>
 
-    <div bsModalBody>
+  @if (showModal()) {
+    <div class="reference-modal">
       @if (entityType()) {
         <!-- The query search box (debounce, clear button). It brings its own <bs-form>: bs-modal
              portals its content outside the host form, and the input needs that context for its
@@ -48,7 +46,7 @@
           [data]="rows()"
           [fetch]="fetchFn()"
           [labels]="datatableLabels()"
-          (rowclick)="select($any($event.row))">
+          (rowClick)="select($any($event.row))">
           <ng-template bsDatatableHeader let-column="column">
             {{ column.label }}
             @if (columnByName().get(column.name); as col) {
@@ -72,9 +70,9 @@
         </div>
       }
     </div>
+  }
 
-    <div bsModalFooter>
-      <button type="button" [color]="colors.secondary" (click)="close()">{{ 'common.cancel' | t }}</button>
-    </div>
-  </div>
+  <ng-container *bsModalFooter>
+    <button type="button" [color]="colors.secondary" (click)="close()">{{ 'common.cancel' | t }}</button>
+  </ng-container>
 </bs-modal>

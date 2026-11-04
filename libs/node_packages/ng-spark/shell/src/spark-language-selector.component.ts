@@ -18,7 +18,8 @@ import { ResolveTranslationPipe } from '@mintplayer/ng-spark/pipes';
   template: `
     @if (lang.languages() | keyvalue; as langs) {
       @if (langs.length > 1) {
-        <bs-select [ngModel]="lang.language()" (ngModelChange)="lang.setLanguage($event)">
+        <!-- inputLabel names the inner <select>; the topbar has no room for a visible label. -->
+        <bs-select [inputLabel]="lang.t('language', 'Language')" [ngModel]="lang.language()" (ngModelChange)="lang.setLanguage($event)">
           @for (l of langs; track l.key) {
             <option [ngValue]="l.key">{{ l.value | resolveTranslation }}</option>
           }

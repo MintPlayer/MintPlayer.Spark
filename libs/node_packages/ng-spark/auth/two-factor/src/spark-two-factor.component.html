@@ -1,11 +1,11 @@
 <div class="d-flex justify-content-center">
   <bs-card style="width: 100%; max-width: 400px;">
     <bs-card-header>
-      <h3 class="mb-0 text-center">{{ 'auth.twoFactorTitle' | t }}</h3>
+      <h1 class="h3 mb-0 text-center">{{ 'auth.twoFactorTitle' | t }}</h1>
     </bs-card-header>
     <div class="p-4">
       @if (errorMessage()) {
-        <bs-alert [type]="colors.danger" class="mb-3">{{ errorMessage() }}</bs-alert>
+        <bs-alert [color]="'danger'" class="mb-3">{{ errorMessage() }}</bs-alert>
       }
 
       <bs-form (submitted)="onSubmit()">

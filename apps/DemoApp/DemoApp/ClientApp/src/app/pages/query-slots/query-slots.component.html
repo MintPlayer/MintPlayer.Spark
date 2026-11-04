@@ -1,9 +1,9 @@
-<bs-container>
-<div class="container py-4">
+<bs-grid>
+<div class="py-4">
   <h2 class="mb-3">Query card slots</h2>
 
   @if (lastAction(); as action) {
-    <bs-alert [type]="colors.info" class="mb-3">Slot action fired: <strong>{{ action }}</strong></bs-alert>
+    <bs-alert [color]="'info'" class="mb-3">Slot action fired: <strong>{{ action }}</strong></bs-alert>
   }
 
   <!-- 1. No slots at all. This is what an auto-rendered sub-query on a PO detail page gets,
@@ -53,4 +53,4 @@
     </div>
   </bs-grid>
 </div>
-</bs-container>
+</bs-grid>

@@ -78,7 +78,7 @@ export const PACKAGES_SHOWN = 25;
           }
 
           <h6 class="mb-2">Repositories</h6>
-          <bs-table [isResponsive]="true" data-testid="du-repositories">
+          <bs-table [responsive]="true" data-testid="du-repositories">
             <thead>
               <tr><th>Repository</th><th>State</th><th>Pull request</th><th>Last run</th><th>Next slot</th><th>Holds</th></tr>
             </thead>
@@ -119,7 +119,7 @@ export const PACKAGES_SHOWN = 25;
           @if (f.packages.length > 0) {
             <h6 class="mb-2 mt-3">Packages</h6>
             <p class="small text-muted mb-2">Packages used by more than one repository, or with an update going on. The version is the one the lookup found, else the range a manifest declares.</p>
-            <bs-table [isResponsive]="true" data-testid="du-packages">
+            <bs-table [responsive]="true" data-testid="du-packages">
               <thead>
                 <tr><th>Package</th><th>Repositories and versions</th></tr>
               </thead>

@@ -1,0 +1,5 @@
+# /spark/ stays crawlable: a crawler that runs the page's script needs its API calls to render it.
+User-agent: *
+Allow: /
+
+Sitemap: https://mintplayer.com/sitemap.xml

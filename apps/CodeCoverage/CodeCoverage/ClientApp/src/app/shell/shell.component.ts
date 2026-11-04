@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/cor
 import { KeyValuePipe } from '@angular/common';
 import { RouterModule } from '@angular/router';
 import { FormsModule } from '@angular/forms';
-import { BsAlertComponent, BsAlertCloseComponent } from '@mintplayer/ng-bootstrap/alert';
+import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
 import { BsSelectComponent, BsSelectOption } from '@mintplayer/ng-bootstrap/select';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { SparkShellComponent, SparkShellTopbarEndDirective, SparkShellMainHeaderDirective } from '@mintplayer/ng-spark/shell';
@@ -31,7 +31,7 @@ import { SparkAuthBarComponent } from '@mintplayer/ng-spark/auth/auth-bar';
   imports: [
     RouterModule, FormsModule, KeyValuePipe,
     SparkShellComponent, SparkShellTopbarEndDirective, SparkShellMainHeaderDirective,
-    BsAlertComponent, BsAlertCloseComponent, BsSelectComponent, BsSelectOption,
+    BsAlertComponent, BsSelectComponent, BsSelectOption,
     ResolveTranslationPipe, TranslateKeyPipe,
     SparkAuthBarComponent,
   ],
@@ -45,7 +45,7 @@ export class ShellComponent {
   loginError = signal<string | null>(null);
   readonly dangerColor = Color.danger;
 
-  // bs-alert-close only hides the alert (isVisible model); clear the error so
+  // The dismiss button only hides the alert (visible model); clear the error so
   // the @if removes it and a later failure starts from a fresh, visible alert.
   onLoginAlertVisible(visible: boolean): void {
     if (!visible) this.loginError.set(null);

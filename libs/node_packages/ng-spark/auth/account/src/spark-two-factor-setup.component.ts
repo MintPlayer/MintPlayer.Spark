@@ -31,13 +31,13 @@ import { accountMessages } from './account-messages';
         <bs-card-header><h3 class="mb-0">{{ 'auth.twoFactorSetupTitle' | t }}</h3></bs-card-header>
         <div class="p-4">
           @for (message of messages(); track message) {
-            <bs-alert [type]="colors.danger" class="mb-3 d-block spark-account-error">{{ message | t }}</bs-alert>
+            <bs-alert [color]="'danger'" class="mb-3 d-block spark-account-error">{{ message | t }}</bs-alert>
           }
           @if (loading()) {
             <div class="text-center"><bs-spinner /></div>
           } @else if (state(); as s) {
             @if (recoveryCodes().length) {
-              <bs-alert [type]="colors.warning" class="mb-3 d-block spark-recovery-codes">
+              <bs-alert [color]="'warning'" class="mb-3 d-block spark-recovery-codes">
                 <p class="mb-2">{{ 'auth.recoveryCodesShownOnce' | t }}</p>
                 <div class="d-flex flex-wrap gap-3 font-monospace">
                   @for (code of recoveryCodes(); track code) { <span>{{ code }}</span> }
@@ -69,8 +69,8 @@ import { accountMessages } from './account-messages';
                 <hr class="my-4" />
                 <div class="spark-2fa-external-bypass">
                   <bs-form>
-                    <bs-checkbox [type]="'checkbox'" [name]="'externalTwoFactorBypass'" [isToggled]="bypassChecked()"
-                                 (isToggledChange)="toggleBypass($event === true)">
+                    <bs-checkbox [type]="'checkbox'" [name]="'externalTwoFactorBypass'" [checked]="bypassChecked()"
+                                 (checkedChange)="toggleBypass($event === true)">
                       {{ 'auth.externalTwoFactorBypassLabel' | t }}
                     </bs-checkbox>
                   </bs-form>

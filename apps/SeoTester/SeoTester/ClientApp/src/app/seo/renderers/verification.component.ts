@@ -34,7 +34,7 @@ export function seoVerificationProofs(origin: string, host: string, token: strin
         @if (s.method) { <span class="ms-1">({{ ('seoUi.verify.method.' + s.method) | t }})</span> }
         @if (s.checkedAt) { <div class="small text-body-secondary">{{ 'seoUi.verify.lastChecked' | t }} {{ s.checkedAt }}</div> }
         @if (s.failures > 0) {
-          <bs-alert [type]="colors.warning" class="mt-2 mb-0" data-failures>{{ failuresText() }}</bs-alert>
+          <bs-alert [color]="'warning'" class="mt-2 mb-0" data-failures>{{ failuresText() }}</bs-alert>
         }
       </div>
     } @else if (s.proofs) {

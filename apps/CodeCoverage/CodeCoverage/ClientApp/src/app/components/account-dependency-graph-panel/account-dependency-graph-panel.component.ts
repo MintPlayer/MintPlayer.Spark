@@ -179,8 +179,8 @@ interface SelectedEdge {
             </button>
             <span class="d-flex flex-wrap align-items-center gap-3 small ms-auto">
               @for (eco of legend(); track eco.name) {
-                <bs-checkbox [type]="'checkbox'" [name]="'ecosystem-' + eco.name" [isToggled]="eco.visible"
-                             (isToggledChange)="setEcosystemVisible(eco.name, $event === true)">
+                <bs-checkbox [type]="'checkbox'" [name]="'ecosystem-' + eco.name" [checked]="eco.visible"
+                             (checkedChange)="setEcosystemVisible(eco.name, $event === true)">
                   <span class="d-inline-flex align-items-center gap-1">
                     <span class="swatch" [style.background]="eco.color"></span>{{ eco.name }}
                   </span>
@@ -211,7 +211,7 @@ interface SelectedEdge {
                       <span class="swatch" [style.background]="colorOf(pkg.ecosystem)"></span>{{ pkg.ecosystem }}
                     </span>
                     <code>{{ pkg.name }}</code>
-                    @if (pkg.dev) { <bs-badge [type]="colors.secondary">dev</bs-badge> }
+                    @if (pkg.dev) { <bs-badge [color]="'secondary'">dev</bs-badge> }
                     <span class="small text-muted text-break">{{ pkg.manifestPath }}</span>
                   </li>
                 }

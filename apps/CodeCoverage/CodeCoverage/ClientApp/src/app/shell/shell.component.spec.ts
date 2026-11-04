@@ -117,7 +117,7 @@ describe('ShellComponent', () => {
     await settle(fixture);
     expect(el(fixture).querySelector('bs-alert')!.textContent).toContain('GitHub sign-in failed');
 
-    (el(fixture).querySelector('bs-alert-close button') as HTMLButtonElement).click();
+    (el(fixture).querySelector('bs-alert button.btn-close') as HTMLButtonElement).click();
     await settle(fixture);
 
     expect(fixture.componentInstance.loginError()).toBeNull();

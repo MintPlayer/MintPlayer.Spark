@@ -1,9 +1,10 @@
-import { ChangeDetectionStrategy, Component, computed, contentChildren, input, linkedSignal, output, viewChild, TemplateRef } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, contentChildren, input, linkedSignal, output, viewChild, viewChildren, TemplateRef } from '@angular/core';
+import { SparkPriorityNavItemDirective, sparkPriorityNavItems } from './spark-priority-nav-item.directive';
 import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
-import { BsPriorityNavComponent, BsPriorityNavItemDirective } from '@mintplayer/ng-bootstrap/priority-nav';
+import { BsPriorityNavComponent, BsPriorityNavItemTemplateDirective } from '@mintplayer/ng-bootstrap/priority-nav';
 import { ResolveTranslationPipe } from '@mintplayer/ng-spark/pipes';
 import { SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { CustomActionDefinition, PersistentObject, QueryResultItem, type SparkDeletedFilter, type SparkSelectionModeSetting } from '@mintplayer/ng-spark/models';
@@ -43,7 +44,7 @@ import {
  */
 @Component({
   selector: 'spark-query-card',
-  imports: [CommonModule, BsCardComponent, BsCardHeaderComponent, BsPriorityNavComponent, BsPriorityNavItemDirective, SparkQueryGridComponent, SparkSearchBoxComponent, ResolveTranslationPipe, SparkIconComponent],
+  imports: [CommonModule, BsCardComponent, BsCardHeaderComponent, BsPriorityNavComponent, BsPriorityNavItemTemplateDirective, SparkPriorityNavItemDirective, SparkQueryGridComponent, SparkSearchBoxComponent, ResolveTranslationPipe, SparkIconComponent],
   // The search box keeps a steady width beside the actions; the priority nav gives way first.
   //
   // Below `sm` the nav has nothing left to give: `collapseAt="sm"` folds every action into "More",
@@ -62,6 +63,8 @@ import {
 })
 export class SparkQueryCardComponent {
   readonly lang = inject(SparkLanguageService);
+  private readonly navItemDirectives = viewChildren(SparkPriorityNavItemDirective);
+  protected readonly navItems = sparkPriorityNavItems(this.navItemDirectives);
 
   queryId = input.required<string>();
   parentId = input<string>('');

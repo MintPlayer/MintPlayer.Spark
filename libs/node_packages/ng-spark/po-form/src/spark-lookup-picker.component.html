@@ -14,20 +14,17 @@
   </button>
 </bs-input-group>
 
-<bs-modal [isOpen]="showModal()" (isOpenChange)="!$event && close()">
-  <div *bsModal>
-    <div bsModalHeader>
-      <h5 class="modal-title">{{ 'common.select' | t }} {{ title() }}</h5>
-    </div>
+<bs-modal [open]="showModal()" (openChange)="!$event && close()">
+  <ng-container *bsModalHeader>{{ 'common.select' | t }} {{ title() }}</ng-container>
 
-    <div bsModalBody>
-      <!-- bs-modal portals its content into a CDK overlay outside the host form, so the
-           modal needs its own <bs-form> context for inputs to pick up .form-control styles. -->
+  @if (showModal()) {
+      <!-- bs-modal renders at the end of <body>, outside the host form, so the modal needs its
+           own <bs-form> context for inputs to pick up .form-control styles. -->
       <bs-form>
       <!-- Search box -->
       <bs-grid>
         <div bsRow class="mb-3">
-          <div [col]>
+          <div col>
             <bs-input-group>
               <span class="addon">
                 <spark-icon name="search" />
@@ -68,10 +65,9 @@
         </tbody>
       </bs-table>
       </bs-form>
-    </div>
+  }
 
-    <div bsModalFooter>
-      <button type="button" [color]="colors.secondary" (click)="close()">{{ 'common.cancel' | t }}</button>
-    </div>
-  </div>
+  <ng-container *bsModalFooter>
+    <button type="button" [color]="colors.secondary" (click)="close()">{{ 'common.cancel' | t }}</button>
+  </ng-container>
 </bs-modal>

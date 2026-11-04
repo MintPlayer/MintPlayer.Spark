@@ -15,7 +15,7 @@ import { describe, expect, it } from 'vitest';
  */
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../..');
 const appsDir = path.join(repoRoot, 'apps');
-const prebootDir = 'node_modules/@mintplayer/web-components/theming';
+const prebootDir = 'node_modules/@mintplayer/ui-core/theming';
 
 const apps = readdirSync(appsDir)
   .map(name => ({ name, client: path.join(appsDir, name, name, 'ClientApp') }))

@@ -19,7 +19,7 @@ class StubCodeSnippet {
   readonly activeLine = input<number | null>(null);
   readonly lineHref = input<((line: number) => string) | null>(null);
   readonly label = input<string>('');
-  readonly lineactivate = output<CodeLineActivation>();
+  readonly lineActivate = output<CodeLineActivation>();
 }
 
 function detail(overrides: Partial<FileDetail> = {}): FileDetail {
@@ -95,8 +95,8 @@ describe('FileComponent', () => {
     expect(snippet()!.label()).toBe('src/a.ts');
     expect(snippet()!.lineHref()!(7)).toBe('#L7');
     expect(text()).toContain('2/3 lines covered');
-    // Under 80% is amber with dark text, on the inner .badge that bs-badge paints (merge-queue PRD §0 D84).
-    expect((harness.routeNativeElement as HTMLElement).querySelector('bs-badge .badge')!.classList.contains('text-bg-warning')).toBe(true);
+    // Under 80% is amber with dark text, on the bs-badge host that carries .badge since 22.33 (merge-queue PRD §0 D84).
+    expect((harness.routeNativeElement as HTMLElement).querySelector('bs-badge.badge')!.classList.contains('text-bg-warning')).toBe(true);
     expect(text()).toContain('abc1234');
   });
 
@@ -180,7 +180,7 @@ describe('FileComponent', () => {
     const navigate = vi.spyOn(router, 'navigate');
     let prevented = false;
 
-    snippet()!.lineactivate.emit({ line: 9, preventDefault: () => { prevented = true; } });
+    snippet()!.lineActivate.emit({ line: 9, preventDefault: () => { prevented = true; } });
     await settleHarness();
 
     expect(prevented).toBe(true);

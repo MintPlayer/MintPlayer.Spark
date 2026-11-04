@@ -186,7 +186,7 @@ const UNAVAILABLE_REASONS: Record<string, string> = {
               <!-- virtualBuffer 3: mp-datatable re-renders and re-checks every row in the window on each range change (S9). -->
               <bs-datatable [fetch]="fetchFn()" [virtualScroll]="true" [itemSize]="rowHeight" [virtualBuffer]="3"
                             [resizableColumns]="false" [rowKey]="rowKey"
-                            [columns]="columns" [perPage]="pageSize" [perPageOptions]="[pageSize]" (rowclick)="onRowClick($event)">
+                            [columns]="columns" [perPage]="pageSize" [perPageOptions]="[pageSize]" (rowClick)="onRowClick($event)">
                 <ng-template bsDatatableHeader let-column="column">
                   @if (column.name === 'graph') { <span class="visually-hidden">{{ column.label }}</span> } @else { {{ column.label }} }
                 </ng-template>

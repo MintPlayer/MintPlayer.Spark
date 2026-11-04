@@ -22,9 +22,9 @@ import type { SparkAttributeColumnRenderer } from '@mintplayer/ng-spark/renderer
   imports: [BsBadgeComponent, TranslateKeyPipe],
   template: `
     @if (connected()) {
-      <bs-badge class="text-nowrap" [type]="colors.success">{{ 'app.connected' | t }}</bs-badge>
+      <bs-badge class="text-nowrap" [color]="'success'">{{ 'app.connected' | t }}</bs-badge>
     } @else {
-      <bs-badge class="text-nowrap" [type]="colors.secondary">{{ 'app.notConnected' | t }}</bs-badge>
+      <bs-badge class="text-nowrap" [color]="'secondary'">{{ 'app.notConnected' | t }}</bs-badge>
     }
   `,
   changeDetection: ChangeDetectionStrategy.OnPush

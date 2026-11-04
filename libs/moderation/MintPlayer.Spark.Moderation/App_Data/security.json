@@ -1,4 +1,5 @@
 {
+  "$schema": "../../../../schemas/security.schema.json",
   "_comment": [
     "Moderation's rights, shipped as a library layer (composition D4, M9). They name only the",
     "'Moderation' pseudo-type this library reserves, and only its own slots, which the application",

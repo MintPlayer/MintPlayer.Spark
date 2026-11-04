@@ -1,5 +1,4 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
-import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
 import { BsProgressBarComponent, BsProgressComponent } from '@mintplayer/ng-bootstrap/progress-bar';
 import { TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
@@ -50,16 +49,16 @@ export function seoRunProgress(data: Record<string, unknown> | undefined) {
           <span>{{ p.done }} / {{ p.total }} {{ 'seoUi.results.pages' | t }}</span>
         </div>
         <bs-progress [height]="10">
-          <bs-progress-bar [value]="p.percent" [color]="colors.primary" [striped]="true" [animated]="true" [ariaLabel]="'seoUi.progress' | t" />
+          <bs-progress-bar [value]="p.percent" color="primary" [striped]="true" [animated]="true" [label]="'seoUi.progress' | t" />
         </bs-progress>
         @if (p.currentUrl) { <div class="small text-body-secondary text-truncate mt-1" [title]="p.currentUrl">{{ p.currentUrl }}</div> }
       </div>
     } @else if (p.status === 'Blocked') {
-      <bs-alert [type]="colors.warning" class="mb-0">{{ 'seoUi.blocked' | t }}</bs-alert>
+      <bs-alert [color]="'warning'" class="mb-0">{{ 'seoUi.blocked' | t }}</bs-alert>
     } @else if (p.status === 'Failed') {
-      <bs-alert [type]="colors.danger" class="mb-0">{{ 'seoUi.failed' | t }}@if (p.error) { {{ p.error }} }</bs-alert>
+      <bs-alert [color]="'danger'" class="mb-0">{{ 'seoUi.failed' | t }}@if (p.error) { {{ p.error }} }</bs-alert>
     } @else if (p.status === 'Cancelled') {
-      <bs-alert [type]="colors.secondary" class="mb-0">{{ 'seoUi.cancelled' | t }}</bs-alert>
+      <bs-alert [color]="'secondary'" class="mb-0">{{ 'seoUi.cancelled' | t }}</bs-alert>
     } @else if (p.status === 'Completed') {
       <span class="text-success" data-completed>{{ 'seoUi.completed' | t }} · {{ p.done }} {{ (p.done === 1 ? 'seoUi.results.page' : 'seoUi.results.pages') | t }}</span>
     }
@@ -68,6 +67,5 @@ export function seoRunProgress(data: Record<string, unknown> | undefined) {
 })
 export class SeoRunProgressComponent {
   readonly formData = input<Record<string, unknown>>({});
-  protected readonly colors = Color;
   protected readonly progress = computed(() => seoRunProgress(this.formData()));
 }

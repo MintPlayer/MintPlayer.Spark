@@ -2,8 +2,7 @@ import { ChangeDetectionStrategy, Component, effect, inject, viewChild } from '@
 import { CdkDrag, CdkDragHandle } from '@angular/cdk/drag-drop';
 import { VideoPlayerComponent } from '@mintplayer/ng-video-player';
 import { EPlayerState } from '@mintplayer/player-provider';
-import { BsOffcanvasCloseDirective, BsOffcanvasContentDirective, BsOffcanvasHostComponent, OffcanvasBodyComponent, OffcanvasHeaderComponent } from '@mintplayer/ng-bootstrap/offcanvas';
-import { BsCloseComponent } from '@mintplayer/ng-bootstrap/close';
+import { BsOffcanvasComponent, BsOffcanvasHeaderDirective } from '@mintplayer/ng-bootstrap/offcanvas';
 import { BsListGroupComponent, BsListGroupItemComponent } from '@mintplayer/ng-bootstrap/list-group';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsButtonTypeDirective } from '@mintplayer/ng-bootstrap/button-type';
@@ -14,7 +13,7 @@ import { PlayerService } from './player.service';
 /** The floating player and its queue (G7): shown while the queue has a current item. */
 @Component({
   selector: 'app-player-dock',
-  imports: [VideoPlayerComponent, BsOffcanvasHostComponent, BsOffcanvasContentDirective, BsOffcanvasCloseDirective, OffcanvasHeaderComponent, OffcanvasBodyComponent, BsCloseComponent, BsListGroupComponent, BsListGroupItemComponent, BsCardComponent, BsCardHeaderComponent, BsCardBodyComponent, BsButtonTypeDirective, CdkDrag, CdkDragHandle],
+  imports: [VideoPlayerComponent, BsOffcanvasComponent, BsOffcanvasHeaderDirective,BsListGroupComponent, BsListGroupItemComponent, BsCardComponent, BsCardHeaderComponent, BsCardBodyComponent, BsButtonTypeDirective, CdkDrag, CdkDragHandle],
   templateUrl: './player-dock.component.html',
   styleUrl: './player-dock.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

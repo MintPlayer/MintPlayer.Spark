@@ -17,7 +17,7 @@ target's `assets`:
 ```json
 {
   "glob": "bs-theme-preboot.js",
-  "input": "node_modules/@mintplayer/web-components/theming",
+  "input": "node_modules/@mintplayer/ui-core/theming",
   "output": "/"
 }
 ```

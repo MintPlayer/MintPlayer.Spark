@@ -1,8 +1,10 @@
-import { ChangeDetectionStrategy, Component, computed, contentChild, contentChildren, inject, input, signal, TemplateRef } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, contentChild, contentChildren, ElementRef, inject, input, signal, TemplateRef } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
-import { BsShellComponent, BsShellSidebarDirective, BsShellState, BsShellTopbarDirective, type BsShellStateChange } from '@mintplayer/ng-bootstrap/shell';
+import { BsShellComponent, BsShellSidebarDirective, BsShellTopbarDirective, type ShellState, type ShellStateChange } from '@mintplayer/ng-bootstrap/shell';
 import { BsNavbarTogglerComponent } from '@mintplayer/ng-bootstrap/navbar-toggler';
 import { BS_THEME_DEFAULT_MODES, BsThemeService, BsThemeToggleComponent, BsThemeToggleMode } from '@mintplayer/ng-bootstrap/theming';
+import { useBootstrap } from '@mintplayer/ng-bootstrap/machine';
+import { bootstrapNavPage } from '@mintplayer/ui-core/bootstrap/nav';
 import { SparkLanguageService } from '@mintplayer/ng-spark/services';
 import type { Breakpoint } from '@mintplayer/ng-bootstrap';
 import { SparkProgramUnitsComponent } from './spark-program-units.component';
@@ -80,7 +82,15 @@ export class SparkShellComponent {
    * would leave 'auto' with no live `prefers-color-scheme` listener in Angular's view.
    */
   protected readonly theme = inject(BsThemeService);
-  private readonly lang = inject(SparkLanguageService);
+  protected readonly lang = inject(SparkLanguageService);
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+
+  constructor() {
+    // The side menu's links (spark-program-units, the sidebar slots, an app's own entries) are plain
+    // .nav-links outside any .nav root. Since ng-bootstrap 22.32 (#452) a part styles only its own stamped
+    // components and their descendants (#458), so raw markup like this needs the page variant.
+    useBootstrap(bootstrapNavPage);
+  }
 
   /** The toggle's cycle with Spark's translated labels (`theme.*` keys); icons stay ng-bootstrap's. */
   protected readonly themeModes = computed<readonly BsThemeToggleMode[]>(() =>
@@ -139,7 +149,7 @@ export class SparkShellComponent {
     })),
   ]);
 
-  protected readonly shellState = signal<BsShellState>('auto');
+  protected readonly shellState = signal<ShellState>('auto');
   protected readonly isSidebarVisible = signal(false);
 
   // Explicit toggles force show/hide; 'auto' responsive behavior is otherwise preserved by
@@ -149,7 +159,13 @@ export class SparkShellComponent {
     this.shellState.set(open ? 'show' : 'hide');
   }
 
-  protected onShellToggle(detail: BsShellStateChange): void {
+  protected onShellToggle(detail: ShellStateChange): void {
     this.isSidebarVisible.set(detail.open);
+  }
+
+  /** The skip link: focus the main area in place (a #fragment would resolve against <base href> and leave the page). */
+  protected skipToMain(event: Event): void {
+    event.preventDefault();
+    this.host.nativeElement.querySelector<HTMLElement>('#spark-main')?.focus();
   }
 }

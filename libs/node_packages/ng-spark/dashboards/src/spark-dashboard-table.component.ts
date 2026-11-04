@@ -40,7 +40,7 @@ interface TableCell {
   imports: [BsTableComponent, SparkIconComponent],
   template: `
     @if (rows().length > 0) {
-      <bs-table [isResponsive]="true" class="d-block mb-0">
+      <bs-table [responsive]="true" class="d-block mb-0">
         <thead>
           <tr>
             @for (column of columns(); track column.key) {

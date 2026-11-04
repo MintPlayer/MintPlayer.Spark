@@ -19,7 +19,7 @@
   <!-- A page-fetch failure while the grid is already resolved. Without this the catch returns an
        empty page and a failed query is indistinguishable from one that legitimately has no rows. -->
   @if (errorMessage(); as err) {
-    <bs-alert [type]="colors.danger" class="mb-3">
+    <bs-alert [color]="'danger'" class="mb-3">
       {{ err }}
     </bs-alert>
   }
@@ -43,7 +43,7 @@
   @if (selectionMode() !== 'none') {
     <div class="spark-selection-bar d-flex align-items-center gap-2 mb-2" style="min-height: 1.5rem">
       @if (selection().length) {
-        <bs-badge [type]="colors.primary" class="spark-selection-chip">
+        <bs-badge [color]="'primary'" class="spark-selection-chip">
           {{ selection().length }} {{ 'common.selected' | t }}
           @if (offPageCount()) {
             <span class="spark-selection-off-page">· {{ offPageCount() }} {{ 'common.onOtherPages' | t }}</span>
@@ -62,7 +62,7 @@
       [fill]="fill()"
       [selectionMode]="selectionMode() === 'multiple' ? 'checkbox' : 'none'"
       [selectedIds]="selectedIds()"
-      (selectionchanged)="onSelectionChanged($event)"
+      (selectionChanged)="onSelectionChanged($event)"
       [rowKey]="rowKey"
       [virtualScroll]="isVirtualScrolling()"
       [itemSize]="40"
@@ -72,9 +72,9 @@
       [distincts]="distinctsFn"
       [labels]="datatableLabels()"
       [stateKey]="stateKey()"
-      (filterschange)="onFiltersChange($event)"
-      (pageload)="onPageLoad($event)"
-      (rowclick)="onRowClick($event)"
+      (filtersChange)="onFiltersChange($event)"
+      (pageLoad)="onPageLoad($event)"
+      (rowClick)="onRowClick($event)"
       [(page)]="page"
       [(perPage)]="perPage"
       [(sortColumns)]="sortColumns"
@@ -155,12 +155,11 @@
               <bs-dropdown-menu class="spark-row-menu">
                 @for (action of rowActions(); track action.name) {
                   @let unavailable = actionUnavailableReason(action.definition);
-                  <li bsDropdownItem class="spark-row-action" [attr.data-action]="action.name"
-                      [class.disabled]="unavailable !== null" [attr.aria-disabled]="unavailable !== null ? 'true' : null"
-                      [attr.title]="unavailable"
+                  <bs-dropdown-item class="spark-row-action" [attr.data-action]="action.name"
+                      [disabled]="unavailable !== null" [attr.title]="unavailable"
                       (click)="chooseRowAction(action, row)">
                     {{ action.definition.label | resolveTranslation }}
-                  </li>
+                  </bs-dropdown-item>
                 }
               </bs-dropdown-menu>
             </ng-template>
@@ -172,7 +171,7 @@
 } @else {
   <!-- The query could not be resolved. Rendering something keeps the host's layout intact and,
        crucially, makes the failure visible: this branch used to render nothing at all. -->
-  <bs-alert [type]="colors.danger" class="mb-0">
+  <bs-alert [color]="'danger'" class="mb-0">
     {{ errorMessage() || ('spark.query.unavailable' | t) }}
   </bs-alert>
 }

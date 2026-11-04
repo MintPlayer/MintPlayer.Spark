@@ -410,7 +410,7 @@ describe('query toolbar (#460 M15)', () => {
 
       const table = fixture.debugElement.query(By.directive(BsDatatableComponent)).componentInstance as BsDatatableComponent;
       expect(table.selectedIds().length).toBe(2);
-      table.selectionchanged.emit({ selectedIds: [], selectedRows: [] });
+      table.selectionChanged.emit({ selectedIds: [], selectedRows: [] });
 
       expect(c.selection()).toEqual([]);
     });
