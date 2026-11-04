@@ -783,10 +783,9 @@ public abstract class SparkAppTestHost : IAsyncLifetime
     }
 
     /// <summary>
-    /// Starts the app, on fresh ports again when the ones picked were taken before it could bind them.
-    /// GetFreeTcpPort releases its port before the app binds it, so in a parallel sweep another process
-    /// (an embedded RavenDB, another host) can take it first and the app exits with "address already in
-    /// use". That used to fail the whole collection, after a 120 s wait for a process that had exited.
+    /// Starts the app, on the next ports again when the ones picked were taken by an unrelated process and
+    /// the app exited with "address already in use". That used to fail the whole collection, after a 120 s
+    /// wait for a process that had exited.
     /// </summary>
     private async Task<string> StartAppAsync(string[] ravenUrls)
     {
@@ -809,8 +808,8 @@ public abstract class SparkAppTestHost : IAsyncLifetime
 
     private async Task<string> StartAppOnceAsync(string[] ravenUrls)
     {
-        var httpsPort = GetFreeTcpPort();
-        var httpPort = GetFreeTcpPort();
+        var httpsPort = NextE2EPort();
+        var httpPort = NextE2EPort();
         var httpsUrl = $"https://localhost:{httpsPort}";
         _appHttpUrl = $"http://localhost:{httpPort}";
 
@@ -980,13 +979,49 @@ public abstract class SparkAppTestHost : IAsyncLifetime
         }
     }
 
-    private static int GetFreeTcpPort()
+    /// <summary>
+    /// The E2E hosts' own port block. It lies below the OS's ephemeral range (32768+ on Linux, 49152+ on
+    /// Windows), so the embedded RavenDB servers, which bind port 0, never take one of these, and clear of the
+    /// apps' dev ports (5008-5015, 5200-5201).
+    /// </summary>
+    private const int FirstE2EPort = 7000, LastE2EPort = 7999;
+
+    private static int s_nextE2EPort = FirstE2EPort - 1;
+
+    /// <summary>
+    /// The next port of the block, for this host alone. Every host of a run lives in this one test process, so
+    /// a counter can never hand two hosts the same port. Asking the OS for a free port (bind 0, release) could:
+    /// on master run 41885045037 two hosts got the same one, HR bound it first, Fleet's readiness probe was
+    /// answered by HR, and Fleet's admin was registered in HR's database ("Registered user
+    /// 'admin-e6ff70de@e2e.local' not found in embedded 'SparkFleetE2E-e6ff70de'"; it was in 'SparkHRE2E-8263579c').
+    /// A port an unrelated process holds is skipped here when it is visibly bound, and otherwise caught by
+    /// <see cref="StartAppAsync"/>'s "address already in use" retry, which takes the next ports.
+    /// </summary>
+    private static int NextE2EPort()
     {
-        var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
-        listener.Stop();
-        return port;
+        while (true)
+        {
+            var port = Interlocked.Increment(ref s_nextE2EPort);
+            if (port > LastE2EPort)
+                throw new InvalidOperationException($"The E2E port block {FirstE2EPort}-{LastE2EPort} is used up.");
+            if (IsFree(port))
+                return port;
+        }
+    }
+
+    private static bool IsFree(int port)
+    {
+        try
+        {
+            var listener = new TcpListener(IPAddress.Loopback, port);
+            listener.Start();
+            listener.Stop();
+            return true;
+        }
+        catch (SocketException)
+        {
+            return false;
+        }
     }
 
     protected static string FindRepoRoot()
