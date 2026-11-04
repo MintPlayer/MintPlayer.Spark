@@ -74,12 +74,14 @@ const DASH = '<span class="text-muted">—</span>';
 
 /**
  * The compact bar as production draws it at `percent`, coloured `color`. Since ng-bootstrap 22.33 the bar is an
- * inner `div.progress-bar` whose fill comes from its whole-percent `data-progress`, not an inline width.
+ * inner `div.progress-bar` whose fill comes from its whole-percent `data-progress`, not an inline width. Since 22.34
+ * the `bs-progress-bar` host carries the `progress` scope too (ng-bootstrap #460): its `display: contents` rule needs
+ * it, or the host is a 0px flex item and the bar draws no fill.
  */
 function bar(percent: string, now: string, progress: string, color: string): string {
   return '<div class="align-items-center d-flex gap-2">'
     + '<bs-progress class="progress-host" data-mps="progress" style="width: 80px; height: 8px;"><div class="progress" data-mps="progress">'
-    + '<bs-progress-bar class="progress-bar-host">'
+    + '<bs-progress-bar class="progress-bar-host" data-mps="progress">'
     + `<div aria-label="Coverage" aria-valuemax="100" aria-valuemin="0" aria-valuenow="${now}" aria-valuetext="${percent}%" class="progress-bar ${color}" data-mps="progress" data-progress="${progress}" role="progressbar"></div>`
     + '</bs-progress-bar></div></bs-progress>'
     + `<span class="small text-nowrap">${percent}%</span></div>`;

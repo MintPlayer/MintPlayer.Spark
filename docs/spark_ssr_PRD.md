@@ -351,7 +351,7 @@ Each spike is time-boxed and ends with a written result in §7 (numbers, file:li
    - **M7:** the model's `seo` mapping (Song `MusicRecording`, Artist `MusicGroup`, Person `Person`) and MintPlayer's `byArtist` hook (`src/app/seo.ts`). The song page's server HTML has title "A Sky Full of Stars - MintPlayer", `index, follow`, the canonical and `og:url` links, and JSON-LD with `datePublished` "2014-05-02" and `byArtist` Coldplay and Avicii. An AsDetail array travels in the attribute's `objects`, not its `value`; the first hook read `value` and produced no `byArtist`. Guide: [guide-ssr.md](guide-ssr.md).
    - **Song page DB requests (item 8):** 18 → 4 after I26. The 14 extra came from the AsDetail picker options (GetMediumTypes 6, GetArtists 8), which the page never shows when every row reference carries its breadcrumb. The artist page makes 9 across 13 sub-requests.
 10. **Specs and suites, 2026-10-30:** 552 ng-spark specs in 27 files (grid, toolbar, picker, po-detail/create/edit, live, services) pass. After I22/I23, the po-detail and auth specs pass: 362 in 27 files. The .NET prerendering tests pass: 20, `SparkPrerenderRequestKeyTests` included. The boards tests pass, as do `QueryExecutor*` and `GetQueryEndpointTests` (83). The CodeCoverage app builds: the Angular production build and `dotnet build` both exit 0.
-11. ✅ **ng-bootstrap 22.32 and 22.33 in PR #557 (D17's PR), 2026-11-04.**
+11. ✅ **ng-bootstrap 22.32, 22.33 and 22.34 in PR #557 (D17's PR), 2026-11-04.**
     - **22.32 (`7f71294f`, owner request, mintplayer-ng-bootstrap#456):** per-component Bootstrap parts.
       `@mintplayer/ng-bootstrap/container` is gone, so the detail, create and edit pages use `<bs-grid>`.
       `bs-theme-preboot.js` now ships from `@mintplayer/ui-core/theming`. Parts are scoped to `data-mps`
@@ -378,8 +378,23 @@ Each spike is time-boxed and ends with a written result in §7 (numbers, file:li
       - The specs and CodeCoverage's characterisation snapshots follow the new markup.
     - **Verified:**
       - ngc with templates is clean for ng-spark and all 8 apps.
-      - vitest is green for ng-spark, CodeCoverage, DemoApp, SeoTester, SparkId, Fleet, QnA and HR.
-      - Not opened in a browser.
+      - vitest is green for ng-spark, CodeCoverage, DemoApp, SeoTester, SparkId, Fleet, QnA and HR (on 22.33).
+    - **Opened in a browser (playwright, 2026-11-04), which found two 22.33 defects the specs could not:**
+      - **DemoApp, no defects:** side menu `.nav-link` styling, the navbar toggler on desktop and at 400px, the
+        query grid (selection, row ⋮ menu), the priority nav's "More" at 400px, and the reference-picker and
+        AsDetail modals (Escape closes them). The console's one warning, "fetch table without stateKey", comes
+        from the reference picker's datatable, which only renders in the browser.
+      - **CodeCoverage, progress bars drew no fill** (mintplayer-ng-bootstrap#460): the `bs-progress-bar` host
+        had no `data-mps`, so its `display: contents` rule never matched. Measured 0px of an 80px track at 82%;
+        adding the attribute by hand gave 66px. This hit every Spark progress bar.
+      - **CodeCoverage, trend sparklines drew NaN** (mintplayer-ng-bootstrap#461): `numberAttribute` turned
+        `spark-trend-sparkline`'s unset `yMin`/`yMax` into `NaN` ("M 3 NaN L 97 NaN", four console errors on
+        the home page).
+    - **22.34 (ui-core 1.7.0, web-components 3.6.0; mintplayer-ng-bootstrap#462 fixes both):** re-measured in
+      CodeCoverage: an 82% bar fills 66 of 80px, both sparklines draw real coordinates, and the console is clean.
+      The `bs-progress-bar` host now carries `data-mps="progress"`, which the characterisation snapshot pins.
+      - **Not seen in the browser:** the breadcrumb's `active` item past root. The local database has no file
+        tree for any commit (`/tree` and `/hierarchy` return 404); root alone is marked current.
     - **Checked against the release's own list** (mintplayer-ng-bootstrap#459, CHANGELOG `[Unreleased]` ›
       Breaking, the #458 entries). The type-check cannot see two kinds of rename, so every old name was
       grepped:
