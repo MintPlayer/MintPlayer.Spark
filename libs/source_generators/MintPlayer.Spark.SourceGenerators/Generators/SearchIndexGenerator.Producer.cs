@@ -71,7 +71,12 @@ public class SearchIndexProducer : Producer
                     writer.WriteLine();
                     writer.WriteLine($"Index({index}.Text, global::Raven.Client.Documents.Indexes.FieldIndexing.Search);");
                     writer.WriteLine($"Index({index}.Terms, global::Raven.Client.Documents.Indexes.FieldIndexing.Search);");
+                    // Stored for the projections: the provider reads Type, an engine's sync reads them all. The source
+                    // document has none of these fields, so a projection can only come from the index.
                     writer.WriteLine($"Store({index}.Type, global::Raven.Client.Documents.Indexes.FieldStorage.Yes);");
+                    writer.WriteLine($"Store({index}.Text, global::Raven.Client.Documents.Indexes.FieldStorage.Yes);");
+                    writer.WriteLine($"Store({index}.IsDeleted, global::Raven.Client.Documents.Indexes.FieldStorage.Yes);");
+                    writer.WriteLine($"Store({index}.LastModified, global::Raven.Client.Documents.Indexes.FieldStorage.Yes);");
                     writer.WriteLine("Configuration[\"Indexing.Static.SearchEngineType\"] = \"Lucene\";");
                 }
             }

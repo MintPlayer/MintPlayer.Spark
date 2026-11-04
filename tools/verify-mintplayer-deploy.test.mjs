@@ -2,9 +2,9 @@
 // apps/MintPlayer/docker-compose.yml, .github/workflows/mintplayer-deploy.yml and mintplayer-image-check.yml. Nothing
 // here runs Docker; it checks the files against each other and against the code (as verify-seotester-deploy.test.mjs):
 //
-// - one service, pull-only, pinned, joining Traefik's `web` (with traefik.docker.network=web) and the two backend networks
+// - the app, pull-only, pinned, joining Traefik's `web` (with traefik.docker.network=web) and the two backend networks
 //   it shares with CodeCoverage (mintplayer-raven, mintplayer-mail; their members, TLS and the deploys' part:
-//   verify-backend-networks.test.mjs);
+//   verify-backend-networks.test.mjs), plus its search engine on their own internal network (spark_search_PRD D13);
 // - the router serves the apex and www, hard-coded, and redirects www to the apex (PRD A7: the passkey RP id);
 // - production sends mail through the relay and never through the pickup folder (the two refuse to start together);
 // - the workflows' path filters, the Dockerfile's COPY lines and the csproj graph name the same projects;
@@ -47,6 +47,7 @@ const CHECK = '.github/workflows/mintplayer-image-check.yml';
 const APP_CSPROJ = 'apps/MintPlayer/MintPlayer/MintPlayer.csproj';
 const APP_DOCKERFILE = 'apps/MintPlayer/MintPlayer/Dockerfile';
 const APP = 'mintplayer-app';
+const SEARCH = 'mintplayer-search';
 
 const compose = yaml(COMPOSE);
 const services = compose.services ?? {};
@@ -54,18 +55,32 @@ const networksOf = (service) => (Array.isArray(service.networks) ? service.netwo
 const pathsOf = (workflow, event) => yaml(workflow).on[event].paths;
 const libFilters = (paths) => paths.filter((p) => p.startsWith('libs/') && p.endsWith('/**') && !p.startsWith('libs/node_packages/')).map((p) => p.slice(0, -3)).sort();
 
-test('one service, pull-only, pinned, with limits and a healthcheck', () => {
-  assert.deepEqual(Object.keys(services), [APP]);
+test('two services, the app and its search engine, pull-only, pinned, with limits and a healthcheck', () => {
+  assert.deepEqual(Object.keys(services), [APP, SEARCH]);
   const app = services[APP];
   assert.equal(app.image, 'ghcr.io/mintplayer/mintplayer:master');
-  assert.equal(app.build, undefined, 'pull-only (no build block)');
-  assert.equal(app.ports, undefined, 'no published port (Traefik reaches the app on web)');
-  assert.ok(app.mem_limit, 'mem_limit');
-  assert.ok(app.healthcheck?.test, 'a healthcheck');
+  for (const [name, service] of Object.entries(services)) {
+    assert.equal(service.build, undefined, `${name} is pull-only (no build block)`);
+    assert.equal(service.ports, undefined, `${name} publishes no port`);
+    assert.ok(service.mem_limit, `${name} has a mem_limit`);
+    assert.ok(service.healthcheck?.test, `${name} has a healthcheck`);
+  }
 });
 
-test('the app joins Traefik and the backend networks it shares with CodeCoverage', () => {
-  assert.deepEqual(networksOf(services[APP]).sort(), ['mintplayer-mail', 'mintplayer-raven', 'web']);
+test('the search engine is the deploy-built image, unauthenticated only on its own internal network (spark_search_PRD D13)', () => {
+  const search = services[SEARCH];
+  assert.equal(search.image, 'ghcr.io/mintplayer/mintplayer-opensearch:master');
+  assert.match(read(DEPLOY), /context: \.\/apps\/MintPlayer\/opensearch\r?\n\s+push: true\r?\n\s+tags: \$\{\{ env\.REGISTRY \}\}\/\$\{\{ env\.IMAGE_NAME \}\}-opensearch:master/, 'the deploy builds and pushes that image');
+  assert.ok(yaml(DEPLOY).jobs.deploy.needs.includes('build-and-push-search'), 'the deploy waits for it');
+  assert.deepEqual(networksOf(search), ['mintplayer-search'], 'the engine is on mintplayer-search only (no web, no egress)');
+  assert.deepEqual(compose.networks['mintplayer-search'], { internal: true }, 'mintplayer-search is internal and this project\'s own');
+  assert.ok(search.environment.includes('DISABLE_SECURITY_PLUGIN=true'), 'security plugin off (PRD O5): the network is the boundary');
+  assert.ok(search.environment.includes('discovery.type=single-node'), 'single node: no bootstrap checks, no vm.max_map_count change');
+  assert.ok(services[APP].environment.includes('Search__OpenSearch__Uri=http://mintplayer-search:9200'), 'the app names the engine');
+});
+
+test('the app joins Traefik, the backend networks it shares with CodeCoverage, and its search network', () => {
+  assert.deepEqual(networksOf(services[APP]).sort(), ['mintplayer-mail', 'mintplayer-raven', 'mintplayer-search', 'web']);
   assert.equal(compose.networks.web?.external, true);
   for (const network of ['mintplayer-raven', 'mintplayer-mail']) {
     assert.deepEqual(compose.networks[network], { external: true, name: network }, `${network} is external, by name`);

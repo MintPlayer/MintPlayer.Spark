@@ -38,10 +38,17 @@ public sealed class SparkSearchOptions
     /// </summary>
     internal Type? EngineProviderType { get; set; }
 
-    /// <summary>Registers an external engine as the primary provider. Called by engine packages.</summary>
-    public SparkSearchOptions UseProvider<TProvider>() where TProvider : class, ISparkSearchProvider
+    /// <summary>The engine package's own services (client, sync worker), registered by <c>AddSearch</c>.</summary>
+    internal Action<IServiceCollection>? EngineServices { get; set; }
+
+    /// <summary>
+    /// Registers an external engine as the primary provider, with the services it needs. Called by engine packages;
+    /// the provider is registered as a singleton unless <paramref name="services"/> registers it.
+    /// </summary>
+    public SparkSearchOptions UseProvider<TProvider>(Action<IServiceCollection>? services = null) where TProvider : class, ISparkSearchProvider
     {
         EngineProviderType = typeof(TProvider);
+        EngineServices = services;
         return this;
     }
 }

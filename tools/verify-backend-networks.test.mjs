@@ -88,6 +88,8 @@ test('each backend network holds exactly the services that need each other', () 
     'seo-mail': ['mail-relay', 'seotester-app'],
     'mintplayer-raven': ['coverage-raven', 'mintplayer-app'],
     'mintplayer-mail': ['mail-relay', 'mintplayer-app'],
+    // mintplayer.com's search engine (docs/spark_search_PRD.md D13): unauthenticated, so shared with the app alone.
+    'mintplayer-search': ['mintplayer-app', 'mintplayer-search'],
     'seo-browser': ['seo-chromium', 'seotester-app'],
     'seo-fetch': ['seo-fetcher', 'seotester-app'],
     'seo-egress': ['seo-fetcher'],
@@ -111,7 +113,7 @@ test('RavenDB and the mail relay share no network, and neither has a way out exc
   assert.deepEqual(members('coverage-git-writer-egress'), ['coverage-git-writer'], 'the git writer\'s egress network carries the writer alone');
   assert.deepEqual(members('seo-egress'), ['seo-fetcher'], 'the fetcher\'s egress network carries the fetcher alone (no database, no relay)');
   assert.deepEqual(members('coverage-git-egress'), ['coverage-git'], 'the git sidecar\'s egress network carries the sidecar alone (D18)');
-  for (const name of ['coverage-db', 'coverage-git', 'coverage-git-writer', 'seo-browser', 'seo-fetch']) {
+  for (const name of ['coverage-db', 'coverage-git', 'coverage-git-writer', 'seo-browser', 'seo-fetch', 'mintplayer-search']) {
     assert.ok(nets.get(name).decls.every((d) => d.internal === true), `${name} is internal: true`);
   }
   const ravenNets = [...nets].filter(([, n]) => n.members.has('coverage-raven')).map(([name]) => name).sort();

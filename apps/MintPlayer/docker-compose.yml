@@ -10,6 +10,8 @@
 #                        the database "MintPlayer" and nothing else).
 #   mintplayer-mail      internal: true, external, likewise: this app and the shared mail relay (apps/MailRelay) ONLY.
 #                        RavenDB and the mail relay never share a network.
+#   mintplayer-search    internal: true, this project's own: this app and its search engine (mintplayer-search) ONLY. The
+#                        engine runs without credentials (security plugin off), so this network is its only protection.
 #
 # The deploy (.github/workflows/mintplayer-deploy.yml) refreshes this file and runs pull / down / up. .env and the
 # volumes are server-managed; deploys never write them. tools/verify-mintplayer-deploy.test.mjs keeps the rules above.
@@ -54,6 +56,8 @@ services:
       - Spark__Mail__Smtp__Security=None
       - Spark__Mail__From__Address=${MAIL_FROM_ADDRESS:-noreply@mintplayer.com}
       - Spark__Mail__From__Name=${MAIL_FROM_NAME:-MintPlayer}
+      # The search engine (docs/spark_search_PRD.md D6, D13). While it is down, the RavenDB index answers searches.
+      - Search__OpenSearch__Uri=http://mintplayer-search:9200
     volumes:
       - dataprotection-keys:/var/lib/mintplayer/dataprotection-keys
       # Its RavenDB client certificate and the CA (server-managed). Only this container mounts them.
@@ -91,10 +95,39 @@ services:
       - web
       - mintplayer-raven
       - mintplayer-mail
+      - mintplayer-search
+    restart: unless-stopped
+
+  mintplayer-search:
+    # Pull-only, built by the deploy from apps/MintPlayer/opensearch/Dockerfile (OpenSearch 3.9.0 + analysis-icu).
+    image: ghcr.io/mintplayer/mintplayer-opensearch:master
+    environment:
+      # One node: no cluster discovery, and no bootstrap checks (so the host needs no vm.max_map_count change).
+      - discovery.type=single-node
+      # No mmap at all, so a low vm.max_map_count can never fail the store either.
+      - node.store.allow_mmap=false
+      # Unauthenticated HTTP, reachable only on the internal network mintplayer-search (PRD O5).
+      - DISABLE_SECURITY_PLUGIN=true
+      - DISABLE_INSTALL_DEMO_CONFIG=true
+      - DISABLE_PERFORMANCE_ANALYZER_AGENT_CLI=true
+      - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
+    volumes:
+      # Rebuildable from Spark_Search: a wiped volume is refilled by the app's sync.
+      - search-data:/usr/share/opensearch/data
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:9200/_cluster/health?wait_for_status=yellow&timeout=5s"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    mem_limit: 1g
+    networks:
+      - mintplayer-search
     restart: unless-stopped
 
 volumes:
   dataprotection-keys:
+  search-data:
 
 networks:
   web:
@@ -108,3 +141,6 @@ networks:
   mintplayer-mail:
     external: true
     name: mintplayer-mail
+  # This project's own (created and removed by its up/down): the app and its search engine, no route out.
+  mintplayer-search:
+    internal: true

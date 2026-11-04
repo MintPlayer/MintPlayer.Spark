@@ -23,7 +23,10 @@ public static class SparkSearchExtensions
         builder.Services.AddSingleton<SearchRateLimiter>();
         builder.Services.AddSingleton<RavenSearchProvider>();
         if (options.EngineProviderType is { } engine)
+        {
+            options.EngineServices?.Invoke(builder.Services);
             builder.Services.TryAdd(ServiceDescriptor.Singleton(engine, engine));
+        }
         builder.Services.AddScoped<ISparkSearchProvider, SearchProviderSelector>();
         builder.Services.AddScoped<SearchReadPath>();
         builder.Services.AddScoped<ISparkSearch, SparkSearchService>();

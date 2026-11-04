@@ -23,7 +23,7 @@ Issues #238 and #560. **One PR**, branch `feat/issue238-search`.
 - [x] S4 sync — poll backbone + delete messages (D8).
 - [x] S5 disambiguation — exact first, then known type suffix.
 - [x] S6 OpenSearch.Client 2.3.0 + engine 3.9.0; footprint measured in CI/after deploy (no local Docker).
-- [ ] S7 VPS `vm.max_map_count` + free RAM (owner runs).
+- [ ] S7 VPS free RAM (owner runs `free -m`; the engine takes up to 1 GB). `vm.max_map_count` no longer needed (D13 log).
 - [ ] S8 `/search?q=` prerender + transfer cache.
 - [ ] S9 OpenSearch `services:` container in an existing CI job.
 - [x] SP1 (#560) inventory — Q1, Q2 answered.
@@ -60,9 +60,10 @@ Issues #238 and #560. **One PR**, branch `feat/issue238-search`.
 
 ## M4 — `MintPlayer.Spark.Search.OpenSearch` (engine)
 
-- [ ] `UseOpenSearch(config)`, client, index template + alias, query/suggest with fuzziness.
-- [ ] Sync per S4 + full reindex command.
-- [ ] Circuit breaker → RavenDB provider fallback (D6); `Spark_Search` deployed with `UseOpenSearch` too.
+- [x] `UseOpenSearch(o => o.Uri = ...)`, REST client (D6 log), index with mapping version, query/suggest with fuzziness.
+- [x] Sync per S4 (`OpenSearchSync`, checkpoint in the engine), hard deletes via `IAfterDeleteCommitted`,
+      `ISparkSearchReindex`.
+- [x] Circuit breaker → RavenDB provider fallback (D6); `Spark_Search` deployed with `UseOpenSearch` too.
 
 ## M5 — `MintPlayer.Spark.OpenSearchDescription`
 
@@ -81,8 +82,9 @@ Issues #238 and #560. **One PR**, branch `feat/issue238-search`.
       `Indexes/Subjects_Search.cs` deleted (nothing used it); `spark.AddSearch()` in `Program.cs`.
 - [ ] `Program.cs`: `AddSearch(s => s.UseOpenSearch(...))`, `AddOpenSearchDescription(...)`; `app.config.ts`
       (`withOpenSearchDescription` in `provideSpark`) + routes.
-- [ ] `apps/MintPlayer/opensearch/Dockerfile`, compose service + network + volume, deploy workflow builds/pushes
-      the image; security plugin disabled, internal network only (D13).
+- [x] `apps/MintPlayer/opensearch/Dockerfile`, compose service + network + volume, deploy workflow builds/pushes
+      the image; security plugin disabled, internal network only (D13). Deploy/backend-network tool tests updated;
+      app Dockerfile + both path filters list the search libraries. `UseOpenSearch` when `Search:OpenSearch:Uri` is set.
 - [ ] Point `mintplayer_website_PRD.md:99` and plan step 8 here.
 
 ## M8 — Tests (run once, at the end)

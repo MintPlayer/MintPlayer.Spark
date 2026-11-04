@@ -83,6 +83,7 @@
   </Folder>
   <Folder Name="/libs/search/">
     <Project Path="libs/search/MintPlayer.Spark.Search/MintPlayer.Spark.Search.csproj" />
+    <Project Path="libs/search/MintPlayer.Spark.Search.OpenSearch/MintPlayer.Spark.Search.OpenSearch.csproj" />
   </Folder>
   <Folder Name="/libs/client/">
     <Project Path="libs/client/MintPlayer.Spark.Client.Authorization/MintPlayer.Spark.Client.Authorization.csproj" />
