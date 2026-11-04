@@ -363,3 +363,7 @@ integration tests against a `services:` container in an **existing** CI job (20-
 | — | Upstream gaps | MintPlayer/MintPlayer.AspNetCore.Tools#48 |
 | — | One PR incl. engine provider + MintPlayer setup | owner (scope) |
 | D11 | Client features `withSearch()` / `withOpenSearchDescription()`; `provideSpark(withX())` (#560) in this PR | owner, 2026-11-04 |
+| D3 | No exact-label field in `Spark_Search`: `FindByLabelAsync` is an AND search of the label's words, the core keeps only rows whose *rendered* label equals it (case-insensitive) | implementation, 2026-11-04: the label is rendered from the secured row (D2), so an index copy could differ from it under redaction; a superset + exact compare cannot |
+| D4 | Third endpoint `GET /spark/search/resolve?q=` (404 = none or several) | implementation: the search box needs the single-hit jump without the OpenSearch package |
+| D5 | `Spark_Search` stores `Type`; the provider projects `Id`+`Type` with `ProjectionBehavior.FromIndexOrThrow` | the source document has no `Type` field, so a default projection would return null silently (`~/.claude/rules/vidyano.md` ProjectInto trap) |
+| D10 | Terms reduced to letters/digits (diacritics folded, ≤8 words, ≤200 chars) before any provider sees them | `SearchTerms.cs`; no wildcard/operator from user input reaches `search()` |

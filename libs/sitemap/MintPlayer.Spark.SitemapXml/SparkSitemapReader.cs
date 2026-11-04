@@ -50,10 +50,9 @@ internal sealed partial class SparkSitemapReader
             if (result is null)
                 return null;
             var origin = Origin(context);
-            var segment = SparkRoutesPrerenderContributor.EncodeUriComponent(typeSegment);
             return new UrlSet(result.Items
                 .Where(item => match.Type.Seo!.IndexableWhen is not { } attribute || SparkSitemapXml.IsTrue(item.Values.FirstOrDefault(v => v.Key == attribute)?.Value))
-                .Select(item => new Url { Loc = SparkSitemapXml.DetailUrl(origin, segment, item) }));
+                .Select(item => new Url { Loc = SparkSitemapXml.DetailUrl(origin, typeSegment, item) }));
         });
 
     private IEnumerable<(EntityTypeDefinition Type, SparkQuery Query)> IndexableLists()
@@ -64,7 +63,7 @@ internal sealed partial class SparkSitemapReader
             .Select(l => (l.Type, l.Query!));
 
     /// <summary>The type's segment of a page URL, as the app's links write it: the alias, else the id.</summary>
-    private static string TypeSegment(EntityTypeDefinition type) => type.Alias ?? type.Id.ToString();
+    private static string TypeSegment(EntityTypeDefinition type) => SparkEntityLinks.TypeSegment(type);
 
     private static string Origin(HttpContext context)
         => $"{context.Request.Scheme}://{context.Request.Host}{context.Request.PathBase}";

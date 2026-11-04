@@ -196,6 +196,14 @@ public sealed class EntityTypeDefinition
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public EntityTypeSeo? Seo { get; set; }
 
+    /// <summary>
+    /// Whether and how this type takes part in Spark search (<c>docs/spark_search_PRD.md</c> D1): in-app search,
+    /// browser search suggestions and the search index. Hand-written in the model JSON and preserved by model
+    /// synchronization. Absent, the type is not searchable.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public EntityTypeSearch? Search { get; set; }
+
     /// <summary>The tabs of the detail page, matched across layers by <c>name</c>.</summary>
     public AttributeTab[] Tabs { get; set; } = [];
 
@@ -284,6 +292,34 @@ public sealed class EntityTypeSeo
     /// <summary>More JSON-LD members, schema.org property → attribute name, e.g. <c>{ "datePublished": "Released" }</c>.</summary>
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public Dictionary<string, string>? Properties { get; set; }
+}
+
+/// <summary>
+/// The model's search settings for one entity type (<c>docs/spark_search_PRD.md</c> D1). A hit is always shown as
+/// the caller may see it: the label is rendered from the row the query path returns, so a value the caller may not
+/// read never reaches a suggestion.
+/// </summary>
+public sealed class EntityTypeSearch
+{
+    /// <summary>Whether objects of this type are found by search. A <c>search</c> block without it is not searchable.</summary>
+    public bool Enabled { get; set; }
+
+    /// <summary>
+    /// How a hit is shown in suggestions and results, in the breadcrumb template syntax (<c>{Attribute}</c>
+    /// placeholders), e.g. <c>"{Title} — {Artist}"</c>. Absent, the type's breadcrumb.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? Label { get; set; }
+
+    /// <summary>
+    /// The attributes whose text is searched, besides the label. Absent, only the attributes the label uses.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string[]? Fields { get; set; }
+
+    /// <summary>Whether a search tolerates typos for this type. Absent, the application's default (on).</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public bool? Fuzzy { get; set; }
 }
 
 /// <summary>One attribute of an entity type: a field shown, edited and validated on its pages.</summary>

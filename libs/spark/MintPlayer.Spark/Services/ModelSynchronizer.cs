@@ -1215,6 +1215,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             WarnOnBreadcrumbMarkerDrift(entityTypeDef, entityType);
 
         ValidateBreadcrumb(entityTypeDef, entityType, projectionType);
+        ValidateSearch(entityTypeDef);
         entityTypeDef.BreadcrumbProjectionSatisfiable = ComputeBreadcrumbProjectionSatisfiable(entityTypeDef, projectionType);
 
         return entityTypeDef;
@@ -1542,6 +1543,52 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             throw new InvalidOperationException(
                 $"Breadcrumb template on entity '{def.Name}' references unknown attribute " +
                 $"'{{{field.AttributeName}}}'. Known attributes: {string.Join(", ", attrNames)}.");
+        }
+    }
+
+    /// <summary>
+    /// Fails fast on a <c>search</c> block (<c>docs/spark_search_PRD.md</c> D1) whose label template is malformed, or
+    /// whose label placeholders or <c>fields</c> name no attribute. The label is rendered from the list query's row
+    /// (D3), so a placeholder outside the model could never render and the label would always fall back.
+    /// </summary>
+    private static void ValidateSearch(EntityTypeDefinition def)
+    {
+        if (def.Search is not { Enabled: true } search) return;
+
+        var attrNames = def.Attributes.Select(a => a.Name).ToHashSet(StringComparer.Ordinal);
+        if (!string.IsNullOrEmpty(search.Label))
+        {
+            IReadOnlyList<BreadcrumbToken> tokens;
+            try
+            {
+                tokens = BreadcrumbTemplate.Parse(search.Label);
+            }
+            catch (FormatException ex)
+            {
+                throw new InvalidOperationException(
+                    $"Invalid search label template on entity '{def.Name}': {ex.Message}", ex);
+            }
+            foreach (var field in tokens.OfType<FieldToken>())
+            {
+                if (field.AttributeName != "Id" && !attrNames.Contains(field.AttributeName))
+                    throw new InvalidOperationException(
+                        $"Search label template on entity '{def.Name}' references unknown attribute " +
+                        $"'{{{field.AttributeName}}}'. Known attributes: {string.Join(", ", attrNames)}.");
+            }
+        }
+        else if (string.IsNullOrEmpty(def.Breadcrumb))
+        {
+            throw new InvalidOperationException(
+                $"Entity '{def.Name}' enables search but has neither a search label nor a breadcrumb template, " +
+                $"so its hits would show their ids.");
+        }
+
+        foreach (var field in search.Fields ?? [])
+        {
+            if (!attrNames.Contains(field))
+                throw new InvalidOperationException(
+                    $"Search fields on entity '{def.Name}' name unknown attribute '{field}'. " +
+                    $"Known attributes: {string.Join(", ", attrNames)}.");
         }
     }
 

@@ -29,21 +29,11 @@ internal static class SparkSitemapXml
     /// type or its plural.
     /// </summary>
     internal static SparkQuery? ListQuery(EntityTypeDefinition type, IEnumerable<SparkQuery> queries)
-        => queries.FirstOrDefault(q =>
-        {
-            if (q.EntityType == type.Name) return true;
-            var source = q.Source ?? "";
-            var sourceName = source.Contains('.') ? source[(source.IndexOf('.') + 1)..] : source;
-            return sourceName == type.Name || sourceName == type.Name + "s";
-        });
+        => SparkEntityLinks.ListQuery(type, queries);
 
     /// <summary>The page's canonical link (spark-po-detail <c>writeSeo</c>): <c>/po/:type/:id/:slug</c>, without the slug when it is empty or "edit".</summary>
     internal static string DetailUrl(string origin, string typeSegment, QueryResultItem item)
-    {
-        var slug = SparkRoutesPrerenderContributor.SparkSlug(item.Breadcrumb);
-        var path = $"/po/{typeSegment}/{SparkRoutesPrerenderContributor.EncodeUriComponent(item.Id)}";
-        return slug is "" or "edit" ? origin + path : $"{origin}{path}/{slug}";
-    }
+        => origin + SparkEntityLinks.DetailPath(typeSegment, item.Id, item.Breadcrumb);
 
     /// <summary>A row value that is true: a <see cref="bool"/>, or a JSON <c>true</c>. Anything else, absence included, is not.</summary>
     internal static bool IsTrue(object? value) => value switch

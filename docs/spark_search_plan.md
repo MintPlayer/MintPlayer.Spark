@@ -9,6 +9,11 @@ Issues #238 and #560. **One PR**, branch `feat/issue238-search`.
   MintPlayer/MintPlayer.AspNetCore.Tools#48. Same day: `provideSpark(withX())` (#560) added to this PR.
   O5 (security plugin off) and O6 (RavenDB fallback) decided. **Open: Q1/Q2 (#560), answered by SP1.**
   Next: M0 spikes.
+- 2026-11-04: spikes S1–S6, SP1 done (PRD §6.1). M1 model + shared links and M2 server package written; the
+  Search project builds (type-check only, no tests run yet). Deviations from the PRD, recorded in its §8:
+  no exact-label index field (label lookup = AND search of the label's words, core compares rendered labels);
+  a third endpoint `/spark/search/resolve` for D4; the index must **store** `Type` (provider projects it with
+  `FromIndexOrThrow`). M1 complete. Next: M3 generator.
 
 ## M0 — Spikes (results into PRD §9, with numbers)
 
@@ -33,23 +38,23 @@ Issues #238 and #560. **One PR**, branch `feat/issue238-search`.
 
 ## M1 — Model + shared helpers
 
-- [ ] `EntityTypeSearch` (`enabled`, `label`, `fields`, `fuzzy`) on `EntityTypeDefinition`; template validation
-      reusing the breadcrumb validator; schema regenerated; `entity-type.ts`.
-- [ ] Move `DetailUrl`, `ListQuery`, anonymous scope from `SparkSitemapXml` to core; sitemap uses them (D12).
+- [x] `EntityTypeSearch` (`enabled`, `label`, `fields`, `fuzzy`) on `EntityTypeDefinition`; template validation
+      (`ModelSynchronizer.ValidateSearch`); schema regenerated (gitignored output); `entity-type.ts`.
+- [x] Move `DetailUrl`, `ListQuery` from `SparkSitemapXml` to core `SparkEntityLinks`; sitemap uses them (D12).
 
 ## M2 — `MintPlayer.Spark.Search` (server)
 
-- [ ] `ISparkSearchProvider` + candidate record in Abstractions.
-- [ ] `SearchSecurityFilter` (D2), over-fetch.
-- [ ] Labels + disambiguation + `ResolveExactAsync` (D3).
-- [ ] `spark.AddSearch(...)`, options (`Fuzzy`, caps), in-endpoint rate limiter.
-- [ ] Endpoints `/spark/search`, `/spark/search/suggest` (generator classes, `SparkPrerenderable`).
+- [x] `ISparkSearchProvider` + candidate record in Abstractions.
+- [x] `SearchReadPath` (D2, the "SearchSecurityFilter"), over-fetch ×3.
+- [x] Labels + disambiguation + `ResolveAsync` (D3), natural id order.
+- [x] `spark.AddSearch(...)`, options (`Fuzzy`, caps), in-endpoint rate limiter, engine circuit breaker (D6).
+- [x] Endpoints `/spark/search`, `/spark/search/suggest`, `/spark/search/resolve` (generator classes; results `SparkPrerenderable`).
 - [ ] Prerender contributor for `/search`.
 
 ## M3 — RavenDB provider + generator
 
 - [ ] Generator emitting `Spark_Search` (Lucene, fields per D5) into the app.
-- [ ] Default provider: search, fuzzy, suggest.
+- [x] Default provider: search, fuzzy, suggest (`RavenSearchProvider`, in the Search package).
 
 ## M4 — `MintPlayer.Spark.Search.OpenSearch` (engine)
 
