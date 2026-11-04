@@ -1,7 +1,6 @@
 import { provideZonelessChangeDetection } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { Color } from '@mintplayer/ng-bootstrap';
 import { CoverageSummary } from '../../services/browse.service';
 import { CoverageBarComponent } from './coverage-bar.component';
 
@@ -51,12 +50,12 @@ describe('CoverageBarComponent', () => {
   });
 
   it('colours by the same thresholds the badge uses', () => {
-    expect(withSummary(summary(80, 100)).color()).toBe(Color.success);
-    expect(withSummary(summary(60, 100)).color()).toBe(Color.warning);
-    expect(withSummary(summary(59, 100)).color()).toBe(Color.danger);
+    expect(withSummary(summary(80, 100)).color()).toBe('success');
+    expect(withSummary(summary(60, 100)).color()).toBe('warning');
+    expect(withSummary(summary(59, 100)).color()).toBe('danger');
   });
 
   it('falls back to a neutral colour when there is no percentage', () => {
-    expect(withSummary(null).color()).toBe(Color.secondary);
+    expect(withSummary(null).color()).toBe('secondary');
   });
 });

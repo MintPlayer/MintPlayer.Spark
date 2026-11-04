@@ -1,13 +1,13 @@
 @if (canView()) {
   <div class="spark-po-history">
     @if (error(); as message) {
-      <bs-alert [type]="colors.danger" class="d-block mb-3">{{ message }}</bs-alert>
+      <bs-alert [color]="'danger'" class="d-block mb-3">{{ message }}</bs-alert>
     }
 
     @if (revisions().length === 0 && !loading()) {
       <p class="text-muted mb-0 spark-history-empty">{{ 'history.noRevisions' | t }}</p>
     } @else {
-      <bs-table [isResponsive]="true">
+      <bs-table [responsive]="true">
         <thead>
           <tr>
             <th>{{ 'history.modifiedAt' | t }}</th>
@@ -26,10 +26,10 @@
               <td>{{ who(revision) }}</td>
               <td class="text-end">
                 @if (revision.isCurrent) {
-                  <bs-badge [type]="colors.primary" class="spark-history-current">{{ 'history.current' | t }}</bs-badge>
+                  <bs-badge [color]="'primary'" class="spark-history-current">{{ 'history.current' | t }}</bs-badge>
                 }
                 @if (revision.isDeleteRevision) {
-                  <bs-badge [type]="colors.secondary" class="ms-1">{{ 'history.deleteRevision' | t }}</bs-badge>
+                  <bs-badge [color]="'secondary'" class="ms-1">{{ 'history.deleteRevision' | t }}</bs-badge>
                 }
               </td>
             </tr>
@@ -74,7 +74,7 @@
             @if (changes().length === 0) {
               <p class="text-muted spark-history-nochanges">{{ 'history.noChanges' | t }}</p>
             } @else {
-              <bs-table [isResponsive]="true">
+              <bs-table [responsive]="true">
                 <thead>
                   <tr>
                     <th>{{ 'history.field' | t }}</th>

@@ -26,10 +26,10 @@ interface SessionView {
       <div class="small">
         {{ session.name }}
         @for (flag of session.flags; track flag) {
-          <bs-badge class="ms-1" [type]="colors.secondary">{{ flag }}</bs-badge>
+          <bs-badge class="ms-1" [color]="'secondary'">{{ flag }}</bs-badge>
         }
         <bs-badge class="ms-1"
-                  [type]="session.parseStatus === 'Parsed' ? colors.success : session.parseStatus === 'Pending' ? colors.warning : colors.danger">
+                  [color]="session.parseStatus === 'Parsed' ? 'success' : session.parseStatus === 'Pending' ? 'warning' : 'danger'">
           {{ session.parseStatus }}
         </bs-badge>
         @if (session.error) {

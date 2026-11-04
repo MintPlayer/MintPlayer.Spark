@@ -3,7 +3,7 @@ import { Color } from '@mintplayer/ng-bootstrap';
 import { BsFormControlDirective } from '@mintplayer/ng-bootstrap/form';
 import { BsInputGroupComponent } from '@mintplayer/ng-bootstrap/input-group';
 import { BsButtonTypeDirective } from '@mintplayer/ng-bootstrap/button-type';
-import { BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective } from '@mintplayer/ng-bootstrap/modal';
+import { BsModalComponent, BsModalHeaderDirective, BsModalFooterDirective } from '@mintplayer/ng-bootstrap/modal';
 import { BsDatatableComponent, BsDatatableHeaderDirective, BsDatatableRowDirective, type DatatableColumnDef, type DatatableFetch, type DatatableFetchRequest, type SortColumn } from '@mintplayer/ng-bootstrap/datatable';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { PaginationResponse } from '@mintplayer/pagination';
@@ -39,7 +39,7 @@ export interface ReferenceQueryParent {
  */
 @Component({
   selector: 'spark-reference-picker',
-  imports: [BsFormControlDirective, BsInputGroupComponent, BsButtonTypeDirective, BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective, BsDatatableComponent, BsDatatableHeaderDirective, BsDatatableRowDirective, BsSpinnerComponent, TranslateKeyPipe, ReferenceAttrValuePipe, SparkAttributeDescriptionComponent, SparkSearchBoxComponent],
+  imports: [BsFormControlDirective, BsInputGroupComponent, BsButtonTypeDirective, BsModalComponent, BsModalHeaderDirective, BsModalFooterDirective, BsDatatableComponent, BsDatatableHeaderDirective, BsDatatableRowDirective, BsSpinnerComponent, TranslateKeyPipe, ReferenceAttrValuePipe, SparkAttributeDescriptionComponent, SparkSearchBoxComponent],
   templateUrl: './spark-reference-picker.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })

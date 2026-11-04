@@ -40,10 +40,10 @@ import {
         <div class="p-4">
           <p class="text-muted">{{ 'apps.intro' | idp }}</p>
           @if (notice()) {
-            <bs-alert [type]="colors.success" class="mb-3 d-block spark-idp-notice">{{ notice() }}</bs-alert>
+            <bs-alert [color]="'success'" class="mb-3 d-block spark-idp-notice">{{ notice() }}</bs-alert>
           }
           @if (error()) {
-            <bs-alert [type]="colors.danger" class="mb-3 d-block spark-idp-error">{{ error() }}</bs-alert>
+            <bs-alert [color]="'danger'" class="mb-3 d-block spark-idp-error">{{ error() }}</bs-alert>
           }
           @if (loading()) {
             <div class="text-center"><bs-spinner /></div>
@@ -88,13 +88,13 @@ import {
                           <spark-icon name="lock" class="mt-1" />
                           <div>
                             <span>{{ scope.displayName }}</span>
-                            <bs-badge [type]="colors.secondary" class="ms-2 spark-scope-required">{{ 'apps.required' | idp }}</bs-badge>
+                            <bs-badge [color]="'secondary'" class="ms-2 spark-scope-required">{{ 'apps.required' | idp }}</bs-badge>
                             @if (scope.description) { <small class="text-muted d-block">{{ scope.description }}</small> }
                           </div>
                         </div>
                       } @else {
                         <bs-checkbox [type]="'checkbox'" [name]="app.applicationId + '|' + scope.name"
-                                     [isToggled]="!isUnticked(app, scope)" (isToggledChange)="setTicked(app, scope, $event === true)">
+                                     [checked]="!isUnticked(app, scope)" (checkedChange)="setTicked(app, scope, $event === true)">
                           {{ scope.displayName }}
                         </bs-checkbox>
                         @if (scope.description) { <small class="text-muted d-block ms-4">{{ scope.description }}</small> }

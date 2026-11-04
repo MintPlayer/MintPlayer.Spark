@@ -27,10 +27,10 @@ import {
         <bs-card-header><h3 class="mb-0">{{ 'invite.title' | idp }}</h3></bs-card-header>
         <div class="p-4">
           @if (joined(); as application) {
-            <bs-alert [type]="colors.success" class="mb-3 d-block spark-invitation-accepted">{{ 'invite.accepted' | idp: application }}</bs-alert>
+            <bs-alert [color]="'success'" class="mb-3 d-block spark-invitation-accepted">{{ 'invite.accepted' | idp: application }}</bs-alert>
             <a class="btn btn-outline-primary spark-invitation-applications" [routerLink]="applicationsLink">{{ 'openApplications' | idp }}</a>
           } @else if (!valid || failed()) {
-            <bs-alert [type]="colors.danger" class="mb-3 d-block spark-invitation-invalid">{{ 'invite.invalid' | idp }}</bs-alert>
+            <bs-alert [color]="'danger'" class="mb-3 d-block spark-invitation-invalid">{{ 'invite.invalid' | idp }}</bs-alert>
           } @else {
             <p>{{ 'invite.intro' | idp }}</p>
             <button type="button" class="btn btn-primary spark-invitation-accept" [disabled]="busy()" (click)="accept()">

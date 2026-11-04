@@ -1,13 +1,14 @@
 <div class="d-flex flex-column h-100">
   <div class="spark-actionbar py-2 flex-shrink-0" [class.spark-actionbar-wide]="isVirtualScrolling()">
-    <bs-priority-nav [moreLabel]="lang.t('common.more')" [collapseAt]="'sm'">
+    <bs-priority-nav [items]="navItems()" [moreLabel]="lang.t('common.more')" [collapseAt]="'sm'">
+      <ng-container *bsPriorityNavItemTemplate="let item"><ng-container [ngTemplateOutlet]="$any(item).template" /></ng-container>
       <!-- The grid's toolbar model (#460 M15, #467 R3): New, Edit, Delete and the custom actions —
            the list the sub-query card renders too, labels and icons from the action catalogue.
            Disabled, not hidden: hiding makes the affordance undiscoverable and reflows the
            priority nav on every selection change. The server enforces the same rules. -->
       @for (action of toolbarActions(); track action.name) {
         @if (action.kind !== 'custom' || showCustomActions()) {
-          <button *bsPriorityNavItem="action.priority" type="button" [class]="toolbarActionClass(action)"
+          <button *sparkPriorityNavItem="action.priority" type="button" [class]="toolbarActionClass(action)"
                   [attr.data-action]="action.name"
                   [disabled]="!isToolbarActionEnabled(action)" [attr.title]="toolbarActionUnavailableReason(action)" (click)="runToolbarAction(action)">
             @if (action.definition.icon && action.kind !== 'custom') {
@@ -18,14 +19,14 @@
         }
       }
       @if (extraActionsTemplate(); as extraActionsTpl) {
-        <ng-container *bsPriorityNavItem="50">
+        <ng-container *sparkPriorityNavItem="50">
           <ng-container *ngTemplateOutlet="extraActionsTpl"></ng-container>
         </ng-container>
       }
       <!-- Add-on actions (SPARK_QUERY_LIST_ACTIONS), e.g. the soft-delete Deleted toggle. -->
       @if (listContext(); as ctx) {
         @for (action of listActions; track action.id) {
-          <ng-container *bsPriorityNavItem="action.priority ?? 60">
+          <ng-container *sparkPriorityNavItem="action.priority ?? 60">
             <ng-container *ngComponentOutlet="action.component; inputs: { context: ctx }" />
           </ng-container>
         }
@@ -36,17 +37,17 @@
   <h1 class="h2 mb-4 flex-shrink-0" [class.px-4]="isVirtualScrolling()">
     {{ (query()?.label | resolveTranslation) || query()?.name || ('common.loading' | t) }}
     @if (isLive()) {
-      <bs-badge [type]="colors.success" class="ms-2 align-middle spark-live-badge">LIVE</bs-badge>
+      <bs-badge [color]="'success'" class="ms-2 align-middle spark-live-badge">LIVE</bs-badge>
     }
     @if (deletedMode() === 'only') {
-      <bs-badge [type]="colors.secondary" class="ms-2 align-middle spark-deleted-badge">{{ 'softDelete.deleted' | t }}</bs-badge>
+      <bs-badge [color]="'secondary'" class="ms-2 align-middle spark-deleted-badge">{{ 'softDelete.deleted' | t }}</bs-badge>
     }
   </h1>
 
   @if (errorMessage(); as err) {
     <!-- The route could not be resolved to a query at all. A failure INSIDE the grid renders in
          the grid; this is the one it cannot report, because it never got a query id. -->
-    <bs-alert [type]="colors.danger" class="m-3 d-block">
+    <bs-alert [color]="'danger'" class="m-3 d-block">
       {{ err }}
     </bs-alert>
   } @else if (queryId(); as qId) {
@@ -82,7 +83,7 @@
       <div class="spark-url-filters d-flex flex-wrap align-items-center gap-2 mb-2 flex-shrink-0" [class.px-4]="isVirtualScrolling()">
         <span class="text-muted small">{{ 'common.filteredBy' | t }}</span>
         @for (filter of activeUrlFilters(); track filter.name) {
-          <bs-badge [type]="colors.secondary" class="spark-url-filter" [attr.data-filter]="filter.name">
+          <bs-badge [color]="'secondary'" class="spark-url-filter" [attr.data-filter]="filter.name">
             {{ filterLabel(filter.name) }}: {{ filterValues(filter) }}
             <button type="button" class="spark-url-filter-clear" [attr.aria-label]="'common.clearFilter' | t"
                     (click)="clearUrlFilter(filter.name)">

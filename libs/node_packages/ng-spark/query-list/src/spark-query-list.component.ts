@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input, output, signal, viewChild, TemplateRef } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, output, signal, viewChild, viewChildren, TemplateRef } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule, NgTemplateOutlet } from '@angular/common';
 import { ActivatedRoute, ParamMap, Router } from '@angular/router';
@@ -6,13 +6,13 @@ import { Color } from '@mintplayer/ng-bootstrap';
 import { BsBadgeComponent } from '@mintplayer/ng-bootstrap/badge';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
 import { BsGridComponent, BsGridRowDirective, BsGridColumnDirective } from '@mintplayer/ng-bootstrap/grid';
-import { BsPriorityNavComponent, BsPriorityNavItemDirective } from '@mintplayer/ng-bootstrap/priority-nav';
+import { BsPriorityNavComponent, BsPriorityNavItemTemplateDirective } from '@mintplayer/ng-bootstrap/priority-nav';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { HttpErrorResponse } from '@angular/common/http';
 import { SparkService, SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { TranslateKeyPipe, ResolveTranslationPipe } from '@mintplayer/ng-spark/pipes';
 import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
-import { SparkQueryGridComponent, SparkQueryToolbarAction, SparkSearchBoxComponent, sparkActionClass } from '@mintplayer/ng-spark/grid';
+import { SparkPriorityNavItemDirective, SparkQueryGridComponent, SparkQueryToolbarAction, SparkSearchBoxComponent, sparkActionClass, sparkPriorityNavItems } from '@mintplayer/ng-spark/grid';
 import {
   CustomActionDefinition,
   QueryColumnFilter,
@@ -49,7 +49,7 @@ import {
  */
 @Component({
   selector: 'spark-query-list',
-  imports: [BsBadgeComponent, CommonModule, NgTemplateOutlet, NgComponentOutlet, BsAlertComponent, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsPriorityNavComponent, BsPriorityNavItemDirective, BsSpinnerComponent, SparkIconComponent, SparkQueryGridComponent, SparkSearchBoxComponent, ResolveTranslationPipe, TranslateKeyPipe],
+  imports: [BsBadgeComponent, CommonModule, NgTemplateOutlet, NgComponentOutlet, BsAlertComponent, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsPriorityNavComponent, BsPriorityNavItemTemplateDirective, SparkPriorityNavItemDirective, BsSpinnerComponent, SparkIconComponent, SparkQueryGridComponent, SparkSearchBoxComponent, ResolveTranslationPipe, TranslateKeyPipe],
   templateUrl: './spark-query-list.component.html',
   styleUrl: './spark-query-list.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -62,6 +62,8 @@ export class SparkQueryListComponent {
   private readonly router = inject(Router);
   private readonly sparkService = inject(SparkService);
   protected readonly lang = inject(SparkLanguageService);
+  private readonly navItemDirectives = viewChildren(SparkPriorityNavItemDirective);
+  protected readonly navItems = sparkPriorityNavItems(this.navItemDirectives);
 
   extraActionsTemplate = input<TemplateRef<void> | null>(null);
   showCustomActions = input(true);

@@ -16,13 +16,7 @@ import { DOCUMENT, isPlatformBrowser } from '@angular/common';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsButtonTypeDirective } from '@mintplayer/ng-bootstrap/button-type';
 import { BsFormComponent, BsFormControlDirective } from '@mintplayer/ng-bootstrap/form';
-import {
-    BsModalBodyDirective,
-    BsModalDirective,
-    BsModalFooterDirective,
-    BsModalHeaderDirective,
-    BsModalHostComponent,
-} from '@mintplayer/ng-bootstrap/modal';
+import { BsModalComponent, BsModalFooterDirective, BsModalHeaderDirective } from '@mintplayer/ng-bootstrap/modal';
 import { resolveTranslation, type TranslatedString } from '@mintplayer/ng-spark/models';
 
 /** A value shown once: the `showSecret` operation's payload, or a value a page received itself. */
@@ -98,35 +92,31 @@ const TEXT: Record<'copy' | 'copied' | 'copyFailed' | 'close' | 'value', Transla
 @Component({
     selector: 'spark-show-secret-modal',
     imports: [
-        BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective,
+        BsModalComponent, BsModalHeaderDirective, BsModalFooterDirective,
         BsButtonTypeDirective, BsFormComponent, BsFormControlDirective,
     ],
     template: `
-        <bs-modal [isOpen]="isOpen()" (isOpenChange)="!$event && close()">
-            <div *bsModal>
-                <div bsModalHeader>
-                    <h5 class="modal-title">{{ secret()?.title }}</h5>
-                </div>
-                <div bsModalBody>
-                    @if (secret(); as s) {
-                        <p class="spark-secret-message">{{ s.message }}</p>
-                        <bs-form>
-                            <input type="text" readonly class="font-monospace spark-secret-value" spellcheck="false"
-                                   autocomplete="off" [attr.aria-label]="text().value" [value]="s.value"
-                                   (focus)="selectAll($event)" />
-                        </bs-form>
-                        @if (copyState() === 'copied') {
-                            <small class="text-success d-block mt-2 spark-secret-copied" role="status">{{ text().copied }}</small>
-                        } @else if (copyState() === 'failed') {
-                            <small class="text-danger d-block mt-2 spark-secret-copy-failed" role="alert">{{ text().copyFailed }}</small>
-                        }
+        <bs-modal [open]="isOpen()" (openChange)="!$event && close()">
+            <ng-container *bsModalHeader>{{ secret()?.title }}</ng-container>
+            @if (isOpen()) {
+                @if (secret(); as s) {
+                    <p class="spark-secret-message">{{ s.message }}</p>
+                    <bs-form>
+                        <input type="text" readonly class="font-monospace spark-secret-value" spellcheck="false"
+                               autocomplete="off" [attr.aria-label]="text().value" [value]="s.value"
+                               (focus)="selectAll($event)" />
+                    </bs-form>
+                    @if (copyState() === 'copied') {
+                        <small class="text-success d-block mt-2 spark-secret-copied" role="status">{{ text().copied }}</small>
+                    } @else if (copyState() === 'failed') {
+                        <small class="text-danger d-block mt-2 spark-secret-copy-failed" role="alert">{{ text().copyFailed }}</small>
                     }
-                </div>
-                <div bsModalFooter>
-                    <button type="button" class="spark-secret-copy" [color]="colors.primary" (click)="copy()">{{ text().copy }}</button>
-                    <button type="button" class="spark-secret-close" [color]="colors.secondary" (click)="close()">{{ text().close }}</button>
-                </div>
-            </div>
+                }
+            }
+            <ng-container *bsModalFooter>
+                <button type="button" class="spark-secret-copy" [color]="colors.primary" (click)="copy()">{{ text().copy }}</button>
+                <button type="button" class="spark-secret-close" [color]="colors.secondary" (click)="close()">{{ text().close }}</button>
+            </ng-container>
         </bs-modal>
     `,
     changeDetection: ChangeDetectionStrategy.OnPush,

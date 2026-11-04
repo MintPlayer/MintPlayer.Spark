@@ -58,14 +58,14 @@ type State = 'loading' | 'ready' | 'notFound' | 'failed';
   template: `
     <bs-grid stopFullWidthAt="never" class="d-block spark-shared-object">
       @if (notice(); as text) {
-        <bs-alert [type]="colors.warning" class="d-block mb-3 spark-shared-notice">{{ text }}</bs-alert>
+        <bs-alert [color]="'warning'" class="d-block mb-3 spark-shared-notice">{{ text }}</bs-alert>
       }
       @switch (state()) {
         @case ('loading') {
           <bs-spinner class="spark-shared-loading" />
         }
         @case ('notFound') {
-          <bs-alert [type]="colors.danger" class="d-block spark-shared-not-found">{{ t('notFound') }}</bs-alert>
+          <bs-alert [color]="'danger'" class="d-block spark-shared-not-found">{{ t('notFound') }}</bs-alert>
         }
         @case ('ready') {
           <h1 class="h4 mb-3 spark-shared-title">{{ shared()?.label ?? undefined | resolveTranslation:(shared()?.type ?? '') }}</h1>
@@ -80,7 +80,7 @@ type State = 'loading' | 'ready' | 'notFound' | 'failed';
           @for (query of queryTables(); track query.name) {
             <section class="mt-4 spark-shared-query" [attr.data-query]="query.name">
               <h2 class="h5">{{ query.label | resolveTranslation:query.name }}</h2>
-              <bs-table [isResponsive]="true">
+              <bs-table [responsive]="true">
                 <thead>
                   <tr>
                     @for (column of query.columns; track column.name) {

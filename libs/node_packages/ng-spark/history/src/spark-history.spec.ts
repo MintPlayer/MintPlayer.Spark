@@ -134,7 +134,7 @@ describe('history entry point (#460)', () => {
     expect(changes[0].querySelector('.spark-history-old').textContent).toContain('old A:2');
     expect(changes[0].querySelector('.spark-history-new').textContent).toContain('now');
     // ng-bootstrap's button group: a plain .btn-group is unstyled outside <bs-button-group> (D84).
-    expect(fixture.nativeElement.querySelector('bs-button-group .btn-group > .spark-history-diff-tab + .spark-history-view-tab')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('bs-button-group.btn-group > .spark-history-diff-tab + .spark-history-view-tab')).not.toBeNull();
 
     fixture.nativeElement.querySelector('.spark-history-view-tab').click();
     fixture.detectChanges();

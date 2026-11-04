@@ -19,7 +19,7 @@
   @for (step of steps; track step.id; let n = $index) {
     <bs-card class="mb-4" [attr.id]="step.id" [attr.data-step]="step.id">
       <bs-card-header>
-        <h2 class="h5 mb-0"><bs-badge class="me-2" [type]="primaryColor">{{ n + 1 }}</bs-badge>{{ step.title }}</h2>
+        <h2 class="h5 mb-0"><bs-badge class="me-2" [color]="'primary'">{{ n + 1 }}</bs-badge>{{ step.title }}</h2>
       </bs-card-header>
       <bs-card-body>
         @switch (step.id) {
@@ -29,7 +29,7 @@
               <a routerLink="/">Home</a> links it once you are signed in. On top of what coverage reporting uses, the
               merge queue needs three more permissions, and write access to Issues:
             </p>
-            <bs-table [isResponsive]="true" data-testid="mq-setup-permissions">
+            <bs-table [responsive]="true" data-testid="mq-setup-permissions">
               <thead>
                 <tr><th>Permission</th><th>Access</th><th>The queue uses it to</th></tr>
               </thead>
@@ -38,7 +38,7 @@
                   <tr>
                     <td class="text-nowrap">
                       {{ permission.name }}
-                      @if (permission.isNew) { <bs-badge class="ms-1" [type]="infoColor">new</bs-badge> }
+                      @if (permission.isNew) { <bs-badge class="ms-1" [color]="'info'">new</bs-badge> }
                     </td>
                     <td class="text-nowrap">{{ permission.access }}</td>
                     <td>{{ permission.use }}</td>
@@ -141,7 +141,7 @@
                 may bypass this ruleset.
               </li>
             </ul>
-            <bs-alert [type]="infoColor" class="d-block mb-3" data-testid="mq-setup-why-approvals">
+            <bs-alert [color]="'info'" class="d-block mb-3" data-testid="mq-setup-why-approvals">
               <strong>Why both approval settings are off.</strong> GitHub dismisses an approval when a push changes the
               pull request's diff. A plain rebase by the queue keeps the diff, but the regenerate step (step 6) changes
               it. With the first setting, a pull request whose generated files the queue rewrote would lose its approval
@@ -175,7 +175,7 @@
               (step 8). A Spark repository needs no more than this:
             </p>
             <ng-container *ngTemplateOutlet="code; context: { $implicit: snippets.coverageYml, language: 'yaml' }" />
-            <bs-table [isResponsive]="true" data-testid="mq-setup-keys">
+            <bs-table [responsive]="true" data-testid="mq-setup-keys">
               <thead>
                 <tr><th>Key</th><th>Default</th><th>Meaning</th></tr>
               </thead>
@@ -212,7 +212,7 @@
               action and set <code>postRebaseActionName: regenerate.yml</code>.
             </p>
             <ng-container *ngTemplateOutlet="code; context: { $implicit: snippets.regenerate, language: 'yaml' }" />
-            <bs-alert [type]="dangerColor" class="d-block mb-3" data-testid="mq-setup-regenerate-security">
+            <bs-alert [color]="'danger'" class="d-block mb-3" data-testid="mq-setup-regenerate-security">
               <strong>This workflow builds and runs the pull request's code, in your repository's context.</strong>
               <ul class="mb-0 mt-2">
                 <li><code>permissions: contents: read</code> and nothing more; never <code>id-token: write</code>.</li>
@@ -253,7 +253,7 @@
               <code>branches: [master]</code> needs nothing.
             </p>
             <ng-container *ngTemplateOutlet="code; context: { $implicit: snippets.pushTrigger, language: 'yaml' }" />
-            <bs-alert [type]="infoColor" class="d-block mb-3" data-testid="mq-setup-fork-precondition">
+            <bs-alert [color]="'info'" class="d-block mb-3" data-testid="mq-setup-fork-precondition">
               <strong>For a pull request from a fork, this is enforced.</strong> The <code>mq/</code> commit holds the
               fork's code, and a workflow started by that push runs it with your repository's secrets. So before it
               pushes there, the queue reads your workflows and removes the pull request

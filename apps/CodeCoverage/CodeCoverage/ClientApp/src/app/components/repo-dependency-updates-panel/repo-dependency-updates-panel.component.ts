@@ -112,7 +112,7 @@ import { chip, HEALTH, time } from '../dependency-updates/dependency-health';
           }
 
           @if (v.planned.length > 0) {
-            <bs-table [isResponsive]="true" data-testid="du-planned">
+            <bs-table [responsive]="true" data-testid="du-planned">
               <thead>
                 <tr><th>Group</th><th>Dependency</th><th>File</th><th>From</th><th>To</th></tr>
               </thead>

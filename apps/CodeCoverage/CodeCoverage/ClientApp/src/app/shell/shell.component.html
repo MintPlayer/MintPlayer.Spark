@@ -39,10 +39,9 @@
 
   <ng-container *sparkShellMainHeader>
     @if (loginError(); as error) {
-      <bs-alert [type]="dangerColor" [announce]="true" class="d-block mb-3"
-                (isVisibleChange)="onLoginAlertVisible($event)">
+      <bs-alert color="danger" [announce]="true" [dismissible]="true" class="d-block mb-3"
+                (visibleChange)="onLoginAlertVisible($event)">
         <i class="bi bi-exclamation-triangle"></i> {{ error }}
-        <bs-alert-close />
       </bs-alert>
     }
   </ng-container>

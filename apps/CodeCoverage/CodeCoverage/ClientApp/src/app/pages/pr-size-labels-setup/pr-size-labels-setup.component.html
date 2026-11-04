@@ -22,7 +22,7 @@
   @for (step of steps; track step.id; let n = $index) {
     <bs-card class="mb-4" [attr.id]="step.id" [attr.data-step]="step.id">
       <bs-card-header>
-        <h2 class="h5 mb-0"><bs-badge class="me-2" [type]="primaryColor">{{ n + 1 }}</bs-badge>{{ step.title }}</h2>
+        <h2 class="h5 mb-0"><bs-badge class="me-2" [color]="'primary'">{{ n + 1 }}</bs-badge>{{ step.title }}</h2>
       </bs-card-header>
       <bs-card-body>
         @switch (step.id) {
@@ -37,7 +37,7 @@
               from then on, starting with the next push to each pull request.
             </p>
             <p>A repository can decide for itself, under <strong>PR size labels</strong> on its own page:</p>
-            <bs-table [isResponsive]="true" data-testid="ps-setup-policies">
+            <bs-table [responsive]="true" data-testid="ps-setup-policies">
               <thead>
                 <tr><th>Setting</th><th>Meaning</th></tr>
               </thead>
@@ -57,7 +57,7 @@
               The <strong>Size scale</strong> is on the account, one row per label: a pull request that changes at least
               a row's number of lines, and fewer than the next row's, gets that row's label. A new account starts with:
             </p>
-            <bs-table [isResponsive]="true" data-testid="ps-setup-scale">
+            <bs-table [responsive]="true" data-testid="ps-setup-scale">
               <thead>
                 <tr><th>Label</th><th>From lines</th><th>Colour</th></tr>
               </thead>
@@ -89,7 +89,7 @@
               <li><strong>Ignore additions</strong>: only the file's net deletions count, so a large generated file adds nothing while a large deletion still shows.</li>
             </ul>
             <p>A new account starts with these, in this order:</p>
-            <bs-table [isResponsive]="true" data-testid="ps-setup-ignore">
+            <bs-table [responsive]="true" data-testid="ps-setup-ignore">
               <thead>
                 <tr><th>Glob</th><th>Mode</th></tr>
               </thead>
@@ -117,7 +117,7 @@
               as <code>size/M · 87 lines changed</code>, and its summary lists the files that counted, the ignored ones and
               those counted for their deletions only, each with the rule that matched.
             </p>
-            <bs-alert [type]="infoColor" class="d-block mb-0" data-testid="ps-setup-neutral">
+            <bs-alert [color]="'info'" class="d-block mb-0" data-testid="ps-setup-neutral">
               The check always completes <strong>neutral</strong>, even when the label could not be applied; it then says
               why. It never fails a pull request, so it never blocks a merge or the merge queue.
             </bs-alert>

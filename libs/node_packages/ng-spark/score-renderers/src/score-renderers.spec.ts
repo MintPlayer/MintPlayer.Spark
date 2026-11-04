@@ -2,7 +2,6 @@ import { Component, input, Type } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { Color } from '@mintplayer/ng-bootstrap';
 import { BsSparklineComponent } from '@mintplayer/ng-bootstrap/charts/sparkline';
 import { BsTrendChartComponent } from '@mintplayer/ng-bootstrap/charts/trend';
 import { SPARK_ATTRIBUTE_RENDERERS } from '@mintplayer/ng-spark/renderers';
@@ -85,10 +84,10 @@ describe('score bands', () => {
   });
 
   it('maps a band to the ng-bootstrap colour, secondary for no value', () => {
-    expect(sparkScoreColor(80)).toBe(Color.success);
-    expect(sparkScoreColor(60)).toBe(Color.warning);
-    expect(sparkScoreColor(59.95)).toBe(Color.danger);
-    expect(sparkScoreColor(null)).toBe(Color.secondary);
+    expect(sparkScoreColor(80)).toBe('success');
+    expect(sparkScoreColor(60)).toBe('warning');
+    expect(sparkScoreColor(59.95)).toBe('danger');
+    expect(sparkScoreColor(null)).toBe('secondary');
   });
 
   it('reads a cell value as a number, never turning "no value" into 0', () => {
@@ -148,13 +147,13 @@ describe('SparkDeltaComponent', () => {
 });
 
 describe('SparkThresholdBarComponent', () => {
-  const bar = (fixture: ComponentFixture<unknown>) => host(fixture).querySelector('bs-progress-bar') as HTMLElement | null;
+  const bar = (fixture: ComponentFixture<unknown>) => host(fixture).querySelector('bs-progress-bar .progress-bar') as HTMLElement | null;
 
   it('draws the bar coloured by band, with the value to one decimal and a % by default', () => {
     const fixture = render(SparkThresholdBarComponent, 59.95);
 
     expect(text(fixture)).toBe('60.0%');
-    expect(bar(fixture)!.classList.contains('bg-danger')).toBe(true);
+    expect(bar(fixture)!.classList.contains('text-bg-danger')).toBe(true);
     expect(bar(fixture)!.getAttribute('aria-valuetext')).toBe('60.0%');
     expect(bar(fixture)!.getAttribute('aria-label')).toBe('Value');
     expect((host(fixture).querySelector('bs-progress') as HTMLElement).style.cssText).toBe('width: 80px; height: 8px;');
@@ -176,11 +175,11 @@ describe('SparkThresholdBarComponent', () => {
     });
 
     const b = bar(fixture)!;
-    expect(b.classList.contains('bg-info')).toBe(true);
+    expect(b.classList.contains('text-bg-info')).toBe(true);
     expect(b.getAttribute('aria-valuemax')).toBe('10');
     expect(b.getAttribute('aria-valuetext')).toBe('7/10');
     expect(b.getAttribute('aria-label')).toBe('Rating');
-    expect(b.style.width).toBe('70%');
+    expect(b.getAttribute('data-progress')).toBe('70');
     expect((host(fixture).querySelector('bs-progress') as HTMLElement).style.cssText).toBe('width: 120px; height: 4px;');
     expect(text(fixture)).toBe('');
   });
@@ -277,7 +276,7 @@ describe('SparkGaugeComponent', () => {
 
     // ng-bootstrap's badge: a bare .badge class is unstyled, since the badge CSS ships with the component, not
     // globally (seen in SeoTester, Q-M6d: a black "C" on the dark page with no badge behind it).
-    const badge = host(fixture).querySelector('bs-badge .badge')!;
+    const badge = host(fixture).querySelector('bs-badge.badge')!;
     expect(badge.textContent!.trim()).toBe('C');
     expect([...badge.classList].some(c => c.endsWith('-warning'))).toBe(true);
     expect(meter(fixture)!.getAttribute('aria-valuetext')).toBe('72 (C)');

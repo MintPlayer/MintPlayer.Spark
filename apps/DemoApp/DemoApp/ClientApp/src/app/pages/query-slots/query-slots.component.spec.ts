@@ -14,7 +14,8 @@ describe('QuerySlotsComponent', () => {
     fixture.detectChanges();
 
     // Bootstrap's .container rules ship with <bs-grid> (ng-bootstrap 22.32 removed <bs-container>): a plain
-    // .container stays full width, without its gutter. The page's own one, not the nested <bs-grid> further down.
-    expect((fixture.nativeElement as HTMLElement).querySelector(':scope > bs-grid > .container > .py-4')).not.toBeNull();
+    // .container stays full width, without its gutter. Since 22.33 the grid carries .container on its own host.
+    // The page's own one, not the nested <bs-grid> further down.
+    expect((fixture.nativeElement as HTMLElement).querySelector(':scope > bs-grid.container > .py-4')).not.toBeNull();
   });
 });

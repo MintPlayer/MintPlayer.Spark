@@ -220,7 +220,7 @@
                 }
               </td>
             </ng-template>
-            <bs-table [isResponsive]="true" class="mb-1">
+            <bs-table [responsive]="true" class="mb-1">
               <thead>
                 <tr>
                   @if (attr.isSortable) {
@@ -260,7 +260,7 @@
                     <!-- <bs-table>, not a plain .table: CDK puts the preview at the end of <body>, and
                          Bootstrap's table CSS ships with <bs-table> (D84). -->
                     <ng-template cdkDragPreview>
-                      <bs-table [isResponsive]="true" class="d-block bg-body shadow-sm spark-drag-preview">
+                      <bs-table [responsive]="true" class="d-block bg-body shadow-sm spark-drag-preview">
                         <tbody class="align-middle">
                           <tr>
                             @if (attr.isSortable) {
@@ -307,7 +307,7 @@
                 }
               </td>
             </ng-template>
-            <bs-table [isResponsive]="true" class="mb-1">
+            <bs-table [responsive]="true" class="mb-1">
               <thead>
                 <tr>
                   @if (attr.isSortable) {
@@ -347,7 +347,7 @@
                     <!-- CDK's default preview clones the <tr> to the end of <body>, outside any table, so its
                          cells lost the table's styles. A <bs-table> of the row's cells, as the inline grid draws. -->
                     <ng-template cdkDragPreview>
-                      <bs-table [isResponsive]="true" class="d-block bg-body shadow-sm spark-drag-preview">
+                      <bs-table [responsive]="true" class="d-block bg-body shadow-sm spark-drag-preview">
                         <tbody class="align-middle">
                           <tr>
                             @if (attr.isSortable) {
@@ -459,14 +459,10 @@
 }
 
 <!-- Modal for editing AsDetail objects -->
-<bs-modal [isOpen]="showAsDetailModal()" (isOpenChange)="!$event && closeAsDetailModal()">
-  <div *bsModal>
-    <div bsModalHeader>
-      <h5 class="modal-title">{{ 'common.edit' | t }} {{ editingAsDetailAttr()?.label | resolveTranslation:editingAsDetailAttr()?.name }}</h5>
-    </div>
+<bs-modal [open]="showAsDetailModal()" (openChange)="!$event && closeAsDetailModal()">
+  <ng-container *bsModalHeader>{{ 'common.edit' | t }} {{ editingAsDetailAttr()?.label | resolveTranslation:editingAsDetailAttr()?.name }}</ng-container>
 
-    @if (editingAsDetailAttr(); as attr) {
-      <div bsModalBody>
+    @if (showAsDetailModal() && editingAsDetailAttr(); as attr) {
         <spark-po-form
           [entityType]="attr | asDetailType:asDetailTypes()"
           [(formData)]="asDetailFormData"
@@ -480,13 +476,11 @@
           (nestedTriggerBlurred)="onEmbeddedTriggerBlur($event)"
           (referencePicked)="rememberPickedRowReference(attr.name, $event.attribute, $event.item)">
         </spark-po-form>
-      </div>
     }
 
-    <div bsModalFooter>
-      <button type="button" [color]="colors.secondary" (click)="closeAsDetailModal()">{{ 'common.cancel' | t }}</button>
-      <button type="button" [color]="colors.primary" (click)="saveAsDetailObject()">{{ 'common.save' | t }}</button>
-    </div>
-  </div>
+  <ng-container *bsModalFooter>
+    <button type="button" [color]="colors.secondary" (click)="closeAsDetailModal()">{{ 'common.cancel' | t }}</button>
+    <button type="button" [color]="colors.primary" (click)="saveAsDetailObject()">{{ 'common.save' | t }}</button>
+  </ng-container>
 </bs-modal>
 </bs-form>

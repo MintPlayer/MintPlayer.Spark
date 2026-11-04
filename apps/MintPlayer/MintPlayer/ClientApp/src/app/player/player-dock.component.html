@@ -15,13 +15,9 @@
   </bs-card>
 }
 
-<bs-offcanvas position="end" [isVisible]="player.queueOpen()" (isVisibleChange)="player.queueOpen.set($event)" (backdropClick)="player.queueOpen.set(false)">
-  <div *bsOffcanvasContent>
-    <bs-offcanvas-header>
-      <h2 class="h5 offcanvas-title me-auto mb-0">Queue</h2>
-      <bs-close bsOffcanvasClose />
-    </bs-offcanvas-header>
-    <bs-offcanvas-body>
+<bs-offcanvas position="end" [open]="player.queueOpen()" (openChange)="player.queueOpen.set($event)">
+  <ng-container *bsOffcanvasHeader>Queue</ng-container>
+  @if (player.queueOpen()) {
       <div class="d-flex justify-content-center gap-2 mb-2">
         <button type="button" [color]="colors.secondary" title="Previous" aria-label="Previous" [disabled]="!player.current()" (click)="player.previous()"><i class="bi bi-skip-start-fill"></i></button>
         <button type="button" [color]="colors.primary" [title]="player.isPlaying() ? 'Pause' : 'Play'" [attr.aria-label]="player.isPlaying() ? 'Pause' : 'Play'" [disabled]="!player.current()" (click)="player.togglePlay()">
@@ -58,6 +54,5 @@
           <bs-list-group-item [disabled]="true">The queue is empty.</bs-list-group-item>
         }
       </bs-list-group>
-    </bs-offcanvas-body>
-  </div>
+  }
 </bs-offcanvas>

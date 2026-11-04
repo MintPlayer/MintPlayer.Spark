@@ -1,12 +1,12 @@
 <bs-grid>
   @if (errorMessage(); as err) {
-    <bs-alert [type]="colors.danger" class="mb-3">
+    <bs-alert [color]="'danger'" class="mb-3">
       {{ err }}
     </bs-alert>
   } @else if (item(); as currentItem) {
     @if (entityType(); as et) {
     @if (actionError(); as actionErr) {
-      <bs-alert [type]="colors.danger" class="d-block mt-2 spark-action-error" role="alert">
+      <bs-alert [color]="'danger'" class="d-block mt-2 spark-action-error" role="alert">
         <div class="d-flex align-items-start gap-2">
           <span class="flex-grow-1">{{ actionErr }}</span>
           <button type="button" class="btn btn-sm btn-link p-0 text-reset text-decoration-none" [attr.aria-label]="lang.t('common.close', 'Close')" (click)="actionError.set(null)">&times;</button>
@@ -15,39 +15,40 @@
     }
     @if (showChrome()) {
     <div class="spark-actionbar py-2">
-      <bs-priority-nav [moreLabel]="lang.t('common.more')" [collapseAt]="'sm'">
-        <button *bsPriorityNavItem="1" class="btn btn-outline-secondary" (click)="onBack()">
+      <bs-priority-nav [items]="navItems()" [moreLabel]="lang.t('common.more')" [collapseAt]="'sm'">
+        <ng-container *bsPriorityNavItemTemplate="let item"><ng-container [ngTemplateOutlet]="$any(item).template" /></ng-container>
+        <button *sparkPriorityNavItem="1" class="btn btn-outline-secondary" (click)="onBack()">
           <spark-icon name="arrow-left" /> {{ 'common.back' | t }}
         </button>
         <!-- Edit and Delete are the composed catalogue's (#467, D8): label, icon and variant included. -->
         @if (editAction(); as edit) {
-          <button *bsPriorityNavItem="2" [class]="builtInActionClass(edit, 'primary')" (click)="onEdit()">
+          <button *sparkPriorityNavItem="2" [class]="builtInActionClass(edit, 'primary')" (click)="onEdit()">
             @if (edit.icon) { <spark-icon [name]="edit.icon" /> } {{ edit.label | resolveTranslation }}
           </button>
         }
         @if (deleteAction(); as del) {
-          <button *bsPriorityNavItem="3" [class]="builtInActionClass(del, 'danger')" (click)="onDelete()">
+          <button *sparkPriorityNavItem="3" [class]="builtInActionClass(del, 'danger')" (click)="onDelete()">
             @if (del.icon) { <spark-icon [name]="del.icon" /> } {{ del.label | resolveTranslation }}
           </button>
         }
         @if (showCustomActions()) {
           @for (action of visibleCustomActions(); track action.name) {
             @let unavailable = customActionUnavailableReason(action);
-            <button *bsPriorityNavItem="10 + action.offset" [class]="customActionClass(action)" [attr.data-action]="action.name"
+            <button *sparkPriorityNavItem="10 + action.offset" [class]="customActionClass(action)" [attr.data-action]="action.name"
                     [disabled]="runningAction() !== null || unavailable !== null" [attr.title]="unavailable" (click)="onCustomAction(action)">
               {{ action.label | resolveTranslation }}
             </button>
           }
         }
         @if (extraActionsTemplate(); as extraActionsTpl) {
-          <ng-container *bsPriorityNavItem="50">
+          <ng-container *sparkPriorityNavItem="50">
             <ng-container *ngTemplateOutlet="extraActionsTpl"></ng-container>
           </ng-container>
         }
         <!-- Add-on actions (SPARK_DETAIL_ACTIONS): each decides for itself whether it applies. -->
         @if (detailContext(); as ctx) {
           @for (action of detailActions; track action.id) {
-            <ng-container *bsPriorityNavItem="action.priority ?? 60">
+            <ng-container *sparkPriorityNavItem="action.priority ?? 60">
               <ng-container *ngComponentOutlet="action.component; inputs: { context: ctx }" />
             </ng-container>
           }
@@ -57,7 +58,7 @@
     <h1 class="h2">
       {{ currentItem.breadcrumb || currentItem.name }}
       @if (isDeletedView()) {
-        <bs-badge [type]="colors.secondary" class="align-middle ms-2 spark-deleted-badge">{{ 'softDelete.deleted' | t }}</bs-badge>
+        <bs-badge [color]="'secondary'" class="align-middle ms-2 spark-deleted-badge">{{ 'softDelete.deleted' | t }}</bs-badge>
       }
     </h1>
     }
@@ -132,7 +133,7 @@
               @if (getDetailRendererComponent(attr); as rendererType) {
                 <ng-container *ngComponentOutlet="rendererType; inputs: getDetailRendererInputs(rendererType, attr, currentItem)"></ng-container>
               } @else if (attr.dataType === 'AsDetail' && attr.isArray) {
-                <bs-table [isResponsive]="true">
+                <bs-table [responsive]="true">
                   @let leadingRenderer = (attr | asDetailLeadingRenderer:asDetailTypes():rendererRegistry);
                   <thead>
                     <tr>

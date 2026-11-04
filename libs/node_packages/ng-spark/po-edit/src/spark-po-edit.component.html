@@ -1,19 +1,19 @@
 <bs-grid>
   @for (error of generalErrors(); track error.errorMessage) {
-    <bs-alert [type]="colors.danger" class="mb-3">
+    <bs-alert [color]="'danger'" class="mb-3">
       {{ error.errorMessage | resolveTranslation }}
     </bs-alert>
   }
 
   @if (conflictNotice(); as notice) {
-    <bs-alert [type]="colors.info" class="mb-3 spark-conflict-notice">
+    <bs-alert [color]="'info'" class="mb-3 spark-conflict-notice">
       {{ notice }}
     </bs-alert>
   }
 
   <!-- Live (X4): someone else saved while the user has unsaved edits. Non-blocking: the form is untouched. -->
   @if (liveTheirs()) {
-    <bs-alert [type]="colors.warning" class="mb-3 spark-live-changed">
+    <bs-alert [color]="'warning'" class="mb-3 spark-live-changed">
       {{ liveChangedText() }}
       <button type="button" class="btn btn-sm btn-outline-primary ms-2 spark-live-review" (click)="reviewLiveChange()">
         {{ liveReviewText() }}

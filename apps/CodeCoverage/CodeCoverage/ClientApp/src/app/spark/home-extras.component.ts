@@ -31,7 +31,7 @@ import { AccountsService } from '../services/accounts.service';
   imports: [RouterModule, BsAlertComponent, SparkBoardComponent, TranslateKeyPipe],
   template: `
     @if (reauthRequired()) {
-      <bs-alert [type]="warningColor" [announce]="true" class="d-block mt-3">
+      <bs-alert [color]="'warning'" [announce]="true" class="d-block mt-3">
         <div class="d-flex align-items-center gap-2 flex-wrap">
           <span class="me-auto">
             <i class="bi bi-exclamation-triangle"></i>

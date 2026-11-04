@@ -2,7 +2,7 @@
   <!-- D9: the external sign-in's outcome, from the popup or from a redirect's ?sparkExternalLogin.
        Shown even with no providers left to offer: the failure is still news. -->
   @if (externalError()) {
-    <bs-alert [type]="externalErrorIsNotice() ? colors.info : colors.danger" class="mb-2 d-block spark-external-error">
+    <bs-alert [color]="externalErrorIsNotice() ? 'info' : 'danger'" class="mb-2 d-block spark-external-error">
       {{ externalError() | t }}
       @if (blockedProvider()) {
         <div class="mt-2">

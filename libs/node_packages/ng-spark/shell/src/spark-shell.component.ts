@@ -1,16 +1,10 @@
 import { ChangeDetectionStrategy, Component, computed, contentChild, contentChildren, ElementRef, inject, input, signal, TemplateRef } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
-import { BsShellComponent, BsShellSidebarDirective, BsShellState, BsShellTopbarDirective, type BsShellStateChange } from '@mintplayer/ng-bootstrap/shell';
+import { BsShellComponent, BsShellSidebarDirective, BsShellTopbarDirective, type ShellState, type ShellStateChange } from '@mintplayer/ng-bootstrap/shell';
 import { BsNavbarTogglerComponent } from '@mintplayer/ng-bootstrap/navbar-toggler';
 import { BS_THEME_DEFAULT_MODES, BsThemeService, BsThemeToggleComponent, BsThemeToggleMode } from '@mintplayer/ng-bootstrap/theming';
 import { useBootstrap } from '@mintplayer/ng-bootstrap/machine';
-import { bootstrapAlertPage } from '@mintplayer/ui-core/bootstrap/alert';
-import { bootstrapDropdownPage } from '@mintplayer/ui-core/bootstrap/dropdown';
-import { bootstrapFormsPage } from '@mintplayer/ui-core/bootstrap/forms';
-import { bootstrapModalPage } from '@mintplayer/ui-core/bootstrap/modal';
 import { bootstrapNavPage } from '@mintplayer/ui-core/bootstrap/nav';
-import { bootstrapOffcanvasPage } from '@mintplayer/ui-core/bootstrap/offcanvas';
-import { bootstrapTablesPage } from '@mintplayer/ui-core/bootstrap/tables';
 import { SparkLanguageService } from '@mintplayer/ng-spark/services';
 import type { Breakpoint } from '@mintplayer/ng-bootstrap';
 import { SparkProgramUnitsComponent } from './spark-program-units.component';
@@ -92,16 +86,10 @@ export class SparkShellComponent {
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
 
   constructor() {
-    // ng-bootstrap 22.32 (#452) scopes each Bootstrap part to elements stamped with data-mps, and some
-    // sub-elements of its own components are never stamped: .form-label, .form-text, .invalid-feedback,
-    // .input-group-text, .modal-title, .offcanvas-title, .alert-link, .dropdown-item-text, table row
-    // variants, and the shell's raw .nav-links (mintplayer-ng-bootstrap#458). Until that is fixed, the
-    // shell installs the unscoped page variants. These parts were all in the global stylesheet before
-    // 22.32, so nothing grows. Remove this when #458 ships.
-    useBootstrap(
-      bootstrapAlertPage, bootstrapDropdownPage, bootstrapFormsPage, bootstrapModalPage,
-      bootstrapNavPage, bootstrapOffcanvasPage, bootstrapTablesPage,
-    );
+    // The side menu's links (spark-program-units, the sidebar slots, an app's own entries) are plain
+    // .nav-links outside any .nav root. Since ng-bootstrap 22.32 (#452) a part styles only its own stamped
+    // components and their descendants (#458), so raw markup like this needs the page variant.
+    useBootstrap(bootstrapNavPage);
   }
 
   /** The toggle's cycle with Spark's translated labels (`theme.*` keys); icons stay ng-bootstrap's. */
@@ -161,7 +149,7 @@ export class SparkShellComponent {
     })),
   ]);
 
-  protected readonly shellState = signal<BsShellState>('auto');
+  protected readonly shellState = signal<ShellState>('auto');
   protected readonly isSidebarVisible = signal(false);
 
   // Explicit toggles force show/hide; 'auto' responsive behavior is otherwise preserved by
@@ -171,7 +159,7 @@ export class SparkShellComponent {
     this.shellState.set(open ? 'show' : 'hide');
   }
 
-  protected onShellToggle(detail: BsShellStateChange): void {
+  protected onShellToggle(detail: ShellStateChange): void {
     this.isSidebarVisible.set(detail.open);
   }
 

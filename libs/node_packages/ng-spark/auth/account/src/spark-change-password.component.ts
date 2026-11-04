@@ -25,10 +25,10 @@ import { accountMessages } from './account-messages';
         <bs-card-header><h3 class="mb-0">{{ 'auth.changePasswordTitle' | t }}</h3></bs-card-header>
         <div class="p-4">
           @for (message of messages(); track message) {
-            <bs-alert [type]="colors.danger" class="mb-3 d-block spark-account-error">{{ message | t }}</bs-alert>
+            <bs-alert [color]="'danger'" class="mb-3 d-block spark-account-error">{{ message | t }}</bs-alert>
           }
           @if (saved()) {
-            <bs-alert [type]="colors.success" class="mb-3 d-block spark-account-saved">{{ 'auth.passwordChanged' | t }}</bs-alert>
+            <bs-alert [color]="'success'" class="mb-3 d-block spark-account-saved">{{ 'auth.passwordChanged' | t }}</bs-alert>
           }
           <bs-form (submitted)="submit()">
             <div [formGroup]="form">

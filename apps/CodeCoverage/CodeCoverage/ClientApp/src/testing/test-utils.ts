@@ -116,14 +116,14 @@ export class StubHierarchyChart {
   readonly data = input<unknown>();
   readonly layout = input<string>();
   readonly rootId = input<string | null>();
-  readonly rootidchange = output<string | null>();
+  readonly rootIdChange = output<string | null>();
   readonly maxDepth = input<number | 'auto' | undefined>();
   readonly colorMin = input<number>();
   readonly colorMax = input<number>();
   readonly inputLabel = input<string>();
   readonly valueUnitLabel = input<string>();
   readonly zoom = output<any>();
-  readonly nodeselect = output<any>();
+  readonly nodeSelect = output<any>();
 }
 
 @Component({ selector: 'bs-sparkline', template: '' })

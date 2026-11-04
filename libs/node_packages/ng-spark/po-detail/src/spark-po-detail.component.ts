@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, PendingTasks, computed, effect, inject, input, output, signal, TemplateRef, Type, untracked } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, PendingTasks, computed, effect, inject, input, output, signal, TemplateRef, Type, untracked, viewChildren } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule, Location, NgTemplateOutlet, NgComponentOutlet } from '@angular/common';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
@@ -9,7 +9,7 @@ import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
 import { BsBadgeComponent } from '@mintplayer/ng-bootstrap/badge';
 import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
 import { BsGridComponent, BsGridRowDirective, BsGridColumnDirective } from '@mintplayer/ng-bootstrap/grid';
-import { BsPriorityNavComponent, BsPriorityNavItemDirective } from '@mintplayer/ng-bootstrap/priority-nav';
+import { BsPriorityNavComponent, BsPriorityNavItemTemplateDirective } from '@mintplayer/ng-bootstrap/priority-nav';
 import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
 import { BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective } from '@mintplayer/ng-bootstrap/tab-control';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
@@ -32,7 +32,7 @@ import {
 } from '@mintplayer/ng-spark/pipes';
 import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
 import { SparkAttributeDescriptionComponent } from '@mintplayer/ng-spark/attribute-description';
-import { SparkQueryCardComponent, SparkGridCellComponent } from '@mintplayer/ng-spark/grid';
+import { SparkQueryCardComponent, SparkGridCellComponent, SparkPriorityNavItemDirective, sparkPriorityNavItems } from '@mintplayer/ng-spark/grid';
 import { SPARK_ATTRIBUTE_RENDERERS, SparkResolvedRowRenderer, rendererValue, rowRendererInputs, withDeclaredInputs } from '@mintplayer/ng-spark/renderers';
 import {
   AttributeGroup,
@@ -66,7 +66,7 @@ import { Subscription, combineLatest } from 'rxjs';
 
 @Component({
   selector: 'spark-po-detail',
-  imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, RouterModule, BsAlertComponent, BsBadgeComponent,BsCardComponent, BsCardHeaderComponent, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsPriorityNavComponent, BsPriorityNavItemDirective, BsTableComponent, BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective, BsSpinnerComponent, SparkIconComponent, SparkQueryCardComponent, SparkGridCellComponent, ResolveTranslationPipe, TranslateKeyPipe, AttributeValuePipe, OrDashPipe, RawAttributeValuePipe, AsDetailColumnsPipe, AsDetailRowRendererPipe, AsDetailLeadingRendererPipe, AsDetailCellValuePipe, ArrayValuePipe, ReferenceLinkRoutePipe, ReferenceChipsPipe, ParsedDatePipe, SparkAttributeDescriptionComponent],
+  imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, RouterModule, BsAlertComponent, BsBadgeComponent,BsCardComponent, BsCardHeaderComponent, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsPriorityNavComponent, BsPriorityNavItemTemplateDirective, SparkPriorityNavItemDirective, BsTableComponent, BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective, BsSpinnerComponent, SparkIconComponent, SparkQueryCardComponent, SparkGridCellComponent, ResolveTranslationPipe, TranslateKeyPipe, AttributeValuePipe, OrDashPipe, RawAttributeValuePipe, AsDetailColumnsPipe, AsDetailRowRendererPipe, AsDetailLeadingRendererPipe, AsDetailCellValuePipe, ArrayValuePipe, ReferenceLinkRoutePipe, ReferenceChipsPipe, ParsedDatePipe, SparkAttributeDescriptionComponent],
   templateUrl: './spark-po-detail.component.html',
   styleUrl: './spark-po-detail.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -83,6 +83,8 @@ export class SparkPoDetailComponent {
   private readonly live = inject(SparkLiveService);
   private readonly seo = inject(SparkSeoService);
   protected readonly lang = inject(SparkLanguageService);
+  private readonly navItemDirectives = viewChildren(SparkPriorityNavItemDirective);
+  protected readonly navItems = sparkPriorityNavItems(this.navItemDirectives);
   private readonly clientMethods = inject(SparkClientMethodRegistry);
   protected readonly rendererRegistry = inject(SPARK_ATTRIBUTE_RENDERERS);
 

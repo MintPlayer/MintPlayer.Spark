@@ -50,7 +50,7 @@ interface GrantChoice {
         <div class="p-4">
           <p class="text-muted">{{ 'auth.agentsDescription' | t }}</p>
           @for (message of messages(); track message) {
-            <bs-alert [type]="colors.danger" class="mb-3 d-block spark-agents-error">{{ message | t }}</bs-alert>
+            <bs-alert [color]="'danger'" class="mb-3 d-block spark-agents-error">{{ message | t }}</bs-alert>
           }
           @if (loading()) {
             <div class="text-center"><bs-spinner /></div>
@@ -59,18 +59,18 @@ interface GrantChoice {
               <section class="border rounded p-3 mb-3 spark-agent-grant" [attr.data-key]="grant.key">
                 <div class="d-flex flex-wrap align-items-center gap-2">
                   <h5 class="mb-0 text-break spark-agent-name">{{ grant.name || grant.clientId || grant.key }}</h5>
-                  <bs-badge [type]="colors.secondary">{{ 'auth.agentKind.' + grant.kind | t }}</bs-badge>
+                  <bs-badge [color]="'secondary'">{{ 'auth.agentKind.' + grant.kind | t }}</bs-badge>
                   @if (grant.kind === 'ExternalAuthorizationServer') {
-                    <bs-badge [type]="colors.info" class="spark-agent-issuer" [title]="'auth.agentIssuer' | t">{{ grant.issuer }}</bs-badge>
+                    <bs-badge [color]="'info'" class="spark-agent-issuer" [title]="'auth.agentIssuer' | t">{{ grant.issuer }}</bs-badge>
                   } @else if (grant.kind !== 'PersonalAccessToken') {
                     @if (grant.verifiedHost) {
-                      <bs-badge [type]="colors.success" class="spark-agent-verified">{{ grant.verifiedHost }}</bs-badge>
+                      <bs-badge [color]="'success'" class="spark-agent-verified">{{ grant.verifiedHost }}</bs-badge>
                     } @else {
-                      <bs-badge [type]="colors.warning" class="spark-agent-unverified">{{ 'auth.agentUnverified' | t }}</bs-badge>
+                      <bs-badge [color]="'warning'" class="spark-agent-unverified">{{ 'auth.agentUnverified' | t }}</bs-badge>
                     }
                   }
                   @if (grant.status !== 'active') {
-                    <bs-badge [type]="colors.danger" class="spark-agent-status">{{ 'auth.agentStatus.' + grant.status | t }}</bs-badge>
+                    <bs-badge [color]="'danger'" class="spark-agent-status">{{ 'auth.agentStatus.' + grant.status | t }}</bs-badge>
                   }
                 </div>
                 <small class="text-muted d-block mt-1 spark-agent-dates">
@@ -82,8 +82,8 @@ interface GrantChoice {
                 @if (editing() === grant.key) {
                   <bs-form class="d-block mt-3">
                     @if (canWrite(grant.maxPermissions)) {
-                      <bs-checkbox [type]="'checkbox'" [name]="'changes-' + grant.key" [isToggled]="draft().changes"
-                                   (isToggledChange)="setChanges($event === true)">{{ 'auth.agentAllowChanges' | t }}</bs-checkbox>
+                      <bs-checkbox [type]="'checkbox'" [name]="'changes-' + grant.key" [checked]="draft().changes"
+                                   (checkedChange)="setChanges($event === true)">{{ 'auth.agentAllowChanges' | t }}</bs-checkbox>
                     }
                     <ng-container *ngTemplateOutlet="typePicker" />
                   </bs-form>
@@ -122,7 +122,7 @@ interface GrantChoice {
               <h5>{{ 'auth.agentTokenTitle' | t }}</h5>
               <p class="text-muted">{{ 'auth.agentTokenDescription' | t }}</p>
               @if (createdToken(); as token) {
-                <bs-alert [type]="colors.warning" class="mb-3 d-block spark-agent-token-created">
+                <bs-alert [color]="'warning'" class="mb-3 d-block spark-agent-token-created">
                   <strong>{{ 'auth.agentTokenShownOnce' | t }}</strong>
                   <code class="d-block text-break my-2 spark-agent-token">{{ token }}</code>
                   <button type="button" class="btn btn-sm btn-outline-dark" (click)="copy(token)">{{ 'auth.agentTokenCopy' | t }}</button>
@@ -139,8 +139,8 @@ interface GrantChoice {
                     <input id="sparkAgentTokenDays" type="number" min="1" [max]="data.maxTokenLifetimeDays" [value]="tokenDays()" (input)="tokenDays.set(+value($event))" />
                   </div>
                   @if (canWrite(data.tokenPermissions)) {
-                    <bs-checkbox [type]="'checkbox'" [name]="'changes-new'" [isToggled]="draft().changes"
-                                 (isToggledChange)="setChanges($event === true)">{{ 'auth.agentAllowChanges' | t }}</bs-checkbox>
+                    <bs-checkbox [type]="'checkbox'" [name]="'changes-new'" [checked]="draft().changes"
+                                 (checkedChange)="setChanges($event === true)">{{ 'auth.agentAllowChanges' | t }}</bs-checkbox>
                   }
                   <ng-container *ngTemplateOutlet="typePicker" />
                 </bs-form>
@@ -171,13 +171,13 @@ interface GrantChoice {
 
           <ng-template #typePicker>
             <div class="mt-2">
-              <bs-checkbox [type]="'checkbox'" [name]="'everything'" [isToggled]="draft().types === null"
-                           (isToggledChange)="setEverything($event === true)">{{ 'auth.agentEverything' | t }}</bs-checkbox>
+              <bs-checkbox [type]="'checkbox'" [name]="'everything'" [checked]="draft().types === null"
+                           (checkedChange)="setEverything($event === true)">{{ 'auth.agentEverything' | t }}</bs-checkbox>
               @if (draft().types !== null) {
                 @for (type of overview()?.types ?? []; track type.name) {
                   <div class="ms-4 spark-agent-type" [attr.data-type]="type.name">
-                    <bs-checkbox [type]="'checkbox'" [name]="'type-' + type.name" [isToggled]="draft().types!.includes(type.name)"
-                                 (isToggledChange)="setType(type, $event === true)">{{ type.label }}</bs-checkbox>
+                    <bs-checkbox [type]="'checkbox'" [name]="'type-' + type.name" [checked]="draft().types!.includes(type.name)"
+                                 (checkedChange)="setType(type, $event === true)">{{ type.label }}</bs-checkbox>
                     @if (type.queries.length) { <small class="text-muted d-block ms-4">{{ type.queries.join(', ') }}</small> }
                   </div>
                 } @empty {

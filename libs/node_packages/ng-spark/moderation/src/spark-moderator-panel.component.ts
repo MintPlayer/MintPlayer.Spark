@@ -28,7 +28,7 @@ import { SPARK_MODERATION_REVIEW_PATH } from './spark-moderation.tokens';
           <bs-card-header>{{ 'moderation.panel' | t }}</bs-card-header>
           <div class="p-3 d-flex flex-wrap gap-2 align-items-center">
             @if (s.locked) {
-              <bs-badge [type]="colors.secondary" class="spark-moderation-locked">{{ 'moderation.locked' | t }}</bs-badge>
+              <bs-badge [color]="'secondary'" class="spark-moderation-locked">{{ 'moderation.locked' | t }}</bs-badge>
               @if (s.lockReason) { <span class="small text-muted">{{ s.lockReason }}</span> }
             }
             @if (s.canLock) {

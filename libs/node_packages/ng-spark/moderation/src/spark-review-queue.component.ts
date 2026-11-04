@@ -34,7 +34,7 @@ import { describeModerationError } from './spark-vote.component';
   template: `
     <bs-grid stopFullWidthAt="never" class="d-block spark-review-queue">
       <h1 class="h3">{{ 'moderation.reviewQueue' | t }}</h1>
-      @if (error(); as message) { <bs-alert [type]="colors.danger" [announce]="true" class="d-block">{{ message }}</bs-alert> }
+      @if (error(); as message) { <bs-alert [color]="'danger'" [announce]="true" class="d-block">{{ message }}</bs-alert> }
       <div bsRow class="g-3">
         <div [md]="4">
           @if (cases().length) {
@@ -43,7 +43,7 @@ import { describeModerationError } from './spark-vote.component';
                 <bs-list-group-item [active]="selected()?.case?.id === c.id">
                   <button type="button" class="w-100 text-start border-0 bg-transparent p-0 text-reset spark-case" (click)="open(c.id)">
                     <strong>{{ c.kind }}</strong>
-                    @if (c.flagCount) { <bs-badge class="ms-1 spark-case-flag-count" [type]="colors.warning">{{ c.flagCount }}</bs-badge> }
+                    @if (c.flagCount) { <bs-badge class="ms-1 spark-case-flag-count" [color]="'warning'">{{ c.flagCount }}</bs-badge> }
                     @if (targets()[c.id]?.title; as title) { <div class="small fw-semibold text-truncate spark-case-target">{{ title }}</div> }
                     <div class="small">{{ c.summary }}</div>
                     <div class="small opacity-75">{{ c.openedAtUtc | date: 'short' }}</div>

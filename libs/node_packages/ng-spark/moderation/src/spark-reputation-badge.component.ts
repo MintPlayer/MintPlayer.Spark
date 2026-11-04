@@ -19,7 +19,7 @@ import { ModerationReputation } from './spark-moderation.models';
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (reputation(); as r) {
-      <bs-badge [type]="colors.secondary" class="spark-reputation-badge" [attr.title]="'moderation.reputation' | t">
+      <bs-badge [color]="'secondary'" class="spark-reputation-badge" [attr.title]="'moderation.reputation' | t">
         {{ r.total }}
         @if (!userId() && r.pending) {
           <!-- A received downvote makes the pending part negative: "(-2 pending)", never "(+-2 pending)". -->

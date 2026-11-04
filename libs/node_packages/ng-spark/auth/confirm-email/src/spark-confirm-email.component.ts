@@ -32,13 +32,13 @@ type ConfirmState = 'working' | 'confirmed' | 'changed' | 'invalid';
               <div class="text-center"><bs-spinner /></div>
             }
             @case ('confirmed') {
-              <bs-alert [type]="colors.success" class="spark-confirm-success">{{ 'auth.emailConfirmed' | t }}</bs-alert>
+              <bs-alert [color]="'success'" class="spark-confirm-success">{{ 'auth.emailConfirmed' | t }}</bs-alert>
             }
             @case ('changed') {
-              <bs-alert [type]="colors.success" class="spark-confirm-success">{{ 'auth.emailChanged' | t }}</bs-alert>
+              <bs-alert [color]="'success'" class="spark-confirm-success">{{ 'auth.emailChanged' | t }}</bs-alert>
             }
             @case ('invalid') {
-              <bs-alert [type]="colors.danger" class="spark-confirm-invalid">{{ 'auth.invalidConfirmLink' | t }}</bs-alert>
+              <bs-alert [color]="'danger'" class="spark-confirm-invalid">{{ 'auth.invalidConfirmLink' | t }}</bs-alert>
             }
           }
           @if (state() !== 'working') {

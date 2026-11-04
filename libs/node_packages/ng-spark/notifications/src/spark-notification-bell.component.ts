@@ -1,9 +1,8 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
 import { CdkConnectedOverlay, CdkOverlayOrigin, type ConnectedPosition } from '@angular/cdk/overlay';
 import { RouterLink } from '@angular/router';
-import { Color } from '@mintplayer/ng-bootstrap';
 import { BsBadgeComponent } from '@mintplayer/ng-bootstrap/badge';
-import { BsDropdownDividerDirective, BsDropdownHeaderDirective, BsDropdownItemDirective, BsDropdownMenuComponent } from '@mintplayer/ng-bootstrap/dropdown-menu';
+import { BsDropdownDividerComponent, BsDropdownHeaderComponent, BsDropdownItemComponent, BsDropdownMenuComponent } from '@mintplayer/ng-bootstrap/dropdown';
 import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
 import { SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { sparkRelativeTime } from './relative-time';
@@ -22,8 +21,8 @@ import { SPARK_NOTIFICATION_TEXTS, SparkPushToggleComponent } from './spark-push
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
-    RouterLink, CdkOverlayOrigin, CdkConnectedOverlay, BsBadgeComponent, BsDropdownMenuComponent, BsDropdownItemDirective,
-    BsDropdownHeaderDirective, BsDropdownDividerDirective, SparkIconComponent, SparkPushToggleComponent,
+    RouterLink, CdkOverlayOrigin, CdkConnectedOverlay, BsBadgeComponent, BsDropdownMenuComponent, BsDropdownItemComponent,
+    BsDropdownHeaderComponent, BsDropdownDividerComponent, SparkIconComponent, SparkPushToggleComponent,
   ],
   template: `
     <button type="button" cdkOverlayOrigin #origin="cdkOverlayOrigin" #toggle
@@ -32,7 +31,7 @@ import { SPARK_NOTIFICATION_TEXTS, SparkPushToggleComponent } from './spark-push
             (click)="open.set(!open())">
       <spark-icon name="bell" />
       @if (notifications.unreadCount() > 0) {
-        <bs-badge [type]="colors.danger" [decorative]="true"
+        <bs-badge color="danger" [decorative]="true"
                   class="position-absolute top-0 start-100 translate-middle spark-notification-count">{{ countText() }}</bs-badge>
       }
     </button>
@@ -44,14 +43,14 @@ import { SPARK_NOTIFICATION_TEXTS, SparkPushToggleComponent } from './spark-push
                  (overlayKeydown)="$event.key === 'Escape' && close()"
                  (detach)="close()">
       <bs-dropdown-menu class="spark-notification-menu">
-        <li bsDropdownHeader class="d-flex align-items-center justify-content-between gap-3">
+        <bs-dropdown-header class="d-flex align-items-center justify-content-between gap-3">
           <span>{{ t('title') }}</span>
           @if (notifications.unreadCount() > 0) {
             <button type="button" class="btn btn-link btn-sm p-0 spark-notification-mark-all" (click)="markAllRead()">{{ t('markAllRead') }}</button>
           }
-        </li>
+        </bs-dropdown-header>
         @for (notification of notifications.recent(); track notification.id) {
-          <li bsDropdownItem class="spark-notification" [class.fw-semibold]="!notification.isRead"
+          <bs-dropdown-item class="spark-notification" [class.fw-semibold]="!notification.isRead"
               [class.spark-notification-unread]="!notification.isRead" [attr.data-id]="notification.id"
               (click)="choose(notification)">
             <div class="spark-notification-title text-wrap">{{ notification.title }}</div>
@@ -59,16 +58,16 @@ import { SPARK_NOTIFICATION_TEXTS, SparkPushToggleComponent } from './spark-push
               <div class="spark-notification-body small fw-normal text-body-secondary text-wrap">{{ notification.body }}</div>
             }
             <div class="spark-notification-time small fw-normal text-body-secondary">{{ when(notification) }}</div>
-          </li>
+          </bs-dropdown-item>
         } @empty {
-          <li class="dropdown-item-text text-body-secondary spark-notification-empty">{{ t('empty') }}</li>
+          <div class="dropdown-item-text text-body-secondary spark-notification-empty">{{ t('empty') }}</div>
         }
-        <li bsDropdownDivider></li>
-        <li bsDropdownItem class="spark-notification-all">
+        <bs-dropdown-divider />
+        <bs-dropdown-item class="spark-notification-all">
           <a [routerLink]="listLink()" (click)="close()">{{ t('showAll') }}</a>
-        </li>
+        </bs-dropdown-item>
         @if (notifications.pushConfigured() && notifications.pushState() !== 'unsupported') {
-          <li class="dropdown-item-text spark-notification-push"><spark-push-toggle /></li>
+          <div class="dropdown-item-text spark-notification-push"><spark-push-toggle /></div>
         }
       </bs-dropdown-menu>
     </ng-template>
@@ -82,7 +81,6 @@ export class SparkNotificationBellComponent {
   protected readonly notifications = inject(SparkNotificationsService);
   private readonly language = inject(SparkLanguageService);
   private readonly options = inject(SPARK_NOTIFICATIONS_OPTIONS);
-  protected readonly colors = Color;
 
   /** Where "All notifications" goes. Default: `provideSparkNotifications({ listLink })`, else the `notifications` query page. */
   readonly allLink = input<string | readonly unknown[] | null>(null);

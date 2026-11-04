@@ -2,7 +2,6 @@ import { ChangeDetectionStrategy, Component, computed, DestroyRef, effect, injec
 import { HttpErrorResponse } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
 import { BsCardBodyComponent, BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
 import { BsSelectComponent, BsSelectOption } from '@mintplayer/ng-bootstrap/select';
@@ -79,7 +78,7 @@ export const RELOAD_AFTER_COMMAND_MS = 2500;
         </bs-card-header>
         <bs-card-body>
           @if (notice(); as n) {
-            <bs-alert [type]="n.color" class="d-block mb-3" data-testid="mq-notice">{{ n.text }}</bs-alert>
+            <bs-alert [color]="n.color" class="d-block mb-3" data-testid="mq-notice">{{ n.text }}</bs-alert>
           }
 
           @for (lane of v.lanes; track lane.baseBranch) {
@@ -128,7 +127,7 @@ export const RELOAD_AFTER_COMMAND_MS = 2500;
               }
 
               @if (lane.recent.length > 0) {
-                <bs-table [isResponsive]="true" data-testid="mq-recent">
+                <bs-table [responsive]="true" data-testid="mq-recent">
                   <thead>
                     <tr><th>Pull request</th><th>Outcome</th><th>Why</th><th class="text-end">When</th></tr>
                   </thead>
@@ -161,7 +160,7 @@ export const RELOAD_AFTER_COMMAND_MS = 2500;
                 Effective configuration, as the run of #{{ config.number }} read it
                 @if (config.configRef) { (<code>coverage.yml</code> on {{ config.configRef }}) }
               </summary>
-              <bs-table [isResponsive]="true">
+              <bs-table [responsive]="true">
                 <thead>
                   <tr><th>Setting</th><th>Value</th><th>Source</th></tr>
                 </thead>
@@ -220,7 +219,7 @@ export class RepoMergeQueuePanelComponent {
   /** The pull request picked in the dropdown. */
   readonly number = signal<number | null>(null);
   readonly busy = signal(false);
-  readonly notice = signal<{ color: Color; text: string } | null>(null);
+  readonly notice = signal<{ color: 'warning' | 'success' | 'danger'; text: string } | null>(null);
 
   readonly viewer = computed(() => this.view()?.viewer ?? null);
 
@@ -317,7 +316,7 @@ export class RepoMergeQueuePanelComponent {
   async queue(): Promise<void> {
     const number = this.number();
     if (!number || !Number.isInteger(number) || number < 1) {
-      this.notice.set({ color: Color.warning, text: 'Choose a pull request to queue.' });
+      this.notice.set({ color: 'warning', text: 'Choose a pull request to queue.' });
       return;
     }
     if (await this.send(() => this.browse.enqueuePullRequest(this.provider(), this.owner(), this.name(), number),
@@ -348,14 +347,14 @@ export class RepoMergeQueuePanelComponent {
     this.busy.set(true);
     try {
       const accepted = await call();
-      this.notice.set({ color: Color.success, text: success(accepted) });
+      this.notice.set({ color: 'success', text: success(accepted) });
       await this.load();
       // The queue takes the command on its own lane; look again once it has.
       clearTimeout(this.reload);
       this.reload = setTimeout(() => void this.load(), RELOAD_AFTER_COMMAND_MS);
       return true;
     } catch (error) {
-      this.notice.set({ color: Color.danger, text: refusal(error) });
+      this.notice.set({ color: 'danger', text: refusal(error) });
       return false;
     } finally {
       this.busy.set(false);

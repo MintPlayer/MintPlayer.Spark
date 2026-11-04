@@ -152,8 +152,8 @@ export class SeoCheckResultsComponent {
     return PLATFORMS.filter(p => !!row.check?.snippets?.[p.key]);
   }
 
-  protected statusColor(status: string): Color {
-    return status === 'Fail' ? Color.danger : status === 'Warn' ? Color.warning : status === 'Pass' ? Color.success : Color.secondary;
+  protected statusColor(status: string): 'danger' | 'warning' | 'success' | 'secondary' {
+    return status === 'Fail' ? 'danger' : status === 'Warn' ? 'warning' : status === 'Pass' ? 'success' : 'secondary';
   }
 
   protected statusLabel(row: SeoCheckRow): string {
@@ -161,9 +161,9 @@ export class SeoCheckResultsComponent {
     return this.lang.t(`seoUi.status.${row.status}`, row.status);
   }
 
-  protected severityColor(severity: string): Color {
+  protected severityColor(severity: string): 'danger' | 'warning' | 'info' | 'secondary' {
     // Readable on both themes: 'light' drew white text on a white badge in dark mode.
-    return severity === 'Critical' ? Color.danger : severity === 'High' ? Color.warning : severity === 'Medium' ? Color.info : Color.secondary;
+    return severity === 'Critical' ? 'danger' : severity === 'High' ? 'warning' : severity === 'Medium' ? 'info' : 'secondary';
   }
 }
 

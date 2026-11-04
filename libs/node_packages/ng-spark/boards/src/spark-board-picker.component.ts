@@ -5,7 +5,7 @@ import { BsButtonGroupComponent } from '@mintplayer/ng-bootstrap/button-group';
 import { BsButtonTypeDirective } from '@mintplayer/ng-bootstrap/button-type';
 import { BsFormComponent, BsFormControlDirective } from '@mintplayer/ng-bootstrap/form';
 import { BsListGroupComponent, BsListGroupItemComponent } from '@mintplayer/ng-bootstrap/list-group';
-import { BsModalBodyDirective, BsModalDirective, BsModalFooterDirective, BsModalHeaderDirective, BsModalHostComponent } from '@mintplayer/ng-bootstrap/modal';
+import { BsModalComponent, BsModalFooterDirective, BsModalHeaderDirective } from '@mintplayer/ng-bootstrap/modal';
 import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
 import { TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
 import { SparkLanguageService } from '@mintplayer/ng-spark/services';
@@ -30,16 +30,15 @@ export interface SparkBoardPick {
   selector: 'spark-board-picker',
   imports: [
     FormsModule, BsButtonGroupComponent, BsButtonTypeDirective, BsFormComponent, BsFormControlDirective, BsListGroupComponent, BsListGroupItemComponent,
-    BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective,
+    BsModalComponent, BsModalHeaderDirective, BsModalFooterDirective,
     SparkIconComponent, TranslateKeyPipe,
   ],
   styleUrl: './spark-board-picker.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <bs-modal [isOpen]="isOpen()" (isOpenChange)="isOpen.set($event)">
-      <div *bsModal>
-        <div bsModalHeader><h5 class="modal-title">{{ 'boards.spa.pickerTitle' | t }}</h5></div>
-        <div bsModalBody>
+    <bs-modal [open]="isOpen()" (openChange)="isOpen.set($event)">
+      <ng-container *bsModalHeader>{{ 'boards.spa.pickerTitle' | t }}</ng-container>
+      @if (isOpen()) {
           <bs-form>
             <input type="search" class="spark-picker-search" [attr.aria-label]="'boards.spa.pickerSearch' | t"
                    [placeholder]="'boards.spa.pickerSearch' | t" [ngModel]="search()" (ngModelChange)="search.set($event)" />
@@ -67,11 +66,10 @@ export interface SparkBoardPick {
               }
             </bs-list-group>
           }
-        </div>
-        <div bsModalFooter>
-          <button type="button" [color]="colors.secondary" (click)="isOpen.set(false)">{{ 'boards.spa.cancel' | t }}</button>
-        </div>
-      </div>
+      }
+      <ng-container *bsModalFooter>
+        <button type="button" [color]="colors.secondary" (click)="isOpen.set(false)">{{ 'boards.spa.cancel' | t }}</button>
+      </ng-container>
     </bs-modal>
   `,
 })

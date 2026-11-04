@@ -7,7 +7,7 @@
       @if (loading()) {
         <div class="text-center"><bs-spinner /></div>
       } @else if (failed()) {
-        <bs-alert [type]="colors.danger" class="mb-0">{{ 'auth.signInUnavailable' | t }}</bs-alert>
+        <bs-alert [color]="'danger'" class="mb-0">{{ 'auth.signInUnavailable' | t }}</bs-alert>
       }
 
       <!-- Rendered from the start, not after this page's own load: it asks for the capabilities at
@@ -17,7 +17,7 @@
 
       @if (!loading() && !failed()) {
         @if (!hasProviders() && !passkeysAvailable()) {
-          <bs-alert [type]="colors.warning" class="mb-0">{{ 'auth.noSignInMethods' | t }}</bs-alert>
+          <bs-alert [color]="'warning'" class="mb-0">{{ 'auth.noSignInMethods' | t }}</bs-alert>
         }
 
         <!-- Guarded on the server's capability *and* browser support, both resolved into
@@ -25,7 +25,7 @@
              browser offers whatever discoverable credential it holds for this site. -->
         @if (passkeysAvailable()) {
           @if (passkeyError()) {
-            <bs-alert [type]="colors.danger" class="mb-2">{{ passkeyError() | t }}</bs-alert>
+            <bs-alert [color]="'danger'" class="mb-2">{{ passkeyError() | t }}</bs-alert>
           }
           <button type="button" class="btn btn-outline-secondary w-100 mb-2"
                   [disabled]="passkeyBusy()" (click)="signInWithPasskey()">

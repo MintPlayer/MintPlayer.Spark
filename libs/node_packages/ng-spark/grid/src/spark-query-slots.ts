@@ -36,9 +36,8 @@ import { CustomActionDefinition, PersistentObject, SparkQuery } from '@mintplaye
  * <span *sparkQueryIcon><spark-icon name="table" /></span>
  * ```
  *
- * Matching is case-insensitive, against the query's alias and then its id. This is the
- * `bsPriorityNavItem` shape: a value input aliased to the selector, collected with
- * `contentChildren`.
+ * Matching is case-insensitive, against the query's alias and then its id. The shape is a value
+ * input aliased to the selector, collected with `contentChildren`.
  */
 
 /** Resolves a slot list to the one that applies to a query: targeted first, then untargeted. */

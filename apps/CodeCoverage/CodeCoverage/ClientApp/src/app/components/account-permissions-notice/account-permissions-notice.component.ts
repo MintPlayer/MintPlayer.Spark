@@ -30,7 +30,7 @@ function words(name: string): string {
   imports: [RouterLink, BsAlertComponent],
   template: `
     @if (notice(); as n) {
-      <bs-alert [type]="warningColor" class="d-block mt-3" data-testid="pending-permissions">
+      <bs-alert [color]="'warning'" class="d-block mt-3" data-testid="pending-permissions">
         GitHub is waiting for you to accept new permissions: {{ n.summary }}.
         <a class="alert-link ms-1" [href]="n.htmlUrl" target="_blank" rel="noopener">Review and accept on GitHub</a>
         @if (showGuideLink()) {
@@ -40,7 +40,7 @@ function words(name: string): string {
       </bs-alert>
     }
     @if (appGaps(); as g) {
-      <bs-alert [type]="warningColor" class="d-block mt-3" data-testid="app-permission-gaps">
+      <bs-alert [color]="'warning'" class="d-block mt-3" data-testid="app-permission-gaps">
         The CodeCoverage App itself {{ g.summary }}. This cannot be accepted here: the App's owner adds them under
         Permissions &amp; events on
         @if (g.settingsUrl) {

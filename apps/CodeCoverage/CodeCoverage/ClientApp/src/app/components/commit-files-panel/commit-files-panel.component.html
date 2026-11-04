@@ -6,7 +6,7 @@
          measures a subset; the rest is carried from the base when the file's
          git blob is unchanged, so the headline is still whole-workspace. -->
     <div class="px-3 pt-3 small" data-testid="assembly-summary">
-      <bs-badge class="me-2" [type]="a.completeness === 'Complete' ? successColor : warningColor">{{ a.completeness }}</bs-badge>
+      <bs-badge class="me-2" [color]="a.completeness === 'Complete' ? 'success' : 'warning'">{{ a.completeness }}</bs-badge>
       <span>
         {{ a.measuredFiles }} file(s) measured on this commit
         @if (a.carriedFiles > 0) {
@@ -61,14 +61,14 @@
             [data]="h"
             layout="sunburst"
             [rootId]="chartRootId()"
-            (rootidchange)="chartRootId.set($event)"
+            (rootIdChange)="chartRootId.set($event)"
             [maxDepth]="'auto'"
             [colorMin]="60"
             [colorMax]="80"
             inputLabel="Coverage by folder"
             valueUnitLabel="lines"
             (zoom)="onChartZoom($event)"
-            (nodeselect)="onChartSelect($event)" />
+            (nodeSelect)="onChartSelect($event)" />
         </div>
         <div [xxs]="12" [lg]="7">
           <ng-container *ngTemplateOutlet="folderList" />
@@ -90,7 +90,7 @@
 
   @if (tree(); as t) {
     @if (t.unmatchedFiles.length > 0) {
-      <bs-alert [type]="warningColor" class="d-block mb-2">
+      <bs-alert [color]="'warning'" class="d-block mb-2">
         {{ t.unmatchedTotal }} report path(s) couldn't be matched to the repository tree
         (e.g. {{ t.unmatchedFiles[0] }}). Check the action's <code>rootDir</code>/checkout.
         @if (t.unmatchedFiles.length < t.unmatchedTotal) {
@@ -101,7 +101,7 @@
     @if (t.rejectedReports && t.rejectedReports.length > 0) {
       <!-- #417: say what was rejected and why. A page with no numbers reads as a
            service outage; naming the file turns it into a fixable upload problem. -->
-      <bs-alert [type]="dangerColor" class="d-block mb-2" data-testid="rejected-reports">
+      <bs-alert [color]="'danger'" class="d-block mb-2" data-testid="rejected-reports">
         <strong>This upload was rejected — no coverage was recorded.</strong>
         <ul class="mb-0 mt-2 small">
           @for (report of t.rejectedReports; track report.fileName) {
@@ -122,7 +122,7 @@
     } @else {
       <!-- isResponsive is BsTable's own .table-responsive + nowrap wrapper, off by
            default; without it a wide file table overflows its card on a phone. -->
-      <bs-table [isResponsive]="true">
+      <bs-table [responsive]="true">
         <thead>
           <tr><th>Name</th><th>Coverage</th><th class="text-end">Lines</th><th class="text-end">Origin</th></tr>
         </thead>

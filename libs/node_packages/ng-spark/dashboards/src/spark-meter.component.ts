@@ -1,6 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, LOCALE_ID } from '@angular/core';
 import { formatNumber } from '@angular/common';
-import { Color } from '@mintplayer/ng-bootstrap';
 import { BsProgressBarComponent, BsProgressComponent } from '@mintplayer/ng-bootstrap/progress-bar';
 import type { SparkAttributeColumnRenderer, SparkAttributeDetailRenderer } from '@mintplayer/ng-spark/renderers';
 import { formatSparkDashboardValue, SparkDashboardFormat, sparkThresholdColor, toSparkNumber } from './dashboard-format';
@@ -24,7 +23,7 @@ interface MeterView {
   max: number;
   /** The share of the ceiling, in percent (0–100), one decimal. */
   share: number;
-  color: Color;
+  color: 'success' | 'warning' | 'danger';
   text: string;
 }
 
@@ -80,7 +79,7 @@ export class SparkMeterComponent implements SparkAttributeColumnRenderer, SparkA
       value,
       max,
       share,
-      color: threshold === 'danger' ? Color.danger : threshold === 'warning' ? Color.warning : Color.success,
+      color: threshold ?? 'success',
       text: `${formatSparkDashboardValue(value, format, this.locale)} / ${formatSparkDashboardValue(max, format, this.locale)} (${formatNumber(share, this.locale, '1.0-1')}%)`,
     };
   });

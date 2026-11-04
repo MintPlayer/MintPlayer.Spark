@@ -5,7 +5,7 @@ import { BsFormComponent, BsFormControlDirective } from '@mintplayer/ng-bootstra
 import { BsGridComponent, BsGridRowDirective, BsGridColDirective } from '@mintplayer/ng-bootstrap/grid';
 import { BsInputGroupComponent } from '@mintplayer/ng-bootstrap/input-group';
 import { BsButtonTypeDirective } from '@mintplayer/ng-bootstrap/button-type';
-import { BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective } from '@mintplayer/ng-bootstrap/modal';
+import { BsModalComponent, BsModalHeaderDirective, BsModalFooterDirective } from '@mintplayer/ng-bootstrap/modal';
 import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
 import { LookupReferenceValue, resolveTranslation } from '@mintplayer/ng-spark/models';
 import { TranslateKeyPipe, ResolveTranslationPipe } from '@mintplayer/ng-spark/pipes';
@@ -19,7 +19,7 @@ import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
  */
 @Component({
   selector: 'spark-lookup-picker',
-  imports: [FormsModule, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColDirective, BsInputGroupComponent, BsButtonTypeDirective, BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective, BsTableComponent, SparkIconComponent, TranslateKeyPipe, ResolveTranslationPipe],
+  imports: [FormsModule, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColDirective, BsInputGroupComponent, BsButtonTypeDirective, BsModalComponent, BsModalHeaderDirective, BsModalFooterDirective, BsTableComponent, SparkIconComponent, TranslateKeyPipe, ResolveTranslationPipe],
   templateUrl: './spark-lookup-picker.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })

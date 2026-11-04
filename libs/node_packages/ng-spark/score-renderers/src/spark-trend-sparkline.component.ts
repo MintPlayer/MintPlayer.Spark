@@ -17,7 +17,7 @@ import { SparkTrendBase } from './spark-trend-base';
     @if (points(); as p) {
       <bs-sparkline class="d-inline-block" [style.width]="settings().width" [style.height]="settings().height"
                     [points]="ys(p)" [yMin]="settings().yMin" [yMax]="settings().yMax"
-                    [inputLabel]="settings().label" />
+                    [inputLabel]="settings().label ?? null" />
     } @else {
       <span class="text-muted small">—</span>
     }

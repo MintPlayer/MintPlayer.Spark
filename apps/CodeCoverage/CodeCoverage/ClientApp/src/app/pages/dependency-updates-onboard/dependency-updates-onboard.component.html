@@ -5,7 +5,7 @@
   @let s = summary();
 
   @if (s?.setupAction === 'request') {
-    <bs-alert [type]="warningColor" class="d-block mb-3" data-testid="onboard-request">
+    <bs-alert [color]="'warning'" class="d-block mb-3" data-testid="onboard-request">
       <strong>{{ 'dependencyOnboardingUi.requestTitle' | t }}</strong> {{ 'dependencyOnboardingUi.requestBody' | t }}
     </bs-alert>
   }
@@ -18,33 +18,33 @@
   }
 
   @if (s && !s.linked) {
-    <bs-alert [type]="warningColor" class="d-block mb-3" data-testid="onboard-not-linked">
+    <bs-alert [color]="'warning'" class="d-block mb-3" data-testid="onboard-not-linked">
       {{ 'dependencyOnboardingUi.notLinked' | t }}
       <a routerLink="/account">{{ 'dependencyOnboardingUi.notLinkedAction' | t }}</a>
     </bs-alert>
   } @else if (s?.credentialState === 'ReauthRequired') {
-    <bs-alert [type]="warningColor" class="d-block mb-3" data-testid="onboard-reauth">
+    <bs-alert [color]="'warning'" class="d-block mb-3" data-testid="onboard-reauth">
       {{ 'dependencyOnboardingUi.reauth' | t }}
     </bs-alert>
   } @else if (s?.credentialState === 'Unavailable') {
-    <bs-alert [type]="warningColor" class="d-block mb-3" data-testid="onboard-unavailable">
+    <bs-alert [color]="'warning'" class="d-block mb-3" data-testid="onboard-unavailable">
       {{ 'dependencyOnboardingUi.unavailable' | t }}
     </bs-alert>
   }
 
   @if (loadError(); as err) {
-    <bs-alert [type]="dangerColor" class="d-block mb-3" data-testid="onboard-error">{{ err }}</bs-alert>
+    <bs-alert [color]="'danger'" class="d-block mb-3" data-testid="onboard-error">{{ err }}</bs-alert>
   }
 
   @if (s && s.linked && s.repositories === 0) {
-    <bs-alert [type]="infoColor" class="d-block mb-3" data-testid="onboard-empty">
+    <bs-alert [color]="'info'" class="d-block mb-3" data-testid="onboard-empty">
       <strong>{{ (s.narrowed ? 'dependencyOnboardingUi.emptyNarrowed' : 'dependencyOnboardingUi.empty') | t }}</strong>
       {{ 'dependencyOnboardingUi.whoMayEnable' | t }}
     </bs-alert>
   }
 
   @if (s && s.syncing > 0) {
-    <bs-alert [type]="infoColor" class="d-block mb-3" data-testid="onboard-syncing">
+    <bs-alert [color]="'info'" class="d-block mb-3" data-testid="onboard-syncing">
       {{ format('dependencyOnboardingUi.syncing', s.syncing) }}
     </bs-alert>
   }

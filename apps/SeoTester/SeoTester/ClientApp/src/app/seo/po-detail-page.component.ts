@@ -50,10 +50,10 @@ export function downloadUrlOf(action: string, result: unknown): string | null {
         }
         @case ('AuditRun') {
           @if (expired(po)) {
-            <bs-alert [type]="colors.secondary" class="d-block m-3" data-pages-expired>{{ 'seoUi.pagesExpired' | t }}</bs-alert>
+            <bs-alert [color]="'secondary'" class="d-block m-3" data-pages-expired>{{ 'seoUi.pagesExpired' | t }}</bs-alert>
           } @else {
             <!-- One result per page and site, the latest (owner decision 2026-10-12): a later audit takes the pages it checks again. -->
-            <bs-alert [type]="colors.secondary" class="d-block m-3" data-pages-latest>{{ 'seoUi.pagesLatestOnly' | t }}</bs-alert>
+            <bs-alert [color]="'secondary'" class="d-block m-3" data-pages-latest>{{ 'seoUi.pagesLatestOnly' | t }}</bs-alert>
           }
         }
         @case ('OperatorDashboard') {

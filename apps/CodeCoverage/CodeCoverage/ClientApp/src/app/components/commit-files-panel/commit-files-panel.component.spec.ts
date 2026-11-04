@@ -322,7 +322,7 @@ describe('CommitFilesPanelComponent', () => {
       expect(summary.textContent).toContain('2 changed file(s) measured by nobody');
       expect(summary.textContent).toContain('2 builds');
       expect(summary.textContent).toContain('(affected)');
-      expect(summary.querySelector('bs-badge .badge')?.classList.contains('text-bg-warning')).toBe(true);
+      expect(summary.querySelector('bs-badge.badge')?.classList.contains('text-bg-warning')).toBe(true);
 
       (summary.querySelector('a') as HTMLElement).click();
       expect(navigate).toHaveBeenCalledWith(['/', 'github', 'r', 'acme', 'widgets', 'c', 'bbbbbbbbbb']);
@@ -447,13 +447,13 @@ describe('CommitFilesPanelComponent', () => {
     });
 
     it('selecting a chart leaf opens that file', () => {
-      chart().componentInstance.nodeselect.emit({ node: { id: 'src/b.ts' } });
+      chart().componentInstance.nodeSelect.emit({ node: { id: 'src/b.ts' } });
       expect(navigate).toHaveBeenCalledWith(
         ['/', 'github', 'r', 'acme', 'widgets', 'c', 'abc1234567', 'f'], { queryParams: { path: 'src/b.ts' } });
     });
 
     it('the chart zoom root binds back into the component', () => {
-      chart().componentInstance.rootidchange.emit('src');
+      chart().componentInstance.rootIdChange.emit('src');
       expect(component.chartRootId()).toBe('src');
     });
   });
