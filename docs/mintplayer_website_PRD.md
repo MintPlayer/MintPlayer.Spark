@@ -97,7 +97,9 @@ says otherwise:
 - **Server pages**: SeoTester's `Pages/ServerPage.cs` and `Legal/LegalPages.cs` render no-script HTML with
   nl/en culture selection. That is the pattern for bot-facing and SEO pages.
 - **Not in Spark**: generators for sitemap, robots and OpenSearch. These are written in the app as minimal
-  `MapGet` endpoints placed before the SPA fallback.
+  `MapGet` endpoints placed before the SPA fallback. *(Superseded for the sitemap, 2026-11-03: it is the generic
+  `MintPlayer.Spark.SitemapXml` library with generator endpoints, `docs/spark_ssr_PRD.md` D17; `robots.txt` is a
+  static file in ClientApp/public.)*
 
 ### 2.4 Your libraries, checked against Angular 22 (npm, 2026-10-22)
 
