@@ -14,6 +14,11 @@ public static class SparkSearchExtensions
 {
     public static ISparkBuilder AddSearch(this ISparkBuilder builder, Action<SparkSearchOptions>? configure = null)
     {
+        // A second call would map the endpoints twice. AddOpenSearchDescription adds search itself when it is missing,
+        // so a configured AddSearch must come first.
+        if (builder.Services.Any(d => d.ServiceType == typeof(ISparkSearch)))
+            throw new InvalidOperationException("AddSearch was already called. AddOpenSearchDescription adds it when it is missing: call AddSearch(...) before it.");
+
         var options = new SparkSearchOptions();
         configure?.Invoke(options);
 

@@ -30,6 +30,7 @@
 		<ProjectReference Include="..\..\..\libs\sitemap\MintPlayer.Spark.SitemapXml\MintPlayer.Spark.SitemapXml.csproj" />
 		<ProjectReference Include="..\..\..\libs\search\MintPlayer.Spark.Search\MintPlayer.Spark.Search.csproj" />
 		<ProjectReference Include="..\..\..\libs\search\MintPlayer.Spark.Search.OpenSearch\MintPlayer.Spark.Search.OpenSearch.csproj" />
+		<ProjectReference Include="..\..\..\libs\search\MintPlayer.Spark.OpenSearchDescription\MintPlayer.Spark.OpenSearchDescription.csproj" />
 		<ProjectReference Include="..\..\..\libs\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
 		<ProjectReference Include="..\..\..\libs\source_generators\MintPlayer.Spark.LibraryGenerators\MintPlayer.Spark.LibraryGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
 	</ItemGroup>

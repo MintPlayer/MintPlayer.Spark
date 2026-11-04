@@ -67,9 +67,12 @@ Issues #238 and #560. **One PR**, branch `feat/issue238-search`.
 
 ## M5 — `MintPlayer.Spark.OpenSearchDescription`
 
-- [ ] Wrapper per D9 (SitemapXml shape, PackageReference `MintPlayer.AspNetCore.OpenSearch` 11.0.x).
-- [ ] `SparkOpenSearchService` → labels / SingleHit (D4).
-- [ ] R3 exception, route snapshot (`SPARK_UPDATE_ROUTE_SNAPSHOT`), `CsrfSurfaceTests`.
+- [x] Wrapper per D9 (SitemapXml shape, PackageReference `MintPlayer.AspNetCore.OpenSearch` 11.0.1-rc.1, latest tag).
+      Calls `AddSearch()` when missing; `AddSearch` now throws on a second call (it would map its endpoints twice).
+- [x] `SparkOpenSearchService` → labels / SingleHit (D4), same per-address budget as `/spark/search/*`.
+- [x] R3 exception: not needed (S1). Route snapshot / `CsrfSurfaceTests`: neither covers MintPlayer (snapshots are
+      per app, MintPlayer has none, and `CsrfSurfaceTests` is CodeCoverage's); every new endpoint is a GET.
+      mintplayer.com: `AddOpenSearchDescription(o => o.ShortName = "MintPlayer")`, Dockerfile + path filters.
 
 ## M6 — ng-spark `search` entry point
 

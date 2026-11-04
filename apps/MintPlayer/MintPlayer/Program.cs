@@ -12,6 +12,7 @@ using MintPlayer.Spark.Extensions;
 using MintPlayer.Spark.History;
 using MintPlayer.Spark.MailManager;
 using MintPlayer.Spark.Messaging;
+using MintPlayer.Spark.OpenSearchDescription;
 using MintPlayer.Spark.Search;
 using MintPlayer.Spark.Search.OpenSearch;
 using MintPlayer.Spark.SitemapXml;
@@ -68,6 +69,8 @@ builder.Services.AddSpark(builder.Configuration, spark =>
         if (builder.Configuration["Search:OpenSearch:Uri"] is { Length: > 0 } engine)
             search.UseOpenSearch(o => o.Uri = new Uri(engine));
     });
+    // The browser's "add search engine": /opensearch.xml, linked by withOpenSearchDescription() in app.config.ts.
+    spark.AddOpenSearchDescription(o => o.ShortName = "MintPlayer");
 });
 
 builder.Services.AddScoped<MintPlayerAccess>();
