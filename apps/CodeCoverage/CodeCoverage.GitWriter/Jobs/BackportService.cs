@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 using CodeCoverage.Git;
+using CodeCoverage.Git.Backports;
 using CodeCoverage.Git.MergeQueue;
 
 namespace CodeCoverage.GitWriter.Jobs;
@@ -15,8 +16,10 @@ public sealed record BackportJob(
 /// A backport (#153 M10, PRD D10): the merged pull request's change applied to each release branch as one new commit,
 /// pushed to a new <c>backport/…</c> branch for the app to open a pull request from. Spike S8 showed the merge queue's
 /// replay does not fit (it rebases a branch onto a moving base); this is plumbing instead. Each target is a three-way
-/// <c>merge-tree</c> of the change against its own parent, so a cherry-pick in memory; a conflict refuses everything,
-/// because a half-applied backport across lines is worse than none, and no conflict resolver runs on old lines.
+/// <c>merge-tree</c> of the change against its own parent, so a cherry-pick in memory, after the platform values of the
+/// parent and the change are rewritten to the line's (#570 S2, D8), so a marker-only hunk vanishes. Every target has
+/// its own outcome (#570 D6, superseding #153 D10's all-or-nothing): the source pull request is merged already, so a
+/// conflict on one line buys nothing by holding back another.
 /// </summary>
 /// <remarks>
 /// How the pull request was merged decides what "the change" is. A merge commit's is <c>c^1..c</c>; a squash's is the
@@ -34,6 +37,7 @@ public sealed partial class BackportService(JobRunner jobs)
     public const string Exists = "exists";
     public const string Empty = "empty";
     public const string Rejected = "rejected";
+    public const string Conflicted = "conflicted";
 
     public Task<VersioningBackportResponse> RunAsync(BackportJob job) => jobs.RunAsync("versioning-backport", job.Repo, async context =>
     {
@@ -49,12 +53,16 @@ public sealed partial class BackportService(JobRunner jobs)
 
         var commit = await ReadAsync(context, job.Commit);
         var (mode, @base, picked) = await ChangeAsync(context, job, commit);
+        var markerPaths = await MarkerPathsAsync(context, @base, job.Commit);
 
-        var trees = new List<(string Branch, string Head, string Tip, string? Tree, IReadOnlyList<string> Conflicts)>();
+        var message = Message(job, commit, picked);
+        var author = Author(commit.Raw) ?? job.Committer;
+        var results = new List<BackportTargetResult>();
         foreach (var (branch, head) in job.Targets)
         {
             var tip = WriterService.Oid(await context.RequireAsync(["rev-parse", "--verify", "refs/heads/" + branch + "^{commit}"]), "rev-parse");
-            var merge = await context.GitAsync(["merge-tree", "--write-tree", "-z", "--messages", "--merge-base=" + @base, tip, job.Commit], null);
+            var (mergeBase, theirs, platformChanges) = await NormalizeAsync(context, job, tip, @base, job.Commit, markerPaths);
+            var merge = await context.GitAsync(["merge-tree", "--write-tree", "-z", "--messages", "--merge-base=" + mergeBase, tip, theirs], null);
             if (merge.ExitCode is not (0 or 1))
                 throw new GitCommandException("merge-tree", merge);
             MergeTreeOutput output;
@@ -69,38 +77,105 @@ public sealed partial class BackportService(JobRunner jobs)
             var conflicts = output.Stages.Select(s => s.Path)
                 .Concat(output.Messages.Where(m => m.Type.StartsWith("CONFLICT", StringComparison.Ordinal)).SelectMany(m => m.Paths))
                 .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
-            trees.Add((branch, head, tip, merge.ExitCode == 0 && conflicts.Count == 0 ? output.Tree : null, conflicts));
-        }
 
-        // Nothing is pushed unless every target applies (D10).
-        if (trees.Any(t => t.Tree is null))
-            return new VersioningBackportResponse(JobOutcomes.Conflicted, null, mode, @base,
-                trees.Select(t => new BackportTargetResult(t.Branch, t.Head, null, null, t.Conflicts)).ToList(), null, context.ElapsedMilliseconds);
-
-        var message = Message(job, commit, picked);
-        var author = Author(commit.Raw) ?? job.Committer;
-        var results = new List<BackportTargetResult>();
-        foreach (var (branch, head, tip, tree, _) in trees)
-        {
-            var tipTree = WriterService.Oid(await context.RequireAsync(["rev-parse", "--verify", tip + "^{tree}"]), "rev-parse");
-            if (tipTree == tree)
+            // Each line stands on its own (#570 D6): a conflict here holds back no other line.
+            if (merge.ExitCode != 0 || conflicts.Count > 0)
             {
-                results.Add(new BackportTargetResult(branch, head, null, Empty, []));
+                results.Add(new BackportTargetResult(branch, head, null, Conflicted, conflicts, platformChanges));
                 continue;
             }
-            var built = WriterService.Oid(await context.RequireAsync(["commit-tree", tree!, "-p", tip, "-F", "-"], input: message, author: author, committer: job.Committer),
+            var tipTree = WriterService.Oid(await context.RequireAsync(["rev-parse", "--verify", tip + "^{tree}"]), "rev-parse");
+            if (tipTree == output.Tree)
+            {
+                results.Add(new BackportTargetResult(branch, head, null, Empty, [], platformChanges));
+                continue;
+            }
+            var built = WriterService.Oid(await context.RequireAsync(["commit-tree", output.Tree, "-p", tip, "-F", "-"], input: message, author: author, committer: job.Committer),
                 "commit-tree");
             var push = await WriterService.PushAsync(context, job.CloneUrl, job.Credential, built, "refs/heads/" + head, expected: null);
             results.Add(push switch
             {
-                WriterService.Push.Done or WriterService.Push.UpToDate => new BackportTargetResult(branch, head, built, Created, []),
-                WriterService.Push.LeaseRejected => new BackportTargetResult(branch, head, built, Exists, []),
-                WriterService.Push.Rejected rejected => new BackportTargetResult(branch, head, built, Rejected, [], rejected.Detail),
+                WriterService.Push.Done or WriterService.Push.UpToDate => new BackportTargetResult(branch, head, built, Created, [], platformChanges),
+                WriterService.Push.LeaseRejected => new BackportTargetResult(branch, head, built, Exists, [], platformChanges),
+                WriterService.Push.Rejected rejected => new BackportTargetResult(branch, head, built, Rejected, [], platformChanges, rejected.Detail),
                 _ => throw new InvalidOperationException(),
             });
         }
         return new VersioningBackportResponse(JobOutcomes.Backported, null, mode, @base, results, null, context.ElapsedMilliseconds);
     }, (outcome, reason, detail, ms) => new VersioningBackportResponse(outcome, reason, null, null, [], detail, ms));
+
+    /// <summary>The paths the change touches that can hold platform markers (#570 S2).</summary>
+    private static async Task<IReadOnlyList<string>> MarkerPathsAsync(JobContext context, string @base, string commit)
+    {
+        var diff = await context.RequireAsync(["diff", "--name-only", "-z", "--no-renames", @base, commit]);
+        return diff.StandardOutput.Split('\0', StringSplitOptions.RemoveEmptyEntries).Where(PlatformMarkers.Handles).ToList();
+    }
+
+    /// <summary>
+    /// The merge base and the change with their platform values rewritten to the line's (<see cref="PlatformMarkers"/>),
+    /// as throwaway commits that are never pushed; the originals when nothing needed rewriting. Plus the platform values
+    /// the change edits on the line's own platform, which are left to the merge.
+    /// </summary>
+    private static async Task<(string Base, string Theirs, IReadOnlyList<PlatformChange> Changes)> NormalizeAsync(
+        JobContext context, BackportJob job, string tip, string @base, string theirs, IReadOnlyList<string> paths)
+    {
+        var changes = new List<PlatformChange>();
+        var baseFiles = new List<(string Path, string Mode, string Content)>();
+        var theirsFiles = new List<(string Path, string Mode, string Content)>();
+        foreach (var path in paths)
+        {
+            var ours = await BlobAsync(context, tip, path);
+            var before = await BlobAsync(context, @base, path);
+            var after = await BlobAsync(context, theirs, path);
+            if (ours is { Text: null } || before is { Text: null } || after is { Text: null })
+                continue;   // not UTF-8 text: left to the plain merge
+            if (PlatformMarkers.Normalize(path, ours?.Text, before?.Text, after?.Text) is not { } normalized)
+                continue;
+            changes.AddRange(normalized.PlatformChanges);
+            if (before is not null && normalized.Base != before.Text)
+                baseFiles.Add((path, before.Mode, normalized.Base!));
+            if (after is not null && normalized.Theirs != after.Text)
+                theirsFiles.Add((path, after.Mode, normalized.Theirs!));
+        }
+        return (await RewriteAsync(context, job, @base, baseFiles), await RewriteAsync(context, job, theirs, theirsFiles), changes);
+    }
+
+    private sealed record Blob(string Mode, string? Text);
+
+    /// <summary>The file at <paramref name="commit"/>; null when absent. <see cref="Blob.Text"/> is null for content that
+    /// is not UTF-8, which must not be decoded and written back. A byte order mark is kept.</summary>
+    private static async Task<Blob?> BlobAsync(JobContext context, string commit, string path)
+    {
+        var entry = (await context.RequireAsync(["ls-tree", "-z", commit, "--", path])).StandardOutput.Split('\0', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+        if (entry is null || entry.Split(' ', 3) is not [var mode, "blob", var rest] || rest.Split('\t', 2) is not [var oid, _])
+            return null;
+        var text = (await context.RequireAsync(["cat-file", "blob", oid])).StandardOutput;
+        var size = long.Parse((await context.RequireAsync(["cat-file", "-s", oid])).StandardOutput.Trim(), CultureInfo.InvariantCulture);
+        var bytes = Encoding.UTF8.GetByteCount(text);
+        if (size == bytes + 3)
+            text = "﻿" + text;   // the reader drops the mark; put it back so the rewrite keeps it
+        else if (size != bytes || text.Contains('�'))
+            return new Blob(mode, null);
+        return new Blob(mode, text);
+    }
+
+    private static async Task<string> RewriteAsync(JobContext context, BackportJob job, string commit, List<(string Path, string Mode, string Content)> files)
+    {
+        if (files.Count == 0)
+            return commit;
+        var index = Path.Combine(context.Scratch, $"normalize-{Guid.NewGuid():N}.index");
+        await context.RequireAsync(["read-tree", commit], index: index);
+        var info = new StringBuilder();
+        foreach (var (path, mode, content) in files)
+        {
+            var blob = WriterService.Oid(await context.RequireAsync(["hash-object", "-w", "--stdin"], input: content), "hash-object");
+            info.Append(mode).Append(' ').Append(blob).Append('\t').Append(path).Append('\0');
+        }
+        await context.RequireAsync(["update-index", "-z", "--index-info"], input: info.ToString(), index: index);
+        var tree = WriterService.Oid(await context.RequireAsync(["write-tree"], index: index), "write-tree");
+        return WriterService.Oid(await context.RequireAsync(["commit-tree", tree, "-m", "normalized platform markers"], author: job.Committer, committer: job.Committer),
+            "commit-tree");
+    }
 
     private sealed record Commit(string Sha, IReadOnlyList<string> Parents, string Message, string Raw);
 

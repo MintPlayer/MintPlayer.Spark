@@ -58,6 +58,13 @@ public static class PlatformMarkers
             name => name.StartsWith("@angular/", StringComparison.Ordinal) ? "@angular" : name, false),
     ];
 
+    /// <summary>Whether <paramref name="path"/> can hold markers, so whether <see cref="Normalize"/> needs its blobs.</summary>
+    public static bool Handles(string path)
+    {
+        path = path.Replace('\\', '/');
+        return Kinds.Any(k => k.Handles(path));
+    }
+
     /// <summary>Normalizes one file of a backport. <paramref name="ours"/> is the release line's copy (null when the
     /// line lacks the file), <paramref name="base"/> and <paramref name="theirs"/> the merge base's and the change's.
     /// Null when <paramref name="path"/> holds no markers.</summary>

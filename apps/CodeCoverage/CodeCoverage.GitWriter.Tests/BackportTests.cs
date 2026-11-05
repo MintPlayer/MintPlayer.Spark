@@ -5,8 +5,8 @@ using CodeCoverage.GitWriter.Tests._Infrastructure;
 namespace CodeCoverage.GitWriter.Tests;
 
 /// <summary>
-/// #153 M10: a merged pull request applied to release branches (D10). Every target is merged in memory first; one
-/// conflicting target means nothing is pushed anywhere.
+/// #153 M10: a merged pull request applied to release branches. Each target is merged in memory on its own, after the
+/// platform values are normalized to the line's (#570 S2, D8), and gets its own outcome (#570 D6).
 /// </summary>
 public class BackportTests : WriterTestBase
 {
@@ -62,8 +62,9 @@ public class BackportTests : WriterTestBase
     }
 
     [Fact]
-    public async Task One_conflicting_line_pushes_nothing_anywhere()
+    public async Task A_conflicting_line_does_not_hold_back_a_clean_one()
     {
+        // #570 D6: lines are independent; the source pull request is merged already, so blocking 1.x buys nothing.
         var origin = Lines();
         origin.Checkout("release/2.x").Write("README.md", "two\n");
         origin.Commit("2.x: readme");
@@ -74,12 +75,78 @@ public class BackportTests : WriterTestBase
 
         var response = await Writer.BackportAsync(Request(origin, squash, ["fix"], "1.x", "2.x"));
 
-        response.Outcome.Should().Be("conflicted", response.Detail);
-        response.Targets.Single(t => t.Branch == "release/1.x").Conflicts.Should().BeEmpty();
-        response.Targets.Single(t => t.Branch == "release/2.x").Conflicts.Should().Equal("README.md");
-        response.Targets.Select(t => t.Push).Should().AllSatisfy(p => p.Should().BeNull());
-        origin.Ref("refs/heads/backport/7-1.x").Should().BeNull();
+        response.Outcome.Should().Be("backported", response.Detail);
+        response.Targets.Single(t => t.Branch == "release/1.x").Push.Should().Be(BackportService.Created);
+        var conflicted = response.Targets.Single(t => t.Branch == "release/2.x");
+        conflicted.Push.Should().Be(BackportService.Conflicted);
+        conflicted.Conflicts.Should().Equal("README.md");
+        conflicted.Commit.Should().BeNull();
+        origin.InBare("cat-file", "blob", origin.Ref("refs/heads/backport/7-1.x") + ":README.md").Should().Be("fixed\n");
         origin.Ref("refs/heads/backport/7-2.x").Should().BeNull();
+    }
+
+    private static string Project(string tfm, string nullable = "enable")
+        => $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{tfm}</TargetFramework>\n    <Nullable>{nullable}</Nullable>\n  </PropertyGroup>\n</Project>\n";
+
+    /// <summary>A project on net10.0, <c>release/1.x</c> cut there, then main moved to net11.0 (the #442 shape).</summary>
+    private Origin PlatformLines()
+    {
+        var origin = Seed();
+        origin.Checkout("main").Write("Lib/Lib.csproj", Project("net10.0"));
+        origin.Commit("lib");
+        origin.Push("main");
+        origin.Checkout("release/1.x", "main").Push("release/1.x");
+        origin.Checkout("main").Write("Lib/Lib.csproj", Project("net11.0"));
+        origin.Commit("feat: net11 (#6)");
+        origin.Push("main");
+        return origin;
+    }
+
+    [Fact]
+    public async Task An_edit_next_to_the_framework_lands_on_the_older_line_with_its_framework()
+    {
+        // #570 S2 scenario B: today this conflicts on the TargetFramework line next to the edit.
+        var origin = PlatformLines();
+        origin.Write("Lib/Lib.csproj", Project("net11.0", "disable"));
+        var squash = origin.Commit("fix: nullable off (#7)");
+        origin.Push("main");
+
+        var response = await Writer.BackportAsync(Request(origin, squash, ["fix"], "1.x"));
+
+        var target = response.Targets.Single();
+        target.Push.Should().Be(BackportService.Created, string.Join(", ", target.Conflicts));
+        target.PlatformChanges.Should().BeEmpty();
+        origin.InBare("cat-file", "blob", origin.Ref("refs/heads/backport/7-1.x") + ":Lib/Lib.csproj").Should().Be(Project("net10.0", "disable"));
+    }
+
+    [Fact]
+    public async Task A_change_of_the_line_own_platform_conflicts_and_says_so()
+    {
+        var origin = PlatformLines();
+        origin.Write("Lib/Lib.csproj", Project("net10.0;net11.0"));
+        var squash = origin.Commit("feat: multi-target (#7)");
+        origin.Push("main");
+
+        var response = await Writer.BackportAsync(Request(origin, squash, ["feat"], "1.x"));
+
+        var target = response.Targets.Single();
+        target.Push.Should().Be(BackportService.Conflicted);
+        target.Conflicts.Should().Equal("Lib/Lib.csproj");
+        target.PlatformChanges.Should().Equal([new("Lib/Lib.csproj", "TargetFramework", "net11.0", "net10.0;net11.0")]);
+    }
+
+    [Fact]
+    public async Task A_platform_move_above_the_line_is_already_there()
+    {
+        var origin = PlatformLines();
+        origin.Write("Lib/Lib.csproj", Project("net12.0"));
+        var squash = origin.Commit("feat: net12 (#7)");
+        origin.Push("main");
+
+        var response = await Writer.BackportAsync(Request(origin, squash, ["feat"], "1.x"));
+
+        response.Targets.Single().Push.Should().Be(BackportService.Empty);
+        origin.Ref("refs/heads/backport/7-1.x").Should().BeNull();
     }
 
     [Fact]

@@ -37,10 +37,11 @@ public partial class BackportEventsRecipient : IRecipient<ForgeWebhookMessage<Ba
 }
 
 /// <summary>
-/// A backport (#153 M10, PRD D10). The writer merges the pull request's change onto every release line in memory; when
-/// all apply, each line gets a <c>backport/&lt;pr&gt;-&lt;line&gt;</c> branch and a pull request, so CI on it is the compile
-/// check against the line's platform. When any line conflicts nothing is pushed, and the original pull request gets a
-/// comment naming the files and the commands to do it by hand.
+/// A backport (#153 M10, PRD D10). The writer merges the pull request's change onto every release line in memory, after
+/// normalizing its platform values to the line's (#570 S2); each line that applies gets a
+/// <c>backport/&lt;pr&gt;-&lt;line&gt;</c> branch and a pull request, so CI on it is the compile check against the line's
+/// platform. Lines are independent (#570 D6): a line that conflicts gets nothing pushed, and the original pull request's
+/// comment names its files, the platform values the change edits there, and the commands to do it by hand.
 /// </summary>
 /// <remarks>
 /// Who may ask: a label or comment needs write access (T1, the role read from the forge per request, as the merge queue
@@ -163,11 +164,10 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
     {
         if (result is null)
             return "The backport could not run (the git writer was unavailable); add the label again to retry.";
-        if (result.Outcome == GitWriterBackportResult.Conflicted)
-            return ConflictComment(commit, result);
         if (result.Outcome != GitWriterBackportResult.Backported)
             return $"The backport failed ({result.Reason ?? result.Outcome}). {result.Detail}".TrimEnd();
 
+        // Each line has its own outcome (#570 D6): a conflict on one holds back no other.
         var lines = new List<string>();
         foreach (var target in result.Targets ?? [])
         {
@@ -175,7 +175,8 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
             {
                 case GitWriterBackportTargetResult.Created:
                     var opened = await forge.OpenPullRequestAsync(repository, target.Head, target.Branch, $"[{Line(target.Branch)}] {pull.Title}",
-                        $"Backport of #{pull.Number} to `{target.Branch}`.\n\nCherry-picked from {commit}. CI on this pull request is the check against the line's platform.",
+                        $"Backport of #{pull.Number} to `{target.Branch}`.\n\nCherry-picked from {commit}. CI on this pull request is the check against the line's platform."
+                        + PlatformNote(target),
                         cancellationToken);
                     lines.Add($"- `{target.Branch}`: #{opened}");
                     break;
@@ -185,16 +186,22 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
                 case GitWriterBackportTargetResult.Empty:
                     lines.Add($"- `{target.Branch}`: already holds this change.");
                     break;
+                case GitWriterBackportTargetResult.Conflicted:
+                    lines.Add($"- `{target.Branch}`: conflicts; nothing was pushed (see below).");
+                    break;
                 default:
                     lines.Add($"- `{target.Branch}`: the push was rejected. {target.Detail}".TrimEnd());
                     break;
             }
         }
-        return lines.Count == 0 ? null : "Backports:\n\n" + string.Join('\n', lines);
+        if (lines.Count == 0)
+            return null;
+        return "Backports:\n\n" + string.Join('\n', lines) + ConflictSections(commit, result);
     }
 
-    /// <summary>The files per line and the commands to do it by hand; nothing was pushed (D10).</summary>
-    internal static string ConflictComment(string commit, GitWriterBackportResult result)
+    /// <summary>Per conflicting line: the files, the platform values the change edits there, and the commands to do it
+    /// by hand. Empty when no line conflicts.</summary>
+    internal static string ConflictSections(string commit, GitWriterBackportResult result)
     {
         var pick = result.Mode switch
         {
@@ -202,15 +209,33 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
             "rebase" when result.Base is { } @base => $"git cherry-pick -x {@base}..{commit}",
             _ => $"git cherry-pick -x {commit}",
         };
-        var builder = new StringBuilder("Nothing was backported: the change does not apply cleanly to every line.\n");
+        var builder = new StringBuilder();
         foreach (var target in result.Targets ?? [])
         {
-            if (target.Conflicts is not { Count: > 0 } conflicts) continue;
-            builder.Append(CultureInfo.InvariantCulture, $"\n`{target.Branch}` conflicts on:\n");
-            foreach (var path in conflicts.Take(50))
+            if (target.Push != GitWriterBackportTargetResult.Conflicted) continue;
+            builder.Append(CultureInfo.InvariantCulture, $"\n\n`{target.Branch}` conflicts on:\n");
+            foreach (var path in (target.Conflicts ?? []).Take(50))
                 builder.Append(CultureInfo.InvariantCulture, $"- `{path}`\n");
+            builder.Append(PlatformNote(target));
             builder.Append(CultureInfo.InvariantCulture,
-                $"\nTo do it by hand:\n\n```\ngit fetch origin\ngit switch -c {target.Head} origin/{target.Branch}\n{pick}\n```\n");
+                $"\nTo do it by hand:\n\n```\ngit fetch origin\ngit switch -c {target.Head} origin/{target.Branch}\n{pick}\n```");
+        }
+        return builder.ToString();
+    }
+
+    /// <summary>The platform values the change edits on this line's own platform (#570 D8's safety rule): never
+    /// normalized away, so the reader knows why a marker line conflicts or changed.</summary>
+    internal static string PlatformNote(GitWriterBackportTargetResult target)
+    {
+        if (target.PlatformChanges is not { Count: > 0 } changes)
+            return "";
+        var builder = new StringBuilder("\n\nThe change edits this line's platform:\n");
+        foreach (var change in changes.Take(20))
+        {
+            if (change.Before.Length == 0)
+                builder.Append(CultureInfo.InvariantCulture, $"- `{change.Path}`: adds {change.Marker} `{change.After}`\n");
+            else
+                builder.Append(CultureInfo.InvariantCulture, $"- `{change.Path}`: {change.Marker} `{change.Before}` → `{change.After}`\n");
         }
         return builder.ToString();
     }

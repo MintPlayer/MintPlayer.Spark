@@ -601,4 +601,41 @@ cascade: 66 of 72 conflicted only because #461 was missing). Script: a throwaway
   - Markers in `action.yml` outside `.github/`, `dotnet-tools.json`, Dockerfiles, `engines`, and coverage.yml
     `backport.markers`. These come with M5, where D8's catalog is wired in.
   - What a project new on the line gets. Today it is reported, not guessed.
+- **M5, first part (2026-11-05): normalization in the writer, and independent lines.**
+
+  How `BackportService` applies the change now:
+  - It lists the paths the change touches (`diff --name-only --no-renames <base> <commit>`) and keeps those
+    `PlatformMarkers.Handles`.
+  - Per target, it normalizes their blobs against the line tip's copy and writes the rewritten blobs into throwaway
+    commits, built in a throwaway index and never pushed.
+  - It runs `merge-tree --merge-base=<base'> <tip> <theirs'>` on those commits.
+
+  The safeguards:
+  - A blob that is not UTF-8 is left to the plain merge: the writer decodes git's output as UTF-8, so the blob size
+    is compared with the decoded byte count.
+  - A byte order mark is put back, because the reader drops it.
+  - The file mode is kept.
+
+  Each target now has its own `push` result, adding `conflicted`, and carries its `platformChanges`. The job's
+  outcome is `backported` whenever it ran. The writer never returns `conflicted` for the whole job any more, and the
+  app no longer reads it.
+
+  In the app's comment:
+  - every line gets its own bullet;
+  - a conflicting line gets its own section with its files, the platform values the change edits there, and the
+    manual commands;
+  - a created pull request's body lists those platform values.
+
+  **Tests:**
+  - Writer `BackportTests`:
+    - `A_conflicting_line_does_not_hold_back_a_clean_one`, which replaces `One_conflicting_line_pushes_nothing_anywhere`;
+    - scenario B lands on the line with `net10.0` and `disable`;
+    - `net10.0;net11.0` conflicts and reports;
+    - a move to `net12.0` is `empty`.
+  - App: `A_conflicting_line_still_lets_the_clean_line_open_its_pull_request`, and the platform note.
+
+  **Still M5:**
+  - the line's `autoResolve` rules and the resolver registry;
+  - `onConflict: draft` (D7);
+  - `backport.markers`.
 - **Every automatic resolution is listed in the per-line report** (D6): path, strategy, and what each side added.

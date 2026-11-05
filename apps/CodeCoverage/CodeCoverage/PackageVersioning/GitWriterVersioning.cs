@@ -81,18 +81,25 @@ public sealed record GitWriterBackportRequest(
 
 public sealed record GitWriterBackportTarget(string Branch, string Head);
 
-/// <summary>The writer's answer. <see cref="Conflicted"/> means no target was pushed.</summary>
+/// <summary>The writer's answer. <see cref="Backported"/> when the job ran; each target then has its own outcome
+/// (#570 D6).</summary>
 public sealed record GitWriterBackportResult(
     string Outcome, string? Reason, string? Mode, string? Base, IReadOnlyList<GitWriterBackportTargetResult>? Targets, string? Detail, long DurationMs)
 {
     public const string Backported = "backported";
-    public const string Conflicted = "conflicted";
 }
 
-/// <param name="Push"><c>created</c>, <c>exists</c>, <c>empty</c> (the line already holds the change) or <c>rejected</c>.</param>
-public sealed record GitWriterBackportTargetResult(string Branch, string Head, string? Commit, string? Push, IReadOnlyList<string>? Conflicts, string? Detail = null)
+/// <param name="Push"><c>created</c>, <c>exists</c>, <c>empty</c> (the line already holds the change), <c>rejected</c>
+/// or <c>conflicted</c> (nothing pushed to this line).</param>
+/// <param name="PlatformChanges">Platform values the change edits on this line's own platform (#570 S2, D8).</param>
+public sealed record GitWriterBackportTargetResult(string Branch, string Head, string? Commit, string? Push, IReadOnlyList<string>? Conflicts, string? Detail = null,
+    IReadOnlyList<GitWriterPlatformChange>? PlatformChanges = null)
 {
     public const string Created = "created";
     public const string Exists = "exists";
     public const string Empty = "empty";
+    public const string Conflicted = "conflicted";
 }
+
+/// <summary>One platform value the change edits on the line's platform; <see cref="Before"/> is empty for an added one.</summary>
+public sealed record GitWriterPlatformChange(string Path, string Marker, string Before, string After);

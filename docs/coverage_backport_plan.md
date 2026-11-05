@@ -140,8 +140,9 @@ PRD §8.2.
   - Concurrency per S9 (D17), and the `v<major>-next` dist-tag.
   - Per-line prerelease.
 - **M5 Writer.**
-  - Marker normalization (S2, D8) plus the resolver registry in `BackportService` (G1).
-  - Independent per-line outcomes (D6), with an empty result reported as already present.
+  - Marker normalization (S2, D8) plus the resolver registry in `BackportService` (G1). **Normalization done
+    (2026-11-05).** The resolver registry is still to do: it needs the line's `autoResolve` rules in the request.
+  - Independent per-line outcomes (D6), with an empty result reported as already present. **Done (2026-11-05).**
   - Draft-with-markers mode (D7).
 - **M6 Regeneration on backport branches** (S5, D9): dispatch the line's workflow, apply the patch, then open the PR.
 - **M7 Merge queue for lines** (D12):

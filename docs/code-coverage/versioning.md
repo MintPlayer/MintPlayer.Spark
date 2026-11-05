@@ -231,11 +231,19 @@ by side.
 packages never cut a branch.
 
 **Backport:** label a pull request `backport: 8.x`, or comment `/backport 8.x`. Once it is merged, the app
-dry-runs the cherry-pick onto every requested line.
+dry-runs the cherry-pick onto every requested line. Each line is handled on its own:
 
-- If every line applies, it pushes `backport/<pr>-<line>` and opens one pull request per line. The CI run on that
-  pull request is the compile check against the old target.
-- If any line conflicts, it pushes nothing and comments the failing files and the commands for a manual backport.
+- **Platform values are normalized first.** In the change and its parent, the app rewrites the target framework, the
+  framework package versions (`Microsoft.AspNetCore.*`, `.Extensions.*`, `.EntityFrameworkCore.*`), the
+  `global.json` SDK, the `dotnet-version`/`node-version` in `.github` workflows, and the `@angular/*`, `react`,
+  `react-dom` and `vue` ranges in `package.json` to the line's own values. A hunk that only moved the platform then
+  vanishes, and an edit next to one merges.
+- **A change to the line's own platform is never normalized away.** For example, `net11.0` → `net10.0;net11.0` on
+  a .NET 10 line. It merges or conflicts as git decides, and the comment names it.
+- **A line that applies** gets `backport/<pr>-<line>` and its own pull request. The CI run on that pull request is
+  the compile check against the old target. A line that already holds the change gets nothing.
+- **A line that conflicts** gets nothing pushed. The comment names its files and gives the commands for a manual
+  backport. The other lines are not held back.
 
 > **Protect release branches yourself.** A branch the app creates is unprotected unless a ruleset matches it. Add a
 > repository ruleset targeting `release/*` with at least *Restrict deletions* and *Block force pushes*, and require

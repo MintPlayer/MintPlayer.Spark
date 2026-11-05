@@ -42,12 +42,12 @@ public class BackportTests
     [Fact]
     public void A_conflict_names_the_files_and_the_commands_per_line()
     {
-        var result = new GitWriterBackportResult(GitWriterBackportResult.Conflicted, null, "merge", "b4se", [
-            new("release/1.x", "backport/7-1.x", null, null, []),
-            new("release/2.x", "backport/7-2.x", null, null, ["README.md"]),
+        var result = new GitWriterBackportResult(GitWriterBackportResult.Backported, null, "merge", "b4se", [
+            new("release/1.x", "backport/7-1.x", "d1", GitWriterBackportTargetResult.Created, []),
+            new("release/2.x", "backport/7-2.x", null, GitWriterBackportTargetResult.Conflicted, ["README.md"]),
         ], null, 12);
 
-        var comment = BackportRecipient.ConflictComment("c0ffee", result);
+        var comment = BackportRecipient.ConflictSections("c0ffee", result);
 
         comment.Should().Contain("`release/2.x` conflicts on:").And.Contain("- `README.md`")
             .And.Contain("git switch -c backport/7-2.x origin/release/2.x").And.Contain("git cherry-pick -x -m 1 c0ffee")
@@ -57,9 +57,20 @@ public class BackportTests
     [Fact]
     public void A_rebase_conflict_picks_the_whole_run()
     {
-        var result = new GitWriterBackportResult(GitWriterBackportResult.Conflicted, null, "rebase", "b4se",
-            [new("release/2.x", "backport/7-2.x", null, null, ["a.txt"])], null, 1);
+        var result = new GitWriterBackportResult(GitWriterBackportResult.Backported, null, "rebase", "b4se",
+            [new("release/2.x", "backport/7-2.x", null, GitWriterBackportTargetResult.Conflicted, ["a.txt"])], null, 1);
 
-        BackportRecipient.ConflictComment("c0ffee", result).Should().Contain("git cherry-pick -x b4se..c0ffee");
+        BackportRecipient.ConflictSections("c0ffee", result).Should().Contain("git cherry-pick -x b4se..c0ffee");
+    }
+
+    [Fact]
+    public void A_conflict_on_a_platform_value_names_the_value()
+    {
+        var result = new GitWriterBackportResult(GitWriterBackportResult.Backported, null, "squash", "b4se",
+            [new("release/dotnet-10.x", "backport/7-dotnet-10.x", null, GitWriterBackportTargetResult.Conflicted, ["Lib/Lib.csproj"], null,
+                [new("Lib/Lib.csproj", "TargetFramework", "net11.0", "net10.0;net11.0")])], null, 1);
+
+        BackportRecipient.ConflictSections("c0ffee", result).Should()
+            .Contain("The change edits this line's platform:\n- `Lib/Lib.csproj`: TargetFramework `net11.0` → `net10.0;net11.0`\n");
     }
 }

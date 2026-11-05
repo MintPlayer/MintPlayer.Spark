@@ -1,3 +1,5 @@
+using CodeCoverage.Git.Backports;
+
 namespace CodeCoverage.GitWriter.Jobs;
 
 // The writer's wire contract (camelCase JSON). Every request names the repository it works on and carries a short-lived,
@@ -336,8 +338,8 @@ public sealed record VersioningPlanResponse(
 
 /// <summary>
 /// <c>POST /jobs/versioning/backport</c> (#153 M10, PRD D10): apply a merged pull request's change to release branches.
-/// Every target is merged in memory first; when any one conflicts nothing is pushed, otherwise each target gets
-/// <see cref="BackportTargetWire.Head"/>, a new branch for the app to open a pull request from. The commit message is
+/// Each target is merged in memory on its own, and one that applies gets <see cref="BackportTargetWire.Head"/>, a new
+/// branch for the app to open a pull request from, whatever the other targets do (#570 D6). The commit message is
 /// built here from <see cref="Title"/> and the commits' ids, so a request can never carry an arbitrary message.
 /// </summary>
 public sealed class VersioningBackportRequestWire
@@ -370,11 +372,15 @@ public sealed class BackportTargetWire
 
 /// <param name="Commit">The backport commit; null when the target conflicts or already holds the change.</param>
 /// <param name="Push">One of <c>created</c>, <c>exists</c> (the head branch is there already), <c>empty</c> (the target
-/// already holds the change), <c>rejected</c>; null when nothing was pushed because a target conflicted.</param>
+/// already holds the change), <c>rejected</c>, or <c>conflicted</c> (nothing was pushed to this target; the others
+/// stand on their own, #570 D6).</param>
 /// <param name="Conflicts">The paths the target conflicts on; empty when it applies.</param>
-public sealed record BackportTargetResult(string Branch, string Head, string? Commit, string? Push, IReadOnlyList<string> Conflicts, string? Detail = null);
+/// <param name="PlatformChanges">The platform values the change itself edits on this line's platform, left to the merge
+/// instead of normalized (#570 S2, D8); empty when there are none.</param>
+public sealed record BackportTargetResult(
+    string Branch, string Head, string? Commit, string? Push, IReadOnlyList<string> Conflicts, IReadOnlyList<PlatformChange> PlatformChanges, string? Detail = null);
 
-/// <param name="Outcome"><see cref="JobOutcomes.Backported"/>, <see cref="JobOutcomes.Conflicted"/> (nothing pushed), or a failure.</param>
+/// <param name="Outcome"><see cref="JobOutcomes.Backported"/> when the job ran (each target has its own result), or a failure.</param>
 /// <param name="Mode"><c>merge</c>, <c>squash</c> or <c>rebase</c>: how the pull request was merged, which decides the base.</param>
 /// <param name="Base">The commit the change was taken against: the first parent, or for a rebase the commit before the run.</param>
 public sealed record VersioningBackportResponse(

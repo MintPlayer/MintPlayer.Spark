@@ -139,12 +139,14 @@ public class BackportRecipientTests : CoverageRavenTest
     public async Task A_conflict_names_the_files_and_the_cherry_pick_and_a_failure_its_reason()
     {
         using var store = GetDocumentStore();
-        WriterAnswers(new GitWriterBackportResult(GitWriterBackportResult.Conflicted, null, "squash", null,
-            [new("release/8.x", "backport/7-8.x", null, null, ["src/Guard.cs"])], null, 1));
+        WriterAnswers(new GitWriterBackportResult(GitWriterBackportResult.Backported, null, "squash", null,
+            [new("release/8.x", "backport/7-8.x", null, GitWriterBackportTargetResult.Conflicted, ["src/Guard.cs"])], null, 1));
 
         await HandleAsync(store, "maintainer", EBackportSource.Label, "8.x");
 
-        forge.Comments.Single().Body.Should().Contain("`src/Guard.cs`").And.Contain($"git cherry-pick -x {Merge}\n");
+        forge.Comments.Single().Body.Should().Contain("- `release/8.x`: conflicts; nothing was pushed (see below).")
+            .And.Contain("`src/Guard.cs`").And.Contain($"git cherry-pick -x {Merge}\n");
+        forge.OpenedPullRequests.Should().BeEmpty();
 
         WriterAnswers(new GitWriterBackportResult("failed", "clone-failed", null, null, null, "remote hung up", 1));
         await HandleAsync(store, "maintainer", EBackportSource.Label, "8.x");
@@ -231,5 +233,29 @@ public class BackportRecipientTests : CoverageRavenTest
             Arg.Any<CancellationToken>());
         forge.OpenedPullRequests.Should().Equal(("backport/7-8.x", "release/8.x", "[8.x] fix: guard",
             $"Backport of #7 to `release/8.x`.\n\nCherry-picked from {Merge}. CI on this pull request is the check against the line's platform."));
+    }
+
+    [Fact]
+    public async Task A_conflicting_line_still_lets_the_clean_line_open_its_pull_request()
+    {
+        // #570 D6: lines are independent.
+        using var store = GetDocumentStore();
+        git.GetBranchHeadAsync(Arg.Any<Repository>(), "release/7.x", Arg.Any<CancellationToken>()).Returns(new string('7', 40));
+        WriterAnswers(new GitWriterBackportResult(GitWriterBackportResult.Backported, null, "squash", null,
+        [
+            Target(GitWriterBackportTargetResult.Created) with
+            {
+                PlatformChanges = [new("global.json", "global.json sdk", "10.0.100", "10.0.200")],
+            },
+            new("release/7.x", "backport/7-7.x", null, GitWriterBackportTargetResult.Conflicted, ["src/Guard.cs"]),
+        ], null, 1));
+
+        await HandleAsync(store, "maintainer", EBackportSource.Label, "8.x", "7.x");
+
+        forge.OpenedPullRequests.Should().ContainSingle().Which.Body.Should()
+            .EndWith("The change edits this line's platform:\n- `global.json`: global.json sdk `10.0.100` → `10.0.200`\n");
+        var body = forge.Comments.Single().Body;
+        body.Should().StartWith("Backports:\n\n- `release/8.x`: #").And.Contain("- `release/7.x`: conflicts; nothing was pushed (see below).")
+            .And.Contain("`release/7.x` conflicts on:\n- `src/Guard.cs`");
     }
 }
