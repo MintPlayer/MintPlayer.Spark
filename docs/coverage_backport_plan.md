@@ -166,8 +166,10 @@ PRD §8.2.
   - **M8b default labels (D5, the current line always, D16) and the "Backport targets" check run, done
     (2026-11-05)**: the writer's ecosystems job, `defaultLabels`/`fixLabels`, line names resolved for backports.
     Details are in PRD §8.3, "M8b, built".
-  - `backported: <line>` labels and the PR-body marker.
-  - Recognising manual backport PRs and opening the PR on push (D7).
+  - **M8c provenance, done (2026-11-05)**: the `<!-- backport-of: owner/repo#N -->` marker in every body the app
+    writes, `backported: <line>` on the source when a backport merges, hand-made backports recognised (body, head,
+    `cherry-pick -x` trailer) and linked by a comment, and the pull request opened when a person creates
+    `backport/<pr>-<line>` (D7). Details are in PRD §8.3, "M8c, built".
   - The cross-repo dependency diagnosis (D11).
 - **M9 Dependencies on lines** (D13): a rolling PR per supported line, platform packages capped at the line's major,
   patch/security default, advisories outside the allowed range flagged. Pack verified by S4 (D10b; no upper bounds,

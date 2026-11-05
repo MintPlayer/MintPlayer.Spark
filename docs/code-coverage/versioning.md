@@ -292,6 +292,13 @@ backport:
 
 A section with errors is named in the backport comment, and its defaults apply.
 
+**Where a change was backported.** When a backport merges into a line, its original pull request gets a
+`backported: <line>` label. The app's own backports are recognised by a hidden marker in their description. A backport
+you make by hand is recognised too, when its description says `Backport of #N`, its branch is `backport/<N>-<line>`, or
+its commits were picked with `git cherry-pick -x`; the original then also gets a comment linking it. If you create a
+`backport/<N>-<line>` branch yourself (the commands a conflict comment gives you), the app opens its pull request into
+the line once you push it. The original must be a pull request merged into the default branch.
+
 > **Protect release branches yourself.** A branch the app creates is unprotected unless a ruleset matches it. Add a
 > repository ruleset targeting `release/*` with at least *Restrict deletions* and *Block force pushes*, and require
 > your CI checks if you merge backports through it.

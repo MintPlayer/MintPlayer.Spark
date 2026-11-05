@@ -907,4 +907,42 @@ cascade: 66 of 72 conflicted only because #461 was missing). Script: a throwaway
     label; a repository without lines untouched; a moved head.
   - `BackportYmlTests`: `defaultLabels`, `fixLabels`, a misspelt mode. `BackportTests`: line names resolve.
   - `GitWriterSidecarClientTests`: the route.
+- **M8c, built (2026-11-05): provenance, `backported:` labels and hand-made backports (§5.5, D7).**
+
+  **The marker.** Every body the app writes for a backport (the clean pull request and the `onConflict: draft` one)
+  ends in `<!-- backport-of: owner/repo#N -->` (`BackportProvenance.Marker`). The regeneration saga (M6) appends its
+  notes after the stored body, so the marker survives it. A marker naming another repository is ignored: a source is
+  only ever a pull request of the same repository.
+
+  **A backport merges** (`BackportLinkEventsRecipient` forwards every `PullRequestMerged` to the versioning lane;
+  `BackportLinkRecipient` does the reads). It acts only when the base is a line (the `versioning.lines` pattern when
+  lines are on, else `versioning.releaseBranches`) and not the default branch. The source is, in this order:
+  1. the marker (the app's own backport);
+  2. a body saying "Backport of #N", then a `backport/<N>-<line>` head (`BackportProvenance.FromText`);
+  3. a `cherry-pick -x` trailer in the pull request's commits (at most five), resolved through the merged pull request
+     into the default branch holding that commit.
+
+  The source must be a **merged pull request into the default branch**, so no text in a body can label an arbitrary
+  issue or an open pull request. It gets `backported: <line>` (the line name when the pattern matches, else the
+  branch's last segment), added once. A hand-made backport also gets a comment on the source linking it; the app's own
+  backport does not, since the backport report already links it.
+
+  **A person creates `backport/<pr>-<line>`** (the commands the conflict comment gives, M5): the app opens its pull
+  request into the line, titled `[<line>] <source title>`, with the marker. Only a push that **created** the branch and
+  was **not by a bot** counts: the push event now carries `Created` and `PushedByBot` (`BranchCommitPushed`, filled by
+  the GitHub normaliser). That keeps the app's own pushes out (its branches open their pull requests after regenerating,
+  M6, and racing that would open one before the regenerated commit), and a later push to a branch whose pull request a
+  maintainer closed does not reopen it. The line resolves as for labels (`ResolveLine`); a bare major with lines on
+  names nothing.
+
+  Cost accepted: one versioning-lane message and one `coverage.yml` read per merged pull request in a connected
+  repository; the forge reads follow only for merges into a line.
+
+  **Tests:**
+  - `BackportProvenanceTests`: the marker round trip (case, other repository), body and head parsing, trailers, the
+    label name.
+  - `BackportLinkRecipientTests`: the app's backport labels without a comment; a hand-made one (body, head, trailer)
+    labels and comments; merges into the default branch or a non-line, and unmerged or missing sources, do nothing; a
+    hand-pushed branch opens its pull request with the marker; a missing source or a bare major opens nothing; the
+    forwarder skips bots, later pushes and other branches.
 - **Every automatic resolution is listed in the per-line report** (D6): path, strategy, and what each side added.

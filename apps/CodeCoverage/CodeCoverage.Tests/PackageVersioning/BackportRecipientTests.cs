@@ -235,8 +235,11 @@ public class BackportRecipientTests : CoverageRavenTest
             Arg.Is<GitWriterBackportRequest>(r => r.Commit == Merge && r.SourceBranch == "main" && r.Targets.Single().Branch == "release/8.x" && r.Targets.Single().Head == "backport/7-8.x"),
             Arg.Any<CancellationToken>());
         forge.OpenedPullRequests.Should().Equal(("backport/7-8.x", "release/8.x", "[8.x] fix: guard",
-            $"Backport of #7 to `release/8.x`.\n\nCherry-picked from {Merge}. CI on this pull request is the check against the line's platform."));
+            $"Backport of #7 to `release/8.x`.\n\nCherry-picked from {Merge}. CI on this pull request is the check against the line's platform.\n\n" + Marker7));
     }
+
+    /// <summary>The provenance marker every backport body ends with (#570 M8c).</summary>
+    private static readonly string Marker7 = BackportProvenance.Marker("acme/widgets", 7);
 
     /// <summary>A queue section that reads clean: take-base needs a regenerate workflow, and no keep-both defaults.</summary>
     private const string QueueYml = "versioning:\nmergeQueue:\n  postRebaseActionName: regenerate.yml\n  keepBothDefaults: false\n  autoResolve:\n";
@@ -269,7 +272,7 @@ public class BackportRecipientTests : CoverageRavenTest
         await writer.Received(1).VersioningBackportAsync(
             Arg.Is<GitWriterBackportRequest>(r => r.Targets.Single().AutoResolve!.Single().Path == "**/packages.lock.json"), Arg.Any<CancellationToken>());
         forge.OpenedPullRequests.Single().Body.Should().EndWith(
-            "Conflicts resolved by the `mergeQueue.autoResolve` rules (the line's side is stage 2):\n- `App/packages.lock.json`: take-base, needs regenerating\n");
+            "Conflicts resolved by the `mergeQueue.autoResolve` rules (the line's side is stage 2):\n- `App/packages.lock.json`: take-base, needs regenerating\n\n" + Marker7);
         forge.Comments.Single().Body.Should().Contain(", with 1 conflict resolved automatically");
     }
 
@@ -291,7 +294,7 @@ public class BackportRecipientTests : CoverageRavenTest
         await HandleAsync(store, "maintainer", EBackportSource.Label, "8.x", "7.x");
 
         forge.OpenedPullRequests.Should().ContainSingle().Which.Body.Should()
-            .EndWith("The change edits this line's platform:\n- `global.json`: global.json sdk `10.0.100` → `10.0.200`\n");
+            .EndWith("The change edits this line's platform:\n- `global.json`: global.json sdk `10.0.100` → `10.0.200`\n\n" + Marker7);
         var body = forge.Comments.Single().Body;
         body.Should().StartWith("Backports:\n\n- `release/8.x`: #").And.Contain("- `release/7.x`: conflicts; nothing was pushed (see below).")
             .And.Contain("`release/7.x` conflicts on:\n- `src/Guard.cs`");
@@ -313,7 +316,7 @@ public class BackportRecipientTests : CoverageRavenTest
             Arg.Is<GitWriterBackportRequest>(r => r.Targets.Single().Draft && r.Markers!.Disable.Single() == "setup-action" && r.Markers.Packages.Single() == "@mintplayer/*"),
             Arg.Any<CancellationToken>());
         forge.DraftHeads.Should().Equal("backport/7-8.x");
-        forge.OpenedPullRequests.Single().Body.Should().Contain("**It conflicts**").And.EndWith("- `src/Guard.cs`");
+        forge.OpenedPullRequests.Single().Body.Should().Contain("**It conflicts**").And.EndWith("- `src/Guard.cs`\n\n" + Marker7);
         forge.Comments.Single().Body.Should().Contain("a draft with 1 conflicting file to resolve").And.NotContain("conflicts on:");
     }
 

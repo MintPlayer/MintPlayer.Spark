@@ -362,7 +362,9 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
                 Branch: branch,
                 Sha: evt.After,
                 Message: evt.HeadCommit.Message,
-                AuthoredAt: authoredAt)), ct);
+                AuthoredAt: authoredAt,
+                Created: evt.Created,
+                PushedByBot: evt.Sender?.Type == Octokit.Webhooks.Models.UserType.Bot)), ct);
 
         await RequestManifestScanAsync(evt, branch, repository, ct);
     }

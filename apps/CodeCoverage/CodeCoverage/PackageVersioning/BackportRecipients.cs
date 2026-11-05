@@ -194,8 +194,9 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
             {
                 case GitWriterBackportTargetResult.Created:
                     var title = $"[{Line(target.Branch)}] {pull.Title}";
-                    var body = $"Backport of #{pull.Number} to `{target.Branch}`.\n\nCherry-picked from {commit}. CI on this pull request is the check against the line's platform."
-                        + PlatformNote(target) + ResolutionNote(target);
+                    var body = BackportProvenance.WithMarker(
+                        $"Backport of #{pull.Number} to `{target.Branch}`.\n\nCherry-picked from {commit}. CI on this pull request is the check against the line's platform."
+                        + PlatformNote(target) + ResolutionNote(target), repository.FullName, pull.Number);
                     if (target.Regenerate is { Count: > 0 } regenerate)
                     {
                         // #570 D9, M6: the pull request opens once the line's workflow regenerated these files.
@@ -238,10 +239,12 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
                 case GitWriterBackportTargetResult.Drafted:
                     // D7 draft: the conflict markers are committed; NoConflictMarkers keeps the pull request red until resolved.
                     var draft = await forge.OpenPullRequestAsync(repository, target.Head, target.Branch, $"[{Line(target.Branch)}] {pull.Title}",
-                        $"Backport of #{pull.Number} to `{target.Branch}`.\n\nCherry-picked from {commit}. **It conflicts**: git's conflict markers are committed "
-                        + "in the files below. Resolve them on this branch, then mark the pull request ready.\n\n"
-                        + string.Join('\n', (target.Conflicts ?? []).Take(50).Select(p => $"- `{p}`")) + PlatformNote(target)
-                        + (target.Regenerate is { Count: > 0 } stale ? BackportRegenerationEngine.NotRegeneratedNote(stale, "the backport conflicts") : ""),
+                        BackportProvenance.WithMarker(
+                            $"Backport of #{pull.Number} to `{target.Branch}`.\n\nCherry-picked from {commit}. **It conflicts**: git's conflict markers are committed "
+                            + "in the files below. Resolve them on this branch, then mark the pull request ready.\n\n"
+                            + string.Join('\n', (target.Conflicts ?? []).Take(50).Select(p => $"- `{p}`")) + PlatformNote(target)
+                            + (target.Regenerate is { Count: > 0 } stale ? BackportRegenerationEngine.NotRegeneratedNote(stale, "the backport conflicts") : ""),
+                            repository.FullName, pull.Number),
                         draft: true, cancellationToken: cancellationToken);
                     lines.Add($"- `{target.Branch}`: #{draft}, a draft with {target.Conflicts?.Count ?? 0} conflicting file{(target.Conflicts?.Count == 1 ? "" : "s")} to resolve");
                     break;
@@ -359,7 +362,7 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
             : branch.Replace('/', '-');
 
     /// <summary>The line label in a backport's title: <c>8.x</c> for <c>release/8.x</c>, else the branch.</summary>
-    private static string Line(string branch) => branch[(branch.LastIndexOf('/') + 1)..];
+    internal static string Line(string branch) => branch[(branch.LastIndexOf('/') + 1)..];
 
     private static string BackportSubject(string message)
     {
