@@ -407,6 +407,8 @@ public enum EMergeQueueResolveStrategy
     KeepBoth,
     LineSet,
     Evict,
+    /// <summary>A three-way merge per key of MSBuild files and package.json (#570).</summary>
+    KeyedMerge,
 }
 
 public sealed class MergeQueueConfigValue
@@ -447,6 +449,7 @@ public sealed class MergeQueueAutoResolveRule
         EMergeQueueResolveStrategy.KeepBoth => "keep-both",
         EMergeQueueResolveStrategy.LineSet => "line-set",
         EMergeQueueResolveStrategy.Evict => "evict",
+        EMergeQueueResolveStrategy.KeyedMerge => "keyed-merge",
         _ => "take-base",
     };
 

@@ -421,6 +421,30 @@ cascade: 66 of 72 conflicted only because #461 was missing). Script: a throwaway
 - **Not measured:** insertions at one place on both sides (keep-both and dedupe). The simulated line has no fixes of
   its own, which is the only way a line diverges beyond platform values, so the census cannot see them. The Angular
   line (`release/angular-21.x`) is not replayed; its markers are `package.json` ranges (S2).
+- **Keyed-merge census (same day).** To measure same-key conflicts (two versions of one package), the last 150 merged
+  PRs were fetched (`refs/pull/N/head`) and replayed. Against master at merge time all 150 are up to date (the queue or
+  the author updated them first), so the conflicts really met are in the PR branches' own merges of master: 5 PRs
+  have any, 16 merges, 12 clean, 4 conflicted, **all in docs or a script** (`dependency-updates-PRD.md` ×2,
+  `coverage_merge_queue_PRD.md`, `tools/verify-coverage-paths.mjs`), none in a csproj, props or `package.json`.
+  Rebased PRs leave no trace, so this is a floor. Spark's history gives no evidence either way: the queue rebases, and
+  dependencies move in one rolling PR (#419).
+- **Keyed-merge census of the other MintPlayer repositories (same day).** Read-only replays of `mintplayer-ng-bootstrap`,
+  `MintPlayer.Dotnet.Tools`, `MintPlayer.AspNetCore.Tools` and `mintplayer-ng-video-player`. Two measures:
+  - **Merges inside PR branches:** almost none (553 merged PRs; 1 PR with inner merges, its 2 conflicted regions in
+    `AnalyzerReleases.Unshipped.md`). The author squash- or rebase-merges.
+  - **Head against head** of consecutive PRs that touch a csproj, props, targets or `package.json`, at their merge base
+    (an upper bound: it includes drift no author met): 290 pairs, 240 conflicted, **528 regions where both sides changed
+    one key's version** (ng-bootstrap 99, Dotnet.Tools 159, AspNetCore.Tools 53, ng-video-player 217), against a handful
+    of delete-vs-change (9) and other both-changed values (7).
+  - **Which version:** the spot-checked regions are the **package's own version** (`"version"` 15.0.3 → 15.0.4 / 15.0.5 in
+    ng-bootstrap; `<Version>` 1.1.2 → 1.1.3 / 1.2.0 in `SourceGenerators.csproj`, the most frequent file, 44 regions),
+    not a dependency. The split was not measured further. These repositories have no Dependabot or Renovate PRs (one
+    in ng-bootstrap's last 400), so bot dependency conflicts are unmeasured.
+  - **Consequence:** keyed-merge refuses the own version. `<Version>` is a property (a scalar, no winner), and a
+    package.json value takes the highest only inside `dependencies`, `devDependencies`, `peerDependencies` or
+    `optionalDependencies` (test `The_package_own_version_both_sides_bumped_is_refused`). With versions computed from
+    tags (#153, csproj `0.0.0-PLACEHOLDER`), an onboarded repository no longer edits its own version, so that conflict
+    stops arising rather than needing a winner. Rows: the session scratchpad's `s1/others/pairs-*.tsv`, not kept.
 
 ### 8.2 Implementation decisions (#569, 2026-11-05)
 
@@ -498,4 +522,33 @@ cascade: 66 of 72 conflicted only because #461 was missing). Script: a throwaway
   accepts every row of `ContentValidatorsTests.A_key_one_MSBuild_group_holds_twice_is_refused_where_it_repeats`, the
   new validator refuses each at the repeated line. The inputs are validated first, so a project that already repeats a
   key would refuse every keep-both: a scan of this repository's 156 MSBuild files found no repeated key.
+- **`keyed-merge`: a three-way merge per key (owner: "Build it now. Support the scenarios we can", 2026-11-05).** The
+  owner's refinement of the case list:
+  - a different key on each side → both, de-duplicated;
+  - the same key and value → git merges it, out of scope;
+  - the same key with different values → common for package versions.
+
+  The owner also noted that MSBuild has scalar fields (`<Version>`) and collection fields (`<PackageReference>`). Built
+  as strategy `keyed-merge` (`KeyedMergeResolver.cs`), opt-in, tests first (`KeyedMergeResolverTests`, 17 tests, one a 4-row theory):
+  - **Items are collections.** The key is the item's type, its `Include`/`Update`/`Remove` value and its `Condition`,
+    as the validator above has it. Each metadata name merges three-way, so a `Version` from one side and a
+    `PrivateAssets` from the other both apply.
+  - **Properties are scalars.** When both sides change one, the merge refuses, `<Version>` included: one value has no
+    winner.
+  - **A package version both sides changed takes the highest.** That is a `PackageReference`/`PackageVersion`
+    `Version`, or a range inside a `package.json` dependency object when both sides use the same operator.
+  - **Everything else refuses:**
+    - a value both sides changed that is not a package version;
+    - delete against change;
+    - an unorderable version (`1.*`, a range, `$(X)`);
+    - a line that is not an entry.
+
+  Two cases the tests caught:
+  - A child `<Version>` line conflicts alone. The region is now widened to its whole item (`WidenToItems`).
+  - A `<Message Text=… />` inside a target read as an empty property. Now a self-closing tag without an item spec
+    counts as an entry only when it has no attributes besides `Condition`.
+
+  The census above shaped one rule: a package's own `"version"` is not a dependency, so it refuses. **Defaults
+  unchanged:** `xmlProjects` stays `keep-both`. `keyed-merge` refuses a region that is not entries, such as an inserted
+  `<Target>`, which `keep-both` resolves. Whether the defaults move is the owner's call.
 - **Every automatic resolution is listed in the per-line report** (D6): path, strategy, and what each side added.

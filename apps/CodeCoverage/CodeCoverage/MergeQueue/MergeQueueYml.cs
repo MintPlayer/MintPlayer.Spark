@@ -309,6 +309,7 @@ public static partial class MergeQueueYml
         MergeQueueWireRules.KeepBoth => EMergeQueueResolveStrategy.KeepBoth,
         MergeQueueWireRules.LineSet => EMergeQueueResolveStrategy.LineSet,
         MergeQueueWireRules.Evict => EMergeQueueResolveStrategy.Evict,
+        MergeQueueWireRules.KeyedMerge => EMergeQueueResolveStrategy.KeyedMerge,
         _ => EMergeQueueResolveStrategy.TakeBase,
     };
 
