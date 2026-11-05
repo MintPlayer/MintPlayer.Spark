@@ -76,7 +76,9 @@ backport:
   when it opens, for each supported line whose ecosystem it changes (the same changed-files test as a release). Remove
   the labels of the lines it should not reach; merging backports it to the rest. `fixes` labels the older lines only
   for a `fix:` title or a `fixLabels` label, and the newest line always; `off` labels nothing. Every pull request
-  also gets an informational **Backport targets** check listing the lines and which apply.
+  also gets an informational **Backport targets** check listing the lines and which apply. A pull request a bot opened
+  gets no labels: the dependency updater gives each supported line a run of its own
+  ([dependency-updates.md](dependency-updates.md) §4, `dependencies.lines`).
 - **`lines`** overrides which lines are supported. By default a line is supported while its platform major has not
   reached end of life (the lifecycle data this app collects), and the newest line of each ecosystem always is. An
   ecosystem without lifecycle data supports only its newest line and the lines you `keep`. `retire` wins over

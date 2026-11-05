@@ -68,6 +68,20 @@ public class DependencyLineRunTests : CoverageRavenTest
     }
 
     [Fact]
+    public async Task D13_a_line_run_plans_under_its_ceiling_with_the_default_branch_s_configuration()
+    {
+        var h = await HarnessAsync();
+        h.Line = Line;
+        // The line's own commit says nothing about dependencies; only the default branch's coverage.yml counts.
+        h.Forge.Files[$"{BaseSha}/{CodeCoverage.Feedback.CoverageYml.FileName}"] = "dependencies:\n  enabled: false\n";
+
+        await h.RunToApplyAsync(Lookup(Npm("chalk", "4.1.0", "4.2.0"), Npm("lodash", "4.17.20", "4.17.21", Git.Dependencies.EUpdateType.Patch)));
+
+        var plan = Git.Dependencies.DependencyContract.Deserialize<Git.Dependencies.DependencyPlan>(h.Writer.Requests("work-ref").Single().PlanJson!)!;
+        plan.Groups.Select(g => g.Group).Should().Equal(["lodash"], "a line takes patches by default (dependencies.lines: patch)");
+    }
+
+    [Fact]
     public async Task D13_the_default_branch_s_run_records_the_supported_lines_for_the_scheduler()
     {
         var h = await HarnessAsync();

@@ -1061,3 +1061,15 @@ cascade: 66 of 72 conflicted only because #461 was missing). Script: a throwaway
   keeps the lines read before. A security alert (R10) also triggers each line that already has a run.
 - **M9, `dependencies.lines`: `patch` (default), `all`, `security`, `off`.** It sets which updates a line's run may
   take. `off` records no lines and ends a line's run as `disabled`. Tests: `DependenciesYmlTests`.
+- **M9c, the line ceiling is a level, not a version compare.** A line never takes a major. Under D13 the line's
+  platform major is the line's own, so "no major" keeps every platform-anchored package under it, with no per-package
+  major table to keep. `patch` takes patches. `all` takes up to minors. `security` takes only the run's security fixes.
+  A security fix may go up to a minor on any line. One that needs a major is held (`AboveLineCeiling`, "needs a major …
+  a human backports it"), so the pull request body lists it rather than dropping it. The ceiling is a candidate
+  problem like a hold, so a lower candidate of the same dependency still ships. As with a hold, the candidates passed
+  over are listed only when nothing lower ships (the engine's tier rule), so a line's pull request does not list "a
+  minor exists" for every dependency. Tests: `LineCeilingTests`,
+  `DependencyLineRunTests.D13_a_line_run_plans_under_its_ceiling…`.
+- **M9c, a line's run reads coverage.yml from the default branch at every step** (`ConfigRef`). The default run
+  keeps reading it at the commit it started on, as before. Found while wiring the ceiling: five later steps read the
+  file at `ExpectedSha`, which for a line is the line's commit.

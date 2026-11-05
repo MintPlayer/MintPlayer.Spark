@@ -83,9 +83,10 @@ public static class DependencyTestKit
 
     public static DependencyPolicyOutcome Evaluate(LookupDocument lookup, DependencyPolicyConfig? config = null, DependencyUpdateState? state = null,
         DependencyFleetState? fleet = null, DateTimeOffset? now = null, string configBlob = "", EDependencyRunMode mode = EDependencyRunMode.Scheduled,
-        IReadOnlyCollection<DependencySecurityFix>? security = null, bool slot = true)
+        IReadOnlyCollection<DependencySecurityFix>? security = null, bool slot = true, EDependencyLineUpdates? line = null)
         => DependencyPolicyEngine.Evaluate(new DependencyPolicyInput
         {
+            LineUpdates = line,
             Lookup = lookup,
             Config = config ?? Config(),
             State = state ?? new DependencyUpdateState { Repository = "Repositories/github/1" },

@@ -180,9 +180,17 @@ PRD §8.2.
 - **#571 progress (2026-11-05, `feat/issue571-dependencies-onboarding`):** S4 and S8 done (PRD §8.4). D10b's default
   needed nothing. Its opt-in `versioning.dependencyRanges: major-bounded` is built: an MSBuild target, the config key,
   and the action's exported variable. S7 is a live check, still to do.
+  **Resume here (paused 2026-11-05, draft PR):** M9 built and its .NET tests green. Open items:
+  - The guide-page specs (`dependency-updates-setup`, `backports-setup`, run via
+    `nx run @spark-apps/code-coverage:test -c local`) failed on their last run, and the failure was not read yet. Read
+    it first.
+  - Then M10, the M12 leftovers, S7, and the local sweep.
 - **M9 Dependencies on lines** (D13): a rolling PR per supported line, platform packages capped at the line's major,
   patch/security default, advisories outside the allowed range flagged. Pack verified by S4 (D10b; no upper bounds,
-  opt-in `major-bounded`).
+  opt-in `major-bounded`). **Built (2026-11-05):** every supported line, the current one included (owner's choice). It
+  has a run document, bot branches and a pull request per line, scheduled from the default run's `FileLines`.
+  `dependencies.lines` (patch/all/security/off) sets the ceiling, never a major, and a security fix needing a major is
+  held. User docs are in dependency-updates.md §4; decisions in PRD §8.4.
 - **M10 Onboarding chooser** (D3, S8), including the branch rename PR → rename on merge (D2, S7) and adding the
   regenerate workflow to each line (D9). It also creates the rulesets (#554, extended to release lines; PRD §8.2):
   plan shown first, applied with the signed-in user's GitHub token, a sign-in popup when that token is missing or

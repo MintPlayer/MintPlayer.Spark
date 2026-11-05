@@ -476,7 +476,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         var (repository, run) = (context.Repository, context.Run);
         var data = await DataAsync(context, ct);
         var lookup = DependencyContract.Deserialize<LookupDocument>(data.LookupJson!)!;
-        var section = DependenciesYml.Parse(await context.Forge.GetFileContentAsync(repository, run.ExpectedSha!, CoverageYml.FileName, ct)).Section;
+        var section = DependenciesYml.Parse(await context.Forge.GetFileContentAsync(repository, ConfigRef(context), CoverageYml.FileName, ct)).Section;
         var config = DependencyPolicyConfig.Resolve(section, repository, context.Account);
         var state = await stateStore.LoadAsync(repository.Id!, ct);
         var fleet = context.Account?.Id is { } accountId ? await stateStore.LoadFleetAsync(accountId, ct) : new DependencyFleetState();
@@ -506,6 +506,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
             IsScheduledSlot = run.Trigger == EDependencyRunTrigger.Scheduled && run.Evaluations == 0,
             Mode = run.Trigger == EDependencyRunTrigger.Security ? EDependencyRunMode.Security : EDependencyRunMode.Scheduled,
             SecurityFixes = [.. run.SecurityFixes.Select(f => new DependencySecurityFix(f.Ecosystem, f.DepName, f.Advisory))],
+            LineUpdates = run.Line is null ? null : section.Lines,
         });
         run.Evaluations++;
         Apply(state, outcome.NextState);
@@ -712,7 +713,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         var result = resultRead.Document;
         var patch = files["dependency.patch"];
         var claimed = result.Groups.Where(g => g.Status == EApplyGroupStatus.Applied).Select(g => g.Group).ToList();
-        var section = DependenciesYml.Parse(await context.Forge.GetFileContentAsync(repository, run.ExpectedSha!, CoverageYml.FileName, ct)).Section;
+        var section = DependenciesYml.Parse(await context.Forge.GetFileContentAsync(repository, ConfigRef(context), CoverageYml.FileName, ct)).Section;
 
         // The runner installed fresh packages: its patch is judged by the writer before anything is built from it.
         if (await WriterAsync(context, false, (access, credential) => writer.DependencyValidateAsync(Request(context, access, credential) with
@@ -824,7 +825,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         }
 
         var data = await DataAsync(context, ct);
-        var lookupless = DependenciesYml.Parse(await context.Forge.GetFileContentAsync(repository, run.ExpectedSha!, CoverageYml.FileName, ct)).Section;
+        var lookupless = DependenciesYml.Parse(await context.Forge.GetFileContentAsync(repository, ConfigRef(context), CoverageYml.FileName, ct)).Section;
         var config = DependencyPolicyConfig.Resolve(lookupless, repository, context.Account);
         var state = await stateStore.LoadAsync(repository.Id!, ct);
         var fleet = context.Account?.Id is { } accountId ? await stateStore.LoadFleetAsync(accountId, ct) : new DependencyFleetState();
@@ -885,7 +886,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
         var data = await DataAsync(context, ct);
         var lookup = DependencyContract.Deserialize<LookupDocument>(data.LookupJson!)!;
         var report = Report(data);
-        var section = DependenciesYml.Parse(await context.Forge.GetFileContentAsync(repository, run.ExpectedSha!, CoverageYml.FileName, ct)).Section;
+        var section = DependenciesYml.Parse(await context.Forge.GetFileContentAsync(repository, ConfigRef(context), CoverageYml.FileName, ct)).Section;
         var claimed = DependencyContract.Deserialize<ApplyResult>(data.ApplyResultJson!)!.Groups
             .Where(g => g.Status == EApplyGroupStatus.Applied).Select(g => g.Group).ToList();
         var rollingHead = await context.Queue.GetBranchHeadAsync(repository, run.RollingBranchName, ct);
@@ -1060,7 +1061,7 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
             return;
         }
         var lookup = DependencyContract.Deserialize<LookupDocument>(data.LookupJson!)!;
-        var section = DependenciesYml.Parse(await context.Forge.GetFileContentAsync(repository, run.ExpectedSha!, CoverageYml.FileName, ct)).Section;
+        var section = DependenciesYml.Parse(await context.Forge.GetFileContentAsync(repository, ConfigRef(context), CoverageYml.FileName, ct)).Section;
         var patch = Convert.ToBase64String(files["dependency.patch"]);
         var relockJson = data.RelockPlanJson;
         // The relocked head still carries the dependency commit, workflow edits included (R15): same token as its first push.
@@ -2020,6 +2021,13 @@ public partial class DependencyUpdateEngine : IDependencyUpdateEngine
             return context.Run.FileLines;
         }
     }
+
+    /// <summary>
+    /// Where the run reads coverage.yml after its start: the commit it started on (the default branch's head), or, for a
+    /// release line's run (#568 D13), the default branch itself, since a line's own copy is not its configuration.
+    /// </summary>
+    private static string ConfigRef(Context context)
+        => context.Run.Line is null ? context.Run.ExpectedSha! : context.Repository.DefaultBranch ?? context.Run.ExpectedSha!;
 
     /// <summary>#568 D13: the branch of release line <paramref name="line"/> under coverage.yml's <c>versioning.lines</c>; null without one.</summary>
     internal static string? LineBranch(string? yml, string line)

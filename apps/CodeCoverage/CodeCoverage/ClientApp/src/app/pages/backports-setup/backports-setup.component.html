@@ -65,7 +65,9 @@
             <p data-testid="bp-setup-default-labels">
               <strong>Labels are suggested for you.</strong> A pull request into the default branch gets a
               <code>backport: &lt;line&gt;</code> label when it opens, for each supported line whose ecosystem it changes.
-              Remove the labels of the lines it should not reach; merging backports it to the rest.
+              Remove the labels of the lines it should not reach; merging backports it to the rest. Pull requests opened by
+              a bot get none: the dependency updater keeps each line up to date with
+              <a routerLink="/dependency-updates/setup" data-testid="bp-setup-dependency-lines">a run of its own</a>.
             </p>
             <bs-alert [color]="'info'" class="d-block mb-0" data-testid="bp-setup-targets-check">
               Every such pull request also gets a <strong>Backport targets</strong> check listing the lines and which

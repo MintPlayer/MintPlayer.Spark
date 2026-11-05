@@ -64,6 +64,8 @@ describe('BackportsSetupComponent', () => {
 
     expect(rows('bp-setup-requests').map(([how]) => how)).toEqual(['backport: 8.x', '/backport 8.x', '/backport 8.x --draft']);
     expect(text('bp-setup-default-labels')).toContain('backport: <line>');
+    // #568 D13: a bot's pull request gets no labels; each line updates its own dependencies.
+    expect(text('bp-setup-default-labels')).toContain('a run of its own');
     expect(text('bp-setup-targets-check')).toContain('neutral');
   });
 
