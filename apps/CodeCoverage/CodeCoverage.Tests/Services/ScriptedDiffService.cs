@@ -155,8 +155,13 @@ public sealed class ScriptedDiffService(CommitComparison? comparison = null)
         return Task.FromResult(Comparison);
     }
 
+    /// <summary>When set, <see cref="GetFileContentAsync"/> throws it: a forge that cannot serve the file right now.</summary>
+    public Exception? FileFailure { get; set; }
+
     public Task<string?> GetFileContentAsync(Repository repository, string sha, string path, CancellationToken cancellationToken = default)
-        => Task.FromResult(Files.TryGetValue($"{sha}/{path}", out var content) ? content : null);
+        => FileFailure is not null
+            ? Task.FromException<string?>(FileFailure)
+            : Task.FromResult(Files.TryGetValue($"{sha}/{path}", out var content) ? content : null);
 
     /// <summary>Trees by branch name; an unscripted branch lists as null (unavailable).</summary>
     public Dictionary<string, ForgeTree> Trees { get; } = new(StringComparer.Ordinal);

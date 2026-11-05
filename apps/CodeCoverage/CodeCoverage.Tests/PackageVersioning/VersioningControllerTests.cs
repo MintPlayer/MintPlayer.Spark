@@ -427,6 +427,176 @@ public class VersioningControllerTests : CoverageRavenTest
             .Should().Be(StatusCodes.Status409Conflict);
     }
 
+    // ── The rest of the statuses the action falls back on (D2) ───────────────────────────────────────
+
+    private static ClaimsPrincipal Without(string claim)
+        => new(new ClaimsIdentity(Token().Claims.Where(c => c.Type != claim), Oidc.SchemeName));
+
+    [Theory]
+    [InlineData("repository")]
+    [InlineData("run")]
+    public async Task A_token_naming_no_repository_or_run_is_refused_for_a_run_and_a_release(string missing)
+    {
+        using var store = GetDocumentStore();
+        await SeedRepositoryAsync(store);
+        var user = Without(missing == "repository" ? Oidc.RepositoryIdClaim : Oidc.RunIdClaim);
+        var h = Create(store, user);
+
+        Status(await h.Controller.Run(Manifest(), default)).Should().Be(StatusCodes.Status403Forbidden);
+        Status(await h.Controller.Release(new VersioningController.VersioningReleaseRequest("anything"), default)).Should().Be(StatusCodes.Status403Forbidden);
+        h.Writer.VersioningRuns.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task A_repository_whose_default_branch_is_not_known_yet_is_a_409()
+    {
+        using var store = GetDocumentStore();
+        using (var seed = store.OpenAsyncSession())
+        {
+            await seed.StoreAsync(new Repository { GitHubId = RepoId, Name = "widget", FullName = "acme/widget", OwnerLogin = "acme" },
+                Repository.DocumentId(EForgeProvider.GitHub, RepoId));
+            await seed.SaveChangesAsync();
+        }
+
+        Status(await Create(store, Token()).Controller.Run(Manifest(), default)).Should().Be(StatusCodes.Status409Conflict);
+    }
+
+    [Fact]
+    public async Task A_coverage_yml_the_forge_cannot_serve_is_a_502()
+    {
+        using var store = GetDocumentStore();
+        await SeedRepositoryAsync(store);
+        var h = Create(store, Token());
+        h.Forge.FileFailure = new HttpRequestException("GitHub answered 502");
+
+        Status(await h.Controller.Run(Manifest(), default)).Should().Be(StatusCodes.Status502BadGateway);
+        h.Writer.VersioningRuns.Should().BeEmpty();
+    }
+
+    public static TheoryData<string, int> WriterAnswers => new()
+    {
+        { "busy", StatusCodes.Status503ServiceUnavailable },
+        { "failed", StatusCodes.Status502BadGateway },
+        { "refused-request", StatusCodes.Status422UnprocessableEntity },
+        { "timeout", StatusCodes.Status502BadGateway },
+        { "no-access", StatusCodes.Status503ServiceUnavailable },
+    };
+
+    private static void Script(FakeGitWriter writer, FakeForgeMergeQueue queue, string answer, bool release)
+    {
+        switch (answer)
+        {
+            case "no-access":
+                queue.WriterAccess = _ => new ForgePushAccess(null, "The App is not installed.");
+                break;
+            case "refused-request" when release:
+                writer.Tags = _ => throw new GitWriterRefusedException("tags", "tags", "valid tag names");
+                break;
+            case "refused-request":
+                writer.Versioning = _ => throw new GitWriterRefusedException("versioning/run", "branch", "a branch name");
+                break;
+            case "timeout" when release:
+                writer.Tags = _ => throw new TaskCanceledException("The request timed out.");
+                break;
+            case "timeout":
+                writer.Versioning = _ => throw new TaskCanceledException("The request timed out.");
+                break;
+            case var outcome when release:
+                writer.Tags = _ => Task.FromResult(new GitWriterTagsResult(outcome, null, null, "slots taken", 1));
+                break;
+            case var outcome:
+                writer.Versioning = _ => Task.FromResult(Result(outcome));
+                break;
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(WriterAnswers))]
+    public async Task A_run_maps_the_writers_answer_onto_a_status(string answer, int status)
+    {
+        using var store = GetDocumentStore();
+        await SeedRepositoryAsync(store);
+        var h = Create(store, Token());
+        Script(h.Writer, h.Queue, answer, release: false);
+
+        Status(await h.Controller.Run(Manifest(), default)).Should().Be(status);
+        h.Forge.Statuses.Single().Verdict.Outcome.Should().Be(EForgeOutcome.Failure);
+        h.Queue.RevokedTokens.Should().HaveCount(answer == "no-access" ? 0 : 1);
+    }
+
+    [Theory]
+    [MemberData(nameof(WriterAnswers))]
+    public async Task A_release_maps_the_writers_answer_onto_a_status(string answer, int status)
+    {
+        using var store = GetDocumentStore();
+        await SeedRepositoryAsync(store);
+        var writer = PlanningWriter();
+        var seal = await PlanAsync(store, writer);
+        var h = Create(store, Token(), writer: writer);
+        Script(writer, h.Queue, answer, release: true);
+
+        Status(await h.Controller.Release(new VersioningController.VersioningReleaseRequest(seal), default)).Should().Be(status);
+        h.Queue.RevokedTokens.Should().HaveCount(answer == "no-access" ? 0 : 1);
+    }
+
+    [Theory]
+    [InlineData("unknown-repository")]
+    [InlineData("unconfigured-writer")]
+    public async Task A_release_without_a_known_repository_or_a_writer_tags_nothing(string what)
+    {
+        using var store = GetDocumentStore();
+        await SeedRepositoryAsync(store);
+        var seal = await PlanAsync(store, PlanningWriter());
+        var writer = what == "unconfigured-writer" ? new FakeGitWriter { IsConfigured = false } : PlanningWriter();
+        if (what == "unknown-repository")
+        {
+            using var session = store.OpenAsyncSession();
+            session.Delete(Repository.DocumentId(EForgeProvider.GitHub, RepoId));
+            await session.SaveChangesAsync();
+        }
+
+        var result = await Create(store, Token(), writer: writer).Controller.Release(new VersioningController.VersioningReleaseRequest(seal), default);
+
+        Status(result).Should().Be(what == "unknown-repository" ? StatusCodes.Status403Forbidden : StatusCodes.Status503ServiceUnavailable);
+        writer.TagRequests.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task A_run_that_cuts_a_release_branch_records_the_cut()
+    {
+        using var store = GetDocumentStore();
+        await SeedRepositoryAsync(store);
+        var writer = new FakeGitWriter
+        {
+            Versioning = _ => Task.FromResult(Result(GitWriterVersioningResult.Versioned) with
+            {
+                BranchCuts = [new GitWriterBranchCut("release/1.x", 1, Sha, ["Acme.Widget"], null)],
+            }),
+        };
+
+        Status(await Create(store, Token(), writer: writer).Controller.Run(Manifest(), default)).Should().Be(StatusCodes.Status200OK);
+
+        using var read = store.OpenAsyncSession();
+        (await read.LoadAsync<VersioningRun>(VersioningRun.DocumentId(EForgeProvider.GitHub, RepoId, 77, 2)))!
+            .BranchCuts.Should().ContainSingle().Which.Branch.Should().Be("release/1.x");
+    }
+
+    [Fact]
+    public void The_check_summary_lists_releases_refusals_unchanged_packages_and_warnings()
+    {
+        var response = new VersioningController.VersioningRunResponse(GitWriterVersioningResult.Versioned, null, "Planned on the default branch.",
+            [new GitWriterRelease("Acme.Widget", "nuget", "1.2.0", "Acme.Widget/1.2.0", ["api added"], null, true, null)],
+            [new GitWriterPackageNote("Acme.Old", "not packed")], 3, ["no tag reachable"]);
+
+        VersioningController.Summary("main", response).Should().Be(
+            "Branch `main`.\n\nPlanned on the default branch.\n\n"
+            + "| Package | Version | Tag | Why |\n|-|-|-|-|\n"
+            + "| `Acme.Widget` | 1.2.0 | by hand | api added |\n"
+            + "- `Acme.Old` refused: not packed\n"
+            + "\n3 package(s) unchanged.\n"
+            + "- ⚠️ no tag reachable\n");
+    }
+
     [Fact]
     public async Task A_released_plan_released_again_answers_the_same()
     {
