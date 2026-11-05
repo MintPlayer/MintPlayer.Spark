@@ -276,7 +276,12 @@ a final newline. The result keeps every byte of the sides, line endings included
 shape, then sorts and de-duplicates the whole file's lines.
 
 **keyed-merge (#570, `docs/coverage_backport_PRD.md` §8.3).** Opt-in: no default or preset names it. It reads
-`*.csproj`, `*.props`, `*.targets` and `package.json`, from the same diff3 regions, and merges each region per key:
+`*.csproj`, `*.props`, `*.targets`, `package.json` and `composer.json` (`require`, `require-dev`; `php`, `ext-*` and
+`lib-*` are platform requirements and never take the highest), from the same diff3 regions, and merges each region per
+key. Any other file refuses: a further format is added for a repository that needs it. **Lockfiles are not its job**:
+`package-lock.json`, `packages.lock.json`, `pnpm-lock.yaml` and the rest stay with the presets (take-base, then the
+regenerate run). The two compose in one pull request: keyed-merge settles the manifest, and the regenerate run rebuilds
+the lockfile from it, so the lockfile follows the chosen versions.
 
 - **Keys.** An MSBuild item is keyed by its type, its `Include`/`Update`/`Remove` value and its `Condition`
   (case-insensitively, as NuGet compares ids); a property by its name and `Condition`; a `package.json` line by its name.
@@ -284,8 +289,10 @@ shape, then sorts and de-duplicates the whole file's lines.
 - **Per key.** Equal on both sides: kept once. Changed on one side only: that side. An item's metadata merges the same way
   per name, so one side's `Version` and the other's `PrivateAssets` both apply. A package version both sides changed
   (`PackageReference`/`PackageVersion` `Version`, a range inside `dependencies`, `devDependencies`,
-  `peerDependencies` or `optionalDependencies` with one operator on both sides) takes the highest SemVer: a release
-  outranks its prerelease, numeric prerelease parts compare as numbers (`rc.10` > `rc.9`).
+  `peerDependencies` or `optionalDependencies` with one operator on both sides) takes the highest SemVer when **both
+  sides raised it**: a release outranks its prerelease, numeric prerelease parts compare as numbers (`rc.10` > `rc.9`).
+  A version lowered on either side refuses: a pin away from a broken release is deliberate, and the highest would undo
+  it.
 - **Refused** (`resolver-refused`): a property both sides changed (`<Version>`, a package's own `"version"`: one value,
   no winner), any other value both sides changed, a key removed on one side and changed on the other, a version with no
   order (`1.*`, a range, `$(X)`, two operators), and a region with a line that is not an entry (a target, a multi-line

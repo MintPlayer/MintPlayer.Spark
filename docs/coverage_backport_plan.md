@@ -108,7 +108,14 @@ On `PieterjanDeClippel/SparkTest` (scratch repo from #517), with a `release/dotn
 per-line prerelease), M3 (collector, page), M4 and M11 (triggers, schema revision) are implemented and merged; see PRD
 §8.2. Next: #570 (spikes S1, S2, S5; M5–M8 without D11; Spark's lines cut per M11; plus the items moved below) on
 `feat/issue570-backports`. **#570 progress:** S1 done (PRD §8.1: plain 61/72 applied, normalized 72/72, every
-conflict a platform value); the merge queue's MSBuild keep-both now checks keys (PRD §8.3). Moved to #570: per-line keep/retire, the
+conflict a platform value); the merge queue's MSBuild keep-both now checks keys (PRD §8.3); `keyed-merge` built
+(`ea532ec93`, opt-in, PRD §8.3). **Keyed-merge milestones (owner: "small wins toward the end goal", 2026-11-05):**
+K1 a package version takes the highest only when **both sides raised it** (a downgrade on either side refuses); the
+release-line cap (nothing above the line's platform) lands with M5, where the backport gives the resolver its line; K2 one dialect per file format behind a seam (file pattern, entry
+reader, version order), `composer.json` the second JSON dialect; K3 **stop**: a further format (Maven, Gradle
+catalogs, PEP 440, go.mod, Cargo) is built only for a repository that needs it, with real fixtures (issue). Lockfiles
+stay take-base + regenerate (presets). Intent replay (re-run the updater's bump on the new base) goes to #571.
+`Directory.Packages.props` is an optional onboarding suggestion, never required. Moved to #570: per-line keep/retire, the
 retire-suggestion PRs, and the M2 keys whose consumers are backports (`defaultLabels`, `onConflict`, `markers`,
 `enqueue`). Rulesets (#554's action plus the release-line ruleset, with the user's own token) move to M10 in #571,
 PRD §8.2.

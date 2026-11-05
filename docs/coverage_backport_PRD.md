@@ -548,6 +548,14 @@ cascade: 66 of 72 conflicted only because #461 was missing). Script: a throwaway
   - A `<Message Text=… />` inside a target read as an empty property. Now a self-closing tag without an item spec
     counts as an entry only when it has no attributes besides `Condition`.
 
+  **K1 (owner: "small wins toward the end goal", 2026-11-05):** the highest only when both sides raised the version.
+  Before, a base-branch pin from 1.7.0 down to 1.6.0 against a PR bump to 1.8.0 silently took 1.8.0. Now it refuses
+  (`A_version_lowered_on_either_side_is_refused_not_overridden_by_the_highest`, 3 rows, plus a package.json case).
+  **K2:** the formats are one descriptor each (`KeyedMergeResolver.Dialect`: file match, JSON or MSBuild entries, the
+  dependency objects, the platform keys). `composer.json` is the second JSON one, tested on laravel/laravel's own layout
+  (4-space indent, two-part constraints `^13.17`, `php` first). `php`/`ext-*`/`lib-*` refuse: they are the platform.
+  **Lockfiles coexist (owner, 2026-11-05):** they stay take-base + regenerate. Keyed-merge picks the manifest's
+  versions, and the regenerate run rebuilds the lockfile from them. A lockfile never matches a keyed-merge format.
   The census above shaped one rule: a package's own `"version"` is not a dependency, so it refuses. **Defaults
   unchanged:** `xmlProjects` stays `keep-both`. `keyed-merge` refuses a region that is not entries, such as an inserted
   `<Target>`, which `keep-both` resolves. Whether the defaults move is the owner's call.

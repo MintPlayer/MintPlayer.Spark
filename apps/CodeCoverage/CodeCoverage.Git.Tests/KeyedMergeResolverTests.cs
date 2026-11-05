@@ -90,7 +90,7 @@ public class KeyedMergeResolverTests
     [InlineData("1.9.0", "1.10.0", "1.10.0")]                  // numeric, not ordinal
     [InlineData("1.10.0", "1.9.0", "1.10.0")]                  // whichever side holds it
     [InlineData("11.0.0-rc.2", "11.0.0", "11.0.0")]            // a release outranks its prerelease
-    [InlineData("1.0.0-rc.9", "1.0.0-rc.10", "1.0.0-rc.10")]   // numeric prerelease identifiers
+    [InlineData("2.0.0-rc.9", "2.0.0-rc.10", "2.0.0-rc.10")]   // numeric prerelease identifiers
     [InlineData("2.0.0-preview.1", "1.9.9", "2.0.0-preview.1")]
     public async Task One_package_both_sides_bumped_takes_the_highest_version(string main, string pr, string expected)
     {
@@ -101,6 +101,88 @@ public class KeyedMergeResolverTests
             Items(Package("A", "1.0.0"), Package("Q", pr), Package("Z", "1.0.0")));
 
         (await ResolvedAsync(bare, MsBuildRule, Csproj)).Should().Be(Items(Package("A", "1.0.0"), Package("Q", expected), Package("Z", "1.0.0")));
+    }
+
+    [Theory]
+    [InlineData("1.6.0", "1.8.0")]          // the base branch pinned lower (a bug in 1.7), the PR bumped
+    [InlineData("1.8.0", "1.6.0")]          // the PR pinned lower
+    [InlineData("1.7.0-rc.1", "1.8.0")]     // a prerelease of the base version is lower too
+    public async Task A_version_lowered_on_either_side_is_refused_not_overridden_by_the_highest(string main, string pr)
+    {
+        // K1 (docs/coverage_backport_plan.md): a downgrade is deliberate, so "the highest" would undo it silently.
+        using var repo = new TestRepo();
+        var bare = Fixture(repo, Csproj,
+            Items(Package("A", "1.0.0"), Package("Q", "1.7.0"), Package("Z", "1.0.0")),
+            Items(Package("A", "1.0.0"), Package("Q", main), Package("Z", "1.0.0")),
+            Items(Package("A", "1.0.0"), Package("Q", pr), Package("Z", "1.0.0")));
+
+        await RefusedAsync(bare, MsBuildRule, "lowered");
+    }
+
+    [Fact]
+    public async Task A_dependency_range_lowered_on_one_side_is_refused()
+    {
+        using var repo = new TestRepo();
+        var bare = Fixture(repo, PackageJson,
+            Dependencies(("a", "^1.0.0"), ("q", "^1.2.0"), ("z", "^1.0.0")),
+            Dependencies(("a", "^1.0.0"), ("q", "^1.1.0"), ("z", "^1.0.0")),
+            Dependencies(("a", "^1.0.0"), ("q", "^1.4.0"), ("z", "^1.0.0")));
+
+        await RefusedAsync(bare, PackageJsonRule, "lowered");
+    }
+
+    // --- composer.json (K2): require / require-dev keyed by package; the shape of laravel/laravel's own file ---
+
+    private const string ComposerJson = "app/composer.json";
+
+    private static readonly AutoResolveRule ComposerRule = AutoResolveRule.Create("**/composer.json", MergeQueueWireRules.KeyedMerge, [MergeQueueWireRules.JsonNoDuplicateKeys]);
+
+    /// <summary>laravel/laravel's composer.json layout (4-space indent, a platform <c>php</c> first, two-part
+    /// constraints), cut to the dependency objects and one object after them.</summary>
+    private static string Composer(string php, string framework, string pint, params (string Name, string Range)[] extraDev)
+        => "{\n    \"name\": \"laravel/laravel\",\n    \"type\": \"project\",\n    \"require\": {\n"
+           + $"        \"php\": \"{php}\",\n        \"laravel/framework\": \"{framework}\",\n        \"laravel/tinker\": \"^3.0\"\n    }},\n"
+           + "    \"require-dev\": {\n        \"fakerphp/faker\": \"^1.23\",\n"
+           + string.Concat(extraDev.Select(d => $"        \"{d.Name}\": \"{d.Range}\",\n"))
+           + $"        \"laravel/pint\": \"{pint}\",\n        \"phpunit/phpunit\": \"^12.5.12\"\n    }},\n"
+           + "    \"autoload\": {\n        \"psr-4\": {\n            \"App\\\\\": \"app/\"\n        }\n    }\n}\n";
+
+    [Fact]
+    public async Task Composer_one_package_both_sides_raised_takes_the_highest_of_a_two_part_constraint()
+    {
+        using var repo = new TestRepo();
+        var bare = Fixture(repo, ComposerJson,
+            Composer("^8.3", "^13.17", "^1.27"),
+            Composer("^8.3", "^13.18", "^1.27"),
+            Composer("^8.3", "^13.20", "^1.27"));
+
+        (await ResolvedAsync(bare, ComposerRule, ComposerJson)).Should().Be(Composer("^8.3", "^13.20", "^1.27"));
+    }
+
+    [Fact]
+    public async Task Composer_the_php_platform_requirement_both_sides_raised_is_refused()
+    {
+        // php, ext-* and lib-* are the platform, not packages: on a release line they are the line itself.
+        using var repo = new TestRepo();
+        var bare = Fixture(repo, ComposerJson,
+            Composer("^8.3", "^13.17", "^1.27"),
+            Composer("^8.4", "^13.17", "^1.27"),
+            Composer("^8.5", "^13.17", "^1.27"));
+
+        await RefusedAsync(bare, ComposerRule, "changed on both sides");
+    }
+
+    [Fact]
+    public async Task Composer_dev_packages_added_on_both_sides_at_one_place_are_both_kept()
+    {
+        using var repo = new TestRepo();
+        var bare = Fixture(repo, ComposerJson,
+            Composer("^8.3", "^13.17", "^1.27"),
+            Composer("^8.3", "^13.17", "^1.27", ("laravel/pail", "^1.2.5")),
+            Composer("^8.3", "^13.17", "^1.27", ("mockery/mockery", "^1.6")));
+
+        (await ResolvedAsync(bare, ComposerRule, ComposerJson)).Should().Be(
+            Composer("^8.3", "^13.17", "^1.27", ("laravel/pail", "^1.2.5"), ("mockery/mockery", "^1.6")));
     }
 
     [Fact]

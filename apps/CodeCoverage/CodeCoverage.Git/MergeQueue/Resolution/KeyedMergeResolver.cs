@@ -67,7 +67,7 @@ public sealed partial class KeyedMergeResolver : IConflictResolver
 
         var written = new List<string>();
         var regionNumber = 0;
-        foreach (var piece in dialect == Dialect.MsBuild ? WidenToItems(document.Pieces) : document.Pieces)
+        foreach (var piece in !dialect.Json ? WidenToItems(document.Pieces) : document.Pieces)
         {
             switch (piece)
             {
@@ -78,7 +78,7 @@ public sealed partial class KeyedMergeResolver : IConflictResolver
                     regionNumber++;
                     // A package.json value is a package version only inside a dependency object; the package's own
                     // "version" (the conflict the census of the MintPlayer repositories found most) has no winner.
-                    var ordered = dialect == Dialect.MsBuild || DependencyObjects.Contains(EnclosingObject(written) ?? "");
+                    var ordered = !dialect.Json || dialect.DependencyObjects.Contains(EnclosingObject(written) ?? "");
                     var merge = MergeRegion(dialect, region, ordered);
                     if (merge.Refusal is { } refusal)
                         return Refuse($"Conflict region {regionNumber}: {refusal}");
@@ -89,11 +89,44 @@ public sealed partial class KeyedMergeResolver : IConflictResolver
         return new ConflictResolution.Content(string.Concat(written));
     }
 
-    internal enum Dialect { MsBuild, PackageJson }
+    /// <summary>
+    /// One file format (K2, docs/coverage_backport_plan.md): which files, how its entries read (<see cref="Json"/>: one
+    /// <c>"name": "value"</c> line each; otherwise MSBuild items and properties), which JSON objects hold package versions,
+    /// and which keys there are platform requirements with no winner. A further format joins this list only for a
+    /// repository that needs it, with real fixtures (K3).
+    /// </summary>
+    internal sealed class Dialect
+    {
+        private Dialect(string name, Func<string, bool> matches, bool json, IReadOnlySet<string> dependencyObjects, Func<string, bool> isPlatformKey)
+            => (Name, Matches, Json, DependencyObjects, IsPlatformKey) = (name, matches, json, dependencyObjects, isPlatformKey);
 
-    /// <summary>The package.json objects whose values are package versions.</summary>
-    private static readonly HashSet<string> DependencyObjects = new(StringComparer.Ordinal)
-        { "dependencies", "devDependencies", "peerDependencies", "optionalDependencies" };
+        public string Name { get; }
+
+        public Func<string, bool> Matches { get; }
+
+        public bool Json { get; }
+
+        public IReadOnlySet<string> DependencyObjects { get; }
+
+        public Func<string, bool> IsPlatformKey { get; }
+
+        public static Dialect MsBuild { get; } = new("msbuild",
+            name => name.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase) || name.EndsWith(".props", StringComparison.OrdinalIgnoreCase)
+                    || name.EndsWith(".targets", StringComparison.OrdinalIgnoreCase),
+            json: false, new HashSet<string>(), _ => false);
+
+        public static Dialect PackageJson { get; } = new("package.json", name => name.Equals("package.json", StringComparison.Ordinal), json: true,
+            new HashSet<string>(StringComparer.Ordinal) { "dependencies", "devDependencies", "peerDependencies", "optionalDependencies" }, _ => false);
+
+        /// <summary>Composer: <c>require</c>/<c>require-dev</c>. <c>php</c>, <c>ext-*</c> and <c>lib-*</c> are requirements on
+        /// the platform, not packages: on a release line they are the line's platform, so they never take the highest.</summary>
+        public static Dialect Composer { get; } = new("composer.json", name => name.Equals("composer.json", StringComparison.Ordinal), json: true,
+            new HashSet<string>(StringComparer.Ordinal) { "require", "require-dev" },
+            key => key.Equals("php", StringComparison.OrdinalIgnoreCase) || key.StartsWith("ext-", StringComparison.OrdinalIgnoreCase)
+                   || key.StartsWith("lib-", StringComparison.OrdinalIgnoreCase) || key.StartsWith("php-", StringComparison.OrdinalIgnoreCase));
+
+        public static IReadOnlyList<Dialect> All { get; } = [MsBuild, PackageJson, Composer];
+    }
 
     /// <summary>The name of the package.json object the next line is in (<c>"dependencies": {</c> above it, at depth),
     /// read back over the lines before it; null at the top level or when it can't be told.</summary>
@@ -118,12 +151,7 @@ public sealed partial class KeyedMergeResolver : IConflictResolver
     internal static Dialect? DialectOf(string path)
     {
         var name = path[(path.LastIndexOf('/') + 1)..];
-        if (name.Equals("package.json", StringComparison.Ordinal))
-            return Dialect.PackageJson;
-        return name.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase) || name.EndsWith(".props", StringComparison.OrdinalIgnoreCase)
-            || name.EndsWith(".targets", StringComparison.OrdinalIgnoreCase)
-            ? Dialect.MsBuild
-            : null;
+        return Dialect.All.FirstOrDefault(d => d.Matches(name));
     }
 
     /// <summary>A region inside a multi-line item (a child <c>&lt;Version&gt;</c> line) is widened to the whole item: the
@@ -197,13 +225,13 @@ public sealed partial class KeyedMergeResolver : IConflictResolver
         {
             var line = lines[i];
             var bare = line.Trim();
-            if (bare.Length == 0 || dialect == Dialect.MsBuild && SingleLineComment().IsMatch(bare))
+            if (bare.Length == 0 || !dialect.Json && SingleLineComment().IsMatch(bare))
             {
                 leading.Add(line);
                 continue;
             }
             Entry? entry = null;
-            if (dialect == Dialect.PackageJson)
+            if (dialect.Json)
             {
                 if (JsonEntry().Match(bare) is { Success: true } m)
                     entry = new Entry(leading, [line], m.Groups["name"].Value, Dependency, new Dictionary<string, string> { [Scalar] = m.Groups["value"].Value });
@@ -348,7 +376,7 @@ public sealed partial class KeyedMergeResolver : IConflictResolver
             lines.AddRange(entry.Lines);
         }
         lines.AddRange(trailing);
-        if (dialect == Dialect.PackageJson)
+        if (dialect.Json)
             Commas(lines, output, ours, theirs);
         return new(lines, null);
     }
@@ -390,8 +418,14 @@ public sealed partial class KeyedMergeResolver : IConflictResolver
                 result[name] = vo;
             else if (vo == vb)
                 result[name] = vt;
-            else if (versionsOrdered && IsPackageVersion(dialect, o.Kind, name) && vo is not null && vt is not null && Highest(dialect, vo, vt) is { } highest)
+            else if (versionsOrdered && IsPackageVersion(dialect, o.Key, o.Kind, name) && vo is not null && vt is not null && Highest(dialect, vo, vt) is { } highest)
+            {
+                // K1: the highest only when both sides raised it; a lowered version is deliberate (a pin away from a
+                // broken release) and the highest would undo it silently. Both inserted (no base): nothing to lower.
+                if (vb is not null && (Highest(dialect, vb, vo) != vo || Highest(dialect, vb, vt) != vt))
+                    return new(null, "a package version lowered on one side and changed on the other (a pin is deliberate; the highest would undo it).");
                 result[name] = highest;
+            }
             else
                 return new(null, "an entry changed on both sides, in a value that has no order (only a package version takes the highest).");
         }
@@ -403,9 +437,9 @@ public sealed partial class KeyedMergeResolver : IConflictResolver
             : new(null, "an entry whose merged values cannot be written back into its text.");
     }
 
-    private static bool IsPackageVersion(Dialect dialect, string kind, string name)
-        => dialect == Dialect.PackageJson && name == Scalar
-           || dialect == Dialect.MsBuild && name.Equals("Version", StringComparison.OrdinalIgnoreCase)
+    private static bool IsPackageVersion(Dialect dialect, string key, string kind, string name)
+        => dialect.Json && name == Scalar && !dialect.IsPlatformKey(key)
+           || !dialect.Json && name.Equals("Version", StringComparison.OrdinalIgnoreCase)
               && (kind.Equals("PackageReference", StringComparison.OrdinalIgnoreCase) || kind.Equals("PackageVersion", StringComparison.OrdinalIgnoreCase)
                   || kind.Equals("GlobalPackageReference", StringComparison.OrdinalIgnoreCase));
 
@@ -415,7 +449,7 @@ public sealed partial class KeyedMergeResolver : IConflictResolver
     {
         if (values.Values.Any(v => v is not null && (v.Contains('"') || v.Contains('<') || v.Contains('\n'))))
             return null;
-        if (dialect == Dialect.PackageJson)
+        if (dialect.Json)
         {
             var line = entry.Lines[0];
             var m = JsonEntry().Match(line.Trim());
@@ -467,7 +501,7 @@ public sealed partial class KeyedMergeResolver : IConflictResolver
     internal static string? Highest(Dialect dialect, string a, string b)
     {
         string prefixA = "", prefixB = "";
-        if (dialect == Dialect.PackageJson)
+        if (dialect.Json)
         {
             prefixA = RangeOperator(a);
             prefixB = RangeOperator(b);
