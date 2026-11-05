@@ -693,4 +693,78 @@ cascade: 66 of 72 conflicted only because #461 was missing). Script: a throwaway
     malformed `disable`/`packages` refused.
   - App: the section sends `draft` and the markers and opens a draft; a broken section is reported and the defaults
     apply; GitHub's body carries `"draft":true` only for a draft.
+- **M6 decisions (owner, 2026-11-05, asked before building it).**
+  - **Provenance: the line tip's copy of the workflow.** A backport's regenerate workflow must be byte-identical at
+    the backport commit to the copy at the release line's tip. This **narrows dependency-updates D12 for backports**:
+    D12 requires the default branch's copy (`WorkflowHook.cs:46`). A line's `regenerate.yml` drifts from master as soon
+    as master bumps its `setup-dotnet`/`node-version`, so D12 as written would refuse every line after its first
+    platform move, which defeats D9's "the line's own SDK and Node".
+    - D12's threat still holds: a workflow the cherry-picked change edited never runs.
+    - Accepted risk: someone who can push to the line can change what runs. They can push to the line anyway, and
+      the patch stays limited to the regenerated paths.
+    - Rejected: the default branch's copy (refuses every line after its first bump); the default branch's copy with
+      markers normalized (brittle: any other edit on master breaks every line).
+  - **Trigger: every regenerated path, not only conflicts.** D9 says lockfiles are never merged. Every path the change
+    touches that matches `mergeQueue.regeneratedPaths` therefore takes the line's side, and then the line's workflow
+    regenerates it, as does every `regenerate` resolution.
+    - Accepted cost: a backport that touches a lockfile waits for a workflow run, minutes, before its PR opens.
+    - Rejected: regenerating only resolved conflicts, which lets a cleanly text-merged lockfile reach the line
+      unverified.
+- **M6, built (2026-11-05): regeneration on backport branches (D9).**
+
+  **Writer.**
+  - Each target carries the default branch's effective `mergeQueue.regeneratedPaths` (`BackportTargetWire.RegeneratedPaths`).
+  - Before the merge, every changed path that matches one is reset in "theirs" to the base's entry (removed when the
+    base lacks it). The merge therefore keeps the line's side and cannot conflict there.
+  - These paths are kept out of the platform-marker paths.
+  - The target's result lists `regenerate`: those paths, plus every `regenerate` resolution.
+  - The new job `POST /jobs/versioning/backport/regenerated` folds a regenerate patch into the backport commit, so it
+    stays one commit with the same parent, message and author. It works in four steps:
+    1. It validates the patch like the merge queue's publish (`PatchValidator`, T4: regenerated paths only, regular
+       files).
+    2. It checks that the head is still `expectedSha` (`branch-moved` otherwise).
+    3. It applies the patch through `WriterService.ApplyPatchAsync` and checks the tree.
+    4. It pushes with a lease on the tip.
+
+    Its outcomes are `regenerated`, `patch-rejected`, `branch-moved` and `push-rejected`. Only `backport/*` heads are
+    accepted.
+
+  **App.**
+  - `BackportRecipient` sends the paths, except under `postRebaseWhen: never`. With `never` they merge as plain text,
+    as the queue would.
+  - A `created` target with a `regenerate` list does not open its pull request. It goes to
+    `BackportRegenerationEngine`, a saga over `IWorkflowHook` that is serial on the versioning lane and gated by
+    generation. Its document is `BackportRegenerations/<repo>`, which the webhook filter point-loads.
+  - `BackportRegenerationEngine.Plan` picks the workflows as the merge queue does (O36): a `regenerate` resolution's
+    rule `action`, else `postRebaseActionName`. They run one after the other, each on the commit the previous fold
+    left.
+  - The allowed globs are the list plus each concrete path outside it (O37). This is the same rule as
+    `PublishRegeneratedPaths`.
+  - Before the first dispatch, `VerifyProvenanceAsync` runs against **the line branch** (the owner decision above).
+  - The dispatch inputs are `expected_sha`, `pr_number` and `queue_run_id`. The run is observed, `merge-queue-patch`
+    is downloaded, and the writer folds it in with its own token (T9).
+  - The pull request then opens with "Regenerated on this line by …", and the backported pull request gets a comment.
+  - **Every stop opens the pull request anyway** with "**Not regenerated**: <why>" and the stale files (D9's "PR opens
+    with a note"). The stops are: a missing or edited workflow, no workflow configured, `never`, a refused or
+    uncorrelated dispatch, a failed or wrong-commit run, an unusable artifact, a refused patch, no token, the timeout
+    (`postRebaseTimeoutMinutes`, with the run abandoned, D53), and more than 6 transient failures in a row.
+  - A `drafted` target lists its stale files the same way, since nothing regenerates a draft.
+  - `GitHubEventsRecipient` lets `workflow_run` completions through while a backport is pending, and
+    `BackportRegenerationEventsRecipient` forwards the run's completion onto the lane.
+  - Opening the PR is idempotent (`OpenPullRequestAsync` finds an open one on a 422). A step retried after the open
+    can repeat the comment. This is accepted.
+
+  **Tests:**
+  - Writer `BackportTests`: a regenerated path keeps the line's side and is listed; the patch is folded; it is refused
+    outside its paths and on a moved branch; an empty patch leaves the commit as it is.
+  - App `BackportRegenerationEngineTests`:
+    - fold, then open;
+    - two workflows in sequence on the folded commit;
+    - provenance that differs from the line tip;
+    - a refused patch;
+    - a timeout that abandons the run, and a stale generation that is dropped;
+    - the plan.
+  - App `BackportRecipientTests`: the paths are sent and the target waits; a line that cannot regenerate opens with a
+    note; nothing is sent under `never`.
+  - The webhook filter, the client route and the registrations.
 - **Every automatic resolution is listed in the per-line report** (D6): path, strategy, and what each side added.

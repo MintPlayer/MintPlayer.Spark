@@ -90,6 +90,7 @@ public class GitWriterSidecarClientTests
         { "POST /jobs/tags", w => w.TagsAsync(new GitWriterTagsRequest("github", "910040", "https://github.com/acme/widget.git", Credential, ["master"], null!, [])) },
         { "POST /jobs/versioning/run", w => w.VersioningRunAsync(new GitWriterVersioningRequest("github", "910040", "https://github.com/acme/widget.git", Credential, "master", "master", null, null!, null!, null!)) },
         { "POST /jobs/versioning/backport", w => w.VersioningBackportAsync(new GitWriterBackportRequest("github", "910040", "https://github.com/acme/widget.git", Credential, "master", "abc", 7, "Fix", [], null!, [])) },
+        { "POST /jobs/versioning/backport/regenerated", w => w.VersioningBackportRegeneratedAsync(new GitWriterBackportRegeneratedRequest("github", "910040", "https://github.com/acme/widget.git", Credential, "backport/7-8.x", "abc", "", [], null!)) },
         { "POST /jobs/versioning/plan", w => w.VersioningPlanAsync(new GitWriterVersioningPlanRequest("github", "910040", "https://github.com/acme/widget.git", Credential, "master", "master", "abc", null, null!)) },
     };
 

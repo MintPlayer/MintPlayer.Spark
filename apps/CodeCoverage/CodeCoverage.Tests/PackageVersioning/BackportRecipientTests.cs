@@ -26,6 +26,7 @@ public class BackportRecipientTests : CoverageRavenTest
     private readonly IForgeMergeQueue git = Substitute.For<IForgeMergeQueue>();
     private readonly IForgeIntegration integration = Substitute.For<IForgeIntegration>();
     private readonly IGitWriterSidecar writer = Substitute.For<IGitWriterSidecar>();
+    private readonly IBackportRegenerationEngine regenerations = Substitute.For<IBackportRegenerationEngine>();
 
     public BackportRecipientTests()
     {
@@ -50,7 +51,7 @@ public class BackportRecipientTests : CoverageRavenTest
             await seed.SaveChangesAsync();
         }
         using var session = store.OpenAsyncSession();
-        await new BackportRecipient(session, new SingleForgeResolver(integration), [forge], [git], writer, NullLogger<BackportRecipient>.Instance)
+        await new BackportRecipient(session, new SingleForgeResolver(integration), [forge], [git], writer, regenerations, NullLogger<BackportRecipient>.Instance)
             .HandleAsync(new BackportMessage { RepositoryId = RepositoryId, Number = 7, Lines = lines, ActorLogin = actor, Source = source });
     }
 
@@ -328,5 +329,63 @@ public class BackportRecipientTests : CoverageRavenTest
             Arg.Is<GitWriterBackportRequest>(r => !r.Targets.Single().Draft && r.Markers!.Packages.Count == 0), Arg.Any<CancellationToken>());
         forge.DraftHeads.Should().BeEmpty();
         forge.Comments.Single().Body.Should().Contain("has errors, so its defaults were used:\n- backport.onConflict 'push'");
+    }
+
+    [Fact]
+    public async Task Regenerated_paths_go_with_every_target_and_a_line_that_needs_regenerating_waits_for_its_workflow()
+    {
+        // #570 M6, D9: the merge queue's regeneratedPaths keep the line's side; the pull request opens after the line's workflow.
+        using var store = GetDocumentStore();
+        integration.GetFileContentAsync(Arg.Any<Repository>(), "main", CoverageYml.FileName, Arg.Any<CancellationToken>())
+            .Returns(QueueYml + "    - path: \"**/packages.lock.json\"\n      strategy: take-base\n      regenerate: true\n      action: lock.yml\n");
+        WriterAnswers(new GitWriterBackportResult(GitWriterBackportResult.Backported, null, "squash", null,
+        [
+            Target(GitWriterBackportTargetResult.Created) with
+            {
+                Resolutions = [new("App/packages.lock.json", "take-base", true, 0)],
+                Regenerate = ["App/packages.lock.json", "app/package-lock.json"],
+            },
+        ], null, 1));
+
+        await HandleAsync(store, "maintainer", EBackportSource.Label, "8.x");
+
+        await writer.Received(1).VersioningBackportAsync(
+            Arg.Is<GitWriterBackportRequest>(r => r.Targets.Single().RegeneratedPaths!.Contains("**/package-lock.json")), Arg.Any<CancellationToken>());
+        forge.OpenedPullRequests.Should().BeEmpty();
+        await regenerations.Received(1).BeginAsync(Arg.Any<Repository>(), Arg.Is<BackportRegeneration>(r =>
+            r.Head == "backport/7-8.x" && r.Branch == "release/8.x" && r.Number == 7 && r.Sha == new string('d', 40)
+            && r.Workflows.SequenceEqual(new[] { "lock.yml", "regenerate.yml" })
+            && r.Paths.Count == 2 && r.Title == "[8.x] fix: guard" && r.Body.StartsWith("Backport of #7 to `release/8.x`.")), Arg.Any<CancellationToken>());
+        forge.Comments.Single().Body.Should().Contain("- `release/8.x`: `backport/7-8.x` is pushed; its pull request opens once `lock.yml`, `regenerate.yml` regenerated 2 files on the line");
+    }
+
+    [Fact]
+    public async Task A_line_that_cannot_regenerate_opens_its_pull_request_with_a_note()
+    {
+        // #570 D9: a regeneration that cannot run never holds the backport back; the pull request says what is stale.
+        using var store = GetDocumentStore();
+        integration.GetFileContentAsync(Arg.Any<Repository>(), "main", CoverageYml.FileName, Arg.Any<CancellationToken>())
+            .Returns("versioning:\nmergeQueue:\n  keepBothDefaults: false\n");
+        WriterAnswers(new GitWriterBackportResult(GitWriterBackportResult.Backported, null, "squash", null,
+            [Target(GitWriterBackportTargetResult.Created) with { Regenerate = ["app/package-lock.json"] }], null, 1));
+
+        await HandleAsync(store, "maintainer", EBackportSource.Label, "8.x");
+
+        await regenerations.DidNotReceiveWithAnyArgs().BeginAsync(default!, default!, default);
+        forge.OpenedPullRequests.Single().Body.Should().EndWith(
+            "**Not regenerated**: `mergeQueue.postRebaseActionName` names no regenerate workflow. These files kept the line's version and need regenerating on this branch:\n- `app/package-lock.json`\n");
+    }
+
+    [Fact]
+    public async Task Under_postRebaseWhen_never_no_regenerated_paths_are_sent()
+    {
+        using var store = GetDocumentStore();
+        integration.GetFileContentAsync(Arg.Any<Repository>(), "main", CoverageYml.FileName, Arg.Any<CancellationToken>())
+            .Returns("versioning:\nmergeQueue:\n  postRebaseActionName: regenerate.yml\n  postRebaseWhen: never\n");
+        WriterAnswers(new GitWriterBackportResult(GitWriterBackportResult.Backported, null, "squash", null, [Target(GitWriterBackportTargetResult.Created)], null, 1));
+
+        await HandleAsync(store, "maintainer", EBackportSource.Label, "8.x");
+
+        await writer.Received(1).VersioningBackportAsync(Arg.Is<GitWriterBackportRequest>(r => r.Targets.Single().RegeneratedPaths == null), Arg.Any<CancellationToken>());
     }
 }

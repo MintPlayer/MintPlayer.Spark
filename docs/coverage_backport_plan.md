@@ -148,6 +148,9 @@ PRD §8.2.
     `backport.markers` (D8). The per-request `/backport --draft` moves to M8. Details are in PRD §8.3, "M5, third
     part".
 - **M6 Regeneration on backport branches** (S5, D9): dispatch the line's workflow, apply the patch, then open the PR.
+  **Done (2026-11-05).** The workflow's provenance is the line tip's copy, and every regenerated path the change
+  touches triggers it (owner decisions). Any stop opens the PR with a "Not regenerated" note. The live check is S5.
+  Details are in PRD §8.3, "M6, built".
 - **M7 Merge queue for lines** (D12):
   - `mergeQueue.branches` patterns / `supported-lines`;
   - automatic enqueue of backport PRs;

@@ -443,19 +443,23 @@ public sealed partial class WriterService(GitRunner git, JobRunner jobs, IOption
     /// <summary>The validated patch applied to <paramref name="tree"/> (undone with <paramref name="reverse"/>) in a
     /// throwaway index: <c>git apply --cached</c> works in a bare repository, and the blobs the patch needs are fetched
     /// lazily. Returns the new tree's id, or the rejection.</summary>
-    private static async Task<object> ApplyAsync(JobContext context, PublishJob job, string tree, IReadOnlyList<string> paths, bool reverse)
+    private static Task<object> ApplyAsync(JobContext context, PublishJob job, string tree, IReadOnlyList<string> paths, bool reverse)
+        => ApplyPatchAsync(context, job.Patch, job.Prepare.Credential, tree, paths, reverse);
+
+    /// <inheritdoc cref="ApplyAsync"/>
+    internal static async Task<object> ApplyPatchAsync(JobContext context, byte[] patchBytes, GitCredential credential, string tree, IReadOnlyList<string> paths, bool reverse)
     {
         var index = Path.Combine(context.Scratch, reverse ? "undo.index" : "publish.index");
         var patch = Path.Combine(context.Scratch, "regenerate.patch");
         if (!File.Exists(patch))
-            await File.WriteAllBytesAsync(patch, job.Patch, context.Deadline);
+            await File.WriteAllBytesAsync(patch, patchBytes, context.Deadline);
         File.Delete(index);
         await context.RequireAsync(["read-tree", tree], index: index);
         List<string> arguments = ["apply", "--cached", "--whitespace=nowarn"];
         if (reverse)
             arguments.Add("--reverse");
         arguments.AddRange(["--", patch]);
-        var apply = await context.GitAsync(arguments, job.Prepare.Credential, index: index);
+        var apply = await context.GitAsync(arguments, credential, index: index);
         if (!apply.Succeeded)
             return PatchVerdict.Reject(PatchReasons.ApplyFailed, apply.StandardError.Trim(), [.. paths]);
         // --missing-ok: the tree names blobs the blob-less clone never fetched; apply fetched the ones it needed.
@@ -464,7 +468,7 @@ public sealed partial class WriterService(GitRunner git, JobRunner jobs, IOption
 
     /// <summary>Defence in depth after the apply: the trees differ only in declared paths, and every declared path that
     /// still exists is a regular, non-executable file.</summary>
-    private static async Task<PatchVerdict?> CheckTreeAsync(JobContext context, string before, string after, IReadOnlyList<string> declared)
+    internal static async Task<PatchVerdict?> CheckTreeAsync(JobContext context, string before, string after, IReadOnlyList<string> declared)
     {
         var changed = (await context.RequireAsync(["diff-tree", "-r", "--no-renames", "--name-only", "-z", before, after])).StandardOutput
             .Split('\0', StringSplitOptions.RemoveEmptyEntries);

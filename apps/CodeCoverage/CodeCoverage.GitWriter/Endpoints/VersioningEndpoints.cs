@@ -220,7 +220,7 @@ internal sealed partial class GitWriterVersioningBackportEndpoint : IPostEndpoin
     public static readonly string TitleRule = $"1 to {MaxTitle} characters, no control characters";
     public static readonly string SubjectsRule = $"at most {MaxSubjects} commit subjects of 1 to {MaxTitle} characters, no control characters";
     public static readonly string TargetsRule = $"1 to {MaxTargets} targets with distinct branches and heads, none the source branch, every head a branch under {HeadPrefix}, "
-        + $"each autoResolve list valid ({WireValidation.AutoResolveEntriesRule})";
+        + $"each autoResolve list valid ({WireValidation.AutoResolveEntriesRule}) and each regeneratedPaths list too ({WireValidation.RegeneratedPathsRule})";
 
     public static string Path => "/jobs/versioning/backport";
 
@@ -280,9 +280,46 @@ internal sealed partial class GitWriterVersioningBackportEndpoint : IPostEndpoin
             if (WireValidation.Branch(wire.Branch) is not { } branch || WireValidation.Branch(wire.Head) is not { } head) return null;
             if (branch == source || !head.StartsWith(HeadPrefix, StringComparison.Ordinal) || head.Length == HeadPrefix.Length) return null;
             if (WireValidation.Rules(wire.AutoResolve) is not { } rules) return null;
-            targets.Add(new BackportTarget(branch, head, rules, wire.Draft));
+            if (WireValidation.Globs(wire.RegeneratedPaths) is not { } globs) return null;
+            targets.Add(new BackportTarget(branch, head, rules, wire.Draft, globs));
         }
         var distinct = targets.Select(t => t.Branch).Concat(targets.Select(t => t.Head)).Distinct(StringComparer.Ordinal).Count() == targets.Count * 2;
         return distinct ? targets : null;
+    }
+}
+
+/// <summary><c>POST /jobs/versioning/backport/regenerated</c>: the line's regenerate patch folded into a backport (#570 M6, D9).</summary>
+internal sealed partial class GitWriterVersioningBackportRegeneratedEndpoint : IPostEndpoint<VersioningBackportRegeneratedRequestWire>
+{
+    public static string Path => "/jobs/versioning/backport/regenerated";
+    public static readonly string HeadRule = $"a branch under {GitWriterVersioningBackportEndpoint.HeadPrefix}";
+
+    [Inject] private readonly BackportService backports;
+    [Inject] private readonly IOptions<GitWriterOptions> options;
+
+    protected override async ValueTask<VersioningBackportRegeneratedRequestWire?> BindRequestAsync(HttpContext context)
+        => await Body.ReadAsync<VersioningBackportRegeneratedRequestWire>(context.Request.Body, context.Request.ContentLength,
+            Body.PatchBytes(options.Value.MaxPatchBytes), context.RequestAborted);
+
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure)
+        => new(Refusal.Body(Body.PatchBytes(options.Value.MaxPatchBytes)));
+
+    public override async Task<IResult> HandleAsync(VersioningBackportRegeneratedRequestWire request, CancellationToken cancellationToken)
+    {
+        var refusal = new Refusal();
+        if (!refusal.Check(WireValidation.IsRepo(request.Provider, request.RepoId), "repoId", WireValidation.RepoRule)
+            || refusal.Check(WireValidation.RemoteUrl(request.CloneUrl, options.Value.AllowInsecureHttp), "cloneUrl", WireValidation.RemoteUrlRule) is not { } cloneUrl
+            || refusal.Check(WireValidation.Credential(request.Credential), "credential", WireValidation.CredentialRule) is not { } credential
+            || refusal.Check(WireValidation.Branch(request.Head) is { } h && h.StartsWith(GitWriterVersioningBackportEndpoint.HeadPrefix, StringComparison.Ordinal)
+                && h.Length > GitWriterVersioningBackportEndpoint.HeadPrefix.Length ? h : null, "head", HeadRule) is not { } head
+            || refusal.Check(WireValidation.ObjectId(request.ExpectedSha), "expectedSha", WireValidation.ShaRule) is not { } expected
+            || refusal.Check(GitWriterPublishEndpoint.Patch(request.Patch), "patch", "base64, or empty for no patch") is not { } patch
+            || refusal.Check(WireValidation.Globs(request.RegeneratedPaths), "regeneratedPaths", WireValidation.RegeneratedPathsRule) is not { } globs
+            || refusal.Check(request.Committer is { } c && MergeQueueWireRules.IsIdentity(c.Name, c.Email) ? new GitIdentity(c.Name!, c.Email!) : null,
+                "committer", MergeQueueWireRules.IdentityRule) is not { } committer)
+            return refusal.Result();
+
+        return Results.Json(await backports.RegeneratedAsync(new BackportRegeneratedJob($"{request.Provider}/{request.RepoId}", cloneUrl, credential, head, expected,
+            patch, globs, committer)), GitWriterHost.Json);
     }
 }

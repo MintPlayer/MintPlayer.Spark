@@ -247,6 +247,12 @@ dry-runs the cherry-pick onto every requested line. Each line is handled on its 
   the compile check against the old target. A line that already holds the change gets nothing.
 - **A line that conflicts** gets nothing pushed. The comment names its files and gives the commands for a manual
   backport. The other lines are not held back.
+- **Lockfiles and other regenerated files are never merged.** A file that matches `mergeQueue.regeneratedPaths` keeps
+  the line's version. The line's own regenerate workflow then runs on the backport branch:
+  `postRebaseActionName`, or the `action` of the rule that resolved the file. The workflow file must be the same as at
+  the line's tip. Its `merge-queue-patch` is folded into the backport commit, and only then does the pull request open.
+  If the regeneration cannot run or fails, the pull request opens anyway, with a **Not regenerated** note listing the
+  files to regenerate by hand.
 
 A `backport:` section in the default branch's `coverage.yml` adjusts this:
 

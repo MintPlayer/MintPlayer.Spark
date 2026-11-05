@@ -686,9 +686,12 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
 
         if (Build(repositoryId) is not { } evt) return;
         var queue = await session.LoadAsync<MergeQueue>(MergeQueue.DocumentId(repositoryId), ct);
-        // The dependency updater waits for its own workflow runs and its rolling head's checks the same way.
+        // The dependency updater waits for its own workflow runs and its rolling head's checks the same way, and a backport
+        // for its line's regenerate run (#570 M6).
         if ((queue is null || !queue.IsBusy())
-            && await session.LoadAsync<DependencyUpdateRun>(DependencyUpdateRun.ForRepository(repositoryId), ct) is not { State: not EDependencyRunState.Idle })
+            && await session.LoadAsync<DependencyUpdateRun>(DependencyUpdateRun.ForRepository(repositoryId), ct) is not { State: not EDependencyRunState.Idle }
+            && (evt is not CiRunCompleted
+                || await session.LoadAsync<BackportRegenerations>(BackportRegenerations.ForRepository(repositoryId), ct) is not { Pending.Count: > 0 }))
             return;
 
         switch (evt)

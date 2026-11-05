@@ -105,6 +105,10 @@ public interface IGitWriterSidecar
     Task<PackageVersioning.GitWriterBackportResult> VersioningBackportAsync(PackageVersioning.GitWriterBackportRequest request, CancellationToken cancellationToken = default)
         => throw new NotSupportedException("This git writer has no backport job.");
 
+    /// <summary>#570 M6: folds a line's regenerate patch into a backport commit.</summary>
+    Task<PackageVersioning.GitWriterBackportRegeneratedResult> VersioningBackportRegeneratedAsync(PackageVersioning.GitWriterBackportRegeneratedRequest request, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException("This git writer has no backport regenerate job.");
+
     /// <summary>#153 M11: the release plan for a pushed commit, without a build and without writing anything.</summary>
     Task<PackageVersioning.GitWriterVersioningPlanResult> VersioningPlanAsync(PackageVersioning.GitWriterVersioningPlanRequest request, CancellationToken cancellationToken = default)
         => throw new NotSupportedException("This git writer has no versioning plan job.");
@@ -163,6 +167,9 @@ public sealed class GitWriterSidecarClient(HttpClient http, IOptions<MergeQueueO
 
     public Task<PackageVersioning.GitWriterBackportResult> VersioningBackportAsync(PackageVersioning.GitWriterBackportRequest request, CancellationToken cancellationToken = default)
         => SendAsync<PackageVersioning.GitWriterBackportResult>(HttpMethod.Post, "jobs/versioning/backport", request, cancellationToken);
+
+    public Task<PackageVersioning.GitWriterBackportRegeneratedResult> VersioningBackportRegeneratedAsync(PackageVersioning.GitWriterBackportRegeneratedRequest request, CancellationToken cancellationToken = default)
+        => SendAsync<PackageVersioning.GitWriterBackportRegeneratedResult>(HttpMethod.Post, "jobs/versioning/backport/regenerated", request, cancellationToken);
 
     public Task<PackageVersioning.GitWriterVersioningPlanResult> VersioningPlanAsync(PackageVersioning.GitWriterVersioningPlanRequest request, CancellationToken cancellationToken = default)
         => SendAsync<PackageVersioning.GitWriterVersioningPlanResult>(HttpMethod.Post, "jobs/versioning/plan", request, cancellationToken);

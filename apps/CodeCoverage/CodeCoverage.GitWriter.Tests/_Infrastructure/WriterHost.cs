@@ -104,6 +104,13 @@ internal sealed class WriterHost : IAsyncDisposable
         return (await response.Content.ReadFromJsonAsync<VersioningBackportResponse>(GitWriterHost.Json))!;
     }
 
+    public async Task<BackportRegeneratedResponse> BackportRegeneratedAsync(object request)
+    {
+        var response = await Client.PostAsJsonAsync("/jobs/versioning/backport/regenerated", request, GitWriterHost.Json);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<BackportRegeneratedResponse>(GitWriterHost.Json))!;
+    }
+
     public async Task<DeleteQueueBranchResponse> DeleteQueueBranchAsync(object request)
     {
         using var message = new HttpRequestMessage(HttpMethod.Delete, "/jobs/queue-branch") { Content = JsonContent.Create(request, options: GitWriterHost.Json) };

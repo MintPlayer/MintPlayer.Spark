@@ -141,6 +141,116 @@ public class BackportTests : WriterTestBase
         origin.InBare("cat-file", "blob", origin.Ref("refs/heads/backport/7-1.x") + ":package.json").Should().Be(Package("^21.4.0", Added));
     }
 
+    // --- M6: regenerated paths (D9: lockfiles are never merged; take the line's side, then regenerate) ---
+
+    private const string Lock = "app/package-lock.json";
+    private const string Lockfiles = "**/package-lock.json";
+
+    /// <summary>main with a lockfile, <c>release/1.x</c> cut there, then the pull request: a lockfile bump and a fix.</summary>
+    private (Origin Origin, string Squash) LockfileChange()
+    {
+        var origin = Seed();
+        origin.Checkout("main").Write(Lock, "{ \"lockfileVersion\": 3, \"line\": true }\n");
+        origin.Commit("lock");
+        origin.Push("main");
+        origin.Checkout("release/1.x", "main").Push("release/1.x");
+        origin.Checkout("main").Write(Lock, "{ \"lockfileVersion\": 3, \"main\": true }\n").Write("fix.txt", "fixed\n");
+        var squash = origin.Commit("fix: bump (#7)");
+        origin.Push("main");
+        return (origin, squash);
+    }
+
+    private static Dictionary<string, object?> RegeneratingRequest(Origin origin, string squash)
+    {
+        var request = Request(origin, squash, ["fix"], "1.x");
+        request["targets"] = new[] { new { branch = "release/1.x", head = "backport/7-1.x", regeneratedPaths = new[] { Lockfiles } } };
+        return request;
+    }
+
+    [Fact]
+    public async Task A_regenerated_path_keeps_the_line_side_and_is_listed_for_regeneration()
+    {
+        var (origin, squash) = LockfileChange();
+
+        var response = await Writer.BackportAsync(RegeneratingRequest(origin, squash));
+
+        var target = response.Targets.Single();
+        target.Push.Should().Be(BackportService.Created, string.Join(", ", target.Conflicts));
+        target.Regenerate.Should().Equal(Lock);
+        var head = origin.Ref("refs/heads/backport/7-1.x")!;
+        origin.InBare("cat-file", "blob", head + ":" + Lock).Should().Be("{ \"lockfileVersion\": 3, \"line\": true }\n", "a lockfile is never merged");
+        origin.InBare("cat-file", "blob", head + ":fix.txt").Should().Be("fixed\n");
+
+        var plain = await Writer.BackportAsync(Request(origin, squash, ["fix"], "1.x"));
+        plain.Targets.Single().Regenerate.Should().BeEmpty("without regenerated paths nothing is taken from the line");
+    }
+
+    private async Task<(Origin Origin, string Head, string Patch)> RegeneratedAsync(string path = Lock)
+    {
+        var (origin, squash) = LockfileChange();
+        var head = (await Writer.BackportAsync(RegeneratingRequest(origin, squash))).Targets.Single().Commit!;
+        FixtureGit.Run(origin.Work, "fetch", "--quiet", "origin", "backport/7-1.x");
+        origin.Checkout("regen", head).Write(path, "{ \"lockfileVersion\": 3, \"regenerated\": true }\n");
+        origin.Commit("regenerate");
+        var patch = FixtureGit.Run(origin.Work, "diff", "--binary", head, "HEAD");
+        origin.Checkout("main");
+        return (origin, head, patch);
+    }
+
+    private static Dictionary<string, object?> PatchRequest(Origin origin, string expected, string patch) => new()
+    {
+        ["provider"] = "github",
+        ["repoId"] = "1001",
+        ["cloneUrl"] = origin.Url.AbsoluteUri,
+        ["credential"] = Credential(Token),
+        ["head"] = "backport/7-1.x",
+        ["expectedSha"] = expected,
+        ["patch"] = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(patch)),
+        ["regeneratedPaths"] = new[] { Lockfiles },
+        ["committer"] = new { name = "coverage-bot", email = "bot@example.invalid" },
+    };
+
+    [Fact]
+    public async Task The_regenerate_patch_is_folded_into_the_backport_commit()
+    {
+        var (origin, head, patch) = await RegeneratedAsync();
+
+        var response = await Writer.BackportRegeneratedAsync(PatchRequest(origin, head, patch));
+
+        response.Outcome.Should().Be("regenerated", response.Detail);
+        response.Paths.Should().Equal(Lock);
+        var commit = origin.Ref("refs/heads/backport/7-1.x")!;
+        commit.Should().Be(response.Commit);
+        origin.InBare("rev-parse", commit + "^").Trim().Should().Be(origin.Ref("refs/heads/release/1.x"), "one commit on the line, as before");
+        origin.InBare("cat-file", "blob", commit + ":" + Lock).Should().Be("{ \"lockfileVersion\": 3, \"regenerated\": true }\n");
+        origin.InBare("cat-file", "blob", commit + ":fix.txt").Should().Be("fixed\n");
+        origin.InBare("log", "-1", "--format=%B", commit).Should().Be(origin.InBare("log", "-1", "--format=%B", head), "the trailer stays");
+        origin.InBare("log", "-1", "--format=%an", commit).Should().Be(origin.InBare("log", "-1", "--format=%an", head));
+    }
+
+    [Fact]
+    public async Task A_regenerate_patch_is_refused_outside_its_paths_and_on_a_moved_branch()
+    {
+        var (origin, head, patch) = await RegeneratedAsync("fix.txt");
+
+        (await Writer.BackportRegeneratedAsync(PatchRequest(origin, head, patch))).Outcome.Should().Be("patch-rejected");
+        // T4 comes first; an empty patch passes it, so this one reaches the head check.
+        (await Writer.BackportRegeneratedAsync(PatchRequest(origin, new string('a', 40), ""))).Outcome.Should().Be("branch-moved");
+        origin.Ref("refs/heads/backport/7-1.x").Should().Be(head);
+    }
+
+    [Fact]
+    public async Task An_empty_patch_leaves_the_backport_as_it_is()
+    {
+        var (origin, head, _) = await RegeneratedAsync();
+
+        var response = await Writer.BackportRegeneratedAsync(PatchRequest(origin, head, ""));
+
+        response.Outcome.Should().Be("regenerated");
+        response.Commit.Should().Be(head);
+        response.Paths.Should().BeEmpty();
+    }
+
     private static string Project(string tfm, string nullable = "enable")
         => $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{tfm}</TargetFramework>\n    <Nullable>{nullable}</Nullable>\n  </PropertyGroup>\n</Project>\n";
 
