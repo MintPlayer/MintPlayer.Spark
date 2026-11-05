@@ -149,6 +149,15 @@ describe('SparkQueryListComponent', () => {
       expect(c.queryId()).toBe('bare');
     });
 
+    /** A custom source may be a sub-query that needs a parent (Song's Custom.Artist_Songs on mintplayer.com). */
+    it('prefers a database source over a custom one listed before it', async () => {
+      const sub = { ...allPeopleQuery, alias: 'company-people', id: 'q-sub', source: 'Custom.Company_People' } as any;
+      const { harness } = await setup({ getQueries: vi.fn().mockResolvedValue([sub, allPeopleQuery]) });
+      const c = await navigate(harness, '/po/person');
+
+      expect(c.queryId()).toBe('allpeople');
+    });
+
     /**
      * The handler is async inside a subscribe, so a rejection used to land nowhere and the page
      * spun forever. It must surface as the page's own error instead.

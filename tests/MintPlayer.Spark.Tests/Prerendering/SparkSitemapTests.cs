@@ -45,6 +45,10 @@ public class SparkSitemapTests
         SparkSitemapXml.ListQuery(type, [Query("Songs", "Database.Songs"), Query("Playlists", "Database.Playlists")])!.Name.Should().Be("Playlists");
         SparkSitemapXml.ListQuery(type, [Query("Mine", "Custom.MyLists", "Playlist")])!.Name.Should().Be("Mine");
         SparkSitemapXml.ListQuery(type, [Query("Songs", "Database.Songs")]).Should().BeNull();
+        // mintplayer.com (2026-11-05): Song lists its sub-query Custom.Artist_Songs (needs a parent) before
+        // Database.Songs; picking the first threw on every song hit. The database source wins, in either order.
+        SparkSitemapXml.ListQuery(type, [Query("Artist_Playlists", "Custom.Artist_Playlists", "Playlist"), Query("Playlists", "Database.Playlists", "Playlist")])!
+            .Name.Should().Be("Playlists");
     }
 
     [Fact]

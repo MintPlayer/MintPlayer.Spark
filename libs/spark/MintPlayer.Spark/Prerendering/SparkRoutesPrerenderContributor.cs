@@ -169,13 +169,9 @@ internal sealed class SparkRoutesPrerenderContributor : ISparkPrerenderContribut
         var queries = (await context.GetAsync($"{Api}/queries")).Read<List<QueryReference>>() ?? [];
         var entityType = ((await typesTask).Read<List<EntityTypeReference>>() ?? [])
             .FirstOrDefault(t => t.Id == type || t.Alias == type);
-        var match = entityType?.Name is null ? null : queries.FirstOrDefault(q =>
-        {
-            if (q.EntityType == entityType.Name) return true;
-            var source = q.Source ?? "";
-            var sourceName = source.Contains('.') ? source[(source.IndexOf('.') + 1)..] : source;
-            return sourceName == entityType.Name || sourceName == entityType.Name + "s";
-        });
+        var match = entityType?.Name is null
+            ? null
+            : MintPlayer.Spark.Services.SparkEntityLinks.ListQuery(queries, entityType.Name, q => q.EntityType, q => q.Source);
         if (match is null)
         {
             context.SetPageStatus(StatusCodes.Status404NotFound);

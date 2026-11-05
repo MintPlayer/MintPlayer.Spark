@@ -15,13 +15,26 @@ internal static class SparkEntityLinks
     /// type or its plural.
     /// </summary>
     internal static SparkQuery? ListQuery(EntityTypeDefinition type, IEnumerable<SparkQuery> queries)
-        => queries.FirstOrDefault(q =>
-        {
-            if (q.EntityType == type.Name) return true;
-            var source = q.Source ?? "";
-            var sourceName = source.Contains('.') ? source[(source.IndexOf('.') + 1)..] : source;
-            return sourceName == type.Name || sourceName == type.Name + "s";
-        });
+        => ListQuery(queries, type.Name, q => q.EntityType, q => q.Source);
+
+    /// <summary>
+    /// <see cref="ListQuery(EntityTypeDefinition, IEnumerable{SparkQuery})"/> over any query shape. A <c>Database.</c>
+    /// source wins over a <c>Custom.</c> one, in file order otherwise: a custom query may be a sub-query that needs a
+    /// parent (mintplayer.com, 2026-11-05: Song's <c>Custom.Artist_Songs</c> came first and every song hit threw).
+    /// A custom query is still the list when it is the only match.
+    /// </summary>
+    internal static T? ListQuery<T>(IEnumerable<T> queries, string typeName, Func<T, string?> entityType, Func<T, string?> source)
+        where T : class
+        => queries
+            .Where(q =>
+            {
+                if (entityType(q) == typeName) return true;
+                var text = source(q) ?? "";
+                var sourceName = text.Contains('.') ? text[(text.IndexOf('.') + 1)..] : text;
+                return sourceName == typeName || sourceName == typeName + "s";
+            })
+            .OrderBy(q => (source(q) ?? "").StartsWith("Custom.", StringComparison.Ordinal) ? 1 : 0)
+            .FirstOrDefault();
 
     /// <summary>The type's segment of a page URL, as the app's links write it: the alias, else the id.</summary>
     internal static string TypeSegment(EntityTypeDefinition type) => type.Alias ?? type.Id.ToString();
