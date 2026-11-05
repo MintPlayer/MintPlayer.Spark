@@ -23,6 +23,8 @@ WORKDIR /app
 EXPOSE 8080
 
 FROM mcr.microsoft.com/dotnet/sdk:11.0 AS build
+# No .git in the build context: the package versioning targets would only warn MPV003 per library (#565).
+ENV MintPlayerVersioningSkip=true
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
 # Selective csproj COPY for restore-layer caching: the sidecar's full transitive ProjectReference closure, which is just
