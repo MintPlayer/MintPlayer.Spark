@@ -551,8 +551,15 @@ cascade: 66 of 72 conflicted only because #461 was missing). Script: a throwaway
   **K1 (owner: "small wins toward the end goal", 2026-11-05):** the highest only when both sides raised the version.
   Before, a base-branch pin from 1.7.0 down to 1.6.0 against a PR bump to 1.8.0 silently took 1.8.0. Now it refuses
   (`A_version_lowered_on_either_side_is_refused_not_overridden_by_the_highest`, 3 rows, plus a package.json case).
-  **K2:** the formats are one descriptor each (`KeyedMergeResolver.Dialect`: file match, JSON or MSBuild entries, the
-  dependency objects, the platform keys). `composer.json` is the second JSON one, tested on laravel/laravel's own layout
+  **K2 (owner: "per-sdk a class/service … Let's do that first", 2026-11-05):** each format is one `[Register]`ed
+  `IManifestFormat` service (`MergeQueue/Resolution/Manifests/`), injected into the resolver as a list. It parses its
+  files into one structure (`ManifestEntry`: key, kind, scalar or collection, values by name, the entry's own text),
+  widens a region to whole entries (`Enclose`), orders versions (`CompareVersions`, null = no order), writes values back
+  in place (`Write`) and joins entries (`Join`, a JSON object's commas). The three-way merge stays the resolver's and
+  is the same for every format. Built test first: `ManifestFormatTests` holds each format's contract (one format per
+  file name, lockfiles none; NuGet order; npm order only inside dependency objects and of one operator), the
+  registered set equal to `ManifestFormats.BuiltIn`, and the end-to-end `KeyedMergeResolverTests` unchanged across
+  the refactor (94 green with the registry tests). `composer.json` is the second JSON one, tested on laravel/laravel's own layout
   (4-space indent, two-part constraints `^13.17`, `php` first). `php`/`ext-*`/`lib-*` refuse: they are the platform.
   **Lockfiles coexist (owner, 2026-11-05):** they stay take-base + regenerate. Keyed-merge picks the manifest's
   versions, and the regenerate run rebuilds the lockfile from them. A lockfile never matches a keyed-merge format.
