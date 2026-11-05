@@ -167,6 +167,7 @@ public static partial class DependenciesYml
         }
 
         section.LockFileMaintenance = file.LockFileMaintenance ?? false;
+        section.Lines = Lines(file.Lines, errors);
 
         foreach (var host in Strings(file.Registries, "dependencies.registries", errors))
         {
@@ -184,8 +185,19 @@ public static partial class DependenciesYml
         var fallback = DependenciesSection.Defaults();
         fallback.Present = true;
         fallback.Enabled = file.Enabled ?? true;
+        if (section.Lines == EDependencyLineUpdates.Off) fallback.Lines = EDependencyLineUpdates.Off;
         return new DependenciesYmlResult(fallback, errors);
     }
+
+    /// <summary>#568 D13: what a release line's own run may update; <c>patch</c> when absent.</summary>
+    private static EDependencyLineUpdates Lines(string? value, List<string> errors) => value?.Trim().ToLowerInvariant() switch
+    {
+        null or "patch" => EDependencyLineUpdates.Patch,
+        "all" => EDependencyLineUpdates.All,
+        "security" => EDependencyLineUpdates.Security,
+        "off" => EDependencyLineUpdates.Off,
+        var other => Error(errors, $"dependencies.lines '{other}' is not all, patch, security or off.", EDependencyLineUpdates.Patch),
+    };
 
     private static DependencyScheduleOverride Schedule(FileSchedule file, List<string> errors)
     {
@@ -370,6 +382,7 @@ public static partial class DependenciesYml
         public Dictionary<string, FilePlatform?>? Platforms { get; set; }
         public bool? LockFileMaintenance { get; set; }
         public object? Registries { get; set; }
+        public string? Lines { get; set; }
     }
 
     private sealed class FileSchedule
@@ -403,6 +416,25 @@ public static partial class DependenciesYml
         public object? Locations { get; set; }
         public object? Exclude { get; set; }
     }
+}
+
+/// <summary>
+/// #568 D13 <c>dependencies.lines</c>: what a release line's run updates. Every level stays under the line's platform major
+/// (its platform-anchored packages never move to another major) and never takes a major of anything.
+/// </summary>
+public enum EDependencyLineUpdates
+{
+    /// <summary>Patch updates, and security fixes up to a minor (the default).</summary>
+    Patch,
+
+    /// <summary>Patch and minor updates.</summary>
+    All,
+
+    /// <summary>Only security fixes.</summary>
+    Security,
+
+    /// <summary>No runs on release lines.</summary>
+    Off,
 }
 
 /// <summary>The parse: the section (the defaults when absent or broken) and what is wrong with it.</summary>
@@ -463,6 +495,9 @@ public sealed class DependenciesSection
 
     /// <summary>Gap B: lockfile hosts allowed besides the public registries, lower-case.</summary>
     public List<string> Registries { get; set; } = [];
+
+    /// <summary>#568 D13: what each supported release line's own rolling pull request updates; default patch.</summary>
+    public EDependencyLineUpdates Lines { get; set; } = EDependencyLineUpdates.Patch;
 
     /// <summary>R6's built-in thresholds, below every glob of the file: Angular moves only by approval (it moves with
     /// migrations, R9), Actions majors are over the threshold (R15).</summary>

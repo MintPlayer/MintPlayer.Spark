@@ -361,6 +361,9 @@ public sealed record GitWriterDeleteResult(string Outcome, string? Reason, strin
 /// </summary>
 public sealed record GitWriterDependencyRequest(string Provider, string RepoId, string CloneUrl, SidecarCredential Credential, string BaseBranch, string? ExpectedSha)
 {
+    /// <summary>#568 D13: a release line's run (<c>dotnet-10.x</c>): the writer uses that line's own bot branches.</summary>
+    public string? Line { get; init; }
+
     public GitWriterIdentity? Author { get; init; }
     public GitWriterIdentity? Committer { get; init; }
     public string? Message { get; init; }

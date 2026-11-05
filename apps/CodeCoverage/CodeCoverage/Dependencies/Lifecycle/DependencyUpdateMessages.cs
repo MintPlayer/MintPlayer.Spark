@@ -18,6 +18,9 @@ public sealed record DependencyUpdateStepMessage
     public required int Generation { get; init; }
     public required EDependencyStep Step { get; init; }
 
+    /// <summary>#568 D13: the release line whose run this step belongs to; null for the default branch's run.</summary>
+    public string? Line { get; init; }
+
     /// <summary><see cref="EDependencyStep.CancelRun"/>: the abandoned workflow run.</summary>
     public long? RunId { get; init; }
 
@@ -64,6 +67,9 @@ public sealed record DependencyUpdateSignalMessage
 {
     public required string RepositoryId { get; init; }
     public required EDependencySignal Kind { get; init; }
+
+    /// <summary>#568 D13: the release line whose run the signal is for; null for the default branch's run.</summary>
+    public string? Line { get; init; }
 
     public EDependencyRunTrigger? Trigger { get; init; }
 

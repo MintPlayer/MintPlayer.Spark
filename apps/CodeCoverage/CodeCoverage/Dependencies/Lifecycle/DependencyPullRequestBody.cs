@@ -24,6 +24,8 @@ public static class DependencyPullRequestBody
     {
         var count = report.Groups.Count;
         var what = count == 1 ? $"Update {report.Groups[0].Group}" : $"Update dependencies ({count} groups)";
+        // #568 D13: a line's pull request names its line, so it is told apart from the default branch's at a glance.
+        if (run.Line is { } line) what = $"[{line}] {what}";
         return run.Trigger == EDependencyRunTrigger.Security ? $"{what}, with security fixes" : what;
     }
 

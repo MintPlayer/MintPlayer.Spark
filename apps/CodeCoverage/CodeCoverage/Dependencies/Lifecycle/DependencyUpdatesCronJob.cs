@@ -77,11 +77,17 @@ public partial class DependencyUpdatesCronJob : ISparkCronJob
 
             var schedule = DependencySlots.Effective(repository, account, run);
             var (due, key) = DependencySlots.Due(schedule, now, repository.Id!);
-            if (due)
+            if (!due) continue;
+            await messageBus.BroadcastOnceAsync(new DependencyUpdateSignalMessage
+            {
+                RepositoryId = repository.Id!, Kind = EDependencySignal.Trigger, Trigger = EDependencyRunTrigger.Scheduled,
+            }, key, ct);
+            // #568 D13: each supported release line gets its own run in the same slot (the lines the last run read).
+            foreach (var line in run?.FileLines ?? [])
                 await messageBus.BroadcastOnceAsync(new DependencyUpdateSignalMessage
                 {
-                    RepositoryId = repository.Id!, Kind = EDependencySignal.Trigger, Trigger = EDependencyRunTrigger.Scheduled,
-                }, key, ct);
+                    RepositoryId = repository.Id!, Line = line, Kind = EDependencySignal.Trigger, Trigger = EDependencyRunTrigger.Scheduled,
+                }, $"{key}:{line}", ct);
         }
     }
 }

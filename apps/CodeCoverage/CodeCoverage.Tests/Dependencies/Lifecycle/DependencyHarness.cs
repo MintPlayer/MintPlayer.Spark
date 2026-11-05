@@ -238,12 +238,18 @@ internal sealed class DependencyHarness
     }
 
     public Task TriggerAsync(EDependencyRunTrigger trigger = EDependencyRunTrigger.Scheduled, IReadOnlyList<DependencySecurityFixRecord>? fixes = null)
-        => SignalAsync(new DependencyUpdateSignalMessage { RepositoryId = RepositoryId, Kind = EDependencySignal.Trigger, Trigger = trigger, SecurityFixes = fixes });
+        => SignalAsync(new DependencyUpdateSignalMessage { RepositoryId = RepositoryId, Line = Line, Kind = EDependencySignal.Trigger, Trigger = trigger, SecurityFixes = fixes });
+
+    /// <summary>The branch of <see cref="Line"/> under the default <c>versioning.lines</c> pattern.</summary>
+    public string? LineBranch => Line is null ? null : $"release/{Line}";
+
+    /// <summary>#568 D13: the release line the harness drives (its triggers, commands and reads); null for the default branch's run.</summary>
+    public string? Line { get; set; }
 
     public Task CommandAsync(EDependencyCommand command, string? argument, string actor = "maintainer", long commentId = 900)
         => SignalAsync(new DependencyUpdateSignalMessage
         {
-            RepositoryId = RepositoryId, Kind = EDependencySignal.Command, Number = Updates.LastPull.Number, CommentId = commentId,
+            RepositoryId = RepositoryId, Line = Line, Kind = EDependencySignal.Command, Number = Updates.LastPull.Number, CommentId = commentId,
             Command = command, Argument = argument, Actor = actor,
         });
 
@@ -287,13 +293,13 @@ internal sealed class DependencyHarness
     public async Task<DependencyUpdateRun> RunAsync()
     {
         using var session = Store.OpenAsyncSession();
-        return (await session.LoadAsync<DependencyUpdateRun>(DependencyUpdateRun.ForRepository(RepositoryId)))!;
+        return (await session.LoadAsync<DependencyUpdateRun>(DependencyUpdateRun.ForRepository(RepositoryId, Line)))!;
     }
 
     public async Task<DependencyUpdateRunData> DataAsync()
     {
         using var session = Store.OpenAsyncSession();
-        return (await session.LoadAsync<DependencyUpdateRunData>(DependencyUpdateRunData.ForRepository(RepositoryId)))!;
+        return (await session.LoadAsync<DependencyUpdateRunData>(DependencyUpdateRunData.ForRepository(RepositoryId, Line)))!;
     }
 
     public async Task<DependencyUpdateState> StateAsync()
@@ -319,8 +325,9 @@ internal sealed class DependencyHarness
 
     /// <summary>The next dispatch starts run <paramref name="runId"/>, which completes on <paramref name="sha"/> with
     /// <paramref name="conclusion"/> (null: still running).</summary>
-    public void ScriptRun(long runId, string sha, string? conclusion = "success", string branch = "master", bool dispatch = true)
+    public void ScriptRun(long runId, string sha, string? conclusion = "success", string? branch = null, bool dispatch = true)
     {
+        branch ??= LineBranch ?? "master";
         if (dispatch)
             Queue.DispatchQueue.Enqueue(new ForgeWorkflowDispatch(EForgeDispatchOutcome.Dispatched, runId, $"https://github.com/acme/widget/actions/runs/{runId}", null));
         Queue.Runs[runId] = new ForgeWorkflowRun(runId, conclusion is null ? "in_progress" : "completed", conclusion, sha, branch, $"https://github.com/acme/widget/actions/runs/{runId}");
@@ -337,7 +344,7 @@ internal sealed class DependencyHarness
     /// <summary>The apply run: every planned group applied unless <paramref name="failed"/> names it.</summary>
     public void ScriptApply(long runId = ApplyRunId, string patch = Patch, params string[] failed)
     {
-        ScriptRun(runId, Writer.PlanCommitSha, branch: DependencyUpdateRun.WorkBranch, dispatch: false);
+        ScriptRun(runId, Writer.PlanCommitSha, branch: DependencyUpdateRun.WorkBranchOf(Line), dispatch: false);
         ApplyArtifact = (runId, patch, failed);
     }
 

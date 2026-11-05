@@ -692,7 +692,7 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
         // The dependency updater waits for its own workflow runs and its rolling head's checks the same way, and a backport
         // for its line's regenerate run (#570 M6).
         if ((queue is null || !queue.IsBusy())
-            && await session.LoadAsync<DependencyUpdateRun>(DependencyUpdateRun.ForRepository(repositoryId), ct) is not { State: not EDependencyRunState.Idle }
+            && !await DependencyRunBusyAsync(repositoryId, ct)
             && (evt is not CiRunCompleted
                 || await session.LoadAsync<BackportRegenerations>(BackportRegenerations.ForRepository(repositoryId), ct) is not { Pending.Count: > 0 }))
             return;
@@ -724,6 +724,15 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
     /// <see cref="CheckReported"/> for a <c>check_run</c> another App made, or a <c>status</c>, when the name is new to the
     /// repository or a day stale (merge-queue PRD §11, D108). A <c>check_suite</c> names no check, so it raises none.
     /// </summary>
+    /// <summary>A dependency run of the repository is busy: the default branch's, or a release line's (#568 D13).</summary>
+    private async Task<bool> DependencyRunBusyAsync(string repositoryId, CancellationToken ct)
+    {
+        if (await session.LoadAsync<DependencyUpdateRun>(DependencyUpdateRun.ForRepository(repositoryId), ct) is { State: not EDependencyRunState.Idle })
+            return true;
+        var lines = await session.Advanced.LoadStartingWithAsync<DependencyUpdateRun>(DependencyUpdateRun.LinesPrefix(repositoryId), pageSize: 64, token: ct);
+        return lines.Any(r => r.State != EDependencyRunState.Idle);
+    }
+
     private async Task RaiseReportedCheckAsync(string eventType, JsonElement root, string repositoryId, CancellationToken ct)
     {
         var reported = eventType switch

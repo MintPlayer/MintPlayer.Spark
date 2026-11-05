@@ -510,9 +510,10 @@ public partial class MergeQueueEngine : IMergeQueueEngine
     /// </summary>
     private async Task<bool> IsBotsOwnRollingHeadAsync(Context context, MergeQueueEntry entry, CancellationToken ct)
     {
-        if (entry.HeadBranch != DependencyUpdateRun.RollingBranch || context.Repository.Id is not { } repositoryId)
+        // #568 D13: a release line's rolling branch is the line's run's.
+        if (!DependencyUpdateRun.IsRollingBranch(entry.HeadBranch, out var line) || context.Repository.Id is not { } repositoryId)
             return false;
-        var run = await session.LoadAsync<DependencyUpdateRun>(DependencyUpdateRun.ForRepository(repositoryId), ct);
+        var run = await session.LoadAsync<DependencyUpdateRun>(DependencyUpdateRun.ForRepository(repositoryId, line), ct);
         return run is { PullRequestNumber: { } number, RollingSha: { } rolling, RollingBotSha: { } bot }
             && number == entry.Number
             && string.Equals(rolling, bot, StringComparison.OrdinalIgnoreCase)

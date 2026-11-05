@@ -1031,3 +1031,33 @@ cascade: 66 of 72 conflicted only because #461 was missing). Script: a throwaway
   - there is no single list of features and the App permissions each one needs.
 - **S7 (renaming a branch as the App): not run yet.** It needs the dev App on the scratch repository, and it is a live
   check like S5.
+- **M9, which lines get dependency runs: every supported line, the current one included.** Owner's choice (2026-11-05,
+  asked as "Should the current line also get its own patch-only dependency run?"). The consequence: master's own rolling
+  dependency pull request gets no default `backport:` labels, since each line's runs keep that line up to date themselves.
+  That already holds: `BackportTargetsEventsRecipient` (#570 M8b) skips every pull request a bot opened.
+- **M9, one run document per line, beside the default branch's.** The default run keeps the id
+  `DependencyUpdateRuns/{provider}/{id}`. A line's run is `…/lines/{line}`, and its bulky half is
+  `DependencyUpdateRunData/…/lines/{line}`. Recipients load the line runs by that prefix (`LoadStartingWithAsync`, no
+  index). Why: the saga's state is per branch, and every per-run field (pending workflow run, rolling sha, pull request,
+  bisect, pins) would otherwise need a per-line map. Messages carry `Line`, so a step or signal reaches its own run.
+  Tests: `DependencyLineRunTests`.
+- **M9, the bot's branches per line: `mintplayer/dependencies-<line>` and `mintplayer/dependencies-work-<line>`.** A
+  '-' rather than a '/' because git cannot hold `mintplayer/dependencies` and `mintplayer/dependencies/x` at once
+  (D/F conflict in the ref namespace). The writer accepts only a line `ReleaseLine` itself writes
+  (`ReleaseLine.TryParse(line)?.ToString() == line`), so a branch is never built from other text. Tests:
+  `DependencyWriterJobTests.D13_*`. The merge queue recognises a line's rolling branch through
+  `DependencyUpdateRun.IsRollingBranch`, which never matches a work ref.
+- **M9, configuration and workflows stay the default branch's.** A line's run reads coverage.yml from the default
+  branch (O16's rule). It dispatches the lookup on the line's branch (D14: the run builds the line's head), and its
+  workflows must have the default branch's blob on the line's commit (D12). A line whose workflows drifted ends with
+  `workflow-differs` until the line has them again (D9's regenerate setup keeps them in step). The pull request's title
+  starts with `[<line>]`. A line's pull request is handed to the merge queue only when `mergeQueue.branches` queues the
+  line. The run token gets the line (`{githubId}-{line}-{run}-{n}`), so the artifact names never collide with the
+  default run's.
+- **M9, scheduling without reading files: `FileLines`.** The default branch's run reads the supported lines
+  (`SupportedLines`, with `backport.lines` overrides) at its start, into `DependencyUpdateRun.FileLines`. The ten-minute
+  scheduler then triggers each line's run in the same slot (dedup key `{slot}:{line}`). As with `FileDisabled`, no
+  tick reads a file. The cost: a line starts its runs one slot after the default run first reads it. A forge failure
+  keeps the lines read before. A security alert (R10) also triggers each line that already has a run.
+- **M9, `dependencies.lines`: `patch` (default), `all`, `security`, `off`.** It sets which updates a line's run may
+  take. `off` records no lines and ends a line's run as `disabled`. Tests: `DependenciesYmlTests`.
