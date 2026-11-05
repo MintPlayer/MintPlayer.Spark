@@ -35,6 +35,12 @@ Output: a table in the PRD (§8 evidence) with the percentages. Done when the ca
 
 ### S2 — Marker normalization prototype
 
+**Status (2026-11-05): built.** It lives in `CodeCoverage.Git/Backports/PlatformMarkers.cs`, with tests in
+`PlatformMarkersTests` that merge with the real `git merge-file`. One deviation: the signature is
+`Normalize(path, ours, base, theirs)`, not `(path, blob, targetMarkers)`. S1's per-occurrence safety rule compares base
+with theirs, so one blob at a time can't decide. The line's own blob (ours) supplies the target values, so no catalog
+of target values is needed. Wiring it into `BackportService` is M5. The evidence is in PRD §8.3, "S2".
+
 - A pure function `Normalize(path, blob, targetMarkers) → blob` for csproj/props (XML),
   `global.json`, `package.json`, workflow YAML.
 - Tests, starting from research note 2's experiments:

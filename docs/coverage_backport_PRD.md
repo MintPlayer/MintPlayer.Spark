@@ -566,4 +566,39 @@ cascade: 66 of 72 conflicted only because #461 was missing). Script: a throwaway
   The census above shaped one rule: a package's own `"version"` is not a dependency, so it refuses. **Defaults
   unchanged:** `xmlProjects` stays `keep-both`. `keyed-merge` refuses a region that is not entries, such as an inserted
   `<Target>`, which `keep-both` resolves. Whether the defaults move is the owner's call.
+- **S2, marker normalization (2026-11-05, test first).** `PlatformMarkers.Normalize(path, ours, base, theirs)`
+  (`CodeCoverage.Git/Backports/`) rewrites the base's and the change's platform values to the line's, **per
+  occurrence**. An occurrence is keyed by marker name plus its ordinal; a package's name is its id. This implements S1's
+  sharpened D8 rule:
+  - Unchanged, or moved wholly above the line's highest major: takes the line's value.
+  - Changed, and the line's major (or a value with no major) is involved: left to git and returned as a
+    `PlatformChange`.
+  - Added: takes the line's value of the same marker or of a family sibling (another framework package, another
+    `@angular/*`). With no sibling, it is reported.
+  - Removed: the base takes the line's value, so the removal applies.
+
+  The markers:
+  - `TargetFramework(s)`;
+  - `PackageReference`/`PackageVersion` of `Microsoft.AspNetCore|Extensions|EntityFrameworkCore`;
+  - the `global.json` SDK;
+  - `dotnet-version`/`node-version` in `.github/**/*.yml` (a matrix list is skipped);
+  - the `package.json` `@angular/*`, `react`, `react-dom` and `vue` ranges.
+
+  Only the value's characters are replaced (a CRLF test pins it). A lockfile is never a marker file.
+
+  **Proven by `PlatformMarkersTests`, with the real `git merge-file`:**
+  - Scenario B conflicts without normalization and merges clean with it, keeping `disable` and `net10.0`.
+  - Scenario C (`global.json` 11.0.100 → 11.0.200) conflicts without it and is empty with it.
+  - `net11.0` → `net10.0;net11.0` still conflicts and is reported.
+  - A framework package added at 11.0.0 takes its sibling's 10.0.11.
+  - An Angular `^22` bump vanishes while a dependency added beside it applies.
+  - A workflow step added below `dotnet-version` merges.
+
+  **Signature deviation from the plan** (`Normalize(path, blob, targetMarkers)`): the safety rule needs base and
+  theirs together, and the line's blob gives the target values.
+
+  **Not yet:**
+  - Markers in `action.yml` outside `.github/`, `dotnet-tools.json`, Dockerfiles, `engines`, and coverage.yml
+    `backport.markers`. These come with M5, where D8's catalog is wired in.
+  - What a project new on the line gets. Today it is reported, not guessed.
 - **Every automatic resolution is listed in the per-line report** (D6): path, strategy, and what each side added.

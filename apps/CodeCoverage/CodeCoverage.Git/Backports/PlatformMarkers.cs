@@ -1,0 +1,183 @@
+using System.Text.RegularExpressions;
+
+namespace CodeCoverage.Git.Backports;
+
+/// <summary>A platform value the pull request changed that normalization left to git (D8's safety rule): the line has
+/// to see it, in the merge or in its conflict. <paramref name="Before"/> is empty for a value the pull request added
+/// where the line has nothing to take a value from.</summary>
+public sealed record PlatformChange(string Path, string Marker, string Before, string After);
+
+/// <summary>The merge base and the change with their platform values rewritten to the release line's; null where the
+/// input was null (the file is absent on that side).</summary>
+public sealed record MarkerNormalization(string? Base, string? Theirs, IReadOnlyList<PlatformChange> PlatformChanges);
+
+/// <summary>
+/// S2, marker normalization (#570, PRD §5.3 step 1, D8 as sharpened by S1 in §8.1). Before a backport's three-way merge,
+/// each platform value ("marker": a target framework, a framework package's version, the SDK of global.json, a
+/// workflow's setup version, a framework's npm range) of the merge base and of the change is rewritten to the release
+/// line's own value, so a hunk that only moved the platform vanishes and a real edit next to a marker merges clean.
+/// <para>
+/// It works per occurrence, keyed by marker name and its ordinal among that name (a package's name is its id):
+/// </para>
+/// <list type="bullet">
+/// <item>the pull request left the value as it was, or moved it wholly above the line's major: base and change take the
+/// line's value;</item>
+/// <item>the pull request changed it and the line's own major (or a value without one) is involved: left to git and
+/// reported, so a real platform edit (net10.0 → net10.0;net11.0) never vanishes;</item>
+/// <item>an occurrence the pull request added takes the line's value of the same marker, else of a sibling of its family
+/// (another framework package), when it is wholly above the line; with nothing to take a value from it is reported;</item>
+/// <item>an occurrence the pull request removed: the base takes the line's value, so the removal applies;</item>
+/// <item>an occurrence the line does not have is left as it is.</item>
+/// </list>
+/// Only the value's characters are replaced, so line endings, spacing and quoting stay byte for byte. Lockfiles are not
+/// markers: they are regenerated (the merge queue's lockfile strategy), never normalized.
+/// </summary>
+public static class PlatformMarkers
+{
+    private sealed record Kind(Func<string, bool> Handles, Regex Pattern, string? FixedName, Func<string, string> Family, bool TargetFramework);
+
+    private sealed record Occurrence(Kind Kind, string Name, string Key, string Value, int Start);
+
+    private const RegexOptions Options = RegexOptions.CultureInvariant | RegexOptions.ExplicitCapture;
+
+    private static readonly string[] MsBuildExtensions = [".csproj", ".fsproj", ".vbproj", ".props", ".targets"];
+
+    private static readonly Kind[] Kinds =
+    [
+        new(IsMsBuild, new(@"<(?<name>TargetFrameworks?)>(?<value>[^<]*)</\k<name>>", Options), null, name => name, TargetFramework: true),
+        new(IsMsBuild,
+            new(@"<(?:PackageReference|PackageVersion)\b[^>]*?\bInclude=""(?<name>Microsoft\.(?:AspNetCore|Extensions|EntityFrameworkCore)\b[^""]*)""[^>]*?\bVersion=""(?<value>[^""]*)""", Options | RegexOptions.IgnoreCase),
+            null, _ => "dotnet-framework", false),
+        new(path => FileName(path).Equals("global.json", StringComparison.OrdinalIgnoreCase),
+            new(@"""sdk""\s*:\s*\{[^{}]*?""version""\s*:\s*""(?<value>[^""]*)""", Options), "global.json sdk", name => name, false),
+        new(IsWorkflow,
+            new(@"^[ \t]*(?:-[ \t]*)?(?<name>dotnet-version|node-version)[ \t]*:[ \t]*['""]?(?<value>[^'""\s#\[\]{},]+)", Options | RegexOptions.Multiline),
+            null, name => name, false),
+        new(path => FileName(path) == "package.json",
+            new(@"""(?<name>@angular/[^""]+|react|react-dom|vue)""\s*:\s*""(?<value>[^""]*)""", Options), null,
+            name => name.StartsWith("@angular/", StringComparison.Ordinal) ? "@angular" : name, false),
+    ];
+
+    /// <summary>Normalizes one file of a backport. <paramref name="ours"/> is the release line's copy (null when the
+    /// line lacks the file), <paramref name="base"/> and <paramref name="theirs"/> the merge base's and the change's.
+    /// Null when <paramref name="path"/> holds no markers.</summary>
+    public static MarkerNormalization? Normalize(string path, string? ours, string? @base, string? theirs)
+    {
+        path = path.Replace('\\', '/');
+        var kinds = Kinds.Where(k => k.Handles(path)).ToArray();
+        if (kinds.Length == 0)
+            return null;
+
+        var line = Read(kinds, ours);
+        var before = Read(kinds, @base);
+        var after = Read(kinds, theirs);
+        var lineByKey = line.ToDictionary(o => o.Key);
+        var baseByKey = before.ToDictionary(o => o.Key);
+        var theirsByKey = after.ToDictionary(o => o.Key);
+
+        var baseEdits = new List<(Occurrence At, string Value)>();
+        var theirsEdits = new List<(Occurrence At, string Value)>();
+        var changes = new List<PlatformChange>();
+
+        foreach (var key in before.Select(o => o.Key).Union(after.Select(o => o.Key)))
+        {
+            baseByKey.TryGetValue(key, out var b);
+            theirsByKey.TryGetValue(key, out var t);
+            lineByKey.TryGetValue(key, out var l);
+
+            if (b is not null && t is not null)
+            {
+                if (l is null)
+                    continue;
+                if (b.Value == t.Value || WhollyAbove(b.Kind, [b.Value, t.Value], l.Value))
+                {
+                    baseEdits.Add((b, l.Value));
+                    theirsEdits.Add((t, l.Value));
+                }
+                else
+                {
+                    changes.Add(new(path, t.Name, b.Value, t.Value));
+                }
+            }
+            else if (t is not null)
+            {
+                var source = l ?? line.FirstOrDefault(o => o.Kind == t.Kind && o.Kind.Family(o.Name) == t.Kind.Family(t.Name));
+                if (source is null)
+                    changes.Add(new(path, t.Name, "", t.Value));
+                else if (WhollyAbove(t.Kind, [t.Value], source.Value))
+                    theirsEdits.Add((t, source.Value));
+            }
+            else if (l is not null)
+            {
+                baseEdits.Add((b!, l.Value));
+            }
+        }
+
+        return new(Rewrite(@base, baseEdits), Rewrite(theirs, theirsEdits), changes);
+    }
+
+    private static List<Occurrence> Read(Kind[] kinds, string? text)
+    {
+        var occurrences = new List<Occurrence>();
+        if (text is null)
+            return occurrences;
+        var ordinals = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var kind in kinds)
+        {
+            foreach (Match match in kind.Pattern.Matches(text))
+            {
+                var name = kind.FixedName ?? match.Groups["name"].Value;
+                var id = name.ToLowerInvariant();
+                ordinals[id] = ordinals.GetValueOrDefault(id) + 1;
+                var value = match.Groups["value"];
+                occurrences.Add(new(kind, name, $"{id}#{ordinals[id]}", value.Value, value.Index));
+            }
+        }
+        return occurrences;
+    }
+
+    /// <summary>Every value has a major and every major lies above the line's highest: the change is the newer platform's
+    /// business alone. False when the line's value has no major (netstandard2.0, lts/*), so nothing is guessed.</summary>
+    private static bool WhollyAbove(Kind kind, string[] values, string lineValue)
+    {
+        var lineMajors = Majors(kind, lineValue);
+        if (lineMajors.Count == 0)
+            return false;
+        var highest = lineMajors.Max();
+        return values.All(value => Majors(kind, value) is { Count: > 0 } majors && majors.All(m => m > highest));
+    }
+
+    private static readonly Regex TfmMajor = new(@"^\s*net(?:coreapp)?(?<major>\d+)\.", Options | RegexOptions.IgnoreCase);
+    private static readonly Regex FirstNumber = new(@"\d+", Options);
+
+    private static List<int> Majors(Kind kind, string value)
+    {
+        if (kind.TargetFramework)
+        {
+            return value.Split(';', StringSplitOptions.RemoveEmptyEntries)
+                .Select(token => TfmMajor.Match(token))
+                .Where(m => m.Success && int.TryParse(m.Groups["major"].Value, out _))
+                .Select(m => int.Parse(m.Groups["major"].Value))
+                .ToList();
+        }
+        var number = FirstNumber.Match(value);
+        return number.Success && int.TryParse(number.Value, out var major) ? [major] : [];
+    }
+
+    private static string? Rewrite(string? text, List<(Occurrence At, string Value)> edits)
+    {
+        if (text is null || edits.Count == 0)
+            return text;
+        var result = text;
+        foreach (var (at, value) in edits.OrderByDescending(e => e.At.Start))
+            result = string.Concat(result.AsSpan(0, at.Start), value, result.AsSpan(at.Start + at.Value.Length));
+        return result;
+    }
+
+    private static string FileName(string path) => path[(path.LastIndexOf('/') + 1)..];
+
+    private static bool IsMsBuild(string path) => MsBuildExtensions.Any(e => path.EndsWith(e, StringComparison.OrdinalIgnoreCase));
+
+    private static bool IsWorkflow(string path)
+        => path.StartsWith(".github/", StringComparison.Ordinal) && (path.EndsWith(".yml", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".yaml", StringComparison.OrdinalIgnoreCase));
+}
