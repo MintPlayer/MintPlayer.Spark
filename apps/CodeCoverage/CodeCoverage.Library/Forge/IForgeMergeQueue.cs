@@ -53,6 +53,12 @@ public interface IForgeMergeQueue
     /// </summary>
     Task<string?> GetBranchHeadAsync(Repository repository, string branch, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// The names of every branch that starts with <paramref name="prefix"/> (<c>release/</c>), in the forge's order; empty
+    /// when none does. Which release lines exist (#570 M8, D4): the line pattern's fixed start.
+    /// </summary>
+    Task<IReadOnlyList<string>> ListBranchesAsync(Repository repository, string prefix, CancellationToken cancellationToken = default);
+
     /// <summary>All check runs, commit statuses and check suites on <paramref name="sha"/> (O12; see <see cref="CheckGate"/>).</summary>
     Task<ForgeCheckState> GetCheckStateAsync(Repository repository, string sha, CancellationToken cancellationToken = default);
 

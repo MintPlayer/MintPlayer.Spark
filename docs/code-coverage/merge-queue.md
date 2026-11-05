@@ -191,7 +191,9 @@ mergeQueue:
 - **A pattern** such as `hotfix/*` starts with a fixed segment. Its `*` stays within one segment, and `**` and `?`
   are refused.
 - **`supported-lines`** is every branch that the same file's `versioning.lines` pattern matches, for example
-  `release/dotnet-10.x`. It needs that section.
+  `release/dotnet-10.x`. It needs that section. At enqueue it refuses a line that is not supported, with the reason:
+  one whose platform reached end of life, or an older line of an ecosystem without lifecycle data. `backport.lines`
+  overrides that per line ([versioning.md](versioning.md)). A line you name exactly or by a pattern is always queued.
 - **A release line's queue runs the line's own copy of each regenerate workflow.** Provenance is checked against the
   line tip, not the default branch, so each line needs the workflow file under the same name.
 - **Backport pull requests into a queued line are enqueued automatically.** The exceptions are drafts and backports

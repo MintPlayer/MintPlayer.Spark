@@ -65,6 +65,9 @@ internal sealed class FakeForgeMergeQueue : IForgeMergeQueue
     public Task<string?> GetBranchHeadAsync(Repository repository, string branch, CancellationToken cancellationToken = default)
         => Task.FromResult(BranchHeads.TryGetValue(branch, out var sha) ? sha : null);
 
+    public Task<IReadOnlyList<string>> ListBranchesAsync(Repository repository, string prefix, CancellationToken cancellationToken = default)
+        => Task.FromResult<IReadOnlyList<string>>([.. BranchHeads.Keys.Where(b => b.StartsWith(prefix, StringComparison.Ordinal)).Order(StringComparer.Ordinal)]);
+
     public Task<ForgeCheckState> GetCheckStateAsync(Repository repository, string sha, CancellationToken cancellationToken = default)
         => Task.FromResult(CheckStates.TryGetValue(sha, out var state) ? state : new ForgeCheckState(sha, [], [], []));
 

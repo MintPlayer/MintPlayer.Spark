@@ -398,6 +398,11 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         if (!section.Queues(pull.BaseRef))
             return new("branch", $"`{pull.BaseRef}` is not a queue branch: `coverage.yml` on the default branch lists {string.Join(", ", section.Branches.Select(b => $"`{b}`"))}"
                 + (section.LinePattern is { } lines && section.Branches.Contains(MergeQueueBranches.SupportedLines) ? $" (`{MergeQueueBranches.SupportedLines}`: `{lines}`)." : "."));
+        // #570 M8 (D4): a line that only supported-lines names must be a supported one.
+        if (section.QueuesOnlyAsSupportedLine(pull.BaseRef)
+            && (await PackageVersioning.SupportedLines.ReadAsync(session, context.Queue, repository, Versioning.Releases.ReleaseLinePattern.Parse(section.LinePattern!),
+                section.LineOverrides, ct)).FirstOrDefault(l => l.Branch == pull.BaseRef) is { Supported: false } unsupported)
+            return new("branch", $"`{pull.BaseRef}` is not a supported line ({unsupported.Reason}), so `{MergeQueueBranches.SupportedLines}` does not queue it.");
 
         // O9 / T2: the actor needs the write role; a triage user's label or a fork author's comment is refused.
         var role = await ActorRoleAsync(context, actor, entry.EnqueuedVia, ct);

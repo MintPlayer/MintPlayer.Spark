@@ -104,6 +104,8 @@ public static partial class MergeQueueYml
             errors.Add($"mergeQueue.branches '{pattern}' is not a pattern the queue accepts: it starts with a fixed segment (`hotfix/*`), "
                 + "and its `*` stands for part of one segment (no `**`, no `?`).");
         section.LinePattern = LinePattern(yml);
+        // #570 M8 (D4): supported-lines means the supported ones; the owner's keep/retire comes from backport.lines.
+        section.LineOverrides = PackageVersioning.BackportYml.Parse(yml).Section.Lines;
         if (section.Branches.Contains(MergeQueueBranches.SupportedLines, StringComparer.Ordinal) && section.LinePattern is null)
             errors.Add($"mergeQueue.branches '{MergeQueueBranches.SupportedLines}' needs a valid `versioning.lines` section, which names the release lines.");
         Value("branches", string.Join(", ", section.Branches), file.Branches is not null);
@@ -473,6 +475,18 @@ public sealed class MergeQueueSection
     /// <summary><c>versioning.lines</c>' pattern from the same file (#570 M7): what <c>supported-lines</c> stands for, and
     /// which bases are lines whose own regenerate workflow runs (D9, D12).</summary>
     public string? LinePattern { get; set; }
+
+    /// <summary><c>backport.lines</c> of the same file (#570 M8, D4): <c>keep</c> or <c>retire</c> per line name.</summary>
+    public IReadOnlyDictionary<string, string> LineOverrides { get; set; } = new Dictionary<string, string>(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Whether <paramref name="branch"/> is queued only through <c>supported-lines</c>, so whether the line is supported
+    /// (D4) still decides; a name or a pattern queues it whatever its support.
+    /// </summary>
+    public bool QueuesOnlyAsSupportedLine(string branch)
+        => Branches.Contains(MergeQueueBranches.SupportedLines, StringComparer.Ordinal)
+            && MergeQueueBranches.IsLine(LinePattern, branch)
+            && !MergeQueueBranches.Matches(Branches.Where(b => b != MergeQueueBranches.SupportedLines), LinePattern, branch);
 
     /// <summary>Whether a pull request into <paramref name="branch"/> may be queued (O16, #570 D12).</summary>
     public bool Queues(string branch) => MergeQueueBranches.Matches(Branches, LinePattern, branch);

@@ -1,4 +1,5 @@
 using CodeCoverage.Git.Backports;
+using CodeCoverage.Versioning.Releases;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 
@@ -12,6 +13,8 @@ namespace CodeCoverage.PackageVersioning;
 /// backport:
 ///   onConflict: comment          # comment (default, D7) | draft: push the conflict markers, open a draft pull request
 ///   enqueue: true                # default (D12): hand each backport pull request to the merge queue, when it queues the line
+///   lines:                       # D4: override the lifecycle data per line
+///     dotnet-8.x: keep           # keep past end of life | retire: no longer supported
 ///   markers:                     # D8
 ///     disable: [setup-action]    # tfm | framework-packages | global.json | setup-action | npm-frameworks
 ///     packages: ["@mintplayer/ng-bootstrap", "MintPlayer.Spark*"]
@@ -60,10 +63,28 @@ public static class BackportYml
             errors.Add($"backport.markers.packages '{package}' is not a package name or pattern (letters, digits, @ / . _ - and *).");
 
         var enqueue = file.Enqueue ?? true;
+
+        // #570 M8, D4: the owner's override per line, keyed by the line's name.
+        var lines = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (key, value) in file.Lines ?? [])
+        {
+            var name = key?.Trim() ?? "";
+            var setting = value?.Trim() ?? "";
+            if (ReleaseLine.TryParse(name) is null)
+                errors.Add($"backport.lines '{name}' is not a line name such as `dotnet-10.x`.");
+            else if (setting is not (SupportedLines.Keep or SupportedLines.Retire))
+                errors.Add($"backport.lines.{name} '{setting}' is not one of: {SupportedLines.Keep}, {SupportedLines.Retire}.");
+            else
+                lines[name] = setting;
+        }
+
         if (errors.Count > 0)
             return new(BackportSection.Default with { OnConflict = onConflict, Enqueue = enqueue }, errors);
         return new(new BackportSection(onConflict,
-            new PlatformMarkerOptions([.. disable.Distinct(StringComparer.OrdinalIgnoreCase)], [.. packages.Distinct(StringComparer.OrdinalIgnoreCase)]), enqueue), []);
+            new PlatformMarkerOptions([.. disable.Distinct(StringComparer.OrdinalIgnoreCase)], [.. packages.Distinct(StringComparer.OrdinalIgnoreCase)]), enqueue)
+        {
+            Lines = lines,
+        }, []);
     }
 
     private sealed class FileRoot
@@ -75,6 +96,7 @@ public static class BackportYml
     {
         public string? OnConflict { get; set; }
         public bool? Enqueue { get; set; }
+        public Dictionary<string, string?>? Lines { get; set; }
         public FileMarkers? Markers { get; set; }
     }
 
@@ -90,6 +112,9 @@ public static class BackportYml
 /// and queues its line.</param>
 public sealed record BackportSection(string OnConflict, PlatformMarkerOptions Markers, bool Enqueue = true)
 {
+    /// <summary><c>backport.lines</c> (#570 M8, D4): <c>keep</c> or <c>retire</c> per line name, overriding the lifecycle data.</summary>
+    public IReadOnlyDictionary<string, string> Lines { get; init; } = new Dictionary<string, string>(StringComparer.Ordinal);
+
     public static readonly BackportSection Default = new(BackportYml.Comment, new PlatformMarkerOptions([], []));
 }
 

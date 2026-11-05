@@ -562,6 +562,22 @@ public class GitHubForgeMergeQueueTests
         => (await Queue(new StubGitHub()).GetBranchHeadAsync(Target(), "gone")).Should().BeNull();
 
     [Fact]
+    public async Task Branches_are_listed_by_prefix_from_the_matching_refs()
+    {
+        // #570 M8 (D4): which release lines exist.
+        var github = new StubGitHub().On(HttpMethod.Get, $"{Repo}/git/matching-refs/heads/release/?per_page=100&page=1", HttpStatusCode.OK, """
+            [{"ref":"refs/heads/release/dotnet-10.x","object":{"sha":"a","type":"commit"}},
+             {"ref":"refs/heads/release/dotnet-11.x","object":{"sha":"b","type":"commit"}}]
+            """);
+
+        (await Queue(github).ListBranchesAsync(Target(), "release/")).Should().Equal(["release/dotnet-10.x", "release/dotnet-11.x"]);
+    }
+
+    [Fact]
+    public async Task A_prefix_with_an_empty_or_dot_segment_is_refused()
+        => await Throws<ArgumentException>(() => Queue(new StubGitHub()).ListBranchesAsync(Target(), "release/../"));
+
+    [Fact]
     public async Task An_actions_check_reruns_its_job_and_another_apps_check_is_rerequested()
     {
         var github = new StubGitHub()

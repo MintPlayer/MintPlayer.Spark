@@ -260,6 +260,9 @@ A `backport:` section in the default branch's `coverage.yml` adjusts this:
 backport:
   onConflict: draft          # comment (default) | draft
   enqueue: false             # default true: hand each backport pull request to the merge queue
+  lines:
+    dotnet-8.x: keep         # supported past its platform's end of life
+    angular-20.x: retire     # no longer supported, whatever the lifecycle says
   markers:
     disable: [setup-action]  # tfm | framework-packages | global.json | setup-action | npm-frameworks
     packages: ["@mintplayer/ng-bootstrap", "MyCompany.*"]
@@ -272,6 +275,10 @@ backport:
   `mergeQueue.branches` names its line, for instance through `supported-lines` ([merge-queue.md](merge-queue.md)).
   The queue's approvals and checks still apply. A draft, or a backport whose regenerated files are stale, is never
   enqueued.
+- **`lines`** overrides which lines are supported. By default a line is supported while its platform major has not
+  reached end of life (the lifecycle data this app collects), and the newest line of each ecosystem always is. An
+  ecosystem without lifecycle data supports only its newest line and the lines you `keep`. `retire` wins over
+  everything, the newest line included.
 - **`markers.disable`** leaves a built-in kind of platform value to the plain merge.
 - **`markers.packages`** adds your own platform-anchored packages, NuGet or npm, with `*` as a wildcard. A first-party
   package whose major follows the platform, such as a component library tied to Angular, is the typical case.

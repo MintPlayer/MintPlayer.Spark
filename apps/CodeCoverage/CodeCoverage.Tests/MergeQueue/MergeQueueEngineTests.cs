@@ -1316,6 +1316,26 @@ public class MergeQueueEngineTests : CoverageRavenTest
         (await h.EntryAsync()).EvictionReason.Should().Be("branch");
     }
 
+    [Theory]
+    [InlineData("", "branch")]
+    [InlineData("\nbackport:\n  lines:\n    dotnet-10.x: keep\n", null)]
+    public async Task Supported_lines_queues_an_older_line_only_while_it_is_supported(string backport, string? reason)
+    {
+        // #570 M8 (D4): 11.x is the current line; 10.x has no lifecycle data, so only `keep` makes it supported.
+        var h = await HarnessAsync();
+        h.Forge.Files["master/coverage.yml"] = LineYml + backport;
+        h.Forge.PullRequests[Number] = PullRequest() with { BaseRef = Line };
+        h.Queue.BranchHeads[Line] = BaseSha;
+        h.Queue.BranchHeads["release/dotnet-11.x"] = BaseSha;
+
+        await h.EnqueueAsync();
+
+        var entry = await h.EntryAsync();
+        entry.EvictionReason.Should().Be(reason);
+        if (reason is not null)
+            entry.EvictionMessage.Should().Contain("`release/dotnet-10.x` is not a supported line (dotnet has no lifecycle data");
+    }
+
     [Fact]
     public async Task A_backports_enqueue_counts_as_a_writer_without_asking_the_forge()
     {

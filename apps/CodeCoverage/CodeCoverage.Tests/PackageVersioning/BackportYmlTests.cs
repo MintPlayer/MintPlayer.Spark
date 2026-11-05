@@ -31,12 +31,26 @@ public class BackportYmlTests
         parsed.Section.Markers.Packages.Should().Equal(["@mintplayer/ng-bootstrap", "MintPlayer.Spark*"]);
     }
 
+    [Fact]
+    public void Lines_keep_or_retire_per_line_and_enqueue_defaults_to_true()
+    {
+        // #570 M8, D4; M7, D12.
+        var parsed = BackportYml.Parse("backport:\n  lines:\n    dotnet-8.x: keep\n    angular-20.x: retire\n");
+
+        parsed.Errors.Should().BeEmpty();
+        parsed.Section.Lines.Should().BeEquivalentTo(new Dictionary<string, string> { ["dotnet-8.x"] = "keep", ["angular-20.x"] = "retire" });
+        parsed.Section.Enqueue.Should().BeTrue();
+        BackportYml.Parse("backport:\n  enqueue: false\n").Section.Enqueue.Should().BeFalse();
+    }
+
     [Theory]
     [InlineData("backport:\n  onConflict: push\n", "backport.onConflict 'push'")]
     [InlineData("backport:\n  markers:\n    disable: [docker]\n", "backport.markers.disable 'docker'")]
     [InlineData("backport:\n  markers:\n    packages: [\"*\"]\n", "backport.markers.packages '*'")]
     [InlineData("backport:\n  markers:\n    packages: [\"a b\"]\n", "backport.markers.packages 'a b'")]
     [InlineData("backport: [\n", "coverage.yml could not be read")]
+    [InlineData("backport:\n  lines:\n    \"8.x\": keep\n", "backport.lines '8.x'")]
+    [InlineData("backport:\n  lines:\n    dotnet-8.x: forever\n", "backport.lines.dotnet-8.x 'forever'")]
     public void A_broken_section_says_why_and_keeps_the_defaults(string yml, string error)
     {
         var parsed = BackportYml.Parse(yml);

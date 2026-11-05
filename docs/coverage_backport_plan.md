@@ -160,6 +160,9 @@ PRD §8.2.
 
   Details are in PRD §8.3, "M7, built".
 - **M8 Labels and reporting.**
+  - **M8a supported lines** (D4, D16), **done (2026-11-05)**: branches from the forge, `PlatformRelease` phases,
+    `backport.lines` `keep`/`retire`; `supported-lines` refuses an unsupported line at enqueue. Details are in PRD
+    §8.3, "M8a, built".
   - Default labels (D5, the current line always, D16).
   - The "Backport targets" check run.
   - `backported: <line>` labels and the PR-body marker.

@@ -826,4 +826,44 @@ cascade: 66 of 72 conflicted only because #461 was missing). Script: a throwaway
   - `BackportRecipientTests`: enqueued; off, disabled, not a queue branch, and draft; stale files; the decision
     carried to the saga.
   - `BackportRegenerationEngineTests`: enqueued after regeneration; never enqueued unregenerated.
+- **M8a, built (2026-11-05): supported lines (D4, D16).** `SupportedLines` decides which lines take backports. M7's
+  "every match of the pattern" now holds only for the button, the comment link and the panel (see below).
+
+  **Which lines exist** is read from the forge: the new `IForgeMergeQueue.ListBranchesAsync(repo, prefix)` lists the
+  branches under the pattern's fixed start (`release/` for the default pattern, every branch for a pattern that starts
+  with a placeholder). On GitHub it pages `git/matching-refs/heads/{prefix}`. The prefix's segments before the last
+  are validated, so `release/../` throws instead of reaching the URL. Branches the pattern does not match (such as
+  `release/notes`) are not lines.
+
+  **Which lines are supported**, per line, in this order:
+  1. `backport.lines.<line>: retire` drops it, even the current line (the owner's explicit word beats D16).
+  2. `backport.lines.<line>: keep` keeps it, even past end of life.
+  3. The current line (the highest major of its ecosystem among the existing lines) is always supported (D16).
+  4. Otherwise the platform's `PlatformRelease` phase decides: anything but `eol` is supported.
+  5. An ecosystem with no lifecycle data at all has no support policy and falls back to the explicit list (D4): only
+     its `keep` lines and its current line. A major missing from data the ecosystem does have is treated the same,
+     because nothing says it is maintained.
+
+  Every result carries a reason ("dotnet 9 reached end of life", "`keep` in coverage.yml", "the current dotnet line"),
+  which M8b's check run and the queue's refusal print. The lifecycle documents are read by id prefix
+  (`LoadStartingWithAsync("PlatformReleases/")`, a few dozen documents), so no index is involved.
+
+  **`backport.lines`** (§5.8) holds the overrides. Each key must be a line name (`dotnet-10.x`) and each value `keep`
+  or `retire`; anything else is a parse error naming the entry. It does not list the lines: those come from
+  `versioning.lines` and the branches that exist, which #569 settled. `versioning.releaseBranches` is not consulted.
+
+  **The queue refuses an unsupported line** at enqueue, with the reason: "`release/dotnet-10.x` is not a supported line
+  (…), so `supported-lines` does not queue it." It applies only when the base matches solely through the
+  `supported-lines` keyword (`MergeQueueSection.QueuesOnlyAsSupportedLine`); a line named exactly or by a pattern
+  stays queued, since the owner named it. The check-button offer, the comment link and the panel stay pattern-based:
+  they run on every pull request event, and listing branches plus lifecycle data there would cost a forge call each
+  time for a refusal the enqueue gives anyway.
+
+  **Tests:**
+  - `SupportedLinesTests`: supported while the platform is, the current line always; `keep`/`retire`; the reasons;
+    the order; the branch prefix.
+  - `BackportYmlTests`: `lines` parsed; a non-line key and an unknown value refused.
+  - `GitHubForgeMergeQueueTests`: the matching-refs listing; a traversal prefix throws. The conformance row.
+  - `MergeQueueEngineTests`: an older line without lifecycle data is refused under `supported-lines`, and queued once
+    `keep` names it.
 - **Every automatic resolution is listed in the per-line report** (D6): path, strategy, and what each side added.
