@@ -34,7 +34,8 @@ public sealed record MarkerNormalization(string? Base, string? Theirs, IReadOnly
 /// </summary>
 public static class PlatformMarkers
 {
-    private sealed record Kind(Func<string, bool> Handles, Regex Pattern, string? FixedName, Func<string, string> Family, bool TargetFramework);
+    private sealed record Kind(string Id, Func<string, bool> Handles, Regex Pattern, string? FixedName, Func<string, string> Family, bool TargetFramework,
+        Func<string, bool>? Accepts = null);
 
     private sealed record Occurrence(Kind Kind, string Name, string Key, string Value, int Start);
 
@@ -42,36 +43,62 @@ public static class PlatformMarkers
 
     private static readonly string[] MsBuildExtensions = [".csproj", ".fsproj", ".vbproj", ".props", ".targets"];
 
-    private static readonly Kind[] Kinds =
+    private static readonly Kind[] BuiltIn =
     [
-        new(IsMsBuild, new(@"<(?<name>TargetFrameworks?)>(?<value>[^<]*)</\k<name>>", Options), null, name => name, TargetFramework: true),
-        new(IsMsBuild,
+        new(PlatformMarkerOptions.Tfm, IsMsBuild, new(@"<(?<name>TargetFrameworks?)>(?<value>[^<]*)</\k<name>>", Options), null, name => name, TargetFramework: true),
+        new(PlatformMarkerOptions.FrameworkPackages, IsMsBuild,
             new(@"<(?:PackageReference|PackageVersion)\b[^>]*?\bInclude=""(?<name>Microsoft\.(?:AspNetCore|Extensions|EntityFrameworkCore)\b[^""]*)""[^>]*?\bVersion=""(?<value>[^""]*)""", Options | RegexOptions.IgnoreCase),
             null, _ => "dotnet-framework", false),
-        new(path => FileName(path).Equals("global.json", StringComparison.OrdinalIgnoreCase),
+        new(PlatformMarkerOptions.GlobalJson, path => FileName(path).Equals("global.json", StringComparison.OrdinalIgnoreCase),
             new(@"""sdk""\s*:\s*\{[^{}]*?""version""\s*:\s*""(?<value>[^""]*)""", Options), "global.json sdk", name => name, false),
-        new(IsWorkflow,
+        new(PlatformMarkerOptions.SetupAction, IsWorkflow,
             new(@"^[ \t]*(?:-[ \t]*)?(?<name>dotnet-version|node-version)[ \t]*:[ \t]*['""]?(?<value>[^'""\s#\[\]{},]+)", Options | RegexOptions.Multiline),
             null, name => name, false),
-        new(path => FileName(path) == "package.json",
+        new(PlatformMarkerOptions.NpmFrameworks, IsPackageJson,
             new(@"""(?<name>@angular/[^""]+|react|react-dom|vue)""\s*:\s*""(?<value>[^""]*)""", Options), null,
             name => name.StartsWith("@angular/", StringComparison.Ordinal) ? "@angular" : name, false),
     ];
 
+    private static readonly Regex AnyMsBuildPackage =
+        new(@"<(?:PackageReference|PackageVersion)\b[^>]*?\bInclude=""(?<name>[^""]+)""[^>]*?\bVersion=""(?<value>[^""]*)""", Options | RegexOptions.IgnoreCase);
+
+    private static readonly Regex AnyNpmPackage = new(@"""(?<name>[^""]+)""\s*:\s*""(?<value>[^""]*)""", Options);
+
+    /// <summary>The built-in kinds a repository kept, then one MSBuild and one npm kind for its own packages (D8); a
+    /// package matching several patterns belongs to the first pattern's family.</summary>
+    private static Kind[] Kinds(PlatformMarkerOptions? options)
+    {
+        if (options is null)
+            return BuiltIn;
+        var kinds = BuiltIn.Where(k => !options.Disable.Contains(k.Id, StringComparer.OrdinalIgnoreCase)).ToList();
+        if (options.Packages.Count > 0)
+        {
+            var patterns = options.Packages
+                .Select(p => (Pattern: p, Regex: new Regex("^" + Regex.Escape(p).Replace(@"\*", ".*", StringComparison.Ordinal) + "$", Options | RegexOptions.IgnoreCase)))
+                .ToArray();
+            bool Accepts(string name) => patterns.Any(p => p.Regex.IsMatch(name));
+            string Family(string name) => "package:" + patterns.First(p => p.Regex.IsMatch(name)).Pattern;
+            kinds.Add(new("packages", IsMsBuild, AnyMsBuildPackage, null, Family, false, Accepts));
+            kinds.Add(new("packages", IsPackageJson, AnyNpmPackage, null, Family, false, Accepts));
+        }
+        return [.. kinds];
+    }
+
     /// <summary>Whether <paramref name="path"/> can hold markers, so whether <see cref="Normalize"/> needs its blobs.</summary>
-    public static bool Handles(string path)
+    public static bool Handles(string path, PlatformMarkerOptions? options = null)
     {
         path = path.Replace('\\', '/');
-        return Kinds.Any(k => k.Handles(path));
+        return Kinds(options).Any(k => k.Handles(path));
     }
 
     /// <summary>Normalizes one file of a backport. <paramref name="ours"/> is the release line's copy (null when the
     /// line lacks the file), <paramref name="base"/> and <paramref name="theirs"/> the merge base's and the change's.
-    /// Null when <paramref name="path"/> holds no markers.</summary>
-    public static MarkerNormalization? Normalize(string path, string? ours, string? @base, string? theirs)
+    /// Null when <paramref name="path"/> holds no markers. <paramref name="options"/> is the repository's
+    /// <c>backport.markers</c>; null keeps the built-in catalog.</summary>
+    public static MarkerNormalization? Normalize(string path, string? ours, string? @base, string? theirs, PlatformMarkerOptions? options = null)
     {
         path = path.Replace('\\', '/');
-        var kinds = Kinds.Where(k => k.Handles(path)).ToArray();
+        var kinds = Kinds(options).Where(k => k.Handles(path)).ToArray();
         if (kinds.Length == 0)
             return null;
 
@@ -129,14 +156,18 @@ public static class PlatformMarkers
         if (text is null)
             return occurrences;
         var ordinals = new Dictionary<string, int>(StringComparer.Ordinal);
+        var taken = new HashSet<int>();
         foreach (var kind in kinds)
         {
             foreach (Match match in kind.Pattern.Matches(text))
             {
                 var name = kind.FixedName ?? match.Groups["name"].Value;
+                var value = match.Groups["value"];
+                // A configured pattern can name a built-in marker too (Microsoft.Extensions.*): it is one occurrence.
+                if (kind.Accepts is { } accepts && !accepts(name) || !taken.Add(value.Index))
+                    continue;
                 var id = name.ToLowerInvariant();
                 ordinals[id] = ordinals.GetValueOrDefault(id) + 1;
-                var value = match.Groups["value"];
                 occurrences.Add(new(kind, name, $"{id}#{ordinals[id]}", value.Value, value.Index));
             }
         }
@@ -182,6 +213,8 @@ public static class PlatformMarkers
     }
 
     private static string FileName(string path) => path[(path.LastIndexOf('/') + 1)..];
+
+    private static bool IsPackageJson(string path) => FileName(path) == "package.json";
 
     private static bool IsMsBuild(string path) => MsBuildExtensions.Any(e => path.EndsWith(e, StringComparison.OrdinalIgnoreCase));
 

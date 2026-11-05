@@ -12,10 +12,11 @@ namespace CodeCoverage.GitWriter.Jobs;
 /// <summary>A validated <c>POST /jobs/versioning/backport</c>.</summary>
 public sealed record BackportJob(
     string Repo, Uri CloneUrl, GitCredential Credential, string SourceBranch, string Commit, int PullRequest, string Title,
-    IReadOnlyList<string> Subjects, GitIdentity Committer, IReadOnlyList<BackportTarget> Targets);
+    IReadOnlyList<string> Subjects, GitIdentity Committer, IReadOnlyList<BackportTarget> Targets, PlatformMarkerOptions? Markers = null);
 
-/// <summary>A release line, the branch its backport goes to, and the line's own auto-resolve rules (#570 M5).</summary>
-public sealed record BackportTarget(string Branch, string Head, IReadOnlyList<AutoResolveRule> Rules);
+/// <summary>A release line, the branch its backport goes to, the auto-resolve rules for its conflicts (#570 M5), and
+/// whether a conflict is pushed as a draft (D7).</summary>
+public sealed record BackportTarget(string Branch, string Head, IReadOnlyList<AutoResolveRule> Rules, bool Draft = false);
 
 /// <summary>
 /// A backport (#153 M10, PRD D10): the merged pull request's change applied to each release branch as one new commit,
@@ -47,6 +48,7 @@ public sealed partial class BackportService
     public const string Empty = "empty";
     public const string Rejected = "rejected";
     public const string Conflicted = "conflicted";
+    public const string Drafted = "drafted";
 
     public Task<VersioningBackportResponse> RunAsync(BackportJob job) => jobs.RunAsync("versioning-backport", job.Repo, async context =>
     {
@@ -62,12 +64,12 @@ public sealed partial class BackportService
 
         var commit = await ReadAsync(context, job.Commit);
         var (mode, @base, picked) = await ChangeAsync(context, job, commit);
-        var markerPaths = await MarkerPathsAsync(context, @base, job.Commit);
+        var markerPaths = await MarkerPathsAsync(context, @base, job.Commit, job.Markers);
 
         var message = Message(job, commit, picked);
         var author = Author(commit.Raw) ?? job.Committer;
         var results = new List<BackportTargetResult>();
-        foreach (var (branch, head, rules) in job.Targets)
+        foreach (var (branch, head, rules, draft) in job.Targets)
         {
             var tip = WriterService.Oid(await context.RequireAsync(["rev-parse", "--verify", "refs/heads/" + branch + "^{commit}"]), "rev-parse");
             var (mergeBase, theirs, platformChanges) = await NormalizeAsync(context, job, tip, @base, job.Commit, markerPaths);
@@ -82,6 +84,23 @@ public sealed partial class BackportService
             if (merged is MergeOutcome.Evicted evicted)
             {
                 var detail = evicted.Reason == EvictionReason.ConflictOutsideAllowList ? null : evicted.Detail;
+                if (draft && evicted.Reason == EvictionReason.ConflictOutsideAllowList
+                    && await ConflictTreeAsync(context, mergeBase, tip, theirs) is { } conflictTree)
+                {
+                    // D7 draft: git's own merge of the normalized sides, conflict markers and all, rules not applied; the
+                    // draft pull request stays red on NoConflictMarkers until somebody resolves it.
+                    var drafted = WriterService.Oid(await context.RequireAsync(["commit-tree", conflictTree, "-p", tip, "-F", "-"], input: message, author: author,
+                        committer: job.Committer), "commit-tree");
+                    var pushed = await WriterService.PushAsync(context, job.CloneUrl, job.Credential, drafted, "refs/heads/" + head, expected: null);
+                    results.Add(pushed switch
+                    {
+                        WriterService.Push.Done or WriterService.Push.UpToDate => new BackportTargetResult(branch, head, drafted, Drafted, evicted.Paths, platformChanges, []),
+                        WriterService.Push.LeaseRejected => new BackportTargetResult(branch, head, drafted, Exists, evicted.Paths, platformChanges, []),
+                        WriterService.Push.Rejected rejected => new BackportTargetResult(branch, head, drafted, Rejected, evicted.Paths, platformChanges, [], rejected.Detail),
+                        _ => throw new InvalidOperationException(),
+                    });
+                    continue;
+                }
                 results.Add(new BackportTargetResult(branch, head, null, Conflicted, evicted.Paths, platformChanges, [], detail));
                 continue;
             }
@@ -112,10 +131,21 @@ public sealed partial class BackportService
     }, (outcome, reason, detail, ms) => new VersioningBackportResponse(outcome, reason, null, null, [], detail, ms));
 
     /// <summary>The paths the change touches that can hold platform markers (#570 S2).</summary>
-    private static async Task<IReadOnlyList<string>> MarkerPathsAsync(JobContext context, string @base, string commit)
+    private static async Task<IReadOnlyList<string>> MarkerPathsAsync(JobContext context, string @base, string commit, PlatformMarkerOptions? markers)
     {
         var diff = await context.RequireAsync(["diff", "--name-only", "-z", "--no-renames", @base, commit]);
-        return diff.StandardOutput.Split('\0', StringSplitOptions.RemoveEmptyEntries).Where(PlatformMarkers.Handles).ToList();
+        return diff.StandardOutput.Split('\0', StringSplitOptions.RemoveEmptyEntries).Where(path => PlatformMarkers.Handles(path, markers)).ToList();
+    }
+
+    /// <summary>The tree of a plain <c>merge-tree</c> of the change onto the line, conflict markers included; null when git
+    /// wrote no tree (exit code above 1).</summary>
+    private static async Task<string?> ConflictTreeAsync(JobContext context, string mergeBase, string tip, string theirs)
+    {
+        var merge = await context.GitAsync(["merge-tree", "--write-tree", "--no-messages", "--merge-base=" + mergeBase, tip, theirs], null);
+        if (merge.ExitCode is not (0 or 1))
+            return null;
+        var first = merge.StandardOutput.Split('\n', 2)[0].Trim();
+        return Regex.IsMatch(first, "^[0-9a-f]{40}([0-9a-f]{24})?$") ? first : null;
     }
 
     /// <summary>
@@ -136,7 +166,7 @@ public sealed partial class BackportService
             var after = await BlobAsync(context, theirs, path);
             if (ours is { Text: null } || before is { Text: null } || after is { Text: null })
                 continue;   // not UTF-8 text: left to the plain merge
-            if (PlatformMarkers.Normalize(path, ours?.Text, before?.Text, after?.Text) is not { } normalized)
+            if (PlatformMarkers.Normalize(path, ours?.Text, before?.Text, after?.Text, job.Markers) is not { } normalized)
                 continue;
             changes.AddRange(normalized.PlatformChanges);
             if (before is not null && normalized.Base != before.Text)

@@ -634,9 +634,7 @@ cascade: 66 of 72 conflicted only because #461 was missing). Script: a throwaway
     - a move to `net12.0` is `empty`.
   - App: `A_conflicting_line_still_lets_the_clean_line_open_its_pull_request`, and the platform note.
 
-  **Still M5:**
-  - `onConflict: draft` (D7);
-  - `backport.markers`.
+  **Still M5:** `onConflict: draft` (D7) and `backport.markers`. Both are done in the third part, below.
 - **M5, second part (2026-11-05): the merge queue's resolver on lines (G1, §5.3 step 2).**
 
   `BackportService` now merges through `MergeQueueResolver.MergeAsync`. It passes the merge base explicitly (new
@@ -660,4 +658,39 @@ cascade: 66 of 72 conflicted only because #461 was missing). Script: a throwaway
   - App: the rules are read from the default branch, a broken section gives none, and resolutions are listed.
 
   `BackportService` takes its dependencies through `[Inject]` fields (owner preference, 2026-11-05).
+- **M5, third part (2026-11-05): the `backport:` section, with `onConflict` (D7) and `markers` (D8).**
+
+  `BackportYml` parses the top-level `backport:` key of the **default branch's** `coverage.yml`, for the same O16 reason
+  as the rules. Only the two M5 keys are read; `lines`, `defaultLabels` and `regenerate` come with M6 and M8. Absent
+  means the defaults. Errors never throw: the defaults apply, and the backport comment lists the errors.
+
+  **`onConflict: comment | draft`.** `comment` is the default (D7). With `draft`, each target carries `draft: true`. A
+  target that conflicts outside the rules then runs a plain `merge-tree --write-tree --merge-base=<normalized base>` of
+  the normalized sides. Its tree, with git's conflict markers in it, is committed onto the line with the backport's
+  message and pushed. The result is `drafted`, with the conflicting paths. The app opens it with `draft: true`
+  (`IForgeVersioning.OpenPullRequestAsync` gained a `draft` parameter), and `NoConflictMarkers` keeps it red.
+  - The draft tree applies **no `autoResolve` rule**. It is git's merge as it is, so a file the rules would have
+    resolved may hold markers too. Accepted for v1: the human resolves the draft anyway, and mixing the resolver's
+    partial output with git's would make the tree's provenance unclear.
+  - A resolver refusal other than a conflict outside the rules (for example, an unsupported conflict type) stays
+    `conflicted`, never a draft: it has no marker tree to show.
+  - The per-request `/backport <line> --draft` is command parsing, so it waits for M8.
+
+  **`markers: { disable: [...], packages: [...] }`.**
+  - `disable` names built-in kinds: `tfm`, `framework-packages`, `global.json`, `setup-action`, `npm-frameworks`.
+  - `packages` are package names or `*` patterns (letters, digits, `@ / . _ -`; a lone `*` is refused). They are matched
+    case-insensitively in MSBuild `PackageReference`/`PackageVersion` and in `package.json` alike.
+  - Each pattern is its own family, so an added package takes the value of a sibling matching the same pattern.
+  - A package a built-in kind already reads is one occurrence, never two: the first kind wins by value position.
+  - The writer re-validates both lists (`markers` rule, at most 50 packages).
+
+  **Tests:**
+  - `PlatformMarkersTests`: a disabled kind; `@mintplayer/ng-bootstrap` and `MintPlayer.Spark*` normalized; the kind
+    names.
+  - `BackportYmlTests`: defaults, a read section, five broken sections.
+  - Writer: `A_draft_line_gets_its_conflict_pushed_with_the_markers` (the clean line is still `created`);
+    `A_configured_package_is_normalized_like_a_framework` (`conflicted` without the option, `created` with it); and
+    malformed `disable`/`packages` refused.
+  - App: the section sends `draft` and the markers and opens a draft; a broken section is reported and the defaults
+    apply; GitHub's body carries `"draft":true` only for a draft.
 - **Every automatic resolution is listed in the per-line report** (D6): path, strategy, and what each side added.

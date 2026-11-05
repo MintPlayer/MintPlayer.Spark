@@ -85,6 +85,62 @@ public class BackportTests : WriterTestBase
         origin.Ref("refs/heads/backport/7-2.x").Should().BeNull();
     }
 
+    [Fact]
+    public async Task A_draft_line_gets_its_conflict_pushed_with_the_markers()
+    {
+        // #570 D7: onConflict draft. The clean line is untouched by it.
+        var origin = Lines();
+        origin.Checkout("release/2.x").Write("README.md", "two\n");
+        origin.Commit("2.x: readme");
+        origin.Push("release/2.x");
+        origin.Checkout("main").Write("README.md", "fixed\n");
+        var squash = origin.Commit("fix: readme (#7)");
+        origin.Push("main");
+        var request = Request(origin, squash, ["fix"], "1.x", "2.x");
+        request["targets"] = new[] { new { branch = "release/1.x", head = "backport/7-1.x", draft = true }, new { branch = "release/2.x", head = "backport/7-2.x", draft = true } };
+
+        var response = await Writer.BackportAsync(request);
+
+        response.Targets.Single(t => t.Branch == "release/1.x").Push.Should().Be(BackportService.Created);
+        var drafted = response.Targets.Single(t => t.Branch == "release/2.x");
+        drafted.Push.Should().Be(BackportService.Drafted);
+        drafted.Conflicts.Should().Equal("README.md");
+        var head = origin.Ref("refs/heads/backport/7-2.x")!;
+        head.Should().Be(drafted.Commit);
+        origin.InBare("rev-parse", head + "^").Trim().Should().Be(origin.Ref("refs/heads/release/2.x"));
+        origin.InBare("cat-file", "blob", head + ":README.md").Should().Contain("<<<<<<<").And.Contain("two").And.Contain("fixed").And.Contain(">>>>>>>");
+        origin.InBare("cat-file", "commit", head).Should().Contain($"(cherry picked from commit {squash})");
+    }
+
+    [Fact]
+    public async Task A_configured_package_is_normalized_like_a_framework()
+    {
+        // #570 D8: backport.markers.packages, a first-party platform-anchored package.
+        static string Package(string ng, string extra = "") => "{\n  \"dependencies\": {\n    \"@mintplayer/ng-bootstrap\": \"" + ng + "\",\n" + extra + "    \"rxjs\": \"~7.8.0\"\n  }\n}\n";
+        const string Added = "    \"date-fns\": \"^4.1.0\",\n";
+        var origin = Seed();
+        origin.Checkout("main").Write("package.json", Package("^21.4.0"));
+        origin.Commit("app");
+        origin.Push("main");
+        origin.Checkout("release/1.x", "main").Push("release/1.x");
+        origin.Checkout("main").Write("package.json", Package("^22.34.0"));
+        origin.Commit("feat: angular 22 (#6)");
+        origin.Push("main");
+        origin.Write("package.json", Package("^22.36.0", Added));
+        var squash = origin.Commit("feat: date-fns (#7)");
+        origin.Push("main");
+
+        var plain = await Writer.BackportAsync(Request(origin, squash, ["feat"], "1.x"));
+        plain.Targets.Single().Push.Should().Be(BackportService.Conflicted, "without the option the package is ordinary text");
+
+        var request = Request(origin, squash, ["feat"], "1.x");
+        request["markers"] = new { packages = new[] { "@mintplayer/*" } };
+        var response = await Writer.BackportAsync(request);
+
+        response.Targets.Single().Push.Should().Be(BackportService.Created, string.Join(", ", response.Targets.Single().Conflicts));
+        origin.InBare("cat-file", "blob", origin.Ref("refs/heads/backport/7-1.x") + ":package.json").Should().Be(Package("^21.4.0", Added));
+    }
+
     private static string Project(string tfm, string nullable = "enable")
         => $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{tfm}</TargetFramework>\n    <Nullable>{nullable}</Nullable>\n  </PropertyGroup>\n</Project>\n";
 
@@ -226,6 +282,8 @@ public class BackportTests : WriterTestBase
     [InlineData("source")]
     [InlineData("title")]
     [InlineData("rules")]
+    [InlineData("disable")]
+    [InlineData("packages")]
     public async Task A_malformed_request_is_refused_before_any_git(string broken)
     {
         var origin = Lines();
@@ -237,6 +295,8 @@ public class BackportTests : WriterTestBase
             case "source": request["targets"] = new[] { new { branch = "main", head = "backport/7-main" } }; break;
             case "title": request["title"] = "two\nlines"; break;
             case "rules": request["targets"] = new[] { new { branch = "release/1.x", head = "backport/7-1.x", autoResolve = new[] { new { path = "a.json", strategy = "guess" } } } }; break;
+            case "disable": request["markers"] = new { disable = new[] { "docker" } }; break;
+            case "packages": request["markers"] = new { packages = new[] { "*" } }; break;
         }
 
         var response = await Writer.PostBackportAsync(request);

@@ -216,6 +216,19 @@ public class GitHubForgeVersioningTests
     }
 
     [Fact]
+    public async Task A_draft_pull_request_says_so_and_a_ready_one_says_nothing()
+    {
+        // #570 D7: a backport pushed with its conflict markers.
+        var bodies = new List<string?>();
+        await Forge(Capturing(HttpMethod.Post, $"{Repo}/pulls", HttpStatusCode.Created, """{"number":31}""", bodies)).OpenPullRequestAsync(Target, "backport/31", "release/dotnet-10.x", "t", "b", draft: true);
+        await Forge(Capturing(HttpMethod.Post, $"{Repo}/pulls", HttpStatusCode.Created, """{"number":32}""", bodies)).OpenPullRequestAsync(Target, "backport/32", "release/dotnet-10.x", "t", "b");
+
+        bodies.Should().Equal(
+            """{"head":"backport/31","base":"release/dotnet-10.x","title":"t","body":"b","draft":true}""",
+            """{"head":"backport/32","base":"release/dotnet-10.x","title":"t","body":"b"}""");
+    }
+
+    [Fact]
     public async Task A_refused_pull_request_without_an_open_one_is_an_error()
     {
         var github = new StubGitHub()

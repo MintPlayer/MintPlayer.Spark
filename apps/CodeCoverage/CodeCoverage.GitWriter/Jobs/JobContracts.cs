@@ -360,6 +360,16 @@ public sealed class VersioningBackportRequestWire
     /// <summary>The committer; the author is the original commit's, with its date.</summary>
     public IdentityWire? Committer { get; set; }
     public List<BackportTargetWire>? Targets { get; set; }
+    /// <summary>The repository's <c>backport.markers</c> (#570 D8); absent: the built-in catalog.</summary>
+    public BackportMarkersWire? Markers { get; set; }
+}
+
+public sealed class BackportMarkersWire
+{
+    /// <summary>Built-in marker kinds to leave to the plain merge (<see cref="PlatformMarkerOptions.KindNames"/>).</summary>
+    public List<string>? Disable { get; set; }
+    /// <summary>The repository's own platform-anchored packages, <c>*</c> as wildcard.</summary>
+    public List<string>? Packages { get; set; }
 }
 
 public sealed class BackportTargetWire
@@ -371,12 +381,16 @@ public sealed class BackportTargetWire
     /// <summary>The line's own auto-resolve rules (its <c>coverage.yml</c>, #570 M5, PRD §5.3 step 2), as the merge queue
     /// sends them; stage 2 is the line. None: every conflict is reported.</summary>
     public List<AutoResolveWire>? AutoResolve { get; set; }
+    /// <summary><c>backport.onConflict: draft</c> (#570 D7): a conflict is pushed with git's conflict markers committed,
+    /// for a draft pull request, instead of only being reported.</summary>
+    public bool Draft { get; set; }
 }
 
 /// <param name="Commit">The backport commit; null when the target conflicts or already holds the change.</param>
 /// <param name="Push">One of <c>created</c>, <c>exists</c> (the head branch is there already), <c>empty</c> (the target
-/// already holds the change), <c>rejected</c>, or <c>conflicted</c> (nothing was pushed to this target; the others
-/// stand on their own, #570 D6).</param>
+/// already holds the change), <c>rejected</c>, <c>conflicted</c> (nothing was pushed to this target; the others
+/// stand on their own, #570 D6), or <c>drafted</c> (a draft target's conflict, pushed with its conflict markers; its
+/// <see cref="Conflicts"/> say where).</param>
 /// <param name="Conflicts">The paths the target conflicts on; empty when it applies.</param>
 /// <param name="PlatformChanges">The platform values the change itself edits on this line's platform, left to the merge
 /// instead of normalized (#570 S2, D8); empty when there are none.</param>

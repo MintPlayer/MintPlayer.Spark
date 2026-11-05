@@ -46,8 +46,9 @@ public interface IForgeVersioning
     /// <summary>Creates a branch at a commit; <see cref="ForgeWriteOutcome.Exists"/> when the name is taken.</summary>
     Task<ForgeWriteOutcome> CreateBranchAsync(Repository repository, string branch, string sha, CancellationToken cancellationToken = default);
 
-    /// <summary>Opens a pull request and returns its number, or the number of the open one with the same head and base.</summary>
-    Task<int> OpenPullRequestAsync(Repository repository, string head, string @base, string title, string body, CancellationToken cancellationToken = default);
+    /// <summary>Opens a pull request and returns its number, or the number of the open one with the same head and base.
+    /// <paramref name="draft"/> opens it as a draft (a backport pushed with its conflict markers, #570 D7).</summary>
+    Task<int> OpenPullRequestAsync(Repository repository, string head, string @base, string title, string body, bool draft = false, CancellationToken cancellationToken = default);
 
     /// <summary>The merged pull requests into <paramref name="baseBranch"/> that the commit belongs to (a squash or merge commit's one).</summary>
     Task<IReadOnlyList<int>> MergedPullRequestsAsync(Repository repository, string sha, string baseBranch, CancellationToken cancellationToken = default);

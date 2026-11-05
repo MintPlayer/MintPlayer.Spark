@@ -144,7 +144,9 @@ PRD §8.2.
     (2026-11-05).** **Resolvers done (2026-11-05):** the merge queue's resolver, with the default branch's
     `mergeQueue.autoResolve` rules (O16), as PRD §8.3 records.
   - Independent per-line outcomes (D6), with an empty result reported as already present. **Done (2026-11-05).**
-  - Draft-with-markers mode (D7).
+  - Draft-with-markers mode (D7). **Done (2026-11-05)** through `backport.onConflict: draft`, along with
+    `backport.markers` (D8). The per-request `/backport --draft` moves to M8. Details are in PRD §8.3, "M5, third
+    part".
 - **M6 Regeneration on backport branches** (S5, D9): dispatch the line's workflow, apply the patch, then open the PR.
 - **M7 Merge queue for lines** (D12):
   - `mergeQueue.branches` patterns / `supported-lines`;

@@ -156,6 +156,49 @@ public class PlatformMarkersTests
         merged.Should().Be(Package("^21.2.0", Added));
     }
 
+    // --- coverage.yml backport.markers (D8: extendable and disableable) ---
+
+    [Fact]
+    public void A_disabled_kind_is_left_to_the_plain_merge()
+    {
+        var options = new PlatformMarkerOptions(["tfm"], []);
+        var @base = Project("net11.0");
+
+        var normalization = PlatformMarkers.Normalize(Csproj, Line, @base, @base, options)!;
+
+        normalization.Base.Should().Be(Project("net11.0", framework: "10.0.11"), "the framework package is still normalized, the TFM not");
+    }
+
+    [Fact]
+    public void A_configured_package_is_a_marker_in_msbuild_and_npm_alike()
+    {
+        // A first-party platform-anchored package (versioning D7), such as @mintplayer/ng-bootstrap.
+        var options = new PlatformMarkerOptions([], ["@mintplayer/ng-bootstrap", "MintPlayer.Spark*"]);
+        static string Package(string ng, string extra = "") => "{\n  \"dependencies\": {\n    \"@mintplayer/ng-bootstrap\": \"" + ng + "\",\n" + extra + "    \"rxjs\": \"~7.8.0\"\n  }\n}\n";
+        const string Added = "    \"date-fns\": \"^4.1.0\",\n";
+
+        var (conflicts, merged) = Merge(Package("^21.4.0"),
+            PlatformMarkers.Normalize("package.json", Package("^21.4.0"), Package("^22.34.0"), Package("^22.36.0", Added), options)!.Base!,
+            PlatformMarkers.Normalize("package.json", Package("^21.4.0"), Package("^22.34.0"), Package("^22.36.0", Added), options)!.Theirs!);
+        conflicts.Should().Be(0);
+        merged.Should().Be(Package("^21.4.0", Added));
+
+        const string Spark = "    <PackageReference Include=\"MintPlayer.Spark.Abstractions\" Version=\"{0}\" />";
+        var normalization = PlatformMarkers.Normalize(Csproj, Project("net10.0", framework: "10.0.11", extra: string.Format(Spark, "10.0.0-preview.90")),
+            Project("net11.0", extra: string.Format(Spark, "11.0.0-preview.3")), Project("net11.0", extra: string.Format(Spark, "11.0.0-preview.3")), options)!;
+        normalization.Theirs.Should().Contain(string.Format(Spark, "10.0.0-preview.90"));
+        PlatformMarkers.Normalize(Csproj, Line, Line, Line)!.Theirs.Should().Be(Line, "without the option nothing else is a marker");
+    }
+
+    [Theory]
+    [InlineData("tfm", true)]
+    [InlineData("framework-packages", true)]
+    [InlineData("global.json", true)]
+    [InlineData("setup-action", true)]
+    [InlineData("docker", false)]
+    public void The_kinds_a_repository_can_disable_are_named(string kind, bool known)
+        => PlatformMarkerOptions.KindNames.Contains(kind).Should().Be(known);
+
     // --- fidelity and scope ---
 
     [Fact]

@@ -293,4 +293,40 @@ public class BackportRecipientTests : CoverageRavenTest
         body.Should().StartWith("Backports:\n\n- `release/8.x`: #").And.Contain("- `release/7.x`: conflicts; nothing was pushed (see below).")
             .And.Contain("`release/7.x` conflicts on:\n- `src/Guard.cs`");
     }
+
+    [Fact]
+    public async Task The_backport_section_sends_draft_and_markers_and_a_drafted_line_opens_a_draft()
+    {
+        // #570 M5, PRD §5.8: D7 onConflict draft and D8 markers, from the default branch.
+        using var store = GetDocumentStore();
+        integration.GetFileContentAsync(Arg.Any<Repository>(), "main", CoverageYml.FileName, Arg.Any<CancellationToken>())
+            .Returns("versioning:\nbackport:\n  onConflict: draft\n  markers:\n    disable: [setup-action]\n    packages: [\"@mintplayer/*\"]\n");
+        WriterAnswers(new GitWriterBackportResult(GitWriterBackportResult.Backported, null, "squash", null,
+            [Target(GitWriterBackportTargetResult.Drafted) with { Conflicts = ["src/Guard.cs"] }], null, 1));
+
+        await HandleAsync(store, "maintainer", EBackportSource.Label, "8.x");
+
+        await writer.Received(1).VersioningBackportAsync(
+            Arg.Is<GitWriterBackportRequest>(r => r.Targets.Single().Draft && r.Markers!.Disable.Single() == "setup-action" && r.Markers.Packages.Single() == "@mintplayer/*"),
+            Arg.Any<CancellationToken>());
+        forge.DraftHeads.Should().Equal("backport/7-8.x");
+        forge.OpenedPullRequests.Single().Body.Should().Contain("**It conflicts**").And.EndWith("- `src/Guard.cs`");
+        forge.Comments.Single().Body.Should().Contain("a draft with 1 conflicting file to resolve").And.NotContain("conflicts on:");
+    }
+
+    [Fact]
+    public async Task A_broken_backport_section_is_reported_and_its_defaults_apply()
+    {
+        using var store = GetDocumentStore();
+        integration.GetFileContentAsync(Arg.Any<Repository>(), "main", CoverageYml.FileName, Arg.Any<CancellationToken>())
+            .Returns("versioning:\nbackport:\n  onConflict: push\n");
+        WriterAnswers(new GitWriterBackportResult(GitWriterBackportResult.Backported, null, "squash", null, [Target(GitWriterBackportTargetResult.Created)], null, 1));
+
+        await HandleAsync(store, "maintainer", EBackportSource.Label, "8.x");
+
+        await writer.Received(1).VersioningBackportAsync(
+            Arg.Is<GitWriterBackportRequest>(r => !r.Targets.Single().Draft && r.Markers!.Packages.Count == 0), Arg.Any<CancellationToken>());
+        forge.DraftHeads.Should().BeEmpty();
+        forge.Comments.Single().Body.Should().Contain("has errors, so its defaults were used:\n- backport.onConflict 'push'");
+    }
 }

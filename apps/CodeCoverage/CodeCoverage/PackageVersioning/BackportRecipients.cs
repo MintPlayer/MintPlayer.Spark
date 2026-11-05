@@ -3,6 +3,7 @@ using System.Text;
 using CodeCoverage.Entities;
 using CodeCoverage.Feedback;
 using CodeCoverage.Forge;
+using CodeCoverage.Git.Backports;
 using CodeCoverage.MergeQueue;
 using CodeCoverage.Versioning.Releases;
 using Microsoft.Extensions.Logging;
@@ -104,6 +105,9 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
         if (parsed.Config is not { } config)
             return $"There is nothing to backport to: {CoverageYml.FileName} on {defaultBranch} has no versioning section.";
         var rules = AutoResolveRules(yml, defaultBranch);
+        // §5.8 backport:, from the default branch as well; a broken section is reported and its defaults apply.
+        var backport = BackportYml.Parse(yml);
+        var draft = backport.Section.OnConflict == BackportYml.Draft;
 
         var targets = new List<GitWriterBackportTarget>();
         var unknown = new List<string>();
@@ -116,7 +120,7 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
                 continue;
             }
             if (branch == pull.BaseRef || targets.Any(t => t.Branch == branch)) continue;
-            targets.Add(new GitWriterBackportTarget(branch, $"{HeadPrefix}{pull.Number}-{Slug(line, branch)}", rules));
+            targets.Add(new GitWriterBackportTarget(branch, $"{HeadPrefix}{pull.Number}-{Slug(line, branch)}", rules, draft));
         }
         if (unknown.Count > 0)
             return $"Nothing was backported: {string.Join(", ", unknown.Select(u => $"`{u}`"))} names no release branch "
@@ -125,12 +129,17 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
 
         var subjects = (await git.GetPullRequestCommitsAsync(repository, pull.Number, cancellationToken))
             .Select(c => BackportSubject(c.Message)).Take(250).ToList();
-        var result = await RunAsync(repository, git, pull.BaseRef, commit, pull.Number, pull.Title, subjects, targets, cancellationToken);
-        return await ReportAsync(repository, forge, pull, commit, result, cancellationToken);
+        var result = await RunAsync(repository, git, pull.BaseRef, commit, pull.Number, pull.Title, subjects, targets, backport.Section.Markers, cancellationToken);
+        var report = await ReportAsync(repository, forge, pull, commit, result, cancellationToken);
+        if (backport.Errors.Count == 0)
+            return report;
+        var errors = $"The `backport:` section of {CoverageYml.FileName} on {defaultBranch} has errors, so its defaults were used:\n"
+            + string.Join('\n', backport.Errors.Take(10).Select(e => $"- {e}"));
+        return report is null ? errors : report + "\n\n" + errors;
     }
 
     private async Task<GitWriterBackportResult?> RunAsync(Repository repository, IForgeMergeQueue git, string source, string commit, int number, string title,
-        IReadOnlyList<string> subjects, IReadOnlyList<GitWriterBackportTarget> targets, CancellationToken cancellationToken)
+        IReadOnlyList<string> subjects, IReadOnlyList<GitWriterBackportTarget> targets, PlatformMarkerOptions markers, CancellationToken cancellationToken)
     {
         var push = await git.GetWriterAccessAsync(repository, null, false, cancellationToken);
         if (push.Access is not { } access)
@@ -143,7 +152,7 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
             return await writer.VersioningBackportAsync(new GitWriterBackportRequest(
                 repository.Provider.ToCanonicalString(), repository.GitHubId.ToString(CultureInfo.InvariantCulture), access.CloneUrl,
                 new CommitGraph.SidecarCredential(access.Username, access.Password), source, commit, number, Title(title), subjects,
-                VersioningController.Tagger, targets), cancellationToken);
+                VersioningController.Tagger, targets, markers), cancellationToken);
         }
         catch (GitWriterRefusedException ex)
         {
@@ -179,7 +188,7 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
                     var opened = await forge.OpenPullRequestAsync(repository, target.Head, target.Branch, $"[{Line(target.Branch)}] {pull.Title}",
                         $"Backport of #{pull.Number} to `{target.Branch}`.\n\nCherry-picked from {commit}. CI on this pull request is the check against the line's platform."
                         + PlatformNote(target) + ResolutionNote(target),
-                        cancellationToken);
+                        cancellationToken: cancellationToken);
                     lines.Add(target.Resolutions is { Count: > 0 } resolved
                         ? $"- `{target.Branch}`: #{opened}, with {resolved.Count} conflict{(resolved.Count == 1 ? "" : "s")} resolved automatically"
                         : $"- `{target.Branch}`: #{opened}");
@@ -192,6 +201,15 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
                     break;
                 case GitWriterBackportTargetResult.Conflicted:
                     lines.Add($"- `{target.Branch}`: conflicts; nothing was pushed (see below).");
+                    break;
+                case GitWriterBackportTargetResult.Drafted:
+                    // D7 draft: the conflict markers are committed; NoConflictMarkers keeps the pull request red until resolved.
+                    var draft = await forge.OpenPullRequestAsync(repository, target.Head, target.Branch, $"[{Line(target.Branch)}] {pull.Title}",
+                        $"Backport of #{pull.Number} to `{target.Branch}`.\n\nCherry-picked from {commit}. **It conflicts**: git's conflict markers are committed "
+                        + "in the files below. Resolve them on this branch, then mark the pull request ready.\n\n"
+                        + string.Join('\n', (target.Conflicts ?? []).Take(50).Select(p => $"- `{p}`")) + PlatformNote(target),
+                        draft: true, cancellationToken: cancellationToken);
+                    lines.Add($"- `{target.Branch}`: #{draft}, a draft with {target.Conflicts?.Count ?? 0} conflicting file{(target.Conflicts?.Count == 1 ? "" : "s")} to resolve");
                     break;
                 default:
                     lines.Add($"- `{target.Branch}`: the push was rejected. {target.Detail}".TrimEnd());

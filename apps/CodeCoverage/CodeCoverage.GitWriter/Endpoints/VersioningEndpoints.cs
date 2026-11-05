@@ -1,4 +1,5 @@
 using CodeCoverage.Git;
+using CodeCoverage.Git.Backports;
 using CodeCoverage.Git.MergeQueue;
 using CodeCoverage.GitWriter.Jobs;
 using CodeCoverage.GitWriter.Jobs.Dependencies;
@@ -243,11 +244,26 @@ internal sealed partial class GitWriterVersioningBackportEndpoint : IPostEndpoin
             || refusal.Check(IsLine(request.Title) ? request.Title : null, "title", TitleRule) is not { } title
             || refusal.Check(request.Subjects is null or { Count: <= MaxSubjects } && (request.Subjects ?? []).All(IsLine) ? request.Subjects ?? [] : null, "subjects", SubjectsRule) is not { } subjects
             || refusal.Check(Committer(request.Committer), "committer", MergeQueueWireRules.IdentityRule) is not { } committer
-            || refusal.Check(Targets(request.Targets, source), "targets", TargetsRule) is not { } targets)
+            || refusal.Check(Targets(request.Targets, source), "targets", TargetsRule) is not { } targets
+            || refusal.Check(Markers(request.Markers), "markers", MarkersRule) is not { } markers)
             return refusal.Result();
 
         return Results.Json(await backports.RunAsync(new BackportJob($"{request.Provider}/{request.RepoId}", cloneUrl, credential, source, commit, request.PullRequest,
-            title, subjects, committer, targets)), GitWriterHost.Json);
+            title, subjects, committer, targets, markers)), GitWriterHost.Json);
+    }
+
+    public const int MaxMarkerPackages = 50;
+    public static readonly string MarkersRule = $"disable naming only {string.Join(", ", PlatformMarkerOptions.KindNames)}; at most {MaxMarkerPackages} packages, "
+        + "each a package name or pattern of letters, digits, @ / . _ - and *";
+
+    internal static PlatformMarkerOptions? Markers(BackportMarkersWire? wire)
+    {
+        if (wire is null) return new PlatformMarkerOptions([], []);
+        var disable = wire.Disable ?? [];
+        var packages = wire.Packages ?? [];
+        if (disable.Count > PlatformMarkerOptions.KindNames.Count || !disable.All(k => k is not null && PlatformMarkerOptions.KindNames.Contains(k))) return null;
+        if (packages.Count > MaxMarkerPackages || !packages.All(p => p is not null && PlatformMarkerOptions.PackagePattern.IsMatch(p))) return null;
+        return new PlatformMarkerOptions([.. disable], [.. packages]);
     }
 
     private static bool IsLine(string? value) => value is { Length: > 0 and <= MaxTitle } && !value.Any(char.IsControl);
@@ -264,7 +280,7 @@ internal sealed partial class GitWriterVersioningBackportEndpoint : IPostEndpoin
             if (WireValidation.Branch(wire.Branch) is not { } branch || WireValidation.Branch(wire.Head) is not { } head) return null;
             if (branch == source || !head.StartsWith(HeadPrefix, StringComparison.Ordinal) || head.Length == HeadPrefix.Length) return null;
             if (WireValidation.Rules(wire.AutoResolve) is not { } rules) return null;
-            targets.Add(new BackportTarget(branch, head, rules));
+            targets.Add(new BackportTarget(branch, head, rules, wire.Draft));
         }
         var distinct = targets.Select(t => t.Branch).Concat(targets.Select(t => t.Head)).Distinct(StringComparer.Ordinal).Count() == targets.Count * 2;
         return distinct ? targets : null;

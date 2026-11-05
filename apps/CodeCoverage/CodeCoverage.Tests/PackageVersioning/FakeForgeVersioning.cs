@@ -55,8 +55,13 @@ internal sealed class FakeForgeVersioning : IForgeVersioning
         return Task.FromResult(ForgeWriteOutcome.Created);
     }
 
-    public Task<int> OpenPullRequestAsync(Repository repository, string head, string @base, string title, string body, CancellationToken cancellationToken = default)
+    /// <summary>The heads of the pull requests opened as drafts.</summary>
+    public List<string> DraftHeads { get; } = [];
+
+    public Task<int> OpenPullRequestAsync(Repository repository, string head, string @base, string title, string body, bool draft = false,
+        CancellationToken cancellationToken = default)
     {
+        if (draft) DraftHeads.Add(head);
         var index = OpenedPullRequests.FindIndex(p => p.Head == head && p.Base == @base);
         if (index < 0)
         {

@@ -248,6 +248,25 @@ dry-runs the cherry-pick onto every requested line. Each line is handled on its 
 - **A line that conflicts** gets nothing pushed. The comment names its files and gives the commands for a manual
   backport. The other lines are not held back.
 
+A `backport:` section in the default branch's `coverage.yml` adjusts this:
+
+```yaml
+backport:
+  onConflict: draft          # comment (default) | draft
+  markers:
+    disable: [setup-action]  # tfm | framework-packages | global.json | setup-action | npm-frameworks
+    packages: ["@mintplayer/ng-bootstrap", "MyCompany.*"]
+```
+
+- **`onConflict: draft`** pushes a conflicting line anyway, with git's conflict markers committed, and opens a
+  **draft** pull request that lists the files. Resolve them on that branch, then mark the pull request ready. The
+  `autoResolve` rules are not applied to a draft.
+- **`markers.disable`** leaves a built-in kind of platform value to the plain merge.
+- **`markers.packages`** adds your own platform-anchored packages, NuGet or npm, with `*` as a wildcard. A first-party
+  package whose major follows the platform, such as a component library tied to Angular, is the typical case.
+
+A section with errors is named in the backport comment, and its defaults apply.
+
 > **Protect release branches yourself.** A branch the app creates is unprotected unless a ruleset matches it. Add a
 > repository ruleset targeting `release/*` with at least *Restrict deletions* and *Block force pushes*, and require
 > your CI checks if you merge backports through it.
