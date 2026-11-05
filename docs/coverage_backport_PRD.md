@@ -1,6 +1,7 @@
 # Backporting to release lines (#568) — PRD
 
-Status: **design grilled (2026-11-05), decisions D1–D19 in §8; #569 spikes S3, S6, S9, S10 done (§8.1), milestones M1, M2, M3, M4, M11 implemented (§8.2), pull request pending.** §5 is the pre-grilling proposal; §8 supersedes it. Plan: [coverage_backport_plan.md](coverage_backport_plan.md).
+Status: **design grilled (2026-11-05), decisions D1–D19 in §8; #569 spikes S3, S6, S9, S10 done (§8.1), milestones M1, M2, M3, M4, M11 implemented (§8.2), merged as PR #572 (`e1908e0e5`, 2026-11-05). #570 next, on
+`feat/issue570-backports`.** §5 is the pre-grilling proposal; §8 supersedes it. Plan: [coverage_backport_plan.md](coverage_backport_plan.md).
 Parent decisions: [coverage_package_versioning_PRD.md](coverage_package_versioning_PRD.md) D10 (backports), D11 (dist-tags),
 D12 (auto-cut). Conflict machinery: [coverage_merge_queue_PRD.md](coverage_merge_queue_PRD.md) §10, O33–O37.
 
@@ -439,3 +440,14 @@ Evidence (`VersioningPlanReleaseTests`, real origins):
     "User's token"). When the stored token is missing or expired, the page opens a GitHub sign-in popup, as the
     GitHub login does today, and uses the token from that OAuth response.
   - Until #571 ships, #570 adds Spark's line ruleset by hand when it cuts the lines.
+- **Coverage in PR #572 (owner: "You can also add coverage for files outside this pull-request").** Tests were
+  added for the classes the coverage MCP ranked worst, excluding the onboarding and dependency classes, which #571
+  rewrites. The new test classes were: CommitGraphMirrors, the git writer's client and answers at each merge-queue
+  job, the merge queue's webhook forward, the backport recipients, `VersioningController`'s statuses,
+  `SnapshotCache`, and the GitHub normaliser's backports, commands and producer events
+  (`GitHubEventsCommandTests`). Two production changes were found along the way:
+  - an organization rename whose account id was not a number threw (`JsonElement.TryGetInt64` throws on a
+    non-number); it is now skipped like a missing id (red then green: the `"id":"x"` row of
+    `GitHubEventsCommandTests.An_organization_rename_needs_the_accounts_id_and_login`);
+  - the dead `GitHubEventsRecipient.GetOrCreateCommit` was removed.
+  - Still uncovered, for later: `MergeQueueEngine` (125 lines at `19344c85`), `GitHubForgeMergeQueue` (51).
