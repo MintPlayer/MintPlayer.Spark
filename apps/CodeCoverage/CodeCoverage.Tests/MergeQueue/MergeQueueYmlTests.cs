@@ -172,6 +172,24 @@ public class MergeQueueYmlTests
     }
 
     [Fact]
+    public void A_keyed_merge_rule_round_trips_its_wire_name()
+    {
+        var parsed = MergeQueueYml.Parse("""
+            mergeQueue:
+              enabled: true
+              postRebaseActionName: regenerate.yml
+              autoResolve:
+                - path: "**/Versions.props"
+                  strategy: keyed-merge
+            """, "main");
+
+        parsed.Errors.Should().BeEmpty();
+        var rule = parsed.Section!.AutoResolve.Single(r => r.Path == "**/Versions.props");
+        rule.Strategy.Should().Be(EMergeQueueResolveStrategy.KeyedMerge);
+        MergeQueueAutoResolveRule.WireName(rule.Strategy).Should().Be("keyed-merge");
+    }
+
+    [Fact]
     public void Supported_lines_without_versioning_lines_is_an_error()
     {
         var parsed = MergeQueueYml.Parse("mergeQueue:\n  enabled: true\n  branches: [master, supported-lines]\n", "master");

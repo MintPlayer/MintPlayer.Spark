@@ -212,6 +212,64 @@ public class PlatformMarkersTests
             .Should().BeEmpty("a framework package is the platform's, not a first-party release");
     }
 
+    [Fact]
+    public void A_marker_the_change_adds_once_more_takes_the_line_value_of_its_family()
+    {
+        // Each kind's family: a second occurrence of a key the line has once is rewritten to that one's value.
+        static string Workflow(string sdk, string? second = null)
+            => "jobs:\n  build:\n    steps:\n      - uses: actions/setup-dotnet@v5\n        with:\n          dotnet-version: '" + sdk + "'\n"
+               + (second is null ? "" : "      - uses: actions/setup-dotnet@v5\n        with:\n          dotnet-version: '" + second + "'\n");
+        var (conflicts, merged, _) = NormalizedMerge(".github/workflows/build.yml", Workflow("10.0.x"), Workflow("11.0.x"), Workflow("11.0.x", "11.0.x"));
+        conflicts.Should().Be(0);
+        merged.Should().Be(Workflow("10.0.x", "10.0.x"));
+
+        const string Second = "    <TargetFramework>{0}</TargetFramework>";
+        NormalizedMerge(Csproj, Line, Project("net11.0"), Project("net11.0", extra: string.Format(Second, "net11.0-windows"))).Merged
+            .Should().Be(Project("net10.0", framework: "10.0.11", extra: string.Format(Second, "net10.0")));
+
+        static string Package(string core, string? forms = null)
+            => "{\n  \"dependencies\": {\n    \"@angular/core\": \"" + core + "\",\n" + (forms is null ? "" : "    \"@angular/forms\": \"" + forms + "\",\n") + "    \"rxjs\": \"~7.8.0\"\n  }\n}\n";
+        NormalizedMerge("package.json", Package("^21.2.0"), Package("^22.1.0"), Package("^22.1.0", "^22.1.0")).Merged.Should().Be(Package("^21.2.0", "^21.2.0"));
+
+        var options = new PlatformMarkerOptions([], ["MintPlayer.Spark*"]);
+        const string Spark = "    <PackageReference Include=\"MintPlayer.Spark{0}\" Version=\"{1}\" />";
+        PlatformMarkers.Normalize(Csproj, Project("net10.0", framework: "10.0.11", extra: string.Format(Spark, ".Abstractions", "10.2.0")),
+                Project("net11.0", extra: string.Format(Spark, ".Abstractions", "11.0.0")),
+                Project("net11.0", extra: string.Format(Spark, ".Abstractions", "11.0.0") + "\n" + string.Format(Spark, "", "11.1.0")), options)!.Theirs
+            .Should().Contain(string.Format(Spark, "", "10.2.0"), "the package belongs to the line's MintPlayer.Spark* family");
+    }
+
+    [Fact]
+    public void A_marker_the_change_removes_is_removed_on_the_line_too()
+    {
+        static string Package(string core, string? animations = null)
+            => "{\n  \"dependencies\": {\n" + (animations is null ? "" : "    \"@angular/animations\": \"" + animations + "\",\n") + "    \"@angular/core\": \"" + core + "\"\n  }\n}\n";
+
+        var (conflicts, merged, _) = NormalizedMerge("package.json", Package("^21.2.0", "^21.2.0"), Package("^22.1.0", "^22.1.0"), Package("^22.1.0"));
+
+        conflicts.Should().Be(0);
+        merged.Should().Be(Package("^21.2.0"));
+    }
+
+    [Fact]
+    public void A_marker_the_line_lacks_is_left_to_the_plain_merge()
+    {
+        static string GlobalJson(string? sdk) => sdk is null ? "{\n  \"tools\": {}\n}\n" : $"{{\n  \"sdk\": {{\n    \"version\": \"{sdk}\"\n  }}\n}}\n";
+
+        var normalization = PlatformMarkers.Normalize("global.json", GlobalJson(null), GlobalJson("11.0.100"), GlobalJson("11.0.200"))!;
+
+        (normalization.Base, normalization.Theirs).Should().Be((GlobalJson("11.0.100"), GlobalJson("11.0.200")));
+        normalization.PlatformChanges.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void A_line_framework_without_a_major_is_never_guessed_above()
+    {
+        var normalization = PlatformMarkers.Normalize(Csproj, Project("netstandard2.0", framework: "10.0.11"), Project("net11.0"), Project("net12.0"))!;
+
+        normalization.PlatformChanges.Should().Equal([new PlatformChange(Csproj, "TargetFramework", "net11.0", "net12.0")]);
+    }
+
     [Theory]
     [InlineData("tfm", true)]
     [InlineData("framework-packages", true)]

@@ -104,4 +104,30 @@ public class BackportTests
         BackportRecipient.ConflictSections("c0ffee", result).Should()
             .Contain("The change edits this line's platform:\n- `Lib/Lib.csproj`: TargetFramework `net11.0` → `net10.0;net11.0`\n");
     }
+
+    [Fact]
+    public void A_conflict_says_why_and_a_platform_value_the_change_adds_reads_as_added()
+    {
+        var result = new GitWriterBackportResult(GitWriterBackportResult.Backported, null, "squash", "b4se",
+            [new("release/dotnet-10.x", "backport/7-dotnet-10.x", null, GitWriterBackportTargetResult.Conflicted, ["Lib/Lib.csproj"],
+                "The line's lock file could not be merged.", [new("Lib/Lib.csproj", "TargetFramework", "", "net10.0")])], null, 1);
+
+        BackportRecipient.ConflictSections("c0ffee", result).Should()
+            .Contain("- `Lib/Lib.csproj`\n\nThe line's lock file could not be merged.\n")
+            .And.Contain("- `Lib/Lib.csproj`: adds TargetFramework `net10.0`\n");
+    }
+
+    [Theory]
+    [InlineData("Repositories/github/1", "BackportRegenerations/github/1")]
+    [InlineData("repositories/7", "BackportRegenerations/7")]
+    public void A_repositorys_regenerations_live_beside_it(string repositoryId, string id)
+        => global::CodeCoverage.Entities.BackportRegenerations.ForRepository(repositoryId).Should().Be(id);
+
+    [Fact]
+    public void Only_a_repository_id_names_regenerations()
+    {
+        Action act = () => global::CodeCoverage.Entities.BackportRegenerations.ForRepository("Users/1");
+
+        act.Should().Throw<ArgumentException>();
+    }
 }

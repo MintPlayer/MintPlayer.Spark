@@ -174,4 +174,71 @@ public class BackportLinkRecipientTests : CoverageRavenTest
 
         bus.ReceivedCalls().Should().HaveCount(1);
     }
+
+    [Fact]
+    public async Task Every_merge_is_forwarded_to_the_versioning_lane()
+    {
+        var bus = new RecordingMessageBus();
+
+        await new BackportLinkEventsRecipient(bus).HandleAsync(new ForgeWebhookMessage<PullRequestMerged>(EForgeProvider.GitHub,
+            new PullRequestMerged(RepositoryId, 20, "backport/7-dotnet-10.x", true)));
+
+        bus.Of<BackportMergedMessage>().Should().ContainSingle().Which.Should().BeEquivalentTo(new BackportMergedMessage { RepositoryId = RepositoryId, Number = 20 });
+    }
+
+    [Fact]
+    public async Task A_cherry_pick_trailer_whose_commit_no_merged_pull_request_holds_links_nothing()
+    {
+        using var store = GetDocumentStore();
+        git.GetPullRequestCommitsAsync(Arg.Any<Repository>(), 23, Arg.Any<CancellationToken>())
+            .Returns([new ForgePullRequestCommit(new string('c', 40), null, null, null, false, $"fix: guard\n\n(cherry picked from commit {new string('9', 40)})")]);
+
+        await MergedAsync(store, Pull(23, "guard", "no words", "mine", Line));
+
+        await labels.DidNotReceiveWithAnyArgs().AddLabelAsync(default!, default, default!, default);
+        forge.Comments.Should().BeEmpty();
+    }
+
+    public static TheoryData<Exception> ForgeFailures => new()
+    {
+        new ForgeAccessDeniedException("403", "issues: write"),
+        new ForgeAccessDeniedException("403"),
+        new ForgeRequestException("502", 502),
+    };
+
+    [Theory]
+    [MemberData(nameof(ForgeFailures))]
+    public async Task A_forge_that_refuses_the_label_is_logged_not_thrown(Exception failure)
+    {
+        using var store = GetDocumentStore();
+        labels.AddLabelAsync(Arg.Any<Repository>(), 7, Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(Task.FromException(failure));
+
+        await MergedAsync(store, Pull(21, "guard on 10", "Backport of #7", "mine", Line));
+
+        forge.Comments.Should().BeEmpty("the label failed before the comment");
+    }
+
+    [Theory]
+    [MemberData(nameof(ForgeFailures))]
+    public async Task A_forge_that_fails_on_a_pushed_branch_is_logged_not_thrown(Exception failure)
+    {
+        using var store = GetDocumentStore();
+        git.GetActorRoleAsync(Arg.Any<Repository>(), "maintainer", Arg.Any<CancellationToken>()).Returns(Task.FromException<EForgeRepositoryRole>(failure));
+
+        await (await RecipientAsync(store)).HandleAsync(Pushed("backport/7-dotnet-10.x"));
+
+        forge.OpenedPullRequests.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task A_rate_limit_is_left_to_the_message_bus()
+    {
+        using var store = GetDocumentStore();
+        labels.AddLabelAsync(Arg.Any<Repository>(), 7, Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException(new ForgeRateLimitedException(TimeSpan.FromMinutes(1), null, EForgeRateLimitKind.Secondary, "slow down")));
+
+        var act = () => MergedAsync(store, Pull(21, "guard on 10", "Backport of #7", "mine", Line));
+
+        await act.Should().ThrowAsync<ForgeRateLimitedException>();
+    }
 }

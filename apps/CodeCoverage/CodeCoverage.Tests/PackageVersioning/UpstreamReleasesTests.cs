@@ -129,6 +129,51 @@ public class UpstreamReleasesTests : CoverageRavenTest
     }
 
     [Fact]
+    public async Task A_record_keeps_only_the_newest_releases()
+    {
+        using var store = GetDocumentStore();
+        var releases = Enumerable.Range(0, PackageReleaseRecord.MaxReleases + 2).Select(i => Release($"22.{i}.0", "- x")).ToList();
+        using (var session = store.OpenAsyncSession())
+        {
+            await UpstreamReleases.RecordAsync(session, Upstream, releases, default);
+            await session.SaveChangesAsync();
+        }
+
+        using var check = store.OpenAsyncSession();
+        var record = await check.LoadAsync<PackageReleaseRecord>(PackageReleaseRecord.DocumentId("npm", "@mintplayer/ng-bootstrap"));
+        record.Releases.Should().HaveCount(PackageReleaseRecord.MaxReleases);
+        record.Releases[0].Version.Should().Be("22.2.0");
+        record.Releases[^1].PullRequests.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(12)]
+    public async Task A_release_names_its_pull_requests_up_to_the_cap(int count)
+    {
+        using var store = GetDocumentStore();
+        using (var seed = store.OpenAsyncSession())
+        {
+            await seed.StoreAsync(new Repository { FullName = "mintplayer/ng-bootstrap", Provider = EForgeProvider.GitHub }, Upstream);
+            await seed.StoreAsync(new Repository { FullName = "mintplayer/spark", Provider = EForgeProvider.GitHub }, Downstream);
+            var notes = string.Concat(Enumerable.Range(1, count).Select(n => $"- change (#{n})\n"));
+            await UpstreamReleases.RecordAsync(seed, Upstream, [Release("22.36.0", notes)], default);
+            await seed.SaveChangesAsync();
+        }
+        using var session = store.OpenAsyncSession();
+
+        var text = await UpstreamReleases.DiagnoseAsync(session, forge, (await session.LoadAsync<Repository>(Downstream))!, "master", "release/angular-21.x", [Raise], default);
+
+        if (count == 0)
+            text.Should().EndWith(" It was released as `@mintplayer/ng-bootstrap/v22.36.0` in `mintplayer/ng-bootstrap`; its notes name no pull request.");
+        else
+        {
+            text.Split('\n').Count(l => l.StartsWith("- `mintplayer/ng-bootstrap#", StringComparison.Ordinal)).Should().Be(UpstreamReleases.MaxPullRequests);
+            text.Should().EndWith($"\n- and {count - UpstreamReleases.MaxPullRequests} more");
+        }
+    }
+
+    [Fact]
     public async Task Nothing_raised_says_nothing()
     {
         using var store = GetDocumentStore();

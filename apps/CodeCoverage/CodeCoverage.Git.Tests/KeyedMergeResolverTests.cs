@@ -1,5 +1,6 @@
 using CodeCoverage.Git.MergeQueue;
 using CodeCoverage.Git.MergeQueue.Resolution;
+using CodeCoverage.Git.MergeQueue.Resolution.Manifests;
 using CodeCoverage.Git.Tests._Infrastructure;
 
 namespace CodeCoverage.Git.Tests;
@@ -274,6 +275,112 @@ public class KeyedMergeResolverTests
             Items(Package("A", "1.0.0"), "<None Include=\"x.md\" Pack=\"true\" PackagePath=\"content\" />", Package("Z", "1.0.0")));
 
         await RefusedAsync(bare, MsBuildRule, "changed on both sides");
+    }
+
+    [Fact]
+    public async Task One_package_bumped_on_one_side_and_removed_on_the_other_is_refused()
+    {
+        using var repo = new TestRepo();
+        var bare = Fixture(repo, Csproj,
+            Items(Package("A", "1.0.0"), Package("Q", "1.0.0"), Package("Z", "1.0.0")),
+            Items(Package("A", "1.0.0"), Package("Q", "1.1.0"), Package("Z", "1.0.0")),
+            Items(Package("A", "1.1.0"), Package("Z", "1.0.0")));
+
+        await RefusedAsync(bare, MsBuildRule, "removed on one side and changed on the other");
+    }
+
+    [Fact]
+    public async Task A_side_that_holds_one_package_twice_is_refused()
+    {
+        using var repo = new TestRepo();
+        var bare = Fixture(repo, Csproj,
+            Items(Package("A", "1.0.0"), Package("Q", "1.0.0"), Package("Z", "1.0.0")),
+            Items(Package("A", "1.0.0"), Package("Q", "1.1.0"), Package("Q", "1.2.0"), Package("Z", "1.0.0")),
+            Items(Package("A", "1.0.0"), Package("Q", "1.3.0"), Package("Z", "1.0.0")));
+
+        await RefusedAsync(bare, MsBuildRule, "one key twice");
+    }
+
+    [Fact]
+    public async Task Comments_both_sides_wrote_before_one_package_are_refused()
+    {
+        using var repo = new TestRepo();
+        var bare = Fixture(repo, Csproj,
+            Items(Package("A", "1.0.0"), Package("Q", "1.0.0"), Package("Z", "1.0.0")),
+            Items(Package("A", "1.0.0"), "<!-- main's reason -->", Package("Q", "1.1.0"), Package("Z", "1.0.0")),
+            Items(Package("A", "1.0.0"), "<!-- the PR's reason -->", Package("Q", "1.2.0"), Package("Z", "1.0.0")));
+
+        await RefusedAsync(bare, MsBuildRule, "comments before an entry changed on both sides");
+    }
+
+    [Fact]
+    public async Task Two_conflict_regions_are_each_merged()
+    {
+        static string Spaced(string a, string z)
+            => Items(Package("A", a), "<None Include=\"1.md\" />", "<None Include=\"2.md\" />", "<None Include=\"3.md\" />", "<None Include=\"4.md\" />", Package("Z", z));
+        using var repo = new TestRepo();
+        var bare = Fixture(repo, Csproj, Spaced("1.0.0", "1.0.0"), Spaced("1.1.0", "1.2.0"), Spaced("1.3.0", "1.1.0"));
+
+        (await ResolvedAsync(bare, MsBuildRule, Csproj)).Should().Be(Spaced("1.3.0", "1.2.0"));
+    }
+
+    [Fact]
+    public async Task A_file_both_sides_added_has_no_base_to_merge_keys_against()
+    {
+        using var repo = new TestRepo();
+        repo.Write("README.md", "base\n");
+        repo.Commit("base");
+        repo.InWork("branch", "pr");
+        repo.Write(Csproj, Items(Package("Q", "1.1.0")));
+        repo.Commit("A");
+        repo.Checkout("pr");
+        repo.Write(Csproj, Items(Package("Q", "1.2.0")));
+        repo.Commit("B");
+
+        await RefusedAsync(repo.Bare(), MsBuildRule, "add/add");
+    }
+
+    [Fact]
+    public async Task A_side_with_a_line_that_looks_like_a_conflict_marker_is_refused()
+    {
+        using var repo = new TestRepo();
+        var bare = Fixture(repo, Csproj,
+            Items(Package("A", "1.0.0"), Package("Q", "1.0.0")),
+            Items(Package("A", "1.0.0"), Package("Q", "1.1.0")) + "=======\n",
+            Items(Package("A", "1.0.0"), Package("Q", "1.2.0")));
+
+        await RefusedAsync(bare, MsBuildRule, "looks like a conflict marker");
+    }
+
+    [Fact]
+    public void Two_formats_of_one_name_are_a_wiring_error()
+    {
+        var msbuild = ManifestFormats.BuiltIn.Single(f => f.Name == "msbuild");
+        Action act = () => _ = new KeyedMergeResolver([msbuild, msbuild]);
+
+        act.Should().Throw<InvalidOperationException>();
+    }
+
+    [Fact]
+    public void A_format_that_encloses_lines_outside_the_common_text_is_a_bug_not_a_merge()
+    {
+        var format = new Enclosing(ManifestFormats.BuiltIn.Single(f => f.Name == "msbuild"), Above: 5);
+        Diff3Piece[] pieces = [new Diff3Piece.Common(["<ItemGroup>\n"]), new Diff3Piece.Region(["a\n"], ["b\n"], ["c\n"]), new Diff3Piece.Common(["</ItemGroup>\n"])];
+        Action act = () => KeyedMergeResolver.Enclose(format, pieces);
+
+        act.Should().Throw<InvalidOperationException>();
+    }
+
+    /// <summary>A format that encloses a fixed number of lines, whatever the text says.</summary>
+    private sealed class Enclosing(IManifestFormat inner, int Above) : IManifestFormat
+    {
+        public string Name => inner.Name;
+        public bool Handles(string fileName) => inner.Handles(fileName);
+        public (int Above, int Below) Enclose(IReadOnlyList<string> before, IReadOnlyList<string> after) => (Above, 0);
+        public ManifestSection? Read(IReadOnlyList<string> lines) => inner.Read(lines);
+        public int? CompareVersions(ManifestEntry entry, string valueName, string a, string b, IReadOnlyList<string> before) => inner.CompareVersions(entry, valueName, a, b, before);
+        public IReadOnlyList<string>? Write(ManifestEntry entry, IReadOnlyDictionary<string, string?> values) => inner.Write(entry, values);
+        public IReadOnlyList<string> Join(IReadOnlyList<ManifestEntry> merged, IReadOnlyList<string> trailing, ManifestSection ours, ManifestSection theirs) => inner.Join(merged, trailing, ours, theirs);
     }
 
     // --- MSBuild properties: scalars keyed by name ---

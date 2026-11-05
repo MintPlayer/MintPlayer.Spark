@@ -289,6 +289,98 @@ public class BackportTests : WriterTestBase
     }
 
     [Fact]
+    public async Task A_byte_order_mark_survives_the_normalization()
+    {
+        const string Bom = "﻿";
+        var origin = Seed();
+        origin.Checkout("main").Write("Lib/Lib.csproj", Bom + Project("net10.0"));
+        origin.Commit("lib");
+        origin.Push("main");
+        origin.Checkout("release/1.x", "main").Push("release/1.x");
+        origin.Checkout("main").Write("Lib/Lib.csproj", Bom + Project("net11.0"));
+        origin.Commit("feat: net11 (#6)");
+        origin.Write("Lib/Lib.csproj", Bom + Project("net11.0", "disable"));
+        var squash = origin.Commit("fix: nullable off (#7)");
+        origin.Push("main");
+
+        var response = await Writer.BackportAsync(Request(origin, squash, ["fix"], "1.x"));
+
+        response.Targets.Single().Push.Should().Be(BackportService.Created, string.Join(", ", response.Targets.Single().Conflicts));
+        var blob = FixtureGit.Run(origin.Bare, "cat-file", "-s", origin.Ref("refs/heads/backport/7-1.x") + ":Lib/Lib.csproj").Trim();
+        blob.Should().Be((System.Text.Encoding.UTF8.GetByteCount(Project("net10.0", "disable")) + 3).ToString(System.Globalization.CultureInfo.InvariantCulture),
+            "the line's file keeps its mark");
+    }
+
+    [Fact]
+    public async Task A_file_that_is_not_utf8_is_left_to_the_plain_merge()
+    {
+        // Decoding it and writing it back would corrupt it, so its platform values are not normalized: the edit next to the
+        // framework conflicts as it would without #570.
+        static byte[] Latin1(string tfm, string nullable) => [.. System.Text.Encoding.UTF8.GetBytes(Project(tfm, nullable)), .. "<!-- caf"u8.ToArray(), 0xE9, .. " -->\n"u8.ToArray()];
+        var origin = Seed();
+        origin.Checkout("main");
+        void Put(string tfm, string nullable)
+        {
+            Directory.CreateDirectory(Path.Combine(origin.Work, "Lib"));
+            File.WriteAllBytes(Path.Combine(origin.Work, "Lib", "Lib.csproj"), Latin1(tfm, nullable));
+        }
+        Put("net10.0", "enable");
+        origin.Commit("lib");
+        origin.Push("main");
+        origin.Checkout("release/1.x", "main").Push("release/1.x");
+        origin.Checkout("main");
+        Put("net11.0", "enable");
+        origin.Commit("feat: net11 (#6)");
+        Put("net11.0", "disable");
+        var squash = origin.Commit("fix: nullable off (#7)");
+        origin.Push("main");
+
+        var response = await Writer.BackportAsync(Request(origin, squash, ["fix"], "1.x"));
+
+        response.Targets.Single().Push.Should().Be(BackportService.Conflicted);
+        response.Targets.Single().PlatformChanges.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task A_push_the_forge_refuses_is_reported_for_that_line()
+    {
+        var origin = Lines();
+        origin.Checkout("release/2.x").Write("README.md", "two\n");
+        origin.Commit("2.x: readme");
+        origin.Push("release/2.x");
+        origin.Checkout("main").Write("README.md", "fixed\n");
+        var squash = origin.Commit("fix: readme (#7)");
+        origin.Push("main");
+        File.WriteAllText(Path.Combine(origin.Bare, "hooks", "pre-receive"), "#!/bin/sh\necho 'protected by a ruleset' >&2\nexit 1\n");
+        var request = Request(origin, squash, ["fix"], "1.x", "2.x");
+        request["targets"] = new[] { new { branch = "release/1.x", head = "backport/7-1.x", draft = false }, new { branch = "release/2.x", head = "backport/7-2.x", draft = true } };
+
+        var response = await Writer.BackportAsync(request);
+
+        response.Targets.Select(t => t.Push).Should().Equal(BackportService.Rejected, BackportService.Rejected);
+        response.Targets.Should().AllSatisfy(t => t.Detail.Should().Contain("protected by a ruleset"));
+        origin.Ref("refs/heads/backport/7-1.x").Should().BeNull();
+    }
+
+    [Fact]
+    public async Task A_regenerate_patch_for_a_branch_that_is_no_backport_commit_is_refused()
+    {
+        var (origin, head, patch) = await RegeneratedAsync();
+        // A merge commit on the branch (two parents), with the backport's own tree: a merge of the line would be a no-op,
+        // because the backport branch already contains it.
+        FixtureGit.Run(origin.Work, "fetch", "--quiet", "origin");
+        var merge = FixtureGit.Run(origin.Work, "-c", "user.name=x", "-c", "user.email=x@example.invalid",
+            "commit-tree", head + "^{tree}", "-p", head, "-p", head + "^", "-m", "merge").Trim();
+        FixtureGit.Run(origin.Work, "push", "--quiet", "--force", "origin", $"{merge}:refs/heads/backport/7-1.x");
+
+        var response = await Writer.BackportRegeneratedAsync(PatchRequest(origin, merge, patch));
+
+        response.Outcome.Should().Be("branch-moved");
+        response.Detail.Should().Contain("not a backport commit");
+        origin.Ref("refs/heads/backport/7-1.x").Should().Be(merge);
+    }
+
+    [Fact]
     public async Task A_change_of_the_line_own_platform_conflicts_and_says_so()
     {
         var origin = PlatformLines();

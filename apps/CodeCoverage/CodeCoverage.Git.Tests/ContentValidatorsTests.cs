@@ -33,6 +33,8 @@ public class ContentValidatorsTests
     // One property set twice in one group: the last silently wins.
     [InlineData("<PropertyGroup><LangVersion>13</LangVersion>\n<langversion>preview</langversion></PropertyGroup>", 2)]
     [InlineData("<Target Name=\"T\"><ItemGroup><X Include=\"a\" />\n<X Include=\"a\" /></ItemGroup></Target>", 2)]
+    // An item that names no items at all is keyed by its type and condition alone.
+    [InlineData("<ItemGroup><X Condition=\"'$(A)' == 'b'\" />\n<X Condition=\"'$(A)' == 'b'\" /></ItemGroup>", 2)]
     public void A_key_one_MSBuild_group_holds_twice_is_refused_where_it_repeats(string groups, long line)
     {
         var verdict = MsBuild.Validate(Project(groups));

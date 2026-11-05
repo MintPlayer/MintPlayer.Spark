@@ -1,6 +1,7 @@
 using CodeCoverage.CommitGraph;
 using CodeCoverage.Entities;
 using CodeCoverage.Forge;
+using CodeCoverage.Git.MergeQueue;
 using CodeCoverage.MergeQueue;
 using CodeCoverage.PackageVersioning;
 using CodeCoverage.WorkflowHooks;
@@ -250,6 +251,266 @@ public class BackportRegenerationEngineTests : CoverageRavenTest
 
         outbox.Signals.Should().BeEmpty();
         forge.OpenedPullRequests.Should().ContainSingle();
+    }
+
+    /// <summary>Everything that stops a regeneration still opens the pull request, with the reason in its note.</summary>
+    public static TheoryData<string, string> Stops => new()
+    {
+        { "writer-unconfigured", "this server's git writer is not configured" },
+        { "dispatch-refused", "the forge refused to run `regenerate.yml` on `backport/7-8.x` (Refused: no workflow_dispatch trigger)" },
+        { "dispatch-uncorrelated", "the forge started `regenerate.yml` without saying which run it is, so its result cannot be trusted" },
+        { "run-missing", "the `regenerate.yml` run 41 no longer exists" },
+        { "run-wrong-commit", "the `regenerate.yml` run built `eeeeeeeeeeee`, not the backport's `dddddddddddd`" },
+        { "run-failed", "the `regenerate.yml` run finished `failure` (https://example.invalid/run/41)" },
+        { "run-failed-no-conclusion", "the `regenerate.yml` run finished `without a conclusion`" },
+        { "artifact-expired", "the `regenerate.yml` run left an unusable `merge-queue-patch` artifact (Expired: gone after 1 day)" },
+        { "no-token", "the forge gave no token to push the regenerated files (App not installed)" },
+        { "no-token-no-reason", "the forge gave no token to push the regenerated files" },
+        { "writer-moved", "the git writer did not fold the `regenerate.yml` patch (branch-moved): the head is now aaaa" },
+        { "access-denied", "the forge refused a call the regeneration needs (it asks for `actions: write`)" },
+        { "access-denied-bare", "the forge refused a call the regeneration needs" },
+        { "writer-refused", "the git writer refused the backport/regenerated request (`patch` must be base64)" },
+    };
+
+    [Theory]
+    [MemberData(nameof(Stops))]
+    public async Task Whatever_stops_the_regeneration_opens_the_pull_request_with_why(string stop, string why)
+    {
+        using var store = GetDocumentStore();
+        ForgeWorkflowRun Run(string sha, string? conclusion, string? url) => new(41, "completed", conclusion, sha, Head, url);
+        WorkflowHookDispatch Dispatch(EWorkflowHookDispatch outcome) => new(outcome, "regenerate.yml", null, null, EForgeDispatchOutcome.Refused, "no workflow_dispatch trigger");
+        void Observe(EWorkflowHookRunVerdict verdict, ForgeWorkflowRun? run)
+            => hook.ObserveAsync(Arg.Any<IWorkflowHookSaga>(), Arg.Any<WorkflowHookRun>(), Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+                .Returns(new WorkflowHookObservation(verdict, run));
+        void NoToken(string? refusal)
+            => hook.RunWriterJobAsync(Arg.Any<IWorkflowHookSaga>(), null, false, Arg.Any<Func<ForgeWriterAccess, SidecarCredential, Task<GitWriterBackportRegeneratedResult>>>(), Arg.Any<CancellationToken>())
+                .Returns(new WorkflowHookWriterJob<GitWriterBackportRegeneratedResult>(false, null, refusal));
+        void DispatchThrows(Exception ex)
+            => hook.DispatchAsync(Arg.Any<IWorkflowHookSaga>(), Arg.Any<WorkflowHookRequest>(), Arg.Any<Func<WorkflowHookDispatch, Task>>(), Arg.Any<CancellationToken>())
+                .Returns<WorkflowHookDispatch>(_ => throw ex);
+        switch (stop)
+        {
+            case "writer-unconfigured": writer.IsConfigured.Returns(false); break;
+            case "dispatch-refused":
+                hook.DispatchAsync(Arg.Any<IWorkflowHookSaga>(), Arg.Any<WorkflowHookRequest>(), Arg.Any<Func<WorkflowHookDispatch, Task>>(), Arg.Any<CancellationToken>())
+                    .Returns(Dispatch(EWorkflowHookDispatch.Refused));
+                break;
+            case "dispatch-uncorrelated":
+                hook.DispatchAsync(Arg.Any<IWorkflowHookSaga>(), Arg.Any<WorkflowHookRequest>(), Arg.Any<Func<WorkflowHookDispatch, Task>>(), Arg.Any<CancellationToken>())
+                    .Returns(Dispatch(EWorkflowHookDispatch.Uncorrelated));
+                break;
+            case "run-missing": Observe(EWorkflowHookRunVerdict.Missing, null); break;
+            case "run-wrong-commit": Observe(EWorkflowHookRunVerdict.WrongCommit, Run(new string('e', 40), "success", null)); break;
+            case "run-failed": Observe(EWorkflowHookRunVerdict.Failed, Run(Backport, "failure", "https://example.invalid/run/41")); break;
+            case "run-failed-no-conclusion": Observe(EWorkflowHookRunVerdict.Failed, Run(Backport, null, null)); break;
+            case "artifact-expired":
+                hook.DownloadArtifactAsync(Arg.Any<IWorkflowHookSaga>(), Arg.Any<long>(), "merge-queue-patch", Arg.Any<long>(), Arg.Any<CancellationToken>())
+                    .Returns(new ForgeArtifactDownload(EForgeArtifactOutcome.Expired, null, null, "gone after 1 day"));
+                break;
+            case "no-token": NoToken("App not installed"); break;
+            case "no-token-no-reason": NoToken(null); break;
+            case "writer-moved":
+                writer.VersioningBackportRegeneratedAsync(Arg.Any<GitWriterBackportRegeneratedRequest>(), Arg.Any<CancellationToken>())
+                    .Returns(new GitWriterBackportRegeneratedResult("branch-moved", null, null, null, "the head is now aaaa", 1));
+                break;
+            case "access-denied": DispatchThrows(new ForgeAccessDeniedException("403", "actions: write")); break;
+            case "access-denied-bare": DispatchThrows(new ForgeAccessDeniedException("403")); break;
+            case "writer-refused": DispatchThrows(new GitWriterRefusedException("backport/regenerated", "patch", "base64")); break;
+        }
+        await BeginAsync(store, Item("regenerate.yml"));
+
+        await StepAsync(store); // dispatch
+        if (forge.OpenedPullRequests.Count == 0)
+            await StepAsync(store, Completed((await PendingAsync(store))!));
+
+        forge.OpenedPullRequests.Single().Body.Should().Contain($"**Not regenerated**: {why}. These files kept the line's version");
+        forge.Comments.Single().Body.Should().Be($"Backport to `release/8.x`: #1000, **not regenerated**: {why}.");
+        (await PendingAsync(store)).Should().BeNull();
+    }
+
+    [Fact]
+    public async Task A_run_still_going_waits_and_a_poll_reads_it_too()
+    {
+        using var store = GetDocumentStore();
+        await BeginAsync(store, Item("regenerate.yml"));
+        await StepAsync(store);
+        var item = (await PendingAsync(store))!;
+        hook.ObserveAsync(Arg.Any<IWorkflowHookSaga>(), Arg.Any<WorkflowHookRun>(), Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(new WorkflowHookObservation(EWorkflowHookRunVerdict.Running, null));
+
+        await StepAsync(store, new BackportRegenerationStepMessage { RepositoryId = RepositoryId, Head = Head, Generation = item.Generation, Step = EBackportRegenerationStep.PollRun });
+        await StepAsync(store, Completed(item));
+        // A dispatch step while the run is pending starts nothing.
+        await StepAsync(store, new BackportRegenerationStepMessage { RepositoryId = RepositoryId, Head = Head, Generation = item.Generation, Step = EBackportRegenerationStep.Dispatch });
+
+        await hook.Received(1).ObserveAsync(Arg.Any<IWorkflowHookSaga>(), Arg.Any<WorkflowHookRun>(), Backport, true, Arg.Any<CancellationToken>());
+        await hook.Received(1).ObserveAsync(Arg.Any<IWorkflowHookSaga>(), Arg.Any<WorkflowHookRun>(), Backport, false, Arg.Any<CancellationToken>());
+        dispatches.Should().ContainSingle();
+        forge.OpenedPullRequests.Should().BeEmpty();
+        (await PendingAsync(store))!.Runs.Single().Finished.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task A_run_with_nothing_to_regenerate_opens_the_pull_request_saying_so()
+    {
+        using var store = GetDocumentStore();
+        hook.DownloadArtifactAsync(Arg.Any<IWorkflowHookSaga>(), Arg.Any<long>(), "merge-queue-patch", Arg.Any<long>(), Arg.Any<CancellationToken>())
+            .Returns(new ForgeArtifactDownload(EForgeArtifactOutcome.Ok, "patch.diff", [], null));
+        await BeginAsync(store, Item("regenerate.yml"));
+
+        await StepAsync(store);
+        await StepAsync(store, Completed((await PendingAsync(store))!));
+        (await PendingAsync(store))!.History.Should().Contain(l => l.Text =="regenerate.yml run 41 had nothing to regenerate");
+        await StepAsync(store);
+
+        await writer.DidNotReceiveWithAnyArgs().VersioningBackportRegeneratedAsync(default!, default);
+        forge.OpenedPullRequests.Single().Body.Should().EndWith("folded into the backport commit:\n- nothing changed\n");
+    }
+
+    [Fact]
+    public async Task A_transient_failure_is_retried_until_it_gives_up()
+    {
+        using var store = GetDocumentStore();
+        hook.DispatchAsync(Arg.Any<IWorkflowHookSaga>(), Arg.Any<WorkflowHookRequest>(), Arg.Any<Func<WorkflowHookDispatch, Task>>(), Arg.Any<CancellationToken>())
+            .Returns<WorkflowHookDispatch>(_ => throw new HttpRequestException("connection reset"));
+        await BeginAsync(store, Item("regenerate.yml"));
+
+        for (var attempt = 1; attempt <= MaxRetries; attempt++)
+        {
+            await StepAsync(store);
+            (await PendingAsync(store))!.TransientFailures.Should().Be(attempt);
+            outbox.Steps.Last().Step.Should().Be(EBackportRegenerationStep.Dispatch);
+        }
+        forge.OpenedPullRequests.Should().BeEmpty();
+
+        await StepAsync(store);
+
+        forge.Comments.Single().Body.Should().Be(
+            $"Backport to `release/8.x`: #1000, **not regenerated**: it gave up after {MaxRetries + 1} failed attempts in a row (connection reset).");
+    }
+
+    private const int MaxRetries = BackportRegenerationEngine.MaxTransientRetries;
+
+    [Fact]
+    public async Task A_rate_limit_is_left_to_the_message_bus_and_saves_nothing()
+    {
+        using var store = GetDocumentStore();
+        hook.DispatchAsync(Arg.Any<IWorkflowHookSaga>(), Arg.Any<WorkflowHookRequest>(), Arg.Any<Func<WorkflowHookDispatch, Task>>(), Arg.Any<CancellationToken>())
+            .Returns<WorkflowHookDispatch>(_ => throw new ForgeRateLimitedException(TimeSpan.FromMinutes(1), null, EForgeRateLimitKind.Secondary, "slow down"));
+        await BeginAsync(store, Item("regenerate.yml"));
+
+        var act = () => StepAsync(store);
+
+        await act.Should().ThrowAsync<ForgeRateLimitedException>();
+        (await PendingAsync(store))!.TransientFailures.Should().Be(0);
+        forge.OpenedPullRequests.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task A_cancel_step_cancels_the_run_even_when_the_backport_is_gone()
+    {
+        using var store = GetDocumentStore();
+        IWorkflowHookSaga? saga = null;
+        await hook.CancelAbandonedRunAsync(Arg.Do<IWorkflowHookSaga>(s => saga = s), Arg.Any<string>(), Arg.Any<long>(), Arg.Any<CancellationToken>());
+        await BeginAsync(store, Item("regenerate.yml"));
+
+        await StepAsync(store, new BackportRegenerationStepMessage { RepositoryId = RepositoryId, Head = "backport/gone-8.x", Generation = 99, Step = EBackportRegenerationStep.CancelRun, RunId = 41 });
+        await StepAsync(store, new BackportRegenerationStepMessage { RepositoryId = RepositoryId, Head = Head, Generation = 0, Step = EBackportRegenerationStep.CancelRun });
+
+        await hook.Received(1).CancelAbandonedRunAsync(Arg.Any<IWorkflowHookSaga>(), BackportRegenerationEngine.Purpose, 41, Arg.Any<CancellationToken>());
+        saga!.Repository.FullName.Should().Be("acme/widgets");
+        saga.Forge.Should().BeSameAs(queue);
+        saga.Note("ignored");
+        await saga.ScheduleAsync(EWorkflowHookStep.PollRun, TimeSpan.FromMinutes(1), null, default);
+        outbox.Steps.Should().ContainSingle("only the first dispatch was queued");
+    }
+
+    [Fact]
+    public async Task A_step_for_an_unknown_repository_or_forge_does_nothing()
+    {
+        using var store = GetDocumentStore();
+        await BeginAsync(store, Item("regenerate.yml"));
+        queue.Provider.Returns(EForgeProvider.GitLab);
+
+        await StepAsync(store);
+        await StepAsync(store, new BackportRegenerationStepMessage { RepositoryId = "Repositories/github/404", Head = Head, Generation = 0, Step = EBackportRegenerationStep.Dispatch });
+
+        dispatches.Should().BeEmpty();
+        await hook.DidNotReceiveWithAnyArgs().VerifyProvenanceAsync(default!, default!, default!, default!, default);
+    }
+
+    [Fact]
+    public async Task The_saga_schedules_the_hooks_steps_for_this_backport()
+    {
+        using var store = GetDocumentStore();
+        IWorkflowHookSaga? saga = null;
+        hook.VerifyProvenanceAsync(Arg.Do<IWorkflowHookSaga>(s => saga = s), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<CancellationToken>())
+            .Returns((WorkflowHookProvenanceFailure?)null);
+        await BeginAsync(store, Item("regenerate.yml"));
+        await StepAsync(store);
+
+        saga!.Repository.FullName.Should().Be("acme/widgets");
+        saga.Forge.Should().BeSameAs(queue);
+        saga.Note("looked at the run");
+        await saga.ScheduleAsync(EWorkflowHookStep.PollRun, TimeSpan.FromMinutes(1), null, default);
+        await saga.ScheduleAsync(EWorkflowHookStep.Timeout, TimeSpan.FromMinutes(20), null, default);
+        await saga.ScheduleAsync(EWorkflowHookStep.CancelRun, null, 41, default);
+        var unknown = () => saga.ScheduleAsync((EWorkflowHookStep)99, null, null, default);
+
+        outbox.Steps.TakeLast(3).Select(s => (s.Step, s.Head, s.RunId)).Should().Equal(
+            (EBackportRegenerationStep.PollRun, Head, (long?)null), (EBackportRegenerationStep.Timeout, Head, null), (EBackportRegenerationStep.CancelRun, Head, 41));
+        await unknown.Should().ThrowAsync<ArgumentOutOfRangeException>();
+    }
+
+    [Theory]
+    [InlineData("none", "the default branch's `coverage.yml` has no usable `mergeQueue` section")]
+    [InlineData("never", "`mergeQueue.postRebaseWhen` is `never`")]
+    [InlineData("no-workflow", "`mergeQueue.postRebaseActionName` names no regenerate workflow")]
+    [InlineData("too-many", "its 65 regenerated paths exceed the git writer's 64")]
+    public void The_plan_refuses_what_it_cannot_run(string kind, string refusal)
+    {
+        MergeQueueWireRules.MaxGlobs.Should().Be(64, "the refusal text above names the cap");
+        var paths = kind == "too-many" ? Enumerable.Range(0, MergeQueueWireRules.MaxGlobs + 1).Select(i => $"app{i}/package-lock.json").ToList() : ["app/package-lock.json"];
+        var section = kind switch
+        {
+            "none" => null,
+            "never" => new MergeQueueSection { PostRebaseActionName = "regenerate.yml", PostRebaseWhen = EPostRebaseWhen.Never },
+            "no-workflow" => new MergeQueueSection(),
+            _ => new MergeQueueSection { PostRebaseActionName = "regenerate.yml" },
+        };
+        var target = new GitWriterBackportTargetResult("release/8.x", Head, Backport, GitWriterBackportTargetResult.Created, [], Regenerate: paths);
+
+        var plan = BackportRegenerationEngine.Plan(section, target);
+
+        plan.Refusal.Should().Be(refusal);
+        plan.Workflows.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task A_finished_run_is_forwarded_to_the_backport_waiting_for_it()
+    {
+        using var store = GetDocumentStore();
+        await BeginAsync(store, Item("regenerate.yml"));
+        await StepAsync(store);
+        var bus = new RecordingMessageBus();
+
+        foreach (var (repository, run) in new[] { (RepositoryId, 41L), (RepositoryId, 99L), ("github/153", 41L) })
+        {
+            using var session = store.OpenAsyncSession();
+            await new BackportRegenerationEventsRecipient(session, bus)
+                .HandleAsync(new ForgeWebhookMessage<CiRunCompleted>(EForgeProvider.GitHub, new CiRunCompleted(repository, run, Backport, "success")));
+        }
+
+        var item = (await PendingAsync(store))!;
+        bus.Of<BackportRegenerationStepMessage>().Should().ContainSingle().Which.Should().BeEquivalentTo(new BackportRegenerationStepMessage
+        {
+            RepositoryId = RepositoryId, Head = Head, Generation = item.Generation, Step = EBackportRegenerationStep.RunCompleted, RunId = 41,
+        });
+
+        var engine = Substitute.For<IBackportRegenerationEngine>();
+        var step = bus.Of<BackportRegenerationStepMessage>().Single();
+        await new BackportRegenerationRecipient(engine).HandleAsync(step);
+        await engine.Received(1).HandleStepAsync(step, Arg.Any<CancellationToken>());
     }
 
     private sealed class Outbox : IMessageOutbox

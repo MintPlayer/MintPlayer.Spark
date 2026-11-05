@@ -76,4 +76,44 @@ public class VersioningEcosystemsTests : WriterTestBase
         stale.Outcome.Should().Be(JobOutcomes.HeadMismatch);
         stale.Ecosystems.Should().BeEmpty();
     }
+
+    // A project file over the manifest limit (Limits.MaxManifestBytes, 2 MiB) is never read: the repository cannot be
+    // planned, which is no server error. (A bad ignore glob is refused earlier, by the endpoint's validation: 400.)
+    [Fact]
+    public async Task A_graph_the_head_cannot_build_is_unplannable()
+    {
+        using var origin = new Origin(Server, "ecosystems-unplannable");
+        origin.Write("src/Core/Core.csproj", Csproj);
+        origin.Commit("packages");
+        origin.Push("main");
+        origin.Checkout("fix", "main");
+        origin.Write("src/Core/Core.csproj", Csproj.Replace("</Project>", $"<!-- {new string('x', 2 * 1024 * 1024)} -->\n</Project>"));
+        var fix = origin.Commit("fix: huge");
+        origin.PullRequest(9, "fix");
+
+        var answer = await EcosystemsAsync(origin, 9, fix);
+        answer.Outcome.Should().Be(JobOutcomes.Failed);
+        answer.Reason.Should().Be(JobReasons.Unplannable);
+        answer.Detail.Should().Contain("src/Core/Core.csproj is");
+        answer.Ecosystems.Should().BeEmpty();
+    }
+
+    // A head that shares no history with the base branch has no merge base: git fails, and the job says so.
+    [Fact]
+    public async Task A_head_without_a_merge_base_is_an_error()
+    {
+        using var origin = new Origin(Server, "ecosystems-orphan");
+        origin.Write("src/Core/Core.csproj", Csproj);
+        origin.Commit("packages");
+        origin.Push("main");
+        FixtureGit.Run(origin.Work, "checkout", "--quiet", "--orphan", "lone");
+        origin.Write("src/Core/Guard.cs", "namespace Core; public class Guard { }\n");
+        var lone = origin.Commit("unrelated");
+        origin.PullRequest(10, "lone");
+
+        var answer = await EcosystemsAsync(origin, 10, lone);
+        answer.Outcome.Should().Be(JobOutcomes.Failed);
+        answer.Reason.Should().Be(JobReasons.Error);
+        answer.Ecosystems.Should().BeEmpty();
+    }
 }

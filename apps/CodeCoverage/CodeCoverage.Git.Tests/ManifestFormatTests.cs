@@ -149,6 +149,59 @@ public class ManifestFormatTests
     }
 
     [Theory]
+    [InlineData("<PackageReference Include=\"Q\">", "  <Version Condition=\"'$(X)' == '1'\">1.0.0</Version>", "</PackageReference>")]   // a conditioned child
+    [InlineData("<PackageReference Include=\"Q\">", "  <Version>1.0.0</Version>", "")]                                                  // never closes
+    [InlineData("<PackageReference Include=\"Q\" Version=\"1.0.0\">", "  <Version>2.0.0</Version>", "</PackageReference>")]             // metadata twice
+    [InlineData("<PackageReference Include=\"Q\" junk />", "", "")]                                                                      // not an attribute
+    public void MsBuild_refuses_an_item_it_cannot_read_value_by_value(string first, string second, string third)
+    {
+        Format("msbuild").Read(Lines([.. new[] { first, second, third }.Where(l => l.Length > 0)])).Should().BeNull();
+    }
+
+    [Fact]
+    public void MsBuild_writes_a_property_value_and_refuses_a_property_without_one()
+    {
+        var format = Format("msbuild");
+        var property = Entry("msbuild", "  <Version>1.0.0</Version>");
+
+        format.Write(property, new Dictionary<string, string?> { [ManifestEntry.ScalarValue] = "2.0.0" }).Should().Equal(Lines("  <Version>2.0.0</Version>"));
+        format.Write(property, new Dictionary<string, string?> { [ManifestEntry.ScalarValue] = null }).Should().BeNull();
+        format.Write(property, new Dictionary<string, string?>()).Should().BeNull();
+    }
+
+    [Fact]
+    public void MsBuild_removes_a_child_value_and_refuses_to_add_one_to_an_item_with_children()
+    {
+        var format = Format("msbuild");
+        var child = Entry("msbuild", "<PackageReference Include=\"Q\">", "  <Version>1.0.0</Version>", "  <PrivateAssets>all</PrivateAssets>", "</PackageReference>");
+
+        format.Write(child, new Dictionary<string, string?> { ["PrivateAssets"] = null })
+            .Should().Equal(Lines("<PackageReference Include=\"Q\">", "  <Version>1.0.0</Version>", "</PackageReference>"));
+        format.Write(child, new Dictionary<string, string?> { ["IncludeAssets"] = "runtime" }).Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData("1.0.0-rc", "1.0.0-rc.1", -1)]    // a shorter prerelease of the same start ranks below
+    [InlineData("1.0.0-RC.1", "1.0.0-rc.1", 0)]   // identifiers compare without case
+    public void Prerelease_identifiers_compare_part_by_part_then_by_count(string a, string b, int expected)
+    {
+        Math.Sign(SemanticVersion.Compare(a, b) ?? 99).Should().Be(expected);
+        SemanticVersion.Parse(a)!.CompareTo(null).Should().Be(1);
+    }
+
+    [Fact]
+    public void Json_keeps_a_blank_line_with_the_entry_after_it_and_refuses_a_value_it_cannot_write()
+    {
+        var format = Format("npm");
+        var section = format.Read(Lines("    \"a\": \"^1.0.0\",", "", "    \"b\": \"^2.0.0\""))!;
+
+        section.Entries.Should().HaveCount(2);
+        section.Entries[1].Leading.Should().Equal(Lines(""));
+        format.Write(section.Entries[0], new Dictionary<string, string?> { [ManifestEntry.ScalarValue] = "^1.0.0\", \"evil\": \"1" }).Should().BeNull();
+        format.CompareVersions(section.Entries[0], ManifestEntry.ScalarValue, "^1.0.0", "^1.1.0", []).HasValue.Should().BeFalse("nothing above names an object");
+    }
+
+    [Theory]
     [InlineData("1.*")]          // floating
     [InlineData("[1.0,2.0)")]    // a range
     [InlineData("$(QVersion)")]  // a property

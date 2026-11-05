@@ -78,4 +78,13 @@ public class BackportTargetsTests
         check.Summary.Should().Contain("changes no package");
         check.Text.Should().Contain("backport.defaultLabels 'some'");
     }
+
+    [Fact]
+    public void The_check_of_a_repository_without_any_line_says_none_exists_yet()
+    {
+        var check = BackportTargets.Check([], ["dotnet"], [], []);
+
+        check.Title.Should().Be("No line applies");
+        check.Text.Should().Contain("| | no release line exists yet | | | |");
+    }
 }

@@ -124,4 +124,115 @@ public class BackportTargetsRecipientTests : CoverageRavenTest
         forge.Checks.Should().BeEmpty();
         await labels.DidNotReceiveWithAnyArgs().AddLabelAsync(default!, default, default!, default);
     }
+
+    [Theory]
+    [InlineData("no-access")]
+    [InlineData("failed")]
+    [InlineData("refused")]
+    [InlineData("down")]
+    [InlineData("timeout")]
+    public async Task A_writer_that_names_no_ecosystems_leaves_the_pull_request_alone(string trouble)
+    {
+        using var store = GetDocumentStore();
+        Yml(Lines);
+        var writes = writer.VersioningEcosystemsAsync(Arg.Any<GitWriterEcosystemsRequest>(), Arg.Any<CancellationToken>());
+        switch (trouble)
+        {
+            case "no-access":
+                git.GetWriterAccessAsync(Arg.Any<Repository>(), null, false, Arg.Any<CancellationToken>()).Returns(new ForgePushAccess(null, "App not installed"));
+                break;
+            case "failed": writes.Returns(new GitWriterEcosystemsResult("failed", "clone-failed", null, "remote hung up", 1)); break;
+            case "refused": writes.Returns<GitWriterEcosystemsResult>(_ => throw new GitWriterRefusedException("versioning/ecosystems", "headSha", "a sha")); break;
+            case "down": writes.Returns<GitWriterEcosystemsResult>(_ => throw new HttpRequestException("Connection refused")); break;
+            case "timeout": writes.Returns<GitWriterEcosystemsResult>(_ => throw new TaskCanceledException("The request timed out")); break;
+        }
+
+        await HandleAsync(store);
+
+        forge.Checks.Should().BeEmpty();
+        await labels.DidNotReceiveWithAnyArgs().AddLabelAsync(default!, default, default!, default);
+        // The credential is handed back whenever one was handed out.
+        await git.Received(trouble == "no-access" ? 0 : 1).RevokeWriterAccessAsync(Arg.Any<Repository>(), Arg.Any<ForgeWriterAccess>(), Arg.Any<CancellationToken>());
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task A_forge_that_refuses_or_fails_is_logged_not_thrown(bool denied)
+    {
+        using var store = GetDocumentStore();
+        Yml(Lines);
+        labels.AddLabelAsync(Arg.Any<Repository>(), 7, Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException(denied ? new ForgeAccessDeniedException("403", "issues: write") : new ForgeRequestException("502", 502)));
+
+        await HandleAsync(store);
+
+        forge.Checks.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task A_rate_limit_is_left_to_the_message_bus()
+    {
+        using var store = GetDocumentStore();
+        Yml(Lines);
+        labels.AddLabelAsync(Arg.Any<Repository>(), 7, Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException(new ForgeRateLimitedException(TimeSpan.FromMinutes(1), null, EForgeRateLimitKind.Secondary, "slow down")));
+
+        var act = () => HandleAsync(store);
+
+        await act.Should().ThrowAsync<ForgeRateLimitedException>();
+    }
+
+    [Fact]
+    public async Task A_forge_without_labels_or_a_disconnected_repository_is_left_alone()
+    {
+        using var store = GetDocumentStore();
+        Yml(Lines);
+        labels.Provider.Returns(EForgeProvider.GitLab);
+        await HandleAsync(store);
+
+        labels.Provider.Returns(EForgeProvider.GitHub);
+        using (var session = store.OpenAsyncSession())
+        {
+            (await session.LoadAsync<Repository>(RepositoryId)).Connection = RepositoryConnection.Disconnected;
+            await session.SaveChangesAsync();
+            await new BackportTargetsRecipient(session, new SingleForgeResolver(integration), [forge], [git], [labels], writer, NullLogger<BackportTargetsRecipient>.Instance)
+                .HandleAsync(new BackportTargetsMessage { RepositoryId = RepositoryId, Number = 7, HeadSha = Head, Opened = true });
+        }
+
+        await writer.DidNotReceiveWithAnyArgs().VersioningEcosystemsAsync(default!, default);
+        forge.Checks.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("human", true)]
+    [InlineData("bot", false)]
+    [InlineData("backport-head", false)]
+    [InlineData("other-base", false)]
+    [InlineData("archived", false)]
+    [InlineData("unknown-repository", false)]
+    public async Task Only_a_persons_pull_request_into_the_default_branch_is_forwarded(string kind, bool forwarded)
+    {
+        using var store = GetDocumentStore();
+        using (var seed = store.OpenAsyncSession())
+        {
+            await seed.StoreAsync(new Repository { FullName = "acme/widgets", Provider = EForgeProvider.GitHub, DefaultBranch = "main", Archived = kind == "archived" }, RepositoryId);
+            await seed.SaveChangesAsync();
+        }
+        var bus = new RecordingMessageBus();
+        var evt = new PullRequestUpdated(kind == "unknown-repository" ? "Repositories/404" : RepositoryId, 7, Head,
+            kind == "backport-head" ? "backport/6-dotnet-10.x" : "feature/guard", kind == "other-base" ? "release/dotnet-10.x" : "main", new string('b', 40),
+            "fix: guard", IsFirstOpen: true, AuthorIsBot: kind == "bot");
+
+        using var session = store.OpenAsyncSession();
+        await new BackportTargetsEventsRecipient(session, bus).HandleAsync(new ForgeWebhookMessage<PullRequestUpdated>(EForgeProvider.GitHub, evt));
+
+        if (forwarded)
+            bus.Of<BackportTargetsMessage>().Should().ContainSingle().Which.Should().BeEquivalentTo(new BackportTargetsMessage
+            {
+                RepositoryId = RepositoryId, Number = 7, HeadSha = Head, Title = "fix: guard", Opened = true,
+            });
+        else
+            bus.Messages.Should().BeEmpty();
+    }
 }

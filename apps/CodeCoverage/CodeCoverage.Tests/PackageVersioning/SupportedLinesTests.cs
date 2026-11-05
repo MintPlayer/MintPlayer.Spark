@@ -29,6 +29,16 @@ public class SupportedLinesTests
         => SupportedLines.Evaluate(Pattern, Branches, Releases, overrides ?? new Dictionary<string, string>()).ToDictionary(l => l.Line.ToString());
 
     [Fact]
+    public void An_older_line_whose_major_the_lifecycle_data_lacks_is_not_supported_unless_kept()
+    {
+        var line = SupportedLines.Evaluate(Pattern, ["release/dotnet-7.x", "release/dotnet-10.x"], Releases, new Dictionary<string, string>())
+            .Single(l => l.Line.ToString() == "dotnet-7.x");
+
+        (line.Supported, line.Current).Should().Be((false, false));
+        line.Reason.Should().Be("dotnet 7 is not in the lifecycle data; `keep` the line to backport to it");
+    }
+
+    [Fact]
     public void A_line_is_supported_while_its_platform_is_and_the_newest_line_of_an_ecosystem_always_is()
     {
         var lines = Evaluate();

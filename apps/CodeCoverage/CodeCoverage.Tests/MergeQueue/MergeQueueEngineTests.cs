@@ -2174,6 +2174,38 @@ public class MergeQueueEngineTests : CoverageRavenTest
     }
 
     [Fact]
+    public async Task A_forks_dispatch_whose_regenerate_workflow_the_default_branch_lacks_is_evicted_before_anything_is_pushed()
+    {
+        var h = await ForkNeedingRegenerationAsync();
+        h.Queue.WorkflowFiles["master"] = [];
+
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+
+        var entry = await h.EntryAsync();
+        entry.EvictionReason.Should().Be("workflow-missing");
+        entry.EvictionMessage.Should().Be("`.github/workflows/regenerate.yml` does not exist on the default branch, so the regenerate step cannot run.");
+        h.Writer.QueueBranchPushes.Should().BeEmpty();
+        h.Queue.Dispatches.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task A_regenerate_workflow_the_default_branch_lacks_is_never_dispatched()
+    {
+        var h = await HarnessAsync();
+        h.Writer.PrepareResults.Enqueue(FakeGitWriter.Prepared(BaseSha, Head, Prepared, "apps/A/App_Data/modelHashes.json"));
+        h.Queue.Blobs.Remove("master:.github/workflows/regenerate.yml");
+
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+
+        var entry = await h.EntryAsync();
+        entry.EvictionReason.Should().Be("workflow-missing");
+        entry.EvictionMessage.Should().Be("`.github/workflows/regenerate.yml` does not exist on the default branch, so the regenerate step cannot run.");
+        h.Queue.Dispatches.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task A_forks_dispatch_goes_ahead_when_no_workflow_runs_on_the_queue_branch_and_the_regenerate_workflow_is_read_only()
     {
         var h = await ForkNeedingRegenerationAsync();
