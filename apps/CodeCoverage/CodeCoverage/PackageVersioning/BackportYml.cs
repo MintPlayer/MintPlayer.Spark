@@ -11,6 +11,7 @@ namespace CodeCoverage.PackageVersioning;
 /// <code>
 /// backport:
 ///   onConflict: comment          # comment (default, D7) | draft: push the conflict markers, open a draft pull request
+///   enqueue: true                # default (D12): hand each backport pull request to the merge queue, when it queues the line
 ///   markers:                     # D8
 ///     disable: [setup-action]    # tfm | framework-packages | global.json | setup-action | npm-frameworks
 ///     packages: ["@mintplayer/ng-bootstrap", "MintPlayer.Spark*"]
@@ -58,10 +59,11 @@ public static class BackportYml
         foreach (var package in packages.Where(p => !PlatformMarkerOptions.PackagePattern.IsMatch(p)))
             errors.Add($"backport.markers.packages '{package}' is not a package name or pattern (letters, digits, @ / . _ - and *).");
 
+        var enqueue = file.Enqueue ?? true;
         if (errors.Count > 0)
-            return new(BackportSection.Default with { OnConflict = onConflict }, errors);
+            return new(BackportSection.Default with { OnConflict = onConflict, Enqueue = enqueue }, errors);
         return new(new BackportSection(onConflict,
-            new PlatformMarkerOptions([.. disable.Distinct(StringComparer.OrdinalIgnoreCase)], [.. packages.Distinct(StringComparer.OrdinalIgnoreCase)])), []);
+            new PlatformMarkerOptions([.. disable.Distinct(StringComparer.OrdinalIgnoreCase)], [.. packages.Distinct(StringComparer.OrdinalIgnoreCase)]), enqueue), []);
     }
 
     private sealed class FileRoot
@@ -72,6 +74,7 @@ public static class BackportYml
     private sealed class FileBackport
     {
         public string? OnConflict { get; set; }
+        public bool? Enqueue { get; set; }
         public FileMarkers? Markers { get; set; }
     }
 
@@ -83,7 +86,9 @@ public static class BackportYml
 }
 
 /// <param name="OnConflict"><see cref="BackportYml.Comment"/> or <see cref="BackportYml.Draft"/>.</param>
-public sealed record BackportSection(string OnConflict, PlatformMarkerOptions Markers)
+/// <param name="Enqueue">Whether an opened backport pull request goes to the merge queue (#570 D12), when the queue is on
+/// and queues its line.</param>
+public sealed record BackportSection(string OnConflict, PlatformMarkerOptions Markers, bool Enqueue = true)
 {
     public static readonly BackportSection Default = new(BackportYml.Comment, new PlatformMarkerOptions([], []));
 }

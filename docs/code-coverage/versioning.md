@@ -259,6 +259,7 @@ A `backport:` section in the default branch's `coverage.yml` adjusts this:
 ```yaml
 backport:
   onConflict: draft          # comment (default) | draft
+  enqueue: false             # default true: hand each backport pull request to the merge queue
   markers:
     disable: [setup-action]  # tfm | framework-packages | global.json | setup-action | npm-frameworks
     packages: ["@mintplayer/ng-bootstrap", "MyCompany.*"]
@@ -267,6 +268,10 @@ backport:
 - **`onConflict: draft`** pushes a conflicting line anyway, with git's conflict markers committed, and opens a
   **draft** pull request that lists the files. Resolve them on that branch, then mark the pull request ready. The
   `autoResolve` rules are not applied to a draft.
+- **`enqueue`** (default `true`): a backport pull request goes to the merge queue when the queue is enabled and
+  `mergeQueue.branches` names its line, for instance through `supported-lines` ([merge-queue.md](merge-queue.md)).
+  The queue's approvals and checks still apply. A draft, or a backport whose regenerated files are stale, is never
+  enqueued.
 - **`markers.disable`** leaves a built-in kind of platform value to the plain merge.
 - **`markers.packages`** adds your own platform-anchored packages, NuGet or npm, with `*` as a wildcard. A first-party
   package whose major follows the platform, such as a component library tied to Angular, is the typical case.

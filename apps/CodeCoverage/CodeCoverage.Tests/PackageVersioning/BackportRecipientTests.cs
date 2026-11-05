@@ -3,6 +3,7 @@ using CodeCoverage.Feedback;
 using CodeCoverage.Forge;
 using CodeCoverage.MergeQueue;
 using CodeCoverage.PackageVersioning;
+using CodeCoverage.Tests.MergeQueue;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Raven.Client.Documents;
@@ -27,6 +28,7 @@ public class BackportRecipientTests : CoverageRavenTest
     private readonly IForgeIntegration integration = Substitute.For<IForgeIntegration>();
     private readonly IGitWriterSidecar writer = Substitute.For<IGitWriterSidecar>();
     private readonly IBackportRegenerationEngine regenerations = Substitute.For<IBackportRegenerationEngine>();
+    private readonly FakeOutbox outbox = new();
 
     public BackportRecipientTests()
     {
@@ -51,7 +53,7 @@ public class BackportRecipientTests : CoverageRavenTest
             await seed.SaveChangesAsync();
         }
         using var session = store.OpenAsyncSession();
-        await new BackportRecipient(session, new SingleForgeResolver(integration), [forge], [git], writer, regenerations, NullLogger<BackportRecipient>.Instance)
+        await new BackportRecipient(session, new SingleForgeResolver(integration), [forge], [git], writer, regenerations, outbox, NullLogger<BackportRecipient>.Instance)
             .HandleAsync(new BackportMessage { RepositoryId = RepositoryId, Number = 7, Lines = lines, ActorLogin = actor, Source = source });
     }
 
@@ -387,5 +389,70 @@ public class BackportRecipientTests : CoverageRavenTest
         await HandleAsync(store, "maintainer", EBackportSource.Label, "8.x");
 
         await writer.Received(1).VersioningBackportAsync(Arg.Is<GitWriterBackportRequest>(r => r.Targets.Single().RegeneratedPaths == null), Arg.Any<CancellationToken>());
+    }
+
+    // ── #570 M7 (D12): backport pull requests go through the merge queue, automatically ─────────────
+
+    private const string EnabledQueue = "versioning:\nmergeQueue:\n  enabled: true\n  keepBothDefaults: false\n  branches: [main, \"release/*\"]\n";
+
+    [Fact]
+    public async Task A_backport_into_a_queue_line_is_handed_to_the_merge_queue()
+    {
+        using var store = GetDocumentStore();
+        integration.GetFileContentAsync(Arg.Any<Repository>(), "main", CoverageYml.FileName, Arg.Any<CancellationToken>()).Returns(EnabledQueue);
+        WriterAnswers(new GitWriterBackportResult(GitWriterBackportResult.Backported, null, "squash", null, [Target(GitWriterBackportTargetResult.Created)], null, 1));
+
+        await HandleAsync(store, "maintainer", EBackportSource.Label, "8.x");
+
+        var signal = outbox.Messages.Select(m => m.Message).OfType<MergeQueueSignalMessage>().Single();
+        (signal.RepositoryId, signal.Kind, signal.Number, signal.Command, signal.Source, signal.Actor)
+            .Should().Be((RepositoryId, EMergeQueueSignal.Command, 1000, EMergeQueueCommand.Enqueue, EMergeQueueCommandSource.Backports, BackportRegenerationEngine.QueueActor));
+        forge.Comments.Single().Body.Should().Contain("- `release/8.x`: #1000, handed to the merge queue");
+    }
+
+    [Theory]
+    [InlineData(EnabledQueue + "backport:\n  enqueue: false\n", GitWriterBackportTargetResult.Created)]
+    [InlineData("versioning:\nmergeQueue:\n  enabled: false\n  branches: [main, \"release/*\"]\n", GitWriterBackportTargetResult.Created)]
+    [InlineData("versioning:\nmergeQueue:\n  enabled: true\n  keepBothDefaults: false\n  branches: [main]\n", GitWriterBackportTargetResult.Created)]
+    [InlineData(EnabledQueue, GitWriterBackportTargetResult.Drafted)]
+    public async Task A_backport_is_not_enqueued_when_turned_off_outside_the_queue_or_a_draft(string yml, string push)
+    {
+        using var store = GetDocumentStore();
+        integration.GetFileContentAsync(Arg.Any<Repository>(), "main", CoverageYml.FileName, Arg.Any<CancellationToken>()).Returns(yml);
+        WriterAnswers(new GitWriterBackportResult(GitWriterBackportResult.Backported, null, "squash", null, [Target(push) with { Conflicts = ["src/Guard.cs"] }], null, 1));
+
+        await HandleAsync(store, "maintainer", EBackportSource.Label, "8.x");
+
+        outbox.Messages.Select(m => m.Message).OfType<MergeQueueSignalMessage>().Should().BeEmpty();
+        forge.OpenedPullRequests.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task A_backport_with_stale_regenerated_files_is_not_enqueued()
+    {
+        using var store = GetDocumentStore();
+        integration.GetFileContentAsync(Arg.Any<Repository>(), "main", CoverageYml.FileName, Arg.Any<CancellationToken>()).Returns(EnabledQueue);
+        WriterAnswers(new GitWriterBackportResult(GitWriterBackportResult.Backported, null, "squash", null,
+            [Target(GitWriterBackportTargetResult.Created) with { Regenerate = ["app/package-lock.json"] }], null, 1));
+
+        await HandleAsync(store, "maintainer", EBackportSource.Label, "8.x");
+
+        outbox.Messages.Select(m => m.Message).OfType<MergeQueueSignalMessage>().Should().BeEmpty();
+        forge.OpenedPullRequests.Single().Body.Should().Contain("**Not regenerated**");
+    }
+
+    [Fact]
+    public async Task A_line_that_regenerates_first_carries_the_enqueue_decision_to_its_saga()
+    {
+        using var store = GetDocumentStore();
+        integration.GetFileContentAsync(Arg.Any<Repository>(), "main", CoverageYml.FileName, Arg.Any<CancellationToken>())
+            .Returns(EnabledQueue + "  postRebaseActionName: regenerate.yml\n");
+        WriterAnswers(new GitWriterBackportResult(GitWriterBackportResult.Backported, null, "squash", null,
+            [Target(GitWriterBackportTargetResult.Created) with { Regenerate = ["app/package-lock.json"] }], null, 1));
+
+        await HandleAsync(store, "maintainer", EBackportSource.Label, "8.x");
+
+        await regenerations.Received(1).BeginAsync(Arg.Any<Repository>(), Arg.Is<BackportRegeneration>(r => r.Enqueue), Arg.Any<CancellationToken>());
+        outbox.Messages.Should().BeEmpty("the saga enqueues once the pull request opens");
     }
 }

@@ -767,4 +767,63 @@ cascade: 66 of 72 conflicted only because #461 was missing). Script: a throwaway
   - App `BackportRecipientTests`: the paths are sent and the target waits; a line that cannot regenerate opens with a
     note; nothing is sent under `never`.
   - The webhook filter, the client route and the registrations.
+- **M7, built (2026-11-05): the merge queue for lines (D12).**
+
+  **`mergeQueue.branches`** takes three kinds of entry (`MergeQueueBranches`):
+  - a branch name, as before;
+  - a pattern, such as `hotfix/*`. Its `*` stands for part of one path segment and never spans a `/`;
+  - `supported-lines`: every branch that the same file's `versioning.lines` pattern matches.
+
+  The parser refuses the following, each with a readable error:
+  - a pattern without a fixed first segment (a bare `*` would queue every top-level branch);
+  - `**` and `?`;
+  - `supported-lines` without a valid `versioning.lines` section.
+
+  Exact entries keep their writer-rule check (D57). The section and the run's snapshot carry `LinePattern`. Every
+  branch check goes through `MergeQueueSection.Queues`: the enqueue refusal, the check-button offer and the comment
+  link. A refusal that names `supported-lines` also prints its pattern.
+
+  - **"Supported" is the pattern until M8.** D4 narrows it with lifecycle data and the per-line `keep`/`retire`,
+    which M8 builds. Until then every branch that matches the line pattern counts, retired ones included. A retired
+    line takes no backports anyway: nobody labels one.
+  - **The queue panel's candidates.** With a pattern or the keyword, `mergeQueue.branches` names no branch to ask
+    the forge for. The panel therefore lists every open pull request once (`ListOpenPullRequestsAsync(repo, null)`)
+    and filters it through `Queues`. Exact names still list per branch.
+
+  **A line's queue runs the line's own workflow** (D9, extending the owner's M6 decision):
+  - When the base matches `LinePattern`, the queue checks D12 provenance and the fork precondition against the line
+    tip, not the default branch.
+  - The refusal reads "`path` on the queue commit is not `release/…`'s".
+  - Every other queue branch is unchanged: it runs the default branch's copy (O16 and D12 as built).
+  - The workflow **names** still come from the default branch's `coverage.yml` (O16), so each line needs a file of
+    the same name. M10's onboarding adds it.
+
+  **Backport pull requests are enqueued automatically**, under the new `backport.enqueue` setting (default `true`):
+  - `BackportRecipient.Enqueues` holds when all three are true: `enqueue` is set, the default branch's queue is
+    enabled, and its `branches` queue the line.
+  - When it holds, the opened pull request gets a `MergeQueueSignalMessage` Enqueue with source
+    `EMergeQueueCommandSource.Backports` and actor `mintplayer-backports`.
+  - The report line then ends ", handed to the merge queue".
+  - A line that regenerates first carries the decision in `BackportRegeneration.Enqueue`. The saga enqueues once the
+    pull request opens, and only when it was regenerated.
+
+  Three things are never enqueued:
+  - **A draft**, which the queue refuses.
+  - **A pull request with "Not regenerated" files.** It would merge stale lockfiles that only a person can fix; that
+    person queues it afterwards.
+  - **A line the queue does not name.** It gets no signal, so the original pull request receives no refusal comment.
+
+  Like `DependencyUpdates`, the `Backports` source counts as the write role, read from no forge, and never reaches a
+  bypass role. The approval floor, rules and required checks apply as for a person. A backport the App opened is
+  therefore still held by an `all` approval floor until someone approves it.
+
+  **Tests:**
+  - `MergeQueueYmlTests`: patterns and `supported-lines`; the keyword without `lines`; a glob-named line is still a
+    line; unbounded patterns.
+  - `MergeQueueEngineTests`: a line pull request is queued and dispatched with the line's copy; the default branch's
+    copy on a line is refused; non-line bases are refused; the `Backports` source is a writer.
+  - `MergeQueueControllerTests`: the pattern listing.
+  - `BackportRecipientTests`: enqueued; off, disabled, not a queue branch, and draft; stale files; the decision
+    carried to the saga.
+  - `BackportRegenerationEngineTests`: enqueued after regeneration; never enqueued unregenerated.
 - **Every automatic resolution is listed in the per-line report** (D6): path, strategy, and what each side added.

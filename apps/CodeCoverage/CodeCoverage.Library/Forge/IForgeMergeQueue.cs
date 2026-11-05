@@ -186,11 +186,11 @@ public interface IForgeMergeQueue
     Task<IReadOnlyList<ForgePullRequestCommit>> GetPullRequestCommitsAsync(Repository repository, int number, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Every open pull request whose base is <paramref name="baseBranch"/>, drafts included (each says whether it is one),
-    /// in the forge's own order. Empty when there is none. The merge-queue panel offers them as queue candidates, so a
-    /// maintainer picks a pull request instead of typing its number.
+    /// Every open pull request whose base is <paramref name="baseBranch"/> (null: any base, for a <c>mergeQueue.branches</c>
+    /// pattern, #570 M7), drafts included (each says whether it is one), in the forge's own order. Empty when there is none.
+    /// The merge-queue panel offers them as queue candidates, so a maintainer picks a pull request instead of typing its number.
     /// </summary>
-    Task<IReadOnlyList<ForgeOpenPullRequest>> ListOpenPullRequestsAsync(Repository repository, string baseBranch, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<ForgeOpenPullRequest>> ListOpenPullRequestsAsync(Repository repository, string? baseBranch, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Creates or updates the queue's own check on <paramref name="sha"/> (named

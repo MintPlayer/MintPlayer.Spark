@@ -61,6 +61,10 @@ public static partial class MergeQueueYml
     /// Parses and validates <paramref name="yml"/>. <see cref="MergeQueueYmlResult.Section"/> is null when the file or the
     /// section is absent; <see cref="MergeQueueYmlResult.Errors"/> is non-empty when the section is unusable.
     /// </summary>
+    /// <summary>The <c>versioning.lines</c> pattern of the same file, or null when there is none or the section has errors.</summary>
+    private static string? LinePattern(string yml)
+        => PackageVersioning.VersioningYml.Parse(yml) is { Config: { } config, Errors.Count: 0 } ? config.EffectiveLines?.Text : null;
+
     public static MergeQueueYmlResult Parse(string? yml, string defaultBranch)
     {
         if (string.IsNullOrWhiteSpace(yml))
@@ -91,10 +95,17 @@ public static partial class MergeQueueYml
         if (section.Branches.Count == 0) errors.Add("mergeQueue.branches is empty, so no pull request can be queued.");
         // §0 D57: every value below reaches the git writer, so it is held to the writer's own rules here, where the error
         // can be read, instead of being refused on every request of every pull request.
-        foreach (var branch in section.Branches.Where(b => !MergeQueueWireRules.IsQueueableBase(b)))
+        foreach (var branch in section.Branches.Where(b => !MergeQueueBranches.IsPattern(b) && !MergeQueueWireRules.IsQueueableBase(b)))
             errors.Add(MergeQueueWireRules.IsBranch(branch)
                 ? $"mergeQueue.branches '{branch}' is too long: its queue branch mq/{branch}/pr-<number> must stay within {MergeQueueWireRules.MaxBranchLength} characters."
                 : $"mergeQueue.branches '{branch}' is not a branch name the queue's git writer accepts: {MergeQueueWireRules.BranchRule}.");
+        // #570 M7 (D12): a pattern stands for one segment per `*` and starts with a fixed one; `supported-lines` needs lines.
+        foreach (var pattern in section.Branches.Where(b => b.Contains('*') && !MergeQueueBranches.IsValidPattern(b)))
+            errors.Add($"mergeQueue.branches '{pattern}' is not a pattern the queue accepts: it starts with a fixed segment (`hotfix/*`), "
+                + "and its `*` stands for part of one segment (no `**`, no `?`).");
+        section.LinePattern = LinePattern(yml);
+        if (section.Branches.Contains(MergeQueueBranches.SupportedLines, StringComparer.Ordinal) && section.LinePattern is null)
+            errors.Add($"mergeQueue.branches '{MergeQueueBranches.SupportedLines}' needs a valid `versioning.lines` section, which names the release lines.");
         Value("branches", string.Join(", ", section.Branches), file.Branches is not null);
 
         if (file.MergeMethod is not null && file.MergeMethod != "squash")
@@ -458,6 +469,14 @@ public sealed class MergeQueueSection
 {
     public bool Enabled { get; set; }
     public List<string> Branches { get; set; } = [];
+
+    /// <summary><c>versioning.lines</c>' pattern from the same file (#570 M7): what <c>supported-lines</c> stands for, and
+    /// which bases are lines whose own regenerate workflow runs (D9, D12).</summary>
+    public string? LinePattern { get; set; }
+
+    /// <summary>Whether a pull request into <paramref name="branch"/> may be queued (O16, #570 D12).</summary>
+    public bool Queues(string branch) => MergeQueueBranches.Matches(Branches, LinePattern, branch);
+
     public string Label { get; set; } = "merge-queue";
     public string? PostRebaseActionName { get; set; }
     public int PostRebaseTimeoutMinutes { get; set; } = 20;
@@ -488,6 +507,7 @@ public sealed class MergeQueueSection
         {
             ConfigRef = configRef,
             Branches = [.. Branches],
+            LinePattern = LinePattern,
             Label = Label,
             PostRebaseActionName = PostRebaseActionName,
             PostRebaseTimeoutMinutes = PostRebaseTimeoutMinutes,

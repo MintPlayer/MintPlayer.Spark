@@ -8,6 +8,7 @@ using CodeCoverage.MergeQueue;
 using CodeCoverage.Versioning.Releases;
 using Microsoft.Extensions.Logging;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Messaging;
 using MintPlayer.Spark.Messaging.Abstractions;
 
 namespace CodeCoverage.PackageVersioning;
@@ -59,6 +60,7 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
     [Inject] private readonly IEnumerable<IForgeMergeQueue> queues;
     [Inject] private readonly IGitWriterSidecar writer;
     [Inject] private readonly IBackportRegenerationEngine regenerations;
+    [Inject] private readonly IMessageOutbox outbox;
     [Inject] private readonly ILogger<BackportRecipient> logger;
 
     public async Task HandleAsync(BackportMessage message, CancellationToken cancellationToken = default)
@@ -134,7 +136,7 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
         var subjects = (await git.GetPullRequestCommitsAsync(repository, pull.Number, cancellationToken))
             .Select(c => BackportSubject(c.Message)).Take(250).ToList();
         var result = await RunAsync(repository, git, pull.BaseRef, commit, pull.Number, pull.Title, subjects, targets, backport.Section.Markers, cancellationToken);
-        var report = await ReportAsync(repository, forge, pull, commit, result, queue, cancellationToken);
+        var report = await ReportAsync(repository, forge, pull, commit, result, queue, backport.Section, cancellationToken);
         if (backport.Errors.Count == 0)
             return report;
         var errors = $"The `backport:` section of {CoverageYml.FileName} on {defaultBranch} has errors, so its defaults were used:\n"
@@ -175,7 +177,7 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
     }
 
     private async Task<string?> ReportAsync(Repository repository, IForgeVersioning forge, ForgePullRequestText pull, string commit,
-        GitWriterBackportResult? result, MergeQueueSection? queue, CancellationToken cancellationToken)
+        GitWriterBackportResult? result, MergeQueueSection? queue, BackportSection backport, CancellationToken cancellationToken)
     {
         if (result is null)
             return "The backport could not run (the git writer was unavailable); add the label again to retry.";
@@ -202,7 +204,7 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
                             {
                                 Head = target.Head, Branch = target.Branch, Number = pull.Number, Title = title, Body = body, Sha = backportCommit,
                                 Workflows = [.. plan.Workflows], RegeneratedPaths = [.. plan.Globs], Paths = [.. regenerate],
-                                PostRebaseTimeoutMinutes = queue!.PostRebaseTimeoutMinutes,
+                                PostRebaseTimeoutMinutes = queue!.PostRebaseTimeoutMinutes, Enqueue = Enqueues(backport, queue, target.Branch),
                             }, cancellationToken);
                             lines.Add($"- `{target.Branch}`: `{target.Head}` is pushed; its pull request opens once {string.Join(", ", plan.Workflows.Select(w => $"`{w}`"))} "
                                 + $"regenerated {regenerate.Count} file{(regenerate.Count == 1 ? "" : "s")} on the line");
@@ -211,9 +213,16 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
                         body += BackportRegenerationEngine.NotRegeneratedNote(regenerate, plan.Refusal ?? "the git writer named no backport commit");
                     }
                     var opened = await forge.OpenPullRequestAsync(repository, target.Head, target.Branch, title, body, cancellationToken: cancellationToken);
-                    lines.Add(target.Resolutions is { Count: > 0 } resolved
+                    // #570 M7, D12: a backport with stale regenerated files waits for a person.
+                    var enqueue = target.Regenerate is not { Count: > 0 } && Enqueues(backport, queue, target.Branch);
+                    if (enqueue)
+                    {
+                        await BackportRegenerationEngine.EnqueueAsync(outbox, session, repository.Id!, opened, cancellationToken);
+                        await session.SaveChangesAsync(cancellationToken);
+                    }
+                    lines.Add((target.Resolutions is { Count: > 0 } resolved
                         ? $"- `{target.Branch}`: #{opened}, with {resolved.Count} conflict{(resolved.Count == 1 ? "" : "s")} resolved automatically"
-                        : $"- `{target.Branch}`: #{opened}");
+                        : $"- `{target.Branch}`: #{opened}") + (enqueue ? ", handed to the merge queue" : ""));
                     break;
                 case GitWriterBackportTargetResult.Exists:
                     lines.Add($"- `{target.Branch}`: `{target.Head}` exists already; nothing was pushed.");
@@ -255,6 +264,13 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
 
     private static IReadOnlyList<GitWriterAutoResolve> AutoResolveRules(MergeQueueSection? section)
         => section is null ? [] : [.. section.AutoResolve.Select(GitWriterAutoResolve.From)];
+
+    /// <summary>
+    /// Whether a backport into <paramref name="branch"/> goes to the merge queue (#570 M7, PRD D12): <c>backport.enqueue</c>
+    /// (default true), a queue that is on, and a line its <c>branches</c> name. A draft never is; the queue refuses drafts.
+    /// </summary>
+    internal static bool Enqueues(BackportSection backport, MergeQueueSection? queue, string branch)
+        => backport.Enqueue && queue is { Enabled: true } && queue.Queues(branch);
 
     /// <summary>The default branch's <c>mergeQueue</c> section, or null when it has errors (or there is none).</summary>
     private static MergeQueueSection? QueueSection(string? yml, string defaultBranch)

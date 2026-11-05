@@ -182,6 +182,21 @@ mergeQueue:
   # project files comes after the rules above (§10, O35, O36).
 ```
 
+`branches` also takes patterns and release lines (#570):
+
+```yaml
+  branches: [master, "hotfix/*", supported-lines]
+```
+
+- **A pattern** such as `hotfix/*` starts with a fixed segment. Its `*` stays within one segment, and `**` and `?`
+  are refused.
+- **`supported-lines`** is every branch that the same file's `versioning.lines` pattern matches, for example
+  `release/dotnet-10.x`. It needs that section.
+- **A release line's queue runs the line's own copy of each regenerate workflow.** Provenance is checked against the
+  line tip, not the default branch, so each line needs the workflow file under the same name.
+- **Backport pull requests into a queued line are enqueued automatically.** The exceptions are drafts and backports
+  whose regenerated files are stale. Set `backport: { enqueue: false }` to turn this off.
+
 A repository with lockfiles and its own workflow per tool might add:
 
 ```yaml

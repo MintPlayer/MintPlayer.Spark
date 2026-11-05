@@ -395,8 +395,9 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         if (pull.IsDraft)
             return new("draft", "The pull request is a draft.");
         // O16. Here and below, what people read names no PRD id: they never saw the PRD (§0 D72). The ids stay in comments.
-        if (!section.Branches.Contains(pull.BaseRef, StringComparer.Ordinal))
-            return new("branch", $"`{pull.BaseRef}` is not a queue branch: `coverage.yml` on the default branch lists {string.Join(", ", section.Branches.Select(b => $"`{b}`"))}.");
+        if (!section.Queues(pull.BaseRef))
+            return new("branch", $"`{pull.BaseRef}` is not a queue branch: `coverage.yml` on the default branch lists {string.Join(", ", section.Branches.Select(b => $"`{b}`"))}"
+                + (section.LinePattern is { } lines && section.Branches.Contains(MergeQueueBranches.SupportedLines) ? $" (`{MergeQueueBranches.SupportedLines}`: `{lines}`)." : "."));
 
         // O9 / T2: the actor needs the write role; a triage user's label or a fork author's comment is refused.
         var role = await ActorRoleAsync(context, actor, entry.EnqueuedVia, ct);
@@ -674,7 +675,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             var parsed = MergeQueueYml.Parse(await context.Forge.GetFileContentAsync(repository, defaultBranch, CoverageYml.FileName, ct), defaultBranch);
             if (!parsed.IsUsable || parsed.Section is not { } section) return;
             if (await context.Forge.GetPullRequestAsync(repository, number, ct) is not { IsOpen: true, IsDraft: false } pull
-                || !section.Branches.Contains(pull.BaseRef, StringComparer.Ordinal)
+                || !section.Queues(pull.BaseRef)
                 || string.Equals(pull.HeadSha, besides, StringComparison.OrdinalIgnoreCase))
                 return;
 
@@ -947,9 +948,13 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             await ScheduleAsync(entry, EMergeQueueStep.Publish, null, ct);
             return;
         }
-        var defaultBranch = repository.DefaultBranch ?? entry.BaseBranch;
+        // #570 D9/D12 (owner, 2026-11-05): a release line runs its own copy of the workflow, as its backports do; every
+        // other queue branch runs the default branch's.
+        var workflowRef = MergeQueueBranches.IsLine(entry.Config.LinePattern, entry.BaseBranch)
+            ? entry.BaseBranch
+            : repository.DefaultBranch ?? entry.BaseBranch;
 
-        if (entry.Dispatches.Count == 0 && !await BeforeFirstDispatchAsync(context, entry, defaultBranch, ct))
+        if (entry.Dispatches.Count == 0 && !await BeforeFirstDispatchAsync(context, entry, workflowRef, ct))
             return;
 
         var file = entry.RegenerateWorkflows[entry.Dispatches.Count];
@@ -987,18 +992,20 @@ public partial class MergeQueueEngine : IMergeQueueEngine
     /// every workflow that will run (§0 D65 (d)), the push itself (§0 D65 (b)), and D12 for every workflow file. True: go
     /// on; false: the entry was evicted, restarted or sent to reset the branch.
     /// </summary>
-    private async Task<bool> BeforeFirstDispatchAsync(Context context, MergeQueueEntry entry, string defaultBranch, CancellationToken ct)
+    private async Task<bool> BeforeFirstDispatchAsync(Context context, MergeQueueEntry entry, string workflowRef, CancellationToken ct)
     {
+        // What people read: "the default branch", or the line by name.
+        var source = workflowRef == context.Repository.DefaultBranch ? "the default branch" : $"`{workflowRef}`";
         // §0 D65 (d): the dispatch needs the prepared commit on the queue branch, a branch of this repository. For a fork's
         // pull request that is the fork's code, and it goes there only when nothing there can run it with the repository's
         // secrets. A same-repository pull request was pushed by someone with write access, whose own push ran all that.
         if (entry.IsFork)
         {
             var verdict = await hook.CheckForkAsync(Saga(context, entry),
-                new WorkflowHookForkCheck(entry.BaseSha!, entry.BaseBranch, defaultBranch, entry.RegenerateWorkflows, entry.QueueBranch), ct);
+                new WorkflowHookForkCheck(entry.BaseSha!, entry.BaseBranch, workflowRef, entry.RegenerateWorkflows, entry.QueueBranch), ct);
             if (verdict.MissingWorkflow is { } missing)
             {
-                await EvictAsync(context, entry, "workflow-missing", $"`{missing}` does not exist on the default branch, so the regenerate step cannot run.", ct: ct);
+                await EvictAsync(context, entry, "workflow-missing", $"`{missing}` does not exist on {source}, so the regenerate step cannot run.", ct: ct);
                 return false;
             }
             if (verdict.Findings is { Count: > 0 } findings)
@@ -1015,15 +1022,16 @@ public partial class MergeQueueEngine : IMergeQueueEngine
 
         // D12: the run executes the workflow file of the dispatched ref. A change under .github/** reaches a dispatch only
         // through O22's bypass role (a same-repository pull request, §0 D63); either way, every regenerate workflow itself
-        // must be byte-for-byte the default branch's, and that is never bypassed.
-        switch (await hook.VerifyProvenanceAsync(Saga(context, entry), defaultBranch, entry.PreparedSha!, entry.RegenerateWorkflows, ct))
+        // must be byte-for-byte the default branch's (a release line's own, #570 D9), and that is never bypassed.
+        switch (await hook.VerifyProvenanceAsync(Saga(context, entry), workflowRef, entry.PreparedSha!, entry.RegenerateWorkflows, ct))
         {
             case { Kind: EWorkflowHookProvenance.Missing, Path: var path }:
-                await EvictAsync(context, entry, "workflow-missing", $"`{path}` does not exist on the default branch, so the regenerate step cannot run.", ct: ct);
+                await EvictAsync(context, entry, "workflow-missing", $"`{path}` does not exist on {source}, so the regenerate step cannot run.", ct: ct);
                 return false;
             case { Kind: EWorkflowHookProvenance.Differs, Path: var path }:
-                await EvictAsync(context, entry, "workflow-differs",
-                    $"`{path}` on the queue commit is not the default branch's. The queue only runs the default branch's workflow; bring `{entry.BaseBranch}` in line with it.", ct: ct);
+                await EvictAsync(context, entry, "workflow-differs", workflowRef == context.Repository.DefaultBranch
+                    ? $"`{path}` on the queue commit is not the default branch's. The queue only runs the default branch's workflow; bring `{entry.BaseBranch}` in line with it."
+                    : $"`{path}` on the queue commit is not `{workflowRef}`'s. A release line's queue only runs the line's own workflow; change it on the line first.", ct: ct);
                 return false;
         }
         return true;
@@ -1831,7 +1839,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
     /// never reaches a bypass role. Only the app raises that source; no normaliser maps a forge event onto it.
     /// </summary>
     private Task<EForgeRepositoryRole> ActorRoleAsync(Context context, string actor, EMergeQueueCommandSource source, CancellationToken ct)
-        => source == EMergeQueueCommandSource.DependencyUpdates
+        => source is EMergeQueueCommandSource.DependencyUpdates or EMergeQueueCommandSource.Backports
             ? Task.FromResult(EForgeRepositoryRole.Write)
             : context.Queue.GetActorRoleAsync(context.Repository, actor, ct);
 

@@ -229,8 +229,12 @@ public partial class MergeQueueController : ControllerBase
                     : $"The merge queue is not turned on in {CoverageYml.FileName} on {defaultBranch}."), true);
 
             var open = new List<ForgeOpenPullRequest>();
-            foreach (var branch in section.Branches)
-                open.AddRange((await queue.ListOpenPullRequestsAsync(repository, branch, cancellationToken)).Where(p => !p.IsDraft));
+            // #570 M7: a pattern or supported-lines names no branch to ask for; then every open pull request, filtered.
+            if (section.Branches.Any(CodeCoverage.MergeQueue.MergeQueueBranches.IsPattern))
+                open.AddRange((await queue.ListOpenPullRequestsAsync(repository, null, cancellationToken)).Where(p => !p.IsDraft && section.Queues(p.BaseRef)));
+            else
+                foreach (var branch in section.Branches)
+                    open.AddRange((await queue.ListOpenPullRequestsAsync(repository, branch, cancellationToken)).Where(p => !p.IsDraft));
             return (new OpenCandidates(open, null), true);
         }
         catch (Exception ex) when (ex is ForgeAccessDeniedException or ForgeRequestException or HttpRequestException)

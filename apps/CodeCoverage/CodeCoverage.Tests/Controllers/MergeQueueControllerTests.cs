@@ -393,6 +393,21 @@ public class MergeQueueControllerTests : CoverageRavenTest
         world.Queue.OpenPullRequestQueries.Should().Equal(["master", "release"], "only the branches coverage.yml queues are listed");
     }
 
+    [Fact]
+    public async Task With_a_pattern_or_supported_lines_every_open_pull_request_is_listed_and_filtered()
+    {
+        // #570 M7: a pattern names no branch to ask the forge for.
+        using var store = await SeedAsync(GetDocumentStore());
+        using var session = store.OpenAsyncSession();
+        var world = CandidateWorld("mergeQueue:\n  enabled: true\n  branches: [master, \"hotfix/*\", supported-lines]\nversioning:\n  lines: {}\n");
+        world.Queue.OpenPullRequests.AddRange([Open(1), Open(3, "release/npm-22.x"), Open(4, "feature/x"), Open(5, "hotfix/a")]);
+
+        var candidates = Candidates(await Controller(session, world, SignedIn()).Candidates("github", "acme", "widget", false, default));
+
+        candidates.PullRequests.Select(p => p.Number).Should().BeEquivalentTo([1, 3, 5]);
+        world.Queue.OpenPullRequestQueries.Should().Equal(["*"]);
+    }
+
     [Theory]
     [InlineData(null, "not turned on")]
     [InlineData("mergeQueue:\n  enabled: false\n", "not turned on")]

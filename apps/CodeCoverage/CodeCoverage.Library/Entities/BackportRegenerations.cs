@@ -62,6 +62,10 @@ public class BackportRegeneration
 
     public int PostRebaseTimeoutMinutes { get; set; } = 20;
 
+    /// <summary>Whether the opened pull request goes to the merge queue once regenerated (#570 M7, D12); decided when the
+    /// backport ran, from the default branch's <c>backport.enqueue</c> and <c>mergeQueue.branches</c>.</summary>
+    public bool Enqueue { get; set; }
+
     /// <summary>Stamped on every step message; a step for a state the backport has left is dropped.</summary>
     public int Generation { get; set; }
 

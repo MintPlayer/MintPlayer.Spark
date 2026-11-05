@@ -151,10 +151,14 @@ PRD §8.2.
   **Done (2026-11-05).** The workflow's provenance is the line tip's copy, and every regenerated path the change
   touches triggers it (owner decisions). Any stop opens the PR with a "Not regenerated" note. The live check is S5.
   Details are in PRD §8.3, "M6, built".
-- **M7 Merge queue for lines** (D12):
-  - `mergeQueue.branches` patterns / `supported-lines`;
-  - automatic enqueue of backport PRs;
-  - the line's own regenerate workflow on its queue.
+- **M7 Merge queue for lines** (D12), **done (2026-11-05)**:
+  - `mergeQueue.branches` patterns / `supported-lines`. "Supported" is every match of the line pattern until M8's
+    `keep`/`retire`.
+  - automatic enqueue of backport PRs (`backport.enqueue`, default true). Drafts and "Not regenerated" PRs are never
+    enqueued.
+  - the line's own regenerate workflow on its queue: provenance against the line tip.
+
+  Details are in PRD §8.3, "M7, built".
 - **M8 Labels and reporting.**
   - Default labels (D5, the current line always, D16).
   - The "Backport targets" check run.

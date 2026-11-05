@@ -212,15 +212,15 @@ internal sealed class FakeForgeMergeQueue : IForgeMergeQueue
     /// <summary>When set, the next listing of open pull requests throws it (a missing permission, a 5xx).</summary>
     public Exception? ListOpenPullRequestsThrows { get; set; }
 
-    public Task<IReadOnlyList<ForgeOpenPullRequest>> ListOpenPullRequestsAsync(Repository repository, string baseBranch, CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<ForgeOpenPullRequest>> ListOpenPullRequestsAsync(Repository repository, string? baseBranch, CancellationToken cancellationToken = default)
     {
-        OpenPullRequestQueries.Add(baseBranch);
+        OpenPullRequestQueries.Add(baseBranch ?? "*");
         if (ListOpenPullRequestsThrows is { } thrown)
         {
             ListOpenPullRequestsThrows = null;
             throw thrown;
         }
-        return Task.FromResult((IReadOnlyList<ForgeOpenPullRequest>)[.. OpenPullRequests.Where(p => p.BaseRef == baseBranch)]);
+        return Task.FromResult((IReadOnlyList<ForgeOpenPullRequest>)[.. OpenPullRequests.Where(p => baseBranch is null || p.BaseRef == baseBranch)]);
     }
 
     public Task<long> PublishQueueCheckAsync(Repository repository, string sha, ForgeQueueCheck check, long? existingId, CancellationToken cancellationToken = default)

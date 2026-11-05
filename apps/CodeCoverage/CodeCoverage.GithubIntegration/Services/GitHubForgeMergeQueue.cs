@@ -899,11 +899,11 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
     /// <c>GET /pulls?state=open&amp;base={branch}</c>, every page. A pull request with no number or title (never seen on
     /// GitHub) is left out rather than offered as #0.
     /// </summary>
-    public async Task<IReadOnlyList<ForgeOpenPullRequest>> ListOpenPullRequestsAsync(Repository repository, string baseBranch, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<ForgeOpenPullRequest>> ListOpenPullRequestsAsync(Repository repository, string? baseBranch, CancellationToken cancellationToken = default)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(baseBranch);
+        if (baseBranch is not null) ArgumentException.ThrowIfNullOrWhiteSpace(baseBranch);
         var pulls = await GetPagedAsync(repository,
-            $"{RepoPath(repository)}/pulls?state=open&base={Uri.EscapeDataString(baseBranch)}", null, cancellationToken);
+            $"{RepoPath(repository)}/pulls?state=open" + (baseBranch is null ? "" : $"&base={Uri.EscapeDataString(baseBranch)}"), null, cancellationToken);
 
         return [.. pulls
             .Select(pull => (Number: Num(pull, "number"), Title: Str(pull, "title"), Pull: pull))
