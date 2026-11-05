@@ -135,6 +135,31 @@ public class ReleaseLabelTests
             .Should().ContainSingle().Which.Should().Contain("versioning.packages.Core.prerelease");
     }
 
+    [Theory]
+    [InlineData("Octokit.GraphQL")] // follows the resolved 2.3.0, not net10.0
+    [InlineData("free")]
+    public async Task An_anchor_override_replaces_the_target_framework_major(string anchor)
+    {
+        var settings = Settings(VersioningConfig.UpstreamPrerelease, new() { ["Core"] = new VersioningPackageConfig { Anchor = anchor } });
+
+        var plan = await Plan("net10.0", [Tag("Core", "2.0.0")], settings, resolvedBeta: "2.3.0");
+
+        plan.Refused.Should().BeEmpty();
+        plan.Of("Core")!.Version.ToString().Should().Be("2.0.1", "without the override, net10.0 would move Core to 10.0.0");
+    }
+
+    [Theory]
+    [InlineData("Missing.Dep")]
+    [InlineData("FREE")] // 'free' is exact everywhere (validation, planner, MajorAnchor): any other casing is a package id
+    public async Task An_anchor_on_a_package_that_is_not_resolved_is_refused(string anchor)
+    {
+        var settings = Settings(VersioningConfig.UpstreamPrerelease, new() { ["Core"] = new VersioningPackageConfig { Anchor = anchor } });
+
+        var plan = await Plan("net10.0", [Tag("Core", "2.0.0")], settings, resolvedBeta: "2.3.0");
+
+        plan.Refused.Should().ContainSingle().Which.Reason.Should().Be($"The anchor {anchor} is not a resolved dependency of the package.");
+    }
+
     [Fact]
     public void A_malformed_sdk_in_the_manifest_is_refused()
     {

@@ -384,7 +384,8 @@ public static class ReleasePlanner
 	{
 		if (context.Settings.Anchors.TryGetValue(project.Id!, out var setting))
 		{
-			var resolved = string.Equals(setting, "free", StringComparison.OrdinalIgnoreCase) ? null
+			// Exact, as VersioningConfig.Validate and MajorAnchor.FromOverride read it: "FREE" is a package id.
+			var resolved = setting == "free" ? null
 				: project.Kind == PackageKind.Npm ? context.Graph.Lockfile?.Resolve(setting, project.Directory)
 				: facts?.ResolvedVersions.GetValueOrDefault(setting);
 			return MajorAnchor.FromOverride(setting, resolved);
