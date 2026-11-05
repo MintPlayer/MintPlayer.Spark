@@ -59,6 +59,7 @@ public interface IForgeEvent;
 /// define. The pull-request event is the one writer of a parent, and means something precise by it.
 /// </remarks>
 /// <param name="Created">The push created the branch (#570 M8c: a hand-pushed backport branch gets its pull request).</param>
+/// <param name="PusherLogin">The signed delivery's sender (T1), whose role a hand-pushed backport branch is checked against.</param>
 /// <param name="PushedByBot">A bot pushed it, the app's own installation among them: its backport branches open their
 /// pull requests themselves, after regenerating.</param>
 public sealed record BranchCommitPushed(
@@ -68,7 +69,8 @@ public sealed record BranchCommitPushed(
     string? Message,
     DateTimeOffset? AuthoredAt,
     bool Created = false,
-    bool PushedByBot = false) : IForgeEvent;
+    bool PushedByBot = false,
+    string? PusherLogin = null) : IForgeEvent;
 
 /// <summary>
 /// A pull request was opened, reopened, had new commits pushed to it, was marked ready for review, or was retargeted.

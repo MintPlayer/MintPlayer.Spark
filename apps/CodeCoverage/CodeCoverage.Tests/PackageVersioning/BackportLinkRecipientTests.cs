@@ -28,6 +28,7 @@ public class BackportLinkRecipientTests : CoverageRavenTest
         integration.Provider.Returns(EForgeProvider.GitHub);
         integration.GetFileContentAsync(Arg.Any<Repository>(), "main", CoverageYml.FileName, Arg.Any<CancellationToken>()).Returns("versioning:\n  lines: {}\n");
         git.GetPullRequestCommitsAsync(Arg.Any<Repository>(), Arg.Any<int>(), Arg.Any<CancellationToken>()).Returns([]);
+        git.GetActorRoleAsync(Arg.Any<Repository>(), "maintainer", Arg.Any<CancellationToken>()).Returns(EForgeRepositoryRole.Write);
         forge.OtherPullRequests[7] = Pull(7, "fix: guard", null, "fix", "main", SourceMerge);
     }
 
@@ -117,7 +118,7 @@ public class BackportLinkRecipientTests : CoverageRavenTest
     {
         using var store = GetDocumentStore();
 
-        await (await RecipientAsync(store)).HandleAsync(new BackportBranchPushedMessage { RepositoryId = RepositoryId, Branch = "backport/7-dotnet-10.x" });
+        await (await RecipientAsync(store)).HandleAsync(Pushed("backport/7-dotnet-10.x"));
 
         forge.OpenedPullRequests.Should().HaveCount(1);
         var opened = forge.OpenedPullRequests[0];
@@ -136,17 +137,35 @@ public class BackportLinkRecipientTests : CoverageRavenTest
         using var store = GetDocumentStore();
         forge.OtherPullRequests[8] = Pull(8, "open", null, "x", "main", merged: false);
 
-        await (await RecipientAsync(store)).HandleAsync(new BackportBranchPushedMessage { RepositoryId = RepositoryId, Branch = branch });
+        await (await RecipientAsync(store)).HandleAsync(Pushed(branch));
 
         forge.OpenedPullRequests.Should().BeEmpty();
     }
+
+    [Theory]   // T1: the pusher's role is read per request; the forge's own branch rule is not relied on alone
+    [InlineData(EForgeRepositoryRole.None)]
+    [InlineData(EForgeRepositoryRole.Read)]
+    [InlineData(EForgeRepositoryRole.Triage)]
+    public async Task A_backport_branch_pushed_without_write_access_opens_nothing(EForgeRepositoryRole role)
+    {
+        using var store = GetDocumentStore();
+        git.GetActorRoleAsync(Arg.Any<Repository>(), "outsider", Arg.Any<CancellationToken>()).Returns(role);
+
+        await (await RecipientAsync(store)).HandleAsync(Pushed("backport/7-dotnet-10.x", "outsider"));
+
+        forge.OpenedPullRequests.Should().BeEmpty();
+        forge.Comments.Should().BeEmpty();
+    }
+
+    private static BackportBranchPushedMessage Pushed(string branch, string pusher = "maintainer")
+        => new() { RepositoryId = RepositoryId, Branch = branch, PusherLogin = pusher };
 
     [Fact]
     public async Task The_forwarder_skips_bots_later_pushes_and_other_branches()
     {
         var bus = Substitute.For<MintPlayer.Spark.Messaging.Abstractions.IMessageBus>();
         var forwarder = new BackportLinkEventsRecipient(bus);
-        BranchCommitPushed Push(string branch, bool created, bool bot) => new(RepositoryId, branch, new string('a', 40), null, null, created, bot);
+        BranchCommitPushed Push(string branch, bool created, bool bot) => new(RepositoryId, branch, new string('a', 40), null, null, created, bot, "maintainer");
 
         await forwarder.HandleAsync(new ForgeWebhookMessage<BranchCommitPushed>(EForgeProvider.GitHub, Push("backport/7-dotnet-10.x", true, false)));
         await forwarder.HandleAsync(new ForgeWebhookMessage<BranchCommitPushed>(EForgeProvider.GitHub, Push("backport/7-dotnet-10.x", true, true)));

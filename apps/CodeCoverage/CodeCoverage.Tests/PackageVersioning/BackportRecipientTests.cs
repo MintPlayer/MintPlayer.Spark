@@ -323,6 +323,23 @@ public class BackportRecipientTests : CoverageRavenTest
         forge.Comments.Single().Body.Should().Contain("a draft with 1 conflicting file to resolve").And.NotContain("conflicts on:");
     }
 
+    [Theory]   // T1: a /backport comment (with or without --draft) by anyone below write runs nothing
+    [InlineData(EForgeRepositoryRole.None, false)]
+    [InlineData(EForgeRepositoryRole.Read, true)]
+    [InlineData(EForgeRepositoryRole.Triage, true)]
+    public async Task A_backport_comment_without_write_access_runs_nothing(EForgeRepositoryRole role, bool draft)
+    {
+        using var store = GetDocumentStore();
+        git.GetActorRoleAsync(Arg.Any<Repository>(), "outsider", Arg.Any<CancellationToken>()).Returns(role);
+
+        await HandleAsync(store, "outsider", EBackportSource.Comment, draft, "8.x");
+
+        forge.Comments.Single().Body.Should().Contain("needs write access");
+        await writer.DidNotReceiveWithAnyArgs().VersioningBackportAsync(default!, default);
+        await git.DidNotReceiveWithAnyArgs().GetWriterAccessAsync(default!, default, default, default);
+        forge.OpenedPullRequests.Should().BeEmpty();
+    }
+
     [Theory]
     [InlineData(true, true)]     // #570 M8d, D7: `/backport <line> --draft` drafts this request under onConflict: comment
     [InlineData(false, false)]   // the default stays a comment

@@ -23,6 +23,8 @@ public sealed record BackportBranchPushedMessage
 {
     public required string RepositoryId { get; init; }
     public required string Branch { get; init; }
+    /// <summary>The signed push's sender (T1); the pull request opens only for someone with write access.</summary>
+    public required string PusherLogin { get; init; }
 }
 
 /// <summary>Forwards merges and hand-created backport branches; a filter on the shared forge-event lane, no reads.</summary>
@@ -40,8 +42,10 @@ public partial class BackportLinkEventsRecipient :
         var evt = message.Event;
         // The app's own backport branches open their pull requests themselves (after regenerating, M6); a later push to a
         // branch is no request, so a pull request someone closed is not opened again.
-        if (!evt.Created || evt.PushedByBot || BackportProvenance.ParseHead(evt.Branch) is null) return Task.CompletedTask;
-        return messageBus.BroadcastAsync(new BackportBranchPushedMessage { RepositoryId = evt.RepositoryId, Branch = evt.Branch }, cancellationToken);
+        if (!evt.Created || evt.PushedByBot || evt.PusherLogin is not { Length: > 0 } pusher || BackportProvenance.ParseHead(evt.Branch) is null)
+            return Task.CompletedTask;
+        return messageBus.BroadcastAsync(new BackportBranchPushedMessage { RepositoryId = evt.RepositoryId, Branch = evt.Branch, PusherLogin = pusher },
+            cancellationToken);
     }
 }
 
@@ -110,6 +114,15 @@ public partial class BackportLinkRecipient : IRecipient<BackportMergedMessage>, 
         if (line is null || line == defaultBranch) return;
         try
         {
+            // T1 as for every command: the forge's own rule (creating a branch needs write) is not relied on alone; the
+            // pusher's role is read per request, and anyone below write is ignored without a word (there is no pull request
+            // to answer on).
+            if (queues.FirstOrDefault(q => q.Provider == repository.Provider) is not { } git
+                || await git.GetActorRoleAsync(repository, message.PusherLogin, cancellationToken) < EForgeRepositoryRole.Write)
+            {
+                logger.LogInformation("Backport link: {Pusher} may not open a backport in {Repository}", message.PusherLogin, repository.FullName);
+                return;
+            }
             if (await forge.GetPullRequestTextAsync(repository, head.Number, cancellationToken) is not { Merged: true } source || source.BaseRef != defaultBranch) return;
             var opened = await forge.OpenPullRequestAsync(repository, message.Branch, line, $"[{BackportRecipient.Line(line)}] {source.Title}",
                 $"Backport of #{source.Number} to `{line}`, pushed by hand.\n\n{BackportProvenance.Marker(repository.FullName, source.Number)}",

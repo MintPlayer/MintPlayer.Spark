@@ -956,4 +956,20 @@ cascade: 66 of 72 conflicted only because #461 was missing). Script: a throwaway
     opens its pull request) or comment `/backport <line> --draft`, with the line name taken from the backport head.
   - Tests: `BackportTests` (parsing; the conflict hint), `GitHubEventsCommandTests` (the flag on the event),
     `BackportRecipientTests` (a draft request drafts under the `comment` default; without it nothing drafts).
+- **Who may command the app (owner, 2026-11-05: "Make sure that special pull-request comments (like "/backport") are
+  only handled for users that should be able to do so").** An audit of every way a person can ask the app to act:
+
+  | Trigger | Actor | Check | Below write | Test |
+  |---|---|---|---|---|
+  | `/backport <lines> [--draft]` comment | the signed sender (T1) | role ≥ write, read per request, before anything is read or run | refusal comment, nothing runs | `BackportRecipientTests.A_backport_comment_without_write_access_runs_nothing` (none, read, triage) |
+  | `backport:` label on a merged pull request | the sender | the same | the same | `…A_label_or_comment_needs_write_access_but_a_merge_does_not` |
+  | `backport:` labels as the pull request merges | the merger | none: the merge needed write, and the merger saw the labels | n/a | the same test |
+  | `/queue`, `/dequeue`, the queue label, the check-run button | the sender | role ≥ write (dequeue: also the author), re-checked before the merge | refusal comment / ignored | `MergeQueueEngineTests` (outsider), `MergeQueueCheckButtonTests` (reader) |
+  | the dependency updater's commands | the sender | role ≥ write | 👎 reaction | `DependencySagaTests` (visitor) |
+  | a hand-pushed `backport/<pr>-<line>` branch (M8c) | the push's sender | **new:** role ≥ write; before, only GitHub's rule that creating a branch needs write | ignored, logged | `BackportLinkRecipientTests.A_backport_branch_pushed_without_write_access_opens_nothing` |
+
+  Every normaliser drops bots and the App itself, and handles only **new** comments (an edit is never a command). A
+  backport merging into a line (M8c) and the default labels (M8b) are no commands: the first needs a merge (write), the
+  second only proposes labels a maintainer removes, and its backport needs the merge. The other forges raise none of
+  these commands.
 - **Every automatic resolution is listed in the per-line report** (D6): path, strategy, and what each side added.
