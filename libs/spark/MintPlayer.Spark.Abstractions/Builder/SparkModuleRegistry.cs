@@ -107,7 +107,8 @@ public class SparkModuleRegistry
     /// <para>
     /// <paramref name="stage"/> chooses which side of <c>UseAuthentication</c> the action lands on;
     /// it defaults to <see cref="SparkMiddlewareStage.AfterSpark"/>, which is where every registration
-    /// ran before stages existed. Within a stage, actions run in registration order.
+    /// ran before stages existed. <see cref="SparkMiddlewareStage.BeforePrerendering"/> is outside
+    /// <c>UseSpark()</c>: <c>UseSparkPrerendering()</c> applies it. Within a stage, actions run in registration order.
     /// </para>
     /// <para>
     /// Registering into a stage that <see cref="ApplyMiddleware"/> has already run throws. That
@@ -192,6 +193,14 @@ public class SparkModuleRegistry
         foreach (var action in actions)
             action(app);
     }
+
+    /// <summary>
+    /// The stages that have registrants but were never applied: middleware that will never run. The host refuses to
+    /// start while <see cref="SparkMiddlewareStage.BeforePrerendering"/> is among them, since only
+    /// <c>UseSparkPrerendering()</c> applies that stage.
+    /// </summary>
+    public IReadOnlyCollection<SparkMiddlewareStage> PendingStages
+        => middlewareActions.Keys.Where(stage => !appliedStages.Contains(stage)).ToArray();
 
     public void MapEndpoints(IEndpointRouteBuilder endpoints)
     {

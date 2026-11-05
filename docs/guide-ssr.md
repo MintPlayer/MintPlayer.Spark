@@ -143,6 +143,11 @@ uses MintPlayer.AspNetCore.SitemapXml's types and stylesheet (`/sitemap.xsl`); s
 [README](../libs/sitemap/MintPlayer.Spark.SitemapXml/README.md). Name it in a `robots.txt` (`Sitemap: https://example.com/sitemap.xml`) in the app's `public`
 folder.
 
+## Minification
+
+`MintPlayer.Spark.Minification` adds `spark.AddMinification()`, which minifies the rendered page (not the template)
+just outside the renderer; see [HTML minification](guide-minification.md).
+
 ## Service worker
 
 `ngsw.json`'s index is `/index.csr.html`, the raw shell a static file serves, so the service worker never caches a

@@ -120,6 +120,10 @@ public static class SparkExtensions
         // SparkServiceWorkerCacheHeaders.
         services.AddSparkServiceWorkerCacheHeaders();
 
+        // #563 G3: middleware registered for the SPA-branch stage needs UseSparkPrerendering(); without it the host
+        // refuses to start. See SparkPendingStagesCheck.
+        services.AddSparkPendingStagesCheck();
+
         // Data Protection (#460, D5) — always on, key ring persisted per Spark:DataProtection; an
         // unpersisted ring outside Development is refused by UseSpark(). See SparkDataProtectionOptions.
         services.AddSparkDataProtection();

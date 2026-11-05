@@ -25,12 +25,18 @@ public sealed class MintPlayerTestHost : SparkAppTestHost
     public const string SongId = "Songs/e2e-sky";
     public const string SongSlug = "a-sky-full-of-stars";
 
+    /// <summary>The home board's second path, served without minification (<c>Spark:Minification:ExcludedPaths</c>).</summary>
+    public const string UnminifiedHome = "/home";
+
     private static readonly string SeedFile = Path.Combine(AppContext.BaseDirectory, "Ssr", "Data", "mintplayer-ssr.json");
 
     protected override Task ConfigureAppSettings(JsonObject settings, SparkAppHostContext context)
     {
         // Outside Development an account mail is refused without it (#460 M5); the seeded admin registers.
         settings["Spark"]!["Auth"] = new JsonObject { ["PublicBaseUrl"] = context.HttpsUrl };
+        // #563: "/" and "/home" render the same board (boards.json names both). Excluding one serves the page twice,
+        // minified and as rendered, so MinificationTests can compare what the browser makes of each.
+        settings["Spark"]!["Minification"] = new JsonObject { ["ExcludedPaths"] = new JsonArray(UnminifiedHome) };
         // What each page's server render supplied, in the log a failing test prints.
         settings["Logging"] = new JsonObject
         {

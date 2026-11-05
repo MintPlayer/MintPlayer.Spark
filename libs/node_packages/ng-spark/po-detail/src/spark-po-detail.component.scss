@@ -12,12 +12,6 @@
   --spark-content-inset-inline: 0px;
 }
 
-// A multiline text attribute keeps the line breaks it was saved with. Bootstrap's text
-// utilities only offer wrap/nowrap, neither of which preserves them.
-.spark-multiline-value {
-  white-space: pre-wrap;
-}
-
 // An AsDetail table's leading-cell column (leadingComponent) is as narrow as its content.
 .spark-leading-cell {
   width: 1%;

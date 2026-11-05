@@ -78,6 +78,9 @@
   <Folder Name="/libs/boards/">
     <Project Path="libs/boards/MintPlayer.Spark.Boards/MintPlayer.Spark.Boards.csproj" />
   </Folder>
+  <Folder Name="/libs/minification/">
+    <Project Path="libs/minification/MintPlayer.Spark.Minification/MintPlayer.Spark.Minification.csproj" />
+  </Folder>
   <Folder Name="/libs/sitemap/">
     <Project Path="libs/sitemap/MintPlayer.Spark.SitemapXml/MintPlayer.Spark.SitemapXml.csproj" />
   </Folder>

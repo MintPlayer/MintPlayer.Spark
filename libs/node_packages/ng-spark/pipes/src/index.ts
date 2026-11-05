@@ -4,6 +4,7 @@ export * from './input-type.pipe';
 export * from './parsed-date.pipe';
 export * from './attribute-value.pipe';
 export * from './or-dash.pipe';
+export * from './lines.pipe';
 export * from './raw-attribute-value.pipe';
 export * from './reference-label';
 export * from './reference-display-value.pipe';

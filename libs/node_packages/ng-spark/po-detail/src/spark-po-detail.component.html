@@ -266,7 +266,7 @@
                   {{ (attr.name | attributeValue:item():entityType():lookupReferenceOptions():allEntityTypes()) | orDash }}
                 }
               } @else if (attr.dataType === 'MultiLineString') {
-                <div class="spark-multiline-value">{{ (attr.name | attributeValue:item():entityType():lookupReferenceOptions():allEntityTypes()) | orDash }}</div>
+                <div class="spark-multiline-value">@for (line of ((attr.name | attributeValue:item():entityType():lookupReferenceOptions():allEntityTypes()) | orDash | lines); track $index) {@if (!$first) {<br>}{{ line }}}</div>
               } @else if (attr.dataType === 'date' || attr.dataType === 'datetime') {
                 <!--
                   Formatted the same way, and in the same timezone, as the grid renders it.
