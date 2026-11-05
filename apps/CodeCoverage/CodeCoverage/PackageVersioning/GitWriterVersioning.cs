@@ -117,6 +117,9 @@ public sealed record GitWriterBackportTargetResult(string Branch, string Head, s
     IReadOnlyList<GitWriterPlatformChange>? PlatformChanges = null, IReadOnlyList<GitWriterBackportResolution>? Resolutions = null,
     IReadOnlyList<string>? Regenerate = null)
 {
+    /// <summary>First-party packages the change raised above this line's major, dropped by normalization (#570 D11).</summary>
+    public IReadOnlyList<GitWriterDependencyRaise>? Raises { get; init; }
+
     public const string Created = "created";
     public const string Exists = "exists";
     public const string Empty = "empty";
@@ -126,6 +129,10 @@ public sealed record GitWriterBackportTargetResult(string Branch, string Head, s
 
 /// <summary>One platform value the change edits on the line's platform; <see cref="Before"/> is empty for an added one.</summary>
 public sealed record GitWriterPlatformChange(string Path, string Marker, string Before, string After);
+
+/// <summary>A first-party package the change raised that the line keeps at <see cref="LineValue"/> (#570 D11);
+/// <see cref="Kind"/> is <c>npm</c> or <c>nuget</c>.</summary>
+public sealed record GitWriterDependencyRaise(string Path, string Kind, string Package, string Before, string After, string LineValue);
 
 /// <summary>One conflict resolved on a line by an <c>autoResolve</c> rule.</summary>
 public sealed record GitWriterBackportResolution(string Path, string Strategy, bool Regenerate, int Rule);

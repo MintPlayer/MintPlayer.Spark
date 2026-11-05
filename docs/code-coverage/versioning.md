@@ -290,6 +290,10 @@ backport:
 - **`markers.disable`** leaves a built-in kind of platform value to the plain merge.
 - **`markers.packages`** adds your own platform-anchored packages, NuGet or npm, with `*` as a wildcard. A first-party
   package whose major follows the platform, such as a component library tied to Angular, is the typical case.
+  When a change raises such a package above a line's major, the line keeps its own version, and the backport comment
+  says the line probably needs what the newer version brought. If that version was released by a public repository on
+  this server, or by this one, the comment names the release and shows which of its pull requests that repository has
+  already backported to a line of the same major. The app never starts a backport in another repository.
 
 A section with errors is named in the backport comment, and its defaults apply.
 

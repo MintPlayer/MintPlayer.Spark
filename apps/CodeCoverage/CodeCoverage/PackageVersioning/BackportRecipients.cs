@@ -257,7 +257,12 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
         }
         if (lines.Count == 0)
             return null;
-        return "Backports:\n\n" + string.Join('\n', lines) + ConflictSections(commit, result);
+        // #570 D11: whatever each line's outcome, a first-party package the change raised above the line's major is named
+        // with the upstream release it probably needs.
+        var diagnoses = new StringBuilder();
+        foreach (var target in result.Targets ?? [])
+            diagnoses.Append(await UpstreamReleases.DiagnoseAsync(session, forge, repository, pull.BaseRef, target.Branch, target.Raises, cancellationToken));
+        return "Backports:\n\n" + string.Join('\n', lines) + ConflictSections(commit, result) + diagnoses;
     }
 
     /// <summary>

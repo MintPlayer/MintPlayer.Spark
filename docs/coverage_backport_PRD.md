@@ -956,6 +956,32 @@ cascade: 66 of 72 conflicted only because #461 was missing). Script: a throwaway
     opens its pull request) or comment `/backport <line> --draft`, with the line name taken from the backport head.
   - Tests: `BackportTests` (parsing; the conflict hint), `GitHubEventsCommandTests` (the flag on the event),
     `BackportRecipientTests` (a draft request drafts under the `comment` default; without it nothing drafts).
+- **M8e, built (2026-11-05): the cross-repo dependency diagnosis (D11).** It is built in #570, not #571 as the split
+  first said, because it reads only the backport's own result and the versioning runs' records.
+  - **Writer:** `PlatformMarkers.Normalize` reports a `DependencyRaise` (path, npm/nuget, package, before, after, the
+    line's value) for every **configured first-party** package (`markers.packages`) that the change raised wholly above
+    the line's major and that normalization therefore kept at the line's value. A package the change did not move, an
+    unconfigured package and a framework marker report nothing. The writer returns them per target
+    (`BackportTargetResult.Raises`).
+  - **Which repository releases what:** `VersioningController.FinishAsync` records each release whose tag is in place
+    (`created`/`already-present`) in `PackageReleases/{kind}/{id}` (`PackageReleaseRecord`): the repository, and per
+    version its tag and the pull requests its notes name (`(#N)`). The record is stored and loaded by id, with no query
+    and so no RQL to splice into. **The first repository to release a package keeps it**, so another repository cannot
+    take over a name. A package released before this record existed is unknown until its next release. Caps: 200
+    releases per package, 50 pull requests per release.
+  - **The report:** whatever each line's outcome, the backport comment adds a paragraph per raise. It says that the line
+    keeps the package at its value and probably needs what the raised version brought, released on the line's own
+    major. When the release is known, it adds the upstream tag and, for each of its first 10 pull requests, whether the
+    upstream already backported it to a line of that major. The major is read from a `backported: <line>` label's
+    trailing number (M8c), so `angular-21.x` and `21.x` both match. The wording is "probably needs": the app never starts
+    a backport in another repository.
+  - **No private-repo leak:** the upstream is named only when it is this repository or a public, connected one on the
+    same forge. Otherwise the paragraph names the dependency alone. Another repository's pull requests are written as
+    code (`` `owner/repo#N` ``), not as references, so the comment adds nothing to their timelines. Their titles are
+    untrusted text and go in a code span, so a mention or markdown in them stays inert.
+  - Tests: `PlatformMarkersTests.A_raised_first_party_package_that_normalization_drops_is_reported`; the writer's
+    `BackportTests` (the raise on the target); `UpstreamReleasesTests` (range minimums, label majors, notes parsing, first
+    claimant, public / private / unknown / own upstream); `BackportRecipientTests.A_raised_first_party_package_is_diagnosed_whatever_the_lines_outcome`.
 - **Who may command the app (owner, 2026-11-05: "Make sure that special pull-request comments (like "/backport") are
   only handled for users that should be able to do so").** An audit of every way a person can ask the app to act:
 

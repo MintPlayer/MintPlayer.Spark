@@ -184,6 +184,20 @@ public class BackportRecipientTests : CoverageRavenTest
     }
 
     [Fact]
+    public async Task A_raised_first_party_package_is_diagnosed_whatever_the_lines_outcome()
+    {
+        using var store = GetDocumentStore();
+        WriterAnswers(new GitWriterBackportResult(GitWriterBackportResult.Backported, null, "squash", null,
+            [Target(GitWriterBackportTargetResult.Empty) with { Raises = [new("package.json", "npm", "@acme/ui", "^9.1.0", "^9.2.0", "^8.4.0")] }], null, 1));
+
+        await HandleAsync(store, "maintainer", EBackportSource.Label, "8.x");
+
+        forge.Comments.Single().Body.Should().Be("Backports:\n\n- `release/8.x`: already holds this change.\n\n"
+            + "`release/8.x` keeps `@acme/ui` at `^8.4.0`: the change raised it from `^9.1.0` to `^9.2.0` on `main`, above this line's major, "
+            + "so the line probably needs what `9.2.0` brought, released on its own major (8).");
+    }
+
+    [Fact]
     public async Task The_commit_subjects_sent_are_one_line_each_and_bounded()
     {
         using var store = GetDocumentStore();

@@ -172,7 +172,11 @@ PRD §8.2.
     `backport/<pr>-<line>` (D7). Details are in PRD §8.3, "M8c, built".
   - **M8d `/backport <line> --draft`, done (2026-11-05)**: the per-request draft (D7), and the conflict comment names
     it. Details are in PRD §8.3, "M8d, built".
-  - The cross-repo dependency diagnosis (D11).
+  - **M8e cross-repo dependency diagnosis (D11), done (2026-11-05)**: built in #570 rather than #571, since it only
+    reads the backport's own result. Normalization reports the first-party packages it dropped; a versioning run records
+    which repository releases each package (`PackageReleaseRecord`); the backport comment names the upstream release
+    and which of its pull requests the upstream already backported to the line's major. Details are in PRD §8.3,
+    "M8e, built".
 - **M9 Dependencies on lines** (D13): a rolling PR per supported line, platform packages capped at the line's major,
   patch/security default, advisories outside the allowed range flagged. Pack verified by S4 (D10b; no upper bounds,
   opt-in `major-bounded`).

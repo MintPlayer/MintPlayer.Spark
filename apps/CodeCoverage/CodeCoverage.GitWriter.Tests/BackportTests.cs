@@ -1,4 +1,5 @@
 using System.Net;
+using CodeCoverage.Git.Backports;
 using CodeCoverage.GitWriter.Jobs;
 using CodeCoverage.GitWriter.Tests._Infrastructure;
 
@@ -139,6 +140,8 @@ public class BackportTests : WriterTestBase
 
         response.Targets.Single().Push.Should().Be(BackportService.Created, string.Join(", ", response.Targets.Single().Conflicts));
         origin.InBare("cat-file", "blob", origin.Ref("refs/heads/backport/7-1.x") + ":package.json").Should().Be(Package("^21.4.0", Added));
+        // #570 D11: the dropped raise is reported, so the app can point at the upstream release.
+        response.Targets.Single().Raises.Should().Equal([new DependencyRaise("package.json", "npm", "@mintplayer/ng-bootstrap", "^22.34.0", "^22.36.0", "^21.4.0")]);
     }
 
     // --- M6: regenerated paths (D9: lockfiles are never merged; take the line's side, then regenerate) ---

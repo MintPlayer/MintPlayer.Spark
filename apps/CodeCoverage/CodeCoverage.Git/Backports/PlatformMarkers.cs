@@ -7,9 +7,21 @@ namespace CodeCoverage.Git.Backports;
 /// where the line has nothing to take a value from.</summary>
 public sealed record PlatformChange(string Path, string Marker, string Before, string After);
 
+/// <summary>
+/// A configured first-party package (<c>backport.markers.packages</c>) the pull request raised wholly above the line's
+/// major, which normalization therefore dropped (#570 D11): the line keeps <paramref name="LineValue"/>, so it probably
+/// lacks what the newer upstream release brought. <paramref name="Kind"/> is <c>npm</c> or <c>nuget</c>, as the
+/// versioning engine names package kinds.
+/// </summary>
+public sealed record DependencyRaise(string Path, string Kind, string Package, string Before, string After, string LineValue);
+
 /// <summary>The merge base and the change with their platform values rewritten to the release line's; null where the
 /// input was null (the file is absent on that side).</summary>
-public sealed record MarkerNormalization(string? Base, string? Theirs, IReadOnlyList<PlatformChange> PlatformChanges);
+public sealed record MarkerNormalization(string? Base, string? Theirs, IReadOnlyList<PlatformChange> PlatformChanges)
+{
+    /// <summary>The first-party raises normalization dropped (#570 D11).</summary>
+    public IReadOnlyList<DependencyRaise> Raises { get; init; } = [];
+}
 
 /// <summary>
 /// S2, marker normalization (#570, PRD §5.3 step 1, D8 as sharpened by S1 in §8.1). Before a backport's three-way merge,
@@ -35,7 +47,11 @@ public sealed record MarkerNormalization(string? Base, string? Theirs, IReadOnly
 public static class PlatformMarkers
 {
     private sealed record Kind(string Id, Func<string, bool> Handles, Regex Pattern, string? FixedName, Func<string, string> Family, bool TargetFramework,
-        Func<string, bool>? Accepts = null);
+        Func<string, bool>? Accepts = null)
+    {
+        /// <summary>A repository's own first-party packages (<c>markers.packages</c>), as opposed to the built-in platform kinds.</summary>
+        public bool FirstParty => Accepts is not null;
+    }
 
     private sealed record Occurrence(Kind Kind, string Name, string Key, string Value, int Start);
 
@@ -112,6 +128,7 @@ public static class PlatformMarkers
         var baseEdits = new List<(Occurrence At, string Value)>();
         var theirsEdits = new List<(Occurrence At, string Value)>();
         var changes = new List<PlatformChange>();
+        var raises = new List<DependencyRaise>();
 
         foreach (var key in before.Select(o => o.Key).Union(after.Select(o => o.Key)))
         {
@@ -127,6 +144,8 @@ public static class PlatformMarkers
                 {
                     baseEdits.Add((b, l.Value));
                     theirsEdits.Add((t, l.Value));
+                    if (b.Value != t.Value && t.Kind.FirstParty)
+                        raises.Add(new(path, IsPackageJson(path) ? "npm" : "nuget", t.Name, b.Value, t.Value, l.Value));
                 }
                 else
                 {
@@ -147,7 +166,7 @@ public static class PlatformMarkers
             }
         }
 
-        return new(Rewrite(@base, baseEdits), Rewrite(theirs, theirsEdits), changes);
+        return new(Rewrite(@base, baseEdits), Rewrite(theirs, theirsEdits), changes) { Raises = raises };
     }
 
     private static List<Occurrence> Read(Kind[] kinds, string? text)

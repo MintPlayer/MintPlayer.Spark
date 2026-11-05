@@ -450,7 +450,12 @@ public sealed record BackportRegeneratedResponse(string Outcome, string? Reason,
 /// the regenerated paths the change touches, which kept the line's side, and the <c>regenerate</c> resolutions.</param>
 public sealed record BackportTargetResult(
     string Branch, string Head, string? Commit, string? Push, IReadOnlyList<string> Conflicts, IReadOnlyList<PlatformChange> PlatformChanges,
-    IReadOnlyList<ResolutionWire> Resolutions, string? Detail = null, IReadOnlyList<string>? Regenerate = null);
+    IReadOnlyList<ResolutionWire> Resolutions, string? Detail = null, IReadOnlyList<string>? Regenerate = null)
+{
+    /// <summary>The first-party packages the change raised above this line's major, which normalization dropped, so the
+    /// line keeps its own version (#570 D11); the app diagnoses the upstream release.</summary>
+    public IReadOnlyList<DependencyRaise> Raises { get; init; } = [];
+}
 
 /// <param name="Outcome"><see cref="JobOutcomes.Backported"/> when the job ran (each target has its own result), or a failure.</param>
 /// <param name="Mode"><c>merge</c>, <c>squash</c> or <c>rebase</c>: how the pull request was merged, which decides the base.</param>

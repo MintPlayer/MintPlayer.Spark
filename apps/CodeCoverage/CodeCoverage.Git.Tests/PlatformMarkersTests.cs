@@ -190,6 +190,28 @@ public class PlatformMarkersTests
         PlatformMarkers.Normalize(Csproj, Line, Line, Line)!.Theirs.Should().Be(Line, "without the option nothing else is a marker");
     }
 
+    [Fact]
+    public void A_raised_first_party_package_that_normalization_drops_is_reported()
+    {
+        // #570 D11: ^22.34.0 → ^22.36.0 vanishes on a 21.x line, so the line keeps a version without the upstream fix.
+        var options = new PlatformMarkerOptions([], ["@mintplayer/*", "MintPlayer.Spark*"]);
+        static string Package(string ng, string rx = "~7.8.0") => "{\n  \"dependencies\": {\n    \"@mintplayer/ng-bootstrap\": \"" + ng + "\",\n    \"rxjs\": \"" + rx + "\"\n  }\n}\n";
+
+        PlatformMarkers.Normalize("app/package.json", Package("^21.4.0"), Package("^22.34.0"), Package("^22.36.0"), options)!.Raises
+            .Should().Equal([new DependencyRaise("app/package.json", "npm", "@mintplayer/ng-bootstrap", "^22.34.0", "^22.36.0", "^21.4.0")]);
+        PlatformMarkers.Normalize("app/package.json", Package("^21.4.0"), Package("^22.34.0"), Package("^22.34.0", "~7.9.0"), options)!.Raises
+            .Should().BeEmpty("the package did not move");
+        PlatformMarkers.Normalize("app/package.json", Package("^21.4.0"), Package("^22.34.0"), Package("^22.36.0"))!.Raises
+            .Should().BeEmpty("an unconfigured package is no marker");
+
+        const string Spark = "    <PackageReference Include=\"MintPlayer.Spark.Abstractions\" Version=\"{0}\" />";
+        PlatformMarkers.Normalize(Csproj, Project("net10.0", framework: "10.0.11", extra: string.Format(Spark, "10.2.0")),
+                Project("net11.0", extra: string.Format(Spark, "11.0.0")), Project("net11.0", extra: string.Format(Spark, "11.1.0")), options)!.Raises
+            .Should().Equal([new DependencyRaise(Csproj, "nuget", "MintPlayer.Spark.Abstractions", "11.0.0", "11.1.0", "10.2.0")]);
+        PlatformMarkers.Normalize(Csproj, Line, Project("net11.0", framework: "11.0.0"), Project("net11.0", framework: "11.0.5"))!.Raises
+            .Should().BeEmpty("a framework package is the platform's, not a first-party release");
+    }
+
     [Theory]
     [InlineData("tfm", true)]
     [InlineData("framework-packages", true)]
