@@ -90,9 +90,13 @@ public sealed class ScriptedDiffService(CommitComparison? comparison = null)
     /// <summary>How many times git access was asked for.</summary>
     public int GitAccessCalls { get; private set; }
 
+    /// <summary>When set, <see cref="GetGitAccessAsync"/> throws it: an App credential the forge refused.</summary>
+    public Exception? GitAccessFailure { get; set; }
+
     public Task<ForgeGitAccess?> GetGitAccessAsync(Repository repository, CancellationToken cancellationToken = default)
     {
         GitAccessCalls++;
+        if (GitAccessFailure is not null) return Task.FromException<ForgeGitAccess?>(GitAccessFailure);
         return Task.FromResult(repository.Id is not null && GitAccess.TryGetValue(repository.Id, out var access)
             ? access
             : ForgeGitAccess.Anonymous($"https://forge.example.invalid/{repository.FullName}.git"));

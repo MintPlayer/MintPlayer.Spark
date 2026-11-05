@@ -1,6 +1,8 @@
 using CodeCoverage.CommitGraph;
 using CodeCoverage.Entities;
 using CodeCoverage.Forge;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace CodeCoverage.Tests.CommitGraph;
@@ -273,6 +275,191 @@ public class CommitGraphMirrorTests : CoverageRavenTest
         var raw = System.Text.Json.JsonSerializer.Serialize(state);
         raw.Contains(token, StringComparison.Ordinal).Should().BeFalse("no credential is ever stored");
         kit.Forge.GitAccess[RepoId(1)]!.ToString().Contains(token, StringComparison.Ordinal).Should().BeFalse("a logged access record must not print the token");
+    }
+
+    /// <summary>A state a view created, whose clone has not run yet.</summary>
+    private static async Task SeedPendingAsync(Raven.Client.Documents.IDocumentStore store, long id, bool syncing = true)
+    {
+        using var session = store.OpenAsyncSession();
+        await session.StoreAsync(new RepositoryGraphState { Repository = RepoId(id), Syncing = syncing, SyncingSinceUtc = syncing ? Now : null },
+            RepositoryGraphState.ForRepository(RepoId(id)));
+        await session.SaveChangesAsync();
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task A_refresh_of_a_state_without_a_mirror_only_clears_its_syncing_flag(bool syncing)
+    {
+        using var store = GetDocumentStore();
+        var kit = new CommitGraphKit(store);
+        await CommitGraphKit.SeedRepositoryAsync(store, 1);
+        await SeedPendingAsync(store, 1, syncing);
+
+        await kit.Get<ICommitGraphMirrors>().FetchAsync(RepoId(1), allowClone: false);
+
+        kit.Sidecar.Requests.Should().BeEmpty();
+        var state = (await StateAsync(store, 1))!;
+        (state.Syncing, state.SyncingSinceUtc, state.HasMirror).Should().Be((false, (DateTime?)null, false));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task A_repository_disconnected_or_deleted_while_queued_loses_its_mirror(bool deleted)
+    {
+        using var store = GetDocumentStore();
+        var kit = new CommitGraphKit(store);
+        await CommitGraphKit.SeedMirrorAsync(store, kit.Sidecar, 1, 100, Now);
+        if (!deleted)
+        {
+            await CommitGraphKit.SeedRepositoryAsync(store, 1);
+            using var session = store.OpenAsyncSession();
+            (await session.LoadAsync<Repository>(RepoId(1)))!.Connection = RepositoryConnection.Disconnected;
+            await session.SaveChangesAsync();
+        }
+
+        await kit.Get<ICommitGraphMirrors>().FetchAsync(RepoId(1), allowClone: false);
+
+        kit.Sidecar.Deletes.Should().Equal("github/1");
+        kit.Sidecar.Fetches.Should().BeEmpty();
+        (await StateAsync(store, 1)).Should().BeNull();
+    }
+
+    [Fact]
+    public async Task A_forge_without_git_mirrors_is_recorded_as_unsupported()
+    {
+        using var store = GetDocumentStore();
+        var kit = new CommitGraphKit(store);
+        kit.Forge.Capabilities = [EForgeCapability.Statuses];
+        await CommitGraphKit.SeedRepositoryAsync(store, 1);
+        await SeedPendingAsync(store, 1);
+
+        await kit.Get<ICommitGraphMirrors>().FetchAsync(RepoId(1), allowClone: true);
+
+        var state = (await StateAsync(store, 1))!;
+        (state.Outcome, state.Reason, state.Syncing).Should().Be(("refused", "unsupported", false));
+        kit.Sidecar.Requests.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task A_credential_the_forge_refuses_is_recorded_as_an_auth_failure()
+    {
+        using var store = GetDocumentStore();
+        var kit = new CommitGraphKit(store);
+        kit.Forge.GitAccessFailure = new InvalidOperationException("The App's private key is invalid.");
+        await CommitGraphKit.SeedRepositoryAsync(store, 1);
+        await SeedPendingAsync(store, 1);
+
+        await kit.Get<ICommitGraphMirrors>().FetchAsync(RepoId(1), allowClone: true);
+
+        var state = (await StateAsync(store, 1))!;
+        (state.Outcome, state.Reason).Should().Be(("failed", "auth"));
+        kit.Sidecar.Requests.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Without_access_an_existing_mirror_is_deleted_and_a_new_one_refused()
+    {
+        using var store = GetDocumentStore();
+        var kit = new CommitGraphKit(store);
+        foreach (var id in new long[] { 1, 2 })
+        {
+            await CommitGraphKit.SeedRepositoryAsync(store, id, isPrivate: true);
+            kit.Forge.GitAccess[RepoId(id)] = null;
+        }
+        await CommitGraphKit.SeedMirrorAsync(store, kit.Sidecar, 1, 100, Now);
+        await SeedPendingAsync(store, 2);
+
+        await kit.Get<ICommitGraphMirrors>().FetchAsync(RepoId(1), allowClone: false);
+        await kit.Get<ICommitGraphMirrors>().FetchAsync(RepoId(2), allowClone: true);
+
+        (await StateAsync(store, 1)).Should().BeNull("a mirror must not outlive the access to its repository");
+        kit.Sidecar.Deletes.Should().Equal("github/1");
+        var refused = (await StateAsync(store, 2))!;
+        (refused.Outcome, refused.Reason, refused.HasMirror).Should().Be(("refused", "no-access", false));
+    }
+
+    [Fact]
+    public async Task A_sidecar_that_is_down_is_recorded_as_a_failure_not_thrown()
+    {
+        using var store = GetDocumentStore();
+        var kit = new CommitGraphKit(store);
+        await CommitGraphKit.SeedRepositoryAsync(store, 1);
+        await SeedPendingAsync(store, 1);
+        kit.Sidecar.Down = true;
+
+        await kit.Get<ICommitGraphMirrors>().FetchAsync(RepoId(1), allowClone: true);
+
+        var state = (await StateAsync(store, 1))!;
+        (state.Outcome, state.Reason, state.HasMirror, state.Syncing).Should().Be(("failed", "error", false, false));
+    }
+
+    [Fact]
+    public async Task A_state_deleted_while_its_clone_ran_takes_the_fresh_mirror_with_it()
+    {
+        using var store = GetDocumentStore();
+        var kit = new CommitGraphKit(store);
+        await CommitGraphKit.SeedRepositoryAsync(store, 1);
+        await SeedPendingAsync(store, 1);
+        kit.Sidecar.OnFetch = mirror =>
+        {
+            // A disconnect lands while the clone runs.
+            using var session = store.OpenSession();
+            session.Delete(RepositoryGraphState.ForRepository(RepoId(1)));
+            session.SaveChanges();
+            return null;
+        };
+
+        await kit.Get<ICommitGraphMirrors>().FetchAsync(RepoId(1), allowClone: true);
+
+        kit.Sidecar.Requests.Should().Equal("POST github/1/fetch", "DELETE github/1");
+        kit.Sidecar.Mirrors.Should().BeEmpty();
+        (await StateAsync(store, 1)).Should().BeNull("a deleted state is never recreated");
+    }
+
+    [Fact]
+    public async Task An_eviction_the_sidecar_cannot_carry_out_is_left_for_tomorrow()
+    {
+        using var store = GetDocumentStore();
+        var kit = new CommitGraphKit(store);
+        await CommitGraphKit.SeedRepositoryAsync(store, 1);
+        await CommitGraphKit.SeedMirrorAsync(store, kit.Sidecar, 1, 100, Now.AddDays(-90));
+        kit.Sidecar.Down = true;
+
+        (await kit.Get<ICommitGraphMirrors>().EvictIdleAsync()).Should().Be(0);
+
+        (await StateAsync(store, 1)).Should().NotBeNull("the state goes only after its mirror did");
+    }
+
+    [Fact]
+    public async Task A_budget_eviction_that_fails_does_not_stop_the_clone()
+    {
+        using var store = GetDocumentStore();
+        CommitGraphKit kit = null!;
+        // The last registration wins: the same sidecar, with every DELETE failing.
+        kit = new CommitGraphKit(store, extra: services =>
+            services.AddSingleton<ICommitGraphSidecar>(sp => new CommitGraphSidecarClient(
+                new HttpClient(new FailingDeletes(kit.Sidecar)) { BaseAddress = new Uri(FakeSidecar.BaseUrl) },
+                sp.GetRequiredService<IOptions<CommitGraphOptions>>())));
+        kit.Options.BudgetBytes = 100;
+        foreach (var id in new long[] { 1, 2 }) await CommitGraphKit.SeedRepositoryAsync(store, id);
+        await CommitGraphKit.SeedMirrorAsync(store, kit.Sidecar, 1, 150, Now.AddDays(-3));
+        await SeedPendingAsync(store, 2);
+
+        await kit.Get<ICommitGraphMirrors>().FetchAsync(RepoId(2), allowClone: true);
+
+        (await StateAsync(store, 1)).Should().NotBeNull("its eviction failed, so it stays and is tried again later");
+        (await StateAsync(store, 2))!.HasMirror.Should().BeTrue();
+    }
+
+    /// <summary>The sidecar, with every DELETE failing as a 500.</summary>
+    private sealed class FailingDeletes(FakeSidecar inner) : DelegatingHandler(inner)
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            => request.Method == HttpMethod.Delete
+                ? Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.InternalServerError))
+                : base.SendAsync(request, cancellationToken);
     }
 
     private static async Task<Repository> LoadRepositoryAsync(Raven.Client.Documents.IDocumentStore store, long id)
