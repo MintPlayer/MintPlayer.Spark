@@ -190,5 +190,7 @@ PRD §8.2.
   - Cut `release/dotnet-11.x` and `release/angular-22.x` (current, D15), `release/dotnet-10.x` at `61c5c4276^` and
     `release/angular-21.x` at `1b5d7450e^` (D14), with seed tags.
 - **M12 Docs** (`docs/code-coverage/backports.md`, versioning.md, merge-queue.md), then the local test sweep, one push,
-  CI.
+  CI. **#570's part done (2026-11-05):** the backport section moved from versioning.md into `backports.md` unchanged,
+  with who may ask and what the report holds added; versioning.md keeps a pointer. #571 adds the dependency and
+  onboarding parts.
 - **After merge, deploy, then roll out** (C2) to MintPlayer's library repos one by one via the onboarding chooser.
