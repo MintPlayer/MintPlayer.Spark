@@ -451,3 +451,24 @@ Evidence (`VersioningPlanReleaseTests`, real origins):
     `GitHubEventsCommandTests.An_organization_rename_needs_the_accounts_id_and_login`);
   - the dead `GitHubEventsRecipient.GetOrCreateCommit` was removed.
   - Still uncovered, for later: `MergeQueueEngine` (125 lines at `19344c85`), `GitHubForgeMergeQueue` (51).
+
+### 8.3 Implementation decisions (#570, 2026-11-05)
+
+- **Keep-both is only for sets, and an MSBuild keep-both is checked by key (owner: "y", 2026-11-05).** Raised by the
+  owner: when both sides inserted lines at one place, keeping both is not always right. Four cases:
+  - both added the same text: git merges it cleanly, so no resolver sees it;
+  - independent entries of a set (two packages, two ignore lines, two JSON members): keep both;
+  - one entry with two values (`QRCoder 1.8.0` and `1.9.0`, one JSON key twice): a real conflict;
+  - ordered content (middleware, statements, YAML steps): never resolved automatically.
+
+  The keep-both resolver already refuses any region whose merge-base section is not empty
+  (`KeepBothResolver.cs:75`), and JSON's default rule refuses duplicate members. The gap: the `xmlProjects` defaults
+  (`*.csproj`, `*.props`, `*.targets`, `Directory.Packages.props`) validated only well-formedness, so the keep-both of
+  one package added twice with another version passed and gave a broken project (NU1504). Fixed for the merge queue
+  and the backports alike: new validator `msbuild-no-duplicate-keys` (`ContentValidators.cs`), now the `xmlProjects`
+  validator. An item's key is its type, its `Include`/`Update`/`Remove` value and its `Condition`; a property's is
+  its name and its `Condition`; case-insensitive, scoped to one group element. Red then green: well-formed `xml`
+  accepts every row of `ContentValidatorsTests.A_key_one_MSBuild_group_holds_twice_is_refused_where_it_repeats`, the
+  new validator refuses each at the repeated line. The inputs are validated first, so a project that already repeats a
+  key would refuse every keep-both: a scan of this repository's 156 MSBuild files found no repeated key.
+- **Every automatic resolution is listed in the per-line report** (D6): path, strategy, and what each side added.

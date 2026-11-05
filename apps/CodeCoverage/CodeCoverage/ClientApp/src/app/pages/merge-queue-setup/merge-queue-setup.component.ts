@@ -98,7 +98,7 @@ export default class MergeQueueSetupComponent {
     { key: 'autoResolve[].path', defaultValue: '—', meaning: 'A path glob; the first rule that matches a conflicted file decides how it is resolved.' },
     { key: 'autoResolve[].strategy', defaultValue: 'take-base', meaning: 'take-base (the base side, then the regenerate run rewrites it), keep-both (both sides\' insertions at one place, base branch first), line-set (the sorted union of lines, e.g. go.sum) or evict (never resolve; masks a default for this path).' },
     { key: 'autoResolve[].keys', defaultValue: 'none', meaning: 'take-base only: only conflicts on these top-level JSON members resolve.' },
-    { key: 'autoResolve[].validate', defaultValue: 'none', meaning: 'Validators the result must pass: utf8, json, json-no-duplicate-keys, xml. no-conflict-markers always runs.' },
+    { key: 'autoResolve[].validate', defaultValue: 'none', meaning: 'Validators the result must pass: utf8, json, json-no-duplicate-keys, xml, msbuild-no-duplicate-keys, yaml, github-workflow. no-conflict-markers always runs.' },
     { key: 'autoResolve[].regenerate', defaultValue: 'see meaning', meaning: 'Whether a resolution runs a regenerate workflow. take-base always does; keep-both and line-set do when a workflow is set for them.' },
     { key: 'autoResolve[].action', defaultValue: 'postRebaseActionName', meaning: 'The regenerate workflow for this rule. Different workflows run one after the other.' },
     { key: 'autoResolveDefaults', defaultValue: 'none', meaning: 'Opt-in take-base presets after your rules: spark, npm, pnpm, yarn, nuget.' },

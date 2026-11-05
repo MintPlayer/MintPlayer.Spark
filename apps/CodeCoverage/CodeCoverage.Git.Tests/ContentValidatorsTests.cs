@@ -12,6 +12,39 @@ public class ContentValidatorsTests
     private static readonly JsonValidator Json = new();
     private static readonly JsonNoDuplicateKeysValidator NoDuplicates = new();
     private static readonly XmlValidator Xml = new();
+    private static readonly MsBuildNoDuplicateKeysValidator MsBuild = new();
+
+    private static string Project(string groups) => $"<Project Sdk=\"Microsoft.NET.Sdk\">\n{groups}\n</Project>\n";
+
+    [Theory]
+    // Two packages a keep-both put side by side, a property and its conditional override, an item and its Update.
+    [InlineData("<ItemGroup><PackageReference Include=\"A\" Version=\"1.0.0\" /><PackageReference Include=\"B\" Version=\"1.0.0\" /></ItemGroup>")]
+    [InlineData("<PropertyGroup><Nullable>enable</Nullable><Nullable Condition=\"'$(X)' == 'y'\">disable</Nullable></PropertyGroup>")]
+    [InlineData("<PropertyGroup><Nullable>enable</Nullable></PropertyGroup><PropertyGroup><Nullable>disable</Nullable></PropertyGroup>")]
+    [InlineData("<ItemGroup><None Remove=\"x.md\" /><None Include=\"x.md\" Pack=\"true\" /><None Update=\"x.md\" /></ItemGroup>")]
+    [InlineData("<ItemGroup><Compile Include=\"a.cs\"><Link>b.cs</Link></Compile><Compile Include=\"c.cs\"><Link>b.cs</Link></Compile></ItemGroup>")]
+    [InlineData("<Target Name=\"T\"><Message Text=\"a\" /><Message Text=\"a\" /></Target>")]
+    public void MSBuild_groups_with_distinct_keys_are_valid(string groups)
+        => MsBuild.Validate(Project(groups)).Valid.Should().BeTrue();
+
+    [Theory]
+    // The keep-both of one package added on both sides with another version (NU1504), in any casing.
+    [InlineData("<ItemGroup><PackageReference Include=\"QRCoder\" Version=\"1.8.0\" />\n<PackageReference Include=\"qrcoder\" Version=\"1.9.0\" /></ItemGroup>", 2)]
+    // One property set twice in one group: the last silently wins.
+    [InlineData("<PropertyGroup><LangVersion>13</LangVersion>\n<langversion>preview</langversion></PropertyGroup>", 2)]
+    [InlineData("<Target Name=\"T\"><ItemGroup><X Include=\"a\" />\n<X Include=\"a\" /></ItemGroup></Target>", 2)]
+    public void A_key_one_MSBuild_group_holds_twice_is_refused_where_it_repeats(string groups, long line)
+    {
+        var verdict = MsBuild.Validate(Project(groups));
+
+        verdict.Valid.Should().BeFalse();
+        verdict.Line.Should().Be(line + 1);
+        Xml.Validate(Project(groups)).Valid.Should().BeTrue("well-formed XML alone lets it through");
+    }
+
+    [Fact]
+    public void MSBuild_keys_need_well_formed_xml_first()
+        => MsBuild.Validate("<Project><ItemGroup></Project>").Valid.Should().BeFalse();
     private static readonly Utf8Validator Utf8 = new();
     private static readonly NoConflictMarkersValidator NoMarkers = new();
 

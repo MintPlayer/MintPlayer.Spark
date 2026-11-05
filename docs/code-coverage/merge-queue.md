@@ -210,7 +210,7 @@ A repository with lockfiles and its own workflow per tool might add:
 | `autoResolve[].path` | glob | — | Required. At most 64 entries, presets and defaults included. The first rule that matches a conflicted path decides. |
 | `autoResolve[].strategy` | `take-base` · `keep-both` · `line-set` · `evict` | `take-base` | `take-base`: the base branch's file, then the regenerate run rewrites it. `keep-both`: both sides' insertions at one place, base branch first (O33). `line-set`: the sorted, de-duplicated union of lines (`go.sum`). `evict`: never resolved; masks a later rule or default for its path. Anything else is an error (`json-union` was dropped, O1). |
 | `autoResolve[].keys` | list of top-level JSON member names | none | `take-base` only. None: a conflict on any line of the file resolves (O19). Given: only lines that hold one of these members do (O2), and every side must be a JSON object. At most 64 keys of 1–256 characters, no control character. |
-| `autoResolve[].validate` | list of `utf8` · `json` · `json-no-duplicate-keys` · `xml` · `no-conflict-markers` | none | At most 8. The resolved file must pass each, inputs first (§10.4); a cleanly merged file under the rule and a regenerated one too. `no-conflict-markers` always runs on resolved content. Not on `evict`. |
+| `autoResolve[].validate` | list of `utf8` · `json` · `json-no-duplicate-keys` · `xml` · `msbuild-no-duplicate-keys` · `no-conflict-markers` · `yaml` · `github-workflow` | none | At most 8. The resolved file must pass each, inputs first (§10.4); a cleanly merged file under the rule and a regenerated one too. `msbuild-no-duplicate-keys` is `xml` plus: no `ItemGroup` holds one item twice (type, `Include`/`Update`/`Remove` value, `Condition`) and no `PropertyGroup` sets one property twice (name, `Condition`), case-insensitive, so two sides that each added a package with another version stay a conflict. `no-conflict-markers` always runs on resolved content. Not on `evict`. |
 | `autoResolve[].regenerate` | bool | see the rule | Whether a resolution under the rule runs a regenerate workflow. `take-base`: always (`false` is an error). `keep-both`, `line-set`: `true` when a workflow exists for the rule (`action` or `postRebaseActionName`) and `postRebaseWhen` is not `never`, else `false`; `true` without one is an error. |
 | `autoResolve[].action` | file name | `postRebaseActionName` | The rule's own regenerate workflow, same file-name rule as `postRebaseActionName` (O36). Several distinct workflows run one after the other (§2.3). At most 8 distinct workflows. |
 | `autoResolveDefaults` | list of preset names | none | Opt-in `take-base` presets, appended after the explicit rules (table below). An unknown name is an error. |
@@ -250,7 +250,7 @@ for that path. The queue check's "Effective configuration" lists every rule with
 | `json` | `**/*.json` | `json-no-duplicate-keys` |
 | `ignoreFiles` | `**/.gitignore`, `**/.dockerignore`, `**/.prettierignore`, `**/.eslintignore` | `utf8` |
 | `changelog` | `**/CHANGELOG.md` | `utf8` |
-| `xmlProjects` | `**/*.csproj`, `**/Directory.Packages.props`, `**/*.props`, `**/*.targets` | `xml` |
+| `xmlProjects` | `**/*.csproj`, `**/Directory.Packages.props`, `**/*.props`, `**/*.targets` | `msbuild-no-duplicate-keys` |
 
 The lists are `CodeCoverage.Git/MergeQueue/AutoResolvePresets.cs`, the default `regeneratedPaths` too
 (`DefaultRegeneratedPaths`). A default group regenerates like any keep-both rule: with a `postRebaseActionName`, a

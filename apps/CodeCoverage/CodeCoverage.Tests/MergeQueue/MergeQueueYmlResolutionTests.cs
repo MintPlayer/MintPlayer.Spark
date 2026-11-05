@@ -31,7 +31,7 @@ public class MergeQueueYmlResolutionTests
         rules.Skip(1).Select(r => r.Path).Should().Equal(AutoResolvePresets.KeepBothDefaultOrder.SelectMany(g => AutoResolvePresets.KeepBothDefaults[g]).Select(p => p.Path));
         rules.Skip(1).Should().AllSatisfy(r => r.Source.Should().Be(MergeQueueYml.DefaultSource));
         rules.Single(r => r.Path == "**/*.json").Validate.Should().Equal([MergeQueueWireRules.JsonNoDuplicateKeys]);
-        rules.Single(r => r.Path == "**/*.csproj").Validate.Should().Equal([MergeQueueWireRules.Xml]);
+        rules.Single(r => r.Path == "**/*.csproj").Validate.Should().Equal([MergeQueueWireRules.MsBuildNoDuplicateKeys]);
         parsed.Section.KeepBothDefaults.Should().Equal(["json", "ignoreFiles", "changelog", "xmlProjects"]);
         parsed.Section.Values.Should().Contain(v => v.Key == "autoResolve" && v.Value.StartsWith("**/*.json (keep-both", StringComparison.Ordinal) && v.Source == "default");
     }

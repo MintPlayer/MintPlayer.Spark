@@ -144,7 +144,11 @@ public sealed class XmlValidator : IContentValidator
 {
     public string Name => MergeQueueWireRules.Xml;
 
-    public ContentVerdict Validate(string text)
+    public ContentVerdict Validate(string text) => Check(text, msbuildKeys: false);
+
+    /// <summary>Reads the whole document; with <paramref name="msbuildKeys"/>, also refuses a key that one MSBuild group
+    /// holds twice (<see cref="MsBuildNoDuplicateKeysValidator"/>).</summary>
+    internal static ContentVerdict Check(string text, bool msbuildKeys)
     {
         var settings = new XmlReaderSettings
         {
@@ -158,8 +162,29 @@ public sealed class XmlValidator : IContentValidator
         try
         {
             using var reader = XmlReader.Create(new StringReader(text.StartsWith('﻿') ? text[1..] : text), settings);
+            // Per open element: the keys of its children when it is an ItemGroup or a PropertyGroup, else null.
+            var scopes = new Stack<(HashSet<string>? Keys, bool Items)>();
             while (reader.Read())
             {
+                if (!msbuildKeys)
+                    continue;
+                if (reader.NodeType == XmlNodeType.EndElement)
+                {
+                    scopes.Pop();
+                    continue;
+                }
+                if (reader.NodeType != XmlNodeType.Element)
+                    continue;
+                if (scopes.TryPeek(out var group) && group.Keys is not null && !group.Keys.Add(MsBuildKey(reader, group.Items)))
+                    return ContentVerdict.Invalid(group.Items ? "an item that one ItemGroup holds twice" : "a property that one PropertyGroup sets twice",
+                        ((IXmlLineInfo)reader).LineNumber, ((IXmlLineInfo)reader).LinePosition);
+                var name = reader.LocalName;
+                var isItems = name.Equals("ItemGroup", StringComparison.OrdinalIgnoreCase);
+                var opened = isItems || name.Equals("PropertyGroup", StringComparison.OrdinalIgnoreCase)
+                    ? (new HashSet<string>(StringComparer.OrdinalIgnoreCase), isItems)
+                    : ((HashSet<string>?)null, false);
+                if (!reader.IsEmptyElement)
+                    scopes.Push(opened);
             }
         }
         catch (XmlException e)
@@ -171,6 +196,38 @@ public sealed class XmlValidator : IContentValidator
         }
         return ContentVerdict.Ok;
     }
+
+    /// <summary>An item's key is its type, the attribute that names its items and that attribute's value, and its
+    /// condition; a property's is its name and its condition. MSBuild compares both case-insensitively.</summary>
+    private static string MsBuildKey(XmlReader reader, bool item)
+    {
+        var condition = reader.GetAttribute("Condition")?.Trim() ?? "";
+        if (!item)
+            return $"{reader.LocalName}\0{condition}";
+        foreach (var attribute in (string[])["Include", "Update", "Remove"])
+        {
+            if (reader.GetAttribute(attribute) is { } value)
+                return $"{reader.LocalName}\0{attribute}\0{value.Trim()}\0{condition}";
+        }
+        return $"{reader.LocalName}\0\0\0{condition}";
+    }
+}
+
+/// <summary>
+/// <c>msbuild-no-duplicate-keys</c> (#570, docs/coverage_backport_PRD.md §8.2): <see cref="XmlValidator"/>, and no
+/// <c>ItemGroup</c> or <c>PropertyGroup</c> holds one key twice. A keep-both of two sides that each inserted the same
+/// package reference with another version is well-formed XML, yet a broken project (NU1504); two settings of one property
+/// in one group are well-formed too, and the last silently wins. Both are conflicts a human decides. An item's key is its
+/// type, its <c>Include</c>/<c>Update</c>/<c>Remove</c> value and its <c>Condition</c>; a property's is its name and
+/// its <c>Condition</c>, all compared case-insensitively as MSBuild does. Keys are scoped to one group element, so a
+/// project that sets a property in two groups (a default, then a conditional override) still passes.
+/// </summary>
+[Register(typeof(IContentValidator), ServiceLifetime.Singleton)]
+public sealed class MsBuildNoDuplicateKeysValidator : IContentValidator
+{
+    public string Name => MergeQueueWireRules.MsBuildNoDuplicateKeys;
+
+    public ContentVerdict Validate(string text) => XmlValidator.Check(text, msbuildKeys: true);
 }
 
 /// <summary><c>no-conflict-markers</c>: no line starts like a conflict marker (<c>&lt;&lt;&lt;&lt;&lt;&lt;&lt;</c>,

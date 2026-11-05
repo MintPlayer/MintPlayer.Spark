@@ -51,10 +51,11 @@ public static class AutoResolvePresets
         ["changelog"] = [new("**/CHANGELOG.md", MergeQueueWireRules.KeepBoth, [MergeQueueWireRules.Utf8])],
         ["xmlProjects"] =
         [
-            new("**/*.csproj", MergeQueueWireRules.KeepBoth, [MergeQueueWireRules.Xml]),
-            new("**/Directory.Packages.props", MergeQueueWireRules.KeepBoth, [MergeQueueWireRules.Xml]),
-            new("**/*.props", MergeQueueWireRules.KeepBoth, [MergeQueueWireRules.Xml]),
-            new("**/*.targets", MergeQueueWireRules.KeepBoth, [MergeQueueWireRules.Xml]),
+            // Not just well-formed: two sides that each added one package with another version must stay a conflict (#570).
+            new("**/*.csproj", MergeQueueWireRules.KeepBoth, [MergeQueueWireRules.MsBuildNoDuplicateKeys]),
+            new("**/Directory.Packages.props", MergeQueueWireRules.KeepBoth, [MergeQueueWireRules.MsBuildNoDuplicateKeys]),
+            new("**/*.props", MergeQueueWireRules.KeepBoth, [MergeQueueWireRules.MsBuildNoDuplicateKeys]),
+            new("**/*.targets", MergeQueueWireRules.KeepBoth, [MergeQueueWireRules.MsBuildNoDuplicateKeys]),
         ],
     };
 
