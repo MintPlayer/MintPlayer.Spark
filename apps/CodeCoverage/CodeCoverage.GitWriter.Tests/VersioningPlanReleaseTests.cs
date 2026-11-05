@@ -178,6 +178,34 @@ public class VersioningPlanReleaseTests : WriterTestBase
     }
 
     [Fact]
+    public async Task Every_line_that_never_released_is_cut_in_order_of_its_major()
+    {
+        // A package already moved on (Next targets net11.0) while Core stays on net10.0: both lines are needed at once.
+        using var origin = new Origin(Server, "lines-cut-two");
+        origin.Write("src/Next/Next.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\">\n<PropertyGroup><TargetFramework>net11.0</TargetFramework></PropertyGroup>\n</Project>\n");
+        Fixture(origin);
+        var head = origin.Head();
+        var request = DefaultBranchWithLines(head);
+        request = request with
+        {
+            Manifest = new ReleaseManifest
+            {
+                Commit = head,
+                Packages =
+                [
+                    .. request.Manifest.Packages,
+                    new ManifestPackage { Id = "Next", Kind = "nuget", ApiHash = CoreHash, TargetFrameworks = ["net11.0"], Packed = true },
+                ],
+            },
+        };
+
+        var (result, _) = await ReleaseRun.PlanOnlyAsync(Git(origin), request);
+
+        result.BranchCuts.Select(c => c.Branch).Should().Equal("release/dotnet-10.x", "release/dotnet-11.x");
+        result.BranchCuts.Select(c => string.Join(",", c.Packages)).Should().Equal("Core", "Next");
+    }
+
+    [Fact]
     public async Task A_line_that_has_released_is_not_cut_again()
     {
         using var origin = new Origin(Server, "lines-cut-done");

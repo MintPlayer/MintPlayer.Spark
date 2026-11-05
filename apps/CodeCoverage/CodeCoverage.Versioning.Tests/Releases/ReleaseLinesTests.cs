@@ -238,6 +238,55 @@ public class ReleaseLinesTests
         => new VersioningConfig { Lines = new VersioningLinesConfig { Prerelease = new() { [key] = label } } }
             .Validate().Should().ContainSingle(e => e.Contains(error));
 
+    [Theory]
+    [InlineData("@angular/core", "angular")]
+    [InlineData("react", "react")]
+    [InlineData("vue", "vue")]
+    [InlineData("svelte", null)]
+    [InlineData(null, null)]
+    public void A_framework_package_names_its_ecosystem(string? package, string? ecosystem)
+        => Ecosystems.OfFramework(package).Should().Be(ecosystem);
+
+    private static async Task<ReleaseContext> ContextAsync(InMemoryTree tree, TaggedVersion[] tags)
+    {
+        var graph = await ProjectGraphBuilder.BuildAsync(tree);
+        return new ReleaseContext
+        {
+            Graph = graph,
+            Head = "head",
+            Tags = new TagHistory(tags),
+            Diff = new FakeDiff(Everything),
+            Settings = new VersioningSettings { Lines = ReleaseLinePattern.Default },
+            Build = graph.Packages.ToDictionary(p => p.Id!, _ => new PackageBuildFacts { ApiHash = Hash }),
+            OnDefaultBranch = true,
+        };
+    }
+
+    /// <summary>Mixed, plus Broken: a .NET project whose target framework neither its file nor the build names.</summary>
+    private static InMemoryTree WithBrokenAnchor(string coreTfm = "net10.0") => Mixed(coreTfm)
+        .Add("src/Broken/Broken.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\"></Project>")
+        .Add("src/Broken/Broken.cs", "");
+
+    [Fact]
+    public async Task The_lines_a_branch_needs_leave_out_a_package_whose_anchor_is_refused()
+    {
+        var lines = ReleasePlanner.LinesOf(await ContextAsync(WithBrokenAnchor(), Tags));
+
+        lines.Keys.Should().BeEquivalentTo([new ReleaseLine("dotnet", 10), new ReleaseLine("angular", 21)]);
+        lines[new ReleaseLine("dotnet", 10)].Should().Equal("Core");
+        lines.Values.SelectMany(ids => ids).Should().NotContain("Broken");
+    }
+
+    [Fact]
+    public async Task A_refused_anchor_does_not_stop_the_newest_line_from_releasing_the_free_packages()
+    {
+        // Broken is refused on its own; Text (netstandard, free) still releases on dotnet-11, the newest line.
+        var plan = await PlanAsync(WithBrokenAnchor("net11.0"), "release/dotnet-11.x");
+
+        plan.Refused.Select(r => r.Id).Should().Contain("Broken");
+        plan.Releases.Select(r => r.Tag.Name).Should().Contain("Text/v3.0.1");
+    }
+
     [Fact]
     public async Task A_package_new_on_an_older_major_starts_its_line()
     {

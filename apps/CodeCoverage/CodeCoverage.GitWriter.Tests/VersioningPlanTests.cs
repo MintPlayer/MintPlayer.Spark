@@ -65,4 +65,27 @@ public class VersioningPlanTests : WriterTestBase
         origin.Push("main");
         (await PlanAsync(origin)).Releases.Should().Equal("Core");
     }
+
+    [Theory]
+    [InlineData("feature/x")]
+    [InlineData("release/10.x")]   // a #153 release branch is no line once lines are on (#568 D1)
+    public async Task With_lines_on_a_branch_that_is_neither_default_nor_a_line_is_refused(string branch)
+    {
+        using var origin = new Origin(Server, "plan-not-a-line");
+        var response = await Writer.Client.PostAsJsonAsync("/jobs/versioning/plan", new Dictionary<string, object?>
+        {
+            ["provider"] = "github",
+            ["repoId"] = "1001",
+            ["cloneUrl"] = origin.Url.AbsoluteUri,
+            ["credential"] = Credential(Token),
+            ["branch"] = branch,
+            ["defaultBranch"] = "main",
+            ["commit"] = new string('a', 40),
+            ["settings"] = new VersioningSettingsWire { Lines = new ReleaseLinesWire { Text = ReleaseLinePattern.DefaultText } },
+        }, GitWriterHost.Json);
+
+        response.StatusCode.Should().Be(System.Net.HttpStatusCode.BadRequest);
+        var refused = (await response.Content.ReadFromJsonAsync<RefusedResponse>(GitWriterHost.Json))!;
+        refused.Field.Should().Be("branch");
+    }
 }

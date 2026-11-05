@@ -153,4 +153,24 @@ public class PlatformLifecycleTests : CoverageRavenTest
         (await session.LoadAsync<PlatformRelease>("PlatformReleases/dotnet/10")).Should().BeEquivalentTo(new { Phase = "active", Source = "https://dotnet.example/index.json" });
         (await session.Advanced.LoadStartingWithAsync<PlatformRelease>("PlatformReleases/nodejs/")).Should().BeEmpty();
     }
+
+    [Fact]
+    public async Task A_source_that_does_not_answer_is_skipped_and_the_others_are_stored()
+    {
+        using var store = GetDocumentStore();
+        var handler = new StubHttpMessageHandler((request, _) => request.RequestUri!.Host == "dotnet.example"
+            ? throw new HttpRequestException("connection refused")
+            : new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(request.RequestUri.AbsolutePath.EndsWith("/angular", StringComparison.Ordinal)
+                    ? Fixture.Read("PlatformLifecycle/endoflife-angular.json")
+                    : "{}"),
+            });
+
+        await RunAsync(store, handler);
+
+        using var session = store.OpenAsyncSession();
+        (await session.Advanced.LoadStartingWithAsync<PlatformRelease>("PlatformReleases/dotnet/")).Should().BeEmpty();
+        (await session.LoadAsync<PlatformRelease>("PlatformReleases/angular/22")).Phase.Should().Be("active");
+    }
 }
