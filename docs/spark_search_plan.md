@@ -113,5 +113,8 @@ Issues #238 and #560. **One PR**, branch `feat/issue238-search`.
 
 ## M10 — PR + deploy
 
-- [ ] Open the PR; CI is the sweep. Owner: `vm.max_map_count` + `.env` on the VPS before deploy.
+- [ ] Open the PR; CI is the sweep. Owner before deploy: `free -m` on the VPS (S7: the engine takes up to 1 GB). No
+      `vm.max_map_count` and no `.env` change: single-node + no mmap (D13), and the engine URI is fixed in the compose
+      file. After the first deploy build: check `ghcr.io/mintplayer/mintplayer-opensearch` is public (the workflow's
+      visibility step is `continue-on-error`), or the VPS pull fails.
 - [ ] After deploy: production black-box check (PRD §1.1, §7) and a SeoTester run.
