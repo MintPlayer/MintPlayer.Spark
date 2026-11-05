@@ -296,12 +296,16 @@ export class SparkQueryListComponent {
       return;
     }
 
+    // A `Database.` source wins over a `Custom.` one, which may be a sub-query that needs a parent (Song's
+    // `Custom.Artist_Songs` on mintplayer.com); a custom query is still the list when it is the only match.
+    // SparkEntityLinks.ListQuery (sitemap, search, prerender) picks the same way.
     const singularName = entityType.name;
-    const match = queries.find(q => {
+    const matches = queries.filter(q => {
       if (q.entityType === singularName) return true;
       const sourceName = q.source.includes('.') ? q.source.substring(q.source.indexOf('.') + 1) : q.source;
       return sourceName === singularName || sourceName === singularName + 's';
     });
+    const match = matches.find(q => !q.source.startsWith('Custom.')) ?? matches[0];
 
     if (match) this.queryId.set(match.alias || match.id);
     else this.reportLoadFailure({ status: 404 } as HttpErrorResponse);
