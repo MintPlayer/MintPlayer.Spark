@@ -170,6 +170,8 @@ PRD §8.2.
     writes, `backported: <line>` on the source when a backport merges, hand-made backports recognised (body, head,
     `cherry-pick -x` trailer) and linked by a comment, and the pull request opened when a person creates
     `backport/<pr>-<line>` (D7). Details are in PRD §8.3, "M8c, built".
+  - **M8d `/backport <line> --draft`, done (2026-11-05)**: the per-request draft (D7), and the conflict comment names
+    it. Details are in PRD §8.3, "M8d, built".
   - The cross-repo dependency diagnosis (D11).
 - **M9 Dependencies on lines** (D13): a rolling PR per supported line, platform packages capped at the line's major,
   patch/security default, advisories outside the allowed range flagged. Pack verified by S4 (D10b; no upper bounds,

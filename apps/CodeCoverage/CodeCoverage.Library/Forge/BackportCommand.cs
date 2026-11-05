@@ -31,8 +31,17 @@ public static class BackportCommand
     public static IReadOnlyList<string> FromLabels(IEnumerable<string?> labels)
         => labels.Select(FromLabel).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase).Take(MaxLines).ToList();
 
+    /// <summary>The option asking for a draft pull request when a line conflicts, for this request (#570 D7).</summary>
+    public const string DraftOption = "--draft";
+
     /// <summary>The lines a <c>/backport</c> comment names; null when the comment is not one, or names none or too many.</summary>
-    public static IReadOnlyList<string>? FromComment(string? body)
+    public static IReadOnlyList<string>? FromComment(string? body) => Parse(body)?.Lines;
+
+    /// <summary>
+    /// A <c>/backport 8.x 9.x [--draft]</c> comment; null when the comment is not one, names no line or too many, or carries
+    /// an option other than <see cref="DraftOption"/> (anything starting with <c>-</c> is an option, never a line).
+    /// </summary>
+    public static BackportCommentRequest? Parse(string? body)
     {
         if (string.IsNullOrWhiteSpace(body))
             return null;
@@ -40,8 +49,12 @@ public static class BackportCommand
         var parts = line.Split((char[])[' ', '\t', ','], StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length < 2 || !parts[0].Equals(CommentCommand, StringComparison.OrdinalIgnoreCase))
             return null;
-        var lines = parts[1..].Select(p => p.Trim('`')).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-        return lines.Count <= MaxLines && lines.All(IsLine) ? lines : null;
+        var tokens = parts[1..].Select(p => p.Trim('`')).ToList();
+        var options = tokens.Where(t => t.StartsWith('-')).ToList();
+        if (options.Any(o => !o.Equals(DraftOption, StringComparison.OrdinalIgnoreCase)))
+            return null;
+        var lines = tokens.Where(t => !t.StartsWith('-')).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        return lines.Count is > 0 and <= MaxLines && lines.All(IsLine) ? new BackportCommentRequest(lines, options.Count > 0) : null;
     }
 
     /// <summary>A line token: letters, digits and <c>. _ / -</c>, so a major, <c>N.x</c> or a branch name.</summary>
@@ -55,3 +68,6 @@ public static class BackportCommand
         return digits.Length is > 0 and <= 6 && digits.All(char.IsAsciiDigit) ? int.Parse(digits, System.Globalization.CultureInfo.InvariantCulture) : null;
     }
 }
+
+/// <summary>A parsed <c>/backport</c> comment: its lines, and whether it asked for a draft on conflict (#570 D7).</summary>
+public sealed record BackportCommentRequest(IReadOnlyList<string> Lines, bool Draft);

@@ -346,7 +346,10 @@ public sealed record DependencyAlertRaised(string RepositoryId, string Ecosystem
 /// branch name. Whether each names a release branch is the recipient's to decide, from the repository's configuration.</param>
 /// <param name="ActorLogin">The signed webhook's sender (T1), never text from the comment or the label. A normaliser drops
 /// what a bot or the App itself did, and raises nothing when it cannot name the actor.</param>
-public sealed record BackportRequested(string RepositoryId, int Number, IReadOnlyList<string> Lines, string ActorLogin, EBackportSource Source) : IForgeEvent;
+/// <param name="Draft">The comment said <c>--draft</c> (#570 D7): a conflicting line gets a draft pull request with the
+/// conflict markers, whatever <c>backport.onConflict</c> says.</param>
+public sealed record BackportRequested(string RepositoryId, int Number, IReadOnlyList<string> Lines, string ActorLogin, EBackportSource Source,
+    bool Draft = false) : IForgeEvent;
 
 public enum EBackportSource
 {

@@ -22,6 +22,8 @@ public sealed record BackportMessage
     public required IReadOnlyList<string> Lines { get; init; }
     public required string ActorLogin { get; init; }
     public required EBackportSource Source { get; init; }
+    /// <summary><c>/backport &lt;line&gt; --draft</c> (#570 D7): a conflicting line gets a draft, whatever <c>onConflict</c> says.</summary>
+    public bool Draft { get; init; }
 }
 
 public partial class BackportEventsRecipient : IRecipient<ForgeWebhookMessage<BackportRequested>>
@@ -33,7 +35,7 @@ public partial class BackportEventsRecipient : IRecipient<ForgeWebhookMessage<Ba
         var evt = message.Event;
         return messageBus.BroadcastAsync(new BackportMessage
         {
-            RepositoryId = evt.RepositoryId, Number = evt.Number, Lines = evt.Lines, ActorLogin = evt.ActorLogin, Source = evt.Source,
+            RepositoryId = evt.RepositoryId, Number = evt.Number, Lines = evt.Lines, ActorLogin = evt.ActorLogin, Source = evt.Source, Draft = evt.Draft,
         }, cancellationToken);
     }
 }
@@ -115,7 +117,7 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
         IReadOnlyList<string>? regeneratedPaths = queue is { PostRebaseWhen: not EPostRebaseWhen.Never, RegeneratedPaths.Count: > 0 } ? [.. queue.RegeneratedPaths] : null;
         // §5.8 backport:, from the default branch as well; a broken section is reported and its defaults apply.
         var backport = BackportYml.Parse(yml);
-        var draft = backport.Section.OnConflict == BackportYml.Draft;
+        var draft = message.Draft || backport.Section.OnConflict == BackportYml.Draft;
 
         var targets = new List<GitWriterBackportTarget>();
         var unknown = new List<string>();
@@ -302,7 +304,10 @@ public partial class BackportRecipient : IRecipient<BackportMessage>
                 builder.Append(CultureInfo.InvariantCulture, $"\n{why}\n");
             builder.Append(PlatformNote(target));
             builder.Append(CultureInfo.InvariantCulture,
-                $"\nTo do it by hand:\n\n```\ngit fetch origin\ngit switch -c {target.Head} origin/{target.Branch}\n{pick}\n```");
+                $"\nTo do it by hand:\n\n```\ngit fetch origin\ngit switch -c {target.Head} origin/{target.Branch}\n{pick}\n```\n\n");
+            // #570 M8c opens the pull request of a pushed backport branch; M8d's option drafts this line instead.
+            builder.Append(CultureInfo.InvariantCulture,
+                $"Push the branch and its pull request opens, or comment `/backport {BackportProvenance.ParseHead(target.Head)?.Line ?? target.Branch} --draft` for a draft pull request with the conflict markers committed.");
         }
         return builder.ToString();
     }

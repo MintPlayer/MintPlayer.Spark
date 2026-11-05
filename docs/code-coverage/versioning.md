@@ -272,7 +272,8 @@ backport:
 
 - **`onConflict: draft`** pushes a conflicting line anyway, with git's conflict markers committed, and opens a
   **draft** pull request that lists the files. Resolve them on that branch, then mark the pull request ready. The
-  `autoResolve` rules are not applied to a draft.
+  `autoResolve` rules are not applied to a draft. To get a draft for one request only, comment
+  `/backport <line> --draft`; a conflict comment names that command for each conflicting line.
 - **`enqueue`** (default `true`): a backport pull request goes to the merge queue when the queue is enabled and
   `mergeQueue.branches` names its line, for instance through `supported-lines` ([merge-queue.md](merge-queue.md)).
   The queue's approvals and checks still apply. A draft, or a backport whose regenerated files are stale, is never

@@ -30,6 +30,27 @@ public class BackportTests
         BackportCommand.FromComment("/backport " + string.Join(' ', Enumerable.Range(1, 11))).Should().BeNull();
     }
 
+    [Theory]   // #570 M8d, D7: `--draft` asks for a draft on conflict for this request, wherever it stands
+    [InlineData("/backport 8.x --draft", true)]
+    [InlineData("/backport --draft 8.x 9.x", true)]
+    [InlineData("/backport 8.x --DRAFT", true)]
+    [InlineData("/backport 8.x", false)]
+    public void A_comment_may_ask_for_a_draft(string body, bool draft)
+    {
+        var request = BackportCommand.Parse(body);
+
+        request.Should().NotBeNull();
+        request!.Draft.Should().Be(draft);
+        request.Lines.Should().NotContain("--draft").And.Contain("8.x");
+    }
+
+    [Theory]
+    [InlineData("/backport --draft")]          // no line
+    [InlineData("/backport 8.x --force")]      // an unknown option is no command, never a line
+    [InlineData("/backport 8.x -draft")]
+    public void An_option_alone_or_unknown_is_no_command(string body)
+        => BackportCommand.Parse(body).Should().BeNull();
+
     [Theory]
     [InlineData("8", "release/8.x")]
     [InlineData("8.x", "release/8.x")]
@@ -60,6 +81,7 @@ public class BackportTests
 
         comment.Should().Contain("`release/2.x` conflicts on:").And.Contain("- `README.md`")
             .And.Contain("git switch -c backport/7-2.x origin/release/2.x").And.Contain("git cherry-pick -x -m 1 c0ffee")
+            .And.Contain("Push the branch and its pull request opens, or comment `/backport 2.x --draft`")
             .And.NotContain("release/1.x");
     }
 

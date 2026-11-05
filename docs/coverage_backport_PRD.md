@@ -674,7 +674,7 @@ cascade: 66 of 72 conflicted only because #461 was missing). Script: a throwaway
     partial output with git's would make the tree's provenance unclear.
   - A resolver refusal other than a conflict outside the rules (for example, an unsupported conflict type) stays
     `conflicted`, never a draft: it has no marker tree to show.
-  - The per-request `/backport <line> --draft` is command parsing, so it waits for M8.
+  - The per-request `/backport <line> --draft` is command parsing, so it waits for M8 (built in M8d, below).
 
   **`markers: { disable: [...], packages: [...] }`.**
   - `disable` names built-in kinds: `tfm`, `framework-packages`, `global.json`, `setup-action`, `npm-frameworks`.
@@ -945,4 +945,15 @@ cascade: 66 of 72 conflicted only because #461 was missing). Script: a throwaway
     labels and comments; merges into the default branch or a non-line, and unmerged or missing sources, do nothing; a
     hand-pushed branch opens its pull request with the marker; a missing source or a bare major opens nothing; the
     forwarder skips bots, later pushes and other branches.
+- **M8d, built (2026-11-05): `/backport <line> --draft` (D7).**
+  - `BackportCommand.Parse` returns the lines and the draft flag. `--draft` may stand anywhere on the command line and
+    applies to every line the comment names. Any other token starting with `-` makes the comment **no command**: it
+    would otherwise pass as a line token (letters and `-`), and an unknown option silently ignored would do something
+    the person did not ask for. `--draft` with no line is no command either.
+  - The flag travels on `BackportRequested.Draft` → `BackportMessage.Draft`; the recipient drafts when the request asks
+    or `onConflict: draft` says so. Labels carry no option, so a labelled backport follows `onConflict`.
+  - The conflict comment now ends each conflicting line's section with the next steps: push the hand-made branch (M8c
+    opens its pull request) or comment `/backport <line> --draft`, with the line name taken from the backport head.
+  - Tests: `BackportTests` (parsing; the conflict hint), `GitHubEventsCommandTests` (the flag on the event),
+    `BackportRecipientTests` (a draft request drafts under the `comment` default; without it nothing drafts).
 - **Every automatic resolution is listed in the per-line report** (D6): path, strategy, and what each side added.

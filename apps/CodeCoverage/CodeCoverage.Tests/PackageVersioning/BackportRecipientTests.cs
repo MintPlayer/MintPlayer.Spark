@@ -45,7 +45,10 @@ public class BackportRecipientTests : CoverageRavenTest
             .Returns(new ForgePushAccess(new ForgeWriterAccess("https://example.invalid/acme/widgets.git", "https://example.invalid/acme/widgets.git", "x", "y"), null));
     }
 
-    private async Task HandleAsync(IDocumentStore store, string actor, EBackportSource source, params string[] lines)
+    private Task HandleAsync(IDocumentStore store, string actor, EBackportSource source, params string[] lines)
+        => HandleAsync(store, actor, source, false, lines);
+
+    private async Task HandleAsync(IDocumentStore store, string actor, EBackportSource source, bool draft, params string[] lines)
     {
         using (var seed = store.OpenAsyncSession())
         {
@@ -54,7 +57,7 @@ public class BackportRecipientTests : CoverageRavenTest
         }
         using var session = store.OpenAsyncSession();
         await new BackportRecipient(session, new SingleForgeResolver(integration), [forge], [git], writer, regenerations, outbox, NullLogger<BackportRecipient>.Instance)
-            .HandleAsync(new BackportMessage { RepositoryId = RepositoryId, Number = 7, Lines = lines, ActorLogin = actor, Source = source });
+            .HandleAsync(new BackportMessage { RepositoryId = RepositoryId, Number = 7, Lines = lines, ActorLogin = actor, Source = source, Draft = draft });
     }
 
     [Fact]
@@ -318,6 +321,19 @@ public class BackportRecipientTests : CoverageRavenTest
         forge.DraftHeads.Should().Equal("backport/7-8.x");
         forge.OpenedPullRequests.Single().Body.Should().Contain("**It conflicts**").And.EndWith("- `src/Guard.cs`\n\n" + Marker7);
         forge.Comments.Single().Body.Should().Contain("a draft with 1 conflicting file to resolve").And.NotContain("conflicts on:");
+    }
+
+    [Theory]
+    [InlineData(true, true)]     // #570 M8d, D7: `/backport <line> --draft` drafts this request under onConflict: comment
+    [InlineData(false, false)]   // the default stays a comment
+    public async Task A_draft_request_drafts_its_lines_under_the_comment_default(bool asked, bool drafted)
+    {
+        using var store = GetDocumentStore();
+        WriterAnswers(new GitWriterBackportResult(GitWriterBackportResult.Backported, null, "squash", null, [Target(GitWriterBackportTargetResult.Created)], null, 1));
+
+        await HandleAsync(store, "maintainer", EBackportSource.Comment, asked, "8.x");
+
+        await writer.Received(1).VersioningBackportAsync(Arg.Is<GitWriterBackportRequest>(r => r.Targets.Single().Draft == drafted), Arg.Any<CancellationToken>());
     }
 
     [Fact]

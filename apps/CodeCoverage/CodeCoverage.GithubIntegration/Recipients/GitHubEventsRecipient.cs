@@ -577,7 +577,7 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
         // The dependency updater's commands (§7.5): the first word of a new comment, by a person (gap E), never the App.
         var dependencyCommand = command is null ? DependencyCommandParser.Parse(body) : null;
         // #153 D10: /backport 8.x 9.x, by a person; the recipient checks the role and that the pull request merged.
-        var backport = command is null && dependencyCommand is null ? BackportCommand.FromComment(body) : null;
+        var backport = command is null && dependencyCommand is null ? BackportCommand.Parse(body) : null;
         if (command is null && dependencyCommand is null && backport is null) return;
         if (IsOurApp(comment) || HumanSender(root) is not { } actor) return;
         if (Child(comment, "user") is { } author && (Text(author, "type") == "Bot" || Text(author, "login")?.EndsWith("[bot]", StringComparison.Ordinal) == true)) return;
@@ -585,7 +585,7 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
 
         if (backport is not null)
         {
-            await RaiseAsync(new BackportRequested(repositoryId, (int)number, backport, actor, EBackportSource.Comment), ct);
+            await RaiseAsync(new BackportRequested(repositoryId, (int)number, backport.Lines, actor, EBackportSource.Comment, backport.Draft), ct);
             return;
         }
         if (dependencyCommand is { } dependency)
